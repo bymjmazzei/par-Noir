@@ -60,6 +60,11 @@ export async function exchangeGoogleOAuthCode(opts: {
     body: JSON.stringify({ code: opts.code, redirectUri: opts.redirectUri })
   });
   if (!response.ok) {
+    if (response.status === 429) {
+      throw new Error(
+        'Too many requests (rate limited). Wait about a minute, then try Reconnect again — do not spam Authorize.'
+      );
+    }
     const err = (await response.json().catch(() => ({}))) as { message?: string; error?: string };
     throw new Error(err.message || err.error || 'Failed to exchange Google authorization code');
   }

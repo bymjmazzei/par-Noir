@@ -623,6 +623,12 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
 
 
   const [apiLayoutLinked, setApiLayoutLinked] = React.useState(false);
+  const handleLayoutChange = React.useCallback(
+    (info: { linked: boolean; socialCloudProvider: string | null; accountCount: number }) => {
+      setApiLayoutLinked(info.linked);
+    },
+    []
+  );
 
   const totalFiles = files.length;
   const hasConnectedBackends =
@@ -645,7 +651,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
         googleDriveConnectedCount={driveAccounts.length}
         driveConnectDisabled={isLoading || showDriveSetupProgress}
         connectedStorageCount={connectedStorageCount}
-        onLayoutChange={({ linked }) => setApiLayoutLinked(linked)}
+        onLayoutChange={handleLayoutChange}
         onConnected={async () => {
           void hydrateStorageCredentialsFromAPI();
           await registerPortableCloudBackends();

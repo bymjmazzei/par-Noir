@@ -76,6 +76,7 @@ export const CloudReconnectHost: React.FC<CloudReconnectHostProps> = ({
 
   const persistMode: PersistCloudCredentialsMode = isKeyedSession ? 'sealed' : 'session';
 
+  const markReady = gate.markReady;
   const handleConnected = useCallback(
     async (envelope: StorageCredentialsEnvelope) => {
       if (!pnIdentifier || !sessionId) return;
@@ -108,10 +109,10 @@ export const CloudReconnectHost: React.FC<CloudReconnectHostProps> = ({
           /* best-effort */
         }
       }
-      gate.markReady();
+      markReady();
       onCloudReady?.();
     },
-    [pnIdentifier, sessionId, persistMode, isKeyedSession, gate, onCloudReady]
+    [pnIdentifier, sessionId, persistMode, isKeyedSession, markReady, onCloudReady]
   );
 
   const show = useMemo(
@@ -130,7 +131,13 @@ export const CloudReconnectHost: React.FC<CloudReconnectHostProps> = ({
         onDismiss={gate.dismissPrompt}
         showKeyDevice={!isKeyedSession && !!onKeyDevice}
         onKeyDevice={onKeyDevice}
-      />
+      >
+        {gate.error ? (
+          <p style={{ margin: '12px 0 0', fontSize: 13, color: '#f87171' }} role="alert">
+            {gate.error}
+          </p>
+        ) : null}
+      </CloudReconnectPrompt>
       <CloudReconnectPanel
         open={gate.panelOpen}
         onClose={gate.closePanel}

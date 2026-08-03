@@ -1,11 +1,27 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   assessCloudSessionReadiness,
-  type ApiStorageAccountRef
+  type ApiStorageAccountRef,
+  type StorageCredentialsEnvelope
 } from '@par-noir/user-owned-storage';
 import type { CloudReconnectGateConfig, CloudReconnectGateState } from './types';
 
+const RATE_LIMIT_COOLDOWN_MS = 60_000;
+
+/**
+ * Post-unlock cloud readiness gate.
+ * Fetches /api/storage/accounts at most when auth identity changes — not every render.
+ */
 export function useCloudReconnectGate(config: CloudReconnectGateConfig): CloudReconnectGateState {
+  const {
+    enabled,
+    authToken,
+    pnIdentifier,
+    apiEndpoint,
+    loadLocalEnvelope,
+    dismissStorageKey
+  } = config;
+
   const [readiness, setReadiness] = useState<CloudReconnectGateState['readiness']>('unknown');
   const [socialCloudProvider, setSocialCloudProvider] = useState<string | null>(null);
   const [apiAccounts, setApiAccounts] = useState<ApiStorageAccountRef[]>([]);
@@ -14,32 +30,63 @@ export function useCloudReconnectGate(config: CloudReconnectGateConfig): CloudRe
   const [checking, setChecking] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const loadLocalEnvelopeRef = useRef(loadLocalEnvelope);
+  loadLocalEnvelopeRef.current = loadLocalEnvelope;
+
+  const rateLimitedUntilRef = useRef(0);
+  const inFlightRef = useRef(false);
+  const lastFetchKeyRef = useRef<string | null>(null);
+
   const isDismissed = useCallback(() => {
-    if (!config.dismissStorageKey || typeof sessionStorage === 'undefined') return false;
+    if (!dismissStorageKey || typeof sessionStorage === 'undefined') return false;
     try {
-      return sessionStorage.getItem(config.dismissStorageKey) === '1';
+      return sessionStorage.getItem(dismissStorageKey) === '1';
     } catch {
       return false;
     }
-  }, [config.dismissStorageKey]);
+  }, [dismissStorageKey]);
 
-  const refresh = useCallback(async () => {
-    if (!config.enabled || !config.authToken || !config.pnIdentifier) {
+  const refresh = useCallback(async (opts?: { force?: boolean }) => {
+    if (!enabled || !authToken || !pnIdentifier) {
       setReadiness('unknown');
       setPromptOpen(false);
       return;
     }
+
+    const fetchKey = `${apiEndpoint}|${pnIdentifier}|${authToken.slice(0, 12)}`;
+    if (!opts?.force && lastFetchKeyRef.current === fetchKey) {
+      return;
+    }
+
+    const now = Date.now();
+    if (now < rateLimitedUntilRef.current) {
+      setError('Cloud status check rate-limited — wait a minute and try again.');
+      return;
+    }
+
+    if (inFlightRef.current) return;
+    inFlightRef.current = true;
     setChecking(true);
     setError(null);
+
     try {
-      const url = `${config.apiEndpoint.replace(/\/$/, '')}/api/storage/accounts/${encodeURIComponent(config.pnIdentifier)}`;
+      const url = `${apiEndpoint.replace(/\/$/, '')}/api/storage/accounts/${encodeURIComponent(pnIdentifier)}`;
       const res = await fetch(url, {
-        headers: { Authorization: `Bearer ${config.authToken}` }
+        headers: { Authorization: `Bearer ${authToken}` }
       });
+
+      if (res.status === 429) {
+        rateLimitedUntilRef.current = Date.now() + RATE_LIMIT_COOLDOWN_MS;
+        setError('Too many requests — wait about a minute, then unlock or refresh.');
+        setReadiness('unknown');
+        return;
+      }
+
       if (!res.ok) {
         setReadiness('unknown');
         return;
       }
+
       const data = (await res.json()) as {
         accounts?: ApiStorageAccountRef[];
         socialCloudProvider?: string;
@@ -49,8 +96,15 @@ export function useCloudReconnectGate(config: CloudReconnectGateConfig): CloudRe
       const social = data.socialCloudProvider ?? data.primaryProvider ?? null;
       setApiAccounts(accounts);
       setSocialCloudProvider(social);
+      lastFetchKeyRef.current = fetchKey;
 
-      const localEnvelope = await config.loadLocalEnvelope();
+      let localEnvelope: StorageCredentialsEnvelope | null = null;
+      try {
+        localEnvelope = await loadLocalEnvelopeRef.current();
+      } catch {
+        localEnvelope = null;
+      }
+
       const next = assessCloudSessionReadiness({
         apiAccounts: accounts,
         socialCloudProvider: social,
@@ -67,24 +121,33 @@ export function useCloudReconnectGate(config: CloudReconnectGateConfig): CloudRe
       setError(e instanceof Error ? e.message : 'Failed to check cloud status');
       setReadiness('unknown');
     } finally {
+      inFlightRef.current = false;
       setChecking(false);
     }
-  }, [config, isDismissed]);
+  }, [enabled, authToken, pnIdentifier, apiEndpoint, isDismissed]);
 
+  // Run once per identity/token — not when refresh identity changes.
   useEffect(() => {
-    void refresh();
-  }, [refresh]);
+    if (!enabled || !authToken || !pnIdentifier) {
+      setReadiness('unknown');
+      setPromptOpen(false);
+      lastFetchKeyRef.current = null;
+      return;
+    }
+    void refresh({ force: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional: only re-check when auth identity changes
+  }, [enabled, authToken, pnIdentifier, apiEndpoint]);
 
   const dismissPrompt = useCallback(() => {
     setPromptOpen(false);
-    if (config.dismissStorageKey) {
+    if (dismissStorageKey) {
       try {
-        sessionStorage.setItem(config.dismissStorageKey, '1');
+        sessionStorage.setItem(dismissStorageKey, '1');
       } catch {
         /* ignore */
       }
     }
-  }, [config.dismissStorageKey]);
+  }, [dismissStorageKey]);
 
   const openPanel = useCallback(() => {
     setPanelOpen(true);
@@ -97,14 +160,16 @@ export function useCloudReconnectGate(config: CloudReconnectGateConfig): CloudRe
     setReadiness('ready');
     setPromptOpen(false);
     setPanelOpen(false);
-    if (config.dismissStorageKey) {
+    if (dismissStorageKey) {
       try {
-        sessionStorage.removeItem(config.dismissStorageKey);
+        sessionStorage.removeItem(dismissStorageKey);
       } catch {
         /* ignore */
       }
     }
-  }, [config.dismissStorageKey]);
+  }, [dismissStorageKey]);
+
+  const refreshStable = useCallback(() => refresh({ force: true }), [refresh]);
 
   return {
     readiness,
@@ -117,7 +182,7 @@ export function useCloudReconnectGate(config: CloudReconnectGateConfig): CloudRe
     openPanel,
     closePanel,
     dismissPrompt,
-    refresh,
+    refresh: refreshStable,
     markReady
   };
 }
