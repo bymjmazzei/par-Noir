@@ -72,6 +72,9 @@ export {
   exchangeGoogleOAuthCode,
   ThirdPartyCloudReconnectHost,
   wipeThirdPartyCloudOnLock,
+  isOAuthCloudProvider,
+  isCloudProviderId,
+  reconnectOAuthProvider,
 } from './cloudReconnect';
 export type {
   CloudReconnectPromptProps,
@@ -81,4 +84,5 @@ export type {
   CloudReconnectGateState,
   PortableConnectForms,
   ThirdPartyCloudReconnectHostProps,
+  ReconnectOAuthParams,
 } from './cloudReconnect';
