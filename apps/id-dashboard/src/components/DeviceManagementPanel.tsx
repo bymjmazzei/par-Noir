@@ -162,8 +162,9 @@ export const DeviceManagementPanel: React.FC<DeviceManagementPanelProps> = ({
 
       {isUnkeyedRestricted && (
         <p className="text-xs text-yellow-600 border border-yellow-700/50 rounded p-2">
-          This session is unkeyed. Recovery initiation and custodian approval still work; privileged
-          settings are limited until you key this device or pair from a keyed device.
+          This session is unkeyed. Cloud tokens work for this unlock and are cleared when you lock.
+          Key this device to keep cloud signed in across locks. Recovery initiation and custodian
+          approval still work; some privileged settings stay limited until you key or pair.
         </p>
       )}
 
@@ -269,6 +270,8 @@ export const DeviceManagementPanel: React.FC<DeviceManagementPanelProps> = ({
           <h5 className="text-sm font-medium text-text-primary">Unkeyed device permissions</h5>
           <p className="text-xs text-text-secondary">
             Choose what an unlocked but unkeyed device may do. Recovery flows always remain available.
+            Drive and messaging are allowed by default so cloud reconnect works without keying; unkeyed
+            sessions still wipe local cloud tokens on lock.
           </p>
           <p className="text-xs text-text-secondary italic">
             Messaging permissions apply when the browser app supports device keys (not yet available).

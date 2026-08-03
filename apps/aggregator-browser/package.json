@@ -36,6 +36,7 @@
     "@par-noir/identity-migration": "file:../../packages/identity-migration",
     "@par-noir/messaging-ui": "file:../../packages/messaging-ui",
     "@par-noir/oauth-ui": "file:../../packages/oauth-ui",
+    "@par-noir/user-owned-storage": "file:../../packages/user-owned-storage",
     "@sentry/react": "^8.55.0",
     "@types/dompurify": "^3.0.5",
     "capacitor-secure-storage-plugin": "^0.10.0",

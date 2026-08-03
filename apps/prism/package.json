@@ -12,6 +12,8 @@
   },
   "dependencies": {
     "@par-noir/oauth-ui": "file:../../packages/oauth-ui",
+    "@par-noir/device-cloud-credentials": "file:../../packages/device-cloud-credentials",
+    "@par-noir/user-owned-storage": "file:../../packages/user-owned-storage",
     "@bytetrade/capacitor-native-biometric": "^6.0.5",
     "@capacitor/app": "^6.0.0",
     "@capacitor/clipboard": "^6.0.0",

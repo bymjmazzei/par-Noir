@@ -101,6 +101,111 @@ export function listConnectedProviders(credentials: StorageCredentialsEnvelope):
   return out;
 }
 
+/** Secret field names stripped by API custody (`stripCloudSecrets`). */
+export const CLOUD_SECRET_FIELDS = [
+  'accessToken',
+  'access_token',
+  'refreshToken',
+  'refresh_token',
+  'apiKey',
+  'apiSecret',
+  'clientSecret',
+  'secretAccessKey',
+  'password',
+  'sasToken',
+  'connectionString'
+] as const;
+
+export type CloudSessionReadiness = 'ready' | 'linkedInactive' | 'unlinked';
+
+/** Layout-only account row from GET /api/storage/accounts (secrets usually absent). */
+export interface ApiStorageAccountRef {
+  provider: string;
+  accountId?: string;
+  email?: string;
+  displayName?: string;
+}
+
+function nonEmptySecret(value: unknown): boolean {
+  return typeof value === 'string' && value.trim().length > 0;
+}
+
+/** True when an account record still holds usable provider secrets. */
+export function accountRecordHasUsableSecrets(acct: Record<string, unknown> | null | undefined): boolean {
+  if (!acct || typeof acct !== 'object') return false;
+  return CLOUD_SECRET_FIELDS.some((k) => nonEmptySecret(acct[k]));
+}
+
+function accountsForProvider(
+  envelope: StorageCredentialsEnvelope,
+  provider: string
+): Record<string, unknown>[] {
+  switch (provider) {
+    case 'google_drive': {
+      const list = (envelope.googleDriveAccounts ?? []) as Record<string, unknown>[];
+      const legacy = (envelope as { googleDrive?: Record<string, unknown> }).googleDrive;
+      return legacy ? [...list, legacy] : list;
+    }
+    case 'dropbox':
+      return (envelope.dropboxAccounts ?? []) as unknown as Record<string, unknown>[];
+    case 'aws_s3':
+      return (envelope.awsS3Accounts ?? []) as unknown as Record<string, unknown>[];
+    case 'azure_blob':
+      return (envelope.azureBlobAccounts ?? []) as unknown as Record<string, unknown>[];
+    case 'onedrive':
+      return (envelope.onedriveAccounts ?? []) as unknown as Record<string, unknown>[];
+    case 'ftp':
+      return (envelope.ftpAccounts ?? []) as unknown as Record<string, unknown>[];
+    default:
+      return [];
+  }
+}
+
+/**
+ * True when the local/sealed envelope has usable secrets.
+ * When `provider` is set, only that provider is checked; otherwise any connected provider.
+ */
+export function envelopeHasUsableSecrets(
+  envelope: StorageCredentialsEnvelope | null | undefined,
+  provider?: string | null
+): boolean {
+  if (!envelope) return false;
+  if (provider) {
+    return accountsForProvider(envelope, provider).some((a) => accountRecordHasUsableSecrets(a));
+  }
+  for (const p of listConnectedProviders(envelope)) {
+    if (accountsForProvider(envelope, p).some((a) => accountRecordHasUsableSecrets(a))) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * Decide whether this device/session can use linked cloud storage.
+ *
+ * - `unlinked` — API has no social-cloud layout / accounts
+ * - `linkedInactive` — API layout exists but local secrets are missing
+ * - `ready` — local envelope has usable secrets for the social (or any linked) provider
+ */
+export function assessCloudSessionReadiness(opts: {
+  apiAccounts?: ApiStorageAccountRef[] | null;
+  socialCloudProvider?: string | null;
+  localEnvelope?: StorageCredentialsEnvelope | null;
+}): CloudSessionReadiness {
+  const social = opts.socialCloudProvider?.trim() || null;
+  const hasLayout = (opts.apiAccounts?.length ?? 0) > 0 || !!social;
+  if (!hasLayout) return 'unlinked';
+
+  if (social && envelopeHasUsableSecrets(opts.localEnvelope, social)) {
+    return 'ready';
+  }
+  if (envelopeHasUsableSecrets(opts.localEnvelope)) {
+    return 'ready';
+  }
+  return 'linkedInactive';
+}
+
 /** Social cloud = where tables and owner/public indexes live */
 export function resolveSocialCloudProvider(credentials: StorageCredentialsEnvelope): StorageProviderId {
   if (credentials.socialCloudProvider) {

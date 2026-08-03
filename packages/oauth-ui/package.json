@@ -19,6 +19,10 @@
   "peerDependencies": {
     "react": ">=17.0.0"
   },
+  "dependencies": {
+    "@par-noir/device-cloud-credentials": "file:../device-cloud-credentials",
+    "@par-noir/user-owned-storage": "file:../user-owned-storage"
+  },
   "devDependencies": {
     "@types/react": "^18.0.0",
     "react": "^18.2.0",

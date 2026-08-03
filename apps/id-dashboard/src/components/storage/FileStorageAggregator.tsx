@@ -622,6 +622,8 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
 
 
 
+  const [apiLayoutLinked, setApiLayoutLinked] = React.useState(false);
+
   const totalFiles = files.length;
   const hasConnectedBackends =
     driveAccounts.length > 0 || portableCloudAccounts.length > 0;
@@ -643,6 +645,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
         googleDriveConnectedCount={driveAccounts.length}
         driveConnectDisabled={isLoading || showDriveSetupProgress}
         connectedStorageCount={connectedStorageCount}
+        onLayoutChange={({ linked }) => setApiLayoutLinked(linked)}
         onConnected={async () => {
           void hydrateStorageCredentialsFromAPI();
           await registerPortableCloudBackends();
@@ -653,9 +656,15 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
       {!hasConnectedBackends && (
         <div className="bg-neutral-900/40 border border-neutral-700/60 border-dashed rounded-xl p-6 text-center">
           <Cloud className="h-10 w-10 text-text-secondary mx-auto mb-3" />
-          <p className="text-text-primary font-medium mb-1">No storage connected yet</p>
+          <p className="text-text-primary font-medium mb-1">
+            {apiLayoutLinked
+              ? 'Linked — reconnect on this device'
+              : 'No storage connected yet'}
+          </p>
           <p className="text-text-secondary text-sm max-w-md mx-auto">
-            Choose Google Drive, Dropbox, S3, Azure, OneDrive, or FTP above. One provider becomes your social cloud for tables and indexes; files can live on any connected account.
+            {apiLayoutLinked
+              ? 'This pN already has cloud storage linked. Reconnect above to sign in on this device and load files.'
+              : 'Choose Google Drive, Dropbox, S3, Azure, OneDrive, or FTP above. One provider becomes your social cloud for tables and indexes; files can live on any connected account.'}
           </p>
         </div>
       )}

@@ -48,6 +48,8 @@ export interface UseAuthUnlockHandlersParams {
   setShowMainPNName: React.Dispatch<React.SetStateAction<boolean>>;
   setShowMainPasscode: React.Dispatch<React.SetStateAction<boolean>>;
   recoveryVaultPnId: string | null;
+  /** When false, lock wipes sealed cloud credentials (unkeyed session). */
+  isKeyedSession?: boolean;
 
   apiToken: string | null;
   clearApiToken: ApiTokenState['clearApiToken'];
@@ -105,6 +107,7 @@ export function useAuthUnlockHandlers(params: UseAuthUnlockHandlersParams) {
     setShowMainPNName,
     setShowMainPasscode,
     recoveryVaultPnId,
+    isKeyedSession = false,
     apiToken,
     clearApiToken,
     ensureApiTokenAfterUnlock,
@@ -336,9 +339,21 @@ export function useAuthUnlockHandlers(params: UseAuthUnlockHandlersParams) {
         const { stopDeviceCloudWorkers, wipeDeviceCloudCredentials } = await import(
           '../services/deviceCloudCredentials'
         );
+        const { clearCloudCredentialsOnLock } = await import('@par-noir/device-cloud-credentials');
         stopDeviceCloudWorkers();
         const authUser = authenticatedUser;
-        if (authUser?.id) {
+        const identityId = recoveryVaultPnId || null;
+        if (identityId) {
+          await clearCloudCredentialsOnLock({
+            identityId,
+            isKeyedSession: !!isKeyedSession
+          }).catch(() => undefined);
+          // Dashboard native/web store may use the same pn id
+          if (!isKeyedSession) {
+            await wipeDeviceCloudCredentials(identityId).catch(() => undefined);
+          }
+        } else if (authUser?.id && !isKeyedSession) {
+          // Fallback only when pn id unknown — may no-op if seal key differs
           await wipeDeviceCloudCredentials(authUser.id).catch(() => undefined);
         }
       } catch {

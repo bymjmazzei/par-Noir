@@ -5,7 +5,7 @@
 
 import React, { useMemo, useState } from 'react';
 import { FileCheck, Percent, Shield, LogOut } from 'lucide-react';
-import { UnlockButton } from '@par-noir/oauth-ui';
+import { UnlockButton, ThirdPartyCloudReconnectHost } from '@par-noir/oauth-ui';
 import { API_ENDPOINT } from './config/api';
 import { PN_CLIENT_ID } from './config/client';
 import { LicensingSessionProvider, useLicensingSession } from './context/LicensingSessionContext';
@@ -30,8 +30,17 @@ function getLicensingOAuthConfig() {
 }
 
 function LicensingShell() {
-  const { loadingSession, signedIn, error, setError, handleBeforeUnlock, onPopupResult, signOut } =
-    useLicensingSession();
+  const {
+    loadingSession,
+    signedIn,
+    error,
+    setError,
+    handleBeforeUnlock,
+    onPopupResult,
+    signOut,
+    token,
+    user
+  } = useLicensingSession();
   const oauthConfig = useMemo(() => getLicensingOAuthConfig(), []);
   const [form, setForm] = useState({
     name: '',
@@ -63,6 +72,13 @@ function LicensingShell() {
         backgroundPosition: 'center'
       }}
     >
+      {signedIn ? (
+        <ThirdPartyCloudReconnectHost
+          apiEndpoint={API_ENDPOINT}
+          authToken={token}
+          pnIdentifier={user?.pn_identifier}
+        />
+      ) : null}
       <div className="absolute inset-0 bg-black/40" aria-hidden="true" />
       <div className="relative z-10">
         <header className="border-b border-white/10 px-6 py-4 backdrop-blur-sm">

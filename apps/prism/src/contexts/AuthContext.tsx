@@ -129,6 +129,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const signOut = async () => {
+    try {
+      const { wipeThirdPartyCloudOnLock } = await import('@par-noir/oauth-ui');
+      await wipeThirdPartyCloudOnLock(session?.pnIdentifier);
+    } catch {
+      /* ignore */
+    }
     await clearSession();
     setSession(null);
   };

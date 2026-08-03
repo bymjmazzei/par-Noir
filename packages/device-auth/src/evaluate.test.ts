@@ -51,10 +51,20 @@ describe('evaluateDeviceCapability', () => {
     const result = evaluateDeviceCapability({
       policy,
       isKeyed: false,
-      capability: DEVICE_CAPABILITIES.driveUpload,
+      capability: DEVICE_CAPABILITIES.profileWrite,
     });
     expect(result.allowed).toBe(false);
     expect(result.reason).toBe('capability_not_allowed');
+  });
+
+  it('allows drive.upload on unkeyed by default (session cloud; wipe on lock)', () => {
+    const policy = { ...defaultDevicePolicy(), firstDeviceKeyedAt: new Date().toISOString() };
+    const result = evaluateDeviceCapability({
+      policy,
+      isKeyed: false,
+      capability: DEVICE_CAPABILITIES.driveUpload,
+    });
+    expect(result.allowed).toBe(true);
   });
 
   it('allows profile.write on unkeyed when owner toggled it in policy', () => {

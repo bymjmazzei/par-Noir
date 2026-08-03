@@ -31,6 +31,7 @@ import { UnlockGate } from './App/UnlockGate';
 import { CreateDidModal } from './App/CreateDidModal';
 import { ImportDidModal } from './App/ImportDidModal';
 import { AppChrome } from './App/AppChrome';
+import { CloudReconnectHost } from './components/storage/CloudReconnectHost';
 
 // Custom hooks for state management
 import { useAppState } from './hooks/useAppState';
@@ -311,6 +312,28 @@ function App() {
           did: authenticatedUser.id,
           pnName: credentials.pnName,
           passcode: credentials.passcode
+        }).then(async (token) => {
+          if (!token || cancelled) return;
+          try {
+            const { migrateAndFlushOnUnlock } = await import('./services/deviceCloudCredentials');
+            const { derivePnIdentifierForToken } = await import('./services/parNoirOAuthInline');
+            const pnIdentifier = await derivePnIdentifierForToken(
+              credentials.pnName,
+              credentials.passcode,
+              authenticatedUser.publicKey || identityKey
+            );
+            await migrateAndFlushOnUnlock({
+              identityId: pnIdentifier,
+              authToken: token,
+              session: {
+                sessionId: authenticatedUser.id,
+                pnName: credentials.pnName,
+                passcode: credentials.passcode
+              }
+            });
+          } catch {
+            /* device cloud migrate best-effort */
+          }
         });
       } finally {
         if (cancelled) return;
@@ -910,6 +933,7 @@ function App() {
     setShowMainPNName,
     setShowMainPasscode,
     recoveryVaultPnId,
+    isKeyedSession: deviceAuth.isKeyedSession,
     apiToken,
     clearApiToken,
     ensureApiTokenAfterUnlock,
@@ -1298,6 +1322,19 @@ function App() {
           showSuccessMessage={showSuccessMessage}
           refreshAssetDelegations={refreshAssetDelegations}
           handleRemoveDelegation={handleRemoveDelegation}
+        />
+
+        <CloudReconnectHost
+          apiToken={apiToken}
+          pnIdentifier={recoveryVaultPnId}
+          sessionId={authenticatedUser?.id ?? null}
+          isKeyedSession={deviceAuth.isKeyedSession}
+          onKeyDevice={() => {
+            setActiveTab('recovery');
+          }}
+          onCloudReady={() => {
+            /* Storage tab hydrates on next focus / MultiCloud refresh */
+          }}
         />
 
 

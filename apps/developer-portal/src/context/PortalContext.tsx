@@ -297,6 +297,12 @@ export function PortalProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const signOut = useCallback(async () => {
+    try {
+      const { wipeThirdPartyCloudOnLock } = await import('@par-noir/oauth-ui');
+      await wipeThirdPartyCloudOnLock(user?.pn_identifier);
+    } catch {
+      /* ignore */
+    }
     const refresh = sessionStorage.getItem(STORAGE_REFRESH);
     if (refresh) {
       try {
@@ -315,7 +321,7 @@ export function PortalProvider({ children }: { children: ReactNode }) {
     setKeys([]);
     setOauthClients([]);
     setMessage(null);
-  }, []);
+  }, [user?.pn_identifier]);
 
   const onPopupResult = useCallback(
     async (r: PnOAuthPopupResult) => {

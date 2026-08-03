@@ -764,6 +764,13 @@ export function useAuthAndSession({
 
   const handleLockUnlock = useCallback(async () => {
     if (userState.isUnlocked) {
+      const pn = PNOAuthService.loadSession()?.pnIdentifier;
+      try {
+        const { wipeAggregatorCloudOnLock } = await import('../components/AggregatorCloudReconnectHost');
+        await wipeAggregatorCloudOnLock(pn);
+      } catch {
+        /* ignore */
+      }
       setLocked();
       clearDmIdentity();
       PNOAuthService.clearSession();

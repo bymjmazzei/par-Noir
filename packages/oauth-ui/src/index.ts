@@ -63,3 +63,21 @@ export type {
   MessagingHandoffSession,
   MessagingOAuthHandoffPayload,
 } from './messagingOAuthHandoff';
+export {
+  CloudReconnectPrompt,
+  CloudReconnectPanel,
+  useCloudReconnectGate,
+  waitForOAuthPopupCode,
+  exchangeGoogleOAuthCode,
+  ThirdPartyCloudReconnectHost,
+  wipeThirdPartyCloudOnLock,
+} from './cloudReconnect';
+export type {
+  CloudReconnectPromptProps,
+  CloudReconnectPanelProps,
+  CloudProviderId,
+  CloudReconnectGateConfig,
+  CloudReconnectGateState,
+  PortableConnectForms,
+  ThirdPartyCloudReconnectHostProps,
+} from './cloudReconnect';

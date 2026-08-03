@@ -132,6 +132,7 @@ export function useDriveCredentialHydration({
       pnId = await getPnIdentifier();
       if (!pnId) {
         console.warn('⚠️ [StorageCredentials] Cannot generate pn identifier for hydration - missing credentials');
+        hydrationInProgressRef.current = false;
         return;
       }
     }
@@ -140,6 +141,62 @@ export function useDriveCredentialHydration({
     const identityCandidates = [pnId];
 
     let hydrated = false;
+
+    // Device custody: try sealed / session-local secrets before treating API layout as connected
+    try {
+      const sessionId = authenticatedUser?.id ?? null;
+      const sessionCreds = sessionId ? SecureCredentialManager.getCredentials(sessionId) : null;
+      if (sessionCreds && pnId) {
+        const { loadLocalCloudCredentials } = await import('@par-noir/device-cloud-credentials');
+        const local = await loadLocalCloudCredentials({
+          identityId: pnId,
+          session: {
+            sessionId: sessionId!,
+            pnName: sessionCreds.pnName,
+            passcode: sessionCreds.passcode
+          }
+        });
+        const accounts = local?.googleDriveAccounts ?? [];
+        for (const account of accounts) {
+          const token = account.accessToken || account.access_token;
+          if (!token) continue;
+          const email = account.email || null;
+          const identifiers = resolveIdentifiersForEmail(email);
+          try {
+            const backend = await upsertDriveAccount({
+              backendId: identifiers.backendId,
+              keyPrefix: identifiers.keyPrefix,
+              token,
+              refreshToken: account.refreshToken || account.refresh_token,
+              email,
+              connectedAt: account.connectedAt,
+              updatedAt: account.updatedAt
+            });
+            if (backend && typeof (backend as GoogleDriveBackend).ensureAccessToken === 'function') {
+              await (backend as GoogleDriveBackend).ensureAccessToken();
+            }
+            hydrated = true;
+          } catch {
+            /* try next */
+          }
+        }
+        if (hydrated) {
+          hydrationSuccessRef.current = pnId;
+          hydrationInProgressRef.current = false;
+          const loadFilesFn = loadFilesRef.current;
+          if (loadFilesFn) {
+            try {
+              await loadFilesFn();
+            } catch {
+              /* non-blocking */
+            }
+          }
+          return;
+        }
+      }
+    } catch {
+      /* fall through to API layout hydration */
+    }
     let lastError: unknown = null;
 
     for (const candidateId of identityCandidates) {
@@ -426,6 +483,7 @@ export function useDriveCredentialHydration({
             if (backend && typeof (backend as GoogleDriveBackend).ensureAccessToken === 'function') {
               await (backend as GoogleDriveBackend).ensureAccessToken();
             }
+            hydrated = true;
           } catch (upsertError) {
             console.warn('⚠️ [StorageCredentials] Failed to reconnect Google Drive account from API payload', {
               email,
@@ -434,20 +492,21 @@ export function useDriveCredentialHydration({
           }
         }
 
-        hydrated = true;
-        hydrationSuccessRef.current = candidateId;
-        hydrationMissingCandidatesRef.current.delete(candidateId);
-        hydrationRateLimitUntilRef.current = null;
-        hydrationRateLimitLoggedRef.current = false;
-        if (hydrationRetryTimeoutRef.current !== null) {
-          window.clearTimeout(hydrationRetryTimeoutRef.current);
-          hydrationRetryTimeoutRef.current = null;
+        if (hydrated) {
+          hydrationSuccessRef.current = candidateId;
+          hydrationMissingCandidatesRef.current.delete(candidateId);
+          hydrationRateLimitUntilRef.current = null;
+          hydrationRateLimitLoggedRef.current = false;
+          if (hydrationRetryTimeoutRef.current !== null) {
+            window.clearTimeout(hydrationRetryTimeoutRef.current);
+            hydrationRetryTimeoutRef.current = null;
+          }
         }
 
         // CRITICAL: Don't persist after hydration - auto-persist is disabled
         // Hydration just loads accounts from API, no need to persist back
 
-        break;
+        if (hydrated) break;
       } catch (error) {
         lastError = error;
         // candidateId (identityId) is secret - not logged

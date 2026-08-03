@@ -49,3 +49,16 @@ export {
   ensureMailboxRouteKey,
   clearMailboxRouteKey
 } from './mailboxRouteKey.js';
+export {
+  setSessionCloudCredentials,
+  getSessionCloudCredentials,
+  clearSessionCloudCredentials,
+  clearAllSessionCloudCredentials
+} from './sessionMemory.js';
+export {
+  persistCloudCredentials,
+  loadLocalCloudCredentials,
+  wipeSealedCloudCredentials,
+  clearCloudCredentialsOnLock
+} from './webCloudCredentialLifecycle.js';
+export type { PersistCloudCredentialsMode } from './webCloudCredentialLifecycle.js';

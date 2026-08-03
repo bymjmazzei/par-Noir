@@ -33,7 +33,11 @@ export const IMMUTABLE_UNKEYED_DENY: ReadonlySet<string> = new Set([
   DEVICE_CAPABILITIES.oauthWrite,
 ]);
 
-/** Default allows for unkeyed devices after first device is keyed. */
+/**
+ * Default allows for unkeyed devices after first device is keyed.
+ * Drive/messages are included so cloud reconnect works without keying;
+ * unkeyed sessions wipe local cloud tokens on lock (see clearCloudCredentialsOnLock).
+ */
 export const DEFAULT_UNKEYED_ALLOWS: readonly string[] = [
   DEVICE_CAPABILITIES.recoveryInitiate,
   DEVICE_CAPABILITIES.recoveryRead,
@@ -41,6 +45,10 @@ export const DEFAULT_UNKEYED_ALLOWS: readonly string[] = [
   DEVICE_CAPABILITIES.custodianApprove,
   DEVICE_CAPABILITIES.profileRead,
   DEVICE_CAPABILITIES.custodiansRead,
+  DEVICE_CAPABILITIES.driveRead,
+  DEVICE_CAPABILITIES.driveUpload,
+  DEVICE_CAPABILITIES.messagesRead,
+  DEVICE_CAPABILITIES.messagesSend,
 ];
 
 /** Human-readable labels for policy UI toggles (configurable allows only). */

@@ -1,6 +1,6 @@
 import { NavLink, Outlet } from 'react-router-dom';
 import { useEffect, useState } from 'react';
-import { UnlockButton, LockButton } from '@par-noir/oauth-ui';
+import { UnlockButton, LockButton, ThirdPartyCloudReconnectHost } from '@par-noir/oauth-ui';
 import { usePortal } from '../context/PortalContext';
 import { fetchPlatformAccess } from '../services/platformApi';
 
@@ -12,6 +12,7 @@ export function DevLayout() {
     loadingSession,
     signedIn,
     user,
+    token,
     error,
     setError,
     handleBeforeUnlock,
@@ -33,6 +34,13 @@ export function DevLayout() {
 
   return (
     <div className="dev-root">
+      {signedIn ? (
+        <ThirdPartyCloudReconnectHost
+          apiEndpoint={apiEndpoint}
+          authToken={token}
+          pnIdentifier={user?.pn_identifier}
+        />
+      ) : null}
       <header className="dev-header">
         <div className="dev-header-inner">
           <img className="dev-logo" src="/branding/Par-Noir-Logo-White.png" alt="par Noir" />

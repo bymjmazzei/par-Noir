@@ -11,11 +11,12 @@ import { RayView } from './components/RayView';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { fetchAdminCheck, fetchAdminStats, fetchReputation, seedDemoQueue, ensurePrismLedgers, ReputationResult } from './services/prismApi';
 import { useRayApply } from './hooks/useRayApply';
-import { UnlockButton } from '@par-noir/oauth-ui';
+import { UnlockButton, ThirdPartyCloudReconnectHost } from '@par-noir/oauth-ui';
 import { Capacitor } from '@capacitor/core';
 import { getPrismOAuthConfig, prismOnBeforeNavigate } from './utils/oauth';
 import { exchangeCodeForToken } from './services/prismAuthService';
 import { SplashScreen } from '@capacitor/splash-screen';
+import { API_ENDPOINT } from './config/api';
 
 function LockedView({
   onApplyOpen,
@@ -211,6 +212,11 @@ function UnlockedView() {
       className="min-h-screen bg-[#0a0a0a] text-white"
       style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}
     >
+      <ThirdPartyCloudReconnectHost
+        apiEndpoint={API_ENDPOINT}
+        authToken={session?.accessToken}
+        pnIdentifier={session?.pnIdentifier}
+      />
       <header className="border-b border-neutral-800 px-6 py-4">
         <div className="max-w-4xl mx-auto flex items-center justify-between">
           <div className="flex items-center gap-3">

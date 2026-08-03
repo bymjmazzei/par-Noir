@@ -409,6 +409,74 @@ export function useGoogleDriveOAuthConnect({
 
       setActiveBackendId(identifiers.backendId);
 
+      // Device custody: seal Drive secrets on this device (keyed) or keep session-only
+      try {
+        const { persistCloudCredentials } = await import('@par-noir/device-cloud-credentials');
+        const { derivePnIdentifierForToken } = await import('../../../services/parNoirOAuthInline');
+        const sessionId = authenticatedUser?.id || null;
+        const sessionCreds = sessionId ? SecureCredentialManager.getCredentials(sessionId) : null;
+        if (sessionCreds && sessionId && authenticatedUser?.publicKey) {
+          const pnIdentifier = await derivePnIdentifierForToken(
+            sessionCreds.pnName,
+            sessionCreds.passcode,
+            authenticatedUser.publicKey
+          );
+          const accountId = identifiers.backendId;
+          await persistCloudCredentials({
+            identityId: pnIdentifier,
+            credentials: {
+              socialCloudProvider: 'google_drive',
+              socialCloudAccountId: accountId,
+              googleDriveAccounts: [
+                {
+                  accountId,
+                  backendId: identifiers.backendId,
+                  keyPrefix: identifiers.keyPrefix,
+                  accessToken: token,
+                  refreshToken: tokenData.refreshToken,
+                  email: connectedEmail || undefined,
+                  connectedAt: new Date().toISOString()
+                }
+              ]
+            },
+            session: {
+              sessionId,
+              pnName: sessionCreds.pnName,
+              passcode: sessionCreds.passcode
+            },
+            // Seal when we can; session memory always set. Keyed wipe policy is on lock.
+            mode: 'sealed'
+          });
+          const { sealAndStoreCloudCredentials } = await import(
+            '../../../services/deviceCloudCredentials'
+          );
+          await sealAndStoreCloudCredentials({
+            identityId: pnIdentifier,
+            credentials: {
+              socialCloudProvider: 'google_drive',
+              socialCloudAccountId: accountId,
+              googleDriveAccounts: [
+                {
+                  accountId,
+                  backendId: identifiers.backendId,
+                  keyPrefix: identifiers.keyPrefix,
+                  accessToken: token,
+                  refreshToken: tokenData.refreshToken,
+                  email: connectedEmail || undefined
+                }
+              ]
+            },
+            session: {
+              sessionId,
+              pnName: sessionCreds.pnName,
+              passcode: sessionCreds.passcode
+            }
+          });
+        }
+      } catch (sealErr) {
+        console.warn('[Google Drive] Device seal skipped:', sealErr);
+      }
+
       // Resolve metadata auth inputs (pnName + passcode) so we can encrypt credentials
       const resolvedCredentials = getResolvedAuthCredentials();
       // SECURITY: pnName is a SECRET - only get from getResolvedAuthCredentials (which uses SecureCredentialManager)

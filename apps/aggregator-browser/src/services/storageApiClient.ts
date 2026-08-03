@@ -353,14 +353,22 @@ export async function listStorageFiles(
 export async function fetchStorageAccounts(
   authToken: string,
   pnIdentifier: string
-): Promise<{ connected: boolean; accounts: Array<{ provider: string; accountId: string }> }> {
+): Promise<{
+  connected: boolean;
+  accounts: Array<{ provider: string; accountId: string }>;
+  socialCloudProvider?: string | null;
+}> {
   const res = await fetch(`${API_ENDPOINT}/api/storage/accounts/${encodeURIComponent(pnIdentifier)}`, {
     headers: { Authorization: `Bearer ${authToken}` }
   });
   if (!res.ok) {
-    return { connected: false, accounts: [] };
+    return { connected: false, accounts: [], socialCloudProvider: null };
   }
   const data = await res.json();
   const accounts = Array.isArray(data.accounts) ? data.accounts : [];
-  return { connected: accounts.length > 0, accounts };
+  return {
+    connected: accounts.length > 0,
+    accounts,
+    socialCloudProvider: data.socialCloudProvider ?? data.primaryProvider ?? null
+  };
 }

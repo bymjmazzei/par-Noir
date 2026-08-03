@@ -27,6 +27,12 @@ interface MultiCloudStoragePanelProps {
   googleDriveConnectedCount?: number;
   driveConnectDisabled?: boolean;
   connectedStorageCount?: number;
+  /** Fired when API layout accounts / social cloud are loaded */
+  onLayoutChange?: (info: {
+    linked: boolean;
+    socialCloudProvider: string | null;
+    accountCount: number;
+  }) => void;
 }
 
 function buildAccountId(provider: string, pnIdentifier: string, slug: string): string {
@@ -53,7 +59,8 @@ export function MultiCloudStoragePanel({
   onConnectGoogleDrive,
   googleDriveConnectedCount = 0,
   driveConnectDisabled = false,
-  connectedStorageCount = 0
+  connectedStorageCount = 0,
+  onLayoutChange
 }: MultiCloudStoragePanelProps) {
   const [selected, setSelected] = useState<ProviderId>('google_drive');
   const [accounts, setAccounts] = useState<StorageAccount[]>([]);
@@ -98,9 +105,16 @@ export function MultiCloudStoragePanel({
       socialCloudProvider?: string;
       primaryProvider?: string;
     };
-    setAccounts(data.accounts ?? []);
-    setSocialCloudProvider(data.socialCloudProvider ?? data.primaryProvider ?? null);
-  }, [pnIdentifier, authToken]);
+    const nextAccounts = data.accounts ?? [];
+    const nextSocial = data.socialCloudProvider ?? data.primaryProvider ?? null;
+    setAccounts(nextAccounts);
+    setSocialCloudProvider(nextSocial);
+    onLayoutChange?.({
+      linked: nextAccounts.length > 0 || !!nextSocial,
+      socialCloudProvider: nextSocial,
+      accountCount: nextAccounts.length
+    });
+  }, [pnIdentifier, authToken, onLayoutChange]);
 
   useEffect(() => {
     void refreshAccounts();

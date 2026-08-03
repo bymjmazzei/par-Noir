@@ -27,6 +27,7 @@ import { markFeedAsViewed, hasNewContent } from './utils/feedUtils';
 import { isThirdPartyFileForViewer } from './utils/contentClass';
 import { FeedService } from './services/feedService';
 import { AppLayout } from './components/AppLayout';
+import { AggregatorCloudReconnectHost } from './components/AggregatorCloudReconnectHost';
 import { useAppContext } from './hooks/useAppContext';
 import { useModals } from './hooks/useModals';
 import { useFeedState } from './hooks/useFeedState';
@@ -966,6 +967,7 @@ function App() {
           }}
         />
       )}
+      {userState.isUnlocked ? <AggregatorCloudReconnectHost /> : null}
       <HomePageContext.Provider value={homeContextValue as HomePageContextValue}>
       <AppLayout
         messagingOnly={MESSAGING_ONLY}
