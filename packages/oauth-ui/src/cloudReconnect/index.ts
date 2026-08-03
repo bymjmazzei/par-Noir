@@ -8,6 +8,12 @@ export type { CloudReconnectPanelProps } from './CloudReconnectPanel';
 export { useCloudReconnectGate } from './useCloudReconnectGate';
 export { waitForOAuthPopupCode, exchangeGoogleOAuthCode } from './oauthPopup';
 export {
+  isCloudProviderId,
+  isOAuthCloudProvider,
+  reconnectOAuthProvider
+} from './reconnectFlows';
+export type { ReconnectOAuthParams } from './reconnectFlows';
+export {
   ThirdPartyCloudReconnectHost,
   wipeThirdPartyCloudOnLock
 } from './ThirdPartyCloudReconnectHost';

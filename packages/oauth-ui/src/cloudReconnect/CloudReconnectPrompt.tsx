@@ -13,6 +13,8 @@ export interface CloudReconnectPromptProps {
   /** @deprecated use showPairDevice */
   showKeyDevice?: boolean;
   title?: string;
+  /** True while OAuth popup / exchange is in progress from Reconnect */
+  busy?: boolean;
   children?: ReactNode;
   className?: string;
 }
@@ -83,6 +85,7 @@ export function CloudReconnectPrompt({
   onKeyDevice,
   showKeyDevice = false,
   title = 'Reconnect cloud storage',
+  busy = false,
   children,
   className = ''
 }: CloudReconnectPromptProps) {
@@ -109,15 +112,20 @@ export function CloudReconnectPrompt({
         ) : null}
         {children}
         <div style={btnRow}>
-          <button type="button" style={primaryBtn} onClick={onReconnect}>
-            Reconnect
+          <button
+            type="button"
+            style={{ ...primaryBtn, opacity: busy ? 0.7 : 1, cursor: busy ? 'wait' : 'pointer' }}
+            onClick={onReconnect}
+            disabled={busy}
+          >
+            {busy ? 'Opening sign-in…' : 'Reconnect'}
           </button>
           {showPair && onPair ? (
-            <button type="button" style={secondaryBtn} onClick={onPair}>
+            <button type="button" style={secondaryBtn} onClick={onPair} disabled={busy}>
               Pair this device for full access
             </button>
           ) : null}
-          <button type="button" style={secondaryBtn} onClick={onDismiss}>
+          <button type="button" style={secondaryBtn} onClick={onDismiss} disabled={busy}>
             Not now
           </button>
         </div>

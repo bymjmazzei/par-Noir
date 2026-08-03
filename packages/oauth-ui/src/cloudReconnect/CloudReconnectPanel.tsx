@@ -1,9 +1,14 @@
-import { useMemo, useState, type CSSProperties, type FormEvent } from 'react';
+import { useEffect, useState, type CSSProperties, type FormEvent } from 'react';
 import {
   buildAccountId,
   type StorageCredentialsEnvelope
 } from '@par-noir/user-owned-storage';
-import { exchangeGoogleOAuthCode, waitForOAuthPopupCode } from './oauthPopup';
+import {
+  isCloudProviderId,
+  isOAuthCloudProvider,
+  ownerFetch,
+  reconnectOAuthProvider
+} from './reconnectFlows';
 import type { CloudProviderId, PortableConnectForms } from './types';
 
 export interface CloudReconnectPanelProps {
@@ -111,75 +116,9 @@ const emptyForms = (): PortableConnectForms => ({
 /** Dispatched after cloud secrets are sealed on-device so Storage UIs can rehydrate. */
 export const PN_CLOUD_CREDENTIALS_READY_EVENT = 'pn-cloud-credentials-ready';
 
-async function ownerFetch(
-  apiEndpoint: string,
-  authToken: string,
-  method: string,
-  path: string,
-  body?: unknown
-): Promise<Response> {
-  return fetch(`${apiEndpoint.replace(/\/$/, '')}${path}`, {
-    method,
-    headers: {
-      Authorization: `Bearer ${authToken}`,
-      'Content-Type': 'application/json'
-    },
-    body: body === undefined ? undefined : JSON.stringify(body)
-  });
-}
-
-async function fetchGoogleUserEmail(accessToken: string): Promise<string | null> {
-  try {
-    const res = await fetch('https://www.googleapis.com/oauth2/v2/userinfo', {
-      headers: { Authorization: `Bearer ${accessToken}` }
-    });
-    if (!res.ok) return null;
-    const data = (await res.json()) as { email?: string };
-    return typeof data.email === 'string' && data.email.includes('@') ? data.email : null;
-  } catch {
-    return null;
-  }
-}
-
-/** Prefer existing linked Google account ids so reconnect does not create a second layout row. */
-async function resolveExistingGoogleLayout(
-  apiEndpoint: string,
-  authToken: string,
-  pnIdentifier: string
-): Promise<{
-  envelope: StorageCredentialsEnvelope;
-  accountId: string | null;
-  backendId: string | null;
-  keyPrefix: string | null;
-}> {
-  const empty = {
-    envelope: {} as StorageCredentialsEnvelope,
-    accountId: null as string | null,
-    backendId: null as string | null,
-    keyPrefix: null as string | null
-  };
-  try {
-    const res = await ownerFetch(
-      apiEndpoint,
-      authToken,
-      'GET',
-      `/api/storage/credentials/${encodeURIComponent(pnIdentifier)}`
-    );
-    if (!res.ok) return empty;
-    const data = (await res.json()) as { credentials?: StorageCredentialsEnvelope };
-    const envelope = data.credentials ?? {};
-    const prev = envelope.googleDriveAccounts?.[0];
-    const accountId = prev?.accountId || prev?.backendId || null;
-    const backendId = prev?.backendId || prev?.accountId || null;
-    const keyPrefix = prev?.keyPrefix || null;
-    return { envelope, accountId, backendId, keyPrefix };
-  } catch {
-    return empty;
-  }
-}
-
 /**
  * In-app cloud reconnect: OAuth providers + portable secret forms.
+ * When preferredProvider is set, skips the provider picker (linked provider only).
  * Returns a full local envelope (with secrets) via onConnected; caller seals/persists.
  */
 export function CloudReconnectPanel({
@@ -193,166 +132,30 @@ export function CloudReconnectPanel({
   onConnected,
   className = ''
 }: CloudReconnectPanelProps) {
-  const initial = useMemo(() => {
-    const match = PROVIDERS.find((p) => p.id === preferredProvider);
-    return match?.id ?? 'google_drive';
-  }, [preferredProvider]);
-
-  const [selected, setSelected] = useState<CloudProviderId>(initial);
+  const preferredId = isCloudProviderId(preferredProvider) ? preferredProvider : null;
+  const [selected, setSelected] = useState<CloudProviderId>(preferredId ?? 'google_drive');
+  const [allowSwitchProvider, setAllowSwitchProvider] = useState(!preferredId);
   const [forms, setForms] = useState<PortableConnectForms>(emptyForms);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
 
+  useEffect(() => {
+    if (!open) return;
+    setError(null);
+    setMessage(null);
+    if (preferredId) {
+      setSelected(preferredId);
+      setAllowSwitchProvider(false);
+    } else {
+      setAllowSwitchProvider(true);
+    }
+  }, [open, preferredId]);
+
   if (!open) return null;
 
-  const connectGoogle = async () => {
-    if (!googleClientId?.trim()) {
-      throw new Error('Google Drive OAuth is not configured (missing client id).');
-    }
-    const redirectUri = `${window.location.origin}/oauth-callback.html`;
-    const scope =
-      'https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/userinfo.email';
-    const authUrl =
-      `https://accounts.google.com/o/oauth2/v2/auth?` +
-      `client_id=${encodeURIComponent(googleClientId)}&` +
-      `redirect_uri=${encodeURIComponent(redirectUri)}&` +
-      `response_type=code&` +
-      `scope=${encodeURIComponent(scope)}&` +
-      `prompt=consent&access_type=offline`;
-    const popup = window.open(authUrl, 'pn-cloud-google-oauth', 'width=500,height=700');
-    if (!popup) throw new Error('Popup blocked — allow popups for OAuth.');
-    const code = await waitForOAuthPopupCode();
-    const tokens = await exchangeGoogleOAuthCode({ apiEndpoint, code, redirectUri });
-    const email = await fetchGoogleUserEmail(tokens.accessToken);
-    const existing = await resolveExistingGoogleLayout(apiEndpoint, authToken, pnIdentifier);
-    const slug =
-      email?.split('@')[0]?.replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 48) || 'default';
-    const accountId =
-      existing.accountId || buildAccountId('google_drive', pnIdentifier, slug);
-    // Dashboard Drive backends use `google_drive::<slug>` ids; keep layout accountId separate when already linked.
-    const backendId =
-      existing.backendId ||
-      (accountId.startsWith('google_drive::') ? accountId : `google_drive::${slug}`);
-    const keyPrefix =
-      existing.keyPrefix ||
-      `google_drive_${backendId.replace(/^google_drive::/, '').replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 64)}`;
-    const nowIso = new Date().toISOString();
-    const prevAccount = existing.envelope.googleDriveAccounts?.[0] ?? {};
-    const layoutAccount = {
-      ...prevAccount,
-      accountId,
-      backendId,
-      keyPrefix,
-      ...(email ? { email } : {}),
-      connectedAt: prevAccount.connectedAt || nowIso,
-      updatedAt: nowIso
-    };
-    // Drop any secrets that may still be present on a legacy GET before writing layout.
-    delete (layoutAccount as { accessToken?: string }).accessToken;
-    delete (layoutAccount as { access_token?: string }).access_token;
-    delete (layoutAccount as { refreshToken?: string }).refreshToken;
-    delete (layoutAccount as { refresh_token?: string }).refresh_token;
-
-    const layoutEnvelope: StorageCredentialsEnvelope = {
-      ...existing.envelope,
-      socialCloudProvider: existing.envelope.socialCloudProvider || 'google_drive',
-      socialCloudAccountId: existing.envelope.socialCloudAccountId || accountId,
-      googleDriveAccounts: [layoutAccount]
-    };
-    // /provider only accepts aws_s3 / azure_blob / ftp — Google layout goes on the credentials PUT.
-    const putRes = await ownerFetch(
-      apiEndpoint,
-      authToken,
-      'PUT',
-      `/api/storage/credentials/${encodeURIComponent(pnIdentifier)}`,
-      { credentials: layoutEnvelope }
-    );
-    if (!putRes.ok) {
-      const err = (await putRes.json().catch(() => ({}))) as { message?: string };
-      throw new Error(err.message || 'Failed to update Drive layout on API');
-    }
-
-    const envelope: StorageCredentialsEnvelope = {
-      ...layoutEnvelope,
-      googleDriveAccounts: [
-        {
-          ...layoutAccount,
-          accessToken: tokens.accessToken,
-          refreshToken: tokens.refreshToken,
-          email: email || undefined
-        }
-      ]
-    };
-    await onConnected(envelope);
-  };
-
-  const connectDropboxOrOneDrive = async (provider: 'dropbox' | 'onedrive') => {
-    const configRes = await fetch(`${apiEndpoint.replace(/\/$/, '')}/api/public-config`);
-    const config = (await configRes.json()) as { dropboxAppKey?: string; microsoftClientId?: string };
-    const redirectUri = `${window.location.origin}/oauth-callback.html`;
-    let authUrl = '';
-    if (provider === 'dropbox') {
-      if (!config.dropboxAppKey) throw new Error('Dropbox is not configured on this server.');
-      authUrl = `https://www.dropbox.com/oauth2/authorize?client_id=${encodeURIComponent(config.dropboxAppKey)}&redirect_uri=${encodeURIComponent(redirectUri)}&response_type=code&token_access_type=offline&state=pn_popup`;
-    } else {
-      if (!config.microsoftClientId) throw new Error('Microsoft OAuth is not configured on this server.');
-      authUrl = `https://login.microsoftonline.com/common/oauth2/v2.0/authorize?client_id=${encodeURIComponent(config.microsoftClientId)}&redirect_uri=${encodeURIComponent(redirectUri)}&response_type=code&scope=${encodeURIComponent('Files.ReadWrite.AppFolder offline_access')}&state=pn_popup`;
-    }
-    const popup = window.open(authUrl, 'pn-cloud-oauth', 'width=500,height=700');
-    if (!popup) throw new Error('Popup blocked — allow popups for OAuth.');
-    const code = await waitForOAuthPopupCode();
-    const exchangePath =
-      provider === 'dropbox' ? '/api/storage/oauth/dropbox/exchange' : '/api/storage/oauth/onedrive/exchange';
-    const res = await ownerFetch(apiEndpoint, authToken, 'POST', exchangePath, {
-      code,
-      redirectUri,
-      pnIdentifier
-    });
-    if (!res.ok) {
-      const err = (await res.json().catch(() => ({}))) as { message?: string };
-      throw new Error(err.message || 'Token exchange failed');
-    }
-    const data = (await res.json()) as {
-      accessToken?: string;
-      access_token?: string;
-      refreshToken?: string;
-      refresh_token?: string;
-      accountId?: string;
-      email?: string;
-    };
-    const accessToken = data.accessToken || data.access_token;
-    const refreshToken = data.refreshToken || data.refresh_token;
-    if (!accessToken) throw new Error('OAuth exchange returned no access token');
-    const accountId = data.accountId || buildAccountId(provider, pnIdentifier, 'reconnect');
-    const envelope: StorageCredentialsEnvelope =
-      provider === 'dropbox'
-        ? {
-            socialCloudProvider: 'dropbox',
-            socialCloudAccountId: accountId,
-            dropboxAccounts: [
-              {
-                accountId,
-                accessToken,
-                refreshToken,
-                email: data.email
-              }
-            ]
-          }
-        : {
-            socialCloudProvider: 'onedrive',
-            socialCloudAccountId: accountId,
-            onedriveAccounts: [
-              {
-                accountId,
-                accessToken,
-                refreshToken,
-                email: data.email
-              }
-            ]
-          };
-    await onConnected(envelope);
-  };
+  const showPicker = allowSwitchProvider || !preferredId;
+  const providerLabel = PROVIDERS.find((p) => p.id === selected)?.label ?? selected;
 
   const connectPortable = async () => {
     const defaultPrefix = `par-noir-${pnIdentifier.startsWith('pn-') ? pnIdentifier : `pn-${pnIdentifier}`}`;
@@ -456,9 +259,18 @@ export function CloudReconnectPanel({
     setError(null);
     setMessage(null);
     try {
-      if (selected === 'google_drive') await connectGoogle();
-      else if (selected === 'dropbox' || selected === 'onedrive') await connectDropboxOrOneDrive(selected);
-      else await connectPortable();
+      if (isOAuthCloudProvider(selected)) {
+        const envelope = await reconnectOAuthProvider({
+          provider: selected,
+          pnIdentifier,
+          authToken,
+          apiEndpoint,
+          googleClientId
+        });
+        await onConnected(envelope);
+      } else {
+        await connectPortable();
+      }
       setMessage('Cloud connected on this device.');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Reconnect failed');
@@ -471,7 +283,7 @@ export function CloudReconnectPanel({
     <div className={className} style={overlayStyle} role="dialog" aria-modal="true">
       <div style={cardStyle}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
-          <h2 style={{ margin: 0, fontSize: 18 }}>Reconnect cloud</h2>
+          <h2 style={{ margin: 0, fontSize: 18 }}>Reconnect {providerLabel}</h2>
           <button type="button" style={btnStyle} onClick={onClose} disabled={loading}>
             Close
           </button>
@@ -479,23 +291,36 @@ export function CloudReconnectPanel({
         <p style={{ fontSize: 13, color: '#a3a3a3', marginTop: 8 }}>
           Sign in to the provider linked to this pN. Secrets stay on this device.
         </p>
-        <div style={{ marginTop: 12, marginBottom: 12 }}>
-          {PROVIDERS.map((p) => (
+        {showPicker ? (
+          <div style={{ marginTop: 12, marginBottom: 12 }}>
+            {PROVIDERS.map((p) => (
+              <button
+                key={p.id}
+                type="button"
+                style={{
+                  ...btnStyle,
+                  background: selected === p.id ? '#7c3aed' : '#262626',
+                  borderColor: selected === p.id ? '#7c3aed' : '#525252'
+                }}
+                onClick={() => setSelected(p.id)}
+                disabled={loading}
+              >
+                {p.label}
+              </button>
+            ))}
+          </div>
+        ) : (
+          <div style={{ marginTop: 12, marginBottom: 12 }}>
             <button
-              key={p.id}
               type="button"
-              style={{
-                ...btnStyle,
-                background: selected === p.id ? '#7c3aed' : '#262626',
-                borderColor: selected === p.id ? '#7c3aed' : '#525252'
-              }}
-              onClick={() => setSelected(p.id)}
+              style={{ ...btnStyle, fontSize: 12, marginBottom: 0 }}
+              onClick={() => setAllowSwitchProvider(true)}
               disabled={loading}
             >
-              {p.label}
+              Use a different provider
             </button>
-          ))}
-        </div>
+          </div>
+        )}
         <form onSubmit={onSubmit}>
           {selected === 'aws_s3' && (
             <>
@@ -634,9 +459,9 @@ export function CloudReconnectPanel({
               </label>
             </>
           )}
-          {(selected === 'google_drive' || selected === 'dropbox' || selected === 'onedrive') && (
+          {isOAuthCloudProvider(selected) && (
             <p style={{ fontSize: 13, color: '#d4d4d4' }}>
-              Continues in a popup to authorize {PROVIDERS.find((p) => p.id === selected)?.label}.
+              Continues in a popup to authorize {providerLabel}.
             </p>
           )}
           {error && (
@@ -646,7 +471,11 @@ export function CloudReconnectPanel({
           )}
           {message && <p style={{ color: '#4ade80', fontSize: 13 }}>{message}</p>}
           <button type="submit" style={primaryBtn} disabled={loading}>
-            {loading ? 'Working…' : selected === 'google_drive' || selected === 'dropbox' || selected === 'onedrive' ? 'Authorize' : 'Save & connect'}
+            {loading
+              ? 'Working…'
+              : isOAuthCloudProvider(selected)
+                ? `Authorize ${providerLabel}`
+                : 'Save & connect'}
           </button>
         </form>
       </div>

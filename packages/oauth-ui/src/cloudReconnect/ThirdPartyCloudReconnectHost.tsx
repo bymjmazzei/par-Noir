@@ -7,6 +7,7 @@ import {
 import type { StorageCredentialsEnvelope } from '@par-noir/user-owned-storage';
 import { CloudReconnectPanel, PN_CLOUD_CREDENTIALS_READY_EVENT } from './CloudReconnectPanel';
 import { CloudReconnectPrompt } from './CloudReconnectPrompt';
+import { isOAuthCloudProvider, reconnectOAuthProvider } from './reconnectFlows';
 import { useCloudReconnectGate } from './useCloudReconnectGate';
 
 export interface ThirdPartyCloudReconnectHostProps {
@@ -26,6 +27,8 @@ export function ThirdPartyCloudReconnectHost({
   googleClientId: googleClientIdProp
 }: ThirdPartyCloudReconnectHostProps) {
   const [googleClientId, setGoogleClientId] = useState<string | null>(googleClientIdProp ?? null);
+  const [oauthBusy, setOauthBusy] = useState(false);
+  const [oauthError, setOauthError] = useState<string | null>(null);
 
   useEffect(() => {
     if (googleClientIdProp) {
@@ -76,6 +79,37 @@ export function ThirdPartyCloudReconnectHost({
     [pnIdentifier, gate]
   );
 
+  const handleReconnect = useCallback(() => {
+    const provider = gate.socialCloudProvider;
+    if (isOAuthCloudProvider(provider) && authToken && pnIdentifier) {
+      setOauthBusy(true);
+      setOauthError(null);
+      const pending = reconnectOAuthProvider({
+        provider,
+        pnIdentifier,
+        authToken,
+        apiEndpoint,
+        googleClientId
+      });
+      void pending
+        .then((envelope) => handleConnected(envelope))
+        .catch((err) => {
+          setOauthError(err instanceof Error ? err.message : 'Reconnect failed');
+        })
+        .finally(() => setOauthBusy(false));
+      return;
+    }
+    gate.openPanel();
+  }, [
+    gate.socialCloudProvider,
+    gate.openPanel,
+    authToken,
+    pnIdentifier,
+    apiEndpoint,
+    googleClientId,
+    handleConnected
+  ]);
+
   if (!authToken || !pnIdentifier) return null;
 
   return (
@@ -83,9 +117,16 @@ export function ThirdPartyCloudReconnectHost({
       <CloudReconnectPrompt
         open={gate.promptOpen && !gate.panelOpen}
         socialCloudProvider={gate.socialCloudProvider}
-        onReconnect={gate.openPanel}
+        onReconnect={handleReconnect}
         onDismiss={gate.dismissPrompt}
-      />
+        busy={oauthBusy}
+      >
+        {oauthError ? (
+          <p style={{ margin: '12px 0 0', fontSize: 13, color: '#f87171' }} role="alert">
+            {oauthError}
+          </p>
+        ) : null}
+      </CloudReconnectPrompt>
       <CloudReconnectPanel
         open={gate.panelOpen}
         onClose={gate.closePanel}

@@ -2,7 +2,9 @@ import React, { useCallback, useMemo, useState } from 'react';
 import {
   CloudReconnectPanel,
   CloudReconnectPrompt,
+  isOAuthCloudProvider,
   PN_CLOUD_CREDENTIALS_READY_EVENT,
+  reconnectOAuthProvider,
   useCloudReconnectGate
 } from '@par-noir/oauth-ui';
 import { SecureCredentialManager } from '@par-noir/identity-crypto';
@@ -41,6 +43,8 @@ export const CloudReconnectHost: React.FC<CloudReconnectHostProps> = ({
 }) => {
   const [googleClientId, setGoogleClientId] = useState<string | null>(null);
   const [pairOpen, setPairOpen] = useState(false);
+  const [oauthBusy, setOauthBusy] = useState(false);
+  const [oauthError, setOauthError] = useState<string | null>(null);
 
   React.useEffect(() => {
     let cancelled = false;
@@ -125,6 +129,38 @@ export const CloudReconnectHost: React.FC<CloudReconnectHostProps> = ({
     [pnIdentifier, sessionId, persistMode, isKeyedSession, markReady, onCloudReady]
   );
 
+  const handleReconnect = useCallback(() => {
+    const provider = gate.socialCloudProvider;
+    // Known OAuth provider: open popup from this click (avoid redundant picker + popup blockers).
+    if (isOAuthCloudProvider(provider) && apiToken && pnIdentifier) {
+      setOauthBusy(true);
+      setOauthError(null);
+      // Call sync so window.open stays in the user-gesture stack.
+      const pending = reconnectOAuthProvider({
+        provider,
+        pnIdentifier,
+        authToken: apiToken,
+        apiEndpoint: API_ENDPOINT,
+        googleClientId
+      });
+      void pending
+        .then((envelope) => handleConnected(envelope))
+        .catch((err) => {
+          setOauthError(err instanceof Error ? err.message : 'Reconnect failed');
+        })
+        .finally(() => setOauthBusy(false));
+      return;
+    }
+    gate.openPanel();
+  }, [
+    gate.socialCloudProvider,
+    gate.openPanel,
+    apiToken,
+    pnIdentifier,
+    googleClientId,
+    handleConnected
+  ]);
+
   const show = useMemo(
     () => !!(apiToken && pnIdentifier && sessionId),
     [apiToken, pnIdentifier, sessionId]
@@ -139,14 +175,15 @@ export const CloudReconnectHost: React.FC<CloudReconnectHostProps> = ({
       <CloudReconnectPrompt
         open={gate.promptOpen && !gate.panelOpen && !pairOpen}
         socialCloudProvider={gate.socialCloudProvider}
-        onReconnect={gate.openPanel}
+        onReconnect={handleReconnect}
         onDismiss={gate.dismissPrompt}
         showPairDevice={showPairDevice}
         onPairDevice={() => setPairOpen(true)}
+        busy={oauthBusy}
       >
-        {gate.error ? (
+        {gate.error || oauthError ? (
           <p style={{ margin: '12px 0 0', fontSize: 13, color: '#f87171' }} role="alert">
-            {gate.error}
+            {oauthError || gate.error}
           </p>
         ) : null}
       </CloudReconnectPrompt>
