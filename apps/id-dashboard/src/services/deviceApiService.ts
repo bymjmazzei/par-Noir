@@ -139,6 +139,54 @@ export async function createPairingNonce(
   return res.json();
 }
 
+/** Coarse browser class only — never include pn name, email, or other PII. */
+export function coarseDeviceHint(): string {
+  if (typeof navigator === 'undefined') return 'browser';
+  const ua = navigator.userAgent || '';
+  if (/Mobile|Android|iPhone|iPad/i.test(ua)) return 'mobile-browser';
+  if (/Macintosh|Windows|Linux|CrOS/i.test(ua)) return 'desktop-browser';
+  return 'browser';
+}
+
+/** Opaque local id for dedupe; not derived from identity secrets. */
+export function coarseDeviceFingerprint(): string {
+  if (typeof localStorage === 'undefined') return 'default';
+  const key = 'pn_unkeyed_unlock_fp';
+  try {
+    let fp = localStorage.getItem(key);
+    if (!fp) {
+      fp = (crypto.randomUUID?.() || Math.random().toString(36).slice(2)).replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 32);
+      localStorage.setItem(key, fp);
+    }
+    return fp;
+  } catch {
+    return 'default';
+  }
+}
+
+export async function postUnkeyedUnlockAlert(
+  userPnIdentifier: string,
+  authToken: string,
+  opts?: { deviceHint?: string; fingerprint?: string }
+): Promise<{ success: boolean; skipped?: boolean; reason?: string }> {
+  const path = '/api/devices/unkeyed-unlock-alert';
+  const body = {
+    userPnIdentifier,
+    deviceHint: opts?.deviceHint || coarseDeviceHint(),
+    fingerprint: opts?.fingerprint || coarseDeviceFingerprint(),
+  };
+  const res = await fetch(`${API_ENDPOINT}${path}`, {
+    method: 'POST',
+    headers: authHeaders(authToken),
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error((err as { error?: string }).error || 'Failed to post unlock alert');
+  }
+  return res.json();
+}
+
 export async function registerDeviceOnServer(params: {
   userPnIdentifier: string;
   authToken: string;

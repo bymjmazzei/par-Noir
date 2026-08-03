@@ -23,9 +23,13 @@ interface HeaderProps {
   onExport?: () => Promise<void>;
   onPasscodeLogout?: () => Promise<void>;
   onPinRefresh?: () => void;
+  apiToken?: string | null;
+  pnIdentifier?: string | null;
+  isKeyedSession?: boolean;
+  onOpenRecoveryForPairing?: () => void;
 }
 
-const Header: React.FC<HeaderProps> = ({ authenticatedUser, onLogout, onOfflineModeChange, isOnline = typeof navigator !== 'undefined' ? navigator.onLine : true, pwaState, onPWAInstall, onPWACheckUpdate, onExport, onPasscodeLogout, onPinRefresh }) => {
+const Header: React.FC<HeaderProps> = ({ authenticatedUser, onLogout, onOfflineModeChange, isOnline = typeof navigator !== 'undefined' ? navigator.onLine : true, pwaState, onPWAInstall, onPWACheckUpdate, onExport, onPasscodeLogout, onPinRefresh, apiToken = null, pnIdentifier = null, isKeyedSession = false, onOpenRecoveryForPairing }) => {
   const [isPWA, setIsPWA] = useState(false);
 
   // Check if running as PWA or native app (Capacitor) - hide Install in both
@@ -64,7 +68,13 @@ const Header: React.FC<HeaderProps> = ({ authenticatedUser, onLogout, onOfflineM
           <div className="flex items-center space-x-4">
             {/* Notifications Button - Only when authenticated */}
             {authenticatedUser && (
-              <NotificationsButton isPWA={isPWA} />
+              <NotificationsButton
+                isPWA={isPWA}
+                apiToken={apiToken}
+                pnIdentifier={pnIdentifier}
+                isKeyedSession={isKeyedSession}
+                onOpenRecoveryForPairing={onOpenRecoveryForPairing}
+              />
             )}
             
             {/* PWA Install Button - Only for web app */}

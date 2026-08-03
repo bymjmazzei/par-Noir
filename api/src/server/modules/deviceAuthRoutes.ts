@@ -266,4 +266,141 @@ export function registerDeviceAuthRoutes(app: Application): void {
       return res.status(500).json({ error: 'server_error' });
     }
   });
+
+  /**
+   * Unkeyed unlock on a pN that already has keyed devices → notify owner's Drive notifications
+   * so a keyed device can open pairing QR.
+   */
+  app.post('/api/devices/unkeyed-unlock-alert', async (req: Request, res: Response) => {
+    try {
+      const authPn = bearerPn(req);
+      if (!authPn) return res.status(401).json({ error: 'unauthorized' });
+
+      const { userPnIdentifier, deviceHint, fingerprint } = req.body ?? {};
+      const pn = String(userPnIdentifier || authPn);
+      if (pn !== authPn) return res.status(403).json({ error: 'pn_mismatch' });
+
+      // Reject if this request already proves a keyed device
+      const keyedGate = await requireKeyedDevice(req);
+      if (keyedGate.ok) {
+        return res.json({ success: true, skipped: true, reason: 'already_keyed' });
+      }
+
+      const summary = await getDeviceRegistrySummary(pn);
+      if (!summary?.hasKeyedDevices) {
+        return res.json({ success: true, skipped: true, reason: 'no_keyed_devices' });
+      }
+
+      const coarseHint =
+        typeof deviceHint === 'string' ? deviceHint.replace(/[^\w\s.-]/g, '').slice(0, 64) : 'unknown';
+      const fp =
+        typeof fingerprint === 'string'
+          ? fingerprint.replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 64)
+          : 'default';
+
+      const { NotificationService } = await import('./notificationService');
+      const { getRecoveryDriveContext } = await import('./recoveryDriveContext');
+      const { isPortableStorageProvider } = await import('./storage/storageProviderUtils');
+      const { storageCredentialsService } = await import('./storageCredentialsService');
+
+      // Dedupe: unread device_unkeyed_unlock with same fingerprint within 1h
+      const DEDUPE_MS = 60 * 60 * 1000;
+      let existing: Array<{
+        type?: string;
+        read?: boolean;
+        created_at?: string;
+        data?: Record<string, unknown>;
+      }> = [];
+      try {
+        const drive = await getRecoveryDriveContext(pn);
+        const token = drive?.token?.access_token || '';
+        const metaId = drive?.metadataFolderId || '';
+        const result = await NotificationService.getUserNotifications(token, metaId, pn, drive?.accountId, {
+          limit: 20,
+          unreadOnly: true,
+          type: 'device_unkeyed_unlock' as never,
+        });
+        existing = result.notifications || [];
+      } catch {
+        /* also check credentials layout */
+      }
+      try {
+        const record = await storageCredentialsService.getCredentials(pn);
+        const layoutAlerts = Array.isArray(
+          (record?.credentials as { deviceUnlockAlerts?: unknown })?.deviceUnlockAlerts
+        )
+          ? ((record!.credentials as { deviceUnlockAlerts: typeof existing }).deviceUnlockAlerts)
+          : [];
+        existing = existing.concat(layoutAlerts.filter((a) => !a.read));
+      } catch {
+        /* ignore */
+      }
+
+      const now = Date.now();
+      const dup = existing.some((n) => {
+        if (n.type !== 'device_unkeyed_unlock' || n.read) return false;
+        const created = n.created_at ? Date.parse(n.created_at) : 0;
+        if (now - created > DEDUPE_MS) return false;
+        return String(n.data?.fingerprint || '') === fp;
+      });
+      if (dup) {
+        return res.json({ success: true, skipped: true, reason: 'deduped' });
+      }
+
+      const notificationBody = {
+        user_pn_identifier: pn,
+        type: 'device_unkeyed_unlock' as const,
+        title: 'New device unlock',
+        message: `An unrecognized browser unlocked this pN (${coarseHint || 'unknown'}). Pair it from Recovery if this was you.`,
+        data: {
+          action: 'show_device_pairing_qr',
+          fingerprint: fp,
+          device_hint: coarseHint,
+        },
+      };
+
+      if (await isPortableStorageProvider(pn)) {
+        await NotificationService.createNotification('', '', pn, notificationBody);
+        return res.json({ success: true });
+      }
+
+      const drive = await getRecoveryDriveContext(pn);
+      if (!drive?.token?.access_token || !drive.metadataFolderId) {
+        const record = await storageCredentialsService.getCredentials(pn);
+        const creds = { ...(record?.credentials || {}) } as Record<string, unknown>;
+        const alerts = Array.isArray(creds.deviceUnlockAlerts)
+          ? [...(creds.deviceUnlockAlerts as Record<string, unknown>[])]
+          : [];
+        alerts.unshift({
+          notification_id: crypto.randomUUID(),
+          type: 'device_unkeyed_unlock',
+          title: notificationBody.title,
+          message: notificationBody.message,
+          data: notificationBody.data,
+          read: false,
+          created_at: new Date().toISOString(),
+        });
+        creds.deviceUnlockAlerts = alerts.slice(0, 20);
+        await storageCredentialsService.upsertCredentials(pn, creds, record?.cid ?? undefined);
+        try {
+          const { emitNewNotification } = await import('./realtimeEvents');
+          emitNewNotification(pn, 'device_unkeyed_unlock');
+        } catch {
+          /* optional */
+        }
+        return res.json({ success: true, stored: 'credentials_layout' });
+      }
+
+      await NotificationService.createNotification(
+        drive.token.access_token,
+        drive.metadataFolderId,
+        pn,
+        notificationBody
+      );
+      return res.json({ success: true });
+    } catch (e) {
+      console.error('[devices] unkeyed-unlock-alert:', e);
+      return res.status(500).json({ error: 'server_error' });
+    }
+  });
 }

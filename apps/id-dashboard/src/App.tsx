@@ -32,6 +32,7 @@ import { CreateDidModal } from './App/CreateDidModal';
 import { ImportDidModal } from './App/ImportDidModal';
 import { AppChrome } from './App/AppChrome';
 import { CloudReconnectHost } from './components/storage/CloudReconnectHost';
+import { UnkeyedUnlockAlertEmitter } from './components/UnkeyedUnlockAlertEmitter';
 
 // Custom hooks for state management
 import { useAppState } from './hooks/useAppState';
@@ -1185,6 +1186,10 @@ function App() {
       error={error}
       getOfflineSyncStatus={getOfflineSyncStatus}
       setShowDmcaPolicy={setShowDmcaPolicy}
+      apiToken={apiToken}
+      pnIdentifier={recoveryVaultPnId}
+      isKeyedSession={deviceAuth.isKeyedSession}
+      onOpenRecoveryForPairing={() => setActiveTab('recovery')}
     >
         <UnlockGate
           authenticatedUser={authenticatedUser}
@@ -1330,12 +1335,18 @@ function App() {
           pnIdentifier={recoveryVaultPnId}
           sessionId={authenticatedUser?.id ?? null}
           isKeyedSession={deviceAuth.isKeyedSession}
-          onKeyDevice={() => {
-            setActiveTab('recovery');
-          }}
+          hasKeyedDevices={deviceAuth.hasKeyedDevices}
+          onPaired={() => deviceAuth.refresh()}
           onCloudReady={() => {
             /* Storage tab hydrates on next focus / MultiCloud refresh */
           }}
+        />
+        <UnkeyedUnlockAlertEmitter
+          apiToken={apiToken}
+          pnIdentifier={recoveryVaultPnId}
+          hasKeyedDevices={deviceAuth.hasKeyedDevices}
+          isKeyedSession={deviceAuth.isKeyedSession}
+          registryReady={!deviceAuth.loading && !!apiToken && !!recoveryVaultPnId}
         />
 
 

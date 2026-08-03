@@ -19,6 +19,10 @@ export interface AppChromeProps {
   error: string | null;
   getOfflineSyncStatus: () => OfflineSyncStatus;
   setShowDmcaPolicy: React.Dispatch<React.SetStateAction<boolean>>;
+  apiToken?: string | null;
+  pnIdentifier?: string | null;
+  isKeyedSession?: boolean;
+  onOpenRecoveryForPairing?: () => void;
   children: React.ReactNode;
 }
 
@@ -37,6 +41,10 @@ export function AppChrome(props: AppChromeProps) {
     error,
     getOfflineSyncStatus,
     setShowDmcaPolicy,
+    apiToken = null,
+    pnIdentifier = null,
+    isKeyedSession = false,
+    onOpenRecoveryForPairing,
     children
   } = props;
 
@@ -65,6 +73,10 @@ export function AppChrome(props: AppChromeProps) {
         onPWAInstall={pwaHandlers?.install}
         onPWACheckUpdate={pwaHandlers?.checkForUpdates}
         onExport={handleExportData}
+        apiToken={apiToken}
+        pnIdentifier={pnIdentifier}
+        isKeyedSession={isKeyedSession}
+        onOpenRecoveryForPairing={onOpenRecoveryForPairing}
       />
 
       {/* Success Display */}

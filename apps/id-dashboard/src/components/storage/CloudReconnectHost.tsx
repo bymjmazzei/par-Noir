@@ -14,13 +14,16 @@ import {
 import type { StorageCredentialsEnvelope } from '@par-noir/user-owned-storage';
 import { API_ENDPOINT } from '../../config/api';
 import { getGoogleDriveClientId } from '../../config/googleDriveClientId';
+import { DevicePairFromReconnect } from '../DevicePairFromReconnect';
 
 export interface CloudReconnectHostProps {
   apiToken: string | null;
   pnIdentifier: string | null;
   sessionId: string | null;
   isKeyedSession: boolean;
-  onKeyDevice?: () => void;
+  /** True when this pN already has at least one keyed device registered */
+  hasKeyedDevices?: boolean;
+  onPaired?: () => void | Promise<void>;
   onCloudReady?: () => void;
 }
 
@@ -32,10 +35,12 @@ export const CloudReconnectHost: React.FC<CloudReconnectHostProps> = ({
   pnIdentifier,
   sessionId,
   isKeyedSession,
-  onKeyDevice,
+  hasKeyedDevices = false,
+  onPaired,
   onCloudReady
 }) => {
   const [googleClientId, setGoogleClientId] = useState<string | null>(null);
+  const [pairOpen, setPairOpen] = useState(false);
 
   React.useEffect(() => {
     let cancelled = false;
@@ -93,7 +98,6 @@ export const CloudReconnectHost: React.FC<CloudReconnectHostProps> = ({
         },
         mode: persistMode
       });
-      // Also seal via dashboard helper for native / grace wipe alignment when keyed
       if (isKeyedSession) {
         try {
           const { sealAndStoreCloudCredentials } = await import('../../services/deviceCloudCredentials');
@@ -126,17 +130,19 @@ export const CloudReconnectHost: React.FC<CloudReconnectHostProps> = ({
     [apiToken, pnIdentifier, sessionId]
   );
 
+  const showPairDevice = hasKeyedDevices && !isKeyedSession;
+
   if (!show) return null;
 
   return (
     <>
       <CloudReconnectPrompt
-        open={gate.promptOpen && !gate.panelOpen}
+        open={gate.promptOpen && !gate.panelOpen && !pairOpen}
         socialCloudProvider={gate.socialCloudProvider}
         onReconnect={gate.openPanel}
         onDismiss={gate.dismissPrompt}
-        showKeyDevice={!isKeyedSession && !!onKeyDevice}
-        onKeyDevice={onKeyDevice}
+        showPairDevice={showPairDevice}
+        onPairDevice={() => setPairOpen(true)}
       >
         {gate.error ? (
           <p style={{ margin: '12px 0 0', fontSize: 13, color: '#f87171' }} role="alert">
@@ -153,6 +159,16 @@ export const CloudReconnectHost: React.FC<CloudReconnectHostProps> = ({
         googleClientId={googleClientId}
         preferredProvider={gate.socialCloudProvider}
         onConnected={handleConnected}
+      />
+      <DevicePairFromReconnect
+        open={pairOpen}
+        onClose={() => setPairOpen(false)}
+        authToken={apiToken!}
+        pnIdentifier={pnIdentifier!}
+        sessionId={sessionId!}
+        onPaired={async () => {
+          await onPaired?.();
+        }}
       />
     </>
   );

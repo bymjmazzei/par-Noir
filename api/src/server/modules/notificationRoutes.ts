@@ -20,6 +20,60 @@ export interface NotificationRouteDeps {
   driveNotInitialized: (res: express.Response) => express.Response;
 }
 
+function layoutDeviceUnlockAlerts(credentials: Record<string, unknown> | undefined): Array<{
+  notification_id: string;
+  user_pn_identifier?: string;
+  type: string;
+  title: string;
+  message: string;
+  data?: Record<string, unknown>;
+  read: boolean;
+  created_at: string;
+}> {
+  const raw = credentials?.deviceUnlockAlerts;
+  if (!Array.isArray(raw)) return [];
+  return raw.filter(
+    (a): a is {
+      notification_id: string;
+      user_pn_identifier?: string;
+      type: string;
+      title: string;
+      message: string;
+      data?: Record<string, unknown>;
+      read: boolean;
+      created_at: string;
+    } =>
+      !!a &&
+      typeof a === 'object' &&
+      typeof (a as { notification_id?: unknown }).notification_id === 'string'
+  );
+}
+
+async function markLayoutDeviceUnlockAlertRead(
+  pnIdentifier: string,
+  notificationId: string
+): Promise<boolean> {
+  const { storageCredentialsService } = await import('./storageCredentialsService');
+  const record = await storageCredentialsService.getCredentials(pnIdentifier);
+  if (!record?.credentials) return false;
+  const alerts = layoutDeviceUnlockAlerts(record.credentials as Record<string, unknown>);
+  let changed = false;
+  const next = alerts.map((a) => {
+    if (a.notification_id === notificationId && !a.read) {
+      changed = true;
+      return { ...a, read: true };
+    }
+    return a;
+  });
+  if (!changed) return false;
+  await storageCredentialsService.upsertCredentials(
+    pnIdentifier,
+    { ...(record.credentials as object), deviceUnlockAlerts: next },
+    record.cid ?? undefined
+  );
+  return true;
+}
+
 export function setupNotificationRoutes(app: express.Application, deps: NotificationRouteDeps) {
   const { extractAccountId, getMetadataFolder, driveNotInitialized } = deps;
 
@@ -35,7 +89,6 @@ export function setupNotificationRoutes(app: express.Application, deps: Notifica
         }
 
         const { NotificationService } = await import('./notificationService');
-        const { googleDriveProxyService } = await import('./googleDriveProxy');
         const { storageCredentialsService } = await import('./storageCredentialsService');
 
         // Use pn identifier directly
@@ -47,16 +100,22 @@ export function setupNotificationRoutes(app: express.Application, deps: Notifica
           return res.status(404).json({ error: 'User credentials not found' });
         }
 
+        const layoutAlerts = layoutDeviceUnlockAlerts(
+          userCredentials.credentials as Record<string, unknown>
+        );
+
         const googleDriveAccounts = userCredentials.credentials.googleDriveAccounts || 
           (userCredentials.credentials.googleDrive ? [userCredentials.credentials.googleDrive] : []);
         
+        let portable = false;
         if (googleDriveAccounts.length === 0) {
           const { isPortableStorageProvider } = await import('./storage/storageProviderUtils');
           const _checkPn = (typeof pnIdentifier !== 'undefined' && pnIdentifier) || (req.body && req.body.userPnIdentifier) || (req.params && (req.params as any).pnIdentifier) || '';
-          if (!_checkPn || !(await isPortableStorageProvider(_checkPn))) {
+          portable = !!( _checkPn && (await isPortableStorageProvider(_checkPn)));
+          if (!portable && layoutAlerts.length === 0) {
             return res.status(404).json({ error: 'Storage not connected' });
           }
-          // portable social cloud — continue without Drive accounts
+          // portable social cloud or custody layout alerts — continue without Drive accounts
         }
 
         const account = googleDriveAccounts.length > 0 ? googleDriveAccounts[0] : null;
@@ -74,8 +133,12 @@ export function setupNotificationRoutes(app: express.Application, deps: Notifica
         let metadataFolderId = '';
         if (account) {
           const _g = await getMetadataFolder(token, pnIdentifier, accountId);
-          if (!_g) return driveNotInitialized(res);
-          metadataFolderId = _g.metadataFolderId;
+          if (!_g) {
+            // Device custody: tokens may be absent; still return layout alerts
+            if (layoutAlerts.length === 0) return driveNotInitialized(res);
+          } else {
+            metadataFolderId = _g.metadataFolderId;
+          }
         }
 
         const MAX_NOTIFICATIONS_PAGE_SIZE = 500;
@@ -84,16 +147,52 @@ export function setupNotificationRoutes(app: express.Application, deps: Notifica
         const unreadOnly = req.query.unreadOnly === 'true';
         const type = req.query.type as string | undefined;
 
-        const result = await NotificationService.getUserNotifications(userAccessToken, metadataFolderId, pnIdentifier, accountId, {
-          limit,
-          offset,
-          unreadOnly,
-          type: type as any
-        });
+        let sheetNotifications: Awaited<
+          ReturnType<typeof NotificationService.getUserNotifications>
+        >['notifications'] = [];
+        let sheetTotal = 0;
+        if (portable || metadataFolderId || !account) {
+          try {
+            const result = await NotificationService.getUserNotifications(
+              userAccessToken,
+              metadataFolderId,
+              pnIdentifier,
+              accountId,
+              {
+                limit: MAX_NOTIFICATIONS_PAGE_SIZE,
+                offset: 0,
+                unreadOnly,
+                type: type as any
+              }
+            );
+            sheetNotifications = result.notifications;
+            sheetTotal = result.total;
+          } catch {
+            sheetNotifications = [];
+            sheetTotal = 0;
+          }
+        }
+
+        let merged = [
+          ...layoutAlerts.map((a) => ({
+            ...a,
+            user_pn_identifier: a.user_pn_identifier || pnIdentifier,
+          })),
+          ...sheetNotifications,
+        ];
+        if (unreadOnly) merged = merged.filter((n) => !n.read);
+        if (type) merged = merged.filter((n) => n.type === type);
+        merged.sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at));
+        const total = Math.max(sheetTotal, 0) + layoutAlerts.filter((a) => {
+          if (unreadOnly && a.read) return false;
+          if (type && a.type !== type) return false;
+          return true;
+        }).length;
+        const page = merged.slice(offset, offset + limit);
 
         return res.json({
-          notifications: result.notifications,
-          total: result.total,
+          notifications: page,
+          total,
           limit,
           offset
         });
@@ -201,7 +300,10 @@ export function setupNotificationRoutes(app: express.Application, deps: Notifica
         if (googleDriveAccounts.length === 0) {
           const { isPortableStorageProvider } = await import('./storage/storageProviderUtils');
           const _checkPn = (typeof pnIdentifier !== 'undefined' && pnIdentifier) || (req.body && req.body.userPnIdentifier) || (req.params && (req.params as any).pnIdentifier) || '';
-          if (!_checkPn || !(await isPortableStorageProvider(_checkPn))) {
+          const portable = !!( _checkPn && (await isPortableStorageProvider(_checkPn)));
+          if (!portable) {
+            const layoutOk = await markLayoutDeviceUnlockAlertRead(pnIdentifier, notificationId);
+            if (layoutOk) return res.json({ success: true });
             return res.status(404).json({ error: 'Storage not connected' });
           }
           // portable social cloud — continue without Drive accounts
@@ -222,11 +324,28 @@ export function setupNotificationRoutes(app: express.Application, deps: Notifica
         let metadataFolderId = '';
         if (account) {
           const _g = await getMetadataFolder(token, pnIdentifier, accountId);
-          if (!_g) return driveNotInitialized(res);
+          if (!_g) {
+            const layoutOk = await markLayoutDeviceUnlockAlertRead(pnIdentifier, notificationId);
+            if (layoutOk) return res.json({ success: true });
+            return driveNotInitialized(res);
+          }
           metadataFolderId = _g.metadataFolderId;
         }
 
-        const success = await NotificationService.markAsRead(userAccessToken, metadataFolderId, pnIdentifier, notificationId);
+        let success = false;
+        try {
+          success = await NotificationService.markAsRead(
+            userAccessToken,
+            metadataFolderId,
+            pnIdentifier,
+            notificationId
+          );
+        } catch {
+          success = false;
+        }
+        if (!success) {
+          success = await markLayoutDeviceUnlockAlertRead(pnIdentifier, notificationId);
+        }
 
         if (!success) {
           return res.status(404).json({

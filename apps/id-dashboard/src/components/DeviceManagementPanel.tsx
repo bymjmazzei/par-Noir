@@ -18,6 +18,9 @@ import {
 } from '../services/deviceApiService';
 import { clearPendingDevicePairing } from '../hooks/useDeviceAuthState';
 import { clearDeviceRegistration } from '../services/deviceKeyStorage';
+import { PN_SHOW_DEVICE_PAIRING_QR_EVENT } from '../constants/deviceEvents';
+
+const PENDING_SHOW_PAIRING_QR_KEY = 'pn_pending_show_pairing_qr';
 
 type DeviceAuth = ReturnType<typeof useDeviceAuthState>;
 
@@ -179,6 +182,32 @@ export const DeviceManagementPanel: React.FC<DeviceManagementPanelProps> = ({
       setPairingQr(qr);
       setShowPairing(true);
     });
+
+  // Notification action may fire before this panel mounts (tab switch) — stash + retry on mount.
+  useEffect(() => {
+    const startIfPending = () => {
+      try {
+        if (sessionStorage.getItem(PENDING_SHOW_PAIRING_QR_KEY) !== '1') return;
+        sessionStorage.removeItem(PENDING_SHOW_PAIRING_QR_KEY);
+      } catch {
+        return;
+      }
+      if (!isKeyedSession || !authToken || !pnIdentifier) return;
+      void handleStartPairing();
+    };
+    const onShowQr = () => {
+      try {
+        sessionStorage.setItem(PENDING_SHOW_PAIRING_QR_KEY, '1');
+      } catch {
+        /* ignore */
+      }
+      startIfPending();
+    };
+    window.addEventListener(PN_SHOW_DEVICE_PAIRING_QR_EVENT, onShowQr);
+    startIfPending();
+    return () => window.removeEventListener(PN_SHOW_DEVICE_PAIRING_QR_EVENT, onShowQr);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- open QR once when keyed session + token ready
+  }, [isKeyedSession, authToken, pnIdentifier]);
 
   const handleRevoke = (deviceId: string) =>
     run(async () => {

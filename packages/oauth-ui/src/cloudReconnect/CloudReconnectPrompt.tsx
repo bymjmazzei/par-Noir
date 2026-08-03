@@ -5,7 +5,12 @@ export interface CloudReconnectPromptProps {
   socialCloudProvider?: string | null;
   onReconnect: () => void;
   onDismiss: () => void;
+  /** Pair this unkeyed browser when the pN already has keyed devices elsewhere */
+  onPairDevice?: () => void;
+  showPairDevice?: boolean;
+  /** @deprecated use onPairDevice */
   onKeyDevice?: () => void;
+  /** @deprecated use showPairDevice */
   showKeyDevice?: boolean;
   title?: string;
   children?: ReactNode;
@@ -73,6 +78,8 @@ export function CloudReconnectPrompt({
   socialCloudProvider,
   onReconnect,
   onDismiss,
+  onPairDevice,
+  showPairDevice,
   onKeyDevice,
   showKeyDevice = false,
   title = 'Reconnect cloud storage',
@@ -80,6 +87,9 @@ export function CloudReconnectPrompt({
   className = ''
 }: CloudReconnectPromptProps) {
   if (!open) return null;
+
+  const showPair = showPairDevice ?? showKeyDevice;
+  const onPair = onPairDevice ?? onKeyDevice;
 
   return (
     <div className={className} style={overlayStyle} role="dialog" aria-modal="true" aria-labelledby="pn-cloud-reconnect-title">
@@ -91,23 +101,32 @@ export function CloudReconnectPrompt({
           {providerLabel(socialCloudProvider)} is linked to this pN but not signed in on this device.
           Reconnect here to use messaging, uploads, and your private cloud on this unlock.
         </p>
+        {showPair ? (
+          <p style={{ margin: '10px 0 0', fontSize: 13, lineHeight: 1.45, color: '#a3a3a3' }}>
+            This pN already has a keyed device. Pair this browser for full access, or reconnect cloud
+            for this unlock only.
+          </p>
+        ) : null}
         {children}
         <div style={btnRow}>
           <button type="button" style={primaryBtn} onClick={onReconnect}>
             Reconnect
           </button>
-          {showKeyDevice && onKeyDevice ? (
-            <button type="button" style={secondaryBtn} onClick={onKeyDevice}>
-              Key this device to stay signed in after lock
+          {showPair && onPair ? (
+            <button type="button" style={secondaryBtn} onClick={onPair}>
+              Pair this device for full access
             </button>
           ) : null}
           <button type="button" style={secondaryBtn} onClick={onDismiss}>
             Not now
           </button>
         </div>
-        <p style={{ margin: '12px 0 0', fontSize: 12, color: '#a3a3a3', lineHeight: 1.4 }}>
-          Without keying, cloud tokens for this device are cleared when you lock.
-        </p>
+        {showPair ? (
+          <p style={{ margin: '12px 0 0', fontSize: 12, color: '#a3a3a3', lineHeight: 1.4 }}>
+            Without pairing, cloud tokens for this device are cleared when you lock. Generate the QR
+            on a keyed device under Recovery → Add device.
+          </p>
+        ) : null}
       </div>
     </div>
   );

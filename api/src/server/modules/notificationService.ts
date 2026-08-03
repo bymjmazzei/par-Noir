@@ -18,7 +18,7 @@ import { NOTIFICATIONS_SCHEMA } from './storage/tableSchemas';
 export interface Notification {
   notification_id: string;
   user_pn_identifier: string;
-  type: 'feed_new_post' | 'feed_new_comment' | 'feed_new_like' | 'feed_new_subscriber' | 'comment_reply' | 'mention' | 'connection_request' | 'connection_accepted' | 'repost' | 'follow' | 'new_message' | 'data_point_request';
+  type: 'feed_new_post' | 'feed_new_comment' | 'feed_new_like' | 'feed_new_subscriber' | 'comment_reply' | 'mention' | 'connection_request' | 'connection_accepted' | 'repost' | 'follow' | 'new_message' | 'data_point_request' | 'device_unkeyed_unlock';
   title: string;
   message: string;
   data?: {

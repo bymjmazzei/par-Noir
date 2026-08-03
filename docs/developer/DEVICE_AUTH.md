@@ -65,6 +65,18 @@ Verified in `deviceCapabilityService.ts`; applied via `assertDeviceCapability` /
 
 Pairing nonces expire in 5 minutes and are single-use. When `REDIS_URL` is set, nonces are stored in Redis (`pn:device-pairing:{nonce}`) for multi-instance API deploys; otherwise an in-memory fallback is used (single-instance dev).
 
+### Cloud reconnect + verify new device
+
+| Situation | Behavior |
+|-----------|----------|
+| No keyed devices | Reconnect prompt is cloud-only. No pair CTA. No unlock alert. |
+| Keyed elsewhere, this browser unkeyed | On unlock (after registry loads): `POST /api/devices/unkeyed-unlock-alert`. Reconnect prompt offers **Reconnect** + **Pair this device** (camera/paste). Decline → unkeyed cloud; wipe tokens on lock. |
+| This browser keyed | No pair CTA. Polls Drive/portable notifications; **New device unlock** opens Add-device QR. |
+
+**Delivery:** Without mobile push, the keyed device sees the alert when it is unlocked (or on the next notifications poll). Same limit as other Drive-backed notifications until push is productized.
+
+Alert body may include only a coarse device class / opaque fingerprint — never pn name, passcode, email, or other PII.
+
 ## Dashboard integration
 
 - `useDeviceAuthState` — registry, policy, `isKeyedSession`, `can(capability)`

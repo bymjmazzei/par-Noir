@@ -93,6 +93,7 @@ Hand-maintained index of **major** HTTP routes. When you add a user-facing or in
 | POST | `/api/devices/register` | Register device pubkey + opaque `privateDisplay`; bootstrap if no active devices |
 | POST | `/api/devices/:deviceId/revoke` | Keyed device — revoke another device |
 | POST | `/api/devices/:deviceId/heartbeat` | Valid device proof — replace sealed `privateDisplay` (client-owned lastSeen) |
+| POST | `/api/devices/unkeyed-unlock-alert` | Owner Bearer; unkeyed session when `hasKeyedDevices` — append `device_unkeyed_unlock` notification (deduped ~1h); custody layout fallback when Drive tokens absent |
 
 Device proof headers (v1): `X-PN-Device-Id`, `X-PN-Device-Signature`, `X-PN-Device-Timestamp`, `X-PN-Device-Nonce`. See `docs/developer/DEVICE_AUTH.md`.
 

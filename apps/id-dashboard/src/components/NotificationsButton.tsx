@@ -1,79 +1,158 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { RefreshCw, Smartphone, Lock } from 'lucide-react';
 import { notificationsService, Notification } from '../utils/notificationsService';
 import { getTimeAgo } from '../utils/helpers';
+import {
+  fetchDriveNotifications,
+  markDriveNotificationRead,
+  type DriveNotification,
+} from '../services/driveNotificationsApi';
+import { PN_SHOW_DEVICE_PAIRING_QR_EVENT } from '../constants/deviceEvents';
 
 interface NotificationsButtonProps {
   isPWA?: boolean;
+  apiToken?: string | null;
+  pnIdentifier?: string | null;
+  isKeyedSession?: boolean;
+  /** Switch to Recovery so pairing QR panel is visible */
+  onOpenRecoveryForPairing?: () => void;
 }
 
-const NotificationsButton: React.FC<NotificationsButtonProps> = ({ isPWA = false }) => {
-  const [notifications, setNotifications] = useState<Notification[]>([]);
+type UnifiedNotification = {
+  id: string;
+  source: 'local' | 'drive';
+  title: string;
+  message: string;
+  type: string;
+  priority: Notification['priority'] | 'high';
+  read: boolean;
+  timestamp: string;
+  action?: string;
+};
+
+const NotificationsButton: React.FC<NotificationsButtonProps> = ({
+  isPWA = false,
+  apiToken = null,
+  pnIdentifier = null,
+  isKeyedSession = false,
+  onOpenRecoveryForPairing,
+}) => {
+  const [notifications, setNotifications] = useState<UnifiedNotification[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [showDropdown, setShowDropdown] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [hasUnlockedIdentity, setHasUnlockedIdentity] = useState(false);
 
-  useEffect(() => {
-    const loadNotifications = async () => {
-      // Check if there's an unlocked identity
-      const hasUnlocked = (notificationsService as any).currentUnlockedIdentity !== null;
-      setHasUnlockedIdentity(hasUnlocked);
-      
-      // Only show notifications for the currently unlocked identity
-      const notifications = await notificationsService.getNotifications();
-      const unread = await notificationsService.getUnreadCount();
-      setNotifications(notifications);
-      setUnreadCount(unread);
-    };
-
-    loadNotifications();
-    
-    // Refresh notifications every 30 seconds
-    const interval = setInterval(loadNotifications, 30000);
-    
-    return () => clearInterval(interval);
-  }, []);
-
-  const handleNotificationClick = async (notification: Notification) => {
-    await notificationsService.markAsRead([notification.id]);
-    
-    // Navigate to action URL if available
-    if (notification.actionUrl) {
-      window.location.href = notification.actionUrl;
-    }
-    
-    setShowDropdown(false);
-    
-    // Refresh notifications for current identity
+  const loadNotifications = useCallback(async () => {
     const hasUnlocked = (notificationsService as any).currentUnlockedIdentity !== null;
     setHasUnlockedIdentity(hasUnlocked);
-    const notifications = await notificationsService.getNotifications();
-    const unread = await notificationsService.getUnreadCount();
-    setNotifications(notifications);
-    setUnreadCount(unread);
+
+    const local = await notificationsService.getNotifications();
+    const localMapped: UnifiedNotification[] = local.map((n) => ({
+      id: n.id,
+      source: 'local' as const,
+      title: n.title,
+      message: n.message,
+      type: n.type,
+      priority: n.priority,
+      read: n.read,
+      timestamp: n.timestamp,
+    }));
+
+    let driveMapped: UnifiedNotification[] = [];
+    if (apiToken && pnIdentifier && isKeyedSession) {
+      try {
+        const result = await fetchDriveNotifications(pnIdentifier, apiToken, { limit: 30 });
+        driveMapped = result.notifications.map((n: DriveNotification) => ({
+          id: n.notification_id,
+          source: 'drive' as const,
+          title: n.title,
+          message: n.message,
+          type: n.type,
+          priority: n.type === 'device_unkeyed_unlock' ? 'high' : 'medium',
+          read: n.read,
+          timestamp: n.created_at,
+          action: typeof n.data?.action === 'string' ? n.data.action : undefined,
+        }));
+      } catch {
+        /* Drive may be custody-only or temporarily unavailable */
+      }
+    }
+
+    const merged = [...driveMapped, ...localMapped].sort(
+      (a, b) => Date.parse(b.timestamp) - Date.parse(a.timestamp)
+    );
+    setNotifications(merged);
+    setUnreadCount(merged.filter((n) => !n.read).length);
+  }, [apiToken, pnIdentifier, isKeyedSession]);
+
+  useEffect(() => {
+    void loadNotifications();
+    const interval = setInterval(() => void loadNotifications(), 30000);
+    const onFocus = () => void loadNotifications();
+    window.addEventListener('focus', onFocus);
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('focus', onFocus);
+    };
+  }, [loadNotifications]);
+
+  const handleNotificationClick = async (notification: UnifiedNotification) => {
+    if (notification.source === 'local') {
+      await notificationsService.markAsRead([notification.id]);
+      if ((notification as unknown as Notification).actionUrl) {
+        window.location.href = (notification as unknown as Notification).actionUrl!;
+      }
+    } else if (apiToken && pnIdentifier) {
+      try {
+        await markDriveNotificationRead(notification.id, pnIdentifier, apiToken);
+      } catch {
+        /* continue to action */
+      }
+      if (
+        notification.type === 'device_unkeyed_unlock' ||
+        notification.action === 'show_device_pairing_qr'
+      ) {
+        try {
+          sessionStorage.setItem('pn_pending_show_pairing_qr', '1');
+        } catch {
+          /* ignore */
+        }
+        onOpenRecoveryForPairing?.();
+        try {
+          window.dispatchEvent(new CustomEvent(PN_SHOW_DEVICE_PAIRING_QR_EVENT));
+        } catch {
+          /* non-DOM */
+        }
+      }
+    }
+
+    setShowDropdown(false);
+    await loadNotifications();
   };
 
   const handleMarkAllAsRead = async () => {
-    const notifications = await notificationsService.getNotifications();
-    const notificationIds = notifications.map(n => n.id);
-    await notificationsService.markAsRead(notificationIds);
-    const hasUnlocked = (notificationsService as any).currentUnlockedIdentity !== null;
-    setHasUnlockedIdentity(hasUnlocked);
-    const updatedNotifications = await notificationsService.getNotifications();
-    const unread = await notificationsService.getUnreadCount();
-    setNotifications(updatedNotifications);
-    setUnreadCount(unread);
+    const locals = await notificationsService.getNotifications();
+    await notificationsService.markAsRead(locals.map((n) => n.id));
+    if (apiToken && pnIdentifier) {
+      for (const n of notifications.filter((x) => x.source === 'drive' && !x.read)) {
+        try {
+          await markDriveNotificationRead(n.id, pnIdentifier, apiToken);
+        } catch {
+          /* best-effort */
+        }
+      }
+    }
+    await loadNotifications();
   };
 
   const handleClearAll = async () => {
-    // Only clear notifications for the current identity
     const currentNotifications = await notificationsService.getNotifications();
     for (const notification of currentNotifications) {
       await notificationsService.deleteNotification(notification.id);
     }
-    setNotifications([]);
-    setUnreadCount(0);
+    setNotifications((prev) => prev.filter((n) => n.source === 'drive'));
+    await loadNotifications();
   };
 
   const handleTestNotification = async () => {
@@ -81,7 +160,7 @@ const NotificationsButton: React.FC<NotificationsButtonProps> = ({ isPWA = false
     alert('Test notification sent!');
   };
 
-  const getNotificationIcon = (type: Notification['type']) => {
+  const getNotificationIcon = (type: string) => {
     switch (type) {
       case 'recovery-request':
         return <Lock className="w-4 h-4" />;
@@ -90,6 +169,7 @@ const NotificationsButton: React.FC<NotificationsButtonProps> = ({ isPWA = false
       case 'integration-update':
         return '🔗';
       case 'security-alert':
+      case 'device_unkeyed_unlock':
         return '⚠️';
       case 'sync-complete':
         return <RefreshCw className="w-4 h-4" />;
@@ -100,7 +180,7 @@ const NotificationsButton: React.FC<NotificationsButtonProps> = ({ isPWA = false
     }
   };
 
-  const getPriorityColor = (priority: Notification['priority']) => {
+  const getPriorityColor = (priority: UnifiedNotification['priority']) => {
     switch (priority) {
       case 'critical':
         return 'text-red-500';
@@ -117,7 +197,6 @@ const NotificationsButton: React.FC<NotificationsButtonProps> = ({ isPWA = false
 
   return (
     <div className="relative">
-      {/* Notifications Button */}
       <button
         onClick={() => setShowDropdown(!showDropdown)}
         className={`relative p-2 rounded-lg hover:bg-hover transition-colors ${
@@ -130,8 +209,7 @@ const NotificationsButton: React.FC<NotificationsButtonProps> = ({ isPWA = false
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9" />
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.29 13.7a1.94 1.94 0 0 0 3.42 0" />
         </svg>
-        
-        {/* Unread Badge */}
+
         {unreadCount > 0 && (
           <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full h-5 w-5 flex items-center justify-center">
             {unreadCount > 99 ? '99+' : unreadCount}
@@ -139,10 +217,8 @@ const NotificationsButton: React.FC<NotificationsButtonProps> = ({ isPWA = false
         )}
       </button>
 
-      {/* Notifications Dropdown */}
       {showDropdown && (
         <div className="absolute right-0 mt-2 w-80 bg-modal-bg border border-border rounded-lg shadow-xl z-50">
-          {/* Header */}
           <div className="flex items-center justify-between p-4 border-b border-border">
             <h3 className="text-lg font-semibold text-text-primary">Notifications</h3>
             <div className="flex items-center space-x-2">
@@ -163,11 +239,10 @@ const NotificationsButton: React.FC<NotificationsButtonProps> = ({ isPWA = false
             </div>
           </div>
 
-          {/* Settings Panel */}
           {showSettings && (
             <div className="p-4 border-b border-border bg-background-secondary">
               <h4 className="text-sm font-medium text-text-primary mb-3">Notification Settings</h4>
-              
+
               {process.env.NODE_ENV === 'development' && (
                 <div className="mb-3">
                   <button
@@ -178,7 +253,7 @@ const NotificationsButton: React.FC<NotificationsButtonProps> = ({ isPWA = false
                   </button>
                 </div>
               )}
-              
+
               <div className="space-y-2 text-xs">
                 {Object.entries(notificationsService.getSettings()).map(([key, value]) => {
                   if (typeof value === 'boolean') {
@@ -204,22 +279,20 @@ const NotificationsButton: React.FC<NotificationsButtonProps> = ({ isPWA = false
             </div>
           )}
 
-          {/* Notifications List */}
           <div className="max-h-96 overflow-y-auto">
             {notifications.length === 0 ? (
               <div className="p-4 text-center text-text-secondary">
                 <p className="text-sm">
-                  {hasUnlockedIdentity 
-                    ? 'No notifications for this ID' 
-                    : 'Unlock an ID to see notifications'
-                  }
+                  {hasUnlockedIdentity
+                    ? 'No notifications for this ID'
+                    : 'Unlock an ID to see notifications'}
                 </p>
               </div>
             ) : (
               <div className="divide-y divide-border">
                 {notifications.map((notification) => (
                   <div
-                    key={notification.id}
+                    key={`${notification.source}-${notification.id}`}
                     onClick={() => handleNotificationClick(notification)}
                     className={`p-4 hover:bg-hover cursor-pointer transition-colors ${
                       !notification.read ? 'bg-blue-50 dark:bg-blue-900/20' : ''
@@ -229,9 +302,11 @@ const NotificationsButton: React.FC<NotificationsButtonProps> = ({ isPWA = false
                       <div className="text-lg">{getNotificationIcon(notification.type)}</div>
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center justify-between">
-                          <h4 className={`text-sm font-medium text-text-primary ${
-                            !notification.read ? 'font-semibold' : ''
-                          }`}>
+                          <h4
+                            className={`text-sm font-medium text-text-primary ${
+                              !notification.read ? 'font-semibold' : ''
+                            }`}
+                          >
                             {notification.title}
                           </h4>
                           <span className={`text-xs ${getPriorityColor(notification.priority)}`}>
@@ -257,26 +332,21 @@ const NotificationsButton: React.FC<NotificationsButtonProps> = ({ isPWA = false
             )}
           </div>
 
-          {/* Footer */}
-          {notifications.length > 0 && (
+          {notifications.some((n) => n.source === 'local') && (
             <div className="p-3 border-t border-border">
               <button
                 onClick={handleClearAll}
                 className="w-full text-xs text-text-secondary hover:text-red-500 transition-colors"
               >
-                Clear all notifications
+                Clear local notifications
               </button>
             </div>
           )}
         </div>
       )}
 
-      {/* Backdrop */}
       {showDropdown && (
-        <div
-          className="fixed inset-0 z-40"
-          onClick={() => setShowDropdown(false)}
-        />
+        <div className="fixed inset-0 z-40" onClick={() => setShowDropdown(false)} />
       )}
     </div>
   );
