@@ -14,6 +14,8 @@ export interface DmIdentityState {
   mlKemSecretKey: string;
   mlKemPublicKey?: string;
   pnName: string;
+  /** In-memory only for client seals (e.g. device privateDisplay); never persisted. */
+  passcode: string;
 }
 
 export interface DmSessionHandoff {
@@ -119,7 +121,8 @@ export function restoreDmSessionFromStorage(): boolean {
     state = {
       mlKemSecretKey: parsed.mlKemSecretKey,
       mlKemPublicKey,
-      pnName: ''
+      pnName: '',
+      passcode: '',
     };
     persistDmSessionToStorage({ mlKemSecretKey: parsed.mlKemSecretKey, mlKemPublicKey });
     void publishMlKemPublicKey(mlKemPublicKey).catch(() => {});
@@ -144,7 +147,8 @@ export function applyDmSessionHandoff(session: DmSessionHandoff): void {
   state = {
     mlKemSecretKey: session.mlKemSecretKey,
     mlKemPublicKey,
-    pnName: state?.pnName || ''
+    pnName: state?.pnName || '',
+    passcode: state?.passcode || '',
   };
   persistDmSessionToStorage({ mlKemSecretKey: session.mlKemSecretKey, mlKemPublicKey });
   void publishMlKemPublicKey(mlKemPublicKey).catch(() => {});
@@ -190,7 +194,8 @@ export async function unlockDmIdentity(pnName: string, passcode: string): Promis
   state = {
     mlKemSecretKey: secrets.mlKemSecretKey,
     mlKemPublicKey,
-    pnName: secrets.pnName || pnName
+    pnName: secrets.pnName || pnName,
+    passcode,
   };
   persistDmSessionToStorage({
     mlKemSecretKey: secrets.mlKemSecretKey,

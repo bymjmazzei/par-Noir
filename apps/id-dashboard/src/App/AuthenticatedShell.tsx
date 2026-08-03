@@ -657,6 +657,7 @@ export function AuthenticatedShell(props: AuthenticatedShellProps) {
                         <DeviceManagementPanel
                           authToken={apiToken ?? undefined}
                           pnIdentifier={recoveryVaultPnId ?? undefined}
+                          sessionId={authenticatedUser?.id ?? undefined}
                           deviceAuth={deviceAuth}
                         />
                         {authenticatedUser && (

@@ -20,7 +20,6 @@ import {
   loadDeviceBundle,
   listDevices,
   readPolicy,
-  updateLastSeen
 } from './storage/deviceStorageService';
 import type { DeviceStorageBundle } from './storage/deviceStorageService';
 
@@ -50,7 +49,7 @@ export interface DeviceAuthContext {
   policy: DevicePolicy;
   isKeyed: boolean;
   deviceRow?: DeviceRow;
-  /** Populated when Drive device registry is loaded; reused for updateLastSeen. */
+  /** Populated when Drive device registry is loaded. */
   deviceBundle?: DeviceStorageBundle;
 }
 
@@ -195,10 +194,6 @@ export async function assertDeviceCapability(
       error: decision.reason === 'device_required' ? 'device_key_required' : 'capability_not_allowed',
       reason: decision.reason,
     };
-  }
-
-  if (ctx.isKeyed && ctx.deviceRow && ctx.deviceBundle) {
-    await updateLastSeen(ctx.deviceBundle, ctx.deviceRow.deviceId);
   }
 
   return { ok: true, ctx };

@@ -12,10 +12,22 @@ Portable unlock (`.pn` + pN name + passcode) remains available on any device. **
 
 ## Drive artifacts
 
-- `_metadata/devices.xlsx` — device registry (`deviceId`, `devicePublicKey`, `label`, `status`, …)
+- `_metadata/devices.xlsx` — device registry (`deviceId`, `devicePublicKey`, `status`, `keyType`, `isPrimary`, `createdAt`, opaque `privateDisplay`, …)
 - `_metadata/device-policy.json` — `unkeyedAllows`, `firstDeviceKeyedAt`
 
 Managed by `DeviceSheetsService` (API).
+
+### Private display seal (client-only)
+
+`label`, `deviceType`, and `lastSeenAt` are **not** stored cleartext for new registrations. The unlocked client seals them with pn name + passcode (AES-GCM / PBKDF2, same parameters as `EncryptionManager.encrypt`) into an opaque `privateDisplay` blob via `@par-noir/device-client`. The API stores and returns the blob without decrypting.
+
+| Clear on storage (API-readable) | Sealed in `privateDisplay` (client-only) |
+|---------------------------------|------------------------------------------|
+| `deviceId`, `devicePublicKey`, `status`, `keyType`, `isPrimary`, `createdAt` | `label`, `deviceType`, `lastSeenAt` |
+
+- **Register** (`POST /api/devices/register`) requires `privateDisplay`.
+- **Heartbeat** (`POST /api/devices/:deviceId/heartbeat`) replaces `privateDisplay` (client refreshes sealed `lastSeenAt`). Capability gates no longer write cleartext last-seen timestamps.
+- **Legacy rows** without `privateDisplay` may still show cleartext `label` / `deviceType` / `lastSeenAt` until the next heartbeat upgrades them.
 
 ## Capabilities
 
@@ -56,7 +68,7 @@ Pairing nonces expire in 5 minutes and are single-use. When `REDIS_URL` is set, 
 ## Dashboard integration
 
 - `useDeviceAuthState` — registry, policy, `isKeyedSession`, `can(capability)`
-- `deviceApiService` / `@par-noir/device-client` — register, pair, sign proofs
+- `@par-noir/device-client` — `sealDevicePrivateDisplay` / `unsealDevicePrivateDisplay` (AES-GCM; same PBKDF2 params as `EncryptionManager.encrypt(pnName, passcode)`)
 - `DeviceManagementPanel` — key device, QR pairing, revoke, unkeyed permission toggles
 - UI gates in `App.tsx` (export, custodian manage, rotation, profile read, custodian read) mirror server policy
 - `FileStorageAggregator` — all mutating Drive paths gated with `drive.read` / `drive.upload`; upload/refresh controls disabled when blocked

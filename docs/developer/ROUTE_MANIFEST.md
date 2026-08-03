@@ -90,9 +90,9 @@ Hand-maintained index of **major** HTTP routes. When you add a user-facing or in
 | GET | `/api/devices/:userPnIdentifier/policy` | Read `unkeyedAllows` and `firstDeviceKeyedAt` |
 | PATCH | `/api/devices/:userPnIdentifier/policy` | Keyed device only — update unkeyed allow-list |
 | POST | `/api/devices/pairing/nonce` | Keyed device — short-lived pairing nonce (5 min) |
-| POST | `/api/devices/register` | Register device pubkey; bootstrap if no active devices |
+| POST | `/api/devices/register` | Register device pubkey + opaque `privateDisplay`; bootstrap if no active devices |
 | POST | `/api/devices/:deviceId/revoke` | Keyed device — revoke another device |
-| POST | `/api/devices/:deviceId/heartbeat` | Valid device proof — update `lastSeenAt` |
+| POST | `/api/devices/:deviceId/heartbeat` | Valid device proof — replace sealed `privateDisplay` (client-owned lastSeen) |
 
 Device proof headers (v1): `X-PN-Device-Id`, `X-PN-Device-Signature`, `X-PN-Device-Timestamp`, `X-PN-Device-Nonce`. See `docs/developer/DEVICE_AUTH.md`.
 

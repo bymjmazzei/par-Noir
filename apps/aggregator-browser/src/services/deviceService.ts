@@ -6,14 +6,17 @@ import { API_ENDPOINT } from '../config/api';
 import {
   generateDeviceKeypair,
   type DevicePolicy,
+  type DeviceType,
 } from '@par-noir/device-auth';
 import {
   buildLocalDeviceProofHeaders,
   loadDeviceRegistration,
   persistNewKeypair,
+  sealDevicePrivateDisplay,
   setDeviceProofSigner,
   type StoredDeviceRegistration,
 } from '@par-noir/device-client';
+import { getDmIdentity, isDmIdentityReady } from './dmIdentitySession';
 
 export interface DeviceRegistrySummary {
   devices: Array<{
@@ -25,6 +28,7 @@ export interface DeviceRegistrySummary {
     isPrimary: boolean;
     createdAt: string;
     lastSeenAt: string;
+    privateDisplay?: string;
   }>;
   policy: Pick<DevicePolicy, 'unkeyedAllows' | 'firstDeviceKeyedAt'>;
   hasKeyedDevices: boolean;
@@ -47,8 +51,7 @@ async function registerDeviceOnServer(params: {
   authToken: string;
   deviceId: string;
   devicePublicKey: string;
-  label?: string;
-  deviceType?: string;
+  privateDisplay: string;
   isPrimary?: boolean;
 }): Promise<void> {
   const res = await fetch(`${API_ENDPOINT}/api/devices/register`, {
@@ -61,8 +64,7 @@ async function registerDeviceOnServer(params: {
       userPnIdentifier: params.userPnIdentifier,
       deviceId: params.deviceId,
       devicePublicKey: params.devicePublicKey,
-      label: params.label,
-      deviceType: params.deviceType,
+      privateDisplay: params.privateDisplay,
       isPrimary: params.isPrimary,
     }),
   });
@@ -78,22 +80,39 @@ export async function bootstrapThisDevice(params: {
   label?: string;
   deviceType?: StoredDeviceRegistration['deviceType'];
 }): Promise<StoredDeviceRegistration> {
+  if (!isDmIdentityReady()) {
+    throw new Error('Unlock messaging identity before keying this device');
+  }
+  const identity = getDmIdentity();
+  if (!identity.pnName || !identity.passcode) {
+    throw new Error('Unlock messaging with your passcode before keying this device');
+  }
   const keypair = await generateDeviceKeypair();
+  const label = params.label ?? 'Browser';
+  const deviceType = (params.deviceType ?? 'other') as DeviceType;
   const reg = await persistNewKeypair({
     pnIdentifier: params.userPnIdentifier,
     deviceId: keypair.deviceId,
     publicKey: keypair.publicKey,
     privateKey: keypair.privateKey,
-    label: params.label ?? 'Browser',
-    deviceType: params.deviceType ?? 'other',
+    label,
+    deviceType,
   });
+  const privateDisplay = await sealDevicePrivateDisplay(
+    {
+      label,
+      deviceType,
+      lastSeenAt: new Date().toISOString(),
+    },
+    identity.pnName,
+    identity.passcode
+  );
   await registerDeviceOnServer({
     userPnIdentifier: params.userPnIdentifier,
     authToken: params.authToken,
     deviceId: reg.deviceId,
     devicePublicKey: reg.publicKey,
-    label: reg.label,
-    deviceType: reg.deviceType,
+    privateDisplay,
     isPrimary: true,
   });
   return reg;

@@ -6,6 +6,8 @@ import {
   DEVICE_CAPABILITIES,
   IMMUTABLE_UNKEYED_DENY,
 } from '@par-noir/device-auth';
+import { SecureCredentialManager } from '@par-noir/identity-crypto';
+import { unsealDevicePrivateDisplay } from '@par-noir/device-client';
 import type { useDeviceAuthState } from '../hooks/useDeviceAuthState';
 import {
   bootstrapThisDevice,
@@ -19,15 +21,28 @@ import { clearDeviceRegistration } from '../services/deviceKeyStorage';
 
 type DeviceAuth = ReturnType<typeof useDeviceAuthState>;
 
+type DisplayDevice = {
+  deviceId: string;
+  label: string;
+  deviceType: string;
+  keyType: string;
+  status: string;
+  isPrimary: boolean;
+  createdAt: string;
+  lastSeenAt: string;
+};
+
 export interface DeviceManagementPanelProps {
   authToken?: string;
   pnIdentifier?: string;
+  sessionId?: string;
   deviceAuth: DeviceAuth;
 }
 
 export const DeviceManagementPanel: React.FC<DeviceManagementPanelProps> = ({
   authToken,
   pnIdentifier,
+  sessionId,
   deviceAuth,
 }) => {
   const {
@@ -49,10 +64,62 @@ export const DeviceManagementPanel: React.FC<DeviceManagementPanelProps> = ({
   const [pairingQr, setPairingQr] = useState<string | null>(null);
   const [showPairing, setShowPairing] = useState(false);
   const [policyDraft, setPolicyDraft] = useState<string[]>(policy.unkeyedAllows);
+  const [displayDevices, setDisplayDevices] = useState<DisplayDevice[]>([]);
 
   useEffect(() => {
     setPolicyDraft(policy.unkeyedAllows);
   }, [policy.unkeyedAllows]);
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      const rows = registry?.devices ?? [];
+      if (rows.length === 0) {
+        if (!cancelled) setDisplayDevices([]);
+        return;
+      }
+      const creds = sessionId ? SecureCredentialManager.getCredentials(sessionId) : null;
+      const resolved: DisplayDevice[] = [];
+      for (const d of rows) {
+        if (d.privateDisplay && creds?.pnName && creds?.passcode) {
+          try {
+            const open = await unsealDevicePrivateDisplay(
+              d.privateDisplay,
+              creds.pnName,
+              creds.passcode
+            );
+            resolved.push({
+              deviceId: d.deviceId,
+              label: open.label,
+              deviceType: open.deviceType,
+              keyType: d.keyType,
+              status: d.status,
+              isPrimary: d.isPrimary,
+              createdAt: d.createdAt,
+              lastSeenAt: open.lastSeenAt,
+            });
+            continue;
+          } catch {
+            /* fall through to legacy / placeholder */
+          }
+        }
+        resolved.push({
+          deviceId: d.deviceId,
+          label: d.label || 'Device',
+          deviceType: d.deviceType || 'other',
+          keyType: d.keyType,
+          status: d.status,
+          isPrimary: d.isPrimary,
+          createdAt: d.createdAt,
+          lastSeenAt: d.lastSeenAt || '',
+        });
+      }
+      if (!cancelled) setDisplayDevices(resolved);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [registry?.devices, sessionId]);
 
   const run = useCallback(
     async (fn: () => Promise<void>) => {
@@ -72,19 +139,26 @@ export const DeviceManagementPanel: React.FC<DeviceManagementPanelProps> = ({
 
   const handleKeyThisDevice = () =>
     run(async () => {
-      if (!authToken || !pnIdentifier) throw new Error('Unlock and connect Drive first');
-      await bootstrapThisDevice({ userPnIdentifier: pnIdentifier, authToken });
+      if (!authToken || !pnIdentifier || !sessionId) {
+        throw new Error('Unlock and connect Drive first');
+      }
+      await bootstrapThisDevice({
+        userPnIdentifier: pnIdentifier,
+        authToken,
+        sessionId,
+      });
     });
 
   const handleCompletePairing = () =>
     run(async () => {
-      if (!authToken || !pnIdentifier || !pendingPairing) return;
+      if (!authToken || !pnIdentifier || !sessionId || !pendingPairing) return;
       if (pendingPairing.pnIdentifier !== pnIdentifier) {
         throw new Error('Pairing invitation is for a different identity');
       }
       await completePairingFromNonce({
         userPnIdentifier: pnIdentifier,
         authToken,
+        sessionId,
         pairingNonce: pendingPairing.pairingNonce,
       });
       clearPendingDevicePairing();
@@ -147,33 +221,35 @@ export const DeviceManagementPanel: React.FC<DeviceManagementPanelProps> = ({
             your first registration.
           </p>
         </div>
-        {hasKeyedDevices && (
+        <div className="text-xs text-right">
           <span
-            className={`text-xs px-2 py-1 rounded shrink-0 ${
+            className={
               isKeyedSession
-                ? 'bg-green-900/40 text-green-300'
-                : 'bg-yellow-900/40 text-yellow-300'
-            }`}
+                ? 'text-green-400'
+                : isUnkeyedRestricted
+                  ? 'text-amber-400'
+                  : 'text-text-secondary'
+            }
           >
             {isKeyedSession ? 'Keyed session' : 'Unkeyed session'}
           </span>
-        )}
+        </div>
       </div>
 
       {isUnkeyedRestricted && (
-        <p className="text-xs text-yellow-600 border border-yellow-700/50 rounded p-2">
-          This session is unkeyed. Cloud tokens work for this unlock and are cleared when you lock.
-          Key this device to keep cloud signed in across locks. Recovery initiation and custodian
-          approval still work; some privileged settings stay limited until you key or pair.
+        <p className="text-xs text-amber-300 bg-amber-500/10 border border-amber-500/30 rounded p-2">
+          {deviceRequiredMessage}
         </p>
       )}
 
       {pendingPairing && !isKeyedSession && authToken && pnIdentifier && (
-        <div className="border border-primary/40 rounded p-3 space-y-2">
-          <p className="text-sm text-text-primary">Device pairing invitation pending</p>
+        <div className="border border-violet-500/40 rounded p-3 space-y-2">
+          <p className="text-xs text-text-secondary">
+            Pairing invitation detected for this identity. Complete to key this device.
+          </p>
           <button
             type="button"
-            disabled={busy}
+            disabled={busy || !sessionId}
             onClick={handleCompletePairing}
             className="px-3 py-1.5 modal-button rounded text-sm disabled:opacity-50"
           >
@@ -188,7 +264,7 @@ export const DeviceManagementPanel: React.FC<DeviceManagementPanelProps> = ({
         {!isKeyedSession && authToken && pnIdentifier && !hasKeyedDevices && (
           <button
             type="button"
-            disabled={busy || loading}
+            disabled={busy || loading || !sessionId}
             onClick={handleKeyThisDevice}
             className="px-3 py-1.5 modal-button rounded text-sm disabled:opacity-50"
           >
@@ -230,10 +306,10 @@ export const DeviceManagementPanel: React.FC<DeviceManagementPanelProps> = ({
         <p className="text-xs text-text-secondary">Loading devices…</p>
       ) : (
         <ul className="text-xs space-y-2">
-          {(registry?.devices ?? []).length === 0 ? (
+          {displayDevices.length === 0 ? (
             <li className="text-text-secondary">No keyed devices yet.</li>
           ) : (
-            registry!.devices.map((d) => (
+            displayDevices.map((d) => (
               <li
                 key={d.deviceId}
                 className="flex items-center justify-between p-2 bg-input-bg rounded border border-border"
@@ -291,6 +367,12 @@ export const DeviceManagementPanel: React.FC<DeviceManagementPanelProps> = ({
               </li>
             ))}
           </ul>
+          <p className="text-xs text-text-secondary">Always blocked on unkeyed devices:</p>
+          <ul className="text-xs text-text-secondary list-disc pl-4">
+            {[...IMMUTABLE_UNKEYED_DENY].map((cap) => (
+              <li key={cap}>{immutableDenyLabels[cap] ?? cap}</li>
+            ))}
+          </ul>
           <button
             type="button"
             disabled={busy}
@@ -299,18 +381,6 @@ export const DeviceManagementPanel: React.FC<DeviceManagementPanelProps> = ({
           >
             Save permissions
           </button>
-        </div>
-      )}
-
-      {hasKeyedDevices && (
-        <div className="border-t border-border pt-4">
-          <h5 className="text-sm font-medium text-text-primary mb-2">Always protected (unkeyed)</h5>
-          <ul className="text-xs text-text-secondary list-disc pl-4 space-y-1">
-            {Array.from(IMMUTABLE_UNKEYED_DENY).map((cap) => (
-              <li key={cap}>{immutableDenyLabels[cap] ?? cap}</li>
-            ))}
-          </ul>
-          <p className="text-xs text-text-secondary mt-2">{deviceRequiredMessage}</p>
         </div>
       )}
     </div>

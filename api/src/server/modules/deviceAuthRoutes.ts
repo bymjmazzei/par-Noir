@@ -10,7 +10,7 @@ import {
   listDevices,
   loadDeviceBundle,
   readPolicy,
-  updateLastSeen,
+  updateDevicePrivateDisplay,
   upsertDevice,
   writePolicy
 } from './storage/deviceStorageService';
@@ -154,8 +154,7 @@ export function registerDeviceAuthRoutes(app: Application): void {
         userPnIdentifier,
         deviceId,
         devicePublicKey,
-        label,
-        deviceType,
+        privateDisplay,
         pairingNonce,
         isPrimary,
       } = req.body ?? {};
@@ -165,6 +164,10 @@ export function registerDeviceAuthRoutes(app: Application): void {
 
       if (!deviceId || !devicePublicKey) {
         return res.status(400).json({ error: 'deviceId and devicePublicKey required' });
+      }
+
+      if (typeof privateDisplay !== 'string' || !privateDisplay.trim()) {
+        return res.status(400).json({ error: 'privateDisplay required' });
       }
 
       const bundle = await storageBundle(pn);
@@ -186,13 +189,14 @@ export function registerDeviceAuthRoutes(app: Application): void {
       const row: DeviceRow = {
         deviceId,
         devicePublicKey,
-        label: label || 'Device',
-        deviceType: deviceType || 'other',
+        label: '',
+        deviceType: 'other',
         keyType: 'software',
         status: 'active',
         isPrimary: isPrimary === true || active.length === 0,
         createdAt: now,
-        lastSeenAt: now,
+        lastSeenAt: '',
+        privateDisplay: privateDisplay.trim(),
       };
 
       await upsertDevice(bundle, row);
@@ -246,10 +250,15 @@ export function registerDeviceAuthRoutes(app: Application): void {
         return res.status(403).json({ error: 'device_mismatch' });
       }
 
+      const { privateDisplay } = req.body ?? {};
+      if (typeof privateDisplay !== 'string' || !privateDisplay.trim()) {
+        return res.status(400).json({ error: 'privateDisplay required' });
+      }
+
       const bundle = await storageBundle(gate.ctx.pnIdentifier);
       if (!bundle) return res.status(404).json({ error: 'Storage not connected' });
 
-      await updateLastSeen(bundle, req.params.deviceId);
+      await updateDevicePrivateDisplay(bundle, req.params.deviceId, privateDisplay.trim());
 
       return res.json({ success: true });
     } catch (e) {

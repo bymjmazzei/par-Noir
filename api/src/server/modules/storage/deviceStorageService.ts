@@ -5,7 +5,7 @@ import {
   getDeviceByIdPortable,
   listDevicesPortable,
   readPolicyPortable,
-  updateLastSeenPortable,
+  updatePrivateDisplayPortable,
   upsertDevicePortable,
   writePolicyPortable
 } from './devicePortableService';
@@ -92,15 +92,25 @@ export async function upsertDevice(bundle: DeviceStorageBundle, row: DeviceRow):
   );
 }
 
-export async function updateLastSeen(bundle: DeviceStorageBundle, deviceId: string): Promise<void> {
+export async function updateDevicePrivateDisplay(
+  bundle: DeviceStorageBundle,
+  deviceId: string,
+  privateDisplay: string
+): Promise<void> {
   if (bundle.isPortable) {
-    await updateLastSeenPortable(bundle.pnIdentifier, deviceId, bundle.accountId);
+    await updatePrivateDisplayPortable(
+      bundle.pnIdentifier,
+      deviceId,
+      privateDisplay,
+      bundle.accountId
+    );
     return;
   }
-  await DeviceSheetsService.updateLastSeen(
+  await DeviceSheetsService.updatePrivateDisplay(
     bundle.token!,
     bundle.spreadsheetId!,
     deviceId,
+    privateDisplay,
     bundle.pnIdentifier,
     bundle.accountId
   );

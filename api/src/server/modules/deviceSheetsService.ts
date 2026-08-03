@@ -16,6 +16,7 @@ const DEVICE_HEADERS = [
   'isPrimary',
   'createdAt',
   'lastSeenAt',
+  'privateDisplay',
 ];
 
 const POLICY_FILE = 'device-policy.json';
@@ -43,7 +44,7 @@ export class DeviceSheetsService {
       requestBody: {
         properties: { title: this.FILE_NAME },
         sheets: [
-          { properties: { title: 'Devices', gridProperties: { rowCount: 50, columnCount: 10 } } },
+          { properties: { title: 'Devices', gridProperties: { rowCount: 50, columnCount: 11 } } },
         ],
       },
     });
@@ -58,7 +59,7 @@ export class DeviceSheetsService {
 
     await sheets.spreadsheets.values.update({
       spreadsheetId,
-      range: 'Devices!A1:I1',
+      range: 'Devices!A1:J1',
       valueInputOption: 'RAW',
       requestBody: { values: [DEVICE_HEADERS] },
     });
@@ -67,6 +68,7 @@ export class DeviceSheetsService {
   }
 
   private static parseRow(r: string[]): DeviceRow {
+    const privateDisplay = r[9] || undefined;
     return {
       deviceId: r[0] || '',
       devicePublicKey: r[1] || '',
@@ -77,6 +79,7 @@ export class DeviceSheetsService {
       isPrimary: r[6] === 'true',
       createdAt: r[7] || '',
       lastSeenAt: r[8] || '',
+      ...(privateDisplay ? { privateDisplay } : {}),
     };
   }
 
@@ -91,6 +94,7 @@ export class DeviceSheetsService {
       row.isPrimary ? 'true' : 'false',
       row.createdAt,
       row.lastSeenAt,
+      row.privateDisplay || '',
     ];
   }
 
@@ -105,7 +109,7 @@ export class DeviceSheetsService {
     const sheets = google.sheets({ version: 'v4', auth });
     const res = await sheets.spreadsheets.values.get({
       spreadsheetId,
-      range: 'Devices!A2:I',
+      range: 'Devices!A2:J',
     });
     return (res.data.values || [])
       .map((r) => this.parseRow(r))
@@ -134,7 +138,7 @@ export class DeviceSheetsService {
     const sheets = google.sheets({ version: 'v4', auth });
     const res = await sheets.spreadsheets.values.get({
       spreadsheetId,
-      range: 'Devices!A2:I',
+      range: 'Devices!A2:J',
     });
     const rows = res.data.values || [];
     const idx = rows.findIndex((r) => r[0] === row.deviceId);
@@ -142,14 +146,14 @@ export class DeviceSheetsService {
     if (idx >= 0) {
       await sheets.spreadsheets.values.update({
         spreadsheetId,
-        range: `Devices!A${idx + 2}:I${idx + 2}`,
+        range: `Devices!A${idx + 2}:J${idx + 2}`,
         valueInputOption: 'RAW',
         requestBody: { values },
       });
     } else {
       await sheets.spreadsheets.values.append({
         spreadsheetId,
-        range: 'Devices!A:I',
+        range: 'Devices!A:J',
         valueInputOption: 'RAW',
         insertDataOption: 'INSERT_ROWS',
         requestBody: { values },
@@ -157,10 +161,12 @@ export class DeviceSheetsService {
     }
   }
 
-  static async updateLastSeen(
+  /** Replace opaque privateDisplay blob (client-sealed display fields). */
+  static async updatePrivateDisplay(
     token: GoogleDriveToken,
     spreadsheetId: string,
     deviceId: string,
+    privateDisplay: string,
     userPnIdentifier: string,
     accountId: string | undefined
   ): Promise<void> {
@@ -169,7 +175,13 @@ export class DeviceSheetsService {
     await this.upsertDevice(
       token,
       spreadsheetId,
-      { ...row, lastSeenAt: new Date().toISOString() },
+      {
+        ...row,
+        privateDisplay,
+        label: '',
+        deviceType: 'other',
+        lastSeenAt: '',
+      },
       userPnIdentifier,
       accountId
     );
@@ -244,11 +256,11 @@ export class DeviceSheetsService {
   ): Promise<void> {
     const auth = GoogleOAuth2Helper.createClient(token, userPnIdentifier, accountId);
     const sheets = google.sheets({ version: 'v4', auth });
-    await sheets.spreadsheets.values.clear({ spreadsheetId, range: 'Devices!A2:I' });
+    await sheets.spreadsheets.values.clear({ spreadsheetId, range: 'Devices!A2:J' });
     if (devices.length === 0) return;
     await sheets.spreadsheets.values.update({
       spreadsheetId,
-      range: 'Devices!A2:I',
+      range: 'Devices!A2:J',
       valueInputOption: 'RAW',
       requestBody: { values: devices.map((d) => this.rowToValues(d)) }
     });

@@ -200,6 +200,7 @@ function App() {
   const deviceAuth = useDeviceAuthState({
     apiToken,
     userPnIdentifier: recoveryVaultPnId,
+    sessionId: authenticatedUser?.id ?? null,
   });
 
   const canManageCustodians = deviceAuth.can(DEVICE_CAPABILITIES.recoveryCustodianManage);

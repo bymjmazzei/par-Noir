@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   DEVICE_CAPABILITIES,
   evaluateDeviceCapability,
@@ -9,12 +9,14 @@ import {
 import {
   buildLocalDeviceProofHeaders,
   fetchDeviceRegistry,
+  sendDeviceHeartbeat,
   type DeviceRegistrySummary,
 } from '../services/deviceApiService';
 import { loadDeviceRegistration } from '../services/deviceKeyStorage';
 import { setDeviceProofSigner } from '../services/deviceProofContext';
 
 const PENDING_PAIRING_KEY = 'pn_pending_device_pairing';
+const HEARTBEAT_INTERVAL_MS = 5 * 60 * 1000;
 
 export interface PendingDevicePairing {
   pairingNonce: string;
@@ -62,6 +64,8 @@ export function clearPendingDevicePairing(): void {
 export function useDeviceAuthState(params: {
   apiToken?: string | null;
   userPnIdentifier?: string | null;
+  /** Unlocked session id — required to seal privateDisplay on heartbeat */
+  sessionId?: string | null;
 }) {
   const [registry, setRegistry] = useState<DeviceRegistrySummary | null>(null);
   const [localDeviceId, setLocalDeviceId] = useState<string | null>(null);
@@ -74,6 +78,8 @@ export function useDeviceAuthState(params: {
     }
     return readPendingDevicePairing();
   });
+  const localLabelRef = useRef<string>('Device');
+  const localTypeRef = useRef<string>('other');
 
   const policy: DevicePolicy = useMemo(
     () => normalizeDevicePolicy(registry?.policy),
@@ -103,6 +109,8 @@ export function useDeviceAuthState(params: {
       ]);
       setRegistry(summary);
       setLocalDeviceId(localReg?.deviceId ?? null);
+      if (localReg?.label) localLabelRef.current = localReg.label;
+      if (localReg?.deviceType) localTypeRef.current = localReg.deviceType;
 
       if (localReg?.deviceId && summary?.devices.some((d) => d.deviceId === localReg.deviceId && d.status === 'active')) {
         setDeviceProofSigner((method, path, body) =>
@@ -120,6 +128,41 @@ export function useDeviceAuthState(params: {
     void refresh();
     return () => setDeviceProofSigner(null);
   }, [refresh]);
+
+  const pulseHeartbeat = useCallback(async () => {
+    if (
+      !params.apiToken ||
+      !params.userPnIdentifier ||
+      !params.sessionId ||
+      !localDeviceId ||
+      !isKeyedSession
+    ) {
+      return;
+    }
+    await sendDeviceHeartbeat({
+      userPnIdentifier: params.userPnIdentifier,
+      authToken: params.apiToken,
+      deviceId: localDeviceId,
+      sessionId: params.sessionId,
+      label: localLabelRef.current,
+      deviceType: localTypeRef.current,
+    });
+  }, [
+    params.apiToken,
+    params.userPnIdentifier,
+    params.sessionId,
+    localDeviceId,
+    isKeyedSession,
+  ]);
+
+  useEffect(() => {
+    if (!isKeyedSession) return;
+    void pulseHeartbeat();
+    const id = window.setInterval(() => {
+      void pulseHeartbeat();
+    }, HEARTBEAT_INTERVAL_MS);
+    return () => window.clearInterval(id);
+  }, [isKeyedSession, pulseHeartbeat]);
 
   const can = useCallback(
     (capability: DeviceCapabilityId | string) =>

@@ -17,14 +17,12 @@ jest.mock('./storage/deviceStorageService', () => ({
   loadDeviceBundle: jest.fn(),
   listDevices: jest.fn(),
   readPolicy: jest.fn(),
-  updateLastSeen: jest.fn(),
 }));
 
 const deviceStorage = jest.requireMock('./storage/deviceStorageService') as {
   loadDeviceBundle: jest.Mock;
   listDevices: jest.Mock;
   readPolicy: jest.Mock;
-  updateLastSeen: jest.Mock;
 };
 
 jest.mock('./pnOAuthService', () => ({
@@ -42,7 +40,6 @@ jest.mock('./deviceSheetsService', () => ({
     getOrCreateSpreadsheet: jest.fn(),
     readPolicy: jest.fn(),
     listDevices: jest.fn(),
-    updateLastSeen: jest.fn(),
   },
 }));
 

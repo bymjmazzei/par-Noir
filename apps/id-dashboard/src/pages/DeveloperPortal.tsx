@@ -25,6 +25,7 @@ export const DeveloperPortal: React.FC<DeveloperPortalProps> = ({ authenticatedU
   const deviceAuth = useDeviceAuthState({
     apiToken,
     userPnIdentifier: recoveryPnId,
+    sessionId: authenticatedUser?.id ?? null,
   });
   const canProfileWrite = deviceAuth.can(DEVICE_CAPABILITIES.profileWrite);
   const [showFeedCreator, setShowFeedCreator] = useState(false);

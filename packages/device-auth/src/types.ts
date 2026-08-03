@@ -5,13 +5,21 @@ export type DeviceType = 'mobile' | 'desktop' | 'tablet' | 'other';
 export interface DeviceRow {
   deviceId: string;
   devicePublicKey: string;
+  /** Placeholder when privateDisplay is sealed (legacy rows may still have cleartext). */
   label: string;
+  /** Placeholder when privateDisplay is sealed (legacy rows may still have cleartext). */
   deviceType: DeviceType;
   keyType: DeviceKeyType;
   status: DeviceStatus;
   isPrimary: boolean;
   createdAt: string;
+  /** Placeholder when privateDisplay is sealed (legacy rows may still have cleartext). */
   lastSeenAt: string;
+  /**
+   * Opaque client-sealed JSON of { label, deviceType, lastSeenAt }.
+   * API stores and returns this blob without decrypting.
+   */
+  privateDisplay?: string;
 }
 
 export interface DevicePolicy {

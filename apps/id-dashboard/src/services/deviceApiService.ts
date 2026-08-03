@@ -2,10 +2,12 @@ import { API_ENDPOINT } from '../config/api';
 import {
   generateDeviceKeypair,
   type DevicePolicy,
+  type DeviceType,
 } from '@par-noir/device-auth';
+import { SecureCredentialManager } from '@par-noir/identity-crypto';
+import { sealDevicePrivateDisplay } from '@par-noir/device-client';
 import { deviceProofHeaders } from './deviceProofContext';
 import {
-  importStoredPrivateKey,
   loadDeviceRegistration,
   persistNewKeypair,
   type StoredDeviceRegistration,
@@ -22,6 +24,7 @@ export interface DeviceRegistrySummary {
     isPrimary: boolean;
     createdAt: string;
     lastSeenAt: string;
+    privateDisplay?: string;
   }>;
   policy: Pick<DevicePolicy, 'unkeyedAllows' | 'firstDeviceKeyedAt'>;
   hasKeyedDevices: boolean;
@@ -47,6 +50,39 @@ async function apiFetch(
     headers: authHeaders(authToken, proof),
     body: body != null ? JSON.stringify(body) : undefined,
   });
+}
+
+function resolveSessionSecrets(sessionId: string): { pnName: string; passcode: string } {
+  const creds = SecureCredentialManager.getCredentials(sessionId);
+  if (!creds?.pnName || !creds?.passcode) {
+    throw new Error('Unlock required to seal device display fields');
+  }
+  return { pnName: creds.pnName, passcode: creds.passcode };
+}
+
+async function buildPrivateDisplayBlob(params: {
+  sessionId: string;
+  label: string;
+  deviceType: DeviceType | string;
+  lastSeenAt?: string;
+}): Promise<string> {
+  const { pnName, passcode } = resolveSessionSecrets(params.sessionId);
+  const deviceType = (params.deviceType || 'other') as DeviceType;
+  return sealDevicePrivateDisplay(
+    {
+      label: params.label || 'Device',
+      deviceType:
+        deviceType === 'mobile' ||
+        deviceType === 'desktop' ||
+        deviceType === 'tablet' ||
+        deviceType === 'other'
+          ? deviceType
+          : 'other',
+      lastSeenAt: params.lastSeenAt || new Date().toISOString(),
+    },
+    pnName,
+    passcode
+  );
 }
 
 export async function fetchDeviceRegistry(
@@ -108,8 +144,7 @@ export async function registerDeviceOnServer(params: {
   authToken: string;
   deviceId: string;
   devicePublicKey: string;
-  label?: string;
-  deviceType?: string;
+  privateDisplay: string;
   pairingNonce?: string;
   isPrimary?: boolean;
 }): Promise<{ success: boolean; deviceId: string; firstDevice: boolean }> {
@@ -118,8 +153,7 @@ export async function registerDeviceOnServer(params: {
     userPnIdentifier: params.userPnIdentifier,
     deviceId: params.deviceId,
     devicePublicKey: params.devicePublicKey,
-    label: params.label,
-    deviceType: params.deviceType,
+    privateDisplay: params.privateDisplay,
     pairingNonce: params.pairingNonce,
     isPrimary: params.isPrimary,
   };
@@ -148,19 +182,32 @@ export async function revokeDeviceOnServer(
   }
 }
 
-export async function sendDeviceHeartbeat(
-  userPnIdentifier: string,
-  authToken: string,
-  deviceId: string
-): Promise<void> {
-  const path = `/api/devices/${encodeURIComponent(deviceId)}/heartbeat`;
-  const res = await apiFetch(authToken, 'POST', path, { userPnIdentifier });
+export async function sendDeviceHeartbeat(params: {
+  userPnIdentifier: string;
+  authToken: string;
+  deviceId: string;
+  sessionId: string;
+  label?: string;
+  deviceType?: string;
+}): Promise<void> {
+  const privateDisplay = await buildPrivateDisplayBlob({
+    sessionId: params.sessionId,
+    label: params.label || 'Device',
+    deviceType: params.deviceType || 'other',
+    lastSeenAt: new Date().toISOString(),
+  });
+  const path = `/api/devices/${encodeURIComponent(params.deviceId)}/heartbeat`;
+  const res = await apiFetch(params.authToken, 'POST', path, {
+    userPnIdentifier: params.userPnIdentifier,
+    privateDisplay,
+  });
   if (!res.ok) return;
 }
 
 export async function bootstrapThisDevice(params: {
   userPnIdentifier: string;
   authToken: string;
+  sessionId: string;
   label?: string;
   deviceType?: StoredDeviceRegistration['deviceType'];
 }): Promise<StoredDeviceRegistration> {
@@ -173,13 +220,17 @@ export async function bootstrapThisDevice(params: {
     label: params.label,
     deviceType: params.deviceType,
   });
+  const privateDisplay = await buildPrivateDisplayBlob({
+    sessionId: params.sessionId,
+    label: reg.label,
+    deviceType: reg.deviceType,
+  });
   await registerDeviceOnServer({
     userPnIdentifier: params.userPnIdentifier,
     authToken: params.authToken,
     deviceId: reg.deviceId,
     devicePublicKey: reg.publicKey,
-    label: reg.label,
-    deviceType: reg.deviceType,
+    privateDisplay,
     isPrimary: true,
   });
   return reg;
@@ -188,6 +239,7 @@ export async function bootstrapThisDevice(params: {
 export async function completePairingFromNonce(params: {
   userPnIdentifier: string;
   authToken: string;
+  sessionId: string;
   pairingNonce: string;
   label?: string;
 }): Promise<StoredDeviceRegistration> {
@@ -199,13 +251,17 @@ export async function completePairingFromNonce(params: {
     privateKey: keypair.privateKey,
     label: params.label,
   });
+  const privateDisplay = await buildPrivateDisplayBlob({
+    sessionId: params.sessionId,
+    label: reg.label,
+    deviceType: reg.deviceType,
+  });
   await registerDeviceOnServer({
     userPnIdentifier: params.userPnIdentifier,
     authToken: params.authToken,
     deviceId: reg.deviceId,
     devicePublicKey: reg.publicKey,
-    label: reg.label,
-    deviceType: reg.deviceType,
+    privateDisplay,
     pairingNonce: params.pairingNonce,
   });
   return reg;

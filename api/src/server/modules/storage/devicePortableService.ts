@@ -43,16 +43,23 @@ export async function upsertDevicePortable(
   );
 }
 
-export async function updateLastSeenPortable(
+export async function updatePrivateDisplayPortable(
   userPnIdentifier: string,
   deviceId: string,
+  privateDisplay: string,
   accountId?: string
 ): Promise<void> {
   const row = await getDeviceByIdPortable(userPnIdentifier, deviceId, accountId);
   if (!row || row.status !== 'active') return;
   await upsertDevicePortable(
     userPnIdentifier,
-    { ...row, lastSeenAt: new Date().toISOString() },
+    {
+      ...row,
+      privateDisplay,
+      label: '',
+      deviceType: 'other',
+      lastSeenAt: '',
+    },
     accountId
   );
 }
