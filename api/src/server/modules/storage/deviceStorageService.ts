@@ -19,8 +19,11 @@ export interface DeviceStorageBundle {
   token?: { access_token: string };
 }
 
-export async function loadDeviceBundle(pn: string): Promise<DeviceStorageBundle | null> {
-  const ctx = await getOwnerStorageContext(pn);
+export async function loadDeviceBundle(
+  pn: string,
+  opts?: { accessToken?: string }
+): Promise<DeviceStorageBundle | null> {
+  const ctx = await getOwnerStorageContext(pn, opts);
   if (!ctx) return null;
 
   if (ctx.kind === 'portable') {
@@ -42,7 +45,9 @@ export async function loadDeviceBundle(pn: string): Promise<DeviceStorageBundle 
     isPortable: false,
     spreadsheetId,
     metadataFolderId: ctx.metadataFolderId,
-    token: ctx.token
+    token: opts?.accessToken
+      ? { access_token: opts.accessToken }
+      : ctx.token
   };
 }
 

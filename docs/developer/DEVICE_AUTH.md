@@ -17,6 +17,8 @@ Portable unlock (`.pn` + pN name + passcode) remains available on any device. **
 
 Managed by `DeviceSheetsService` (API).
 
+Under **device cloud custody**, the API does not store Google OAuth secrets. Owner device write routes (`register`, policy, revoke, heartbeat) and `POST /api/storage/initialize` accept an ephemeral `X-PN-Cloud-Access-Token` header from the unlocked dashboard so Drive I/O can run without server-held refresh tokens. Credentials PUT merges preserve `pnDriveIndex` so reconnect cannot wipe the layout index.
+
 ### Private display seal (client-only)
 
 `label`, `deviceType`, and `lastSeenAt` are **not** stored cleartext for new registrations. The unlocked client seals them with pn name + passcode (AES-GCM / PBKDF2, same parameters as `EncryptionManager.encrypt`) into an opaque `privateDisplay` blob via `@par-noir/device-client`. The API stores and returns the blob without decrypting.

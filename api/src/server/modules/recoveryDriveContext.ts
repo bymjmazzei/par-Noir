@@ -16,7 +16,10 @@ function extractAccountId(account: Record<string, unknown>): string | undefined 
   );
 }
 
-export async function getRecoveryDriveContext(userPnIdentifier: string): Promise<RecoveryDriveContext | null> {
+export async function getRecoveryDriveContext(
+  userPnIdentifier: string,
+  opts?: { accessToken?: string }
+): Promise<RecoveryDriveContext | null> {
   const pnIdentifier = userPnIdentifier.startsWith('pn-') ? userPnIdentifier : `pn-${userPnIdentifier}`;
   const userCredentials = await storageCredentialsService.getCredentials(pnIdentifier);
   if (!userCredentials?.credentials) return null;
@@ -28,8 +31,14 @@ export async function getRecoveryDriveContext(userPnIdentifier: string): Promise
 
   const account = googleDriveAccounts[0];
   const accountId = extractAccountId(account);
+  const access_token =
+    opts?.accessToken ||
+    account.access_token ||
+    account.accessToken;
+  if (!access_token) return null;
+
   const token = {
-    access_token: account.access_token || account.accessToken,
+    access_token,
     refresh_token: account.refresh_token || account.refreshToken,
     expires_at: account.expires_at,
     expires_in: account.expires_in,

@@ -118,6 +118,30 @@ export const CloudReconnectHost: React.FC<CloudReconnectHostProps> = ({
           /* best-effort */
         }
       }
+
+      // Under device custody the API has no Google secrets — rebuild/verify Drive index
+      // with the ephemeral token so device register can write devices.xlsx.
+      const googleTok =
+        envelope.googleDriveAccounts?.[0]?.accessToken ||
+        (envelope.googleDriveAccounts?.[0] as { access_token?: string } | undefined)?.access_token;
+      if (apiToken && typeof googleTok === 'string' && googleTok.trim()) {
+        try {
+          await fetch(
+            `${API_ENDPOINT.replace(/\/$/, '')}/api/storage/initialize/${encodeURIComponent(pnIdentifier)}`,
+            {
+              method: 'POST',
+              headers: {
+                Authorization: `Bearer ${apiToken}`,
+                'X-PN-Cloud-Access-Token': googleTok.trim(),
+                'Content-Type': 'application/json'
+              }
+            }
+          );
+        } catch {
+          /* best-effort; keying will surface a clearer error if index still missing */
+        }
+      }
+
       markReady();
       try {
         window.dispatchEvent(new CustomEvent(PN_CLOUD_CREDENTIALS_READY_EVENT));
@@ -126,7 +150,7 @@ export const CloudReconnectHost: React.FC<CloudReconnectHostProps> = ({
       }
       onCloudReady?.();
     },
-    [pnIdentifier, sessionId, persistMode, isKeyedSession, markReady, onCloudReady]
+    [pnIdentifier, sessionId, persistMode, isKeyedSession, markReady, onCloudReady, apiToken]
   );
 
   const handleReconnect = useCallback(() => {

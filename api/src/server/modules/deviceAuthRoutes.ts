@@ -21,6 +21,7 @@ import {
   requireKeyedDevice,
 } from './deviceCapabilityService';
 import { consumePairingNonce, storePairingNonce } from './devicePairingNonceStore';
+import { extractCloudAccessToken } from './cloudAccessToken';
 
 const NONCE_TTL_MS = 5 * 60 * 1000;
 
@@ -33,8 +34,8 @@ function bearerPn(req: Request): string | null {
   return payload.pnIdentifier.startsWith('pn-') ? payload.pnIdentifier : `pn-${payload.pnIdentifier}`;
 }
 
-async function storageBundle(pn: string) {
-  return loadDeviceBundle(pn);
+async function storageBundle(pn: string, req?: Request) {
+  return loadDeviceBundle(pn, { accessToken: extractCloudAccessToken(req) });
 }
 
 export function registerDeviceAuthRoutes(app: Application): void {
@@ -70,7 +71,7 @@ export function registerDeviceAuthRoutes(app: Application): void {
       const pn = req.params.userPnIdentifier.startsWith('pn-')
         ? req.params.userPnIdentifier
         : `pn-${req.params.userPnIdentifier}`;
-      const bundle = await storageBundle(pn);
+      const bundle = await storageBundle(pn, req);
       if (!bundle) return res.status(404).json({ error: 'Storage not connected' });
       const policy = await readPolicy(bundle);
       return res.json({ policy });
@@ -97,7 +98,7 @@ export function registerDeviceAuthRoutes(app: Application): void {
         return res.status(400).json({ error: 'unkeyedAllows array required' });
       }
 
-      const bundle = await storageBundle(pn);
+      const bundle = await storageBundle(pn, req);
       if (!bundle) return res.status(404).json({ error: 'Storage not connected' });
 
       const existing = await readPolicy(bundle);
@@ -170,8 +171,16 @@ export function registerDeviceAuthRoutes(app: Application): void {
         return res.status(400).json({ error: 'privateDisplay required' });
       }
 
-      const bundle = await storageBundle(pn);
-      if (!bundle) return res.status(404).json({ error: 'Storage not connected' });
+      const cloudToken = extractCloudAccessToken(req);
+      const bundle = await storageBundle(pn, req);
+      if (!bundle) {
+        return res.status(404).json({
+          error: 'Storage not connected',
+          error_description: cloudToken
+            ? 'Drive layout is incomplete on the server. Open Storage once after reconnecting Google Drive, then try again.'
+            : 'Reconnect Google Drive on this device first, then key the device.',
+        });
+      }
 
       const active = await listDevices(bundle, false);
 
@@ -226,7 +235,7 @@ export function registerDeviceAuthRoutes(app: Application): void {
 
       const { userPnIdentifier } = req.body ?? {};
       const pn = String(userPnIdentifier || gate.ctx.pnIdentifier);
-      const bundle = await storageBundle(pn);
+      const bundle = await storageBundle(pn, req);
       if (!bundle) return res.status(404).json({ error: 'Storage not connected' });
 
       const row = await getDeviceById(bundle, req.params.deviceId);
@@ -255,7 +264,7 @@ export function registerDeviceAuthRoutes(app: Application): void {
         return res.status(400).json({ error: 'privateDisplay required' });
       }
 
-      const bundle = await storageBundle(gate.ctx.pnIdentifier);
+      const bundle = await storageBundle(gate.ctx.pnIdentifier, req);
       if (!bundle) return res.status(404).json({ error: 'Storage not connected' });
 
       await updateDevicePrivateDisplay(bundle, req.params.deviceId, privateDisplay.trim());

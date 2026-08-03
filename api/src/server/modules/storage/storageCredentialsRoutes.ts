@@ -97,6 +97,19 @@ export function setupStorageCredentialsRoutes(app: Application, deps: StorageCre
             `[StorageCredentials PUT] DEVICE_CLOUD_CUSTODY=1 — stripped cloud secrets for identity`
           );
         }
+
+        // Merge with existing so reconnect/layout updates cannot wipe pnDriveIndex / sheet IDs.
+        const existingRecord = await storageCredentialsService.getCredentials(pnIdentifier);
+        const existingCreds = (existingRecord?.credentials || {}) as Record<string, unknown>;
+        const incoming = credentialsToStore as Record<string, unknown>;
+        credentialsToStore = {
+          ...existingCreds,
+          ...incoming,
+          pnDriveIndex: incoming.pnDriveIndex ?? existingCreds.pnDriveIndex,
+          cachedFolderIds: incoming.cachedFolderIds ?? existingCreds.cachedFolderIds,
+          driveFolderId: incoming.driveFolderId ?? existingCreds.driveFolderId,
+        };
+
         const record = await storageCredentialsService.upsertCredentials(
           pnIdentifier,
           credentialsToStore,
@@ -287,20 +300,24 @@ export function setupStorageCredentialsRoutes(app: Application, deps: StorageCre
         const account = googleDriveAccounts.length > 0 ? googleDriveAccounts[0] : null;
         const accountId = account ? extractAccountId(account) : undefined;
 
-        // Use a fresh (auto-refreshed) access token from the proxy. Init can take several minutes;
-        // a token minted at OAuth time may expire mid-build and silently stall folder/sheet creation.
-        let freshAccessToken: string | null = null;
-        try {
-          freshAccessToken = await googleDriveProxyService.getAccessToken(
-            pnIdentifier,
-            accountId,
-            [pnIdentifier]
-          );
-        } catch (tokenErr: any) {
-          console.warn(
-            `[StorageInitialize POST] Could not refresh access token, falling back to stored token:`,
-            tokenErr?.message || tokenErr
-          );
+        // Use a fresh (auto-refreshed) access token from the proxy, or an ephemeral
+        // device-forwarded token under cloud custody (API has no stored Google secrets).
+        const { extractCloudAccessToken } = await import('../cloudAccessToken');
+        const forwardedToken = extractCloudAccessToken(req);
+        let freshAccessToken: string | null = forwardedToken || null;
+        if (!freshAccessToken) {
+          try {
+            freshAccessToken = await googleDriveProxyService.getAccessToken(
+              pnIdentifier,
+              accountId,
+              [pnIdentifier]
+            );
+          } catch (tokenErr: any) {
+            console.warn(
+              `[StorageInitialize POST] Could not refresh access token, falling back to stored token:`,
+              tokenErr?.message || tokenErr
+            );
+          }
         }
 
         const token = {
@@ -313,7 +330,9 @@ export function setupStorageCredentialsRoutes(app: Application, deps: StorageCre
 
         if (!accessToken) {
           return res.status(400).json({
-            error: 'No Google Drive access token available for this identity'
+            error: 'No Google Drive access token available for this identity',
+            error_description:
+              'Under device custody, reconnect Google Drive on this device and retry initialize with a cloud access token.'
           });
         }
 

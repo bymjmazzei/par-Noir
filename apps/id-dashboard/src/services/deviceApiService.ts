@@ -6,6 +6,7 @@ import {
 } from '@par-noir/device-auth';
 import { SecureCredentialManager } from '@par-noir/identity-crypto';
 import { sealDevicePrivateDisplay } from '@par-noir/device-client';
+import { getSessionCloudCredentials } from '@par-noir/device-cloud-credentials';
 import { deviceProofHeaders } from './deviceProofContext';
 import {
   loadDeviceRegistration,
@@ -30,6 +31,22 @@ export interface DeviceRegistrySummary {
   hasKeyedDevices: boolean;
 }
 
+const PN_CLOUD_ACCESS_TOKEN_HEADER = 'X-PN-Cloud-Access-Token';
+
+/** Local Google access token for API Drive writes under device custody (never log). */
+export function resolveLocalGoogleAccessToken(pnIdentifier: string): string | null {
+  try {
+    const env = getSessionCloudCredentials(pnIdentifier);
+    const acct = env?.googleDriveAccounts?.[0] as
+      | { accessToken?: string; access_token?: string }
+      | undefined;
+    const tok = acct?.accessToken || acct?.access_token;
+    return typeof tok === 'string' && tok.trim() ? tok.trim() : null;
+  } catch {
+    return null;
+  }
+}
+
 function authHeaders(authToken: string, extra?: Record<string, string>) {
   return {
     'Content-Type': 'application/json',
@@ -38,16 +55,23 @@ function authHeaders(authToken: string, extra?: Record<string, string>) {
   };
 }
 
+function cloudTokenHeaders(pnIdentifier: string): Record<string, string> {
+  const tok = resolveLocalGoogleAccessToken(pnIdentifier);
+  return tok ? { [PN_CLOUD_ACCESS_TOKEN_HEADER]: tok } : {};
+}
+
 async function apiFetch(
   authToken: string,
   method: string,
   path: string,
-  body?: unknown
+  body?: unknown,
+  pnIdentifierForCloudToken?: string
 ): Promise<Response> {
   const proof = await deviceProofHeaders(method, path, body);
+  const cloud = pnIdentifierForCloudToken ? cloudTokenHeaders(pnIdentifierForCloudToken) : {};
   return fetch(`${API_ENDPOINT}${path}`, {
     method,
-    headers: authHeaders(authToken, proof),
+    headers: authHeaders(authToken, { ...proof, ...cloud }),
     body: body != null ? JSON.stringify(body) : undefined,
   });
 }
@@ -117,7 +141,7 @@ export async function updateDevicePolicy(
 ): Promise<DevicePolicy> {
   const path = `/api/devices/${encodeURIComponent(userPnIdentifier)}/policy`;
   const body = { unkeyedAllows };
-  const res = await apiFetch(authToken, 'PATCH', path, body);
+  const res = await apiFetch(authToken, 'PATCH', path, body, userPnIdentifier);
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
     throw new Error((err as { error?: string }).error || 'Failed to update device policy');
@@ -131,7 +155,7 @@ export async function createPairingNonce(
   authToken: string
 ): Promise<{ pairingNonce: string; expiresAt: string }> {
   const path = '/api/devices/pairing/nonce';
-  const res = await apiFetch(authToken, 'POST', path, { userPnIdentifier });
+  const res = await apiFetch(authToken, 'POST', path, { userPnIdentifier }, userPnIdentifier);
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
     throw new Error((err as { error?: string }).error || 'Failed to create pairing nonce');
@@ -207,12 +231,16 @@ export async function registerDeviceOnServer(params: {
   };
   const res = await fetch(`${API_ENDPOINT}${path}`, {
     method: 'POST',
-    headers: authHeaders(params.authToken),
+    headers: authHeaders(params.authToken, cloudTokenHeaders(params.userPnIdentifier)),
     body: JSON.stringify(body),
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
-    throw new Error((err as { error?: string }).error || 'Failed to register device');
+    throw new Error(
+      (err as { error_description?: string; error?: string }).error_description ||
+        (err as { error?: string }).error ||
+        'Failed to register device'
+    );
   }
   return res.json();
 }
@@ -223,7 +251,7 @@ export async function revokeDeviceOnServer(
   deviceId: string
 ): Promise<void> {
   const path = `/api/devices/${encodeURIComponent(deviceId)}/revoke`;
-  const res = await apiFetch(authToken, 'POST', path, { userPnIdentifier });
+  const res = await apiFetch(authToken, 'POST', path, { userPnIdentifier }, userPnIdentifier);
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
     throw new Error((err as { error?: string }).error || 'Failed to revoke device');
@@ -245,10 +273,16 @@ export async function sendDeviceHeartbeat(params: {
     lastSeenAt: new Date().toISOString(),
   });
   const path = `/api/devices/${encodeURIComponent(params.deviceId)}/heartbeat`;
-  const res = await apiFetch(params.authToken, 'POST', path, {
-    userPnIdentifier: params.userPnIdentifier,
-    privateDisplay,
-  });
+  const res = await apiFetch(
+    params.authToken,
+    'POST',
+    path,
+    {
+      userPnIdentifier: params.userPnIdentifier,
+      privateDisplay,
+    },
+    params.userPnIdentifier
+  );
   if (!res.ok) return;
 }
 

@@ -22,7 +22,10 @@ function normalizePn(pn: string): string {
   return pn.startsWith('pn-') ? pn : `pn-${pn}`;
 }
 
-export async function getOwnerStorageContext(userPnIdentifier: string): Promise<OwnerStorageContext | null> {
+export async function getOwnerStorageContext(
+  userPnIdentifier: string,
+  opts?: { accessToken?: string }
+): Promise<OwnerStorageContext | null> {
   const pnIdentifier = normalizePn(userPnIdentifier);
   const record = await storageCredentialsService.getCredentials(pnIdentifier);
   if (!record?.credentials) return null;
@@ -31,7 +34,7 @@ export async function getOwnerStorageContext(userPnIdentifier: string): Promise<
     return { kind: 'portable', pnIdentifier, accountId: undefined };
   }
 
-  const drive = await getRecoveryDriveContext(pnIdentifier);
+  const drive = await getRecoveryDriveContext(pnIdentifier, opts);
   if (!drive) return null;
 
   return {
