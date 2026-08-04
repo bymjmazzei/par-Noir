@@ -19,9 +19,6 @@ export function usePrivacyState() {
   const [showToolSettingsModal, setShowToolSettingsModal] = useState(false);
   const [selectedToolId, setSelectedToolId] = useState<string>('');
 
-  // Integration Settings Manager
-  const [showIntegrationSettings, setShowIntegrationSettings] = useState(false);
-
   const [showDataPointProposalModal, setShowDataPointProposalModal] = useState(false);
 
   return {
@@ -40,10 +37,6 @@ export function usePrivacyState() {
     setShowToolSettingsModal,
     selectedToolId,
     setSelectedToolId,
-
-    // Integration settings
-    showIntegrationSettings,
-    setShowIntegrationSettings,
 
     showDataPointProposalModal,
     setShowDataPointProposalModal

@@ -1,4 +1,5 @@
 import React from 'react';
+import { SectionInfo } from '../common/SectionInfo';
 
 interface RecoveryKeyGenerationModalProps {
   isOpen: boolean;
@@ -27,7 +28,16 @@ export function RecoveryKeyGenerationModal({
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-start justify-center z-50 overflow-y-auto p-4 sm:p-6">
       <div className="bg-modal-bg rounded-lg p-6 max-w-md w-full mx-4 my-8 max-h-[90vh] overflow-y-auto text-text-primary">
         <div className="flex justify-between items-center mb-8">
-          <h2 className="text-xl font-semibold">Generate Recovery Key</h2>
+          <div className="flex items-center gap-2">
+            <h2 className="text-xl font-semibold">Generate Recovery Key</h2>
+            <SectionInfo title="Generate Recovery Key">
+              <p>
+                Recovery keys trigger the custodian approval process. They do not directly unlock your
+                identity. Store them securely and consider providing copies to trusted individuals or
+                legal entities.
+              </p>
+            </SectionInfo>
+          </div>
           <button
             onClick={onClose}
             className="modal-close-button"
@@ -62,13 +72,6 @@ export function RecoveryKeyGenerationModal({
               className="w-full px-3 py-2 border border-input-border bg-input-bg rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
               placeholder="e.g., Safe deposit box, Lawyer's office"
             />
-          </div>
-          <div className="info-box p-3 rounded-md">
-            <p className="text-sm">
-              <strong>Important:</strong> Recovery keys trigger the custodian approval process. 
-              They do not directly unlock your identity. Store them securely and consider providing 
-              copies to trusted individuals or legal entities.
-            </p>
           </div>
           <div className="flex space-x-3">
             <button

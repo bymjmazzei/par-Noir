@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { GlobalPrivacySettings } from '../types/privacy';
+import { SectionInfo } from './common/SectionInfo';
 
 interface EnhancedPrivacyPanelProps {
   isOpen: boolean;
@@ -94,10 +95,12 @@ export const EnhancedPrivacyPanel: React.FC<EnhancedPrivacyPanelProps> = ({
         <div className="space-y-8">
           {/* Global Settings */}
           <div className="bg-secondary border border-border rounded-lg p-4">
-            <h3 className="text-lg font-medium text-text-primary mb-3">Global Settings</h3>
-            <p className="text-sm text-text-secondary mb-4">
-              These settings override all tool-specific permissions
-            </p>
+            <div className="flex items-center gap-2 mb-3">
+              <h3 className="text-lg font-medium text-text-primary">Global Settings</h3>
+              <SectionInfo title="Global Settings">
+                <p>These settings override all tool-specific permissions</p>
+              </SectionInfo>
+            </div>
             
             <div className="space-y-3">
               <label className="flex items-center justify-between">
@@ -158,10 +161,12 @@ export const EnhancedPrivacyPanel: React.FC<EnhancedPrivacyPanelProps> = ({
           {/* Dynamic Data Points */}
           {Object.keys(groupedDataPoints).length > 0 && (
             <div>
-              <h3 className="text-lg font-medium mb-4">Data Access Control</h3>
-              <p className="text-sm text-text-secondary mb-4">
-                Control access to specific data points. Global settings override individual tool permissions.
-              </p>
+              <div className="flex items-center gap-2 mb-4">
+                <h3 className="text-lg font-medium">Data Access Control</h3>
+                <SectionInfo title="Data Access Control">
+                  <p>Control access to specific data points. Global settings override individual tool permissions.</p>
+                </SectionInfo>
+              </div>
               
               {Object.entries(groupedDataPoints).map(([category, dataPoints]) => (
                 <div key={category} className="mb-6">
@@ -195,10 +200,12 @@ export const EnhancedPrivacyPanel: React.FC<EnhancedPrivacyPanelProps> = ({
           {/* Tool Permissions */}
           {Object.keys(localSettings.toolPermissions).length > 0 && (
             <div>
-              <h3 className="text-lg font-medium mb-4">Tool Permissions</h3>
-              <p className="text-sm text-text-secondary mb-4">
-                Manage permissions for individual tools
-              </p>
+              <div className="flex items-center gap-2 mb-4">
+                <h3 className="text-lg font-medium">Tool Permissions</h3>
+                <SectionInfo title="Tool Permissions">
+                  <p>Manage permissions for individual tools</p>
+                </SectionInfo>
+              </div>
               
               <div className="space-y-4">
                 {Object.entries(localSettings.toolPermissions).map(([toolId, tool]) => (

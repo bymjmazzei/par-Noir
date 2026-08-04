@@ -9,6 +9,7 @@ import { MonetizationTab } from '../components/monetization/MonetizationTab';
 import { SubPnTab } from '../components/subpn/SubPnTab';
 import { isIdentityVerificationAvailable } from '../config/verification';
 import { FileStorageAggregator } from '../components/storage/FileStorageAggregator';
+import { SectionInfo } from '../components/common/SectionInfo';
 
 export interface AuthenticatedShellProps {
   authenticatedUser: any;
@@ -55,7 +56,6 @@ export interface AuthenticatedShellProps {
   setShowVerificationModal: any;
   setShowEnhancedPrivacyPanel: any;
   setShowSessionManager: any;
-  setShowIntegrationSettings: any;
   setShowIntegrationDebugger: any;
   setShowDataPointProposalModal: any;
   setGlobalSettingsExpanded: any;
@@ -139,7 +139,6 @@ export function AuthenticatedShell(props: AuthenticatedShellProps) {
     setShowVerificationModal,
     setShowEnhancedPrivacyPanel,
     setShowSessionManager,
-    setShowIntegrationSettings,
     setShowIntegrationDebugger,
     setShowDataPointProposalModal,
     setGlobalSettingsExpanded,
@@ -437,10 +436,16 @@ export function AuthenticatedShell(props: AuthenticatedShellProps) {
                         
                         {/* Age Verification Section */}
                         <div className="bg-secondary rounded-lg p-6 mb-6">
-                          <h4 className="font-medium text-text-primary mb-2">Age Verification</h4>
-                          <p className="text-sm text-text-secondary mb-4">
-                            Verify your age to create ZKPs for age-restricted content access. Your age data point is used to generate proofs that you are over 18 or over 21 without revealing your actual date of birth.
-                          </p>
+                          <div className="flex items-center gap-2 mb-4">
+                            <h4 className="font-medium text-text-primary">Age Verification</h4>
+                            <SectionInfo title="Age Verification">
+                              <p>
+                                Verify your age to create ZKPs for age-restricted content access. Your age data point
+                                is used to generate proofs that you are over 18 or over 21 without revealing your
+                                actual date of birth.
+                              </p>
+                            </SectionInfo>
+                          </div>
                           {(verifiedDataPoints.has('age_attestation') || attestedDataPoints.has('age_attestation')) ? (
                             <div className="flex items-center gap-2 p-3 bg-green-900/20 border border-green-600 rounded-lg">
                               <CheckCircle className="w-5 h-5 text-green-400" />
@@ -474,13 +479,6 @@ export function AuthenticatedShell(props: AuthenticatedShellProps) {
                             className="px-3 py-2 text-sm border border-border rounded-lg hover:bg-hover text-text-primary"
                           >
                             Active sessions
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => setShowIntegrationSettings(true)}
-                            className="px-3 py-2 text-sm border border-border rounded-lg hover:bg-hover text-text-primary"
-                          >
-                            Integration settings
                           </button>
                           {import.meta.env.DEV && (
                             <button
@@ -729,13 +727,27 @@ export function AuthenticatedShell(props: AuthenticatedShellProps) {
                   {activeTab === 'delegation' && (
                     <div className="space-y-6">
                       <div>
-                        <h3 className="text-lg font-semibold text-text-primary mb-4">Delegation Management</h3>
-                        <p className="text-text-secondary mb-6">Manage delegations and permissions for your pN identities. Delegate specific capabilities to other pNs while maintaining control.</p>
+                        <div className="flex items-center gap-2 mb-4">
+                          <h3 className="text-lg font-semibold text-text-primary">Delegation Management</h3>
+                          <SectionInfo title="Delegation Management">
+                            <p>
+                              Manage delegations and permissions for your pN identities. Delegate specific
+                              capabilities to other pNs while maintaining control.
+                            </p>
+                          </SectionInfo>
+                        </div>
                         
                         <div className="space-y-6">
                           <div className="bg-modal-bg border border-border rounded-lg p-4">
-                            <h4 className="font-medium text-text-primary mb-3">Create New Delegation</h4>
-                            <p className="text-text-secondary mb-4">Grant specific permissions to another pN identity for limited access to your data or capabilities.</p>
+                            <div className="flex items-center gap-2 mb-3">
+                              <h4 className="font-medium text-text-primary">Create New Delegation</h4>
+                              <SectionInfo title="Create New Delegation">
+                                <p>
+                                  Grant specific permissions to another pN identity for limited access to your data
+                                  or capabilities.
+                                </p>
+                              </SectionInfo>
+                            </div>
                             <button 
                               onClick={() => setShowDelegationModal(true)}
                               className="modal-button"

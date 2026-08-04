@@ -131,7 +131,6 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
   const [storageQuotas, setStorageQuotas] = useState<Map<string, any>>(new Map());
   const [fileMetadataMap, setFileMetadataMap] = useState<Map<string, PublicMetadata>>(new Map());
 
-  const [showDesktopAppInfo, setShowDesktopAppInfo] = useState(false);
   const [editingFile, setEditingFile] = useState<AggregatedFile | null>(null);
   const [editForm, setEditForm] = useState<EditFormState>({ ...EMPTY_EDIT_FORM });
   const [openMenuFor, setOpenMenuFor] = useState<string | null>(null);
@@ -649,8 +648,6 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
     <div className="space-y-6 w-full min-w-0 max-w-full">
       <SecureFolderSection
         hideSecureFolderSection={hideSecureFolderSection}
-        showDesktopAppInfo={showDesktopAppInfo}
-        setShowDesktopAppInfo={setShowDesktopAppInfo}
       />
 
       <MultiCloudStoragePanel

@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { Layers, RefreshCw, Plus, Download, Shield, UserPlus, Trash2 } from 'lucide-react';
+import { SectionInfo } from '../common/SectionInfo';
 import { IdentityCrypto, VolumeIdGenerator, type EncryptedIdentity } from '@par-noir/identity-crypto';
 import { sealSubExportPayload, unsealSubExportPayload } from '../../utils/subIdentitySeal';
 import {
@@ -438,11 +439,13 @@ export const SubPnTab: React.FC<SubPnTabProps> = ({
         <h3 className="text-lg font-semibold mb-2 flex items-center gap-2">
           <Layers className="w-5 h-5" />
           Sub-pN and owned assets
+          <SectionInfo title="Sub-pN and owned assets">
+            <p>
+              Create sub-identities bound to your main pN (agents, devices, feeds). Register on the par Noir API with
+              your session token. Export requires your main passcode and the export passphrase you set at creation.
+            </p>
+          </SectionInfo>
         </h3>
-        <p className="text-sm text-text-secondary mb-4">
-          Create sub-identities bound to your main pN (agents, devices, feeds). Register on the par Noir API with your
-          session token. Export requires your main passcode and the export passphrase you set at creation.
-        </p>
       </div>
 
       {!accessToken && (
@@ -549,7 +552,27 @@ export const SubPnTab: React.FC<SubPnTabProps> = ({
         <div className="space-y-4 border border-border rounded-lg p-4 bg-secondary/30">
           <div className="flex justify-between items-start gap-4 flex-wrap">
             <div>
-              <h4 className="font-semibold">Mini dashboard — {String(selected.metadata?.label || selected.kind)}</h4>
+              <h4 className="font-semibold flex items-center gap-2">
+                Mini dashboard — {String(selected.metadata?.label || selected.kind)}
+                <SectionInfo title="About this sub type">
+                  {selected.kind === 'ai_agent' && (
+                    <p>Use Delegations below to scope ZKP or integrations when enforcement lands on those routes.</p>
+                  )}
+                  {selected.kind === 'feed' && <p>Link feed folders from Storage; registry row tracks this sub subject.</p>}
+                  {selected.kind === 'device' && (
+                    <p>
+                      <strong>Device:</strong> Your phone, laptop, or tablet. For device sync and per-device identity;
+                      profile in metadata and Drive.
+                    </p>
+                  )}
+                  {selected.kind === 'smart_device' && (
+                    <p>
+                      <strong>Smart device:</strong> IoT and smart-home devices (speakers, appliances). For connected
+                      things that act on your behalf; extend metadata for connections.
+                    </p>
+                  )}
+                </SectionInfo>
+              </h4>
               <p className="text-xs text-text-secondary mt-1">Kind: {selected.kind}</p>
               <p className="text-xs text-text-secondary font-mono break-all">Subject: {selected.subjectPnIdentifier}</p>
             </div>
@@ -569,34 +592,17 @@ export const SubPnTab: React.FC<SubPnTabProps> = ({
             </button>
           </div>
 
-          <div className="text-sm text-text-secondary space-y-1">
-            {selected.kind === 'ai_agent' && (
-              <p>Use Delegations below to scope ZKP or integrations when enforcement lands on those routes.</p>
-            )}
-            {selected.kind === 'feed' && <p>Link feed folders from Storage; registry row tracks this sub subject.</p>}
-            {selected.kind === 'device' && (
-              <p>
-                <strong>Device:</strong> Your phone, laptop, or tablet. For device sync and per-device identity; profile
-                in metadata and Drive.
-              </p>
-            )}
-            {selected.kind === 'smart_device' && (
-              <p>
-                <strong>Smart device:</strong> IoT and smart-home devices (speakers, appliances). For connected things
-                that act on your behalf; extend metadata for connections.
-              </p>
-            )}
-          </div>
-
           <div className="border-t border-border pt-4 space-y-3">
             <h5 className="font-medium flex items-center gap-2">
               <Shield className="w-4 h-4" />
               Rotate sub identity (compromised)
+              <SectionInfo title="Rotate sub identity (compromised)">
+                <p>
+                  Issues a new cryptographic subject for this sub, revokes the old subject on the network, and
+                  downloads a fresh export backup. Requires root re-auth.
+                </p>
+              </SectionInfo>
             </h5>
-            <p className="text-xs text-text-secondary">
-              Issues a new cryptographic subject for this sub, revokes the old subject on the network, and downloads a
-              fresh export backup. Requires root re-auth.
-            </p>
             <button
               type="button"
               onClick={() => {
@@ -614,10 +620,13 @@ export const SubPnTab: React.FC<SubPnTabProps> = ({
             <h5 className="font-medium flex items-center gap-2">
               <Download className="w-4 h-4" />
               Export sub backup
+              <SectionInfo title="Export sub backup">
+                <p>
+                  Full re-auth is required before export: root identity file + pN name + passcode, then export
+                  passphrase.
+                </p>
+              </SectionInfo>
             </h5>
-            <p className="text-xs text-text-secondary">
-              Full re-auth is required before export: root identity file + pN name + passcode, then export passphrase.
-            </p>
             <input
               type="password"
               className="w-full max-w-md rounded-md bg-secondary border border-border px-3 py-2 text-sm"

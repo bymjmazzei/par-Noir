@@ -3,7 +3,6 @@ import {
   ChevronLeft, 
   ChevronRight, 
   X, 
-  Info, 
   User, 
   Shield, 
   Download, 
@@ -12,10 +11,10 @@ import {
   Settings,
   CheckCircle,
   SkipForward,
-  HelpCircle,
   Usb,
   CreditCard
 } from 'lucide-react';
+import { SectionInfo } from './common/SectionInfo';
 
 interface OnboardingWizardProps {
   isOpen: boolean;
@@ -55,7 +54,6 @@ export const OnboardingWizard: React.FC<OnboardingWizardProps> = ({
   onNavigateToSection
 }) => {
   const [currentStep, setCurrentStep] = useState(0);
-  const [showInfo, setShowInfo] = useState(false);
   const [nickname, setNickname] = useState(currentUser?.nickname || '');
   const [completedSteps, setCompletedSteps] = useState<Set<string>>(new Set());
   const [hasNfcSupport, setHasNfcSupport] = useState(false);
@@ -284,7 +282,6 @@ You can always return to this wizard or access any feature from the main dashboa
   const handleNext = () => {
     if (currentStep < steps.length - 1) {
       setCurrentStep(currentStep + 1);
-      setShowInfo(false);
     } else {
       onComplete();
     }
@@ -293,7 +290,6 @@ You can always return to this wizard or access any feature from the main dashboa
   const handlePrevious = () => {
     if (currentStep > 0) {
       setCurrentStep(currentStep - 1);
-      setShowInfo(false);
     }
   };
 
@@ -322,8 +318,11 @@ You can always return to this wizard or access any feature from the main dashboa
           <div className="flex items-center space-x-3">
             {currentStepData.icon}
             <div>
-              <h2 className="text-xl font-semibold text-gray-900 dark:text-text-primary">
+              <h2 className="text-xl font-semibold text-gray-900 dark:text-text-primary flex items-center gap-2">
                 {currentStepData.title}
+                <SectionInfo title={currentStepData.title}>
+                  <div className="whitespace-pre-line">{currentStepData.infoContent}</div>
+                </SectionInfo>
               </h2>
               <p className="text-sm text-gray-600 dark:text-text-secondary">
                 Step {currentStep + 1} of {steps.length}
@@ -331,13 +330,6 @@ You can always return to this wizard or access any feature from the main dashboa
             </div>
           </div>
           <div className="flex items-center space-x-2">
-            <button
-              onClick={() => setShowInfo(!showInfo)}
-              className="p-2 text-gray-500 dark:text-text-secondary hover:text-gray-700 dark:hover:text-text-primary transition-colors"
-              title="More information"
-            >
-              <HelpCircle className="w-5 h-5" />
-            </button>
             <button
               onClick={onClose}
               className="p-2 text-gray-500 dark:text-text-secondary hover:text-gray-700 dark:hover:text-text-primary transition-colors"
@@ -380,20 +372,10 @@ You can always return to this wizard or access any feature from the main dashboa
 
         {/* Content */}
         <div className="p-6 overflow-y-auto max-h-[60vh]">
-          {showInfo ? (
-            <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-700 rounded-lg p-4">
-              <div className="flex items-start space-x-3">
-                <Info className="w-5 h-5 text-blue-600 dark:text-blue-400 mt-0.5 flex-shrink-0" />
-                <div className="text-sm text-gray-700 dark:text-text-primary whitespace-pre-line">
-                  {currentStepData.infoContent}
-                </div>
-              </div>
-            </div>
-          ) : (
-            <div className="space-y-6">
-              <p className="text-gray-700 dark:text-text-primary leading-relaxed">
-                {currentStepData.description}
-              </p>
+          <div className="space-y-6">
+            <p className="text-gray-700 dark:text-text-primary leading-relaxed">
+              {currentStepData.description}
+            </p>
 
               {/* Step-specific content */}
               {currentStepData.id === 'nickname' && (
@@ -554,7 +536,6 @@ You can always return to this wizard or access any feature from the main dashboa
                 </div>
               )}
             </div>
-          )}
         </div>
 
         {/* Footer */}

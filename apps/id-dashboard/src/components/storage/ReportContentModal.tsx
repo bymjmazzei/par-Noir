@@ -7,6 +7,7 @@ import React, { useState } from 'react';
 import { AlertCircle, X } from 'lucide-react';
 import { submitContentReport } from '../../services/reportContentService';
 import type { AggregatedFile } from '../../types/aggregator';
+import { SectionInfo } from '../common/SectionInfo';
 
 interface ReportContentModalProps {
   isOpen: boolean;
@@ -87,7 +88,16 @@ export const ReportContentModal: React.FC<ReportContentModalProps> = ({
       <div className="bg-neutral-900 border border-neutral-700 rounded-lg shadow-xl max-w-md w-full mx-4">
         {/* Header */}
         <div className="flex items-center justify-between p-4 border-b border-neutral-700">
-          <h2 className="text-xl font-semibold text-white">Report Content</h2>
+          <div className="flex items-center gap-2">
+            <h2 className="text-xl font-semibold text-white">Report Content</h2>
+            <SectionInfo title="How reporting works">
+              <ul>
+                <li>Reports are reviewed automatically</li>
+                <li>5 NSFW reports will automatically flag content</li>
+                <li>The content owner will be notified</li>
+              </ul>
+            </SectionInfo>
+          </div>
           <button
             onClick={handleClose}
             disabled={isSubmitting}
@@ -145,19 +155,6 @@ export const ReportContentModal: React.FC<ReportContentModalProps> = ({
               rows={3}
               className="w-full p-2 bg-neutral-800 border border-neutral-700 rounded text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 resize-none"
             />
-          </div>
-
-          {/* Info Message */}
-          <div className="bg-blue-900/20 border border-blue-700 rounded-lg p-3 flex items-start space-x-2">
-            <AlertCircle className="h-5 w-5 text-blue-400 flex-shrink-0 mt-0.5" />
-            <div className="text-sm text-blue-300">
-              <p className="font-medium mb-1">How reporting works:</p>
-              <ul className="list-disc list-inside space-y-1 text-xs">
-                <li>Reports are reviewed automatically</li>
-                <li>5 NSFW reports will automatically flag content</li>
-                <li>The content owner will be notified</li>
-              </ul>
-            </div>
           </div>
 
           {/* Error Message */}

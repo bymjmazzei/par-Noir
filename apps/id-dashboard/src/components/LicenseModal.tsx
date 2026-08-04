@@ -7,6 +7,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { Key, Shield, CheckCircle, X, Copy, ExternalLink, AlertCircle } from 'lucide-react';
+import { SectionInfo } from './common/SectionInfo';
 import { apiKeyService, ApiKey } from '../services/api/ApiKeyService';
 import { IdentityVerificationModal } from './IdentityVerificationModal';
 import type { VerifiedIdentityData } from '../types/verifiedIdentity';
@@ -193,13 +194,15 @@ export const LicenseModal: React.FC<LicenseModalProps> = ({
                   <div className="flex items-start space-x-3">
                     <Shield className="h-5 w-5 text-blue-400 flex-shrink-0 mt-0.5" />
                     <div className="flex-1">
-                      <h3 className="text-sm font-medium text-blue-300 mb-2">
+                      <h3 className="text-sm font-medium text-blue-300 mb-2 flex items-center gap-2">
                         Activate Your API Key
+                        <SectionInfo title="Activate Your API Key" className="text-blue-300 hover:text-blue-100">
+                          <p>
+                            To activate your API key and access par Noir APIs, you need to complete identity
+                            verification. This ensures compliance with AML/KYC requirements for API access.
+                          </p>
+                        </SectionInfo>
                       </h3>
-                      <p className="text-sm text-blue-200 mb-4">
-                        To activate your API key and access par Noir APIs, you need to complete identity verification.
-                        This ensures compliance with AML/KYC requirements for API access.
-                      </p>
           <button
                         onClick={handleActivate}
                         disabled={isLoading}
@@ -215,13 +218,15 @@ export const LicenseModal: React.FC<LicenseModalProps> = ({
                   <div className="flex items-start space-x-3">
                     <CheckCircle className="h-5 w-5 text-green-400 flex-shrink-0 mt-0.5" />
                     <div className="flex-1">
-                      <h3 className="text-sm font-medium text-green-300 mb-2">
+                      <h3 className="text-sm font-medium text-green-300 mb-2 flex items-center gap-2">
                         API Key Active
-                </h3>
-                      <p className="text-sm text-green-200 mb-4">
-                        Your API key is active and ready to use. You can now access par Noir APIs for OAuth authentication,
-                        data point requests, and content portability.
-                      </p>
+                        <SectionInfo title="API Key Active" className="text-green-300 hover:text-green-100">
+                          <p>
+                            Your API key is active and ready to use. You can now access par Noir APIs for OAuth
+                            authentication, data point requests, and content portability.
+                          </p>
+                        </SectionInfo>
+                      </h3>
                     </div>
                   </div>
                 </div>

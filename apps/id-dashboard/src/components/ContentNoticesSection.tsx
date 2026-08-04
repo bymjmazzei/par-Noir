@@ -6,6 +6,7 @@
 import React, { useEffect, useState } from 'react';
 import { AlertCircle } from 'lucide-react';
 import { getContentNotices, type ContentNotice } from '../services/contentNoticesService';
+import { SectionInfo } from './common/SectionInfo';
 
 interface ContentNoticesSectionProps {
   accessToken: string | null | undefined;
@@ -45,19 +46,24 @@ export function ContentNoticesSection({ accessToken }: ContentNoticesSectionProp
       <h3 className="font-semibold text-sm text-neutral-300 mb-2 flex items-center gap-2">
         <AlertCircle className="h-4 w-4" />
         Content status
+        <SectionInfo title="Content status">
+          <p>
+            Pending review means content was flagged for copyright review; human reviewers will decide.
+          </p>
+          <p>
+            Removed from index means items were removed from the par Noir index and third-party indexes only.
+            Your file is still in your Google Drive; we do not host or delete your files.
+          </p>
+        </SectionInfo>
       </h3>
       {pending.length > 0 && (
         <div className="mb-2 text-sm text-amber-200/90">
           <strong>{pending.length} item{pending.length !== 1 ? 's' : ''} pending review.</strong>
-          <span className="text-neutral-400 ml-1">Content was flagged for copyright review; human reviewers will decide.</span>
         </div>
       )}
       {takenDown.length > 0 && (
         <div className="text-sm text-neutral-300">
           <strong>{takenDown.length} item{takenDown.length !== 1 ? 's' : ''} removed from index (copyright).</strong>
-          <p className="text-neutral-400 mt-1">
-            These items have been removed from the par Noir index and third-party indexes only. Your file is still in your Google Drive; we do not host or delete your files.
-          </p>
         </div>
       )}
     </section>

@@ -32,7 +32,6 @@ import { API_ENDPOINT } from '../config/api';
 
 const EnhancedPrivacyPanel = lazy(() => import('../components/EnhancedPrivacyPanel').then(module => ({ default: module.EnhancedPrivacyPanel })));
 const ToolSettingsModal = lazy(() => import('../components/ToolSettingsModal').then(module => ({ default: module.ToolSettingsModal })));
-const IntegrationSettingsManager = lazy(() => import('../components/IntegrationSettingsManager').then(module => ({ default: module.default })));
 const IntegrationDebugger = lazy(() => import('../components/IntegrationDebugger').then(module => ({ default: module.default })));
 const SessionManager = lazy(() => import('../components/SessionManager').then(module => ({ default: module.SessionManager })));
 const MigrationModal = lazy(() => import('../components/MigrationModal').then(module => ({ default: module.MigrationModal })));
@@ -56,8 +55,6 @@ export interface AppModalsProps {
   recoveryVaultSummary: any;
   showAddCustodianModal: any;
   setShowAddCustodianModal: any;
-  showCustodianInfo: any;
-  setShowCustodianInfo: any;
   handleAddCustodian: any;
   showRecoveryKeyModal: any;
   setShowRecoveryKeyModal: any;
@@ -141,8 +138,6 @@ export interface AppModalsProps {
   handleExportToUsb: any;
   handleExportToNfc: any;
   setActiveTab: any;
-  showIntegrationSettings: any;
-  setShowIntegrationSettings: any;
   showIntegrationDebugger: any;
   setShowIntegrationDebugger: any;
   showExportAuthModal: any;
@@ -235,8 +230,6 @@ export function AppModals(props: AppModalsProps) {
     recoveryVaultSummary,
     showAddCustodianModal,
     setShowAddCustodianModal,
-    showCustodianInfo,
-    setShowCustodianInfo,
     handleAddCustodian,
     showRecoveryKeyModal,
     setShowRecoveryKeyModal,
@@ -320,8 +313,6 @@ export function AppModals(props: AppModalsProps) {
     handleExportToUsb,
     handleExportToNfc,
     setActiveTab,
-    showIntegrationSettings,
-    setShowIntegrationSettings,
     showIntegrationDebugger,
     setShowIntegrationDebugger,
     showExportAuthModal,
@@ -433,8 +424,6 @@ export function AppModals(props: AppModalsProps) {
         <AddCustodianModal
           isOpen={showAddCustodianModal}
           onClose={() => setShowAddCustodianModal(false)}
-          showCustodianInfo={showCustodianInfo}
-          setShowCustodianInfo={setShowCustodianInfo}
           onAddCustodian={handleAddCustodian}
         />
 
@@ -638,14 +627,6 @@ export function AppModals(props: AppModalsProps) {
             setActiveTab(section as any);
           }}
         />
-
-        {/* Integration Settings Manager */}
-        <Suspense fallback={<LoadingSpinner />}>
-          <IntegrationSettingsManager
-            isOpen={showIntegrationSettings}
-            onClose={() => setShowIntegrationSettings(false)}
-          />
-        </Suspense>
 
         {/* Integration Debugger */}
         <Suspense fallback={<LoadingSpinner />}>

@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import { Info } from 'lucide-react';
 import { GlobalPrivacySettings } from '../types/privacy';
+import { SectionInfo } from './common/SectionInfo';
 
 interface ToolSettingsModalProps {
   isOpen: boolean;
@@ -19,14 +19,6 @@ export const ToolSettingsModal: React.FC<ToolSettingsModalProps> = ({
 }) => {
   const tool = settings.toolPermissions[toolId];
   const [localSettings, setLocalSettings] = useState<GlobalPrivacySettings>(settings);
-  const [showInfoModal, setShowInfoModal] = useState(false);
-  const [selectedDataPoint, setSelectedDataPoint] = useState<{
-    key: string;
-    label: string;
-    description: string;
-    category: string;
-    requestedBy: string[];
-  } | null>(null);
 
   if (!isOpen || !tool) return null;
 
@@ -56,11 +48,6 @@ export const ToolSettingsModal: React.FC<ToolSettingsModalProps> = ({
 
   const handleReset = () => {
     setLocalSettings(settings);
-  };
-
-  const handleShowInfo = (dataPoint: any) => {
-    setSelectedDataPoint(dataPoint);
-    setShowInfoModal(true);
   };
 
   const getDataPointDetails = (dataPointKey: string) => {
@@ -220,180 +207,136 @@ export const ToolSettingsModal: React.FC<ToolSettingsModalProps> = ({
   }, {} as Record<string, any[]>);
 
   return (
-    <>
-      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-start justify-center z-50 overflow-y-auto p-4 sm:p-6">
-        <div className="bg-modal-bg rounded-lg p-6 max-w-2xl w-full mx-4 my-8 max-h-[90vh] overflow-y-auto text-text-primary">
-          <div className="flex justify-between items-center mb-6">
-            <div>
-              <h2 className="text-xl font-semibold">{tool.toolName} Settings</h2>
-              <p className="text-sm text-text-secondary mt-1">{tool.toolDescription}</p>
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-start justify-center z-50 overflow-y-auto p-4 sm:p-6">
+      <div className="bg-modal-bg rounded-lg p-6 max-w-2xl w-full mx-4 my-8 max-h-[90vh] overflow-y-auto text-text-primary">
+        <div className="flex justify-between items-center mb-6">
+          <div>
+            <h2 className="text-xl font-semibold">{tool.toolName} Settings</h2>
+            <p className="text-sm text-text-secondary mt-1">{tool.toolDescription}</p>
+          </div>
+          <button onClick={onClose} className="text-gray-500 hover:text-gray-700">✕</button>
+        </div>
+
+        <div className="space-y-6">
+          {/* Tool Status */}
+          <div className="bg-secondary border border-border rounded-lg p-4">
+            <h3 className="font-medium text-text-primary mb-3">Tool Status</h3>
+            <div className="space-y-2 text-sm">
+              <div className="flex justify-between">
+                <span className="text-text-secondary">Status:</span>
+                <span className={`font-medium ${
+                  tool.status === 'active' ? 'text-green-600' : 
+                  tool.status === 'pending' ? 'text-yellow-600' : 'text-red-600'
+                }`}>
+                  {tool.status}
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-text-secondary">Granted:</span>
+                <span className="text-text-primary">{new Date(tool.grantedAt).toLocaleDateString()}</span>
+              </div>
+              {tool.expiresAt && (
+                <div className="flex justify-between">
+                  <span className="text-text-secondary">Expires:</span>
+                  <span className="text-text-primary">{new Date(tool.expiresAt).toLocaleDateString()}</span>
+                </div>
+              )}
+              <div className="flex justify-between">
+                <span className="text-text-secondary">Data Points:</span>
+                <span className="text-text-primary">{tool.dataPoints.length}</span>
+              </div>
             </div>
-            <button onClick={onClose} className="text-gray-500 hover:text-gray-700">✕</button>
           </div>
 
-          <div className="space-y-6">
-            {/* Tool Status */}
-            <div className="bg-secondary border border-border rounded-lg p-4">
-              <h3 className="font-medium text-text-primary mb-3">Tool Status</h3>
-              <div className="space-y-2 text-sm">
-                <div className="flex justify-between">
-                  <span className="text-text-secondary">Status:</span>
-                  <span className={`font-medium ${
-                    tool.status === 'active' ? 'text-green-600' : 
-                    tool.status === 'pending' ? 'text-yellow-600' : 'text-red-600'
-                  }`}>
-                    {tool.status}
-                  </span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-text-secondary">Granted:</span>
-                  <span className="text-text-primary">{new Date(tool.grantedAt).toLocaleDateString()}</span>
-                </div>
-                {tool.expiresAt && (
-                  <div className="flex justify-between">
-                    <span className="text-text-secondary">Expires:</span>
-                    <span className="text-text-primary">{new Date(tool.expiresAt).toLocaleDateString()}</span>
-                  </div>
-                )}
-                <div className="flex justify-between">
-                  <span className="text-text-secondary">Data Points:</span>
-                  <span className="text-text-primary">{tool.dataPoints.length}</span>
-                </div>
-              </div>
-            </div>
+          {/* Data Point Permissions */}
+          {Object.keys(groupedDataPoints).length > 0 && (
+            <div>
+              <h3 className="text-lg font-medium mb-4">Data Point Permissions</h3>
+              <p className="text-sm text-text-secondary mb-4">
+                Control which data points this tool can access. Global settings override these permissions.
+              </p>
 
-            {/* Data Point Permissions */}
-            {Object.keys(groupedDataPoints).length > 0 && (
-              <div>
-                <h3 className="text-lg font-medium mb-4">Data Point Permissions</h3>
-                <p className="text-sm text-text-secondary mb-4">
-                  Control which data points this tool can access. Global settings override these permissions.
-                </p>
-                
-                {Object.entries(groupedDataPoints).map(([category, dataPoints]) => (
-                  <div key={category} className="mb-6">
-                    <h4 className="font-medium text-text-primary mb-3 capitalize">{category} Data</h4>
-                    <div className="space-y-3">
-                      {dataPoints.map(({ key, label, description, globalSetting, requestedBy }) => (
-                        <div key={key} className="border border-border rounded-lg p-3">
-                          <div className="flex items-center justify-between mb-2">
-                            <div className="flex-1">
-                              <div className="flex items-center space-x-2">
-                                <div className="font-medium">{label}</div>
-                                <button
-                                  onClick={() => handleShowInfo({ key, label, description, category, requestedBy })}
-                                  className="text-blue-600 hover:text-blue-800 text-sm"
-                                  title="Learn more about this data point"
-                                >
-                                  <Info className="w-4 h-4" />
-                                </button>
-                              </div>
-                              <div className="text-sm text-text-secondary">{description}</div>
-                              <div className="text-xs text-text-secondary mt-1">
-                                Requested by: {requestedBy.join(', ')}
-                              </div>
+              {Object.entries(groupedDataPoints).map(([category, dataPoints]) => (
+                <div key={category} className="mb-6">
+                  <h4 className="font-medium text-text-primary mb-3 capitalize">{category} Data</h4>
+                  <div className="space-y-3">
+                    {dataPoints.map(({ key, label, description, globalSetting, requestedBy }) => (
+                      <div key={key} className="border border-border rounded-lg p-3">
+                        <div className="flex items-center justify-between mb-2">
+                          <div className="flex-1">
+                            <div className="flex items-center space-x-2">
+                              <div className="font-medium">{label}</div>
+                              <SectionInfo title={label}>
+                                <p>{getDataPointDetails(key).explanation}</p>
+                                <div>
+                                  <p className="font-medium text-text-primary">What this tool can do:</p>
+                                  <ul>
+                                    {getDataPointDetails(key).examples.map((example, index) => (
+                                      <li key={index}>{example}</li>
+                                    ))}
+                                  </ul>
+                                </div>
+                                <div>
+                                  <p className="font-medium text-text-primary">Privacy considerations:</p>
+                                  <ul>
+                                    {getDataPointDetails(key).risks.map((risk, index) => (
+                                      <li key={index}>{risk}</li>
+                                    ))}
+                                  </ul>
+                                </div>
+                              </SectionInfo>
                             </div>
-                            <div className="flex items-center space-x-3">
-                              <div className="text-xs text-text-secondary">
-                                {globalSetting ? 'Global: ON' : 'Global: OFF'}
-                              </div>
-                              <input
-                                type="checkbox"
-                                checked={tool.dataPoints.includes(key)}
-                                onChange={(e) => handleDataPointChange(key, e.target.checked)}
-                                disabled={!globalSetting}
-                                className="ml-2"
-                              />
+                            <div className="text-sm text-text-secondary">{description}</div>
+                            <div className="text-xs text-text-secondary mt-1">
+                              Requested by: {requestedBy.join(', ')}
                             </div>
                           </div>
+                          <div className="flex items-center space-x-3">
+                            <div className="text-xs text-text-secondary">
+                              {globalSetting ? 'Global: ON' : 'Global: OFF'}
+                            </div>
+                            <input
+                              type="checkbox"
+                              checked={tool.dataPoints.includes(key)}
+                              onChange={(e) => handleDataPointChange(key, e.target.checked)}
+                              disabled={!globalSetting}
+                              className="ml-2"
+                            />
+                          </div>
                         </div>
-                      ))}
-                    </div>
+                      </div>
+                    ))}
                   </div>
-                ))}
-              </div>
-            )}
-
-            {/* Empty State */}
-            {Object.keys(groupedDataPoints).length === 0 && (
-              <div className="text-center py-8 text-text-secondary">
-                <p>No data points available for this tool</p>
-                <p className="text-sm">Data points will appear here as the tool requests access</p>
-              </div>
-            )}
-
-            {/* Actions */}
-            <div className="flex space-x-3 pt-4 border-t border-border">
-              <button
-                onClick={handleSave}
-                className="flex-1 modal-button py-2 px-4 rounded-md transition-colors"
-              >
-                Save Settings
-              </button>
-              <button
-                onClick={handleReset}
-                className="flex-1 bg-gray-200 text-gray-800 py-2 px-4 rounded-md hover:bg-gray-300 transition-colors"
-              >
-                Reset
-              </button>
+                </div>
+              ))}
             </div>
+          )}
+
+          {/* Empty State */}
+          {Object.keys(groupedDataPoints).length === 0 && (
+            <div className="text-center py-8 text-text-secondary">
+              <p>No data points available for this tool</p>
+              <p className="text-sm">Data points will appear here as the tool requests access</p>
+            </div>
+          )}
+
+          {/* Actions */}
+          <div className="flex space-x-3 pt-4 border-t border-border">
+            <button
+              onClick={handleSave}
+              className="flex-1 modal-button py-2 px-4 rounded-md transition-colors"
+            >
+              Save Settings
+            </button>
+            <button
+              onClick={handleReset}
+              className="flex-1 bg-gray-200 text-gray-800 py-2 px-4 rounded-md hover:bg-gray-300 transition-colors"
+            >
+              Reset
+            </button>
           </div>
         </div>
       </div>
-
-      {/* Info Modal */}
-      {showInfoModal && selectedDataPoint && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-start justify-center z-50 overflow-y-auto p-4 sm:p-6">
-          <div className="bg-modal-bg rounded-lg p-6 max-w-lg w-full mx-4 my-8 max-h-[90vh] overflow-y-auto text-text-primary">
-            <div className="flex justify-between items-center mb-6">
-              <h2 className="text-xl font-semibold">Data Point Details</h2>
-              <button onClick={() => setShowInfoModal(false)} className="text-gray-500 hover:text-gray-700">✕</button>
-            </div>
-
-            <div className="space-y-6">
-              <div>
-                <h3 className="text-lg font-medium mb-2">{selectedDataPoint.label}</h3>
-                <p className="text-sm text-text-secondary mb-4">
-                  {getDataPointDetails(selectedDataPoint.key).explanation}
-                </p>
-              </div>
-
-              <div>
-                <h4 className="font-medium text-text-primary mb-3">What this tool can do:</h4>
-                <ul className="space-y-2 text-sm text-text-secondary">
-                  {getDataPointDetails(selectedDataPoint.key).examples.map((example, index) => (
-                    <li key={index} className="flex items-start space-x-2">
-                      <span className="text-green-600 mt-1">•</span>
-                      <span>{example}</span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-
-              <div>
-                <h4 className="font-medium text-text-primary mb-3">Privacy considerations:</h4>
-                <ul className="space-y-2 text-sm text-text-secondary">
-                  {getDataPointDetails(selectedDataPoint.key).risks.map((risk, index) => (
-                    <li key={index} className="flex items-start space-x-2">
-                      <span className="text-yellow-600 mt-1">⚠</span>
-                      <span>{risk}</span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-
-              <div className="flex justify-end pt-4 border-t border-border">
-                <button
-                  onClick={() => setShowInfoModal(false)}
-                  className="modal-button py-2 px-4 rounded-md transition-colors"
-                >
-                  Got it
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-    </>
+    </div>
   );
-}; 
+};

@@ -10,8 +10,6 @@ export function useMigrationState() {
   const [pendingMigrations, setPendingMigrations] = useState<WebIdentityData[]>([]);
   const [migrationChecked, setMigrationChecked] = useState(false);
 
-  // Integration settings
-  const [showIntegrationSettings, setShowIntegrationSettings] = useState(false);
   const [showIntegrationDebugger, setShowIntegrationDebugger] = useState(false);
 
   // Custodianships
@@ -72,9 +70,7 @@ export function useMigrationState() {
     migrationChecked,
     setMigrationChecked,
 
-    // Integration
-    showIntegrationSettings,
-    setShowIntegrationSettings,
+    // Integration debugger (DEV)
     showIntegrationDebugger,
     setShowIntegrationDebugger,
 

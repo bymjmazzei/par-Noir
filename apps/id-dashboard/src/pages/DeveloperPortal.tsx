@@ -10,6 +10,7 @@ import { useDeviceAuthState } from '../hooks/useDeviceAuthState';
 import { DEVICE_CAPABILITIES } from '@par-noir/device-auth';
 import { DEVELOPER_PORTAL_URL } from '../config/developerPortal';
 import { LicenseModal } from '../components/LicenseModal';
+import { SectionInfo } from '../components/common/SectionInfo';
 
 interface DeveloperPortalProps {
   authenticatedUser: { id: string; publicKey?: string; nickname?: string; accessToken?: string } | null;
@@ -88,10 +89,10 @@ export const DeveloperPortal: React.FC<DeveloperPortalProps> = ({ authenticatedU
           <h2 className="text-lg font-semibold text-text-primary mb-2 flex items-center gap-2">
             <Key className="h-5 w-5" />
             API keys
+            <SectionInfo title="API keys">
+              <p>Each pN has an API key for OAuth and integrations. Activate after identity verification (Veriff).</p>
+            </SectionInfo>
           </h2>
-          <p className="text-sm text-text-secondary mb-4">
-            Each pN has an API key for OAuth and integrations. Activate after identity verification (Veriff).
-          </p>
           {authenticatedUser ? (
             <button
               type="button"
@@ -106,11 +107,15 @@ export const DeveloperPortal: React.FC<DeveloperPortalProps> = ({ authenticatedU
         </section>
 
         <section className="mb-12 rounded-lg border border-border bg-secondary p-6">
-          <h2 className="text-lg font-semibold text-text-primary mb-2">Developer console</h2>
-          <p className="text-sm text-text-secondary mb-4">
-            Register OAuth clients, create backend API keys, browse standard data points, and read integration guides on
-            the hosted developer console (same par Noir unlock flow as other third-party apps).
-          </p>
+          <h2 className="text-lg font-semibold text-text-primary mb-2 flex items-center gap-2">
+            Developer console
+            <SectionInfo title="Developer console">
+              <p>
+                Register OAuth clients, create backend API keys, browse standard data points, and read integration
+                guides on the hosted developer console (same par Noir unlock flow as other third-party apps).
+              </p>
+            </SectionInfo>
+          </h2>
           <a
             href={DEVELOPER_PORTAL_URL}
             target="_blank"

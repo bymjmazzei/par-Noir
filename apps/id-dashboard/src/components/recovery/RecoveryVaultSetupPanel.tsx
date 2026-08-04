@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { SectionInfo } from '../common/SectionInfo';
 import { useRecoveryAuth } from '../../contexts/RecoveryAuthContext';
 import { seedRecoveryVaultFromMaterial } from '../../services/recoveryVaultService';
 import { RecoverySharesUnavailableError } from '../../services/recoveryShareResolver';
@@ -85,10 +86,14 @@ export const RecoveryVaultSetupPanel: React.FC<RecoveryVaultSetupPanelProps> = (
 
   return (
     <div className="mb-4 p-4 bg-secondary border border-border rounded-lg space-y-3">
-      <h4 className="font-medium text-text-primary">Recovery vault on Drive</h4>
-      <p className="text-sm text-text-secondary">
-        Upload your Shamir shares from this .pn file to your Google Drive recovery vault. You can assign custodians afterward.
-      </p>
+      <div className="flex items-center gap-2">
+        <h4 className="font-medium text-text-primary">Recovery vault on Drive</h4>
+        <SectionInfo title="Recovery vault on Drive">
+          <p>
+            Upload your Shamir shares from this .pn file to your Google Drive recovery vault. You can assign custodians afterward.
+          </p>
+        </SectionInfo>
+      </div>
       {message && <p className="text-sm text-green-500">{message}</p>}
       {error && <p className="text-sm text-red-500">{error}</p>}
       <button

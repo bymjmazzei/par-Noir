@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { API_ENDPOINT } from '../config/api';
+import { SectionInfo } from './common/SectionInfo';
 
 interface IdentitySuccessionPanelProps {
   predecessorPnIdentifier: string;
@@ -30,11 +31,15 @@ export const IdentitySuccessionPanel: React.FC<IdentitySuccessionPanelProps> = (
 
   return (
     <div className="bg-secondary rounded-lg p-6 space-y-3">
-      <h4 className="font-medium text-text-primary">Identity succession</h4>
-      <p className="text-xs text-text-secondary">
-        Public estate-planning successor (registered by par Noir admin automation). This is separate from
-        custodian Shamir recovery, which preserves the same cryptographic pN with a new Key 2.
-      </p>
+      <div className="flex items-center gap-2">
+        <h4 className="font-medium text-text-primary">Identity succession</h4>
+        <SectionInfo title="Identity succession">
+          <p>
+            Public estate-planning successor (registered by par Noir admin automation). This is separate from
+            custodian Shamir recovery, which preserves the same cryptographic pN with a new Key 2.
+          </p>
+        </SectionInfo>
+      </div>
       <p className="text-sm text-text-primary">
         Successor:{' '}
         <span className="font-mono text-xs">

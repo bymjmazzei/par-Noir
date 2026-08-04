@@ -1,5 +1,6 @@
 import React from 'react';
 import { AlertTriangle, CheckCircle, Lock } from 'lucide-react';
+import { SectionInfo } from '../common/SectionInfo';
 import { useRecoveryAuth } from '../../contexts/RecoveryAuthContext';
 import { RecoveryAuthGate } from './RecoveryAuthGate';
 import { RecoveryVaultSetupPanel } from './RecoveryVaultSetupPanel';
@@ -87,12 +88,14 @@ export const ShamirRecoverySection: React.FC<ShamirRecoverySectionProps> = ({
 
   return (
     <div className="space-y-4">
-      <div>
+      <div className="flex items-center gap-2">
         <h3 className="text-lg font-semibold text-text-primary">Recovery</h3>
-        <p className="text-xs text-text-secondary mt-1">
-          Shamir custodians protect your identity. Seed the vault, then invite trusted people (including
-          one protected custodian).
-        </p>
+        <SectionInfo title="Recovery">
+          <p>
+            Shamir custodians protect your identity. Seed the vault, then invite trusted people (including
+            one protected custodian).
+          </p>
+        </SectionInfo>
       </div>
 
       <RecoveryAuthGate

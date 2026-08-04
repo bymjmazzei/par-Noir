@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { FileText, Smartphone, Usb, CreditCard, Laptop } from 'lucide-react';
+import { SectionInfo } from '../common/SectionInfo';
 
 import * as nfcAdapter from '../../utils/nfcAdapter';
 
@@ -50,7 +51,12 @@ export function ExportOptionsModal({
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
       <div className="bg-modal-bg rounded-lg p-6 max-w-md w-full text-text-primary">
         <div className="flex justify-between items-center mb-6">
-          <h2 className="text-xl font-semibold">Export Options</h2>
+          <div className="flex items-center gap-2">
+            <h2 className="text-xl font-semibold">Export Options</h2>
+            <SectionInfo title="Export Options">
+              <p>Choose how you want to export your pN file. Download saves a portable file; USB and NFC bind to hardware; device-bound backups unlock only on this keyed device; transfer moves the identity to another device.</p>
+            </SectionInfo>
+          </div>
           <button
             onClick={handleClose}
             className="modal-close-button"
@@ -60,10 +66,6 @@ export function ExportOptionsModal({
         </div>
         
         <div className="space-y-4">
-          <div className="text-sm text-text-secondary mb-4">
-            Choose how you want to export your pN file:
-          </div>
-          
           <button
             onClick={onDownloadExport}
             className="w-full p-4 border border-border rounded-lg hover:bg-secondary transition-colors text-left"

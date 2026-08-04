@@ -1,6 +1,7 @@
 import React from 'react';
 import { API_ENDPOINT } from '../../config/api';
 import { IdentityRotationWizard } from '../identity/IdentityRotationWizard';
+import { SectionInfo } from '../common/SectionInfo';
 import { useRecoveryAuth } from '../../contexts/RecoveryAuthContext';
 
 export interface RecoveryIdentityRotationSectionProps {
@@ -38,10 +39,12 @@ const RekeyLedger: React.FC<{ predecessorPn: string }> = ({ predecessorPn }) => 
 
   return (
     <div className="bg-secondary rounded-lg p-4 space-y-2">
-      <h5 className="font-medium text-text-primary text-sm">Network re-key record</h5>
-      <p className="text-xs text-text-secondary">
-        After identity rotation, the network retires the old pn and points to the new one.
-      </p>
+      <div className="flex items-center gap-2">
+        <h5 className="font-medium text-text-primary text-sm">Network re-key record</h5>
+        <SectionInfo title="Network re-key record">
+          <p>After identity rotation, the network retires the old pn and points to the new one.</p>
+        </SectionInfo>
+      </div>
       <p className="text-sm text-text-primary font-mono text-xs break-all">
         {predecessorPn} → {successor}
       </p>
@@ -68,12 +71,14 @@ export const RecoveryIdentityRotationSection: React.FC<RecoveryIdentityRotationS
 
   return (
     <div className="bg-secondary rounded-lg p-4 space-y-4">
-      <div>
+      <div className="flex items-center gap-2">
         <h3 className="text-lg font-semibold text-text-primary">Identity rotation</h3>
-        <p className="text-xs text-text-secondary mt-1">
-          Creates new cryptographic keys and registers a network re-key. Distinct from Shamir Key 1 /
-          Key 2 recovery (which keeps the same keys).
-        </p>
+        <SectionInfo title="Identity rotation">
+          <p>
+            Creates new cryptographic keys and registers a network re-key. Distinct from Shamir Key 1 /
+            Key 2 recovery (which keeps the same keys).
+          </p>
+        </SectionInfo>
       </div>
       {canRotateIdentity && apiToken ? (
         <IdentityRotationWizard

@@ -1,6 +1,6 @@
 import { cryptoWorkerManager } from '../../utils/cryptoWorkerManager';
 import React from 'react';
-import { Info, CheckCircle } from 'lucide-react';
+import { CheckCircle } from 'lucide-react';
 
 interface WizardStep {
   id: string;
@@ -14,7 +14,6 @@ interface WizardStep {
 
 interface WizardStepContentProps {
   currentStepData: WizardStep;
-  showInfo: boolean;
   nickname: string;
   onNicknameChange: (nickname: string) => void;
   onStepAction: () => void;
@@ -23,25 +22,11 @@ interface WizardStepContentProps {
 
 export const WizardStepContent: React.FC<WizardStepContentProps> = ({
   currentStepData,
-  showInfo,
   nickname,
   onNicknameChange,
   onStepAction,
   completedSteps
 }) => {
-  if (showInfo) {
-    return (
-      <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-700 rounded-lg p-4">
-        <div className="flex items-start space-x-3">
-          <Info className="w-5 h-5 text-blue-600 dark:text-blue-400 mt-0.5 flex-shrink-0" />
-          <div className="text-sm text-gray-700 dark:text-text-primary whitespace-pre-line">
-            {currentStepData.infoContent}
-          </div>
-        </div>
-      </div>
-    );
-  }
-
   return (
     <div className="space-y-6">
       <p className="text-gray-700 dark:text-text-primary leading-relaxed">

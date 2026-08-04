@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Lock, User, Smartphone, CheckCircle } from 'lucide-react';
 import * as BiometricAdapter from '../utils/biometricAdapter';
+import { SectionInfo } from './common/SectionInfo';
 
 interface BiometricSetupProps {
   isOpen: boolean;
@@ -134,10 +135,17 @@ export const BiometricSetup: React.FC<BiometricSetupProps> = ({
               <div className="flex justify-center mb-4">
                 {getBiometricIcon()}
               </div>
-              <h3 className="text-lg font-semibold mb-2">{getBiometricName()}</h3>
-              <p className="text-text-secondary text-sm">
-                Use your device&apos;s built-in biometric authentication to unlock your identity quickly and securely.
-              </p>
+              <div className="flex justify-center items-center gap-2">
+                <h3 className="text-lg font-semibold mb-2">{getBiometricName()}</h3>
+                <SectionInfo title={getBiometricName()}>
+                  <p>
+                    Use your device&apos;s built-in biometric authentication to unlock your identity quickly and securely.
+                  </p>
+                  <p>
+                    <strong>Secure &amp; Private:</strong> Your biometric data never leaves your device. We only store a cryptographic key that works with your biometric authentication.
+                  </p>
+                </SectionInfo>
+              </div>
             </div>
 
             {/* Device Info */}
@@ -146,19 +154,6 @@ export const BiometricSetup: React.FC<BiometricSetupProps> = ({
               <div className="text-sm text-text-secondary space-y-1">
                 <div>Device: {biometricInfo.deviceName}</div>
                 <div>Features: {biometricInfo.supportedFeatures.join(', ')}</div>
-              </div>
-            </div>
-
-            {/* Security Notice */}
-            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-              <div className="flex items-start space-x-2">
-                <Lock className="w-4 h-4 text-blue-600 mt-0.5" />
-                <div className="text-blue-800 text-sm">
-                  <div className="font-medium mb-1">Secure & Private</div>
-                  <div>
-                    Your biometric data never leaves your device. We only store a cryptographic key that works with your biometric authentication.
-                  </div>
-                </div>
               </div>
             </div>
 

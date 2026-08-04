@@ -5,6 +5,7 @@
 
 import React, { useState } from 'react';
 import { Copy, Check, ExternalLink, Code } from 'lucide-react';
+import { SectionInfo } from '../common/SectionInfo';
 import { FeedService, Feed } from '../../services/feeds/FeedService';
 import { API_ENDPOINT } from '../../config/api';
 
@@ -57,6 +58,21 @@ export const FeedWidgetGenerator: React.FC<FeedWidgetGeneratorProps> = ({
         <div className="flex items-center space-x-2">
           <Code className="h-5 w-5 text-blue-400" />
           <h3 className="text-lg font-semibold text-white">Embed Feed Widget</h3>
+          <SectionInfo title="Embed Feed Widget" className="text-neutral-400 hover:text-white">
+            <p>
+              Copy and paste this code into your website to embed your feed. The widget is not customizable to
+              maintain consistent branding.
+            </p>
+            <div>
+              <p className="font-medium text-text-primary">How to use</p>
+              <ol>
+                <li>Copy the widget code above</li>
+                <li>Paste it into your website's HTML where you want the feed to appear</li>
+                <li>The widget will automatically load and display your feed</li>
+                <li>The widget is responsive and works on all devices</li>
+              </ol>
+            </div>
+          </SectionInfo>
         </div>
         {onClose && (
           <button
@@ -69,11 +85,6 @@ export const FeedWidgetGenerator: React.FC<FeedWidgetGeneratorProps> = ({
       </div>
 
       <div className="mb-4">
-        <p className="text-sm text-neutral-400 mb-4">
-          Copy and paste this code into your website to embed your feed. The widget is not customizable
-          to maintain consistent branding.
-        </p>
-
         {/* Widget Code */}
         <div className="bg-neutral-800 rounded-lg p-4 mb-4">
           <div className="flex items-center justify-between mb-2">
@@ -122,17 +133,6 @@ export const FeedWidgetGenerator: React.FC<FeedWidgetGeneratorProps> = ({
             </div>
           </div>
         )}
-
-        {/* Instructions */}
-        <div className="bg-neutral-800 rounded-lg p-4">
-          <h4 className="text-sm font-medium text-white mb-2">How to Use</h4>
-          <ol className="list-decimal list-inside space-y-1 text-sm text-neutral-400">
-            <li>Copy the widget code above</li>
-            <li>Paste it into your website's HTML where you want the feed to appear</li>
-            <li>The widget will automatically load and display your feed</li>
-            <li>The widget is responsive and works on all devices</li>
-          </ol>
-        </div>
       </div>
     </div>
   );

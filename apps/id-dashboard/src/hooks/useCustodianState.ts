@@ -8,7 +8,6 @@ export function useCustodianState() {
 
   // Info section state
   const [showRecoveryInfo, setShowRecoveryInfo] = useState(false);
-  const [showCustodianInfo, setShowCustodianInfo] = useState(false);
 
   // Custodian invitation acceptance state
   const [showCustodianAcceptanceModal, setShowCustodianAcceptanceModal] = useState(false);
@@ -118,8 +117,6 @@ export function useCustodianState() {
     // Info sections
     showRecoveryInfo,
     setShowRecoveryInfo,
-    showCustodianInfo,
-    setShowCustodianInfo,
 
     // Custodian acceptance
     showCustodianAcceptanceModal,

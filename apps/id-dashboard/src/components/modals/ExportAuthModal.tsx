@@ -1,4 +1,5 @@
 import React from 'react';
+import { SectionInfo } from '../common/SectionInfo';
 
 interface ExportAuthModalProps {
   isOpen: boolean;
@@ -39,17 +40,28 @@ export function ExportAuthModal({
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
       <div className="bg-modal-bg rounded-lg p-6 max-w-md w-full text-text-primary">
         <div className="flex justify-between items-center mb-6">
-          <h2 className="text-xl font-semibold">
-            {purpose === 'download'
-              ? 'Enter credentials for download'
-              : purpose === 'usb'
-                ? 'Enter credentials for USB export'
-                : purpose === 'nfc'
-                  ? 'Enter credentials for NFC export'
-                  : purpose === 'device-bound'
-                    ? 'Enter credentials for device-bound export'
-                    : 'Verify Identity'}
-          </h2>
+          <div className="flex items-center gap-2 min-w-0">
+            <h2 className="text-xl font-semibold">
+              {purpose === 'download'
+                ? 'Enter credentials for download'
+                : purpose === 'usb'
+                  ? 'Enter credentials for USB export'
+                  : purpose === 'nfc'
+                    ? 'Enter credentials for NFC export'
+                    : purpose === 'device-bound'
+                      ? 'Enter credentials for device-bound export'
+                      : 'Verify Identity'}
+            </h2>
+            {purpose === 'device-bound' && (
+              <SectionInfo title="Device-bound export">
+                <p>
+                  This backup unlocks only on the keyed device that created it. If you lose or replace
+                  this device, you will need a portable backup or Shamir recovery. Keep at least one
+                  portable `.pn` backup or recovery custodians.
+                </p>
+              </SectionInfo>
+            )}
+          </div>
           <button 
             onClick={handleClose}
             className="text-gray-500 hover:text-gray-700"
@@ -59,13 +71,6 @@ export function ExportAuthModal({
         </div>
         
         <div className="space-y-4">
-          {purpose === 'device-bound' && (
-            <div className="rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-sm text-text-secondary">
-              This backup unlocks only on the keyed device that created it. If you lose or replace
-              this device, you will need a portable backup or Shamir recovery. Keep at least one
-              portable `.pn` backup or recovery custodians.
-            </div>
-          )}
           <div>
             <label className="block text-sm font-medium mb-2">Key 1</label>
             <div className="relative">

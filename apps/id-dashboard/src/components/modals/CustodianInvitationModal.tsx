@@ -1,5 +1,6 @@
 import React from 'react';
-import { QrCode, MessageSquare, Phone, Info } from 'lucide-react';
+import { QrCode, MessageSquare, Phone } from 'lucide-react';
+import { SectionInfo } from '../common/SectionInfo';
 
 interface CustodianInvitationModalProps {
   isOpen: boolean;
@@ -57,7 +58,30 @@ export function CustodianInvitationModal({
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-start justify-center z-50 overflow-y-auto p-4 sm:p-6">
       <div className="bg-modal-bg rounded-lg p-6 max-w-lg w-full mx-4 my-8 max-h-[90vh] overflow-y-auto text-text-primary">
         <div className="flex justify-between items-center mb-6">
-          <h2 className="text-xl font-semibold">Send Custodian Invitation</h2>
+          <div className="flex items-center gap-2">
+            <h2 className="text-xl font-semibold">Send Custodian Invitation</h2>
+            <SectionInfo title="Send Custodian Invitation">
+              <div>
+                <p className="font-medium text-text-primary">How it works</p>
+                <ul>
+                  <li>Generate a QR code invitation for your custodian</li>
+                  <li>Send the QR code via email, text, or any method you prefer</li>
+                  <li>When they scan the QR code, they'll be prompted to accept</li>
+                  <li>Once accepted, their status will change from "pending" to "active"</li>
+                  <li>Active custodians can approve recovery requests</li>
+                </ul>
+              </div>
+              <div>
+                <p className="font-medium text-text-primary">After you send it</p>
+                <ul>
+                  <li>Share the QR code with {selectedCustodianForInvitation.name}</li>
+                  <li>They can scan it to accept the custodianship</li>
+                  <li>The invitation is encrypted with their contact information</li>
+                  <li>You can regenerate the QR code if needed</li>
+                </ul>
+              </div>
+            </SectionInfo>
+          </div>
           <button 
             onClick={handleClose}
             className="modal-close-button"
@@ -148,13 +172,6 @@ export function CustodianInvitationModal({
                   )}
                 </div>
                 
-                <div className="text-xs text-text-secondary text-center">
-                  <p>• Share the QR code with {selectedCustodianForInvitation.name}</p>
-                  <p>• They can scan it to accept the custodianship</p>
-                  <p>• The invitation is encrypted with their contact information</p>
-                  <p>• You can regenerate the QR code if needed</p>
-                </div>
-                
                 {/* Regenerate Button */}
                 <button
                   onClick={async () => {
@@ -177,21 +194,6 @@ export function CustodianInvitationModal({
               </div>
             </div>
           )}
-
-          {/* Instructions */}
-          <div className="bg-secondary p-4 rounded-lg">
-            <h4 className="font-medium text-text-primary mb-2 flex items-center gap-2">
-              <Info className="w-5 h-5" />
-              How It Works
-            </h4>
-            <div className="text-sm text-text-secondary space-y-1">
-              <p>• Generate a QR code invitation for your custodian</p>
-              <p>• Send the QR code via email, text, or any method you prefer</p>
-              <p>• When they scan the QR code, they'll be prompted to accept</p>
-              <p>• Once accepted, their status will change from "pending" to "active"</p>
-              <p>• Active custodians can approve recovery requests</p>
-            </div>
-          </div>
         </div>
       </div>
     </div>

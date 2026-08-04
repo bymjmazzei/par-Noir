@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { SectionInfo } from '../common/SectionInfo';
 import {
   KEY_1_LABEL,
   KEY_2_LABEL,
@@ -59,12 +60,16 @@ export function RecoveryPasscodeModal({
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
       <div className="bg-modal-bg rounded-lg p-6 max-w-md w-full text-text-primary">
-        <h2 className="text-xl font-semibold mb-2">Set new Key 1 and Key 2</h2>
-        <p className="text-sm text-text-secondary mb-4">
-          Custodians approved recovery. Choose new unlock secrets — your cryptographic identity (same pN keys)
-          is preserved. Reconnect Google Drive after unlock if tokens were lost.
-        </p>
-        <p className="text-xs text-text-secondary mb-4">{KEYS_HELPER}</p>
+        <div className="flex items-center gap-2 mb-2">
+          <h2 className="text-xl font-semibold">Set new Key 1 and Key 2</h2>
+          <SectionInfo title="Set new Key 1 and Key 2">
+            <p>
+              Custodians approved recovery. Choose new unlock secrets — your cryptographic identity (same pN keys)
+              is preserved. Reconnect Google Drive after unlock if tokens were lost.
+            </p>
+            <p>{KEYS_HELPER}</p>
+          </SectionInfo>
+        </div>
         <form onSubmit={handleSubmit} className="space-y-4">
           <label className="block text-sm">
             New {KEY_1_LABEL}

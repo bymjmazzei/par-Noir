@@ -2,6 +2,7 @@ import React from 'react';
 import { X, RefreshCw } from 'lucide-react';
 import type { AggregatedFile } from '../../types/aggregator';
 import type { ThirdPartyIndexer } from '../../types/indexers';
+import { SectionInfo } from '../common/SectionInfo';
 
 export interface FileStorageShareSettingsModalProps {
   sharingFile: AggregatedFile;
@@ -97,11 +98,13 @@ export function FileStorageShareSettingsModal({
               </h3>
               <div className="flex items-center justify-between border border-neutral-800 bg-neutral-900/70 rounded-lg px-4 py-3">
                 <div className="flex-1">
-                  <p className="text-sm font-semibold text-white uppercase tracking-wide mb-1">
+                  <p className="text-sm font-semibold text-white uppercase tracking-wide mb-1 flex items-center gap-2">
                     NSFW Content
-                  </p>
-                  <p className="text-xs text-text-secondary">
-                    Mark this content as Not Safe For Work (18+). This affects how it appears in public feeds.
+                    <SectionInfo title="NSFW Content">
+                      <p>
+                        Mark this content as Not Safe For Work (18+). This affects how it appears in public feeds.
+                      </p>
+                    </SectionInfo>
                   </p>
                 </div>
                 <button
@@ -127,14 +130,12 @@ export function FileStorageShareSettingsModal({
 
           <section>
             <div className="flex items-center justify-between mb-3">
-              <h3 className="text-sm font-semibold text-text-primary uppercase tracking-wide">
+              <h3 className="text-sm font-semibold text-text-primary uppercase tracking-wide flex items-center gap-2">
                 Third-Party Indexing
+                <SectionInfo title="Third-Party Indexing">
+                  <p>Choose which par Noir partners can surface this file. Make the file PUBLIC to manage third-party indexing visibility.</p>
+                </SectionInfo>
               </h3>
-              {shareVisibility === 'public' && (
-                <span className="text-xs text-text-secondary">
-                  Choose which par Noir partners can surface this file.
-                </span>
-              )}
             </div>
 
             {shareVisibility !== 'public' ? (

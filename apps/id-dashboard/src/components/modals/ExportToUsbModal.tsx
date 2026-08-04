@@ -6,6 +6,7 @@ import {
   uidToBase64,
   encryptUidForDrive,
 } from '../../utils/physicalKeyCrypto';
+import { SectionInfo } from '../common/SectionInfo';
 
 function downloadBlob(blob: Blob, filename: string) {
   const url = URL.createObjectURL(blob);
@@ -124,10 +125,17 @@ export function ExportToUsbModal({
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[60] p-4">
       <div className="bg-modal-bg rounded-lg p-6 max-w-md w-full text-text-primary">
         <div className="flex justify-between items-center mb-6">
-          <h2 className="text-xl font-semibold flex items-center gap-2">
-            <Usb className="w-6 h-6 text-orange-600" />
-            Export to USB
-          </h2>
+          <div className="flex items-center gap-2">
+            <h2 className="text-xl font-semibold flex items-center gap-2">
+              <Usb className="w-6 h-6 text-orange-600" />
+              Export to USB
+            </h2>
+            <SectionInfo title="Export to USB">
+              <p>
+                You will get two files: a payload file and a key file. Both are needed to unlock. Store them on the same or different USBs. Set a passcode to protect the key file; you will need it when unlocking.
+              </p>
+            </SectionInfo>
+          </div>
           <button
             onClick={handleClose}
             className="modal-close-button"
@@ -139,9 +147,6 @@ export function ExportToUsbModal({
 
         {step === 'passcode' && (
           <div className="space-y-4">
-            <p className="text-sm text-text-secondary">
-              You will get two files: a payload file and a key file. Both are needed to unlock. Store them on the same or different USBs. Set a passcode to protect the key file; you will need it when unlocking.
-            </p>
             <div>
               <label className="block text-sm font-medium mb-2">
                 Drive passcode

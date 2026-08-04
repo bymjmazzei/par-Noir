@@ -1,4 +1,5 @@
 import React from 'react';
+import { SectionInfo } from '../common/SectionInfo';
 
 interface TransferSetupModalProps {
   isOpen: boolean;
@@ -36,9 +37,22 @@ export function TransferSetupModal({
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
       <div className="bg-modal-bg rounded-lg p-6 max-w-md w-full text-text-primary">
         <div className="flex justify-between items-center mb-6">
-          <h2 className="text-xl font-semibold">
-            {transferCreated ? 'Transfer Created' : 'Setup Transfer'}
-          </h2>
+          <div className="flex items-center gap-2">
+            <h2 className="text-xl font-semibold">
+              {transferCreated ? 'Transfer Created' : 'Setup Transfer'}
+            </h2>
+            {transferCreated && (
+              <SectionInfo title="Transfer Instructions">
+                <ul>
+                  <li>Target device opens the URL</li>
+                  <li>Enters the transfer passcode</li>
+                  <li>Downloads the pN file</li>
+                  <li>Uses normal unlock flow with the file</li>
+                  <li>Transfer expires in 30 minutes</li>
+                </ul>
+              </SectionInfo>
+            )}
+          </div>
           <button 
             onClick={handleClose}
             className="modal-close-button"
@@ -101,19 +115,6 @@ export function TransferSetupModal({
                 <div id="qr-code-container" className="w-48 h-48 bg-white flex items-center justify-center">
                   {/* QR Code will be generated here */}
                 </div>
-              </div>
-            </div>
-            
-            <div className="bg-secondary p-3 rounded-lg">
-              <div className="text-sm text-text-primary">
-                <strong>Transfer Instructions:</strong>
-                <ul className="mt-2 space-y-1 text-xs text-text-secondary">
-                  <li>• Target device opens the URL</li>
-                  <li>• Enters the transfer passcode</li>
-                  <li>• Downloads the pN file</li>
-                  <li>• Uses normal unlock flow with the file</li>
-                  <li>• Transfer expires in 30 minutes</li>
-                </ul>
               </div>
             </div>
             

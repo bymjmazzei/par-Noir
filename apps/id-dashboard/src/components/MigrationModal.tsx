@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { RefreshCw, CheckCircle, XCircle, Info } from 'lucide-react';
+import { RefreshCw, CheckCircle, XCircle } from 'lucide-react';
+import { SectionInfo } from './common/SectionInfo';
 import { MigrationManager, WebIdentityData, MigrationResult } from '../utils/migration';
 
 interface MigrationModalProps {
@@ -92,7 +93,28 @@ export const MigrationModal: React.FC<MigrationModalProps> = ({
           <div className="flex items-center space-x-3">
             <RefreshCw className="w-8 h-8 text-blue-500" />
             <div>
-              <h2 className="text-2xl font-bold">Identity Migration</h2>
+              <h2 className="text-2xl font-bold flex items-center gap-2">
+                Identity Migration
+                <SectionInfo title="Identity Migration">
+                  <div>
+                    <p className="font-medium text-text-primary">We found PNs to migrate!</p>
+                    <p>
+                      You created {pendingIdentities.length} pN(s) in your browser before installing the PWA. We can
+                      securely migrate them to your PWA&apos;s encrypted storage for better security and offline
+                      access.
+                    </p>
+                  </div>
+                  <div>
+                    <p className="font-medium text-text-primary">Migration benefits</p>
+                    <ul>
+                      <li>Enhanced security with AES-256 encryption</li>
+                      <li>Persistent storage that survives browser cache clearing</li>
+                      <li>Full offline functionality</li>
+                      <li>Automatic backup and recovery features</li>
+                    </ul>
+                  </div>
+                </SectionInfo>
+              </h2>
               <p className="text-text-secondary">
                 {step === 'prompt' && 'Migrate your identities to PWA storage'}
                 {step === 'migrating' && 'Migrating your identities...'}
@@ -113,20 +135,6 @@ export const MigrationModal: React.FC<MigrationModalProps> = ({
         {/* Step: Prompt */}
         {step === 'prompt' && (
           <div className="space-y-6">
-            {/* Explanation */}
-            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-              <div className="flex items-start space-x-3">
-                <Info className="w-6 h-6 text-blue-600" />
-                <div>
-                  <h3 className="font-medium text-blue-900 mb-2">We found PNs to migrate!</h3>
-                  <p className="text-blue-800 text-sm">
-                    You created {pendingIdentities.length} pN(s) in your browser before installing the PWA. 
-                    We can securely migrate them to your PWA&apos;s encrypted storage for better security and offline access.
-                  </p>
-                </div>
-              </div>
-            </div>
-
             {/* Identity Selection */}
             <div>
               <h4 className="font-medium text-text-primary mb-3">Select PNs to migrate:</h4>
@@ -162,29 +170,6 @@ export const MigrationModal: React.FC<MigrationModalProps> = ({
                     </div>
                   </div>
                 ))}
-              </div>
-            </div>
-
-            {/* Migration Benefits */}
-            <div className="bg-green-50 border border-green-200 rounded-lg p-4">
-              <h4 className="font-medium text-green-900 mb-2">Migration Benefits:</h4>
-              <div className="text-sm text-green-800 space-y-1">
-                <div className="flex items-center space-x-2">
-                  <CheckCircle className="w-4 h-4 text-green-500" />
-                  <span>Enhanced security with AES-256 encryption</span>
-                </div>
-                <div className="flex items-center space-x-2">
-                  <CheckCircle className="w-4 h-4 text-green-500" />
-                  <span>Persistent storage that survives browser cache clearing</span>
-                </div>
-                <div className="flex items-center space-x-2">
-                  <CheckCircle className="w-4 h-4 text-green-500" />
-                  <span>Full offline functionality</span>
-                </div>
-                <div className="flex items-center space-x-2">
-                  <CheckCircle className="w-4 h-4 text-green-500" />
-                  <span>Automatic backup and recovery features</span>
-                </div>
               </div>
             </div>
 
@@ -240,10 +225,20 @@ export const MigrationModal: React.FC<MigrationModalProps> = ({
                 ) : (
                   <XCircle className="w-8 h-8 text-red-500" />
                 )}
-                <h3 className={`font-medium ${
+                <h3 className={`font-medium flex items-center gap-2 ${
                   migrationResult.success ? 'text-green-900' : 'text-red-900'
                 }`}>
                   {migrationResult.success ? 'Migration Successful!' : 'Migration Issues'}
+                  {migrationResult.success && (
+                    <SectionInfo title="What's next?">
+                      <ul>
+                        <li>Your identities are now securely stored in PWA storage</li>
+                        <li>You can access them offline and they&apos;re encrypted with AES-256</li>
+                        <li>The app will refresh to load your migrated identities</li>
+                        <li>You can create backups from the Export tab</li>
+                      </ul>
+                    </SectionInfo>
+                  )}
                 </h3>
               </div>
               
@@ -271,19 +266,6 @@ export const MigrationModal: React.FC<MigrationModalProps> = ({
                 )}
               </div>
             </div>
-
-            {/* Next Steps */}
-            {migrationResult.success && (
-              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                <h4 className="font-medium text-blue-900 mb-2">What&apos;s Next?</h4>
-                <div className="text-sm text-blue-800 space-y-1">
-                  <p>• Your identities are now securely stored in PWA storage</p>
-                  <p>• You can access them offline and they&apos;re encrypted with AES-256</p>
-                  <p>• The app will refresh to load your migrated identities</p>
-                  <p>• You can create backups from the Export tab</p>
-                </div>
-              </div>
-            )}
 
             {/* Action */}
             <div className="flex justify-center">

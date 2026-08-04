@@ -359,8 +359,6 @@ function App() {
     setShowToolSettingsModal,
     selectedToolId,
     setSelectedToolId,
-    showIntegrationSettings,
-    setShowIntegrationSettings,
     showDataPointProposalModal,
     setShowDataPointProposalModal
   } = privacyState;
@@ -519,8 +517,6 @@ function App() {
     setEditingNickname,
     showRecoveryInfo,
     setShowRecoveryInfo,
-    showCustodianInfo,
-    setShowCustodianInfo,
     showCustodianAcceptanceModal,
     setShowCustodianAcceptanceModal,
     pendingCustodianInvitationData,
@@ -1299,7 +1295,6 @@ function App() {
           setShowVerificationModal={setShowVerificationModal}
           setShowEnhancedPrivacyPanel={setShowEnhancedPrivacyPanel}
           setShowSessionManager={setShowSessionManager}
-          setShowIntegrationSettings={setShowIntegrationSettings}
           setShowIntegrationDebugger={setShowIntegrationDebugger}
           setShowDataPointProposalModal={setShowDataPointProposalModal}
           setGlobalSettingsExpanded={setGlobalSettingsExpanded}
@@ -1376,8 +1371,6 @@ function App() {
           recoveryVaultSummary={recoveryVaultSummary}
           showAddCustodianModal={showAddCustodianModal}
           setShowAddCustodianModal={setShowAddCustodianModal}
-          showCustodianInfo={showCustodianInfo}
-          setShowCustodianInfo={setShowCustodianInfo}
           handleAddCustodian={handleAddCustodian}
           showRecoveryKeyModal={showRecoveryKeyModal}
           setShowRecoveryKeyModal={setShowRecoveryKeyModal}
@@ -1461,8 +1454,6 @@ function App() {
           handleExportToUsb={handleExportToUsb}
           handleExportToNfc={handleExportToNfc}
           setActiveTab={setActiveTab}
-          showIntegrationSettings={showIntegrationSettings}
-          setShowIntegrationSettings={setShowIntegrationSettings}
           showIntegrationDebugger={showIntegrationDebugger}
           setShowIntegrationDebugger={setShowIntegrationDebugger}
           showExportAuthModal={showExportAuthModal}

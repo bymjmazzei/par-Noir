@@ -5,6 +5,7 @@ import {
   type RecoveryActiveSession,
 } from '../../services/recoveryActiveSession';
 import { fetchRecoveryRequest } from '../../services/recoveryApiService';
+import { SectionInfo } from '../common/SectionInfo';
 
 interface RecoveryModalProps {
   isOpen: boolean;
@@ -141,7 +142,16 @@ export function RecoveryModal({
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-start justify-center z-50 overflow-y-auto p-4 sm:p-6">
       <div className="bg-modal-bg rounded-lg p-6 max-w-md w-full mx-4 my-8 max-h-[90vh] overflow-y-auto text-text-primary">
         <div className="flex justify-between items-center mb-8">
-          <h2 className="text-xl font-semibold">Recover pN</h2>
+          <div className="flex items-center gap-2">
+            <h2 className="text-xl font-semibold">Recover pN</h2>
+            <SectionInfo title="Recover pN">
+              <p>
+                Custodians approve with Shamir shares. After the threshold is met, set new Key 1 and Key 2
+                on this device. Lost the file? Use a recovery key instead.
+              </p>
+              <p>Using a recovery key starts custodian recovery without Key 1 or Key 2. Does not unlock by itself.</p>
+            </SectionInfo>
+          </div>
           <button type="button" onClick={onClose} className="modal-close-button">
             ×
           </button>
@@ -289,10 +299,6 @@ export function RecoveryModal({
                       placeholder="Where to notify you when ready"
                     />
                   </div>
-                  <p className="text-xs text-text-secondary">
-                    Custodians approve with Shamir shares. After the threshold is met, set new Key 1 and Key 2
-                    on this device. Lost the file? Use a recovery key instead.
-                  </p>
                   <button
                     type="submit"
                     disabled={recoveryBlocked}
@@ -350,9 +356,6 @@ export function RecoveryModal({
                       required
                     />
                   </div>
-                  <p className="text-xs text-text-secondary">
-                    Starts custodian recovery without Key 1 or Key 2. Does not unlock by itself.
-                  </p>
                   <button type="submit" className="w-full px-4 py-2 modal-button rounded-md font-medium">
                     Start recovery with key
                   </button>

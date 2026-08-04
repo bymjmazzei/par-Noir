@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { AlertTriangle, KeyRound, Loader2 } from 'lucide-react';
+import { SectionInfo } from '../common/SectionInfo';
 import type { EncryptedIdentity } from '../../types/crypto';
 import { IdentityCrypto } from '@par-noir/identity-crypto';
 import {
@@ -294,11 +295,13 @@ export const IdentityRotationWizard: React.FC<IdentityRotationWizardProps> = ({
       <div className="flex items-center gap-2">
         <KeyRound className="w-5 h-5 text-text-primary" />
         <h4 className="font-medium text-text-primary">Rotate identity (new keys)</h4>
+        <SectionInfo title="Rotate identity (new keys)">
+          <p>
+            Re-key your pN after compromise or estate succession. This preserves your Drive folder, re-issues
+            ZKPs, rebuilds recovery, and registers network succession. Distinct from Shamir Key 1 / Key 2 recovery.
+          </p>
+        </SectionInfo>
       </div>
-      <p className="text-xs text-text-secondary">
-        Re-key your pN after compromise or estate succession. This preserves your Drive folder, re-issues
-        ZKPs, rebuilds recovery, and registers network succession. Distinct from Shamir Key 1 / Key 2 recovery.
-      </p>
 
       {step === 'intro' && (
         <button

@@ -23,6 +23,7 @@ import { clearDeviceRegistration } from '../services/deviceKeyStorage';
 import { PN_SHOW_DEVICE_PAIRING_QR_EVENT } from '../constants/deviceEvents';
 import { APP_DOWNLOAD_URL } from '../config/appDownload';
 import { SecureCredentialManager } from '@par-noir/identity-crypto';
+import { SectionInfo } from './common/SectionInfo';
 
 const PENDING_SHOW_PAIRING_QR_KEY = 'pn_pending_show_pairing_qr';
 
@@ -293,12 +294,34 @@ export const DeviceManagementPanel: React.FC<DeviceManagementPanelProps> = ({
   return (
     <div className="bg-secondary rounded-lg p-6 space-y-4">
       <div className="flex items-start justify-between gap-3">
-        <div>
+        <div className="flex items-center gap-2">
           <h4 className="font-medium text-text-primary">Devices &amp; sessions</h4>
-          <p className="text-xs text-text-secondary mt-1">
-            Portable unlock works on any device. Key a device to protect privileged owner actions after
-            your first registration.
-          </p>
+          <SectionInfo title="Devices & sessions">
+            <p>
+              Portable unlock works on any device. Key a device to protect privileged owner actions after
+              your first registration.
+            </p>
+            <ul>
+              <li>
+                <strong>Primary Device:</strong> marked with a green dot
+              </li>
+              <li>
+                <strong>QR Code Pairing:</strong> generate a QR code on this device, scan with the new device
+              </li>
+              <li>
+                <strong>Encrypted Sync:</strong> all data synced between devices is encrypted
+              </li>
+              <li>
+                <strong>Real-time Updates:</strong> changes sync automatically across all devices
+              </li>
+              <li>
+                <strong>Device Limits:</strong> maximum 5 synced devices per identity
+              </li>
+              <li>
+                <strong>Security:</strong> only trusted devices can access your identity data
+              </li>
+            </ul>
+          </SectionInfo>
         </div>
         <div className="text-xs text-right">
           <span className={isKeyedSession ? 'text-green-400 font-medium' : 'text-red-400 font-medium'}>
@@ -453,15 +476,19 @@ export const DeviceManagementPanel: React.FC<DeviceManagementPanelProps> = ({
 
       {isKeyedSession && hasKeyedDevices && (
         <div className="border-t border-border pt-4 space-y-3">
-          <h5 className="text-sm font-medium text-text-primary">Unkeyed device permissions</h5>
-          <p className="text-xs text-text-secondary">
-            Choose what an unlocked but unkeyed device may do. Recovery flows always remain available.
-            Drive and messaging are allowed by default so cloud reconnect works without keying; unkeyed
-            sessions still wipe local cloud tokens on lock.
-          </p>
-          <p className="text-xs text-text-secondary italic">
-            Messaging permissions apply when the browser app supports device keys (not yet available).
-          </p>
+          <div className="flex items-center gap-2">
+            <h5 className="text-sm font-medium text-text-primary">Unkeyed device permissions</h5>
+            <SectionInfo title="Unkeyed device permissions">
+              <p>
+                Choose what an unlocked but unkeyed device may do. Recovery flows always remain available.
+                Drive and messaging are allowed by default so cloud reconnect works without keying; unkeyed
+                sessions still wipe local cloud tokens on lock.
+              </p>
+              <p className="italic">
+                Messaging permissions apply when the browser app supports device keys (not yet available).
+              </p>
+            </SectionInfo>
+          </div>
           <ul className="space-y-2">
             {CONFIGURABLE_CAPABILITIES.map((cap) => (
               <li key={cap} className="flex items-center gap-2 text-xs">

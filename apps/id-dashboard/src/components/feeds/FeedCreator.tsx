@@ -5,6 +5,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { X, Loader, CheckCircle, DollarSign } from 'lucide-react';
+import { SectionInfo } from '../common/SectionInfo';
 import { FeedService, Feed } from '../../services/feeds/FeedService';
 import { IdentityVerificationModal } from '../IdentityVerificationModal';
 import { CoinbaseProxy, CheckoutRequest } from '../../utils/coinbaseProxy';
@@ -177,10 +178,15 @@ export const FeedCreator: React.FC<FeedCreatorProps> = ({
         <div className="space-y-6">
           <div className="text-center">
             <DollarSign className="h-12 w-12 text-blue-400 mx-auto mb-4" />
-            <h3 className="text-lg font-medium text-white mb-2">Purchase a Feed</h3>
-            <p className="text-sm text-neutral-400 mb-4">
-              Get your own feed with a sub-pN identity. After purchase, complete identity verification to activate your feed.
-            </p>
+            <h3 className="text-lg font-medium text-white mb-2 flex items-center justify-center gap-2">
+              Purchase a Feed
+              <SectionInfo title="Purchase a Feed" className="text-neutral-400 hover:text-white">
+                <p>
+                  Get your own feed with a sub-pN identity. After purchase, complete identity verification to
+                  activate your feed.
+                </p>
+              </SectionInfo>
+            </h3>
             <div className="bg-neutral-800 p-4 rounded-lg mb-4">
               <p className="text-2xl font-bold text-white">$5.00</p>
               <p className="text-xs text-neutral-400">One-time payment</p>

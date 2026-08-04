@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { SectionInfo } from '../common/SectionInfo';
 import { useRecoveryAuth } from '../../contexts/RecoveryAuthContext';
 import { fetchRecoveryFailsafeStatus } from '../../services/recoveryApiService';
 
@@ -42,11 +43,15 @@ export const RecoveryKeyFailsafeSection: React.FC<RecoveryKeyFailsafeSectionProp
 
   return (
     <div className="bg-secondary p-4 rounded-lg space-y-3">
-      <h4 className="font-medium text-text-primary">Recovery key failsafe</h4>
-      <p className="text-xs text-text-secondary">
-        Store offline. Starts custodian recovery without Key 1 or Key 2 — including if you lose
-        your .pn file or recovery contact. Does not unlock by itself.
-      </p>
+      <div className="flex items-center gap-2">
+        <h4 className="font-medium text-text-primary">Recovery key failsafe</h4>
+        <SectionInfo title="Recovery key failsafe">
+          <p>
+            Store offline. Starts custodian recovery without Key 1 or Key 2 — including if you lose
+            your .pn file or recovery contact. Does not unlock by itself.
+          </p>
+        </SectionInfo>
+      </div>
       {registered ? (
         <p className="text-sm text-green-400">
           Failsafe key registered

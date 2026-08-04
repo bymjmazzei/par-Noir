@@ -7,6 +7,7 @@ import { PN_CLOUD_CREDENTIALS_READY_EVENT } from '@par-noir/oauth-ui';
 import { ownerFetch, ownerGet } from '../../services/ownerApiService';
 import { API_ENDPOINT } from '../../config/api';
 import { SocialCloudMigrationWizard } from './SocialCloudMigrationWizard';
+import { SectionInfo } from '../common/SectionInfo';
 
 type ProviderId = 'google_drive' | 'dropbox' | 'aws_s3' | 'azure_blob' | 'onedrive' | 'ftp';
 
@@ -377,12 +378,16 @@ export function MultiCloudStoragePanel({
       <div className="flex items-start gap-3 mb-4">
         <Cloud className="h-5 w-5 text-violet-400 shrink-0 mt-0.5" />
         <div>
-          <h3 className="text-lg font-semibold text-white">Secure Cloud</h3>
-          <p className="text-text-secondary text-sm">
-            Connect encrypted cloud storage. Dropbox uses App folder; OneDrive uses AppFolder;
-            S3/Azure require a {'par-noir-{pn}/'} prefix; Azure is SAS-only. Device custody seals
-            provider secrets on this device; the API keeps layout metadata only.
-          </p>
+          <div className="flex items-center gap-2">
+            <h3 className="text-lg font-semibold text-white">Secure Cloud</h3>
+            <SectionInfo title="Secure Cloud">
+              <p>
+                Connect encrypted cloud storage. Dropbox uses App folder; OneDrive uses AppFolder;
+                S3/Azure require a {'par-noir-{pn}/'} prefix; Azure is SAS-only. Device custody seals
+                provider secrets on this device; the API keeps layout metadata only.
+              </p>
+            </SectionInfo>
+          </div>
           {connectedStorageCount > 0 && (
             <p className="text-green-400 text-sm mt-2">
               {connectedStorageCount} storage provider{connectedStorageCount !== 1 ? 's' : ''} connected

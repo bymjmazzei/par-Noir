@@ -1,11 +1,10 @@
 import React from 'react';
-import { Info, ChevronDown, CheckCircle } from 'lucide-react';
+import { CheckCircle } from 'lucide-react';
+import { SectionInfo } from '../common/SectionInfo';
 
 interface AddCustodianModalProps {
   isOpen: boolean;
   onClose: () => void;
-  showCustodianInfo: boolean;
-  setShowCustodianInfo: (show: boolean) => void;
   onAddCustodian: (custodianData: {
     name: string;
     contactType: 'email' | 'phone';
@@ -19,8 +18,6 @@ interface AddCustodianModalProps {
 export function AddCustodianModal({
   isOpen,
   onClose,
-  showCustodianInfo,
-  setShowCustodianInfo,
   onAddCustodian
 }: AddCustodianModalProps) {
   if (!isOpen) return null;
@@ -29,7 +26,19 @@ export function AddCustodianModal({
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-start justify-center z-50 overflow-y-auto p-4 sm:p-6">
       <div className="bg-modal-bg rounded-lg p-6 max-w-md w-full mx-4 my-8 max-h-[90vh] overflow-y-auto text-text-primary">
         <div className="flex justify-between items-center mb-8">
-          <h2 className="text-xl font-semibold">Add Recovery Custodian</h2>
+          <div className="flex items-center gap-2">
+            <h2 className="text-xl font-semibold">Add Recovery Custodian</h2>
+            <SectionInfo title="About Custodians">
+              <ul>
+                <li>Custodians can help you recover your identity if you lose access</li>
+                <li>You need at least 2 custodians to enable recovery</li>
+                <li>Maximum 5 custodians allowed</li>
+                <li>Custodians will be notified when you initiate recovery</li>
+                <li>They can approve recovery requests</li>
+                <li>Custodians start as "pending" until they accept the invitation</li>
+              </ul>
+            </SectionInfo>
+          </div>
           <button 
             onClick={onClose}
             className="modal-close-button"
@@ -144,30 +153,6 @@ export function AddCustodianModal({
             <p className="text-xs text-text-secondary mt-1">
               Create a 6-digit numeric code to share with the custodian. They'll need this code to accept the custodianship.
             </p>
-          </div>
-
-          <div className="bg-secondary p-4 rounded-lg">
-            <button
-              type="button"
-              onClick={() => setShowCustodianInfo(!showCustodianInfo)}
-              className="w-full flex items-center justify-between text-left"
-            >
-              <h4 className="font-medium text-text-primary flex items-center gap-2">
-                <Info className="w-5 h-5" />
-                About Custodians
-              </h4>
-              <ChevronDown className={`w-5 h-5 transition-transform ${showCustodianInfo ? 'rotate-180' : ''}`} />
-            </button>
-            {showCustodianInfo && (
-              <div className="text-sm text-text-secondary space-y-1 mt-3">
-                <p>• Custodians can help you recover your identity if you lose access</p>
-                <p>• You need at least 2 custodians to enable recovery</p>
-                <p>• Maximum 5 custodians allowed</p>
-                <p>• Custodians will be notified when you initiate recovery</p>
-                <p>• They can approve recovery requests</p>
-                <p>• Custodians start as "pending" until they accept the invitation</p>
-              </div>
-            )}
           </div>
 
           <div className="flex space-x-3">

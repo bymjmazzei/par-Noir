@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Lock, Mail, QrCode } from 'lucide-react';
+import { SectionInfo } from '../common/SectionInfo';
 import type { EncryptedIdentity } from '../../types/crypto';
 import type { PredecessorCustodian } from '../../services/identityMigrationOrchestrator';
 import { assignCustodianVaultAndIssueCredential } from '../../services/recoveryCustodianSetup';
@@ -109,10 +110,17 @@ export const MigrationCustodianReinviteStep: React.FC<MigrationCustodianReinvite
 
   return (
     <div className="space-y-4">
+      <div className="flex items-center gap-2">
+        <p className="text-sm font-medium text-text-primary">Recovery custodians</p>
+        <SectionInfo title="Recovery custodians">
+          <p>
+            Send recovery invitations bound to your new identity. Recovery requires at least one protected
+            custodian and {recoveryThreshold} of {recoveryTotalShares} invitations sent.
+          </p>
+        </SectionInfo>
+      </div>
       <p className="text-xs text-text-secondary">
-        Send recovery invitations bound to your new identity. Recovery requires at least one protected custodian
-        and {recoveryThreshold} of {recoveryTotalShares} invitations sent ({invitedCount}/{recoveryThreshold} sent,
-        {protectedCount} protected).
+        {invitedCount}/{recoveryThreshold} sent, {protectedCount} protected.
         {pendingShareCount != null && (
           <span className="block mt-1">{pendingShareCount} share(s) still unassigned in the vault pool.</span>
         )}

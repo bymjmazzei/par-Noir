@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Loader2, X } from 'lucide-react';
 import { ownerFetch } from '../../services/ownerApiService';
+import { SectionInfo } from '../common/SectionInfo';
 
 interface StorageAccount {
   provider: string;
@@ -157,16 +158,19 @@ export function SocialCloudMigrationWizard({
     <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
       <div className="bg-neutral-900 border border-neutral-700 rounded-xl p-6 max-w-md w-full">
         <div className="flex justify-between items-center mb-4">
-          <h3 className="text-lg font-semibold text-white">Social Cloud Migration</h3>
+          <div className="flex items-center gap-2">
+            <h3 className="text-lg font-semibold text-white">Social Cloud Migration</h3>
+            <SectionInfo title="Social Cloud Migration">
+              <p>
+                Migrate tables, indexes, and JSON metadata to <strong className="text-white">{targetLabel}</strong>.
+                Encrypted files on other connected clouds stay where they are.
+              </p>
+            </SectionInfo>
+          </div>
           <button type="button" onClick={onClose} className="text-text-secondary hover:text-white">
             <X className="h-5 w-5" />
           </button>
         </div>
-
-        <p className="text-sm text-text-secondary mb-4">
-          Migrate tables, indexes, and JSON metadata to <strong className="text-white">{targetLabel}</strong>.
-          Encrypted files on other connected clouds stay where they are.
-        </p>
 
         {loading && step !== 'done' && (
           <div className="flex items-center gap-2 text-text-secondary text-sm mb-4">

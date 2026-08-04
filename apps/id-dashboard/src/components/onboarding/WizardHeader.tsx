@@ -1,15 +1,15 @@
 import React from 'react';
-import { X, HelpCircle } from 'lucide-react';
+import { X } from 'lucide-react';
+import { SectionInfo } from '../common/SectionInfo';
 
 interface WizardHeaderProps {
   currentStepData: {
     icon: React.ReactNode;
     title: string;
+    infoContent?: string;
   };
   currentStep: number;
   totalSteps: number;
-  showInfo: boolean;
-  onToggleInfo: () => void;
   onClose: () => void;
 }
 
@@ -17,8 +17,6 @@ export const WizardHeader: React.FC<WizardHeaderProps> = ({
   currentStepData,
   currentStep,
   totalSteps,
-  showInfo,
-  onToggleInfo,
   onClose
 }) => {
   return (
@@ -28,8 +26,13 @@ export const WizardHeader: React.FC<WizardHeaderProps> = ({
           {currentStepData.icon}
         </div>
         <div className="min-w-0 flex-1">
-          <h2 className="text-lg sm:text-xl font-semibold text-gray-900 dark:text-text-primary truncate">
-            {currentStepData.title}
+          <h2 className="text-lg sm:text-xl font-semibold text-gray-900 dark:text-text-primary flex items-center gap-2">
+            <span className="truncate">{currentStepData.title}</span>
+            {currentStepData.infoContent && (
+              <SectionInfo title={currentStepData.title}>
+                <div className="whitespace-pre-line">{currentStepData.infoContent}</div>
+              </SectionInfo>
+            )}
           </h2>
           <p className="text-xs sm:text-sm text-gray-600 dark:text-text-secondary">
             Step {currentStep + 1} of {totalSteps}
@@ -37,13 +40,6 @@ export const WizardHeader: React.FC<WizardHeaderProps> = ({
         </div>
       </div>
       <div className="flex items-center space-x-2">
-        <button
-          onClick={onToggleInfo}
-          className="p-2 text-gray-500 dark:text-text-secondary hover:text-gray-700 dark:hover:text-text-primary transition-colors"
-          title="More information"
-        >
-          <HelpCircle className="w-5 h-5" />
-        </button>
         <button
           onClick={onClose}
           className="p-2 text-gray-500 dark:text-text-secondary hover:text-gray-700 dark:hover:text-text-primary transition-colors"

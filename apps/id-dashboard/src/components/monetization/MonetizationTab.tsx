@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
+import { SectionInfo } from '../common/SectionInfo';
 import { MonetizationService, type MonetizationStatusResponse } from '../../services/monetization/MonetizationService';
 
 export interface MonetizationTabProps {
@@ -138,12 +139,29 @@ export function MonetizationTab({ accessToken, showErrorMessage, showSuccessMess
   return (
     <div className="space-y-6 text-text-primary">
       <div>
-        <h3 className="text-lg font-semibold mb-2">Creator fund · Monetization</h3>
-        <p className="text-sm text-text-secondary leading-relaxed">
-          Verified identity plus active <strong>monetization maintenance</strong> unlock creator-fund participation.
-          Payouts use <strong>Stripe Connect</strong> (US-only v1). This tab talks only to the par Noir API — no card
-          data in the dashboard.
-        </p>
+        <h3 className="text-lg font-semibold mb-2 flex items-center gap-2">
+          Creator fund · Monetization
+          <SectionInfo title="Creator fund · Monetization">
+            <p>
+              Verified identity plus active <strong>monetization maintenance</strong> unlock creator-fund
+              participation. Payouts use <strong>Stripe Connect</strong> (US-only v1). This tab talks only to the
+              par Noir API — no card data in the dashboard.
+            </p>
+            <p>
+              Maintenance renewals may settle from your <strong>creator-fund balance</strong> first when sufficient;
+              otherwise use card checkout. Accounting follows the creator fund economics doc.
+            </p>
+            <p>
+              <strong>Fund periods (no Stripe):</strong> Platform operators close rolling windows via{' '}
+              <code>POST /api/creator-fund/periods/close</code> using <code>X-Cron-Secret</code> or the admin API
+              key. OPEX lines: <code>POST /api/creator-fund/opex</code> (admin). <strong>G</strong> sums{' '}
+              <code>creator_fund_revenue_events</code> in the window (including balance-first ledger rows). Windows
+              use <code>CREATOR_FUND_PERIOD_TZ</code> (default America/New_York; set <code>UTC</code> for legacy
+              contiguous UTC slices). Allocations export:{' '}
+              <code>GET /api/creator-fund/periods/:id/allocations</code> (cron or admin).
+            </p>
+          </SectionInfo>
+        </h3>
       </div>
 
       {!accessToken ? (
@@ -285,23 +303,9 @@ export function MonetizationTab({ accessToken, showErrorMessage, showSuccessMess
             )}
           </div>
 
-          <div className="rounded-lg border border-border bg-modal-bg p-4 text-sm text-text-secondary space-y-2">
+          <div className="rounded-lg border border-border bg-modal-bg p-4 text-sm text-text-secondary">
             <p>
               <strong className="text-text-primary">Payouts:</strong> {status?.payoutCadenceNote}
-            </p>
-            <p>
-              Maintenance renewals may settle from your <strong>creator-fund balance</strong> first when sufficient;
-              otherwise use card checkout. Accounting follows the creator fund economics doc.
-            </p>
-            <p className="text-xs text-text-secondary pt-2 border-t border-border">
-              <strong className="text-text-primary">Fund periods (no Stripe):</strong> Platform operators close rolling
-              windows via <code className="text-text-primary">POST /api/creator-fund/periods/close</code> using{' '}
-              <code className="text-text-primary">X-Cron-Secret</code> or the admin API key. OPEX lines:{' '}
-              <code className="text-text-primary">POST /api/creator-fund/opex</code> (admin). <strong>G</strong> sums{' '}
-              <code>creator_fund_revenue_events</code> in the window (including balance-first ledger rows). Windows use{' '}
-              <code className="text-text-primary">CREATOR_FUND_PERIOD_TZ</code> (default America/New_York; set{' '}
-              <code className="text-text-primary">UTC</code> for legacy contiguous UTC slices). Allocations export:{' '}
-              <code className="text-text-primary">GET /api/creator-fund/periods/:id/allocations</code> (cron or admin).
             </p>
           </div>
 
