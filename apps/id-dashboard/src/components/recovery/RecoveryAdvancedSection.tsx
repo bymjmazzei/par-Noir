@@ -1,9 +1,6 @@
-import React, { lazy, Suspense } from 'react';
+import React from 'react';
 import { API_ENDPOINT } from '../../config/api';
-
-const IdentityRotationWizard = lazy(() =>
-  import('../identity/IdentityRotationWizard').then((m) => ({ default: m.IdentityRotationWizard }))
-);
+import { IdentityRotationWizard } from '../identity/IdentityRotationWizard';
 
 export interface RecoveryAdvancedSectionProps {
   authenticatedUser: { id: string; publicKey?: string } | null;
@@ -70,13 +67,11 @@ export const RecoveryAdvancedSection: React.FC<RecoveryAdvancedSectionProps> = (
           passcode recovery.
         </p>
         {canRotateIdentity && apiToken ? (
-          <Suspense fallback={<div className="text-sm text-text-secondary">Loading identity rotation…</div>}>
-            <IdentityRotationWizard
-              authToken={apiToken}
-              identityKey={authenticatedUser.publicKey || authenticatedUser.id}
-              currentDid={authenticatedUser.id}
-            />
-          </Suspense>
+          <IdentityRotationWizard
+            authToken={apiToken}
+            identityKey={authenticatedUser.publicKey || authenticatedUser.id}
+            currentDid={authenticatedUser.id}
+          />
         ) : hasKeyedDevices ? (
           <p className="text-xs text-text-secondary">Identity rotation requires a keyed device session.</p>
         ) : null}
