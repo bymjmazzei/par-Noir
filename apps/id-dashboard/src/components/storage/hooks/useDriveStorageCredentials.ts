@@ -407,11 +407,19 @@ export function useDriveStorageCredentials({
               console.warn(
                 '⚠️ [StorageCredentials] Custody Drive init failed; owner-index / device keying may not work until retry'
               );
+              const { markOwnerIndexUnavailable } = await import(
+                '../../../services/storage/ownerIndexAvailability'
+              );
+              markOwnerIndexUnavailable(pnIdentifier);
             }
           } else if (shouldSkipServerDriveInit(result)) {
             console.warn(
               '⏭️ [StorageCredentials] clientSideLayoutRequired but no local Google token — cannot build server index'
             );
+            const { markOwnerIndexUnavailable } = await import(
+              '../../../services/storage/ownerIndexAvailability'
+            );
+            markOwnerIndexUnavailable(pnIdentifier);
           } else if (shouldRunServerDriveInit(result)) {
             console.log('🔄 [StorageCredentials] Building Drive layout on server (may take a few minutes)...');
             setDriveSetupProgress({
@@ -433,6 +441,10 @@ export function useDriveStorageCredentials({
             }
           } else {
             console.log('⏭️ [StorageCredentials] Drive layout already built; skipping initialize');
+            const { clearOwnerIndexUnavailable } = await import(
+              '../../../services/storage/ownerIndexAvailability'
+            );
+            clearOwnerIndexUnavailable(pnIdentifier);
           }
         }
         if (loadFilesRef.current) {

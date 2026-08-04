@@ -102,12 +102,23 @@ export function useDriveLayoutInit({ setError }: UseDriveLayoutInitParams) {
       };
 
       const waitForOwnerIndexReady = async (): Promise<boolean> => {
+        const { markOwnerIndexUnavailable, clearOwnerIndexUnavailable } = await import(
+          '../../../services/storage/ownerIndexAvailability'
+        );
         for (let attempt = 0; attempt < 6; attempt++) {
           const idxRes = await ownerGet(
             accessToken,
             `/api/storage/owner-index/${encodeURIComponent(normalized)}`
           );
-          if (idxRes.ok) return true;
+          if (idxRes.ok) {
+            clearOwnerIndexUnavailable(normalized);
+            return true;
+          }
+          // Under device custody the index often cannot be served — do not retry 403/409.
+          if (idxRes.status === 403 || idxRes.status === 409) {
+            markOwnerIndexUnavailable(normalized);
+            return false;
+          }
           if (attempt < 5) {
             await new Promise((r) => setTimeout(r, 1500 * (attempt + 1)));
           }
@@ -242,6 +253,10 @@ export function useDriveLayoutInit({ setError }: UseDriveLayoutInitParams) {
 
         driveLayoutInitJustCompletedRef.current.set(normalized, Date.now());
         clearDriveSetupProgress();
+        const { clearOwnerIndexUnavailable } = await import(
+          '../../../services/storage/ownerIndexAvailability'
+        );
+        clearOwnerIndexUnavailable(normalized);
         console.log('✅ [StorageCredentials] Drive layout built on server');
         return true;
       } catch (initError) {

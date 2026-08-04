@@ -27,6 +27,7 @@ import {
   shouldRunServerDriveInit,
   shouldSkipServerDriveInit,
 } from '../components/storage/hooks/driveCredentials/driveInitDecision';
+import { clearOwnerIndexUnavailable } from '../services/storage/ownerIndexAvailability';
 
 const BACKEND_ID = 'google_drive::acct-1';
 const PN_ID = 'pn-abcdef123456';
@@ -43,6 +44,7 @@ function makeParams(overrides: Record<string, unknown> = {}) {
 
 beforeEach(() => {
   jest.clearAllMocks();
+  clearOwnerIndexUnavailable();
 });
 
 describe('fetchOwnerIndex owner-index fallthrough', () => {
@@ -60,6 +62,17 @@ describe('fetchOwnerIndex owner-index fallthrough', () => {
     expect(ownerFetch).not.toHaveBeenCalled();
     const requestedPaths = ownerGet.mock.calls.map((call) => call[1]);
     expect(requestedPaths.some((path: string) => path.includes('initialize'))).toBe(false);
+  });
+
+  it('skips the network call after a prior 409 for the same identity this session', async () => {
+    ownerGet.mockResolvedValue({ ok: false, status: 409, json: jest.fn() });
+
+    await fetchOwnerIndex(makeParams());
+    const second = await fetchOwnerIndex(makeParams());
+
+    expect(ownerGet).toHaveBeenCalledTimes(1);
+    expect(second.ownerIndex).toBeNull();
+    expect(second.ownerIndexFromApi).toBe(false);
   });
 
   it('leaves ownerIndex null on 403 without a second API call', async () => {

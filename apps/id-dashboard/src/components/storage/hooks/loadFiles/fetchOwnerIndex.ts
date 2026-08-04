@@ -6,8 +6,16 @@
  * fills Storage via client Drive listFiles — never a second owner-index GET, and
  * never POST /storage/initialize (which 400s without server-held tokens under
  * device custody and loops setup UI).
+ *
+ * After a 403/409, the pn is memoized for this page session so later loadFiles /
+ * metadata passes do not re-hit the same failing endpoint (browser always logs
+ * 4xx in red when the request is made).
  */
 import { ownerGet } from '../../../../services/ownerApiService';
+import {
+  isOwnerIndexUnavailable,
+  markOwnerIndexUnavailable,
+} from '../../../../services/storage/ownerIndexAvailability';
 
 export interface FetchOwnerIndexParams {
   backendId: string;
@@ -41,18 +49,27 @@ export async function fetchOwnerIndex({
     return { ownerIndex, ownerIndexFromApi, skipBackend: false };
   }
 
+  const pnId = currentPnIdentifier.startsWith('pn-')
+    ? currentPnIdentifier
+    : `pn-${currentPnIdentifier}`;
+
+  if (isOwnerIndexUnavailable(pnId)) {
+    console.debug(
+      'ℹ️ [loadFiles] owner-index known unavailable this session; using Drive listFiles fallthrough'
+    );
+    return { ownerIndex, ownerIndexFromApi, skipBackend: false };
+  }
+
   try {
-    const pnId = currentPnIdentifier.startsWith('pn-')
-      ? currentPnIdentifier
-      : `pn-${currentPnIdentifier}`;
     const idxRes = await ownerGet(
       ownerApiToken,
       `/api/storage/owner-index/${encodeURIComponent(pnId)}`
     );
     if (idxRes.status === 403) {
-      // Device policy / custody — mergeDriveScanWithIndex uses Drive listFiles
+      markOwnerIndexUnavailable(pnId);
       console.debug('ℹ️ [loadFiles] owner-index forbidden; using Drive listFiles fallthrough');
     } else if (idxRes.status === 409) {
+      markOwnerIndexUnavailable(pnId);
       // Server Drive index incomplete (common under device cloud custody where
       // OAuth secrets are not on the API). Do NOT POST /storage/initialize —
       // that returns 400 without server-held tokens and loops the "setup" UI.

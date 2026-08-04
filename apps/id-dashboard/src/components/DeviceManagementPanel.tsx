@@ -301,15 +301,7 @@ export const DeviceManagementPanel: React.FC<DeviceManagementPanelProps> = ({
           </p>
         </div>
         <div className="text-xs text-right">
-          <span
-            className={
-              isKeyedSession
-                ? 'text-green-400'
-                : isUnkeyedRestricted
-                  ? 'text-amber-400'
-                  : 'text-text-secondary'
-            }
-          >
+          <span className={isKeyedSession ? 'text-green-400 font-medium' : 'text-red-400 font-medium'}>
             {isKeyedSession ? 'Keyed session' : 'Unkeyed session'}
           </span>
         </div>

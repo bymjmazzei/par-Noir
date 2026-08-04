@@ -1124,6 +1124,7 @@ export class GoogleDriveMetadataService {
    * Get owner file index (merged content-class + root) from the API (Sheets).
    * API-only — does not read Drive with a Google token. Under device custody
    * the route may return 409; callers should treat null as “use Drive listFiles”.
+   * Skips the network call when this session already saw 403/409 for the pn.
    */
   static async getOwnerFileIndexFromContentClasses(
     pnIdentifier: string,
@@ -1141,10 +1142,20 @@ export class GoogleDriveMetadataService {
     ownerApiToken?: string | null
   ): Promise<PublicFileIndex | null> {
     try {
+      const { isOwnerIndexUnavailable, markOwnerIndexUnavailable } = await import(
+        './ownerIndexAvailability'
+      );
+      if (isOwnerIndexUnavailable(pnIdentifier)) {
+        return null;
+      }
       const path = `/api/storage/owner-index/${encodeURIComponent(pnIdentifier)}`;
       const res = ownerApiToken
         ? await ownerGet(ownerApiToken, path)
         : await fetch(`${API_ENDPOINT}${path}`);
+      if (res.status === 403 || res.status === 409) {
+        markOwnerIndexUnavailable(pnIdentifier);
+        return null;
+      }
       if (!res.ok) return null;
       const data = await res.json();
       return { identifier: data.identifier ?? pnIdentifier, files: data.files ?? [], updatedAt: data.updatedAt ?? new Date().toISOString() };
