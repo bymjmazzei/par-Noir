@@ -265,7 +265,7 @@ export const SubPnTab: React.FC<SubPnTabProps> = ({
       return;
     }
     if (!authPnName.trim() || !authPasscode.trim()) {
-      setAuthError('Enter your pN name and passcode.');
+      setAuthError('Enter your Key 1 and Key 2.');
       return;
     }
     if (!sessionId) {
@@ -346,7 +346,7 @@ export const SubPnTab: React.FC<SubPnTabProps> = ({
       return;
     }
     if (!authPnName.trim() || !authPasscode.trim()) {
-      setAuthError('Enter your pN name and passcode.');
+      setAuthError('Enter your Key 1 and Key 2.');
       return;
     }
     if (!sessionId) {
@@ -750,14 +750,14 @@ export const SubPnTab: React.FC<SubPnTabProps> = ({
             />
             <input
               type="password"
-              placeholder="Root pN name"
+              placeholder="Root Key 1"
               value={authPnName}
               onChange={(e) => setAuthPnName(e.target.value)}
               className="w-full rounded-md bg-secondary border border-border px-3 py-2 text-sm"
             />
             <input
               type="password"
-              placeholder="Root passcode"
+              placeholder="Root Key 2"
               value={authPasscode}
               onChange={(e) => setAuthPasscode(e.target.value)}
               className="w-full rounded-md bg-secondary border border-border px-3 py-2 text-sm"

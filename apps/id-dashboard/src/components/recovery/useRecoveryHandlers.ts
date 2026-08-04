@@ -150,15 +150,23 @@ export async function approveRecoveryWithZkp(input: ApproveRecoveryInput): Promi
 
 export async function fetchSharesAfterThreshold(params: {
   userPnIdentifier: string;
-  authToken: string;
+  authToken?: string | null;
   requestId: string;
   identityPublicKey: string;
 }): Promise<ShamirShare[]> {
-  const remote = await fetchRecoveryRequest(params.userPnIdentifier, params.authToken, params.requestId);
+  const remote = await fetchRecoveryRequest(
+    params.userPnIdentifier,
+    params.authToken,
+    params.requestId
+  );
   if (!remote || remote.status !== 'ready') {
     throw new Error('Recovery threshold not met yet');
   }
-  const vault = await fetchVaultShares(params.userPnIdentifier, params.authToken, params.requestId);
+  const vault = await fetchVaultShares(
+    params.userPnIdentifier,
+    params.authToken,
+    params.requestId
+  );
   if (!vault.includesUnrevokableShare) {
     throw new Error('Recovery requires at least one protected custodian approval');
   }
@@ -168,6 +176,7 @@ export async function fetchSharesAfterThreshold(params: {
 export async function completeRecoveryPasscodeStep(params: {
   envelope: RecoveryEnvelope;
   shares: ShamirShare[];
+  newPnName: string;
   newPasscode: string;
   existingIdentity: EncryptedIdentity;
 }) {

@@ -40,7 +40,7 @@ export function RecoveryCompletionModal({
             <h3 className="text-lg font-medium mb-2">Recovery complete</h3>
             <p className="text-sm text-gray-600 mb-4">
               <strong>{recoveredDID.nickname}</strong> is unlocked on this device with the same cryptographic keys.
-              Your new passcode is saved locally.
+              Your new Key 1 and Key 2 are saved locally.
             </p>
           </div>
 

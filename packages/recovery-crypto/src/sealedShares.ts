@@ -75,7 +75,7 @@ export async function unsealRecoveryShares(
       ciphertext as BufferSource
     );
   } catch {
-    throw new Error('Failed to unseal recovery shares — check pN name and passcode');
+    throw new Error('Failed to unseal recovery shares — check Key 1 and Key 2');
   }
   const parsed = JSON.parse(new TextDecoder().decode(decrypted)) as Array<{ index: number; share?: string; data?: string }>;
   if (!Array.isArray(parsed) || parsed.length === 0) {

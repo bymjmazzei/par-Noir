@@ -119,33 +119,33 @@ export class InputValidator {
     const warnings: string[] = [];
 
     if (!pnName || typeof pnName !== 'string') {
-      errors.push('pN Name must be a non-empty string');
+      errors.push('Key 1 must be a non-empty string');
       return { isValid: false, errors, warnings };
     }
 
     if (pnName.length < 3) {
-      errors.push('pN Name must be at least 3 characters long');
+      errors.push('Key 1 must be at least 3 characters long');
     }
 
     if (pnName.length > 20) {
-      errors.push('pN Name must be no more than 20 characters long');
+      errors.push('Key 1 must be no more than 20 characters long');
     }
 
     if (!this.USERNAME_PATTERN.test(pnName)) {
-      errors.push('pN Name can only contain letters, numbers, and hyphens');
+      errors.push('Key 1 can only contain letters, numbers, and hyphens');
     }
 
     if (this.RESERVED_USERNAMES.includes(pnName.toLowerCase())) {
-      errors.push('pN Name is reserved and cannot be used');
+      errors.push('Key 1 is reserved and cannot be used');
     }
 
     // Check for suspicious patterns
     if (this.containsXSS(pnName)) {
-      errors.push('pN Name contains potentially malicious content');
+      errors.push('Key 1 contains potentially malicious content');
     }
 
     if (this.containsSQLInjection(pnName)) {
-      errors.push('pN Name contains potentially malicious SQL patterns');
+      errors.push('Key 1 contains potentially malicious SQL patterns');
     }
 
     return {
@@ -164,32 +164,32 @@ export class InputValidator {
     const warnings: string[] = [];
 
     if (!passcode || typeof passcode !== 'string') {
-      errors.push('Passcode must be a non-empty string');
+      errors.push('Key 2 must be a non-empty string');
       return { isValid: false, errors, warnings };
     }
 
     if (passcode.length < 12) {
-      errors.push('Passcode must be at least 12 characters long');
+      errors.push('Key 2 must be at least 12 characters long');
     }
 
     if (passcode.length > 128) {
-      errors.push('Passcode must be no more than 128 characters long');
+      errors.push('Key 2 must be no more than 128 characters long');
     }
 
     if (!/[A-Z]/.test(passcode)) {
-      errors.push('Passcode must contain at least one uppercase letter');
+      errors.push('Key 2 must contain at least one uppercase letter');
     }
 
     if (!/[a-z]/.test(passcode)) {
-      errors.push('Passcode must contain at least one lowercase letter');
+      errors.push('Key 2 must contain at least one lowercase letter');
     }
 
     if (!/[0-9]/.test(passcode)) {
-      errors.push('Passcode must contain at least one number');
+      errors.push('Key 2 must contain at least one number');
     }
 
     if (!/[^A-Za-z0-9]/.test(passcode)) {
-      errors.push('Passcode must contain at least one special character');
+      errors.push('Key 2 must contain at least one special character');
     }
 
     // Check for common weak patterns

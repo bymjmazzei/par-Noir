@@ -85,7 +85,7 @@ export const IdentityRotationWizard: React.FC<IdentityRotationWizardProps> = ({
   const handleUnlockOld = async () => {
     setError(null);
     if (!oldPnFile || !oldPasscode || !oldPnName) {
-      setError('Provide your current .pn file, pn name, and passcode.');
+      setError('Provide your current .pn file, Key 1, and Key 2.');
       return;
     }
     try {
@@ -100,7 +100,7 @@ export const IdentityRotationWizard: React.FC<IdentityRotationWizardProps> = ({
       );
       setStep('new_passcode');
     } catch {
-      setError('Could not unlock old identity. Check pn name and passcode.');
+      setError('Could not unlock old identity. Check Key 1 and Key 2.');
     }
   };
 
@@ -152,7 +152,7 @@ export const IdentityRotationWizard: React.FC<IdentityRotationWizardProps> = ({
   const handleMigrate = async () => {
     setError(null);
     if (newPasscode.length < 8) {
-      setError('New passcode must be at least 8 characters.');
+      setError('New Key 2 must be at least 8 characters.');
       return;
     }
     if (newPasscode !== confirmPasscode) {
@@ -296,7 +296,7 @@ export const IdentityRotationWizard: React.FC<IdentityRotationWizardProps> = ({
       </div>
       <p className="text-xs text-text-secondary">
         Re-key your pN after compromise or estate succession. This preserves your Drive folder, re-issues
-        ZKPs, rebuilds recovery, and registers network succession. Distinct from Shamir passcode recovery.
+        ZKPs, rebuilds recovery, and registers network succession. Distinct from Shamir Key 1 / Key 2 recovery.
       </p>
 
       {step === 'intro' && (
@@ -319,7 +319,7 @@ export const IdentityRotationWizard: React.FC<IdentityRotationWizardProps> = ({
           />
           <input
             type="text"
-            placeholder="pn name"
+            placeholder="Key 1"
             value={oldPnName}
             onChange={(e) => setOldPnName(e.target.value)}
             className="w-full px-3 py-2 rounded border border-border bg-background text-sm"
@@ -327,7 +327,7 @@ export const IdentityRotationWizard: React.FC<IdentityRotationWizardProps> = ({
           />
           <input
             type="password"
-            placeholder="current passcode"
+            placeholder="current Key 2"
             value={oldPasscode}
             onChange={(e) => setOldPasscode(e.target.value)}
             className="w-full px-3 py-2 rounded border border-border bg-background text-sm"
@@ -344,7 +344,7 @@ export const IdentityRotationWizard: React.FC<IdentityRotationWizardProps> = ({
           {storedIdentity && (
             <input
               type="password"
-              placeholder="current passcode"
+              placeholder="current Key 2"
               value={oldPasscode}
               onChange={(e) => setOldPasscode(e.target.value)}
               className="w-full px-3 py-2 rounded border border-border bg-background text-sm"
@@ -353,7 +353,7 @@ export const IdentityRotationWizard: React.FC<IdentityRotationWizardProps> = ({
           )}
           <input
             type="password"
-            placeholder="new passcode"
+            placeholder="new Key 2"
             value={newPasscode}
             onChange={(e) => setNewPasscode(e.target.value)}
             className="w-full px-3 py-2 rounded border border-border bg-background text-sm"
@@ -361,7 +361,7 @@ export const IdentityRotationWizard: React.FC<IdentityRotationWizardProps> = ({
           />
           <input
             type="password"
-            placeholder="confirm new passcode"
+            placeholder="confirm new Key 2"
             value={confirmPasscode}
             onChange={(e) => setConfirmPasscode(e.target.value)}
             className="w-full px-3 py-2 rounded border border-border bg-background text-sm"
@@ -495,7 +495,7 @@ export const IdentityRotationWizard: React.FC<IdentityRotationWizardProps> = ({
       {step === 'done' && (
         <div className="space-y-3">
           <p className="text-sm text-green-600">
-            Migration complete. Download your new .pn file and unlock with the new passcode.
+            Migration complete. Download your new .pn file and unlock with the new Key 2.
           </p>
           <button type="button" className="px-4 py-2 bg-primary text-bg-primary rounded-lg text-sm" onClick={downloadNewPn}>
             Download new .pn

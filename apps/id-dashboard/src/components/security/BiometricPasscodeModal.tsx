@@ -65,7 +65,7 @@ export const BiometricPasscodeModal: React.FC<BiometricPasscodeModalProps> = ({
           <div className="flex items-center space-x-3">
             <Lock className="w-6 h-6 text-primary" />
             <h2 className="text-xl font-semibold text-text-primary">
-              Enter Passcode
+              Enter Key 2
             </h2>
           </div>
           <button
@@ -78,7 +78,7 @@ export const BiometricPasscodeModal: React.FC<BiometricPasscodeModalProps> = ({
         </div>
 
         <p className="text-text-secondary mb-6">
-          Biometric authentication successful! Please enter your pN name and passcode to decrypt your identity.
+          Biometric authentication successful! Please enter your Key 1 and Key 2 to decrypt your identity.
           {identityName && (
             <span className="block mt-2 font-medium text-text-primary">
               Identity: {identityName}
@@ -99,7 +99,7 @@ export const BiometricPasscodeModal: React.FC<BiometricPasscodeModalProps> = ({
                 value={pnName}
                 onChange={(e) => setPnName(e.target.value)}
                 className="w-full px-3 py-2 pr-10 border border-input-border bg-input-bg rounded-md focus:outline-none focus:ring-2 focus:ring-primary text-text-primary"
-                placeholder="Enter your pN name"
+                placeholder="Enter Key 1"
                 autoFocus
                 required
                 disabled={isSubmitting}
@@ -135,7 +135,7 @@ export const BiometricPasscodeModal: React.FC<BiometricPasscodeModalProps> = ({
                 value={passcode}
                 onChange={(e) => setPasscode(e.target.value)}
                 className="w-full px-3 py-2 pr-10 border border-input-border bg-input-bg rounded-md focus:outline-none focus:ring-2 focus:ring-primary text-text-primary"
-                placeholder="Enter your passcode"
+                placeholder="Enter Key 2"
                 autoFocus
                 required
                 disabled={isSubmitting}

@@ -47,7 +47,7 @@ export const RecoveryAuthGate: React.FC<RecoveryAuthGateProps> = ({ onAuthentica
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!file || !pnName.trim() || !passcode) {
-      setError('Upload your .pn file and enter your pN name and passcode.');
+      setError('Upload your .pn file and enter Key 1 and Key 2.');
       return;
     }
     setLoading(true);
@@ -73,7 +73,7 @@ export const RecoveryAuthGate: React.FC<RecoveryAuthGateProps> = ({ onAuthentica
         <div>
           <h4 className="font-medium text-text-primary">Confirm identity to manage recovery</h4>
           <p className="text-sm text-text-secondary mt-1">
-            Changing recovery requires your .pn file, pN name, and passcode — even if the dashboard is already unlocked.
+            Changing recovery requires your .pn file, Key 1, and Key 2 — even if the dashboard is already unlocked.
           </p>
         </div>
       </div>
@@ -88,13 +88,13 @@ export const RecoveryAuthGate: React.FC<RecoveryAuthGateProps> = ({ onAuthentica
           />
         </div>
         <div>
-          <label className="block text-xs text-text-secondary mb-1">pN name</label>
+          <label className="block text-xs text-text-secondary mb-1">Key 1</label>
           <div className="relative">
             <input
               type={showPnName ? 'text' : 'password'}
               value={pnName}
               onChange={(e) => setPnName(e.target.value)}
-              placeholder="Enter your pN name"
+              placeholder="Enter Key 1"
               className="w-full px-3 py-2 pr-10 border border-input-border bg-input-bg rounded-md text-sm"
               autoComplete="new-password"
               name="recovery-pn-name"
@@ -103,20 +103,20 @@ export const RecoveryAuthGate: React.FC<RecoveryAuthGateProps> = ({ onAuthentica
               type="button"
               onClick={() => setShowPnName((v) => !v)}
               className="absolute right-2 top-1/2 -translate-y-1/2 text-text-secondary hover:text-text-primary"
-              aria-label={showPnName ? 'Hide pN name' : 'Show pN name'}
+              aria-label={showPnName ? 'Hide Key 1' : 'Show Key 1'}
             >
               {showPnName ? '👁️' : '👁️‍🗨️'}
             </button>
           </div>
         </div>
         <div>
-          <label className="block text-xs text-text-secondary mb-1">Passcode</label>
+          <label className="block text-xs text-text-secondary mb-1">Key 2</label>
           <div className="relative">
             <input
               type={showPasscode ? 'text' : 'password'}
               value={passcode}
               onChange={(e) => setPasscode(e.target.value)}
-              placeholder="Enter your passcode"
+              placeholder="Enter Key 2"
               className="w-full px-3 py-2 pr-10 border border-input-border bg-input-bg rounded-md text-sm"
               autoComplete="new-password"
               name="recovery-passcode"
@@ -125,7 +125,7 @@ export const RecoveryAuthGate: React.FC<RecoveryAuthGateProps> = ({ onAuthentica
               type="button"
               onClick={() => setShowPasscode((v) => !v)}
               className="absolute right-2 top-1/2 -translate-y-1/2 text-text-secondary hover:text-text-primary"
-              aria-label={showPasscode ? 'Hide passcode' : 'Show passcode'}
+              aria-label={showPasscode ? 'Hide Key 2' : 'Show Key 2'}
             >
               {showPasscode ? '👁️' : '👁️‍🗨️'}
             </button>

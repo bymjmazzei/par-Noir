@@ -136,7 +136,7 @@ export function CreateDidModal(props: CreateDidModalProps) {
                     
                     <div>
                       <label className="block text-sm font-medium text-text-primary mb-1">
-                        pN Name
+                        Key 1
                       </label>
                       <div className="relative">
                         <input
@@ -144,7 +144,7 @@ export function CreateDidModal(props: CreateDidModalProps) {
                           value={createForm.pnName}
                           onChange={(e) => setCreateForm(prev => ({ ...prev, pnName: e.target.value }))}
                           className="w-full px-3 py-2 pr-10 border border-input-border bg-input-bg rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
-                          placeholder="Enter pN Name"
+                          placeholder="Enter Key 1"
                           required
                         />
                         <button
@@ -182,7 +182,7 @@ export function CreateDidModal(props: CreateDidModalProps) {
 
                     <div>
                       <label className="block text-sm font-medium text-text-primary mb-1">
-                        Passcode
+                        Key 2
                       </label>
                       <div className="relative">
                         <input
@@ -190,7 +190,7 @@ export function CreateDidModal(props: CreateDidModalProps) {
                           value={createForm.passcode}
                           onChange={(e) => setCreateForm(prev => ({ ...prev, passcode: e.target.value }))}
                           className="w-full px-3 py-2 pr-10 border border-input-border bg-input-bg rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
-                          placeholder="Enter passcode"
+                          placeholder="Enter Key 2"
                           required
                         />
                         <button
@@ -316,7 +316,7 @@ export function CreateDidModal(props: CreateDidModalProps) {
                     
                     <div>
                       <label className="block text-sm font-medium text-text-primary mb-1">
-                        Confirm pN Name
+                        Confirm Key 1
                       </label>
                       <div className="relative">
                         <input
@@ -324,7 +324,7 @@ export function CreateDidModal(props: CreateDidModalProps) {
                           value={createForm.confirmPNName}
                           onChange={(e) => setCreateForm(prev => ({ ...prev, confirmPNName: e.target.value }))}
                           className="w-full px-3 py-2 pr-10 border border-input-border bg-input-bg rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
-                          placeholder="Confirm your pN Name"
+                          placeholder="Confirm Key 1"
                           required
                         />
                         <button
@@ -353,7 +353,7 @@ export function CreateDidModal(props: CreateDidModalProps) {
 
                     <div>
                       <label className="block text-sm font-medium text-text-primary mb-1">
-                        Confirm Passcode
+                        Confirm Key 2
                       </label>
                       <div className="relative">
                         <input
@@ -361,7 +361,7 @@ export function CreateDidModal(props: CreateDidModalProps) {
                           value={createForm.confirmPasscode}
                           onChange={(e) => setCreateForm(prev => ({ ...prev, confirmPasscode: e.target.value }))}
                           className="w-full px-3 py-2 pr-10 border border-input-border bg-input-bg rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
-                          placeholder="Confirm your passcode"
+                          placeholder="Confirm Key 2"
                           required
                         />
                         <button
@@ -383,7 +383,7 @@ export function CreateDidModal(props: CreateDidModalProps) {
                       </div>
                       <div className="mt-2 text-xs text-text-secondary">
                         <p className={createForm.confirmPasscode === createForm.passcode ? "text-green-500" : "text-red-500"}>
-                          {createForm.confirmPasscode === createForm.passcode ? "✓ Passcodes match" : "✗ Passcodes do not match"}
+                          {createForm.confirmPasscode === createForm.passcode ? "✓ Key 2 entries match" : "✗ Key 2 entries do not match"}
                         </p>
                       </div>
                     </div>

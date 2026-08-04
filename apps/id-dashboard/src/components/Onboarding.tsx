@@ -94,31 +94,31 @@ export const Onboarding: React.FC<OnboardingProps> = ({ isOpen, onComplete }) =>
     },
     {
       id: 'security',
-      title: 'Set Your Passcode',
-      description: 'Create a strong passcode to protect your identity.',
+      title: 'Set Key 2',
+      description: 'Create a strong Key 2 to protect your identity.',
       component: (
         <div className="space-y-4">
           <div>
-            <label className="block text-sm font-medium mb-2">Passcode</label>
+            <label className="block text-sm font-medium mb-2">Key 2</label>
             <input
               type="password"
               value={formData.passcode}
               onChange={(e) => setFormData({ ...formData, passcode: e.target.value })}
               className="w-full p-3 border rounded-lg bg-bg-primary text-text-primary"
-              placeholder="Enter a strong passcode"
+              placeholder="Enter a strong Key 2"
             />
             <p className="text-xs text-text-secondary mt-1">
               Minimum 8 characters, no spaces
             </p>
           </div>
           <div>
-            <label className="block text-sm font-medium mb-2">Confirm Passcode</label>
+            <label className="block text-sm font-medium mb-2">Confirm Key 2</label>
             <input
               type="password"
               value={formData.confirmPasscode}
               onChange={(e) => setFormData({ ...formData, confirmPasscode: e.target.value })}
               className="w-full p-3 border rounded-lg bg-bg-primary text-text-primary"
-              placeholder="Confirm your passcode"
+              placeholder="Confirm Key 2"
             />
           </div>
           {formData.passcode && formData.confirmPasscode && (
@@ -130,11 +130,11 @@ export const Onboarding: React.FC<OnboardingProps> = ({ isOpen, onComplete }) =>
               {formData.passcode === formData.confirmPasscode 
                 ? <div className="flex items-center gap-2 text-green-600">
                     <CheckCircle className="w-4 h-4" />
-                    Passcodes match
+                    Key 2 entries match
                   </div> 
                 : <div className="flex items-center gap-2 text-red-600">
                     <XCircle className="w-4 h-4" />
-                    Passcodes do not match
+                    Key 2 entries do not match
                   </div>
               }
             </div>

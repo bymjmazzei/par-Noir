@@ -1061,6 +1061,9 @@ function App() {
     handleApproveRecovery,
     handleInitiateRecoveryFromPn,
     handleRecoveryPasscodeSubmit,
+    handleContinueReadyRecovery,
+    handleResendCustodianNotify,
+    handleCancelActiveRecovery,
     handleGenerateRecoveryKey,
     handleDownloadRecoveryKey,
     handleInitiateRecoveryWithKey,
@@ -1365,6 +1368,9 @@ function App() {
           setActiveRecoveryMethod={setActiveRecoveryMethod}
           handleInitiateRecoveryFromPn={handleInitiateRecoveryFromPn}
           handleInitiateRecoveryWithKey={handleInitiateRecoveryWithKey}
+          handleContinueReadyRecovery={handleContinueReadyRecovery}
+          handleResendCustodianNotify={handleResendCustodianNotify}
+          handleCancelActiveRecovery={handleCancelActiveRecovery}
           recoveryKeys={recoveryKeys}
           recoveryVaultSummary={recoveryVaultSummary}
           showAddCustodianModal={showAddCustodianModal}

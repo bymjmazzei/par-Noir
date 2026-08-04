@@ -478,16 +478,16 @@
         </div>
         
         <div id="nfcModeSection" style="display: none;">
-          <p class="physical-hint">Hold your NFC card or fob to the back of your phone (Chrome on Android). Then enter pN name and passcode below.</p>
+          <p class="physical-hint">Hold your NFC card or fob to the back of your phone (Chrome on Android). Then enter Key 1 and Key 2 below.</p>
           <button type="button" class="btn-primary btn-full" id="nfcScanBtn">Tap NFC card</button>
           <div id="nfcStatus"></div>
         </div>
         
         <div class="form-group">
-          <label>pN Name (Secret)</label>
+          <label>Key 1</label>
           <div class="input-wrapper">
-            <input type="password" id="pnName" placeholder="Enter your secret pN name" required autocomplete="off" />
-            <button type="button" class="eye-toggle" id="togglePnName" aria-label="Toggle pN name visibility">
+            <input type="password" id="pnName" placeholder="Enter Key 1" required autocomplete="off" />
+            <button type="button" class="eye-toggle" id="togglePnName" aria-label="Toggle Key 1 visibility">
               <svg id="eyeIconPnName" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
@@ -497,10 +497,10 @@
         </div>
         
         <div class="form-group">
-          <label>Passcode</label>
+          <label>Key 2</label>
           <div class="input-wrapper">
-            <input type="password" id="passcode" placeholder="Enter your passcode" required />
-            <button type="button" class="eye-toggle" id="togglePasscode" aria-label="Toggle passcode visibility">
+            <input type="password" id="passcode" placeholder="Enter Key 2" required />
+            <button type="button" class="eye-toggle" id="togglePasscode" aria-label="Toggle Key 2 visibility">
               <svg id="eyeIconPasscode" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
@@ -725,7 +725,7 @@
       nfcScanBtn.disabled = true;
       try {
         nfcPayload = await ParNoirOAuthPhysical.readNfcIdentity();
-        nfcStatusEl.textContent = 'Card read. Enter pN name and passcode, then Unlock.';
+        nfcStatusEl.textContent = 'Card read. Enter Key 1 and Key 2, then Unlock.';
       } catch (err) {
         nfcStatusEl.textContent = err.message || 'NFC read failed';
         nfcPayload = null;
@@ -839,7 +839,7 @@
       const unlockBtn = document.getElementById('unlockBtn');
       
       if (!pnName || !passcode) {
-        errorDiv.textContent = 'Please enter pN name and passcode';
+        errorDiv.textContent = 'Please enter Key 1 and Key 2';
         errorDiv.style.display = 'block';
         return;
       }
@@ -861,7 +861,7 @@
         }
       } else if (unlockMode === 'nfc') {
         if (!nfcPayload) {
-          errorDiv.textContent = 'Tap NFC card first, then enter pN name and passcode';
+          errorDiv.textContent = 'Tap NFC card first, then enter Key 1 and Key 2';
           errorDiv.style.display = 'block';
           return;
         }
@@ -959,7 +959,7 @@
         await completeOAuthUnlock(encryptedIdentity, publicKey, did, decryptedIdentity, pnName, passcode);
         
       } catch (error) {
-        errorDiv.textContent = error.message || 'Failed to unlock. Check your pN name, passcode, and identity file.';
+        errorDiv.textContent = error.message || 'Failed to unlock. Check your Key 1, Key 2, and identity file.';
         errorDiv.style.display = 'block';
         unlockBtn.disabled = false;
         unlockBtn.textContent = 'Unlock pN';

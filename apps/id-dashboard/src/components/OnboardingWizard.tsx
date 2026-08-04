@@ -100,7 +100,7 @@ Options:
 • Export to NFC - Bind to an NFC card or fob (requires Chrome on Android)
 
 Security features:
-• The export file is encrypted with your pN name and passcode
+• The export file is encrypted with your Key 1 and Key 2
 • Physical keys (USB/NFC) bind the pN to that specific device - it cannot be copied
 
 Important: Keep your backup safe! It's your lifeline if you need to restore your identity on a new device.`
@@ -137,7 +137,7 @@ The nickname is stored locally on your device and is not shared with external se
           setCompletedSteps(prev => new Set([...prev, 'custodians']));
         }
       },
-      infoContent: `Recovery custodians are trusted people or services who can help you recover access to your identity if you lose your device or forget your passcode.
+      infoContent: `Recovery custodians are trusted people or services who can help you recover access to your identity if you lose your device or forget Key 2.
 
 How it works:
 • You add 2-5 trusted custodians (people or services)
@@ -181,7 +181,7 @@ Security features:
 Best practices:
 • Store in multiple secure locations
 • Don't share with anyone
-• Consider it as important as your passcode
+• Consider it as important as Key 2
 • Test recovery process periodically
 
 This gives you a backup recovery method in addition to your custodians.`

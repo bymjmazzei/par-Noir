@@ -42,7 +42,7 @@ export const RecoveryKeyFailsafeSection: React.FC<RecoveryKeyFailsafeSectionProp
     <div className="bg-secondary p-4 rounded-lg space-y-3">
       <h4 className="font-medium text-text-primary">Recovery key failsafe</h4>
       <p className="text-xs text-text-secondary">
-        Store offline. Starts custodian recovery without your passcode or pn name — including if you lose
+        Store offline. Starts custodian recovery without Key 1 or Key 2 — including if you lose
         your .pn file or recovery contact. Does not unlock by itself.
       </p>
       {registered ? (

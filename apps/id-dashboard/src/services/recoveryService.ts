@@ -1,9 +1,14 @@
+/**
+ * Combine Shamir shares, decrypt envelope, re-wrap identity with new Key 1 + Key 2.
+ * Cryptographic secrets and publicKey stay the same (continuity, not succession).
+ */
 import {
   combineShares,
   decryptRecoveryEnvelope,
   decryptOwnerVaultShare,
   normalizeShare,
   parseOwnerVaultShare,
+  sealRecoveryShares,
   type RecoveryEnvelope,
   type ShamirShare
 } from '@par-noir/recovery-crypto';
@@ -12,6 +17,9 @@ import { IdentityCrypto, type EncryptedIdentity } from '@par-noir/identity-crypt
 export interface RecoveryCompletionInput {
   envelope: RecoveryEnvelope;
   shares: ShamirShare[];
+  /** New Key 1 (internal: pnName) */
+  newPnName: string;
+  /** New Key 2 (internal: passcode) */
   newPasscode: string;
   existingIdentity: EncryptedIdentity;
 }
@@ -21,12 +29,17 @@ export interface RecoveryCompletionResult {
   pnName: string;
 }
 
-/**
- * Combine Shamir shares from owner vault, decrypt recovery envelope, re-wrap identity with new passcode.
- */
 export async function completeRecoveryWithShares(
   input: RecoveryCompletionInput
 ): Promise<RecoveryCompletionResult> {
+  const newPnName = input.newPnName.trim();
+  if (!newPnName) {
+    throw new Error('Key 1 is required');
+  }
+  if (!input.newPasscode || input.newPasscode.length < 8) {
+    throw new Error('Key 2 must be at least 8 characters');
+  }
+
   const master = combineShares(input.shares.map((s) => normalizeShare(s)));
   const payload = await decryptRecoveryEnvelope(master, input.envelope);
 
@@ -36,8 +49,8 @@ export async function completeRecoveryWithShares(
 
   const identityData: Record<string, unknown> = {
     id: payload.identityId,
-    username: payload.pnName,
-    pnName: payload.pnName,
+    username: newPnName,
+    pnName: newPnName,
     recoveryConfig: payload.recoveryConfig,
     custodiansRequired: true,
     custodiansSetup: true,
@@ -50,19 +63,26 @@ export async function completeRecoveryWithShares(
 
   const encryptedData = await IdentityCrypto.encryptData(
     JSON.stringify(identityData),
-    payload.pnName,
+    newPnName,
+    input.newPasscode
+  );
+
+  const recoverySharesSealed = await sealRecoveryShares(
+    input.shares.map((s) => normalizeShare(s)),
+    newPnName,
     input.newPasscode
   );
 
   return {
-    pnName: payload.pnName,
+    pnName: newPnName,
     identity: {
       publicKey: payload.publicKey,
       mlKemPublicKey: payload.mlKemPublicKey,
       encryptedData: encryptedData.encrypted,
       iv: encryptedData.iv,
       salt: encryptedData.salt,
-      recoveryEnvelope: input.envelope
+      recoveryEnvelope: input.envelope,
+      recoverySharesSealed
     }
   };
 }
@@ -144,4 +164,17 @@ export function appendApprovalToRecoveryRequest(requestId: string): StoredRecove
   if (req.approvalCount >= req.requiredThreshold) req.status = 'ready';
   saveRecoveryRequest(req);
   return req;
+}
+
+export function markRecoveryRequestCompleted(requestId: string): void {
+  const list = listRecoveryRequests();
+  const req = list.find((r) => r.id === requestId);
+  if (!req) return;
+  req.status = 'completed';
+  saveRecoveryRequest(req);
+}
+
+export function markRecoveryRequestExpired(requestId: string): void {
+  const list = listRecoveryRequests().filter((r) => r.id !== requestId);
+  localStorage.setItem(RECOVERY_REQUESTS_KEY, JSON.stringify(list));
 }

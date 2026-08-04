@@ -63,7 +63,7 @@ export const SimpleUnlock: React.FC<SimpleUnlockProps> = ({ onUnlock, onCancel }
               type="password"
               value={passcode}
               onChange={(e) => setPasscode(e.target.value)}
-              placeholder="Enter your passcode"
+              placeholder="Enter Key 2"
               className="w-full p-3 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
             />
           </div>

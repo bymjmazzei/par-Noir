@@ -87,7 +87,7 @@ export async function submitRecoveryApproval(
 
 export async function fetchRecoveryRequests(
   userPnIdentifier: string,
-  authToken: string
+  authToken?: string | null
 ): Promise<Array<{
   requestId: string;
   publicKey: string;
@@ -97,8 +97,10 @@ export async function fetchRecoveryRequests(
   claimantName: string;
   createdAt: string;
 }>> {
+  const headers: Record<string, string> = {};
+  if (authToken) headers.Authorization = `Bearer ${authToken}`;
   const res = await fetch(`${API_ENDPOINT}/api/recovery/${encodeURIComponent(userPnIdentifier)}/requests`, {
-    headers: { Authorization: `Bearer ${authToken}` },
+    headers,
   });
   if (!res.ok) return [];
   const data = await res.json();
@@ -107,7 +109,7 @@ export async function fetchRecoveryRequests(
 
 export async function fetchRecoveryRequest(
   userPnIdentifier: string,
-  authToken: string,
+  authToken: string | null | undefined,
   requestId: string
 ): Promise<{
   requestId: string;
@@ -118,9 +120,11 @@ export async function fetchRecoveryRequest(
   claimantName: string;
   createdAt: string;
 } | null> {
+  const headers: Record<string, string> = {};
+  if (authToken) headers.Authorization = `Bearer ${authToken}`;
   const res = await fetch(
     `${API_ENDPOINT}/api/recovery/${encodeURIComponent(userPnIdentifier)}/requests/${encodeURIComponent(requestId)}`,
-    { headers: { Authorization: `Bearer ${authToken}` } }
+    { headers }
   );
   if (!res.ok) return null;
   const data = await res.json();
@@ -129,7 +133,7 @@ export async function fetchRecoveryRequest(
 
 export async function fetchVaultShares(
   userPnIdentifier: string,
-  authToken: string,
+  authToken: string | null | undefined,
   requestId: string
 ): Promise<{
   vaultShares: Array<{ custodianId: string; shareIndex: number; encryptedShare: string }>;
@@ -137,9 +141,11 @@ export async function fetchVaultShares(
   threshold: number;
   includesUnrevokableShare: boolean;
 }> {
+  const headers: Record<string, string> = {};
+  if (authToken) headers.Authorization = `Bearer ${authToken}`;
   const res = await fetch(
     `${API_ENDPOINT}/api/recovery/${encodeURIComponent(userPnIdentifier)}/requests/${encodeURIComponent(requestId)}/vault-shares`,
-    { headers: { Authorization: `Bearer ${authToken}` } }
+    { headers }
   );
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));

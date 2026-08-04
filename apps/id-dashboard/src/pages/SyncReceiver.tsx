@@ -225,7 +225,7 @@ export const SyncReceiver: React.FC<SyncReceiverProps> = ({ syncCode }) => {
           <Download className="w-16 h-16 text-primary mx-auto mb-4" />
           <h1 className="text-xl font-bold text-text-primary mb-2">Receive pN File</h1>
           <p className="text-text-secondary">
-            Enter your pN credentials to receive the file from another device
+            Enter Key 1 and Key 2 to receive the file from another device
           </p>
         </div>
 
@@ -241,7 +241,7 @@ export const SyncReceiver: React.FC<SyncReceiverProps> = ({ syncCode }) => {
                 onChange={(e) => setPnName(e.target.value)}
                 required
                 className="w-full px-3 py-2 border border-input-border bg-input-bg rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
-                placeholder="Enter your pN Name"
+                placeholder="Enter Key 1"
               />
             </div>
             
@@ -255,7 +255,7 @@ export const SyncReceiver: React.FC<SyncReceiverProps> = ({ syncCode }) => {
                 onChange={(e) => setPasscode(e.target.value)}
                 required
                 className="w-full px-3 py-2 border border-input-border bg-input-bg rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
-                placeholder="Enter your passcode"
+                placeholder="Enter Key 2"
               />
             </div>
 

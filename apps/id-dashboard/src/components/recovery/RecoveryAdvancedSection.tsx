@@ -64,7 +64,7 @@ export const RecoveryAdvancedSection: React.FC<RecoveryAdvancedSectionProps> = (
       <div className="mt-4 space-y-4">
         <p className="text-xs text-text-secondary">
           Identity rotation creates new keys and registers a network re-key. Distinct from Shamir
-          passcode recovery.
+          Key 1 / Key 2 recovery.
         </p>
         {canRotateIdentity && apiToken ? (
           <IdentityRotationWizard

@@ -67,7 +67,7 @@ const PWALockScreen: React.FC<PWALockScreenProps> = ({ isLocked, onUnlock, onFal
         setError('Biometric authentication was cancelled');
       }
     } catch (err) {
-      setError('Biometric authentication failed. Please try again or use passcode.');
+      setError('Biometric authentication failed. Please try again or use Key 2.');
     } finally {
       setIsAuthenticating(false);
     }
@@ -123,7 +123,7 @@ const PWALockScreen: React.FC<PWALockScreenProps> = ({ isLocked, onUnlock, onFal
             className="w-full flex items-center justify-center space-x-3 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 py-4 px-6 rounded-xl font-medium hover:bg-gray-200 dark:hover:bg-gray-600 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <Key className="w-5 h-5" />
-            <span>Use Passcode</span>
+            <span>Use Key 2</span>
           </button>
         </div>
 

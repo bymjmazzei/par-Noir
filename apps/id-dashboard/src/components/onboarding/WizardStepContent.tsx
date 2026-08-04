@@ -78,7 +78,7 @@ export const WizardStepContent: React.FC<WizardStepContentProps> = ({
         <div className="space-y-4">
           <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-700 rounded-lg p-4">
             <p className="text-sm text-red-800 dark:text-red-300">
-              <strong>🚨 CRITICAL:</strong> Without custodians, you could permanently lose your identity if you lose your device or forget your passcode. 
+              <strong>🚨 CRITICAL:</strong> Without custodians, you could permanently lose your identity if you lose your device or forget Key 2. 
               You need at least 2 custodians to create your identity.
             </p>
           </div>
@@ -177,7 +177,7 @@ export const WizardStepContent: React.FC<WizardStepContentProps> = ({
           {!completedSteps.has('custodians') && (
             <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-700 rounded-lg p-4">
               <p className="text-sm text-red-800 dark:text-red-300">
-                <strong>⚠️ WARNING:</strong> You haven't set up custodians yet. Without custodians, you could permanently lose your identity if you lose your device or forget your passcode. We strongly recommend completing this step.
+                <strong>⚠️ WARNING:</strong> You haven't set up custodians yet. Without custodians, you could permanently lose your identity if you lose your device or forget Key 2. We strongly recommend completing this step.
               </p>
             </div>
           )}

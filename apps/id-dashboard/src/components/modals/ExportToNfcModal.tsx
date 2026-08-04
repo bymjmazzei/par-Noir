@@ -41,7 +41,7 @@ export function ExportToNfcModal({
   const handleConfirmVerify = () => {
     setError(null);
     if (!pnName || !passcode) {
-      setError('Enter your pN name and passcode to authorize the export');
+      setError('Enter Key 1 and passcode to authorize the export');
       return;
     }
     setStep('scan');
@@ -51,7 +51,7 @@ export function ExportToNfcModal({
     setError(null);
 
     if (!pnName || !passcode) {
-      setError('Enter your pN name and passcode first');
+      setError('Enter Key 1 and passcode first');
       return;
     }
 
@@ -149,22 +149,22 @@ export function ExportToNfcModal({
               Verify your identity to authorize writing your pN to the NFC card.
             </p>
             <div>
-              <label className="block text-sm font-medium mb-2">pN Name</label>
+              <label className="block text-sm font-medium mb-2">Key 1</label>
               <input
                 type="text"
                 value={pnName}
                 onChange={(e) => setPnName(e.target.value)}
-                placeholder="Enter your pN name"
+                placeholder="Enter Key 1"
                 className="w-full px-3 py-2 border border-border rounded-md bg-input-bg text-text-primary"
               />
             </div>
             <div>
-              <label className="block text-sm font-medium mb-2">Passcode</label>
+              <label className="block text-sm font-medium mb-2">Key 2</label>
               <input
                 type="password"
                 value={passcode}
                 onChange={(e) => setPasscode(e.target.value)}
-                placeholder="Enter your passcode"
+                placeholder="Enter Key 2"
                 className="w-full px-3 py-2 border border-border rounded-md bg-input-bg text-text-primary"
               />
             </div>

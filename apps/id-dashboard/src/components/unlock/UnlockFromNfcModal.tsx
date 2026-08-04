@@ -69,7 +69,7 @@ export function UnlockFromNfcModal({
   const handleUnlock = async () => {
     setError(null);
     if (!pnName || !passcode) {
-      setError('Please enter pN name and passcode');
+      setError('Please enter Key 1 and Key 2');
       return;
     }
     const scanResult = nfcScanResult;
@@ -171,10 +171,10 @@ export function UnlockFromNfcModal({
         {step === 'credentials' && (
           <div className="space-y-4">
             <p className="text-sm text-text-secondary">
-              Enter your pN name and passcode to unlock your identity.
+              Enter your Key 1 and Key 2 to unlock your identity.
             </p>
             <div>
-              <label className="block text-sm font-medium mb-2">pN Name</label>
+              <label className="block text-sm font-medium mb-2">Key 1</label>
               <input
                 type="text"
                 value={pnName}
@@ -184,7 +184,7 @@ export function UnlockFromNfcModal({
               />
             </div>
             <div>
-              <label className="block text-sm font-medium mb-2">Passcode</label>
+              <label className="block text-sm font-medium mb-2">Key 2</label>
               <input
                 type="password"
                 value={passcode}

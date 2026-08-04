@@ -33,7 +33,7 @@ export const IdentitySuccessionPanel: React.FC<IdentitySuccessionPanelProps> = (
       <h4 className="font-medium text-text-primary">Identity succession</h4>
       <p className="text-xs text-text-secondary">
         Public estate-planning successor (registered by par Noir admin automation). This is separate from
-        custodian Shamir recovery, which preserves the same cryptographic pN with a new passcode.
+        custodian Shamir recovery, which preserves the same cryptographic pN with a new Key 2.
       </p>
       <p className="text-sm text-text-primary">
         Successor:{' '}

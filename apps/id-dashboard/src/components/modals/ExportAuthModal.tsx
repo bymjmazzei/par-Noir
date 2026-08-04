@@ -67,14 +67,14 @@ export function ExportAuthModal({
             </div>
           )}
           <div>
-            <label className="block text-sm font-medium mb-2">pN Name</label>
+            <label className="block text-sm font-medium mb-2">Key 1</label>
             <div className="relative">
               <input
                 type={showExportPnName ? "text" : "password"}
                 value={exportAuthData.pnName}
                 onChange={(e) => setExportAuthData(prev => ({ ...prev, pnName: e.target.value }))}
                 className="w-full px-3 py-2 pr-10 border border-border rounded-md bg-input-bg text-text-primary"
-                placeholder="Enter your pN name"
+                placeholder="Enter Key 1"
               />
               <button
                 type="button"
@@ -87,14 +87,14 @@ export function ExportAuthModal({
           </div>
           
           <div>
-            <label className="block text-sm font-medium mb-2">Passcode</label>
+            <label className="block text-sm font-medium mb-2">Key 2</label>
             <div className="relative">
               <input
                 type={showExportPasscode ? "text" : "password"}
                 value={exportAuthData.passcode}
                 onChange={(e) => setExportAuthData(prev => ({ ...prev, passcode: e.target.value }))}
                 className="w-full px-3 py-2 pr-10 border border-border rounded-md bg-input-bg text-text-primary"
-                placeholder="Enter your passcode"
+                placeholder="Enter Key 2"
               />
               <button
                 type="button"

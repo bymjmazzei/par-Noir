@@ -49,6 +49,9 @@ export interface AppModalsProps {
   setActiveRecoveryMethod: any;
   handleInitiateRecoveryFromPn: any;
   handleInitiateRecoveryWithKey: any;
+  handleContinueReadyRecovery: any;
+  handleResendCustodianNotify: any;
+  handleCancelActiveRecovery: any;
   recoveryKeys: any;
   recoveryVaultSummary: any;
   showAddCustodianModal: any;
@@ -225,6 +228,9 @@ export function AppModals(props: AppModalsProps) {
     setActiveRecoveryMethod,
     handleInitiateRecoveryFromPn,
     handleInitiateRecoveryWithKey,
+    handleContinueReadyRecovery,
+    handleResendCustodianNotify,
+    handleCancelActiveRecovery,
     recoveryKeys,
     recoveryVaultSummary,
     showAddCustodianModal,
@@ -411,6 +417,10 @@ export function AppModals(props: AppModalsProps) {
           setActiveRecoveryMethod={setActiveRecoveryMethod}
           onInitiateRecoveryFromPn={handleInitiateRecoveryFromPn}
           onInitiateRecoveryWithKey={handleInitiateRecoveryWithKey}
+          onContinueReadyRecovery={handleContinueReadyRecovery}
+          onResendCustodianNotify={handleResendCustodianNotify}
+          onCancelActiveRecovery={handleCancelActiveRecovery}
+          continueLoading={loading}
           recoveryBlocked={
             !!recoveryVaultSummary &&
             (recoveryVaultSummary.counts.acceptedUnrevokable ?? 0) < 1 &&
@@ -509,7 +519,9 @@ export function AppModals(props: AppModalsProps) {
             setPendingRecoveryCompletion(null);
           }}
           loading={loading}
-          onSubmit={async (newPasscode) => handleRecoveryPasscodeSubmit(newPasscode)}
+          onSubmit={async (newPnName, newPasscode) =>
+            handleRecoveryPasscodeSubmit(newPnName, newPasscode)
+          }
         />
 
         {/* Recovery Completion Modal */}

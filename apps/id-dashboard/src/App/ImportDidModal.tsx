@@ -60,7 +60,7 @@ export function ImportDidModal(props: ImportDidModalProps) {
                     value={importForm.pnName}
                     onChange={(e) => setImportForm(prev => ({ ...prev, pnName: e.target.value }))}
                     className="w-full px-3 py-2 border border-input-border bg-input-bg text-text-primary rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
-                    placeholder="Enter your pN Name"
+                    placeholder="Enter Key 1"
                     required
                   />
                 </div>
@@ -73,7 +73,7 @@ export function ImportDidModal(props: ImportDidModalProps) {
                     value={importForm.passcode}
                     onChange={(e) => setImportForm(prev => ({ ...prev, passcode: e.target.value }))}
                     className="w-full px-3 py-2 border border-input-border bg-input-bg text-text-primary rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
-                    placeholder="Enter passcode"
+                    placeholder="Enter Key 2"
                     required
                   />
                 </div>

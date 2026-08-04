@@ -14,9 +14,16 @@ import type { RecoveryEnvelope, ShamirShare } from '@par-noir/recovery-crypto';
 import { QRCodeManager } from '../utils/qrCode';
 import { cloudSyncManager } from '../utils/cloudSync';
 import { LicenseVerification } from '../utils/licenseVerification';
-import { completeRecoveryWithShares } from '../services/recoveryService';
+import { completeRecoveryWithShares, markRecoveryRequestCompleted, markRecoveryRequestExpired } from '../services/recoveryService';
 import { revokeRecoveryCustodian, acceptRecoveryCustodianship } from '../services/recoveryApiService';
 import { getRecoveryAuthSession, recoveryAuthRequiredMessage } from '../services/recoveryAuthSession';
+import {
+  clearRecoveryActiveSession,
+  getRecoveryActiveSession,
+  setRecoveryActiveSession,
+  touchRecoveryActiveSession,
+  updateRecoveryActiveSession,
+} from '../services/recoveryActiveSession';
 import { storeCustodianshipCredential } from '../services/recoveryCredentialStorage';
 import type { SecureStorage } from '../utils/storage';
 import type {
@@ -632,26 +639,17 @@ This invitation expires in 24 hours.`;
       );
 
       if (thresholdMet) {
-        const envelopeRaw = sessionStorage.getItem(`pn_recovery_envelope_${requestId}`);
-        const identityRaw = sessionStorage.getItem(`pn_recovery_identity_${requestId}`);
-        if (envelopeRaw && identityRaw && apiToken) {
-          const { fetchSharesAfterThreshold } = await import('../components/recovery/useRecoveryHandlers');
-          const shares = await fetchSharesAfterThreshold({
-            userPnIdentifier,
-            authToken: apiToken,
-            requestId,
-            identityPublicKey
-          });
-          setPendingRecoveryCompletion({
-            requestId,
-            envelope: JSON.parse(envelopeRaw),
-            existingIdentity: JSON.parse(identityRaw),
-            shares
-          });
-          setShowRecoveryPasscodeModal(true);
-        } else {
-          setSuccessWithTimeout('Threshold met. Open recovery on the device with your .pn file to set a new passcode.');
+        const active = getRecoveryActiveSession();
+        if (active?.requestId === requestId) {
+          updateRecoveryActiveSession({ status: 'ready' });
+          if (active.callbackContact) {
+            notifyCallbackContactReady(active.callbackContact);
+          }
         }
+        setSuccessWithTimeout(
+          'Threshold met. The owner should Continue on their Recover session to set Key 1 and Key 2.'
+        );
+        setTimeout(() => setSuccessWithTimeout(null), 6000);
       } else {
         setSuccessWithTimeout('Recovery authorization submitted. Waiting for more custodians…');
         setTimeout(() => setSuccessWithTimeout(null), 5000);
@@ -664,16 +662,97 @@ This invitation expires in 24 hours.`;
     }
   };
 
+  const notifyCallbackContactReady = (contact: string) => {
+    const message =
+      'Your par Noir recovery is ready. Open Recover within 20 minutes and Continue to set new Key 1 and Key 2.';
+    const looksEmail = contact.includes('@');
+    if (looksEmail) {
+      window.open(
+        `mailto:${encodeURIComponent(contact)}?subject=${encodeURIComponent('par Noir recovery ready')}&body=${encodeURIComponent(message)}`
+      );
+    } else {
+      window.open(`sms:${contact}?body=${encodeURIComponent(message)}`);
+    }
+  };
+
+  const notifyCustodiansOfRecovery = (opts: {
+    requestId: string;
+    callbackContact?: string;
+  }) => {
+    const dashboardUrl = `${window.location.origin}`;
+    const message = `A par Noir recovery request (${opts.requestId}) needs your approval. Open the dashboard Recovery tab: ${dashboardUrl}`;
+    const contacts: Array<{ type: 'email' | 'phone'; value: string }> = [];
+    for (const c of custodians) {
+      if (c.contactValue && c.status === 'active') {
+        contacts.push({
+          type: c.contactValue.includes('@') ? 'email' : 'phone',
+          value: c.contactValue,
+        });
+      }
+    }
+    if (recoveryVaultSummary?.custodians) {
+      for (const c of recoveryVaultSummary.custodians) {
+        const anyC = c as { contactValue?: string; status?: string; name?: string };
+        if (anyC.contactValue && anyC.status === 'accepted') {
+          contacts.push({
+            type: anyC.contactValue.includes('@') ? 'email' : 'phone',
+            value: anyC.contactValue,
+          });
+        }
+      }
+    }
+    const seen = new Set<string>();
+    let opened = 0;
+    for (const contact of contacts) {
+      if (seen.has(contact.value) || opened >= 2) continue;
+      seen.add(contact.value);
+      opened += 1;
+      if (contact.type === 'email') {
+        window.open(
+          `mailto:${encodeURIComponent(contact.value)}?subject=${encodeURIComponent('par Noir recovery approval needed')}&body=${encodeURIComponent(message)}`
+        );
+      } else {
+        window.open(`sms:${contact.value}?body=${encodeURIComponent(message)}`);
+      }
+    }
+    if (seen.size === 0) {
+      setSuccessWithTimeout(
+        'Recovery started. Ask your custodians to open the Recovery tab and approve. No custodian contacts were available to auto-notify.'
+      );
+    }
+  };
+
   const handleInitiateRecoveryFromPn = async (file: File, emailOrPhone: string) => {
     try {
       setLoading(true);
       setError(null);
+      if (!emailOrPhone.trim()) {
+        throw new Error('Callback contact is required');
+      }
       const { initiateRecoveryFromPnFile } = await import('../components/recovery/useRecoveryHandlers');
       const req = await initiateRecoveryFromPnFile({
         file,
         emailOrPhone,
         threshold: recoveryThreshold,
         authToken: apiToken
+      });
+      const { VolumeIdGenerator } = await import('@par-noir/identity-crypto');
+      const pnIdentifier = await VolumeIdGenerator.generateCanonicalVolumeId(req.publicKey);
+      const envelopeRaw = sessionStorage.getItem(`pn_recovery_envelope_${req.id}`);
+      const identityRaw = sessionStorage.getItem(`pn_recovery_identity_${req.id}`);
+      if (!envelopeRaw) {
+        throw new Error('Recovery envelope missing after initiate');
+      }
+      setRecoveryActiveSession({
+        requestId: req.id,
+        publicKey: req.publicKey,
+        pnIdentifier,
+        callbackContact: emailOrPhone.trim(),
+        envelope: JSON.parse(envelopeRaw),
+        existingIdentity: identityRaw ? JSON.parse(identityRaw) : undefined,
+        threshold: recoveryThreshold,
+        approvalCount: 0,
+        status: 'pending',
       });
       setRecoveryRequests((prev) => [
         ...prev,
@@ -687,15 +766,15 @@ This invitation expires in 24 hours.`;
           denials: [],
           signatures: [],
           proofs: [],
-          expiresAt: new Date(Date.now() + 72 * 60 * 60 * 1000).toISOString(),
+          expiresAt: new Date(Date.now() + 20 * 60 * 1000).toISOString(),
           requiredApprovals: recoveryThreshold,
           currentApprovals: 0,
           oldIdentityHash: req.publicKey,
           claimantContactValue: emailOrPhone
         }
       ]);
-      setShowRecoveryModal(false);
-      setSuccessWithTimeout('Recovery started. Custodians will submit authorization proofs.');
+      notifyCustodiansOfRecovery({ requestId: req.id, callbackContact: emailOrPhone });
+      setSuccessWithTimeout('Recovery started. Custodians will be notified to approve.');
       setTimeout(() => setSuccessWithTimeout(null), 5000);
     } catch (error: unknown) {
       setError(error instanceof Error ? error.message : 'Failed to start recovery');
@@ -705,15 +784,17 @@ This invitation expires in 24 hours.`;
     }
   };
 
-  const handleRecoveryPasscodeSubmit = async (newPasscode: string) => {
+  const handleRecoveryPasscodeSubmit = async (newPnName: string, newPasscode: string) => {
     if (!pendingRecoveryCompletion) return;
+    const completion = pendingRecoveryCompletion;
     setLoading(true);
     try {
       const result = await completeRecoveryWithShares({
-        envelope: pendingRecoveryCompletion.envelope,
-        shares: pendingRecoveryCompletion.shares,
+        envelope: completion.envelope,
+        shares: completion.shares,
+        newPnName,
         newPasscode,
-        existingIdentity: pendingRecoveryCompletion.existingIdentity
+        existingIdentity: completion.existingIdentity
       });
 
       const simpleStorage = (await import('../utils/simpleStorage')).SimpleStorage.getInstance();
@@ -738,6 +819,11 @@ This invitation expires in 24 hours.`;
       setRecoveredIdentityExport(result.identity);
       setShowRecoveryPasscodeModal(false);
       setPendingRecoveryCompletion(null);
+      markRecoveryRequestCompleted(completion.requestId);
+      clearRecoveryActiveSession();
+      setRecoveryRequests((prev) =>
+        prev.filter((r) => r.id !== completion.requestId)
+      );
       setRecoveredDID({
         id: authSession.id,
         pnName: result.pnName,
@@ -755,9 +841,81 @@ This invitation expires in 24 hours.`;
         publicKey: result.identity.publicKey
       });
       setShowRecoveryCompleteModal(true);
+      setShowRecoveryModal(false);
       setSuccessWithTimeout('Recovery complete. Download your updated .pn file and reconnect Google Drive.');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleContinueReadyRecovery = async () => {
+    const session = getRecoveryActiveSession();
+    if (!session) {
+      setError('Recovery session expired. Start recovery again.');
+      setTimeout(() => setError(null), 9000);
+      return;
+    }
+    try {
+      setLoading(true);
+      setError(null);
+      const { fetchSharesAfterThreshold } = await import('../components/recovery/useRecoveryHandlers');
+      const shares = await fetchSharesAfterThreshold({
+        userPnIdentifier: session.pnIdentifier,
+        authToken: apiToken || null,
+        requestId: session.requestId,
+        identityPublicKey: session.publicKey,
+      });
+      const existingIdentity: EncryptedIdentity =
+        session.existingIdentity ||
+        ({
+          publicKey: session.publicKey,
+          encryptedData: '',
+          iv: '',
+          salt: '',
+        } as EncryptedIdentity);
+      setPendingRecoveryCompletion({
+        requestId: session.requestId,
+        envelope: session.envelope,
+        existingIdentity,
+        shares,
+      });
+      updateRecoveryActiveSession({ status: 'ready' });
+      setShowRecoveryPasscodeModal(true);
+    } catch (error: unknown) {
+      setError(error instanceof Error ? error.message : 'Could not continue recovery');
+      setTimeout(() => setError(null), 9000);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleResendCustodianNotify = () => {
+    const session = touchRecoveryActiveSession();
+    if (!session) {
+      setError('No active recovery session');
+      setTimeout(() => setError(null), 9000);
+      return;
+    }
+    notifyCustodiansOfRecovery({
+      requestId: session.requestId,
+      callbackContact: session.callbackContact,
+    });
+    setSuccessWithTimeout('Custodian notifications resent. Session timer refreshed.');
+    setTimeout(() => setSuccessWithTimeout(null), 5000);
+  };
+
+  const handleCancelActiveRecovery = (opts?: { silent?: boolean }) => {
+    const session = getRecoveryActiveSession();
+    if (session) {
+      markRecoveryRequestExpired(session.requestId);
+      setRecoveryRequests((prev) => prev.filter((r) => r.id !== session.requestId));
+    }
+    clearRecoveryActiveSession();
+    setPendingRecoveryCompletion(null);
+    setShowRecoveryPasscodeModal(false);
+    if (!opts?.silent) {
+      setSuccessWithTimeout('Recovery cancelled. You can start again.');
+      setTimeout(() => setSuccessWithTimeout(null), 4000);
     }
   };
 
@@ -919,11 +1077,14 @@ This invitation expires in 24 hours.`;
 
   const handleInitiateRecoveryWithKey = async (
     recoveryKey: string,
-    contactInfo: { contactValue?: string }
+    contactInfo: { contactValue: string }
   ) => {
     try {
       setLoading(true);
       setError(null);
+      if (!contactInfo.contactValue?.trim()) {
+        throw new Error('Callback contact is required');
+      }
 
       const { startRecoveryWithFailsafeKey } = await import('../services/recoveryApiService');
       const started = await startRecoveryWithFailsafeKey({
@@ -937,6 +1098,17 @@ This invitation expires in 24 hours.`;
         JSON.stringify(started.envelope)
       );
 
+      setRecoveryActiveSession({
+        requestId: started.requestId,
+        publicKey: started.publicKey,
+        pnIdentifier: started.pnIdentifier,
+        callbackContact: contactInfo.contactValue.trim(),
+        envelope: started.envelope as RecoveryEnvelope,
+        threshold: started.threshold,
+        approvalCount: 0,
+        status: 'pending',
+      });
+
       setRecoveryRequests((prev) => [
         ...prev,
         {
@@ -949,14 +1121,17 @@ This invitation expires in 24 hours.`;
           denials: [],
           signatures: [],
           proofs: [],
-          expiresAt: new Date(Date.now() + 72 * 60 * 60 * 1000).toISOString(),
+          expiresAt: new Date(Date.now() + 20 * 60 * 1000).toISOString(),
           requiredApprovals: started.threshold,
           currentApprovals: 0,
           oldIdentityHash: started.publicKey,
           claimantContactValue: contactInfo.contactValue,
         },
       ]);
-      setShowRecoveryModal(false);
+      notifyCustodiansOfRecovery({
+        requestId: started.requestId,
+        callbackContact: contactInfo.contactValue,
+      });
       setShowRecoveryKeyInputModal(false);
       setSuccessWithTimeout(
         started.persisted
@@ -1289,6 +1464,9 @@ This invitation expires in 24 hours.`;
     handleApproveRecovery,
     handleInitiateRecoveryFromPn,
     handleRecoveryPasscodeSubmit,
+    handleContinueReadyRecovery,
+    handleResendCustodianNotify,
+    handleCancelActiveRecovery,
     handleDenyRecovery,
     handleGenerateRecoveryKey,
     handleDownloadRecoveryKey,

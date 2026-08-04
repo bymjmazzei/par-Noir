@@ -1,6 +1,13 @@
 import React from 'react';
 import { Logo } from '../components/Logo';
 import IdentitySelector from '../components/IdentitySelector';
+import {
+  KEY_1_LABEL,
+  KEY_1_PLACEHOLDER,
+  KEY_2_LABEL,
+  KEY_2_PLACEHOLDER,
+  KEYS_HELPER,
+} from '../constants/credentialLabels';
 
 export interface UnlockGateProps {
   authenticatedUser: any;
@@ -202,10 +209,10 @@ export function UnlockGate(props: UnlockGateProps) {
                     )}
                   </div>
                   
-                  {/* pN Name input - auto-filled if identity selected */}
+                  {/* Key 1 — auto-filled if identity selected */}
                   <div>
                     <label className="block text-sm font-medium text-text-primary mb-1">
-                      pN Name
+                      {KEY_1_LABEL}
                     </label>
                     <div className="relative">
                       <input
@@ -213,7 +220,7 @@ export function UnlockGate(props: UnlockGateProps) {
                         value={mainForm.pnName || ''}
                         onChange={(e) => setMainForm((prev: any) => ({ ...prev, pnName: e.target.value }))}
                         className="w-full px-3 py-2 pr-10 border border-input-border bg-input-bg rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
-                        placeholder="Enter your pN Name"
+                        placeholder={KEY_1_PLACEHOLDER}
                         required
                       />
                       <button
@@ -237,7 +244,7 @@ export function UnlockGate(props: UnlockGateProps) {
                   
                   <div>
                     <label className="block text-sm font-medium text-text-primary mb-1">
-                      Passcode
+                      {KEY_2_LABEL}
                     </label>
                     <div className="relative">
                       <input
@@ -245,7 +252,7 @@ export function UnlockGate(props: UnlockGateProps) {
                         value={mainForm.passcode || ''}
                         onChange={(e) => setMainForm((prev: any) => ({ ...prev, passcode: e.target.value }))}
                         className="w-full px-3 py-2 pr-10 border border-input-border bg-input-bg rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
-                        placeholder="Enter your passcode"
+                        placeholder={KEY_2_PLACEHOLDER}
                         required
                       />
                       <button
@@ -265,6 +272,7 @@ export function UnlockGate(props: UnlockGateProps) {
                         )}
                       </button>
                     </div>
+                    <p className="mt-2 text-xs text-text-secondary">{KEYS_HELPER}</p>
                   </div>
                   
                   {/* Hidden file upload for when user chooses to upload new file */}
