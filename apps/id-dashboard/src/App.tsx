@@ -936,6 +936,7 @@ function App() {
     setShowMainPasscode,
     recoveryVaultPnId,
     isKeyedSession: deviceAuth.isKeyedSession,
+    hasKeyedDevices: deviceAuth.hasKeyedDevices,
     apiToken,
     clearApiToken,
     ensureApiTokenAfterUnlock,

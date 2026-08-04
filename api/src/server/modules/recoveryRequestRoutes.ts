@@ -71,16 +71,32 @@ export function setupRecoveryRequestRoutes(app: express.Application, deps: Recov
     // Recovery requests + custodian roster (Drive-backed)
     app.post('/api/recovery/requests', async (req, res) => {
       try {
-        const { userPnIdentifier, requestId, publicKey, threshold, claimantName, status } = req.body;
+        const {
+          userPnIdentifier,
+          requestId,
+          publicKey,
+          threshold,
+          claimantName,
+          status,
+          requestType,
+        } = req.body;
         if (!userPnIdentifier || !requestId || !publicKey) {
           return res.status(400).json({ error: 'userPnIdentifier, requestId, and publicKey are required' });
         }
-        const ctx = await getRecoveryDriveContext(userPnIdentifier);
+        if (!(await gateOwnerRoute(req, res, DEVICE_CAPABILITIES.recoveryInitiate, String(userPnIdentifier)))) {
+          return;
+        }
+        const { extractCloudAccessToken } = await import('./cloudAccessToken');
+        const { getRecoveryDriveContext: getCtx } = await import('./recoveryDriveContext');
+        const cloudTok = extractCloudAccessToken(req);
+        const ctx = await getCtx(String(userPnIdentifier), cloudTok ? { accessToken: cloudTok } : undefined);
         if (!ctx) return res.status(404).json({ error: 'Drive not connected' });
         const { RecoverySheetsService } = await import('./recoverySheetsService');
         const spreadsheetId = await RecoverySheetsService.getOrCreateSpreadsheet(
           ctx.token, ctx.metadataFolderId, ctx.pnIdentifier, ctx.accountId
         );
+        const type =
+          requestType === 'device_registry_reset' ? 'device_registry_reset' : 'identity_recovery';
         await RecoverySheetsService.upsertRecoveryRequest(
           ctx.token,
           spreadsheetId,
@@ -91,12 +107,13 @@ export function setupRecoveryRequestRoutes(app: express.Application, deps: Recov
             threshold: threshold || 2,
             sharesJson: '[]',
             claimantName: claimantName || '',
-            createdAt: new Date().toISOString()
+            createdAt: new Date().toISOString(),
+            requestType: type,
           },
           ctx.pnIdentifier,
           ctx.accountId
         );
-        return res.json({ success: true, spreadsheetId });
+        return res.json({ success: true, spreadsheetId, requestType: type });
       } catch (error: any) {
         console.error('Error saving recovery request:', error);
         return res.status(500).json({ error: 'Failed to save recovery request' });

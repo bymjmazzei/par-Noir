@@ -48,8 +48,10 @@ export interface UseAuthUnlockHandlersParams {
   setShowMainPNName: React.Dispatch<React.SetStateAction<boolean>>;
   setShowMainPasscode: React.Dispatch<React.SetStateAction<boolean>>;
   recoveryVaultPnId: string | null;
-  /** When false, lock wipes sealed cloud credentials (unkeyed session). */
+  /** When false, lock may wipe sealed cloud credentials (unkeyed session). */
   isKeyedSession?: boolean;
+  /** When true, web Case B: wipe sealed cloud on lock even if this session is unkeyed. */
+  hasKeyedDevices?: boolean;
 
   apiToken: string | null;
   clearApiToken: ApiTokenState['clearApiToken'];
@@ -108,6 +110,7 @@ export function useAuthUnlockHandlers(params: UseAuthUnlockHandlersParams) {
     setShowMainPasscode,
     recoveryVaultPnId,
     isKeyedSession = false,
+    hasKeyedDevices = false,
     apiToken,
     clearApiToken,
     ensureApiTokenAfterUnlock,
@@ -346,13 +349,15 @@ export function useAuthUnlockHandlers(params: UseAuthUnlockHandlersParams) {
         if (identityId) {
           await clearCloudCredentialsOnLock({
             identityId,
-            isKeyedSession: !!isKeyedSession
+            isKeyedSession: !!isKeyedSession,
+            hasKeyedDevices: !!hasKeyedDevices,
           }).catch(() => undefined);
-          // Dashboard native/web store may use the same pn id
-          if (!isKeyedSession) {
+          // Wipe native/web durable store only when we should not retain (Case B unkeyed)
+          const retain = !!isKeyedSession || !hasKeyedDevices;
+          if (!retain) {
             await wipeDeviceCloudCredentials(identityId).catch(() => undefined);
           }
-        } else if (authUser?.id && !isKeyedSession) {
+        } else if (authUser?.id && !isKeyedSession && hasKeyedDevices) {
           // Fallback only when pn id unknown — may no-op if seal key differs
           await wipeDeviceCloudCredentials(authUser.id).catch(() => undefined);
         }

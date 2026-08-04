@@ -658,6 +658,7 @@ export function AuthenticatedShell(props: AuthenticatedShellProps) {
                           authToken={apiToken ?? undefined}
                           pnIdentifier={recoveryVaultPnId ?? undefined}
                           sessionId={authenticatedUser?.id ?? undefined}
+                          ownerPublicKey={authenticatedUser?.publicKey ?? undefined}
                           deviceAuth={deviceAuth}
                         />
                         {authenticatedUser && (

@@ -146,3 +146,22 @@ export async function writePolicy(bundle: DeviceStorageBundle, policy: DevicePol
     bundle.accountId
   );
 }
+
+/** Revoke every active device and clear firstDeviceKeyedAt (registry reset). */
+export async function resetDeviceRegistry(bundle: DeviceStorageBundle): Promise<{ revoked: number }> {
+  const active = await listDevices(bundle, false);
+  for (const row of active) {
+    await upsertDevice(bundle, { ...row, status: 'revoked' });
+  }
+  const policy = await readPolicy(bundle);
+  const { defaultDevicePolicy } = await import('@par-noir/device-auth');
+  const next = {
+    ...defaultDevicePolicy(),
+    unkeyedAllows: policy.unkeyedAllows?.length
+      ? policy.unkeyedAllows
+      : defaultDevicePolicy().unkeyedAllows,
+  };
+  delete (next as { firstDeviceKeyedAt?: string }).firstDeviceKeyedAt;
+  await writePolicy(bundle, next);
+  return { revoked: active.length };
+}

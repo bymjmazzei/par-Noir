@@ -6,19 +6,23 @@ import {
   DEVICE_CAPABILITIES,
   IMMUTABLE_UNKEYED_DENY,
 } from '@par-noir/device-auth';
-import { SecureCredentialManager } from '@par-noir/identity-crypto';
-import { unsealDevicePrivateDisplay } from '@par-noir/device-client';
+import { isKeyableClient, unsealDevicePrivateDisplay } from '@par-noir/device-client';
 import type { useDeviceAuthState } from '../hooks/useDeviceAuthState';
 import {
   bootstrapThisDevice,
   completePairingFromNonce,
   createPairingNonce,
+  finalizeDeviceRegistryReset,
+  initiateDeviceRegistryResetRequest,
+  resetDeviceRegistryDev,
   revokeDeviceOnServer,
   updateDevicePolicy,
 } from '../services/deviceApiService';
 import { clearPendingDevicePairing } from '../hooks/useDeviceAuthState';
 import { clearDeviceRegistration } from '../services/deviceKeyStorage';
 import { PN_SHOW_DEVICE_PAIRING_QR_EVENT } from '../constants/deviceEvents';
+import { APP_DOWNLOAD_URL } from '../config/appDownload';
+import { SecureCredentialManager } from '@par-noir/identity-crypto';
 
 const PENDING_SHOW_PAIRING_QR_KEY = 'pn_pending_show_pairing_qr';
 
@@ -39,6 +43,8 @@ export interface DeviceManagementPanelProps {
   authToken?: string;
   pnIdentifier?: string;
   sessionId?: string;
+  /** Owner identity public key — required to initiate Shamir device registry reset */
+  ownerPublicKey?: string | null;
   deviceAuth: DeviceAuth;
 }
 
@@ -46,6 +52,7 @@ export const DeviceManagementPanel: React.FC<DeviceManagementPanelProps> = ({
   authToken,
   pnIdentifier,
   sessionId,
+  ownerPublicKey,
   deviceAuth,
 }) => {
   const {
@@ -140,8 +147,11 @@ export const DeviceManagementPanel: React.FC<DeviceManagementPanelProps> = ({
     [refresh]
   );
 
+  const keyable = isKeyableClient();
+
   const handleKeyThisDevice = () =>
     run(async () => {
+      if (!keyable) throw new Error('Key this device only in the mobile or desktop app');
       if (!authToken || !pnIdentifier || !sessionId) {
         throw new Error('Unlock and connect Drive first');
       }
@@ -150,6 +160,46 @@ export const DeviceManagementPanel: React.FC<DeviceManagementPanelProps> = ({
         authToken,
         sessionId,
       });
+    });
+
+  const handleResetRegistryDev = () =>
+    run(async () => {
+      if (!authToken || !pnIdentifier) throw new Error('Session required');
+      if (
+        !window.confirm(
+          'Clear all keyed devices for this identity? You can then key a new phone or desktop app. (Dev/emergency path — production uses Recovery → Reset keyed devices with custodians.)'
+        )
+      ) {
+        return;
+      }
+      await resetDeviceRegistryDev(pnIdentifier, authToken);
+      await clearDeviceRegistration(pnIdentifier);
+    });
+
+  const handleInitiateShamirDeviceReset = () =>
+    run(async () => {
+      if (!authToken || !pnIdentifier || !sessionId) {
+        throw new Error('Unlock and reconnect Drive first');
+      }
+      if (!ownerPublicKey) throw new Error('Identity public key required');
+      const { requestId } = await initiateDeviceRegistryResetRequest({
+        userPnIdentifier: pnIdentifier,
+        authToken,
+        publicKey: ownerPublicKey,
+        threshold: 2,
+      });
+      window.alert(
+        `Device registry reset request ${requestId} created. Custodians must approve. When status is ready, use Finalize reset.`
+      );
+    });
+
+  const handleFinalizeShamirDeviceReset = () =>
+    run(async () => {
+      if (!authToken || !pnIdentifier) throw new Error('Session required');
+      const requestId = window.prompt('Paste the device_registry_reset request id to finalize:');
+      if (!requestId?.trim()) return;
+      await finalizeDeviceRegistryReset(pnIdentifier, authToken, requestId.trim());
+      await clearDeviceRegistration(pnIdentifier);
     });
 
   const handleCompletePairing = () =>
@@ -271,7 +321,7 @@ export const DeviceManagementPanel: React.FC<DeviceManagementPanelProps> = ({
         </p>
       )}
 
-      {pendingPairing && !isKeyedSession && authToken && pnIdentifier && (
+      {pendingPairing && !isKeyedSession && authToken && pnIdentifier && keyable && (
         <div className="border border-violet-500/40 rounded p-3 space-y-2">
           <p className="text-xs text-text-secondary">
             Pairing invitation detected for this identity. Complete to key this device.
@@ -290,7 +340,7 @@ export const DeviceManagementPanel: React.FC<DeviceManagementPanelProps> = ({
       {error && <p className="text-xs text-red-400">{error}</p>}
 
       <div className="flex flex-wrap gap-2">
-        {!isKeyedSession && authToken && pnIdentifier && !hasKeyedDevices && (
+        {keyable && !isKeyedSession && authToken && pnIdentifier && !hasKeyedDevices && (
           <button
             type="button"
             disabled={busy || loading || !sessionId}
@@ -300,7 +350,7 @@ export const DeviceManagementPanel: React.FC<DeviceManagementPanelProps> = ({
             Key this device
           </button>
         )}
-        {isKeyedSession && authToken && pnIdentifier && (
+        {keyable && isKeyedSession && authToken && pnIdentifier && (
           <button
             type="button"
             disabled={busy}
@@ -309,6 +359,45 @@ export const DeviceManagementPanel: React.FC<DeviceManagementPanelProps> = ({
           >
             Add device (show QR)
           </button>
+        )}
+        {!keyable && (
+          <a
+            href={APP_DOWNLOAD_URL}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="px-3 py-1.5 modal-button rounded text-sm inline-flex items-center"
+          >
+            Download the app to key a device
+          </a>
+        )}
+        {hasKeyedDevices && !isKeyedSession && authToken && pnIdentifier && (
+          <>
+            <button
+              type="button"
+              disabled={busy || !sessionId}
+              onClick={handleInitiateShamirDeviceReset}
+              className="px-3 py-1.5 rounded text-sm border border-amber-500/50 text-amber-200 disabled:opacity-50"
+            >
+              Reset keyed devices (custodians)
+            </button>
+            <button
+              type="button"
+              disabled={busy}
+              onClick={handleFinalizeShamirDeviceReset}
+              className="px-3 py-1.5 rounded text-sm border border-border text-text-secondary disabled:opacity-50"
+            >
+              Finalize reset
+            </button>
+            <button
+              type="button"
+              disabled={busy}
+              onClick={handleResetRegistryDev}
+              className="px-3 py-1.5 rounded text-sm border border-red-500/40 text-red-300 disabled:opacity-50"
+              title="Requires ALLOW_DEVICE_REGISTRY_RESET_WITHOUT_QUORUM on the API"
+            >
+              Dev: clear registry now
+            </button>
+          </>
         )}
       </div>
 

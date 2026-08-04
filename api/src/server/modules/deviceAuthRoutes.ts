@@ -10,6 +10,7 @@ import {
   listDevices,
   loadDeviceBundle,
   readPolicy,
+  resetDeviceRegistry,
   updateDevicePrivateDisplay,
   upsertDevice,
   writePolicy
@@ -22,8 +23,18 @@ import {
 } from './deviceCapabilityService';
 import { consumePairingNonce, storePairingNonce } from './devicePairingNonceStore';
 import { extractCloudAccessToken } from './cloudAccessToken';
+import { isProduction, securityFlags } from '../utils/securityFlags';
 
 const NONCE_TTL_MS = 5 * 60 * 1000;
+const PN_CLIENT_PLATFORM_HEADER = 'x-pn-client-platform';
+
+function clientPlatform(req: Request): string {
+  return String(req.headers[PN_CLIENT_PLATFORM_HEADER] || '').toLowerCase().trim();
+}
+
+function isNativeClientPlatform(platform: string): boolean {
+  return platform === 'native-mobile' || platform === 'native-desktop';
+}
 
 function bearerPn(req: Request): string | null {
   const authHeader = req.headers.authorization;
@@ -151,6 +162,15 @@ export function registerDeviceAuthRoutes(app: Application): void {
       const authPn = bearerPn(req);
       if (!authPn) return res.status(401).json({ error: 'unauthorized' });
 
+      const platform = clientPlatform(req);
+      if (!isNativeClientPlatform(platform)) {
+        return res.status(403).json({
+          error: 'native_client_required',
+          error_description:
+            'Device keying is only available in the mobile or desktop app. Use Download the app from the web dashboard.',
+        });
+      }
+
       const {
         userPnIdentifier,
         deviceId,
@@ -199,7 +219,7 @@ export function registerDeviceAuthRoutes(app: Application): void {
         deviceId,
         devicePublicKey,
         label: '',
-        deviceType: 'other',
+        deviceType: platform === 'native-desktop' ? 'desktop' : 'mobile',
         keyType: 'software',
         status: 'active',
         isPrimary: isPrimary === true || active.length === 0,
@@ -224,6 +244,119 @@ export function registerDeviceAuthRoutes(app: Application): void {
       return res.json({ success: true, deviceId, firstDevice: active.length === 0 });
     } catch (e) {
       console.error('[devices] register:', e);
+      return res.status(500).json({ error: 'server_error' });
+    }
+  });
+
+  /**
+   * Dev / emergency: wipe device registry without custodian quorum.
+   * Requires ALLOW_DEVICE_REGISTRY_RESET_WITHOUT_QUORUM=1 and cloud access token.
+   * Production user path is Shamir device_registry_reset finalize.
+   */
+  app.post('/api/devices/:userPnIdentifier/registry/reset', async (req: Request, res: Response) => {
+    try {
+      const authPn = bearerPn(req);
+      if (!authPn) return res.status(401).json({ error: 'unauthorized' });
+
+      if (!securityFlags.allowDeviceRegistryResetWithoutQuorum) {
+        return res.status(403).json({
+          error: 'registry_reset_requires_quorum',
+          error_description:
+            'Use Recovery → Reset keyed devices (custodian quorum), or set ALLOW_DEVICE_REGISTRY_RESET_WITHOUT_QUORUM for development.',
+        });
+      }
+
+      if (isProduction()) {
+        console.warn(
+          '[devices] registry reset without quorum used in production — disable ALLOW_DEVICE_REGISTRY_RESET_WITHOUT_QUORUM after unblocking'
+        );
+      }
+
+      const pn = req.params.userPnIdentifier.startsWith('pn-')
+        ? req.params.userPnIdentifier
+        : `pn-${req.params.userPnIdentifier}`;
+      if (pn !== authPn) return res.status(403).json({ error: 'pn_mismatch' });
+
+      const bundle = await storageBundle(pn, req);
+      if (!bundle) {
+        return res.status(404).json({
+          error: 'Storage not connected',
+          error_description: 'Reconnect Google Drive, then reset keyed devices.',
+        });
+      }
+
+      const result = await resetDeviceRegistry(bundle);
+      return res.json({ success: true, ...result });
+    } catch (e) {
+      console.error('[devices] registry reset:', e);
+      return res.status(500).json({ error: 'server_error' });
+    }
+  });
+
+  /**
+   * Finalize Shamir device_registry_reset after custodian quorum (request status ready).
+   */
+  app.post('/api/devices/registry/reset/finalize', async (req: Request, res: Response) => {
+    try {
+      const authPn = bearerPn(req);
+      if (!authPn) return res.status(401).json({ error: 'unauthorized' });
+
+      const { userPnIdentifier, requestId } = req.body ?? {};
+      const pn = String(userPnIdentifier || authPn);
+      if (pn !== authPn) return res.status(403).json({ error: 'pn_mismatch' });
+      if (!requestId || typeof requestId !== 'string') {
+        return res.status(400).json({ error: 'requestId required' });
+      }
+
+      const { getRecoveryDriveContext } = await import('./recoveryDriveContext');
+      const cloudTok = extractCloudAccessToken(req);
+      const ctx = await getRecoveryDriveContext(pn, cloudTok ? { accessToken: cloudTok } : undefined);
+      if (!ctx) return res.status(404).json({ error: 'Drive not connected' });
+
+      const { RecoverySheetsService } = await import('./recoverySheetsService');
+      const spreadsheetId = await RecoverySheetsService.getOrCreateSpreadsheet(
+        ctx.token,
+        ctx.metadataFolderId,
+        ctx.pnIdentifier,
+        ctx.accountId
+      );
+      const requests = await RecoverySheetsService.listRecoveryRequests(
+        ctx.token,
+        spreadsheetId,
+        ctx.pnIdentifier,
+        ctx.accountId
+      );
+      const row = requests.find((r) => r.requestId === requestId);
+      if (!row) return res.status(404).json({ error: 'request_not_found' });
+      if (row.requestType !== 'device_registry_reset') {
+        return res.status(400).json({ error: 'wrong_request_type' });
+      }
+      if (row.status !== 'ready') {
+        return res.status(403).json({
+          error: 'quorum_not_met',
+          error_description: 'Custodian quorum not reached for this device registry reset.',
+        });
+      }
+
+      const bundle = await storageBundle(pn, req);
+      if (!bundle) {
+        return res.status(404).json({
+          error: 'Storage not connected',
+          error_description: 'Reconnect Google Drive with X-PN-Cloud-Access-Token, then finalize.',
+        });
+      }
+
+      const result = await resetDeviceRegistry(bundle);
+      await RecoverySheetsService.upsertRecoveryRequest(
+        ctx.token,
+        spreadsheetId,
+        { ...row, status: 'completed' },
+        ctx.pnIdentifier,
+        ctx.accountId
+      );
+      return res.json({ success: true, ...result });
+    } catch (e) {
+      console.error('[devices] registry reset finalize:', e);
       return res.status(500).json({ error: 'server_error' });
     }
   });

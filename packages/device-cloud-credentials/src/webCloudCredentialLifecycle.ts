@@ -1,7 +1,7 @@
 import type { StorageCredentialsEnvelope } from '@par-noir/user-owned-storage';
 import { sealCredentials, unsealCredentials } from './seal.js';
 import { WebSealedStore } from './stores/webSealedStore.js';
-import { WEB_GRACE_TTL_MS, type SealSession, type SealedEnvelope } from './types.js';
+import type { SealSession, SealedEnvelope } from './types.js';
 import {
   clearSessionCloudCredentials,
   getSessionCloudCredentials,
@@ -14,9 +14,30 @@ const graceTimers = new Map<string, ReturnType<typeof setTimeout>>();
 export type PersistCloudCredentialsMode = 'session' | 'sealed';
 
 /**
+ * Web browser persist mode (browsers are never keyed installs):
+ * - No keyed devices yet → durable sealed store across unlocks (Case A)
+ * - Keyed apps exist → session only; wipe sealed on lock (Case B unkeyed web)
+ */
+export function resolveCloudPersistMode(opts: {
+  hasKeyedDevices: boolean;
+}): PersistCloudCredentialsMode {
+  return opts.hasKeyedDevices ? 'session' : 'sealed';
+}
+
+/**
+ * Whether sealed cloud creds should survive lock on this web session.
+ * Wipe only in Case B (keyed devices exist elsewhere; this web session is unkeyed).
+ */
+export function shouldRetainSealedCloudOnLock(opts: {
+  hasKeyedDevices: boolean;
+}): boolean {
+  return !opts.hasKeyedDevices;
+}
+
+/**
  * Persist cloud credentials for this unlock.
- * - `session`: memory only (unkeyed — wiped on lock)
- * - `sealed`: web sealed store + grace TTL (keyed — survives lock)
+ * - `session`: memory only (wiped on lock)
+ * - `sealed`: durable web sealed store (no grace TTL — survives lock until Case B wipe)
  */
 export async function persistCloudCredentials(opts: {
   identityId: string;
@@ -31,10 +52,10 @@ export async function persistCloudCredentials(opts: {
     return null;
   }
   const store = opts.store ?? defaultStore;
-  const expiresAt = new Date(Date.now() + WEB_GRACE_TTL_MS).toISOString();
-  const envelope = await sealCredentials(credentials, session, expiresAt);
+  // Durable seal: no expiresAt (matches native). Do not schedule grace wipe.
+  const envelope = await sealCredentials(credentials, session, null);
   await store.set(identityId, envelope);
-  scheduleGraceWipe(identityId, WEB_GRACE_TTL_MS, store);
+  cancelGraceWipe(identityId);
   return envelope;
 }
 
@@ -63,38 +84,37 @@ export async function wipeSealedCloudCredentials(
 ): Promise<void> {
   const s = store ?? defaultStore;
   await s.clear(identityId);
+  cancelGraceWipe(identityId);
+}
+
+/**
+ * Lock / logout cloud credential policy for web:
+ * - Case A (!hasKeyedDevices): keep sealed store for next unlock
+ * - Case B (hasKeyedDevices): wipe sealed + session (unkeyed web)
+ *
+ * `isKeyedSession` retained for native/keyed-web legacy callers: if true, always retain sealed.
+ */
+export async function clearCloudCredentialsOnLock(opts: {
+  identityId: string;
+  isKeyedSession?: boolean;
+  hasKeyedDevices?: boolean;
+  store?: WebSealedStore;
+}): Promise<void> {
+  clearSessionCloudCredentials(opts.identityId);
+  // Keyed install always retains. Else Case A (!hasKeyedDevices) retains.
+  // Legacy callers that only pass isKeyedSession:false still wipe.
+  const retain =
+    opts.isKeyedSession === true ||
+    (typeof opts.hasKeyedDevices === 'boolean' && !opts.hasKeyedDevices);
+  if (!retain) {
+    await wipeSealedCloudCredentials(opts.identityId, opts.store);
+  }
+}
+
+function cancelGraceWipe(identityId: string): void {
   const t = graceTimers.get(identityId);
   if (t) {
     clearTimeout(t);
     graceTimers.delete(identityId);
   }
-}
-
-/**
- * Lock / logout cloud credential policy:
- * - Unkeyed: wipe sealed store + session memory
- * - Keyed: clear session memory only; sealed store kept for next unlock
- */
-export async function clearCloudCredentialsOnLock(opts: {
-  identityId: string;
-  isKeyedSession: boolean;
-  store?: WebSealedStore;
-}): Promise<void> {
-  clearSessionCloudCredentials(opts.identityId);
-  if (!opts.isKeyedSession) {
-    await wipeSealedCloudCredentials(opts.identityId, opts.store);
-  }
-}
-
-function scheduleGraceWipe(identityId: string, ttlMs: number, store: WebSealedStore): void {
-  const prev = graceTimers.get(identityId);
-  if (prev) clearTimeout(prev);
-  graceTimers.set(
-    identityId,
-    setTimeout(() => {
-      void wipeSealedCloudCredentials(identityId, store);
-      clearSessionCloudCredentials(identityId);
-      graceTimers.delete(identityId);
-    }, ttlMs)
-  );
 }

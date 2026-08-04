@@ -88,7 +88,10 @@ describe('device register privateDisplay', () => {
     const res = mockRes();
     await handler(
       {
-        headers: { authorization: 'Bearer t' },
+        headers: {
+          authorization: 'Bearer t',
+          'x-pn-client-platform': 'native-mobile',
+        },
         body: {
           userPnIdentifier: PN,
           deviceId: 'dev-1',
@@ -102,12 +105,34 @@ describe('device register privateDisplay', () => {
     expect(upsertDevice).not.toHaveBeenCalled();
   });
 
+  it('rejects register from web clients', async () => {
+    const handler = getPostHandler('/api/devices/register');
+    const res = mockRes();
+    await handler(
+      {
+        headers: { authorization: 'Bearer t', 'x-pn-client-platform': 'web' },
+        body: {
+          userPnIdentifier: PN,
+          deviceId: 'dev-1',
+          devicePublicKey: 'pk',
+          privateDisplay: opaque,
+        },
+      } as unknown as Request,
+      res
+    );
+    expect(res.status).toHaveBeenCalledWith(403);
+    expect(upsertDevice).not.toHaveBeenCalled();
+  });
+
   it('stores opaque privateDisplay without cleartext label', async () => {
     const handler = getPostHandler('/api/devices/register');
     const res = mockRes();
     await handler(
       {
-        headers: { authorization: 'Bearer t' },
+        headers: {
+          authorization: 'Bearer t',
+          'x-pn-client-platform': 'native-mobile',
+        },
         body: {
           userPnIdentifier: PN,
           deviceId: 'dev-1',
@@ -126,7 +151,7 @@ describe('device register privateDisplay', () => {
         devicePublicKey: 'pk',
         privateDisplay: opaque,
         label: '',
-        deviceType: 'other',
+        deviceType: 'mobile',
         lastSeenAt: '',
       })
     );

@@ -275,7 +275,11 @@ export async function listRecoveryRequestsPortable(
     threshold: parseInt(String(r.threshold), 10) || 2,
     sharesJson: r.sharesJson || '[]',
     claimantName: r.claimantName || '',
-    createdAt: r.createdAt || ''
+    createdAt: r.createdAt || '',
+    requestType:
+      (r as { requestType?: string }).requestType === 'device_registry_reset'
+        ? 'device_registry_reset'
+        : 'identity_recovery',
   }));
 }
 

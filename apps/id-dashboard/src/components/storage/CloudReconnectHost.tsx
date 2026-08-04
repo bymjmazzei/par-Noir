@@ -11,12 +11,15 @@ import { SecureCredentialManager } from '@par-noir/identity-crypto';
 import {
   loadLocalCloudCredentials,
   persistCloudCredentials,
+  resolveCloudPersistMode,
   type PersistCloudCredentialsMode
 } from '@par-noir/device-cloud-credentials';
 import type { StorageCredentialsEnvelope } from '@par-noir/user-owned-storage';
 import { API_ENDPOINT } from '../../config/api';
 import { getGoogleDriveClientId } from '../../config/googleDriveClientId';
 import { DevicePairFromReconnect } from '../DevicePairFromReconnect';
+import { isKeyableClient } from '@par-noir/device-client';
+import { APP_DOWNLOAD_URL } from '../../config/appDownload';
 
 export interface CloudReconnectHostProps {
   apiToken: string | null;
@@ -84,7 +87,12 @@ export const CloudReconnectHost: React.FC<CloudReconnectHostProps> = ({
     dismissStorageKey: pnIdentifier ? `pn_cloud_reconnect_dismiss:${pnIdentifier}` : undefined
   });
 
-  const persistMode: PersistCloudCredentialsMode = isKeyedSession ? 'sealed' : 'session';
+  const persistMode: PersistCloudCredentialsMode = resolveCloudPersistMode({
+    hasKeyedDevices,
+  });
+  // Keyed native session still seals even in Case B
+  const effectivePersistMode: PersistCloudCredentialsMode =
+    isKeyedSession ? 'sealed' : persistMode;
 
   const markReady = gate.markReady;
   const handleConnected = useCallback(
@@ -100,7 +108,7 @@ export const CloudReconnectHost: React.FC<CloudReconnectHostProps> = ({
           pnName: creds.pnName,
           passcode: creds.passcode
         },
-        mode: persistMode
+        mode: effectivePersistMode
       });
       if (isKeyedSession) {
         try {
@@ -159,7 +167,7 @@ export const CloudReconnectHost: React.FC<CloudReconnectHostProps> = ({
       }
       onCloudReady?.();
     },
-    [pnIdentifier, sessionId, persistMode, isKeyedSession, markReady, onCloudReady, apiToken]
+    [pnIdentifier, sessionId, effectivePersistMode, isKeyedSession, markReady, onCloudReady, apiToken]
   );
 
   const handleReconnect = useCallback(() => {
@@ -199,7 +207,8 @@ export const CloudReconnectHost: React.FC<CloudReconnectHostProps> = ({
     [apiToken, pnIdentifier, sessionId]
   );
 
-  const showPairDevice = hasKeyedDevices && !isKeyedSession;
+  const showPairDevice = hasKeyedDevices && !isKeyedSession && isKeyableClient();
+  const showDownloadApp = hasKeyedDevices && !isKeyedSession && !isKeyableClient();
 
   if (!show) return null;
 
@@ -214,6 +223,14 @@ export const CloudReconnectHost: React.FC<CloudReconnectHostProps> = ({
         onPairDevice={() => setPairOpen(true)}
         busy={oauthBusy}
       >
+        {showDownloadApp ? (
+          <p style={{ margin: '12px 0 0', fontSize: 13 }}>
+            <a href={APP_DOWNLOAD_URL} target="_blank" rel="noopener noreferrer" style={{ color: '#a78bfa' }}>
+              Download the app
+            </a>{' '}
+            to key a phone or computer.
+          </p>
+        ) : null}
         {gate.error || oauthError ? (
           <p style={{ margin: '12px 0 0', fontSize: 13, color: '#f87171' }} role="alert">
             {oauthError || gate.error}

@@ -6,6 +6,7 @@ import {
 } from '@par-noir/device-auth';
 import { SecureCredentialManager } from '@par-noir/identity-crypto';
 import { sealDevicePrivateDisplay } from '@par-noir/device-client';
+import { clientPlatformHeaderValue } from '@par-noir/device-client';
 import { getSessionCloudCredentials } from '@par-noir/device-cloud-credentials';
 import { deviceProofHeaders } from './deviceProofContext';
 import {
@@ -53,6 +54,10 @@ function authHeaders(authToken: string, extra?: Record<string, string>) {
     Authorization: `Bearer ${authToken}`,
     ...extra,
   };
+}
+
+function platformHeaders(): Record<string, string> {
+  return { 'X-PN-Client-Platform': clientPlatformHeaderValue() };
 }
 
 function cloudTokenHeaders(pnIdentifier: string): Record<string, string> {
@@ -231,7 +236,10 @@ export async function registerDeviceOnServer(params: {
   };
   const res = await fetch(`${API_ENDPOINT}${path}`, {
     method: 'POST',
-    headers: authHeaders(params.authToken, cloudTokenHeaders(params.userPnIdentifier)),
+    headers: authHeaders(params.authToken, {
+      ...cloudTokenHeaders(params.userPnIdentifier),
+      ...platformHeaders(),
+    }),
     body: JSON.stringify(body),
   });
   if (!res.ok) {
@@ -240,6 +248,74 @@ export async function registerDeviceOnServer(params: {
       (err as { error_description?: string; error?: string }).error_description ||
         (err as { error?: string }).error ||
         'Failed to register device'
+    );
+  }
+  return res.json();
+}
+
+export async function resetDeviceRegistryDev(
+  userPnIdentifier: string,
+  authToken: string
+): Promise<{ success: boolean; revoked: number }> {
+  const path = `/api/devices/${encodeURIComponent(userPnIdentifier)}/registry/reset`;
+  const res = await fetch(`${API_ENDPOINT}${path}`, {
+    method: 'POST',
+    headers: authHeaders(authToken, cloudTokenHeaders(userPnIdentifier)),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(
+      (err as { error_description?: string; error?: string }).error_description ||
+        (err as { error?: string }).error ||
+        'Failed to reset device registry'
+    );
+  }
+  return res.json();
+}
+
+export async function initiateDeviceRegistryResetRequest(params: {
+  userPnIdentifier: string;
+  authToken: string;
+  publicKey: string;
+  threshold?: number;
+}): Promise<{ requestId: string }> {
+  const requestId = `device-reset-${Date.now()}`;
+  const res = await fetch(`${API_ENDPOINT}/api/recovery/requests`, {
+    method: 'POST',
+    headers: authHeaders(params.authToken, cloudTokenHeaders(params.userPnIdentifier)),
+    body: JSON.stringify({
+      userPnIdentifier: params.userPnIdentifier,
+      requestId,
+      publicKey: params.publicKey,
+      threshold: params.threshold ?? 2,
+      claimantName: 'device-registry-reset',
+      requestType: 'device_registry_reset',
+      status: 'pending',
+    }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error((err as { error?: string }).error || 'Failed to start device registry reset');
+  }
+  return { requestId };
+}
+
+export async function finalizeDeviceRegistryReset(
+  userPnIdentifier: string,
+  authToken: string,
+  requestId: string
+): Promise<{ success: boolean; revoked: number }> {
+  const res = await fetch(`${API_ENDPOINT}/api/devices/registry/reset/finalize`, {
+    method: 'POST',
+    headers: authHeaders(authToken, cloudTokenHeaders(userPnIdentifier)),
+    body: JSON.stringify({ userPnIdentifier, requestId }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(
+      (err as { error_description?: string; error?: string }).error_description ||
+        (err as { error?: string }).error ||
+        'Failed to finalize device registry reset'
     );
   }
   return res.json();

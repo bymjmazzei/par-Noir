@@ -4,7 +4,9 @@ import { WebSealedStore } from './stores/webSealedStore.js';
 import {
   clearCloudCredentialsOnLock,
   loadLocalCloudCredentials,
-  persistCloudCredentials
+  persistCloudCredentials,
+  resolveCloudPersistMode,
+  shouldRetainSealedCloudOnLock
 } from './webCloudCredentialLifecycle.js';
 import { getSessionCloudCredentials } from './sessionMemory.js';
 import type { StorageCredentialsEnvelope } from '@par-noir/user-owned-storage';
@@ -35,6 +37,19 @@ function memoryStorage(): Storage {
   };
 }
 
+describe('resolveCloudPersistMode', () => {
+  it('seals when no keyed devices (Case A)', () => {
+    expect(resolveCloudPersistMode({ hasKeyedDevices: false })).toBe('sealed');
+  });
+  it('session when keyed devices exist (Case B web)', () => {
+    expect(resolveCloudPersistMode({ hasKeyedDevices: true })).toBe('session');
+  });
+  it('retain sealed on lock only in Case A', () => {
+    expect(shouldRetainSealedCloudOnLock({ hasKeyedDevices: false })).toBe(true);
+    expect(shouldRetainSealedCloudOnLock({ hasKeyedDevices: true })).toBe(false);
+  });
+});
+
 describe('clearCloudCredentialsOnLock', () => {
   let store: WebSealedStore;
 
@@ -42,7 +57,7 @@ describe('clearCloudCredentialsOnLock', () => {
     store = new WebSealedStore(memoryStorage());
   });
 
-  it('wipes sealed + session when unkeyed', async () => {
+  it('wipes sealed + session when unkeyed (legacy isKeyedSession false)', async () => {
     await persistCloudCredentials({
       identityId,
       credentials: creds,
@@ -74,6 +89,41 @@ describe('clearCloudCredentialsOnLock', () => {
     expect(restored?.googleDriveAccounts?.[0]?.accessToken).toBe('tok');
   });
 
+  it('Case A: retains sealed when hasKeyedDevices false', async () => {
+    await persistCloudCredentials({
+      identityId,
+      credentials: creds,
+      session,
+      mode: 'sealed',
+      store
+    });
+    await clearCloudCredentialsOnLock({
+      identityId,
+      isKeyedSession: false,
+      hasKeyedDevices: false,
+      store
+    });
+    expect(getSessionCloudCredentials(identityId)).toBeNull();
+    expect(await store.get(identityId)).not.toBeNull();
+  });
+
+  it('Case B: wipes sealed when hasKeyedDevices true and unkeyed', async () => {
+    await persistCloudCredentials({
+      identityId,
+      credentials: creds,
+      session,
+      mode: 'sealed',
+      store
+    });
+    await clearCloudCredentialsOnLock({
+      identityId,
+      isKeyedSession: false,
+      hasKeyedDevices: true,
+      store
+    });
+    expect(await store.get(identityId)).toBeNull();
+  });
+
   it('session mode never writes sealed store', async () => {
     const sealed = await persistCloudCredentials({
       identityId,
@@ -85,6 +135,17 @@ describe('clearCloudCredentialsOnLock', () => {
     expect(sealed).toBeNull();
     expect(await store.get(identityId)).toBeNull();
     expect(getSessionCloudCredentials(identityId)?.googleDriveAccounts?.[0]?.accessToken).toBe('tok');
+  });
+
+  it('durable sealed has no expiresAt', async () => {
+    const sealed = await persistCloudCredentials({
+      identityId,
+      credentials: creds,
+      session,
+      mode: 'sealed',
+      store
+    });
+    expect(sealed?.expiresAt ?? null).toBeNull();
   });
 });
 

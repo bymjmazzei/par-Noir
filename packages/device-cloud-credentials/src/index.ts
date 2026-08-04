@@ -59,6 +59,8 @@ export {
   persistCloudCredentials,
   loadLocalCloudCredentials,
   wipeSealedCloudCredentials,
-  clearCloudCredentialsOnLock
+  clearCloudCredentialsOnLock,
+  resolveCloudPersistMode,
+  shouldRetainSealedCloudOnLock
 } from './webCloudCredentialLifecycle.js';
 export type { PersistCloudCredentialsMode } from './webCloudCredentialLifecycle.js';

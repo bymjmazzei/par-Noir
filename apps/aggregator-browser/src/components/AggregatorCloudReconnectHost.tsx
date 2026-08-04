@@ -7,22 +7,28 @@ import {
 } from '@par-noir/oauth-ui';
 import {
   clearCloudCredentialsOnLock,
-  getSessionCloudCredentials,
+  loadLocalCloudCredentials,
+  persistCloudCredentials,
+  resolveCloudPersistMode,
   setSessionCloudCredentials
 } from '@par-noir/device-cloud-credentials';
 import type { StorageCredentialsEnvelope } from '@par-noir/user-owned-storage';
 import { API_ENDPOINT } from '../config/api';
 import { PNOAuthService } from '../services/pnOAuthService';
+import { fetchDeviceRegistry } from '../services/deviceService';
+import { getDmIdentity, isDmIdentityReady } from '../services/dmIdentitySession';
 
 /**
  * Post-unlock cloud reconnect for aggregator browse/messaging.
- * Credentials stay in session memory for this origin and are wiped on lock.
+ * Case A (no keyed devices): durable sealed local cloud.
+ * Case B (keyed apps exist): session-only; wiped on lock.
  */
 export const AggregatorCloudReconnectHost: React.FC = () => {
   const session = PNOAuthService.loadSession();
   const authToken = session?.accessToken ?? null;
   const pnIdentifier = session?.pnIdentifier ?? null;
   const [googleClientId, setGoogleClientId] = useState<string | null>(null);
+  const [hasKeyedDevices, setHasKeyedDevices] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -41,9 +47,35 @@ export const AggregatorCloudReconnectHost: React.FC = () => {
     };
   }, []);
 
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      if (!authToken || !pnIdentifier) {
+        setHasKeyedDevices(false);
+        return;
+      }
+      const reg = await fetchDeviceRegistry(pnIdentifier, authToken);
+      if (!cancelled) {
+        setHasKeyedDevices(Boolean(reg?.hasKeyedDevices || reg?.policy?.firstDeviceKeyedAt));
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [authToken, pnIdentifier]);
+
   const loadLocalEnvelope = useCallback(async (): Promise<StorageCredentialsEnvelope | null> => {
-    if (!pnIdentifier) return null;
-    return getSessionCloudCredentials(pnIdentifier);
+    if (!pnIdentifier || !isDmIdentityReady()) return null;
+    const identity = getDmIdentity();
+    if (!identity.pnName || !identity.passcode) return null;
+    return loadLocalCloudCredentials({
+      identityId: pnIdentifier,
+      session: {
+        sessionId: `agg:${pnIdentifier}`,
+        pnName: identity.pnName,
+        passcode: identity.passcode
+      }
+    });
   }, [pnIdentifier]);
 
   const gate = useCloudReconnectGate({
@@ -57,8 +89,24 @@ export const AggregatorCloudReconnectHost: React.FC = () => {
 
   const handleConnected = useCallback(
     async (envelope: StorageCredentialsEnvelope) => {
-      if (!pnIdentifier) return;
-      setSessionCloudCredentials(pnIdentifier, envelope);
+      if (!pnIdentifier || !isDmIdentityReady()) return;
+      const identity = getDmIdentity();
+      if (!identity.pnName || !identity.passcode) {
+        setSessionCloudCredentials(pnIdentifier, envelope);
+        gate.markReady();
+        return;
+      }
+      const mode = resolveCloudPersistMode({ hasKeyedDevices });
+      await persistCloudCredentials({
+        identityId: pnIdentifier,
+        credentials: envelope,
+        session: {
+          sessionId: `agg:${pnIdentifier}`,
+          pnName: identity.pnName,
+          passcode: identity.passcode
+        },
+        mode
+      });
       gate.markReady();
       try {
         window.dispatchEvent(new CustomEvent(PN_CLOUD_CREDENTIALS_READY_EVENT));
@@ -66,7 +114,7 @@ export const AggregatorCloudReconnectHost: React.FC = () => {
         /* non-DOM */
       }
     },
-    [pnIdentifier, gate]
+    [pnIdentifier, gate, hasKeyedDevices]
   );
 
   if (!authToken || !pnIdentifier) return null;
@@ -95,8 +143,14 @@ export const AggregatorCloudReconnectHost: React.FC = () => {
 
 /** Call from lock path to wipe session cloud credentials. */
 export async function wipeAggregatorCloudOnLock(
-  pnIdentifier: string | null | undefined
+  pnIdentifier: string | null | undefined,
+  opts?: { hasKeyedDevices?: boolean }
 ): Promise<void> {
   if (!pnIdentifier) return;
-  await clearCloudCredentialsOnLock({ identityId: pnIdentifier, isKeyedSession: false });
+  const hasKeyedDevices = opts?.hasKeyedDevices ?? true;
+  await clearCloudCredentialsOnLock({
+    identityId: pnIdentifier,
+    isKeyedSession: false,
+    hasKeyedDevices
+  });
 }

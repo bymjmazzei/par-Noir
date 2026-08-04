@@ -36,6 +36,8 @@ export interface RecoveryRequestRow {
   sharesJson: string;
   claimantName: string;
   createdAt: string;
+  /** identity_recovery (default) | device_registry_reset */
+  requestType?: 'identity_recovery' | 'device_registry_reset';
 }
 
 const CUSTODIAN_HEADERS = [
@@ -107,8 +109,17 @@ export class RecoverySheetsService {
           { range: 'Custodians!A1:K1', values: [CUSTODIAN_HEADERS] },
           { range: 'PendingShares!A1:C1', values: [PENDING_HEADERS] },
           {
-            range: 'RecoveryRequests!A1:G1',
-            values: [['requestId', 'publicKey', 'status', 'threshold', 'sharesJson', 'claimantName', 'createdAt']],
+            range: 'RecoveryRequests!A1:H1',
+            values: [[
+              'requestId',
+              'publicKey',
+              'status',
+              'threshold',
+              'sharesJson',
+              'claimantName',
+              'createdAt',
+              'requestType',
+            ]],
           },
         ],
       },
@@ -526,7 +537,7 @@ export class RecoverySheetsService {
     const sheets = google.sheets({ version: 'v4', auth });
     const res = await sheets.spreadsheets.values.get({
       spreadsheetId,
-      range: 'RecoveryRequests!A2:G',
+      range: 'RecoveryRequests!A2:H',
     });
     const rows = res.data.values || [];
     const idx = rows.findIndex((r) => r[0] === row.requestId);
@@ -538,18 +549,19 @@ export class RecoverySheetsService {
       row.sharesJson,
       row.claimantName,
       row.createdAt,
+      row.requestType || 'identity_recovery',
     ];
     if (idx >= 0) {
       await sheets.spreadsheets.values.update({
         spreadsheetId,
-        range: `RecoveryRequests!A${idx + 2}:G${idx + 2}`,
+        range: `RecoveryRequests!A${idx + 2}:H${idx + 2}`,
         valueInputOption: 'RAW',
         requestBody: { values: [values] },
       });
     } else {
       await sheets.spreadsheets.values.append({
         spreadsheetId,
-        range: 'RecoveryRequests!A:G',
+        range: 'RecoveryRequests!A:H',
         valueInputOption: 'RAW',
         insertDataOption: 'INSERT_ROWS',
         requestBody: { values: [values] },
@@ -592,7 +604,7 @@ export class RecoverySheetsService {
     const sheets = google.sheets({ version: 'v4', auth });
     const res = await sheets.spreadsheets.values.get({
       spreadsheetId,
-      range: 'RecoveryRequests!A2:G',
+      range: 'RecoveryRequests!A2:H',
     });
     return (res.data.values || []).map((r) => ({
       requestId: r[0] || '',
@@ -602,6 +614,9 @@ export class RecoverySheetsService {
       sharesJson: r[4] || '[]',
       claimantName: r[5] || '',
       createdAt: r[6] || '',
+      requestType: (r[7] === 'device_registry_reset' ? 'device_registry_reset' : 'identity_recovery') as
+        | 'identity_recovery'
+        | 'device_registry_reset',
     }));
   }
 

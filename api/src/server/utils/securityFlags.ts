@@ -6,6 +6,10 @@ export const securityFlags = {
   enableAdminIdentityHeaders: process.env.ADMIN_IDENTITY_HEADERS_ENABLED === 'true',
   disableLegacyAdminApiKey: process.env.ADMIN_DISABLE_LEGACY_API_KEY === 'true',
   allowUnsafeDevAdminBypass: process.env.ALLOW_UNSAFE_DEV_ADMIN_BYPASS === 'true',
+  /** Dev-only: allow identity+Drive registry wipe without custodian quorum. */
+  allowDeviceRegistryResetWithoutQuorum:
+    process.env.ALLOW_DEVICE_REGISTRY_RESET_WITHOUT_QUORUM === '1' ||
+    process.env.ALLOW_DEVICE_REGISTRY_RESET_WITHOUT_QUORUM === 'true',
 };
 
 export function isProduction(): boolean {

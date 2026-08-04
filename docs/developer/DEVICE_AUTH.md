@@ -2,6 +2,24 @@
 
 Portable unlock (`.pn` + pN name + passcode) remains available on any device. **Device keys gate privileged owner actions**, not identity decryption.
 
+## Keyable clients (mobile + desktop apps)
+
+Device **private** keys stay on the install (never on Drive). Only **native** clients may register devices:
+
+- Capacitor mobile (`X-PN-Client-Platform: native-mobile`)
+- Electron desktop (`native-desktop`)
+
+Web browsers must not key. UI shows **Download the app**. Web cloud credentials:
+
+- **Case A** (no keyed devices yet): durable sealed local Google tokens across unlocks
+- **Case B** (at least one keyed app): session-only cloud; wipe sealed store on lock
+
+### Lost every keyed install
+
+Do **not** clear the registry with unlock alone (that breaks the device gate). Use Recovery → **Reset keyed devices** (`requestType: device_registry_reset`): custodians approve with Shamir/ZK quorum; finalize clears `devices.xlsx` + `firstDeviceKeyedAt`; then key a new first device on a native app.
+
+Dev-only escape: `ALLOW_DEVICE_REGISTRY_RESET_WITHOUT_QUORUM=1` enables `POST /api/devices/:pn/registry/reset` without quorum — disable after unblocking.
+
 ## Model
 
 | Mode | When | Owner capabilities |
