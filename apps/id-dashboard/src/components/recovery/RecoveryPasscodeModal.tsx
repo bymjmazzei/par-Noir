@@ -5,6 +5,7 @@ import {
   KEY_2_CONFIRM_PLACEHOLDER,
   KEYS_HELPER,
   KEYS_MISMATCH,
+  keyStrengthErrors,
 } from '../../constants/credentialLabels';
 
 interface RecoveryPasscodeModalProps {
@@ -31,12 +32,14 @@ export function RecoveryPasscodeModal({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
-    if (!newPnName.trim() || newPnName.trim().length < 3) {
-      setError(`${KEY_1_LABEL} must be at least 3 characters.`);
+    const key1Errors = keyStrengthErrors(newPnName.trim(), KEY_1_LABEL);
+    if (key1Errors.length) {
+      setError(key1Errors[0]);
       return;
     }
-    if (newPasscode.length < 8) {
-      setError(`${KEY_2_LABEL} must be at least 8 characters.`);
+    const key2Errors = keyStrengthErrors(newPasscode, KEY_2_LABEL);
+    if (key2Errors.length) {
+      setError(key2Errors[0]);
       return;
     }
     if (newPasscode !== confirmPasscode) {

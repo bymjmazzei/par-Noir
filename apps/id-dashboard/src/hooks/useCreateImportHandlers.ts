@@ -101,21 +101,10 @@ export function useCreateImportHandlers(params: UseCreateImportHandlersParams) {
       logDebug('Starting identity creation...');
       setLoading(true);
       setError(null);
-      
-      console.log('Validation starting...', {
-        pnName: createForm.pnName,
-        confirmPNName: createForm.confirmPNName,
-        passcode: createForm.passcode ? '***' : '',
-        confirmPasscode: createForm.confirmPasscode ? '***' : '',
-        recoveryContactType: createForm.recoveryContactType,
-        recoveryEmail: createForm.recoveryEmail,
-        confirmRecoveryEmail: createForm.confirmRecoveryEmail
-      });
 
-      // Comprehensive input validation
       const pnNameValidation = InputValidator.validatePNName(createForm.pnName);
       if (!pnNameValidation.isValid) {
-        const errorMsg = `pN Name validation failed: ${pnNameValidation.errors.join(', ')}`;
+        const errorMsg = `Key 1 validation failed: ${pnNameValidation.errors.join(', ')}`;
         setError(errorMsg);
         setLoading(false);
         analytics.trackError(new Error(errorMsg), 'create-form', 'high');
@@ -125,7 +114,7 @@ export function useCreateImportHandlers(params: UseCreateImportHandlersParams) {
 
       const passcodeValidation = InputValidator.validatePasscode(createForm.passcode);
       if (!passcodeValidation.isValid) {
-        const errorMsg = `Passcode validation failed: ${passcodeValidation.errors.join(', ')}`;
+        const errorMsg = `Key 2 validation failed: ${passcodeValidation.errors.join(', ')}`;
         setError(errorMsg);
         setLoading(false);
         analytics.trackError(new Error(errorMsg), 'create-form', 'high');

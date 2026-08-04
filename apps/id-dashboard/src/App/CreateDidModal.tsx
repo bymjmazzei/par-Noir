@@ -1,4 +1,8 @@
 import React from 'react';
+import {
+  KEY_STRENGTH_RULES,
+  meetsKeyStrengthRequirements,
+} from '../constants/credentialLabels';
 
 export interface CreateDidForm {
   pnName: string;
@@ -167,15 +171,14 @@ export function CreateDidModal(props: CreateDidModalProps) {
                       <div className="mt-2 text-xs text-text-secondary">
                         <p className="font-medium mb-1">Requirements:</p>
                         <ul className="space-y-1">
-                          <li className={createForm.pnName.length >= 3 ? "text-green-500" : "text-red-500"}>
-                            • 3-20 characters long
-                          </li>
-                          <li className={/^[a-zA-Z0-9-]+$/.test(createForm.pnName) ? "text-green-500" : "text-red-500"}>
-                            • Letters, numbers, and hyphens only
-                          </li>
-                          <li className={createForm.pnName.length > 0 && !['admin', 'root', 'system', 'test'].includes(createForm.pnName.toLowerCase()) ? "text-green-500" : "text-red-500"}>
-                            • Not a reserved name
-                          </li>
+                          {KEY_STRENGTH_RULES.map((rule) => (
+                            <li
+                              key={`k1-${rule.id}`}
+                              className={rule.test(createForm.pnName) ? 'text-green-500' : 'text-red-500'}
+                            >
+                              • {rule.label}
+                            </li>
+                          ))}
                         </ul>
                       </div>
                     </div>
@@ -213,21 +216,14 @@ export function CreateDidModal(props: CreateDidModalProps) {
                       <div className="mt-2 text-xs text-text-secondary">
                         <p className="font-medium mb-1">Requirements:</p>
                         <ul className="space-y-1">
-                          <li className={createForm.passcode.length >= 12 ? "text-green-500" : "text-red-500"}>
-                            • At least 12 characters
-                          </li>
-                          <li className={/[A-Z]/.test(createForm.passcode) ? "text-green-500" : "text-red-500"}>
-                            • One uppercase letter
-                          </li>
-                          <li className={/[a-z]/.test(createForm.passcode) ? "text-green-500" : "text-red-500"}>
-                            • One lowercase letter
-                          </li>
-                          <li className={/[0-9]/.test(createForm.passcode) ? "text-green-500" : "text-red-500"}>
-                            • One number
-                          </li>
-                          <li className={/[^A-Za-z0-9]/.test(createForm.passcode) ? "text-green-500" : "text-red-500"}>
-                            • One special character
-                          </li>
+                          {KEY_STRENGTH_RULES.map((rule) => (
+                            <li
+                              key={`k2-${rule.id}`}
+                              className={rule.test(createForm.passcode) ? 'text-green-500' : 'text-red-500'}
+                            >
+                              • {rule.label}
+                            </li>
+                          ))}
                         </ul>
                       </div>
                     </div>
@@ -295,8 +291,13 @@ export function CreateDidModal(props: CreateDidModalProps) {
                     <button
                       type="submit"
                       className="flex-1 px-4 py-2 modal-button rounded-md"
-                      disabled={!createForm.pnName || !createForm.passcode || 
-                        (createForm.recoveryContactType === 'email' ? !createForm.recoveryEmail : !createForm.recoveryPhone)}
+                      disabled={
+                        !meetsKeyStrengthRequirements(createForm.pnName) ||
+                        !meetsKeyStrengthRequirements(createForm.passcode) ||
+                        (createForm.recoveryContactType === 'email'
+                          ? !createForm.recoveryEmail
+                          : !createForm.recoveryPhone)
+                      }
                     >
                       Next
                     </button>

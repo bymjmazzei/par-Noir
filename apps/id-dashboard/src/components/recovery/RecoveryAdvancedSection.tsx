@@ -1,12 +1,14 @@
 import React from 'react';
 import { API_ENDPOINT } from '../../config/api';
 import { IdentityRotationWizard } from '../identity/IdentityRotationWizard';
+import { useRecoveryAuth } from '../../contexts/RecoveryAuthContext';
 
-export interface RecoveryAdvancedSectionProps {
+export interface RecoveryIdentityRotationSectionProps {
   authenticatedUser: { id: string; publicKey?: string } | null;
   apiToken: string | null;
   canRotateIdentity: boolean;
   hasKeyedDevices: boolean;
+  deviceRequiredMessage?: string;
 }
 
 /** Re-key ledger: only renders when a successor is registered. */
@@ -47,36 +49,49 @@ const RekeyLedger: React.FC<{ predecessorPn: string }> = ({ predecessorPn }) => 
   );
 };
 
-export const RecoveryAdvancedSection: React.FC<RecoveryAdvancedSectionProps> = ({
+/**
+ * Identity rotation + succession ledger — shown after recovery unlock (not buried in Advanced).
+ */
+export const RecoveryIdentityRotationSection: React.FC<RecoveryIdentityRotationSectionProps> = ({
   authenticatedUser,
   apiToken,
   canRotateIdentity,
   hasKeyedDevices,
+  deviceRequiredMessage,
 }) => {
-  if (!authenticatedUser) return null;
+  const { isAuthenticated } = useRecoveryAuth();
+  if (!authenticatedUser || !isAuthenticated) return null;
+
   const predecessorPn = authenticatedUser.id.startsWith('pn-')
     ? authenticatedUser.id
     : `pn-${authenticatedUser.id}`;
 
   return (
-    <details className="bg-secondary rounded-lg p-4">
-      <summary className="cursor-pointer font-medium text-text-primary">Advanced</summary>
-      <div className="mt-4 space-y-4">
-        <p className="text-xs text-text-secondary">
-          Identity rotation creates new keys and registers a network re-key. Distinct from Shamir
-          Key 1 / Key 2 recovery.
+    <div className="bg-secondary rounded-lg p-4 space-y-4">
+      <div>
+        <h3 className="text-lg font-semibold text-text-primary">Identity rotation</h3>
+        <p className="text-xs text-text-secondary mt-1">
+          Creates new cryptographic keys and registers a network re-key. Distinct from Shamir Key 1 /
+          Key 2 recovery (which keeps the same keys).
         </p>
-        {canRotateIdentity && apiToken ? (
-          <IdentityRotationWizard
-            authToken={apiToken}
-            identityKey={authenticatedUser.publicKey || authenticatedUser.id}
-            currentDid={authenticatedUser.id}
-          />
-        ) : hasKeyedDevices ? (
-          <p className="text-xs text-text-secondary">Identity rotation requires a keyed device session.</p>
-        ) : null}
-        <RekeyLedger predecessorPn={predecessorPn} />
       </div>
-    </details>
+      {canRotateIdentity && apiToken ? (
+        <IdentityRotationWizard
+          authToken={apiToken}
+          identityKey={authenticatedUser.publicKey || authenticatedUser.id}
+          currentDid={authenticatedUser.id}
+        />
+      ) : (
+        <p className="text-xs text-text-secondary">
+          {hasKeyedDevices
+            ? deviceRequiredMessage || 'Identity rotation requires a keyed device session.'
+            : 'Key a device to enable identity rotation.'}
+        </p>
+      )}
+      <RekeyLedger predecessorPn={predecessorPn} />
+    </div>
   );
 };
+
+/** @deprecated Use RecoveryIdentityRotationSection */
+export const RecoveryAdvancedSection = RecoveryIdentityRotationSection;

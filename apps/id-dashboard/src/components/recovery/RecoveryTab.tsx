@@ -3,7 +3,7 @@ import { DeviceManagementPanel } from '../DeviceManagementPanel';
 import { RecoveryAuthProvider } from '../../contexts/RecoveryAuthContext';
 import { ShamirRecoverySection } from './ShamirRecoverySection';
 import { RecoveryKeyFailsafeSection } from './RecoveryKeyFailsafeSection';
-import { RecoveryAdvancedSection } from './RecoveryAdvancedSection';
+import { RecoveryIdentityRotationSection } from './RecoveryAdvancedSection';
 import { RecoveryCustodianPendingPanel } from './RecoveryCustodianPendingPanel';
 import type { RecoveryCustodianSummary } from '../../services/recoveryApiService';
 
@@ -36,6 +36,9 @@ export interface RecoveryTabProps {
   refreshRecoveryVault: () => void | Promise<void>;
   handleRemoveCustodian: (id: string) => void;
   handleOpenCustodianApprovalModal: (cs: any) => void;
+  loadEncryptedIdentity: (
+    identityPublicKeyOrId: string
+  ) => Promise<{ encryptedData: string; iv: string; salt: string } | null>;
 }
 
 export const RecoveryTab: React.FC<RecoveryTabProps> = (props) => {
@@ -68,6 +71,7 @@ export const RecoveryTab: React.FC<RecoveryTabProps> = (props) => {
     refreshRecoveryVault,
     handleRemoveCustodian,
     handleOpenCustodianApprovalModal,
+    loadEncryptedIdentity,
   } = props;
 
   const onSendInvitation = (custodianId: string, name: string) => {
@@ -93,6 +97,12 @@ export const RecoveryTab: React.FC<RecoveryTabProps> = (props) => {
         <ShamirRecoverySection
           apiToken={apiToken}
           userPnIdentifier={recoveryVaultPnId}
+          authenticatedUser={
+            authenticatedUser
+              ? { id: authenticatedUser.id, publicKey: authenticatedUser.publicKey }
+              : null
+          }
+          loadEncryptedIdentity={loadEncryptedIdentity}
           canCustodiansRead={canCustodiansRead}
           canManageCustodians={canManageCustodians}
           recoveryMutationAllowed={recoveryMutationAllowed}
@@ -126,6 +136,14 @@ export const RecoveryTab: React.FC<RecoveryTabProps> = (props) => {
                 ? deviceAuth?.deviceRequiredMessage
                 : undefined
           }
+        />
+
+        <RecoveryIdentityRotationSection
+          authenticatedUser={authenticatedUser}
+          apiToken={apiToken}
+          canRotateIdentity={canRotateIdentity}
+          hasKeyedDevices={!!deviceAuth?.hasKeyedDevices}
+          deviceRequiredMessage={deviceAuth?.deviceRequiredMessage}
         />
       </RecoveryAuthProvider>
 
@@ -195,13 +213,6 @@ export const RecoveryTab: React.FC<RecoveryTabProps> = (props) => {
           )}
         </div>
       )}
-
-      <RecoveryAdvancedSection
-        authenticatedUser={authenticatedUser}
-        apiToken={apiToken}
-        canRotateIdentity={canRotateIdentity}
-        hasKeyedDevices={!!deviceAuth?.hasKeyedDevices}
-      />
     </div>
   );
 };

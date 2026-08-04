@@ -84,6 +84,9 @@ export interface AuthenticatedShellProps {
   handleDownloadRecoveryKey: any;
   handleOpenCustodianApprovalModal: any;
   ensureOwnerApiTokenForActiveUser: any;
+  getEncryptedIdentityForApiToken: (
+    identityPublicKeyOrId: string | undefined
+  ) => Promise<{ encryptedData: string; iv: string; salt: string } | null>;
   showErrorMessage: any;
   showSuccessMessage: any;
   refreshAssetDelegations: any;
@@ -165,6 +168,7 @@ export function AuthenticatedShell(props: AuthenticatedShellProps) {
     handleDownloadRecoveryKey,
     handleOpenCustodianApprovalModal,
     ensureOwnerApiTokenForActiveUser,
+    getEncryptedIdentityForApiToken,
     showErrorMessage,
     showSuccessMessage,
     refreshAssetDelegations,
@@ -670,6 +674,7 @@ export function AuthenticatedShell(props: AuthenticatedShellProps) {
                       refreshRecoveryVault={refreshRecoveryVault}
                       handleRemoveCustodian={handleRemoveCustodian}
                       handleOpenCustodianApprovalModal={handleOpenCustodianApprovalModal}
+                      loadEncryptedIdentity={(id) => getEncryptedIdentityForApiToken(id)}
                     />
                   )}
 

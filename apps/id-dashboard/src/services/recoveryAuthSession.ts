@@ -23,7 +23,7 @@ export function getRecoveryAuthSession(): RecoveryAuthSession | null {
 }
 
 export function recoveryAuthRequiredMessage(): string {
-  return 'Confirm identity in the Recovery tab (upload .pn, Key 1, and Key 2) before changing recovery settings.';
+  return 'Unlock recovery (Unlock button above) before changing recovery settings.';
 }
 
 export { RECOVERY_AUTH_TTL_MS };

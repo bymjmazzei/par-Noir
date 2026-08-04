@@ -13,6 +13,11 @@ import {
   type ShamirShare
 } from '@par-noir/recovery-crypto';
 import { IdentityCrypto, type EncryptedIdentity } from '@par-noir/identity-crypto';
+import {
+  KEY_1_LABEL,
+  KEY_2_LABEL,
+  keyStrengthErrors,
+} from '../constants/credentialLabels';
 
 export interface RecoveryCompletionInput {
   envelope: RecoveryEnvelope;
@@ -33,11 +38,13 @@ export async function completeRecoveryWithShares(
   input: RecoveryCompletionInput
 ): Promise<RecoveryCompletionResult> {
   const newPnName = input.newPnName.trim();
-  if (!newPnName) {
-    throw new Error('Key 1 is required');
+  const key1Errors = keyStrengthErrors(newPnName, KEY_1_LABEL);
+  if (key1Errors.length) {
+    throw new Error(key1Errors[0]);
   }
-  if (!input.newPasscode || input.newPasscode.length < 8) {
-    throw new Error('Key 2 must be at least 8 characters');
+  const key2Errors = keyStrengthErrors(input.newPasscode, KEY_2_LABEL);
+  if (key2Errors.length) {
+    throw new Error(key2Errors[0]);
   }
 
   const master = combineShares(input.shares.map((s) => normalizeShare(s)));

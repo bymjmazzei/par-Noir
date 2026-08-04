@@ -11,6 +11,10 @@ import { recoveryAuthRequiredMessage } from '../../services/recoveryAuthSession'
 export interface ShamirRecoverySectionProps {
   apiToken: string | null;
   userPnIdentifier: string | null;
+  authenticatedUser: { id: string; publicKey?: string } | null;
+  loadEncryptedIdentity: (
+    identityPublicKeyOrId: string
+  ) => Promise<{ encryptedData: string; iv: string; salt: string } | null>;
   canCustodiansRead: boolean;
   canManageCustodians: boolean;
   recoveryMutationAllowed: boolean;
@@ -31,6 +35,8 @@ export interface ShamirRecoverySectionProps {
 export const ShamirRecoverySection: React.FC<ShamirRecoverySectionProps> = ({
   apiToken,
   userPnIdentifier,
+  authenticatedUser,
+  loadEncryptedIdentity,
   canCustodiansRead,
   canManageCustodians,
   recoveryMutationAllowed,
@@ -89,10 +95,15 @@ export const ShamirRecoverySection: React.FC<ShamirRecoverySectionProps> = ({
         </p>
       </div>
 
-      <RecoveryAuthGate onAuthenticated={onAuthChange} onLocked={onAuthChange} />
+      <RecoveryAuthGate
+        expectedUser={authenticatedUser}
+        loadEncryptedIdentity={loadEncryptedIdentity}
+        onAuthenticated={onAuthChange}
+        onLocked={onAuthChange}
+      />
 
       {phase === 'auth_required' && (
-        <p className="text-sm text-text-secondary">Unlock with your .pn file above to set up recovery.</p>
+        <p className="text-sm text-text-secondary">Unlock above to set up recovery custodians.</p>
       )}
 
       {phase === 'needs_seed' && (

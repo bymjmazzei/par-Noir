@@ -38,6 +38,8 @@ export const RecoveryKeyFailsafeSection: React.FC<RecoveryKeyFailsafeSectionProp
 
   const registered = status.hasKey || recoveryKeysCount > 0;
 
+  if (!isAuthenticated) return null;
+
   return (
     <div className="bg-secondary p-4 rounded-lg space-y-3">
       <h4 className="font-medium text-text-primary">Recovery key failsafe</h4>
@@ -54,13 +56,10 @@ export const RecoveryKeyFailsafeSection: React.FC<RecoveryKeyFailsafeSectionProp
       ) : (
         <p className="text-sm text-text-secondary">No failsafe key registered yet.</p>
       )}
-      {!isAuthenticated && (
-        <p className="text-xs text-yellow-500">Unlock recovery above before creating a key.</p>
-      )}
       <button
         type="button"
         onClick={onCreate}
-        disabled={!canCreate || !isAuthenticated}
+        disabled={!canCreate}
         title={disabledReason}
         className="w-full px-4 py-2 modal-button rounded-md text-sm disabled:opacity-50"
       >
