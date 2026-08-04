@@ -40,7 +40,7 @@ Transient Google API errors (503, 429, 5xx) during init are handled at three lay
 2. **Whole-init backstop** — `POST /api/storage/initialize` wraps `runDriveInitOnce` in `withGoogleRetry` (3 attempts). Returns **503** with `retryable: true` when all attempts exhaust on a retryable error.
 3. **Dashboard** — `postDriveInitializeWithRetry` in `FileStorageAggregator` retries `POST /storage/initialize` with exponential backoff after connect. A shared `driveLayoutInitInFlightRef` dedupes concurrent init from persist vs `loadFiles` rebuild.
 
-`loadFiles` does **not** trigger client-side Drive folder discovery when the owner index is incomplete (409) or server init is in flight — avoiding duplicate Google API load during connect.
+`loadFiles` makes one `GET /api/storage/owner-index` attempt. On incomplete index (409) or device policy (403), it leaves the server index unused and fills Storage via client Drive `listFiles` (`mergeDriveScanWithIndex`) — never a second owner-index GET, and never POST `/storage/initialize` from that path under device custody.
 
 ### Init pipeline modules
 

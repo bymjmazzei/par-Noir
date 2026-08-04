@@ -1122,32 +1122,21 @@ export class GoogleDriveMetadataService {
 
   /**
    * Get owner file index (merged content-class + root) from the API (Sheets).
+   * API-only — does not read Drive with a Google token. Under device custody
+   * the route may return 409; callers should treat null as “use Drive listFiles”.
    */
   static async getOwnerFileIndexFromContentClasses(
-    _accessToken: string,
-    _metadataFolderId: string,
     pnIdentifier: string,
     ownerApiToken?: string | null
   ): Promise<PublicFileIndex | null> {
-    try {
-      const path = `/api/storage/owner-index/${encodeURIComponent(pnIdentifier)}`;
-      const res = ownerApiToken
-        ? await ownerGet(ownerApiToken, path)
-        : await fetch(`${API_ENDPOINT}${path}`);
-      if (!res.ok) return null;
-      const data = await res.json();
-      return { identifier: data.identifier ?? pnIdentifier, files: data.files ?? [], updatedAt: data.updatedAt ?? new Date().toISOString() };
-    } catch {
-      return null;
-    }
+    return this.getOwnerFileIndex(pnIdentifier, ownerApiToken);
   }
 
   /**
    * Get owner file index (merged content-class + root) from the API (Sheets).
+   * API-only — does not read Drive with a Google token.
    */
   static async getOwnerFileIndex(
-    _accessToken: string,
-    _metadataFolderId: string,
     pnIdentifier: string,
     ownerApiToken?: string | null
   ): Promise<PublicFileIndex | null> {

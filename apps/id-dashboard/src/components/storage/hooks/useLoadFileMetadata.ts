@@ -126,13 +126,9 @@ export function useLoadFileMetadata({
               return;
             }
 
-            const pnFolderId = await GoogleDriveMetadataService.getOrCreatePNFolder(token, pnIdentifier);
-            const metadataFolderId = await GoogleDriveMetadataService.getOrCreateMetadataFolder(token, pnFolderId);
-            
-            // Try loading from content class-specific indices first, fallback to root index
+            // Owner index is API Sheets only (no client Drive JSON). On 403/409
+            // under custody this returns null and we fall through below.
             const ownerIndex = await GoogleDriveMetadataService.getOwnerFileIndexFromContentClasses(
-              token,
-              metadataFolderId,
               pnIdentifier,
               resolveOwnerApiToken()
             );

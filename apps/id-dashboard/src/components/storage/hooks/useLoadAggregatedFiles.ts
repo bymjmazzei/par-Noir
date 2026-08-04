@@ -6,9 +6,10 @@
  * Drive-scan reconciliation lives in loadFiles/mergeDriveScanWithIndex.
  *
  * Device custody note: an owner-index 409 means the server-side Drive index is
- * incomplete (expected when OAuth secrets live on the device, not the API). That
- * path must fall through to client-side Drive discovery — never POST
- * /storage/initialize, which 400s without server-held tokens and loops setup UI.
+ * incomplete (expected when OAuth secrets live on the device, not the API).
+ * fetchOwnerIndex leaves ownerIndex null (one API attempt only); mergeDriveScanWithIndex
+ * fills via Drive listFiles — never a second owner-index GET, never POST
+ * /storage/initialize (which 400s without server-held tokens and loops setup UI).
  */
 import React from 'react';
 import { SecureCredentialManager } from '@par-noir/identity-crypto';
@@ -332,12 +333,8 @@ export function useLoadAggregatedFiles({
           skipBackend: ownerIndexSkipBackend,
         } = await fetchOwnerIndex({
           backendId,
-          accessToken,
           currentPnIdentifier,
           resolveOwnerApiToken,
-          retryBackends,
-          rateLimitedBackendsRef,
-          ownerIndexWarningLoggedRef,
         });
         if (ownerIndexSkipBackend) {
           continue;
