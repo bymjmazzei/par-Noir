@@ -767,7 +767,13 @@
       if (!payload.encryptedIdentity.encryptedData || !payload.encryptedIdentity.iv || !payload.encryptedIdentity.salt) {
         throw new Error('Identity file is missing encrypted payload fields');
       }
-      sessionStorage.setItem('pn_recovery_stepup_' + recoveryStepUpNonce, JSON.stringify(payload));
+      // sessionStorage is NOT shared between popup and opener — use localStorage + postMessage payload.
+      const storageKey = 'pn_recovery_stepup_' + recoveryStepUpNonce;
+      try {
+        localStorage.setItem(storageKey, JSON.stringify(payload));
+      } catch (e) {
+        console.warn('recovery step-up localStorage write failed', e);
+      }
       try {
         if (window.opener && !window.opener.closed) {
           window.opener.postMessage(
@@ -775,7 +781,8 @@
               type: 'pn_recovery_stepup',
               nonce: recoveryStepUpNonce,
               publicKey: payload.publicKey,
-              did: payload.did
+              did: payload.did,
+              payload: payload
             },
             window.location.origin
           );
@@ -783,10 +790,12 @@
       } catch (e) {
         console.warn('recovery step-up postMessage failed', e);
       }
-      // Prefer close; if the browser blocks it, show a short success state.
-      window.close();
-      document.getElementById('unlockStep').innerHTML =
-        '<p style="text-align:center;padding:2rem;">Recovery unlocked. You can close this window.</p>';
+      // Brief delay so the opener can receive the message before this window closes.
+      setTimeout(function () {
+        window.close();
+        document.getElementById('unlockStep').innerHTML =
+          '<p style="text-align:center;padding:2rem;">Recovery unlocked. You can close this window.</p>';
+      }, 80);
     }
 
     async function completeOAuthUnlock(encryptedIdentity, publicKey, did, decryptedIdentity, pnName, passcode) {

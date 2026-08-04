@@ -19,8 +19,8 @@ export const SimpleUnlock: React.FC<SimpleUnlockProps> = ({ onUnlock, onCancel }
       return;
     }
 
-    if (passcode.length < 8) {
-      setError('Passcode must be at least 8 characters long');
+    if (passcode.length < 4) {
+      setError('Passcode must be at least 4 characters long');
       return;
     }
 

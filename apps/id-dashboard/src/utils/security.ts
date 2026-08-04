@@ -385,7 +385,7 @@ export class AdvancedSecurity {
    * Validate passcode strength
    */
   private validatePasscode(passcode: string): boolean {
-    return passcode.length >= 8 && passcode.length <= 128;
+    return passcode.length >= 4 && passcode.length <= 128;
   }
 
   /**

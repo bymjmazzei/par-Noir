@@ -53,11 +53,16 @@ interface RecoveryStepUpPayload {
 function readStepUpPayload(nonce: string): RecoveryStepUpPayload | null {
   const key = `pn_recovery_stepup_${nonce}`;
   try {
-    const raw = sessionStorage.getItem(key);
+    // Popup and opener do not share sessionStorage — use localStorage for handoff.
+    const raw = localStorage.getItem(key) || sessionStorage.getItem(key);
     if (!raw) return null;
     const parsed = JSON.parse(raw) as RecoveryStepUpPayload;
+    localStorage.removeItem(key);
     sessionStorage.removeItem(key);
     if (!parsed?.pnName || !parsed?.passcode || !parsed?.encryptedIdentity?.encryptedData) {
+      return null;
+    }
+    if (parsed.nonce && parsed.nonce !== nonce) {
       return null;
     }
     if (parsed.expiresAt && parsed.expiresAt < Date.now()) {
@@ -65,9 +70,24 @@ function readStepUpPayload(nonce: string): RecoveryStepUpPayload | null {
     }
     return parsed;
   } catch {
+    localStorage.removeItem(key);
     sessionStorage.removeItem(key);
     return null;
   }
+}
+
+function isStepUpPayload(value: unknown, nonce: string): value is RecoveryStepUpPayload {
+  if (!value || typeof value !== 'object') return false;
+  const p = value as RecoveryStepUpPayload;
+  return (
+    p.nonce === nonce &&
+    typeof p.pnName === 'string' &&
+    typeof p.passcode === 'string' &&
+    !!p.encryptedIdentity?.encryptedData &&
+    !!p.encryptedIdentity?.iv &&
+    !!p.encryptedIdentity?.salt &&
+    (!p.expiresAt || p.expiresAt >= Date.now())
+  );
 }
 
 /**
@@ -117,6 +137,14 @@ function openRecoveryStepUpPopup(timeoutMs = 180_000): Promise<RecoveryStepUpPay
       if (!data || typeof data !== 'object') return;
       if ((data as { type?: string }).type !== RECOVERY_STEPUP_MESSAGE) return;
       if ((data as { nonce?: string }).nonce !== stepupNonce) return;
+      const embedded = (data as { payload?: unknown }).payload;
+      if (isStepUpPayload(embedded, stepupNonce)) {
+        // Prefer in-message payload (sessionStorage is not shared across popup/opener).
+        localStorage.removeItem(`pn_recovery_stepup_${stepupNonce}`);
+        sessionStorage.removeItem(`pn_recovery_stepup_${stepupNonce}`);
+        finish(embedded);
+        return;
+      }
       tryRead();
     };
 

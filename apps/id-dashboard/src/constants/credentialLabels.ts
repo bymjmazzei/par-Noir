@@ -16,13 +16,13 @@ export const KEYS_INCORRECT = 'Incorrect Key 1 or Key 2';
 export const KEYS_REQUIRED = 'Please enter Key 1 and Key 2';
 
 /** Shared strength rules for Key 1 and Key 2 on create. */
-export const KEY_MIN_LENGTH = 8;
+export const KEY_MIN_LENGTH = 4;
 export const KEY_MAX_LENGTH = 128;
 
 export const KEY_STRENGTH_RULES = [
   {
     id: 'length',
-    label: 'At least 8 characters',
+    label: 'At least 4 characters',
     test: (v: string) => v.length >= KEY_MIN_LENGTH,
   },
   { id: 'upper', label: 'One uppercase letter', test: (v: string) => /[A-Z]/.test(v) },

@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Shield, CheckCircle, Smartphone, Lock, PartyPopper, User, Settings, XCircle } from 'lucide-react';
+import { KEY_MIN_LENGTH } from '../constants/credentialLabels';
 
 interface OnboardingStep {
   id: string;
@@ -270,7 +271,7 @@ export const Onboarding: React.FC<OnboardingProps> = ({ isOpen, onComplete }) =>
       case 'identity':
         return formData.username.trim() && formData.nickname.trim();
       case 'security':
-        return formData.passcode.length >= 8 && formData.passcode === formData.confirmPasscode;
+        return formData.passcode.length >= KEY_MIN_LENGTH && formData.passcode === formData.confirmPasscode;
       case 'recovery':
         return true; // Optional step
       case 'custodians':

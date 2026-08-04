@@ -13,6 +13,7 @@ import { fetchOwnedAssets } from '../../services/ownedAssetsApi';
 import { summarizeOwnedAssetsByKind } from '../../services/ownedAssetsManifestService';
 import { SimpleStorage } from '../../utils/simpleStorage';
 import { SecureCredentialManager } from '@par-noir/identity-crypto';
+import { KEY_MIN_LENGTH } from '../../constants/credentialLabels';
 
 interface IdentityRotationWizardProps {
   authToken: string;
@@ -151,8 +152,8 @@ export const IdentityRotationWizard: React.FC<IdentityRotationWizardProps> = ({
 
   const handleMigrate = async () => {
     setError(null);
-    if (newPasscode.length < 8) {
-      setError('New Key 2 must be at least 8 characters.');
+    if (newPasscode.length < KEY_MIN_LENGTH) {
+      setError(`New Key 2 must be at least ${KEY_MIN_LENGTH} characters.`);
       return;
     }
     if (newPasscode !== confirmPasscode) {
