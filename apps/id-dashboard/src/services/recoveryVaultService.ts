@@ -86,13 +86,29 @@ export async function seedRecoveryVaultFromMaterial(params: {
     passcode: params.passcode,
     publicKey: params.publicKey,
   });
-  return initializeRecoveryVaultOnDrive({
+  const result = await initializeRecoveryVaultOnDrive({
     userPnIdentifier: params.userPnIdentifier,
     authToken: params.authToken,
     publicKey: params.publicKey,
     shares,
     threshold: params.threshold ?? 2,
   });
+
+  const envelope = params.encryptedIdentity.recoveryEnvelope;
+  if (envelope) {
+    try {
+      const { registerRecoveryFailsafe } = await import('./recoveryApiService');
+      await registerRecoveryFailsafe(params.authToken, {
+        userPnIdentifier: params.userPnIdentifier,
+        publicKey: params.publicKey,
+        envelope,
+      });
+    } catch (err) {
+      console.warn('Failed to persist recovery envelope for failsafe key path:', err);
+    }
+  }
+
+  return result;
 }
 
 /** Normalize legacy custodian rows and report share indices still missing from Drive vault. */

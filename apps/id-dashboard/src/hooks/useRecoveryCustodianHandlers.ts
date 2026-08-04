@@ -664,14 +664,13 @@ This invitation expires in 24 hours.`;
     }
   };
 
-  const handleInitiateRecoveryFromPn = async (file: File, claimantName: string, emailOrPhone: string) => {
+  const handleInitiateRecoveryFromPn = async (file: File, emailOrPhone: string) => {
     try {
       setLoading(true);
       setError(null);
       const { initiateRecoveryFromPnFile } = await import('../components/recovery/useRecoveryHandlers');
       const req = await initiateRecoveryFromPnFile({
         file,
-        claimantName,
         emailOrPhone,
         threshold: recoveryThreshold,
         authToken: apiToken
@@ -681,7 +680,7 @@ This invitation expires in 24 hours.`;
         {
           id: req.id,
           requestingDid: req.publicKey,
-          requestingUser: claimantName,
+          requestingUser: emailOrPhone || 'Claimant',
           timestamp: new Date().toISOString(),
           status: 'pending',
           approvals: [],
@@ -795,14 +794,36 @@ This invitation expires in 24 hours.`;
       setLoading(true);
       setError(null);
 
-      // Initialize storage if not already done
       await storage.init();
 
-      // Generate a cryptographically secure recovery key
       const keyData = await IdentityCrypto.generateRecoveryKey(
         authenticatedUser?.id || 'unknown',
         purpose
       );
+
+      const publicKey = authenticatedUser?.publicKey || '';
+      const pnId = recoveryVaultPnId;
+      if (!apiToken || !pnId || !publicKey) {
+        throw new Error('Sign in and connect storage before creating a recovery key.');
+      }
+
+      const { getRecoveryAuthSession } = await import('../services/recoveryAuthSession');
+      const auth = getRecoveryAuthSession();
+      const envelope = auth?.encryptedIdentity?.recoveryEnvelope;
+      if (!envelope) {
+        throw new Error(
+          'Unlock recovery with your .pn file first so the failsafe envelope can be registered.'
+        );
+      }
+
+      const { hashRecoveryKey, registerRecoveryFailsafe } = await import('../services/recoveryApiService');
+      const keyHash = await hashRecoveryKey(keyData);
+      await registerRecoveryFailsafe(apiToken, {
+        userPnIdentifier: pnId,
+        publicKey,
+        envelope,
+        keyHash,
+      });
 
       const recoveryKey: RecoveryKey = {
         id: `key-${Date.now()}`,
@@ -813,30 +834,34 @@ This invitation expires in 24 hours.`;
         description
       };
 
-      setRecoveryKeys(prev => [...prev, recoveryKey]);
+      setRecoveryKeys((prev) => [...prev, recoveryKey]);
       setShowRecoveryKeyModal(false);
 
-      // Store recovery key update in cloud database for cross-platform sync
-      try {
-        await cloudSyncManager.initialize();
-        await cloudSyncManager.storeUpdate({
-          type: 'recovery-key',
-          identityId: authenticatedUser?.id || selectedDID?.id || 'unknown',
-          publicKey: authenticatedUser?.publicKey || '',
-          data: {
-            action: 'generate',
-            recoveryKey
-          },
-          updatedByDeviceId: currentDevice?.id || generateDeviceFingerprint()
-        });
-        logDebug('Recovery key update stored in cloud database for cross-platform sync');
-      } catch (error) {
-        logError('Failed to store recovery key update in cloud:', error);
-        // Don't fail the entire operation if cloud sync fails
-      }
+      const packageJson = {
+        version: 1,
+        recoveryKey: keyData,
+        pnIdentifier: pnId,
+        publicKey,
+        purpose,
+        description,
+        createdAt: recoveryKey.createdAt,
+        instructions:
+          'Store offline. Paste this file or the recoveryKey string on the unlock Recover screen. Starts custodian recovery — does not unlock by itself.',
+      };
+      const blob = new Blob([JSON.stringify(packageJson, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `pn-recovery-failsafe-${purpose}-${Date.now()}.json`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
 
-      setSuccessWithTimeout('Recovery key generated successfully! Download and store it securely. Changes will sync across platforms.');
-      setTimeout(() => setSuccessWithTimeout(null), 5000);
+      setSuccessWithTimeout(
+        'Recovery key registered and downloaded. Store it offline — it will not be shown again.'
+      );
+      setTimeout(() => setSuccessWithTimeout(null), 6000);
     } catch (error: any) {
       setError(error.message || 'Failed to generate recovery key');
       setTimeout(() => setError(null), 9000);
@@ -892,56 +917,53 @@ This invitation expires in 24 hours.`;
     setTimeout(() => setSuccessWithTimeout(null), 5000);
   };
 
-  const handleInitiateRecoveryWithKey = async (recoveryKey: string, contactInfo: {
-    contactType: 'email' | 'phone';
-    contactValue: string;
-    claimantName: string;
-  }) => {
+  const handleInitiateRecoveryWithKey = async (
+    recoveryKey: string,
+    contactInfo: { contactValue?: string }
+  ) => {
     try {
       setLoading(true);
       setError(null);
 
-      // Validate contact information
-      if (!contactInfo.claimantName.trim() || !contactInfo.contactValue.trim()) {
-        throw new Error('Please provide claimant name and contact information.');
-      }
-
-      // Find the recovery key
-      const key = recoveryKeys.find(k => k.keyData === recoveryKey);
-      if (!key) {
-        throw new Error('Invalid recovery key. Please check and try again.');
-      }
-
-      // Find the associated identity
-      const foundDID = dids.find(did => did.id === key.identityId);
-      if (!foundDID) {
-        throw new Error('Identity not found for this recovery key.');
-      }
-
-      // Create recovery request with claimant details
-      const recoveryRequest: RecoveryRequest = {
-        id: `recovery-${Date.now()}`,
-        requestingDid: foundDID.id,
-        requestingUser: contactInfo.claimantName,
-        timestamp: new Date().toISOString(),
-        status: 'pending',
-        approvals: [],
-        denials: [],
-        signatures: [], // ZK proof signatures will be added here
-        claimantContactType: contactInfo.contactType,
-        claimantContactValue: contactInfo.contactValue
-      };
-
-      setRecoveryRequests(prev => [...prev, recoveryRequest]);
-      setShowRecoveryKeyInputModal(false);
-      setRecoveryKeyInput('');
-      setRecoveryKeyContactInfo({
-        contactType: 'email',
-        contactValue: '',
-        claimantName: ''
+      const { startRecoveryWithFailsafeKey } = await import('../services/recoveryApiService');
+      const started = await startRecoveryWithFailsafeKey({
+        recoveryKey,
+        threshold: recoveryThreshold,
+        claimantContact: contactInfo.contactValue,
       });
-      setSuccessWithTimeout(`Recovery initiated by ${contactInfo.claimantName}! Notifying custodians...`);
-      setTimeout(() => setSuccessWithTimeout(null), 5000);
+
+      sessionStorage.setItem(
+        `pn_recovery_envelope_${started.requestId}`,
+        JSON.stringify(started.envelope)
+      );
+
+      setRecoveryRequests((prev) => [
+        ...prev,
+        {
+          id: started.requestId,
+          requestingDid: started.publicKey,
+          requestingUser: contactInfo.contactValue || 'Failsafe key',
+          timestamp: new Date().toISOString(),
+          status: 'pending',
+          approvals: [],
+          denials: [],
+          signatures: [],
+          proofs: [],
+          expiresAt: new Date(Date.now() + 72 * 60 * 60 * 1000).toISOString(),
+          requiredApprovals: started.threshold,
+          currentApprovals: 0,
+          oldIdentityHash: started.publicKey,
+          claimantContactValue: contactInfo.contactValue,
+        },
+      ]);
+      setShowRecoveryModal(false);
+      setShowRecoveryKeyInputModal(false);
+      setSuccessWithTimeout(
+        started.persisted
+          ? 'Recovery started with your failsafe key. Custodians will be notified.'
+          : 'Recovery started locally with your failsafe key. Custodians must approve to continue.'
+      );
+      setTimeout(() => setSuccessWithTimeout(null), 6000);
     } catch (error: any) {
       setError(error.message || 'Failed to initiate recovery with key');
       setTimeout(() => setError(null), 9000);

@@ -49,13 +49,19 @@ export async function persistRecoveryRequest(
     requestId: string;
     publicKey: string;
     threshold: number;
-    claimantName: string;
+    claimantName?: string;
+    claimantContact?: string;
   }
 ): Promise<void> {
   const res = await fetch(`${API_ENDPOINT}/api/recovery/requests`, {
     method: 'POST',
     headers: authHeaders(authToken),
-    body: JSON.stringify({ userPnIdentifier, ...payload, status: 'pending' }),
+    body: JSON.stringify({
+      userPnIdentifier,
+      ...payload,
+      claimantName: payload.claimantContact || payload.claimantName || '',
+      status: 'pending',
+    }),
   });
   if (!res.ok) throw new Error('Failed to persist recovery request');
 }
@@ -290,3 +296,72 @@ export async function migrateVolumeId(
   });
   if (!res.ok) throw new Error('Failed to migrate platform id');
 }
+
+/** SHA-256 hex of the recovery key string (for failsafe registration / resolve). */
+export async function hashRecoveryKey(recoveryKey: string): Promise<string> {
+  const data = new TextEncoder().encode(recoveryKey.trim());
+  const digest = await crypto.subtle.digest('SHA-256', data);
+  return Array.from(new Uint8Array(digest))
+    .map((b) => b.toString(16).padStart(2, '0'))
+    .join('');
+}
+
+export async function registerRecoveryFailsafe(
+  authToken: string,
+  payload: {
+    userPnIdentifier: string;
+    publicKey: string;
+    envelope: unknown;
+    keyHash?: string;
+  }
+): Promise<void> {
+  const res = await ownerMutatingFetch(authToken, 'POST', '/api/recovery/failsafe/register', payload);
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error((err as { error?: string }).error || 'Failed to register recovery failsafe');
+  }
+}
+
+export async function fetchRecoveryFailsafeStatus(
+  userPnIdentifier: string,
+  authToken: string
+): Promise<{ hasKey: boolean; hasEnvelope: boolean; createdAt?: string }> {
+  const res = await fetch(
+    `${API_ENDPOINT}/api/recovery/${encodeURIComponent(userPnIdentifier)}/failsafe`,
+    { headers: { Authorization: `Bearer ${authToken}` } }
+  );
+  if (!res.ok) return { hasKey: false, hasEnvelope: false };
+  return res.json();
+}
+
+export async function startRecoveryWithFailsafeKey(payload: {
+  recoveryKey: string;
+  pnIdentifier?: string;
+  threshold?: number;
+  claimantContact?: string;
+}): Promise<{
+  requestId: string;
+  pnIdentifier: string;
+  publicKey: string;
+  envelope: unknown;
+  threshold: number;
+  persisted: boolean;
+}> {
+  const keyHash = await hashRecoveryKey(payload.recoveryKey);
+  const res = await fetch(`${API_ENDPOINT}/api/recovery/failsafe/start`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      keyHash,
+      pnIdentifier: payload.pnIdentifier,
+      threshold: payload.threshold,
+      claimantContact: payload.claimantContact,
+    }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error((err as { message?: string; error?: string }).message || (err as { error?: string }).error || 'Invalid recovery key');
+  }
+  return res.json();
+}
+

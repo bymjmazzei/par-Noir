@@ -26,6 +26,7 @@ import { registerAdminDeveloperRoutes, requireAdminApiKey } from './server/modul
 import { registerIdentityMigrationRoutes } from './server/modules/identityMigrationService';
 import { registerDeviceAuthRoutes } from './server/modules/deviceAuthRoutes';
 import { registerRecoveryVaultRoutes } from './server/modules/recoveryVaultRoutes';
+import { registerRecoveryFailsafeRoutes } from './server/modules/recoveryFailsafeRoutes';
 import { registerDeveloperSelfServiceRoutes } from './server/modules/developerSelfServiceRoutes';
 import { registerPlatformRegistryRoutes } from './server/modules/platformRegistryRoutes';
 import { PlatformRegistrySyncService } from './server/modules/platformRegistrySyncService';
@@ -848,6 +849,7 @@ class ProductionServer {
     registerIdentityMigrationRoutes(this.app);
     registerDeviceAuthRoutes(this.app);
     registerRecoveryVaultRoutes(this.app);
+    registerRecoveryFailsafeRoutes(this.app);
     registerDeveloperSelfServiceRoutes(this.app);
     registerPlatformRegistryRoutes(this.app);
     registerOwnedAssetRoutes(this.app);

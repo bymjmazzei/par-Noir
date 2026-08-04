@@ -411,7 +411,6 @@ export function AppModals(props: AppModalsProps) {
           setActiveRecoveryMethod={setActiveRecoveryMethod}
           onInitiateRecoveryFromPn={handleInitiateRecoveryFromPn}
           onInitiateRecoveryWithKey={handleInitiateRecoveryWithKey}
-          hasLegacyRecoveryKey={recoveryKeys.length > 0}
           recoveryBlocked={
             !!recoveryVaultSummary &&
             (recoveryVaultSummary.counts.acceptedUnrevokable ?? 0) < 1 &&

@@ -26,7 +26,6 @@ import { getCustodianshipCredential } from '../../services/recoveryCredentialSto
 
 export interface InitiateRecoveryFromPnInput {
   file: File;
-  claimantName: string;
   emailOrPhone: string;
   threshold: number;
   authToken?: string | null;
@@ -74,7 +73,7 @@ export async function initiateRecoveryFromPnFile(input: InitiateRecoveryFromPnIn
         requestId,
         publicKey: parsed.publicKey,
         threshold: input.threshold,
-        claimantName: input.claimantName
+        claimantContact: input.emailOrPhone
       });
     } catch {
       /* Drive optional at initiate */
