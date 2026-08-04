@@ -586,9 +586,12 @@
     const state = urlParams.get('state') || '';
     const scope = urlParams.get('scope') || 'openid profile';
     const nonce = urlParams.get('nonce') || '';
+    /** Dashboard Recovery tab step-up: local unlock only (no OAuth consent / API code). */
+    const isRecoveryStepUp = urlParams.get('mode') === 'recovery_stepup';
+    const recoveryStepUpNonce = urlParams.get('stepup_nonce') || '';
     
     // Log for debugging
-    console.log('OAuth params:', { clientId, redirectUri, state, scope });
+    console.log('OAuth params:', { clientId, redirectUri, state, scope, isRecoveryStepUp });
     
     // Check if we're in a popup - use URL parameter since window.opener can be lost on redirect
     const isInPopup = urlParams.get('popup') === 'true' || !!(window.opener && !window.opener.closed);
@@ -613,6 +616,14 @@
     const appUrlEl = document.getElementById('appUrl');
     if (appUrlEl) {
       appUrlEl.textContent = window.location.hostname || window.location.host;
+    }
+
+    if (isRecoveryStepUp) {
+      document.title = 'Unlock recovery — par Noir';
+      const step1 = document.querySelector('.step-indicator');
+      if (step1) step1.textContent = 'Unlock to manage recovery';
+      const unlockBtnLabel = document.getElementById('unlockBtn');
+      if (unlockBtnLabel) unlockBtnLabel.textContent = 'Unlock recovery';
     }
     
     let identityData = null;
@@ -731,7 +742,58 @@
       }
     });
     
+    async function completeRecoveryStepUp(encryptedIdentity, publicKey, did, pnName, passcode) {
+      if (!recoveryStepUpNonce) {
+        throw new Error('Missing recovery step-up nonce');
+      }
+      const payload = {
+        v: 1,
+        nonce: recoveryStepUpNonce,
+        publicKey: publicKey || '',
+        did: did || '',
+        pnName,
+        passcode,
+        encryptedIdentity: {
+          encryptedData: encryptedIdentity.encryptedData || encryptedIdentity.encrypted,
+          iv: encryptedIdentity.iv,
+          salt: encryptedIdentity.salt,
+          publicKey: encryptedIdentity.publicKey || publicKey || '',
+          mlKemPublicKey: encryptedIdentity.mlKemPublicKey,
+          recoveryEnvelope: encryptedIdentity.recoveryEnvelope,
+          recoverySharesSealed: encryptedIdentity.recoverySharesSealed
+        },
+        expiresAt: Date.now() + 2 * 60 * 1000
+      };
+      if (!payload.encryptedIdentity.encryptedData || !payload.encryptedIdentity.iv || !payload.encryptedIdentity.salt) {
+        throw new Error('Identity file is missing encrypted payload fields');
+      }
+      sessionStorage.setItem('pn_recovery_stepup_' + recoveryStepUpNonce, JSON.stringify(payload));
+      try {
+        if (window.opener && !window.opener.closed) {
+          window.opener.postMessage(
+            {
+              type: 'pn_recovery_stepup',
+              nonce: recoveryStepUpNonce,
+              publicKey: payload.publicKey,
+              did: payload.did
+            },
+            window.location.origin
+          );
+        }
+      } catch (e) {
+        console.warn('recovery step-up postMessage failed', e);
+      }
+      // Prefer close; if the browser blocks it, show a short success state.
+      window.close();
+      document.getElementById('unlockStep').innerHTML =
+        '<p style="text-align:center;padding:2rem;">Recovery unlocked. You can close this window.</p>';
+    }
+
     async function completeOAuthUnlock(encryptedIdentity, publicKey, did, decryptedIdentity, pnName, passcode) {
+      if (isRecoveryStepUp) {
+        await completeRecoveryStepUp(encryptedIdentity, publicKey, did, pnName, passcode);
+        return;
+      }
       identityData = null;
       const authResponse = await fetch(`${apiEndpoint}/oauth/authorize/authenticate`, {
         method: 'POST',

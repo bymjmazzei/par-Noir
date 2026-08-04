@@ -75,8 +75,8 @@ export const RecoveryAuthGate: React.FC<RecoveryAuthGateProps> = ({
           <div>
             <h4 className="font-medium text-text-primary">Unlock to manage recovery</h4>
             <p className="text-sm text-text-secondary mt-1">
-              Re-authenticate with Key 1 and Key 2 in the unlock popup. Then you can manage custodians,
-              recovery keys, and identity rotation.
+              Re-enter Key 1 and Key 2 in the unlock popup (upload your .pn if needed). No OAuth consent
+              step — unlock finishes as soon as your identity decrypts.
             </p>
           </div>
           {error && <p className="text-sm text-red-500">{error}</p>}

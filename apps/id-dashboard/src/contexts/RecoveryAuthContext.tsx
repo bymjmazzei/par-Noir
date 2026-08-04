@@ -1,11 +1,5 @@
 import * as React from 'react';
-import { IdentityCrypto, SecureCredentialManager, type EncryptedIdentity } from '@par-noir/identity-crypto';
-import {
-  buildBrowserAppOAuthUnlockUrl,
-  startPnOAuthPopup,
-  type PnOAuthPopupResult,
-} from '@par-noir/oauth-ui';
-import { API_ENDPOINT } from '../config/api';
+import { IdentityCrypto, type EncryptedIdentity } from '@par-noir/identity-crypto';
 import {
   RECOVERY_AUTH_TTL_MS,
   setRecoveryAuthSession,
@@ -28,6 +22,8 @@ interface RecoveryAuthContextValue {
   clearAuth: () => void;
 }
 
+const RECOVERY_STEPUP_MESSAGE = 'pn_recovery_stepup';
+
 let recoveryAuthContext: React.Context<RecoveryAuthContextValue | null> | null = null;
 
 function getRecoveryAuthContext(): React.Context<RecoveryAuthContextValue | null> {
@@ -37,26 +33,120 @@ function getRecoveryAuthContext(): React.Context<RecoveryAuthContextValue | null
   return recoveryAuthContext;
 }
 
-function identityFromHandoff(result: PnOAuthPopupResult): EncryptedIdentity | null {
-  const handoff = result.messagingHandoff;
-  if (!handoff || typeof handoff !== 'object') return null;
-  const identity = (handoff as { identity?: Record<string, unknown> }).identity;
-  if (!identity || typeof identity !== 'object') return null;
-  const { encryptedData, iv, salt, publicKey, mlKemPublicKey } = identity;
-  if (
-    typeof encryptedData !== 'string' ||
-    typeof iv !== 'string' ||
-    typeof salt !== 'string'
-  ) {
+function randomHex(bytes: number): string {
+  const arr = new Uint8Array(bytes);
+  crypto.getRandomValues(arr);
+  return Array.from(arr, (b) => b.toString(16).padStart(2, '0')).join('');
+}
+
+interface RecoveryStepUpPayload {
+  v: number;
+  nonce: string;
+  publicKey: string;
+  did: string;
+  pnName: string;
+  passcode: string;
+  encryptedIdentity: EncryptedIdentity;
+  expiresAt: number;
+}
+
+function readStepUpPayload(nonce: string): RecoveryStepUpPayload | null {
+  const key = `pn_recovery_stepup_${nonce}`;
+  try {
+    const raw = sessionStorage.getItem(key);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as RecoveryStepUpPayload;
+    sessionStorage.removeItem(key);
+    if (!parsed?.pnName || !parsed?.passcode || !parsed?.encryptedIdentity?.encryptedData) {
+      return null;
+    }
+    if (parsed.expiresAt && parsed.expiresAt < Date.now()) {
+      return null;
+    }
+    return parsed;
+  } catch {
+    sessionStorage.removeItem(key);
     return null;
   }
-  return {
-    encryptedData,
-    iv,
-    salt,
-    publicKey: typeof publicKey === 'string' ? publicKey : '',
-    mlKemPublicKey: typeof mlKemPublicKey === 'string' ? mlKemPublicKey : undefined,
-  };
+}
+
+/**
+ * Same-origin recovery step-up popup (not full browser-app OAuth consent).
+ * User re-enters Key 1/Key 2 in oauth-authorize.html; secrets return via sessionStorage + postMessage.
+ */
+function openRecoveryStepUpPopup(timeoutMs = 180_000): Promise<RecoveryStepUpPayload> {
+  const origin = window.location.origin;
+  const stepupNonce = randomHex(16);
+  const url = `${origin}/oauth-authorize.html?mode=recovery_stepup&stepup_nonce=${encodeURIComponent(stepupNonce)}&popup=true`;
+
+  return new Promise((resolve, reject) => {
+    const popup = window.open(url, 'parnoir_recovery_stepup', 'popup=yes,width=500,height=640,scrollbars=yes,resizable=yes');
+    if (!popup) {
+      reject(new Error('Popup blocked. Allow popups for this site and try again.'));
+      return;
+    }
+
+    let settled = false;
+    const cleanup = () => {
+      window.clearInterval(pollTimer);
+      window.clearTimeout(timeoutTimer);
+      window.removeEventListener('message', onMessage);
+    };
+    const finish = (payload: RecoveryStepUpPayload | null, err?: Error) => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      try {
+        popup.close();
+      } catch {
+        /* ignore */
+      }
+      if (err) reject(err);
+      else if (payload) resolve(payload);
+      else reject(new Error('Recovery unlock did not complete'));
+    };
+
+    const tryRead = () => {
+      const payload = readStepUpPayload(stepupNonce);
+      if (payload) finish(payload);
+    };
+
+    const onMessage = (event: MessageEvent) => {
+      if (event.origin !== origin) return;
+      const data = event.data;
+      if (!data || typeof data !== 'object') return;
+      if ((data as { type?: string }).type !== RECOVERY_STEPUP_MESSAGE) return;
+      if ((data as { nonce?: string }).nonce !== stepupNonce) return;
+      tryRead();
+    };
+
+    window.addEventListener('message', onMessage);
+
+    let closedGraceStarted = false;
+    const pollTimer = window.setInterval(() => {
+      tryRead();
+      try {
+        if (popup.closed && !settled) {
+          tryRead();
+          if (!closedGraceStarted) {
+            closedGraceStarted = true;
+            window.setTimeout(() => {
+              tryRead();
+              if (!settled) {
+                finish(null, new Error('Unlock window closed before recovery was confirmed'));
+              }
+            }, 800);
+          }
+        }
+      } catch {
+        /* cross-origin transient */
+      }
+    }, 400);
+
+    const timeoutTimer = window.setTimeout(() => {
+      finish(null, new Error('Recovery unlock timed out. Try again.'));
+    }, timeoutMs);
+  });
 }
 
 export function RecoveryAuthProvider({ children }: { children: React.ReactNode }) {
@@ -102,103 +192,55 @@ export function RecoveryAuthProvider({ children }: { children: React.ReactNode }
       expectedUser: { id: string; publicKey?: string };
       loadEncryptedIdentity: RecoveryEncryptedIdentityLoader;
     }) => {
-      const origin = window.location.origin;
-      const clientId = import.meta.env.VITE_PN_CLIENT_ID || 'browser-app';
-      const url = buildBrowserAppOAuthUnlockUrl({
-        clientId,
-        appOrigin: origin,
-        redirectUri: `${origin}/oauth-callback.html`,
-        apiEndpoint: API_ENDPOINT,
-        identityHandoffRequired: true,
-        forPopup: true,
-      });
-      const expectedState = new URL(url).searchParams.get('state') || '';
-
-      const result = await startPnOAuthPopup({
-        url,
-        expectedState,
-        origin,
-        timeoutMs: 180_000,
-      });
-
-      if (result.error) {
-        throw new Error(result.error_description || result.error || 'Unlock cancelled');
-      }
-
+      const stepUp = await openRecoveryStepUpPopup();
       const expectedKey = opts.expectedUser.publicKey || opts.expectedUser.id;
-      const credentials = SecureCredentialManager.getCredentials(opts.expectedUser.id);
-      if (!credentials?.pnName || !credentials?.passcode) {
-        throw new Error(
-          'Dashboard unlock secrets are not available. Unlock your pN on the dashboard, then try again.'
-        );
-      }
-
-      let encryptedIdentity = identityFromHandoff(result);
-      if (!encryptedIdentity?.encryptedData) {
-        const loaded = await opts.loadEncryptedIdentity(expectedKey);
-        const alt =
-          expectedKey !== opts.expectedUser.id
-            ? await opts.loadEncryptedIdentity(opts.expectedUser.id)
-            : null;
-        const partial = loaded || alt;
-        if (!partial) {
-          throw new Error('Could not load your identity after unlock. Re-unlock the dashboard and try again.');
-        }
-        encryptedIdentity = {
-          publicKey: expectedKey,
-          encryptedData: partial.encryptedData,
-          iv: partial.iv,
-          salt: partial.salt,
-        };
-      }
 
       if (
-        encryptedIdentity.publicKey &&
+        stepUp.publicKey &&
         expectedKey &&
-        encryptedIdentity.publicKey !== expectedKey &&
-        encryptedIdentity.publicKey !== opts.expectedUser.id
+        stepUp.publicKey !== expectedKey &&
+        stepUp.publicKey !== opts.expectedUser.id &&
+        stepUp.did !== opts.expectedUser.id
       ) {
         throw new Error('Unlocked identity does not match the active dashboard session.');
       }
 
       await IdentityCrypto.authenticateIdentity(
-        encryptedIdentity,
-        credentials.passcode,
-        credentials.pnName
+        stepUp.encryptedIdentity,
+        stepUp.passcode,
+        stepUp.pnName
       );
 
-      // Prefer full stored identity (recoveryEnvelope / recoverySharesSealed) when available.
-      const stored =
-        (await opts.loadEncryptedIdentity(expectedKey)) ||
-        (await opts.loadEncryptedIdentity(opts.expectedUser.id));
-      const fullIdentity: EncryptedIdentity = stored
-        ? {
-            ...encryptedIdentity,
-            ...stored,
-            publicKey: encryptedIdentity.publicKey || expectedKey,
-            recoveryEnvelope: (stored as EncryptedIdentity).recoveryEnvelope ?? encryptedIdentity.recoveryEnvelope,
-            recoverySharesSealed:
-              (stored as EncryptedIdentity).recoverySharesSealed ?? encryptedIdentity.recoverySharesSealed,
-          }
-        : { ...encryptedIdentity, publicKey: encryptedIdentity.publicKey || expectedKey };
-
-      // Re-load full blob from SimpleStorage when present (includes sealed recovery fields).
+      // Prefer stored identity when it has recovery envelope / sealed shares.
+      let fullIdentity: EncryptedIdentity = {
+        ...stepUp.encryptedIdentity,
+        publicKey: stepUp.encryptedIdentity.publicKey || stepUp.publicKey || expectedKey,
+      };
       try {
+        const stored =
+          (await opts.loadEncryptedIdentity(expectedKey)) ||
+          (await opts.loadEncryptedIdentity(opts.expectedUser.id));
+        if (stored?.encryptedData && stored.iv && stored.salt) {
+          fullIdentity = {
+            ...fullIdentity,
+            ...stored,
+            publicKey: fullIdentity.publicKey || expectedKey,
+          };
+        }
         const { default: SimpleStorage } = await import('../utils/simpleStorage');
         const simple = await SimpleStorage.getInstance().getIdentity(expectedKey);
         const enc = simple?.encryptedData as EncryptedIdentity | undefined;
         if (enc?.encryptedData && enc.iv && enc.salt) {
-          Object.assign(fullIdentity, enc);
-          if (!fullIdentity.publicKey) fullIdentity.publicKey = expectedKey;
+          fullIdentity = { ...fullIdentity, ...enc, publicKey: fullIdentity.publicKey || expectedKey };
         }
       } catch {
-        /* keep handoff/partial */
+        /* keep popup identity */
       }
 
       setAuth({
         encryptedIdentity: fullIdentity,
-        pnName: credentials.pnName,
-        passcode: credentials.passcode,
+        pnName: stepUp.pnName,
+        passcode: stepUp.passcode,
         expiresAt: Date.now() + RECOVERY_AUTH_TTL_MS,
       });
     },
