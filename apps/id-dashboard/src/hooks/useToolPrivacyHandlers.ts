@@ -173,7 +173,7 @@ export function useToolPrivacyHandlers(params: UseToolPrivacyHandlersParams) {
       const response = await ownerFetch(authToken, 'PUT', path, {
         toolId,
         permission: newSettings.toolPermissions[toolId],
-      });
+      }, { pnIdentifier });
 
       if (!response.ok) {
         console.error('Failed to persist permissions:', response.status);

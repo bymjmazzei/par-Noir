@@ -35,6 +35,8 @@ let webStore: WebSealedStore | null = null;
 let nativeStore: NativeSecureStore | null = null;
 let graceTimer: ReturnType<typeof setTimeout> | null = null;
 let flushInterval: ReturnType<typeof setInterval> | null = null;
+/** Coalesce duplicate unlock migrate (handler + App session-restore effect). */
+const migrateFlushInFlight = new Map<string, Promise<void>>();
 
 function isNative(): boolean {
   try {
@@ -137,31 +139,47 @@ export async function migrateAndFlushOnUnlock(opts: {
   /** When false, skip mailbox pending/ack (no messagesRead / unkeyed) — no 401 spam. */
   canFlushMailbox?: boolean;
 }): Promise<void> {
-  // Mint/persist opaque mailbox route key for cross-cloud throughway claims.
-  await ensureMailboxRouteKey(opts.identityId, opts.session).catch(() => undefined);
-
-  await migrateServerSecretsToDevice({
-    apiBaseUrl: API_ENDPOINT,
-    authToken: opts.authToken,
-    identityId: opts.identityId,
-    sealAndStore: async (credentials) => {
-      await sealAndStoreCloudCredentials({
-        identityId: opts.identityId,
-        credentials: credentials as StorageCredentialsEnvelope,
-        session: opts.session
-      });
-    }
-  }).catch(() => undefined);
-
-  await promoteAndReconcileOutbox(opts);
-
-  if (opts.canFlushMailbox === false) {
-    stopDeviceCloudWorkers();
+  const lockKey = `${opts.identityId}:${opts.authToken.slice(0, 16)}`;
+  const existing = migrateFlushInFlight.get(lockKey);
+  if (existing) {
+    await existing;
     return;
   }
 
-  await runMailboxFlush(opts);
-  startPeriodicFlush(opts);
+  const run = (async () => {
+    // Mint/persist opaque mailbox route key for cross-cloud throughway claims.
+    await ensureMailboxRouteKey(opts.identityId, opts.session).catch(() => undefined);
+
+    await migrateServerSecretsToDevice({
+      apiBaseUrl: API_ENDPOINT,
+      authToken: opts.authToken,
+      identityId: opts.identityId,
+      sealAndStore: async (credentials) => {
+        await sealAndStoreCloudCredentials({
+          identityId: opts.identityId,
+          credentials: credentials as StorageCredentialsEnvelope,
+          session: opts.session
+        });
+      }
+    }).catch(() => undefined);
+
+    await promoteAndReconcileOutbox(opts);
+
+    if (opts.canFlushMailbox === false) {
+      stopDeviceCloudWorkers();
+      return;
+    }
+
+    await runMailboxFlush(opts);
+    startPeriodicFlush(opts);
+  })();
+
+  migrateFlushInFlight.set(lockKey, run);
+  try {
+    await run;
+  } finally {
+    migrateFlushInFlight.delete(lockKey);
+  }
 }
 
 /** Promote local/bridge outbox → cloud SoT; rebuild throughway if wiped. */

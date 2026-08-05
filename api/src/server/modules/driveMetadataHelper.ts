@@ -17,7 +17,8 @@ export function normalizePnIdentifier(pn: string): string {
 }
 
 export async function getUserDriveMetadataContext(
-  userPnIdentifier: string
+  userPnIdentifier: string,
+  opts?: { accessToken?: string }
 ): Promise<UserDriveMetadataContext | null> {
   const normalizedPnIdentifier = normalizePnIdentifier(userPnIdentifier);
 
@@ -45,15 +46,17 @@ export async function getUserDriveMetadataContext(
     account.keyPrefix ||
     account.accountId ||
     account.id;
-  let accessToken: string;
-  try {
-    accessToken = await googleDriveProxyService.getAccessToken(
-      normalizedPnIdentifier,
-      accountId
-    );
-  } catch {
-    // DEVICE_CLOUD_CUSTODY strips OAuth secrets — server cannot read Drive.
-    return null;
+  let accessToken = (opts?.accessToken || '').trim();
+  if (!accessToken) {
+    try {
+      accessToken = await googleDriveProxyService.getAccessToken(
+        normalizedPnIdentifier,
+        accountId
+      );
+    } catch {
+      // DEVICE_CLOUD_CUSTODY strips OAuth secrets — server cannot read Drive without forwarded token.
+      return null;
+    }
   }
   if (!accessToken) {
     return null;

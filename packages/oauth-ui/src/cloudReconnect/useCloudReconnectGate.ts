@@ -19,7 +19,8 @@ export function useCloudReconnectGate(config: CloudReconnectGateConfig): CloudRe
     pnIdentifier,
     apiEndpoint,
     loadLocalEnvelope,
-    dismissStorageKey
+    dismissStorageKey,
+    preferCachedAccounts
   } = config;
 
   const [readiness, setReadiness] = useState<CloudReconnectGateState['readiness']>('unknown');
@@ -70,30 +71,40 @@ export function useCloudReconnectGate(config: CloudReconnectGateConfig): CloudRe
     setError(null);
 
     try {
-      const url = `${apiEndpoint.replace(/\/$/, '')}/api/storage/accounts/${encodeURIComponent(pnIdentifier)}`;
-      const res = await fetch(url, {
-        headers: { Authorization: `Bearer ${authToken}` }
-      });
+      let accounts: ApiStorageAccountRef[] = [];
+      let social: string | null = null;
 
-      if (res.status === 429) {
-        rateLimitedUntilRef.current = Date.now() + RATE_LIMIT_COOLDOWN_MS;
-        setError('Too many requests — wait about a minute, then unlock or refresh.');
-        setReadiness('unknown');
-        return;
+      const cached = preferCachedAccounts ? preferCachedAccounts() : null;
+      if (cached && !opts?.force) {
+        accounts = cached.accounts ?? [];
+        social = cached.socialCloudProvider ?? null;
+      } else {
+        const url = `${apiEndpoint.replace(/\/$/, '')}/api/storage/accounts/${encodeURIComponent(pnIdentifier)}`;
+        const res = await fetch(url, {
+          headers: { Authorization: `Bearer ${authToken}` }
+        });
+
+        if (res.status === 429) {
+          rateLimitedUntilRef.current = Date.now() + RATE_LIMIT_COOLDOWN_MS;
+          setError('Too many requests — wait about a minute, then unlock or refresh.');
+          setReadiness('unknown');
+          return;
+        }
+
+        if (!res.ok) {
+          setReadiness('unknown');
+          return;
+        }
+
+        const data = (await res.json()) as {
+          accounts?: ApiStorageAccountRef[];
+          socialCloudProvider?: string;
+          primaryProvider?: string;
+        };
+        accounts = data.accounts ?? [];
+        social = data.socialCloudProvider ?? data.primaryProvider ?? null;
       }
 
-      if (!res.ok) {
-        setReadiness('unknown');
-        return;
-      }
-
-      const data = (await res.json()) as {
-        accounts?: ApiStorageAccountRef[];
-        socialCloudProvider?: string;
-        primaryProvider?: string;
-      };
-      const accounts = data.accounts ?? [];
-      const social = data.socialCloudProvider ?? data.primaryProvider ?? null;
       setApiAccounts(accounts);
       setSocialCloudProvider(social);
       lastFetchKeyRef.current = fetchKey;
@@ -124,7 +135,7 @@ export function useCloudReconnectGate(config: CloudReconnectGateConfig): CloudRe
       inFlightRef.current = false;
       setChecking(false);
     }
-  }, [enabled, authToken, pnIdentifier, apiEndpoint, isDismissed]);
+  }, [enabled, authToken, pnIdentifier, apiEndpoint, isDismissed, preferCachedAccounts]);
 
   // Run once per identity/token — not when refresh identity changes.
   useEffect(() => {
@@ -134,7 +145,7 @@ export function useCloudReconnectGate(config: CloudReconnectGateConfig): CloudRe
       lastFetchKeyRef.current = null;
       return;
     }
-    void refresh({ force: true });
+    void refresh();
     // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional: only re-check when auth identity changes
   }, [enabled, authToken, pnIdentifier, apiEndpoint]);
 

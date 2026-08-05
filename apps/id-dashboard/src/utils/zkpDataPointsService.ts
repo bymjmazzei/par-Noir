@@ -62,8 +62,8 @@ export class ZKPDataPointsService {
           return [];
         }
         return dataPoints.map((dp: any) => dp.dataPointId);
-      } else if (response.status === 404) {
-        // No data points yet - return empty array
+      } else if (response.status === 404 || response.status === 409) {
+        // No data points yet, or Drive layout still settling under custody
         return [];
       } else if (response.status === 401) {
         // Authentication failed (Google Drive token expired) - fail silently

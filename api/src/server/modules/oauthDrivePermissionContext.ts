@@ -86,6 +86,18 @@ export async function resolveOAuthDriveContext(params: {
   const accountId = extractDriveAccountId(account);
   const extraCandidates = candidates.filter((c) => c !== normalizedPn);
 
+  const dbToken =
+    String((account as any).access_token || (account as any).accessToken || '').trim();
+
+  // Under device cloud custody, Railway holds account shells without OAuth secrets.
+  // Third-party OAuth cannot invent a Google token; return null without calling getAccessToken.
+  if (!dbToken) {
+    const { isDeviceCloudCustodyEnabled } = await import('./socialMailboxService');
+    if (isDeviceCloudCustodyEnabled()) {
+      return null;
+    }
+  }
+
   try {
     const { googleDriveProxyService } = await import('./googleDriveProxy');
     const userAccessToken = await googleDriveProxyService.getAccessToken(

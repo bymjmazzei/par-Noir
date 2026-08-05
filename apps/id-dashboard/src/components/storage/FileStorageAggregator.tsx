@@ -222,7 +222,8 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
     try {
       const res = await ownerGet(
         ownerToken,
-        `/api/storage/accounts/${encodeURIComponent(cloudPnIdentifier)}`
+        `/api/storage/accounts/${encodeURIComponent(cloudPnIdentifier)}`,
+        { pnIdentifier: cloudPnIdentifier }
       );
       if (!res.ok) return;
       const data = (await res.json()) as {

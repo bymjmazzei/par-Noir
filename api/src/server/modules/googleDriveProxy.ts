@@ -126,7 +126,10 @@ export class GoogleDriveProxyService {
     };
 
     if (!token.access_token) {
-      console.error(`[GoogleDriveProxy] No access token found in account object`);
+      // Expected under device cloud custody when account shells have no OAuth secrets.
+      if (process.env.NODE_ENV !== 'production') {
+        console.debug('[GoogleDriveProxy] No access token in account object (custody or purged secrets)');
+      }
       throw new Error('Google Drive access token not found');
     }
 

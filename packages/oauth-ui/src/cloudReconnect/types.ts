@@ -17,6 +17,14 @@ export interface CloudReconnectGateConfig {
   loadLocalEnvelope: () => Promise<StorageCredentialsEnvelope | null>;
   /** Optional: skip auto-open after user dismisses (sessionStorage key) */
   dismissStorageKey?: string;
+  /**
+   * Optional: reuse accounts already fetched (e.g. unlock bootstrap) to avoid
+   * a second GET /api/storage/accounts on the same unlock.
+   */
+  preferCachedAccounts?: () => {
+    accounts: ApiStorageAccountRef[];
+    socialCloudProvider?: string | null;
+  } | null;
 }
 
 export interface CloudReconnectGateState {

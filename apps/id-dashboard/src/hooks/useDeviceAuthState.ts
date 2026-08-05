@@ -80,6 +80,8 @@ export function useDeviceAuthState(params: {
   });
   const localLabelRef = useRef<string>('Device');
   const localTypeRef = useRef<string>('other');
+  const registryFetchKeyRef = useRef<string | null>(null);
+  const registryInFlightRef = useRef<Promise<void> | null>(null);
 
   const policy: DevicePolicy = useMemo(
     () => normalizeDevicePolicy(registry?.policy),
@@ -94,34 +96,50 @@ export function useDeviceAuthState(params: {
   const hasKeyedDevices = registry?.hasKeyedDevices ?? false;
   const isUnkeyedRestricted = Boolean(policy.firstDeviceKeyedAt && !isKeyedSession);
 
-  const refresh = useCallback(async () => {
+  const refresh = useCallback(async (opts?: { force?: boolean }) => {
     if (!params.apiToken || !params.userPnIdentifier) {
       setRegistry(null);
       setLocalDeviceId(null);
       setDeviceProofSigner(null);
+      registryFetchKeyRef.current = null;
       return;
     }
-    setLoading(true);
-    try {
-      const [summary, localReg] = await Promise.all([
-        fetchDeviceRegistry(params.userPnIdentifier, params.apiToken),
-        loadDeviceRegistration(params.userPnIdentifier),
-      ]);
-      setRegistry(summary);
-      setLocalDeviceId(localReg?.deviceId ?? null);
-      if (localReg?.label) localLabelRef.current = localReg.label;
-      if (localReg?.deviceType) localTypeRef.current = localReg.deviceType;
-
-      if (localReg?.deviceId && summary?.devices.some((d) => d.deviceId === localReg.deviceId && d.status === 'active')) {
-        setDeviceProofSigner((method, path, body) =>
-          buildLocalDeviceProofHeaders(params.userPnIdentifier!, method, path, body)
-        );
-      } else {
-        setDeviceProofSigner(null);
-      }
-    } finally {
-      setLoading(false);
+    const fetchKey = `${params.userPnIdentifier}:${params.apiToken.slice(0, 16)}`;
+    if (!opts?.force && registryFetchKeyRef.current === fetchKey) {
+      if (registryInFlightRef.current) await registryInFlightRef.current;
+      return;
     }
+    if (registryInFlightRef.current) {
+      await registryInFlightRef.current;
+      if (!opts?.force && registryFetchKeyRef.current === fetchKey) return;
+    }
+    setLoading(true);
+    const run = (async () => {
+      try {
+        const [summary, localReg] = await Promise.all([
+          fetchDeviceRegistry(params.userPnIdentifier!, params.apiToken!),
+          loadDeviceRegistration(params.userPnIdentifier!),
+        ]);
+        setRegistry(summary);
+        setLocalDeviceId(localReg?.deviceId ?? null);
+        if (localReg?.label) localLabelRef.current = localReg.label;
+        if (localReg?.deviceType) localTypeRef.current = localReg.deviceType;
+
+        if (localReg?.deviceId && summary?.devices.some((d) => d.deviceId === localReg.deviceId && d.status === 'active')) {
+          setDeviceProofSigner((method, path, body) =>
+            buildLocalDeviceProofHeaders(params.userPnIdentifier!, method, path, body)
+          );
+        } else {
+          setDeviceProofSigner(null);
+        }
+        registryFetchKeyRef.current = fetchKey;
+      } finally {
+        setLoading(false);
+        registryInFlightRef.current = null;
+      }
+    })();
+    registryInFlightRef.current = run;
+    await run;
   }, [params.apiToken, params.userPnIdentifier]);
 
   useEffect(() => {

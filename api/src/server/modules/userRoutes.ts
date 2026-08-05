@@ -108,7 +108,15 @@ export function setupUserRoutes(app: express.Application, deps: UserRouteDeps) {
 
           const account = googleDriveAccounts.length > 0 ? googleDriveAccounts[0] : null;
           const accountId = account ? extractAccountId(account) : undefined;
-          const userAccessToken = account ? await googleDriveProxyService.getAccessToken(normalizedPnIdentifier, accountId) : '';
+          const { extractCloudAccessToken } = await import('./cloudAccessToken');
+          let userAccessToken = extractCloudAccessToken(req) || '';
+          if (!userAccessToken && account) {
+            try {
+              userAccessToken = await googleDriveProxyService.getAccessToken(normalizedPnIdentifier, accountId);
+            } catch {
+              userAccessToken = '';
+            }
+          }
 
         // Find pN folder and _metadata folder (same pattern as other endpoints)
         const pnFolderName = `par Noir - ${normalizedPnIdentifier}`;
@@ -310,8 +318,9 @@ export function setupUserRoutes(app: express.Application, deps: UserRouteDeps) {
 
           const account = googleDriveAccounts.length > 0 ? googleDriveAccounts[0] : null;
           const accountId = account ? extractAccountId(account) : undefined;
-          let userAccessToken = '';
-          if (account) {
+          const { extractCloudAccessToken } = await import('./cloudAccessToken');
+          let userAccessToken = extractCloudAccessToken(req) || '';
+          if (!userAccessToken && account) {
             try {
               userAccessToken = await googleDriveProxyService.getAccessToken(
                 normalizedPnIdentifier,
@@ -658,7 +667,15 @@ export function setupUserRoutes(app: express.Application, deps: UserRouteDeps) {
 
           const account = googleDriveAccounts.length > 0 ? googleDriveAccounts[0] : null;
           const accountId = account ? extractAccountId(account) : undefined;
-          const userAccessToken = account ? await googleDriveProxyService.getAccessToken(normalizedPnIdentifier, accountId) : '';
+          const { extractCloudAccessToken } = await import('./cloudAccessToken');
+          let userAccessToken = extractCloudAccessToken(req) || '';
+          if (!userAccessToken && account) {
+            try {
+              userAccessToken = await googleDriveProxyService.getAccessToken(normalizedPnIdentifier, accountId);
+            } catch {
+              userAccessToken = '';
+            }
+          }
 
         // Find pN folder and _metadata folder (same pattern as other endpoints)
         const pnFolderName = `par Noir - ${normalizedPnIdentifier}`;
@@ -768,7 +785,15 @@ export function setupUserRoutes(app: express.Application, deps: UserRouteDeps) {
 
           const account = googleDriveAccounts.length > 0 ? googleDriveAccounts[0] : null;
           const accountId = account ? extractAccountId(account) : undefined;
-          const userAccessToken = account ? await googleDriveProxyService.getAccessToken(normalizedPnIdentifier, accountId) : '';
+          const { extractCloudAccessToken } = await import('./cloudAccessToken');
+          let userAccessToken = extractCloudAccessToken(req) || '';
+          if (!userAccessToken && account) {
+            try {
+              userAccessToken = await googleDriveProxyService.getAccessToken(normalizedPnIdentifier, accountId);
+            } catch {
+              userAccessToken = '';
+            }
+          }
 
         // Find _metadata folder
         const pnFolderName = `par Noir - ${normalizedPnIdentifier}`;
@@ -867,7 +892,15 @@ export function setupUserRoutes(app: express.Application, deps: UserRouteDeps) {
 
           const account = googleDriveAccounts.length > 0 ? googleDriveAccounts[0] : null;
           const accountId = account ? extractAccountId(account) : undefined;
-          const userAccessToken = account ? await googleDriveProxyService.getAccessToken(normalizedPnIdentifier, accountId) : '';
+          const { extractCloudAccessToken } = await import('./cloudAccessToken');
+          let userAccessToken = extractCloudAccessToken(req) || '';
+          if (!userAccessToken && account) {
+            try {
+              userAccessToken = await googleDriveProxyService.getAccessToken(normalizedPnIdentifier, accountId);
+            } catch {
+              userAccessToken = '';
+            }
+          }
 
         // Find _metadata folder
         const pnFolderName = `par Noir - ${normalizedPnIdentifier}`;
@@ -963,7 +996,15 @@ export function setupUserRoutes(app: express.Application, deps: UserRouteDeps) {
 
           const account = googleDriveAccounts.length > 0 ? googleDriveAccounts[0] : null;
           const accountId = account ? extractAccountId(account) : undefined;
-          const userAccessToken = account ? await googleDriveProxyService.getAccessToken(normalizedPnIdentifier, accountId) : '';
+          const { extractCloudAccessToken } = await import('./cloudAccessToken');
+          let userAccessToken = extractCloudAccessToken(req) || '';
+          if (!userAccessToken && account) {
+            try {
+              userAccessToken = await googleDriveProxyService.getAccessToken(normalizedPnIdentifier, accountId);
+            } catch {
+              userAccessToken = '';
+            }
+          }
 
         // Find _metadata folder
         const pnFolderName = `par Noir - ${normalizedPnIdentifier}`;

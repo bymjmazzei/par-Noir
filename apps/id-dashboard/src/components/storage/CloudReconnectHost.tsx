@@ -20,6 +20,7 @@ import { getGoogleDriveClientId } from '../../config/googleDriveClientId';
 import { DevicePairFromReconnect } from '../DevicePairFromReconnect';
 import { isKeyableClient } from '@par-noir/device-client';
 import { APP_DOWNLOAD_URL } from '../../config/appDownload';
+import { getStorageAccountsCache } from '../../services/storage/cloudSessionBootstrap';
 
 export interface CloudReconnectHostProps {
   apiToken: string | null;
@@ -80,11 +81,17 @@ export const CloudReconnectHost: React.FC<CloudReconnectHostProps> = ({
     });
   }, [pnIdentifier, sessionId]);
 
+  const [bootstrapSettled, setBootstrapSettled] = useState(false);
+
   // Unlock-time: warm sealed secrets into session, then full cloud session bootstrap
   // (backends + layout + owner-index) so Storage is not required for Drive capability.
   React.useEffect(() => {
-    if (!pnIdentifier || !sessionId || !apiToken) return;
+    if (!pnIdentifier || !sessionId || !apiToken) {
+      setBootstrapSettled(false);
+      return;
+    }
     let cancelled = false;
+    setBootstrapSettled(false);
     void (async () => {
       try {
         await loadLocalEnvelope();
@@ -110,6 +117,8 @@ export const CloudReconnectHost: React.FC<CloudReconnectHostProps> = ({
         onCloudReadyRef.current?.(result);
       } catch {
         /* best-effort */
+      } finally {
+        if (!cancelled) setBootstrapSettled(true);
       }
     })();
     return () => {
@@ -117,13 +126,19 @@ export const CloudReconnectHost: React.FC<CloudReconnectHostProps> = ({
     };
   }, [pnIdentifier, sessionId, apiToken, loadLocalEnvelope]);
 
+  const preferCachedAccounts = useCallback(() => {
+    if (!pnIdentifier) return null;
+    return getStorageAccountsCache(pnIdentifier);
+  }, [pnIdentifier]);
+
   const gate = useCloudReconnectGate({
-    enabled: !!(apiToken && pnIdentifier),
+    enabled: !!(apiToken && pnIdentifier && bootstrapSettled),
     authToken: apiToken,
     pnIdentifier,
     apiEndpoint: API_ENDPOINT,
     loadLocalEnvelope,
-    dismissStorageKey: pnIdentifier ? `pn_cloud_reconnect_dismiss:${pnIdentifier}` : undefined
+    dismissStorageKey: pnIdentifier ? `pn_cloud_reconnect_dismiss:${pnIdentifier}` : undefined,
+    preferCachedAccounts
   });
 
   const persistMode: PersistCloudCredentialsMode = resolveCloudPersistMode({

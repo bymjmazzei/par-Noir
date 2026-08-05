@@ -7,6 +7,7 @@
 
 import type { Application, Request, Response } from 'express';
 import { safeClientErrorMessage } from '../../utils/safeError';
+import { extractCloudAccessToken } from '../cloudAccessToken';
 import {
   gateOwnerRoute,
   gateOwnerSelfRoute,
@@ -22,6 +23,32 @@ import {
 } from './fileIndexHelpers';
 
 const NODE_ENV = process.env.NODE_ENV || 'development';
+
+type DriveToken = {
+  access_token: string;
+  refresh_token?: string;
+  expires_at?: number;
+  expires_in?: number;
+};
+
+/** Prefer device-forwarded ephemeral token under custody; fall back to DB secrets when present. */
+function buildDriveTokenFromAccount(
+  req: Request,
+  account: Record<string, unknown> | null | undefined
+): DriveToken {
+  const forwarded = extractCloudAccessToken(req);
+  if (forwarded) {
+    return { access_token: forwarded };
+  }
+  return {
+    access_token: String(
+      (account as any)?.access_token || (account as any)?.accessToken || ''
+    ),
+    refresh_token: (account as any)?.refresh_token || (account as any)?.refreshToken,
+    expires_at: (account as any)?.expires_at,
+    expires_in: (account as any)?.expires_in,
+  };
+}
 
 export interface StorageIndexRouteDeps {
   extractAccountId: (account: any) => string | undefined;
@@ -71,18 +98,13 @@ export function setupStorageIndexRoutes(app: Application, deps: StorageIndexRout
           return res.status(404).json({ error: 'Storage not connected' });
         }
         let accountId: string | undefined;
-        let token: any = { access_token: '' };
+        let token: DriveToken = { access_token: '' };
         let accessToken = '';
         let out: any = null;
         if (!_portableSocial) {
           const account = googleDriveAccounts.length > 0 ? googleDriveAccounts[0] : null;
           accountId = extractAccountId(account);
-          token = {
-            access_token: account?.access_token || account?.accessToken || '',
-            refresh_token: account?.refresh_token || account?.refreshToken,
-            expires_at: account?.expires_at,
-            expires_in: account?.expires_in
-          };
+          token = buildDriveTokenFromAccount(req, account);
           accessToken = token.access_token;
           out = await getMetadataFolder(token, pnIdentifier, accountId);
         }
@@ -202,12 +224,7 @@ export function setupStorageIndexRoutes(app: Application, deps: StorageIndexRout
         }
         const account = googleDriveAccounts.length > 0 ? googleDriveAccounts[0] : null;
         const accountId = account ? extractAccountId(account) : undefined;
-        const token = {
-          access_token: account?.access_token || account?.accessToken || '',
-          refresh_token: account?.refresh_token || account?.refreshToken,
-          expires_at: account?.expires_at,
-          expires_in: account?.expires_in
-        };
+        const token = buildDriveTokenFromAccount(req, account);
 
         const out = await getMetadataFolder(token, pnIdentifier, accountId);
         if (!out) {
@@ -258,12 +275,7 @@ export function setupStorageIndexRoutes(app: Application, deps: StorageIndexRout
         }
         const account = googleDriveAccounts.length > 0 ? googleDriveAccounts[0] : null;
         const accountId = account ? extractAccountId(account) : undefined;
-        const token = {
-          access_token: account?.access_token || account?.accessToken || '',
-          refresh_token: account?.refresh_token || account?.refreshToken,
-          expires_at: account?.expires_at,
-          expires_in: account?.expires_in
-        };
+        const token = buildDriveTokenFromAccount(req, account);
         const accessToken = token.access_token;
 
         const out = await getMetadataFolder(token, pnIdentifier, accountId);
@@ -348,12 +360,7 @@ export function setupStorageIndexRoutes(app: Application, deps: StorageIndexRout
         }
         const account = googleDriveAccounts.length > 0 ? googleDriveAccounts[0] : null;
         const accountId = account ? extractAccountId(account) : undefined;
-        const token = {
-          access_token: account?.access_token || account?.accessToken || '',
-          refresh_token: account?.refresh_token || account?.refreshToken,
-          expires_at: account?.expires_at,
-          expires_in: account?.expires_in
-        };
+        const token = buildDriveTokenFromAccount(req, account);
 
         const out = await getMetadataFolder(token, pnIdentifier, accountId);
         if (!out) {

@@ -27,6 +27,22 @@ const inFlight = new Map<string, Promise<CloudSessionBootstrapResult>>();
 let lastStatus: CloudSessionStatus = 'idle';
 let lastError: string | undefined;
 
+type AccountsCacheEntry = {
+  accounts: Array<{ provider: string; accountId: string; [k: string]: unknown }>;
+  socialCloudProvider: string | null;
+};
+
+const accountsCache = new Map<string, AccountsCacheEntry>();
+
+export function getStorageAccountsCache(pnIdentifier: string | null | undefined): AccountsCacheEntry | null {
+  if (!pnIdentifier) return null;
+  return accountsCache.get(pnIdentifier) ?? null;
+}
+
+function setStorageAccountsCache(pnIdentifier: string, entry: AccountsCacheEntry): void {
+  accountsCache.set(pnIdentifier, entry);
+}
+
 export function isCloudSessionReady(pnIdentifier: string | null | undefined): boolean {
   if (!pnIdentifier) return false;
   return readyPnIds.has(pnIdentifier);
@@ -113,8 +129,15 @@ async function registerBackendsFromEnvelope(
     if (res.ok) {
       const data = (await res.json()) as {
         accounts?: Array<{ provider: string; accountId: string }>;
+        socialCloudProvider?: string;
+        primaryProvider?: string;
       };
-      const portable = (data.accounts ?? []).filter((a) => a.provider !== 'google_drive');
+      const accounts = data.accounts ?? [];
+      setStorageAccountsCache(pnIdentifier, {
+        accounts,
+        socialCloudProvider: data.socialCloudProvider ?? data.primaryProvider ?? null
+      });
+      const portable = accounts.filter((a) => a.provider !== 'google_drive');
       const { PortableBlobBackend } = await import('./PortableBlobBackend');
       for (const acct of portable) {
         const backendId = `${acct.provider}::${acct.accountId}`;
@@ -168,15 +191,10 @@ async function prefetchOwnerIndex(pnIdentifier: string, apiToken: string): Promi
       `/api/storage/owner-index/${encodeURIComponent(pnIdentifier)}`,
       { pnIdentifier }
     );
+    if (res.ok) return;
     if (res.status === 409) {
-      const ok = await ensureDriveLayout(pnIdentifier, apiToken);
-      if (ok) {
-        await ownerGet(
-          apiToken,
-          `/api/storage/owner-index/${encodeURIComponent(pnIdentifier)}`,
-          { pnIdentifier }
-        );
-      }
+      // One layout ensure; do not re-GET owner-index here (ensureDriveLayout already probes index on 409).
+      await ensureDriveLayout(pnIdentifier, apiToken);
     }
   } catch {
     /* best-effort warm */
@@ -236,6 +254,28 @@ export async function bootstrapCloudSession(opts: {
 
       if (envelope) {
         await registerBackendsFromEnvelope(pnIdentifier, envelope, apiToken, sessionId);
+      } else if (!getStorageAccountsCache(pnIdentifier)) {
+        // Still warm accounts cache for reconnect gate (no second GET after bootstrap).
+        try {
+          const res = await ownerGet(
+            apiToken,
+            `/api/storage/accounts/${encodeURIComponent(pnIdentifier)}`,
+            { pnIdentifier }
+          );
+          if (res.ok) {
+            const data = (await res.json()) as {
+              accounts?: Array<{ provider: string; accountId: string }>;
+              socialCloudProvider?: string;
+              primaryProvider?: string;
+            };
+            setStorageAccountsCache(pnIdentifier, {
+              accounts: data.accounts ?? [],
+              socialCloudProvider: data.socialCloudProvider ?? data.primaryProvider ?? null
+            });
+          }
+        } catch {
+          /* non-fatal */
+        }
       }
 
       const layoutOk = await ensureDriveLayout(pnIdentifier, apiToken);
@@ -270,9 +310,11 @@ export function clearCloudSessionBootstrap(pnIdentifier?: string): void {
   if (pnIdentifier) {
     readyPnIds.delete(pnIdentifier);
     inFlight.delete(pnIdentifier);
+    accountsCache.delete(pnIdentifier);
   } else {
     readyPnIds.clear();
     inFlight.clear();
+    accountsCache.clear();
   }
   lastStatus = 'idle';
   lastError = undefined;

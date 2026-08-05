@@ -35,6 +35,8 @@ import { AppChrome } from './App/AppChrome';
 import { CloudReconnectHost } from './components/storage/CloudReconnectHost';
 import { UnkeyedUnlockAlertEmitter } from './components/UnkeyedUnlockAlertEmitter';
 import { CloudSessionProvider } from './contexts/CloudSessionContext';
+import { ensureCloudSession } from './services/storage/cloudSessionBootstrap';
+import { PN_CLOUD_CREDENTIALS_READY_EVENT } from '@par-noir/oauth-ui';
 
 // Custom hooks for state management
 import { useAppState } from './hooks/useAppState';
@@ -598,10 +600,13 @@ function App() {
   
 
   
-  // Load third-party permissions from Google Drive
+  // Load third-party permissions from Google Drive (after cloud session ready)
+  const permissionsLoadedKeyRef = useRef<string | null>(null);
   useEffect(() => {
     const loadThirdPartyPermissions = async () => {
-      if (!authenticatedUser?.id) return;
+      if (!authenticatedUser?.id || !apiToken || !recoveryVaultPnId) return;
+      const loadKey = `${recoveryVaultPnId}:${apiToken.slice(0, 12)}`;
+      if (permissionsLoadedKeyRef.current === loadKey) return;
 
       try {
         const credentials = SecureCredentialManager.getCredentials(authenticatedUser.id);
@@ -610,53 +615,46 @@ function App() {
           return;
         }
 
-        let authToken =
-          apiToken ||
-          (await ensureOwnerApiTokenForActiveUser());
+        const cloud = await ensureCloudSession({
+          apiToken,
+          pnIdentifier: recoveryVaultPnId,
+          sessionId: authenticatedUser.id
+        });
+        if (cloud.status !== 'ready') return;
+
+        const authToken = apiToken || (await ensureOwnerApiTokenForActiveUser());
         if (!authToken) {
           console.warn('[App] Cannot load permissions - owner API token not ready');
           return;
         }
 
-        // Get pN identifier
-        const { VolumeIdGenerator } = await import('@par-noir/identity-crypto');
-        const pnIdentifier = await VolumeIdGenerator.generateVolumeId({
-          pnName: credentials.pnName,
-          passcode: credentials.passcode,
-          publicKey: authenticatedUser.publicKey || ''
-        });
-
-        // Load permissions from API (Google Drive)
         const response = await ownerGet(
           authToken,
-          `/api/users/${pnIdentifier}/third-party-permissions`
+          `/api/users/${recoveryVaultPnId}/third-party-permissions`,
+          { pnIdentifier: recoveryVaultPnId }
         );
 
         if (response.ok) {
           const { permissions } = await response.json();
+          permissionsLoadedKeyRef.current = loadKey;
           if (permissions && Object.keys(permissions).length > 0) {
             setPrivacySettings(prev => {
               const mergedPermissions: Record<string, any> = { ...permissions };
               
-              // Ensure browser-app always has static required/optional data points
-              // These are defined by the third party and never change
               if (mergedPermissions['browser-app']) {
                 mergedPermissions['browser-app'] = {
                   ...mergedPermissions['browser-app'],
-                  // Static: These are always the same, defined by browser-app
-                  requiredDataPoints: [], // No required data points for browser
-                  optionalDataPoints: ['age_attestation'], // Age is always optional
-                  // dataPoints array reflects what user has granted (can change)
+                  requiredDataPoints: [],
+                  optionalDataPoints: ['age_attestation'],
                 };
               } else {
-                // Initialize if not present
                 mergedPermissions['browser-app'] = {
                   toolName: 'par Noir Browser',
                   toolDescription: 'Official par Noir browser application for browsing and discovering encrypted content',
                   permissions: ['openid', 'profile', 'zkp:age_attestation', 'cloud:read'],
                   dataPoints: [],
-                  requiredDataPoints: [], // Static
-                  optionalDataPoints: ['age_attestation'], // Static
+                  requiredDataPoints: [],
+                  optionalDataPoints: ['age_attestation'],
                   grantedAt: new Date().toISOString(),
                   status: 'active' as const
                 };
@@ -680,8 +678,13 @@ function App() {
       }
     };
 
-    loadThirdPartyPermissions();
-  }, [authenticatedUser?.id, apiToken, ensureOwnerApiTokenForActiveUser]);
+    void loadThirdPartyPermissions();
+    const onReady = () => {
+      void loadThirdPartyPermissions();
+    };
+    window.addEventListener(PN_CLOUD_CREDENTIALS_READY_EVENT, onReady);
+    return () => window.removeEventListener(PN_CLOUD_CREDENTIALS_READY_EVENT, onReady);
+  }, [authenticatedUser?.id, apiToken, recoveryVaultPnId, ensureOwnerApiTokenForActiveUser]);
 
   // Initialize browser-app tool permissions (hard-coded pN owned third party)
   // Always initialize browser-app - it's a pN owned platform
@@ -691,15 +694,13 @@ function App() {
       setPrivacySettings(prev => {
         const existingBrowserApp = prev.toolPermissions['browser-app'];
         
-        // Always ensure browser-app has static required/optional data points
-        // These are defined by the third party and never change
         const browserAppPermission = {
           toolName: 'par Noir Browser',
           toolDescription: 'Official par Noir browser application for browsing and discovering encrypted content',
           permissions: ['openid', 'profile', 'zkp:age_attestation', 'cloud:read'],
-          dataPoints: existingBrowserApp?.dataPoints || [], // User's granted permissions (can change)
-          requiredDataPoints: [], // Static: No required data points for browser
-          optionalDataPoints: ['age_attestation'], // Static: Age is always optional
+          dataPoints: existingBrowserApp?.dataPoints || [],
+          requiredDataPoints: [],
+          optionalDataPoints: ['age_attestation'],
           grantedAt: existingBrowserApp?.grantedAt || new Date().toISOString(),
           status: 'active' as const
         };
@@ -726,81 +727,87 @@ function App() {
     }
   }, [authenticatedUser?.id]);
   
-  // Load attested data points from metadata
+  // Load attested data points from metadata (after cloud session ready)
+  const attestedLoadedKeyRef = useRef<string | null>(null);
   useEffect(() => {
     const loadAttestedDataPoints = async () => {
       try {
-        if (authenticatedUser?.id) {
-          console.log('[App] Loading attested data points for user:', authenticatedUser.id);
-          
-          // First, verify data is in localStorage
-          try {
-            const rawStorage = localStorage.getItem('secure_metadata');
-            if (rawStorage) {
-              const parsed = JSON.parse(rawStorage);
-              const hasUserData = !!parsed[authenticatedUser.id];
-              console.log('[App] localStorage check:', {
-                hasSecureMetadata: !!rawStorage,
-                hasUserData,
-                allUserIds: Object.keys(parsed || {})
-              });
-            } else {
-              console.log('[App] No secure_metadata in localStorage');
-            }
-          } catch (e) {
-            console.warn('[App] Error checking localStorage:', e);
+        if (!authenticatedUser?.id || !apiToken || !recoveryVaultPnId) {
+          if (!authenticatedUser?.id) {
+            setAttestedDataPoints(new Set());
+            attestedLoadedKeyRef.current = null;
           }
-          
-          // Load attested data points from API server (Google Drive) - NO localStorage
-            const credentials = SecureCredentialManager.getCredentials(authenticatedUser.id);
-            if (!credentials) {
-            console.warn('[App] Credentials not available');
-            setAttestedDataPoints(new Set());
-              return;
+          return;
+        }
+
+        const loadKey = `${recoveryVaultPnId}:${apiToken.slice(0, 12)}`;
+        if (attestedLoadedKeyRef.current === loadKey) return;
+
+        const credentials = SecureCredentialManager.getCredentials(authenticatedUser.id);
+        if (!credentials) {
+          console.warn('[App] Credentials not available');
+          setAttestedDataPoints(new Set());
+          return;
+        }
+
+        const cloud = await ensureCloudSession({
+          apiToken,
+          pnIdentifier: recoveryVaultPnId,
+          sessionId: authenticatedUser.id
+        });
+        if (cloud.status !== 'ready') return;
+
+        const authToken = apiToken || (await ensureOwnerApiTokenForActiveUser());
+        if (!authToken) {
+          console.warn('[App] No owner API token available');
+          setAttestedDataPoints(new Set());
+          return;
+        }
+
+        try {
+          const { ZKPDataPointsService } = await import('./utils/zkpDataPointsService');
+          let dataPointIds = await ZKPDataPointsService.getAllDataPoints(
+            authenticatedUser.id,
+            credentials,
+            authToken,
+            authenticatedUser.publicKey
+          );
+          if (dataPointIds.length === 0) {
+            const retryCloud = await ensureCloudSession({
+              apiToken: authToken,
+              pnIdentifier: recoveryVaultPnId,
+              sessionId: authenticatedUser.id
+            });
+            if (retryCloud.status === 'ready') {
+              dataPointIds = await ZKPDataPointsService.getAllDataPoints(
+                authenticatedUser.id,
+                credentials,
+                authToken,
+                authenticatedUser.publicKey
+              );
             }
-            
-          let authToken =
-            apiToken ||
-            (await ensureOwnerApiTokenForActiveUser());
-          if (!authToken) {
-            console.warn('[App] No owner API token available');
-            setAttestedDataPoints(new Set());
-            return;
           }
 
-          try {
-            const { ZKPDataPointsService } = await import('./utils/zkpDataPointsService');
-            const dataPointIds = await ZKPDataPointsService.getAllDataPoints(
-              authenticatedUser.id,
-              credentials,
-              authToken,
-              authenticatedUser.publicKey
-            );
-
-            console.log('[App] Loaded attested data points from API:', dataPointIds);
-            setAttestedDataPoints(new Set(dataPointIds));
-          } catch (error) {
-            console.error('[App] Error loading attested data points from API:', error);
-            setAttestedDataPoints(new Set()); // Clear on error
-          }
-        } else {
-          console.log('[App] No authenticated user, clearing attested data points');
+          attestedLoadedKeyRef.current = loadKey;
+          console.log('[App] Loaded attested data points from API:', dataPointIds);
+          setAttestedDataPoints(new Set(dataPointIds));
+        } catch (error) {
+          console.error('[App] Error loading attested data points from API:', error);
           setAttestedDataPoints(new Set());
         }
       } catch (error) {
         console.error('[App] Error loading attested data points:', error);
-        console.error('[App] Error stack:', error instanceof Error ? error.stack : 'No stack');
-        setAttestedDataPoints(new Set()); // Clear on error
+        setAttestedDataPoints(new Set());
       }
     };
-    
-    // Add a small delay to ensure authenticatedUser is fully set
-    const timeoutId = setTimeout(() => {
-      loadAttestedDataPoints();
-    }, 100);
-    
-    return () => clearTimeout(timeoutId);
-  }, [authenticatedUser?.id, apiToken, ensureOwnerApiTokenForActiveUser]);
+
+    void loadAttestedDataPoints();
+    const onReady = () => {
+      void loadAttestedDataPoints();
+    };
+    window.addEventListener(PN_CLOUD_CREDENTIALS_READY_EVENT, onReady);
+    return () => window.removeEventListener(PN_CLOUD_CREDENTIALS_READY_EVENT, onReady);
+  }, [authenticatedUser?.id, apiToken, recoveryVaultPnId, ensureOwnerApiTokenForActiveUser]);
   
   // Debug success state changes
   useEffect(() => {
@@ -1357,7 +1364,7 @@ function App() {
           sessionId={authenticatedUser?.id ?? null}
           isKeyedSession={deviceAuth.isKeyedSession}
           hasKeyedDevices={deviceAuth.hasKeyedDevices}
-          onPaired={() => deviceAuth.refresh()}
+          onPaired={() => deviceAuth.refresh({ force: true })}
           onCloudReady={() => {
             /* bootstrap updates module + PN_CLOUD_CREDENTIALS_READY_EVENT; context syncs */
           }}

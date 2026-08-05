@@ -1,5 +1,5 @@
-import React, { useCallback, useEffect, useState } from 'react';
-import { API_ENDPOINT } from '../config/api';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { ownerFetch, ownerGet } from '../services/ownerApiService';
 
 export interface DataPointRequest {
   requestId: string;
@@ -27,6 +27,7 @@ export const DataPointRequestsPanel: React.FC<DataPointRequestsPanelProps> = ({
   const [loadError, setLoadError] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [pnIdentifier, setPnIdentifier] = useState<string | null>(null);
+  const loadedKeyRef = useRef<string | null>(null);
 
   const authToken = apiToken;
 
@@ -53,18 +54,22 @@ export const DataPointRequestsPanel: React.FC<DataPointRequestsPanelProps> = ({
     };
   }, [authenticatedUser.id, authenticatedUser.publicKey]);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (opts?: { force?: boolean }) => {
     if (!pnIdentifier || !authToken) return;
+    const key = `${pnIdentifier}:${authToken.slice(0, 12)}`;
+    if (!opts?.force && loadedKeyRef.current === key) return;
     setLoading(true);
     setLoadError(null);
     try {
-      const res = await fetch(
-        `${API_ENDPOINT}/api/users/${pnIdentifier}/data-point-requests?status=pending`,
-        { headers: { Authorization: `Bearer ${authToken}` } }
+      const res = await ownerGet(
+        authToken,
+        `/api/users/${pnIdentifier}/data-point-requests?status=pending`,
+        { pnIdentifier }
       );
       if (res.ok) {
         const data = await res.json();
         setRequests(data.requests || []);
+        loadedKeyRef.current = key;
       } else {
         setLoadError('Could not load requests');
         setRequests([]);
@@ -78,28 +83,24 @@ export const DataPointRequestsPanel: React.FC<DataPointRequestsPanelProps> = ({
   }, [pnIdentifier, authToken]);
 
   useEffect(() => {
-    load();
+    void load();
   }, [load]);
 
   const respond = async (requestId: string, action: 'approve' | 'decline') => {
     if (!pnIdentifier || !authToken) return;
     setBusyId(requestId);
     try {
-      const res = await fetch(
-        `${API_ENDPOINT}/api/users/${pnIdentifier}/data-point-requests/${requestId}/respond`,
-        {
-          method: 'POST',
-          headers: {
-            Authorization: `Bearer ${authToken}`,
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({ action })
-        }
+      const res = await ownerFetch(
+        authToken,
+        'POST',
+        `/api/users/${pnIdentifier}/data-point-requests/${requestId}/respond`,
+        { action },
+        { pnIdentifier }
       );
       if (res.ok) {
         setRequests((prev) => prev.filter((r) => r.requestId !== requestId));
         onResponded?.();
-        await load();
+        await load({ force: true });
       } else {
         setLoadError('Failed to submit response');
       }
@@ -120,7 +121,7 @@ export const DataPointRequestsPanel: React.FC<DataPointRequestsPanelProps> = ({
     return (
       <div className="mb-6">
         <p className="text-xs text-red-500">{loadError}</p>
-        <button type="button" className="text-xs text-primary mt-2 underline" onClick={() => load()}>
+        <button type="button" className="text-xs text-primary mt-2 underline" onClick={() => void load({ force: true })}>
           Retry
         </button>
       </div>
@@ -150,7 +151,7 @@ export const DataPointRequestsPanel: React.FC<DataPointRequestsPanelProps> = ({
               type="button"
               disabled={busyId === req.requestId}
               className="px-3 py-1.5 text-xs rounded bg-primary text-bg-primary disabled:opacity-50"
-              onClick={() => respond(req.requestId, 'approve')}
+              onClick={() => void respond(req.requestId, 'approve')}
             >
               Approve
             </button>
@@ -158,7 +159,7 @@ export const DataPointRequestsPanel: React.FC<DataPointRequestsPanelProps> = ({
               type="button"
               disabled={busyId === req.requestId}
               className="px-3 py-1.5 text-xs rounded border border-border disabled:opacity-50"
-              onClick={() => respond(req.requestId, 'decline')}
+              onClick={() => void respond(req.requestId, 'decline')}
             >
               Decline
             </button>

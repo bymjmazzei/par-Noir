@@ -100,7 +100,9 @@ export function MultiCloudStoragePanel({
 
   const refreshAccounts = useCallback(async () => {
     if (!pnIdentifier || !authToken) return;
-    const res = await ownerGet(authToken, `/api/storage/accounts/${encodeURIComponent(pnIdentifier)}`);
+    const res = await ownerGet(authToken, `/api/storage/accounts/${encodeURIComponent(pnIdentifier)}`, {
+      pnIdentifier
+    });
     if (!res.ok) return;
     const data = (await res.json()) as {
       accounts?: StorageAccount[];
@@ -138,7 +140,9 @@ export function MultiCloudStoragePanel({
       const res = await ownerFetch(
         authToken,
         'DELETE',
-        `/api/storage/credentials/${encodeURIComponent(pnIdentifier)}/provider/${encodeURIComponent(provider)}/${encodeURIComponent(accountId)}`
+        `/api/storage/credentials/${encodeURIComponent(pnIdentifier)}/provider/${encodeURIComponent(provider)}/${encodeURIComponent(accountId)}`,
+        undefined,
+        { pnIdentifier }
       );
       const data = (await res.json()) as { message?: string; error?: string };
       if (!res.ok) {
@@ -163,7 +167,8 @@ export function MultiCloudStoragePanel({
         authToken,
         'PUT',
         `/api/storage/credentials/${encodeURIComponent(pnIdentifier)}/social-cloud`,
-        { provider, accountId }
+        { provider, accountId },
+        { pnIdentifier }
       );
       const data = (await res.json()) as { message?: string; error?: string };
       if (!res.ok) {
@@ -196,7 +201,9 @@ export function MultiCloudStoragePanel({
       const res = await ownerFetch(
         authToken,
         'POST',
-        `/api/storage/test-connection/${encodeURIComponent(pnIdentifier)}`
+        `/api/storage/test-connection/${encodeURIComponent(pnIdentifier)}`,
+        undefined,
+        { pnIdentifier }
       );
       const data = (await res.json()) as { ok?: boolean; message?: string };
       if (!res.ok || !data.ok) {
