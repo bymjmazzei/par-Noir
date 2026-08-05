@@ -79,14 +79,21 @@ export function queueFromVeriffResult(
   extracted: {
     firstName?: string;
     lastName?: string;
+    middleName?: string;
     dateOfBirth?: string;
     documentType?: string;
+    documentNumber?: string;
     country?: string;
   }
 ): void {
-  const dataPoints: VerifiedDataPointQueueEntry['dataPoints'] = [
-    { dataPointId: 'identity_attestation', value: 'verified', verificationLevel: 'verified' }
-  ];
+  const dataPoints: VerifiedDataPointQueueEntry['dataPoints'] = [];
+  if (extracted.firstName || extracted.lastName) {
+    dataPoints.push({
+      dataPointId: 'name_attestation',
+      value: [extracted.firstName, extracted.lastName].filter(Boolean).join(' '),
+      verificationLevel: 'verified'
+    });
+  }
   if (extracted.firstName) {
     dataPoints.push({ dataPointId: 'first_name', value: extracted.firstName, verificationLevel: 'verified' });
   }
@@ -94,7 +101,34 @@ export function queueFromVeriffResult(
     dataPoints.push({ dataPointId: 'last_name', value: extracted.lastName, verificationLevel: 'verified' });
   }
   if (extracted.dateOfBirth) {
-    dataPoints.push({ dataPointId: 'date_of_birth', value: extracted.dateOfBirth, verificationLevel: 'verified' });
+    dataPoints.push({
+      dataPointId: 'age_attestation',
+      value: extracted.dateOfBirth,
+      verificationLevel: 'verified'
+    });
+    dataPoints.push({ dataPointId: 'over_18', value: 'true', verificationLevel: 'verified' });
+    dataPoints.push({ dataPointId: 'over_21', value: 'true', verificationLevel: 'verified' });
+  }
+  if (extracted.documentType) {
+    dataPoints.push({
+      dataPointId: 'document_type',
+      value: extracted.documentType,
+      verificationLevel: 'verified'
+    });
+  }
+  if (extracted.documentNumber) {
+    dataPoints.push({
+      dataPointId: 'document_number',
+      value: extracted.documentNumber,
+      verificationLevel: 'verified'
+    });
+  }
+  if (dataPoints.length === 0) {
+    dataPoints.push({
+      dataPointId: 'identity_attestation',
+      value: 'verified',
+      verificationLevel: 'verified'
+    });
   }
   queueVerifiedDataPoints({
     verificationId,

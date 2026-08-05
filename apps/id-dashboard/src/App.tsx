@@ -1051,6 +1051,8 @@ function App() {
     setCurrentDataPointExistingData,
     setShowDataPointInputModal,
     setAttestedDataPoints,
+    verifiedDataPoints,
+    getEncryptedIdentityForApiToken,
     apiToken,
     ensureOwnerApiTokenForActiveUser,
     setError,
@@ -1276,6 +1278,7 @@ function App() {
           globalSettingsExpanded={globalSettingsExpanded}
           thirdPartyExpanded={thirdPartyExpanded}
           privacySettings={privacySettings}
+          setPrivacySettings={setPrivacySettings}
           recoveryVaultPnId={recoveryVaultPnId}
           canRotateIdentity={canRotateIdentity}
           canCustodiansRead={canCustodiansRead}

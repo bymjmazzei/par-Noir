@@ -40,6 +40,8 @@ export interface PnDriveIndex {
   integratorsRootId: string;
   messagesFolderId: string;
   inboxSheetId: string;
+  /** Private folder for Veriff/KYC encrypted images — not in Storage root listing or public indexes */
+  zkpDocsFolderId?: string;
   sheetIds: Record<string, string>;
   conversationSheets: Record<string, string>;
 }
@@ -122,6 +124,7 @@ export function readPnDriveIndex(credentials: Record<string, unknown> | null | u
   if (!pnFolderId || !metadataFolderId || !integratorsRootId || !messagesFolderId || !inboxSheetId) {
     return null;
   }
+  const zkpDocsFolderId = pickString(o.zkpDocsFolderId);
   return {
     schemaVersion: PN_DRIVE_INDEX_SCHEMA_VERSION,
     pnFolderId,
@@ -129,6 +132,7 @@ export function readPnDriveIndex(credentials: Record<string, unknown> | null | u
     integratorsRootId,
     messagesFolderId,
     inboxSheetId,
+    ...(zkpDocsFolderId ? { zkpDocsFolderId } : {}),
     sheetIds,
     conversationSheets,
   };
@@ -180,6 +184,7 @@ export function mergePnDriveIndex(
     integratorsRootId: patch.integratorsRootId ?? base.integratorsRootId,
     messagesFolderId: patch.messagesFolderId ?? base.messagesFolderId,
     inboxSheetId: patch.inboxSheetId ?? base.inboxSheetId,
+    zkpDocsFolderId: patch.zkpDocsFolderId ?? base.zkpDocsFolderId,
     sheetIds: { ...base.sheetIds, ...(patch.sheetIds ?? {}) },
     conversationSheets: { ...base.conversationSheets, ...(patch.conversationSheets ?? {}) },
   };

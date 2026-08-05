@@ -8,7 +8,11 @@ export type ZKPType =
   | 'identity_attestation'
   | 'preference_disclosure'
   | 'compliance_attestation'
-  | 'custom_proof';
+  | 'custom_proof'
+  | 'threshold_age';
+
+/** Privacy UI grouping */
+export type DataPointUiClass = 'name' | 'age' | 'location' | 'contact' | 'documents';
 
 export interface DataValidation {
   minValue?: number;
@@ -33,6 +37,16 @@ export interface StandardDataPoint {
   optionalFields?: string[];
   defaultPrivacy: 'public' | 'private' | 'selective';
   examples: string[];
+  /** Privacy tab section */
+  uiClass?: DataPointUiClass;
+  /** True when this id is minted from a parent form, not entered alone */
+  derived?: boolean;
+  /** Parent attestation / form id that produces this derived proof */
+  derivedFrom?: string;
+  /** Veriff can mint this at verificationLevel verified */
+  veriffCapable?: boolean;
+  /** Document image stored in zkp-docs */
+  documentImage?: boolean;
 }
 
 /** JSON-safe catalog entry (API + developer portal) */
@@ -53,4 +67,9 @@ export interface StandardDataPointPublic {
   optionalFields?: string[];
   defaultPrivacy: StandardDataPoint['defaultPrivacy'];
   examples: string[];
+  uiClass?: DataPointUiClass;
+  derived?: boolean;
+  derivedFrom?: string;
+  veriffCapable?: boolean;
+  documentImage?: boolean;
 }

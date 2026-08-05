@@ -138,7 +138,17 @@ export const DataPointInputModal: React.FC<DataPointInputModalProps> = ({
     }
 
     console.log('🔄 [DataPointInputModal] No verification required, generating ZKP');
-    // For non-verification data points, proceed with normal ZKP generation
+    // Name / age bundles: parent mints all derived ZKPs from form userData
+    if (dataPoint.id === 'name_attestation' || dataPoint.id === 'age_attestation') {
+      setLoading(true);
+      try {
+        onComplete([{ dataPointId: dataPoint.id, proof: 'derived-batch', signature: 'derived-batch' }], userData);
+        onClose();
+      } finally {
+        setLoading(false);
+      }
+      return;
+    }
     await generateZKPAndComplete();
   };
 
@@ -254,7 +264,52 @@ export const DataPointInputModal: React.FC<DataPointInputModalProps> = ({
       case 'firstName': return 'First Name';
       case 'middleName': return 'Middle Name';
       case 'lastName': return 'Last Name';
+      case 'prefix': return 'Prefix';
+      case 'suffix': return 'Suffix';
+      case 'nickname': return 'Nickname';
+      case 'documentType': return 'Document type';
+      case 'documentNumber': return 'Document number';
+      case 'fileId': return 'Document image';
+      case 'country': return 'Country';
+      case 'region': return 'Region / State';
+      case 'city': return 'City';
+      case 'postalCode': return 'Postal code';
       default: return field.charAt(0).toUpperCase() + field.slice(1);
+    }
+  };
+
+  const handleDocumentFile = async (file: File | null) => {
+    if (!file) return;
+    setLoading(true);
+    try {
+      const { uploadZkpDocEncrypted } = await import('../services/zkpDocsStorageService');
+      const authToken =
+        (await import('../services/ownerApiToken')).requireOwnerApiToken();
+      const credentials = (await import('@par-noir/identity-crypto')).SecureCredentialManager.getCredentials(
+        identityId || ''
+      );
+      if (!credentials || !identityId) {
+        throw new Error('Unlock required to store document images');
+      }
+      const { VolumeIdGenerator } = await import('@par-noir/identity-crypto');
+      const pnIdentifier = await VolumeIdGenerator.generateVolumeId({
+        pnName: credentials.pnName,
+        passcode: credentials.passcode,
+        publicKey: identityPublicKey || ''
+      });
+      const fileId = await uploadZkpDocEncrypted({
+        file,
+        pnIdentifier,
+        authToken,
+        pnName: credentials.pnName,
+        passcode: credentials.passcode
+      });
+      handleInputChange('fileId', fileId);
+    } catch (e) {
+      console.error(e);
+      alert(e instanceof Error ? e.message : 'Failed to upload document image');
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -305,6 +360,25 @@ export const DataPointInputModal: React.FC<DataPointInputModalProps> = ({
 
           {/* Form Fields */}
           <div className="space-y-4">
+            {(dataPoint as { documentImage?: boolean }).documentImage ? (
+              <div>
+                <label className="block text-sm font-medium text-text-primary mb-1">
+                  Image file {(dataPoint.requiredFields || []).includes('fileId') ? '*' : '(Optional)'}
+                </label>
+                <input
+                  type="file"
+                  accept="image/*"
+                  disabled={loading}
+                  onChange={(e) => void handleDocumentFile(e.target.files?.[0] || null)}
+                  className="w-full text-sm text-text-secondary"
+                />
+                {userData.fileId ? (
+                  <p className="text-xs text-green-400 mt-1">Encrypted image stored</p>
+                ) : null}
+                {errors.fileId && <p className="text-red-500 text-xs mt-1">{errors.fileId}</p>}
+              </div>
+            ) : (
+              <>
             {dataPoint.requiredFields?.map(field => (
               <div key={field}>
                 <label className="block text-sm font-medium text-text-primary mb-1">
@@ -341,6 +415,8 @@ export const DataPointInputModal: React.FC<DataPointInputModalProps> = ({
                 />
               </div>
             ))}
+              </>
+            )}
           </div>
 
           {/* Action Buttons */}

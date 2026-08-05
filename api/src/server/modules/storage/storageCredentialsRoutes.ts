@@ -418,6 +418,60 @@ export function setupStorageCredentialsRoutes(app: Application, deps: StorageCre
         });
       }
     });
+
+    /** Ensure private `_metadata/zkp-docs` folder exists; patch pnDriveIndex.zkpDocsFolderId */
+    app.post('/api/storage/:identityId/zkp-docs/ensure', async (req: Request, res: Response) => {
+      try {
+        const rawId = req.params.identityId;
+        if (!rawId) return res.status(400).json({ error: 'identityId required' });
+        const pnIdentifier = rawId.startsWith('pn-') ? rawId : `pn-${rawId}`;
+        if (!(await gateOwnerRoute(req, res, DEVICE_CAPABILITIES.driveUpload, pnIdentifier))) return;
+
+        const { extractCloudAccessToken } = await import('../cloudAccessToken');
+        const { storageCredentialsService } = await import('../storageCredentialsService');
+        const { readPnDriveIndex, patchPnDriveIndex } = await import('../pnDriveIndex');
+        const { findOrCreateFolderUnderParent } = await import('../pnDriveLayout');
+        const { googleDriveProxyService } = await import('../googleDriveProxy');
+
+        const record = await storageCredentialsService.getCredentials(pnIdentifier);
+        if (!record?.credentials) {
+          return res.status(409).json({ error: 'DRIVE_NOT_INITIALIZED', message: 'Connect Google Drive first' });
+        }
+        const index = readPnDriveIndex(record.credentials as Record<string, unknown>);
+        if (!index?.metadataFolderId) {
+          return res.status(409).json({ error: 'DRIVE_NOT_INITIALIZED', message: 'Drive layout incomplete' });
+        }
+        if (index.zkpDocsFolderId) {
+          return res.json({ folderId: index.zkpDocsFolderId });
+        }
+
+        const cloud = extractCloudAccessToken(req);
+        let accessToken = cloud;
+        if (!accessToken) {
+          accessToken = await googleDriveProxyService.getAccessToken(pnIdentifier, undefined, [pnIdentifier]);
+        }
+        if (!accessToken) {
+          return res.status(401).json({
+            error: 'cloud_token_required',
+            error_description: 'Reconnect Google Drive (device cloud custody requires a live cloud access token).'
+          });
+        }
+
+        const folderId = await findOrCreateFolderUnderParent(
+          accessToken,
+          'zkp-docs',
+          index.metadataFolderId
+        );
+        await patchPnDriveIndex(pnIdentifier, { zkpDocsFolderId: folderId });
+        return res.json({ folderId });
+      } catch (error: unknown) {
+        console.error('Error ensuring zkp-docs folder:', error);
+        return res.status(500).json({
+          error: 'Failed to ensure zkp-docs folder',
+          message: safeClientErrorMessage(error, NODE_ENV === 'production'),
+        });
+      }
+    });
 }
 
 /** POST /api/storage/migrate-volume-id — legacy passcode pn id → canonical publicKey id */

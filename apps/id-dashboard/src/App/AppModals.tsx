@@ -29,6 +29,7 @@ import { CustodianInvitationAcceptanceModal } from '../components/modals/Custodi
 import { RecoveryPasscodeModal } from '../components/recovery/RecoveryPasscodeModal';
 import { BiometricPasscodeModal } from '../components/security/BiometricPasscodeModal';
 import { ownerFetch } from '../services/ownerApiService';
+import { SecureCredentialManager } from '@par-noir/identity-crypto';
 
 const EnhancedPrivacyPanel = lazy(() => import('../components/EnhancedPrivacyPanel').then(module => ({ default: module.EnhancedPrivacyPanel })));
 const ToolSettingsModal = lazy(() => import('../components/ToolSettingsModal').then(module => ({ default: module.ToolSettingsModal })));
@@ -854,83 +855,149 @@ export function AppModals(props: AppModalsProps) {
         isOpen={showVerificationModal}
         onClose={() => setShowVerificationModal(false)}
         onVerificationComplete={async (verifiedData) => {
-          // Remove existing attested data points that will be replaced by verified data
-          const verifiedDataPointIds = Object.keys(verifiedData.dataPoints);
+          const verifiedDataPointIds = Object.keys(verifiedData.dataPoints || {});
           const updatedAttestedDataPoints = new Set(attestedDataPoints);
           const updatedVerifiedDataPoints = new Set(verifiedDataPoints);
-          
-          // Remove any existing attested data points that match verified data points
-          verifiedDataPointIds.forEach(dataPointId => {
+
+          verifiedDataPointIds.forEach((dataPointId) => {
             updatedAttestedDataPoints.delete(dataPointId);
-            // Add to verified data points
             updatedVerifiedDataPoints.add(dataPointId);
           });
-          
-          // Update both states
+
+          try {
+            const credentials = SecureCredentialManager.getCredentials(authenticatedUser?.id);
+            const authToken = apiToken;
+            if (credentials && authToken && authenticatedUser?.id) {
+              const identityKey = authenticatedUser.publicKey || authenticatedUser.id;
+              let encryptedIdentity = await getEncryptedIdentityForApiToken?.(identityKey);
+              if (
+                !encryptedIdentity &&
+                authenticatedUser.publicKey &&
+                authenticatedUser.publicKey !== authenticatedUser.id
+              ) {
+                encryptedIdentity = await getEncryptedIdentityForApiToken?.(authenticatedUser.id);
+              }
+              if (encryptedIdentity) {
+                const { mintDerivedNameZkps, mintDerivedAgeZkps } = await import(
+                  '../utils/mintDerivedZkps'
+                );
+                const { IdentityCrypto } = await import('@par-noir/identity-crypto');
+                const extracted = (verifiedData as { extracted?: Record<string, string> }).extracted || {};
+                const firstName =
+                  extracted.firstName ||
+                  (verifiedData.dataPoints?.first_name as { value?: { firstName?: string } })?.value
+                    ?.firstName ||
+                  '';
+                const lastName =
+                  extracted.lastName ||
+                  (verifiedData.dataPoints?.last_name as { value?: { lastName?: string } })?.value
+                    ?.lastName ||
+                  '';
+                const middleName = extracted.middleName || '';
+                const dateOfBirth =
+                  extracted.dateOfBirth ||
+                  (verifiedData.dataPoints?.age_attestation as { value?: { dateOfBirth?: string } })
+                    ?.value?.dateOfBirth ||
+                  '';
+
+                const fullIdentity = {
+                  publicKey:
+                    (encryptedIdentity as { publicKey?: string }).publicKey ||
+                    authenticatedUser.publicKey ||
+                    identityKey,
+                  encryptedData: encryptedIdentity.encryptedData,
+                  iv: encryptedIdentity.iv,
+                  salt: encryptedIdentity.salt,
+                  mlKemPublicKey: (encryptedIdentity as { mlKemPublicKey?: string }).mlKemPublicKey
+                };
+
+                const mintParams = {
+                  identityId: authenticatedUser.id,
+                  credentials,
+                  authToken,
+                  publicKey: authenticatedUser.publicKey,
+                  encryptedIdentity: fullIdentity,
+                  verificationLevel: 'verified' as const,
+                  encryptedUserData: undefined as string | undefined
+                };
+
+                if (firstName && lastName) {
+                  const nameFields = {
+                    firstName,
+                    lastName,
+                    middleName,
+                    prefix: extracted.prefix,
+                    suffix: extracted.suffix
+                  };
+                  const enc = await IdentityCrypto.encryptData(
+                    JSON.stringify(nameFields),
+                    credentials.pnName,
+                    credentials.passcode
+                  );
+                  mintParams.encryptedUserData = JSON.stringify(enc);
+                  const ids = await mintDerivedNameZkps(nameFields, mintParams);
+                  ids.forEach((id) => {
+                    updatedVerifiedDataPoints.add(id);
+                    updatedAttestedDataPoints.add(id);
+                  });
+                }
+                if (dateOfBirth) {
+                  const enc = await IdentityCrypto.encryptData(
+                    JSON.stringify({ dateOfBirth }),
+                    credentials.pnName,
+                    credentials.passcode
+                  );
+                  mintParams.encryptedUserData = JSON.stringify(enc);
+                  const ids = await mintDerivedAgeZkps(dateOfBirth, mintParams);
+                  ids.forEach((id) => {
+                    updatedVerifiedDataPoints.add(id);
+                    updatedAttestedDataPoints.add(id);
+                  });
+                }
+
+                // Document metadata rows (verified)
+                const { ZKPDataPointsService } = await import('../utils/zkpDataPointsService');
+                for (const [dataPointId, dataPoint] of Object.entries(verifiedData.dataPoints || {})) {
+                  if (
+                    dataPointId === 'document_type' ||
+                    dataPointId === 'document_number' ||
+                    dataPointId === 'document_verification'
+                  ) {
+                    const zkpDataPoint = {
+                      dataPointId,
+                      proofType: mapDataPointIdToProofType(dataPointId),
+                      zkpProof: (dataPoint as { zkpProof?: string }).zkpProof || '',
+                      signature: (dataPoint as { zkpProof?: string }).zkpProof || '',
+                      verifiedAt:
+                        (dataPoint as { verifiedAt?: string }).verifiedAt || verifiedData.verifiedAt,
+                      expiresAt: (dataPoint as { expiresAt?: string }).expiresAt,
+                      verificationLevel: 'verified' as const,
+                      metadata: {
+                        provider: verifiedData.provider || 'veriff',
+                        fraudPreventionScore: verifiedData.fraudPrevention?.riskScore
+                      }
+                    };
+                    if (zkpDataPoint.zkpProof) {
+                      await ZKPDataPointsService.saveDataPoint(
+                        authenticatedUser.id,
+                        credentials,
+                        authToken,
+                        zkpDataPoint,
+                        authenticatedUser.publicKey
+                      );
+                      updatedVerifiedDataPoints.add(dataPointId);
+                    }
+                  }
+                }
+              }
+            }
+          } catch (error) {
+            console.error('Error minting verified ZKPs after Veriff:', error);
+          }
+
           setAttestedDataPoints(updatedAttestedDataPoints);
           setVerifiedDataPoints(updatedVerifiedDataPoints);
           setShowVerificationModal(false);
-          
-          console.log('Verification completed:', verifiedData);
-          console.log('Updated attested data points:', Array.from(updatedAttestedDataPoints));
-          console.log('Updated verified data points:', Array.from(updatedVerifiedDataPoints));
-
-          // Sync ZKP data points to API server (Google Drive)
-          if (authenticatedUser?.id) {
-            try {
-              // Get pnIdentifier - check if it's already in pn- format, otherwise construct it
-              const pnIdentifier = authenticatedUser.id.startsWith('pn-') 
-                ? authenticatedUser.id 
-                : `pn-${authenticatedUser.id.replace(/^pn-/, '')}`;
-
-              // Get access token - the dashboard might need to use OAuth service
-              // For now, try to get from authenticatedUser, but this might need OAuth integration
-              const authToken = apiToken;
-              
-              if (!authToken) {
-                console.warn('No owner API token available to sync ZKP data points.');
-                return;
-              }
-
-              // Sync each ZKP data point to the API
-              for (const [dataPointId, dataPoint] of Object.entries(verifiedData.dataPoints)) {
-                try {
-                  // Convert dashboard format to API format
-                  const zkpDataPoint = {
-                    dataPointId: dataPoint.dataPointId || dataPointId,
-                    proofType: mapDataPointIdToProofType(dataPointId),
-                    zkpProof: dataPoint.zkpProof,
-                    signature: dataPoint.zkpProof, // Use proof as signature if no separate signature
-                    verifiedAt: dataPoint.verifiedAt || verifiedData.verifiedAt,
-                    expiresAt: dataPoint.expiresAt,
-                    verificationLevel: dataPoint.verificationLevel || verifiedData.verificationLevel,
-                    metadata: {
-                      provider: verifiedData.provider || 'veriff',
-                      fraudPreventionScore: verifiedData.fraudPrevention?.riskScore
-                    }
-                  };
-
-                  const response = await ownerFetch(
-                    authToken,
-                    'PUT',
-                    `/api/users/${pnIdentifier}/zkp-data-points/${dataPointId}`,
-                    zkpDataPoint,
-                    { pnIdentifier }
-                  );
-
-                  if (response.ok) {
-                    console.log(`✅ Synced ZKP data point ${dataPointId} to API`);
-                  } else {
-                    console.warn(`⚠️ Failed to sync ZKP data point ${dataPointId}:`, response.status);
-                  }
-                } catch (error) {
-                  console.error(`Error syncing ZKP data point ${dataPointId}:`, error);
-                }
-              }
-            } catch (error) {
-              console.error('Error syncing ZKP data points to API:', error);
-            }
-          }
         }}
         identityId={authenticatedUser?.id ?? selectedStoredIdentity?.id ?? 'default'}
         encryptedIdentity={

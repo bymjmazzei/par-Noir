@@ -340,6 +340,17 @@ export async function initializeGoogleDriveIndex(
   }
 
   console.log(`[pnDriveInit] Complete layout for ${normalized}`);
+
+  let zkpDocsFolderId: string | undefined;
+  try {
+    const { findOrCreateFolderUnderParent } = await import('./pnDriveLayout');
+    zkpDocsFolderId = await withGoogleRetry('zkpDocsFolder', () =>
+      findOrCreateFolderUnderParent(accessToken, 'zkp-docs', metadataFolderId)
+    );
+  } catch (e) {
+    console.warn('[pnDriveInit] zkp-docs folder deferred:', (e as Error)?.message);
+  }
+
   return {
     schemaVersion: PN_DRIVE_INDEX_SCHEMA_VERSION,
     pnFolderId,
@@ -347,6 +358,7 @@ export async function initializeGoogleDriveIndex(
     integratorsRootId,
     messagesFolderId,
     inboxSheetId,
+    ...(zkpDocsFolderId ? { zkpDocsFolderId } : {}),
     conversationSheets: {},
     sheetIds: {
       [PN_DRIVE_SHEET_KEYS.CONNECTIONS]: connections,

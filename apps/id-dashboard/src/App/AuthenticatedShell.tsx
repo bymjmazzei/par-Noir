@@ -1,6 +1,5 @@
 import React from 'react';
 import { CheckCircle, Smartphone, Edit3, Settings, ChevronDown, Users, Layers, Wallet, Lock } from 'lucide-react';
-import { STANDARD_DATA_POINTS } from '../types/standardDataPoints';
 import { DataPointRequestsPanel } from '../components/DataPointRequestsPanel';
 import { RecoveryTab } from '../components/recovery/RecoveryTab';
 import { ThemeAwareProfileImage } from '../components/ThemeAwareProfileImage';
@@ -10,6 +9,8 @@ import { SubPnTab } from '../components/subpn/SubPnTab';
 import { isIdentityVerificationAvailable } from '../config/verification';
 import { FileStorageAggregator } from '../components/storage/FileStorageAggregator';
 import { SectionInfo } from '../components/common/SectionInfo';
+import { PrivacyDataPointsPanel } from '../components/privacy/PrivacyDataPointsPanel';
+import { AdvancedPrivacySettingsBody } from '../components/privacy/AdvancedPrivacySettingsBody';
 
 export interface AuthenticatedShellProps {
   authenticatedUser: any;
@@ -27,6 +28,7 @@ export interface AuthenticatedShellProps {
   globalSettingsExpanded: any;
   thirdPartyExpanded: any;
   privacySettings: any;
+  setPrivacySettings: any;
   recoveryVaultPnId: any;
   canRotateIdentity: any;
   canCustodiansRead: any;
@@ -110,6 +112,7 @@ export function AuthenticatedShell(props: AuthenticatedShellProps) {
     globalSettingsExpanded,
     thirdPartyExpanded,
     privacySettings,
+    setPrivacySettings,
     recoveryVaultPnId,
     canRotateIdentity,
     canCustodiansRead,
@@ -415,7 +418,24 @@ export function AuthenticatedShell(props: AuthenticatedShellProps) {
                   {activeTab === 'privacy' && (
                     <div className="space-y-6">
                       <div>
-                        <h3 className="text-lg font-semibold text-text-primary mb-4">Privacy & Sharing Settings</h3>
+                        <div className="flex items-center justify-between gap-4 mb-4 flex-wrap">
+                          <h3 className="text-lg font-semibold text-text-primary">Privacy & Sharing Settings</h3>
+                          {canProfileRead && (
+                            isIdentityVerificationAvailable() ? (
+                              <button
+                                type="button"
+                                onClick={() => setShowVerificationModal(true)}
+                                className="px-4 py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 shrink-0"
+                              >
+                                Verify
+                              </button>
+                            ) : (
+                              <span className="text-xs text-text-secondary shrink-0">
+                                Identity Verify (Veriff) not enabled
+                              </span>
+                            )
+                          )}
+                        </div>
 
                         {!canProfileRead ? (
                           <div className="bg-secondary rounded-lg p-6 flex items-start gap-3">
@@ -433,54 +453,9 @@ export function AuthenticatedShell(props: AuthenticatedShellProps) {
                             }}
                           />
                         )}
-                        
-                        {/* Age Verification Section */}
-                        <div className="bg-secondary rounded-lg p-6 mb-6">
-                          <div className="flex items-center gap-2 mb-4">
-                            <h4 className="font-medium text-text-primary">Age Verification</h4>
-                            <SectionInfo title="Age Verification">
-                              <p>
-                                Verify your age to create ZKPs for age-restricted content access. Your age data point
-                                is used to generate proofs that you are over 18 or over 21 without revealing your
-                                actual date of birth.
-                              </p>
-                            </SectionInfo>
-                          </div>
-                          {(verifiedDataPoints.has('age_attestation') || attestedDataPoints.has('age_attestation')) ? (
-                            <div className="flex items-center gap-2 p-3 bg-green-900/20 border border-green-600 rounded-lg">
-                              <CheckCircle className="w-5 h-5 text-green-400" />
-                              <span className="text-text-primary">Age verified - You can share age ZKP with apps</span>
-                            </div>
-                          ) : isIdentityVerificationAvailable() ? (
-                            <button
-                              onClick={() => setShowVerificationModal(true)}
-                              className="px-4 py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700"
-                            >
-                              Verify Age (Create Age ZKP)
-                            </button>
-                          ) : (
-                            <p className="text-sm text-text-secondary p-3 bg-modal-bg border border-border rounded-lg">
-                              Identity verification (Veriff) is not enabled yet. Use manual age attestation via Add below, or check back when verification is live.
-                            </p>
-                          )}
-                        </div>
 
-                        <div className="flex flex-wrap gap-2 mb-6">
-                          <button
-                            type="button"
-                            onClick={() => setShowEnhancedPrivacyPanel(true)}
-                            className="px-3 py-2 text-sm border border-border rounded-lg hover:bg-hover text-text-primary"
-                          >
-                            Advanced privacy
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => setShowSessionManager(true)}
-                            className="px-3 py-2 text-sm border border-border rounded-lg hover:bg-hover text-text-primary"
-                          >
-                            Active sessions
-                          </button>
-                          {import.meta.env.DEV && (
+                        {import.meta.env.DEV && (
+                          <div className="flex flex-wrap gap-2 mb-4">
                             <button
                               type="button"
                               onClick={() => setShowIntegrationDebugger(true)}
@@ -488,62 +463,19 @@ export function AuthenticatedShell(props: AuthenticatedShellProps) {
                             >
                               Integration debugger
                             </button>
-                          )}
-                          <button
-                            type="button"
-                            onClick={() => setShowDataPointProposalModal(true)}
-                            className="px-3 py-2 text-sm border border-border rounded-lg hover:bg-hover text-text-primary"
-                          >
-                            Propose data point
-                          </button>
-                        </div>
+                          </div>
+                        )}
 
-                        {/* Global Settings Section - Simplified */}
-                        <div className="bg-secondary rounded-lg mb-6">
-                          <button
-                            onClick={() => setGlobalSettingsExpanded(!globalSettingsExpanded)}
-                            className="w-full p-6 flex items-center justify-between hover:bg-border transition-colors"
-                          >
-                            <h4 className="font-medium text-text-primary flex items-center gap-2">
-                              <Settings className="w-5 h-5" />
-                              Global Settings
-                            </h4>
-                            <ChevronDown className={`w-5 h-5 transition-transform ${globalSettingsExpanded ? 'rotate-180' : ''}`} />
-                          </button>
-                          
-                          {globalSettingsExpanded && (
-                            <div className="px-6 pb-6">
-                              <div className="space-y-3">
-                                {/* Age Attestation - Primary focus */}
-                                {STANDARD_DATA_POINTS['age_attestation'] && (
-                                  <div className="flex items-center justify-between p-3 bg-modal-bg border border-border rounded-lg">
-                                    <div className="flex-1">
-                                      <div className="flex items-center gap-2 mb-1">
-                                        <span className="font-medium text-text-primary">{STANDARD_DATA_POINTS['age_attestation'].name}</span>
-                                        {(verifiedDataPoints.has('age_attestation') || attestedDataPoints.has('age_attestation')) && (
-                                          <CheckCircle className="w-4 h-4 text-green-400" />
-                                        )}
-                                      </div>
-                                      <p className="text-xs text-text-secondary">{STANDARD_DATA_POINTS['age_attestation'].description}</p>
-                                    </div>
-                                    {!(verifiedDataPoints.has('age_attestation') || attestedDataPoints.has('age_attestation')) && (
-                                      <button
-                                        onClick={() => handleRequestDataPoint('age_attestation')}
-                                        className="px-3 py-1 text-sm bg-blue-600 text-white rounded hover:bg-blue-700"
-                                      >
-                                        Add
-                                      </button>
-                                    )}
-                                  </div>
-                                )}
-                              </div>
-                            </div>
-                          )}
-                        </div>
+                        <PrivacyDataPointsPanel
+                          attestedDataPoints={attestedDataPoints}
+                          verifiedDataPoints={verifiedDataPoints}
+                          onRequestDataPoint={handleRequestDataPoint}
+                        />
 
                         {/* Third-Party Permissions Section */}
-                        <div className="bg-secondary rounded-lg">
+                        <div className="bg-secondary rounded-lg mb-6">
                           <button
+                            type="button"
                             onClick={() => setThirdPartyExpanded(!thirdPartyExpanded)}
                             className="w-full p-6 flex items-center justify-between hover:bg-border transition-colors"
                           >
@@ -567,9 +499,9 @@ export function AuthenticatedShell(props: AuthenticatedShellProps) {
                               ) : (
                                 <div className="space-y-4">
                                   {Object.entries(privacySettings.toolPermissions).map(([toolId, tool]: [string, any]) => {
-                                    const hasAgeZKP = verifiedDataPoints.has('age_attestation') || attestedDataPoints.has('age_attestation');
-                                    const ageShared = tool.dataPoints?.includes('age_attestation') || false;
-                                    const ageAvailable = tool.optionalDataPoints?.includes('age_attestation') || false;
+                                    const hasAgeZKP = verifiedDataPoints.has('age_attestation') || attestedDataPoints.has('age_attestation') || verifiedDataPoints.has('over_18');
+                                    const ageShared = tool.dataPoints?.includes('age_attestation') || tool.dataPoints?.includes('over_18') || false;
+                                    const ageAvailable = tool.optionalDataPoints?.includes('age_attestation') || tool.optionalDataPoints?.includes('over_18') || false;
                                     
                                     return (
                                       <div key={toolId} className="border border-border rounded-lg p-4">
@@ -578,13 +510,12 @@ export function AuthenticatedShell(props: AuthenticatedShellProps) {
                                           <p className="text-xs text-text-secondary">{tool.toolDescription}</p>
                                         </div>
                                         
-                                        {/* Age ZKP Toggle - Only show if user has age ZKP AND tool supports it */}
                                         {hasAgeZKP && ageAvailable && (
                                           <div className="flex items-center justify-between pt-3 border-t border-border">
                                             <div className="flex-1">
                                               <p className="text-sm font-medium text-text-primary">Share Age ZKP</p>
                                               <p className="text-xs text-text-secondary">
-                                                Allow {tool.toolName} to verify your age (18+) for NSFW content access
+                                                Allow {tool.toolName} to verify your age for content access
                                               </p>
                                             </div>
                                             <button
@@ -631,6 +562,29 @@ export function AuthenticatedShell(props: AuthenticatedShellProps) {
                                   })}
                                 </div>
                               )}
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Advanced settings — bottom accordion */}
+                        <div className="bg-secondary rounded-lg">
+                          <button
+                            type="button"
+                            onClick={() => setGlobalSettingsExpanded(!globalSettingsExpanded)}
+                            className="w-full p-6 flex items-center justify-between hover:bg-border transition-colors"
+                          >
+                            <h4 className="font-medium text-text-primary flex items-center gap-2">
+                              <Settings className="w-5 h-5" />
+                              Advanced settings
+                            </h4>
+                            <ChevronDown className={`w-5 h-5 transition-transform ${globalSettingsExpanded ? 'rotate-180' : ''}`} />
+                          </button>
+                          {globalSettingsExpanded && (
+                            <div className="px-6 pb-6">
+                              <AdvancedPrivacySettingsBody
+                                settings={privacySettings}
+                                onSettingsChange={setPrivacySettings}
+                              />
                             </div>
                           )}
                         </div>

@@ -5,12 +5,14 @@
  */
 import type React from 'react';
 import { IdentityCrypto, SecureCredentialManager } from '@par-noir/identity-crypto';
+import type { EncryptedIdentity } from '@par-noir/identity-crypto';
 import { cloudSyncManager } from '../utils/cloudSync';
 import { ownerFetch } from '../services/ownerApiService';
 import { requireOwnerApiToken, resolveOwnerApiToken } from '../services/ownerApiToken';
-import { STANDARD_DATA_POINTS } from '../types/standardDataPoints';
+import { STANDARD_DATA_POINTS, VERIFF_CAPABLE_IDS } from '../types/StandardDataPointsRegistry';
 import type { GlobalPrivacySettings } from '../types/privacy';
 import type { DIDInfo, SyncedDevice } from '../types/app';
+import { mintDerivedAgeZkps, mintDerivedNameZkps } from '../utils/mintDerivedZkps';
 
 export interface UseToolPrivacyHandlersParams {
   authenticatedUser: any;
@@ -28,6 +30,10 @@ export interface UseToolPrivacyHandlersParams {
   setCurrentDataPointExistingData: React.Dispatch<React.SetStateAction<any>>;
   setShowDataPointInputModal: React.Dispatch<React.SetStateAction<boolean>>;
   setAttestedDataPoints: React.Dispatch<React.SetStateAction<Set<string>>>;
+  verifiedDataPoints: Set<string>;
+  getEncryptedIdentityForApiToken: (
+    identityPublicKeyOrId: string
+  ) => Promise<{ encryptedData: string; iv: string; salt: string; publicKey?: string } | null>;
 
   apiToken: string | null;
   ensureOwnerApiTokenForActiveUser: () => Promise<string | null>;
@@ -53,6 +59,8 @@ export function useToolPrivacyHandlers(params: UseToolPrivacyHandlersParams) {
     setCurrentDataPointExistingData,
     setShowDataPointInputModal,
     setAttestedDataPoints,
+    verifiedDataPoints,
+    getEncryptedIdentityForApiToken,
     apiToken,
     ensureOwnerApiTokenForActiveUser,
     setError,
@@ -236,11 +244,33 @@ export function useToolPrivacyHandlers(params: UseToolPrivacyHandlersParams) {
         return;
       }
 
-      // Check if user has already attested this data point - from API server (Google Drive)
+      const veriffLocked =
+        (dataPoint.veriffCapable || VERIFF_CAPABLE_IDS.includes(dataPointId)) &&
+        (verifiedDataPoints.has(dataPointId) ||
+          (dataPointId === 'name_attestation' &&
+            (verifiedDataPoints.has('full_name') || verifiedDataPoints.has('first_name'))) ||
+          (dataPointId === 'age_attestation' &&
+            (verifiedDataPoints.has('age_attestation') || verifiedDataPoints.has('over_18'))));
+      if (veriffLocked) {
+        setError(
+          'This identity proof is Veriff-verified and locked. Changing it requires identity rekey / rotation.'
+        );
+        setTimeout(() => setError(null), 9000);
+        return;
+      }
+
+      // Load source row for Edit: name/age bundles use attestation id
+      const loadId =
+        dataPointId === 'name_attestation'
+          ? 'name_attestation'
+          : dataPointId === 'age_attestation'
+            ? 'age_attestation'
+            : dataPointId;
+
       let existingData = null;
-      
-        const credentials = SecureCredentialManager.getCredentials(authenticatedUser.id);
-        if (!credentials) {
+
+      const credentials = SecureCredentialManager.getCredentials(authenticatedUser.id);
+      if (!credentials) {
         console.warn('[App] Credentials not available for checking existing data point');
       } else {
         let authToken: string | null = resolveOwnerApiToken();
@@ -249,48 +279,43 @@ export function useToolPrivacyHandlers(params: UseToolPrivacyHandlersParams) {
         }
         if (authToken) {
           try {
-            // Check API server (Google Drive) for existing data point - NO localStorage
             const { ZKPDataPointsService } = await import('../utils/zkpDataPointsService');
             const existingDataPoint = await ZKPDataPointsService.getDataPoint(
               authenticatedUser.id,
               credentials,
               authToken,
-              dataPointId,
+              loadId,
               authenticatedUser.publicKey
             );
-            
+
             if (existingDataPoint) {
-              console.log('[App] Found existing data point in API:', existingDataPoint.dataPointId);
-              
-              // Decrypt userData if available for editing
+              if (existingDataPoint.verificationLevel === 'verified') {
+                setError(
+                  'This identity proof is Veriff-verified and locked. Changing it requires identity rekey / rotation.'
+                );
+                setTimeout(() => setError(null), 9000);
+                return;
+              }
               if (existingDataPoint.encryptedUserData) {
                 try {
-                  // SECURITY: Decryption requires BOTH pnName and passcode
-                  // encryptedUserData is stored as JSON string of EncryptedData object
-                  // Handle both string and object cases (API might return object directly)
                   let encryptedDataObj;
                   if (typeof existingDataPoint.encryptedUserData === 'string') {
-                    try {
-                      encryptedDataObj = JSON.parse(existingDataPoint.encryptedUserData);
-                    } catch (parseError) {
-                      // If parsing fails, it might be "[object Object]" string or invalid format
-                      console.warn('[App] Failed to parse encryptedUserData string:', parseError);
-                      throw new Error('Invalid encryptedUserData format');
-                    }
-                  } else if (typeof existingDataPoint.encryptedUserData === 'object' && existingDataPoint.encryptedUserData !== null) {
-                    // Already an object (from API JSON response)
+                    encryptedDataObj = JSON.parse(existingDataPoint.encryptedUserData);
+                  } else if (
+                    typeof existingDataPoint.encryptedUserData === 'object' &&
+                    existingDataPoint.encryptedUserData !== null
+                  ) {
                     encryptedDataObj = existingDataPoint.encryptedUserData;
                   } else {
-                    throw new Error('encryptedUserData is neither string nor object');
+                    throw new Error('Invalid encryptedUserData format');
                   }
-                  
+
                   const decryptedUserDataJson = await IdentityCrypto.decryptData(
                     encryptedDataObj,
                     credentials.pnName,
                     credentials.passcode
                   );
                   existingData = JSON.parse(decryptedUserDataJson);
-                  console.log('[App] Decrypted existing userData for editing:', existingData);
                 } catch (error) {
                   console.warn('[App] Failed to decrypt userData, will show empty form:', error);
                   existingData = null;
@@ -299,128 +324,138 @@ export function useToolPrivacyHandlers(params: UseToolPrivacyHandlersParams) {
             }
           } catch (error) {
             console.warn('[App] Error checking for existing data point:', error);
-            // Continue without existing data
           }
         }
       }
-      
+
       setCurrentDataPoint(dataPoint);
       setCurrentDataPointExistingData(existingData);
-      console.log('🔄 [App] Opening DataPointInputModal', {
-        dataPointId,
-        dataPointName: dataPoint.name,
-        hasExistingData: !!existingData
-      });
       setShowDataPointInputModal(true);
     } catch (error) {
       console.error('❌ [App] Error loading existing data, using fallback:', error);
-      // Fallback to new data collection
       const dataPoint = STANDARD_DATA_POINTS[dataPointId];
       setCurrentDataPoint(dataPoint);
       setCurrentDataPointExistingData(null);
-      console.log('🔄 [App] Opening DataPointInputModal (fallback)', {
-        dataPointId,
-        dataPointName: dataPoint.name
-      });
       setShowDataPointInputModal(true);
     }
   };
 
-    const handleDataPointInputComplete = async (proofs: any[], userData: any) => {
-    console.log('🔄 [DataPointInput] handleDataPointInputComplete called', { 
-      proofsCount: proofs.length, 
-      dataPointId: currentDataPoint?.id,
-      hasUserData: !!userData 
-    });
-      
+  const handleDataPointInputComplete = async (proofs: any[], userData: any) => {
     try {
       const dataPointId = currentDataPoint?.id;
-      if (!dataPointId || proofs.length === 0) {
-        throw new Error('Invalid data point or proof');
+      if (!dataPointId) {
+        throw new Error('Invalid data point');
       }
 
-      const proof = proofs[0];
-        const credentials = SecureCredentialManager.getCredentials(authenticatedUser.id);
-        if (!credentials) {
+      const credentials = SecureCredentialManager.getCredentials(authenticatedUser.id);
+      if (!credentials) {
         throw new Error('Credentials not available');
-        }
-        
+      }
+
       const authToken = await resolveOwnerAuthToken();
-        
-      // Convert to API format
-      const { ZKPDataPointsService } = await import('../utils/zkpDataPointsService');
-        
-      // Encrypt userData for storage (so it can be retrieved for editing)
-      let encryptedUserData: string | undefined;
+      const identityKey = authenticatedUser.publicKey || authenticatedUser.id;
+      let encryptedIdentity = await getEncryptedIdentityForApiToken(identityKey);
+      if (
+        !encryptedIdentity &&
+        authenticatedUser.publicKey &&
+        authenticatedUser.publicKey !== authenticatedUser.id
+      ) {
+        encryptedIdentity = await getEncryptedIdentityForApiToken(authenticatedUser.id);
+      }
+      if (!encryptedIdentity) {
+        throw new Error('Encrypted identity required to mint ZKPs — unlock again');
+      }
+      const fullIdentity: EncryptedIdentity = {
+        publicKey:
+          (encryptedIdentity as EncryptedIdentity).publicKey ||
+          authenticatedUser.publicKey ||
+          identityKey,
+        encryptedData: encryptedIdentity.encryptedData,
+        iv: encryptedIdentity.iv,
+        salt: encryptedIdentity.salt,
+        mlKemPublicKey: (encryptedIdentity as EncryptedIdentity).mlKemPublicKey
+      };
+
+      const mintParams = {
+        identityId: authenticatedUser.id,
+        credentials,
+        authToken,
+        publicKey: authenticatedUser.publicKey,
+        encryptedIdentity: fullIdentity,
+        verificationLevel: 'basic' as const,
+        encryptedUserData: undefined as string | undefined
+      };
+
       if (userData && Object.keys(userData).length > 0) {
         try {
-          const userDataJson = JSON.stringify(userData);
-          // SECURITY: Encryption requires BOTH pnName and passcode
           const encryptedDataObj = await IdentityCrypto.encryptData(
-            userDataJson,
+            JSON.stringify(userData),
             credentials.pnName,
             credentials.passcode
           );
-          // Serialize EncryptedData object to string for storage
-          encryptedUserData = JSON.stringify(encryptedDataObj);
+          mintParams.encryptedUserData = JSON.stringify(encryptedDataObj);
         } catch (error) {
           console.warn('Failed to encrypt userData, continuing without it:', error);
         }
       }
-      
-            const zkpDataPoint = {
-              dataPointId: dataPointId,
-              proofType: mapDataPointIdToProofType(dataPointId),
-              zkpProof: proof.proof,
-        signature: proof.signature || proof.proof,
-              verifiedAt: proof.timestamp || new Date().toISOString(),
-        expiresAt: proof.expiresAt || new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString(),
-              verificationLevel: proof.verificationLevel || 'basic',
-              metadata: {
-                provider: 'user_attested',
-                fraudPreventionScore: undefined
-        },
-        encryptedUserData: encryptedUserData
-      };
 
-      // Save directly to API server (Google Drive) - NO localStorage
-      console.log('🔄 [ZKP Save] Saving directly to API server (Google Drive)...');
-      await ZKPDataPointsService.saveDataPoint(
-        authenticatedUser.id,
-        credentials,
-        authToken,
-        zkpDataPoint,
-        authenticatedUser.publicKey
-      );
+      const { ZKPDataPointsService } = await import('../utils/zkpDataPointsService');
 
-      // Wait for Google Drive to sync
-      await new Promise(resolve => setTimeout(resolve, 500));
-
-      // Verify by reading back from API
-      console.log('🔄 [ZKP Verify] Verifying save...');
-      const verified = await ZKPDataPointsService.hasDataPoint(
-        authenticatedUser.id,
-        credentials,
-        authToken,
-        dataPointId,
-        authenticatedUser.publicKey
-      );
-              
-      if (!verified) {
-        throw new Error('Verification failed - data point not found after save');
+      if (dataPointId === 'name_attestation') {
+        if (!userData?.firstName || !userData?.lastName) {
+          throw new Error('First and last name are required');
+        }
+        await mintDerivedNameZkps(
+          {
+            prefix: userData.prefix,
+            firstName: userData.firstName,
+            middleName: userData.middleName,
+            lastName: userData.lastName,
+            suffix: userData.suffix,
+            nickname: userData.nickname
+          },
+          mintParams
+        );
+      } else if (dataPointId === 'age_attestation') {
+        if (!userData?.dateOfBirth) {
+          throw new Error('Date of birth is required');
+        }
+        await mintDerivedAgeZkps(userData.dateOfBirth, mintParams);
+      } else {
+        if (!proofs.length) {
+          throw new Error('Invalid data point or proof');
+        }
+        const proof = proofs[0];
+        await ZKPDataPointsService.saveDataPoint(
+          authenticatedUser.id,
+          credentials,
+          authToken,
+          {
+            dataPointId,
+            proofType: mapDataPointIdToProofType(dataPointId),
+            zkpProof: proof.proof,
+            signature: proof.signature || proof.proof,
+            verifiedAt: proof.timestamp || new Date().toISOString(),
+            expiresAt:
+              proof.expiresAt || new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString(),
+            verificationLevel: proof.verificationLevel || 'basic',
+            metadata: { provider: 'user_attested' },
+            encryptedUserData: mintParams.encryptedUserData
+          },
+          authenticatedUser.publicKey
+        );
       }
 
-      // Reload all data points from API
+      await new Promise((resolve) => setTimeout(resolve, 500));
+
       const allDataPointIds = await ZKPDataPointsService.getAllDataPoints(
         authenticatedUser.id,
         credentials,
         authToken,
         authenticatedUser.publicKey
       );
-      
-      console.log('✅ [ZKP] Successfully saved and verified. All data points:', allDataPointIds);
+
       setAttestedDataPoints(new Set(allDataPointIds));
-      
       setSuccessWithTimeout(`Successfully attested ${currentDataPoint?.name}!`);
       setTimeout(() => setSuccessWithTimeout(null), 5000);
       setShowDataPointInputModal(false);

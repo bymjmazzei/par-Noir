@@ -114,6 +114,12 @@ export class ZKPGenerator {
           disclosure: 'identity_document_attested',
           document_type: typeof userData.documentType === 'string' ? userData.documentType : '',
         };
+      case 'threshold_age':
+        return {
+          ...base,
+          over_18: userData.over18 === true,
+          over_21: userData.over21 === true,
+        };
       case 'preference_disclosure':
         return { ...base, category_keys: Object.keys(userData).sort() };
       case 'compliance_attestation':
@@ -128,7 +134,8 @@ export class ZKPGenerator {
   private static validateUserData(dataPoint: StandardDataPoint, userData: any): void {
     if (dataPoint.requiredFields) {
       for (const field of dataPoint.requiredFields) {
-        if (!userData[field]) {
+        const v = userData?.[field];
+        if (v === undefined || v === null || v === '') {
           throw new Error(`Missing required field: ${field}`);
         }
       }

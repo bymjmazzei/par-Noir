@@ -580,6 +580,29 @@ export function setupUserRoutes(app: express.Application, deps: UserRouteDeps) {
           });
         }
 
+        // Verified ZKPs are immutable without identity rekey / zkp_reissue
+        const allowReissue = req.headers['x-pn-zkp-reissue'] === '1';
+        if (!allowReissue) {
+          try {
+            const existing = await ZKPDataPointsService.getDataPointProof(
+              bundle.token?.access_token || '',
+              bundle.spreadsheetId || '',
+              dataPointId,
+              bundle.pnIdentifier,
+              bundle.accountId
+            );
+            if (existing?.verificationLevel === 'verified') {
+              return res.status(403).json({
+                error: 'verified_immutable',
+                error_description:
+                  'Veriff-verified data points cannot be changed without identity rekey / rotation.',
+              });
+            }
+          } catch {
+            /* no existing row */
+          }
+        }
+
         await ZKPDataPointsService.storeDataPoint(
           bundle.token?.access_token || '',
           bundle.spreadsheetId || '',
