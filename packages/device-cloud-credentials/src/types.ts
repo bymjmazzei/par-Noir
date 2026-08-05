@@ -43,6 +43,15 @@ export interface FlushContext {
   credentials: StorageCredentialsEnvelope;
   /** Required: apply a job into user cloud; return true only if materialized (safe to ack) */
   applyJob: (job: MailboxJob, credentials: StorageCredentialsEnvelope) => Promise<boolean>;
+  /**
+   * Extra auth headers (e.g. device proof). Merged after Bearer.
+   * Factory receives method + path + optional JSON body for proof signing.
+   */
+  buildAuthHeaders?: (
+    method: string,
+    path: string,
+    body?: unknown
+  ) => Promise<Record<string, string>> | Record<string, string>;
 }
 
 export const WEB_GRACE_TTL_MS = 15 * 60 * 1000;

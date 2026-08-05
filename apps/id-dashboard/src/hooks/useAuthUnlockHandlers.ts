@@ -342,8 +342,10 @@ export function useAuthUnlockHandlers(params: UseAuthUnlockHandlersParams) {
         const { stopDeviceCloudWorkers, wipeDeviceCloudCredentials } = await import(
           '../services/deviceCloudCredentials'
         );
+        const { clearCloudSessionBootstrap } = await import('../services/storage/cloudSessionBootstrap');
         const { clearCloudCredentialsOnLock } = await import('@par-noir/device-cloud-credentials');
         stopDeviceCloudWorkers();
+        clearCloudSessionBootstrap();
         const authUser = authenticatedUser;
         const identityId = recoveryVaultPnId || null;
         if (identityId) {

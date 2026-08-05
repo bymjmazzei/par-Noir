@@ -29,7 +29,7 @@ export interface CloudReconnectHostProps {
   /** True when this pN already has at least one keyed device registered */
   hasKeyedDevices?: boolean;
   onPaired?: () => void | Promise<void>;
-  onCloudReady?: () => void;
+  onCloudReady?: (result?: { status: string; error?: string }) => void;
 }
 
 /**
@@ -48,6 +48,8 @@ export const CloudReconnectHost: React.FC<CloudReconnectHostProps> = ({
   const [pairOpen, setPairOpen] = useState(false);
   const [oauthBusy, setOauthBusy] = useState(false);
   const [oauthError, setOauthError] = useState<string | null>(null);
+  const onCloudReadyRef = React.useRef(onCloudReady);
+  onCloudReadyRef.current = onCloudReady;
 
   React.useEffect(() => {
     let cancelled = false;
@@ -78,10 +80,10 @@ export const CloudReconnectHost: React.FC<CloudReconnectHostProps> = ({
     });
   }, [pnIdentifier, sessionId]);
 
-  // Unlock-time: always promote sealed/local Drive secrets into session memory
-  // (OAuth-style), independent of Storage tab and whether the reconnect prompt shows.
+  // Unlock-time: warm sealed secrets into session, then full cloud session bootstrap
+  // (backends + layout + owner-index) so Storage is not required for Drive capability.
   React.useEffect(() => {
-    if (!pnIdentifier || !sessionId) return;
+    if (!pnIdentifier || !sessionId || !apiToken) return;
     let cancelled = false;
     void (async () => {
       try {
@@ -90,11 +92,30 @@ export const CloudReconnectHost: React.FC<CloudReconnectHostProps> = ({
         /* best-effort warm */
       }
       if (cancelled) return;
+      try {
+        const { bootstrapCloudSession } = await import('../../services/storage/cloudSessionBootstrap');
+        const result = await bootstrapCloudSession({
+          apiToken,
+          pnIdentifier,
+          sessionId
+        });
+        if (cancelled) return;
+        if (result.status === 'ready') {
+          try {
+            window.dispatchEvent(new CustomEvent(PN_CLOUD_CREDENTIALS_READY_EVENT));
+          } catch {
+            /* non-DOM */
+          }
+        }
+        onCloudReadyRef.current?.(result);
+      } catch {
+        /* best-effort */
+      }
     })();
     return () => {
       cancelled = true;
     };
-  }, [pnIdentifier, sessionId, loadLocalEnvelope]);
+  }, [pnIdentifier, sessionId, apiToken, loadLocalEnvelope]);
 
   const gate = useCloudReconnectGate({
     enabled: !!(apiToken && pnIdentifier),
@@ -183,9 +204,22 @@ export const CloudReconnectHost: React.FC<CloudReconnectHostProps> = ({
       } catch {
         /* non-DOM */
       }
-      onCloudReady?.();
+      try {
+        const { bootstrapCloudSession, clearCloudSessionBootstrap } = await import(
+          '../../services/storage/cloudSessionBootstrap'
+        );
+        clearCloudSessionBootstrap(pnIdentifier);
+        const result = await bootstrapCloudSession({
+          apiToken: apiToken || '',
+          pnIdentifier,
+          sessionId
+        });
+        onCloudReadyRef.current?.(result);
+      } catch {
+        onCloudReadyRef.current?.({ status: 'ready' });
+      }
     },
-    [pnIdentifier, sessionId, effectivePersistMode, isKeyedSession, markReady, onCloudReady, apiToken]
+    [pnIdentifier, sessionId, effectivePersistMode, isKeyedSession, markReady, apiToken]
   );
 
   const handleReconnect = useCallback(() => {

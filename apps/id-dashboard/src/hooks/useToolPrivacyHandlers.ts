@@ -37,6 +37,8 @@ export interface UseToolPrivacyHandlersParams {
 
   apiToken: string | null;
   ensureOwnerApiTokenForActiveUser: () => Promise<string | null>;
+  /** Stable pN volume id for cloud session bootstrap */
+  pnIdentifier?: string | null;
 
   setError: React.Dispatch<React.SetStateAction<string | null>>;
   setSuccessWithTimeout: (message: string | null) => void;
@@ -63,6 +65,7 @@ export function useToolPrivacyHandlers(params: UseToolPrivacyHandlersParams) {
     getEncryptedIdentityForApiToken,
     apiToken,
     ensureOwnerApiTokenForActiveUser,
+    pnIdentifier,
     setError,
     setSuccessWithTimeout,
     logDebug,
@@ -74,6 +77,35 @@ export function useToolPrivacyHandlers(params: UseToolPrivacyHandlersParams) {
     const ensured = await ensureOwnerApiTokenForActiveUser();
     if (ensured) return ensured;
     return requireOwnerApiToken();
+  };
+
+  const ensureDriveCloudSession = async (): Promise<void> => {
+    const token = await resolveOwnerAuthToken();
+    const sessionId = authenticatedUser?.id;
+    if (!token || !sessionId) return;
+    let pn = pnIdentifier || null;
+    if (!pn) {
+      try {
+        const credentials = SecureCredentialManager.getCredentials(sessionId);
+        if (credentials?.pnName && credentials?.passcode) {
+          const { derivePnIdentifierForToken } = await import('../services/parNoirOAuthInline');
+          pn = await derivePnIdentifierForToken(
+            credentials.pnName,
+            credentials.passcode,
+            authenticatedUser.publicKey || sessionId
+          );
+        }
+      } catch {
+        return;
+      }
+    }
+    if (!pn) return;
+    const { ensureCloudSessionBootstrap } = await import('../contexts/CloudSessionContext');
+    await ensureCloudSessionBootstrap({
+      apiToken: token,
+      pnIdentifier: pn,
+      sessionId
+    });
   };
 
   // Tool Settings Handlers
@@ -238,6 +270,7 @@ export function useToolPrivacyHandlers(params: UseToolPrivacyHandlersParams) {
 
   const handleRequestDataPoint = async (dataPointId: string) => {
     try {
+      await ensureDriveCloudSession();
       const dataPoint = STANDARD_DATA_POINTS[dataPointId];
       if (!dataPoint) {
         setError('Unknown data point');
@@ -342,6 +375,7 @@ export function useToolPrivacyHandlers(params: UseToolPrivacyHandlersParams) {
 
   const handleDataPointInputComplete = async (proofs: any[], userData: any) => {
     try {
+      await ensureDriveCloudSession();
       const dataPointId = currentDataPoint?.id;
       if (!dataPointId) {
         throw new Error('Invalid data point');

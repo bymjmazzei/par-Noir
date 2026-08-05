@@ -34,6 +34,7 @@ import { ImportDidModal } from './App/ImportDidModal';
 import { AppChrome } from './App/AppChrome';
 import { CloudReconnectHost } from './components/storage/CloudReconnectHost';
 import { UnkeyedUnlockAlertEmitter } from './components/UnkeyedUnlockAlertEmitter';
+import { CloudSessionProvider } from './contexts/CloudSessionContext';
 
 // Custom hooks for state management
 import { useAppState } from './hooks/useAppState';
@@ -335,7 +336,8 @@ function App() {
                 sessionId: authenticatedUser.id,
                 pnName: credentials.pnName,
                 passcode: credentials.passcode
-              }
+              },
+              canFlushMailbox: deviceAuth.isKeyedSession
             });
           } catch {
             /* device cloud migrate best-effort */
@@ -349,7 +351,7 @@ function App() {
     return () => {
       cancelled = true;
     };
-  }, [authenticatedUser, apiToken, ensureApiTokenAfterUnlock, getEncryptedIdentityForApiToken]);
+  }, [authenticatedUser, apiToken, ensureApiTokenAfterUnlock, getEncryptedIdentityForApiToken, deviceAuth.isKeyedSession]);
 
   // Destructure privacy state from custom hook
   const {
@@ -1055,6 +1057,7 @@ function App() {
     getEncryptedIdentityForApiToken,
     apiToken,
     ensureOwnerApiTokenForActiveUser,
+    pnIdentifier: recoveryVaultPnId,
     setError,
     setSuccessWithTimeout,
     logDebug,
@@ -1203,6 +1206,11 @@ function App() {
       isKeyedSession={deviceAuth.isKeyedSession}
       onOpenRecoveryForPairing={() => setActiveTab('recovery')}
     >
+      <CloudSessionProvider
+        apiToken={apiToken}
+        pnIdentifier={recoveryVaultPnId}
+        sessionId={authenticatedUser?.id ?? null}
+      >
         <UnlockGate
           authenticatedUser={authenticatedUser}
           showTransferReceiver={showTransferReceiver}
@@ -1351,7 +1359,7 @@ function App() {
           hasKeyedDevices={deviceAuth.hasKeyedDevices}
           onPaired={() => deviceAuth.refresh()}
           onCloudReady={() => {
-            /* Storage tab hydrates on next focus / MultiCloud refresh */
+            /* bootstrap updates module + PN_CLOUD_CREDENTIALS_READY_EVENT; context syncs */
           }}
         />
         <UnkeyedUnlockAlertEmitter
@@ -1540,6 +1548,7 @@ function App() {
           setVerifiedDataPoints={setVerifiedDataPoints}
           mapDataPointIdToProofType={toolPrivacyHandlers.mapDataPointIdToProofType}
         />
+      </CloudSessionProvider>
     </AppChrome>
   );
 }

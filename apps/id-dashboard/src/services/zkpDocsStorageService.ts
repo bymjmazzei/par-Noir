@@ -33,7 +33,16 @@ export async function uploadZkpDocEncrypted(opts: {
   authToken: string;
   pnName: string;
   passcode: string;
+  sessionId?: string;
 }): Promise<string> {
+  if (opts.sessionId) {
+    const { ensureCloudSessionBootstrap } = await import('../contexts/CloudSessionContext');
+    await ensureCloudSessionBootstrap({
+      apiToken: opts.authToken,
+      pnIdentifier: opts.pnIdentifier,
+      sessionId: opts.sessionId
+    });
+  }
   const folderId = await ensureZkpDocsFolderId(opts.pnIdentifier, opts.authToken);
   const buf = await opts.file.arrayBuffer();
   const bytes = new Uint8Array(buf);

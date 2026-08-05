@@ -302,7 +302,8 @@ export const DataPointInputModal: React.FC<DataPointInputModalProps> = ({
         pnIdentifier,
         authToken,
         pnName: credentials.pnName,
-        passcode: credentials.passcode
+        passcode: credentials.passcode,
+        sessionId: identityId || undefined
       });
       handleInputChange('fileId', fileId);
     } catch (e) {

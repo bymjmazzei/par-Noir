@@ -350,12 +350,22 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
 
   React.useEffect(() => {
     const onReady = () => {
-      void hydrateStorageCredentialsFromAPI(true);
-      void registerPortableCloudBackends();
+      // Unlock bootstrap already registered backends; force hydrate only if Storage UI
+      // still has an empty credential cache (idempotent path).
+      void (async () => {
+        const { isCloudSessionReady } = await import('../../services/storage/cloudSessionBootstrap');
+        const pn = pnIdentifierRef.current;
+        if (pn && isCloudSessionReady(pn) && driveCredentialCacheRef.current.size > 0) {
+          void registerPortableCloudBackends();
+          return;
+        }
+        void hydrateStorageCredentialsFromAPI(true);
+        void registerPortableCloudBackends();
+      })();
     };
     window.addEventListener(PN_CLOUD_CREDENTIALS_READY_EVENT, onReady);
     return () => window.removeEventListener(PN_CLOUD_CREDENTIALS_READY_EVENT, onReady);
-  }, [hydrateStorageCredentialsFromAPI, registerPortableCloudBackends]);
+  }, [hydrateStorageCredentialsFromAPI, registerPortableCloudBackends, driveCredentialCacheRef]);
 
   function getDriveAccountByBackendId(backendId: string | null | undefined) {
       if (!backendId) {

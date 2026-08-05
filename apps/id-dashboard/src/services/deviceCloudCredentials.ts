@@ -134,6 +134,8 @@ export async function migrateAndFlushOnUnlock(opts: {
   identityId: string;
   authToken: string;
   session: SealSession;
+  /** When false, skip mailbox pending/ack (no messagesRead / unkeyed) — no 401 spam. */
+  canFlushMailbox?: boolean;
 }): Promise<void> {
   // Mint/persist opaque mailbox route key for cross-cloud throughway claims.
   await ensureMailboxRouteKey(opts.identityId, opts.session).catch(() => undefined);
@@ -152,6 +154,12 @@ export async function migrateAndFlushOnUnlock(opts: {
   }).catch(() => undefined);
 
   await promoteAndReconcileOutbox(opts);
+
+  if (opts.canFlushMailbox === false) {
+    stopDeviceCloudWorkers();
+    return;
+  }
+
   await runMailboxFlush(opts);
   startPeriodicFlush(opts);
 }
@@ -279,15 +287,26 @@ export async function runMailboxFlush(opts: {
   const credentials = await loadUnsealedCloudCredentials(opts.identityId, opts.session);
   if (!credentials) return;
   const routeKey = await ensureMailboxRouteKey(opts.identityId, opts.session).catch(() => undefined);
+  const { deviceProofHeaders } = await import('./deviceProofContext');
   const worker = new CloudFlushWorker();
-  await worker.flush({
-    identityId: opts.identityId,
-    authToken: opts.authToken,
-    apiBaseUrl: API_ENDPOINT,
-    routeKey,
-    credentials,
-    applyJob: async (job, creds) => materializeMailboxJob(opts.identityId, job, creds)
-  });
+  try {
+    await worker.flush({
+      identityId: opts.identityId,
+      authToken: opts.authToken,
+      apiBaseUrl: API_ENDPOINT,
+      routeKey,
+      credentials,
+      applyJob: async (job, creds) => materializeMailboxJob(opts.identityId, job, creds),
+      buildAuthHeaders: async (method, path, body) => deviceProofHeaders(method, path, body)
+    });
+  } catch (e) {
+    const status = (e as Error & { status?: number })?.status;
+    if (status === 401 || status === 403) {
+      stopDeviceCloudWorkers();
+      return;
+    }
+    throw e;
+  }
 }
 
 function startPeriodicFlush(opts: {
@@ -299,7 +318,12 @@ function startPeriodicFlush(opts: {
   flushInterval = setInterval(() => {
     void promoteAndReconcileOutbox(opts)
       .then(() => runMailboxFlush(opts))
-      .catch(() => undefined);
+      .catch((e) => {
+        const status = (e as Error & { status?: number })?.status;
+        if (status === 401 || status === 403) {
+          stopDeviceCloudWorkers();
+        }
+      });
   }, 60_000);
 }
 

@@ -30,6 +30,21 @@ export class CloudFlushWorker {
     // Always also claim via server legacy(pn) so pre-exchange drops are not stranded.
     claimSpecs.push({});
 
+    const mergeHeaders = async (
+      method: string,
+      pathWithQuery: string,
+      body?: unknown
+    ): Promise<Record<string, string>> => {
+      const extra = ctx.buildAuthHeaders
+        ? await ctx.buildAuthHeaders(method, pathWithQuery, body)
+        : {};
+      return {
+        Authorization: `Bearer ${ctx.authToken}`,
+        Accept: 'application/json',
+        ...extra
+      };
+    };
+
     const seen = new Set<string>();
     const jobs: MailboxJob[] = [];
     for (const spec of claimSpecs) {
@@ -38,14 +53,14 @@ export class CloudFlushWorker {
         limit: '100'
       });
       if (spec.routeKey) q.set('routeKey', spec.routeKey);
-      const pendingRes = await fetch(`${base}/api/mailbox/pending?${q}`, {
-        headers: {
-          Authorization: `Bearer ${ctx.authToken}`,
-          Accept: 'application/json'
-        }
+      const path = `/api/mailbox/pending?${q}`;
+      const pendingRes = await fetch(`${base}${path}`, {
+        headers: await mergeHeaders('GET', path)
       });
       if (!pendingRes.ok) {
-        throw new Error(`mailbox pending failed: HTTP ${pendingRes.status}`);
+        const err = new Error(`mailbox pending failed: HTTP ${pendingRes.status}`);
+        (err as Error & { status?: number }).status = pendingRes.status;
+        throw err;
       }
       const body = (await pendingRes.json()) as { jobs?: MailboxJob[] };
       for (const job of body.jobs ?? []) {
@@ -78,24 +93,30 @@ export class CloudFlushWorker {
 
     let acked = 0;
     for (const [routeKey, jobIds] of ackedByRoute) {
-      const ackRes = await fetch(`${base}/api/mailbox/ack`, {
+      const ackBody = {
+        pnIdentifier: ctx.identityId,
+        ...(routeKey ? { routeKey } : {}),
+        jobIds
+      };
+      const ackPath = '/api/mailbox/ack';
+      const ackRes = await fetch(`${base}${ackPath}`, {
         method: 'POST',
         headers: {
-          Authorization: `Bearer ${ctx.authToken}`,
-          'Content-Type': 'application/json',
-          Accept: 'application/json'
+          ...(await mergeHeaders('POST', ackPath, ackBody)),
+          'Content-Type': 'application/json'
         },
-        body: JSON.stringify({
-          pnIdentifier: ctx.identityId,
-          ...(routeKey ? { routeKey } : {}),
-          jobIds
-        })
+        body: JSON.stringify(ackBody)
       });
       if (!ackRes.ok) {
         errors.push(`ack failed: HTTP ${ackRes.status}`);
+        if (ackRes.status === 401 || ackRes.status === 403) {
+          const err = new Error(`mailbox ack failed: HTTP ${ackRes.status}`);
+          (err as Error & { status?: number }).status = ackRes.status;
+          throw err;
+        }
       } else {
-        const ackBody = (await ackRes.json()) as { acked?: number };
-        acked += ackBody.acked ?? jobIds.length;
+        const parsed = (await ackRes.json()) as { acked?: number };
+        acked += parsed.acked ?? jobIds.length;
       }
     }
 
