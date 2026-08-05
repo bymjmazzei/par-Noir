@@ -353,11 +353,6 @@ export const DataPointInputModal: React.FC<DataPointInputModalProps> = ({
             </button>
           </div>
 
-          {/* Description */}
-          <p className="text-text-secondary text-sm mb-6">
-            {dataPoint.description}
-          </p>
-
           {/* Form Fields */}
           <div className="space-y-4">
             {(dataPoint as { documentImage?: boolean }).documentImage ? (
