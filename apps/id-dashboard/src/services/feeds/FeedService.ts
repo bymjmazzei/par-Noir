@@ -6,6 +6,7 @@
 import type { FeedCategory } from '../../types/aggregator';
 import { API_ENDPOINT } from '../../config/api';
 import { ownerFetch, ownerGet } from '../ownerApiService';
+import { requireOwnerApiToken } from '../ownerApiToken';
 
 export interface Feed {
   feedId: string;
@@ -74,6 +75,18 @@ export interface FeedDelegate {
   createdAt: string;
 }
 
+function getLocalUserId(): string {
+  const authenticatedUserStr = localStorage.getItem('authenticated_user');
+  if (!authenticatedUserStr) {
+    throw new Error('User not authenticated');
+  }
+  const authenticatedUser = JSON.parse(authenticatedUserStr) as { id?: string };
+  if (!authenticatedUser.id) {
+    throw new Error('User not authenticated');
+  }
+  return authenticatedUser.id;
+}
+
 export class FeedService {
   /**
    * Create a new feed
@@ -88,15 +101,10 @@ export class FeedService {
     annualPrice?: number;
     subdomain?: string;
   }): Promise<Feed> {
-    const authenticatedUserStr = localStorage.getItem('authenticated_user');
-    if (!authenticatedUserStr) {
-      throw new Error('User not authenticated');
-    }
-
-    const authenticatedUser = JSON.parse(authenticatedUserStr);
-    const response = await ownerFetch(authenticatedUser.accessToken || '', 'POST', '/api/feeds', {
+    const creatorDid = getLocalUserId();
+    const response = await ownerFetch(requireOwnerApiToken(), 'POST', '/api/feeds', {
       ...data,
-      creatorDid: authenticatedUser.id,
+      creatorDid,
     });
 
     if (!response.ok) {
@@ -158,14 +166,8 @@ export class FeedService {
    * Update feed
    */
   static async updateFeed(feedId: string, updates: Partial<Feed>): Promise<Feed> {
-    const authenticatedUserStr = localStorage.getItem('authenticated_user');
-    if (!authenticatedUserStr) {
-      throw new Error('User not authenticated');
-    }
-
-    const authenticatedUser = JSON.parse(authenticatedUserStr);
     const response = await ownerFetch(
-      authenticatedUser.accessToken || '',
+      requireOwnerApiToken(),
       'PUT',
       `/api/feeds/${feedId}`,
       updates
@@ -190,17 +192,12 @@ export class FeedService {
       verifiedZKPs: any;
     }
   ): Promise<Feed> {
-    const authenticatedUserStr = localStorage.getItem('authenticated_user');
-    if (!authenticatedUserStr) {
-      throw new Error('User not authenticated');
-    }
-
-    const authenticatedUser = JSON.parse(authenticatedUserStr);
+    const token = requireOwnerApiToken();
     const response = await fetch(`${API_ENDPOINT}/api/feeds/activate-after-verification`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${authenticatedUser.accessToken || ''}`
+        'Authorization': `Bearer ${token}`
       },
       body: JSON.stringify({
         checkoutId,
@@ -221,17 +218,12 @@ export class FeedService {
    * Delete feed
    */
   static async deleteFeed(feedId: string): Promise<void> {
-    const authenticatedUserStr = localStorage.getItem('authenticated_user');
-    if (!authenticatedUserStr) {
-      throw new Error('User not authenticated');
-    }
-
-    const authenticatedUser = JSON.parse(authenticatedUserStr);
+    const creatorDid = getLocalUserId();
     const response = await ownerFetch(
-      authenticatedUser.accessToken || '',
+      requireOwnerApiToken(),
       'DELETE',
       `/api/feeds/${feedId}`,
-      { creatorDid: authenticatedUser.id }
+      { creatorDid }
     );
 
     if (!response.ok) {
@@ -262,14 +254,12 @@ export class FeedService {
    * Create feed post
    */
   static async createFeedPost(feedId: string, post: Omit<FeedPost, 'id' | 'feedId' | 'createdAt' | 'updatedAt'>): Promise<FeedPost> {
-    const authenticatedUserStr = localStorage.getItem('authenticated_user');
-    if (!authenticatedUserStr) {
-      throw new Error('User not authenticated');
-    }
-
-    const authenticatedUser = JSON.parse(authenticatedUserStr);
-    const token = authenticatedUser.accessToken || '';
-    const response = await ownerFetch(token, 'POST', `/api/feeds/${feedId}/posts`, post);
+    const response = await ownerFetch(
+      requireOwnerApiToken(),
+      'POST',
+      `/api/feeds/${feedId}/posts`,
+      post
+    );
 
     if (!response.ok) {
       const error = await response.json();
@@ -283,14 +273,12 @@ export class FeedService {
    * Update top post (enhanced profile post)
    */
   static async updateTopPost(feedId: string, post: Partial<FeedPost>): Promise<FeedPost> {
-    const authenticatedUserStr = localStorage.getItem('authenticated_user');
-    if (!authenticatedUserStr) {
-      throw new Error('User not authenticated');
-    }
-
-    const authenticatedUser = JSON.parse(authenticatedUserStr);
-    const token = authenticatedUser.accessToken || '';
-    const response = await ownerFetch(token, 'PUT', `/api/feeds/${feedId}/top-post`, post);
+    const response = await ownerFetch(
+      requireOwnerApiToken(),
+      'PUT',
+      `/api/feeds/${feedId}/top-post`,
+      post
+    );
 
     if (!response.ok) {
       const error = await response.json();
@@ -305,18 +293,11 @@ export class FeedService {
    */
   static async getDelegatedFeeds(userDid: string): Promise<Feed[]> {
     try {
-      const authenticatedUserStr = localStorage.getItem('authenticated_user');
-      if (!authenticatedUserStr) {
-        // User not authenticated - return empty array instead of throwing
-        console.warn('⚠️ [FeedService] User not authenticated, returning empty delegated feeds');
-        return [];
-      }
-
-      const authenticatedUser = JSON.parse(authenticatedUserStr);
-      const accessToken = authenticatedUser.accessToken || authenticatedUser.token || '';
-      
-      if (!accessToken) {
-        console.warn('⚠️ [FeedService] No access token available, returning empty delegated feeds');
+      let accessToken: string;
+      try {
+        accessToken = requireOwnerApiToken();
+      } catch {
+        console.warn('⚠️ [FeedService] Owner API token not ready, returning empty delegated feeds');
         return [];
       }
 
@@ -324,7 +305,6 @@ export class FeedService {
 
       if (!response.ok) {
         if (response.status === 404 || response.status === 401) {
-          // No feeds or not authorized - return empty array
           return [];
         }
         console.error('Failed to fetch delegated feeds:', response.status, response.statusText);
@@ -340,9 +320,8 @@ export class FeedService {
   }
 
   static async getDelegates(feedId: string): Promise<{ delegates: FeedDelegate[] }> {
-    const authenticatedUser = FeedService.getAuthenticatedUser();
     const response = await ownerGet(
-      authenticatedUser.accessToken,
+      requireOwnerApiToken(),
       `/api/feeds/${feedId}/delegates`
     );
 
@@ -358,9 +337,8 @@ export class FeedService {
     delegateDid: string,
     permissions: FeedDelegate['permissions']
   ): Promise<void> {
-    const authenticatedUser = FeedService.getAuthenticatedUser();
     const response = await ownerFetch(
-      authenticatedUser.accessToken,
+      requireOwnerApiToken(),
       'POST',
       `/api/feeds/${feedId}/delegates`,
       { delegateDid, permissions }
@@ -372,9 +350,8 @@ export class FeedService {
   }
 
   static async removeDelegate(feedId: string, delegationId: string): Promise<void> {
-    const authenticatedUser = FeedService.getAuthenticatedUser();
     const response = await ownerFetch(
-      authenticatedUser.accessToken,
+      requireOwnerApiToken(),
       'DELETE',
       `/api/feeds/${feedId}/delegates/${delegationId}`
     );
@@ -383,23 +360,4 @@ export class FeedService {
       throw new Error('Failed to remove feed delegate');
     }
   }
-
-  private static getAuthenticatedUser(): { accessToken: string } {
-    const authenticatedUserStr = localStorage.getItem('authenticated_user');
-    if (!authenticatedUserStr) {
-      throw new Error('User not authenticated');
-    }
-
-    const authenticatedUser = JSON.parse(authenticatedUserStr) as {
-      accessToken?: string;
-      token?: string;
-    };
-    const accessToken = authenticatedUser.accessToken || authenticatedUser.token;
-    if (!accessToken) {
-      throw new Error('User not authenticated');
-    }
-
-    return { accessToken };
-  }
 }
-

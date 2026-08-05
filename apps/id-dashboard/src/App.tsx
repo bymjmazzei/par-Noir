@@ -10,6 +10,7 @@ import { useRecoveryVaultState } from './hooks/useRecoveryVaultState';
 import { useDeviceAuthState } from './hooks/useDeviceAuthState';
 import { DEVICE_CAPABILITIES } from '@par-noir/device-auth';
 import { ownerGet } from './services/ownerApiService';
+import { resolveOwnerApiToken } from './services/ownerApiToken';
 import { getRecoveryAuthSession } from './services/recoveryAuthSession';
 
 import { MigrationResult } from './utils/migration';
@@ -281,7 +282,10 @@ function App() {
 
   // Push notifications (native only): register when authenticated
   usePushNotifications({
-    getAccessToken: useCallback(async () => authenticatedUser?.accessToken ?? null, [authenticatedUser?.accessToken]),
+    getAccessToken: useCallback(
+      async () => apiToken || resolveOwnerApiToken(),
+      [apiToken]
+    ),
   });
 
   React.useEffect(() => {
@@ -604,9 +608,11 @@ function App() {
           return;
         }
 
-        const authToken = authenticatedUser.accessToken || authenticatedUser.authToken;
+        let authToken =
+          apiToken ||
+          (await ensureOwnerApiTokenForActiveUser());
         if (!authToken) {
-          console.warn('[App] Cannot load permissions - no auth token');
+          console.warn('[App] Cannot load permissions - owner API token not ready');
           return;
         }
 
@@ -673,7 +679,7 @@ function App() {
     };
 
     loadThirdPartyPermissions();
-  }, [authenticatedUser?.id]);
+  }, [authenticatedUser?.id, apiToken, ensureOwnerApiTokenForActiveUser]);
 
   // Initialize browser-app tool permissions (hard-coded pN owned third party)
   // Always initialize browser-app - it's a pN owned platform
@@ -751,9 +757,11 @@ function App() {
               return;
             }
             
-          const authToken = authenticatedUser.accessToken || authenticatedUser.authToken;
+          let authToken =
+            apiToken ||
+            (await ensureOwnerApiTokenForActiveUser());
           if (!authToken) {
-            console.warn('[App] No access token available');
+            console.warn('[App] No owner API token available');
             setAttestedDataPoints(new Set());
             return;
           }
@@ -790,7 +798,7 @@ function App() {
     }, 100);
     
     return () => clearTimeout(timeoutId);
-  }, [authenticatedUser?.id]); // Only depend on the ID, not the whole object
+  }, [authenticatedUser?.id, apiToken, ensureOwnerApiTokenForActiveUser]);
   
   // Debug success state changes
   useEffect(() => {
@@ -1043,6 +1051,8 @@ function App() {
     setCurrentDataPointExistingData,
     setShowDataPointInputModal,
     setAttestedDataPoints,
+    apiToken,
+    ensureOwnerApiTokenForActiveUser,
     setError,
     setSuccessWithTimeout,
     logDebug,

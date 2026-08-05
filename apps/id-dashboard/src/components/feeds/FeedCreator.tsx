@@ -11,6 +11,7 @@ import { IdentityVerificationModal } from '../IdentityVerificationModal';
 import { CoinbaseProxy, CheckoutRequest } from '../../utils/coinbaseProxy';
 import { API_ENDPOINT } from '../../config/api';
 import type { EncryptedIdentity } from '../../types/crypto';
+import { resolveOwnerApiToken } from '../../services/ownerApiToken';
 
 interface FeedCreatorProps {
   isOpen: boolean;
@@ -44,10 +45,12 @@ export const FeedCreator: React.FC<FeedCreatorProps> = ({
 
     const pollInterval = setInterval(async () => {
       try {
+        const ownerToken = resolveOwnerApiToken();
+        if (!ownerToken) return;
         // Check payment status via API
         const response = await fetch(`${API_ENDPOINT}/api/feeds/payment-status/${pendingCheckoutId}`, {
           headers: {
-            'Authorization': `Bearer ${JSON.parse(localStorage.getItem('authenticated_user') || '{}').accessToken || ''}`
+            'Authorization': `Bearer ${ownerToken}`
           }
         });
 

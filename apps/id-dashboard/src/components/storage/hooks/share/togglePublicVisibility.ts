@@ -26,6 +26,7 @@ import {
   ShareToken,
   EncryptedFilePackage,
 } from '../../../../types/aggregator';
+import { resolveOwnerApiToken } from '../../../../services/ownerApiToken';
 
 export interface TogglePublicVisibilityDeps {
   authenticatedUser: any;
@@ -394,14 +395,15 @@ export async function togglePublicVisibility(
         // PUT to explicitly update isPublic (ensures database is updated even if POST didn't properly update existing entry)
         retryHelper(
           async () => {
+            const ownerToken = resolveOwnerApiToken();
             const res = await fetch(
-              `${API_ENDPOINT}/api/aggregator/metadata-index/${encodeURIComponent(targetFileId)}${authenticatedUser?.accessToken ? `?accountId=${encodeURIComponent(file.backend || '')}` : ''}`,
+              `${API_ENDPOINT}/api/aggregator/metadata-index/${encodeURIComponent(targetFileId)}${file.backend ? `?accountId=${encodeURIComponent(file.backend || '')}` : ''}`,
               {
                 method: 'PUT',
                 headers: {
                   'Content-Type': 'application/json',
-                  ...(authenticatedUser?.accessToken && {
-                    'Authorization': `Bearer ${authenticatedUser.accessToken}`
+                  ...(ownerToken && {
+                    'Authorization': `Bearer ${ownerToken}`
                   })
                 },
                 body: JSON.stringify({

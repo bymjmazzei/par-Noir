@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { API_ENDPOINT } from '../../config/api';
+import { resolveOwnerApiToken } from '../../services/ownerApiToken';
 
 export interface RemoteRecoveryRequest {
   requestId: string;
@@ -12,7 +13,7 @@ export interface RemoteRecoveryRequest {
 }
 
 interface RecoveryCustodianPendingPanelProps {
-  authenticatedUser: { id: string; accessToken?: string; authToken?: string; publicKey?: string };
+  apiToken?: string | null;
   custodianships: Array<{
     id: string;
     identityId: string;
@@ -25,13 +26,13 @@ interface RecoveryCustodianPendingPanelProps {
 }
 
 export const RecoveryCustodianPendingPanel: React.FC<RecoveryCustodianPendingPanelProps> = ({
-  authenticatedUser,
+  apiToken,
   custodianships,
   onApprove
 }) => {
   const [requests, setRequests] = useState<Array<RemoteRecoveryRequest & { identityPublicKey: string }>>([]);
   const [loading, setLoading] = useState(false);
-  const authToken = authenticatedUser.accessToken || authenticatedUser.authToken;
+  const authToken = apiToken || resolveOwnerApiToken();
 
   const load = useCallback(async () => {
     if (!authToken) return;

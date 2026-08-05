@@ -703,11 +703,7 @@ export function AuthenticatedShell(props: AuthenticatedShellProps) {
 
                   {activeTab === 'monetization' && (
                     <MonetizationTab
-                      accessToken={
-                        authenticatedUser?.accessToken ||
-                        (authenticatedUser as { authToken?: string } | undefined)?.authToken ||
-                        ''
-                      }
+                      accessToken={apiToken || ''}
                       showErrorMessage={showErrorMessage}
                       showSuccessMessage={showSuccessMessage}
                     />

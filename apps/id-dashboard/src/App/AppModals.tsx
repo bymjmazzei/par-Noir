@@ -885,10 +885,10 @@ export function AppModals(props: AppModalsProps) {
 
               // Get access token - the dashboard might need to use OAuth service
               // For now, try to get from authenticatedUser, but this might need OAuth integration
-              const authToken = authenticatedUser.accessToken || authenticatedUser.authToken;
+              const authToken = apiToken;
               
               if (!authToken) {
-                console.warn('No access token available to sync ZKP data points. ZKP data will be stored locally only.');
+                console.warn('No owner API token available to sync ZKP data points.');
                 return;
               }
 

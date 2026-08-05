@@ -12,6 +12,7 @@ import React from 'react';
 import { API_ENDPOINT } from '../../../../config/api';
 import type { IndexingPermissions, ThirdPartyIndexer } from '../../../../types/indexers';
 import { AggregatedFile, PublicMetadata } from '../../../../types/aggregator';
+import { resolveOwnerApiToken } from '../../../../services/ownerApiToken';
 
 export interface SaveShareSettingsDeps {
   authenticatedUser: any;
@@ -121,14 +122,15 @@ export async function saveShareSettings({
       const currentNSFW = existingMetadata?.isNSFW === true;
       if (shareNSFW !== currentNSFW) {
         try {
+          const ownerToken = resolveOwnerApiToken();
           const response = await fetch(
             `${API_ENDPOINT}/api/aggregator/metadata-index`,
             {
               method: 'PUT',
               headers: {
                 'Content-Type': 'application/json',
-                ...(authenticatedUser?.accessToken && {
-                  'Authorization': `Bearer ${authenticatedUser.accessToken}`
+                ...(ownerToken && {
+                  'Authorization': `Bearer ${ownerToken}`
                 })
               },
               body: JSON.stringify({

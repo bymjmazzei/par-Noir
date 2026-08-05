@@ -7,6 +7,7 @@ import type React from 'react';
 import { IdentityCrypto, SecureCredentialManager } from '@par-noir/identity-crypto';
 import { cloudSyncManager } from '../utils/cloudSync';
 import { ownerFetch } from '../services/ownerApiService';
+import { requireOwnerApiToken, resolveOwnerApiToken } from '../services/ownerApiToken';
 import { STANDARD_DATA_POINTS } from '../types/standardDataPoints';
 import type { GlobalPrivacySettings } from '../types/privacy';
 import type { DIDInfo, SyncedDevice } from '../types/app';
@@ -27,6 +28,9 @@ export interface UseToolPrivacyHandlersParams {
   setCurrentDataPointExistingData: React.Dispatch<React.SetStateAction<any>>;
   setShowDataPointInputModal: React.Dispatch<React.SetStateAction<boolean>>;
   setAttestedDataPoints: React.Dispatch<React.SetStateAction<Set<string>>>;
+
+  apiToken: string | null;
+  ensureOwnerApiTokenForActiveUser: () => Promise<string | null>;
 
   setError: React.Dispatch<React.SetStateAction<string | null>>;
   setSuccessWithTimeout: (message: string | null) => void;
@@ -49,11 +53,20 @@ export function useToolPrivacyHandlers(params: UseToolPrivacyHandlersParams) {
     setCurrentDataPointExistingData,
     setShowDataPointInputModal,
     setAttestedDataPoints,
+    apiToken,
+    ensureOwnerApiTokenForActiveUser,
     setError,
     setSuccessWithTimeout,
     logDebug,
     logError
   } = params;
+
+  const resolveOwnerAuthToken = async (): Promise<string> => {
+    if (apiToken) return apiToken;
+    const ensured = await ensureOwnerApiTokenForActiveUser();
+    if (ensured) return ensured;
+    return requireOwnerApiToken();
+  };
 
   // Tool Settings Handlers
   const handleOpenToolSettings = (toolId: string) => {
@@ -99,9 +112,11 @@ export function useToolPrivacyHandlers(params: UseToolPrivacyHandlersParams) {
         return;
       }
 
-      const authToken = authenticatedUser.accessToken || authenticatedUser.authToken;
-      if (!authToken) {
-        console.warn('[App] Cannot persist permissions - no auth token');
+      let authToken: string;
+      try {
+        authToken = await resolveOwnerAuthToken();
+      } catch {
+        console.warn('[App] Cannot persist permissions - owner API token not ready');
         return;
       }
 
@@ -228,7 +243,10 @@ export function useToolPrivacyHandlers(params: UseToolPrivacyHandlersParams) {
         if (!credentials) {
         console.warn('[App] Credentials not available for checking existing data point');
       } else {
-        const authToken = authenticatedUser.accessToken || authenticatedUser.authToken;
+        let authToken: string | null = resolveOwnerApiToken();
+        if (!authToken) {
+          authToken = await ensureOwnerApiTokenForActiveUser();
+        }
         if (authToken) {
           try {
             // Check API server (Google Drive) for existing data point - NO localStorage
@@ -327,10 +345,7 @@ export function useToolPrivacyHandlers(params: UseToolPrivacyHandlersParams) {
         throw new Error('Credentials not available');
         }
         
-      const authToken = authenticatedUser.accessToken || authenticatedUser.authToken;
-      if (!authToken) {
-        throw new Error('No access token available. Please re-authenticate.');
-        }
+      const authToken = await resolveOwnerAuthToken();
         
       // Convert to API format
       const { ZKPDataPointsService } = await import('../utils/zkpDataPointsService');

@@ -151,7 +151,7 @@ export const RecoveryTab: React.FC<RecoveryTabProps> = (props) => {
         <div className="space-y-4">
           <h3 className="text-lg font-semibold text-text-primary">Acting as custodian</h3>
           <RecoveryCustodianPendingPanel
-            authenticatedUser={authenticatedUser}
+            apiToken={apiToken}
             custodianships={custodianships}
             onApprove={(requestId, custodianshipId, identityPublicKey) => {
               const cs = custodianships.find((c: any) => c.id === custodianshipId);
