@@ -480,136 +480,45 @@ export function setupPnOAuthRoutes(app: express.Application, deps: PnOAuthRouteD
           return res.json({ success: true, dataPoints: [] });
         }
 
-        // Get Google Drive access token for the user
-        const { googleDriveProxyService } = await import('./googleDriveProxy');
-        const { storageCredentialsService } = await import('./storageCredentialsService');
-        
-        // Normalize pn identifier
         const normalizedPnIdentifier = pnIdentifier.startsWith('pn-') ? pnIdentifier : `pn-${pnIdentifier}`;
-        
-        // Get user's credentials
-        const userCredentials = await storageCredentialsService.getCredentials(normalizedPnIdentifier);
-        if (!userCredentials?.credentials) {
-          return res.status(404).json({ error: 'User credentials not found' });
-        }
-
-        const googleDriveAccounts = userCredentials.credentials.googleDriveAccounts || 
-          (userCredentials.credentials.googleDrive ? [userCredentials.credentials.googleDrive] : []);
-        
-        if (googleDriveAccounts.length === 0) {
-          const { isPortableStorageProvider } = await import('./storage/storageProviderUtils');
-          const _checkPn = (typeof pnIdentifier !== 'undefined' && pnIdentifier) || (req.body && req.body.userPnIdentifier) || (req.params && (req.params as any).pnIdentifier) || '';
-          if (!_checkPn || !(await isPortableStorageProvider(_checkPn))) {
-            return res.status(404).json({ error: 'Storage not connected' });
-          }
-          // portable social cloud — continue without Drive accounts
-        }
-
-          const account = googleDriveAccounts.length > 0 ? googleDriveAccounts[0] : null;
-          const accountId = account ? extractAccountId(account) : undefined;
-          const userAccessToken = account ? await googleDriveProxyService.getAccessToken(normalizedPnIdentifier, accountId) : '';
-
-        // Find pN folder and _metadata folder
-        const pnFolderName = `par Noir - ${pnIdentifier}`;
-        const pnFolderSearchQuery = `name='${pnFolderName.replace(/'/g, "\\'")}' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
-        const pnFolderSearchUrl = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(pnFolderSearchQuery)}&fields=files(id,name)&pageSize=1`;
-        
-        const pnFolderResponse = await fetch(pnFolderSearchUrl, {
-          headers: { 'Authorization': `Bearer ${userAccessToken}` }
+        const { loadZkpBundle } = await import('./storage/zkpStorageService');
+        const { extractCloudAccessToken } = await import('./cloudAccessToken');
+        const zkpBundle = await loadZkpBundle(normalizedPnIdentifier, {
+          accessToken: extractCloudAccessToken(req),
         });
-
-        let pnFolderId: string | null = null;
-        if (pnFolderResponse.ok) {
-          const pnFolderData = await pnFolderResponse.json() as { files?: Array<{ id: string; name: string }> };
-          if (pnFolderData.files && pnFolderData.files.length > 0) {
-            pnFolderId = pnFolderData.files[0].id;
-          }
+        if (!zkpBundle) {
+          return res.status(409).json({ error: 'drive_not_initialized' });
         }
 
-        if (!pnFolderId) {
-          return res.status(404).json({ error: 'pN folder not found' });
-        }
-
-        // Find _metadata folder
-        const metadataFolderName = '_metadata';
-        const metadataSearchQuery = `name='${metadataFolderName}' and '${pnFolderId}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`;
-        const metadataSearchUrl = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(metadataSearchQuery)}&fields=files(id)&pageSize=1`;
-        
-        const metadataFolderResponse = await fetch(metadataSearchUrl, {
-          headers: { 'Authorization': `Bearer ${userAccessToken}` }
-        });
-
-        if (!metadataFolderResponse.ok) {
-          return res.status(404).json({ error: '_metadata folder not found' });
-        }
-
-        const metadataFolderData = await metadataFolderResponse.json() as { files?: Array<{ id: string }> };
-        if (!metadataFolderData.files || metadataFolderData.files.length === 0) {
-          return res.status(404).json({ error: '_metadata folder not found' });
-        }
-
-        const metadataFolderId = metadataFolderData.files[0].id;
-
-        // Get client_id from token to check permissions
-        const clientId = tokenPayload.clientId || 'browser-app'; // Default to browser-app for backward compatibility
-        
-        // Check if user has granted access to these data points for this third party
-        const { ThirdPartyPermissionsService } = await import('./thirdPartyPermissionsService');
-        const permissions = await ThirdPartyPermissionsService.getPermissions(
-          userAccessToken,
-          metadataFolderId,
-          normalizedPnIdentifier,
-          accountId
-        );
-        
-        const toolPermission = permissions[clientId];
+        const clientId = tokenPayload.clientId || 'browser-app';
         let finalAllowedDataPoints = allowedDataPoints;
-        
-        if (toolPermission) {
-          if (isDevVerbose()) {
-            console.log(`[OAuth ZKP] Found permissions for ${clientId}:`, {
-              dataPoints: toolPermission.dataPoints,
-              requiredDataPoints: toolPermission.requiredDataPoints,
-              optionalDataPoints: toolPermission.optionalDataPoints
-            });
+
+        if (clientId !== 'browser-app') {
+          const { getUserDriveMetadataContext } = await import('./driveMetadataHelper');
+          const driveCtx = await getUserDriveMetadataContext(normalizedPnIdentifier);
+          if (!driveCtx) {
+            return res.json({ success: true, dataPoints: [] });
           }
-          
-          // Filter data points to only those the user has granted access to
-          // Required data points are always granted, optional ones must be in dataPoints array
-          finalAllowedDataPoints = allowedDataPoints.filter((dp: string) => 
-            toolPermission.requiredDataPoints.includes(dp) || // Required are always granted
-            toolPermission.dataPoints.includes(dp) // Optional must be explicitly granted
+          const { ThirdPartyPermissionsService } = await import('./thirdPartyPermissionsService');
+          const permissions = await ThirdPartyPermissionsService.getPermissions(
+            driveCtx.accessToken,
+            driveCtx.metadataFolderId,
+            driveCtx.normalizedPnIdentifier,
+            driveCtx.accountId
           );
-          
-          if (isDevVerbose()) {
-            console.log(`[OAuth ZKP] Filtered data points:`, {
-              requested: allowedDataPoints,
-              allowed: finalAllowedDataPoints
-            });
+          const toolPermission = permissions[clientId];
+          if (!toolPermission || toolPermission.status !== 'active') {
+            return res.json({ success: true, dataPoints: [] });
           }
-          
+          finalAllowedDataPoints = allowedDataPoints.filter(
+            (dp: string) =>
+              toolPermission.requiredDataPoints.includes(dp) || toolPermission.dataPoints.includes(dp)
+          );
           if (finalAllowedDataPoints.length === 0) {
-            if (isDevVerbose()) {
-              console.log(`[OAuth ZKP] No data points granted for ${clientId}`);
-            }
             return res.json({ success: true, dataPoints: [] });
-          }
-        } else {
-          if (isDevVerbose()) {
-            console.log(`[OAuth ZKP] No permissions found for ${clientId}`);
-          }
-          // No permissions found - return empty (user hasn't granted access)
-          // Exception: browser-app is hard-coded, so allow if it's browser-app
-          if (clientId !== 'browser-app') {
-            return res.json({ success: true, dataPoints: [] });
-          }
-          // For browser-app, continue without permission check (backward compatibility)
-          if (isDevVerbose()) {
-            console.log(`[OAuth ZKP] Continuing for browser-app without permission check (backward compatibility)`);
           }
         }
 
-        // Get ZKP proofs for requested data points
         const ZKPDataPointsService = (await import('./zkpDataPointsService')).ZKPDataPointsService;
         const zkpDataPoints: any[] = [];
 
@@ -619,11 +528,11 @@ export function setupPnOAuthRoutes(app: express.Application, deps: PnOAuthRouteD
               console.log(`[OAuth ZKP] Attempting to get proof for ${dataPointId}`);
             }
             const proof = await ZKPDataPointsService.getDataPointProof(
-              userAccessToken,
-              metadataFolderId,
+              zkpBundle.token?.access_token || '',
+              zkpBundle.spreadsheetId || '',
               dataPointId,
-              normalizedPnIdentifier,
-              accountId
+              zkpBundle.pnIdentifier,
+              zkpBundle.accountId
             );
             
             if (proof) {

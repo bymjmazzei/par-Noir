@@ -2,8 +2,7 @@
  * ZKP Data Points Service
  * Manages verified ZKP data points for users
  * Returns ZKP proofs without revealing actual identity data
- * Stores data in Google Sheets (replaces zkp-data-points.json for better scalability)
- * Stored in Google Drive (decentralized) - users own their data
+ * Google path: Sheets by spreadsheetId from pnDriveIndex (no name search)
  */
 
 import {
@@ -50,12 +49,11 @@ export interface ZKPVerificationResult {
 
 export class ZKPDataPointsService {
   /**
-   * Get ZKP data points from Google Sheets
-   * Returns all data points as a Record
+   * Get ZKP data points from portable table or Google Sheets by spreadsheetId
    */
   static async getZKPDataPointsFile(
     accessToken: string,
-    metadataFolderId: string,
+    spreadsheetId: string,
     userPnIdentifier: string,
     accountId?: string
   ): Promise<Record<string, ZKPDataPoint> | null> {
@@ -76,15 +74,12 @@ export class ZKPDataPointsService {
         return dataPoints;
       }
 
+      if (!spreadsheetId?.trim() || !accessToken) {
+        return null;
+      }
+
       const token: GoogleDriveToken = { access_token: accessToken };
       const { ZKPDataPointsSheetsService } = await import('./zkpDataPointsSheetsService');
-      const spreadsheetId = await ZKPDataPointsSheetsService.getZKPDataPointsSheet(
-        token,
-        metadataFolderId,
-        normalizedUserPnIdentifier,
-        accountId
-      );
-
       const dataPoints = await ZKPDataPointsSheetsService.getZKPDataPoints(
         token,
         spreadsheetId,
@@ -105,7 +100,7 @@ export class ZKPDataPointsService {
    */
   static async getAvailableDataPoints(
     accessToken: string,
-    metadataFolderId: string,
+    spreadsheetId: string,
     userPnIdentifier: string,
     accountId?: string
   ): Promise<Array<{
@@ -115,7 +110,7 @@ export class ZKPDataPointsService {
     expiresAt?: string;
     verificationLevel: string;
   }>> {
-    const dataPoints = await this.getZKPDataPointsFile(accessToken, metadataFolderId, userPnIdentifier, accountId);
+    const dataPoints = await this.getZKPDataPointsFile(accessToken, spreadsheetId, userPnIdentifier, accountId);
     
     if (!dataPoints) {
       return [];
@@ -137,7 +132,7 @@ export class ZKPDataPointsService {
    */
   static async getDataPointProof(
     accessToken: string,
-    metadataFolderId: string,
+    spreadsheetId: string,
     dataPointId: string,
     userPnIdentifier: string,
     accountId?: string
@@ -154,14 +149,11 @@ export class ZKPDataPointsService {
           accountId
         );
       } else {
+        if (!spreadsheetId?.trim() || !accessToken) {
+          return null;
+        }
         const token: GoogleDriveToken = { access_token: accessToken };
         const { ZKPDataPointsSheetsService } = await import('./zkpDataPointsSheetsService');
-        const spreadsheetId = await ZKPDataPointsSheetsService.getZKPDataPointsSheet(
-          token,
-          metadataFolderId,
-          normalizedUserPnIdentifier,
-          accountId
-        );
         dataPoint = await ZKPDataPointsSheetsService.getZKPDataPoint(
           token,
           spreadsheetId,
@@ -302,7 +294,7 @@ export class ZKPDataPointsService {
    */
   static async storeDataPoint(
     accessToken: string,
-    metadataFolderId: string,
+    spreadsheetId: string,
     identifier: string,
     dataPoint: ZKPDataPoint,
     userPnIdentifier: string,
@@ -321,14 +313,12 @@ export class ZKPDataPointsService {
         return;
       }
 
+      if (!spreadsheetId?.trim() || !accessToken) {
+        throw new Error('ZKP spreadsheetId and access token are required');
+      }
+
       const token: GoogleDriveToken = { access_token: accessToken };
       const { ZKPDataPointsSheetsService } = await import('./zkpDataPointsSheetsService');
-      const spreadsheetId = await ZKPDataPointsSheetsService.getZKPDataPointsSheet(
-        token,
-        metadataFolderId,
-        normalizedUserPnIdentifier,
-        accountId
-      );
 
       await ZKPDataPointsSheetsService.addZKPDataPoint(
         token,
@@ -343,4 +333,3 @@ export class ZKPDataPointsService {
     }
   }
 }
-

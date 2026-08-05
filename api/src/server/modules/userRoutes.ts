@@ -182,63 +182,31 @@ export function setupUserRoutes(app: express.Application, deps: UserRouteDeps) {
         }
 
         const { ZKPDataPointsService } = await import('./zkpDataPointsService');
-        const { googleDriveProxyService } = await import('./googleDriveProxy');
-        const { storageCredentialsService } = await import('./storageCredentialsService');
+        const { extractCloudAccessToken } = await import('./cloudAccessToken');
+        const { loadZkpBundle } = await import('./storage/zkpStorageService');
 
-        // Normalize pn identifier
         const normalizedPnIdentifier = pnIdentifier.startsWith('pn-') ? pnIdentifier : `pn-${pnIdentifier}`;
 
         if (!(await gateOwnerSelfRoute(req, res, DEVICE_CAPABILITIES.profileRead, normalizedPnIdentifier))) return;
 
-        // Get user's credentials
-        const userCredentials = await storageCredentialsService.getCredentials(normalizedPnIdentifier);
-        if (!userCredentials?.credentials) {
-          return res.status(404).json({ error: 'User credentials not found' });
+        const bundle = await loadZkpBundle(normalizedPnIdentifier, {
+          accessToken: extractCloudAccessToken(req),
+        });
+        if (!bundle) {
+          return driveNotInitialized(res);
         }
-
-        const googleDriveAccounts = userCredentials.credentials.googleDriveAccounts || 
-          (userCredentials.credentials.googleDrive ? [userCredentials.credentials.googleDrive] : []);
-        
-        if (googleDriveAccounts.length === 0) {
-          const { isPortableStorageProvider } = await import('./storage/storageProviderUtils');
-          const _checkPn = (typeof pnIdentifier !== 'undefined' && pnIdentifier) || (req.body && req.body.userPnIdentifier) || (req.params && (req.params as any).pnIdentifier) || '';
-          if (!_checkPn || !(await isPortableStorageProvider(_checkPn))) {
-            return res.status(404).json({ error: 'Storage not connected' });
-          }
-          // portable social cloud — continue without Drive accounts
-        }
-
-        const account = googleDriveAccounts.length > 0 ? googleDriveAccounts[0] : null;
-        const accountId = account ? extractAccountId(account) : undefined;
-        
-        // Get full token object (not just access token string) for automatic refresh
-        const token = {
-          access_token: account?.access_token || account?.accessToken || '',
-          refresh_token: account?.refresh_token || account?.refreshToken,
-          expires_at: account?.expires_at,
-          expires_in: account?.expires_in
-        };
-        const userAccessToken = token.access_token; // Keep for backward compatibility
-
-        if (!userAccessToken) {
-          return res.status(401).json({ 
+        if (!bundle.isPortable && !bundle.token?.access_token) {
+          return res.status(401).json({
             error: 'Google Drive authentication failed',
-            details: 'Access token is missing. Please reconnect Google Drive in the dashboard.'
+            details: 'Access token is missing. Please reconnect Google Drive in the dashboard.',
           });
         }
 
-        const out = await getMetadataFolder(token, normalizedPnIdentifier, accountId);
-        if (!out) {
-          return driveNotInitialized(res);
-        }
-        const metadataFolderId = out.metadataFolderId;
-
-        // Get available data points (metadata only, no actual data)
         const dataPoints = await ZKPDataPointsService.getAvailableDataPoints(
-          userAccessToken,
-          metadataFolderId,
-          normalizedPnIdentifier,
-          accountId
+          bundle.token?.access_token || '',
+          bundle.spreadsheetId || '',
+          bundle.pnIdentifier,
+          bundle.accountId
         );
 
         return res.json({ success: true, dataPoints });
@@ -261,70 +229,32 @@ export function setupUserRoutes(app: express.Application, deps: UserRouteDeps) {
         }
 
         const { ZKPDataPointsService } = await import('./zkpDataPointsService');
-        const { googleDriveProxyService } = await import('./googleDriveProxy');
-        const { storageCredentialsService } = await import('./storageCredentialsService');
+        const { extractCloudAccessToken } = await import('./cloudAccessToken');
+        const { loadZkpBundle } = await import('./storage/zkpStorageService');
 
-        // Normalize pn identifier
         const normalizedPnIdentifier = pnIdentifier.startsWith('pn-') ? pnIdentifier : `pn-${pnIdentifier}`;
 
         if (!(await gateOwnerSelfRoute(req, res, DEVICE_CAPABILITIES.profileRead, normalizedPnIdentifier))) return;
 
-        // Get user's credentials
-        const userCredentials = await storageCredentialsService.getCredentials(normalizedPnIdentifier);
-        if (!userCredentials?.credentials) {
-          return res.status(404).json({ error: 'User credentials not found' });
-        }
-
-        const googleDriveAccounts = userCredentials.credentials.googleDriveAccounts || 
-          (userCredentials.credentials.googleDrive ? [userCredentials.credentials.googleDrive] : []);
-        
-        if (googleDriveAccounts.length === 0) {
-          const { isPortableStorageProvider } = await import('./storage/storageProviderUtils');
-          const _checkPn = (typeof pnIdentifier !== 'undefined' && pnIdentifier) || (req.body && req.body.userPnIdentifier) || (req.params && (req.params as any).pnIdentifier) || '';
-          if (!_checkPn || !(await isPortableStorageProvider(_checkPn))) {
-            return res.status(404).json({ error: 'Storage not connected' });
-          }
-          // portable social cloud — continue without Drive accounts
-        }
-
-          const account = googleDriveAccounts.length > 0 ? googleDriveAccounts[0] : null;
-          const accountId = account ? extractAccountId(account) : undefined;
-          const userAccessToken = account ? await googleDriveProxyService.getAccessToken(normalizedPnIdentifier, accountId) : '';
-
-        const { findPnRootFolderId } = await import('./pnDriveLayout');
-        const pnFolderId = await findPnRootFolderId(userAccessToken, normalizedPnIdentifier);
-
-        if (!pnFolderId) {
-          return res.status(404).json({ error: 'pN folder not found' });
-        }
-
-        // Find _metadata folder inside pN folder
-        const metadataFolderName = '_metadata';
-        const metadataSearchQuery = `name='${metadataFolderName}' and '${pnFolderId}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`;
-        const metadataSearchUrl = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(metadataSearchQuery)}&fields=files(id)&pageSize=1`;
-        
-        const metadataFolderResponse = await fetch(metadataSearchUrl, {
-          headers: { 'Authorization': `Bearer ${userAccessToken}` }
+        const bundle = await loadZkpBundle(normalizedPnIdentifier, {
+          accessToken: extractCloudAccessToken(req),
         });
-
-        if (!metadataFolderResponse.ok) {
-          return res.status(404).json({ error: '_metadata folder not found' });
+        if (!bundle) {
+          return driveNotInitialized(res);
+        }
+        if (!bundle.isPortable && !bundle.token?.access_token) {
+          return res.status(401).json({
+            error: 'Google Drive authentication failed',
+            details: 'Access token is missing. Please reconnect Google Drive in the dashboard.',
+          });
         }
 
-        const metadataFolderData = await metadataFolderResponse.json() as { files?: Array<{ id: string }> };
-        if (!metadataFolderData.files || metadataFolderData.files.length === 0) {
-          return res.status(404).json({ error: '_metadata folder not found' });
-        }
-
-        const metadataFolderId = metadataFolderData.files[0].id;
-
-        // Get the ZKP proof (NOT the actual data)
         const proof = await ZKPDataPointsService.getDataPointProof(
-          userAccessToken,
-          metadataFolderId,
+          bundle.token?.access_token || '',
+          bundle.spreadsheetId || '',
           dataPointId,
-          normalizedPnIdentifier,
-          accountId
+          bundle.pnIdentifier,
+          bundle.accountId
         );
 
         if (!proof) {
@@ -573,89 +503,36 @@ export function setupUserRoutes(app: express.Application, deps: UserRouteDeps) {
         }
 
         const { ZKPDataPointsService } = await import('./zkpDataPointsService');
-        const { googleDriveProxyService } = await import('./googleDriveProxy');
-        const { storageCredentialsService } = await import('./storageCredentialsService');
+        const { extractCloudAccessToken } = await import('./cloudAccessToken');
+        const { loadZkpBundle } = await import('./storage/zkpStorageService');
 
-        // Normalize pn identifier
         const normalizedPnIdentifier = pnIdentifier.startsWith('pn-') ? pnIdentifier : `pn-${pnIdentifier}`;
 
-        // Get user's credentials
-        const userCredentials = await storageCredentialsService.getCredentials(normalizedPnIdentifier);
-        if (!userCredentials?.credentials) {
-          return res.status(404).json({ error: 'User credentials not found' });
-        }
-
-        const googleDriveAccounts = userCredentials.credentials.googleDriveAccounts || 
-          (userCredentials.credentials.googleDrive ? [userCredentials.credentials.googleDrive] : []);
-        
-        if (googleDriveAccounts.length === 0) {
-          const { isPortableStorageProvider } = await import('./storage/storageProviderUtils');
-          const _checkPn = (typeof pnIdentifier !== 'undefined' && pnIdentifier) || (req.body && req.body.userPnIdentifier) || (req.params && (req.params as any).pnIdentifier) || '';
-          if (!_checkPn || !(await isPortableStorageProvider(_checkPn))) {
-            return res.status(404).json({ error: 'Storage not connected' });
-          }
-          // portable social cloud — continue without Drive accounts
-        }
-
-          const account = googleDriveAccounts.length > 0 ? googleDriveAccounts[0] : null;
-          const accountId = account ? extractAccountId(account) : undefined;
-          const userAccessToken = account ? await googleDriveProxyService.getAccessToken(normalizedPnIdentifier, accountId) : '';
-
-        // Find pN folder and _metadata folder (same pattern as other endpoints)
-        const pnFolderName = `par Noir - ${normalizedPnIdentifier}`;
-        const pnFolderSearchQuery = `name='${pnFolderName.replace(/'/g, "\\'")}' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
-        const pnFolderSearchUrl = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(pnFolderSearchQuery)}&fields=files(id,name)&pageSize=1`;
-        
-        const pnFolderResponse = await fetch(pnFolderSearchUrl, {
-          headers: { 'Authorization': `Bearer ${userAccessToken}` }
+        const bundle = await loadZkpBundle(normalizedPnIdentifier, {
+          accessToken: extractCloudAccessToken(req),
         });
-
-        let pnFolderId: string | null = null;
-        if (pnFolderResponse.ok) {
-          const pnFolderData = await pnFolderResponse.json() as { files?: Array<{ id: string; name: string }> };
-          if (pnFolderData.files && pnFolderData.files.length > 0) {
-            pnFolderId = pnFolderData.files[0].id;
-          }
+        if (!bundle) {
+          return driveNotInitialized(res);
+        }
+        if (!bundle.isPortable && !bundle.token?.access_token) {
+          return res.status(401).json({
+            error: 'Google Drive authentication failed',
+            details: 'Access token is missing. Please reconnect Google Drive in the dashboard.',
+          });
         }
 
-        if (!pnFolderId) {
-          return res.status(404).json({ error: 'pN folder not found' });
-        }
-
-        // Find _metadata folder
-        const metadataFolderName = '_metadata';
-        const metadataSearchQuery = `name='${metadataFolderName}' and '${pnFolderId}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`;
-        const metadataSearchUrl = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(metadataSearchQuery)}&fields=files(id)&pageSize=1`;
-        
-        const metadataFolderResponse = await fetch(metadataSearchUrl, {
-          headers: { 'Authorization': `Bearer ${userAccessToken}` }
-        });
-
-        if (!metadataFolderResponse.ok) {
-          return res.status(404).json({ error: '_metadata folder not found' });
-        }
-
-        const metadataFolderData = await metadataFolderResponse.json() as { files?: Array<{ id: string }> };
-        if (!metadataFolderData.files || metadataFolderData.files.length === 0) {
-          return res.status(404).json({ error: '_metadata folder not found' });
-        }
-
-        const metadataFolderId = metadataFolderData.files[0].id;
-
-        // Get the ZKP proof
         const proof = await ZKPDataPointsService.getDataPointProof(
-          userAccessToken,
-          metadataFolderId,
+          bundle.token?.access_token || '',
+          bundle.spreadsheetId || '',
           dataPointId,
-          normalizedPnIdentifier,
-          accountId
+          bundle.pnIdentifier,
+          bundle.accountId
         );
 
         if (!proof) {
           return res.status(404).json({ error: 'ZKP data point not found or expired' });
         }
 
-        // Verify the proof against the condition
         const verification = await ZKPDataPointsService.verifyProof(proof.zkpProof, condition);
 
         return res.json({ success: true, verification });
@@ -685,56 +562,31 @@ export function setupUserRoutes(app: express.Application, deps: UserRouteDeps) {
         }
 
         const { ZKPDataPointsService } = await import('./zkpDataPointsService');
-        const { googleDriveProxyService } = await import('./googleDriveProxy');
-        const { storageCredentialsService } = await import('./storageCredentialsService');
+        const { extractCloudAccessToken } = await import('./cloudAccessToken');
+        const { loadZkpBundle } = await import('./storage/zkpStorageService');
 
-        // Normalize pn identifier
         const normalizedPnIdentifier = pnIdentifier.startsWith('pn-') ? pnIdentifier : `pn-${pnIdentifier}`;
 
-        // Get user's credentials
-        const userCredentials = await storageCredentialsService.getCredentials(normalizedPnIdentifier);
-        if (!userCredentials?.credentials) {
-          return res.status(404).json({ error: 'User credentials not found' });
-        }
-
-        const googleDriveAccounts = userCredentials.credentials.googleDriveAccounts || 
-          (userCredentials.credentials.googleDrive ? [userCredentials.credentials.googleDrive] : []);
-        
-        if (googleDriveAccounts.length === 0) {
-          const { isPortableStorageProvider } = await import('./storage/storageProviderUtils');
-          const _checkPn = (typeof pnIdentifier !== 'undefined' && pnIdentifier) || (req.body && req.body.userPnIdentifier) || (req.params && (req.params as any).pnIdentifier) || '';
-          if (!_checkPn || !(await isPortableStorageProvider(_checkPn))) {
-            return res.status(404).json({ error: 'Storage not connected' });
-          }
-          // portable social cloud — continue without Drive accounts
-        }
-
-          const account = googleDriveAccounts.length > 0 ? googleDriveAccounts[0] : null;
-          const accountId = account ? extractAccountId(account) : undefined;
-          
-          // Get full token object (not just access token string) for automatic refresh
-          const token = {
-            access_token: account?.access_token || account?.accessToken || '',
-            refresh_token: account?.refresh_token || account?.refreshToken,
-            expires_at: account?.expires_at,
-            expires_in: account?.expires_in
-          };
-          const userAccessToken = token.access_token; // Keep for backward compatibility
-
-        const out = await getMetadataFolder(token, normalizedPnIdentifier, accountId);
-        if (!out) {
+        const bundle = await loadZkpBundle(normalizedPnIdentifier, {
+          accessToken: extractCloudAccessToken(req),
+        });
+        if (!bundle) {
           return driveNotInitialized(res);
         }
-        const metadataFolderId = out.metadataFolderId;
+        if (!bundle.isPortable && !bundle.token?.access_token) {
+          return res.status(401).json({
+            error: 'Google Drive authentication failed',
+            details: 'Access token is missing. Please reconnect Google Drive in the dashboard.',
+          });
+        }
 
-        // Store the data point
         await ZKPDataPointsService.storeDataPoint(
-          userAccessToken,
-          metadataFolderId,
+          bundle.token?.access_token || '',
+          bundle.spreadsheetId || '',
           normalizedPnIdentifier,
           dataPoint,
-          normalizedPnIdentifier,
-          accountId
+          bundle.pnIdentifier,
+          bundle.accountId
         );
 
         return res.json({ success: true });

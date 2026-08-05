@@ -6,6 +6,7 @@ import { ThirdPartyPermissionsService } from './thirdPartyPermissionsService';
 import { ZKPDataPointsService } from './zkpDataPointsService';
 import { getUserDriveMetadataContext, normalizePnIdentifier } from './driveMetadataHelper';
 import { filterAllowedDataPointIds } from '@par-noir/standard-data-points';
+import { loadZkpBundle } from './storage/zkpStorageService';
 
 export interface IntegratorZkpProofPayload {
   dataPointId: string;
@@ -22,8 +23,8 @@ export async function fetchGrantedZkpProofs(params: {
   dataPointIds: string[];
   skipPermissionCheck?: boolean;
 }): Promise<IntegratorZkpProofPayload[]> {
-  const ctx = await getUserDriveMetadataContext(params.userPnIdentifier);
-  if (!ctx) {
+  const zkpBundle = await loadZkpBundle(params.userPnIdentifier);
+  if (!zkpBundle) {
     return [];
   }
 
@@ -35,6 +36,11 @@ export async function fetchGrantedZkpProofs(params: {
   let finalAllowed = allowedIds;
 
   if (!params.skipPermissionCheck && params.clientId !== 'browser-app') {
+    const ctx = await getUserDriveMetadataContext(params.userPnIdentifier);
+    if (!ctx) {
+      return [];
+    }
+
     const permissions = await ThirdPartyPermissionsService.getPermissions(
       ctx.accessToken,
       ctx.metadataFolderId,
@@ -58,11 +64,11 @@ export async function fetchGrantedZkpProofs(params: {
   for (const dataPointId of finalAllowed) {
     try {
       const proof = await ZKPDataPointsService.getDataPointProof(
-        ctx.accessToken,
-        ctx.metadataFolderId,
+        zkpBundle.token?.access_token || '',
+        zkpBundle.spreadsheetId || '',
         dataPointId,
-        ctx.normalizedPnIdentifier,
-        ctx.accountId
+        zkpBundle.pnIdentifier,
+        zkpBundle.accountId
       );
 
       if (proof) {

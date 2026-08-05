@@ -3,7 +3,6 @@
  * All data points are stored in Google Drive via API server
  */
 
-import { API_ENDPOINT } from '../config/api';
 import { ownerFetch, ownerGet } from '../services/ownerApiService';
 
 export interface ZKPDataPoint {
@@ -52,7 +51,7 @@ export class ZKPDataPointsService {
       const pnIdentifier = await this.getPnIdentifier(identityId, credentials, publicKey);
 
       const path = `/api/users/${pnIdentifier}/zkp-data-points`;
-      const response = await ownerGet(authToken, path);
+      const response = await ownerGet(authToken, path, { pnIdentifier });
 
       if (response.ok) {
         const responseData = await response.json();
@@ -97,7 +96,7 @@ export class ZKPDataPointsService {
       const pnIdentifier = await this.getPnIdentifier(identityId, credentials, publicKey);
 
       const path = `/api/users/${pnIdentifier}/zkp-data-points/${dataPointId}`;
-      const response = await ownerGet(authToken, path);
+      const response = await ownerGet(authToken, path, { pnIdentifier });
 
       if (response.ok) {
         const responseData = await response.json();
@@ -130,7 +129,7 @@ export class ZKPDataPointsService {
       const pnIdentifier = await this.getPnIdentifier(identityId, credentials, publicKey);
 
       const path = `/api/users/${pnIdentifier}/zkp-data-points/${dataPoint.dataPointId}`;
-      const response = await ownerFetch(authToken, 'PUT', path, dataPoint);
+      const response = await ownerFetch(authToken, 'PUT', path, dataPoint, { pnIdentifier });
 
       if (!response.ok) {
         const errorText = await response.text();
@@ -160,4 +159,3 @@ export class ZKPDataPointsService {
     return dataPoint !== null;
   }
 }
-

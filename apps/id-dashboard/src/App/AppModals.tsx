@@ -28,7 +28,7 @@ import { CustodianApprovalModal } from '../components/modals/CustodianApprovalMo
 import { CustodianInvitationAcceptanceModal } from '../components/modals/CustodianInvitationAcceptanceModal';
 import { RecoveryPasscodeModal } from '../components/recovery/RecoveryPasscodeModal';
 import { BiometricPasscodeModal } from '../components/security/BiometricPasscodeModal';
-import { API_ENDPOINT } from '../config/api';
+import { ownerFetch } from '../services/ownerApiService';
 
 const EnhancedPrivacyPanel = lazy(() => import('../components/EnhancedPrivacyPanel').then(module => ({ default: module.EnhancedPrivacyPanel })));
 const ToolSettingsModal = lazy(() => import('../components/ToolSettingsModal').then(module => ({ default: module.ToolSettingsModal })));
@@ -896,16 +896,12 @@ export function AppModals(props: AppModalsProps) {
                     }
                   };
 
-                  const response = await fetch(
-                    `${API_ENDPOINT}/api/users/${pnIdentifier}/zkp-data-points/${dataPointId}`,
-                    {
-                      method: 'PUT',
-                      headers: {
-                        'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${authToken}`
-                      },
-                      body: JSON.stringify(zkpDataPoint)
-                    }
+                  const response = await ownerFetch(
+                    authToken,
+                    'PUT',
+                    `/api/users/${pnIdentifier}/zkp-data-points/${dataPointId}`,
+                    zkpDataPoint,
+                    { pnIdentifier }
                   );
 
                   if (response.ok) {

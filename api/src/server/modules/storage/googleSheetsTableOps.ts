@@ -45,7 +45,12 @@ export async function scanGoogleTableRows(
 
   if (schema.path === TABLE_PATHS.zkpDataPoints) {
     const { ZKPDataPointsSheetsService } = await import('../zkpDataPointsSheetsService');
-    const sheetId = await ZKPDataPointsSheetsService.getZKPDataPointsSheet(token, metadataFolderId, pnIdentifier, accountId);
+    const { loadPnDriveIndex, getSheetIdFromIndex, PN_DRIVE_SHEET_KEYS } = await import('../pnDriveIndex');
+    const index = await loadPnDriveIndex(pnIdentifier);
+    if (!index) {
+      throw new Error('pnDriveIndex missing; re-initialize storage');
+    }
+    const sheetId = getSheetIdFromIndex(index, PN_DRIVE_SHEET_KEYS.ZKP_DATA_POINTS);
     const all = await ZKPDataPointsSheetsService.getZKPDataPoints(token, sheetId, pnIdentifier, accountId);
     return Object.values(all) as unknown as TableRow[];
   }
@@ -181,7 +186,12 @@ export async function replaceAllGoogleTableRows(
 
   if (schema.path === TABLE_PATHS.zkpDataPoints) {
     const { ZKPDataPointsSheetsService } = await import('../zkpDataPointsSheetsService');
-    const sheetId = await ZKPDataPointsSheetsService.getZKPDataPointsSheet(token, metadataFolderId, pnIdentifier, accountId);
+    const { loadPnDriveIndex, getSheetIdFromIndex, PN_DRIVE_SHEET_KEYS } = await import('../pnDriveIndex');
+    const index = await loadPnDriveIndex(pnIdentifier);
+    if (!index) {
+      throw new Error('pnDriveIndex missing; re-initialize storage');
+    }
+    const sheetId = getSheetIdFromIndex(index, PN_DRIVE_SHEET_KEYS.ZKP_DATA_POINTS);
     await ZKPDataPointsSheetsService.setAllZKPDataPoints(token, sheetId, rows as never[], pnIdentifier, accountId);
     return;
   }
