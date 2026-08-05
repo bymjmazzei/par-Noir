@@ -196,7 +196,7 @@ export async function fetchRecoveryCustodianSummary(
   authToken: string
 ): Promise<RecoveryCustodianSummary | null> {
   const path = `/api/recovery/${encodeURIComponent(userPnIdentifier)}/custodians`;
-  const res = await ownerGet(authToken, path);
+  const res = await ownerGet(authToken, path, { pnIdentifier: userPnIdentifier });
   if (!res.ok) return null;
   return res.json();
 }

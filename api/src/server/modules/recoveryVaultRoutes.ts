@@ -39,8 +39,8 @@ function bearerPn(req: Request): { pnIdentifier: string; did?: string } | null {
   return { pnIdentifier: pn, did: payload.did };
 }
 
-async function spreadsheetForPn(pn: string) {
-  const ctx = await getRecoveryDriveContext(pn);
+async function spreadsheetForPn(pn: string, opts?: { accessToken?: string }) {
+  const ctx = await getRecoveryDriveContext(pn, opts);
   if (!ctx) return null;
   const spreadsheetId = await RecoverySheetsService.getOrCreateSpreadsheet(
     ctx.token,
@@ -511,8 +511,11 @@ export async function fetchVaultSharesForRequest(params: {
   };
 }
 
-export async function getRecoveryCustodianSummary(userPnIdentifier: string) {
-  const bundle = await spreadsheetForPn(userPnIdentifier);
+export async function getRecoveryCustodianSummary(
+  userPnIdentifier: string,
+  opts?: { accessToken?: string }
+) {
+  const bundle = await spreadsheetForPn(userPnIdentifier, opts);
   if (!bundle) return null;
 
   const [custodians, pending] = await Promise.all([

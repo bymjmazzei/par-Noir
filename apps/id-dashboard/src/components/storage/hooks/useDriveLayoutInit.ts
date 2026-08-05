@@ -108,7 +108,8 @@ export function useDriveLayoutInit({ setError }: UseDriveLayoutInitParams) {
         for (let attempt = 0; attempt < 6; attempt++) {
           const idxRes = await ownerGet(
             accessToken,
-            `/api/storage/owner-index/${encodeURIComponent(normalized)}`
+            `/api/storage/owner-index/${encodeURIComponent(normalized)}`,
+            { pnIdentifier: normalized }
           );
           if (idxRes.ok) {
             clearOwnerIndexUnavailable(normalized);

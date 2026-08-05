@@ -170,30 +170,28 @@ async function ensureDriveLayout(pnIdentifier: string, apiToken: string): Promis
       body: '{}'
     }
   );
-  // 200 or already-initialized success; 409 without token is failure
-  if (initRes.ok) return true;
-  // Some deployments return 200 with body; treat non-auth failures after token as soft-ok if index works
-  if (initRes.status === 400 || initRes.status === 409) {
-    const indexRes = await ownerGet(
-      apiToken,
-      `/api/storage/owner-index/${encodeURIComponent(pnIdentifier)}`,
-      { pnIdentifier }
-    );
-    return indexRes.ok;
-  }
-  return false;
+  // 200 or already-initialized success; do not probe owner-index here (avoids red 409 in console).
+  return initRes.ok;
 }
 
 async function prefetchOwnerIndex(pnIdentifier: string, apiToken: string): Promise<void> {
   try {
+    const { isOwnerIndexUnavailable, markOwnerIndexUnavailable, clearOwnerIndexUnavailable } =
+      await import('./ownerIndexAvailability');
+    if (isOwnerIndexUnavailable(pnIdentifier)) return;
+
     const res = await ownerGet(
       apiToken,
       `/api/storage/owner-index/${encodeURIComponent(pnIdentifier)}`,
       { pnIdentifier }
     );
-    if (res.ok) return;
-    if (res.status === 409) {
-      // One layout ensure; do not re-GET owner-index here (ensureDriveLayout already probes index on 409).
+    if (res.ok) {
+      clearOwnerIndexUnavailable(pnIdentifier);
+      return;
+    }
+    if (res.status === 403 || res.status === 409) {
+      markOwnerIndexUnavailable(pnIdentifier);
+      // Layout ensure once without a second owner-index GET.
       await ensureDriveLayout(pnIdentifier, apiToken);
     }
   } catch {

@@ -63,7 +63,8 @@ export async function fetchOwnerIndex({
   try {
     const idxRes = await ownerGet(
       ownerApiToken,
-      `/api/storage/owner-index/${encodeURIComponent(pnId)}`
+      `/api/storage/owner-index/${encodeURIComponent(pnId)}`,
+      { pnIdentifier: pnId }
     );
     if (idxRes.status === 403) {
       markOwnerIndexUnavailable(pnId);

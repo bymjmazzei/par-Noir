@@ -1150,7 +1150,7 @@ export class GoogleDriveMetadataService {
       }
       const path = `/api/storage/owner-index/${encodeURIComponent(pnIdentifier)}`;
       const res = ownerApiToken
-        ? await ownerGet(ownerApiToken, path)
+        ? await ownerGet(ownerApiToken, path, { pnIdentifier })
         : await fetch(`${API_ENDPOINT}${path}`);
       if (res.status === 403 || res.status === 409) {
         markOwnerIndexUnavailable(pnIdentifier);

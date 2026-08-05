@@ -132,7 +132,8 @@ describe('fetchOwnerIndex owner-index fallthrough', () => {
 
     expect(ownerGet).toHaveBeenCalledWith(
       OWNER_API_TOKEN,
-      `/api/storage/owner-index/${encodeURIComponent('pn-abcdef123456')}`
+      `/api/storage/owner-index/${encodeURIComponent('pn-abcdef123456')}`,
+      { pnIdentifier: 'pn-abcdef123456' }
     );
   });
 

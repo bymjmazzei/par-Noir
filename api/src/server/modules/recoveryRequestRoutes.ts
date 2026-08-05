@@ -212,8 +212,17 @@ export function setupRecoveryRequestRoutes(app: express.Application, deps: Recov
       try {
         const { userPnIdentifier } = req.params;
         if (!(await gateOwnerRoute(req, res, DEVICE_CAPABILITIES.custodiansRead, userPnIdentifier))) return;
-        const summary = await getRecoveryCustodianSummary(userPnIdentifier);
-        if (!summary) return res.status(404).json({ error: 'Drive not connected' });
+        const summary = await getRecoveryCustodianSummary(userPnIdentifier, {
+          accessToken: (await import('./cloudAccessToken')).extractCloudAccessToken(req),
+        });
+        if (!summary) {
+          // Empty vault / no Drive under custody — not an error for unlock probes.
+          return res.json({
+            custodians: [],
+            pending: [],
+            counts: { accepted: 0, acceptedUnrevokable: 0, invited: 0 },
+          });
+        }
         return res.json({
           custodians: summary.custodians.map((c) => ({
             custodianId: c.custodianId,
