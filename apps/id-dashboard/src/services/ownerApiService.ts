@@ -1,6 +1,6 @@
 import { API_ENDPOINT } from '../config/api';
 import { deviceProofHeaders } from './deviceProofContext';
-import { resolveLocalGoogleAccessToken } from './deviceApiService';
+import { resolveLocalGoogleAccessTokenAsync } from './deviceApiService';
 
 const PN_CLOUD_ACCESS_TOKEN_HEADER = 'X-PN-Cloud-Access-Token';
 
@@ -12,9 +12,9 @@ function authHeaders(authToken: string, extra?: Record<string, string>) {
   };
 }
 
-function cloudTokenHeaders(pnIdentifier?: string): Record<string, string> {
+async function cloudTokenHeaders(pnIdentifier?: string): Promise<Record<string, string>> {
   if (!pnIdentifier) return {};
-  const tok = resolveLocalGoogleAccessToken(pnIdentifier);
+  const tok = await resolveLocalGoogleAccessTokenAsync(pnIdentifier);
   return tok ? { [PN_CLOUD_ACCESS_TOKEN_HEADER]: tok } : {};
 }
 
@@ -35,7 +35,7 @@ export async function ownerFetch(
 ): Promise<Response> {
   const { extraHeaders, pnIdentifier, ...rest } = init ?? {};
   const proof = await deviceProofHeaders(method, path, body);
-  const cloud = cloudTokenHeaders(pnIdentifier);
+  const cloud = await cloudTokenHeaders(pnIdentifier);
   return fetch(`${API_ENDPOINT}${path}`, {
     ...rest,
     method,
@@ -52,7 +52,7 @@ export async function ownerGet(
 ): Promise<Response> {
   const { extraHeaders, pnIdentifier, ...rest } = init ?? {};
   const proof = await deviceProofHeaders('GET', path);
-  const cloud = cloudTokenHeaders(pnIdentifier);
+  const cloud = await cloudTokenHeaders(pnIdentifier);
   return fetch(`${API_ENDPOINT}${path}`, {
     ...rest,
     method: 'GET',

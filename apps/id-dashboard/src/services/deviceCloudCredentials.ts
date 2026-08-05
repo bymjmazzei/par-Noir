@@ -18,6 +18,7 @@ import {
   materializeMailboxJob,
   migrateServerSecretsToDevice,
   sealCredentials,
+  setSessionCloudCredentials,
   takeOutboxBridge,
   unsealCredentials,
   upsertLocalOutboxRecord,
@@ -79,6 +80,8 @@ export async function sealAndStoreCloudCredentials(opts: {
   credentials: StorageCredentialsEnvelope;
   session: SealSession;
 }): Promise<SealedEnvelope> {
+  // Keep unlock-session memory aligned with sealed Drive secrets (owner API / ZKP).
+  setSessionCloudCredentials(opts.identityId, opts.credentials);
   const expiresAt = isNative()
     ? null
     : new Date(Date.now() + WEB_GRACE_TTL_MS).toISOString();

@@ -78,6 +78,24 @@ export const CloudReconnectHost: React.FC<CloudReconnectHostProps> = ({
     });
   }, [pnIdentifier, sessionId]);
 
+  // Unlock-time: always promote sealed/local Drive secrets into session memory
+  // (OAuth-style), independent of Storage tab and whether the reconnect prompt shows.
+  React.useEffect(() => {
+    if (!pnIdentifier || !sessionId) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        await loadLocalEnvelope();
+      } catch {
+        /* best-effort warm */
+      }
+      if (cancelled) return;
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [pnIdentifier, sessionId, loadLocalEnvelope]);
+
   const gate = useCloudReconnectGate({
     enabled: !!(apiToken && pnIdentifier),
     authToken: apiToken,

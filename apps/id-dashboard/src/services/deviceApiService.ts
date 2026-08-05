@@ -7,7 +7,11 @@ import {
 import { SecureCredentialManager } from '@par-noir/identity-crypto';
 import { sealDevicePrivateDisplay } from '@par-noir/device-client';
 import { clientPlatformHeaderValue } from '@par-noir/device-client';
-import { getSessionCloudCredentials } from '@par-noir/device-cloud-credentials';
+import {
+  getSessionCloudCredentials,
+  setSessionCloudCredentials,
+} from '@par-noir/device-cloud-credentials';
+import type { StorageCredentialsEnvelope } from '@par-noir/user-owned-storage';
 import { deviceProofHeaders } from './deviceProofContext';
 import {
   loadDeviceRegistration,
@@ -34,18 +38,110 @@ export interface DeviceRegistrySummary {
 
 const PN_CLOUD_ACCESS_TOKEN_HEADER = 'X-PN-Cloud-Access-Token';
 
+function googleTokenFromEnvelope(env: StorageCredentialsEnvelope | null | undefined): string | null {
+  const acct = env?.googleDriveAccounts?.[0] as
+    | { accessToken?: string; access_token?: string }
+    | undefined;
+  const tok = acct?.accessToken || acct?.access_token;
+  return typeof tok === 'string' && tok.trim() ? tok.trim() : null;
+}
+
+/** Best-effort warm session memory so owner API calls see the live Google token. */
+function warmSessionGoogleToken(pnIdentifier: string, accessToken: string): void {
+  try {
+    const existing = getSessionCloudCredentials(pnIdentifier);
+    const accounts = [...(existing?.googleDriveAccounts ?? [])];
+    if (accounts.length === 0) {
+      accounts.push({
+        accountId: 'session',
+        accessToken,
+      });
+    } else {
+      const first = { ...(accounts[0] as Record<string, unknown>), accessToken };
+      accounts[0] = first as (typeof accounts)[0];
+    }
+    const next: StorageCredentialsEnvelope = {
+      ...(existing ?? { socialCloudProvider: 'google_drive' }),
+      socialCloudProvider: existing?.socialCloudProvider ?? 'google_drive',
+      googleDriveAccounts: accounts,
+    };
+    setSessionCloudCredentials(pnIdentifier, next);
+  } catch {
+    /* ignore */
+  }
+}
+
 /** Local Google access token for API Drive writes under device custody (never log). */
 export function resolveLocalGoogleAccessToken(pnIdentifier: string): string | null {
   try {
-    const env = getSessionCloudCredentials(pnIdentifier);
-    const acct = env?.googleDriveAccounts?.[0] as
-      | { accessToken?: string; access_token?: string }
-      | undefined;
-    const tok = acct?.accessToken || acct?.access_token;
-    return typeof tok === 'string' && tok.trim() ? tok.trim() : null;
+    return googleTokenFromEnvelope(getSessionCloudCredentials(pnIdentifier));
   } catch {
     return null;
   }
+}
+
+/**
+ * Session → sealed local load → Storage GoogleDriveBackend.
+ * Warms session when a token is recovered so later owner calls stay sync-fast.
+ */
+export async function resolveLocalGoogleAccessTokenAsync(
+  pnIdentifier: string
+): Promise<string | null> {
+  const fromSession = resolveLocalGoogleAccessToken(pnIdentifier);
+  if (fromSession) return fromSession;
+
+  try {
+    const userStr =
+      typeof localStorage !== 'undefined' ? localStorage.getItem('authenticated_user') : null;
+    const user = userStr ? (JSON.parse(userStr) as { id?: string; publicKey?: string }) : null;
+    const sessionId = user?.id || user?.publicKey || null;
+    if (sessionId) {
+      const creds = SecureCredentialManager.getCredentials(sessionId);
+      if (creds?.pnName && creds?.passcode) {
+        const { loadLocalCloudCredentials } = await import('@par-noir/device-cloud-credentials');
+        const env = await loadLocalCloudCredentials({
+          identityId: pnIdentifier,
+          session: {
+            sessionId,
+            pnName: creds.pnName,
+            passcode: creds.passcode,
+          },
+        });
+        const tok = googleTokenFromEnvelope(env);
+        if (tok) return tok;
+      }
+    }
+  } catch {
+    /* fall through */
+  }
+
+  try {
+    const { getFileAggregatorService } = await import('./aggregator/FileAggregatorService');
+    const entries = getFileAggregatorService().listBackendEntries();
+    for (const { backend } of entries) {
+      const drive = backend as {
+        ensureAccessToken?: () => Promise<string | null>;
+        getAccessToken?: () => string | null;
+        isConnected?: () => boolean;
+      };
+      if (drive.isConnected && !drive.isConnected()) continue;
+      let tok: string | null = null;
+      if (typeof drive.ensureAccessToken === 'function') {
+        tok = await drive.ensureAccessToken();
+      } else if (typeof drive.getAccessToken === 'function') {
+        tok = drive.getAccessToken();
+      }
+      if (tok && tok.trim()) {
+        const trimmed = tok.trim();
+        warmSessionGoogleToken(pnIdentifier, trimmed);
+        return trimmed;
+      }
+    }
+  } catch {
+    /* ignore */
+  }
+
+  return null;
 }
 
 function authHeaders(authToken: string, extra?: Record<string, string>) {
@@ -60,8 +156,8 @@ function platformHeaders(): Record<string, string> {
   return { 'X-PN-Client-Platform': clientPlatformHeaderValue() };
 }
 
-function cloudTokenHeaders(pnIdentifier: string): Record<string, string> {
-  const tok = resolveLocalGoogleAccessToken(pnIdentifier);
+async function cloudTokenHeadersAsync(pnIdentifier: string): Promise<Record<string, string>> {
+  const tok = await resolveLocalGoogleAccessTokenAsync(pnIdentifier);
   return tok ? { [PN_CLOUD_ACCESS_TOKEN_HEADER]: tok } : {};
 }
 
@@ -73,7 +169,9 @@ async function apiFetch(
   pnIdentifierForCloudToken?: string
 ): Promise<Response> {
   const proof = await deviceProofHeaders(method, path, body);
-  const cloud = pnIdentifierForCloudToken ? cloudTokenHeaders(pnIdentifierForCloudToken) : {};
+  const cloud = pnIdentifierForCloudToken
+    ? await cloudTokenHeadersAsync(pnIdentifierForCloudToken)
+    : {};
   return fetch(`${API_ENDPOINT}${path}`, {
     method,
     headers: authHeaders(authToken, { ...proof, ...cloud }),
@@ -237,7 +335,7 @@ export async function registerDeviceOnServer(params: {
   const res = await fetch(`${API_ENDPOINT}${path}`, {
     method: 'POST',
     headers: authHeaders(params.authToken, {
-      ...cloudTokenHeaders(params.userPnIdentifier),
+      ...(await cloudTokenHeadersAsync(params.userPnIdentifier)),
       ...platformHeaders(),
     }),
     body: JSON.stringify(body),
@@ -260,7 +358,7 @@ export async function resetDeviceRegistryDev(
   const path = `/api/devices/${encodeURIComponent(userPnIdentifier)}/registry/reset`;
   const res = await fetch(`${API_ENDPOINT}${path}`, {
     method: 'POST',
-    headers: authHeaders(authToken, cloudTokenHeaders(userPnIdentifier)),
+    headers: authHeaders(authToken, await cloudTokenHeadersAsync(userPnIdentifier)),
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
@@ -282,7 +380,7 @@ export async function initiateDeviceRegistryResetRequest(params: {
   const requestId = `device-reset-${Date.now()}`;
   const res = await fetch(`${API_ENDPOINT}/api/recovery/requests`, {
     method: 'POST',
-    headers: authHeaders(params.authToken, cloudTokenHeaders(params.userPnIdentifier)),
+    headers: authHeaders(params.authToken, await cloudTokenHeadersAsync(params.userPnIdentifier)),
     body: JSON.stringify({
       userPnIdentifier: params.userPnIdentifier,
       requestId,
@@ -307,7 +405,7 @@ export async function finalizeDeviceRegistryReset(
 ): Promise<{ success: boolean; revoked: number }> {
   const res = await fetch(`${API_ENDPOINT}/api/devices/registry/reset/finalize`, {
     method: 'POST',
-    headers: authHeaders(authToken, cloudTokenHeaders(userPnIdentifier)),
+    headers: authHeaders(authToken, await cloudTokenHeadersAsync(userPnIdentifier)),
     body: JSON.stringify({ userPnIdentifier, requestId }),
   });
   if (!res.ok) {

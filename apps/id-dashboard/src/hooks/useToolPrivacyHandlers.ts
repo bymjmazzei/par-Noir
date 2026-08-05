@@ -428,7 +428,16 @@ export function useToolPrivacyHandlers(params: UseToolPrivacyHandlersParams) {
       setCurrentDataPointExistingData(null);
     } catch (error) {
       console.error('❌ [DataPointInput] Error:', error);
-      setError(`Failed to save data point: ${error instanceof Error ? error.message : String(error)}`);
+      const raw = error instanceof Error ? error.message : String(error);
+      const needsDrive =
+        /DRIVE_NOT_INITIALIZED|cloud_token_required|connect.*google drive|Google Drive storage not initialized/i.test(
+          raw
+        );
+      setError(
+        needsDrive
+          ? 'Connect or reconnect Google Drive (cloud reconnect or Storage), then retry attestation.'
+          : `Failed to save data point: ${raw}`
+      );
       setTimeout(() => setError(null), 9000);
     }
   };
