@@ -774,20 +774,26 @@ export function AppModals(props: AppModalsProps) {
                   existingData={currentDataPointExistingData}
                   onComplete={handleDataPointInputComplete}
                   identityId={authenticatedUser?.id ?? selectedStoredIdentity?.id}
-                  encryptedIdentity={
-                    selectedStoredIdentity?.encryptedData &&
-                    selectedStoredIdentity?.publicKey &&
-                    selectedStoredIdentity?.iv &&
-                    selectedStoredIdentity?.salt
-                      ? {
-                          publicKey: selectedStoredIdentity.publicKey,
-                          mlKemPublicKey: selectedStoredIdentity.mlKemPublicKey,
-                          encryptedData: selectedStoredIdentity.encryptedData,
-                          iv: selectedStoredIdentity.iv,
-                          salt: selectedStoredIdentity.salt,
-                        }
-                      : undefined
-                  }
+                  encryptedIdentity={(() => {
+                    // SimpleIdentity stores nested EncryptedIdentity on encryptedData
+                    const nested = selectedStoredIdentity?.encryptedData;
+                    if (
+                      nested &&
+                      typeof nested === 'object' &&
+                      typeof nested.encryptedData === 'string' &&
+                      nested.iv &&
+                      nested.salt
+                    ) {
+                      return {
+                        publicKey: nested.publicKey || selectedStoredIdentity.publicKey,
+                        mlKemPublicKey: nested.mlKemPublicKey || selectedStoredIdentity.mlKemPublicKey,
+                        encryptedData: nested.encryptedData,
+                        iv: nested.iv,
+                        salt: nested.salt,
+                      };
+                    }
+                    return undefined;
+                  })()}
                 />
               )}
 
