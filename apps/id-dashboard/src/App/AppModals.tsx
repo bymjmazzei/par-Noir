@@ -189,6 +189,9 @@ export interface AppModalsProps {
   currentDataPointExistingData: any;
   handleDataPointInputComplete: any;
   selectedStoredIdentity: any;
+  getEncryptedIdentityForApiToken: (
+    identityPublicKeyOrId: string | undefined
+  ) => Promise<{ encryptedData: string; iv: string; salt: string } | null>;
   showBiometricPasscodeModal: any;
   pendingBiometricIdentity: any;
   setShowBiometricPasscodeModal: any;
@@ -364,6 +367,7 @@ export function AppModals(props: AppModalsProps) {
     currentDataPointExistingData,
     handleDataPointInputComplete,
     selectedStoredIdentity,
+    getEncryptedIdentityForApiToken,
     showBiometricPasscodeModal,
     pendingBiometricIdentity,
     setShowBiometricPasscodeModal,
@@ -774,8 +778,12 @@ export function AppModals(props: AppModalsProps) {
                   existingData={currentDataPointExistingData}
                   onComplete={handleDataPointInputComplete}
                   identityId={authenticatedUser?.id ?? selectedStoredIdentity?.id}
+                  identityPublicKey={
+                    authenticatedUser?.publicKey || selectedStoredIdentity?.publicKey
+                  }
+                  loadEncryptedIdentity={getEncryptedIdentityForApiToken}
                   encryptedIdentity={(() => {
-                    // SimpleIdentity stores nested EncryptedIdentity on encryptedData
+                    // Optional fast path when unlock-list selection still holds nested EncryptedIdentity
                     const nested = selectedStoredIdentity?.encryptedData;
                     if (
                       nested &&

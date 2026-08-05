@@ -1505,6 +1505,7 @@ function App() {
           currentDataPointExistingData={currentDataPointExistingData}
           handleDataPointInputComplete={toolPrivacyHandlers.handleDataPointInputComplete}
           selectedStoredIdentity={selectedStoredIdentity}
+          getEncryptedIdentityForApiToken={getEncryptedIdentityForApiToken}
           showBiometricPasscodeModal={showBiometricPasscodeModal}
           pendingBiometricIdentity={pendingBiometricIdentity}
           setShowBiometricPasscodeModal={setShowBiometricPasscodeModal}

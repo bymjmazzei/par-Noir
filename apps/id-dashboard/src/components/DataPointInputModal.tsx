@@ -10,7 +10,13 @@ interface DataPointInputModalProps {
   existingData?: any;
   onComplete: (proofs: any[], userData: any) => void;
   identityId?: string;
+  /** ML-DSA public key for the unlocked session (often differs from identityId / volume id). */
+  identityPublicKey?: string;
   encryptedIdentity?: EncryptedIdentity;
+  /** Same SimpleStorage/SecureStorage loader used for owner API tokens after unlock. */
+  loadEncryptedIdentity?: (
+    identityPublicKeyOrId: string
+  ) => Promise<{ encryptedData: string; iv: string; salt: string } | null>;
 }
 
 export const DataPointInputModal: React.FC<DataPointInputModalProps> = ({
@@ -20,7 +26,9 @@ export const DataPointInputModal: React.FC<DataPointInputModalProps> = ({
   existingData,
   onComplete,
   identityId,
-  encryptedIdentity
+  identityPublicKey,
+  encryptedIdentity,
+  loadEncryptedIdentity
 }) => {
   const [userData, setUserData] = useState<Record<string, any>>({});
   const [loading, setLoading] = useState(false);
@@ -143,9 +151,43 @@ export const DataPointInputModal: React.FC<DataPointInputModalProps> = ({
     setLoading(true);
 
     try {
-      // Generate ZKP
-      if (!identityId || !encryptedIdentity) {
-        alert('Unlock your identity and select a stored profile to generate ZK proofs.');
+      let resolved: EncryptedIdentity | undefined = encryptedIdentity;
+      if (
+        !resolved?.encryptedData ||
+        !resolved?.iv ||
+        !resolved?.salt ||
+        !resolved?.publicKey
+      ) {
+        const keys = [identityPublicKey, identityId].filter(
+          (k): k is string => typeof k === 'string' && k.trim().length > 0
+        );
+        let partial: { encryptedData: string; iv: string; salt: string } | null = null;
+        if (loadEncryptedIdentity) {
+          for (const key of keys) {
+            partial = await loadEncryptedIdentity(key);
+            if (partial?.encryptedData && partial.iv && partial.salt) break;
+          }
+        }
+        if (partial?.encryptedData && partial.iv && partial.salt) {
+          const publicKey =
+            identityPublicKey ||
+            (typeof encryptedIdentity?.publicKey === 'string' ? encryptedIdentity.publicKey : '') ||
+            keys[0] ||
+            '';
+          if (publicKey) {
+            resolved = {
+              publicKey,
+              mlKemPublicKey: encryptedIdentity?.mlKemPublicKey,
+              encryptedData: partial.encryptedData,
+              iv: partial.iv,
+              salt: partial.salt,
+            };
+          }
+        }
+      }
+
+      if (!identityId || !resolved?.encryptedData || !resolved.iv || !resolved.salt || !resolved.publicKey) {
+        alert('Unlock your identity to generate ZK proofs. Session credentials or the stored pN file are unavailable.');
         return;
       }
 
@@ -155,10 +197,14 @@ export const DataPointInputModal: React.FC<DataPointInputModalProps> = ({
         verificationLevel: 'basic',
         expirationDays: 365,
         identityId,
-        encryptedIdentity
+        encryptedIdentity: resolved
       };
 
-      console.log('🔄 [DataPointInputModal] Generating ZKP with request:', zkpRequest);
+      console.log('🔄 [DataPointInputModal] Generating ZKP with request:', {
+        dataPointId: zkpRequest.dataPointId,
+        identityId: zkpRequest.identityId,
+        hasEncryptedIdentity: !!zkpRequest.encryptedIdentity,
+      });
       const { ZKPGenerator } = await import('../utils/ZKPGenerator');
       const proof = await ZKPGenerator.generateZKP(zkpRequest);
       console.log('✅ [DataPointInputModal] ZKP generated successfully', { proof });
