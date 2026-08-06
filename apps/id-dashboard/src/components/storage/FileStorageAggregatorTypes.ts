@@ -7,8 +7,8 @@ export const GOOGLE_DRIVE_ICON_URL = GoogleDriveIconUrl;
 export const DRIVE_ACCOUNTS_STORAGE_KEY = 'pn_google_drive_accounts';
 export const METADATA_SYNC_MIN_INTERVAL_MS = 90_000;
 export const INDEXER_CACHE_TTL_MS = 5 * 60 * 1000;
-export const DRIVE_INIT_POLL_TIMEOUT_MS = 12 * 60 * 1000;
-export const DRIVE_INIT_POLL_INTERVAL_MS = 2000;
+/** Progress UI poll while POST /storage/initialize is in flight (not a completion wait). */
+export const DRIVE_INIT_POLL_INTERVAL_MS = 5_000;
 export const DRIVE_INIT_REBUILD_COOLDOWN_MS = 30_000;
 
 export type DriveSetupProgress = {

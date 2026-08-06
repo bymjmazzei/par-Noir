@@ -5,15 +5,19 @@
  * the setup-progress state shown while the layout is being built, and soft-skip
  * when the API has no Google secrets *and* no forwarded token. With
  * `googleAccessToken` (device custody), initialize is required and failures surface.
+ *
+ * POST /storage/initialize awaits the full server init before responding. Progress
+ * polling is UI-only while that POST is in flight — never continue polling `/status`
+ * after the POST settles (that previously burned hundreds of calls looking for
+ * `inFlight` that the server already cleared in `finally`).
  */
 import React, { useState } from 'react';
 import { ownerFetch, ownerGet } from '../../../services/ownerApiService';
-import { retry } from '../../../utils/helpers';
-import {
-  DRIVE_INIT_POLL_TIMEOUT_MS,
-  DRIVE_INIT_POLL_INTERVAL_MS,
-  type DriveSetupProgress,
-} from '../FileStorageAggregatorTypes';
+import { sleep } from '../../../utils/helpers';
+import type { DriveSetupProgress } from '../FileStorageAggregatorTypes';
+
+/** Progress UI poll while POST /storage/initialize is in flight (not a completion wait). */
+const DRIVE_INIT_POLL_INTERVAL_MS = 5_000;
 
 export interface UseDriveLayoutInitParams {
   setError: React.Dispatch<React.SetStateAction<string | null>>;
@@ -80,33 +84,26 @@ export function useDriveLayoutInit({ setError }: UseDriveLayoutInitParams) {
         setDriveSetupProgress(progress);
       };
 
-      const pollInitStatus = async (): Promise<{
-        inFlight: boolean;
-        progress: DriveSetupProgress | null;
-      }> => {
+      const pollInitStatus = async (): Promise<DriveSetupProgress | null> => {
         const statusRes = await ownerGet(
           accessToken,
           `/api/storage/initialize/${encodeURIComponent(normalized)}/status`,
           { pnIdentifier: normalized }
         );
         if (!statusRes.ok) {
-          return { inFlight: false, progress: null };
+          return null;
         }
         const statusData = (await statusRes.json()) as {
-          inFlight?: boolean;
           progress?: DriveSetupProgress | null;
         };
-        return {
-          inFlight: Boolean(statusData.inFlight),
-          progress: statusData.progress ?? null,
-        };
+        return statusData.progress ?? null;
       };
 
       const waitForOwnerIndexReady = async (): Promise<boolean> => {
         const { markOwnerIndexUnavailable, clearOwnerIndexUnavailable } = await import(
           '../../../services/storage/ownerIndexAvailability'
         );
-        for (let attempt = 0; attempt < 6; attempt++) {
+        for (let attempt = 0; attempt < 4; attempt++) {
           const idxRes = await ownerGet(
             accessToken,
             `/api/storage/owner-index/${encodeURIComponent(normalized)}`,
@@ -121,45 +118,9 @@ export function useDriveLayoutInit({ setError }: UseDriveLayoutInitParams) {
             markOwnerIndexUnavailable(normalized);
             return false;
           }
-          if (attempt < 5) {
-            await new Promise((r) => setTimeout(r, 1500 * (attempt + 1)));
+          if (attempt < 3) {
+            await sleep(1000 * (attempt + 1));
           }
-        }
-        return false;
-      };
-
-      const waitForServerInit = async (postStartedAt: number): Promise<boolean> => {
-        const deadline = Date.now() + DRIVE_INIT_POLL_TIMEOUT_MS;
-        let sawInFlight = false;
-
-        while (Date.now() < deadline) {
-          try {
-            const { inFlight, progress } = await pollInitStatus();
-            if (inFlight) sawInFlight = true;
-
-            if (
-              progress &&
-              progress.phase !== 'complete' &&
-              progress.phase !== 'failed'
-            ) {
-              applyProgress(progress);
-            }
-            if (progress?.phase === 'failed') {
-              return false;
-            }
-
-            if (sawInFlight && !inFlight) {
-              return waitForOwnerIndexReady();
-            }
-
-            if (!sawInFlight && Date.now() - postStartedAt > 90_000) {
-              console.warn('⚠️ [Storage] Drive init status never reported in-flight');
-              return false;
-            }
-          } catch {
-            /* keep polling */
-          }
-          await new Promise((r) => setTimeout(r, DRIVE_INIT_POLL_INTERVAL_MS));
         }
         return false;
       };
@@ -174,7 +135,7 @@ export function useDriveLayoutInit({ setError }: UseDriveLayoutInitParams) {
 
       const pollProgressTick = async () => {
         try {
-          const { progress } = await pollInitStatus();
+          const progress = await pollInitStatus();
           if (
             progress &&
             progress.phase !== 'complete' &&
@@ -187,22 +148,22 @@ export function useDriveLayoutInit({ setError }: UseDriveLayoutInitParams) {
         }
       };
 
+      let lastError: Error | null = null;
       try {
-        const result = await retry(async () => {
-          const postStartedAt = Date.now();
+        for (let attempt = 1; attempt <= maxAttempts; attempt++) {
           applyProgress({
             phase: 'starting',
             stepLabel: 'Preparing your par Noir storage…',
             percent: 0,
           });
 
+          // Progress UI only — stop as soon as POST settles. Do not dual-poll or
+          // keep hitting /status after the server clears inFlight in finally.
           void pollProgressTick();
           pollTimer = setInterval(() => {
             void pollProgressTick();
           }, DRIVE_INIT_POLL_INTERVAL_MS);
 
-          // Await POST first so custody soft-skips (400) exit immediately instead of
-          // polling for minutes while loadFiles is blocked / setup UI spins.
           let initRes: Response;
           try {
             initRes = await ownerFetch(
@@ -218,7 +179,13 @@ export function useDriveLayoutInit({ setError }: UseDriveLayoutInitParams) {
               }
             );
           } catch (err) {
-            throw err instanceof Error ? err : new Error(String(err));
+            stopPolling();
+            lastError = err instanceof Error ? err : new Error(String(err));
+            if (attempt >= maxAttempts) break;
+            await sleep(2000 * attempt);
+            continue;
+          } finally {
+            stopPolling();
           }
 
           if (!initRes.ok) {
@@ -233,39 +200,41 @@ export function useDriveLayoutInit({ setError }: UseDriveLayoutInitParams) {
               console.warn(
                 `⏭️ [Storage] Skipping server Drive init (${initRes.status}); client-side discovery will be used`
               );
-              stopPolling();
               clearDriveSetupProgress();
-              return true;
+              return false;
             }
-            const err = new Error(
+            lastError = new Error(
               `Drive layout init failed (${initRes.status}): ${initErr.slice(0, 200)}`
             );
-            (err as { status?: number }).status = initRes.status;
-            throw err;
+            (lastError as { status?: number }).status = initRes.status;
+            // Only retry transient Google/API pressure.
+            if (initRes.status !== 503 && initRes.status !== 429) {
+              break;
+            }
+            if (attempt >= maxAttempts) break;
+            await sleep(2000 * attempt);
+            continue;
           }
 
-          const serverOk = await waitForServerInit(postStartedAt);
-          if (serverOk) {
-            return true;
-          }
-          console.warn('⚠️ [Storage] Drive init wait finished without server confirmation');
+          // POST already awaited full init. One short owner-index confirm — no /status loop.
+          applyProgress({
+            phase: 'finishing',
+            stepLabel: 'Confirming storage index…',
+            percent: 95,
+          });
+          await waitForOwnerIndexReady();
+
+          driveLayoutInitJustCompletedRef.current.set(normalized, Date.now());
+          clearDriveSetupProgress();
+          const { clearOwnerIndexUnavailable } = await import(
+            '../../../services/storage/ownerIndexAvailability'
+          );
+          clearOwnerIndexUnavailable(normalized);
+          console.log('✅ [StorageCredentials] Drive layout built on server');
           return true;
-        }, maxAttempts, 2000);
-
-        if (!result) {
-          return false;
         }
 
-        driveLayoutInitJustCompletedRef.current.set(normalized, Date.now());
-        clearDriveSetupProgress();
-        const { clearOwnerIndexUnavailable } = await import(
-          '../../../services/storage/ownerIndexAvailability'
-        );
-        clearOwnerIndexUnavailable(normalized);
-        console.log('✅ [StorageCredentials] Drive layout built on server');
-        return true;
-      } catch (initError) {
-        console.warn('⚠️ [StorageCredentials] Drive layout build failed after retries:', initError);
+        console.warn('⚠️ [StorageCredentials] Drive layout build failed after retries:', lastError);
         setError('Drive setup failed. Please try disconnecting and reconnecting Google Drive.');
         clearDriveSetupProgress();
         return false;
@@ -274,7 +243,7 @@ export function useDriveLayoutInit({ setError }: UseDriveLayoutInitParams) {
         driveLayoutInitInFlightRef.current.delete(normalized);
       }
     },
-    [clearDriveSetupProgress]
+    [clearDriveSetupProgress, setError]
   );
 
   const requestDriveLayoutRebuild = React.useCallback(async (pnId: string): Promise<boolean> => {

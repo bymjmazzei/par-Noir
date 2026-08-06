@@ -354,12 +354,21 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
   });
 
   React.useEffect(() => {
+    let debounceTimer: ReturnType<typeof setTimeout> | null = null;
     const onReady = () => {
-      void hydrateStorageCredentialsFromAPI(true);
-      void registerPortableCloudBackends();
+      // Coalesce burst READY events (migrate + ensureCloudSession + reconnect).
+      if (debounceTimer != null) clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(() => {
+        debounceTimer = null;
+        void hydrateStorageCredentialsFromAPI(true);
+        void registerPortableCloudBackends();
+      }, 250);
     };
     window.addEventListener(PN_CLOUD_CREDENTIALS_READY_EVENT, onReady);
-    return () => window.removeEventListener(PN_CLOUD_CREDENTIALS_READY_EVENT, onReady);
+    return () => {
+      window.removeEventListener(PN_CLOUD_CREDENTIALS_READY_EVENT, onReady);
+      if (debounceTimer != null) clearTimeout(debounceTimer);
+    };
   }, [hydrateStorageCredentialsFromAPI, registerPortableCloudBackends]);
 
   function getDriveAccountByBackendId(backendId: string | null | undefined) {

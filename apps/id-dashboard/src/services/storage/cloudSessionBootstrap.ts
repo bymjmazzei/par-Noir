@@ -379,13 +379,17 @@ export async function ensureCloudSession(opts: {
       return { status: 'needs_reconnect', error: lastError };
     }
 
+    const alreadyReady = readyPnIds.has(pnIdentifier);
     readyPnIds.add(pnIdentifier);
     lastStatus = 'ready';
     lastError = undefined;
-    try {
-      window.dispatchEvent(new CustomEvent(PN_CLOUD_CREDENTIALS_READY_EVENT));
-    } catch {
-      /* non-DOM */
+    // Signal only on transition into ready for this identity (avoid READY storms).
+    if (!alreadyReady) {
+      try {
+        window.dispatchEvent(new CustomEvent(PN_CLOUD_CREDENTIALS_READY_EVENT));
+      } catch {
+        /* non-DOM */
+      }
     }
     return { status: 'ready' };
   } catch (e) {
