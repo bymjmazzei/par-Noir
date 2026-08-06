@@ -86,7 +86,8 @@ export function useDriveLayoutInit({ setError }: UseDriveLayoutInitParams) {
       }> => {
         const statusRes = await ownerGet(
           accessToken,
-          `/api/storage/initialize/${encodeURIComponent(normalized)}/status`
+          `/api/storage/initialize/${encodeURIComponent(normalized)}/status`,
+          { pnIdentifier: normalized }
         );
         if (!statusRes.ok) {
           return { inFlight: false, progress: null };
@@ -209,9 +210,12 @@ export function useDriveLayoutInit({ setError }: UseDriveLayoutInitParams) {
               'POST',
               `/api/storage/initialize/${encodeURIComponent(normalized)}`,
               undefined,
-              googleAccessToken
-                ? { extraHeaders: { 'X-PN-Cloud-Access-Token': googleAccessToken } }
-                : undefined
+              {
+                pnIdentifier: normalized,
+                ...(googleAccessToken
+                  ? { extraHeaders: { 'X-PN-Cloud-Access-Token': googleAccessToken } }
+                  : {})
+              }
             );
           } catch (err) {
             throw err instanceof Error ? err : new Error(String(err));

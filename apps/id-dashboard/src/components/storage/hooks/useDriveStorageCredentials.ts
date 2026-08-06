@@ -76,6 +76,8 @@ export interface UseDriveStorageCredentialsParams {
   ownerIndexWarningLoggedRef: React.MutableRefObject<Set<string>>;
   ownerIndexRetryCountsRef: React.MutableRefObject<Map<string, number>>;
   rateLimitedBackendsRef: React.MutableRefObject<Set<string>>;
+  hasKeyedDevices?: boolean;
+  isKeyedSession?: boolean;
 }
 
 export function useDriveStorageCredentials({
@@ -107,6 +109,8 @@ export function useDriveStorageCredentials({
   ownerIndexWarningLoggedRef,
   ownerIndexRetryCountsRef,
   rateLimitedBackendsRef,
+  hasKeyedDevices = false,
+  isKeyedSession = false,
 }: UseDriveStorageCredentialsParams) {
   const driveCredentialCacheRef = React.useRef<Map<string, StoredDriveCredential>>(new Map());
 
@@ -165,68 +169,12 @@ export function useDriveStorageCredentials({
   }, []);
 
   const persistCredentialsToSecureMetadata = React.useCallback(
-    async (payload: any) => {
-      if (
-        !payload ||
-        !Array.isArray(payload.googleDriveAccounts) ||
-        payload.googleDriveAccounts.length === 0 ||
-        !authenticatedUser?.id
-      ) {
-        return;
-      }
-
-      const resolved = getResolvedAuthCredentials();
-      // SECURITY: pnName is a SECRET - only get from getResolvedAuthCredentials (which uses SecureCredentialManager)
-      const metadataPnName = resolved?.pnName || null;
-      let metadataPasscode = resolved?.passcode || null;
-      if (!metadataPasscode) {
-        // SECURITY: Get passcode from SecureCredentialManager instead of sessionStorage
-        const sessionId = authenticatedUser?.id || (authenticatedUser as any)?.publicKey || null;
-        metadataPasscode = getPasscodeFromSecureStorage(sessionId);
-      }
-
-      if (!metadataPnName || !metadataPasscode) {
-        return;
-      }
-
-      try {
-        const { SecureMetadataStorage } = await import('../../../utils/secureMetadataStorage');
-        const { SecureMetadataCrypto } = await import('../../../utils/secureMetadata');
-
-        const existingMetadata = await SecureMetadataStorage.getMetadata(authenticatedUser.id);
-        let baseCredentials: any = {};
-
-        if (existingMetadata) {
-          try {
-            const decrypted = await SecureMetadataCrypto.decryptMetadata(
-              existingMetadata,
-              metadataPnName,
-              metadataPasscode
-            );
-            baseCredentials = { ...(decrypted.storageCredentials || {}) };
-          } catch (decryptError) {
-            console.warn('⚠️ [StorageCredentials] Failed to decrypt secure metadata during refresh:', decryptError);
-          }
-        }
-
-        const updatedCredentials = {
-          ...baseCredentials,
-          googleDriveAccounts: payload.googleDriveAccounts
-        };
-
-        await SecureMetadataStorage.updateMetadataField(
-          authenticatedUser.id,
-          metadataPnName,
-          metadataPasscode,
-          'storageCredentials',
-          updatedCredentials
-        );
-      } catch (error) {
-        console.warn('⚠️ [StorageCredentials] Unable to update secure metadata during refresh:', error);
-      }
+    async (_payload: any) => {
+      // Live Google tokens belong only in the shared device-cloud session/sealed store.
+      // Do not write access/refresh tokens into SecureMetadata.
+      return;
     },
-    [authenticatedUser?.id, getResolvedAuthCredentials]
-    // SECURITY: Removed authenticatedUser?.pnName - it's a secret
+    []
   );
 
   // Guard to prevent multiple simultaneous persistence calls
@@ -360,7 +308,7 @@ export function useDriveStorageCredentials({
         const response = await ownerFetch(accessToken, 'PUT', credPath, {
           credentials: payload,
           cid: cid ?? null,
-        });
+        }, { pnIdentifier });
 
         if (!response.ok) {
           const errorText = await response.text().catch(() => 'Unknown error');
@@ -480,6 +428,8 @@ export function useDriveStorageCredentials({
     ownerIndexWarningLoggedRef,
     ownerIndexRetryCountsRef,
     rateLimitedBackendsRef,
+    hasKeyedDevices,
+    isKeyedSession,
   });
 
   // CRITICAL: DISABLED auto-persist effect - only persist on explicit user actions

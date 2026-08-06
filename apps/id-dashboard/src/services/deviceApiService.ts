@@ -82,11 +82,19 @@ export function resolveLocalGoogleAccessToken(pnIdentifier: string): string | nu
 
 /**
  * Session → sealed local load → Storage GoogleDriveBackend.
+ * Awaits unlock migrate first so sealed secrets are not raced.
  * Warms session when a token is recovered so later owner calls stay sync-fast.
  */
 export async function resolveLocalGoogleAccessTokenAsync(
   pnIdentifier: string
 ): Promise<string | null> {
+  try {
+    const { awaitMigrateFlushForIdentity } = await import('./deviceCloudCredentials');
+    await awaitMigrateFlushForIdentity(pnIdentifier);
+  } catch {
+    /* best-effort */
+  }
+
   const fromSession = resolveLocalGoogleAccessToken(pnIdentifier);
   if (fromSession) return fromSession;
 
@@ -108,7 +116,10 @@ export async function resolveLocalGoogleAccessTokenAsync(
           },
         });
         const tok = googleTokenFromEnvelope(env);
-        if (tok) return tok;
+        if (tok) {
+          warmSessionGoogleToken(pnIdentifier, tok);
+          return tok;
+        }
       }
     }
   } catch {
@@ -142,6 +153,23 @@ export async function resolveLocalGoogleAccessTokenAsync(
   }
 
   return null;
+}
+
+/**
+ * Wait until a live Google token is in the shared cloud session (or timeout).
+ * Used by owner UI that must not race the JWT-only unlock path.
+ */
+export async function waitForLocalGoogleAccessToken(
+  pnIdentifier: string,
+  maxMs = 15000
+): Promise<string | null> {
+  const start = Date.now();
+  while (Date.now() - start < maxMs) {
+    const tok = await resolveLocalGoogleAccessTokenAsync(pnIdentifier);
+    if (tok) return tok;
+    await new Promise((r) => setTimeout(r, 200));
+  }
+  return resolveLocalGoogleAccessTokenAsync(pnIdentifier);
 }
 
 function authHeaders(authToken: string, extra?: Record<string, string>) {

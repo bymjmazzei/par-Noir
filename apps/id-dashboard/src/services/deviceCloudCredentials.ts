@@ -7,16 +7,17 @@ import type { StorageCredentialsEnvelope } from '@par-noir/user-owned-storage';
 import {
   CloudFlushWorker,
   NativeSecureStore,
-  WEB_GRACE_TTL_MS,
   WebSealedStore,
   appendConversationLine,
   createDeviceCloudWriter,
   enqueueMailboxThroughway,
   ensureMailboxRouteKey,
+  loadLocalCloudCredentials,
   loadLocalOutbox,
   lookupMailboxThroughway,
   materializeMailboxJob,
   migrateServerSecretsToDevice,
+  persistCloudCredentials,
   sealCredentials,
   setSessionCloudCredentials,
   takeOutboxBridge,
@@ -34,7 +35,6 @@ import { API_ENDPOINT } from '../config/api';
 
 let webStore: WebSealedStore | null = null;
 let nativeStore: NativeSecureStore | null = null;
-let graceTimer: ReturnType<typeof setTimeout> | null = null;
 let flushInterval: ReturnType<typeof setInterval> | null = null;
 /** Coalesce duplicate unlock migrate (handler + App session-restore effect). */
 const migrateFlushInFlight = new Map<string, Promise<void>>();
@@ -55,53 +55,62 @@ function isNative(): boolean {
   }
 }
 
-async function getStore(): Promise<CredentialStore> {
-  if (isNative()) {
-    if (!nativeStore) {
-      const { SecureStoragePlugin } = await import('capacitor-secure-storage-plugin');
-      nativeStore = new NativeSecureStore({
-        get: async (key) => {
-          try {
-            const r = await SecureStoragePlugin.get({ key });
-            return r.value ?? null;
-          } catch {
-            return null;
-          }
-        },
-        set: async (key, value) => {
-          await SecureStoragePlugin.set({ key, value });
-        },
-        remove: async (key) => {
-          try {
-            await SecureStoragePlugin.remove({ key });
-          } catch {
-            /* ignore */
-          }
+async function getNativeStore(): Promise<CredentialStore> {
+  if (!nativeStore) {
+    const { SecureStoragePlugin } = await import('capacitor-secure-storage-plugin');
+    nativeStore = new NativeSecureStore({
+      get: async (key) => {
+        try {
+          const r = await SecureStoragePlugin.get({ key });
+          return r.value ?? null;
+        } catch {
+          return null;
         }
-      });
-    }
-    return nativeStore;
+      },
+      set: async (key, value) => {
+        await SecureStoragePlugin.set({ key, value });
+      },
+      remove: async (key) => {
+        try {
+          await SecureStoragePlugin.remove({ key });
+        } catch {
+          /* ignore */
+        }
+      }
+    });
   }
+  return nativeStore;
+}
+
+async function getStore(): Promise<CredentialStore> {
+  if (isNative()) return getNativeStore();
   if (!webStore) webStore = new WebSealedStore();
   return webStore;
 }
 
+/**
+ * Persist Drive secrets into the shared device-cloud session.
+ * Web: durable package persistCloudCredentials (no grace TTL).
+ * Native: durable seal into secure storage.
+ * Prefer calling persistCloudCredentials + resolveCloudPersistMode at call sites when Case B session-only is needed.
+ */
 export async function sealAndStoreCloudCredentials(opts: {
   identityId: string;
   credentials: StorageCredentialsEnvelope;
   session: SealSession;
-}): Promise<SealedEnvelope> {
-  // Keep unlock-session memory aligned with sealed Drive secrets (owner API / ZKP).
-  setSessionCloudCredentials(opts.identityId, opts.credentials);
-  const expiresAt = isNative()
-    ? null
-    : new Date(Date.now() + WEB_GRACE_TTL_MS).toISOString();
-  const envelope = await sealCredentials(opts.credentials, opts.session, expiresAt);
-  const store = await getStore();
-  await store.set(opts.identityId, envelope);
+}): Promise<SealedEnvelope | null> {
   if (!isNative()) {
-    scheduleWebGraceWipe(opts.identityId, WEB_GRACE_TTL_MS);
+    return persistCloudCredentials({
+      identityId: opts.identityId,
+      credentials: opts.credentials,
+      session: opts.session,
+      mode: 'sealed'
+    });
   }
+  setSessionCloudCredentials(opts.identityId, opts.credentials);
+  const envelope = await sealCredentials(opts.credentials, opts.session, null);
+  const store = await getNativeStore();
+  await store.set(opts.identityId, envelope);
   return envelope;
 }
 
@@ -109,36 +118,32 @@ export async function loadUnsealedCloudCredentials(
   identityId: string,
   session: SealSession
 ): Promise<StorageCredentialsEnvelope | null> {
-  const store = await getStore();
+  if (!isNative()) {
+    return loadLocalCloudCredentials({ identityId, session });
+  }
+  const store = await getNativeStore();
   const envelope = await store.get(identityId);
   if (!envelope) return null;
-  return unsealCredentials<StorageCredentialsEnvelope>(envelope, session);
+  try {
+    const opened = await unsealCredentials<StorageCredentialsEnvelope>(envelope, session);
+    setSessionCloudCredentials(identityId, opened);
+    return opened;
+  } catch {
+    return null;
+  }
 }
 
 export async function wipeDeviceCloudCredentials(identityId: string): Promise<void> {
   const store = await getStore();
   await store.clear(identityId);
-  if (graceTimer) {
-    clearTimeout(graceTimer);
-    graceTimer = null;
-  }
 }
 
-function scheduleWebGraceWipe(identityId: string, ttlMs: number): void {
-  if (graceTimer) clearTimeout(graceTimer);
-  graceTimer = setTimeout(() => {
-    void wipeDeviceCloudCredentials(identityId);
-  }, ttlMs);
-}
-
+/** @deprecated Grace TTL removed — durable seals do not expire. No-op. */
 export async function refreshWebGraceTtl(
-  identityId: string,
-  session: SealSession
+  _identityId: string,
+  _session: SealSession
 ): Promise<void> {
-  if (isNative()) return;
-  const creds = await loadUnsealedCloudCredentials(identityId, session);
-  if (!creds) return;
-  await sealAndStoreCloudCredentials({ identityId, credentials: creds, session });
+  /* no-op: Case A seals are durable */
 }
 
 export async function migrateAndFlushOnUnlock(opts: {
@@ -194,13 +199,9 @@ export async function migrateAndFlushOnUnlock(opts: {
     }
     // Only signal cloud ready when this device actually has usable secrets (not empty migrate).
     try {
+      const { envelopeHasUsableSecrets } = await import('@par-noir/user-owned-storage');
       const env = await loadUnsealedCloudCredentials(opts.identityId, opts.session);
-      const has =
-        env &&
-        ((env.googleDriveAccounts?.length ?? 0) > 0 ||
-          (env as { dropboxAccounts?: unknown[] }).dropboxAccounts?.length ||
-          (env as { onedriveAccounts?: unknown[] }).onedriveAccounts?.length);
-      if (has) {
+      if (envelopeHasUsableSecrets(env)) {
         window.dispatchEvent(new CustomEvent(PN_CLOUD_CREDENTIALS_READY_EVENT));
       }
     } catch {
@@ -376,10 +377,6 @@ export function stopDeviceCloudWorkers(): void {
   if (flushInterval) {
     clearInterval(flushInterval);
     flushInterval = null;
-  }
-  if (graceTimer) {
-    clearTimeout(graceTimer);
-    graceTimer = null;
   }
 }
 

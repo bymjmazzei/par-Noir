@@ -157,6 +157,13 @@ export const SubPnTab: React.FC<SubPnTabProps> = ({
     setLoading(true);
     setErr(null);
     try {
+      const { waitForLocalGoogleAccessToken } = await import('../../services/deviceApiService');
+      const cloudTok = await waitForLocalGoogleAccessToken(pnIdentifier, 12000);
+      if (!cloudTok) {
+        setErr('Reconnect Google Drive on this device to manage owned assets.');
+        setAssets([]);
+        return;
+      }
       const list = await fetchOwnedAssets(accessToken, pnIdentifier);
       setAssets(list);
       void syncIpfsManifest(list);

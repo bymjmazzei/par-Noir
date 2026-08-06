@@ -702,6 +702,8 @@ export function AuthenticatedShell(props: AuthenticatedShellProps) {
                         authenticatedUser={authenticatedUser}
                         apiToken={apiToken}
                         ensureOwnerApiToken={ensureOwnerApiTokenForActiveUser}
+                        hasKeyedDevices={!!deviceAuth.hasKeyedDevices}
+                        isKeyedSession={!!deviceAuth.isKeyedSession}
                         deviceGate={{
                           canDriveRead,
                           canDriveUpload,

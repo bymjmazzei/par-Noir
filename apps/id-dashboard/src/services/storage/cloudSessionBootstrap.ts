@@ -344,6 +344,13 @@ export async function ensureCloudSession(opts: {
   }
   const { pnIdentifier, sessionId } = opts;
   try {
+    try {
+      const { awaitMigrateFlushForIdentity } = await import('../deviceCloudCredentials');
+      await awaitMigrateFlushForIdentity(pnIdentifier);
+    } catch {
+      /* best-effort */
+    }
+
     const creds = SecureCredentialManager.getCredentials(sessionId);
     if (!creds?.pnName || !creds?.passcode) {
       lastStatus = 'needs_reconnect';
@@ -375,6 +382,11 @@ export async function ensureCloudSession(opts: {
     readyPnIds.add(pnIdentifier);
     lastStatus = 'ready';
     lastError = undefined;
+    try {
+      window.dispatchEvent(new CustomEvent(PN_CLOUD_CREDENTIALS_READY_EVENT));
+    } catch {
+      /* non-DOM */
+    }
     return { status: 'ready' };
   } catch (e) {
     lastStatus = 'error';

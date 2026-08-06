@@ -11,7 +11,6 @@ import React from 'react';
 import type { FileAggregatorService } from '../../../services/aggregator/FileAggregatorService';
 import { GoogleDriveBackend } from '../../../services/storage/GoogleDriveBackend';
 import { SecureCredentialManager } from '@par-noir/identity-crypto';
-import { IntegrationCredentialManager } from '../../../utils/integrationCredentialManager';
 import { persistDriveAccounts } from '../storageHelpers';
 import type { DriveAccountState, StoredDriveCredential } from '../FileStorageAggregatorTypes';
 
@@ -32,6 +31,8 @@ export interface UseDriveTokenRefreshParams {
   ownerIndexWarningLoggedRef: React.MutableRefObject<Set<string>>;
   ownerIndexRetryCountsRef: React.MutableRefObject<Map<string, number>>;
   rateLimitedBackendsRef: React.MutableRefObject<Set<string>>;
+  hasKeyedDevices?: boolean;
+  isKeyedSession?: boolean;
 }
 
 export function useDriveTokenRefresh({
@@ -51,6 +52,8 @@ export function useDriveTokenRefresh({
   ownerIndexWarningLoggedRef,
   ownerIndexRetryCountsRef,
   rateLimitedBackendsRef,
+  hasKeyedDevices = false,
+  isKeyedSession = false,
 }: UseDriveTokenRefreshParams) {
   // CRITICAL: Use refs for driveAccounts and userEmails to avoid re-registering event listener
   const driveAccountsRef = React.useRef(driveAccounts);
@@ -120,56 +123,59 @@ export function useDriveTokenRefresh({
           updatedAt: nowIso,
         });
 
-        // SECURITY: Store credentials in encrypted storage (if session available)
+        // SECURITY: Prefer shared device-cloud session (not IntegrationCredentialManager as SoT).
         if (authenticatedUser?.id) {
-          try {
-            await IntegrationCredentialManager.storeCredentials(
-              backendId,
-              {
-                accessToken: nextAccessToken,
-                refreshToken: nextRefreshToken || undefined,
-                email: resolvedEmail || undefined,
-                expiresAt: Date.now() + (3600 * 1000) // 1 hour default
-              },
-              authenticatedUser.id
-            );
-          } catch (error) {
-            console.warn('[FileStorageAggregator] Failed to store encrypted credentials:', error);
-          }
           try {
             const sessionCreds = SecureCredentialManager.getCredentials(authenticatedUser.id);
             const pnId = pnIdentifierRef.current;
             if (sessionCreds && pnId && nextAccessToken) {
-              // Device custody: update sealed local credentials only.
-              // Do not publish layout or persist/initialize on the API for a routine token refresh —
-              // that re-triggers multi-minute Drive setup and fails when secrets are device-held.
-              const { sealAndStoreCloudCredentials } = await import(
-                '../../../services/deviceCloudCredentials'
+              const {
+                persistCloudCredentials,
+                getSessionCloudCredentials,
+                resolveCloudPersistMode
+              } = await import('@par-noir/device-cloud-credentials');
+              const existing = getSessionCloudCredentials(pnId);
+              const accounts = [...(existing?.googleDriveAccounts ?? [])];
+              const idx = accounts.findIndex(
+                (a) =>
+                  (a as { backendId?: string; accountId?: string }).backendId === backendId ||
+                  (a as { accountId?: string }).accountId === backendId
               );
-              await sealAndStoreCloudCredentials({
+              const nextAcct = {
+                accountId: backendId,
+                backendId,
+                keyPrefix,
+                accessToken: nextAccessToken,
+                refreshToken: nextRefreshToken || undefined,
+                email: resolvedEmail || undefined,
+                connectedAt,
+                updatedAt: nowIso
+              };
+              if (idx >= 0) accounts[idx] = nextAcct as (typeof accounts)[0];
+              else accounts.push(nextAcct as (typeof accounts)[0]);
+
+              const mode = isKeyedSession
+                ? 'sealed'
+                : resolveCloudPersistMode({ hasKeyedDevices });
+              await persistCloudCredentials({
                 identityId: pnId,
                 credentials: {
+                  ...(existing || {}),
                   socialCloudProvider: 'google_drive',
-                  googleDriveAccounts: [
-                    {
-                      accountId: backendId,
-                      accessToken: nextAccessToken,
-                      refreshToken: nextRefreshToken || undefined,
-                      email: resolvedEmail || undefined,
-                      connectedAt,
-                      updatedAt: nowIso
-                    }
-                  ]
+                  socialCloudAccountId:
+                    existing?.socialCloudAccountId || backendId,
+                  googleDriveAccounts: accounts
                 },
                 session: {
                   sessionId: authenticatedUser.id,
                   pnName: sessionCreds.pnName,
                   passcode: sessionCreds.passcode
-                }
+                },
+                mode
               });
             }
           } catch (deviceSealErr) {
-            console.warn('[FileStorageAggregator] Device cloud seal skipped:', deviceSealErr);
+            console.warn('[FileStorageAggregator] Device cloud persist skipped:', deviceSealErr);
           }
         }
 

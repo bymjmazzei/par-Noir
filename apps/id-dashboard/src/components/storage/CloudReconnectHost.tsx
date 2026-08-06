@@ -49,6 +49,7 @@ export const CloudReconnectHost: React.FC<CloudReconnectHostProps> = ({
   const [pairOpen, setPairOpen] = useState(false);
   const [oauthBusy, setOauthBusy] = useState(false);
   const [oauthError, setOauthError] = useState<string | null>(null);
+  const [migrateSettled, setMigrateSettled] = useState(false);
   const warmedReadyRef = useRef(false);
 
   React.useEffect(() => {
@@ -66,6 +67,47 @@ export const CloudReconnectHost: React.FC<CloudReconnectHostProps> = ({
     };
   }, []);
 
+  // Wait for unlock migrate (and warm sealed/session) before assessing reconnect gate.
+  React.useEffect(() => {
+    if (!pnIdentifier || !sessionId || !apiToken) {
+      setMigrateSettled(false);
+      return;
+    }
+    let cancelled = false;
+    setMigrateSettled(false);
+    void (async () => {
+      const { awaitMigrateFlushForIdentity } = await import('../../services/deviceCloudCredentials');
+      // Poll briefly so we catch migrate that starts a tick after apiToken lands.
+      for (let i = 0; i < 25 && !cancelled; i++) {
+        await awaitMigrateFlushForIdentity(pnIdentifier);
+        const creds = SecureCredentialManager.getCredentials(sessionId);
+        if (creds) {
+          const env = await loadLocalCloudCredentials({
+            identityId: pnIdentifier,
+            session: {
+              sessionId,
+              pnName: creds.pnName,
+              passcode: creds.passcode
+            }
+          });
+          if (env && (env.googleDriveAccounts?.length ?? 0) > 0) break;
+        }
+        await new Promise((r) => setTimeout(r, 200));
+      }
+      if (!cancelled) {
+        try {
+          await awaitMigrateFlushForIdentity(pnIdentifier);
+        } catch {
+          /* best-effort */
+        }
+        setMigrateSettled(true);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [pnIdentifier, sessionId, apiToken]);
+
   const loadLocalEnvelope = useCallback(async (): Promise<StorageCredentialsEnvelope | null> => {
     if (!pnIdentifier || !sessionId) return null;
     const creds = SecureCredentialManager.getCredentials(sessionId);
@@ -81,7 +123,7 @@ export const CloudReconnectHost: React.FC<CloudReconnectHostProps> = ({
   }, [pnIdentifier, sessionId]);
 
   const gate = useCloudReconnectGate({
-    enabled: !!(apiToken && pnIdentifier && sessionId),
+    enabled: !!(apiToken && pnIdentifier && sessionId && migrateSettled),
     authToken: apiToken,
     pnIdentifier,
     apiEndpoint: API_ENDPOINT,
@@ -103,6 +145,16 @@ export const CloudReconnectHost: React.FC<CloudReconnectHostProps> = ({
       /* non-DOM */
     }
   }, [gate.readiness]);
+
+  // Migrate / Storage connect may publish secrets after the first gate check.
+  React.useEffect(() => {
+    if (!migrateSettled) return;
+    const onReady = () => {
+      void gate.refresh();
+    };
+    window.addEventListener(PN_CLOUD_CREDENTIALS_READY_EVENT, onReady);
+    return () => window.removeEventListener(PN_CLOUD_CREDENTIALS_READY_EVENT, onReady);
+  }, [migrateSettled, gate.refresh]);
 
   const persistMode: PersistCloudCredentialsMode = resolveCloudPersistMode({
     hasKeyedDevices
@@ -127,22 +179,6 @@ export const CloudReconnectHost: React.FC<CloudReconnectHostProps> = ({
         },
         mode: effectivePersistMode
       });
-      if (isKeyedSession) {
-        try {
-          const { sealAndStoreCloudCredentials } = await import('../../services/deviceCloudCredentials');
-          await sealAndStoreCloudCredentials({
-            identityId: pnIdentifier,
-            credentials: envelope,
-            session: {
-              sessionId,
-              pnName: creds.pnName,
-              passcode: creds.passcode
-            }
-          });
-        } catch {
-          /* best-effort */
-        }
-      }
 
       markReady();
       try {
@@ -151,7 +187,7 @@ export const CloudReconnectHost: React.FC<CloudReconnectHostProps> = ({
         /* non-DOM */
       }
     },
-    [pnIdentifier, sessionId, effectivePersistMode, isKeyedSession, markReady]
+    [pnIdentifier, sessionId, effectivePersistMode, markReady]
   );
 
   const handleReconnect = useCallback(() => {
@@ -185,8 +221,8 @@ export const CloudReconnectHost: React.FC<CloudReconnectHostProps> = ({
   ]);
 
   const show = useMemo(
-    () => !!(apiToken && pnIdentifier && sessionId),
-    [apiToken, pnIdentifier, sessionId]
+    () => !!(apiToken && pnIdentifier && sessionId && migrateSettled),
+    [apiToken, pnIdentifier, sessionId, migrateSettled]
   );
 
   const showPairDevice = hasKeyedDevices && !isKeyedSession && isKeyableClient();

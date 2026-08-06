@@ -343,28 +343,39 @@ export function MultiCloudStoragePanel({
       try {
         if (sessionId && localEnvelope) {
           const { SecureCredentialManager } = await import('@par-noir/identity-crypto');
-          const { sealAndStoreCloudCredentials } = await import('../../services/deviceCloudCredentials');
+          const {
+            persistCloudCredentials,
+            resolveCloudPersistMode
+          } = await import('@par-noir/device-cloud-credentials');
+          const { PN_CLOUD_CREDENTIALS_READY_EVENT: readyEvt } = await import('@par-noir/oauth-ui');
           const creds = SecureCredentialManager.getCredentials(sessionId);
           if (creds) {
-            await sealAndStoreCloudCredentials({
+            await persistCloudCredentials({
               identityId: pnIdentifier,
               credentials: localEnvelope as import('@par-noir/user-owned-storage').StorageCredentialsEnvelope,
               session: {
                 sessionId,
                 pnName: creds.pnName,
                 passcode: creds.passcode
-              }
+              },
+              mode: resolveCloudPersistMode({ hasKeyedDevices: false })
             });
+            try {
+              window.dispatchEvent(new CustomEvent(readyEvt));
+            } catch {
+              /* non-DOM */
+            }
           }
         }
       } catch {
-        /* device seal best-effort */
+        /* device persist best-effort */
       }
       const res = await ownerFetch(
         authToken,
         'PUT',
         `/api/storage/credentials/${encodeURIComponent(pnIdentifier)}/provider`,
-        body
+        body,
+        { pnIdentifier }
       );
       if (!res.ok) {
         const err = (await res.json()) as { message?: string };

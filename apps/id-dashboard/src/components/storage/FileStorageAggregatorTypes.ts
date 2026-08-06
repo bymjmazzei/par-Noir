@@ -62,6 +62,9 @@ export interface FileStorageAggregatorProps {
     canProfileWrite: boolean;
     blockedMessage: string;
   };
+  /** Case A/B cloud persist (matches CloudReconnectHost). */
+  hasKeyedDevices?: boolean;
+  isKeyedSession?: boolean;
 }
 
 export type EditFormState = {

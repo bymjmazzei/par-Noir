@@ -56,6 +56,9 @@ export interface UseGoogleDriveOAuthConnectParams {
   shareTokenCache: React.MutableRefObject<Map<string, ShareToken>>;
   loadFiles: () => Promise<void>;
   loadStorageQuota: () => Promise<void>;
+  /** Case A/B persist mode (same as CloudReconnectHost). */
+  hasKeyedDevices?: boolean;
+  isKeyedSession?: boolean;
 }
 
 export function useGoogleDriveOAuthConnect({
@@ -90,6 +93,8 @@ export function useGoogleDriveOAuthConnect({
   shareTokenCache,
   loadFiles,
   loadStorageQuota,
+  hasKeyedDevices = false,
+  isKeyedSession = false,
 }: UseGoogleDriveOAuthConnectParams) {
   const removeDriveAccount = React.useCallback((backendId: string) => {
     let nextActiveId: string | null = null;
@@ -409,9 +414,13 @@ export function useGoogleDriveOAuthConnect({
 
       setActiveBackendId(identifiers.backendId);
 
-      // Device custody: seal Drive secrets on this device (keyed) or keep session-only
+      // Shared device-cloud session (same path as browser reconnect / CloudReconnectHost).
       try {
-        const { persistCloudCredentials } = await import('@par-noir/device-cloud-credentials');
+        const {
+          persistCloudCredentials,
+          resolveCloudPersistMode
+        } = await import('@par-noir/device-cloud-credentials');
+        const { PN_CLOUD_CREDENTIALS_READY_EVENT } = await import('@par-noir/oauth-ui');
         const { derivePnIdentifierForToken } = await import('../../../services/parNoirOAuthInline');
         const sessionId = authenticatedUser?.id || null;
         const sessionCreds = sessionId ? SecureCredentialManager.getCredentials(sessionId) : null;
@@ -422,6 +431,9 @@ export function useGoogleDriveOAuthConnect({
             authenticatedUser.publicKey
           );
           const accountId = identifiers.backendId;
+          const mode = isKeyedSession
+            ? 'sealed'
+            : resolveCloudPersistMode({ hasKeyedDevices });
           await persistCloudCredentials({
             identityId: pnIdentifier,
             credentials: {
@@ -444,118 +456,27 @@ export function useGoogleDriveOAuthConnect({
               pnName: sessionCreds.pnName,
               passcode: sessionCreds.passcode
             },
-            // Seal when we can; session memory always set. Keyed wipe policy is on lock.
-            mode: 'sealed'
+            mode
           });
-          const { sealAndStoreCloudCredentials } = await import(
-            '../../../services/deviceCloudCredentials'
-          );
-          await sealAndStoreCloudCredentials({
-            identityId: pnIdentifier,
-            credentials: {
-              socialCloudProvider: 'google_drive',
-              socialCloudAccountId: accountId,
-              googleDriveAccounts: [
-                {
-                  accountId,
-                  backendId: identifiers.backendId,
-                  keyPrefix: identifiers.keyPrefix,
-                  accessToken: token,
-                  refreshToken: tokenData.refreshToken,
-                  email: connectedEmail || undefined
-                }
-              ]
-            },
-            session: {
-              sessionId,
-              pnName: sessionCreds.pnName,
-              passcode: sessionCreds.passcode
-            }
-          });
-        }
-      } catch (sealErr) {
-        console.warn('[Google Drive] Device seal skipped:', sealErr);
-      }
-
-      // Resolve metadata auth inputs (pnName + passcode) so we can encrypt credentials
-      const resolvedCredentials = getResolvedAuthCredentials();
-      // SECURITY: pnName is a SECRET - only get from getResolvedAuthCredentials (which uses SecureCredentialManager)
-      let metadataPnName = resolvedCredentials?.pnName || null;
-      let metadataPasscode = resolvedCredentials?.passcode || null;
-      if (!metadataPasscode) {
-        try {
-          // SECURITY: Get passcode from SecureCredentialManager instead of sessionStorage
-          const sessionId = authenticatedUser?.id || (authenticatedUser as any)?.publicKey || null;
-          metadataPasscode = getPasscodeFromSecureStorage(sessionId);
-        } catch (e) {
-          metadataPasscode = null;
-        }
-      }
-
-      if (!metadataPnName && authenticatedUser?.id && typeof authenticatedUser.id === 'string') {
-        const idParts = authenticatedUser.id.split('-');
-        if (idParts.length > 0 && idParts[0] !== 'did:key') {
-          metadataPnName = idParts[0];
-        }
-      }
-
-    const credentialsSnapshot = buildStorageCredentialPayload();
-    let payloadForPersistence: any = credentialsSnapshot || null;
-
-    // Save token and refresh token to encrypted pN metadata for persistence (optional)
-    if (metadataPnName && metadataPasscode && authenticatedUser?.id && credentialsSnapshot) {
-      try {
-        const { SecureMetadataStorage } = await import('../../../utils/secureMetadataStorage');
-        const { SecureMetadataCrypto } = await import('../../../utils/secureMetadata');
-
-        const existingMetadata = await SecureMetadataStorage.getMetadata(authenticatedUser.id);
-        let baseCredentials: any = {};
-
-        if (existingMetadata) {
           try {
-            const decrypted = await SecureMetadataCrypto.decryptMetadata(
-              existingMetadata,
-              metadataPnName,
-              metadataPasscode
-            );
-            baseCredentials = { ...(decrypted.storageCredentials || {}) };
-          } catch (decryptError) {
-            console.warn('⚠️ [handleConnectGoogleDrive] Failed to decrypt existing storage credentials:', decryptError);
+            window.dispatchEvent(new CustomEvent(PN_CLOUD_CREDENTIALS_READY_EVENT));
+          } catch {
+            /* non-DOM */
           }
         }
-
-        payloadForPersistence = {
-          ...baseCredentials,
-          googleDriveAccounts: credentialsSnapshot.googleDriveAccounts,
-        };
-
-        await SecureMetadataStorage.updateMetadataField(
-          authenticatedUser.id,
-          metadataPnName,
-          metadataPasscode,
-          'storageCredentials',
-          payloadForPersistence
-        );
-        console.log('✅ [handleConnectGoogleDrive] Saved Google Drive account credentials to encrypted metadata');
-      } catch (metadataError) {
-        console.warn('⚠️ [handleConnectGoogleDrive] Failed to save token to metadata (non-critical):', metadataError);
-        // Don't fail the connection if metadata save fails
+      } catch (sealErr) {
+        console.warn('[Google Drive] Device cloud persist skipped:', sealErr);
       }
-    } else {
-      console.warn('ℹ️ [handleConnectGoogleDrive] Skipping secure metadata update; session passcode unavailable');
-    }
 
-    // CRITICAL: Persist immediately after connect - auto-persist is disabled
-    // This ensures credentials are saved to API when user explicitly connects
-    try {
-      const payload = buildStorageCredentialPayload();
-      if (payload && payload.googleDriveAccounts && payload.googleDriveAccounts.length > 0) {
-        await persistStorageCredentialsToAPI(payload);
-        console.log('✅ [handleConnectGoogleDrive] Credentials persisted to API after connection');
+      // Layout-only API persistence (no live Google tokens in SecureMetadata).
+      try {
+        const payload = buildStorageCredentialPayload();
+        if (payload && payload.googleDriveAccounts && payload.googleDriveAccounts.length > 0) {
+          await persistStorageCredentialsToAPI(payload);
+        }
+      } catch (persistError) {
+        console.warn('⚠️ [handleConnectGoogleDrive] Failed to persist layout to API (non-critical):', persistError);
       }
-    } catch (persistError) {
-      console.warn('⚠️ [handleConnectGoogleDrive] Failed to persist credentials to API (non-critical):', persistError);
-    }
 
       clearDriveSetupProgress();
 
@@ -714,7 +635,8 @@ export function useGoogleDriveOAuthConnect({
               {
                 credentials: payload || { googleDriveAccounts: [] },
                 cid: null,
-              }
+              },
+              { pnIdentifier: pnId }
             );
 
               if (!response.ok) {
@@ -755,7 +677,7 @@ export function useGoogleDriveOAuthConnect({
             await ownerFetch(errToken, 'PUT', `/api/storage/credentials/${encodeURIComponent(pnId)}`, {
               credentials: payload || { googleDriveAccounts: [] },
               cid: null,
-            });
+            }, { pnIdentifier: pnId });
           }
         } else {
           console.warn('⚠️ [handleDisconnect] No pn identifier available for API update after error');

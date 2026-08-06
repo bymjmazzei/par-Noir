@@ -43,6 +43,8 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
   ensureOwnerApiToken,
   hideSecureFolderSection = false,
   deviceGate,
+  hasKeyedDevices = false,
+  isKeyedSession = false,
 }) => {
   const apiTokenRef = React.useRef(apiToken);
   React.useEffect(() => {
@@ -347,6 +349,8 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
     ownerIndexWarningLoggedRef,
     ownerIndexRetryCountsRef,
     rateLimitedBackendsRef,
+    hasKeyedDevices,
+    isKeyedSession,
   });
 
   React.useEffect(() => {
@@ -546,6 +550,8 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
     shareTokenCache,
     loadFiles,
     loadStorageQuota,
+    hasKeyedDevices,
+    isKeyedSession,
   });
 
   const { handleUpload } = useDriveUpload({
