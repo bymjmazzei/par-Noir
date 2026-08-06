@@ -76,6 +76,7 @@ export const TABLE_PATHS = {
   ownerFileIndex: metadataPath('owner-file-index'),
   groups: metadataPath('groups'),
   devices: metadataPath('devices'),
+  ownedAssets: metadataPath('owned-assets'),
   recovery: metadataPath('recovery'),
   messageRequests: metadataPath('message_requests'),
   dataPointRequests: metadataPath('data-point-requests')

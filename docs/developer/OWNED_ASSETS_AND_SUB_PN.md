@@ -18,22 +18,23 @@ Human rows may exist for symmetry; most registry rows are non-human kinds.
 
 `active` | `revoked` | `suspended`
 
+## Storage (API → user cloud)
+
+- **Source of truth**: `_metadata/owned-assets.xlsx` on the user’s Drive (tabs **Assets** and **Delegations**), via `/api/owned-assets*` with Bearer + `X-PN-Cloud-Access-Token` (same custody model as devices / Privacy).
+- **Postgres** (`pn_owned_assets`, `pn_asset_delegations`): thin **authz cache** (API-key ownership checks, succession joins). Drive remains SoT for dashboard list/create/revoke; migrate-on-read copies legacy Postgres rows onto an empty sheet.
+- Sheet is created at storage init and/or lazily on first owned-assets request (`PN_DRIVE_SHEET_KEYS.OWNED_ASSETS`).
+
 ## Succession
 
-- On identity succession (predecessor → successor), **`root_pn_identifier`** on owned-asset rows where root = predecessor updates to successor.
+- On identity succession (predecessor → successor), **`root_pn_identifier`** on owned-asset rows where root = predecessor updates to successor (cache + Drive when cloud token present).
 - **Default**: **`subject_pn_identifier` does not change** for subs (cryptographic identity stable for integrators until re-issued).
-- After re-key, the dashboard runs **`owned_assets_sync`**: verifies subs under the successor root and republishes the IPFS `ownedAssets` manifest.
-- **Sub compromise rotation** (independent of root re-key): `POST /api/owned-assets/:id/rekey` revokes the old subject, creates a new asset row, records `pn_subject_succession`, and optionally migrates delegations.
+- After re-key, the dashboard verifies subs under the successor root.
+- **Sub compromise rotation**: `POST /api/owned-assets/:id/rekey` revokes the old subject, creates a new asset row, records `pn_subject_succession`, and optionally migrates delegations (Drive + cache).
 
 ## Revocation
 
 - **Network revocation** (`pn_identity_succession`): predecessor pNs are blocked for OAuth, storage binding, etc.
 - **Sub subjects** not in succession: revocation is **registry row** `status = revoked` (and linked feature deactivation as needed).
-
-## IPFS vs API (dual SoT)
-
-- **IPFS manifest** (`PNMetadata.ownedAssets`): user-published, non-sensitive catalog (opaque ids, kinds, labels, optional detail CIDs). Content-addressed; each update yields a new CID.
-- **API / Postgres** (`pn_owned_assets`, delegations, keys): **enforcement** for par Noir network operations. Integrators must not rely on IPFS alone for authorization.
 
 ## Export (dashboard)
 
@@ -42,8 +43,8 @@ Human rows may exist for symmetry; most registry rows are non-human kinds.
 
 ## Delegations
 
-- **Main Delegation tab**: recovery / custodians (existing product direction).
-- **Per-sub delegations**: grants from root (or delegated admin) to other `pn-*` or OAuth `client_id` with scoped access; enforced in API via `pn_asset_delegations` + `OwnedAssetAuthZ`.
+- **Delegation tab**: lists grants from the Drive-backed registry (same cloud session as Sub-pN).
+- **Per-sub delegations**: grants from root to other `pn-*` or OAuth `client_id` with scoped access; written to the Delegations sheet + Postgres cache.
 
 ## Secrets
 

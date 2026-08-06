@@ -37,10 +37,10 @@ export const DelegationModal: React.FC<DelegationModalProps> = ({
   const [scope, setScope] = useState<string>('read');
 
   useEffect(() => {
-    if (!isOpen || !accessToken) return;
+    if (!isOpen || !accessToken || !rootPnIdentifier) return;
     setLoadingAssets(true);
     setError(null);
-    void listOwnedAssets(accessToken)
+    void listOwnedAssets(accessToken, rootPnIdentifier)
       .then((list) => {
         const active = list.filter((a) => a.status === 'active');
         setAssets(active);
@@ -48,7 +48,7 @@ export const DelegationModal: React.FC<DelegationModalProps> = ({
       })
       .catch((e) => setError(e instanceof Error ? e.message : 'Failed to load assets'))
       .finally(() => setLoadingAssets(false));
-  }, [isOpen, accessToken]);
+  }, [isOpen, accessToken, rootPnIdentifier]);
 
   const handleCreateDelegation = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -67,10 +67,10 @@ export const DelegationModal: React.FC<DelegationModalProps> = ({
     try {
       let assetId = ownedAssetId;
       if (!assetId) {
-        const asset = await ensureHumanOwnedAsset(accessToken, rootPnIdentifier);
+        const asset = await ensureHumanOwnedAsset(accessToken, rootPnIdentifier, rootPnIdentifier);
         assetId = asset.id;
       }
-      await createAssetDelegation(accessToken, assetId, {
+      await createAssetDelegation(accessToken, rootPnIdentifier, assetId, {
         delegateePnIdentifier: delegatee,
         scope
       });

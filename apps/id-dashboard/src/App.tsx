@@ -815,14 +815,14 @@ function App() {
   const [delegationsError, setDelegationsError] = useState<string | null>(null);
 
   const refreshAssetDelegations = useCallback(async () => {
-    if (!apiToken) {
+    if (!apiToken || !recoveryVaultPnId) {
       setAssetDelegations([]);
       return;
     }
     setDelegationsLoading(true);
     setDelegationsError(null);
     try {
-      const list = await listAllDelegations(apiToken);
+      const list = await listAllDelegations(apiToken, recoveryVaultPnId);
       setAssetDelegations(list);
     } catch (e) {
       setDelegationsError(e instanceof Error ? e.message : 'Failed to load delegations');
@@ -830,18 +830,27 @@ function App() {
     } finally {
       setDelegationsLoading(false);
     }
-  }, [apiToken]);
+  }, [apiToken, recoveryVaultPnId]);
 
   useEffect(() => {
-    if (activeTab === 'delegation' && apiToken) {
+    if (activeTab === 'delegation' && apiToken && recoveryVaultPnId) {
       void refreshAssetDelegations();
     }
-  }, [activeTab, apiToken, refreshAssetDelegations]);
+  }, [activeTab, apiToken, recoveryVaultPnId, refreshAssetDelegations]);
+
+  useEffect(() => {
+    if (activeTab !== 'delegation' && activeTab !== 'subpn') return;
+    const onReady = () => {
+      if (activeTab === 'delegation') void refreshAssetDelegations();
+    };
+    window.addEventListener(PN_CLOUD_CREDENTIALS_READY_EVENT, onReady);
+    return () => window.removeEventListener(PN_CLOUD_CREDENTIALS_READY_EVENT, onReady);
+  }, [activeTab, refreshAssetDelegations]);
 
   const handleRemoveDelegation = async (delegationId: string) => {
-    if (!apiToken) return;
+    if (!apiToken || !recoveryVaultPnId) return;
     try {
-      await revokeAssetDelegation(apiToken, delegationId);
+      await revokeAssetDelegation(apiToken, recoveryVaultPnId, delegationId);
       showSuccessMessage('Delegation revoked');
       await refreshAssetDelegations();
     } catch (e) {

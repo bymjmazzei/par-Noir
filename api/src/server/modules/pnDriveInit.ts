@@ -236,6 +236,13 @@ export async function initializeGoogleDriveIndex(
   );
   completeMetadataStep('Devices sheet');
 
+  const { OwnedAssetsSheetsService } = await import('./ownedAssetsSheetsService');
+  beginMetadataStep('Creating owned-assets sheet…');
+  const ownedAssets = await runMetadataSheetStep('ownedAssetsSheet', () =>
+    OwnedAssetsSheetsService.getOrCreateSpreadsheet(token, metadataFolderId, pnIdentifier, accountId)
+  );
+  completeMetadataStep('Owned-assets sheet');
+
   const { GroupSheetsService } = await import('./groupSheetsService');
   beginMetadataStep('Creating groups sheet…');
   const groups = await runMetadataSheetStep('groupsSheet', () =>
@@ -364,6 +371,7 @@ export async function initializeGoogleDriveIndex(
       [PN_DRIVE_SHEET_KEYS.CONNECTIONS]: connections,
       [PN_DRIVE_SHEET_KEYS.THIRD_PARTY_PERMISSIONS]: thirdPartyPermissions,
       [PN_DRIVE_SHEET_KEYS.DEVICES]: devices,
+      [PN_DRIVE_SHEET_KEYS.OWNED_ASSETS]: ownedAssets,
       [PN_DRIVE_SHEET_KEYS.GROUPS]: groups,
       [PN_DRIVE_SHEET_KEYS.NOTIFICATIONS]: notifications,
       [PN_DRIVE_SHEET_KEYS.ACTIVITY_LEDGER]: activityLedger,

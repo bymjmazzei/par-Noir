@@ -667,6 +667,7 @@ export function AuthenticatedShell(props: AuthenticatedShellProps) {
                   {activeTab === 'subpn' && (
                     <SubPnTab
                       accessToken={apiToken}
+                      pnIdentifier={recoveryVaultPnId}
                       connectError={connectError}
                       sessionId={authenticatedUser?.id}
                       publicKey={authenticatedUser?.publicKey}

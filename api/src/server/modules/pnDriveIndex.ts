@@ -27,11 +27,15 @@ export const PN_DRIVE_SHEET_KEYS = {
   OWNER_FILE_INDEX: 'owner-file-index',
   FOLLOWERS: 'followers',
   FOLLOWING: 'following',
+  OWNED_ASSETS: 'owned-assets',
 } as const;
 
 export type PnDriveSheetKey = (typeof PN_DRIVE_SHEET_KEYS)[keyof typeof PN_DRIVE_SHEET_KEYS];
 
-export const REQUIRED_PN_DRIVE_SHEET_KEYS: PnDriveSheetKey[] = Object.values(PN_DRIVE_SHEET_KEYS);
+/** Required at init; owned-assets is created lazily / on new init and patched into the index. */
+export const REQUIRED_PN_DRIVE_SHEET_KEYS: PnDriveSheetKey[] = Object.values(PN_DRIVE_SHEET_KEYS).filter(
+  (k) => k !== PN_DRIVE_SHEET_KEYS.OWNED_ASSETS
+);
 
 export interface PnDriveIndex {
   schemaVersion: typeof PN_DRIVE_INDEX_SCHEMA_VERSION;

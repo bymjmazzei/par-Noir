@@ -30,6 +30,12 @@ export const DEVICES_SCHEMA: TableSchema = {
   path: TABLE_PATHS.devices
 };
 
+export const OWNED_ASSETS_SCHEMA: TableSchema = {
+  id: 'owned-assets',
+  keyColumn: 'id',
+  path: TABLE_PATHS.ownedAssets
+};
+
 export const PUBLIC_FILE_INDEX_SCHEMA: TableSchema = {
   id: 'public-file-index',
   keyColumn: 'fileId',

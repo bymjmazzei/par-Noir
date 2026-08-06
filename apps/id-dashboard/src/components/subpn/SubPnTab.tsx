@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { Layers, RefreshCw, Plus, Download, Shield, UserPlus, Trash2 } from 'lucide-react';
 import { SectionInfo } from '../common/SectionInfo';
 import { IdentityCrypto, VolumeIdGenerator, type EncryptedIdentity } from '@par-noir/identity-crypto';
+import { PN_CLOUD_CREDENTIALS_READY_EVENT } from '@par-noir/oauth-ui';
 import { sealSubExportPayload, unsealSubExportPayload } from '../../utils/subIdentitySeal';
 import {
   fetchOwnedAssets,
@@ -43,6 +44,7 @@ interface ScopeOption {
 
 interface SubPnTabProps {
   accessToken: string | null | undefined;
+  pnIdentifier: string | null | undefined;
   connectError?: string | null;
   sessionId: string | undefined;
   publicKey: string | undefined;
@@ -51,6 +53,7 @@ interface SubPnTabProps {
 
 export const SubPnTab: React.FC<SubPnTabProps> = ({
   accessToken,
+  pnIdentifier,
   connectError,
   sessionId,
   publicKey,
@@ -88,7 +91,7 @@ export const SubPnTab: React.FC<SubPnTabProps> = ({
     async (_list: OwnedAssetDto[]) => {
       if (!accessToken) return;
       try {
-        await republishOwnedAssetsManifest(accessToken, publicKey);
+        if (pnIdentifier) await republishOwnedAssetsManifest(accessToken, pnIdentifier, publicKey);
       } catch {
         /* optional IPFS */
       }
@@ -97,11 +100,11 @@ export const SubPnTab: React.FC<SubPnTabProps> = ({
   );
 
   const load = useCallback(async () => {
-    if (!accessToken) return;
+    if (!accessToken || !pnIdentifier) return;
     setLoading(true);
     setErr(null);
     try {
-      const list = await fetchOwnedAssets(accessToken);
+      const list = await fetchOwnedAssets(accessToken, pnIdentifier);
       setAssets(list);
       void syncIpfsManifest(list);
     } catch (e) {
@@ -109,10 +112,18 @@ export const SubPnTab: React.FC<SubPnTabProps> = ({
     } finally {
       setLoading(false);
     }
-  }, [accessToken, syncIpfsManifest]);
+  }, [accessToken, pnIdentifier, syncIpfsManifest]);
 
   useEffect(() => {
     void load();
+  }, [load]);
+
+  useEffect(() => {
+    const onReady = () => {
+      void load();
+    };
+    window.addEventListener(PN_CLOUD_CREDENTIALS_READY_EVENT, onReady);
+    return () => window.removeEventListener(PN_CLOUD_CREDENTIALS_READY_EVENT, onReady);
   }, [load]);
 
   const selected = assets.find((a) => a.id === selectedId) || null;
@@ -120,12 +131,13 @@ export const SubPnTab: React.FC<SubPnTabProps> = ({
   const loadDelegations = useCallback(async () => {
     if (!accessToken || !selectedId) return;
     try {
-      const r = await fetchDelegations(accessToken, selectedId);
+      if (!pnIdentifier) return;
+      const r = await fetchDelegations(accessToken, pnIdentifier, selectedId);
       setDelegations(r.delegations.filter((d) => d.status === 'active'));
     } catch {
       setDelegations([]);
     }
-  }, [accessToken, selectedId]);
+  }, [accessToken, pnIdentifier, selectedId]);
 
   useEffect(() => {
     void loadDelegations();
@@ -154,7 +166,8 @@ export const SubPnTab: React.FC<SubPnTabProps> = ({
         passcode: subPass,
         publicKey: encrypted.publicKey
       });
-      const asset = await createOwnedAsset(accessToken, {
+      if (!pnIdentifier) throw new Error('Missing pn identifier');
+      const asset = await createOwnedAsset(accessToken, pnIdentifier, {
         kind: createKind,
         subjectPnIdentifier: subject,
         metadata: { label: nickname, parentWrapped: true }
@@ -253,7 +266,8 @@ export const SubPnTab: React.FC<SubPnTabProps> = ({
       a.download = `sub-pn-${selected.id.slice(0, 8)}.json`;
       a.click();
       URL.revokeObjectURL(url);
-      await auditSubExport(accessToken, selected.id);
+      if (!pnIdentifier) throw new Error('Missing pn identifier');
+      await auditSubExport(accessToken, pnIdentifier, selected.id);
       setExportPassConfirm('');
     } catch {
       setErr('Export passphrase wrong or corrupt backup.');
@@ -300,7 +314,8 @@ export const SubPnTab: React.FC<SubPnTabProps> = ({
         publicKey: encrypted.publicKey,
       });
 
-      const newAsset = await rekeyOwnedAsset(accessToken, selected.id, {
+      if (!pnIdentifier) throw new Error('Missing pn identifier');
+      const newAsset = await rekeyOwnedAsset(accessToken, pnIdentifier, selected.id, {
         newSubjectPnIdentifier: subject,
         newSubjectPublicKey: encrypted.publicKey,
         reason: 'compromise',
@@ -408,7 +423,8 @@ export const SubPnTab: React.FC<SubPnTabProps> = ({
     setDelegationBusyScope(scope);
     try {
       if (nextEnabled) {
-        await createDelegation(accessToken, selectedId, {
+        if (!pnIdentifier) throw new Error('Missing pn identifier');
+        await createDelegation(accessToken, pnIdentifier, selectedId, {
           ...target,
           scope
         });
@@ -420,7 +436,8 @@ export const SubPnTab: React.FC<SubPnTabProps> = ({
           return (targetMatchesPn || targetMatchesClient) && d.scope === scope;
         });
         if (match) {
-          await revokeDelegation(accessToken, match.id);
+          if (!pnIdentifier) throw new Error('Missing pn identifier');
+          await revokeDelegation(accessToken, pnIdentifier, match.id);
         }
       }
       await loadDelegations();
@@ -582,7 +599,8 @@ export const SubPnTab: React.FC<SubPnTabProps> = ({
               onClick={async () => {
                 if (!accessToken) return;
                 if (!confirm('Revoke this asset on the network?')) return;
-                await revokeOwnedAsset(accessToken, selected.id);
+                if (!pnIdentifier) throw new Error('Missing pn identifier');
+                await revokeOwnedAsset(accessToken, pnIdentifier, selected.id);
                 localStorage.removeItem(`${STORAGE_SEAL_PREFIX}${selected.id}`);
                 setSelectedId(null);
                 await load();
@@ -719,7 +737,8 @@ export const SubPnTab: React.FC<SubPnTabProps> = ({
                     className="p-1 text-red-400 hover:bg-red-900/20 rounded"
                     onClick={async () => {
                       if (!accessToken) return;
-                      await revokeDelegation(accessToken, d.id);
+                      if (!pnIdentifier) throw new Error('Missing pn identifier');
+                      await revokeDelegation(accessToken, pnIdentifier, d.id);
                       await loadDelegations();
                     }}
                   >

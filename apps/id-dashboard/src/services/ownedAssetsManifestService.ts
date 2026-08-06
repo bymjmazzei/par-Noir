@@ -1,17 +1,18 @@
 /**
- * Owned-assets helpers for dashboard (API registry only — no IPFS manifest).
+ * Owned-assets helpers for dashboard (API registry on user Drive).
  */
 
 import { fetchOwnedAssets, type OwnedAssetDto } from './ownedAssetsApi';
 
 /**
- * Refresh count from the owned-assets API. IPFS republish was removed.
+ * Refresh count from the owned-assets API (Drive SoT via cloud token).
  */
 export async function republishOwnedAssetsManifest(
   accessToken: string,
+  pnIdentifier: string,
   _publicKey?: string
 ): Promise<{ assetCount: number; cid?: string }> {
-  const list = await fetchOwnedAssets(accessToken);
+  const list = await fetchOwnedAssets(accessToken, pnIdentifier);
   const activeSubs = list.filter((a) => a.status === 'active' && a.kind !== 'human');
   return { assetCount: activeSubs.length };
 }

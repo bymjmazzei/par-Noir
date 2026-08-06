@@ -1,5 +1,5 @@
 /**
- * REST routes for owned-asset registry (dashboard OAuth).
+ * REST routes for owned-asset registry (dashboard OAuth + cloud token → Drive SoT).
  */
 
 import type { Application, Response } from 'express';
@@ -7,6 +7,7 @@ import { requireAuth, type AuthenticatedRequest } from '../middleware/authMiddle
 import { OwnedAssetService, type OwnedAssetKind } from './ownedAssetService';
 import { safeClientErrorMessage } from '../utils/safeError';
 import { gateOwnerRoute, gateOwnerSelfRoute, DEVICE_CAPABILITIES } from './deviceCapabilityService';
+import { extractCloudAccessToken } from './cloudAccessToken';
 
 const NODE_ENV = process.env.NODE_ENV || 'development';
 
@@ -19,6 +20,28 @@ const KINDS: Set<string> = new Set([
   'smart_device'
 ]);
 
+function cloudOpts(req: AuthenticatedRequest): { accessToken?: string } {
+  const accessToken = extractCloudAccessToken(req);
+  return accessToken ? { accessToken } : {};
+}
+
+function mapCloudError(e: unknown, res: Response): Response | null {
+  const code = (e as { code?: string }).code;
+  if (code === 'CLOUD_TOKEN_REQUIRED') {
+    return res.status(409).json({
+      error: 'cloud_token_required',
+      error_description: 'Reconnect Google Drive on this device to manage owned assets'
+    });
+  }
+  if (code === 'DRIVE_NOT_INITIALIZED') {
+    return res.status(409).json({
+      error: 'drive_not_initialized',
+      error_description: 'Connect storage in the dashboard first'
+    });
+  }
+  return null;
+}
+
 export function registerOwnedAssetRoutes(app: Application): void {
   const chain = [requireAuth];
 
@@ -29,9 +52,11 @@ export function registerOwnedAssetRoutes(app: Application): void {
         return res.status(400).json({ error: 'invalid_request', error_description: 'Missing pn identifier on token' });
       }
       if (!(await gateOwnerSelfRoute(req, res, DEVICE_CAPABILITIES.profileRead, pn))) return;
-      const assets = await OwnedAssetService.listByRoot(pn);
+      const assets = await OwnedAssetService.listByRoot(pn, cloudOpts(req));
       return res.json({ assets });
     } catch (e: unknown) {
+      const mapped = mapCloudError(e, res);
+      if (mapped) return mapped;
       console.error('[owned-assets] list:', e);
       return res.status(500).json({
         error: 'server_error',
@@ -60,14 +85,19 @@ export function registerOwnedAssetRoutes(app: Application): void {
         body.metadata && typeof body.metadata === 'object' && !Array.isArray(body.metadata)
           ? (body.metadata as Record<string, unknown>)
           : {};
-      const asset = await OwnedAssetService.createAsset({
-        rootPnIdentifier: pn,
-        subjectPnIdentifier: subjectPn || null,
-        kind,
-        metadata
-      });
+      const asset = await OwnedAssetService.createAsset(
+        {
+          rootPnIdentifier: pn,
+          subjectPnIdentifier: subjectPn || null,
+          kind,
+          metadata
+        },
+        cloudOpts(req)
+      );
       return res.status(201).json({ asset });
     } catch (e: unknown) {
+      const mapped = mapCloudError(e, res);
+      if (mapped) return mapped;
       console.error('[owned-assets] create:', e);
       return res.status(500).json({
         error: 'server_error',
@@ -88,20 +118,25 @@ export function registerOwnedAssetRoutes(app: Application): void {
       if (!newSubjectPnIdentifier) {
         return res.status(400).json({
           error: 'invalid_request',
-          error_description: 'newSubjectPnIdentifier is required',
+          error_description: 'newSubjectPnIdentifier is required'
         });
       }
-      const asset = await OwnedAssetService.rekeyAsset({
-        assetId: req.params.id,
-        rootPn: pn,
-        newSubjectPnIdentifier,
-        newSubjectPublicKey:
-          typeof body.newSubjectPublicKey === 'string' ? body.newSubjectPublicKey : undefined,
-        reason: typeof body.reason === 'string' ? body.reason : 'rotation',
-        migrateDelegations: body.migrateDelegations !== false,
-      });
+      const asset = await OwnedAssetService.rekeyAsset(
+        {
+          assetId: req.params.id,
+          rootPn: pn,
+          newSubjectPnIdentifier,
+          newSubjectPublicKey:
+            typeof body.newSubjectPublicKey === 'string' ? body.newSubjectPublicKey : undefined,
+          reason: typeof body.reason === 'string' ? body.reason : 'rotation',
+          migrateDelegations: body.migrateDelegations !== false
+        },
+        cloudOpts(req)
+      );
       return res.status(201).json({ asset });
     } catch (e: unknown) {
+      const mapped = mapCloudError(e, res);
+      if (mapped) return mapped;
       const code = (e as { code?: string }).code;
       if (code === 'FORBIDDEN') {
         return res.status(404).json({ error: 'not_found', error_description: 'Asset not found or not owned' });
@@ -112,7 +147,7 @@ export function registerOwnedAssetRoutes(app: Application): void {
       console.error('[owned-assets] rekey:', e);
       return res.status(500).json({
         error: 'server_error',
-        error_description: safeClientErrorMessage(e, NODE_ENV === 'production'),
+        error_description: safeClientErrorMessage(e, NODE_ENV === 'production')
       });
     }
   });
@@ -124,10 +159,12 @@ export function registerOwnedAssetRoutes(app: Application): void {
         return res.status(400).json({ error: 'invalid_request', error_description: 'Missing pn identifier on token' });
       }
       if (!(await gateOwnerRoute(req, res, DEVICE_CAPABILITIES.profileWrite, pn))) return;
-      const ok = await OwnedAssetService.revokeAsset(req.params.id, pn);
+      const ok = await OwnedAssetService.revokeAsset(req.params.id, pn, cloudOpts(req));
       if (!ok) return res.status(404).json({ error: 'not_found', error_description: 'Asset not found or already revoked' });
       return res.json({ ok: true });
     } catch (e: unknown) {
+      const mapped = mapCloudError(e, res);
+      if (mapped) return mapped;
       console.error('[owned-assets] revoke:', e);
       return res.status(500).json({
         error: 'server_error',
@@ -163,9 +200,11 @@ export function registerOwnedAssetRoutes(app: Application): void {
       if (!pn) {
         return res.status(400).json({ error: 'invalid_request', error_description: 'Missing pn identifier on token' });
       }
-      const list = await OwnedAssetService.listDelegations(req.params.id, pn);
+      const list = await OwnedAssetService.listDelegations(req.params.id, pn, cloudOpts(req));
       return res.json({ delegations: list });
     } catch (e: unknown) {
+      const mapped = mapCloudError(e, res);
+      if (mapped) return mapped;
       const err = e as { code?: string };
       if (err.code === 'FORBIDDEN') {
         return res.status(403).json({ error: 'forbidden' });
@@ -186,16 +225,21 @@ export function registerOwnedAssetRoutes(app: Application): void {
       }
       if (!(await gateOwnerRoute(req, res, DEVICE_CAPABILITIES.profileWrite, pn))) return;
       const body = req.body || {};
-      const id = await OwnedAssetService.addDelegation({
-        ownedAssetId: req.params.id,
-        rootPn: pn,
-        delegateePnIdentifier: body.delegateePnIdentifier,
-        delegateeClientId: body.delegateeClientId,
-        scope: typeof body.scope === 'string' ? body.scope : '*',
-        expiresAt: body.expiresAt ? String(body.expiresAt) : null
-      });
+      const id = await OwnedAssetService.addDelegation(
+        {
+          ownedAssetId: req.params.id,
+          rootPn: pn,
+          delegateePnIdentifier: body.delegateePnIdentifier,
+          delegateeClientId: body.delegateeClientId,
+          scope: typeof body.scope === 'string' ? body.scope : '*',
+          expiresAt: body.expiresAt ? String(body.expiresAt) : null
+        },
+        cloudOpts(req)
+      );
       return res.status(201).json({ id });
     } catch (e: unknown) {
+      const mapped = mapCloudError(e, res);
+      if (mapped) return mapped;
       const err = e as { code?: string; message?: string };
       if (err.code === 'FORBIDDEN') {
         return res.status(403).json({ error: 'forbidden' });
@@ -218,10 +262,12 @@ export function registerOwnedAssetRoutes(app: Application): void {
         return res.status(400).json({ error: 'invalid_request', error_description: 'Missing pn identifier on token' });
       }
       if (!(await gateOwnerRoute(req, res, DEVICE_CAPABILITIES.profileWrite, pn))) return;
-      const ok = await OwnedAssetService.revokeDelegation(req.params.delegationId, pn);
+      const ok = await OwnedAssetService.revokeDelegation(req.params.delegationId, pn, cloudOpts(req));
       if (!ok) return res.status(404).json({ error: 'not_found' });
       return res.json({ ok: true });
     } catch (e: unknown) {
+      const mapped = mapCloudError(e, res);
+      if (mapped) return mapped;
       console.error('[owned-assets] delegation revoke:', e);
       return res.status(500).json({
         error: 'server_error',

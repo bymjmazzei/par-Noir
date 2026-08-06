@@ -266,7 +266,7 @@ export const IdentityRotationWizard: React.FC<IdentityRotationWizardProps> = ({
       });
       setResultIdentity(fin.successorEncryptedIdentity);
       try {
-        const assets = await fetchOwnedAssets(authToken);
+        const assets = await fetchOwnedAssets(authToken, coreResult.succMat.pnIdentifier);
         setSubsSummary(summarizeOwnedAssetsByKind(assets));
       } catch {
         setSubsSummary({});

@@ -1,11 +1,18 @@
 /**
- * Owned-asset registry: root human pN + subject + kind (sub-pN, feeds, keys, etc.)
+ * Owned-asset registry: Drive SoT (when cloud token present) + Postgres authz cache.
  */
 
 import type { PoolClient } from 'pg';
+import { randomUUID } from 'crypto';
 import { getDatabasePool } from '../utils/database';
 import { appendAuditEvent } from './auditService';
 import { isPnRevokedForNetwork } from './identitySuccessionService';
+import { loadOwnedAssetDriveBundle } from './ownedAssetStorageService';
+import {
+  OwnedAssetsSheetsService,
+  type AssetDelegationSheetRow,
+  type OwnedAssetSheetRow
+} from './ownedAssetsSheetsService';
 
 export type OwnedAssetKind =
   | 'human'
@@ -30,6 +37,10 @@ export interface OwnedAssetRow {
   revokedAt: string | null;
 }
 
+export interface OwnedAssetCloudOpts {
+  accessToken?: string;
+}
+
 function mapAssetRow(row: Record<string, unknown>): OwnedAssetRow {
   return {
     id: String(row.id),
@@ -37,11 +48,44 @@ function mapAssetRow(row: Record<string, unknown>): OwnedAssetRow {
     subjectPnIdentifier: row.subject_pn_identifier ? String(row.subject_pn_identifier) : null,
     kind: String(row.kind) as OwnedAssetKind,
     status: String(row.status) as OwnedAssetStatus,
-    metadata: (row.metadata && typeof row.metadata === 'object' ? row.metadata : {}) as Record<string, unknown>,
+    metadata: (row.metadata && typeof row.metadata === 'object' ? row.metadata : {}) as Record<
+      string,
+      unknown
+    >,
     apiKeyId: row.api_key_id ? String(row.api_key_id) : null,
     createdAt: row.created_at ? new Date(String(row.created_at)).toISOString() : new Date().toISOString(),
     updatedAt: row.updated_at ? new Date(String(row.updated_at)).toISOString() : new Date().toISOString(),
     revokedAt: row.revoked_at ? new Date(String(row.revoked_at)).toISOString() : null
+  };
+}
+
+function sheetToRow(s: OwnedAssetSheetRow): OwnedAssetRow {
+  return {
+    id: s.id,
+    rootPnIdentifier: s.rootPnIdentifier,
+    subjectPnIdentifier: s.subjectPnIdentifier,
+    kind: s.kind as OwnedAssetKind,
+    status: s.status as OwnedAssetStatus,
+    metadata: s.metadata,
+    apiKeyId: s.apiKeyId,
+    createdAt: s.createdAt,
+    updatedAt: s.updatedAt,
+    revokedAt: s.revokedAt
+  };
+}
+
+function rowToSheet(row: OwnedAssetRow): OwnedAssetSheetRow {
+  return {
+    id: row.id,
+    rootPnIdentifier: row.rootPnIdentifier,
+    subjectPnIdentifier: row.subjectPnIdentifier,
+    kind: row.kind,
+    status: row.status,
+    metadata: row.metadata,
+    apiKeyId: row.apiKeyId,
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt,
+    revokedAt: row.revokedAt
   };
 }
 
@@ -50,8 +94,37 @@ function normalizePn(pn: string): string {
   return t.startsWith('pn-') ? t : `pn-${t}`;
 }
 
+async function upsertPostgresCache(row: OwnedAssetRow): Promise<void> {
+  const pool = getDatabasePool();
+  await pool.query(
+    `INSERT INTO pn_owned_assets (
+      id, root_pn_identifier, subject_pn_identifier, kind, status, metadata, api_key_id,
+      created_at, updated_at, revoked_at
+    ) VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7, $8::timestamptz, $9::timestamptz, $10::timestamptz)
+    ON CONFLICT (id) DO UPDATE SET
+      subject_pn_identifier = EXCLUDED.subject_pn_identifier,
+      kind = EXCLUDED.kind,
+      status = EXCLUDED.status,
+      metadata = EXCLUDED.metadata,
+      api_key_id = EXCLUDED.api_key_id,
+      updated_at = EXCLUDED.updated_at,
+      revoked_at = EXCLUDED.revoked_at`,
+    [
+      row.id,
+      row.rootPnIdentifier,
+      row.subjectPnIdentifier,
+      row.kind,
+      row.status,
+      JSON.stringify(row.metadata ?? {}),
+      row.apiKeyId,
+      row.createdAt,
+      row.updatedAt,
+      row.revokedAt
+    ]
+  );
+}
+
 export class OwnedAssetService {
-  /** One-time backfill: link legacy api_keys rows to registry rows */
   static async backfillLegacyApiKeys(): Promise<number> {
     const pool = getDatabasePool();
     let count = 0;
@@ -82,7 +155,6 @@ export class OwnedAssetService {
     return count;
   }
 
-  /** After creating a new API key row, register and link (same connection for transactions) */
   static async registerApiKeyAssetWithClient(
     client: PoolClient,
     params: {
@@ -109,13 +181,85 @@ export class OwnedAssetService {
     return assetId;
   }
 
-  static async listByRoot(rootPn: string): Promise<OwnedAssetRow[]> {
-    const pool = getDatabasePool();
-    const r = await pool.query(
-      `SELECT * FROM pn_owned_assets WHERE root_pn_identifier = $1 ORDER BY created_at DESC`,
-      [normalizePn(rootPn)]
+  static async listByRoot(rootPn: string, opts?: OwnedAssetCloudOpts): Promise<OwnedAssetRow[]> {
+    const root = normalizePn(rootPn);
+    const token = opts?.accessToken?.trim();
+    if (!token) {
+      throw Object.assign(new Error('cloud_token_required'), { code: 'CLOUD_TOKEN_REQUIRED' });
+    }
+
+    const bundle = await loadOwnedAssetDriveBundle(root, { accessToken: token });
+    let assets = await OwnedAssetsSheetsService.listAssets(
+      bundle.token,
+      bundle.spreadsheetId,
+      bundle.pnIdentifier,
+      bundle.accountId,
+      true
     );
-    return r.rows.map((row: Record<string, unknown>) => mapAssetRow(row));
+
+    if (assets.length === 0) {
+      const pool = getDatabasePool();
+      const r = await pool.query(
+        `SELECT * FROM pn_owned_assets WHERE root_pn_identifier = $1 ORDER BY created_at DESC`,
+        [root]
+      );
+      const pgRows = r.rows.map((row: Record<string, unknown>) => mapAssetRow(row));
+      for (const row of pgRows) {
+        await OwnedAssetsSheetsService.upsertAsset(
+          bundle.token,
+          bundle.spreadsheetId,
+          bundle.pnIdentifier,
+          bundle.accountId,
+          rowToSheet(row)
+        );
+      }
+      if (pgRows.length > 0) {
+        const dels = await pool.query(
+          `SELECT d.* FROM pn_asset_delegations d
+           JOIN pn_owned_assets oa ON oa.id = d.owned_asset_id
+           WHERE oa.root_pn_identifier = $1`,
+          [root]
+        );
+        for (const d of dels.rows as Record<string, unknown>[]) {
+          const delRow: AssetDelegationSheetRow = {
+            id: String(d.id),
+            ownedAssetId: String(d.owned_asset_id),
+            delegateePnIdentifier: d.delegatee_pn_identifier
+              ? String(d.delegatee_pn_identifier)
+              : null,
+            delegateeClientId: d.delegatee_client_id ? String(d.delegatee_client_id) : null,
+            scope: String(d.scope || '*'),
+            expiresAt: d.expires_at ? new Date(String(d.expires_at)).toISOString() : null,
+            status: String(d.status || 'active'),
+            createdAt: d.created_at
+              ? new Date(String(d.created_at)).toISOString()
+              : new Date().toISOString(),
+            updatedAt: d.updated_at
+              ? new Date(String(d.updated_at)).toISOString()
+              : new Date().toISOString()
+          };
+          await OwnedAssetsSheetsService.upsertDelegation(
+            bundle.token,
+            bundle.spreadsheetId,
+            bundle.pnIdentifier,
+            bundle.accountId,
+            delRow
+          );
+        }
+        assets = await OwnedAssetsSheetsService.listAssets(
+          bundle.token,
+          bundle.spreadsheetId,
+          bundle.pnIdentifier,
+          bundle.accountId,
+          true
+        );
+      }
+    }
+
+    return assets
+      .filter((a) => a.rootPnIdentifier === root)
+      .map(sheetToRow)
+      .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
   }
 
   static async getById(id: string): Promise<OwnedAssetRow | null> {
@@ -125,22 +269,44 @@ export class OwnedAssetService {
     return mapAssetRow(r.rows[0] as Record<string, unknown>);
   }
 
-  static async createAsset(params: {
-    rootPnIdentifier: string;
-    subjectPnIdentifier: string | null;
-    kind: OwnedAssetKind;
-    metadata?: Record<string, unknown>;
-  }): Promise<OwnedAssetRow> {
-    const pool = getDatabasePool();
+  static async createAsset(
+    params: {
+      rootPnIdentifier: string;
+      subjectPnIdentifier: string | null;
+      kind: OwnedAssetKind;
+      metadata?: Record<string, unknown>;
+    },
+    opts?: OwnedAssetCloudOpts
+  ): Promise<OwnedAssetRow> {
+    const token = opts?.accessToken?.trim();
+    if (!token) {
+      throw Object.assign(new Error('cloud_token_required'), { code: 'CLOUD_TOKEN_REQUIRED' });
+    }
     const root = normalizePn(params.rootPnIdentifier);
     const subject = params.subjectPnIdentifier ? normalizePn(params.subjectPnIdentifier) : null;
-    const r = await pool.query(
-      `INSERT INTO pn_owned_assets (root_pn_identifier, subject_pn_identifier, kind, status, metadata)
-       VALUES ($1, $2, $3, 'active', $4::jsonb)
-       RETURNING *`,
-      [root, subject, params.kind, JSON.stringify(params.metadata ?? {})]
+    const now = new Date().toISOString();
+    const row: OwnedAssetRow = {
+      id: randomUUID(),
+      rootPnIdentifier: root,
+      subjectPnIdentifier: subject,
+      kind: params.kind,
+      status: 'active',
+      metadata: params.metadata ?? {},
+      apiKeyId: null,
+      createdAt: now,
+      updatedAt: now,
+      revokedAt: null
+    };
+
+    const bundle = await loadOwnedAssetDriveBundle(root, { accessToken: token });
+    await OwnedAssetsSheetsService.upsertAsset(
+      bundle.token,
+      bundle.spreadsheetId,
+      bundle.pnIdentifier,
+      bundle.accountId,
+      rowToSheet(row)
     );
-    const row = mapAssetRow(r.rows[0] as Record<string, unknown>);
+    await upsertPostgresCache(row);
     await appendAuditEvent({
       eventType: 'owned_asset.created',
       actorHint: 'dashboard',
@@ -150,17 +316,39 @@ export class OwnedAssetService {
     return row;
   }
 
-  static async revokeAsset(id: string, rootPn: string): Promise<boolean> {
-    const pool = getDatabasePool();
+  static async revokeAsset(id: string, rootPn: string, opts?: OwnedAssetCloudOpts): Promise<boolean> {
+    const token = opts?.accessToken?.trim();
+    if (!token) {
+      throw Object.assign(new Error('cloud_token_required'), { code: 'CLOUD_TOKEN_REQUIRED' });
+    }
     const root = normalizePn(rootPn);
-    const r = await pool.query(
-      `UPDATE pn_owned_assets
-       SET status = 'revoked', revoked_at = NOW(), updated_at = NOW()
-       WHERE id = $1 AND root_pn_identifier = $2 AND status = 'active'
-       RETURNING id`,
-      [id, root]
+    const bundle = await loadOwnedAssetDriveBundle(root, { accessToken: token });
+    const assets = await OwnedAssetsSheetsService.listAssets(
+      bundle.token,
+      bundle.spreadsheetId,
+      bundle.pnIdentifier,
+      bundle.accountId,
+      true
     );
-    if (r.rowCount === 0) return false;
+    const found = assets.find(
+      (a) => a.id === id && a.rootPnIdentifier === root && a.status === 'active'
+    );
+    if (!found) return false;
+    const now = new Date().toISOString();
+    const updated: OwnedAssetSheetRow = {
+      ...found,
+      status: 'revoked',
+      revokedAt: now,
+      updatedAt: now
+    };
+    await OwnedAssetsSheetsService.upsertAsset(
+      bundle.token,
+      bundle.spreadsheetId,
+      bundle.pnIdentifier,
+      bundle.accountId,
+      updated
+    );
+    await upsertPostgresCache(sheetToRow(updated));
     await appendAuditEvent({
       eventType: 'owned_asset.revoked',
       actorHint: 'dashboard',
@@ -170,8 +358,9 @@ export class OwnedAssetService {
     return true;
   }
 
-  /** Validate API key row against registry when linked */
-  static async assertApiKeyRegistryAllows(keyId: string): Promise<{ ok: true } | { ok: false; error: string }> {
+  static async assertApiKeyRegistryAllows(
+    keyId: string
+  ): Promise<{ ok: true } | { ok: false; error: string }> {
     const pool = getDatabasePool();
     const r = await pool.query(
       `SELECT ak.id, ak.pn_id, ak.owned_asset_id, oa.status as asset_status, oa.root_pn_identifier
@@ -210,9 +399,11 @@ export class OwnedAssetService {
     });
   }
 
-  // --- Delegations ---
-
-  static async listDelegations(ownedAssetId: string, rootPn: string): Promise<
+  static async listDelegations(
+    ownedAssetId: string,
+    rootPn: string,
+    opts?: OwnedAssetCloudOpts
+  ): Promise<
     Array<{
       id: string;
       delegateePnIdentifier: string | null;
@@ -223,186 +414,301 @@ export class OwnedAssetService {
       createdAt: string;
     }>
   > {
-    await this.assertRootOwnsAsset(ownedAssetId, rootPn);
-    const pool = getDatabasePool();
-    const r = await pool.query(
-      `SELECT id, delegatee_pn_identifier, delegatee_client_id, scope, expires_at, status, created_at
-       FROM pn_asset_delegations WHERE owned_asset_id = $1 ORDER BY created_at DESC`,
-      [ownedAssetId]
+    const token = opts?.accessToken?.trim();
+    if (!token) {
+      throw Object.assign(new Error('cloud_token_required'), { code: 'CLOUD_TOKEN_REQUIRED' });
+    }
+    await this.assertRootOwnsAsset(ownedAssetId, rootPn, opts);
+    const root = normalizePn(rootPn);
+    const bundle = await loadOwnedAssetDriveBundle(root, { accessToken: token });
+    const list = await OwnedAssetsSheetsService.listDelegations(
+      bundle.token,
+      bundle.spreadsheetId,
+      bundle.pnIdentifier,
+      bundle.accountId,
+      ownedAssetId
     );
-    return r.rows.map((row: Record<string, unknown>) => ({
-      id: String(row.id),
-      delegateePnIdentifier: row.delegatee_pn_identifier ? String(row.delegatee_pn_identifier) : null,
-      delegateeClientId: row.delegatee_client_id ? String(row.delegatee_client_id) : null,
-      scope: String(row.scope),
-      expiresAt: row.expires_at ? new Date(String(row.expires_at)).toISOString() : null,
-      status: String(row.status),
-      createdAt: row.created_at ? new Date(String(row.created_at)).toISOString() : new Date().toISOString()
+    return list.map((d) => ({
+      id: d.id,
+      delegateePnIdentifier: d.delegateePnIdentifier,
+      delegateeClientId: d.delegateeClientId,
+      scope: d.scope,
+      expiresAt: d.expiresAt,
+      status: d.status,
+      createdAt: d.createdAt
     }));
   }
 
-  static async assertRootOwnsAsset(assetId: string, rootPn: string): Promise<void> {
+  static async assertRootOwnsAsset(
+    assetId: string,
+    rootPn: string,
+    opts?: OwnedAssetCloudOpts
+  ): Promise<void> {
+    const root = normalizePn(rootPn);
+    const token = opts?.accessToken?.trim();
+    if (token) {
+      const bundle = await loadOwnedAssetDriveBundle(root, { accessToken: token });
+      const assets = await OwnedAssetsSheetsService.listAssets(
+        bundle.token,
+        bundle.spreadsheetId,
+        bundle.pnIdentifier,
+        bundle.accountId,
+        true
+      );
+      if (assets.some((a) => a.id === assetId && a.rootPnIdentifier === root)) return;
+      throw Object.assign(new Error('not_found_or_forbidden'), { code: 'FORBIDDEN' });
+    }
     const asset = await this.getById(assetId);
-    if (!asset || asset.rootPnIdentifier !== normalizePn(rootPn)) {
+    if (!asset || asset.rootPnIdentifier !== root) {
       throw Object.assign(new Error('not_found_or_forbidden'), { code: 'FORBIDDEN' });
     }
   }
 
-  static async addDelegation(params: {
-    ownedAssetId: string;
-    rootPn: string;
-    delegateePnIdentifier?: string;
-    delegateeClientId?: string;
-    scope: string;
-    expiresAt?: string | null;
-  }): Promise<string> {
-    await this.assertRootOwnsAsset(params.ownedAssetId, params.rootPn);
+  static async addDelegation(
+    params: {
+      ownedAssetId: string;
+      rootPn: string;
+      delegateePnIdentifier?: string;
+      delegateeClientId?: string;
+      scope: string;
+      expiresAt?: string | null;
+    },
+    opts?: OwnedAssetCloudOpts
+  ): Promise<string> {
+    const token = opts?.accessToken?.trim();
+    if (!token) {
+      throw Object.assign(new Error('cloud_token_required'), { code: 'CLOUD_TOKEN_REQUIRED' });
+    }
+    await this.assertRootOwnsAsset(params.ownedAssetId, params.rootPn, opts);
     const pn = params.delegateePnIdentifier?.trim();
     const cid = params.delegateeClientId?.trim();
     if ((!pn && !cid) || (pn && cid)) {
       throw Object.assign(new Error('exactly_one_delegatee'), { code: 'INVALID_INPUT' });
     }
+    const now = new Date().toISOString();
+    const id = randomUUID();
+    const root = normalizePn(params.rootPn);
+    const delRow: AssetDelegationSheetRow = {
+      id,
+      ownedAssetId: params.ownedAssetId,
+      delegateePnIdentifier: pn ? normalizePn(pn) : null,
+      delegateeClientId: cid || null,
+      scope: params.scope || '*',
+      expiresAt: params.expiresAt ?? null,
+      status: 'active',
+      createdAt: now,
+      updatedAt: now
+    };
+    const bundle = await loadOwnedAssetDriveBundle(root, { accessToken: token });
+    await OwnedAssetsSheetsService.upsertDelegation(
+      bundle.token,
+      bundle.spreadsheetId,
+      bundle.pnIdentifier,
+      bundle.accountId,
+      delRow
+    );
     const pool = getDatabasePool();
-    const r = await pool.query(
+    await pool.query(
       `INSERT INTO pn_asset_delegations (
-        owned_asset_id, delegatee_pn_identifier, delegatee_client_id, scope, expires_at, status
-      ) VALUES ($1, $2, $3, $4, $5, 'active')
-      RETURNING id`,
+        id, owned_asset_id, delegatee_pn_identifier, delegatee_client_id, scope, expires_at, status, created_at, updated_at
+      ) VALUES ($1, $2, $3, $4, $5, $6, 'active', $7::timestamptz, $7::timestamptz)
+      ON CONFLICT (id) DO UPDATE SET
+        status = EXCLUDED.status,
+        scope = EXCLUDED.scope,
+        updated_at = EXCLUDED.updated_at`,
       [
+        id,
         params.ownedAssetId,
-        pn ? normalizePn(pn) : null,
-        cid || null,
-        params.scope || '*',
-        params.expiresAt ?? null
+        delRow.delegateePnIdentifier,
+        delRow.delegateeClientId,
+        delRow.scope,
+        delRow.expiresAt,
+        now
       ]
     );
-    const id = String(r.rows[0].id);
     await appendAuditEvent({
       eventType: 'owned_asset.delegation_created',
       actorHint: 'dashboard',
-      subjectPnIdentifier: normalizePn(params.rootPn),
+      subjectPnIdentifier: root,
       metadata: { assetId: params.ownedAssetId, delegationId: id }
     });
     return id;
   }
 
-  static async revokeDelegation(delegationId: string, rootPn: string): Promise<boolean> {
-    const pool = getDatabasePool();
+  static async revokeDelegation(
+    delegationId: string,
+    rootPn: string,
+    opts?: OwnedAssetCloudOpts
+  ): Promise<boolean> {
+    const token = opts?.accessToken?.trim();
+    if (!token) {
+      throw Object.assign(new Error('cloud_token_required'), { code: 'CLOUD_TOKEN_REQUIRED' });
+    }
     const root = normalizePn(rootPn);
-    const r = await pool.query(
-      `UPDATE pn_asset_delegations d
-       SET status = 'revoked', updated_at = NOW()
-       FROM pn_owned_assets oa
-       WHERE d.id = $1 AND d.owned_asset_id = oa.id AND oa.root_pn_identifier = $2
-       RETURNING d.id`,
-      [delegationId, root]
+    const bundle = await loadOwnedAssetDriveBundle(root, { accessToken: token });
+    const list = await OwnedAssetsSheetsService.listDelegations(
+      bundle.token,
+      bundle.spreadsheetId,
+      bundle.pnIdentifier,
+      bundle.accountId
     );
-    return (r.rowCount ?? 0) > 0;
+    const found = list.find((d) => d.id === delegationId);
+    if (!found) return false;
+    await this.assertRootOwnsAsset(found.ownedAssetId, root, opts);
+    const now = new Date().toISOString();
+    await OwnedAssetsSheetsService.upsertDelegation(
+      bundle.token,
+      bundle.spreadsheetId,
+      bundle.pnIdentifier,
+      bundle.accountId,
+      { ...found, status: 'revoked', updatedAt: now }
+    );
+    const pool = getDatabasePool();
+    await pool.query(
+      `UPDATE pn_asset_delegations SET status = 'revoked', updated_at = NOW() WHERE id = $1`,
+      [delegationId]
+    );
+    return true;
   }
 
-  /** Rotate a sub owned asset to a new subject (compromise recovery). */
-  static async rekeyAsset(params: {
-    assetId: string;
-    rootPn: string;
-    newSubjectPnIdentifier: string;
-    newSubjectPublicKey?: string;
-    reason?: string;
-    migrateDelegations?: boolean;
-  }): Promise<OwnedAssetRow> {
+  static async rekeyAsset(
+    params: {
+      assetId: string;
+      rootPn: string;
+      newSubjectPnIdentifier: string;
+      newSubjectPublicKey?: string;
+      reason?: string;
+      migrateDelegations?: boolean;
+    },
+    opts?: OwnedAssetCloudOpts
+  ): Promise<OwnedAssetRow> {
+    const token = opts?.accessToken?.trim();
+    if (!token) {
+      throw Object.assign(new Error('cloud_token_required'), { code: 'CLOUD_TOKEN_REQUIRED' });
+    }
     const root = normalizePn(params.rootPn);
-    const old = await this.getById(params.assetId);
-    if (!old || old.rootPnIdentifier !== root || old.status !== 'active') {
+    const bundle = await loadOwnedAssetDriveBundle(root, { accessToken: token });
+    const assets = await OwnedAssetsSheetsService.listAssets(
+      bundle.token,
+      bundle.spreadsheetId,
+      bundle.pnIdentifier,
+      bundle.accountId,
+      true
+    );
+    const oldSheet = assets.find((a) => a.id === params.assetId && a.rootPnIdentifier === root);
+    if (!oldSheet || oldSheet.status !== 'active') {
       throw Object.assign(new Error('not_found_or_forbidden'), { code: 'FORBIDDEN' });
     }
-    if (old.kind === 'human' || old.kind === 'api_key') {
+    if (oldSheet.kind === 'human' || oldSheet.kind === 'api_key') {
       throw Object.assign(new Error('kind_not_rekeyable'), { code: 'INVALID_INPUT' });
     }
     const newSubject = normalizePn(params.newSubjectPnIdentifier);
-    if (old.subjectPnIdentifier && normalizePn(old.subjectPnIdentifier) === newSubject) {
+    if (oldSheet.subjectPnIdentifier && normalizePn(oldSheet.subjectPnIdentifier) === newSubject) {
       throw Object.assign(new Error('subject_unchanged'), { code: 'INVALID_INPUT' });
     }
 
-    const pool = getDatabasePool();
-    const client = await pool.connect();
-    try {
-      await client.query('BEGIN');
+    const now = new Date().toISOString();
+    const revoked: OwnedAssetSheetRow = {
+      ...oldSheet,
+      status: 'revoked',
+      revokedAt: now,
+      updatedAt: now
+    };
+    const label =
+      typeof oldSheet.metadata?.label === 'string' ? oldSheet.metadata.label : undefined;
+    const created: OwnedAssetSheetRow = {
+      id: randomUUID(),
+      rootPnIdentifier: root,
+      subjectPnIdentifier: newSubject,
+      kind: oldSheet.kind,
+      status: 'active',
+      metadata: {
+        ...(label ? { label } : {}),
+        supersedesAssetId: oldSheet.id,
+        ...(params.newSubjectPublicKey ? { subjectPublicKey: params.newSubjectPublicKey } : {})
+      },
+      apiKeyId: null,
+      createdAt: now,
+      updatedAt: now,
+      revokedAt: null
+    };
 
-      await client.query(
-        `UPDATE pn_owned_assets
-         SET status = 'revoked', revoked_at = NOW(), updated_at = NOW()
-         WHERE id = $1 AND root_pn_identifier = $2`,
-        [params.assetId, root]
+    await OwnedAssetsSheetsService.upsertAsset(
+      bundle.token,
+      bundle.spreadsheetId,
+      bundle.pnIdentifier,
+      bundle.accountId,
+      revoked
+    );
+    await OwnedAssetsSheetsService.upsertAsset(
+      bundle.token,
+      bundle.spreadsheetId,
+      bundle.pnIdentifier,
+      bundle.accountId,
+      created
+    );
+    await upsertPostgresCache(sheetToRow(revoked));
+    await upsertPostgresCache(sheetToRow(created));
+
+    if (params.migrateDelegations !== false) {
+      const dels = await OwnedAssetsSheetsService.listDelegations(
+        bundle.token,
+        bundle.spreadsheetId,
+        bundle.pnIdentifier,
+        bundle.accountId,
+        oldSheet.id
       );
+      for (const d of dels.filter((x) => x.status === 'active')) {
+        const moved = { ...d, ownedAssetId: created.id, updatedAt: now };
+        await OwnedAssetsSheetsService.upsertDelegation(
+          bundle.token,
+          bundle.spreadsheetId,
+          bundle.pnIdentifier,
+          bundle.accountId,
+          moved
+        );
+        const pool = getDatabasePool();
+        await pool.query(
+          `UPDATE pn_asset_delegations SET owned_asset_id = $2, updated_at = NOW()
+           WHERE id = $1 AND status = 'active'`,
+          [d.id, created.id]
+        );
+      }
+    }
 
-      const label =
-        typeof old.metadata?.label === 'string' ? old.metadata.label : undefined;
-      const ins = await client.query(
-        `INSERT INTO pn_owned_assets (root_pn_identifier, subject_pn_identifier, kind, status, metadata)
-         VALUES ($1, $2, $3, 'active', $4::jsonb)
-         RETURNING *`,
+    if (oldSheet.subjectPnIdentifier) {
+      const pool = getDatabasePool();
+      const predSubject = normalizePn(oldSheet.subjectPnIdentifier);
+      await pool.query(
+        `INSERT INTO pn_subject_succession (
+          predecessor_subject_pn_identifier, successor_subject_pn_identifier,
+          predecessor_asset_id, successor_asset_id, root_pn_identifier, reason
+        ) VALUES ($1, $2, $3, $4, $5, $6)`,
         [
-          root,
+          predSubject,
           newSubject,
-          old.kind,
-          JSON.stringify({
-            ...(label ? { label } : {}),
-            supersedesAssetId: old.id,
-            ...(params.newSubjectPublicKey ? { subjectPublicKey: params.newSubjectPublicKey } : {}),
-          }),
+          oldSheet.id,
+          created.id,
+          root,
+          (params.reason || 'rotation').slice(0, 64)
         ]
       );
-      const created = mapAssetRow(ins.rows[0] as Record<string, unknown>);
-
-      if (params.migrateDelegations !== false) {
-        await client.query(
-          `UPDATE pn_asset_delegations
-           SET owned_asset_id = $2, updated_at = NOW()
-           WHERE owned_asset_id = $1 AND status = 'active'`,
-          [old.id, created.id]
-        );
-      }
-
-      if (old.subjectPnIdentifier) {
-        const predSubject = normalizePn(old.subjectPnIdentifier);
-        await client.query(
-          `INSERT INTO pn_subject_succession (
-            predecessor_subject_pn_identifier, successor_subject_pn_identifier,
-            predecessor_asset_id, successor_asset_id, root_pn_identifier, reason
-          ) VALUES ($1, $2, $3, $4, $5, $6)`,
-          [
-            predSubject,
-            newSubject,
-            old.id,
-            created.id,
-            root,
-            (params.reason || 'rotation').slice(0, 64),
-          ]
-        );
-        const { syncSubjectSuccessionFromRow } = await import('./identitySuccessionService');
-        syncSubjectSuccessionFromRow(predSubject, newSubject);
-      }
-
-      await client.query('COMMIT');
-
-      await appendAuditEvent({
-        eventType: 'owned_asset.rekeyed',
-        actorHint: 'dashboard',
-        subjectPnIdentifier: root,
-        metadata: {
-          predecessorAssetId: old.id,
-          successorAssetId: created.id,
-          predecessorSubject: old.subjectPnIdentifier,
-          successorSubject: newSubject,
-        },
-      });
-
-      return created;
-    } catch (e) {
-      await client.query('ROLLBACK');
-      throw e;
-    } finally {
-      client.release();
+      const { syncSubjectSuccessionFromRow } = await import('./identitySuccessionService');
+      syncSubjectSuccessionFromRow(predSubject, newSubject);
     }
-  }
 
+    await appendAuditEvent({
+      eventType: 'owned_asset.rekeyed',
+      actorHint: 'dashboard',
+      subjectPnIdentifier: root,
+      metadata: {
+        predecessorAssetId: oldSheet.id,
+        successorAssetId: created.id,
+        predecessorSubject: oldSheet.subjectPnIdentifier,
+        successorSubject: newSubject
+      }
+    });
+
+    return sheetToRow(created);
+  }
 }
