@@ -519,10 +519,10 @@ export function AuthenticatedShell(props: AuthenticatedShellProps) {
                                     
                                     return (
                                       <div key={toolId} className="border border-border rounded-lg p-4">
-                                        <div className="mb-3 flex items-start justify-between gap-3">
+                                        <div className="flex items-start justify-between gap-3">
                                           <div className="min-w-0">
                                             <h5 className="font-medium text-text-primary">{tool.toolName}</h5>
-                                            <p className="text-xs text-text-secondary">{tool.toolDescription}</p>
+                                            <p className="text-xs text-text-secondary mt-0.5">{tool.toolDescription}</p>
                                           </div>
                                           <button
                                             type="button"
@@ -532,60 +532,54 @@ export function AuthenticatedShell(props: AuthenticatedShellProps) {
                                             Revoke
                                           </button>
                                         </div>
-                                        
-                                        {hasAgeZKP && ageAvailable && ageGloballyAllowed && (
-                                          <div className="flex items-center justify-between pt-3 border-t border-border">
-                                            <div className="flex-1">
-                                              <p className="text-sm font-medium text-text-primary">Share Age ZKP</p>
-                                              <p className="text-xs text-text-secondary">
-                                                Allow {tool.toolName} to verify your age for content access
-                                              </p>
-                                            </div>
-                                            <button
-                                              type="button"
-                                              role="switch"
-                                              aria-checked={ageShared}
-                                              onClick={() => handleToggleToolDataPoint(toolId, 'age_attestation', !ageShared)}
-                                              className={`
-                                                relative inline-flex h-6 w-11 items-center rounded-full transition-colors
-                                                ${ageShared ? 'bg-blue-600' : 'bg-neutral-700'}
-                                              `}
-                                            >
-                                              <span
+
+                                        <div className="mt-3 ml-3 pl-3 border-l border-border space-y-2">
+                                          {hasAgeZKP && ageAvailable && ageGloballyAllowed && (
+                                            <div className="flex items-center justify-between gap-3 py-1">
+                                              <div className="flex-1 min-w-0">
+                                                <p className="text-sm font-medium text-text-primary">Share Age ZKP</p>
+                                                <p className="text-xs text-text-secondary">
+                                                  Allow {tool.toolName} to verify your age for content access
+                                                </p>
+                                              </div>
+                                              <button
+                                                type="button"
+                                                role="switch"
+                                                aria-checked={ageShared}
+                                                onClick={() => handleToggleToolDataPoint(toolId, 'age_attestation', !ageShared)}
                                                 className={`
-                                                  inline-block h-4 w-4 transform rounded-full bg-white transition-transform
-                                                  ${ageShared ? 'translate-x-6' : 'translate-x-1'}
+                                                  relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors
+                                                  ${ageShared ? 'bg-blue-600' : 'bg-neutral-700'}
                                                 `}
-                                              />
-                                            </button>
-                                          </div>
-                                        )}
+                                              >
+                                                <span
+                                                  className={`
+                                                    inline-block h-4 w-4 transform rounded-full bg-white transition-transform
+                                                    ${ageShared ? 'translate-x-6' : 'translate-x-1'}
+                                                  `}
+                                                />
+                                              </button>
+                                            </div>
+                                          )}
 
-                                        {hasAgeZKP && ageAvailable && !ageGloballyAllowed && (
-                                          <p className="text-xs text-text-secondary pt-3 border-t border-border">
-                                            Age sharing is disabled in Global Settings
-                                          </p>
-                                        )}
-                                        
-                                        {hasAgeZKP && !ageAvailable && (
-                                          <p className="text-xs text-text-secondary pt-3 border-t border-border">
-                                            Age verification not available for this app
-                                          </p>
-                                        )}
-                                        
-                                        {!hasAgeZKP && ageAvailable && (
-                                          <p className="text-xs text-orange-400 pt-3 border-t border-border">
-                                            Create an age ZKP first to share it with this app
-                                          </p>
-                                        )}
+                                          {hasAgeZKP && ageAvailable && !ageGloballyAllowed && (
+                                            <p className="text-xs text-text-secondary py-1">
+                                              Age sharing is disabled in Global Settings
+                                            </p>
+                                          )}
 
-                                        <button
-                                          type="button"
-                                          onClick={() => handleOpenToolSettings(toolId)}
-                                          className="mt-3 text-sm text-primary hover:underline"
-                                        >
-                                          Tool settings
-                                        </button>
+                                          {hasAgeZKP && !ageAvailable && (
+                                            <p className="text-xs text-text-secondary py-1">
+                                              Age verification not available for this app
+                                            </p>
+                                          )}
+
+                                          {!hasAgeZKP && ageAvailable && (
+                                            <p className="text-xs text-orange-400 py-1">
+                                              Create an age ZKP first to share it with this app
+                                            </p>
+                                          )}
+                                        </div>
                                       </div>
                                     );
                                   })}
