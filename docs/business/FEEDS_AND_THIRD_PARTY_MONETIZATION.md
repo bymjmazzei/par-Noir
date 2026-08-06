@@ -10,6 +10,8 @@ Feeds are for **discovery, organization, collaboration, and the public index** (
 
 Database fields such as **`feeds.is_paid`**, **`monthly_price`**, and **`annual_price`**, and flows like **Coinbase `feed_creation`** after payment, refer to the **creator’s paid feed / ownership plan** (paying for or operating a feed tier on par Noir). They are **not** used to run **viewer → creator** “subscribe to this feed for money” checkout on the platform.
 
+**Registration path:** dashboard **Sub-pN** (kind Feed → Buy Feed → verify → activate). Activation also writes an owned-asset `kind=feed` row. Browser apps consume feeds (post / context switch); they do not run paid registration.
+
 ## What par Noir does not do
 
 **par Noir does not host, process, or settle end-user paid subscriptions to feeds** (no recurring or term-based “pay here to unlock this feed” product run by par Noir). That avoids platform liability for **payments, refunds, chargebacks, tax characterization, and subscriber access disputes** for creator–subscriber relationships.

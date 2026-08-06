@@ -697,7 +697,7 @@ export function setupFeedRoutes(app: Application) {
 
   /**
    * GET /api/users/:userPnIdentifier/delegated-feeds
-   * Get feeds where user is a delegate
+   * Get feeds where user is a delegate (feed_delegations + owned-asset feed scopes)
    */
   app.get('/api/users/:userPnIdentifier/delegated-feeds', async (req: Request, res: Response) => {
     try {
@@ -719,16 +719,24 @@ export function setupFeedRoutes(app: Application) {
         return res.status(403).json({ error: 'Not authorized' });
       }
 
+      const normPn = userPnIdentifier.startsWith('pn-')
+        ? userPnIdentifier
+        : `pn-${userPnIdentifier}`;
+
       const result = await db.query(`
         SELECT f.*, fd.permissions, fd.delegation_id
         FROM feeds f
         INNER JOIN feed_delegations fd ON f.feed_id = fd.feed_id
-        WHERE fd.delegate_did = $1
+        WHERE fd.delegate_did = $1 OR fd.delegate_did = $2
         ORDER BY fd.created_at DESC
-      `, [userPnIdentifier]);
+      `, [userPnIdentifier, normPn]);
 
-      const feeds = result.rows.map(row => {
-        // Convert database row to FeedRow format
+      const byFeedId = new Map<string, ReturnType<typeof FeedService.rowToFeed> & {
+        delegationId?: string;
+        delegatePermissions?: string[];
+      }>();
+
+      for (const row of result.rows) {
         const feedRow: FeedRow = {
           feed_id: row.feed_id,
           feed_name: row.feed_name,
@@ -748,17 +756,124 @@ export function setupFeedRoutes(app: Application) {
           subdomain: row.subdomain
         };
         const feed = FeedService.rowToFeed(feedRow);
-        return {
+        byFeedId.set(feed.feedId, {
           ...feed,
           delegationId: row.delegation_id,
           delegatePermissions: JSON.parse(row.permissions || '["read"]')
-        };
-      });
+        });
+      }
 
-      return res.json({ feeds });
+      const { OwnedAssetService } = await import('./ownedAssetService');
+      const assetDels = await OwnedAssetService.listDelegatedFeedIdsFromCache(normPn);
+      for (const d of assetDels) {
+        if (byFeedId.has(d.feedId)) continue;
+        const feed = await FeedService.getFeedById(d.feedId);
+        if (!feed) continue;
+        const perms =
+          d.scope === '*' || d.scope === 'manage'
+            ? ['read', 'write', 'manage']
+            : d.scope === 'write'
+              ? ['read', 'write']
+              : ['read'];
+        byFeedId.set(d.feedId, {
+          ...feed,
+          delegationId: d.assetId,
+          delegatePermissions: perms
+        });
+      }
+
+      return res.json({ feeds: Array.from(byFeedId.values()) });
     } catch (error) {
       console.error('Get delegated feeds error:', error);
       return res.status(500).json({ error: 'Failed to get delegated feeds' });
+    }
+  });
+
+  /**
+   * GET /api/users/:userPnIdentifier/controlled-feeds
+   * Owned feed contexts from Sub-pN registry (+ creator fallback) and delegated feeds.
+   */
+  app.get('/api/users/:userPnIdentifier/controlled-feeds', async (req: Request, res: Response) => {
+    try {
+      const { userPnIdentifier } = req.params;
+      const tokenPayload = getBearerTokenPayload(req);
+      if (!tokenPayload) {
+        return res.status(401).json({ error: 'Invalid token' });
+      }
+
+      const isAuthorized =
+        tokenPayload.did === userPnIdentifier ||
+        tokenPayload.pnIdentifier === userPnIdentifier ||
+        (userPnIdentifier.startsWith('pn-') && tokenPayload.pnIdentifier === userPnIdentifier) ||
+        (!userPnIdentifier.startsWith('pn-') && tokenPayload.did === userPnIdentifier);
+
+      if (!isAuthorized) {
+        return res.status(403).json({ error: 'Not authorized' });
+      }
+
+      const normPn = userPnIdentifier.startsWith('pn-')
+        ? userPnIdentifier
+        : `pn-${userPnIdentifier}`;
+
+      const { OwnedAssetService } = await import('./ownedAssetService');
+      const feedAssets = await OwnedAssetService.listFeedAssetsFromCache(normPn);
+      const ownedById = new Map<string, Feed>();
+
+      for (const asset of feedAssets) {
+        const feedId = asset.metadata?.feedId;
+        if (typeof feedId !== 'string' || !feedId.trim()) continue;
+        const feed = await FeedService.getFeedById(feedId.trim());
+        if (feed) ownedById.set(feed.feedId, feed);
+      }
+
+      // Fallback: active feeds still owned by creator before asset backfill
+      const creatorFeeds = await db.query(
+        `SELECT feed_id FROM feeds
+         WHERE (creator_did = $1 OR creator_did = $2 OR owner_pn_identifier = $1 OR owner_pn_identifier = $2)
+           AND (status IS NULL OR status = 'active')`,
+        [userPnIdentifier, normPn]
+      );
+      for (const row of creatorFeeds.rows as { feed_id: string }[]) {
+        if (ownedById.has(row.feed_id)) continue;
+        const feed = await FeedService.getFeedById(row.feed_id);
+        if (feed) ownedById.set(feed.feedId, feed);
+      }
+
+      const delegatedRes = await db.query(
+        `SELECT DISTINCT f.feed_id
+         FROM feeds f
+         INNER JOIN feed_delegations fd ON f.feed_id = fd.feed_id
+         WHERE fd.delegate_did = $1 OR fd.delegate_did = $2`,
+        [userPnIdentifier, normPn]
+      );
+      const delegatedById = new Map<string, Feed & { delegatePermissions?: string[] }>();
+      for (const row of delegatedRes.rows as { feed_id: string }[]) {
+        const feed = await FeedService.getFeedById(row.feed_id);
+        if (feed && !ownedById.has(feed.feedId)) {
+          delegatedById.set(feed.feedId, feed);
+        }
+      }
+      const assetDels = await OwnedAssetService.listDelegatedFeedIdsFromCache(normPn);
+      for (const d of assetDels) {
+        if (ownedById.has(d.feedId) || delegatedById.has(d.feedId)) continue;
+        const feed = await FeedService.getFeedById(d.feedId);
+        if (!feed) continue;
+        const perms =
+          d.scope === '*' || d.scope === 'manage'
+            ? ['read', 'write', 'manage']
+            : d.scope === 'write'
+              ? ['read', 'write']
+              : ['read'];
+        delegatedById.set(d.feedId, { ...feed, delegatePermissions: perms });
+      }
+
+      return res.json({
+        owned: Array.from(ownedById.values()),
+        delegated: Array.from(delegatedById.values())
+      });
+    } catch (error) {
+      console.error('Get controlled feeds error:', error);
+      return res.status(500).json({ error: 'Failed to get controlled feeds' });
     }
   });
 
@@ -809,7 +924,7 @@ export function setupFeedRoutes(app: Application) {
 
   /**
    * POST /api/feeds/activate-after-verification
-   * Activate feed after verification: creates sub-pN, Google Drive folder, and activates feed
+   * Activate feed after verification: creates sub-pN, Google Drive folder, owned-asset row, and activates feed
    */
   app.post('/api/feeds/activate-after-verification', async (req: Request, res: Response) => {
     try {
@@ -818,6 +933,15 @@ export function setupFeedRoutes(app: Application) {
       const tokenPayload = getBearerTokenPayload(req);
       if (!tokenPayload) {
         return res.status(401).json({ error: 'Invalid token' });
+      }
+
+      const { extractCloudAccessToken } = await import('./cloudAccessToken');
+      const cloudAccessToken = extractCloudAccessToken(req);
+      if (!cloudAccessToken) {
+        return res.status(409).json({
+          error: 'cloud_token_required',
+          error_description: 'Reconnect storage on this device to register the feed sub-pN'
+        });
       }
 
       // Find feed by checkoutId
@@ -843,19 +967,26 @@ export function setupFeedRoutes(app: Application) {
         return res.status(403).json({ error: 'Not authorized' });
       }
 
-      // Activate feed (creates sub-pN, Google Drive folder, updates status)
+      // Activate feed (creates sub-pN, Google Drive folder, owned asset, updates status)
       const activatedFeed = await FeedService.activateFeedAfterVerification(
         feedId,
         feed.creatorId,
         {
           verificationId,
           verifiedZKPs
-        }
+        },
+        { cloudAccessToken }
       );
 
       return res.json(activatedFeed);
     } catch (error) {
       console.error('Activate feed error:', error);
+      if ((error as { code?: string }).code === 'CLOUD_TOKEN_REQUIRED') {
+        return res.status(409).json({
+          error: 'cloud_token_required',
+          error_description: 'Reconnect storage on this device to register the feed sub-pN'
+        });
+      }
       return res.status(500).json({ error: 'Failed to activate feed' });
     }
   });

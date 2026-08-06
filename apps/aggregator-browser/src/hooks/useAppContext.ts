@@ -1,6 +1,6 @@
 /**
  * useAppContext Hook
- * Manages context switching between pN identity and feeds
+ * Manages context switching between pN identity and controlled feed subs (owned + delegated)
  */
 
 import { useState, useEffect, useCallback, useRef } from 'react';
@@ -13,7 +13,7 @@ export type AppContext =
   | { type: 'feed'; id: string; name: string; feedId: string; isOwned: boolean; feedToken?: FeedToken };
 
 export interface UseAppContextOptions {
-  /** App catalog fetch finished — owned feeds come from catalogFeeds only (no second listFeeds). */
+  /** Kept for call-site compatibility; controlled feeds no longer use catalog as lock-menu source. */
   catalogReady?: boolean;
   /** Load delegated feed contexts (deferred until context menu opens). */
   includeDelegated?: boolean;
@@ -21,16 +21,16 @@ export interface UseAppContextOptions {
 
 export function useAppContext(
   pnIdentifier?: string,
-  catalogFeeds?: Feed[],
+  _catalogFeeds?: Feed[],
   options: UseAppContextOptions = {}
 ) {
-  const { catalogReady = false, includeDelegated = false } = options;
+  const { includeDelegated = false } = options;
   const [activeContext, setActiveContext] = useState<AppContext | null>(null);
   const [availableContexts, setAvailableContexts] = useState<AppContext[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const isLoadingRef = useRef(false);
   const delegatedLoadedRef = useRef(false);
-  const delegatedContextsRef = useRef<AppContext[]>([]);
+  const delegatedFeedsRef = useRef<Feed[]>([]);
 
   const loadContexts = useCallback(async () => {
     if (!pnIdentifier) {
@@ -52,15 +52,37 @@ export function useAppContext(
         type: 'pn',
         id: pnIdentifier,
         name: displayName,
-        pnIdentifier,
+        pnIdentifier
       };
 
       const feedTokens = session?.feedTokens || [];
       const feedTokensMap = new Map(feedTokens.map((ft) => [ft.feedId, ft]));
 
-      const ownedFeeds = catalogReady
-        ? (catalogFeeds ?? []).filter((f) => f.creatorId === pnIdentifier)
-        : [];
+      let ownedFeeds: Feed[] = [];
+      let delegatedFeeds: Feed[] = [];
+
+      try {
+        const controlled = await FeedService.getControlledFeeds(pnIdentifier);
+        ownedFeeds = controlled.owned;
+        if (includeDelegated) {
+          delegatedFeeds = controlled.delegated;
+          delegatedLoadedRef.current = true;
+          delegatedFeedsRef.current = controlled.delegated;
+        } else if (delegatedLoadedRef.current) {
+          delegatedFeeds = delegatedFeedsRef.current;
+        }
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : String(err);
+        if (
+          !message.includes('Not authorized') &&
+          !message.includes('Invalid token') &&
+          !message.includes('403') &&
+          !message.includes('401') &&
+          process.env.NODE_ENV === 'development'
+        ) {
+          console.error('❌ [useAppContext] Failed to load controlled feeds:', err);
+        }
+      }
 
       const ownedFeedContexts: AppContext[] = ownedFeeds.map((f) => ({
         type: 'feed' as const,
@@ -68,36 +90,16 @@ export function useAppContext(
         name: f.feedName,
         feedId: f.feedId,
         isOwned: true,
-        feedToken: feedTokensMap.get(f.feedId),
+        feedToken: feedTokensMap.get(f.feedId)
       }));
 
-      let delegatedFeedContexts: AppContext[] = [];
-      if (includeDelegated && session?.accessToken && !delegatedLoadedRef.current) {
-        try {
-          const delegatedFeeds = await FeedService.getDelegatedFeeds(pnIdentifier);
-          delegatedLoadedRef.current = true;
-          delegatedFeedContexts = delegatedFeeds.map((f) => ({
-            type: 'feed' as const,
-            id: f.feedId,
-            name: f.feedName,
-            feedId: f.feedId,
-            isOwned: false,
-          }));
-          delegatedContextsRef.current = delegatedFeedContexts;
-        } catch (err: any) {
-          if (
-            !err.message?.includes('Not authorized') &&
-            !err.message?.includes('Invalid token') &&
-            !err.message?.includes('403') &&
-            !err.message?.includes('401') &&
-            process.env.NODE_ENV === 'development'
-          ) {
-            console.error('❌ [useAppContext] Failed to load delegated feeds:', err);
-          }
-        }
-      } else if (delegatedLoadedRef.current) {
-        delegatedFeedContexts = delegatedContextsRef.current;
-      }
+      const delegatedFeedContexts: AppContext[] = delegatedFeeds.map((f) => ({
+        type: 'feed' as const,
+        id: f.feedId,
+        name: f.feedName,
+        feedId: f.feedId,
+        isOwned: false
+      }));
 
       const contexts = [pnContext, ...ownedFeedContexts, ...delegatedFeedContexts];
 
@@ -114,13 +116,13 @@ export function useAppContext(
       setIsLoading(false);
       isLoadingRef.current = false;
     }
-  }, [pnIdentifier, catalogFeeds, catalogReady, includeDelegated]);
+  }, [pnIdentifier, includeDelegated]);
 
   useEffect(() => {
     if (pnIdentifier && !isLoadingRef.current) {
-      loadContexts();
+      void loadContexts();
     }
-  }, [pnIdentifier, catalogReady, includeDelegated, catalogFeeds, loadContexts]);
+  }, [pnIdentifier, includeDelegated, loadContexts]);
 
   useEffect(() => {
     if (activeContext) {
@@ -149,6 +151,6 @@ export function useAppContext(
     setActiveContext,
     availableContexts,
     loadContexts,
-    isLoading,
+    isLoading
   };
 }

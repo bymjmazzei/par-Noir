@@ -20,6 +20,12 @@ export interface CoinbaseCheckout {
     identityHash?: string;
     licensePrice?: string;
     creatorDid?: string;
+    feedName?: string;
+    feedCategory?: string;
+    feedDescription?: string;
+    monthlyPrice?: string;
+    annualPrice?: string;
+    subdomain?: string;
   };
 }
 
@@ -37,6 +43,12 @@ export interface CheckoutRequest {
     identityHash?: string;
     licensePrice?: string;
     creatorDid?: string;
+    feedName?: string;
+    feedCategory?: string;
+    feedDescription?: string;
+    monthlyPrice?: string;
+    annualPrice?: string;
+    subdomain?: string;
   };
 }
 

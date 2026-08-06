@@ -1,6 +1,5 @@
 /**
- * Feed Creator Component
- * Simple "Buy Feed" flow - no form, just payment → verification → activation
+ * Feed Creator — Buy Feed flow: name → payment → verification → activation (owned-asset row).
  */
 
 import React, { useState, useEffect } from 'react';
@@ -11,6 +10,7 @@ import { IdentityVerificationModal } from '../IdentityVerificationModal';
 import { CoinbaseProxy, CheckoutRequest } from '../../utils/coinbaseProxy';
 import { API_ENDPOINT } from '../../config/api';
 import type { EncryptedIdentity } from '../../types/crypto';
+import type { VerifiedIdentityData } from '../../types/verifiedIdentity';
 import { resolveOwnerApiToken } from '../../services/ownerApiToken';
 
 interface FeedCreatorProps {
@@ -18,6 +18,7 @@ interface FeedCreatorProps {
   onClose: () => void;
   onFeedCreated?: (feed: Feed) => void;
   authenticatedUser: { id: string } | null;
+  pnIdentifier?: string | null;
   encryptedIdentity?: EncryptedIdentity;
 }
 
@@ -26,40 +27,41 @@ export const FeedCreator: React.FC<FeedCreatorProps> = ({
   onClose,
   onFeedCreated,
   authenticatedUser,
+  pnIdentifier,
   encryptedIdentity
 }) => {
   const [isCreating, setIsCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  
-  // Payment & Verification state
+  const [feedName, setFeedName] = useState('');
+
   const [showVerificationModal, setShowVerificationModal] = useState(false);
   const [pendingCheckoutId, setPendingCheckoutId] = useState<string | null>(null);
   const [paymentStatus, setPaymentStatus] = useState<'idle' | 'processing' | 'paid' | 'failed'>('idle');
   const [checkoutUrl, setCheckoutUrl] = useState<string | null>(null);
 
-  if (!isOpen) return null;
-
-  // Poll for payment status after checkout is created
   useEffect(() => {
     if (!checkoutUrl || !pendingCheckoutId) return;
 
     const pollInterval = setInterval(async () => {
       try {
-        const ownerToken = resolveOwnerApiToken();
+        const ownerToken = resolveOwnerApiToken(pnIdentifier);
         if (!ownerToken) return;
-        // Check payment status via API
         const response = await fetch(`${API_ENDPOINT}/api/feeds/payment-status/${pendingCheckoutId}`, {
           headers: {
-            'Authorization': `Bearer ${ownerToken}`
+            Authorization: `Bearer ${ownerToken}`
           }
         });
 
         if (response.ok) {
           const data = await response.json();
-          if (data.status === 'confirmed' || data.status === 'resolved') {
+          // Webhook sets feed_payments.status = pending_verification after Coinbase confirm
+          if (
+            data.status === 'pending_verification' ||
+            data.status === 'confirmed' ||
+            data.status === 'resolved'
+          ) {
             setPaymentStatus('paid');
             clearInterval(pollInterval);
-            // Open verification modal
             setShowVerificationModal(true);
           } else if (data.status === 'failed') {
             setPaymentStatus('failed');
@@ -70,14 +72,21 @@ export const FeedCreator: React.FC<FeedCreatorProps> = ({
       } catch (err) {
         console.error('Error checking payment status:', err);
       }
-    }, 3000); // Poll every 3 seconds
+    }, 3000);
 
     return () => clearInterval(pollInterval);
-  }, [checkoutUrl, pendingCheckoutId]);
+  }, [checkoutUrl, pendingCheckoutId, pnIdentifier]);
+
+  if (!isOpen) return null;
 
   const handleBuyFeed = async () => {
     if (!authenticatedUser) {
       setError('User not authenticated');
+      return;
+    }
+    const name = feedName.trim();
+    if (!name) {
+      setError('Enter a feed name');
       return;
     }
 
@@ -86,28 +95,27 @@ export const FeedCreator: React.FC<FeedCreatorProps> = ({
     setPaymentStatus('processing');
 
     try {
-      // Create Coinbase Commerce checkout for feed purchase
       const checkoutData: CheckoutRequest = {
         name: 'Feed Purchase',
-        description: 'Purchase a new feed',
+        description: `Purchase feed: ${name}`,
         pricing_type: 'fixed_price',
         local_price: {
-          amount: '5.00', // $5 one-time fee for feed creation
+          amount: '5.00',
           currency: 'USD'
         },
         requested_info: ['email'],
         metadata: {
           licenseType: 'feed_creation',
-          creatorDid: authenticatedUser.id
+          creatorDid: authenticatedUser.id,
+          feedName: name
         }
       };
 
       const checkout = await CoinbaseProxy.createCheckout(checkoutData);
-      
+
       setPendingCheckoutId(checkout.id);
       setCheckoutUrl(checkout.hosted_url || null);
 
-      // Open payment window
       if (checkout.hosted_url) {
         window.open(checkout.hosted_url, '_blank');
       } else {
@@ -121,7 +129,7 @@ export const FeedCreator: React.FC<FeedCreatorProps> = ({
     }
   };
 
-  const handleVerificationComplete = async (verifiedData: any) => {
+  const handleVerificationComplete = async (verifiedData: VerifiedIdentityData) => {
     if (!pendingCheckoutId || !authenticatedUser) {
       setError('Missing checkout ID or authentication');
       return;
@@ -132,22 +140,22 @@ export const FeedCreator: React.FC<FeedCreatorProps> = ({
     setError(null);
 
     try {
-      // Activate feed: creates sub-pN with tokens, Google Drive folder, and activates feed
       const feed = await FeedService.activateFeedAfterVerification(
         pendingCheckoutId,
         {
-          verificationId: verifiedData.verificationId,
+          verificationId: verifiedData.verificationId || `veriff-${Date.now()}`,
           verifiedZKPs: verifiedData.dataPoints
-        }
+        },
+        pnIdentifier
       );
 
       onFeedCreated?.(feed);
       onClose();
-      
-      // Reset state
+
       setPendingCheckoutId(null);
       setPaymentStatus('idle');
       setCheckoutUrl(null);
+      setFeedName('');
     } catch (err) {
       console.error('Feed activation error:', err);
       setError(err instanceof Error ? err.message : 'Failed to activate feed');
@@ -159,10 +167,10 @@ export const FeedCreator: React.FC<FeedCreatorProps> = ({
   return (
     <div className="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-50">
       <div className="bg-neutral-900 border border-neutral-700 rounded-lg p-6 max-w-md w-full mx-4">
-        {/* Header */}
         <div className="flex justify-between items-center mb-6">
           <h2 className="text-xl font-semibold text-white">Buy Feed</h2>
           <button
+            type="button"
             onClick={onClose}
             className="text-neutral-400 hover:text-white transition-colors"
           >
@@ -170,14 +178,12 @@ export const FeedCreator: React.FC<FeedCreatorProps> = ({
           </button>
         </div>
 
-        {/* Error Message */}
         {error && (
           <div className="mb-4 p-3 bg-red-900/20 border border-red-700 rounded-lg">
             <p className="text-sm text-red-300">{error}</p>
           </div>
         )}
 
-        {/* Content */}
         <div className="space-y-6">
           <div className="text-center">
             <DollarSign className="h-12 w-12 text-blue-400 mx-auto mb-4" />
@@ -185,8 +191,8 @@ export const FeedCreator: React.FC<FeedCreatorProps> = ({
               Purchase a Feed
               <SectionInfo title="Purchase a Feed" className="text-neutral-400 hover:text-white">
                 <p>
-                  Get your own feed with a sub-pN identity. After purchase, complete identity verification to
-                  activate your feed.
+                  Registers a feed sub-pN after payment and identity verification. Use the browser to post and
+                  switch contexts.
                 </p>
               </SectionInfo>
             </h3>
@@ -196,9 +202,27 @@ export const FeedCreator: React.FC<FeedCreatorProps> = ({
             </div>
           </div>
 
+          <label className="block text-left text-sm">
+            <span className="text-neutral-300">Feed name</span>
+            <input
+              type="text"
+              className="mt-1 w-full rounded-md bg-neutral-800 border border-neutral-600 px-3 py-2 text-white"
+              value={feedName}
+              onChange={(e) => setFeedName(e.target.value)}
+              placeholder="My feed"
+              disabled={paymentStatus === 'processing' || paymentStatus === 'paid'}
+            />
+          </label>
+
           <button
-            onClick={handleBuyFeed}
-            disabled={isCreating || paymentStatus === 'processing' || paymentStatus === 'paid'}
+            type="button"
+            onClick={() => void handleBuyFeed()}
+            disabled={
+              isCreating ||
+              paymentStatus === 'processing' ||
+              paymentStatus === 'paid' ||
+              !feedName.trim()
+            }
             className="w-full px-4 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center space-x-2"
           >
             {paymentStatus === 'processing' ? (
@@ -232,13 +256,11 @@ export const FeedCreator: React.FC<FeedCreatorProps> = ({
         </div>
       </div>
 
-      {/* Verification Modal */}
       {showVerificationModal && authenticatedUser && (
         <IdentityVerificationModal
           isOpen={showVerificationModal}
           onClose={() => {
             setShowVerificationModal(false);
-            // Don't reset payment status - user can retry verification
           }}
           onVerificationComplete={handleVerificationComplete}
           identityId={authenticatedUser.id}

@@ -439,7 +439,7 @@ export async function togglePublicVisibility(
             // 202 = content pending copyright review (DMCA bot flagged; human review will decide)
             if (res.status === 202) {
               const data = await res.json().catch(() => ({}));
-              setSuccessMessage(data.message || "Content is under copyright review. You'll be notified when it's decided. Check Services for status.");
+              setSuccessMessage(data.message || "Content is under copyright review. You'll be notified when it's decided.");
               throw new Error('PENDING_REVIEW');
             }
 

@@ -452,5 +452,41 @@ export class FeedService {
     const data = await response.json();
     return data.feeds || [];
   }
+
+  /**
+   * Owned + delegated feed contexts from Sub-pN registry (lock-button switcher).
+   */
+  static async getControlledFeeds(
+    userPnIdentifier: string
+  ): Promise<{ owned: Feed[]; delegated: Feed[] }> {
+    const session = PNOAuthService.loadSession();
+    if (!session?.accessToken) {
+      return { owned: [], delegated: [] };
+    }
+
+    const response = await fetch(
+      `${API_ENDPOINT}/api/users/${encodeURIComponent(userPnIdentifier)}/controlled-feeds`,
+      {
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${session.accessToken}`
+        }
+      }
+    );
+
+    if (!response.ok) {
+      if (response.status === 401 || response.status === 403) {
+        return { owned: [], delegated: [] };
+      }
+      const error = await response.json().catch(() => ({ error: 'Failed to get controlled feeds' }));
+      throw new Error(error.error || 'Failed to get controlled feeds');
+    }
+
+    const data = await response.json();
+    return {
+      owned: data.owned || [],
+      delegated: data.delegated || []
+    };
+  }
 }
 

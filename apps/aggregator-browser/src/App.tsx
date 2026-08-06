@@ -1124,7 +1124,7 @@ function App() {
         />
       )}
       {showCreateFeedModal && (
-        <CreateFeedModal onClose={() => setShowCreateFeedModal(false)} onFeedCreated={(feed) => { handleFeedCreated(feed); setShowCreateFeedModal(false); }} />
+        <CreateFeedModal onClose={() => setShowCreateFeedModal(false)} />
       )}
       {addingToFeedFile && (
         <AddToFeedModal file={addingToFeedFile} feeds={feeds} onClose={() => setAddingToFeedFile(null)} onAdded={() => { setCurrentPage(0); setHasMore(true); hasMoreRef.current = true; discoverFiles(undefined, true, 0, false); setAddingToFeedFile(null); }} />

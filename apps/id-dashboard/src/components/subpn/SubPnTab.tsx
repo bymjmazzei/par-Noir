@@ -16,6 +16,7 @@ import {
   type OwnedAssetDto
 } from '../../services/ownedAssetsApi';
 import { republishOwnedAssetsManifest } from '../../services/ownedAssetsManifestService';
+import { FeedCreator } from '../feeds/FeedCreator';
 
 const SUB_KINDS = ['feed', 'device', 'ai_agent', 'smart_device'] as const;
 type SubKind = (typeof SUB_KINDS)[number];
@@ -26,6 +27,24 @@ const KIND_LABELS: Record<SubKind, string> = {
   ai_agent: 'AI agent',
   smart_device: 'Smart device (IoT)',
 };
+
+const FEED_CAPABILITY_SCOPES = [
+  {
+    key: 'read',
+    label: 'Access (read)',
+    description: 'View feed content and metadata'
+  },
+  {
+    key: 'write',
+    label: 'Post (write)',
+    description: 'Create and edit posts on this feed'
+  },
+  {
+    key: 'manage',
+    label: 'Manage',
+    description: 'Delegate access and manage feed settings'
+  }
+] as const;
 
 function randomSecret(len = 24): string {
   const a = new Uint8Array(len);
@@ -86,6 +105,7 @@ export const SubPnTab: React.FC<SubPnTabProps> = ({
   const [newDelPn, setNewDelPn] = useState('');
   const [newDelClient, setNewDelClient] = useState('');
   const [delegationBusyScope, setDelegationBusyScope] = useState<string | null>(null);
+  const [showFeedCreator, setShowFeedCreator] = useState(false);
 
   const syncIpfsManifest = useCallback(
     async (_list: OwnedAssetDto[]) => {
@@ -144,6 +164,10 @@ export const SubPnTab: React.FC<SubPnTabProps> = ({
   }, [loadDelegations]);
 
   const createSub = async () => {
+    if (createKind === 'feed') {
+      setShowFeedCreator(true);
+      return;
+    }
     if (!accessToken) {
       setErr('Sign in with par Noir (OAuth) to register subs.');
       return;
@@ -394,6 +418,10 @@ export const SubPnTab: React.FC<SubPnTabProps> = ({
   const getDelegationTarget = (): { delegateePnIdentifier?: string; delegateeClientId?: string } | null => {
     const pn = newDelPn.trim();
     const client = newDelClient.trim();
+    if (selected?.kind === 'feed') {
+      if (!pn || !pn.startsWith('pn-')) return null;
+      return { delegateePnIdentifier: pn };
+    }
     if (!pn && !client) return null;
     if (pn && client) return null;
     return pn ? { delegateePnIdentifier: pn } : { delegateeClientId: client };
@@ -514,33 +542,52 @@ export const SubPnTab: React.FC<SubPnTabProps> = ({
               ))}
             </select>
           </label>
-          <label className="block text-sm">
-            <span className="text-text-secondary">Label</span>
-            <input
-              className="mt-1 w-full rounded-md bg-secondary border border-border px-3 py-2"
-              value={label}
-              onChange={(e) => setLabel(e.target.value)}
-              placeholder="My agent"
-            />
-          </label>
-          <label className="block text-sm">
-            <span className="text-text-secondary">Export passphrase</span>
-            <input
-              type="password"
-              className="mt-1 w-full rounded-md bg-secondary border border-border px-3 py-2"
-              value={exportPassphrase}
-              onChange={(e) => setExportPassphrase(e.target.value)}
-              placeholder="Encrypts backup; required to download"
-            />
-          </label>
-          <button
-            type="button"
-            onClick={() => void createSub()}
-            className="w-full py-2 rounded-md bg-primary text-bg-primary font-medium hover:opacity-90 disabled:opacity-50"
-            disabled={loading || !accessToken}
-          >
-            Create and register
-          </button>
+          {createKind === 'feed' ? (
+            <>
+              <p className="text-sm text-text-secondary">
+                Feeds require a one-time purchase and identity verification. After activation the feed appears in this
+                list; post and switch contexts in the browser.
+              </p>
+              <button
+                type="button"
+                onClick={() => setShowFeedCreator(true)}
+                className="w-full py-2 rounded-md bg-primary text-bg-primary font-medium hover:opacity-90 disabled:opacity-50"
+                disabled={loading || !accessToken}
+              >
+                Buy and register feed — $5
+              </button>
+            </>
+          ) : (
+            <>
+              <label className="block text-sm">
+                <span className="text-text-secondary">Label</span>
+                <input
+                  className="mt-1 w-full rounded-md bg-secondary border border-border px-3 py-2"
+                  value={label}
+                  onChange={(e) => setLabel(e.target.value)}
+                  placeholder="My agent"
+                />
+              </label>
+              <label className="block text-sm">
+                <span className="text-text-secondary">Export passphrase</span>
+                <input
+                  type="password"
+                  className="mt-1 w-full rounded-md bg-secondary border border-border px-3 py-2"
+                  value={exportPassphrase}
+                  onChange={(e) => setExportPassphrase(e.target.value)}
+                  placeholder="Encrypts backup; required to download"
+                />
+              </label>
+              <button
+                type="button"
+                onClick={() => void createSub()}
+                className="w-full py-2 rounded-md bg-primary text-bg-primary font-medium hover:opacity-90 disabled:opacity-50"
+                disabled={loading || !accessToken}
+              >
+                Create and register
+              </button>
+            </>
+          )}
         </div>
 
         <div className="bg-modal-bg border border-border rounded-lg p-4">
@@ -575,7 +622,12 @@ export const SubPnTab: React.FC<SubPnTabProps> = ({
                   {selected.kind === 'ai_agent' && (
                     <p>Use Delegations below to scope ZKP or integrations when enforcement lands on those routes.</p>
                   )}
-                  {selected.kind === 'feed' && <p>Link feed folders from Storage; registry row tracks this sub subject.</p>}
+                  {selected.kind === 'feed' && (
+                    <p>
+                      Paid feed sub-pN. Post and switch contexts in the browser. Delegate read / write / manage below
+                      so other pNs can use this feed.
+                    </p>
+                  )}
                   {selected.kind === 'device' && (
                     <p>
                       <strong>Device:</strong> Your phone, laptop, or tablet. For device sync and per-device identity;
@@ -668,7 +720,9 @@ export const SubPnTab: React.FC<SubPnTabProps> = ({
               Delegations
             </h5>
             <p className="text-xs text-text-secondary">
-              Select one delegate target, then toggle Privacy/Sharing scopes on or off.
+              {selected.kind === 'feed'
+                ? 'Select one delegate target, then toggle feed access capabilities.'
+                : 'Select one delegate target, then toggle Privacy/Sharing scopes on or off.'}
             </p>
             <div className="flex flex-wrap gap-2 items-end">
               <input
@@ -677,50 +731,90 @@ export const SubPnTab: React.FC<SubPnTabProps> = ({
                 value={newDelPn}
                 onChange={(e) => setNewDelPn(e.target.value)}
               />
-              <input
-                className="rounded-md bg-secondary border border-border px-2 py-1 text-sm flex-1 min-w-[120px]"
-                placeholder="Or client id"
-                value={newDelClient}
-                onChange={(e) => setNewDelClient(e.target.value)}
-              />
+              {selected.kind !== 'feed' && (
+                <input
+                  className="rounded-md bg-secondary border border-border px-2 py-1 text-sm flex-1 min-w-[120px]"
+                  placeholder="Or client id"
+                  value={newDelClient}
+                  onChange={(e) => setNewDelClient(e.target.value)}
+                />
+              )}
             </div>
             {!getDelegationTarget() && (
-              <p className="text-xs text-amber-400">Enter exactly one target (pN or client id) to enable scope toggles.</p>
+              <p className="text-xs text-amber-400">
+                {selected.kind === 'feed'
+                  ? 'Enter a delegatee pN identifier to enable capability toggles.'
+                  : 'Enter exactly one target (pN or client id) to enable scope toggles.'}
+              </p>
             )}
-            {newDelPn.trim() && newDelClient.trim() && (
+            {newDelPn.trim() && newDelClient.trim() && selected.kind !== 'feed' && (
               <p className="text-xs text-amber-400">Use either delegatee pN or client id, not both at the same time.</p>
             )}
             <div className="space-y-2">
-              {availableScopes.length === 0 && (
-                <p className="text-xs text-text-secondary">No Privacy/Sharing scopes are available yet.</p>
-              )}
-              {availableScopes.map((scope) => {
-                const checked = isScopeEnabledForTarget(scope.key);
-                const disabled =
-                  !scope.enabled || !getDelegationTarget() || delegationBusyScope === scope.key || !!(newDelPn.trim() && newDelClient.trim());
-                return (
-                  <label
-                    key={scope.key}
-                    className={`flex items-start justify-between gap-3 rounded border px-3 py-2 ${
-                      scope.enabled ? 'border-border bg-modal-bg' : 'border-amber-700 bg-amber-900/20'
-                    }`}
-                  >
-                    <span>
-                      <span className="block text-sm font-medium">{scope.label}</span>
-                      <span className="block text-xs text-text-secondary">{scope.description}</span>
-                      {!scope.enabled && (
-                        <span className="block text-xs text-amber-400 mt-1">Disabled by global Privacy/Sharing policy.</span>
-                      )}
-                    </span>
-                    <input
-                      type="checkbox"
-                      checked={checked}
-                      disabled={disabled}
-                      onChange={(e) => void handleScopeToggle(scope.key, e.target.checked)}
-                    />
-                  </label>
-                );
-              })}
+              {selected.kind === 'feed'
+                ? FEED_CAPABILITY_SCOPES.map((scope) => {
+                    const checked = isScopeEnabledForTarget(scope.key);
+                    const disabled =
+                      !getDelegationTarget() ||
+                      delegationBusyScope === scope.key ||
+                      !newDelPn.trim();
+                    return (
+                      <label
+                        key={scope.key}
+                        className="flex items-start justify-between gap-3 rounded border border-border bg-modal-bg px-3 py-2"
+                      >
+                        <span>
+                          <span className="block text-sm font-medium">{scope.label}</span>
+                          <span className="block text-xs text-text-secondary">{scope.description}</span>
+                        </span>
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          disabled={disabled}
+                          onChange={(e) => void handleScopeToggle(scope.key, e.target.checked)}
+                        />
+                      </label>
+                    );
+                  })
+                : (
+                  <>
+                    {availableScopes.length === 0 && (
+                      <p className="text-xs text-text-secondary">No Privacy/Sharing scopes are available yet.</p>
+                    )}
+                    {availableScopes.map((scope) => {
+                      const checked = isScopeEnabledForTarget(scope.key);
+                      const disabled =
+                        !scope.enabled ||
+                        !getDelegationTarget() ||
+                        delegationBusyScope === scope.key ||
+                        !!(newDelPn.trim() && newDelClient.trim());
+                      return (
+                        <label
+                          key={scope.key}
+                          className={`flex items-start justify-between gap-3 rounded border px-3 py-2 ${
+                            scope.enabled ? 'border-border bg-modal-bg' : 'border-amber-700 bg-amber-900/20'
+                          }`}
+                        >
+                          <span>
+                            <span className="block text-sm font-medium">{scope.label}</span>
+                            <span className="block text-xs text-text-secondary">{scope.description}</span>
+                            {!scope.enabled && (
+                              <span className="block text-xs text-amber-400 mt-1">
+                                Disabled by global Privacy/Sharing policy.
+                              </span>
+                            )}
+                          </span>
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            disabled={disabled}
+                            onChange={(e) => void handleScopeToggle(scope.key, e.target.checked)}
+                          />
+                        </label>
+                      );
+                    })}
+                  </>
+                )}
             </div>
             <ul className="space-y-2">
               {delegations.map((d) => (
@@ -817,6 +911,19 @@ export const SubPnTab: React.FC<SubPnTabProps> = ({
             </div>
           </div>
         </div>
+      )}
+
+      {showFeedCreator && (
+        <FeedCreator
+          isOpen={showFeedCreator}
+          onClose={() => setShowFeedCreator(false)}
+          authenticatedUser={sessionId ? { id: sessionId } : null}
+          pnIdentifier={pnIdentifier}
+          onFeedCreated={async () => {
+            setShowFeedCreator(false);
+            await load();
+          }}
+        />
       )}
     </div>
   );

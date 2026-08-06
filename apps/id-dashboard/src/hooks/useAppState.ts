@@ -75,7 +75,7 @@ export function useAppState() {
 
   // Navigation state
   const [activeTab, setActiveTab] = useState<
-    'privacy' | 'devices' | 'recovery' | 'developer' | 'delegation' | 'storage' | 'subpn' | 'monetization'
+    'privacy' | 'devices' | 'recovery' | 'delegation' | 'storage' | 'subpn' | 'monetization'
   >('privacy');
   const [isDemoMode, setIsDemoMode] = useState(false);
   const [globalSettingsExpanded, setGlobalSettingsExpanded] = useState(false);

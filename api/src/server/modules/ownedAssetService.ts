@@ -94,6 +94,70 @@ function normalizePn(pn: string): string {
   return t.startsWith('pn-') ? t : `pn-${t}`;
 }
 
+/** Feed subjects use `feed-*` ids; do not rewrite them to `pn-*`. */
+function normalizeSubjectForKind(kind: OwnedAssetKind, subject: string | null): string | null {
+  if (!subject) return null;
+  const t = subject.trim();
+  if (!t) return null;
+  if (kind === 'feed' && (t.startsWith('feed-') || t.startsWith('feed_'))) {
+    return t;
+  }
+  return normalizePn(t);
+}
+
+const FEED_CAPABILITY_SCOPES = new Set(['read', 'write', 'manage', '*']);
+
+function feedPermissionsFromScope(scope: string): ('read' | 'write' | 'manage')[] {
+  if (scope === '*' || scope === 'manage') return ['read', 'write', 'manage'];
+  if (scope === 'write') return ['read', 'write'];
+  return ['read'];
+}
+
+async function mirrorFeedDelegationCreate(
+  asset: OwnedAssetRow,
+  delegateePn: string,
+  scope: string
+): Promise<void> {
+  if (asset.kind !== 'feed' || !FEED_CAPABILITY_SCOPES.has(scope)) return;
+  const feedId = asset.metadata?.feedId;
+  if (typeof feedId !== 'string' || !feedId.trim()) return;
+  const permissions = feedPermissionsFromScope(scope);
+  const pool = getDatabasePool();
+  const delegationId = `delegation_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`;
+  const now = new Date().toISOString();
+  await pool.query(
+    `INSERT INTO feed_delegations (
+      delegation_id, feed_id, owner_did, delegate_did, permissions, created_at, updated_at
+    ) VALUES ($1, $2, $3, $4, $5, $6, $7)
+    ON CONFLICT (feed_id, delegate_did) DO UPDATE SET
+      permissions = EXCLUDED.permissions,
+      updated_at = EXCLUDED.updated_at`,
+    [
+      delegationId,
+      feedId.trim(),
+      asset.rootPnIdentifier,
+      normalizePn(delegateePn),
+      JSON.stringify(permissions),
+      now,
+      now
+    ]
+  );
+}
+
+async function mirrorFeedDelegationRevoke(
+  asset: OwnedAssetRow,
+  delegateePn: string | null
+): Promise<void> {
+  if (asset.kind !== 'feed' || !delegateePn) return;
+  const feedId = asset.metadata?.feedId;
+  if (typeof feedId !== 'string' || !feedId.trim()) return;
+  const pool = getDatabasePool();
+  await pool.query(`DELETE FROM feed_delegations WHERE feed_id = $1 AND delegate_did = $2`, [
+    feedId.trim(),
+    normalizePn(delegateePn)
+  ]);
+}
+
 async function upsertPostgresCache(row: OwnedAssetRow): Promise<void> {
   const pool = getDatabasePool();
   await pool.query(
@@ -283,7 +347,7 @@ export class OwnedAssetService {
       throw Object.assign(new Error('cloud_token_required'), { code: 'CLOUD_TOKEN_REQUIRED' });
     }
     const root = normalizePn(params.rootPnIdentifier);
-    const subject = params.subjectPnIdentifier ? normalizePn(params.subjectPnIdentifier) : null;
+    const subject = normalizeSubjectForKind(params.kind, params.subjectPnIdentifier);
     const now = new Date().toISOString();
     const row: OwnedAssetRow = {
       id: randomUUID(),
@@ -532,6 +596,16 @@ export class OwnedAssetService {
       subjectPnIdentifier: root,
       metadata: { assetId: params.ownedAssetId, delegationId: id }
     });
+
+    const asset = await this.getById(params.ownedAssetId);
+    if (asset && delRow.delegateePnIdentifier) {
+      try {
+        await mirrorFeedDelegationCreate(asset, delRow.delegateePnIdentifier, delRow.scope);
+      } catch (e) {
+        console.error('[owned-assets] mirror feed delegation create failed:', e);
+      }
+    }
+
     return id;
   }
 
@@ -568,7 +642,63 @@ export class OwnedAssetService {
       `UPDATE pn_asset_delegations SET status = 'revoked', updated_at = NOW() WHERE id = $1`,
       [delegationId]
     );
+
+    const asset = await this.getById(found.ownedAssetId);
+    if (asset) {
+      try {
+        await mirrorFeedDelegationRevoke(asset, found.delegateePnIdentifier);
+      } catch (e) {
+        console.error('[owned-assets] mirror feed delegation revoke failed:', e);
+      }
+    }
+
     return true;
+  }
+
+  /** Postgres-only list for browser context switcher (no Drive cloud token). */
+  static async listFeedAssetsFromCache(rootPn: string): Promise<OwnedAssetRow[]> {
+    const root = normalizePn(rootPn);
+    const pool = getDatabasePool();
+    const r = await pool.query(
+      `SELECT * FROM pn_owned_assets
+       WHERE root_pn_identifier = $1 AND kind = 'feed' AND status = 'active'
+       ORDER BY created_at DESC`,
+      [root]
+    );
+    return r.rows.map((row: Record<string, unknown>) => mapAssetRow(row));
+  }
+
+  /** Feeds delegated to this pN via owned-asset scopes (postgres cache). */
+  static async listDelegatedFeedIdsFromCache(delegateePn: string): Promise<
+    Array<{ feedId: string; scope: string; assetId: string }>
+  > {
+    const delegatee = normalizePn(delegateePn);
+    const pool = getDatabasePool();
+    const r = await pool.query(
+      `SELECT oa.id AS asset_id, oa.metadata, d.scope
+       FROM pn_asset_delegations d
+       JOIN pn_owned_assets oa ON oa.id = d.owned_asset_id
+       WHERE oa.kind = 'feed' AND oa.status = 'active'
+         AND d.status = 'active'
+         AND d.delegatee_pn_identifier = $1`,
+      [delegatee]
+    );
+    const out: Array<{ feedId: string; scope: string; assetId: string }> = [];
+    for (const row of r.rows as Record<string, unknown>[]) {
+      const meta =
+        typeof row.metadata === 'string'
+          ? (JSON.parse(row.metadata) as Record<string, unknown>)
+          : ((row.metadata as Record<string, unknown>) ?? {});
+      const feedId = meta.feedId;
+      if (typeof feedId === 'string' && feedId.trim()) {
+        out.push({
+          feedId: feedId.trim(),
+          scope: String(row.scope || 'read'),
+          assetId: String(row.asset_id)
+        });
+      }
+    }
+    return out;
   }
 
   static async rekeyAsset(

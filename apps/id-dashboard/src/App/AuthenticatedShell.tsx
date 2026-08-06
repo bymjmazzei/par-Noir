@@ -3,7 +3,6 @@ import { CheckCircle, Smartphone, Edit3, Settings, ChevronDown, Users, Layers, W
 import { DataPointRequestsPanel } from '../components/DataPointRequestsPanel';
 import { RecoveryTab } from '../components/recovery/RecoveryTab';
 import { ThemeAwareProfileImage } from '../components/ThemeAwareProfileImage';
-import { DeveloperPortal } from '../pages/DeveloperPortal';
 import { MonetizationTab } from '../components/monetization/MonetizationTab';
 import { SubPnTab } from '../components/subpn/SubPnTab';
 import { isIdentityVerificationAvailable } from '../config/verification';
@@ -394,17 +393,6 @@ export function AuthenticatedShell(props: AuthenticatedShellProps) {
                     </button>
 
                       <button
-                        onClick={() => setActiveTab('developer')}
-                      className={`py-2 px-2 sm:px-4 border-b-2 font-medium text-sm whitespace-nowrap min-w-0 flex-shrink-0 ${
-                          activeTab === 'developer'
-                            ? 'border-primary text-primary'
-                            : 'border-transparent text-text-secondary hover:text-text-primary hover:border-border'
-                        }`}
-                      >
-                        Services
-                      </button>
-
-                      <button
                         onClick={() => setActiveTab('monetization')}
                         className={`py-2 px-2 sm:px-4 border-b-2 font-medium text-sm whitespace-nowrap min-w-0 flex-shrink-0 flex items-center gap-1 ${
                           activeTab === 'monetization'
@@ -685,11 +673,7 @@ export function AuthenticatedShell(props: AuthenticatedShellProps) {
                     </div>
                   )}
 
-                  {/* Services Tab */}
-                  {activeTab === 'developer' && (
-                    <DeveloperPortal authenticatedUser={authenticatedUser} />
-                  )}
-
+                  {/* Monetization Tab */}
                   {activeTab === 'monetization' && (
                     <MonetizationTab
                       accessToken={apiToken || ''}

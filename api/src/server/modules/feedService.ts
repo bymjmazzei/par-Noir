@@ -156,18 +156,50 @@ export class FeedService {
       return true; // Owner has all permissions
     }
 
-    // Check if user is a delegate with required permission
+    const normalizeUser = (pn: string) => {
+      const t = pn.trim();
+      return t.startsWith('pn-') ? t : `pn-${t}`;
+    };
+    const userNorm = normalizeUser(userPnIdentifier);
+
+    // Check if user is a delegate with required permission (feed_delegations)
     const delegationResult = await db.query(`
       SELECT permissions FROM feed_delegations 
-      WHERE feed_id = $1 AND delegate_did = $2
+      WHERE feed_id = $1 AND (delegate_did = $2 OR delegate_did = $3)
       LIMIT 1
-      `, [feedId, userPnIdentifier]);
+      `, [feedId, userPnIdentifier, userNorm]);
 
-    if (delegationResult.rows.length === 0) {
-      return false;
+    let permissions: string[] | null = null;
+
+    if (delegationResult.rows.length > 0) {
+      permissions = JSON.parse(delegationResult.rows[0].permissions || '["read"]');
+    } else {
+      // Bridge: owned-asset feed scopes on pn_asset_delegations
+      const assetDel = await db.query(
+        `SELECT d.scope FROM pn_asset_delegations d
+         JOIN pn_owned_assets oa ON oa.id = d.owned_asset_id
+         WHERE oa.kind = 'feed' AND oa.status = 'active'
+           AND (oa.metadata->>'feedId') = $1
+           AND d.status = 'active'
+           AND (d.delegatee_pn_identifier = $2 OR d.delegatee_pn_identifier = $3)
+         LIMIT 1`,
+        [feedId, userPnIdentifier, userNorm]
+      );
+      if (assetDel.rows.length > 0) {
+        const scope = String(assetDel.rows[0].scope || 'read');
+        if (scope === '*' || scope === 'manage') {
+          permissions = ['read', 'write', 'manage'];
+        } else if (scope === 'write') {
+          permissions = ['read', 'write'];
+        } else {
+          permissions = ['read'];
+        }
+      }
     }
 
-    const permissions = JSON.parse(delegationResult.rows[0].permissions || '["read"]');
+    if (!permissions) {
+      return false;
+    }
     
     // Permission hierarchy: manage > write > read
     if (requiredPermission === 'read') {
@@ -802,7 +834,7 @@ export class FeedService {
 
   /**
    * Activate feed after verification
-   * Creates sub-pN identifier, Google Drive folder structure, and activates feed
+   * Creates sub-pN identifier, Google Drive folder structure, owned-asset registry row, and activates feed
    */
   static async activateFeedAfterVerification(
     feedId: string,
@@ -810,7 +842,8 @@ export class FeedService {
     verificationData: {
       verificationId: string;
       verifiedZKPs: any;
-    }
+    },
+    opts?: { cloudAccessToken?: string }
   ): Promise<Feed> {
     const db = getDatabasePool();
     const crypto = await import('crypto');
@@ -830,6 +863,36 @@ export class FeedService {
       }
 
       const ownerPnIdentifier = creatorCredentials.identityId;
+      const cloudAccessToken = opts?.cloudAccessToken?.trim();
+      if (!cloudAccessToken) {
+        throw Object.assign(new Error('cloud_token_required'), { code: 'CLOUD_TOKEN_REQUIRED' });
+      }
+
+      const registerOwnedFeedAsset = async (subPnIdentifier: string, rootPn: string) => {
+        const existing = await db.query(
+          `SELECT id FROM pn_owned_assets
+           WHERE kind = 'feed' AND status = 'active' AND (metadata->>'feedId') = $1
+           LIMIT 1`,
+          [feedId]
+        );
+        if (existing.rows.length > 0) return;
+        const { OwnedAssetService } = await import('./ownedAssetService');
+        await OwnedAssetService.createAsset(
+          {
+            rootPnIdentifier: rootPn,
+            subjectPnIdentifier: subPnIdentifier,
+            kind: 'feed',
+            metadata: {
+              feedId,
+              feedName: feed.feedName,
+              label: feed.feedName
+            }
+          },
+          { accessToken: cloudAccessToken }
+        );
+      };
+
+      let activatedSubPn: string | null = null;
 
       try {
         const feedPnName = `feed_${feedId.substring(0, 8)}_${crypto.randomBytes(4).toString('hex')}`;
@@ -957,23 +1020,13 @@ export class FeedService {
           WHERE feed_id = $1
         `, [feedId]);
 
-        // Get updated feed
-        const updatedFeed = await this.getFeedById(feedId);
-        if (!updatedFeed) {
-          throw new Error('Failed to retrieve updated feed');
-        }
-
-        console.log(`✅ [FeedService] Feed ${feedId} activated with sub-pN: ${subPnIdentifier}`);
-        return updatedFeed;
+        activatedSubPn = subPnIdentifier;
       } catch (error) {
-        console.error('❌ [FeedService] Error activating feed:', error);
+        console.error('❌ [FeedService] Error activating feed storage path:', error);
         // If Google Drive folder creation fails, still activate the feed
-        // User can create folder later
         const combined = `${feedId}:${creatorDid}`;
         const hash = crypto.createHash('sha256').update(combined, 'utf8').digest('hex');
         const subPnIdentifier = `feed-${hash.substring(0, 12)}`;
-        const ownerHash = crypto.createHash('sha256').update(creatorDid, 'utf8').digest('hex');
-        const ownerPnIdentifier = `pn-${ownerHash.substring(0, 12)}`;
 
         await db.query(`
           UPDATE feeds
@@ -987,13 +1040,22 @@ export class FeedService {
           WHERE feed_id = $1
         `, [feedId]);
 
-        const updatedFeed = await this.getFeedById(feedId);
-        if (!updatedFeed) {
-          throw new Error('Failed to retrieve updated feed');
-        }
-
-        return updatedFeed;
+        activatedSubPn = subPnIdentifier;
       }
+
+      if (!activatedSubPn) {
+        throw new Error('Failed to activate feed sub-pN');
+      }
+
+      await registerOwnedFeedAsset(activatedSubPn, ownerPnIdentifier);
+
+      const updatedFeed = await this.getFeedById(feedId);
+      if (!updatedFeed) {
+        throw new Error('Failed to retrieve updated feed');
+      }
+
+      console.log(`✅ [FeedService] Feed ${feedId} activated with sub-pN: ${activatedSubPn}`);
+      return updatedFeed;
     } catch (error) {
       console.error('❌ [FeedService] Error in activateFeedAfterVerification:', error);
       throw error;

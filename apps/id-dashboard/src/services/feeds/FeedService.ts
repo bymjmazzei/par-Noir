@@ -183,32 +183,37 @@ export class FeedService {
 
   /**
    * Activate feed after verification
-   * Creates sub-pN, Google Drive folder, and activates feed
+   * Creates sub-pN, Google Drive folder, owned-asset row, and activates feed
    */
   static async activateFeedAfterVerification(
     checkoutId: string,
     verificationData: {
       verificationId: string;
       verifiedZKPs: any;
-    }
+    },
+    pnIdentifier?: string | null
   ): Promise<Feed> {
-    const token = requireOwnerApiToken();
-    const response = await fetch(`${API_ENDPOINT}/api/feeds/activate-after-verification`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}`
-      },
-      body: JSON.stringify({
+    const token = requireOwnerApiToken(pnIdentifier);
+    const response = await ownerFetch(
+      token,
+      'POST',
+      '/api/feeds/activate-after-verification',
+      {
         checkoutId,
         verificationId: verificationData.verificationId,
         verifiedZKPs: verificationData.verifiedZKPs
-      })
-    });
+      },
+      { pnIdentifier: pnIdentifier ?? undefined }
+    );
 
     if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.message || 'Failed to activate feed');
+      const error = await response.json().catch(() => ({}));
+      throw new Error(
+        (error as { error_description?: string }).error_description ||
+          (error as { message?: string }).message ||
+          (error as { error?: string }).error ||
+          'Failed to activate feed'
+      );
     }
 
     return await response.json();
