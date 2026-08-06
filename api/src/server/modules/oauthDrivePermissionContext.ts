@@ -13,7 +13,7 @@ import {
   getCachedBrowserAppPermissions,
   setCachedBrowserAppPermissions,
 } from './oauthPermissionCache';
-
+import { browserAppOver21Shared } from '@par-noir/standard-data-points';
 export interface OAuthDrivePermissionContext {
   credentialsRecord: StoredCredentialsRecord;
   userAccessToken: string;
@@ -132,12 +132,11 @@ function activeBrowserAppConsent(
   browserApp: { status: string; dataPoints: string[] } | undefined
 ): { ageShared: boolean } | null {
   if (!browserApp || browserApp.status !== 'active') return null;
+  const ageShared = browserAppOver21Shared(browserApp.dataPoints);
   safeLogger.info('[OAuth] Found active browser-app permissions', {
-    ageShared: browserApp.dataPoints.includes('age_attestation'),
+    ageShared,
   });
-  return {
-    ageShared: browserApp.dataPoints.includes('age_attestation'),
-  };
+  return { ageShared };
 }
 
 async function lookupBrowserAppPermissionsFromDrive(params: {

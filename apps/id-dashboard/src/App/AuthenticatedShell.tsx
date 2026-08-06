@@ -10,7 +10,7 @@ import { FileStorageAggregator } from '../components/storage/FileStorageAggregat
 import { SectionInfo } from '../components/common/SectionInfo';
 import { PrivacyDataPointsPanel } from '../components/privacy/PrivacyDataPointsPanel';
 import { AdvancedPrivacySettingsBody } from '../components/privacy/AdvancedPrivacySettingsBody';
-
+import { STANDARD_DATA_POINTS, getDataPointMinLevel } from '@par-noir/standard-data-points';
 export interface AuthenticatedShellProps {
   authenticatedUser: any;
   selectedDID: any;
@@ -498,23 +498,13 @@ export function AuthenticatedShell(props: AuthenticatedShellProps) {
                                   {Object.entries(privacySettings.toolPermissions)
                                     .filter(([, tool]: [string, any]) => tool?.status !== 'revoked')
                                     .map(([toolId, tool]: [string, any]) => {
-                                    const ageVerified =
-                                      verifiedDataPoints.has('age_attestation') ||
-                                      verifiedDataPoints.has('over_18') ||
-                                      verifiedDataPoints.has('over_21');
-                                    const hasAgeZKP =
-                                      ageVerified ||
-                                      attestedDataPoints.has('age_attestation') ||
-                                      attestedDataPoints.has('over_18') ||
-                                      attestedDataPoints.has('over_21');
-                                    const ageShared = tool.dataPoints?.includes('age_attestation') || tool.dataPoints?.includes('over_18') || tool.dataPoints?.includes('over_21') || false;
-                                    const ageAvailable = tool.optionalDataPoints?.includes('age_attestation') || tool.optionalDataPoints?.includes('over_18') || tool.optionalDataPoints?.includes('over_21') || tool.requiredDataPoints?.includes('age_attestation') || tool.requiredDataPoints?.includes('over_21') || false;
-                                    const ageGloballyAllowed =
-                                      privacySettings.dataPoints?.age_attestation?.globalSetting !== false &&
-                                      privacySettings.dataPoints?.over_18?.globalSetting !== false &&
-                                      privacySettings.dataPoints?.over_21?.globalSetting !== false;
-                                    const agePermissionLabel = `Age (${ageVerified ? 'verified' : 'attested'})`;
-                                    
+                                    const requestedIds = [
+                                      ...new Set([
+                                        ...(tool.requiredDataPoints || []),
+                                        ...(tool.optionalDataPoints || []),
+                                      ]),
+                                    ] as string[];
+
                                     return (
                                       <div key={toolId} className="border border-border rounded-lg p-4">
                                         <div className="flex items-start justify-between gap-3">
@@ -532,48 +522,97 @@ export function AuthenticatedShell(props: AuthenticatedShellProps) {
                                         </div>
 
                                         <div className="mt-3 ml-3 pl-3 border-l border-border space-y-2">
-                                          {hasAgeZKP && ageAvailable && ageGloballyAllowed && (
-                                            <div className="flex items-center justify-between gap-3 py-1">
-                                              <p className="text-sm font-medium text-text-primary min-w-0">
-                                                {agePermissionLabel}
-                                              </p>
-                                              <button
-                                                type="button"
-                                                role="switch"
-                                                aria-checked={ageShared}
-                                                aria-label={`Share ${agePermissionLabel}`}
-                                                onClick={() => handleToggleToolDataPoint(toolId, 'age_attestation', !ageShared)}
-                                                className={`
-                                                  relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors
-                                                  ${ageShared ? 'bg-blue-600' : 'bg-neutral-700'}
-                                                `}
-                                              >
-                                                <span
-                                                  className={`
-                                                    inline-block h-4 w-4 transform rounded-full bg-white transition-transform
-                                                    ${ageShared ? 'translate-x-6' : 'translate-x-1'}
-                                                  `}
-                                                />
-                                              </button>
-                                            </div>
-                                          )}
-
-                                          {hasAgeZKP && ageAvailable && !ageGloballyAllowed && (
+                                          {requestedIds.length === 0 ? (
                                             <p className="text-xs text-text-secondary py-1">
-                                              Age sharing is disabled in Global Settings
+                                              No ZKP data points requested by this app
                                             </p>
-                                          )}
+                                          ) : (
+                                            requestedIds.map((dataPointId) => {
+                                              const catalog = STANDARD_DATA_POINTS[dataPointId];
+                                              const name = catalog?.name || dataPointId;
+                                              const minLevel = getDataPointMinLevel(
+                                                tool.dataPointLevels,
+                                                dataPointId
+                                              );
+                                              const isVerified = verifiedDataPoints.has(dataPointId);
+                                              const hasProof =
+                                                isVerified || attestedDataPoints.has(dataPointId);
+                                              const shared = tool.dataPoints?.includes(dataPointId) || false;
+                                              const globallyAllowed =
+                                                privacySettings.dataPoints?.[dataPointId]?.globalSetting !== false;
+                                              const meetsLevel =
+                                                minLevel === 'verified' ? isVerified : hasProof;
+                                              const statusLabel = isVerified ? 'verified' : 'attested';
+                                              const permissionLabel = `${name} (${statusLabel})`;
 
-                                          {hasAgeZKP && !ageAvailable && (
-                                            <p className="text-xs text-text-secondary py-1">
-                                              Age verification not available for this app
-                                            </p>
-                                          )}
+                                              if (!globallyAllowed) {
+                                                return (
+                                                  <p
+                                                    key={dataPointId}
+                                                    className="text-xs text-text-secondary py-1"
+                                                  >
+                                                    {name} sharing is disabled in Global Settings
+                                                  </p>
+                                                );
+                                              }
 
-                                          {!hasAgeZKP && ageAvailable && (
-                                            <p className="text-xs text-orange-400 py-1">
-                                              Create an age ZKP first to share it with this app
-                                            </p>
+                                              if (!hasProof) {
+                                                return (
+                                                  <p
+                                                    key={dataPointId}
+                                                    className="text-xs text-orange-400 py-1"
+                                                  >
+                                                    Create a {name} ZKP first to share it with this app
+                                                  </p>
+                                                );
+                                              }
+
+                                              if (!meetsLevel) {
+                                                return (
+                                                  <p
+                                                    key={dataPointId}
+                                                    className="text-xs text-orange-400 py-1"
+                                                  >
+                                                    Verify {name} with government ID first — attested is not accepted
+                                                  </p>
+                                                );
+                                              }
+
+                                              return (
+                                                <div
+                                                  key={dataPointId}
+                                                  className="flex items-center justify-between gap-3 py-1"
+                                                >
+                                                  <p className="text-sm font-medium text-text-primary min-w-0">
+                                                    {permissionLabel}
+                                                  </p>
+                                                  <button
+                                                    type="button"
+                                                    role="switch"
+                                                    aria-checked={shared}
+                                                    aria-label={`Share ${permissionLabel}`}
+                                                    onClick={() =>
+                                                      handleToggleToolDataPoint(
+                                                        toolId,
+                                                        dataPointId,
+                                                        !shared
+                                                      )
+                                                    }
+                                                    className={`
+                                                      relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors
+                                                      ${shared ? 'bg-blue-600' : 'bg-neutral-700'}
+                                                    `}
+                                                  >
+                                                    <span
+                                                      className={`
+                                                        inline-block h-4 w-4 transform rounded-full bg-white transition-transform
+                                                        ${shared ? 'translate-x-6' : 'translate-x-1'}
+                                                      `}
+                                                    />
+                                                  </button>
+                                                </div>
+                                              );
+                                            })
                                           )}
                                         </div>
                                       </div>

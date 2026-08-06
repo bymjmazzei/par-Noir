@@ -3,6 +3,8 @@
  * Stores permissions via UserOwnedTableStore (Google Sheets or portable SQLite).
  */
 
+import type { DataPointLevels } from '@par-noir/standard-data-points';
+import { browserAppOver21Shared } from '@par-noir/standard-data-points';
 import { GoogleDriveToken } from './googleOAuth2Helper';
 import { isPortableStorageProvider } from './storage/storageProviderUtils';
 import {
@@ -21,6 +23,8 @@ export interface ThirdPartyPermission {
   dataPoints: string[];
   requiredDataPoints: string[];
   optionalDataPoints: string[];
+  /** Min verification level per data point id. Omitted id ⇒ attested. */
+  dataPointLevels?: DataPointLevels;
   grantedAt: string;
   expiresAt?: string;
   status: 'active' | 'pending' | 'revoked';
@@ -149,7 +153,7 @@ export class ThirdPartyPermissionsService {
       if (permissions['browser-app']) {
         const browserApp = permissions['browser-app'];
         await setCachedBrowserAppPermissions(normalized, {
-          ageShared: browserApp.dataPoints.includes('age_attestation'),
+          ageShared: browserAppOver21Shared(browserApp.dataPoints),
         });
       }
     } catch (error) {

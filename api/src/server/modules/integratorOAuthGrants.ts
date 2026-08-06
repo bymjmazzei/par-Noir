@@ -17,6 +17,10 @@ import {
 import { isPnDriveIndexComplete, loadPnDriveIndex } from './pnDriveIndex';
 import type { TokenPayload } from './pnOAuthService';
 import { hashIdentifier, safeLogger } from '../../utils/logger';
+import {
+  applyBrowserAppStaticContract,
+  browserAppOver21Shared,
+} from '@par-noir/standard-data-points';
 
 export async function persistIntegratorGrantAfterTokenExchange(params: {
   clientId: string;
@@ -61,28 +65,30 @@ export async function persistIntegratorGrantAfterTokenExchange(params: {
   const prev = existing[clientId];
 
   let dataPoints = [...new Set([...(prev?.dataPoints || []), ...dataPointsFromScopes])];
-  if (clientId === 'browser-app' && ageShared === true && !dataPoints.includes('age_attestation')) {
-    dataPoints = [...dataPoints, 'age_attestation'];
+  // age_shared / ageShared = user granted over_21 for browser NSFW
+  if (clientId === 'browser-app' && ageShared === true && !dataPoints.includes('over_21')) {
+    dataPoints = [...dataPoints, 'over_21'];
   } else if (clientId === 'browser-app' && ageShared === false) {
-    dataPoints = dataPoints.filter((d) => d !== 'age_attestation');
+    dataPoints = dataPoints.filter((d) => d !== 'over_21' && d !== 'age_attestation');
   }
 
-  const permission: ThirdPartyPermission = {
+  let permission: ThirdPartyPermission = {
     toolId: clientId,
     toolName: client?.name || clientId,
     toolDescription: client?.description || '',
     permissions: scopes,
     dataPoints,
-    requiredDataPoints:
-      clientId === 'browser-app' ? [] : prev?.requiredDataPoints || [],
-    optionalDataPoints:
-      clientId === 'browser-app'
-        ? ['age_attestation']
-        : prev?.optionalDataPoints || [],
+    requiredDataPoints: prev?.requiredDataPoints || [],
+    optionalDataPoints: prev?.optionalDataPoints || [],
+    dataPointLevels: prev?.dataPointLevels,
     grantedAt: prev?.grantedAt || new Date().toISOString(),
     status: 'active',
     integratorFolderId
   };
+
+  if (clientId === 'browser-app') {
+    permission = applyBrowserAppStaticContract(permission);
+  }
 
   await ThirdPartyPermissionsService.storePermissions(
     userAccessToken,
@@ -96,7 +102,7 @@ export async function persistIntegratorGrantAfterTokenExchange(params: {
   if (clientId === 'browser-app') {
     const { setCachedBrowserAppPermissions } = await import('./oauthPermissionCache');
     await setCachedBrowserAppPermissions(normalizedPn, {
-      ageShared: permission.dataPoints.includes('age_attestation'),
+      ageShared: browserAppOver21Shared(permission.dataPoints),
     });
   }
 

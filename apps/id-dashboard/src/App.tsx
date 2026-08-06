@@ -636,26 +636,26 @@ function App() {
           const { permissions } = await response.json();
           permissionsLoadedKeyRef.current = loadKey;
           if (permissions && Object.keys(permissions).length > 0) {
+            const {
+              applyBrowserAppStaticContract,
+              BROWSER_APP_SCOPES,
+            } = await import('@par-noir/standard-data-points');
             setPrivacySettings(prev => {
               const mergedPermissions: Record<string, any> = { ...permissions };
               
               if (mergedPermissions['browser-app']) {
-                mergedPermissions['browser-app'] = {
+                mergedPermissions['browser-app'] = applyBrowserAppStaticContract({
                   ...mergedPermissions['browser-app'],
-                  requiredDataPoints: [],
-                  optionalDataPoints: ['age_attestation'],
-                };
+                });
               } else {
-                mergedPermissions['browser-app'] = {
+                mergedPermissions['browser-app'] = applyBrowserAppStaticContract({
                   toolName: 'par Noir Browser',
                   toolDescription: 'Official par Noir browser application for browsing and discovering encrypted content',
-                  permissions: ['openid', 'profile', 'zkp:age_attestation', 'cloud:read'],
+                  permissions: [...BROWSER_APP_SCOPES],
                   dataPoints: [],
-                  requiredDataPoints: [],
-                  optionalDataPoints: ['age_attestation'],
                   grantedAt: new Date().toISOString(),
                   status: 'active' as const
-                };
+                });
               }
               
               return {
@@ -689,43 +689,49 @@ function App() {
   // Static required/optional data points are always present regardless of user choices
   useEffect(() => {
     if (authenticatedUser?.id) {
-      setPrivacySettings(prev => {
-        const existingBrowserApp = prev.toolPermissions['browser-app'];
-        
-        const browserAppPermission = {
-          toolName: 'par Noir Browser',
-          toolDescription: 'Official par Noir browser application for browsing and discovering encrypted content',
-          permissions: ['openid', 'profile', 'zkp:age_attestation', 'cloud:read'],
-          dataPoints: existingBrowserApp?.dataPoints || [],
-          requiredDataPoints: [],
-          optionalDataPoints: ['age_attestation'],
-          grantedAt: existingBrowserApp?.grantedAt || new Date().toISOString(),
-          status: 'active' as const
-        };
-        
-        return {
-          ...prev,
-          toolPermissions: {
-            ...prev.toolPermissions,
-            'browser-app': browserAppPermission
-          },
-          dataPoints: {
-            ...prev.dataPoints,
-            'age_attestation': {
-              label: 'Age',
-              description: 'Attest to your age for age-restricted services',
-              category: 'verification' as const,
-              requestedBy: ['browser-app'],
-              globalSetting: true,
-              lastUpdated: new Date().toISOString()
+      void (async () => {
+        const {
+          applyBrowserAppStaticContract,
+          BROWSER_APP_SCOPES,
+        } = await import('@par-noir/standard-data-points');
+        setPrivacySettings(prev => {
+          const existingBrowserApp = prev.toolPermissions['browser-app'];
+          
+          const browserAppPermission = applyBrowserAppStaticContract({
+            toolName: 'par Noir Browser',
+            toolDescription: 'Official par Noir browser application for browsing and discovering encrypted content',
+            permissions: [...BROWSER_APP_SCOPES],
+            dataPoints: existingBrowserApp?.dataPoints || [],
+            requiredDataPoints: [],
+            optionalDataPoints: [],
+            grantedAt: existingBrowserApp?.grantedAt || new Date().toISOString(),
+            status: 'active' as const
+          });
+          
+          return {
+            ...prev,
+            toolPermissions: {
+              ...prev.toolPermissions,
+              'browser-app': browserAppPermission
+            },
+            dataPoints: {
+              ...prev.dataPoints,
+              'over_21': {
+                label: 'Over 21',
+                description: 'Verified proof that you are 21 or older',
+                category: 'verification' as const,
+                requestedBy: ['browser-app'],
+                globalSetting: prev.dataPoints?.over_21?.globalSetting !== false,
+                lastUpdated: new Date().toISOString()
+              }
             }
-          }
-        };
-      });
+          };
+        });
+      })();
     }
   }, [authenticatedUser?.id]);
   
-  // Load attested data points from Drive once session cloud token is warm.
+  // Load attested + verified data points from Drive once session cloud token is warm.
   // Empty set must not mean "Add" until this finishes (Identity Add flash).
   const attestedLoadedKeyRef = useRef<string | null>(null);
   useEffect(() => {
@@ -734,6 +740,7 @@ function App() {
         if (!authenticatedUser?.id || !apiToken || !recoveryVaultPnId) {
           if (!authenticatedUser?.id) {
             setAttestedDataPoints(new Set());
+            setVerifiedDataPoints(new Set());
             attestedLoadedKeyRef.current = null;
             setAttestedHydrationStatus('pending');
           }
@@ -749,6 +756,7 @@ function App() {
         if (!credentials) {
           console.warn('[App] Credentials not available');
           setAttestedDataPoints(new Set());
+          setVerifiedDataPoints(new Set());
           setAttestedHydrationStatus('ready');
           return;
         }
@@ -764,13 +772,14 @@ function App() {
         if (!authToken) {
           console.warn('[App] No owner API token available');
           setAttestedDataPoints(new Set());
+          setVerifiedDataPoints(new Set());
           setAttestedHydrationStatus('ready');
           return;
         }
 
         try {
           const { ZKPDataPointsService } = await import('./utils/zkpDataPointsService');
-          const loadIds = async () =>
+          const loadRows = async () =>
             ZKPDataPointsService.getAllDataPoints(
               authenticatedUser.id,
               credentials,
@@ -778,21 +787,29 @@ function App() {
               authenticatedUser.publicKey
             );
 
-          let dataPointIds = await loadIds();
-          if (dataPointIds === null) {
+          let rows = await loadRows();
+          if (rows === null) {
             await new Promise((r) => setTimeout(r, 600));
-            dataPointIds = await loadIds();
+            rows = await loadRows();
           }
 
-          if (dataPointIds === null) {
+          if (rows === null) {
             // Layout still not ready — keep loading; retry on next cloud-ready event
             setAttestedHydrationStatus('loading');
             return;
           }
 
           attestedLoadedKeyRef.current = loadKey;
-          console.log('[App] Loaded attested data points from API:', dataPointIds);
-          setAttestedDataPoints(new Set(dataPointIds));
+          const allIds = rows.map((r) => r.dataPointId);
+          const verifiedIds = rows
+            .filter((r) => r.verificationLevel === 'verified')
+            .map((r) => r.dataPointId);
+          console.log('[App] Loaded ZKP data points from API:', {
+            count: allIds.length,
+            verifiedCount: verifiedIds.length,
+          });
+          setAttestedDataPoints(new Set(allIds));
+          setVerifiedDataPoints(new Set(verifiedIds));
           setAttestedHydrationStatus('ready');
         } catch (error) {
           console.error('[App] Error loading attested data points from API:', error);
@@ -802,6 +819,7 @@ function App() {
       } catch (error) {
         console.error('[App] Error loading attested data points:', error);
         setAttestedDataPoints(new Set());
+        setVerifiedDataPoints(new Set());
         setAttestedHydrationStatus('ready');
       }
     };
@@ -819,6 +837,7 @@ function App() {
     recoveryVaultPnId,
     ensureOwnerApiTokenForActiveUser,
     setAttestedDataPoints,
+    setVerifiedDataPoints,
     setAttestedHydrationStatus
   ]);
   

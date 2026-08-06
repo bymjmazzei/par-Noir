@@ -39,7 +39,7 @@ export class ZKPDataPointsService {
   }
 
   /**
-   * Get all attested data points from API server (Google Drive)
+   * Get all ZKP data points from API server (Google Drive), including verificationLevel.
    * Returns null when Drive layout is not ready (caller should retry), not an empty list.
    */
   static async getAllDataPoints(
@@ -47,7 +47,7 @@ export class ZKPDataPointsService {
     credentials: { pnName: string; passcode: string },
     authToken: string,
     publicKey?: string
-  ): Promise<string[] | null> {
+  ): Promise<Array<{ dataPointId: string; verificationLevel: ZKPDataPoint['verificationLevel'] }> | null> {
     try {
       const pnIdentifier = await this.getPnIdentifier(identityId, credentials, publicKey);
 
@@ -62,7 +62,12 @@ export class ZKPDataPointsService {
           console.error('Invalid dataPoints format:', responseData);
           return [];
         }
-        return dataPoints.map((dp: any) => dp.dataPointId);
+        return dataPoints.map((dp: any) => ({
+          dataPointId: String(dp.dataPointId),
+          verificationLevel: (dp.verificationLevel === 'verified' || dp.verificationLevel === 'enhanced'
+            ? dp.verificationLevel
+            : 'basic') as ZKPDataPoint['verificationLevel'],
+        }));
       } else if (response.status === 404) {
         // No sheet / no points yet
         return [];

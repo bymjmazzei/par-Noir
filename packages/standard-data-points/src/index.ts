@@ -25,3 +25,17 @@ export {
   getDataPoint,
   getStandardDataPointsPublic
 } from './catalog';
+export {
+  type DataPointMinLevel,
+  type ProofVerificationLevel,
+  type DataPointLevels,
+  getDataPointMinLevel,
+  proofMeetsMinLevel,
+  BROWSER_APP_CLIENT_ID,
+  BROWSER_APP_OPTIONAL_DATA_POINTS,
+  BROWSER_APP_REQUIRED_DATA_POINTS,
+  BROWSER_APP_DATA_POINT_LEVELS,
+  BROWSER_APP_SCOPES,
+  applyBrowserAppStaticContract,
+  browserAppOver21Shared
+} from './verificationLevel';

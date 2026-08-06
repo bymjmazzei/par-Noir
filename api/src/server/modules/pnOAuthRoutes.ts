@@ -483,8 +483,9 @@ export function setupPnOAuthRoutes(app: express.Application, deps: PnOAuthRouteD
         const normalizedPnIdentifier = pnIdentifier.startsWith('pn-') ? pnIdentifier : `pn-${pnIdentifier}`;
         const { loadZkpBundle } = await import('./storage/zkpStorageService');
         const { extractCloudAccessToken } = await import('./cloudAccessToken');
+        const cloudAccessToken = extractCloudAccessToken(req);
         const zkpBundle = await loadZkpBundle(normalizedPnIdentifier, {
-          accessToken: extractCloudAccessToken(req),
+          accessToken: cloudAccessToken,
         });
         if (!zkpBundle) {
           return res.status(409).json({ error: 'drive_not_initialized' });
@@ -492,10 +493,13 @@ export function setupPnOAuthRoutes(app: express.Application, deps: PnOAuthRouteD
 
         const clientId = tokenPayload.clientId || 'browser-app';
         let finalAllowedDataPoints = allowedDataPoints;
+        let toolPermission: import('./thirdPartyPermissionsService').ThirdPartyPermission | undefined;
 
-        if (clientId !== 'browser-app') {
+        {
           const { getUserDriveMetadataContext } = await import('./driveMetadataHelper');
-          const driveCtx = await getUserDriveMetadataContext(normalizedPnIdentifier);
+          const driveCtx = await getUserDriveMetadataContext(normalizedPnIdentifier, {
+            accessToken: cloudAccessToken || zkpBundle.token?.access_token,
+          });
           if (!driveCtx) {
             return res.json({ success: true, dataPoints: [] });
           }
@@ -506,19 +510,28 @@ export function setupPnOAuthRoutes(app: express.Application, deps: PnOAuthRouteD
             driveCtx.normalizedPnIdentifier,
             driveCtx.accountId
           );
-          const toolPermission = permissions[clientId];
+          toolPermission = permissions[clientId];
           if (!toolPermission || toolPermission.status !== 'active') {
             return res.json({ success: true, dataPoints: [] });
           }
+          // Ensure browser-app static levels even if sheet predates dataPointLevels
+          if (clientId === 'browser-app') {
+            const { applyBrowserAppStaticContract } = await import('@par-noir/standard-data-points');
+            toolPermission = applyBrowserAppStaticContract(toolPermission);
+          }
           finalAllowedDataPoints = allowedDataPoints.filter(
             (dp: string) =>
-              toolPermission.requiredDataPoints.includes(dp) || toolPermission.dataPoints.includes(dp)
+              toolPermission!.requiredDataPoints.includes(dp) || toolPermission!.dataPoints.includes(dp)
           );
           if (finalAllowedDataPoints.length === 0) {
             return res.json({ success: true, dataPoints: [] });
           }
         }
 
+        const {
+          getDataPointMinLevel,
+          proofMeetsMinLevel,
+        } = await import('@par-noir/standard-data-points');
         const ZKPDataPointsService = (await import('./zkpDataPointsService')).ZKPDataPointsService;
         const zkpDataPoints: any[] = [];
 
@@ -536,6 +549,15 @@ export function setupPnOAuthRoutes(app: express.Application, deps: PnOAuthRouteD
             );
             
             if (proof) {
+              const minLevel = getDataPointMinLevel(toolPermission?.dataPointLevels, dataPointId);
+              if (!proofMeetsMinLevel(proof.verificationLevel, minLevel)) {
+                if (isDevVerbose()) {
+                  console.log(
+                    `[OAuth ZKP] Omitting ${dataPointId}: level ${proof.verificationLevel} below min ${minLevel}`
+                  );
+                }
+                continue;
+              }
               if (isDevVerbose()) {
                 console.log(`[OAuth ZKP] Found proof for ${dataPointId}`);
               }

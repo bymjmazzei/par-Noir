@@ -15,7 +15,7 @@ import { GoogleOAuth2Helper, GoogleDriveToken } from './googleOAuth2Helper';
 
 export class ThirdPartyPermissionsSheetsService {
   private static readonly THIRD_PARTY_PERMISSIONS_FILE_NAME = 'third-party-permissions.xlsx';
-  private static readonly PERMISSION_COLUMN_COUNT = 13;
+  private static readonly PERMISSION_COLUMN_COUNT = 14;
   private static readonly PERMISSION_HEADERS = [
     'Tool ID',
     'Tool Name',
@@ -30,6 +30,7 @@ export class ThirdPartyPermissionsSheetsService {
     'Created At',
     'Updated At',
     'Integrator Folder ID',
+    'Data Point Levels (JSON)',
   ];
 
   /** Normalize status from sheet cells (trim, lowercase). */
@@ -68,12 +69,19 @@ export class ThirdPartyPermissionsSheetsService {
     let dataPointsArray: string[] = [];
     let requiredDataPointsArray: string[] = [];
     let optionalDataPointsArray: string[] = [];
+    let dataPointLevels: ThirdPartyPermission['dataPointLevels'];
 
     try {
       if (cells[3]) permissionsArray = JSON.parse(cells[3] as string);
       if (cells[4]) dataPointsArray = JSON.parse(cells[4] as string);
       if (cells[5]) requiredDataPointsArray = JSON.parse(cells[5] as string);
       if (cells[6]) optionalDataPointsArray = JSON.parse(cells[6] as string);
+      if (cells[13]) {
+        const parsed = JSON.parse(cells[13] as string);
+        if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+          dataPointLevels = parsed as ThirdPartyPermission['dataPointLevels'];
+        }
+      }
     } catch {
       /* use empty arrays */
     }
@@ -90,6 +98,7 @@ export class ThirdPartyPermissionsSheetsService {
       dataPoints: dataPointsArray,
       requiredDataPoints: requiredDataPointsArray,
       optionalDataPoints: optionalDataPointsArray,
+      dataPointLevels,
       grantedAt: (cells[7] as string) || new Date().toISOString(),
       expiresAt: cells[8] ? (cells[8] as string) : undefined,
       status,
@@ -147,7 +156,7 @@ export class ThirdPartyPermissionsSheetsService {
 
     await sheets.spreadsheets.values.update({
       spreadsheetId,
-      range: 'Permissions!A1:M1',
+      range: 'Permissions!A1:N1',
       valueInputOption: 'RAW',
       requestBody: {
         values: [this.PERMISSION_HEADERS],
@@ -245,7 +254,7 @@ export class ThirdPartyPermissionsSheetsService {
 
     const response = await sheets.spreadsheets.values.get({
       spreadsheetId,
-      range: 'Permissions!A2:M'
+      range: 'Permissions!A2:N'
     });
 
     const rows = response.data.values || [];
@@ -293,7 +302,7 @@ export class ThirdPartyPermissionsSheetsService {
     // Find the row with this tool ID
     const response = await sheets.spreadsheets.values.get({
       spreadsheetId,
-      range: 'Permissions!A2:M'
+      range: 'Permissions!A2:N'
     });
 
     const rows = response.data.values || [];
@@ -337,10 +346,10 @@ export class ThirdPartyPermissionsSheetsService {
   ): Promise<void> {
     const auth = GoogleOAuth2Helper.createClient(token, userPnIdentifier, accountId);
     const sheets = google.sheets({ version: 'v4', auth });
-    await sheets.spreadsheets.values.clear({ spreadsheetId, range: 'Permissions!A2:M' });
+    await sheets.spreadsheets.values.clear({ spreadsheetId, range: 'Permissions!A2:N' });
     await sheets.spreadsheets.values.update({
       spreadsheetId,
-      range: 'Permissions!A1:M1',
+      range: 'Permissions!A1:N1',
       valueInputOption: 'RAW',
       requestBody: { values: [this.PERMISSION_HEADERS] },
     });
@@ -360,10 +369,11 @@ export class ThirdPartyPermissionsSheetsService {
       p.grantedAt,
       now,
       p.integratorFolderId ?? '',
+      JSON.stringify(p.dataPointLevels ?? {}),
     ]);
     await sheets.spreadsheets.values.update({
       spreadsheetId,
-      range: `Permissions!A2:M${permissions.length + 1}`,
+      range: `Permissions!A2:N${permissions.length + 1}`,
       valueInputOption: 'RAW',
       requestBody: { values: rows },
     });

@@ -70,8 +70,8 @@ export class PNOAuthService {
     usePopup?: boolean;
     identityHandoffRequired?: boolean;
   }): string {
-    // Browser app requests age ZKP scope (optional) for 18+/NSFW content access
-    const scope = params?.scope || ['openid', 'profile', 'zkp:age_attestation'];
+    // Browser app requests verified over_21 ZKP scope (optional) for NSFW content access
+    const scope = params?.scope || ['openid', 'profile', 'zkp:over_21'];
     const state = params?.state || this.generateState();
     const nonce = params?.nonce || this.generateNonce();
     const usePopup = params?.usePopup !== false; // Default to popup
@@ -116,8 +116,8 @@ export class PNOAuthService {
     state?: string;
     nonce?: string;
   }): Promise<{ code: string; state?: string }> {
-    // Browser app requests age ZKP scope (optional) for 18+/NSFW content access
-    const scope = params.scope || ['openid', 'profile', 'zkp:age_attestation'];
+    // Browser app requests verified over_21 ZKP scope (optional) for NSFW content access
+    const scope = params.scope || ['openid', 'profile', 'zkp:over_21'];
     const state = params.state || sessionStorage.getItem('pn_oauth_state') || undefined;
     const nonce = params.nonce || sessionStorage.getItem('pn_oauth_nonce') || undefined;
 

@@ -312,7 +312,7 @@ export function UserStateProvider({ children }: { children: ReactNode }) {
     return () => clearTimeout(timer);
   }, [userState.isUnlocked, userState.pnIdentifier]);
 
-  // Check ZKP age verification when user unlocks
+  // Check verified over_21 ZKP when user unlocks (NSFW eligibility)
   // Also retry after a delay to account for async permission storage
   useEffect(() => {
     if (!userState.isUnlocked || !userState.pnIdentifier) {
@@ -332,10 +332,9 @@ export function UserStateProvider({ children }: { children: ReactNode }) {
           return;
         }
 
-        // Check if user has granted access to age_attestation ZKP via OAuth endpoint
-        // OAuth endpoint only returns ZKP if user has granted access in dashboard
+        // OAuth only returns over_21 when granted and verificationLevel === verified
         const zkpResponse = await fetch(
-          `${API_ENDPOINT}/oauth/zkp-data-points?data_points=age_attestation`,
+          `${API_ENDPOINT}/oauth/zkp-data-points?data_points=over_21`,
           {
             headers: {
               'Authorization': `Bearer ${session.accessToken}`
@@ -346,17 +345,15 @@ export function UserStateProvider({ children }: { children: ReactNode }) {
         if (zkpResponse.ok) {
           const responseData = await zkpResponse.json();
           const { dataPoints } = responseData;
-          const ageZKP = dataPoints?.find((dp: any) => dp.dataPointId === 'age_attestation');
+          const over21ZKP = dataPoints?.find((dp: any) => dp.dataPointId === 'over_21');
           
           if (process.env.NODE_ENV === 'development') {
-            console.log('[Age ZKP Check] Response:', responseData);
-            console.log('[Age ZKP Check] Data points received:', dataPoints);
-            console.log('[Age ZKP Check] Age ZKP found:', !!ageZKP, ageZKP);
+            console.log('[Over 21 ZKP Check] Response:', responseData);
+            console.log('[Over 21 ZKP Check] Proof found:', !!over21ZKP, over21ZKP);
           }
           
-          if (ageZKP) {
-            // User has granted access to age ZKP - verify the proof for "age >= 18"
-          const verifyResponse = await fetch(
+          if (over21ZKP && over21ZKP.verificationLevel === 'verified') {
+            const verifyResponse = await fetch(
             `${API_ENDPOINT}/api/users/${userState.pnIdentifier}/zkp-data-points/verify`,
             {
               method: 'POST',
@@ -365,8 +362,8 @@ export function UserStateProvider({ children }: { children: ReactNode }) {
                 'Authorization': `Bearer ${session.accessToken}`
               },
               body: JSON.stringify({
-                dataPointId: 'age_attestation',
-                condition: 'age >= 18'
+                dataPointId: 'over_21',
+                condition: 'age >= 21'
               })
             }
           );
@@ -376,12 +373,10 @@ export function UserStateProvider({ children }: { children: ReactNode }) {
             const { verification } = verifyData;
             
             if (process.env.NODE_ENV === 'development') {
-              console.log('[Age ZKP Check] Verify response:', verifyData);
-              console.log('[Age ZKP Check] Verification result:', verification);
+              console.log('[Over 21 ZKP Check] Verify response:', verifyData);
             }
             
             if (verification && verification.isValid) {
-                // Age ZKP is shared and valid (age >= 18) - user can access NSFW content
               setUserState(prev => {
                 const newState = {
                   ...prev,
@@ -394,19 +389,19 @@ export function UserStateProvider({ children }: { children: ReactNode }) {
                   }
                 };
                 if (process.env.NODE_ENV === 'development') {
-                  console.log('✅ Age ZKP shared and verified (age >= 18) - NSFW content now accessible. New state:', newState);
+                  console.log('✅ Verified over_21 shared — NSFW content accessible. New state:', newState);
                 }
                 return newState;
               });
             } else {
               if (process.env.NODE_ENV === 'development') {
-                console.warn('[Age ZKP Check] Verification failed or invalid:', verification);
+                console.warn('[Over 21 ZKP Check] Verification failed or invalid:', verification);
               }
             }
           } else {
             const errorText = await verifyResponse.text().catch(() => 'Unknown error');
             if (process.env.NODE_ENV === 'development') {
-              console.warn('[Age ZKP Check] Verify request failed:', {
+              console.warn('[Over 21 ZKP Check] Verify request failed:', {
                 status: verifyResponse.status,
                 statusText: verifyResponse.statusText,
                 error: errorText
@@ -424,14 +419,12 @@ export function UserStateProvider({ children }: { children: ReactNode }) {
               }
             }));
           }
-          // Age ZKP not shared - silently continue
         } else {
           // Handle 401/403 as expected - user not authenticated or token expired
           if (zkpResponse.status === 401 || zkpResponse.status === 403) {
             if (import.meta.env.DEV) {
-              console.log('ℹ️ Age ZKP check skipped - user not authenticated or token expired');
+              console.log('ℹ️ Over 21 ZKP check skipped - user not authenticated or token expired');
             }
-            // Age ZKP not available - user not authenticated
             setUserState(prev => ({
               ...prev,
               preferences: {
@@ -443,11 +436,10 @@ export function UserStateProvider({ children }: { children: ReactNode }) {
             return;
           }
           
-          // Retry on server errors (500+) once after delay handled by outer timer
           if (zkpResponse.status >= 500) {
             if (import.meta.env.DEV) {
               const errorText = await zkpResponse.text().catch(() => 'Unknown error');
-              console.warn(`[Age ZKP Check] Server error:`, {
+              console.warn(`[Over 21 ZKP Check] Server error:`, {
                 status: zkpResponse.status,
                 error: errorText,
               });
@@ -465,7 +457,7 @@ export function UserStateProvider({ children }: { children: ReactNode }) {
           }
         }
       } catch (error) {
-        console.error('Error checking ZKP age verification:', error);
+        console.error('Error checking verified over_21 ZKP:', error);
         setUserState(prev => ({
           ...prev,
           preferences: {
@@ -484,7 +476,6 @@ export function UserStateProvider({ children }: { children: ReactNode }) {
 
     return () => clearTimeout(timer);
   }, [userState.isUnlocked, userState.pnIdentifier, userState.preferences.hasAgeZKP]);
-
   const setUnlocked = (pnIdentifier: string) => {
     setUserState(prev => ({
       ...prev,

@@ -122,15 +122,28 @@ export function useToolPrivacyHandlers(params: UseToolPrivacyHandlersParams) {
     const tool = privacySettings.toolPermissions[toolId];
     if (!tool) return;
 
+    if (enabled) {
+      const { getDataPointMinLevel } = await import('@par-noir/standard-data-points');
+      const minLevel = getDataPointMinLevel(tool.dataPointLevels, dataPointId);
+      if (minLevel === 'verified' && !verifiedDataPoints.has(dataPointId)) {
+        setError('This app requires a verified proof. Attested is not accepted.');
+        return;
+      }
+      if (minLevel === 'attested' && !attestedDataPoints.has(dataPointId) && !verifiedDataPoints.has(dataPointId)) {
+        setError('Create this ZKP first before sharing it.');
+        return;
+      }
+    }
+
     // Required data points must always be included
     const requiredDataPoints = tool.requiredDataPoints || [];
-    
+
     // For optional data points, add/remove based on enabled flag
     // For required data points, always include them
     const newDataPoints = enabled
       ? [...new Set([...tool.dataPoints, dataPointId])] // Ensure no duplicates
       : tool.dataPoints.filter(dp => dp !== dataPointId && !requiredDataPoints.includes(dp)); // Don't remove required
-    
+
     // Always include required data points
     const finalDataPoints = [...new Set([...newDataPoints, ...requiredDataPoints])];
 
@@ -142,7 +155,8 @@ export function useToolPrivacyHandlers(params: UseToolPrivacyHandlersParams) {
           ...tool,
           dataPoints: finalDataPoints,
           requiredDataPoints: tool.requiredDataPoints || [],
-          optionalDataPoints: tool.optionalDataPoints || []
+          optionalDataPoints: tool.optionalDataPoints || [],
+          dataPointLevels: tool.dataPointLevels
         }
       }
     };
@@ -640,15 +654,15 @@ export function useToolPrivacyHandlers(params: UseToolPrivacyHandlersParams) {
 
       await new Promise((resolve) => setTimeout(resolve, 500));
 
-      const allDataPointIds = await ZKPDataPointsService.getAllDataPoints(
+      const allDataPoints = await ZKPDataPointsService.getAllDataPoints(
         authenticatedUser.id,
         credentials,
         authToken,
         authenticatedUser.publicKey
       );
 
-      if (allDataPointIds) {
-        setAttestedDataPoints(new Set(allDataPointIds));
+      if (allDataPoints) {
+        setAttestedDataPoints(new Set(allDataPoints.map((r) => r.dataPointId)));
       } else {
         setAttestedDataPoints((prev) => {
           const next = new Set(prev);

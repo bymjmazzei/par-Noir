@@ -95,7 +95,7 @@ describe('oauthDrivePermissionContext', () => {
       'browser-app': {
         toolId: 'browser-app',
         status: 'active',
-        dataPoints: ['age_attestation'],
+        dataPoints: ['over_21'],
       },
     });
 
@@ -121,7 +121,7 @@ describe('oauthDrivePermissionContext', () => {
       'browser-app': {
         toolId: 'browser-app',
         status: 'active',
-        dataPoints: ['age_attestation'],
+        dataPoints: ['over_21'],
       },
     });
 

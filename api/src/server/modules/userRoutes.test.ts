@@ -281,7 +281,7 @@ describe('setupUserRoutes', () => {
         .send({
           toolId: 'browser-app',
           permission: {
-            dataPoints: ['age_attestation'],
+            dataPoints: ['over_21'],
             requiredDataPoints: ['email_verification'],
             optionalDataPoints: ['phone_verification'],
           },
@@ -290,8 +290,9 @@ describe('setupUserRoutes', () => {
 
       const stored = mockStorePermissions.mock.calls[0][3];
       expect(stored['browser-app'].requiredDataPoints).toEqual([]);
-      expect(stored['browser-app'].optionalDataPoints).toEqual(['age_attestation']);
-      expect(stored['browser-app'].dataPoints).toEqual(['age_attestation']);
+      expect(stored['browser-app'].optionalDataPoints).toEqual(['over_21']);
+      expect(stored['browser-app'].dataPointLevels).toEqual({ over_21: 'verified' });
+      expect(stored['browser-app'].dataPoints).toEqual(['over_21']);
       expect(stored['other-tool']).toBeDefined();
     });
   });

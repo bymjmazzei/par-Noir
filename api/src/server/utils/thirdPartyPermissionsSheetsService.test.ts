@@ -7,20 +7,22 @@ describe('ThirdPartyPermissionsSheetsService', () => {
       'par Noir Browser',
       'Official par Noir browser',
       '["openid","profile"]',
-      '["age_attestation"]',
+      '["over_21"]',
       '[]',
-      '["age_attestation"]',
+      '["over_21"]',
       '2026-06-25T11:51:14.767Z',
       '',
       'active',
       '2026-06-25T11:51:14.767Z',
       '2026-06-29T14:00:00.000Z',
       '',
+      '{"over_21":"verified"}',
     ];
     const parsed = ThirdPartyPermissionsSheetsService.parsePermissionRow(row);
     expect(parsed?.toolId).toBe('browser-app');
     expect(parsed?.status).toBe('active');
-    expect(parsed?.dataPoints).toContain('age_attestation');
+    expect(parsed?.dataPoints).toContain('over_21');
+    expect(parsed?.dataPointLevels).toEqual({ over_21: 'verified' });
   });
 
   it('parses misaligned rows where tool id is not in column A', () => {
