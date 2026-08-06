@@ -1,12 +1,18 @@
 /**
- * Unlock-time cloud session bootstrap: warm sealed Drive secrets, ensure layout,
- * register backends on the shared FileAggregatorService, prefetch owner-index.
- * Storage tab consumes this; it must not be the place capability is created.
+ * Cloud session helpers: warm sealed/session Drive secrets for unlock/tabs.
+ * Unlock must NOT run initialize / owner-index bootstrap — that matches aggregator.
+ * Storage may still call registerBackendsFromEnvelope / bootstrapCloudSession lazily.
  */
 
 import { SecureCredentialManager } from '@par-noir/identity-crypto';
-import { loadLocalCloudCredentials } from '@par-noir/device-cloud-credentials';
-import type { StorageCredentialsEnvelope } from '@par-noir/user-owned-storage';
+import {
+  getSessionCloudCredentials,
+  loadLocalCloudCredentials
+} from '@par-noir/device-cloud-credentials';
+import {
+  envelopeHasUsableSecrets,
+  type StorageCredentialsEnvelope
+} from '@par-noir/user-owned-storage';
 import { PN_CLOUD_CREDENTIALS_READY_EVENT } from '@par-noir/oauth-ui';
 import { API_ENDPOINT } from '../../config/api';
 import { getFileAggregatorService } from '../aggregator/FileAggregatorService';
@@ -45,7 +51,12 @@ function setStorageAccountsCache(pnIdentifier: string, entry: AccountsCacheEntry
 
 export function isCloudSessionReady(pnIdentifier: string | null | undefined): boolean {
   if (!pnIdentifier) return false;
-  return readyPnIds.has(pnIdentifier);
+  if (readyPnIds.has(pnIdentifier)) return true;
+  try {
+    return envelopeHasUsableSecrets(getSessionCloudCredentials(pnIdentifier));
+  } catch {
+    return false;
+  }
 }
 
 export function getCloudSessionStatus(): { status: CloudSessionStatus; error?: string } {
@@ -318,20 +329,56 @@ export function clearCloudSessionBootstrap(pnIdentifier?: string): void {
   lastError = undefined;
 }
 
+/**
+ * Warm sealed/session cloud secrets only. Does not initialize Drive or prefetch owner-index.
+ */
 export async function ensureCloudSession(opts: {
   apiToken: string | null | undefined;
   pnIdentifier: string | null | undefined;
   sessionId: string | null | undefined;
 }): Promise<CloudSessionBootstrapResult> {
   if (!opts.apiToken || !opts.pnIdentifier || !opts.sessionId) {
-    return { status: 'needs_reconnect', error: 'Not unlocked' };
+    lastStatus = 'needs_reconnect';
+    lastError = 'Not unlocked';
+    return { status: 'needs_reconnect', error: lastError };
   }
-  if (readyPnIds.has(opts.pnIdentifier)) {
+  const { pnIdentifier, sessionId } = opts;
+  try {
+    const creds = SecureCredentialManager.getCredentials(sessionId);
+    if (!creds?.pnName || !creds?.passcode) {
+      lastStatus = 'needs_reconnect';
+      lastError = 'Session credentials missing';
+      return { status: 'needs_reconnect', error: lastError };
+    }
+
+    const envelope = await loadLocalCloudCredentials({
+      identityId: pnIdentifier,
+      session: {
+        sessionId,
+        pnName: creds.pnName,
+        passcode: creds.passcode
+      }
+    });
+
+    const tok = await resolveLocalGoogleAccessTokenAsync(pnIdentifier);
+    const hasSecrets =
+      !!tok ||
+      envelopeHasUsableSecrets(envelope) ||
+      !!(envelope?.googleDriveAccounts?.some((a) => accountToken(a)));
+
+    if (!hasSecrets) {
+      lastStatus = 'needs_reconnect';
+      lastError = 'No local cloud secrets for this device';
+      return { status: 'needs_reconnect', error: lastError };
+    }
+
+    readyPnIds.add(pnIdentifier);
+    lastStatus = 'ready';
+    lastError = undefined;
     return { status: 'ready' };
+  } catch (e) {
+    lastStatus = 'error';
+    lastError = e instanceof Error ? e.message : 'Cloud session warm failed';
+    return { status: 'error', error: lastError };
   }
-  return bootstrapCloudSession({
-    apiToken: opts.apiToken,
-    pnIdentifier: opts.pnIdentifier,
-    sessionId: opts.sessionId
-  });
 }

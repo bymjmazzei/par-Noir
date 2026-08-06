@@ -37,11 +37,14 @@ export async function uploadZkpDocEncrypted(opts: {
 }): Promise<string> {
   if (opts.sessionId) {
     const { ensureCloudSessionBootstrap } = await import('../contexts/CloudSessionContext');
-    await ensureCloudSessionBootstrap({
+    const result = await ensureCloudSessionBootstrap({
       apiToken: opts.authToken,
       pnIdentifier: opts.pnIdentifier,
       sessionId: opts.sessionId
     });
+    if (result.status !== 'ready') {
+      throw new Error(result.error || 'Reconnect Google Drive on this device to upload documents');
+    }
   }
   const folderId = await ensureZkpDocsFolderId(opts.pnIdentifier, opts.authToken);
   const buf = await opts.file.arrayBuffer();

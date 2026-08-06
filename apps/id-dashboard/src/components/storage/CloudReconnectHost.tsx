@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useMemo, useRef, useState } from 'react';
 import {
   CloudReconnectPanel,
   CloudReconnectPrompt,
@@ -20,7 +20,6 @@ import { getGoogleDriveClientId } from '../../config/googleDriveClientId';
 import { DevicePairFromReconnect } from '../DevicePairFromReconnect';
 import { isKeyableClient } from '@par-noir/device-client';
 import { APP_DOWNLOAD_URL } from '../../config/appDownload';
-import { getStorageAccountsCache } from '../../services/storage/cloudSessionBootstrap';
 
 export interface CloudReconnectHostProps {
   apiToken: string | null;
@@ -30,11 +29,13 @@ export interface CloudReconnectHostProps {
   /** True when this pN already has at least one keyed device registered */
   hasKeyedDevices?: boolean;
   onPaired?: () => void | Promise<void>;
-  onCloudReady?: (result?: { status: string; error?: string }) => void;
 }
 
 /**
- * Post-unlock gate: prompt when API layout exists but this device has no usable secrets.
+ * Post-unlock cloud reconnect — same shape as AggregatorCloudReconnectHost.
+ * Case A (no keyed devices): durable sealed local cloud.
+ * Case B (keyed apps exist): session-only; wiped on lock.
+ * No unlock-time bootstrap / initialize / owner-index gate.
  */
 export const CloudReconnectHost: React.FC<CloudReconnectHostProps> = ({
   apiToken,
@@ -42,15 +43,13 @@ export const CloudReconnectHost: React.FC<CloudReconnectHostProps> = ({
   sessionId,
   isKeyedSession,
   hasKeyedDevices = false,
-  onPaired,
-  onCloudReady
+  onPaired
 }) => {
   const [googleClientId, setGoogleClientId] = useState<string | null>(null);
   const [pairOpen, setPairOpen] = useState(false);
   const [oauthBusy, setOauthBusy] = useState(false);
   const [oauthError, setOauthError] = useState<string | null>(null);
-  const onCloudReadyRef = React.useRef(onCloudReady);
-  onCloudReadyRef.current = onCloudReady;
+  const warmedReadyRef = useRef(false);
 
   React.useEffect(() => {
     let cancelled = false;
@@ -81,128 +80,36 @@ export const CloudReconnectHost: React.FC<CloudReconnectHostProps> = ({
     });
   }, [pnIdentifier, sessionId]);
 
-  const [bootstrapSettled, setBootstrapSettled] = useState(false);
-  const [bootstrapStatus, setBootstrapStatus] = useState<string | null>(null);
-
-  // Unlock-time: wait for migrate (secrets may land after unlock), warm, then bootstrap.
-  React.useEffect(() => {
-    if (!pnIdentifier || !sessionId || !apiToken) {
-      setBootstrapSettled(false);
-      setBootstrapStatus(null);
-      return;
-    }
-    let cancelled = false;
-    setBootstrapSettled(false);
-    setBootstrapStatus(null);
-    void (async () => {
-      try {
-        const creds = SecureCredentialManager.getCredentials(sessionId);
-        if (creds?.pnName && creds?.passcode) {
-          const { migrateAndFlushOnUnlock } = await import('../../services/deviceCloudCredentials');
-          await migrateAndFlushOnUnlock({
-            identityId: pnIdentifier,
-            authToken: apiToken,
-            session: {
-              sessionId,
-              pnName: creds.pnName,
-              passcode: creds.passcode
-            },
-            canFlushMailbox: isKeyedSession
-          });
-        } else {
-          const { awaitMigrateFlushForIdentity } = await import('../../services/deviceCloudCredentials');
-          await awaitMigrateFlushForIdentity(pnIdentifier);
-        }
-      } catch {
-        /* best-effort */
-      }
-      if (cancelled) return;
-      try {
-        await loadLocalEnvelope();
-      } catch {
-        /* best-effort warm */
-      }
-      if (cancelled) return;
-      try {
-        const { bootstrapCloudSession } = await import('../../services/storage/cloudSessionBootstrap');
-        const result = await bootstrapCloudSession({
-          apiToken,
-          pnIdentifier,
-          sessionId
-        });
-        if (cancelled) return;
-        setBootstrapStatus(result.status);
-        if (result.status === 'ready') {
-          try {
-            window.dispatchEvent(new CustomEvent(PN_CLOUD_CREDENTIALS_READY_EVENT));
-          } catch {
-            /* non-DOM */
-          }
-        }
-        onCloudReadyRef.current?.(result);
-      } catch {
-        /* best-effort */
-      } finally {
-        if (!cancelled) setBootstrapSettled(true);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [pnIdentifier, sessionId, apiToken, loadLocalEnvelope, isKeyedSession]);
-
-  const preferCachedAccounts = useCallback(() => {
-    if (!pnIdentifier) return null;
-    return getStorageAccountsCache(pnIdentifier);
-  }, [pnIdentifier]);
-
   const gate = useCloudReconnectGate({
-    enabled: !!(apiToken && pnIdentifier && bootstrapSettled),
+    enabled: !!(apiToken && pnIdentifier && sessionId),
     authToken: apiToken,
     pnIdentifier,
     apiEndpoint: API_ENDPOINT,
     loadLocalEnvelope,
-    dismissStorageKey: pnIdentifier ? `pn_cloud_reconnect_dismiss:${pnIdentifier}` : undefined,
-    preferCachedAccounts
+    dismissStorageKey: pnIdentifier ? `pn_cloud_reconnect_dismiss:${pnIdentifier}` : undefined
   });
 
-  // Bootstrap already proved local secrets — never show a stale reconnect prompt.
+  // Case A warm: gate becomes ready without reconnect — fire READY so Privacy/Storage hydrate.
   React.useEffect(() => {
-    if (!bootstrapSettled) return;
-    if (bootstrapStatus === 'ready') {
-      gate.markReady();
+    if (gate.readiness !== 'ready') {
+      warmedReadyRef.current = false;
       return;
     }
-    // Migrate/bootstrap may finish out of order; re-check when credentials warm.
-    const onReady = () => {
-      void gate.refresh();
-    };
-    window.addEventListener(PN_CLOUD_CREDENTIALS_READY_EVENT, onReady);
-    return () => window.removeEventListener(PN_CLOUD_CREDENTIALS_READY_EVENT, onReady);
-  }, [bootstrapSettled, bootstrapStatus, gate.markReady, gate.refresh]);
-
-  // If cloud session module already ready (e.g. Storage hydrated secrets), close prompt.
-  React.useEffect(() => {
-    if (!bootstrapSettled || !pnIdentifier) return;
-    let cancelled = false;
-    void (async () => {
-      const { isCloudSessionReady } = await import('../../services/storage/cloudSessionBootstrap');
-      if (cancelled) return;
-      if (isCloudSessionReady(pnIdentifier)) {
-        gate.markReady();
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [bootstrapSettled, pnIdentifier, gate.markReady, gate.readiness]);
+    if (warmedReadyRef.current) return;
+    warmedReadyRef.current = true;
+    try {
+      window.dispatchEvent(new CustomEvent(PN_CLOUD_CREDENTIALS_READY_EVENT));
+    } catch {
+      /* non-DOM */
+    }
+  }, [gate.readiness]);
 
   const persistMode: PersistCloudCredentialsMode = resolveCloudPersistMode({
-    hasKeyedDevices,
+    hasKeyedDevices
   });
-  // Keyed native session still seals even in Case B
-  const effectivePersistMode: PersistCloudCredentialsMode =
-    isKeyedSession ? 'sealed' : persistMode;
+  const effectivePersistMode: PersistCloudCredentialsMode = isKeyedSession
+    ? 'sealed'
+    : persistMode;
 
   const markReady = gate.markReady;
   const handleConnected = useCallback(
@@ -237,69 +144,21 @@ export const CloudReconnectHost: React.FC<CloudReconnectHostProps> = ({
         }
       }
 
-      // Under device custody the API has no Google secrets — rebuild/verify Drive index
-      // with the ephemeral token so device register can write devices.xlsx.
-      const googleTok =
-        envelope.googleDriveAccounts?.[0]?.accessToken ||
-        (envelope.googleDriveAccounts?.[0] as { access_token?: string } | undefined)?.access_token;
-      if (apiToken && typeof googleTok === 'string' && googleTok.trim()) {
-        try {
-          const initRes = await fetch(
-            `${API_ENDPOINT.replace(/\/$/, '')}/api/storage/initialize/${encodeURIComponent(pnIdentifier)}`,
-            {
-              method: 'POST',
-              headers: {
-                Authorization: `Bearer ${apiToken}`,
-                'X-PN-Cloud-Access-Token': googleTok.trim(),
-                'Content-Type': 'application/json'
-              }
-            }
-          );
-          if (!initRes.ok) {
-            const text = await initRes.text().catch(() => '');
-            throw new Error(
-              `Drive layout init failed (${initRes.status})${text ? `: ${text.slice(0, 160)}` : ''}`
-            );
-          }
-        } catch (err) {
-          setOauthError(
-            err instanceof Error ? err.message : 'Drive layout setup failed after reconnect'
-          );
-          return;
-        }
-      }
-
       markReady();
       try {
         window.dispatchEvent(new CustomEvent(PN_CLOUD_CREDENTIALS_READY_EVENT));
       } catch {
         /* non-DOM */
       }
-      try {
-        const { bootstrapCloudSession, clearCloudSessionBootstrap } = await import(
-          '../../services/storage/cloudSessionBootstrap'
-        );
-        clearCloudSessionBootstrap(pnIdentifier);
-        const result = await bootstrapCloudSession({
-          apiToken: apiToken || '',
-          pnIdentifier,
-          sessionId
-        });
-        onCloudReadyRef.current?.(result);
-      } catch {
-        onCloudReadyRef.current?.({ status: 'ready' });
-      }
     },
-    [pnIdentifier, sessionId, effectivePersistMode, isKeyedSession, markReady, apiToken]
+    [pnIdentifier, sessionId, effectivePersistMode, isKeyedSession, markReady]
   );
 
   const handleReconnect = useCallback(() => {
     const provider = gate.socialCloudProvider;
-    // Known OAuth provider: open popup from this click (avoid redundant picker + popup blockers).
     if (isOAuthCloudProvider(provider) && apiToken && pnIdentifier) {
       setOauthBusy(true);
       setOauthError(null);
-      // Call sync so window.open stays in the user-gesture stack.
       const pending = reconnectOAuthProvider({
         provider,
         pnIdentifier,

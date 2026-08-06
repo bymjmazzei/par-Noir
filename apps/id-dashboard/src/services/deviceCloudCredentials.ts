@@ -192,10 +192,19 @@ export async function migrateAndFlushOnUnlock(opts: {
     if (migrateFlushByIdentity.get(opts.identityId) === run) {
       migrateFlushByIdentity.delete(opts.identityId);
     }
+    // Only signal cloud ready when this device actually has usable secrets (not empty migrate).
     try {
-      window.dispatchEvent(new CustomEvent(PN_CLOUD_CREDENTIALS_READY_EVENT));
+      const env = await loadUnsealedCloudCredentials(opts.identityId, opts.session);
+      const has =
+        env &&
+        ((env.googleDriveAccounts?.length ?? 0) > 0 ||
+          (env as { dropboxAccounts?: unknown[] }).dropboxAccounts?.length ||
+          (env as { onedriveAccounts?: unknown[] }).onedriveAccounts?.length);
+      if (has) {
+        window.dispatchEvent(new CustomEvent(PN_CLOUD_CREDENTIALS_READY_EVENT));
+      }
     } catch {
-      /* non-DOM */
+      /* non-DOM / no secrets */
     }
   }
 }

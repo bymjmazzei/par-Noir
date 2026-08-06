@@ -2,7 +2,7 @@ import React, { createContext, useCallback, useContext, useEffect, useMemo, useS
 import { PN_CLOUD_CREDENTIALS_READY_EVENT } from '@par-noir/oauth-ui';
 import {
   clearCloudSessionBootstrap,
-  ensureCloudSession as ensureBootstrap,
+  ensureCloudSession as ensureWarm,
   getCloudSessionStatus,
   isCloudSessionReady,
   type CloudSessionBootstrapResult,
@@ -14,6 +14,7 @@ export interface CloudSessionContextValue {
   error?: string;
   isReady: boolean;
   ensureCloudSession: () => Promise<CloudSessionBootstrapResult>;
+  /** @deprecated bootstrap removed from unlock; kept for callers that update local status */
   markFromBootstrap: (result: CloudSessionBootstrapResult) => void;
   reset: () => void;
 }
@@ -54,7 +55,7 @@ export const CloudSessionProvider: React.FC<CloudSessionProviderProps> = ({
   }, []);
 
   const ensureCloudSession = useCallback(async () => {
-    const result = await ensureBootstrap({ apiToken, pnIdentifier, sessionId });
+    const result = await ensureWarm({ apiToken, pnIdentifier, sessionId });
     markFromBootstrap(result);
     return result;
   }, [apiToken, pnIdentifier, sessionId, markFromBootstrap]);
@@ -94,9 +95,8 @@ export function useCloudSession(): CloudSessionContextValue {
   return ctx;
 }
 
-/** Non-hook ensure for services that have token/pn/session in hand. */
+/** Non-hook ensure for services — warms session/sealed secrets only. */
 export {
-  bootstrapCloudSession,
   ensureCloudSession as ensureCloudSessionBootstrap,
   isCloudSessionReady
 } from '../services/storage/cloudSessionBootstrap';

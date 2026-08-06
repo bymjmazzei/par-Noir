@@ -35,8 +35,8 @@ import { AppChrome } from './App/AppChrome';
 import { CloudReconnectHost } from './components/storage/CloudReconnectHost';
 import { UnkeyedUnlockAlertEmitter } from './components/UnkeyedUnlockAlertEmitter';
 import { CloudSessionProvider } from './contexts/CloudSessionContext';
-import { ensureCloudSession } from './services/storage/cloudSessionBootstrap';
 import { PN_CLOUD_CREDENTIALS_READY_EVENT } from '@par-noir/oauth-ui';
+import { resolveLocalGoogleAccessTokenAsync } from './services/deviceApiService';
 
 // Custom hooks for state management
 import { useAppState } from './hooks/useAppState';
@@ -615,12 +615,8 @@ function App() {
           return;
         }
 
-        const cloud = await ensureCloudSession({
-          apiToken,
-          pnIdentifier: recoveryVaultPnId,
-          sessionId: authenticatedUser.id
-        });
-        if (cloud.status !== 'ready') return;
+        const cloudTok = await resolveLocalGoogleAccessTokenAsync(recoveryVaultPnId);
+        if (!cloudTok) return;
 
         const authToken = apiToken || (await ensureOwnerApiTokenForActiveUser());
         if (!authToken) {
@@ -750,12 +746,8 @@ function App() {
           return;
         }
 
-        const cloud = await ensureCloudSession({
-          apiToken,
-          pnIdentifier: recoveryVaultPnId,
-          sessionId: authenticatedUser.id
-        });
-        if (cloud.status !== 'ready') return;
+        const cloudTok = await resolveLocalGoogleAccessTokenAsync(recoveryVaultPnId);
+        if (!cloudTok) return;
 
         const authToken = apiToken || (await ensureOwnerApiTokenForActiveUser());
         if (!authToken) {
@@ -777,11 +769,6 @@ function App() {
           let dataPointIds = await loadIds();
           if (dataPointIds === null) {
             await new Promise((r) => setTimeout(r, 600));
-            await ensureCloudSession({
-              apiToken: authToken,
-              pnIdentifier: recoveryVaultPnId,
-              sessionId: authenticatedUser.id
-            });
             dataPointIds = await loadIds();
           }
 
@@ -1369,9 +1356,6 @@ function App() {
           isKeyedSession={deviceAuth.isKeyedSession}
           hasKeyedDevices={deviceAuth.hasKeyedDevices}
           onPaired={() => deviceAuth.refresh({ force: true })}
-          onCloudReady={() => {
-            /* bootstrap updates module + PN_CLOUD_CREDENTIALS_READY_EVENT; context syncs */
-          }}
         />
         <UnkeyedUnlockAlertEmitter
           apiToken={apiToken}

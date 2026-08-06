@@ -103,11 +103,14 @@ export function useToolPrivacyHandlers(params: UseToolPrivacyHandlersParams) {
     }
     if (!pn) return;
     const { ensureCloudSessionBootstrap } = await import('../contexts/CloudSessionContext');
-    await ensureCloudSessionBootstrap({
+    const result = await ensureCloudSessionBootstrap({
       apiToken: token,
       pnIdentifier: pn,
       sessionId
     });
+    if (result.status !== 'ready') {
+      throw new Error(result.error || 'Reconnect Google Drive on this device to continue');
+    }
   };
 
   // Tool Settings Handlers
