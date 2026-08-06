@@ -510,12 +510,22 @@ export function AuthenticatedShell(props: AuthenticatedShellProps) {
                                   {Object.entries(privacySettings.toolPermissions)
                                     .filter(([, tool]: [string, any]) => tool?.status !== 'revoked')
                                     .map(([toolId, tool]: [string, any]) => {
-                                    const hasAgeZKP = verifiedDataPoints.has('age_attestation') || attestedDataPoints.has('age_attestation') || verifiedDataPoints.has('over_18');
-                                    const ageShared = tool.dataPoints?.includes('age_attestation') || tool.dataPoints?.includes('over_18') || false;
-                                    const ageAvailable = tool.optionalDataPoints?.includes('age_attestation') || tool.optionalDataPoints?.includes('over_18') || false;
+                                    const ageVerified =
+                                      verifiedDataPoints.has('age_attestation') ||
+                                      verifiedDataPoints.has('over_18') ||
+                                      verifiedDataPoints.has('over_21');
+                                    const hasAgeZKP =
+                                      ageVerified ||
+                                      attestedDataPoints.has('age_attestation') ||
+                                      attestedDataPoints.has('over_18') ||
+                                      attestedDataPoints.has('over_21');
+                                    const ageShared = tool.dataPoints?.includes('age_attestation') || tool.dataPoints?.includes('over_18') || tool.dataPoints?.includes('over_21') || false;
+                                    const ageAvailable = tool.optionalDataPoints?.includes('age_attestation') || tool.optionalDataPoints?.includes('over_18') || tool.optionalDataPoints?.includes('over_21') || tool.requiredDataPoints?.includes('age_attestation') || tool.requiredDataPoints?.includes('over_21') || false;
                                     const ageGloballyAllowed =
                                       privacySettings.dataPoints?.age_attestation?.globalSetting !== false &&
-                                      privacySettings.dataPoints?.over_18?.globalSetting !== false;
+                                      privacySettings.dataPoints?.over_18?.globalSetting !== false &&
+                                      privacySettings.dataPoints?.over_21?.globalSetting !== false;
+                                    const agePermissionLabel = `Age (${ageVerified ? 'verified' : 'attested'})`;
                                     
                                     return (
                                       <div key={toolId} className="border border-border rounded-lg p-4">
@@ -536,16 +546,14 @@ export function AuthenticatedShell(props: AuthenticatedShellProps) {
                                         <div className="mt-3 ml-3 pl-3 border-l border-border space-y-2">
                                           {hasAgeZKP && ageAvailable && ageGloballyAllowed && (
                                             <div className="flex items-center justify-between gap-3 py-1">
-                                              <div className="flex-1 min-w-0">
-                                                <p className="text-sm font-medium text-text-primary">Share Age ZKP</p>
-                                                <p className="text-xs text-text-secondary">
-                                                  Allow {tool.toolName} to verify your age for content access
-                                                </p>
-                                              </div>
+                                              <p className="text-sm font-medium text-text-primary min-w-0">
+                                                {agePermissionLabel}
+                                              </p>
                                               <button
                                                 type="button"
                                                 role="switch"
                                                 aria-checked={ageShared}
+                                                aria-label={`Share ${agePermissionLabel}`}
                                                 onClick={() => handleToggleToolDataPoint(toolId, 'age_attestation', !ageShared)}
                                                 className={`
                                                   relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors
