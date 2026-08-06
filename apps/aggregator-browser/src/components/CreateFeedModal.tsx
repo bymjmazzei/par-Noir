@@ -29,8 +29,8 @@ export function CreateFeedModal({ onClose }: CreateFeedModalProps) {
           <AlertCircle className="h-12 w-12 text-blue-400 mx-auto mb-4" />
           <h3 className="text-lg font-semibold text-white mb-2">Register in the dashboard</h3>
           <p className="text-text-secondary mb-4 text-sm">
-            New feeds are registered as a Sub-pN in the dashboard (Buy Feed — one-time payment and
-            verification). After that, use this browser to post and switch between your feeds.
+            New feeds are registered as a Sub-pN in the dashboard (verified identity required; $5/month
+            subscription). After that, use this browser to post and switch between your feeds.
           </p>
         </div>
         <a

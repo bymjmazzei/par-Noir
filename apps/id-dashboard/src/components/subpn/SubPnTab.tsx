@@ -17,6 +17,7 @@ import {
 } from '../../services/ownedAssetsApi';
 import { republishOwnedAssetsManifest } from '../../services/ownedAssetsManifestService';
 import { FeedCreator } from '../feeds/FeedCreator';
+import { MonetizationService } from '../../services/monetization/MonetizationService';
 
 const SUB_KINDS = ['feed', 'device', 'ai_agent', 'smart_device'] as const;
 type SubKind = (typeof SUB_KINDS)[number];
@@ -27,6 +28,9 @@ const KIND_LABELS: Record<SubKind, string> = {
   ai_agent: 'AI agent',
   smart_device: 'Smart device (IoT)',
 };
+
+/** Kinds always available; feed requires verified identity. */
+const BASE_SUB_KINDS: SubKind[] = ['device', 'ai_agent', 'smart_device'];
 
 const FEED_CAPABILITY_SCOPES = [
   {
@@ -106,6 +110,35 @@ export const SubPnTab: React.FC<SubPnTabProps> = ({
   const [newDelClient, setNewDelClient] = useState('');
   const [delegationBusyScope, setDelegationBusyScope] = useState<string | null>(null);
   const [showFeedCreator, setShowFeedCreator] = useState(false);
+  const [isIdentityVerified, setIsIdentityVerified] = useState(false);
+
+  const creatableKinds: SubKind[] = isIdentityVerified
+    ? ['feed', ...BASE_SUB_KINDS]
+    : BASE_SUB_KINDS;
+
+  useEffect(() => {
+    if (!accessToken) {
+      setIsIdentityVerified(false);
+      return;
+    }
+    let cancelled = false;
+    void MonetizationService.getStatus(accessToken)
+      .then((s) => {
+        if (!cancelled) setIsIdentityVerified(!!s.verified);
+      })
+      .catch(() => {
+        if (!cancelled) setIsIdentityVerified(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [accessToken]);
+
+  useEffect(() => {
+    if (createKind === 'feed' && !isIdentityVerified) {
+      setCreateKind('ai_agent');
+    }
+  }, [createKind, isIdentityVerified]);
 
   const syncIpfsManifest = useCallback(
     async (_list: OwnedAssetDto[]) => {
@@ -535,18 +568,23 @@ export const SubPnTab: React.FC<SubPnTabProps> = ({
               value={createKind}
               onChange={(e) => setCreateKind(e.target.value as SubKind)}
             >
-              {SUB_KINDS.map((k) => (
+              {creatableKinds.map((k) => (
                 <option key={k} value={k}>
                   {KIND_LABELS[k]}
                 </option>
               ))}
             </select>
           </label>
+          {!isIdentityVerified && (
+            <p className="text-xs text-text-secondary">
+              Feed sub-pNs appear here after you verify your identity (Privacy &amp; Sharing).
+            </p>
+          )}
           {createKind === 'feed' ? (
             <>
               <p className="text-sm text-text-secondary">
-                Feeds require a one-time purchase and identity verification. After activation the feed appears in this
-                list; post and switch contexts in the browser.
+                Feeds require a monthly subscription. After activation the feed appears in this list; post and switch
+                contexts in the browser.
               </p>
               <button
                 type="button"
@@ -554,7 +592,7 @@ export const SubPnTab: React.FC<SubPnTabProps> = ({
                 className="w-full py-2 rounded-md bg-primary text-bg-primary font-medium hover:opacity-90 disabled:opacity-50"
                 disabled={loading || !accessToken}
               >
-                Buy and register feed — $5
+                Subscribe and register feed — $5 / month
               </button>
             </>
           ) : (
@@ -624,7 +662,7 @@ export const SubPnTab: React.FC<SubPnTabProps> = ({
                   )}
                   {selected.kind === 'feed' && (
                     <p>
-                      Paid feed sub-pN. Post and switch contexts in the browser. Delegate read / write / manage below
+                      Monthly feed sub-pN. Post and switch contexts in the browser. Delegate read / write / manage below
                       so other pNs can use this feed.
                     </p>
                   )}

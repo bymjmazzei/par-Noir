@@ -17,8 +17,8 @@ Human rows may exist for symmetry; most registry rows are non-human kinds.
 
 ## Feed kind (paid Sub-pN)
 
-- **Registration**: Dashboard **Sub-pN** tab → kind Feed → Buy Feed ($5 Coinbase) → Veriff → `POST /api/feeds/activate-after-verification`.
-- Activation creates the platform `feeds` row (tokens, storage folder), then an owned-asset row with `kind: 'feed'` and `metadata: { feedId, feedName, label }`. Cloud token (`X-PN-Cloud-Access-Token`) is required.
+- **Registration**: Dashboard **Sub-pN** tab → kind Feed (only when identity is already verified) → monthly Coinbase checkout ($5/mo) → `POST /api/feeds/activate-after-verification`.
+- Activation creates the platform `feeds` row (tokens, storage folder), then an owned-asset row with `kind: 'feed'` and `metadata: { feedId, feedName, label }`. Cloud token (`X-PN-Cloud-Access-Token`) is required. Identity verification is a prerequisite (Privacy & Sharing), not part of the Buy Feed flow.
 - **Ops** (post, add-to-feed, context switch): aggregator-browser. Lock-button menu loads controlled feeds via `GET /api/users/:pn/controlled-feeds` (owned assets + creator fallback + delegated).
 - **Capabilities**: On a selected feed sub, Sub-pN delegations use scopes `read` | `write` | `manage` (mirrored into `feed_delegations` for `hasFeedAccess`). Non-feed kinds keep Privacy/Sharing data-point scopes.
 - There is **no** dashboard Services tab for feeds; the hosted developer portal covers API keys / OAuth clients.

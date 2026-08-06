@@ -967,13 +967,33 @@ export function setupFeedRoutes(app: Application) {
         return res.status(403).json({ error: 'Not authorized' });
       }
 
+      const { EngagementService } = await import('./engagementService');
+      const identityCandidates = [
+        tokenPayload.pnIdentifier,
+        tokenPayload.did,
+        feed.creatorId
+      ].filter((v): v is string => typeof v === 'string' && v.trim().length > 0);
+      let identityVerified = false;
+      for (const id of identityCandidates) {
+        if (await EngagementService.isIdentityVerifiedForMonetization(id)) {
+          identityVerified = true;
+          break;
+        }
+      }
+      if (!identityVerified) {
+        return res.status(403).json({
+          error: 'identity_not_verified',
+          error_description: 'Verify your identity before activating a feed sub-pN'
+        });
+      }
+
       // Activate feed (creates sub-pN, Google Drive folder, owned asset, updates status)
       const activatedFeed = await FeedService.activateFeedAfterVerification(
         feedId,
         feed.creatorId,
         {
-          verificationId,
-          verifiedZKPs
+          verificationId: verificationId || 'already-verified',
+          verifiedZKPs: verifiedZKPs || {}
         },
         { cloudAccessToken }
       );
