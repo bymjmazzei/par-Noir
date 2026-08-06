@@ -28,6 +28,7 @@ import {
   type SealSession,
   type SealedEnvelope
 } from '@par-noir/device-cloud-credentials';
+import { PN_CLOUD_CREDENTIALS_READY_EVENT } from '@par-noir/oauth-ui';
 import { Capacitor } from '@capacitor/core';
 import { API_ENDPOINT } from '../config/api';
 
@@ -37,6 +38,14 @@ let graceTimer: ReturnType<typeof setTimeout> | null = null;
 let flushInterval: ReturnType<typeof setInterval> | null = null;
 /** Coalesce duplicate unlock migrate (handler + App session-restore effect). */
 const migrateFlushInFlight = new Map<string, Promise<void>>();
+/** Latest migrate promise per identity (any auth token) so bootstrap can wait. */
+const migrateFlushByIdentity = new Map<string, Promise<void>>();
+
+/** Await in-flight unlock migrate for this identity (no-op if none). */
+export async function awaitMigrateFlushForIdentity(identityId: string): Promise<void> {
+  const p = migrateFlushByIdentity.get(identityId);
+  if (p) await p.catch(() => undefined);
+}
 
 function isNative(): boolean {
   try {
@@ -175,10 +184,19 @@ export async function migrateAndFlushOnUnlock(opts: {
   })();
 
   migrateFlushInFlight.set(lockKey, run);
+  migrateFlushByIdentity.set(opts.identityId, run);
   try {
     await run;
   } finally {
     migrateFlushInFlight.delete(lockKey);
+    if (migrateFlushByIdentity.get(opts.identityId) === run) {
+      migrateFlushByIdentity.delete(opts.identityId);
+    }
+    try {
+      window.dispatchEvent(new CustomEvent(PN_CLOUD_CREDENTIALS_READY_EVENT));
+    } catch {
+      /* non-DOM */
+    }
   }
 }
 

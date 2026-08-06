@@ -397,11 +397,16 @@ export function MultiCloudStoragePanel({
           </div>
           {connectedStorageCount > 0 && (
             <p className="text-green-400 text-sm mt-2">
-              {connectedStorageCount} storage provider{connectedStorageCount !== 1 ? 's' : ''} connected
+              {connectedStorageCount} storage provider{connectedStorageCount !== 1 ? 's' : ''} connected on this device
               {googleDriveConnectedCount > 0 ? ` (${googleDriveConnectedCount} Google Drive)` : ''}
             </p>
           )}
-          {socialCloudProvider && (
+          {socialCloudProvider && connectedStorageCount === 0 && (
+            <p className="text-amber-400 text-sm mt-2">
+              Social cloud linked on this pN ({socialCloudProvider.replace('_', ' ')}) — reconnect above to use it on this device
+            </p>
+          )}
+          {socialCloudProvider && connectedStorageCount > 0 && (
             <p className="text-green-400 text-sm mt-2">Social cloud: {socialCloudProvider.replace('_', ' ')}</p>
           )}
         </div>

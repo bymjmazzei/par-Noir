@@ -82,17 +82,41 @@ export const CloudReconnectHost: React.FC<CloudReconnectHostProps> = ({
   }, [pnIdentifier, sessionId]);
 
   const [bootstrapSettled, setBootstrapSettled] = useState(false);
+  const [bootstrapStatus, setBootstrapStatus] = useState<string | null>(null);
 
-  // Unlock-time: warm sealed secrets into session, then full cloud session bootstrap
-  // (backends + layout + owner-index) so Storage is not required for Drive capability.
+  // Unlock-time: wait for migrate (secrets may land after unlock), warm, then bootstrap.
   React.useEffect(() => {
     if (!pnIdentifier || !sessionId || !apiToken) {
       setBootstrapSettled(false);
+      setBootstrapStatus(null);
       return;
     }
     let cancelled = false;
     setBootstrapSettled(false);
+    setBootstrapStatus(null);
     void (async () => {
+      try {
+        const creds = SecureCredentialManager.getCredentials(sessionId);
+        if (creds?.pnName && creds?.passcode) {
+          const { migrateAndFlushOnUnlock } = await import('../../services/deviceCloudCredentials');
+          await migrateAndFlushOnUnlock({
+            identityId: pnIdentifier,
+            authToken: apiToken,
+            session: {
+              sessionId,
+              pnName: creds.pnName,
+              passcode: creds.passcode
+            },
+            canFlushMailbox: isKeyedSession
+          });
+        } else {
+          const { awaitMigrateFlushForIdentity } = await import('../../services/deviceCloudCredentials');
+          await awaitMigrateFlushForIdentity(pnIdentifier);
+        }
+      } catch {
+        /* best-effort */
+      }
+      if (cancelled) return;
       try {
         await loadLocalEnvelope();
       } catch {
@@ -107,6 +131,7 @@ export const CloudReconnectHost: React.FC<CloudReconnectHostProps> = ({
           sessionId
         });
         if (cancelled) return;
+        setBootstrapStatus(result.status);
         if (result.status === 'ready') {
           try {
             window.dispatchEvent(new CustomEvent(PN_CLOUD_CREDENTIALS_READY_EVENT));
@@ -124,7 +149,7 @@ export const CloudReconnectHost: React.FC<CloudReconnectHostProps> = ({
     return () => {
       cancelled = true;
     };
-  }, [pnIdentifier, sessionId, apiToken, loadLocalEnvelope]);
+  }, [pnIdentifier, sessionId, apiToken, loadLocalEnvelope, isKeyedSession]);
 
   const preferCachedAccounts = useCallback(() => {
     if (!pnIdentifier) return null;
@@ -140,6 +165,37 @@ export const CloudReconnectHost: React.FC<CloudReconnectHostProps> = ({
     dismissStorageKey: pnIdentifier ? `pn_cloud_reconnect_dismiss:${pnIdentifier}` : undefined,
     preferCachedAccounts
   });
+
+  // Bootstrap already proved local secrets — never show a stale reconnect prompt.
+  React.useEffect(() => {
+    if (!bootstrapSettled) return;
+    if (bootstrapStatus === 'ready') {
+      gate.markReady();
+      return;
+    }
+    // Migrate/bootstrap may finish out of order; re-check when credentials warm.
+    const onReady = () => {
+      void gate.refresh();
+    };
+    window.addEventListener(PN_CLOUD_CREDENTIALS_READY_EVENT, onReady);
+    return () => window.removeEventListener(PN_CLOUD_CREDENTIALS_READY_EVENT, onReady);
+  }, [bootstrapSettled, bootstrapStatus, gate.markReady, gate.refresh]);
+
+  // If cloud session module already ready (e.g. Storage hydrated secrets), close prompt.
+  React.useEffect(() => {
+    if (!bootstrapSettled || !pnIdentifier) return;
+    let cancelled = false;
+    void (async () => {
+      const { isCloudSessionReady } = await import('../../services/storage/cloudSessionBootstrap');
+      if (cancelled) return;
+      if (isCloudSessionReady(pnIdentifier)) {
+        gate.markReady();
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [bootstrapSettled, pnIdentifier, gate.markReady, gate.readiness]);
 
   const persistMode: PersistCloudCredentialsMode = resolveCloudPersistMode({
     hasKeyedDevices,
