@@ -25,6 +25,7 @@ export interface AuthenticatedShellProps {
   apiToken: any;
   verifiedDataPoints: any;
   attestedDataPoints: any;
+  attestedHydrationStatus?: 'pending' | 'loading' | 'ready';
   globalSettingsExpanded: any;
   thirdPartyExpanded: any;
   privacySettings: any;
@@ -109,6 +110,7 @@ export function AuthenticatedShell(props: AuthenticatedShellProps) {
     apiToken,
     verifiedDataPoints,
     attestedDataPoints,
+    attestedHydrationStatus = 'ready',
     globalSettingsExpanded,
     thirdPartyExpanded,
     privacySettings,
@@ -469,6 +471,7 @@ export function AuthenticatedShell(props: AuthenticatedShellProps) {
                         <PrivacyDataPointsPanel
                           attestedDataPoints={attestedDataPoints}
                           verifiedDataPoints={verifiedDataPoints}
+                          attestedHydrationStatus={attestedHydrationStatus}
                           onRequestDataPoint={handleRequestDataPoint}
                         />
 

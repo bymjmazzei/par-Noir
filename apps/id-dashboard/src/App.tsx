@@ -122,6 +122,8 @@ function App() {
     setThirdPartyExpanded,
     attestedDataPoints,
     setAttestedDataPoints,
+    attestedHydrationStatus,
+    setAttestedHydrationStatus,
     verifiedDataPoints,
     setVerifiedDataPoints,
     showVerificationModal,
@@ -723,7 +725,8 @@ function App() {
     }
   }, [authenticatedUser?.id]);
   
-  // Load attested data points from metadata (after cloud session ready)
+  // Load attested data points from Drive once session cloud token is warm.
+  // Empty set must not mean "Add" until this finishes (Identity Add flash).
   const attestedLoadedKeyRef = useRef<string | null>(null);
   useEffect(() => {
     const loadAttestedDataPoints = async () => {
@@ -732,6 +735,7 @@ function App() {
           if (!authenticatedUser?.id) {
             setAttestedDataPoints(new Set());
             attestedLoadedKeyRef.current = null;
+            setAttestedHydrationStatus('pending');
           }
           return;
         }
@@ -739,20 +743,28 @@ function App() {
         const loadKey = `${recoveryVaultPnId}:${apiToken.slice(0, 12)}`;
         if (attestedLoadedKeyRef.current === loadKey) return;
 
+        setAttestedHydrationStatus('loading');
+
         const credentials = SecureCredentialManager.getCredentials(authenticatedUser.id);
         if (!credentials) {
           console.warn('[App] Credentials not available');
           setAttestedDataPoints(new Set());
+          setAttestedHydrationStatus('ready');
           return;
         }
 
         const cloudTok = await resolveLocalGoogleAccessTokenAsync(recoveryVaultPnId);
-        if (!cloudTok) return;
+        if (!cloudTok) {
+          // Stay loading until PN_CLOUD_CREDENTIALS_READY — do not show Add yet.
+          setAttestedHydrationStatus('loading');
+          return;
+        }
 
         const authToken = apiToken || (await ensureOwnerApiTokenForActiveUser());
         if (!authToken) {
           console.warn('[App] No owner API token available');
           setAttestedDataPoints(new Set());
+          setAttestedHydrationStatus('ready');
           return;
         }
 
@@ -773,20 +785,24 @@ function App() {
           }
 
           if (dataPointIds === null) {
-            // Layout still not ready — do not memoize empty; retry on next cloud-ready event
+            // Layout still not ready — keep loading; retry on next cloud-ready event
+            setAttestedHydrationStatus('loading');
             return;
           }
 
           attestedLoadedKeyRef.current = loadKey;
           console.log('[App] Loaded attested data points from API:', dataPointIds);
           setAttestedDataPoints(new Set(dataPointIds));
+          setAttestedHydrationStatus('ready');
         } catch (error) {
           console.error('[App] Error loading attested data points from API:', error);
-          // Do not memoize failure
+          // Do not memoize failure; keep loading so UI does not flash Add
+          setAttestedHydrationStatus('loading');
         }
       } catch (error) {
         console.error('[App] Error loading attested data points:', error);
         setAttestedDataPoints(new Set());
+        setAttestedHydrationStatus('ready');
       }
     };
 
@@ -797,7 +813,14 @@ function App() {
     };
     window.addEventListener(PN_CLOUD_CREDENTIALS_READY_EVENT, onReady);
     return () => window.removeEventListener(PN_CLOUD_CREDENTIALS_READY_EVENT, onReady);
-  }, [authenticatedUser?.id, apiToken, recoveryVaultPnId, ensureOwnerApiTokenForActiveUser]);
+  }, [
+    authenticatedUser?.id,
+    apiToken,
+    recoveryVaultPnId,
+    ensureOwnerApiTokenForActiveUser,
+    setAttestedDataPoints,
+    setAttestedHydrationStatus
+  ]);
   
   // Debug success state changes
   useEffect(() => {
@@ -1290,6 +1313,7 @@ function App() {
           apiToken={apiToken}
           verifiedDataPoints={verifiedDataPoints}
           attestedDataPoints={attestedDataPoints}
+          attestedHydrationStatus={attestedHydrationStatus}
           globalSettingsExpanded={globalSettingsExpanded}
           thirdPartyExpanded={thirdPartyExpanded}
           privacySettings={privacySettings}

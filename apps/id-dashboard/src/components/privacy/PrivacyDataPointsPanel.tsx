@@ -58,6 +58,8 @@ const PRIVACY_GROUPS: Array<{
 export interface PrivacyDataPointsPanelProps {
   attestedDataPoints: Set<string>;
   verifiedDataPoints: Set<string>;
+  /** While not ready, withhold Add/Edit so empty set does not flash as "missing". */
+  attestedHydrationStatus?: 'pending' | 'loading' | 'ready';
   onRequestDataPoint: (dataPointId: string) => void;
 }
 
@@ -124,12 +126,14 @@ function rowsForGroup(classes: DataPointUiClass[]): Array<{ dp: StandardDataPoin
 export const PrivacyDataPointsPanel: React.FC<PrivacyDataPointsPanelProps> = ({
   attestedDataPoints,
   verifiedDataPoints,
+  attestedHydrationStatus = 'ready',
   onRequestDataPoint
 }) => {
   const [expanded, setExpanded] = useState<Record<PrivacyGroupId, boolean>>({
     identity: false,
     documents: false
   });
+  const hydrating = attestedHydrationStatus !== 'ready';
 
   return (
     <div className="space-y-3 mb-6">
@@ -161,6 +165,11 @@ export const PrivacyDataPointsPanel: React.FC<PrivacyDataPointsPanelProps> = ({
 
             {open && (
               <div className="px-4 pb-4 space-y-2">
+                {hydrating ? (
+                  <p className="text-sm text-text-secondary py-2" aria-live="polite">
+                    Loading proofs from your cloud…
+                  </p>
+                ) : null}
                 {rows.map(({ dp, uiClass }) => {
                   const present = isRowAttested(
                     dp.id,
@@ -176,17 +185,19 @@ export const PrivacyDataPointsPanel: React.FC<PrivacyDataPointsPanelProps> = ({
                     >
                       <div className="flex items-center gap-2 min-w-0 flex-wrap">
                         <span className="font-medium text-text-primary">{dp.name}</span>
-                        {present && !locked && (
+                        {!hydrating && present && !locked && (
                           <CheckCircle className="w-4 h-4 text-green-400 shrink-0" aria-label="Attested" />
                         )}
-                        {locked && (
+                        {!hydrating && locked && (
                           <span className="inline-flex items-center gap-1 text-xs text-amber-400">
                             <Lock className="w-3.5 h-3.5" />
                             Verified
                           </span>
                         )}
                       </div>
-                      {locked ? null : present ? (
+                      {hydrating ? (
+                        <span className="px-3 py-1 text-sm text-text-secondary shrink-0">…</span>
+                      ) : locked ? null : present ? (
                         <button
                           type="button"
                           onClick={() => onRequestDataPoint(dp.id)}

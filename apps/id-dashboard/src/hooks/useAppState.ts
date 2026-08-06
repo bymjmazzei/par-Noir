@@ -83,6 +83,10 @@ export function useAppState() {
 
   // Data points state
   const [attestedDataPoints, setAttestedDataPoints] = useState<Set<string>>(new Set());
+  /** pending/loading: do not treat empty set as "no ZKPs yet" (avoids Add flash). */
+  const [attestedHydrationStatus, setAttestedHydrationStatus] = useState<
+    'pending' | 'loading' | 'ready'
+  >('pending');
   const [verifiedDataPoints, setVerifiedDataPoints] = useState<Set<string>>(new Set());
   const [showVerificationModal, setShowVerificationModal] = useState(false);
 
@@ -143,6 +147,8 @@ export function useAppState() {
 
     attestedDataPoints,
     setAttestedDataPoints,
+    attestedHydrationStatus,
+    setAttestedHydrationStatus,
     verifiedDataPoints,
     setVerifiedDataPoints,
     showVerificationModal,
