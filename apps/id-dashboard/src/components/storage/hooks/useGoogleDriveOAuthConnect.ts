@@ -400,12 +400,14 @@ export function useGoogleDriveOAuthConnect({
     const connectedEmail = oauthUserInfo?.email || null;
     const identifiers = resolveIdentifiersForEmail(connectedEmail);
 
+      const tokenExpiresAt = Date.now() + Math.max(60, tokenData.expiresIn || 3600) * 1000;
       const backend = await upsertDriveAccount({
         backendId: identifiers.backendId,
         keyPrefix: identifiers.keyPrefix,
         token,
         refreshToken: tokenData.refreshToken,
-        email: connectedEmail
+        email: connectedEmail,
+        expiresAt: tokenExpiresAt,
       });
 
       if (!backend) {
@@ -447,7 +449,9 @@ export function useGoogleDriveOAuthConnect({
                   accessToken: token,
                   refreshToken: tokenData.refreshToken,
                   email: connectedEmail || undefined,
-                  connectedAt: new Date().toISOString()
+                  connectedAt: new Date().toISOString(),
+                  expires_at: tokenExpiresAt,
+                  expires_in: tokenData.expiresIn || 3600,
                 }
               ]
             },

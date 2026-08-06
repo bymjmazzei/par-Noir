@@ -34,6 +34,8 @@ export class GoogleDriveBackend extends AbstractStorageBackend {
   private getOwnerApiToken: (() => string | null) | null = null;
   private backendId: string;
   private refreshPromise: Promise<string | null> | null = null;
+  /** After HTTP 429, skip refresh attempts until this epoch ms. */
+  private refreshBackoffUntilMs = 0;
   
   // Load folder cache from localStorage on init
   private loadFolderCache(): void {
@@ -142,14 +144,25 @@ export class GoogleDriveBackend extends AbstractStorageBackend {
   }
 
   async connect(credentials: { token: string; email?: string; refreshToken?: string; sessionId?: string; expiresAt?: number }): Promise<void> {
+    const sameToken = !!credentials.token && this.token === credentials.token;
+    const previousExpiresAt = this.tokenExpiresAt;
     this.token = credentials.token;
     this.refreshToken = credentials.refreshToken || null;
     this.userEmail = credentials.email || null;
-    this.tokenExpiresAt =
-      typeof credentials.expiresAt === 'number' && Number.isFinite(credentials.expiresAt)
-        ? credentials.expiresAt
-        : // Unknown age (e.g. hydrated from API) — force refresh on next ensureAccessToken
-          null;
+    if (typeof credentials.expiresAt === 'number' && Number.isFinite(credentials.expiresAt)) {
+      this.tokenExpiresAt = credentials.expiresAt;
+    } else if (
+      sameToken &&
+      previousExpiresAt != null &&
+      Number.isFinite(previousExpiresAt) &&
+      Date.now() < previousExpiresAt - 60_000
+    ) {
+      // Re-connect with the same access token — keep known expiry (hydrate/upsert loops).
+      this.tokenExpiresAt = previousExpiresAt;
+    } else {
+      // Fresh token without known expiry: assume ~55m instead of forcing an immediate refresh storm.
+      this.tokenExpiresAt = Date.now() + 55 * 60 * 1000;
+    }
     
     // SECURITY: Store credentials encrypted, not in plaintext localStorage
     if (credentials.sessionId) {
@@ -378,6 +391,10 @@ export class GoogleDriveBackend extends AbstractStorageBackend {
       return this.refreshPromise;
     }
 
+    if (Date.now() < this.refreshBackoffUntilMs) {
+      return this.token;
+    }
+
     this.refreshPromise = (async () => {
       if (import.meta.env.DEV) {
         console.debug('🔁 [GoogleDriveBackend] Refresh access token', this.apiEndpoint ? 'via API endpoint' : 'directly with Google');
@@ -401,6 +418,10 @@ export class GoogleDriveBackend extends AbstractStorageBackend {
           const responseText = await response.text();
 
           if (!response.ok) {
+            if (response.status === 429) {
+              this.refreshBackoffUntilMs = Date.now() + 60_000;
+              throw new Error('API refresh rate-limited (429)');
+            }
             let errorData: any;
             try {
               errorData = JSON.parse(responseText);
@@ -411,6 +432,7 @@ export class GoogleDriveBackend extends AbstractStorageBackend {
               `API refresh failed: ${response.status} ${response.statusText} - ${errorData.error || responseText}`
             );
           }
+          this.refreshBackoffUntilMs = 0;
 
           let tokenData: {
             access_token: string;

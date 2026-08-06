@@ -9,7 +9,6 @@ import React from 'react';
 import type { FileAggregatorService } from '../../../services/aggregator/FileAggregatorService';
 import { GoogleDriveBackend } from '../../../services/storage/GoogleDriveBackend';
 import { SecureCredentialManager } from '@par-noir/identity-crypto';
-import { ownerGet } from '../../../services/ownerApiService';
 import type { DriveAccountState, StoredDriveCredential } from '../FileStorageAggregatorTypes';
 import type { ResolvedDriveIdentifiers } from './driveCredentials/credentialCacheHelpers';
 
@@ -21,6 +20,8 @@ export interface UpsertDriveAccountParams {
   email?: string | null;
   connectedAt?: string;
   updatedAt?: string;
+  /** Epoch ms when the access token expires. */
+  expiresAt?: number | null;
 }
 
 export interface UseDriveCredentialHydrationParams {
@@ -33,7 +34,6 @@ export interface UseDriveCredentialHydrationParams {
   resolveIdentifiersForEmail: (email?: string | null) => ResolvedDriveIdentifiers;
   upsertDriveAccount: (params: UpsertDriveAccountParams) => Promise<GoogleDriveBackend | null>;
   persistStorageCredentialsToAPI: (credentialsPayload?: any, cid?: string | null) => Promise<void>;
-  resolveOwnerApiToken: (wantedPn?: string | null) => string | null;
   getPasscodeFromSecureStorage: (sessionId: string | null | undefined) => string | null;
   getPnIdentifier: () => Promise<string | null>;
   getStorageIdentityCandidates: () => string[];
@@ -52,7 +52,6 @@ export function useDriveCredentialHydration({
   driveCredentialCacheRef,
   upsertDriveAccount,
   resolveIdentifiersForEmail,
-  resolveOwnerApiToken,
   getPnIdentifier,
   disconnectTimestampRef,
   disconnectBlockDurationMs,
@@ -140,6 +139,12 @@ export function useDriveCredentialHydration({
                   }
                 : resolveIdentifiersForEmail(email);
             try {
+              const expiresAt =
+                typeof account.expires_at === 'number' && Number.isFinite(account.expires_at)
+                  ? account.expires_at
+                  : typeof account.expires_in === 'number' && account.expires_in > 0
+                    ? Date.now() + account.expires_in * 1000
+                    : undefined;
               const backend = await upsertDriveAccount({
                 backendId: identifiers.backendId,
                 keyPrefix: identifiers.keyPrefix,
@@ -147,7 +152,8 @@ export function useDriveCredentialHydration({
                 refreshToken: account.refreshToken || account.refresh_token,
                 email,
                 connectedAt: account.connectedAt,
-                updatedAt: account.updatedAt
+                updatedAt: account.updatedAt,
+                expiresAt
               });
               if (backend && typeof (backend as GoogleDriveBackend).ensureAccessToken === 'function') {
                 await (backend as GoogleDriveBackend).ensureAccessToken();
@@ -162,19 +168,8 @@ export function useDriveCredentialHydration({
         console.warn('⚠️ [StorageCredentials] Sealed/session hydrate failed:', e);
       }
 
-      // Layout-only probe (no Google secrets from API).
-      if (apiToken && pnId) {
-        try {
-          const hydrationToken = resolveOwnerApiToken(pnId) || apiToken;
-          await ownerGet(
-            hydrationToken,
-            `/api/storage/accounts/${encodeURIComponent(pnId)}`,
-            { pnIdentifier: pnId }
-          );
-        } catch {
-          /* non-fatal */
-        }
-      }
+      // Layout accounts are loaded by registerPortableCloudBackends / MultiCloud —
+      // skip a redundant GET here (hydrate was a major /storage/accounts storm source).
 
       if (hydrated) {
         hydrationSuccessRef.current = pnId;
@@ -200,7 +195,6 @@ export function useDriveCredentialHydration({
     },
     [
       authenticatedUser?.id,
-      apiToken,
       disconnectTimestampRef,
       disconnectBlockDurationMs,
       getPnIdentifier,
@@ -208,15 +202,18 @@ export function useDriveCredentialHydration({
       loadStorageQuotaRef,
       pnIdentifierRef,
       resolveIdentifiersForEmail,
-      resolveOwnerApiToken,
       upsertDriveAccount
     ]
   );
 
+  const hydrateStorageCredentialsFromAPIRef = React.useRef(hydrateStorageCredentialsFromAPI);
+  hydrateStorageCredentialsFromAPIRef.current = hydrateStorageCredentialsFromAPI;
+
   React.useEffect(() => {
     if (!apiToken || !authenticatedUser?.id) return;
-    void hydrateStorageCredentialsFromAPI(true);
-  }, [apiToken, authenticatedUser?.id, hydrateStorageCredentialsFromAPI]);
+    // Do not force-refresh on every callback identity change — that re-upserts and storms.
+    void hydrateStorageCredentialsFromAPIRef.current(false);
+  }, [apiToken, authenticatedUser?.id]);
 
   // 401 recovery: rehydrate from sealed/session, never from API secrets.
   React.useEffect(() => {
@@ -234,6 +231,7 @@ export function useDriveCredentialHydration({
               refreshToken?: string;
               email?: string;
               sessionId?: string;
+              expiresAt?: number;
             }) => Promise<void>;
           } | null;
           if (backend && credential.accessToken) {
@@ -245,7 +243,11 @@ export function useDriveCredentialHydration({
               token: credential.accessToken,
               refreshToken: credential.refreshToken ?? undefined,
               email: credential.email ?? undefined,
-              sessionId
+              sessionId,
+              expiresAt:
+                typeof credential.expiresAt === 'number' && Number.isFinite(credential.expiresAt)
+                  ? credential.expiresAt
+                  : undefined
             });
             return true;
           }

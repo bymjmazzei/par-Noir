@@ -442,6 +442,11 @@ export function useDriveStorageCredentials({
 
   // CRITICAL: Lock to prevent multiple simultaneous upserts for the same email
   const upsertLocksRef = React.useRef<Map<string, Promise<GoogleDriveBackend | null>>>(new Map());
+  // Keep upsert identity stable — reading accounts/emails from refs avoids hydrate↔upsert churn.
+  const driveAccountsRef = React.useRef(driveAccounts);
+  driveAccountsRef.current = driveAccounts;
+  const userEmailsRef = React.useRef(userEmails);
+  userEmailsRef.current = userEmails;
 
   const upsertDriveAccount = React.useCallback(async (
     params: {
@@ -452,6 +457,7 @@ export function useDriveStorageCredentials({
       email?: string | null;
       connectedAt?: string;
       updatedAt?: string;
+      expiresAt?: number | null;
     }
   ): Promise<GoogleDriveBackend | null> => {
     if (!aggregatorService) {
@@ -487,8 +493,8 @@ export function useDriveStorageCredentials({
       }
 
       // Also check driveAccounts state
-      for (const account of driveAccounts) {
-        const accountEmail = userEmails.get(account.backendId);
+      for (const account of driveAccountsRef.current) {
+        const accountEmail = userEmailsRef.current.get(account.backendId);
         if (accountEmail?.toLowerCase() === normalizedEmail && account.backendId !== params.backendId) {
           console.log(`🔄 [upsertDriveAccount] Found existing account in state for [REDACTED], using existing backendId: ${(account.backendId || '').substring(0, 8)}... instead of ${(params.backendId || '').substring(0, 8)}...`);
           params.backendId = account.backendId;
@@ -562,11 +568,13 @@ export function useDriveStorageCredentials({
           refreshToken: params.refreshToken || undefined,
           email: params.email || undefined,
           sessionId,
+          expiresAt: params.expiresAt ?? undefined,
         });
 
         const resolvedEmail = params.email || backend.getEmail() || null;
 
         setConnectedBackends((prev) => {
+          if (prev.has(params.backendId)) return prev;
           const next = new Set(prev);
           next.add(params.backendId);
           return next;
@@ -574,6 +582,10 @@ export function useDriveStorageCredentials({
 
         const existingCredential = driveCredentialCacheRef.current.get(params.backendId);
         const nowIso = new Date().toISOString();
+        const resolvedExpiresAt =
+          typeof params.expiresAt === 'number' && Number.isFinite(params.expiresAt)
+            ? params.expiresAt
+            : existingCredential?.expiresAt ?? null;
 
         driveCredentialCacheRef.current.set(params.backendId, {
           backendId: params.backendId,
@@ -582,7 +594,8 @@ export function useDriveStorageCredentials({
           refreshToken: params.refreshToken ?? existingCredential?.refreshToken ?? null,
           email: resolvedEmail ?? existingCredential?.email ?? null,
           connectedAt: params.connectedAt || existingCredential?.connectedAt || nowIso,
-          updatedAt: params.updatedAt || nowIso
+          updatedAt: params.updatedAt || nowIso,
+          expiresAt: resolvedExpiresAt,
         });
 
         // CRITICAL: Clean up duplicate cache entries immediately
@@ -594,9 +607,9 @@ export function useDriveStorageCredentials({
         const staleBackends: string[] = [];
 
         if (normalizedEmailForCleanup) {
-          for (const account of driveAccounts) {
+          for (const account of driveAccountsRef.current) {
             // SECURITY: email removed from DriveAccountState - use userEmails map instead
-            const accountEmail = userEmails.get(account.backendId);
+            const accountEmail = userEmailsRef.current.get(account.backendId);
             if (account.backendId === params.backendId) continue;
             // One Drive account per pN: drop same-email duplicates and unlabeled "Drive N" placeholders
             if (
@@ -614,6 +627,9 @@ export function useDriveStorageCredentials({
           if (!resolvedEmail) {
             return prev;
           }
+          if (prev.get(params.backendId) === resolvedEmail) {
+            return prev;
+          }
           const next = new Map(prev);
           next.set(params.backendId, resolvedEmail);
           return next;
@@ -624,6 +640,16 @@ export function useDriveStorageCredentials({
             (account) =>
               account.backendId !== params.backendId && !staleBackends.includes(account.backendId)
           );
+          const existing = prev.find((account) => account.backendId === params.backendId);
+          if (
+            existing &&
+            existing.keyPrefix === params.keyPrefix &&
+            filtered.length === prev.length - (staleBackends.length > 0 ? staleBackends.length : 0) &&
+            staleBackends.length === 0
+          ) {
+            // Already registered with same prefix — skip persist/re-render.
+            return prev;
+          }
 
           // SECURITY: Do NOT store email in DriveAccountState - it's sensitive data
           // Email is stored in userEmails Map and encrypted storage only
@@ -639,7 +665,7 @@ export function useDriveStorageCredentials({
           return next;
         });
 
-        setActiveBackendId(params.backendId);
+        setActiveBackendId((prev) => (prev === params.backendId ? prev : params.backendId));
 
         return backend;
       } catch (error) {
@@ -659,7 +685,7 @@ export function useDriveStorageCredentials({
     }
 
     return upsertPromise;
-  }, [aggregatorService, activeBackendId, API_ENDPOINT, driveAccounts, userEmails, resolveOwnerApiToken]);
+  }, [aggregatorService, API_ENDPOINT, resolveOwnerApiToken]);
 
   const { hydrateStorageCredentialsFromAPI } = useDriveCredentialHydration({
     authenticatedUser,
@@ -671,7 +697,6 @@ export function useDriveStorageCredentials({
     resolveIdentifiersForEmail,
     upsertDriveAccount,
     persistStorageCredentialsToAPI,
-    resolveOwnerApiToken,
     getPasscodeFromSecureStorage,
     getPnIdentifier,
     getStorageIdentityCandidates,

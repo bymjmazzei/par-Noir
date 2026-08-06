@@ -48,6 +48,8 @@ export type StoredDriveCredential = {
   email?: string | null;
   connectedAt?: string;
   updatedAt?: string;
+  /** Epoch ms when the access token expires (optional). */
+  expiresAt?: number | null;
 };
 
 export interface FileStorageAggregatorProps {

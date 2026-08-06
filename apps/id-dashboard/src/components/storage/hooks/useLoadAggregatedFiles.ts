@@ -418,6 +418,19 @@ export function useLoadAggregatedFiles({
       // If files are currently loading, defer quota load to avoid extra pressure
       return;
     }
+    if (driveLayoutInitInFlightRef.current.size > 0 || driveSetupProgressRef.current) {
+      // Same gate as loadFiles — avoid Drive about/user-info spam during initialize.
+      window.setTimeout(() => {
+        if (
+          driveLayoutInitInFlightRef.current.size === 0 &&
+          !driveSetupProgressRef.current &&
+          loadStorageQuotaRef.current
+        ) {
+          void loadStorageQuotaRef.current();
+        }
+      }, 500);
+      return;
+    }
     try {
       // Ensure backends are initialized (gracefully fail if Google Drive not connected)
       await aggregatorService.ensureInitialized();
@@ -433,12 +446,24 @@ export function useLoadAggregatedFiles({
           emails.set(backendId, info.email);
         }
       });
-      setUserEmails(emails);
+      setUserEmails((prev) => {
+        if (prev.size === emails.size) {
+          let same = true;
+          for (const [k, v] of emails) {
+            if (prev.get(k) !== v) {
+              same = false;
+              break;
+            }
+          }
+          if (same) return prev;
+        }
+        return emails;
+      });
     } catch (err) {
       // Don't log as error - this is expected if Google Drive isn't connected
       console.warn('⚠️ Could not load storage quota (Google Drive may not be connected):', err);
     }
-  }, [aggregatorService]);
+  }, [aggregatorService, driveLayoutInitInFlightRef, driveSetupProgressRef, loadStorageQuotaRef]);
 
   React.useEffect(() => {
     loadFilesRef.current = loadFiles;

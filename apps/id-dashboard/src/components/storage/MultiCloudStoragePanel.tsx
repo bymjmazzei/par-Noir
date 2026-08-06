@@ -1,7 +1,7 @@
 /**
  * Multi-cloud storage connect UI (Dropbox, S3, Azure, OneDrive, FTP).
  */
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Cloud, ExternalLink, Loader2 } from 'lucide-react';
 import { PN_CLOUD_CREDENTIALS_READY_EVENT } from '@par-noir/oauth-ui';
 import { ownerFetch, ownerGet } from '../../services/ownerApiService';
@@ -98,39 +98,71 @@ export function MultiCloudStoragePanel({
     passiveMode: true
   });
 
+  const refreshAccountsInFlightRef = useRef<Promise<void> | null>(null);
+  const lastAccountsSnapshotRef = useRef<string>('');
+
   const refreshAccounts = useCallback(async () => {
     if (!pnIdentifier || !authToken) return;
-    const res = await ownerGet(authToken, `/api/storage/accounts/${encodeURIComponent(pnIdentifier)}`, {
-      pnIdentifier
-    });
-    if (!res.ok) return;
-    const data = (await res.json()) as {
-      accounts?: StorageAccount[];
-      socialCloudProvider?: string;
-      primaryProvider?: string;
-    };
-    const nextAccounts = data.accounts ?? [];
-    const nextSocial = data.socialCloudProvider ?? data.primaryProvider ?? null;
-    setAccounts(nextAccounts);
-    setSocialCloudProvider(nextSocial);
-    onLayoutChange?.({
-      linked: nextAccounts.length > 0 || !!nextSocial,
-      socialCloudProvider: nextSocial,
-      accountCount: nextAccounts.length
-    });
+    if (refreshAccountsInFlightRef.current) {
+      await refreshAccountsInFlightRef.current;
+      return;
+    }
+    const run = (async () => {
+      try {
+        const res = await ownerGet(authToken, `/api/storage/accounts/${encodeURIComponent(pnIdentifier)}`, {
+          pnIdentifier
+        });
+        if (!res.ok) return;
+        const data = (await res.json()) as {
+          accounts?: StorageAccount[];
+          socialCloudProvider?: string;
+          primaryProvider?: string;
+        };
+        const nextAccounts = data.accounts ?? [];
+        const nextSocial = data.socialCloudProvider ?? data.primaryProvider ?? null;
+        const snapshot = JSON.stringify({
+          social: nextSocial,
+          accounts: nextAccounts.map((a) => [a.provider, a.accountId, a.displayName ?? ''])
+        });
+        if (snapshot === lastAccountsSnapshotRef.current) return;
+        lastAccountsSnapshotRef.current = snapshot;
+        setAccounts(nextAccounts);
+        setSocialCloudProvider(nextSocial);
+        onLayoutChange?.({
+          linked: nextAccounts.length > 0 || !!nextSocial,
+          socialCloudProvider: nextSocial,
+          accountCount: nextAccounts.length
+        });
+      } finally {
+        refreshAccountsInFlightRef.current = null;
+      }
+    })();
+    refreshAccountsInFlightRef.current = run;
+    await run;
   }, [pnIdentifier, authToken, onLayoutChange]);
+
+  const refreshAccountsRef = useRef(refreshAccounts);
+  refreshAccountsRef.current = refreshAccounts;
 
   useEffect(() => {
     void refreshAccounts();
   }, [refreshAccounts]);
 
   useEffect(() => {
+    let debounceTimer: ReturnType<typeof setTimeout> | null = null;
     const onReady = () => {
-      void refreshAccounts();
+      if (debounceTimer != null) clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(() => {
+        debounceTimer = null;
+        void refreshAccountsRef.current();
+      }, 250);
     };
     window.addEventListener(PN_CLOUD_CREDENTIALS_READY_EVENT, onReady);
-    return () => window.removeEventListener(PN_CLOUD_CREDENTIALS_READY_EVENT, onReady);
-  }, [refreshAccounts]);
+    return () => {
+      window.removeEventListener(PN_CLOUD_CREDENTIALS_READY_EVENT, onReady);
+      if (debounceTimer != null) clearTimeout(debounceTimer);
+    };
+  }, []);
 
   const disconnectAccount = async (provider: string, accountId: string) => {
     if (!pnIdentifier || !authToken) return;

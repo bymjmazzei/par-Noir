@@ -218,39 +218,63 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
     }
   }, []);
 
+  const registerPortableCloudInFlightRef = React.useRef<Promise<void> | null>(null);
+  const lastPortableAccountsKeyRef = React.useRef<string>('');
+
   const registerPortableCloudBackends = React.useCallback(async () => {
     const ownerToken = resolveOwnerApiToken();
     if (!cloudPnIdentifier || !ownerToken || !aggregatorService) return;
-    try {
-      const res = await ownerGet(
-        ownerToken,
-        `/api/storage/accounts/${encodeURIComponent(cloudPnIdentifier)}`,
-        { pnIdentifier: cloudPnIdentifier }
-      );
-      if (!res.ok) return;
-      const data = (await res.json()) as {
-        accounts?: Array<{ provider: string; accountId: string; displayName?: string; isSocialCloud?: boolean }>;
-      };
-      const portable = (data.accounts ?? []).filter((a) => a.provider !== 'google_drive');
-      setPortableCloudAccounts(portable);
-      const { PortableBlobBackend } = await import('../../services/storage/PortableBlobBackend');
-      for (const acct of portable) {
-        const backendId = `${acct.provider}::${acct.accountId}`;
-        aggregatorService.registerBackend(
-          backendId,
-          new PortableBlobBackend(
-            cloudPnIdentifier,
-            ownerToken,
-            acct.provider,
-            acct.accountId
-          )
-        );
-        setConnectedBackends((prev) => new Set(prev).add(backendId));
-      }
-    } catch {
-      /* non-fatal */
+    if (registerPortableCloudInFlightRef.current) {
+      await registerPortableCloudInFlightRef.current;
+      return;
     }
-  }, [cloudPnIdentifier, apiToken, resolveOwnerApiToken, aggregatorService]);
+    const run = (async () => {
+      try {
+        const res = await ownerGet(
+          ownerToken,
+          `/api/storage/accounts/${encodeURIComponent(cloudPnIdentifier)}`,
+          { pnIdentifier: cloudPnIdentifier }
+        );
+        if (!res.ok) return;
+        const data = (await res.json()) as {
+          accounts?: Array<{ provider: string; accountId: string; displayName?: string; isSocialCloud?: boolean }>;
+        };
+        const portable = (data.accounts ?? []).filter((a) => a.provider !== 'google_drive');
+        const nextKey = JSON.stringify(
+          portable.map((a) => [a.provider, a.accountId, a.displayName ?? '', a.isSocialCloud ? 1 : 0])
+        );
+        if (nextKey !== lastPortableAccountsKeyRef.current) {
+          lastPortableAccountsKeyRef.current = nextKey;
+          setPortableCloudAccounts(portable);
+        }
+        const { PortableBlobBackend } = await import('../../services/storage/PortableBlobBackend');
+        for (const acct of portable) {
+          const backendId = `${acct.provider}::${acct.accountId}`;
+          aggregatorService.registerBackend(
+            backendId,
+            new PortableBlobBackend(
+              cloudPnIdentifier,
+              ownerToken,
+              acct.provider,
+              acct.accountId
+            )
+          );
+          setConnectedBackends((prev) => {
+            if (prev.has(backendId)) return prev;
+            const next = new Set(prev);
+            next.add(backendId);
+            return next;
+          });
+        }
+      } catch {
+        /* non-fatal */
+      } finally {
+        registerPortableCloudInFlightRef.current = null;
+      }
+    })();
+    registerPortableCloudInFlightRef.current = run;
+    await run;
+  }, [cloudPnIdentifier, resolveOwnerApiToken, aggregatorService]);
 
   React.useEffect(() => {
     void registerPortableCloudBackends();
@@ -353,6 +377,11 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
     isKeyedSession,
   });
 
+  const hydrateStorageCredentialsFromAPIRef = React.useRef(hydrateStorageCredentialsFromAPI);
+  hydrateStorageCredentialsFromAPIRef.current = hydrateStorageCredentialsFromAPI;
+  const registerPortableCloudBackendsRef = React.useRef(registerPortableCloudBackends);
+  registerPortableCloudBackendsRef.current = registerPortableCloudBackends;
+
   React.useEffect(() => {
     let debounceTimer: ReturnType<typeof setTimeout> | null = null;
     const onReady = () => {
@@ -360,8 +389,8 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
       if (debounceTimer != null) clearTimeout(debounceTimer);
       debounceTimer = setTimeout(() => {
         debounceTimer = null;
-        void hydrateStorageCredentialsFromAPI(true);
-        void registerPortableCloudBackends();
+        void hydrateStorageCredentialsFromAPIRef.current(true);
+        void registerPortableCloudBackendsRef.current();
       }, 250);
     };
     window.addEventListener(PN_CLOUD_CREDENTIALS_READY_EVENT, onReady);
@@ -369,7 +398,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
       window.removeEventListener(PN_CLOUD_CREDENTIALS_READY_EVENT, onReady);
       if (debounceTimer != null) clearTimeout(debounceTimer);
     };
-  }, [hydrateStorageCredentialsFromAPI, registerPortableCloudBackends]);
+  }, []);
 
   function getDriveAccountByBackendId(backendId: string | null | undefined) {
       if (!backendId) {
