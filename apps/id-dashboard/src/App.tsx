@@ -1369,6 +1369,8 @@ function App() {
           handleRequestDataPoint={toolPrivacyHandlers.handleRequestDataPoint}
           handleToggleToolDataPoint={toolPrivacyHandlers.handleToggleToolDataPoint}
           handleOpenToolSettings={toolPrivacyHandlers.handleOpenToolSettings}
+          handleDeactivateTool={toolPrivacyHandlers.handleDeactivateTool}
+          handleToggleGlobalDataPoint={toolPrivacyHandlers.handleToggleGlobalDataPoint}
           bumpRecoveryAuthUi={bumpRecoveryAuthUi}
           refreshRecoveryVault={refreshRecoveryVault}
           handleRemoveCustodian={handleRemoveCustodian}

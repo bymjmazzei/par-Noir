@@ -1,235 +1,112 @@
-import React, { useState, useEffect } from 'react';
+import React, { useMemo } from 'react';
+import { STANDARD_DATA_POINTS } from '@par-noir/standard-data-points';
 import { GlobalPrivacySettings } from '../../types/privacy';
 import { SectionInfo } from '../common/SectionInfo';
 
-interface AdvancedPrivacySettingsBodyProps {
+interface GlobalPrivacySettingsBodyProps {
   settings: GlobalPrivacySettings;
-  onSettingsChange: (settings: GlobalPrivacySettings) => void;
+  attestedDataPoints: Set<string>;
+  verifiedDataPoints: Set<string>;
+  onToggleShareWithThirdParties: (dataPointId: string, allowed: boolean) => void;
 }
 
-/** Inline advanced privacy controls (no modal chrome). */
-export const AdvancedPrivacySettingsBody: React.FC<AdvancedPrivacySettingsBodyProps> = ({
+type Row = {
+  id: string;
+  name: string;
+  status: 'verified' | 'attested';
+  allowed: boolean;
+};
+
+/**
+ * Global Settings: attested/verified data points with a checkbox to disable
+ * sharing that point with all third parties.
+ */
+export const GlobalPrivacySettingsBody: React.FC<GlobalPrivacySettingsBodyProps> = ({
   settings,
-  onSettingsChange
+  attestedDataPoints,
+  verifiedDataPoints,
+  onToggleShareWithThirdParties
 }) => {
-  const [localSettings, setLocalSettings] = useState<GlobalPrivacySettings>(settings);
+  const rows = useMemo((): Row[] => {
+    const ids = new Set<string>([...attestedDataPoints, ...verifiedDataPoints]);
+    const list: Row[] = [];
+    for (const id of ids) {
+      const dp = STANDARD_DATA_POINTS[id];
+      if (!dp) continue;
+      // Never expose identity secrets in this table
+      if (id === 'pn_file' || id === 'pn_name' || id === 'passcode') continue;
+      const verified = verifiedDataPoints.has(id);
+      const allowed = settings.dataPoints[id]?.globalSetting ?? true;
+      list.push({
+        id,
+        name: dp.name,
+        status: verified ? 'verified' : 'attested',
+        allowed
+      });
+    }
+    list.sort((a, b) => a.name.localeCompare(b.name));
+    return list;
+  }, [attestedDataPoints, verifiedDataPoints, settings.dataPoints]);
 
-  useEffect(() => {
-    setLocalSettings(settings);
-  }, [settings]);
-
-  const groupedDataPoints = Object.entries(localSettings.dataPoints).reduce(
-    (acc, [key, dataPoint]) => {
-      const cat = dataPoint.category;
-      if (!acc[cat]) {
-        acc[cat] = [];
-      }
-      acc[cat].push({ key, ...dataPoint });
-      return acc;
-    },
-    {} as Record<string, Array<{ key: string } & (typeof localSettings.dataPoints)[string]>>
-  );
-
-  const handleGlobalSettingChange = (key: keyof GlobalPrivacySettings, value: any) => {
-    const newSettings = { ...localSettings, [key]: value };
-    setLocalSettings(newSettings);
-    onSettingsChange(newSettings);
-  };
-
-  const handleDataPointChange = (dataPointKey: string, value: boolean) => {
-    const newSettings = {
-      ...localSettings,
-      dataPoints: {
-        ...localSettings.dataPoints,
-        [dataPointKey]: {
-          ...localSettings.dataPoints[dataPointKey],
-          globalSetting: value
-        }
-      }
-    };
-    setLocalSettings(newSettings);
-    onSettingsChange(newSettings);
-  };
-
-  const handleToolPermissionChange = (toolId: string, dataPointKey: string, value: boolean) => {
-    const tool = localSettings.toolPermissions[toolId];
-    if (!tool) return;
-    const newDataPoints = value
-      ? [...tool.dataPoints, dataPointKey]
-      : tool.dataPoints.filter((dp: string) => dp !== dataPointKey);
-
-    const newSettings = {
-      ...localSettings,
-      toolPermissions: {
-        ...localSettings.toolPermissions,
-        [toolId]: {
-          ...tool,
-          dataPoints: newDataPoints
-        }
-      }
-    };
-    setLocalSettings(newSettings);
-    onSettingsChange(newSettings);
-  };
-
-  const handleRevokeTool = (toolId: string) => {
-    const newSettings = {
-      ...localSettings,
-      toolPermissions: {
-        ...localSettings.toolPermissions,
-        [toolId]: {
-          ...localSettings.toolPermissions[toolId],
-          status: 'revoked' as const
-        }
-      }
-    };
-    setLocalSettings(newSettings);
-    onSettingsChange(newSettings);
-  };
+  if (rows.length === 0) {
+    return (
+      <p className="text-sm text-text-secondary py-2">
+        No attested or verified data points yet. Add proofs under Identity or Documents above.
+      </p>
+    );
+  }
 
   return (
-    <div className="space-y-8 text-text-primary">
-      <div className="border border-border rounded-lg p-4">
-        <div className="flex items-center gap-2 mb-3">
-          <h3 className="text-lg font-medium text-text-primary">Global Settings</h3>
-          <SectionInfo title="Global Settings">
-            <p>These settings override all tool-specific permissions</p>
-          </SectionInfo>
-        </div>
-        <div className="space-y-3">
-          <label className="flex items-center justify-between">
-            <div>
-              <div className="font-medium">Allow Analytics</div>
-              <div className="text-sm text-text-secondary">Share usage analytics</div>
-            </div>
-            <input
-              type="checkbox"
-              checked={localSettings.allowAnalytics}
-              onChange={(e) => handleGlobalSettingChange('allowAnalytics', e.target.checked)}
-              className="ml-4"
-            />
-          </label>
-          <label className="flex items-center justify-between">
-            <div>
-              <div className="font-medium">Allow Marketing</div>
-              <div className="text-sm text-text-secondary">Allow marketing communications</div>
-            </div>
-            <input
-              type="checkbox"
-              checked={localSettings.allowMarketing}
-              onChange={(e) => handleGlobalSettingChange('allowMarketing', e.target.checked)}
-              className="ml-4"
-            />
-          </label>
-          <label className="flex items-center justify-between">
-            <div>
-              <div className="font-medium">Allow Third-Party Sharing</div>
-              <div className="text-sm text-text-secondary">Share data with external services</div>
-            </div>
-            <input
-              type="checkbox"
-              checked={localSettings.allowThirdPartySharing}
-              onChange={(e) => handleGlobalSettingChange('allowThirdPartySharing', e.target.checked)}
-              className="ml-4"
-            />
-          </label>
-        </div>
+    <div className="space-y-3 text-text-primary">
+      <div className="flex items-center gap-2">
+        <SectionInfo title="Share with third parties">
+          <p>
+            Uncheck a data point to disable it for every connected third party. Per-app grants cannot
+            override a disabled global setting.
+          </p>
+        </SectionInfo>
       </div>
-
-      {Object.keys(groupedDataPoints).length > 0 && (
-        <div>
-          <div className="flex items-center gap-2 mb-4">
-            <h3 className="text-lg font-medium">Data Access Control</h3>
-            <SectionInfo title="Data Access Control">
-              <p>Control access to specific data points. Global settings override individual tool permissions.</p>
-            </SectionInfo>
-          </div>
-          {Object.entries(groupedDataPoints).map(([category, dataPoints]) => (
-            <div key={category} className="mb-6">
-              <h4 className="font-medium text-text-primary mb-3 capitalize">{category} Data</h4>
-              <div className="space-y-3">
-                {dataPoints.map(({ key, label, description, globalSetting, requestedBy }) => (
-                  <div key={key} className="border border-border rounded-lg p-3">
-                    <div className="flex items-center justify-between mb-2">
-                      <div>
-                        <div className="font-medium">{label}</div>
-                        <div className="text-sm text-text-secondary">{description}</div>
-                        <div className="text-xs text-text-secondary mt-1">
-                          Requested by: {requestedBy.join(', ')}
-                        </div>
-                      </div>
-                      <input
-                        type="checkbox"
-                        checked={globalSetting}
-                        onChange={(e) => handleDataPointChange(key, e.target.checked)}
-                        className="ml-4"
-                      />
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {Object.keys(localSettings.toolPermissions).length > 0 && (
-        <div>
-          <div className="flex items-center gap-2 mb-4">
-            <h3 className="text-lg font-medium">Tool Permissions</h3>
-            <SectionInfo title="Tool Permissions">
-              <p>Manage permissions for individual tools</p>
-            </SectionInfo>
-          </div>
-          <div className="space-y-4">
-            {Object.entries(localSettings.toolPermissions).map(([toolId, tool]) => (
-              <div key={toolId} className="border border-border rounded-lg p-4">
-                <div className="flex items-center justify-between mb-3">
-                  <div>
-                    <div className="font-medium">{tool.toolName}</div>
-                    <div className="text-sm text-text-secondary">{tool.toolDescription}</div>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => handleRevokeTool(toolId)}
-                    className="text-red-600 text-sm hover:text-red-800"
+      <div className="overflow-x-auto border border-border rounded-lg">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="border-b border-border bg-modal-bg/60 text-left text-text-secondary">
+              <th className="px-3 py-2 font-medium">Data point</th>
+              <th className="px-3 py-2 font-medium">Status</th>
+              <th className="px-3 py-2 font-medium text-right">Share with third parties</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((row) => (
+              <tr key={row.id} className="border-b border-border last:border-0">
+                <td className="px-3 py-2.5 font-medium text-text-primary">{row.name}</td>
+                <td className="px-3 py-2.5">
+                  <span
+                    className={
+                      row.status === 'verified'
+                        ? 'text-xs text-amber-400'
+                        : 'text-xs text-green-400'
+                    }
                   >
-                    Revoke Access
-                  </button>
-                </div>
-                {tool.dataPoints.length > 0 && (
-                  <div className="space-y-2">
-                    <div className="text-sm font-medium text-text-primary">Data Access:</div>
-                    {tool.dataPoints.map((dataPointKey: string) => {
-                      const dataPoint = localSettings.dataPoints[dataPointKey];
-                      return (
-                        <div key={dataPointKey} className="flex items-center justify-between text-sm">
-                          <span className="text-text-secondary">{dataPoint?.label || dataPointKey}</span>
-                          <input
-                            type="checkbox"
-                            checked={tool.dataPoints.includes(dataPointKey)}
-                            onChange={(e) =>
-                              handleToolPermissionChange(toolId, dataPointKey, e.target.checked)
-                            }
-                            className="ml-2"
-                          />
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
+                    {row.status === 'verified' ? 'Verified' : 'Attested'}
+                  </span>
+                </td>
+                <td className="px-3 py-2.5 text-right">
+                  <input
+                    type="checkbox"
+                    checked={row.allowed}
+                    onChange={(e) => onToggleShareWithThirdParties(row.id, e.target.checked)}
+                    aria-label={`Share ${row.name} with third parties`}
+                    className="h-4 w-4"
+                  />
+                </td>
+              </tr>
             ))}
-          </div>
-        </div>
-      )}
-
-      {Object.keys(localSettings.dataPoints).length === 0 &&
-        Object.keys(localSettings.toolPermissions).length === 0 && (
-          <div className="text-center py-4 text-text-secondary text-sm">
-            <p>No extra data-access or tool revoke settings yet</p>
-          </div>
-        )}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 };
+
+/** @deprecated use GlobalPrivacySettingsBody */
+export const AdvancedPrivacySettingsBody = GlobalPrivacySettingsBody;

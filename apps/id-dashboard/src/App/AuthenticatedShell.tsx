@@ -81,6 +81,8 @@ export interface AuthenticatedShellProps {
   handleRequestDataPoint: any;
   handleToggleToolDataPoint: any;
   handleOpenToolSettings: any;
+  handleDeactivateTool: any;
+  handleToggleGlobalDataPoint: any;
   bumpRecoveryAuthUi: any;
   refreshRecoveryVault: any;
   handleRemoveCustodian: any;
@@ -166,6 +168,8 @@ export function AuthenticatedShell(props: AuthenticatedShellProps) {
     handleRequestDataPoint,
     handleToggleToolDataPoint,
     handleOpenToolSettings,
+    handleDeactivateTool,
+    handleToggleGlobalDataPoint,
     bumpRecoveryAuthUi,
     refreshRecoveryVault,
     handleRemoveCustodian,
@@ -491,7 +495,9 @@ export function AuthenticatedShell(props: AuthenticatedShellProps) {
                           
                           {thirdPartyExpanded && (
                             <div className="px-6 pb-6">
-                              {Object.keys(privacySettings.toolPermissions).length === 0 ? (
+                              {Object.entries(privacySettings.toolPermissions).filter(
+                                ([, tool]: [string, any]) => tool?.status !== 'revoked'
+                              ).length === 0 ? (
                                 <div className="text-center py-8 text-text-secondary">
                                   <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
                                     <Smartphone className="w-8 h-8 text-gray-400" />
@@ -501,19 +507,33 @@ export function AuthenticatedShell(props: AuthenticatedShellProps) {
                                 </div>
                               ) : (
                                 <div className="space-y-4">
-                                  {Object.entries(privacySettings.toolPermissions).map(([toolId, tool]: [string, any]) => {
+                                  {Object.entries(privacySettings.toolPermissions)
+                                    .filter(([, tool]: [string, any]) => tool?.status !== 'revoked')
+                                    .map(([toolId, tool]: [string, any]) => {
                                     const hasAgeZKP = verifiedDataPoints.has('age_attestation') || attestedDataPoints.has('age_attestation') || verifiedDataPoints.has('over_18');
                                     const ageShared = tool.dataPoints?.includes('age_attestation') || tool.dataPoints?.includes('over_18') || false;
                                     const ageAvailable = tool.optionalDataPoints?.includes('age_attestation') || tool.optionalDataPoints?.includes('over_18') || false;
+                                    const ageGloballyAllowed =
+                                      privacySettings.dataPoints?.age_attestation?.globalSetting !== false &&
+                                      privacySettings.dataPoints?.over_18?.globalSetting !== false;
                                     
                                     return (
                                       <div key={toolId} className="border border-border rounded-lg p-4">
-                                        <div className="mb-3">
-                                          <h5 className="font-medium text-text-primary">{tool.toolName}</h5>
-                                          <p className="text-xs text-text-secondary">{tool.toolDescription}</p>
+                                        <div className="mb-3 flex items-start justify-between gap-3">
+                                          <div className="min-w-0">
+                                            <h5 className="font-medium text-text-primary">{tool.toolName}</h5>
+                                            <p className="text-xs text-text-secondary">{tool.toolDescription}</p>
+                                          </div>
+                                          <button
+                                            type="button"
+                                            onClick={() => void handleDeactivateTool(toolId)}
+                                            className="shrink-0 px-3 py-1 text-sm text-red-400 border border-red-800/60 rounded hover:bg-red-900/20"
+                                          >
+                                            Revoke
+                                          </button>
                                         </div>
                                         
-                                        {hasAgeZKP && ageAvailable && (
+                                        {hasAgeZKP && ageAvailable && ageGloballyAllowed && (
                                           <div className="flex items-center justify-between pt-3 border-t border-border">
                                             <div className="flex-1">
                                               <p className="text-sm font-medium text-text-primary">Share Age ZKP</p>
@@ -539,6 +559,12 @@ export function AuthenticatedShell(props: AuthenticatedShellProps) {
                                               />
                                             </button>
                                           </div>
+                                        )}
+
+                                        {hasAgeZKP && ageAvailable && !ageGloballyAllowed && (
+                                          <p className="text-xs text-text-secondary pt-3 border-t border-border">
+                                            Age sharing is disabled in Global Settings
+                                          </p>
                                         )}
                                         
                                         {hasAgeZKP && !ageAvailable && (
@@ -569,7 +595,7 @@ export function AuthenticatedShell(props: AuthenticatedShellProps) {
                           )}
                         </div>
 
-                        {/* Advanced settings — bottom accordion */}
+                        {/* Global Settings — attested/verified points + third-party disable */}
                         <div className="bg-secondary rounded-lg">
                           <button
                             type="button"
@@ -578,7 +604,7 @@ export function AuthenticatedShell(props: AuthenticatedShellProps) {
                           >
                             <h4 className="font-medium text-text-primary flex items-center gap-2">
                               <Settings className="w-5 h-5" />
-                              Advanced settings
+                              Global Settings
                             </h4>
                             <ChevronDown className={`w-5 h-5 transition-transform ${globalSettingsExpanded ? 'rotate-180' : ''}`} />
                           </button>
@@ -586,7 +612,11 @@ export function AuthenticatedShell(props: AuthenticatedShellProps) {
                             <div className="px-6 pb-6">
                               <AdvancedPrivacySettingsBody
                                 settings={privacySettings}
-                                onSettingsChange={setPrivacySettings}
+                                attestedDataPoints={attestedDataPoints}
+                                verifiedDataPoints={verifiedDataPoints}
+                                onToggleShareWithThirdParties={(id, allowed) =>
+                                  void handleToggleGlobalDataPoint(id, allowed)
+                                }
                               />
                             </div>
                           )}

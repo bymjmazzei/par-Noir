@@ -6,7 +6,6 @@
 import type React from 'react';
 import { IdentityCrypto, SecureCredentialManager } from '@par-noir/identity-crypto';
 import type { EncryptedIdentity } from '@par-noir/identity-crypto';
-import { cloudSyncManager } from '../utils/cloudSync';
 import { ownerFetch } from '../services/ownerApiService';
 import { requireOwnerApiToken, resolveOwnerApiToken } from '../services/ownerApiToken';
 import { STANDARD_DATA_POINTS, VERIFF_CAPABLE_IDS } from '../types/StandardDataPointsRegistry';
@@ -219,41 +218,117 @@ export function useToolPrivacyHandlers(params: UseToolPrivacyHandlersParams) {
     setPrivacySettings(newSettings);
   };
 
-  const handleDeactivateTool = (toolId: string) => {
+  const handleDeactivateTool = async (toolId: string) => {
+    const tool = privacySettings.toolPermissions[toolId];
+    if (!tool) return;
+
     const newSettings = {
       ...privacySettings,
       toolPermissions: {
         ...privacySettings.toolPermissions,
         [toolId]: {
-          ...privacySettings.toolPermissions[toolId],
-          status: privacySettings.toolPermissions[toolId].status === 'active' ? 'revoked' as const : 'revoked' as const
+          ...tool,
+          status: 'revoked' as const,
+          dataPoints: []
         }
       }
     };
     setPrivacySettings(newSettings);
 
-    // Store privacy settings update in cloud database for cross-platform sync
-    cloudSyncManager.initialize().then(() => {
-      return cloudSyncManager.storeUpdate({
-        type: 'privacy',
-        identityId: authenticatedUser?.id || selectedDID?.id || 'temp-identity',
-        publicKey: authenticatedUser?.publicKey || '',
-        data: {
-          action: 'update',
-          toolId,
-          newSettings
-        },
-        updatedByDeviceId: currentDevice?.id || generateDeviceFingerprint()
+    try {
+      const credentials = SecureCredentialManager.getCredentials(authenticatedUser?.id || '');
+      if (!credentials || !authenticatedUser?.id) {
+        setSuccessWithTimeout('Tool access revoked locally.');
+        return;
+      }
+      const authToken = await resolveOwnerAuthToken();
+      const { VolumeIdGenerator } = await import('@par-noir/identity-crypto');
+      const pnIdentifier = await VolumeIdGenerator.generateVolumeId({
+        pnName: credentials.pnName,
+        passcode: credentials.passcode,
+        publicKey: authenticatedUser.publicKey || ''
       });
-    }).then(() => {
-              logDebug('Privacy settings update stored in cloud database for cross-platform sync');
-    }).catch((error) => {
-                logError('Failed to store privacy settings update in cloud:', error);
-      // Don't fail the entire operation if cloud sync fails
-    });
+      const path = `/api/users/${pnIdentifier}/third-party-permissions`;
+      const response = await ownerFetch(
+        authToken,
+        'PUT',
+        path,
+        {
+          toolId,
+          permission: newSettings.toolPermissions[toolId]
+        },
+        { pnIdentifier }
+      );
+      if (!response.ok) {
+        console.error('Failed to persist tool revoke:', response.status);
+        setError('Revoked locally but failed to save to your cloud. Try again.');
+        return;
+      }
+      setSuccessWithTimeout('Third-party access revoked.');
+    } catch (error) {
+      console.error('Error persisting tool revoke:', error);
+      setError('Revoked locally but failed to save to your cloud. Try again.');
+    }
+  };
 
-    setSuccessWithTimeout('Tool status updated successfully. Changes will sync across platforms.');
-    setTimeout(() => setSuccessWithTimeout(null), 5000);
+  const handleToggleGlobalDataPoint = async (dataPointId: string, allowed: boolean) => {
+    const existing = privacySettings.dataPoints[dataPointId];
+    const catalog = (await import('@par-noir/standard-data-points')).STANDARD_DATA_POINTS[dataPointId];
+    const nextDataPoints = {
+      ...privacySettings.dataPoints,
+      [dataPointId]: {
+        label: existing?.label || catalog?.name || dataPointId,
+        description: existing?.description || catalog?.description || '',
+        category: (existing?.category ||
+          (catalog?.category as GlobalPrivacySettings['dataPoints'][string]['category']) ||
+          'verification') as GlobalPrivacySettings['dataPoints'][string]['category'],
+        requestedBy: existing?.requestedBy || [],
+        globalSetting: allowed,
+        lastUpdated: new Date().toISOString()
+      }
+    };
+
+    const nextToolPermissions = { ...privacySettings.toolPermissions };
+    if (!allowed) {
+      for (const [toolId, tool] of Object.entries(nextToolPermissions)) {
+        nextToolPermissions[toolId] = {
+          ...tool,
+          dataPoints: (tool.dataPoints || []).filter((id) => id !== dataPointId)
+        };
+      }
+    }
+
+    const newSettings: GlobalPrivacySettings = {
+      ...privacySettings,
+      dataPoints: nextDataPoints,
+      toolPermissions: nextToolPermissions
+    };
+    setPrivacySettings(newSettings);
+
+    // Persist each changed tool permission when disabling a point globally
+    if (!allowed) {
+      try {
+        const credentials = SecureCredentialManager.getCredentials(authenticatedUser?.id || '');
+        if (!credentials || !authenticatedUser?.id) return;
+        const authToken = await resolveOwnerAuthToken();
+        const { VolumeIdGenerator } = await import('@par-noir/identity-crypto');
+        const pnIdentifier = await VolumeIdGenerator.generateVolumeId({
+          pnName: credentials.pnName,
+          passcode: credentials.passcode,
+          publicKey: authenticatedUser.publicKey || ''
+        });
+        const path = `/api/users/${pnIdentifier}/third-party-permissions`;
+        await Promise.all(
+          Object.entries(nextToolPermissions).map(([toolId, permission]) =>
+            ownerFetch(authToken, 'PUT', path, { toolId, permission }, { pnIdentifier }).catch(
+              () => undefined
+            )
+          )
+        );
+      } catch (error) {
+        console.error('Error persisting global data-point disable:', error);
+      }
+    }
   };
 
   // Helper function to map data point ID to proof type for ZKP API
@@ -607,6 +682,7 @@ export function useToolPrivacyHandlers(params: UseToolPrivacyHandlersParams) {
     handleToggleToolDataPoint,
     handleSetToolDataPointRequired,
     handleDeactivateTool,
+    handleToggleGlobalDataPoint,
     mapDataPointIdToProofType,
     handleRequestDataPoint,
     handleDataPointInputComplete
