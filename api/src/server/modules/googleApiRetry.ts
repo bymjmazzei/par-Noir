@@ -6,7 +6,46 @@ import type { GoogleDriveToken } from './googleOAuth2Helper';
 
 const RETRYABLE_STATUSES = new Set([429, 500, 502, 503, 504]);
 
-export const INIT_SHEET_STEP_DELAY_MS = 300;
+/** Bounded concurrency for independent metadata/index sheet ensures during Drive init. */
+export const DRIVE_INIT_SHEET_CONCURRENCY = 4;
+
+/**
+ * Map items with a concurrency cap. Preserves result order.
+ * Rejects on first failure and stops starting new work (in-flight may still finish).
+ */
+export async function mapWithConcurrency<T, R>(
+  items: readonly T[],
+  limit: number,
+  fn: (item: T, index: number) => Promise<R>
+): Promise<R[]> {
+  if (items.length === 0) return [];
+  const concurrency = Math.max(1, Math.min(limit, items.length));
+  const results: R[] = new Array(items.length);
+  let nextIndex = 0;
+  let failed = false;
+  let firstError: unknown;
+
+  async function worker(): Promise<void> {
+    while (true) {
+      if (failed) return;
+      const i = nextIndex++;
+      if (i >= items.length) return;
+      try {
+        results[i] = await fn(items[i], i);
+      } catch (err) {
+        if (!failed) {
+          failed = true;
+          firstError = err;
+        }
+        return;
+      }
+    }
+  }
+
+  await Promise.all(Array.from({ length: concurrency }, () => worker()));
+  if (failed) throw firstError;
+  return results;
+}
 
 export function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));

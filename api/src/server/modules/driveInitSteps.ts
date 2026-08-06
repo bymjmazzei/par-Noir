@@ -118,26 +118,28 @@ export async function initializeContentClassIndexFiles(
 ): Promise<void> {
   const cc = folderName as ContentClassName;
 
-  await ensureIndexSheetInFolder(
-    `contentClass:${folderName}:owner`,
-    token,
-    folderId,
-    'owner',
-    pnIdentifier,
-    accountId,
-    cc
-  );
+  const [, publicSheetId] = await Promise.all([
+    ensureIndexSheetInFolder(
+      `contentClass:${folderName}:owner`,
+      token,
+      folderId,
+      'owner',
+      pnIdentifier,
+      accountId,
+      cc
+    ),
+    ensureIndexSheetInFolder(
+      `contentClass:${folderName}:public`,
+      token,
+      folderId,
+      'public',
+      pnIdentifier,
+      accountId,
+      cc
+    ),
+  ]);
   console.log(`[initializeContentClassIndexFiles] Initialized owner index in '${folderName}'`);
 
-  const publicSheetId = await ensureIndexSheetInFolder(
-    `contentClass:${folderName}:public`,
-    token,
-    folderId,
-    'public',
-    pnIdentifier,
-    accountId,
-    cc
-  );
   await setPublicPermissionWithRetry(
     token.access_token,
     publicSheetId,

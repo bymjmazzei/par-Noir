@@ -53,7 +53,7 @@ Transient Google API errors (503, 429, 5xx) during init are handled at three lay
 
 **Dashboard progress:** `driveInitProgress.ts` tracks phase + percent in memory during init. Poll `GET /api/storage/initialize/:identityId/status` for `{ inFlight, progress }`. The dashboard shows a progress bar with the current step label instead of “Loading files…” during setup.
 
-Metadata sheet creation uses a short inter-step delay (`INIT_SHEET_STEP_DELAY_MS`) to reduce Google 503 burst rate limits.
+Metadata and root index sheets are created with **bounded concurrency** (`DRIVE_INIT_SHEET_CONCURRENCY = 4` via `mapWithConcurrency` in `googleApiRetry.ts`). Folder find/create (pN root, `_metadata`, content-class dirs, messages) remains **sequential**. Content-class owner/public index sheets within a folder run in parallel after that folder exists.
 
 ## Runtime resolver
 

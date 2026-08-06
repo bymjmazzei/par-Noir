@@ -15,7 +15,12 @@ import {
   PN_DRIVE_SHEET_KEYS,
   type PnDriveIndex,
 } from './pnDriveIndex';
-import { fetchGoogleDriveWithRetry, INIT_SHEET_STEP_DELAY_MS, sleep, withGoogleRetry } from './googleApiRetry';
+import {
+  DRIVE_INIT_SHEET_CONCURRENCY,
+  fetchGoogleDriveWithRetry,
+  mapWithConcurrency,
+  withGoogleRetry,
+} from './googleApiRetry';
 import { setDriveInitProgress } from './driveInitProgress';
 
 export interface DriveInitHooks {
@@ -88,48 +93,11 @@ async function ensureSheet(
   }
 }
 
-let metadataSheetStep = 0;
-
-async function pauseBetweenMetadataSheets(): Promise<void> {
-  if (metadataSheetStep > 0) {
-    await sleep(INIT_SHEET_STEP_DELAY_MS);
-  }
-  metadataSheetStep += 1;
-}
-
-async function ensureMetadataSheet(
-  label: string,
-  getFn: () => Promise<string>,
-  createFn: () => Promise<string>
-): Promise<string> {
-  await pauseBetweenMetadataSheets();
-  return ensureSheet(label, getFn, createFn);
-}
-
-async function runMetadataSheetStep<T>(label: string, fn: () => Promise<T>): Promise<T> {
-  await pauseBetweenMetadataSheets();
-  return withGoogleRetry(label, fn);
-}
-
-async function ensureIndexSheets(
-  token: GoogleDriveToken,
-  metadataFolderId: string,
-  pnIdentifier: string,
-  accountId: string | undefined
-): Promise<{ publicFileIndex: string; ownerFileIndex: string }> {
-  const { IndexSheetsService } = await import('./indexSheetsService');
-  const publicFileIndex = await ensureSheet(
-    'rootPublicFileIndex',
-    () => IndexSheetsService.getIndexSheet(token, metadataFolderId, 'public', pnIdentifier, accountId),
-    () => IndexSheetsService.createIndexSheet(token, metadataFolderId, 'public', pnIdentifier, accountId)
-  );
-  const ownerFileIndex = await ensureSheet(
-    'rootOwnerFileIndex',
-    () => IndexSheetsService.getIndexSheet(token, metadataFolderId, 'owner', pnIdentifier, accountId),
-    () => IndexSheetsService.createIndexSheet(token, metadataFolderId, 'owner', pnIdentifier, accountId)
-  );
-  return { publicFileIndex, ownerFileIndex };
-}
+type MetadataSheetTask = {
+  key: string;
+  label: string;
+  run: () => Promise<string>;
+};
 
 /**
  * Find/create full Drive layout and all metadata sheets; returns complete PnDriveIndex.
@@ -175,167 +143,263 @@ export async function initializeGoogleDriveIndex(
   setDriveInitProgress(normalized, 'messages', 'Messages folder and inbox ready', 42);
 
   console.log(`[pnDriveInit] Metadata sheets (connections → prism) for ${normalized}`);
-  metadataSheetStep = 0;
-  let metadataPercent = 44;
-  const beginMetadataStep = (label: string) => {
-    console.log(`[pnDriveInit] ${label}`);
-    setDriveInitProgress(normalized, 'metadataSheets', label, metadataPercent);
-  };
-  const completeMetadataStep = (label: string) => {
-    metadataPercent = Math.min(76, metadataPercent + 2);
-    setDriveInitProgress(normalized, 'metadataSheets', `${label} ready`, metadataPercent);
-  };
-  const { ConnectionsSheetsService } = await import('./connectionsSheetsService');
-  beginMetadataStep('Creating connections sheet…');
-  const connections = await ensureMetadataSheet(
-    'connections',
-    () => ConnectionsSheetsService.getConnectionsSheet(token, metadataFolderId, pnIdentifier, accountId),
-    () => ConnectionsSheetsService.createConnectionsSheet(token, metadataFolderId, pnIdentifier, accountId)
-  );
-  completeMetadataStep('Connections sheet');
-  beginMetadataStep('Creating followers sheet…');
-  const followers = await ensureMetadataSheet(
-    'followers',
-    () => ConnectionsSheetsService.getFollowersSheet(token, metadataFolderId, pnIdentifier, accountId),
-    () => ConnectionsSheetsService.createFollowersSheet(token, metadataFolderId, pnIdentifier, accountId)
-  );
-  completeMetadataStep('Followers sheet');
-  beginMetadataStep('Creating following sheet…');
-  const following = await ensureMetadataSheet(
-    'following',
-    () => ConnectionsSheetsService.getFollowingSheet(token, metadataFolderId, pnIdentifier, accountId),
-    () => ConnectionsSheetsService.createFollowingSheet(token, metadataFolderId, pnIdentifier, accountId)
-  );
-  completeMetadataStep('Following sheet');
+  setDriveInitProgress(normalized, 'metadataSheets', 'Creating metadata sheets…', 44);
 
-  const { ThirdPartyPermissionsSheetsService } = await import('./thirdPartyPermissionsSheetsService');
-  beginMetadataStep('Creating third-party permissions sheet…');
-  const thirdPartyPermissions = await ensureMetadataSheet(
-    'thirdPartyPermissions',
-    () =>
-      ThirdPartyPermissionsSheetsService.getThirdPartyPermissionsSheet(
-        token,
-        metadataFolderId,
-        pnIdentifier,
-        accountId
-      ),
-    () =>
-      ThirdPartyPermissionsSheetsService.createThirdPartyPermissionsSheet(
-        token,
-        metadataFolderId,
-        pnIdentifier,
-        accountId
-      )
-  );
-  completeMetadataStep('Third-party permissions sheet');
+  const [
+    { ConnectionsSheetsService },
+    { ThirdPartyPermissionsSheetsService },
+    { DeviceSheetsService },
+    { OwnedAssetsSheetsService },
+    { GroupSheetsService },
+    { NotificationsSheetsService },
+    { ActivityLedgerSheetsService },
+    { MessagingLedgerSheetsService },
+    { MessageRequestSheetsService },
+    { DataPointRequestSheetsService },
+    { ZKPDataPointsSheetsService },
+    { PreferencesSheetsService },
+    { EngagementSheetsService },
+    { PrismLedgerSheetsService },
+    { IndexSheetsService },
+  ] = await Promise.all([
+    import('./connectionsSheetsService'),
+    import('./thirdPartyPermissionsSheetsService'),
+    import('./deviceSheetsService'),
+    import('./ownedAssetsSheetsService'),
+    import('./groupSheetsService'),
+    import('./notificationsSheetsService'),
+    import('./activityLedgerSheetsService'),
+    import('./messagingLedgerSheetsService'),
+    import('./messageRequestSheetsService'),
+    import('./dataPointRequestSheetsService'),
+    import('./zkpDataPointsSheetsService'),
+    import('./preferencesSheetsService'),
+    import('./engagementSheetsService'),
+    import('./prismLedgerSheetsService'),
+    import('./indexSheetsService'),
+  ]);
 
-  const { DeviceSheetsService } = await import('./deviceSheetsService');
-  beginMetadataStep('Creating devices sheet…');
-  const devices = await runMetadataSheetStep('devicesSheet', () =>
-    DeviceSheetsService.getOrCreateSpreadsheet(token, metadataFolderId, pnIdentifier, accountId)
-  );
-  completeMetadataStep('Devices sheet');
+  const metadataSheetTasks: MetadataSheetTask[] = [
+    {
+      key: PN_DRIVE_SHEET_KEYS.CONNECTIONS,
+      label: 'connections',
+      run: () =>
+        ensureSheet(
+          'connections',
+          () => ConnectionsSheetsService.getConnectionsSheet(token, metadataFolderId, pnIdentifier, accountId),
+          () => ConnectionsSheetsService.createConnectionsSheet(token, metadataFolderId, pnIdentifier, accountId)
+        ),
+    },
+    {
+      key: PN_DRIVE_SHEET_KEYS.FOLLOWERS,
+      label: 'followers',
+      run: () =>
+        ensureSheet(
+          'followers',
+          () => ConnectionsSheetsService.getFollowersSheet(token, metadataFolderId, pnIdentifier, accountId),
+          () => ConnectionsSheetsService.createFollowersSheet(token, metadataFolderId, pnIdentifier, accountId)
+        ),
+    },
+    {
+      key: PN_DRIVE_SHEET_KEYS.FOLLOWING,
+      label: 'following',
+      run: () =>
+        ensureSheet(
+          'following',
+          () => ConnectionsSheetsService.getFollowingSheet(token, metadataFolderId, pnIdentifier, accountId),
+          () => ConnectionsSheetsService.createFollowingSheet(token, metadataFolderId, pnIdentifier, accountId)
+        ),
+    },
+    {
+      key: PN_DRIVE_SHEET_KEYS.THIRD_PARTY_PERMISSIONS,
+      label: 'thirdPartyPermissions',
+      run: () =>
+        ensureSheet(
+          'thirdPartyPermissions',
+          () =>
+            ThirdPartyPermissionsSheetsService.getThirdPartyPermissionsSheet(
+              token,
+              metadataFolderId,
+              pnIdentifier,
+              accountId
+            ),
+          () =>
+            ThirdPartyPermissionsSheetsService.createThirdPartyPermissionsSheet(
+              token,
+              metadataFolderId,
+              pnIdentifier,
+              accountId
+            )
+        ),
+    },
+    {
+      key: PN_DRIVE_SHEET_KEYS.DEVICES,
+      label: 'devices',
+      run: () =>
+        withGoogleRetry('devicesSheet', () =>
+          DeviceSheetsService.getOrCreateSpreadsheet(token, metadataFolderId, pnIdentifier, accountId)
+        ),
+    },
+    {
+      key: PN_DRIVE_SHEET_KEYS.OWNED_ASSETS,
+      label: 'ownedAssets',
+      run: () =>
+        withGoogleRetry('ownedAssetsSheet', () =>
+          OwnedAssetsSheetsService.getOrCreateSpreadsheet(token, metadataFolderId, pnIdentifier, accountId)
+        ),
+    },
+    {
+      key: PN_DRIVE_SHEET_KEYS.GROUPS,
+      label: 'groups',
+      run: () =>
+        withGoogleRetry('groupsSheet', () =>
+          GroupSheetsService.getOrCreateGroupsSheet(token, metadataFolderId, pnIdentifier, accountId)
+        ),
+    },
+    {
+      key: PN_DRIVE_SHEET_KEYS.NOTIFICATIONS,
+      label: 'notifications',
+      run: () =>
+        ensureSheet(
+          'notifications',
+          () =>
+            NotificationsSheetsService.getNotificationsSheet(token, metadataFolderId, pnIdentifier, accountId),
+          () =>
+            NotificationsSheetsService.createNotificationsSheet(token, metadataFolderId, pnIdentifier, accountId)
+        ),
+    },
+    {
+      key: PN_DRIVE_SHEET_KEYS.ACTIVITY_LEDGER,
+      label: 'activityLedger',
+      run: () =>
+        ensureSheet(
+          'activityLedger',
+          () =>
+            ActivityLedgerSheetsService.getActivityLedgerSheet(token, metadataFolderId, pnIdentifier, accountId),
+          () =>
+            ActivityLedgerSheetsService.createActivityLedgerSheet(token, metadataFolderId, pnIdentifier, accountId)
+        ),
+    },
+    {
+      key: PN_DRIVE_SHEET_KEYS.MESSAGING_LEDGER,
+      label: 'messagingLedger',
+      run: () =>
+        ensureSheet(
+          'messagingLedger',
+          () =>
+            MessagingLedgerSheetsService.getMessagingLedgerSheet(token, metadataFolderId, pnIdentifier, accountId),
+          () =>
+            MessagingLedgerSheetsService.createMessagingLedgerSheet(
+              token,
+              metadataFolderId,
+              pnIdentifier,
+              accountId
+            )
+        ),
+    },
+    {
+      key: PN_DRIVE_SHEET_KEYS.MESSAGE_REQUESTS,
+      label: 'messageRequests',
+      run: () =>
+        withGoogleRetry('messageRequestsSheet', () =>
+          MessageRequestSheetsService.getOrCreateSpreadsheet(token, metadataFolderId, pnIdentifier, accountId)
+        ),
+    },
+    {
+      key: PN_DRIVE_SHEET_KEYS.DATA_POINT_REQUESTS,
+      label: 'dataPointRequests',
+      run: () =>
+        withGoogleRetry('dataPointRequestsSheet', () =>
+          DataPointRequestSheetsService.getOrCreateSpreadsheet(token, metadataFolderId, pnIdentifier, accountId)
+        ),
+    },
+    {
+      key: PN_DRIVE_SHEET_KEYS.ZKP_DATA_POINTS,
+      label: 'zkpDataPoints',
+      run: () =>
+        ensureSheet(
+          'zkpDataPoints',
+          () => ZKPDataPointsSheetsService.getZKPDataPointsSheet(token, metadataFolderId, pnIdentifier, accountId),
+          () =>
+            ZKPDataPointsSheetsService.createZKPDataPointsSheet(token, metadataFolderId, pnIdentifier, accountId)
+        ),
+    },
+    {
+      key: PN_DRIVE_SHEET_KEYS.PREFERENCES,
+      label: 'preferences',
+      run: () =>
+        ensureSheet(
+          'preferences',
+          () => PreferencesSheetsService.getPreferencesSheet(token, metadataFolderId, pnIdentifier, accountId),
+          () => PreferencesSheetsService.createPreferencesSheet(token, metadataFolderId, pnIdentifier, accountId)
+        ),
+    },
+    {
+      key: PN_DRIVE_SHEET_KEYS.ENGAGEMENT,
+      label: 'engagement',
+      run: () =>
+        ensureSheet(
+          'engagement',
+          () => EngagementSheetsService.getEngagementSheet(token, metadataFolderId, pnIdentifier, accountId),
+          () => EngagementSheetsService.createEngagementSheet(token, metadataFolderId, pnIdentifier, accountId)
+        ),
+    },
+    {
+      key: PN_DRIVE_SHEET_KEYS.PRISM_LEDGER,
+      label: 'prismLedger',
+      run: () =>
+        ensureSheet(
+          'prismLedger',
+          () => PrismLedgerSheetsService.getPrismLedgerSheet(token, metadataFolderId, pnIdentifier, accountId),
+          () => PrismLedgerSheetsService.createPrismLedgerSheet(token, metadataFolderId, pnIdentifier, accountId)
+        ),
+    },
+    {
+      key: PN_DRIVE_SHEET_KEYS.PUBLIC_FILE_INDEX,
+      label: 'publicFileIndex',
+      run: () =>
+        ensureSheet(
+          'rootPublicFileIndex',
+          () => IndexSheetsService.getIndexSheet(token, metadataFolderId, 'public', pnIdentifier, accountId),
+          () => IndexSheetsService.createIndexSheet(token, metadataFolderId, 'public', pnIdentifier, accountId)
+        ),
+    },
+    {
+      key: PN_DRIVE_SHEET_KEYS.OWNER_FILE_INDEX,
+      label: 'ownerFileIndex',
+      run: () =>
+        ensureSheet(
+          'rootOwnerFileIndex',
+          () => IndexSheetsService.getIndexSheet(token, metadataFolderId, 'owner', pnIdentifier, accountId),
+          () => IndexSheetsService.createIndexSheet(token, metadataFolderId, 'owner', pnIdentifier, accountId)
+        ),
+    },
+  ];
 
-  const { OwnedAssetsSheetsService } = await import('./ownedAssetsSheetsService');
-  beginMetadataStep('Creating owned-assets sheet…');
-  const ownedAssets = await runMetadataSheetStep('ownedAssetsSheet', () =>
-    OwnedAssetsSheetsService.getOrCreateSpreadsheet(token, metadataFolderId, pnIdentifier, accountId)
+  const totalSheets = metadataSheetTasks.length;
+  let completedSheets = 0;
+  const sheetIdsByKey: Record<string, string> = {};
+  const sheetIdList = await mapWithConcurrency(
+    metadataSheetTasks,
+    DRIVE_INIT_SHEET_CONCURRENCY,
+    async (task) => {
+      console.log(`[pnDriveInit] Ensuring ${task.label}`);
+      const id = await task.run();
+      completedSheets += 1;
+      const percent = 44 + Math.floor((completedSheets / totalSheets) * 32);
+      setDriveInitProgress(
+        normalized,
+        'metadataSheets',
+        `Creating metadata sheets (${completedSheets}/${totalSheets})…`,
+        Math.min(76, percent)
+      );
+      return id;
+    }
   );
-  completeMetadataStep('Owned-assets sheet');
-
-  const { GroupSheetsService } = await import('./groupSheetsService');
-  beginMetadataStep('Creating groups sheet…');
-  const groups = await runMetadataSheetStep('groupsSheet', () =>
-    GroupSheetsService.getOrCreateGroupsSheet(token, metadataFolderId, pnIdentifier, accountId)
-  );
-  completeMetadataStep('Groups sheet');
-
-  const { NotificationsSheetsService } = await import('./notificationsSheetsService');
-  beginMetadataStep('Creating notifications sheet…');
-  const notifications = await ensureMetadataSheet(
-    'notifications',
-    () => NotificationsSheetsService.getNotificationsSheet(token, metadataFolderId, pnIdentifier, accountId),
-    () => NotificationsSheetsService.createNotificationsSheet(token, metadataFolderId, pnIdentifier, accountId)
-  );
-  completeMetadataStep('Notifications sheet');
-
-  const { ActivityLedgerSheetsService } = await import('./activityLedgerSheetsService');
-  beginMetadataStep('Creating activity ledger sheet…');
-  const activityLedger = await ensureMetadataSheet(
-    'activityLedger',
-    () =>
-      ActivityLedgerSheetsService.getActivityLedgerSheet(token, metadataFolderId, pnIdentifier, accountId),
-    () =>
-      ActivityLedgerSheetsService.createActivityLedgerSheet(token, metadataFolderId, pnIdentifier, accountId)
-  );
-  completeMetadataStep('Activity ledger sheet');
-
-  const { MessagingLedgerSheetsService } = await import('./messagingLedgerSheetsService');
-  beginMetadataStep('Creating messaging ledger sheet…');
-  const messagingLedger = await ensureMetadataSheet(
-    'messagingLedger',
-    () =>
-      MessagingLedgerSheetsService.getMessagingLedgerSheet(token, metadataFolderId, pnIdentifier, accountId),
-    () =>
-      MessagingLedgerSheetsService.createMessagingLedgerSheet(token, metadataFolderId, pnIdentifier, accountId)
-  );
-  completeMetadataStep('Messaging ledger sheet');
-
-  const { MessageRequestSheetsService } = await import('./messageRequestSheetsService');
-  beginMetadataStep('Creating message requests sheet…');
-  const messageRequests = await runMetadataSheetStep('messageRequestsSheet', () =>
-    MessageRequestSheetsService.getOrCreateSpreadsheet(token, metadataFolderId, pnIdentifier, accountId)
-  );
-  completeMetadataStep('Message requests sheet');
-
-  const { DataPointRequestSheetsService } = await import('./dataPointRequestSheetsService');
-  beginMetadataStep('Creating data point requests sheet…');
-  const dataPointRequests = await runMetadataSheetStep('dataPointRequestsSheet', () =>
-    DataPointRequestSheetsService.getOrCreateSpreadsheet(token, metadataFolderId, pnIdentifier, accountId)
-  );
-  completeMetadataStep('Data point requests sheet');
-
-  const { ZKPDataPointsSheetsService } = await import('./zkpDataPointsSheetsService');
-  beginMetadataStep('Creating ZKP data points sheet…');
-  const zkpDataPoints = await ensureMetadataSheet(
-    'zkpDataPoints',
-    () => ZKPDataPointsSheetsService.getZKPDataPointsSheet(token, metadataFolderId, pnIdentifier, accountId),
-    () => ZKPDataPointsSheetsService.createZKPDataPointsSheet(token, metadataFolderId, pnIdentifier, accountId)
-  );
-  completeMetadataStep('ZKP data points sheet');
-
-  const { PreferencesSheetsService } = await import('./preferencesSheetsService');
-  beginMetadataStep('Creating preferences sheet…');
-  const preferences = await ensureMetadataSheet(
-    'preferences',
-    () => PreferencesSheetsService.getPreferencesSheet(token, metadataFolderId, pnIdentifier, accountId),
-    () => PreferencesSheetsService.createPreferencesSheet(token, metadataFolderId, pnIdentifier, accountId)
-  );
-  completeMetadataStep('Preferences sheet');
-
-  const { EngagementSheetsService } = await import('./engagementSheetsService');
-  beginMetadataStep('Creating engagement sheet…');
-  const engagement = await ensureMetadataSheet(
-    'engagement',
-    () => EngagementSheetsService.getEngagementSheet(token, metadataFolderId, pnIdentifier, accountId),
-    () => EngagementSheetsService.createEngagementSheet(token, metadataFolderId, pnIdentifier, accountId)
-  );
-  completeMetadataStep('Engagement sheet');
-
-  const { PrismLedgerSheetsService } = await import('./prismLedgerSheetsService');
-  beginMetadataStep('Creating prism ledger sheet…');
-  const prismLedger = await ensureMetadataSheet(
-    'prismLedger',
-    () => PrismLedgerSheetsService.getPrismLedgerSheet(token, metadataFolderId, pnIdentifier, accountId),
-    () => PrismLedgerSheetsService.createPrismLedgerSheet(token, metadataFolderId, pnIdentifier, accountId)
-  );
-  completeMetadataStep('Prism ledger sheet');
-
-  beginMetadataStep('Creating file index sheets…');
-  const { publicFileIndex, ownerFileIndex } = await withGoogleRetry('rootIndexSheets', () =>
-    ensureIndexSheets(token, metadataFolderId, pnIdentifier, accountId)
-  );
-  completeMetadataStep('File index sheets');
+  for (let i = 0; i < metadataSheetTasks.length; i++) {
+    sheetIdsByKey[metadataSheetTasks[i].key] = sheetIdList[i];
+  }
+  setDriveInitProgress(normalized, 'metadataSheets', 'Metadata sheets ready', 76);
 
   if (hooks.initializeProfileAndMetadataFiles) {
     console.log(`[pnDriveInit] profile.json + preferences.json for ${normalized}`);
@@ -368,24 +432,25 @@ export async function initializeGoogleDriveIndex(
     ...(zkpDocsFolderId ? { zkpDocsFolderId } : {}),
     conversationSheets: {},
     sheetIds: {
-      [PN_DRIVE_SHEET_KEYS.CONNECTIONS]: connections,
-      [PN_DRIVE_SHEET_KEYS.THIRD_PARTY_PERMISSIONS]: thirdPartyPermissions,
-      [PN_DRIVE_SHEET_KEYS.DEVICES]: devices,
-      [PN_DRIVE_SHEET_KEYS.OWNED_ASSETS]: ownedAssets,
-      [PN_DRIVE_SHEET_KEYS.GROUPS]: groups,
-      [PN_DRIVE_SHEET_KEYS.NOTIFICATIONS]: notifications,
-      [PN_DRIVE_SHEET_KEYS.ACTIVITY_LEDGER]: activityLedger,
-      [PN_DRIVE_SHEET_KEYS.MESSAGING_LEDGER]: messagingLedger,
-      [PN_DRIVE_SHEET_KEYS.MESSAGE_REQUESTS]: messageRequests,
-      [PN_DRIVE_SHEET_KEYS.DATA_POINT_REQUESTS]: dataPointRequests,
-      [PN_DRIVE_SHEET_KEYS.ZKP_DATA_POINTS]: zkpDataPoints,
-      [PN_DRIVE_SHEET_KEYS.PREFERENCES]: preferences,
-      [PN_DRIVE_SHEET_KEYS.ENGAGEMENT]: engagement,
-      [PN_DRIVE_SHEET_KEYS.PRISM_LEDGER]: prismLedger,
-      [PN_DRIVE_SHEET_KEYS.PUBLIC_FILE_INDEX]: publicFileIndex,
-      [PN_DRIVE_SHEET_KEYS.OWNER_FILE_INDEX]: ownerFileIndex,
-      [PN_DRIVE_SHEET_KEYS.FOLLOWERS]: followers,
-      [PN_DRIVE_SHEET_KEYS.FOLLOWING]: following,
+      [PN_DRIVE_SHEET_KEYS.CONNECTIONS]: sheetIdsByKey[PN_DRIVE_SHEET_KEYS.CONNECTIONS],
+      [PN_DRIVE_SHEET_KEYS.THIRD_PARTY_PERMISSIONS]:
+        sheetIdsByKey[PN_DRIVE_SHEET_KEYS.THIRD_PARTY_PERMISSIONS],
+      [PN_DRIVE_SHEET_KEYS.DEVICES]: sheetIdsByKey[PN_DRIVE_SHEET_KEYS.DEVICES],
+      [PN_DRIVE_SHEET_KEYS.OWNED_ASSETS]: sheetIdsByKey[PN_DRIVE_SHEET_KEYS.OWNED_ASSETS],
+      [PN_DRIVE_SHEET_KEYS.GROUPS]: sheetIdsByKey[PN_DRIVE_SHEET_KEYS.GROUPS],
+      [PN_DRIVE_SHEET_KEYS.NOTIFICATIONS]: sheetIdsByKey[PN_DRIVE_SHEET_KEYS.NOTIFICATIONS],
+      [PN_DRIVE_SHEET_KEYS.ACTIVITY_LEDGER]: sheetIdsByKey[PN_DRIVE_SHEET_KEYS.ACTIVITY_LEDGER],
+      [PN_DRIVE_SHEET_KEYS.MESSAGING_LEDGER]: sheetIdsByKey[PN_DRIVE_SHEET_KEYS.MESSAGING_LEDGER],
+      [PN_DRIVE_SHEET_KEYS.MESSAGE_REQUESTS]: sheetIdsByKey[PN_DRIVE_SHEET_KEYS.MESSAGE_REQUESTS],
+      [PN_DRIVE_SHEET_KEYS.DATA_POINT_REQUESTS]: sheetIdsByKey[PN_DRIVE_SHEET_KEYS.DATA_POINT_REQUESTS],
+      [PN_DRIVE_SHEET_KEYS.ZKP_DATA_POINTS]: sheetIdsByKey[PN_DRIVE_SHEET_KEYS.ZKP_DATA_POINTS],
+      [PN_DRIVE_SHEET_KEYS.PREFERENCES]: sheetIdsByKey[PN_DRIVE_SHEET_KEYS.PREFERENCES],
+      [PN_DRIVE_SHEET_KEYS.ENGAGEMENT]: sheetIdsByKey[PN_DRIVE_SHEET_KEYS.ENGAGEMENT],
+      [PN_DRIVE_SHEET_KEYS.PRISM_LEDGER]: sheetIdsByKey[PN_DRIVE_SHEET_KEYS.PRISM_LEDGER],
+      [PN_DRIVE_SHEET_KEYS.PUBLIC_FILE_INDEX]: sheetIdsByKey[PN_DRIVE_SHEET_KEYS.PUBLIC_FILE_INDEX],
+      [PN_DRIVE_SHEET_KEYS.OWNER_FILE_INDEX]: sheetIdsByKey[PN_DRIVE_SHEET_KEYS.OWNER_FILE_INDEX],
+      [PN_DRIVE_SHEET_KEYS.FOLLOWERS]: sheetIdsByKey[PN_DRIVE_SHEET_KEYS.FOLLOWERS],
+      [PN_DRIVE_SHEET_KEYS.FOLLOWING]: sheetIdsByKey[PN_DRIVE_SHEET_KEYS.FOLLOWING],
     },
   };
 }
