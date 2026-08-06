@@ -40,13 +40,14 @@ export class ZKPDataPointsService {
 
   /**
    * Get all attested data points from API server (Google Drive)
+   * Returns null when Drive layout is not ready (caller should retry), not an empty list.
    */
   static async getAllDataPoints(
     identityId: string,
     credentials: { pnName: string; passcode: string },
     authToken: string,
     publicKey?: string
-  ): Promise<string[]> {
+  ): Promise<string[] | null> {
     try {
       const pnIdentifier = await this.getPnIdentifier(identityId, credentials, publicKey);
 
@@ -62,23 +63,20 @@ export class ZKPDataPointsService {
           return [];
         }
         return dataPoints.map((dp: any) => dp.dataPointId);
-      } else if (response.status === 404 || response.status === 409) {
-        // No data points yet, or Drive layout still settling under custody
+      } else if (response.status === 404) {
+        // No sheet / no points yet
         return [];
-      } else if (response.status === 401) {
-        // Authentication failed (Google Drive token expired) - fail silently
-        // User needs to reconnect Google Drive, but don't break the app
-        console.warn('⚠️ [ZKPDataPoints] Google Drive authentication failed. Please reconnect Google Drive in the dashboard.');
-        return []; // Return empty array instead of throwing
+      } else if (response.status === 409 || response.status === 401) {
+        // Layout or cloud token not ready — do not treat as empty attestation set
+        return null;
       } else {
         const errorText = await response.text();
         console.error('Failed to get data points:', response.status, errorText);
-        // For other errors, still fail silently to avoid breaking the app
-        return [];
+        return null;
       }
     } catch (error) {
       console.error('Error getting data points from API:', error);
-      return [];
+      return null;
     }
   }
 

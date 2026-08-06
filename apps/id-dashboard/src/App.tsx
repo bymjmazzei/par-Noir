@@ -766,26 +766,28 @@ function App() {
 
         try {
           const { ZKPDataPointsService } = await import('./utils/zkpDataPointsService');
-          let dataPointIds = await ZKPDataPointsService.getAllDataPoints(
-            authenticatedUser.id,
-            credentials,
-            authToken,
-            authenticatedUser.publicKey
-          );
-          if (dataPointIds.length === 0) {
-            const retryCloud = await ensureCloudSession({
+          const loadIds = async () =>
+            ZKPDataPointsService.getAllDataPoints(
+              authenticatedUser.id,
+              credentials,
+              authToken,
+              authenticatedUser.publicKey
+            );
+
+          let dataPointIds = await loadIds();
+          if (dataPointIds === null) {
+            await new Promise((r) => setTimeout(r, 600));
+            await ensureCloudSession({
               apiToken: authToken,
               pnIdentifier: recoveryVaultPnId,
               sessionId: authenticatedUser.id
             });
-            if (retryCloud.status === 'ready') {
-              dataPointIds = await ZKPDataPointsService.getAllDataPoints(
-                authenticatedUser.id,
-                credentials,
-                authToken,
-                authenticatedUser.publicKey
-              );
-            }
+            dataPointIds = await loadIds();
+          }
+
+          if (dataPointIds === null) {
+            // Layout still not ready — do not memoize empty; retry on next cloud-ready event
+            return;
           }
 
           attestedLoadedKeyRef.current = loadKey;
@@ -793,7 +795,7 @@ function App() {
           setAttestedDataPoints(new Set(dataPointIds));
         } catch (error) {
           console.error('[App] Error loading attested data points from API:', error);
-          setAttestedDataPoints(new Set());
+          // Do not memoize failure
         }
       } catch (error) {
         console.error('[App] Error loading attested data points:', error);
@@ -803,6 +805,7 @@ function App() {
 
     void loadAttestedDataPoints();
     const onReady = () => {
+      attestedLoadedKeyRef.current = null;
       void loadAttestedDataPoints();
     };
     window.addEventListener(PN_CLOUD_CREDENTIALS_READY_EVENT, onReady);
@@ -1060,6 +1063,7 @@ function App() {
     setCurrentDataPointExistingData,
     setShowDataPointInputModal,
     setAttestedDataPoints,
+    attestedDataPoints,
     verifiedDataPoints,
     getEncryptedIdentityForApiToken,
     apiToken,

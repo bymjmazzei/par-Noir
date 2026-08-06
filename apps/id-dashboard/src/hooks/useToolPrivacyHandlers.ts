@@ -30,6 +30,7 @@ export interface UseToolPrivacyHandlersParams {
   setCurrentDataPointExistingData: React.Dispatch<React.SetStateAction<any>>;
   setShowDataPointInputModal: React.Dispatch<React.SetStateAction<boolean>>;
   setAttestedDataPoints: React.Dispatch<React.SetStateAction<Set<string>>>;
+  attestedDataPoints: Set<string>;
   verifiedDataPoints: Set<string>;
   getEncryptedIdentityForApiToken: (
     identityPublicKeyOrId: string
@@ -61,6 +62,7 @@ export function useToolPrivacyHandlers(params: UseToolPrivacyHandlersParams) {
     setCurrentDataPointExistingData,
     setShowDataPointInputModal,
     setAttestedDataPoints,
+    attestedDataPoints,
     verifiedDataPoints,
     getEncryptedIdentityForApiToken,
     apiToken,
@@ -292,7 +294,7 @@ export function useToolPrivacyHandlers(params: UseToolPrivacyHandlersParams) {
         return;
       }
 
-      // Load source row for Edit: name/age bundles use attestation id
+      // Load source row for Edit only when we already know it is attested (avoids red 404 probes on Add).
       const loadId =
         dataPointId === 'name_attestation'
           ? 'name_attestation'
@@ -300,12 +302,28 @@ export function useToolPrivacyHandlers(params: UseToolPrivacyHandlersParams) {
             ? 'age_attestation'
             : dataPointId;
 
+      const namePresent =
+        attestedDataPoints.has('name_attestation') ||
+        attestedDataPoints.has('full_name') ||
+        attestedDataPoints.has('first_name') ||
+        attestedDataPoints.has('last_name');
+      const agePresent =
+        attestedDataPoints.has('age_attestation') ||
+        attestedDataPoints.has('over_18') ||
+        attestedDataPoints.has('over_21');
+      const shouldPreload =
+        (dataPointId === 'name_attestation' && namePresent) ||
+        (dataPointId === 'age_attestation' && agePresent) ||
+        (dataPointId !== 'name_attestation' &&
+          dataPointId !== 'age_attestation' &&
+          attestedDataPoints.has(dataPointId));
+
       let existingData = null;
 
       const credentials = SecureCredentialManager.getCredentials(authenticatedUser.id);
       if (!credentials) {
         console.warn('[App] Credentials not available for checking existing data point');
-      } else {
+      } else if (shouldPreload) {
         let authToken: string | null = resolveOwnerApiToken();
         if (!authToken) {
           authToken = await ensureOwnerApiTokenForActiveUser();
@@ -329,6 +347,11 @@ export function useToolPrivacyHandlers(params: UseToolPrivacyHandlersParams) {
                 setTimeout(() => setError(null), 9000);
                 return;
               }
+              setAttestedDataPoints((prev) => {
+                const next = new Set(prev);
+                next.add(loadId);
+                return next;
+              });
               if (existingDataPoint.encryptedUserData) {
                 try {
                   let encryptedDataObj;
@@ -357,6 +380,63 @@ export function useToolPrivacyHandlers(params: UseToolPrivacyHandlersParams) {
             }
           } catch (error) {
             console.warn('[App] Error checking for existing data point:', error);
+          }
+        }
+      } else {
+        // New Add: still probe once for age/name if unlock list was empty but Drive has the row.
+        // Use a quiet path — only for identity bundles that commonly race with unlock load.
+        if (dataPointId === 'age_attestation' || dataPointId === 'name_attestation') {
+          let authToken: string | null = resolveOwnerApiToken();
+          if (!authToken) {
+            authToken = await ensureOwnerApiTokenForActiveUser();
+          }
+          if (authToken && credentials) {
+            try {
+              const { ZKPDataPointsService } = await import('../utils/zkpDataPointsService');
+              const existingDataPoint = await ZKPDataPointsService.getDataPoint(
+                authenticatedUser.id,
+                credentials,
+                authToken,
+                loadId,
+                authenticatedUser.publicKey
+              );
+              if (existingDataPoint) {
+                if (existingDataPoint.verificationLevel === 'verified') {
+                  setError(
+                    'This identity proof is Veriff-verified and locked. Changing it requires identity rekey / rotation.'
+                  );
+                  setTimeout(() => setError(null), 9000);
+                  return;
+                }
+                setAttestedDataPoints((prev) => {
+                  const next = new Set(prev);
+                  next.add(loadId);
+                  if (dataPointId === 'age_attestation') {
+                    next.add('over_18');
+                    next.add('over_21');
+                  }
+                  return next;
+                });
+                if (existingDataPoint.encryptedUserData) {
+                  try {
+                    const encryptedDataObj =
+                      typeof existingDataPoint.encryptedUserData === 'string'
+                        ? JSON.parse(existingDataPoint.encryptedUserData)
+                        : existingDataPoint.encryptedUserData;
+                    const decryptedUserDataJson = await IdentityCrypto.decryptData(
+                      encryptedDataObj,
+                      credentials.pnName,
+                      credentials.passcode
+                    );
+                    existingData = JSON.parse(decryptedUserDataJson);
+                  } catch {
+                    existingData = null;
+                  }
+                }
+              }
+            } catch {
+              /* treat as new Add */
+            }
           }
         }
       }
@@ -489,7 +569,15 @@ export function useToolPrivacyHandlers(params: UseToolPrivacyHandlersParams) {
         authenticatedUser.publicKey
       );
 
-      setAttestedDataPoints(new Set(allDataPointIds));
+      if (allDataPointIds) {
+        setAttestedDataPoints(new Set(allDataPointIds));
+      } else {
+        setAttestedDataPoints((prev) => {
+          const next = new Set(prev);
+          next.add(dataPointId);
+          return next;
+        });
+      }
       setSuccessWithTimeout(`Successfully attested ${currentDataPoint?.name}!`);
       setTimeout(() => setSuccessWithTimeout(null), 5000);
       setShowDataPointInputModal(false);
