@@ -407,10 +407,14 @@ export function AuthenticatedShell(props: AuthenticatedShellProps) {
                   </nav>
               </div>
 
-                {/* Tab Content */}
+                {/* Tab Content — keep-alive: panels stay mounted; inactive are hidden */}
                 <div className="min-h-[400px]">
-                  {activeTab === 'privacy' && (
-                    <div className="space-y-6">
+                  <div
+                    className="space-y-6"
+                    hidden={activeTab !== 'privacy'}
+                    aria-hidden={activeTab !== 'privacy'}
+                    data-dashboard-tab="privacy"
+                  >
                       <div>
                         <div className="flex items-center justify-between gap-4 mb-4 flex-wrap">
                           <h3 className="text-lg font-semibold text-text-primary">Privacy & Sharing Settings</h3>
@@ -653,12 +657,13 @@ export function AuthenticatedShell(props: AuthenticatedShellProps) {
                           </>
                         )}
                       </div>
-                    </div>
-                  )}
+                  </div>
 
-
-
-                  {activeTab === 'recovery' && (
+                  <div
+                    hidden={activeTab !== 'recovery'}
+                    aria-hidden={activeTab !== 'recovery'}
+                    data-dashboard-tab="recovery"
+                  >
                     <RecoveryTab
                       apiToken={apiToken}
                       recoveryVaultPnId={recoveryVaultPnId}
@@ -690,41 +695,45 @@ export function AuthenticatedShell(props: AuthenticatedShellProps) {
                       handleOpenCustodianApprovalModal={handleOpenCustodianApprovalModal}
                       loadEncryptedIdentity={(id) => getEncryptedIdentityForApiToken(id)}
                     />
-                  )}
+                  </div>
 
+                  <div
+                    hidden={activeTab !== 'storage'}
+                    aria-hidden={activeTab !== 'storage'}
+                    data-dashboard-tab="storage"
+                  >
+                    <FileStorageAggregator
+                      authenticatedUser={authenticatedUser}
+                      apiToken={apiToken}
+                      ensureOwnerApiToken={ensureOwnerApiTokenForActiveUser}
+                      hasKeyedDevices={!!deviceAuth.hasKeyedDevices}
+                      isKeyedSession={!!deviceAuth.isKeyedSession}
+                      deviceGate={{
+                        canDriveRead,
+                        canDriveUpload,
+                        canProfileWrite,
+                        blockedMessage: deviceAuth.deviceRequiredMessage,
+                      }}
+                    />
+                  </div>
 
-
-
-                  {/* Storage Tab */}
-                  {activeTab === 'storage' && (
-                    <div>
-                      <FileStorageAggregator
-                        authenticatedUser={authenticatedUser}
-                        apiToken={apiToken}
-                        ensureOwnerApiToken={ensureOwnerApiTokenForActiveUser}
-                        hasKeyedDevices={!!deviceAuth.hasKeyedDevices}
-                        isKeyedSession={!!deviceAuth.isKeyedSession}
-                        deviceGate={{
-                          canDriveRead,
-                          canDriveUpload,
-                          canProfileWrite,
-                          blockedMessage: deviceAuth.deviceRequiredMessage,
-                        }}
-                      />
-                    </div>
-                  )}
-
-                  {/* Monetization Tab */}
-                  {activeTab === 'monetization' && (
+                  <div
+                    hidden={activeTab !== 'monetization'}
+                    aria-hidden={activeTab !== 'monetization'}
+                    data-dashboard-tab="monetization"
+                  >
                     <MonetizationTab
                       accessToken={apiToken || ''}
                       showErrorMessage={showErrorMessage}
                       showSuccessMessage={showSuccessMessage}
                     />
-                  )}
+                  </div>
 
-                  {/* Delegation Tab */}
-                  {activeTab === 'subpn' && (
+                  <div
+                    hidden={activeTab !== 'subpn'}
+                    aria-hidden={activeTab !== 'subpn'}
+                    data-dashboard-tab="subpn"
+                  >
                     <SubPnTab
                       accessToken={apiToken}
                       pnIdentifier={recoveryVaultPnId}
@@ -733,10 +742,14 @@ export function AuthenticatedShell(props: AuthenticatedShellProps) {
                       publicKey={authenticatedUser?.publicKey}
                       availableScopes={subPnAvailableScopes}
                     />
-                  )}
+                  </div>
 
-                  {activeTab === 'delegation' && (
-                    <div className="space-y-6">
+                  <div
+                    className="space-y-6"
+                    hidden={activeTab !== 'delegation'}
+                    aria-hidden={activeTab !== 'delegation'}
+                    data-dashboard-tab="delegation"
+                  >
                       <div>
                         <div className="flex items-center gap-2 mb-4">
                           <h3 className="text-lg font-semibold text-text-primary">Delegation Management</h3>
@@ -822,8 +835,7 @@ export function AuthenticatedShell(props: AuthenticatedShellProps) {
                           </div>
                         </div>
                       </div>
-                    </div>
-                  )}
+                  </div>
                 </div>
               </div>
             </div>

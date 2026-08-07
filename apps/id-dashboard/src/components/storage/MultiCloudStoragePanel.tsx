@@ -4,7 +4,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Cloud, ExternalLink, Loader2 } from 'lucide-react';
 import { PN_CLOUD_CREDENTIALS_READY_EVENT } from '@par-noir/oauth-ui';
-import { ownerFetch, ownerGet } from '../../services/ownerApiService';
+import { ownerFetch } from '../../services/ownerApiService';
 import { API_ENDPOINT } from '../../config/api';
 import { SocialCloudMigrationWizard } from './SocialCloudMigrationWizard';
 import { SectionInfo } from '../common/SectionInfo';
@@ -101,7 +101,7 @@ export function MultiCloudStoragePanel({
   const refreshAccountsInFlightRef = useRef<Promise<void> | null>(null);
   const lastAccountsSnapshotRef = useRef<string>('');
 
-  const refreshAccounts = useCallback(async () => {
+  const refreshAccounts = useCallback(async (opts?: { force?: boolean }) => {
     if (!pnIdentifier || !authToken) return;
     if (refreshAccountsInFlightRef.current) {
       await refreshAccountsInFlightRef.current;
@@ -109,17 +109,10 @@ export function MultiCloudStoragePanel({
     }
     const run = (async () => {
       try {
-        const res = await ownerGet(authToken, `/api/storage/accounts/${encodeURIComponent(pnIdentifier)}`, {
-          pnIdentifier
-        });
-        if (!res.ok) return;
-        const data = (await res.json()) as {
-          accounts?: StorageAccount[];
-          socialCloudProvider?: string;
-          primaryProvider?: string;
-        };
-        const nextAccounts = data.accounts ?? [];
-        const nextSocial = data.socialCloudProvider ?? data.primaryProvider ?? null;
+        const { getStorageAccountsCached } = await import('../../services/dashboardSessionCache');
+        const data = await getStorageAccountsCached(authToken, pnIdentifier, { force: opts?.force });
+        const nextAccounts = (data.accounts ?? []) as StorageAccount[];
+        const nextSocial = data.socialCloudProvider ?? null;
         const snapshot = JSON.stringify({
           social: nextSocial,
           accounts: nextAccounts.map((a) => [a.provider, a.accountId, a.displayName ?? ''])
@@ -133,6 +126,8 @@ export function MultiCloudStoragePanel({
           socialCloudProvider: nextSocial,
           accountCount: nextAccounts.length
         });
+      } catch {
+        /* non-fatal */
       } finally {
         refreshAccountsInFlightRef.current = null;
       }
@@ -154,7 +149,10 @@ export function MultiCloudStoragePanel({
       if (debounceTimer != null) clearTimeout(debounceTimer);
       debounceTimer = setTimeout(() => {
         debounceTimer = null;
-        void refreshAccountsRef.current();
+        // Keep-alive: only force-refresh accounts when we have none yet.
+        if (lastAccountsSnapshotRef.current === '') {
+          void refreshAccountsRef.current();
+        }
       }, 250);
     };
     window.addEventListener(PN_CLOUD_CREDENTIALS_READY_EVENT, onReady);
@@ -181,7 +179,7 @@ export function MultiCloudStoragePanel({
         throw new Error(data.message || data.error || 'Failed to disconnect');
       }
       setMessage('Account disconnected.');
-      await refreshAccounts();
+      await refreshAccounts({ force: true });
       onConnected?.();
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Disconnect failed');
@@ -216,7 +214,7 @@ export function MultiCloudStoragePanel({
         throw new Error(data.message || data.error || 'Failed to set social cloud');
       }
       setMessage(`${provider} is now your social cloud (tables and indexes).`);
-      await refreshAccounts();
+      await refreshAccounts({ force: true });
       onConnected?.();
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to set social cloud');
@@ -317,7 +315,7 @@ export function MultiCloudStoragePanel({
         throw new Error(err.message || 'Token exchange failed');
       }
       setMessage(`${provider === 'dropbox' ? 'Dropbox' : 'OneDrive'} connected.`);
-      await refreshAccounts();
+      await refreshAccounts({ force: true });
       onConnected?.();
     } catch (e) {
       setError(e instanceof Error ? e.message : 'OAuth failed');
@@ -414,7 +412,7 @@ export function MultiCloudStoragePanel({
         throw new Error(err.message || 'Failed to save credentials');
       }
       setMessage('Storage provider connected.');
-      await refreshAccounts();
+      await refreshAccounts({ force: true });
       onConnected?.();
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Connect failed');
@@ -606,7 +604,7 @@ export function MultiCloudStoragePanel({
           onComplete={() => {
             setMigrationTarget(null);
             setMessage('Social cloud migrated and updated.');
-            void refreshAccounts();
+            void refreshAccounts({ force: true });
             onConnected?.();
           }}
         />

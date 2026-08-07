@@ -54,7 +54,7 @@ export interface UseGoogleDriveOAuthConnectParams {
   DISCONNECT_BLOCK_DURATION_MS: number;
   /** Shared refs owned by FileStorageAggregator. */
   shareTokenCache: React.MutableRefObject<Map<string, ShareToken>>;
-  loadFiles: () => Promise<void>;
+  loadFiles: (opts?: { verifyWithDrive?: boolean }) => Promise<void>;
   loadStorageQuota: () => Promise<void>;
   /** Case A/B persist mode (same as CloudReconnectHost). */
   hasKeyedDevices?: boolean;

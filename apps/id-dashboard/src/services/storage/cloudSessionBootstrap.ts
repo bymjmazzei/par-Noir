@@ -45,8 +45,12 @@ export function getStorageAccountsCache(pnIdentifier: string | null | undefined)
   return accountsCache.get(pnIdentifier) ?? null;
 }
 
-function setStorageAccountsCache(pnIdentifier: string, entry: AccountsCacheEntry): void {
+export function setStorageAccountsCacheEntry(pnIdentifier: string, entry: AccountsCacheEntry): void {
   accountsCache.set(pnIdentifier, entry);
+}
+
+function setStorageAccountsCache(pnIdentifier: string, entry: AccountsCacheEntry): void {
+  setStorageAccountsCacheEntry(pnIdentifier, entry);
 }
 
 export function isCloudSessionReady(pnIdentifier: string | null | undefined): boolean {
@@ -332,6 +336,11 @@ export function clearCloudSessionBootstrap(pnIdentifier?: string): void {
   }
   lastStatus = 'idle';
   lastError = undefined;
+  void import('../dashboardSessionCache')
+    .then(({ invalidateDashboardCache }) => {
+      invalidateDashboardCache('all');
+    })
+    .catch(() => undefined);
   void import('./metadataSheetsAvailability')
     .then(({ clearMetadataSheetsUnavailable }) => {
       clearMetadataSheetsUnavailable(pnIdentifier);

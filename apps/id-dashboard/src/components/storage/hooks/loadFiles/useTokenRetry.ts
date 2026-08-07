@@ -6,7 +6,7 @@ import React from 'react';
 
 export interface UseTokenRetryParams {
   setError: React.Dispatch<React.SetStateAction<string | null>>;
-  loadFilesRef: React.MutableRefObject<(() => Promise<void>) | null>;
+  loadFilesRef: React.MutableRefObject<((opts?: { verifyWithDrive?: boolean }) => Promise<void>) | null>;
   ownerIndexWarningLoggedRef: React.MutableRefObject<Set<string>>;
   ownerIndexRetryCountsRef: React.MutableRefObject<Map<string, number>>;
   rateLimitedBackendsRef: React.MutableRefObject<Set<string>>;

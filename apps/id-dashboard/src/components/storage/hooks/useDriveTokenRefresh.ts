@@ -27,7 +27,7 @@ export interface UseDriveTokenRefreshParams {
   disconnectTimestampRef: React.MutableRefObject<number>;
   disconnectBlockDurationMs: number;
   pnIdentifierRef: React.MutableRefObject<string | null>;
-  loadFilesRef: React.MutableRefObject<(() => Promise<void>) | null>;
+  loadFilesRef: React.MutableRefObject<((opts?: { verifyWithDrive?: boolean }) => Promise<void>) | null>;
   ownerIndexWarningLoggedRef: React.MutableRefObject<Set<string>>;
   ownerIndexRetryCountsRef: React.MutableRefObject<Map<string, number>>;
   rateLimitedBackendsRef: React.MutableRefObject<Set<string>>;

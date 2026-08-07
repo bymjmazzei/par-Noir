@@ -23,7 +23,7 @@ export interface UseDriveFileDeletionParams {
   setIsLoading: React.Dispatch<React.SetStateAction<boolean>>;
   checkDeviceCapability: (cap: 'drive.read' | 'drive.upload' | 'profile.write') => boolean;
   resolveOwnerApiToken: (wantedPn?: string | null) => string | null;
-  loadFilesRef: React.MutableRefObject<(() => Promise<void>) | null>;
+  loadFilesRef: React.MutableRefObject<((opts?: { verifyWithDrive?: boolean }) => Promise<void>) | null>;
 }
 
 export function useDriveFileDeletion({
@@ -209,7 +209,7 @@ export function useDriveFileDeletion({
 
       // Reload files after deletion
       if (loadFilesRef.current) {
-        await loadFilesRef.current();
+        await loadFilesRef.current({ verifyWithDrive: true });
       }
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Failed to delete file';

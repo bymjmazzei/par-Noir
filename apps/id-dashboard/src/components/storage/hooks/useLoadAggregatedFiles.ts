@@ -55,7 +55,7 @@ export interface UseLoadAggregatedFilesParams {
   pnIdentifierRef: React.MutableRefObject<string | null>;
   driveLayoutInitInFlightRef: React.MutableRefObject<Set<string>>;
   driveSetupProgressRef: React.MutableRefObject<DriveSetupProgress | null>;
-  loadFilesRef: React.MutableRefObject<(() => Promise<void>) | null>;
+  loadFilesRef: React.MutableRefObject<((opts?: { verifyWithDrive?: boolean }) => Promise<void>) | null>;
   loadStorageQuotaRef: React.MutableRefObject<(() => Promise<void>) | null>;
   ownerIndexWarningLoggedRef: React.MutableRefObject<Set<string>>;
   ownerIndexRetryCountsRef: React.MutableRefObject<Map<string, number>>;
@@ -105,7 +105,8 @@ export function useLoadAggregatedFiles({
     pendingRetryTimeoutRef,
   });
 
-  const loadFiles = React.useCallback(async () => {
+  const loadFiles = React.useCallback(async (opts?: { verifyWithDrive?: boolean }) => {
+    const verifyWithDrive = !!opts?.verifyWithDrive;
     if (isLoadingFilesRef.current) {
       console.log('⏳ [loadFiles] Load already in progress, skipping');
       return;
@@ -362,6 +363,7 @@ export function useLoadAggregatedFiles({
           currentPnIdentifier,
           ownerIndex,
           ownerIndexFromApi,
+          verifyWithDrive,
           aggregatedMetadataMap,
           filesNeedingMetadata,
           retryBackends,

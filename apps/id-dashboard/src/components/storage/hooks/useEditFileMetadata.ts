@@ -28,7 +28,7 @@ export interface UseEditFileMetadataParams {
   setIsLoading: React.Dispatch<React.SetStateAction<boolean>>;
   requireDeviceCapability: (cap: 'drive.read' | 'drive.upload' | 'profile.write') => void;
   resolveOwnerApiToken: (wantedPn?: string | null) => string | null;
-  loadFilesRef: React.MutableRefObject<(() => Promise<void>) | null>;
+  loadFilesRef: React.MutableRefObject<((opts?: { verifyWithDrive?: boolean }) => Promise<void>) | null>;
 }
 
 export function useEditFileMetadata({

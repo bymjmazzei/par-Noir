@@ -71,7 +71,7 @@ export interface UseDriveStorageCredentialsParams {
   /** Shared refs owned by FileStorageAggregator. */
   authenticatedUserRef: React.MutableRefObject<any>;
   pnIdentifierRef: React.MutableRefObject<string | null>;
-  loadFilesRef: React.MutableRefObject<(() => Promise<void>) | null>;
+  loadFilesRef: React.MutableRefObject<((opts?: { verifyWithDrive?: boolean }) => Promise<void>) | null>;
   loadStorageQuotaRef: React.MutableRefObject<(() => Promise<void>) | null>;
   ownerIndexWarningLoggedRef: React.MutableRefObject<Set<string>>;
   ownerIndexRetryCountsRef: React.MutableRefObject<Map<string, number>>;

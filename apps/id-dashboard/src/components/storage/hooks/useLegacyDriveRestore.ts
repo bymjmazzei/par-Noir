@@ -15,7 +15,7 @@ export interface UseLegacyDriveRestoreParams {
   authenticatedUser: any;
   resolveIdentifiersForEmail: UseDriveStorageCredentialsResult['resolveIdentifiersForEmail'];
   upsertDriveAccount: UseDriveStorageCredentialsResult['upsertDriveAccount'];
-  loadFiles: () => Promise<void>;
+  loadFiles: (opts?: { verifyWithDrive?: boolean }) => Promise<void>;
   loadStorageQuota: () => Promise<void>;
 }
 

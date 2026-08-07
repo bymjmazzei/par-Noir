@@ -1,6 +1,10 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { SectionInfo } from '../common/SectionInfo';
-import { MonetizationService, type MonetizationStatusResponse } from '../../services/monetization/MonetizationService';
+import {
+  getMonetizationStatusCached,
+} from '../../services/dashboardSessionCache';
+import { type MonetizationStatusResponse } from '../../services/monetization/MonetizationService';
+import { MonetizationService } from '../../services/monetization/MonetizationService';
 
 export interface MonetizationTabProps {
   accessToken: string;
@@ -18,7 +22,7 @@ export function MonetizationTab({ accessToken, showErrorMessage, showSuccessMess
 
   const returnBase = typeof window !== 'undefined' ? window.location.origin : 'https://pn.parnoir.com';
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (opts?: { force?: boolean }) => {
     if (!accessToken) {
       setStatus(null);
       setLoading(false);
@@ -26,7 +30,7 @@ export function MonetizationTab({ accessToken, showErrorMessage, showSuccessMess
     }
     setLoading(true);
     try {
-      const s = await MonetizationService.getStatus(accessToken);
+      const s = await getMonetizationStatusCached(accessToken, { force: opts?.force });
       setStatus(s);
     } catch (e) {
       setStatus(null);
@@ -73,7 +77,7 @@ export function MonetizationTab({ accessToken, showErrorMessage, showSuccessMess
       const r = await MonetizationService.renewFromBalance(accessToken);
       if (r.renewed) {
         showSuccessMessage('Maintenance renewed from your creator-fund balance.');
-        await load();
+        await load({ force: true });
       } else if (r.needsPayment) {
         showErrorMessage(
           `Insufficient balance for renewal${r.shortfallCents != null ? ` (shortfall ${(r.shortfallCents / 100).toFixed(2)} USD)` : ''}. Use Subscribe with card.`
@@ -93,7 +97,7 @@ export function MonetizationTab({ accessToken, showErrorMessage, showSuccessMess
       const r = await MonetizationService.createConnectAccountLink(accessToken, returnBase);
       if (r.alreadyOnboarded) {
         showSuccessMessage('Stripe Connect is already enabled for payouts.');
-        await load();
+        await load({ force: true });
       } else if (r.url) {
         window.location.href = r.url;
       }
@@ -120,7 +124,7 @@ export function MonetizationTab({ accessToken, showErrorMessage, showSuccessMess
     try {
       const out = await MonetizationService.requestCreatorFundPayout(accessToken, amountCents);
       showSuccessMessage(`Transfer initiated (${(out.amountCents / 100).toFixed(2)} USD).`);
-      await load();
+      await load({ force: true });
     } catch (e) {
       showErrorMessage(e instanceof Error ? e.message : 'Payout request failed');
     } finally {

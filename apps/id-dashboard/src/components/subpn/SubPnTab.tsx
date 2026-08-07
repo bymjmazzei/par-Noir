@@ -5,7 +5,6 @@ import { IdentityCrypto, VolumeIdGenerator, type EncryptedIdentity } from '@par-
 import { PN_CLOUD_CREDENTIALS_READY_EVENT } from '@par-noir/oauth-ui';
 import { sealSubExportPayload, unsealSubExportPayload } from '../../utils/subIdentitySeal';
 import {
-  fetchOwnedAssets,
   createOwnedAsset,
   revokeOwnedAsset,
   rekeyOwnedAsset,
@@ -15,9 +14,12 @@ import {
   revokeDelegation,
   type OwnedAssetDto
 } from '../../services/ownedAssetsApi';
+import {
+  getMonetizationStatusCached,
+  getOwnedAssetsCached,
+} from '../../services/dashboardSessionCache';
 import { republishOwnedAssetsManifest } from '../../services/ownedAssetsManifestService';
 import { FeedCreator } from '../feeds/FeedCreator';
-import { MonetizationService } from '../../services/monetization/MonetizationService';
 
 const SUB_KINDS = ['feed', 'device', 'ai_agent', 'smart_device'] as const;
 type SubKind = (typeof SUB_KINDS)[number];
@@ -122,7 +124,7 @@ export const SubPnTab: React.FC<SubPnTabProps> = ({
       return;
     }
     let cancelled = false;
-    void MonetizationService.getStatus(accessToken)
+    void getMonetizationStatusCached(accessToken)
       .then((s) => {
         if (!cancelled) setIsIdentityVerified(!!s.verified);
       })
@@ -152,7 +154,7 @@ export const SubPnTab: React.FC<SubPnTabProps> = ({
     [accessToken, publicKey]
   );
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (opts?: { force?: boolean }) => {
     if (!accessToken || !pnIdentifier) return;
     setLoading(true);
     setErr(null);
@@ -164,7 +166,7 @@ export const SubPnTab: React.FC<SubPnTabProps> = ({
         setAssets([]);
         return;
       }
-      const list = await fetchOwnedAssets(accessToken, pnIdentifier);
+      const list = await getOwnedAssetsCached(accessToken, pnIdentifier, { force: opts?.force });
       setAssets(list);
       void syncIpfsManifest(list);
     } catch (e) {
@@ -174,13 +176,16 @@ export const SubPnTab: React.FC<SubPnTabProps> = ({
     }
   }, [accessToken, pnIdentifier, syncIpfsManifest]);
 
+  const assetsLenRef = React.useRef(0);
+  assetsLenRef.current = assets.length;
+
   useEffect(() => {
     void load();
   }, [load]);
 
   useEffect(() => {
     const onReady = () => {
-      void load();
+      if (assetsLenRef.current === 0) void load();
     };
     window.addEventListener(PN_CLOUD_CREDENTIALS_READY_EVENT, onReady);
     return () => window.removeEventListener(PN_CLOUD_CREDENTIALS_READY_EVENT, onReady);
@@ -247,7 +252,7 @@ export const SubPnTab: React.FC<SubPnTabProps> = ({
       localStorage.setItem(`${STORAGE_SEAL_PREFIX}${asset.id}`, sealed);
       setExportPassphrase('');
       setLabel('');
-      await load();
+      await load({ force: true });
       setSelectedId(asset.id);
     } catch (e) {
       setErr(e instanceof Error ? e.message : 'Create failed');
@@ -411,7 +416,7 @@ export const SubPnTab: React.FC<SubPnTabProps> = ({
 
       closeExportAuthModal();
       setRotatePending(false);
-      await load();
+      await load({ force: true });
       setSelectedId(newAsset.id);
     } catch (e) {
       setAuthError(e instanceof Error ? e.message : 'Sub rotation failed.');
@@ -553,7 +558,7 @@ export const SubPnTab: React.FC<SubPnTabProps> = ({
       <div className="flex flex-wrap gap-2">
         <button
           type="button"
-          onClick={() => void load()}
+          onClick={() => void load({ force: true })}
           className="inline-flex items-center gap-2 px-3 py-2 rounded-md bg-secondary border border-border hover:bg-border text-sm"
           disabled={loading || !accessToken}
         >
@@ -700,7 +705,7 @@ export const SubPnTab: React.FC<SubPnTabProps> = ({
                 await revokeOwnedAsset(accessToken, pnIdentifier, selected.id);
                 localStorage.removeItem(`${STORAGE_SEAL_PREFIX}${selected.id}`);
                 setSelectedId(null);
-                await load();
+                await load({ force: true });
               }}
             >
               Revoke on API
@@ -966,7 +971,7 @@ export const SubPnTab: React.FC<SubPnTabProps> = ({
           pnIdentifier={pnIdentifier}
           onFeedCreated={async () => {
             setShowFeedCreator(false);
-            await load();
+            await load({ force: true });
           }}
         />
       )}

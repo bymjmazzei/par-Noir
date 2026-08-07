@@ -32,7 +32,7 @@ export interface UseDriveUploadParams {
   /** Shared refs owned by FileStorageAggregator. */
   shareTokenCache: React.MutableRefObject<Map<string, ShareToken>>;
   pnIdentifierRef: React.MutableRefObject<string | null>;
-  loadFiles: () => Promise<void>;
+  loadFiles: (opts?: { verifyWithDrive?: boolean }) => Promise<void>;
 }
 
 export function useDriveUpload({
@@ -331,7 +331,7 @@ export function useDriveUpload({
 
       // Refresh file list - IMPORTANT: Force reload with the same pN identifier used for upload
       console.log(`🔄 [Upload] Reloading files for pN ${pnIdentifier?.substring(0, 8)}...`);
-      await loadFiles();
+      await loadFiles({ verifyWithDrive: true });
       console.log('✅ [Upload] File uploaded successfully');
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Failed to upload file';

@@ -16,6 +16,11 @@ export interface MergeDriveScanWithIndexParams {
   currentPnIdentifier: string | undefined;
   ownerIndex: any;
   ownerIndexFromApi: boolean;
+  /**
+   * When false (default), trust owner-index for listing and skip live Drive verify.
+   * When true (Refresh / mutations), scan Drive to drop orphans and discover unindexed files.
+   */
+  verifyWithDrive?: boolean;
   /** Mutated in place: fileId/backendFileId → metadata for the whole load pass. */
   aggregatedMetadataMap: Map<string, PublicMetadata>;
   /** Mutated in place: files that still need a metadata lookup. */
@@ -40,6 +45,7 @@ export async function mergeDriveScanWithIndex({
   currentPnIdentifier,
   ownerIndex,
   ownerIndexFromApi,
+  verifyWithDrive = false,
   aggregatedMetadataMap,
   filesNeedingMetadata,
   retryBackends,
@@ -56,22 +62,23 @@ export async function mergeDriveScanWithIndex({
   } else if (ownerIndex?.files?.length) {
     ownerIndexRetryCountsRef.current.delete(backendId);
 
-    // IMPORTANT: Always scan Google Drive to verify files exist before using owner index entries
-    // This prevents showing orphaned files that were deleted from Drive but remain in the index
     let scannedFiles: any[] = [];
-    try {
-      scannedFiles = await backend.listFiles(undefined, currentPnIdentifier);
-      console.debug('✅ [loadFiles] Scanned Google Drive to verify file existence', {
-        backendId,
-        scannedCount: scannedFiles.length,
-        ownerIndexCount: ownerIndex.files.length
-      });
-    } catch (scanError) {
-      console.warn('⚠️ [loadFiles] Failed to scan Drive for orphaned file cleanup (non-blocking)', {
-        backendId,
-        error: scanError,
-      });
-      // Continue with owner index entries if scan fails (better than showing nothing)
+    if (verifyWithDrive) {
+      try {
+        scannedFiles = await backend.listFiles(undefined, currentPnIdentifier);
+        console.debug('✅ [loadFiles] Scanned Google Drive to verify file existence', {
+          backendId,
+          scannedCount: scannedFiles.length,
+          ownerIndexCount: ownerIndex.files.length
+        });
+      } catch (scanError) {
+        console.warn('⚠️ [loadFiles] Failed to scan Drive for orphaned file cleanup (non-blocking)', {
+          backendId,
+          error: scanError,
+        });
+      }
+    } else {
+      console.debug('ℹ️ [loadFiles] Index-only load; skipping Drive verify scan', { backendId });
     }
 
     const backendProvider = backendId.includes('::') ? backendId.split('::')[0] : backendId;
@@ -79,6 +86,7 @@ export async function mergeDriveScanWithIndex({
     const existingFileIds = new Set(
       scannedFiles.map((f: any) => f.id).concat(scannedFiles.map((f: any) => f.name))
     );
+    const shouldFilterOrphans = verifyWithDrive && scannedFiles.length > 0;
 
     const ownerIndexFileIds = new Set(
       ownerIndex.files
@@ -89,7 +97,7 @@ export async function mergeDriveScanWithIndex({
     filesForBackend = ownerIndex.files
       .filter((entry: any) => {
         const blobId = entry.backendFileId || entry.googleDriveFileId;
-        if (!isPortableBackend && blobId && !existingFileIds.has(blobId)) {
+        if (shouldFilterOrphans && !isPortableBackend && blobId && !existingFileIds.has(blobId)) {
           console.debug('🗑️ [loadFiles] Filtering out orphaned file from files list', {
             backendId,
             fileId: blobId,
@@ -123,47 +131,43 @@ export async function mergeDriveScanWithIndex({
         };
       });
 
-    // IMPORTANT: Also include files from Drive scan that aren't in the owner index
-    // This ensures PDFs, thoughts, and other files uploaded directly to Drive are shown
-    const filesNotInIndex = scannedFiles.filter((scannedFile: any) => {
-      return !ownerIndexFileIds.has(scannedFile.id);
-    });
+    if (verifyWithDrive) {
+      const filesNotInIndex = scannedFiles.filter((scannedFile: any) => {
+        return !ownerIndexFileIds.has(scannedFile.id);
+      });
 
-    if (filesNotInIndex.length > 0) {
-      // Add files not in index to filesForBackend
-      const additionalFiles = filesNotInIndex.map((file: any) => ({
-        id: file.id,
-        backend: backendId,
-        backendFileId: file.id,
-        name: file.name,
-        originalName: file.originalName || file.name.replace('.encrypted', ''),
-        mimeType: file.mimeType,
-        size: file.size?.toString() || '0',
-        encrypted: file.name.endsWith('.encrypted'),
-        visibility: 'private' as const,
-        aggregatedAt: file.modifiedTime || new Date().toISOString(),
-      }));
+      if (filesNotInIndex.length > 0) {
+        const additionalFiles = filesNotInIndex.map((file: any) => ({
+          id: file.id,
+          backend: backendId,
+          backendFileId: file.id,
+          name: file.name,
+          originalName: file.originalName || file.name.replace('.encrypted', ''),
+          mimeType: file.mimeType,
+          size: file.size?.toString() || '0',
+          encrypted: file.name.endsWith('.encrypted'),
+          visibility: 'private' as const,
+          aggregatedAt: file.modifiedTime || new Date().toISOString(),
+        }));
 
-      filesForBackend.push(...additionalFiles);
-      filesNeedingMetadata.push(...additionalFiles);
+        filesForBackend.push(...additionalFiles);
+        filesNeedingMetadata.push(...additionalFiles);
+      }
     }
 
-    // Process metadata from owner index, filtering out orphaned entries
-    // Reuse existingFileIds from above
     const orphanedEntries: any[] = [];
 
     ownerIndex.files.forEach((entry: any) => {
       const googleDriveFileId = entry.googleDriveFileId;
 
-      // Skip entries that don't exist in Google Drive (orphaned)
-      if (googleDriveFileId && !existingFileIds.has(googleDriveFileId)) {
+      if (shouldFilterOrphans && googleDriveFileId && !existingFileIds.has(googleDriveFileId)) {
         orphanedEntries.push(entry);
         console.debug('🗑️ [loadFiles] Filtering out orphaned file from owner index', {
           backendId,
           fileId: googleDriveFileId,
           fileName: entry.fileName || entry.originalName
         });
-        return; // Skip this entry
+        return;
       }
 
       const fileId = entry.fileId || entry.googleDriveFileId || `${backendId}:${entry.fileName}`;

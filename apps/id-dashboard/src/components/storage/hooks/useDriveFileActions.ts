@@ -60,8 +60,8 @@ export interface UseDriveFileActionsParams {
   loadFileMetadata: (filesToLoad: AggregatedFile[]) => Promise<void>;
   /** Shared refs owned by FileStorageAggregator. */
   shareTokenCache: React.MutableRefObject<Map<string, ShareToken>>;
-  loadFilesRef: React.MutableRefObject<(() => Promise<void>) | null>;
-  loadFiles: () => Promise<void>;
+  loadFilesRef: React.MutableRefObject<((opts?: { verifyWithDrive?: boolean }) => Promise<void>) | null>;
+  loadFiles: (opts?: { verifyWithDrive?: boolean }) => Promise<void>;
 }
 
 export function useDriveFileActions({
@@ -439,7 +439,7 @@ export function useDriveFileActions({
       setSelectedFiles(new Set());
       setIsBulkDeleteMode(false);
       setMoveDestKey('');
-      await loadFiles();
+      await loadFiles({ verifyWithDrive: true });
       setSuccessMessage(`Moved ${fileIds.length} file(s) to ${destProvider}.`);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Move failed');

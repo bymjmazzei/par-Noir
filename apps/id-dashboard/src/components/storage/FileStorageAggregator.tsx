@@ -12,7 +12,6 @@ import { AggregatedFile, PublicMetadata, ShareToken } from '../../types/aggregat
 import { SecureCredentialManager } from '@par-noir/identity-crypto';
 import { PN_CLOUD_CREDENTIALS_READY_EVENT } from '@par-noir/oauth-ui';
 import { ReportContentModal } from './ReportContentModal';
-import { ownerGet } from '../../services/ownerApiService';
 import { getStoredToken, getStoredTokenForPn } from '../../services/parNoirOAuthInline';
 import { MultiCloudStoragePanel } from './MultiCloudStoragePanel';
 import {
@@ -118,7 +117,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
   // Cache for share tokens (fileId -> shareToken) - generated during upload for quick access
   const shareTokenCache = React.useRef<Map<string, ShareToken>>(new Map());
   const fileInputRefs = React.useRef<Map<string, HTMLInputElement | null>>(new Map());
-  const loadFilesRef = React.useRef<(() => Promise<void>) | null>(null);
+  const loadFilesRef = React.useRef<((opts?: { verifyWithDrive?: boolean }) => Promise<void>) | null>(null);
   const loadStorageQuotaRef = React.useRef<(() => Promise<void>) | null>(null);
   const makeShareTokenCacheKey = React.useCallback((backendId: string, backendFileId: string) => `${backendId}|${backendFileId}`, []);
   const [isLoading, setIsLoading] = useState(false);
@@ -126,9 +125,13 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [connectedBackends, setConnectedBackends] = useState<Set<string>>(new Set());
+  const connectedBackendsRef = React.useRef(connectedBackends);
+  connectedBackendsRef.current = connectedBackends;
   const [userEmails, setUserEmails] = useState<Map<string, string>>(new Map());
   const userEmailsRef = React.useRef(userEmails);
   const [driveAccounts, setDriveAccounts] = useState<DriveAccountState[]>([]);
+  const driveAccountsRef = React.useRef(driveAccounts);
+  driveAccountsRef.current = driveAccounts;
   const [activeBackendId, setActiveBackendId] = useState<string | null>(null);
   const [storageQuotas, setStorageQuotas] = useState<Map<string, any>>(new Map());
   const [fileMetadataMap, setFileMetadataMap] = useState<Map<string, PublicMetadata>>(new Map());
@@ -230,22 +233,22 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
     }
     const run = (async () => {
       try {
-        const res = await ownerGet(
-          ownerToken,
-          `/api/storage/accounts/${encodeURIComponent(cloudPnIdentifier)}`,
-          { pnIdentifier: cloudPnIdentifier }
-        );
-        if (!res.ok) return;
-        const data = (await res.json()) as {
-          accounts?: Array<{ provider: string; accountId: string; displayName?: string; isSocialCloud?: boolean }>;
-        };
+        const { getStorageAccountsCached } = await import('../../services/dashboardSessionCache');
+        const data = await getStorageAccountsCached(ownerToken, cloudPnIdentifier);
         const portable = (data.accounts ?? []).filter((a) => a.provider !== 'google_drive');
         const nextKey = JSON.stringify(
           portable.map((a) => [a.provider, a.accountId, a.displayName ?? '', a.isSocialCloud ? 1 : 0])
         );
         if (nextKey !== lastPortableAccountsKeyRef.current) {
           lastPortableAccountsKeyRef.current = nextKey;
-          setPortableCloudAccounts(portable);
+          setPortableCloudAccounts(
+            portable as Array<{
+              provider: string;
+              accountId: string;
+              displayName?: string;
+              isSocialCloud?: boolean;
+            }>
+          );
         }
         const { PortableBlobBackend } = await import('../../services/storage/PortableBlobBackend');
         for (const acct of portable) {
@@ -385,11 +388,14 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
   React.useEffect(() => {
     let debounceTimer: ReturnType<typeof setTimeout> | null = null;
     const onReady = () => {
-      // Coalesce burst READY events (migrate + ensureCloudSession + reconnect).
+      // Coalesce burst READY events. With keep-alive, only hydrate when no Drive backends yet.
       if (debounceTimer != null) clearTimeout(debounceTimer);
       debounceTimer = setTimeout(() => {
         debounceTimer = null;
-        void hydrateStorageCredentialsFromAPIRef.current(true);
+        const hasDrive = driveAccountsRef.current.length > 0 || connectedBackendsRef.current.size > 0;
+        if (!hasDrive) {
+          void hydrateStorageCredentialsFromAPIRef.current(true);
+        }
         void registerPortableCloudBackendsRef.current();
       }, 250);
     };

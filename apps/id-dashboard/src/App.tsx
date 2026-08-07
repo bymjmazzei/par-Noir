@@ -918,20 +918,24 @@ function App() {
     }
   }, [apiToken, recoveryVaultPnId]);
 
-  useEffect(() => {
-    if (activeTab === 'delegation' && apiToken && recoveryVaultPnId) {
-      void refreshAssetDelegations();
-    }
-  }, [activeTab, apiToken, recoveryVaultPnId, refreshAssetDelegations]);
+  const assetDelegationsLenRef = useRef(0);
+  assetDelegationsLenRef.current = assetDelegations.length;
 
   useEffect(() => {
-    if (activeTab !== 'delegation' && activeTab !== 'subpn') return;
+    if (apiToken && recoveryVaultPnId) {
+      void refreshAssetDelegations();
+    }
+  }, [apiToken, recoveryVaultPnId, refreshAssetDelegations]);
+
+  useEffect(() => {
     const onReady = () => {
-      if (activeTab === 'delegation') void refreshAssetDelegations();
+      if (assetDelegationsLenRef.current === 0 && apiToken && recoveryVaultPnId) {
+        void refreshAssetDelegations();
+      }
     };
     window.addEventListener(PN_CLOUD_CREDENTIALS_READY_EVENT, onReady);
     return () => window.removeEventListener(PN_CLOUD_CREDENTIALS_READY_EVENT, onReady);
-  }, [activeTab, refreshAssetDelegations]);
+  }, [apiToken, recoveryVaultPnId, refreshAssetDelegations]);
 
   const handleRemoveDelegation = async (delegationId: string) => {
     if (!apiToken || !recoveryVaultPnId) return;

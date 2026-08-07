@@ -50,7 +50,7 @@ export interface DriveFilesListSectionProps {
   setReportingFile: (file: AggregatedFile | null) => void;
   setShowReportModal: (v: boolean) => void;
   setMoveDestKey: (key: string) => void;
-  loadFiles: () => void;
+  loadFiles: (opts?: { verifyWithDrive?: boolean }) => void;
   handleDisconnect: (backendId: string) => void;
   handleUpload: (e: React.ChangeEvent<HTMLInputElement>) => void;
   toggleFileSelection: (fileId: string) => void;
@@ -154,7 +154,7 @@ export function DriveFilesListSection(props: DriveFilesListSectionProps) {
                   <button
                     onClick={() => {
                       setActiveBackendId(backendId);
-                      loadFiles();
+                      loadFiles({ verifyWithDrive: true });
                     }}
                     disabled={isLoading || driveReadBlocked}
                     className="p-2 rounded text-text-secondary hover:text-text-primary transition-colors disabled:opacity-50"
@@ -790,7 +790,7 @@ export function DriveFilesListSection(props: DriveFilesListSectionProps) {
                   <button
                     onClick={() => {
                       setActiveBackendId(backendId);
-                      loadFiles();
+                      loadFiles({ verifyWithDrive: true });
                     }}
                     disabled={isLoading || driveReadBlocked}
                     className="p-2 rounded text-text-secondary hover:text-text-primary transition-colors disabled:opacity-50"
