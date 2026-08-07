@@ -392,7 +392,22 @@ export function useDriveStorageCredentials({
             const { clearOwnerIndexUnavailable } = await import(
               '../../../services/storage/ownerIndexAvailability'
             );
+            const {
+              isMetadataSheetsUnavailable,
+              clearMetadataSheetsUnavailable,
+            } = await import('../../../services/storage/metadataSheetsAvailability');
+            const wasSheetsBlocked = isMetadataSheetsUnavailable(pnIdentifier);
             clearOwnerIndexUnavailable(pnIdentifier);
+            clearMetadataSheetsUnavailable(pnIdentifier);
+            // Only re-signal if App memoized a 409 during unlock — avoid hydrate↔READY loops.
+            if (wasSheetsBlocked) {
+              try {
+                const { PN_CLOUD_CREDENTIALS_READY_EVENT } = await import('@par-noir/oauth-ui');
+                window.dispatchEvent(new CustomEvent(PN_CLOUD_CREDENTIALS_READY_EVENT));
+              } catch {
+                /* non-DOM */
+              }
+            }
           }
         }
         if (loadFilesRef.current) {

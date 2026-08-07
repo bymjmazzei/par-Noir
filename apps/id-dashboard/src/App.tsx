@@ -602,15 +602,25 @@ function App() {
   
 
   
-  // Load third-party permissions from Google Drive (after cloud session ready)
+  // Load third-party permissions after cloud secrets warm. Same unlock READY burst as ZKP —
+  // memoize 404/409 so we do not re-hit the API until layout init clears the memo.
   const permissionsLoadedKeyRef = useRef<string | null>(null);
+  const permissionsInFlightRef = useRef(false);
   useEffect(() => {
+    let debounceTimer: ReturnType<typeof setTimeout> | null = null;
+
     const loadThirdPartyPermissions = async () => {
       if (!authenticatedUser?.id || !apiToken || !recoveryVaultPnId) return;
       const loadKey = `${recoveryVaultPnId}:${apiToken.slice(0, 12)}`;
       if (permissionsLoadedKeyRef.current === loadKey) return;
+      if (permissionsInFlightRef.current) return;
 
       try {
+        const { isMetadataSheetsUnavailable, markMetadataSheetsUnavailable } = await import(
+          './services/storage/metadataSheetsAvailability'
+        );
+        if (isMetadataSheetsUnavailable(recoveryVaultPnId)) return;
+
         const credentials = SecureCredentialManager.getCredentials(authenticatedUser.id);
         if (!credentials) {
           console.warn('[App] Cannot load permissions - credentials not available');
@@ -626,6 +636,7 @@ function App() {
           return;
         }
 
+        permissionsInFlightRef.current = true;
         const response = await ownerGet(
           authToken,
           `/api/users/${recoveryVaultPnId}/third-party-permissions`,
@@ -668,20 +679,31 @@ function App() {
             });
             console.log('[App] Loaded third-party permissions from Google Drive:', Object.keys(permissions));
           }
+        } else if (response.status === 409) {
+          markMetadataSheetsUnavailable(recoveryVaultPnId);
         } else if (response.status !== 404) {
           console.warn('[App] Failed to load permissions:', response.status);
         }
       } catch (error) {
         console.error('[App] Error loading third-party permissions:', error);
+      } finally {
+        permissionsInFlightRef.current = false;
       }
     };
 
     void loadThirdPartyPermissions();
     const onReady = () => {
-      void loadThirdPartyPermissions();
+      if (debounceTimer != null) clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(() => {
+        debounceTimer = null;
+        void loadThirdPartyPermissions();
+      }, 250);
     };
     window.addEventListener(PN_CLOUD_CREDENTIALS_READY_EVENT, onReady);
-    return () => window.removeEventListener(PN_CLOUD_CREDENTIALS_READY_EVENT, onReady);
+    return () => {
+      window.removeEventListener(PN_CLOUD_CREDENTIALS_READY_EVENT, onReady);
+      if (debounceTimer != null) clearTimeout(debounceTimer);
+    };
   }, [authenticatedUser?.id, apiToken, recoveryVaultPnId, ensureOwnerApiTokenForActiveUser]);
 
   // Initialize browser-app tool permissions (hard-coded pN owned third party)
@@ -731,10 +753,14 @@ function App() {
     }
   }, [authenticatedUser?.id]);
   
-  // Load attested + verified data points from Drive once session cloud token is warm.
-  // Empty set must not mean "Add" until this finishes (Identity Add flash).
+  // Load attested + verified data points once cloud token is warm and Drive layout exists.
+  // Unlock READY (secrets warm) is not the same as layout ready — 409 is memoized for the
+  // session so migrate/ensureCloudSession READY bursts do not storm GET /zkp-data-points.
   const attestedLoadedKeyRef = useRef<string | null>(null);
+  const attestedInFlightRef = useRef(false);
   useEffect(() => {
+    let debounceTimer: ReturnType<typeof setTimeout> | null = null;
+
     const loadAttestedDataPoints = async () => {
       try {
         if (!authenticatedUser?.id || !apiToken || !recoveryVaultPnId) {
@@ -747,8 +773,18 @@ function App() {
           return;
         }
 
+        const { isMetadataSheetsUnavailable, markMetadataSheetsUnavailable } = await import(
+          './services/storage/metadataSheetsAvailability'
+        );
+        if (isMetadataSheetsUnavailable(recoveryVaultPnId)) {
+          // Layout incomplete this session — do not probe again until init clears the memo.
+          setAttestedHydrationStatus('ready');
+          return;
+        }
+
         const loadKey = `${recoveryVaultPnId}:${apiToken.slice(0, 12)}`;
         if (attestedLoadedKeyRef.current === loadKey) return;
+        if (attestedInFlightRef.current) return;
 
         setAttestedHydrationStatus('loading');
 
@@ -777,25 +813,23 @@ function App() {
           return;
         }
 
+        attestedInFlightRef.current = true;
         try {
           const { ZKPDataPointsService } = await import('./utils/zkpDataPointsService');
-          const loadRows = async () =>
-            ZKPDataPointsService.getAllDataPoints(
-              authenticatedUser.id,
-              credentials,
-              authToken,
-              authenticatedUser.publicKey
-            );
-
-          let rows = await loadRows();
-          if (rows === null) {
-            await new Promise((r) => setTimeout(r, 600));
-            rows = await loadRows();
-          }
+          const rows = await ZKPDataPointsService.getAllDataPoints(
+            authenticatedUser.id,
+            credentials,
+            authToken,
+            authenticatedUser.publicKey
+          );
 
           if (rows === null) {
-            // Layout still not ready — keep loading; retry on next cloud-ready event
-            setAttestedHydrationStatus('loading');
+            // 409/401: layout or cloud token not ready. Memoize and stop — unlock READY
+            // will keep firing without a usable index.
+            markMetadataSheetsUnavailable(recoveryVaultPnId);
+            setAttestedDataPoints(new Set());
+            setVerifiedDataPoints(new Set());
+            setAttestedHydrationStatus('ready');
             return;
           }
 
@@ -813,24 +847,34 @@ function App() {
           setAttestedHydrationStatus('ready');
         } catch (error) {
           console.error('[App] Error loading attested data points from API:', error);
-          // Do not memoize failure; keep loading so UI does not flash Add
           setAttestedHydrationStatus('loading');
+        } finally {
+          attestedInFlightRef.current = false;
         }
       } catch (error) {
         console.error('[App] Error loading attested data points:', error);
         setAttestedDataPoints(new Set());
         setVerifiedDataPoints(new Set());
         setAttestedHydrationStatus('ready');
+        attestedInFlightRef.current = false;
       }
     };
 
     void loadAttestedDataPoints();
     const onReady = () => {
-      attestedLoadedKeyRef.current = null;
-      void loadAttestedDataPoints();
+      // Coalesce migrate + ensureCloudSession READY bursts (same as Storage).
+      if (debounceTimer != null) clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(() => {
+        debounceTimer = null;
+        attestedLoadedKeyRef.current = null;
+        void loadAttestedDataPoints();
+      }, 250);
     };
     window.addEventListener(PN_CLOUD_CREDENTIALS_READY_EVENT, onReady);
-    return () => window.removeEventListener(PN_CLOUD_CREDENTIALS_READY_EVENT, onReady);
+    return () => {
+      window.removeEventListener(PN_CLOUD_CREDENTIALS_READY_EVENT, onReady);
+      if (debounceTimer != null) clearTimeout(debounceTimer);
+    };
   }, [
     authenticatedUser?.id,
     apiToken,

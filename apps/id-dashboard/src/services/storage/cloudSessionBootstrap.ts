@@ -198,6 +198,11 @@ async function prefetchOwnerIndex(pnIdentifier: string, apiToken: string): Promi
     );
     if (res.ok) {
       clearOwnerIndexUnavailable(pnIdentifier);
+      void import('./metadataSheetsAvailability')
+        .then(({ clearMetadataSheetsUnavailable }) => {
+          clearMetadataSheetsUnavailable(pnIdentifier);
+        })
+        .catch(() => undefined);
       return;
     }
     if (res.status === 403 || res.status === 409) {
@@ -327,6 +332,11 @@ export function clearCloudSessionBootstrap(pnIdentifier?: string): void {
   }
   lastStatus = 'idle';
   lastError = undefined;
+  void import('./metadataSheetsAvailability')
+    .then(({ clearMetadataSheetsUnavailable }) => {
+      clearMetadataSheetsUnavailable(pnIdentifier);
+    })
+    .catch(() => undefined);
 }
 
 /**

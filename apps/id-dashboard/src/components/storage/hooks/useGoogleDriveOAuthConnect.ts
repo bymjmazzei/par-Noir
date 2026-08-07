@@ -417,12 +417,14 @@ export function useGoogleDriveOAuthConnect({
       setActiveBackendId(identifiers.backendId);
 
       // Shared device-cloud session (same path as browser reconnect / CloudReconnectHost).
+      // Do NOT fire PN_CLOUD_CREDENTIALS_READY yet — token exists but Drive layout/index
+      // is not built until persistStorageCredentialsToAPI finishes initialize. Early READY
+      // causes App to storm GET zkp-data-points (409) and third-party-permissions (404).
       try {
         const {
           persistCloudCredentials,
           resolveCloudPersistMode
         } = await import('@par-noir/device-cloud-credentials');
-        const { PN_CLOUD_CREDENTIALS_READY_EVENT } = await import('@par-noir/oauth-ui');
         const { derivePnIdentifierForToken } = await import('../../../services/parNoirOAuthInline');
         const sessionId = authenticatedUser?.id || null;
         const sessionCreds = sessionId ? SecureCredentialManager.getCredentials(sessionId) : null;
@@ -462,11 +464,6 @@ export function useGoogleDriveOAuthConnect({
             },
             mode
           });
-          try {
-            window.dispatchEvent(new CustomEvent(PN_CLOUD_CREDENTIALS_READY_EVENT));
-          } catch {
-            /* non-DOM */
-          }
         }
       } catch (sealErr) {
         console.warn('[Google Drive] Device cloud persist skipped:', sealErr);
@@ -480,6 +477,14 @@ export function useGoogleDriveOAuthConnect({
         }
       } catch (persistError) {
         console.warn('⚠️ [handleConnectGoogleDrive] Failed to persist layout to API (non-critical):', persistError);
+      }
+
+      // Signal cloud ready only after credentials PUT + layout init attempt.
+      try {
+        const { PN_CLOUD_CREDENTIALS_READY_EVENT } = await import('@par-noir/oauth-ui');
+        window.dispatchEvent(new CustomEvent(PN_CLOUD_CREDENTIALS_READY_EVENT));
+      } catch {
+        /* non-DOM */
       }
 
       clearDriveSetupProgress();

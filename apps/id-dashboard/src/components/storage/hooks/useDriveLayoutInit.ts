@@ -111,6 +111,10 @@ export function useDriveLayoutInit({ setError }: UseDriveLayoutInitParams) {
           );
           if (idxRes.ok) {
             clearOwnerIndexUnavailable(normalized);
+            const { clearMetadataSheetsUnavailable } = await import(
+              '../../../services/storage/metadataSheetsAvailability'
+            );
+            clearMetadataSheetsUnavailable(normalized);
             return true;
           }
           // Under device custody the index often cannot be served — do not retry 403/409.
@@ -229,7 +233,21 @@ export function useDriveLayoutInit({ setError }: UseDriveLayoutInitParams) {
           const { clearOwnerIndexUnavailable } = await import(
             '../../../services/storage/ownerIndexAvailability'
           );
+          const {
+            isMetadataSheetsUnavailable,
+            clearMetadataSheetsUnavailable,
+          } = await import('../../../services/storage/metadataSheetsAvailability');
+          const wasSheetsBlocked = isMetadataSheetsUnavailable(normalized);
           clearOwnerIndexUnavailable(normalized);
+          clearMetadataSheetsUnavailable(normalized);
+          if (wasSheetsBlocked) {
+            try {
+              const { PN_CLOUD_CREDENTIALS_READY_EVENT } = await import('@par-noir/oauth-ui');
+              window.dispatchEvent(new CustomEvent(PN_CLOUD_CREDENTIALS_READY_EVENT));
+            } catch {
+              /* non-DOM */
+            }
+          }
           console.log('✅ [StorageCredentials] Drive layout built on server');
           return true;
         }
