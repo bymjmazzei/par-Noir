@@ -197,6 +197,14 @@ export async function registerSuccession(params: {
         [pred, succ]
       );
       await client.query(`DELETE FROM user_profiles WHERE pn_identifier = $1`, [pred]);
+      try {
+        await client.query(
+          `UPDATE public_names SET pn_identifier = $2, updated_at = NOW() WHERE pn_identifier = $1`,
+          [pred, succ]
+        );
+      } catch {
+        /* table may be missing on older DBs */
+      }
       if (params.predecessorDid && params.successorDid) {
         await client.query(`UPDATE feeds SET creator_did = $2 WHERE creator_did = $1`, [
           params.predecessorDid,

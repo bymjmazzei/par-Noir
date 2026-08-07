@@ -5,7 +5,7 @@
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { createPortal } from 'react-dom';
-import { User, MessageCircle, UserPlus, Check, X, Clock, Pencil, UserMinus } from 'lucide-react';
+import { User, MessageCircle, UserPlus, Check, X, Clock, Pencil, UserMinus, BadgeCheck } from 'lucide-react';
 import { useUserState } from '../contexts/UserStateContext';
 import { getConnectionStatus, sendConnectionRequest, acceptConnectionRequest, rejectConnectionRequest, removeConnection } from '../services/connectionService';
 import { ConnectionStatus } from '../services/connectionService';
@@ -18,6 +18,7 @@ import {
 import { decryptWithToken, ShareToken } from '../utils/tokenDecryption';
 import { IndexedFile } from '../types/aggregator';
 import { getUserProfile, updateDisplayName as updateDisplayNameAPI } from '../services/profileService';
+import { fetchListedPublicNamesForPn } from '../services/publicNamesService';
 
 interface ProfileActionMenuProps {
   creatorId: string;
@@ -81,6 +82,32 @@ export const ProfileActionMenu = React.memo(function ProfileActionMenu({ creator
   const [profileImageUrl, setProfileImageUrl] = useState<string | null>(null);
   const [profileImageLoading, setProfileImageLoading] = useState(false);
   const [externalDisplayName, setExternalDisplayName] = useState<string | null>(null);
+  const [attestedPublicName, setAttestedPublicName] = useState<string | null>(null);
+  const [publicNameProofType, setPublicNameProofType] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      if (!creatorId) {
+        setAttestedPublicName(null);
+        setPublicNameProofType(null);
+        return;
+      }
+      const names = await fetchListedPublicNamesForPn(creatorId);
+      if (cancelled) return;
+      const primary = names.find((n) => n.isVanity) || names[0];
+      setAttestedPublicName(primary?.publicName || null);
+      setPublicNameProofType(primary?.proofType || null);
+    })().catch(() => {
+      if (!cancelled) {
+        setAttestedPublicName(null);
+        setPublicNameProofType(null);
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [creatorId]);
 
   // Helper to check if ID is a valid pN identifier (not a DID or public key)
   const isValidPnIdentifier = (id: string): boolean => {
@@ -561,7 +588,18 @@ export const ProfileActionMenu = React.memo(function ProfileActionMenu({ creator
           ) : (
             <User className="h-6 w-6 md:h-7 md:w-7 text-white fill-white" />
           )}
+          {attestedPublicName && (
+            <BadgeCheck
+              className="absolute bottom-0 right-0 w-4 h-4 md:w-5 md:h-5 text-blue-400 bg-black rounded-full"
+              aria-label="Verified public name"
+            />
+          )}
         </div>
+        {attestedPublicName && (
+          <span className="text-[10px] md:text-xs text-white font-medium max-w-[4.5rem] truncate drop-shadow">
+            {attestedPublicName}
+          </span>
+        )}
       </button>
 
       {isOpen && createPortal(
@@ -649,20 +687,37 @@ export const ProfileActionMenu = React.memo(function ProfileActionMenu({ creator
                     <User className="h-4 w-4 text-white" />
                   )}
                 </div>
-                <div className="flex items-center space-x-1.5 min-w-0 flex-1">
-                  <span className="text-white font-medium text-sm truncate">{displayName}</span>
-                  {isOwnProfile && (
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        e.preventDefault();
-                        setIsEditingName(true);
-                      }}
-                      className="p-0.5 text-neutral-400 hover:text-white hover:bg-neutral-700 rounded transition-colors flex-shrink-0"
-                      title="Edit display name"
-                    >
-                      <Pencil className="h-3.5 w-3.5" />
-                    </button>
+                <div className="flex flex-col min-w-0 flex-1">
+                  <div className="flex items-center space-x-1.5 min-w-0">
+                    <span className="text-white font-medium text-sm truncate">
+                      {attestedPublicName || displayName}
+                    </span>
+                    {attestedPublicName && (
+                      <BadgeCheck className="h-3.5 w-3.5 text-blue-400 shrink-0" aria-label="Verified" />
+                    )}
+                    {isOwnProfile && (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          e.preventDefault();
+                          setIsEditingName(true);
+                        }}
+                        className="p-0.5 text-neutral-400 hover:text-white hover:bg-neutral-700 rounded transition-colors flex-shrink-0"
+                        title="Edit display name"
+                      >
+                        <Pencil className="h-3.5 w-3.5" />
+                      </button>
+                    )}
+                  </div>
+                  {attestedPublicName && (
+                    <span className="text-neutral-400 text-[10px] truncate">
+                      {publicNameProofType === 'youtube'
+                        ? 'Verified via YouTube'
+                        : publicNameProofType === 'dns'
+                          ? 'Verified via domain'
+                          : 'Verified public name'}
+                      {displayName && displayName !== attestedPublicName ? ` · ${displayName}` : ''}
+                    </span>
                   )}
                 </div>
               </div>

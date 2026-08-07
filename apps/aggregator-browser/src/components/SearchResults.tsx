@@ -5,7 +5,7 @@
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { IndexedFile } from '../types/aggregator';
-import { Search, X, Clock, TrendingUp, Flame } from 'lucide-react';
+import { Search, X, Clock, TrendingUp, Flame, BadgeCheck } from 'lucide-react';
 import { searchFiles, searchProfiles, SearchOptions, ProfileSearchResult } from '../services/searchService';
 import { useUserState } from '../contexts/UserStateContext';
 import { FeedRail } from './FeedRail';
@@ -15,6 +15,7 @@ interface SearchResultsProps {
   onFileClick: (file: IndexedFile) => void;
   indexedFiles?: IndexedFile[]; // For fallback search
   thumbnails?: Map<string, string>; // Thumbnail URLs by fileId
+  onCreatorClick?: (creatorId: string) => void;
 }
 
 type SearchFilter = 'all' | 'users' | 'posts' | 'tags';
@@ -26,7 +27,7 @@ const MAX_RECENT_SEARCHES = 10;
 const POPULAR_SEARCHES = ['art', 'photography', 'music', 'sports', 'nature', 'design'];
 const TRENDING_SEARCHES = ['ai', 'digital art', 'photography', 'music production', 'sports highlights'];
 
-export function SearchResults({ initialQuery = '', onFileClick, indexedFiles = [], thumbnails }: SearchResultsProps) {
+export function SearchResults({ initialQuery = '', onFileClick, indexedFiles = [], thumbnails, onCreatorClick }: SearchResultsProps) {
   const { userState } = useUserState();
   const [query, setQuery] = useState(initialQuery);
   const [results, setResults] = useState<IndexedFile[]>([]);
@@ -268,18 +269,38 @@ export function SearchResults({ initialQuery = '', onFileClick, indexedFiles = [
                 <h3 className="text-white font-medium mb-3">People</h3>
                 <div className="space-y-2">
                   {visibleProfiles.map((profile) => (
-                    <div
+                    <button
+                      type="button"
                       key={profile.pnIdentifier}
-                      className="flex items-center gap-3 p-3 bg-neutral-800 rounded-lg border border-neutral-700"
+                      onClick={() => {
+                        if (onCreatorClick) {
+                          onCreatorClick(profile.pnIdentifier);
+                        }
+                      }}
+                      className="w-full flex items-center gap-3 p-3 bg-neutral-800 rounded-lg border border-neutral-700 text-left hover:border-neutral-500 transition-colors"
                     >
-                      <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-500 to-purple-500 flex items-center justify-center text-white text-sm font-medium">
+                      <div className="relative w-10 h-10 rounded-full bg-gradient-to-br from-blue-500 to-purple-500 flex items-center justify-center text-white text-sm font-medium shrink-0">
                         {(profile.displayName || profile.pnIdentifier).charAt(0).toUpperCase()}
+                        {(profile.verified || profile.publicName) && (
+                          <BadgeCheck className="absolute -bottom-0.5 -right-0.5 w-4 h-4 text-blue-400 bg-neutral-900 rounded-full" />
+                        )}
                       </div>
-                      <div>
-                        <p className="text-white text-sm font-medium">{profile.displayName}</p>
-                        <p className="text-neutral-400 text-xs">{profile.pnIdentifier}</p>
+                      <div className="min-w-0">
+                        <p className="text-white text-sm font-medium flex items-center gap-1.5">
+                          <span className="truncate">{profile.publicName || profile.displayName}</span>
+                          {(profile.verified || profile.publicName) && (
+                            <BadgeCheck className="w-3.5 h-3.5 text-blue-400 shrink-0" />
+                          )}
+                        </p>
+                        <p className="text-neutral-400 text-xs truncate">
+                          {profile.proofType === 'youtube'
+                            ? 'Verified via YouTube'
+                            : profile.proofType === 'dns'
+                              ? 'Verified via domain'
+                              : 'Verified public name'}
+                        </p>
                       </div>
-                    </div>
+                    </button>
                   ))}
                 </div>
               </div>

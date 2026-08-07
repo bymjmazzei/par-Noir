@@ -195,28 +195,29 @@ export function setupProfileRoutes(app: express.Application, deps: ProfileRouteD
       }
     });
 
-    // GET /api/profile/search - Search user profiles by display name or pn id
+    // GET /api/profile/search - Exact match on listed public names only
     app.get('/api/profile/search', async (req, res) => {
       try {
         const q = String(req.query.q || '').trim();
-        const limit = Math.min(parseInt(String(req.query.limit || '20'), 10) || 20, 50);
         if (!q) {
           return res.json({ profiles: [] });
         }
-        const db = (await import('../utils/database')).getDatabasePool();
-        const pattern = `%${q.replace(/[%_]/g, '')}%`;
-        const result = await db.query(
-          `SELECT pn_identifier, display_name FROM user_profiles
-           WHERE display_name ILIKE $1 OR pn_identifier ILIKE $1
-           ORDER BY updated_at DESC NULLS LAST
-           LIMIT $2`,
-          [pattern, limit]
-        );
+        const { PublicNameService } = await import('./publicNameService');
+        const row = await PublicNameService.searchListedExact(q);
+        if (!row) {
+          return res.json({ profiles: [] });
+        }
         return res.json({
-          profiles: result.rows.map((row: { pn_identifier: string; display_name: string | null }) => ({
-            pnIdentifier: row.pn_identifier,
-            displayName: row.display_name || row.pn_identifier
-          }))
+          profiles: [
+            {
+              pnIdentifier: row.pnIdentifier,
+              displayName: row.publicName,
+              publicName: row.publicName,
+              proofType: row.proofType,
+              verified: true,
+              isVanity: row.isVanity,
+            },
+          ],
         });
       } catch (error: any) {
         console.error('Error searching profiles:', error);

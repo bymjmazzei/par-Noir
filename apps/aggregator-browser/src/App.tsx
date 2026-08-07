@@ -298,6 +298,39 @@ function App() {
 
   // Initialize from URL params - only on mount and when file param changes
   const hasInitializedFromURLRef = useRef<boolean>(false);
+  const [vanityNotFound, setVanityNotFound] = useState(false);
+
+  // Vanity path /:publicName → /?creator=<pn> (only is_vanity listed names)
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const { vanitySlugFromPathname, resolveVanityPublicName } = await import(
+        './services/publicNamesService'
+      );
+      const slug = vanitySlugFromPathname(window.location.pathname);
+      if (!slug) return;
+      const hit = await resolveVanityPublicName(slug);
+      if (cancelled) return;
+      if (!hit) {
+        setVanityNotFound(true);
+        return;
+      }
+      setVanityNotFound(false);
+      const url = new URL(window.location.href);
+      url.pathname = '/';
+      url.searchParams.set('creator', hit.pnIdentifier);
+      window.history.replaceState({}, '', url.toString());
+      setViewingCreatorId(hit.pnIdentifier);
+      setViewMode('feed');
+      setActiveBottomTab('index');
+    })().catch(() => {
+      /* ignore */
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   useEffect(() => {
     const fileParam = getParam('file');
     const feedParam = getParam('feed');
@@ -944,6 +977,27 @@ function App() {
 
   return (
     <>
+      {vanityNotFound && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/80 p-6">
+          <div className="max-w-sm text-center space-y-4">
+            <p className="text-white text-lg font-medium">No profile at this URL</p>
+            <p className="text-neutral-400 text-sm">
+              That path is not a profile URL. Public names must be listed and chosen as a profile URL in the
+              dashboard.
+            </p>
+            <button
+              type="button"
+              className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm"
+              onClick={() => {
+                setVanityNotFound(false);
+                window.history.replaceState({}, '', '/');
+              }}
+            >
+              Go home
+            </button>
+          </div>
+        </div>
+      )}
       {/* Comment Modal - Render OUTSIDE all conditional views to ensure it works on all pages */}
       {reportingCopyrightFile && (
         <ReportCopyrightModal
@@ -1045,6 +1099,12 @@ function App() {
           initialQuery={searchQuery}
           indexedFiles={stableIndexedFiles}
           thumbnails={thumbnails}
+          onCreatorClick={(creatorId) => {
+            setShowSearch(false);
+            setViewingCreatorId(creatorId);
+            setViewMode('feed');
+            mePageData.setMePageTab('all');
+          }}
           onFileClick={(file) => {
             setShowSearch(false);
             const creatorIdRaw = getCreatorIdentifier(file);

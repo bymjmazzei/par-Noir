@@ -754,6 +754,43 @@ export async function initializeDatabase(): Promise<void> {
       ON user_profiles(updated_at DESC)
     `);
 
+    // Public name directory (DNS / YouTube attested search keys)
+    await db.query(`
+      CREATE TABLE IF NOT EXISTS public_names (
+        public_name VARCHAR(255) NOT NULL,
+        pn_identifier VARCHAR(255) NOT NULL,
+        proof_type VARCHAR(32) NOT NULL,
+        proof_subject VARCHAR(512) NOT NULL,
+        status VARCHAR(32) NOT NULL DEFAULT 'pending',
+        verify_token_hash VARCHAR(128),
+        verify_token_expires_at TIMESTAMP WITH TIME ZONE,
+        is_vanity BOOLEAN NOT NULL DEFAULT false,
+        listed_at TIMESTAMP WITH TIME ZONE,
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+        updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+        PRIMARY KEY (proof_type, proof_subject)
+      )
+    `);
+    await db.query(`
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_public_names_listed_unique
+      ON public_names (public_name)
+      WHERE status = 'listed'
+    `);
+    await db.query(`
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_public_names_vanity_per_pn
+      ON public_names (pn_identifier)
+      WHERE is_vanity = true
+    `);
+    await db.query(`
+      CREATE INDEX IF NOT EXISTS idx_public_names_pn
+      ON public_names (pn_identifier)
+    `);
+    await db.query(`
+      CREATE INDEX IF NOT EXISTS idx_public_names_listed_name
+      ON public_names (public_name)
+      WHERE status = 'listed'
+    `);
+
     // Clean up expired refresh tokens periodically (via application logic)
     // The cleanup will happen in the service layer
 

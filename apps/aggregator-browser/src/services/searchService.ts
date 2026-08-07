@@ -177,6 +177,10 @@ export async function searchPersonalHistory(
 export interface ProfileSearchResult {
   pnIdentifier: string;
   displayName: string;
+  publicName?: string;
+  proofType?: string;
+  verified?: boolean;
+  isVanity?: boolean;
 }
 
 export async function searchProfiles(query: string, limit = 20): Promise<ProfileSearchResult[]> {
@@ -188,7 +192,11 @@ export async function searchProfiles(query: string, limit = 20): Promise<Profile
     });
     if (!response.ok) return [];
     const data = await response.json();
-    return data.profiles || [];
+    return (data.profiles || []).map((p: ProfileSearchResult & { publicName?: string }) => ({
+      ...p,
+      displayName: p.publicName || p.displayName,
+      verified: p.verified !== false,
+    }));
   } catch {
     return [];
   }

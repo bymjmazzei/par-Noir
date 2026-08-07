@@ -10,6 +10,7 @@ import { FileStorageAggregator } from '../components/storage/FileStorageAggregat
 import { SectionInfo } from '../components/common/SectionInfo';
 import { PrivacyDataPointsPanel } from '../components/privacy/PrivacyDataPointsPanel';
 import { AdvancedPrivacySettingsBody } from '../components/privacy/AdvancedPrivacySettingsBody';
+import { PublicNamesSection } from '../components/privacy/PublicNamesSection';
 import { STANDARD_DATA_POINTS, getDataPointMinLevel } from '@par-noir/standard-data-points';
 export interface AuthenticatedShellProps {
   authenticatedUser: any;
@@ -442,6 +443,10 @@ export function AuthenticatedShell(props: AuthenticatedShellProps) {
                           </div>
                         ) : (
                           <>
+                        <PublicNamesSection
+                          accessToken={apiToken || null}
+                          pnIdentifier={recoveryVaultPnId || null}
+                        />
                         {authenticatedUser && (
                           <DataPointRequestsPanel
                             authenticatedUser={authenticatedUser}
