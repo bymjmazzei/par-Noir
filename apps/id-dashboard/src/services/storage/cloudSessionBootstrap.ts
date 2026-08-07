@@ -341,6 +341,11 @@ export function clearCloudSessionBootstrap(pnIdentifier?: string): void {
       invalidateDashboardCache('all');
     })
     .catch(() => undefined);
+  void import('./ownedAssetsAvailability')
+    .then(({ clearOwnedAssetsUnavailable }) => {
+      clearOwnedAssetsUnavailable(pnIdentifier);
+    })
+    .catch(() => undefined);
   void import('./metadataSheetsAvailability')
     .then(({ clearMetadataSheetsUnavailable }) => {
       clearMetadataSheetsUnavailable(pnIdentifier);

@@ -175,9 +175,24 @@ export function useDriveCredentialHydration({
         hydrationSuccessRef.current = pnId;
         // Do not await loadFiles — a hung Drive scan must not pin hydrationInProgress forever
         // (that also deadlocks 401 recovery which re-enters hydrate).
+        // Wait for a usable Google token first so owner-index / Drive calls are not raced at unlock.
         const loadFilesFn = loadFilesRef.current;
         if (loadFilesFn) {
-          void loadFilesFn().catch(() => undefined);
+          void (async () => {
+            try {
+              const { waitForLocalGoogleAccessToken } = await import(
+                '../../../services/deviceApiService'
+              );
+              await waitForLocalGoogleAccessToken(pnId, 20000);
+            } catch {
+              /* best-effort */
+            }
+            try {
+              await loadFilesFn();
+            } catch {
+              /* non-blocking */
+            }
+          })();
         }
         const loadQuotaFn = loadStorageQuotaRef.current;
         if (loadQuotaFn) {

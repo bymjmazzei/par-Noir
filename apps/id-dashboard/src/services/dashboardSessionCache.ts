@@ -84,8 +84,12 @@ export async function getOwnedAssetsCached(
   opts?: { force?: boolean }
 ): Promise<OwnedAssetDto[]> {
   const key = cacheKey('owned-assets', pnIdentifier);
-  if (opts?.force) cache.delete(key);
-  return singleFlight(key, () => fetchOwnedAssets(accessToken, pnIdentifier));
+  if (opts?.force) {
+    cache.delete(key);
+    const { clearOwnedAssetsUnavailable } = await import('./storage/ownedAssetsAvailability');
+    clearOwnedAssetsUnavailable(pnIdentifier);
+  }
+  return singleFlight(key, () => fetchOwnedAssets(accessToken, pnIdentifier, opts));
 }
 
 export async function getMonetizationStatusCached(

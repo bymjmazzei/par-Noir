@@ -77,6 +77,11 @@ export async function fetchOwnerIndex({
       console.debug(
         'ℹ️ [loadFiles] owner-index incomplete (409); using Drive listFiles fallthrough instead of server rebuild'
       );
+    } else if (idxRes.status >= 500) {
+      markOwnerIndexUnavailable(pnId);
+      console.debug(
+        'ℹ️ [loadFiles] owner-index server error; using Drive listFiles fallthrough (no re-probe this session)'
+      );
     } else if (idxRes.ok) {
       const idxData = await idxRes.json();
       const provider = backendId.includes('::') ? backendId.split('::')[0] : backendId;
@@ -85,6 +90,8 @@ export async function fetchOwnerIndex({
       );
       ownerIndex = { ...idxData, files: filteredFiles };
       ownerIndexFromApi = true;
+    } else {
+      markOwnerIndexUnavailable(pnId);
     }
   } catch {
     /* non-blocking — caller falls through to Drive listFiles */

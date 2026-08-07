@@ -908,6 +908,15 @@ function App() {
     setDelegationsLoading(true);
     setDelegationsError(null);
     try {
+      // Device custody: owned-assets needs a local Google token. Do not probe
+      // until one is available (keep-alive used to fire this at unlock → 409 storm).
+      const { waitForLocalGoogleAccessToken } = await import('./services/deviceApiService');
+      const cloudTok = await waitForLocalGoogleAccessToken(recoveryVaultPnId, 20000);
+      if (!cloudTok) {
+        setAssetDelegations([]);
+        setDelegationsError(null);
+        return;
+      }
       const list = await listAllDelegations(apiToken, recoveryVaultPnId);
       setAssetDelegations(list);
     } catch (e) {

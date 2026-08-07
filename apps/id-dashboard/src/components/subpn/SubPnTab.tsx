@@ -178,10 +178,24 @@ export const SubPnTab: React.FC<SubPnTabProps> = ({
 
   const assetsLenRef = React.useRef(0);
   assetsLenRef.current = assets.length;
+  const initialLoadStartedRef = React.useRef(false);
 
   useEffect(() => {
-    void load();
-  }, [load]);
+    // Keep-alive mounts this tab at unlock — wait for a local Google token before
+    // the first owned-assets GET (otherwise unlock races → red 409 storm).
+    if (!accessToken || !pnIdentifier || initialLoadStartedRef.current) return;
+    let cancelled = false;
+    void (async () => {
+      const { waitForLocalGoogleAccessToken } = await import('../../services/deviceApiService');
+      const cloudTok = await waitForLocalGoogleAccessToken(pnIdentifier, 20000);
+      if (cancelled || !cloudTok) return;
+      initialLoadStartedRef.current = true;
+      await load();
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [accessToken, pnIdentifier, load]);
 
   useEffect(() => {
     const onReady = () => {

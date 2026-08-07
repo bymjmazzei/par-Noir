@@ -3,6 +3,11 @@
  */
 
 import { ownerFetch, ownerGet } from './ownerApiService';
+import {
+  clearOwnedAssetsUnavailable,
+  isOwnedAssetsUnavailable,
+  markOwnedAssetsUnavailable,
+} from './storage/ownedAssetsAvailability';
 
 export interface OwnedAssetDto {
   id: string;
@@ -26,14 +31,51 @@ async function parseError(res: Response): Promise<string> {
   );
 }
 
+/**
+ * List owned assets. On 409/401 (cloud token / Drive not ready), memoize and
+ * return [] so keep-alive tabs do not re-storm the endpoint. Concurrent callers
+ * share one in-flight GET.
+ */
+const ownedAssetsInFlight = new Map<string, Promise<OwnedAssetDto[]>>();
+
 export async function fetchOwnedAssets(
   accessToken: string,
-  pnIdentifier: string
+  pnIdentifier: string,
+  opts?: { force?: boolean }
 ): Promise<OwnedAssetDto[]> {
-  const res = await ownerGet(accessToken, '/api/owned-assets', { pnIdentifier });
-  if (!res.ok) throw new Error(await parseError(res));
-  const data = (await res.json()) as { assets: OwnedAssetDto[] };
-  return data.assets || [];
+  const key = pnIdentifier.startsWith('pn-') ? pnIdentifier : `pn-${pnIdentifier}`;
+  if (!opts?.force && isOwnedAssetsUnavailable(key)) {
+    return [];
+  }
+  if (opts?.force) {
+    clearOwnedAssetsUnavailable(key);
+    ownedAssetsInFlight.delete(key);
+  }
+  const existing = ownedAssetsInFlight.get(key);
+  if (existing && !opts?.force) {
+    return existing;
+  }
+
+  const run = (async (): Promise<OwnedAssetDto[]> => {
+    const res = await ownerGet(accessToken, '/api/owned-assets', { pnIdentifier: key });
+    if (res.status === 409 || res.status === 401) {
+      markOwnedAssetsUnavailable(key);
+      return [];
+    }
+    if (!res.ok) throw new Error(await parseError(res));
+    clearOwnedAssetsUnavailable(key);
+    const data = (await res.json()) as { assets: OwnedAssetDto[] };
+    return data.assets || [];
+  })();
+
+  ownedAssetsInFlight.set(key, run);
+  try {
+    return await run;
+  } finally {
+    if (ownedAssetsInFlight.get(key) === run) {
+      ownedAssetsInFlight.delete(key);
+    }
+  }
 }
 
 export async function createOwnedAsset(

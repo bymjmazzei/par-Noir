@@ -36,12 +36,12 @@ async function parseError(res: Response): Promise<string> {
 
 export async function listOwnedAssets(
   accessToken: string,
-  pnIdentifier: string
+  pnIdentifier: string,
+  opts?: { force?: boolean }
 ): Promise<OwnedAsset[]> {
-  const res = await ownerGet(accessToken, '/api/owned-assets', { pnIdentifier });
-  if (!res.ok) throw new Error(await parseError(res));
-  const data = await res.json();
-  return (data.assets ?? []) as OwnedAsset[];
+  const { fetchOwnedAssets } = await import('./ownedAssetsApi');
+  const assets = await fetchOwnedAssets(accessToken, pnIdentifier, opts);
+  return assets as OwnedAsset[];
 }
 
 export async function listAssetDelegations(
