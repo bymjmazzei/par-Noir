@@ -262,60 +262,68 @@ export class OwnedAssetService {
     );
 
     if (assets.length === 0) {
-      const pool = getDatabasePool();
-      const r = await pool.query(
-        `SELECT * FROM pn_owned_assets WHERE root_pn_identifier = $1 ORDER BY created_at DESC`,
-        [root]
-      );
-      const pgRows = r.rows.map((row: Record<string, unknown>) => mapAssetRow(row));
-      for (const row of pgRows) {
-        await OwnedAssetsSheetsService.upsertAsset(
-          bundle.token,
-          bundle.spreadsheetId,
-          bundle.pnIdentifier,
-          bundle.accountId,
-          rowToSheet(row)
-        );
-      }
-      if (pgRows.length > 0) {
-        const dels = await pool.query(
-          `SELECT d.* FROM pn_asset_delegations d
-           JOIN pn_owned_assets oa ON oa.id = d.owned_asset_id
-           WHERE oa.root_pn_identifier = $1`,
+      try {
+        const pool = getDatabasePool();
+        const r = await pool.query(
+          `SELECT * FROM pn_owned_assets WHERE root_pn_identifier = $1 ORDER BY created_at DESC`,
           [root]
         );
-        for (const d of dels.rows as Record<string, unknown>[]) {
-          const delRow: AssetDelegationSheetRow = {
-            id: String(d.id),
-            ownedAssetId: String(d.owned_asset_id),
-            delegateePnIdentifier: d.delegatee_pn_identifier
-              ? String(d.delegatee_pn_identifier)
-              : null,
-            delegateeClientId: d.delegatee_client_id ? String(d.delegatee_client_id) : null,
-            scope: String(d.scope || '*'),
-            expiresAt: d.expires_at ? new Date(String(d.expires_at)).toISOString() : null,
-            status: String(d.status || 'active'),
-            createdAt: d.created_at
-              ? new Date(String(d.created_at)).toISOString()
-              : new Date().toISOString(),
-            updatedAt: d.updated_at
-              ? new Date(String(d.updated_at)).toISOString()
-              : new Date().toISOString()
-          };
-          await OwnedAssetsSheetsService.upsertDelegation(
+        const pgRows = r.rows.map((row: Record<string, unknown>) => mapAssetRow(row));
+        for (const row of pgRows) {
+          await OwnedAssetsSheetsService.upsertAsset(
             bundle.token,
             bundle.spreadsheetId,
             bundle.pnIdentifier,
             bundle.accountId,
-            delRow
+            rowToSheet(row)
           );
         }
-        assets = await OwnedAssetsSheetsService.listAssets(
-          bundle.token,
-          bundle.spreadsheetId,
-          bundle.pnIdentifier,
-          bundle.accountId,
-          true
+        if (pgRows.length > 0) {
+          const dels = await pool.query(
+            `SELECT d.* FROM pn_asset_delegations d
+             JOIN pn_owned_assets oa ON oa.id = d.owned_asset_id
+             WHERE oa.root_pn_identifier = $1`,
+            [root]
+          );
+          for (const d of dels.rows as Record<string, unknown>[]) {
+            const delRow: AssetDelegationSheetRow = {
+              id: String(d.id),
+              ownedAssetId: String(d.owned_asset_id),
+              delegateePnIdentifier: d.delegatee_pn_identifier
+                ? String(d.delegatee_pn_identifier)
+                : null,
+              delegateeClientId: d.delegatee_client_id ? String(d.delegatee_client_id) : null,
+              scope: String(d.scope || '*'),
+              expiresAt: d.expires_at ? new Date(String(d.expires_at)).toISOString() : null,
+              status: String(d.status || 'active'),
+              createdAt: d.created_at
+                ? new Date(String(d.created_at)).toISOString()
+                : new Date().toISOString(),
+              updatedAt: d.updated_at
+                ? new Date(String(d.updated_at)).toISOString()
+                : new Date().toISOString()
+            };
+            await OwnedAssetsSheetsService.upsertDelegation(
+              bundle.token,
+              bundle.spreadsheetId,
+              bundle.pnIdentifier,
+              bundle.accountId,
+              delRow
+            );
+          }
+          assets = await OwnedAssetsSheetsService.listAssets(
+            bundle.token,
+            bundle.spreadsheetId,
+            bundle.pnIdentifier,
+            bundle.accountId,
+            true
+          );
+        }
+      } catch (backfillErr) {
+        // Drive sheet is SoT; Postgres cache backfill must not fail the list.
+        console.warn(
+          '[owned-assets] postgres backfill skipped:',
+          backfillErr instanceof Error ? backfillErr.message : backfillErr
         );
       }
     }

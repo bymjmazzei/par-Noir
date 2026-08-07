@@ -38,27 +38,67 @@ export interface DeviceRegistrySummary {
 
 const PN_CLOUD_ACCESS_TOKEN_HEADER = 'X-PN-Cloud-Access-Token';
 
-function googleTokenFromEnvelope(env: StorageCredentialsEnvelope | null | undefined): string | null {
+function googleAccountFromEnvelope(
+  env: StorageCredentialsEnvelope | null | undefined
+): {
+  accessToken: string | null;
+  refreshToken: string | null;
+  expiresAt: number | null;
+} {
   const acct = env?.googleDriveAccounts?.[0] as
-    | { accessToken?: string; access_token?: string }
+    | {
+        accessToken?: string;
+        access_token?: string;
+        refreshToken?: string;
+        refresh_token?: string;
+        expires_at?: number;
+        expires_in?: number;
+      }
     | undefined;
-  const tok = acct?.accessToken || acct?.access_token;
-  return typeof tok === 'string' && tok.trim() ? tok.trim() : null;
+  if (!acct) return { accessToken: null, refreshToken: null, expiresAt: null };
+  const access = acct.accessToken || acct.access_token;
+  const refresh = acct.refreshToken || acct.refresh_token;
+  let expiresAt: number | null =
+    typeof acct.expires_at === 'number' && Number.isFinite(acct.expires_at) ? acct.expires_at : null;
+  if (expiresAt == null && typeof acct.expires_in === 'number' && acct.expires_in > 0) {
+    expiresAt = Date.now() + acct.expires_in * 1000;
+  }
+  return {
+    accessToken: typeof access === 'string' && access.trim() ? access.trim() : null,
+    refreshToken: typeof refresh === 'string' && refresh.trim() ? refresh.trim() : null,
+    expiresAt,
+  };
+}
+
+function googleTokenFromEnvelope(env: StorageCredentialsEnvelope | null | undefined): string | null {
+  return googleAccountFromEnvelope(env).accessToken;
 }
 
 /** Best-effort warm session memory so owner API calls see the live Google token. */
-function warmSessionGoogleToken(pnIdentifier: string, accessToken: string): void {
+function warmSessionGoogleToken(
+  pnIdentifier: string,
+  accessToken: string,
+  extras?: { refreshToken?: string | null; expiresAt?: number | null }
+): void {
   try {
     const existing = getSessionCloudCredentials(pnIdentifier);
     const accounts = [...(existing?.googleDriveAccounts ?? [])];
+    const prev = (accounts[0] as Record<string, unknown> | undefined) ?? {};
+    const nextAcct: Record<string, unknown> = {
+      ...prev,
+      accountId: prev.accountId || 'session',
+      accessToken,
+    };
+    if (extras?.refreshToken) {
+      nextAcct.refreshToken = extras.refreshToken;
+    }
+    if (typeof extras?.expiresAt === 'number' && Number.isFinite(extras.expiresAt)) {
+      nextAcct.expires_at = extras.expiresAt;
+    }
     if (accounts.length === 0) {
-      accounts.push({
-        accountId: 'session',
-        accessToken,
-      });
+      accounts.push(nextAcct as (typeof accounts)[0]);
     } else {
-      const first = { ...(accounts[0] as Record<string, unknown>), accessToken };
-      accounts[0] = first as (typeof accounts)[0];
+      accounts[0] = nextAcct as (typeof accounts)[0];
     }
     const next: StorageCredentialsEnvelope = {
       ...(existing ?? { socialCloudProvider: 'google_drive' }),
@@ -71,6 +111,150 @@ function warmSessionGoogleToken(pnIdentifier: string, accessToken: string): void
   }
 }
 
+const TOKEN_SKEW_MS = 60_000;
+
+function accessTokenStillValid(expiresAt: number | null): boolean {
+  if (expiresAt == null) return false;
+  return Date.now() < expiresAt - TOKEN_SKEW_MS;
+}
+
+async function refreshGoogleAccessTokenViaApi(
+  pnIdentifier: string,
+  refreshToken: string
+): Promise<{ accessToken: string; expiresAt: number; refreshToken?: string } | null> {
+  let ownerToken: string;
+  try {
+    const { requireOwnerApiToken } = await import('./ownerApiToken');
+    ownerToken = requireOwnerApiToken(pnIdentifier);
+  } catch {
+    return null;
+  }
+  try {
+    const response = await fetch(`${API_ENDPOINT}/api/auth/google-oauth/refresh`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${ownerToken}`,
+      },
+      body: JSON.stringify({ refreshToken }),
+    });
+    if (!response.ok) return null;
+    const data = (await response.json()) as {
+      access_token?: string;
+      expires_in?: number;
+      refresh_token?: string;
+    };
+    if (!data.access_token?.trim()) return null;
+    const expiresIn =
+      typeof data.expires_in === 'number' && data.expires_in > 0 ? data.expires_in : 3300;
+    return {
+      accessToken: data.access_token.trim(),
+      expiresAt: Date.now() + expiresIn * 1000,
+      refreshToken: data.refresh_token?.trim() || undefined,
+    };
+  } catch {
+    return null;
+  }
+}
+
+/** Prefer connected GoogleDriveBackend (refreshes near expiry). */
+async function tokenFromConnectedBackends(
+  pnIdentifier: string
+): Promise<string | null> {
+  try {
+    const { getFileAggregatorService } = await import('./aggregator/FileAggregatorService');
+    const entries = getFileAggregatorService().listBackendEntries();
+    for (const { backend } of entries) {
+      const drive = backend as {
+        ensureAccessToken?: () => Promise<string | null>;
+        getAccessToken?: () => string | null;
+        isConnected?: () => boolean;
+        tokenExpiresAt?: number | null;
+        getRefreshToken?: () => string | null;
+      };
+      if (drive.isConnected && !drive.isConnected()) continue;
+      let tok: string | null = null;
+      if (typeof drive.ensureAccessToken === 'function') {
+        tok = await drive.ensureAccessToken();
+      } else if (typeof drive.getAccessToken === 'function') {
+        tok = drive.getAccessToken();
+      }
+      if (tok && tok.trim()) {
+        const trimmed = tok.trim();
+        warmSessionGoogleToken(pnIdentifier, trimmed, {
+          expiresAt: typeof drive.tokenExpiresAt === 'number' ? drive.tokenExpiresAt : null,
+          refreshToken: typeof drive.getRefreshToken === 'function' ? drive.getRefreshToken() : null,
+        });
+        return trimmed;
+      }
+    }
+  } catch {
+    /* ignore */
+  }
+  return null;
+}
+
+async function loadSealedCloudEnvelope(
+  pnIdentifier: string
+): Promise<StorageCredentialsEnvelope | null> {
+  try {
+    const userStr =
+      typeof localStorage !== 'undefined' ? localStorage.getItem('authenticated_user') : null;
+    const user = userStr ? (JSON.parse(userStr) as { id?: string; publicKey?: string }) : null;
+    const sessionId = user?.id || user?.publicKey || null;
+    if (!sessionId) return null;
+    const creds = SecureCredentialManager.getCredentials(sessionId);
+    if (!creds?.pnName || !creds?.passcode) return null;
+    const { loadLocalCloudCredentials } = await import('@par-noir/device-cloud-credentials');
+    return await loadLocalCloudCredentials({
+      identityId: pnIdentifier,
+      session: {
+        sessionId,
+        pnName: creds.pnName,
+        passcode: creds.passcode,
+      },
+    });
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Resolve a usable Google access token from an envelope, refreshing when near expiry.
+ */
+async function resolveUsableTokenFromEnvelope(
+  pnIdentifier: string,
+  env: StorageCredentialsEnvelope | null | undefined
+): Promise<string | null> {
+  const { accessToken, refreshToken, expiresAt } = googleAccountFromEnvelope(env);
+
+  // Known still-valid
+  if (accessToken && accessTokenStillValid(expiresAt)) {
+    warmSessionGoogleToken(pnIdentifier, accessToken, { refreshToken, expiresAt });
+    return accessToken;
+  }
+
+  // Known expired / missing access — refresh when we have a refresh token
+  const knownExpired = expiresAt != null && !accessTokenStillValid(expiresAt);
+  if (refreshToken && (knownExpired || !accessToken)) {
+    const refreshed = await refreshGoogleAccessTokenViaApi(pnIdentifier, refreshToken);
+    if (refreshed) {
+      warmSessionGoogleToken(pnIdentifier, refreshed.accessToken, {
+        refreshToken: refreshed.refreshToken || refreshToken,
+        expiresAt: refreshed.expiresAt,
+      });
+      return refreshed.accessToken;
+    }
+  }
+
+  // Unknown expiry (no expires_at) or refresh failed — return access as last resort
+  if (accessToken) {
+    warmSessionGoogleToken(pnIdentifier, accessToken, { refreshToken, expiresAt });
+    return accessToken;
+  }
+  return null;
+}
+
 /** Local Google access token for API Drive writes under device custody (never log). */
 export function resolveLocalGoogleAccessToken(pnIdentifier: string): string | null {
   try {
@@ -81,9 +265,9 @@ export function resolveLocalGoogleAccessToken(pnIdentifier: string): string | nu
 }
 
 /**
- * Session → sealed local load → Storage GoogleDriveBackend.
- * Awaits unlock migrate first so sealed secrets are not raced.
- * Warms session when a token is recovered so later owner calls stay sync-fast.
+ * Live Google access token for owner API Drive calls under device custody.
+ * Prefers Storage backend ensureAccessToken (refreshes), then session/sealed with
+ * refresh when expires_at is near/past — never return a known-stale session token.
  */
 export async function resolveLocalGoogleAccessTokenAsync(
   pnIdentifier: string
@@ -95,64 +279,21 @@ export async function resolveLocalGoogleAccessTokenAsync(
     /* best-effort */
   }
 
-  const fromSession = resolveLocalGoogleAccessToken(pnIdentifier);
-  if (fromSession) return fromSession;
+  const fromBackend = await tokenFromConnectedBackends(pnIdentifier);
+  if (fromBackend) return fromBackend;
 
   try {
-    const userStr =
-      typeof localStorage !== 'undefined' ? localStorage.getItem('authenticated_user') : null;
-    const user = userStr ? (JSON.parse(userStr) as { id?: string; publicKey?: string }) : null;
-    const sessionId = user?.id || user?.publicKey || null;
-    if (sessionId) {
-      const creds = SecureCredentialManager.getCredentials(sessionId);
-      if (creds?.pnName && creds?.passcode) {
-        const { loadLocalCloudCredentials } = await import('@par-noir/device-cloud-credentials');
-        const env = await loadLocalCloudCredentials({
-          identityId: pnIdentifier,
-          session: {
-            sessionId,
-            pnName: creds.pnName,
-            passcode: creds.passcode,
-          },
-        });
-        const tok = googleTokenFromEnvelope(env);
-        if (tok) {
-          warmSessionGoogleToken(pnIdentifier, tok);
-          return tok;
-        }
-      }
-    }
+    const fromSession = await resolveUsableTokenFromEnvelope(
+      pnIdentifier,
+      getSessionCloudCredentials(pnIdentifier)
+    );
+    if (fromSession) return fromSession;
   } catch {
     /* fall through */
   }
 
-  try {
-    const { getFileAggregatorService } = await import('./aggregator/FileAggregatorService');
-    const entries = getFileAggregatorService().listBackendEntries();
-    for (const { backend } of entries) {
-      const drive = backend as {
-        ensureAccessToken?: () => Promise<string | null>;
-        getAccessToken?: () => string | null;
-        isConnected?: () => boolean;
-      };
-      if (drive.isConnected && !drive.isConnected()) continue;
-      let tok: string | null = null;
-      if (typeof drive.ensureAccessToken === 'function') {
-        tok = await drive.ensureAccessToken();
-      } else if (typeof drive.getAccessToken === 'function') {
-        tok = drive.getAccessToken();
-      }
-      if (tok && tok.trim()) {
-        const trimmed = tok.trim();
-        warmSessionGoogleToken(pnIdentifier, trimmed);
-        return trimmed;
-      }
-    }
-  } catch {
-    /* ignore */
-  }
-
-  return null;
+  const sealed = await loadSealedCloudEnvelope(pnIdentifier);
+  return resolveUsableTokenFromEnvelope(pnIdentifier, sealed);
 }
 
 /**

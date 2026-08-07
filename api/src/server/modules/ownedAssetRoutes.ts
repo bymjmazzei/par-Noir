@@ -39,6 +39,20 @@ function mapCloudError(e: unknown, res: Response): Response | null {
       error_description: 'Connect storage in the dashboard first'
     });
   }
+  const msg = e instanceof Error ? e.message : String(e);
+  const status =
+    (e as { code?: number; response?: { status?: number } })?.code ??
+    (e as { response?: { status?: number } })?.response?.status;
+  if (
+    status === 401 ||
+    status === 403 ||
+    /invalid_grant|invalid credentials|unauthorized|login required|auth.*error/i.test(msg)
+  ) {
+    return res.status(409).json({
+      error: 'cloud_token_required',
+      error_description: 'Google Drive session expired. Reconnect Google Drive on this device.'
+    });
+  }
   return null;
 }
 
