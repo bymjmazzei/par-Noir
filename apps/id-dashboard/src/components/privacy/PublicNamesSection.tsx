@@ -144,7 +144,7 @@ export const PublicNamesSection: React.FC<PublicNamesSectionProps> = ({
           {listedOrProven.map((n) => (
             <li
               key={`${n.proofType}:${n.proofSubject}`}
-              className="flex flex-col sm:flex-row sm:items-center gap-2 justify-between p-3 rounded-lg border border-border bg-primary/40"
+              className="flex flex-col sm:flex-row sm:items-center gap-2 justify-between p-3 rounded-lg border border-border bg-bg-primary"
             >
               <div className="min-w-0">
                 <div className="flex items-center gap-2 flex-wrap">

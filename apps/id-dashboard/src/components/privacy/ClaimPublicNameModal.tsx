@@ -268,7 +268,7 @@ export const ClaimPublicNameModal: React.FC<ClaimPublicNameModalProps> = ({
                   value={domain}
                   onChange={(e) => setDomain(e.target.value)}
                   placeholder="example.com"
-                  className="mt-1 w-full px-3 py-2 rounded-lg bg-primary border border-border text-text-primary"
+                  className="mt-1 w-full px-3 py-2 rounded-lg bg-bg-primary border border-border text-text-primary placeholder:text-text-secondary [color-scheme:dark] autofill:bg-bg-primary"
                 />
               </label>
               <div className="flex gap-2 justify-end">
@@ -300,8 +300,8 @@ export const ClaimPublicNameModal: React.FC<ClaimPublicNameModalProps> = ({
                 Add this token as a DNS TXT record at <code className="text-xs">{dnsInfo.dnsName}</code>, or
                 as the body of <code className="text-xs break-all">{dnsInfo.wellKnownUrl}</code>:
               </p>
-              <div className="flex items-center gap-2 p-3 rounded-lg bg-primary border border-border">
-                <code className="text-xs text-text-primary break-all flex-1">{dnsInfo.token}</code>
+              <div className="flex items-center gap-2 p-3 rounded-lg bg-bg-primary border border-border">
+                <code className="text-xs text-text-primary break-all flex-1 select-all">{dnsInfo.token}</code>
                 <button type="button" onClick={() => void copyToken()} className="shrink-0 text-text-secondary hover:text-text-primary">
                   {copied ? <CheckCircle className="w-4 h-4 text-green-400" /> : <Copy className="w-4 h-4" />}
                 </button>
