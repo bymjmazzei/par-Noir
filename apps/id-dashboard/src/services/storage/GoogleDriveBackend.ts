@@ -500,14 +500,39 @@ export class GoogleDriveBackend extends AbstractStorageBackend {
       throw new Error('Not connected to Google Drive');
     }
 
-    const response = await fetch(url, {
-      ...options,
-      headers: {
-        'Authorization': `Bearer ${this.token}`,
-        'Content-Type': 'application/json',
-        ...options.headers
+    const DRIVE_FETCH_TIMEOUT_MS = 45_000;
+    const timeoutController = new AbortController();
+    const timeoutId = setTimeout(() => timeoutController.abort(), DRIVE_FETCH_TIMEOUT_MS);
+    const upstreamSignal = options.signal;
+    const onUpstreamAbort = () => timeoutController.abort();
+    if (upstreamSignal) {
+      if (upstreamSignal.aborted) {
+        timeoutController.abort();
+      } else {
+        upstreamSignal.addEventListener('abort', onUpstreamAbort, { once: true });
       }
-    });
+    }
+
+    let response: Response;
+    try {
+      response = await fetch(url, {
+        ...options,
+        signal: timeoutController.signal,
+        headers: {
+          'Authorization': `Bearer ${this.token}`,
+          'Content-Type': 'application/json',
+          ...options.headers
+        }
+      });
+    } catch (err) {
+      if (timeoutController.signal.aborted && !upstreamSignal?.aborted) {
+        throw new Error(`Google Drive request timed out after ${DRIVE_FETCH_TIMEOUT_MS}ms`);
+      }
+      throw err;
+    } finally {
+      clearTimeout(timeoutId);
+      upstreamSignal?.removeEventListener('abort', onUpstreamAbort);
+    }
 
     // Check for token expiration
     if (response.status === 401) {

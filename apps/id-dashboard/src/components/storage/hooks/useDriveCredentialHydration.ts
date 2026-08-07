@@ -173,21 +173,15 @@ export function useDriveCredentialHydration({
 
       if (hydrated) {
         hydrationSuccessRef.current = pnId;
+        // Do not await loadFiles — a hung Drive scan must not pin hydrationInProgress forever
+        // (that also deadlocks 401 recovery which re-enters hydrate).
         const loadFilesFn = loadFilesRef.current;
         if (loadFilesFn) {
-          try {
-            await loadFilesFn();
-          } catch {
-            /* non-blocking */
-          }
+          void loadFilesFn().catch(() => undefined);
         }
         const loadQuotaFn = loadStorageQuotaRef.current;
         if (loadQuotaFn) {
-          try {
-            await loadQuotaFn();
-          } catch {
-            /* non-blocking */
-          }
+          void loadQuotaFn().catch(() => undefined);
         }
       }
 

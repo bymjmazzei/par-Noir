@@ -21,6 +21,11 @@ import {
   type DriveAccountState,
   type FileStorageAggregatorProps,
 } from '../FileStorageAggregatorTypes';
+import {
+  isDriveLayoutBusy,
+  LOAD_FILES_TIMEOUT_MS,
+  waitForDriveLayoutIdle,
+} from './driveLayoutBusy';
 import { fetchOwnerIndex } from './loadFiles/fetchOwnerIndex';
 import { mergeDriveScanWithIndex } from './loadFiles/mergeDriveScanWithIndex';
 import { useTokenRetry } from './loadFiles/useTokenRetry';
@@ -105,18 +110,20 @@ export function useLoadAggregatedFiles({
       console.log('⏳ [loadFiles] Load already in progress, skipping');
       return;
     }
-    if (driveLayoutInitInFlightRef.current.size > 0 || driveSetupProgressRef.current) {
-      console.log('⏳ [loadFiles] Drive layout setup in progress, deferring file load');
-      window.setTimeout(() => {
-        if (
-          driveLayoutInitInFlightRef.current.size === 0 &&
-          !driveSetupProgressRef.current &&
-          loadFilesRef.current
-        ) {
-          void loadFilesRef.current();
-        }
-      }, 500);
-      return;
+    if (
+      isDriveLayoutBusy(driveLayoutInitInFlightRef.current, driveSetupProgressRef.current)
+    ) {
+      console.log('⏳ [loadFiles] Drive layout setup in progress, waiting before file load');
+      const waitResult = await waitForDriveLayoutIdle(() =>
+        isDriveLayoutBusy(driveLayoutInitInFlightRef.current, driveSetupProgressRef.current)
+      );
+      if (waitResult === 'timeout') {
+        console.warn('⚠️ [loadFiles] Layout wait timed out; loading files anyway');
+      }
+      if (isLoadingFilesRef.current) {
+        console.log('⏳ [loadFiles] Load already in progress after layout wait, skipping');
+        return;
+      }
     }
     if (driveReadBlocked) {
       setFiles([]);
@@ -125,6 +132,13 @@ export function useLoadAggregatedFiles({
       return;
     }
     isLoadingFilesRef.current = true;
+    let timedOut = false;
+    const timeoutId = window.setTimeout(() => {
+      timedOut = true;
+      console.warn('⚠️ [loadFiles] Timed out; clearing loading spinner');
+      setIsLoading(false);
+      isLoadingFilesRef.current = false;
+    }, LOAD_FILES_TIMEOUT_MS);
     try {
       setIsLoading(true);
       setError(null);
@@ -164,6 +178,8 @@ export function useLoadAggregatedFiles({
         setIsLoading(false);
         return;
       }
+
+      if (timedOut) return;
 
       if (!activeBackendId) {
         setActiveBackendId((prev) => prev || connectedEntries[0]?.id || null);
@@ -404,8 +420,11 @@ export function useLoadAggregatedFiles({
       console.warn('⚠️ [loadFiles] Error (non-blocking, unlock can proceed):', err);
       setFiles([]); // Show empty list
     } finally {
-      setIsLoading(false);
-      isLoadingFilesRef.current = false;
+      window.clearTimeout(timeoutId);
+      if (!timedOut) {
+        setIsLoading(false);
+        isLoadingFilesRef.current = false;
+      }
     }
   }, [aggregatorService, authenticatedUser, resolvedAuth, driveAccounts, loadFileMetadata, scheduleTokenRetry, driveReadBlocked, deviceGate, registerPortableCloudBackends]);
 
@@ -418,18 +437,17 @@ export function useLoadAggregatedFiles({
       // If files are currently loading, defer quota load to avoid extra pressure
       return;
     }
-    if (driveLayoutInitInFlightRef.current.size > 0 || driveSetupProgressRef.current) {
+    if (
+      isDriveLayoutBusy(driveLayoutInitInFlightRef.current, driveSetupProgressRef.current)
+    ) {
       // Same gate as loadFiles — avoid Drive about/user-info spam during initialize.
-      window.setTimeout(() => {
-        if (
-          driveLayoutInitInFlightRef.current.size === 0 &&
-          !driveSetupProgressRef.current &&
-          loadStorageQuotaRef.current
-        ) {
-          void loadStorageQuotaRef.current();
-        }
-      }, 500);
-      return;
+      const waitResult = await waitForDriveLayoutIdle(() =>
+        isDriveLayoutBusy(driveLayoutInitInFlightRef.current, driveSetupProgressRef.current)
+      );
+      if (waitResult === 'timeout') {
+        console.warn('⚠️ [loadStorageQuota] Layout wait timed out; loading quota anyway');
+      }
+      if (isLoadingFilesRef.current) return;
     }
     try {
       // Ensure backends are initialized (gracefully fail if Google Drive not connected)

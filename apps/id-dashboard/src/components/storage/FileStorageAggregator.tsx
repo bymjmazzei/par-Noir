@@ -541,6 +541,20 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
     pendingRetryTimeoutRef,
   });
 
+  // When layout init UI clears, ensure file load runs (covers the old one-shot defer miss).
+  const wasDriveSetupActiveRef = React.useRef(false);
+  React.useEffect(() => {
+    if (showDriveSetupProgress) {
+      wasDriveSetupActiveRef.current = true;
+      return;
+    }
+    if (wasDriveSetupActiveRef.current) {
+      wasDriveSetupActiveRef.current = false;
+      void loadFiles();
+      void loadStorageQuota();
+    }
+  }, [showDriveSetupProgress, loadFiles, loadStorageQuota]);
+
   const filesByBackend = React.useMemo(() => {
     const map = new Map<string, AggregatedFile[]>();
     files.forEach((file) => {
