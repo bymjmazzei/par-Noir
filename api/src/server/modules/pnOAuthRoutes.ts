@@ -14,20 +14,42 @@ import { requireAdminApiKey } from './adminDeveloperRoutes';
 
 const NODE_ENV = process.env.NODE_ENV || 'development';
 
-/** First-party browser/messaging app origins — unlock runs on app host, not API consent. */
-const BROWSER_APP_UNLOCK_ORIGINS = new Set([
+/** Apps that host their own unlock page instead of using the API consent page. */
+const SELF_HOSTED_UNLOCK_CLIENT_IDS = new Set(['browser-app', 'messaging-app']);
+
+const SELF_HOSTED_UNLOCK_ORIGINS = new Set([
   'https://browse.parnoir.com',
   'https://messaging.parnoir.com',
   'http://localhost:3001',
   'http://127.0.0.1:3001',
 ]);
 
-function isBrowserAppUnlockOrigin(redirectUri: string): boolean {
+function isSelfHostedUnlockOrigin(redirectUri: string): boolean {
   try {
-    return BROWSER_APP_UNLOCK_ORIGINS.has(new URL(redirectUri).origin);
+    return SELF_HOSTED_UNLOCK_ORIGINS.has(new URL(redirectUri).origin);
   } catch {
     return false;
   }
+}
+
+function isSelfHostedUnlockClient(clientId: string | undefined): boolean {
+  return !!clientId && SELF_HOSTED_UNLOCK_CLIENT_IDS.has(clientId);
+}
+
+/**
+ * Consent sends the user's per-data-point choices as a comma-separated list.
+ * `undefined` means the client made no choice this time (consent was skipped),
+ * which is distinct from an empty list meaning "declined everything".
+ */
+function parseGrantedDataPoints(raw: unknown): string[] | undefined {
+  if (Array.isArray(raw)) {
+    return raw.filter((v): v is string => typeof v === 'string' && v.length > 0);
+  }
+  if (typeof raw !== 'string') return undefined;
+  return raw
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
 }
 
 function redactPnIdentifier(pnIdentifier?: string): string {
@@ -109,7 +131,7 @@ export function setupPnOAuthRoutes(app: express.Application, deps: PnOAuthRouteD
 
     // GET /oauth/authorize/consent - OAuth consent page
     // Routes to appropriate consent page based on client_id
-    // browser-app uses browse.parnoir.com's oauth-authorize.html
+    // browse/messaging use their own origin's oauth-authorize.html
     // Third parties use API-hosted generic consent page
     app.get('/oauth/authorize/consent', async (req, res) => {
       const { client_id, redirect_uri, scope, state, nonce } = req.query;
@@ -122,11 +144,10 @@ export function setupPnOAuthRoutes(app: express.Application, deps: PnOAuthRouteD
         });
       }
 
-      // Hard-code browser-app (pN owned third party) - skip client registration validation
-      const isBrowserApp = client_id === 'browser-app';
-      
-      // Validate client (skip for browser-app)
-      if (!isBrowserApp) {
+      // pN-owned apps that host their own unlock page skip registration validation
+      const selfHostedUnlock = isSelfHostedUnlockClient(client_id as string);
+
+      if (!selfHostedUnlock) {
       const { ClientRegistrationService } = await import('./clientRegistration');
       if (!(await ClientRegistrationService.validateClient(client_id as string, redirect_uri as string))) {
         return res.status(400).json({
@@ -136,8 +157,8 @@ export function setupPnOAuthRoutes(app: express.Application, deps: PnOAuthRouteD
         }
       }
 
-      // browser-app: same-origin unlock on browse/messaging (not API consent)
-      if (isBrowserApp && isBrowserAppUnlockOrigin(redirect_uri as string)) {
+      // Same-origin unlock on browse/messaging (not API consent)
+      if (selfHostedUnlock && isSelfHostedUnlockOrigin(redirect_uri as string)) {
         let appOrigin: string;
         try {
           appOrigin = new URL(redirect_uri as string).origin;
@@ -250,7 +271,6 @@ export function setupPnOAuthRoutes(app: express.Application, deps: PnOAuthRouteD
           console.log('[OAuth Auth] Using pN identifier from client:', redactPnIdentifier(pnIdentifier));
         }
 
-        // Resolve browser-app consent skip hint (cache first, then Drive with short timeout).
         const scopes = scope ? scope.split(' ') : ['openid', 'profile'];
 
         // SECURITY FIX: Store pnIdentifier directly instead of secrets
@@ -278,22 +298,31 @@ export function setupPnOAuthRoutes(app: express.Application, deps: PnOAuthRouteD
           throw oauthErr;
         }
 
-        let existingPermissions: { ageShared: boolean } | null = null;
-        if (pnIdentifier && client_id === 'browser-app') {
-          const { getBrowserAppExistingPermissionsWithTimeout } = await import(
-            './oauthDrivePermissionContext'
-          );
-          existingPermissions = await getBrowserAppExistingPermissionsWithTimeout(
-            { pnIdentifier, did },
-            3_000
-          );
+        // Consent-skip hint: cache first, then the authoritative Drive record.
+        // A stored grant only skips consent when the user has already been asked
+        // about everything this request wants.
+        const { dataPointIdsFromScopes } = await import('./integratorStoragePaths');
+        const { getClientContract, grantCoversRequest } = await import(
+          '@par-noir/standard-data-points'
+        );
+        const requestedDataPoints = dataPointIdsFromScopes(scopes);
+
+        let existingGrant: { dataPoints: string[] } | null = null;
+        if (pnIdentifier) {
+          const { getExistingGrantWithTimeout } = await import('./oauthDrivePermissionContext');
+          const grant = await getExistingGrantWithTimeout(client_id, { pnIdentifier, did });
+          if (grant && grantCoversRequest(grant.consideredDataPoints, requestedDataPoints)) {
+            existingGrant = { dataPoints: grant.dataPoints };
+          }
         }
 
         return res.json({
           code,
           state: state || undefined,
-          existingPermissions,
-          availableOptionalDataPoints: undefined
+          existingGrant,
+          requestedDataPoints,
+          // Lets the consent screen show the level a proof must meet (e.g. verified)
+          dataPointLevels: getClientContract(client_id)?.dataPointLevels || {}
         });
       } catch (error: unknown) {
         const msg = error instanceof Error ? error.message : String(error);
@@ -305,22 +334,35 @@ export function setupPnOAuthRoutes(app: express.Application, deps: PnOAuthRouteD
       }
     });
 
-    app.get('/oauth/browser-app-permissions', async (req, res) => {
+    // Retry path for consent pages when the inline lookup raced its deadline.
+    app.get('/oauth/existing-grant', async (req, res) => {
       try {
         const pnIdentifier = req.query.pnIdentifier as string | undefined;
         const did = req.query.did as string | undefined;
-        if (!pnIdentifier) {
-          return res.status(400).json({ error: 'pnIdentifier is required' });
+        const clientId = req.query.client_id as string | undefined;
+        const scope = (req.query.scope as string | undefined) || '';
+        if (!pnIdentifier || !clientId) {
+          return res.status(400).json({ error: 'pnIdentifier and client_id are required' });
         }
-        const { getBrowserAppExistingPermissions } = await import(
-          './oauthDrivePermissionContext'
+
+        const { getExistingGrant } = await import('./oauthDrivePermissionContext');
+        const { dataPointIdsFromScopes } = await import('./integratorStoragePaths');
+        const { grantCoversRequest } = await import('@par-noir/standard-data-points');
+
+        const requestedDataPoints = dataPointIdsFromScopes(
+          scope.split(' ').filter(Boolean)
         );
-        const existingPermissions = await getBrowserAppExistingPermissions({ pnIdentifier, did });
-        return res.json({ existingPermissions });
+        const grant = await getExistingGrant(clientId, { pnIdentifier, did });
+        const existingGrant =
+          grant && grantCoversRequest(grant.consideredDataPoints, requestedDataPoints)
+            ? { dataPoints: grant.dataPoints }
+            : null;
+
+        return res.json({ existingGrant });
       } catch (error: unknown) {
         return res.status(500).json({
           error: 'server_error',
-          error_description: safeClientErrorMessage(error, NODE_ENV === 'production') || 'Permission lookup failed',
+          error_description: safeClientErrorMessage(error, NODE_ENV === 'production') || 'Grant lookup failed',
         });
       }
     });
@@ -330,7 +372,7 @@ export function setupPnOAuthRoutes(app: express.Application, deps: PnOAuthRouteD
     // Use lenient rate limiter for OAuth token exchange (users may unlock multiple times during setup)
     app.post('/oauth/token', oauthTokenLimiter, async (req, res) => {
       try {
-        const { code, client_id, redirect_uri, grant_type, age_shared } = req.body;
+        const { code, client_id, redirect_uri, grant_type, granted_data_points } = req.body;
 
         if (!code || !client_id || !redirect_uri) {
           return res.status(400).json({
@@ -374,20 +416,13 @@ export function setupPnOAuthRoutes(app: express.Application, deps: PnOAuthRouteD
             });
 
             if (driveCtx) {
-              const shareAge =
-                age_shared === true || age_shared === 'true'
-                  ? true
-                  : age_shared === false || age_shared === 'false'
-                    ? false
-                    : undefined;
-
               await persistIntegratorGrantAfterTokenExchange({
                 clientId: client_id,
                 scopes: tokenPayload.scope || [],
                 tokenPayload,
                 userAccessToken: driveCtx.userAccessToken,
                 accountId: driveCtx.accountId,
-                ageShared: client_id === 'browser-app' ? shareAge : undefined,
+                grantedDataPoints: parseGrantedDataPoints(granted_data_points),
               });
             } else {
               safeLogger.warn('[OAuth] Skipped Drive permission persist — no Drive context', {
@@ -491,7 +526,10 @@ export function setupPnOAuthRoutes(app: express.Application, deps: PnOAuthRouteD
           return res.status(409).json({ error: 'drive_not_initialized' });
         }
 
-        const clientId = tokenPayload.clientId || 'browser-app';
+        const clientId = tokenPayload.clientId;
+        if (!clientId) {
+          return res.json({ success: true, dataPoints: [] });
+        }
         let finalAllowedDataPoints = allowedDataPoints;
         let toolPermission: import('./thirdPartyPermissionsService').ThirdPartyPermission | undefined;
 
@@ -514,11 +552,10 @@ export function setupPnOAuthRoutes(app: express.Application, deps: PnOAuthRouteD
           if (!toolPermission || toolPermission.status !== 'active') {
             return res.json({ success: true, dataPoints: [] });
           }
-          // Ensure browser-app static levels even if sheet predates dataPointLevels
-          if (clientId === 'browser-app') {
-            const { applyBrowserAppStaticContract } = await import('@par-noir/standard-data-points');
-            toolPermission = applyBrowserAppStaticContract(toolPermission);
-          }
+          // Re-stamp the static contract so a sheet row predating dataPointLevels
+          // cannot downgrade the required verification level.
+          const { applyStaticContract } = await import('@par-noir/standard-data-points');
+          toolPermission = applyStaticContract(clientId, toolPermission);
           finalAllowedDataPoints = allowedDataPoints.filter(
             (dp: string) =>
               toolPermission!.requiredDataPoints.includes(dp) || toolPermission!.dataPoints.includes(dp)
@@ -703,9 +740,9 @@ export function setupPnOAuthRoutes(app: express.Application, deps: PnOAuthRouteD
           // NEVER include: pn_name, pn_file, passcode
         };
 
-        // Always include public_key for browser-app (needed for file decryption)
+        // Self-hosted unlock apps need the public key to decrypt the identity file
         // For other clients, only include if explicitly requested
-        if (tokenPayload.clientId === 'browser-app' && publicKey) {
+        if (isSelfHostedUnlockClient(tokenPayload.clientId) && publicKey) {
           userInfo.public_key = publicKey;
         } else if (scopes.includes('public_key') && publicKey) {
           userInfo.public_key = publicKey;
@@ -739,10 +776,9 @@ export function setupPnOAuthRoutes(app: express.Application, deps: PnOAuthRouteD
       }
 
       const { ClientRegistrationService } = await import('./clientRegistration');
-      const isBrowserApp = client_id === 'browser-app';
       let client = await ClientRegistrationService.getClient(client_id as string);
 
-      if (!client && isBrowserApp) {
+      if (!client && isSelfHostedUnlockClient(client_id as string)) {
         await ClientRegistrationService.ensureDefaultClientsSeeded();
         client = await ClientRegistrationService.getClient(client_id as string);
       }

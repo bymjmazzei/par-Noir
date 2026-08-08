@@ -560,26 +560,12 @@
             <div class="permission-desc">{{SCOPES_HTML}}</div>
           </div>
         </div>
-        
-        <!-- Age Attestation - Optional with dropdown (browser-app only) -->
-        <div class="permission-item browser-only-consent">
-          <div class="permission-text">
-            <div class="permission-title">
-              Age Attestation <span class="optional-badge">(Optional)</span>
-            </div>
-            <div class="permission-desc">Share your age verification to access 18+ and NSFW content</div>
-          </div>
-          <div style="margin-left: 12px;">
-            <select id="ageAttestationSelect" class="permission-select">
-              <option value="">Select...</option>
-              <option value="shared">Share</option>
-              <option value="not-shared">Don't Share</option>
-            </select>
-          </div>
-        </div>
-        
-        <!-- Secure Cloud Access - Required (browser-app only) -->
-        <div class="permission-item browser-only-consent">
+
+        <!-- Rows for each requested data point, built from the scope parameter -->
+        <div id="dataPointRows"></div>
+
+        <!-- Secure Cloud Access - shown when cloud scopes are requested -->
+        <div class="permission-item" id="cloudAccessRow" style="display: none;">
           <div class="permission-text">
             <div class="permission-title">
               Secure Cloud Access <span class="required-badge">(Required)</span>
@@ -630,22 +616,124 @@
       }
     }
 
-    const isBrowserApp = clientId === 'browser-app';
+    /** Apps whose unlock also hands encryption keys to the messaging layer. */
+    const SELF_HOSTED_UNLOCK_CLIENT_IDS = ['browser-app', 'messaging-app'];
+    const isSelfHostedUnlockClient = SELF_HOSTED_UNLOCK_CLIENT_IDS.indexOf(clientId) !== -1;
     const scopeList = scope.split(/\s+/).filter(Boolean);
-    const needsIntegratorConsent = !isBrowserApp && scopeList.indexOf('cloud:app') >= 0;
 
-    if (!isBrowserApp) {
-      document.querySelectorAll('.browser-only-consent').forEach(function (el) {
-        el.style.display = 'none';
-      });
+    // Consent rows come from the requested scope, so the screen always matches
+    // what the app actually asks for.
+    const requestedDataPoints = scopeList
+      .filter(function (s) { return s.indexOf('zkp:') === 0 || s.indexOf('data_point:') === 0; })
+      .map(function (s) { return s.replace(/^(zkp:|data_point:)/, ''); });
+    const requestsCloudAccess = scopeList.some(function (s) { return s.indexOf('cloud:') === 0; });
+    const needsIntegratorConsent = scopeList.indexOf('cloud:app') >= 0;
+
+    // Anything touching identity data points requires explicit consent at least once
+    const needsConsentScreen = requestedDataPoints.length > 0 || needsIntegratorConsent;
+
+    if (!isSelfHostedUnlockClient) {
       var gsb = document.getElementById('genericScopesBlock');
       if (gsb) gsb.style.display = 'flex';
-      if (needsIntegratorConsent) {
-        var isb = document.getElementById('integratorStorageBlock');
-        var icl = document.getElementById('integratorClientIdLabel');
-        if (isb) isb.style.display = 'flex';
-        if (icl) icl.textContent = clientId;
+    }
+    if (needsIntegratorConsent) {
+      var isb = document.getElementById('integratorStorageBlock');
+      var icl = document.getElementById('integratorClientIdLabel');
+      if (isb) isb.style.display = 'flex';
+      if (icl) icl.textContent = clientId;
+    }
+
+    let dataPointCatalog = {};
+    /** Minimum proof level per data point, from the client's static contract. */
+    let dataPointLevels = {};
+
+    async function loadDataPointCatalog() {
+      if (requestedDataPoints.length === 0) return;
+      try {
+        const res = await fetch(apiEndpoint + '/api/v1/standard-data-points');
+        if (!res.ok) return;
+        const body = await res.json();
+        const rows = body.dataPoints || body.data_points || body;
+        if (!Array.isArray(rows)) return;
+        rows.forEach(function (row) {
+          if (row && row.id) dataPointCatalog[row.id] = row;
+        });
+      } catch (err) {
+        console.warn('[OAuth] Could not load data point catalog:', err);
       }
+    }
+
+    function renderDataPointRows() {
+      const container = document.getElementById('dataPointRows');
+      if (!container) return;
+      container.innerHTML = '';
+
+      requestedDataPoints.forEach(function (id) {
+        const meta = dataPointCatalog[id] || {};
+        const row = document.createElement('div');
+        row.className = 'permission-item';
+
+        const text = document.createElement('div');
+        text.className = 'permission-text';
+
+        const title = document.createElement('div');
+        title.className = 'permission-title';
+        const levelSuffix = dataPointLevels[id] === 'verified' ? ' (verified)' : '';
+        title.textContent = (meta.name || id) + levelSuffix;
+        const badge = document.createElement('span');
+        badge.className = 'optional-badge';
+        badge.textContent = '(Optional)';
+        title.appendChild(document.createTextNode(' '));
+        title.appendChild(badge);
+
+        const desc = document.createElement('div');
+        desc.className = 'permission-desc';
+        desc.textContent = meta.description || 'Share this proof with ' + clientId;
+
+        text.appendChild(title);
+        text.appendChild(desc);
+
+        const control = document.createElement('div');
+        control.style.marginLeft = '12px';
+        const select = document.createElement('select');
+        select.className = 'permission-select';
+        select.setAttribute('data-data-point', id);
+        [
+          { value: '', label: 'Select...' },
+          { value: 'shared', label: 'Share' },
+          { value: 'not-shared', label: "Don't Share" }
+        ].forEach(function (opt) {
+          const option = document.createElement('option');
+          option.value = opt.value;
+          option.textContent = opt.label;
+          select.appendChild(option);
+        });
+        control.appendChild(select);
+
+        row.appendChild(text);
+        row.appendChild(control);
+        container.appendChild(row);
+      });
+
+      const cloudRow = document.getElementById('cloudAccessRow');
+      if (cloudRow) cloudRow.style.display = requestsCloudAccess ? 'flex' : 'none';
+    }
+
+    /** Returns null when a required choice is still unset. */
+    function collectGrantedDataPoints() {
+      const selects = document.querySelectorAll('#dataPointRows select[data-data-point]');
+      const granted = [];
+      for (let i = 0; i < selects.length; i++) {
+        const select = selects[i];
+        if (!select.value) {
+          select.focus();
+          return null;
+        }
+        if (select.value === 'shared') {
+          granted.push(select.getAttribute('data-data-point'));
+        }
+      }
+      return granted;
     }
 
     /**
@@ -654,8 +742,9 @@
      * in the popup if window.opener was dropped (Safari / cross-origin); without it, lackOpener + no pn_popup
      * triggers location.replace(/?oauth_resume=...) and the app unlocks in the wrong window.
      */
-    function redirectWithAuthCodeFixed(code, ageShared) {
-      if (isBrowserApp) {
+    function redirectWithAuthCodeFixed(code, grantedDataPoints) {
+      var grantedParam = (grantedDataPoints || []).join(',');
+      if (isSelfHostedUnlockClient) {
         if (!lastMessagingSession) {
           throw new Error(
             'This pN identity does not include messaging encryption keys. Create or update your identity at pn.parnoir.com, then try again.'
@@ -683,7 +772,7 @@
         }
       } catch (e) {}
       var navigateToCallback = function (targetUrl) {
-        if (!isBrowserApp) {
+        if (!isSelfHostedUnlockClient) {
           window.location.href = targetUrl;
           return;
         }
@@ -698,8 +787,8 @@
       } catch (e) {
         var sep0 = redirectUri.indexOf('?') >= 0 ? '&' : '?';
         var qs0 = 'code=' + encodeURIComponent(code) + '&state=' + encodeURIComponent(state || '');
-        if (ageShared !== undefined && ageShared !== null) {
-          qs0 += '&age_shared=' + (ageShared ? 'true' : 'false');
+        if (grantedDataPoints) {
+          qs0 += '&granted_data_points=' + encodeURIComponent(grantedParam);
         }
         if (popupFlow) qs0 += '&pn_popup=1';
         var fallbackUrl = redirectUri + sep0 + qs0;
@@ -709,7 +798,7 @@
       }
       u.searchParams.set('code', code);
       if (state) u.searchParams.set('state', state);
-      if (ageShared !== undefined && ageShared !== null) u.searchParams.set('age_shared', ageShared ? 'true' : 'false');
+      if (grantedDataPoints) u.searchParams.set('granted_data_points', grantedParam);
       if (popupFlow) u.searchParams.set('pn_popup', '1');
       if (identityHash) u.hash = identityHash;
       navigateToCallback(u.toString());
@@ -729,7 +818,7 @@
     var PN_MESSAGING_IDENTITY_HASH_PREFIX = 'pn_messaging_identity_v1:';
 
     function stashMessagingHandoffInWindowName() {
-      if (!isBrowserApp || !lastMessagingSession) return;
+      if (!isSelfHostedUnlockClient || !lastMessagingSession) return;
       var payload = { v: 1, timestamp: Date.now(), session: lastMessagingSession };
       if (lastMessagingIdentity) {
         var withIdentity = {
@@ -754,7 +843,7 @@
     }
 
     function buildMessagingIdentityHash() {
-      if (!isBrowserApp || !lastMessagingIdentity) return '';
+      if (!isSelfHostedUnlockClient || !lastMessagingIdentity) return '';
       try {
         var identityPayload = { v: 1, identity: lastMessagingIdentity, timestamp: Date.now() };
         var hash = PN_MESSAGING_IDENTITY_HASH_PREFIX + encodeURIComponent(JSON.stringify(identityPayload));
@@ -781,7 +870,7 @@
     }
 
     function postMessagingToOpener(message) {
-      if (!isBrowserApp) return;
+      if (!isSelfHostedUnlockClient) return;
       var appOrigin = '';
       try {
         appOrigin = new URL(redirectUri).origin;
@@ -801,7 +890,7 @@
     }
 
     function burstMessagingToOpener() {
-      if (!isBrowserApp) return;
+      if (!isSelfHostedUnlockClient) return;
       resendMessagingHandoff();
       var delays = [0, 50, 120, 200, 350, 500];
       for (var di = 0; di < delays.length; di++) {
@@ -832,7 +921,7 @@
     }
 
     function sendMessagingIdentityToOpener(encryptedIdentity, decrypted) {
-      if (!isBrowserApp) return;
+      if (!isSelfHostedUnlockClient) return;
       var payload = normalizeMessagingIdentityPayload(encryptedIdentity, decrypted);
       if (!payload) return;
       lastMessagingIdentity = payload;
@@ -840,7 +929,7 @@
     }
 
     function sendMessagingSessionToOpener(decrypted) {
-      if (!isBrowserApp) return;
+      if (!isSelfHostedUnlockClient) return;
       var session = extractMessagingSession(decrypted);
       if (!session) return;
       lastMessagingSession = session;
@@ -848,7 +937,7 @@
     }
 
     function resendMessagingHandoff() {
-      if (!isBrowserApp) return;
+      if (!isSelfHostedUnlockClient) return;
       if (lastMessagingIdentity) {
         sendMessagingIdentityToOpener(lastMessagingIdentity, null);
       }
@@ -978,22 +1067,27 @@
       return `pn-${hexHash.substring(0, 12)}`;
     }
 
-    async function pollBrowserAppPermissions(pnId, didValue, attempts = 4) {
-      if (!isBrowserApp || !pnId) return null;
+    /** The inline lookup races a deadline; retry briefly before falling back to consent. */
+    async function pollExistingGrant(pnId, didValue, attempts = 4) {
+      if (!pnId) return null;
       for (let i = 0; i < attempts; i++) {
         if (i > 0) {
           await new Promise(function (resolve) { setTimeout(resolve, 500); });
         }
         try {
-          var q = 'pnIdentifier=' + encodeURIComponent(pnId) + (didValue ? '&did=' + encodeURIComponent(didValue) : '');
-          var permRes = await fetch(apiEndpoint + '/oauth/browser-app-permissions?' + q);
-          if (!permRes.ok) continue;
-          var permData = await permRes.json();
-          if (permData && permData.existingPermissions) {
-            return permData.existingPermissions;
+          var q =
+            'pnIdentifier=' + encodeURIComponent(pnId) +
+            '&client_id=' + encodeURIComponent(clientId) +
+            '&scope=' + encodeURIComponent(scope) +
+            (didValue ? '&did=' + encodeURIComponent(didValue) : '');
+          var grantRes = await fetch(apiEndpoint + '/oauth/existing-grant?' + q);
+          if (!grantRes.ok) continue;
+          var grantData = await grantRes.json();
+          if (grantData && grantData.existingGrant) {
+            return grantData.existingGrant;
           }
         } catch (pollErr) {
-          console.warn('[OAuth] Permission poll failed:', pollErr);
+          console.warn('[OAuth] Grant poll failed:', pollErr);
         }
       }
       return null;
@@ -1003,7 +1097,7 @@
       identityData = null;
       sendMessagingIdentityToOpener(encryptedIdentity, decryptedIdentity);
       sendMessagingSessionToOpener(decryptedIdentity);
-      if (isBrowserApp && !lastMessagingSession) {
+      if (isSelfHostedUnlockClient && !lastMessagingSession) {
         throw new Error(
           'This pN identity does not include messaging encryption keys. Create or update your identity at pn.parnoir.com, then try again.'
         );
@@ -1035,33 +1129,29 @@
       const authResult = await authResponse.json();
       authorizationCode = authResult.code;
       
-      let existingPermissions = authResult.existingPermissions;
-      if (!existingPermissions && isBrowserApp) {
-        existingPermissions = await pollBrowserAppPermissions(pnIdentifier, did);
+      let existingGrant = authResult.existingGrant;
+      if (!existingGrant) {
+        existingGrant = await pollExistingGrant(pnIdentifier, did);
       }
       console.log('[OAuth] Auth result:', {
         hasCode: !!authorizationCode,
-        hasExistingPermissions: !!existingPermissions,
-        existingPermissions: existingPermissions,
+        hasExistingGrant: !!existingGrant,
         clientId: clientId
       });
-      
-      if (existingPermissions && clientId === 'browser-app') {
-        redirectWithAuthCodeFixed(authorizationCode, !!existingPermissions.ageShared);
+
+      if (existingGrant) {
+        redirectWithAuthCodeFixed(authorizationCode, existingGrant.dataPoints || []);
         return;
       }
 
-      if (!isBrowserApp && !needsIntegratorConsent) {
-        redirectWithAuthCodeFixed(authorizationCode, false);
+      if (!needsConsentScreen) {
+        redirectWithAuthCodeFixed(authorizationCode, []);
         return;
       }
 
-      if (!isBrowserApp && needsIntegratorConsent) {
-        document.getElementById('pnIdentifierDisplay').textContent = pnIdentifier;
-        document.getElementById('unlockStep').style.display = 'none';
-        document.getElementById('consentStep').style.display = 'block';
-        return;
-      }
+      dataPointLevels = authResult.dataPointLevels || {};
+      await loadDataPointCatalog();
+      renderDataPointRows();
       
       document.getElementById('pnIdentifierDisplay').textContent = pnIdentifier;
       document.getElementById('unlockStep').style.display = 'none';
@@ -1201,17 +1291,12 @@
       }
     });
     
-    // Consent handlers (Step 2 — browser-app only; other clients redirect after unlock)
+    // Consent handlers (Step 2 — only shown when data points or app storage are requested)
     document.getElementById('approveBtn').addEventListener('click', () => {
-      const ageSelect = document.getElementById('ageAttestationSelect');
-      let shareAge = false;
-      if (isBrowserApp) {
-        if (!ageSelect || !ageSelect.value) {
-          alert('Please select whether to share your age attestation');
-          if (ageSelect) ageSelect.focus();
-          return;
-        }
-        shareAge = ageSelect.value === 'shared';
+      const grantedDataPoints = collectGrantedDataPoints();
+      if (grantedDataPoints === null) {
+        alert('Please choose whether to share each requested proof');
+        return;
       }
       if (!authorizationCode) {
         console.error('No authorization code!');
@@ -1224,7 +1309,7 @@
         postMessagingToOpener({ type: 'pn_messaging_session', session: lastMessagingSession });
       }
       try {
-        redirectWithAuthCodeFixed(authorizationCode, shareAge);
+        redirectWithAuthCodeFixed(authorizationCode, grantedDataPoints);
       } catch (err) {
         var msg = (err && err.message) ? err.message : 'Could not complete unlock. Try again.';
         alert(msg);

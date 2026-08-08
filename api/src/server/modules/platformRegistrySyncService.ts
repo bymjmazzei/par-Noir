@@ -10,6 +10,7 @@ import type { PlatformRegistrySyncResult } from './platformRegistryTypes';
 
 const SEEDED_CLIENT_IDS = new Set([
   'browser-app',
+  'messaging-app',
   'prism-app',
   'developer-portal',
   'licensing-portal'

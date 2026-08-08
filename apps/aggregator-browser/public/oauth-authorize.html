@@ -540,26 +540,12 @@
             <div class="permission-desc" id="pnIdentifierDisplay">Loading...</div>
           </div>
         </div>
-        
-        <!-- Age Attestation - Optional with dropdown -->
-        <div class="permission-item">
-          <div class="permission-text">
-            <div class="permission-title">
-              Age Attestation <span class="optional-badge">(Optional)</span>
-            </div>
-            <div class="permission-desc">Share your age verification to access 18+ and NSFW content</div>
-          </div>
-          <div style="margin-left: 12px;">
-            <select id="ageAttestationSelect" class="permission-select" required>
-              <option value="">Select...</option>
-              <option value="shared">Share</option>
-              <option value="not-shared">Don't Share</option>
-            </select>
-          </div>
-        </div>
-        
-        <!-- Secure Cloud Access - Required -->
-        <div class="permission-item">
+
+        <!-- Rows for each requested data point, built from the scope parameter -->
+        <div id="dataPointRows"></div>
+
+        <!-- Secure Cloud Access - shown when cloud scopes are requested -->
+        <div class="permission-item" id="cloudAccessRow" style="display: none;">
           <div class="permission-text">
             <div class="permission-title">
               Secure Cloud Access <span class="required-badge">(Required)</span>
@@ -588,7 +574,9 @@
     const scope = urlParams.get('scope') || 'openid profile';
     const nonce = urlParams.get('nonce') || '';
     const identityHandoffRequired = urlParams.get('identity_handoff') === 'required';
-    const isBrowserApp = clientId === 'browser-app';
+    /** Apps whose unlock hands the decrypted identity to the messaging layer. */
+    const SELF_HOSTED_UNLOCK_CLIENT_IDS = ['browser-app', 'messaging-app'];
+    const isSelfHostedUnlockClient = SELF_HOSTED_UNLOCK_CLIENT_IDS.indexOf(clientId) !== -1;
     
     // Log for debugging
     console.log('OAuth params:', { clientId, redirectUri, state, scope });
@@ -616,6 +604,108 @@
     const appUrlEl = document.getElementById('appUrl');
     if (appUrlEl) {
       appUrlEl.textContent = window.location.hostname || window.location.host;
+    }
+
+    // Consent rows are generated from the requested scope, never hard-coded, so
+    // the screen always matches what the app actually asks for.
+    const scopeList = scope.split(/\s+/).filter(Boolean);
+    const requestedDataPoints = scopeList
+      .filter(function (s) { return s.indexOf('zkp:') === 0 || s.indexOf('data_point:') === 0; })
+      .map(function (s) { return s.replace(/^(zkp:|data_point:)/, ''); });
+    const requestsCloudAccess = scopeList.some(function (s) { return s.indexOf('cloud:') === 0; });
+
+    let dataPointCatalog = {};
+    /** Minimum proof level per data point, from the client's static contract. */
+    let dataPointLevels = {};
+
+    async function loadDataPointCatalog() {
+      if (requestedDataPoints.length === 0) return;
+      try {
+        const res = await fetch(apiEndpoint + '/api/v1/standard-data-points');
+        if (!res.ok) return;
+        const body = await res.json();
+        const rows = body.dataPoints || body.data_points || body;
+        if (!Array.isArray(rows)) return;
+        rows.forEach(function (row) {
+          if (row && row.id) dataPointCatalog[row.id] = row;
+        });
+      } catch (err) {
+        console.warn('[OAuth] Could not load data point catalog:', err);
+      }
+    }
+
+    function renderDataPointRows() {
+      const container = document.getElementById('dataPointRows');
+      if (!container) return;
+      container.innerHTML = '';
+
+      requestedDataPoints.forEach(function (id) {
+        const meta = dataPointCatalog[id] || {};
+        const row = document.createElement('div');
+        row.className = 'permission-item';
+
+        const text = document.createElement('div');
+        text.className = 'permission-text';
+
+        const title = document.createElement('div');
+        title.className = 'permission-title';
+        const levelSuffix = dataPointLevels[id] === 'verified' ? ' (verified)' : '';
+        title.textContent = (meta.name || id) + levelSuffix;
+        const badge = document.createElement('span');
+        badge.className = 'optional-badge';
+        badge.textContent = '(Optional)';
+        title.appendChild(document.createTextNode(' '));
+        title.appendChild(badge);
+
+        const desc = document.createElement('div');
+        desc.className = 'permission-desc';
+        desc.textContent = meta.description || 'Share this proof with ' + clientId;
+
+        text.appendChild(title);
+        text.appendChild(desc);
+
+        const control = document.createElement('div');
+        control.style.marginLeft = '12px';
+        const select = document.createElement('select');
+        select.className = 'permission-select';
+        select.setAttribute('data-data-point', id);
+        select.required = true;
+        [
+          { value: '', label: 'Select...' },
+          { value: 'shared', label: 'Share' },
+          { value: 'not-shared', label: "Don't Share" }
+        ].forEach(function (opt) {
+          const option = document.createElement('option');
+          option.value = opt.value;
+          option.textContent = opt.label;
+          select.appendChild(option);
+        });
+        control.appendChild(select);
+
+        row.appendChild(text);
+        row.appendChild(control);
+        container.appendChild(row);
+      });
+
+      const cloudRow = document.getElementById('cloudAccessRow');
+      if (cloudRow) cloudRow.style.display = requestsCloudAccess ? 'flex' : 'none';
+    }
+
+    /** Returns null when a required choice is still unset. */
+    function collectGrantedDataPoints() {
+      const selects = document.querySelectorAll('#dataPointRows select[data-data-point]');
+      const granted = [];
+      for (let i = 0; i < selects.length; i++) {
+        const select = selects[i];
+        if (!select.value) {
+          select.focus();
+          return null;
+        }
+        if (select.value === 'shared') {
+          granted.push(select.getAttribute('data-data-point'));
+        }
+      }
+      return granted;
     }
     
     let identityData = null;
@@ -745,7 +835,7 @@
     }
 
     function stashMessagingBeforeRedirect(encryptedIdentity, decrypted) {
-      if (!isBrowserApp || !window.ParNoirOAuthMessagingStash) return;
+      if (!isSelfHostedUnlockClient || !window.ParNoirOAuthMessagingStash) return;
       const handoff = ParNoirOAuthMessagingStash.buildMessagingHandoffFromUnlock(
         encryptedIdentity,
         decrypted
@@ -761,20 +851,56 @@
       });
     }
 
-    function buildCallbackUrl(code, ageSharedParam) {
+    function buildCallbackUrl(code, grantedDataPoints) {
       const u = new URL(`${window.location.origin}/oauth-callback.html`);
       u.searchParams.set('code', code);
       if (state) u.searchParams.set('state', state);
-      u.searchParams.set('age_shared', ageSharedParam);
+      u.searchParams.set('granted_data_points', (grantedDataPoints || []).join(','));
       if (isInPopup) u.searchParams.set('pn_popup', '1');
       return u.toString();
+    }
+
+    function redirectWithGrant(code, grantedDataPoints) {
+      if (isInPopup) {
+        window.location.href = buildCallbackUrl(code, grantedDataPoints);
+        return;
+      }
+      const u = new URL(redirectUri);
+      u.searchParams.set('code', code);
+      if (state) u.searchParams.set('state', state);
+      u.searchParams.set('granted_data_points', (grantedDataPoints || []).join(','));
+      window.location.href = u.toString();
+    }
+
+    /** The inline lookup races a deadline; retry briefly before falling back to consent. */
+    async function pollExistingGrant(pnId, didValue, attempts = 4) {
+      if (!pnId) return null;
+      for (let i = 0; i < attempts; i++) {
+        if (i > 0) {
+          await new Promise(function (resolve) { setTimeout(resolve, 500); });
+        }
+        try {
+          const q =
+            'pnIdentifier=' + encodeURIComponent(pnId) +
+            '&client_id=' + encodeURIComponent(clientId) +
+            '&scope=' + encodeURIComponent(scope) +
+            (didValue ? '&did=' + encodeURIComponent(didValue) : '');
+          const res = await fetch(apiEndpoint + '/oauth/existing-grant?' + q);
+          if (!res.ok) continue;
+          const body = await res.json();
+          if (body && body.existingGrant) return body.existingGrant;
+        } catch (pollErr) {
+          console.warn('[OAuth] Grant poll failed:', pollErr);
+        }
+      }
+      return null;
     }
 
     async function completeOAuthUnlock(encryptedIdentity, publicKey, did, decryptedIdentity, pnName, passcode) {
       identityData = null;
       decryptedIdentity = decryptedIdentity || null;
 
-      if (isBrowserApp) {
+      if (isSelfHostedUnlockClient) {
         stashMessagingBeforeRedirect(encryptedIdentity, decryptedIdentity);
       }
 
@@ -805,25 +931,31 @@
       
       const authResult = await authResponse.json();
       authorizationCode = authResult.code;
-      
-      const existingPermissions = authResult.existingPermissions;
+
+      let existingGrant = authResult.existingGrant;
+      if (!existingGrant) {
+        existingGrant = await pollExistingGrant(pnIdentifier, did);
+      }
       console.log('[OAuth] Auth result:', {
         hasCode: !!authorizationCode,
-        hasExistingPermissions: !!existingPermissions,
-        existingPermissions: existingPermissions,
+        hasExistingGrant: !!existingGrant,
         clientId: clientId
       });
-      
-      if (existingPermissions && clientId === 'browser-app') {
-        const ageSharedParam = existingPermissions.ageShared ? 'true' : 'false';
-        if (isInPopup) {
-          window.location.href = buildCallbackUrl(authorizationCode, ageSharedParam);
-        } else {
-          window.location.href = `${redirectUri}?code=${authorizationCode}&state=${state}&age_shared=${ageSharedParam}`;
-        }
+
+      if (existingGrant) {
+        redirectWithGrant(authorizationCode, existingGrant.dataPoints || []);
         return;
       }
-      
+
+      // Nothing to consent to beyond identity: no data points requested.
+      if (requestedDataPoints.length === 0) {
+        redirectWithGrant(authorizationCode, []);
+        return;
+      }
+
+      dataPointLevels = authResult.dataPointLevels || {};
+      await loadDataPointCatalog();
+      renderDataPointRows();
       document.getElementById('pnIdentifierDisplay').textContent = pnIdentifier;
       document.getElementById('unlockStep').style.display = 'none';
       document.getElementById('consentStep').style.display = 'block';
@@ -969,46 +1101,25 @@
     // Consent handlers
     document.getElementById('approveBtn').addEventListener('click', () => {
       console.log('=== APPROVE BUTTON CLICKED ===');
-      
-      // Validate age attestation selection (required field, but optional permission)
-      const ageSelect = document.getElementById('ageAttestationSelect');
-      if (!ageSelect.value) {
-        alert('Please select whether to share your age attestation');
-        ageSelect.focus();
+
+      // Every requested data point needs an explicit Share / Don't Share choice
+      const grantedDataPoints = collectGrantedDataPoints();
+      if (grantedDataPoints === null) {
+        alert('Please choose whether to share each requested proof');
         return;
       }
-      
-      // Get age sharing preference
-      const shareAge = ageSelect.value === 'shared';
-      
-      console.log('authorizationCode:', authorizationCode);
-      console.log('shareAge:', shareAge);
-      console.log('isInPopup (from page load):', isInPopup);
-      console.log('window.opener (current):', window.opener);
-      console.log('window.opener.closed (current):', window.opener ? window.opener.closed : 'N/A');
-      
+
       if (!authorizationCode) {
         console.error('No authorization code!');
         return;
       }
-      
-      // Include age sharing preference in the callback
-      // This will be used when exchanging the code for a token
-      const ageSharedParam = shareAge ? 'true' : 'false';
-      
-      if (isInPopup) {
-        console.log('IN POPUP - Handling popup flow...');
-        
-        // Always redirect to oauth-callback.html when in popup mode
-        // Include age sharing preference in URL params
-        // oauth-callback.html will send the message and close the popup
-        const callbackUrl = buildCallbackUrl(authorizationCode, ageSharedParam);
-        console.log('Redirecting popup to callback page:', callbackUrl);
-        window.location.href = callbackUrl;
-        } else {
-        console.log('NOT IN POPUP - Redirecting to:', redirectUri);
-          window.location.href = `${redirectUri}?code=${authorizationCode}&state=${state}&age_shared=${ageSharedParam}`;
-      }
+
+      console.log('[OAuth] Approving', {
+        grantedCount: grantedDataPoints.length,
+        isInPopup: isInPopup
+      });
+
+      redirectWithGrant(authorizationCode, grantedDataPoints);
     });
     
     document.getElementById('denyBtn').addEventListener('click', () => {

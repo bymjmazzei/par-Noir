@@ -15,7 +15,13 @@ import { PlatformCommercialLicenseService } from './platformRegistrySyncService'
 
 const NODE_ENV = process.env.NODE_ENV || 'development';
 
-const RESERVED_CLIENT_IDS = new Set(['browser-app', 'prism-app', 'developer-portal', 'licensing-portal']);
+const RESERVED_CLIENT_IDS = new Set([
+  'browser-app',
+  'messaging-app',
+  'prism-app',
+  'developer-portal',
+  'licensing-portal'
+]);
 
 const DATA_POINT_PROPOSAL_EVENT = 'data_point.proposal';
 

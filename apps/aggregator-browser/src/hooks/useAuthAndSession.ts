@@ -47,7 +47,7 @@ type OAuthCallbackStoragePayload = {
   state?: string;
   error?: string;
   error_description?: string;
-  age_shared?: string;
+  granted_data_points?: string;
   timestamp?: number;
   messagingHandoff?: unknown;
 };
@@ -171,7 +171,7 @@ export function useAuthAndSession({
         state?: string;
         error?: string;
         error_description?: string;
-        age_shared?: string;
+        granted_data_points?: string;
         messagingHandoff?: unknown;
       },
       options?: { popup?: Window | null; redirectUri?: string }
@@ -224,7 +224,11 @@ export function useAuthAndSession({
         try {
           applyAllMessagingHandoffSources(data.messagingHandoff);
 
-          const ageShared = data.age_shared === 'true';
+          // Absent means consent was skipped; empty string means "shared nothing"
+          const grantedDataPoints =
+            typeof data.granted_data_points === 'string'
+              ? data.granted_data_points.split(',').filter(Boolean)
+              : undefined;
           pushPnOAuthDebug('run_oauth_callback_exchange', {
             redirectUriLen: exchangeRedirectUri.length,
             messagingReadyBeforeExchange: isDmIdentityReady(),
@@ -232,7 +236,7 @@ export function useAuthAndSession({
           const tokenResponse = await PNOAuthService.exchangeCodeForToken(
             data.code!,
             exchangeRedirectUri,
-            ageShared
+            grantedDataPoints
           );
           const userInfo = await PNOAuthService.getUserInfo(tokenResponse.access_token);
 
@@ -395,7 +399,7 @@ export function useAuthAndSession({
     const code = params.get('code');
     const error = params.get('error');
     const state = params.get('state');
-    const age_shared = params.get('age_shared');
+    const granted_data_points = params.get('granted_data_points');
     const error_description = params.get('error_description') || undefined;
 
     const resumeHash =
@@ -422,7 +426,7 @@ export function useAuthAndSession({
             state: state || undefined,
             error: error || undefined,
             error_description,
-            age_shared: age_shared || undefined,
+            granted_data_points: granted_data_points ?? undefined,
           },
           {}
         );
@@ -459,7 +463,7 @@ export function useAuthAndSession({
           state?: string;
           error?: string;
           error_description?: string;
-          age_shared?: string;
+          granted_data_points?: string;
           timestamp?: number;
           messagingHandoff?: unknown;
         };
@@ -490,7 +494,7 @@ export function useAuthAndSession({
             state: data.state || undefined,
             error: err || undefined,
             error_description: data.error_description || undefined,
-            age_shared: data.age_shared || undefined,
+            granted_data_points: data.granted_data_points ?? undefined,
             messagingHandoff: data.messagingHandoff,
           },
           { redirectUri: redirectUriForOAuth }
@@ -736,7 +740,7 @@ export function useAuthAndSession({
           state: result.state,
           error: result.error,
           error_description: result.error_description,
-          age_shared: result.age_shared,
+          granted_data_points: result.granted_data_points,
           messagingHandoff: result.messagingHandoff,
         },
         { redirectUri: actualRedirectUri }

@@ -4,7 +4,6 @@
  */
 
 import type { DataPointLevels } from '@par-noir/standard-data-points';
-import { browserAppOver21Shared } from '@par-noir/standard-data-points';
 import { GoogleDriveToken } from './googleOAuth2Helper';
 import { isPortableStorageProvider } from './storage/storageProviderUtils';
 import {
@@ -13,7 +12,7 @@ import {
   portableTableScan
 } from './storage/portableTableService';
 import { THIRD_PARTY_PERMISSIONS_SCHEMA } from './storage/tableSchemas';
-import { setCachedBrowserAppPermissions, invalidateBrowserAppPermissionsCache } from './oauthPermissionCache';
+import { setCachedGrant, invalidateCachedGrant } from './oauthPermissionCache';
 
 export interface ThirdPartyPermission {
   toolId: string;
@@ -124,6 +123,7 @@ export class ThirdPartyPermissionsService {
             accountId
           );
         }
+        await this.syncGrantHints(normalized, permissions);
         return;
       }
 
@@ -150,15 +150,36 @@ export class ThirdPartyPermissionsService {
         normalized,
         accountId
       );
-      if (permissions['browser-app']) {
-        const browserApp = permissions['browser-app'];
-        await setCachedBrowserAppPermissions(normalized, {
-          ageShared: browserAppOver21Shared(browserApp.dataPoints),
-        });
-      }
+      await this.syncGrantHints(normalized, permissions);
     } catch (error) {
       console.error('Error storing third-party permissions:', error);
       throw error;
+    }
+  }
+
+  /**
+   * Keep consent-skip hints in step with what was just written. A revoked grant
+   * must drop its hint, or the next unlock would skip consent on a grant the
+   * user just withdrew.
+   */
+  private static async syncGrantHints(
+    normalizedPn: string,
+    permissions: Record<string, ThirdPartyPermission>
+  ): Promise<void> {
+    for (const [toolId, permission] of Object.entries(permissions)) {
+      if (permission.status === 'active') {
+        await setCachedGrant(toolId, normalizedPn, {
+          dataPoints: permission.dataPoints || [],
+          consideredDataPoints: [
+            ...new Set([
+              ...(permission.requiredDataPoints || []),
+              ...(permission.optionalDataPoints || []),
+            ]),
+          ],
+        });
+      } else {
+        await invalidateCachedGrant(toolId, normalizedPn);
+      }
     }
   }
 
@@ -173,6 +194,7 @@ export class ThirdPartyPermissionsService {
 
     if (await isPortableStorageProvider(normalized)) {
       await portableTableDelete(normalized, THIRD_PARTY_PERMISSIONS_SCHEMA, toolId, accountId);
+      await invalidateCachedGrant(toolId, normalized);
       return;
     }
 
@@ -191,8 +213,6 @@ export class ThirdPartyPermissionsService {
       normalized,
       accountId
     );
-    if (toolId === 'browser-app') {
-      await invalidateBrowserAppPermissionsCache(normalized);
-    }
+    await invalidateCachedGrant(toolId, normalized);
   }
 }

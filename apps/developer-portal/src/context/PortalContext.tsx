@@ -184,8 +184,8 @@ export function PortalProvider({ children }: { children: ReactNode }) {
       redirect_uri: ctx.redirectUri,
       grant_type: 'authorization_code'
     };
-    if (result.age_shared === 'true') {
-      body.age_shared = true;
+    if (result.granted_data_points !== undefined) {
+      body.granted_data_points = result.granted_data_points;
     }
     const tokenRes = await fetch(`${API_ENDPOINT}/oauth/token`, {
       method: 'POST',
@@ -287,7 +287,7 @@ export function PortalProvider({ children }: { children: ReactNode }) {
         code: params.get('code') || undefined,
         state: params.get('state') || undefined,
         error: params.get('error') || undefined,
-        age_shared: params.get('age_shared') || undefined
+        granted_data_points: params.get('granted_data_points') ?? undefined
       };
       void (async () => {
         try {

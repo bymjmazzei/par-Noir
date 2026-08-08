@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import {
-  applyBrowserAppStaticContract,
-  browserAppOver21Shared,
   getDataPointMinLevel,
+  grantCoversRequest,
   proofMeetsMinLevel,
 } from './verificationLevel';
+import { applyStaticContract } from './clientContracts';
 
 describe('verificationLevel', () => {
   it('defaults min level to attested', () => {
@@ -25,18 +25,33 @@ describe('verificationLevel', () => {
   });
 
   it('applies browser-app static contract', () => {
-    const applied = applyBrowserAppStaticContract({
-      dataPoints: ['over_21'],
+    const applied = applyStaticContract('browser-app', {
       requiredDataPoints: ['email'],
       optionalDataPoints: ['age_attestation'],
     });
     expect(applied.requiredDataPoints).toEqual([]);
     expect(applied.optionalDataPoints).toEqual(['over_21']);
     expect(applied.dataPointLevels).toEqual({ over_21: 'verified' });
+    expect(applied.permissions).toContain('zkp:over_21');
+    expect(applied.permissions).not.toContain('zkp:age_attestation');
   });
 
-  it('detects over_21 grant for consent cache', () => {
-    expect(browserAppOver21Shared(['age_attestation'])).toBe(false);
-    expect(browserAppOver21Shared(['over_21'])).toBe(true);
+  it('gives messaging-app no data points and no age scope', () => {
+    const applied = applyStaticContract('messaging-app', {});
+    expect(applied.requiredDataPoints).toEqual([]);
+    expect(applied.optionalDataPoints).toEqual([]);
+    expect(applied.permissions).toEqual(['openid', 'profile', 'cloud:read']);
+  });
+
+  it('leaves unknown clients untouched', () => {
+    const original = { optionalDataPoints: ['email'] };
+    expect(applyStaticContract('some-third-party', original)).toBe(original);
+  });
+
+  it('treats a declined data point as covered but a new one as uncovered', () => {
+    expect(grantCoversRequest(['over_21'], ['over_21'])).toBe(true);
+    expect(grantCoversRequest([], [])).toBe(true);
+    expect(grantCoversRequest(['over_21'], ['over_21', 'email'])).toBe(false);
+    expect(grantCoversRequest([], ['over_21'])).toBe(false);
   });
 });

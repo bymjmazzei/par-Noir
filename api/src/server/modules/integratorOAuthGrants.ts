@@ -17,10 +17,7 @@ import {
 import { isPnDriveIndexComplete, loadPnDriveIndex } from './pnDriveIndex';
 import type { TokenPayload } from './pnOAuthService';
 import { hashIdentifier, safeLogger } from '../../utils/logger';
-import {
-  applyBrowserAppStaticContract,
-  browserAppOver21Shared,
-} from '@par-noir/standard-data-points';
+import { applyStaticContract, getClientContract } from '@par-noir/standard-data-points';
 
 export async function persistIntegratorGrantAfterTokenExchange(params: {
   clientId: string;
@@ -28,9 +25,10 @@ export async function persistIntegratorGrantAfterTokenExchange(params: {
   tokenPayload: TokenPayload;
   userAccessToken: string;
   accountId?: string;
-  ageShared?: boolean;
+  /** User's per-data-point choices from consent; undefined when consent was skipped. */
+  grantedDataPoints?: string[];
 }): Promise<void> {
-  const { clientId, scopes, tokenPayload, userAccessToken, accountId, ageShared } = params;
+  const { clientId, scopes, tokenPayload, userAccessToken, accountId, grantedDataPoints } = params;
   const pnIdentifier = tokenPayload.pnIdentifier;
   if (!pnIdentifier) return;
 
@@ -61,34 +59,41 @@ export async function persistIntegratorGrantAfterTokenExchange(params: {
   }
 
   const client = await ClientRegistrationService.getClient(clientId);
-  const dataPointsFromScopes = dataPointIdsFromScopes(scopes);
+  const requestedDataPoints = dataPointIdsFromScopes(scopes);
   const prev = existing[clientId];
+  const contract = getClientContract(clientId);
 
-  let dataPoints = [...new Set([...(prev?.dataPoints || []), ...dataPointsFromScopes])];
-  // age_shared / ageShared = user granted over_21 for browser NSFW
-  if (clientId === 'browser-app' && ageShared === true && !dataPoints.includes('over_21')) {
-    dataPoints = [...dataPoints, 'over_21'];
-  } else if (clientId === 'browser-app' && ageShared === false) {
-    dataPoints = dataPoints.filter((d) => d !== 'over_21' && d !== 'age_attestation');
-  }
+  // Only the data points this authorization asked about are rewritten from the
+  // user's choice. Anything else the user has granted this app previously is
+  // left alone, so a dashboard toggle is not undone by an unrelated unlock.
+  const requested = new Set(requestedDataPoints);
+  const carriedOver = (prev?.dataPoints || []).filter((d) => !requested.has(d));
+  const chosen = grantedDataPoints
+    ? grantedDataPoints.filter((d) => requested.has(d))
+    : (prev?.dataPoints || []).filter((d) => requested.has(d));
+  const dataPoints = [...new Set([...carriedOver, ...chosen])];
+
+  // Record what the user was shown, so declining is remembered and only a
+  // genuinely new request re-opens the consent screen.
+  const consideredOptional = contract
+    ? [...contract.optionalDataPoints]
+    : [...new Set([...(prev?.optionalDataPoints || []), ...requestedDataPoints])];
 
   let permission: ThirdPartyPermission = {
     toolId: clientId,
-    toolName: client?.name || clientId,
-    toolDescription: client?.description || '',
+    toolName: contract?.name || client?.name || clientId,
+    toolDescription: contract?.description || client?.description || '',
     permissions: scopes,
     dataPoints,
     requiredDataPoints: prev?.requiredDataPoints || [],
-    optionalDataPoints: prev?.optionalDataPoints || [],
+    optionalDataPoints: consideredOptional,
     dataPointLevels: prev?.dataPointLevels,
     grantedAt: prev?.grantedAt || new Date().toISOString(),
     status: 'active',
     integratorFolderId
   };
 
-  if (clientId === 'browser-app') {
-    permission = applyBrowserAppStaticContract(permission);
-  }
+  permission = applyStaticContract(clientId, permission);
 
   await ThirdPartyPermissionsService.storePermissions(
     userAccessToken,
@@ -99,13 +104,7 @@ export async function persistIntegratorGrantAfterTokenExchange(params: {
     accountId
   );
 
-  if (clientId === 'browser-app') {
-    const { setCachedBrowserAppPermissions } = await import('./oauthPermissionCache');
-    await setCachedBrowserAppPermissions(normalizedPn, {
-      ageShared: browserAppOver21Shared(permission.dataPoints),
-    });
-  }
-
+  // storePermissions syncs the consent-skip hint for what it just wrote.
   safeLogger.info('[OAuth] Persisted integrator grant to Drive third-party-permissions', {
     clientId,
     pnIdHash: hashIdentifier(normalizedPn),

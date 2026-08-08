@@ -31,11 +31,15 @@ export {
   type DataPointLevels,
   getDataPointMinLevel,
   proofMeetsMinLevel,
-  BROWSER_APP_CLIENT_ID,
-  BROWSER_APP_OPTIONAL_DATA_POINTS,
-  BROWSER_APP_REQUIRED_DATA_POINTS,
-  BROWSER_APP_DATA_POINT_LEVELS,
-  BROWSER_APP_SCOPES,
-  applyBrowserAppStaticContract,
-  browserAppOver21Shared
+  grantCoversRequest
 } from './verificationLevel';
+export {
+  type ClientContract,
+  BROWSER_APP_CLIENT_ID,
+  MESSAGING_APP_CLIENT_ID,
+  CLIENT_CONTRACTS,
+  getClientContract,
+  hasClientContract,
+  contractDataPointIds,
+  applyStaticContract
+} from './clientContracts';

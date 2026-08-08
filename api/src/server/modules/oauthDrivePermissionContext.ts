@@ -9,11 +9,7 @@ import { storageCredentialsService, type StoredCredentialsRecord } from './stora
 import { ThirdPartyPermissionsService } from './thirdPartyPermissionsService';
 import { isPortableStorageProvider } from './storage/storageProviderUtils';
 import { hashIdentifier, safeLogger } from '../../utils/logger';
-import {
-  getCachedBrowserAppPermissions,
-  setCachedBrowserAppPermissions,
-} from './oauthPermissionCache';
-import { browserAppOver21Shared } from '@par-noir/standard-data-points';
+import { getCachedGrant, setCachedGrant } from './oauthPermissionCache';
 export interface OAuthDrivePermissionContext {
   credentialsRecord: StoredCredentialsRecord;
   userAccessToken: string;
@@ -126,23 +122,51 @@ export async function resolveOAuthDriveContext(params: {
   }
 }
 
-export const BROWSER_APP_PERMISSION_CHECK_TIMEOUT_MS = 5_000;
+export const GRANT_LOOKUP_TIMEOUT_MS = 5_000;
 
-function activeBrowserAppConsent(
-  browserApp: { status: string; dataPoints: string[] } | undefined
-): { ageShared: boolean } | null {
-  if (!browserApp || browserApp.status !== 'active') return null;
-  const ageShared = browserAppOver21Shared(browserApp.dataPoints);
-  safeLogger.info('[OAuth] Found active browser-app permissions', {
-    ageShared,
-  });
-  return { ageShared };
+export interface ExistingGrant {
+  /** Data points the user chose to share. */
+  dataPoints: string[];
+  /**
+   * Data points the user was shown at consent time, whether or not they shared
+   * them. Declining is a decision we remember; only a genuinely new request
+   * sends the user back to the consent screen.
+   */
+  consideredDataPoints: string[];
 }
 
-async function lookupBrowserAppPermissionsFromDrive(params: {
-  pnIdentifier?: string;
-  did?: string;
-}): Promise<{ ageShared: boolean } | null> {
+function activeGrant(
+  clientId: string,
+  permission:
+    | {
+        status: string;
+        dataPoints?: string[];
+        requiredDataPoints?: string[];
+        optionalDataPoints?: string[];
+      }
+    | undefined
+): ExistingGrant | null {
+  if (!permission || permission.status !== 'active') return null;
+  const dataPoints = [...(permission.dataPoints ?? [])];
+  const consideredDataPoints = [
+    ...new Set([
+      ...(permission.requiredDataPoints ?? []),
+      ...(permission.optionalDataPoints ?? []),
+      ...dataPoints,
+    ]),
+  ];
+  safeLogger.info('[OAuth] Found active grant', {
+    clientId,
+    dataPointCount: dataPoints.length,
+    consideredCount: consideredDataPoints.length,
+  });
+  return { dataPoints, consideredDataPoints };
+}
+
+async function lookupGrantFromDrive(
+  clientId: string,
+  params: { pnIdentifier?: string; did?: string }
+): Promise<ExistingGrant | null> {
   const candidates = buildOAuthIdentityCandidates(params);
   if (candidates.length === 0) return null;
 
@@ -160,7 +184,7 @@ async function lookupBrowserAppPermissionsFromDrive(params: {
         '',
         normalizedPn
       );
-      return activeBrowserAppConsent(permissions['browser-app']);
+      return activeGrant(clientId, permissions[clientId]);
     }
 
     const ctx = await resolveOAuthDriveContext(params);
@@ -173,43 +197,29 @@ async function lookupBrowserAppPermissionsFromDrive(params: {
       ctx.accountId,
       ctx.thirdPartyPermissionsSheetId
     );
-    return activeBrowserAppConsent(permissions['browser-app']);
+    return activeGrant(clientId, permissions[clientId]);
   } catch (error: unknown) {
     safeLogger.warn('[OAuth] Could not read third-party-permissions', {
+      clientId,
       message: error instanceof Error ? error.message : String(error),
     });
     return null;
   }
 }
 
-/** Populate Redis cache after authorize (non-blocking). */
-export async function warmBrowserAppPermissionsCache(params: {
-  pnIdentifier?: string;
-  did?: string;
-}): Promise<void> {
-  const normalizedPn = params.pnIdentifier
-    ? normalizePnIdentifier(params.pnIdentifier)
-    : undefined;
-  if (!normalizedPn) return;
-  try {
-    const result = await lookupBrowserAppPermissionsFromDrive(params);
-    await setCachedBrowserAppPermissions(normalizedPn, result);
-  } catch {
-    /* best-effort warm */
-  }
-}
-
-/** Race a permission lookup; returns null on timeout so unlock is not blocked by slow Drive. */
-export async function getBrowserAppExistingPermissionsWithTimeout(
+/** Race the lookup; returns null on timeout so unlock is not blocked by slow Drive. */
+export async function getExistingGrantWithTimeout(
+  clientId: string,
   params: { pnIdentifier?: string; did?: string },
-  timeoutMs: number = BROWSER_APP_PERMISSION_CHECK_TIMEOUT_MS
-): Promise<{ ageShared: boolean } | null> {
+  timeoutMs: number = GRANT_LOOKUP_TIMEOUT_MS
+): Promise<ExistingGrant | null> {
   try {
     return await Promise.race([
-      getBrowserAppExistingPermissions(params),
+      getExistingGrant(clientId, params),
       new Promise<null>((resolve) =>
         setTimeout(() => {
-          safeLogger.warn('[OAuth] browser-app permission Drive lookup timed out', {
+          safeLogger.warn('[OAuth] grant lookup timed out', {
+            clientId,
             pnIdHash: params.pnIdentifier ? hashIdentifier(params.pnIdentifier) : undefined,
             timeoutMs,
           });
@@ -222,22 +232,26 @@ export async function getBrowserAppExistingPermissionsWithTimeout(
   }
 }
 
-/** Returns consent skip hint when browser-app grant is active on user Drive. */
-export async function getBrowserAppExistingPermissions(params: {
-  pnIdentifier?: string;
-  did?: string;
-}): Promise<{ ageShared: boolean } | null> {
+/**
+ * Consent-skip hint for a client. Cache is consulted first, but a cache miss
+ * falls through to the authoritative Drive record rather than being treated as
+ * "no grant".
+ */
+export async function getExistingGrant(
+  clientId: string,
+  params: { pnIdentifier?: string; did?: string }
+): Promise<ExistingGrant | null> {
   const normalizedPn = params.pnIdentifier
     ? normalizePnIdentifier(params.pnIdentifier)
     : undefined;
   if (normalizedPn) {
-    const cached = await getCachedBrowserAppPermissions(normalizedPn);
-    if (cached !== undefined) return cached;
+    const cached = await getCachedGrant(clientId, normalizedPn);
+    if (cached) return cached;
   }
 
-  const result = await lookupBrowserAppPermissionsFromDrive(params);
-  if (normalizedPn) {
-    await setCachedBrowserAppPermissions(normalizedPn, result);
+  const result = await lookupGrantFromDrive(clientId, params);
+  if (normalizedPn && result) {
+    await setCachedGrant(clientId, normalizedPn, result);
   }
   return result;
 }

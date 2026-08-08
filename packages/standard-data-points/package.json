@@ -3,9 +3,17 @@
   "version": "1.0.0",
   "description": "Canonical standard data point definitions for par Noir (catalog + JSON API helpers)",
   "main": "dist/index.js",
+  "module": "dist/esm/index.js",
   "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/esm/index.js",
+      "require": "./dist/index.js"
+    }
+  },
   "scripts": {
-    "build": "tsc",
+    "build": "tsc && tsc -p tsconfig.esm.json",
     "clean": "rm -rf dist",
     "test": "vitest run",
     "test:watch": "vitest",

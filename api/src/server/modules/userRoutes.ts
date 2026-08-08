@@ -475,15 +475,10 @@ export function setupUserRoutes(app: express.Application, deps: UserRouteDeps) {
           accountId
         );
 
-        // For browser-app, ensure static required/optional data points + levels are preserved
-        let finalPermission = permission;
-        if (toolId === 'browser-app') {
-          const { applyBrowserAppStaticContract } = await import('@par-noir/standard-data-points');
-          finalPermission = applyBrowserAppStaticContract({
-            ...permission,
-            // dataPoints array reflects what user has granted (can change)
-          });
-        }
+        // First-party apps have a static contract; dataPoints still reflects what
+        // the user granted and remains editable.
+        const { applyStaticContract } = await import('@par-noir/standard-data-points');
+        const finalPermission = applyStaticContract(toolId, permission);
 
         // Update permissions
         const updatedPermissions = {

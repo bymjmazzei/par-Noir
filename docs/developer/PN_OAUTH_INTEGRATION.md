@@ -24,9 +24,11 @@
 1. Register **`client_id`** and one or more exact **`redirect_uri`** values (developer portal or admin).
 2. Send the user to the **authorize** URL (with `response_type=code`, `client_id`, `redirect_uri`, `state`, scopes, etc.).
 3. After unlock + consent, the **authorization server redirects the browser** to your registered **`redirect_uri`** with query parameters:
-   - **Success:** `code`, `state`, and optional `age_shared` (RFC 6749-style).
+   - **Success:** `code`, `state`, and `granted_data_points` (comma-separated data point ids the user chose to share; empty string means they shared none).
    - **Denial / error:** `error`, `error_description`, and `state` where applicable.
-4. Exchange the **`code`** for tokens at the token endpoint (from your backend or SPA, per your security model).
+4. Exchange the **`code`** for tokens at the token endpoint (from your backend or SPA, per your security model), passing `granted_data_points` through unchanged so the grant is recorded against your client.
+
+The user consents **once per client**. On later authorizations the grant is read back and consent is skipped, unless you request a data point they have not been asked about before, or they revoke you from their dashboard sharing settings.
 
 Popup-based UX (e.g. `@par-noir/oauth-ui` or the identity SDK with `usePopup: true`) is **optional**; it still ends with that same redirect to **`your`** `redirect_uri` (e.g. `https://yourapp/oauth-callback.html?code=...`). The static callback page typically `postMessage`s to `window.opener` and/or uses `localStorage` + `BroadcastChannel` so the parent can finish **same-origin**—but **third parties who only implement full-page redirect** already match the API contract.
 

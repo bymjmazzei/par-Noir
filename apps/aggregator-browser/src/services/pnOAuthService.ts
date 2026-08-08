@@ -11,12 +11,10 @@ import { pushPnOAuthDebug } from '@par-noir/oauth-ui';
 import { buildBrowserAppOAuthUnlockUrl } from '@par-noir/oauth-ui';
 import { VolumeIdGenerator } from '../utils/volumeIdGenerator';
 import { API_ENDPOINT } from '../config/api';
+import { PN_CLIENT_ID, getPnOAuthScopes } from '../config/oauthClient';
 
-/** Returns the pN OAuth client ID. Uses VITE_PN_CLIENT_ID from env if set; otherwise defaults to "browser-app" (the registered client ID for the par Noir browser app). */
 function getClientId(): string {
-  const id = import.meta.env.VITE_PN_CLIENT_ID;
-  // Fallback to "browser-app" - this is a public constant, not a secret
-  return id || 'browser-app';
+  return PN_CLIENT_ID;
 }
 const REDIRECT_URI = typeof window !== 'undefined'
   ? `${window.location.origin}/oauth-callback.html`
@@ -70,8 +68,7 @@ export class PNOAuthService {
     usePopup?: boolean;
     identityHandoffRequired?: boolean;
   }): string {
-    // Browser app requests verified over_21 ZKP scope (optional) for NSFW content access
-    const scope = params?.scope || ['openid', 'profile', 'zkp:over_21'];
+    const scope = params?.scope || getPnOAuthScopes();
     const state = params?.state || this.generateState();
     const nonce = params?.nonce || this.generateNonce();
     const usePopup = params?.usePopup !== false; // Default to popup
@@ -116,8 +113,7 @@ export class PNOAuthService {
     state?: string;
     nonce?: string;
   }): Promise<{ code: string; state?: string }> {
-    // Browser app requests verified over_21 ZKP scope (optional) for NSFW content access
-    const scope = params.scope || ['openid', 'profile', 'zkp:over_21'];
+    const scope = params.scope || getPnOAuthScopes();
     const state = params.state || sessionStorage.getItem('pn_oauth_state') || undefined;
     const nonce = params.nonce || sessionStorage.getItem('pn_oauth_nonce') || undefined;
 
@@ -168,7 +164,11 @@ export class PNOAuthService {
   /**
    * Exchange authorization code for access token
    */
-  static async exchangeCodeForToken(code: string, redirectUri?: string, ageShared?: boolean): Promise<OAuthTokenResponse> {
+  static async exchangeCodeForToken(
+    code: string,
+    redirectUri?: string,
+    grantedDataPoints?: string[]
+  ): Promise<OAuthTokenResponse> {
     // Use provided redirect_uri or default to REDIRECT_URI
     // Must match the redirect_uri used in the authorization request exactly
     // Normalize to ensure exact match (remove trailing slashes, ensure consistent encoding)
@@ -176,7 +176,7 @@ export class PNOAuthService {
 
     pushPnOAuthDebug('exchange_token_attempt', {
       redirectUriLen: finalRedirectUri.length,
-      ageShared: Boolean(ageShared),
+      grantedCount: grantedDataPoints?.length ?? 0,
     });
 
     const response = await fetch(`${API_ENDPOINT}/oauth/token`, {
@@ -189,7 +189,8 @@ export class PNOAuthService {
         client_id: getClientId(),
         redirect_uri: finalRedirectUri,
         grant_type: 'authorization_code',
-        age_shared: ageShared // Include age sharing preference
+        // Per-data-point consent choices; omitted when consent was skipped
+        granted_data_points: grantedDataPoints
       })
     });
 

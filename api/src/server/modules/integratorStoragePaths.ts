@@ -6,6 +6,7 @@ export const INTEGRATORS_ROOT = 'integrators';
 
 const FIRST_PARTY_CLIENT_IDS = new Set([
   'browser-app',
+  'messaging-app',
   'prism-app',
   'developer-portal'
 ]);

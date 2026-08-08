@@ -79,7 +79,7 @@
       var code = urlParams.get('code');
       var state = urlParams.get('state');
       var error = urlParams.get('error');
-      var ageShared = urlParams.get('age_shared');
+      var grantedDataPoints = urlParams.get('granted_data_points');
 
       oauthDbg('callback_start', {
         hasCode: !!code,
@@ -325,7 +325,7 @@
         code: code,
         state: state,
         error: error,
-        age_shared: ageShared,
+        granted_data_points: grantedDataPoints,
         timestamp: Date.now(),
         messagingHandoff: messagingHandoffPayload || undefined
       };

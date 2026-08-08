@@ -4,6 +4,11 @@
  */
 
 import bcrypt from 'bcryptjs';
+import {
+  BROWSER_APP_CLIENT_ID,
+  CLIENT_CONTRACTS,
+  MESSAGING_APP_CLIENT_ID
+} from '@par-noir/standard-data-points';
 
 export interface OAuthClient {
   clientId: string;
@@ -39,7 +44,9 @@ function rowToClient(row: Record<string, unknown>): OAuthClient {
 
 export class ClientRegistrationService {
   /**
-   * Seed built-in clients if missing (browser-app, prism-app).
+   * Seed built-in clients. Runs on every boot and upserts scopes, so first-party
+   * scopes are sourced from the shared client contracts to stop the DB drifting
+   * from what the apps actually request.
    */
   static async ensureDefaultClientsSeeded(): Promise<void> {
     const { getDatabasePool } = await import('../utils/database');
@@ -53,18 +60,14 @@ export class ClientRegistrationService {
       scopes: string[];
     }> = [
       {
-        clientId: 'browser-app',
-        name: 'par Noir Browser',
-        description: 'Official par Noir browser application for browsing and discovering encrypted content',
+        clientId: BROWSER_APP_CLIENT_ID,
+        name: CLIENT_CONTRACTS[BROWSER_APP_CLIENT_ID].name,
+        description: CLIENT_CONTRACTS[BROWSER_APP_CLIENT_ID].description,
         redirectUris: [
           'https://browse.parnoir.com/oauth-callback.html',
           'https://browse.parnoir.com/',
           'https://browse-parnoir.web.app/oauth-callback.html',
           'https://browse-parnoir.web.app/',
-          'https://messaging.parnoir.com/oauth-callback.html',
-          'https://messaging.parnoir.com/',
-          'https://messaging-parnoir.web.app/oauth-callback.html',
-          'https://messaging-parnoir.web.app/',
           'https://pn.parnoir.com/oauth-callback.html',
           'https://pn.parnoir.com/pn-oauth-callback.html',
           'https://pn.parnoir.com/',
@@ -86,7 +89,23 @@ export class ClientRegistrationService {
           'http://127.0.0.1:3001/pn-oauth-callback.html',
           'http://127.0.0.1:3001/'
         ],
-        scopes: ['openid', 'profile', 'zkp:age_attestation']
+        scopes: [...CLIENT_CONTRACTS[BROWSER_APP_CLIENT_ID].scopes]
+      },
+      {
+        clientId: MESSAGING_APP_CLIENT_ID,
+        name: CLIENT_CONTRACTS[MESSAGING_APP_CLIENT_ID].name,
+        description: CLIENT_CONTRACTS[MESSAGING_APP_CLIENT_ID].description,
+        redirectUris: [
+          'https://messaging.parnoir.com/oauth-callback.html',
+          'https://messaging.parnoir.com/',
+          'https://messaging-parnoir.web.app/oauth-callback.html',
+          'https://messaging-parnoir.web.app/',
+          'http://localhost:3001/oauth-callback.html',
+          'http://localhost:3001/',
+          'http://127.0.0.1:3001/oauth-callback.html',
+          'http://127.0.0.1:3001/'
+        ],
+        scopes: [...CLIENT_CONTRACTS[MESSAGING_APP_CLIENT_ID].scopes]
       },
       {
         clientId: 'prism-app',
@@ -114,7 +133,7 @@ export class ClientRegistrationService {
           'http://localhost:5176/oauth-callback.html',
           'http://127.0.0.1:5176/oauth-callback.html'
         ],
-        scopes: ['openid', 'profile', 'zkp:age_attestation']
+        scopes: ['openid', 'profile']
       },
       {
         clientId: 'licensing-portal',

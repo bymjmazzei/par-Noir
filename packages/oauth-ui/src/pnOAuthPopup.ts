@@ -11,7 +11,7 @@ import { handoffProvidesMessagingSession, PN_MESSAGING_OAUTH_HANDOFF_STORAGE } f
  * localStorage polling, and named-window navigation (PN_OAUTH_OPENER_WINDOW_NAME) when opener is lost.
  *
  * Contract:
- * - Callback page posts message: { type: 'oauth_callback', code?, state?, error?, age_shared?, timestamp? }
+ * - Callback page posts message: { type: 'oauth_callback', code?, state?, error?, granted_data_points?, timestamp? }
  * - Callback page sets localStorage: pn_oauth_pending, pn_oauth_latest_key, pn_oauth_callback_<ts>
  * - With pn_popup=1 (API adds this when authorize uses popup=true): the callback must NOT navigate the
  *   opener away first — only postMessage/BroadcastChannel/storage — so the opener can resolve
@@ -48,7 +48,8 @@ export interface PnOAuthPopupResult {
   state?: string;
   error?: string;
   error_description?: string;
-  age_shared?: string;
+  /** Comma-separated data point ids the user chose to share at consent. */
+  granted_data_points?: string;
   /** ML-KEM session + encrypted identity from consent (same unlock as OAuth code). */
   messagingHandoff?: Record<string, unknown>;
 }
@@ -180,7 +181,7 @@ function parseOAuthPayload(raw: Record<string, unknown>): PnOAuthPopupResult | n
   const state = coerceOAuthString(raw.state);
   const err = coerceOAuthString(raw.error);
   const errDesc = coerceOAuthString(raw.error_description);
-  const age = coerceOAuthString(raw.age_shared);
+  const granted = coerceOAuthString(raw.granted_data_points);
   const messagingHandoff =
     raw.messagingHandoff && typeof raw.messagingHandoff === 'object'
       ? (raw.messagingHandoff as Record<string, unknown>)
@@ -190,7 +191,7 @@ function parseOAuthPayload(raw: Record<string, unknown>): PnOAuthPopupResult | n
     state: state !== undefined ? state : undefined,
     error: err !== undefined && err.length > 0 ? err : undefined,
     error_description: errDesc !== undefined && errDesc.length > 0 ? errDesc : undefined,
-    age_shared: age !== undefined && age.length > 0 ? age : undefined,
+    granted_data_points: granted !== undefined ? granted : undefined,
     messagingHandoff,
   };
 }
@@ -203,7 +204,9 @@ function buildOAuthResumeUrl(pageOrigin: string, parsed: PnOAuthPopupResult): st
   if (parsed.state) p.set('state', parsed.state);
   if (parsed.error) p.set('error', parsed.error);
   if (parsed.error_description) p.set('error_description', parsed.error_description);
-  if (parsed.age_shared) p.set('age_shared', parsed.age_shared);
+  if (parsed.granted_data_points !== undefined) {
+    p.set('granted_data_points', parsed.granted_data_points);
+  }
   return `${base}/?${p.toString()}`;
 }
 
@@ -492,7 +495,7 @@ export function startPnOAuthPopup(options: StartPnOAuthPopupOptions): Promise<Pn
           state: sp.get('state') ?? undefined,
           error: sp.get('error') ?? undefined,
           error_description: sp.get('error_description') ?? undefined,
-          age_shared: sp.get('age_shared') ?? undefined,
+          granted_data_points: sp.get('granted_data_points') ?? undefined,
           timestamp: Date.now(),
         };
         acceptPayload(raw, 'opener_url');

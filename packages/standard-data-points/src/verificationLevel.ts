@@ -28,40 +28,16 @@ export function proofMeetsMinLevel(
   return verificationLevel === 'verified';
 }
 
-/** First-party browser app: NSFW requires Veriff-verified over_21. */
-export const BROWSER_APP_CLIENT_ID = 'browser-app';
-
-export const BROWSER_APP_OPTIONAL_DATA_POINTS: readonly string[] = ['over_21'];
-
-export const BROWSER_APP_REQUIRED_DATA_POINTS: readonly string[] = [];
-
-export const BROWSER_APP_DATA_POINT_LEVELS: DataPointLevels = {
-  over_21: 'verified',
-};
-
-export const BROWSER_APP_SCOPES: readonly string[] = [
-  'openid',
-  'profile',
-  'zkp:over_21',
-  'cloud:read',
-];
-
-export function applyBrowserAppStaticContract<T extends {
-  requiredDataPoints?: string[];
-  optionalDataPoints?: string[];
-  dataPointLevels?: DataPointLevels;
-  permissions?: string[];
-}>(permission: T): T {
-  return {
-    ...permission,
-    requiredDataPoints: [...BROWSER_APP_REQUIRED_DATA_POINTS],
-    optionalDataPoints: [...BROWSER_APP_OPTIONAL_DATA_POINTS],
-    dataPointLevels: { ...BROWSER_APP_DATA_POINT_LEVELS },
-    permissions: [...BROWSER_APP_SCOPES],
-  };
-}
-
-/** Consent/cache hint: browser has been granted over_21 (verified NSFW gate). */
-export function browserAppOver21Shared(dataPoints: string[] | null | undefined): boolean {
-  return Boolean(dataPoints?.includes('over_21'));
+/**
+ * A stored grant satisfies a request when every requested data point is already
+ * granted. A request for something new sends the user back to consent for the
+ * delta instead of silently widening an old grant.
+ */
+export function grantCoversRequest(
+  grantedDataPoints: string[] | null | undefined,
+  requestedDataPoints: string[] | null | undefined
+): boolean {
+  if (!requestedDataPoints?.length) return true;
+  const granted = new Set(grantedDataPoints ?? []);
+  return requestedDataPoints.every((id) => granted.has(id));
 }

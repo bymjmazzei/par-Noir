@@ -1,6 +1,6 @@
 import {
   buildOAuthIdentityCandidates,
-  getBrowserAppExistingPermissions,
+  getExistingGrant,
 } from '../modules/oauthDrivePermissionContext';
 import { PN_DRIVE_SHEET_KEYS } from '../modules/pnDriveIndex';
 
@@ -26,26 +26,31 @@ jest.mock('../modules/storage/storageProviderUtils', () => ({
   isPortableStorageProvider: jest.fn().mockResolvedValue(false),
 }));
 
-jest.mock('../modules/oauthPermissionCache', () => ({
-  getCachedBrowserAppPermissions: jest.fn().mockResolvedValue(undefined),
-  setCachedBrowserAppPermissions: jest.fn().mockResolvedValue(undefined),
+/**
+ * Mock the Redis primitives, not oauthPermissionCache itself. The previous suite
+ * mocked the cache module to resolve `undefined` — a value the real function
+ * cannot return — which is exactly why it passed while production short-circuited.
+ */
+jest.mock('../utils/cache', () => ({
+  getCache: jest.fn().mockResolvedValue(null),
+  setCache: jest.fn().mockResolvedValue(undefined),
+  deleteCache: jest.fn().mockResolvedValue(undefined),
 }));
 
 import { storageCredentialsService } from '../modules/storageCredentialsService';
 import { googleDriveProxyService } from '../modules/googleDriveProxy';
 import { ThirdPartyPermissionsService } from '../modules/thirdPartyPermissionsService';
 import { isPortableStorageProvider } from '../modules/storage/storageProviderUtils';
-import {
-  getCachedBrowserAppPermissions,
-  setCachedBrowserAppPermissions,
-} from '../modules/oauthPermissionCache';
+import { getCache, setCache } from '../utils/cache';
 
 const mockFindCreds = storageCredentialsService.findCredentialsByIdentityCandidates as jest.Mock;
 const mockGetToken = googleDriveProxyService.getAccessToken as jest.Mock;
 const mockGetPermissions = ThirdPartyPermissionsService.getPermissions as jest.Mock;
 const mockIsPortable = isPortableStorageProvider as jest.Mock;
-const mockGetCached = getCachedBrowserAppPermissions as jest.Mock;
-const mockSetCached = setCachedBrowserAppPermissions as jest.Mock;
+const mockGetCache = getCache as jest.Mock;
+const mockSetCache = setCache as jest.Mock;
+
+const PN = 'pn-59e4692524b7';
 
 function testPnDriveIndex() {
   const sheetIds = Object.fromEntries(
@@ -63,130 +68,144 @@ function testPnDriveIndex() {
   };
 }
 
-describe('oauthDrivePermissionContext', () => {
+function driveCredentials() {
+  return {
+    identityId: PN,
+    credentials: {
+      googleDrive: { access_token: 'tok' },
+      pnDriveIndex: testPnDriveIndex(),
+    },
+  };
+}
+
+describe('getExistingGrant', () => {
   beforeEach(() => {
     jest.clearAllMocks();
-    mockGetCached.mockResolvedValue(undefined);
+    mockGetCache.mockResolvedValue(null);
     mockIsPortable.mockResolvedValue(false);
+    mockGetToken.mockResolvedValue('drive-access-token');
   });
 
-  it('returns cached permissions without Drive lookup', async () => {
-    mockGetCached.mockResolvedValue({ ageShared: true });
-
-    const result = await getBrowserAppExistingPermissions({
-      pnIdentifier: 'pn-59e4692524b7',
+  it('reads Drive when the cache misses, instead of treating a miss as "no grant"', async () => {
+    mockFindCreds.mockResolvedValue(driveCredentials());
+    mockGetPermissions.mockResolvedValue({
+      'browser-app': {
+        toolId: 'browser-app',
+        status: 'active',
+        dataPoints: ['over_21'],
+        optionalDataPoints: ['over_21'],
+      },
     });
 
-    expect(result).toEqual({ ageShared: true });
+    const result = await getExistingGrant('browser-app', { pnIdentifier: PN });
+
+    expect(mockGetPermissions).toHaveBeenCalled();
+    expect(result).toEqual({
+      dataPoints: ['over_21'],
+      consideredDataPoints: ['over_21'],
+    });
+    expect(mockSetCache).toHaveBeenCalledWith(
+      `oauth:grant:browser-app:${PN}`,
+      { dataPoints: ['over_21'], consideredDataPoints: ['over_21'] },
+      expect.any(Number)
+    );
+  });
+
+  it('serves a cached hint without hitting Drive', async () => {
+    mockGetCache.mockResolvedValue({
+      dataPoints: ['over_21'],
+      consideredDataPoints: ['over_21'],
+    });
+
+    const result = await getExistingGrant('browser-app', { pnIdentifier: PN });
+
+    expect(result).toEqual({
+      dataPoints: ['over_21'],
+      consideredDataPoints: ['over_21'],
+    });
     expect(mockFindCreds).not.toHaveBeenCalled();
     expect(mockGetPermissions).not.toHaveBeenCalled();
   });
 
-  it('returns existing permissions when credentials resolve via DID candidate', async () => {
-    mockFindCreds.mockResolvedValue({
-      identityId: 'did:key:abc',
-      credentials: {
-        googleDriveAccounts: [{ backendId: 'acc-1', access_token: 'tok' }],
-        pnDriveIndex: testPnDriveIndex(),
-      },
-    });
-    mockGetToken.mockResolvedValue('drive-access-token');
+  it('keys the cache per client so browse and messaging do not share a grant', async () => {
+    mockFindCreds.mockResolvedValue(driveCredentials());
     mockGetPermissions.mockResolvedValue({
-      'browser-app': {
-        toolId: 'browser-app',
-        status: 'active',
-        dataPoints: ['over_21'],
-      },
+      'messaging-app': { toolId: 'messaging-app', status: 'active', dataPoints: [] },
     });
 
-    const result = await getBrowserAppExistingPermissions({
-      pnIdentifier: 'pn-59e4692524b7',
-      did: 'did:key:abc',
-    });
+    await getExistingGrant('messaging-app', { pnIdentifier: PN });
 
-    expect(result).toEqual({ ageShared: true });
-    expect(mockSetCached).toHaveBeenCalledWith('pn-59e4692524b7', { ageShared: true });
-    expect(mockFindCreds).toHaveBeenCalledWith(
-      expect.arrayContaining(['pn-59e4692524b7', 'did:key:abc'])
-    );
+    expect(mockGetCache).toHaveBeenCalledWith(`oauth:grant:messaging-app:${PN}`);
   });
 
-  it('returns existing permissions for portable social cloud without Drive index', async () => {
-    mockIsPortable.mockResolvedValue(true);
-    mockFindCreds.mockResolvedValue({
-      identityId: 'pn-59e4692524b7',
-      credentials: { socialCloudProvider: 'dropbox' },
-    });
+  it('remembers a declined data point rather than re-prompting', async () => {
+    mockFindCreds.mockResolvedValue(driveCredentials());
     mockGetPermissions.mockResolvedValue({
       'browser-app': {
         toolId: 'browser-app',
         status: 'active',
-        dataPoints: ['over_21'],
+        dataPoints: [],
+        optionalDataPoints: ['over_21'],
       },
     });
 
-    const result = await getBrowserAppExistingPermissions({
-      pnIdentifier: 'pn-59e4692524b7',
+    const result = await getExistingGrant('browser-app', { pnIdentifier: PN });
+
+    expect(result).toEqual({ dataPoints: [], consideredDataPoints: ['over_21'] });
+  });
+
+  it('returns null for a revoked grant and does not cache it', async () => {
+    mockFindCreds.mockResolvedValue(driveCredentials());
+    mockGetPermissions.mockResolvedValue({
+      'browser-app': { toolId: 'browser-app', status: 'revoked', dataPoints: [] },
     });
 
-    expect(result).toEqual({ ageShared: true });
-    expect(mockGetToken).not.toHaveBeenCalled();
-    expect(mockGetPermissions).toHaveBeenCalledWith('', '', 'pn-59e4692524b7');
+    const result = await getExistingGrant('browser-app', { pnIdentifier: PN });
+
+    expect(result).toBeNull();
+    expect(mockSetCache).not.toHaveBeenCalled();
+  });
+
+  it('returns null when the client has no grant row', async () => {
+    mockFindCreds.mockResolvedValue(driveCredentials());
+    mockGetPermissions.mockResolvedValue({});
+
+    expect(await getExistingGrant('browser-app', { pnIdentifier: PN })).toBeNull();
   });
 
   it('returns null when credentials cannot be resolved', async () => {
     mockFindCreds.mockResolvedValue(null);
 
-    const result = await getBrowserAppExistingPermissions({
-      pnIdentifier: 'pn-59e4692524b7',
+    const result = await getExistingGrant('browser-app', {
+      pnIdentifier: PN,
       did: 'did:key:abc',
     });
 
     expect(result).toBeNull();
   });
 
-  it('returns null when browser-app permission is missing', async () => {
+  it('reads portable social cloud without a Drive index', async () => {
+    mockIsPortable.mockResolvedValue(true);
     mockFindCreds.mockResolvedValue({
-      identityId: 'pn-59e4692524b7',
-      credentials: {
-        googleDrive: { access_token: 'tok' },
-        pnDriveIndex: testPnDriveIndex(),
-      },
+      identityId: PN,
+      credentials: { socialCloudProvider: 'dropbox' },
     });
-    mockGetToken.mockResolvedValue('drive-access-token');
-    mockGetPermissions.mockResolvedValue({});
-
-    const result = await getBrowserAppExistingPermissions({
-      pnIdentifier: 'pn-59e4692524b7',
-    });
-
-    expect(result).toBeNull();
-  });
-
-  it('returns null when browser-app permission is revoked (non-active)', async () => {
-    mockFindCreds.mockResolvedValue({
-      identityId: 'pn-59e4692524b7',
-      credentials: {
-        googleDrive: { access_token: 'tok' },
-        pnDriveIndex: testPnDriveIndex(),
-      },
-    });
-    mockGetToken.mockResolvedValue('drive-access-token');
     mockGetPermissions.mockResolvedValue({
-      'browser-app': {
-        toolId: 'browser-app',
-        status: 'revoked',
-        dataPoints: [],
-      },
+      'browser-app': { toolId: 'browser-app', status: 'active', dataPoints: ['over_21'] },
     });
 
-    const result = await getBrowserAppExistingPermissions({
-      pnIdentifier: 'pn-59e4692524b7',
-    });
+    const result = await getExistingGrant('browser-app', { pnIdentifier: PN });
 
-    expect(result).toBeNull();
+    expect(result).toEqual({
+      dataPoints: ['over_21'],
+      consideredDataPoints: ['over_21'],
+    });
+    expect(mockGetToken).not.toHaveBeenCalled();
+    expect(mockGetPermissions).toHaveBeenCalledWith('', '', PN);
   });
+});
 
+describe('buildOAuthIdentityCandidates', () => {
   it('returns empty candidates for missing inputs', () => {
     expect(buildOAuthIdentityCandidates({})).toEqual([]);
   });

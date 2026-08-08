@@ -648,27 +648,25 @@ function App() {
           permissionsLoadedKeyRef.current = loadKey;
           if (permissions && Object.keys(permissions).length > 0) {
             const {
-              applyBrowserAppStaticContract,
-              BROWSER_APP_SCOPES,
+              applyStaticContract,
+              CLIENT_CONTRACTS,
             } = await import('@par-noir/standard-data-points');
             setPrivacySettings(prev => {
               const mergedPermissions: Record<string, any> = { ...permissions };
-              
-              if (mergedPermissions['browser-app']) {
-                mergedPermissions['browser-app'] = applyBrowserAppStaticContract({
-                  ...mergedPermissions['browser-app'],
-                });
-              } else {
-                mergedPermissions['browser-app'] = applyBrowserAppStaticContract({
-                  toolName: 'par Noir Browser',
-                  toolDescription: 'Official par Noir browser application for browsing and discovering encrypted content',
-                  permissions: [...BROWSER_APP_SCOPES],
+
+              // First-party apps always appear in sharing settings so they can be
+              // configured before or after the app's own consent screen.
+              for (const [clientId, contract] of Object.entries(CLIENT_CONTRACTS)) {
+                mergedPermissions[clientId] = applyStaticContract(clientId, {
+                  toolName: contract.name,
+                  toolDescription: contract.description,
                   dataPoints: [],
                   grantedAt: new Date().toISOString(),
-                  status: 'active' as const
+                  status: 'active' as const,
+                  ...(mergedPermissions[clientId] || {}),
                 });
               }
-              
+
               return {
                 ...prev,
                 toolPermissions: {
@@ -706,43 +704,43 @@ function App() {
     };
   }, [authenticatedUser?.id, apiToken, recoveryVaultPnId, ensureOwnerApiTokenForActiveUser]);
 
-  // Initialize browser-app tool permissions (hard-coded pN owned third party)
-  // Always initialize browser-app - it's a pN owned platform
-  // Static required/optional data points are always present regardless of user choices
+  // Seed the pN-owned apps into sharing settings so their contracts are visible
+  // and adjustable even before the user has unlocked in that app.
   useEffect(() => {
     if (authenticatedUser?.id) {
       void (async () => {
         const {
-          applyBrowserAppStaticContract,
-          BROWSER_APP_SCOPES,
+          applyStaticContract,
+          CLIENT_CONTRACTS,
+          BROWSER_APP_CLIENT_ID,
         } = await import('@par-noir/standard-data-points');
         setPrivacySettings(prev => {
-          const existingBrowserApp = prev.toolPermissions['browser-app'];
-          
-          const browserAppPermission = applyBrowserAppStaticContract({
-            toolName: 'par Noir Browser',
-            toolDescription: 'Official par Noir browser application for browsing and discovering encrypted content',
-            permissions: [...BROWSER_APP_SCOPES],
-            dataPoints: existingBrowserApp?.dataPoints || [],
-            requiredDataPoints: [],
-            optionalDataPoints: [],
-            grantedAt: existingBrowserApp?.grantedAt || new Date().toISOString(),
-            status: 'active' as const
-          });
-          
+          const toolPermissions = { ...prev.toolPermissions };
+
+          for (const [clientId, contract] of Object.entries(CLIENT_CONTRACTS)) {
+            const existing = toolPermissions[clientId];
+            toolPermissions[clientId] = applyStaticContract(clientId, {
+              toolName: contract.name,
+              toolDescription: contract.description,
+              permissions: [...contract.scopes],
+              dataPoints: existing?.dataPoints || [],
+              requiredDataPoints: [],
+              optionalDataPoints: [],
+              grantedAt: existing?.grantedAt || new Date().toISOString(),
+              status: existing?.status || ('active' as const)
+            });
+          }
+
           return {
             ...prev,
-            toolPermissions: {
-              ...prev.toolPermissions,
-              'browser-app': browserAppPermission
-            },
+            toolPermissions,
             dataPoints: {
               ...prev.dataPoints,
               'over_21': {
                 label: 'Over 21',
                 description: 'Verified proof that you are 21 or older',
                 category: 'verification' as const,
-                requestedBy: ['browser-app'],
+                requestedBy: [BROWSER_APP_CLIENT_ID],
                 globalSetting: prev.dataPoints?.over_21?.globalSetting !== false,
                 lastUpdated: new Date().toISOString()
               }
