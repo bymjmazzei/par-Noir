@@ -57,6 +57,7 @@ export function setupConnectionRoutes(app: express.Application, deps: Connection
         const { ConnectionsService } = await import('./connectionsService');
         const { googleDriveProxyService } = await import('./googleDriveProxy');
         const { storageCredentialsService } = await import('./storageCredentialsService');
+        const { resolveOwnerDriveToken, respondDriveTokenError } = await import('./ownerDriveToken');
 
         // Use pn identifier directly (already normalized)
         safeLogger.info('[ConnectionRequest] start', { category: 'connections' });
@@ -82,7 +83,7 @@ export function setupConnectionRoutes(app: express.Application, deps: Connection
 
         const requesterAccount = requesterGoogleDriveAccounts[0];
         // Try backendId first, then keyPrefix, then accountId/id for backward compatibility
-        const requesterAccountId = (requesterAccount as any).backendId || (requesterAccount as any).keyPrefix || (requesterAccount as any).accountId || (requesterAccount as any).id || undefined;
+        let requesterAccountId = (requesterAccount as any).backendId || (requesterAccount as any).keyPrefix || (requesterAccount as any).accountId || (requesterAccount as any).id || undefined;
         console.log(`[ConnectionRequest] Requester account structure:`, {
           backendId: (requesterAccount as any).backendId,
           keyPrefix: (requesterAccount as any).keyPrefix,
@@ -90,43 +91,24 @@ export function setupConnectionRoutes(app: express.Application, deps: Connection
           id: (requesterAccount as any).id,
           usingAccountId: requesterAccountId
         });
-        // Use requesterPnIdentifier (the pn identifier from request)
-        let requesterAccessToken: string;
+
+        let requesterToken;
         try {
-          requesterAccessToken = await googleDriveProxyService.getAccessToken(requesterPnIdentifier, requesterAccountId, [requesterPnIdentifier]);
-        } catch (error: any) {
-          console.error('[ConnectionRequest] Failed to get requester access token:', error);
-          console.error('[ConnectionRequest] Requester details:', {
-            identityId: requesterCredentials.identityId,
-            accountId: requesterAccountId,
-            hasCredentials: !!requesterCredentials.credentials,
-            hasGoogleDriveAccounts: !!requesterCredentials.credentials?.googleDriveAccounts,
-            googleDriveAccountsCount: requesterCredentials.credentials?.googleDriveAccounts?.length || 0
+          const resolved = await resolveOwnerDriveToken(req, requesterPnIdentifier, {
+            account: requesterAccount,
+            accountId: requesterAccountId
           });
-          return res.status(500).json({
-            error: 'Failed to send connection request',
-            error_description: safeClientErrorMessage(error, NODE_ENV === 'production') || 'Invalid Credentials',
-            details: 'Failed to get requester Google Drive access token. Please ensure your Google Drive is connected in the dashboard.'
-          });
+          requesterToken = resolved.token;
+          requesterAccountId = resolved.accountId ?? requesterAccountId;
+        } catch (e) {
+          if (respondDriveTokenError(res, e)) return;
+          throw e;
         }
+        const requesterAccessToken = requesterToken.access_token;
 
         // Get or create requester's metadata folder
         let requesterMetadataFolderId: string;
         try {
-          // Create refresh function for retry on 401 - force refresh
-          const refreshTokenFn = async () => {
-            return await googleDriveProxyService.forceRefreshAccessToken(requesterPnIdentifier, requesterAccountId, [requesterPnIdentifier]);
-          };
-          
-          // Build token object for requester
-          const requesterAccount = requesterCredentials.credentials.googleDriveAccounts?.[0] || requesterCredentials.credentials.googleDrive;
-          const requesterToken = {
-            access_token: requesterAccount.access_token || requesterAccount.accessToken,
-            refresh_token: requesterAccount.refresh_token || requesterAccount.refreshToken,
-            expires_at: requesterAccount.expires_at,
-            expires_in: requesterAccount.expires_in
-          };
-          // Use normalized requesterPnIdentifier
           const _g = await getMetadataFolder(requesterToken, requesterPnIdentifier, requesterAccountId);
           if (!_g) {
             return driveNotInitialized(res);
@@ -376,8 +358,8 @@ export function setupConnectionRoutes(app: express.Application, deps: Connection
         }
 
         const { ConnectionsService } = await import('./connectionsService');
-        const { googleDriveProxyService } = await import('./googleDriveProxy');
         const { storageCredentialsService } = await import('./storageCredentialsService');
+        const { resolveOwnerDriveToken, respondDriveTokenError } = await import('./ownerDriveToken');
 
         // Use pn identifier directly (already normalized)
         const pnIdentifier = userPnIdentifier;
@@ -401,15 +383,16 @@ export function setupConnectionRoutes(app: express.Application, deps: Connection
         }
 
         const account = googleDriveAccounts.length > 0 ? googleDriveAccounts[0] : null;
-                const accountId = account ? extractAccountId(account) : undefined;
-        // Use normalized pn identifier for access token retrieval
-        // Get full token object (not just access token string) for automatic refresh
-        const token = {
-          access_token: account?.access_token || account?.accessToken || '',
-          refresh_token: account?.refresh_token || account?.refreshToken,
-          expires_at: account?.expires_at,
-          expires_in: account?.expires_in
-        };
+        let accountId = account ? extractAccountId(account) : undefined;
+        let token;
+        try {
+          const resolved = await resolveOwnerDriveToken(req, pnIdentifier, { account, accountId });
+          token = resolved.token;
+          accountId = resolved.accountId ?? accountId;
+        } catch (e) {
+          if (respondDriveTokenError(res, e)) return;
+          throw e;
+        }
         const userAccessToken = token.access_token; // Keep for backward compatibility
 
         // Get metadata folder and pN root folder (for conversation sheets)
@@ -590,7 +573,7 @@ export function setupConnectionRoutes(app: express.Application, deps: Connection
         const otherAccount = otherGoogleDriveAccounts[0];
         const otherAccountId = extractAccountId(otherAccount);
         
-        // Get full token object for other user (not just access token string) for automatic refresh
+        // Peer throughway (required sync) — do not invent tokens; leave shell as-is
         const otherToken = {
           access_token: otherAccount.access_token || otherAccount.accessToken,
           refresh_token: otherAccount.refresh_token || otherAccount.refreshToken,
@@ -599,7 +582,7 @@ export function setupConnectionRoutes(app: express.Application, deps: Connection
         };
         const otherAccessToken = otherToken.access_token; // Keep for backward compatibility in this endpoint
         
-        const otherMetadataFolder = await getMetadataFolder(otherToken, otherUserPnIdentifier, otherAccountId);
+        const otherMetadataFolder = await getMetadataFolder(otherToken, otherUserPnIdentifier, otherAccountId)
         if (!otherMetadataFolder) {
           return res.status(500).json({
             error: 'Failed to access other user\'s metadata folder',
@@ -693,36 +676,37 @@ export function setupConnectionRoutes(app: express.Application, deps: Connection
             if (otherGoogleDriveAccounts.length > 0) {
               const otherAccount = otherGoogleDriveAccounts[0];
               const otherAccountId = extractAccountId(otherAccount);
-              
-              // Get full token object for other user (not just access token string) for automatic refresh
-              const otherTokenForProfile = {
-                access_token: otherAccount.access_token || otherAccount.accessToken,
-                refresh_token: otherAccount.refresh_token || otherAccount.refreshToken,
-                expires_at: otherAccount.expires_at,
-                expires_in: otherAccount.expires_in
-              };
-              otherAccessToken = otherTokenForProfile.access_token; // Keep for backward compatibility
-              
-              try {
-                const _g = await getMetadataFolder(otherTokenForProfile, otherUserPnIdentifier, otherAccountId);
-                if (_g) {
-                  otherMetadataFolderId = _g.metadataFolderId;
-                } else {
-                  messagingLog.warn(`[AcceptConnection] Other user's metadata folder not found, continuing anyway`);
-                }
-              } catch (error: any) {
-                messagingLog.warn('[AcceptConnection] Failed to get other user metadata folder, continuing anyway', { message: error.message });
-                // Continue even if we can't access other user's folder
-              }
-              
-              if (otherMetadataFolderId) {
+              const peerAccess = String(otherAccount.access_token || otherAccount.accessToken || '').trim();
+              // Optional enrichment — soft-skip empty peer shells
+              if (peerAccess) {
+                const otherTokenForProfile = {
+                  access_token: peerAccess,
+                  refresh_token: otherAccount.refresh_token || otherAccount.refreshToken,
+                  expires_at: otherAccount.expires_at,
+                  expires_in: otherAccount.expires_in
+                };
+                otherAccessToken = otherTokenForProfile.access_token;
+
                 try {
-                  const requesterProfile = await ProfileService.getProfileFile(otherToken.access_token, otherMetadataFolderId);
-                  if (requesterProfile?.displayName) {
-                    requesterDisplayName = requesterProfile.displayName;
+                  const _g = await getMetadataFolder(otherTokenForProfile, otherUserPnIdentifier, otherAccountId);
+                  if (_g) {
+                    otherMetadataFolderId = _g.metadataFolderId;
+                  } else {
+                    messagingLog.warn(`[AcceptConnection] Other user's metadata folder not found, continuing anyway`);
                   }
-                } catch (e) {
-                  // Use short identifier if profile not found
+                } catch (error: any) {
+                  messagingLog.warn('[AcceptConnection] Failed to get other user metadata folder, continuing anyway', { message: error.message });
+                }
+
+                if (otherMetadataFolderId) {
+                  try {
+                    const requesterProfile = await ProfileService.getProfileFile(otherToken.access_token, otherMetadataFolderId);
+                    if (requesterProfile?.displayName) {
+                      requesterDisplayName = requesterProfile.displayName;
+                    }
+                  } catch (e) {
+                    // Use short identifier if profile not found
+                  }
                 }
               }
             }
@@ -970,8 +954,8 @@ export function setupConnectionRoutes(app: express.Application, deps: Connection
         }
 
         const { ConnectionsService } = await import('./connectionsService');
-        const { googleDriveProxyService } = await import('./googleDriveProxy');
         const { storageCredentialsService } = await import('./storageCredentialsService');
+        const { resolveOwnerDriveToken, respondDriveTokenError } = await import('./ownerDriveToken');
 
         // Use pn identifier directly (already normalized)
         const pnIdentifier = userPnIdentifier;
@@ -995,15 +979,16 @@ export function setupConnectionRoutes(app: express.Application, deps: Connection
         }
 
         const account = googleDriveAccounts.length > 0 ? googleDriveAccounts[0] : null;
-                const accountId = account ? extractAccountId(account) : undefined;
-        // Use normalized pn identifier for access token retrieval
-        // Get full token object (not just access token string) for automatic refresh
-        const token = {
-          access_token: account?.access_token || account?.accessToken || '',
-          refresh_token: account?.refresh_token || account?.refreshToken,
-          expires_at: account?.expires_at,
-          expires_in: account?.expires_in
-        };
+        let accountId = account ? extractAccountId(account) : undefined;
+        let token;
+        try {
+          const resolved = await resolveOwnerDriveToken(req, pnIdentifier, { account, accountId });
+          token = resolved.token;
+          accountId = resolved.accountId ?? accountId;
+        } catch (e) {
+          if (respondDriveTokenError(res, e)) return;
+          throw e;
+        }
         const userAccessToken = token.access_token; // Keep for backward compatibility
 
         // Get metadata folder
@@ -1060,7 +1045,7 @@ export function setupConnectionRoutes(app: express.Application, deps: Connection
         }
 
         const { ConnectionsService } = await import('./connectionsService');
-        const { requireOwnerDriveContext, DriveIndexError } = await import('./ownerDriveContext');
+        const { requireOwnerDriveContextFromReq, DriveIndexError, respondDriveTokenError } = await import('./ownerDriveToken');
         const { PN_DRIVE_SHEET_KEYS } = await import('./pnDriveIndex');
 
         const pnIdentifier = typeof userPnIdentifier === 'string' ? userPnIdentifier : String(userPnIdentifier || '');
@@ -1069,16 +1054,14 @@ export function setupConnectionRoutes(app: express.Application, deps: Connection
         }
         console.log(`[GetConnections] User: ${pnIdentifier}`);
 
-        const { extractCloudAccessToken } = await import('./cloudAccessToken');
         let driveCtx;
         try {
-          driveCtx = await requireOwnerDriveContext(pnIdentifier, undefined, {
-            accessToken: extractCloudAccessToken(req),
-          });
+          driveCtx = await requireOwnerDriveContextFromReq(req, pnIdentifier);
         } catch (err) {
+          if (respondDriveTokenError(res, err)) return;
           if (
             err instanceof DriveIndexError &&
-            (err.code === 'DRIVE_NOT_INITIALIZED' || err.code === 'CLOUD_TOKEN_REQUIRED')
+            err.code === 'DRIVE_NOT_INITIALIZED'
           ) {
             return driveNotInitialized(res);
           }
@@ -1149,8 +1132,8 @@ export function setupConnectionRoutes(app: express.Application, deps: Connection
         const { ActivityLedgerService } = await import('./activityLedgerService');
         const { ConnectionsSheetsService } = await import('./connectionsSheetsService');
         const { NotificationService } = await import('./notificationService');
-        const { googleDriveProxyService } = await import('./googleDriveProxy');
         const { storageCredentialsService } = await import('./storageCredentialsService');
+        const { resolveOwnerDriveToken, respondDriveTokenError } = await import('./ownerDriveToken');
 
         const userPnIdentifierStr = typeof userPnIdentifier === 'string' ? userPnIdentifier : String(userPnIdentifier);
         const pnIdentifier = userPnIdentifierStr;
@@ -1172,15 +1155,16 @@ export function setupConnectionRoutes(app: express.Application, deps: Connection
         }
 
         const account = googleDriveAccounts.length > 0 ? googleDriveAccounts[0] : null;
-        const accountId = account ? extractAccountId(account) : undefined;
-        
-        // Build token object from account
-        const token = {
-          access_token: account?.access_token || account?.accessToken || '',
-          refresh_token: account?.refresh_token || account?.refreshToken,
-          expires_at: account?.expires_at,
-          expires_in: account?.expires_in
-        };
+        let accountId = account ? extractAccountId(account) : undefined;
+        let token;
+        try {
+          const resolved = await resolveOwnerDriveToken(req, pnIdentifier, { account, accountId });
+          token = resolved.token;
+          accountId = resolved.accountId ?? accountId;
+        } catch (e) {
+          if (respondDriveTokenError(res, e)) return;
+          throw e;
+        }
         const userAccessToken = token.access_token; // Keep for backward compatibility
         
         let metadataFolderId = '';
@@ -1243,54 +1227,58 @@ export function setupConnectionRoutes(app: express.Application, deps: Connection
               if (targetGoogleDriveAccounts.length > 0) {
                 const targetAccount = targetGoogleDriveAccounts[0];
                 const targetAccountId = (targetAccount as any).backendId || (targetAccount as any).keyPrefix || (targetAccount as any).accountId || (targetAccount as any).id || undefined;
-                // Build token object for target
-                const targetToken = {
-                  access_token: targetAccount.access_token || targetAccount.accessToken,
-                  refresh_token: targetAccount.refresh_token || targetAccount.refreshToken,
-                  expires_at: targetAccount.expires_at,
-                  expires_in: targetAccount.expires_in
-                };
-                const targetAccessToken = targetToken.access_token; // Keep for backward compatibility
-                const _g = await getMetadataFolder(targetToken, normalizedTargetId, targetAccountId);
-                if (!_g) return driveNotInitialized(res);
-                const targetMetadataFolderId = _g.metadataFolderId;
+                const peerAccess = String(targetAccount.access_token || targetAccount.accessToken || '').trim();
+                // Optional peer enrichment — soft-skip empty shells
+                if (peerAccess) {
+                  const targetToken = {
+                    access_token: peerAccess,
+                    refresh_token: targetAccount.refresh_token || targetAccount.refreshToken,
+                    expires_at: targetAccount.expires_at,
+                    expires_in: targetAccount.expires_in
+                  };
+                  const targetAccessToken = targetToken.access_token;
+                  const _g = await getMetadataFolder(targetToken, normalizedTargetId, targetAccountId);
+                  if (_g) {
+                    const targetMetadataFolderId = _g.metadataFolderId;
 
-                // Get or create followers sheet (paid feeds only)
-                const followersSheetId = await ConnectionsSheetsService.getFollowersSheet(
-                  targetToken,
-                  targetMetadataFolderId,
-                  normalizedTargetId,
-                  targetAccountId
-                );
+                    // Get or create followers sheet (paid feeds only)
+                    const followersSheetId = await ConnectionsSheetsService.getFollowersSheet(
+                      targetToken,
+                      targetMetadataFolderId,
+                      normalizedTargetId,
+                      targetAccountId
+                    );
 
-                // Add follower (use normalized pnIdentifier)
-                await ConnectionsSheetsService.addFollower(
-                  targetToken,
-                  followersSheetId,
-                  {
-                    followerPnIdentifier: pnIdentifier,
-                    followedAt: new Date().toISOString()
-                  },
-                  normalizedTargetId,
-                  targetAccountId
-                );
+                    // Add follower (use normalized pnIdentifier)
+                    await ConnectionsSheetsService.addFollower(
+                      targetToken,
+                      followersSheetId,
+                      {
+                        followerPnIdentifier: pnIdentifier,
+                        followedAt: new Date().toISOString()
+                      },
+                      normalizedTargetId,
+                      targetAccountId
+                    );
 
-                // Send notification to target user (use normalized DIDs)
-                try {
-                  await NotificationService.createNotification(
-                    targetAccessToken,
-                    targetMetadataFolderId,
-                    targetCredentials.identityId,
-                    {
-                      user_pn_identifier: targetCredentials.identityId,
-                      type: 'follow',
-                      title: 'New Follower',
-                      message: `${pnIdentifier} started following you`,
-                      data: { user_pn_identifier: pnIdentifier }
+                    // Send notification to target user (use normalized DIDs)
+                    try {
+                      await NotificationService.createNotification(
+                        targetAccessToken,
+                        targetMetadataFolderId,
+                        targetCredentials.identityId,
+                        {
+                          user_pn_identifier: targetCredentials.identityId,
+                          type: 'follow',
+                          title: 'New Follower',
+                          message: `${pnIdentifier} started following you`,
+                          data: { user_pn_identifier: pnIdentifier }
+                        }
+                      );
+                    } catch (notificationError) {
+                      console.warn('Failed to send follow notification:', notificationError);
                     }
-                  );
-                } catch (notificationError) {
-                  console.warn('Failed to send follow notification:', notificationError);
+                  }
                 }
               }
             }
@@ -1322,8 +1310,8 @@ export function setupConnectionRoutes(app: express.Application, deps: Connection
         const targetIdStr = String(targetId);
 
         const { ConnectionsSheetsService } = await import('./connectionsSheetsService');
-        const { googleDriveProxyService } = await import('./googleDriveProxy');
         const { storageCredentialsService } = await import('./storageCredentialsService');
+        const { resolveOwnerDriveToken, respondDriveTokenError } = await import('./ownerDriveToken');
 
         const userPnIdentifierStr = typeof userPnIdentifier === 'string' ? userPnIdentifier : String(userPnIdentifier);
         const pnIdentifier = userPnIdentifierStr;
@@ -1345,15 +1333,16 @@ export function setupConnectionRoutes(app: express.Application, deps: Connection
         }
 
         const account = googleDriveAccounts.length > 0 ? googleDriveAccounts[0] : null;
-        const accountId = account ? extractAccountId(account) : undefined;
-        
-        // Build token object from account
-        const token = {
-          access_token: account?.access_token || account?.accessToken || '',
-          refresh_token: account?.refresh_token || account?.refreshToken,
-          expires_at: account?.expires_at,
-          expires_in: account?.expires_in
-        };
+        let accountId = account ? extractAccountId(account) : undefined;
+        let token;
+        try {
+          const resolved = await resolveOwnerDriveToken(req, pnIdentifier, { account, accountId });
+          token = resolved.token;
+          accountId = resolved.accountId ?? accountId;
+        } catch (e) {
+          if (respondDriveTokenError(res, e)) return;
+          throw e;
+        }
         const userAccessToken = token.access_token; // Keep for backward compatibility
         
         let metadataFolderId = '';
@@ -1398,34 +1387,37 @@ export function setupConnectionRoutes(app: express.Application, deps: Connection
               if (targetGoogleDriveAccounts.length > 0) {
                 const targetAccount = targetGoogleDriveAccounts[0];
                 const targetAccountId = (targetAccount as any).backendId || (targetAccount as any).keyPrefix || (targetAccount as any).accountId || (targetAccount as any).id || undefined;
-                // Build token object for target
-                const targetToken = {
-                  access_token: targetAccount.access_token || targetAccount.accessToken,
-                  refresh_token: targetAccount.refresh_token || targetAccount.refreshToken,
-                  expires_at: targetAccount.expires_at,
-                  expires_in: targetAccount.expires_in
-                };
-                const targetAccessToken = targetToken.access_token; // Keep for backward compatibility
-                const _g = await getMetadataFolder(targetToken, normalizedTargetId, targetAccountId);
-                if (!_g) return driveNotInitialized(res);
-                const targetMetadataFolderId = _g.metadataFolderId;
+                const peerAccess = String(targetAccount.access_token || targetAccount.accessToken || '').trim();
+                // Optional peer enrichment — soft-skip empty shells
+                if (peerAccess) {
+                  const targetToken = {
+                    access_token: peerAccess,
+                    refresh_token: targetAccount.refresh_token || targetAccount.refreshToken,
+                    expires_at: targetAccount.expires_at,
+                    expires_in: targetAccount.expires_in
+                  };
+                  const _g = await getMetadataFolder(targetToken, normalizedTargetId, targetAccountId);
+                  if (_g) {
+                    const targetMetadataFolderId = _g.metadataFolderId;
 
-                // Get followers sheet
-                const followersSheetId = await ConnectionsSheetsService.getFollowersSheet(
-                  targetToken,
-                  targetMetadataFolderId,
-                  normalizedTargetId,
-                  targetAccountId
-                );
+                    // Get followers sheet
+                    const followersSheetId = await ConnectionsSheetsService.getFollowersSheet(
+                      targetToken,
+                      targetMetadataFolderId,
+                      normalizedTargetId,
+                      targetAccountId
+                    );
 
-                // Remove follower (use normalized pnIdentifier)
-                await ConnectionsSheetsService.removeFollower(
-                  targetToken,
-                  followersSheetId,
-                  pnIdentifier,
-                  normalizedTargetId,
-                  targetAccountId
-                );
+                    // Remove follower (use normalized pnIdentifier)
+                    await ConnectionsSheetsService.removeFollower(
+                      targetToken,
+                      followersSheetId,
+                      pnIdentifier,
+                      normalizedTargetId,
+                      targetAccountId
+                    );
+                  }
+                }
               }
             }
           } catch (targetError) {
@@ -1453,8 +1445,8 @@ export function setupConnectionRoutes(app: express.Application, deps: Connection
         }
 
         const { ConnectionsSheetsService } = await import('./connectionsSheetsService');
-        const { googleDriveProxyService } = await import('./googleDriveProxy');
         const { storageCredentialsService } = await import('./storageCredentialsService');
+        const { resolveOwnerDriveToken, respondDriveTokenError } = await import('./ownerDriveToken');
 
         const userPnIdentifierStr = typeof userPnIdentifier === 'string' ? userPnIdentifier : String(userPnIdentifier);
         const pnIdentifier = userPnIdentifierStr;
@@ -1471,15 +1463,16 @@ export function setupConnectionRoutes(app: express.Application, deps: Connection
         }
 
         const account = googleDriveAccounts.length > 0 ? googleDriveAccounts[0] : null;
-        const accountId = account ? extractAccountId(account) : undefined;
-        
-        // Build token object from account
-        const token = {
-          access_token: account?.access_token || account?.accessToken || '',
-          refresh_token: account?.refresh_token || account?.refreshToken,
-          expires_at: account?.expires_at,
-          expires_in: account?.expires_in
-        };
+        let accountId = account ? extractAccountId(account) : undefined;
+        let token;
+        try {
+          const resolved = await resolveOwnerDriveToken(req, pnIdentifier, { account, accountId });
+          token = resolved.token;
+          accountId = resolved.accountId ?? accountId;
+        } catch (e) {
+          if (respondDriveTokenError(res, e)) return;
+          throw e;
+        }
         const userAccessToken = token.access_token; // Keep for backward compatibility
         
         let metadataFolderId = '';
@@ -1529,8 +1522,8 @@ export function setupConnectionRoutes(app: express.Application, deps: Connection
         }
 
         const { ConnectionsSheetsService } = await import('./connectionsSheetsService');
-        const { googleDriveProxyService } = await import('./googleDriveProxy');
         const { storageCredentialsService } = await import('./storageCredentialsService');
+        const { resolveOwnerDriveToken, respondDriveTokenError } = await import('./ownerDriveToken');
 
         const userPnIdentifierStr = typeof userPnIdentifier === 'string' ? userPnIdentifier : String(userPnIdentifier);
         const pnIdentifier = userPnIdentifierStr;
@@ -1547,15 +1540,16 @@ export function setupConnectionRoutes(app: express.Application, deps: Connection
         }
 
         const account = googleDriveAccounts.length > 0 ? googleDriveAccounts[0] : null;
-        const accountId = account ? extractAccountId(account) : undefined;
-        
-        // Build token object from account
-        const token = {
-          access_token: account?.access_token || account?.accessToken || '',
-          refresh_token: account?.refresh_token || account?.refreshToken,
-          expires_at: account?.expires_at,
-          expires_in: account?.expires_in
-        };
+        let accountId = account ? extractAccountId(account) : undefined;
+        let token;
+        try {
+          const resolved = await resolveOwnerDriveToken(req, pnIdentifier, { account, accountId });
+          token = resolved.token;
+          accountId = resolved.accountId ?? accountId;
+        } catch (e) {
+          if (respondDriveTokenError(res, e)) return;
+          throw e;
+        }
         const userAccessToken = token.access_token; // Keep for backward compatibility
         
         let metadataFolderId = '';
@@ -1602,8 +1596,8 @@ export function setupConnectionRoutes(app: express.Application, deps: Connection
         }
 
         const { ConnectionsSheetsService } = await import('./connectionsSheetsService');
-        const { googleDriveProxyService } = await import('./googleDriveProxy');
         const { storageCredentialsService } = await import('./storageCredentialsService');
+        const { resolveOwnerDriveToken, respondDriveTokenError } = await import('./ownerDriveToken');
 
         const pnIdentifier = userPnIdentifier;
         const userCredentials = await storageCredentialsService.getCredentials(pnIdentifier);
@@ -1619,15 +1613,16 @@ export function setupConnectionRoutes(app: express.Application, deps: Connection
         }
 
         const account = googleDriveAccounts.length > 0 ? googleDriveAccounts[0] : null;
-        const accountId = account ? extractAccountId(account) : undefined;
-        
-        // Build token object from account
-        const token = {
-          access_token: account?.access_token || account?.accessToken || '',
-          refresh_token: account?.refresh_token || account?.refreshToken,
-          expires_at: account?.expires_at,
-          expires_in: account?.expires_in
-        };
+        let accountId = account ? extractAccountId(account) : undefined;
+        let token;
+        try {
+          const resolved = await resolveOwnerDriveToken(req, pnIdentifier, { account, accountId });
+          token = resolved.token;
+          accountId = resolved.accountId ?? accountId;
+        } catch (e) {
+          if (respondDriveTokenError(res, e)) return;
+          throw e;
+        }
         const userAccessToken = token.access_token; // Keep for backward compatibility
         
         let metadataFolderId = '';
@@ -1671,8 +1666,8 @@ export function setupConnectionRoutes(app: express.Application, deps: Connection
         }
 
         const { ConnectionsSheetsService } = await import('./connectionsSheetsService');
-        const { googleDriveProxyService } = await import('./googleDriveProxy');
         const { storageCredentialsService } = await import('./storageCredentialsService');
+        const { resolveOwnerDriveToken, respondDriveTokenError } = await import('./ownerDriveToken');
 
         const pnIdentifier = userPnIdentifier;
         const userCredentials = await storageCredentialsService.getCredentials(pnIdentifier);
@@ -1688,15 +1683,16 @@ export function setupConnectionRoutes(app: express.Application, deps: Connection
         }
 
         const account = googleDriveAccounts.length > 0 ? googleDriveAccounts[0] : null;
-        const accountId = account ? extractAccountId(account) : undefined;
-        
-        // Build token object from account
-        const token = {
-          access_token: account?.access_token || account?.accessToken || '',
-          refresh_token: account?.refresh_token || account?.refreshToken,
-          expires_at: account?.expires_at,
-          expires_in: account?.expires_in
-        };
+        let accountId = account ? extractAccountId(account) : undefined;
+        let token;
+        try {
+          const resolved = await resolveOwnerDriveToken(req, pnIdentifier, { account, accountId });
+          token = resolved.token;
+          accountId = resolved.accountId ?? accountId;
+        } catch (e) {
+          if (respondDriveTokenError(res, e)) return;
+          throw e;
+        }
         const userAccessToken = token.access_token; // Keep for backward compatibility
         
         let metadataFolderId = '';
@@ -1740,7 +1736,7 @@ export function setupConnectionRoutes(app: express.Application, deps: Connection
         }
 
         const { ConnectionsService } = await import('./connectionsService');
-        const { requireOwnerDriveContext, DriveIndexError } = await import('./ownerDriveContext');
+        const { requireOwnerDriveContextFromReq, DriveIndexError, respondDriveTokenError } = await import('./ownerDriveToken');
         const { PN_DRIVE_SHEET_KEYS } = await import('./pnDriveIndex');
 
         const pnIdentifier = typeof userPnIdentifier === 'string' ? userPnIdentifier : String(userPnIdentifier || '');
@@ -1749,17 +1745,12 @@ export function setupConnectionRoutes(app: express.Application, deps: Connection
         }
         console.log(`[PendingRequests] User: ${pnIdentifier}`);
 
-        const { extractCloudAccessToken } = await import('./cloudAccessToken');
         let driveCtx;
         try {
-          driveCtx = await requireOwnerDriveContext(pnIdentifier, undefined, {
-            accessToken: extractCloudAccessToken(req),
-          });
+          driveCtx = await requireOwnerDriveContextFromReq(req, pnIdentifier);
         } catch (err) {
-          if (
-            err instanceof DriveIndexError &&
-            (err.code === 'DRIVE_NOT_INITIALIZED' || err.code === 'CLOUD_TOKEN_REQUIRED')
-          ) {
+          if (respondDriveTokenError(res, err)) return;
+          if (err instanceof DriveIndexError && err.code === 'DRIVE_NOT_INITIALIZED') {
             return driveNotInitialized(res);
           }
           if (err instanceof Error && err.message?.includes('authentication failed')) {
@@ -1849,7 +1840,7 @@ export function setupConnectionRoutes(app: express.Application, deps: Connection
           return res.status(400).json({ error: 'userPnIdentifier and otherUserPnIdentifier are required' });
         }
 
-        const { requireOwnerDriveContext, DriveIndexError } = await import('./ownerDriveContext');
+        const { requireOwnerDriveContextFromReq, DriveIndexError } = await import('./ownerDriveToken');
         const { getConnectionStatusFromIndex } = await import('./messagingConnectionResolver');
         const { isGoogleSheetsRateLimit } = await import('./googleSheetsRateLimit');
         const { storageCredentialsService } = await import('./storageCredentialsService');
@@ -1867,10 +1858,7 @@ export function setupConnectionRoutes(app: express.Application, deps: Connection
         }
 
         try {
-          const { extractCloudAccessToken } = await import('./cloudAccessToken');
-          const userCtx = await requireOwnerDriveContext(normalizedUserPnIdentifier, undefined, {
-            accessToken: extractCloudAccessToken(req),
-          });
+          const userCtx = await requireOwnerDriveContextFromReq(req, normalizedUserPnIdentifier);
           const status = await getConnectionStatusFromIndex(userCtx, normalizedOtherUserPnIdentifier);
           return res.json(status);
         } catch (error: unknown) {
@@ -1909,8 +1897,8 @@ export function setupConnectionRoutes(app: express.Application, deps: Connection
         }
 
         const { ConnectionsService } = await import('./connectionsService');
-        const { googleDriveProxyService } = await import('./googleDriveProxy');
         const { storageCredentialsService } = await import('./storageCredentialsService');
+        const { resolveOwnerDriveToken, respondDriveTokenError } = await import('./ownerDriveToken');
 
         // Use pn identifier directly
         const pnIdentifier = userPnIdentifier;
@@ -1934,15 +1922,16 @@ export function setupConnectionRoutes(app: express.Application, deps: Connection
         }
 
         const account = googleDriveAccounts.length > 0 ? googleDriveAccounts[0] : null;
-        const accountId = account ? extractAccountId(account) : undefined;
-        
-        // Get full token object (not just access token string) for automatic refresh
-        const token = {
-          access_token: account?.access_token || account?.accessToken || '',
-          refresh_token: account?.refresh_token || account?.refreshToken,
-          expires_at: account?.expires_at,
-          expires_in: account?.expires_in
-        };
+        let accountId = account ? extractAccountId(account) : undefined;
+        let token;
+        try {
+          const resolved = await resolveOwnerDriveToken(req, pnIdentifier, { account, accountId });
+          token = resolved.token;
+          accountId = resolved.accountId ?? accountId;
+        } catch (e) {
+          if (respondDriveTokenError(res, e)) return;
+          throw e;
+        }
         const userAccessToken = token.access_token; // Keep for backward compatibility
 
         // Get or create metadata folder
@@ -2037,10 +2026,16 @@ export function setupConnectionRoutes(app: express.Application, deps: Connection
         // Get other user's account and build token object
         const otherUserAccount = otherUserGoogleDriveAccounts[0];
         const otherUserAccountId = extractAccountId(otherUserAccount);
-        
-        // Build token object for other user
+        const peerAccess = String(otherUserAccount.access_token || otherUserAccount.accessToken || '').trim();
+        // Optional peer sync — soft-skip empty shells rather than inventing tokens
+        if (!peerAccess) {
+          return res.json({
+            success: true,
+            warning: 'Connection removed from your list, but other user Drive access is unavailable under cloud custody'
+          });
+        }
         const otherUserToken = {
-          access_token: otherUserAccount.access_token || otherUserAccount.accessToken,
+          access_token: peerAccess,
           refresh_token: otherUserAccount.refresh_token || otherUserAccount.refreshToken,
           expires_at: otherUserAccount.expires_at,
           expires_in: otherUserAccount.expires_in

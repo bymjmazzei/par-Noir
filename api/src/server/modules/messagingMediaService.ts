@@ -70,7 +70,12 @@ async function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-async function getOwnerDriveContext(ownerPn: string, accountId?: string): Promise<{
+async function getOwnerDriveContext(
+  ownerPn: string,
+  accountId?: string,
+  /** Prefer a forwarded cloud access token (e.g. extractCloudAccessToken(req)). */
+  accessTokenOverride?: string
+): Promise<{
   pnIdentifier: string;
   accessToken: string;
   token: GoogleDriveToken;
@@ -120,14 +125,19 @@ async function getOwnerDriveContext(ownerPn: string, accountId?: string): Promis
     account.keyPrefix ||
     'default';
 
+  const forwarded =
+    (typeof accessTokenOverride === 'string' && accessTokenOverride.trim()) ||
+    String(account.access_token || account.accessToken || '').trim();
+  const accessToken =
+    forwarded ||
+    (await googleDriveProxyService.getAccessToken(pnIdentifier, resolvedAccountId));
+
   const token: GoogleDriveToken = {
-    access_token: account.access_token || account.accessToken || '',
+    access_token: accessToken,
     refresh_token: account.refresh_token || account.refreshToken,
     expires_at: account.expires_at,
     expires_in: account.expires_in
   };
-
-  const accessToken = await googleDriveProxyService.getAccessToken(pnIdentifier, resolvedAccountId);
 
   const { readPnDriveIndex, isPnDriveIndexComplete } = await import('./pnDriveIndex');
   const index = readPnDriveIndex(credentials as Record<string, unknown>);
@@ -257,7 +267,9 @@ async function ensureMessagesAttachmentsFolderDrive(ctx: {
  */
 export async function ensureMessagesAttachmentsFolder(
   ownerPn: string,
-  accountId?: string
+  accountId?: string,
+  /** Forwarded X-PN-Cloud-Access-Token (required under device cloud custody). */
+  accessToken?: string
 ): Promise<MediaAttachmentLocation> {
   const pnIdentifier = normalizePn(ownerPn);
 
@@ -272,7 +284,7 @@ export async function ensureMessagesAttachmentsFolder(
     };
   }
 
-  const ctx = await getOwnerDriveContext(pnIdentifier, accountId);
+  const ctx = await getOwnerDriveContext(pnIdentifier, accountId, accessToken);
   const folderId = await ensureMessagesAttachmentsFolderDrive(ctx);
   return {
     backend: 'google_drive',

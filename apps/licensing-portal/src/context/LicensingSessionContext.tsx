@@ -14,6 +14,7 @@ import {
   PN_OAUTH_RESUME_SEARCH_KEY,
   type PnOAuthPopupResult
 } from '@par-noir/oauth-ui';
+import { ownerCloudHeaders } from '@par-noir/device-cloud-credentials';
 import { API_ENDPOINT } from '../config/api';
 import { PN_CLIENT_ID } from '../config/client';
 
@@ -121,10 +122,13 @@ export function LicensingSessionProvider({ children }: { children: ReactNode }) 
 
   const authHeaders = useCallback((): HeadersInit => {
     const t = getAccessToken();
-    const h: HeadersInit = { 'Content-Type': 'application/json' };
-    if (t) (h as Record<string, string>)['Authorization'] = `Bearer ${t}`;
-    return h;
-  }, []);
+    if (!t) return { 'Content-Type': 'application/json' };
+    return ownerCloudHeaders({
+      authToken: t,
+      pnIdentifier: user?.pn_identifier,
+      extra: { 'Content-Type': 'application/json' }
+    });
+  }, [user?.pn_identifier]);
 
   const refreshUser = useCallback(async () => {
     let t = getAccessToken();

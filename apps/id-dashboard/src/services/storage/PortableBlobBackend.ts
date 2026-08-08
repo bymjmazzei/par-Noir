@@ -1,6 +1,5 @@
 import { encryptedMediaPath, type ContentClass } from '@par-noir/user-owned-storage/pn-layout';
-import { API_ENDPOINT } from '../../config/api';
-import { ownerFetch } from '../ownerApiService';
+import { ownerFetch, ownerGet } from '../ownerApiService';
 import { AbstractStorageBackend, type StorageFile, type StorageQuota, type StorageUserInfo } from './StorageBackend';
 
 export class PortableBlobBackend extends AbstractStorageBackend {
@@ -39,7 +38,9 @@ export class PortableBlobBackend extends AbstractStorageBackend {
     const res = await ownerFetch(
       this.authToken,
       'GET',
-      `/api/storage/blobs/${encodeURIComponent(this.pnIdentifier)}?provider=${encodeURIComponent(this.provider)}&accountId=${encodeURIComponent(this.accountId)}&prefix=_metadata/`
+      `/api/storage/blobs/${encodeURIComponent(this.pnIdentifier)}?provider=${encodeURIComponent(this.provider)}&accountId=${encodeURIComponent(this.accountId)}&prefix=_metadata/`,
+      undefined,
+      { pnIdentifier: this.pnIdentifier }
     );
     if (!res.ok) return [];
     const data = (await res.json()) as { files?: Array<{ key: string; size?: number }> };
@@ -75,7 +76,8 @@ export class PortableBlobBackend extends AbstractStorageBackend {
         key,
         fileData: base64,
         contentType: file.type || 'application/octet-stream'
-      }
+      },
+      { pnIdentifier: this.pnIdentifier }
     );
     if (!res.ok) throw new Error('Portable upload failed');
     return {
@@ -90,10 +92,13 @@ export class PortableBlobBackend extends AbstractStorageBackend {
   }
 
   async downloadFile(fileKey: string): Promise<Blob> {
-    const res = await fetch(
-      `${API_ENDPOINT}/api/storage/blobs/${encodeURIComponent(this.pnIdentifier)}/download?provider=${encodeURIComponent(this.provider)}&accountId=${encodeURIComponent(this.accountId)}&key=${encodeURIComponent(fileKey)}&download=true`,
-      { headers: { Authorization: `Bearer ${this.authToken}` } }
-    );
+    const path =
+      `/api/storage/blobs/${encodeURIComponent(this.pnIdentifier)}/download` +
+      `?provider=${encodeURIComponent(this.provider)}` +
+      `&accountId=${encodeURIComponent(this.accountId)}` +
+      `&key=${encodeURIComponent(fileKey)}` +
+      `&download=true`;
+    const res = await ownerGet(this.authToken, path, { pnIdentifier: this.pnIdentifier });
     if (!res.ok) throw new Error('Portable download failed');
     return res.blob();
   }
@@ -102,7 +107,9 @@ export class PortableBlobBackend extends AbstractStorageBackend {
     const res = await ownerFetch(
       this.authToken,
       'DELETE',
-      `/api/storage/blobs/${encodeURIComponent(this.pnIdentifier)}?provider=${encodeURIComponent(this.provider)}&accountId=${encodeURIComponent(this.accountId)}&key=${encodeURIComponent(fileKey)}`
+      `/api/storage/blobs/${encodeURIComponent(this.pnIdentifier)}?provider=${encodeURIComponent(this.provider)}&accountId=${encodeURIComponent(this.accountId)}&key=${encodeURIComponent(fileKey)}`,
+      undefined,
+      { pnIdentifier: this.pnIdentifier }
     );
     if (!res.ok) throw new Error('Portable delete failed');
   }

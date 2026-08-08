@@ -18,7 +18,6 @@ import type { FileAggregatorService } from '../../../../services/aggregator/File
 import type { EncryptionService } from '../../../../services/aggregator/EncryptionService';
 import type { MetadataIndexService } from '../../../../services/metadata/MetadataIndexService';
 import type { CompanionMetadata } from '../../../../services/storage/GoogleDriveMetadataService';
-import { API_ENDPOINT } from '../../../../config/api';
 import {
   AggregatedFile,
   AuthSession,
@@ -27,6 +26,7 @@ import {
   EncryptedFilePackage,
 } from '../../../../types/aggregator';
 import { resolveOwnerApiToken } from '../../../../services/ownerApiToken';
+import { getOwnerApiPnIdentifier, ownerFetch } from '../../../../services/ownerApiService';
 
 export interface TogglePublicVisibilityDeps {
   authenticatedUser: any;
@@ -396,34 +396,34 @@ export async function togglePublicVisibility(
         retryHelper(
           async () => {
             const ownerToken = resolveOwnerApiToken();
-            const res = await fetch(
-              `${API_ENDPOINT}/api/aggregator/metadata-index/${encodeURIComponent(targetFileId)}${file.backend ? `?accountId=${encodeURIComponent(file.backend || '')}` : ''}`,
+            if (!ownerToken) {
+              throw new Error('par Noir API session not ready');
+            }
+            const path =
+              `/api/aggregator/metadata-index/${encodeURIComponent(targetFileId)}` +
+              (file.backend ? `?accountId=${encodeURIComponent(file.backend || '')}` : '');
+            const res = await ownerFetch(
+              ownerToken,
+              'PUT',
+              path,
               {
-                method: 'PUT',
-                headers: {
-                  'Content-Type': 'application/json',
-                  ...(ownerToken && {
-                    'Authorization': `Bearer ${ownerToken}`
-                  })
-                },
-                body: JSON.stringify({
-                  isPublic: publicMetadata.isPublic,
-                  publicToken: publicMetadata.publicToken,
-                  name: publicMetadata.name || file.name,
-                  description: publicMetadata.description || '',
-                  keywords: publicMetadata.keywords || [],
-                  tags: publicMetadata.keywords || [],
-                  fileType: publicMetadata.fileType || 'other',
-                  uploadDate: publicMetadata.uploadDate || new Date().toISOString(),
-                  subjects: publicMetadata.subjects || [],
-                  // CRITICAL: Always include textPost/thought (even if null) so backend can preserve/clear it
-                  textPost: publicMetadata.textPost ?? null,
-                  thought: publicMetadata.thought ?? null,
-                  // CRITICAL: Always include PDF slideshow data (even if null) so backend can preserve/clear it
-                  thumbnailFileId: publicMetadata.thumbnailFileId ?? null,
-                  feedCategories: publicMetadata.feedCategories || [],
-                }),
-              }
+                isPublic: publicMetadata.isPublic,
+                publicToken: publicMetadata.publicToken,
+                name: publicMetadata.name || file.name,
+                description: publicMetadata.description || '',
+                keywords: publicMetadata.keywords || [],
+                tags: publicMetadata.keywords || [],
+                fileType: publicMetadata.fileType || 'other',
+                uploadDate: publicMetadata.uploadDate || new Date().toISOString(),
+                subjects: publicMetadata.subjects || [],
+                // CRITICAL: Always include textPost/thought (even if null) so backend can preserve/clear it
+                textPost: publicMetadata.textPost ?? null,
+                thought: publicMetadata.thought ?? null,
+                // CRITICAL: Always include PDF slideshow data (even if null) so backend can preserve/clear it
+                thumbnailFileId: publicMetadata.thumbnailFileId ?? null,
+                feedCategories: publicMetadata.feedCategories || [],
+              },
+              { pnIdentifier: metadataPnIdentifier || getOwnerApiPnIdentifier() || undefined }
             );
 
             // If 429, throw to trigger retry

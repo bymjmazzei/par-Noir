@@ -1116,57 +1116,66 @@ export function setupDriveRoutes(app: express.Application, deps: DriveRouteDeps)
               if (googleDriveAccounts.length > 0) {
                 const account = googleDriveAccounts.length > 0 ? googleDriveAccounts[0] : null;
                 const accountIdForToken = extractAccountId(account);
-                const token = {
-                  access_token: account?.access_token || account?.accessToken || '',
-                  refresh_token: account?.refresh_token || account?.refreshToken,
-                  expires_at: account?.expires_at,
-                  expires_in: account?.expires_in
-                };
-                const accessToken = token.access_token; // Keep for backward compatibility in fetch calls
-                
-                // Get pN folder and metadata folder
-                const pnFolderName = `par Noir - ${pnIdentifier}`;
-                const folderSearchQuery = `name='${pnFolderName.replace(/'/g, "\\'")}' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
-                const folderSearchUrl = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(folderSearchQuery)}&fields=files(id,name)&pageSize=1`;
-                
-                const folderResponse = await fetch(folderSearchUrl, {
-                  headers: { 'Authorization': `Bearer ${accessToken}` }
-                });
-                
-                if (folderResponse.ok) {
-                  const folderData = await folderResponse.json() as { files?: Array<{ id: string; name: string }> };
-                  if (folderData.files && folderData.files.length > 0) {
-                    const pnFolderId = folderData.files[0].id;
-                    
-                    // Get metadata folder
-                    const metadataFolderName = '_metadata';
-                    const metadataSearchQuery = `name='${metadataFolderName}' and '${pnFolderId}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`;
-                    const metadataSearchUrl = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(metadataSearchQuery)}&fields=files(id,name)&pageSize=1`;
-                    
-                    const metadataFolderResponse = await fetch(metadataSearchUrl, {
-                      headers: { 'Authorization': `Bearer ${accessToken}` }
-                    });
-                    
-                    if (metadataFolderResponse.ok) {
-                      const metadataFolderData = await metadataFolderResponse.json() as { files?: Array<{ id: string; name: string }> };
-                      if (metadataFolderData.files && metadataFolderData.files.length > 0) {
-                        const metadataFolderId = metadataFolderData.files[0].id;
-                        
-                        // Remove files from indexes
-                        for (const indexFileId of filesToDelete) {
-                          try {
-                            await removeFromOwnerIndex(token, pnIdentifier, metadataFolderId, indexFileId, accountIdForToken);
-                            console.log(`✅ [DeleteFile] Removed ${indexFileId} from owner index`);
-                          } catch (ownerIndexError: any) {
-                            console.warn(`⚠️ [DeleteFile] Failed to remove ${indexFileId} from owner index:`, ownerIndexError);
-                          }
-                          
-                          try {
-                            await removeFromPublicIndex(token, pnIdentifier, metadataFolderId, indexFileId, accountIdForToken);
-                            console.log(`✅ [DeleteFile] Removed ${indexFileId} from public index`);
-                          } catch (publicIndexError: unknown) {
-                            const msg = publicIndexError instanceof Error ? publicIndexError.message : String(publicIndexError);
-                            console.warn(`⚠️ [DeleteFile] Failed to remove ${indexFileId} from public index: ${msg}`);
+                let token;
+                try {
+                  const { resolveOwnerDriveToken } = await import('./ownerDriveToken');
+                  token = (
+                    await resolveOwnerDriveToken(req, pnIdentifier, {
+                      account,
+                      accountId: accountIdForToken
+                    })
+                  ).token;
+                } catch {
+                  console.warn('[DeleteFile] Skipping index cleanup: cloud access token unavailable');
+                  token = null;
+                }
+                if (token) {
+                  const accessToken = token.access_token;
+
+                  // Get pN folder and metadata folder
+                  const pnFolderName = `par Noir - ${pnIdentifier}`;
+                  const folderSearchQuery = `name='${pnFolderName.replace(/'/g, "\\'")}' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
+                  const folderSearchUrl = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(folderSearchQuery)}&fields=files(id,name)&pageSize=1`;
+
+                  const folderResponse = await fetch(folderSearchUrl, {
+                    headers: { 'Authorization': `Bearer ${accessToken}` }
+                  });
+
+                  if (folderResponse.ok) {
+                    const folderData = await folderResponse.json() as { files?: Array<{ id: string; name: string }> };
+                    if (folderData.files && folderData.files.length > 0) {
+                      const pnFolderId = folderData.files[0].id;
+
+                      // Get metadata folder
+                      const metadataFolderName = '_metadata';
+                      const metadataSearchQuery = `name='${metadataFolderName}' and '${pnFolderId}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`;
+                      const metadataSearchUrl = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(metadataSearchQuery)}&fields=files(id,name)&pageSize=1`;
+
+                      const metadataFolderResponse = await fetch(metadataSearchUrl, {
+                        headers: { 'Authorization': `Bearer ${accessToken}` }
+                      });
+
+                      if (metadataFolderResponse.ok) {
+                        const metadataFolderData = await metadataFolderResponse.json() as { files?: Array<{ id: string; name: string }> };
+                        if (metadataFolderData.files && metadataFolderData.files.length > 0) {
+                          const metadataFolderId = metadataFolderData.files[0].id;
+
+                          // Remove files from indexes
+                          for (const indexFileId of filesToDelete) {
+                            try {
+                              await removeFromOwnerIndex(token, pnIdentifier, metadataFolderId, indexFileId, accountIdForToken);
+                              console.log(`✅ [DeleteFile] Removed ${indexFileId} from owner index`);
+                            } catch (ownerIndexError: any) {
+                              console.warn(`⚠️ [DeleteFile] Failed to remove ${indexFileId} from owner index:`, ownerIndexError);
+                            }
+
+                            try {
+                              await removeFromPublicIndex(token, pnIdentifier, metadataFolderId, indexFileId, accountIdForToken);
+                              console.log(`✅ [DeleteFile] Removed ${indexFileId} from public index`);
+                            } catch (publicIndexError: unknown) {
+                              const msg = publicIndexError instanceof Error ? publicIndexError.message : String(publicIndexError);
+                              console.warn(`⚠️ [DeleteFile] Failed to remove ${indexFileId} from public index: ${msg}`);
+                            }
                           }
                         }
                       }

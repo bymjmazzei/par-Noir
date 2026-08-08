@@ -12,6 +12,7 @@ import { decryptWithToken, ShareToken } from '../utils/tokenDecryption';
 import { useViewportHeightCSS } from '../hooks/useViewportHeight';
 import { calculateMediaScaling, getContainerDimensions, type MediaDimensions } from '../utils/mediaScaling';
 import { API_ENDPOINT } from '../config/api';
+import { getOwnerApiHeaders } from '../services/ownerApiHeaders';
 
 interface CollectionFeedProps {
   collectionFileIds: string[];
@@ -54,7 +55,7 @@ export function CollectionFeed({
         
         try {
           const response = await fetch(`${API_ENDPOINT}/api/aggregator/metadata-index/${fileId}`, {
-            headers: { 'Authorization': `Bearer ${accessToken}` }
+            headers: getOwnerApiHeaders()
           });
           
           if (response.ok) {
@@ -90,7 +91,7 @@ export function CollectionFeed({
         if (!accessToken) return null;
         
         const accountsResponse = await fetch(`${API_ENDPOINT}/api/storage/accounts/${userId}`, {
-          headers: { 'Authorization': `Bearer ${accessToken}` }
+          headers: getOwnerApiHeaders()
         });
         
         if (accountsResponse.ok) {
@@ -150,7 +151,7 @@ export function CollectionFeed({
           
           try {
             const thumbnailResponse = await fetch(thumbnailUrl, {
-              headers: { 'Authorization': `Bearer ${accessToken}` }
+              headers: getOwnerApiHeaders()
             });
             
             if (thumbnailResponse.ok) {
@@ -239,7 +240,7 @@ export function CollectionFeed({
         }
         
         const response = await fetch(imageUrl, {
-          headers: { 'Authorization': `Bearer ${accessToken}` }
+          headers: getOwnerApiHeaders()
         });
         
         if (response.ok) {
@@ -298,7 +299,7 @@ export function CollectionFeed({
         }
         
         const response = await fetch(videoUrl, {
-          headers: { 'Authorization': `Bearer ${accessToken}` }
+          headers: getOwnerApiHeaders()
         });
         
         if (response.ok) {

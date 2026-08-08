@@ -91,7 +91,6 @@ app.post('/api/engagement/:fileId/like', async (req: Request, res: Response) => 
 app.get('/api/engagement/:fileId/like', async (req: Request, res: Response) => {
   try {
     const { EngagementDriveService } = await import('./engagementDriveService');
-    const { googleDriveProxyService } = await import('./googleDriveProxy');
     const { storageCredentialsService } = await import('./storageCredentialsService');
     const { fileId } = req.params;
     const userPnIdentifier = req.query.userPnIdentifier;
@@ -118,16 +117,18 @@ app.get('/api/engagement/:fileId/like', async (req: Request, res: Response) => {
 
     const account = googleDriveAccounts.length > 0 ? googleDriveAccounts[0] : null;
     const accountId = account ? extractAccountId(account) : undefined;
-    
-    // Get full token object (not just access token string) for automatic refresh
-    const token = {
-      access_token: account?.access_token || account?.accessToken || '',
-      refresh_token: account?.refresh_token || account?.refreshToken,
-      expires_at: account?.expires_at,
-      expires_in: account?.expires_in
-    };
-    const userAccessToken = token.access_token; // Keep for backward compatibility
-    
+
+    const { resolveOwnerDriveToken, respondDriveTokenError } = await import('./ownerDriveToken');
+    let token;
+    try {
+      const resolved = await resolveOwnerDriveToken(req, pnIdentifier, { account, accountId });
+      token = resolved.token;
+    } catch (error) {
+      if (respondDriveTokenError(res, error)) return;
+      throw error;
+    }
+    const userAccessToken = token.access_token;
+
     let metadataFolderId = '';
     if (account) {
       const _g = await getMetadataFolder(token, pnIdentifier, accountId);
@@ -153,7 +154,6 @@ app.post('/api/engagement/:fileId/dislike', async (req: Request, res: Response) 
     const { PreferencesService } = await import('./preferencesService');
     const { extractTagsFromMetadata } = await import('../utils/tagExtractor');
     const { AggregatorMetadataServiceDB } = await import('./aggregatorMetadataServiceDB');
-    const { googleDriveProxyService } = await import('./googleDriveProxy');
     const { storageCredentialsService } = await import('./storageCredentialsService');
     const { fileId } = req.params;
     const { userPnIdentifier } = req.body;
@@ -187,12 +187,15 @@ app.post('/api/engagement/:fileId/dislike', async (req: Request, res: Response) 
     if (!_portableSocial) {
       const account = googleDriveAccounts.length > 0 ? googleDriveAccounts[0] : null;
       accountId = extractAccountId(account);
-      token = {
-        access_token: account?.access_token || account?.accessToken || '',
-        refresh_token: account?.refresh_token || account?.refreshToken,
-        expires_at: account?.expires_at,
-        expires_in: account?.expires_in
-      };
+      const { resolveOwnerDriveToken, respondDriveTokenError } = await import('./ownerDriveToken');
+      try {
+        const resolved = await resolveOwnerDriveToken(req, pnIdentifier, { account, accountId });
+        token = resolved.token;
+        accountId = resolved.accountId ?? accountId;
+      } catch (error) {
+        if (respondDriveTokenError(res, error)) return;
+        throw error;
+      }
       userAccessToken = token.access_token;
       const _g = await getMetadataFolder(token, pnIdentifier, accountId);
       if (!_g) return driveNotInitialized(res);
@@ -273,15 +276,18 @@ app.post('/api/engagement/:fileId/dislike', async (req: Request, res: Response) 
           if (googleDriveAccounts.length > 0) {
             const account = googleDriveAccounts.length > 0 ? googleDriveAccounts[0] : null;
             const accountId = account ? extractAccountId(account) : undefined;
-            
-            // Get full token object (not just access token string) for automatic refresh
-            const token = {
-              access_token: account?.access_token || account?.accessToken || '',
-              refresh_token: account?.refresh_token || account?.refreshToken,
-              expires_at: account?.expires_at,
-              expires_in: account?.expires_in
-            };
-            const userAccessToken = token.access_token; // Keep for backward compatibility
+
+            // Caller side-effect: resolve custody token; skip if unavailable (do not invent peer tokens).
+            let token;
+            try {
+              const { resolveOwnerDriveToken } = await import('./ownerDriveToken');
+              token = (await resolveOwnerDriveToken(req, pnIdentifier, { account, accountId })).token;
+            } catch {
+              console.warn('[Engagement] Skipping activity: cloud access token unavailable');
+              token = null;
+            }
+            if (token) {
+            const userAccessToken = token.access_token;
             const _gUser = await getMetadataFolder(token, pnIdentifier, accountId);
             if (!_gUser) {
               console.warn('[Engagement] Skipping activity: metadata folder not found');
@@ -302,6 +308,7 @@ app.post('/api/engagement/:fileId/dislike', async (req: Request, res: Response) 
             //   }
             // );
 
+            }
             }
           }
         }
@@ -523,7 +530,6 @@ app.post('/api/engagement/:fileId/share', async (req: Request, res: Response) =>
     const { EngagementService } = await import('./engagementService');
     const { AggregatorMetadataServiceDB } = await import('./aggregatorMetadataServiceDB');
     const { CompanionMetadataSheets } = await import('./companionMetadataSheets');
-    const { googleDriveProxyService } = await import('./googleDriveProxy');
     const { fileId } = req.params;
     const { userPnIdentifier } = req.body;
 
@@ -555,15 +561,18 @@ app.post('/api/engagement/:fileId/share', async (req: Request, res: Response) =>
           if (googleDriveAccounts.length > 0) {
             const account = googleDriveAccounts.length > 0 ? googleDriveAccounts[0] : null;
             const accountId = account ? extractAccountId(account) : undefined;
-            
-            // Get full token object (not just access token string) for automatic refresh
-            const token = {
-              access_token: account?.access_token || account?.accessToken || '',
-              refresh_token: account?.refresh_token || account?.refreshToken,
-              expires_at: account?.expires_at,
-              expires_in: account?.expires_in
-            };
-            const userAccessToken = token.access_token; // Keep for backward compatibility
+
+            // Caller side-effect: resolve custody token; skip if unavailable (do not invent peer tokens).
+            let token;
+            try {
+              const { resolveOwnerDriveToken } = await import('./ownerDriveToken');
+              token = (await resolveOwnerDriveToken(req, pnIdentifier, { account, accountId })).token;
+            } catch {
+              console.warn('[Engagement] Skipping share activity: cloud access token unavailable');
+              token = null;
+            }
+            if (token) {
+            const userAccessToken = token.access_token;
             const _gUser = await getMetadataFolder(token, pnIdentifier, accountId);
             if (!_gUser) {
               console.warn('[Engagement] Skipping activity: metadata folder not found');
@@ -582,6 +591,7 @@ app.post('/api/engagement/:fileId/share', async (req: Request, res: Response) =>
                 metadata: { fileOwnerDid }
               }
             );
+            }
             }
           }
         }

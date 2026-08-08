@@ -16,6 +16,7 @@ import type { DriveFile } from './storage/storageTypes';
 import { API_ENDPOINT } from '../config/api';
 import { downloadStorageBlob } from '../services/storageApiClient';
 import { fetchMusicRegistryCatalog, type CatalogTrack } from '../services/musicRegistryApi';
+import { getOwnerApiHeaders } from '../services/ownerApiHeaders';
 
 import { FileViewerModal } from './file/StorageFileViewer';
 import type { FileStorageAggregatorProps } from './storage/FileStorageAggregatorTypes';
@@ -254,9 +255,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
         // For thumbnails, try to get the original filename from metadata
         try {
           const metadataResponse = await fetch(`${API_ENDPOINT}/api/aggregator/metadata-index/${fileIdToDownload}`, {
-            headers: {
-              'Authorization': `Bearer ${accessToken}`
-            }
+            headers: getOwnerApiHeaders()
           });
           
           if (metadataResponse.ok) {
@@ -344,9 +343,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
 
       const response = await fetch(`${API_ENDPOINT}/api/aggregator/metadata-index/${fileId}`, {
         method: 'GET',
-        headers: {
-          'Authorization': `Bearer ${accessToken}`
-        }
+        headers: getOwnerApiHeaders()
       });
 
       if (response.ok) {
@@ -1101,10 +1098,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
 
       const response = await fetch(`${API_ENDPOINT}/api/aggregator/metadata-index/${file.id}`, {
         method: 'PUT',
-        headers: {
-          'Authorization': `Bearer ${accessToken}`,
-          'Content-Type': 'application/json'
-        },
+        headers: getOwnerApiHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({
           isTopPost: newIsTopPost
         })

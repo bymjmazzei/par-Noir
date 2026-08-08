@@ -30,13 +30,17 @@ export function setupRecoveryRequestRoutes(app: express.Application, deps: Recov
    * Verifies the persisted pnDriveIndex still matches Drive, unlike the credentials-only
    * lookup in recoveryDriveContext.ts.
    */
-  async function getRecoveryDriveContext(userPnIdentifier: string): Promise<{
+  async function getRecoveryDriveContext(
+    req: express.Request,
+    userPnIdentifier: string
+  ): Promise<{
     pnIdentifier: string;
     token: { access_token: string; refresh_token?: string; expires_at?: number; expires_in?: number };
     accountId?: string;
     metadataFolderId: string;
   } | null> {
     const { storageCredentialsService } = await import('./storageCredentialsService');
+    const { resolveOwnerDriveToken } = await import('./ownerDriveToken');
     const pnIdentifier = userPnIdentifier.startsWith('pn-') ? userPnIdentifier : `pn-${userPnIdentifier}`;
     const userCredentials = await storageCredentialsService.getCredentials(pnIdentifier);
     if (!userCredentials?.credentials) {
@@ -50,12 +54,12 @@ export function setupRecoveryRequestRoutes(app: express.Application, deps: Recov
     }
     const account = googleDriveAccounts.length > 0 ? googleDriveAccounts[0] : null;
     const accountId = account ? extractAccountId(account) : undefined;
-    const token = {
-      access_token: account?.access_token || account?.accessToken || '',
-      refresh_token: account?.refresh_token || account?.refreshToken,
-      expires_at: account?.expires_at,
-      expires_in: account?.expires_in
-    };
+    let token;
+    try {
+      token = (await resolveOwnerDriveToken(req, pnIdentifier, { account, accountId })).token;
+    } catch {
+      return null;
+    }
     const folders = await getMetadataFolder(token, pnIdentifier, accountId);
     if (!folders) {
       return null;
@@ -123,7 +127,7 @@ export function setupRecoveryRequestRoutes(app: express.Application, deps: Recov
     app.get('/api/recovery/:userPnIdentifier/requests', async (req, res) => {
       try {
         const { userPnIdentifier } = req.params;
-        const ctx = await getRecoveryDriveContext(userPnIdentifier);
+        const ctx = await getRecoveryDriveContext(req, userPnIdentifier);
         if (!ctx) return res.status(404).json({ error: 'Drive not connected' });
         const { RecoverySheetsService } = await import('./recoverySheetsService');
         const spreadsheetId = await RecoverySheetsService.getOrCreateSpreadsheet(
@@ -142,7 +146,7 @@ export function setupRecoveryRequestRoutes(app: express.Application, deps: Recov
     app.get('/api/recovery/:userPnIdentifier/requests/:requestId', async (req, res) => {
       try {
         const { userPnIdentifier, requestId } = req.params;
-        const ctx = await getRecoveryDriveContext(userPnIdentifier);
+        const ctx = await getRecoveryDriveContext(req, userPnIdentifier);
         if (!ctx) return res.status(404).json({ error: 'Drive not connected' });
         const { RecoverySheetsService } = await import('./recoverySheetsService');
         const spreadsheetId = await RecoverySheetsService.getOrCreateSpreadsheet(
@@ -273,7 +277,7 @@ export function setupRecoveryRequestRoutes(app: express.Application, deps: Recov
             return res.status(400).json({ error: 'Custodianship custodianId mismatch' });
           }
         }
-        const ctx = await getRecoveryDriveContext(userPnIdentifier);
+        const ctx = await getRecoveryDriveContext(req, userPnIdentifier);
         if (!ctx) return res.status(404).json({ error: 'Drive not connected' });
         const { RecoverySheetsService } = await import('./recoverySheetsService');
         const spreadsheetId = await RecoverySheetsService.getOrCreateSpreadsheet(

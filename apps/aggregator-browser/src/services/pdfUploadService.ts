@@ -5,6 +5,7 @@
 
 import { getEncryptionService, EncryptedFilePackage } from './encryptionService';
 import { API_ENDPOINT } from '../config/api';
+import { getOwnerApiHeaders } from './ownerApiHeaders';
 
 function blobToBase64(blob: Blob): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -22,14 +23,11 @@ async function uploadFile(
   base64Data: string,
   fileName: string,
   accountId: string,
-  accessToken: string
+  _accessToken: string
 ): Promise<{ id: string }> {
   const response = await fetch(`${API_ENDPOINT}/api/drive/files`, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${accessToken}`,
-    },
+    headers: getOwnerApiHeaders({ 'Content-Type': 'application/json' }),
     body: JSON.stringify({
       fileData: base64Data,
       fileName,
@@ -58,14 +56,11 @@ async function createMetadataForThumbnail(
   fileName: string,
   shareToken: any,
   accountId: string,
-  accessToken: string
+  _accessToken: string
 ): Promise<void> {
   await fetch(`${API_ENDPOINT}/api/aggregator/metadata-index/${fileId}?accountId=${accountId}`, {
     method: 'PUT',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${accessToken}`,
-    },
+    headers: getOwnerApiHeaders({ 'Content-Type': 'application/json' }),
     body: JSON.stringify({
       name: `thumb_${fileName}`,
       fileType: 'image',

@@ -1,10 +1,15 @@
+import { ownerCloudHeaders } from '@par-noir/device-cloud-credentials';
 import { API_ENDPOINT } from '../config/api';
 
 function authHeaders(): HeadersInit {
   const t = sessionStorage.getItem('dev_portal_access_token')?.trim();
-  const h: HeadersInit = { 'Content-Type': 'application/json' };
-  if (t) (h as Record<string, string>)['Authorization'] = `Bearer ${t}`;
-  return h;
+  if (!t) return { 'Content-Type': 'application/json' };
+  const pn = sessionStorage.getItem('dev_portal_pn_identifier')?.trim() || null;
+  return ownerCloudHeaders({
+    authToken: t,
+    pnIdentifier: pn,
+    extra: { 'Content-Type': 'application/json' }
+  });
 }
 
 async function platformFetch(path: string, init?: RequestInit) {

@@ -5,6 +5,7 @@
 
 import { Feed, FeedCategory } from '../types/aggregator';
 import { PNOAuthService } from './pnOAuthService';
+import { getOwnerApiHeaders, ownerApiHeadersAsync } from './ownerApiHeaders';
 
 import { API_ENDPOINT } from '../config/api';
 
@@ -55,9 +56,8 @@ export class FeedService {
    * Create a new feed
    */
   static async createFeed(data: CreateFeedRequest): Promise<Feed> {
-    const token = await PNOAuthService.getValidAccessToken();
-    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-    if (token) headers.Authorization = `Bearer ${token}`;
+    await PNOAuthService.getValidAccessToken();
+    const headers = getOwnerApiHeaders({ 'Content-Type': 'application/json' });
 
     const response = await fetch(`${API_ENDPOINT}/api/feeds`, {
       method: 'POST',
@@ -159,13 +159,7 @@ export class FeedService {
    * Update feed
    */
   static async updateFeed(feedId: string, data: UpdateFeedRequest): Promise<Feed> {
-    const session = PNOAuthService.loadSession();
-    const headers: HeadersInit = {
-      'Content-Type': 'application/json'
-    };
-    if (session?.accessToken) {
-      headers['Authorization'] = `Bearer ${session.accessToken}`;
-    }
+    const headers = getOwnerApiHeaders({ 'Content-Type': 'application/json' });
     const response = await fetch(`${API_ENDPOINT}/api/feeds/${feedId}`, {
       method: 'PUT',
       headers,
@@ -204,14 +198,7 @@ export class FeedService {
   static async subscribeToFeed(feedId: string, userPnIdentifier: string): Promise<void> {
     // Store subscription via API - backend will save to user's cloud storage
     // Similar to how connection index is stored on user's Google Drive
-    const session = PNOAuthService.loadSession();
-    const headers: HeadersInit = {
-      'Content-Type': 'application/json'
-    };
-    
-    if (session?.accessToken) {
-      headers['Authorization'] = `Bearer ${session.accessToken}`;
-    }
+    const headers = getOwnerApiHeaders({ 'Content-Type': 'application/json' });
     
     const response = await fetch(`${API_ENDPOINT}/api/feeds/${feedId}/subscribe`, {
       method: 'POST',
@@ -234,14 +221,7 @@ export class FeedService {
    */
   static async unsubscribeFromFeed(feedId: string, userPnIdentifier: string): Promise<void> {
     // Remove subscription via API - backend will remove from user's cloud storage
-    const session = PNOAuthService.loadSession();
-    const headers: HeadersInit = {
-      'Content-Type': 'application/json'
-    };
-    
-    if (session?.accessToken) {
-      headers['Authorization'] = `Bearer ${session.accessToken}`;
-    }
+    const headers = getOwnerApiHeaders({ 'Content-Type': 'application/json' });
     
     const response = await fetch(`${API_ENDPOINT}/api/feeds/${feedId}/subscribe`, {
       method: 'DELETE',
@@ -260,10 +240,7 @@ export class FeedService {
    */
   static async getUserSubscriptions(userPnIdentifier: string): Promise<Feed[]> {
     const token = await PNOAuthService.getValidAccessToken();
-    const headers: HeadersInit = {};
-    if (token) {
-      headers['Authorization'] = `Bearer ${token}`;
-    }
+    const headers = await ownerApiHeadersAsync(token, userPnIdentifier);
     const response = await fetch(`${API_ENDPOINT}/api/users/${userPnIdentifier}/subscriptions`, {
       headers,
     });
@@ -430,10 +407,7 @@ export class FeedService {
       return [];
     }
     
-    const headers: HeadersInit = {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${session.accessToken}`
-    };
+    const headers = getOwnerApiHeaders({ 'Content-Type': 'application/json' });
 
     const response = await fetch(`${API_ENDPOINT}/api/users/${userPnIdentifier}/delegated-feeds`, {
       headers
@@ -467,10 +441,7 @@ export class FeedService {
     const response = await fetch(
       `${API_ENDPOINT}/api/users/${encodeURIComponent(userPnIdentifier)}/controlled-feeds`,
       {
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${session.accessToken}`
-        }
+        headers: getOwnerApiHeaders({ 'Content-Type': 'application/json' })
       }
     );
 

@@ -9,6 +9,7 @@ import { PNOAuthService } from '../../services/pnOAuthService';
 import { EncryptionManager } from '../../utils/encryptionManager';
 import { API_ENDPOINT } from '../../config/api';
 import { fetchStorageFile } from '../../services/storageApiClient';
+import { getOwnerApiHeaders } from '../../services/ownerApiHeaders';
 
 interface EncryptedFilePackage {
   encrypted: string;
@@ -180,7 +181,7 @@ export const ThumbnailImage: React.FC<ThumbnailImageProps> = ({
         if (isThought && !isThoughtThumbnail && isEncrypted && !isThumbnail) {
           try {
             const metadataResponse = await fetch(`${API_ENDPOINT}/api/aggregator/metadata-index/${fileId}`, {
-              headers: { Authorization: `Bearer ${accessToken}` },
+              headers: getOwnerApiHeaders(),
             });
             if (metadataResponse.ok) {
               const metadata = await metadataResponse.json();

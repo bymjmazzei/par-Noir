@@ -27,7 +27,16 @@ function authHeaders(authToken: string, extra?: Record<string, string>) {
 async function cloudTokenHeaders(pnIdentifier?: string): Promise<Record<string, string>> {
   const pn = pnIdentifier || ownerApiPnIdentifier || undefined;
   if (!pn) return {};
-  const tok = await resolveLocalGoogleAccessTokenAsync(pn);
+  let tok = await resolveLocalGoogleAccessTokenAsync(pn);
+  if (!tok) {
+    try {
+      const { waitForCloudCredentialsReady } = await import('@par-noir/device-cloud-credentials');
+      await waitForCloudCredentialsReady(pn);
+      tok = await resolveLocalGoogleAccessTokenAsync(pn);
+    } catch {
+      /* best-effort wait for vault hydrate */
+    }
+  }
   return tok ? { [PN_CLOUD_ACCESS_TOKEN_HEADER]: tok } : {};
 }
 

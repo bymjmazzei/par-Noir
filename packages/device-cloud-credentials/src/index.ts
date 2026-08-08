@@ -83,3 +83,11 @@ export {
   cloudAccessHeaders
 } from './cloudVault.js';
 export type { CloudVaultHydrateResult } from './cloudVault.js';
+export {
+  PN_CLOUD_CREDENTIALS_READY_EVENT,
+  getCloudAccessTokenFromSession,
+  hasCloudCredentialsReady,
+  waitForCloudCredentialsReady,
+  ownerCloudHeaders,
+  ownerCloudHeadersAsync
+} from './ownerCloudHeaders.js';

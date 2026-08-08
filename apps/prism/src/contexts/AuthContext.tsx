@@ -12,6 +12,7 @@ import {
   clearSession,
   PrismSession,
 } from '../services/prismAuthService';
+import { setPrismPnIdentifier } from '../services/prismApi';
 
 interface AuthContextValue {
   session: PrismSession | null;
@@ -44,8 +45,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const refreshSession = useCallback(async () => {
     const s = await getSession();
+    setPrismPnIdentifier(s?.pnIdentifier);
     setSession(s);
   }, []);
+
+  useEffect(() => {
+    setPrismPnIdentifier(session?.pnIdentifier);
+  }, [session?.pnIdentifier]);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -82,6 +88,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         } catch {
           const s = await getSession();
           if (s) {
+            setPrismPnIdentifier(s.pnIdentifier);
             setSession(s);
           }
         } finally {
@@ -97,6 +104,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
 
     void getSession().then((s) => {
+      setPrismPnIdentifier(s?.pnIdentifier);
       setSession(s);
       setLoading(false);
     });
@@ -136,6 +144,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       /* ignore */
     }
     await clearSession();
+    setPrismPnIdentifier(null);
     setSession(null);
   };
 

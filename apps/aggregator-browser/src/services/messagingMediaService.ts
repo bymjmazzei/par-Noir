@@ -22,6 +22,7 @@ import {
   downloadStorageBlob,
   type StorageProviderId
 } from './storageApiClient';
+import { ownerApiHeadersAsync } from './ownerApiHeaders';
 
 export type DmThreadContext = {
   threadType: 'dm';
@@ -256,7 +257,7 @@ export async function prepareMessageAttachment(
 
   const folderRes = await fetch(
     `${API_ENDPOINT}/api/messages/attachments-folder${accountId ? `?accountId=${encodeURIComponent(accountId)}` : ''}`,
-    { headers: { Authorization: `Bearer ${token}` } }
+    { headers: await ownerApiHeadersAsync(token, pnIdentifier) }
   );
   if (!folderRes.ok) {
     throw new Error('Failed to resolve messaging attachments folder');

@@ -30,60 +30,6 @@ export interface MessageRouteDeps {
 export function setupMessageRoutes(app: express.Application, deps: MessageRouteDeps) {
   const { extractAccountId, getMetadataFolder, driveNotInitialized, emitRealtime } = deps;
 
-  /** Prefer forwarded X-PN-Cloud-Access-Token under device custody. */
-  async function resolveDriveTokenForOwner(
-    req: express.Request,
-    pnIdentifier: string,
-    account: Record<string, unknown> | null | undefined,
-    accountId: string | undefined
-  ): Promise<
-    | {
-        token: {
-          access_token: string;
-          refresh_token?: string;
-          expires_at?: number;
-          expires_in?: number;
-        };
-        accountId: string | undefined;
-      }
-    | { error: 'cloud_token_required' }
-  > {
-    const { extractCloudAccessToken } = await import('./cloudAccessToken');
-    let accessToken = extractCloudAccessToken(req) || '';
-    if (!accessToken) {
-      accessToken = String(
-        (account as { access_token?: string; accessToken?: string } | null | undefined)
-          ?.access_token ||
-          (account as { accessToken?: string } | null | undefined)?.accessToken ||
-          ''
-      ).trim();
-    }
-    if (!accessToken) {
-      try {
-        const { googleDriveProxyService } = await import('./googleDriveProxy');
-        accessToken = await googleDriveProxyService.getAccessToken(pnIdentifier, accountId);
-      } catch {
-        return { error: 'cloud_token_required' };
-      }
-    }
-    if (!accessToken) return { error: 'cloud_token_required' };
-    const acct = account as {
-      refresh_token?: string;
-      refreshToken?: string;
-      expires_at?: number;
-      expires_in?: number;
-    } | null;
-    return {
-      token: {
-        access_token: accessToken,
-        refresh_token: acct?.refresh_token || acct?.refreshToken,
-        expires_at: acct?.expires_at,
-        expires_in: acct?.expires_in
-      },
-      accountId
-    };
-  }
-
     // Message endpoints (placeholder - returns empty arrays for now)
     // GET /api/messages/conversations - Get all conversation threads
     app.get('/api/messages/conversations', async (req, res) => {
@@ -115,15 +61,15 @@ export function setupMessageRoutes(app: express.Application, deps: MessageRouteD
 
         const account = googleDriveAccounts.length > 0 ? googleDriveAccounts[0] : null;
         const accountId = account ? extractAccountId(account) : undefined;
-        const resolved = await resolveDriveTokenForOwner(req, pnIdentifier, account, accountId);
-        if ('error' in resolved) {
-          return res.status(409).json({
-            error: 'cloud_token_required',
-            error_description:
-              'Google Drive access token required. Forward X-PN-Cloud-Access-Token after unlocking with cloud credentials.'
-          });
+        const { resolveOwnerDriveToken, respondDriveTokenError } = await import('./ownerDriveToken');
+        let token;
+        try {
+          const resolved = await resolveOwnerDriveToken(req, pnIdentifier, { account, accountId });
+          token = resolved.token;
+        } catch (error) {
+          if (respondDriveTokenError(res, error)) return;
+          throw error;
         }
-        const { token } = resolved;
 
         const { readPnDriveIndex, isPnDriveIndexComplete, PN_DRIVE_SHEET_KEYS } = await import('./pnDriveIndex');
         const driveIndex = readPnDriveIndex(userCredentials.credentials as Record<string, unknown>);
@@ -332,15 +278,15 @@ export function setupMessageRoutes(app: express.Application, deps: MessageRouteD
 
         const account = googleDriveAccounts.length > 0 ? googleDriveAccounts[0] : null;
         const accountId = account ? extractAccountId(account) : undefined;
-        const resolved = await resolveDriveTokenForOwner(req, pnIdentifier, account, accountId);
-        if ('error' in resolved) {
-          return res.status(409).json({
-            error: 'cloud_token_required',
-            error_description:
-              'Google Drive access token required. Forward X-PN-Cloud-Access-Token after unlocking with cloud credentials.'
-          });
+        const { resolveOwnerDriveToken, respondDriveTokenError } = await import('./ownerDriveToken');
+        let token;
+        try {
+          const resolved = await resolveOwnerDriveToken(req, pnIdentifier, { account, accountId });
+          token = resolved.token;
+        } catch (error) {
+          if (respondDriveTokenError(res, error)) return;
+          throw error;
         }
-        const { token } = resolved;
 
         const { readPnDriveIndex, isPnDriveIndexComplete, PN_DRIVE_SHEET_KEYS } = await import('./pnDriveIndex');
         const driveIndex = readPnDriveIndex(userCredentials.credentials as Record<string, unknown>);
@@ -395,8 +341,13 @@ export function setupMessageRoutes(app: express.Application, deps: MessageRouteD
         }
         if (!(await gateOwnerRoute(req, res, DEVICE_CAPABILITIES.messagesRead, tokenPayload.pnIdentifier))) return;
         const accountId = req.query.accountId as string | undefined;
+        const { extractCloudAccessToken } = await import('./ownerDriveToken');
         const { ensureMessagesAttachmentsFolder } = await import('./messagingMediaService');
-        const location = await ensureMessagesAttachmentsFolder(tokenPayload.pnIdentifier, accountId);
+        const location = await ensureMessagesAttachmentsFolder(
+          tokenPayload.pnIdentifier,
+          accountId,
+          extractCloudAccessToken(req)
+        );
         return res.json({
           folderId: location.folderId ?? location.backendFileId,
           backend: location.backend,
@@ -442,15 +393,15 @@ export function setupMessageRoutes(app: express.Application, deps: MessageRouteD
 
         const account = googleDriveAccounts.length > 0 ? googleDriveAccounts[0] : null;
         const accountId = account ? extractAccountId(account) : undefined;
-        const resolvedToken = await resolveDriveTokenForOwner(req, pnIdentifier, account, accountId);
-        if ('error' in resolvedToken) {
-          return res.status(409).json({
-            error: 'cloud_token_required',
-            error_description:
-              'Google Drive access token required. Forward X-PN-Cloud-Access-Token after unlocking with cloud credentials.'
-          });
+        const { resolveOwnerDriveToken, respondDriveTokenError } = await import('./ownerDriveToken');
+        let token;
+        try {
+          const resolvedToken = await resolveOwnerDriveToken(req, pnIdentifier, { account, accountId });
+          token = resolvedToken.token;
+        } catch (error) {
+          if (respondDriveTokenError(res, error)) return;
+          throw error;
         }
-        const { token } = resolvedToken;
 
         const { readPnDriveIndex, isPnDriveIndexComplete } = await import('./pnDriveIndex');
         const driveIndex = readPnDriveIndex(userCredentials.credentials as Record<string, unknown>);
@@ -593,15 +544,15 @@ export function setupMessageRoutes(app: express.Application, deps: MessageRouteD
 
         const account = googleDriveAccounts.length > 0 ? googleDriveAccounts[0] : null;
         const accountId = account ? extractAccountId(account) : undefined;
-        const resolvedToken = await resolveDriveTokenForOwner(req, pnIdentifier, account, accountId);
-        if ('error' in resolvedToken) {
-          return res.status(409).json({
-            error: 'cloud_token_required',
-            error_description:
-              'Google Drive access token required. Forward X-PN-Cloud-Access-Token after unlocking with cloud credentials.'
-          });
+        const { resolveOwnerDriveToken, respondDriveTokenError } = await import('./ownerDriveToken');
+        let token;
+        try {
+          const resolvedToken = await resolveOwnerDriveToken(req, pnIdentifier, { account, accountId });
+          token = resolvedToken.token;
+        } catch (error) {
+          if (respondDriveTokenError(res, error)) return;
+          throw error;
         }
-        const { token } = resolvedToken;
 
         // Normalize participantPnIdentifier to ensure consistent format
         const normalizedParticipantPnIdentifier = participantPnIdentifier.startsWith('pn-') 
@@ -1149,15 +1100,15 @@ export function setupMessageRoutes(app: express.Application, deps: MessageRouteD
 
         const account = googleDriveAccounts.length > 0 ? googleDriveAccounts[0] : null;
         const accountId = account ? extractAccountId(account) : undefined;
-        const resolvedToken = await resolveDriveTokenForOwner(req, pnIdentifier, account, accountId);
-        if ('error' in resolvedToken) {
-          return res.status(409).json({
-            error: 'cloud_token_required',
-            error_description:
-              'Google Drive access token required. Forward X-PN-Cloud-Access-Token after unlocking with cloud credentials.'
-          });
+        const { resolveOwnerDriveToken, respondDriveTokenError } = await import('./ownerDriveToken');
+        let token;
+        try {
+          const resolvedToken = await resolveOwnerDriveToken(req, pnIdentifier, { account, accountId });
+          token = resolvedToken.token;
+        } catch (error) {
+          if (respondDriveTokenError(res, error)) return;
+          throw error;
         }
-        const { token } = resolvedToken;
 
         const metadataFolder = await getMetadataFolder(token, pnIdentifier, accountId);
         if (!metadataFolder) {
@@ -1244,15 +1195,15 @@ export function setupMessageRoutes(app: express.Application, deps: MessageRouteD
         const account = googleDriveAccounts.length > 0 ? googleDriveAccounts[0] : null;
         const accountId = account ? extractAccountId(account) : undefined;
         
-        const resolvedToken = await resolveDriveTokenForOwner(req, pnIdentifier, account, accountId);
-        if ('error' in resolvedToken) {
-          return res.status(409).json({
-            error: 'cloud_token_required',
-            error_description:
-              'Google Drive access token required. Forward X-PN-Cloud-Access-Token after unlocking with cloud credentials.'
-          });
+        const { resolveOwnerDriveToken, respondDriveTokenError } = await import('./ownerDriveToken');
+        let token;
+        try {
+          const resolvedToken = await resolveOwnerDriveToken(req, pnIdentifier, { account, accountId });
+          token = resolvedToken.token;
+        } catch (error) {
+          if (respondDriveTokenError(res, error)) return;
+          throw error;
         }
-        const { token } = resolvedToken;
 
         if (!participantPnIdentifier) {
           return res.status(400).json({ error: 'participantPnIdentifier is required to mark message as read' });
@@ -1368,15 +1319,15 @@ export function setupMessageRoutes(app: express.Application, deps: MessageRouteD
 
         const account = googleDriveAccounts.length > 0 ? googleDriveAccounts[0] : null;
         const accountId = account ? extractAccountId(account) : undefined;
-        const resolvedToken = await resolveDriveTokenForOwner(req, pnIdentifier, account, accountId);
-        if ('error' in resolvedToken) {
-          return res.status(409).json({
-            error: 'cloud_token_required',
-            error_description:
-              'Google Drive access token required. Forward X-PN-Cloud-Access-Token after unlocking with cloud credentials.'
-          });
+        const { resolveOwnerDriveToken, respondDriveTokenError } = await import('./ownerDriveToken');
+        let token;
+        try {
+          const resolvedToken = await resolveOwnerDriveToken(req, pnIdentifier, { account, accountId });
+          token = resolvedToken.token;
+        } catch (error) {
+          if (respondDriveTokenError(res, error)) return;
+          throw error;
         }
-        const { token } = resolvedToken;
 
         const pnFolderName = `par Noir - ${pnIdentifier}`;
         const folderQuery = `name='${pnFolderName}' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
@@ -1501,15 +1452,15 @@ export function setupMessageRoutes(app: express.Application, deps: MessageRouteD
 
         const account = googleDriveAccounts.length > 0 ? googleDriveAccounts[0] : null;
         const accountId = account ? extractAccountId(account) : undefined;
-        const resolvedToken = await resolveDriveTokenForOwner(req, pnIdentifier, account, accountId);
-        if ('error' in resolvedToken) {
-          return res.status(409).json({
-            error: 'cloud_token_required',
-            error_description:
-              'Google Drive access token required. Forward X-PN-Cloud-Access-Token after unlocking with cloud credentials.'
-          });
+        const { resolveOwnerDriveToken, respondDriveTokenError } = await import('./ownerDriveToken');
+        let token;
+        try {
+          const resolvedToken = await resolveOwnerDriveToken(req, pnIdentifier, { account, accountId });
+          token = resolvedToken.token;
+        } catch (error) {
+          if (respondDriveTokenError(res, error)) return;
+          throw error;
         }
-        const { token } = resolvedToken;
 
         const { readPnDriveIndex, isPnDriveIndexComplete, loadPnDriveIndex, persistPnDriveIndex } =
           await import('./pnDriveIndex');

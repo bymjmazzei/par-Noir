@@ -163,16 +163,46 @@ export function setupPrismRoutes(app: any): void {
         return res.status(400).json({ error: 'ownerPn and fileId required' });
       }
 
+      const {
+        extractCloudAccessToken,
+        resolveOwnerDriveToken,
+        respondDriveTokenError
+      } = await import('./ownerDriveToken');
       const { googleDriveProxyService } = await import('./googleDriveProxy');
 
+      // Prefer forwarded cloud token; resolve owner token only when caller is the owner.
+      // Do not invent peer Drive tokens via getAccessToken(ownerPn).
+      let accessToken = extractCloudAccessToken(req) || '';
+      if (!accessToken && payload.pnIdentifier === ownerPn) {
+        try {
+          const resolved = await resolveOwnerDriveToken(req, ownerPn);
+          accessToken = resolved.token.access_token;
+        } catch (error) {
+          if (respondDriveTokenError(res, error)) return;
+          throw error;
+        }
+      }
+      if (!accessToken) {
+        return res.status(409).json({
+          error: 'cloud_token_required',
+          error_description:
+            'Google Drive access token required. Forward X-PN-Cloud-Access-Token after unlocking with cloud credentials.'
+        });
+      }
+
       if (thumbnail) {
-        const accessToken = await googleDriveProxyService.getAccessToken(ownerPn);
         const thumbRes = await fetch(
           `https://www.googleapis.com/drive/v3/files/${fileId}?fields=thumbnailLink`,
           { headers: { Authorization: `Bearer ${accessToken}` } }
         );
         if (!thumbRes.ok) {
-          const blob = await googleDriveProxyService.downloadFile(ownerPn, fileId);
+          const blob = await googleDriveProxyService.downloadFile(
+            ownerPn,
+            fileId,
+            undefined,
+            undefined,
+            accessToken
+          );
           res.setHeader('Content-Type', blob.type || 'application/octet-stream');
           return res.send(Buffer.from(await blob.arrayBuffer()));
         }
@@ -187,7 +217,13 @@ export function setupPrismRoutes(app: any): void {
         }
       }
 
-      const blob = await googleDriveProxyService.downloadFile(ownerPn, fileId);
+      const blob = await googleDriveProxyService.downloadFile(
+        ownerPn,
+        fileId,
+        undefined,
+        undefined,
+        accessToken
+      );
       res.setHeader('Content-Type', blob.type || 'application/octet-stream');
       return res.send(Buffer.from(await blob.arrayBuffer()));
     } catch (err: any) {

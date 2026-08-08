@@ -385,12 +385,15 @@ export function setupAggregatorRoutes(app: any, deps: AggregatorRouteDeps) {
             if (googleDriveAccounts.length > 0) {
               const account = googleDriveAccounts.length > 0 ? googleDriveAccounts[0] : null;
               const accountId = account ? deps.extractAccountId(account) : undefined;
-              const token = {
-                access_token: account?.access_token || account?.accessToken || '',
-                refresh_token: account?.refresh_token || account?.refreshToken,
-                expires_at: account?.expires_at,
-                expires_in: account?.expires_in
-              };
+              const { resolveOwnerDriveToken, respondDriveTokenError } = await import('./ownerDriveToken');
+              let token;
+              try {
+                const resolved = await resolveOwnerDriveToken(req, pnIdentifier, { account, accountId });
+                token = resolved.token;
+              } catch (error) {
+                if (respondDriveTokenError(res, error)) return;
+                throw error;
+              }
               const out = await deps.getMetadataFolder(token, pnIdentifier, accountId);
               if (!out) {
                 return deps.driveNotInitialized(res);
@@ -704,12 +707,18 @@ export function setupAggregatorRoutes(app: any, deps: AggregatorRouteDeps) {
             if (googleDriveAccounts.length > 0) {
               const account = googleDriveAccounts.length > 0 ? googleDriveAccounts[0] : null;
               const accountIdForToken = deps.extractAccountId(account);
-              const token = {
-                access_token: account?.access_token || account?.accessToken || '',
-                refresh_token: account?.refresh_token || account?.refreshToken,
-                expires_at: account?.expires_at,
-                expires_in: account?.expires_in
-              };
+              const { resolveOwnerDriveToken, respondDriveTokenError } = await import('./ownerDriveToken');
+              let token;
+              try {
+                const resolved = await resolveOwnerDriveToken(req, pnIdentifier, {
+                  account,
+                  accountId: accountIdForToken
+                });
+                token = resolved.token;
+              } catch (error) {
+                if (respondDriveTokenError(res, error)) return;
+                throw error;
+              }
               const accessToken = token.access_token;
               
               // Get metadata folder
@@ -1005,7 +1014,6 @@ export function setupAggregatorRoutes(app: any, deps: AggregatorRouteDeps) {
     try {
       const { fileId } = req.params;
       const { AggregatorMetadataServiceDB } = await import('./aggregatorMetadataServiceDB');
-      const { googleDriveProxyService } = await import('./googleDriveProxy');
       const { CompanionMetadataSheets } = await import('./companionMetadataSheets');
       const service = AggregatorMetadataServiceDB.getInstance();
 
@@ -1045,12 +1053,18 @@ export function setupAggregatorRoutes(app: any, deps: AggregatorRouteDeps) {
         if (googleDriveAccounts.length > 0) {
           const account = googleDriveAccounts.length > 0 ? googleDriveAccounts[0] : null;
           const accountIdForToken = deps.extractAccountId(account);
-          const token = {
-            access_token: account?.access_token || account?.accessToken || '',
-            refresh_token: account?.refresh_token || account?.refreshToken,
-            expires_at: account?.expires_at,
-            expires_in: account?.expires_in
-          };
+          const { resolveOwnerDriveToken, respondDriveTokenError } = await import('./ownerDriveToken');
+          let token;
+          try {
+            const resolved = await resolveOwnerDriveToken(req, userIdentifier, {
+              account,
+              accountId: accountIdForToken || accountId
+            });
+            token = resolved.token;
+          } catch (error) {
+            if (respondDriveTokenError(res, error)) return;
+            throw error;
+          }
           const accessToken = token.access_token;
           const backendFileId = dbMetadata.metadata.backendFileId || fileId;
           
@@ -1377,9 +1391,17 @@ export function setupAggregatorRoutes(app: any, deps: AggregatorRouteDeps) {
         const accountId = accountIdParam;
         
         try {
-          const accessToken =
-            storageCtx?.accessToken ??
-            (await googleDriveProxyService.getAccessToken(userIdentifier, accountId, identifierCandidates));
+          let accessToken = storageCtx?.accessToken || '';
+          if (!accessToken) {
+            const { resolveOwnerDriveToken, respondDriveTokenError } = await import('./ownerDriveToken');
+            try {
+              const resolved = await resolveOwnerDriveToken(req, userIdentifier, { accountId });
+              accessToken = resolved.token.access_token;
+            } catch (error) {
+              if (respondDriveTokenError(res, error)) return;
+              throw error;
+            }
+          }
           const driveResponse = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?fields=id,name,mimeType,size,createdTime,modifiedTime`, {
             headers: {
               'Authorization': `Bearer ${accessToken}`
@@ -1711,14 +1733,22 @@ export function setupAggregatorRoutes(app: any, deps: AggregatorRouteDeps) {
             if (googleDriveAccounts.length > 0) {
               const account = googleDriveAccounts.length > 0 ? googleDriveAccounts[0] : null;
               const accountIdForToken = accountIdParam || deps.extractAccountId(account);
-              const token = storageCtx
-                ? getDriveTokenFromContext(storageCtx)
-                : {
-                    access_token: account?.access_token || account?.accessToken || '',
-                    refresh_token: account?.refresh_token || account?.refreshToken,
-                    expires_at: account?.expires_at,
-                    expires_in: account?.expires_in
-                  };
+              let token;
+              if (storageCtx) {
+                token = getDriveTokenFromContext(storageCtx);
+              } else {
+                const { resolveOwnerDriveToken, respondDriveTokenError } = await import('./ownerDriveToken');
+                try {
+                  const resolved = await resolveOwnerDriveToken(req, userPnId, {
+                    account,
+                    accountId: accountIdForToken
+                  });
+                  token = resolved.token;
+                } catch (error) {
+                  if (respondDriveTokenError(res, error)) return;
+                  throw error;
+                }
+              }
               const accessToken = token.access_token;
               const backendFileId = current.metadata.backendFileId || fileId;
               
@@ -1913,14 +1943,22 @@ export function setupAggregatorRoutes(app: any, deps: AggregatorRouteDeps) {
 
               const account = googleDriveAccounts.length > 0 ? googleDriveAccounts[0] : null;
               const actualAccountId = accountId || (account ? deps.extractAccountId(account) : undefined);
-              const token = storageCtx
-                ? getDriveTokenFromContext(storageCtx)
-                : {
-                    access_token: account?.access_token || account?.accessToken || '',
-                    refresh_token: account?.refresh_token || account?.refreshToken,
-                    expires_at: account?.expires_at,
-                    expires_in: account?.expires_in
-                  };
+              let token;
+              if (storageCtx) {
+                token = getDriveTokenFromContext(storageCtx);
+              } else {
+                const { resolveOwnerDriveToken, respondDriveTokenError } = await import('./ownerDriveToken');
+                try {
+                  const resolved = await resolveOwnerDriveToken(req, pnIdentifier, {
+                    account,
+                    accountId: actualAccountId
+                  });
+                  token = resolved.token;
+                } catch (error) {
+                  if (respondDriveTokenError(res, error)) return;
+                  throw error;
+                }
+              }
               const accessToken = token.access_token;
               
               let driveFile = cachedDriveFileInfo;
@@ -2204,14 +2242,22 @@ export function setupAggregatorRoutes(app: any, deps: AggregatorRouteDeps) {
                   if (googleDriveAccounts.length > 0) {
                     const account = googleDriveAccounts.length > 0 ? googleDriveAccounts[0] : null;
                     const accountIdForToken = accountId || deps.extractAccountId(account);
-                    const token = storageCtx
-                      ? getDriveTokenFromContext(storageCtx)
-                      : {
-                          access_token: account?.access_token || account?.accessToken || '',
-                          refresh_token: account?.refresh_token || account?.refreshToken,
-                          expires_at: account?.expires_at,
-                          expires_in: account?.expires_in
-                        };
+                    let token;
+                    if (storageCtx) {
+                      token = getDriveTokenFromContext(storageCtx);
+                    } else {
+                      const { resolveOwnerDriveToken, respondDriveTokenError } = await import('./ownerDriveToken');
+                      try {
+                        const resolved = await resolveOwnerDriveToken(req, pnIdentifier, {
+                          account,
+                          accountId: accountIdForToken
+                        });
+                        token = resolved.token;
+                      } catch (error) {
+                        if (respondDriveTokenError(res, error)) return;
+                        throw error;
+                      }
+                    }
                     const accessToken = token.access_token;
                     
                     // Get pN folder and metadata folder
@@ -2346,14 +2392,19 @@ export function setupAggregatorRoutes(app: any, deps: AggregatorRouteDeps) {
               if (googleDriveAccounts.length > 0) {
                 const account = googleDriveAccounts.length > 0 ? googleDriveAccounts[0] : null;
                 const accountId = accountIdParam || deps.extractAccountId(account);
-                const token = storageCtx
-                  ? getDriveTokenFromContext(storageCtx)
-                  : {
-                      access_token: account?.access_token || account?.accessToken || '',
-                      refresh_token: account?.refresh_token || account?.refreshToken,
-                      expires_at: account?.expires_at,
-                      expires_in: account?.expires_in
-                    };
+                let token;
+                if (storageCtx) {
+                  token = getDriveTokenFromContext(storageCtx);
+                } else {
+                  const { resolveOwnerDriveToken, respondDriveTokenError } = await import('./ownerDriveToken');
+                  try {
+                    const resolved = await resolveOwnerDriveToken(req, pnIdentifier, { account, accountId });
+                    token = resolved.token;
+                  } catch (error) {
+                    if (respondDriveTokenError(res, error)) return;
+                    throw error;
+                  }
+                }
                 const out = await deps.getMetadataFolder(token, pnIdentifier, accountId);
                 if (!out) {
                   return deps.driveNotInitialized(res);
@@ -2514,14 +2565,22 @@ export function setupAggregatorRoutes(app: any, deps: AggregatorRouteDeps) {
                 if (googleDriveAccounts.length > 0) {
                   const account = googleDriveAccounts.length > 0 ? googleDriveAccounts[0] : null;
                   const accountIdForToken = accountId || deps.extractAccountId(account);
-                  const token = storageCtx
-                    ? getDriveTokenFromContext(storageCtx)
-                    : {
-                        access_token: account?.access_token || account?.accessToken || '',
-                        refresh_token: account?.refresh_token || account?.refreshToken,
-                        expires_at: account?.expires_at,
-                        expires_in: account?.expires_in
-                      };
+                  let token;
+                  if (storageCtx) {
+                    token = getDriveTokenFromContext(storageCtx);
+                  } else {
+                    const { resolveOwnerDriveToken, respondDriveTokenError } = await import('./ownerDriveToken');
+                    try {
+                      const resolved = await resolveOwnerDriveToken(req, pnIdentifier, {
+                        account,
+                        accountId: accountIdForToken
+                      });
+                      token = resolved.token;
+                    } catch (error) {
+                      if (respondDriveTokenError(res, error)) return;
+                      throw error;
+                    }
+                  }
                   const accessToken = token.access_token;
                   
                   // Get pN folder and metadata folder
@@ -3140,9 +3199,12 @@ export function setupAggregatorRoutes(app: any, deps: AggregatorRouteDeps) {
           const fileId = row.file_id;
           const backendFileId = row.backend_file_id || fileId;
 
-          // Get access token
+          // Get access token (owner custody — prefer forwarded cloud token)
           const accountId = req.query.accountId as string | undefined;
-          const accessToken = await googleDriveProxyService.getAccessToken(userIdentifier, accountId, identifierCandidates);
+          const { resolveOwnerDriveToken } = await import('./ownerDriveToken');
+          const accessToken = (
+            await resolveOwnerDriveToken(req, userIdentifier, { accountId })
+          ).token.access_token;
 
           // Find companion metadata file
           const driveResponse = await fetch(

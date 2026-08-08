@@ -1,11 +1,32 @@
 import { NavLink, Outlet } from 'react-router-dom';
 import { useEffect, useState } from 'react';
-import { UnlockButton, LockButton, ThirdPartyCloudReconnectHost } from '@par-noir/oauth-ui';
+import {
+  UnlockButton,
+  LockButton,
+  ThirdPartyCloudReconnectHost,
+  normalizeMessagingHandoffPayload,
+  parseMessagingHandoffFromStorage,
+  PN_MESSAGING_OAUTH_HANDOFF_STORAGE
+} from '@par-noir/oauth-ui';
 import { usePortal } from '../context/PortalContext';
 import { fetchPlatformAccess } from '../services/platformApi';
 
 const navLinkClass = ({ isActive }: { isActive: boolean }) =>
   `dev-nav-link${isActive ? ' dev-nav-link--active' : ''}`;
+
+function peekMlKemSecretKey(messagingHandoff?: unknown): string | null {
+  const fromResult = normalizeMessagingHandoffPayload(messagingHandoff);
+  if (fromResult?.session?.mlKemSecretKey) return fromResult.session.mlKemSecretKey;
+  try {
+    return (
+      parseMessagingHandoffFromStorage(
+        localStorage.getItem(PN_MESSAGING_OAUTH_HANDOFF_STORAGE)
+      )?.session?.mlKemSecretKey ?? null
+    );
+  } catch {
+    return null;
+  }
+}
 
 export function DevLayout() {
   const {
@@ -23,6 +44,7 @@ export function DevLayout() {
   } = usePortal();
 
   const [isOperator, setIsOperator] = useState(false);
+  const [mlKemSecretKey, setMlKemSecretKey] = useState<string | null>(() => peekMlKemSecretKey());
 
   useEffect(() => {
     if (!signedIn) {
@@ -32,6 +54,12 @@ export function DevLayout() {
     void fetchPlatformAccess().then(({ isOperator: op }) => setIsOperator(op));
   }, [signedIn]);
 
+  useEffect(() => {
+    if (!signedIn || mlKemSecretKey) return;
+    const peeked = peekMlKemSecretKey();
+    if (peeked) setMlKemSecretKey(peeked);
+  }, [signedIn, mlKemSecretKey]);
+
   return (
     <div className="dev-root">
       {signedIn ? (
@@ -39,6 +67,7 @@ export function DevLayout() {
           apiEndpoint={apiEndpoint}
           authToken={token}
           pnIdentifier={user?.pn_identifier}
+          mlKemSecretKey={mlKemSecretKey}
         />
       ) : null}
       <header className="dev-header">
@@ -76,7 +105,11 @@ export function DevLayout() {
                   scope: ['openid', 'profile']
                 }}
                 onBeforeNavigate={handleBeforeUnlock}
-                onPopupResult={onPopupResult}
+                onPopupResult={(r) => {
+                  const key = peekMlKemSecretKey(r.messagingHandoff);
+                  if (key) setMlKemSecretKey(key);
+                  void onPopupResult(r);
+                }}
                 onPopupFlowFailed={(msg) => setError(msg)}
                 iconOnly
                 className="dev-btn dev-btn-unlock dev-btn--header-unlock"

@@ -38,7 +38,7 @@ export function setupProfileRoutes(app: express.Application, deps: ProfileRouteD
         if (!(await gateOwnerRoute(req, res, DEVICE_CAPABILITIES.profileWrite, userPnIdentifier))) return;
 
         const { ProfileService } = await import('./profileService');
-        const { googleDriveProxyService } = await import('./googleDriveProxy');
+        const { resolveOwnerDriveToken, respondDriveTokenError } = await import('./ownerDriveToken');
         const { storageCredentialsService } = await import('./storageCredentialsService');
 
         // Use pn identifier directly (already normalized)
@@ -64,8 +64,16 @@ export function setupProfileRoutes(app: express.Application, deps: ProfileRouteD
 
         const account = googleDriveAccounts.length > 0 ? googleDriveAccounts[0] : null;
         const accountId = account ? extractAccountId(account) : undefined;
-        // Use normalized pn identifier for access token retrieval
-        const userAccessToken = account ? await googleDriveProxyService.getAccessToken(pnIdentifier, accountId) : '';
+        let userAccessToken = '';
+        if (account) {
+          try {
+            const resolved = await resolveOwnerDriveToken(req, pnIdentifier, { accountId, account });
+            userAccessToken = resolved.token.access_token;
+          } catch (error) {
+            if (respondDriveTokenError(res, error)) return;
+            throw error;
+          }
+        }
 
         // Find metadata folder
         const folderQuery = `name='Metadata' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
@@ -95,6 +103,8 @@ export function setupProfileRoutes(app: express.Application, deps: ProfileRouteD
 
         return res.json({ success: true });
       } catch (error: any) {
+        const { respondDriveTokenError } = await import('./ownerDriveToken');
+        if (respondDriveTokenError(res, error)) return;
         console.error('Error updating profile image:', error);
         return res.status(500).json({
           error: 'Failed to update profile image',
@@ -114,7 +124,7 @@ export function setupProfileRoutes(app: express.Application, deps: ProfileRouteD
         if (!(await gateOwnerRoute(req, res, DEVICE_CAPABILITIES.profileWrite, userPnIdentifier))) return;
 
         const { ProfileService } = await import('./profileService');
-        const { googleDriveProxyService } = await import('./googleDriveProxy');
+        const { resolveOwnerDriveToken, respondDriveTokenError } = await import('./ownerDriveToken');
         const { storageCredentialsService } = await import('./storageCredentialsService');
 
         // Use pn identifier directly (already normalized)
@@ -140,8 +150,16 @@ export function setupProfileRoutes(app: express.Application, deps: ProfileRouteD
 
         const account = googleDriveAccounts.length > 0 ? googleDriveAccounts[0] : null;
         const accountId = account ? extractAccountId(account) : undefined;
-        // Use normalized pn identifier for access token retrieval
-        const userAccessToken = account ? await googleDriveProxyService.getAccessToken(pnIdentifier, accountId) : '';
+        let userAccessToken = '';
+        if (account) {
+          try {
+            const resolved = await resolveOwnerDriveToken(req, pnIdentifier, { accountId, account });
+            userAccessToken = resolved.token.access_token;
+          } catch (error) {
+            if (respondDriveTokenError(res, error)) return;
+            throw error;
+          }
+        }
 
         // Find metadata folder - try both '_metadata' and 'Metadata'
         let metadataFolderId: string | null = null;
@@ -187,6 +205,8 @@ export function setupProfileRoutes(app: express.Application, deps: ProfileRouteD
 
         return res.json({ success: true });
       } catch (error: any) {
+        const { respondDriveTokenError } = await import('./ownerDriveToken');
+        if (respondDriveTokenError(res, error)) return;
         console.error('Error updating display name:', error);
         return res.status(500).json({
           error: 'Failed to update display name',

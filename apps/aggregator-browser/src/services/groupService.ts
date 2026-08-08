@@ -2,7 +2,6 @@
  * Group messaging API client.
  */
 
-import { PNOAuthService } from './pnOAuthService';
 import { API_ENDPOINT } from '../config/api';
 import {
   generateChatKey,
@@ -18,6 +17,7 @@ import { getMessageThreads, type MessageThread } from './messageService';
 import type { DmSessionRecovery } from './dmCryptoClient';
 import { isDmIdentityReady, getDmIdentity } from './dmIdentitySession';
 import type { Message } from './messageService';
+import { getOwnerApiHeaders } from './ownerApiHeaders';
 
 const groupChatKeys = new Map<string, string>();
 
@@ -26,12 +26,7 @@ export function getGroupChatKeyCache(): Map<string, string> {
 }
 
 function getAuthHeaders(): HeadersInit {
-  const session = PNOAuthService.loadSession();
-  const headers: HeadersInit = { 'Content-Type': 'application/json' };
-  if (session?.accessToken) {
-    headers['Authorization'] = `Bearer ${session.accessToken}`;
-  }
-  return headers;
+  return getOwnerApiHeaders({ 'Content-Type': 'application/json' });
 }
 
 export type GroupAccessRole = 'readWrite' | 'readOnly';

@@ -3,22 +3,12 @@
  * Manages private curated feeds (saved content)
  */
 
-import { PNOAuthService } from './pnOAuthService';
-
 import { API_ENDPOINT } from '../config/api';
+import { getOwnerApiHeaders } from './ownerApiHeaders';
 
 // Helper function to get auth headers
 function getAuthHeaders(): HeadersInit {
-  const session = PNOAuthService.loadSession();
-  const headers: HeadersInit = {
-    'Content-Type': 'application/json'
-  };
-  
-  if (session?.accessToken) {
-    headers['Authorization'] = `Bearer ${session.accessToken}`;
-  }
-  
-  return headers;
+  return getOwnerApiHeaders({ 'Content-Type': 'application/json' });
 }
 
 export interface SavedFeed {

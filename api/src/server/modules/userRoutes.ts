@@ -82,7 +82,7 @@ export function setupUserRoutes(app: express.Application, deps: UserRouteDeps) {
         }
 
         const { PreferencesService } = await import('./preferencesService');
-        const { googleDriveProxyService } = await import('./googleDriveProxy');
+        const { resolveOwnerDriveToken, respondDriveTokenError } = await import('./ownerDriveToken');
         const { storageCredentialsService } = await import('./storageCredentialsService');
 
         // Normalize pn identifier
@@ -108,14 +108,16 @@ export function setupUserRoutes(app: express.Application, deps: UserRouteDeps) {
 
           const account = googleDriveAccounts.length > 0 ? googleDriveAccounts[0] : null;
           const accountId = account ? extractAccountId(account) : undefined;
-          const { extractCloudAccessToken } = await import('./cloudAccessToken');
-          let userAccessToken = extractCloudAccessToken(req) || '';
-          if (!userAccessToken && account) {
-            try {
-              userAccessToken = await googleDriveProxyService.getAccessToken(normalizedPnIdentifier, accountId);
-            } catch {
-              userAccessToken = '';
-            }
+          let userAccessToken = '';
+          try {
+            const resolved = await resolveOwnerDriveToken(req, normalizedPnIdentifier, {
+              accountId,
+              account
+            });
+            userAccessToken = resolved.token.access_token;
+          } catch (error) {
+            if (respondDriveTokenError(res, error)) return;
+            throw error;
           }
 
         // Find pN folder and _metadata folder (same pattern as other endpoints)
@@ -172,6 +174,8 @@ export function setupUserRoutes(app: express.Application, deps: UserRouteDeps) {
 
         return res.json({ success: true, preferences: updatedPreferences });
       } catch (error: any) {
+        const { respondDriveTokenError } = await import('./ownerDriveToken');
+        if (respondDriveTokenError(res, error)) return;
         console.error('Error saving preferences:', error);
         return res.status(500).json({
           error: 'Failed to save preferences',
@@ -412,7 +416,7 @@ export function setupUserRoutes(app: express.Application, deps: UserRouteDeps) {
         }
 
         const { ThirdPartyPermissionsService } = await import('./thirdPartyPermissionsService');
-        const { googleDriveProxyService } = await import('./googleDriveProxy');
+        const { resolveOwnerDriveToken, respondDriveTokenError } = await import('./ownerDriveToken');
         const { storageCredentialsService } = await import('./storageCredentialsService');
 
         // Normalize pn identifier
@@ -438,15 +442,24 @@ export function setupUserRoutes(app: express.Application, deps: UserRouteDeps) {
 
           const account = googleDriveAccounts.length > 0 ? googleDriveAccounts[0] : null;
           const accountId = account ? extractAccountId(account) : undefined;
-          
-          // Get full token object (not just access token string) for automatic refresh
-          const token = {
-            access_token: account?.access_token || account?.accessToken || '',
-            refresh_token: account?.refresh_token || account?.refreshToken,
-            expires_at: account?.expires_at,
-            expires_in: account?.expires_in
+          let token: {
+            access_token: string;
+            refresh_token?: string;
+            expires_at?: number;
+            expires_in?: number;
           };
-          const userAccessToken = token.access_token; // Keep for backward compatibility
+          let userAccessToken = '';
+          try {
+            const resolved = await resolveOwnerDriveToken(req, normalizedPnIdentifier, {
+              accountId,
+              account
+            });
+            token = resolved.token;
+            userAccessToken = resolved.token.access_token;
+          } catch (error) {
+            if (respondDriveTokenError(res, error)) return;
+            throw error;
+          }
 
         const out = await getMetadataFolder(token, normalizedPnIdentifier, accountId);
         if (!out) {
@@ -490,6 +503,8 @@ export function setupUserRoutes(app: express.Application, deps: UserRouteDeps) {
 
         return res.json({ success: true, permission });
       } catch (error: any) {
+        const { respondDriveTokenError } = await import('./ownerDriveToken');
+        if (respondDriveTokenError(res, error)) return;
         console.error('Error storing third-party permission:', error);
         return res.status(500).json({
           error: 'Failed to store third-party permission',
@@ -638,7 +653,7 @@ export function setupUserRoutes(app: express.Application, deps: UserRouteDeps) {
         }
 
         const { PreferencesService } = await import('./preferencesService');
-        const { googleDriveProxyService } = await import('./googleDriveProxy');
+        const { resolveOwnerDriveToken, respondDriveTokenError } = await import('./ownerDriveToken');
         const { storageCredentialsService } = await import('./storageCredentialsService');
 
         // Normalize pn identifier
@@ -664,14 +679,16 @@ export function setupUserRoutes(app: express.Application, deps: UserRouteDeps) {
 
           const account = googleDriveAccounts.length > 0 ? googleDriveAccounts[0] : null;
           const accountId = account ? extractAccountId(account) : undefined;
-          const { extractCloudAccessToken } = await import('./cloudAccessToken');
-          let userAccessToken = extractCloudAccessToken(req) || '';
-          if (!userAccessToken && account) {
-            try {
-              userAccessToken = await googleDriveProxyService.getAccessToken(normalizedPnIdentifier, accountId);
-            } catch {
-              userAccessToken = '';
-            }
+          let userAccessToken = '';
+          try {
+            const resolved = await resolveOwnerDriveToken(req, normalizedPnIdentifier, {
+              accountId,
+              account
+            });
+            userAccessToken = resolved.token.access_token;
+          } catch (error) {
+            if (respondDriveTokenError(res, error)) return;
+            throw error;
           }
 
         // Find pN folder and _metadata folder (same pattern as other endpoints)
@@ -729,6 +746,8 @@ export function setupUserRoutes(app: express.Application, deps: UserRouteDeps) {
 
         return res.json({ preferences });
       } catch (error: any) {
+        const { respondDriveTokenError } = await import('./ownerDriveToken');
+        if (respondDriveTokenError(res, error)) return;
         console.error('Error getting preferences:', error);
         return res.status(500).json({
           error: 'Failed to get preferences',
@@ -759,7 +778,7 @@ export function setupUserRoutes(app: express.Application, deps: UserRouteDeps) {
         const normalizedPnIdentifier = pnIdentifier.startsWith('pn-') ? pnIdentifier : `pn-${pnIdentifier}`;
 
         const { PreferencesService } = await import('./preferencesService');
-        const { googleDriveProxyService } = await import('./googleDriveProxy');
+        const { resolveOwnerDriveToken, respondDriveTokenError } = await import('./ownerDriveToken');
         const { storageCredentialsService } = await import('./storageCredentialsService');
 
         // Get user's credentials
@@ -782,14 +801,16 @@ export function setupUserRoutes(app: express.Application, deps: UserRouteDeps) {
 
           const account = googleDriveAccounts.length > 0 ? googleDriveAccounts[0] : null;
           const accountId = account ? extractAccountId(account) : undefined;
-          const { extractCloudAccessToken } = await import('./cloudAccessToken');
-          let userAccessToken = extractCloudAccessToken(req) || '';
-          if (!userAccessToken && account) {
-            try {
-              userAccessToken = await googleDriveProxyService.getAccessToken(normalizedPnIdentifier, accountId);
-            } catch {
-              userAccessToken = '';
-            }
+          let userAccessToken = '';
+          try {
+            const resolved = await resolveOwnerDriveToken(req, normalizedPnIdentifier, {
+              accountId,
+              account
+            });
+            userAccessToken = resolved.token.access_token;
+          } catch (error) {
+            if (respondDriveTokenError(res, error)) return;
+            throw error;
           }
 
         // Find _metadata folder
@@ -850,6 +871,8 @@ export function setupUserRoutes(app: express.Application, deps: UserRouteDeps) {
 
         return res.json({ success: true });
       } catch (error: any) {
+        const { respondDriveTokenError } = await import('./ownerDriveToken');
+        if (respondDriveTokenError(res, error)) return;
         console.error('Error saving tag preference:', error);
         return res.status(500).json({
           error: 'Failed to save tag preference',
@@ -871,7 +894,7 @@ export function setupUserRoutes(app: express.Application, deps: UserRouteDeps) {
         const normalizedPnIdentifier = pnIdentifier.startsWith('pn-') ? pnIdentifier : `pn-${pnIdentifier}`;
 
         const { PreferencesService } = await import('./preferencesService');
-        const { googleDriveProxyService } = await import('./googleDriveProxy');
+        const { resolveOwnerDriveToken, respondDriveTokenError } = await import('./ownerDriveToken');
         const { storageCredentialsService } = await import('./storageCredentialsService');
 
         // Get user's credentials
@@ -889,14 +912,16 @@ export function setupUserRoutes(app: express.Application, deps: UserRouteDeps) {
 
           const account = googleDriveAccounts.length > 0 ? googleDriveAccounts[0] : null;
           const accountId = account ? extractAccountId(account) : undefined;
-          const { extractCloudAccessToken } = await import('./cloudAccessToken');
-          let userAccessToken = extractCloudAccessToken(req) || '';
-          if (!userAccessToken && account) {
-            try {
-              userAccessToken = await googleDriveProxyService.getAccessToken(normalizedPnIdentifier, accountId);
-            } catch {
-              userAccessToken = '';
-            }
+          let userAccessToken = '';
+          try {
+            const resolved = await resolveOwnerDriveToken(req, normalizedPnIdentifier, {
+              accountId,
+              account
+            });
+            userAccessToken = resolved.token.access_token;
+          } catch (error) {
+            if (respondDriveTokenError(res, error)) return;
+            throw error;
           }
 
         // Find _metadata folder
@@ -945,6 +970,8 @@ export function setupUserRoutes(app: express.Application, deps: UserRouteDeps) {
 
         return res.json({ preferences });
       } catch (error: any) {
+        const { respondDriveTokenError } = await import('./ownerDriveToken');
+        if (respondDriveTokenError(res, error)) return;
         console.error('Error getting tag preferences:', error);
         return res.status(500).json({
           error: 'Failed to get tag preferences',
@@ -970,7 +997,7 @@ export function setupUserRoutes(app: express.Application, deps: UserRouteDeps) {
         const normalizedPnIdentifier = pnIdentifier.startsWith('pn-') ? pnIdentifier : `pn-${pnIdentifier}`;
 
         const { PreferencesService } = await import('./preferencesService');
-        const { googleDriveProxyService } = await import('./googleDriveProxy');
+        const { resolveOwnerDriveToken, respondDriveTokenError } = await import('./ownerDriveToken');
         const { storageCredentialsService } = await import('./storageCredentialsService');
 
         // Get user's credentials
@@ -993,14 +1020,16 @@ export function setupUserRoutes(app: express.Application, deps: UserRouteDeps) {
 
           const account = googleDriveAccounts.length > 0 ? googleDriveAccounts[0] : null;
           const accountId = account ? extractAccountId(account) : undefined;
-          const { extractCloudAccessToken } = await import('./cloudAccessToken');
-          let userAccessToken = extractCloudAccessToken(req) || '';
-          if (!userAccessToken && account) {
-            try {
-              userAccessToken = await googleDriveProxyService.getAccessToken(normalizedPnIdentifier, accountId);
-            } catch {
-              userAccessToken = '';
-            }
+          let userAccessToken = '';
+          try {
+            const resolved = await resolveOwnerDriveToken(req, normalizedPnIdentifier, {
+              accountId,
+              account
+            });
+            userAccessToken = resolved.token.access_token;
+          } catch (error) {
+            if (respondDriveTokenError(res, error)) return;
+            throw error;
           }
 
         // Find _metadata folder
@@ -1054,6 +1083,8 @@ export function setupUserRoutes(app: express.Application, deps: UserRouteDeps) {
 
         return res.json({ success: true });
       } catch (error: any) {
+        const { respondDriveTokenError } = await import('./ownerDriveToken');
+        if (respondDriveTokenError(res, error)) return;
         console.error('Error removing tag preference:', error);
         return res.status(500).json({
           error: 'Failed to remove tag preference',

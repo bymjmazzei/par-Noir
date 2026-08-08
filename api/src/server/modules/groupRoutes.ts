@@ -31,16 +31,13 @@ export function setupGroupRoutes(app: express.Application, deps: GroupRouteDeps)
           return res.status(400).json({ error: 'userPnIdentifier is required' });
         }
         const { GroupSheetsService } = await import('./groupSheetsService');
-        const { requireOwnerDriveContext, DriveIndexError } = await import('./ownerDriveContext');
+        const { requireOwnerDriveContextFromReq, DriveIndexError } = await import('./ownerDriveToken');
         const { PN_DRIVE_SHEET_KEYS } = await import('./pnDriveIndex');
         const { isGoogleSheetsRateLimit } = await import('./googleSheetsRateLimit');
 
         let ctx;
         try {
-          const { extractCloudAccessToken } = await import('./cloudAccessToken');
-          ctx = await requireOwnerDriveContext(userPnIdentifier, undefined, {
-            accessToken: extractCloudAccessToken(req),
-          });
+          ctx = await requireOwnerDriveContextFromReq(req, userPnIdentifier);
         } catch (error: unknown) {
           if (error instanceof DriveIndexError) {
             return res.json({ groups: [] });
@@ -96,6 +93,7 @@ export function setupGroupRoutes(app: express.Application, deps: GroupRouteDeps)
         const { GroupSheetsService } = await import('./groupSheetsService');
         const { ConnectionsService } = await import('./connectionsService');
         const { storageCredentialsService } = await import('./storageCredentialsService');
+        const { resolveOwnerDriveToken, respondDriveTokenError } = await import('./ownerDriveToken');
 
         const ownerCreds = await storageCredentialsService.getCredentials(ownerPnIdentifier);
         if (!ownerCreds?.credentials) {
@@ -108,13 +106,16 @@ export function setupGroupRoutes(app: express.Application, deps: GroupRouteDeps)
           return res.status(404).json({ error: 'Owner has no Google Drive connected' });
         }
         const account = accounts[0];
-        const accountId = account ? extractAccountId(account) : undefined;
-        const token = {
-          access_token: account?.access_token || account?.accessToken || '',
-          refresh_token: account?.refresh_token || account?.refreshToken,
-          expires_at: account?.expires_at,
-          expires_in: account?.expires_in
-        };
+        let accountId = account ? extractAccountId(account) : undefined;
+        let token;
+        try {
+          const resolved = await resolveOwnerDriveToken(req, ownerPnIdentifier, { account, accountId });
+          token = resolved.token;
+          accountId = resolved.accountId ?? accountId;
+        } catch (e) {
+          if (respondDriveTokenError(res, e)) return;
+          throw e;
+        }
         const metadataFolder = await getMetadataFolder(token, ownerPnIdentifier, accountId);
         if (!metadataFolder?.metadataFolderId) {
           return res.status(404).json({ error: 'Owner metadata folder not found' });
@@ -170,8 +171,10 @@ export function setupGroupRoutes(app: express.Application, deps: GroupRouteDeps)
           if (mAccounts.length === 0) continue;
           const mAccount = mAccounts[0];
           const mAccountId = extractAccountId(mAccount);
+          const peerAccess = String(mAccount.access_token || mAccount.accessToken || '').trim();
+          if (!peerAccess) continue; // optional peer enrichment — soft-skip empty shells
           const mToken = {
-            access_token: mAccount.access_token || mAccount.accessToken,
+            access_token: peerAccess,
             refresh_token: mAccount.refresh_token || mAccount.refreshToken,
             expires_at: mAccount.expires_at,
             expires_in: mAccount.expires_in
@@ -228,10 +231,52 @@ export function setupGroupRoutes(app: express.Application, deps: GroupRouteDeps)
         );
 
         const provisionMemberInbox = async (memberPn: string): Promise<void> => {
-          const creds =
-            memberPn === ownerPnIdentifier
-              ? ownerCreds
-              : await storageCredentialsService.getCredentials(memberPn);
+          if (memberPn === ownerPnIdentifier) {
+            // Owner uses already-resolved caller token
+            const mMeta = metadataFolder;
+            const mToken = token;
+            const mAccountId = accountId;
+            const messagesFolderId = await MessageSheetsService.getOrCreateMessagesFolder(
+              mToken,
+              mMeta.pnFolderId!,
+              memberPn,
+              mAccountId
+            );
+            const inboxSheetId = await MessageSheetsService.getOrCreateInboxSheet(
+              mToken,
+              messagesFolderId,
+              memberPn,
+              mAccountId
+            );
+            await MessageSheetsService.updateGroupInboxEntry(
+              mToken,
+              inboxSheetId,
+              groupId,
+              ownerConvSheetId,
+              ownerPnIdentifier,
+              createdAt,
+              memberPn,
+              mAccountId,
+              preview
+            );
+            const memberGroupSheetId = await GroupSheetsService.getOrCreateGroupsSheet(
+              mToken,
+              mMeta.metadataFolderId,
+              memberPn,
+              mAccountId
+            );
+            await GroupSheetsService.updateConversationSpreadsheetId(
+              mToken,
+              memberGroupSheetId,
+              groupId,
+              memberPn,
+              ownerConvSheetId,
+              memberPn,
+              mAccountId
+            );
+            return;
+          }
+          const creds = await storageCredentialsService.getCredentials(memberPn);
           if (!creds?.credentials) {
             throw new Error(`No credentials for ${memberPn}`);
           }
@@ -243,8 +288,13 @@ export function setupGroupRoutes(app: express.Application, deps: GroupRouteDeps)
           }
           const mAccount = mAccounts[0];
           const mAccountId = extractAccountId(mAccount);
+          const peerAccess = String(mAccount.access_token || mAccount.accessToken || '').trim();
+          if (!peerAccess) {
+            // Peer custody shell — soft-skip inbox provision rather than invent empty token
+            return;
+          }
           const mToken = {
-            access_token: mAccount.access_token || mAccount.accessToken,
+            access_token: peerAccess,
             refresh_token: mAccount.refresh_token || mAccount.refreshToken,
             expires_at: mAccount.expires_at,
             expires_in: mAccount.expires_in
@@ -343,6 +393,7 @@ export function setupGroupRoutes(app: express.Application, deps: GroupRouteDeps)
         }
         const { GroupSheetsService } = await import('./groupSheetsService');
         const { storageCredentialsService } = await import('./storageCredentialsService');
+        const { resolveOwnerDriveToken, respondDriveTokenError } = await import('./ownerDriveToken');
         const credentials = await storageCredentialsService.getCredentials(ownerPnIdentifier);
         if (!credentials?.credentials) {
           return res.status(404).json({ error: 'Owner credentials not found' });
@@ -354,13 +405,16 @@ export function setupGroupRoutes(app: express.Application, deps: GroupRouteDeps)
           return res.status(404).json({ error: 'No Google Drive connected' });
         }
         const account = accounts[0];
-        const accountId = account ? extractAccountId(account) : undefined;
-        const token = {
-          access_token: account?.access_token || account?.accessToken || '',
-          refresh_token: account?.refresh_token || account?.refreshToken,
-          expires_at: account?.expires_at,
-          expires_in: account?.expires_in
-        };
+        let accountId = account ? extractAccountId(account) : undefined;
+        let token;
+        try {
+          const resolved = await resolveOwnerDriveToken(req, ownerPnIdentifier, { account, accountId });
+          token = resolved.token;
+          accountId = resolved.accountId ?? accountId;
+        } catch (e) {
+          if (respondDriveTokenError(res, e)) return;
+          throw e;
+        }
         const metadataFolder = await getMetadataFolder(token, ownerPnIdentifier, accountId);
         if (!metadataFolder?.metadataFolderId) {
           return res.status(404).json({ error: 'Metadata folder not found' });
@@ -409,6 +463,7 @@ export function setupGroupRoutes(app: express.Application, deps: GroupRouteDeps)
         const { GroupSheetsService } = await import('./groupSheetsService');
         const { MessageSheetsService } = await import('./messageSheetsService');
         const { storageCredentialsService } = await import('./storageCredentialsService');
+        const { resolveOwnerDriveToken, respondDriveTokenError } = await import('./ownerDriveToken');
 
         const userCreds = await storageCredentialsService.getCredentials(userPnIdentifier);
         if (!userCreds?.credentials) {
@@ -421,13 +476,16 @@ export function setupGroupRoutes(app: express.Application, deps: GroupRouteDeps)
           return res.json({ messages: [], total: 0 });
         }
         const account = accounts[0];
-        const accountId = account ? extractAccountId(account) : undefined;
-        const token = {
-          access_token: account?.access_token || account?.accessToken || '',
-          refresh_token: account?.refresh_token || account?.refreshToken,
-          expires_at: account?.expires_at,
-          expires_in: account?.expires_in
-        };
+        let accountId = account ? extractAccountId(account) : undefined;
+        let token;
+        try {
+          const resolved = await resolveOwnerDriveToken(req, userPnIdentifier, { account, accountId });
+          token = resolved.token;
+          accountId = resolved.accountId ?? accountId;
+        } catch (e) {
+          if (respondDriveTokenError(res, e)) return;
+          throw e;
+        }
         const metadataFolder = await getMetadataFolder(token, userPnIdentifier, accountId);
         if (!metadataFolder?.metadataFolderId) {
           return res.json({ messages: [], total: 0 });
@@ -463,13 +521,24 @@ export function setupGroupRoutes(app: express.Application, deps: GroupRouteDeps)
         }
         const ownerAccount = ownerAccounts[0];
         const ownerAccountId = extractAccountId(ownerAccount);
-        const ownerToken = {
-          access_token: ownerAccount.access_token || ownerAccount.accessToken,
-          refresh_token: ownerAccount.refresh_token || ownerAccount.refreshToken,
-          expires_at: ownerAccount.expires_at,
-          expires_in: ownerAccount.expires_in
-        };
-        const ownerMeta = await getMetadataFolder(ownerToken, ownerPn, ownerAccountId);
+        const ownerPeerAccess = String(ownerAccount.access_token || ownerAccount.accessToken || '').trim();
+        // When caller is not owner, owner Drive is peer throughway — soft-empty rather than invent token
+        if (!ownerPeerAccess && ownerPn !== userPnIdentifier) {
+          return res.json({ messages: [], total: 0 });
+        }
+        const ownerToken =
+          ownerPn === userPnIdentifier
+            ? token
+            : {
+                access_token: ownerPeerAccess,
+                refresh_token: ownerAccount.refresh_token || ownerAccount.refreshToken,
+                expires_at: ownerAccount.expires_at,
+                expires_in: ownerAccount.expires_in
+              };
+        const ownerMeta =
+          ownerPn === userPnIdentifier
+            ? metadataFolder
+            : await getMetadataFolder(ownerToken, ownerPn, ownerAccountId);
         if (!ownerMeta?.metadataFolderId) {
           return res.json({ messages: [], total: 0 });
         }
@@ -554,6 +623,7 @@ export function setupGroupRoutes(app: express.Application, deps: GroupRouteDeps)
         const { GroupSheetsService } = await import('./groupSheetsService');
         const { MessageSheetsService } = await import('./messageSheetsService');
         const { storageCredentialsService } = await import('./storageCredentialsService');
+        const { resolveOwnerDriveToken, respondDriveTokenError } = await import('./ownerDriveToken');
 
         const senderCreds = await storageCredentialsService.getCredentials(senderPn);
         if (!senderCreds?.credentials) {
@@ -566,13 +636,19 @@ export function setupGroupRoutes(app: express.Application, deps: GroupRouteDeps)
           return res.status(404).json({ error: 'Sender has no Google Drive connected' });
         }
         const senderAccount = senderAccounts[0];
-        const senderAccountId = extractAccountId(senderAccount);
-        const senderToken = {
-          access_token: senderAccount.access_token || senderAccount.accessToken,
-          refresh_token: senderAccount.refresh_token || senderAccount.refreshToken,
-          expires_at: senderAccount.expires_at,
-          expires_in: senderAccount.expires_in
-        };
+        let senderAccountId = extractAccountId(senderAccount);
+        let senderToken;
+        try {
+          const resolved = await resolveOwnerDriveToken(req, senderPn, {
+            account: senderAccount,
+            accountId: senderAccountId
+          });
+          senderToken = resolved.token;
+          senderAccountId = resolved.accountId ?? senderAccountId;
+        } catch (e) {
+          if (respondDriveTokenError(res, e)) return;
+          throw e;
+        }
         const senderMeta = await getMetadataFolder(senderToken, senderPn, senderAccountId);
         if (!senderMeta?.metadataFolderId) {
           return res.status(404).json({ error: 'Sender metadata folder not found' });
@@ -611,13 +687,24 @@ export function setupGroupRoutes(app: express.Application, deps: GroupRouteDeps)
         }
         const ownerAccount = ownerAccounts[0];
         const ownerAccountId = extractAccountId(ownerAccount);
-        const ownerToken = {
-          access_token: ownerAccount.access_token || ownerAccount.accessToken,
-          refresh_token: ownerAccount.refresh_token || ownerAccount.refreshToken,
-          expires_at: ownerAccount.expires_at,
-          expires_in: ownerAccount.expires_in
-        };
-        const ownerMeta = await getMetadataFolder(ownerToken, ownerPn, ownerAccountId);
+        // When sender is owner, reuse resolved caller token; otherwise peer throughway (no invented tokens)
+        const ownerToken =
+          ownerPn === senderPn
+            ? senderToken
+            : {
+                access_token: ownerAccount.access_token || ownerAccount.accessToken,
+                refresh_token: ownerAccount.refresh_token || ownerAccount.refreshToken,
+                expires_at: ownerAccount.expires_at,
+                expires_in: ownerAccount.expires_in
+              };
+        if (ownerPn !== senderPn && !String(ownerToken.access_token || '').trim()) {
+          // Required peer path with empty custody shell — soft-fail instead of Drive 500
+          return res.status(404).json({ error: 'Owner metadata folder not found' });
+        }
+        const ownerMeta =
+          ownerPn === senderPn
+            ? senderMeta
+            : await getMetadataFolder(ownerToken, ownerPn, ownerAccountId);
         if (!ownerMeta?.metadataFolderId) {
           return res.status(404).json({ error: 'Owner metadata folder not found' });
         }
@@ -744,8 +831,10 @@ export function setupGroupRoutes(app: express.Application, deps: GroupRouteDeps)
                 if (mAccounts.length === 0) return;
                 const mAccount = mAccounts[0];
                 const mAccountId = extractAccountId(mAccount);
+                const peerAccess = String(mAccount.access_token || mAccount.accessToken || '').trim();
+                if (!peerAccess) return; // optional notify enrichment — soft-skip empty shells
                 const mToken = {
-                  access_token: mAccount.access_token || mAccount.accessToken,
+                  access_token: peerAccess,
                   refresh_token: mAccount.refresh_token || mAccount.refreshToken,
                   expires_at: mAccount.expires_at,
                   expires_in: mAccount.expires_in
@@ -786,6 +875,7 @@ export function setupGroupRoutes(app: express.Application, deps: GroupRouteDeps)
         }
         const { GroupSheetsService } = await import('./groupSheetsService');
         const { storageCredentialsService } = await import('./storageCredentialsService');
+        const { resolveOwnerDriveToken, respondDriveTokenError } = await import('./ownerDriveToken');
         const credentials = await storageCredentialsService.getCredentials(ownerPnIdentifier);
         if (!credentials?.credentials) {
           return res.status(404).json({ error: 'Owner credentials not found' });
@@ -797,13 +887,16 @@ export function setupGroupRoutes(app: express.Application, deps: GroupRouteDeps)
           return res.status(404).json({ error: 'No Google Drive connected' });
         }
         const account = accounts[0];
-        const accountId = account ? extractAccountId(account) : undefined;
-        const token = {
-          access_token: account?.access_token || account?.accessToken || '',
-          refresh_token: account?.refresh_token || account?.refreshToken,
-          expires_at: account?.expires_at,
-          expires_in: account?.expires_in
-        };
+        let accountId = account ? extractAccountId(account) : undefined;
+        let token;
+        try {
+          const resolved = await resolveOwnerDriveToken(req, ownerPnIdentifier, { account, accountId });
+          token = resolved.token;
+          accountId = resolved.accountId ?? accountId;
+        } catch (e) {
+          if (respondDriveTokenError(res, e)) return;
+          throw e;
+        }
         const metadataFolder = await getMetadataFolder(token, ownerPnIdentifier, accountId);
         if (!metadataFolder?.metadataFolderId) {
           return res.status(404).json({ error: 'Metadata folder not found' });
@@ -839,8 +932,10 @@ export function setupGroupRoutes(app: express.Application, deps: GroupRouteDeps)
           if (mAccounts.length === 0) continue;
           const mAccount = mAccounts[0];
           const mAccountId = extractAccountId(mAccount);
+          const peerAccess = String(mAccount.access_token || mAccount.accessToken || '').trim();
+          if (!peerAccess) continue; // optional peer enrichment — soft-skip empty shells
           const mToken = {
-            access_token: mAccount.access_token || mAccount.accessToken,
+            access_token: peerAccess,
             refresh_token: mAccount.refresh_token || mAccount.refreshToken,
             expires_at: mAccount.expires_at,
             expires_in: mAccount.expires_in
@@ -891,6 +986,7 @@ export function setupGroupRoutes(app: express.Application, deps: GroupRouteDeps)
         const { ConnectionsService } = await import('./connectionsService');
         const { MessageSheetsService } = await import('./messageSheetsService');
         const { storageCredentialsService } = await import('./storageCredentialsService');
+        const { resolveOwnerDriveToken, respondDriveTokenError } = await import('./ownerDriveToken');
 
         const ownerCreds = await storageCredentialsService.getCredentials(ownerPnIdentifier);
         if (!ownerCreds?.credentials) {
@@ -903,13 +999,16 @@ export function setupGroupRoutes(app: express.Application, deps: GroupRouteDeps)
           return res.status(404).json({ error: 'Owner has no Google Drive connected' });
         }
         const account = accounts[0];
-        const accountId = account ? extractAccountId(account) : undefined;
-        const token = {
-          access_token: account?.access_token || account?.accessToken || '',
-          refresh_token: account?.refresh_token || account?.refreshToken,
-          expires_at: account?.expires_at,
-          expires_in: account?.expires_in
-        };
+        let accountId = account ? extractAccountId(account) : undefined;
+        let token;
+        try {
+          const resolved = await resolveOwnerDriveToken(req, ownerPnIdentifier, { account, accountId });
+          token = resolved.token;
+          accountId = resolved.accountId ?? accountId;
+        } catch (e) {
+          if (respondDriveTokenError(res, e)) return;
+          throw e;
+        }
         const metadataFolder = await getMetadataFolder(token, ownerPnIdentifier, accountId);
         if (!metadataFolder?.metadataFolderId) {
           return res.status(404).json({ error: 'Owner metadata folder not found' });
@@ -965,31 +1064,34 @@ export function setupGroupRoutes(app: express.Application, deps: GroupRouteDeps)
           if (mAccounts.length > 0) {
             const mAccount = mAccounts[0];
             const mAccountId = extractAccountId(mAccount);
-            const mToken = {
-              access_token: mAccount.access_token || mAccount.accessToken,
-              refresh_token: mAccount.refresh_token || mAccount.refreshToken,
-              expires_at: mAccount.expires_at,
-              expires_in: mAccount.expires_in
-            };
-            const mMeta = await getMetadataFolder(mToken, memberPnIdentifier, mAccountId);
-            if (mMeta?.metadataFolderId) {
-              const mSheetId = await GroupSheetsService.getOrCreateGroupsSheet(
-                mToken,
-                mMeta.metadataFolderId,
-                memberPnIdentifier,
-                mAccountId
-              );
-              await GroupSheetsService.appendSingleMember(
-                mToken,
-                mSheetId,
-                groupId,
-                ownerPnIdentifier,
-                title,
-                createdAt,
-                { memberPnIdentifier, accessRole: role, wrappedChatKey },
-                memberPnIdentifier,
-                mAccountId
-              );
+            const peerAccess = String(mAccount.access_token || mAccount.accessToken || '').trim();
+            if (peerAccess) {
+              const mToken = {
+                access_token: peerAccess,
+                refresh_token: mAccount.refresh_token || mAccount.refreshToken,
+                expires_at: mAccount.expires_at,
+                expires_in: mAccount.expires_in
+              };
+              const mMeta = await getMetadataFolder(mToken, memberPnIdentifier, mAccountId);
+              if (mMeta?.metadataFolderId) {
+                const mSheetId = await GroupSheetsService.getOrCreateGroupsSheet(
+                  mToken,
+                  mMeta.metadataFolderId,
+                  memberPnIdentifier,
+                  mAccountId
+                );
+                await GroupSheetsService.appendSingleMember(
+                  mToken,
+                  mSheetId,
+                  groupId,
+                  ownerPnIdentifier,
+                  title,
+                  createdAt,
+                  { memberPnIdentifier, accessRole: role, wrappedChatKey },
+                  memberPnIdentifier,
+                  mAccountId
+                );
+              }
             }
           }
         }
@@ -1013,62 +1115,65 @@ export function setupGroupRoutes(app: express.Application, deps: GroupRouteDeps)
             creds.credentials.googleDriveAccounts ||
             (creds.credentials.googleDrive ? [creds.credentials.googleDrive] : []);
           const mAccount = mAccounts[0];
-          const mAccountId = extractAccountId(mAccount);
-          const mToken = {
-            access_token: mAccount.access_token || mAccount.accessToken,
-            refresh_token: mAccount.refresh_token || mAccount.refreshToken,
-            expires_at: mAccount.expires_at,
-            expires_in: mAccount.expires_in
-          };
-          const mMeta = await getMetadataFolder(mToken, memberPn, mAccountId);
-          if (mMeta?.pnFolderId) {
-            const messagesFolderId = await MessageSheetsService.getOrCreateMessagesFolder(
-              mToken,
-              mMeta.pnFolderId,
-              memberPn,
-              mAccountId
-            );
-            const inboxSheetId = await MessageSheetsService.getOrCreateInboxSheet(
-              mToken,
-              messagesFolderId,
-              memberPn,
-              mAccountId
-            );
-            await MessageSheetsService.updateGroupInboxEntry(
-              mToken,
-              inboxSheetId,
-              groupId,
-              ownerConvSheetId,
-              ownerPnIdentifier,
-              new Date().toISOString(),
-              memberPn,
-              mAccountId,
-              preview
-            );
-            const mGroupsSheetId = await GroupSheetsService.getOrCreateGroupsSheet(
-              mToken,
-              mMeta.metadataFolderId!,
-              memberPn,
-              mAccountId
-            );
-            await GroupSheetsService.updateConversationSpreadsheetId(
-              mToken,
-              mGroupsSheetId,
-              groupId,
-              memberPn,
-              ownerConvSheetId,
-              memberPn,
-              mAccountId
-            );
-            await GroupSheetsService.updateConversationSpreadsheetId(
-              token,
-              sheetId,
-              groupId,
-              memberPn,
-              ownerConvSheetId,
-              ownerPnIdentifier,
-              accountId
-            );
+          const peerAccess = String(mAccount?.access_token || mAccount?.accessToken || '').trim();
+          if (mAccount && peerAccess) {
+            const mAccountId = extractAccountId(mAccount);
+            const mToken = {
+              access_token: peerAccess,
+              refresh_token: mAccount.refresh_token || mAccount.refreshToken,
+              expires_at: mAccount.expires_at,
+              expires_in: mAccount.expires_in
+            };
+            const mMeta = await getMetadataFolder(mToken, memberPn, mAccountId);
+            if (mMeta?.pnFolderId) {
+              const messagesFolderId = await MessageSheetsService.getOrCreateMessagesFolder(
+                mToken,
+                mMeta.pnFolderId,
+                memberPn,
+                mAccountId
+              );
+              const inboxSheetId = await MessageSheetsService.getOrCreateInboxSheet(
+                mToken,
+                messagesFolderId,
+                memberPn,
+                mAccountId
+              );
+              await MessageSheetsService.updateGroupInboxEntry(
+                mToken,
+                inboxSheetId,
+                groupId,
+                ownerConvSheetId,
+                ownerPnIdentifier,
+                new Date().toISOString(),
+                memberPn,
+                mAccountId,
+                preview
+              );
+              const mGroupsSheetId = await GroupSheetsService.getOrCreateGroupsSheet(
+                mToken,
+                mMeta.metadataFolderId!,
+                memberPn,
+                mAccountId
+              );
+              await GroupSheetsService.updateConversationSpreadsheetId(
+                mToken,
+                mGroupsSheetId,
+                groupId,
+                memberPn,
+                ownerConvSheetId,
+                memberPn,
+                mAccountId
+              );
+              await GroupSheetsService.updateConversationSpreadsheetId(
+                token,
+                sheetId,
+                groupId,
+                memberPn,
+                ownerConvSheetId,
+                ownerPnIdentifier,
+                accountId
+              );
+            }
           }
         }
 
@@ -1105,6 +1210,7 @@ export function setupGroupRoutes(app: express.Application, deps: GroupRouteDeps)
 
         const { GroupSheetsService } = await import('./groupSheetsService');
         const { storageCredentialsService } = await import('./storageCredentialsService');
+        const { resolveOwnerDriveToken, respondDriveTokenError } = await import('./ownerDriveToken');
 
         const ownerCreds = await storageCredentialsService.getCredentials(ownerPnIdentifier);
         if (!ownerCreds?.credentials) {
@@ -1117,13 +1223,16 @@ export function setupGroupRoutes(app: express.Application, deps: GroupRouteDeps)
           return res.status(404).json({ error: 'No Google Drive connected' });
         }
         const account = accounts[0];
-        const accountId = account ? extractAccountId(account) : undefined;
-        const token = {
-          access_token: account?.access_token || account?.accessToken || '',
-          refresh_token: account?.refresh_token || account?.refreshToken,
-          expires_at: account?.expires_at,
-          expires_in: account?.expires_in
-        };
+        let accountId = account ? extractAccountId(account) : undefined;
+        let token;
+        try {
+          const resolved = await resolveOwnerDriveToken(req, ownerPnIdentifier, { account, accountId });
+          token = resolved.token;
+          accountId = resolved.accountId ?? accountId;
+        } catch (e) {
+          if (respondDriveTokenError(res, e)) return;
+          throw e;
+        }
         const metadataFolder = await getMetadataFolder(token, ownerPnIdentifier, accountId);
         if (!metadataFolder?.metadataFolderId) {
           return res.status(404).json({ error: 'Metadata folder not found' });
@@ -1155,28 +1264,31 @@ export function setupGroupRoutes(app: express.Application, deps: GroupRouteDeps)
           if (mAccounts.length > 0) {
             const mAccount = mAccounts[0];
             const mAccountId = extractAccountId(mAccount);
-            const mToken = {
-              access_token: mAccount.access_token || mAccount.accessToken,
-              refresh_token: mAccount.refresh_token || mAccount.refreshToken,
-              expires_at: mAccount.expires_at,
-              expires_in: mAccount.expires_in
-            };
-            const mMeta = await getMetadataFolder(mToken, memberPn, mAccountId);
-            if (mMeta?.metadataFolderId) {
-              const mSheetId = await GroupSheetsService.getOrCreateGroupsSheet(
-                mToken,
-                mMeta.metadataFolderId,
-                memberPn,
-                mAccountId
-              );
-              await GroupSheetsService.removeGroupMember(
-                mToken,
-                mSheetId,
-                groupId,
-                memberPn,
-                memberPn,
-                mAccountId
-              );
+            const peerAccess = String(mAccount.access_token || mAccount.accessToken || '').trim();
+            if (peerAccess) {
+              const mToken = {
+                access_token: peerAccess,
+                refresh_token: mAccount.refresh_token || mAccount.refreshToken,
+                expires_at: mAccount.expires_at,
+                expires_in: mAccount.expires_in
+              };
+              const mMeta = await getMetadataFolder(mToken, memberPn, mAccountId);
+              if (mMeta?.metadataFolderId) {
+                const mSheetId = await GroupSheetsService.getOrCreateGroupsSheet(
+                  mToken,
+                  mMeta.metadataFolderId,
+                  memberPn,
+                  mAccountId
+                );
+                await GroupSheetsService.removeGroupMember(
+                  mToken,
+                  mSheetId,
+                  groupId,
+                  memberPn,
+                  memberPn,
+                  mAccountId
+                );
+              }
             }
           }
         }
@@ -1195,8 +1307,10 @@ export function setupGroupRoutes(app: express.Application, deps: GroupRouteDeps)
           if (mAccountsRot.length === 0) continue;
           const mAccountRot = mAccountsRot[0];
           const mAccountIdRot = extractAccountId(mAccountRot);
+          const peerAccessRot = String(mAccountRot.access_token || mAccountRot.accessToken || '').trim();
+          if (!peerAccessRot) continue; // optional peer enrichment — soft-skip empty shells
           const mTokenRot = {
-            access_token: mAccountRot.access_token || mAccountRot.accessToken,
+            access_token: peerAccessRot,
             refresh_token: mAccountRot.refresh_token || mAccountRot.refreshToken,
             expires_at: mAccountRot.expires_at,
             expires_in: mAccountRot.expires_in

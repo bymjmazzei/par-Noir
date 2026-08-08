@@ -9,6 +9,7 @@ import type { MediaDimensions } from '../utils/mediaScaling';
 import { decryptWithToken, type ShareToken } from '../utils/tokenDecryption';
 import { createThumbnailFromBlob, createVideoThumbnailFromBlob } from '../utils/thumbnailUtils';
 import { PNOAuthService } from '../services/pnOAuthService';
+import { getOwnerApiHeaders } from '../services/ownerApiHeaders';
 
 export interface UseThumbnailsAndMediaParams {
   mediaFiles: IndexedFile[];
@@ -182,7 +183,7 @@ export function useThumbnailsAndMedia({
             const backendFileId = file.backendFileId || file.fileId;
             const { resolveFileUrl } = await import('../services/storageApiClient');
             const url = resolveFileUrl(ownerId, backend, backendFileId, file.accountId);
-            const response = await fetch(url, { headers: { Authorization: `Bearer ${accessToken}` } });
+            const response = await fetch(url, { headers: getOwnerApiHeaders() });
             if (!response.ok) throw new Error(`Failed to fetch: ${response.status}`);
             videoBlob = await response.blob();
           } else {

@@ -3,13 +3,33 @@
  * Rights-holder intake + authenticated track registry (creator fund / music pool).
  */
 
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { FileCheck, Percent, Shield, LogOut } from 'lucide-react';
-import { UnlockButton, ThirdPartyCloudReconnectHost } from '@par-noir/oauth-ui';
+import {
+  UnlockButton,
+  ThirdPartyCloudReconnectHost,
+  normalizeMessagingHandoffPayload,
+  parseMessagingHandoffFromStorage,
+  PN_MESSAGING_OAUTH_HANDOFF_STORAGE
+} from '@par-noir/oauth-ui';
 import { API_ENDPOINT } from './config/api';
 import { PN_CLIENT_ID } from './config/client';
 import { LicensingSessionProvider, useLicensingSession } from './context/LicensingSessionContext';
 import { TrackLibraryPanel } from './components/TrackLibraryPanel';
+
+function peekMlKemSecretKey(messagingHandoff?: unknown): string | null {
+  const fromResult = normalizeMessagingHandoffPayload(messagingHandoff);
+  if (fromResult?.session?.mlKemSecretKey) return fromResult.session.mlKemSecretKey;
+  try {
+    return (
+      parseMessagingHandoffFromStorage(
+        localStorage.getItem(PN_MESSAGING_OAUTH_HANDOFF_STORAGE)
+      )?.session?.mlKemSecretKey ?? null
+    );
+  } catch {
+    return null;
+  }
+}
 
 const PARTNER_TYPES = [
   'Label',
@@ -42,6 +62,7 @@ function LicensingShell() {
     user
   } = useLicensingSession();
   const oauthConfig = useMemo(() => getLicensingOAuthConfig(), []);
+  const [mlKemSecretKey, setMlKemSecretKey] = useState<string | null>(() => peekMlKemSecretKey());
   const [form, setForm] = useState({
     name: '',
     partnerType: '',
@@ -49,6 +70,12 @@ function LicensingShell() {
     phone: '',
     email: ''
   });
+
+  useEffect(() => {
+    if (!signedIn || mlKemSecretKey) return;
+    const peeked = peekMlKemSecretKey();
+    if (peeked) setMlKemSecretKey(peeked);
+  }, [signedIn, mlKemSecretKey]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -77,6 +104,7 @@ function LicensingShell() {
           apiEndpoint={API_ENDPOINT}
           authToken={token}
           pnIdentifier={user?.pn_identifier}
+          mlKemSecretKey={mlKemSecretKey}
         />
       ) : null}
       <div className="absolute inset-0 bg-black/40" aria-hidden="true" />
@@ -117,7 +145,11 @@ function LicensingShell() {
                 <UnlockButton
                   config={oauthConfig}
                   onBeforeNavigate={handleBeforeUnlock}
-                  onPopupResult={(r) => void onPopupResult(r)}
+                  onPopupResult={(r) => {
+                    const key = peekMlKemSecretKey(r.messagingHandoff);
+                    if (key) setMlKemSecretKey(key);
+                    void onPopupResult(r);
+                  }}
                   onPopupFlowFailed={() => setError('Sign-in window was blocked or closed.')}
                   className="px-4 py-2 rounded-lg border border-white/30 text-sm font-medium text-white hover:bg-white/10"
                 >

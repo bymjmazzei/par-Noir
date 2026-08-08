@@ -9,10 +9,10 @@
  * modal state; every dependency it touches is passed in explicitly.
  */
 import React from 'react';
-import { API_ENDPOINT } from '../../../../config/api';
 import type { IndexingPermissions, ThirdPartyIndexer } from '../../../../types/indexers';
 import { AggregatedFile, PublicMetadata } from '../../../../types/aggregator';
 import { resolveOwnerApiToken } from '../../../../services/ownerApiToken';
+import { getOwnerApiPnIdentifier, ownerFetch } from '../../../../services/ownerApiService';
 
 export interface SaveShareSettingsDeps {
   authenticatedUser: any;
@@ -123,53 +123,50 @@ export async function saveShareSettings({
       if (shareNSFW !== currentNSFW) {
         try {
           const ownerToken = resolveOwnerApiToken();
-          const response = await fetch(
-            `${API_ENDPOINT}/api/aggregator/metadata-index`,
-            {
-              method: 'PUT',
-              headers: {
-                'Content-Type': 'application/json',
-                ...(ownerToken && {
-                  'Authorization': `Bearer ${ownerToken}`
-                })
-              },
-              body: JSON.stringify({
+          if (!ownerToken) {
+            console.error('❌ [ShareSettings] Failed to update NSFW flag: API session not ready');
+          } else {
+            const response = await ownerFetch(
+              ownerToken,
+              'PUT',
+              '/api/aggregator/metadata-index',
+              {
                 fileId: targetFileId,
                 isNSFW: shareNSFW,
                 isPublic: true
-              }),
-            }
-          );
+              },
+              { pnIdentifier: getOwnerApiPnIdentifier() ?? undefined }
+            );
 
-          if (!response.ok) {
-            const errorText = await response.text();
-            console.error('❌ [ShareSettings] Failed to update NSFW flag:', errorText);
-          } else {
-            // Update local metadata cache
-            setFileMetadataMap((prev) => {
-              const next = new Map(prev);
-              const targets = new Set<string>();
-              targets.add(sharingFile.id);
-              targets.add(targetFileId);
-              if (sharingFile.backendFileId) {
-                targets.add(sharingFile.backendFileId);
-              }
-              if (existingMetadata?.fileId) {
-                targets.add(existingMetadata.fileId);
-              }
-
-              targets.forEach((key) => {
-                const current = next.get(key);
-                if (current) {
-                  next.set(key, {
-                    ...current,
-                    isNSFW: shareNSFW
-                  });
+            if (!response.ok) {
+              const errorText = await response.text();
+              console.error('❌ [ShareSettings] Failed to update NSFW flag:', errorText);
+            } else {
+              setFileMetadataMap((prev) => {
+                const next = new Map(prev);
+                const targets = new Set<string>();
+                targets.add(sharingFile.id);
+                targets.add(targetFileId);
+                if (sharingFile.backendFileId) {
+                  targets.add(sharingFile.backendFileId);
                 }
-              });
+                if (existingMetadata?.fileId) {
+                  targets.add(existingMetadata.fileId);
+                }
 
-              return next;
-            });
+                targets.forEach((key) => {
+                  const current = next.get(key);
+                  if (current) {
+                    next.set(key, {
+                      ...current,
+                      isNSFW: shareNSFW
+                    });
+                  }
+                });
+
+                return next;
+              });
+            }
           }
         } catch (nsfwError) {
           console.error('❌ [ShareSettings] Failed to update NSFW flag:', nsfwError);
@@ -185,17 +182,16 @@ export async function saveShareSettings({
 
         const response = await retryHelper(
           async () => {
-            const res = await fetch(
-              `${API_ENDPOINT}/api/third-party/files/${encodeURIComponent(targetFileId)}/index-visibility`,
-              {
-                method: 'PUT',
-                headers: {
-                  'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                  indexingPermissions: nextPermissions
-                })
-              }
+            const ownerToken = resolveOwnerApiToken();
+            if (!ownerToken) {
+              throw new Error('par Noir API session not ready');
+            }
+            const res = await ownerFetch(
+              ownerToken,
+              'PUT',
+              `/api/third-party/files/${encodeURIComponent(targetFileId)}/index-visibility`,
+              { indexingPermissions: nextPermissions },
+              { pnIdentifier: getOwnerApiPnIdentifier() ?? undefined }
             );
 
             // If 429, throw to trigger retry

@@ -5,7 +5,8 @@
  */
 
 import { API_ENDPOINT } from '../../config/api';
-import { ownerGet } from '../ownerApiService';
+import { ownerFetch, ownerGet } from '../ownerApiService';
+import { resolveOwnerApiToken } from '../ownerApiToken';
 
 /**
  * Engagement Metrics (tracked in companion metadata)
@@ -1172,11 +1173,17 @@ export class GoogleDriveMetadataService {
     pnIdentifier: string,
     fileMetadata: CompanionMetadata
   ): Promise<void> {
-    const res = await fetch(`${API_ENDPOINT}/api/storage/owner-index/${encodeURIComponent(pnIdentifier)}/entries`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ entry: fileMetadata })
-    });
+    const ownerToken = resolveOwnerApiToken(pnIdentifier);
+    if (!ownerToken) {
+      throw new Error('par Noir API session not ready');
+    }
+    const res = await ownerFetch(
+      ownerToken,
+      'POST',
+      `/api/storage/owner-index/${encodeURIComponent(pnIdentifier)}/entries`,
+      { entry: fileMetadata },
+      { pnIdentifier }
+    );
     if (!res.ok) {
       const err = await res.text();
       throw new Error(`Failed to update owner index: ${res.status} ${err}`);
@@ -1243,11 +1250,17 @@ export class GoogleDriveMetadataService {
     pnIdentifier: string,
     fileMetadata: CompanionMetadata
   ): Promise<void> {
-    const res = await fetch(`${API_ENDPOINT}/api/storage/public-index/${encodeURIComponent(pnIdentifier)}/entries`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ entry: fileMetadata })
-    });
+    const ownerToken = resolveOwnerApiToken(pnIdentifier);
+    if (!ownerToken) {
+      throw new Error('par Noir API session not ready');
+    }
+    const res = await ownerFetch(
+      ownerToken,
+      'POST',
+      `/api/storage/public-index/${encodeURIComponent(pnIdentifier)}/entries`,
+      { entry: fileMetadata },
+      { pnIdentifier }
+    );
     if (!res.ok) {
       const err = await res.text();
       throw new Error(`Failed to update public index: ${res.status} ${err}`);

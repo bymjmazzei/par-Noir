@@ -14,6 +14,7 @@ import { pickImageFromNative } from '../hooks/useNativeFilePicker';
 import { Capacitor } from '@capacitor/core';
 import { useDriveAccounts } from '../hooks/useDriveAccounts';
 import { useUserState } from '../contexts/UserStateContext';
+import { ownerApiHeadersAsync } from '../services/ownerApiHeaders';
 
 type TabId = MediaPickSource;
 
@@ -80,7 +81,7 @@ export function MessageMediaPickerModal({
     const pn = userPnIdentifier.startsWith('pn-') ? userPnIdentifier : `pn-${userPnIdentifier}`;
     const res = await fetch(
       `${API_ENDPOINT}/api/storage/owner-index/${encodeURIComponent(pn)}?contentClass=media`,
-      { headers: { Authorization: `Bearer ${token}` } }
+      { headers: await ownerApiHeadersAsync(token, userPnIdentifier) }
     );
     if (!res.ok) {
       throw new Error('Failed to load your media library');
@@ -102,7 +103,7 @@ export function MessageMediaPickerModal({
     }
     const q = accountId ? `scope=sharedWithMe&accountId=${encodeURIComponent(accountId)}` : 'scope=sharedWithMe';
     const res = await fetch(`${API_ENDPOINT}/api/drive/files?${q}`, {
-      headers: { Authorization: `Bearer ${token}` }
+      headers: await ownerApiHeadersAsync(token, userPnIdentifier)
     });
     if (!res.ok) {
       throw new Error('Failed to load shared files');
@@ -110,7 +111,7 @@ export function MessageMediaPickerModal({
     const data = await res.json();
     const files = (data.files || []) as DriveListFile[];
     setSharedFiles(files.filter((f) => isMediaMimeType(f.mimeType)));
-  }, [accountId]);
+  }, [accountId, userPnIdentifier]);
 
   const loadSaved = useCallback(async () => {
     const saved = await getSavedFeed(userPnIdentifier);
@@ -124,7 +125,7 @@ export function MessageMediaPickerModal({
     for (const fileId of ids.slice(0, 100)) {
       try {
         const res = await fetch(`${API_ENDPOINT}/api/aggregator/metadata-index/${encodeURIComponent(fileId)}`, {
-          headers: { Authorization: `Bearer ${token}` }
+          headers: await ownerApiHeadersAsync(token, userPnIdentifier)
         });
         if (res.ok) {
           const entry = await res.json();

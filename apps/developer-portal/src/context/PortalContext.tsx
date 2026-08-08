@@ -8,6 +8,7 @@ import {
   type ReactNode
 } from 'react';
 import type { PnOAuthPopupResult } from '@par-noir/oauth-ui';
+import { ownerCloudHeaders } from '@par-noir/device-cloud-credentials';
 import { API_ENDPOINT } from '../config/api';
 import { PN_CLIENT_ID } from '../config/client';
 
@@ -15,6 +16,7 @@ const STORAGE_ACCESS = 'dev_portal_access_token';
 const STORAGE_REFRESH = 'dev_portal_refresh_token';
 const STORAGE_OAUTH_CTX = 'dev_portal_oauth';
 const STORAGE_POPUP_STATE = 'pn_oauth_state';
+const STORAGE_PN = 'dev_portal_pn_identifier';
 
 function oauthStatesMatch(incoming: string, expected: string): boolean {
   const a = incoming.trim();
@@ -38,6 +40,13 @@ export function clearSession(): void {
   sessionStorage.removeItem(STORAGE_REFRESH);
   sessionStorage.removeItem(STORAGE_OAUTH_CTX);
   sessionStorage.removeItem(STORAGE_POPUP_STATE);
+  sessionStorage.removeItem(STORAGE_PN);
+}
+
+function getStoredPnIdentifier(): string | null {
+  if (typeof sessionStorage === 'undefined') return null;
+  const t = sessionStorage.getItem(STORAGE_PN);
+  return t && t.trim() ? t.trim() : null;
 }
 
 export interface UserInfo {
@@ -123,12 +132,13 @@ export function PortalProvider({ children }: { children: ReactNode }) {
 
   const authHeaders = useCallback((): HeadersInit => {
     const t = getAccessToken();
-    const h: HeadersInit = { 'Content-Type': 'application/json' };
-    if (t) {
-      (h as Record<string, string>)['Authorization'] = `Bearer ${t}`;
-    }
-    return h;
-  }, []);
+    if (!t) return { 'Content-Type': 'application/json' };
+    return ownerCloudHeaders({
+      authToken: t,
+      pnIdentifier: user?.pn_identifier || getStoredPnIdentifier(),
+      extra: { 'Content-Type': 'application/json' }
+    });
+  }, [user?.pn_identifier]);
 
   const completePortalOAuth = useCallback(async (result: PnOAuthPopupResult) => {
     if (result.error) {
@@ -227,8 +237,15 @@ export function PortalProvider({ children }: { children: ReactNode }) {
         return;
       }
       if (uRes.ok) {
-        setUser((await uRes.json()) as UserInfo);
+        const info = (await uRes.json()) as UserInfo;
+        if (info.pn_identifier) {
+          sessionStorage.setItem(STORAGE_PN, info.pn_identifier);
+        } else {
+          sessionStorage.removeItem(STORAGE_PN);
+        }
+        setUser(info);
       } else {
+        sessionStorage.removeItem(STORAGE_PN);
         setUser(null);
       }
       if (kRes.ok) {

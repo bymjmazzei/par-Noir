@@ -1,6 +1,7 @@
 import { PNOAuthService } from './pnOAuthService';
 import { EncryptionManager } from '../utils/encryptionManager';
 import { getEncryptionService } from '../services/encryptionService';
+import { getOwnerApiHeaders } from './ownerApiHeaders';
 
 import { API_ENDPOINT } from '../config/api';
 
@@ -110,10 +111,7 @@ export async function createCollection(
     const encryptedFileName = `${fileName}.encrypted`;
     const uploadResponse = await fetch(`${API_ENDPOINT}/api/drive/files`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${accessToken}`
-      },
+      headers: getOwnerApiHeaders({ 'Content-Type': 'application/json' }),
       body: JSON.stringify({
         fileData: base64File,
         fileName: encryptedFileName,
@@ -137,10 +135,7 @@ export async function createCollection(
     // Create metadata entry
     const metadataResponse = await fetch(`${API_ENDPOINT}/api/aggregator/metadata-index/${fileId}`, {
       method: 'PUT',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${accessToken}`
-      },
+      headers: getOwnerApiHeaders({ 'Content-Type': 'application/json' }),
       body: JSON.stringify({
         name: metadata?.title || collectionData.title || 'Collection',
         description: metadata?.description || collectionData.description || '',

@@ -8,6 +8,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { useHorizontalSwipe } from '../hooks/useHorizontalSwipe';
 import { API_ENDPOINT } from '../config/api';
 import type { ShareToken } from '../utils/tokenDecryption';
+import { getOwnerApiHeaders, ownerApiHeadersAsync } from '../services/ownerApiHeaders';
 
 interface HorizontalThumbnailFeedProps {
   thumbnailIds: string[]; // Array of thumbnail file IDs
@@ -50,8 +51,8 @@ export function HorizontalThumbnailFeed({
     try {
       const { PNOAuthService } = await import('../services/pnOAuthService');
 
-      // Get access token FIRST (like FullScreenFeed)
-      let accessToken = await PNOAuthService.getValidAccessToken();
+      // Ensure session token is valid before Drive-backed fetches
+      await PNOAuthService.getValidAccessToken();
 
       // Get accountId inside function (like FullScreenFeed)
       let accountIdToUse = accountIdHint || accountId;
@@ -61,7 +62,7 @@ export function HorizontalThumbnailFeed({
           if (session?.did || session?.pnIdentifier) {
             const userId = session.pnIdentifier || session.did;
             const accountsResponse = await fetch(`${API_ENDPOINT}/api/storage/accounts/${userId}`, {
-              headers: { 'Authorization': `Bearer ${accessToken}` }
+              headers: getOwnerApiHeaders()
             });
             if (accountsResponse.ok) {
               const accountsData = await accountsResponse.json();
@@ -84,7 +85,7 @@ export function HorizontalThumbnailFeed({
 
       // Fetch with auth token
       let response = await fetch(thumbnailUrl, {
-        headers: { 'Authorization': `Bearer ${accessToken}` }
+        headers: getOwnerApiHeaders()
       });
 
       // Retry with refreshed token on 401
@@ -92,7 +93,7 @@ export function HorizontalThumbnailFeed({
         const refreshedToken = await PNOAuthService.getValidAccessToken(true);
         if (refreshedToken) {
           response = await fetch(thumbnailUrl, {
-            headers: { 'Authorization': `Bearer ${refreshedToken}` }
+            headers: await ownerApiHeadersAsync(refreshedToken)
           });
         }
       }

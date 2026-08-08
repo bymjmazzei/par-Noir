@@ -77,6 +77,38 @@ async function markLayoutDeviceUnlockAlertRead(
 export function setupNotificationRoutes(app: express.Application, deps: NotificationRouteDeps) {
   const { extractAccountId, getMetadataFolder, driveNotInitialized } = deps;
 
+  async function resolveOwnerToken(
+    req: express.Request,
+    res: express.Response,
+    pnIdentifier: string,
+    account: Record<string, unknown> | null | undefined,
+    accountId: string | undefined
+  ): Promise<{
+    token: {
+      access_token: string;
+      refresh_token?: string;
+      expires_at?: number;
+      expires_in?: number;
+    };
+    userAccessToken: string;
+  } | null> {
+    if (!account) {
+      return {
+        token: { access_token: '' },
+        userAccessToken: ''
+      };
+    }
+    try {
+      const { resolveOwnerDriveToken } = await import('./ownerDriveToken');
+      const resolved = await resolveOwnerDriveToken(req, pnIdentifier, { accountId, account });
+      return { token: resolved.token, userAccessToken: resolved.token.access_token };
+    } catch (error) {
+      const { respondDriveTokenError } = await import('./ownerDriveToken');
+      if (respondDriveTokenError(res, error)) return null;
+      throw error;
+    }
+  }
+
     app.get('/api/notifications', async (req, res) => {
       try {
         const userPnIdentifier = req.headers['x-user-pn-identifier'] as string || req.query.userPnIdentifier as string;
@@ -120,15 +152,9 @@ export function setupNotificationRoutes(app: express.Application, deps: Notifica
 
         const account = googleDriveAccounts.length > 0 ? googleDriveAccounts[0] : null;
         const accountId = account ? extractAccountId(account) : undefined;
-        
-        // Build token object from account
-        const token = {
-          access_token: account?.access_token || account?.accessToken || '',
-          refresh_token: account?.refresh_token || account?.refreshToken,
-          expires_at: account?.expires_at,
-          expires_in: account?.expires_in
-        };
-        const userAccessToken = token.access_token; // Keep for backward compatibility
+        const resolved = await resolveOwnerToken(req, res, pnIdentifier, account, accountId);
+        if (!resolved) return;
+        const { token, userAccessToken } = resolved;
         
         let metadataFolderId = '';
         if (account) {
@@ -218,7 +244,6 @@ export function setupNotificationRoutes(app: express.Application, deps: Notifica
         }
 
         const { NotificationService } = await import('./notificationService');
-        const { googleDriveProxyService } = await import('./googleDriveProxy');
         const { storageCredentialsService } = await import('./storageCredentialsService');
 
         // Use pn identifier directly
@@ -239,15 +264,9 @@ export function setupNotificationRoutes(app: express.Application, deps: Notifica
 
         const account = googleDriveAccounts.length > 0 ? googleDriveAccounts[0] : null;
         const accountId = account ? extractAccountId(account) : undefined;
-        
-        // Build token object from account
-        const token = {
-          access_token: account?.access_token || account?.accessToken || '',
-          refresh_token: account?.refresh_token || account?.refreshToken,
-          expires_at: account?.expires_at,
-          expires_in: account?.expires_in
-        };
-        const userAccessToken = token.access_token; // Keep for backward compatibility
+        const resolved = await resolveOwnerToken(req, res, pnIdentifier, account, accountId);
+        if (!resolved) return;
+        const { token, userAccessToken } = resolved;
         
         let metadataFolderId = '';
         if (account) {
@@ -282,7 +301,6 @@ export function setupNotificationRoutes(app: express.Application, deps: Notifica
         }
 
         const { NotificationService } = await import('./notificationService');
-        const { googleDriveProxyService } = await import('./googleDriveProxy');
         const { storageCredentialsService } = await import('./storageCredentialsService');
 
         // Use pn identifier directly
@@ -311,15 +329,9 @@ export function setupNotificationRoutes(app: express.Application, deps: Notifica
 
         const account = googleDriveAccounts.length > 0 ? googleDriveAccounts[0] : null;
         const accountId = account ? extractAccountId(account) : undefined;
-        
-        // Build token object from account
-        const token = {
-          access_token: account?.access_token || account?.accessToken || '',
-          refresh_token: account?.refresh_token || account?.refreshToken,
-          expires_at: account?.expires_at,
-          expires_in: account?.expires_in
-        };
-        const userAccessToken = token.access_token; // Keep for backward compatibility
+        const resolved = await resolveOwnerToken(req, res, pnIdentifier, account, accountId);
+        if (!resolved) return;
+        const { token, userAccessToken } = resolved;
         
         let metadataFolderId = '';
         if (account) {
@@ -377,7 +389,6 @@ export function setupNotificationRoutes(app: express.Application, deps: Notifica
         }
 
         const { NotificationService } = await import('./notificationService');
-        const { googleDriveProxyService } = await import('./googleDriveProxy');
         const { storageCredentialsService } = await import('./storageCredentialsService');
 
         // Use pn identifier directly
@@ -403,15 +414,9 @@ export function setupNotificationRoutes(app: express.Application, deps: Notifica
 
         const account = googleDriveAccounts.length > 0 ? googleDriveAccounts[0] : null;
         const accountId = account ? extractAccountId(account) : undefined;
-        
-        // Build token object from account
-        const token = {
-          access_token: account?.access_token || account?.accessToken || '',
-          refresh_token: account?.refresh_token || account?.refreshToken,
-          expires_at: account?.expires_at,
-          expires_in: account?.expires_in
-        };
-        const userAccessToken = token.access_token; // Keep for backward compatibility
+        const resolved = await resolveOwnerToken(req, res, pnIdentifier, account, accountId);
+        if (!resolved) return;
+        const { token, userAccessToken } = resolved;
         
         let metadataFolderId = '';
         if (account) {
@@ -446,7 +451,6 @@ export function setupNotificationRoutes(app: express.Application, deps: Notifica
         }
 
         const { NotificationService } = await import('./notificationService');
-        const { googleDriveProxyService } = await import('./googleDriveProxy');
         const { storageCredentialsService } = await import('./storageCredentialsService');
 
         // Use pn identifier directly
@@ -472,15 +476,9 @@ export function setupNotificationRoutes(app: express.Application, deps: Notifica
 
         const account = googleDriveAccounts.length > 0 ? googleDriveAccounts[0] : null;
         const accountId = account ? extractAccountId(account) : undefined;
-        
-        // Build token object from account
-        const token = {
-          access_token: account?.access_token || account?.accessToken || '',
-          refresh_token: account?.refresh_token || account?.refreshToken,
-          expires_at: account?.expires_at,
-          expires_in: account?.expires_in
-        };
-        const userAccessToken = token.access_token; // Keep for backward compatibility
+        const resolved = await resolveOwnerToken(req, res, pnIdentifier, account, accountId);
+        if (!resolved) return;
+        const { token, userAccessToken } = resolved;
         
         let metadataFolderId = '';
         if (account) {
@@ -521,7 +519,6 @@ export function setupNotificationRoutes(app: express.Application, deps: Notifica
         }
 
         const { NotificationService } = await import('./notificationService');
-        const { googleDriveProxyService } = await import('./googleDriveProxy');
         const { storageCredentialsService } = await import('./storageCredentialsService');
 
         // Use pn identifier directly
@@ -566,15 +563,9 @@ export function setupNotificationRoutes(app: express.Application, deps: Notifica
 
         const account = googleDriveAccounts.length > 0 ? googleDriveAccounts[0] : null;
         const accountId = account ? extractAccountId(account) : undefined;
-        
-        // Build token object from account
-        const token = {
-          access_token: account?.access_token || account?.accessToken || '',
-          refresh_token: account?.refresh_token || account?.refreshToken,
-          expires_at: account?.expires_at,
-          expires_in: account?.expires_in
-        };
-        const userAccessToken = token.access_token; // Keep for backward compatibility
+        const resolved = await resolveOwnerToken(req, res, pnIdentifier, account, accountId);
+        if (!resolved) return;
+        const { token, userAccessToken } = resolved;
         
         let metadataFolderId = '';
         if (account) {
@@ -608,7 +599,6 @@ export function setupNotificationRoutes(app: express.Application, deps: Notifica
         }
 
         const { NotificationService } = await import('./notificationService');
-        const { googleDriveProxyService } = await import('./googleDriveProxy');
         const { storageCredentialsService } = await import('./storageCredentialsService');
 
         // Use pn identifier directly
@@ -634,15 +624,9 @@ export function setupNotificationRoutes(app: express.Application, deps: Notifica
 
         const account = googleDriveAccounts.length > 0 ? googleDriveAccounts[0] : null;
         const accountId = account ? extractAccountId(account) : undefined;
-        
-        // Build token object from account
-        const token = {
-          access_token: account?.access_token || account?.accessToken || '',
-          refresh_token: account?.refresh_token || account?.refreshToken,
-          expires_at: account?.expires_at,
-          expires_in: account?.expires_in
-        };
-        const userAccessToken = token.access_token; // Keep for backward compatibility
+        const resolved = await resolveOwnerToken(req, res, pnIdentifier, account, accountId);
+        if (!resolved) return;
+        const { token, userAccessToken } = resolved;
         
         let metadataFolderId = '';
         if (account) {

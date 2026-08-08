@@ -11,19 +11,42 @@ import { RayView } from './components/RayView';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { fetchAdminCheck, fetchAdminStats, fetchReputation, seedDemoQueue, ensurePrismLedgers, ReputationResult } from './services/prismApi';
 import { useRayApply } from './hooks/useRayApply';
-import { UnlockButton, ThirdPartyCloudReconnectHost } from '@par-noir/oauth-ui';
+import {
+  UnlockButton,
+  ThirdPartyCloudReconnectHost,
+  normalizeMessagingHandoffPayload,
+  parseMessagingHandoffFromStorage,
+  PN_MESSAGING_OAUTH_HANDOFF_STORAGE,
+  type PnOAuthPopupResult,
+} from '@par-noir/oauth-ui';
 import { Capacitor } from '@capacitor/core';
 import { getPrismOAuthConfig, prismOnBeforeNavigate } from './utils/oauth';
 import { exchangeCodeForToken } from './services/prismAuthService';
 import { SplashScreen } from '@capacitor/splash-screen';
 import { API_ENDPOINT } from './config/api';
 
+function peekMlKemSecretKey(messagingHandoff?: unknown): string | null {
+  const fromResult = normalizeMessagingHandoffPayload(messagingHandoff);
+  if (fromResult?.session?.mlKemSecretKey) return fromResult.session.mlKemSecretKey;
+  try {
+    return (
+      parseMessagingHandoffFromStorage(
+        localStorage.getItem(PN_MESSAGING_OAUTH_HANDOFF_STORAGE)
+      )?.session?.mlKemSecretKey ?? null
+    );
+  } catch {
+    return null;
+  }
+}
+
 function LockedView({
   onApplyOpen,
   onOAuthComplete,
+  onMessagingHandoff,
 }: {
   onApplyOpen: () => void;
   onOAuthComplete: () => Promise<void>;
+  onMessagingHandoff?: (result: PnOAuthPopupResult) => void;
 }) {
   return (
     <div
@@ -57,6 +80,7 @@ function LockedView({
               onPopupResult={async (r) => {
                 if (r.error) return;
                 if (!r.code) return;
+                onMessagingHandoff?.(r);
                 try {
                   await exchangeCodeForToken(r.code);
                   await onOAuthComplete();
@@ -150,7 +174,7 @@ function LockedView({
   );
 }
 
-function UnlockedView() {
+function UnlockedView({ mlKemSecretKey }: { mlKemSecretKey?: string | null }) {
   const { session, signOut } = useAuth();
   const [adminState, setAdminState] = useState<{ isAdmin: boolean; isBootstrapMode: boolean } | null>(null);
   const [stats, setStats] = useState<{ pending: number; approved: number; denied: number } | null>(null);
@@ -216,6 +240,7 @@ function UnlockedView() {
         apiEndpoint={API_ENDPOINT}
         authToken={session?.accessToken}
         pnIdentifier={session?.pnIdentifier}
+        mlKemSecretKey={mlKemSecretKey}
       />
       <header className="border-b border-neutral-800 px-6 py-4">
         <div className="max-w-4xl mx-auto flex items-center justify-between">
@@ -326,11 +351,18 @@ function UnlockedView() {
 
 function AppContent() {
   const [applyOpen, setApplyOpen] = useState(false);
+  const [mlKemSecretKey, setMlKemSecretKey] = useState<string | null>(() => peekMlKemSecretKey());
   const { session, loading, refreshSession } = useAuth();
 
   useEffect(() => {
     SplashScreen.hide().catch(() => {});
   }, []);
+
+  useEffect(() => {
+    if (!session || mlKemSecretKey) return;
+    const peeked = peekMlKemSecretKey();
+    if (peeked) setMlKemSecretKey(peeked);
+  }, [session, mlKemSecretKey]);
 
   if (loading) {
     return (
@@ -344,7 +376,7 @@ function AppContent() {
   }
 
   if (session) {
-    return <UnlockedView />;
+    return <UnlockedView mlKemSecretKey={mlKemSecretKey} />;
   }
 
   return (
@@ -352,6 +384,10 @@ function AppContent() {
       <LockedView
         onApplyOpen={() => setApplyOpen(true)}
         onOAuthComplete={refreshSession}
+        onMessagingHandoff={(r) => {
+          const key = peekMlKemSecretKey(r.messagingHandoff);
+          if (key) setMlKemSecretKey(key);
+        }}
       />
       <ApplyModal open={applyOpen} onClose={() => setApplyOpen(false)} />
     </>

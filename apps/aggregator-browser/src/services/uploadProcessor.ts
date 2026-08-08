@@ -9,6 +9,7 @@ import { PNOAuthService } from './pnOAuthService';
 import { getEncryptionService } from './encryptionService';
 import { API_ENDPOINT } from '../config/api';
 import { uploadStorageFile } from './storageApiClient';
+import { getOwnerApiHeaders } from './ownerApiHeaders';
 
 interface EncryptedFilePackage {
   encrypted: string;
@@ -825,13 +826,10 @@ async function uploadFile(
 /**
  * Helper: Create metadata entry
  */
-async function createMetadata(fileId: string, metadata: any, accessToken: string): Promise<void> {
+async function createMetadata(fileId: string, metadata: any, _accessToken: string): Promise<void> {
   const response = await fetch(`${API_ENDPOINT}/api/aggregator/metadata-index/${fileId}`, {
     method: 'PUT',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${accessToken}`
-    },
+    headers: getOwnerApiHeaders({ 'Content-Type': 'application/json' }),
     body: JSON.stringify(metadata)
   });
 

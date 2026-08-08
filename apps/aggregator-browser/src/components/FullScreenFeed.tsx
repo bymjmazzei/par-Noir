@@ -22,6 +22,7 @@ import { PreferenceTile, PreferenceQuestion } from './PreferenceTile';
 import { PreferenceQuestionService, PreferenceState } from '../services/preferenceQuestionService';
 import { useUserState } from '../contexts/UserStateContext';
 import { API_ENDPOINT } from '../config/api';
+import { getOwnerApiHeaders, ownerApiHeadersAsync } from '../services/ownerApiHeaders';
 
 interface FullScreenFeedProps {
   files: IndexedFile[];
@@ -102,7 +103,7 @@ export function FullScreenFeed({
       }
       
       const metadataResponse = await fetch(`${API_ENDPOINT}/api/aggregator/metadata-index/${fileId}`, {
-        headers: { 'Authorization': `Bearer ${accessToken}` }
+        headers: getOwnerApiHeaders()
       });
       
       console.log(`[DEBUG] Metadata response status: ${metadataResponse.status}`);
@@ -866,15 +867,12 @@ export function FullScreenFeed({
           if (thumbnailsWithoutTokens.length > 0) {
             console.log(`[FullScreenFeed] Loading ${thumbnailsWithoutTokens.length} thumbnails via metadata fetch (fallback)`);
             const { PNOAuthService } = await import('../services/pnOAuthService');
-            const accessToken = await PNOAuthService.getValidAccessToken().catch(() => null);
+            await PNOAuthService.getValidAccessToken().catch(() => null);
             
             await Promise.all(thumbnailsWithoutTokens.map(async (cfId: string) => {
               try {
                 // Fetch metadata
-                const headers: HeadersInit = {};
-                if (accessToken) {
-                  headers['Authorization'] = `Bearer ${accessToken}`;
-                }
+                const headers = getOwnerApiHeaders();
                 
                 const metadataResponse = await fetch(`${API_ENDPOINT}/api/aggregator/metadata-index/${cfId}`, { headers });
                 if (!metadataResponse.ok) {
@@ -1152,15 +1150,12 @@ export function FullScreenFeed({
                   if (thumbnailsWithoutTokens.length > 0) {
                     console.log(`[FullScreenFeed] Loading ${thumbnailsWithoutTokens.length} thumbnails via metadata fetch (fallback)`);
                     const { PNOAuthService } = await import('../services/pnOAuthService');
-                    const accessToken = await PNOAuthService.getValidAccessToken().catch(() => null);
+                    await PNOAuthService.getValidAccessToken().catch(() => null);
                     
                     await Promise.all(thumbnailsWithoutTokens.map(async (cfId: string) => {
                       try {
                         // Fetch metadata
-                        const headers: HeadersInit = {};
-                        if (accessToken) {
-                          headers['Authorization'] = `Bearer ${accessToken}`;
-                        }
+                        const headers = getOwnerApiHeaders();
                         
                         const metadataResponse = await fetch(`${API_ENDPOINT}/api/aggregator/metadata-index/${cfId}`, { headers });
                         if (!metadataResponse.ok) {
@@ -1282,7 +1277,7 @@ export function FullScreenFeed({
           
           // Fetch metadata for this collection file to get publicToken/thumbnailFileId
           const metadataResponse = await fetch(`${API_ENDPOINT}/api/aggregator/metadata-index/${fileId}`, {
-            headers: { 'Authorization': `Bearer ${accessToken}` }
+            headers: getOwnerApiHeaders()
           });
           
           if (!metadataResponse.ok) {
@@ -1304,7 +1299,7 @@ export function FullScreenFeed({
             if (pnIdentifier && !accountIdCacheRef.current) {
               try {
                 const accountResponse = await fetch(`${API_ENDPOINT}/api/users/${encodeURIComponent(pnIdentifier)}/accounts`, {
-                  headers: { 'Authorization': `Bearer ${accessToken}` }
+                  headers: getOwnerApiHeaders()
                 });
                 
                 if (accountResponse.ok) {
@@ -1366,14 +1361,14 @@ export function FullScreenFeed({
             }
             
             let response = await fetch(thumbnailUrl, {
-              headers: { 'Authorization': `Bearer ${accessToken}` }
+              headers: getOwnerApiHeaders()
             });
             
             if (response.status === 401) {
               const refreshedToken = await PNOAuthService.getValidAccessToken(true);
               if (refreshedToken) {
                 response = await fetch(thumbnailUrl, {
-                  headers: { 'Authorization': `Bearer ${refreshedToken}` }
+                  headers: await ownerApiHeadersAsync(refreshedToken)
                 });
               }
             }
@@ -1439,14 +1434,14 @@ export function FullScreenFeed({
           }
           
           let response = await fetch(thumbnailUrl, {
-            headers: { 'Authorization': `Bearer ${accessToken}` }
+            headers: getOwnerApiHeaders()
           });
           
           if (response.status === 401) {
             const refreshedToken = await PNOAuthService.getValidAccessToken(true);
             if (refreshedToken) {
               response = await fetch(thumbnailUrl, {
-                headers: { 'Authorization': `Bearer ${refreshedToken}` }
+                headers: await ownerApiHeadersAsync(refreshedToken)
               });
             }
           }
@@ -1732,10 +1727,7 @@ export function FullScreenFeed({
                   
                   try {
                     // Fetch metadata for this collection file (try with auth if available, but should work without for public files)
-                    const headers: HeadersInit = {};
-                    if (accessToken) {
-                      headers['Authorization'] = `Bearer ${accessToken}`;
-                    }
+                    const headers = getOwnerApiHeaders();
                     
                     const metadataResponse = await fetch(`${API_ENDPOINT}/api/aggregator/metadata-index/${cfId}`, {
                       headers
@@ -1773,7 +1765,7 @@ export function FullScreenFeed({
                       if (pnIdentifier && !accountIdCacheRef.current) {
                         try {
                           const accountResponse = await fetch(`${API_ENDPOINT}/api/users/${encodeURIComponent(pnIdentifier)}/accounts`, {
-                            headers: { 'Authorization': `Bearer ${accessToken}` }
+                            headers: getOwnerApiHeaders()
                           });
                           if (accountResponse.ok) {
                             const accounts = await accountResponse.json();
@@ -1843,14 +1835,14 @@ export function FullScreenFeed({
                       }
                       
                       let response = await fetch(thumbnailUrl, {
-                        headers: { 'Authorization': `Bearer ${accessToken}` }
+                        headers: getOwnerApiHeaders()
                       });
                       
                       if (response.status === 401) {
                         const refreshedToken = await PNOAuthService.getValidAccessToken(true);
                         if (refreshedToken) {
                           response = await fetch(thumbnailUrl, {
-                            headers: { 'Authorization': `Bearer ${refreshedToken}` }
+                            headers: await ownerApiHeadersAsync(refreshedToken)
                           });
                         }
                       }
@@ -1916,14 +1908,14 @@ export function FullScreenFeed({
                     }
                     
                     let response = await fetch(thumbnailUrl, {
-                      headers: { 'Authorization': `Bearer ${accessToken}` }
+                      headers: getOwnerApiHeaders()
                     });
                     
                     if (response.status === 401) {
                       const refreshedToken = await PNOAuthService.getValidAccessToken(true);
                       if (refreshedToken) {
                         response = await fetch(thumbnailUrl, {
-                          headers: { 'Authorization': `Bearer ${refreshedToken}` }
+                          headers: await ownerApiHeadersAsync(refreshedToken)
                         });
                       }
                     }
@@ -2008,7 +2000,7 @@ export function FullScreenFeed({
                         }
                         
                         const fileResponse = await fetch(fileUrl, {
-                          headers: { 'Authorization': `Bearer ${accessToken}` }
+                          headers: getOwnerApiHeaders()
                         });
                         
                         if (fileResponse.ok) {
@@ -2072,7 +2064,7 @@ export function FullScreenFeed({
               
               console.log(`[FullScreenFeed] Fetching collection data for ${fileId}`);
               const response = await fetch(`${API_ENDPOINT}/api/aggregator/metadata-index/${fileId}`, {
-                headers: { 'Authorization': `Bearer ${accessToken}` }
+                headers: getOwnerApiHeaders()
               });
               
               if (response.ok) {

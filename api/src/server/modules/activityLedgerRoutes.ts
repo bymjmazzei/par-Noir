@@ -35,7 +35,6 @@ export function setupActivityLedgerRoutes(app: express.Application, deps: Activi
         }
 
         const { ActivityLedgerService } = await import('./activityLedgerService');
-        const { googleDriveProxyService } = await import('./googleDriveProxy');
         const { storageCredentialsService } = await import('./storageCredentialsService');
 
         // Normalize pn identifier
@@ -56,16 +55,17 @@ export function setupActivityLedgerRoutes(app: express.Application, deps: Activi
 
         const account = googleDriveAccounts.length > 0 ? googleDriveAccounts[0] : null;
         const accountId = account ? extractAccountId(account) : undefined;
-        
-        // Build token object from account
-        const token = {
-          access_token: account?.access_token || account?.accessToken || '',
-          refresh_token: account?.refresh_token || account?.refreshToken,
-          expires_at: account?.expires_at,
-          expires_in: account?.expires_in
-        };
-        const userAccessToken = token.access_token; // Keep for backward compatibility
-        
+
+        const { resolveOwnerDriveToken, respondDriveTokenError } = await import('./ownerDriveToken');
+        let token;
+        try {
+          const resolved = await resolveOwnerDriveToken(req, pnIdentifier, { account, accountId });
+          token = resolved.token;
+        } catch (error) {
+          if (respondDriveTokenError(res, error)) return;
+          throw error;
+        }
+
         let metadataFolderId = '';
         if (account) {
           const _g = await getMetadataFolder(token, pnIdentifier, accountId);

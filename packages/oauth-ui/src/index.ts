@@ -81,6 +81,13 @@ export {
   cloudAccessHeaders,
   PN_CLOUD_ACCESS_TOKEN_HEADER,
 } from './cloudReconnect';
+export {
+  getCloudAccessTokenFromSession,
+  hasCloudCredentialsReady,
+  waitForCloudCredentialsReady,
+  ownerCloudHeaders,
+  ownerCloudHeadersAsync,
+} from '@par-noir/device-cloud-credentials';
 export type {
   CloudReconnectPromptProps,
   CloudReconnectPanelProps,
