@@ -167,12 +167,36 @@ export function useDriveTokenRefresh({
                   googleDriveAccounts: accounts
                 },
                 session: {
-                  sessionId: authenticatedUser.id,
+                  sessionId: 'pn-cloud-creds-v1',
                   pnName: sessionCreds.pnName,
                   passcode: sessionCreds.passcode
                 },
                 mode
               });
+              try {
+                const { publishCloudVaultForIdentity } = await import(
+                  '../../../services/deviceCloudCredentials'
+                );
+                const { resolveOwnerApiToken } = await import('../../../services/ownerApiToken');
+                const authTok = resolveOwnerApiToken(pnId);
+                if (authTok) {
+                  await publishCloudVaultForIdentity({
+                    identityId: pnId,
+                    authToken: authTok,
+                    pnName: sessionCreds.pnName,
+                    passcode: sessionCreds.passcode,
+                    credentials: {
+                      ...(existing || {}),
+                      socialCloudProvider: 'google_drive',
+                      socialCloudAccountId:
+                        existing?.socialCloudAccountId || backendId,
+                      googleDriveAccounts: accounts
+                    }
+                  });
+                }
+              } catch {
+                /* best-effort */
+              }
             }
           } catch (deviceSealErr) {
             console.warn('[FileStorageAggregator] Device cloud persist skipped:', deviceSealErr);

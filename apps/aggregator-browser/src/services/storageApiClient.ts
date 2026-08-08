@@ -1,4 +1,5 @@
 import { API_ENDPOINT } from '../config/api';
+import { ownerApiHeadersAsync } from './ownerApiHeaders';
 
 export type StorageProviderId =
   | 'google_drive'
@@ -7,6 +8,10 @@ export type StorageProviderId =
   | 'azure_blob'
   | 'onedrive'
   | 'ftp';
+
+async function driveAuthHeaders(authToken: string, pnIdentifier?: string): Promise<Record<string, string>> {
+  return ownerApiHeadersAsync(authToken, pnIdentifier);
+}
 
 function normalizeBackend(backend?: string): StorageProviderId {
   return (backend || 'google_drive') as StorageProviderId;
@@ -29,10 +34,7 @@ export async function uploadBlob(
   const endpoint = API_ENDPOINT;
   const res = await fetch(`${endpoint}/api/storage/blobs/${encodeURIComponent(pnIdentifier)}/upload`, {
     method: 'POST',
-    headers: {
-      Authorization: `Bearer ${authToken}`,
-      'Content-Type': 'application/json'
-    },
+    headers: await driveAuthHeaders(authToken, pnIdentifier),
     body: JSON.stringify({
       provider,
       accountId: opts?.accountId,
@@ -63,7 +65,7 @@ export async function downloadBlob(
   });
   const res = await fetch(
     `${endpoint}/api/storage/blobs/${encodeURIComponent(pnIdentifier)}/download?${q}`,
-    { headers: { Authorization: `Bearer ${authToken}` } }
+    { headers: await driveAuthHeaders(authToken, pnIdentifier) }
   );
   if (!res.ok) throw new Error('Blob download failed');
   return res.blob();
@@ -128,7 +130,7 @@ export async function fetchStorageFile(
   opts?: ResolveFileUrlOptions
 ): Promise<Response> {
   const url = resolveFileUrl(pnIdentifier, backend, backendFileId, opts?.accountId, opts);
-  return fetch(url, { headers: { Authorization: `Bearer ${authToken}` } });
+  return fetch(url, { headers: await driveAuthHeaders(authToken, pnIdentifier) });
 }
 
 export async function downloadStorageBlob(
@@ -168,10 +170,7 @@ export async function uploadDriveFile(
 ): Promise<{ id: string }> {
   const res = await fetch(`${API_ENDPOINT}/api/drive/files`, {
     method: 'POST',
-    headers: {
-      Authorization: `Bearer ${authToken}`,
-      'Content-Type': 'application/json'
-    },
+    headers: await driveAuthHeaders(authToken),
     body: JSON.stringify({
       fileData: opts.fileData,
       fileName: opts.fileName,
@@ -246,7 +245,7 @@ export async function deleteStorageFile(
     const q = accountId ? `?accountId=${encodeURIComponent(accountId)}` : '';
     const res = await fetch(`${API_ENDPOINT}/api/drive/files/${encodeURIComponent(backendFileId)}${q}`, {
       method: 'DELETE',
-      headers: { Authorization: `Bearer ${authToken}` }
+      headers: await driveAuthHeaders(authToken, pnIdentifier)
     });
     if (!res.ok) throw new Error('File delete failed');
     return;
@@ -261,7 +260,7 @@ export async function deleteStorageFile(
     `${API_ENDPOINT}/api/storage/blobs/${encodeURIComponent(pnIdentifier)}?${q}`,
     {
       method: 'DELETE',
-      headers: { Authorization: `Bearer ${authToken}` }
+      headers: await driveAuthHeaders(authToken, pnIdentifier)
     }
   );
   if (!res.ok) throw new Error('Blob delete failed');
@@ -314,7 +313,7 @@ export async function listStorageFiles(
   if (backend === 'google_drive') {
     const q = accountId ? `?accountId=${encodeURIComponent(accountId)}` : '';
     const res = await fetch(`${API_ENDPOINT}/api/drive/files${q}`, {
-      headers: { Authorization: `Bearer ${authToken}` }
+      headers: await driveAuthHeaders(authToken, pnIdentifier)
     });
     if (!res.ok) {
       const err = await res.text().catch(() => 'Unknown error');
@@ -338,7 +337,7 @@ export async function listStorageFiles(
   });
   const res = await fetch(
     `${API_ENDPOINT}/api/storage/blobs/${encodeURIComponent(pnIdentifier)}?${q}`,
-    { headers: { Authorization: `Bearer ${authToken}` } }
+    { headers: await driveAuthHeaders(authToken, pnIdentifier) }
   );
   if (!res.ok) {
     const err = await res.text().catch(() => 'Unknown error');
@@ -359,7 +358,7 @@ export async function fetchStorageAccounts(
   socialCloudProvider?: string | null;
 }> {
   const res = await fetch(`${API_ENDPOINT}/api/storage/accounts/${encodeURIComponent(pnIdentifier)}`, {
-    headers: { Authorization: `Bearer ${authToken}` }
+    headers: await driveAuthHeaders(authToken, pnIdentifier)
   });
   if (!res.ok) {
     return { connected: false, accounts: [], socialCloudProvider: null };

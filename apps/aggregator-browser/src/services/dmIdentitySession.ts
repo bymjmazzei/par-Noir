@@ -254,13 +254,10 @@ async function publishMlKemPublicKey(mlKemPublicKey: string): Promise<void> {
   const session = PNOAuthService.loadSession();
   const pnIdentifier = session?.pnIdentifier;
   if (!pnIdentifier) return;
-  const headers: HeadersInit = { 'Content-Type': 'application/json' };
-  if (session?.accessToken) {
-    headers['Authorization'] = `Bearer ${session.accessToken}`;
-  }
+  const { getOwnerApiHeaders } = await import('./ownerApiHeaders');
   const response = await fetch(`${API_ENDPOINT}/api/profile/ml-kem-public-key`, {
     method: 'POST',
-    headers,
+    headers: getOwnerApiHeaders(),
     body: JSON.stringify({ userPnIdentifier: pnIdentifier, mlKemPublicKey })
   });
   if (!response.ok) {

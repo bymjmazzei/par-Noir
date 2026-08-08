@@ -99,19 +99,43 @@ export async function sealAndStoreCloudCredentials(opts: {
   credentials: StorageCredentialsEnvelope;
   session: SealSession;
 }): Promise<SealedEnvelope | null> {
+  const canonical: SealSession = {
+    sessionId: 'pn-cloud-creds-v1',
+    pnName: opts.session.pnName,
+    passcode: opts.session.passcode
+  };
   if (!isNative()) {
     return persistCloudCredentials({
       identityId: opts.identityId,
       credentials: opts.credentials,
-      session: opts.session,
+      session: canonical,
       mode: 'sealed'
     });
   }
   setSessionCloudCredentials(opts.identityId, opts.credentials);
-  const envelope = await sealCredentials(opts.credentials, opts.session, null);
+  const envelope = await sealCredentials(opts.credentials, canonical, null);
   const store = await getNativeStore();
   await store.set(opts.identityId, envelope);
   return envelope;
+}
+
+/** Publish identity-sealed cloud vault to API so other first-party apps can hydrate. */
+export async function publishCloudVaultForIdentity(opts: {
+  identityId: string;
+  authToken: string;
+  pnName: string;
+  passcode: string;
+  credentials: StorageCredentialsEnvelope;
+}): Promise<void> {
+  const { publishCloudCredentialsVault } = await import('@par-noir/device-cloud-credentials');
+  await publishCloudCredentialsVault({
+    apiEndpoint: API_ENDPOINT,
+    authToken: opts.authToken,
+    pnIdentifier: opts.identityId,
+    pnName: opts.pnName,
+    passcode: opts.passcode,
+    credentials: opts.credentials
+  });
 }
 
 export async function loadUnsealedCloudCredentials(

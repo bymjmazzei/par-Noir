@@ -205,9 +205,7 @@ export function UserStateProvider({ children }: { children: ReactNode }) {
         }
 
         const response = await fetch(`${API_ENDPOINT}/api/users/${userState.pnIdentifier}/preferences`, {
-          headers: {
-            'Authorization': `Bearer ${session.accessToken}`
-          }
+          headers: (await import('../services/ownerApiHeaders')).getOwnerApiHeaders()
         });
 
         if (response.ok) {
@@ -272,9 +270,7 @@ export function UserStateProvider({ children }: { children: ReactNode }) {
           }
 
           const response = await fetch(`${API_ENDPOINT}/api/users/${userState.pnIdentifier}/tag-preferences`, {
-            headers: {
-              Authorization: `Bearer ${session.accessToken}`,
-            },
+            headers: (await import('../services/ownerApiHeaders')).getOwnerApiHeaders(),
           });
 
           if (response.ok) {
@@ -332,13 +328,12 @@ export function UserStateProvider({ children }: { children: ReactNode }) {
           return;
         }
 
+        const { getOwnerApiHeaders } = await import('../services/ownerApiHeaders');
         // OAuth only returns over_21 when granted and verificationLevel === verified
         const zkpResponse = await fetch(
           `${API_ENDPOINT}/oauth/zkp-data-points?data_points=over_21`,
           {
-            headers: {
-              'Authorization': `Bearer ${session.accessToken}`
-            }
+            headers: getOwnerApiHeaders()
           }
         );
 
@@ -357,10 +352,7 @@ export function UserStateProvider({ children }: { children: ReactNode }) {
             `${API_ENDPOINT}/api/users/${userState.pnIdentifier}/zkp-data-points/verify`,
             {
               method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${session.accessToken}`
-              },
+              headers: getOwnerApiHeaders(),
               body: JSON.stringify({
                 dataPointId: 'over_21',
                 condition: 'age >= 21'
@@ -525,7 +517,7 @@ export function UserStateProvider({ children }: { children: ReactNode }) {
           method: 'PUT',
           headers: {
             'Content-Type': 'application/json',
-            'Authorization': `Bearer ${session.accessToken}`
+            ...(await import('../services/ownerApiHeaders')).getOwnerApiHeaders()
           },
           body: JSON.stringify({
             hasAgeZKP,
@@ -576,7 +568,7 @@ export function UserStateProvider({ children }: { children: ReactNode }) {
           method: 'PUT',
           headers: {
             'Content-Type': 'application/json',
-            'Authorization': `Bearer ${session.accessToken}`
+            ...(await import('../services/ownerApiHeaders')).getOwnerApiHeaders()
           },
           body: JSON.stringify({
             showNSFW: show
@@ -732,7 +724,7 @@ export function UserStateProvider({ children }: { children: ReactNode }) {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            'Authorization': `Bearer ${session.accessToken}`
+            ...(await import('../services/ownerApiHeaders')).getOwnerApiHeaders()
           },
           body: JSON.stringify({
             tagId: normalizedSubject,
@@ -811,7 +803,7 @@ export function UserStateProvider({ children }: { children: ReactNode }) {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            'Authorization': `Bearer ${session.accessToken}`
+            ...(await import('../services/ownerApiHeaders')).getOwnerApiHeaders()
           },
           body: JSON.stringify({
             tagId: normalizedSubject,
@@ -921,7 +913,7 @@ export function UserStateProvider({ children }: { children: ReactNode }) {
           method: 'PUT',
           headers: {
             'Content-Type': 'application/json',
-            'Authorization': `Bearer ${session.accessToken}`
+            ...(await import('../services/ownerApiHeaders')).getOwnerApiHeaders()
           },
           body: JSON.stringify({
             curatedFeedPreferences: preferences
@@ -965,7 +957,7 @@ export function UserStateProvider({ children }: { children: ReactNode }) {
           method: 'PUT',
           headers: {
             'Content-Type': 'application/json',
-            'Authorization': `Bearer ${session.accessToken}`
+            ...(await import('../services/ownerApiHeaders')).getOwnerApiHeaders()
           },
           body: JSON.stringify({
             mePageSortOrder: sortOrder

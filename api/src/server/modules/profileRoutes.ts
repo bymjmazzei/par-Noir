@@ -403,10 +403,28 @@ export function setupProfileRoutes(app: express.Application, deps: ProfileRouteD
         }
         const account = googleDriveAccounts.length > 0 ? googleDriveAccounts[0] : null;
         const accountId = account ? extractAccountId(account) : undefined;
-        const userAccessToken = account ? await googleDriveProxyService.getAccessToken(pnIdentifier, accountId) : '';
+        const { extractCloudAccessToken } = await import('./cloudAccessToken');
+        let userAccessToken = extractCloudAccessToken(req) || '';
+        if (!userAccessToken && account) {
+          try {
+            userAccessToken = await googleDriveProxyService.getAccessToken(pnIdentifier, accountId);
+          } catch {
+            return res.status(409).json({
+              error: 'cloud_token_required',
+              error_description:
+                'Google Drive access token required. Forward X-PN-Cloud-Access-Token after unlocking with cloud credentials.'
+            });
+          }
+        }
+        if (!userAccessToken) {
+          return res.status(409).json({
+            error: 'cloud_token_required',
+            error_description: 'Google Drive access token required'
+          });
+        }
         const metadataFolder = await getMetadataFolder(
           {
-            access_token: account?.access_token || account?.accessToken || '',
+            access_token: userAccessToken || account?.access_token || account?.accessToken || '',
             refresh_token: account?.refresh_token || account?.refreshToken,
             expires_at: account?.expires_at,
             expires_in: account?.expires_in

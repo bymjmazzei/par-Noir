@@ -571,7 +571,10 @@ export function setupMessageRoutes(app: express.Application, deps: MessageRouteD
             const { ConnectionsSheetsService } = await import('./connectionsSheetsService');
             const { PN_DRIVE_SHEET_KEYS } = await import('./pnDriveIndex');
 
-            const userCtx = await requireOwnerDriveContext(pnIdentifier, accountId);
+            const { extractCloudAccessToken } = await import('./cloudAccessToken');
+            const userCtx = await requireOwnerDriveContext(pnIdentifier, accountId, {
+              accessToken: extractCloudAccessToken(req),
+            });
             const resolved = await resolveDmConnectionFromIndex(userCtx, normalizedParticipantPnIdentifier);
 
             if (!resolved?.connectionId || resolved.status !== 'connected') {

@@ -1,19 +1,24 @@
 import React, { useCallback, useMemo, useRef, useState } from 'react';
 import {
+  loadLocalCloudCredentials,
+  persistCloudCredentials,
+  resolveCloudPersistMode,
+  getSessionCloudCredentials,
+  setSessionCloudCredentials,
+  type PersistCloudCredentialsMode
+} from '@par-noir/device-cloud-credentials';
+import { SecureCredentialManager } from '@par-noir/identity-crypto';
+import {
   CloudReconnectPanel,
   CloudReconnectPrompt,
   isOAuthCloudProvider,
   PN_CLOUD_CREDENTIALS_READY_EVENT,
   reconnectOAuthProvider,
-  useCloudReconnectGate
+  useCloudReconnectGate,
+  ensureCloudCredentialsReady,
+  publishCloudCredentialsVault
 } from '@par-noir/oauth-ui';
-import { SecureCredentialManager } from '@par-noir/identity-crypto';
-import {
-  loadLocalCloudCredentials,
-  persistCloudCredentials,
-  resolveCloudPersistMode,
-  type PersistCloudCredentialsMode
-} from '@par-noir/device-cloud-credentials';
+import { envelopeHasUsableSecrets } from '@par-noir/user-owned-storage';
 import type { StorageCredentialsEnvelope } from '@par-noir/user-owned-storage';
 import { API_ENDPOINT } from '../../config/api';
 import { getGoogleDriveClientId } from '../../config/googleDriveClientId';
@@ -67,7 +72,7 @@ export const CloudReconnectHost: React.FC<CloudReconnectHostProps> = ({
     };
   }, []);
 
-  // Wait for unlock migrate (and warm sealed/session) before assessing reconnect gate.
+  // Wait for unlock migrate; hydrate from vault; publish vault if local secrets exist.
   React.useEffect(() => {
     if (!pnIdentifier || !sessionId || !apiToken) {
       setMigrateSettled(false);
@@ -77,20 +82,33 @@ export const CloudReconnectHost: React.FC<CloudReconnectHostProps> = ({
     setMigrateSettled(false);
     void (async () => {
       const { awaitMigrateFlushForIdentity } = await import('../../services/deviceCloudCredentials');
-      // Poll briefly so we catch migrate that starts a tick after apiToken lands.
+      let warmed: StorageCredentialsEnvelope | null = null;
       for (let i = 0; i < 25 && !cancelled; i++) {
         await awaitMigrateFlushForIdentity(pnIdentifier);
         const creds = SecureCredentialManager.getCredentials(sessionId);
         if (creds) {
-          const env = await loadLocalCloudCredentials({
-            identityId: pnIdentifier,
-            session: {
-              sessionId,
-              pnName: creds.pnName,
-              passcode: creds.passcode
-            }
-          });
-          if (env && (env.googleDriveAccounts?.length ?? 0) > 0) break;
+          const env =
+            (await loadLocalCloudCredentials({
+              identityId: pnIdentifier,
+              session: {
+                sessionId: 'pn-cloud-creds-v1',
+                pnName: creds.pnName,
+                passcode: creds.passcode
+              }
+            })) ||
+            (await loadLocalCloudCredentials({
+              identityId: pnIdentifier,
+              session: {
+                sessionId,
+                pnName: creds.pnName,
+                passcode: creds.passcode
+              }
+            }));
+          if (env && envelopeHasUsableSecrets(env)) {
+            warmed = env;
+            setSessionCloudCredentials(pnIdentifier, env);
+            break;
+          }
         }
         await new Promise((r) => setTimeout(r, 200));
       }
@@ -99,6 +117,44 @@ export const CloudReconnectHost: React.FC<CloudReconnectHostProps> = ({
           await awaitMigrateFlushForIdentity(pnIdentifier);
         } catch {
           /* best-effort */
+        }
+        const creds = SecureCredentialManager.getCredentials(sessionId);
+        if (creds && !envelopeHasUsableSecrets(getSessionCloudCredentials(pnIdentifier))) {
+          const status = await ensureCloudCredentialsReady({
+            apiEndpoint: API_ENDPOINT,
+            authToken: apiToken,
+            pnIdentifier,
+            pnName: creds.pnName,
+            passcode: creds.passcode
+          });
+          if (status === 'ready') {
+            warmed = getSessionCloudCredentials(pnIdentifier);
+          }
+        }
+        // Migrate: publish vault when we have local secrets (one-time for pre-vault connects)
+        if (creds && envelopeHasUsableSecrets(warmed || getSessionCloudCredentials(pnIdentifier))) {
+          const toPublish = warmed || getSessionCloudCredentials(pnIdentifier);
+          if (toPublish) {
+            await publishCloudCredentialsVault({
+              apiEndpoint: API_ENDPOINT,
+              authToken: apiToken,
+              pnIdentifier,
+              pnName: creds.pnName,
+              passcode: creds.passcode,
+              credentials: toPublish
+            }).catch(() => ({ ok: false }));
+            // Also re-seal locally under canonical session id for this origin
+            await persistCloudCredentials({
+              identityId: pnIdentifier,
+              credentials: toPublish,
+              session: {
+                sessionId: 'pn-cloud-creds-v1',
+                pnName: creds.pnName,
+                passcode: creds.passcode
+              },
+              mode: 'sealed'
+            }).catch(() => null);
+          }
         }
         setMigrateSettled(true);
       }
@@ -110,8 +166,19 @@ export const CloudReconnectHost: React.FC<CloudReconnectHostProps> = ({
 
   const loadLocalEnvelope = useCallback(async (): Promise<StorageCredentialsEnvelope | null> => {
     if (!pnIdentifier || !sessionId) return null;
+    const fromSession = getSessionCloudCredentials(pnIdentifier);
+    if (envelopeHasUsableSecrets(fromSession)) return fromSession;
     const creds = SecureCredentialManager.getCredentials(sessionId);
     if (!creds) return null;
+    const canonical = await loadLocalCloudCredentials({
+      identityId: pnIdentifier,
+      session: {
+        sessionId: 'pn-cloud-creds-v1',
+        pnName: creds.pnName,
+        passcode: creds.passcode
+      }
+    });
+    if (canonical) return canonical;
     return loadLocalCloudCredentials({
       identityId: pnIdentifier,
       session: {
@@ -173,12 +240,22 @@ export const CloudReconnectHost: React.FC<CloudReconnectHostProps> = ({
         identityId: pnIdentifier,
         credentials: envelope,
         session: {
-          sessionId,
+          sessionId: 'pn-cloud-creds-v1',
           pnName: creds.pnName,
           passcode: creds.passcode
         },
         mode: effectivePersistMode
       });
+      if (apiToken) {
+        await publishCloudCredentialsVault({
+          apiEndpoint: API_ENDPOINT,
+          authToken: apiToken,
+          pnIdentifier,
+          pnName: creds.pnName,
+          passcode: creds.passcode,
+          credentials: envelope
+        }).catch(() => ({ ok: false }));
+      }
 
       markReady();
       try {
@@ -187,7 +264,7 @@ export const CloudReconnectHost: React.FC<CloudReconnectHostProps> = ({
         /* non-DOM */
       }
     },
-    [pnIdentifier, sessionId, effectivePersistMode, markReady]
+    [pnIdentifier, sessionId, effectivePersistMode, markReady, apiToken]
   );
 
   const handleReconnect = useCallback(() => {

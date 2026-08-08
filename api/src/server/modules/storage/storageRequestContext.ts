@@ -21,7 +21,8 @@ export interface StorageRequestContext {
 
 export async function createStorageRequestContext(
   pnIdentifier: string,
-  accountId?: string
+  accountId?: string,
+  forwardedAccessToken?: string
 ): Promise<StorageRequestContext | null> {
   if (!pnIdentifier) return null;
   const credentialsRecord = await storageCredentialsService.getCredentials(pnIdentifier);
@@ -33,16 +34,21 @@ export async function createStorageRequestContext(
     credentialsRecord,
   };
 
-  try {
-    ctx.accessToken = await googleDriveProxyService.getAccessToken(pnIdentifier, accountId);
-  } catch {
+  const forwarded = forwardedAccessToken?.trim();
+  if (forwarded) {
+    ctx.accessToken = forwarded;
+  } else {
     try {
-      ctx.accessToken = googleDriveProxyService.extractAccessTokenFromCredentials(
-        credentialsRecord.credentials,
-        accountId
-      );
+      ctx.accessToken = await googleDriveProxyService.getAccessToken(pnIdentifier, accountId);
     } catch {
-      /* caller handles missing token */
+      try {
+        ctx.accessToken = googleDriveProxyService.extractAccessTokenFromCredentials(
+          credentialsRecord.credentials,
+          accountId
+        );
+      } catch {
+        /* caller handles missing token */
+      }
     }
   }
 
@@ -60,11 +66,18 @@ export async function createStorageRequestContext(
 
   if (account) {
     ctx.driveToken = {
-      access_token: account.access_token || (account as { accessToken?: string }).accessToken || '',
+      access_token:
+        forwarded ||
+        account.access_token ||
+        (account as { accessToken?: string }).accessToken ||
+        ctx.accessToken ||
+        '',
       refresh_token: account.refresh_token || (account as { refreshToken?: string }).refreshToken,
       expires_at: account.expires_at,
       expires_in: account.expires_in,
     };
+  } else if (forwarded) {
+    ctx.driveToken = { access_token: forwarded };
   }
 
   return ctx;

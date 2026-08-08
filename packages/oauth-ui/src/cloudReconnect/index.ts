@@ -24,3 +24,11 @@ export type {
   CloudReconnectGateState,
   PortableConnectForms
 } from './types';
+export {
+  ensureCloudCredentialsReady,
+  hydrateCloudCredentialsFromVault,
+  publishCloudCredentialsVault,
+  cloudAccessHeaders,
+  PN_CLOUD_ACCESS_TOKEN_HEADER
+} from './cloudVaultHydrate';
+export type { CloudVaultHydrateResult } from './cloudVaultHydrate';

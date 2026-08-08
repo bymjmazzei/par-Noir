@@ -3,22 +3,13 @@
  * Manages user profile data (display name, profile image)
  */
 
-import { PNOAuthService } from './pnOAuthService';
+import { getOwnerApiHeaders } from './ownerApiHeaders';
 
 import { API_ENDPOINT } from '../config/api';
 
 // Helper function to get auth headers
 function getAuthHeaders(): HeadersInit {
-  const session = PNOAuthService.loadSession();
-  const headers: HeadersInit = {
-    'Content-Type': 'application/json'
-  };
-  
-  if (session?.accessToken) {
-    headers['Authorization'] = `Bearer ${session.accessToken}`;
-  }
-  
-  return headers;
+  return getOwnerApiHeaders();
 }
 
 export interface UserProfile {

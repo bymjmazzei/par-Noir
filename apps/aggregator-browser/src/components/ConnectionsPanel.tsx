@@ -7,7 +7,6 @@ import { useState, useEffect } from 'react';
 import { Users, UserPlus, UserMinus } from 'lucide-react';
 import { useUserState } from '../contexts/UserStateContext';
 import { getUserProfile } from '../services/profileService';
-import { PNOAuthService } from '../services/pnOAuthService';
 import {
   getConnections,
   getPendingRequests,
@@ -40,18 +39,10 @@ interface ConnectionsPanelProps {
 }
 
 import { API_ENDPOINT } from '../config/api';
+import { getOwnerApiHeaders } from '../services/ownerApiHeaders';
 
 function getAuthHeaders(): HeadersInit {
-  const session = PNOAuthService.loadSession();
-  const headers: HeadersInit = {
-    'Content-Type': 'application/json'
-  };
-  
-  if (session?.accessToken) {
-    headers['Authorization'] = `Bearer ${session.accessToken}`;
-  }
-  
-  return headers;
+  return getOwnerApiHeaders();
 }
 
 export function ConnectionsPanel({ userPnIdentifier, onCreatorClick }: ConnectionsPanelProps) {

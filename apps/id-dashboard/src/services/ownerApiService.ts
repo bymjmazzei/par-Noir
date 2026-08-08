@@ -1,8 +1,20 @@
 import { API_ENDPOINT } from '../config/api';
 import { deviceProofHeaders } from './deviceProofContext';
 import { resolveLocalGoogleAccessTokenAsync } from './deviceApiService';
+import { resolveOwnerApiToken } from './ownerApiToken';
 
 const PN_CLOUD_ACCESS_TOKEN_HEADER = 'X-PN-Cloud-Access-Token';
+
+/** Last unlocked pN for owner API calls that omit pnIdentifier. */
+let ownerApiPnIdentifier: string | null = null;
+
+export function setOwnerApiPnIdentifier(pn: string | null | undefined): void {
+  ownerApiPnIdentifier = pn?.trim() || null;
+}
+
+export function getOwnerApiPnIdentifier(): string | null {
+  return ownerApiPnIdentifier;
+}
 
 function authHeaders(authToken: string, extra?: Record<string, string>) {
   return {
@@ -13,8 +25,9 @@ function authHeaders(authToken: string, extra?: Record<string, string>) {
 }
 
 async function cloudTokenHeaders(pnIdentifier?: string): Promise<Record<string, string>> {
-  if (!pnIdentifier) return {};
-  const tok = await resolveLocalGoogleAccessTokenAsync(pnIdentifier);
+  const pn = pnIdentifier || ownerApiPnIdentifier || undefined;
+  if (!pn) return {};
+  const tok = await resolveLocalGoogleAccessTokenAsync(pn);
   return tok ? { [PN_CLOUD_ACCESS_TOKEN_HEADER]: tok } : {};
 }
 
@@ -58,4 +71,17 @@ export async function ownerGet(
     method: 'GET',
     headers: authHeaders(authToken, { ...proof, ...cloud, ...extraHeaders }),
   });
+}
+
+/** Convenience: resolve owner JWT + fetch with cloud token. */
+export async function ownerFetchForPn(
+  pnIdentifier: string,
+  method: string,
+  path: string,
+  body?: unknown,
+  init?: Omit<OwnerFetchInit, 'pnIdentifier'>
+): Promise<Response> {
+  const token = resolveOwnerApiToken(pnIdentifier);
+  if (!token) throw new Error('par Noir API session not ready');
+  return ownerFetch(token, method, path, body, { ...init, pnIdentifier });
 }

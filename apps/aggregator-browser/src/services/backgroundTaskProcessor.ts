@@ -11,6 +11,11 @@ import { FeedService } from './feedService';
 import { saveToFeed, removeFromSavedFeed } from './savedFeedService';
 
 import { API_ENDPOINT } from '../config/api';
+import { ownerApiHeadersAsync } from './ownerApiHeaders';
+
+async function driveHeaders(accessToken: string): Promise<Record<string, string>> {
+  return ownerApiHeadersAsync(accessToken);
+}
 
 interface EncryptedFilePackage {
   encrypted: string;
@@ -102,9 +107,7 @@ async function resolveToThumbnailFileId(fileId: string, accessToken: string): Pr
   try {
     // Try to get metadata for fileId
     const response = await fetch(`${API_ENDPOINT}/api/aggregator/metadata-index/${fileId}`, {
-      headers: {
-        'Authorization': `Bearer ${accessToken}`
-      }
+      headers: await driveHeaders(accessToken)
     });
     
     if (response.ok) {
@@ -192,9 +195,7 @@ async function processShareSettingsUpdate(
       const downloadResponse = await fetch(
         `${API_ENDPOINT}/api/drive/files/${targetFileId}?accountId=${encodeURIComponent(accountId)}&download=true`,
         {
-          headers: {
-            'Authorization': `Bearer ${accessToken}`
-          }
+          headers: await driveHeaders(accessToken)
         }
       );
 
@@ -262,7 +263,7 @@ async function processShareSettingsUpdate(
     method: 'PUT',
     headers: {
       'Content-Type': 'application/json',
-      'Authorization': `Bearer ${accessToken}`
+      ...(await driveHeaders(accessToken))
     },
     body: JSON.stringify(updateBody),
   });
@@ -289,7 +290,7 @@ async function processShareSettingsUpdate(
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${accessToken}`
+          ...(await driveHeaders(accessToken))
         },
         body: JSON.stringify({
           indexingPermissions: nextPermissions
@@ -403,7 +404,7 @@ async function processMetadataUpdate(
     method: 'PUT',
     headers: {
       'Content-Type': 'application/json',
-      'Authorization': `Bearer ${accessToken}`
+      ...(await driveHeaders(accessToken))
     },
     body: JSON.stringify(updateBody),
   });
@@ -498,9 +499,7 @@ async function processFileDeletion(
   if (isCollection === undefined) {
     try {
       const metadataResponse = await fetch(`${API_ENDPOINT}/api/aggregator/metadata-index/${fileId}`, {
-        headers: {
-          'Authorization': `Bearer ${accessToken}`
-        }
+        headers: await driveHeaders(accessToken)
       });
       if (metadataResponse.ok) {
         const metadata = await metadataResponse.json();
@@ -526,9 +525,7 @@ async function processFileDeletion(
     if (isThoughtCollection && collectionFileIds.length > 0) {
       try {
         const metadataResponse = await fetch(`${API_ENDPOINT}/api/aggregator/metadata-index/${collectionFileIds[0]}`, {
-          headers: {
-            'Authorization': `Bearer ${accessToken}`
-          }
+          headers: await driveHeaders(accessToken)
         });
         if (metadataResponse.ok) {
           const metadata = await metadataResponse.json();
@@ -549,9 +546,7 @@ async function processFileDeletion(
       try {
         const deleteResponse = await fetch(`${API_ENDPOINT}/api/drive/files/${thumbnailId}?accountId=${accountId}`, {
           method: 'DELETE',
-          headers: {
-            'Authorization': `Bearer ${accessToken}`
-          }
+          headers: await driveHeaders(accessToken)
         });
         
         if (deleteResponse.ok) {
@@ -569,9 +564,7 @@ async function processFileDeletion(
       try {
         const deleteResponse = await fetch(`${API_ENDPOINT}/api/drive/files/${thoughtCollectionFileId}?accountId=${accountId}`, {
           method: 'DELETE',
-          headers: {
-            'Authorization': `Bearer ${accessToken}`
-          }
+          headers: await driveHeaders(accessToken)
         });
         
         if (deleteResponse.ok) {
@@ -590,9 +583,7 @@ async function processFileDeletion(
   // Delete main file
   const response = await fetch(`${API_ENDPOINT}/api/drive/files/${fileId}?accountId=${accountId}`, {
     method: 'DELETE',
-    headers: {
-      'Authorization': `Bearer ${accessToken}`
-    }
+    headers: await driveHeaders(accessToken)
   });
 
   uploadQueueService.updateTaskProgress(task.id, 95);
@@ -633,9 +624,7 @@ async function processBulkDeletion(
     try {
       const response = await fetch(`${API_ENDPOINT}/api/drive/files/${fileId}?accountId=${accountId}`, {
         method: 'DELETE',
-        headers: {
-          'Authorization': `Bearer ${accessToken}`
-        }
+        headers: await driveHeaders(accessToken)
       });
 
       if (response.ok) {
@@ -768,7 +757,7 @@ async function processSaveToFeed(
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${accessToken}`
+        ...(await driveHeaders(accessToken))
       },
       body: JSON.stringify({ userPnIdentifier })
     });

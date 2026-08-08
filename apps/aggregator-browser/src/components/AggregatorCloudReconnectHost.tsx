@@ -3,25 +3,32 @@ import {
   CloudReconnectPanel,
   CloudReconnectPrompt,
   PN_CLOUD_CREDENTIALS_READY_EVENT,
-  useCloudReconnectGate
+  useCloudReconnectGate,
+  ensureCloudCredentialsReady,
+  publishCloudCredentialsVault
 } from '@par-noir/oauth-ui';
 import {
   clearCloudCredentialsOnLock,
   loadLocalCloudCredentials,
   persistCloudCredentials,
   resolveCloudPersistMode,
-  setSessionCloudCredentials
+  setSessionCloudCredentials,
+  getSessionCloudCredentials
 } from '@par-noir/device-cloud-credentials';
+import { envelopeHasUsableSecrets } from '@par-noir/user-owned-storage';
 import type { StorageCredentialsEnvelope } from '@par-noir/user-owned-storage';
 import { API_ENDPOINT } from '../config/api';
 import { PNOAuthService } from '../services/pnOAuthService';
 import { fetchDeviceRegistry } from '../services/deviceService';
-import { getDmIdentity, isDmIdentityReady } from '../services/dmIdentitySession';
+import {
+  DM_IDENTITY_CHANGE_EVENT,
+  getDmIdentity,
+  isDmIdentityReady
+} from '../services/dmIdentitySession';
 
 /**
  * Post-unlock cloud reconnect for aggregator browse/messaging.
- * Case A (no keyed devices): durable sealed local cloud.
- * Case B (keyed apps exist): session-only; wiped on lock.
+ * Prefer identity-sealed vault hydrate (dashboard-published) over Google reconnect.
  */
 export const AggregatorCloudReconnectHost: React.FC = () => {
   const session = PNOAuthService.loadSession();
@@ -29,6 +36,8 @@ export const AggregatorCloudReconnectHost: React.FC = () => {
   const pnIdentifier = session?.pnIdentifier ?? null;
   const [googleClientId, setGoogleClientId] = useState<string | null>(null);
   const [hasKeyedDevices, setHasKeyedDevices] = useState(false);
+  const [identityReady, setIdentityReady] = useState(() => isDmIdentityReady());
+  const [vaultHydrated, setVaultHydrated] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -64,28 +73,103 @@ export const AggregatorCloudReconnectHost: React.FC = () => {
     };
   }, [authToken, pnIdentifier]);
 
+  useEffect(() => {
+    const sync = () => setIdentityReady(isDmIdentityReady());
+    sync();
+    window.addEventListener(DM_IDENTITY_CHANGE_EVENT, sync);
+    return () => window.removeEventListener(DM_IDENTITY_CHANGE_EVENT, sync);
+  }, []);
+
+  // Hydrate from cross-app sealed vault once identity factors are available.
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      if (!authToken || !pnIdentifier || !identityReady) {
+        setVaultHydrated(false);
+        return;
+      }
+      const identity = getDmIdentity();
+      if (!identity.pnName || !identity.passcode) {
+        setVaultHydrated(false);
+        return;
+      }
+      if (envelopeHasUsableSecrets(getSessionCloudCredentials(pnIdentifier))) {
+        if (!cancelled) setVaultHydrated(true);
+        return;
+      }
+      // Try local sealed (same origin) then API vault
+      try {
+        const local = await loadLocalCloudCredentials({
+          identityId: pnIdentifier,
+          session: {
+            sessionId: 'pn-cloud-creds-v1',
+            pnName: identity.pnName,
+            passcode: identity.passcode
+          }
+        });
+        if (local && envelopeHasUsableSecrets(local)) {
+          setSessionCloudCredentials(pnIdentifier, local);
+          if (!cancelled) setVaultHydrated(true);
+          return;
+        }
+      } catch {
+        /* fall through to API vault */
+      }
+      const status = await ensureCloudCredentialsReady({
+        apiEndpoint: API_ENDPOINT,
+        authToken,
+        pnIdentifier,
+        pnName: identity.pnName,
+        passcode: identity.passcode
+      });
+      if (!cancelled) setVaultHydrated(status === 'ready');
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [authToken, pnIdentifier, identityReady]);
+
   const loadLocalEnvelope = useCallback(async (): Promise<StorageCredentialsEnvelope | null> => {
-    if (!pnIdentifier || !isDmIdentityReady()) return null;
+    if (!pnIdentifier) return null;
+    const fromSession = getSessionCloudCredentials(pnIdentifier);
+    if (envelopeHasUsableSecrets(fromSession)) return fromSession;
+    if (!isDmIdentityReady()) return null;
     const identity = getDmIdentity();
     if (!identity.pnName || !identity.passcode) return null;
     return loadLocalCloudCredentials({
       identityId: pnIdentifier,
       session: {
-        sessionId: `agg:${pnIdentifier}`,
+        sessionId: 'pn-cloud-creds-v1',
         pnName: identity.pnName,
         passcode: identity.passcode
       }
     });
   }, [pnIdentifier]);
 
+  const gateEnabled =
+    !!(authToken && pnIdentifier && session && PNOAuthService.isSessionValid(session)) &&
+    identityReady;
+
   const gate = useCloudReconnectGate({
-    enabled: !!(authToken && pnIdentifier && session && PNOAuthService.isSessionValid(session)),
+    enabled: gateEnabled,
     authToken,
     pnIdentifier,
     apiEndpoint: API_ENDPOINT,
     loadLocalEnvelope,
     dismissStorageKey: pnIdentifier ? `pn_cloud_reconnect_dismiss:${pnIdentifier}` : undefined
   });
+
+  // When vault hydrate succeeds, mark gate ready (no reconnect prompt).
+  useEffect(() => {
+    if (vaultHydrated) {
+      gate.markReady();
+      try {
+        window.dispatchEvent(new CustomEvent(PN_CLOUD_CREDENTIALS_READY_EVENT));
+      } catch {
+        /* non-DOM */
+      }
+    }
+  }, [vaultHydrated, gate.markReady]);
 
   const handleConnected = useCallback(
     async (envelope: StorageCredentialsEnvelope) => {
@@ -101,20 +185,31 @@ export const AggregatorCloudReconnectHost: React.FC = () => {
         identityId: pnIdentifier,
         credentials: envelope,
         session: {
-          sessionId: `agg:${pnIdentifier}`,
+          sessionId: 'pn-cloud-creds-v1',
           pnName: identity.pnName,
           passcode: identity.passcode
         },
         mode
       });
+      if (authToken) {
+        await publishCloudCredentialsVault({
+          apiEndpoint: API_ENDPOINT,
+          authToken,
+          pnIdentifier,
+          pnName: identity.pnName,
+          passcode: identity.passcode,
+          credentials: envelope
+        }).catch(() => ({ ok: false }));
+      }
       gate.markReady();
+      setVaultHydrated(true);
       try {
         window.dispatchEvent(new CustomEvent(PN_CLOUD_CREDENTIALS_READY_EVENT));
       } catch {
         /* non-DOM */
       }
     },
-    [pnIdentifier, gate, hasKeyedDevices]
+    [pnIdentifier, gate, hasKeyedDevices, authToken]
   );
 
   if (!authToken || !pnIdentifier) return null;
@@ -122,7 +217,7 @@ export const AggregatorCloudReconnectHost: React.FC = () => {
   return (
     <>
       <CloudReconnectPrompt
-        open={gate.promptOpen && !gate.panelOpen}
+        open={gate.promptOpen && !gate.panelOpen && !vaultHydrated}
         socialCloudProvider={gate.socialCloudProvider}
         onReconnect={gate.openPanel}
         onDismiss={gate.dismissPrompt}

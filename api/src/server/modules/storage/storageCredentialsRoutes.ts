@@ -502,4 +502,86 @@ export function setupStorageVolumeMigrationRoute(app: Application) {
         return res.status(500).json({ error: 'Failed to migrate volume id' });
       }
     });
+
+    // PUT /api/storage/cloud-vault/:identityId — store opaque client-sealed credentials (ciphertext only)
+    app.put('/api/storage/cloud-vault/:identityId', async (req: Request, res: Response) => {
+      try {
+        const { identityId } = req.params;
+        if (!identityId) {
+          return res.status(400).json({ error: 'Missing identityId parameter' });
+        }
+        const pnIdentifier = identityId.startsWith('pn-') ? identityId : `pn-${identityId}`;
+        if (!(await gateOwnerRoute(req, res, DEVICE_CAPABILITIES.driveUpload, pnIdentifier))) return;
+
+        const { isPnRevokedForNetwork } = await import('../identitySuccessionService');
+        if (isPnRevokedForNetwork(pnIdentifier)) {
+          return res.status(403).json({
+            error: 'identity_superseded',
+            error_description: 'This pN identifier is retired on the par Noir network.'
+          });
+        }
+
+        const envelope = req.body?.envelope ?? req.body?.sealed ?? req.body;
+        const {
+          cloudVaultService,
+          looksLikePlaintextCloudSecrets
+        } = await import('../cloudVaultService');
+
+        if (looksLikePlaintextCloudSecrets(envelope)) {
+          return res.status(400).json({
+            error: 'plaintext_not_allowed',
+            error_description: 'Cloud vault accepts only a client-sealed envelope, not OAuth secrets'
+          });
+        }
+
+        try {
+          await cloudVaultService.putSealedVault(pnIdentifier, envelope);
+        } catch (e: any) {
+          return res.status(400).json({
+            error: 'invalid_envelope',
+            error_description: e?.message || 'Invalid sealed envelope'
+          });
+        }
+        return res.json({ success: true });
+      } catch (error: any) {
+        console.error('Error saving cloud vault:', error);
+        return res.status(500).json({
+          error: 'Failed to save cloud vault',
+          message: safeClientErrorMessage(error, NODE_ENV === 'production')
+        });
+      }
+    });
+
+    // GET /api/storage/cloud-vault/:identityId — return opaque sealed envelope (never decrypted)
+    app.get('/api/storage/cloud-vault/:identityId', async (req: Request, res: Response) => {
+      try {
+        const { identityId } = req.params;
+        if (!identityId) {
+          return res.status(400).json({ error: 'Missing identityId parameter' });
+        }
+        const pnIdentifier = identityId.startsWith('pn-') ? identityId : `pn-${identityId}`;
+        if (!(await gateOwnerRoute(req, res, DEVICE_CAPABILITIES.driveRead, pnIdentifier))) return;
+
+        const { isPnRevokedForNetwork } = await import('../identitySuccessionService');
+        if (isPnRevokedForNetwork(pnIdentifier)) {
+          return res.status(403).json({
+            error: 'identity_superseded',
+            error_description: 'This pN identifier is retired on the par Noir network.'
+          });
+        }
+
+        const { cloudVaultService } = await import('../cloudVaultService');
+        const envelope = await cloudVaultService.getSealedVault(pnIdentifier);
+        if (!envelope) {
+          return res.status(404).json({ error: 'Cloud vault not found' });
+        }
+        return res.json({ success: true, envelope });
+      } catch (error: any) {
+        console.error('Error reading cloud vault:', error);
+        return res.status(500).json({
+          error: 'Failed to read cloud vault',
+          message: safeClientErrorMessage(error, NODE_ENV === 'production')
+        });
+      }
+    });
 }

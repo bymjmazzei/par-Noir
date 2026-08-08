@@ -55,6 +55,7 @@ export class DriveIndexError extends Error {
     message: string,
     public readonly code:
       | 'DRIVE_NOT_INITIALIZED'
+      | 'CLOUD_TOKEN_REQUIRED'
       | 'DRIVE_INDEX_INCOMPLETE'
       | 'DRIVE_LAYOUT_INCOMPLETE'
       | 'DRIVE_INDEX_STALE' = 'DRIVE_NOT_INITIALIZED'

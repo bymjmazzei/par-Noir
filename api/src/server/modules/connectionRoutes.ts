@@ -1069,11 +1069,17 @@ export function setupConnectionRoutes(app: express.Application, deps: Connection
         }
         console.log(`[GetConnections] User: ${pnIdentifier}`);
 
+        const { extractCloudAccessToken } = await import('./cloudAccessToken');
         let driveCtx;
         try {
-          driveCtx = await requireOwnerDriveContext(pnIdentifier);
+          driveCtx = await requireOwnerDriveContext(pnIdentifier, undefined, {
+            accessToken: extractCloudAccessToken(req),
+          });
         } catch (err) {
-          if (err instanceof DriveIndexError && err.code === 'DRIVE_NOT_INITIALIZED') {
+          if (
+            err instanceof DriveIndexError &&
+            (err.code === 'DRIVE_NOT_INITIALIZED' || err.code === 'CLOUD_TOKEN_REQUIRED')
+          ) {
             return driveNotInitialized(res);
           }
           if (err instanceof Error && err.message?.includes('authentication failed')) {
@@ -1743,11 +1749,17 @@ export function setupConnectionRoutes(app: express.Application, deps: Connection
         }
         console.log(`[PendingRequests] User: ${pnIdentifier}`);
 
+        const { extractCloudAccessToken } = await import('./cloudAccessToken');
         let driveCtx;
         try {
-          driveCtx = await requireOwnerDriveContext(pnIdentifier);
+          driveCtx = await requireOwnerDriveContext(pnIdentifier, undefined, {
+            accessToken: extractCloudAccessToken(req),
+          });
         } catch (err) {
-          if (err instanceof DriveIndexError && err.code === 'DRIVE_NOT_INITIALIZED') {
+          if (
+            err instanceof DriveIndexError &&
+            (err.code === 'DRIVE_NOT_INITIALIZED' || err.code === 'CLOUD_TOKEN_REQUIRED')
+          ) {
             return driveNotInitialized(res);
           }
           if (err instanceof Error && err.message?.includes('authentication failed')) {
@@ -1855,7 +1867,10 @@ export function setupConnectionRoutes(app: express.Application, deps: Connection
         }
 
         try {
-          const userCtx = await requireOwnerDriveContext(normalizedUserPnIdentifier);
+          const { extractCloudAccessToken } = await import('./cloudAccessToken');
+          const userCtx = await requireOwnerDriveContext(normalizedUserPnIdentifier, undefined, {
+            accessToken: extractCloudAccessToken(req),
+          });
           const status = await getConnectionStatusFromIndex(userCtx, normalizedOtherUserPnIdentifier);
           return res.json(status);
         } catch (error: unknown) {

@@ -314,6 +314,21 @@ export async function initializeDatabase(): Promise<void> {
       console.debug('ℹ️ storage_credentials.cid already TEXT or table missing:', (error as Error).message);
     }
 
+    // Opaque client-sealed cloud credentials vault (ciphertext only; API never unseals)
+    await db.query(`
+      CREATE TABLE IF NOT EXISTS storage_cloud_vault (
+        identity_id TEXT PRIMARY KEY,
+        sealed_envelope TEXT NOT NULL,
+        updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+      )
+    `);
+
+    await db.query(`
+      CREATE INDEX IF NOT EXISTS idx_storage_cloud_vault_updated_at
+      ON storage_cloud_vault(updated_at DESC)
+    `);
+
     await db.query(`
       CREATE INDEX IF NOT EXISTS idx_storage_credentials_updated_at
       ON storage_credentials(updated_at DESC)

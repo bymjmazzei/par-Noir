@@ -4,7 +4,7 @@
  * Uses Google Drive via API (no IPFS/decentralized coordination)
  */
 
-import { PNOAuthService } from './pnOAuthService';
+import { getOwnerApiHeaders } from './ownerApiHeaders';
 import { getUserProfile } from './profileService';
 import { createKemSession, wrapAcceptorMessageRootKey } from './dmCryptoClient';
 import { getMessagingMlKemPublicKey, getDmIdentity, isDmIdentityReady } from './dmIdentitySession';
@@ -14,16 +14,7 @@ import { ensureMailboxRouteKey } from '@par-noir/device-cloud-credentials';
 
 // Helper function to get auth headers
 function getAuthHeaders(): HeadersInit {
-  const session = PNOAuthService.loadSession();
-  const headers: HeadersInit = {
-    'Content-Type': 'application/json'
-  };
-  
-  if (session?.accessToken) {
-    headers['Authorization'] = `Bearer ${session.accessToken}`;
-  }
-  
-  return headers;
+  return getOwnerApiHeaders();
 }
 
 export interface Connection {

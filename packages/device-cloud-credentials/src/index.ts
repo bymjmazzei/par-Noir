@@ -64,3 +64,16 @@ export {
   shouldRetainSealedCloudOnLock
 } from './webCloudCredentialLifecycle.js';
 export type { PersistCloudCredentialsMode } from './webCloudCredentialLifecycle.js';
+export {
+  CLOUD_VAULT_SEAL_SESSION_ID,
+  PN_CLOUD_ACCESS_TOKEN_HEADER,
+  canonicalCloudSealSession,
+  sealCloudVault,
+  unsealCloudVault,
+  isSealedEnvelopeShape,
+  looksLikePlaintextCloudSecrets,
+  hydrateCloudCredentialsFromVault,
+  publishCloudCredentialsVault,
+  cloudAccessHeaders
+} from './cloudVault.js';
+export type { CloudVaultHydrateResult } from './cloudVault.js';

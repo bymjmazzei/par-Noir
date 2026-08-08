@@ -3,7 +3,7 @@
  * Handles fetching activity ledger data from the API
  */
 
-import { PNOAuthService } from './pnOAuthService';
+import { getOwnerApiHeaders } from './ownerApiHeaders';
 import { API_ENDPOINT } from '../config/api';
 
 export interface ActivityEntry {
@@ -25,16 +25,7 @@ export interface ActivityListResponse {
 }
 
 function getAuthHeaders(): HeadersInit {
-  const session = PNOAuthService.loadSession();
-  const headers: HeadersInit = {
-    'Content-Type': 'application/json'
-  };
-  
-  if (session?.accessToken) {
-    headers['Authorization'] = `Bearer ${session.accessToken}`;
-  }
-  
-  return headers;
+  return getOwnerApiHeaders();
 }
 
 export class ActivityLedgerService {

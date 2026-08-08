@@ -37,7 +37,10 @@ export function setupGroupRoutes(app: express.Application, deps: GroupRouteDeps)
 
         let ctx;
         try {
-          ctx = await requireOwnerDriveContext(userPnIdentifier);
+          const { extractCloudAccessToken } = await import('./cloudAccessToken');
+          ctx = await requireOwnerDriveContext(userPnIdentifier, undefined, {
+            accessToken: extractCloudAccessToken(req),
+          });
         } catch (error: unknown) {
           if (error instanceof DriveIndexError) {
             return res.json({ groups: [] });

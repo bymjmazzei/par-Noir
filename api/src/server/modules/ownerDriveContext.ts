@@ -26,6 +26,11 @@ export interface OwnerDriveContext {
   conversationSheetId(peerPnIdentifier: string): string | undefined;
 }
 
+export type OwnerDriveContextOpts = {
+  /** Ephemeral Google access token forwarded under device custody (X-PN-Cloud-Access-Token). */
+  accessToken?: string;
+};
+
 function extractAccountId(account: Record<string, unknown>): string | undefined {
   return (
     (account.backendId as string | undefined) ||
@@ -46,10 +51,12 @@ export { DriveIndexError };
 
 /**
  * Load OAuth token + validate complete pnDriveIndex. Throws DriveIndexError if missing/incomplete.
+ * Prefer opts.accessToken under device custody when API has layout-only shells.
  */
 export async function requireOwnerDriveContext(
   pnIdentifier: string,
-  accountId?: string
+  accountId?: string,
+  opts?: OwnerDriveContextOpts
 ): Promise<OwnerDriveContext> {
   const normalized = normalizePnIdentifier(pnIdentifier);
   const record = await storageCredentialsService.getCredentials(normalized);
@@ -67,12 +74,25 @@ export async function requireOwnerDriveContext(
   }
 
   const resolvedAccountId = accountId ?? extractAccountId(account);
-  const { googleDriveProxyService } = await import('./googleDriveProxy');
-  const accessToken = await googleDriveProxyService.getAccessToken(
-    normalized,
-    resolvedAccountId,
-    [normalized]
-  );
+  const forwarded = opts?.accessToken?.trim();
+  let accessToken: string;
+  if (forwarded) {
+    accessToken = forwarded;
+  } else {
+    try {
+      const { googleDriveProxyService } = await import('./googleDriveProxy');
+      accessToken = await googleDriveProxyService.getAccessToken(
+        normalized,
+        resolvedAccountId,
+        [normalized]
+      );
+    } catch {
+      throw new DriveIndexError(
+        'Google Drive access token required. Reconnect cloud storage or forward X-PN-Cloud-Access-Token.',
+        'CLOUD_TOKEN_REQUIRED'
+      );
+    }
+  }
 
   const token: GoogleDriveToken = {
     access_token: accessToken,
@@ -111,10 +131,11 @@ export async function requireOwnerDriveContext(
 /** Non-throwing lookup for optional flows (returns null if index incomplete). */
 export async function tryOwnerDriveContext(
   pnIdentifier: string,
-  accountId?: string
+  accountId?: string,
+  opts?: OwnerDriveContextOpts
 ): Promise<OwnerDriveContext | null> {
   try {
-    return await requireOwnerDriveContext(pnIdentifier, accountId);
+    return await requireOwnerDriveContext(pnIdentifier, accountId, opts);
   } catch {
     return null;
   }

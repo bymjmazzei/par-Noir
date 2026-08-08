@@ -458,12 +458,43 @@ export function useGoogleDriveOAuthConnect({
               ]
             },
             session: {
-              sessionId,
+              sessionId: 'pn-cloud-creds-v1',
               pnName: sessionCreds.pnName,
               passcode: sessionCreds.passcode
             },
             mode
           });
+          try {
+            const { publishCloudVaultForIdentity } = await import('../../../services/deviceCloudCredentials');
+            const authTok = resolveOwnerApiToken(pnIdentifier);
+            if (authTok) {
+              await publishCloudVaultForIdentity({
+                identityId: pnIdentifier,
+                authToken: authTok,
+                pnName: sessionCreds.pnName,
+                passcode: sessionCreds.passcode,
+                credentials: {
+                  socialCloudProvider: 'google_drive',
+                  socialCloudAccountId: accountId,
+                  googleDriveAccounts: [
+                    {
+                      accountId,
+                      backendId: identifiers.backendId,
+                      keyPrefix: identifiers.keyPrefix,
+                      accessToken: token,
+                      refreshToken: tokenData.refreshToken,
+                      email: connectedEmail || undefined,
+                      connectedAt: new Date().toISOString(),
+                      expires_at: tokenExpiresAt,
+                      expires_in: tokenData.expiresIn || 3600,
+                    }
+                  ]
+                }
+              });
+            }
+          } catch {
+            /* best-effort vault publish */
+          }
         }
       } catch (sealErr) {
         console.warn('[Google Drive] Device cloud persist skipped:', sealErr);

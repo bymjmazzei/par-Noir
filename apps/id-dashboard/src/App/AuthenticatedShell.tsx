@@ -12,6 +12,7 @@ import { PrivacyDataPointsPanel } from '../components/privacy/PrivacyDataPointsP
 import { AdvancedPrivacySettingsBody } from '../components/privacy/AdvancedPrivacySettingsBody';
 import { PublicNamesSection } from '../components/privacy/PublicNamesSection';
 import { STANDARD_DATA_POINTS, getDataPointMinLevel } from '@par-noir/standard-data-points';
+import { setOwnerApiPnIdentifier } from '../services/ownerApiService';
 export interface AuthenticatedShellProps {
   authenticatedUser: any;
   selectedDID: any;
@@ -182,6 +183,11 @@ export function AuthenticatedShell(props: AuthenticatedShellProps) {
     refreshAssetDelegations,
     handleRemoveDelegation
   } = props;
+
+  React.useEffect(() => {
+    setOwnerApiPnIdentifier(recoveryVaultPnId || null);
+    return () => setOwnerApiPnIdentifier(null);
+  }, [recoveryVaultPnId]);
 
   return (
     <>

@@ -4,31 +4,40 @@ import {
   getSessionCloudCredentials,
   setSessionCloudCredentials
 } from '@par-noir/device-cloud-credentials';
+import { envelopeHasUsableSecrets } from '@par-noir/user-owned-storage';
 import type { StorageCredentialsEnvelope } from '@par-noir/user-owned-storage';
 import { CloudReconnectPanel, PN_CLOUD_CREDENTIALS_READY_EVENT } from './CloudReconnectPanel';
 import { CloudReconnectPrompt } from './CloudReconnectPrompt';
 import { isOAuthCloudProvider, reconnectOAuthProvider } from './reconnectFlows';
 import { useCloudReconnectGate } from './useCloudReconnectGate';
+import { ensureCloudCredentialsReady } from './cloudVaultHydrate';
 
 export interface ThirdPartyCloudReconnectHostProps {
   apiEndpoint: string;
   authToken: string | null | undefined;
   pnIdentifier: string | null | undefined;
   googleClientId?: string | null;
+  /** Identity factors for vault hydrate (required for cross-app Drive without Google reconnect). */
+  pnName?: string | null;
+  passcode?: string | null;
 }
 
 /**
  * Post-OAuth cloud reconnect for prism / licensing / developer portals.
+ * Hydrates from identity-sealed vault when pnName+passcode are available.
  */
 export function ThirdPartyCloudReconnectHost({
   apiEndpoint,
   authToken,
   pnIdentifier,
-  googleClientId: googleClientIdProp
+  googleClientId: googleClientIdProp,
+  pnName,
+  passcode
 }: ThirdPartyCloudReconnectHostProps) {
   const [googleClientId, setGoogleClientId] = useState<string | null>(googleClientIdProp ?? null);
   const [oauthBusy, setOauthBusy] = useState(false);
   const [oauthError, setOauthError] = useState<string | null>(null);
+  const [vaultHydrated, setVaultHydrated] = useState(false);
 
   useEffect(() => {
     if (googleClientIdProp) {
@@ -51,6 +60,31 @@ export function ThirdPartyCloudReconnectHost({
     };
   }, [apiEndpoint, googleClientIdProp]);
 
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      if (!authToken || !pnIdentifier || !pnName || !passcode) {
+        setVaultHydrated(false);
+        return;
+      }
+      if (envelopeHasUsableSecrets(getSessionCloudCredentials(pnIdentifier))) {
+        if (!cancelled) setVaultHydrated(true);
+        return;
+      }
+      const status = await ensureCloudCredentialsReady({
+        apiEndpoint,
+        authToken,
+        pnIdentifier,
+        pnName,
+        passcode
+      });
+      if (!cancelled) setVaultHydrated(status === 'ready');
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [apiEndpoint, authToken, pnIdentifier, pnName, passcode]);
+
   const loadLocalEnvelope = useCallback(async (): Promise<StorageCredentialsEnvelope | null> => {
     if (!pnIdentifier) return null;
     return getSessionCloudCredentials(pnIdentifier);
@@ -65,11 +99,23 @@ export function ThirdPartyCloudReconnectHost({
     dismissStorageKey: pnIdentifier ? `pn_cloud_reconnect_dismiss:${pnIdentifier}` : undefined
   });
 
+  useEffect(() => {
+    if (vaultHydrated) {
+      gate.markReady();
+      try {
+        window.dispatchEvent(new CustomEvent(PN_CLOUD_CREDENTIALS_READY_EVENT));
+      } catch {
+        /* non-DOM */
+      }
+    }
+  }, [vaultHydrated, gate.markReady]);
+
   const handleConnected = useCallback(
     async (envelope: StorageCredentialsEnvelope) => {
       if (!pnIdentifier) return;
       setSessionCloudCredentials(pnIdentifier, envelope);
       gate.markReady();
+      setVaultHydrated(true);
       try {
         window.dispatchEvent(new CustomEvent(PN_CLOUD_CREDENTIALS_READY_EVENT));
       } catch {
@@ -115,7 +161,7 @@ export function ThirdPartyCloudReconnectHost({
   return (
     <>
       <CloudReconnectPrompt
-        open={gate.promptOpen && !gate.panelOpen}
+        open={gate.promptOpen && !gate.panelOpen && !vaultHydrated}
         socialCloudProvider={gate.socialCloudProvider}
         onReconnect={handleReconnect}
         onDismiss={gate.dismissPrompt}

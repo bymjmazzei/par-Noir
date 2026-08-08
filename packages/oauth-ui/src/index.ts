@@ -75,6 +75,11 @@ export {
   isOAuthCloudProvider,
   isCloudProviderId,
   reconnectOAuthProvider,
+  ensureCloudCredentialsReady,
+  hydrateCloudCredentialsFromVault,
+  publishCloudCredentialsVault,
+  cloudAccessHeaders,
+  PN_CLOUD_ACCESS_TOKEN_HEADER,
 } from './cloudReconnect';
 export type {
   CloudReconnectPromptProps,
@@ -85,4 +90,5 @@ export type {
   PortableConnectForms,
   ThirdPartyCloudReconnectHostProps,
   ReconnectOAuthParams,
+  CloudVaultHydrateResult,
 } from './cloudReconnect';
