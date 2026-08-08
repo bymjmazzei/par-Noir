@@ -17,7 +17,7 @@ import { getMessageThreads, type MessageThread } from './messageService';
 import type { DmSessionRecovery } from './dmCryptoClient';
 import { isDmIdentityReady, getDmIdentity } from './dmIdentitySession';
 import type { Message } from './messageService';
-import { getOwnerApiHeaders } from './ownerApiHeaders';
+import { ownerApiHeadersAsync, waitForOwnerCloudAccess } from './ownerApiHeaders';
 
 const groupChatKeys = new Map<string, string>();
 
@@ -25,8 +25,10 @@ export function getGroupChatKeyCache(): Map<string, string> {
   return groupChatKeys;
 }
 
-function getAuthHeaders(): HeadersInit {
-  return getOwnerApiHeaders({ 'Content-Type': 'application/json' });
+async function getAuthHeaders(): Promise<HeadersInit> {
+  const sessionPn = (await import('./pnOAuthService')).PNOAuthService.loadSession()?.pnIdentifier;
+  if (sessionPn) await waitForOwnerCloudAccess(sessionPn);
+  return ownerApiHeadersAsync();
 }
 
 export type GroupAccessRole = 'readWrite' | 'readOnly';
@@ -50,7 +52,7 @@ export interface CreateGroupMemberInput {
 export async function listGroups(userPnIdentifier: string): Promise<GroupRecord[]> {
   const params = new URLSearchParams({ userPnIdentifier });
   const res = await fetch(`${API_ENDPOINT}/api/groups?${params}`, {
-    headers: getAuthHeaders()
+    headers: await getAuthHeaders()
   });
   if (!res.ok) {
     throw new Error('Failed to load groups');
@@ -118,7 +120,7 @@ export async function createGroup(
 
   const res = await fetch(`${API_ENDPOINT}/api/groups`, {
     method: 'POST',
-    headers: getAuthHeaders(),
+    headers: await getAuthHeaders(),
     body: JSON.stringify({
       ownerPnIdentifier,
       title,
@@ -145,7 +147,7 @@ export async function updateMemberAccessRole(
     `${API_ENDPOINT}/api/groups/${encodeURIComponent(groupId)}/members/${encodeURIComponent(memberPnIdentifier)}`,
     {
       method: 'PATCH',
-      headers: getAuthHeaders(),
+      headers: await getAuthHeaders(),
       body: JSON.stringify({ ownerPnIdentifier, accessRole })
     }
   );
@@ -161,7 +163,7 @@ export async function updateGroupTitle(
 ): Promise<void> {
   const res = await fetch(`${API_ENDPOINT}/api/groups/${encodeURIComponent(groupId)}`, {
     method: 'PATCH',
-    headers: getAuthHeaders(),
+    headers: await getAuthHeaders(),
     body: JSON.stringify({ ownerPnIdentifier, title })
   });
   if (!res.ok) {
@@ -221,7 +223,7 @@ export async function removeGroupMember(
     `${API_ENDPOINT}/api/groups/${encodeURIComponent(groupId)}/members/${encodeURIComponent(memberPnIdentifier)}`,
     {
       method: 'DELETE',
-      headers: getAuthHeaders(),
+      headers: await getAuthHeaders(),
       body: JSON.stringify({ ownerPnIdentifier, keyRotation })
     }
   );
@@ -291,7 +293,7 @@ export async function getGroupMessages(
   if (spreadsheetId) params.set('spreadsheetId', spreadsheetId);
   const res = await fetch(
     `${API_ENDPOINT}/api/groups/${encodeURIComponent(groupId)}/messages?${params}`,
-    { headers: getAuthHeaders() }
+    { headers: await getAuthHeaders() }
   );
   if (!res.ok) {
     throw new Error('Failed to load group messages');
@@ -335,7 +337,7 @@ export async function sendGroupMessage(
   const encryptedContent = await encryptGroupMessage(plaintext, chatKey);
   const res = await fetch(`${API_ENDPOINT}/api/groups/${encodeURIComponent(groupId)}/messages`, {
     method: 'POST',
-    headers: getAuthHeaders(),
+    headers: await getAuthHeaders(),
     body: JSON.stringify({
       fromPnIdentifier: userPn,
       userPnIdentifier: userPn,
@@ -386,7 +388,7 @@ export async function addGroupMember(
   );
   const res = await fetch(`${API_ENDPOINT}/api/groups/${encodeURIComponent(groupId)}/members`, {
     method: 'POST',
-    headers: getAuthHeaders(),
+    headers: await getAuthHeaders(),
     body: JSON.stringify({
       ownerPnIdentifier,
       memberPnIdentifier,

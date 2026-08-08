@@ -76,6 +76,13 @@ export async function pnDriveFoldersExistOnDrive(
       `https://www.googleapis.com/drive/v3/files/${folderId}?fields=id,trashed`,
       { headers: { Authorization: `Bearer ${accessToken}` } }
     );
+    if (res.status === 401 || res.status === 403) {
+      // Do not treat auth failure as "folders missing" (that clears pnDriveIndex).
+      throw new DriveIndexError(
+        'Google Drive access token rejected. Forward a fresh X-PN-Cloud-Access-Token.',
+        'CLOUD_TOKEN_REQUIRED'
+      );
+    }
     if (res.status === 404) return false;
     if (res.ok) {
       const data = (await res.json()) as { trashed?: boolean };

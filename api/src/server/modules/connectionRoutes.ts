@@ -1876,6 +1876,15 @@ export function setupConnectionRoutes(app: express.Application, deps: Connection
               retryable: true,
             });
           }
+          const msg = error instanceof Error ? error.message : String(error || '');
+          // Soft-fail unlock races / stale forwarded tokens — UI treats as not connected.
+          if (
+            /access token|authentication failed|invalid_grant|cloud.?token|unauthorized|401|403/i.test(
+              msg
+            )
+          ) {
+            return res.json({ status: 'not_connected', pendingCloudToken: true });
+          }
           throw error;
         }
       } catch (error: any) {

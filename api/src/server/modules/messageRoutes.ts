@@ -216,7 +216,7 @@ export function setupMessageRoutes(app: express.Application, deps: MessageRouteD
             });
           }
           const msg = inboxError instanceof Error ? inboxError.message : 'Failed to read inbox';
-          if (/access token|authentication failed|invalid_grant|cloud token/i.test(msg)) {
+          if (/access token|authentication failed|invalid_grant|cloud.?token|unauthorized|401|403/i.test(msg)) {
             return res.status(409).json({
               error: 'cloud_token_required',
               error_description: msg
@@ -229,14 +229,21 @@ export function setupMessageRoutes(app: express.Application, deps: MessageRouteD
         }
       } catch (error: any) {
         console.error('Error getting message conversations:', error);
-        // Check for authentication errors and return 401 instead of 500
-        if (error.message?.includes('authentication failed') || 
-            error?.response?.status === 401 || 
-            error?.code === 401) {
-          return res.status(401).json({
-            error: 'Google Drive authentication failed',
-            code: 'DRIVE_AUTH_FAILED',
-            message: 'Please reconnect your Google Drive account in the dashboard.'
+        const { respondDriveTokenError } = await import('./ownerDriveToken');
+        if (respondDriveTokenError(res, error)) return;
+        // Check for authentication errors — custody / stale token → 409 (client retries after hydrate)
+        if (
+          error.message?.includes('authentication failed') ||
+          error?.response?.status === 401 ||
+          error?.response?.status === 403 ||
+          error?.code === 401 ||
+          /access token|invalid_grant|cloud.?token|unauthorized/i.test(String(error?.message || ''))
+        ) {
+          return res.status(409).json({
+            error: 'cloud_token_required',
+            error_description:
+              safeClientErrorMessage(error, NODE_ENV === 'production') ||
+              'Google Drive access token required'
           });
         }
         if (error?.code === 429 || error?.response?.status === 429) {

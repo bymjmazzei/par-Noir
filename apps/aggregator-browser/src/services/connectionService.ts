@@ -4,7 +4,7 @@
  * Uses Google Drive via API (no IPFS/decentralized coordination)
  */
 
-import { getOwnerApiHeaders, waitForOwnerCloudAccess } from './ownerApiHeaders';
+import { ownerApiHeadersAsync, waitForOwnerCloudAccess } from './ownerApiHeaders';
 import { getUserProfile } from './profileService';
 import { createKemSession, wrapAcceptorMessageRootKey } from './dmCryptoClient';
 import { getMessagingMlKemPublicKey, getDmIdentity, isDmIdentityReady } from './dmIdentitySession';
@@ -12,9 +12,9 @@ import { notifyMessagingInboxRefresh, refreshMessagingInbox } from './messageSer
 import { API_ENDPOINT } from '../config/api';
 import { ensureMailboxRouteKey } from '@par-noir/device-cloud-credentials';
 
-// Helper function to get auth headers
-function getAuthHeaders(): HeadersInit {
-  return getOwnerApiHeaders();
+// Helper function to get auth headers (after vault hydrate)
+async function getAuthHeaders(): Promise<HeadersInit> {
+  return ownerApiHeadersAsync();
 }
 
 export interface Connection {
@@ -70,7 +70,7 @@ export async function sendConnectionRequest(
   try {
     const response = await fetch(`${API_ENDPOINT}/api/connections/request`, {
       method: 'POST',
-      headers: getAuthHeaders(),
+      headers: await getAuthHeaders(),
       body: JSON.stringify({
         requesterPnIdentifier,
         recipientPnIdentifier,
@@ -145,7 +145,7 @@ export async function acceptConnectionRequest(
   try {
     const response = await fetch(`${API_ENDPOINT}/api/connections/${connectionId}/accept`, {
       method: 'POST',
-      headers: getAuthHeaders(),
+      headers: await getAuthHeaders(),
       body: JSON.stringify({
         userPnIdentifier,
         kemCiphertext,
@@ -192,7 +192,7 @@ export async function rejectConnectionRequest(
   try {
     const response = await fetch(`${API_ENDPOINT}/api/connections/${connectionId}/reject`, {
       method: 'POST',
-      headers: getAuthHeaders(),
+      headers: await getAuthHeaders(),
       body: JSON.stringify({
         userPnIdentifier
       })
@@ -228,7 +228,7 @@ export async function getConnections(userPnIdentifier: string): Promise<Connecti
   // Use Google Drive API directly
   try {
     const response = await fetch(`${API_ENDPOINT}/api/connections?userPnIdentifier=${userPnIdentifier}`, {
-      headers: getAuthHeaders()
+      headers: await getAuthHeaders()
     });
 
     if (!response.ok) {
@@ -259,7 +259,7 @@ export async function getPendingRequests(userPnIdentifier: string): Promise<Pend
   const work = (async (): Promise<PendingRequests> => {
     try {
       const response = await fetch(`${API_ENDPOINT}/api/connections/pending?userPnIdentifier=${userPnIdentifier}`, {
-        headers: getAuthHeaders()
+        headers: await getAuthHeaders()
       });
 
       if (!response.ok) {
@@ -306,7 +306,7 @@ export async function getConnectionStatus(
     const response = await fetch(
       `${API_ENDPOINT}/api/connections/${encodeURIComponent(otherUserPnIdentifier)}/status?userPnIdentifier=${encodeURIComponent(userPnIdentifier)}`,
       {
-        headers: getAuthHeaders()
+        headers: await getAuthHeaders()
       }
     );
 
@@ -315,7 +315,7 @@ export async function getConnectionStatus(
       await waitForOwnerCloudAccess(userPnIdentifier, 3_000);
       const retry = await fetch(
         `${API_ENDPOINT}/api/connections/${encodeURIComponent(otherUserPnIdentifier)}/status?userPnIdentifier=${encodeURIComponent(userPnIdentifier)}`,
-        { headers: getAuthHeaders() }
+        { headers: await getAuthHeaders() }
       );
       if (!retry.ok) return { status: 'not_connected' };
       return await retry.json();
@@ -345,7 +345,7 @@ export async function removeConnection(
   try {
     const response = await fetch(`${API_ENDPOINT}/api/connections/${connectionId}`, {
       method: 'DELETE',
-      headers: getAuthHeaders(),
+      headers: await getAuthHeaders(),
       body: JSON.stringify({
         userPnIdentifier
       })

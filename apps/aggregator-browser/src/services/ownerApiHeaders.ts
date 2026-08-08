@@ -12,6 +12,7 @@ import {
   PN_CLOUD_CREDENTIALS_READY_EVENT
 } from '@par-noir/device-cloud-credentials';
 import { PNOAuthService } from './pnOAuthService';
+import { API_ENDPOINT } from '../config/api';
 
 export {
   waitForCloudCredentialsReady as waitForOwnerCloudAccess,
@@ -39,6 +40,7 @@ export function getOwnerApiHeaders(extra?: HeadersInit): Record<string, string> 
   return headers;
 }
 
+/** Wait for vault hydrate (+ Google token refresh if needed) then return headers. */
 export async function ownerApiHeadersAsync(
   authToken?: string | null,
   pnIdentifier?: string | null
@@ -48,7 +50,8 @@ export async function ownerApiHeadersAsync(
   const pn = pnIdentifier || session?.pnIdentifier;
   const headers = await sharedOwnerCloudHeadersAsync({
     authToken: token,
-    pnIdentifier: pn
+    pnIdentifier: pn,
+    apiEndpoint: API_ENDPOINT
   });
   if (!token) delete headers.Authorization;
   return headers;

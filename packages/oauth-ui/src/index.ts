@@ -83,8 +83,10 @@ export {
 } from './cloudReconnect';
 export {
   getCloudAccessTokenFromSession,
+  getCloudRefreshTokenFromSession,
   hasCloudCredentialsReady,
   waitForCloudCredentialsReady,
+  ensureCloudAccessToken,
   ownerCloudHeaders,
   ownerCloudHeadersAsync,
 } from '@par-noir/device-cloud-credentials';

@@ -662,7 +662,7 @@ export function setupUserRoutes(app: express.Application, deps: UserRouteDeps) {
         // Get user's credentials
         const userCredentials = await storageCredentialsService.getCredentials(normalizedPnIdentifier);
         if (!userCredentials?.credentials) {
-          return res.status(404).json({ error: 'User credentials not found' });
+          return res.json({ preferences: null });
         }
 
         const googleDriveAccounts = userCredentials.credentials.googleDriveAccounts || 
@@ -672,7 +672,7 @@ export function setupUserRoutes(app: express.Application, deps: UserRouteDeps) {
           const { isPortableStorageProvider } = await import('./storage/storageProviderUtils');
           const _checkPn = (typeof pnIdentifier !== 'undefined' && pnIdentifier) || (req.body && req.body.userPnIdentifier) || (req.params && (req.params as any).pnIdentifier) || '';
           if (!_checkPn || !(await isPortableStorageProvider(_checkPn))) {
-            return res.status(404).json({ error: 'Storage not connected' });
+            return res.json({ preferences: null });
           }
           // portable social cloud — continue without Drive accounts
         }
@@ -709,7 +709,8 @@ export function setupUserRoutes(app: express.Application, deps: UserRouteDeps) {
         }
 
         if (!pnFolderId) {
-          return res.status(404).json({ error: 'pN folder not found' });
+          // Soft-fail: stale/missing Drive layout during unlock — client keeps local prefs.
+          return res.json({ preferences: null });
         }
 
         // Find _metadata folder
@@ -730,7 +731,7 @@ export function setupUserRoutes(app: express.Application, deps: UserRouteDeps) {
         }
 
         if (!metadataFolderId) {
-          return res.status(404).json({ error: '_metadata folder not found' });
+          return res.json({ preferences: null });
         }
 
         // Get preferences file
@@ -748,6 +749,13 @@ export function setupUserRoutes(app: express.Application, deps: UserRouteDeps) {
       } catch (error: any) {
         const { respondDriveTokenError } = await import('./ownerDriveToken');
         if (respondDriveTokenError(res, error)) return;
+        const msg = error instanceof Error ? error.message : String(error || '');
+        if (/access token|authentication failed|invalid_grant|cloud.?token|unauthorized/i.test(msg)) {
+          return res.status(409).json({
+            error: 'cloud_token_required',
+            error_description: msg || 'Google Drive access token required'
+          });
+        }
         console.error('Error getting preferences:', error);
         return res.status(500).json({
           error: 'Failed to get preferences',

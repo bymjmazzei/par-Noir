@@ -206,20 +206,20 @@ export function UserStateProvider({ children }: { children: ReactNode }) {
         }
         const pn = userState.pnIdentifier;
         if (!pn) return;
-        const { getSessionCloudCredentials } = await import('@par-noir/device-cloud-credentials');
-        const { envelopeHasUsableSecrets } = await import('@par-noir/user-owned-storage');
-        // Wait briefly for vault hydrate so we don't spam 409s
-        for (let i = 0; i < 40 && !cancelled; i++) {
-          if (envelopeHasUsableSecrets(getSessionCloudCredentials(pn))) break;
-          await new Promise((r) => setTimeout(r, 250));
-        }
-        if (cancelled) return;
-        if (!envelopeHasUsableSecrets(getSessionCloudCredentials(pn))) {
+        const { getCloudAccessTokenFromSession, waitForCloudCredentialsReady } = await import(
+          '@par-noir/device-cloud-credentials'
+        );
+        // Wait for a usable Google access token (refresh-only is not enough).
+        const ready = await waitForCloudCredentialsReady(pn, 10_000);
+        if (cancelled || !ready || !getCloudAccessTokenFromSession(pn)) {
           return;
         }
 
         const response = await fetch(`${API_ENDPOINT}/api/users/${pn}/preferences`, {
-          headers: (await import('../services/ownerApiHeaders')).getOwnerApiHeaders()
+          headers: await (await import('../services/ownerApiHeaders')).ownerApiHeadersAsync(
+            session.accessToken,
+            pn
+          )
         });
 
         if (response.ok) {
