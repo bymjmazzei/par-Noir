@@ -1875,6 +1875,10 @@ export function setupConnectionRoutes(app: express.Application, deps: Connection
           return res.json(status);
         } catch (error: unknown) {
           if (error instanceof DriveIndexError) {
+            // Soft-fail status checks when cloud token has not arrived yet (client will retry).
+            if (error.code === 'CLOUD_TOKEN_REQUIRED') {
+              return res.json({ status: 'not_connected', pendingCloudToken: true });
+            }
             return driveNotInitialized(res);
           }
           if (isGoogleSheetsRateLimit(error)) {

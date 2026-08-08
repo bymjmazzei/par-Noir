@@ -4,7 +4,7 @@
  * Uses Google Drive via API (no IPFS/decentralized coordination)
  */
 
-import { getOwnerApiHeaders } from './ownerApiHeaders';
+import { getOwnerApiHeaders, waitForOwnerCloudAccess } from './ownerApiHeaders';
 import { getUserProfile } from './profileService';
 import { createKemSession, wrapAcceptorMessageRootKey } from './dmCryptoClient';
 import { getMessagingMlKemPublicKey, getDmIdentity, isDmIdentityReady } from './dmIdentitySession';
@@ -292,9 +292,14 @@ export async function getConnectionStatus(
   userPnIdentifier: string,
   otherUserPnIdentifier: string
 ): Promise<ConnectionStatus> {
-  // Use Google Drive API directly
   try {
     if (otherUserPnIdentifier.length > 200) {
+      return { status: 'not_connected' };
+    }
+
+    // Under device custody this endpoint needs X-PN-Cloud-Access-Token — wait for vault hydrate.
+    const ready = await waitForOwnerCloudAccess(userPnIdentifier);
+    if (!ready) {
       return { status: 'not_connected' };
     }
 
@@ -305,8 +310,18 @@ export async function getConnectionStatus(
       }
     );
 
+    if (response.status === 409) {
+      // Rare race if hydrate just landed — one short retry.
+      await waitForOwnerCloudAccess(userPnIdentifier, 3_000);
+      const retry = await fetch(
+        `${API_ENDPOINT}/api/connections/${encodeURIComponent(otherUserPnIdentifier)}/status?userPnIdentifier=${encodeURIComponent(userPnIdentifier)}`,
+        { headers: getAuthHeaders() }
+      );
+      if (!retry.ok) return { status: 'not_connected' };
+      return await retry.json();
+    }
+
     if (!response.ok) {
-      // Log error for debugging, but still return not_connected
       if (response.status === 401 || response.status === 500) {
         console.warn(`[getConnectionStatus] API returned ${response.status} for ${otherUserPnIdentifier}`);
       }
@@ -315,7 +330,6 @@ export async function getConnectionStatus(
 
     return await response.json();
   } catch (error) {
-    // Log error for debugging, but still return not_connected
     console.warn('[getConnectionStatus] Failed to check connection status:', error);
     return { status: 'not_connected' };
   }

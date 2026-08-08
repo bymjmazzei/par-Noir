@@ -329,25 +329,29 @@ export const ProfileActionMenu = React.memo(function ProfileActionMenu({ creator
     }
   }, [isEditingName, displayName]);
 
-  // Load connection status
+  // Load connection status (after cloud vault hydrate when possible)
   useEffect(() => {
     if (!userState.isUnlocked || !userState.pnIdentifier || isOwnProfile || !creatorId || !isValidPnIdentifier(creatorId)) {
       setConnectionStatus({ status: 'not_connected' });
       return;
     }
 
+    let cancelled = false;
     const loadStatus = async () => {
       try {
         const status = await getConnectionStatus(userState.pnIdentifier!, creatorId);
-        setConnectionStatus(status);
-      } catch (error) {
-        // Silently fail - user may not have connections set up
-        // Don't log to console to avoid spam
-        setConnectionStatus({ status: 'not_connected' });
+        if (!cancelled) setConnectionStatus(status);
+      } catch {
+        if (!cancelled) setConnectionStatus({ status: 'not_connected' });
       }
     };
 
-    loadStatus();
+    void loadStatus();
+    window.addEventListener('pn-cloud-credentials-ready', loadStatus);
+    return () => {
+      cancelled = true;
+      window.removeEventListener('pn-cloud-credentials-ready', loadStatus);
+    };
   }, [userState.isUnlocked, userState.pnIdentifier, creatorId, isOwnProfile]);
 
   const handleConnect = async () => {
