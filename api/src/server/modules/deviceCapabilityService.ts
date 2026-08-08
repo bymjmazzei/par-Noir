@@ -72,7 +72,17 @@ function bearerPn(req: Request): { pnIdentifier: string } | null {
 }
 
 async function loadDeviceContextUncached(pn: string): Promise<DeviceContextLoad | null> {
-  const bundle = await loadDeviceBundle(pn);
+  let bundle: DeviceStorageBundle | null;
+  try {
+    bundle = await loadDeviceBundle(pn);
+  } catch (error) {
+    // Belt: custody miss must not 500 device gates (ownerStorageContext soft-paths this).
+    const { DriveIndexError } = await import('./pnDriveIndex');
+    if (error instanceof DriveIndexError && error.code === 'CLOUD_TOKEN_REQUIRED') {
+      return null;
+    }
+    throw error;
+  }
   if (!bundle) return null;
   try {
     const [policy, devices] = await Promise.all([

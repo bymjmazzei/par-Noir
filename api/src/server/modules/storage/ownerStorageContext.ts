@@ -34,7 +34,12 @@ export async function getOwnerStorageContext(
     return { kind: 'portable', pnIdentifier, accountId: undefined };
   }
 
-  const drive = await getRecoveryDriveContext(pnIdentifier, opts);
+  // Soft: device capability / registry probes must not throw when JWT-only (pre-mint).
+  // Real Drive I/O uses resolveOwnerDriveToken → 409 instead.
+  const drive = await getRecoveryDriveContext(pnIdentifier, {
+    ...opts,
+    softMissingToken: true,
+  });
   if (!drive) return null;
 
   return {
@@ -52,5 +57,5 @@ export async function hasOwnerStorage(userPnIdentifier: string): Promise<boolean
   if (!record?.credentials) return false;
   const provider = resolvePrimaryProvider(record.credentials);
   if (provider !== 'google_drive') return true;
-  return (await getRecoveryDriveContext(pnIdentifier)) !== null;
+  return (await getRecoveryDriveContext(pnIdentifier, { softMissingToken: true })) !== null;
 }

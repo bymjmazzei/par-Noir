@@ -11,7 +11,9 @@ import {
   clearDeviceContextCache,
   gateOwnerRoute,
   gateOwnerSelfRoute,
+  getDeviceRegistrySummary,
 } from './deviceCapabilityService';
+import { DriveIndexError } from './pnDriveIndex';
 
 jest.mock('./storage/deviceStorageService', () => ({
   loadDeviceBundle: jest.fn(),
@@ -314,5 +316,42 @@ describe('assertDeviceCapability', () => {
     if (result.ok) {
       expect(result.ctx.isKeyed).toBe(false);
     }
+  });
+
+  it('treats CLOUD_TOKEN_REQUIRED from loadDeviceBundle as unkeyed (no throw)', async () => {
+    clearDeviceContextCache(PN);
+    mockValidate.mockReturnValue({ pnIdentifier: PN } as ReturnType<typeof PNOAuthService.validateAccessToken>);
+    deviceStorage.loadDeviceBundle.mockRejectedValue(
+      new DriveIndexError('token required', 'CLOUD_TOKEN_REQUIRED')
+    );
+    const req = bearerReq();
+    const res = mockRes();
+
+    const ctx = await gateOwnerRoute(req, res, DEVICE_CAPABILITIES.driveRead, PN);
+
+    expect(ctx).not.toBeNull();
+    expect(ctx?.isKeyed).toBe(false);
+    expect(res.statusCode).toBeUndefined();
+  });
+});
+
+describe('getDeviceRegistrySummary custody soft path', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    clearDeviceContextCache();
+  });
+
+  it('returns null when loadDeviceBundle throws CLOUD_TOKEN_REQUIRED', async () => {
+    deviceStorage.loadDeviceBundle.mockRejectedValue(
+      new DriveIndexError('token required', 'CLOUD_TOKEN_REQUIRED')
+    );
+
+    await expect(getDeviceRegistrySummary(PN)).resolves.toBeNull();
+  });
+
+  it('returns null when loadDeviceBundle returns null (soft owner context)', async () => {
+    deviceStorage.loadDeviceBundle.mockResolvedValue(null);
+
+    await expect(getDeviceRegistrySummary(PN)).resolves.toBeNull();
   });
 });
