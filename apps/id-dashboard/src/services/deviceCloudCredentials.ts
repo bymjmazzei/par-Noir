@@ -119,19 +119,34 @@ export async function sealAndStoreCloudCredentials(opts: {
   return envelope;
 }
 
-/** Publish identity-sealed cloud vault to API so other first-party apps can hydrate. */
+/** Publish ML-KEM-sealed cloud vault so OAuth first-party apps can hydrate without passcode. */
 export async function publishCloudVaultForIdentity(opts: {
   identityId: string;
   authToken: string;
   pnName: string;
   passcode: string;
   credentials: StorageCredentialsEnvelope;
+  /** Optional storage public key when identityId is a pn- identifier */
+  publicKey?: string | null;
+  mlKemSecretKey?: string | null;
 }): Promise<void> {
   const { publishCloudCredentialsVault } = await import('@par-noir/device-cloud-credentials');
+  let mlKemSecretKey = opts.mlKemSecretKey || null;
+  if (!mlKemSecretKey) {
+    const { resolveIdentityMlKemSecret } = await import('./resolveIdentityMlKem');
+    mlKemSecretKey = await resolveIdentityMlKemSecret({
+      identityId: opts.identityId,
+      publicKey: opts.publicKey,
+      pnName: opts.pnName,
+      passcode: opts.passcode
+    });
+  }
   await publishCloudCredentialsVault({
     apiEndpoint: API_ENDPOINT,
     authToken: opts.authToken,
     pnIdentifier: opts.identityId,
+    mlKemSecretKey,
+    // Fallback seal if ML-KEM unavailable (dashboard-only hydrate)
     pnName: opts.pnName,
     passcode: opts.passcode,
     credentials: opts.credentials

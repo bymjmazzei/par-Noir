@@ -253,127 +253,76 @@ export function setupProfileRoutes(app: express.Application, deps: ProfileRouteD
           WHERE pn_identifier = $1
         `, [pnIdentifier]);
 
-        if (dbProfileResult.rows.length > 0) {
-          const dbProfile = dbProfileResult.rows[0];
-          // Log for debugging
-          if (NODE_ENV === 'development') {
-            console.log(`[Profile API] Retrieved profile from database for ${pnIdentifier}:`, {
-              displayName: dbProfile.display_name || 'null',
-              profileImageFileId: dbProfile.profile_image_file_id || 'null'
-            });
-          }
-          const driveProfile = await (async () => {
-            try {
-              const userCredentials = await storageCredentialsService.getCredentials(pnIdentifier);
-              if (!userCredentials?.credentials) return null;
-              const googleDriveAccounts =
-                userCredentials.credentials.googleDriveAccounts ||
-                (userCredentials.credentials.googleDrive ? [userCredentials.credentials.googleDrive] : []);
-              if (googleDriveAccounts.length === 0) return null;
-              const account = googleDriveAccounts.length > 0 ? googleDriveAccounts[0] : null;
-              const accountId = account ? extractAccountId(account) : undefined;
-              const userAccessToken = account ? await googleDriveProxyService.getAccessToken(pnIdentifier, accountId) : '';
-              const metadataFolder = await getMetadataFolder(
-                {
-                  access_token: account?.access_token || account?.accessToken || '',
-                  refresh_token: account?.refresh_token || account?.refreshToken,
-                  expires_at: account?.expires_at,
-                  expires_in: account?.expires_in
-                },
-                pnIdentifier,
-                accountId
-              );
-              if (!metadataFolder?.metadataFolderId) return null;
-              return ProfileService.getProfile(userAccessToken, metadataFolder.metadataFolderId);
-            } catch {
-              return null;
+        const dbProfile = dbProfileResult.rows.length > 0 ? dbProfileResult.rows[0] : null;
+        const dbFallback = {
+          displayName: dbProfile?.display_name || null,
+          profileImageFileId: dbProfile?.profile_image_file_id || null,
+          mlKemPublicKey: null as string | null
+        };
+
+        // Enrich from Drive when possible; never 500 if Drive/custody token is unavailable.
+        const driveProfile = await (async () => {
+          try {
+            const { extractCloudAccessToken } = await import('./cloudAccessToken');
+            const userCredentials = await storageCredentialsService.getCredentials(pnIdentifier);
+            if (!userCredentials?.credentials) return null;
+            const googleDriveAccounts =
+              userCredentials.credentials.googleDriveAccounts ||
+              (userCredentials.credentials.googleDrive ? [userCredentials.credentials.googleDrive] : []);
+            if (googleDriveAccounts.length === 0) return null;
+            const account = googleDriveAccounts[0] || null;
+            const accountId = account ? extractAccountId(account) : undefined;
+            let userAccessToken = extractCloudAccessToken(req) || '';
+            if (!userAccessToken && account) {
+              try {
+                userAccessToken = await googleDriveProxyService.getAccessToken(pnIdentifier, accountId);
+              } catch {
+                return null;
+              }
             }
-          })();
-
-          return res.json({
-            displayName: dbProfile.display_name || null,
-            profileImageFileId: dbProfile.profile_image_file_id || null,
-            mlKemPublicKey: driveProfile?.mlKemPublicKey || null
-          });
-        }
-
-        // Fallback to Google Drive if not in database
-        // Get user's credentials using normalized pn identifier
-        const userCredentials = await storageCredentialsService.getCredentials(pnIdentifier);
-        if (!userCredentials?.credentials) {
-          return res.json({ displayName: null, profileImageFileId: null });
-        }
-
-        const googleDriveAccounts = userCredentials.credentials.googleDriveAccounts || 
-          (userCredentials.credentials.googleDrive ? [userCredentials.credentials.googleDrive] : []);
-        
-        if (googleDriveAccounts.length === 0) {
-          return res.json({ displayName: null, profileImageFileId: null });
-        }
-
-        const account = googleDriveAccounts.length > 0 ? googleDriveAccounts[0] : null;
-        const accountId = account ? extractAccountId(account) : undefined;
-        // Use normalized pn identifier for access token retrieval
-        const userAccessToken = account ? await googleDriveProxyService.getAccessToken(pnIdentifier, accountId) : '';
-
-        // Find metadata folder - try both '_metadata' and 'Metadata'
-        let metadataFolderId: string | null = null;
-        
-        for (const folderName of ['_metadata', 'Metadata']) {
-          const folderQuery = `name='${folderName}' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
-          const folderUrl = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(folderQuery)}&fields=files(id)&pageSize=1`;
-          const folderResponse = await fetch(folderUrl, {
-            headers: { 'Authorization': `Bearer ${userAccessToken}` }
-          });
-
-          if (folderResponse.ok) {
-            const folderData = await folderResponse.json() as { files?: Array<{ id: string }> };
-            if (folderData.files && folderData.files.length > 0) {
-              metadataFolderId = folderData.files[0].id;
-              break;
-            }
+            if (!userAccessToken) return null;
+            const metadataFolder = await getMetadataFolder(
+              {
+                access_token: userAccessToken,
+                refresh_token: account?.refresh_token || account?.refreshToken,
+                expires_at: account?.expires_at,
+                expires_in: account?.expires_in
+              },
+              pnIdentifier,
+              accountId
+            );
+            if (!metadataFolder?.metadataFolderId) return null;
+            return ProfileService.getProfile(userAccessToken, metadataFolder.metadataFolderId);
+          } catch {
+            return null;
           }
-        }
+        })();
 
-        if (!metadataFolderId) {
-          return res.json({ displayName: null, profileImageFileId: null });
-        }
-
-        const profile = await ProfileService.getProfile(userAccessToken, metadataFolderId);
-
-        // If we got a profile from Google Drive, save it to database for next time
-        if (profile?.displayName) {
-          await db.query(`
-            INSERT INTO user_profiles (pn_identifier, display_name, profile_image_file_id, updated_at)
-            VALUES ($1, $2, $3, NOW())
-            ON CONFLICT (pn_identifier) 
-            DO UPDATE SET 
-              display_name = EXCLUDED.display_name,
-              profile_image_file_id = EXCLUDED.profile_image_file_id,
-              updated_at = NOW()
-          `, [pnIdentifier, profile.displayName, profile.profileImageFileId || null]);
-        }
-
-        // Log for debugging
-        if (NODE_ENV === 'development') {
-          console.log(`[Profile API] Retrieved profile from Google Drive for ${pnIdentifier}:`, {
-            hasProfile: !!profile,
-            displayName: profile?.displayName || 'null',
-            profileImageFileId: profile?.profileImageFileId || 'null'
-          });
+        if (driveProfile?.displayName && !dbProfile?.display_name) {
+          try {
+            await db.query(`
+              INSERT INTO user_profiles (pn_identifier, display_name, profile_image_file_id, updated_at)
+              VALUES ($1, $2, $3, NOW())
+              ON CONFLICT (pn_identifier)
+              DO UPDATE SET
+                display_name = EXCLUDED.display_name,
+                profile_image_file_id = EXCLUDED.profile_image_file_id,
+                updated_at = NOW()
+            `, [pnIdentifier, driveProfile.displayName, driveProfile.profileImageFileId || null]);
+          } catch {
+            /* best-effort cache */
+          }
         }
 
         return res.json({
-          displayName: profile?.displayName || null,
-          profileImageFileId: profile?.profileImageFileId || null,
-          mlKemPublicKey: profile?.mlKemPublicKey || null
+          displayName: driveProfile?.displayName || dbFallback.displayName,
+          profileImageFileId: driveProfile?.profileImageFileId || dbFallback.profileImageFileId,
+          mlKemPublicKey: driveProfile?.mlKemPublicKey || null
         });
       } catch (error: any) {
         console.error('Error getting profile:', error);
-        return res.status(500).json({
-          error: 'Failed to get profile',
-          error_description: safeClientErrorMessage(error, NODE_ENV === 'production') || 'Failed to get profile'
-        });
+        // Soft-fail: empty profile is preferable to 500 under device custody.
+        return res.json({ displayName: null, profileImageFileId: null, mlKemPublicKey: null });
       }
     });
 

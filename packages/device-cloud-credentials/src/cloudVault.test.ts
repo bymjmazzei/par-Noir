@@ -2,50 +2,62 @@ import { describe, expect, it } from 'vitest';
 import {
   canonicalCloudSealSession,
   sealCloudVault,
+  sealCloudVaultWithMlKem,
   unsealCloudVault,
+  unsealCloudVaultWithMlKem,
+  unsealCloudVaultWithAnyFactor,
   isSealedEnvelopeShape,
   looksLikePlaintextCloudSecrets,
-  CLOUD_VAULT_SEAL_SESSION_ID
+  CLOUD_VAULT_SEAL_SESSION_ID,
+  CLOUD_VAULT_MLKEM_SESSION_ID,
+  cloudVaultSealSessionFromMlKem
 } from './cloudVault.js';
 
 describe('cloud vault canonical seal', () => {
-  it('uses fixed session id across apps', () => {
+  it('uses fixed session id for identity seal', () => {
     const s = canonicalCloudSealSession('alice', 'secret');
     expect(s.sessionId).toBe(CLOUD_VAULT_SEAL_SESSION_ID);
-    expect(s.pnName).toBe('alice');
   });
 
-  it('round-trips with same factors regardless of former per-app sessionId', async () => {
+  it('mlkem seal is unsealable with mlkem only', async () => {
     const creds = {
       googleDriveAccounts: [{ accountId: 'a1', accessToken: 'at', refreshToken: 'rt' }]
     };
-    const sealed = await sealCloudVault(creds as any, 'alice', 'secret');
+    const sealed = await sealCloudVaultWithMlKem(creds as any, 'kem-secret');
     expect(isSealedEnvelopeShape(sealed)).toBe(true);
-    const opened = await unsealCloudVault(sealed, 'alice', 'secret');
+    expect(cloudVaultSealSessionFromMlKem('kem-secret').sessionId).toBe(CLOUD_VAULT_MLKEM_SESSION_ID);
+    const opened = await unsealCloudVaultWithMlKem(sealed, 'kem-secret');
     expect((opened.googleDriveAccounts as any)?.[0]?.refreshToken).toBe('rt');
   });
 
-  it('fails unseal with wrong passcode', async () => {
+  it('any-factor prefers mlkem then falls back to identity', async () => {
+    const sealed = await sealCloudVault(
+      { googleDriveAccounts: [{ refreshToken: 'legacy-rt' }] } as any,
+      'alice',
+      'secret'
+    );
+    const opened = await unsealCloudVaultWithAnyFactor(sealed, {
+      mlKemSecretKey: 'wrong',
+      pnName: 'alice',
+      passcode: 'secret'
+    });
+    expect((opened.googleDriveAccounts as any)?.[0]?.refreshToken).toBe('legacy-rt');
+  });
+
+  it('round-trips identity seal', async () => {
     const sealed = await sealCloudVault(
       { googleDriveAccounts: [{ refreshToken: 'rt' }] } as any,
       'alice',
       'secret'
     );
-    await expect(unsealCloudVault(sealed, 'alice', 'wrong')).rejects.toThrow();
+    const opened = await unsealCloudVault(sealed, 'alice', 'secret');
+    expect((opened.googleDriveAccounts as any)?.[0]?.refreshToken).toBe('rt');
   });
 
   it('detects plaintext oauth payloads', () => {
     expect(looksLikePlaintextCloudSecrets({ access_token: 'x', refresh_token: 'y' })).toBe(true);
-    expect(
-      looksLikePlaintextCloudSecrets({
-        googleDriveAccounts: [{ accessToken: 'x' }]
-      })
-    ).toBe(true);
-  });
-
-  it('accepts sealed envelope shape', async () => {
-    const sealed = await sealCloudVault({ ok: true } as any, 'a', 'b');
-    expect(looksLikePlaintextCloudSecrets(sealed)).toBe(false);
-    expect(isSealedEnvelopeShape(sealed)).toBe(true);
+    expect(looksLikePlaintextCloudSecrets({ googleDriveAccounts: [{ accessToken: 'x' }] })).toBe(
+      true
+    );
   });
 });

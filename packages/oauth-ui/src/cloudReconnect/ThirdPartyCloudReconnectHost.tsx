@@ -17,20 +17,23 @@ export interface ThirdPartyCloudReconnectHostProps {
   authToken: string | null | undefined;
   pnIdentifier: string | null | undefined;
   googleClientId?: string | null;
-  /** Identity factors for vault hydrate (required for cross-app Drive without Google reconnect). */
+  /** Preferred: ML-KEM from OAuth messaging handoff */
+  mlKemSecretKey?: string | null;
+  /** Legacy identity factors for vault hydrate */
   pnName?: string | null;
   passcode?: string | null;
 }
 
 /**
  * Post-OAuth cloud reconnect for prism / licensing / developer portals.
- * Hydrates from identity-sealed vault when pnName+passcode are available.
+ * Hydrates from ML-KEM-sealed vault when available (else identity factors).
  */
 export function ThirdPartyCloudReconnectHost({
   apiEndpoint,
   authToken,
   pnIdentifier,
   googleClientId: googleClientIdProp,
+  mlKemSecretKey,
   pnName,
   passcode
 }: ThirdPartyCloudReconnectHostProps) {
@@ -63,7 +66,7 @@ export function ThirdPartyCloudReconnectHost({
   useEffect(() => {
     let cancelled = false;
     void (async () => {
-      if (!authToken || !pnIdentifier || !pnName || !passcode) {
+      if (!authToken || !pnIdentifier || (!mlKemSecretKey && !(pnName && passcode))) {
         setVaultHydrated(false);
         return;
       }
@@ -75,6 +78,7 @@ export function ThirdPartyCloudReconnectHost({
         apiEndpoint,
         authToken,
         pnIdentifier,
+        mlKemSecretKey,
         pnName,
         passcode
       });
@@ -83,7 +87,7 @@ export function ThirdPartyCloudReconnectHost({
     return () => {
       cancelled = true;
     };
-  }, [apiEndpoint, authToken, pnIdentifier, pnName, passcode]);
+  }, [apiEndpoint, authToken, pnIdentifier, mlKemSecretKey, pnName, passcode]);
 
   const loadLocalEnvelope = useCallback(async (): Promise<StorageCredentialsEnvelope | null> => {
     if (!pnIdentifier) return null;

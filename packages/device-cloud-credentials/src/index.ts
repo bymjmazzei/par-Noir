@@ -66,12 +66,18 @@ export {
 export type { PersistCloudCredentialsMode } from './webCloudCredentialLifecycle.js';
 export {
   CLOUD_VAULT_SEAL_SESSION_ID,
+  CLOUD_VAULT_MLKEM_SESSION_ID,
   PN_CLOUD_ACCESS_TOKEN_HEADER,
   canonicalCloudSealSession,
+  cloudVaultSealSessionFromMlKem,
   sealCloudVault,
+  sealCloudVaultWithMlKem,
   unsealCloudVault,
+  unsealCloudVaultWithMlKem,
+  unsealCloudVaultWithAnyFactor,
   isSealedEnvelopeShape,
   looksLikePlaintextCloudSecrets,
+  googleTokenFromEnvelope,
   hydrateCloudCredentialsFromVault,
   publishCloudCredentialsVault,
   cloudAccessHeaders

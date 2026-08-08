@@ -119,11 +119,26 @@ export const CloudReconnectHost: React.FC<CloudReconnectHostProps> = ({
           /* best-effort */
         }
         const creds = SecureCredentialManager.getCredentials(sessionId);
+        let mlKemSecretKey: string | null = null;
+        if (creds) {
+          try {
+            const { resolveIdentityMlKemSecret } = await import('../../services/resolveIdentityMlKem');
+            mlKemSecretKey = await resolveIdentityMlKemSecret({
+              identityId: pnIdentifier,
+              publicKey: sessionId,
+              pnName: creds.pnName,
+              passcode: creds.passcode
+            });
+          } catch {
+            mlKemSecretKey = null;
+          }
+        }
         if (creds && !envelopeHasUsableSecrets(getSessionCloudCredentials(pnIdentifier))) {
           const status = await ensureCloudCredentialsReady({
             apiEndpoint: API_ENDPOINT,
             authToken: apiToken,
             pnIdentifier,
+            mlKemSecretKey,
             pnName: creds.pnName,
             passcode: creds.passcode
           });
@@ -131,7 +146,7 @@ export const CloudReconnectHost: React.FC<CloudReconnectHostProps> = ({
             warmed = getSessionCloudCredentials(pnIdentifier);
           }
         }
-        // Migrate: publish vault when we have local secrets (one-time for pre-vault connects)
+        // Migrate / re-seal: publish ML-KEM vault so browse OAuth unlock can hydrate
         if (creds && envelopeHasUsableSecrets(warmed || getSessionCloudCredentials(pnIdentifier))) {
           const toPublish = warmed || getSessionCloudCredentials(pnIdentifier);
           if (toPublish) {
@@ -139,6 +154,7 @@ export const CloudReconnectHost: React.FC<CloudReconnectHostProps> = ({
               apiEndpoint: API_ENDPOINT,
               authToken: apiToken,
               pnIdentifier,
+              mlKemSecretKey,
               pnName: creds.pnName,
               passcode: creds.passcode,
               credentials: toPublish

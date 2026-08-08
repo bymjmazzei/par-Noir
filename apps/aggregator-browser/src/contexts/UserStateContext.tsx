@@ -190,12 +190,13 @@ export function UserStateProvider({ children }: { children: ReactNode }) {
     }
   }, [userState]);
 
-  // Load preferences from Google Drive when user unlocks (like connections)
+  // Load preferences from Google Drive after cloud credentials are ready
   useEffect(() => {
     if (!userState.isUnlocked || !userState.pnIdentifier) {
       return;
     }
 
+    let cancelled = false;
     const loadPreferencesFromDrive = async () => {
       try {
         const { PNOAuthService } = await import('../services/pnOAuthService');
@@ -203,8 +204,21 @@ export function UserStateProvider({ children }: { children: ReactNode }) {
         if (!session?.accessToken) {
           return;
         }
+        const pn = userState.pnIdentifier;
+        if (!pn) return;
+        const { getSessionCloudCredentials } = await import('@par-noir/device-cloud-credentials');
+        const { envelopeHasUsableSecrets } = await import('@par-noir/user-owned-storage');
+        // Wait briefly for vault hydrate so we don't spam 409s
+        for (let i = 0; i < 40 && !cancelled; i++) {
+          if (envelopeHasUsableSecrets(getSessionCloudCredentials(pn))) break;
+          await new Promise((r) => setTimeout(r, 250));
+        }
+        if (cancelled) return;
+        if (!envelopeHasUsableSecrets(getSessionCloudCredentials(pn))) {
+          return;
+        }
 
-        const response = await fetch(`${API_ENDPOINT}/api/users/${userState.pnIdentifier}/preferences`, {
+        const response = await fetch(`${API_ENDPOINT}/api/users/${pn}/preferences`, {
           headers: (await import('../services/ownerApiHeaders')).getOwnerApiHeaders()
         });
 
@@ -242,16 +256,23 @@ export function UserStateProvider({ children }: { children: ReactNode }) {
               };
             });
           }
-        } else if (response.status === 404) {
-          // Endpoint not deployed yet - just use local state
-          console.log('Preferences endpoint not available, using local state');
+        } else if (response.status === 404 || response.status === 409) {
+          // No prefs file yet, or cloud token still settling — keep local state
         }
       } catch (error) {
         console.warn('Failed to load preferences from Google Drive:', error);
       }
     };
 
-    loadPreferencesFromDrive();
+    const onReady = () => {
+      void loadPreferencesFromDrive();
+    };
+    window.addEventListener('pn-cloud-credentials-ready', onReady);
+    void loadPreferencesFromDrive();
+    return () => {
+      cancelled = true;
+      window.removeEventListener('pn-cloud-credentials-ready', onReady);
+    };
   }, [userState.isUnlocked, userState.pnIdentifier]);
 
   // Load tag preferences from backend when user unlocks (deferred — not needed for first feed paint)
@@ -328,6 +349,18 @@ export function UserStateProvider({ children }: { children: ReactNode }) {
           return;
         }
 
+        const pn = userState.pnIdentifier;
+        if (!pn) return;
+        const { getSessionCloudCredentials } = await import('@par-noir/device-cloud-credentials');
+        const { envelopeHasUsableSecrets } = await import('@par-noir/user-owned-storage');
+        for (let i = 0; i < 40; i++) {
+          if (envelopeHasUsableSecrets(getSessionCloudCredentials(pn))) break;
+          await new Promise((r) => setTimeout(r, 250));
+        }
+        if (!envelopeHasUsableSecrets(getSessionCloudCredentials(pn))) {
+          return;
+        }
+
         const { getOwnerApiHeaders } = await import('../services/ownerApiHeaders');
         // OAuth only returns over_21 when granted and verificationLevel === verified
         const zkpResponse = await fetch(
@@ -336,6 +369,10 @@ export function UserStateProvider({ children }: { children: ReactNode }) {
             headers: getOwnerApiHeaders()
           }
         );
+
+        if (zkpResponse.status === 409) {
+          return;
+        }
 
         if (zkpResponse.ok) {
           const responseData = await zkpResponse.json();
@@ -349,7 +386,7 @@ export function UserStateProvider({ children }: { children: ReactNode }) {
           
           if (over21ZKP && over21ZKP.verificationLevel === 'verified') {
             const verifyResponse = await fetch(
-            `${API_ENDPOINT}/api/users/${userState.pnIdentifier}/zkp-data-points/verify`,
+            `${API_ENDPOINT}/api/users/${pn}/zkp-data-points/verify`,
             {
               method: 'POST',
               headers: getOwnerApiHeaders(),

@@ -13,7 +13,9 @@ import {
   persistCloudCredentials,
   resolveCloudPersistMode,
   setSessionCloudCredentials,
-  getSessionCloudCredentials
+  getSessionCloudCredentials,
+  CLOUD_VAULT_MLKEM_SESSION_ID,
+  CLOUD_VAULT_SEAL_SESSION_ID
 } from '@par-noir/device-cloud-credentials';
 import { envelopeHasUsableSecrets } from '@par-noir/user-owned-storage';
 import type { StorageCredentialsEnvelope } from '@par-noir/user-owned-storage';
@@ -23,12 +25,13 @@ import { fetchDeviceRegistry } from '../services/deviceService';
 import {
   DM_IDENTITY_CHANGE_EVENT,
   getDmIdentity,
-  isDmIdentityReady
+  isDmIdentityReady,
+  retryPublishMlKemPublicKey
 } from '../services/dmIdentitySession';
 
 /**
  * Post-unlock cloud reconnect for aggregator browse/messaging.
- * Prefer identity-sealed vault hydrate (dashboard-published) over Google reconnect.
+ * Prefer ML-KEM-sealed vault hydrate (dashboard-published) over Google reconnect.
  */
 export const AggregatorCloudReconnectHost: React.FC = () => {
   const session = PNOAuthService.loadSession();
@@ -80,7 +83,7 @@ export const AggregatorCloudReconnectHost: React.FC = () => {
     return () => window.removeEventListener(DM_IDENTITY_CHANGE_EVENT, sync);
   }, []);
 
-  // Hydrate from cross-app sealed vault once identity factors are available.
+  // Hydrate from cross-app sealed vault once ML-KEM (or identity factors) are available.
   useEffect(() => {
     let cancelled = false;
     void (async () => {
@@ -89,7 +92,10 @@ export const AggregatorCloudReconnectHost: React.FC = () => {
         return;
       }
       const identity = getDmIdentity();
-      if (!identity.pnName || !identity.passcode) {
+      const mlKemSecretKey = identity.mlKemSecretKey || null;
+      const pnName = identity.pnName || null;
+      const passcode = identity.passcode || null;
+      if (!mlKemSecretKey && !(pnName && passcode)) {
         setVaultHydrated(false);
         return;
       }
@@ -99,18 +105,35 @@ export const AggregatorCloudReconnectHost: React.FC = () => {
       }
       // Try local sealed (same origin) then API vault
       try {
-        const local = await loadLocalCloudCredentials({
-          identityId: pnIdentifier,
-          session: {
-            sessionId: 'pn-cloud-creds-v1',
-            pnName: identity.pnName,
-            passcode: identity.passcode
+        if (mlKemSecretKey) {
+          const localMlKem = await loadLocalCloudCredentials({
+            identityId: pnIdentifier,
+            session: {
+              sessionId: CLOUD_VAULT_MLKEM_SESSION_ID,
+              pnName: 'mlkem',
+              passcode: mlKemSecretKey
+            }
+          });
+          if (localMlKem && envelopeHasUsableSecrets(localMlKem)) {
+            setSessionCloudCredentials(pnIdentifier, localMlKem);
+            if (!cancelled) setVaultHydrated(true);
+            return;
           }
-        });
-        if (local && envelopeHasUsableSecrets(local)) {
-          setSessionCloudCredentials(pnIdentifier, local);
-          if (!cancelled) setVaultHydrated(true);
-          return;
+        }
+        if (pnName && passcode) {
+          const local = await loadLocalCloudCredentials({
+            identityId: pnIdentifier,
+            session: {
+              sessionId: CLOUD_VAULT_SEAL_SESSION_ID,
+              pnName,
+              passcode
+            }
+          });
+          if (local && envelopeHasUsableSecrets(local)) {
+            setSessionCloudCredentials(pnIdentifier, local);
+            if (!cancelled) setVaultHydrated(true);
+            return;
+          }
         }
       } catch {
         /* fall through to API vault */
@@ -119,8 +142,9 @@ export const AggregatorCloudReconnectHost: React.FC = () => {
         apiEndpoint: API_ENDPOINT,
         authToken,
         pnIdentifier,
-        pnName: identity.pnName,
-        passcode: identity.passcode
+        mlKemSecretKey: mlKemSecretKey || undefined,
+        pnName: pnName || undefined,
+        passcode: passcode || undefined
       });
       if (!cancelled) setVaultHydrated(status === 'ready');
     })();
@@ -135,11 +159,22 @@ export const AggregatorCloudReconnectHost: React.FC = () => {
     if (envelopeHasUsableSecrets(fromSession)) return fromSession;
     if (!isDmIdentityReady()) return null;
     const identity = getDmIdentity();
+    if (identity.mlKemSecretKey) {
+      const mlkem = await loadLocalCloudCredentials({
+        identityId: pnIdentifier,
+        session: {
+          sessionId: CLOUD_VAULT_MLKEM_SESSION_ID,
+          pnName: 'mlkem',
+          passcode: identity.mlKemSecretKey
+        }
+      });
+      if (mlkem) return mlkem;
+    }
     if (!identity.pnName || !identity.passcode) return null;
     return loadLocalCloudCredentials({
       identityId: pnIdentifier,
       session: {
-        sessionId: 'pn-cloud-creds-v1',
+        sessionId: CLOUD_VAULT_SEAL_SESSION_ID,
         pnName: identity.pnName,
         passcode: identity.passcode
       }
@@ -159,7 +194,7 @@ export const AggregatorCloudReconnectHost: React.FC = () => {
     dismissStorageKey: pnIdentifier ? `pn_cloud_reconnect_dismiss:${pnIdentifier}` : undefined
   });
 
-  // When vault hydrate succeeds, mark gate ready (no reconnect prompt).
+  // When vault hydrate succeeds, mark gate ready and retry Drive-backed publishes.
   useEffect(() => {
     if (vaultHydrated) {
       gate.markReady();
@@ -168,6 +203,7 @@ export const AggregatorCloudReconnectHost: React.FC = () => {
       } catch {
         /* non-DOM */
       }
+      void retryPublishMlKemPublicKey();
     }
   }, [vaultHydrated, gate.markReady]);
 
@@ -175,31 +211,53 @@ export const AggregatorCloudReconnectHost: React.FC = () => {
     async (envelope: StorageCredentialsEnvelope) => {
       if (!pnIdentifier || !isDmIdentityReady()) return;
       const identity = getDmIdentity();
-      if (!identity.pnName || !identity.passcode) {
-        setSessionCloudCredentials(pnIdentifier, envelope);
-        gate.markReady();
-        return;
-      }
-      const mode = resolveCloudPersistMode({ hasKeyedDevices });
-      await persistCloudCredentials({
-        identityId: pnIdentifier,
-        credentials: envelope,
-        session: {
-          sessionId: 'pn-cloud-creds-v1',
-          pnName: identity.pnName,
-          passcode: identity.passcode
-        },
-        mode
-      });
-      if (authToken) {
-        await publishCloudCredentialsVault({
-          apiEndpoint: API_ENDPOINT,
-          authToken,
-          pnIdentifier,
-          pnName: identity.pnName,
-          passcode: identity.passcode,
-          credentials: envelope
-        }).catch(() => ({ ok: false }));
+      setSessionCloudCredentials(pnIdentifier, envelope);
+      if (identity.mlKemSecretKey) {
+        const mode = resolveCloudPersistMode({ hasKeyedDevices });
+        await persistCloudCredentials({
+          identityId: pnIdentifier,
+          credentials: envelope,
+          session: {
+            sessionId: CLOUD_VAULT_MLKEM_SESSION_ID,
+            pnName: 'mlkem',
+            passcode: identity.mlKemSecretKey
+          },
+          mode
+        });
+        if (authToken) {
+          await publishCloudCredentialsVault({
+            apiEndpoint: API_ENDPOINT,
+            authToken,
+            pnIdentifier,
+            mlKemSecretKey: identity.mlKemSecretKey,
+            ...(identity.pnName && identity.passcode
+              ? { pnName: identity.pnName, passcode: identity.passcode }
+              : {}),
+            credentials: envelope
+          }).catch(() => ({ ok: false }));
+        }
+      } else if (identity.pnName && identity.passcode) {
+        const mode = resolveCloudPersistMode({ hasKeyedDevices });
+        await persistCloudCredentials({
+          identityId: pnIdentifier,
+          credentials: envelope,
+          session: {
+            sessionId: CLOUD_VAULT_SEAL_SESSION_ID,
+            pnName: identity.pnName,
+            passcode: identity.passcode
+          },
+          mode
+        });
+        if (authToken) {
+          await publishCloudCredentialsVault({
+            apiEndpoint: API_ENDPOINT,
+            authToken,
+            pnIdentifier,
+            pnName: identity.pnName,
+            passcode: identity.passcode,
+            credentials: envelope
+          }).catch(() => ({ ok: false }));
+        }
       }
       gate.markReady();
       setVaultHydrated(true);
@@ -208,6 +266,7 @@ export const AggregatorCloudReconnectHost: React.FC = () => {
       } catch {
         /* non-DOM */
       }
+      void retryPublishMlKemPublicKey();
     },
     [pnIdentifier, gate, hasKeyedDevices, authToken]
   );

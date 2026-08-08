@@ -250,28 +250,48 @@ export async function unlockDmIdentity(pnName: string, passcode: string): Promis
   return state;
 }
 
+async function waitForCloudAccessToken(pnIdentifier: string, timeoutMs = 20_000): Promise<boolean> {
+  const { getSessionCloudCredentials } = await import('@par-noir/device-cloud-credentials');
+  const { envelopeHasUsableSecrets } = await import('@par-noir/user-owned-storage');
+  const start = Date.now();
+  while (Date.now() - start < timeoutMs) {
+    if (envelopeHasUsableSecrets(getSessionCloudCredentials(pnIdentifier))) return true;
+    await new Promise((r) => setTimeout(r, 250));
+  }
+  return envelopeHasUsableSecrets(getSessionCloudCredentials(pnIdentifier));
+}
+
 async function publishMlKemPublicKey(mlKemPublicKey: string): Promise<void> {
   const session = PNOAuthService.loadSession();
   const pnIdentifier = session?.pnIdentifier;
   if (!pnIdentifier) return;
+  // Drive publish needs X-PN-Cloud-Access-Token from vault hydrate — wait briefly.
+  await waitForCloudAccessToken(pnIdentifier);
   const { getOwnerApiHeaders } = await import('./ownerApiHeaders');
-  const response = await fetch(`${API_ENDPOINT}/api/profile/ml-kem-public-key`, {
-    method: 'POST',
-    headers: getOwnerApiHeaders(),
-    body: JSON.stringify({ userPnIdentifier: pnIdentifier, mlKemPublicKey })
-  });
-  if (!response.ok) {
-    throw new Error(`publish ml-kem-public-key failed: ${response.status}`);
+  let lastStatus = 0;
+  for (let attempt = 0; attempt < 4; attempt++) {
+    const response = await fetch(`${API_ENDPOINT}/api/profile/ml-kem-public-key`, {
+      method: 'POST',
+      headers: getOwnerApiHeaders(),
+      body: JSON.stringify({ userPnIdentifier: pnIdentifier, mlKemPublicKey })
+    });
+    if (response.ok) return;
+    lastStatus = response.status;
+    // 409 = cloud token not ready yet; retry after hydrate.
+    if (response.status !== 409 || attempt === 3) break;
+    await waitForCloudAccessToken(pnIdentifier, 5_000);
+    await new Promise((r) => setTimeout(r, 400));
   }
+  throw new Error(`publish ml-kem-public-key failed: ${lastStatus}`);
 }
 
-/** Retry profile publish after OAuth session has pnIdentifier (cold DM / discovery). */
+/** Retry profile publish after vault hydrate / OAuth session ready. */
 export async function retryPublishMlKemPublicKey(): Promise<void> {
   const mlKemPublicKey = getMessagingMlKemPublicKey();
   if (!mlKemPublicKey) return;
   try {
     await publishMlKemPublicKey(mlKemPublicKey);
-  } catch (err) {
-    console.warn('[dmIdentity] retryPublishMlKemPublicKey failed:', err);
+  } catch {
+    /* non-blocking — will retry on next unlock / credentials-ready */
   }
 }
