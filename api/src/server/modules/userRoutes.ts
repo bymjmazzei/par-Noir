@@ -6,6 +6,7 @@
 
 import express from 'express';
 import { safeClientErrorMessage } from '../utils/safeError';
+import { hashIdentifier, safeLogger } from '../../utils/logger';
 import { getBearerTokenPayload } from '../middleware/authMiddleware';
 import {
   gateOwnerRoute,
@@ -299,7 +300,6 @@ export function setupUserRoutes(app: express.Application, deps: UserRouteDeps) {
         if (!(await gateOwnerSelfRoute(req, res, DEVICE_CAPABILITIES.profileRead, normalizedPnIdentifier))) return;
 
         const { ThirdPartyPermissionsService } = await import('./thirdPartyPermissionsService');
-        const { googleDriveProxyService } = await import('./googleDriveProxy');
         const { storageCredentialsService } = await import('./storageCredentialsService');
 
         // Get user's credentials
@@ -322,16 +322,22 @@ export function setupUserRoutes(app: express.Application, deps: UserRouteDeps) {
 
           const account = googleDriveAccounts.length > 0 ? googleDriveAccounts[0] : null;
           const accountId = account ? extractAccountId(account) : undefined;
-          const { extractCloudAccessToken } = await import('./cloudAccessToken');
-          let userAccessToken = extractCloudAccessToken(req) || '';
-          if (!userAccessToken && account) {
+          let userAccessToken = '';
+          if (account) {
             try {
-              userAccessToken = await googleDriveProxyService.getAccessToken(
-                normalizedPnIdentifier,
+              const { resolveOwnerDriveToken } = await import('./ownerDriveToken');
+              const resolved = await resolveOwnerDriveToken(req, normalizedPnIdentifier, {
+                account,
                 accountId
-              );
+              });
+              userAccessToken = resolved.token.access_token;
             } catch {
-              // Device cloud custody: OAuth secrets are device-held.
+              // Empty here means "could not check", not "nothing granted". Say so in
+              // the log rather than letting the caller read it as an answer.
+              safeLogger.warn('[Users] Third-party permissions unreadable — no Drive token', {
+                reason: 'cloud_token_required',
+                pnIdHash: hashIdentifier(normalizedPnIdentifier)
+              });
               return res.json({ success: true, permissions: {} });
             }
           }

@@ -23,11 +23,9 @@ api/src/server/modules/feedService.ts
 api/src/server/modules/messageRoutes.ts
 api/src/server/modules/messagingMediaService.ts
 api/src/server/modules/prismEnsureService.ts
-api/src/server/modules/profileRoutes.ts
 api/src/server/modules/storage/googlePortableMigrator.ts
 api/src/server/modules/storage/socialCloudMigrationService.ts
 api/src/server/modules/storage/storageCredentialsRoutes.ts
 api/src/server/modules/storage/storageFacade.ts
 api/src/server/modules/storage/storageRequestContext.ts
 api/src/server/modules/storageTierService.ts
-api/src/server/modules/userRoutes.ts

@@ -7,6 +7,7 @@
 
 import express from 'express';
 import { safeClientErrorMessage } from '../utils/safeError';
+import { hashIdentifier, safeLogger } from '../../utils/logger';
 import {
   gateOwnerRoute,
   gateOwnerSelfRoute,
@@ -256,7 +257,6 @@ export function setupProfileRoutes(app: express.Application, deps: ProfileRouteD
         if (!(await gateOwnerSelfRoute(req, res, DEVICE_CAPABILITIES.profileRead, userPnIdentifier))) return;
 
         const { ProfileService } = await import('./profileService');
-        const { googleDriveProxyService } = await import('./googleDriveProxy');
         const { storageCredentialsService } = await import('./storageCredentialsService');
         const db = (await import('../utils/database')).getDatabasePool();
 
@@ -283,7 +283,6 @@ export function setupProfileRoutes(app: express.Application, deps: ProfileRouteD
         // Enrich from Drive when possible; never 500 if Drive/custody token is unavailable.
         const driveProfile = await (async () => {
           try {
-            const { extractCloudAccessToken } = await import('./cloudAccessToken');
             const userCredentials = await storageCredentialsService.getCredentials(pnIdentifier);
             if (!userCredentials?.credentials) return null;
             const googleDriveAccounts =
@@ -292,13 +291,21 @@ export function setupProfileRoutes(app: express.Application, deps: ProfileRouteD
             if (googleDriveAccounts.length === 0) return null;
             const account = googleDriveAccounts[0] || null;
             const accountId = account ? extractAccountId(account) : undefined;
-            let userAccessToken = extractCloudAccessToken(req) || '';
-            if (!userAccessToken && account) {
-              try {
-                userAccessToken = await googleDriveProxyService.getAccessToken(pnIdentifier, accountId);
-              } catch {
-                return null;
-              }
+            let userAccessToken = '';
+            try {
+              const { resolveOwnerDriveToken } = await import('./ownerDriveToken');
+              const resolved = await resolveOwnerDriveToken(req, pnIdentifier, {
+                account,
+                accountId
+              });
+              userAccessToken = resolved.token.access_token;
+            } catch {
+              // Profile falls back to the non-Drive shape rather than failing the request.
+              safeLogger.warn('[Profile] Drive enrichment skipped — no Drive token', {
+                reason: 'cloud_token_required',
+                pnIdHash: hashIdentifier(pnIdentifier)
+              });
+              return null;
             }
             if (!userAccessToken) return null;
             const metadataFolder = await getMetadataFolder(
@@ -356,7 +363,6 @@ export function setupProfileRoutes(app: express.Application, deps: ProfileRouteD
         if (!(await gateOwnerRoute(req, res, DEVICE_CAPABILITIES.profileWrite, userPnIdentifier))) return;
 
         const { ProfileService } = await import('./profileService');
-        const { googleDriveProxyService } = await import('./googleDriveProxy');
         const { storageCredentialsService } = await import('./storageCredentialsService');
 
         const pnIdentifier = String(userPnIdentifier);
@@ -372,17 +378,16 @@ export function setupProfileRoutes(app: express.Application, deps: ProfileRouteD
         }
         const account = googleDriveAccounts.length > 0 ? googleDriveAccounts[0] : null;
         const accountId = account ? extractAccountId(account) : undefined;
-        const { extractCloudAccessToken } = await import('./cloudAccessToken');
-        let userAccessToken = extractCloudAccessToken(req) || '';
-        if (!userAccessToken && account) {
+        let userAccessToken = '';
+        if (account) {
           try {
-            userAccessToken = await googleDriveProxyService.getAccessToken(pnIdentifier, accountId);
-          } catch {
-            return res.status(409).json({
-              error: 'cloud_token_required',
-              error_description:
-                'Google Drive access token required. Forward X-PN-Cloud-Access-Token after unlocking with cloud credentials.'
-            });
+            const { resolveOwnerDriveToken } = await import('./ownerDriveToken');
+            const resolved = await resolveOwnerDriveToken(req, pnIdentifier, { account, accountId });
+            userAccessToken = resolved.token.access_token;
+          } catch (tokenErr) {
+            const { respondDriveTokenError } = await import('./ownerDriveToken');
+            if (respondDriveTokenError(res, tokenErr)) return;
+            throw tokenErr;
           }
         }
         if (!userAccessToken) {
