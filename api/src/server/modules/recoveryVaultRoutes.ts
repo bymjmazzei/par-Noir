@@ -12,6 +12,7 @@ import {
 } from '@par-noir/recovery-crypto';
 import { PNOAuthService } from './pnOAuthService';
 import { getRecoveryDriveContext } from './recoveryDriveContext';
+import { extractCloudAccessToken } from './cloudAccessToken';
 import { RecoverySheetsService } from './recoverySheetsService';
 import { verifyCustodianshipCredential } from './recoveryZkService';
 import { assertDeviceCapability, DEVICE_CAPABILITIES, getBearerPnIdentifier, normalizePnIdentifier } from './deviceCapabilityService';
@@ -39,7 +40,10 @@ function bearerPn(req: Request): { pnIdentifier: string; did?: string } | null {
   return { pnIdentifier: pn, did: payload.did };
 }
 
-async function spreadsheetForPn(pn: string, opts?: { accessToken?: string }) {
+async function spreadsheetForPn(
+  pn: string,
+  opts?: { accessToken?: string; softMissingToken?: boolean }
+) {
   const ctx = await getRecoveryDriveContext(pn, opts);
   if (!ctx) return null;
   const spreadsheetId = await RecoverySheetsService.getOrCreateSpreadsheet(
@@ -50,6 +54,16 @@ async function spreadsheetForPn(pn: string, opts?: { accessToken?: string }) {
   );
   return { ctx, spreadsheetId };
 }
+
+async function spreadsheetForReq(req: Request, pn: string) {
+  return spreadsheetForPn(pn, { accessToken: extractCloudAccessToken(req) });
+}
+
+async function mapRecoveryDriveError(res: Response, error: unknown): Promise<boolean> {
+  const { respondDriveTokenError } = await import('./ownerDriveToken');
+  return respondDriveTokenError(res, error);
+}
+
 
 export function registerRecoveryVaultRoutes(app: Application): void {
   app.post('/api/recovery/vault/initialize', async (req: Request, res: Response) => {
@@ -64,7 +78,7 @@ export function registerRecoveryVaultRoutes(app: Application): void {
         return res.status(400).json({ error: 'shares array required' });
       }
 
-      const bundle = await spreadsheetForPn(pn);
+      const bundle = await spreadsheetForReq(req, pn);
       if (!bundle) return res.status(404).json({ error: 'Drive not connected' });
 
       const result = await RecoverySheetsService.initializePendingShares(
@@ -76,6 +90,7 @@ export function registerRecoveryVaultRoutes(app: Application): void {
       );
       return res.json({ success: true, ...result });
     } catch (error: unknown) {
+      if (await mapRecoveryDriveError(res, error)) return;
       console.error('[recovery] vault initialize:', error);
       return res.status(500).json({ error: 'server_error' });
     }
@@ -89,7 +104,7 @@ export function registerRecoveryVaultRoutes(app: Application): void {
 
       const { userPnIdentifier, totalShares } = req.body ?? {};
       const pn = String(userPnIdentifier || auth.pnIdentifier);
-      const bundle = await spreadsheetForPn(pn);
+      const bundle = await spreadsheetForReq(req, pn);
       if (!bundle) return res.status(404).json({ error: 'Drive not connected' });
 
       const { normalized } = await RecoverySheetsService.normalizeLegacyCustodianRows(
@@ -129,6 +144,7 @@ export function registerRecoveryVaultRoutes(app: Application): void {
 
       return res.json({ success: true, normalized, missingIndices });
     } catch (error: unknown) {
+      if (await mapRecoveryDriveError(res, error)) return;
       console.error('[recovery] vault reconcile:', error);
       return res.status(500).json({ error: 'server_error' });
     }
@@ -142,7 +158,7 @@ export function registerRecoveryVaultRoutes(app: Application): void {
       const pn = normalizePnIdentifier(req.params.userPnIdentifier);
       if (authPn !== pn) return res.status(403).json({ error: 'forbidden' });
       const includeEncrypted = req.query.includeEncrypted === 'true';
-      const bundle = await spreadsheetForPn(pn);
+      const bundle = await spreadsheetForReq(req, pn);
       if (!bundle) return res.status(404).json({ error: 'Drive not connected' });
 
       const pending = await RecoverySheetsService.listPendingShares(
@@ -154,6 +170,7 @@ export function registerRecoveryVaultRoutes(app: Application): void {
       );
       return res.json({ pending });
     } catch (error: unknown) {
+      if (await mapRecoveryDriveError(res, error)) return;
       console.error('[recovery] list pending:', error);
       return res.status(500).json({ error: 'server_error' });
     }
@@ -195,7 +212,7 @@ export function registerRecoveryVaultRoutes(app: Application): void {
       }
 
       const pn = String(userPnIdentifier || auth.pnIdentifier);
-      const bundle = await spreadsheetForPn(pn);
+      const bundle = await spreadsheetForReq(req, pn);
       if (!bundle) return res.status(404).json({ error: 'Drive not connected' });
 
       await RecoverySheetsService.assignShareToCustodian(
@@ -235,7 +252,7 @@ export function registerRecoveryVaultRoutes(app: Application): void {
 
       const { userPnIdentifier } = req.body ?? {};
       const pn = String(userPnIdentifier || auth.pnIdentifier);
-      const bundle = await spreadsheetForPn(pn);
+      const bundle = await spreadsheetForReq(req, pn);
       if (!bundle) return res.status(404).json({ error: 'Drive not connected' });
 
       const row = await RecoverySheetsService.getCustodianById(
@@ -261,6 +278,7 @@ export function registerRecoveryVaultRoutes(app: Application): void {
         encryptedShare: row.encryptedShare,
       });
     } catch (error: unknown) {
+      if (await mapRecoveryDriveError(res, error)) return;
       console.error('[recovery] custodians resend:', error);
       return res.status(500).json({ error: 'server_error' });
     }
@@ -274,7 +292,7 @@ export function registerRecoveryVaultRoutes(app: Application): void {
 
       const { userPnIdentifier, threshold } = req.body ?? {};
       const pn = String(userPnIdentifier || auth.pnIdentifier);
-      const bundle = await spreadsheetForPn(pn);
+      const bundle = await spreadsheetForReq(req, pn);
       if (!bundle) return res.status(404).json({ error: 'Drive not connected' });
 
       try {
@@ -301,6 +319,7 @@ export function registerRecoveryVaultRoutes(app: Application): void {
         throw e;
       }
     } catch (error: unknown) {
+      if (await mapRecoveryDriveError(res, error)) return;
       console.error('[recovery] custodians revoke:', error);
       return res.status(500).json({ error: 'server_error' });
     }
@@ -324,7 +343,7 @@ export function registerRecoveryVaultRoutes(app: Application): void {
         return res.status(400).json({ error: 'Custodianship custodianId mismatch' });
       }
 
-      const bundle = await spreadsheetForPn(String(ownerPnIdentifier));
+      const bundle = await spreadsheetForReq(req, String(ownerPnIdentifier));
       if (!bundle) return res.status(404).json({ error: 'Drive not connected' });
 
       const row = await RecoverySheetsService.getCustodianById(
@@ -351,6 +370,7 @@ export function registerRecoveryVaultRoutes(app: Application): void {
 
       return res.json({ success: true, status: accepted.status, custodianId: accepted.custodianId });
     } catch (error: unknown) {
+      if (await mapRecoveryDriveError(res, error)) return;
       console.error('[recovery] custodians accept:', error);
       return res.status(500).json({ error: 'server_error' });
     }
@@ -515,7 +535,11 @@ export async function getRecoveryCustodianSummary(
   userPnIdentifier: string,
   opts?: { accessToken?: string }
 ) {
-  const bundle = await spreadsheetForPn(userPnIdentifier, opts);
+  // GET unlock probe: missing cloud token → soft empty, not 409/500.
+  const bundle = await spreadsheetForPn(userPnIdentifier, {
+    ...opts,
+    softMissingToken: true,
+  });
   if (!bundle) return null;
 
   const [custodians, pending] = await Promise.all([

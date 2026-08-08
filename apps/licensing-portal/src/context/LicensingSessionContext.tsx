@@ -14,7 +14,7 @@ import {
   PN_OAUTH_RESUME_SEARCH_KEY,
   type PnOAuthPopupResult
 } from '@par-noir/oauth-ui';
-import { ownerCloudHeaders } from '@par-noir/device-cloud-credentials';
+import { ownerCloudHeaders, ownerCloudHeadersAsync } from '@par-noir/device-cloud-credentials';
 import { API_ENDPOINT } from '../config/api';
 import { PN_CLIENT_ID } from '../config/client';
 
@@ -104,6 +104,7 @@ interface LicensingSessionValue {
   error: string | null;
   setError: (e: string | null) => void;
   authHeaders: () => HeadersInit;
+  authHeadersAsync: () => Promise<HeadersInit>;
   handleBeforeUnlock: (state: string, nonce: string) => void;
   onPopupResult: (r: PnOAuthPopupResult) => Promise<void>;
   signOut: () => Promise<void>;
@@ -126,6 +127,17 @@ export function LicensingSessionProvider({ children }: { children: ReactNode }) 
     return ownerCloudHeaders({
       authToken: t,
       pnIdentifier: user?.pn_identifier,
+      extra: { 'Content-Type': 'application/json' }
+    });
+  }, [user?.pn_identifier]);
+
+  const authHeadersAsync = useCallback(async (): Promise<HeadersInit> => {
+    const t = getAccessToken();
+    if (!t) return { 'Content-Type': 'application/json' };
+    return ownerCloudHeadersAsync({
+      authToken: t,
+      pnIdentifier: user?.pn_identifier,
+      apiEndpoint: API_ENDPOINT,
       extra: { 'Content-Type': 'application/json' }
     });
   }, [user?.pn_identifier]);
@@ -353,6 +365,7 @@ export function LicensingSessionProvider({ children }: { children: ReactNode }) 
       error,
       setError,
       authHeaders,
+      authHeadersAsync,
       handleBeforeUnlock,
       onPopupResult,
       signOut,
@@ -365,6 +378,7 @@ export function LicensingSessionProvider({ children }: { children: ReactNode }) 
       signedIn,
       error,
       authHeaders,
+      authHeadersAsync,
       handleBeforeUnlock,
       onPopupResult,
       signOut,

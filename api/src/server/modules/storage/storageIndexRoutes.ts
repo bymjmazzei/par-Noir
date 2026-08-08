@@ -7,7 +7,6 @@
 
 import type { Application, Request, Response } from 'express';
 import { safeClientErrorMessage } from '../../utils/safeError';
-import { extractCloudAccessToken } from '../cloudAccessToken';
 import {
   gateOwnerRoute,
   gateOwnerSelfRoute,
@@ -31,23 +30,23 @@ type DriveToken = {
   expires_in?: number;
 };
 
-/** Prefer device-forwarded ephemeral token under custody; fall back to DB secrets when present. */
-function buildDriveTokenFromAccount(
+/** Resolve owner Drive token via shared custody helper; writes 409 and returns null when missing. */
+async function resolveIndexDriveToken(
   req: Request,
-  account: Record<string, unknown> | null | undefined
-): DriveToken {
-  const forwarded = extractCloudAccessToken(req);
-  if (forwarded) {
-    return { access_token: forwarded };
+  res: Response,
+  pnIdentifier: string,
+  account: Record<string, unknown> | null | undefined,
+  accountId?: string
+): Promise<DriveToken | null> {
+  try {
+    const { resolveOwnerDriveToken } = await import('../ownerDriveToken');
+    const resolved = await resolveOwnerDriveToken(req, pnIdentifier, { account, accountId });
+    return resolved.token;
+  } catch (error) {
+    const { respondDriveTokenError } = await import('../ownerDriveToken');
+    if (respondDriveTokenError(res, error)) return null;
+    throw error;
   }
-  return {
-    access_token: String(
-      (account as any)?.access_token || (account as any)?.accessToken || ''
-    ),
-    refresh_token: (account as any)?.refresh_token || (account as any)?.refreshToken,
-    expires_at: (account as any)?.expires_at,
-    expires_in: (account as any)?.expires_in,
-  };
 }
 
 export interface StorageIndexRouteDeps {
@@ -104,7 +103,9 @@ export function setupStorageIndexRoutes(app: Application, deps: StorageIndexRout
         if (!_portableSocial) {
           const account = googleDriveAccounts.length > 0 ? googleDriveAccounts[0] : null;
           accountId = extractAccountId(account);
-          token = buildDriveTokenFromAccount(req, account);
+          const resolved = await resolveIndexDriveToken(req, res, pnIdentifier, account, accountId);
+          if (!resolved) return;
+          token = resolved;
           accessToken = token.access_token;
           out = await getMetadataFolder(token, pnIdentifier, accountId);
         }
@@ -146,6 +147,8 @@ export function setupStorageIndexRoutes(app: Application, deps: StorageIndexRout
         }
         return res.json({ identifier: identityId, files: rootIndex.files, updatedAt: rootIndex.updatedAt });
       } catch (error: any) {
+        const { respondDriveTokenError } = await import('../ownerDriveToken');
+        if (respondDriveTokenError(res, error)) return;
         console.error('[OwnerIndex] Error:', error?.message || error);
         const msg = error?.message || String(error);
         if (error?.name === 'DriveIndexError' && error?.code === 'DRIVE_INDEX_STALE') {
@@ -224,7 +227,8 @@ export function setupStorageIndexRoutes(app: Application, deps: StorageIndexRout
         }
         const account = googleDriveAccounts.length > 0 ? googleDriveAccounts[0] : null;
         const accountId = account ? extractAccountId(account) : undefined;
-        const token = buildDriveTokenFromAccount(req, account);
+        const token = await resolveIndexDriveToken(req, res, pnIdentifier, account, accountId);
+        if (!token) return;
 
         const out = await getMetadataFolder(token, pnIdentifier, accountId);
         if (!out) {
@@ -234,6 +238,8 @@ export function setupStorageIndexRoutes(app: Application, deps: StorageIndexRout
         await updateOwnerFileIndex(token, identityId, out.metadataFolderId, entry, accountId);
         return res.json({ ok: true });
       } catch (error: any) {
+        const { respondDriveTokenError } = await import('../ownerDriveToken');
+        if (respondDriveTokenError(res, error)) return;
         console.error('[OwnerIndex POST] Error:', error?.message || error);
         return res.status(500).json({ error: 'Failed to update owner index', message: safeClientErrorMessage(error, NODE_ENV === 'production') });
       }
@@ -275,7 +281,8 @@ export function setupStorageIndexRoutes(app: Application, deps: StorageIndexRout
         }
         const account = googleDriveAccounts.length > 0 ? googleDriveAccounts[0] : null;
         const accountId = account ? extractAccountId(account) : undefined;
-        const token = buildDriveTokenFromAccount(req, account);
+        const token = await resolveIndexDriveToken(req, res, pnIdentifier, account, accountId);
+        if (!token) return;
         const accessToken = token.access_token;
 
         const out = await getMetadataFolder(token, pnIdentifier, accountId);
@@ -307,6 +314,8 @@ export function setupStorageIndexRoutes(app: Application, deps: StorageIndexRout
         }
         return res.json({ identifier: identityId, files: rootIndex.files, updatedAt: rootIndex.updatedAt });
       } catch (error: any) {
+        const { respondDriveTokenError } = await import('../ownerDriveToken');
+        if (respondDriveTokenError(res, error)) return;
         console.error('[PublicIndex] Error:', error?.message || error);
         return res.status(500).json({
           error: 'Failed to read public index',
@@ -360,7 +369,8 @@ export function setupStorageIndexRoutes(app: Application, deps: StorageIndexRout
         }
         const account = googleDriveAccounts.length > 0 ? googleDriveAccounts[0] : null;
         const accountId = account ? extractAccountId(account) : undefined;
-        const token = buildDriveTokenFromAccount(req, account);
+        const token = await resolveIndexDriveToken(req, res, pnIdentifier, account, accountId);
+        if (!token) return;
 
         const out = await getMetadataFolder(token, pnIdentifier, accountId);
         if (!out) {
@@ -370,6 +380,8 @@ export function setupStorageIndexRoutes(app: Application, deps: StorageIndexRout
         await updatePublicFileIndex(token, identityId, out.metadataFolderId, out.pnFolderId, entry, accountId);
         return res.json({ ok: true });
       } catch (error: any) {
+        const { respondDriveTokenError } = await import('../ownerDriveToken');
+        if (respondDriveTokenError(res, error)) return;
         console.error('[PublicIndex POST] Error:', error?.message || error);
         return res.status(500).json({ error: 'Failed to update public index', message: safeClientErrorMessage(error, NODE_ENV === 'production') });
       }

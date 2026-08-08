@@ -7,13 +7,14 @@
 import { SecureCredentialManager } from '@par-noir/identity-crypto';
 import {
   getSessionCloudCredentials,
-  loadLocalCloudCredentials
+  hasCloudCredentialsReady,
+  loadLocalCloudCredentials,
+  publishCloudDriveReady
 } from '@par-noir/device-cloud-credentials';
 import {
   envelopeHasUsableSecrets,
   type StorageCredentialsEnvelope
 } from '@par-noir/user-owned-storage';
-import { PN_CLOUD_CREDENTIALS_READY_EVENT } from '@par-noir/oauth-ui';
 import { API_ENDPOINT } from '../../config/api';
 import { getFileAggregatorService } from '../aggregator/FileAggregatorService';
 import { GoogleDriveBackend } from './GoogleDriveBackend';
@@ -55,9 +56,9 @@ function setStorageAccountsCache(pnIdentifier: string, entry: AccountsCacheEntry
 
 export function isCloudSessionReady(pnIdentifier: string | null | undefined): boolean {
   if (!pnIdentifier) return false;
-  if (readyPnIds.has(pnIdentifier)) return true;
+  if (readyPnIds.has(pnIdentifier) && hasCloudCredentialsReady(pnIdentifier)) return true;
   try {
-    return envelopeHasUsableSecrets(getSessionCloudCredentials(pnIdentifier));
+    return hasCloudCredentialsReady(pnIdentifier);
   } catch {
     return false;
   }
@@ -67,11 +68,15 @@ export function getCloudSessionStatus(): { status: CloudSessionStatus; error?: s
   return { status: lastStatus, error: lastError };
 }
 
-function dispatchReady(): void {
+async function publishDriveReady(apiToken: string, pnIdentifier: string): Promise<boolean> {
   try {
-    window.dispatchEvent(new CustomEvent(PN_CLOUD_CREDENTIALS_READY_EVENT));
+    return await publishCloudDriveReady({
+      authToken: apiToken,
+      pnIdentifier,
+      apiEndpoint: API_ENDPOINT
+    });
   } catch {
-    /* non-DOM */
+    return false;
   }
 }
 
@@ -308,7 +313,7 @@ export async function bootstrapCloudSession(opts: {
       readyPnIds.add(pnIdentifier);
       lastStatus = 'ready';
       lastError = undefined;
-      dispatchReady();
+      await publishDriveReady(apiToken, pnIdentifier);
       return { status: 'ready' };
     } catch (e) {
       lastStatus = 'error';
@@ -403,18 +408,25 @@ export async function ensureCloudSession(opts: {
       return { status: 'needs_reconnect', error: lastError };
     }
 
+    const published = await publishDriveReady(opts.apiToken, pnIdentifier);
+    if (!published && !getSessionCloudCredentials(pnIdentifier)) {
+      lastStatus = 'needs_reconnect';
+      lastError = 'No local cloud secrets for this device';
+      return { status: 'needs_reconnect', error: lastError };
+    }
+    // Drive-ready requires access token; if mint failed keep needs_reconnect.
+    if (!hasCloudCredentialsReady(pnIdentifier)) {
+      lastStatus = 'needs_reconnect';
+      lastError = 'Google access token not available — reconnect cloud storage';
+      return { status: 'needs_reconnect', error: lastError };
+    }
+
     const alreadyReady = readyPnIds.has(pnIdentifier);
     readyPnIds.add(pnIdentifier);
     lastStatus = 'ready';
     lastError = undefined;
-    // Signal only on transition into ready for this identity (avoid READY storms).
-    if (!alreadyReady) {
-      try {
-        window.dispatchEvent(new CustomEvent(PN_CLOUD_CREDENTIALS_READY_EVENT));
-      } catch {
-        /* non-DOM */
-      }
-    }
+    // publishCloudDriveReady already fired READY when mint succeeded.
+    void alreadyReady;
     return { status: 'ready' };
   } catch (e) {
     lastStatus = 'error';

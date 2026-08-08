@@ -1,4 +1,5 @@
 import { storageCredentialsService } from './storageCredentialsService';
+import { DriveIndexError } from './pnDriveIndex';
 
 export interface RecoveryDriveContext {
   pnIdentifier: string;
@@ -16,9 +17,14 @@ function extractAccountId(account: Record<string, unknown>): string | undefined 
   );
 }
 
+/**
+ * Resolve recovery Drive context. Throws DriveIndexError CLOUD_TOKEN_REQUIRED when
+ * no forwarded/server access token is available (do not treat as "Drive not connected").
+ * Pass softMissingToken for GET unlock probes that should soft-empty instead of 409.
+ */
 export async function getRecoveryDriveContext(
   userPnIdentifier: string,
-  opts?: { accessToken?: string }
+  opts?: { accessToken?: string; softMissingToken?: boolean }
 ): Promise<RecoveryDriveContext | null> {
   const pnIdentifier = userPnIdentifier.startsWith('pn-') ? userPnIdentifier : `pn-${userPnIdentifier}`;
   const userCredentials = await storageCredentialsService.getCredentials(pnIdentifier);
@@ -31,11 +37,16 @@ export async function getRecoveryDriveContext(
 
   const account = googleDriveAccounts[0];
   const accountId = extractAccountId(account);
-  const access_token =
-    opts?.accessToken ||
-    account.access_token ||
-    account.accessToken;
-  if (!access_token) return null;
+  const access_token = String(
+    opts?.accessToken || account.access_token || account.accessToken || ''
+  ).trim();
+  if (!access_token) {
+    if (opts?.softMissingToken) return null;
+    throw new DriveIndexError(
+      'Google Drive access token required. Forward X-PN-Cloud-Access-Token after unlocking with cloud credentials.',
+      'CLOUD_TOKEN_REQUIRED'
+    );
+  }
 
   const token = {
     access_token,

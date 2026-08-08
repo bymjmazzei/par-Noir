@@ -87,9 +87,12 @@ export {
   PN_CLOUD_CREDENTIALS_READY_EVENT,
   getCloudAccessTokenFromSession,
   getCloudRefreshTokenFromSession,
+  hasCloudHydrateMaterial,
   hasCloudCredentialsReady,
+  waitForCloudHydrateMaterial,
   waitForCloudCredentialsReady,
   ensureCloudAccessToken,
+  publishCloudDriveReady,
   ownerCloudHeaders,
   ownerCloudHeadersAsync
 } from './ownerCloudHeaders.js';

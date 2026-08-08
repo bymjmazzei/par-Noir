@@ -242,8 +242,13 @@ export function useDriveLayoutInit({ setError }: UseDriveLayoutInitParams) {
           clearMetadataSheetsUnavailable(normalized);
           if (wasSheetsBlocked) {
             try {
-              const { PN_CLOUD_CREDENTIALS_READY_EVENT } = await import('@par-noir/oauth-ui');
-              window.dispatchEvent(new CustomEvent(PN_CLOUD_CREDENTIALS_READY_EVENT));
+              const { publishCloudDriveReady } = await import('@par-noir/device-cloud-credentials');
+              const { API_ENDPOINT } = await import('../../../config/api');
+              await publishCloudDriveReady({
+                authToken: accessToken,
+                pnIdentifier: normalized,
+                apiEndpoint: API_ENDPOINT
+              });
             } catch {
               /* non-DOM */
             }

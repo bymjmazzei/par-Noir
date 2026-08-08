@@ -2,11 +2,12 @@ import React, { useCallback, useEffect, useState } from 'react';
 import {
   clearCloudCredentialsOnLock,
   getSessionCloudCredentials,
+  publishCloudDriveReady,
   setSessionCloudCredentials
 } from '@par-noir/device-cloud-credentials';
 import { envelopeHasUsableSecrets } from '@par-noir/user-owned-storage';
 import type { StorageCredentialsEnvelope } from '@par-noir/user-owned-storage';
-import { CloudReconnectPanel, PN_CLOUD_CREDENTIALS_READY_EVENT } from './CloudReconnectPanel';
+import { CloudReconnectPanel } from './CloudReconnectPanel';
 import { CloudReconnectPrompt } from './CloudReconnectPrompt';
 import { isOAuthCloudProvider, reconnectOAuthProvider } from './reconnectFlows';
 import { useCloudReconnectGate } from './useCloudReconnectGate';
@@ -104,29 +105,28 @@ export function ThirdPartyCloudReconnectHost({
   });
 
   useEffect(() => {
-    if (vaultHydrated) {
-      gate.markReady();
-      try {
-        window.dispatchEvent(new CustomEvent(PN_CLOUD_CREDENTIALS_READY_EVENT));
-      } catch {
-        /* non-DOM */
-      }
-    }
-  }, [vaultHydrated, gate.markReady]);
+    if (!vaultHydrated || !authToken || !pnIdentifier) return;
+    gate.markReady();
+    void publishCloudDriveReady({
+      authToken,
+      pnIdentifier,
+      apiEndpoint
+    });
+  }, [vaultHydrated, gate.markReady, authToken, pnIdentifier, apiEndpoint]);
 
   const handleConnected = useCallback(
     async (envelope: StorageCredentialsEnvelope) => {
-      if (!pnIdentifier) return;
+      if (!pnIdentifier || !authToken) return;
       setSessionCloudCredentials(pnIdentifier, envelope);
       gate.markReady();
       setVaultHydrated(true);
-      try {
-        window.dispatchEvent(new CustomEvent(PN_CLOUD_CREDENTIALS_READY_EVENT));
-      } catch {
-        /* non-DOM */
-      }
+      await publishCloudDriveReady({
+        authToken,
+        pnIdentifier,
+        apiEndpoint
+      });
     },
-    [pnIdentifier, gate]
+    [pnIdentifier, gate, authToken, apiEndpoint]
   );
 
   const handleReconnect = useCallback(() => {

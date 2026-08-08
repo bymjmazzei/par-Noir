@@ -57,7 +57,12 @@ export function setupRecoveryRequestRoutes(app: express.Application, deps: Recov
     let token;
     try {
       token = (await resolveOwnerDriveToken(req, pnIdentifier, { account, accountId })).token;
-    } catch {
+    } catch (error) {
+      // Do not swallow custody misses into "Drive not connected" 404.
+      const { DriveIndexError } = await import('./pnDriveIndex');
+      if (error instanceof DriveIndexError && error.code === 'CLOUD_TOKEN_REQUIRED') {
+        throw error;
+      }
       return null;
     }
     const folders = await getMetadataFolder(token, pnIdentifier, accountId);
@@ -119,6 +124,8 @@ export function setupRecoveryRequestRoutes(app: express.Application, deps: Recov
         );
         return res.json({ success: true, spreadsheetId, requestType: type });
       } catch (error: any) {
+        const { respondDriveTokenError } = await import('./ownerDriveToken');
+        if (respondDriveTokenError(res, error)) return;
         console.error('Error saving recovery request:', error);
         return res.status(500).json({ error: 'Failed to save recovery request' });
       }
@@ -138,6 +145,8 @@ export function setupRecoveryRequestRoutes(app: express.Application, deps: Recov
         );
         return res.json({ requests });
       } catch (error: any) {
+        const { respondDriveTokenError } = await import('./ownerDriveToken');
+        if (respondDriveTokenError(res, error)) return;
         console.error('Error listing recovery requests:', error);
         return res.status(500).json({ error: 'Failed to list recovery requests' });
       }
@@ -159,6 +168,8 @@ export function setupRecoveryRequestRoutes(app: express.Application, deps: Recov
         if (!reqRow) return res.status(404).json({ error: 'Recovery request not found' });
         return res.json({ request: reqRow });
       } catch (error: any) {
+        const { respondDriveTokenError } = await import('./ownerDriveToken');
+        if (respondDriveTokenError(res, error)) return;
         console.error('Error fetching recovery request:', error);
         return res.status(500).json({ error: 'Failed to fetch recovery request' });
       }
@@ -244,6 +255,15 @@ export function setupRecoveryRequestRoutes(app: express.Application, deps: Recov
           counts: summary.counts,
         });
       } catch (error: any) {
+        // Unlock probe already soft-empties via getRecoveryCustodianSummary; map any leaked token miss.
+        const { DriveIndexError } = await import('./pnDriveIndex');
+        if (error instanceof DriveIndexError && error.code === 'CLOUD_TOKEN_REQUIRED') {
+          return res.json({
+            custodians: [],
+            pending: [],
+            counts: { accepted: 0, acceptedUnrevokable: 0, invited: 0 },
+          });
+        }
         console.error('Error listing custodians:', error);
         return res.status(500).json({ error: 'Failed to list custodians' });
       }
@@ -302,6 +322,8 @@ export function setupRecoveryRequestRoutes(app: express.Application, deps: Recov
         );
         return res.json({ success: true });
       } catch (error: any) {
+        const { respondDriveTokenError } = await import('./ownerDriveToken');
+        if (respondDriveTokenError(res, error)) return;
         console.error('Error saving custodian share:', error);
         return res.status(500).json({ error: 'Failed to save custodian' });
       }

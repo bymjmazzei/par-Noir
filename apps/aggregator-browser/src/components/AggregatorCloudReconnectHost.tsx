@@ -2,7 +2,6 @@ import React, { useCallback, useEffect, useState } from 'react';
 import {
   CloudReconnectPanel,
   CloudReconnectPrompt,
-  PN_CLOUD_CREDENTIALS_READY_EVENT,
   useCloudReconnectGate,
   ensureCloudCredentialsReady,
   publishCloudCredentialsVault
@@ -11,6 +10,7 @@ import {
   clearCloudCredentialsOnLock,
   loadLocalCloudCredentials,
   persistCloudCredentials,
+  publishCloudDriveReady,
   resolveCloudPersistMode,
   setSessionCloudCredentials,
   getSessionCloudCredentials,
@@ -194,18 +194,19 @@ export const AggregatorCloudReconnectHost: React.FC = () => {
     dismissStorageKey: pnIdentifier ? `pn_cloud_reconnect_dismiss:${pnIdentifier}` : undefined
   });
 
-  // When vault hydrate succeeds, mark gate ready and retry Drive-backed publishes.
+  // When vault hydrate succeeds, mint access token then signal Drive-ready.
   useEffect(() => {
-    if (vaultHydrated) {
-      gate.markReady();
-      try {
-        window.dispatchEvent(new CustomEvent(PN_CLOUD_CREDENTIALS_READY_EVENT));
-      } catch {
-        /* non-DOM */
-      }
-      void retryPublishMlKemPublicKey();
-    }
-  }, [vaultHydrated, gate.markReady]);
+    if (!vaultHydrated || !authToken || !pnIdentifier) return;
+    gate.markReady();
+    void (async () => {
+      const ok = await publishCloudDriveReady({
+        authToken,
+        pnIdentifier,
+        apiEndpoint: API_ENDPOINT
+      });
+      if (ok) void retryPublishMlKemPublicKey();
+    })();
+  }, [vaultHydrated, gate.markReady, authToken, pnIdentifier]);
 
   const handleConnected = useCallback(
     async (envelope: StorageCredentialsEnvelope) => {
@@ -261,10 +262,12 @@ export const AggregatorCloudReconnectHost: React.FC = () => {
       }
       gate.markReady();
       setVaultHydrated(true);
-      try {
-        window.dispatchEvent(new CustomEvent(PN_CLOUD_CREDENTIALS_READY_EVENT));
-      } catch {
-        /* non-DOM */
+      if (authToken) {
+        await publishCloudDriveReady({
+          authToken,
+          pnIdentifier,
+          apiEndpoint: API_ENDPOINT
+        });
       }
       void retryPublishMlKemPublicKey();
     },

@@ -2,6 +2,7 @@ import React, { useCallback, useMemo, useRef, useState } from 'react';
 import {
   loadLocalCloudCredentials,
   persistCloudCredentials,
+  publishCloudDriveReady,
   resolveCloudPersistMode,
   getSessionCloudCredentials,
   setSessionCloudCredentials,
@@ -214,20 +215,21 @@ export const CloudReconnectHost: React.FC<CloudReconnectHostProps> = ({
     dismissStorageKey: pnIdentifier ? `pn_cloud_reconnect_dismiss:${pnIdentifier}` : undefined
   });
 
-  // Case A warm: gate becomes ready without reconnect — fire READY so Privacy/Storage hydrate.
+  // Case A warm: gate becomes ready without reconnect — mint access token then fire READY.
   React.useEffect(() => {
     if (gate.readiness !== 'ready') {
       warmedReadyRef.current = false;
       return;
     }
     if (warmedReadyRef.current) return;
+    if (!apiToken || !pnIdentifier) return;
     warmedReadyRef.current = true;
-    try {
-      window.dispatchEvent(new CustomEvent(PN_CLOUD_CREDENTIALS_READY_EVENT));
-    } catch {
-      /* non-DOM */
-    }
-  }, [gate.readiness]);
+    void publishCloudDriveReady({
+      authToken: apiToken,
+      pnIdentifier,
+      apiEndpoint: API_ENDPOINT
+    });
+  }, [gate.readiness, apiToken, pnIdentifier]);
 
   // Migrate / Storage connect may publish secrets after the first gate check.
   React.useEffect(() => {
@@ -274,10 +276,12 @@ export const CloudReconnectHost: React.FC<CloudReconnectHostProps> = ({
       }
 
       markReady();
-      try {
-        window.dispatchEvent(new CustomEvent(PN_CLOUD_CREDENTIALS_READY_EVENT));
-      } catch {
-        /* non-DOM */
+      if (apiToken) {
+        await publishCloudDriveReady({
+          authToken: apiToken,
+          pnIdentifier,
+          apiEndpoint: API_ENDPOINT
+        });
       }
     },
     [pnIdentifier, sessionId, effectivePersistMode, markReady, apiToken]

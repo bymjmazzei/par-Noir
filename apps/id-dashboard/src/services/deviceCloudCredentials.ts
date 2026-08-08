@@ -18,6 +18,7 @@ import {
   materializeMailboxJob,
   migrateServerSecretsToDevice,
   persistCloudCredentials,
+  publishCloudDriveReady,
   sealCredentials,
   setSessionCloudCredentials,
   takeOutboxBridge,
@@ -29,7 +30,6 @@ import {
   type SealSession,
   type SealedEnvelope
 } from '@par-noir/device-cloud-credentials';
-import { PN_CLOUD_CREDENTIALS_READY_EVENT } from '@par-noir/oauth-ui';
 import { Capacitor } from '@capacitor/core';
 import { API_ENDPOINT } from '../config/api';
 
@@ -236,12 +236,16 @@ export async function migrateAndFlushOnUnlock(opts: {
     if (migrateFlushByIdentity.get(opts.identityId) === run) {
       migrateFlushByIdentity.delete(opts.identityId);
     }
-    // Only signal cloud ready when this device actually has usable secrets (not empty migrate).
+    // Only signal Drive-ready after a usable Google access token is minted.
     try {
       const { envelopeHasUsableSecrets } = await import('@par-noir/user-owned-storage');
       const env = await loadUnsealedCloudCredentials(opts.identityId, opts.session);
       if (envelopeHasUsableSecrets(env)) {
-        window.dispatchEvent(new CustomEvent(PN_CLOUD_CREDENTIALS_READY_EVENT));
+        await publishCloudDriveReady({
+          authToken: opts.authToken,
+          pnIdentifier: opts.identityId,
+          apiEndpoint: API_ENDPOINT
+        });
       }
     } catch {
       /* non-DOM / no secrets */

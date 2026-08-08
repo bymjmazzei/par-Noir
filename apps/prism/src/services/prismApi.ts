@@ -4,8 +4,7 @@
  */
 
 import {
-  ownerCloudHeaders,
-  waitForCloudCredentialsReady,
+  ownerCloudHeadersAsync,
 } from '@par-noir/device-cloud-credentials';
 import { API_ENDPOINT } from '../config/api';
 
@@ -25,8 +24,11 @@ async function prismHeaders(
   pnIdentifier?: string | null
 ): Promise<Record<string, string>> {
   const pn = pnIdentifier ?? prismPnIdentifier;
-  await waitForCloudCredentialsReady(pn);
-  return ownerCloudHeaders({ authToken: accessToken, pnIdentifier: pn });
+  return ownerCloudHeadersAsync({
+    authToken: accessToken,
+    pnIdentifier: pn,
+    apiEndpoint: API_ENDPOINT
+  });
 }
 
 export interface PrismQueueItem {

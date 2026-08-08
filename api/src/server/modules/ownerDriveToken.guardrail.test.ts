@@ -4,7 +4,7 @@
  */
 
 import { describe, expect, it } from '@jest/globals';
-import { readFileSync, readdirSync, statSync } from 'fs';
+import { readFileSync, readdirSync, statSync, existsSync } from 'fs';
 import { join } from 'path';
 
 const MODULES_DIR = join(__dirname);
@@ -51,5 +51,22 @@ describe('owner Drive token custody guardrail', () => {
       }
     }
     expect(offenders).toEqual([]);
+  });
+
+  it('storageIndexRoutes uses resolveOwnerDriveToken (no empty-shell builder)', () => {
+    const file = join(MODULES_DIR, 'storage', 'storageIndexRoutes.ts');
+    expect(existsSync(file)).toBe(true);
+    const text = readFileSync(file, 'utf8');
+    expect(text).toMatch(/resolveOwnerDriveToken/);
+    expect(text).not.toMatch(/function buildDriveTokenFromAccount/);
+    expect(SHELL_TOKEN_RE.test(text)).toBe(false);
+  });
+
+  it('recoveryDriveContext refuses empty access tokens (throws CLOUD_TOKEN_REQUIRED)', () => {
+    const file = join(MODULES_DIR, 'recoveryDriveContext.ts');
+    expect(existsSync(file)).toBe(true);
+    const text = readFileSync(file, 'utf8');
+    expect(text).toMatch(/CLOUD_TOKEN_REQUIRED/);
+    expect(SHELL_TOKEN_RE.test(text)).toBe(false);
   });
 });

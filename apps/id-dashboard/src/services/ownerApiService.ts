@@ -24,20 +24,65 @@ function authHeaders(authToken: string, extra?: Record<string, string>) {
   };
 }
 
-async function cloudTokenHeaders(pnIdentifier?: string): Promise<Record<string, string>> {
+function cloudTokenRequiredResponse(): Response {
+  return new Response(
+    JSON.stringify({
+      error: 'cloud_token_required',
+      error_description:
+        'Google Drive access token required. Unlock with cloud credentials before Drive-backed calls.'
+    }),
+    { status: 409, headers: { 'Content-Type': 'application/json' } }
+  );
+}
+
+function hasForwardedCloudToken(extra?: Record<string, string>): boolean {
+  if (!extra) return false;
+  const v = extra[PN_CLOUD_ACCESS_TOKEN_HEADER] || extra['x-pn-cloud-access-token'];
+  return typeof v === 'string' && v.trim().length > 0;
+}
+
+/**
+ * Resolve X-PN-Cloud-Access-Token for owner Drive calls.
+ * Returns missing=true when a pn is known but no access token could be minted.
+ */
+async function cloudTokenHeaders(
+  authToken: string,
+  pnIdentifier?: string
+): Promise<{
+  headers: Record<string, string>;
+  missing: boolean;
+}> {
   const pn = pnIdentifier || ownerApiPnIdentifier || undefined;
-  if (!pn) return {};
+  if (!pn) return { headers: {}, missing: false };
+
   let tok = await resolveLocalGoogleAccessTokenAsync(pn);
   if (!tok) {
     try {
-      const { waitForCloudCredentialsReady } = await import('@par-noir/device-cloud-credentials');
-      await waitForCloudCredentialsReady(pn);
-      tok = await resolveLocalGoogleAccessTokenAsync(pn);
+      const {
+        waitForCloudHydrateMaterial,
+        ensureCloudAccessToken,
+        getCloudAccessTokenFromSession
+      } = await import('@par-noir/device-cloud-credentials');
+      await waitForCloudHydrateMaterial(pn);
+      tok =
+        (await ensureCloudAccessToken({
+          authToken,
+          pnIdentifier: pn,
+          apiEndpoint: API_ENDPOINT
+        })) || getCloudAccessTokenFromSession(pn);
+      if (!tok) {
+        await waitForCloudHydrateMaterial(pn, 3_000);
+        tok = getCloudAccessTokenFromSession(pn);
+      }
     } catch {
-      /* best-effort wait for vault hydrate */
+      /* best-effort */
     }
   }
-  return tok ? { [PN_CLOUD_ACCESS_TOKEN_HEADER]: tok } : {};
+  if (!tok) {
+    tok = await resolveLocalGoogleAccessTokenAsync(pn);
+  }
+  if (!tok) return { headers: {}, missing: true };
+  return { headers: { [PN_CLOUD_ACCESS_TOKEN_HEADER]: tok }, missing: false };
 }
 
 export type OwnerFetchInit = Omit<RequestInit, 'method' | 'headers' | 'body'> & {
@@ -47,7 +92,7 @@ export type OwnerFetchInit = Omit<RequestInit, 'method' | 'headers' | 'body'> & 
   pnIdentifier?: string;
 };
 
-/** Owner API fetch with device proof headers when a local device key is registered. */
+/** Owner API fetch with device proof. Never JWT-only for Drive when pn is known. */
 export async function ownerFetch(
   authToken: string,
   method: string,
@@ -57,11 +102,14 @@ export async function ownerFetch(
 ): Promise<Response> {
   const { extraHeaders, pnIdentifier, ...rest } = init ?? {};
   const proof = await deviceProofHeaders(method, path, body);
-  const cloud = await cloudTokenHeaders(pnIdentifier);
+  const cloud = await cloudTokenHeaders(authToken, pnIdentifier);
+  if (cloud.missing && !hasForwardedCloudToken(extraHeaders)) {
+    return cloudTokenRequiredResponse();
+  }
   return fetch(`${API_ENDPOINT}${path}`, {
     ...rest,
     method,
-    headers: authHeaders(authToken, { ...proof, ...cloud, ...extraHeaders }),
+    headers: authHeaders(authToken, { ...proof, ...cloud.headers, ...extraHeaders }),
     body: body != null ? JSON.stringify(body) : undefined,
   });
 }
@@ -74,11 +122,14 @@ export async function ownerGet(
 ): Promise<Response> {
   const { extraHeaders, pnIdentifier, ...rest } = init ?? {};
   const proof = await deviceProofHeaders('GET', path);
-  const cloud = await cloudTokenHeaders(pnIdentifier);
+  const cloud = await cloudTokenHeaders(authToken, pnIdentifier);
+  if (cloud.missing && !hasForwardedCloudToken(extraHeaders)) {
+    return cloudTokenRequiredResponse();
+  }
   return fetch(`${API_ENDPOINT}${path}`, {
     ...rest,
     method: 'GET',
-    headers: authHeaders(authToken, { ...proof, ...cloud, ...extraHeaders }),
+    headers: authHeaders(authToken, { ...proof, ...cloud.headers, ...extraHeaders }),
   });
 }
 

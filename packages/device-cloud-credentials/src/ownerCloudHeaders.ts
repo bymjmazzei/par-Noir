@@ -1,8 +1,8 @@
 /**
  * Shared first-party client helpers: wait for vault hydrate + attach X-PN-Cloud-Access-Token.
  *
- * Ready means a usable Google *access* token (or a refresh token we can mint from).
- * Refresh-only envelopes must not short-circuit into Bearer-only Drive calls.
+ * Drive-ready (hasCloudCredentialsReady / PN_CLOUD_CREDENTIALS_READY) means a usable Google
+ * *access* token is in session. Refresh-only is hydrate material for minting — never READY alone.
  */
 
 import type { StorageCredentialsEnvelope } from '@par-noir/user-owned-storage';
@@ -42,7 +42,6 @@ function accountRefreshToken(acct: GoogleAccountRow): string | null {
 function accountExpiresAtMs(acct: GoogleAccountRow): number | null {
   const raw = acct.expires_at ?? acct.expiresAt;
   if (typeof raw === 'number' && Number.isFinite(raw)) {
-    // Heuristic: seconds vs ms
     return raw < 1e12 ? raw * 1000 : raw;
   }
   const expiresIn = acct.expires_in ?? acct.expiresIn;
@@ -76,40 +75,43 @@ export function getCloudRefreshTokenFromSession(
   return null;
 }
 
+/**
+ * Hydrate material: access or refresh present (can mint). Not Drive-ready by itself.
+ * @internal used by publishCloudDriveReady
+ */
+export function hasCloudHydrateMaterial(pnIdentifier?: string | null): boolean {
+  if (!pnIdentifier) return false;
+  if (getCloudAccessTokenFromSession(pnIdentifier)) return true;
+  return Boolean(getCloudRefreshTokenFromSession(pnIdentifier));
+}
+
 function accessTokenLooksFresh(pnIdentifier: string): boolean {
   const env = getSessionCloudCredentials(pnIdentifier);
   for (const acct of googleAccountsFromEnvelope(env)) {
     const tok = accountAccessToken(acct);
     if (!tok) continue;
     const exp = accountExpiresAtMs(acct);
-    // No expiry metadata → treat as usable until Google rejects it.
     if (exp == null) return true;
-    // Refresh 60s before expiry.
     return exp - 60_000 > Date.now();
   }
   return false;
 }
 
 /**
- * True when vault hydrate can support Drive calls: fresh access token, or refresh token to mint one.
- * Do NOT treat layout-only / unknown envelopes as ready.
+ * Drive-ready: a Google *access* token is in session.
+ * Refresh-only must NOT count — callers would fire Bearer-only Drive requests.
  */
 export function hasCloudCredentialsReady(pnIdentifier?: string | null): boolean {
   if (!pnIdentifier) return false;
-  if (getCloudAccessTokenFromSession(pnIdentifier)) return true;
-  return Boolean(getCloudRefreshTokenFromSession(pnIdentifier));
+  return Boolean(getCloudAccessTokenFromSession(pnIdentifier));
 }
 
-/**
- * Wait for vault hydrate (PN_CLOUD_CREDENTIALS_READY or session secrets).
- * Resolves false if credentials never arrive within timeout.
- */
-export async function waitForCloudCredentialsReady(
-  pnIdentifier?: string | null,
-  timeoutMs = 15_000
+async function waitUntil(
+  predicate: () => boolean,
+  timeoutMs: number
 ): Promise<boolean> {
-  if (hasCloudCredentialsReady(pnIdentifier)) return true;
-  if (typeof window === 'undefined') return hasCloudCredentialsReady(pnIdentifier);
+  if (predicate()) return true;
+  if (typeof window === 'undefined') return predicate();
 
   return new Promise((resolve) => {
     let settled = false;
@@ -122,15 +124,44 @@ export async function waitForCloudCredentialsReady(
       resolve(ok);
     };
     const onReady = () => {
-      if (hasCloudCredentialsReady(pnIdentifier)) finish(true);
+      if (predicate()) finish(true);
     };
     const poll = setInterval(() => {
-      if (hasCloudCredentialsReady(pnIdentifier)) finish(true);
+      if (predicate()) finish(true);
     }, 200);
-    const timer = setTimeout(() => finish(hasCloudCredentialsReady(pnIdentifier)), timeoutMs);
+    const timer = setTimeout(() => finish(predicate()), timeoutMs);
     window.addEventListener(PN_CLOUD_CREDENTIALS_READY_EVENT, onReady);
     onReady();
   });
+}
+
+/** Wait until hydrate material (access or refresh) exists. */
+export async function waitForCloudHydrateMaterial(
+  pnIdentifier?: string | null,
+  timeoutMs = 15_000
+): Promise<boolean> {
+  return waitUntil(() => hasCloudHydrateMaterial(pnIdentifier), timeoutMs);
+}
+
+/**
+ * Wait until Drive-ready (access token in session).
+ * Resolves false if access token never arrives within timeout.
+ */
+export async function waitForCloudCredentialsReady(
+  pnIdentifier?: string | null,
+  timeoutMs = 15_000
+): Promise<boolean> {
+  return waitUntil(() => hasCloudCredentialsReady(pnIdentifier), timeoutMs);
+}
+
+function dispatchCloudCredentialsReady(): void {
+  try {
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent(PN_CLOUD_CREDENTIALS_READY_EVENT));
+    }
+  } catch {
+    /* non-DOM */
+  }
 }
 
 function patchSessionAccessToken(
@@ -175,19 +206,13 @@ function patchSessionAccessToken(
     (next as { googleDrive?: GoogleAccountRow }).googleDrive = nextAccounts[0];
   }
   setSessionCloudCredentials(pnIdentifier, next);
-  try {
-    if (typeof window !== 'undefined') {
-      window.dispatchEvent(new CustomEvent(PN_CLOUD_CREDENTIALS_READY_EVENT));
-    }
-  } catch {
-    /* non-DOM */
-  }
 }
 
 let refreshInflight: Promise<string | null> | null = null;
 
 /**
  * Ensure session has a usable Google access token; refresh via par Noir API when needed.
+ * Does not dispatch READY — use publishCloudDriveReady for that.
  */
 export async function ensureCloudAccessToken(opts: {
   authToken: string;
@@ -243,7 +268,36 @@ export async function ensureCloudAccessToken(opts: {
   return refreshInflight;
 }
 
-/** Bearer + optional X-PN-Cloud-Access-Token from session (no wait). */
+/**
+ * Mint a fresh access token if needed, then fire PN_CLOUD_CREDENTIALS_READY.
+ * Only dispatches when getCloudAccessTokenFromSession(pn) is non-null.
+ * Returns false if hydrate/mint failed (do not treat as Drive-ready).
+ */
+export async function publishCloudDriveReady(opts: {
+  authToken: string;
+  pnIdentifier: string;
+  apiEndpoint: string;
+  timeoutMs?: number;
+}): Promise<boolean> {
+  const pn = opts.pnIdentifier?.trim();
+  if (!pn || !opts.authToken) return false;
+
+  const hydrated = await waitForCloudHydrateMaterial(pn, opts.timeoutMs ?? 15_000);
+  if (!hydrated) return false;
+
+  const tok = await ensureCloudAccessToken({
+    authToken: opts.authToken,
+    pnIdentifier: pn,
+    apiEndpoint: opts.apiEndpoint
+  });
+  if (!tok?.trim()) return false;
+  if (!getCloudAccessTokenFromSession(pn)) return false;
+
+  dispatchCloudCredentialsReady();
+  return true;
+}
+
+/** Bearer + optional X-PN-Cloud-Access-Token from session (no wait). Non-Drive / sync only. */
 export function ownerCloudHeaders(opts: {
   authToken: string;
   pnIdentifier?: string | null;
@@ -255,7 +309,7 @@ export function ownerCloudHeaders(opts: {
   return headers;
 }
 
-/** Wait for hydrate (and refresh if needed) then return ownerCloudHeaders. */
+/** Wait for Drive-ready access token (and refresh if needed) then return headers. */
 export async function ownerCloudHeadersAsync(opts: {
   authToken: string;
   pnIdentifier?: string | null;
@@ -263,7 +317,8 @@ export async function ownerCloudHeadersAsync(opts: {
   apiEndpoint?: string | null;
   extra?: Record<string, string>;
 }): Promise<Record<string, string>> {
-  await waitForCloudCredentialsReady(opts.pnIdentifier, opts.timeoutMs);
+  // Prefer hydrate material first so we can mint before waiting forever on access-only.
+  await waitForCloudHydrateMaterial(opts.pnIdentifier, opts.timeoutMs);
   if (opts.apiEndpoint) {
     await ensureCloudAccessToken({
       authToken: opts.authToken,
@@ -271,5 +326,6 @@ export async function ownerCloudHeadersAsync(opts: {
       apiEndpoint: opts.apiEndpoint
     });
   }
+  await waitForCloudCredentialsReady(opts.pnIdentifier, Math.min(opts.timeoutMs ?? 15_000, 5_000));
   return ownerCloudHeaders(opts);
 }

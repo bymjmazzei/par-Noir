@@ -1,21 +1,23 @@
-import { ownerCloudHeaders } from '@par-noir/device-cloud-credentials';
+import { ownerCloudHeadersAsync } from '@par-noir/device-cloud-credentials';
 import { API_ENDPOINT } from '../config/api';
 
-function authHeaders(): HeadersInit {
+async function authHeadersAsync(): Promise<HeadersInit> {
   const t = sessionStorage.getItem('dev_portal_access_token')?.trim();
   if (!t) return { 'Content-Type': 'application/json' };
   const pn = sessionStorage.getItem('dev_portal_pn_identifier')?.trim() || null;
-  return ownerCloudHeaders({
+  return ownerCloudHeadersAsync({
     authToken: t,
     pnIdentifier: pn,
+    apiEndpoint: API_ENDPOINT,
     extra: { 'Content-Type': 'application/json' }
   });
 }
 
 async function platformFetch(path: string, init?: RequestInit) {
+  const headers = await authHeadersAsync();
   const res = await fetch(`${API_ENDPOINT}${path}`, {
     ...init,
-    headers: { ...authHeaders(), ...(init?.headers || {}) }
+    headers: { ...headers, ...(init?.headers || {}) }
   });
   const data = await res.json().catch(() => ({}));
   return { ok: res.ok, status: res.status, data };

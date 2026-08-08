@@ -8,7 +8,7 @@ import {
   type ReactNode
 } from 'react';
 import type { PnOAuthPopupResult } from '@par-noir/oauth-ui';
-import { ownerCloudHeaders } from '@par-noir/device-cloud-credentials';
+import { ownerCloudHeaders, ownerCloudHeadersAsync } from '@par-noir/device-cloud-credentials';
 import { API_ENDPOINT } from '../config/api';
 import { PN_CLIENT_ID } from '../config/client';
 
@@ -87,6 +87,7 @@ interface PortalContextValue {
   error: string | null;
   setError: (e: string | null) => void;
   authHeaders: () => HeadersInit;
+  authHeadersAsync: () => Promise<HeadersInit>;
   completePortalOAuth: (result: PnOAuthPopupResult) => Promise<void>;
   refreshDashboard: () => Promise<void>;
   handleBeforeUnlock: (state: string, nonce: string) => void;
@@ -136,6 +137,17 @@ export function PortalProvider({ children }: { children: ReactNode }) {
     return ownerCloudHeaders({
       authToken: t,
       pnIdentifier: user?.pn_identifier || getStoredPnIdentifier(),
+      extra: { 'Content-Type': 'application/json' }
+    });
+  }, [user?.pn_identifier]);
+
+  const authHeadersAsync = useCallback(async (): Promise<HeadersInit> => {
+    const t = getAccessToken();
+    if (!t) return { 'Content-Type': 'application/json' };
+    return ownerCloudHeadersAsync({
+      authToken: t,
+      pnIdentifier: user?.pn_identifier || getStoredPnIdentifier(),
+      apiEndpoint: API_ENDPOINT,
       extra: { 'Content-Type': 'application/json' }
     });
   }, [user?.pn_identifier]);
@@ -363,6 +375,7 @@ export function PortalProvider({ children }: { children: ReactNode }) {
       error,
       setError,
       authHeaders,
+      authHeadersAsync,
       completePortalOAuth,
       refreshDashboard,
       handleBeforeUnlock,
@@ -381,6 +394,7 @@ export function PortalProvider({ children }: { children: ReactNode }) {
       message,
       error,
       authHeaders,
+      authHeadersAsync,
       completePortalOAuth,
       refreshDashboard,
       handleBeforeUnlock,

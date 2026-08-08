@@ -375,9 +375,9 @@ export function MultiCloudStoragePanel({
           const { SecureCredentialManager } = await import('@par-noir/identity-crypto');
           const {
             persistCloudCredentials,
-            resolveCloudPersistMode
+            resolveCloudPersistMode,
+            publishCloudDriveReady
           } = await import('@par-noir/device-cloud-credentials');
-          const { PN_CLOUD_CREDENTIALS_READY_EVENT: readyEvt } = await import('@par-noir/oauth-ui');
           const creds = SecureCredentialManager.getCredentials(sessionId);
           if (creds) {
             await persistCloudCredentials({
@@ -390,11 +390,12 @@ export function MultiCloudStoragePanel({
               },
               mode: resolveCloudPersistMode({ hasKeyedDevices: false })
             });
-            try {
-              window.dispatchEvent(new CustomEvent(readyEvt));
-            } catch {
-              /* non-DOM */
-            }
+            // Drive READY only if a Google access token can be minted (non-Google connect alone is not Drive-ready).
+            await publishCloudDriveReady({
+              authToken,
+              pnIdentifier,
+              apiEndpoint: API_ENDPOINT
+            });
           }
         }
       } catch {

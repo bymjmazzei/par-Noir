@@ -34,7 +34,7 @@ function parsePayeesFromMetadata(meta: Record<string, unknown>): MusicPayeeFormR
 }
 
 export function TrackLibraryPanel() {
-  const { authHeaders, signedIn, refreshUser } = useLicensingSession();
+  const { authHeadersAsync, signedIn, refreshUser } = useLicensingSession();
   const [tracks, setTracks] = useState<RegistryTrack[]>([]);
   const [loading, setLoading] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -51,7 +51,7 @@ export function TrackLibraryPanel() {
     setLoadError(null);
     try {
       const res = await fetch(`${API_ENDPOINT}/api/v1/music/registry/tracks`, {
-        headers: authHeaders()
+        headers: await authHeadersAsync()
       });
       if (!res.ok) {
         const j = (await res.json().catch(() => ({}))) as { error_description?: string };
@@ -65,7 +65,7 @@ export function TrackLibraryPanel() {
     } finally {
       setLoading(false);
     }
-  }, [authHeaders]);
+  }, [authHeadersAsync]);
 
   useEffect(() => {
     if (signedIn) void load();
@@ -79,7 +79,7 @@ export function TrackLibraryPanel() {
     try {
       const res = await fetch(`${API_ENDPOINT}/api/v1/music/registry/tracks`, {
         method: 'POST',
-        headers: authHeaders(),
+        headers: await authHeadersAsync(),
         body: JSON.stringify({
           title: title.trim(),
           displayArtist: displayArtist.trim() || undefined,
@@ -110,7 +110,7 @@ export function TrackLibraryPanel() {
     try {
       const res = await fetch(`${API_ENDPOINT}/api/v1/music/registry/tracks/${encodeURIComponent(id)}`, {
         method: 'PATCH',
-        headers: authHeaders(),
+        headers: await authHeadersAsync(),
         body: JSON.stringify({ status })
       });
       if (!res.ok) {
@@ -165,7 +165,7 @@ export function TrackLibraryPanel() {
       }
       const res = await fetch(`${API_ENDPOINT}/api/v1/music/registry/tracks/${encodeURIComponent(t.id)}`, {
         method: 'PATCH',
-        headers: authHeaders(),
+        headers: await authHeadersAsync(),
         body: JSON.stringify({ splitsMetadata: nextMeta })
       });
       if (!res.ok) {

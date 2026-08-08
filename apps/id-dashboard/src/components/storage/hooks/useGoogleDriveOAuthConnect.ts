@@ -510,10 +510,27 @@ export function useGoogleDriveOAuthConnect({
         console.warn('⚠️ [handleConnectGoogleDrive] Failed to persist layout to API (non-critical):', persistError);
       }
 
-      // Signal cloud ready only after credentials PUT + layout init attempt.
+      // Signal Drive-ready only after access token is in session (OAuth just minted it).
       try {
-        const { PN_CLOUD_CREDENTIALS_READY_EVENT } = await import('@par-noir/oauth-ui');
-        window.dispatchEvent(new CustomEvent(PN_CLOUD_CREDENTIALS_READY_EVENT));
+        const { publishCloudDriveReady } = await import('@par-noir/device-cloud-credentials');
+        const { derivePnIdentifierForToken } = await import('../../../services/parNoirOAuthInline');
+        const sessionId = authenticatedUser?.id || null;
+        const sessionCreds = sessionId ? SecureCredentialManager.getCredentials(sessionId) : null;
+        if (sessionCreds && sessionId && authenticatedUser?.publicKey) {
+          const readyPn = await derivePnIdentifierForToken(
+            sessionCreds.pnName,
+            sessionCreds.passcode,
+            authenticatedUser.publicKey
+          );
+          const authTok = resolveOwnerApiToken(readyPn);
+          if (authTok) {
+            await publishCloudDriveReady({
+              authToken: authTok,
+              pnIdentifier: readyPn,
+              apiEndpoint: API_ENDPOINT
+            });
+          }
+        }
       } catch {
         /* non-DOM */
       }

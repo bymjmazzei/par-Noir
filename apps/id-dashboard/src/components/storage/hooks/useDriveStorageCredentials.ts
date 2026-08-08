@@ -402,8 +402,14 @@ export function useDriveStorageCredentials({
             // Only re-signal if App memoized a 409 during unlock — avoid hydrate↔READY loops.
             if (wasSheetsBlocked) {
               try {
-                const { PN_CLOUD_CREDENTIALS_READY_EVENT } = await import('@par-noir/oauth-ui');
-                window.dispatchEvent(new CustomEvent(PN_CLOUD_CREDENTIALS_READY_EVENT));
+                const { publishCloudDriveReady } = await import('@par-noir/device-cloud-credentials');
+                if (apiToken) {
+                  await publishCloudDriveReady({
+                    authToken: apiToken,
+                    pnIdentifier,
+                    apiEndpoint: API_ENDPOINT
+                  });
+                }
               } catch {
                 /* non-DOM */
               }

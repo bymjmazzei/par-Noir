@@ -84,9 +84,12 @@ export {
 export {
   getCloudAccessTokenFromSession,
   getCloudRefreshTokenFromSession,
+  hasCloudHydrateMaterial,
   hasCloudCredentialsReady,
+  waitForCloudHydrateMaterial,
   waitForCloudCredentialsReady,
   ensureCloudAccessToken,
+  publishCloudDriveReady,
   ownerCloudHeaders,
   ownerCloudHeadersAsync,
 } from '@par-noir/device-cloud-credentials';
