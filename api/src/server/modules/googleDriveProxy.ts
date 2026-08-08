@@ -542,10 +542,20 @@ export class GoogleDriveProxyService {
   }
 
   /**
-   * List files from Google Drive
+   * List files from Google Drive.
+   * Prefer accessTokenOverride (X-PN-Cloud-Access-Token) under device custody.
    */
-  async listFiles(userPnIdentifier: string, query?: string, pageSize: number = 50, accountId?: string, additionalCandidates?: string[]): Promise<GoogleDriveFile[]> {
-    let accessToken = await this.getAccessToken(userPnIdentifier, accountId, additionalCandidates);
+  async listFiles(
+    userPnIdentifier: string,
+    query?: string,
+    pageSize: number = 50,
+    accountId?: string,
+    additionalCandidates?: string[],
+    accessTokenOverride?: string
+  ): Promise<GoogleDriveFile[]> {
+    const override = accessTokenOverride?.trim() || '';
+    let accessToken =
+      override || (await this.getAccessToken(userPnIdentifier, accountId, additionalCandidates));
 
     const params = new URLSearchParams({
       fields: 'nextPageToken, files(id, name, mimeType, size, createdTime, modifiedTime, webViewLink, webContentLink, thumbnailLink, parents, description)',
@@ -564,8 +574,13 @@ export class GoogleDriveProxyService {
       },
     });
 
-    // If we get a 401, the token is invalid - force refresh and retry
+    // If we get a 401, the token is invalid - force refresh and retry (server-held secrets only)
     if (response.status === 401) {
+      if (override) {
+        throw new Error(
+          'Google Drive authentication failed. Cloud access token expired — reconnect cloud storage in the dashboard.'
+        );
+      }
       console.log(`[GoogleDriveProxy] Got 401 from Google Drive API, forcing token refresh and retrying...`);
       
       // Force refresh by getting credentials and updating expires_at to past
@@ -656,13 +671,18 @@ export class GoogleDriveProxyService {
     mimeType: string,
     parents?: string[],
     accountId?: string,
-    additionalCandidates?: string[]
+    additionalCandidates?: string[],
+    accessTokenOverride?: string
   ): Promise<GoogleDriveFile> {
-    // Get access token and also get the account info for retry logic
-    let accessToken = await this.getAccessToken(userPnIdentifier, accountId, additionalCandidates);
+    const override = accessTokenOverride?.trim() || '';
+    // Prefer forwarded cloud token under device custody
+    let accessToken =
+      override || (await this.getAccessToken(userPnIdentifier, accountId, additionalCandidates));
     
-    // Get account info for refresh token if needed for retry
-    const credentialsRecord = await storageCredentialsService.getCredentials(userPnIdentifier);
+    // Get account info for refresh token if needed for retry (server-held secrets only)
+    const credentialsRecord = override
+      ? null
+      : await storageCredentialsService.getCredentials(userPnIdentifier);
     const credentials = credentialsRecord?.credentials;
     let refreshToken: string | undefined;
     if (accountId && credentials?.googleDriveAccounts) {
@@ -750,8 +770,16 @@ export class GoogleDriveProxyService {
   /**
    * Download file from Google Drive
    */
-  async downloadFile(userPnIdentifier: string, fileId: string, accountId?: string, additionalCandidates?: string[]): Promise<Blob> {
-    const accessToken = await this.getAccessToken(userPnIdentifier, accountId, additionalCandidates);
+  async downloadFile(
+    userPnIdentifier: string,
+    fileId: string,
+    accountId?: string,
+    additionalCandidates?: string[],
+    accessTokenOverride?: string
+  ): Promise<Blob> {
+    const override = accessTokenOverride?.trim() || '';
+    const accessToken =
+      override || (await this.getAccessToken(userPnIdentifier, accountId, additionalCandidates));
 
     const response = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`, {
       headers: {
@@ -770,8 +798,15 @@ export class GoogleDriveProxyService {
   /**
    * Get file metadata from Google Drive
    */
-  async getFileMetadata(userPnIdentifier: string, fileId: string, accountId?: string): Promise<GoogleDriveFile> {
-    const accessToken = await this.getAccessToken(userPnIdentifier, accountId);
+  async getFileMetadata(
+    userPnIdentifier: string,
+    fileId: string,
+    accountId?: string,
+    accessTokenOverride?: string
+  ): Promise<GoogleDriveFile> {
+    const override = accessTokenOverride?.trim() || '';
+    const accessToken =
+      override || (await this.getAccessToken(userPnIdentifier, accountId));
 
     const response = await fetch(
       `https://www.googleapis.com/drive/v3/files/${fileId}?fields=id,name,mimeType,size,createdTime,modifiedTime,webViewLink,webContentLink,parents,description`,
@@ -793,8 +828,15 @@ export class GoogleDriveProxyService {
   /**
    * Delete file from Google Drive
    */
-  async deleteFile(userPnIdentifier: string, fileId: string, accountId?: string): Promise<void> {
-    const accessToken = await this.getAccessToken(userPnIdentifier, accountId);
+  async deleteFile(
+    userPnIdentifier: string,
+    fileId: string,
+    accountId?: string,
+    accessTokenOverride?: string
+  ): Promise<void> {
+    const override = accessTokenOverride?.trim() || '';
+    const accessToken =
+      override || (await this.getAccessToken(userPnIdentifier, accountId));
 
     const response = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}`, {
       method: 'DELETE',

@@ -104,7 +104,8 @@ export function setupDriveRoutes(app: express.Application, deps: DriveRouteDeps)
             sharedQuery,
             pageSize,
             accountId,
-            identifierCandidates
+            identifierCandidates,
+            driveCtx.accessToken
           );
           const files = sharedFiles.filter(isMessagingLibraryDriveFile);
           return res.json({ files });
@@ -118,20 +119,24 @@ export function setupDriveRoutes(app: express.Application, deps: DriveRouteDeps)
             query
           );
         } else if (!finalQuery && pnIdentifier && accountId) {
+          // Prefer indexed pN folder (no Drive discovery) when available
+          try {
+            const { loadPnDriveIndex, isPnDriveIndexComplete } = await import('./pnDriveIndex');
+            const index = await loadPnDriveIndex(userIdentifier);
+            if (isPnDriveIndexComplete(index) && index.pnFolderId) {
+              finalQuery = `'${index.pnFolderId}' in parents and trashed=false`;
+            }
+          } catch {
+            /* fall through to folder search */
+          }
+          if (!finalQuery) {
           // Try to find the pN folder first, then query files in it
           // Folder name format: "par Noir - pn-{hash}" where pnIdentifier already includes "pn-" prefix
           // pnIdentifier is already in format "pn-{hash}", so use it directly
           const pnFolderName = `par Noir - ${pnIdentifier}`;
           try {
-            // Search for the folder - use a direct Google Drive API call to avoid credential lookup issues
-            // Wrap in try-catch to handle credential errors gracefully
-            let accessToken: string | null = null;
-            try {
-              accessToken = await googleDriveProxyService.getAccessToken(userIdentifier, accountId);
-            } catch (tokenError: any) {
-              console.warn(`[DriveFiles] Could not get access token for folder search:`, tokenError?.message || tokenError);
-              // Continue without folder filter - will list all files and client will filter
-            }
+            // Search for the folder using forwarded cloud token under custody
+            const accessToken = driveCtx.accessToken || null;
             
             if (accessToken) {
               // Search for the folder using Google Drive API directly
@@ -202,17 +207,31 @@ export function setupDriveRoutes(app: express.Application, deps: DriveRouteDeps)
             console.warn(`[DriveFiles] Error searching for pN folder:`, folderError?.message || folderError);
             // Continue without folder filter - client will filter
           }
+          }
         }
         
-        // Pass additional identifier candidates to getAccessToken via listFiles
-        // listFiles will call getAccessToken with the additional candidates
+        // Pass forwarded cloud token so list works under device custody
         console.log(`[DriveFiles] Final query for listFiles: ${finalQuery || '(none - will list all files)'}`);
-        const files = await googleDriveProxyService.listFiles(userIdentifier, finalQuery, pageSize, accountId, identifierCandidates);
+        const files = await googleDriveProxyService.listFiles(
+          userIdentifier,
+          finalQuery,
+          pageSize,
+          accountId,
+          identifierCandidates,
+          driveCtx.accessToken
+        );
         
         console.log(`[DriveFiles] Returning ${files.length} file(s) to client`);
         return res.json({ files });
       } catch (error: any) {
         console.error('Error listing Google Drive files:', error);
+        const msg = String(error?.message || '');
+        if (/access token|cloud token|reconnect|authentication failed/i.test(msg)) {
+          return res.status(409).json({
+            error: 'cloud_token_required',
+            error_description: msg || 'Google Drive access token required'
+          });
+        }
         return res.status(500).json({
           error: 'Failed to list files',
           error_description: safeClientErrorMessage(error, NODE_ENV === 'production') || 'Failed to list Google Drive files'
@@ -323,16 +342,29 @@ export function setupDriveRoutes(app: express.Application, deps: DriveRouteDeps)
         if ((!finalParents || finalParents.length === 0) && driveCtx.isFirstParty) {
           if (pnIdentifier && accountId) {
             try {
-              let accessToken: string | null = null;
-              try {
-                accessToken = await googleDriveProxyService.getAccessToken(pnIdentifier, accountId, identifierCandidates);
-              } catch (tokenError: any) {
-                console.warn(`[Upload] Could not get access token for folder search:`, tokenError?.message || tokenError);
+              let accessToken: string | null = driveCtx.accessToken || null;
+              if (!accessToken) {
+                try {
+                  accessToken = await googleDriveProxyService.getAccessToken(pnIdentifier, accountId, identifierCandidates);
+                } catch (tokenError: any) {
+                  console.warn(`[Upload] Could not get access token for folder search:`, tokenError?.message || tokenError);
+                }
               }
               
               if (accessToken) {
                 const { pnFolderDisplayName } = await import('./integratorStoragePaths');
                 const pnFolderName = pnFolderDisplayName(pnIdentifier);
+                // Prefer indexed folder id when available
+                try {
+                  const { loadPnDriveIndex, isPnDriveIndexComplete } = await import('./pnDriveIndex');
+                  const index = await loadPnDriveIndex(pnIdentifier);
+                  if (isPnDriveIndexComplete(index) && index.pnFolderId) {
+                    finalParents = [index.pnFolderId];
+                  }
+                } catch {
+                  /* fall through to search */
+                }
+                if (!finalParents || finalParents.length === 0) {
                 const folderSearchQuery = `name='${pnFolderName.replace(/'/g, "\\'")}' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
                 const folderSearchUrl = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(folderSearchQuery)}&fields=files(id,name)&pageSize=10`;
                 
@@ -374,6 +406,7 @@ export function setupDriveRoutes(app: express.Application, deps: DriveRouteDeps)
                     }
                   }
                 }
+                }
               }
             } catch (folderError: any) {
               console.warn(`[Upload] Error searching for pN folder:`, folderError?.message || folderError);
@@ -391,7 +424,8 @@ export function setupDriveRoutes(app: express.Application, deps: DriveRouteDeps)
           mimeType || 'application/octet-stream',
           finalParents,
           accountId, // Pass accountId to select specific Google Drive account
-          identifierCandidates // Pass identifier candidates for token lookup
+          identifierCandidates, // Pass identifier candidates for token lookup
+          driveCtx.accessToken
         );
         
         // Note: Companion metadata files are NOT created on upload
@@ -401,6 +435,13 @@ export function setupDriveRoutes(app: express.Application, deps: DriveRouteDeps)
         return res.json({ file });
       } catch (error: any) {
         console.error('Error uploading file to Google Drive:', error);
+        const msg = String(error?.message || '');
+        if (/access token|cloud token|reconnect|authentication failed/i.test(msg)) {
+          return res.status(409).json({
+            error: 'cloud_token_required',
+            error_description: msg || 'Google Drive access token required'
+          });
+        }
         return res.status(500).json({
           error: 'Failed to upload file',
           error_description: safeClientErrorMessage(error, NODE_ENV === 'production') || 'Failed to upload file to Google Drive'
@@ -775,7 +816,15 @@ export function setupDriveRoutes(app: express.Application, deps: DriveRouteDeps)
         if (thumbnail) {
           try {
             // Proxy thumbnail request through API server with authentication
-            const accessToken = await googleDriveProxyService.getAccessToken(effectiveUserIdentifier, accountId, effectiveIdentifierCandidates);
+            const accessToken =
+              (!ownerPnIdentifier || ownerPnIdentifier === pnIdentifier
+                ? driveCtx.accessToken
+                : null) ||
+              (await googleDriveProxyService.getAccessToken(
+                effectiveUserIdentifier,
+                accountId,
+                effectiveIdentifierCandidates
+              ));
             const thumbnailUrl = `https://www.googleapis.com/drive/v3/files/${fileId}/thumbnail?alt=media`;
             
             console.log(`[DriveFiles] Fetching thumbnail for file ${fileId} with accountId ${accountId}`);
@@ -802,7 +851,17 @@ export function setupDriveRoutes(app: express.Application, deps: DriveRouteDeps)
               console.log(`[DriveFiles] Thumbnail not available (likely encrypted file), downloading full file for client-side thumbnail generation`);
               
               try {
-                const fileBlob = await googleDriveProxyService.downloadFile(effectiveUserIdentifier, fileId, accountId, effectiveIdentifierCandidates);
+                const ownToken =
+                  !ownerPnIdentifier || ownerPnIdentifier === pnIdentifier
+                    ? driveCtx.accessToken
+                    : undefined;
+                const fileBlob = await googleDriveProxyService.downloadFile(
+                  effectiveUserIdentifier,
+                  fileId,
+                  accountId,
+                  effectiveIdentifierCandidates,
+                  ownToken
+                );
                 const arrayBuffer = await fileBlob.arrayBuffer();
                 const buffer = Buffer.from(arrayBuffer);
                 
@@ -834,7 +893,17 @@ export function setupDriveRoutes(app: express.Application, deps: DriveRouteDeps)
             });
           }
         } else if (download) {
-          const blob = await googleDriveProxyService.downloadFile(effectiveUserIdentifier, fileId, accountId, effectiveIdentifierCandidates);
+          const ownToken =
+            !ownerPnIdentifier || ownerPnIdentifier === pnIdentifier
+              ? driveCtx.accessToken
+              : undefined;
+          const blob = await googleDriveProxyService.downloadFile(
+            effectiveUserIdentifier,
+            fileId,
+            accountId,
+            effectiveIdentifierCandidates,
+            ownToken
+          );
           const arrayBuffer = await blob.arrayBuffer();
           const buffer = Buffer.from(arrayBuffer);
           
@@ -842,7 +911,16 @@ export function setupDriveRoutes(app: express.Application, deps: DriveRouteDeps)
           res.setHeader('Content-Disposition', `attachment; filename="${fileId}"`);
           return res.send(buffer);
         } else {
-          const metadata = await googleDriveProxyService.getFileMetadata(effectiveUserIdentifier, fileId, accountId);
+          const ownToken =
+            !ownerPnIdentifier || ownerPnIdentifier === pnIdentifier
+              ? driveCtx.accessToken
+              : undefined;
+          const metadata = await googleDriveProxyService.getFileMetadata(
+            effectiveUserIdentifier,
+            fileId,
+            accountId,
+            ownToken
+          );
           return res.json({ file: metadata });
         }
       } catch (error: any) {
@@ -888,6 +966,7 @@ export function setupDriveRoutes(app: express.Application, deps: DriveRouteDeps)
               error_description: driveCtx.error
             });
           }
+          (req as { __pnCloudAccessToken?: string }).__pnCloudAccessToken = driveCtx.accessToken;
           if (!driveCtx.isFirstParty && driveCtx.integratorFolderId) {
             try {
               await IntegratorFolderService.assertFileInIntegratorSilo(
@@ -905,6 +984,7 @@ export function setupDriveRoutes(app: express.Application, deps: DriveRouteDeps)
           }
         }
         
+        const forwardedCloudToken = (req as { __pnCloudAccessToken?: string }).__pnCloudAccessToken;
         // STEP 1: Read companion metadata to get mainFileId connection
         // Deletions from frontend are ALWAYS thumbnails - main files never appear in frontend
         let mainFileId: string | null = null;
@@ -934,7 +1014,12 @@ export function setupDriveRoutes(app: express.Application, deps: DriveRouteDeps)
         if (mainFileId && userIdentifier) {
           try {
             const { googleDriveProxyService } = await import('./googleDriveProxy');
-            await googleDriveProxyService.deleteFile(userIdentifier, mainFileId, accountId);
+            await googleDriveProxyService.deleteFile(
+              userIdentifier,
+              mainFileId,
+              accountId,
+              forwardedCloudToken
+            );
             console.log(`✅ [DeleteFile] Deleted main file ${mainFileId} from Google Drive`);
           } catch (driveError: any) {
             const errorMsg = driveError?.message || String(driveError);
@@ -975,7 +1060,12 @@ export function setupDriveRoutes(app: express.Application, deps: DriveRouteDeps)
         if (userIdentifier) {
           try {
             const { googleDriveProxyService } = await import('./googleDriveProxy');
-            await googleDriveProxyService.deleteFile(userIdentifier, fileId, accountId);
+            await googleDriveProxyService.deleteFile(
+              userIdentifier,
+              fileId,
+              accountId,
+              forwardedCloudToken
+            );
             console.log(`✅ [DeleteFile] Deleted thumbnail ${fileId} from Google Drive`);
           } catch (driveError: any) {
             const errorMsg = driveError?.message || String(driveError);
