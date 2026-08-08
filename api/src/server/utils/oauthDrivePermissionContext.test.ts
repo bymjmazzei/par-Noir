@@ -1,8 +1,16 @@
+import type { Request } from 'express';
 import {
   buildOAuthIdentityCandidates,
   getExistingGrant,
 } from '../modules/oauthDrivePermissionContext';
 import { PN_DRIVE_SHEET_KEYS } from '../modules/pnDriveIndex';
+
+/** Owner device forwards its Drive token; absent header means custody has nothing to use. */
+function reqWithCloudToken(token?: string): Request {
+  return {
+    headers: token ? { 'x-pn-cloud-access-token': token } : {},
+  } as unknown as Request;
+}
 
 jest.mock('../modules/storageCredentialsService', () => ({
   storageCredentialsService: {
@@ -97,7 +105,7 @@ describe('getExistingGrant', () => {
       },
     });
 
-    const result = await getExistingGrant('browser-app', { pnIdentifier: PN });
+    const result = await getExistingGrant(reqWithCloudToken('forwarded-tok'), 'browser-app', { pnIdentifier: PN });
 
     expect(mockGetPermissions).toHaveBeenCalled();
     expect(result).toEqual({
@@ -117,7 +125,7 @@ describe('getExistingGrant', () => {
       consideredDataPoints: ['over_21'],
     });
 
-    const result = await getExistingGrant('browser-app', { pnIdentifier: PN });
+    const result = await getExistingGrant(reqWithCloudToken('forwarded-tok'), 'browser-app', { pnIdentifier: PN });
 
     expect(result).toEqual({
       dataPoints: ['over_21'],
@@ -133,7 +141,7 @@ describe('getExistingGrant', () => {
       'messaging-app': { toolId: 'messaging-app', status: 'active', dataPoints: [] },
     });
 
-    await getExistingGrant('messaging-app', { pnIdentifier: PN });
+    await getExistingGrant(reqWithCloudToken('forwarded-tok'), 'messaging-app', { pnIdentifier: PN });
 
     expect(mockGetCache).toHaveBeenCalledWith(`oauth:grant:messaging-app:${PN}`);
   });
@@ -149,7 +157,7 @@ describe('getExistingGrant', () => {
       },
     });
 
-    const result = await getExistingGrant('browser-app', { pnIdentifier: PN });
+    const result = await getExistingGrant(reqWithCloudToken('forwarded-tok'), 'browser-app', { pnIdentifier: PN });
 
     expect(result).toEqual({ dataPoints: [], consideredDataPoints: ['over_21'] });
   });
@@ -160,7 +168,7 @@ describe('getExistingGrant', () => {
       'browser-app': { toolId: 'browser-app', status: 'revoked', dataPoints: [] },
     });
 
-    const result = await getExistingGrant('browser-app', { pnIdentifier: PN });
+    const result = await getExistingGrant(reqWithCloudToken('forwarded-tok'), 'browser-app', { pnIdentifier: PN });
 
     expect(result).toBeNull();
     expect(mockSetCache).not.toHaveBeenCalled();
@@ -170,13 +178,13 @@ describe('getExistingGrant', () => {
     mockFindCreds.mockResolvedValue(driveCredentials());
     mockGetPermissions.mockResolvedValue({});
 
-    expect(await getExistingGrant('browser-app', { pnIdentifier: PN })).toBeNull();
+    expect(await getExistingGrant(reqWithCloudToken('forwarded-tok'), 'browser-app', { pnIdentifier: PN })).toBeNull();
   });
 
   it('returns null when credentials cannot be resolved', async () => {
     mockFindCreds.mockResolvedValue(null);
 
-    const result = await getExistingGrant('browser-app', {
+    const result = await getExistingGrant(reqWithCloudToken('forwarded-tok'), 'browser-app', {
       pnIdentifier: PN,
       did: 'did:key:abc',
     });
@@ -194,7 +202,7 @@ describe('getExistingGrant', () => {
       'browser-app': { toolId: 'browser-app', status: 'active', dataPoints: ['over_21'] },
     });
 
-    const result = await getExistingGrant('browser-app', { pnIdentifier: PN });
+    const result = await getExistingGrant(reqWithCloudToken('forwarded-tok'), 'browser-app', { pnIdentifier: PN });
 
     expect(result).toEqual({
       dataPoints: ['over_21'],
@@ -202,6 +210,72 @@ describe('getExistingGrant', () => {
     });
     expect(mockGetToken).not.toHaveBeenCalled();
     expect(mockGetPermissions).toHaveBeenCalledWith('', '', PN);
+  });
+});
+
+/**
+ * Regression for the bug that disabled third-party grants for weeks.
+ *
+ * Production stores account shells: stripCloudSecrets removes access_token and
+ * refresh_token. The old code saw the empty token, checked custody, and returned
+ * null without ever reading Drive. Every existing fixture above hid it by keeping
+ * access_token on the row, which is not what production stores.
+ */
+describe('device cloud custody (stored row has no secrets)', () => {
+  /** What the API actually persists once stripCloudSecrets has run. */
+  function strippedCustodyCredentials() {
+    return {
+      identityId: PN,
+      credentials: {
+        googleDriveAccounts: [{ backendId: 'google-drive-1', accountId: 'google-drive-1' }],
+        pnDriveIndex: testPnDriveIndex(),
+      },
+    };
+  }
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    delete process.env.DEVICE_CLOUD_CUSTODY; // default: custody enabled
+    mockGetCache.mockResolvedValue(null);
+    mockIsPortable.mockResolvedValue(false);
+    mockFindCreds.mockResolvedValue(strippedCustodyCredentials());
+    mockGetPermissions.mockResolvedValue({
+      'browser-app': {
+        toolId: 'browser-app',
+        status: 'active',
+        dataPoints: ['over_21'],
+        optionalDataPoints: ['over_21'],
+      },
+    });
+  });
+
+  it('reads the grant using the forwarded cloud token', async () => {
+    const result = await getExistingGrant(reqWithCloudToken('device-tok'), 'browser-app', {
+      pnIdentifier: PN,
+    });
+
+    expect(result).toEqual({ dataPoints: ['over_21'], consideredDataPoints: ['over_21'] });
+    // The forwarded token is what reaches Drive, not a server-held secret.
+    expect(mockGetPermissions).toHaveBeenCalledWith(
+      'device-tok',
+      expect.any(String),
+      PN,
+      expect.anything(),
+      expect.any(String)
+    );
+    // The server must never fall back to its own proxy under custody.
+    expect(mockGetToken).not.toHaveBeenCalled();
+  });
+
+  it('returns null without reading Drive when no token is forwarded', async () => {
+    mockGetToken.mockRejectedValue(new Error('no server-held secrets under custody'));
+
+    const result = await getExistingGrant(reqWithCloudToken(), 'browser-app', {
+      pnIdentifier: PN,
+    });
+
+    expect(result).toBeNull();
+    expect(mockGetPermissions).not.toHaveBeenCalled();
   });
 });
 

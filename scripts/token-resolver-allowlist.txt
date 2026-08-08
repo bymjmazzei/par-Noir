@@ -1,0 +1,33 @@
+# Burn-down list: files that still resolve Google Drive access tokens directly
+# via googleDriveProxy(Service).getAccessToken() instead of the canonical resolver
+# resolveOwnerDriveToken() in api/src/server/modules/ownerDriveToken.ts.
+#
+# Enforced by scripts/check-token-resolver-boundary.sh as a ratchet: this baseline
+# is grandfathered, but NO NEW file may join it. Entries are only ever REMOVED,
+# as each path is migrated onto the canonical resolver.
+#
+# Rule: .cursor/rules/diagnostic-discipline.mdc section 4 (one resolver per
+# external credential). If a normalized path exists it must be used; if it is
+# not used, it is not normalized.
+#
+# Under device cloud custody the server holds no OAuth secrets. The supported
+# path is forwarding X-PN-Cloud-Access-Token, which resolveOwnerDriveToken
+# prefers before falling back to server-held secrets.
+#
+# One path per line, relative to repo root. Blank lines and # comments ignored.
+
+api/src/server/modules/connectionRoutes.ts
+api/src/server/modules/driveMetadataHelper.ts
+api/src/server/modules/driveRoutes.ts
+api/src/server/modules/feedService.ts
+api/src/server/modules/messageRoutes.ts
+api/src/server/modules/messagingMediaService.ts
+api/src/server/modules/prismEnsureService.ts
+api/src/server/modules/profileRoutes.ts
+api/src/server/modules/storage/googlePortableMigrator.ts
+api/src/server/modules/storage/socialCloudMigrationService.ts
+api/src/server/modules/storage/storageCredentialsRoutes.ts
+api/src/server/modules/storage/storageFacade.ts
+api/src/server/modules/storage/storageRequestContext.ts
+api/src/server/modules/storageTierService.ts
+api/src/server/modules/userRoutes.ts

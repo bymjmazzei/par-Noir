@@ -238,6 +238,14 @@ export function useAuthAndSession({
             exchangeRedirectUri,
             grantedDataPoints
           );
+
+          // The exchange above runs before the cloud vault is hydrated, so under
+          // device cloud custody the server cannot write the grant yet. Hold the
+          // choice until a Drive token exists, or the next unlock re-prompts.
+          if (grantedDataPoints) {
+            const { setPendingGrant } = await import('../services/pendingGrantPersist');
+            setPendingGrant(grantedDataPoints);
+          }
           const userInfo = await PNOAuthService.getUserInfo(tokenResponse.access_token);
 
           if (!isDmIdentityReady()) {

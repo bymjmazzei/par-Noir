@@ -205,6 +205,10 @@ export const AggregatorCloudReconnectHost: React.FC = () => {
         apiEndpoint: API_ENDPOINT
       });
       if (ok) void retryPublishMlKemPublicKey();
+      // A Drive token exists now, so the consent choice held from this unlock can
+      // finally be written. Without this the user re-consents on every unlock.
+      const { flushPendingGrant } = await import('../services/pendingGrantPersist');
+      await flushPendingGrant({ authToken, pnIdentifier });
     })();
   }, [vaultHydrated, gate.markReady, authToken, pnIdentifier]);
 

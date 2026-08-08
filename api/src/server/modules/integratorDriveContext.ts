@@ -4,7 +4,6 @@
 
 import { getBearerTokenPayload } from '../middleware/authMiddleware';
 import type { Request } from 'express';
-import { googleDriveProxyService } from './googleDriveProxy';
 import {
   IntegratorFolderService,
   IntegratorStorageError,
@@ -55,27 +54,19 @@ export async function resolveIntegratorDriveContext(
     accountIdFromBody ||
     (typeof req.query.accountId === 'string' ? req.query.accountId : undefined);
 
-  const { extractCloudAccessToken } = await import('./cloudAccessToken');
-  const forwarded = extractCloudAccessToken(req);
   let accessToken: string;
-  if (forwarded) {
-    accessToken = forwarded;
-  } else {
-    try {
-      accessToken = await googleDriveProxyService.getAccessToken(
-        userIdentifier,
-        accountId,
-        [userIdentifier]
-      );
-    } catch {
-      return {
-        error: 'cloud_token_required',
-        error_description:
-          'Google Drive access token required. Unlock a first-party app with cloud credentials or send X-PN-Cloud-Access-Token.',
-        status: 409,
-        code: 'CLOUD_TOKEN_REQUIRED'
-      } as { error: string; status: number; code?: string; error_description?: string };
-    }
+  try {
+    const { resolveOwnerDriveToken } = await import('./ownerDriveToken');
+    const resolved = await resolveOwnerDriveToken(req, userIdentifier, { accountId });
+    accessToken = resolved.token.access_token;
+  } catch {
+    return {
+      error: 'cloud_token_required',
+      error_description:
+        'Google Drive access token required. Unlock a first-party app with cloud credentials or send X-PN-Cloud-Access-Token.',
+      status: 409,
+      code: 'CLOUD_TOKEN_REQUIRED'
+    } as { error: string; status: number; code?: string; error_description?: string };
   }
 
   const isFirstParty = isFirstPartyClient(tokenPayload.clientId);

@@ -1,0 +1,50 @@
+---
+description: How to diagnose, plan, verify, and report. Falsification gates, behavioral done-criteria, one resolver per external credential, no silent dead ends, observed vs inferred.
+alwaysApply: true
+---
+
+# par Noir — Diagnostic Discipline
+
+Apply these on every bug, every plan, and every status report. These are enforceable by observation, not by intent. "I believed I found the root cause" is not compliance.
+
+## Why these exist
+
+Commit `e4306317` ("Align dashboard Drive calls with custody owner routes") normalized owner routes onto `resolveOwnerDriveToken`, but gave the OAuth path a silent `return null` instead of wiring it up (`api/src/server/modules/oauthDrivePermissionContext.ts`). That one guard disabled third-party grant persistence entirely. The follow-up diagnostic scoped itself below that line, verified only within its own scope, skipped its falsification step, and reported success. Every rule below targets one link in that chain.
+
+## 1. Falsification first, and it is a gate
+
+- Every diagnostic states **up front** the observation that would prove the hypothesis **wrong**.
+- If that observation cannot be made, **stop and report**. Do not proceed to implementation on an unverified hypothesis.
+- A cancelled, skipped, or blocked verification step **voids the plan** and returns to diagnosis. Later phases must not be built on top of it.
+- A check that has never failed is not a check. When adding a guard or test, prove it fails on a synthetic violation before trusting it.
+
+## 2. Done means the symptom is reproduced as absent
+
+- Acceptance is written in terms of **what the user sees**, before any code is written.
+- Not "endpoint returns 200". Not "tests pass". Not "all touch points updated". Those are structural; they can all pass while the bug is untouched.
+- If the symptom cannot be demonstrated gone, say so plainly. Do not declare completion.
+- "All touch points corrected" only covers the touch points already assumed to be involved. It is circular and is not verification.
+
+## 3. Trace to the external boundary
+
+- Diagnosis follows the path from **user action to the external system and back** (Google, Redis, Postgres, the device).
+- Name every function on that path that can early-return, return `null`, or swallow an error in a `catch`.
+- Scoping to a subsystem before that trace is complete is not a diagnosis. Do not choose the search boundary and then verify inside it.
+
+## 4. One resolver per external credential
+
+- There is exactly **one** function that resolves a given external credential. Everything needing that credential calls it.
+- A second resolver, or an early return standing in for a call, is a **bug by definition**. If a normalized path exists it must be used; if it is not used, it is not normalized.
+- **Google Drive access tokens:** `resolveOwnerDriveToken` in `api/src/server/modules/ownerDriveToken.ts`. Under device cloud custody the supported path is forwarding `X-PN-Cloud-Access-Token`; the server holds no OAuth secrets.
+- Enforced as a ratchet by `scripts/check-token-resolver-boundary.sh`. `scripts/token-resolver-allowlist.txt` is the burn-down list of paths not yet migrated; entries are only ever removed.
+
+## 5. No silent dead ends on a credential path
+
+- A guard that returns `null` on a credential path must log at **warn** level with enough context to identify the client and the path.
+- Silent nulls are how a disabled feature stays invisible. Follow the no-plain-text rules when logging: hash or omit identifiers, never log pn name, passcode, tokens, or account ids raw.
+
+## 6. Label observed versus inferred
+
+- Distinguish **"I observed X"** from **"I concluded X"** in every status report.
+- Never report something as verified without naming the observation that produced it.
+- Report the outcome you saw, including when it contradicts the plan. Reporting unearned confidence is worse than reporting a failure.

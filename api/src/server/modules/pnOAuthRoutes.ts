@@ -310,9 +310,27 @@ export function setupPnOAuthRoutes(app: express.Application, deps: PnOAuthRouteD
         let existingGrant: { dataPoints: string[] } | null = null;
         if (pnIdentifier) {
           const { getExistingGrantWithTimeout } = await import('./oauthDrivePermissionContext');
-          const grant = await getExistingGrantWithTimeout(client_id, { pnIdentifier, did });
+          const grant = await getExistingGrantWithTimeout(req, client_id, { pnIdentifier, did });
           if (grant && grantCoversRequest(grant.consideredDataPoints, requestedDataPoints)) {
             existingGrant = { dataPoints: grant.dataPoints };
+          }
+        }
+
+        // Under device cloud custody the server holds no Google secrets, so the
+        // unlock page must supply the owner's Drive token itself. Hand back the
+        // sealed vault: ciphertext the API cannot open, unsealable only with the
+        // ML-KEM secret or pn name + passcode the caller just proved it holds.
+        let sealedCloudVault: unknown = null;
+        if (pnIdentifier) {
+          try {
+            const { cloudVaultService } = await import('./cloudVaultService');
+            sealedCloudVault = await cloudVaultService.getSealedVault(pnIdentifier);
+          } catch (vaultErr: unknown) {
+            safeLogger.warn('[OAuth] Could not load sealed cloud vault', {
+              reason: 'cloud_vault_unavailable',
+              message: vaultErr instanceof Error ? vaultErr.message : String(vaultErr),
+              pnIdHash: hashIdentifier(pnIdentifier)
+            });
           }
         }
 
@@ -322,7 +340,8 @@ export function setupPnOAuthRoutes(app: express.Application, deps: PnOAuthRouteD
           existingGrant,
           requestedDataPoints,
           // Lets the consent screen show the level a proof must meet (e.g. verified)
-          dataPointLevels: getClientContract(client_id)?.dataPointLevels || {}
+          dataPointLevels: getClientContract(client_id)?.dataPointLevels || {},
+          sealedCloudVault
         });
       } catch (error: unknown) {
         const msg = error instanceof Error ? error.message : String(error);
@@ -352,7 +371,7 @@ export function setupPnOAuthRoutes(app: express.Application, deps: PnOAuthRouteD
         const requestedDataPoints = dataPointIdsFromScopes(
           scope.split(' ').filter(Boolean)
         );
-        const grant = await getExistingGrant(clientId, { pnIdentifier, did });
+        const grant = await getExistingGrant(req, clientId, { pnIdentifier, did });
         const existingGrant =
           grant && grantCoversRequest(grant.consideredDataPoints, requestedDataPoints)
             ? { dataPoints: grant.dataPoints }
@@ -410,7 +429,7 @@ export function setupPnOAuthRoutes(app: express.Application, deps: PnOAuthRouteD
               './integratorOAuthGrants'
             );
 
-            const driveCtx = await resolveOAuthDriveContext({
+            const driveCtx = await resolveOAuthDriveContext(req, {
               pnIdentifier: tokenPayload.pnIdentifier,
               did: tokenPayload.did,
             });
@@ -443,6 +462,73 @@ export function setupPnOAuthRoutes(app: express.Application, deps: PnOAuthRouteD
         return res.status(500).json({
           error: 'server_error',
           error_description: safeClientErrorMessage(error, NODE_ENV === 'production') || 'Token exchange failed'
+        });
+      }
+    });
+
+    /**
+     * Persist the grant once the client can supply a Drive token.
+     *
+     * Token exchange happens before the app has hydrated its cloud vault, so under
+     * device cloud custody the write above has nothing to authenticate with. The
+     * app calls this after hydration with X-PN-Cloud-Access-Token. Same grant
+     * builder as the exchange path — one implementation, two entry points.
+     */
+    app.post('/oauth/grant/persist', async (req, res) => {
+      try {
+        const tokenPayload = getBearerTokenPayload(req);
+        if (!tokenPayload?.pnIdentifier) {
+          return res.status(401).json({
+            error: 'invalid_token',
+            error_description: 'A valid pN access token is required'
+          });
+        }
+
+        const clientId = req.body?.client_id;
+        if (!clientId) {
+          return res.status(400).json({
+            error: 'invalid_request',
+            error_description: 'client_id is required'
+          });
+        }
+
+        const { resolveOAuthDriveContext } = await import('./oauthDrivePermissionContext');
+        const { persistIntegratorGrantAfterTokenExchange } = await import(
+          './integratorOAuthGrants'
+        );
+
+        const driveCtx = await resolveOAuthDriveContext(req, {
+          pnIdentifier: tokenPayload.pnIdentifier,
+          did: tokenPayload.did
+        });
+
+        if (!driveCtx) {
+          // resolveOAuthDriveContext already logged why at warn level.
+          return res.status(409).json({
+            error: 'cloud_token_required',
+            error_description:
+              'Forward X-PN-Cloud-Access-Token from the unsealed cloud vault to persist the grant'
+          });
+        }
+
+        await persistIntegratorGrantAfterTokenExchange({
+          clientId,
+          scopes: tokenPayload.scope || [],
+          tokenPayload,
+          userAccessToken: driveCtx.userAccessToken,
+          accountId: driveCtx.accountId,
+          grantedDataPoints: parseGrantedDataPoints(req.body?.granted_data_points)
+        });
+
+        return res.json({ success: true });
+      } catch (error: unknown) {
+        safeLogger.error('[OAuth] Grant reconcile failed', {
+          message: error instanceof Error ? error.message : String(error)
+        });
+        return res.status(500).json({
+          error: 'server_error',
+          error_description:
+            safeClientErrorMessage(error, NODE_ENV === 'production') || 'Grant persist failed'
         });
       }
     });

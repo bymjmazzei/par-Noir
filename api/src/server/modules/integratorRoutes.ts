@@ -4,7 +4,6 @@
 
 import { Application, Request, Response } from 'express';
 import { getBearerTokenPayload } from '../middleware/authMiddleware';
-import { googleDriveProxyService } from './googleDriveProxy';
 import { IntegratorFolderService, IntegratorStorageError } from './integratorFolderService';
 import {
   integratorPathLabel,
@@ -57,11 +56,16 @@ export function registerIntegratorRoutes(app: Application): void {
       const accountId =
         typeof req.query.accountId === 'string' ? req.query.accountId : undefined;
 
-      const accessToken = await googleDriveProxyService.getAccessToken(
-        normalized,
-        accountId,
-        [normalized]
-      );
+      let accessToken: string;
+      try {
+        const { resolveOwnerDriveToken } = await import('./ownerDriveToken');
+        const resolved = await resolveOwnerDriveToken(req, normalized, { accountId });
+        accessToken = resolved.token.access_token;
+      } catch (tokenErr) {
+        const { respondDriveTokenError } = await import('./ownerDriveToken');
+        if (respondDriveTokenError(res, tokenErr)) return;
+        throw tokenErr;
+      }
 
       const index = await loadPnDriveIndex(normalized);
       if (!isPnDriveIndexComplete(index)) {

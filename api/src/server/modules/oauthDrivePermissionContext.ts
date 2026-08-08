@@ -3,6 +3,7 @@
  * Uses credential candidate lookup (pn + DID) consistent with googleDriveProxy.
  */
 
+import type { Request } from 'express';
 import { isPnDriveIndexComplete, readPnDriveIndex, PN_DRIVE_SHEET_KEYS } from './pnDriveIndex';
 import { normalizePnIdentifier } from './integratorStoragePaths';
 import { storageCredentialsService, type StoredCredentialsRecord } from './storageCredentialsService';
@@ -61,11 +62,18 @@ function pickGoogleDriveAccount(credentials: Record<string, unknown>): Record<st
 
 /**
  * Resolve Drive access token + _metadata folder for OAuth flows.
+ *
+ * Under device cloud custody the server holds no Google secrets, so the owner's
+ * token must arrive as a forwarded X-PN-Cloud-Access-Token. `resolveOwnerDriveToken`
+ * is the single resolver for that; do not reintroduce a direct proxy call here.
  */
-export async function resolveOAuthDriveContext(params: {
-  pnIdentifier?: string;
-  did?: string;
-}): Promise<OAuthDrivePermissionContext | null> {
+export async function resolveOAuthDriveContext(
+  req: Request,
+  params: {
+    pnIdentifier?: string;
+    did?: string;
+  }
+): Promise<OAuthDrivePermissionContext | null> {
   const candidates = buildOAuthIdentityCandidates(params);
   if (candidates.length === 0) return null;
 
@@ -80,30 +88,20 @@ export async function resolveOAuthDriveContext(params: {
   if (!account) return null;
 
   const accountId = extractDriveAccountId(account);
-  const extraCandidates = candidates.filter((c) => c !== normalizedPn);
-
-  const dbToken =
-    String((account as any).access_token || (account as any).accessToken || '').trim();
-
-  // Under device cloud custody, Railway holds account shells without OAuth secrets.
-  // Third-party OAuth cannot invent a Google token; return null without calling getAccessToken.
-  if (!dbToken) {
-    const { isDeviceCloudCustodyEnabled } = await import('./socialMailboxService');
-    if (isDeviceCloudCustodyEnabled()) {
-      return null;
-    }
-  }
 
   try {
-    const { googleDriveProxyService } = await import('./googleDriveProxy');
-    const userAccessToken = await googleDriveProxyService.getAccessToken(
-      normalizedPn,
-      accountId,
-      extraCandidates
-    );
+    const { resolveOwnerDriveToken } = await import('./ownerDriveToken');
+    const resolved = await resolveOwnerDriveToken(req, normalizedPn, { account, accountId });
+    const userAccessToken = resolved.token.access_token;
 
     const index = readPnDriveIndex(credentialsRecord.credentials as Record<string, unknown>);
-    if (!isPnDriveIndexComplete(index)) return null;
+    if (!isPnDriveIndexComplete(index)) {
+      safeLogger.warn('[OAuth] Drive index incomplete — grant path unavailable', {
+        reason: 'drive_index_incomplete',
+        pnIdHash: hashIdentifier(normalizedPn),
+      });
+      return null;
+    }
 
     return {
       credentialsRecord,
@@ -114,7 +112,19 @@ export async function resolveOAuthDriveContext(params: {
       normalizedPn,
     };
   } catch (error: unknown) {
+    const code = (error as { code?: string } | null)?.code;
+    if (code === 'CLOUD_TOKEN_REQUIRED') {
+      // The owner's device did not forward X-PN-Cloud-Access-Token. Consent will
+      // be shown again because the grant cannot be read. Never fail silently here:
+      // a quiet null is what disabled this path for weeks.
+      safeLogger.warn('[OAuth] No forwarded cloud access token — grant path unavailable', {
+        reason: 'cloud_token_required',
+        pnIdHash: hashIdentifier(normalizedPn),
+      });
+      return null;
+    }
     safeLogger.warn('[OAuth] resolveOAuthDriveContext failed', {
+      reason: code || 'unknown',
       message: error instanceof Error ? error.message : String(error),
       pnIdHash: hashIdentifier(normalizedPn),
     });
@@ -164,6 +174,7 @@ function activeGrant(
 }
 
 async function lookupGrantFromDrive(
+  req: Request,
   clientId: string,
   params: { pnIdentifier?: string; did?: string }
 ): Promise<ExistingGrant | null> {
@@ -187,7 +198,7 @@ async function lookupGrantFromDrive(
       return activeGrant(clientId, permissions[clientId]);
     }
 
-    const ctx = await resolveOAuthDriveContext(params);
+    const ctx = await resolveOAuthDriveContext(req, params);
     if (!ctx) return null;
 
     const permissions = await ThirdPartyPermissionsService.getPermissions(
@@ -209,13 +220,14 @@ async function lookupGrantFromDrive(
 
 /** Race the lookup; returns null on timeout so unlock is not blocked by slow Drive. */
 export async function getExistingGrantWithTimeout(
+  req: Request,
   clientId: string,
   params: { pnIdentifier?: string; did?: string },
   timeoutMs: number = GRANT_LOOKUP_TIMEOUT_MS
 ): Promise<ExistingGrant | null> {
   try {
     return await Promise.race([
-      getExistingGrant(clientId, params),
+      getExistingGrant(req, clientId, params),
       new Promise<null>((resolve) =>
         setTimeout(() => {
           safeLogger.warn('[OAuth] grant lookup timed out', {
@@ -238,6 +250,7 @@ export async function getExistingGrantWithTimeout(
  * "no grant".
  */
 export async function getExistingGrant(
+  req: Request,
   clientId: string,
   params: { pnIdentifier?: string; did?: string }
 ): Promise<ExistingGrant | null> {
@@ -249,7 +262,7 @@ export async function getExistingGrant(
     if (cached) return cached;
   }
 
-  const result = await lookupGrantFromDrive(clientId, params);
+  const result = await lookupGrantFromDrive(req, clientId, params);
   if (normalizedPn && result) {
     await setCachedGrant(clientId, normalizedPn, result);
   }

@@ -17,6 +17,10 @@ if [ -f scripts/check-app-import-boundary.sh ]; then
   bash scripts/check-app-import-boundary.sh || { echo "❌ check-app-import-boundary: apps must not import each other; use packages/core/sdk."; exit 1; }
 fi
 
+if [ -f scripts/check-token-resolver-boundary.sh ]; then
+  bash scripts/check-token-resolver-boundary.sh || { echo "❌ check-token-resolver-boundary: resolve Drive tokens via resolveOwnerDriveToken (ownerDriveToken.ts)."; exit 1; }
+fi
+
 echo "🔒 Running security audit before commit..."
 
 # Run security audit

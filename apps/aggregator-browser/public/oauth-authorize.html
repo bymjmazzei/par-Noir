@@ -564,6 +564,7 @@
 
   <script src="/js/oauth-physical-unlock.js"></script>
   <script src="/js/oauth-messaging-stash.js"></script>
+  <script src="/js/oauth-cloud-vault.js"></script>
   <script>
     // Get OAuth parameters from URL
     const urlParams = new URLSearchParams(window.location.search);
@@ -872,8 +873,33 @@
       window.location.href = u.toString();
     }
 
+    /**
+     * Open the sealed vault the API returned so the grant lookup can reach Drive.
+     *
+     * Under device cloud custody the API holds no Google secrets, so without this
+     * the server cannot read the stored grant and every unlock re-prompts.
+     * The token is returned to the caller and never stored: cloud tokens must not
+     * survive lock, so it lives only for this page's lifetime.
+     */
+    async function resolveCloudAccessToken(sealedVault, decrypted, pnName, passcode) {
+      if (!sealedVault || !window.ParNoirCloudVault) return null;
+      const pqc = (decrypted && decrypted.pqcSecrets) || {};
+      const mlKemSecretKey = pqc.mlKemSecretKey || (decrypted && decrypted.mlKemSecretKey) || null;
+      try {
+        return await window.ParNoirCloudVault.accessTokenFromSealedVault(sealedVault, {
+          mlKemSecretKey: mlKemSecretKey,
+          pnName: pnName,
+          passcode: passcode
+        });
+      } catch (vaultErr) {
+        // Never log the envelope or factors.
+        console.warn('[OAuth] Cloud vault unseal unavailable');
+        return null;
+      }
+    }
+
     /** The inline lookup races a deadline; retry briefly before falling back to consent. */
-    async function pollExistingGrant(pnId, didValue, attempts = 4) {
+    async function pollExistingGrant(pnId, didValue, cloudAccessToken, attempts = 4) {
       if (!pnId) return null;
       for (let i = 0; i < attempts; i++) {
         if (i > 0) {
@@ -885,10 +911,17 @@
             '&client_id=' + encodeURIComponent(clientId) +
             '&scope=' + encodeURIComponent(scope) +
             (didValue ? '&did=' + encodeURIComponent(didValue) : '');
-          const res = await fetch(apiEndpoint + '/oauth/existing-grant?' + q);
+          const headers = {};
+          if (cloudAccessToken) {
+            headers['X-PN-Cloud-Access-Token'] = cloudAccessToken;
+          }
+          const res = await fetch(apiEndpoint + '/oauth/existing-grant?' + q, { headers: headers });
           if (!res.ok) continue;
           const body = await res.json();
           if (body && body.existingGrant) return body.existingGrant;
+          // With a forwarded token the server could actually read Drive, so an
+          // empty answer is real rather than a raced deadline. Don't stall consent.
+          if (cloudAccessToken) return null;
         } catch (pollErr) {
           console.warn('[OAuth] Grant poll failed:', pollErr);
         }
@@ -932,13 +965,23 @@
       const authResult = await authResponse.json();
       authorizationCode = authResult.code;
 
+      // The server's inline lookup ran before we could hand it a Drive token, so
+      // a miss there is not authoritative under custody. Retry with the token.
+      const cloudAccessToken = await resolveCloudAccessToken(
+        authResult.sealedCloudVault,
+        decryptedIdentity,
+        pnName,
+        passcode
+      );
+
       let existingGrant = authResult.existingGrant;
       if (!existingGrant) {
-        existingGrant = await pollExistingGrant(pnIdentifier, did);
+        existingGrant = await pollExistingGrant(pnIdentifier, did, cloudAccessToken);
       }
       console.log('[OAuth] Auth result:', {
         hasCode: !!authorizationCode,
         hasExistingGrant: !!existingGrant,
+        hasCloudToken: !!cloudAccessToken,
         clientId: clientId
       });
 
