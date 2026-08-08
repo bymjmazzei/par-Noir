@@ -2,7 +2,7 @@
  * Resolve user Google Drive access token and _metadata folder id.
  */
 
-import { googleDriveProxyService } from './googleDriveProxy';
+import { hashIdentifier, safeLogger } from '../../utils/logger';
 import { storageCredentialsService } from './storageCredentialsService';
 
 export interface UserDriveMetadataContext {
@@ -46,19 +46,15 @@ export async function getUserDriveMetadataContext(
     account.keyPrefix ||
     account.accountId ||
     account.id;
-  let accessToken = (opts?.accessToken || '').trim();
+  // The caller supplies the token: on an HTTP path via resolveOwnerDriveToken, which
+  // prefers the forwarded X-PN-Cloud-Access-Token. There is no server-side fallback,
+  // because under custody the server holds no Google secrets to fall back to.
+  const accessToken = (opts?.accessToken || '').trim();
   if (!accessToken) {
-    try {
-      accessToken = await googleDriveProxyService.getAccessToken(
-        normalizedPnIdentifier,
-        accountId
-      );
-    } catch {
-      // DEVICE_CLOUD_CUSTODY strips OAuth secrets — server cannot read Drive without forwarded token.
-      return null;
-    }
-  }
-  if (!accessToken) {
+    safeLogger.warn('[DriveMetadata] No Drive token supplied — context unavailable', {
+      reason: 'cloud_token_required',
+      pnIdHash: hashIdentifier(normalizedPnIdentifier)
+    });
     return null;
   }
 

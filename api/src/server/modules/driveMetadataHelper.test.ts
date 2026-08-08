@@ -8,18 +8,14 @@ jest.mock('./storageCredentialsService', () => ({
   storageCredentialsService: { getCredentials: jest.fn() },
 }));
 
-jest.mock('./googleDriveProxy', () => ({
-  googleDriveProxyService: { getAccessToken: jest.fn() },
-}));
-
 import { getUserDriveMetadataContext, normalizePnIdentifier } from './driveMetadataHelper';
 import { storageCredentialsService } from './storageCredentialsService';
-import { googleDriveProxyService } from './googleDriveProxy';
 
 const mockGetCredentials = storageCredentialsService.getCredentials as jest.Mock;
-const mockGetAccessToken = googleDriveProxyService.getAccessToken as jest.Mock;
 
 const PN = 'pn-test';
+/** The caller resolves this via resolveOwnerDriveToken and passes it down. */
+const TOKEN = { accessToken: 'drive-token' };
 
 function driveFetch(options: { pnFolder?: boolean; metadataFolder?: boolean; pnStatus?: number; metadataStatus?: number } = {}) {
   const { pnFolder = true, metadataFolder = true, pnStatus = 200, metadataStatus = 200 } = options;
@@ -57,7 +53,6 @@ describe('getUserDriveMetadataContext', () => {
 
   beforeEach(() => {
     mockGetCredentials.mockReset();
-    mockGetAccessToken.mockReset();
     global.fetch = jest.fn(async () => {
       throw new Error('fetch should not be called');
     }) as unknown as typeof fetch;
@@ -69,32 +64,29 @@ describe('getUserDriveMetadataContext', () => {
 
   it('returns null when the identity has no stored credentials', async () => {
     mockGetCredentials.mockResolvedValue(null);
-    await expect(getUserDriveMetadataContext(PN)).resolves.toBeNull();
+    await expect(getUserDriveMetadataContext(PN, TOKEN)).resolves.toBeNull();
   });
 
   it('returns null when no Drive account is attached', async () => {
     mockGetCredentials.mockResolvedValue({ credentials: {} });
-    await expect(getUserDriveMetadataContext(PN)).resolves.toBeNull();
-    expect(mockGetAccessToken).not.toHaveBeenCalled();
+    await expect(getUserDriveMetadataContext(PN, TOKEN)).resolves.toBeNull();
   });
 
-  it('returns null without throwing when device cloud custody strips OAuth secrets', async () => {
+  it('returns null without touching Drive when no token is supplied', async () => {
     mockGetCredentials.mockResolvedValue({
       credentials: { googleDriveAccounts: [{ backendId: 'acct-1' }] },
     });
-    mockGetAccessToken.mockRejectedValue(new Error('no refresh token on server'));
 
     await expect(getUserDriveMetadataContext(PN)).resolves.toBeNull();
     expect(global.fetch).not.toHaveBeenCalled();
   });
 
-  it('returns null when the access token is blank', async () => {
+  it('returns null when the supplied access token is blank', async () => {
     mockGetCredentials.mockResolvedValue({
       credentials: { googleDriveAccounts: [{ backendId: 'acct-1' }] },
     });
-    mockGetAccessToken.mockResolvedValue('');
 
-    await expect(getUserDriveMetadataContext(PN)).resolves.toBeNull();
+    await expect(getUserDriveMetadataContext(PN, { accessToken: '' })).resolves.toBeNull();
     expect(global.fetch).not.toHaveBeenCalled();
   });
 
@@ -102,40 +94,36 @@ describe('getUserDriveMetadataContext', () => {
     mockGetCredentials.mockResolvedValue({
       credentials: { googleDriveAccounts: [{ backendId: 'acct-1' }] },
     });
-    mockGetAccessToken.mockResolvedValue('drive-token');
     driveFetch({ pnStatus: 401 });
 
-    await expect(getUserDriveMetadataContext(PN)).resolves.toBeNull();
+    await expect(getUserDriveMetadataContext(PN, TOKEN)).resolves.toBeNull();
   });
 
   it('returns null when the pN root folder does not exist', async () => {
     mockGetCredentials.mockResolvedValue({
       credentials: { googleDriveAccounts: [{ backendId: 'acct-1' }] },
     });
-    mockGetAccessToken.mockResolvedValue('drive-token');
     driveFetch({ pnFolder: false });
 
-    await expect(getUserDriveMetadataContext(PN)).resolves.toBeNull();
+    await expect(getUserDriveMetadataContext(PN, TOKEN)).resolves.toBeNull();
   });
 
   it('returns null when the _metadata folder does not exist', async () => {
     mockGetCredentials.mockResolvedValue({
       credentials: { googleDriveAccounts: [{ backendId: 'acct-1' }] },
     });
-    mockGetAccessToken.mockResolvedValue('drive-token');
     driveFetch({ metadataFolder: false });
 
-    await expect(getUserDriveMetadataContext(PN)).resolves.toBeNull();
+    await expect(getUserDriveMetadataContext(PN, TOKEN)).resolves.toBeNull();
   });
 
   it('resolves the full context and sends the bearer token on each lookup', async () => {
     mockGetCredentials.mockResolvedValue({
       credentials: { googleDriveAccounts: [{ backendId: 'acct-1' }] },
     });
-    mockGetAccessToken.mockResolvedValue('drive-token');
     const fetchMock = driveFetch();
 
-    await expect(getUserDriveMetadataContext('test')).resolves.toEqual({
+    await expect(getUserDriveMetadataContext('test', TOKEN)).resolves.toEqual({
       normalizedPnIdentifier: PN,
       accessToken: 'drive-token',
       accountId: 'acct-1',
@@ -152,22 +140,19 @@ describe('getUserDriveMetadataContext', () => {
     mockGetCredentials.mockResolvedValue({
       credentials: { googleDriveAccounts: [{ keyPrefix: 'key-1', accountId: 'acct-2', id: 'id-3' }] },
     });
-    mockGetAccessToken.mockResolvedValue('drive-token');
     driveFetch();
 
-    const context = await getUserDriveMetadataContext(PN);
+    const context = await getUserDriveMetadataContext(PN, TOKEN);
     expect(context?.accountId).toBe('key-1');
-    expect(mockGetAccessToken).toHaveBeenCalledWith(PN, 'key-1');
   });
 
   it('reads the legacy single googleDrive account shape', async () => {
     mockGetCredentials.mockResolvedValue({
       credentials: { googleDrive: { backendId: 'legacy-acct' } },
     });
-    mockGetAccessToken.mockResolvedValue('drive-token');
     driveFetch();
 
-    const context = await getUserDriveMetadataContext(PN);
+    const context = await getUserDriveMetadataContext(PN, TOKEN);
     expect(context?.accountId).toBe('legacy-acct');
   });
 });

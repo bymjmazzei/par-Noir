@@ -10,6 +10,7 @@ import {
   type StorageProviderId
 } from '@par-noir/user-owned-storage';
 import { googleDriveProxyService } from './googleDriveProxy';
+import { DriveIndexError } from './pnDriveIndex';
 import { storageCredentialsService } from './storageCredentialsService';
 import { MessageSheetsService } from './messageSheetsService';
 import { GoogleDriveToken } from './googleOAuth2Helper';
@@ -125,12 +126,17 @@ async function getOwnerDriveContext(
     account.keyPrefix ||
     'default';
 
-  const forwarded =
+  // Callers forward the owner's device-held token; there is no server-side fallback
+  // because under custody the server holds no Google secrets.
+  const accessToken =
     (typeof accessTokenOverride === 'string' && accessTokenOverride.trim()) ||
     String(account.access_token || account.accessToken || '').trim();
-  const accessToken =
-    forwarded ||
-    (await googleDriveProxyService.getAccessToken(pnIdentifier, resolvedAccountId));
+  if (!accessToken) {
+    throw new DriveIndexError(
+      'Google Drive access token required. Forward X-PN-Cloud-Access-Token after unlocking with cloud credentials.',
+      'CLOUD_TOKEN_REQUIRED'
+    );
+  }
 
   const token: GoogleDriveToken = {
     access_token: accessToken,

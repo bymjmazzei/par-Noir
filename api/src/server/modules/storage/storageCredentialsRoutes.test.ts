@@ -184,7 +184,7 @@ describe('storage credentials routes', () => {
       expect(res.body.error).toBe('No storage credentials found for identity');
     });
 
-    it('refreshes tokens for accounts that carry a refresh token, then returns the record', async () => {
+    it('returns the record without attempting a server-side token refresh', async () => {
       const record = {
         identityId: PN,
         credentials: { googleDriveAccounts: [{ backendId: 'acct-1', refresh_token: 'r' }] },
@@ -193,27 +193,14 @@ describe('storage credentials routes', () => {
         createdAt: 'c',
       };
       mockGetCredentials.mockResolvedValue(record);
-      mockGetAccessToken.mockResolvedValue('fresh-token');
 
       const res = await request(buildApp()).get(`/api/storage/credentials/${PN}`).expect(200);
 
-      expect(mockGetAccessToken).toHaveBeenCalledWith(PN, 'acct-1', [PN]);
+      // Under device cloud custody the stored row has no refresh secret, so there is
+      // nothing for the server to refresh. The device refreshes and forwards its token.
+      expect(mockGetAccessToken).not.toHaveBeenCalled();
       expect(res.body.success).toBe(true);
       expect(res.body.cid).toBe('cid-1');
-    });
-
-    it('still returns the record when the refresh attempt fails', async () => {
-      mockGetCredentials.mockResolvedValue({
-        identityId: PN,
-        credentials: { googleDriveAccounts: [{ backendId: 'acct-1', refresh_token: 'r' }] },
-        cid: null,
-        updatedAt: 'u',
-        createdAt: 'c',
-      });
-      mockGetAccessToken.mockRejectedValue(new Error('revoked'));
-
-      const res = await request(buildApp()).get(`/api/storage/credentials/${PN}`).expect(200);
-      expect(res.body.success).toBe(true);
     });
   });
 

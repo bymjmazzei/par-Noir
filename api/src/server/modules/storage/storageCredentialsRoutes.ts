@@ -222,29 +222,9 @@ export function setupStorageCredentialsRoutes(app: Application, deps: StorageCre
           return res.status(404).json({ error: 'No storage credentials found for identity' });
         }
 
-        // Proactively refresh expired access tokens so the client receives valid tokens.
-        // getAccessToken() will refresh when expired and persist; we re-fetch to return the updated credentials.
-        const credentials = record.credentials;
-        const accounts = credentials?.googleDriveAccounts || (credentials?.googleDrive ? [credentials.googleDrive] : []);
-        if (Array.isArray(accounts) && accounts.length > 0) {
-          const { googleDriveProxyService } = await import('../googleDriveProxy');
-          for (const account of accounts) {
-            const accountId = (account as any)?.backendId || (account as any)?.keyPrefix || undefined;
-            const hasRefresh = !!((account as any)?.refresh_token || (account as any)?.refreshToken);
-            if (hasRefresh) {
-              try {
-                await googleDriveProxyService.getAccessToken(pnIdentifier, accountId, [pnIdentifier]);
-              } catch {
-                // Leave token as-is on refresh failure (e.g. revoked). Client will get 401 and may reconnect.
-              }
-            }
-          }
-          record = await storageCredentialsService.getCredentials(pnIdentifier);
-        }
-
-        if (!record) {
-          return res.status(404).json({ error: 'No storage credentials found for identity' });
-        }
+        // No server-side token refresh here: under device cloud custody the stored
+        // row holds account shells with no refresh secret, so there is nothing to
+        // refresh. The device refreshes and forwards X-PN-Cloud-Access-Token.
 
         return res.json({
           success: true,
@@ -302,22 +282,17 @@ export function setupStorageCredentialsRoutes(app: Application, deps: StorageCre
 
         // Use a fresh (auto-refreshed) access token from the proxy, or an ephemeral
         // device-forwarded token under cloud custody (API has no stored Google secrets).
-        const { extractCloudAccessToken } = await import('../cloudAccessToken');
-        const forwardedToken = extractCloudAccessToken(req);
-        let freshAccessToken: string | null = forwardedToken || null;
-        if (!freshAccessToken) {
-          try {
-            freshAccessToken = await googleDriveProxyService.getAccessToken(
-              pnIdentifier,
-              accountId,
-              [pnIdentifier]
-            );
-          } catch (tokenErr: any) {
-            console.warn(
-              `[StorageInitialize POST] Could not refresh access token, falling back to stored token:`,
-              tokenErr?.message || tokenErr
-            );
-          }
+        let freshAccessToken: string | null = null;
+        try {
+          const { resolveOwnerDriveToken } = await import('../ownerDriveToken');
+          const resolved = await resolveOwnerDriveToken(req, pnIdentifier, { account, accountId });
+          freshAccessToken = resolved.token.access_token;
+        } catch (tokenErr: any) {
+          // Caller falls back to the stored token below.
+          console.warn(
+            `[StorageInitialize POST] Could not resolve access token, falling back to stored token:`,
+            tokenErr?.message || tokenErr
+          );
         }
 
         const token = {
@@ -445,16 +420,15 @@ export function setupStorageCredentialsRoutes(app: Application, deps: StorageCre
           return res.json({ folderId: index.zkpDocsFolderId });
         }
 
-        const cloud = extractCloudAccessToken(req);
-        let accessToken = cloud;
-        if (!accessToken) {
-          accessToken = await googleDriveProxyService.getAccessToken(pnIdentifier, undefined, [pnIdentifier]);
-        }
-        if (!accessToken) {
-          return res.status(401).json({
-            error: 'cloud_token_required',
-            error_description: 'Reconnect Google Drive (device cloud custody requires a live cloud access token).'
-          });
+        let accessToken: string;
+        try {
+          const { resolveOwnerDriveToken } = await import('../ownerDriveToken');
+          const resolved = await resolveOwnerDriveToken(req, pnIdentifier);
+          accessToken = resolved.token.access_token;
+        } catch (tokenErr) {
+          const { respondDriveTokenError } = await import('../ownerDriveToken');
+          if (respondDriveTokenError(res, tokenErr)) return;
+          throw tokenErr;
         }
 
         const folderId = await findOrCreateFolderUnderParent(

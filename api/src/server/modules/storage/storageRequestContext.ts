@@ -3,7 +3,7 @@
  * Resolves DB credentials once per HTTP request to avoid repeated lookups.
  */
 
-import { googleDriveProxyService } from '../googleDriveProxy';
+import type { Request } from 'express';
 import { storageCredentialsService } from '../storageCredentialsService';
 
 export interface StorageRequestContext {
@@ -20,9 +20,9 @@ export interface StorageRequestContext {
 }
 
 export async function createStorageRequestContext(
+  req: Request,
   pnIdentifier: string,
-  accountId?: string,
-  forwardedAccessToken?: string
+  accountId?: string
 ): Promise<StorageRequestContext | null> {
   if (!pnIdentifier) return null;
   const credentialsRecord = await storageCredentialsService.getCredentials(pnIdentifier);
@@ -34,23 +34,14 @@ export async function createStorageRequestContext(
     credentialsRecord,
   };
 
-  const forwarded = forwardedAccessToken?.trim();
-  if (forwarded) {
-    ctx.accessToken = forwarded;
-  } else {
-    try {
-      ctx.accessToken = await googleDriveProxyService.getAccessToken(pnIdentifier, accountId);
-    } catch {
-      try {
-        ctx.accessToken = googleDriveProxyService.extractAccessTokenFromCredentials(
-          credentialsRecord.credentials,
-          accountId
-        );
-      } catch {
-        /* caller handles missing token */
-      }
-    }
+  try {
+    const { resolveOwnerDriveToken } = await import('../ownerDriveToken');
+    const resolved = await resolveOwnerDriveToken(req, pnIdentifier, { accountId });
+    ctx.accessToken = resolved.token.access_token;
+  } catch {
+    /* caller handles missing token via getDriveTokenFromContext */
   }
+  const forwarded = ctx.accessToken?.trim();
 
   const accounts =
     credentialsRecord.credentials.googleDriveAccounts ||

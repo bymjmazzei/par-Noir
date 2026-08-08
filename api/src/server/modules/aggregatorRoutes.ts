@@ -1359,11 +1359,7 @@ export function setupAggregatorRoutes(app: any, deps: AggregatorRouteDeps) {
       const accountIdParam = (req.query.accountId as string) || undefined;
       const { createStorageRequestContext, getDriveTokenFromContext } = await import('./storage/storageRequestContext');
       const storageCtx = tokenPayload.pnIdentifier
-        ? await createStorageRequestContext(
-            tokenPayload.pnIdentifier,
-            accountIdParam,
-            (await import('./cloudAccessToken')).extractCloudAccessToken(req)
-          )
+        ? await createStorageRequestContext(req, tokenPayload.pnIdentifier, accountIdParam)
         : null;
 
       if (tokenPayload.pnIdentifier) {

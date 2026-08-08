@@ -1,3 +1,4 @@
+import { DriveIndexError } from '../pnDriveIndex';
 import {
   buildPortableInventoryFromList,
   type MigrationReport
@@ -32,7 +33,8 @@ function normalizePn(pn: string): string {
 export async function previewSocialCloudMigration(
   pnIdentifier: string,
   targetProvider: StorageProviderId,
-  targetAccountId?: string
+  targetAccountId?: string,
+  cloudAccessToken?: string
 ): Promise<{
   sourceProvider: StorageProviderId;
   targetProvider: StorageProviderId;
@@ -57,11 +59,14 @@ export async function previewSocialCloudMigration(
   let estimatedBytes = 0;
 
   if (sourceProvider === 'google_drive') {
-    const accessToken = await googleDriveProxyService.getAccessToken(
-      normalized,
-      credentials.socialCloudAccountId,
-      [normalized]
-    );
+    // Reading the source Drive needs the owner's device-held token.
+    const accessToken = cloudAccessToken?.trim();
+    if (!accessToken) {
+      throw new DriveIndexError(
+        'Migration preview requires the owner\'s Drive token. Forward X-PN-Cloud-Access-Token from an unlocked session.',
+        'CLOUD_TOKEN_REQUIRED'
+      );
+    }
     const inv = await buildGoogleInventoryFromDrive(
       { access_token: accessToken },
       credentials,

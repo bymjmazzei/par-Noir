@@ -6,7 +6,7 @@
 
 import express from 'express';
 import { safeClientErrorMessage } from '../utils/safeError';
-import { isDevVerbose } from '../../utils/logger';
+import { hashIdentifier, isDevVerbose, safeLogger } from '../../utils/logger';
 import { getBearerTokenPayload } from '../middleware/authMiddleware';
 import { gateOwnerRoute, DEVICE_CAPABILITIES } from './deviceCapabilityService';
 
@@ -342,14 +342,9 @@ export function setupDriveRoutes(app: express.Application, deps: DriveRouteDeps)
         if ((!finalParents || finalParents.length === 0) && driveCtx.isFirstParty) {
           if (pnIdentifier && accountId) {
             try {
-              let accessToken: string | null = driveCtx.accessToken || null;
-              if (!accessToken) {
-                try {
-                  accessToken = await googleDriveProxyService.getAccessToken(pnIdentifier, accountId, identifierCandidates);
-                } catch (tokenError: any) {
-                  console.warn(`[Upload] Could not get access token for folder search:`, tokenError?.message || tokenError);
-                }
-              }
+              // driveCtx.accessToken is already resolved through resolveOwnerDriveToken;
+              // there is no second place to get one.
+              const accessToken: string | null = driveCtx.accessToken || null;
               
               if (accessToken) {
                 const { pnFolderDisplayName } = await import('./integratorStoragePaths');
@@ -815,16 +810,22 @@ export function setupDriveRoutes(app: express.Application, deps: DriveRouteDeps)
 
         if (thumbnail) {
           try {
-            // Proxy thumbnail request through API server with authentication
-            const accessToken =
-              (!ownerPnIdentifier || ownerPnIdentifier === pnIdentifier
-                ? driveCtx.accessToken
-                : null) ||
-              (await googleDriveProxyService.getAccessToken(
-                effectiveUserIdentifier,
-                accountId,
-                effectiveIdentifierCandidates
-              ));
+            // Only the caller's own Drive token is available. A thumbnail on another
+            // user's file would need that user's token, which the server does not
+            // hold under custody and the caller cannot forward.
+            const isOwnDrive = !ownerPnIdentifier || ownerPnIdentifier === pnIdentifier;
+            const accessToken = isOwnDrive ? driveCtx.accessToken : null;
+            if (!accessToken) {
+              safeLogger.warn('[DriveFiles] Thumbnail unavailable for another user\'s file', {
+                reason: 'cross_user_drive_token',
+                ownerPnHash: ownerPnIdentifier ? hashIdentifier(ownerPnIdentifier) : undefined
+              });
+              return res.status(409).json({
+                error: 'cloud_token_required',
+                error_description:
+                  'Thumbnails for another user\'s file require that user\'s Drive token, which is device-held.'
+              });
+            }
             const thumbnailUrl = `https://www.googleapis.com/drive/v3/files/${fileId}/thumbnail?alt=media`;
             
             console.log(`[DriveFiles] Fetching thumbnail for file ${fileId} with accountId ${accountId}`);

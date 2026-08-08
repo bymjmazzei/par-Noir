@@ -14,10 +14,13 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
 ALLOWLIST="scripts/token-resolver-allowlist.txt"
-# Matches googleDriveProxy.getAccessToken( and googleDriveProxyService.getAccessToken(.
+# Matches, on googleDriveProxy or googleDriveProxyService:
+#   1. .getAccessToken(  and  .forceRefreshAccessToken(   — both mint a Drive token
+#   2. destructuring, e.g. const { getAccessToken } = googleDriveProxyService
+#      which would otherwise call the method without ever naming it on the object
 # Deliberately does not match dropboxProxyService/onedriveProxyService, which are
 # different providers with their own resolvers.
-PATTERN='googleDriveProxy(Service)?\.getAccessToken[[:space:]]*\('
+PATTERN='googleDriveProxy(Service)?\.(getAccessToken|forceRefreshAccessToken)[[:space:]]*\(|\{[^}]*(getAccessToken|forceRefreshAccessToken)[^}]*\}[[:space:]]*=[[:space:]]*(await[[:space:]]+)?googleDriveProxy'
 
 # Files that legitimately resolve or define the primitive.
 is_canonical() {

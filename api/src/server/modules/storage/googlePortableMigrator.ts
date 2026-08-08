@@ -1,3 +1,4 @@
+import { DriveIndexError } from '../pnDriveIndex';
 import {
   MIGRATION_CATALOG,
   mergeMigrationReports,
@@ -54,12 +55,20 @@ function normalizePn(pn: string): string {
 async function buildGoogleCtx(
   pnIdentifier: string,
   credentials: StorageCredentialsEnvelope,
-  accountId?: string
+  accountId?: string,
+  cloudAccessToken?: string
 ): Promise<DriveTableContext> {
   const layout = readCachedLayout(credentials);
   const metadataFolderId = layout.nodeIds?.metadataFolderId;
   if (!metadataFolderId) throw new Error('Google Drive metadata folder not initialized');
-  const accessToken = await googleDriveProxyService.getAccessToken(pnIdentifier, accountId, [pnIdentifier]);
+  // Migration reads the owner's Drive; the token must come from their unlocked session.
+  const accessToken = cloudAccessToken?.trim();
+  if (!accessToken) {
+    throw new DriveIndexError(
+      'Migration requires the owner\'s Drive token. Forward X-PN-Cloud-Access-Token from an unlocked session.',
+      'CLOUD_TOKEN_REQUIRED'
+    );
+  }
   return {
     token: { access_token: accessToken },
     metadataFolderId,

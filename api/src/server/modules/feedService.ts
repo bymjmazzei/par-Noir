@@ -4,6 +4,7 @@
  */
 
 import { getDatabasePool } from '../utils/database';
+import { DriveIndexError } from './pnDriveIndex';
 
 // Types (duplicated from frontend to avoid circular dependencies)
 export type FeedCategory =
@@ -943,9 +944,16 @@ export class FeedService {
             updatedAt: new Date().toISOString()
           });
         } else {
-          const { GoogleDriveProxyService } = await import('./googleDriveProxy');
-          const googleDriveProxy = new GoogleDriveProxyService();
-          const accessToken = await googleDriveProxy.getAccessToken(creatorDid);
+          // Creating the feed folder writes to the creator's Drive, which needs
+          // their device-held token. Without one, fail rather than leave the feed
+          // marked active with no folder behind it.
+          const accessToken = opts?.cloudAccessToken?.trim();
+          if (!accessToken) {
+            throw new DriveIndexError(
+              'Feed folder creation requires the creator\'s Drive token. Activate the feed from an unlocked session that forwards X-PN-Cloud-Access-Token.',
+              'CLOUD_TOKEN_REQUIRED'
+            );
+          }
           const feedFolderName = `par Noir - Feed: ${feed.feedName}`;
           const feedFolderResponse = await fetch('https://www.googleapis.com/drive/v3/files', {
             method: 'POST',

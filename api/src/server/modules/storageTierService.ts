@@ -6,7 +6,7 @@
 
 import { getDatabasePool } from '../utils/database';
 import { ProfileService } from './profileService';
-import { googleDriveProxyService } from './googleDriveProxy';
+import { hashIdentifier, safeLogger } from '../../utils/logger';
 
 const TIER_LIMITS: Record<string, number> = {
   free: 100 * 1024 * 1024,       // 100 MB
@@ -21,12 +21,7 @@ export interface StorageTierResult {
   encryptedLimitBytes: number;
 }
 
-async function getMetadataFolderId(pnId: string, additionalCandidates?: string[]): Promise<string | null> {
-  const accessToken = await googleDriveProxyService.getAccessToken(
-    pnId,
-    undefined,
-    additionalCandidates
-  );
+async function getMetadataFolderId(pnId: string, accessToken: string): Promise<string | null> {
   const pnFolderName = `par Noir - ${pnId}`;
   const pnFolderQuery = `name='${pnFolderName.replace(/'/g, "\\'")}' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
   const pnRes = await fetch(
@@ -56,25 +51,39 @@ async function getMetadataFolderId(pnId: string, additionalCandidates?: string[]
  */
 export async function getStorageTier(
   pnIdentifier: string,
-  did?: string
+  did?: string,
+  cloudAccessToken?: string
 ): Promise<StorageTierResult> {
   const identifiers = [pnIdentifier];
   if (did && did !== pnIdentifier) identifiers.push(did);
-  const additionalCandidates = did && did !== pnIdentifier ? [did] : undefined;
   const pnId = pnIdentifier.startsWith('pn-') ? pnIdentifier : `pn-${pnIdentifier}`;
 
-  try {
-    const metadataFolderId = await getMetadataFolderId(pnId, additionalCandidates);
-    if (metadataFolderId) {
-      const accessToken = await googleDriveProxyService.getAccessToken(pnId, undefined, additionalCandidates);
-      const profile = await ProfileService.getProfileFile(accessToken, metadataFolderId);
-      if (profile?.storageTier && VALID_TIERS.has(profile.storageTier)) {
-        const limit = TIER_LIMITS[profile.storageTier] ?? TIER_LIMITS.free;
-        return { tier: profile.storageTier, encryptedLimitBytes: limit };
+  // The authoritative tier lives in the user's profile.json on their Drive, which
+  // needs their device-held token. Without one we fall back to deriving it from
+  // owned feeds — say so, because a silently derived tier can be the wrong tier.
+  const driveToken = cloudAccessToken?.trim();
+  if (driveToken) {
+    try {
+      const metadataFolderId = await getMetadataFolderId(pnId, driveToken);
+      if (metadataFolderId) {
+        const profile = await ProfileService.getProfileFile(driveToken, metadataFolderId);
+        if (profile?.storageTier && VALID_TIERS.has(profile.storageTier)) {
+          const limit = TIER_LIMITS[profile.storageTier] ?? TIER_LIMITS.free;
+          return { tier: profile.storageTier, encryptedLimitBytes: limit };
+        }
       }
+    } catch (err) {
+      safeLogger.warn('[StorageTier] Drive profile unreadable — deriving tier from feeds', {
+        reason: 'drive_profile_unreadable',
+        message: err instanceof Error ? err.message : String(err),
+        pnIdHash: hashIdentifier(pnId)
+      });
     }
-  } catch (_err) {
-    // Fall through to feed-based derivation
+  } else {
+    safeLogger.warn('[StorageTier] No Drive token — deriving tier from feeds', {
+      reason: 'cloud_token_required',
+      pnIdHash: hashIdentifier(pnId)
+    });
   }
 
   const db = getDatabasePool();

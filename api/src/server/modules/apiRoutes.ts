@@ -479,9 +479,10 @@ export function setupDataPointUserRoutes(app: any) {
       }
 
       const { getUserDriveMetadataContext } = await import('./driveMetadataHelper');
-      const { extractCloudAccessToken } = await import('./cloudAccessToken');
+      const { resolveOwnerDriveToken } = await import('./ownerDriveToken');
+      const ownerToken = await resolveOwnerDriveToken(req, normalized).catch(() => null);
       const ctx = await getUserDriveMetadataContext(normalized, {
-        accessToken: extractCloudAccessToken(req),
+        accessToken: ownerToken?.token.access_token,
       });
       if (!ctx) {
         return res.json({ success: true, requests: [] });
@@ -544,9 +545,10 @@ export function setupDataPointUserRoutes(app: any) {
       }
 
       const { getUserDriveMetadataContext } = await import('./driveMetadataHelper');
-      const { extractCloudAccessToken } = await import('./cloudAccessToken');
+      const { resolveOwnerDriveToken } = await import('./ownerDriveToken');
+      const ownerToken = await resolveOwnerDriveToken(req, normalized).catch(() => null);
       const ctx = await getUserDriveMetadataContext(normalized, {
-        accessToken: extractCloudAccessToken(req),
+        accessToken: ownerToken?.token.access_token,
       });
       if (!ctx) {
         return res.status(404).json({ error: 'not_found' });

@@ -5,7 +5,7 @@
  */
 
 import { getDatabasePool } from '../utils/database';
-import { googleDriveProxyService } from './googleDriveProxy';
+import { hashIdentifier, safeLogger } from '../../utils/logger';
 import { PrismLedgerSheetsService } from './prismLedgerSheetsService';
 import { isPortableSocialCloud } from './storage/storageProviderUtils';
 import { resolveSocialCloudContext, openTable } from './storage/storageFacade';
@@ -36,15 +36,7 @@ function normalizePnId(id: string): string {
  * Get metadata folder ID for a user. Returns null if folder structure not found.
  * @param pnId - Normalized pn-{hash} identifier (folder is "par Noir - pn-{hash}")
  */
-async function getMetadataFolderId(
-  pnId: string,
-  additionalCandidates?: string[]
-): Promise<string | null> {
-  const accessToken = await googleDriveProxyService.getAccessToken(
-    pnId,
-    undefined,
-    additionalCandidates
-  );
+async function getMetadataFolderId(pnId: string, accessToken: string): Promise<string | null> {
   const pnFolderName = `par Noir - ${pnId}`;
   const pnFolderQuery = `name='${pnFolderName.replace(/'/g, "\\'")}' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
 
@@ -73,13 +65,15 @@ async function getMetadataFolderId(
  * ONLY creates when getPrismLedgerSheet throws "Sheet not found" / "not found".
  * @param rawIdentityId - identity_id from storage_credentials (may be pn-{hash} or raw hash)
  */
-export async function ensurePrismLedgerForIdentity(rawIdentityId: string): Promise<EnsureResult> {
+export async function ensurePrismLedgerForIdentity(
+  rawIdentityId: string,
+  cloudAccessToken?: string
+): Promise<EnsureResult> {
   const pnId = normalizePnId(rawIdentityId);
-  const additionalCandidates = rawIdentityId !== pnId ? [rawIdentityId] : undefined;
 
   try {
     if (await isPortableSocialCloud(pnId)) {
-      const ctx = await resolveSocialCloudContext(pnId);
+      const ctx = await resolveSocialCloudContext(pnId, undefined, cloudAccessToken);
       const table = await openTable(ctx, PRISM_LEDGER_SCHEMA);
       // Ensure today's segment / empty table exists by no-op replace if scan empty
       const rows = await table.scan({ limit: 1 });
@@ -89,12 +83,22 @@ export async function ensurePrismLedgerForIdentity(rawIdentityId: string): Promi
       return { identityId: rawIdentityId, created: true, skipped: false };
     }
 
-    const accessToken = await googleDriveProxyService.getAccessToken(
-      pnId,
-      undefined,
-      additionalCandidates
-    );
-    const metadataFolderId = await getMetadataFolderId(pnId, additionalCandidates);
+    // Drive-backed identities need the owner's device-held token. Report that
+    // plainly instead of failing as if the ledger itself were missing.
+    const accessToken = cloudAccessToken?.trim();
+    if (!accessToken) {
+      safeLogger.warn('[PrismEnsure] Skipped — no Drive token for identity', {
+        reason: 'cloud_token_required',
+        pnIdHash: hashIdentifier(pnId)
+      });
+      return {
+        identityId: rawIdentityId,
+        created: false,
+        skipped: true,
+        error: 'cloud_token_required'
+      };
+    }
+    const metadataFolderId = await getMetadataFolderId(pnId, accessToken);
     if (!metadataFolderId) {
       return { identityId: rawIdentityId, created: false, skipped: false, error: 'Metadata folder not found' };
     }

@@ -105,22 +105,16 @@ export function setupMessageRoutes(app: express.Application, deps: MessageRouteD
             if (ownerAccounts.length === 0) return null;
             const ownerAccount = ownerAccounts[0];
             const ownerAccountId = extractAccountId(ownerAccount);
-            // Peer's Drive for group sheet mtime — may still need server secrets or fail soft
+            // Group sheet mtime on a peer's Drive needs that peer's token, which is
+            // device-held and cannot be resolved server-side. Only the caller's own
+            // Drive is reachable here; otherwise skip the mtime check.
             let ownerAccess =
               (ownerAccount.access_token || ownerAccount.accessToken || '') as string;
             if (!ownerAccess && ownerPnIdentifier === pnIdentifier) {
               ownerAccess = token.access_token;
             }
             if (!ownerAccess) {
-              try {
-                const { googleDriveProxyService } = await import('./googleDriveProxy');
-                ownerAccess = await googleDriveProxyService.getAccessToken(
-                  ownerPnIdentifier,
-                  ownerAccountId
-                );
-              } catch {
-                return null;
-              }
+              return null;
             }
             return {
               token: {
