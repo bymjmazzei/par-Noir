@@ -22,18 +22,16 @@ Date: 2026-08-09. Follow-up to [`DIAGNOSTIC_2026-08-09_FEED_PUBLIC_CONTENT_LATEN
 | `public-content` cold ×3 | 1.81s, 1.72s, 1.72s; `Cache-Control: max-age=60` |
 | Drive usercontent direct ×3 | 1.44s, 1.12s, 1.20s |
 
-## Post-deploy acceptance checks
+## Post-deploy OBSERVED (2026-08-09, after Railway rolled `max-age=300`)
 
-Run after Railway API + Firebase hosting are live:
+| Probe | Result | Label |
+|-------|--------|--------|
+| API build marker | `Cache-Control: public, max-age=300` + `X-PN-Envelope-Cache` | OBSERVED |
+| First request after roll (MISS) | attempt 8: MISS header present | OBSERVED |
+| 2nd / 3rd same `fileId` | **HIT**, totals **0.53s** / **0.32s** | OBSERVED — was ~1.7s cold pre-change |
+| Falsifier for Redis warm | still ~1.5s+ with no HIT | **Falsified** |
 
-1. **Duplicate fetch:** hard-refresh feed; Resource Timing should show **one** `public-content` per `fileId` while first in flight (client coalesce). Falsifier: two network starts for same id before either completes.
-2. **Adjacent preload:** with ≥3 public items, after item 0 paints, scroll to 1–2 without multi-second spinner if dwell ≥ fetch.
-3. **Redis warm:** second `GET public-content` within 60s should show `X-PN-Envelope-Cache: HIT` and total **≪500ms**. Falsifier: still ~1.5s+ with HIT header absent.
-4. **Cache-Control:** response header `max-age=300`.
-
-## Live public index note
-
-At probe time only **1** public thought existed — multi-item scroll remains code-verified; re-check when N≥3.
+Browser hosting deployed via `./deploy.sh` (client coalesce + adjacent preload). Multi-item scroll still limited by public index N=1; duplicate coalesce is package-level (verified by code + prior Resource Timing failure mode).
 
 ## Structural floor (unchanged)
 
