@@ -6,8 +6,8 @@
 export type DriveListFile = {
   id: string;
   name: string;
-  mimeType?: string;
-  size?: string;
+  mimeType: string;
+  size: string;
   [key: string]: unknown;
 };
 
