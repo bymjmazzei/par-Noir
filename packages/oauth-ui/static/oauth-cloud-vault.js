@@ -107,9 +107,6 @@
     migrationManifest: integratorPath("_pn_migration_manifest.json")
   };
 
-  // ../device-cloud-credentials/dist/webCloudCredentialLifecycle.js
-  var defaultStore = new WebSealedStore();
-
   // ../device-cloud-credentials/dist/driveTokenResolver.js
   var DRIVE_TOKEN_SKEW_MS = 6e4;
   function googleAccountsFromEnvelope(env) {
@@ -165,6 +162,9 @@
     }
     return null;
   }
+
+  // ../device-cloud-credentials/dist/webCloudCredentialLifecycle.js
+  var defaultStore = new WebSealedStore();
 
   // ../device-cloud-credentials/dist/cloudVault.js
   var CLOUD_VAULT_SEAL_SESSION_ID = "pn-cloud-creds-v1";
