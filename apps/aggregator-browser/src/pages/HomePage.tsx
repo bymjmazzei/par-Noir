@@ -6,7 +6,8 @@
 import React, { useContext } from 'react';
 import { useStorageConnected } from '../hooks/useStorageConnected';
 import { Search, Filter, User, RefreshCw, Image as ImageIcon } from 'lucide-react';
-import { decryptWithToken, ShareToken } from '../utils/tokenDecryption';
+import { ShareToken } from '../utils/tokenDecryption';
+import { decryptPublicFeedMedia } from '../utils/publicMediaDecrypt';
 import { calculateMediaScaling } from '../utils/mediaScaling';
 import { saveToFeed } from '../services/savedFeedService';
 import { FeedRail } from '../components/FeedRail';
@@ -426,7 +427,7 @@ export function HomePage() {
                         try {
                           let token: ShareToken;
                           try { token = typeof file.publicToken === 'string' ? JSON.parse(file.publicToken) : file.publicToken; } catch { return; }
-                          const blob = await decryptWithToken(token);
+                          const blob = await decryptPublicFeedMedia(file.fileId, token);
                           const url = URL.createObjectURL(blob);
                           setVideoBlobs(prev => { const m = new Map(prev); m.set(file.fileId, url); return m; });
                         } catch (_) {}

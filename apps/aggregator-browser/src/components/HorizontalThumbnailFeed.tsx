@@ -134,7 +134,7 @@ export function HorizontalThumbnailFeed({
             // PRIORITY 1: If we have a publicToken, use it for decryption (no auth required)
             if (thumbnailToken) {
               try {
-                const { decryptWithToken } = await import('../utils/tokenDecryption');
+                const { decryptPublicFeedMedia } = await import('../utils/publicMediaDecrypt');
                 let token: ShareToken | null = null;
                 try {
                   token = typeof thumbnailToken === 'string' ? JSON.parse(thumbnailToken) : thumbnailToken;
@@ -143,11 +143,11 @@ export function HorizontalThumbnailFeed({
                   // Fall through to session-based decryption
                 }
                 
-                // Decrypt using token (NO AUTH REQUIRED!)
+                // Decrypt via blind public-content proxy + slim shareKey
                 if (!token) {
                   throw new Error('Invalid thumbnail share token');
                 }
-                const decryptedBlob = await decryptWithToken(token);
+                const decryptedBlob = await decryptPublicFeedMedia(thumbnailId, token);
                 imageUrl = URL.createObjectURL(decryptedBlob);
                 
                 // Success with token!

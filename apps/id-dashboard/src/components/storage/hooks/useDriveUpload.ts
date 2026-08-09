@@ -199,7 +199,7 @@ export function useDriveUpload({
 
       let encryptedBlob: Blob;
       let packageData: EncryptedFilePackage;
-      let shareToken: ShareToken | undefined = undefined; // Generate during upload
+      let shareToken: ShareToken | undefined = undefined; // Slim token only (envelope uploaded at make-public)
       try {
         const result = await encryptionService.encryptFileForUpload(
           file,
@@ -209,15 +209,14 @@ export function useDriveUpload({
         packageData = result.packageData;
         console.log('✅ [Upload] Encryption successful');
 
-        // Generate share token now (during upload) so it's ready for public sharing
-        // This avoids having to regenerate it later and prevents "Maximum call stack" errors
-        // IMPORTANT: Generate token BEFORE upload so we can cache it with the file ID
+        // Generate slim share key material during upload (envelope is produced again at make-public)
         console.log('🔑 [Upload] Generating share token for future public sharing...');
         try {
-          shareToken = await encryptionService.generateShareToken(
+          const generated = await encryptionService.generateShareToken(
             packageData,
             session
           );
+          shareToken = generated.token;
           console.log('✅ [Upload] Share token generated successfully');
         } catch (tokenError: any) {
           console.error('❌ [Upload] Share token generation failed:', {

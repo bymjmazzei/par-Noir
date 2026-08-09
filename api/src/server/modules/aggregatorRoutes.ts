@@ -285,6 +285,29 @@ export function setupAggregatorRoutes(app: any, deps: AggregatorRouteDeps) {
         });
       }
 
+      const { publicTokenContainsEmbeddedCiphertext, isPublicContentRef } = await import(
+        '@par-noir/aggregator-domain'
+      );
+      if (publicTokenContainsEmbeddedCiphertext(metadata.publicToken)) {
+        safeLogger.warn('[metadata-index] Rejected embedded publicToken ciphertext', {
+          requestId,
+          fileHash: hashIdentifier(metadata.fileId),
+        });
+        return res.status(400).json({
+          error: 'embedded_public_token_forbidden',
+          error_description:
+            'publicToken must not embed shareEncrypted ciphertext; upload envelope to cloud and send publicContentRef + shareKey only',
+          requestId,
+        });
+      }
+      if (metadata.isPublic !== false && metadata.publicToken && !isPublicContentRef(metadata.publicContentRef)) {
+        return res.status(400).json({
+          error: 'missing_public_content_ref',
+          error_description: 'Public metadata requires publicContentRef with backend, objectId, and publicUrl',
+          requestId,
+        });
+      }
+
       const tokenPayload = getBearerTokenPayload(req);
       if (tokenPayload?.pnIdentifier) {
         if (!(await gateOwnerRoute(req, res, DEVICE_CAPABILITIES.driveUpload))) return;
@@ -536,13 +559,30 @@ export function setupAggregatorRoutes(app: any, deps: AggregatorRouteDeps) {
     }
   });
 
-  // DELETE /api/aggregator/metadata-index/:fileId - Remove public metadata and delete files
-  // DELETE /api/aggregator/metadata-index/user/:pnIdentifier - Remove all metadata for a user
+  // DELETE /api/aggregator/metadata-index/user/:pnIdentifier — owner or admin only
   app.delete('/api/aggregator/metadata-index/user/:pnIdentifier', async (req: Request, res: Response) => {
     try {
       const { pnIdentifier } = req.params;
       if (!pnIdentifier) {
         return res.status(400).json({ error: 'pnIdentifier is required' });
+      }
+
+      const tokenPayload = getBearerTokenPayload(req);
+      if (!tokenPayload) {
+        return res.status(401).json({
+          error: 'unauthorized',
+          error_description: 'Bearer required to purge user public metadata',
+        });
+      }
+      const caller = tokenPayload.pnIdentifier || tokenPayload.did;
+      const target = pnIdentifier.startsWith('pn-') ? pnIdentifier : `pn-${pnIdentifier}`;
+      const callerNorm =
+        typeof caller === 'string' && caller.startsWith('pn-') ? caller : caller ? `pn-${caller}` : '';
+      if (!callerNorm || callerNorm !== target) {
+        return res.status(403).json({
+          error: 'forbidden',
+          error_description: 'Only the owning identity may purge its public aggregator rows',
+        });
       }
 
       const { AggregatorMetadataServiceDB } = await import('./aggregatorMetadataServiceDB');

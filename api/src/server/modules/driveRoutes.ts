@@ -748,44 +748,15 @@ export function setupDriveRoutes(app: express.Application, deps: DriveRouteDeps)
           });
         }
 
-        // When ownerPnIdentifier is present: fetch from owner's Drive (for public feed items from other creators)
+        // Cross-user public media must use the blind public-content proxy — never peer Drive tokens.
         let effectiveUserIdentifier = userIdentifier;
         let effectiveIdentifierCandidates = identifierCandidates;
         if (ownerPnIdentifier && ownerPnIdentifier !== pnIdentifier) {
-          try {
-            const { AggregatorMetadataServiceDB } = await import('./aggregatorMetadataServiceDB');
-            const metadataService = AggregatorMetadataServiceDB.getInstance();
-            const fileEntry = await metadataService.getFileMetadata(fileId);
-            if (!fileEntry || !fileEntry.metadata) {
-              return res.status(404).json({
-                error: 'File not found',
-                error_description: 'File not found in metadata index'
-              });
-            }
-            const meta = fileEntry.metadata as { isPublic?: boolean; fileId?: string };
-            if (meta.isPublic !== true) {
-              return res.status(403).json({
-                error: 'Forbidden',
-                error_description: 'File is not public'
-              });
-            }
-            if (meta.fileId && meta.fileId !== fileId) {
-              return res.status(400).json({
-                error: 'Bad request',
-                error_description: 'File ID mismatch'
-              });
-            }
-            // Resolve owner pn identifier (may need pn- prefix)
-            const resolvedOwner = ownerPnIdentifier.startsWith('pn-') ? ownerPnIdentifier : `pn-${ownerPnIdentifier}`;
-            effectiveUserIdentifier = resolvedOwner;
-            effectiveIdentifierCandidates = [resolvedOwner];
-          } catch (lookupError: any) {
-            console.error('[DriveFiles] ownerPnIdentifier lookup failed:', lookupError?.message || lookupError);
-            return res.status(500).json({
-              error: 'Failed to resolve owner',
-              error_description: lookupError?.message || 'Failed to resolve file owner'
-            });
-          }
+          return res.status(409).json({
+            error: 'use_public_content',
+            error_description:
+              'Cross-user public media must be fetched via GET /api/aggregator/public-content/:fileId',
+          });
         }
 
         if (

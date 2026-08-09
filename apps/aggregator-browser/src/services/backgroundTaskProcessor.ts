@@ -12,6 +12,8 @@ import { saveToFeed, removeFromSavedFeed } from './savedFeedService';
 
 import { API_ENDPOINT } from '../config/api';
 import { ownerApiHeadersAsync } from './ownerApiHeaders';
+import { publishPublicShare, revokePublishedPublicContent } from './publicSharePublish';
+import type { PublicContentRef } from '@par-noir/aggregator-domain';
 
 async function driveHeaders(accessToken: string): Promise<Record<string, string>> {
   return ownerApiHeadersAsync(accessToken);
@@ -182,15 +184,13 @@ async function processShareSettingsUpdate(
     }
   }
 
-  // When making public, we MUST generate publicToken (private files don't have it)
-  // When making private, we MUST delete publicToken (remove from server)
+  // When making public: slim publicToken + publicContentRef (envelope on cloud).
+  // When making private: revoke envelope link and clear both fields.
   let publicToken: string | undefined = undefined;
+  let publicContentRef: PublicContentRef | undefined = undefined;
   if (makePublic) {
-    // Making public: generate publicToken if needed
-    // Don't check for existingPublicToken - private files don't have it on server
     uploadQueueService.updateTaskProgress(task.id, 20);
-    
-    // Generate share token
+
     try {
       const downloadResponse = await fetch(
         `${API_ENDPOINT}/api/drive/files/${targetFileId}?accountId=${encodeURIComponent(accountId)}&download=true`,
@@ -201,36 +201,57 @@ async function processShareSettingsUpdate(
 
       uploadQueueService.updateTaskProgress(task.id, 30);
 
-      if (downloadResponse.ok) {
-        const fileBlob = await downloadResponse.blob();
-        const fileText = await fileBlob.text();
-        
-        if (!fileText || fileText.trim().length === 0) {
-          throw new Error('Downloaded file is empty');
-        }
-        
-        const encryptedPackage: EncryptedFilePackage = JSON.parse(fileText);
-        
-        if (!encryptedPackage.encrypted || !encryptedPackage.iv || !encryptedPackage.salt) {
-          throw new Error('Invalid encrypted file package structure');
-        }
-        
-        // Generate share token
-        if (session?.publicKey) {
-          const encryptionService = getEncryptionService();
-          const shareToken = await encryptionService.generateShareToken(
-            encryptedPackage,
-            {
-              id: session.did,
-              publicKey: session.publicKey
-            }
-          );
-          publicToken = JSON.stringify(shareToken);
-        }
+      if (!downloadResponse.ok) {
+        throw new Error(`Failed to download file for share generation: ${downloadResponse.status}`);
       }
+
+      const fileBlob = await downloadResponse.blob();
+      const fileText = await fileBlob.text();
+
+      if (!fileText || fileText.trim().length === 0) {
+        throw new Error('Downloaded file is empty');
+      }
+
+      const encryptedPackage: EncryptedFilePackage = JSON.parse(fileText);
+
+      if (!encryptedPackage.encrypted || !encryptedPackage.iv || !encryptedPackage.salt) {
+        throw new Error('Invalid encrypted file package structure');
+      }
+
+      if (!session?.publicKey) {
+        throw new Error('Missing publicKey for share token generation');
+      }
+
+      const encryptionService = getEncryptionService();
+      const generation = await encryptionService.generateShareToken(encryptedPackage, {
+        id: session.did,
+        publicKey: session.publicKey
+      });
+
+      const published = await publishPublicShare({
+        generation,
+        accessToken,
+        accountId,
+        envelopeFileName: `public-envelope-${targetFileId}.json`,
+      });
+      publicToken = published.publicToken;
+      publicContentRef = published.publicContentRef;
     } catch (tokenError: any) {
       console.error('[BackgroundTaskProcessor] Failed to generate share token:', tokenError);
       throw new Error(`Failed to generate share token: ${tokenError.message}`);
+    }
+  } else if (makePublic !== isCurrentlyPublic) {
+    const envelopeObjectId = existingMetadata?.publicContentRef?.objectId;
+    if (envelopeObjectId) {
+      try {
+        await revokePublishedPublicContent({
+          objectId: envelopeObjectId,
+          accessToken,
+          backend: existingMetadata?.publicContentRef?.backend || 'google_drive',
+        });
+      } catch (revokeErr) {
+        console.warn('[BackgroundTaskProcessor] revoke-public failed (continuing unpublish):', revokeErr);
+      }
     }
   }
 
@@ -242,15 +263,15 @@ async function processShareSettingsUpdate(
 
   if (makePublic) {
     updateBody.isPublic = true;
-    // CRITICAL: Always include publicToken when making public
-    if (!publicToken) {
-      throw new Error('Cannot make file public without publicToken');
+    if (!publicToken || !publicContentRef) {
+      throw new Error('Cannot make file public without publicToken and publicContentRef');
     }
     updateBody.publicToken = publicToken;
+    updateBody.publicContentRef = publicContentRef;
   } else if (makePublic !== isCurrentlyPublic) {
     updateBody.isPublic = false;
-    // CRITICAL: Delete publicToken when making private (set to null/undefined)
     updateBody.publicToken = null;
+    updateBody.publicContentRef = null;
   }
   
   if (makePublic || isCurrentlyPublic) {

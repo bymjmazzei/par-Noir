@@ -664,6 +664,9 @@ class ProductionServer {
       scheduleDriveIndexUpdates,
     });
 
+    const { registerPublicContentRoutes } = await import('./server/modules/publicContentRoutes');
+    registerPublicContentRoutes(this.app);
+
     const { setupEngagementRoutes } = await import('./server/modules/engagementRoutes');
     setupEngagementRoutes(this.app, {
       extractAccountId: (account) => this.extractAccountId(account),

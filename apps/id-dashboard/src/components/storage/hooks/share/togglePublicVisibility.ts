@@ -27,6 +27,11 @@ import {
 } from '../../../../types/aggregator';
 import { resolveOwnerApiToken } from '../../../../services/ownerApiToken';
 import { getOwnerApiPnIdentifier, ownerFetch } from '../../../../services/ownerApiService';
+import {
+  publishPublicShareForDashboard,
+  revokePublishedPublicContent,
+} from '../../../../services/publicSharePublish';
+import type { PublicShareGenerationResult } from '@par-noir/aggregator-domain';
 
 export interface TogglePublicVisibilityDeps {
   authenticatedUser: any;
@@ -79,7 +84,19 @@ export async function togglePublicVisibility(
     const isCurrentlyPublic = existingMetadata?.isPublic || false;
 
     if (isCurrentlyPublic) {
-      // Make private - remove from index
+      // Make private - revoke public envelope link (if known), then remove from index
+      const envelopeObjectId = existingMetadata?.publicContentRef?.objectId;
+      if (envelopeObjectId) {
+        try {
+          await revokePublishedPublicContent({
+            objectId: envelopeObjectId,
+            backend: existingMetadata?.publicContentRef?.backend || file.backend || 'google_drive',
+            pnIdentifier: getOwnerApiPnIdentifier() || undefined,
+          });
+        } catch (revokeErr) {
+          console.warn('[handleTogglePublic] revoke-public failed (continuing unpublish):', revokeErr);
+        }
+      }
       await metadataIndexService.removeFromIndex(existingMetadata?.fileId || file.id);
       setFileMetadataMap(prev => {
         const next = new Map(prev);
@@ -248,98 +265,45 @@ export async function togglePublicVisibility(
         isPublic: true
       };
 
-      // Phase 3: Generate share token for public file access
-      let shareToken: ShareToken | undefined = undefined;
+      // Phase 3: Generate slim share token + cloud envelope (never embed shareEncrypted in API)
+      let shareGeneration: PublicShareGenerationResult | undefined;
+      let shareToken: ShareToken | undefined;
 
-      // Try to get share token from cache first (generated during upload)
-      // Try multiple possible cache keys since file ID might be stored differently
-      const candidateKeys: string[] = [];
-      if (file.backend) {
-        candidateKeys.push(makeShareTokenCacheKey(file.backend, file.backendFileId));
-        candidateKeys.push(makeShareTokenCacheKey(file.backend, file.id));
-      }
-
-      for (const key of candidateKeys) {
-        const cached = shareTokenCache.current.get(key);
-        if (cached) {
-          shareToken = cached;
-          break;
+      try {
+        if (!aggregatorService) {
+          throw new Error('Aggregator service not available');
         }
-      }
-
-      if (!shareToken) {
-        // Fallback to legacy cache keys (pre multi-account)
-        shareToken = shareTokenCache.current.get(file.backendFileId) ||
-          shareTokenCache.current.get(file.id) ||
-          shareTokenCache.current.get((file as any).backendFile?.id);
-      }
-
-      if (!shareToken) {
-        // If not in cache, generate it now (for files uploaded before this change)
-        console.log('🔑 [Phase 3] Share token not in cache, generating now...', {
-          backendFileId: file.backendFileId,
-          fileId: file.id,
-          cacheSize: shareTokenCache.current.size
-        });
-        try {
-          // Download the encrypted file to get the EncryptedFilePackage
-          if (!aggregatorService) {
-            throw new Error('Aggregator service not available');
-          }
-          const backend = aggregatorService.getBackend(file.backend);
-          if (backend && backend.isConnected()) {
-            const encryptedBlob = await backend.downloadFile(file.backendFileId);
-            const encryptedPackageJson = await encryptedBlob.text();
-            const encryptedPackage: EncryptedFilePackage = JSON.parse(encryptedPackageJson);
-
-            // Create session object for token generation using stable pN identity
-            // Use authenticatedUser.id if available (stable), otherwise fall back
-            const session: AuthSession = {
-              id: authenticatedUser?.id || resolvedAuth.publicKey,
-              publicKey: resolvedAuth.publicKey,
-              accessToken: authenticatedUser?.accessToken,
-              nickname: authenticatedUser?.nickname
-            };
-
-            // Generate share token using stable pN identity (no passcode needed)
-            console.log('🔑 [Phase 3] Starting token generation...', {
-              fileId: file.id,
-              hasSession: !!session,
-              hasId: !!session.id,
-              hasPublicKey: !!session.publicKey
-            });
-            if (!encryptionService) {
-              throw new Error('Encryption service not available');
-            }
-            shareToken = await encryptionService.generateShareToken(
-              encryptedPackage,
-              session
-            );
-
-            // Cache it for future use
-            const shareTokenKey = makeShareTokenCacheKey(file.backend || activeBackendId || 'google_drive', file.backendFileId);
-            shareTokenCache.current.set(shareTokenKey, shareToken);
-            console.log('💾 [Phase 3] Share token cached for future use');
-
-            // Store token in metadata
-            publicMetadata.publicToken = JSON.stringify(shareToken);
-            console.log('✅ [Phase 3] Share token generated and stored in metadata:', file.id, {
-              tokenHasShareKey: !!shareToken.shareKey,
-              tokenHasShareEncrypted: !!shareToken.shareEncrypted,
-              tokenLength: JSON.stringify(shareToken).length
-            });
-          } else {
-            throw new Error('Backend not connected');
-          }
-        } catch (tokenError) {
-          console.error('❌ [Phase 3] Failed to generate share token:', tokenError);
-          const errorMessage = tokenError instanceof Error ? tokenError.message : 'Unknown error';
-          throw new Error(`Failed to generate share token: ${errorMessage}`);
+        if (!encryptionService) {
+          throw new Error('Encryption service not available');
         }
-      } else {
-        console.log('✅ [Phase 3] Using cached share token');
-        // Store token in metadata
-        publicMetadata.publicToken = JSON.stringify(shareToken);
+        const backend = aggregatorService.getBackend(file.backend);
+        if (!backend || !backend.isConnected()) {
+          throw new Error('Backend not connected');
+        }
+
+        const encryptedBlob = await backend.downloadFile(file.backendFileId);
+        const encryptedPackageJson = await encryptedBlob.text();
+        const encryptedPackage: EncryptedFilePackage = JSON.parse(encryptedPackageJson);
+
+        const session: AuthSession = {
+          id: authenticatedUser?.id || resolvedAuth.publicKey,
+          publicKey: resolvedAuth.publicKey,
+          accessToken: authenticatedUser?.accessToken,
+          nickname: authenticatedUser?.nickname
+        };
+
+        shareGeneration = await encryptionService.generateShareToken(encryptedPackage, session);
+        shareToken = shareGeneration.token;
+
+        const shareTokenKey = makeShareTokenCacheKey(
+          file.backend || activeBackendId || 'google_drive',
+          file.backendFileId
+        );
+        shareTokenCache.current.set(shareTokenKey, shareToken);
+      } catch (tokenError) {
+        console.error('❌ [Phase 3] Failed to generate share material:', tokenError);
+        const errorMessage = tokenError instanceof Error ? tokenError.message : 'Unknown error';
+        throw new Error(`Failed to generate share token: ${errorMessage}`);
       }
 
       // Index the file - pass pN identifier so metadata folder is created inside pN folder
@@ -376,6 +340,42 @@ export async function togglePublicVisibility(
         console.warn('Failed to generate pN identifier for metadata folder:', err);
       }
 
+      // Upload envelope as sibling cloud object and mark anyone-readable
+      if (!shareGeneration || !aggregatorService) {
+        throw new Error('Share generation incomplete');
+      }
+      try {
+        const backend = aggregatorService.getBackend(file.backend);
+        let folderId: string | undefined;
+        try {
+          folderId = await backend?.getOrCreateFolder?.('par Noir', metadataPnIdentifier);
+        } catch {
+          folderId = undefined;
+        }
+
+        const published = await publishPublicShareForDashboard({
+          generation: shareGeneration,
+          aggregatorService,
+          backendId: file.backend || activeBackendId || 'google_drive',
+          folderId,
+          pnIdentifier: metadataPnIdentifier,
+          backend: file.backend || 'google_drive',
+          envelopeFileName: `public-envelope-${file.backendFileId || file.id}.json`,
+        });
+
+        publicMetadata.publicToken = published.publicToken;
+        publicMetadata.publicContentRef = published.publicContentRef;
+        console.log('✅ [Phase 3] Public share materialized (slim token + publicContentRef)', {
+          fileId: file.id,
+          hasShareKey: !!shareToken?.shareKey,
+          envelopeObjectId: published.publicContentRef.objectId,
+        });
+      } catch (publishErr) {
+        console.error('❌ [Phase 3] Failed to materialize public share:', publishErr);
+        const errorMessage = publishErr instanceof Error ? publishErr.message : 'Unknown error';
+        throw new Error(`Failed to publish public content: ${errorMessage}`);
+      }
+
       // OPTIMIZATION: Run API metadata operations in parallel
       // POST and PUT are independent and can execute simultaneously
       const targetFileId = publicMetadata.fileId || file.backendFileId || file.id;
@@ -409,6 +409,7 @@ export async function togglePublicVisibility(
               {
                 isPublic: publicMetadata.isPublic,
                 publicToken: publicMetadata.publicToken,
+                publicContentRef: publicMetadata.publicContentRef,
                 name: publicMetadata.name || file.name,
                 description: publicMetadata.description || '',
                 keywords: publicMetadata.keywords || [],
@@ -536,7 +537,8 @@ export async function togglePublicVisibility(
                 },
                 tags: publicMetadata.keywords || [],
                 description: publicMetadata.description || '',
-                publicToken: shareToken ? (typeof shareToken === 'string' ? shareToken : JSON.stringify(shareToken)) : undefined,
+                publicToken: publicMetadata.publicToken,
+                publicContentRef: publicMetadata.publicContentRef,
                 engagement: publicMetadata.engagement
               };
 

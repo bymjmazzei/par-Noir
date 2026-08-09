@@ -51,7 +51,12 @@ export interface CompanionMetadata {
   metadata?: any;
   
   // Share token and thumbnail
-  publicToken?: any; // Share token for public files (ShareToken object)
+  publicToken?: any; // Slim share token for public files (no shareEncrypted)
+  publicContentRef?: {
+    backend: string;
+    objectId: string;
+    publicUrl: string;
+  };
   thumbnail?: string; // Base64 data URL or URL for thumbnail/preview
   thumbnailFileId?: string; // Reference to thumbnail file used in feeds
   mainFileId?: string; // Reference to main file (for thumbnails) - the main file is for owner download only

@@ -1,7 +1,9 @@
 import { PNOAuthService } from './pnOAuthService';
 import { EncryptionManager } from '../utils/encryptionManager';
 import { getEncryptionService } from '../services/encryptionService';
-import { getOwnerApiHeaders } from './ownerApiHeaders';
+import { getOwnerApiHeaders, ownerApiHeadersAsync } from './ownerApiHeaders';
+import { publishPublicShare } from './publicSharePublish';
+import type { PublicShareGenerationResult } from '@par-noir/aggregator-domain';
 
 import { API_ENDPOINT } from '../config/api';
 
@@ -78,11 +80,11 @@ export async function createCollection(
       },
     };
 
-    // Generate share token
-    let shareToken: any = undefined;
+    // Generate share material (slim token + envelope)
+    let generation: PublicShareGenerationResult | undefined = undefined;
     try {
       const encryptionService = getEncryptionService();
-      shareToken = await encryptionService.generateShareToken(
+      generation = await encryptionService.generateShareToken(
         packageData,
         {
           id: session.did,
@@ -111,7 +113,7 @@ export async function createCollection(
     const encryptedFileName = `${fileName}.encrypted`;
     const uploadResponse = await fetch(`${API_ENDPOINT}/api/drive/files`, {
       method: 'POST',
-      headers: getOwnerApiHeaders({ 'Content-Type': 'application/json' }),
+      headers: await ownerApiHeadersAsync(accessToken),
       body: JSON.stringify({
         fileData: base64File,
         fileName: encryptedFileName,
@@ -132,6 +134,20 @@ export async function createCollection(
       throw new Error('Upload succeeded but no file ID returned');
     }
 
+    const isPublic = metadata?.isPublic ?? true;
+    let publicToken: string | undefined;
+    let publicContentRef: { backend: string; objectId: string; publicUrl: string } | undefined;
+    if (isPublic && generation) {
+      const published = await publishPublicShare({
+        generation,
+        accessToken,
+        accountId,
+        envelopeFileName: `public-envelope-${fileId}.json`,
+      });
+      publicToken = published.publicToken;
+      publicContentRef = published.publicContentRef;
+    }
+
     // Create metadata entry
     const metadataResponse = await fetch(`${API_ENDPOINT}/api/aggregator/metadata-index/${fileId}`, {
       method: 'PUT',
@@ -142,8 +158,9 @@ export async function createCollection(
         keywords: metadata?.keywords || [],
         tags: metadata?.tags || [],
         fileType: 'collection',
-        isPublic: metadata?.isPublic ?? true,
-        publicToken: shareToken ? JSON.stringify(shareToken) : undefined,
+        isPublic,
+        publicToken,
+        publicContentRef,
         uploadDate: new Date().toISOString(),
         collection: {
           collectionFileIds: collectionData.collectionFileIds

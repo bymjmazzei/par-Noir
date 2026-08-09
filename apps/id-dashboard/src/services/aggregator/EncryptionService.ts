@@ -114,18 +114,17 @@ export class EncryptionService {
   }
 
   /**
-   * Generate share token for public file
-   * Uses stable pN identity (id + publicKey) for consistent decryption
+   * Generate public share material: slim token (API) + ciphertext envelope (cloud only).
+   * Never embed shareEncrypted in the API token.
    */
   async generateShareToken(
     encryptedPackage: EncryptedFilePackage,
     session: AuthSession
-  ): Promise<ShareToken> {
+  ): Promise<import('@par-noir/aggregator-domain').PublicShareGenerationResult> {
     if (!session.id || !session.publicKey) {
       throw new Error('Missing required session data: id and publicKey are required');
     }
 
-    // First decrypt the original file using stable pN identity
     const encryptionManager = new EncryptionManager();
     const decrypted = await encryptionManager.decrypt(
       encryptedPackage.encrypted,
@@ -135,12 +134,9 @@ export class EncryptionService {
       session.publicKey
     );
 
-    // Generate a new symmetric key for sharing
     const shareKeyArray = crypto.getRandomValues(new Uint8Array(32));
-    // Convert Uint8Array to base64 safely without spreading large arrays
     const shareKeyBase64 = btoa(Array.from(shareKeyArray).map(b => String.fromCharCode(b)).join(''));
 
-    // Re-encrypt with share key
     const shareIv = crypto.getRandomValues(new Uint8Array(12));
     const key = await crypto.subtle.importKey(
       'raw',
@@ -156,35 +152,35 @@ export class EncryptionService {
       decrypted
     );
 
-    // Convert to base64 safely without spreading large arrays
     const shareEncryptedUint8 = new Uint8Array(shareEncrypted);
     const shareEncryptedBase64 = btoa(Array.from(shareEncryptedUint8).map(b => String.fromCharCode(b)).join(''));
     const shareIvBase64 = btoa(Array.from(shareIv).map(b => String.fromCharCode(b)).join(''));
-
-    // Generate a salt for the share token (for consistency with aggregator browser expectations)
     const saltArray = crypto.getRandomValues(new Uint8Array(16));
     const saltBase64 = btoa(Array.from(saltArray).map(b => String.fromCharCode(b)).join(''));
 
-    return {
+    const envelope = {
+      encrypted: shareEncryptedBase64,
+      iv: shareIvBase64,
+      salt: saltBase64,
+    };
+
+    const token: ShareToken = {
       fileId: encryptedPackage.metadata?.originalName || '',
       contentKey: {
         encrypted: '',
         wrappedWith: '',
         iv: ''
       },
-      expiresAt: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString(), // 1 year expiry
+      expiresAt: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString(),
       permissions: ['read'],
       metadata: {
         title: encryptedPackage.metadata?.originalName,
         description: encryptedPackage.metadata?.description
       },
       shareKey: shareKeyBase64,
-      shareEncrypted: JSON.stringify({
-        encrypted: shareEncryptedBase64,
-        iv: shareIvBase64,
-        salt: saltBase64
-      })
     };
+
+    return { token, envelope };
   }
 }
 

@@ -210,6 +210,7 @@ export class MetadataIndexService {
         isPublic: publicMetadata.isPublic || false,
         uploadDate: publicMetadata.uploadDate || new Date().toISOString(),
         publicToken: publicMetadata.publicToken,
+        publicContentRef: publicMetadata.publicContentRef,
         indexingPermissions: publicMetadata.indexingPermissions,
         pnIdentifier,
         // CRITICAL: Include textPost/thought content so thoughts render in feeds

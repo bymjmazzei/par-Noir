@@ -10,6 +10,8 @@ import { getEncryptionService } from './encryptionService';
 import { API_ENDPOINT } from '../config/api';
 import { uploadStorageFile } from './storageApiClient';
 import { getOwnerApiHeaders } from './ownerApiHeaders';
+import { publishPublicShare } from './publicSharePublish';
+import type { PublicContentRef, PublicShareGenerationResult } from '@par-noir/aggregator-domain';
 
 interface EncryptedFilePackage {
   encrypted: string;
@@ -20,6 +22,24 @@ interface EncryptedFilePackage {
     originalSize: number;
     originalMimeType: string;
   };
+}
+
+/** When public: upload envelope + ensure-public. Private: omit token fields. */
+async function publicShareFields(
+  generation: PublicShareGenerationResult | undefined,
+  isPublic: boolean,
+  accessToken: string,
+  accountId: string,
+  envelopeFileName: string
+): Promise<{ publicToken?: string; publicContentRef?: PublicContentRef }> {
+  if (!isPublic || !generation) return {};
+  const published = await publishPublicShare({
+    generation,
+    accessToken,
+    accountId,
+    envelopeFileName,
+  });
+  return { publicToken: published.publicToken, publicContentRef: published.publicContentRef };
 }
 
 /**
@@ -103,8 +123,8 @@ async function processFileUpload(
 
   let fileId: string;
   let thumbnailFileId: string | undefined;
-  let thumbnailShareToken: any = undefined;
-  let shareToken: any = undefined;
+  let thumbnailShareToken: PublicShareGenerationResult | undefined = undefined;
+  let shareToken: PublicShareGenerationResult | undefined = undefined;
   let mainFileIsEncrypted = true;
 
   if (skipEncrypt) {
@@ -247,19 +267,18 @@ async function processFileUpload(
 
   // Only create thumbnail metadata if we have a thumbnail
   if (thumbnailFileId) {
-    // Only store publicToken if file is public (security: private files shouldn't have share tokens on server)
     const isPublic = task.metadata?.isPublic || false;
-    const publicTokenString = (isPublic && thumbnailShareToken) ? JSON.stringify(thumbnailShareToken) : undefined;
-    if (!publicTokenString && isPublic && import.meta.env.DEV) {
+    const shareFields = await publicShareFields(
+      thumbnailShareToken,
+      isPublic,
+      accessToken,
+      task.accountId,
+      `public-envelope-${thumbnailFileId}.json`
+    );
+    if (!shareFields.publicToken && isPublic && import.meta.env.DEV) {
       console.warn('[UploadProcessor] Warning: Public file metadata created without publicToken - thumbnail will not be decryptable in public feed');
-    } else if (publicTokenString && import.meta.env.DEV) {
-      console.log('[UploadProcessor] Creating thumbnail metadata with publicToken:', {
-        thumbnailFileId,
-        hasPublicToken: !!publicTokenString,
-        isPublic: isPublic
-      });
     }
-    
+
     try {
       await createMetadata(thumbnailFileId, {
         name: `thumb_${file.name}`,
@@ -268,7 +287,7 @@ async function processFileUpload(
         tags: task.metadata?.tags || [],
         fileType: 'image', // Thumbnails are always images
         isPublic: isPublic,
-        publicToken: publicTokenString, // Only set if public
+        ...shareFields,
         uploadDate: new Date().toISOString(),
         isNSFW: task.metadata?.isNSFW || false,
         mainFileId: fileId,
@@ -281,14 +300,22 @@ async function processFileUpload(
     }
   } else {
     // Fallback: if no thumbnail, create metadata for main file (e.g. audio without thumb)
+    const isPublic = task.metadata?.isPublic || false;
+    const shareFields = await publicShareFields(
+      mainFileIsEncrypted ? shareToken : undefined,
+      isPublic,
+      accessToken,
+      task.accountId,
+      `public-envelope-${fileId}.json`
+    );
     await createMetadata(fileId, {
       name: file.name,
       description: task.metadata?.description || '',
       keywords: task.metadata?.keywords || [],
       tags: task.metadata?.tags || [],
       fileType,
-      isPublic: task.metadata?.isPublic || false,
-      publicToken: mainFileIsEncrypted && shareToken ? JSON.stringify(shareToken) : undefined,
+      isPublic,
+      ...shareFields,
       isEncrypted: mainFileIsEncrypted,
       uploadDate: new Date().toISOString(),
       isNSFW: task.metadata?.isNSFW || false,
@@ -365,8 +392,8 @@ async function processTextPostUpload(
     },
   };
 
-  // Generate share token
-  let shareToken: any = undefined;
+  // Generate share material (slim token + envelope)
+  let shareToken: PublicShareGenerationResult | undefined = undefined;
   try {
     const encryptionService = getEncryptionService();
     shareToken = await encryptionService.generateShareToken(packageData, {
@@ -401,7 +428,7 @@ async function processTextPostUpload(
     },
   };
 
-  let thumbnailShareToken: any = undefined;
+  let thumbnailShareToken: PublicShareGenerationResult | undefined = undefined;
   try {
     const encryptionService = getEncryptionService();
     thumbnailShareToken = await encryptionService.generateShareToken(thumbnailPackage, {
@@ -426,11 +453,19 @@ async function processTextPostUpload(
 
   // Step 3: Create metadata for THUMBNAIL only (main file has no metadata - only used for downloads)
   const titleFromContent = (task.textPost.content || '').replace(/<[^>]*>/g, '').split(/\n|<br\s*\/?>/i)[0]?.trim().substring(0, 100) || 'Thought';
+  const isPublic = task.metadata?.isPublic || false;
 
   // CRITICAL: Only create metadata for the THUMBNAIL, not the main file
   // Main file is only for owner downloads - it has no metadata entry
   // Thumbnail is the public face of the file and has the ONE metadata entry
   if (thumbnailFileId) {
+    const shareFields = await publicShareFields(
+      thumbnailShareToken,
+      isPublic,
+      accessToken,
+      task.accountId,
+      `public-envelope-${thumbnailFileId}.json`
+    );
     await createMetadata(thumbnailFileId, {
       name: `thumb_${fileName.replace('.thought', '.png')}`,
       title: task.metadata?.title || titleFromContent,
@@ -438,10 +473,10 @@ async function processTextPostUpload(
       keywords: task.metadata?.keywords || task.metadata?.tags || [],
       tags: task.metadata?.tags || task.metadata?.keywords || [],
       fileType: 'thought-thumbnail',
-      isPublic: task.metadata?.isPublic || false,
+      isPublic,
       isThoughtThumbnail: true,
       mainFileId: fileId, // Reference to main file for downloads
-      publicToken: thumbnailShareToken ? JSON.stringify(thumbnailShareToken) : undefined,
+      ...shareFields,
       uploadDate: new Date().toISOString(),
       isNSFW: task.metadata?.isNSFW || false,
       textPost: thoughtData.textPost,
@@ -449,6 +484,13 @@ async function processTextPostUpload(
     }, accessToken);
   } else {
     // Fallback: if no thumbnail, create metadata for main file (shouldn't happen for thoughts)
+    const shareFields = await publicShareFields(
+      shareToken,
+      isPublic,
+      accessToken,
+      task.accountId,
+      `public-envelope-${fileId}.json`
+    );
     await createMetadata(fileId, {
       name: fileName,
       title: task.metadata?.title || titleFromContent,
@@ -456,8 +498,8 @@ async function processTextPostUpload(
       keywords: task.metadata?.keywords || task.metadata?.tags || [],
       tags: task.metadata?.tags || task.metadata?.keywords || [],
       fileType: 'thought',
-      isPublic: task.metadata?.isPublic || false,
-      publicToken: shareToken ? JSON.stringify(shareToken) : undefined,
+      isPublic,
+      ...shareFields,
       uploadDate: new Date().toISOString(),
       isNSFW: task.metadata?.isNSFW || false,
       textPost: thoughtData.textPost,
@@ -566,7 +608,7 @@ async function processMultiPageUpload(
       },
     };
 
-    let thumbnailShareToken: any = undefined;
+    let thumbnailShareToken: PublicShareGenerationResult | undefined = undefined;
     try {
       const encryptionService = getEncryptionService();
       thumbnailShareToken = await encryptionService.generateShareToken(thumbnailPackage, {
@@ -590,15 +632,16 @@ async function processMultiPageUpload(
   // Create a SEPARATE collection thumbnail file (not one of the page thumbnails)
   // This collection thumbnail uses the first page thumbnail's image as its content
   const thumbnailFileIds = thumbnailResults.map(r => r.fileId).filter(Boolean) as string[];
+  const { slimPublicTokenJson } = await import('@par-noir/aggregator-domain');
   const thumbnailTokens: Record<string, string> = {};
   thumbnailResults.forEach(r => {
     if (r.fileId && r.shareToken) {
-      thumbnailTokens[r.fileId] = JSON.stringify(r.shareToken);
+      thumbnailTokens[r.fileId] = slimPublicTokenJson(r.shareToken.token);
     }
   });
 
   let collectionThumbnailFileId: string | undefined;
-  let collectionThumbnailShareToken: any = undefined;
+  let collectionThumbnailShareToken: PublicShareGenerationResult | undefined = undefined;
 
   // Create separate collection thumbnail file using first page thumbnail's image
   if (thumbnailResults.length > 0 && thumbnails[0]?.blob) {
@@ -640,7 +683,7 @@ async function processMultiPageUpload(
   if (collectionThumbnailFileId) {
     const page = task.pages![0];
     const titleFromContent = (page.content || '').replace(/<[^>]*>/g, '').split(/\n|<br\s*\/?>/i)[0]?.trim().substring(0, 100) || 'Thought';
-    
+    // Collection page thumbs start private; make-public path materializes envelope later.
     await createMetadata(collectionThumbnailFileId, {
       name: `thumb_${task.metadata?.name || 'thought-collection'}.png`,
       title: task.metadata?.title || titleFromContent,
@@ -652,7 +695,6 @@ async function processMultiPageUpload(
       isThoughtThumbnail: true,
       isPartOfCollection: true,
       mainFileId: thoughtFileId, // Reference to main file for downloads
-      publicToken: collectionThumbnailShareToken ? JSON.stringify(collectionThumbnailShareToken) : undefined,
       uploadDate: new Date().toISOString(),
       isNSFW: task.metadata?.isNSFW || false,
       // Include collection data - all page thumbnail IDs
@@ -724,17 +766,6 @@ async function processPDFUpload(
     },
   };
 
-  let shareToken: any = undefined;
-  try {
-    const encryptionService = getEncryptionService();
-    shareToken = await encryptionService.generateShareToken(packageData, {
-      id: session.did,
-      publicKey: publicKey
-    });
-  } catch (tokenError) {
-    if (import.meta.env.DEV) console.warn('Share token generation failed:', tokenError);
-  }
-
   uploadQueueService.updateTaskStatus(task.id, 'uploading');
   uploadQueueService.updateTaskProgress(task.id, 80);
 
@@ -744,7 +775,7 @@ async function processPDFUpload(
 
   uploadQueueService.updateTaskProgress(task.id, 90);
 
-  // Create metadata for main file
+  // Create metadata for main file (private until share settings make it public)
   await createMetadata(fileId, {
     name: pdfFile.name,
     description: task.metadata?.description || '',
@@ -752,7 +783,6 @@ async function processPDFUpload(
     tags: task.metadata?.tags || [],
     fileType: 'document',
     isPublic: false,
-    publicToken: shareToken ? JSON.stringify(shareToken) : undefined,
     uploadDate: new Date().toISOString(),
     isNSFW: task.metadata?.isNSFW || false,
   }, accessToken);

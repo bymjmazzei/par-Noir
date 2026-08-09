@@ -6,6 +6,7 @@
 import { getEncryptionService, EncryptedFilePackage } from './encryptionService';
 import { API_ENDPOINT } from '../config/api';
 import { getOwnerApiHeaders } from './ownerApiHeaders';
+import { slimPublicTokenJson, type PublicShareGenerationResult } from '@par-noir/aggregator-domain';
 
 function blobToBase64(blob: Blob): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -54,10 +55,11 @@ async function uploadFile(
 async function createMetadataForThumbnail(
   fileId: string,
   fileName: string,
-  shareToken: any,
+  _shareToken: PublicShareGenerationResult | undefined,
   accountId: string,
   _accessToken: string
 ): Promise<void> {
+  // PDF page thumbs start private; make-public materializes envelope + slim token.
   await fetch(`${API_ENDPOINT}/api/aggregator/metadata-index/${fileId}?accountId=${accountId}`, {
     method: 'PUT',
     headers: getOwnerApiHeaders({ 'Content-Type': 'application/json' }),
@@ -65,7 +67,6 @@ async function createMetadataForThumbnail(
       name: `thumb_${fileName}`,
       fileType: 'image',
       isPublic: false,
-      publicToken: shareToken ? JSON.stringify(shareToken) : undefined,
     }),
   });
 }
@@ -154,7 +155,7 @@ export async function processPDFPagesParallel(params: ProcessPDFPagesParallelPar
       },
     };
 
-    let shareToken: unknown = undefined;
+    let shareToken: PublicShareGenerationResult | undefined = undefined;
     try {
       shareToken = await encryptionService.generateShareToken(thumbnailPackage, {
         id: session.did,
@@ -195,7 +196,7 @@ export async function processPDFPagesParallel(params: ProcessPDFPagesParallelPar
 
   await Promise.all(metadataPromises);
 
-  // Build results
+  // Build results — slim tokens only (no envelope / shareEncrypted)
   const thumbnailFileIds: string[] = [];
   const thumbnailTokens: Record<string, string> = {};
 
@@ -203,7 +204,7 @@ export async function processPDFPagesParallel(params: ProcessPDFPagesParallelPar
     if (fileId) {
       thumbnailFileIds.push(fileId);
       if (shareToken) {
-        thumbnailTokens[fileId] = JSON.stringify(shareToken);
+        thumbnailTokens[fileId] = slimPublicTokenJson(shareToken.token);
       }
     }
   });

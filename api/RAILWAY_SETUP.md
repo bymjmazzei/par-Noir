@@ -132,6 +132,7 @@ Optional bot DMCA screening runs before public indexing. Configure on the **API*
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
 | `GEMINI_API_KEY` | No | — | Google AI Studio key. If unset, DMCA checks **fail open** (content allowed). |
+| `GOOGLE_DRIVE_API_KEY` | Recommended for public feed | — | Platform Google API key for OAuth-less public file `alt=media` fetch (not owner OAuth). Used by blind public-content proxy when `uc?export=download` is insufficient. |
 | `GEMINI_MODEL` | No | `gemini-2.0-flash` | Generative model for DMCA checks. Override if Google deprecates the default. |
 | `DMCA_GATE_FAIL_MODE` | No | `open` | `open` = allow on API errors; `closed` = send to Prism review queue on errors. |
 

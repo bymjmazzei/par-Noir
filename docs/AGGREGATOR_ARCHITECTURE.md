@@ -1,92 +1,77 @@
-# Aggregator Architecture: Hybrid Cache + Reconcile
+# Aggregator Architecture: Hybrid Cache + Public Content Refs
 
 ## Overview
 
-The aggregator uses a **hybrid cache**: each owner's **public-file-index** (Drive Sheets or portable storage) is membership truth; PostgreSQL is a **performance cache** for feeds and search. A background **reconcile job** removes cache rows that are no longer public in the owner's index.
+The aggregator uses a **hybrid cache**: each owner's **public-file-index** (Drive Sheets or portable storage) is membership truth for *what is public*; PostgreSQL is a **performance cache** of **catalog metadata + shareKey + `publicContentRef`**. Ciphertext bytes live on the **owner's cloud**, not in the API.
 
-## Architecture Diagram
+Under **device cloud custody**, the server holds no long-lived Google OAuth secrets. Background credential crawl reconcile is skipped. Dead links are cleared by:
+
+1. **Blind proxy 404/410** on `GET /api/aggregator/public-content/:fileId` → attested `removeMetadata`
+2. **Owner-device reconcile** after Drive layout init (caller's `X-PN-Cloud-Access-Token` only)
 
 ```
 ┌─────────────────────────┐
-│  Owner storage          │ ← Membership truth (user-owned)
-│  public-file-index      │
+│  Owner storage          │ ← Ciphertext + public-file-index
+│  (anyone-readable ref)  │
 └───────────┬─────────────┘
-            │
-            │ Reconcile job (every 5 min + POST /metadata-index/reconcile)
-            │ DB-scoped: only identities with public cache rows
-            │
+            │ ensure/revoke with owner token
+            │ fetchPublicBytes OAuth-less
             ▼
 ┌─────────────────────────┐
-│   PostgreSQL            │ ← Performance cache
-│   aggregator_*          │
+│   PostgreSQL            │ ← metadata + shareKey + publicContentRef
+│   aggregator_*          │    (never shareEncrypted file bytes)
 └───────────┬─────────────┘
-            │
-            │ GET /api/aggregator/metadata-index
+            │ GET metadata-index / public-content
             ▼
 ┌─────────────────────────┐
-│  aggregator-browser     │
+│  aggregator-browser     │ ← decrypt client-side with shareKey
 └─────────────────────────┘
 ```
 
-## Core Principles
+## Core principles
 
-### 1. Owner public index is membership truth
+### 1. Owner public index is membership truth (listing)
 
-- Public file IDs live in each user's `public-file-index` (and content-class indexes where used).
-- Drive path: `par Noir - pn-{hash}/_metadata/public-file-index.xlsx`
-- Portable path: same logical index on the user's social cloud provider.
+Public file IDs live in each user's `public-file-index`. Drive path: `par Noir - pn-{hash}/_metadata/public-file-index.xlsx`.
 
-### 2. Database is a performance cache
+### 2. Database is a metadata + key + ref cache
 
 - Tables: `aggregator_media`, `aggregator_thoughts`, `aggregator_collections`
-- Fast queries for feeds, search, and filtering.
-- **Not authoritative** for membership: if the index no longer lists a file, reconcile removes the cache row.
+- Stores slim `publicToken` (shareKey/iv metadata only) and `publicContentRef` `{ backend, objectId, publicUrl }`
+- **Rejects** publish bodies that embed `shareEncrypted` ciphertext
+- **Not** a content CDN
 
-### 3. Reconcile keeps the cache aligned
+### 3. Public media delivery
 
-- **Frequency**: every 5 minutes (plus manual `POST /api/aggregator/metadata-index/reconcile`)
-- **Scope**: only `pn_identifier`s that currently have public rows in the cache
-- **Per user**:
-  1. Read owner's public index via stored OAuth / portable APIs
-  2. If folder/index missing or empty public set → `removeAllMetadataForUser`
-  3. Else remove cache rows whose `fileId` is not in the index
-- **Auth errors**: skip user (do not purge) until credentials work again
+1. Make public: client builds share envelope, uploads it to owner cloud, `POST .../ensure-public` (owner token via `resolveOwnerDriveToken`), submits slim token + ref to API
+2. Reader: `GET /api/aggregator/public-content/:fileId` streams envelope **without** peer OAuth; browser decrypts with `shareKey`
+3. Drive OAuth-less fetch: `publicUrl` first; optional platform `GOOGLE_DRIVE_API_KEY` for `alt=media` (not owner OAuth). Phase 0 observed: Drive API without key → 403
 
-## Data Flow
+### 4. No cross-user cloud access
 
-### Upload / make public (API)
+Routes act only on the authenticated pn's cloud. Cross-user `ownerPnIdentifier` Drive media returns **409 `use_public_content`**. Peer private delivery uses the mailbox rail (unrelated to public feed).
 
-1. API updates PostgreSQL cache
-2. API updates owner's public index (Drive Sheets or portable)
-3. Index response cache invalidated
+### 5. Dead-link clearing
 
-### Delete via app
+| Path | Behavior |
+|------|----------|
+| App delete/unpublish | Revoke anyone + remove aggregator row |
+| Cloud UI delete | Next proxy fetch 404 → purge; or owner unlock reconcile |
+| Server crawl | Skipped when `DEVICE_CLOUD_CUSTODY` on |
 
-1. `DELETE /api/drive/files/:fileId` removes Drive blobs, index entries, and cache rows
-2. Immediate removal from public feed (no wait for reconcile)
-
-### Manual folder delete in Drive / cloud
-
-1. Owner's public index disappears or no longer lists files
-2. Next reconcile run removes stale cache rows (within ~5 minutes)
-
-## API Endpoints
+## API endpoints (public content)
 
 | Endpoint | Purpose |
 |----------|---------|
-| `POST /api/aggregator/metadata-index` | Add/update cache + index |
-| `PUT /api/aggregator/metadata-index/:fileId` | Update cache + index |
-| `DELETE /api/drive/files/:fileId` | Delete storage + index + cache |
-| `POST /api/aggregator/metadata-index/reconcile` | Manual reconcile |
-| `POST /api/aggregator/metadata-index/sync` | Portable index upsert + reconcile |
-| `DELETE /api/aggregator/metadata-index/user/:pnIdentifier` | Manual purge one user |
+| `POST /api/aggregator/public-content/:objectId/ensure-public` | Owner: set anyone-readable; return `publicContentRef` |
+| `POST /api/aggregator/public-content/:objectId/revoke-public` | Owner: revoke anyone |
+| `GET /api/aggregator/public-content/:fileId` | Blind ciphertext proxy; 404 purge |
+| `POST /api/aggregator/metadata-index` | Catalog upsert (no embedded ciphertext) |
+| `DELETE /api/aggregator/metadata-index/:fileId` | Owner delete |
+| `DELETE /api/aggregator/metadata-index/user/:pnIdentifier` | Owner purge own rows (auth required) |
 
 ## Safety
 
-- **Revoked OAuth**: reconcile skips that user rather than mass-deleting the feed.
-- **No per-request Drive scans**: reconcile is background-only; feed reads use the cache.
-
-## Future
-
-- Optional per-file blob existence checks (Phase 2)
-- `storage_verified_at` column for read-path gating at scale
+- One Drive token resolver: `resolveOwnerDriveToken` ([diagnostic-discipline](../.cursor/rules/diagnostic-discipline.mdc))
+- No silent peer credential builds (`check-token-resolver-boundary.sh`)
+- Revoked OAuth / missing cloud token: owner routes return `cloud_token_required` (409), do not invent tokens

@@ -8,7 +8,8 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { useVerticalSwipe } from '../hooks/useVerticalSwipe';
 import { PNOAuthService } from '../services/pnOAuthService';
 import { EncryptionManager } from '../utils/encryptionManager';
-import { decryptWithToken, ShareToken } from '../utils/tokenDecryption';
+import { ShareToken } from '../utils/tokenDecryption';
+import { decryptPublicFeedMedia } from '../utils/publicMediaDecrypt';
 import { useViewportHeightCSS } from '../hooks/useViewportHeight';
 import { calculateMediaScaling, getContainerDimensions, type MediaDimensions } from '../utils/mediaScaling';
 import { API_ENDPOINT } from '../config/api';
@@ -212,7 +213,7 @@ export function CollectionFeed({
           if (publicToken) {
             try {
               const token: ShareToken = typeof publicToken === 'string' ? JSON.parse(publicToken) : publicToken;
-              const decryptedBlob = await decryptWithToken(token);
+              const decryptedBlob = await decryptPublicFeedMedia(fileId, token);
               const text = await decryptedBlob.text();
               const thoughtData = JSON.parse(text);
               content = {

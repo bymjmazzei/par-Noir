@@ -327,6 +327,15 @@ export interface PublicMetadata {
   publicRankScore?: number;
 
   publicToken?: any;
+  /**
+   * Pointer to anonymously readable share-ciphertext on the owner's cloud.
+   * Required for public media under the public-link cache model.
+   */
+  publicContentRef?: {
+    backend: string;
+    objectId: string;
+    publicUrl: string;
+  };
   isPublic: boolean;
   sameAs?: string[];
 

@@ -29,6 +29,12 @@ export interface PublicMetadataSubmission {
   uploadDate: string;
   /** String or ShareToken-like object (stringified before POST) */
   publicToken?: string | unknown;
+  /** Pointer to anonymously readable share-ciphertext on the owner's cloud */
+  publicContentRef?: {
+    backend: string;
+    objectId: string;
+    publicUrl: string;
+  };
   indexingPermissions?: {
     mode?: 'all' | 'custom' | 'none';
     allowed?: string[];

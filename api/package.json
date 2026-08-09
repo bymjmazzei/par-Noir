@@ -28,6 +28,7 @@
     "@aws-sdk/client-s3": "^3.750.0",
     "@azure/storage-blob": "^12.27.0",
     "@google/generative-ai": "^0.24.1",
+    "@par-noir/aggregator-domain": "file:../packages/aggregator-domain",
     "@par-noir/device-auth": "file:../packages/device-auth",
     "@par-noir/dm-crypto": "file:../packages/dm-crypto",
     "@par-noir/identity-migration": "file:../packages/identity-migration",

@@ -6,7 +6,8 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import type { IndexedFile } from '../types/aggregator';
 import type { MediaDimensions } from '../utils/mediaScaling';
-import { decryptWithToken, type ShareToken } from '../utils/tokenDecryption';
+import type { ShareToken } from '../utils/tokenDecryption';
+import { decryptPublicFeedMedia } from '../utils/publicMediaDecrypt';
 import { createThumbnailFromBlob, createVideoThumbnailFromBlob } from '../utils/thumbnailUtils';
 import { PNOAuthService } from '../services/pnOAuthService';
 import { getOwnerApiHeaders } from '../services/ownerApiHeaders';
@@ -105,7 +106,7 @@ export function useThumbnailsAndMedia({
           let token: ShareToken;
           try {
             token = typeof file.publicToken === 'string' ? JSON.parse(file.publicToken) : file.publicToken;
-            if (!token || !token.shareKey || !token.shareEncrypted) throw new Error('Invalid token structure');
+            if (!token || !token.shareKey) throw new Error('Invalid token structure');
           } catch (e) {
             if (import.meta.env.DEV) console.error(`❌ [Feed] Failed to parse/validate token for ${file.fileId}:`, e);
             const n = new Set(generatingThumbnailsRef.current);
@@ -115,7 +116,11 @@ export function useThumbnailsAndMedia({
             continue;
           }
 
-          const decryptedBlob = await decryptWithToken(token);
+          const decryptedBlob = await decryptPublicFeedMedia(
+            file.fileId,
+            token,
+            file.name || file.title
+          );
           const thumbnailUrl = isVideo
             ? await createVideoThumbnailFromBlob(decryptedBlob, 300, 300)
             : await createThumbnailFromBlob(decryptedBlob, 300, 300);
@@ -193,7 +198,7 @@ export function useThumbnailsAndMedia({
             } catch {
               return;
             }
-            videoBlob = await decryptWithToken(token);
+            videoBlob = await decryptPublicFeedMedia(file.fileId, token, file.name || file.title);
           }
           const videoUrl = URL.createObjectURL(videoBlob);
           setVideoBlobs((prev) => {

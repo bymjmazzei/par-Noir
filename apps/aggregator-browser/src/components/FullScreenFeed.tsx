@@ -710,8 +710,8 @@ export function FullScreenFeed({
           
           // Decrypt using token directly (token contains shareEncrypted data)
           // No need to fetch from API - the token has everything we need
-          const { decryptWithToken } = await import('../utils/tokenDecryption');
-          const decryptedBlob = await decryptWithToken(token);
+          const { decryptPublicFeedMedia } = await import('../utils/publicMediaDecrypt');
+          const decryptedBlob = await decryptPublicFeedMedia(fileId, token);
           const thumbnailUrlObj = URL.createObjectURL(decryptedBlob);
           
           setThumbnails(prev => {
@@ -796,7 +796,7 @@ export function FullScreenFeed({
       // Load thumbnails asynchronously
       (async () => {
         try {
-          const { decryptWithToken } = await import('../utils/tokenDecryption');
+          const { decryptPublicFeedMedia } = await import('../utils/publicMediaDecrypt');
           
           // FIRST: Try to use tokens from collection data (fastest - no API call)
           const thumbnailsWithTokens = missingThumbnailIds.filter((cfId: string) => !!thumbnailTokens[cfId]);
@@ -809,7 +809,7 @@ export function FullScreenFeed({
                 const startTime = Date.now();
                 const tokenString = thumbnailTokens[firstThumbnailId];
                 const token: ShareToken = typeof tokenString === 'string' ? JSON.parse(tokenString) : tokenString;
-                const decryptedBlob = await decryptWithToken(token);
+                const decryptedBlob = await decryptPublicFeedMedia(firstThumbnailId, token);
                 const thumbnailUrlObj = URL.createObjectURL(decryptedBlob);
                 const decryptTime = Date.now() - startTime;
                 
@@ -835,7 +835,7 @@ export function FullScreenFeed({
                 try {
                   const tokenString = thumbnailTokens[cfId];
                   const token: ShareToken = typeof tokenString === 'string' ? JSON.parse(tokenString) : tokenString;
-                  const decryptedBlob = await decryptWithToken(token);
+                  const decryptedBlob = await decryptPublicFeedMedia(cfId, token);
                   const thumbnailUrlObj = URL.createObjectURL(decryptedBlob);
                   const decryptTime = Date.now() - startTime;
                   
@@ -891,7 +891,7 @@ export function FullScreenFeed({
                       ? JSON.parse(collectionFileMetadata.publicToken) 
                       : collectionFileMetadata.publicToken;
                     
-                    const decryptedBlob = await decryptWithToken(token);
+                    const decryptedBlob = await decryptPublicFeedMedia(cfId, token);
                     const thumbnailUrlObj = URL.createObjectURL(decryptedBlob);
                     
                     setThumbnails(prev => {
@@ -1035,8 +1035,8 @@ export function FullScreenFeed({
           }
           
           // Decrypt collection file
-          const { decryptWithToken } = await import('../utils/tokenDecryption');
-          const decryptedBlob = await decryptWithToken(token);
+          const { decryptPublicFeedMedia } = await import('../utils/publicMediaDecrypt');
+          const decryptedBlob = await decryptPublicFeedMedia(fileId, token);
           
           // Parse decrypted JSON to get collection data
           const decryptedText = await decryptedBlob.text();
@@ -1098,7 +1098,7 @@ export function FullScreenFeed({
               // Load thumbnails asynchronously
               (async () => {
                 try {
-                  const { decryptWithToken } = await import('../utils/tokenDecryption');
+                  const { decryptPublicFeedMedia } = await import('../utils/publicMediaDecrypt');
                   
                   // FIRST: Try to use tokens from collection data (fastest - no API call)
                   const thumbnailsWithTokens = missingThumbnailIds.filter((cfId: string) => {
@@ -1119,7 +1119,7 @@ export function FullScreenFeed({
                       try {
                         const tokenString = thumbnailTokens[cfId];
                         const token: ShareToken = typeof tokenString === 'string' ? JSON.parse(tokenString) : tokenString;
-                        const decryptedBlob = await decryptWithToken(token);
+                        const decryptedBlob = await decryptPublicFeedMedia(cfId, token);
                         const thumbnailUrlObj = URL.createObjectURL(decryptedBlob);
                         const decryptTime = Date.now() - startTime;
                         
@@ -1174,7 +1174,7 @@ export function FullScreenFeed({
                               ? JSON.parse(collectionFileMetadata.publicToken) 
                               : collectionFileMetadata.publicToken;
                             
-                            const decryptedBlob = await decryptWithToken(token);
+                            const decryptedBlob = await decryptPublicFeedMedia(cfId, token);
                             const thumbnailUrlObj = URL.createObjectURL(decryptedBlob);
                             
                             setThumbnails(prev => {
@@ -1326,7 +1326,7 @@ export function FullScreenFeed({
           // PRIORITY 1: If this IS a thumbnail file, decrypt using publicToken
           if (isThumbnailFile && collectionFileMetadata.publicToken) {
             try {
-              const { decryptWithToken } = await import('../utils/tokenDecryption');
+              const { decryptPublicFeedMedia } = await import('../utils/publicMediaDecrypt');
               let token: ShareToken;
               try {
                 token = typeof collectionFileMetadata.publicToken === 'string' 
@@ -1336,7 +1336,7 @@ export function FullScreenFeed({
                 return;
               }
               
-              const decryptedBlob = await decryptWithToken(token);
+              const decryptedBlob = await decryptPublicFeedMedia(fileId, token);
               const thumbnailUrlObj = URL.createObjectURL(decryptedBlob);
               
               setThumbnails(prev => {
@@ -1791,7 +1791,7 @@ export function FullScreenFeed({
                     // PRIORITY 1: If this IS a thumbnail file, decrypt using publicToken (WORKS FOR PUBLIC FILES WITHOUT AUTH)
                     if (isThumbnailFile && collectionFileMetadata.publicToken) {
                       try {
-                        const { decryptWithToken } = await import('../utils/tokenDecryption');
+                        const { decryptPublicFeedMedia } = await import('../utils/publicMediaDecrypt');
                         let token: ShareToken;
                         try {
                           token = typeof collectionFileMetadata.publicToken === 'string' 
@@ -1803,7 +1803,7 @@ export function FullScreenFeed({
                           return;
                         }
                         
-                        const decryptedBlob = await decryptWithToken(token);
+                        const decryptedBlob = await decryptPublicFeedMedia(cfId, token);
                         const thumbnailUrlObj = URL.createObjectURL(decryptedBlob);
                         
                         setThumbnails(prev => {

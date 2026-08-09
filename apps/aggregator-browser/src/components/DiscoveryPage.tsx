@@ -144,10 +144,9 @@ export function DiscoveryPage({
             return;
           }
           
-          // Decrypt using token directly (token contains shareEncrypted data)
-          // No need to fetch from API - the token has everything we need
-          const { decryptWithToken } = await import('../utils/tokenDecryption');
-          const decryptedBlob = await decryptWithToken(token);
+          // Fetch envelope via blind public-content proxy; decrypt with slim shareKey
+          const { decryptPublicFeedMedia } = await import('../utils/publicMediaDecrypt');
+          const decryptedBlob = await decryptPublicFeedMedia(fileId, token, fileName);
           const thumbnailUrlObj = URL.createObjectURL(decryptedBlob);
           
           if (import.meta.env.DEV) console.log(`[DiscoveryPage] Successfully loaded thumbnail for ${fileId} (${fileName}), blob URL: ${thumbnailUrlObj.substring(0, 50)}...`);
@@ -413,8 +412,8 @@ export function DiscoveryPage({
                     return;
                   }
                   
-                  const { decryptWithToken } = await import('../utils/tokenDecryption');
-                  const decryptedBlob = await decryptWithToken(token);
+                  const { decryptPublicFeedMedia } = await import('../utils/publicMediaDecrypt');
+                  const decryptedBlob = await decryptPublicFeedMedia(thumbnailFileId, token);
                   const thumbnailUrlObj = URL.createObjectURL(decryptedBlob);
                   
                   createdBlobUrlsRef.current.add(thumbnailUrlObj);
