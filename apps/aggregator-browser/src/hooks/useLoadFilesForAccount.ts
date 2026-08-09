@@ -7,6 +7,7 @@ import type React from 'react';
 import { PNOAuthService } from '../services/pnOAuthService';
 import { listStorageFiles } from '../services/storageApiClient';
 import type { DriveAccount, DriveFile } from '../components/storage/storageTypes';
+import { mapCollectionEntry, mapThoughtThumbnailEntry } from './mapStorageListEntries';
 
 export interface UseLoadFilesForAccountParams {
   authenticatedUserId: string | undefined;
@@ -147,7 +148,8 @@ export function useLoadFilesForAccount({
 
         if (import.meta.env.DEV) console.log(`[FileStorageAggregator] Found ${thoughtCollectionFiles.length} thought-collection files (will be excluded)`);
 
-        // Map thought thumbnails to thought files and load metadata to check if they're part of collections
+        // Map thought thumbnails to thought files and load metadata to check if they're part of collections.
+        // Missing public-index metadata must NOT drop Drive thumbs from Storage (orphan after index purge).
         const thoughtThumbnailEntries = await Promise.all(
           thoughtThumbnails.map(async (thumb: DriveFile) => {
             // Remove "thumb_" prefix, ".encrypted" suffix, and file extension to get base name
@@ -159,48 +161,35 @@ export function useLoadFilesForAccount({
               return thoughtFileNameBase === thumbNameBase;
             });
 
-            // Check thumbnail metadata to see if it's part of a collection and get fileType
-            let isPartOfCollection = false;
-            let fileType: string | undefined;
-            let mainFileType: string | undefined;
-            let mainFileIdFromMetadata: string | undefined;
+            let thumbMetadata: Record<string, unknown> | null = null;
             try {
-              const thumbMetadata = await loadFileMetadata(thumb.id);
-              if (!thumbMetadata) {
-                return null;
-              }
-              isPartOfCollection = thumbMetadata?.isPartOfCollection === true;
-              fileType = thumbMetadata?.fileType; // Capture fileType for filtering
-              mainFileIdFromMetadata = thumbMetadata?.mainFileId; // Get mainFileId from metadata
-              const actualMainFileId = mainFileIdFromMetadata || thoughtFile?.id;
-              // Main .thought files are private and never indexed; thumb metadata is sufficient.
-              if (fileType === 'thought-collection-thumbnail') {
-                mainFileType = 'thought-collection';
-              } else if (thoughtFile?.name.toLowerCase().endsWith('.thought-collection.encrypted')) {
-                mainFileType = 'thought-collection';
-              }
-
-              if (import.meta.env.DEV) console.log(`[FileStorageAggregator] Thumbnail ${thumb.id} (${thumb.name}): fileType=${fileType}, isPartOfCollection=${isPartOfCollection}, mainFileId=${actualMainFileId}, mainFileType=${mainFileType}`);
+              thumbMetadata = (await loadFileMetadata(thumb.id)) ?? null;
             } catch (err) {
               if (import.meta.env.DEV) console.warn(`[FileStorageAggregator] Failed to load thumbnail metadata for ${thumb.id}:`, err);
             }
 
-            // Clean display name: remove thumb_ prefix and file extension
-            let displayName = thumb.name.replace(/^thumb_/i, '').replace(/\.encrypted$/i, '');
-            // Remove file extension
-            displayName = displayName.replace(/\.[^.]+$/, '');
+            const entry = mapThoughtThumbnailEntry({
+              thumb,
+              thoughtFileId: thoughtFile?.id,
+              metadata: thumbMetadata,
+            });
 
-            return {
-              ...thumb,
-              isThumbnail: true,
-              mainFileId: mainFileIdFromMetadata || thoughtFile?.id || thumb.id, // Prefer mainFileId from metadata
-              displayName: displayName,
-              isPartOfCollection: isPartOfCollection,
-              fileType: fileType, // Store fileType for filtering
-              mainFileType: mainFileType // Store main file's fileType for filtering
-            };
+            if (
+              thoughtFile?.name.toLowerCase().endsWith('.thought-collection.encrypted') &&
+              !entry.mainFileType
+            ) {
+              entry.mainFileType = 'thought-collection';
+            }
+
+            if (import.meta.env.DEV) {
+              console.log(
+                `[FileStorageAggregator] Thumbnail ${thumb.id} (${thumb.name}): fileType=${entry.fileType}, isPartOfCollection=${entry.isPartOfCollection}, mainFileId=${entry.mainFileId}, mainFileType=${entry.mainFileType}, indexMissing=${entry.indexMissing === true}`
+              );
+            }
+
+            return entry;
           })
-        ).then((entries) => entries.filter((entry): entry is NonNullable<typeof entry> => entry != null));
+        );
 
         // Detect collections by filename pattern
         const collectionFiles = allFiles.filter((file: DriveFile) => {
@@ -208,38 +197,28 @@ export function useLoadFilesForAccount({
           return name.startsWith('collection-') && name.endsWith('.collection.encrypted');
         });
 
-        // Load metadata for collections to get fileType and collection data
+        // Load metadata for collections; keep Drive orphans when public index is missing
         const collectionFilesWithMetadata = await Promise.all(
           collectionFiles.map(async (file: DriveFile) => {
+            let metadata: Record<string, unknown> | null = null;
             try {
-              const metadata = await loadFileMetadata(file.id);
-              if (!metadata) {
-                return null;
-              }
-              const isThoughtCollection = metadata?.isThoughtCollection === true;
-              if (import.meta.env.DEV) console.log(`[FileStorageAggregator] Loaded collection metadata for ${file.id}:`, {
-                name: metadata?.name || metadata?.title,
-                isThoughtCollection: isThoughtCollection,
-                metadataIsThoughtCollection: metadata?.isThoughtCollection,
-                collectionFileIds: metadata?.collection?.collectionFileIds?.length || 0
-              });
-              return {
-                ...file,
-                fileType: metadata?.fileType || 'collection',
-                collection: metadata?.collection,
-                isThoughtCollection: isThoughtCollection, // Preserve thought collection flag
-                displayName: metadata?.name || metadata?.title || file.name.replace(/\.encrypted$/i, '').replace(/\.collection$/i, '')
-              };
+              metadata = (await loadFileMetadata(file.id)) ?? null;
             } catch (err) {
               if (import.meta.env.DEV) console.warn(`[FileStorageAggregator] Failed to load metadata for collection ${file.id}:`, err);
-              return {
-                ...file,
-                fileType: 'collection',
-                displayName: file.name.replace(/\.encrypted$/i, '').replace(/\.collection$/i, '')
-              };
             }
+
+            const entry = mapCollectionEntry({ file, metadata });
+            if (import.meta.env.DEV && metadata) {
+              console.log(`[FileStorageAggregator] Loaded collection metadata for ${file.id}:`, {
+                name: metadata?.name || metadata?.title,
+                isThoughtCollection: entry.isThoughtCollection,
+                collectionFileIds: (metadata?.collection as { collectionFileIds?: unknown[] } | undefined)?.collectionFileIds?.length || 0,
+                indexMissing: entry.indexMissing === true,
+              });
+            }
+            return entry;
           })
-        ).then((entries) => entries.filter((entry): entry is NonNullable<typeof entry> => entry != null));
+        );
 
         // Build set of fileIds (thumbnails and thought files) that are part of THOUGHT COLLECTIONS (to exclude them from individual display)
         // Only filter out thoughts that are in thought collections (multi-page thoughts), not regular collections or single thoughts

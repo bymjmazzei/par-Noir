@@ -27,7 +27,8 @@ import { UnencryptedUploadAlert } from './storage/UnencryptedUploadAlert';
 
 export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ 
   authenticatedUser, 
-  onOpenTextEditor
+  onOpenTextEditor,
+  onUploadComplete,
 }) => {
   const { userState } = useUserState();
   const [isLoading, setIsLoading] = useState(false);
@@ -332,9 +333,10 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
   const [isLoadingIndexers, setIsLoadingIndexers] = useState(false);
   const [indexerError, setIndexerError] = useState<string | null>(null);
 
-  // Load file metadata
-  const loadFileMetadata = async (fileId: string) => {
-    if (metadataMissingIdsRef.current.has(fileId)) {
+  // Load file metadata from the public index.
+  // 404 is expected for Drive orphans (e.g. purged index rows) — callers must keep listing them.
+  const loadFileMetadata = async (fileId: string, opts?: { force?: boolean }) => {
+    if (!opts?.force && metadataMissingIdsRef.current.has(fileId)) {
       return null;
     }
     try {
@@ -346,7 +348,8 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
       if (response.ok) {
         const metadata = await response.json();
         const finalMetadata = metadata.metadata || metadata;
-        
+        metadataMissingIdsRef.current.delete(fileId);
+
         // Debug logging for collections to check isThoughtCollection flag
         if (finalMetadata?.fileType === 'collection' && import.meta.env.DEV) {
           console.log(`[FileStorageAggregator] loadFileMetadata for collection ${fileId}:`, {
@@ -651,21 +654,27 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
 
   // Handle share settings
   const handleShareSettings = async (file: DriveFile, accountId: string) => {
-    
-    // Load existing metadata to determine current visibility
-    const metadata = await loadFileMetadata(file.id);
-    const isPublic = metadata?.isPublic || false;
+    // Orphan Drive files (no public index) default to private / unindexed.
+    const metadata = file.indexMissing === true
+      ? null
+      : await loadFileMetadata(file.id);
+    const isPublic = metadata?.isPublic === true;
     const isNSFW = metadata?.isNSFW === true;
-    
-    
+
     setShareVisibility(isPublic ? 'public' : 'private');
-    
-    // Load third-party indexers if public
+
     if (isPublic) {
       await loadThirdPartyIndexers(file.id);
     }
-    
-    setSharingFile(file);
+
+    setSharingFile({
+      ...file,
+      displayName:
+        (typeof file.displayName === 'string' && file.displayName) ||
+        (typeof metadata?.title === 'string' && metadata.title) ||
+        (typeof metadata?.name === 'string' && metadata.name) ||
+        file.name,
+    });
     setSharingAccountId(accountId);
     setShareNSFW(isNSFW);
   };
@@ -794,11 +803,21 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
       },
       onComplete: (result) => {
         if (import.meta.env.DEV) console.log('✅ [ShareSettings] Share settings updated:', result);
-        // Reload metadata and files if making public
+        // Index may have been created for a former orphan — allow metadata GET again.
+        metadataMissingIdsRef.current.delete(fileId);
         if (result?.isPublic && accountId) {
           scheduleLoadFilesForAccount(accountId, 1200);
+          const ft = String(
+            result?.fileType ||
+              existingMetadata?.fileType ||
+              (fileToUpdate as { fileType?: string }).fileType ||
+              ''
+          ).toLowerCase();
+          const contentClass: 'media' | 'thought' | 'collection' =
+            ft.includes('collection') ? 'collection' : ft.includes('thought') ? 'thought' : 'media';
+          onUploadComplete?.(contentClass);
         } else {
-          loadFileMetadata(fileId);
+          void loadFileMetadata(fileId, { force: true });
         }
       },
       onError: (error) => {
@@ -999,6 +1018,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
       },
       onComplete: (result) => {
         if (import.meta.env.DEV) console.log('✅ [Collection] Collection created:', result);
+        onUploadComplete?.('collection');
         // Reload files
         if (accountId && result?.fileId) {
           setTimeout(() => {

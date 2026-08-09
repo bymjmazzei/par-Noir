@@ -9,6 +9,7 @@ import {
   IndexedFile
 } from '../../types/aggregator';
 import { isNSFWContent } from '../../constants/contentRatings';
+import { mapCentralIndexEntryToIndexedFile } from './mapCentralIndexEntry';
 
 export interface MetadataIndexResult {
   success: boolean;
@@ -71,83 +72,7 @@ export class MetadataIndexService {
       // Backend already filters for public files (isPublic = 'true' or isPublic = true)
       // So we just use what the backend returns - no additional filtering needed
       let files: IndexedFile[] = result.files;
-      files = files.map((entry: any) => {
-          // Normalize pnIdentifier - remove "pn-" prefix if present
-          const pnId = entry.pnIdentifier;
-          const normalizedPnId = pnId && pnId.startsWith('pn-') ? pnId.substring(3) : pnId;
-          
-          // Preserve textPost and thought data from metadata
-          const metadata = entry.metadata || {};
-          
-          // Debug logging removed for cleaner console - uncomment if needed for debugging
-          // if (metadata.fileType === 'text') {
-          //   console.log('[MetadataIndexService] Text file from API:', {...});
-          // }
-          
-          // Determine if this is a thumbnail file (should NOT have textPost/thought data)
-          const fileName = metadata.name || metadata.title || '';
-          const isThumbnailFile = fileName.toLowerCase().startsWith('thumb_');
-          
-          // DEBUG: Log collection data from API
-          if (metadata.fileType === 'collection' || metadata.collection) {
-            // If collection data is missing, try to fetch it separately
-            if (metadata.fileType === 'collection' && !metadata.collection) {
-              console.warn(`[MetadataIndexService] Collection file ${metadata.fileId || entry.fileId} has fileType='collection' but no collection data in metadata!`);
-              console.warn(`[MetadataIndexService] This collection data needs to be fetched separately or is missing from the API response.`);
-            }
-          }
-          
-          const publicRankScore =
-            typeof (entry as { publicRankScore?: number }).publicRankScore === 'number'
-              ? (entry as { publicRankScore?: number }).publicRankScore
-              : undefined;
-
-          return {
-            metadata: {
-              ...metadata,
-              ...(publicRankScore !== undefined ? { publicRankScore } : {}),
-              // CRITICAL FIX: Ensure fileId is set from entry-level fileId if missing in metadata
-              // This handles cases where metadata.fileId might be missing after upgrade
-              fileId: metadata.fileId || entry.fileId,
-              // Explicitly preserve title field (cleaned display name) - prioritize over name
-              // title is cleaned (no thumb_ prefix, no extension), name has thumb_ prefix for query matching
-              title: metadata.title || metadata.name || undefined,
-              // Explicitly preserve fileType (especially important for collections)
-              fileType: metadata.fileType || undefined,
-              // Explicitly preserve textPost and thought fields (but NOT for thumbnails - they're just images)
-              // FIX: Ensure both textPost and thought are preserved even if one is missing
-              // NOTE: Thumbnail files should NOT have textPost/thought data - they're just images
-              textPost: isThumbnailFile ? undefined : (metadata.textPost || metadata.thought || undefined),
-              thought: isThumbnailFile ? undefined : (metadata.thought || metadata.textPost || undefined),
-              // Preserve collection data for collections (CRITICAL for collection slideshow rendering)
-              // IMPORTANT: Don't use || undefined - preserve null/empty objects if they exist
-              collection: metadata.collection !== undefined ? metadata.collection : undefined,
-              // Use normalized pnIdentifier as creatorId - they're the same thing
-              creatorId: normalizedPnId || metadata.creatorId,
-              // CRITICAL FIX: Populate creator and author fields from pnIdentifier if missing
-              // This ensures filtering logic can find files by any of these fields
-              creator: metadata.creator || (entry.pnIdentifier ? {
-                "@type": "Person",
-                "@id": entry.pnIdentifier,
-                identifier: {
-                  "@type": "PropertyValue",
-                  name: "DID",
-                  value: entry.pnIdentifier
-                }
-              } : undefined),
-              author: metadata.author || (entry.pnIdentifier ? {
-                did: entry.pnIdentifier
-              } : undefined),
-              // Include publicToken from entry level if it exists (API may return it at entry level)
-              publicToken: entry.publicToken || metadata.publicToken
-            },
-            thumbnail: metadata.thumbnail,
-            // Also include publicToken at IndexedFile level for easier access
-            publicToken: entry.publicToken || metadata.publicToken,
-            // Preserve pnIdentifier from API response (use original format, not normalized)
-            pnIdentifier: entry.pnIdentifier || normalizedPnId
-          };
-        });
+      files = files.map((entry: any) => mapCentralIndexEntryToIndexedFile(entry) as IndexedFile);
 
       // Apply filters
       const beforeFilters = files.length;

@@ -8,4 +8,6 @@ export interface FileStorageAggregatorProps {
   } | null;
   hideSecureFolderSection?: boolean;
   onOpenTextEditor?: (accountId: string) => void;
+  /** Called when content is written to the public index (publish / share public / collection). */
+  onUploadComplete?: (contentClass?: 'media' | 'thought' | 'collection') => void;
 }

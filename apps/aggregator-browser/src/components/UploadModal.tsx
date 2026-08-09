@@ -189,6 +189,7 @@ export function UploadModal({ feeds: propsFeeds, onClose, onUploadComplete }: Up
         <FileStorageAggregator
           authenticatedUser={authenticatedUser}
           hideSecureFolderSection={true}
+          onUploadComplete={onUploadComplete}
           onOpenTextEditor={(selectedAccountId) => {
             setEditorAccountId(selectedAccountId);
             setShowTextEditor(true);
