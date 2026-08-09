@@ -139,17 +139,22 @@ export function FullScreenFeed({
   const [collectionDataCache, setCollectionDataCache] = useState<Map<string, any>>(new Map()); // Cache for fetched collection data
   const fetchingCollectionRef = useRef<Set<string>>(new Set()); // Track files currently being fetched to prevent duplicates
   const loadingCollectionThumbnailsRef = useRef<Set<string>>(new Set()); // Track collection file IDs currently loading thumbnails
-  const loadingFeedThumbnailsRef = useRef<Set<string>>(new Set()); // In-flight vertical-feed thumb decrypts
+  /** In-flight feed thumb decrypts — join the same promise instead of skipping and stranding. */
+  const loadingFeedThumbnailsRef = useRef<Map<string, Promise<void>>>(new Map());
   const loadingStartTimesRef = useRef<Map<string, number>>(new Map()); // Track when each file ID started loading
   const triggeredImmediateLoadRef = useRef<Set<string>>(new Set()); // Track collections we've already triggered immediate loading for
   const thumbnailsRef = useRef(thumbnails);
   const failedThumbnailsRef = useRef(failedThumbnails);
+  const filesRef = useRef(files);
+  const externalThumbnailsRef = useRef(externalThumbnails);
   useEffect(() => {
     thumbnailsRef.current = thumbnails;
   }, [thumbnails]);
   useEffect(() => {
     failedThumbnailsRef.current = failedThumbnails;
   }, [failedThumbnails]);
+  filesRef.current = files;
+  externalThumbnailsRef.current = externalThumbnails;
   
   // Helper function to clear loading state for a file ID
   const clearLoadingState = (fileId: string) => {
@@ -677,22 +682,41 @@ export function FullScreenFeed({
     };
   }, [visibleFileId, getPopularComments]);
 
-  // Priority-decrypt adjacent feed thumbs (current ± window) via blind public-content proxy.
-  // In-flight set + refs avoid duplicate fetches when Maps update mid-decrypt.
+  // Stable key for adjacent window — avoid effect cancel/restart when `files` array identity churns.
+  const feedThumbPriorityKey = (() => {
+    if (files.length === 0) return '';
+    const indices = [currentIndex, currentIndex + 1, currentIndex + 2, currentIndex - 1].filter(
+      (idx, pos, arr) => idx >= 0 && idx < files.length && arr.indexOf(idx) === pos
+    );
+    return indices
+      .map((idx) => {
+        const indexed = files[idx];
+        const file = indexed?.metadata;
+        if (!file?.fileId) return '';
+        const hasToken = !!(indexed.publicToken || file.publicToken);
+        return `${file.fileId}:${hasToken ? '1' : '0'}`;
+      })
+      .join('|');
+  })();
+
+  // Priority-decrypt adjacent feed thumbs via blind public-content proxy.
+  // Always commit successful decrypts; join in-flight promises (never skip+strand after cancel).
   useEffect(() => {
-    if (files.length === 0) return;
+    if (!feedThumbPriorityKey) return;
+
+    const latestFiles = filesRef.current;
+    if (latestFiles.length === 0) return;
 
     const priorityIndices = [
       currentIndex,
       currentIndex + 1,
       currentIndex + 2,
       currentIndex - 1,
-    ].filter((idx, pos, arr) => idx >= 0 && idx < files.length && arr.indexOf(idx) === pos);
+    ].filter((idx, pos, arr) => idx >= 0 && idx < latestFiles.length && arr.indexOf(idx) === pos);
 
     const CONCURRENCY = 3;
-    let cancelled = false;
 
-    const loadOne = async (indexedFile: (typeof files)[number]) => {
+    const loadOne = async (indexedFile: (typeof latestFiles)[number]) => {
       const file = indexedFile.metadata;
       const fileId = file.fileId;
       const fileName = (file.name || file.title || '').toLowerCase();
@@ -704,12 +728,18 @@ export function FullScreenFeed({
         !!fileName.match(/\.(jpg|jpeg|png|gif|webp|svg|bmp|ico)$/i);
       if (!isImage && !isThumb) return;
 
+      const ext = externalThumbnailsRef.current;
       if (
         thumbnailsRef.current.has(fileId) ||
         failedThumbnailsRef.current.has(fileId) ||
-        (externalThumbnails && externalThumbnails.has(fileId)) ||
-        loadingFeedThumbnailsRef.current.has(fileId)
+        (ext && ext.has(fileId))
       ) {
+        return;
+      }
+
+      const existing = loadingFeedThumbnailsRef.current.get(fileId);
+      if (existing) {
+        await existing;
         return;
       }
 
@@ -740,42 +770,45 @@ export function FullScreenFeed({
         return;
       }
 
-      loadingFeedThumbnailsRef.current.add(fileId);
-      try {
-        const { decryptPublicFeedMedia } = await import('../utils/publicMediaDecrypt');
-        if (cancelled) return;
-        const decryptedBlob = await decryptPublicFeedMedia(fileId, token);
-        if (cancelled) return;
-        const thumbnailUrlObj = URL.createObjectURL(decryptedBlob);
-        setThumbnails((prev) => {
-          if (prev.has(fileId)) {
-            URL.revokeObjectURL(thumbnailUrlObj);
-            return prev;
+      const work = (async () => {
+        try {
+          const { decryptPublicFeedMedia } = await import('../utils/publicMediaDecrypt');
+          const decryptedBlob = await decryptPublicFeedMedia(fileId, token);
+          // Always commit — do not discard on effect teardown (that caused locked hang).
+          const thumbnailUrlObj = URL.createObjectURL(decryptedBlob);
+          setThumbnails((prev) => {
+            if (prev.has(fileId)) {
+              URL.revokeObjectURL(thumbnailUrlObj);
+              return prev;
+            }
+            const newMap = new Map(prev);
+            newMap.set(fileId, thumbnailUrlObj);
+            return newMap;
+          });
+        } catch (err) {
+          if (import.meta.env.DEV) {
+            console.error(`[FullScreenFeed] Failed to decrypt thumbnail for ${fileId}:`, err);
           }
-          const newMap = new Map(prev);
-          newMap.set(fileId, thumbnailUrlObj);
-          return newMap;
-        });
-      } catch (err) {
-        if (import.meta.env.DEV) {
-          console.error(`[FullScreenFeed] Failed to decrypt thumbnail for ${fileId}:`, err);
+          setFailedThumbnails((prev) => {
+            if (prev.has(fileId)) return prev;
+            const next = new Set(prev);
+            next.add(fileId);
+            return next;
+          });
+        } finally {
+          loadingFeedThumbnailsRef.current.delete(fileId);
         }
-        setFailedThumbnails((prev) => {
-          if (prev.has(fileId)) return prev;
-          const next = new Set(prev);
-          next.add(fileId);
-          return next;
-        });
-      } finally {
-        loadingFeedThumbnailsRef.current.delete(fileId);
-      }
+      })();
+
+      loadingFeedThumbnailsRef.current.set(fileId, work);
+      await work;
     };
 
     const runPool = async () => {
-      const queue = priorityIndices.map((idx) => files[idx]).filter(Boolean);
+      const queue = priorityIndices.map((idx) => latestFiles[idx]).filter(Boolean);
       let next = 0;
       const workers = Array.from({ length: Math.min(CONCURRENCY, queue.length) }, async () => {
-        while (!cancelled && next < queue.length) {
+        while (next < queue.length) {
           const item = queue[next++];
           await loadOne(item);
         }
@@ -784,10 +817,7 @@ export function FullScreenFeed({
     };
 
     void runPool();
-    return () => {
-      cancelled = true;
-    };
-  }, [files, currentIndex, externalThumbnails]);
+  }, [feedThumbPriorityKey, currentIndex]);
 
   // Retry loading thumbnails when authentication becomes available
   useEffect(() => {
