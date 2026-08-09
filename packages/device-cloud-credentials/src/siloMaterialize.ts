@@ -575,6 +575,18 @@ async function resolvePeerPn(
   return null;
 }
 
+export const SOCIAL_JOB_TYPES_APPLIED_VIA_API: ReadonlySet<string> = new Set([
+  'connection_request',
+  'connection_accept',
+  'connection_reject',
+  'connection_delete',
+  'follower_add',
+  'follower_remove',
+  'group_message_append',
+  'group_inbox_update',
+  'message_request'
+]);
+
 /**
  * Apply a throughway mailbox job into the unlocked user's cloud.
  * Returns true only when materialization succeeded (safe to ack).
@@ -621,6 +633,18 @@ export async function materializeMailboxJob(
   // Engagement is public-aggregator only (no mailbox jobs). Ignore legacy rows if any remain.
   if (job.jobType === 'engagement_like' || job.jobType === 'engagement_comment') {
     return true;
+  }
+
+  // Connections, follows, and group delivery land in real Sheets silos
+  // (connections.xlsx, followers.xlsx, the group log). This writer rewrites every
+  // key under par-noir-messages/, so applying them here would create a shadow
+  // tree the rest of the product never reads. The browser applies them through
+  // the API instead, with its own forwarded token.
+  //
+  // Returning false rather than throwing matters: an unknown type is never acked
+  // and re-errors every 60 seconds until the 30 day TTL.
+  if (SOCIAL_JOB_TYPES_APPLIED_VIA_API.has(job.jobType)) {
+    return false;
   }
 
   throw new Error(`Unknown mailbox job type: ${job.jobType}`);

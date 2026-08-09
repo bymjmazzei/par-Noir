@@ -268,16 +268,20 @@ export function setupProfileRoutes(app: express.Application, deps: ProfileRouteD
 
         // First, try to get from database (fast lookup)
         const dbProfileResult = await db.query(`
-          SELECT display_name, profile_image_file_id, updated_at
+          SELECT display_name, profile_image_file_id, ml_kem_public_key, updated_at
           FROM user_profiles
           WHERE pn_identifier = $1
         `, [pnIdentifier]);
 
         const dbProfile = dbProfileResult.rows.length > 0 ? dbProfileResult.rows[0] : null;
+        // The published ML-KEM key is what a peer needs to seal a connection
+        // request. Reading it off the target's Drive needs the target's token,
+        // which the server does not have, so Postgres is the only path that
+        // works under custody.
         const dbFallback = {
           displayName: dbProfile?.display_name || null,
           profileImageFileId: dbProfile?.profile_image_file_id || null,
-          mlKemPublicKey: null as string | null
+          mlKemPublicKey: (dbProfile?.ml_kem_public_key as string | null) || null
         };
 
         // Enrich from Drive when possible; never 500 if Drive/custody token is unavailable.
@@ -344,7 +348,7 @@ export function setupProfileRoutes(app: express.Application, deps: ProfileRouteD
         return res.json({
           displayName: driveProfile?.displayName || dbFallback.displayName,
           profileImageFileId: driveProfile?.profileImageFileId || dbFallback.profileImageFileId,
-          mlKemPublicKey: driveProfile?.mlKemPublicKey || null
+          mlKemPublicKey: driveProfile?.mlKemPublicKey || dbFallback.mlKemPublicKey
         });
       } catch (error: any) {
         console.error('Error getting profile:', error);
@@ -427,6 +431,24 @@ export function setupProfileRoutes(app: express.Application, deps: ProfileRouteD
           pnIdentifier,
           profile
         );
+
+        // Mirror to Postgres so peers can read it; the owner's own device is
+        // the only thing that can reach this route.
+        try {
+          const db = (await import('../utils/database')).getDatabasePool();
+          await db.query(`
+            INSERT INTO user_profiles (pn_identifier, ml_kem_public_key, updated_at)
+            VALUES ($1, $2, NOW())
+            ON CONFLICT (pn_identifier)
+            DO UPDATE SET ml_kem_public_key = EXCLUDED.ml_kem_public_key, updated_at = NOW()
+          `, [pnIdentifier, mlKemPublicKey]);
+        } catch (mirrorError: unknown) {
+          safeLogger.warn('[Profile] Failed to publish ML-KEM public key', {
+            pnIdHash: hashIdentifier(pnIdentifier),
+            message: mirrorError instanceof Error ? mirrorError.message : String(mirrorError)
+          });
+        }
+
         return res.json({ success: true });
       } catch (error: any) {
         console.error('Error updating ML-KEM public key:', error);

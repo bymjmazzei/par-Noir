@@ -24,6 +24,35 @@ export interface MessageRouteDeps {
   emitRealtime: (pnIdentifier: string, event: string, payload: Record<string, unknown>) => void;
 }
 
+type OwnerDriveToken = {
+  access_token: string;
+  refresh_token?: string;
+  expires_at?: number;
+  expires_in?: number;
+};
+
+/**
+ * Inbox ordering reads a group thread's mtime from the sheet, which lives on the
+ * group OWNER's Drive. Under custody that token is on the owner's device, so the
+ * server can only ever reach the caller's own Drive. Two earlier copies of this
+ * loaded the peer's credentials row and built a token from it; one substituted
+ * the caller's token when the owner was the caller, the other handed
+ * access_token: undefined straight into a Sheets client.
+ *
+ * Ordering is not worth a cross-user read. Group threads simply fall back to
+ * their inbox row's own timestamp.
+ */
+function ownDriveOnlyContext(
+  callerPn: string,
+  callerToken: OwnerDriveToken,
+  callerAccountId: string | undefined
+) {
+  return async (ownerPnIdentifier: string) => {
+    if (ownerPnIdentifier !== callerPn) return null;
+    return { token: callerToken, accountId: callerAccountId };
+  };
+}
+
 /**
  * Setup message routes
  */
@@ -96,36 +125,7 @@ export function setupMessageRoutes(app: express.Application, deps: MessageRouteD
             return res.json(cachedInbox);
           }
 
-          const resolveOwnerDriveContext = async (ownerPnIdentifier: string) => {
-            const ownerCreds = await storageCredentialsService.getCredentials(ownerPnIdentifier);
-            if (!ownerCreds?.credentials) return null;
-            const ownerAccounts =
-              ownerCreds.credentials.googleDriveAccounts ||
-              (ownerCreds.credentials.googleDrive ? [ownerCreds.credentials.googleDrive] : []);
-            if (ownerAccounts.length === 0) return null;
-            const ownerAccount = ownerAccounts[0];
-            const ownerAccountId = extractAccountId(ownerAccount);
-            // Group sheet mtime on a peer's Drive needs that peer's token, which is
-            // device-held and cannot be resolved server-side. Only the caller's own
-            // Drive is reachable here; otherwise skip the mtime check.
-            let ownerAccess =
-              (ownerAccount.access_token || ownerAccount.accessToken || '') as string;
-            if (!ownerAccess && ownerPnIdentifier === pnIdentifier) {
-              ownerAccess = token.access_token;
-            }
-            if (!ownerAccess) {
-              return null;
-            }
-            return {
-              token: {
-                access_token: ownerAccess,
-                refresh_token: ownerAccount.refresh_token || ownerAccount.refreshToken,
-                expires_at: ownerAccount.expires_at,
-                expires_in: ownerAccount.expires_in,
-              },
-              accountId: ownerAccountId,
-            };
-          };
+          const resolveOwnerDriveContext = ownDriveOnlyContext(pnIdentifier, token, accountId);
 
           const inboxConversations = await MessageSheetsService.getInboxThreadsSortedByDrive(
             token,
@@ -413,25 +413,7 @@ export function setupMessageRoutes(app: express.Application, deps: MessageRouteD
         const inboxSheetId = driveIndex.inboxSheetId;
         const messagesFolderId = driveIndex.messagesFolderId;
 
-        const resolveOwnerDriveContext = async (ownerPnIdentifier: string) => {
-          const ownerCreds = await storageCredentialsService.getCredentials(ownerPnIdentifier);
-          if (!ownerCreds?.credentials) return null;
-          const ownerAccounts =
-            ownerCreds.credentials.googleDriveAccounts ||
-            (ownerCreds.credentials.googleDrive ? [ownerCreds.credentials.googleDrive] : []);
-          if (ownerAccounts.length === 0) return null;
-          const ownerAccount = ownerAccounts[0];
-          const ownerAccountId = extractAccountId(ownerAccount);
-          return {
-            token: {
-              access_token: ownerAccount.access_token || ownerAccount.accessToken,
-              refresh_token: ownerAccount.refresh_token || ownerAccount.refreshToken,
-              expires_at: ownerAccount.expires_at,
-              expires_in: ownerAccount.expires_in,
-            },
-            accountId: ownerAccountId,
-          };
-        };
+        const resolveOwnerDriveContext = ownDriveOnlyContext(pnIdentifier, token, accountId);
 
         const inboxConversations = await MessageSheetsService.getInboxThreadsSortedByDrive(
           token,
@@ -990,55 +972,25 @@ export function setupMessageRoutes(app: express.Application, deps: MessageRouteD
         const { MessageRequestSheetsService } = await import('./messageRequestSheetsService');
         const { storageCredentialsService } = await import('./storageCredentialsService');
 
-        const recipientCredentials = await storageCredentialsService.getCredentials(toPnIdentifier);
-        if (!recipientCredentials?.credentials) {
-          return res.status(404).json({ error: 'Recipient credentials not found' });
-        }
-
-        const recipientGoogleDriveAccounts = recipientCredentials.credentials.googleDriveAccounts ||
-          (recipientCredentials.credentials.googleDrive ? [recipientCredentials.credentials.googleDrive] : []);
-        if (recipientGoogleDriveAccounts.length === 0) {
-          return res.status(404).json({ error: 'Recipient has no Google Drive connected' });
-        }
-
-        const recipientAccount = recipientGoogleDriveAccounts[0];
-        const recipientAccountId = extractAccountId(recipientAccount);
-        const recipientToken = {
-          access_token: recipientAccount.access_token || recipientAccount.accessToken,
-          refresh_token: recipientAccount.refresh_token || recipientAccount.refreshToken,
-          expires_at: recipientAccount.expires_at,
-          expires_in: recipientAccount.expires_in
-        };
-
-        const recipientMetadata = await getMetadataFolder(recipientToken, toPnIdentifier, recipientAccountId);
-        if (!recipientMetadata) {
-          return driveNotInitialized(res);
-        }
-
-        const spreadsheetId = await MessageRequestSheetsService.getOrCreateSpreadsheet(
-          recipientToken,
-          recipientMetadata.metadataFolderId,
-          toPnIdentifier,
-          recipientAccountId
-        );
-
+        // The request row lives in the recipient's cloud. The server used to
+        // write it with their stored token; their device writes it now.
         const requestId = `req_${Date.now()}_${crypto.randomBytes(8).toString('hex')}`;
         const timestamp = new Date().toISOString();
 
-        await MessageRequestSheetsService.appendRequest(
-          recipientToken,
-          spreadsheetId,
-          {
-            requestId,
-            fromPn: fromPnIdentifier,
-            toPn: toPnIdentifier,
+        const { enqueueSocialJob } = await import('./socialRail');
+        const delivered = await enqueueSocialJob({
+          jobType: 'message_request',
+          peerPn: toPnIdentifier,
+          requestId,
+          sealed: { peerPnIdentifier: fromPnIdentifier },
+          extra: {
             content: storedContent,
             kemCiphertext,
-            cryptoVersion: cryptoVersion === 2 ? 2 : undefined
-          },
-          toPnIdentifier,
-          recipientAccountId
-        );
+            cryptoVersion: cryptoVersion === 2 ? 2 : undefined,
+            timestamp
+          }
+        });
+        void delivered;
 
         return res.json({
           success: true,
@@ -1559,74 +1511,17 @@ export function setupMessageRoutes(app: express.Application, deps: MessageRouteD
           console.warn(`[DeleteConversation] Conversation sheet deleted, but connection removal failed. This is non-critical.`);
         }
 
-        // Also remove connection from other user's connections sheet
+        // The peer's connection row is theirs to remove; the server used to
+        // do it with their stored token.
         if (connectionId) {
-          try {
-            // Use normalized participantPnIdentifier
-            const participantCredentials = await storageCredentialsService.getCredentials(normalizedParticipantPnIdentifier);
-            
-            if (participantCredentials?.credentials) {
-              const participantGoogleDriveAccounts = participantCredentials.credentials.googleDriveAccounts || 
-                (participantCredentials.credentials.googleDrive ? [participantCredentials.credentials.googleDrive] : []);
-              
-              if (participantGoogleDriveAccounts.length > 0) {
-                const participantAccount = participantGoogleDriveAccounts[0];
-                const participantAccountId = (participantAccount as any).backendId || (participantAccount as any).keyPrefix || (participantAccount as any).accountId || (participantAccount as any).id || undefined;
-                // Build token object for participant
-                const participantToken = {
-                  access_token: participantAccount.access_token || participantAccount.accessToken,
-                  refresh_token: participantAccount.refresh_token || participantAccount.refreshToken,
-                  expires_at: participantAccount.expires_at,
-                  expires_in: participantAccount.expires_in
-                };
-                
-                try {
-                  const { requireOwnerDriveContext, DriveIndexError } = await import('./ownerDriveContext');
-                  let participantMetadataFolderId: string | undefined;
-                  try {
-                    const participantCtx = await requireOwnerDriveContext(
-                      normalizedParticipantPnIdentifier,
-                      participantAccountId
-                    );
-                    participantMetadataFolderId = participantCtx.index.metadataFolderId;
-                  } catch (ctxError: unknown) {
-                    if (ctxError instanceof DriveIndexError) {
-                      console.warn(`[DeleteConversation] Other user drive index incomplete, skipping connection removal`);
-                    } else {
-                      throw ctxError;
-                    }
-                  }
-                  if (participantMetadataFolderId) {
-                    await ConnectionsService.removeConnection(
-                      participantToken.access_token,
-                      participantMetadataFolderId,
-                      normalizedParticipantPnIdentifier,
-                      connectionId,
-                      participantAccountId
-                    );
-                    console.log(`[DeleteConversation] Removed connection ${connectionId} from other user's connections`);
-                  }
-                } catch (otherUserError: any) {
-                  console.warn(`[DeleteConversation] Failed to remove connection from other user's connections sheet:`, {
-                    participantPnIdentifier,
-                    error: otherUserError?.message,
-                    status: otherUserError?.response?.status
-                  });
-                  // Non-critical - connection removed from user's sheet, conversation deleted
-                }
-              } else {
-                console.warn(`[DeleteConversation] Other user has no Google Drive connected, connection removed from user's sheet only`);
-              }
-            } else {
-              console.warn(`[DeleteConversation] Other user's credentials not found, connection removed from user's sheet only`);
-            }
-          } catch (otherUserError: any) {
-            console.warn(`[DeleteConversation] Failed to remove connection from other user's connections sheet:`, {
-              participantPnIdentifier,
-              error: otherUserError?.message
-            });
-            // Non-critical - connection removed from user's sheet, conversation deleted
-          }
+          const { enqueueSocialJob } = await import('./socialRail');
+          await enqueueSocialJob({
+            jobType: 'connection_delete',
+            peerPn: normalizedParticipantPnIdentifier,
+            requestId: `delete:${connectionId}`,
+            sealed: { peerPnIdentifier: pnIdentifier },
+            extra: { connectionId }
+          });
         }
 
         const { invalidateMessagingCachesForUsers } = await import('./messagingReadCache');

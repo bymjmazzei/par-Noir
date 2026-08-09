@@ -8,8 +8,6 @@ import { getBearerTokenPayload } from '../middleware/authMiddleware';
 import { getPendingQueueItems, getPendingQueueItemsForRay, submitVote, addToPrismQueue, getQueueStats, seedDemoQueueItems, getQueueItemById } from './prismQueueService';
 import { isPrismAdmin, isBootstrapMode } from './prismAdminService';
 import { getReputationScore, submitRayApplication } from './prismReputationService';
-import { ensurePrismLedgersForAllIdentities } from './prismEnsureService';
-
 export function setupPrismRoutes(app: any): void {
   /**
    * POST /api/reports
@@ -317,28 +315,6 @@ export function setupPrismRoutes(app: any): void {
     } catch (err: any) {
       console.error('[Prism] Admin check error:', err);
       return res.status(500).json({ error: err?.message || 'Failed to check admin' });
-    }
-  });
-
-  /**
-   * POST /api/prism/admin/ensure-prism-ledgers
-   * One-off: create prism_ledger.xlsx for existing pNs that don't have it. Admin only.
-   */
-  app.post('/api/prism/admin/ensure-prism-ledgers', async (req: Request, res: Response) => {
-    try {
-      const payload = getBearerTokenPayload(req);
-      if (!payload?.pnIdentifier || !isPrismAdmin(payload.pnIdentifier)) {
-        return res.status(403).json({ error: 'Admin required' });
-      }
-      const result = await ensurePrismLedgersForAllIdentities();
-      return res.json({
-        success: true,
-        ...result,
-        message: `Processed ${result.processed} identities. Created ${result.created}, skipped ${result.skipped} (already had prism_ledger).`,
-      });
-    } catch (err: any) {
-      console.error('[Prism] Ensure prism ledgers error:', err);
-      return res.status(500).json({ error: err?.message || 'Failed to ensure prism ledgers' });
     }
   });
 

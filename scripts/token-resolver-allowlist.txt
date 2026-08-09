@@ -7,20 +7,10 @@
 # Entries are only ever REMOVED, never added. A new entry means the rule is being
 # worked around rather than followed.
 #
-# REMAINING: 1 file, and it is not a mechanical swap.
-#
-# connectionRoutes.ts resolves the RECIPIENT's Drive token to write the incoming
-# connection request into their _metadata, and force-refreshes it on 401. Under
-# custody that token is held on the recipient's device, and the recipient is not
-# present during the requester's HTTP call, so no forwarded header can supply it.
-#
-# Fixing it requires a product decision, not a swap: the recipient's half of the
-# write has to become a queued mailbox job their device applies on next unlock,
-# which changes when a connection request becomes visible to them. There is also
-# no connection_request job type in socialMailboxService yet (only message_append,
-# message_attachment, notification_row), and sendConnectionRequest currently
-# writes to both Drives in one call.
+# EMPTY. Every route now resolves Drive tokens through resolveOwnerDriveToken.
+# connectionRoutes.ts was the last entry: the recipient's half of a connection
+# request, accept, reject, delete, follow, and unfollow is now handed to their
+# device as a mailbox job, and their device applies it against its own cloud
+# with its own forwarded token via POST /api/connections/apply-inbound.
 #
 # One path per line, relative to repo root. Blank lines and # comments ignored.
-
-api/src/server/modules/connectionRoutes.ts

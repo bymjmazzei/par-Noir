@@ -32,6 +32,12 @@ export {
   resolveMessageRootKey,
   type ResolveMessageRootKeyOpts
 } from './dmSessionWrap.js';
+export {
+  sealSocialEnvelope,
+  openSocialEnvelope,
+  isSocialEnvelope,
+  type SocialEnvelope
+} from './socialEnvelope.js';
 export { encryptMediaBytes, decryptMediaBytes } from './media.js';
 export { bytesToBase64, base64ToBytes } from './encoding.js';
 export {

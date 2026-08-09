@@ -16,8 +16,6 @@ import {
   enqueueMailboxThroughway,
   lookupMailboxThroughway,
   messageSendFanout,
-  sealCredentials,
-  stashOutboxBridge,
   upsertLocalOutboxRecord,
   type OutboxRecord
 } from '@par-noir/device-cloud-credentials';
@@ -620,13 +618,6 @@ export async function sendMessage(
     status: 'pending'
   });
   await upsertLocalOutboxRecord(fromPnIdentifier, sealSession, outbox);
-  try {
-    const bag = { records: [outbox] };
-    const envelope = await sealCredentials(bag, sealSession, null);
-    stashOutboxBridge(fromPnIdentifier, envelope);
-  } catch {
-    /* bridge best-effort */
-  }
 
   try {
     const sendPayload = {

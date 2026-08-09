@@ -7,10 +7,26 @@
 import { createHash, randomUUID } from 'crypto';
 import { getDatabasePool } from '../utils/database';
 
+/**
+ * The rail was scoped to DMs. Connections, follows, and group sends are also
+ * private peer deliveries, so they ride the same rail rather than growing a
+ * second one. Adding a type here means adding it to the three other closed
+ * enums too (mailboxRoutes JOB_TYPES, OutboxKind, materializeMailboxJob), or
+ * a job enqueues and then never applies.
+ */
 export type SocialMailboxJobType =
   | 'message_append'
   | 'message_attachment'
-  | 'notification_row';
+  | 'notification_row'
+  | 'connection_request'
+  | 'connection_accept'
+  | 'connection_reject'
+  | 'connection_delete'
+  | 'follower_add'
+  | 'follower_remove'
+  | 'group_message_append'
+  | 'group_inbox_update'
+  | 'message_request';
 
 export interface SocialMailboxJob {
   id: string;
@@ -32,7 +48,10 @@ const STRIP_PAYLOAD_KEYS = new Set([
   'fileOwnerDid',
   'ownerPn',
   'recipientIdentityId',
-  'userPnIdentifier'
+  'userPnIdentifier',
+  'peerPnIdentifier',
+  'ownerPnIdentifier',
+  'memberPnIdentifier'
 ]);
 
 /**
@@ -48,18 +67,83 @@ export function isMailboxRouteKey(value: unknown): boolean {
   return typeof value === 'string' && /^[a-f0-9]{64}$/i.test(value.trim());
 }
 
+function routePepper(): string {
+  return (
+    process.env.MAILBOX_ROUTE_PEPPER ||
+    process.env.DEVICE_TOKEN_PEPPER ||
+    'parnoir-mailbox-dev-pepper'
+  );
+}
+
 /**
  * Legacy fallback when peers have not exchanged a route key yet.
  * Uses deployment pepper so DB dump alone is not a clear pn graph.
  */
 export function legacyRouteKeyForIdentity(identityId: string): string {
-  const pepper =
-    process.env.MAILBOX_ROUTE_PEPPER ||
-    process.env.DEVICE_TOKEN_PEPPER ||
-    'parnoir-mailbox-dev-pepper';
   return createHash('sha256')
-    .update(`parnoir-mailbox-legacy-v1:${pepper}:${identityId}`, 'utf8')
+    .update(`parnoir-mailbox-legacy-v1:${routePepper()}:${identityId}`, 'utf8')
     .digest('hex');
+}
+
+/**
+ * Owner of a route, at rest. Domain-separated from legacyRouteKeyForIdentity so
+ * an owner hash is never itself a usable route key. Peppered so a DB dump is
+ * still not a clear pn graph — the privacy goal the opaque route was built for.
+ */
+export function mailboxOwnerHash(identityId: string): string {
+  return createHash('sha256')
+    .update(`parnoir-mailbox-owner-v1:${routePepper()}:${identityId}`, 'utf8')
+    .digest('hex');
+}
+
+/**
+ * Claim a minted route for an owner. First claim wins: a route key is 32 random
+ * bytes, so only its minter can register it before it is handed to peers.
+ * Returns false when the route is already bound to somebody else.
+ */
+export async function registerMailboxRoute(
+  routeKey: string,
+  identityId: string
+): Promise<boolean> {
+  const key = String(routeKey || '').trim();
+  if (!isMailboxRouteKey(key)) {
+    throw new Error('routeKey required (opaque mailbox route)');
+  }
+  const ownerHash = mailboxOwnerHash(identityId);
+  const db = getDatabasePool();
+  const result = await db.query(
+    `INSERT INTO mailbox_route_binding (route_key, owner_hash)
+     VALUES ($1, $2)
+     ON CONFLICT (route_key) DO NOTHING
+     RETURNING route_key`,
+    [key, ownerHash]
+  );
+  if (result.rowCount && result.rowCount > 0) return true;
+  return (await getMailboxRouteOwnerHash(key)) === ownerHash;
+}
+
+export async function getMailboxRouteOwnerHash(routeKey: string): Promise<string | null> {
+  const db = getDatabasePool();
+  const result = await db.query(
+    `SELECT owner_hash FROM mailbox_route_binding WHERE route_key = $1`,
+    [String(routeKey || '').trim()]
+  );
+  return result.rows[0] ? String(result.rows[0].owner_hash) : null;
+}
+
+/**
+ * A route the caller is entitled to drain. Their own legacy route always
+ * qualifies; a minted route only qualifies once bound to them.
+ */
+export async function ownsMailboxRoute(
+  routeKey: string,
+  identityId: string
+): Promise<boolean> {
+  const key = String(routeKey || '').trim();
+  if (!key) return false;
+  if (key === legacyRouteKeyForIdentity(identityId)) return true;
+  const ownerHash = await getMailboxRouteOwnerHash(key);
+  return ownerHash !== null && ownerHash === mailboxOwnerHash(identityId);
 }
 
 export function sanitizeMailboxPayload(
@@ -73,10 +157,16 @@ export function sanitizeMailboxPayload(
   return out;
 }
 
+/**
+ * Without a stable key a job re-enqueues on every reconcile. messageId only
+ * exists on DM traffic, so social jobs carry a deterministic requestId
+ * (the connectionId, follow pair, or group message id).
+ */
 function idempotencyMid(payload: Record<string, unknown>): string {
   return (
     (typeof payload.messageId === 'string' && payload.messageId) ||
     (typeof payload.commentId === 'string' && payload.commentId) ||
+    (typeof payload.requestId === 'string' && payload.requestId) ||
     randomUUID()
   );
 }
@@ -109,6 +199,7 @@ export async function enqueueSocialMailboxJob(params: {
        AND (
          payload->>'messageId' = $3
          OR payload->>'commentId' = $3
+         OR payload->>'requestId' = $3
        )
      ORDER BY created_at DESC
      LIMIT 1`,
@@ -133,6 +224,7 @@ export async function lookupMailboxJob(params: {
   jobType: SocialMailboxJobType;
   messageId?: string;
   commentId?: string;
+  requestId?: string;
 }): Promise<SocialMailboxJob | null> {
   const db = getDatabasePool();
   const result = await db.query(
@@ -144,6 +236,7 @@ export async function lookupMailboxJob(params: {
        AND (
          ($3::text IS NOT NULL AND payload->>'messageId' = $3)
          OR ($4::text IS NOT NULL AND payload->>'commentId' = $4)
+         OR ($5::text IS NOT NULL AND payload->>'requestId' = $5)
        )
      ORDER BY created_at DESC
      LIMIT 1`,
@@ -151,17 +244,24 @@ export async function lookupMailboxJob(params: {
       params.routeKey.trim(),
       params.jobType,
       params.messageId ?? null,
-      params.commentId ?? null
+      params.commentId ?? null,
+      params.requestId ?? null
     ]
   );
   if (!result.rows[0]) return null;
   return mapRow(result.rows[0]);
 }
 
+/**
+ * jobTypes narrows to what the caller's device is actually allowed to see, so a
+ * device granted only messaging never receives social jobs it cannot apply.
+ */
 export async function listPendingMailboxJobs(
   routeKey: string,
-  limit = 100
+  limit = 100,
+  jobTypes?: readonly SocialMailboxJobType[]
 ): Promise<SocialMailboxJob[]> {
+  if (jobTypes && jobTypes.length === 0) return [];
   const db = getDatabasePool();
   const result = await db.query(
     `SELECT id, route_key, job_type, payload, created_at, expires_at, acked_at
@@ -169,15 +269,21 @@ export async function listPendingMailboxJobs(
      WHERE route_key = $1
        AND acked_at IS NULL
        AND expires_at > NOW()
+       AND ($3::text[] IS NULL OR job_type = ANY($3::text[]))
      ORDER BY created_at ASC
      LIMIT $2`,
-    [routeKey.trim(), Math.min(Math.max(limit, 1), 500)]
+    [routeKey.trim(), Math.min(Math.max(limit, 1), 500), jobTypes ? [...jobTypes] : null]
   );
   return result.rows.map(mapRow);
 }
 
-export async function ackMailboxJobs(routeKey: string, jobIds: string[]): Promise<number> {
+export async function ackMailboxJobs(
+  routeKey: string,
+  jobIds: string[],
+  jobTypes?: readonly SocialMailboxJobType[]
+): Promise<number> {
   if (!jobIds.length) return 0;
+  if (jobTypes && jobTypes.length === 0) return 0;
   const db = getDatabasePool();
   const result = await db.query(
     `UPDATE social_mailbox
@@ -185,8 +291,9 @@ export async function ackMailboxJobs(routeKey: string, jobIds: string[]): Promis
      WHERE route_key = $1
        AND id = ANY($2::uuid[])
        AND acked_at IS NULL
+       AND ($3::text[] IS NULL OR job_type = ANY($3::text[]))
      RETURNING id`,
-    [routeKey.trim(), jobIds]
+    [routeKey.trim(), jobIds, jobTypes ? [...jobTypes] : null]
   );
   return result.rowCount ?? 0;
 }

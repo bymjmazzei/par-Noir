@@ -11,6 +11,21 @@ import { safeLogger } from '../../utils/logger';
 
 const NODE_ENV = process.env.NODE_ENV || 'development';
 
+/**
+ * Payload sealed by the sender to the recipient's published ML-KEM key. The
+ * server never opens it; it only checks the shape before forwarding.
+ */
+export interface SocialEnvelopeShape {
+  kemCiphertext: string;
+  ciphertext: string;
+}
+
+function isSocialEnvelopeShape(value: unknown): value is SocialEnvelopeShape {
+  if (!value || typeof value !== 'object') return false;
+  const v = value as Record<string, unknown>;
+  return typeof v.kemCiphertext === 'string' && typeof v.ciphertext === 'string';
+}
+
 export interface ConnectionRouteDeps {
   extractAccountId: (account: any) => string | undefined;
   getMetadataFolder: (
@@ -128,131 +143,68 @@ export function setupConnectionRoutes(app: express.Application, deps: Connection
           });
         }
 
-        // Use recipientPnIdentifier directly (already normalized)
-        console.log(`[ConnectionRequest] Recipient: ${recipientPnIdentifier}`);
-        
-        // Get recipient's credentials
-        let recipientCredentials = await storageCredentialsService.getCredentials(recipientPnIdentifier);
-        if (!recipientCredentials?.credentials) {
-          console.error(`[ConnectionRequest] No credentials found for recipient: ${recipientPnIdentifier}`);
-          return res.status(404).json({ error: 'Recipient credentials not found' });
-        }
-        console.log(`[ConnectionRequest] Found recipient credentials under: ${recipientCredentials.identityId}`);
+        safeLogger.info('[ConnectionRequest] recipient resolved', { category: 'connections' });
 
-        const recipientGoogleDriveAccounts = recipientCredentials.credentials.googleDriveAccounts || 
-          (recipientCredentials.credentials.googleDrive ? [recipientCredentials.credentials.googleDrive] : []);
-        
-        if (recipientGoogleDriveAccounts.length === 0) {
-          return res.status(404).json({ error: 'Recipient has no Google Drive connected' });
-        }
+        // The recipient's half of this used to be written here with the
+        // recipient's Drive token. Under custody that token lives on their
+        // device and they are not present during this call, so their row is
+        // handed over as a mailbox job their own device applies.
+        const connectionId = ConnectionsService.generateConnectionId(
+          requesterPnIdentifier,
+          recipientPnIdentifier
+        );
+        const now = new Date().toISOString();
+        const routeKeyForRequest =
+          (typeof requesterMailboxRouteKey === 'string' && requesterMailboxRouteKey.trim()) ||
+          (typeof mailboxRouteKey === 'string' && mailboxRouteKey.trim()) ||
+          undefined;
 
-        const recipientAccount = recipientGoogleDriveAccounts[0];
-        // Try backendId first, then keyPrefix, then accountId/id for backward compatibility
-        const recipientAccountId = (recipientAccount as any).backendId || (recipientAccount as any).keyPrefix || (recipientAccount as any).accountId || (recipientAccount as any).id || undefined;
-        console.log(`[ConnectionRequest] Recipient account structure:`, {
-          backendId: (recipientAccount as any).backendId,
-          keyPrefix: (recipientAccount as any).keyPrefix,
-          accountId: (recipientAccount as any).accountId,
-          id: (recipientAccount as any).id,
-          usingAccountId: recipientAccountId
-        });
-        // Use recipientPnIdentifier (the pn identifier from request)
-        let recipientAccessToken: string;
         try {
-          recipientAccessToken = await googleDriveProxyService.getAccessToken(recipientPnIdentifier, recipientAccountId, [recipientPnIdentifier]);
-        } catch (error: any) {
-          console.error('[ConnectionRequest] Failed to get recipient access token:', error);
-          console.error('[ConnectionRequest] Recipient details:', {
-            identityId: recipientCredentials.identityId,
-            accountId: recipientAccountId,
-            hasCredentials: !!recipientCredentials.credentials,
-            hasGoogleDriveAccounts: !!recipientCredentials.credentials?.googleDriveAccounts,
-            googleDriveAccountsCount: recipientCredentials.credentials?.googleDriveAccounts?.length || 0
-          });
-          return res.status(500).json({
-            error: 'Failed to send connection request',
-            error_description: safeClientErrorMessage(error, NODE_ENV === 'production') || 'Invalid Credentials',
-            details: 'Failed to get recipient Google Drive access token. Please ensure the recipient has Google Drive connected in the dashboard.'
-          });
-        }
-
-        // Get recipient's metadata folder
-        let recipientMetadataFolderId: string;
-        try {
-          // Create refresh function for retry on 401 - force refresh
-          const refreshTokenFn = async () => {
-            return await googleDriveProxyService.forceRefreshAccessToken(recipientPnIdentifier, recipientAccountId, [recipientPnIdentifier]);
-          };
-          
-          // Build token object for recipient
-          const recipientAccount = recipientCredentials.credentials.googleDriveAccounts?.[0] || recipientCredentials.credentials.googleDrive;
-          const recipientTokenForMetadata = {
-            access_token: recipientAccount.access_token || recipientAccount.accessToken,
-            refresh_token: recipientAccount.refresh_token || recipientAccount.refreshToken,
-            expires_at: recipientAccount.expires_at,
-            expires_in: recipientAccount.expires_in
-          };
-          // Use normalized recipientPnIdentifier
-          const _g = await getMetadataFolder(recipientTokenForMetadata, recipientPnIdentifier, recipientAccountId);
-          if (!_g) {
-            return driveNotInitialized(res);
-          }
-          recipientMetadataFolderId = _g.metadataFolderId;
-        } catch (error: any) {
-          if (error.message?.includes('authentication failed') || error?.response?.status === 401 || error?.response?.status === 403) {
-            return res.status(401).json({
-              error: 'Google Drive authentication failed',
-              code: 'DRIVE_AUTH_FAILED',
-              message: safeClientErrorMessage(error, NODE_ENV === 'production') || `Google Drive API returned ${error?.response?.status || 'unknown error'}`
-            });
-          }
-          return res.status(500).json({ 
-            error: 'Failed to access Google Drive', 
-            error_description: safeClientErrorMessage(error, NODE_ENV === 'production') || 'Drive API error'
-          });
-        }
-
-        // Send connection request (pass normalized pn-identifiers)
-        let connection;
-        try {
-          const routeKeyForRequest =
-            (typeof requesterMailboxRouteKey === 'string' && requesterMailboxRouteKey.trim()) ||
-            (typeof mailboxRouteKey === 'string' && mailboxRouteKey.trim()) ||
-            undefined;
-          connection = await ConnectionsService.sendConnectionRequest(
-            requesterAccessToken,
+          await ConnectionsService.upsertOwnConnectionRow(
+            requesterToken,
             requesterMetadataFolderId,
             requesterPnIdentifier,
-            recipientAccessToken,
-            recipientMetadataFolderId,
-            recipientPnIdentifier,
-            requesterMlKemPublicKey,
-            requesterAccountId,
-            recipientAccountId,
-            routeKeyForRequest
+            {
+              connectionId,
+              userPnIdentifier: recipientPnIdentifier,
+              status: 'pending_sent',
+              createdAt: now
+            },
+            requesterAccountId
           );
         } catch (connectionError: any) {
-          console.error('[ConnectionRequest] Error in ConnectionsService.sendConnectionRequest:', connectionError);
+          console.error('[ConnectionRequest] Failed to write requester row:', connectionError);
           return res.status(500).json({
             error: 'Failed to send connection request',
             error_description: connectionError.message || 'Failed to create connection in Google Drive'
           });
         }
 
-        // Validate connection was created
-        if (!connection || !connection.connectionId) {
-          console.error('[ConnectionRequest] Connection created but missing connectionId:', connection);
-          return res.status(500).json({
-            error: 'Connection request created but missing connectionId',
-            error_description: 'Failed to get connection ID from created connection'
-          });
-        }
+        const connection = {
+          connectionId,
+          userPnIdentifier: recipientPnIdentifier,
+          status: 'pending_sent' as const,
+          createdAt: now
+        };
 
-        // Record activity and send notification with separate error handling for each operation
+        // sanitizeMailboxPayload strips every clear pn field from durable rows,
+        // so who this is from rides sealed to the recipient's published ML-KEM
+        // key. The client seals it; the server only forwards.
+        const { enqueueSocialJob } = await import('./socialRail');
+        const delivered = await enqueueSocialJob({
+          jobType: 'connection_request',
+          peerPn: recipientPnIdentifier,
+          requestId: connectionId,
+          envelope: isSocialEnvelopeShape(req.body?.recipientEnvelope)
+            ? req.body.recipientEnvelope
+            : undefined,
+          ...(typeof req.body?.envelopeContext === 'string'
+            ? { envelopeContext: req.body.envelopeContext }
+            : {}),
+          extra: { createdAt: now, connectionId }
+        });
+
         const { ActivityLedgerService } = await import('./activityLedgerService');
-        const { NotificationService } = await import('./notificationService');
-        
-        // Record activity for requester (using pnIdentifier from credentials)
         try {
           await ActivityLedgerService.recordActivity(
             requesterAccessToken,
@@ -261,76 +213,21 @@ export function setupConnectionRoutes(app: express.Application, deps: Connection
             'connection_request',
             {
               targetType: 'user',
-              targetPnIdentifier: recipientPnIdentifier, // Use normalized
-              metadata: { connectionId: connection.connectionId }
+              targetPnIdentifier: recipientPnIdentifier,
+              metadata: { connectionId }
             }
           );
-          console.log(`[ConnectionRequest] Activity recorded for requester: ${requesterCredentials.identityId}`);
         } catch (error: any) {
-          console.error(`[ConnectionRequest] Failed to record activity for requester ${requesterCredentials.identityId}:`, error);
-          console.error(`[ConnectionRequest] Error details:`, { 
-            connectionId: connection.connectionId, 
-            requesterPnIdentifier, 
-            recipientPnIdentifier, 
-            requesterIdentityId: requesterCredentials.identityId,
-            error: error.message, 
-            stack: error.stack 
+          safeLogger.warn('[ConnectionRequest] Activity ledger write failed', {
+            category: 'connections',
+            message: error?.message
           });
-          // Continue - don't fail the request
-        }
-
-        // Record activity for recipient (use normalized pn-identifier)
-        try {
-          await ActivityLedgerService.recordActivity(
-            recipientAccessToken,
-            recipientMetadataFolderId,
-            recipientPnIdentifier, // Use normalized pn-identifier
-            'connection_request',
-            {
-              targetType: 'user',
-              targetPnIdentifier: requesterPnIdentifier,
-              actorPnIdentifier: requesterPnIdentifier,
-              metadata: { connectionId: connection.connectionId }
-            }
-          );
-          console.log(`[ConnectionRequest] Activity recorded for recipient: ${recipientCredentials.identityId}`);
-        } catch (error: any) {
-          console.error(`[ConnectionRequest] Failed to record activity for recipient ${recipientCredentials.identityId}:`, error);
-          console.error(`[ConnectionRequest] Error details:`, { 
-            connectionId: connection.connectionId, 
-            requesterPnIdentifier, 
-            recipientPnIdentifier: recipientCredentials.identityId,
-            error: error.message, 
-            stack: error.stack 
-          });
-          // Continue - don't fail the request
-        }
-
-        // Send notification to recipient (use normalized DIDs)
-        try {
-          await NotificationService.notifyConnectionRequest(
-            recipientAccessToken,
-            recipientMetadataFolderId,
-            connection.connectionId,
-            requesterPnIdentifier,
-            recipientPnIdentifier
-          );
-          console.log(`[ConnectionRequest] Notification sent to recipient: ${recipientCredentials.identityId}`);
-        } catch (error: any) {
-          console.error(`[ConnectionRequest] Failed to send notification to recipient ${recipientCredentials.identityId}:`, error);
-          console.error(`[ConnectionRequest] Error details:`, { 
-            connectionId: connection.connectionId, 
-            requesterPnIdentifier, 
-            recipientPnIdentifier: recipientCredentials.identityId,
-            error: error.message, 
-            stack: error.stack 
-          });
-          // Continue - don't fail the request
         }
 
         return res.json({
           success: true,
-          connection
+          connection,
+          delivered
         });
       } catch (error: any) {
         console.error('Error sending connection request:', error);
@@ -549,94 +446,29 @@ export function setupConnectionRoutes(app: express.Application, deps: Connection
           messagingLog.warn('[AcceptConnection] Accepted connection not found after update', { connectionId });
         }
 
-        // Get other user's credentials (requester) - required for syncing shared secret
-        // Use normalized pn-identifier only (no fallback to original DID)
-        const otherUserCredentials = await storageCredentialsService.getCredentials(otherUserPnIdentifier);
-
-        if (!otherUserCredentials?.credentials) {
-          return res.status(500).json({
-            error: 'Other user credentials not found',
-            error_description: 'Cannot sync shared secret - other user\'s credentials not found'
-          });
-        }
-
-        const otherGoogleDriveAccounts = otherUserCredentials.credentials.googleDriveAccounts || 
-          (otherUserCredentials.credentials.googleDrive ? [otherUserCredentials.credentials.googleDrive] : []);
-        
-        if (otherGoogleDriveAccounts.length === 0) {
-          return res.status(500).json({
-            error: 'Other user has no Google Drive connected',
-            error_description: 'Cannot sync shared secret - other user has no Google Drive account'
-          });
-        }
-
-        const otherAccount = otherGoogleDriveAccounts[0];
-        const otherAccountId = extractAccountId(otherAccount);
-        
-        // Peer throughway (required sync) — do not invent tokens; leave shell as-is
-        const otherToken = {
-          access_token: otherAccount.access_token || otherAccount.accessToken,
-          refresh_token: otherAccount.refresh_token || otherAccount.refreshToken,
-          expires_at: otherAccount.expires_at,
-          expires_in: otherAccount.expires_in
-        };
-        const otherAccessToken = otherToken.access_token; // Keep for backward compatibility in this endpoint
-        
-        const otherMetadataFolder = await getMetadataFolder(otherToken, otherUserPnIdentifier, otherAccountId)
-        if (!otherMetadataFolder) {
-          return res.status(500).json({
-            error: 'Failed to access other user\'s metadata folder',
-            error_description: 'Cannot sync shared secret - other user\'s metadata folder not accessible'
-          });
-        }
-        const otherMetadataFolderId = otherMetadataFolder.metadataFolderId;
-
-        // Sync shared secret to other user's connection record - this MUST succeed
+        // The requester's row, their notification, and their side of the
+        // conversation used to be written here with the requester's Drive
+        // token. Custody keeps that token on their device, so their half is
+        // handed over as a mailbox job their own device applies on next unlock.
         const acceptorRouteKey =
           (typeof acceptorMailboxRouteKey === 'string' && acceptorMailboxRouteKey.trim()) ||
           (typeof mailboxRouteKey === 'string' && mailboxRouteKey.trim()) ||
           undefined;
-        await ConnectionsService.updateOtherUserConnectionStatus(
-          otherAccessToken,
-          otherMetadataFolderId,
-          otherUserPnIdentifier,
-          connectionId,
-          'accepted',
-          pnIdentifier,
-          kemCiphertext,
-          otherAccountId,
-          acceptorRouteKey
-        );
 
-        // Send notification and record activity for requester
-        if (otherAccessToken && otherMetadataFolderId && otherUserCredentials?.credentials) {
-          try {
-            const { NotificationService } = await import('./notificationService');
-
-            await ActivityLedgerService.recordActivity(
-              otherAccessToken,
-              otherMetadataFolderId,
-              otherUserPnIdentifier, // Use normalized pn-identifier
-              'connection_accepted',
-              {
-                targetType: 'user',
-                targetPnIdentifier: pnIdentifier, // Use normalized pn-identifier
-                actorPnIdentifier: pnIdentifier, // Use normalized pn-identifier
-                metadata: { connectionId }
-              }
-            );
-
-            await NotificationService.notifyConnectionAccepted(
-              otherAccessToken,
-              otherMetadataFolderId,
-              connectionId,
-              pnIdentifier, // Use normalized pn-identifier
-              otherUserPnIdentifier // Use normalized pn-identifier
-            );
-          } catch (otherUserActivityError: any) {
-            console.warn('Failed to record activity/notification for other user:', otherUserActivityError);
+        const { enqueueSocialJob } = await import('./socialRail');
+        const delivered = await enqueueSocialJob({
+          jobType: 'connection_accept',
+          peerPn: otherUserPnIdentifier,
+          requestId: connectionId,
+          sealed: { peerPnIdentifier: pnIdentifier },
+          // kemCiphertext is already public key-exchange material: it is what
+          // the requester needs to derive the shared root, and it is useless
+          // without their ML-KEM secret.
+          extra: {
+            kemCiphertext,
+            ...(acceptorRouteKey ? { acceptorMailboxRouteKey: acceptorRouteKey } : {})
           }
-        }
+        });
 
         // Create conversation sheets for both users when connection is accepted
         // Note: connectionId and sharedSecret are available from the outer scope
@@ -665,52 +497,10 @@ export function setupConnectionRoutes(app: express.Application, deps: Connection
             // Use short identifier if profile not found
           }
           
-          // Get requester's credentials and profile if available
-          let otherAccessToken: string | null = null;
-          let otherMetadataFolderId: string | null = null;
-          
-          if (otherUserCredentials?.credentials) {
-            const otherGoogleDriveAccounts = otherUserCredentials.credentials.googleDriveAccounts || 
-              (otherUserCredentials.credentials.googleDrive ? [otherUserCredentials.credentials.googleDrive] : []);
-            
-            if (otherGoogleDriveAccounts.length > 0) {
-              const otherAccount = otherGoogleDriveAccounts[0];
-              const otherAccountId = extractAccountId(otherAccount);
-              const peerAccess = String(otherAccount.access_token || otherAccount.accessToken || '').trim();
-              // Optional enrichment — soft-skip empty peer shells
-              if (peerAccess) {
-                const otherTokenForProfile = {
-                  access_token: peerAccess,
-                  refresh_token: otherAccount.refresh_token || otherAccount.refreshToken,
-                  expires_at: otherAccount.expires_at,
-                  expires_in: otherAccount.expires_in
-                };
-                otherAccessToken = otherTokenForProfile.access_token;
-
-                try {
-                  const _g = await getMetadataFolder(otherTokenForProfile, otherUserPnIdentifier, otherAccountId);
-                  if (_g) {
-                    otherMetadataFolderId = _g.metadataFolderId;
-                  } else {
-                    messagingLog.warn(`[AcceptConnection] Other user's metadata folder not found, continuing anyway`);
-                  }
-                } catch (error: any) {
-                  messagingLog.warn('[AcceptConnection] Failed to get other user metadata folder, continuing anyway', { message: error.message });
-                }
-
-                if (otherMetadataFolderId) {
-                  try {
-                    const requesterProfile = await ProfileService.getProfileFile(otherToken.access_token, otherMetadataFolderId);
-                    if (requesterProfile?.displayName) {
-                      requesterDisplayName = requesterProfile.displayName;
-                    }
-                  } catch (e) {
-                    // Use short identifier if profile not found
-                  }
-                }
-              }
-            }
-          }
+          // The requester's display name used to come from reading their
+          // profile on their Drive. That is a peer read the server cannot make
+          // under custody, and it only decorates a system message, so the short
+          // identifier stands in.
 
           if (acceptorPnFolderId) {
               // Get or create messages folder for acceptor
@@ -808,108 +598,10 @@ export function setupConnectionRoutes(app: express.Application, deps: Connection
               }
           }
 
-          // Create conversation for requester (if we have their Drive credentials)
-          const requesterPnFolderId = otherMetadataFolder.pnFolderId;
-          if (otherAccessToken && otherMetadataFolderId && requesterPnFolderId && otherUserCredentials?.credentials) {
-                // Get or create messages folder for requester
-                const requesterMessagesFolderId = await MessageSheetsService.getOrCreateMessagesFolder(
-                  otherToken,
-                  requesterPnFolderId,
-                  otherUserPnIdentifier,
-                  otherAccountId
-                );
-
-                // Check if requester's conversation file exists, if not try to restore from acceptor
-                let requesterConversationSheetId: string;
-                try {
-                  // Try to get existing conversation sheet (use normalized pnIdentifier)
-                  requesterConversationSheetId = await MessageSheetsService.getConversationSheet(
-                    otherToken,
-                    requesterMessagesFolderId,
-                    pnIdentifier,
-                    otherUserPnIdentifier,
-                    otherAccountId
-                  );
-                  
-                  // Check if the sheet is empty (only has header) - if so, try to restore
-                  const { google } = await import('googleapis');
-                  const otherAuth = new google.auth.OAuth2();
-                  otherAuth.setCredentials({ access_token: otherAccessToken });
-                  const otherSheets = google.sheets({ version: 'v4', auth: otherAuth });
-                  const existingMessages = await otherSheets.spreadsheets.values.get({
-                    spreadsheetId: requesterConversationSheetId,
-                    range: 'Messages!A2:F'
-                  });
-                  
-                  // E2E-only: no server-side shared-secret restore of peer conversation sheets
-                } catch (error: any) {
-                  // First connection or re-connection after deletion - create new sheet
-                  if (error?.message?.includes('not found')) {
-                    requesterConversationSheetId = await MessageSheetsService.createConversationSheet(
-                      otherToken,
-                      requesterMessagesFolderId,
-                      pnIdentifier,
-                      otherUserPnIdentifier,
-                      otherAccountId
-                    );
-                  } else {
-                    throw error;
-                  }
-                }
-
-                // Add initial system message to requester's conversation
-                // Message: "user b accepted user a's connection request" (acceptor accepted requester's request)
-                const systemMessageId2 = crypto.randomUUID();
-                const now2 = new Date().toISOString();
-                const systemMessageContent2 = `${acceptorDisplayName} accepted ${requesterDisplayName}'s connection request`;
-                await MessageSheetsService.appendMessage(
-                  otherToken,
-                  requesterConversationSheetId,
-                  {
-                    messageId: systemMessageId2,
-                    fromPnIdentifier: 'system',
-                    toPnIdentifier: otherUserCredentials.identityId,
-                    content: systemMessageContent2,
-                    timestamp: now2,
-                    read: false
-                  },
-                  connectionId, // Use the connection ID
-                  '',
-                  otherUserPnIdentifier,
-                  otherAccountId
-                );
-
-                // Update inbox for requester
-                try {
-                  const { readPnDriveIndex, isPnDriveIndexComplete } = await import('./pnDriveIndex');
-                  const requesterIndex = readPnDriveIndex(
-                    otherUserCredentials.credentials as Record<string, unknown>
-                  );
-                  const requesterInboxSheetId = isPnDriveIndexComplete(requesterIndex)
-                    ? requesterIndex.inboxSheetId
-                    : await MessageSheetsService.getInboxSheet(
-                        otherToken,
-                        requesterMessagesFolderId,
-                        otherUserPnIdentifier,
-                        otherAccountId
-                      );
-                  await MessageSheetsService.updateInboxEntryWithRetry(
-                    otherToken,
-                    requesterInboxSheetId,
-                    pnIdentifier,
-                    requesterConversationSheetId,
-                    connectionId,
-                    now2,
-                    otherUserPnIdentifier,
-                    otherAccountId,
-                    systemMessageContent2,
-                    kemCiphertext
-                  );
-                  messagingLog.debug('[AcceptConnection] Updated requester inbox');
-                } catch (inboxError: any) {
-                  messagingLog.warn('[AcceptConnection] Failed to update requester inbox', { message: inboxError?.message });
-                }
-          }
+          // The requester's messages folder, conversation sheet, system
+          // message, and inbox row all used to be written here with their Drive
+          // token. Their device now does that itself when it applies the
+          // connection_accept job, so this side writes only the acceptor.
         } catch (conversationError: any) {
           messagingLog.error('[AcceptConnection] Failed to create conversation sheets', { message: conversationError?.message });
           messagingLog.error('[AcceptConnection] Error details:', {
@@ -1016,8 +708,29 @@ export function setupConnectionRoutes(app: express.Application, deps: Connection
           });
         }
 
-        // Use userPnIdentifier directly (already normalized)
-        // Remove connection from user's file
+        // Read the peer off the row before deleting it, so the requester can be
+        // told to clear their pending_sent entry. Rejecting used to leave their
+        // side pending forever.
+        let rejectedPeerPn: string | undefined;
+        let rejectedPeerRouteKey: string | undefined;
+        try {
+          const connectionsFile = await ConnectionsService.getConnectionsFile(
+            userAccessToken,
+            metadataFolderId,
+            pnIdentifier,
+            accountId
+          );
+          const row = connectionsFile?.connections.find((c) => c.connectionId === connectionId);
+          if (row?.userPnIdentifier) {
+            rejectedPeerPn = row.userPnIdentifier.startsWith('pn-')
+              ? row.userPnIdentifier
+              : `pn-${row.userPnIdentifier}`;
+            rejectedPeerRouteKey = row.peerMailboxRouteKey;
+          }
+        } catch {
+          /* row already gone */
+        }
+
         await ConnectionsService.removeConnection(
           userAccessToken,
           metadataFolderId,
@@ -1025,6 +738,17 @@ export function setupConnectionRoutes(app: express.Application, deps: Connection
           connectionId,
           accountId
         );
+
+        if (rejectedPeerPn) {
+          const { enqueueSocialJob } = await import('./socialRail');
+          await enqueueSocialJob({
+            jobType: 'connection_reject',
+            peerPn: rejectedPeerPn,
+            requestId: `reject:${connectionId}`,
+            sealed: { peerPnIdentifier: pnIdentifier },
+            extra: { connectionId }
+          });
+        }
 
         return res.json({ success: true });
       } catch (error: any) {
@@ -1213,79 +937,17 @@ export function setupConnectionRoutes(app: express.Application, deps: Connection
           accountId
         );
 
-        // If following a user with paid feed, add to their followers sheet (use normalized targetId)
+        // The target's followers row used to be written here with their Drive
+        // token. Their device applies it from the mailbox instead.
         if (targetTypeStr === 'user') {
-          try {
-            const targetCredentials = await storageCredentialsService.getCredentials(normalizedTargetId);
-            
-            if (targetCredentials?.credentials) {
-              // Check if target has paid feed (this would need feed service check)
-              // For now, we'll add to followers if they have credentials
-              const targetGoogleDriveAccounts = targetCredentials.credentials.googleDriveAccounts || 
-                (targetCredentials.credentials.googleDrive ? [targetCredentials.credentials.googleDrive] : []);
-              
-              if (targetGoogleDriveAccounts.length > 0) {
-                const targetAccount = targetGoogleDriveAccounts[0];
-                const targetAccountId = (targetAccount as any).backendId || (targetAccount as any).keyPrefix || (targetAccount as any).accountId || (targetAccount as any).id || undefined;
-                const peerAccess = String(targetAccount.access_token || targetAccount.accessToken || '').trim();
-                // Optional peer enrichment — soft-skip empty shells
-                if (peerAccess) {
-                  const targetToken = {
-                    access_token: peerAccess,
-                    refresh_token: targetAccount.refresh_token || targetAccount.refreshToken,
-                    expires_at: targetAccount.expires_at,
-                    expires_in: targetAccount.expires_in
-                  };
-                  const targetAccessToken = targetToken.access_token;
-                  const _g = await getMetadataFolder(targetToken, normalizedTargetId, targetAccountId);
-                  if (_g) {
-                    const targetMetadataFolderId = _g.metadataFolderId;
-
-                    // Get or create followers sheet (paid feeds only)
-                    const followersSheetId = await ConnectionsSheetsService.getFollowersSheet(
-                      targetToken,
-                      targetMetadataFolderId,
-                      normalizedTargetId,
-                      targetAccountId
-                    );
-
-                    // Add follower (use normalized pnIdentifier)
-                    await ConnectionsSheetsService.addFollower(
-                      targetToken,
-                      followersSheetId,
-                      {
-                        followerPnIdentifier: pnIdentifier,
-                        followedAt: new Date().toISOString()
-                      },
-                      normalizedTargetId,
-                      targetAccountId
-                    );
-
-                    // Send notification to target user (use normalized DIDs)
-                    try {
-                      await NotificationService.createNotification(
-                        targetAccessToken,
-                        targetMetadataFolderId,
-                        targetCredentials.identityId,
-                        {
-                          user_pn_identifier: targetCredentials.identityId,
-                          type: 'follow',
-                          title: 'New Follower',
-                          message: `${pnIdentifier} started following you`,
-                          data: { user_pn_identifier: pnIdentifier }
-                        }
-                      );
-                    } catch (notificationError) {
-                      console.warn('Failed to send follow notification:', notificationError);
-                    }
-                  }
-                }
-              }
-            }
-          } catch (targetError) {
-            console.warn('Failed to update target user followers:', targetError);
-            // Continue even if this fails
-          }
+          const { enqueueSocialJob } = await import('./socialRail');
+          await enqueueSocialJob({
+            jobType: 'follower_add',
+            peerPn: String(normalizedTargetId),
+            requestId: `follow:${pnIdentifier}:${normalizedTargetId}`,
+            sealed: { peerPnIdentifier: pnIdentifier },
+            extra: { followedAt: new Date().toISOString() }
+          });
         }
 
         return res.json({ success: true });
@@ -1375,55 +1037,15 @@ export function setupConnectionRoutes(app: express.Application, deps: Connection
           accountId
         );
 
-        // If unfollowing a user, remove from their followers sheet
+        // Same as follow: the target's own device removes its followers row.
         if (targetTypeStr === 'user') {
-          try {
-            const targetCredentials = await storageCredentialsService.getCredentials(normalizedTargetId);
-            
-            if (targetCredentials?.credentials) {
-              const targetGoogleDriveAccounts = targetCredentials.credentials.googleDriveAccounts || 
-                (targetCredentials.credentials.googleDrive ? [targetCredentials.credentials.googleDrive] : []);
-              
-              if (targetGoogleDriveAccounts.length > 0) {
-                const targetAccount = targetGoogleDriveAccounts[0];
-                const targetAccountId = (targetAccount as any).backendId || (targetAccount as any).keyPrefix || (targetAccount as any).accountId || (targetAccount as any).id || undefined;
-                const peerAccess = String(targetAccount.access_token || targetAccount.accessToken || '').trim();
-                // Optional peer enrichment — soft-skip empty shells
-                if (peerAccess) {
-                  const targetToken = {
-                    access_token: peerAccess,
-                    refresh_token: targetAccount.refresh_token || targetAccount.refreshToken,
-                    expires_at: targetAccount.expires_at,
-                    expires_in: targetAccount.expires_in
-                  };
-                  const _g = await getMetadataFolder(targetToken, normalizedTargetId, targetAccountId);
-                  if (_g) {
-                    const targetMetadataFolderId = _g.metadataFolderId;
-
-                    // Get followers sheet
-                    const followersSheetId = await ConnectionsSheetsService.getFollowersSheet(
-                      targetToken,
-                      targetMetadataFolderId,
-                      normalizedTargetId,
-                      targetAccountId
-                    );
-
-                    // Remove follower (use normalized pnIdentifier)
-                    await ConnectionsSheetsService.removeFollower(
-                      targetToken,
-                      followersSheetId,
-                      pnIdentifier,
-                      normalizedTargetId,
-                      targetAccountId
-                    );
-                  }
-                }
-              }
-            }
-          } catch (targetError) {
-            console.warn('Failed to remove from target user followers:', targetError);
-            // Continue even if this fails
-          }
+          const { enqueueSocialJob } = await import('./socialRail');
+          await enqueueSocialJob({
+            jobType: 'follower_remove',
+            peerPn: String(normalizedTargetId),
+            requestId: `unfollow:${pnIdentifier}:${normalizedTargetId}:${Date.now()}`,
+            sealed: { peerPnIdentifier: pnIdentifier }
+          });
         }
 
         return res.json({ success: true });
@@ -1956,6 +1578,7 @@ export function setupConnectionRoutes(app: express.Application, deps: Connection
 
         // Get connection to find the other user's pn identifier before removing
         let otherUserPnIdentifier: string | undefined;
+        let peerMailboxRouteKey: string | undefined;
 
         try {
           const connectionsFile = await ConnectionsService.getConnectionsFile(
@@ -1973,6 +1596,7 @@ export function setupConnectionRoutes(app: express.Application, deps: Connection
             otherUserPnIdentifier = connection.userPnIdentifier.startsWith('pn-')
               ? connection.userPnIdentifier
               : `pn-${connection.userPnIdentifier}`;
+            peerMailboxRouteKey = connection.peerMailboxRouteKey;
             console.log(
               `[RemoveConnection] Found connection ${connectionId} with other user: ${connection.userPnIdentifier} (normalized: ${otherUserPnIdentifier})`
             );
@@ -2001,95 +1625,213 @@ export function setupConnectionRoutes(app: express.Application, deps: Connection
           }
         }
 
-        // Also remove connection from other user's connections
+        // The peer's row used to be deleted here with their Drive token.
+        // Their device removes it when it applies the connection_delete job.
         if (!otherUserPnIdentifier) {
-          console.error(`[RemoveConnection] Could not determine other user's pn identifier from connection ${connectionId}`);
-          return res.json({ success: true, warning: 'Connection removed from your list, but could not determine other user to remove from their list' });
-        }
-
-        console.log(`[RemoveConnection] Attempting to remove connection ${connectionId} from other user: ${otherUserPnIdentifier}`);
-        
-        // Get other user's credentials - early return if not found
-        let otherUserCredentials;
-        try {
-          otherUserCredentials = await storageCredentialsService.getCredentials(otherUserPnIdentifier);
-        } catch (error: any) {
-          console.error(`[RemoveConnection] Failed to get other user's credentials:`, error.message);
-          return res.json({ success: true, warning: 'Connection removed from your list, but could not access other user\'s credentials' });
-        }
-        
-        if (!otherUserCredentials?.credentials) {
-          console.error(`[RemoveConnection] Other user's credentials not found for ${otherUserPnIdentifier}`);
-          return res.json({ success: true, warning: 'Connection removed from your list, but other user\'s credentials not found' });
-        }
-
-        // Get other user's Google Drive accounts - early return if none
-        const otherUserGoogleDriveAccounts = otherUserCredentials.credentials.googleDriveAccounts || 
-          (otherUserCredentials.credentials.googleDrive ? [otherUserCredentials.credentials.googleDrive] : []);
-        
-        if (otherUserGoogleDriveAccounts.length === 0) {
-          console.error(`[RemoveConnection] Other user has no Google Drive connected for ${otherUserPnIdentifier}`);
-          return res.json({ success: true, warning: 'Connection removed from your list, but other user has no Google Drive connected' });
-        }
-
-        // Get other user's account and build token object
-        const otherUserAccount = otherUserGoogleDriveAccounts[0];
-        const otherUserAccountId = extractAccountId(otherUserAccount);
-        const peerAccess = String(otherUserAccount.access_token || otherUserAccount.accessToken || '').trim();
-        // Optional peer sync — soft-skip empty shells rather than inventing tokens
-        if (!peerAccess) {
           return res.json({
             success: true,
-            warning: 'Connection removed from your list, but other user Drive access is unavailable under cloud custody'
+            warning: 'Connection removed from your list, but the peer could not be determined'
           });
         }
-        const otherUserToken = {
-          access_token: peerAccess,
-          refresh_token: otherUserAccount.refresh_token || otherUserAccount.refreshToken,
-          expires_at: otherUserAccount.expires_at,
-          expires_in: otherUserAccount.expires_in
-        };
-        const otherUserAccessToken = otherUserToken.access_token; // Keep for backward compatibility
 
-        // Get other user's metadata folder - early return if not found
-        let otherUserMetadataFolder;
-        try {
-          otherUserMetadataFolder = await getMetadataFolder(otherUserToken, otherUserPnIdentifier!, otherUserAccountId);
-        } catch (error: any) {
-          console.error(`[RemoveConnection] Failed to get other user's metadata folder:`, error.message);
-          return res.json({ success: true, warning: 'Connection removed from your list, but could not access other user\'s metadata folder' });
-        }
-        
-        if (!otherUserMetadataFolder) {
-          console.error(`[RemoveConnection] Other user's metadata folder not found for ${otherUserPnIdentifier}`);
-          return res.json({ success: true, warning: 'Connection removed from your list, but other user\'s metadata folder not found' });
-        }
+        const { enqueueSocialJob } = await import('./socialRail');
+        const delivered = await enqueueSocialJob({
+          jobType: 'connection_delete',
+          peerPn: otherUserPnIdentifier,
+          requestId: `delete:${connectionId}`,
+          sealed: { peerPnIdentifier: pnIdentifier },
+          extra: { connectionId }
+        });
 
-        // Remove from other user's connections
-        try {
-          await ConnectionsService.removeConnection(
-            otherUserAccessToken,
-            otherUserMetadataFolder.metadataFolderId,
-            otherUserPnIdentifier!,
-            connectionId,
-            otherUserAccountId
-          );
-
-          console.log(`[RemoveConnection] Successfully removed connection ${connectionId} from both users' connections`);
-          return res.json({ success: true });
-        } catch (removeError: any) {
-          if (removeError.message === 'Connection not found' || removeError.message?.includes('not found')) {
-            console.warn(`[RemoveConnection] Connection ${connectionId} not found for other user (may have been already removed)`);
-            return res.json({ success: true, warning: 'Connection removed from your list, but connection not found in other user\'s list (may have been already removed)' });
-          }
-          console.error(`[RemoveConnection] Unexpected error removing from other user:`, removeError.message, removeError.stack);
-          throw removeError;
-        }
+        return res.json({ success: true, delivered });
       } catch (error: any) {
         console.error('Error removing connection:', error);
         return res.status(500).json({
           error: 'Failed to remove connection',
           error_description: safeClientErrorMessage(error, NODE_ENV === 'production') || 'Failed to remove connection'
+        });
+      }
+    });
+
+    // POST /api/connections/apply-inbound
+    //
+    // The receiving half of the rail. A device pulls a social job from its own
+    // mailbox, opens the sealed envelope locally, and posts the plaintext here
+    // so the write lands in ITS OWN cloud with ITS OWN forwarded token. The
+    // server never opened the envelope and never held the token.
+    app.post('/api/connections/apply-inbound', async (req, res) => {
+      try {
+        const { userPnIdentifier, jobType, peerPnIdentifier } = req.body || {};
+        if (!userPnIdentifier || !jobType) {
+          return res.status(400).json({ error: 'userPnIdentifier and jobType are required' });
+        }
+
+        const APPLICABLE = [
+          'connection_request',
+          'connection_accept',
+          'connection_reject',
+          'connection_delete',
+          'follower_add',
+          'follower_remove'
+        ];
+        if (!APPLICABLE.includes(String(jobType))) {
+          return res.status(400).json({ error: 'Unsupported jobType' });
+        }
+        if (!peerPnIdentifier) {
+          return res.status(400).json({ error: 'peerPnIdentifier is required' });
+        }
+
+        const { ConnectionsService } = await import('./connectionsService');
+        const { ConnectionsSheetsService } = await import('./connectionsSheetsService');
+        const { storageCredentialsService } = await import('./storageCredentialsService');
+        const { resolveOwnerDriveToken, respondDriveTokenError } = await import('./ownerDriveToken');
+
+        const pnIdentifier = String(userPnIdentifier);
+        const peerPn = String(peerPnIdentifier).startsWith('pn-')
+          ? String(peerPnIdentifier)
+          : `pn-${peerPnIdentifier}`;
+
+        const userCredentials = await storageCredentialsService.getCredentials(pnIdentifier);
+        if (!userCredentials?.credentials) {
+          return res.status(404).json({ error: 'User credentials not found' });
+        }
+        const googleDriveAccounts =
+          userCredentials.credentials.googleDriveAccounts ||
+          (userCredentials.credentials.googleDrive ? [userCredentials.credentials.googleDrive] : []);
+        const account = googleDriveAccounts.length > 0 ? googleDriveAccounts[0] : null;
+        let accountId = account ? extractAccountId(account) : undefined;
+
+        let token;
+        try {
+          const resolved = await resolveOwnerDriveToken(req, pnIdentifier, { account, accountId });
+          token = resolved.token;
+          accountId = resolved.accountId ?? accountId;
+        } catch (e) {
+          if (respondDriveTokenError(res, e)) return;
+          throw e;
+        }
+
+        let metadataFolderId = '';
+        if (account) {
+          const _g = await getMetadataFolder(token, pnIdentifier, accountId);
+          if (!_g) return driveNotInitialized(res);
+          metadataFolderId = _g.metadataFolderId;
+        }
+
+        switch (String(jobType)) {
+          case 'connection_request': {
+            const { connectionId, peerMlKemPublicKey, peerMailboxRouteKey, createdAt } = req.body;
+            if (!connectionId) {
+              return res.status(400).json({ error: 'connectionId is required' });
+            }
+            await ConnectionsService.upsertOwnConnectionRow(
+              token,
+              metadataFolderId,
+              pnIdentifier,
+              {
+                connectionId: String(connectionId),
+                userPnIdentifier: peerPn,
+                status: 'pending_received',
+                createdAt: typeof createdAt === 'string' ? createdAt : new Date().toISOString(),
+                ...(peerMlKemPublicKey ? { peerMlKemPublicKey: String(peerMlKemPublicKey) } : {}),
+                ...(peerMailboxRouteKey
+                  ? { peerMailboxRouteKey: String(peerMailboxRouteKey) }
+                  : {})
+              },
+              accountId
+            );
+            break;
+          }
+
+          case 'connection_accept': {
+            const { connectionId, kemCiphertext, peerMailboxRouteKey } = req.body;
+            if (!connectionId) {
+              return res.status(400).json({ error: 'connectionId is required' });
+            }
+            await ConnectionsService.updateOtherUserConnectionStatus(
+              token.access_token,
+              metadataFolderId,
+              pnIdentifier,
+              String(connectionId),
+              'accepted',
+              peerPn,
+              typeof kemCiphertext === 'string' ? kemCiphertext : undefined,
+              accountId,
+              typeof peerMailboxRouteKey === 'string' ? peerMailboxRouteKey : undefined
+            );
+            break;
+          }
+
+          case 'connection_reject':
+          case 'connection_delete': {
+            const { connectionId } = req.body;
+            if (!connectionId) {
+              return res.status(400).json({ error: 'connectionId is required' });
+            }
+            try {
+              await ConnectionsService.removeConnection(
+                token.access_token,
+                metadataFolderId,
+                pnIdentifier,
+                String(connectionId),
+                accountId
+              );
+            } catch (error: any) {
+              if (!error?.message?.includes('not found')) throw error;
+            }
+            break;
+          }
+
+          case 'follower_add': {
+            const followersSheetId = await ConnectionsSheetsService.getFollowersSheet(
+              token,
+              metadataFolderId,
+              pnIdentifier,
+              accountId
+            );
+            await ConnectionsSheetsService.addFollower(
+              token,
+              followersSheetId,
+              {
+                followerPnIdentifier: peerPn,
+                followedAt:
+                  typeof req.body.followedAt === 'string'
+                    ? req.body.followedAt
+                    : new Date().toISOString()
+              },
+              pnIdentifier,
+              accountId
+            );
+            break;
+          }
+
+          case 'follower_remove': {
+            const followersSheetId = await ConnectionsSheetsService.getFollowersSheet(
+              token,
+              metadataFolderId,
+              pnIdentifier,
+              accountId
+            );
+            await ConnectionsSheetsService.removeFollower(
+              token,
+              followersSheetId,
+              peerPn,
+              pnIdentifier,
+              accountId
+            );
+            break;
+          }
+        }
+
+        return res.json({ success: true });
+      } catch (error: any) {
+        safeLogger.error('[ApplyInbound] Failed to apply social job', {
+          category: 'connections',
+          message: error?.message
+        });
+        return res.status(500).json({
+          error: 'Failed to apply inbound job',
+          error_description: safeClientErrorMessage(error, NODE_ENV === 'production') || 'Apply failed'
         });
       }
     });

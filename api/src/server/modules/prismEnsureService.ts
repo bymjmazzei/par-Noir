@@ -121,33 +121,11 @@ export async function ensurePrismLedgerForIdentity(
   }
 }
 
-/**
- * One-off: ensure prism_ledger for all identities in storage_credentials.
- * Call via admin endpoint only.
- */
-export async function ensurePrismLedgersForAllIdentities(): Promise<EnsureAllResult> {
-  const db = getDatabasePool();
-  const result = await db.query(`SELECT identity_id FROM storage_credentials`);
-  const identityIds = (result.rows as { identity_id: string }[]).map((r) => r.identity_id);
-
-  const details: EnsureResult[] = [];
-  let created = 0;
-  let skipped = 0;
-  const errors: string[] = [];
-
-  for (const id of identityIds) {
-    const r = await ensurePrismLedgerForIdentity(id);
-    details.push(r);
-    if (r.created) created++;
-    else if (r.skipped) skipped++;
-    if (r.error) errors.push(`${id}: ${r.error}`);
-  }
-
-  return {
-    processed: identityIds.length,
-    created,
-    skipped,
-    errors,
-    details,
-  };
-}
+// The all-identities sweep was removed. It walked every row in
+// storage_credentials and called ensurePrismLedgerForIdentity with no cloud
+// token, which under custody can only ever return skipped: true. It reported
+// "processed N, skipped N" and looked like it had done something.
+//
+// A ledger needs its owner's device-held token, so it can only be created while
+// that owner is present. ensurePrismLedgerForIdentity still does that, on the
+// owner's own request, with their forwarded token.

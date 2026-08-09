@@ -9,7 +9,7 @@ import { Shield, Users, FileCheck, LogOut, ShieldCheck } from 'lucide-react';
 import { ApplyModal } from './components/ApplyModal';
 import { RayView } from './components/RayView';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
-import { fetchAdminCheck, fetchAdminStats, fetchReputation, seedDemoQueue, ensurePrismLedgers, ReputationResult } from './services/prismApi';
+import { fetchAdminCheck, fetchAdminStats, fetchReputation, seedDemoQueue, ReputationResult } from './services/prismApi';
 import { useRayApply } from './hooks/useRayApply';
 import {
   UnlockButton,
@@ -181,20 +181,6 @@ function UnlockedView({ mlKemSecretKey }: { mlKemSecretKey?: string | null }) {
   const [reputation, setReputation] = useState<ReputationResult | null>(null);
   const { applyStatus, applyError, submitApply } = useRayApply(session?.accessToken);
   const [seedStatus, setSeedStatus] = useState<string | null>(null);
-  const [ensureStatus, setEnsureStatus] = useState<string | null>(null);
-
-  const handleEnsureLedgers = async () => {
-    if (!session?.accessToken) return;
-    setEnsureStatus('Running...');
-    try {
-      const r = await ensurePrismLedgers(session.accessToken);
-      setEnsureStatus(r.message);
-      setTimeout(() => setEnsureStatus(null), 8000);
-    } catch (e: any) {
-      setEnsureStatus(e?.message || 'Ensure failed');
-      setTimeout(() => setEnsureStatus(null), 5000);
-    }
-  };
 
   const handleSeedDemo = async () => {
     if (!session?.accessToken) return;
@@ -319,14 +305,6 @@ function UnlockedView({ mlKemSecretKey }: { mlKemSecretKey?: string | null }) {
               </div>
             </div>
             <div className="flex flex-wrap gap-2">
-              <button
-                type="button"
-                onClick={handleEnsureLedgers}
-                disabled={!!ensureStatus}
-                className="px-4 py-2 text-sm bg-neutral-700 text-neutral-300 border border-neutral-600 rounded-lg hover:bg-neutral-600 disabled:opacity-60"
-              >
-                {ensureStatus || 'Ensure prism ledgers'}
-              </button>
               <button
                 type="button"
                 onClick={handleSeedDemo}

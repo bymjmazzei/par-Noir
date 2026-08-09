@@ -17,11 +17,25 @@ export class CloudFlushWorker {
     if (!ctx.applyJob) {
       throw new Error('applyJob required — refuse ack-without-write');
     }
-    if (!ctx.routeKey && !ctx.legacyRouteKey) {
-      // Server derives legacy route from pn when routeKey omitted (pre-exchange).
-    }
     const errors: string[] = [];
     const base = ctx.apiBaseUrl.replace(/\/$/, '');
+
+    // A minted route is not drainable until it is bound to this identity, so
+    // claim before polling. Idempotent, and the legacy route needs no claim
+    // because the server derives it from the bearer.
+    if (ctx.routeKey) {
+      try {
+        await claimMailboxRoute({
+          apiBaseUrl: ctx.apiBaseUrl,
+          authToken: ctx.authToken,
+          identityId: ctx.identityId,
+          routeKey: ctx.routeKey,
+          buildAuthHeaders: ctx.buildAuthHeaders
+        });
+      } catch (e) {
+        errors.push(`route claim: ${e instanceof Error ? e.message : 'failed'}`);
+      }
+    }
     const claimSpecs: Array<{ routeKey?: string }> = [];
     if (ctx.routeKey) claimSpecs.push({ routeKey: ctx.routeKey });
     if (ctx.legacyRouteKey && ctx.legacyRouteKey !== ctx.routeKey) {
@@ -58,6 +72,13 @@ export class CloudFlushWorker {
         headers: await mergeHeaders('GET', path)
       });
       if (!pendingRes.ok) {
+        // A route this identity does not own is not a session failure: skip the
+        // spec and keep draining the others. Without this, one unclaimed route
+        // aborts the whole flush, including the legacy route that does work.
+        if (pendingRes.status === 403) {
+          errors.push(`pending ${spec.routeKey ? 'route' : 'legacy'}: HTTP 403`);
+          continue;
+        }
         const err = new Error(`mailbox pending failed: HTTP ${pendingRes.status}`);
         (err as Error & { status?: number }).status = pendingRes.status;
         throw err;
@@ -122,6 +143,80 @@ export class CloudFlushWorker {
 
     return { pulled: jobs.length, applied, acked, errors };
   }
+}
+
+/**
+ * Bind a minted route to this identity. Must happen before the route is handed
+ * to any peer, and before /pending will serve it — an unclaimed route is not
+ * drainable, because holding a route key proves nothing about owning it.
+ */
+export async function claimMailboxRoute(opts: {
+  apiBaseUrl: string;
+  authToken: string;
+  identityId: string;
+  routeKey: string;
+  buildAuthHeaders?: (
+    method: string,
+    path: string,
+    body?: unknown
+  ) => Record<string, string> | Promise<Record<string, string>>;
+}): Promise<boolean> {
+  const base = opts.apiBaseUrl.replace(/\/$/, '');
+  const path = '/api/mailbox/route';
+  const body = { pnIdentifier: opts.identityId, routeKey: opts.routeKey };
+  const extra = opts.buildAuthHeaders
+    ? await opts.buildAuthHeaders('POST', path, body)
+    : {};
+  const res = await fetch(`${base}${path}`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${opts.authToken}`,
+      Accept: 'application/json',
+      'Content-Type': 'application/json',
+      ...extra
+    },
+    body: JSON.stringify(body)
+  });
+  return res.ok;
+}
+
+/** Ack applied jobs. Only call after the write landed. */
+export async function ackMailboxJobsRemote(opts: {
+  apiBaseUrl: string;
+  authToken: string;
+  identityId: string;
+  routeKey?: string;
+  jobIds: string[];
+  buildAuthHeaders?: (
+    method: string,
+    path: string,
+    body?: unknown
+  ) => Record<string, string> | Promise<Record<string, string>>;
+}): Promise<number> {
+  if (!opts.jobIds.length) return 0;
+  const base = opts.apiBaseUrl.replace(/\/$/, '');
+  const path = '/api/mailbox/ack';
+  const body = {
+    pnIdentifier: opts.identityId,
+    ...(opts.routeKey ? { routeKey: opts.routeKey } : {}),
+    jobIds: opts.jobIds
+  };
+  const extra = opts.buildAuthHeaders
+    ? await opts.buildAuthHeaders('POST', path, body)
+    : {};
+  const res = await fetch(`${base}${path}`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${opts.authToken}`,
+      Accept: 'application/json',
+      'Content-Type': 'application/json',
+      ...extra
+    },
+    body: JSON.stringify(body)
+  });
+  if (!res.ok) throw new Error(`mailbox ack failed: HTTP ${res.status}`);
+  const parsed = (await res.json()) as { acked?: number };
+  return parsed.acked ?? opts.jobIds.length;
 }
 
 export async function fetchMailboxPending(

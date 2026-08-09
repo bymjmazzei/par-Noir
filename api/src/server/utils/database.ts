@@ -1205,6 +1205,39 @@ export async function initializeDatabase(): Promise<void> {
       );
     }
 
+    try {
+      const fs = await import('fs');
+      const path = await import('path');
+      const bindingPath = path.join(
+        __dirname,
+        '../../migrations/add_mailbox_route_binding.sql'
+      );
+      const bindingSql = fs.readFileSync(bindingPath, 'utf-8');
+      await db.query(bindingSql);
+      console.log('✅ mailbox_route_binding migration executed');
+    } catch (migrationError: unknown) {
+      console.debug(
+        'ℹ️ mailbox_route_binding migration error (may already be applied):',
+        migrationError instanceof Error ? migrationError.message : migrationError
+      );
+    }
+
+    try {
+      const fs = await import('fs');
+      const path = await import('path');
+      const mlKemPath = path.join(
+        __dirname,
+        '../../migrations/add_user_profile_ml_kem_public_key.sql'
+      );
+      await db.query(fs.readFileSync(mlKemPath, 'utf-8'));
+      console.log('✅ user_profiles.ml_kem_public_key migration executed');
+    } catch (migrationError: unknown) {
+      console.debug(
+        'ℹ️ user_profiles ml_kem_public_key migration error (may already be applied):',
+        migrationError instanceof Error ? migrationError.message : migrationError
+      );
+    }
+
     console.log('✅ Database schema initialized');
   } catch (error) {
     console.error('❌ Failed to initialize database schema:', error);

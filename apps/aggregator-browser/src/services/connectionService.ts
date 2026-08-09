@@ -11,6 +11,7 @@ import { getMessagingMlKemPublicKey, getDmIdentity, isDmIdentityReady } from './
 import { notifyMessagingInboxRefresh, refreshMessagingInbox } from './messageService';
 import { API_ENDPOINT } from '../config/api';
 import { ensureMailboxRouteKey } from '@par-noir/device-cloud-credentials';
+import { sealSocialEnvelope } from '@par-noir/dm-crypto';
 
 // Helper function to get auth headers (after vault hydrate)
 async function getAuthHeaders(): Promise<HeadersInit> {
@@ -66,7 +67,26 @@ export async function sendConnectionRequest(
     passcode: identity.mlKemSecretKey
   });
 
-  // Use Google Drive API directly (no IPFS)
+  // The mailbox strips clear pn fields from durable rows, so who this is from
+  // and the key to answer it are sealed to the recipient's published ML-KEM key.
+  // Without it their device receives a job it cannot attribute.
+  const recipientProfile = await getUserProfile(recipientPnIdentifier);
+  if (!recipientProfile?.mlKemPublicKey) {
+    throw new Error(
+      'This user has not published messaging keys yet. Ask them to unlock their pN once.'
+    );
+  }
+  const envelopeContext = `connect:${requesterPnIdentifier}:${recipientPnIdentifier}`;
+  const recipientEnvelope = await sealSocialEnvelope(
+    recipientProfile.mlKemPublicKey,
+    envelopeContext,
+    {
+      peerPnIdentifier: requesterPnIdentifier,
+      peerMlKemPublicKey: mlKemPublicKey,
+      peerMailboxRouteKey: mailboxRouteKey
+    }
+  );
+
   try {
     const response = await fetch(`${API_ENDPOINT}/api/connections/request`, {
       method: 'POST',
@@ -75,7 +95,9 @@ export async function sendConnectionRequest(
         requesterPnIdentifier,
         recipientPnIdentifier,
         requesterMlKemPublicKey: mlKemPublicKey,
-        requesterMailboxRouteKey: mailboxRouteKey
+        requesterMailboxRouteKey: mailboxRouteKey,
+        recipientEnvelope,
+        envelopeContext
       })
     });
 

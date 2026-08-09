@@ -21,7 +21,6 @@ import {
   publishCloudDriveReady,
   sealCredentials,
   setSessionCloudCredentials,
-  takeOutboxBridge,
   unsealCredentials,
   upsertLocalOutboxRecord,
   writeOutboxToCloud,
@@ -262,21 +261,11 @@ export async function promoteAndReconcileOutbox(opts: {
   const credentials = await loadUnsealedCloudCredentials(opts.identityId, opts.session);
   if (!credentials) return;
 
-  let records = await loadLocalOutbox(opts.identityId, opts.session);
-
-  const bridge = takeOutboxBridge(opts.identityId);
-  if (bridge) {
-    try {
-      const bag = await unsealCredentials<{ records: OutboxRecord[] }>(bridge, opts.session);
-      if (Array.isArray(bag?.records)) {
-        for (const r of bag.records) {
-          records = await upsertLocalOutboxRecord(opts.identityId, opts.session, r);
-        }
-      }
-    } catch {
-      /* ignore bad bridge */
-    }
-  }
+  // Only the dashboard's own outbox. The browser used to hand its records over
+  // through a localStorage bridge, but the apps are separate origins and seal
+  // with different keys, so nothing ever arrived. The browser now promotes its
+  // own records through the API.
+  const records = await loadLocalOutbox(opts.identityId, opts.session);
 
   let writer;
   try {

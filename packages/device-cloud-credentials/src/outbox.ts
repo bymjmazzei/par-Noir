@@ -5,10 +5,20 @@
 import type { SealedEnvelope, SealSession } from './types.js';
 import { sealCredentials, unsealCredentials } from './seal.js';
 
+/** Must stay in step with SocialMailboxJobType on the API. */
 export type OutboxKind =
   | 'message_append'
   | 'message_attachment'
-  | 'notification_row';
+  | 'notification_row'
+  | 'connection_request'
+  | 'connection_accept'
+  | 'connection_reject'
+  | 'connection_delete'
+  | 'follower_add'
+  | 'follower_remove'
+  | 'group_message_append'
+  | 'group_inbox_update'
+  | 'message_request';
 
 export type OutboxStatus = 'pending' | 'enqueued' | 'materialized' | 'failed';
 
@@ -124,32 +134,9 @@ export async function clearLocalOutbox(identityId: string): Promise<void> {
   localStorage.removeItem(storageKey(identityId));
 }
 
-/** Bridge key for browser → dashboard promote (same-origin / stash handoff). */
-export const OUTBOX_BRIDGE_STORAGE_KEY = 'pn_sender_outbox_bridge_v1';
-
-export function stashOutboxBridge(identityId: string, sealedEnvelope: SealedEnvelope): void {
-  if (typeof localStorage === 'undefined') return;
-  localStorage.setItem(
-    OUTBOX_BRIDGE_STORAGE_KEY,
-    JSON.stringify({ identityId, envelope: sealedEnvelope, updatedAt: Date.now() })
-  );
-}
-
-export function takeOutboxBridge(
-  identityId: string
-): SealedEnvelope | null {
-  if (typeof localStorage === 'undefined') return null;
-  const raw = localStorage.getItem(OUTBOX_BRIDGE_STORAGE_KEY);
-  if (!raw) return null;
-  try {
-    const parsed = JSON.parse(raw) as {
-      identityId?: string;
-      envelope?: SealedEnvelope;
-    };
-    if (parsed.identityId !== identityId || !parsed.envelope) return null;
-    localStorage.removeItem(OUTBOX_BRIDGE_STORAGE_KEY);
-    return parsed.envelope;
-  } catch {
-    return null;
-  }
-}
+// The browser -> dashboard outbox bridge was removed. It could not work: the two
+// apps are separate origins so they never shared a localStorage partition, and
+// even same-origin they derive different seal keys (the browser seals with
+// sessionId=pn and passcode=mlKemSecretKey, the dashboard unseals with
+// sessionId=session.id and the real passcode). Both failures were swallowed by a
+// bare catch. The browser now completes its own deliveries through the API.

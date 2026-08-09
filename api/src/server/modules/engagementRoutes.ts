@@ -596,55 +596,18 @@ app.post('/api/engagement/:fileId/share', async (req: Request, res: Response) =>
           }
         }
 
-        // Get file owner's credentials and metadata folder
+        // The owner's activity row and repost notification used to be written
+        // into their Drive from here. Their device writes them from the rail.
         const ownerPnIdentifier = fileOwnerDid.startsWith('pn-') ? fileOwnerDid : `pn-${fileOwnerDid}`;
-        const ownerCredentials = await storageCredentialsService.getCredentials(ownerPnIdentifier);
-        if (ownerCredentials?.credentials) {
-          const ownerGoogleDriveAccounts = ownerCredentials.credentials.googleDriveAccounts || 
-            (ownerCredentials.credentials.googleDrive ? [ownerCredentials.credentials.googleDrive] : []);
-          
-          if (ownerGoogleDriveAccounts.length > 0) {
-            const ownerAccount = ownerGoogleDriveAccounts[0];
-            const ownerAccountId = extractAccountId(ownerAccount);
-            
-            // Get full token object for owner (not just access token string) for automatic refresh
-            const ownerToken = {
-              access_token: ownerAccount.access_token || ownerAccount.accessToken,
-              refresh_token: ownerAccount.refresh_token || ownerAccount.refreshToken,
-              expires_at: ownerAccount.expires_at,
-              expires_in: ownerAccount.expires_in
-            };
-            const ownerAccessToken = ownerToken.access_token; // Keep for backward compatibility
-            const _gOwner = await getMetadataFolder(ownerToken, ownerPnIdentifier, ownerAccountId);
-            if (!_gOwner) {
-              console.warn('[Engagement] Skipping owner activity/notification: metadata folder not found');
-            } else {
-            const ownerMetadataFolderId = _gOwner.metadataFolderId;
-
-            // Record activity for file owner
-            await ActivityLedgerService.recordActivity(
-              ownerAccessToken,
-              ownerMetadataFolderId,
-              ownerPnIdentifier,
-              'share',
-              {
-                targetType: 'file',
-                targetPnIdentifier: fileId, // For files, this is the file ID, not a pn-identifier
-                actorPnIdentifier: userPnIdentifier,
-                metadata: { fileId }
-              }
-            );
-
-            // Send notification (shares are reposts in this context)
-            await NotificationService.notifyRepost(
-              ownerAccessToken,
-              ownerMetadataFolderId,
-              fileId,
-              userPnIdentifier,
-              ownerCredentials.identityId
-            );
-            }
-          }
+        if (ownerPnIdentifier !== pnIdentifier) {
+          const { enqueueSocialJob } = await import('./socialRail');
+          await enqueueSocialJob({
+            jobType: 'notification_row',
+            peerPn: ownerPnIdentifier,
+            requestId: `share:${fileId}:${userPnIdentifier}`,
+            sealed: { peerPnIdentifier: userPnIdentifier },
+            extra: { kind: 'repost', fileId }
+          });
         }
       } catch (error) {
         console.warn('Failed to record share activity/notification:', error);

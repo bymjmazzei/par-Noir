@@ -18,6 +18,8 @@ export const DEVICE_CAPABILITIES = {
   driveUpload: 'drive.upload',
   messagesRead: 'messages.read',
   messagesSend: 'messages.send',
+  socialRead: 'social.read',
+  socialWrite: 'social.write',
 } as const;
 
 export type DeviceCapabilityId = (typeof DEVICE_CAPABILITIES)[keyof typeof DEVICE_CAPABILITIES];
@@ -49,6 +51,8 @@ export const DEFAULT_UNKEYED_ALLOWS: readonly string[] = [
   DEVICE_CAPABILITIES.driveUpload,
   DEVICE_CAPABILITIES.messagesRead,
   DEVICE_CAPABILITIES.messagesSend,
+  DEVICE_CAPABILITIES.socialRead,
+  DEVICE_CAPABILITIES.socialWrite,
 ];
 
 /** Human-readable labels for policy UI toggles (configurable allows only). */
@@ -59,6 +63,8 @@ export const CONFIGURABLE_CAPABILITY_LABELS: Record<string, string> = {
   [DEVICE_CAPABILITIES.driveUpload]: 'Upload to Drive',
   [DEVICE_CAPABILITIES.messagesRead]: 'Read messages',
   [DEVICE_CAPABILITIES.messagesSend]: 'Send messages',
+  [DEVICE_CAPABILITIES.socialRead]: 'Read connections and follows',
+  [DEVICE_CAPABILITIES.socialWrite]: 'Manage connections and follows',
   [DEVICE_CAPABILITIES.custodiansRead]: 'View recovery custodians',
 };
 

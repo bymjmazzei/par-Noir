@@ -24,7 +24,14 @@ jest.mock('./googleDriveProxy', () => ({
 }));
 
 jest.mock('./connectionsService', () => ({
-  ConnectionsService: { sendConnectionRequest: jest.fn() },
+  ConnectionsService: {
+    generateConnectionId: jest.fn(() => 'conn-1'),
+    upsertOwnConnectionRow: jest.fn(),
+  },
+}));
+
+jest.mock('./socialRail', () => ({
+  enqueueSocialJob: jest.fn(async () => true),
 }));
 
 jest.mock('./activityLedgerService', () => ({
@@ -45,12 +52,14 @@ import { setupConnectionRoutes, ConnectionRouteDeps } from './connectionRoutes';
 import { storageCredentialsService } from './storageCredentialsService';
 import { googleDriveProxyService } from './googleDriveProxy';
 import { ConnectionsService } from './connectionsService';
+import { enqueueSocialJob } from './socialRail';
 import { ActivityLedgerService } from './activityLedgerService';
 import { NotificationService } from './notificationService';
 
 const mockGetCredentials = storageCredentialsService.getCredentials as jest.Mock;
 const mockGetAccessToken = googleDriveProxyService.getAccessToken as jest.Mock;
-const mockSendConnectionRequest = ConnectionsService.sendConnectionRequest as jest.Mock;
+const mockUpsertOwnRow = ConnectionsService.upsertOwnConnectionRow as jest.Mock;
+const mockEnqueueSocialJob = enqueueSocialJob as jest.Mock;
 const mockRecordActivity = ActivityLedgerService.recordActivity as jest.Mock;
 const mockNotify = NotificationService.notifyConnectionRequest as jest.Mock;
 
@@ -99,7 +108,8 @@ describe('POST /api/connections/request', () => {
   beforeEach(() => {
     mockGetCredentials.mockReset();
     mockGetAccessToken.mockReset();
-    mockSendConnectionRequest.mockReset();
+    mockUpsertOwnRow.mockReset().mockResolvedValue(undefined);
+    mockEnqueueSocialJob.mockReset().mockResolvedValue(true);
     mockRecordActivity.mockReset().mockResolvedValue(undefined);
     mockNotify.mockReset().mockResolvedValue(undefined);
   });
@@ -147,22 +157,20 @@ describe('POST /api/connections/request', () => {
     expect(res.body.error).toBe('Requester has no Google Drive connected');
   });
 
-  it('returns 404 when the recipient is unknown to the network', async () => {
-    mockGetCredentials.mockImplementation(async (pn: string) =>
-      pn === REQUESTER
-        ? {
-            identityId: pn,
-            credentials: { googleDriveAccounts: [{ backendId: 'req-acct', access_token: 'tok' }] },
-          }
-        : null
-    );
-    mockGetAccessToken.mockResolvedValue('requester-token');
+  it('does not touch the recipient credentials at all', async () => {
+    bothPartiesConnected();
 
-    const res = await request(buildApp().app)
+    await request(buildApp().app)
       .post('/api/connections/request')
       .send(validRequestBody())
-      .expect(404);
-    expect(res.body.error).toBe('Recipient credentials not found');
+      .expect(200);
+
+    // Loading the recipient's row was the whole cross-user problem: under
+    // custody it is a stripped shell and the write silently failed.
+    for (const call of mockGetCredentials.mock.calls) {
+      expect(call[0]).toBe(REQUESTER);
+    }
+    expect(mockGetAccessToken).not.toHaveBeenCalled();
   });
 
   it('reports drive-not-initialized when the requester layout is missing', async () => {
@@ -175,55 +183,77 @@ describe('POST /api/connections/request', () => {
 
     await request(app).post('/api/connections/request').send(validRequestBody()).expect(409);
     expect(driveNotInitialized).toHaveBeenCalled();
-    expect(mockSendConnectionRequest).not.toHaveBeenCalled();
+    expect(mockUpsertOwnRow).not.toHaveBeenCalled();
   });
 
-  it('creates the connection with both parties resolved', async () => {
+  it('writes only the requester row and hands the recipient half to the mailbox', async () => {
     bothPartiesConnected();
-    mockSendConnectionRequest.mockResolvedValue({ connectionId: 'conn-1', status: 'pending' });
 
     const res = await request(buildApp().app)
-      .post('/api/connections/request')
-      .send({ ...validRequestBody(), requesterMailboxRouteKey: '  route-key  ' })
-      .expect(200);
-
-    expect(res.body).toEqual({
-      success: true,
-      connection: { connectionId: 'conn-1', status: 'pending' },
-    });
-
-    const args = mockSendConnectionRequest.mock.calls[0];
-    expect(args[0]).toBe(`${REQUESTER}-token`);
-    expect(args[1]).toBe(`${REQUESTER}-meta`);
-    expect(args[2]).toBe(REQUESTER);
-    expect(args[3]).toBe(`${RECIPIENT}-token`);
-    expect(args[4]).toBe(`${RECIPIENT}-meta`);
-    expect(args[5]).toBe(RECIPIENT);
-    expect(args[9]).toBe('route-key');
-  });
-
-  it('records activity for both parties and notifies the recipient', async () => {
-    bothPartiesConnected();
-    mockSendConnectionRequest.mockResolvedValue({ connectionId: 'conn-1' });
-
-    await request(buildApp().app)
       .post('/api/connections/request')
       .send(validRequestBody())
       .expect(200);
 
-    expect(mockRecordActivity).toHaveBeenCalledTimes(2);
-    expect(mockNotify).toHaveBeenCalledWith(
-      `${RECIPIENT}-token`,
-      `${RECIPIENT}-meta`,
-      'conn-1',
-      REQUESTER,
-      RECIPIENT
-    );
+    expect(res.body.success).toBe(true);
+    expect(res.body.connection).toEqual({
+      connectionId: 'conn-1',
+      userPnIdentifier: RECIPIENT,
+      status: 'pending_sent',
+      createdAt: expect.any(String),
+    });
+
+    expect(mockUpsertOwnRow).toHaveBeenCalledTimes(1);
+    const [, metadataFolderId, ownerPn, row] = mockUpsertOwnRow.mock.calls[0];
+    expect(metadataFolderId).toBe(`${REQUESTER}-meta`);
+    expect(ownerPn).toBe(REQUESTER);
+    expect(row).toMatchObject({
+      connectionId: 'conn-1',
+      userPnIdentifier: RECIPIENT,
+      status: 'pending_sent',
+    });
+
+    expect(mockEnqueueSocialJob).toHaveBeenCalledTimes(1);
+    expect(mockEnqueueSocialJob.mock.calls[0][0]).toMatchObject({
+      jobType: 'connection_request',
+      peerPn: RECIPIENT,
+      requestId: 'conn-1',
+    });
+  });
+
+  it('forwards the client-sealed envelope and the context it was sealed under', async () => {
+    bothPartiesConnected();
+
+    await request(buildApp().app)
+      .post('/api/connections/request')
+      .send({
+        ...validRequestBody(),
+        recipientEnvelope: { kemCiphertext: 'kem', ciphertext: 'ct' },
+        envelopeContext: 'connect:a:b',
+      })
+      .expect(200);
+
+    expect(mockEnqueueSocialJob.mock.calls[0][0]).toMatchObject({
+      envelope: { kemCiphertext: 'kem', ciphertext: 'ct' },
+      envelopeContext: 'connect:a:b',
+    });
+  });
+
+  it('reports the request as undelivered rather than failing when the mailbox refuses', async () => {
+    bothPartiesConnected();
+    mockEnqueueSocialJob.mockResolvedValue(false);
+
+    const res = await request(buildApp().app)
+      .post('/api/connections/request')
+      .send(validRequestBody())
+      .expect(200);
+
+    // The requester's own row landed, so the call succeeded; delivered says
+    // plainly that the peer has not been told.
+    expect(res.body).toMatchObject({ success: true, delivered: false });
   });
 
   it('still succeeds when the activity ledger and notification fail', async () => {
     bothPartiesConnected();
-    mockSendConnectionRequest.mockResolvedValue({ connectionId: 'conn-1' });
     mockRecordActivity.mockRejectedValue(new Error('sheets unavailable'));
     mockNotify.mockRejectedValue(new Error('notification failed'));
 
@@ -234,27 +264,33 @@ describe('POST /api/connections/request', () => {
     expect(res.body.success).toBe(true);
   });
 
-  it('fails with 500 when the connection service returns no connectionId', async () => {
+  it('fails with 500 when the requester row cannot be written', async () => {
     bothPartiesConnected();
-    mockSendConnectionRequest.mockResolvedValue({});
-
-    const res = await request(buildApp().app)
-      .post('/api/connections/request')
-      .send(validRequestBody())
-      .expect(500);
-    expect(res.body.error).toBe('Connection request created but missing connectionId');
-  });
-
-  it('fails with 500 when the requester Drive token cannot be minted', async () => {
-    bothPartiesConnected();
-    mockGetAccessToken.mockRejectedValue(new Error('token unavailable'));
+    mockUpsertOwnRow.mockRejectedValue(new Error('sheets unavailable'));
 
     const res = await request(buildApp().app)
       .post('/api/connections/request')
       .send(validRequestBody())
       .expect(500);
     expect(res.body.error).toBe('Failed to send connection request');
-    expect(mockSendConnectionRequest).not.toHaveBeenCalled();
+    expect(mockEnqueueSocialJob).not.toHaveBeenCalled();
+  });
+
+  it('refuses when the requester has only a stripped custody shell and no forwarded token', async () => {
+    // This is the state every account is in under device cloud custody: the
+    // stored row holds no access token, and the client must forward one.
+    mockGetCredentials.mockResolvedValue({
+      identityId: REQUESTER,
+      credentials: { googleDriveAccounts: [{ backendId: 'req-acct' }] },
+    });
+
+    const res = await request(buildApp().app)
+      .post('/api/connections/request')
+      .send(validRequestBody());
+
+    expect(res.status).toBeGreaterThanOrEqual(400);
+    expect(mockUpsertOwnRow).not.toHaveBeenCalled();
+    expect(mockEnqueueSocialJob).not.toHaveBeenCalled();
   });
 });
 

@@ -13,6 +13,8 @@ export type { NativeKv } from './stores/nativeSecureStore.js';
 export {
   CloudFlushWorker,
   fetchMailboxPending,
+  claimMailboxRoute,
+  ackMailboxJobsRemote,
   enqueueMailboxThroughway,
   lookupMailboxThroughway,
   migrateServerSecretsToDevice
@@ -30,17 +32,20 @@ export {
   loadLocalOutbox,
   saveLocalOutbox,
   upsertLocalOutboxRecord,
-  clearLocalOutbox,
-  OUTBOX_BRIDGE_STORAGE_KEY,
-  stashOutboxBridge,
-  takeOutboxBridge
+  clearLocalOutbox
 } from './outbox.js';
 export {
   createDeviceCloudWriter,
   writeOutboxToCloud,
   appendConversationLine,
-  materializeMailboxJob
+  materializeMailboxJob,
+  SOCIAL_JOB_TYPES_APPLIED_VIA_API
 } from './siloMaterialize.js';
+export {
+  createApiSocialApplier,
+  createApiOnlyApplyJob,
+  type ApiSocialApplierOptions
+} from './apiSocialApplier.js';
 export {
   mintMailboxRouteKey,
   isMailboxRouteKey,

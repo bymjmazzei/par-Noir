@@ -630,6 +630,72 @@ export class ConnectionsService {
    * Update connection status in other user's sheet (requires both access tokens)
    * Uses Google Sheets instead of JSON file
    */
+  /**
+   * Write one row into a single user's own connections file, replacing any
+   * existing row for the same peer.
+   *
+   * Each side of a connection now writes only its own file with its own
+   * device-held token: the requester writes pending_sent, and the recipient
+   * writes pending_received when their device applies the mailbox job. Nothing
+   * here reaches across to another user's cloud.
+   */
+  static async upsertOwnConnectionRow(
+    token: GoogleDriveToken,
+    metadataFolder: string,
+    pnIdentifier: string,
+    row: Connection,
+    accountId?: string
+  ): Promise<void> {
+    const normalized = this.normalizeToPnIdentifier(pnIdentifier);
+    const peer = this.normalizeToPnIdentifier(row.userPnIdentifier);
+
+    if (await isPortableStorageProvider(normalized)) {
+      await removeConnectionByPeerPortable(normalized, peer, accountId);
+      await appendConnectionPortable(normalized, { ...row, userPnIdentifier: peer }, accountId);
+      return;
+    }
+
+    const sheetId = await ConnectionsSheetsService.getConnectionsSheet(
+      token,
+      metadataFolder,
+      normalized,
+      accountId
+    );
+    try {
+      const existing = await ConnectionsSheetsService.getConnections(
+        token,
+        sheetId,
+        normalized,
+        accountId
+      );
+      const dupe = existing.connections.find(
+        (c) => this.normalizeToPnIdentifier(c.userPnIdentifier) === peer
+      );
+      if (dupe) {
+        await ConnectionsSheetsService.removeConnection(
+          token,
+          sheetId,
+          dupe.connectionId,
+          normalized,
+          accountId
+        );
+      }
+    } catch {
+      /* no existing row */
+    }
+    await ConnectionsSheetsService.addConnection(
+      token,
+      sheetId,
+      { ...row, userPnIdentifier: peer },
+      normalized,
+      accountId
+    );
+  }
+
+  /**
+   * Upsert a status change into ONE user's connections file. Callers pass that
+   * user's own token; there is no cross-user path here any more.
+   */
   static async updateOtherUserConnectionStatus(
     otherUserAccessToken: string,
     otherUserMetadataFolder: string,
