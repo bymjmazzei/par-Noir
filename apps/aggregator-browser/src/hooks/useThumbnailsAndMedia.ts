@@ -68,7 +68,10 @@ export function useThumbnailsAndMedia({
 
   const generateThumbnailsForImages = useCallback(
     async (files: IndexedFile[]) => {
-      for (const indexedFile of files) {
+      const CONCURRENCY = 3;
+      let cursor = 0;
+
+      const processOne = async (indexedFile: IndexedFile) => {
         const file = indexedFile.metadata;
         const isImage =
           file.fileType === 'image' ||
@@ -95,7 +98,7 @@ export function useThumbnailsAndMedia({
           if (hasValidToken === false && (isImage || isVideo) && import.meta.env.DEV) {
             console.warn(`⚠️ [Feed] Skipping ${file.fileId} - missing or invalid publicToken`);
           }
-          continue;
+          return;
         }
 
         const next = new Set(generatingThumbnailsRef.current).add(file.fileId);
@@ -109,11 +112,7 @@ export function useThumbnailsAndMedia({
             if (!token || !token.shareKey) throw new Error('Invalid token structure');
           } catch (e) {
             if (import.meta.env.DEV) console.error(`❌ [Feed] Failed to parse/validate token for ${file.fileId}:`, e);
-            const n = new Set(generatingThumbnailsRef.current);
-            n.delete(file.fileId);
-            generatingThumbnailsRef.current = n;
-            setGeneratingThumbnails(n);
-            continue;
+            return;
           }
 
           const decryptedBlob = await decryptPublicFeedMedia(
@@ -137,7 +136,15 @@ export function useThumbnailsAndMedia({
           generatingThumbnailsRef.current = n;
           setGeneratingThumbnails(n);
         }
-      }
+      };
+
+      const workers = Array.from({ length: Math.min(CONCURRENCY, files.length) }, async () => {
+        while (cursor < files.length) {
+          const item = files[cursor++];
+          await processOne(item);
+        }
+      });
+      await Promise.all(workers);
     },
     []
   );

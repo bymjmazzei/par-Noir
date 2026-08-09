@@ -12,18 +12,44 @@ import { hashIdentifier, safeLogger } from '../../utils/logger';
 import {
   ensureDrivePublicReadable,
   ensurePortablePublicReadable,
-  fetchPublicBytes,
+  fetchPublicBytesTimed,
   PublicBlobAccessError,
   revokeDrivePublicReadable,
 } from './publicBlobAccess';
 
 const PURGE_COOLDOWN_MS = 60_000;
+const ENVELOPE_CACHE_TTL_SEC = 60;
 const recentPurges = new Map<string, number>();
 
 function clientError(err: unknown): string {
   if (err instanceof PublicBlobAccessError) return err.message;
   if (err instanceof Error) return err.message;
   return 'Request failed';
+}
+
+function envelopeCacheKey(objectId: string): string {
+  return `public-envelope:v1:${objectId}`;
+}
+
+async function getCachedEnvelopeBuffer(objectId: string): Promise<Buffer | null> {
+  const { getCache } = await import('../utils/cache');
+  const cached = await getCache<{ b64: string }>(envelopeCacheKey(objectId));
+  if (!cached?.b64 || typeof cached.b64 !== 'string') return null;
+  try {
+    return Buffer.from(cached.b64, 'base64');
+  } catch {
+    return null;
+  }
+}
+
+async function setCachedEnvelopeBuffer(objectId: string, buffer: Buffer): Promise<void> {
+  const { setCache } = await import('../utils/cache');
+  await setCache(envelopeCacheKey(objectId), { b64: buffer.toString('base64') }, ENVELOPE_CACHE_TTL_SEC);
+}
+
+async function invalidateEnvelopeCache(objectId: string): Promise<void> {
+  const { deleteCache } = await import('../utils/cache');
+  await deleteCache(envelopeCacheKey(objectId));
 }
 
 export function registerPublicContentRoutes(app: Application): void {
@@ -112,9 +138,11 @@ export function registerPublicContentRoutes(app: Application): void {
           throw e;
         }
         await revokeDrivePublicReadable(accessToken, objectId);
+        await invalidateEnvelopeCache(objectId);
         return res.json({ success: true });
       }
 
+      await invalidateEnvelopeCache(objectId);
       // Portable: caller must have revoked provider-side; API has nothing to revoke without owner URL ACLs.
       return res.json({ success: true, note: 'portable_revoke_client_side' });
     } catch (error: unknown) {
@@ -130,6 +158,7 @@ export function registerPublicContentRoutes(app: Application): void {
    * Confirmed 404/410 → attested aggregator purge.
    */
   app.get('/api/aggregator/public-content/:fileId', async (req: Request, res: Response) => {
+    const totalT0 = Date.now();
     try {
       const fileId = req.params.fileId;
       if (!fileId) {
@@ -138,7 +167,9 @@ export function registerPublicContentRoutes(app: Application): void {
 
       const { AggregatorMetadataServiceDB } = await import('./aggregatorMetadataServiceDB');
       const service = AggregatorMetadataServiceDB.getInstance();
+      const dbT0 = Date.now();
       const entry = await service.getFileMetadata(fileId);
+      const dbMs = Date.now() - dbT0;
       if (!entry?.metadata) {
         return res.status(404).json({ error: 'not_found', error_description: 'Not in public index' });
       }
@@ -175,8 +206,27 @@ export function registerPublicContentRoutes(app: Application): void {
       }
 
       let buffer: Buffer;
+      let cacheHit = false;
+      let primaryMs = 0;
+      let fallbackUsed = false;
+      let fallbackMs = 0;
+      let path: string = 'unknown';
+
       try {
-        buffer = await fetchPublicBytes(ref);
+        const cached = await getCachedEnvelopeBuffer(ref.objectId);
+        if (cached && cached.length > 0) {
+          buffer = cached;
+          cacheHit = true;
+          path = 'redis';
+        } else {
+          const timed = await fetchPublicBytesTimed(ref);
+          buffer = timed.buffer;
+          primaryMs = timed.primaryMs;
+          fallbackUsed = timed.fallbackUsed;
+          fallbackMs = timed.fallbackMs;
+          path = timed.path;
+          await setCachedEnvelopeBuffer(ref.objectId, buffer);
+        }
       } catch (error: unknown) {
         if (error instanceof PublicBlobAccessError && error.code === 'NOT_FOUND') {
           const now = Date.now();
@@ -187,6 +237,7 @@ export function registerPublicContentRoutes(app: Application): void {
               await service.removeMetadata(fileId);
               const { invalidateIndexCache } = await import('../utils/cache');
               await invalidateIndexCache();
+              await invalidateEnvelopeCache(ref.objectId);
               safeLogger.info('[public-content] Purged dead public row after 404', {
                 fileHash: hashIdentifier(fileId),
               });
@@ -208,9 +259,25 @@ export function registerPublicContentRoutes(app: Application): void {
         throw error;
       }
 
+      const totalMs = Date.now() - totalT0;
+      safeLogger.info('[public-content] proxy timing', {
+        fileHash: hashIdentifier(fileId),
+        objectHash: hashIdentifier(ref.objectId),
+        db_ms: dbMs,
+        primary_ms: primaryMs,
+        fallback_used: fallbackUsed,
+        fallback_ms: fallbackMs,
+        cache_hit: cacheHit,
+        path,
+        bytes: buffer.length,
+        total_ms: totalMs,
+      });
+
       res.setHeader('Content-Type', 'application/octet-stream');
-      res.setHeader('Cache-Control', 'public, max-age=60');
+      res.setHeader('Cache-Control', 'public, max-age=300');
       res.setHeader('X-PN-Public-Content', '1');
+      if (cacheHit) res.setHeader('X-PN-Envelope-Cache', 'HIT');
+      else res.setHeader('X-PN-Envelope-Cache', 'MISS');
       return res.send(buffer);
     } catch (error: unknown) {
       safeLogger.warn('[public-content] proxy failed', { message: clientError(error) });

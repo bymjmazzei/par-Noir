@@ -139,8 +139,17 @@ export function FullScreenFeed({
   const [collectionDataCache, setCollectionDataCache] = useState<Map<string, any>>(new Map()); // Cache for fetched collection data
   const fetchingCollectionRef = useRef<Set<string>>(new Set()); // Track files currently being fetched to prevent duplicates
   const loadingCollectionThumbnailsRef = useRef<Set<string>>(new Set()); // Track collection file IDs currently loading thumbnails
+  const loadingFeedThumbnailsRef = useRef<Set<string>>(new Set()); // In-flight vertical-feed thumb decrypts
   const loadingStartTimesRef = useRef<Map<string, number>>(new Map()); // Track when each file ID started loading
   const triggeredImmediateLoadRef = useRef<Set<string>>(new Set()); // Track collections we've already triggered immediate loading for
+  const thumbnailsRef = useRef(thumbnails);
+  const failedThumbnailsRef = useRef(failedThumbnails);
+  useEffect(() => {
+    thumbnailsRef.current = thumbnails;
+  }, [thumbnails]);
+  useEffect(() => {
+    failedThumbnailsRef.current = failedThumbnails;
+  }, [failedThumbnails]);
   
   // Helper function to clear loading state for a file ID
   const clearLoadingState = (fileId: string) => {
@@ -668,86 +677,117 @@ export function FullScreenFeed({
     };
   }, [visibleFileId, getPopularComments]);
 
-  // Load thumbnails for all thumbnail files in the feed
-  // Browser is stateless - public files use publicToken only (no session fallback)
-  // The token contains the encrypted data, so we don't need to fetch from API
+  // Priority-decrypt adjacent feed thumbs (current ± window) via blind public-content proxy.
+  // In-flight set + refs avoid duplicate fetches when Maps update mid-decrypt.
   useEffect(() => {
-    const loadThumbnails = async () => {
-      // Process ALL files in the feed to find thumbnail files
-      const thumbnailFiles = files.filter((indexedFile) => {
-        const fileName = (indexedFile.metadata?.name || indexedFile.metadata?.title || '').toLowerCase();
-        return fileName.startsWith('thumb_');
-      });
+    if (files.length === 0) return;
 
-      // Load each thumbnail file
-      await Promise.all(thumbnailFiles.map(async (indexedFile) => {
-        const file = indexedFile.metadata;
-        const fileId = file.fileId;
-        const fileName = file.name || file.title || '';
-        
-        // Skip if already loaded, failed permanently, or provided externally
-        if (
-          thumbnails.has(fileId) ||
-          failedThumbnails.has(fileId) ||
-          (externalThumbnails && externalThumbnails.has(fileId))
-        ) {
-          return;
-        }
+    const priorityIndices = [
+      currentIndex,
+      currentIndex + 1,
+      currentIndex + 2,
+      currentIndex - 1,
+    ].filter((idx, pos, arr) => idx >= 0 && idx < files.length && arr.indexOf(idx) === pos);
 
-        // Get publicToken (REQUIRED - no fallback)
-        const publicToken = indexedFile.publicToken || file.publicToken;
-        if (!publicToken) {
-          console.warn(`[FullScreenFeed] Thumbnail ${fileId} (${fileName}) has no publicToken - cannot decrypt`);
+    const CONCURRENCY = 3;
+    let cancelled = false;
+
+    const loadOne = async (indexedFile: (typeof files)[number]) => {
+      const file = indexedFile.metadata;
+      const fileId = file.fileId;
+      const fileName = (file.name || file.title || '').toLowerCase();
+      const isThumb = fileName.startsWith('thumb_');
+      const isImage =
+        file.fileType === 'image' ||
+        file.fileType === 'thought-thumbnail' ||
+        isThumb ||
+        !!fileName.match(/\.(jpg|jpeg|png|gif|webp|svg|bmp|ico)$/i);
+      if (!isImage && !isThumb) return;
+
+      if (
+        thumbnailsRef.current.has(fileId) ||
+        failedThumbnailsRef.current.has(fileId) ||
+        (externalThumbnails && externalThumbnails.has(fileId)) ||
+        loadingFeedThumbnailsRef.current.has(fileId)
+      ) {
+        return;
+      }
+
+      const publicToken = indexedFile.publicToken || file.publicToken;
+      if (!publicToken) {
+        if (isThumb) {
           setFailedThumbnails((prev) => {
             if (prev.has(fileId)) return prev;
             const next = new Set(prev);
             next.add(fileId);
             return next;
           });
-          return;
         }
+        return;
+      }
 
-        try {
-          // Parse publicToken
-          let token: ShareToken;
-          try {
-            token = typeof publicToken === 'string' ? JSON.parse(publicToken) : publicToken;
-          } catch (e) {
-            console.warn(`[FullScreenFeed] Failed to parse token for thumbnail ${fileId}:`, e);
-            setFailedThumbnails((prev) => {
-              if (prev.has(fileId)) return prev;
-              const next = new Set(prev);
-              next.add(fileId);
-              return next;
-            });
-            return;
+      let token: ShareToken;
+      try {
+        token = typeof publicToken === 'string' ? JSON.parse(publicToken) : publicToken;
+        if (!token?.shareKey) throw new Error('missing shareKey');
+      } catch {
+        setFailedThumbnails((prev) => {
+          if (prev.has(fileId)) return prev;
+          const next = new Set(prev);
+          next.add(fileId);
+          return next;
+        });
+        return;
+      }
+
+      loadingFeedThumbnailsRef.current.add(fileId);
+      try {
+        const { decryptPublicFeedMedia } = await import('../utils/publicMediaDecrypt');
+        if (cancelled) return;
+        const decryptedBlob = await decryptPublicFeedMedia(fileId, token);
+        if (cancelled) return;
+        const thumbnailUrlObj = URL.createObjectURL(decryptedBlob);
+        setThumbnails((prev) => {
+          if (prev.has(fileId)) {
+            URL.revokeObjectURL(thumbnailUrlObj);
+            return prev;
           }
-          
-          // Decrypt using token directly (token contains shareEncrypted data)
-          // No need to fetch from API - the token has everything we need
-          const { decryptPublicFeedMedia } = await import('../utils/publicMediaDecrypt');
-          const decryptedBlob = await decryptPublicFeedMedia(fileId, token);
-          const thumbnailUrlObj = URL.createObjectURL(decryptedBlob);
-          
-          setThumbnails(prev => {
-            const newMap = new Map(prev);
-            newMap.set(fileId, thumbnailUrlObj);
-            return newMap;
-          });
-        } catch (err) {
-          console.error(`[FullScreenFeed] Failed to decrypt thumbnail for ${fileId} (${fileName}):`, err);
-          setFailedThumbnails((prev) => {
-            if (prev.has(fileId)) return prev;
-            const next = new Set(prev);
-            next.add(fileId);
-            return next;
-          });
+          const newMap = new Map(prev);
+          newMap.set(fileId, thumbnailUrlObj);
+          return newMap;
+        });
+      } catch (err) {
+        if (import.meta.env.DEV) {
+          console.error(`[FullScreenFeed] Failed to decrypt thumbnail for ${fileId}:`, err);
         }
-      }));
+        setFailedThumbnails((prev) => {
+          if (prev.has(fileId)) return prev;
+          const next = new Set(prev);
+          next.add(fileId);
+          return next;
+        });
+      } finally {
+        loadingFeedThumbnailsRef.current.delete(fileId);
+      }
     };
 
-    loadThumbnails();
-  }, [files, externalThumbnails, thumbnails, failedThumbnails]);
+    const runPool = async () => {
+      const queue = priorityIndices.map((idx) => files[idx]).filter(Boolean);
+      let next = 0;
+      const workers = Array.from({ length: Math.min(CONCURRENCY, queue.length) }, async () => {
+        while (!cancelled && next < queue.length) {
+          const item = queue[next++];
+          await loadOne(item);
+        }
+      });
+      await Promise.all(workers);
+    };
+
+    void runPool();
+    return () => {
+      cancelled = true;
+    };
+  }, [files, currentIndex, externalThumbnails]);
 
   // Retry loading thumbnails when authentication becomes available
   useEffect(() => {

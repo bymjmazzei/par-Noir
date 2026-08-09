@@ -132,7 +132,23 @@ export function isPermanentPublicContentError(error: unknown): error is Permanen
   );
 }
 
-export async function fetchPublicEnvelope(params: {
+/** Align with API Cache-Control max-age=300 for public envelopes. */
+const ENVELOPE_CACHE_TTL_MS = 300_000;
+
+const envelopeCache = new Map<string, { envelope: PublicCipherEnvelope; cachedAt: number }>();
+const envelopeInFlight = new Map<string, Promise<PublicCipherEnvelope>>();
+
+export function clearPublicEnvelopeCache(fileId?: string): void {
+  if (fileId) {
+    envelopeCache.delete(fileId);
+    envelopeInFlight.delete(fileId);
+    return;
+  }
+  envelopeCache.clear();
+  envelopeInFlight.clear();
+}
+
+async function fetchPublicEnvelopeUncached(params: {
   fileId: string;
   apiBase: string;
   headers?: HeadersInit;
@@ -162,6 +178,41 @@ export async function fetchPublicEnvelope(params: {
     throw new Error('public-content body is not a valid envelope');
   }
   return parsed;
+}
+
+export async function fetchPublicEnvelope(params: {
+  fileId: string;
+  apiBase: string;
+  headers?: HeadersInit;
+}): Promise<PublicCipherEnvelope> {
+  const { fileId } = params;
+  if (!fileId) throw new Error('fileId required for public envelope fetch');
+
+  const cached = envelopeCache.get(fileId);
+  if (cached && Date.now() - cached.cachedAt < ENVELOPE_CACHE_TTL_MS) {
+    return cached.envelope;
+  }
+
+  const existing = envelopeInFlight.get(fileId);
+  if (existing) return existing;
+
+  const pending = fetchPublicEnvelopeUncached(params)
+    .then((envelope) => {
+      envelopeCache.set(fileId, { envelope, cachedAt: Date.now() });
+      return envelope;
+    })
+    .catch((err: unknown) => {
+      if (isPermanentPublicContentError(err)) {
+        envelopeCache.delete(fileId);
+      }
+      throw err;
+    })
+    .finally(() => {
+      envelopeInFlight.delete(fileId);
+    });
+
+  envelopeInFlight.set(fileId, pending);
+  return pending;
 }
 
 /** Fetch envelope via blind proxy and decrypt with shareKey from slim publicToken. */

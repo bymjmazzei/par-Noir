@@ -23,6 +23,11 @@ export function drivePublicDownloadUrl(fileId: string): string {
   return `https://drive.google.com/uc?export=download&id=${encodeURIComponent(fileId)}&confirm=t`;
 }
 
+/** Final Drive download host (avoids uc→usercontent redirect RTT). */
+export function driveUsercontentDownloadUrl(fileId: string): string {
+  return `https://drive.usercontent.google.com/download?id=${encodeURIComponent(fileId)}&export=download`;
+}
+
 export async function ensureDrivePublicReadable(
   accessToken: string,
   fileId: string
@@ -111,39 +116,82 @@ function looksLikeHtml(buffer: Buffer, contentType: string | null): boolean {
   return head.startsWith('<!doctype') || head.startsWith('<html');
 }
 
+function isUsableCipherBody(
+  status: number,
+  buffer: Buffer,
+  contentType: string | null
+): boolean {
+  return status >= 200 && status < 300 && buffer.length > 0 && !looksLikeHtml(buffer, contentType);
+}
+
+export type FetchPublicBytesTiming = {
+  buffer: Buffer;
+  primaryMs: number;
+  fallbackUsed: boolean;
+  fallbackMs: number;
+  path: 'usercontent' | 'publicUrl' | 'api_key' | 'other';
+};
+
 /**
- * OAuth-less fetch. Drive: publicUrl first, then platform API key (not owner OAuth).
+ * OAuth-less fetch. Drive: usercontent first, then publicUrl (uc), then platform API key.
  * Phase 0 observed: Drive API without key → 403; with key param → accepted path.
  */
 export async function fetchPublicBytes(ref: PublicContentRef): Promise<Buffer> {
+  const timed = await fetchPublicBytesTimed(ref);
+  return timed.buffer;
+}
+
+export async function fetchPublicBytesTimed(ref: PublicContentRef): Promise<FetchPublicBytesTiming> {
   if (!ref?.publicUrl) {
     throw new PublicBlobAccessError('publicContentRef.publicUrl required', 'CONFIG', 500);
   }
 
-  const primary = await fetchUrlBytes(ref.publicUrl);
-  if (primary.status === 404 || primary.status === 410) {
-    throw new PublicBlobAccessError('Public content not found', 'NOT_FOUND', primary.status);
+  const isDrive =
+    ref.backend === 'google_drive' || /drive\.google|googleapis\.com\/drive|drive\.usercontent/i.test(ref.publicUrl);
+
+  const tryUrls: Array<{ url: string; path: FetchPublicBytesTiming['path'] }> = [];
+  if (isDrive && ref.objectId) {
+    tryUrls.push({ url: driveUsercontentDownloadUrl(ref.objectId), path: 'usercontent' });
   }
-  if (primary.status === 403) {
-    throw new PublicBlobAccessError('Public content forbidden', 'FORBIDDEN', 403);
+  if (ref.publicUrl) {
+    tryUrls.push({ url: ref.publicUrl, path: 'publicUrl' });
   }
 
-  if (
-    primary.status >= 200 &&
-    primary.status < 300 &&
-    primary.buffer.length > 0 &&
-    !looksLikeHtml(primary.buffer, primary.contentType)
-  ) {
-    return primary.buffer;
+  let primaryMs = 0;
+  let lastStatus = 0;
+  let lastHtml = false;
+
+  for (const candidate of tryUrls) {
+    const t0 = Date.now();
+    const result = await fetchUrlBytes(candidate.url);
+    primaryMs += Date.now() - t0;
+    lastStatus = result.status;
+    lastHtml = looksLikeHtml(result.buffer, result.contentType);
+
+    if (result.status === 404 || result.status === 410) {
+      throw new PublicBlobAccessError('Public content not found', 'NOT_FOUND', result.status);
+    }
+    if (result.status === 403 && !isDrive) {
+      throw new PublicBlobAccessError('Public content forbidden', 'FORBIDDEN', 403);
+    }
+    if (isUsableCipherBody(result.status, result.buffer, result.contentType)) {
+      return {
+        buffer: result.buffer,
+        primaryMs,
+        fallbackUsed: false,
+        fallbackMs: 0,
+        path: candidate.path,
+      };
+    }
   }
 
   // Drive fallback: platform API key (not owner / peer OAuth)
-  if (ref.backend === 'google_drive' || /drive\.google|googleapis\.com\/drive/i.test(ref.publicUrl)) {
+  if (isDrive) {
     const apiKey = (process.env.GOOGLE_DRIVE_API_KEY || process.env.GOOGLE_API_KEY || '').trim();
     if (!apiKey) {
       safeLogger.warn('[PublicBlobAccess] Drive publicUrl fetch unusable and GOOGLE_DRIVE_API_KEY unset', {
-        status: primary.status,
-        html: looksLikeHtml(primary.buffer, primary.contentType),
+        status: lastStatus,
+        html: lastHtml,
         objectHash: hashIdentifier(ref.objectId),
       });
       throw new PublicBlobAccessError(
@@ -153,7 +201,9 @@ export async function fetchPublicBytes(ref: PublicContentRef): Promise<Buffer> {
       );
     }
     const apiUrl = `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(ref.objectId)}?alt=media&key=${encodeURIComponent(apiKey)}`;
+    const t1 = Date.now();
     const secondary = await fetchUrlBytes(apiUrl);
+    const fallbackMs = Date.now() - t1;
     if (secondary.status === 404 || secondary.status === 410) {
       throw new PublicBlobAccessError('Public content not found', 'NOT_FOUND', secondary.status);
     }
@@ -161,7 +211,13 @@ export async function fetchPublicBytes(ref: PublicContentRef): Promise<Buffer> {
       throw new PublicBlobAccessError('Public content forbidden', 'FORBIDDEN', 403);
     }
     if (secondary.status >= 200 && secondary.status < 300 && secondary.buffer.length > 0) {
-      return secondary.buffer;
+      return {
+        buffer: secondary.buffer,
+        primaryMs,
+        fallbackUsed: true,
+        fallbackMs,
+        path: 'api_key',
+      };
     }
     throw new PublicBlobAccessError(
       `Drive API key fetch failed: ${secondary.status}`,
@@ -170,13 +226,5 @@ export async function fetchPublicBytes(ref: PublicContentRef): Promise<Buffer> {
     );
   }
 
-  if (primary.status >= 200 && primary.status < 300 && primary.buffer.length > 0) {
-    // HTML body for non-Drive still returned — treat as failure for ciphertext
-    if (looksLikeHtml(primary.buffer, primary.contentType)) {
-      throw new PublicBlobAccessError('Public URL returned HTML, not ciphertext', 'FETCH_FAILED', 502);
-    }
-    return primary.buffer;
-  }
-
-  throw new PublicBlobAccessError(`Public fetch failed: ${primary.status}`, 'FETCH_FAILED', 502);
+  throw new PublicBlobAccessError(`Public fetch failed: ${lastStatus}`, 'FETCH_FAILED', 502);
 }
