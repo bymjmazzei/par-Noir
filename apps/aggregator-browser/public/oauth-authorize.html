@@ -618,6 +618,29 @@
     let dataPointCatalog = {};
     /** Minimum proof level per data point, from the client's static contract. */
     let dataPointLevels = {};
+    /**
+     * Which requested data points the user actually holds a usable proof for.
+     *
+     * Null means the API could not check. That is treated as "assume available"
+     * on purpose: a Drive hiccup must not quietly strip a data point the user
+     * does have. An explicit `{available:false}` is what blocks a row.
+     */
+    let availableDataPoints = null;
+
+    function dataPointAvailability(id) {
+      if (!availableDataPoints) return { available: true };
+      const entry = availableDataPoints[id];
+      if (!entry) return { available: true };
+      return entry;
+    }
+
+    function unavailableReasonText(reason) {
+      if (reason === 'below_level') {
+        return 'You have this proof, but not at the verified level this app requires.';
+      }
+      if (reason === 'expired') return 'Your proof for this has expired.';
+      return 'You have not set this up yet, so there is nothing to share.';
+    }
 
     async function loadDataPointCatalog() {
       if (requestedDataPoints.length === 0) return;
@@ -642,6 +665,7 @@
 
       requestedDataPoints.forEach(function (id) {
         const meta = dataPointCatalog[id] || {};
+        const availability = dataPointAvailability(id);
         const row = document.createElement('div');
         row.className = 'permission-item';
 
@@ -654,37 +678,46 @@
         title.textContent = (meta.name || id) + levelSuffix;
         const badge = document.createElement('span');
         badge.className = 'optional-badge';
-        badge.textContent = '(Optional)';
+        badge.textContent = availability.available ? '(Optional)' : '(Not set up)';
         title.appendChild(document.createTextNode(' '));
         title.appendChild(badge);
 
         const desc = document.createElement('div');
         desc.className = 'permission-desc';
-        desc.textContent = meta.description || 'Share this proof with ' + clientId;
+        desc.textContent = availability.available
+          ? meta.description || 'Share this proof with ' + clientId
+          : unavailableReasonText(availability.reason);
 
         text.appendChild(title);
         text.appendChild(desc);
 
-        const control = document.createElement('div');
-        control.style.marginLeft = '12px';
-        const select = document.createElement('select');
-        select.className = 'permission-select';
-        select.setAttribute('data-data-point', id);
-        select.required = true;
-        [
-          { value: '', label: 'Select...' },
-          { value: 'shared', label: 'Share' },
-          { value: 'not-shared', label: "Don't Share" }
-        ].forEach(function (opt) {
-          const option = document.createElement('option');
-          option.value = opt.value;
-          option.textContent = opt.label;
-          select.appendChild(option);
-        });
-        control.appendChild(select);
-
         row.appendChild(text);
-        row.appendChild(control);
+
+        // A proof the user does not hold gets no control at all. Offering the
+        // choice would record a grant that can never be honoured.
+        if (availability.available) {
+          const control = document.createElement('div');
+          control.style.marginLeft = '12px';
+          const select = document.createElement('select');
+          select.className = 'permission-select';
+          select.setAttribute('data-data-point', id);
+          select.required = true;
+          [
+            { value: '', label: 'Select...' },
+            { value: 'shared', label: 'Share' },
+            { value: 'not-shared', label: "Don't Share" }
+          ].forEach(function (opt) {
+            const option = document.createElement('option');
+            option.value = opt.value;
+            option.textContent = opt.label;
+            select.appendChild(option);
+          });
+          control.appendChild(select);
+          row.appendChild(control);
+        } else {
+          row.style.opacity = '0.55';
+        }
+
         container.appendChild(row);
       });
 
@@ -878,10 +911,16 @@
      *
      * Under device cloud custody the API holds no Google secrets, so without this
      * the server cannot read the stored grant and every unlock re-prompts.
+     *
+     * The vault was sealed when Drive was connected, so its access token is
+     * usually long dead. The helper mints a replacement from the vault's refresh
+     * token, using the authorization code as proof of unlock, because this page
+     * has no pN access token yet.
+     *
      * The token is returned to the caller and never stored: cloud tokens must not
      * survive lock, so it lives only for this page's lifetime.
      */
-    async function resolveCloudAccessToken(sealedVault, decrypted, pnName, passcode) {
+    async function resolveCloudAccessToken(sealedVault, decrypted, pnName, passcode, code) {
       if (!sealedVault || !window.ParNoirCloudVault) return null;
       const pqc = (decrypted && decrypted.pqcSecrets) || {};
       const mlKemSecretKey = pqc.mlKemSecretKey || (decrypted && decrypted.mlKemSecretKey) || null;
@@ -889,7 +928,10 @@
         return await window.ParNoirCloudVault.accessTokenFromSealedVault(sealedVault, {
           mlKemSecretKey: mlKemSecretKey,
           pnName: pnName,
-          passcode: passcode
+          passcode: passcode,
+          apiEndpoint: apiEndpoint,
+          code: code,
+          clientId: clientId
         });
       } catch (vaultErr) {
         // Never log the envelope or factors.
@@ -916,8 +958,17 @@
             headers['X-PN-Cloud-Access-Token'] = cloudAccessToken;
           }
           const res = await fetch(apiEndpoint + '/oauth/existing-grant?' + q, { headers: headers });
+          if (res.status === 409) {
+            // The token we forwarded is dead, so the server could not read the
+            // grant. Retrying with the same token cannot help.
+            console.warn('[OAuth] Grant lookup needs a fresh Drive token');
+            return null;
+          }
           if (!res.ok) continue;
           const body = await res.json();
+          if (body && body.availableDataPoints) {
+            availableDataPoints = body.availableDataPoints;
+          }
           if (body && body.existingGrant) return body.existingGrant;
           // With a forwarded token the server could actually read Drive, so an
           // empty answer is real rather than a raced deadline. Don't stall consent.
@@ -971,7 +1022,8 @@
         authResult.sealedCloudVault,
         decryptedIdentity,
         pnName,
-        passcode
+        passcode,
+        authorizationCode
       );
 
       let existingGrant = authResult.existingGrant;
@@ -997,6 +1049,9 @@
       }
 
       dataPointLevels = authResult.dataPointLevels || {};
+      if (authResult.availableDataPoints) {
+        availableDataPoints = authResult.availableDataPoints;
+      }
       await loadDataPointCatalog();
       renderDataPointRows();
       document.getElementById('pnIdentifierDisplay').textContent = pnIdentifier;

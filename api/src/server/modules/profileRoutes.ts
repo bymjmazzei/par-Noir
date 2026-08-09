@@ -451,6 +451,9 @@ export function setupProfileRoutes(app: express.Application, deps: ProfileRouteD
 
         return res.json({ success: true });
       } catch (error: any) {
+        // An expired forwarded token is the caller's to fix, not a server fault.
+        const { respondDriveTokenError } = await import('./ownerDriveToken');
+        if (respondDriveTokenError(res, error)) return;
         console.error('Error updating ML-KEM public key:', error);
         return res.status(500).json({
           error: 'Failed to update messaging public key',

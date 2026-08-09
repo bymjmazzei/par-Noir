@@ -37,6 +37,55 @@ function isSelfHostedUnlockClient(clientId: string | undefined): boolean {
 }
 
 /**
+ * Which of the requested data points the user actually holds a usable proof for.
+ *
+ * Returns null when we could not look, which the consent screen must treat as
+ * "unknown" rather than "none": a Drive hiccup should not silently strip a data
+ * point the user does have. Only proof metadata is read here, never the proof
+ * itself or the underlying value.
+ */
+async function loadOfferableDataPoints(
+  req: express.Request,
+  pnIdentifier: string,
+  requestedDataPoints: string[],
+  dataPointLevels: Record<string, 'attested' | 'verified'>
+): Promise<Record<string, { available: boolean; reason?: string }> | null> {
+  if (requestedDataPoints.length === 0) return {};
+  try {
+    const { normalizePnIdentifier } = await import('./integratorStoragePaths');
+    const normalized = normalizePnIdentifier(pnIdentifier);
+    const { extractCloudAccessToken } = await import('./cloudAccessToken');
+    const { loadZkpBundle } = await import('./storage/zkpStorageService');
+
+    const bundle = await loadZkpBundle(normalized, {
+      accessToken: extractCloudAccessToken(req) || undefined
+    });
+    if (!bundle) return null;
+
+    const { ZKPDataPointsService } = await import('./zkpDataPointsService');
+    const heldProofs = await ZKPDataPointsService.getAvailableDataPoints(
+      bundle.token?.access_token || '',
+      bundle.spreadsheetId || '',
+      bundle.pnIdentifier,
+      bundle.accountId
+    );
+
+    const { resolveOfferableDataPoints } = await import('@par-noir/standard-data-points');
+    return resolveOfferableDataPoints({
+      requestedDataPoints,
+      dataPointLevels,
+      heldProofs
+    });
+  } catch (error: unknown) {
+    safeLogger.warn('[OAuth] Could not read held ZKP proofs for consent', {
+      reason: error instanceof Error ? error.message : 'unknown',
+      pnIdHash: hashIdentifier(pnIdentifier)
+    });
+    return null;
+  }
+}
+
+/**
  * Consent sends the user's per-data-point choices as a comma-separated list.
  * `undefined` means the client made no choice this time (consent was skipped),
  * which is distinct from an empty list meaning "declined everything".
@@ -334,13 +383,23 @@ export function setupPnOAuthRoutes(app: express.Application, deps: PnOAuthRouteD
           }
         }
 
+        const dataPointLevels = getClientContract(client_id)?.dataPointLevels || {};
+
+        // What the user can actually offer. A contract asking for over_21 at
+        // "verified" says nothing about whether they hold such a proof, and
+        // offering one they do not have records a grant nothing can honour.
+        const availableDataPoints = pnIdentifier
+          ? await loadOfferableDataPoints(req, pnIdentifier, requestedDataPoints, dataPointLevels)
+          : null;
+
         return res.json({
           code,
           state: state || undefined,
           existingGrant,
           requestedDataPoints,
           // Lets the consent screen show the level a proof must meet (e.g. verified)
-          dataPointLevels: getClientContract(client_id)?.dataPointLevels || {},
+          dataPointLevels,
+          availableDataPoints,
           sealedCloudVault
         });
       } catch (error: unknown) {
@@ -349,6 +408,74 @@ export function setupPnOAuthRoutes(app: express.Application, deps: PnOAuthRouteD
         return res.status(500).json({
           error: 'server_error',
           error_description: safeClientErrorMessage(error, NODE_ENV === 'production') || 'Authentication failed'
+        });
+      }
+    });
+
+    /**
+     * Mint a fresh Google access token for the unlock page.
+     *
+     * The page holds the owner's sealed vault but no pN access token yet, so it
+     * cannot use the Bearer-gated refresh route. The authorization code it just
+     * received stands in as proof of unlock; it is read without being consumed,
+     * because the real token exchange still has to run afterwards.
+     *
+     * Without this the page forwards whatever token the vault was sealed with,
+     * which Google kills about an hour after Drive was connected. That is what
+     * made every unlock re-prompt for consent.
+     */
+    app.post('/oauth/authorize/drive-token', async (req, res) => {
+      try {
+        const code = req.body?.code;
+        const clientId = req.body?.client_id;
+        const refreshToken = req.body?.refresh_token;
+
+        if (!code || !clientId || !refreshToken) {
+          return res.status(400).json({
+            error: 'invalid_request',
+            error_description: 'code, client_id and refresh_token are required'
+          });
+        }
+
+        const authCode = PNOAuthService.peekAuthorizationCode(String(code), String(clientId));
+        if (!authCode) {
+          safeLogger.warn('[OAuth] Drive token refused: no live authorization code', {
+            clientId: String(clientId)
+          });
+          return res.status(401).json({
+            error: 'invalid_grant',
+            error_description: 'Authorization code is unknown, expired, or for another client'
+          });
+        }
+
+        const { exchangeGoogleRefreshToken } = await import('./googleRefreshExchange');
+        const result = await exchangeGoogleRefreshToken(String(refreshToken));
+
+        if (!result.ok) {
+          safeLogger.warn('[OAuth] Drive token refresh failed for unlock page', {
+            clientId: String(clientId),
+            reason: result.reason,
+            pnIdHash: authCode.pnIdentifier ? hashIdentifier(authCode.pnIdentifier) : undefined
+          });
+          return res.status(result.status).json({
+            error: 'refresh_failed',
+            error_description: result.message,
+            reason: result.reason
+          });
+        }
+
+        return res.json({
+          access_token: result.accessToken,
+          expires_in: result.expiresIn
+        });
+      } catch (error: unknown) {
+        safeLogger.error('[OAuth] Drive token mint failed', {
+          message: error instanceof Error ? error.message : String(error)
+        });
+        return res.status(500).json({
+          error: 'server_error',
+          error_description:
+            safeClientErrorMessage(error, NODE_ENV === 'production') || 'Drive token mint failed'
         });
       }
     });
@@ -366,7 +493,9 @@ export function setupPnOAuthRoutes(app: express.Application, deps: PnOAuthRouteD
 
         const { getExistingGrant } = await import('./oauthDrivePermissionContext');
         const { dataPointIdsFromScopes } = await import('./integratorStoragePaths');
-        const { grantCoversRequest } = await import('@par-noir/standard-data-points');
+        const { grantCoversRequest, getClientContract } = await import(
+          '@par-noir/standard-data-points'
+        );
 
         const requestedDataPoints = dataPointIdsFromScopes(
           scope.split(' ').filter(Boolean)
@@ -377,8 +506,20 @@ export function setupPnOAuthRoutes(app: express.Application, deps: PnOAuthRouteD
             ? { dataPoints: grant.dataPoints }
             : null;
 
-        return res.json({ existingGrant });
+        const dataPointLevels = getClientContract(clientId)?.dataPointLevels || {};
+        const availableDataPoints = await loadOfferableDataPoints(
+          req,
+          pnIdentifier,
+          requestedDataPoints,
+          dataPointLevels
+        );
+
+        return res.json({ existingGrant, dataPointLevels, availableDataPoints });
       } catch (error: unknown) {
+        // Tell the page "your token aged out" rather than "no grant exists",
+        // so it does not treat a lookup failure as a first-time consent.
+        const { respondDriveTokenError } = await import('./ownerDriveToken');
+        if (respondDriveTokenError(res, error)) return;
         return res.status(500).json({
           error: 'server_error',
           error_description: safeClientErrorMessage(error, NODE_ENV === 'production') || 'Grant lookup failed',
@@ -522,6 +663,9 @@ export function setupPnOAuthRoutes(app: express.Application, deps: PnOAuthRouteD
 
         return res.json({ success: true });
       } catch (error: unknown) {
+        // An expired forwarded token is the caller's to fix, not a server fault.
+        const { respondDriveTokenError } = await import('./ownerDriveToken');
+        if (respondDriveTokenError(res, error)) return;
         safeLogger.error('[OAuth] Grant reconcile failed', {
           message: error instanceof Error ? error.message : String(error)
         });

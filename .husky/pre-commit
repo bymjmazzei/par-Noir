@@ -21,6 +21,10 @@ if [ -f scripts/check-token-resolver-boundary.sh ]; then
   bash scripts/check-token-resolver-boundary.sh || { echo "❌ check-token-resolver-boundary: resolve Drive tokens via resolveOwnerDriveToken (ownerDriveToken.ts)."; exit 1; }
 fi
 
+if [ -f scripts/check-drive-token-freshness-boundary.sh ]; then
+  bash scripts/check-drive-token-freshness-boundary.sh || { echo "❌ check-drive-token-freshness-boundary: decide Drive token freshness in @par-noir/device-cloud-credentials, never from a stored expires_in."; exit 1; }
+fi
+
 echo "🔒 Running security audit before commit..."
 
 # Run security audit

@@ -453,7 +453,6 @@ export function useGoogleDriveOAuthConnect({
                   email: connectedEmail || undefined,
                   connectedAt: new Date().toISOString(),
                   expires_at: tokenExpiresAt,
-                  expires_in: tokenData.expiresIn || 3600,
                 }
               ]
             },
@@ -486,7 +485,6 @@ export function useGoogleDriveOAuthConnect({
                       email: connectedEmail || undefined,
                       connectedAt: new Date().toISOString(),
                       expires_at: tokenExpiresAt,
-                      expires_in: tokenData.expiresIn || 3600,
                     }
                   ]
                 }

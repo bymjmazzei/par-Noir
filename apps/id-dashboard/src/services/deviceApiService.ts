@@ -10,6 +10,9 @@ import { clientPlatformHeaderValue } from '@par-noir/device-client';
 import {
   getSessionCloudCredentials,
   setSessionCloudCredentials,
+  freshAccessTokenFromEnvelope,
+  isAccessTokenFresh,
+  resolveFreshDriveToken,
 } from '@par-noir/device-cloud-credentials';
 import type { StorageCredentialsEnvelope } from '@par-noir/user-owned-storage';
 import { deviceProofHeaders } from './deviceProofContext';
@@ -38,43 +41,24 @@ export interface DeviceRegistrySummary {
 
 const PN_CLOUD_ACCESS_TOKEN_HEADER = 'X-PN-Cloud-Access-Token';
 
-function googleAccountFromEnvelope(
-  env: StorageCredentialsEnvelope | null | undefined
-): {
-  accessToken: string | null;
-  refreshToken: string | null;
-  expiresAt: number | null;
-} {
-  const acct = env?.googleDriveAccounts?.[0] as
-    | {
-        accessToken?: string;
-        access_token?: string;
-        refreshToken?: string;
-        refresh_token?: string;
-        expires_at?: number;
-        expires_in?: number;
-      }
-    | undefined;
-  if (!acct) return { accessToken: null, refreshToken: null, expiresAt: null };
-  const access = acct.accessToken || acct.access_token;
-  const refresh = acct.refreshToken || acct.refresh_token;
-  let expiresAt: number | null =
-    typeof acct.expires_at === 'number' && Number.isFinite(acct.expires_at) ? acct.expires_at : null;
-  if (expiresAt == null && typeof acct.expires_in === 'number' && acct.expires_in > 0) {
-    expiresAt = Date.now() + acct.expires_in * 1000;
-  }
-  return {
-    accessToken: typeof access === 'string' && access.trim() ? access.trim() : null,
-    refreshToken: typeof refresh === 'string' && refresh.trim() ? refresh.trim() : null,
-    expiresAt,
-  };
-}
-
+/**
+ * Provably fresh Google token from an envelope, or null.
+ *
+ * Freshness and refresh both live in @par-noir/device-cloud-credentials. This
+ * file used to carry its own copy of the rules, which disagreed with the browser's
+ * and let each side reach different conclusions about the same token.
+ */
 function googleTokenFromEnvelope(env: StorageCredentialsEnvelope | null | undefined): string | null {
-  return googleAccountFromEnvelope(env).accessToken;
+  return freshAccessTokenFromEnvelope(env);
 }
 
-/** Best-effort warm session memory so owner API calls see the live Google token. */
+/**
+ * Best-effort warm session memory so owner API calls see the live Google token.
+ *
+ * Both spellings of the token are written. Readers check `access_token` first,
+ * so updating only `accessToken` would leave the stale snake_case value winning
+ * and quietly undo the refresh.
+ */
 function warmSessionGoogleToken(
   pnIdentifier: string,
   accessToken: string,
@@ -88,12 +72,19 @@ function warmSessionGoogleToken(
       ...prev,
       accountId: prev.accountId || 'session',
       accessToken,
+      access_token: accessToken,
     };
     if (extras?.refreshToken) {
       nextAcct.refreshToken = extras.refreshToken;
+      nextAcct.refresh_token = extras.refreshToken;
     }
     if (typeof extras?.expiresAt === 'number' && Number.isFinite(extras.expiresAt)) {
       nextAcct.expires_at = extras.expiresAt;
+      // A relative lifetime alongside an absolute one invites a reader to
+      // recompute the deadline from "now" and revive a dead token.
+      delete nextAcct.expires_in;
+      delete nextAcct.expiresIn;
+      delete nextAcct.expiresAt;
     }
     if (accounts.length === 0) {
       accounts.push(nextAcct as (typeof accounts)[0]);
@@ -111,51 +102,6 @@ function warmSessionGoogleToken(
   }
 }
 
-const TOKEN_SKEW_MS = 60_000;
-
-function accessTokenStillValid(expiresAt: number | null): boolean {
-  if (expiresAt == null) return false;
-  return Date.now() < expiresAt - TOKEN_SKEW_MS;
-}
-
-async function refreshGoogleAccessTokenViaApi(
-  pnIdentifier: string,
-  refreshToken: string
-): Promise<{ accessToken: string; expiresAt: number; refreshToken?: string } | null> {
-  let ownerToken: string;
-  try {
-    const { requireOwnerApiToken } = await import('./ownerApiToken');
-    ownerToken = requireOwnerApiToken(pnIdentifier);
-  } catch {
-    return null;
-  }
-  try {
-    const response = await fetch(`${API_ENDPOINT}/api/auth/google-oauth/refresh`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${ownerToken}`,
-      },
-      body: JSON.stringify({ refreshToken }),
-    });
-    if (!response.ok) return null;
-    const data = (await response.json()) as {
-      access_token?: string;
-      expires_in?: number;
-      refresh_token?: string;
-    };
-    if (!data.access_token?.trim()) return null;
-    const expiresIn =
-      typeof data.expires_in === 'number' && data.expires_in > 0 ? data.expires_in : 3300;
-    return {
-      accessToken: data.access_token.trim(),
-      expiresAt: Date.now() + expiresIn * 1000,
-      refreshToken: data.refresh_token?.trim() || undefined,
-    };
-  } catch {
-    return null;
-  }
-}
 
 /** Prefer connected GoogleDriveBackend (refreshes near expiry). */
 async function tokenFromConnectedBackends(
@@ -179,14 +125,23 @@ async function tokenFromConnectedBackends(
       } else if (typeof drive.getAccessToken === 'function') {
         tok = drive.getAccessToken();
       }
-      if (tok && tok.trim()) {
-        const trimmed = tok.trim();
-        warmSessionGoogleToken(pnIdentifier, trimmed, {
-          expiresAt: typeof drive.tokenExpiresAt === 'number' ? drive.tokenExpiresAt : null,
-          refreshToken: typeof drive.getRefreshToken === 'function' ? drive.getRefreshToken() : null,
-        });
-        return trimmed;
+      if (!tok?.trim()) continue;
+
+      const trimmed = tok.trim();
+      const expiresAt = typeof drive.tokenExpiresAt === 'number' ? drive.tokenExpiresAt : null;
+
+      // A backend is only a token *source*; freshness is still decided by the one
+      // resolver. Without this a backend that cannot vouch for its token would
+      // reintroduce the stale-token path through the side door.
+      if (!isAccessTokenFresh({ access_token: trimmed, expires_at: expiresAt ?? undefined })) {
+        continue;
       }
+
+      warmSessionGoogleToken(pnIdentifier, trimmed, {
+        expiresAt,
+        refreshToken: typeof drive.getRefreshToken === 'function' ? drive.getRefreshToken() : null,
+      });
+      return trimmed;
     }
   } catch {
     /* ignore */
@@ -220,39 +175,36 @@ async function loadSealedCloudEnvelope(
 }
 
 /**
- * Resolve a usable Google access token from an envelope, refreshing when near expiry.
+ * Resolve a usable Google access token from an envelope, refreshing when needed.
+ *
+ * Returns null rather than a token that cannot be proven live. There is
+ * deliberately no "return the stale one as a last resort" branch: that is what
+ * sent dead tokens to Google and turned recoverable 401s into 500s.
  */
 async function resolveUsableTokenFromEnvelope(
   pnIdentifier: string,
   env: StorageCredentialsEnvelope | null | undefined
 ): Promise<string | null> {
-  const { accessToken, refreshToken, expiresAt } = googleAccountFromEnvelope(env);
-
-  // Known still-valid
-  if (accessToken && accessTokenStillValid(expiresAt)) {
-    warmSessionGoogleToken(pnIdentifier, accessToken, { refreshToken, expiresAt });
-    return accessToken;
+  let ownerToken: string | null = null;
+  try {
+    const { requireOwnerApiToken } = await import('./ownerApiToken');
+    ownerToken = requireOwnerApiToken(pnIdentifier);
+  } catch {
+    ownerToken = null;
   }
 
-  // Known expired / missing access — refresh when we have a refresh token
-  const knownExpired = expiresAt != null && !accessTokenStillValid(expiresAt);
-  if (refreshToken && (knownExpired || !accessToken)) {
-    const refreshed = await refreshGoogleAccessTokenViaApi(pnIdentifier, refreshToken);
-    if (refreshed) {
-      warmSessionGoogleToken(pnIdentifier, refreshed.accessToken, {
-        refreshToken: refreshed.refreshToken || refreshToken,
-        expiresAt: refreshed.expiresAt,
-      });
-      return refreshed.accessToken;
-    }
-  }
+  const resolved = await resolveFreshDriveToken({
+    envelope: env,
+    authToken: ownerToken,
+    apiEndpoint: API_ENDPOINT,
+    path: 'dashboard',
+  });
+  if (!resolved.token) return null;
 
-  // Unknown expiry (no expires_at) or refresh failed — return access as last resort
-  if (accessToken) {
-    warmSessionGoogleToken(pnIdentifier, accessToken, { refreshToken, expiresAt });
-    return accessToken;
-  }
-  return null;
+  warmSessionGoogleToken(pnIdentifier, resolved.token, {
+    expiresAt: resolved.expiresAt ?? null,
+  });
+  return resolved.token;
 }
 
 /** Local Google access token for API Drive writes under device custody (never log). */

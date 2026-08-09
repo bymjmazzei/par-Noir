@@ -8,6 +8,7 @@ import { extractCloudAccessToken } from './cloudAccessToken';
 import type { GoogleDriveToken } from './googleOAuth2Helper';
 import { DriveIndexError } from './pnDriveIndex';
 import { requireOwnerDriveContext, type OwnerDriveContext } from './ownerDriveContext';
+import { hashIdentifier, safeLogger } from '../../utils/logger';
 
 export type ResolvedOwnerDriveToken = {
   token: GoogleDriveToken;
@@ -19,13 +20,31 @@ type AccountLike = {
   accessToken?: string;
   refresh_token?: string;
   refreshToken?: string;
+  /** Absolute ms epoch. A stored account carries no relative lifetime by design. */
   expires_at?: number;
-  expires_in?: number;
   backendId?: string;
   keyPrefix?: string;
   accountId?: string;
   id?: string;
 } | null | undefined;
+
+/** Skew matching the device-side resolver, so both sides agree on "fresh". */
+const TOKEN_SKEW_MS = 60_000;
+
+/**
+ * A stored access token is only usable while we can prove it is still live.
+ *
+ * The copy on the credentials record was captured when Drive was connected and
+ * Google kills it about an hour later. Using it because a request arrived
+ * without the forwarded header means guaranteed 401s from Google, reported to
+ * the user as an unexplained failure.
+ */
+function storedTokenStillLive(account: AccountLike): boolean {
+  const expiresAt = account?.expires_at;
+  if (typeof expiresAt !== 'number' || !Number.isFinite(expiresAt)) return false;
+  const absolute = expiresAt < 1e12 ? expiresAt * 1000 : expiresAt;
+  return absolute - TOKEN_SKEW_MS > Date.now();
+}
 
 function accountIdFrom(account: AccountLike, fallback?: string): string | undefined {
   if (fallback) return fallback;
@@ -53,7 +72,15 @@ export async function resolveOwnerDriveToken(
 
   let accessToken = extractCloudAccessToken(req) || '';
   if (!accessToken) {
-    accessToken = String(account?.access_token || account?.accessToken || '').trim();
+    const stored = String(account?.access_token || account?.accessToken || '').trim();
+    if (stored && storedTokenStillLive(account)) {
+      accessToken = stored;
+    } else if (stored) {
+      safeLogger.warn('[DriveToken] Ignoring stored access token that cannot be proven live', {
+        reason: account?.expires_at ? 'stored_token_expired' : 'stored_token_expiry_unknown',
+        pnIdHash: hashIdentifier(pnIdentifier)
+      });
+    }
   }
   if (!accessToken) {
     try {
@@ -79,8 +106,7 @@ export async function resolveOwnerDriveToken(
     token: {
       access_token: accessToken.trim(),
       refresh_token: account?.refresh_token || account?.refreshToken,
-      expires_at: account?.expires_at,
-      expires_in: account?.expires_in
+      expires_at: account?.expires_at
     },
     accountId
   };
@@ -104,6 +130,17 @@ export function respondDriveTokenError(res: Response, error: unknown): boolean {
       res.status(409).json({
         error: 'cloud_token_required',
         error_description: error.message
+      });
+      return true;
+    }
+    if (error.code === 'CLOUD_TOKEN_EXPIRED') {
+      // The device forwarded a token Google no longer accepts. Recoverable:
+      // refresh and retry. Reported as 409 rather than 500 so the client can
+      // tell "your token aged out" from "the server is broken".
+      res.status(409).json({
+        error: 'cloud_token_expired',
+        error_description:
+          'Google rejected the forwarded Drive access token. Refresh it and retry.'
       });
       return true;
     }

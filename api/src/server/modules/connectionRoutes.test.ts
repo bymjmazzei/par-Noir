@@ -6,6 +6,8 @@
  */
 jest.mock('../../utils/logger', () => ({
   safeLogger: { info: jest.fn(), warn: jest.fn(), error: jest.fn(), debug: jest.fn() },
+  hashIdentifier: jest.fn(() => 'hashed'),
+  isDevVerbose: jest.fn(() => false),
 }));
 
 jest.mock('../utils/messagingLog', () => ({
@@ -91,7 +93,13 @@ function buildApp(overrides: Partial<ConnectionRouteDeps> = {}) {
 function bothPartiesConnected() {
   mockGetCredentials.mockImplementation(async (pn: string) => ({
     identityId: pn,
-    credentials: { googleDriveAccounts: [{ backendId: `${pn}-acct`, access_token: 'tok' }] },
+    credentials: {
+      googleDriveAccounts: [
+        // A live credential needs an absolute expiry: resolveOwnerDriveToken
+        // refuses a stored token it cannot prove is still valid.
+        { backendId: `${pn}-acct`, access_token: 'tok', expires_at: Date.now() + 3600_000 },
+      ],
+    },
   }));
   mockGetAccessToken.mockImplementation(async (pn: string) => `${pn}-token`);
 }

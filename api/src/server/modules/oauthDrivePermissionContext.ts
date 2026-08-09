@@ -4,7 +4,12 @@
  */
 
 import type { Request } from 'express';
-import { isPnDriveIndexComplete, readPnDriveIndex, PN_DRIVE_SHEET_KEYS } from './pnDriveIndex';
+import {
+  isPnDriveIndexComplete,
+  readPnDriveIndex,
+  PN_DRIVE_SHEET_KEYS,
+  DriveIndexError
+} from './pnDriveIndex';
 import { normalizePnIdentifier } from './integratorStoragePaths';
 import { storageCredentialsService, type StoredCredentialsRecord } from './storageCredentialsService';
 import { ThirdPartyPermissionsService } from './thirdPartyPermissionsService';
@@ -210,6 +215,16 @@ async function lookupGrantFromDrive(
     );
     return activeGrant(clientId, permissions[clientId]);
   } catch (error: unknown) {
+    // "Google refused the token" is not "the user has no grant". Let it out so
+    // callers can say so, instead of silently sending the user back to consent.
+    if (error instanceof DriveIndexError && error.code === 'CLOUD_TOKEN_EXPIRED') {
+      safeLogger.warn('[OAuth] Grant lookup blocked by an expired Drive token', {
+        clientId,
+        reason: 'cloud_token_expired',
+        pnIdHash: hashIdentifier(normalizedPn),
+      });
+      throw error;
+    }
     safeLogger.warn('[OAuth] Could not read third-party-permissions', {
       clientId,
       message: error instanceof Error ? error.message : String(error),
@@ -239,7 +254,15 @@ export async function getExistingGrantWithTimeout(
         }, timeoutMs)
       ),
     ]);
-  } catch {
+  } catch (error: unknown) {
+    // Unlock must not fail because the grant could not be read, but the reason
+    // has to be visible: a silent null here reads as "first time consent".
+    safeLogger.warn('[OAuth] Grant lookup failed during unlock', {
+      clientId,
+      reason:
+        error instanceof DriveIndexError ? error.code.toLowerCase() : 'unknown',
+      pnIdHash: params.pnIdentifier ? hashIdentifier(params.pnIdentifier) : undefined,
+    });
     return null;
   }
 }

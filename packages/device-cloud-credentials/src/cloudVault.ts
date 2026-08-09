@@ -8,6 +8,7 @@
 import type { StorageCredentialsEnvelope } from '@par-noir/user-owned-storage';
 import { sealCredentials, unsealCredentials } from './seal.js';
 import { setSessionCloudCredentials } from './sessionMemory.js';
+import { freshAccessTokenFromEnvelope } from './driveTokenResolver.js';
 import type { SealSession, SealedEnvelope } from './types.js';
 
 /** Legacy identity-factor seal (pn name + passcode). */
@@ -117,20 +118,16 @@ export function looksLikePlaintextCloudSecrets(value: unknown): boolean {
   return false;
 }
 
+/**
+ * Google access token from an unsealed envelope, only when provably fresh.
+ *
+ * A sealed vault holds the token captured when Drive was connected, which Google
+ * kills after about an hour. Handing that back unchecked is what made every
+ * unlock re-prompt for consent. Callers needing a usable token past that window
+ * must go through resolveFreshDriveToken so it can be refreshed.
+ */
 export function googleTokenFromEnvelope(envelope: StorageCredentialsEnvelope | null): string | null {
-  if (!envelope) return null;
-  const legacy = (envelope as { googleDrive?: Record<string, unknown> }).googleDrive;
-  const accounts =
-    (envelope.googleDriveAccounts as Record<string, unknown>[] | undefined) ||
-    (legacy ? [legacy] : []);
-  for (const acct of accounts) {
-    const tok =
-      (typeof acct.access_token === 'string' && acct.access_token) ||
-      (typeof acct.accessToken === 'string' && acct.accessToken) ||
-      '';
-    if (tok.trim()) return tok.trim();
-  }
-  return null;
+  return freshAccessTokenFromEnvelope(envelope);
 }
 
 export type CloudVaultHydrateResult =

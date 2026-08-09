@@ -4,6 +4,9 @@
  * Each user stores their profile data in profile.json in their _metadata folder
  */
 
+import { throwIfCredentialRejected } from './googleApiRetry';
+import { DriveIndexError } from './pnDriveIndex';
+
 export interface UserProfile {
   identifier: string;
   displayName?: string;
@@ -40,6 +43,10 @@ export class ProfileService {
         headers: { 'Authorization': `Bearer ${accessToken}` }
       });
 
+      // A rejected token is not "no profile". Collapsing the two hid an expired
+      // credential and let the caller carry on as if the user had no profile.
+      await throwIfCredentialRejected(searchResponse);
+
       if (!searchResponse.ok || searchResponse.status === 404) {
         return null;
       }
@@ -57,6 +64,8 @@ export class ProfileService {
         { headers: { 'Authorization': `Bearer ${accessToken}` } }
       );
 
+      await throwIfCredentialRejected(getResponse);
+
       if (!getResponse.ok) {
         return null;
       }
@@ -67,6 +76,7 @@ export class ProfileService {
         return null;
       }
     } catch (error) {
+      if (error instanceof DriveIndexError) throw error;
       console.error('Error getting profile file:', error);
       return null;
     }
@@ -98,20 +108,30 @@ export class ProfileService {
         headers: { 'Authorization': `Bearer ${accessToken}` }
       });
 
+      await throwIfCredentialRejected(searchResponse);
+
       if (searchResponse.ok) {
         const searchData = await searchResponse.json() as { files?: Array<{ id: string }> };
         
         if (searchData.files && searchData.files.length > 0) {
           // Update existing file
           const fileId = searchData.files[0].id;
-          await fetch(`https://www.googleapis.com/upload/drive/v3/files/${fileId}?uploadType=media`, {
-            method: 'PATCH',
-            headers: {
-              'Authorization': `Bearer ${accessToken}`,
-              'Content-Type': 'application/json; charset=UTF-8'
-            },
-            body: profileContent
-          });
+          const patchResponse = await fetch(
+            `https://www.googleapis.com/upload/drive/v3/files/${fileId}?uploadType=media`,
+            {
+              method: 'PATCH',
+              headers: {
+                'Authorization': `Bearer ${accessToken}`,
+                'Content-Type': 'application/json; charset=UTF-8'
+              },
+              body: profileContent
+            }
+          );
+          await throwIfCredentialRejected(patchResponse);
+          if (!patchResponse.ok) {
+            const detail = await patchResponse.text().catch(() => '');
+            throw new Error(`Drive profile update failed (${patchResponse.status}): ${detail.slice(0, 200)}`);
+          }
           return;
         }
       }
@@ -137,14 +157,22 @@ export class ProfileService {
         `--${boundary}--`
       ].join('\r\n');
 
-      await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${accessToken}`,
-          'Content-Type': `multipart/form-data; boundary=${boundary}`
-        },
-        body: multipartBody
-      });
+      const createResponse = await fetch(
+        'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart',
+        {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${accessToken}`,
+            'Content-Type': `multipart/form-data; boundary=${boundary}`
+          },
+          body: multipartBody
+        }
+      );
+      await throwIfCredentialRejected(createResponse);
+      if (!createResponse.ok) {
+        const detail = await createResponse.text().catch(() => '');
+        throw new Error(`Drive profile create failed (${createResponse.status}): ${detail.slice(0, 200)}`);
+      }
     } catch (error) {
       console.error('Error updating profile file:', error);
       throw error;

@@ -29,8 +29,10 @@ export {
   type DataPointMinLevel,
   type ProofVerificationLevel,
   type DataPointLevels,
+  type HeldProofSummary,
   getDataPointMinLevel,
   proofMeetsMinLevel,
+  resolveOfferableDataPoints,
   grantCoversRequest
 } from './verificationLevel';
 export {

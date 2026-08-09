@@ -3,6 +3,7 @@
  */
 
 import type { GoogleDriveToken } from './googleOAuth2Helper';
+import { DriveIndexError } from './pnDriveIndex';
 
 const RETRYABLE_STATUSES = new Set([429, 500, 502, 503, 504]);
 
@@ -75,6 +76,35 @@ export function isRetryableGoogleError(err: unknown): boolean {
   return typeof status === 'number' && RETRYABLE_STATUSES.has(status);
 }
 
+/**
+ * Recognise a credential rejection thrown by the googleapis client.
+ *
+ * That client throws rather than returning a Response, so the raw-fetch check
+ * below never sees these. Both spellings have to agree or Sheets-backed paths
+ * keep reporting an expired token as a server fault.
+ */
+export function isGoogleCredentialRejectionError(err: unknown): boolean {
+  const status =
+    (err as { status?: number })?.status ??
+    (err as { code?: unknown })?.code ??
+    (err as { response?: { status?: number } })?.response?.status;
+  const message = err instanceof Error ? err.message : String(err);
+  if (status === 401) return true;
+  if (status === 403) return isGoogleCredentialRejection(403, message);
+  return /invalid_grant|invalid credentials|Invalid Credentials/i.test(message);
+}
+
+/** Convert a credential rejection to DriveIndexError; pass anything else through. */
+export function translateGoogleCredentialError(err: unknown): unknown {
+  if (err instanceof DriveIndexError) return err;
+  if (!isGoogleCredentialRejectionError(err)) return err;
+  const message = err instanceof Error ? err.message : String(err);
+  return new DriveIndexError(
+    `Google rejected the Drive access token: ${message.slice(0, 120)}`,
+    'CLOUD_TOKEN_EXPIRED'
+  );
+}
+
 export async function withGoogleRetry<T>(
   label: string,
   fn: () => Promise<T>,
@@ -87,7 +117,7 @@ export async function withGoogleRetry<T>(
     } catch (err: unknown) {
       lastErr = err;
       if (!isRetryableGoogleError(err) || attempt === maxAttempts) {
-        throw err;
+        throw translateGoogleCredentialError(err);
       }
       const delayMs = Math.min(30_000, 1000 * 2 ** (attempt - 1));
       console.warn(
@@ -97,7 +127,49 @@ export async function withGoogleRetry<T>(
       await sleep(delayMs);
     }
   }
-  throw lastErr;
+  throw translateGoogleCredentialError(lastErr);
+}
+
+/**
+ * True when Google refused the credential itself rather than the request.
+ *
+ * A 403 is only a credential problem for the auth-flavoured reasons; quota and
+ * permission 403s are different failures and must not be reported as an expired
+ * token.
+ */
+export function isGoogleCredentialRejection(status: number, body: string): boolean {
+  if (status === 401) return true;
+  if (status !== 403) return false;
+  return /invalid_credentials|authError|invalid authentication|insufficientPermissions/i.test(body);
+}
+
+/**
+ * Raised when Google rejects the forwarded owner token.
+ *
+ * Callers map this to 409 cloud_token_required so the device knows to refresh
+ * and retry. Letting it fall through as a 500 hid an expired token behind what
+ * looked like a server fault.
+ */
+export function driveCredentialRejected(status: number, body: string): DriveIndexError {
+  return new DriveIndexError(
+    `Google rejected the Drive access token (${status}): ${body.slice(0, 120)}`,
+    'CLOUD_TOKEN_EXPIRED'
+  );
+}
+
+/**
+ * Turn a Google credential rejection into CLOUD_TOKEN_EXPIRED before the caller
+ * can mistake it for a generic failure.
+ *
+ * Use on any Google response reached with a forwarded owner token. The response
+ * is cloned, so the caller can still read the body.
+ */
+export async function throwIfCredentialRejected(res: Response): Promise<void> {
+  if (res.status !== 401 && res.status !== 403) return;
+  const text = await res.clone().text().catch(() => '');
+  if (isGoogleCredentialRejection(res.status, text)) {
+    throw driveCredentialRejected(res.status, text);
+  }
 }
 
 /** fetch wrapper with retry for Drive v3 REST calls used during init. */
@@ -113,6 +185,13 @@ export async function fetchGoogleDriveWithRetry(
       const err = new Error(`Google Drive ${res.status}: ${text.slice(0, 200)}`);
       (err as { code?: number }).code = res.status;
       throw err;
+    }
+    if (res.status === 401 || res.status === 403) {
+      const text = await res.clone().text().catch(() => '');
+      if (isGoogleCredentialRejection(res.status, text)) {
+        // Not retryable: a new token has to come from the device.
+        throw driveCredentialRejected(res.status, text);
+      }
     }
     return res;
   });

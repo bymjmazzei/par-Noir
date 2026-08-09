@@ -6,6 +6,7 @@
 
 import { SecureCredentialManager } from '@par-noir/identity-crypto';
 import {
+  accountAccessToken,
   getSessionCloudCredentials,
   hasCloudCredentialsReady,
   loadLocalCloudCredentials,
@@ -80,12 +81,19 @@ async function publishDriveReady(apiToken: string, pnIdentifier: string): Promis
   }
 }
 
+/**
+ * Raw token read, used only to seed a backend that refreshes for itself.
+ *
+ * Not a freshness decision: the account's refresh token and absolute expiry go
+ * to the backend alongside it, and `ensureAccessToken` mints a replacement when
+ * needed. Anything that needs a token it can actually use must go through the
+ * shared resolver instead.
+ */
 function accountToken(acct: {
   accessToken?: string;
   access_token?: string;
 }): string | null {
-  const t = acct.accessToken || acct.access_token;
-  return typeof t === 'string' && t.trim() ? t.trim() : null;
+  return accountAccessToken(acct as Record<string, unknown>);
 }
 
 async function registerBackendsFromEnvelope(

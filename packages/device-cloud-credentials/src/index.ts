@@ -89,6 +89,24 @@ export {
 } from './cloudVault.js';
 export type { CloudVaultHydrateResult } from './cloudVault.js';
 export {
+  DRIVE_TOKEN_SKEW_MS,
+  GOOGLE_REFRESH_PATH,
+  accountAccessToken,
+  accountExpiresAtMs,
+  accountRefreshToken,
+  googleAccountsFromEnvelope,
+  isAccessTokenFresh,
+  pickGoogleAccount,
+  freshAccessTokenFromEnvelope,
+  refreshDriveAccessToken,
+  resolveFreshDriveToken
+} from './driveTokenResolver.js';
+export type {
+  DriveTokenReason,
+  ResolvedDriveToken,
+  GoogleAccountRow
+} from './driveTokenResolver.js';
+export {
   PN_CLOUD_CREDENTIALS_READY_EVENT,
   getCloudAccessTokenFromSession,
   getCloudRefreshTokenFromSession,

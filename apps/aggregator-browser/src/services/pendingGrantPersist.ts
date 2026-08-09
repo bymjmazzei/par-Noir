@@ -11,8 +11,7 @@
  */
 
 import {
-  getSessionCloudCredentials,
-  googleTokenFromEnvelope,
+  ensureCloudAccessToken,
   PN_CLOUD_ACCESS_TOKEN_HEADER
 } from '@par-noir/device-cloud-credentials';
 import { API_ENDPOINT } from '../config/api';
@@ -54,7 +53,15 @@ export async function flushPendingGrant(params: {
   const grant = pending;
   if (!grant) return false;
 
-  const accessToken = googleTokenFromEnvelope(getSessionCloudCredentials(params.pnIdentifier));
+  // Refresh if the session token has aged out. Forwarding a dead token here is
+  // what turned this call into a 500 and left the grant unwritten, so the next
+  // unlock asked for consent all over again.
+  const accessToken = await ensureCloudAccessToken({
+    authToken: params.authToken,
+    pnIdentifier: params.pnIdentifier,
+    apiEndpoint: API_ENDPOINT,
+    path: 'grant-persist'
+  });
   if (!accessToken) {
     // Keep it pending: hydration may still be in flight.
     return false;

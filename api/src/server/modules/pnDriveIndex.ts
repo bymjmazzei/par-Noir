@@ -56,6 +56,9 @@ export class DriveIndexError extends Error {
     public readonly code:
       | 'DRIVE_NOT_INITIALIZED'
       | 'CLOUD_TOKEN_REQUIRED'
+      // Google refused the forwarded token. Recoverable by the caller refreshing
+      // and retrying, so it must never surface as a 500.
+      | 'CLOUD_TOKEN_EXPIRED'
       | 'DRIVE_INDEX_INCOMPLETE'
       | 'DRIVE_LAYOUT_INCOMPLETE'
       | 'DRIVE_INDEX_STALE' = 'DRIVE_NOT_INITIALIZED'

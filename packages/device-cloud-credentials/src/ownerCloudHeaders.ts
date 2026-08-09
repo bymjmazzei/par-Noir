@@ -8,59 +8,27 @@
 import type { StorageCredentialsEnvelope } from '@par-noir/user-owned-storage';
 import { getSessionCloudCredentials, setSessionCloudCredentials } from './sessionMemory.js';
 import { cloudAccessHeaders } from './cloudVault.js';
+import {
+  accountRefreshToken,
+  freshAccessTokenFromEnvelope,
+  googleAccountsFromEnvelope,
+  resolveFreshDriveToken,
+  type GoogleAccountRow
+} from './driveTokenResolver.js';
 
 export const PN_CLOUD_CREDENTIALS_READY_EVENT = 'pn-cloud-credentials-ready';
 
-type GoogleAccountRow = Record<string, unknown>;
-
-function googleAccountsFromEnvelope(
-  env: StorageCredentialsEnvelope | null | undefined
-): GoogleAccountRow[] {
-  if (!env) return [];
-  const legacy = (env as { googleDrive?: GoogleAccountRow }).googleDrive;
-  const accounts =
-    (env.googleDriveAccounts as GoogleAccountRow[] | undefined) || (legacy ? [legacy] : []);
-  return accounts || [];
-}
-
-function accountAccessToken(acct: GoogleAccountRow): string | null {
-  const tok =
-    (typeof acct.access_token === 'string' && acct.access_token) ||
-    (typeof acct.accessToken === 'string' && acct.accessToken) ||
-    '';
-  return tok.trim() || null;
-}
-
-function accountRefreshToken(acct: GoogleAccountRow): string | null {
-  const tok =
-    (typeof acct.refresh_token === 'string' && acct.refresh_token) ||
-    (typeof acct.refreshToken === 'string' && acct.refreshToken) ||
-    '';
-  return tok.trim() || null;
-}
-
-function accountExpiresAtMs(acct: GoogleAccountRow): number | null {
-  const raw = acct.expires_at ?? acct.expiresAt;
-  if (typeof raw === 'number' && Number.isFinite(raw)) {
-    return raw < 1e12 ? raw * 1000 : raw;
-  }
-  const expiresIn = acct.expires_in ?? acct.expiresIn;
-  if (typeof expiresIn === 'number' && Number.isFinite(expiresIn) && expiresIn > 0) {
-    return Date.now() + expiresIn * 1000;
-  }
-  return null;
-}
-
-/** Google access token from in-memory session vault (after hydrate). */
+/**
+ * Google access token from the in-memory session vault, only when provably fresh.
+ *
+ * Returning an unverified token here is what forwarded a dead
+ * X-PN-Cloud-Access-Token to the API. Freshness lives in driveTokenResolver.
+ */
 export function getCloudAccessTokenFromSession(
   pnIdentifier: string | null | undefined
 ): string | null {
   if (!pnIdentifier) return null;
-  for (const acct of googleAccountsFromEnvelope(getSessionCloudCredentials(pnIdentifier))) {
-    const tok = accountAccessToken(acct);
-    if (tok) return tok;
-  }
-  return null;
+  return freshAccessTokenFromEnvelope(getSessionCloudCredentials(pnIdentifier));
 }
 
 /** Google refresh token from in-memory session vault. */
@@ -85,21 +53,10 @@ export function hasCloudHydrateMaterial(pnIdentifier?: string | null): boolean {
   return Boolean(getCloudRefreshTokenFromSession(pnIdentifier));
 }
 
-function accessTokenLooksFresh(pnIdentifier: string): boolean {
-  const env = getSessionCloudCredentials(pnIdentifier);
-  for (const acct of googleAccountsFromEnvelope(env)) {
-    const tok = accountAccessToken(acct);
-    if (!tok) continue;
-    const exp = accountExpiresAtMs(acct);
-    if (exp == null) return true;
-    return exp - 60_000 > Date.now();
-  }
-  return false;
-}
-
 /**
- * Drive-ready: a Google *access* token is in session.
+ * Drive-ready: a provably fresh Google *access* token is in session.
  * Refresh-only must NOT count — callers would fire Bearer-only Drive requests.
+ * An expired token must NOT count either — callers would fire requests Google rejects.
  */
 export function hasCloudCredentialsReady(pnIdentifier?: string | null): boolean {
   if (!pnIdentifier) return false;
@@ -164,39 +121,43 @@ function dispatchCloudCredentialsReady(): void {
   }
 }
 
-function patchSessionAccessToken(
+/**
+ * Record a freshly minted token against the session vault.
+ *
+ * Only the absolute `expires_at` is written. Storing a relative `expires_in`
+ * alongside it invites a reader to recompute the deadline from "now" and
+ * conclude a long-dead token is still good.
+ */
+function patchSessionAccessTokenAbsolute(
   pnIdentifier: string,
   accessToken: string,
-  expiresIn?: number
+  expiresAt: number
 ): void {
   const env = getSessionCloudCredentials(pnIdentifier);
   if (!env) return;
   const accounts = googleAccountsFromEnvelope(env);
   if (accounts.length === 0) return;
-  const expiresAt = typeof expiresIn === 'number' ? Date.now() + expiresIn * 1000 : undefined;
-  let patched = false;
-  const nextAccounts = accounts.map((acct) => {
-    if (patched) return acct;
-    if (!accountRefreshToken(acct) && !accountAccessToken(acct)) return acct;
-    patched = true;
-    return {
+  const stamp = (acct: GoogleAccountRow): GoogleAccountRow => {
+    const next: GoogleAccountRow = {
       ...acct,
       access_token: accessToken,
       accessToken,
-      ...(expiresAt != null
-        ? { expires_at: expiresAt, expiresAt, expires_in: expiresIn, expiresIn }
-        : {})
+      expires_at: expiresAt
     };
+    delete next.expiresAt;
+    delete next.expires_in;
+    delete next.expiresIn;
+    return next;
+  };
+  let patched = false;
+  const nextAccounts = accounts.map((acct) => {
+    if (patched) return acct;
+    if (!accountRefreshToken(acct) && !acct.access_token && !acct.accessToken) return acct;
+    patched = true;
+    return stamp(acct);
   });
   if (!patched && nextAccounts[0]) {
-    nextAccounts[0] = {
-      ...nextAccounts[0],
-      access_token: accessToken,
-      accessToken,
-      ...(expiresAt != null
-        ? { expires_at: expiresAt, expiresAt, expires_in: expiresIn, expiresIn }
-        : {})
-    };
+    nextAccounts[0] = stamp(nextAccounts[0]);
   }
   const next: StorageCredentialsEnvelope = {
     ...env,
@@ -208,64 +169,50 @@ function patchSessionAccessToken(
   setSessionCloudCredentials(pnIdentifier, next);
 }
 
-let refreshInflight: Promise<string | null> | null = null;
+const refreshInflight = new Map<string, Promise<string | null>>();
 
 /**
- * Ensure session has a usable Google access token; refresh via par Noir API when needed.
+ * Ensure session holds a usable Google access token; refresh via par Noir API when needed.
+ *
+ * Returns null rather than a stale token when the refresh cannot be completed.
+ * Callers must treat null as "Drive is not reachable right now" and surface that,
+ * not fall back to whatever is sitting in the vault.
+ *
  * Does not dispatch READY — use publishCloudDriveReady for that.
  */
 export async function ensureCloudAccessToken(opts: {
   authToken: string;
   pnIdentifier?: string | null;
   apiEndpoint?: string | null;
+  path?: string;
 }): Promise<string | null> {
   const pn = opts.pnIdentifier;
   if (!pn || !opts.authToken) return null;
 
-  if (accessTokenLooksFresh(pn)) {
-    return getCloudAccessTokenFromSession(pn);
-  }
+  const fresh = getCloudAccessTokenFromSession(pn);
+  if (fresh) return fresh;
 
-  const refreshToken = getCloudRefreshTokenFromSession(pn);
-  const existing = getCloudAccessTokenFromSession(pn);
-  if (!refreshToken) return existing;
+  const inflight = refreshInflight.get(pn);
+  if (inflight) return inflight;
 
-  const base = (opts.apiEndpoint || '').replace(/\/$/, '');
-  if (!base) return existing;
-
-  if (refreshInflight) return refreshInflight;
-
-  refreshInflight = (async () => {
-    try {
-      const res = await fetch(`${base}/api/auth/google-oauth/refresh`, {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${opts.authToken}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({ refreshToken })
-      });
-      if (!res.ok) return getCloudAccessTokenFromSession(pn);
-      const data = (await res.json()) as {
-        access_token?: string;
-        accessToken?: string;
-        expires_in?: number;
-      };
-      const next =
-        (typeof data.access_token === 'string' && data.access_token.trim()) ||
-        (typeof data.accessToken === 'string' && data.accessToken.trim()) ||
-        '';
-      if (!next) return getCloudAccessTokenFromSession(pn);
-      patchSessionAccessToken(pn, next, data.expires_in);
-      return next;
-    } catch {
-      return getCloudAccessTokenFromSession(pn);
-    } finally {
-      refreshInflight = null;
+  const attempt = (async () => {
+    const resolved = await resolveFreshDriveToken({
+      envelope: getSessionCloudCredentials(pn),
+      authToken: opts.authToken,
+      apiEndpoint: opts.apiEndpoint,
+      path: opts.path ?? 'session'
+    });
+    if (!resolved.token) return null;
+    if (resolved.expiresAt != null) {
+      patchSessionAccessTokenAbsolute(pn, resolved.token, resolved.expiresAt);
     }
-  })();
+    return resolved.token;
+  })().finally(() => {
+    refreshInflight.delete(pn);
+  });
 
-  return refreshInflight;
+  refreshInflight.set(pn, attempt);
+  return attempt;
 }
 
 /**

@@ -18,6 +18,7 @@ import {
   resolveSocialCloudProvider,
   TABLE_PATHS
 } from '@par-noir/user-owned-storage';
+import { accountAccessToken, freshAccessTokenFromEnvelope } from './driveTokenResolver.js';
 import type { MailboxJob } from './types.js';
 import type { OutboxRecord } from './outbox.js';
 
@@ -30,11 +31,15 @@ function rootPrefix(pnIdentifier: string): string {
   return `${pnRootFolderName(pnIdentifier)}/`;
 }
 
-function accountAccessToken(
+/**
+ * Raw token read for the non-Google providers, which carry no shared freshness
+ * rule. The Google path deliberately does not use this: it goes through
+ * freshAccessTokenFromEnvelope so an expired token is caught before the write.
+ */
+function providerAccessToken(
   account: { access_token?: string; accessToken?: string }
 ): string | null {
-  const t = account.access_token || account.accessToken;
-  return t && t.length > 0 ? t : null;
+  return accountAccessToken(account as Record<string, unknown>);
 }
 
 /** Build a minimal blob writer from sealed credentials (device custody). */
@@ -47,14 +52,14 @@ export async function createDeviceCloudWriter(
 
   if (provider === 'dropbox') {
     const account = (credentials.dropboxAccounts ?? [])[0] as DropboxAccount | undefined;
-    const token = account ? accountAccessToken(account) : null;
+    const token = account ? providerAccessToken(account) : null;
     if (!token) throw new Error('Dropbox access token missing — reconnect under App folder grant');
     return dropboxWriter(token, prefix);
   }
 
   if (provider === 'onedrive') {
     const account = (credentials.onedriveAccounts ?? [])[0] as OnedriveAccount | undefined;
-    const token = account ? accountAccessToken(account) : null;
+    const token = account ? providerAccessToken(account) : null;
     if (!token) throw new Error('OneDrive access token missing — reconnect under AppFolder grant');
     return onedriveAppRootWriter(token, prefix);
   }
@@ -81,12 +86,11 @@ export async function createDeviceCloudWriter(
     return azureWriter(account);
   }
 
-  // google_drive (default / social)
-  const g =
-    (credentials.googleDriveAccounts ?? [])[0] ||
-    (credentials as { googleDrive?: GoogleDriveAccount }).googleDrive;
-  const token = g ? accountAccessToken(g as GoogleDriveAccount) : null;
-  if (!token) throw new Error('Google Drive access token missing');
+  // google_drive (default / social). Freshness comes from the shared resolver:
+  // writing with an expired token fails at Google, and the local helper below
+  // has no way to tell a live token from a dead one.
+  const token = freshAccessTokenFromEnvelope(credentials);
+  if (!token) throw new Error('Google Drive access token missing or expired');
   return googleDriveWriter(token, pnIdentifier, credentials);
 }
 

@@ -12,7 +12,8 @@
     }
   },
   "scripts": {
-    "build": "tsc",
+    "build": "npm run build:vault-script && tsc",
+    "build:vault-script": "esbuild src/cloudVaultBrowser.ts --bundle --format=iife --target=es2017 --outfile=static/oauth-cloud-vault.js --banner:js=\"/* GENERATED from src/cloudVaultBrowser.ts by 'npm run build:vault-script'. Do not edit by hand. */\"",
     "clean": "rm -rf dist",
     "test": "vitest run"
   },
@@ -25,6 +26,7 @@
   },
   "devDependencies": {
     "@types/react": "^18.0.0",
+    "esbuild": "^0.25.9",
     "react": "^18.2.0",
     "typescript": "^5.0.0",
     "vitest": "^3.2.4"

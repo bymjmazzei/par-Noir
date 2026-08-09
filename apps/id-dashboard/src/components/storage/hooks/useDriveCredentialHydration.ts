@@ -109,7 +109,9 @@ export function useDriveCredentialHydration({
         const sessionId = authenticatedUser?.id ?? null;
         const sessionCreds = sessionId ? SecureCredentialManager.getCredentials(sessionId) : null;
         if (sessionCreds && pnId) {
-          const { loadLocalCloudCredentials } = await import('@par-noir/device-cloud-credentials');
+          const { loadLocalCloudCredentials, accountAccessToken } = await import(
+            '@par-noir/device-cloud-credentials'
+          );
           const local = await loadLocalCloudCredentials({
             identityId: pnId,
             session: {
@@ -120,7 +122,9 @@ export function useDriveCredentialHydration({
           });
           const accounts = local?.googleDriveAccounts ?? [];
           for (const account of accounts) {
-            const token = account.accessToken || account.access_token;
+            // Seed value only: the refresh token and absolute expiry travel with
+            // it, and the backend mints a replacement when this one has aged out.
+            const token = accountAccessToken(account as Record<string, unknown>);
             if (!token) continue;
             const email = account.email || null;
             const sealedBackendId = account.backendId || account.accountId || null;
@@ -139,12 +143,13 @@ export function useDriveCredentialHydration({
                   }
                 : resolveIdentifiersForEmail(email);
             try {
+              // Absolute expiry only. Deriving one from a stored relative
+              // lifetime restarts the clock on every hydrate, which is how an
+              // hours-old token kept looking freshly minted.
               const expiresAt =
                 typeof account.expires_at === 'number' && Number.isFinite(account.expires_at)
                   ? account.expires_at
-                  : typeof account.expires_in === 'number' && account.expires_in > 0
-                    ? Date.now() + account.expires_in * 1000
-                    : undefined;
+                  : undefined;
               const backend = await upsertDriveAccount({
                 backendId: identifiers.backendId,
                 keyPrefix: identifiers.keyPrefix,

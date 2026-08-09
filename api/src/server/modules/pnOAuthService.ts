@@ -251,6 +251,24 @@ export class PNOAuthService {
   }
 
   /**
+   * Read a live authorization code without consuming it.
+   *
+   * The consent page needs to prove it just completed an unlock before the token
+   * exchange has happened, so it presents the code it was handed. This must not
+   * delete or mark the code: the real exchange still has to run afterwards.
+   */
+  static peekAuthorizationCode(
+    code: string,
+    clientId: string
+  ): { pnIdentifier?: string; did: string } | null {
+    const authCode = authorizationCodes.get(code);
+    if (!authCode) return null;
+    if (authCode.expiresAt < Date.now()) return null;
+    if (authCode.clientId !== clientId) return null;
+    return { pnIdentifier: authCode.pnIdentifier, did: authCode.did };
+  }
+
+  /**
    * Exchange authorization code for access token
    * Idempotent: if code was already exchanged, returns the same token
    */

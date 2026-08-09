@@ -272,9 +272,11 @@ export class GoogleDriveBackend extends AbstractStorageBackend {
       }
     }
 
-    // No refresh available or refresh failed — return whatever we still have
-    // (callers / makeRequest will surface 401 and run recovery).
-    return this.token;
+    // No refresh available, or the refresh failed. Do not hand back the token we
+    // already know is dead: callers forward this to the API as the owner's Drive
+    // token, and a dead one comes back as an opaque 500 instead of a prompt to
+    // reconnect. Internal Drive calls still use this.token and run 401 recovery.
+    return null;
   }
 
   /**

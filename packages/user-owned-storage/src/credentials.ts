@@ -31,8 +31,13 @@ export interface GoogleDriveAccount {
   email?: string;
   connectedAt?: string;
   updatedAt?: string;
+  /**
+   * Absolute ms epoch. Deliberately the only expiry field: a relative
+   * `expires_in` has no issue time attached, so a reader that recomputes
+   * `Date.now() + expires_in` treats a long-dead token as freshly minted.
+   * Convert to absolute at the point of capture.
+   */
   expires_at?: number;
-  expires_in?: number;
 }
 
 export interface DropboxAccount {

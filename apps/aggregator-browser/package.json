@@ -3,9 +3,10 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
-    "build": "vite build",
-    "build:messaging": "vite build --mode messaging",
+    "dev": "npm run sync:vault-script && vite",
+    "sync:vault-script": "node scripts/sync-vault-script.mjs",
+    "build": "npm run sync:vault-script && vite build",
+    "build:messaging": "npm run sync:vault-script && vite build --mode messaging",
     "type-check": "tsc --noEmit",
     "build:mobile": "npm run build && npx cap sync",
     "build:mobile:messaging": "npm run build:messaging && cd capacitor-messaging && npx cap sync",

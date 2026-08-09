@@ -40,14 +40,32 @@ describe('ownerCloudHeaders custody ready-check', () => {
     expect(getCloudAccessTokenFromSession('pn-test')).toBeNull();
   });
 
-  it('attaches access token header when present (Drive-ready)', () => {
+  it('attaches access token header when present and unexpired (Drive-ready)', () => {
     setSessionCloudCredentials('pn-test', {
-      googleDriveAccounts: [{ accountId: 'a1', access_token: 'ga-1', refresh_token: 'rt-1' }]
+      googleDriveAccounts: [
+        {
+          accountId: 'a1',
+          access_token: 'ga-1',
+          refresh_token: 'rt-1',
+          expires_at: Date.now() + 3600_000
+        }
+      ]
     } as any);
     expect(hasCloudCredentialsReady('pn-test')).toBe(true);
     const headers = ownerCloudHeaders({ authToken: 'oauth', pnIdentifier: 'pn-test' });
     expect(headers['X-PN-Cloud-Access-Token']).toBe('ga-1');
     expect(headers.Authorization).toBe('Bearer oauth');
+  });
+
+  it('is NOT Drive-ready for an access token with no known expiry', () => {
+    // Unknown expiry used to count as fresh forever, which forwarded dead
+    // tokens to Google until the user reconnected Drive.
+    setSessionCloudCredentials('pn-test', {
+      googleDriveAccounts: [{ accountId: 'a1', access_token: 'ga-1', refresh_token: 'rt-1' }]
+    } as any);
+    expect(hasCloudCredentialsReady('pn-test')).toBe(false);
+    const headers = ownerCloudHeaders({ authToken: 'oauth', pnIdentifier: 'pn-test' });
+    expect(headers['X-PN-Cloud-Access-Token']).toBeUndefined();
   });
 });
 
@@ -140,9 +158,16 @@ describe('publishCloudDriveReady', () => {
     expect(hasCloudCredentialsReady('pn-test')).toBe(false);
   });
 
-  it('fires READY when access token already present', async () => {
+  it('fires READY without minting when the present token is still valid', async () => {
     setSessionCloudCredentials('pn-test', {
-      googleDriveAccounts: [{ accountId: 'a1', access_token: 'ga-1', refresh_token: 'rt-1' }]
+      googleDriveAccounts: [
+        {
+          accountId: 'a1',
+          access_token: 'ga-1',
+          refresh_token: 'rt-1',
+          expires_at: Date.now() + 3600_000
+        }
+      ]
     } as any);
 
     let readyCount = 0;
@@ -159,5 +184,33 @@ describe('publishCloudDriveReady', () => {
     expect(ok).toBe(true);
     expect(readyCount).toBe(1);
     expect(getCloudAccessTokenFromSession('pn-test')).toBe('ga-1');
+  });
+
+  it('mints a replacement when the present token has expired', async () => {
+    setSessionCloudCredentials('pn-test', {
+      googleDriveAccounts: [
+        {
+          accountId: 'a1',
+          access_token: 'ga-1',
+          refresh_token: 'rt-1',
+          expires_at: Date.now() - 3600_000
+        }
+      ]
+    } as any);
+
+    let readyCount = 0;
+    window.addEventListener(PN_CLOUD_CREDENTIALS_READY_EVENT, () => {
+      readyCount += 1;
+    });
+
+    const ok = await publishCloudDriveReady({
+      authToken: 'oauth',
+      pnIdentifier: 'pn-test',
+      apiEndpoint: 'https://api.example.com'
+    });
+
+    expect(ok).toBe(true);
+    expect(readyCount).toBe(1);
+    expect(getCloudAccessTokenFromSession('pn-test')).toBe('minted-ga');
   });
 });

@@ -81,6 +81,14 @@ export class ThirdPartyPermissionsService {
 
       return Object.keys(permissions).length > 0 ? permissions : null;
     } catch (error) {
+      // A rejected token means "could not check", not "no grant". Collapsing the
+      // two is what made an expired token look like a first-time consent.
+      const { DriveIndexError } = await import('./pnDriveIndex');
+      const { translateGoogleCredentialError } = await import('./googleApiRetry');
+      const translated = translateGoogleCredentialError(error);
+      if (translated instanceof DriveIndexError && translated.code === 'CLOUD_TOKEN_EXPIRED') {
+        throw translated;
+      }
       console.error('Error getting third-party permissions:', error);
       return null;
     }
