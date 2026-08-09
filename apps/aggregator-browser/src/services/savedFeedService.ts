@@ -3,13 +3,7 @@
  * Manages private curated feeds (saved content)
  */
 
-import { API_ENDPOINT } from '../config/api';
-import { getOwnerApiHeaders } from './ownerApiHeaders';
-
-// Helper function to get auth headers
-function getAuthHeaders(): HeadersInit {
-  return getOwnerApiHeaders({ 'Content-Type': 'application/json' });
-}
+import { apiFetch, apiGet } from './ownerApiFetch';
 
 export interface SavedFeed {
   feedId: string;
@@ -37,9 +31,7 @@ export async function getSavedFeed(userPnIdentifier: string): Promise<SavedFeed 
 
   const fetchPromise = (async (): Promise<SavedFeed | null> => {
     try {
-      const response = await fetch(`${API_ENDPOINT}/api/feeds/saved?userPnIdentifier=${userPnIdentifier}`, {
-        headers: getAuthHeaders(),
-      });
+      const response = await apiGet(`/api/feeds/saved?userPnIdentifier=${userPnIdentifier}`);
 
       if (response.ok) {
         const result = await response.json();
@@ -91,13 +83,9 @@ export async function saveToFeed(
 ): Promise<SavedFeed> {
   try {
     // The API expects pnIdentifier
-    const response = await fetch(`${API_ENDPOINT}/api/feeds/saved`, {
-      method: 'POST',
-      headers: getAuthHeaders(),
-      body: JSON.stringify({
-        userPnIdentifier,
-        fileId
-      })
+    const response = await apiFetch('POST', '/api/feeds/saved', {
+      userPnIdentifier,
+      fileId
     });
 
     if (!response.ok) {
@@ -142,13 +130,9 @@ export async function removeFromSavedFeed(
   fileId: string
 ): Promise<void> {
   try {
-    const response = await fetch(`${API_ENDPOINT}/api/feeds/saved`, {
-      method: 'DELETE',
-      headers: getAuthHeaders(),
-      body: JSON.stringify({
-        userPnIdentifier,
-        fileId
-      })
+    const response = await apiFetch('DELETE', '/api/feeds/saved', {
+      userPnIdentifier,
+      fileId
     });
 
     if (!response.ok) {

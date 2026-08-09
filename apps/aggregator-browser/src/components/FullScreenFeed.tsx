@@ -22,7 +22,7 @@ import { PreferenceTile, PreferenceQuestion } from './PreferenceTile';
 import { PreferenceQuestionService, PreferenceState } from '../services/preferenceQuestionService';
 import { useUserState } from '../contexts/UserStateContext';
 import { API_ENDPOINT } from '../config/api';
-import { getOwnerApiHeaders, ownerApiHeadersAsync } from '../services/ownerApiHeaders';
+import { apiGet, ownerGet } from '../services/ownerApiFetch';
 
 interface FullScreenFeedProps {
   files: IndexedFile[];
@@ -102,9 +102,7 @@ export function FullScreenFeed({
         return;
       }
       
-      const metadataResponse = await fetch(`${API_ENDPOINT}/api/aggregator/metadata-index/${fileId}`, {
-        headers: getOwnerApiHeaders()
-      });
+      const metadataResponse = await apiGet(`/api/aggregator/metadata-index/${fileId}`);
       
       console.log(`[DEBUG] Metadata response status: ${metadataResponse.status}`);
       
@@ -871,10 +869,7 @@ export function FullScreenFeed({
             
             await Promise.all(thumbnailsWithoutTokens.map(async (cfId: string) => {
               try {
-                // Fetch metadata
-                const headers = getOwnerApiHeaders();
-                
-                const metadataResponse = await fetch(`${API_ENDPOINT}/api/aggregator/metadata-index/${cfId}`, { headers });
+                const metadataResponse = await apiGet(`/api/aggregator/metadata-index/${cfId}`);
                 if (!metadataResponse.ok) {
                   clearLoadingState(cfId);
                   return;
@@ -1154,10 +1149,7 @@ export function FullScreenFeed({
                     
                     await Promise.all(thumbnailsWithoutTokens.map(async (cfId: string) => {
                       try {
-                        // Fetch metadata
-                        const headers = getOwnerApiHeaders();
-                        
-                        const metadataResponse = await fetch(`${API_ENDPOINT}/api/aggregator/metadata-index/${cfId}`, { headers });
+                        const metadataResponse = await apiGet(`/api/aggregator/metadata-index/${cfId}`);
                         if (!metadataResponse.ok) {
                           clearLoadingState(cfId);
                           return;
@@ -1276,9 +1268,7 @@ export function FullScreenFeed({
           }
           
           // Fetch metadata for this collection file to get publicToken/thumbnailFileId
-          const metadataResponse = await fetch(`${API_ENDPOINT}/api/aggregator/metadata-index/${fileId}`, {
-            headers: getOwnerApiHeaders()
-          });
+          const metadataResponse = await apiGet(`/api/aggregator/metadata-index/${fileId}`);
           
           if (!metadataResponse.ok) {
             console.warn(`[FullScreenFeed] Failed to fetch metadata for collection file ${fileId}:`, metadataResponse.status);
@@ -1298,14 +1288,14 @@ export function FullScreenFeed({
                                  collectionFileMetadata.creator?.["@id"] || collectionFileMetadata.author?.did;
             if (pnIdentifier && !accountIdCacheRef.current) {
               try {
-                const accountResponse = await fetch(`${API_ENDPOINT}/api/users/${encodeURIComponent(pnIdentifier)}/accounts`, {
-                  headers: getOwnerApiHeaders()
-                });
+                const accountResponse = await apiGet(
+                  `/api/storage/accounts/${encodeURIComponent(pnIdentifier)}`
+                );
                 
                 if (accountResponse.ok) {
-                  const accounts = await accountResponse.json();
-                  if (Array.isArray(accounts) && accounts.length > 0) {
-                    accountId = accounts[0].id;
+                  const accounts = (await accountResponse.json()).accounts || [];
+                  if (accounts.length > 0) {
+                    accountId = accounts[0].accountId;
                     accountIdCacheRef.current = accountId;
                   }
                 }
@@ -1360,18 +1350,7 @@ export function FullScreenFeed({
               thumbnailUrl += `&accountId=${encodeURIComponent(accountId)}`;
             }
             
-            let response = await fetch(thumbnailUrl, {
-              headers: getOwnerApiHeaders()
-            });
-            
-            if (response.status === 401) {
-              const refreshedToken = await PNOAuthService.getValidAccessToken(true);
-              if (refreshedToken) {
-                response = await fetch(thumbnailUrl, {
-                  headers: await ownerApiHeadersAsync(refreshedToken)
-                });
-              }
-            }
+            const response = await ownerGet(thumbnailUrl);
             
             if (response.ok) {
               const contentType = response.headers.get('content-type') || '';
@@ -1433,18 +1412,7 @@ export function FullScreenFeed({
             thumbnailUrl += `&accountId=${encodeURIComponent(accountId)}`;
           }
           
-          let response = await fetch(thumbnailUrl, {
-            headers: getOwnerApiHeaders()
-          });
-          
-          if (response.status === 401) {
-            const refreshedToken = await PNOAuthService.getValidAccessToken(true);
-            if (refreshedToken) {
-              response = await fetch(thumbnailUrl, {
-                headers: await ownerApiHeadersAsync(refreshedToken)
-              });
-            }
-          }
+          const response = await ownerGet(thumbnailUrl);
           
           if (response.ok) {
             const contentType = response.headers.get('content-type') || '';
@@ -1726,12 +1694,8 @@ export function FullScreenFeed({
                   let accountId: string | null = null;
                   
                   try {
-                    // Fetch metadata for this collection file (try with auth if available, but should work without for public files)
-                    const headers = getOwnerApiHeaders();
-                    
-                    const metadataResponse = await fetch(`${API_ENDPOINT}/api/aggregator/metadata-index/${cfId}`, {
-                      headers
-                    });
+                    // Public collection files resolve without a Drive token.
+                    const metadataResponse = await apiGet(`/api/aggregator/metadata-index/${cfId}`);
                     
                     
                     if (!metadataResponse.ok) {
@@ -1764,13 +1728,13 @@ export function FullScreenFeed({
                                            collectionFileMetadata.creator?.["@id"] || collectionFileMetadata.author?.did;
                       if (pnIdentifier && !accountIdCacheRef.current) {
                         try {
-                          const accountResponse = await fetch(`${API_ENDPOINT}/api/users/${encodeURIComponent(pnIdentifier)}/accounts`, {
-                            headers: getOwnerApiHeaders()
-                          });
+                          const accountResponse = await apiGet(
+                            `/api/storage/accounts/${encodeURIComponent(pnIdentifier)}`
+                          );
                           if (accountResponse.ok) {
-                            const accounts = await accountResponse.json();
-                            if (Array.isArray(accounts) && accounts.length > 0) {
-                              accountId = accounts[0].id;
+                            const accounts = (await accountResponse.json()).accounts || [];
+                            if (accounts.length > 0) {
+                              accountId = accounts[0].accountId;
                               accountIdCacheRef.current = accountId;
                             }
                           }
@@ -1834,18 +1798,7 @@ export function FullScreenFeed({
                         thumbnailUrl += `&accountId=${encodeURIComponent(accountId)}`;
                       }
                       
-                      let response = await fetch(thumbnailUrl, {
-                        headers: getOwnerApiHeaders()
-                      });
-                      
-                      if (response.status === 401) {
-                        const refreshedToken = await PNOAuthService.getValidAccessToken(true);
-                        if (refreshedToken) {
-                          response = await fetch(thumbnailUrl, {
-                            headers: await ownerApiHeadersAsync(refreshedToken)
-                          });
-                        }
-                      }
+                      const response = await ownerGet(thumbnailUrl);
                       
                       if (response.ok) {
                         const contentType = response.headers.get('content-type') || '';
@@ -1907,18 +1860,7 @@ export function FullScreenFeed({
                       thumbnailUrl += `&accountId=${encodeURIComponent(accountId)}`;
                     }
                     
-                    let response = await fetch(thumbnailUrl, {
-                      headers: getOwnerApiHeaders()
-                    });
-                    
-                    if (response.status === 401) {
-                      const refreshedToken = await PNOAuthService.getValidAccessToken(true);
-                      if (refreshedToken) {
-                        response = await fetch(thumbnailUrl, {
-                          headers: await ownerApiHeadersAsync(refreshedToken)
-                        });
-                      }
-                    }
+                    const response = await ownerGet(thumbnailUrl);
                     
                     if (response.ok) {
                       const contentType = response.headers.get('content-type') || '';
@@ -1999,9 +1941,7 @@ export function FullScreenFeed({
                           fileUrl += `&accountId=${encodeURIComponent(accountId)}`;
                         }
                         
-                        const fileResponse = await fetch(fileUrl, {
-                          headers: getOwnerApiHeaders()
-                        });
+                        const fileResponse = await ownerGet(fileUrl);
                         
                         if (fileResponse.ok) {
                           const fileBlob = await fileResponse.blob();
@@ -2063,9 +2003,7 @@ export function FullScreenFeed({
               }
               
               console.log(`[FullScreenFeed] Fetching collection data for ${fileId}`);
-              const response = await fetch(`${API_ENDPOINT}/api/aggregator/metadata-index/${fileId}`, {
-                headers: getOwnerApiHeaders()
-              });
+              const response = await apiGet(`/api/aggregator/metadata-index/${fileId}`);
               
               if (response.ok) {
                 const data = await response.json();

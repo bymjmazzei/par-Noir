@@ -1,11 +1,9 @@
 import { PNOAuthService } from './pnOAuthService';
 import { EncryptionManager } from '../utils/encryptionManager';
 import { getEncryptionService } from '../services/encryptionService';
-import { getOwnerApiHeaders, ownerApiHeadersAsync } from './ownerApiHeaders';
+import { ownerFetch } from './ownerApiFetch';
 import { publishPublicShare } from './publicSharePublish';
 import type { PublicShareGenerationResult } from '@par-noir/aggregator-domain';
-
-import { API_ENDPOINT } from '../config/api';
 
 interface CollectionData {
   collectionFileIds: string[];
@@ -111,16 +109,17 @@ export async function createCollection(
     });
 
     const encryptedFileName = `${fileName}.encrypted`;
-    const uploadResponse = await fetch(`${API_ENDPOINT}/api/drive/files`, {
-      method: 'POST',
-      headers: await ownerApiHeadersAsync(accessToken),
-      body: JSON.stringify({
+    const uploadResponse = await ownerFetch(
+      'POST',
+      '/api/drive/files',
+      {
         fileData: base64File,
         fileName: encryptedFileName,
         mimeType: 'application/json', // Encrypted files are stored as JSON
         accountId: accountId
-      })
-    });
+      },
+      { authToken: accessToken }
+    );
 
     if (!uploadResponse.ok) {
       const errorText = await uploadResponse.text().catch(() => 'Unknown error');
@@ -149,25 +148,21 @@ export async function createCollection(
     }
 
     // Create metadata entry
-    const metadataResponse = await fetch(`${API_ENDPOINT}/api/aggregator/metadata-index/${fileId}`, {
-      method: 'PUT',
-      headers: getOwnerApiHeaders({ 'Content-Type': 'application/json' }),
-      body: JSON.stringify({
-        name: metadata?.title || collectionData.title || 'Collection',
-        description: metadata?.description || collectionData.description || '',
-        keywords: metadata?.keywords || [],
-        tags: metadata?.tags || [],
-        fileType: 'collection',
-        isPublic,
-        publicToken,
-        publicContentRef,
-        uploadDate: new Date().toISOString(),
-        collection: {
-          collectionFileIds: collectionData.collectionFileIds
-        },
-        isNSFW: metadata?.isNSFW || false,
-        isThoughtCollection: metadata?.isThoughtCollection || false, // Mark if this is a thought collection
-      }),
+    const metadataResponse = await ownerFetch('PUT', `/api/aggregator/metadata-index/${fileId}`, {
+      name: metadata?.title || collectionData.title || 'Collection',
+      description: metadata?.description || collectionData.description || '',
+      keywords: metadata?.keywords || [],
+      tags: metadata?.tags || [],
+      fileType: 'collection',
+      isPublic,
+      publicToken,
+      publicContentRef,
+      uploadDate: new Date().toISOString(),
+      collection: {
+        collectionFileIds: collectionData.collectionFileIds
+      },
+      isNSFW: metadata?.isNSFW || false,
+      isThoughtCollection: metadata?.isThoughtCollection || false, // Mark if this is a thought collection
     });
 
     if (!metadataResponse.ok) {

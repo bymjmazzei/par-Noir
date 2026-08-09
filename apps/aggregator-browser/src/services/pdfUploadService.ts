@@ -4,8 +4,7 @@
  */
 
 import { getEncryptionService, EncryptedFilePackage } from './encryptionService';
-import { API_ENDPOINT } from '../config/api';
-import { getOwnerApiHeaders } from './ownerApiHeaders';
+import { ownerFetch } from './ownerApiFetch';
 import { slimPublicTokenJson, type PublicShareGenerationResult } from '@par-noir/aggregator-domain';
 
 function blobToBase64(blob: Blob): Promise<string> {
@@ -26,15 +25,11 @@ async function uploadFile(
   accountId: string,
   _accessToken: string
 ): Promise<{ id: string }> {
-  const response = await fetch(`${API_ENDPOINT}/api/drive/files`, {
-    method: 'POST',
-    headers: getOwnerApiHeaders({ 'Content-Type': 'application/json' }),
-    body: JSON.stringify({
-      fileData: base64Data,
-      fileName,
-      mimeType: 'application/json',
-      accountId,
-    }),
+  const response = await ownerFetch('POST', '/api/drive/files', {
+    fileData: base64Data,
+    fileName,
+    mimeType: 'application/json',
+    accountId,
   });
 
   if (!response.ok) {
@@ -60,14 +55,10 @@ async function createMetadataForThumbnail(
   _accessToken: string
 ): Promise<void> {
   // PDF page thumbs start private; make-public materializes envelope + slim token.
-  await fetch(`${API_ENDPOINT}/api/aggregator/metadata-index/${fileId}?accountId=${accountId}`, {
-    method: 'PUT',
-    headers: getOwnerApiHeaders({ 'Content-Type': 'application/json' }),
-    body: JSON.stringify({
-      name: `thumb_${fileName}`,
-      fileType: 'image',
-      isPublic: false,
-    }),
+  await ownerFetch('PUT', `/api/aggregator/metadata-index/${fileId}?accountId=${accountId}`, {
+    name: `thumb_${fileName}`,
+    fileType: 'image',
+    isPublic: false,
   });
 }
 

@@ -7,9 +7,8 @@ import React, { useState, useEffect } from 'react';
 import { Lock } from 'lucide-react';
 import { PNOAuthService } from '../../services/pnOAuthService';
 import { EncryptionManager } from '../../utils/encryptionManager';
-import { API_ENDPOINT } from '../../config/api';
 import { fetchStorageFile } from '../../services/storageApiClient';
-import { getOwnerApiHeaders } from '../../services/ownerApiHeaders';
+import { apiGet } from '../../services/ownerApiFetch';
 
 interface EncryptedFilePackage {
   encrypted: string;
@@ -180,9 +179,7 @@ export const ThumbnailImage: React.FC<ThumbnailImageProps> = ({
 
         if (isThought && !isThoughtThumbnail && isEncrypted && !isThumbnail) {
           try {
-            const metadataResponse = await fetch(`${API_ENDPOINT}/api/aggregator/metadata-index/${fileId}`, {
-              headers: getOwnerApiHeaders(),
-            });
+            const metadataResponse = await apiGet(`/api/aggregator/metadata-index/${fileId}`);
             if (metadataResponse.ok) {
               const metadata = await metadataResponse.json();
               const thumbnailFileId = metadata.metadata?.thumbnailFileId || metadata.thumbnailFileId;

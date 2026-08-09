@@ -4,7 +4,6 @@
  */
 
 import { IdentityCrypto } from '@par-noir/identity-crypto';
-import { API_ENDPOINT } from '../config/api';
 import { ownerFetch } from './ownerApiService';
 
 export async function ensureZkpDocsFolderId(
@@ -67,25 +66,21 @@ export async function uploadZkpDocEncrypted(opts: {
   const fileData = btoa(unescape(encodeURIComponent(packageJson)));
   const safeName = `zkp-doc-${Date.now()}.encrypted`;
 
-  const { resolveLocalGoogleAccessTokenAsync } = await import('./deviceApiService');
-  const cloudTok = await resolveLocalGoogleAccessTokenAsync(opts.pnIdentifier);
-  const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
-    Authorization: `Bearer ${opts.authToken}`
-  };
-  if (cloudTok) headers['X-PN-Cloud-Access-Token'] = cloudTok;
-
-  const uploadRes = await fetch(`${API_ENDPOINT}/api/drive/files`, {
-    method: 'POST',
-    headers,
-    body: JSON.stringify({
+  // ownerFetch resolves the Drive token and refuses to send the upload at all
+  // when none can be minted, rather than issuing it Bearer-only.
+  const uploadRes = await ownerFetch(
+    opts.authToken,
+    'POST',
+    '/api/drive/files',
+    {
       fileData,
       fileName: safeName,
       mimeType: 'application/json',
       parents: [folderId],
       encrypt: false
-    })
-  });
+    },
+    { pnIdentifier: opts.pnIdentifier }
+  );
 
   if (!uploadRes.ok) {
     const text = await uploadRes.text();

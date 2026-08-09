@@ -90,7 +90,6 @@ export {
   waitForCloudCredentialsReady,
   ensureCloudAccessToken,
   publishCloudDriveReady,
-  ownerCloudHeaders,
   ownerCloudHeadersAsync,
 } from '@par-noir/device-cloud-credentials';
 export type {

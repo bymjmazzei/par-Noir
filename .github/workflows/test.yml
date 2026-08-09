@@ -37,6 +37,15 @@ jobs:
       - name: Quantum imports
         run: bash scripts/check-quantum-imports.sh
 
+      - name: Drive token resolver boundary
+        run: PN_CHECK_ALL=1 bash scripts/check-token-resolver-boundary.sh
+
+      - name: Drive token freshness boundary
+        run: PN_CHECK_ALL=1 bash scripts/check-drive-token-freshness-boundary.sh
+
+      - name: Owner fetch boundary
+        run: PN_CHECK_ALL=1 bash scripts/check-owner-fetch-boundary.sh
+
   test:
     name: Unit tests
     runs-on: ubuntu-latest

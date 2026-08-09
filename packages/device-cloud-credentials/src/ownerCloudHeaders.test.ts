@@ -5,10 +5,11 @@ import {
   getCloudAccessTokenFromSession,
   hasCloudCredentialsReady,
   hasCloudHydrateMaterial,
-  ownerCloudHeaders,
   publishCloudDriveReady,
   PN_CLOUD_CREDENTIALS_READY_EVENT
 } from './index.js';
+// Module-private: not part of the package's public surface.
+import { ownerCloudHeaders } from './ownerCloudHeaders.js';
 
 describe('ownerCloudHeaders custody ready-check', () => {
   beforeEach(() => {

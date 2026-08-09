@@ -10,7 +10,7 @@ import type { ShareToken } from '../utils/tokenDecryption';
 import { decryptPublicFeedMedia } from '../utils/publicMediaDecrypt';
 import { createThumbnailFromBlob, createVideoThumbnailFromBlob } from '../utils/thumbnailUtils';
 import { PNOAuthService } from '../services/pnOAuthService';
-import { getOwnerApiHeaders } from '../services/ownerApiHeaders';
+import { ownerGet } from '../services/ownerApiFetch';
 
 export interface UseThumbnailsAndMediaParams {
   mediaFiles: IndexedFile[];
@@ -188,7 +188,7 @@ export function useThumbnailsAndMedia({
             const backendFileId = file.backendFileId || file.fileId;
             const { resolveFileUrl } = await import('../services/storageApiClient');
             const url = resolveFileUrl(ownerId, backend, backendFileId, file.accountId);
-            const response = await fetch(url, { headers: getOwnerApiHeaders() });
+            const response = await ownerGet(url);
             if (!response.ok) throw new Error(`Failed to fetch: ${response.status}`);
             videoBlob = await response.blob();
           } else {

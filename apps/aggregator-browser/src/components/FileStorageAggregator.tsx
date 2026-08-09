@@ -16,7 +16,7 @@ import type { DriveFile } from './storage/storageTypes';
 import { API_ENDPOINT } from '../config/api';
 import { downloadStorageBlob } from '../services/storageApiClient';
 import { fetchMusicRegistryCatalog, type CatalogTrack } from '../services/musicRegistryApi';
-import { getOwnerApiHeaders } from '../services/ownerApiHeaders';
+import { apiGet, ownerFetch } from '../services/ownerApiFetch';
 
 import { FileViewerModal } from './file/StorageFileViewer';
 import type { FileStorageAggregatorProps } from './storage/FileStorageAggregatorTypes';
@@ -254,9 +254,9 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
       if (file.isThumbnail) {
         // For thumbnails, try to get the original filename from metadata
         try {
-          const metadataResponse = await fetch(`${API_ENDPOINT}/api/aggregator/metadata-index/${fileIdToDownload}`, {
-            headers: getOwnerApiHeaders()
-          });
+          const metadataResponse = await apiGet(
+            `/api/aggregator/metadata-index/${fileIdToDownload}`
+          );
           
           if (metadataResponse.ok) {
             const metadata = await metadataResponse.json();
@@ -341,10 +341,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
       const accessToken = await PNOAuthService.getValidAccessToken();
       if (!accessToken) return null;
 
-      const response = await fetch(`${API_ENDPOINT}/api/aggregator/metadata-index/${fileId}`, {
-        method: 'GET',
-        headers: getOwnerApiHeaders()
-      });
+      const response = await apiGet(`/api/aggregator/metadata-index/${fileId}`);
 
       if (response.ok) {
         const metadata = await response.json();
@@ -1096,12 +1093,8 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
       const currentIsTopPost = metadata?.isTopPost || false;
       const newIsTopPost = !currentIsTopPost;
 
-      const response = await fetch(`${API_ENDPOINT}/api/aggregator/metadata-index/${file.id}`, {
-        method: 'PUT',
-        headers: getOwnerApiHeaders({ 'Content-Type': 'application/json' }),
-        body: JSON.stringify({
-          isTopPost: newIsTopPost
-        })
+      const response = await ownerFetch('PUT', `/api/aggregator/metadata-index/${file.id}`, {
+        isTopPost: newIsTopPost
       });
 
       if (response.ok) {

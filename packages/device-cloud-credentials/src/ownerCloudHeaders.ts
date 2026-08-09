@@ -244,7 +244,13 @@ export async function publishCloudDriveReady(opts: {
   return true;
 }
 
-/** Bearer + optional X-PN-Cloud-Access-Token from session (no wait). Non-Drive / sync only. */
+/**
+ * Bearer + X-PN-Cloud-Access-Token when one is already fresh in session.
+ *
+ * Not exported from the package. It cannot mint, so a Drive-backed caller using
+ * it silently ships without a cloud token the moment the vault copy ages out.
+ * ownerCloudHeadersAsync is the public entry point; it mints first.
+ */
 export function ownerCloudHeaders(opts: {
   authToken: string;
   pnIdentifier?: string | null;
@@ -267,12 +273,17 @@ export async function ownerCloudHeadersAsync(opts: {
   // Prefer hydrate material first so we can mint before waiting forever on access-only.
   await waitForCloudHydrateMaterial(opts.pnIdentifier, opts.timeoutMs);
   if (opts.apiEndpoint) {
+    // Definitive: it either mints or reports there is nothing to mint from.
+    // Waiting for readiness afterwards would stall every Drive call by the full
+    // timeout before failing closed, for a state that cannot change.
     await ensureCloudAccessToken({
       authToken: opts.authToken,
       pnIdentifier: opts.pnIdentifier,
       apiEndpoint: opts.apiEndpoint
     });
+  } else {
+    // No endpoint to mint against, so the only hope is another actor hydrating.
+    await waitForCloudCredentialsReady(opts.pnIdentifier, Math.min(opts.timeoutMs ?? 15_000, 5_000));
   }
-  await waitForCloudCredentialsReady(opts.pnIdentifier, Math.min(opts.timeoutMs ?? 15_000, 5_000));
   return ownerCloudHeaders(opts);
 }

@@ -3,14 +3,8 @@
  * Handles semantic metadata search with filters
  */
 
-import { API_ENDPOINT } from '../config/api';
 import { IndexedFile, MetadataFilters } from '../types/aggregator';
-import { getOwnerApiHeaders } from './ownerApiHeaders';
-
-// Helper function to get auth headers
-function getAuthHeaders(): HeadersInit {
-  return getOwnerApiHeaders();
-}
+import { apiGet } from './ownerApiFetch';
 
 export interface SearchOptions {
   query?: string;
@@ -79,9 +73,7 @@ export async function searchFiles(
       }
     }
 
-    const response = await fetch(`${API_ENDPOINT}/api/search?${params.toString()}`, {
-      headers: getAuthHeaders()
-    });
+    const response = await apiGet(`/api/search?${params.toString()}`);
 
     if (!response.ok) {
       // Throw error to trigger fallback in SearchResults component
@@ -141,9 +133,9 @@ export async function searchPersonalHistory(
       params.append('offset', options.offset.toString());
     }
 
-    const response = await fetch(`${API_ENDPOINT}/api/search/personal?userPnIdentifier=${userPnIdentifier}&${params.toString()}`, {
-      headers: getAuthHeaders()
-    });
+    const response = await apiGet(
+      `/api/search/personal?userPnIdentifier=${userPnIdentifier}&${params.toString()}`
+    );
 
     if (!response.ok) {
       throw new Error('Personal search failed');
@@ -178,9 +170,7 @@ export async function searchProfiles(query: string, limit = 20): Promise<Profile
   if (!query.trim()) return [];
   try {
     const params = new URLSearchParams({ q: query.trim(), limit: String(limit) });
-    const response = await fetch(`${API_ENDPOINT}/api/profile/search?${params}`, {
-      headers: getAuthHeaders()
-    });
+    const response = await apiGet(`/api/profile/search?${params}`);
     if (!response.ok) return [];
     const data = await response.json();
     return (data.profiles || []).map((p: ProfileSearchResult & { publicName?: string }) => ({

@@ -8,7 +8,7 @@ import {
   type ReactNode
 } from 'react';
 import type { PnOAuthPopupResult } from '@par-noir/oauth-ui';
-import { ownerCloudHeaders, ownerCloudHeadersAsync } from '@par-noir/device-cloud-credentials';
+import { ownerCloudHeadersAsync } from '@par-noir/device-cloud-credentials';
 import { API_ENDPOINT } from '../config/api';
 import { PN_CLIENT_ID } from '../config/client';
 
@@ -131,15 +131,13 @@ export function PortalProvider({ children }: { children: ReactNode }) {
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  // Bearer only. The /api/developer/* routes are Postgres-backed and never touch
+  // Drive, so they must not depend on a cloud token being present.
   const authHeaders = useCallback((): HeadersInit => {
     const t = getAccessToken();
     if (!t) return { 'Content-Type': 'application/json' };
-    return ownerCloudHeaders({
-      authToken: t,
-      pnIdentifier: user?.pn_identifier || getStoredPnIdentifier(),
-      extra: { 'Content-Type': 'application/json' }
-    });
-  }, [user?.pn_identifier]);
+    return { 'Content-Type': 'application/json', Authorization: `Bearer ${t}` };
+  }, []);
 
   const authHeadersAsync = useCallback(async (): Promise<HeadersInit> => {
     const t = getAccessToken();

@@ -116,6 +116,8 @@ export {
   waitForCloudCredentialsReady,
   ensureCloudAccessToken,
   publishCloudDriveReady,
-  ownerCloudHeaders,
+  // ownerCloudHeaders (sync) is deliberately NOT exported: it can only report a
+  // token that is already fresh, so a Drive-backed caller reaching for it ships
+  // without X-PN-Cloud-Access-Token and gets a 409. Use the async builder.
   ownerCloudHeadersAsync
 } from './ownerCloudHeaders.js';

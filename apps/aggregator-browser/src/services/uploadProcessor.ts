@@ -7,9 +7,8 @@ import { uploadQueueService, UploadTask } from './uploadQueueService';
 import { workerManager } from './workerManager';
 import { PNOAuthService } from './pnOAuthService';
 import { getEncryptionService } from './encryptionService';
-import { API_ENDPOINT } from '../config/api';
 import { uploadStorageFile } from './storageApiClient';
-import { getOwnerApiHeaders } from './ownerApiHeaders';
+import { ownerFetch } from './ownerApiFetch';
 import { publishPublicShare } from './publicSharePublish';
 import type { PublicContentRef, PublicShareGenerationResult } from '@par-noir/aggregator-domain';
 
@@ -857,11 +856,7 @@ async function uploadFile(
  * Helper: Create metadata entry
  */
 async function createMetadata(fileId: string, metadata: any, _accessToken: string): Promise<void> {
-  const response = await fetch(`${API_ENDPOINT}/api/aggregator/metadata-index/${fileId}`, {
-    method: 'PUT',
-    headers: getOwnerApiHeaders({ 'Content-Type': 'application/json' }),
-    body: JSON.stringify(metadata)
-  });
+  const response = await ownerFetch('PUT', `/api/aggregator/metadata-index/${fileId}`, metadata);
 
   if (!response.ok) {
     const errorText = await response.text().catch(() => 'Unknown error');

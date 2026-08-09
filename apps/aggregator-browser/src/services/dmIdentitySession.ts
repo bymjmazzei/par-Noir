@@ -5,7 +5,6 @@
 import { unlockIdentityMlKemSecret, deriveMlKemPublicKeyFromSecretKey, type EncryptedIdentityPayload } from '@par-noir/dm-crypto';
 import { clearDmSessionCache } from './dmSessionCache';
 import { PNOAuthService } from './pnOAuthService';
-import { API_ENDPOINT } from '../config/api';
 
 export const IDENTITY_STORAGE_KEY = 'pn_encrypted_identity_v1';
 const DM_SESSION_STORAGE_KEY = 'pn_dm_session_v1';
@@ -250,39 +249,18 @@ export async function unlockDmIdentity(pnName: string, passcode: string): Promis
   return state;
 }
 
-async function waitForCloudAccessToken(pnIdentifier: string, timeoutMs = 20_000): Promise<boolean> {
-  const { getSessionCloudCredentials } = await import('@par-noir/device-cloud-credentials');
-  const { envelopeHasUsableSecrets } = await import('@par-noir/user-owned-storage');
-  const start = Date.now();
-  while (Date.now() - start < timeoutMs) {
-    if (envelopeHasUsableSecrets(getSessionCloudCredentials(pnIdentifier))) return true;
-    await new Promise((r) => setTimeout(r, 250));
-  }
-  return envelopeHasUsableSecrets(getSessionCloudCredentials(pnIdentifier));
-}
-
 async function publishMlKemPublicKey(mlKemPublicKey: string): Promise<void> {
   const session = PNOAuthService.loadSession();
   const pnIdentifier = session?.pnIdentifier;
   if (!pnIdentifier) return;
-  // Drive publish needs X-PN-Cloud-Access-Token from vault hydrate — wait briefly.
-  await waitForCloudAccessToken(pnIdentifier);
-  const { getOwnerApiHeaders } = await import('./ownerApiHeaders');
-  let lastStatus = 0;
-  for (let attempt = 0; attempt < 4; attempt++) {
-    const response = await fetch(`${API_ENDPOINT}/api/profile/ml-kem-public-key`, {
-      method: 'POST',
-      headers: getOwnerApiHeaders(),
-      body: JSON.stringify({ userPnIdentifier: pnIdentifier, mlKemPublicKey })
-    });
-    if (response.ok) return;
-    lastStatus = response.status;
-    // 409 = cloud token not ready yet; retry after hydrate.
-    if (response.status !== 409 || attempt === 3) break;
-    await waitForCloudAccessToken(pnIdentifier, 5_000);
-    await new Promise((r) => setTimeout(r, 400));
-  }
-  throw new Error(`publish ml-kem-public-key failed: ${lastStatus}`);
+
+  const { ownerFetch } = await import('./ownerApiFetch');
+  const response = await ownerFetch('POST', '/api/profile/ml-kem-public-key', {
+    userPnIdentifier: pnIdentifier,
+    mlKemPublicKey
+  });
+  if (response.ok) return;
+  throw new Error(`publish ml-kem-public-key failed: ${response.status}`);
 }
 
 /** Retry profile publish after vault hydrate / OAuth session ready. */

@@ -7,7 +7,7 @@ import { createContext, useContext, useState, useEffect, ReactNode } from 'react
 import { accountsCacheService } from '../services/accountsCacheService';
 import { inboxCacheService } from '../services/inboxCacheService';
 import { TagNormalizationService } from '../services/tagNormalizationService';
-import { API_ENDPOINT } from '../config/api';
+import { ownerFetch, ownerGet } from '../services/ownerApiFetch';
 
 export interface CuratedFeedPreferences {
   sortOrder: 'time' | 'recommended'; // Default: 'recommended'
@@ -206,21 +206,11 @@ export function UserStateProvider({ children }: { children: ReactNode }) {
         }
         const pn = userState.pnIdentifier;
         if (!pn) return;
-        const { getCloudAccessTokenFromSession, waitForCloudCredentialsReady } = await import(
-          '@par-noir/device-cloud-credentials'
-        );
-        // Wait for a usable Google access token (refresh-only is not enough).
-        const ready = await waitForCloudCredentialsReady(pn, 10_000);
-        if (cancelled || !ready || !getCloudAccessTokenFromSession(pn)) {
-          return;
-        }
-
-        const response = await fetch(`${API_ENDPOINT}/api/users/${pn}/preferences`, {
-          headers: await (await import('../services/ownerApiHeaders')).ownerApiHeadersAsync(
-            session.accessToken,
-            pn
-          )
+        const response = await ownerGet(`/api/users/${pn}/preferences`, {
+          authToken: session.accessToken,
+          pnIdentifier: pn
         });
+        if (cancelled) return;
 
         if (response.ok) {
           const data = await response.json();
@@ -290,9 +280,9 @@ export function UserStateProvider({ children }: { children: ReactNode }) {
             return;
           }
 
-          const response = await fetch(`${API_ENDPOINT}/api/users/${userState.pnIdentifier}/tag-preferences`, {
-            headers: (await import('../services/ownerApiHeaders')).getOwnerApiHeaders(),
-          });
+          const response = await ownerGet(
+            `/api/users/${userState.pnIdentifier}/tag-preferences`
+          );
 
           if (response.ok) {
             const data = await response.json();
@@ -351,26 +341,14 @@ export function UserStateProvider({ children }: { children: ReactNode }) {
 
         const pn = userState.pnIdentifier;
         if (!pn) return;
-        const { getSessionCloudCredentials } = await import('@par-noir/device-cloud-credentials');
-        const { envelopeHasUsableSecrets } = await import('@par-noir/user-owned-storage');
-        for (let i = 0; i < 40; i++) {
-          if (envelopeHasUsableSecrets(getSessionCloudCredentials(pn))) break;
-          await new Promise((r) => setTimeout(r, 250));
-        }
-        if (!envelopeHasUsableSecrets(getSessionCloudCredentials(pn))) {
-          return;
-        }
 
-        const { getOwnerApiHeaders } = await import('../services/ownerApiHeaders');
         // OAuth only returns over_21 when granted and verificationLevel === verified
-        const zkpResponse = await fetch(
-          `${API_ENDPOINT}/oauth/zkp-data-points?data_points=over_21`,
-          {
-            headers: getOwnerApiHeaders()
-          }
-        );
+        const zkpResponse = await ownerGet('/oauth/zkp-data-points?data_points=over_21');
 
         if (zkpResponse.status === 409) {
+          // ownerGet already waited for and tried to mint a Drive token, so a 409
+          // here means Drive is genuinely unreachable, not merely not hydrated yet.
+          console.warn('[Over 21 ZKP Check] Drive unreachable; age eligibility unknown');
           return;
         }
 
@@ -385,17 +363,11 @@ export function UserStateProvider({ children }: { children: ReactNode }) {
           }
           
           if (over21ZKP && over21ZKP.verificationLevel === 'verified') {
-            const verifyResponse = await fetch(
-            `${API_ENDPOINT}/api/users/${pn}/zkp-data-points/verify`,
-            {
-              method: 'POST',
-              headers: getOwnerApiHeaders(),
-              body: JSON.stringify({
-                dataPointId: 'over_21',
-                condition: 'age >= 21'
-              })
-            }
-          );
+            const verifyResponse = await ownerFetch(
+              'POST',
+              `/api/users/${pn}/zkp-data-points/verify`,
+              { dataPointId: 'over_21', condition: 'age >= 21' }
+            );
 
           if (verifyResponse.ok) {
             const verifyData = await verifyResponse.json();
@@ -550,17 +522,11 @@ export function UserStateProvider({ children }: { children: ReactNode }) {
           return;
         }
 
-        const response = await fetch(`${API_ENDPOINT}/api/users/${userState.pnIdentifier}/preferences`, {
-          method: 'PUT',
-          headers: {
-            'Content-Type': 'application/json',
-            ...(await import('../services/ownerApiHeaders')).getOwnerApiHeaders()
-          },
-          body: JSON.stringify({
-            hasAgeZKP,
-            isOver18
-          })
-        });
+        const response = await ownerFetch(
+          'PUT',
+          `/api/users/${userState.pnIdentifier}/preferences`,
+          { hasAgeZKP, isOver18 }
+        );
 
         if (response.ok) {
           console.log('✅ Saved age ZKP status to Google Drive:', { hasAgeZKP, isOver18 });
@@ -601,16 +567,11 @@ export function UserStateProvider({ children }: { children: ReactNode }) {
           return;
         }
 
-        const response = await fetch(`${API_ENDPOINT}/api/users/${userState.pnIdentifier}/preferences`, {
-          method: 'PUT',
-          headers: {
-            'Content-Type': 'application/json',
-            ...(await import('../services/ownerApiHeaders')).getOwnerApiHeaders()
-          },
-          body: JSON.stringify({
-            showNSFW: show
-          })
-        });
+        const response = await ownerFetch(
+          'PUT',
+          `/api/users/${userState.pnIdentifier}/preferences`,
+          { showNSFW: show }
+        );
 
         if (response.ok) {
           console.log('✅ Saved showNSFW preference to Google Drive:', show);
@@ -757,19 +718,16 @@ export function UserStateProvider({ children }: { children: ReactNode }) {
           return;
         }
 
-        const response = await fetch(`${API_ENDPOINT}/api/users/${userState.pnIdentifier}/tag-preferences`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            ...(await import('../services/ownerApiHeaders')).getOwnerApiHeaders()
-          },
-          body: JSON.stringify({
+        const response = await ownerFetch(
+          'POST',
+          `/api/users/${userState.pnIdentifier}/tag-preferences`,
+          {
             tagId: normalizedSubject,
             preference: 'subscribe',
             action: 'preference_tile_yes',
             confidence: 0.8
-          })
-        });
+          }
+        );
 
         if (response.ok) {
           console.log('✅ Saved tag preference to backend:', normalizedSubject);
@@ -836,19 +794,16 @@ export function UserStateProvider({ children }: { children: ReactNode }) {
           return;
         }
 
-        const response = await fetch(`${API_ENDPOINT}/api/users/${userState.pnIdentifier}/tag-preferences`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            ...(await import('../services/ownerApiHeaders')).getOwnerApiHeaders()
-          },
-          body: JSON.stringify({
+        const response = await ownerFetch(
+          'POST',
+          `/api/users/${userState.pnIdentifier}/tag-preferences`,
+          {
             tagId: normalizedSubject,
             preference: 'block',
             action: 'preference_tile_no',
             confidence: 0.8
-          })
-        });
+          }
+        );
 
         if (response.ok) {
           console.log('✅ Saved tag preference to backend:', normalizedSubject);
@@ -946,16 +901,11 @@ export function UserStateProvider({ children }: { children: ReactNode }) {
           return;
         }
 
-        const response = await fetch(`${API_ENDPOINT}/api/users/${userState.pnIdentifier}/preferences`, {
-          method: 'PUT',
-          headers: {
-            'Content-Type': 'application/json',
-            ...(await import('../services/ownerApiHeaders')).getOwnerApiHeaders()
-          },
-          body: JSON.stringify({
-            curatedFeedPreferences: preferences
-          })
-        });
+        const response = await ownerFetch(
+          'PUT',
+          `/api/users/${userState.pnIdentifier}/preferences`,
+          { curatedFeedPreferences: preferences }
+        );
 
         if (response.ok) {
           console.log('Successfully saved curated feed preferences to Google Drive');
@@ -990,16 +940,11 @@ export function UserStateProvider({ children }: { children: ReactNode }) {
           return;
         }
 
-        const response = await fetch(`${API_ENDPOINT}/api/users/${userState.pnIdentifier}/preferences`, {
-          method: 'PUT',
-          headers: {
-            'Content-Type': 'application/json',
-            ...(await import('../services/ownerApiHeaders')).getOwnerApiHeaders()
-          },
-          body: JSON.stringify({
-            mePageSortOrder: sortOrder
-          })
-        });
+        const response = await ownerFetch(
+          'PUT',
+          `/api/users/${userState.pnIdentifier}/preferences`,
+          { mePageSortOrder: sortOrder }
+        );
 
         if (response.ok) {
           console.log('Successfully saved me page sort order to Google Drive');

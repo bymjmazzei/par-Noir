@@ -14,7 +14,7 @@ import {
   PN_OAUTH_RESUME_SEARCH_KEY,
   type PnOAuthPopupResult
 } from '@par-noir/oauth-ui';
-import { ownerCloudHeaders, ownerCloudHeadersAsync } from '@par-noir/device-cloud-credentials';
+import { ownerCloudHeadersAsync } from '@par-noir/device-cloud-credentials';
 import { API_ENDPOINT } from '../config/api';
 import { PN_CLIENT_ID } from '../config/client';
 
@@ -103,7 +103,6 @@ interface LicensingSessionValue {
   signedIn: boolean;
   error: string | null;
   setError: (e: string | null) => void;
-  authHeaders: () => HeadersInit;
   authHeadersAsync: () => Promise<HeadersInit>;
   handleBeforeUnlock: (state: string, nonce: string) => void;
   onPopupResult: (r: PnOAuthPopupResult) => Promise<void>;
@@ -121,16 +120,8 @@ export function LicensingSessionProvider({ children }: { children: ReactNode }) 
   const processedCodesRef = useRef<Set<string>>(new Set());
   const bootstrapStartedRef = useRef(false);
 
-  const authHeaders = useCallback((): HeadersInit => {
-    const t = getAccessToken();
-    if (!t) return { 'Content-Type': 'application/json' };
-    return ownerCloudHeaders({
-      authToken: t,
-      pnIdentifier: user?.pn_identifier,
-      extra: { 'Content-Type': 'application/json' }
-    });
-  }, [user?.pn_identifier]);
-
+  // No sync counterpart: a sync builder cannot mint a Drive token, so any
+  // Drive-backed caller reaching for it would silently send none.
   const authHeadersAsync = useCallback(async (): Promise<HeadersInit> => {
     const t = getAccessToken();
     if (!t) return { 'Content-Type': 'application/json' };
@@ -364,7 +355,6 @@ export function LicensingSessionProvider({ children }: { children: ReactNode }) 
       signedIn,
       error,
       setError,
-      authHeaders,
       authHeadersAsync,
       handleBeforeUnlock,
       onPopupResult,
@@ -377,7 +367,6 @@ export function LicensingSessionProvider({ children }: { children: ReactNode }) 
       loadingSession,
       signedIn,
       error,
-      authHeaders,
       authHeadersAsync,
       handleBeforeUnlock,
       onPopupResult,

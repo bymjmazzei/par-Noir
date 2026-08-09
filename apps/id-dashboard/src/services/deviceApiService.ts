@@ -207,15 +207,6 @@ async function resolveUsableTokenFromEnvelope(
   return resolved.token;
 }
 
-/** Local Google access token for API Drive writes under device custody (never log). */
-export function resolveLocalGoogleAccessToken(pnIdentifier: string): string | null {
-  try {
-    return googleTokenFromEnvelope(getSessionCloudCredentials(pnIdentifier));
-  } catch {
-    return null;
-  }
-}
-
 /**
  * Live Google access token for owner API Drive calls under device custody.
  * Prefers Storage backend ensureAccessToken (refreshes), then session/sealed with

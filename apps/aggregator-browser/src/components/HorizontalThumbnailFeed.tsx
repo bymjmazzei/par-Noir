@@ -8,7 +8,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { useHorizontalSwipe } from '../hooks/useHorizontalSwipe';
 import { API_ENDPOINT } from '../config/api';
 import type { ShareToken } from '../utils/tokenDecryption';
-import { getOwnerApiHeaders, ownerApiHeadersAsync } from '../services/ownerApiHeaders';
+import { apiGet, ownerGet } from '../services/ownerApiFetch';
 
 interface HorizontalThumbnailFeedProps {
   thumbnailIds: string[]; // Array of thumbnail file IDs
@@ -61,9 +61,7 @@ export function HorizontalThumbnailFeed({
           const session = PNOAuthService.loadSession();
           if (session?.did || session?.pnIdentifier) {
             const userId = session.pnIdentifier || session.did;
-            const accountsResponse = await fetch(`${API_ENDPOINT}/api/storage/accounts/${userId}`, {
-              headers: getOwnerApiHeaders()
-            });
+            const accountsResponse = await apiGet(`/api/storage/accounts/${userId}`);
             if (accountsResponse.ok) {
               const accountsData = await accountsResponse.json();
               const accounts = accountsData.accounts || [];
@@ -83,20 +81,9 @@ export function HorizontalThumbnailFeed({
         thumbnailUrl += `&accountId=${encodeURIComponent(accountIdToUse)}`;
       }
 
-      // Fetch with auth token
-      let response = await fetch(thumbnailUrl, {
-        headers: getOwnerApiHeaders()
-      });
-
-      // Retry with refreshed token on 401
-      if (response.status === 401) {
-        const refreshedToken = await PNOAuthService.getValidAccessToken(true);
-        if (refreshedToken) {
-          response = await fetch(thumbnailUrl, {
-            headers: await ownerApiHeadersAsync(refreshedToken)
-          });
-        }
-      }
+      // ownerGet mints a Drive token when the vault copy has aged out and
+      // retries once on an expired pN bearer.
+      const response = await ownerGet(thumbnailUrl);
 
       // Check response status
       if (!response.ok || response.status !== 200) {

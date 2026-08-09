@@ -3,8 +3,7 @@
  * Handles fetching activity ledger data from the API
  */
 
-import { getOwnerApiHeaders } from './ownerApiHeaders';
-import { API_ENDPOINT } from '../config/api';
+import { ownerGet } from './ownerApiFetch';
 
 export interface ActivityEntry {
   activity_id: string;
@@ -22,10 +21,6 @@ export interface ActivityListResponse {
   total: number;
   limit: number;
   offset: number;
-}
-
-function getAuthHeaders(): HeadersInit {
-  return getOwnerApiHeaders();
 }
 
 export class ActivityLedgerService {
@@ -46,9 +41,7 @@ export class ActivityLedgerService {
     if (options?.offset) params.append('offset', options.offset.toString());
     if (options?.activityType) params.append('activityType', options.activityType);
 
-    const response = await fetch(`${API_ENDPOINT}/api/activity-ledger?${params.toString()}`, {
-      headers: getAuthHeaders()
-    });
+    const response = await ownerGet(`/api/activity-ledger?${params.toString()}`);
 
     if (!response.ok) {
       const error = await response.json().catch(() => ({ error: 'Failed to get activities' }));

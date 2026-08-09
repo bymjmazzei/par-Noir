@@ -5,7 +5,7 @@
 
 import { Feed, FeedCategory } from '../types/aggregator';
 import { PNOAuthService } from './pnOAuthService';
-import { getOwnerApiHeaders, ownerApiHeadersAsync } from './ownerApiHeaders';
+import { apiFetch, apiGet, ownerGet } from './ownerApiFetch';
 
 import { API_ENDPOINT } from '../config/api';
 
@@ -57,13 +57,7 @@ export class FeedService {
    */
   static async createFeed(data: CreateFeedRequest): Promise<Feed> {
     await PNOAuthService.getValidAccessToken();
-    const headers = getOwnerApiHeaders({ 'Content-Type': 'application/json' });
-
-    const response = await fetch(`${API_ENDPOINT}/api/feeds`, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify(data)
-    });
+    const response = await apiFetch('POST', '/api/feeds', data);
 
     if (!response.ok) {
       const error = await response.json().catch(() => ({ error: 'Failed to create feed' }));
@@ -159,12 +153,7 @@ export class FeedService {
    * Update feed
    */
   static async updateFeed(feedId: string, data: UpdateFeedRequest): Promise<Feed> {
-    const headers = getOwnerApiHeaders({ 'Content-Type': 'application/json' });
-    const response = await fetch(`${API_ENDPOINT}/api/feeds/${feedId}`, {
-      method: 'PUT',
-      headers,
-      body: JSON.stringify(data)
-    });
+    const response = await apiFetch('PUT', `/api/feeds/${feedId}`, data);
 
     if (!response.ok) {
       const error = await response.json().catch(() => ({ error: 'Failed to update feed' }));
@@ -198,16 +187,10 @@ export class FeedService {
   static async subscribeToFeed(feedId: string, userPnIdentifier: string): Promise<void> {
     // Store subscription via API - backend will save to user's cloud storage
     // Similar to how connection index is stored on user's Google Drive
-    const headers = getOwnerApiHeaders({ 'Content-Type': 'application/json' });
-    
-    const response = await fetch(`${API_ENDPOINT}/api/feeds/${feedId}/subscribe`, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify({ 
-        userPnIdentifier
-        // Backend will store this subscription in the user's cloud storage (Google Drive)
-        // Similar to connection index storage pattern
-      })
+    const response = await apiFetch('POST', `/api/feeds/${feedId}/subscribe`, {
+      userPnIdentifier
+      // Backend will store this subscription in the user's cloud storage (Google Drive)
+      // Similar to connection index storage pattern
     });
 
     if (!response.ok) {
@@ -221,12 +204,8 @@ export class FeedService {
    */
   static async unsubscribeFromFeed(feedId: string, userPnIdentifier: string): Promise<void> {
     // Remove subscription via API - backend will remove from user's cloud storage
-    const headers = getOwnerApiHeaders({ 'Content-Type': 'application/json' });
-    
-    const response = await fetch(`${API_ENDPOINT}/api/feeds/${feedId}/subscribe`, {
-      method: 'DELETE',
-      headers,
-      body: JSON.stringify({ userPnIdentifier })
+    const response = await apiFetch('DELETE', `/api/feeds/${feedId}/subscribe`, {
+      userPnIdentifier
     });
 
     if (!response.ok) {
@@ -240,9 +219,9 @@ export class FeedService {
    */
   static async getUserSubscriptions(userPnIdentifier: string): Promise<Feed[]> {
     const token = await PNOAuthService.getValidAccessToken();
-    const headers = await ownerApiHeadersAsync(token, userPnIdentifier);
-    const response = await fetch(`${API_ENDPOINT}/api/users/${userPnIdentifier}/subscriptions`, {
-      headers,
+    const response = await ownerGet(`/api/users/${userPnIdentifier}/subscriptions`, {
+      authToken: token ?? undefined,
+      pnIdentifier: userPnIdentifier
     });
 
     if (!response.ok) {
@@ -407,11 +386,7 @@ export class FeedService {
       return [];
     }
     
-    const headers = getOwnerApiHeaders({ 'Content-Type': 'application/json' });
-
-    const response = await fetch(`${API_ENDPOINT}/api/users/${userPnIdentifier}/delegated-feeds`, {
-      headers
-    });
+    const response = await apiGet(`/api/users/${userPnIdentifier}/delegated-feeds`);
 
     if (!response.ok) {
       // Handle 401/403 gracefully - endpoint might require different auth or not be available
@@ -438,11 +413,8 @@ export class FeedService {
       return { owned: [], delegated: [] };
     }
 
-    const response = await fetch(
-      `${API_ENDPOINT}/api/users/${encodeURIComponent(userPnIdentifier)}/controlled-feeds`,
-      {
-        headers: getOwnerApiHeaders({ 'Content-Type': 'application/json' })
-      }
+    const response = await apiGet(
+      `/api/users/${encodeURIComponent(userPnIdentifier)}/controlled-feeds`
     );
 
     if (!response.ok) {

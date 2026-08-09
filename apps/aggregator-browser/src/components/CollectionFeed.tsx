@@ -13,7 +13,7 @@ import { decryptPublicFeedMedia } from '../utils/publicMediaDecrypt';
 import { useViewportHeightCSS } from '../hooks/useViewportHeight';
 import { calculateMediaScaling, getContainerDimensions, type MediaDimensions } from '../utils/mediaScaling';
 import { API_ENDPOINT } from '../config/api';
-import { getOwnerApiHeaders } from '../services/ownerApiHeaders';
+import { apiGet, ownerGet } from '../services/ownerApiFetch';
 
 interface CollectionFeedProps {
   collectionFileIds: string[];
@@ -55,9 +55,7 @@ export function CollectionFeed({
         if (fileMetadata.has(fileId)) continue;
         
         try {
-          const response = await fetch(`${API_ENDPOINT}/api/aggregator/metadata-index/${fileId}`, {
-            headers: getOwnerApiHeaders()
-          });
+          const response = await apiGet(`/api/aggregator/metadata-index/${fileId}`);
           
           if (response.ok) {
             const data = await response.json();
@@ -91,9 +89,7 @@ export function CollectionFeed({
         const accessToken = await PNOAuthService.getValidAccessToken();
         if (!accessToken) return null;
         
-        const accountsResponse = await fetch(`${API_ENDPOINT}/api/storage/accounts/${userId}`, {
-          headers: getOwnerApiHeaders()
-        });
+        const accountsResponse = await apiGet(`/api/storage/accounts/${userId}`);
         
         if (accountsResponse.ok) {
           const accountsData = await accountsResponse.json();
@@ -151,9 +147,7 @@ export function CollectionFeed({
           }
           
           try {
-            const thumbnailResponse = await fetch(thumbnailUrl, {
-              headers: getOwnerApiHeaders()
-            });
+            const thumbnailResponse = await ownerGet(thumbnailUrl);
             
             if (thumbnailResponse.ok) {
               const thumbnailBlob = await thumbnailResponse.blob();
@@ -240,9 +234,7 @@ export function CollectionFeed({
           imageUrl += `&accountId=${encodeURIComponent(accountIdToUse)}`;
         }
         
-        const response = await fetch(imageUrl, {
-          headers: getOwnerApiHeaders()
-        });
+        const response = await ownerGet(imageUrl);
         
         if (response.ok) {
           const blob = await response.blob();
@@ -299,9 +291,7 @@ export function CollectionFeed({
           videoUrl += `&ownerPnIdentifier=${encodeURIComponent(ownerId)}`;
         }
         
-        const response = await fetch(videoUrl, {
-          headers: getOwnerApiHeaders()
-        });
+        const response = await ownerGet(videoUrl);
         
         if (response.ok) {
           const blob = await response.blob();

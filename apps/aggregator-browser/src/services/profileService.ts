@@ -3,14 +3,7 @@
  * Manages user profile data (display name, profile image)
  */
 
-import { getOwnerApiHeaders } from './ownerApiHeaders';
-
-import { API_ENDPOINT } from '../config/api';
-
-// Helper function to get auth headers
-function getAuthHeaders(): HeadersInit {
-  return getOwnerApiHeaders();
-}
+import { apiGet, ownerFetch } from './ownerApiFetch';
 
 export interface UserProfile {
   displayName?: string;
@@ -50,9 +43,9 @@ export async function getUserProfile(userPnIdentifier: string): Promise<UserProf
   const request = (async () => {
   try {
     // API uses pn identifier
-    const response = await fetch(`${API_ENDPOINT}/api/profile/${encodeURIComponent(userPnIdentifier)}`, {
-      headers: getAuthHeaders()
-    });
+    // Drive enrichment is optional here: the API falls back to the stored
+    // profile, so this must not fail closed on a missing cloud token.
+    const response = await apiGet(`/api/profile/${encodeURIComponent(userPnIdentifier)}`);
 
       if (response.status === 429) {
         // Rate limited - return cached result if available, otherwise empty profile
@@ -100,13 +93,9 @@ export async function getUserProfile(userPnIdentifier: string): Promise<UserProf
  */
 export async function updateDisplayName(userPnIdentifier: string, displayName: string): Promise<void> {
   try {
-    const response = await fetch(`${API_ENDPOINT}/api/profile/display-name`, {
-      method: 'POST',
-      headers: getAuthHeaders(),
-      body: JSON.stringify({
-        userPnIdentifier,
-        displayName
-      })
+    const response = await ownerFetch('POST', '/api/profile/display-name', {
+      userPnIdentifier,
+      displayName
     });
 
     if (!response.ok) {

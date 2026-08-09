@@ -38,12 +38,7 @@ interface ConnectionsPanelProps {
   onCreatorClick?: (creatorId: string) => void;
 }
 
-import { API_ENDPOINT } from '../config/api';
-import { getOwnerApiHeaders } from '../services/ownerApiHeaders';
-
-function getAuthHeaders(): HeadersInit {
-  return getOwnerApiHeaders();
-}
+import { ownerFetch, ownerGet } from '../services/ownerApiFetch';
 
 export function ConnectionsPanel({ userPnIdentifier, onCreatorClick }: ConnectionsPanelProps) {
   useUserState();
@@ -86,17 +81,17 @@ export function ConnectionsPanel({ userPnIdentifier, onCreatorClick }: Connectio
         
         loadDisplayNames(Array.from(allUserPnIdentifiers));
       } else if (activeTab === 'followers') {
-        const response = await fetch(`${API_ENDPOINT}/api/connections/followers?userPnIdentifier=${userPnIdentifier}`, {
-          headers: getAuthHeaders()
-        });
+        const response = await ownerGet(
+          `/api/connections/followers?userPnIdentifier=${userPnIdentifier}`
+        );
         if (response.ok) {
           const data = await response.json();
           setFollowers(data.followers || []);
         }
       } else if (activeTab === 'following') {
-        const response = await fetch(`${API_ENDPOINT}/api/connections/following?userPnIdentifier=${userPnIdentifier}`, {
-          headers: getAuthHeaders()
-        });
+        const response = await ownerGet(
+          `/api/connections/following?userPnIdentifier=${userPnIdentifier}`
+        );
         if (response.ok) {
           const data = await response.json();
           setFollowing(data.following || []);
@@ -257,14 +252,10 @@ export function ConnectionsPanel({ userPnIdentifier, onCreatorClick }: Connectio
 
   const handleUnfollow = async (targetType: 'user' | 'feed', targetPnIdentifier: string) => {
     try {
-      const response = await fetch(`${API_ENDPOINT}/api/connections/unfollow`, {
-        method: 'POST',
-        headers: getAuthHeaders(),
-        body: JSON.stringify({
-          userPnIdentifier,
-          targetType,
-          targetId: targetPnIdentifier // API still expects targetId in request body
-        })
+      const response = await ownerFetch('POST', '/api/connections/unfollow', {
+        userPnIdentifier,
+        targetType,
+        targetId: targetPnIdentifier // API still expects targetId in request body
       });
 
       if (response.ok) {
