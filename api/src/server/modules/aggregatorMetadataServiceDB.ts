@@ -434,6 +434,45 @@ export class AggregatorMetadataServiceDB {
   }
 
   /**
+   * Remove public rows that lack a usable publicContentRef.
+   * These cannot be repaired (companion metadata never stored the ref).
+   */
+  async purgePublicRowsMissingContentRef(): Promise<number> {
+    const db = getDatabasePool();
+    const tables = this.getAllContentTypeTables();
+    let removed = 0;
+
+    for (const table of tables) {
+      const result = await db.query(
+        `DELETE FROM ${table}
+         WHERE (metadata->>'isPublic')::text = 'true'
+           AND (
+             metadata->'publicContentRef' IS NULL
+             OR COALESCE(metadata->'publicContentRef'->>'objectId', '') = ''
+             OR COALESCE(metadata->'publicContentRef'->>'publicUrl', '') = ''
+             OR COALESCE(metadata->'publicContentRef'->>'backend', '') = ''
+           )
+         RETURNING file_id`
+      );
+      removed += result.rowCount || 0;
+    }
+
+    if (removed > 0) {
+      try {
+        const { invalidateIndexCache } = await import('../utils/cache');
+        await invalidateIndexCache();
+      } catch (cacheError) {
+        console.warn('[purgePublicRowsMissingContentRef] Cache invalidation failed:', cacheError);
+      }
+      safeLogger.info('[AggregatorMetadata] Purged public rows missing publicContentRef', {
+        removed,
+      });
+    }
+
+    return removed;
+  }
+
+  /**
    * Remove metadata from central index
    * Accepts either fileId (pN file ID) or backendFileId (Google Drive file ID)
    */
@@ -1772,6 +1811,7 @@ export class AggregatorMetadataServiceDB {
       isNSFW?: boolean;
       isPublic?: boolean;
       publicToken?: string | null; // null = delete, string = set, undefined = preserve
+      publicContentRef?: unknown | null; // null = delete, object = set, undefined = preserve
       subjects?: string[];
       feedCategories?: string[];
       thumbnailFileId?: string;
@@ -1801,12 +1841,16 @@ export class AggregatorMetadataServiceDB {
       const existingThought = (metadata as any).thought;
       const existingCollection = (metadata as any).collection;
       
-      // Extract publicToken from metadata so we can handle it explicitly
-      const { publicToken: existingPublicToken, ...metadataWithoutToken } = metadata as any;
+      // Extract share fields so we can handle them explicitly (null = delete)
+      const {
+        publicToken: existingPublicToken,
+        publicContentRef: existingPublicContentRef,
+        ...metadataWithoutShareFields
+      } = metadata as any;
       
       // Apply updates
       const updatedMetadata: PublicMetadata = {
-        ...metadataWithoutToken,
+        ...metadataWithoutShareFields,
         ...(updates.name && { name: updates.name }),
         ...(updates.title !== undefined && { title: updates.title }),
         ...(updates.description !== undefined && { description: updates.description }),
@@ -1855,6 +1899,14 @@ export class AggregatorMetadataServiceDB {
             : { publicToken: updates.publicToken } // Set publicToken
         ) : (
           existingPublicToken ? { publicToken: existingPublicToken } : {} // Preserve existing
+        )),
+        // Handle publicContentRef: null = delete, object = set, undefined = preserve
+        ...(updates.publicContentRef !== undefined ? (
+          updates.publicContentRef === null
+            ? {}
+            : { publicContentRef: updates.publicContentRef }
+        ) : (
+          existingPublicContentRef ? { publicContentRef: existingPublicContentRef } : {}
         ))
       };
 
@@ -1864,6 +1916,15 @@ export class AggregatorMetadataServiceDB {
       }
       if (updatedMetadata.tags && !updatedMetadata.keywords) {
         updatedMetadata.keywords = updatedMetadata.tags;
+      }
+
+      {
+        const { assertPublicRowShareFields } = await import('./publicRowGuard');
+        assertPublicRowShareFields({
+          isPublic: (updatedMetadata as any).isPublic === true,
+          publicToken: (updatedMetadata as any).publicToken,
+          publicContentRef: (updatedMetadata as any).publicContentRef,
+        });
       }
 
       // Recalculate contentClass if classification flags changed or if it's missing
@@ -2228,7 +2289,7 @@ export class AggregatorMetadataServiceDB {
                  '{fileType}', $4::jsonb, true
                ),
                '{isPublic}',
-               COALESCE((metadata->>'isPublic')::jsonb, 'true'::jsonb),
+               COALESCE((metadata->>'isPublic')::jsonb, 'false'::jsonb),
                false
              ),
              pn_identifier = COALESCE($5, pn_identifier),

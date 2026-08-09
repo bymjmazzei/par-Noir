@@ -161,7 +161,10 @@ export function useDriveCredentialHydration({
                 expiresAt
               });
               if (backend && typeof (backend as GoogleDriveBackend).ensureAccessToken === 'function') {
-                await (backend as GoogleDriveBackend).ensureAccessToken();
+                const freshToken = await (backend as GoogleDriveBackend).ensureAccessToken();
+                if (!freshToken) {
+                  continue;
+                }
               }
               hydrated = true;
             } catch {
@@ -263,7 +266,12 @@ export function useDriveCredentialHydration({
                   ? credential.expiresAt
                   : undefined
             });
-            return true;
+            const driveBackend = aggregatorService?.getBackend(backendId) as GoogleDriveBackend | null;
+            if (driveBackend && typeof driveBackend.ensureAccessToken === 'function') {
+              const freshToken = await driveBackend.ensureAccessToken();
+              return !!freshToken;
+            }
+            return false;
           }
         }
       } catch (err) {

@@ -10,6 +10,38 @@ import type { PublicMetadata } from './aggregatorMetadataService';
 import { IndexStorageService } from './storage/indexStorageService';
 import { isPortableSocialCloud } from './storage/storageProviderUtils';
 import { safeLogger } from '../../utils/logger';
+import { validatePublicRowShareFields } from './publicRowGuard';
+
+function toPublicSyncEntry(
+  pnIdentifier: string,
+  file: Record<string, any>,
+  socialProvider: string
+): { metadata: PublicMetadata; pnIdentifier: string } | null {
+  const fileId = file.fileId;
+  if (!fileId) return null;
+  const metadata = {
+    fileId,
+    name: file.originalName || file.fileName || fileId,
+    isPublic: true,
+    uploadDate: file.uploadedAt || new Date().toISOString(),
+    fileType: file.fileType || 'other',
+    backend: file.backend || socialProvider,
+    backendFileId: file.backendFileId || file.googleDriveFileId || fileId,
+    backendAccountId: file.backendAccountId,
+    ...(file.publicToken ? { publicToken: file.publicToken } : {}),
+    ...(file.publicContentRef ? { publicContentRef: file.publicContentRef } : {}),
+  } as PublicMetadata;
+
+  const failure = validatePublicRowShareFields(metadata);
+  if (failure) {
+    safeLogger.warn('[UserStorageSync] Skipping public index entry missing share fields', {
+      error: failure.error,
+    });
+    return null;
+  }
+
+  return { pnIdentifier, metadata };
+}
 
 export class UserStorageSyncService {
   private static instance: UserStorageSyncService;
@@ -49,25 +81,8 @@ export class UserStorageSyncService {
           if (!idx?.files?.length) continue;
           for (const file of idx.files) {
             if (file.visibility !== 'public') continue;
-            const fileId = file.fileId;
-            if (!fileId) continue;
-            entries.push({
-              pnIdentifier,
-              metadata: {
-                fileId,
-                name: file.originalName || file.fileName || fileId,
-                isPublic: true,
-                uploadDate: file.uploadedAt || new Date().toISOString(),
-                fileType: file.fileType || 'other',
-                backend: (file as { backend?: string }).backend || socialProvider,
-                backendFileId:
-                  (file as { backendFileId?: string }).backendFileId ||
-                  file.googleDriveFileId ||
-                  fileId,
-                backendAccountId: (file as { backendAccountId?: string }).backendAccountId,
-                ...(file as object)
-              } as PublicMetadata
-            });
+            const entry = toPublicSyncEntry(pnIdentifier, file as Record<string, any>, socialProvider);
+            if (entry) entries.push(entry);
           }
         }
 
@@ -75,23 +90,8 @@ export class UserStorageSyncService {
           const root = await IndexStorageService.getPublicFileIndex(pnIdentifier);
           for (const file of root.files) {
             if (file.visibility !== 'public') continue;
-            entries.push({
-              pnIdentifier,
-              metadata: {
-                fileId: file.fileId,
-                name: file.originalName || file.fileName || file.fileId,
-                isPublic: true,
-                uploadDate: file.uploadedAt || new Date().toISOString(),
-                fileType: file.fileType || 'other',
-                backend: (file as { backend?: string }).backend || socialProvider,
-                backendFileId:
-                  (file as { backendFileId?: string }).backendFileId ||
-                  file.googleDriveFileId ||
-                  file.fileId,
-                backendAccountId: (file as { backendAccountId?: string }).backendAccountId,
-                ...(file as object)
-              } as PublicMetadata
-            });
+            const entry = toPublicSyncEntry(pnIdentifier, file as Record<string, any>, socialProvider);
+            if (entry) entries.push(entry);
           }
         }
 

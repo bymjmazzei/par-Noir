@@ -46,6 +46,9 @@ jobs:
       - name: Owner fetch boundary
         run: PN_CHECK_ALL=1 bash scripts/check-owner-fetch-boundary.sh
 
+      - name: Googleapis resolver import boundary
+        run: PN_CHECK_ALL=1 bash scripts/check-googleapis-resolver-import.sh
+
   test:
     name: Unit tests
     runs-on: ubuntu-latest

@@ -166,45 +166,15 @@ export function useDriveFileDeletion({
           const result = await response.json().catch(() => ({}));
           console.log('✅ [Delete] File deleted successfully via API (includes file, thumbnail, and metadata)', result);
         } else if (response.status === 401) {
-          // Token expired - try fallback to direct backend deletion
-          console.warn('⚠️ [Delete] Token expired - attempting fallback to direct backend deletion...');
-          try {
-            await backend.deleteFile(file.backendFileId);
-            console.log('✅ [Delete] File deleted from Google Drive via backend (fallback)');
-
-            // Try to remove from database via metadata-index endpoint
-            try {
-              const metaPath = `/api/aggregator/metadata-index/${file.backendFileId}`;
-              const dbResponse = await ownerFetch(accessToken, 'DELETE', metaPath);
-              if (dbResponse.ok) {
-                console.log('✅ [Delete] File removed from database via fallback endpoint');
-              }
-            } catch (fallbackError) {
-              console.warn('⚠️ [Delete] Fallback database removal failed:', fallbackError);
-            }
-          } catch (backendError) {
-            throw new Error(`Failed to delete file: ${backendError instanceof Error ? backendError.message : 'Unknown error'}`);
-          }
+          throw new Error('Google Drive authentication expired. Unlock again and retry.');
         } else {
           const errorText = await response.text().catch(() => 'Unknown error');
-          // If API fails, try fallback to direct backend deletion
-          console.warn(`⚠️ [Delete] API deletion failed (${response.status}): ${errorText} - attempting fallback...`);
-          try {
-            await backend.deleteFile(file.backendFileId);
-            console.log('✅ [Delete] File deleted from Google Drive via backend (fallback)');
-          } catch (backendError) {
-            throw new Error(`Failed to delete file via API and fallback: ${errorText}`);
-          }
+          throw new Error(`Failed to delete file via API: ${errorText}`);
         }
       } catch (apiError) {
-        // If API call fails completely, try fallback to direct backend deletion
-        console.warn('⚠️ [Delete] API deletion failed - attempting fallback to direct backend deletion:', apiError);
-        try {
-          await backend.deleteFile(file.backendFileId);
-          console.log('✅ [Delete] File deleted from Google Drive via backend (fallback)');
-        } catch (backendError) {
-          throw new Error(`Failed to delete file: ${apiError instanceof Error ? apiError.message : 'API error'} and ${backendError instanceof Error ? backendError.message : 'backend error'}`);
-        }
+        throw new Error(
+          `Failed to delete file: ${apiError instanceof Error ? apiError.message : 'API error'}`
+        );
       }
 
       // Reload files after deletion

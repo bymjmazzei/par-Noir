@@ -31,13 +31,19 @@ async function publicShareFields(
   accountId: string,
   envelopeFileName: string
 ): Promise<{ publicToken?: string; publicContentRef?: PublicContentRef }> {
-  if (!isPublic || !generation) return {};
+  if (!isPublic) return {};
+  if (!generation) {
+    throw new Error('Cannot publish publicly without share generation');
+  }
   const published = await publishPublicShare({
     generation,
     accessToken,
     accountId,
     envelopeFileName,
   });
+  if (!published.publicToken || !published.publicContentRef) {
+    throw new Error('Cannot publish publicly without publicToken and publicContentRef');
+  }
   return { publicToken: published.publicToken, publicContentRef: published.publicContentRef };
 }
 
@@ -160,6 +166,11 @@ async function processFileUpload(
           publicKey: publicKey
         });
       } catch (tokenError) {
+        if (task.metadata?.isPublic) {
+          throw tokenError instanceof Error
+            ? tokenError
+            : new Error('Thumbnail share token generation failed');
+        }
         if (import.meta.env.DEV) console.warn('Thumbnail share token generation failed:', tokenError);
       }
       const thumbnailBase64 = await blobToBase64(new Blob([JSON.stringify(thumbnailPackage)], { type: 'application/json' }));
@@ -196,6 +207,11 @@ async function processFileUpload(
         publicKey: publicKey
       });
     } catch (tokenError) {
+      if (task.metadata?.isPublic) {
+        throw tokenError instanceof Error
+          ? tokenError
+          : new Error('Share token generation failed');
+      }
       if (import.meta.env.DEV) console.warn('Share token generation failed:', tokenError);
     }
 
@@ -233,6 +249,11 @@ async function processFileUpload(
               publicKey: publicKey
             });
           } catch (tokenError) {
+            if (task.metadata?.isPublic) {
+              throw tokenError instanceof Error
+                ? tokenError
+                : new Error('Thumbnail share token generation failed');
+            }
             if (import.meta.env.DEV) console.warn('Thumbnail share token generation failed:', tokenError);
           }
           const thumbnailBase64 = await blobToBase64(new Blob([JSON.stringify(thumbnailPackage)], { type: 'application/json' }));
@@ -400,6 +421,11 @@ async function processTextPostUpload(
       publicKey: publicKey
     });
   } catch (tokenError) {
+    if (task.metadata?.isPublic) {
+      throw tokenError instanceof Error
+        ? tokenError
+        : new Error('Share token generation failed');
+    }
     if (import.meta.env.DEV) console.warn('Share token generation failed:', tokenError);
   }
 
@@ -435,6 +461,11 @@ async function processTextPostUpload(
       publicKey: publicKey
     });
   } catch (tokenError) {
+    if (task.metadata?.isPublic) {
+      throw tokenError instanceof Error
+        ? tokenError
+        : new Error('Thumbnail share token generation failed');
+    }
     if (import.meta.env.DEV) console.warn('Thumbnail share token generation failed:', tokenError);
   }
 

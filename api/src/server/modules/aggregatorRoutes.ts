@@ -285,9 +285,10 @@ export function setupAggregatorRoutes(app: any, deps: AggregatorRouteDeps) {
         });
       }
 
-      const { publicTokenContainsEmbeddedCiphertext, isPublicContentRef } = await import(
+      const { publicTokenContainsEmbeddedCiphertext } = await import(
         '@par-noir/aggregator-domain'
       );
+      const { validatePublicRowShareFields } = await import('./publicRowGuard');
       if (publicTokenContainsEmbeddedCiphertext(metadata.publicToken)) {
         safeLogger.warn('[metadata-index] Rejected embedded publicToken ciphertext', {
           requestId,
@@ -300,10 +301,14 @@ export function setupAggregatorRoutes(app: any, deps: AggregatorRouteDeps) {
           requestId,
         });
       }
-      if (metadata.isPublic !== false && metadata.publicToken && !isPublicContentRef(metadata.publicContentRef)) {
+      const publicGuardFailure = validatePublicRowShareFields({
+        isPublic: metadata.isPublic === true,
+        publicToken: metadata.publicToken,
+        publicContentRef: metadata.publicContentRef,
+      });
+      if (publicGuardFailure) {
         return res.status(400).json({
-          error: 'missing_public_content_ref',
-          error_description: 'Public metadata requires publicContentRef with backend, objectId, and publicUrl',
+          ...publicGuardFailure,
           requestId,
         });
       }
@@ -1313,6 +1318,7 @@ export function setupAggregatorRoutes(app: any, deps: AggregatorRouteDeps) {
         inLanguage,
         isPublic,
         publicToken,
+        publicContentRef,
         isTopPost,
         textPost,
         thought,
@@ -1471,6 +1477,18 @@ export function setupAggregatorRoutes(app: any, deps: AggregatorRouteDeps) {
             isThoughtThumbnail,
             isPartOfCollection
           });
+          const createIsPublic = isPublic !== undefined ? isPublic : defaultIsPublic;
+          {
+            const { validatePublicRowShareFields } = await import('./publicRowGuard');
+            const publicGuardFailure = validatePublicRowShareFields({
+              isPublic: createIsPublic === true,
+              publicToken,
+              publicContentRef,
+            });
+            if (publicGuardFailure) {
+              return res.status(400).json(publicGuardFailure);
+            }
+          }
           const initialMetadata: any = {
             fileId: fileId,
             backendFileId: fileId,
@@ -1479,8 +1497,9 @@ export function setupAggregatorRoutes(app: any, deps: AggregatorRouteDeps) {
             ...(title && { title }),
             fileType: determinedFileType,
             uploadDate: driveFile.createdTime || new Date().toISOString(),
-            isPublic: isPublic !== undefined ? isPublic : defaultIsPublic,
+            isPublic: createIsPublic,
             ...(publicToken && { publicToken }),
+            ...(publicContentRef && { publicContentRef }),
             ...(textPost && { textPost }),
             ...(thought && { thought }),
             ...(collection && { collection }), // Include collection data if provided
@@ -1584,6 +1603,18 @@ export function setupAggregatorRoutes(app: any, deps: AggregatorRouteDeps) {
             isThoughtThumbnail,
             isPartOfCollection
           });
+          const createIsPublic = isPublic !== undefined ? isPublic : defaultIsPublic;
+          {
+            const { validatePublicRowShareFields } = await import('./publicRowGuard');
+            const publicGuardFailure = validatePublicRowShareFields({
+              isPublic: createIsPublic === true,
+              publicToken,
+              publicContentRef,
+            });
+            if (publicGuardFailure) {
+              return res.status(400).json(publicGuardFailure);
+            }
+          }
           const minimalMetadata: any = {
             fileId: fileId,
             backendFileId: fileId,
@@ -1592,7 +1623,9 @@ export function setupAggregatorRoutes(app: any, deps: AggregatorRouteDeps) {
             ...(title && { title }),
             fileType: determinedFileType,
             uploadDate: new Date().toISOString(),
-            isPublic: isPublic !== undefined ? isPublic : defaultIsPublic,
+            isPublic: createIsPublic,
+            ...(publicToken && { publicToken }),
+            ...(publicContentRef && { publicContentRef }),
             ...(textPost && { textPost }),
             ...(thought && { thought }),
             ...(collection && { collection }), // Include collection data if provided
@@ -2381,6 +2414,28 @@ export function setupAggregatorRoutes(app: any, deps: AggregatorRouteDeps) {
 
       // Update database metadata AFTER companion metadata (cache syncs from source of truth)
       // Use actualFileId (resolved to thumbnail if fileId was main file)
+      {
+        const effectiveIsPublic =
+          finalIsPublic !== undefined ? finalIsPublic : isPublic;
+        if (effectiveIsPublic === true) {
+          const existingMeta = current?.metadata as
+            | { publicToken?: unknown; publicContentRef?: unknown }
+            | undefined;
+          const { validatePublicRowShareFields } = await import('./publicRowGuard');
+          const publicGuardFailure = validatePublicRowShareFields({
+            isPublic: true,
+            publicToken:
+              publicToken !== undefined ? publicToken : existingMeta?.publicToken,
+            publicContentRef:
+              publicContentRef !== undefined
+                ? publicContentRef
+                : existingMeta?.publicContentRef,
+          });
+          if (publicGuardFailure) {
+            return res.status(400).json(publicGuardFailure);
+          }
+        }
+      }
       const updated = await service.updateMetadata(actualFileId, {
         name,
         title,
@@ -2401,6 +2456,7 @@ export function setupAggregatorRoutes(app: any, deps: AggregatorRouteDeps) {
         // If undefined, updateMetadata will preserve existing value
         isPublic: finalIsPublic !== undefined ? finalIsPublic : isPublic,
         publicToken, // Include publicToken from request body (null = delete, undefined = preserve)
+        publicContentRef, // null = delete, undefined = preserve
         subjects,
         feedCategories,
         thumbnailFileId,

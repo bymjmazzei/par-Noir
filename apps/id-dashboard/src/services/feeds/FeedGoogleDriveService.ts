@@ -98,11 +98,10 @@ export class FeedGoogleDriveService {
       );
 
       const feedFolderName = `${this.FEED_FOLDER_PREFIX}${feedName}`;
-      
-      // Search for feed folder
-      const token = googleDriveBackend.getAccessToken();
+
+      const token = await googleDriveBackend.ensureAccessToken();
       if (!token) {
-        throw new Error('Google Drive not connected');
+        throw new Error('Google Drive not connected or access token unavailable');
       }
 
       const searchQuery = `name='${feedFolderName.replace(/'/g, "\\'")}' and mimeType='application/vnd.google-apps.folder' and '${creatorFolderId}' in parents and trashed=false`;

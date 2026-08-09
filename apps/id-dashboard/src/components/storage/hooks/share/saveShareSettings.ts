@@ -129,9 +129,8 @@ export async function saveShareSettings({
             const response = await ownerFetch(
               ownerToken,
               'PUT',
-              '/api/aggregator/metadata-index',
+              `/api/aggregator/metadata-index/${encodeURIComponent(targetFileId)}`,
               {
-                fileId: targetFileId,
                 isNSFW: shareNSFW,
                 isPublic: true
               },

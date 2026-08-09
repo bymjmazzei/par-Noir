@@ -111,6 +111,27 @@ export function parseShareKeyFromPublicToken(publicToken: unknown): { shareKey: 
 }
 
 /** Blind-proxy fetch of envelope JSON for an indexed public fileId. */
+export class PermanentPublicContentError extends Error {
+  readonly status: number;
+  readonly permanent = true as const;
+
+  constructor(status: number, message: string) {
+    super(message);
+    this.name = 'PermanentPublicContentError';
+    this.status = status;
+  }
+}
+
+export function isPermanentPublicContentError(error: unknown): error is PermanentPublicContentError {
+  return (
+    error instanceof PermanentPublicContentError ||
+    (!!error &&
+      typeof error === 'object' &&
+      (error as { permanent?: unknown }).permanent === true &&
+      typeof (error as { status?: unknown }).status === 'number')
+  );
+}
+
 export async function fetchPublicEnvelope(params: {
   fileId: string;
   apiBase: string;
@@ -123,7 +144,12 @@ export async function fetchPublicEnvelope(params: {
   );
   if (!res.ok) {
     const text = await res.text().catch(() => res.statusText);
-    throw new Error(`public-content fetch failed: ${res.status} ${text}`);
+    const message = `public-content fetch failed: ${res.status} ${text}`;
+    // 4xx (except 408/429) are permanent for this fileId — do not retry in a loop.
+    if (res.status >= 400 && res.status < 500 && res.status !== 408 && res.status !== 429) {
+      throw new PermanentPublicContentError(res.status, message);
+    }
+    throw new Error(message);
   }
   const text = await res.text();
   let parsed: unknown;

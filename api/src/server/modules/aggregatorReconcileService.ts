@@ -96,13 +96,30 @@ export async function loadAuthorizedPublicFileIds(
 
 export async function reconcilePublicAggregator(): Promise<ReconcilePublicAggregatorResult> {
   const metadataService = AggregatorMetadataServiceDB.getInstance();
-  const pnIdentifiers = await metadataService.listPnIdentifiersWithPublicFiles();
 
   let usersChecked = 0;
   let usersPurged = 0;
   let filesRemoved = 0;
   let usersSkipped = 0;
   let errors = 0;
+
+  // Drop public rows that can never be served (missing publicContentRef).
+  // Safe under device custody — Postgres only, no Drive crawl.
+  try {
+    const missingRefRemoved = await metadataService.purgePublicRowsMissingContentRef();
+    filesRemoved += missingRefRemoved;
+    if (missingRefRemoved > 0) {
+      safeLogger.info('[Reconcile] Purged public rows missing publicContentRef', {
+        removed: missingRefRemoved,
+      });
+    }
+  } catch (purgeError) {
+    safeLogger.warn('[Reconcile] Missing-ref purge failed', {
+      error: purgeError as Error,
+    });
+  }
+
+  const pnIdentifiers = await metadataService.listPnIdentifiersWithPublicFiles();
 
   for (const rawPn of pnIdentifiers) {
     const pnIdentifier = normalizePn(rawPn);

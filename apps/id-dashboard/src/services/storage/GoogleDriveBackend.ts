@@ -9,8 +9,14 @@ import {
   StorageUserInfo,
   StorageBackendConfig
 } from '../../types/aggregator';
+import {
+  isAccessTokenFresh,
+  refreshDriveAccessToken,
+  type GoogleAccountRow
+} from '@par-noir/device-cloud-credentials';
 import { IntegrationCredentialManager } from '../../utils/integrationCredentialManager';
 import { getStoredToken } from '../parNoirOAuthInline';
+import { isDev } from '../../utils/isDev';
 
 export interface DriveInventoryItem {
   fileId: string;
@@ -150,7 +156,8 @@ export class GoogleDriveBackend extends AbstractStorageBackend {
     this.refreshToken = credentials.refreshToken || null;
     this.userEmail = credentials.email || null;
     if (typeof credentials.expiresAt === 'number' && Number.isFinite(credentials.expiresAt)) {
-      this.tokenExpiresAt = credentials.expiresAt;
+      this.tokenExpiresAt =
+        credentials.expiresAt < 1e12 ? credentials.expiresAt * 1000 : credentials.expiresAt;
     } else if (
       sameToken &&
       previousExpiresAt != null &&
@@ -160,8 +167,8 @@ export class GoogleDriveBackend extends AbstractStorageBackend {
       // Re-connect with the same access token — keep known expiry (hydrate/upsert loops).
       this.tokenExpiresAt = previousExpiresAt;
     } else {
-      // Fresh token without known expiry: assume ~55m instead of forcing an immediate refresh storm.
-      this.tokenExpiresAt = Date.now() + 55 * 60 * 1000;
+      // Unknown expiry is not fresh — ensureAccessToken must refresh or refuse.
+      this.tokenExpiresAt = null;
     }
     
     // SECURITY: Store credentials encrypted, not in plaintext localStorage
@@ -173,7 +180,7 @@ export class GoogleDriveBackend extends AbstractStorageBackend {
             accessToken: credentials.token,
             refreshToken: credentials.refreshToken || undefined,
             email: credentials.email,
-            expiresAt: this.tokenExpiresAt ?? Date.now() + 55 * 60 * 1000,
+            ...(this.tokenExpiresAt != null ? { expiresAt: this.tokenExpiresAt } : {}),
           },
           credentials.sessionId
         );
@@ -237,7 +244,22 @@ export class GoogleDriveBackend extends AbstractStorageBackend {
   }
 
   getAccessToken(): string | null {
-    return this.token;
+    if (!this.token) return null;
+    if (isAccessTokenFresh(this.accountRow())) return this.token;
+    return null;
+  }
+
+  private accountRow(): GoogleAccountRow {
+    return {
+      access_token: this.token ?? undefined,
+      refresh_token: this.refreshToken ?? undefined,
+      expires_at: this.tokenExpiresAt ?? undefined
+    };
+  }
+
+  private clearDeadToken(): void {
+    this.token = null;
+    this.tokenExpiresAt = null;
   }
 
   /**
@@ -249,34 +271,72 @@ export class GoogleDriveBackend extends AbstractStorageBackend {
       return null;
     }
 
-    const skewMs = 60_000;
-    const stillValid =
-      !!this.token &&
-      this.tokenExpiresAt != null &&
-      Date.now() < this.tokenExpiresAt - skewMs;
-
-    if (stillValid) {
+    if (this.token && isAccessTokenFresh(this.accountRow())) {
       return this.token;
     }
 
     const refreshToken = this.getRefreshToken();
-    if (refreshToken) {
-      try {
-        const refreshed = await this.refreshAccessToken(refreshToken);
-        if (refreshed) {
-          this.token = refreshed;
-          return refreshed;
-        }
-      } catch (error) {
-        console.warn('[GoogleDriveBackend] ensureAccessToken refresh failed:', error);
-      }
+    if (!refreshToken) {
+      this.clearDeadToken();
+      return null;
     }
 
-    // No refresh available, or the refresh failed. Do not hand back the token we
-    // already know is dead: callers forward this to the API as the owner's Drive
-    // token, and a dead one comes back as an opaque 500 instead of a prompt to
-    // reconnect. Internal Drive calls still use this.token and run 401 recovery.
-    return null;
+    const ownerToken = this.resolveOwnerApiToken();
+    if (!this.apiEndpoint || !ownerToken) {
+      this.clearDeadToken();
+      return null;
+    }
+
+    if (Date.now() < this.refreshBackoffUntilMs) {
+      this.clearDeadToken();
+      return null;
+    }
+
+    if (this.refreshPromise) {
+      return this.refreshPromise;
+    }
+
+    this.refreshPromise = this.mintAccessToken(refreshToken, ownerToken);
+    try {
+      return await this.refreshPromise;
+    } finally {
+      this.refreshPromise = null;
+    }
+  }
+
+  private async mintAccessToken(refreshToken: string, ownerToken: string): Promise<string | null> {
+    const result = await refreshDriveAccessToken({
+      refreshToken,
+      authToken: ownerToken,
+      apiEndpoint: this.apiEndpoint!,
+      path: 'GoogleDriveBackend.ensureAccessToken'
+    });
+
+    if (!result.token) {
+      if (result.reason === 'refresh_rejected') {
+        this.refreshBackoffUntilMs = Date.now() + 60_000;
+      }
+      this.clearDeadToken();
+      return null;
+    }
+
+    this.token = result.token;
+    this.tokenExpiresAt = result.expiresAt ?? null;
+    this.refreshBackoffUntilMs = 0;
+
+    window.dispatchEvent(
+      new CustomEvent('google-drive-token-refreshed', {
+        detail: {
+          backendId: this.backendId,
+          accessToken: result.token,
+          refreshToken: this.refreshToken ?? refreshToken,
+          email: this.userEmail,
+          expiresAt: this.tokenExpiresAt ?? undefined
+        }
+      })
+    );
+
+    return result.token;
   }
 
   /**
@@ -295,7 +355,9 @@ export class GoogleDriveBackend extends AbstractStorageBackend {
         this.userEmail = credentials.email || null;
         this.tokenExpiresAt =
           typeof credentials.expiresAt === 'number' && Number.isFinite(credentials.expiresAt)
-            ? credentials.expiresAt
+            ? credentials.expiresAt < 1e12
+              ? credentials.expiresAt * 1000
+              : credentials.expiresAt
             : null;
         this.connected = true;
         return true;
@@ -335,162 +397,46 @@ export class GoogleDriveBackend extends AbstractStorageBackend {
   private async handleTokenError(response: Response): Promise<boolean> {
     if (response.status === 401) {
       console.error('❌ [GoogleDriveBackend] Token expired or invalid (401)');
-      
-      // Try to refresh token if we have a refreshToken stored
-      const refreshToken = this.getRefreshToken();
-      if (refreshToken) {
-        console.log('🔄 [GoogleDriveBackend] Attempting to refresh token...');
-        try {
-          const newToken = await this.refreshAccessToken(refreshToken);
-          if (newToken) {
-            this.token = newToken;
-            // SECURITY: Save new token to encrypted storage (if session available)
-            // Note: This requires sessionId which should be passed from the caller
-            // For now, token is in memory - will be saved on next connect()
-            console.log('✅ [GoogleDriveBackend] Token refreshed successfully');
-            return false; // Token was refreshed, retry the request
-          }
-        } catch (refreshError) {
-          console.error('❌ [GoogleDriveBackend] Token refresh failed:', refreshError);
-        }
+
+      this.clearDeadToken();
+
+      const refreshed = await this.ensureAccessToken();
+      if (refreshed) {
+        console.log('✅ [GoogleDriveBackend] Token refreshed successfully');
+        return false;
       }
-      
-      // Fix 3: Try 401 recovery via rehydration before disconnecting.
-      // FileStorageAggregator registers a recovery handler that fetches fresh tokens from API.
-      const attemptRecovery = (globalThis as any).__attemptGoogleDrive401Recovery as ((backendId: string) => Promise<boolean>) | undefined;
+
+      const attemptRecovery = (globalThis as { __attemptGoogleDrive401Recovery?: (backendId: string) => Promise<boolean> })
+        .__attemptGoogleDrive401Recovery;
       if (typeof attemptRecovery === 'function') {
         try {
           const recovered = await Promise.race([
             attemptRecovery(this.backendId),
             new Promise<boolean>((_, reject) =>
               setTimeout(() => reject(new Error('401 recovery timeout')), 5000)
-            ),
+            )
           ]);
           if (recovered) {
-            console.log('✅ [GoogleDriveBackend] 401 recovered via API rehydration');
-            return false; // Caller can retry
+            const afterRecovery = await this.ensureAccessToken();
+            if (afterRecovery) {
+              console.log('✅ [GoogleDriveBackend] 401 recovered via rehydration');
+              return false;
+            }
           }
         } catch (recoveryErr) {
           console.warn('⚠️ [GoogleDriveBackend] 401 recovery failed:', recoveryErr);
         }
       }
 
-      // If refresh and recovery failed, disconnect and force re-authentication
-      this.disconnect();
-      window.dispatchEvent(new CustomEvent('google-drive-token-expired', {
-        detail: { message: 'Google Drive token expired. Please reconnect.' }
-      }));
-      return true; // Indicates token error was handled
+      await this.disconnect();
+      window.dispatchEvent(
+        new CustomEvent('google-drive-token-expired', {
+          detail: { message: 'Google Drive token expired. Please reconnect.' }
+        })
+      );
+      return true;
     }
     return false;
-  }
-
-  /**
-   * Refresh access token using refresh token
-   */
-  private async refreshAccessToken(refreshToken: string): Promise<string | null> {
-    if (this.refreshPromise) {
-      return this.refreshPromise;
-    }
-
-    if (Date.now() < this.refreshBackoffUntilMs) {
-      return this.token;
-    }
-
-    this.refreshPromise = (async () => {
-      if (import.meta.env.DEV) {
-        console.debug('🔁 [GoogleDriveBackend] Refresh access token', this.apiEndpoint ? 'via API endpoint' : 'directly with Google');
-      }
-
-      if (this.apiEndpoint) {
-        try {
-          const ownerToken = this.resolveOwnerApiToken();
-          if (!ownerToken) {
-            throw new Error('par Noir API session not ready for Google token refresh');
-          }
-          const response = await fetch(`${this.apiEndpoint}/api/auth/google-oauth/refresh`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              Authorization: `Bearer ${ownerToken}`,
-            },
-            body: JSON.stringify({ refreshToken }),
-          });
-
-          const responseText = await response.text();
-
-          if (!response.ok) {
-            if (response.status === 429) {
-              this.refreshBackoffUntilMs = Date.now() + 60_000;
-              throw new Error('API refresh rate-limited (429)');
-            }
-            let errorData: any;
-            try {
-              errorData = JSON.parse(responseText);
-            } catch {
-              errorData = { error: responseText };
-            }
-            throw new Error(
-              `API refresh failed: ${response.status} ${response.statusText} - ${errorData.error || responseText}`
-            );
-          }
-          this.refreshBackoffUntilMs = 0;
-
-          let tokenData: {
-            access_token: string;
-            refresh_token?: string;
-            expires_in?: number;
-            token_type?: string;
-          };
-
-          try {
-            tokenData = JSON.parse(responseText);
-          } catch (parseError) {
-            throw new Error(`Failed to parse refresh response: ${(parseError as Error).message}`);
-          }
-
-          if (tokenData.refresh_token) {
-            this.refreshToken = tokenData.refresh_token;
-            // SECURITY: Do not store refresh token in plaintext localStorage
-            // Token will be saved to encrypted storage via FileStorageAggregator event handler
-            // or on next connect() call with sessionId
-          }
-
-          if (tokenData.access_token) {
-            if (typeof tokenData.expires_in === 'number' && tokenData.expires_in > 0) {
-              this.tokenExpiresAt = Date.now() + tokenData.expires_in * 1000;
-            } else {
-              this.tokenExpiresAt = Date.now() + 55 * 60 * 1000;
-            }
-            window.dispatchEvent(
-              new CustomEvent('google-drive-token-refreshed', {
-                detail: {
-                  backendId: this.backendId,
-                  accessToken: tokenData.access_token,
-                  refreshToken: this.refreshToken ?? refreshToken,
-                  email: this.userEmail,
-                },
-              })
-            );
-          }
-
-          return tokenData.access_token || null;
-        } catch (apiError) {
-          if (import.meta.env.DEV) {
-            console.error('⚠️ [GoogleDriveBackend] Failed to refresh token via API endpoint:', apiError);
-          }
-        }
-      }
-
-      console.error('Failed to refresh token via API endpoint only');
-      return null;
-    })();
-
-    try {
-      return await this.refreshPromise;
-    } finally {
-      this.refreshPromise = null;
-    }
   }
 
   /**
@@ -498,8 +444,9 @@ export class GoogleDriveBackend extends AbstractStorageBackend {
    * Handles token expiration automatically with retry after refresh
    */
   private async makeRequest(url: string, options: RequestInit = {}, retryCount = 0): Promise<Response> {
-    if (!this.token) {
-      throw new Error('Not connected to Google Drive');
+    const accessToken = await this.ensureAccessToken();
+    if (!accessToken) {
+      throw new Error('Not connected to Google Drive or access token unavailable');
     }
 
     const DRIVE_FETCH_TIMEOUT_MS = 45_000;
@@ -521,7 +468,7 @@ export class GoogleDriveBackend extends AbstractStorageBackend {
         ...options,
         signal: timeoutController.signal,
         headers: {
-          'Authorization': `Bearer ${this.token}`,
+          Authorization: `Bearer ${accessToken}`,
           'Content-Type': 'application/json',
           ...options.headers
         }
@@ -541,11 +488,14 @@ export class GoogleDriveBackend extends AbstractStorageBackend {
       const wasHandled = await this.handleTokenError(response);
       
       // If token was refreshed (wasHandled = false), retry the request once
-      if (!wasHandled && retryCount === 0 && this.token) {
-        if (import.meta.env.DEV) {
-          console.log('🔄 [GoogleDriveBackend] Retrying request after token refresh...');
+      if (!wasHandled && retryCount === 0) {
+        const retryToken = await this.ensureAccessToken();
+        if (retryToken) {
+          if (isDev()) {
+            console.log('🔄 [GoogleDriveBackend] Retrying request after token refresh...');
+          }
+          return this.makeRequest(url, options, retryCount + 1);
         }
-        return this.makeRequest(url, options, retryCount + 1);
       }
       
       // If refresh failed or no refresh token, throw error
@@ -1083,7 +1033,8 @@ export class GoogleDriveBackend extends AbstractStorageBackend {
     };
 
     // Create companion metadata file after successful upload
-    if (metadata?.pnIdentifier && this.token) {
+    const metadataToken = metadata?.pnIdentifier ? await this.ensureAccessToken() : null;
+    if (metadata?.pnIdentifier && metadataToken) {
       try {
         console.log('📝 [uploadFile] Creating companion metadata file...');
         // pN identifier is secret - not logged
@@ -1262,12 +1213,12 @@ export class GoogleDriveBackend extends AbstractStorageBackend {
         // These operations are independent and can execute simultaneously
         const [companionResult, ownerIndexResult, publicIndexResult] = await Promise.allSettled([
           GoogleDriveMetadataService.createCompanionMetadataFile(
-            this.token,
+            metadataToken,
             metadata.pnIdentifier,
             companionMetadata
           ),
           GoogleDriveMetadataService.updateOwnerFileIndex(
-            this.token,
+            metadataToken,
             metadata.pnIdentifier,
             companionMetadata
           ).catch(err => {
@@ -1275,7 +1226,7 @@ export class GoogleDriveBackend extends AbstractStorageBackend {
             throw err; // Re-throw to mark as rejected in Promise.allSettled
           }),
           GoogleDriveMetadataService.updatePublicFileIndex(
-            this.token,
+            metadataToken,
             metadata.pnIdentifier,
             companionMetadata
           )
@@ -1315,8 +1266,8 @@ export class GoogleDriveBackend extends AbstractStorageBackend {
       if (!metadata?.pnIdentifier) {
         console.warn('⚠️ [uploadFile] Skipping metadata creation - missing pnIdentifier in metadata:', metadata);
       }
-      if (!this.token) {
-        console.warn('⚠️ [uploadFile] Skipping metadata creation - no access token available');
+      if (!metadataToken) {
+        console.warn('⚠️ [uploadFile] Skipping metadata creation - no fresh access token available');
       }
     }
 

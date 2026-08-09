@@ -29,6 +29,10 @@ if [ -f scripts/check-owner-fetch-boundary.sh ]; then
   bash scripts/check-owner-fetch-boundary.sh || { echo "❌ check-owner-fetch-boundary: build Drive-backed requests with ownerFetch/ownerGet; no sync cloud-header builders."; exit 1; }
 fi
 
+if [ -f scripts/check-googleapis-resolver-import.sh ]; then
+  bash scripts/check-googleapis-resolver-import.sh || { echo "❌ check-googleapis-resolver-import: files that fetch googleapis.com must import @par-noir/device-cloud-credentials."; exit 1; }
+fi
+
 echo "🔒 Running security audit before commit..."
 
 # Run security audit

@@ -6,6 +6,7 @@
 
 import { AggregatorMetadataServiceDB } from './aggregatorMetadataServiceDB';
 import { addContentNotice } from './contentNoticesService';
+import { validatePublicRowShareFields } from './publicRowGuard';
 
 export type TakedownSource = 'prism_denied' | 'dmca_notice';
 
@@ -48,6 +49,7 @@ export async function executeTakedown(
 
 /**
  * Restore content to the index (re-list). Used after counter-notice window with no legal action.
+ * Refuses to re-list when the row lacks usable share material.
  */
 export async function restoreContent(fileId: string): Promise<{ ok: boolean; error?: string }> {
   try {
@@ -56,6 +58,19 @@ export async function restoreContent(fileId: string): Promise<{ ok: boolean; err
     if (!entry) {
       console.warn(`[DMCA Restore] File not found in index: ${fileId}`);
       return { ok: false, error: 'File not found' };
+    }
+    const meta = entry.metadata as {
+      publicToken?: unknown;
+      publicContentRef?: unknown;
+    };
+    const failure = validatePublicRowShareFields({
+      isPublic: true,
+      publicToken: meta.publicToken,
+      publicContentRef: meta.publicContentRef,
+    });
+    if (failure) {
+      console.warn(`[DMCA Restore] Refusing restore without share fields: ${fileId} (${failure.error})`);
+      return { ok: false, error: failure.error_description };
     }
     const ownerPn = entry.pnIdentifier ?? '';
     await service.updateMetadata(fileId, { isPublic: true });

@@ -46,6 +46,7 @@ export function DiscoveryPage({
   const createdBlobUrlsRef = useRef<Set<string>>(new Set());
   // Track which thumbnail fileIds we've already processed (to avoid duplicates)
   const processedThumbnailsRef = useRef<Set<string>>(new Set());
+  const [failedThumbnails, setFailedThumbnails] = useState<Set<string>>(new Set());
   
   // Local thumbnails state (starts with external thumbnails, can load additional ones)
   const [thumbnails, setThumbnails] = useState<Map<string, string>>(externalThumbnails || new Map());
@@ -130,6 +131,13 @@ export function DiscoveryPage({
         const publicToken = indexedFile.publicToken || file.publicToken;
         if (!publicToken) {
           if (import.meta.env.DEV) console.warn(`[DiscoveryPage] Thumbnail ${fileId} (${fileName}) has no publicToken - cannot decrypt`);
+          processedThumbnailsRef.current.add(fileId);
+          setFailedThumbnails((prev) => {
+            if (prev.has(fileId)) return prev;
+            const next = new Set(prev);
+            next.add(fileId);
+            return next;
+          });
           return;
         }
 
@@ -141,6 +149,13 @@ export function DiscoveryPage({
             token = typeof publicToken === 'string' ? JSON.parse(publicToken) : publicToken;
           } catch (e) {
             if (import.meta.env.DEV) console.warn(`[DiscoveryPage] Failed to parse token for thumbnail ${fileId}:`, e);
+            processedThumbnailsRef.current.add(fileId);
+            setFailedThumbnails((prev) => {
+              if (prev.has(fileId)) return prev;
+              const next = new Set(prev);
+              next.add(fileId);
+              return next;
+            });
             return;
           }
           
@@ -154,9 +169,6 @@ export function DiscoveryPage({
           // Track this blob URL for cleanup
           createdBlobUrlsRef.current.add(thumbnailUrlObj);
           
-          // Mark as processed
-          processedThumbnailsRef.current.add(fileId);
-          
           setThumbnails(prev => {
             const newMap = new Map(prev);
             newMap.set(fileId, thumbnailUrlObj);
@@ -164,6 +176,14 @@ export function DiscoveryPage({
           });
         } catch (err) {
           if (import.meta.env.DEV) console.error(`[DiscoveryPage] Failed to decrypt thumbnail for ${fileId} (${fileName}):`, err);
+          setFailedThumbnails((prev) => {
+            if (prev.has(fileId)) return prev;
+            const next = new Set(prev);
+            next.add(fileId);
+            return next;
+          });
+        } finally {
+          processedThumbnailsRef.current.add(fileId);
         }
       }));
     };
@@ -869,6 +889,15 @@ export function DiscoveryPage({
                     const thumbnailUrl = thumbnails.get(fileId);
                     
                     if (!thumbnailUrl) {
+                      if (failedThumbnails.has(fileId)) {
+                        return (
+                          <div className="w-full h-full flex items-center justify-center bg-neutral-800">
+                            <div className="flex flex-col items-center justify-center text-neutral-500">
+                              <span className="text-xs">Unavailable</span>
+                            </div>
+                          </div>
+                        );
+                      }
                       // Show placeholder while thumbnail loads (like FullScreenFeed)
                       return (
                         <div className="w-full h-full flex items-center justify-center bg-neutral-800">

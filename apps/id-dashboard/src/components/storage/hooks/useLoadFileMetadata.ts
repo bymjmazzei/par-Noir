@@ -56,23 +56,10 @@ export function useLoadFileMetadata({
         try {
           const { GoogleDriveMetadataService } = await import('../../../services/storage/GoogleDriveMetadataService');
           let ensuredToken: string | null = null;
-          if (typeof (backend as any).ensureAccessToken === 'function') {
-            try {
-              ensuredToken = await (backend as any).ensureAccessToken();
-            } catch (ensureError) {
-              console.warn('⚠️ [Metadata] ensureAccessToken failed (non-blocking):', ensureError);
-            }
+          if (typeof backend.ensureAccessToken === 'function') {
+            ensuredToken = await backend.ensureAccessToken();
           }
-          const localTokenKey = keyPrefix
-            ? `${keyPrefix}_token`
-            : backendId
-              ? `${backendId}_token`
-              : 'google_drive_token';
-          const token =
-            ensuredToken ||
-            (typeof backend.getAccessToken === 'function' ? backend.getAccessToken() : null) ||
-            (backend as any).token ||
-            localStorage.getItem(localTokenKey);
+          const token = ensuredToken;
 
           if (token) {
             console.log('✅ [Metadata] Google Drive connected, loading owner index...');

@@ -312,33 +312,16 @@ export function useLoadAggregatedFiles({
           continue;
         }
 
-        let ensuredAccessToken: string | null = null;
-        if (typeof (backend as any).ensureAccessToken === 'function') {
-          try {
-            ensuredAccessToken = await (backend as any).ensureAccessToken();
-          } catch (ensureError) {
-            console.warn('⚠️ [loadFiles] ensureAccessToken failed (non-blocking):', {
-              backendId,
-              error: ensureError,
-            });
-          }
-        }
-
-        const localTokenKey = keyPrefix
-          ? `${keyPrefix}_token`
-          : backendId
-            ? `${backendId}_token`
-            : 'google_drive_token';
-
         const backendProviderForToken =
           backendId.includes('::') ? backendId.split('::')[0] : backendId;
         const isPortableBackendForToken = backendProviderForToken !== 'google_drive';
 
-        const accessToken =
-          ensuredAccessToken ||
-          (typeof backend.getAccessToken === 'function' ? backend.getAccessToken() : undefined) ||
-          (backend as any).token ||
-          (localTokenKey ? localStorage.getItem(localTokenKey) : null);
+        let ensuredAccessToken: string | null = null;
+        if (typeof backend.ensureAccessToken === 'function') {
+          ensuredAccessToken = await backend.ensureAccessToken();
+        }
+
+        const accessToken = ensuredAccessToken;
         if (!accessToken && !isPortableBackendForToken) {
           retryBackends.add(backendId);
           console.debug('⏳ [loadFiles] Waiting for refreshed token', { backendId });

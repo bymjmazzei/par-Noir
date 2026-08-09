@@ -1,0 +1,18 @@
+# Burn-down list for the googleapis → device-cloud-credentials import rule.
+#
+# Any in-scope client file that fetches googleapis.com (Drive / OAuth2 token /
+# userinfo) must import from @par-noir/device-cloud-credentials so freshness is
+# decided by the one resolver. Files listed here still touch Google directly
+# without that import; entries are only ever REMOVED, never added.
+#
+# Paths relative to repo root. Blank lines and # comments ignored.
+
+# Parameter sink: receives a token from callers. Callers must ensure freshness.
+apps/id-dashboard/src/services/storage/GoogleDriveMetadataService.ts
+
+# Uses GoogleDriveBackend.ensureAccessToken() then fetches Drive; migrate off direct fetch.
+apps/id-dashboard/src/services/feeds/FeedGoogleDriveService.ts
+
+# OAuth connect path: Bearer is a token just minted from a code exchange.
+apps/id-dashboard/src/components/storage/hooks/useGoogleDriveOAuthConnect.ts
+packages/oauth-ui/src/cloudReconnect/reconnectFlows.ts

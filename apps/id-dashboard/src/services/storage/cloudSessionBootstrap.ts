@@ -140,10 +140,9 @@ async function registerBackendsFromEnvelope(
       sessionId,
       expiresAt: typeof acct.expires_at === 'number' ? acct.expires_at : undefined
     });
-    try {
-      await backend.ensureAccessToken?.();
-    } catch {
-      /* refresh best-effort */
+    const freshToken = await backend.ensureAccessToken?.();
+    if (!freshToken) {
+      await backend.disconnect();
     }
   }
 

@@ -78,7 +78,7 @@ export async function createCollection(
       },
     };
 
-    // Generate share material (slim token + envelope)
+    const isPublic = metadata?.isPublic === true;
     let generation: PublicShareGenerationResult | undefined = undefined;
     try {
       const encryptionService = getEncryptionService();
@@ -90,6 +90,9 @@ export async function createCollection(
         }
       );
     } catch (tokenError: any) {
+      if (isPublic) {
+        throw new Error(`Share token generation failed: ${tokenError?.message || tokenError}`);
+      }
       console.error('Share token generation failed:', tokenError);
     }
 
@@ -133,10 +136,12 @@ export async function createCollection(
       throw new Error('Upload succeeded but no file ID returned');
     }
 
-    const isPublic = metadata?.isPublic ?? true;
     let publicToken: string | undefined;
     let publicContentRef: { backend: string; objectId: string; publicUrl: string } | undefined;
-    if (isPublic && generation) {
+    if (isPublic) {
+      if (!generation) {
+        throw new Error('Cannot publish collection publicly without share generation');
+      }
       const published = await publishPublicShare({
         generation,
         accessToken,
@@ -145,6 +150,9 @@ export async function createCollection(
       });
       publicToken = published.publicToken;
       publicContentRef = published.publicContentRef;
+      if (!publicToken || !publicContentRef) {
+        throw new Error('Cannot publish collection publicly without publicToken and publicContentRef');
+      }
     }
 
     // Create metadata entry

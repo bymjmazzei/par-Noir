@@ -70,7 +70,7 @@ export async function processBackgroundTask(task: UploadTask): Promise<void> {
         await processShareSettingsUpdate(task, session, accessToken);
         break;
       case 'updateMetadata':
-        await processMetadataUpdate(task, accessToken);
+        await processMetadataUpdate(task, session, accessToken);
         break;
       case 'createCollection':
         await processCollectionCreation(task);
@@ -344,6 +344,7 @@ async function processShareSettingsUpdate(
  */
 async function processMetadataUpdate(
   task: UploadTask,
+  session: any,
   accessToken: string
 ): Promise<void> {
   const { fileId, accountId, metadata: formData } = task.metadata || {};
@@ -352,7 +353,7 @@ async function processMetadataUpdate(
     throw new Error('Missing required fields: fileId, metadata');
   }
 
-  // accountId is optional - some contexts (like EditFileModal) don't use accounts
+  // accountId is optional for non-visibility edits; required when making public
 
   uploadQueueService.updateTaskProgress(task.id, 10);
 
@@ -414,11 +415,54 @@ async function processMetadataUpdate(
   if (subjects.length > 0) updateBody.subjects = subjects;
 
   // Handle EditFileModal-specific fields
-  if ('isPublic' in formData) updateBody.isPublic = formData.isPublic;
   if ('visibility' in formData) updateBody.visibility = formData.visibility;
   if ('isNSFW' in formData) updateBody.isNSFW = formData.isNSFW;
   if ('isTopPost' in formData) updateBody.isTopPost = formData.isTopPost;
   if ('title' in formData) updateBody.title = formData.title;
+
+  if ('isPublic' in formData) {
+    if (formData.isPublic === true) {
+      if (!accountId) {
+        throw new Error('accountId is required to make a file public');
+      }
+      if (!session?.did || !session?.publicKey) {
+        throw new Error('Session keys required to make a file public');
+      }
+      const targetFileId = await resolveToThumbnailFileId(fileId, accessToken);
+      const downloadResponse = await fetch(
+        `${API_ENDPOINT}/api/drive/files/${targetFileId}?accountId=${encodeURIComponent(accountId)}&download=true`,
+        { headers: await driveHeaders(accessToken) }
+      );
+      if (!downloadResponse.ok) {
+        throw new Error(`Failed to download file for share generation: ${downloadResponse.status}`);
+      }
+      const encryptedPackage: EncryptedFilePackage = JSON.parse(await downloadResponse.blob().then((b) => b.text()));
+      if (!encryptedPackage.encrypted || !encryptedPackage.iv || !encryptedPackage.salt) {
+        throw new Error('Invalid encrypted file package structure');
+      }
+      const encryptionService = getEncryptionService();
+      const generation = await encryptionService.generateShareToken(encryptedPackage, {
+        id: session.did,
+        publicKey: session.publicKey,
+      });
+      const published = await publishPublicShare({
+        generation,
+        accessToken,
+        accountId,
+        envelopeFileName: `public-envelope-${targetFileId}.json`,
+      });
+      if (!published.publicToken || !published.publicContentRef) {
+        throw new Error('Cannot make file public without publicToken and publicContentRef');
+      }
+      updateBody.isPublic = true;
+      updateBody.publicToken = published.publicToken;
+      updateBody.publicContentRef = published.publicContentRef;
+    } else {
+      updateBody.isPublic = false;
+      updateBody.publicToken = null;
+      updateBody.publicContentRef = null;
+    }
+  }
 
   // Update via API endpoint
   const response = await fetch(`${API_ENDPOINT}/api/aggregator/metadata-index/${fileId}`, {

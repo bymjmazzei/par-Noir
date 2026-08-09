@@ -134,6 +134,7 @@ export function FullScreenFeed({
   const imageRefs = useRef<Map<string, HTMLImageElement>>(new Map());
   const [videoBlobs, setVideoBlobs] = useState<Map<string, string>>(externalVideoBlobs || new Map());
   const [thumbnails, setThumbnails] = useState<Map<string, string>>(externalThumbnails || new Map());
+  const [failedThumbnails, setFailedThumbnails] = useState<Set<string>>(new Set());
   const accountIdCacheRef = useRef<string | null>(null); // Cache accountId to avoid repeated API calls
   const [collectionDataCache, setCollectionDataCache] = useState<Map<string, any>>(new Map()); // Cache for fetched collection data
   const fetchingCollectionRef = useRef<Set<string>>(new Set()); // Track files currently being fetched to prevent duplicates
@@ -684,8 +685,12 @@ export function FullScreenFeed({
         const fileId = file.fileId;
         const fileName = file.name || file.title || '';
         
-        // Skip if already loaded or provided externally
-        if (thumbnails.has(fileId) || (externalThumbnails && externalThumbnails.has(fileId))) {
+        // Skip if already loaded, failed permanently, or provided externally
+        if (
+          thumbnails.has(fileId) ||
+          failedThumbnails.has(fileId) ||
+          (externalThumbnails && externalThumbnails.has(fileId))
+        ) {
           return;
         }
 
@@ -693,6 +698,12 @@ export function FullScreenFeed({
         const publicToken = indexedFile.publicToken || file.publicToken;
         if (!publicToken) {
           console.warn(`[FullScreenFeed] Thumbnail ${fileId} (${fileName}) has no publicToken - cannot decrypt`);
+          setFailedThumbnails((prev) => {
+            if (prev.has(fileId)) return prev;
+            const next = new Set(prev);
+            next.add(fileId);
+            return next;
+          });
           return;
         }
 
@@ -703,6 +714,12 @@ export function FullScreenFeed({
             token = typeof publicToken === 'string' ? JSON.parse(publicToken) : publicToken;
           } catch (e) {
             console.warn(`[FullScreenFeed] Failed to parse token for thumbnail ${fileId}:`, e);
+            setFailedThumbnails((prev) => {
+              if (prev.has(fileId)) return prev;
+              const next = new Set(prev);
+              next.add(fileId);
+              return next;
+            });
             return;
           }
           
@@ -719,12 +736,18 @@ export function FullScreenFeed({
           });
         } catch (err) {
           console.error(`[FullScreenFeed] Failed to decrypt thumbnail for ${fileId} (${fileName}):`, err);
+          setFailedThumbnails((prev) => {
+            if (prev.has(fileId)) return prev;
+            const next = new Set(prev);
+            next.add(fileId);
+            return next;
+          });
         }
       }));
     };
 
     loadThumbnails();
-  }, [files, externalThumbnails, thumbnails]);
+  }, [files, externalThumbnails, thumbnails, failedThumbnails]);
 
   // Retry loading thumbnails when authentication becomes available
   useEffect(() => {
@@ -1474,7 +1497,7 @@ export function FullScreenFeed({
           });
         } finally {
           // Remove from loading set
-          loadingCollectionThumbnailsRef.current.delete(fileId);
+          clearLoadingState(fileId);
         }
       }));
     };
@@ -2217,6 +2240,15 @@ export function FullScreenFeed({
               const coverThumbnailUrl = thumbnails.get(fileId);
               
               if (!coverThumbnailUrl) {
+                if (failedThumbnails.has(fileId)) {
+                  return (
+                    <div className="w-full h-full flex items-center justify-center">
+                      <div className="flex flex-col items-center justify-center text-neutral-500">
+                        <span className="text-xs">Cover unavailable</span>
+                      </div>
+                    </div>
+                  );
+                }
                 // Show placeholder while cover loads
                 return (
                   <div className="w-full h-full flex items-center justify-center">
@@ -2284,6 +2316,15 @@ export function FullScreenFeed({
               const thumbnailUrl = thumbnails.get(fileId);
               
               if (!thumbnailUrl) {
+                if (failedThumbnails.has(fileId)) {
+                  return (
+                    <div className="w-full h-full flex items-center justify-center">
+                      <div className="flex flex-col items-center justify-center text-neutral-500">
+                        <span className="text-xs">Image unavailable</span>
+                      </div>
+                    </div>
+                  );
+                }
                 // Show placeholder while thumbnail loads
                 return (
                   <div className="w-full h-full flex items-center justify-center">
