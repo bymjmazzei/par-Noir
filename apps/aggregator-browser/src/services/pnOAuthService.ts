@@ -306,6 +306,13 @@ export class PNOAuthService {
   static async completeAuthFlow(params: {
     publicKey: string;
     mlDsaSecretKeyB64: string;
+    /** Optional local stash for messaging; never sent to authenticate. */
+    encryptedIdentity?: {
+      encryptedData: string;
+      iv: string;
+      salt: string;
+      mlKemPublicKey?: string;
+    };
   }): Promise<AuthSession> {
     // Step 1: Authenticate and get authorization code
     const { code } = await this.authenticate({
@@ -358,14 +365,19 @@ export class PNOAuthService {
     // Store session
     this.saveSession(session);
 
-    if (params.encryptedIdentity?.encryptedData && params.encryptedIdentity?.iv && params.encryptedIdentity?.salt) {
+    const encryptedForMessaging = params.encryptedIdentity;
+    if (
+      encryptedForMessaging?.encryptedData &&
+      encryptedForMessaging?.iv &&
+      encryptedForMessaging?.salt
+    ) {
       import('./dmIdentitySession').then(({ storeEncryptedIdentityForMessaging }) => {
         storeEncryptedIdentityForMessaging({
-          encryptedData: params.encryptedIdentity.encryptedData,
-          iv: params.encryptedIdentity.iv,
-          salt: params.encryptedIdentity.salt,
+          encryptedData: encryptedForMessaging.encryptedData,
+          iv: encryptedForMessaging.iv,
+          salt: encryptedForMessaging.salt,
           publicKey: params.publicKey,
-          mlKemPublicKey: params.encryptedIdentity.mlKemPublicKey
+          mlKemPublicKey: encryptedForMessaging.mlKemPublicKey
         });
       });
     }
