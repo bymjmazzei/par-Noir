@@ -418,6 +418,9 @@ class ProductionServer {
           imgSrc: ["'self'", "data:", "https:"],
         },
       },
+      // OAuth consent runs in a popup opened by browse/messaging. Default
+      // same-origin COOP severs window.opener so messaging key postMessage fails.
+      crossOriginOpenerPolicy: { policy: 'same-origin-allow-popups' },
     }));
 
     // CORS configuration with security improvements

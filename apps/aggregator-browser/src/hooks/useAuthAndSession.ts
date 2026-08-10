@@ -727,6 +727,14 @@ export function useAuthAndSession({
         requireMessagingHandoff: false,
         isMessagingReady: () => isDmIdentityReady(),
         messagingHandoffTimeoutMs: 15_000,
+        // Consent posts messaging keys from the API origin before redirecting to callback.
+        allowedMessageOrigins: (() => {
+          try {
+            return [new URL(API_ENDPOINT).origin];
+          } catch {
+            return [];
+          }
+        })(),
       });
 
       if (!result.code && !result.error) {
