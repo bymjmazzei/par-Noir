@@ -1,0 +1,12 @@
+# Burn-down list for OAuth unlock-proof boundary
+# (scripts/check-oauth-unlock-proof-boundary.sh).
+#
+# Session mint must require cryptographic unlock proof. Until the authenticate
+# path is fixed, these files are grandfathered. Entries are only ever REMOVED,
+# never added.
+#
+# One path per line, relative to repo root. Blank lines and # comments ignored.
+
+api/src/server/modules/pnOAuthRoutes.ts
+api/src/server/modules/apiRoutes.ts
+api/src/server/utils/pnOAuthPqc.test.ts

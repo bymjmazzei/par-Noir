@@ -33,6 +33,14 @@ if [ -f scripts/check-googleapis-resolver-import.sh ]; then
   bash scripts/check-googleapis-resolver-import.sh || { echo "❌ check-googleapis-resolver-import: files that fetch googleapis.com must import @par-noir/device-cloud-credentials."; exit 1; }
 fi
 
+if [ -f scripts/check-oauth-unlock-proof-boundary.sh ]; then
+  bash scripts/check-oauth-unlock-proof-boundary.sh || { echo "❌ check-oauth-unlock-proof-boundary: do not add trust-the-client session mint or verify-later stubs."; exit 1; }
+fi
+
+if [ -f scripts/check-no-passcode-on-oauth-wire.sh ]; then
+  bash scripts/check-no-passcode-on-oauth-wire.sh || { echo "❌ check-no-passcode-on-oauth-wire: passcode must not be sent to /oauth/authorize/authenticate."; exit 1; }
+fi
+
 echo "🔒 Running security audit before commit..."
 
 # Run security audit

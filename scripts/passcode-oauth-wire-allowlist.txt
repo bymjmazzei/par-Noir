@@ -1,0 +1,12 @@
+# Burn-down list for passcode-on-OAuth-wire boundary
+# (scripts/check-no-passcode-on-oauth-wire.sh).
+#
+# Passcode must never leave the device for /oauth/authorize/authenticate.
+# These files still send passcode today and are grandfathered. Entries are only
+# ever REMOVED, never added.
+#
+# One path per line, relative to repo root. Blank lines and # comments ignored.
+
+apps/id-dashboard/src/services/parNoirOAuthInline.ts
+apps/aggregator-browser/src/services/pnOAuthService.ts
+api/src/templates/oauth-consent.html

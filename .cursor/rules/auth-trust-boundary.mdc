@@ -1,0 +1,21 @@
+---
+description: Machine-enforced auth trust boundary — do not weaken scripts or grow allowlists
+alwaysApply: true
+---
+
+# Auth trust boundary (harness)
+
+Prose rules are not enough. These scripts refuse new violations on commit/CI:
+
+- `scripts/check-oauth-unlock-proof-boundary.sh` + `scripts/oauth-unlock-proof-allowlist.txt`
+- `scripts/check-no-passcode-on-oauth-wire.sh` + `scripts/passcode-oauth-wire-allowlist.txt`
+
+## Hard bans
+
+1. Do **not** add trust-the-client session mint (`generateAuthorizationCode` from body identity without unlock proof).
+2. Do **not** add `"In production, decrypt and verify"` (or similar verify-later) stubs on auth mint paths.
+3. Do **not** send **passcode** or **pn name** to `/oauth/authorize/authenticate`.
+4. Do **not** add allowlist entries — only remove them after a real unlock-proof fix.
+5. Do **not** delete, skip, or weaken these scripts or their CI/pre-commit wiring.
+
+Allowlisted files are known debt until a separate unlock-proof job clears them. New paths must fail closed.
