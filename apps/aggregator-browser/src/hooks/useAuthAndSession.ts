@@ -222,7 +222,13 @@ export function useAuthAndSession({
 
       const work = (async () => {
         try {
+          // Apply handoff from popup result first (consent may post oauth_callback+messagingHandoff
+          // from the API origin before redirect). Do this before token exchange.
           applyAllMessagingHandoffSources(data.messagingHandoff);
+          if (!isDmIdentityReady() && data.messagingHandoff) {
+            await waitForAndApplyMessagingHandoff(3_000);
+            applyAllMessagingHandoffSources(data.messagingHandoff);
+          }
 
           // Absent means consent was skipped; empty string means "shared nothing"
           const grantedDataPoints =
@@ -232,6 +238,7 @@ export function useAuthAndSession({
           pushPnOAuthDebug('run_oauth_callback_exchange', {
             redirectUriLen: exchangeRedirectUri.length,
             messagingReadyBeforeExchange: isDmIdentityReady(),
+            hasMessagingHandoffPayload: Boolean(data.messagingHandoff),
           });
           const tokenResponse = await PNOAuthService.exchangeCodeForToken(
             data.code!,

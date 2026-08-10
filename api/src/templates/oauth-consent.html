@@ -651,7 +651,12 @@
     async function loadDataPointCatalog() {
       if (requestedDataPoints.length === 0) return;
       try {
-        const res = await fetch(apiEndpoint + '/api/v1/standard-data-points');
+        // Same-origin relative URL when served from API host (avoids CORS 403).
+        const catalogUrl =
+          typeof location !== 'undefined' && location.origin === String(apiEndpoint).replace(/\/$/, '')
+            ? '/api/v1/standard-data-points'
+            : apiEndpoint + '/api/v1/standard-data-points';
+        const res = await fetch(catalogUrl);
         if (!res.ok) return;
         const body = await res.json();
         const rows = body.dataPoints || body.data_points || body;
@@ -742,6 +747,9 @@
      * When popup=true on authorize, append pn_popup=1 so oauth-callback.html never loads the full SPA
      * in the popup if window.opener was dropped (Safari / cross-origin); without it, lackOpener + no pn_popup
      * triggers location.replace(/?oauth_resume=...) and the app unlocks in the wrong window.
+     *
+     * Messaging clients: window.name is often cleared on API→browse navigation. Primary path is
+     * postMessage oauth_callback (with messagingHandoff) to opener before redirect; window.name is backup.
      */
     function redirectWithAuthCodeFixed(code, grantedDataPoints) {
       var grantedParam = (grantedDataPoints || []).join(',');
@@ -759,8 +767,68 @@
           } catch (e) {}
         }
       }
+
+      function buildMessagingHandoffPayload() {
+        if (!isMessagingHandoffClient || !lastMessagingSession) return null;
+        var payload = {
+          v: 1,
+          timestamp: Date.now(),
+          session: lastMessagingSession
+        };
+        if (lastMessagingIdentity) payload.identity = lastMessagingIdentity;
+        return payload;
+      }
+
+      function postOAuthCallbackToOpener(codeValue, grantedValue) {
+        var appOrigin = '';
+        try {
+          appOrigin = new URL(redirectUri).origin;
+        } catch (_) {
+          return;
+        }
+        if (!window.opener || window.opener.closed) return;
+        var handoff = buildMessagingHandoffPayload();
+        var message = {
+          type: 'oauth_callback',
+          code: codeValue,
+          state: state || undefined,
+          granted_data_points: grantedValue || undefined,
+          timestamp: Date.now(),
+          messagingHandoff: handoff || undefined
+        };
+        try {
+          window.opener.postMessage(message, appOrigin);
+        } catch (e) {
+          console.warn('[OAuth] oauth_callback postMessage failed', e);
+        }
+        // Also send dedicated messaging messages (listener applies session immediately).
+        if (handoff && handoff.session) {
+          try {
+            window.opener.postMessage({ type: 'pn_messaging_session', session: handoff.session }, appOrigin);
+          } catch (e2) {}
+        }
+        if (handoff && handoff.identity) {
+          try {
+            window.opener.postMessage({ type: 'pn_messaging_identity', identity: handoff.identity }, appOrigin);
+          } catch (e3) {}
+        }
+      }
+
+      function burstOAuthCallbackToOpener(codeValue, grantedValue) {
+        postOAuthCallbackToOpener(codeValue, grantedValue);
+        var delays = [0, 50, 120, 200, 350, 500];
+        for (var di = 0; di < delays.length; di++) {
+          (function (ms) {
+            setTimeout(function () {
+              postOAuthCallbackToOpener(codeValue, grantedValue);
+            }, ms);
+          })(delays[di]);
+        }
+      }
+
       burstMessagingToOpener();
       stashMessagingHandoffInWindowName();
+      burstOAuthCallbackToOpener(code, grantedParam);
       var identityHash = buildMessagingIdentityHash();
       try {
         if (typeof localStorage !== 'undefined' && localStorage.getItem('pn_debug_oauth') === '1') {
@@ -768,19 +836,24 @@
             hasSession: !!lastMessagingSession,
             hasIdentity: !!lastMessagingIdentity,
             hashLen: identityHash ? identityHash.length : 0,
-            windowNameLen: window.name ? window.name.length : 0
+            windowNameLen: window.name ? window.name.length : 0,
+            hasOpener: !!(window.opener && !window.opener.closed)
           });
         }
       } catch (e) {}
       var navigateToCallback = function (targetUrl) {
+        // Re-stash immediately before navigation (window.name may be cleared cross-origin).
+        stashMessagingHandoffInWindowName();
+        burstOAuthCallbackToOpener(code, grantedParam);
+        burstMessagingToOpener();
         if (!isMessagingHandoffClient) {
           window.location.href = targetUrl;
           return;
         }
-        burstMessagingToOpener();
         setTimeout(function () {
+          stashMessagingHandoffInWindowName();
           window.location.href = targetUrl;
-        }, 400);
+        }, 450);
       };
       var u;
       try {
@@ -1079,7 +1152,11 @@
             '&client_id=' + encodeURIComponent(clientId) +
             '&scope=' + encodeURIComponent(scope) +
             (didValue ? '&did=' + encodeURIComponent(didValue) : '');
-          var grantRes = await fetch(apiEndpoint + '/oauth/existing-grant?' + q);
+          var grantBase =
+            typeof location !== 'undefined' && location.origin === String(apiEndpoint).replace(/\/$/, '')
+              ? ''
+              : apiEndpoint;
+          var grantRes = await fetch(grantBase + '/oauth/existing-grant?' + q);
           if (!grantRes.ok) continue;
           var grantData = await grantRes.json();
           if (grantData && grantData.existingGrant) {
