@@ -1021,26 +1021,40 @@ export function setupPnOAuthRoutes(app: express.Application, deps: PnOAuthRouteD
         })
         .join('');
 
-      const fs = await import('fs');
-      const templatePath = path.join(__dirname, 'templates', 'oauth-consent.html');
-      let html = fs.readFileSync(templatePath, 'utf8');
-      const assetBase =
-        (process.env.OAUTH_UI_ASSET_ORIGIN && process.env.OAUTH_UI_ASSET_ORIGIN.replace(/\/$/, '')) ||
-        'https://browse.parnoir.com';
-      html = html
-        .replace(/\{\{CLIENT_NAME\}\}/g, (client.name || client_id as string).replace(/</g, '&lt;'))
-        .replace(/\{\{CLIENT_DESCRIPTION\}\}/g, (client.description || 'This application wants to access your pN identity').replace(/</g, '&lt;'))
-        .replace(/\{\{SCOPES_HTML\}\}/g, scopesHtml)
-        .replace(/\{\{ASSET_BASE\}\}/g, assetBase);
+      try {
+        const fs = await import('fs');
+        // Compiled to dist/server/modules; templates are copied to dist/templates by api build.
+        const templatePath = path.join(__dirname, '../../templates', 'oauth-consent.html');
+        let html = fs.readFileSync(templatePath, 'utf8');
+        const assetBase =
+          (process.env.OAUTH_UI_ASSET_ORIGIN && process.env.OAUTH_UI_ASSET_ORIGIN.replace(/\/$/, '')) ||
+          'https://browse.parnoir.com';
+        html = html
+          .replace(/\{\{CLIENT_NAME\}\}/g, (client.name || client_id as string).replace(/</g, '&lt;'))
+          .replace(/\{\{CLIENT_DESCRIPTION\}\}/g, (client.description || 'This application wants to access your pN identity').replace(/</g, '&lt;'))
+          .replace(/\{\{SCOPES_HTML\}\}/g, scopesHtml)
+          .replace(/\{\{ASSET_BASE\}\}/g, assetBase);
 
-      const { PlatformCommercialLicenseService } = await import('./platformRegistrySyncService');
-      const verified = await PlatformCommercialLicenseService.getClientVerified(client_id as string);
-      const verifiedBadgeHtml = verified
-        ? '<div class="verified-badge" style="margin-top:8px;padding:6px 10px;background:#1a3d1a;border:1px solid #2d6a2d;border-radius:6px;font-size:12px;color:#8fdf8f;">Verified by par Noir</div>'
-        : '<div class="unverified-notice" style="margin-top:8px;padding:6px 10px;background:#3d2a1a;border:1px solid #6a4a2d;border-radius:6px;font-size:12px;color:#dfbf8f;">Unverified integrator — confirm the redirect domain before unlocking.</div>';
-      html = html.replace(/\{\{VERIFIED_BADGE_HTML\}\}/g, verifiedBadgeHtml);
+        const { PlatformCommercialLicenseService } = await import('./platformRegistrySyncService');
+        const verified = await PlatformCommercialLicenseService.getClientVerified(client_id as string);
+        const verifiedBadgeHtml = verified
+          ? '<div class="verified-badge" style="margin-top:8px;padding:6px 10px;background:#1a3d1a;border:1px solid #2d6a2d;border-radius:6px;font-size:12px;color:#8fdf8f;">Verified by par Noir</div>'
+          : '<div class="unverified-notice" style="margin-top:8px;padding:6px 10px;background:#3d2a1a;border:1px solid #6a4a2d;border-radius:6px;font-size:12px;color:#dfbf8f;">Unverified integrator — confirm the redirect domain before unlocking.</div>';
+        html = html.replace(/\{\{VERIFIED_BADGE_HTML\}\}/g, verifiedBadgeHtml);
 
-      res.send(html);
+        res.send(html);
+      } catch (error: any) {
+        console.error('[oauth/consent] Failed to render consent page:', error?.message || error);
+        res.status(500).send(`
+          <html>
+            <head><title>OAuth Error</title></head>
+            <body style="font-family: sans-serif; padding: 40px; text-align: center;">
+              <h1>OAuth Error</h1>
+              <p>Consent page unavailable. Please try again.</p>
+            </body>
+          </html>
+        `);
+      }
     });
 
     // GET /oauth/popup-bridge — deprecated (OAuth now redirects to registered redirect_uri only)
