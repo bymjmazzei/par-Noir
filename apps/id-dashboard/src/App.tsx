@@ -177,18 +177,9 @@ function App() {
     }
     void (async () => {
       const { VolumeIdGenerator } = await import('@par-noir/identity-crypto');
-      const creds = SecureCredentialManager.getCredentials(authenticatedUser.id);
-      if (creds?.pnName && creds.passcode) {
-        const pn = await VolumeIdGenerator.generateVolumeId({
-          pnName: creds.pnName,
-          passcode: creds.passcode,
-          publicKey: authenticatedUser.publicKey,
-        });
-        if (!cancelled) setRecoveryVaultPnId(pn);
-      } else {
-        const canonical = await VolumeIdGenerator.generateCanonicalVolumeId(authenticatedUser.publicKey);
-        if (!cancelled) setRecoveryVaultPnId(canonical);
-      }
+      // Must match OAuth JWT pnIdentifier (canonical from public key only).
+      const canonical = await VolumeIdGenerator.generateCanonicalVolumeId(authenticatedUser.publicKey);
+      if (!cancelled) setRecoveryVaultPnId(canonical);
     })();
     return () => {
       cancelled = true;
@@ -433,14 +424,9 @@ function App() {
     let cancelled = false;
     (async () => {
       try {
-        const creds = SecureCredentialManager.getCredentials(authenticatedUser.id);
-        if (!creds?.pnName || !creds?.passcode) return;
+        if (!authenticatedUser?.publicKey) return;
         const { VolumeIdGenerator } = await import('@par-noir/identity-crypto');
-        const pn = await VolumeIdGenerator.generateVolumeId({
-          pnName: creds.pnName,
-          passcode: creds.passcode,
-          publicKey: authenticatedUser.publicKey
-        });
+        const pn = await VolumeIdGenerator.generateCanonicalVolumeId(authenticatedUser.publicKey);
         const res = await fetch(
           `${API_ENDPOINT}/api/v1/identity/successor?pn_identifier=${encodeURIComponent(pn)}`
         );

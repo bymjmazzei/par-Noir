@@ -56,30 +56,21 @@ export function useStorageIdentity({
       // STANDARDIZED: Use VolumeIdGenerator - the ONLY method for pN identifier generation
       try {
         const { VolumeIdGenerator } = await import('@par-noir/identity-crypto');
-        const sessionId = currentAuthenticatedUser?.id;
-        // SECURITY: Get pnName and passcode from SecureCredentialManager (secrets)
-        const credentials = sessionId ? SecureCredentialManager.getCredentials(sessionId) : null;
-        
         // SECURITY: Get publicKey from resolvedAuth or authenticatedUser (public data)
       const publicKey = currentResolvedAuth?.publicKey || currentAuthenticatedUser?.publicKey;
       
-        // SECURITY: Use credentials.pnName (from SecureCredentialManager), not from state
-        if (credentials?.pnName && credentials?.passcode && publicKey) {
-          // STANDARDIZED FORMULA: pnName:passcode:publicKey → SHA256 → pn-{12-char-hex}
-          const identifier = await VolumeIdGenerator.generateVolumeId({
-            pnName: credentials.pnName,
-            passcode: credentials.passcode,
-            publicKey
-          });
+        // Canonical pn must match OAuth JWT (public key only).
+        if (publicKey) {
+          const identifier = await VolumeIdGenerator.generateCanonicalVolumeId(publicKey);
           // CRITICAL: Store WITH 'pn-' prefix - this is the standardized format
           // API expects pn-{hash} format, not just {hash}
           pnIdentifierRef.current = identifier; // Keep full format: pn-{12-char-hex}
           setCloudPnIdentifier(identifier);
-          console.log('[StorageCredentials] Derived pN identifier (standardized):', identifier);
+          console.log('[StorageCredentials] Derived pN identifier (canonical):', identifier);
         } else {
         pnIdentifierRef.current = null;
           setCloudPnIdentifier(null);
-          console.warn('[StorageCredentials] Cannot derive pN identifier - missing credentials');
+          console.warn('[StorageCredentials] Cannot derive pN identifier - missing publicKey');
         }
       } catch (error) {
         console.error('[StorageCredentials] Error deriving pN identifier:', error);
@@ -102,22 +93,14 @@ export function useStorageIdentity({
     // If not cached, try to generate it on-demand
     const currentResolvedAuth = resolvedAuthRef.current;
     const currentAuthenticatedUser = authenticatedUserRef.current;
-    const sessionId = currentAuthenticatedUser?.id;
-    // SECURITY: Get pnName and passcode from SecureCredentialManager (secrets)
-    const credentials = sessionId ? SecureCredentialManager.getCredentials(sessionId) : null;
     
     // SECURITY: Get publicKey from resolvedAuth or authenticatedUser (public data)
     const publicKey = currentResolvedAuth?.publicKey || currentAuthenticatedUser?.publicKey;
     
-    // SECURITY: Use credentials.pnName (from SecureCredentialManager), not from state
-    if (credentials?.pnName && credentials?.passcode && publicKey) {
+    if (publicKey) {
       try {
         const { VolumeIdGenerator } = await import('@par-noir/identity-crypto');
-        const identifier = await VolumeIdGenerator.generateVolumeId({
-          pnName: credentials.pnName,
-          passcode: credentials.passcode,
-          publicKey
-        });
+        const identifier = await VolumeIdGenerator.generateCanonicalVolumeId(publicKey);
         // Cache it for future use
         pnIdentifierRef.current = identifier;
         return identifier;
@@ -366,11 +349,7 @@ export function useStorageIdentity({
         
         // SECURITY: Get pnName from credentials (secrets), publicKey from resolvedAuth (public)
         if (credentials?.pnName && credentials?.passcode && resolvedAuth?.publicKey) {
-          pnIdentifier = await VolumeIdGenerator.generateVolumeId({
-            pnName: credentials.pnName,
-            passcode: credentials.passcode,
-            publicKey: resolvedAuth.publicKey
-          });
+          pnIdentifier = await VolumeIdGenerator.generateCanonicalVolumeId(resolvedAuth.publicKey);
           console.log('[DesktopUnlock] Generated pN identifier (standardized):', (pnIdentifier || '').substring(0, 8) + '...');
         } else {
           console.warn('[DesktopUnlock] Cannot generate standardized pN identifier - credentials required');

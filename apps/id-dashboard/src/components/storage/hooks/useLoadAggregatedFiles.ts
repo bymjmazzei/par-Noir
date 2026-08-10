@@ -246,28 +246,13 @@ export function useLoadAggregatedFiles({
           }
         }
         
-        // Generate identifier if we have all credentials
-        if (pnName && publicKey && passcode) {
-          currentPnIdentifier = await VolumeIdGenerator.generateVolumeId({
-            pnName,
-            passcode,
-            publicKey
-          });
-          console.log(`✅ [loadFiles] Generated pN identifier (VolumeIdGenerator): ${(currentPnIdentifier || '').substring(0, 8)}...`);
+        // Canonical pn must match OAuth JWT (public key only).
+        if (publicKey) {
+          currentPnIdentifier = await VolumeIdGenerator.generateCanonicalVolumeId(publicKey);
+          console.log(`✅ [loadFiles] Generated pN identifier (canonical): ${(currentPnIdentifier || '').substring(0, 8)}...`);
           console.log(`📁 [loadFiles] Expected folder name: "par Noir - ${(currentPnIdentifier || '').substring(0, 8)}..."`);
-          
-          // Also log the fallback identifier for comparison
-          if (pnIdentifierRef.current) {
-            // pnIdentifierRef.current already includes 'pn-' prefix, don't add it again
-            const fallbackId = pnIdentifierRef.current.startsWith('pn-') ? pnIdentifierRef.current : `pn-${pnIdentifierRef.current}`;
-            console.log(`ℹ️ [loadFiles] Fallback identifier (did:publicKey): ${(fallbackId || '').substring(0, 8)}...`);
-            if (fallbackId !== currentPnIdentifier) {
-              console.warn(`⚠️ [loadFiles] Identifier mismatch! VolumeIdGenerator: ${(currentPnIdentifier || '').substring(0, 8)}..., Fallback: ${(fallbackId || '').substring(0, 8)}...`);
-              console.warn(`⚠️ [loadFiles] Using VolumeIdGenerator identifier (${(currentPnIdentifier || '').substring(0, 8)}...) - this is the correct one`);
-            }
-          }
         } else {
-          console.log(`⚠️ [loadFiles] Cannot generate pN identifier (missing credentials) - backend will search for folders directly`);
+          console.log(`⚠️ [loadFiles] Cannot generate pN identifier (missing publicKey) - backend will search for folders directly`);
         }
       } catch (err) {
         console.warn('⚠️ [loadFiles] Failed to generate pN identifier:', err);

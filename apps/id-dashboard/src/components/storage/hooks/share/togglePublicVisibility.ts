@@ -319,11 +319,7 @@ export async function togglePublicVisibility(
 
         if (credentials?.pnName && credentials?.passcode && publicKey) {
           // Use VolumeIdGenerator for consistent identifier (same as folder naming)
-          metadataPnIdentifier = await VolumeIdGenerator.generateVolumeId({
-            pnName: credentials.pnName,
-            passcode: credentials.passcode,
-            publicKey: publicKey
-          });
+          metadataPnIdentifier = await VolumeIdGenerator.generateCanonicalVolumeId(publicKey);
           console.log('📁 [Phase 3] Generated pN identifier (standardized):', (metadataPnIdentifier || '').substring(0, 8) + '...');
         } else {
           // STANDARDIZED: Only use VolumeIdGenerator - no fallbacks

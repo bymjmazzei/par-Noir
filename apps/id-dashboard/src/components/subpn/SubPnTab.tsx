@@ -244,11 +244,7 @@ export const SubPnTab: React.FC<SubPnTabProps> = ({
       const nickname = label.trim() || `Sub ${createKind}`;
       const creation = await IdentityCrypto.createIdentity(subPnName, nickname, subPass);
       const encrypted = creation.identity;
-      const subject = await VolumeIdGenerator.generateVolumeId({
-        pnName: subPnName,
-        passcode: subPass,
-        publicKey: encrypted.publicKey
-      });
+      const subject = await VolumeIdGenerator.generateCanonicalVolumeId(encrypted.publicKey);
       if (!pnIdentifier) throw new Error('Missing pn identifier');
       const asset = await createOwnedAsset(accessToken, pnIdentifier, {
         kind: createKind,
@@ -391,11 +387,7 @@ export const SubPnTab: React.FC<SubPnTabProps> = ({
         `Rotated ${selected.kind}`;
       const creation = await IdentityCrypto.createIdentity(subPnName, nickname, subPass);
       const encrypted = creation.identity;
-      const subject = await VolumeIdGenerator.generateVolumeId({
-        pnName: subPnName,
-        passcode: subPass,
-        publicKey: encrypted.publicKey,
-      });
+      const subject = await VolumeIdGenerator.generateCanonicalVolumeId(encrypted.publicKey);
 
       if (!pnIdentifier) throw new Error('Missing pn identifier');
       const newAsset = await rekeyOwnedAsset(accessToken, pnIdentifier, selected.id, {

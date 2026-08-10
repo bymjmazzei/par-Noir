@@ -178,17 +178,7 @@ export function useEditFileMetadata({
             let pnIdentifier: string | undefined;
             try {
               const { VolumeIdGenerator } = await import('@par-noir/identity-crypto');
-              const sessionId = authenticatedUser?.id;
-              const credentials = sessionId ? SecureCredentialManager.getCredentials(sessionId) : null;
-
-              // SECURITY: Get pnName from credentials (secrets), publicKey from resolvedAuth (public)
-              if (credentials?.pnName && credentials?.passcode) {
-                pnIdentifier = await VolumeIdGenerator.generateVolumeId({
-                  pnName: credentials.pnName,
-                  passcode: credentials.passcode,
-                  publicKey
-                });
-              }
+              pnIdentifier = await VolumeIdGenerator.generateCanonicalVolumeId(publicKey);
             } catch (volumeIdError) {
               console.warn('⚠️ [UpdateMetadata] Failed to generate volume ID:', volumeIdError);
             }

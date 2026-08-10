@@ -75,11 +75,7 @@ export function useLoadFileMetadata({
               const publicKey = resolvedAuth?.publicKey || authenticatedUser?.publicKey;
               
               if (credentials?.pnName && credentials?.passcode && publicKey) {
-                pnIdentifier = await VolumeIdGenerator.generateVolumeId({
-                  pnName: credentials.pnName,
-                  passcode: credentials.passcode,
-                  publicKey: publicKey
-                });
+                pnIdentifier = await VolumeIdGenerator.generateCanonicalVolumeId(publicKey);
                 console.log(`✅ [Metadata] Generated pN identifier (VolumeIdGenerator): ${(pnIdentifier || '').substring(0, 8)}...`);
                 console.log(`📁 [Metadata] Expected folder: "par Noir - ${(pnIdentifier || '').substring(0, 8)}..."`);
                 

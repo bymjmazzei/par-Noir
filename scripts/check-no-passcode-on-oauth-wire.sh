@@ -7,6 +7,10 @@
 #
 # Rule: .cursor/rules/auth-trust-boundary.mdc
 # Set PN_CHECK_ALL=1 to scan the whole repo instead of staged changes (CI).
+#
+# IMPORTANT: Root .gitignore ignores `public/`, so plain `rg` skips
+# apps/*/public/oauth-authorize.html. Full scans use --no-ignore and only
+# exclude node_modules / dist / .git.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -17,6 +21,9 @@ ALLOWLIST="scripts/passcode-oauth-wire-allowlist.txt"
 AUTH_URL_PATTERN='['\''"`][^'\''"`\n]*oauth/authorize/authenticate[^'\''"`\n]*['\''"`]'
 # JSON body field — not TypeScript type annotations alone (those use "passcode: string").
 PASSCODE_BODY_PATTERN='passcode:[[:space:]]*(input\.|params\.|passcode|options\.|creds\.|credentials\.|[a-zA-Z_$][a-zA-Z0-9_$]*[,}])'
+
+# Also refuse reintroduction of self-hosted OAuth unlock redirects (normalize plan).
+SELF_HOSTED_PATTERN='SELF_HOSTED_UNLOCK_CLIENT_IDS'
 
 in_list() {
   local list="$1" file="$2"
@@ -53,7 +60,25 @@ if [ "${PN_CHECK_ALL:-0}" = "1" ]; then
   while IFS= read -r file; do
     [ -n "$file" ] || continue
     check_file "$file" "$(cat "$file")"
-  done < <(rg -l -e 'oauth/authorize/authenticate' --glob '!**/node_modules/**' --glob '!**/dist/**' 2>/dev/null || true)
+  done < <(rg -l --no-ignore -e 'oauth/authorize/authenticate' \
+    --glob '!**/node_modules/**' \
+    --glob '!**/dist/**' \
+    --glob '!**/dist-*/**' \
+    --glob '!**/.git/**' \
+    2>/dev/null || true)
+
+  # Fail closed if self-hosted OAuth unlock client redirect reappears in source.
+  if rg -n --no-ignore -e "$SELF_HOSTED_PATTERN" \
+    --glob '!**/node_modules/**' \
+    --glob '!**/dist/**' \
+    --glob '!**/dist-*/**' \
+    --glob '!**/.git/**' \
+    --glob '!**/scripts/check-no-passcode-on-oauth-wire.sh' \
+    --glob '!**/docs/**' \
+    --glob '!**/.cursor/**' \
+    2>/dev/null | grep -q .; then
+    violations="${violations}SELF_HOSTED_UNLOCK_CLIENT_IDS reintroduced (OAuth unlock must use API /oauth/consent)"$'\n'
+  fi
 else
   while IFS= read -r file; do
     [ -n "$file" ] || continue

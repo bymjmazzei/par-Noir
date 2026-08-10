@@ -292,11 +292,7 @@ export const DataPointInputModal: React.FC<DataPointInputModalProps> = ({
         throw new Error('Unlock required to store document images');
       }
       const { VolumeIdGenerator } = await import('@par-noir/identity-crypto');
-      const pnIdentifier = await VolumeIdGenerator.generateVolumeId({
-        pnName: credentials.pnName,
-        passcode: credentials.passcode,
-        publicKey: identityPublicKey || ''
-      });
+      const pnIdentifier = await VolumeIdGenerator.generateCanonicalVolumeId(identityPublicKey || '');
       const fileId = await uploadZkpDocEncrypted({
         file,
         pnIdentifier,

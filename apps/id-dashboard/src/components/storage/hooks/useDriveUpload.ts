@@ -255,45 +255,19 @@ export function useDriveUpload({
         throw new Error(`${targetBackendId} is not connected`);
       }
 
-      // Get or create pN-specific folder using stable identifier
-      // Use VolumeIdGenerator for consistency across all implementations (desktop, web, etc.)
-      // Format: pn-{12-char-hex-hash} from pnName:passcode:publicKey
+      // Canonical pn must match OAuth JWT (public key only).
       let pnIdentifier: string;
       try {
         const { VolumeIdGenerator } = await import('@par-noir/identity-crypto');
-        const sessionId = authenticatedUser?.id;
-        const credentials = sessionId ? SecureCredentialManager.getCredentials(sessionId) : null;
 
-        // SECURITY: Get pnName from credentials (secrets), not from resolvedAuth or authenticatedUser
-        const pnName = credentials?.pnName || null;
-
-        if (pnName && credentials?.passcode && publicKey) {
-          // Use VolumeIdGenerator for consistent identifier (same as desktop app)
-          pnIdentifier = await VolumeIdGenerator.generateVolumeId({
-            pnName,
-            passcode: credentials.passcode,
-            publicKey
-          });
-          console.log(`✅ [Upload] Generated pN identifier (VolumeIdGenerator): ${(pnIdentifier || '').substring(0, 8)}...`);
+        if (publicKey) {
+          pnIdentifier = await VolumeIdGenerator.generateCanonicalVolumeId(publicKey);
+          console.log(`✅ [Upload] Generated pN identifier (canonical): ${(pnIdentifier || '').substring(0, 8)}...`);
           console.log(`📁 [Upload] Will use folder: "par Noir - ${(pnIdentifier || '').substring(0, 8)}..."`);
-
-          // Also log the fallback identifier for comparison
-          if (pnIdentifierRef.current) {
-            // pnIdentifierRef.current already includes 'pn-' prefix, don't add it again
-            const fallbackId = pnIdentifierRef.current.startsWith('pn-') ? pnIdentifierRef.current : `pn-${pnIdentifierRef.current}`;
-            console.log(`ℹ️ [Upload] Fallback identifier (did:publicKey): ${(fallbackId || '').substring(0, 8)}...`);
-            if (fallbackId !== pnIdentifier) {
-              console.warn(`⚠️ [Upload] Identifier mismatch! VolumeIdGenerator: ${(pnIdentifier || '').substring(0, 8)}..., Fallback: ${(fallbackId || '').substring(0, 8)}...`);
-              console.warn(`⚠️ [Upload] Using VolumeIdGenerator identifier (${(pnIdentifier || '').substring(0, 8)}...) - this is the CORRECT one`);
-            }
-          }
         } else {
-            // STANDARDIZED: Only use VolumeIdGenerator - no fallbacks
-            // If credentials aren't available, we cannot upload (identifier required)
-            throw new Error('Cannot generate pN identifier: credentials (pnName, passcode, publicKey) required. Please ensure you are fully authenticated.');
+            throw new Error('Cannot generate pN identifier: publicKey required. Please ensure you are fully authenticated.');
         }
       } catch (err) {
-        // STANDARDIZED: No fallbacks - fail if identifier cannot be generated
         console.error('❌ [Upload] Failed to generate standardized pN identifier:', err);
         throw new Error(`Cannot upload file: pN identifier generation failed. ${err instanceof Error ? err.message : 'Unknown error'}`);
       }

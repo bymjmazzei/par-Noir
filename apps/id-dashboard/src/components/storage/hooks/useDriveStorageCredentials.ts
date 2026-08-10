@@ -274,11 +274,7 @@ export function useDriveStorageCredentials({
 
       // Generate standardized pn identifier
       const { VolumeIdGenerator } = await import('@par-noir/identity-crypto');
-      const pnIdentifier = await VolumeIdGenerator.generateVolumeId({
-        pnName: credentials.pnName,
-        passcode: credentials.passcode,
-        publicKey: currentUser.publicKey
-      });
+      const pnIdentifier = await VolumeIdGenerator.generateCanonicalVolumeId(currentUser.publicKey);
 
       console.log('📤 [StorageCredentials] Using STANDARDIZED pn identifier for API persistence', {
         pnIdentifier: pnIdentifier,

@@ -7,7 +7,7 @@
  */
 
 import { pushPnOAuthDebug } from '@par-noir/oauth-ui';
-import { buildBrowserAppOAuthUnlockUrl } from '@par-noir/oauth-ui';
+import { buildOAuthConsentUrl } from '@par-noir/oauth-ui';
 import { base64ToBytes } from '@par-noir/pqc-crypto/encoding';
 import {
   deriveCanonicalPnIdentifier,
@@ -86,9 +86,8 @@ export class PNOAuthService {
       ? `${typeof window !== 'undefined' ? window.location.origin : ''}/oauth-callback.html`
       : REDIRECT_URI;
 
-    return buildBrowserAppOAuthUnlockUrl({
+    return buildOAuthConsentUrl({
       clientId: getClientId(),
-      appOrigin: typeof window !== 'undefined' ? window.location.origin : '',
       apiEndpoint: API_ENDPOINT,
       redirectUri,
       scope: [...scope],

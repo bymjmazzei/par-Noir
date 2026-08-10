@@ -803,63 +803,18 @@
         await completeRecoveryStepUp(encryptedIdentity, publicKey, did, pnName, passcode);
         return;
       }
-      identityData = null;
-      const authResponse = await fetch(`${apiEndpoint}/oauth/authorize/authenticate`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          client_id: clientId,
-          redirect_uri: redirectUri,
-          scope: scope,
-          state: state,
-          nonce: nonce,
-          encrypted_identity: encryptedIdentity,
-          passcode: passcode,
-          public_key: publicKey,
-          did: did,
-          pn_name: pnName
-        })
+      // OAuth unlock is normalized to API /oauth/consent — never POST passcode here.
+      var api = String(apiEndpoint || 'https://api.parnoir.com').replace(/\/$/, '');
+      var q = new URLSearchParams({
+        client_id: clientId,
+        redirect_uri: redirectUri,
+        response_type: 'code',
+        scope: scope || 'openid profile'
       });
-      
-      if (!authResponse.ok) {
-        const error = await authResponse.json().catch(() => ({ error: 'Authentication failed' }));
-        throw new Error(error.error_description || error.error || 'Authentication failed');
-      }
-      
-      const authResult = await authResponse.json();
-      authorizationCode = authResult.code;
-      
-      const combined = `${pnName}:${passcode}:${publicKey}`;
-      const encoder = new TextEncoder();
-      const data = encoder.encode(combined);
-      const hashBuffer = await crypto.subtle.digest('SHA-256', data);
-      const hashArray = Array.from(new Uint8Array(hashBuffer));
-      const hexHash = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
-      const shortHash = hexHash.substring(0, 12);
-      pnIdentifier = `pn-${shortHash}`;
-      
-      const existingPermissions = authResult.existingPermissions;
-      console.log('[OAuth] Auth result:', {
-        hasCode: !!authorizationCode,
-        hasExistingPermissions: !!existingPermissions,
-        existingPermissions: existingPermissions,
-        clientId: clientId
-      });
-      
-      if (existingPermissions && clientId === 'browser-app') {
-        const ageSharedParam = existingPermissions.ageShared ? 'true' : 'false';
-        if (isInPopup) {
-          const callbackUrl = `${window.location.origin}/oauth-callback.html?code=${authorizationCode}&state=${state}&age_shared=${ageSharedParam}`;
-          window.location.href = callbackUrl;
-        } else {
-          window.location.href = `${redirectUri}?code=${authorizationCode}&state=${state}&age_shared=${ageSharedParam}`;
-        }
-        return;
-      }
-      
-      document.getElementById('pnIdentifierDisplay').textContent = pnIdentifier;
-      document.getElementById('unlockStep').style.display = 'none';
-      document.getElementById('consentStep').style.display = 'block';
+      if (state) q.set('state', state);
+      if (nonce) q.set('nonce', nonce);
+      if (popupFlow) q.set('popup', 'true');
+      window.location.replace(api + '/oauth/authorize/consent?' + q.toString());
     }
     
     // Unlock form handler

@@ -102,32 +102,21 @@ export interface BrowserAppOAuthUnlockUrlConfig {
   identityHandoffRequired?: boolean;
 }
 
+/**
+ * @deprecated Use buildOAuthConsentUrl. Kept as an alias so leftover callers hit the
+ * single API consent unlock surface (not app-origin oauth-authorize.html).
+ */
 export function buildBrowserAppOAuthUnlockUrl(config: BrowserAppOAuthUnlockUrlConfig): string {
-  const state = config.state ?? generateRandomHex(16);
-  const nonce = config.nonce ?? generateRandomHex(16);
-  const scope = (config.scope ?? ['openid', 'profile']).join(' ');
-  const forPopup = config.forPopup !== false;
-
-  const params = new URLSearchParams({
-    client_id: config.clientId,
-    redirect_uri: config.redirectUri,
-    response_type: 'code',
-    scope,
-    state,
-    nonce,
+  return buildOAuthConsentUrl({
+    clientId: config.clientId,
+    apiEndpoint: config.apiEndpoint,
+    redirectUri: config.redirectUri,
+    scope: config.scope,
+    state: config.state,
+    nonce: config.nonce,
+    forPopup: config.forPopup,
+    identityHandoffRequired: config.identityHandoffRequired,
   });
-  if (forPopup) {
-    params.set('popup', 'true');
-  }
-  if (config.identityHandoffRequired) {
-    params.set('identity_handoff', 'required');
-  }
-  if (config.apiEndpoint) {
-    params.set('api_endpoint', config.apiEndpoint.replace(/\/$/, ''));
-  }
-
-  const base = config.appOrigin.replace(/\/$/, '');
-  return `${base}/oauth-authorize.html?${params.toString()}`;
 }
 
 /** @deprecated Use buildOAuthConsentUrl */

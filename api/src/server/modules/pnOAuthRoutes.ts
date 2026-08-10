@@ -14,26 +14,14 @@ import { requireAdminApiKey } from './adminDeveloperRoutes';
 
 const NODE_ENV = process.env.NODE_ENV || 'development';
 
-/** Apps that host their own unlock page instead of using the API consent page. */
-const SELF_HOSTED_UNLOCK_CLIENT_IDS = new Set(['browser-app', 'messaging-app']);
+/**
+ * First-party apps that receive messaging key handoff from the (single) API consent page.
+ * Not a separate unlock UI — all OAuth clients use /oauth/consent.
+ */
+const MESSAGING_HANDOFF_CLIENT_IDS = new Set(['browser-app', 'messaging-app']);
 
-const SELF_HOSTED_UNLOCK_ORIGINS = new Set([
-  'https://browse.parnoir.com',
-  'https://messaging.parnoir.com',
-  'http://localhost:3001',
-  'http://127.0.0.1:3001',
-]);
-
-function isSelfHostedUnlockOrigin(redirectUri: string): boolean {
-  try {
-    return SELF_HOSTED_UNLOCK_ORIGINS.has(new URL(redirectUri).origin);
-  } catch {
-    return false;
-  }
-}
-
-function isSelfHostedUnlockClient(clientId: string | undefined): boolean {
-  return !!clientId && SELF_HOSTED_UNLOCK_CLIENT_IDS.has(clientId);
+function isMessagingHandoffClient(clientId: string | undefined): boolean {
+  return !!clientId && MESSAGING_HANDOFF_CLIENT_IDS.has(clientId);
 }
 
 /**
@@ -180,14 +168,10 @@ export function setupPnOAuthRoutes(app: express.Application, deps: PnOAuthRouteD
       });
     });
 
-    // GET /oauth/authorize/consent - OAuth consent page
-    // Routes to appropriate consent page based on client_id
-    // browse/messaging use their own origin's oauth-authorize.html
-    // Third parties use API-hosted generic consent page
+    // GET /oauth/authorize/consent — one unlock surface for every client (API /oauth/consent)
     app.get('/oauth/authorize/consent', async (req, res) => {
       const { client_id, redirect_uri, scope, state, nonce } = req.query;
 
-      // Validate required parameters
       if (!client_id || !redirect_uri) {
         return res.status(400).json({
           error: 'invalid_request',
@@ -195,48 +179,15 @@ export function setupPnOAuthRoutes(app: express.Application, deps: PnOAuthRouteD
         });
       }
 
-      // pN-owned apps that host their own unlock page skip registration validation
-      const selfHostedUnlock = isSelfHostedUnlockClient(client_id as string);
-
-      if (!selfHostedUnlock) {
       const { ClientRegistrationService } = await import('./clientRegistration');
+      await ClientRegistrationService.ensureDefaultClientsSeeded();
       if (!(await ClientRegistrationService.validateClient(client_id as string, redirect_uri as string))) {
         return res.status(400).json({
           error: 'invalid_client',
           error_description: 'Invalid client_id or redirect_uri'
         });
-        }
       }
 
-      // Same-origin unlock on browse/messaging (not API consent)
-      if (selfHostedUnlock && isSelfHostedUnlockOrigin(redirect_uri as string)) {
-        let appOrigin: string;
-        try {
-          appOrigin = new URL(redirect_uri as string).origin;
-        } catch {
-          return res.status(400).json({
-            error: 'invalid_request',
-            error_description: 'Invalid redirect_uri',
-          });
-        }
-        const unlockUrl = new URL(`${appOrigin}/oauth-authorize.html`);
-        unlockUrl.searchParams.set('client_id', client_id as string);
-        unlockUrl.searchParams.set('redirect_uri', redirect_uri as string);
-        unlockUrl.searchParams.set('response_type', 'code');
-        if (scope) unlockUrl.searchParams.set('scope', scope as string);
-        if (state) unlockUrl.searchParams.set('state', state as string);
-        if (nonce) unlockUrl.searchParams.set('nonce', nonce as string);
-        const popupParam = req.query.popup;
-        if (popupParam === 'true') unlockUrl.searchParams.set('popup', 'true');
-        const identityHandoff = req.query.identity_handoff;
-        if (identityHandoff === 'required') {
-          unlockUrl.searchParams.set('identity_handoff', 'required');
-        }
-        unlockUrl.searchParams.set('api_endpoint', `${req.protocol}://${req.get('host')}`);
-        return res.redirect(unlockUrl.toString());
-      }
-
-      // Third parties: API-hosted canonical consent page
       const consentUrl = new URL(`${req.protocol}://${req.get('host')}/oauth/consent`);
       consentUrl.searchParams.set('client_id', client_id as string);
       consentUrl.searchParams.set('redirect_uri', redirect_uri as string);
@@ -244,7 +195,6 @@ export function setupPnOAuthRoutes(app: express.Application, deps: PnOAuthRouteD
       if (state) consentUrl.searchParams.set('state', state as string);
       if (nonce) consentUrl.searchParams.set('nonce', nonce as string);
 
-      // Canonical contract: popup behavior is controlled only by the explicit query parameter.
       const popupParam = req.query.popup;
       if (popupParam === 'true') consentUrl.searchParams.set('popup', 'true');
       const identityHandoff = req.query.identity_handoff;
@@ -266,15 +216,13 @@ export function setupPnOAuthRoutes(app: express.Application, deps: PnOAuthRouteD
           });
         }
 
-        const selfHostedUnlock = isSelfHostedUnlockClient(client_id);
-        if (!selfHostedUnlock) {
-          const { ClientRegistrationService } = await import('./clientRegistration');
-          if (!(await ClientRegistrationService.validateClient(client_id, redirect_uri))) {
-            return res.status(400).json({
-              error: 'invalid_client',
-              error_description: 'Invalid client_id or redirect_uri',
-            });
-          }
+        const { ClientRegistrationService } = await import('./clientRegistration');
+        await ClientRegistrationService.ensureDefaultClientsSeeded();
+        if (!(await ClientRegistrationService.validateClient(client_id, redirect_uri))) {
+          return res.status(400).json({
+            error: 'invalid_client',
+            error_description: 'Invalid client_id or redirect_uri',
+          });
         }
 
         const issued = PNOAuthService.createUnlockChallenge({
@@ -332,25 +280,21 @@ export function setupPnOAuthRoutes(app: express.Application, deps: PnOAuthRouteD
           });
         }
 
-        const selfHostedUnlock = isSelfHostedUnlockClient(client_id);
         const { ClientRegistrationService } = await import('./clientRegistration');
-        if (!selfHostedUnlock) {
-          if (!(await ClientRegistrationService.validateClient(client_id, redirect_uri))) {
-            return res.status(400).json({
-              error: 'invalid_client',
-              error_description: 'Invalid client_id or redirect_uri',
-            });
-          }
+        await ClientRegistrationService.ensureDefaultClientsSeeded();
+        if (!(await ClientRegistrationService.validateClient(client_id, redirect_uri))) {
+          return res.status(400).json({
+            error: 'invalid_client',
+            error_description: 'Invalid client_id or redirect_uri',
+          });
         }
 
         const scopes = scope ? String(scope).split(' ').filter(Boolean) : ['openid', 'profile'];
-        if (!selfHostedUnlock) {
-          if (!(await ClientRegistrationService.validateScopes(client_id, scopes))) {
-            return res.status(400).json({
-              error: 'invalid_scope',
-              error_description: 'One or more requested scopes are not allowed for this client',
-            });
-          }
+        if (!(await ClientRegistrationService.validateScopes(client_id, scopes))) {
+          return res.status(400).json({
+            error: 'invalid_scope',
+            error_description: 'One or more requested scopes are not allowed for this client',
+          });
         }
 
         let authResult: {
@@ -1017,9 +961,8 @@ export function setupPnOAuthRoutes(app: express.Application, deps: PnOAuthRouteD
           // NEVER include: pn_name, pn_file, passcode
         };
 
-        // Self-hosted unlock apps need the public key to decrypt the identity file
-        // For other clients, only include if explicitly requested
-        if (isSelfHostedUnlockClient(tokenPayload.clientId) && publicKey) {
+        // Browse/messaging need the public key after unlock; others only if scoped
+        if (isMessagingHandoffClient(tokenPayload.clientId) && publicKey) {
           userInfo.public_key = publicKey;
         } else if (scopes.includes('public_key') && publicKey) {
           userInfo.public_key = publicKey;
@@ -1053,12 +996,8 @@ export function setupPnOAuthRoutes(app: express.Application, deps: PnOAuthRouteD
       }
 
       const { ClientRegistrationService } = await import('./clientRegistration');
+      await ClientRegistrationService.ensureDefaultClientsSeeded();
       let client = await ClientRegistrationService.getClient(client_id as string);
-
-      if (!client && isSelfHostedUnlockClient(client_id as string)) {
-        await ClientRegistrationService.ensureDefaultClientsSeeded();
-        client = await ClientRegistrationService.getClient(client_id as string);
-      }
 
       if (!client || !(await ClientRegistrationService.validateClient(client_id as string, redirect_uri as string))) {
         res.status(400).send(`

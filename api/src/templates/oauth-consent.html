@@ -617,9 +617,9 @@
       }
     }
 
-    /** Apps whose unlock also hands encryption keys to the messaging layer. */
-    const SELF_HOSTED_UNLOCK_CLIENT_IDS = ['browser-app', 'messaging-app'];
-    const isSelfHostedUnlockClient = SELF_HOSTED_UNLOCK_CLIENT_IDS.indexOf(clientId) !== -1;
+    /** First-party apps that also hand encryption keys to the messaging layer. */
+    const MESSAGING_HANDOFF_CLIENT_IDS = ['browser-app', 'messaging-app'];
+    const isMessagingHandoffClient = MESSAGING_HANDOFF_CLIENT_IDS.indexOf(clientId) !== -1;
     const scopeList = scope.split(/\s+/).filter(Boolean);
 
     // Consent rows come from the requested scope, so the screen always matches
@@ -633,7 +633,7 @@
     // Anything touching identity data points requires explicit consent at least once
     const needsConsentScreen = requestedDataPoints.length > 0 || needsIntegratorConsent;
 
-    if (!isSelfHostedUnlockClient) {
+    if (!isMessagingHandoffClient) {
       var gsb = document.getElementById('genericScopesBlock');
       if (gsb) gsb.style.display = 'flex';
     }
@@ -745,7 +745,7 @@
      */
     function redirectWithAuthCodeFixed(code, grantedDataPoints) {
       var grantedParam = (grantedDataPoints || []).join(',');
-      if (isSelfHostedUnlockClient) {
+      if (isMessagingHandoffClient) {
         if (!lastMessagingSession) {
           throw new Error(
             'This pN identity does not include messaging encryption keys. Create or update your identity at pn.parnoir.com, then try again.'
@@ -773,7 +773,7 @@
         }
       } catch (e) {}
       var navigateToCallback = function (targetUrl) {
-        if (!isSelfHostedUnlockClient) {
+        if (!isMessagingHandoffClient) {
           window.location.href = targetUrl;
           return;
         }
@@ -819,7 +819,7 @@
     var PN_MESSAGING_IDENTITY_HASH_PREFIX = 'pn_messaging_identity_v1:';
 
     function stashMessagingHandoffInWindowName() {
-      if (!isSelfHostedUnlockClient || !lastMessagingSession) return;
+      if (!isMessagingHandoffClient || !lastMessagingSession) return;
       var payload = { v: 1, timestamp: Date.now(), session: lastMessagingSession };
       if (lastMessagingIdentity) {
         var withIdentity = {
@@ -844,7 +844,7 @@
     }
 
     function buildMessagingIdentityHash() {
-      if (!isSelfHostedUnlockClient || !lastMessagingIdentity) return '';
+      if (!isMessagingHandoffClient || !lastMessagingIdentity) return '';
       try {
         var identityPayload = { v: 1, identity: lastMessagingIdentity, timestamp: Date.now() };
         var hash = PN_MESSAGING_IDENTITY_HASH_PREFIX + encodeURIComponent(JSON.stringify(identityPayload));
@@ -871,7 +871,7 @@
     }
 
     function postMessagingToOpener(message) {
-      if (!isSelfHostedUnlockClient) return;
+      if (!isMessagingHandoffClient) return;
       var appOrigin = '';
       try {
         appOrigin = new URL(redirectUri).origin;
@@ -891,7 +891,7 @@
     }
 
     function burstMessagingToOpener() {
-      if (!isSelfHostedUnlockClient) return;
+      if (!isMessagingHandoffClient) return;
       resendMessagingHandoff();
       var delays = [0, 50, 120, 200, 350, 500];
       for (var di = 0; di < delays.length; di++) {
@@ -922,7 +922,7 @@
     }
 
     function sendMessagingIdentityToOpener(encryptedIdentity, decrypted) {
-      if (!isSelfHostedUnlockClient) return;
+      if (!isMessagingHandoffClient) return;
       var payload = normalizeMessagingIdentityPayload(encryptedIdentity, decrypted);
       if (!payload) return;
       lastMessagingIdentity = payload;
@@ -930,7 +930,7 @@
     }
 
     function sendMessagingSessionToOpener(decrypted) {
-      if (!isSelfHostedUnlockClient) return;
+      if (!isMessagingHandoffClient) return;
       var session = extractMessagingSession(decrypted);
       if (!session) return;
       lastMessagingSession = session;
@@ -938,7 +938,7 @@
     }
 
     function resendMessagingHandoff() {
-      if (!isSelfHostedUnlockClient) return;
+      if (!isMessagingHandoffClient) return;
       if (lastMessagingIdentity) {
         sendMessagingIdentityToOpener(lastMessagingIdentity, null);
       }
@@ -1096,7 +1096,7 @@
       identityData = null;
       sendMessagingIdentityToOpener(encryptedIdentity, decryptedIdentity);
       sendMessagingSessionToOpener(decryptedIdentity);
-      if (isSelfHostedUnlockClient && !lastMessagingSession) {
+      if (isMessagingHandoffClient && !lastMessagingSession) {
         throw new Error(
           'This pN identity does not include messaging encryption keys. Create or update your identity at pn.parnoir.com, then try again.'
         );
