@@ -109,7 +109,7 @@ export interface BrowserAppOAuthUnlockUrlConfig {
 export function buildBrowserAppOAuthUnlockUrl(config: BrowserAppOAuthUnlockUrlConfig): string {
   return buildOAuthConsentUrl({
     clientId: config.clientId,
-    apiEndpoint: config.apiEndpoint,
+    apiEndpoint: config.apiEndpoint || 'https://api.parnoir.com',
     redirectUri: config.redirectUri,
     scope: config.scope,
     state: config.state,
