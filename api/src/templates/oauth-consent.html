@@ -786,7 +786,8 @@
         } catch (_) {
           return;
         }
-        if (!window.opener || window.opener.closed) return;
+        var openerWin = resolveOpenerWindow();
+        if (!openerWin) return;
         var handoff = buildMessagingHandoffPayload();
         var message = {
           type: 'oauth_callback',
@@ -797,19 +798,19 @@
           messagingHandoff: handoff || undefined
         };
         try {
-          window.opener.postMessage(message, appOrigin);
+          openerWin.postMessage(message, appOrigin);
         } catch (e) {
           console.warn('[OAuth] oauth_callback postMessage failed', e);
         }
         // Also send dedicated messaging messages (listener applies session immediately).
         if (handoff && handoff.session) {
           try {
-            window.opener.postMessage({ type: 'pn_messaging_session', session: handoff.session }, appOrigin);
+            openerWin.postMessage({ type: 'pn_messaging_session', session: handoff.session }, appOrigin);
           } catch (e2) {}
         }
         if (handoff && handoff.identity) {
           try {
-            window.opener.postMessage({ type: 'pn_messaging_identity', identity: handoff.identity }, appOrigin);
+            openerWin.postMessage({ type: 'pn_messaging_identity', identity: handoff.identity }, appOrigin);
           } catch (e3) {}
         }
       }
@@ -837,7 +838,7 @@
             hasIdentity: !!lastMessagingIdentity,
             hashLen: identityHash ? identityHash.length : 0,
             windowNameLen: window.name ? window.name.length : 0,
-            hasOpener: !!(window.opener && !window.opener.closed)
+            hasOpener: !!(resolveOpenerWindow())
           });
         }
       } catch (e) {}
@@ -943,6 +944,19 @@
       return { mlKemSecretKey: mlKemSecretKey, mlKemPublicKey: mlKemPublicKey };
     }
 
+    /** Must match @par-noir/oauth-ui PN_OAUTH_OPENER_WINDOW_NAME / oauth-callback.html */
+    var OPENER_WIN_NAME = 'parnoir_oauth_parent_v1';
+
+    function resolveOpenerWindow() {
+      if (window.opener && !window.opener.closed) return window.opener;
+      // COOP (or some browsers) can null opener while the named parent still exists.
+      try {
+        var named = window.open('', OPENER_WIN_NAME);
+        if (named && !named.closed) return named;
+      } catch (e) {}
+      return null;
+    }
+
     function postMessagingToOpener(message) {
       if (!isMessagingHandoffClient) return;
       var appOrigin = '';
@@ -951,15 +965,12 @@
       } catch (_) {
         return;
       }
-      var targets = [appOrigin];
-      if (window.opener && !window.opener.closed) {
-        for (var ti = 0; ti < targets.length; ti++) {
-          try {
-            window.opener.postMessage(message, targets[ti]);
-          } catch (e) {
-            console.warn('[OAuth] messaging postMessage failed', e);
-          }
-        }
+      var openerWin = resolveOpenerWindow();
+      if (!openerWin) return;
+      try {
+        openerWin.postMessage(message, appOrigin);
+      } catch (e) {
+        console.warn('[OAuth] messaging postMessage failed', e);
       }
     }
 

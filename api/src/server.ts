@@ -418,9 +418,10 @@ class ProductionServer {
           imgSrc: ["'self'", "data:", "https:"],
         },
       },
-      // OAuth consent runs in a popup opened by browse/messaging. Default
-      // same-origin COOP severs window.opener so messaging key postMessage fails.
-      crossOriginOpenerPolicy: { policy: 'same-origin-allow-popups' },
+      // OAuth consent is a cross-origin popup. Any non-unsafe-none COOP on this
+      // document (including same-origin-allow-popups) nulls window.opener, so
+      // browse never receives ML-KEM messagingHandoff via postMessage.
+      crossOriginOpenerPolicy: false,
     }));
 
     // CORS configuration with security improvements
