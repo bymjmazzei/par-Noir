@@ -542,14 +542,9 @@ class ProductionServer {
     // Rate limiting - apply general limiter to most routes
     // Aggregator endpoints get a more lenient limiter (applied specifically)
     // Read-only endpoints (profile, feeds, engagement GET) get an even more lenient limiter
-    // OAuth authentication endpoints are exempt (proof-of-work based, not server-intensive)
     this.app.use((req, res, next) => {
       // Skip rate limiting for aggregator endpoints (they get their own limiter)
       if (req.path.startsWith('/api/aggregator/')) {
-        return next();
-      }
-      // Skip rate limiting for OAuth authentication endpoints (proof-of-work based)
-      if (req.path === '/oauth/authorize/authenticate' && req.method === 'POST') {
         return next();
       }
       // OAuth token exchange has oauthTokenLimiter; avoid double-counting on the general limiter
@@ -847,6 +842,7 @@ class ProductionServer {
     setupPnOAuthRoutes(this.app, {
       extractAccountId: (account) => this.extractAccountId(account),
       oauthTokenLimiter,
+      authLimiter,
     });
 
     registerAdminDeveloperRoutes(this.app);

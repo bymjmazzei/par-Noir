@@ -32,6 +32,7 @@
     "@par-noir/device-auth": "file:../packages/device-auth",
     "@par-noir/dm-crypto": "file:../packages/dm-crypto",
     "@par-noir/identity-migration": "file:../packages/identity-migration",
+    "@par-noir/pqc-crypto": "file:../packages/pqc-crypto",
     "@par-noir/recovery-crypto": "file:../packages/recovery-crypto",
     "@par-noir/standard-data-points": "file:../packages/standard-data-points",
     "@par-noir/storage-migration": "file:../packages/storage-migration",

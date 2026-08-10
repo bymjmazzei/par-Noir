@@ -1,5 +1,11 @@
 import { API_ENDPOINT } from '../config/api';
 import { retry } from '../utils/helpers';
+import { IdentityCrypto } from '@par-noir/identity-crypto';
+import {
+  base64ToBytes,
+  deriveCanonicalPnIdentifier,
+  signOauthUnlockProof,
+} from '@par-noir/pqc-crypto';
 
 const PN_CLIENT_ID = import.meta.env.VITE_PN_CLIENT_ID || 'browser-app';
 const STORAGE_KEY = 'pn_api_token';
@@ -53,6 +59,17 @@ function getScope(scope?: string[]): string[] {
   return scope && scope.length > 0 ? scope : ['openid', 'profile'];
 }
 
+function extractMlDsaSecretKeyB64(decrypted: {
+  privateKey?: string;
+  pqcSecrets?: { mlDsaSecretKey?: string };
+}): string {
+  const sk = decrypted.pqcSecrets?.mlDsaSecretKey || decrypted.privateKey;
+  if (!sk) {
+    throw new Error('This identity does not include ML-DSA signing keys required for OAuth unlock proof.');
+  }
+  return sk;
+}
+
 export function getStoredToken(): StoredToken | null {
   try {
     const raw = sessionStorage.getItem(STORAGE_KEY);
@@ -83,16 +100,70 @@ export function clearStoredToken(): void {
   setStoredToken(null);
 }
 
+/**
+ * Challenge → local unlock → ML-DSA proof → authorization code → access token.
+ * Passcode and pn name are used only on-device to decrypt; they never hit the wire.
+ */
 export async function acquireApiTokenInline(
   input: InlineOAuthAcquireInput
 ): Promise<{ accessToken: string; pnIdentifier: string }> {
   const redirectUri = input.redirectUri || `${window.location.origin}/oauth-callback.html`;
   const scope = getScope(input.scope);
+  const scopeStr = scope.join(' ');
   const state = randomHex(16);
   const nonce = randomHex(16);
   sessionStorage.setItem(OAUTH_STATE_KEY, state);
 
-  const pnIdentifier = await derivePnIdentifier(input.pnName, input.passcode, input.publicKey);
+  const raw = await IdentityCrypto.decryptData(
+    {
+      encrypted: input.encryptedIdentity.encryptedData,
+      iv: input.encryptedIdentity.iv,
+      salt: input.encryptedIdentity.salt,
+    },
+    input.pnName,
+    input.passcode
+  );
+  const decrypted = JSON.parse(raw) as {
+    privateKey?: string;
+    pqcSecrets?: { mlDsaSecretKey?: string };
+  };
+  const mlDsaSecretKeyB64 = extractMlDsaSecretKeyB64(decrypted);
+  const pnIdentifier = deriveCanonicalPnIdentifier(input.publicKey);
+
+  const challengeResponse = await fetch(`${API_ENDPOINT}/oauth/authorize/challenge`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      client_id: PN_CLIENT_ID,
+      redirect_uri: redirectUri,
+    }),
+  });
+  if (!challengeResponse.ok) {
+    const err = await challengeResponse.json().catch(() => ({}));
+    throw new Error(
+      (err as { error_description?: string }).error_description || 'OAuth unlock challenge failed'
+    );
+  }
+  const challengeBody = (await challengeResponse.json()) as {
+    challenge_id?: string;
+    challenge?: string;
+  };
+  if (!challengeBody.challenge_id || !challengeBody.challenge) {
+    throw new Error('OAuth unlock challenge response incomplete');
+  }
+
+  const signature = signOauthUnlockProof(
+    {
+      challenge: challengeBody.challenge,
+      clientId: PN_CLIENT_ID,
+      redirectUri,
+      scope: scopeStr,
+      state,
+      nonce,
+      publicKey: input.publicKey,
+    },
+    base64ToBytes(mlDsaSecretKeyB64)
+  );
 
   const authResponse = await fetch(`${API_ENDPOINT}/oauth/authorize/authenticate`, {
     method: 'POST',
@@ -100,15 +171,13 @@ export async function acquireApiTokenInline(
     body: JSON.stringify({
       client_id: PN_CLIENT_ID,
       redirect_uri: redirectUri,
-      scope: scope.join(' '),
+      scope: scopeStr,
       state,
       nonce,
-      encrypted_identity: input.encryptedIdentity,
-      passcode: input.passcode,
+      challenge_id: challengeBody.challenge_id,
       public_key: input.publicKey,
-      did: input.did,
-      pn_identifier: pnIdentifier
-    })
+      signature,
+    }),
   });
 
   if (!authResponse.ok) {
@@ -127,11 +196,11 @@ export async function acquireApiTokenInline(
 
 /** Public: derive the pN identifier used for OAuth (matches the token's embedded pN). */
 export async function derivePnIdentifierForToken(
-  pnName: string,
-  passcode: string,
+  _unusedPnName: string,
+  _unusedLocalSecret: string,
   publicKey: string
 ): Promise<string> {
-  return derivePnIdentifier(pnName, passcode, publicKey);
+  return deriveCanonicalPnIdentifier(publicKey);
 }
 
 export async function exchangeCodeForToken(code: string, redirectUri: string): Promise<string> {
@@ -195,13 +264,4 @@ export async function consumeOAuthResumeFromUrl(redirectUri?: string): Promise<O
       void redirectUri;
     }
   }
-}
-
-async function derivePnIdentifier(pnName: string, passcode: string, publicKey: string): Promise<string> {
-  const combined = `${pnName}:${passcode}:${publicKey}`;
-  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(combined));
-  const hash = Array.from(new Uint8Array(digest))
-    .map((byte) => byte.toString(16).padStart(2, '0'))
-    .join('');
-  return `pn-${hash.slice(0, 12)}`;
 }

@@ -111,6 +111,7 @@ function redactPnIdentifier(pnIdentifier?: string): string {
 export interface PnOAuthRouteDeps {
   extractAccountId: (account: any) => string | undefined;
   oauthTokenLimiter: RequestHandler;
+  authLimiter: RequestHandler;
 }
 
 /**
@@ -118,10 +119,11 @@ export interface PnOAuthRouteDeps {
  * Implements authorization code flow similar to Google OAuth
  */
 export function setupPnOAuthRoutes(app: express.Application, deps: PnOAuthRouteDeps) {
-  const { extractAccountId, oauthTokenLimiter } = deps;
+  const { extractAccountId, oauthTokenLimiter, authLimiter } = deps;
 
     // Dynamic import to avoid circular dependencies
     const PNOAuthService = require('./pnOAuthService').PNOAuthService;
+    const { OauthUnlockProofError } = require('./pnOAuthService');
 
     app.get('/.well-known/jwks.json', (_req, res) => {
       const jwks = PNOAuthService.getJwks();
@@ -253,99 +255,144 @@ export function setupPnOAuthRoutes(app: express.Application, deps: PnOAuthRouteD
       return res.redirect(consentUrl.toString());
     });
 
-    // POST /oauth/authorize/authenticate - Authenticate user with pN identity
-    // Client sends encrypted identity file and passcode
-    // Server verifies and generates authorization code
-    app.post('/oauth/authorize/authenticate', async (req, res) => {
+    // POST /oauth/authorize/challenge — single-use unlock challenge for ML-DSA proof
+    app.post('/oauth/authorize/challenge', authLimiter, async (req, res) => {
       try {
-        const { 
-          client_id, 
-          redirect_uri, 
-          scope, 
-          state, 
-          nonce,
-          encrypted_identity, // Encrypted pN identity file
-          passcode,
-          public_key // Public key from identity
-        } = req.body;
-
-        if (!client_id || !redirect_uri || !encrypted_identity || !passcode || !public_key) {
+        const { client_id, redirect_uri } = req.body || {};
+        if (!client_id || !redirect_uri) {
           return res.status(400).json({
             error: 'invalid_request',
-            error_description: 'Missing required fields: client_id, redirect_uri, encrypted_identity, passcode, public_key'
+            error_description: 'Missing required fields: client_id, redirect_uri',
           });
         }
 
-        // In production, decrypt and verify identity here
-        // For now, we'll accept a DID directly or verify the identity
-        // Extract DID from encrypted identity or use public_key to derive it
-        // This is a simplified version - in production, decrypt the identity file
-        
-        // DID should come from decrypted identity (client-side decryption)
-        // If not provided, we can't proceed - need the actual DID from the identity
-        const did = req.body.did;
-        
-        if (!did) {
-          return res.status(400).json({
-            error: 'invalid_request',
-            error_description: 'DID is required. Identity file must be decrypted client-side to extract DID.'
-          });
-        }
-
-        // SECURITY: No sensitive data in logs — pn name, passcode, DID, public key must never appear in plain text
-
-        // SECURITY FIX: Client now sends pn_identifier directly (derived client-side)
-        // Fallback to derivation for backward compatibility if not provided
-        let pnIdentifier: string | undefined = req.body.pn_identifier;
-        const pnName = req.body.pnName || req.body.pn_name; // Only used for fallback derivation
-        
-        // Fallback: Derive pN identifier server-side if client didn't provide it (backward compatibility)
-        if (!pnIdentifier && pnName && passcode && public_key) {
-          try {
-            // STANDARDIZED: Derive pN identifier using VolumeIdGenerator formula
-            // Formula: SHA256(pnName:passcode:publicKey) → first 12 hex chars → pn-{hash}
-            const crypto = await import('crypto');
-            const combined = `${pnName}:${passcode}:${public_key}`;
-            const utf8Bytes = Buffer.from(combined, 'utf8');
-            const hash = crypto.createHash('sha256').update(utf8Bytes).digest('hex');
-            const shortHash = hash.substring(0, 12);
-            pnIdentifier = `pn-${shortHash}`;
-            if (process.env.NODE_ENV === 'development') {
-              console.log('[OAuth Auth] Derived pN identifier server-side (fallback):', pnIdentifier);
-            }
-          } catch (error) {
-            console.error('[OAuth Auth] Failed to derive pN identifier:', error);
+        const selfHostedUnlock = isSelfHostedUnlockClient(client_id);
+        if (!selfHostedUnlock) {
+          const { ClientRegistrationService } = await import('./clientRegistration');
+          if (!(await ClientRegistrationService.validateClient(client_id, redirect_uri))) {
+            return res.status(400).json({
+              error: 'invalid_client',
+              error_description: 'Invalid client_id or redirect_uri',
+            });
           }
-        } else if (pnIdentifier && process.env.NODE_ENV === 'development') {
-          console.log('[OAuth Auth] Using pN identifier from client:', redactPnIdentifier(pnIdentifier));
         }
 
-        const scopes = scope ? scope.split(' ') : ['openid', 'profile'];
+        const issued = PNOAuthService.createUnlockChallenge({
+          clientId: client_id,
+          redirectUri: redirect_uri,
+        });
+        return res.json({
+          challenge_id: issued.challengeId,
+          challenge: issued.challenge,
+          expires_at: issued.expiresAt,
+        });
+      } catch (error: unknown) {
+        const msg = error instanceof Error ? error.message : String(error);
+        safeLogger.warn('[OAuth] Challenge issuance failed', { message: msg });
+        return res.status(500).json({
+          error: 'server_error',
+          error_description:
+            safeClientErrorMessage(error, NODE_ENV === 'production') || 'Challenge issuance failed',
+        });
+      }
+    });
 
-        // SECURITY FIX: Store pnIdentifier directly instead of secrets
-        let code: string;
+    // POST /oauth/authorize/authenticate — mint code only after ML-DSA unlock proof
+    app.post('/oauth/authorize/authenticate', authLimiter, async (req, res) => {
+      try {
+        const {
+          client_id,
+          redirect_uri,
+          scope,
+          state,
+          nonce,
+          challenge_id,
+          public_key,
+          signature,
+        } = req.body || {};
+
+        // Fail closed: secrets must never arrive on this wire.
+        if (
+          req.body?.passcode != null ||
+          req.body?.pn_name != null ||
+          req.body?.pnName != null
+        ) {
+          return res.status(400).json({
+            error: 'invalid_request',
+            error_description:
+              'passcode and pn name must not be sent to the server; unlock locally and submit an ML-DSA unlock proof',
+          });
+        }
+
+        if (!client_id || !redirect_uri || !challenge_id || !public_key || !signature) {
+          return res.status(400).json({
+            error: 'invalid_request',
+            error_description:
+              'Missing required fields: client_id, redirect_uri, challenge_id, public_key, signature',
+          });
+        }
+
+        const selfHostedUnlock = isSelfHostedUnlockClient(client_id);
+        const { ClientRegistrationService } = await import('./clientRegistration');
+        if (!selfHostedUnlock) {
+          if (!(await ClientRegistrationService.validateClient(client_id, redirect_uri))) {
+            return res.status(400).json({
+              error: 'invalid_client',
+              error_description: 'Invalid client_id or redirect_uri',
+            });
+          }
+        }
+
+        const scopes = scope ? String(scope).split(' ').filter(Boolean) : ['openid', 'profile'];
+        if (!selfHostedUnlock) {
+          if (!(await ClientRegistrationService.validateScopes(client_id, scopes))) {
+            return res.status(400).json({
+              error: 'invalid_scope',
+              error_description: 'One or more requested scopes are not allowed for this client',
+            });
+          }
+        }
+
+        let authResult: {
+          code: string;
+          did: string;
+          pnIdentifier: string;
+          publicKey: string;
+        };
         try {
-          code = PNOAuthService.generateAuthorizationCode({
+          authResult = PNOAuthService.authenticateWithUnlockProof({
             clientId: client_id,
             redirectUri: redirect_uri,
             scope: scopes,
             state,
             nonce,
-            did,
-            publicKey: public_key, // Still needed for file decryption
-            pnIdentifier: pnIdentifier // Store pN identifier directly (derived client-side)
-            // pnName and passcode are NOT stored - they're secrets
+            challengeId: challenge_id,
+            publicKey: public_key,
+            signature,
           });
         } catch (oauthErr: unknown) {
+          if (oauthErr instanceof OauthUnlockProofError || (oauthErr as { name?: string })?.name === 'OauthUnlockProofError') {
+            const err = oauthErr as {
+              code: string;
+              message: string;
+              httpStatus?: number;
+            };
+            return res.status(err.httpStatus || 401).json({
+              error: err.code || 'invalid_proof',
+              error_description: err.message,
+            });
+          }
           if ((oauthErr as Error & { code?: string }).code === 'IDENTITY_SUPERSEDED') {
             return res.status(403).json({
               error: 'access_denied',
               error_description:
-                'This identity is superseded on the par Noir network. Use your successor pN file and identifier for OAuth and services.'
+                'This identity is superseded on the par Noir network. Use your successor pN file and identifier for OAuth and services.',
             });
           }
           throw oauthErr;
         }
+
+        const { code, did, pnIdentifier } = authResult;
 
         // Consent-skip hint: cache first, then the authoritative Drive record.
         // A stored grant only skips consent when the user has already been asked

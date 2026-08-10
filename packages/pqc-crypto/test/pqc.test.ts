@@ -5,6 +5,8 @@ import { randomBytes } from '@noble/post-quantum/utils.js';
 import {
   createIdentityBlobV1,
   decodeIdentityBlobV1,
+  deriveCanonicalPnIdentifier,
+  deriveDidFromPublicKey,
   mlDsa65Keygen,
   mlDsa65Sign,
   mlDsa65Verify,
@@ -12,6 +14,9 @@ import {
   mlKem768Encapsulate,
   mlKem768Keygen,
   sha3_384_digest,
+  signOauthUnlockProof,
+  verifyOauthUnlockProof,
+  bytesToBase64,
 } from '../src/index';
 
 describe('@par-noir/pqc-crypto', () => {
@@ -54,5 +59,30 @@ describe('@par-noir/pqc-crypto', () => {
     expect(back.mlDsaPublicKey).toEqual(dsa.publicKey);
     expect(back.mlKemPublicKey).toEqual(kem.publicKey);
     expect(back.metadata?.pn).toBe('test');
+  });
+
+  it('OAuth unlock proof roundtrips and rejects tampering', () => {
+    const dsa = mlDsa65Keygen();
+    const publicKey = bytesToBase64(dsa.publicKey);
+    const params = {
+      challenge: 'abc123challenge',
+      clientId: 'browser-app',
+      redirectUri: 'https://browse.parnoir.com/oauth-callback.html',
+      scope: 'openid profile',
+      state: 'st',
+      nonce: 'nn',
+      publicKey,
+    };
+    const signature = signOauthUnlockProof(params, dsa.secretKey);
+    expect(verifyOauthUnlockProof(signature, params, publicKey)).toBe(true);
+    expect(
+      verifyOauthUnlockProof(signature, { ...params, challenge: 'tampered' }, publicKey)
+    ).toBe(false);
+    const other = mlDsa65Keygen();
+    expect(
+      verifyOauthUnlockProof(signature, params, bytesToBase64(other.publicKey))
+    ).toBe(false);
+    expect(deriveCanonicalPnIdentifier(publicKey)).toMatch(/^pn-[0-9a-f]{12}$/);
+    expect(deriveDidFromPublicKey(publicKey)).toMatch(/^did:key:[0-9a-f]{16}$/);
   });
 });

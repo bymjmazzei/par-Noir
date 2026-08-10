@@ -169,14 +169,13 @@ export function setupOAuthRoutes(app: any) {
 
       let code: string;
       try {
-        code = PNOAuthService.generateAuthorizationCode({
+        code = PNOAuthService.issueAuthorizationCodeForApiKey({
           clientId: client_id as string,
           redirectUri: redirect_uri as string,
           scope: scopes,
           state: state as string,
           nonce: nonce as string,
-          did: apiKey.pnId, // Use pN ID from API key
-          pnIdentifier: apiKey.pnId
+          pnId: apiKey.pnId,
         });
       } catch (e: unknown) {
         if ((e as Error & { code?: string }).code === 'IDENTITY_SUPERSEDED') {

@@ -24,13 +24,20 @@
       "types": "./dist/constants.d.ts",
       "import": "./dist/constants.js",
       "require": "./dist/constants.js"
+    },
+    "./oauth-unlock-proof": {
+      "types": "./dist/oauthUnlockProof.d.ts",
+      "import": "./dist/oauthUnlockProof.js",
+      "require": "./dist/oauthUnlockProof.js"
     }
   },
+
   "files": [
     "dist"
   ],
   "scripts": {
-    "build": "tsc -p tsconfig.json",
+    "build": "tsc -p tsconfig.json && npm run build:oauth-unlock-script",
+    "build:oauth-unlock-script": "esbuild src/oauthUnlockProofBrowser.ts --bundle --format=iife --target=es2017 --outfile=../../api/src/static/oauth/oauth-unlock-proof.js --banner:js=\"/* GENERATED from packages/pqc-crypto/src/oauthUnlockProofBrowser.ts by build:oauth-unlock-script. Do not edit by hand. */\"",
     "test": "vitest run",
     "test:watch": "vitest",
     "lint": "eslint src --ext .ts"
@@ -41,6 +48,7 @@
     "cborg": "^4.2.8"
   },
   "devDependencies": {
+    "esbuild": "^0.25.9",
     "typescript": "^5.0.0",
     "vitest": "^3.2.4"
   },

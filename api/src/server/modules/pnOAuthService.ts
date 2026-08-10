@@ -6,11 +6,37 @@
 
 import crypto from 'crypto';
 import jwt, { JwtHeader, JwtPayload } from 'jsonwebtoken';
+import {
+  assertMlDsa65PublicKeyB64,
+  deriveCanonicalPnIdentifier,
+  deriveDidFromPublicKey,
+  verifyOauthUnlockProof,
+} from '@par-noir/pqc-crypto/oauth-unlock-proof';
 import { getDatabasePool } from '../utils/database';
 import { isDidRevokedForNetwork, isPnRevokedForNetwork } from './identitySuccessionService';
 import { appendSecurityAuditEvent } from './auditService';
 import { securityFlags } from '../utils/securityFlags';
 import { hashIdentifier, safeLogger } from '../../utils/logger';
+
+export class OauthUnlockProofError extends Error {
+  readonly code: string;
+  readonly httpStatus: number;
+
+  constructor(code: string, message: string, httpStatus = 401) {
+    super(message);
+    this.name = 'OauthUnlockProofError';
+    this.code = code;
+    this.httpStatus = httpStatus;
+  }
+}
+
+interface UnlockChallengeRecord {
+  challengeId: string;
+  challenge: string;
+  clientId: string;
+  redirectUri: string;
+  expiresAt: number;
+}
 
 export interface AuthorizationCode {
   code: string;
@@ -68,6 +94,7 @@ const authorizationCodes = new Map<string, AuthorizationCode>();
 const accessTokens = new Map<string, TokenPayload>();
 // Map of recently exchanged codes to their tokens (for idempotency - prevents duplicate exchange errors)
 const codeToTokenMap = new Map<string, { token: AccessToken; expiresAt: number }>();
+const unlockChallenges = new Map<string, UnlockChallengeRecord>();
 // Note: refreshTokens are now stored in PostgreSQL database for persistence
 
 // Cleanup expired codes/tokens every 5 minutes
@@ -94,6 +121,12 @@ setInterval(() => {
       codeToTokenMap.delete(code);
     }
   }
+
+  for (const [id, record] of unlockChallenges.entries()) {
+    if (record.expiresAt < now) {
+      unlockChallenges.delete(id);
+    }
+  }
   
   // Clean expired refresh tokens from database (async, don't wait)
   PNOAuthService.cleanupExpiredRefreshTokens().catch((err: unknown) => {
@@ -105,6 +138,7 @@ setInterval(() => {
 
 export class PNOAuthService {
   private static readonly CODE_EXPIRY = 10 * 60 * 1000; // 10 minutes
+  private static readonly CHALLENGE_EXPIRY = 5 * 60 * 1000; // 5 minutes
   private static readonly ACCESS_TOKEN_EXPIRY = 60 * 60 * 1000; // 1 hour
   private static readonly REFRESH_TOKEN_EXPIRY = 30 * 24 * 60 * 60 * 1000; // 30 days
   private static readonly TOKEN_SECRET = (() => {
@@ -194,10 +228,130 @@ export class PNOAuthService {
   }
 
   /**
-   * Generate authorization code
-   * 
-   * SECURITY: Accepts pnIdentifier directly from client (derived client-side).
-   * Never stores pnName or passcode - they're secrets.
+   * Issue a single-use unlock challenge bound to client_id + redirect_uri.
+   */
+  static createUnlockChallenge(params: {
+    clientId: string;
+    redirectUri: string;
+  }): { challengeId: string; challenge: string; expiresAt: number } {
+    const challengeId = crypto.randomBytes(16).toString('hex');
+    const challenge = crypto.randomBytes(32).toString('hex');
+    const expiresAt = Date.now() + this.CHALLENGE_EXPIRY;
+    const normalizedRedirectUri = params.redirectUri.replace(/\/$/, '');
+    unlockChallenges.set(challengeId, {
+      challengeId,
+      challenge,
+      clientId: params.clientId,
+      redirectUri: normalizedRedirectUri,
+      expiresAt,
+    });
+    return { challengeId, challenge, expiresAt };
+  }
+
+  /**
+   * Verify ML-DSA unlock proof, then mint an authorization code.
+   * Identity (did / pnIdentifier) is derived from the verified public key only.
+   */
+  static authenticateWithUnlockProof(params: {
+    clientId: string;
+    redirectUri: string;
+    scope: string[];
+    state?: string;
+    nonce?: string;
+    challengeId: string;
+    publicKey: string;
+    signature: string;
+  }): { code: string; did: string; pnIdentifier: string; publicKey: string } {
+    const normalizedRedirectUri = params.redirectUri.replace(/\/$/, '');
+    const record = unlockChallenges.get(params.challengeId);
+    unlockChallenges.delete(params.challengeId);
+
+    if (!record) {
+      throw new OauthUnlockProofError(
+        'invalid_challenge',
+        'Unlock challenge is missing, expired, or already used'
+      );
+    }
+    if (record.expiresAt < Date.now()) {
+      throw new OauthUnlockProofError('invalid_challenge', 'Unlock challenge expired');
+    }
+    if (record.clientId !== params.clientId || record.redirectUri !== normalizedRedirectUri) {
+      throw new OauthUnlockProofError(
+        'invalid_challenge',
+        'Unlock challenge does not match client_id or redirect_uri'
+      );
+    }
+    if (!assertMlDsa65PublicKeyB64(params.publicKey)) {
+      throw new OauthUnlockProofError(
+        'invalid_public_key',
+        'public_key must be a base64-encoded ML-DSA-65 public key',
+        400
+      );
+    }
+
+    const scopeStr = params.scope.join(' ');
+    const ok = verifyOauthUnlockProof(
+      params.signature,
+      {
+        challenge: record.challenge,
+        clientId: params.clientId,
+        redirectUri: normalizedRedirectUri,
+        scope: scopeStr,
+        state: params.state,
+        nonce: params.nonce,
+        publicKey: params.publicKey,
+      },
+      params.publicKey
+    );
+    if (!ok) {
+      throw new OauthUnlockProofError(
+        'invalid_proof',
+        'Unlock proof signature verification failed'
+      );
+    }
+
+    const did = deriveDidFromPublicKey(params.publicKey);
+    const pnIdentifier = deriveCanonicalPnIdentifier(params.publicKey);
+    const code = this.generateAuthorizationCode({
+      clientId: params.clientId,
+      redirectUri: normalizedRedirectUri,
+      scope: params.scope,
+      state: params.state,
+      nonce: params.nonce,
+      did,
+      publicKey: params.publicKey,
+      pnIdentifier,
+    });
+    return { code, did, pnIdentifier, publicKey: params.publicKey };
+  }
+
+  /**
+   * Mint an authorization code for a request already authenticated by API key.
+   * Trust is the server-side API key binding, not a client-claimed identity.
+   */
+  static issueAuthorizationCodeForApiKey(params: {
+    clientId: string;
+    redirectUri: string;
+    scope: string[];
+    state?: string;
+    nonce?: string;
+    pnId: string;
+  }): string {
+    return this.generateAuthorizationCode({
+      clientId: params.clientId,
+      redirectUri: params.redirectUri,
+      scope: params.scope,
+      state: params.state,
+      nonce: params.nonce,
+      did: params.pnId,
+      pnIdentifier: params.pnId,
+    });
+  }
+
+  /**
+   * Internal mint after unlock proof or API-key binding.
+   * Call sites outside this module must use authenticateWithUnlockProof or
+   * issueAuthorizationCodeForApiKey — never trust client-claimed identity alone.
    */
   static generateAuthorizationCode(params: {
     clientId: string;
@@ -206,9 +360,8 @@ export class PNOAuthService {
     state?: string;
     nonce?: string;
     did: string;
-    publicKey?: string; // Public key from identity file (needed for file decryption)
-    pnIdentifier?: string; // pN identifier (derived client-side, never derived from secrets)
-    // SECURITY: pN name and passcode are NEVER accepted or stored - they're secrets
+    publicKey?: string;
+    pnIdentifier?: string;
   }): string {
     if (isPnRevokedForNetwork(params.pnIdentifier)) {
       const err = new Error('identity_superseded') as Error & { code: string };
@@ -241,9 +394,8 @@ export class PNOAuthService {
       state: params.state,
       nonce: params.nonce,
       did: params.did,
-      publicKey: params.publicKey, // Store public key for file decryption
-      pnIdentifier: params.pnIdentifier, // Store pN identifier directly (derived client-side)
-      // SECURITY: pN name and passcode are NEVER stored - they're secrets
+      publicKey: params.publicKey,
+      pnIdentifier: params.pnIdentifier,
       expiresAt: Date.now() + this.CODE_EXPIRY
     });
 

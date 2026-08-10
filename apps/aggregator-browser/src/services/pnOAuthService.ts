@@ -1,15 +1,18 @@
 /**
  * pN OAuth Client Service
  * Handles OAuth 2.0 authorization code flow for browser app
- * Similar to Google OAuth flow
- * 
+ *
  * SECURITY: pN name and passcode are NEVER sent to the server.
- * pN identifier is derived client-side using VolumeIdGenerator.
+ * Unlock proof is an ML-DSA-65 signature over a server challenge.
  */
 
 import { pushPnOAuthDebug } from '@par-noir/oauth-ui';
 import { buildBrowserAppOAuthUnlockUrl } from '@par-noir/oauth-ui';
-import { VolumeIdGenerator } from '../utils/volumeIdGenerator';
+import {
+  base64ToBytes,
+  deriveCanonicalPnIdentifier,
+  signOauthUnlockProof,
+} from '@par-noir/pqc-crypto';
 import { API_ENDPOINT } from '../config/api';
 import { PN_CLIENT_ID, getPnOAuthScopes } from '../config/oauthClient';
 
@@ -97,40 +100,64 @@ export class PNOAuthService {
   }
 
   /**
-   * Authenticate with pN identity file and passcode
-   * Returns authorization code
-   * 
-   * SECURITY: Derives pN identifier client-side and sends that instead of secrets.
-   * pN name and passcode are NEVER sent to the server.
+   * Authenticate with a local three-factor unlock: challenge → ML-DSA proof → code.
+   * Passcode/pn name stay on device; only the signature is sent.
    */
   static async authenticate(params: {
-    encryptedIdentity: any; // Encrypted pN identity file
-    passcode: string;
     publicKey: string;
-    did: string;
-    pnName?: string; // pN name (extracted from decrypted identity)
+    mlDsaSecretKeyB64: string;
     scope?: string[];
     state?: string;
     nonce?: string;
   }): Promise<{ code: string; state?: string }> {
     const scope = params.scope || getPnOAuthScopes();
+    const scopeStr = scope.join(' ');
     const state = params.state || sessionStorage.getItem('pn_oauth_state') || undefined;
     const nonce = params.nonce || sessionStorage.getItem('pn_oauth_nonce') || undefined;
+    const clientId = getClientId();
+    const redirectUri = REDIRECT_URI;
 
-    // SECURITY FIX: Derive pN identifier client-side using VolumeIdGenerator
-    // Never send pnName or passcode to the server
-    let pnIdentifier: string | undefined;
-    if (params.pnName && params.passcode && params.publicKey) {
-      try {
-        pnIdentifier = await VolumeIdGenerator.generateCanonicalVolumeId(params.publicKey);
-        pushPnOAuthDebug('oauth_derive_pn_id_ok', { ok: true });
-      } catch (error) {
-        pushPnOAuthDebug('oauth_derive_pn_id_fail', {
-          name: error instanceof Error ? error.name : 'unknown',
-        });
-        // Continue without pnIdentifier - server can derive it as fallback
-      }
+    try {
+      await deriveCanonicalPnIdentifier(params.publicKey);
+      pushPnOAuthDebug('oauth_derive_pn_id_ok', { ok: true });
+    } catch (error) {
+      pushPnOAuthDebug('oauth_derive_pn_id_fail', {
+        name: error instanceof Error ? error.name : 'unknown',
+      });
     }
+
+    const challengeResponse = await fetch(`${API_ENDPOINT}/oauth/authorize/challenge`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        client_id: clientId,
+        redirect_uri: redirectUri,
+      }),
+    });
+    if (!challengeResponse.ok) {
+      const error = await challengeResponse.json().catch(() => ({ error: 'Challenge failed' }));
+      throw new Error(error.error_description || error.error || 'OAuth unlock challenge failed');
+    }
+    const challengeBody = (await challengeResponse.json()) as {
+      challenge_id?: string;
+      challenge?: string;
+    };
+    if (!challengeBody.challenge_id || !challengeBody.challenge) {
+      throw new Error('OAuth unlock challenge response incomplete');
+    }
+
+    const signature = signOauthUnlockProof(
+      {
+        challenge: challengeBody.challenge,
+        clientId,
+        redirectUri,
+        scope: scopeStr,
+        state,
+        nonce,
+        publicKey: params.publicKey,
+      },
+      base64ToBytes(params.mlDsaSecretKeyB64)
+    );
 
     const response = await fetch(`${API_ENDPOINT}/oauth/authorize/authenticate`, {
       method: 'POST',
@@ -138,18 +165,14 @@ export class PNOAuthService {
         'Content-Type': 'application/json'
       },
       body: JSON.stringify({
-        client_id: getClientId(),
-        redirect_uri: REDIRECT_URI,
-        scope: scope.join(' '),
+        client_id: clientId,
+        redirect_uri: redirectUri,
+        scope: scopeStr,
         state,
         nonce,
-        encrypted_identity: params.encryptedIdentity,
-        passcode: params.passcode, // Still needed for server to decrypt identity and verify
+        challenge_id: challengeBody.challenge_id,
         public_key: params.publicKey,
-        did: params.did,
-        // SECURITY FIX: Send derived pN identifier instead of pN name
-        pn_identifier: pnIdentifier
-        // pnName is NOT sent - it's a secret
+        signature,
       })
     });
 
@@ -277,26 +300,17 @@ export class PNOAuthService {
   }
 
   /**
-   * Complete OAuth flow: authenticate and get tokens
-   * 
-   * SECURITY: Derives pN identifier client-side before sending to server.
-   * pN name and passcode are NEVER sent to the server.
+   * Complete OAuth flow: authenticate and get tokens.
+   * Requires ML-DSA secret from a local three-factor unlock (never sent to the server).
    */
   static async completeAuthFlow(params: {
-    encryptedIdentity: any;
-    passcode: string;
     publicKey: string;
-    did: string;
-    pnName?: string; // pN name (extracted from decrypted identity, if available)
+    mlDsaSecretKeyB64: string;
   }): Promise<AuthSession> {
     // Step 1: Authenticate and get authorization code
-    // pN identifier is derived client-side in authenticate()
     const { code } = await this.authenticate({
-      encryptedIdentity: params.encryptedIdentity,
-      passcode: params.passcode,
       publicKey: params.publicKey,
-      did: params.did,
-      pnName: params.pnName // Used client-side only to derive pN identifier
+      mlDsaSecretKeyB64: params.mlDsaSecretKeyB64,
     });
 
     // Step 2: Exchange code for tokens

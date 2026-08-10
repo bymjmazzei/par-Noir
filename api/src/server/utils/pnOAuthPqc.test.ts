@@ -1,13 +1,22 @@
 /**
  * @jest-environment node
  */
-// OAuth PQC: ML-DSA-65 public key length validation and authorize → token flow.
-import { ML_DSA_65_PUBLIC_KEY_LENGTH } from '../constants/mlDsaPublicKey';
-import { PNOAuthService } from '../modules/pnOAuthService';
-
-function fakeMlDsa65PublicKeyBase64(): string {
-  return Buffer.alloc(ML_DSA_65_PUBLIC_KEY_LENGTH, 0x42).toString('base64');
-}
+/**
+ * Gate tests: OAuth session mint requires ML-DSA unlock proof.
+ * Forged identity claims without a valid challenge signature MUST fail.
+ * Real unlock proof MUST still issue code → token.
+ */
+import { bytesToBase64 } from '@par-noir/pqc-crypto/encoding';
+import { mlDsa65Keygen } from '@par-noir/pqc-crypto/ml-dsa';
+import {
+  deriveCanonicalPnIdentifier,
+  deriveDidFromPublicKey,
+  signOauthUnlockProof,
+} from '@par-noir/pqc-crypto/oauth-unlock-proof';
+import {
+  OauthUnlockProofError,
+  PNOAuthService,
+} from '../modules/pnOAuthService';
 
 jest.mock('./database', () => {
   const query = jest.fn().mockResolvedValue({ rows: [] });
@@ -16,44 +25,161 @@ jest.mock('./database', () => {
   };
 });
 
-describe('PNOAuthService PQC public key (ML-DSA-65)', () => {
-  // The OAuth `public_key` is opaque to the API: it is stored for client-side file decryption
-  // and is not guaranteed to be an ML-DSA-65 key, so authorize must not enforce key length.
-  it('does not reject a public key whose decoded length is not 1952 bytes', () => {
-    const short = Buffer.from('not-an-ml-dsa-65-key').toString('base64');
-    expect(short.length).not.toBe(ML_DSA_65_PUBLIC_KEY_LENGTH);
+jest.mock('../modules/identitySuccessionService', () => ({
+  isPnRevokedForNetwork: () => false,
+  isDidRevokedForNetwork: () => false,
+}));
+
+describe('OAuth unlock proof gate', () => {
+  const clientId = 'browser-app';
+  const redirectUri = 'https://browse.parnoir.com/oauth-callback.html';
+  const scope = ['openid', 'profile'];
+
+  it('rejects forged authenticate without a valid unlock signature', () => {
+    const issued = PNOAuthService.createUnlockChallenge({ clientId, redirectUri });
+    const forged = mlDsa65Keygen();
+    const publicKey = bytesToBase64(forged.publicKey);
+
     expect(() =>
-      PNOAuthService.generateAuthorizationCode({
-        clientId: 'browser-app',
-        redirectUri: 'https://app/callback',
-        scope: ['scope'],
-        did: 'did:key:test',
-        publicKey: short,
+      PNOAuthService.authenticateWithUnlockProof({
+        clientId,
+        redirectUri,
+        scope,
+        state: 'st',
+        nonce: 'nn',
+        challengeId: issued.challengeId,
+        publicKey,
+        signature: Buffer.from('not-a-real-signature').toString('base64'),
       })
-    ).not.toThrow();
+    ).toThrow(OauthUnlockProofError);
   });
 
-  it('accepts ML-DSA-65 public key and completes authorize → token → validateAccessToken', async () => {
-    const pkB64 = fakeMlDsa65PublicKeyBase64();
-    const code = PNOAuthService.generateAuthorizationCode({
-      clientId: 'browser-app',
-      redirectUri: 'https://example.com/cb',
-      scope: ['read'],
-      did: 'did:key:pqtest',
-      publicKey: pkB64,
-      pnIdentifier: 'pn-abcdef123456',
+  it('rejects authenticate that reuses a consumed challenge', () => {
+    const dsa = mlDsa65Keygen();
+    const publicKey = bytesToBase64(dsa.publicKey);
+    const issued = PNOAuthService.createUnlockChallenge({ clientId, redirectUri });
+    const signature = signOauthUnlockProof(
+      {
+        challenge: issued.challenge,
+        clientId,
+        redirectUri,
+        scope: scope.join(' '),
+        state: 'st',
+        nonce: 'nn',
+        publicKey,
+      },
+      dsa.secretKey
+    );
+
+    const first = PNOAuthService.authenticateWithUnlockProof({
+      clientId,
+      redirectUri,
+      scope,
+      state: 'st',
+      nonce: 'nn',
+      challengeId: issued.challengeId,
+      publicKey,
+      signature,
     });
+    expect(first.code).toBeTruthy();
+
+    expect(() =>
+      PNOAuthService.authenticateWithUnlockProof({
+        clientId,
+        redirectUri,
+        scope,
+        state: 'st',
+        nonce: 'nn',
+        challengeId: issued.challengeId,
+        publicKey,
+        signature,
+      })
+    ).toThrow(OauthUnlockProofError);
+  });
+
+  it('rejects signature from a different key than public_key', () => {
+    const owner = mlDsa65Keygen();
+    const attacker = mlDsa65Keygen();
+    const publicKey = bytesToBase64(owner.publicKey);
+    const issued = PNOAuthService.createUnlockChallenge({ clientId, redirectUri });
+    const signature = signOauthUnlockProof(
+      {
+        challenge: issued.challenge,
+        clientId,
+        redirectUri,
+        scope: scope.join(' '),
+        publicKey,
+      },
+      attacker.secretKey
+    );
+
+    expect(() =>
+      PNOAuthService.authenticateWithUnlockProof({
+        clientId,
+        redirectUri,
+        scope,
+        challengeId: issued.challengeId,
+        publicKey,
+        signature,
+      })
+    ).toThrow(OauthUnlockProofError);
+  });
+
+  it('real unlock proof issues code → token with derived did/pnIdentifier', async () => {
+    const dsa = mlDsa65Keygen();
+    const publicKey = bytesToBase64(dsa.publicKey);
+    const expectedDid = deriveDidFromPublicKey(publicKey);
+    const expectedPn = deriveCanonicalPnIdentifier(publicKey);
+
+    const issued = PNOAuthService.createUnlockChallenge({ clientId, redirectUri });
+    const signature = signOauthUnlockProof(
+      {
+        challenge: issued.challenge,
+        clientId,
+        redirectUri,
+        scope: scope.join(' '),
+        state: 'good',
+        nonce: 'nonce1',
+        publicKey,
+      },
+      dsa.secretKey
+    );
+
+    const auth = PNOAuthService.authenticateWithUnlockProof({
+      clientId,
+      redirectUri,
+      scope,
+      state: 'good',
+      nonce: 'nonce1',
+      challengeId: issued.challengeId,
+      publicKey,
+      signature,
+    });
+
+    expect(auth.did).toBe(expectedDid);
+    expect(auth.pnIdentifier).toBe(expectedPn);
+    expect(auth.code).toMatch(/^[a-f0-9]{64}$/);
 
     const tokenResponse = await PNOAuthService.exchangeCodeForToken({
-      code,
-      clientId: 'browser-app',
-      redirectUri: 'https://example.com/cb',
+      code: auth.code,
+      clientId,
+      redirectUri,
     });
-
     expect(tokenResponse).not.toBeNull();
-    expect(tokenResponse?.access_token).toBeDefined();
-    const payload = PNOAuthService.validateAccessToken(tokenResponse!.access_token);
-    expect(payload?.did).toBe('did:key:pqtest');
-    expect(payload?.clientId).toBe('browser-app');
+    expect(tokenResponse!.access_token).toBeTruthy();
+
+    const payload = await PNOAuthService.validateAccessToken(tokenResponse!.access_token);
+    expect(payload?.did).toBe(expectedDid);
+    expect(payload?.pnIdentifier).toBe(expectedPn);
+  });
+
+  it('API-key mint path still issues a code without calling generateAuthorizationCode from outside', () => {
+    const code = PNOAuthService.issueAuthorizationCodeForApiKey({
+      clientId: 'integrator',
+      redirectUri: 'https://example.com/cb',
+      scope: ['openid'],
+      pnId: 'pn-abcdef123456',
+    });
+    expect(code).toMatch(/^[a-f0-9]{64}$/);
   });
 });

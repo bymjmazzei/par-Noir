@@ -4,7 +4,10 @@
     "module": "commonjs",
     "baseUrl": ".",
     "paths": {
-      "@par-noir/user-owned-storage/sqlite": ["../packages/user-owned-storage/dist/sqlite"]
+      "@par-noir/user-owned-storage/sqlite": ["../packages/user-owned-storage/dist/sqlite"],
+      "@par-noir/pqc-crypto/oauth-unlock-proof": ["../packages/pqc-crypto/dist/oauthUnlockProof"],
+      "@par-noir/pqc-crypto/encoding": ["../packages/pqc-crypto/dist/encoding"],
+      "@par-noir/pqc-crypto/ml-dsa": ["../packages/pqc-crypto/dist/mlDsa"]
     },
     "lib": ["ES2020"],
     "outDir": "./dist",

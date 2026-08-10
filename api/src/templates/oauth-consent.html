@@ -583,6 +583,7 @@
   </div>
 
   <script src="/oauth-assets/oauth-physical-unlock.js"></script>
+  <script src="/oauth-assets/oauth-unlock-proof.js"></script>
   <script>
     // Get OAuth parameters from URL
     const urlParams = new URLSearchParams(window.location.search);
@@ -1057,11 +1058,9 @@
       }
     });
     
-    async function derivePnIdentifierFromUnlock(pnName, passcode, publicKey) {
-      const combined = `${pnName}:${passcode}:${publicKey}`;
+    async function derivePnIdentifierFromUnlock(publicKey) {
       const encoder = new TextEncoder();
-      const data = encoder.encode(combined);
-      const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+      const hashBuffer = await crypto.subtle.digest('SHA-256', encoder.encode(publicKey));
       const hashArray = Array.from(new Uint8Array(hashBuffer));
       const hexHash = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
       return `pn-${hexHash.substring(0, 12)}`;
@@ -1102,7 +1101,49 @@
           'This pN identity does not include messaging encryption keys. Create or update your identity at pn.parnoir.com, then try again.'
         );
       }
-      pnIdentifier = await derivePnIdentifierFromUnlock(pnName, passcode, publicKey);
+      if (!window.ParNoirOauthUnlockProof) {
+        throw new Error('OAuth unlock proof script failed to load');
+      }
+      const mlDsaSecretKeyB64 = ParNoirOauthUnlockProof.extractMlDsaSecretKeyB64(decryptedIdentity);
+      if (!mlDsaSecretKeyB64) {
+        throw new Error(
+          'This pN identity does not include ML-DSA signing keys. Create or update your identity at pn.parnoir.com, then try again.'
+        );
+      }
+      // pnName/passcode used only for local decrypt above; never sent on the wire.
+      void pnName;
+      void passcode;
+
+      pnIdentifier = await derivePnIdentifierFromUnlock(publicKey);
+
+      const challengeResponse = await fetch(`${apiEndpoint}/oauth/authorize/challenge`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          client_id: clientId,
+          redirect_uri: redirectUri
+        })
+      });
+      if (!challengeResponse.ok) {
+        const error = await challengeResponse.json().catch(() => ({ error: 'Challenge failed' }));
+        throw new Error(error.error_description || error.error || 'OAuth unlock challenge failed');
+      }
+      const challengeBody = await challengeResponse.json();
+      if (!challengeBody.challenge_id || !challengeBody.challenge) {
+        throw new Error('OAuth unlock challenge response incomplete');
+      }
+
+      const signature = ParNoirOauthUnlockProof.sign({
+        challenge: challengeBody.challenge,
+        clientId: clientId,
+        redirectUri: redirectUri,
+        scope: scope,
+        state: state,
+        nonce: nonce,
+        publicKey: publicKey,
+        mlDsaSecretKeyB64: mlDsaSecretKeyB64
+      });
+
       const authResponse = await fetch(`${apiEndpoint}/oauth/authorize/authenticate`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -1112,12 +1153,9 @@
           scope: scope,
           state: state,
           nonce: nonce,
-          encrypted_identity: encryptedIdentity,
-          passcode: passcode,
+          challenge_id: challengeBody.challenge_id,
           public_key: publicKey,
-          did: did,
-          pn_name: pnName,
-          pn_identifier: pnIdentifier
+          signature: signature
         })
       });
       
