@@ -814,7 +814,7 @@
       if (state) q.set('state', state);
       if (nonce) q.set('nonce', nonce);
       if (popupFlow) q.set('popup', 'true');
-      window.location.replace(api + '/oauth/authorize/consent?' + q.toString());
+      window.location.replace(api + '/oauth/consent?' + q.toString());
     }
     
     // Unlock form handler

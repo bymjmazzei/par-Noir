@@ -61,7 +61,7 @@ function generateRandomHex(bytes: number): string {
 }
 
 /**
- * Build authorize URL to API /oauth/authorize/consent (redirects to /oauth/consent).
+ * Build URL to the single OAuth unlock surface: API /oauth/consent.
  */
 export function buildOAuthConsentUrl(config: OAuthConsentUrlConfig): string {
   const state = config.state ?? generateRandomHex(16);
@@ -85,7 +85,7 @@ export function buildOAuthConsentUrl(config: OAuthConsentUrlConfig): string {
   }
 
   const base = config.apiEndpoint.replace(/\/$/, '');
-  return `${base}/oauth/authorize/consent?${params.toString()}`;
+  return `${base}/oauth/consent?${params.toString()}`;
 }
 
 /** browser-app / messaging: same-origin unlock page (not API consent). */

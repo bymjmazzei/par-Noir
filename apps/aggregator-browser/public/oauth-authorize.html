@@ -28,7 +28,7 @@
       if (params.get('nonce')) q.set('nonce', params.get('nonce'));
       if (params.get('popup') === 'true') q.set('popup', 'true');
       if (params.get('identity_handoff') === 'required') q.set('identity_handoff', 'required');
-      var url = api + '/oauth/authorize/consent?' + q.toString();
+      var url = api + '/oauth/consent?' + q.toString();
       document.getElementById('link').href = url;
       document.getElementById('fallback').style.display = 'block';
       window.location.replace(url);
