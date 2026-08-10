@@ -1,11 +1,11 @@
 import { API_ENDPOINT } from '../config/api';
 import { retry } from '../utils/helpers';
 import { IdentityCrypto } from '@par-noir/identity-crypto';
+import { base64ToBytes } from '@par-noir/pqc-crypto/encoding';
 import {
-  base64ToBytes,
   deriveCanonicalPnIdentifier,
   signOauthUnlockProof,
-} from '@par-noir/pqc-crypto';
+} from '@par-noir/pqc-crypto/oauth-unlock-proof';
 
 const PN_CLIENT_ID = import.meta.env.VITE_PN_CLIENT_ID || 'browser-app';
 const STORAGE_KEY = 'pn_api_token';

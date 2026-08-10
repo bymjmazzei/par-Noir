@@ -8,11 +8,11 @@
 
 import { pushPnOAuthDebug } from '@par-noir/oauth-ui';
 import { buildBrowserAppOAuthUnlockUrl } from '@par-noir/oauth-ui';
+import { base64ToBytes } from '@par-noir/pqc-crypto/encoding';
 import {
-  base64ToBytes,
   deriveCanonicalPnIdentifier,
   signOauthUnlockProof,
-} from '@par-noir/pqc-crypto';
+} from '@par-noir/pqc-crypto/oauth-unlock-proof';
 import { API_ENDPOINT } from '../config/api';
 import { PN_CLIENT_ID, getPnOAuthScopes } from '../config/oauthClient';
 

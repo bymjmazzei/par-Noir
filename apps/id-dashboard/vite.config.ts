@@ -26,6 +26,7 @@ export default defineConfig(({ mode }) => ({
       '@par-noir/aggregator-domain': resolve(__dirname, '../../packages/aggregator-domain/src/index.ts'),
       // pqc-crypto dist is CJS; Vite/Rollup cannot resolve named exports from workspace CJS builds
       // Subpath aliases must be listed before the package root alias.
+      '@par-noir/pqc-crypto/oauth-unlock-proof': resolve(__dirname, '../../packages/pqc-crypto/src/oauthUnlockProof.ts'),
       '@par-noir/pqc-crypto/encoding': resolve(__dirname, '../../packages/pqc-crypto/src/encoding.ts'),
       '@par-noir/pqc-crypto/ml-dsa': resolve(__dirname, '../../packages/pqc-crypto/src/mlDsa.ts'),
       '@par-noir/pqc-crypto/constants': resolve(__dirname, '../../packages/pqc-crypto/src/constants.ts'),
