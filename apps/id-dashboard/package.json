@@ -16,7 +16,6 @@
   "exports": {
     "./package.json": "./package.json",
     "./App": "./src/App.tsx",
-    "./OAuthHandler": "./src/components/OAuthHandler.tsx",
     "./FileStorageAggregator": "./src/components/storage/FileStorageAggregator.tsx",
     "./index.css": "./src/index.css"
   },
@@ -33,7 +32,7 @@
     "type-check": "tsc --noEmit",
     "postinstall": "echo 'Dependencies installed successfully'",
     "deploy:build": "npm run build && echo 'Build complete. Ready for deployment.'",
-    "deploy:firebase": "npm run build && firebase deploy --only hosting",
+    "deploy:firebase": "cd ../.. && ./deploy.sh",
     "lighthouse": "node scripts/lighthouse-audit.js",
     "audit": "npm run build && npm run lighthouse",
     "test": "jest",

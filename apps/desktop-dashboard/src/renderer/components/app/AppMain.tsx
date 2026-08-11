@@ -1,7 +1,6 @@
 import React from 'react';
 
 import App from 'par-noir-dashboard/App';
-import { OAuthHandler } from 'par-noir-dashboard/OAuthHandler';
 
 import 'par-noir-dashboard/index.css';
 
@@ -32,12 +31,7 @@ export const AppMain: React.FC = () => {
     };
   }, []);
 
-  return (
-    <>
-      <App />
-      <OAuthHandler />
-    </>
-  );
+  return <App />;
 };
 
 export default AppMain;

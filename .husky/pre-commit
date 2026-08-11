@@ -41,6 +41,10 @@ if [ -f scripts/check-no-passcode-on-oauth-wire.sh ]; then
   bash scripts/check-no-passcode-on-oauth-wire.sh || { echo "❌ check-no-passcode-on-oauth-wire: passcode must not be sent to /oauth/authorize/authenticate."; exit 1; }
 fi
 
+if [ -f scripts/check-postmessage-origin-boundary.sh ]; then
+  bash scripts/check-postmessage-origin-boundary.sh || { echo "❌ check-postmessage-origin-boundary: postMessage(..., '*') is forbidden; restrict targetOrigin."; exit 1; }
+fi
+
 echo "🔒 Running security audit before commit..."
 
 # Run security audit

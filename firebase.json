@@ -7,7 +7,19 @@
       "rewrites": [{"source": "**", "destination": "/index.html"}],
       "headers": [
         {"source": "**/*.@(js|css)", "headers": [{"key": "Cache-Control", "value": "max-age=31536000"}]},
-        {"source": "**/*.@(jpg|jpeg|gif|png|svg|webp|ico)", "headers": [{"key": "Cache-Control", "value": "max-age=31536000"}]}
+        {"source": "**/*.@(jpg|jpeg|gif|png|svg|webp|ico)", "headers": [{"key": "Cache-Control", "value": "max-age=31536000"}]},
+        {
+          "source": "**",
+          "headers": [
+            {"key": "Strict-Transport-Security", "value": "max-age=31536000; includeSubDomains; preload"},
+            {"key": "X-Content-Type-Options", "value": "nosniff"},
+            {"key": "Referrer-Policy", "value": "strict-origin-when-cross-origin"},
+            {"key": "Permissions-Policy", "value": "camera=(), microphone=(), geolocation=(), payment=()"},
+            {"key": "Cross-Origin-Opener-Policy", "value": "same-origin-allow-popups"},
+            {"key": "Cross-Origin-Resource-Policy", "value": "same-site"},
+            {"key": "Content-Security-Policy", "value": "frame-ancestors 'self'; object-src 'none'; base-uri 'self'"}
+          ]
+        }
       ]
     },
     {
@@ -21,10 +33,13 @@
         {
           "source": "**",
           "headers": [
-            {
-              "key": "Content-Security-Policy",
-              "value": "frame-ancestors 'self' https://parnoir.com https://www.parnoir.com"
-            }
+            {"key": "Strict-Transport-Security", "value": "max-age=31536000; includeSubDomains; preload"},
+            {"key": "X-Content-Type-Options", "value": "nosniff"},
+            {"key": "Referrer-Policy", "value": "strict-origin-when-cross-origin"},
+            {"key": "Permissions-Policy", "value": "camera=(), microphone=(), geolocation=(), payment=()"},
+            {"key": "Cross-Origin-Opener-Policy", "value": "same-origin-allow-popups"},
+            {"key": "Cross-Origin-Resource-Policy", "value": "same-site"},
+            {"key": "Content-Security-Policy", "value": "frame-ancestors 'self' https://parnoir.com https://www.parnoir.com; object-src 'none'; base-uri 'self'"}
           ]
         }
       ]
@@ -36,7 +51,19 @@
       "rewrites": [{"source": "**", "destination": "/index.html"}],
       "headers": [
         {"source": "**/*.@(js|css)", "headers": [{"key": "Cache-Control", "value": "max-age=31536000"}]},
-        {"source": "**/*.@(jpg|jpeg|gif|png|svg|webp|ico)", "headers": [{"key": "Cache-Control", "value": "max-age=31536000"}]}
+        {"source": "**/*.@(jpg|jpeg|gif|png|svg|webp|ico)", "headers": [{"key": "Cache-Control", "value": "max-age=31536000"}]},
+        {
+          "source": "**",
+          "headers": [
+            {"key": "Strict-Transport-Security", "value": "max-age=31536000; includeSubDomains; preload"},
+            {"key": "X-Content-Type-Options", "value": "nosniff"},
+            {"key": "Referrer-Policy", "value": "strict-origin-when-cross-origin"},
+            {"key": "Permissions-Policy", "value": "camera=(), microphone=(), geolocation=(), payment=()"},
+            {"key": "Cross-Origin-Opener-Policy", "value": "same-origin-allow-popups"},
+            {"key": "Cross-Origin-Resource-Policy", "value": "same-site"},
+            {"key": "Content-Security-Policy", "value": "frame-ancestors 'self'; object-src 'none'; base-uri 'self'"}
+          ]
+        }
       ]
     },
     {
@@ -46,7 +73,19 @@
       "rewrites": [{"source": "**", "destination": "/index.html"}],
       "headers": [
         {"source": "**/*.@(js|css)", "headers": [{"key": "Cache-Control", "value": "max-age=31536000"}]},
-        {"source": "**/*.@(jpg|jpeg|gif|png|svg|webp|ico)", "headers": [{"key": "Cache-Control", "value": "max-age=31536000"}]}
+        {"source": "**/*.@(jpg|jpeg|gif|png|svg|webp|ico)", "headers": [{"key": "Cache-Control", "value": "max-age=31536000"}]},
+        {
+          "source": "**",
+          "headers": [
+            {"key": "Strict-Transport-Security", "value": "max-age=31536000; includeSubDomains; preload"},
+            {"key": "X-Content-Type-Options", "value": "nosniff"},
+            {"key": "Referrer-Policy", "value": "strict-origin-when-cross-origin"},
+            {"key": "Permissions-Policy", "value": "camera=(), microphone=(), geolocation=(), payment=()"},
+            {"key": "Cross-Origin-Opener-Policy", "value": "same-origin-allow-popups"},
+            {"key": "Cross-Origin-Resource-Policy", "value": "same-site"},
+            {"key": "Content-Security-Policy", "value": "frame-ancestors 'self'; object-src 'none'; base-uri 'self'"}
+          ]
+        }
       ]
     },
     {
@@ -56,7 +95,19 @@
       "rewrites": [{"source": "**", "destination": "/index.html"}],
       "headers": [
         {"source": "**/*.@(js|css)", "headers": [{"key": "Cache-Control", "value": "max-age=31536000"}]},
-        {"source": "**/*.@(jpg|jpeg|gif|png|svg|webp|ico)", "headers": [{"key": "Cache-Control", "value": "max-age=31536000"}]}
+        {"source": "**/*.@(jpg|jpeg|gif|png|svg|webp|ico)", "headers": [{"key": "Cache-Control", "value": "max-age=31536000"}]},
+        {
+          "source": "**",
+          "headers": [
+            {"key": "Strict-Transport-Security", "value": "max-age=31536000; includeSubDomains; preload"},
+            {"key": "X-Content-Type-Options", "value": "nosniff"},
+            {"key": "Referrer-Policy", "value": "strict-origin-when-cross-origin"},
+            {"key": "Permissions-Policy", "value": "camera=(), microphone=(), geolocation=(), payment=()"},
+            {"key": "Cross-Origin-Opener-Policy", "value": "same-origin-allow-popups"},
+            {"key": "Cross-Origin-Resource-Policy", "value": "same-site"},
+            {"key": "Content-Security-Policy", "value": "frame-ancestors 'self'; object-src 'none'; base-uri 'self'"}
+          ]
+        }
       ]
     },
     {
@@ -66,7 +117,19 @@
       "rewrites": [{"source": "**", "destination": "/index.html"}],
       "headers": [
         {"source": "**/*.@(js|css)", "headers": [{"key": "Cache-Control", "value": "max-age=31536000"}]},
-        {"source": "**/*.@(jpg|jpeg|gif|png|svg|webp|ico)", "headers": [{"key": "Cache-Control", "value": "max-age=31536000"}]}
+        {"source": "**/*.@(jpg|jpeg|gif|png|svg|webp|ico)", "headers": [{"key": "Cache-Control", "value": "max-age=31536000"}]},
+        {
+          "source": "**",
+          "headers": [
+            {"key": "Strict-Transport-Security", "value": "max-age=31536000; includeSubDomains; preload"},
+            {"key": "X-Content-Type-Options", "value": "nosniff"},
+            {"key": "Referrer-Policy", "value": "strict-origin-when-cross-origin"},
+            {"key": "Permissions-Policy", "value": "camera=(), microphone=(), geolocation=(), payment=()"},
+            {"key": "Cross-Origin-Opener-Policy", "value": "same-origin-allow-popups"},
+            {"key": "Cross-Origin-Resource-Policy", "value": "same-site"},
+            {"key": "Content-Security-Policy", "value": "frame-ancestors 'self'; object-src 'none'; base-uri 'self'"}
+          ]
+        }
       ]
     }
   ]

@@ -26,15 +26,6 @@
               "value": "text/css"
             }
           ]
-        },
-        {
-          "source": "**",
-          "headers": [
-            {
-              "key": "X-Frame-Options",
-              "value": "SAMEORIGIN"
-            }
-          ]
         }
       ],
       "rewrites": [
@@ -72,15 +63,6 @@
             {
               "key": "Content-Type",
               "value": "text/css"
-            }
-          ]
-        },
-        {
-          "source": "**",
-          "headers": [
-            {
-              "key": "X-Frame-Options",
-              "value": "SAMEORIGIN"
             }
           ]
         }
