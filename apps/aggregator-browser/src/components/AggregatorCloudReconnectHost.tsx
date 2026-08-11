@@ -272,6 +272,9 @@ export const AggregatorCloudReconnectHost: React.FC = () => {
           pnIdentifier,
           apiEndpoint: API_ENDPOINT
         });
+        // Manual reconnect also gets a Drive token; flush any held consent choice.
+        const { flushPendingGrant } = await import('../services/pendingGrantPersist');
+        await flushPendingGrant({ authToken, pnIdentifier });
       }
       void retryPublishMlKemPublicKey();
     },

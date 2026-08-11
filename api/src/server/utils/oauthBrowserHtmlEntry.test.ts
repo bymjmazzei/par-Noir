@@ -1,9 +1,13 @@
 import type express from 'express';
-import { isOAuthBrowserHtmlEntryGet } from './oauthBrowserHtmlEntry';
+import { isOAuthBrowserHtmlEntryGet, isOAuthConsentSameOriginGet } from './oauthBrowserHtmlEntry';
 
-function mockReq(method: string, pathOrUrl: string): express.Request {
+function mockReq(
+  method: string,
+  pathOrUrl: string,
+  headers: Record<string, string> = {}
+): express.Request {
   const path = pathOrUrl.split('?')[0];
-  return { method, path, url: pathOrUrl } as express.Request;
+  return { method, path, url: pathOrUrl, headers } as express.Request;
 }
 
 describe('isOAuthBrowserHtmlEntryGet', () => {
@@ -18,7 +22,10 @@ describe('isOAuthBrowserHtmlEntryGet', () => {
     expect(isOAuthBrowserHtmlEntryGet(mockReq('GET', '/oauth/popup-bridge'))).toBe(true);
     expect(
       isOAuthBrowserHtmlEntryGet(
-        mockReq('GET', '/oauth/popup-bridge?code=abc&state=def&redirect_uri=https%3A%2F%2Fpn.parnoir.com%2Foauth-callback.html&client_id=browser-app')
+        mockReq(
+          'GET',
+          '/oauth/popup-bridge?code=abc&state=def&redirect_uri=https%3A%2F%2Fpn.parnoir.com%2Foauth-callback.html&client_id=browser-app'
+        )
       )
     ).toBe(true);
   });
@@ -30,5 +37,44 @@ describe('isOAuthBrowserHtmlEntryGet', () => {
   it('rejects unrelated paths', () => {
     expect(isOAuthBrowserHtmlEntryGet(mockReq('GET', '/oauth/token'))).toBe(false);
     expect(isOAuthBrowserHtmlEntryGet(mockReq('GET', '/api/profile/foo'))).toBe(false);
+  });
+});
+
+describe('isOAuthConsentSameOriginGet', () => {
+  it('allows same-origin GET grant poll and catalog', () => {
+    expect(
+      isOAuthConsentSameOriginGet(
+        mockReq('GET', '/oauth/existing-grant?pnIdentifier=pn-x&client_id=browser-app', {
+          'sec-fetch-site': 'same-origin',
+        })
+      )
+    ).toBe(true);
+    expect(
+      isOAuthConsentSameOriginGet(
+        mockReq('GET', '/api/v1/standard-data-points', { 'sec-fetch-site': 'same-origin' })
+      )
+    ).toBe(true);
+  });
+
+  it('rejects cross-site or missing Sec-Fetch-Site', () => {
+    expect(isOAuthConsentSameOriginGet(mockReq('GET', '/oauth/existing-grant'))).toBe(false);
+    expect(
+      isOAuthConsentSameOriginGet(
+        mockReq('GET', '/oauth/existing-grant', { 'sec-fetch-site': 'cross-site' })
+      )
+    ).toBe(false);
+  });
+
+  it('rejects POST and unrelated paths', () => {
+    expect(
+      isOAuthConsentSameOriginGet(
+        mockReq('POST', '/oauth/existing-grant', { 'sec-fetch-site': 'same-origin' })
+      )
+    ).toBe(false);
+    expect(
+      isOAuthConsentSameOriginGet(
+        mockReq('GET', '/oauth/token', { 'sec-fetch-site': 'same-origin' })
+      )
+    ).toBe(false);
   });
 });

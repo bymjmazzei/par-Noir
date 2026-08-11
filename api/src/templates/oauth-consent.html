@@ -647,6 +647,17 @@
     let dataPointCatalog = {};
     /** Minimum proof level per data point, from the client's static contract. */
     let dataPointLevels = {};
+    /**
+     * From authenticate: null = could not read held proofs; object maps id →
+     * { available, reason? }. Only available===true gets a Share control.
+     */
+    let availableDataPoints = null;
+
+    function isDataPointOfferable(id) {
+      if (!availableDataPoints || typeof availableDataPoints !== 'object') return false;
+      var entry = availableDataPoints[id];
+      return !!(entry && entry.available === true);
+    }
 
     async function loadDataPointCatalog() {
       if (requestedDataPoints.length === 0) return;
@@ -694,6 +705,30 @@
 
         const desc = document.createElement('div');
         desc.className = 'permission-desc';
+
+        const offerable = isDataPointOfferable(id);
+        if (!offerable) {
+          var reason =
+            availableDataPoints &&
+            availableDataPoints[id] &&
+            availableDataPoints[id].reason
+              ? String(availableDataPoints[id].reason)
+              : null;
+          desc.textContent =
+            reason === 'below_level'
+              ? 'You do not hold this proof at the required verification level.'
+              : reason === 'expired'
+                ? 'Your proof for this data point has expired.'
+                : availableDataPoints == null
+                  ? 'This proof is not available to share right now (cloud storage not readable during unlock).'
+                  : 'You do not have this proof set up, so it cannot be shared.';
+          text.appendChild(title);
+          text.appendChild(desc);
+          row.appendChild(text);
+          container.appendChild(row);
+          return;
+        }
+
         desc.textContent = meta.description || 'Share this proof with ' + clientId;
 
         text.appendChild(title);
@@ -793,7 +828,9 @@
           type: 'oauth_callback',
           code: codeValue,
           state: state || undefined,
-          granted_data_points: grantedValue || undefined,
+          // Always send a string (including "") so "shared nothing" is not dropped
+          // by `|| undefined` and the parent can setPendingGrant([]).
+          granted_data_points: typeof grantedValue === 'string' ? grantedValue : undefined,
           timestamp: Date.now(),
           messagingHandoff: handoff || undefined
         };
@@ -1276,6 +1313,8 @@
       }
 
       dataPointLevels = authResult.dataPointLevels || {};
+      availableDataPoints =
+        authResult.availableDataPoints === undefined ? null : authResult.availableDataPoints;
       await loadDataPointCatalog();
       renderDataPointRows();
       

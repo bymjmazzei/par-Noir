@@ -19,7 +19,7 @@ import rateLimit from 'express-rate-limit';
 import { createServer } from 'http';
 import { Server as SocketIOServer } from 'socket.io';
 import path from 'path';
-import { isOAuthBrowserHtmlEntryGet } from './server/utils/oauthBrowserHtmlEntry';
+import { isOAuthBrowserHtmlEntryGet, isOAuthConsentSameOriginGet } from './server/utils/oauthBrowserHtmlEntry';
 import { captureApiRouteError, initApiSentry } from './server/utils/sentry';
 import { generateChallenge } from './server/utils/identifierGenerators';
 import { registerAdminDeveloperRoutes, requireAdminApiKey } from './server/modules/adminDeveloperRoutes';
@@ -445,9 +445,15 @@ class ProductionServer {
       const path = req.path || req.url?.split('?')[0] || '';
       const isPublicPath = isPublicNoOriginPath(path);
 
-      // SECURITY FIX: In production, block no-origin requests except for public endpoints
-      // and OAuth consent HTML entry (top-level navigation from allowed first-party sites).
-      if (!origin && NODE_ENV === 'production' && !isPublicPath && !isOAuthBrowserHtmlEntryGet(req)) {
+      // SECURITY FIX: In production, block no-origin requests except for public endpoints,
+      // OAuth consent HTML entry, and consent same-origin GETs (grant poll / catalog).
+      if (
+        !origin &&
+        NODE_ENV === 'production' &&
+        !isPublicPath &&
+        !isOAuthBrowserHtmlEntryGet(req) &&
+        !isOAuthConsentSameOriginGet(req)
+      ) {
         console.error(`[CORS] Blocked no-origin request to ${path} in production`);
         res.status(403).json({ error: 'Origin header required in production' });
         return;
@@ -459,6 +465,7 @@ class ProductionServer {
 
     this.app.use((req, res, next) => {
       const allowNoOriginOAuthHtml = isOAuthBrowserHtmlEntryGet(req);
+      const allowNoOriginConsentXhr = isOAuthConsentSameOriginGet(req);
       const pathForCors = req.path || req.url?.split('?')[0] || '';
 
       return cors({
@@ -469,6 +476,9 @@ class ProductionServer {
               return callback(null, true);
             }
             if (allowNoOriginOAuthHtml) {
+              return callback(null, true);
+            }
+            if (allowNoOriginConsentXhr) {
               return callback(null, true);
             }
             if (isPublicNoOriginPath(pathForCors)) {

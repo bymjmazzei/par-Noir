@@ -249,11 +249,23 @@ export function useAuthAndSession({
           // The exchange above runs before the cloud vault is hydrated, so under
           // device cloud custody the server cannot write the grant yet. Hold the
           // choice until a Drive token exists, or the next unlock re-prompts.
-          if (grantedDataPoints) {
+          // typeof === 'string' (including "") means consent completed; absent means skipped.
+          const consentCompleted = typeof data.granted_data_points === 'string';
+          if (consentCompleted) {
             const { setPendingGrant } = await import('../services/pendingGrantPersist');
-            setPendingGrant(grantedDataPoints);
+            setPendingGrant(grantedDataPoints ?? []);
           }
           const userInfo = await PNOAuthService.getUserInfo(tokenResponse.access_token);
+
+          // Close the race: vault hydrate may have flushed while pending was still null.
+          // Attempt persist now that the choice is queued; vault effect still retries later.
+          if (consentCompleted && userInfo.pn_identifier) {
+            const { flushPendingGrant } = await import('../services/pendingGrantPersist');
+            await flushPendingGrant({
+              authToken: tokenResponse.access_token,
+              pnIdentifier: userInfo.pn_identifier,
+            });
+          }
 
           if (!isDmIdentityReady()) {
             await waitForAndApplyMessagingHandoff(20_000);
