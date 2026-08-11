@@ -89,6 +89,7 @@ Add these environment variables to your Railway project:
 
 **Required:**
 - `DATABASE_URL` - Automatically provided by Railway PostgreSQL service
+- `MAILBOX_ROUTE_PEPPER` - High-entropy secret for opaque mailbox owner hashing (API throws if unset; no soft default)
 
 **Optional (for Google Drive sync):**
 - `GOOGLE_SERVICE_ACCOUNT_KEY` - JSON key from Google Cloud Console (see Step 2.5)
