@@ -23,10 +23,3 @@ export type {
   IdentityCreationResult,
   VolumeIdParams,
 } from '@par-noir/identity-crypto';
-
-// Legacy modular managers still local to the dashboard
-export { DIDManager } from './didManager';
-export { RecoveryKeyManager } from './recoveryKeyManager';
-export { PasscodeManager } from './passcodeManager';
-export { TokenManager } from './tokenManager';
-export { IdentityManager } from './identityManager';

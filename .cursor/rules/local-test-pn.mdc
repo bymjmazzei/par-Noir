@@ -7,10 +7,11 @@ alwaysApply: true
 
 When diagnosing or verifying identity unlock, OAuth consent, browse unlock, messaging handoff, or dashboard auth:
 
-1. **Use the fixture at** `.local/test-pn/` (gitignored via `.local/`).
+1. **Prefer hermetic package/API tests first** (ephemeral create→unlock→unlock-proof in `packages/identity-crypto` / `pnOAuthPqc.test.ts`). Use those in CI; do not rely on live-site `e2e-create-unlock.mjs` as a gate.
+2. **For manual/local product QA**, use the fixture at `.local/test-pn/` (gitignored via `.local/`).
    - Identity file: `.local/test-pn/identity.pn`
    - Credentials: `.local/test-pn/keys.env` (`PN_NAME` = Key 1, `PASSCODE` = Key 2)
-2. **Do not** ask the user to re-supply this test pN if those files exist.
-3. **Do not** commit `.local/`, log Key 1/Key 2 / passcode / pn name, or paste secrets into git, PRs, or plan files.
-4. **Before telling the user to manually retest**, run an automated check with this fixture when possible (decrypt locally, ML-DSA unlock proof against API, messaging handoff readiness).
-5. If `.local/test-pn/` is missing, ask once for the test identity + keys and write them back under `.local/test-pn/` immediately.
+3. **Do not** ask the user to re-supply this test pN if those files exist.
+4. **Do not** commit `.local/`, log Key 1/Key 2 / passcode / pn name, or paste secrets into git, PRs, or plan files.
+5. **Before telling the user to manually retest**, run an automated check when possible (hermetic package test, or decrypt `.local/test-pn` + ML-DSA unlock proof against API).
+6. If `.local/test-pn/` is missing and a local product check needs it, ask once for the test identity + keys and write them back under `.local/test-pn/` immediately.

@@ -3,6 +3,15 @@
 
 echo "🚀 Starting deployment..."
 
+# Optional API env preflight when operator has production secrets loaded.
+# Not run by default — hosting deploy does not require MAILBOX_ROUTE_PEPPER / PN_OAUTH_*.
+# Example: PN_STRICT_GUARDRAILS=1 PN_OAUTH_SECRET=… MAILBOX_ROUTE_PEPPER=… PN_OAUTH_ISSUER=… PN_OAUTH_AUDIENCE=… ./deploy.sh
+if [ "${PN_STRICT_GUARDRAILS:-0}" = "1" ]; then
+  echo "🔒 PN_STRICT_GUARDRAILS=1 — running scripts/check-production-flags.sh"
+  ROOT_DIR="$(cd "$(dirname "$0")" && pwd)"
+  bash "$ROOT_DIR/scripts/check-production-flags.sh" || { echo "❌ check-production-flags failed"; exit 1; }
+fi
+
 # All Vite apps require VITE_API_ENDPOINT in production builds (see apps/*/src/config/api.ts).
 # Export once so every `npm run build` inherits it. Override for staging: VITE_API_ENDPOINT=https://… ./deploy.sh
 export VITE_API_ENDPOINT="${VITE_API_ENDPOINT:-https://api.parnoir.com}"

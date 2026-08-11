@@ -23,7 +23,9 @@ Every social feature must work when `socialCloudProvider` is portable (Dropbox, 
 
 ## Import rule
 
-`api/src/server.ts` and route modules must not import `*SheetsService` except during migration; prefer facades. CI: `scripts/check-sheets-import-boundary.sh`.
+`api/src/server.ts` and route modules must not import `*SheetsService` except during migration; prefer facades.
+
+Enforcement: `scripts/check-sheets-import-boundary.sh` — **soft-warn** (exit 0) while migration hits remain; run in CI for visibility. Flip to hard-fail when route surfaces are clean. Not the same as the hard auth/custody ratchets.
 
 ## Migration
 

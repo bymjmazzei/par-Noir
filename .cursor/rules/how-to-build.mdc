@@ -5,7 +5,7 @@ alwaysApply: true
 
 # How to build in par Noir
 
-**What we're building:** Identity (L1) → dashboard (L2) → API (L3) → browser (L4) → third parties (L5). Crypto without blockchain; user-owned; browser as aggregator. Full: `guiding-principles.mdc`, SHARED_CODE_RULES.md.
+**What we're building:** Identity (L1) → dashboard (L2) → API (L3) → browser (L4) → third parties (L5). Full product north star: `guiding-principles.mdc`, SHARED_CODE_RULES.md.
 
 - **Before adding code:** Search `packages/`, `core/`, and the other app for existing types, utils, or services. Reuse; do not duplicate.
 - **New shared behavior:** Implement in `packages/` first, then add thin app-specific UI or wiring in each app.
@@ -24,20 +24,12 @@ alwaysApply: true
 
 ---
 
-## After completing an update — push and deploy
+## Shipping
 
-**Do not consider the task done until changes are committed, pushed, and deployed.** Work left only in the working tree is not shipped.
+When work is complete, **propose** ship steps (commit message, push, `./deploy.sh`). Commit, push, and deploy **only when the user asks**. Do not commit or push unprompted.
 
-1. **Commit**
-   - `git add` the changed files (no .env or secrets; pre-commit runs `scripts/check-secrets.sh`).
-   - `git commit -m "<clear message>"`.
-
-2. **Push**
-   - `git push` to `main` (or the project’s deploy branch). If the remote rejects, fix and push again.
-
-3. **Deploy to Firebase**
-   - Prefer **repo root `./deploy.sh`**: it exports **`VITE_API_ENDPOINT`** (default `https://api.parnoir.com`) for every Vite production build, then builds dashboard, oauth-ui, aggregator (browse + messaging), prism, licensing-portal, developer-portal, and runs `firebase deploy --only hosting`.
-   - If you build manually: set **`VITE_API_ENDPOINT`** in the environment or the app’s `.env` before `npm run build`, or the production bundle will throw at runtime.
-   - If you only run `firebase deploy --only hosting` without rebuilding, ensure `dist/` folders were built with `VITE_API_ENDPOINT` set.
-
-**If you cannot push** (e.g. no write access, or deploy requires secrets only the user has): before finishing, tell the user explicitly: “Changes are ready but not pushed or deployed. You need to: 1) `git add` / `git commit` / `git push`, 2) run `./deploy.sh` or `firebase deploy --only hosting` to deploy to Firebase.”
+Ship checklist when asked:
+1. `git add` changed files (no .env or secrets; pre-commit runs `scripts/check-secrets.sh`).
+2. `git commit` with a clear message.
+3. `git push` to the deploy branch if asked.
+4. Prefer repo root `./deploy.sh` (exports `VITE_API_ENDPOINT`, builds hosting apps, `firebase deploy --only hosting`). Align API host deploy to the same commit.

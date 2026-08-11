@@ -36,7 +36,10 @@ Commit `e4306317` ("Align dashboard Drive calls with custody owner routes") norm
 - There is exactly **one** function that resolves a given external credential. Everything needing that credential calls it.
 - A second resolver, or an early return standing in for a call, is a **bug by definition**. If a normalized path exists it must be used; if it is not used, it is not normalized.
 - **Google Drive access tokens:** `resolveOwnerDriveToken` in `api/src/server/modules/ownerDriveToken.ts`. Under device cloud custody the supported path is forwarding `X-PN-Cloud-Access-Token`; the server holds no OAuth secrets.
-- Enforced as a ratchet by `scripts/check-token-resolver-boundary.sh`. `scripts/token-resolver-allowlist.txt` is the burn-down list of paths not yet migrated; entries are only ever removed.
+- Enforced as a ratchet by `scripts/check-token-resolver-boundary.sh`. Burn-down lists (entries only ever removed):
+  - `scripts/token-resolver-allowlist.txt` — paths not yet on `resolveOwnerDriveToken`
+  - `scripts/peer-credential-allowlist.txt` — paths that still read raw peer `access_token` from DB shells (identity migrate under custody is known dead debt)
+- Sync cloud-header builders that cannot mint after AT expiry are a known fail mode — see `packages/device-cloud-credentials/src/syncHeaderGap.gate.test.ts`. Do not paper over with a second resolver.
 
 ## 5. No silent dead ends on a credential path
 

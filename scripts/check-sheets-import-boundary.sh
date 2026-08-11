@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
-# Fail if HTTP route entrypoints import *SheetsService directly.
+# Soft-warn if HTTP route entrypoints import *SheetsService directly.
 # Allowed: storage Google adapters, migration, Sheets service modules themselves, tests.
+# Status: WARN mode (exit 0 on hits) until Phase 3 removes remaining route imports.
+# Wired in CI for visibility — does NOT fail the job while soft. Hard-fail when clean.
+# Not a hard ban yet — see docs/developer/SOCIAL_CLOUD_PARITY.md.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"

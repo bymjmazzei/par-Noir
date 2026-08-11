@@ -1,0 +1,17 @@
+---
+description: Hard bans need machine ratchets — prefer scripts/tests over more prose
+alwaysApply: true
+---
+
+# Enforcement
+
+A hard ban **without** a `scripts/check-*.sh` (or a unit/gate test that fails on the violation) is **not** a hard ban. Prefer adding a ratchet over writing more Cursor prose.
+
+When introducing a new invariant:
+
+1. Encode it in a check script or falsification test.
+2. Prove the check fails on a synthetic violation before trusting it.
+3. Wire it into `.husky/pre-commit` and `.github/workflows/test.yml` `guardrails` (or deploy preflight for env-only checks).
+4. Point the relevant `.cursor/rules/*.mdc` at the script — do not duplicate the whole rule in prose.
+
+Do not weaken, skip (`--no-verify`), or grow burn-down allowlists. Entries are only ever removed.

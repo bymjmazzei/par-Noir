@@ -58,6 +58,12 @@ jobs:
       - name: postMessage targetOrigin not wildcard
         run: PN_CHECK_ALL=1 bash scripts/check-postmessage-origin-boundary.sh
 
+      - name: Legacy identity crypto quarantine
+        run: PN_CHECK_ALL=1 bash scripts/check-legacy-identity-crypto.sh
+
+      - name: Sheets import boundary (soft-warn)
+        run: bash scripts/check-sheets-import-boundary.sh
+
   test:
     name: Unit tests
     runs-on: ubuntu-latest

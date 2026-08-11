@@ -115,7 +115,29 @@ PN_STRICT_GUARDRAILS=1 bash scripts/check-secrets.sh
 bash scripts/check-no-backup-files.sh
 bash scripts/check-app-import-boundary.sh
 bash scripts/check-quantum-imports.sh
+PN_CHECK_ALL=1 bash scripts/check-token-resolver-boundary.sh
+PN_CHECK_ALL=1 bash scripts/check-drive-token-freshness-boundary.sh
+PN_CHECK_ALL=1 bash scripts/check-owner-fetch-boundary.sh
+PN_CHECK_ALL=1 bash scripts/check-googleapis-resolver-import.sh
+PN_CHECK_ALL=1 bash scripts/check-oauth-unlock-proof-boundary.sh
+PN_CHECK_ALL=1 bash scripts/check-no-passcode-on-oauth-wire.sh
+PN_CHECK_ALL=1 bash scripts/check-postmessage-origin-boundary.sh
+PN_CHECK_ALL=1 bash scripts/check-legacy-identity-crypto.sh
+bash scripts/check-sheets-import-boundary.sh   # soft-warn only until Sheets route collapse finishes
 ```
+
+Deploy / API env preflight (not PR CI — needs production secrets in the environment):
+
+```bash
+PN_STRICT_GUARDRAILS=1 bash scripts/check-production-flags.sh
+# Also runs from ./deploy.sh when PN_STRICT_GUARDRAILS=1 is set.
+```
+
+Hermetic identity gate (package tests, part of `npm run test:packages`):
+
+- `packages/identity-crypto` — create→unlock→OAuth unlock proof + no-demo-crypto falsification
+- `packages/device-cloud-credentials` — `syncHeaderGap.gate.test.ts`
+- `api` — `pnOAuthPqc.test.ts`
 
 ## What CI runs
 
@@ -123,8 +145,11 @@ bash scripts/check-quantum-imports.sh
 parallel jobs. Any red job fails the run.
 
 1. **Guardrails** — secrets scan (strict), backup-file check, app→app import boundary, quantum
-   import boundary.
-2. **Unit tests** — root `npm ci`, API `npm ci` + `npm run build:deps`, then `npm test`.
+   import boundary, Drive token resolver/freshness/owner-fetch/googleapis, OAuth unlock-proof +
+   passcode-wire, postMessage origin, legacy identity crypto quarantine, and Sheets import
+   boundary (**soft-warn**). `check-production-flags.sh` is **not** in PR CI (needs API env).
+2. **Unit tests** — root `npm ci`, API `npm ci` + `npm run build:deps`, then `npm test`
+   (includes hermetic `identity-crypto` create→unlock→unlock-proof).
 3. **E2E smoke (dashboard)** — builds `apps/id-dashboard` with `VITE_API_ENDPOINT`, then runs the
    Playwright smoke suite on chromium.
 4. **E2E smoke (aggregator browser)** — the same for `apps/aggregator-browser`.

@@ -251,24 +251,13 @@ export class IdentityCrypto {
   }
 
   /**
-   * Verify authentication token
+   * Local AuthSession.accessToken is an opaque session marker, not a verifiable JWT.
+   * Server/session mint uses ML-DSA OAuth unlock proofs — do not call this.
    */
-  static async verifyAuthToken(token: string, expectedDID: string): Promise<boolean> {
-    try {
-      // In a real implementation, this would verify JWT signature
-      // For now, we'll do basic validation
-      const tokenParts = token.split('.');
-      if (tokenParts.length !== 3) {
-        return false;
-      }
-
-      const payload = JSON.parse(atob(tokenParts[1]));
-      const now = Math.floor(Date.now() / 1000);
-      
-      return payload.did === expectedDID && payload.exp > now;
-    } catch (error) {
-      return false;
-    }
+  static async verifyAuthToken(_token: string, _expectedDID: string): Promise<boolean> {
+    throw new Error(
+      'verifyAuthToken is not supported; use OAuth unlock proofs (ML-DSA) for session mint'
+    );
   }
 
   /**
@@ -456,32 +445,13 @@ export class IdentityCrypto {
   }
 
   /**
-   * Generate authentication token
+   * Opaque local session marker for AuthSession.accessToken (not a signed JWT).
+   * Real API sessions are minted via ML-DSA OAuth unlock proofs.
    */
-  private static async generateAuthToken(did: string, username: string): Promise<string> {
-    try {
-      const header = {
-        alg: 'HS256',
-        typ: 'JWT'
-      };
-
-      const payload = {
-        did,
-        username,
-        iat: Math.floor(Date.now() / 1000),
-        exp: Math.floor(Date.now() / 1000) + this.TOKEN_EXPIRY
-      };
-
-      const headerB64 = btoa(JSON.stringify(header));
-      const payloadB64 = btoa(JSON.stringify(payload));
-      
-      // In a real implementation, this would be signed with a secret key
-      const signature = await this.generateSignature(headerB64 + '.' + payloadB64);
-      
-      return `${headerB64}.${payloadB64}.${signature}`;
-    } catch (error) {
-      throw new Error(`Failed to generate auth token: ${error}`);
-    }
+  private static async generateAuthToken(did: string, _username: string): Promise<string> {
+    const bytes = crypto.getRandomValues(new Uint8Array(32));
+    const id = this.arrayBufferToBase64(bytes.buffer);
+    return `pn-session.${did}.${id}`;
   }
 
   /**
@@ -659,23 +629,6 @@ export class IdentityCrypto {
   }
 
   /**
-   * Generate signature for token
-   */
-  private static async generateSignature(data: string): Promise<string> {
-    try {
-      const encoder = new TextEncoder();
-      const dataBuffer = encoder.encode(data);
-      
-      // Use a simple hash for demo - in production, use proper HMAC
-      const hashBuffer = await crypto.subtle.digest('SHA-256', dataBuffer);
-      const hashArray = Array.from(new Uint8Array(hashBuffer));
-      return hashArray.map(b => b.toString(16).padStart(2, '0')).join('').substring(0, 32);
-    } catch (error) {
-      throw new Error(`Failed to generate signature: ${error}`);
-    }
-  }
-
-  /**
    * Generate salt for encryption
    */
   private static generateSalt(): string {
@@ -738,28 +691,11 @@ export class IdentityCrypto {
   }
 
   /**
-   * Decrypt an identity to get its data
+   * @deprecated Removed mock path. Use authenticateIdentity / decryptData with the encrypted blob.
    */
-  static async decryptIdentity(
-    _publicKey: string,
-    _passcode: string
-  ): Promise<unknown> {
-    try {
-      // This is a simplified implementation
-      // In a real implementation, you would:
-      // 1. Find the encrypted identity by public key
-      // 2. Decrypt the encryptedData using the passcode
-      // 3. Return the decrypted identity data
-      
-      // Mock implementation for now
-      return {
-        id: 'mock-did',
-        username: 'mock-user',
-        nickname: 'Mock User',
-        _publicKey
-      };
-    } catch (error) {
-      throw new Error(`Failed to decrypt identity: ${error}`);
-    }
+  static async decryptIdentity(_publicKey: string, _passcode: string): Promise<never> {
+    throw new Error(
+      'decryptIdentity is not supported; use authenticateIdentity or decryptData with the encrypted identity blob'
+    );
   }
 } 

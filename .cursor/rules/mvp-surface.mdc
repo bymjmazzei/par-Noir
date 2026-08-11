@@ -1,0 +1,36 @@
+---
+description: MVP in-scope surface — do not expand into deferred rails unless asked
+alwaysApply: true
+---
+
+# MVP surface
+
+Default work targets a closed/beta MVP of the core stack. Do not pull in deferred layers unless the user explicitly asks.
+
+## In scope
+
+- Identity create / 3-factor unlock (`@par-noir/identity-crypto`)
+- Drive device-cloud custody + API owner routes
+- Browse: public feeds, free follow, engagement
+- Messaging: E2E DMs/groups (crypto via `@par-noir/dm-crypto`)
+- OAuth unlock proofs (ML-DSA), no passcode on the wire
+
+## Out of scope unless asked
+
+- Veriff / identity verification product rails
+- Stripe / creator fund / monetization go-live
+- Platform paid feed subscriptions (already `410`)
+- App Store / Play distribution
+- Identity Drive re-key / succession migrate under custody (peer-credential allowlist debt)
+
+## Bans (even inside MVP)
+
+- New dual resolvers for Drive tokens or peer credentials
+- Demo / stub crypto next to real PQC paths
+- JSON format fallbacks when the primary Sheets/API path exists
+- “Verify later” / trust-the-client session mint stubs
+- Papering over sync cloud-header mint gaps — use async ownerFetch; see `syncHeaderGap.gate.test.ts`
+
+## Messaging product E2E
+
+Package unit tests cover crypto. Full dual-origin browse/messaging Playwright remains a **manual/local checklist** until a dedicated CI job exists. Do not claim messaging GA from unit tests alone.

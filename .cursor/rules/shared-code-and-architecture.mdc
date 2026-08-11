@@ -5,12 +5,7 @@ alwaysApply: true
 
 # par Noir — Shared Code and Architecture Rules
 
-Apply these on every edit. Full doc: SHARED_CODE_RULES.md.
-
-## What we're building
-
-- **Crypto without blockchain.** The asset is decentralized identity, not a token. Identity is verified through math (pn file + pn name + passcode); no central server. **User-owned:** users create identity at will; they can share ZKPs instead of handing data to third parties. **Platforms as aggregators:** the browser aggregates public files from users’ Drives into feeds; third parties use APIs to leverage the user’s infrastructure. **par Noir as infrastructure:** identity (L1) → dashboard (L2) → API (L3) → browser (L4) → third parties (L5); user data portable across pN-based systems. See `guiding-principles.mdc` and SHARED_CODE_RULES.md.
-- **Layer 1 — Identity** (dashboard `IdentityCrypto`, `packages/pqc-crypto`): proof-of-work = credential-driven cryptographic self-issuance (not blockchain mining), 3-factor; crypto primitives in docs and code. **Layer 2 — Dashboard** (`apps/id-dashboard`): where identity is used; secure cloud; identity-direct features + APIs. **Layer 3 — API** (`api/`): connects dashboard to other tools. **Layer 4 — Browser** (`apps/aggregator-browser`): aggregates public Drive files into feeds; talks only to API, not Google directly. **Layer 5:** third parties on our APIs.
+Apply these on every edit. Product north star: `guiding-principles.mdc`. Full doc: SHARED_CODE_RULES.md.
 
 ## 1. One source of truth — no duplication across apps
 
@@ -20,33 +15,30 @@ Apply these on every edit. Full doc: SHARED_CODE_RULES.md.
 
 ## 2. Where shared code lives
 
-- **Identity / crypto:** `core/` (e.g. identity-core). **SDK / client helpers:** `sdk/` (e.g. identity-sdk).
-- **Types, API clients, central metadata:** When shared by multiple apps, use `core/`, `sdk/`, or `packages/` when that layout exists. Browser: fetch only. Dashboard: fetch + submit.
-- **Pure logic** (e.g. processPDFPagesParallel): `packages/` or `services/` in one app; if both need it → `core/`, `sdk/`, or `packages/`.
+- **Identity / crypto:** `packages/identity-crypto`, `packages/pqc-crypto` (canonical). Prefer these over app-local crypto.
+- **SDK / client helpers:** `sdk/` (e.g. identity-sdk).
+- **Types, API clients, central metadata:** When shared by multiple apps, use `core/`, `sdk/`, or `packages/`. Browser: fetch only. Dashboard: fetch + submit.
+- **Pure logic:** `packages/` or `services/` in one app; if both need it → `core/`, `sdk/`, or `packages/`.
 - **Apps**: UI, app-specific flows, wiring only. No duplicated types, API logic, or encryption.
 
 ## 3. Hard rules
 
-1. **Apps do not import from each other.** Shared code is in `core/`, `sdk/`, or `packages/`.
+1. **Apps do not import from each other.** Shared code is in `core/`, `sdk/`, or `packages/`. Enforced by `scripts/check-app-import-boundary.sh`.
 2. **Services do NOT import from UI components** to get a function. Put the function in `packages/` or `services/`; the component imports it.
-3. **Aggregator-browser: storage is API-only.** No direct `googleapis.com` or `oauth2.googleapis.com`. Storage = par Noir API. Do not add orphan direct-Google code in the browser.
+3. **Aggregator-browser: storage is API-only.** No direct `googleapis.com` or `oauth2.googleapis.com`. Storage = par Noir API.
 4. **When adding shared code:** Prefer `core/` or `sdk/`. If using `packages/`: create `packages/<name>/` with `package.json` and `src/index.ts`; add `packages/*` to root `workspaces`; apps use `"@par-noir/<name>": "workspace:*"`.
 5. **We are in development.** Do not prioritize backwards compatibility. Prefer correct, simple behavior over preserving legacy or broken behavior.
 6. **Do not patch symptoms.** Find the root cause and fix it. Avoid workarounds, compatibility shims, or "quick fixes" that hide the real bug.
-7. **Do not commit .env, API keys, secrets, or other sensitive config to git.** Use .env (gitignored), .env.example with placeholders only, or a secrets manager. Pre-commit runs `scripts/check-secrets.sh` to block commits that add known secret patterns; do not bypass or remove it.
-8. **Do not add hardcoded API keys, client IDs, or secrets as fallbacks** when env is unset. Use `VITE_*` (or platform equivalent) only; fail clearly when required and unset.
-9. **When the API provides an endpoint** (e.g. token refresh, drive), use it. Do not add a direct-Google (e.g. oauth2.googleapis.com) fallback.
-10. **No sensitive data in plain text.** pn name, passcode, Google Drive account, age, email, and everything the identity protocol and ZKPs protect must never appear in plain text in code, server logs, console logs, or anywhere else. If used or shown: encrypt or ZKP; never raw.
+7. **Do not commit .env, API keys, secrets, or other sensitive config to git.** Pre-commit runs `scripts/check-secrets.sh`; do not bypass or remove it.
+8. **Do not add hardcoded API keys, client IDs, or secrets as fallbacks** when env is unset. Use `VITE_*` only; fail when required and unset.
+9. **When the API provides an endpoint** (e.g. token refresh, drive), use it. Do not add a direct-Google fallback.
+10. **No sensitive data in plain text.** pn name, passcode, Google Drive account, age, email, and everything the identity protocol and ZKPs protect — encrypt or ZKP; never raw.
 11. **Feature hierarchy.** Identity-direct behavior → dashboard + APIs for third parties. Browser-only → browser only.
 
 ## 4. Before you write
 
 - Could the other app need this? → put it in `core/`, `sdk/`, or `packages/` first.
-- Am I copying something from the other app? → stop; move to `core/`, `sdk/`, or `packages/` and import.
-- Am I importing a React component from a service? → stop; move the pure logic to `packages/` or `services/`.
-- Am I logging, printing, or storing pn name, passcode, email, age, Google Drive account, or any identity/ZKP-protected data in plain text? → stop; remove or encrypt.
+- Am I copying something from the other app? → stop; move to shared and import.
+- Am I importing a React component from a service? → stop; move pure logic out.
+- Am I logging pn name, passcode, email, age, Google Drive account, or identity/ZKP-protected data in plain text? → stop.
 - Is this identity-direct? → dashboard + APIs. Browser-only? → browser only.
-
-## 5. After completing an update — push and deploy
-
-**Do not consider the task done until changes are committed, pushed, and deployed.** Work left only in the working tree is not shipped. Commit, push to `main`, then deploy to Firebase: `./deploy.sh` or `firebase deploy --only hosting`. If you cannot push: tell the user exactly what to run. Full steps: `how-to-build.mdc` § “After completing an update”.

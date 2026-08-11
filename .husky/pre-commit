@@ -45,6 +45,10 @@ if [ -f scripts/check-postmessage-origin-boundary.sh ]; then
   bash scripts/check-postmessage-origin-boundary.sh || { echo "❌ check-postmessage-origin-boundary: postMessage(..., '*') is forbidden; restrict targetOrigin."; exit 1; }
 fi
 
+if [ -f scripts/check-legacy-identity-crypto.sh ]; then
+  bash scripts/check-legacy-identity-crypto.sh || { echo "❌ check-legacy-identity-crypto: use @par-noir/identity-crypto; do not reintroduce RSA IdentityManager."; exit 1; }
+fi
+
 echo "🔒 Running security audit before commit..."
 
 # Run security audit
