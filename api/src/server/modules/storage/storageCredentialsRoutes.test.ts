@@ -212,14 +212,14 @@ describe('storage credentials routes', () => {
       expect(res.body.error).toBe('No Google Drive accounts connected');
     });
 
-    it('returns 400 when no access token can be obtained', async () => {
+    it('returns 409 cloud_token_required when no access token can be obtained', async () => {
       mockGetCredentials.mockResolvedValue({
         credentials: { googleDriveAccounts: [{ backendId: 'acct-1' }] },
       });
       mockGetAccessToken.mockRejectedValue(new Error('device custody'));
 
-      const res = await request(buildApp()).post(`/api/storage/initialize/${PN}`).expect(400);
-      expect(res.body.error).toBe('No Google Drive access token available for this identity');
+      const res = await request(buildApp()).post(`/api/storage/initialize/${PN}`).expect(409);
+      expect(res.body.error).toBe('cloud_token_required');
       expect(mockRunFullDriveInit).not.toHaveBeenCalled();
     });
 

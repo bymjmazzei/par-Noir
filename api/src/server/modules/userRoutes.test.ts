@@ -219,6 +219,7 @@ describe('setupUserRoutes', () => {
       const res = await request(app)
         .get(`/api/users/${PN}/third-party-permissions`)
         .set('Authorization', AUTH)
+        .set('X-PN-Cloud-Access-Token', 'drive-token')
         .expect(200);
 
       expect(res.body.success).toBe(true);
@@ -253,11 +254,7 @@ describe('setupUserRoutes', () => {
     it('reports drive-not-initialized when the metadata folder cannot be resolved', async () => {
       mockGetCredentials.mockResolvedValue({
         credentials: {
-          googleDriveAccounts: [
-            // A live credential needs an absolute expiry: resolveOwnerDriveToken refuses
-            // a stored token it cannot prove is still valid.
-            { backendId: 'acct-1', access_token: 'tok', expires_at: Date.now() + 3600_000 },
-          ],
+          googleDriveAccounts: [{ backendId: 'acct-1' }],
         },
       });
       const { app, driveNotInitialized } = buildApp({
@@ -267,6 +264,7 @@ describe('setupUserRoutes', () => {
       await request(app)
         .put(`/api/users/${PN}/third-party-permissions`)
         .set('Authorization', AUTH)
+        .set('X-PN-Cloud-Access-Token', 'drive-token')
         .send({ toolId: 'some-tool', permission: { dataPoints: [] } })
         .expect(409);
 
@@ -277,11 +275,7 @@ describe('setupUserRoutes', () => {
     it('forces browser-app required/optional data points to the static contract', async () => {
       mockGetCredentials.mockResolvedValue({
         credentials: {
-          googleDriveAccounts: [
-            // A live credential needs an absolute expiry: resolveOwnerDriveToken refuses
-            // a stored token it cannot prove is still valid.
-            { backendId: 'acct-1', access_token: 'tok', expires_at: Date.now() + 3600_000 },
-          ],
+          googleDriveAccounts: [{ backendId: 'acct-1' }],
         },
       });
       mockGetPermissions.mockResolvedValue({ 'other-tool': { dataPoints: [] } });
@@ -290,6 +284,7 @@ describe('setupUserRoutes', () => {
       await request(app)
         .put(`/api/users/${PN}/third-party-permissions`)
         .set('Authorization', AUTH)
+        .set('X-PN-Cloud-Access-Token', 'drive-token')
         .send({
           toolId: 'browser-app',
           permission: {

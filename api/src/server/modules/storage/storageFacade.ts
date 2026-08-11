@@ -105,7 +105,13 @@ async function buildContextForProvider(
     };
   }
 
-  const blobStore = await createBlobStoreForProvider(normalized, credentials, provider, accountId);
+  const blobStore = await createBlobStoreForProvider(
+    normalized,
+    credentials,
+    provider,
+    accountId,
+    cloudAccessToken
+  );
   const tableStore = new SegmentedSqliteTableAdapter(blobStore, rootPrefix, SEGMENTED_LEDGER_IDS);
 
   return {

@@ -210,11 +210,17 @@ export async function migrateGoogleToPortable(
   credentials: StorageCredentialsEnvelope,
   targetProvider: StorageProviderId,
   targetAccountId?: string,
-  onProgress?: MigrationProgressCallback
+  onProgress?: MigrationProgressCallback,
+  cloudAccessToken?: string
 ): Promise<MigrationReport> {
   const normalized = normalizePn(pnIdentifier);
-  await initializePortableStorage(normalized, credentials, targetProvider);
-  const googleCtx = await buildGoogleCtx(normalized, credentials, credentials.socialCloudAccountId);
+  await initializePortableStorage(normalized, credentials, targetProvider, cloudAccessToken);
+  const googleCtx = await buildGoogleCtx(
+    normalized,
+    credentials,
+    credentials.socialCloudAccountId,
+    cloudAccessToken
+  );
   const destOps = portableOps(normalized, targetAccountId);
   const srcOps = googleOps(googleCtx);
   const reports: MigrationReport[] = [];
@@ -268,10 +274,16 @@ export async function migratePortableToGoogle(
   pnIdentifier: string,
   credentials: StorageCredentialsEnvelope,
   sourceAccountId?: string,
-  onProgress?: MigrationProgressCallback
+  onProgress?: MigrationProgressCallback,
+  cloudAccessToken?: string
 ): Promise<MigrationReport> {
   const normalized = normalizePn(pnIdentifier);
-  const googleCtx = await buildGoogleCtx(normalized, credentials, credentials.socialCloudAccountId);
+  const googleCtx = await buildGoogleCtx(
+    normalized,
+    credentials,
+    credentials.socialCloudAccountId,
+    cloudAccessToken
+  );
   const srcOps = portableOps(normalized, sourceAccountId ?? credentials.socialCloudAccountId);
   const destOps = googleOps(googleCtx);
   const reports: MigrationReport[] = [];
@@ -315,23 +327,26 @@ export async function migratePortableToPortable(
   targetProvider: StorageProviderId,
   sourceAccountId?: string,
   targetAccountId?: string,
-  onProgress?: MigrationProgressCallback
+  onProgress?: MigrationProgressCallback,
+  cloudAccessToken?: string
 ): Promise<MigrationReport> {
   const normalized = normalizePn(pnIdentifier);
   const sourceStore = await createBlobStoreForProvider(
     normalized,
     credentials,
     sourceProvider,
-    sourceAccountId ?? credentials.socialCloudAccountId
+    sourceAccountId ?? credentials.socialCloudAccountId,
+    cloudAccessToken
   );
   const destStore = await createBlobStoreForProvider(
     normalized,
     credentials,
     targetProvider,
-    targetAccountId
+    targetAccountId,
+    cloudAccessToken
   );
   const root = `${pnRootFolderName(normalized)}/`;
-  await initializePortableStorage(normalized, credentials, targetProvider);
+  await initializePortableStorage(normalized, credentials, targetProvider, cloudAccessToken);
   const reports: MigrationReport[] = [];
   for (const filterPrefix of ['_metadata/', `${MESSAGES_DIR}/`, `${INTEGRATORS_DIR}/`]) {
     reports.push(

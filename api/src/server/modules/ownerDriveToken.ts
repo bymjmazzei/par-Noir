@@ -1,6 +1,7 @@
 /**
- * Single source of truth for owner Google Drive access tokens under device cloud custody.
- * Prefer X-PN-Cloud-Access-Token; fall back to server-held secrets when present; else CLOUD_TOKEN_REQUIRED.
+ * Single source of truth for owner Google Drive access tokens.
+ * Under device cloud custody: X-PN-Cloud-Access-Token only (no DB secret fallback).
+ * Opt-out (DEVICE_CLOUD_CUSTODY=0): may fall back to server-held secrets when present.
  */
 
 import type { Request, Response } from 'express';
@@ -9,6 +10,7 @@ import type { GoogleDriveToken } from './googleOAuth2Helper';
 import { DriveIndexError } from './pnDriveIndex';
 import { requireOwnerDriveContext, type OwnerDriveContext } from './ownerDriveContext';
 import { hashIdentifier, safeLogger } from '../../utils/logger';
+import { isDeviceCloudCustodyEnabled } from './socialMailboxService';
 
 export type ResolvedOwnerDriveToken = {
   token: GoogleDriveToken;
@@ -34,10 +36,8 @@ const TOKEN_SKEW_MS = 60_000;
 /**
  * A stored access token is only usable while we can prove it is still live.
  *
- * The copy on the credentials record was captured when Drive was connected and
- * Google kills it about an hour later. Using it because a request arrived
- * without the forwarded header means guaranteed 401s from Google, reported to
- * the user as an unexplained failure.
+ * Only consulted when device cloud custody is opted out. Under custody the
+ * server holds no OAuth secrets and this path must not run.
  */
 function storedTokenStillLive(account: AccountLike): boolean {
   const expiresAt = account?.expires_at;
@@ -52,12 +52,21 @@ function accountIdFrom(account: AccountLike, fallback?: string): string | undefi
   return account.backendId || account.keyPrefix || account.accountId || account.id;
 }
 
+function throwCloudTokenRequired(pnIdentifier: string, reason: string): never {
+  safeLogger.warn('[DriveToken] Cloud access token required', {
+    reason,
+    pnIdHash: hashIdentifier(pnIdentifier),
+  });
+  throw new DriveIndexError(
+    'Google Drive access token required. Forward X-PN-Cloud-Access-Token after unlocking with cloud credentials.',
+    'CLOUD_TOKEN_REQUIRED'
+  );
+}
+
 /**
  * Resolve a usable GoogleDriveToken for the calling owner.
- * 1) Forwarded X-PN-Cloud-Access-Token
- * 2) Non-empty shell access token (legacy / non-custody)
- * 3) googleDriveProxyService.getAccessToken when server still holds refresh secrets
- * 4) throws DriveIndexError CLOUD_TOKEN_REQUIRED
+ * Under custody: forwarded X-PN-Cloud-Access-Token only.
+ * Opt-out: header → live stored AT → googleDriveProxy refresh → CLOUD_TOKEN_REQUIRED.
  */
 export async function resolveOwnerDriveToken(
   req: Request,
@@ -69,46 +78,60 @@ export async function resolveOwnerDriveToken(
 ): Promise<ResolvedOwnerDriveToken> {
   const account = opts?.account;
   const accountId = accountIdFrom(account, opts?.accountId);
+  const custody = isDeviceCloudCustodyEnabled();
 
-  let accessToken = extractCloudAccessToken(req) || '';
-  if (!accessToken) {
+  const accessToken = extractCloudAccessToken(req) || '';
+  if (custody) {
+    if (!accessToken.trim()) {
+      throwCloudTokenRequired(pnIdentifier, 'cloud_token_required');
+    }
+    return {
+      token: {
+        access_token: accessToken.trim(),
+        // Under custody shells have no refresh secrets; do not echo DB leftovers.
+      },
+      accountId,
+    };
+  }
+
+  let resolved = accessToken;
+  if (!resolved) {
     const stored = String(account?.access_token || account?.accessToken || '').trim();
     if (stored && storedTokenStillLive(account)) {
-      accessToken = stored;
+      resolved = stored;
     } else if (stored) {
       safeLogger.warn('[DriveToken] Ignoring stored access token that cannot be proven live', {
         reason: account?.expires_at ? 'stored_token_expired' : 'stored_token_expiry_unknown',
-        pnIdHash: hashIdentifier(pnIdentifier)
+        pnIdHash: hashIdentifier(pnIdentifier),
       });
     }
   }
-  if (!accessToken) {
+  if (!resolved) {
     try {
       const { googleDriveProxyService } = await import('./googleDriveProxy');
-      accessToken = await googleDriveProxyService.getAccessToken(pnIdentifier, accountId, [
-        pnIdentifier
+      resolved = await googleDriveProxyService.getAccessToken(pnIdentifier, accountId, [
+        pnIdentifier,
       ]);
-    } catch {
-      throw new DriveIndexError(
-        'Google Drive access token required. Forward X-PN-Cloud-Access-Token after unlocking with cloud credentials.',
-        'CLOUD_TOKEN_REQUIRED'
-      );
+    } catch (err) {
+      safeLogger.warn('[DriveToken] Proxy token mint failed (custody off)', {
+        reason: 'proxy_get_access_token_failed',
+        pnIdHash: hashIdentifier(pnIdentifier),
+        message: err instanceof Error ? err.message : String(err),
+      });
+      throwCloudTokenRequired(pnIdentifier, 'cloud_token_required');
     }
   }
-  if (!accessToken?.trim()) {
-    throw new DriveIndexError(
-      'Google Drive access token required. Forward X-PN-Cloud-Access-Token after unlocking with cloud credentials.',
-      'CLOUD_TOKEN_REQUIRED'
-    );
+  if (!resolved?.trim()) {
+    throwCloudTokenRequired(pnIdentifier, 'cloud_token_required');
   }
 
   return {
     token: {
-      access_token: accessToken.trim(),
+      access_token: resolved.trim(),
       refresh_token: account?.refresh_token || account?.refreshToken,
-      expires_at: account?.expires_at
+      expires_at: account?.expires_at,
     },
-    accountId
+    accountId,
   };
 }
 
@@ -119,7 +142,7 @@ export async function requireOwnerDriveContextFromReq(
   accountId?: string
 ): Promise<OwnerDriveContext> {
   return requireOwnerDriveContext(pnIdentifier, accountId, {
-    accessToken: extractCloudAccessToken(req)
+    accessToken: extractCloudAccessToken(req),
   });
 }
 
@@ -129,7 +152,7 @@ export function respondDriveTokenError(res: Response, error: unknown): boolean {
     if (error.code === 'CLOUD_TOKEN_REQUIRED') {
       res.status(409).json({
         error: 'cloud_token_required',
-        error_description: error.message
+        error_description: error.message,
       });
       return true;
     }
@@ -140,7 +163,7 @@ export function respondDriveTokenError(res: Response, error: unknown): boolean {
       res.status(409).json({
         error: 'cloud_token_expired',
         error_description:
-          'Google rejected the forwarded Drive access token. Refresh it and retry.'
+          'Google rejected the forwarded Drive access token. Refresh it and retry.',
       });
       return true;
     }
@@ -152,7 +175,7 @@ export function respondDriveTokenError(res: Response, error: unknown): boolean {
     ) {
       res.status(409).json({
         error: 'drive_not_initialized',
-        error_description: error.message
+        error_description: error.message,
       });
       return true;
     }
@@ -161,7 +184,7 @@ export function respondDriveTokenError(res: Response, error: unknown): boolean {
   if (/cloud_token_required|CLOUD_TOKEN_REQUIRED|X-PN-Cloud-Access-Token|access token required/i.test(msg)) {
     res.status(409).json({
       error: 'cloud_token_required',
-      error_description: msg || 'Google Drive access token required'
+      error_description: msg || 'Google Drive access token required',
     });
     return true;
   }

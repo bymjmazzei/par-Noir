@@ -25,15 +25,21 @@ export async function createBlobStoreForProvider(
   pnIdentifier: string,
   credentials: StorageCredentialsEnvelope,
   provider?: StorageProviderId,
-  accountId?: string
+  accountId?: string,
+  cloudAccessToken?: string
 ): Promise<BlobStore> {
   const p = provider ?? resolveSocialCloudProvider(credentials);
   const root = `${pnRootFolderName(pnIdentifier)}/`;
+  const forwarded = cloudAccessToken?.trim() || '';
 
   switch (p) {
     case 'dropbox': {
       const account = resolveAccount<DropboxAccount>(credentials, 'dropbox', accountId);
-      const token = await dropboxProxyService.getAccessToken(pnIdentifier, account.accountId);
+      const token = await dropboxProxyService.getAccessToken(
+        pnIdentifier,
+        account.accountId,
+        forwarded || undefined
+      );
       return new DropboxBlobAdapter(token, root);
     }
     case 'aws_s3': {
@@ -63,7 +69,11 @@ export async function createBlobStoreForProvider(
     }
     case 'onedrive': {
       const account = resolveAccount<OnedriveAccount>(credentials, 'onedrive', accountId);
-      const token = await onedriveProxyService.getAccessToken(pnIdentifier, account.accountId);
+      const token = await onedriveProxyService.getAccessToken(
+        pnIdentifier,
+        account.accountId,
+        forwarded || undefined
+      );
       return new OneDriveBlobAdapter(token, root);
     }
     case 'ftp': {

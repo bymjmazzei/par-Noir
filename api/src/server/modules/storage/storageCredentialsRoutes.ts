@@ -280,32 +280,41 @@ export function setupStorageCredentialsRoutes(app: Application, deps: StorageCre
         const account = googleDriveAccounts.length > 0 ? googleDriveAccounts[0] : null;
         const accountId = account ? extractAccountId(account) : undefined;
 
-        // Use a fresh (auto-refreshed) access token from the proxy, or an ephemeral
-        // device-forwarded token under cloud custody (API has no stored Google secrets).
+        // Under custody: header-only via resolveOwnerDriveToken (no stored-token fallback).
         let freshAccessToken: string | null = null;
         try {
           const { resolveOwnerDriveToken } = await import('../ownerDriveToken');
           const resolved = await resolveOwnerDriveToken(req, pnIdentifier, { account, accountId });
           freshAccessToken = resolved.token.access_token;
-        } catch (tokenErr: any) {
-          // Caller falls back to the stored token below.
+        } catch (tokenErr: unknown) {
+          const { respondDriveTokenError } = await import('../ownerDriveToken');
+          const { isDeviceCloudCustodyEnabled } = await import('../socialMailboxService');
+          if (isDeviceCloudCustodyEnabled() && respondDriveTokenError(res, tokenErr)) {
+            return;
+          }
           console.warn(
-            `[StorageInitialize POST] Could not resolve access token, falling back to stored token:`,
-            tokenErr?.message || tokenErr
+            `[StorageInitialize POST] Could not resolve access token:`,
+            tokenErr instanceof Error ? tokenErr.message : tokenErr
           );
         }
 
+        const { isDeviceCloudCustodyEnabled } = await import('../socialMailboxService');
+        const custody = isDeviceCloudCustodyEnabled();
         const token = {
-          access_token: freshAccessToken || account.access_token || account.accessToken,
-          refresh_token: account?.refresh_token || account?.refreshToken,
-          expires_at: account?.expires_at,
-          expires_in: account?.expires_in
+          access_token: custody
+            ? freshAccessToken || ''
+            : freshAccessToken || account.access_token || account.accessToken,
+          refresh_token: custody
+            ? undefined
+            : account?.refresh_token || account?.refreshToken,
+          expires_at: custody ? undefined : account?.expires_at,
+          expires_in: custody ? undefined : account?.expires_in
         };
         const accessToken = token.access_token;
 
         if (!accessToken) {
-          return res.status(400).json({
-            error: 'No Google Drive access token available for this identity',
+          return res.status(409).json({
+            error: 'cloud_token_required',
             error_description:
               'Under device custody, reconnect Google Drive on this device and retry initialize with a cloud access token.'
           });

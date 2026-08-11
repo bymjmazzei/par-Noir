@@ -5,6 +5,9 @@
 
 import type { Request } from 'express';
 import { storageCredentialsService } from '../storageCredentialsService';
+import { hashIdentifier, safeLogger } from '../../../utils/logger';
+import { isDeviceCloudCustodyEnabled } from '../socialMailboxService';
+import { DriveIndexError } from '../pnDriveIndex';
 
 export interface StorageRequestContext {
   pnIdentifier: string;
@@ -34,14 +37,35 @@ export async function createStorageRequestContext(
     credentialsRecord,
   };
 
+  const custody = isDeviceCloudCustodyEnabled();
   try {
     const { resolveOwnerDriveToken } = await import('../ownerDriveToken');
     const resolved = await resolveOwnerDriveToken(req, pnIdentifier, { accountId });
     ctx.accessToken = resolved.token.access_token;
-  } catch {
-    /* caller handles missing token via getDriveTokenFromContext */
+  } catch (err) {
+    safeLogger.warn('[StorageRequestContext] Could not resolve owner Drive token', {
+      reason: (err as { code?: string })?.code || 'resolve_failed',
+      pnIdHash: hashIdentifier(pnIdentifier),
+      message: err instanceof Error ? err.message : String(err),
+    });
+    if (custody) {
+      // Fail closed: do not resurrect secrets from the DB shell.
+      throw err instanceof DriveIndexError
+        ? err
+        : new DriveIndexError(
+            'Google Drive access token required. Forward X-PN-Cloud-Access-Token after unlocking with cloud credentials.',
+            'CLOUD_TOKEN_REQUIRED'
+          );
+    }
   }
+
   const forwarded = ctx.accessToken?.trim();
+  if (custody) {
+    if (forwarded) {
+      ctx.driveToken = { access_token: forwarded };
+    }
+    return ctx;
+  }
 
   const accounts =
     credentialsRecord.credentials.googleDriveAccounts ||

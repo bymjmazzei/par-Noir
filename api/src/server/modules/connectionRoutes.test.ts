@@ -69,6 +69,12 @@ const REQUESTER = 'pn-requester';
 const RECIPIENT = 'pn-recipient';
 /** ML-KEM-768 encapsulation keys are 1184 bytes; the route rejects anything under 1000. */
 const ML_KEM_PUBLIC_KEY = Buffer.alloc(1184, 7).toString('base64');
+/** Under device custody every owner Drive call needs the forwarded header. */
+const CLOUD_TOKEN = 'fwd-cloud-token';
+
+function withCloudToken(req: request.Test): request.Test {
+  return req.set('X-PN-Cloud-Access-Token', CLOUD_TOKEN);
+}
 
 function buildApp(overrides: Partial<ConnectionRouteDeps> = {}) {
   const getMetadataFolder = jest.fn(async (_token: unknown, pn: string) => ({
@@ -94,11 +100,8 @@ function bothPartiesConnected() {
   mockGetCredentials.mockImplementation(async (pn: string) => ({
     identityId: pn,
     credentials: {
-      googleDriveAccounts: [
-        // A live credential needs an absolute expiry: resolveOwnerDriveToken
-        // refuses a stored token it cannot prove is still valid.
-        { backendId: `${pn}-acct`, access_token: 'tok', expires_at: Date.now() + 3600_000 },
-      ],
+      // Layout shell only — under custody secrets are not on the server.
+      googleDriveAccounts: [{ backendId: `${pn}-acct` }],
     },
   }));
   mockGetAccessToken.mockImplementation(async (pn: string) => `${pn}-token`);
@@ -168,13 +171,9 @@ describe('POST /api/connections/request', () => {
   it('does not touch the recipient credentials at all', async () => {
     bothPartiesConnected();
 
-    await request(buildApp().app)
-      .post('/api/connections/request')
+    await withCloudToken(request(buildApp().app).post('/api/connections/request'))
       .send(validRequestBody())
       .expect(200);
-
-    // Loading the recipient's row was the whole cross-user problem: under
-    // custody it is a stripped shell and the write silently failed.
     for (const call of mockGetCredentials.mock.calls) {
       expect(call[0]).toBe(REQUESTER);
     }
@@ -189,7 +188,9 @@ describe('POST /api/connections/request', () => {
       ) as unknown as ConnectionRouteDeps['getMetadataFolder'],
     });
 
-    await request(app).post('/api/connections/request').send(validRequestBody()).expect(409);
+    await withCloudToken(request(app).post('/api/connections/request'))
+      .send(validRequestBody())
+      .expect(409);
     expect(driveNotInitialized).toHaveBeenCalled();
     expect(mockUpsertOwnRow).not.toHaveBeenCalled();
   });
@@ -197,8 +198,7 @@ describe('POST /api/connections/request', () => {
   it('writes only the requester row and hands the recipient half to the mailbox', async () => {
     bothPartiesConnected();
 
-    const res = await request(buildApp().app)
-      .post('/api/connections/request')
+    const res = await withCloudToken(request(buildApp().app).post('/api/connections/request'))
       .send(validRequestBody())
       .expect(200);
 
@@ -231,8 +231,7 @@ describe('POST /api/connections/request', () => {
   it('forwards the client-sealed envelope and the context it was sealed under', async () => {
     bothPartiesConnected();
 
-    await request(buildApp().app)
-      .post('/api/connections/request')
+    await withCloudToken(request(buildApp().app).post('/api/connections/request'))
       .send({
         ...validRequestBody(),
         recipientEnvelope: { kemCiphertext: 'kem', ciphertext: 'ct' },
@@ -250,8 +249,7 @@ describe('POST /api/connections/request', () => {
     bothPartiesConnected();
     mockEnqueueSocialJob.mockResolvedValue(false);
 
-    const res = await request(buildApp().app)
-      .post('/api/connections/request')
+    const res = await withCloudToken(request(buildApp().app).post('/api/connections/request'))
       .send(validRequestBody())
       .expect(200);
 
@@ -265,8 +263,7 @@ describe('POST /api/connections/request', () => {
     mockRecordActivity.mockRejectedValue(new Error('sheets unavailable'));
     mockNotify.mockRejectedValue(new Error('notification failed'));
 
-    const res = await request(buildApp().app)
-      .post('/api/connections/request')
+    const res = await withCloudToken(request(buildApp().app).post('/api/connections/request'))
       .send(validRequestBody())
       .expect(200);
     expect(res.body.success).toBe(true);
@@ -276,8 +273,7 @@ describe('POST /api/connections/request', () => {
     bothPartiesConnected();
     mockUpsertOwnRow.mockRejectedValue(new Error('sheets unavailable'));
 
-    const res = await request(buildApp().app)
-      .post('/api/connections/request')
+    const res = await withCloudToken(request(buildApp().app).post('/api/connections/request'))
       .send(validRequestBody())
       .expect(500);
     expect(res.body.error).toBe('Failed to send connection request');

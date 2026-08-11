@@ -4,6 +4,7 @@ import { normalizeLegacyAccountIds } from '@par-noir/user-owned-storage';
 import { getDatabasePool } from '../utils/database';
 import { securityFlags } from '../utils/securityFlags';
 import { appendSecurityAuditEvent } from './auditService';
+import { hashIdentifier, safeLogger } from '../../utils/logger';
 
 interface EncryptedPayload {
   iv: string;
@@ -21,6 +22,50 @@ function redactIdentityIdentifier(value?: string): string {
   if (!value) return 'unknown';
   if (value.length <= 6) return '***';
   return `${value.slice(0, 3)}***${value.slice(-3)}`;
+}
+
+const CLOUD_SECRET_FIELDS = [
+  'accessToken',
+  'access_token',
+  'refreshToken',
+  'refresh_token',
+  'apiKey',
+  'apiSecret',
+  'clientSecret',
+  'secretAccessKey',
+  'password',
+  'sasToken',
+  'connectionString',
+] as const;
+
+const CLOUD_ACCOUNT_ARRAY_KEYS = [
+  'googleDriveAccounts',
+  'dropboxAccounts',
+  'awsS3Accounts',
+  'azureBlobAccounts',
+  'onedriveAccounts',
+  'ftpAccounts',
+] as const;
+
+function accountHasCloudSecret(acct: unknown): boolean {
+  if (!acct || typeof acct !== 'object') return false;
+  const o = acct as Record<string, unknown>;
+  return CLOUD_SECRET_FIELDS.some((k) => {
+    const v = o[k];
+    return typeof v === 'string' && v.trim().length > 0;
+  });
+}
+
+/** True when the credentials envelope still carries long-lived provider secrets. */
+export function credentialsContainCloudSecrets(credentials: unknown): boolean {
+  if (!credentials || typeof credentials !== 'object') return false;
+  const c = credentials as Record<string, unknown>;
+  if (accountHasCloudSecret(c.googleDrive)) return true;
+  for (const key of CLOUD_ACCOUNT_ARRAY_KEYS) {
+    const arr = c[key];
+    if (Array.isArray(arr) && arr.some(accountHasCloudSecret)) return true;
+  }
+  return false;
 }
 
 export interface StoredCredentialsRecord {
@@ -231,6 +276,20 @@ export class StorageCredentialsService {
       delete credentials.driveFolderId;
     }
 
+    // Device cloud custody: never persist long-lived cloud OAuth/provider secrets.
+    // This is the single write choke point — every upsert path (exchange, proxy
+    // refresh dual-write, PUT merge, layout patch) goes through here.
+    const { isDeviceCloudCustodyEnabled } = await import('./socialMailboxService');
+    if (isDeviceCloudCustodyEnabled()) {
+      if (credentialsContainCloudSecrets(credentials)) {
+        safeLogger.warn('[StorageCredentials] Stripping cloud secrets under device custody', {
+          reason: 'custody_strip_on_upsert',
+          pnIdHash: hashIdentifier(identityId),
+        });
+      }
+      credentials = this.stripCloudSecrets(credentials as Record<string, unknown>);
+    }
+
     const db = getDatabasePool();
     const serialized = JSON.stringify(credentials);
     const encryptedPayload = await this.encryptPayload(serialized);
@@ -425,25 +484,13 @@ export class StorageCredentialsService {
 
   /**
    * Strip long-lived cloud secrets; keep layout / provider enum metadata only.
-   * Used after device migration when DEVICE_CLOUD_CUSTODY is enabled.
+   * Under DEVICE_CLOUD_CUSTODY, upsertCredentials applies this on every write.
    */
   stripCloudSecrets(credentials: Record<string, unknown>): Record<string, unknown> {
     const stripAccount = (acct: Record<string, unknown> | undefined): Record<string, unknown> | undefined => {
       if (!acct || typeof acct !== 'object') return acct;
       const next = { ...acct };
-      for (const k of [
-        'accessToken',
-        'access_token',
-        'refreshToken',
-        'refresh_token',
-        'apiKey',
-        'apiSecret',
-        'clientSecret',
-        'secretAccessKey',
-        'password',
-        'sasToken',
-        'connectionString'
-      ]) {
+      for (const k of CLOUD_SECRET_FIELDS) {
         delete next[k];
       }
       return next;

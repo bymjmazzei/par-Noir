@@ -55,7 +55,8 @@ function rootPrefix(pnIdentifier: string, credentials: StorageCredentialsEnvelop
 export async function initializePortableStorage(
   pnIdentifier: string,
   credentials: StorageCredentialsEnvelope,
-  providerOverride?: StorageProviderId
+  providerOverride?: StorageProviderId,
+  cloudAccessToken?: string
 ): Promise<{ pathPrefix: string }> {
   const provider = providerOverride ?? resolveSocialCloudProvider(credentials);
   if (!provider || provider === 'google_drive') {
@@ -67,12 +68,37 @@ export async function initializePortableStorage(
       ? credentials.socialCloudAccountId
       : undefined;
 
+  // Prefer request-forwarded token; else in-memory tokens from OAuth exchange
+  // (request-scoped only — upsertCredentials strips before persist under custody).
+  let ephemeral = cloudAccessToken?.trim() || undefined;
+  if (!ephemeral) {
+    ephemeral =
+      provider === 'dropbox'
+        ? (() => {
+            const accounts = credentials.dropboxAccounts || [];
+            const acct = socialAccountId
+              ? accounts.find((a) => a.accountId === socialAccountId)
+              : accounts[0];
+            return String(acct?.access_token || acct?.accessToken || '').trim() || undefined;
+          })()
+        : provider === 'onedrive'
+          ? (() => {
+              const accounts = credentials.onedriveAccounts || [];
+              const acct = socialAccountId
+                ? accounts.find((a) => a.accountId === socialAccountId)
+                : accounts[0];
+              return String(acct?.access_token || acct?.accessToken || '').trim() || undefined;
+            })()
+          : undefined;
+  }
+
   const prefix = rootPrefix(pnIdentifier, credentials);
   const blobStore = await createBlobStoreForProvider(
     pnIdentifier,
     credentials,
     provider,
-    socialAccountId
+    socialAccountId,
+    ephemeral
   );
 
   const dirs = [

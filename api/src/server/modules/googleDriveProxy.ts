@@ -36,6 +36,20 @@ export class GoogleDriveProxyService {
    * Handles token refresh if needed
    */
   async getAccessToken(userPnIdentifier: string, accountId?: string, additionalCandidates?: string[]): Promise<string> {
+    const { isDeviceCloudCustodyEnabled } = await import('./socialMailboxService');
+    if (isDeviceCloudCustodyEnabled()) {
+      const pnForLog = userPnIdentifier?.startsWith('pn-')
+        ? userPnIdentifier
+        : additionalCandidates?.[0] || userPnIdentifier;
+      safeLogger.warn('[GoogleDriveProxy] Refusing DB token mint under device custody', {
+        reason: 'cloud_token_required',
+        pnIdHash: hashIdentifier(pnForLog),
+      });
+      throw new Error(
+        'Google Drive access token required. Forward X-PN-Cloud-Access-Token after unlocking with cloud credentials.'
+      );
+    }
+
     // CRITICAL: Use ONLY the pn identifier (first candidate)
     // Dashboard stores credentials under pn identifier only, so we should only try that
     // The additionalCandidates array should only contain the pn identifier
@@ -324,6 +338,20 @@ export class GoogleDriveProxyService {
    * Force refresh access token (public method for 401 retries)
    */
   async forceRefreshAccessToken(userPnIdentifier: string, accountId?: string, additionalCandidates?: string[]): Promise<string> {
+    const { isDeviceCloudCustodyEnabled } = await import('./socialMailboxService');
+    if (isDeviceCloudCustodyEnabled()) {
+      const pnForLog = userPnIdentifier?.startsWith('pn-')
+        ? userPnIdentifier
+        : additionalCandidates?.[0] || userPnIdentifier;
+      safeLogger.warn('[GoogleDriveProxy] Refusing force refresh under device custody', {
+        reason: 'cloud_token_required',
+        pnIdHash: hashIdentifier(pnForLog),
+      });
+      throw new Error(
+        'Google Drive access token required. Forward X-PN-Cloud-Access-Token after unlocking with cloud credentials.'
+      );
+    }
+
     const pnIdentifier = userPnIdentifier?.startsWith('pn-') ? userPnIdentifier : (additionalCandidates?.[0] || userPnIdentifier);
     if (!pnIdentifier || !pnIdentifier.startsWith('pn-')) {
       throw new Error('Invalid pn identifier');
@@ -419,6 +447,15 @@ export class GoogleDriveProxyService {
     newAccessToken: string,
     expiryDate?: Date
   ): Promise<void> {
+    const { isDeviceCloudCustodyEnabled } = await import('./socialMailboxService');
+    if (isDeviceCloudCustodyEnabled()) {
+      safeLogger.warn('[GoogleDriveProxy] Refusing updateStoredToken under device custody', {
+        reason: 'custody_no_secret_dual_write',
+        pnIdHash: hashIdentifier(userPnIdentifier),
+      });
+      return;
+    }
+
     const pnIdentifier = userPnIdentifier?.startsWith('pn-') ? userPnIdentifier : `pn-${userPnIdentifier}`;
 
     if (!pnIdentifier || !pnIdentifier.startsWith('pn-')) {
@@ -859,7 +896,8 @@ export class GoogleDriveProxyService {
     userPnIdentifier: string,
     pnIdentifier: string,
     fileIds: string[],
-    accountId?: string
+    accountId?: string,
+    accessTokenOverride?: string
   ): Promise<{ deletedJson: number; deletedSpreadsheets: number; errors: string[] }> {
     const result = {
       deletedJson: 0,
@@ -872,7 +910,22 @@ export class GoogleDriveProxyService {
     }
 
     try {
-      const accessToken = await this.getAccessToken(userPnIdentifier, accountId);
+      const override = accessTokenOverride?.trim() || '';
+      const { isDeviceCloudCustodyEnabled } = await import('./socialMailboxService');
+      let accessToken: string;
+      if (override) {
+        accessToken = override;
+      } else if (isDeviceCloudCustodyEnabled()) {
+        safeLogger.warn('[GoogleDriveProxy] deleteCompanionMetadataFiles requires forwarded token under custody', {
+          reason: 'cloud_token_required',
+          pnIdHash: hashIdentifier(userPnIdentifier),
+        });
+        throw new Error(
+          'Google Drive access token required. Forward X-PN-Cloud-Access-Token after unlocking with cloud credentials.'
+        );
+      } else {
+        accessToken = await this.getAccessToken(userPnIdentifier, accountId);
+      }
       
       // Get pN folder and metadata folder
       const pnFolderName = `par Noir - ${pnIdentifier}`;
@@ -1183,9 +1236,25 @@ export class GoogleDriveProxyService {
     userPnIdentifier: string,
     fileId: string,
     updates: { name?: string; description?: string; parents?: string[] },
-    accountId?: string
+    accountId?: string,
+    accessTokenOverride?: string
   ): Promise<GoogleDriveFile> {
-    const accessToken = await this.getAccessToken(userPnIdentifier, accountId);
+    const override = accessTokenOverride?.trim() || '';
+    const { isDeviceCloudCustodyEnabled } = await import('./socialMailboxService');
+    let accessToken: string;
+    if (override) {
+      accessToken = override;
+    } else if (isDeviceCloudCustodyEnabled()) {
+      safeLogger.warn('[GoogleDriveProxy] updateFileMetadata requires forwarded token under custody', {
+        reason: 'cloud_token_required',
+        pnIdHash: hashIdentifier(userPnIdentifier),
+      });
+      throw new Error(
+        'Google Drive access token required. Forward X-PN-Cloud-Access-Token after unlocking with cloud credentials.'
+      );
+    } else {
+      accessToken = await this.getAccessToken(userPnIdentifier, accountId);
+    }
 
     const response = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}`, {
       method: 'PATCH',

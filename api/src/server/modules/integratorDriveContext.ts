@@ -59,7 +59,13 @@ export async function resolveIntegratorDriveContext(
     const { resolveOwnerDriveToken } = await import('./ownerDriveToken');
     const resolved = await resolveOwnerDriveToken(req, userIdentifier, { accountId });
     accessToken = resolved.token.access_token;
-  } catch {
+  } catch (err) {
+    const { hashIdentifier, safeLogger } = await import('../../utils/logger');
+    safeLogger.warn('[IntegratorDrive] Cloud access token required', {
+      reason: 'cloud_token_required',
+      pnIdHash: hashIdentifier(userIdentifier),
+      message: err instanceof Error ? err.message : String(err),
+    });
     return {
       error: 'cloud_token_required',
       error_description:

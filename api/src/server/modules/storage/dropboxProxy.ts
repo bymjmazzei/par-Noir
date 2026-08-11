@@ -1,8 +1,36 @@
 import { storageCredentialsService } from '../storageCredentialsService';
+import { hashIdentifier, safeLogger } from '../../../utils/logger';
+import { isDeviceCloudCustodyEnabled } from '../socialMailboxService';
 
 export class DropboxProxyService {
-  async getAccessToken(pnIdentifier: string, accountId?: string): Promise<string> {
+  /**
+   * Resolve a Dropbox access token.
+   * Under device cloud custody: forwardedAccessToken only (no DB read/refresh/dual-write).
+   * Opt-out: may read/refresh from stored credentials.
+   */
+  async getAccessToken(
+    pnIdentifier: string,
+    accountId?: string,
+    forwardedAccessToken?: string
+  ): Promise<string> {
     const normalized = pnIdentifier.startsWith('pn-') ? pnIdentifier : `pn-${pnIdentifier}`;
+    const forwarded = forwardedAccessToken?.trim() || '';
+
+    if (isDeviceCloudCustodyEnabled()) {
+      if (!forwarded) {
+        safeLogger.warn('[DropboxProxy] Cloud access token required under custody', {
+          reason: 'cloud_token_required',
+          pnIdHash: hashIdentifier(normalized),
+        });
+        throw new Error(
+          'Dropbox access token required. Forward X-PN-Cloud-Access-Token after unlocking with cloud credentials.'
+        );
+      }
+      return forwarded;
+    }
+
+    if (forwarded) return forwarded;
+
     const record = await storageCredentialsService.getCredentials(normalized);
     if (!record?.credentials) {
       throw new Error('Dropbox not connected');
@@ -29,8 +57,8 @@ export class DropboxProxyService {
             grant_type: 'refresh_token',
             refresh_token: refresh,
             client_id: process.env.DROPBOX_APP_KEY,
-            client_secret: process.env.DROPBOX_APP_SECRET
-          })
+            client_secret: process.env.DROPBOX_APP_SECRET,
+          }),
         });
         if (res.ok) {
           const data = (await res.json()) as { access_token: string; expires_in?: number };

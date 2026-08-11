@@ -2,6 +2,7 @@ import type { Application, Request, Response } from 'express';
 import type { StorageProviderId } from '@par-noir/user-owned-storage';
 import { gateOwnerRoute, DEVICE_CAPABILITIES } from '../deviceCapabilityService';
 import { safeClientErrorMessage } from '../../utils/safeError';
+import { extractCloudAccessToken } from '../cloudAccessToken';
 import {
   completeSocialCloudMigration,
   getMigrationJob,
@@ -17,6 +18,19 @@ import {
 
 function normalizePn(identityId: string): string {
   return identityId.startsWith('pn-') ? identityId : `pn-${identityId}`;
+}
+
+function respondCloudTokenRequired(res: Response, error: unknown, nodeEnv: string): boolean {
+  const msg = error instanceof Error ? error.message : String(error || '');
+  if (/cloud_token_required|CLOUD_TOKEN_REQUIRED|X-PN-Cloud-Access-Token|access token required/i.test(msg)) {
+    res.status(409).json({
+      error: 'cloud_token_required',
+      error_description: msg,
+      message: safeClientErrorMessage(error, nodeEnv === 'production'),
+    });
+    return true;
+  }
+  return false;
 }
 
 export function registerMigrationRoutes(app: Application, nodeEnv: string): void {
@@ -36,10 +50,12 @@ export function registerMigrationRoutes(app: Application, nodeEnv: string): void
       const preview = await previewSocialCloudMigration(
         normalized,
         targetProvider,
-        targetAccountId
+        targetAccountId,
+        extractCloudAccessToken(req)
       );
       return res.json(preview);
     } catch (error: unknown) {
+      if (respondCloudTokenRequired(res, error, nodeEnv)) return;
       return res.status(500).json({
         error: 'Preview failed',
         message: safeClientErrorMessage(error, nodeEnv === 'production')
@@ -63,10 +79,12 @@ export function registerMigrationRoutes(app: Application, nodeEnv: string): void
       const result = await startSocialCloudMigration(
         normalized,
         targetProvider,
-        targetAccountId
+        targetAccountId,
+        extractCloudAccessToken(req)
       );
       return res.json(result);
     } catch (error: unknown) {
+      if (respondCloudTokenRequired(res, error, nodeEnv)) return;
       return res.status(500).json({
         error: 'Migration start failed',
         message: safeClientErrorMessage(error, nodeEnv === 'production')

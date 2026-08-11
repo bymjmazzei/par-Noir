@@ -15,6 +15,8 @@ import {
   type PnDriveIndex,
   type PnDriveSheetKey,
 } from './pnDriveIndex';
+import { hashIdentifier, safeLogger } from '../../utils/logger';
+import { isDeviceCloudCustodyEnabled } from './socialMailboxService';
 
 export interface OwnerDriveContext {
   pnIdentifier: string;
@@ -51,7 +53,7 @@ export { DriveIndexError };
 
 /**
  * Load OAuth token + validate complete pnDriveIndex. Throws DriveIndexError if missing/incomplete.
- * Prefer opts.accessToken under device custody when API has layout-only shells.
+ * Under custody: requires opts.accessToken (header-only). Opt-out may mint via proxy.
  */
 export async function requireOwnerDriveContext(
   pnIdentifier: string,
@@ -75,9 +77,20 @@ export async function requireOwnerDriveContext(
 
   const resolvedAccountId = accountId ?? extractAccountId(account);
   const forwarded = opts?.accessToken?.trim();
+  const custody = isDeviceCloudCustodyEnabled();
   let accessToken: string;
+
   if (forwarded) {
     accessToken = forwarded;
+  } else if (custody) {
+    safeLogger.warn('[OwnerDriveContext] Cloud access token required under custody', {
+      reason: 'cloud_token_required',
+      pnIdHash: hashIdentifier(normalized),
+    });
+    throw new DriveIndexError(
+      'Google Drive access token required. Reconnect cloud storage or forward X-PN-Cloud-Access-Token.',
+      'CLOUD_TOKEN_REQUIRED'
+    );
   } else {
     try {
       const { googleDriveProxyService } = await import('./googleDriveProxy');
@@ -86,7 +99,12 @@ export async function requireOwnerDriveContext(
         resolvedAccountId,
         [normalized]
       );
-    } catch {
+    } catch (err) {
+      safeLogger.warn('[OwnerDriveContext] Proxy token mint failed (custody off)', {
+        reason: 'proxy_get_access_token_failed',
+        pnIdHash: hashIdentifier(normalized),
+        message: err instanceof Error ? err.message : String(err),
+      });
       throw new DriveIndexError(
         'Google Drive access token required. Reconnect cloud storage or forward X-PN-Cloud-Access-Token.',
         'CLOUD_TOKEN_REQUIRED'
@@ -94,12 +112,14 @@ export async function requireOwnerDriveContext(
     }
   }
 
-  const token: GoogleDriveToken = {
-    access_token: accessToken,
-    refresh_token: (account.refresh_token || account.refreshToken) as string | undefined,
-    expires_at: account.expires_at as number | undefined,
-    expires_in: account.expires_in as number | undefined,
-  };
+  const token: GoogleDriveToken = custody
+    ? { access_token: accessToken }
+    : {
+        access_token: accessToken,
+        refresh_token: (account.refresh_token || account.refreshToken) as string | undefined,
+        expires_at: account.expires_at as number | undefined,
+        expires_in: account.expires_in as number | undefined,
+      };
 
   const foldersExist = await pnDriveFoldersExistOnDrive(
     accessToken,
@@ -136,7 +156,13 @@ export async function tryOwnerDriveContext(
 ): Promise<OwnerDriveContext | null> {
   try {
     return await requireOwnerDriveContext(pnIdentifier, accountId, opts);
-  } catch {
+  } catch (err) {
+    const code = (err as { code?: string } | null)?.code;
+    safeLogger.warn('[OwnerDriveContext] tryOwnerDriveContext soft-failed', {
+      reason: code || 'unknown',
+      pnIdHash: hashIdentifier(pnIdentifier),
+      message: err instanceof Error ? err.message : String(err),
+    });
     return null;
   }
 }

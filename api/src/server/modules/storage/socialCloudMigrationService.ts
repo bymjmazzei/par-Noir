@@ -81,7 +81,8 @@ export async function previewSocialCloudMigration(
       normalized,
       credentials,
       sourceProvider,
-      sourceAccountId
+      sourceAccountId,
+      cloudAccessToken
     );
     const rootPrefix = `${pnRootFolderName(normalized)}/`;
     const entries = await blobStore.list(`${rootPrefix}_metadata/`);
@@ -103,10 +104,16 @@ export async function previewSocialCloudMigration(
 export async function startSocialCloudMigration(
   pnIdentifier: string,
   targetProvider: StorageProviderId,
-  targetAccountId?: string
+  targetAccountId?: string,
+  cloudAccessToken?: string
 ): Promise<{ jobId: string }> {
   const normalized = normalizePn(pnIdentifier);
-  const preview = await previewSocialCloudMigration(normalized, targetProvider, targetAccountId);
+  const preview = await previewSocialCloudMigration(
+    normalized,
+    targetProvider,
+    targetAccountId,
+    cloudAccessToken
+  );
   if (preview.blockers.some((b) => b.includes('same provider'))) {
     throw new Error(preview.blockers.join('; '));
   }
@@ -131,7 +138,8 @@ export async function startSocialCloudMigration(
     credentials,
     sourceProvider,
     targetProvider,
-    targetAccountId
+    targetAccountId,
+    cloudAccessToken
   );
 
   return { jobId };
@@ -143,7 +151,8 @@ async function executeSocialCloudMigrationJob(
   credentials: StorageCredentialsEnvelope,
   sourceProvider: StorageProviderId,
   targetProvider: StorageProviderId,
-  targetAccountId?: string
+  targetAccountId?: string,
+  cloudAccessToken?: string
 ): Promise<void> {
   const onProgress = async (report: MigrationReport) => {
     await updateMigrationJob(jobId, {
@@ -161,7 +170,8 @@ async function executeSocialCloudMigrationJob(
         credentials,
         targetProvider,
         targetAccountId,
-        onProgress
+        onProgress,
+        cloudAccessToken
       );
     } else if (sourceProvider !== 'google_drive' && targetProvider === 'google_drive') {
       report = await migratePortableToGoogle(
@@ -169,7 +179,8 @@ async function executeSocialCloudMigrationJob(
         normalized,
         credentials,
         credentials.socialCloudAccountId,
-        onProgress
+        onProgress,
+        cloudAccessToken
       );
     } else if (sourceProvider !== 'google_drive' && targetProvider !== 'google_drive') {
       report = await migratePortableToPortable(
@@ -180,7 +191,8 @@ async function executeSocialCloudMigrationJob(
         targetProvider,
         credentials.socialCloudAccountId,
         targetAccountId,
-        onProgress
+        onProgress,
+        cloudAccessToken
       );
     } else {
       throw new Error('Unsupported migration direction');

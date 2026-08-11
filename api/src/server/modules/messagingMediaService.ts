@@ -126,24 +126,35 @@ async function getOwnerDriveContext(
     account.keyPrefix ||
     'default';
 
-  // Callers forward the owner's device-held token; there is no server-side fallback
-  // because under custody the server holds no Google secrets.
-  const accessToken =
-    (typeof accessTokenOverride === 'string' && accessTokenOverride.trim()) ||
-    String(account.access_token || account.accessToken || '').trim();
+  // Callers forward the owner's device-held token. Under custody there is no
+  // server-side DB fallback because shells hold no Google secrets.
+  const { isDeviceCloudCustodyEnabled } = await import('./socialMailboxService');
+  const { hashIdentifier, safeLogger } = await import('../../utils/logger');
+  const custody = isDeviceCloudCustodyEnabled();
+  const forwarded =
+    typeof accessTokenOverride === 'string' ? accessTokenOverride.trim() : '';
+  const accessToken = custody
+    ? forwarded
+    : forwarded || String(account.access_token || account.accessToken || '').trim();
   if (!accessToken) {
+    safeLogger.warn('[MessagingMedia] Cloud access token required', {
+      reason: 'cloud_token_required',
+      pnIdHash: hashIdentifier(pnIdentifier),
+    });
     throw new DriveIndexError(
       'Google Drive access token required. Forward X-PN-Cloud-Access-Token after unlocking with cloud credentials.',
       'CLOUD_TOKEN_REQUIRED'
     );
   }
 
-  const token: GoogleDriveToken = {
-    access_token: accessToken,
-    refresh_token: account.refresh_token || account.refreshToken,
-    expires_at: account.expires_at,
-    expires_in: account.expires_in
-  };
+  const token: GoogleDriveToken = custody
+    ? { access_token: accessToken }
+    : {
+        access_token: accessToken,
+        refresh_token: account.refresh_token || account.refreshToken,
+        expires_at: account.expires_at,
+        expires_in: account.expires_in
+      };
 
   const { readPnDriveIndex, isPnDriveIndexComplete } = await import('./pnDriveIndex');
   const index = readPnDriveIndex(credentials as Record<string, unknown>);

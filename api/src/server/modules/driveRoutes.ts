@@ -1012,7 +1012,8 @@ export function setupDriveRoutes(app: express.Application, deps: DriveRouteDeps)
               userIdentifier,
               pnIdentifier,
               [fileId], // Delete metadata for the thumbnail fileId being deleted
-              accountId
+              accountId,
+              forwardedCloudToken
             );
             
             if (metadataResult.deletedJson > 0 || metadataResult.deletedSpreadsheets > 0) {
@@ -1197,15 +1198,27 @@ export function setupDriveRoutes(app: express.Application, deps: DriveRouteDeps)
         const { fileId } = req.params;
         const { name, description, parents, accountId } = req.body;
         const { googleDriveProxyService } = await import('./googleDriveProxy');
+        const { extractCloudAccessToken } = await import('./cloudAccessToken');
+        const { respondDriveTokenError } = await import('./ownerDriveToken');
         
         const updates: { name?: string; description?: string; parents?: string[] } = {};
         if (name) updates.name = name;
         if (description !== undefined) updates.description = description;
         if (parents) updates.parents = parents;
         
-        const updatedFile = await googleDriveProxyService.updateFileMetadata(userIdentifier, fileId, updates, accountId);
-        
-        return res.json({ file: updatedFile });
+        try {
+          const updatedFile = await googleDriveProxyService.updateFileMetadata(
+            userIdentifier,
+            fileId,
+            updates,
+            accountId,
+            extractCloudAccessToken(req)
+          );
+          return res.json({ file: updatedFile });
+        } catch (tokenErr: unknown) {
+          if (respondDriveTokenError(res, tokenErr)) return;
+          throw tokenErr;
+        }
       } catch (error: any) {
         console.error('Error updating Google Drive file:', error);
         return res.status(500).json({

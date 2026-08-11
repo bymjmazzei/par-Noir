@@ -478,8 +478,19 @@ export function setupDataPointUserRoutes(app: any) {
       }
 
       const { getUserDriveMetadataContext } = await import('./driveMetadataHelper');
-      const { resolveOwnerDriveToken } = await import('./ownerDriveToken');
-      const ownerToken = await resolveOwnerDriveToken(req, normalized).catch(() => null);
+      const { resolveOwnerDriveToken, respondDriveTokenError } = await import('./ownerDriveToken');
+      let ownerToken: { token: { access_token: string } } | null = null;
+      try {
+        ownerToken = await resolveOwnerDriveToken(req, normalized);
+      } catch (err) {
+        const { hashIdentifier, safeLogger } = await import('../../utils/logger');
+        safeLogger.warn('[ApiRoutes] data-point-requests list: cloud token required', {
+          reason: 'cloud_token_required',
+          pnIdHash: hashIdentifier(normalized),
+        });
+        if (respondDriveTokenError(res, err)) return;
+        throw err;
+      }
       const ctx = await getUserDriveMetadataContext(normalized, {
         accessToken: ownerToken?.token.access_token,
       });
@@ -544,8 +555,19 @@ export function setupDataPointUserRoutes(app: any) {
       }
 
       const { getUserDriveMetadataContext } = await import('./driveMetadataHelper');
-      const { resolveOwnerDriveToken } = await import('./ownerDriveToken');
-      const ownerToken = await resolveOwnerDriveToken(req, normalized).catch(() => null);
+      const { resolveOwnerDriveToken, respondDriveTokenError } = await import('./ownerDriveToken');
+      let ownerToken: { token: { access_token: string } } | null = null;
+      try {
+        ownerToken = await resolveOwnerDriveToken(req, normalized);
+      } catch (err) {
+        const { hashIdentifier, safeLogger } = await import('../../utils/logger');
+        safeLogger.warn('[ApiRoutes] data-point-request action: cloud token required', {
+          reason: 'cloud_token_required',
+          pnIdHash: hashIdentifier(normalized),
+        });
+        if (respondDriveTokenError(res, err)) return;
+        throw err;
+      }
       const ctx = await getUserDriveMetadataContext(normalized, {
         accessToken: ownerToken?.token.access_token,
       });

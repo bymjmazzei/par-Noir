@@ -1,5 +1,7 @@
 import { storageCredentialsService } from './storageCredentialsService';
 import { DriveIndexError } from './pnDriveIndex';
+import { hashIdentifier, safeLogger } from '../../utils/logger';
+import { isDeviceCloudCustodyEnabled } from './socialMailboxService';
 
 export interface RecoveryDriveContext {
   pnIdentifier: string;
@@ -18,8 +20,7 @@ function extractAccountId(account: Record<string, unknown>): string | undefined 
 }
 
 /**
- * Resolve recovery Drive context. Throws DriveIndexError CLOUD_TOKEN_REQUIRED when
- * no forwarded/server access token is available (do not treat as "Drive not connected").
+ * Resolve recovery Drive context. Under custody: forwarded accessToken only.
  * Pass softMissingToken for GET unlock probes that should soft-empty instead of 409.
  */
 export async function getRecoveryDriveContext(
@@ -37,10 +38,18 @@ export async function getRecoveryDriveContext(
 
   const account = googleDriveAccounts[0];
   const accountId = extractAccountId(account);
-  const access_token = String(
-    opts?.accessToken || account.access_token || account.accessToken || ''
-  ).trim();
+  const custody = isDeviceCloudCustodyEnabled();
+  const forwarded = String(opts?.accessToken || '').trim();
+  const access_token = custody
+    ? forwarded
+    : String(forwarded || account.access_token || account.accessToken || '').trim();
+
   if (!access_token) {
+    safeLogger.warn('[RecoveryDrive] Cloud access token missing', {
+      reason: 'cloud_token_required',
+      pnIdHash: hashIdentifier(pnIdentifier),
+      soft: !!opts?.softMissingToken,
+    });
     if (opts?.softMissingToken) return null;
     throw new DriveIndexError(
       'Google Drive access token required. Forward X-PN-Cloud-Access-Token after unlocking with cloud credentials.',
@@ -48,12 +57,14 @@ export async function getRecoveryDriveContext(
     );
   }
 
-  const token = {
-    access_token,
-    refresh_token: account.refresh_token || account.refreshToken,
-    expires_at: account.expires_at,
-    expires_in: account.expires_in,
-  };
+  const token = custody
+    ? { access_token }
+    : {
+        access_token,
+        refresh_token: account.refresh_token || account.refreshToken,
+        expires_at: account.expires_at,
+        expires_in: account.expires_in,
+      };
 
   const { readPnDriveIndex, isPnDriveIndexComplete } = await import('./pnDriveIndex');
   const index = readPnDriveIndex(userCredentials.credentials as Record<string, unknown>);

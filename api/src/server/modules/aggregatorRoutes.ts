@@ -1404,9 +1404,20 @@ export function setupAggregatorRoutes(app: any, deps: AggregatorRouteDeps) {
       } | null = null;
       const accountIdParam = (req.query.accountId as string) || undefined;
       const { createStorageRequestContext, getDriveTokenFromContext } = await import('./storage/storageRequestContext');
-      const storageCtx = tokenPayload.pnIdentifier
-        ? await createStorageRequestContext(req, tokenPayload.pnIdentifier, accountIdParam)
-        : null;
+      let storageCtx: Awaited<ReturnType<typeof createStorageRequestContext>> = null;
+      if (tokenPayload.pnIdentifier) {
+        try {
+          storageCtx = await createStorageRequestContext(
+            req,
+            tokenPayload.pnIdentifier,
+            accountIdParam
+          );
+        } catch (err) {
+          const { respondDriveTokenError } = await import('./ownerDriveToken');
+          if (respondDriveTokenError(res, err)) return;
+          throw err;
+        }
+      }
 
       if (tokenPayload.pnIdentifier) {
         if (!(await gateOwnerRoute(req, res, DEVICE_CAPABILITIES.driveUpload, tokenPayload.pnIdentifier))) return;

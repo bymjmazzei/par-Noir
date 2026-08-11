@@ -33,6 +33,20 @@ import { onedriveProxyService } from './onedriveProxy';
 import { safeClientErrorMessage } from '../../utils/safeError';
 import { registerMigrationRoutes } from './migrationRoutes';
 import { isCompletedSocialCloudMigrationJob } from './storageMigrationJobs';
+import { extractCloudAccessToken } from '../cloudAccessToken';
+
+function respondCloudTokenRequired(res: Response, error: unknown, nodeEnv: string): boolean {
+  const msg = error instanceof Error ? error.message : String(error || '');
+  if (/cloud_token_required|CLOUD_TOKEN_REQUIRED|X-PN-Cloud-Access-Token|access token required/i.test(msg)) {
+    res.status(409).json({
+      error: 'cloud_token_required',
+      error_description: msg,
+      message: safeClientErrorMessage(error, nodeEnv === 'production'),
+    });
+    return true;
+  }
+  return false;
+}
 
 export function registerStorageRoutes(app: Application, nodeEnv: string): void {
   registerMigrationRoutes(app, nodeEnv);
@@ -95,14 +109,16 @@ export function registerStorageRoutes(app: Application, nodeEnv: string): void {
       const accountId =
         typeof req.query.accountId === 'string' ? req.query.accountId : undefined;
 
+      const cloudTok = extractCloudAccessToken(req);
       const ctx =
         scope === 'file' && providerParam
           ? await resolveFileBackendContext(
               pnIdentifier,
               providerParam as StorageProviderId,
-              accountId
+              accountId,
+              cloudTok
             )
-          : await resolveSocialCloudContext(pnIdentifier, accountId);
+          : await resolveSocialCloudContext(pnIdentifier, accountId, cloudTok);
 
       return res.json({
         provider: ctx.provider,
@@ -111,6 +127,7 @@ export function registerStorageRoutes(app: Application, nodeEnv: string): void {
         isSocialCloud: ctx.isSocialCloud ?? scope !== 'file'
       });
     } catch (error: unknown) {
+      if (respondCloudTokenRequired(res, error, nodeEnv)) return;
       return res.status(500).json({
         error: 'Failed to resolve storage context',
         message: safeClientErrorMessage(error, nodeEnv === 'production')
@@ -129,9 +146,10 @@ export function registerStorageRoutes(app: Application, nodeEnv: string): void {
         typeof req.body?.provider === 'string'
           ? (req.body.provider as StorageProviderId)
           : undefined;
+      const cloudTok = extractCloudAccessToken(req);
       const ctx = providerParam
-        ? await resolveFileBackendContext(pnIdentifier, providerParam)
-        : await resolveSocialCloudContext(pnIdentifier);
+        ? await resolveFileBackendContext(pnIdentifier, providerParam, undefined, cloudTok)
+        : await resolveSocialCloudContext(pnIdentifier, undefined, cloudTok);
       if (!ctx.blobStore) {
         return res.json({ ok: true, provider: ctx.provider, message: 'Google Drive connected' });
       }
@@ -141,6 +159,7 @@ export function registerStorageRoutes(app: Application, nodeEnv: string): void {
       await ctx.blobStore.delete(probeKey);
       return res.json({ ok: true, provider: ctx.provider });
     } catch (error: unknown) {
+      if (respondCloudTokenRequired(res, error, nodeEnv)) return;
       return res.status(500).json({
         ok: false,
         message: safeClientErrorMessage(error, nodeEnv === 'production')
@@ -163,7 +182,8 @@ export function registerStorageRoutes(app: Application, nodeEnv: string): void {
       const ctx = await resolveFileBackendContext(
         pnIdentifier,
         providerParam as StorageProviderId,
-        typeof req.query.accountId === 'string' ? req.query.accountId : undefined
+        typeof req.query.accountId === 'string' ? req.query.accountId : undefined,
+        extractCloudAccessToken(req)
       );
       if (!ctx.blobStore) {
         return res.status(400).json({ error: 'Blob API not available for Google Drive; use /api/drive/files' });
@@ -195,9 +215,15 @@ export function registerStorageRoutes(app: Application, nodeEnv: string): void {
       if (!shouldInitializePortable(credentials)) {
         return res.status(400).json({ error: 'No portable provider configured' });
       }
-      const result = await initializePortableStorage(pnIdentifier, credentials);
+      const result = await initializePortableStorage(
+        pnIdentifier,
+        credentials,
+        undefined,
+        extractCloudAccessToken(req)
+      );
       return res.json({ success: true, ...result });
     } catch (error: unknown) {
+      if (respondCloudTokenRequired(res, error, nodeEnv)) return;
       return res.status(500).json({
         error: 'Portable init failed',
         message: safeClientErrorMessage(error, nodeEnv === 'production')
@@ -471,7 +497,12 @@ export function registerStorageRoutes(app: Application, nodeEnv: string): void {
         return res.status(400).json({ error: 'Use /api/drive/files for Google Drive uploads' });
       }
 
-      const ctx = await resolveFileBackendContext(pnIdentifier, provider, body.accountId);
+      const ctx = await resolveFileBackendContext(
+        pnIdentifier,
+        provider,
+        body.accountId,
+        extractCloudAccessToken(req)
+      );
       if (!ctx.blobStore) {
         return res.status(400).json({ error: 'Blob store unavailable for provider' });
       }
@@ -482,6 +513,7 @@ export function registerStorageRoutes(app: Application, nodeEnv: string): void {
       });
       return res.json({ success: true, key: fullKey.replace(ctx.rootPrefix, ''), provider });
     } catch (error: unknown) {
+      if (respondCloudTokenRequired(res, error, nodeEnv)) return;
       return res.status(500).json({
         error: 'Blob upload failed',
         message: safeClientErrorMessage(error, nodeEnv === 'production')
@@ -506,7 +538,12 @@ export function registerStorageRoutes(app: Application, nodeEnv: string): void {
         return res.status(400).json({ error: 'Use /api/drive/files for Google Drive downloads' });
       }
 
-      const ctx = await resolveFileBackendContext(pnIdentifier, provider, accountId);
+      const ctx = await resolveFileBackendContext(
+        pnIdentifier,
+        provider,
+        accountId,
+        extractCloudAccessToken(req)
+      );
       if (!ctx.blobStore) {
         return res.status(400).json({ error: 'Blob store unavailable' });
       }
@@ -521,6 +558,7 @@ export function registerStorageRoutes(app: Application, nodeEnv: string): void {
       }
       return res.send(Buffer.from(data));
     } catch (error: unknown) {
+      if (respondCloudTokenRequired(res, error, nodeEnv)) return;
       return res.status(500).json({
         error: 'Blob download failed',
         message: safeClientErrorMessage(error, nodeEnv === 'production')
@@ -545,7 +583,12 @@ export function registerStorageRoutes(app: Application, nodeEnv: string): void {
         return res.status(400).json({ error: 'Use /api/drive/files for Google Drive deletes' });
       }
 
-      const ctx = await resolveFileBackendContext(pnIdentifier, provider, accountId);
+      const ctx = await resolveFileBackendContext(
+        pnIdentifier,
+        provider,
+        accountId,
+        extractCloudAccessToken(req)
+      );
       if (!ctx.blobStore) {
         return res.status(400).json({ error: 'Blob store unavailable' });
       }
