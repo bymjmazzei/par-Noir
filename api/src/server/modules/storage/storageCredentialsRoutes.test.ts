@@ -4,11 +4,32 @@
  * Status-code and payload branches for the storage credential + Drive init routes.
  * Every collaborator (credential store, Drive proxy, init coordinator) is mocked.
  */
-jest.mock('../deviceCapabilityService', () => ({
-  gateOwnerRoute: jest.fn(async () => ({ pnIdentifier: 'pn-test' })),
-  gateStorageCredentialsPut: jest.fn(async () => ({ pnIdentifier: 'pn-test' })),
-  DEVICE_CAPABILITIES: { driveRead: 'drive.read' },
-}));
+
+/** Bearer identity under test — swapped to prove pn_mismatch / unauthorized. */
+let currentBearer: string | null = 'pn-test';
+
+jest.mock('../deviceCapabilityService', () => {
+  const DEVICE_CAPABILITIES = {
+    driveRead: 'drive.read',
+    driveUpload: 'drive.upload',
+    profileWrite: 'profile.write',
+  };
+  return {
+    DEVICE_CAPABILITIES,
+    gateStorageCredentialsPut: jest.fn(async () => ({ pnIdentifier: 'pn-test' })),
+    gateOwnerRoute: jest.fn(async (_req: unknown, res: any, _cap: string, targetPn?: string) => {
+      if (!currentBearer) {
+        res.status(401).json({ error: 'unauthorized' });
+        return null;
+      }
+      if (targetPn !== undefined && currentBearer !== targetPn) {
+        res.status(403).json({ error: 'forbidden', reason: 'pn_mismatch' });
+        return null;
+      }
+      return { pnIdentifier: currentBearer };
+    }),
+  };
+});
 
 jest.mock('../identitySuccessionService', () => ({
   isPnRevokedForNetwork: jest.fn(() => false),
@@ -105,6 +126,7 @@ function upsertResult() {
 
 describe('storage credentials routes', () => {
   beforeEach(() => {
+    currentBearer = PN;
     mockGetCredentials.mockReset();
     mockUpsertCredentials.mockReset().mockResolvedValue(upsertResult());
     mockMigrateIdentityId.mockReset();
@@ -205,6 +227,25 @@ describe('storage credentials routes', () => {
   });
 
   describe('POST /api/storage/initialize/:identityId', () => {
+    it('rejects wrong bearer pn with 403 before credentials lookup', async () => {
+      currentBearer = 'pn-attacker';
+
+      const res = await request(buildApp()).post(`/api/storage/initialize/${PN}`).expect(403);
+
+      expect(res.body).toEqual({ error: 'forbidden', reason: 'pn_mismatch' });
+      expect(mockGetCredentials).not.toHaveBeenCalled();
+      expect(mockRunFullDriveInit).not.toHaveBeenCalled();
+    });
+
+    it('rejects missing bearer with 401 before credentials lookup', async () => {
+      currentBearer = null;
+
+      const res = await request(buildApp()).post(`/api/storage/initialize/${PN}`).expect(401);
+
+      expect(res.body.error).toBe('unauthorized');
+      expect(mockGetCredentials).not.toHaveBeenCalled();
+    });
+
     it('returns 404 when no Google Drive account is connected', async () => {
       mockGetCredentials.mockResolvedValue({ credentials: {} });
 
@@ -268,6 +309,16 @@ describe('storage credentials routes', () => {
   });
 
   describe('GET /api/storage/initialize/:identityId/status', () => {
+    it('rejects wrong bearer pn with 403', async () => {
+      currentBearer = 'pn-attacker';
+
+      const res = await request(buildApp())
+        .get(`/api/storage/initialize/${PN}/status`)
+        .expect(403);
+
+      expect(res.body).toEqual({ error: 'forbidden', reason: 'pn_mismatch' });
+    });
+
     it('reports idle when nothing is running', async () => {
       const res = await request(buildApp())
         .get(`/api/storage/initialize/${PN}/status`)

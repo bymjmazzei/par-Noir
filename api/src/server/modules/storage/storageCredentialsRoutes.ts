@@ -254,6 +254,8 @@ export function setupStorageCredentialsRoutes(app: Application, deps: StorageCre
         const sanitizedIdentityId = identityId.replace(/[^a-zA-Z0-9-]/g, '');
         const pnIdentifier = sanitizedIdentityId.startsWith('pn-') ? sanitizedIdentityId : `pn-${sanitizedIdentityId}`;
 
+        if (!(await gateOwnerRoute(req, res, DEVICE_CAPABILITIES.driveUpload, pnIdentifier))) return;
+
         const { isPnRevokedForNetwork } = await import('../identitySuccessionService');
         if (isPnRevokedForNetwork(pnIdentifier)) {
           return res.status(403).json({
@@ -263,7 +265,7 @@ export function setupStorageCredentialsRoutes(app: Application, deps: StorageCre
         }
 
         const { storageCredentialsService } = await import('../storageCredentialsService');
-        const { googleDriveProxyService } = await import('../googleDriveProxy');
+        const { resolveOwnerDriveToken, respondDriveTokenError } = await import('../ownerDriveToken');
 
         const credentials = await storageCredentialsService.getCredentials(pnIdentifier);
         if (!credentials?.credentials) {
@@ -280,44 +282,18 @@ export function setupStorageCredentialsRoutes(app: Application, deps: StorageCre
         const account = googleDriveAccounts.length > 0 ? googleDriveAccounts[0] : null;
         const accountId = account ? extractAccountId(account) : undefined;
 
-        // Under custody: header-only via resolveOwnerDriveToken (no stored-token fallback).
-        let freshAccessToken: string | null = null;
-        try {
-          const { resolveOwnerDriveToken } = await import('../ownerDriveToken');
-          const resolved = await resolveOwnerDriveToken(req, pnIdentifier, { account, accountId });
-          freshAccessToken = resolved.token.access_token;
-        } catch (tokenErr: unknown) {
-          const { respondDriveTokenError } = await import('../ownerDriveToken');
-          const { isDeviceCloudCustodyEnabled } = await import('../socialMailboxService');
-          if (isDeviceCloudCustodyEnabled() && respondDriveTokenError(res, tokenErr)) {
-            return;
-          }
-          console.warn(
-            `[StorageInitialize POST] Could not resolve access token:`,
-            tokenErr instanceof Error ? tokenErr.message : tokenErr
-          );
-        }
-
-        const { isDeviceCloudCustodyEnabled } = await import('../socialMailboxService');
-        const custody = isDeviceCloudCustodyEnabled();
-        const token = {
-          access_token: custody
-            ? freshAccessToken || ''
-            : freshAccessToken || account.access_token || account.accessToken,
-          refresh_token: custody
-            ? undefined
-            : account?.refresh_token || account?.refreshToken,
-          expires_at: custody ? undefined : account?.expires_at,
-          expires_in: custody ? undefined : account?.expires_in
+        let token: {
+          access_token: string;
+          refresh_token?: string;
+          expires_at?: number;
+          expires_in?: number;
         };
-        const accessToken = token.access_token;
-
-        if (!accessToken) {
-          return res.status(409).json({
-            error: 'cloud_token_required',
-            error_description:
-              'Under device custody, reconnect Google Drive on this device and retry initialize with a cloud access token.'
-          });
+        try {
+          const resolved = await resolveOwnerDriveToken(req, pnIdentifier, { account, accountId });
+          token = resolved.token;
+        } catch (tokenErr: unknown) {
+          if (respondDriveTokenError(res, tokenErr)) return;
+          throw tokenErr;
         }
 
         console.log(`[StorageInitialize POST] Re-initializing folder structure for identityId: ${sanitizedIdentityId}`);
@@ -380,6 +356,8 @@ export function setupStorageCredentialsRoutes(app: Application, deps: StorageCre
         const pnIdentifier = sanitizedIdentityId.startsWith('pn-')
           ? sanitizedIdentityId
           : `pn-${sanitizedIdentityId}`;
+
+        if (!(await gateOwnerRoute(req, res, DEVICE_CAPABILITIES.driveRead, pnIdentifier))) return;
 
         const { isDriveInitInFlight } = await import('../driveInitCoordinator');
         const { getDriveInitProgress, isDriveInitProgressActive } = await import(

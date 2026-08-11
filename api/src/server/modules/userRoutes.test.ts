@@ -8,14 +8,30 @@ jest.mock('../middleware/authMiddleware', () => ({
   getBearerTokenPayload: jest.fn(),
 }));
 
-jest.mock('./deviceCapabilityService', () => ({
-  gateOwnerRoute: jest.fn(async () => ({ pnIdentifier: 'pn-test' })),
-  gateOwnerSelfRoute: jest.fn(async () => true),
-  DEVICE_CAPABILITIES: {
+/** Bearer identity under test — swapped to prove pn_mismatch / unauthorized. */
+let currentBearer: string | null = 'pn-test';
+
+jest.mock('./deviceCapabilityService', () => {
+  const DEVICE_CAPABILITIES = {
     profileRead: 'profile.read',
     profileWrite: 'profile.write',
-  },
-}));
+  };
+  return {
+    DEVICE_CAPABILITIES,
+    gateOwnerSelfRoute: jest.fn(async () => true),
+    gateOwnerRoute: jest.fn(async (_req: unknown, res: any, _cap: string, targetPn?: string) => {
+      if (!currentBearer) {
+        res.status(401).json({ error: 'unauthorized' });
+        return null;
+      }
+      if (targetPn !== undefined && currentBearer !== targetPn) {
+        res.status(403).json({ error: 'forbidden', reason: 'pn_mismatch' });
+        return null;
+      }
+      return { pnIdentifier: currentBearer };
+    }),
+  };
+});
 
 jest.mock('./storageCredentialsService', () => ({
   storageCredentialsService: { getCredentials: jest.fn() },
@@ -115,6 +131,7 @@ describe('setupUserRoutes', () => {
   const originalFetch = global.fetch;
 
   beforeEach(() => {
+    currentBearer = PN;
     mockGetCredentials.mockReset();
     mockGetAccessToken.mockReset();
     mockGetPermissions.mockReset();
@@ -331,12 +348,101 @@ describe('setupUserRoutes', () => {
     });
   });
 
+  describe('PUT /api/users/:pnIdentifier/preferences', () => {
+    it('rejects wrong bearer pn with 403 before credentials lookup', async () => {
+      currentBearer = 'pn-attacker';
+      const { app } = buildApp();
+
+      const res = await request(app)
+        .put(`/api/users/${PN}/preferences`)
+        .set('Authorization', AUTH)
+        .send({ theme: 'dark' })
+        .expect(403);
+
+      expect(res.body).toEqual({ error: 'forbidden', reason: 'pn_mismatch' });
+      expect(mockGetCredentials).not.toHaveBeenCalled();
+    });
+
+    it('rejects missing bearer with 401', async () => {
+      currentBearer = null;
+      const { app } = buildApp();
+
+      const res = await request(app)
+        .put(`/api/users/${PN}/preferences`)
+        .send({ theme: 'dark' })
+        .expect(401);
+
+      expect(res.body.error).toBe('unauthorized');
+      expect(mockGetCredentials).not.toHaveBeenCalled();
+    });
+
+    it('returns 409 cloud_token_required when no Drive token can be obtained', async () => {
+      mockGetCredentials.mockResolvedValue(credentialsWithDrive());
+      mockGetAccessToken.mockRejectedValue(new Error('access token required'));
+      const { app } = buildApp();
+
+      const res = await request(app)
+        .put(`/api/users/${PN}/preferences`)
+        .set('Authorization', AUTH)
+        .send({ theme: 'dark' })
+        .expect(409);
+
+      expect(res.body.error).toBe('cloud_token_required');
+    });
+  });
+
+  describe('GET /api/users/:pnIdentifier/preferences', () => {
+    it('rejects wrong bearer pn with 403 before credentials lookup', async () => {
+      currentBearer = 'pn-attacker';
+      const { app } = buildApp();
+
+      const res = await request(app).get(`/api/users/${PN}/preferences`).expect(403);
+
+      expect(res.body).toEqual({ error: 'forbidden', reason: 'pn_mismatch' });
+      expect(mockGetCredentials).not.toHaveBeenCalled();
+    });
+
+    it('rejects missing bearer with 401', async () => {
+      currentBearer = null;
+      const { app } = buildApp();
+
+      const res = await request(app).get(`/api/users/${PN}/preferences`).expect(401);
+
+      expect(res.body.error).toBe('unauthorized');
+      expect(mockGetCredentials).not.toHaveBeenCalled();
+    });
+
+    it('soft-nulls when authenticated owner has no credentials (layout absent)', async () => {
+      mockGetCredentials.mockResolvedValue(null);
+      const { app } = buildApp();
+
+      const res = await request(app)
+        .get(`/api/users/${PN}/preferences`)
+        .set('Authorization', AUTH)
+        .expect(200);
+
+      expect(res.body).toEqual({ preferences: null });
+    });
+  });
+
   describe('GET /api/users/:pnIdentifier/tag-preferences', () => {
+    it('rejects wrong bearer pn with 403', async () => {
+      currentBearer = 'pn-attacker';
+      const { app } = buildApp();
+
+      const res = await request(app).get(`/api/users/${PN}/tag-preferences`).expect(403);
+      expect(res.body).toEqual({ error: 'forbidden', reason: 'pn_mismatch' });
+      expect(mockGetCredentials).not.toHaveBeenCalled();
+    });
+
     it('returns an empty list rather than 404 when the identity has no credentials', async () => {
       mockGetCredentials.mockResolvedValue(null);
       const { app } = buildApp();
 
-      const res = await request(app).get(`/api/users/${PN}/tag-preferences`).expect(200);
+      const res = await request(app)
+        .get(`/api/users/${PN}/tag-preferences`)
+        .set('Authorization', AUTH)
+        .expect(200);
       expect(res.body).toEqual({ preferences: [] });
     });
 
@@ -344,7 +450,10 @@ describe('setupUserRoutes', () => {
       mockGetCredentials.mockResolvedValue({ credentials: {} });
       const { app } = buildApp();
 
-      const res = await request(app).get(`/api/users/${PN}/tag-preferences`).expect(200);
+      const res = await request(app)
+        .get(`/api/users/${PN}/tag-preferences`)
+        .set('Authorization', AUTH)
+        .expect(200);
       expect(res.body).toEqual({ preferences: [] });
       expect(global.fetch).not.toHaveBeenCalled();
     });

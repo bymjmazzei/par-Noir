@@ -82,12 +82,14 @@ export function setupUserRoutes(app: express.Application, deps: UserRouteDeps) {
           return res.status(400).json({ error: 'pnIdentifier is required' });
         }
 
+        // Normalize pn identifier
+        const normalizedPnIdentifier = pnIdentifier.startsWith('pn-') ? pnIdentifier : `pn-${pnIdentifier}`;
+
+        if (!(await gateOwnerRoute(req, res, DEVICE_CAPABILITIES.profileWrite, normalizedPnIdentifier))) return;
+
         const { PreferencesService } = await import('./preferencesService');
         const { resolveOwnerDriveToken, respondDriveTokenError } = await import('./ownerDriveToken');
         const { storageCredentialsService } = await import('./storageCredentialsService');
-
-        // Normalize pn identifier
-        const normalizedPnIdentifier = pnIdentifier.startsWith('pn-') ? pnIdentifier : `pn-${pnIdentifier}`;
 
         // Get user's credentials
         const userCredentials = await storageCredentialsService.getCredentials(normalizedPnIdentifier);
@@ -653,12 +655,14 @@ export function setupUserRoutes(app: express.Application, deps: UserRouteDeps) {
           return res.status(400).json({ error: 'pnIdentifier is required' });
         }
 
+        // Normalize pn identifier
+        const normalizedPnIdentifier = pnIdentifier.startsWith('pn-') ? pnIdentifier : `pn-${pnIdentifier}`;
+
+        if (!(await gateOwnerRoute(req, res, DEVICE_CAPABILITIES.profileRead, normalizedPnIdentifier))) return;
+
         const { PreferencesService } = await import('./preferencesService');
         const { resolveOwnerDriveToken, respondDriveTokenError } = await import('./ownerDriveToken');
         const { storageCredentialsService } = await import('./storageCredentialsService');
-
-        // Normalize pn identifier
-        const normalizedPnIdentifier = pnIdentifier.startsWith('pn-') ? pnIdentifier : `pn-${pnIdentifier}`;
 
         // Get user's credentials
         const userCredentials = await storageCredentialsService.getCredentials(normalizedPnIdentifier);
@@ -786,6 +790,8 @@ export function setupUserRoutes(app: express.Application, deps: UserRouteDeps) {
         // Normalize pn identifier
         const normalizedPnIdentifier = pnIdentifier.startsWith('pn-') ? pnIdentifier : `pn-${pnIdentifier}`;
 
+        if (!(await gateOwnerRoute(req, res, DEVICE_CAPABILITIES.profileWrite, normalizedPnIdentifier))) return;
+
         const { PreferencesService } = await import('./preferencesService');
         const { resolveOwnerDriveToken, respondDriveTokenError } = await import('./ownerDriveToken');
         const { storageCredentialsService } = await import('./storageCredentialsService');
@@ -902,6 +908,8 @@ export function setupUserRoutes(app: express.Application, deps: UserRouteDeps) {
         // Normalize pn identifier
         const normalizedPnIdentifier = pnIdentifier.startsWith('pn-') ? pnIdentifier : `pn-${pnIdentifier}`;
 
+        if (!(await gateOwnerRoute(req, res, DEVICE_CAPABILITIES.profileRead, normalizedPnIdentifier))) return;
+
         const { PreferencesService } = await import('./preferencesService');
         const { resolveOwnerDriveToken, respondDriveTokenError } = await import('./ownerDriveToken');
         const { storageCredentialsService } = await import('./storageCredentialsService');
@@ -1004,6 +1012,8 @@ export function setupUserRoutes(app: express.Application, deps: UserRouteDeps) {
 
         // Normalize pn identifier
         const normalizedPnIdentifier = pnIdentifier.startsWith('pn-') ? pnIdentifier : `pn-${pnIdentifier}`;
+
+        if (!(await gateOwnerRoute(req, res, DEVICE_CAPABILITIES.profileWrite, normalizedPnIdentifier))) return;
 
         const { PreferencesService } = await import('./preferencesService');
         const { resolveOwnerDriveToken, respondDriveTokenError } = await import('./ownerDriveToken');
