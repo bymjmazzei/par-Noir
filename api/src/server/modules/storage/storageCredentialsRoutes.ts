@@ -8,6 +8,7 @@
 import type { Application, Request, Response } from 'express';
 import { safeClientErrorMessage } from '../../utils/safeError';
 import { hashIdentifier, safeLogger } from '../../../utils/logger';
+import { getDeviceAccessMode } from '@par-noir/device-auth';
 import {
   gateOwnerRoute,
   gateStorageCredentialsPut,
@@ -497,11 +498,12 @@ export function setupStorageVolumeMigrationRoute(app: Application) {
           });
         }
 
-        // Overwrite of an existing sealed vault requires a keyed device (even in Case A).
-        // Empty vault first-seal remains allowed via legacy drive.upload bootstrap.
+        // Overwrite: Case A (unkeyed_legacy) may refresh Drive into the shared vault;
+        // Case B unkeyed (unkeyed_restricted) stays keyed-only. Empty first-seal is unchanged.
         const existingVault = await cloudVaultService.getSealedVault(pnIdentifier);
-        if (existingVault && !ctx.isKeyed) {
-          safeLogger.warn('[cloud-vault] overwrite denied for unkeyed session', {
+        const accessMode = getDeviceAccessMode(ctx.policy, ctx.isKeyed);
+        if (existingVault && accessMode === 'unkeyed_restricted') {
+          safeLogger.warn('[cloud-vault] overwrite denied for Case B unkeyed session', {
             pnHash: hashIdentifier(pnIdentifier),
           });
           return res.status(403).json({

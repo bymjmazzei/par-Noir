@@ -17,7 +17,6 @@ import {
   reconnectOAuthProvider,
   useCloudReconnectGate,
   ensureCloudCredentialsReady,
-  publishCloudCredentialsVault
 } from '@par-noir/oauth-ui';
 import { envelopeHasUsableSecrets } from '@par-noir/user-owned-storage';
 import type { StorageCredentialsEnvelope } from '@par-noir/user-owned-storage';
@@ -26,7 +25,7 @@ import { getGoogleDriveClientId } from '../../config/googleDriveClientId';
 import { DevicePairFromReconnect } from '../DevicePairFromReconnect';
 import { isKeyableClient } from '@par-noir/device-client';
 import { APP_DOWNLOAD_URL } from '../../config/appDownload';
-
+import { publishCloudVaultForIdentity } from '../../services/deviceCloudCredentials';
 export interface CloudReconnectHostProps {
   apiToken: string | null;
   pnIdentifier: string | null;
@@ -147,19 +146,23 @@ export const CloudReconnectHost: React.FC<CloudReconnectHostProps> = ({
             warmed = getSessionCloudCredentials(pnIdentifier);
           }
         }
-        // Migrate / re-seal: publish ML-KEM vault so browse OAuth unlock can hydrate
+        // Migrate / re-seal: publish ML-KEM vault so browse/messaging OAuth unlock can hydrate
         if (creds && envelopeHasUsableSecrets(warmed || getSessionCloudCredentials(pnIdentifier))) {
           const toPublish = warmed || getSessionCloudCredentials(pnIdentifier);
           if (toPublish) {
-            await publishCloudCredentialsVault({
-              apiEndpoint: API_ENDPOINT,
-              authToken: apiToken,
-              pnIdentifier,
-              mlKemSecretKey,
-              pnName: creds.pnName,
-              passcode: creds.passcode,
-              credentials: toPublish
-            }).catch(() => ({ ok: false }));
+            try {
+              await publishCloudVaultForIdentity({
+                identityId: pnIdentifier,
+                authToken: apiToken,
+                pnName: creds.pnName,
+                passcode: creds.passcode,
+                credentials: toPublish,
+                publicKey: sessionId,
+                mlKemSecretKey,
+              });
+            } catch {
+              /* best-effort on unlock migrate; reconnect path surfaces errors */
+            }
             // Also re-seal locally under canonical session id for this origin
             await persistCloudCredentials({
               identityId: pnIdentifier,
@@ -254,6 +257,7 @@ export const CloudReconnectHost: React.FC<CloudReconnectHostProps> = ({
       if (!pnIdentifier || !sessionId) return;
       const creds = SecureCredentialManager.getCredentials(sessionId);
       if (!creds) throw new Error('Session credentials missing — unlock again.');
+      setOauthError(null);
       await persistCloudCredentials({
         identityId: pnIdentifier,
         credentials: envelope,
@@ -264,15 +268,23 @@ export const CloudReconnectHost: React.FC<CloudReconnectHostProps> = ({
         },
         mode: effectivePersistMode
       });
+      setSessionCloudCredentials(pnIdentifier, envelope);
       if (apiToken) {
-        await publishCloudCredentialsVault({
-          apiEndpoint: API_ENDPOINT,
-          authToken: apiToken,
-          pnIdentifier,
-          pnName: creds.pnName,
-          passcode: creds.passcode,
-          credentials: envelope
-        }).catch(() => ({ ok: false }));
+        try {
+          await publishCloudVaultForIdentity({
+            identityId: pnIdentifier,
+            authToken: apiToken,
+            pnName: creds.pnName,
+            passcode: creds.passcode,
+            credentials: envelope,
+            publicKey: sessionId,
+          });
+        } catch (e: unknown) {
+          const msg =
+            e instanceof Error ? e.message : 'Failed to publish cloud vault for other apps';
+          setOauthError(msg);
+          throw e instanceof Error ? e : new Error(msg);
+        }
       }
 
       markReady();

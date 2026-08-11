@@ -86,6 +86,13 @@ export const AggregatorCloudReconnectHost: React.FC = () => {
   // Hydrate from cross-app sealed vault once ML-KEM (or identity factors) are available.
   useEffect(() => {
     let cancelled = false;
+    const markHydratedIfGoogleReady = (env: StorageCredentialsEnvelope | null | undefined) => {
+      if (envelopeHasUsableSecrets(env, 'google_drive')) {
+        if (!cancelled) setVaultHydrated(true);
+        return true;
+      }
+      return false;
+    };
     void (async () => {
       if (!authToken || !pnIdentifier || !identityReady) {
         setVaultHydrated(false);
@@ -99,8 +106,7 @@ export const AggregatorCloudReconnectHost: React.FC = () => {
         setVaultHydrated(false);
         return;
       }
-      if (envelopeHasUsableSecrets(getSessionCloudCredentials(pnIdentifier))) {
-        if (!cancelled) setVaultHydrated(true);
+      if (markHydratedIfGoogleReady(getSessionCloudCredentials(pnIdentifier))) {
         return;
       }
       // Try local sealed (same origin) then API vault
@@ -114,7 +120,7 @@ export const AggregatorCloudReconnectHost: React.FC = () => {
               passcode: mlKemSecretKey
             }
           });
-          if (localMlKem && envelopeHasUsableSecrets(localMlKem)) {
+          if (localMlKem && envelopeHasUsableSecrets(localMlKem, 'google_drive')) {
             setSessionCloudCredentials(pnIdentifier, localMlKem);
             if (!cancelled) setVaultHydrated(true);
             return;
@@ -129,7 +135,7 @@ export const AggregatorCloudReconnectHost: React.FC = () => {
               passcode
             }
           });
-          if (local && envelopeHasUsableSecrets(local)) {
+          if (local && envelopeHasUsableSecrets(local, 'google_drive')) {
             setSessionCloudCredentials(pnIdentifier, local);
             if (!cancelled) setVaultHydrated(true);
             return;
@@ -146,7 +152,13 @@ export const AggregatorCloudReconnectHost: React.FC = () => {
         pnName: pnName || undefined,
         passcode: passcode || undefined
       });
-      if (!cancelled) setVaultHydrated(status === 'ready');
+      if (cancelled) return;
+      // Only ready when unsealed session has Google secrets — leave reconnect gate open otherwise.
+      if (status === 'ready' && envelopeHasUsableSecrets(getSessionCloudCredentials(pnIdentifier), 'google_drive')) {
+        setVaultHydrated(true);
+      } else {
+        setVaultHydrated(false);
+      }
     })();
     return () => {
       cancelled = true;
@@ -156,7 +168,7 @@ export const AggregatorCloudReconnectHost: React.FC = () => {
   const loadLocalEnvelope = useCallback(async (): Promise<StorageCredentialsEnvelope | null> => {
     if (!pnIdentifier) return null;
     const fromSession = getSessionCloudCredentials(pnIdentifier);
-    if (envelopeHasUsableSecrets(fromSession)) return fromSession;
+    if (envelopeHasUsableSecrets(fromSession, 'google_drive')) return fromSession;
     if (!isDmIdentityReady()) return null;
     const identity = getDmIdentity();
     if (identity.mlKemSecretKey) {
@@ -168,10 +180,10 @@ export const AggregatorCloudReconnectHost: React.FC = () => {
           passcode: identity.mlKemSecretKey
         }
       });
-      if (mlkem) return mlkem;
+      if (mlkem && envelopeHasUsableSecrets(mlkem, 'google_drive')) return mlkem;
     }
     if (!identity.pnName || !identity.passcode) return null;
-    return loadLocalCloudCredentials({
+    const identitySealed = await loadLocalCloudCredentials({
       identityId: pnIdentifier,
       session: {
         sessionId: CLOUD_VAULT_SEAL_SESSION_ID,
@@ -179,6 +191,7 @@ export const AggregatorCloudReconnectHost: React.FC = () => {
         passcode: identity.passcode
       }
     });
+    return envelopeHasUsableSecrets(identitySealed, 'google_drive') ? identitySealed : null;
   }, [pnIdentifier]);
 
   const gateEnabled =

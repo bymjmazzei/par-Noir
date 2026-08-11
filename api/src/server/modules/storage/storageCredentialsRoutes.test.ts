@@ -7,8 +7,10 @@
 
 /** Bearer identity under test — swapped to prove pn_mismatch / unauthorized. */
 let currentBearer: string | null = 'pn-test';
-/** When false, cloud-vault overwrite path treats the session as unkeyed. */
+/** When false, cloud-vault path treats the session as unkeyed. */
 let gateIsKeyed = false;
+/** When set, Case B (firstDeviceKeyedAt present) — unkeyed overwrite must deny. */
+let gateFirstDeviceKeyedAt: string | undefined;
 
 jest.mock('../deviceCapabilityService', () => {
   const DEVICE_CAPABILITIES = {
@@ -18,7 +20,11 @@ jest.mock('../deviceCapabilityService', () => {
   };
   return {
     DEVICE_CAPABILITIES,
-    gateStorageCredentialsPut: jest.fn(async () => ({ pnIdentifier: 'pn-test', isKeyed: gateIsKeyed })),
+    gateStorageCredentialsPut: jest.fn(async () => ({
+      pnIdentifier: 'pn-test',
+      isKeyed: gateIsKeyed,
+      policy: { version: 1, unkeyedAllows: [], firstDeviceKeyedAt: gateFirstDeviceKeyedAt },
+    })),
     gateOwnerRoute: jest.fn(async (_req: unknown, res: any, _cap: string, targetPn?: string) => {
       if (!currentBearer) {
         res.status(401).json({ error: 'unauthorized' });
@@ -28,7 +34,11 @@ jest.mock('../deviceCapabilityService', () => {
         res.status(403).json({ error: 'forbidden', reason: 'pn_mismatch' });
         return null;
       }
-      return { pnIdentifier: currentBearer, isKeyed: gateIsKeyed };
+      return {
+        pnIdentifier: currentBearer,
+        isKeyed: gateIsKeyed,
+        policy: { version: 1, unkeyedAllows: [], firstDeviceKeyedAt: gateFirstDeviceKeyedAt },
+      };
     }),
   };
 });
@@ -147,6 +157,7 @@ describe('storage credentials routes', () => {
   beforeEach(() => {
     currentBearer = PN;
     gateIsKeyed = false;
+    gateFirstDeviceKeyedAt = undefined;
     mockGetCredentials.mockReset();
     mockUpsertCredentials.mockReset().mockResolvedValue(upsertResult());
     mockMigrateIdentityId.mockReset();
@@ -374,6 +385,7 @@ describe('storage credentials routes', () => {
 
     it('allows first seal when vault is empty and session is unkeyed (Case A bootstrap)', async () => {
       gateIsKeyed = false;
+      gateFirstDeviceKeyedAt = undefined;
       mockGetSealedVault.mockResolvedValue(null);
 
       const res = await request(buildApp())
@@ -385,8 +397,23 @@ describe('storage credentials routes', () => {
       expect(mockPutSealedVault).toHaveBeenCalledWith(PN, sealedEnvelope);
     });
 
-    it('denies overwrite of existing vault when session is unkeyed', async () => {
+    it('allows overwrite of existing vault for Case A unkeyed (unkeyed_legacy)', async () => {
       gateIsKeyed = false;
+      gateFirstDeviceKeyedAt = undefined;
+      mockGetSealedVault.mockResolvedValue(sealedEnvelope);
+
+      const res = await request(buildApp())
+        .put(`/api/storage/cloud-vault/${PN}`)
+        .send({ envelope: { ...sealedEnvelope, ciphertext: 'new' } })
+        .expect(200);
+
+      expect(res.body.success).toBe(true);
+      expect(mockPutSealedVault).toHaveBeenCalled();
+    });
+
+    it('denies overwrite of existing vault for Case B unkeyed (unkeyed_restricted)', async () => {
+      gateIsKeyed = false;
+      gateFirstDeviceKeyedAt = '2026-01-01T00:00:00.000Z';
       mockGetSealedVault.mockResolvedValue(sealedEnvelope);
 
       const res = await request(buildApp())
@@ -400,6 +427,7 @@ describe('storage credentials routes', () => {
 
     it('allows overwrite when session is keyed', async () => {
       gateIsKeyed = true;
+      gateFirstDeviceKeyedAt = '2026-01-01T00:00:00.000Z';
       mockGetSealedVault.mockResolvedValue(sealedEnvelope);
 
       const res = await request(buildApp())

@@ -24,7 +24,7 @@ Dev-only escape: `ALLOW_DEVICE_REGISTRY_RESET_WITHOUT_QUORUM=1` enables `POST /a
 
 | Mode | When | Owner capabilities |
 |------|------|-------------------|
-| `unkeyed_legacy` | No keyed device registered yet | **Not** allow-all. `LEGACY_BOOTSTRAP_ALLOWS`: recovery always-on, profile read/write, custodians read, drive read/upload, messages read/send. Social.* denied. Mailbox **pending/ack** allowed with `messages.read`. Cloud-vault **overwrite** requires a keyed device. |
+| `unkeyed_legacy` | No keyed device registered yet | **Not** allow-all. `LEGACY_BOOTSTRAP_ALLOWS`: recovery always-on, profile read/write, custodians read, drive read/upload, messages read/send. Social.* denied. Mailbox **pending/ack** allowed with `messages.read`. Cloud-vault first-seal and **overwrite** allowed (shared Drive hydrate for web Case A). |
 | `keyed` | Valid device proof on request | Full owner access |
 | `unkeyed_restricted` | After first device keyed; no valid proof | `IMMUTABLE_UNKEYED_DENY` blocked; optional allow-list from policy (browse/reconnect defaults only). Mailbox **pending/ack** requires keyed device. |
 
@@ -63,7 +63,7 @@ Shared constants and evaluation live in `@par-noir/device-auth`:
 
 **Immutable deny when unkeyed (restricted always; legacy except bootstrap):** recovery vault write, custodian manage, migration, export, rotation, device manage, oauth write, **drive.upload**, **messages.*** , **social.***.
 
-**Case A cloud vault:** `PUT /api/storage/cloud-vault` may first-seal an empty vault via legacy `drive.upload`. Overwriting an **existing** sealed vault requires a keyed device (`403 device_key_required`).
+**Case A cloud vault:** `PUT /api/storage/cloud-vault` may first-seal an empty vault via legacy `drive.upload`, and may **overwrite** an existing sealed vault so web Case A can refresh Google Drive into the shared vault for browse/messaging hydrate. Case B unkeyed overwrite still returns `403 device_key_required`.
 
 **Case A mailbox:** route claim/get and **pending/ack** use `messages.read` (allowed on Case A bootstrap) so web-only users can receive throughway jobs. After the first keyed device (`unkeyed_restricted`), pending/ack require a keyed device proof.
 

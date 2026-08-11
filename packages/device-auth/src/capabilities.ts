@@ -55,7 +55,8 @@ export const RECOVERY_ALWAYS_UNKEYED: readonly string[] = [
 
 /**
  * Explicit Case A bootstrap when no device has been keyed yet (`unkeyed_legacy`).
- * Not allow-all: social.* stays off the list; vault overwrite stays keyed-only.
+ * Not allow-all: social.* stays off the list.
+ * Cloud-vault overwrite is allowed on Case A (API gate); Case B unkeyed stays keyed-only.
  * Mailbox pending/ack is allowed on Case A when messages.read is held (API gate).
  */
 export const LEGACY_BOOTSTRAP_ALLOWS: readonly string[] = [

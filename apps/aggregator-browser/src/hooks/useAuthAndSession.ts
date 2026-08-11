@@ -256,16 +256,8 @@ export function useAuthAndSession({
             setPendingGrant(grantedDataPoints ?? []);
           }
           const userInfo = await PNOAuthService.getUserInfo(tokenResponse.access_token);
-
-          // Close the race: vault hydrate may have flushed while pending was still null.
-          // Attempt persist now that the choice is queued; vault effect still retries later.
-          if (consentCompleted && userInfo.pn_identifier) {
-            const { flushPendingGrant } = await import('../services/pendingGrantPersist');
-            await flushPendingGrant({
-              authToken: tokenResponse.access_token,
-              pnIdentifier: userInfo.pn_identifier,
-            });
-          }
+          // Grant persist waits for AggregatorCloudReconnectHost after vault hydrate + Drive mint.
+          // Early flush here only produced no_account noise before Drive was ready.
 
           if (!isDmIdentityReady()) {
             await waitForAndApplyMessagingHandoff(20_000);
