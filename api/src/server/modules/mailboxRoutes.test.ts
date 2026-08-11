@@ -21,6 +21,10 @@ let currentBearer: string | null = 'pn-bob';
 let grantedCapabilities: string[] = ['messages.read', 'messages.send', 'social.read', 'social.write'];
 /** Whether the session presents a valid keyed device proof. */
 let sessionIsKeyed = true;
+/** Device policy on the capability ctx (Case A = no firstDeviceKeyedAt). */
+let sessionPolicy: { unkeyedAllows?: string[]; firstDeviceKeyedAt?: string } = {
+  unkeyedAllows: [],
+};
 
 jest.mock('./deviceCapabilityService', () => {
   const DEVICE_CAPABILITIES = {
@@ -35,7 +39,7 @@ jest.mock('./deviceCapabilityService', () => {
     getBearerPnIdentifier: () => currentBearer,
     assertDeviceCapability: async (_req: unknown, cap: string) =>
       grantedCapabilities.includes(cap)
-        ? { ok: true, ctx: { isKeyed: sessionIsKeyed } }
+        ? { ok: true, ctx: { isKeyed: sessionIsKeyed, policy: sessionPolicy } }
         : { ok: false, status: 403, error: 'capability_not_allowed' },
     gateOwnerRoute: async (_req: unknown, res: any, cap: string, targetPn: string) => {
       if (!currentBearer) {
@@ -50,7 +54,7 @@ jest.mock('./deviceCapabilityService', () => {
         res.status(403).json({ error: 'capability_not_allowed' });
         return null;
       }
-      return { isKeyed: sessionIsKeyed };
+      return { isKeyed: sessionIsKeyed, policy: sessionPolicy };
     },
   };
 });
@@ -122,6 +126,7 @@ beforeEach(() => {
   currentBearer = BOB;
   grantedCapabilities = ['messages.read', 'messages.send', 'social.read', 'social.write'];
   sessionIsKeyed = true;
+  sessionPolicy = { unkeyedAllows: [] };
 });
 
 describe('GET /api/mailbox/pending — route ownership', () => {
@@ -238,8 +243,43 @@ describe('capability separation', () => {
     expect(ack.body.reason).toBe('no_mailbox_read');
   });
 
-  it('unkeyed session with messages.read cannot drain pending or ack (keyed-only)', async () => {
+  it('unkeyed Case A session with messages.read can drain pending and ack', async () => {
     sessionIsKeyed = false;
+    sessionPolicy = { unkeyedAllows: [] };
+    grantedCapabilities = ['messages.read', 'messages.send', 'social.read'];
+    dbWithBobsClaimedRoute();
+
+    const pending = await request(buildApp())
+      .get(`/api/mailbox/pending?pnIdentifier=${BOB}&routeKey=${BOB_MINTED_ROUTE}`)
+      .expect(200);
+    expect(pending.body.jobs).toHaveLength(1);
+
+    mockQuery.mockImplementation(async (sql: string, params: unknown[]) => {
+      if (sql.includes('SELECT owner_hash FROM mailbox_route_binding') || sql.includes('FROM mailbox_route_binding')) {
+        const key = String(params[0]);
+        return key === BOB_MINTED_ROUTE
+          ? { rows: [{ owner_hash: mailboxOwnerHash(BOB) }], rowCount: 1 }
+          : { rows: [], rowCount: 0 };
+      }
+      if (sql.includes('UPDATE social_mailbox') || sql.includes('acked_at')) {
+        return { rows: [], rowCount: 1 };
+      }
+      return { rows: [], rowCount: 0 };
+    });
+
+    await request(buildApp())
+      .post('/api/mailbox/ack')
+      .send({
+        pnIdentifier: BOB,
+        routeKey: BOB_MINTED_ROUTE,
+        jobIds: ['11111111-1111-1111-1111-111111111111'],
+      })
+      .expect(200);
+  });
+
+  it('unkeyed Case B session with messages.read cannot drain pending or ack', async () => {
+    sessionIsKeyed = false;
+    sessionPolicy = { unkeyedAllows: [], firstDeviceKeyedAt: '2026-01-01T00:00:00.000Z' };
     grantedCapabilities = ['messages.read', 'messages.send'];
     dbWithBobsClaimedRoute();
 

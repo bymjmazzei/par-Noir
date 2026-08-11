@@ -28,7 +28,7 @@ export type DeviceCapabilityId = (typeof DEVICE_CAPABILITIES)[keyof typeof DEVIC
  * Blocked from unkeyed sessions — not editable in UI.
  * `drive.upload` / `messages.*` are listed so restricted unkeyed cannot opt them
  * back in; Case A (`unkeyed_legacy`) may still allow them via LEGACY_BOOTSTRAP_ALLOWS.
- * Mailbox drain (pending/ack) is a separate keyed operation on the API.
+ * Mailbox drain (pending/ack): Case A allowed with messages.read; Case B unkeyed requires keyed.
  */
 export const IMMUTABLE_UNKEYED_DENY: ReadonlySet<string> = new Set([
   DEVICE_CAPABILITIES.recoveryVaultWrite,
@@ -55,8 +55,8 @@ export const RECOVERY_ALWAYS_UNKEYED: readonly string[] = [
 
 /**
  * Explicit Case A bootstrap when no device has been keyed yet (`unkeyed_legacy`).
- * Not allow-all: social.*, vault overwrite, and mailbox drain stay fail-closed
- * (drain/overwrite are keyed ops; social stays off the bootstrap list).
+ * Not allow-all: social.* stays off the list; vault overwrite stays keyed-only.
+ * Mailbox pending/ack is allowed on Case A when messages.read is held (API gate).
  */
 export const LEGACY_BOOTSTRAP_ALLOWS: readonly string[] = [
   ...RECOVERY_ALWAYS_UNKEYED,

@@ -4,6 +4,7 @@
 
 import type { Application, Request, Response } from 'express';
 import { getBearerTokenPayload } from '../middleware/authMiddleware';
+import { getDeviceAccessMode } from '@par-noir/device-auth';
 import {
   gateOwnerRoute,
   assertDeviceCapability,
@@ -63,9 +64,10 @@ function resolveRouteKey(explicit: unknown): string | null {
 }
 
 /**
- * Bearer must be the pn it claims, hold at least one read capability, and be keyed.
- * Returns the job types it may drain. Unkeyed sessions are refused even on Case A
- * (mailbox pending/ack are keyed ops; route claim stays on messages.read alone).
+ * Bearer must be the pn it claims and hold at least one read capability.
+ * Returns the job types it may drain.
+ * Case A (`unkeyed_legacy`): drain allowed — web-only users have no keyed install yet.
+ * Case B (`unkeyed_restricted`): drain requires a keyed device proof.
  */
 async function gateMailboxRead(
   req: Request,
@@ -95,8 +97,10 @@ async function gateMailboxRead(
     res.status(403).json({ error: 'capability_not_allowed', reason: 'no_mailbox_read' });
     return null;
   }
-  if (!ctx.isKeyed) {
-    safeLogger.warn('[mailbox] drain denied for unkeyed session', {
+
+  const mode = getDeviceAccessMode(ctx.policy, ctx.isKeyed);
+  if (mode === 'unkeyed_restricted') {
+    safeLogger.warn('[mailbox] drain denied for Case B unkeyed session', {
       bearerPn: hashIdentifier(bearer),
     });
     res.status(403).json({ error: 'device_key_required', reason: 'device_required' });

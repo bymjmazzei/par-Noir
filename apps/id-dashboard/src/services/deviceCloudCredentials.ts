@@ -188,7 +188,7 @@ export async function migrateAndFlushOnUnlock(opts: {
   identityId: string;
   authToken: string;
   session: SealSession;
-  /** When false, skip mailbox pending/ack (no messagesRead / unkeyed) — no 401 spam. */
+  /** When false, skip mailbox pending/ack (Case B unkeyed / no messagesRead). */
   canFlushMailbox?: boolean;
 }): Promise<void> {
   const lockKey = `${opts.identityId}:${opts.authToken.slice(0, 16)}`;

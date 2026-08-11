@@ -332,7 +332,7 @@ function App() {
                 pnName: credentials.pnName,
                 passcode: credentials.passcode
               },
-              canFlushMailbox: deviceAuth.isKeyedSession
+              canFlushMailbox: deviceAuth.isKeyedSession || !deviceAuth.hasKeyedDevices
             });
           } catch {
             /* device cloud migrate best-effort */
@@ -346,7 +346,14 @@ function App() {
     return () => {
       cancelled = true;
     };
-  }, [authenticatedUser, apiToken, ensureApiTokenAfterUnlock, getEncryptedIdentityForApiToken, deviceAuth.isKeyedSession]);
+  }, [
+    authenticatedUser,
+    apiToken,
+    ensureApiTokenAfterUnlock,
+    getEncryptedIdentityForApiToken,
+    deviceAuth.isKeyedSession,
+    deviceAuth.hasKeyedDevices
+  ]);
 
   // Destructure privacy state from custom hook
   const {

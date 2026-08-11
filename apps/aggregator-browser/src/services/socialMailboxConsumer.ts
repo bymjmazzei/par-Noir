@@ -25,6 +25,8 @@ import { API_ENDPOINT } from '../config/api';
 import { PNOAuthService } from './pnOAuthService';
 import { getDmIdentity } from './dmIdentitySession';
 import { ownerApiHeadersAsync, PN_CLOUD_CREDENTIALS_READY_EVENT } from './ownerApiHeaders';
+import { fetchDeviceRegistry } from './deviceService';
+import { loadDeviceRegistration } from '@par-noir/device-client';
 
 export interface MailboxDrainResult {
   pulled: number;
@@ -50,6 +52,16 @@ export async function drainSocialMailbox(): Promise<MailboxDrainResult> {
   const identityId = session?.pnIdentifier;
   const authToken = session?.accessToken;
   if (!identityId || !authToken) return EMPTY;
+
+  // Case B unkeyed web: server refuses pending/ack — skip to avoid 403 spam.
+  const registry = await fetchDeviceRegistry(identityId, authToken);
+  const hasKeyedDevices = Boolean(
+    registry?.hasKeyedDevices || registry?.policy?.firstDeviceKeyedAt
+  );
+  if (hasKeyedDevices) {
+    const local = await loadDeviceRegistration(identityId);
+    if (!local?.deviceId) return EMPTY;
+  }
 
   const errors: string[] = [];
 

@@ -24,9 +24,9 @@ Dev-only escape: `ALLOW_DEVICE_REGISTRY_RESET_WITHOUT_QUORUM=1` enables `POST /a
 
 | Mode | When | Owner capabilities |
 |------|------|-------------------|
-| `unkeyed_legacy` | No keyed device registered yet | **Not** allow-all. `LEGACY_BOOTSTRAP_ALLOWS`: recovery always-on, profile read/write, custodians read, drive read/upload, messages read/send. Social.* denied. Mailbox **pending/ack** and cloud-vault **overwrite** require a keyed device. |
+| `unkeyed_legacy` | No keyed device registered yet | **Not** allow-all. `LEGACY_BOOTSTRAP_ALLOWS`: recovery always-on, profile read/write, custodians read, drive read/upload, messages read/send. Social.* denied. Mailbox **pending/ack** allowed with `messages.read`. Cloud-vault **overwrite** requires a keyed device. |
 | `keyed` | Valid device proof on request | Full owner access |
-| `unkeyed_restricted` | After first device keyed; no valid proof | `IMMUTABLE_UNKEYED_DENY` blocked; optional allow-list from policy (browse/reconnect defaults only) |
+| `unkeyed_restricted` | After first device keyed; no valid proof | `IMMUTABLE_UNKEYED_DENY` blocked; optional allow-list from policy (browse/reconnect defaults only). Mailbox **pending/ack** requires keyed device. |
 
 ## Drive artifacts
 
@@ -65,7 +65,7 @@ Shared constants and evaluation live in `@par-noir/device-auth`:
 
 **Case A cloud vault:** `PUT /api/storage/cloud-vault` may first-seal an empty vault via legacy `drive.upload`. Overwriting an **existing** sealed vault requires a keyed device (`403 device_key_required`).
 
-**Case A mailbox:** route claim/get uses `messages.read` (allowed on Case A bootstrap). `GET /api/mailbox/pending` and `POST /api/mailbox/ack` additionally require a keyed device even when the capability is allowed.
+**Case A mailbox:** route claim/get and **pending/ack** use `messages.read` (allowed on Case A bootstrap) so web-only users can receive throughway jobs. After the first keyed device (`unkeyed_restricted`), pending/ack require a keyed device proof.
 
 ## Device proof (v1)
 
