@@ -24,7 +24,7 @@ Dev-only escape: `ALLOW_DEVICE_REGISTRY_RESET_WITHOUT_QUORUM=1` enables `POST /a
 
 | Mode | When | Owner capabilities |
 |------|------|-------------------|
-| `unkeyed_legacy` | No keyed device registered yet | **Not** allow-all. Only `LEGACY_BOOTSTRAP_ALLOWS` (drive read/upload, profile/custodian read, recovery always-on). Mailbox drain denied. |
+| `unkeyed_legacy` | No keyed device registered yet | **Not** allow-all. `LEGACY_BOOTSTRAP_ALLOWS`: recovery always-on, profile read/write, custodians read, drive read/upload, messages read/send. Social.* denied. Mailbox **pending/ack** and cloud-vault **overwrite** require a keyed device. |
 | `keyed` | Valid device proof on request | Full owner access |
 | `unkeyed_restricted` | After first device keyed; no valid proof | `IMMUTABLE_UNKEYED_DENY` blocked; optional allow-list from policy (browse/reconnect defaults only) |
 
@@ -54,8 +54,8 @@ Under **device cloud custody**, the API does not store Google OAuth secrets. Own
 Shared constants and evaluation live in `@par-noir/device-auth`:
 
 - `DEVICE_CAPABILITIES` — capability IDs
-- `IMMUTABLE_UNKEYED_DENY` — hardcoded deny when unkeyed (mailbox, drive.upload, recovery vault write, identity mutate, device.manage, oauth.write). Case A may still allow `drive.upload` via bootstrap.
-- `LEGACY_BOOTSTRAP_ALLOWS` — explicit Case A allow-list before `firstDeviceKeyedAt` (not allow-all)
+- `IMMUTABLE_UNKEYED_DENY` — hardcoded deny when unkeyed (drive.upload, messages.*, social.*, recovery vault write, identity mutate, device.manage, oauth.write). Case A may still allow `drive.upload` / `messages.*` via bootstrap.
+- `LEGACY_BOOTSTRAP_ALLOWS` — explicit Case A allow-list before `firstDeviceKeyedAt` (not allow-all; includes profile write + messages read/send)
 - `DEFAULT_UNKEYED_ALLOWS` — defaults after first key (recovery always-on + profile/custodians/drive **read** only)
 - `evaluateDeviceCapability({ policy, isKeyed, capability })` — pure gate function (API + dashboard)
 
@@ -64,6 +64,8 @@ Shared constants and evaluation live in `@par-noir/device-auth`:
 **Immutable deny when unkeyed (restricted always; legacy except bootstrap):** recovery vault write, custodian manage, migration, export, rotation, device manage, oauth write, **drive.upload**, **messages.*** , **social.***.
 
 **Case A cloud vault:** `PUT /api/storage/cloud-vault` may first-seal an empty vault via legacy `drive.upload`. Overwriting an **existing** sealed vault requires a keyed device (`403 device_key_required`).
+
+**Case A mailbox:** route claim/get uses `messages.read` (allowed on Case A bootstrap). `GET /api/mailbox/pending` and `POST /api/mailbox/ack` additionally require a keyed device even when the capability is allowed.
 
 ## Device proof (v1)
 

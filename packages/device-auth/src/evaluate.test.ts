@@ -15,13 +15,13 @@ describe('evaluateDeviceCapability', () => {
     expect(result.reason).toBe('device_required');
   });
 
-  it('denies mailbox drain caps in unkeyed_legacy', () => {
+  it('denies social.* and high-risk immutables in unkeyed_legacy (not allow-all)', () => {
     const policy = defaultDevicePolicy();
     for (const capability of [
-      DEVICE_CAPABILITIES.messagesRead,
-      DEVICE_CAPABILITIES.messagesSend,
       DEVICE_CAPABILITIES.socialRead,
       DEVICE_CAPABILITIES.socialWrite,
+      DEVICE_CAPABILITIES.recoveryVaultWrite,
+      DEVICE_CAPABILITIES.identityExport,
     ]) {
       const result = evaluateDeviceCapability({ policy, isKeyed: false, capability });
       expect(result.allowed).toBe(false);
@@ -29,22 +29,19 @@ describe('evaluateDeviceCapability', () => {
     }
   });
 
-  it('allows Case A bootstrap drive.upload and drive.read in unkeyed_legacy', () => {
+  it('allows Case A bootstrap drive, profile.write, and messages in unkeyed_legacy', () => {
     const policy = defaultDevicePolicy();
-    expect(
-      evaluateDeviceCapability({
-        policy,
-        isKeyed: false,
-        capability: DEVICE_CAPABILITIES.driveUpload,
-      }).allowed
-    ).toBe(true);
-    expect(
-      evaluateDeviceCapability({
-        policy,
-        isKeyed: false,
-        capability: DEVICE_CAPABILITIES.driveRead,
-      }).allowed
-    ).toBe(true);
+    for (const capability of [
+      DEVICE_CAPABILITIES.driveUpload,
+      DEVICE_CAPABILITIES.driveRead,
+      DEVICE_CAPABILITIES.profileWrite,
+      DEVICE_CAPABILITIES.messagesRead,
+      DEVICE_CAPABILITIES.messagesSend,
+    ]) {
+      expect(
+        evaluateDeviceCapability({ policy, isKeyed: false, capability }).allowed
+      ).toBe(true);
+    }
   });
 
   it('allows recovery initiate in unkeyed_legacy', () => {

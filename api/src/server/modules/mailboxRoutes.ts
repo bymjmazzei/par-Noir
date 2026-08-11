@@ -63,24 +63,9 @@ function resolveRouteKey(explicit: unknown): string | null {
 }
 
 /**
- * Which job types this device may drain. Empty means it may read nothing, which
- * the caller turns into a 403 rather than an empty list — an empty list would
- * look like "delivered nothing" instead of "not allowed".
- */
-async function readableJobTypes(req: Request): Promise<SocialMailboxJobType[]> {
-  const allowed: SocialMailboxJobType[] = [];
-  if ((await assertDeviceCapability(req, DEVICE_CAPABILITIES.messagesRead)).ok) {
-    allowed.push(...MESSAGING_JOB_TYPES);
-  }
-  if ((await assertDeviceCapability(req, DEVICE_CAPABILITIES.socialRead)).ok) {
-    allowed.push(...SOCIAL_JOB_TYPES);
-  }
-  return allowed;
-}
-
-/**
- * Bearer must be the pn it claims, and must hold at least one read capability.
- * Returns the job types it may see.
+ * Bearer must be the pn it claims, hold at least one read capability, and be keyed.
+ * Returns the job types it may drain. Unkeyed sessions are refused even on Case A
+ * (mailbox pending/ack are keyed ops; route claim stays on messages.read alone).
  */
 async function gateMailboxRead(
   req: Request,
@@ -100,11 +85,27 @@ async function gateMailboxRead(
     res.status(403).json({ error: 'forbidden', reason: 'pn_mismatch' });
     return null;
   }
-  const allowed = await readableJobTypes(req);
-  if (allowed.length === 0) {
+
+  // Prefer messages.read context when present; otherwise social.read — both
+  // assertDeviceCapability calls resolve the same session keyed state.
+  const messagesGate = await assertDeviceCapability(req, DEVICE_CAPABILITIES.messagesRead);
+  const socialGate = await assertDeviceCapability(req, DEVICE_CAPABILITIES.socialRead);
+  const ctx = messagesGate.ok ? messagesGate.ctx : socialGate.ok ? socialGate.ctx : null;
+  if (!ctx) {
     res.status(403).json({ error: 'capability_not_allowed', reason: 'no_mailbox_read' });
     return null;
   }
+  if (!ctx.isKeyed) {
+    safeLogger.warn('[mailbox] drain denied for unkeyed session', {
+      bearerPn: hashIdentifier(bearer),
+    });
+    res.status(403).json({ error: 'device_key_required', reason: 'device_required' });
+    return null;
+  }
+
+  const allowed: SocialMailboxJobType[] = [];
+  if (messagesGate.ok) allowed.push(...MESSAGING_JOB_TYPES);
+  if (socialGate.ok) allowed.push(...SOCIAL_JOB_TYPES);
   return allowed;
 }
 

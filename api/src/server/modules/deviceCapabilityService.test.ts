@@ -181,15 +181,38 @@ describe('gateOwnerRoute', () => {
     expect(res.statusCode).toBeUndefined();
   });
 
-  it('denies mailbox drain when device bundle is missing (legacy bootstrap, not allow-all)', async () => {
+  it('allows Case A bootstrap messages.read and profile.write when device bundle is missing', async () => {
     mockValidate.mockReturnValue({ pnIdentifier: PN } as ReturnType<
       typeof PNOAuthService.validateAccessToken
     >);
     deviceStorage.loadDeviceBundle.mockResolvedValue(null);
-    const req = bearerReq({ path: '/api/mailbox/pending', method: 'GET' });
+    const req = bearerReq({ path: '/api/mailbox/route', method: 'POST' });
     const res = mockRes();
 
-    const ctx = await gateOwnerRoute(req, res, DEVICE_CAPABILITIES.messagesRead, PN);
+    const msgCtx = await gateOwnerRoute(req, res, DEVICE_CAPABILITIES.messagesRead, PN);
+    expect(msgCtx).not.toBeNull();
+    expect(msgCtx?.isKeyed).toBe(false);
+
+    const profileRes = mockRes();
+    const profileCtx = await gateOwnerRoute(
+      bearerReq({ path: '/api/profile/ml-kem-public-key', method: 'POST' }),
+      profileRes,
+      DEVICE_CAPABILITIES.profileWrite,
+      PN
+    );
+    expect(profileCtx).not.toBeNull();
+    expect(profileRes.statusCode).toBeUndefined();
+  });
+
+  it('still denies social.write on Case A when device bundle is missing (not allow-all)', async () => {
+    mockValidate.mockReturnValue({ pnIdentifier: PN } as ReturnType<
+      typeof PNOAuthService.validateAccessToken
+    >);
+    deviceStorage.loadDeviceBundle.mockResolvedValue(null);
+    const req = bearerReq({ path: '/api/mailbox/enqueue', method: 'POST' });
+    const res = mockRes();
+
+    const ctx = await gateOwnerRoute(req, res, DEVICE_CAPABILITIES.socialWrite, PN);
 
     expect(ctx).toBeNull();
     expect(res.statusCode).toBe(403);

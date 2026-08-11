@@ -19,6 +19,8 @@ jest.mock('../utils/database', () => ({
 let currentBearer: string | null = 'pn-bob';
 /** Capabilities the device holds. */
 let grantedCapabilities: string[] = ['messages.read', 'messages.send', 'social.read', 'social.write'];
+/** Whether the session presents a valid keyed device proof. */
+let sessionIsKeyed = true;
 
 jest.mock('./deviceCapabilityService', () => {
   const DEVICE_CAPABILITIES = {
@@ -33,7 +35,7 @@ jest.mock('./deviceCapabilityService', () => {
     getBearerPnIdentifier: () => currentBearer,
     assertDeviceCapability: async (_req: unknown, cap: string) =>
       grantedCapabilities.includes(cap)
-        ? { ok: true, ctx: {} }
+        ? { ok: true, ctx: { isKeyed: sessionIsKeyed } }
         : { ok: false, status: 403, error: 'capability_not_allowed' },
     gateOwnerRoute: async (_req: unknown, res: any, cap: string, targetPn: string) => {
       if (!currentBearer) {
@@ -48,7 +50,7 @@ jest.mock('./deviceCapabilityService', () => {
         res.status(403).json({ error: 'capability_not_allowed' });
         return null;
       }
-      return {};
+      return { isKeyed: sessionIsKeyed };
     },
   };
 });
@@ -119,6 +121,7 @@ beforeEach(() => {
   mockQuery.mockReset();
   currentBearer = BOB;
   grantedCapabilities = ['messages.read', 'messages.send', 'social.read', 'social.write'];
+  sessionIsKeyed = true;
 });
 
 describe('GET /api/mailbox/pending — route ownership', () => {
@@ -234,9 +237,68 @@ describe('capability separation', () => {
       .expect(403);
     expect(ack.body.reason).toBe('no_mailbox_read');
   });
+
+  it('unkeyed session with messages.read cannot drain pending or ack (keyed-only)', async () => {
+    sessionIsKeyed = false;
+    grantedCapabilities = ['messages.read', 'messages.send'];
+    dbWithBobsClaimedRoute();
+
+    const pending = await request(buildApp())
+      .get(`/api/mailbox/pending?pnIdentifier=${BOB}&routeKey=${BOB_MINTED_ROUTE}`)
+      .expect(403);
+    expect(pending.body).toEqual({ error: 'device_key_required', reason: 'device_required' });
+
+    const ack = await request(buildApp())
+      .post('/api/mailbox/ack')
+      .send({
+        pnIdentifier: BOB,
+        routeKey: BOB_MINTED_ROUTE,
+        jobIds: ['11111111-1111-1111-1111-111111111111'],
+      })
+      .expect(403);
+    expect(ack.body).toEqual({ error: 'device_key_required', reason: 'device_required' });
+  });
 });
 
 describe('POST /api/mailbox/route — claiming and convergence', () => {
+  it('unkeyed Case A session with messages.read can claim a route', async () => {
+    sessionIsKeyed = false;
+    grantedCapabilities = ['messages.read'];
+    mockQuery.mockImplementation(async (sql: string) => {
+      if (sql.includes('SELECT route_key FROM mailbox_route_binding WHERE owner_hash')) {
+        return { rows: [], rowCount: 0 };
+      }
+      if (sql.includes('INSERT INTO mailbox_route_binding')) {
+        return { rows: [{ route_key: BOB_MINTED_ROUTE }], rowCount: 1 };
+      }
+      return { rows: [], rowCount: 0 };
+    });
+
+    const res = await request(buildApp())
+      .post('/api/mailbox/route')
+      .send({ pnIdentifier: BOB, routeKey: BOB_MINTED_ROUTE })
+      .expect(200);
+
+    expect(res.body.routeKey).toBe(BOB_MINTED_ROUTE);
+  });
+
+  it('unkeyed Case A session with messages.read can GET its claimed route', async () => {
+    sessionIsKeyed = false;
+    grantedCapabilities = ['messages.read'];
+    mockQuery.mockImplementation(async (sql: string) => {
+      if (sql.includes('SELECT route_key FROM mailbox_route_binding WHERE owner_hash')) {
+        return { rows: [{ route_key: BOB_MINTED_ROUTE }], rowCount: 1 };
+      }
+      return { rows: [], rowCount: 0 };
+    });
+
+    const res = await request(buildApp())
+      .get(`/api/mailbox/route?pnIdentifier=${BOB}`)
+      .expect(200);
+
+    expect(res.body.routeKey).toBe(BOB_MINTED_ROUTE);
+  });
+
   it('first claim wins and returns routeKey', async () => {
     mockQuery.mockImplementation(async (sql: string) => {
       if (sql.includes('SELECT route_key FROM mailbox_route_binding WHERE owner_hash')) {

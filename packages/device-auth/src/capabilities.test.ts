@@ -42,10 +42,14 @@ describe('device capability catalog', () => {
     expect(DEFAULT_UNKEYED_ALLOWS).not.toContain(DEVICE_CAPABILITIES.socialWrite);
   });
 
-  it('legacy bootstrap includes drive.upload for Case A first seal', () => {
+  it('legacy bootstrap includes Case A first-party caps without social.*', () => {
     expect(LEGACY_BOOTSTRAP_ALLOWS).toContain(DEVICE_CAPABILITIES.driveUpload);
     expect(LEGACY_BOOTSTRAP_ALLOWS).toContain(DEVICE_CAPABILITIES.driveRead);
-    expect(LEGACY_BOOTSTRAP_ALLOWS).not.toContain(DEVICE_CAPABILITIES.messagesRead);
+    expect(LEGACY_BOOTSTRAP_ALLOWS).toContain(DEVICE_CAPABILITIES.profileWrite);
+    expect(LEGACY_BOOTSTRAP_ALLOWS).toContain(DEVICE_CAPABILITIES.messagesRead);
+    expect(LEGACY_BOOTSTRAP_ALLOWS).toContain(DEVICE_CAPABILITIES.messagesSend);
+    expect(LEGACY_BOOTSTRAP_ALLOWS).not.toContain(DEVICE_CAPABILITIES.socialRead);
+    expect(LEGACY_BOOTSTRAP_ALLOWS).not.toContain(DEVICE_CAPABILITIES.socialWrite);
   });
 
   it('draws every known list entry from the capability catalog', () => {
