@@ -774,8 +774,8 @@ export function setupMessageRoutes(app: express.Application, deps: MessageRouteD
         const {
           isDeviceCloudCustodyEnabled,
           enqueueSocialMailboxJob,
+          getMailboxRouteKeyForOwner,
           isMailboxRouteKey,
-          legacyRouteKeyForIdentity,
           sanitizeMailboxPayload
         } = await import('./socialMailboxService');
 
@@ -793,7 +793,15 @@ export function setupMessageRoutes(app: express.Application, deps: MessageRouteD
             (isMailboxRouteKey(bodyRouteKey) && String(bodyRouteKey).trim()) ||
             (isMailboxRouteKey(mailboxRouteKey) && String(mailboxRouteKey).trim()) ||
             '';
-          const routeKey = explicitRoute || legacyRouteKeyForIdentity(toPnIdentifier);
+          const routeKey =
+            explicitRoute || (await getMailboxRouteKeyForOwner(toPnIdentifier)) || '';
+          if (!routeKey) {
+            return res.status(400).json({
+              error: 'routeKey required',
+              message:
+                'Recipient has no claimed opaque mailbox route. They must unlock once to claim an inbox route.'
+            });
+          }
 
           const clientMessageId =
             typeof req.body?.messageId === 'string' ? req.body.messageId.trim() : '';

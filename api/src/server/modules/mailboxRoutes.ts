@@ -14,9 +14,9 @@ import {
 import {
   ackMailboxJobs,
   enqueueSocialMailboxJob,
+  getMailboxRouteKeyForOwner,
   isDeviceCloudCustodyEnabled,
   isMailboxRouteKey,
-  legacyRouteKeyForIdentity,
   listPendingMailboxJobs,
   lookupMailboxJob,
   ownsMailboxRoute,
@@ -56,11 +56,9 @@ function isSocialJobType(jobType: SocialMailboxJobType): boolean {
   return SOCIAL_JOB_TYPES.includes(jobType);
 }
 
-function resolveRouteKey(explicit: unknown, identityId: string | undefined): string | null {
+/** Opaque route keys only — no pn-derived legacy fallback. */
+function resolveRouteKey(explicit: unknown): string | null {
   if (isMailboxRouteKey(explicit)) return String(explicit).trim();
-  if (identityId && typeof identityId === 'string' && identityId.startsWith('pn-')) {
-    return legacyRouteKeyForIdentity(identityId);
-  }
   return null;
 }
 
@@ -143,7 +141,7 @@ export function registerMailboxRoutes(app: Application, nodeEnv: string): void {
       const allowedTypes = await gateMailboxRead(req, res, pnIdentifier);
       if (!allowedTypes) return;
 
-      const routeKey = resolveRouteKey(routeKeyParam, pnIdentifier);
+      const routeKey = resolveRouteKey(routeKeyParam);
       if (!routeKey) {
         return res.status(400).json({ error: 'routeKey required' });
       }
@@ -188,7 +186,7 @@ export function registerMailboxRoutes(app: Application, nodeEnv: string): void {
       if (!Array.isArray(jobIds) || jobIds.length === 0) {
         return res.status(400).json({ error: 'jobIds array required' });
       }
-      const routeKey = resolveRouteKey(bodyRouteKey, identity);
+      const routeKey = resolveRouteKey(bodyRouteKey);
       if (!routeKey) {
         return res.status(400).json({ error: 'routeKey required' });
       }
@@ -214,7 +212,6 @@ export function registerMailboxRoutes(app: Application, nodeEnv: string): void {
       const {
         pnIdentifier,
         routeKey: bodyRouteKey,
-        recipientIdentityId,
         jobType,
         payload
       } = req.body || {};
@@ -231,11 +228,7 @@ export function registerMailboxRoutes(app: Application, nodeEnv: string): void {
       if (!(await gateOwnerRoute(req, res, sendCapability, actor))) {
         return;
       }
-      const routeKey =
-        resolveRouteKey(bodyRouteKey, undefined) ||
-        (typeof recipientIdentityId === 'string' && recipientIdentityId.startsWith('pn-')
-          ? legacyRouteKeyForIdentity(recipientIdentityId)
-          : null);
+      const routeKey = resolveRouteKey(bodyRouteKey);
       if (!routeKey) {
         return res.status(400).json({ error: 'routeKey required' });
       }
@@ -281,10 +274,6 @@ export function registerMailboxRoutes(app: Application, nodeEnv: string): void {
         tokenPayload?.pnIdentifier;
       const routeKeyParam =
         typeof req.query.routeKey === 'string' ? req.query.routeKey : undefined;
-      const recipientIdentityId =
-        typeof req.query.recipientIdentityId === 'string'
-          ? req.query.recipientIdentityId
-          : '';
       const jobType = req.query.jobType as SocialMailboxJobType;
       const messageId =
         typeof req.query.messageId === 'string' ? req.query.messageId : undefined;
@@ -308,11 +297,7 @@ export function registerMailboxRoutes(app: Application, nodeEnv: string): void {
       if (!(await gateOwnerRoute(req, res, lookupCapability, pnIdentifier))) {
         return;
       }
-      const routeKey =
-        resolveRouteKey(routeKeyParam, undefined) ||
-        (recipientIdentityId.startsWith('pn-')
-          ? legacyRouteKeyForIdentity(recipientIdentityId)
-          : null);
+      const routeKey = resolveRouteKey(routeKeyParam);
       if (!routeKey) {
         return res.status(400).json({ error: 'routeKey and jobType required' });
       }
@@ -350,9 +335,40 @@ export function registerMailboxRoutes(app: Application, nodeEnv: string): void {
   });
 
   /**
-   * Claim a freshly minted route before handing it to any peer. First claim
-   * wins, and a route is 32 random bytes, so only its minter can get there
-   * first. Without a claim the route cannot be drained at all.
+   * Return this identity's authoritative inbox route (server SoT for
+   * dashboard/browser convergence).
+   */
+  app.get('/api/mailbox/route', async (req: Request, res: Response) => {
+    try {
+      const tokenPayload = getBearerTokenPayload(req);
+      const pnIdentifier =
+        (typeof req.query.pnIdentifier === 'string' && req.query.pnIdentifier) ||
+        tokenPayload?.pnIdentifier;
+      if (!pnIdentifier) {
+        return res.status(400).json({ error: 'pnIdentifier required' });
+      }
+      if (!(await gateOwnerRoute(req, res, DEVICE_CAPABILITIES.messagesRead, pnIdentifier))) {
+        return;
+      }
+      const routeKey = await getMailboxRouteKeyForOwner(pnIdentifier);
+      if (!routeKey) {
+        return res.status(404).json({ error: 'route_not_claimed' });
+      }
+      return res.json({ success: true, routeKey });
+    } catch (error: unknown) {
+      safeLogger.error('mailbox_route_get_failed', {
+        err: error instanceof Error ? error.message : 'error'
+      });
+      return res.status(500).json({
+        error: 'Failed to get mailbox route',
+        message: safeClientErrorMessage(error, nodeEnv === 'production')
+      });
+    }
+  });
+
+  /**
+   * Claim a freshly minted route, or adopt the owner's existing binding so
+   * dashboard and browser converge on one inbox address.
    */
   app.post('/api/mailbox/route', async (req: Request, res: Response) => {
     try {
@@ -368,15 +384,19 @@ export function registerMailboxRoutes(app: Application, nodeEnv: string): void {
       if (!isMailboxRouteKey(routeKey)) {
         return res.status(400).json({ error: 'routeKey required' });
       }
-      const claimed = await registerMailboxRoute(String(routeKey).trim(), identity);
-      if (!claimed) {
+      const result = await registerMailboxRoute(String(routeKey).trim(), identity);
+      if (!result.ok) {
         safeLogger.warn('[mailbox] Route already claimed by another identity', {
           reason: 'route_already_claimed',
           bearerPn: hashIdentifier(normalizePnIdentifier(identity))
         });
         return res.status(409).json({ error: 'route_already_claimed' });
       }
-      return res.json({ success: true });
+      return res.json({
+        success: true,
+        routeKey: result.routeKey,
+        adopted: result.adopted
+      });
     } catch (error: unknown) {
       safeLogger.error('mailbox_route_claim_failed', {
         err: error instanceof Error ? error.message : 'error'

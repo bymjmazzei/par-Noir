@@ -52,8 +52,11 @@ export {
   loadMailboxRouteKey,
   saveMailboxRouteKey,
   ensureMailboxRouteKey,
-  clearMailboxRouteKey
+  clearMailboxRouteKey,
+  fetchMailboxRoute,
+  claimMailboxRouteKey
 } from './mailboxRouteKey.js';
+export type { MailboxRouteApiContext } from './mailboxRouteKey.js';
 export {
   setSessionCloudCredentials,
   getSessionCloudCredentials,

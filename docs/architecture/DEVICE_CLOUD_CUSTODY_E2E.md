@@ -33,6 +33,6 @@ Reconnect Dropbox (App folder), OneDrive (AppFolder), S3/Azure (forced prefix; A
 
 ## Ops
 
-Apply `api/migrations/add_social_mailbox_route_key.sql`. Set `MAILBOX_ROUTE_PEPPER` in production (legacy route derivation for pre-exchange connections).
+Apply `api/migrations/add_social_mailbox_route_key.sql` and `api/migrations/add_mailbox_route_binding_owner_unique.sql`. Set `MAILBOX_ROUTE_PEPPER` (required; API throws if unset). Identity inbox routes are opaque claimed keys bound in `mailbox_route_binding` (one per owner).
 
 `npx tsx scripts/purge-storage-credentials-secrets.ts` then rotate `STORAGE_CREDENTIALS_SECRET` if any legacy secrets remain.

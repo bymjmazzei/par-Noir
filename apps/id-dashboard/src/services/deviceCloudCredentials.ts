@@ -199,8 +199,13 @@ export async function migrateAndFlushOnUnlock(opts: {
   }
 
   const run = (async () => {
-    // Mint/persist opaque mailbox route key for cross-cloud throughway claims.
-    await ensureMailboxRouteKey(opts.identityId, opts.session).catch(() => undefined);
+    // Mint/persist opaque mailbox route key and claim on server (SoT).
+    const { deviceProofHeaders } = await import('./deviceProofContext');
+    await ensureMailboxRouteKey(opts.identityId, opts.session, {
+      apiBaseUrl: API_ENDPOINT,
+      authToken: opts.authToken,
+      buildAuthHeaders: async (method, path, body) => deviceProofHeaders(method, path, body)
+    });
 
     await migrateServerSecretsToDevice({
       apiBaseUrl: API_ENDPOINT,
@@ -298,14 +303,13 @@ export async function promoteAndReconcileOutbox(opts: {
           typeof record.payload.commentId === 'string' ? record.payload.commentId : undefined;
         const fileId =
           typeof record.payload.fileId === 'string' ? record.payload.fileId : undefined;
-        const routeKey = target.routeKey || target.recipientIdentityId;
-        if (!routeKey) continue;
+        const routeKey = target.routeKey;
+        if (!routeKey || !/^[a-f0-9]{64}$/i.test(routeKey)) continue;
         const lookup = await lookupMailboxThroughway({
           apiBaseUrl: API_ENDPOINT,
           authToken: opts.authToken,
           identityId: opts.identityId,
           routeKey,
-          recipientIdentityId: target.recipientIdentityId,
           jobType: target.jobType,
           messageId,
           commentId,
@@ -335,7 +339,6 @@ export async function promoteAndReconcileOutbox(opts: {
             authToken: opts.authToken,
             identityId: opts.identityId,
             routeKey,
-            recipientIdentityId: target.recipientIdentityId,
             jobType: target.jobType,
             payload
           });
@@ -364,8 +367,12 @@ export async function runMailboxFlush(opts: {
 }): Promise<void> {
   const credentials = await loadUnsealedCloudCredentials(opts.identityId, opts.session);
   if (!credentials) return;
-  const routeKey = await ensureMailboxRouteKey(opts.identityId, opts.session).catch(() => undefined);
   const { deviceProofHeaders } = await import('./deviceProofContext');
+  const routeKey = await ensureMailboxRouteKey(opts.identityId, opts.session, {
+    apiBaseUrl: API_ENDPOINT,
+    authToken: opts.authToken,
+    buildAuthHeaders: async (method, path, body) => deviceProofHeaders(method, path, body)
+  });
   const worker = new CloudFlushWorker();
   try {
     await worker.flush({

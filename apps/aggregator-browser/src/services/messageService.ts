@@ -236,14 +236,41 @@ export async function getMessages(userPnIdentifier: string): Promise<Message[]> 
 /** Opaque mailbox ciphertext visible before Drive flush (device cloud custody). */
 async function loadMailboxMessageHints(userPnIdentifier: string): Promise<Message[]> {
   try {
-    const { fetchMailboxPending } = await import('@par-noir/device-cloud-credentials');
+    const { ensureMailboxRouteKey, fetchMailboxPending } = await import(
+      '@par-noir/device-cloud-credentials'
+    );
     const session = (await import('./pnOAuthService')).PNOAuthService.loadSession();
     if (!session?.accessToken) return [];
+    const { getDmIdentity } = await import('./dmIdentitySession');
+    let identity;
+    try {
+      identity = getDmIdentity();
+    } catch {
+      return [];
+    }
+    const { ownerApiHeadersAsync } = await import('./ownerApiHeaders');
+    const routeKey = await ensureMailboxRouteKey(
+      userPnIdentifier,
+      {
+        sessionId: userPnIdentifier,
+        pnName: identity.pnName || 'browser-mailbox',
+        passcode: identity.mlKemSecretKey
+      },
+      {
+        apiBaseUrl: API_ENDPOINT,
+        authToken: session.accessToken,
+        buildAuthHeaders: async () => {
+          const headers = await ownerApiHeadersAsync();
+          delete headers.Authorization;
+          return headers;
+        }
+      }
+    );
     const jobs = await fetchMailboxPending(
       API_ENDPOINT,
       session.accessToken,
       userPnIdentifier,
-      undefined,
+      routeKey,
       100
     );
     const out: Message[] = [];
@@ -601,7 +628,7 @@ export async function sendMessage(
       peerRouteKey = row.peerMailboxRouteKey.trim();
     }
   } catch {
-    /* legacy fallback on server */
+    /* server may still resolve recipient claimed route */
   }
 
   // Commit first (local sealed outbox = durable SoT). API fan-out is throughway only.
@@ -614,7 +641,7 @@ export async function sendMessage(
     outboxId: messageId,
     kind: 'message_append',
     payload: messagePayload,
-    fanout: messageSendFanout(peerRouteKey || toPnIdentifier, !!mediaFileId, toPnIdentifier),
+    fanout: peerRouteKey ? messageSendFanout(peerRouteKey, !!mediaFileId) : [],
     status: 'pending'
   });
   await upsertLocalOutboxRecord(fromPnIdentifier, sealSession, outbox);
@@ -705,14 +732,13 @@ export async function reconcileSenderOutboxFanout(userPnIdentifier: string): Pro
     for (const target of record.fanout) {
       const messageId =
         typeof record.payload.messageId === 'string' ? record.payload.messageId : undefined;
-      const routeKey = target.routeKey || target.recipientIdentityId;
-      if (!routeKey) continue;
+      const routeKey = target.routeKey;
+      if (!routeKey || !/^[a-f0-9]{64}$/i.test(routeKey)) continue;
       const lookup = await lookupMailboxThroughway({
         apiBaseUrl: API_ENDPOINT,
         authToken: session.accessToken,
         identityId: userPnIdentifier,
         routeKey,
-        recipientIdentityId: target.recipientIdentityId,
         jobType: target.jobType,
         messageId
       }).catch(() => ({ found: false, pending: false }));
@@ -733,7 +759,6 @@ export async function reconcileSenderOutboxFanout(userPnIdentifier: string): Pro
         authToken: session.accessToken,
         identityId: userPnIdentifier,
         routeKey,
-        recipientIdentityId: target.recipientIdentityId,
         jobType: target.jobType,
         payload
       }).catch(() => undefined);

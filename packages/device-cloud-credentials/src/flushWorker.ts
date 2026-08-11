@@ -1,4 +1,5 @@
 import type { FlushContext, MailboxJob } from './types.js';
+import { isMailboxRouteKey } from './mailboxRouteKey.js';
 
 export interface FlushResult {
   pulled: number;
@@ -10,39 +11,32 @@ export interface FlushResult {
 /**
  * Pull throughway mailbox jobs, materialize with device-held credentials, then ack.
  * Never acks without a successful applyJob.
- * Claims by opaque routeKey (and optional legacy route for pre-exchange connections).
+ * Claims and drains only the opaque claimed routeKey (server SoT).
  */
 export class CloudFlushWorker {
   async flush(ctx: FlushContext): Promise<FlushResult> {
     if (!ctx.applyJob) {
       throw new Error('applyJob required — refuse ack-without-write');
     }
+    if (!isMailboxRouteKey(ctx.routeKey)) {
+      throw new Error('routeKey required — opaque claimed inbox route only');
+    }
+    const routeKey = ctx.routeKey.trim();
     const errors: string[] = [];
     const base = ctx.apiBaseUrl.replace(/\/$/, '');
 
-    // A minted route is not drainable until it is bound to this identity, so
-    // claim before polling. Idempotent, and the legacy route needs no claim
-    // because the server derives it from the bearer.
-    if (ctx.routeKey) {
-      try {
-        await claimMailboxRoute({
-          apiBaseUrl: ctx.apiBaseUrl,
-          authToken: ctx.authToken,
-          identityId: ctx.identityId,
-          routeKey: ctx.routeKey,
-          buildAuthHeaders: ctx.buildAuthHeaders
-        });
-      } catch (e) {
-        errors.push(`route claim: ${e instanceof Error ? e.message : 'failed'}`);
-      }
+    // A minted route is not drainable until it is bound to this identity.
+    try {
+      await claimMailboxRoute({
+        apiBaseUrl: ctx.apiBaseUrl,
+        authToken: ctx.authToken,
+        identityId: ctx.identityId,
+        routeKey,
+        buildAuthHeaders: ctx.buildAuthHeaders
+      });
+    } catch (e) {
+      errors.push(`route claim: ${e instanceof Error ? e.message : 'failed'}`);
     }
-    const claimSpecs: Array<{ routeKey?: string }> = [];
-    if (ctx.routeKey) claimSpecs.push({ routeKey: ctx.routeKey });
-    if (ctx.legacyRouteKey && ctx.legacyRouteKey !== ctx.routeKey) {
-      claimSpecs.push({ routeKey: ctx.legacyRouteKey });
-    }
-    // Always also claim via server legacy(pn) so pre-exchange drops are not stranded.
-    claimSpecs.push({});
 
     const mergeHeaders = async (
       method: string,
@@ -59,40 +53,25 @@ export class CloudFlushWorker {
       };
     };
 
-    const seen = new Set<string>();
-    const jobs: MailboxJob[] = [];
-    for (const spec of claimSpecs) {
-      const q = new URLSearchParams({
-        pnIdentifier: ctx.identityId,
-        limit: '100'
-      });
-      if (spec.routeKey) q.set('routeKey', spec.routeKey);
-      const path = `/api/mailbox/pending?${q}`;
-      const pendingRes = await fetch(`${base}${path}`, {
-        headers: await mergeHeaders('GET', path)
-      });
-      if (!pendingRes.ok) {
-        // A route this identity does not own is not a session failure: skip the
-        // spec and keep draining the others. Without this, one unclaimed route
-        // aborts the whole flush, including the legacy route that does work.
-        if (pendingRes.status === 403) {
-          errors.push(`pending ${spec.routeKey ? 'route' : 'legacy'}: HTTP 403`);
-          continue;
-        }
-        const err = new Error(`mailbox pending failed: HTTP ${pendingRes.status}`);
-        (err as Error & { status?: number }).status = pendingRes.status;
-        throw err;
-      }
-      const body = (await pendingRes.json()) as { jobs?: MailboxJob[] };
-      for (const job of body.jobs ?? []) {
-        if (seen.has(job.id)) continue;
-        seen.add(job.id);
-        jobs.push({
-          ...job,
-          routeKey: job.routeKey || spec.routeKey
-        });
-      }
+    const q = new URLSearchParams({
+      pnIdentifier: ctx.identityId,
+      routeKey,
+      limit: '100'
+    });
+    const path = `/api/mailbox/pending?${q}`;
+    const pendingRes = await fetch(`${base}${path}`, {
+      headers: await mergeHeaders('GET', path)
+    });
+    if (!pendingRes.ok) {
+      const err = new Error(`mailbox pending failed: HTTP ${pendingRes.status}`);
+      (err as Error & { status?: number }).status = pendingRes.status;
+      throw err;
     }
+    const body = (await pendingRes.json()) as { jobs?: MailboxJob[] };
+    const jobs: MailboxJob[] = (body.jobs ?? []).map((job) => ({
+      ...job,
+      routeKey: job.routeKey || routeKey
+    }));
 
     const ackedByRoute = new Map<string, string[]>();
     let applied = 0;
@@ -102,7 +81,7 @@ export class CloudFlushWorker {
         const ok = await ctx.applyJob(job, ctx.credentials);
         if (ok) {
           applied += 1;
-          const rk = job.routeKey || ctx.routeKey || ctx.legacyRouteKey || '';
+          const rk = job.routeKey || routeKey;
           const list = ackedByRoute.get(rk) || [];
           list.push(job.id);
           ackedByRoute.set(rk, list);
@@ -113,10 +92,10 @@ export class CloudFlushWorker {
     }
 
     let acked = 0;
-    for (const [routeKey, jobIds] of ackedByRoute) {
+    for (const [ackRouteKey, jobIds] of ackedByRoute) {
       const ackBody = {
         pnIdentifier: ctx.identityId,
-        ...(routeKey ? { routeKey } : {}),
+        routeKey: ackRouteKey,
         jobIds
       };
       const ackPath = '/api/mailbox/ack';
@@ -149,6 +128,7 @@ export class CloudFlushWorker {
  * Bind a minted route to this identity. Must happen before the route is handed
  * to any peer, and before /pending will serve it — an unclaimed route is not
  * drainable, because holding a route key proves nothing about owning it.
+ * Returns the authoritative routeKey from the server (may adopt an existing binding).
  */
 export async function claimMailboxRoute(opts: {
   apiBaseUrl: string;
@@ -160,7 +140,7 @@ export async function claimMailboxRoute(opts: {
     path: string,
     body?: unknown
   ) => Record<string, string> | Promise<Record<string, string>>;
-}): Promise<boolean> {
+}): Promise<string> {
   const base = opts.apiBaseUrl.replace(/\/$/, '');
   const path = '/api/mailbox/route';
   const body = { pnIdentifier: opts.identityId, routeKey: opts.routeKey };
@@ -177,7 +157,12 @@ export async function claimMailboxRoute(opts: {
     },
     body: JSON.stringify(body)
   });
-  return res.ok;
+  if (!res.ok) throw new Error(`mailbox route claim failed: HTTP ${res.status}`);
+  const parsed = (await res.json()) as { routeKey?: string };
+  if (!isMailboxRouteKey(parsed.routeKey)) {
+    throw new Error('mailbox route claim returned invalid routeKey');
+  }
+  return parsed.routeKey.trim();
 }
 
 /** Ack applied jobs. Only call after the write landed. */
@@ -185,7 +170,7 @@ export async function ackMailboxJobsRemote(opts: {
   apiBaseUrl: string;
   authToken: string;
   identityId: string;
-  routeKey?: string;
+  routeKey: string;
   jobIds: string[];
   buildAuthHeaders?: (
     method: string,
@@ -194,11 +179,14 @@ export async function ackMailboxJobsRemote(opts: {
   ) => Record<string, string> | Promise<Record<string, string>>;
 }): Promise<number> {
   if (!opts.jobIds.length) return 0;
+  if (!isMailboxRouteKey(opts.routeKey)) {
+    throw new Error('routeKey required');
+  }
   const base = opts.apiBaseUrl.replace(/\/$/, '');
   const path = '/api/mailbox/ack';
   const body = {
     pnIdentifier: opts.identityId,
-    ...(opts.routeKey ? { routeKey: opts.routeKey } : {}),
+    routeKey: opts.routeKey.trim(),
     jobIds: opts.jobIds
   };
   const extra = opts.buildAuthHeaders
@@ -223,15 +211,18 @@ export async function fetchMailboxPending(
   apiBaseUrl: string,
   authToken: string,
   identityId: string,
-  routeKey?: string,
+  routeKey: string,
   limit = 100
 ): Promise<MailboxJob[]> {
+  if (!isMailboxRouteKey(routeKey)) {
+    throw new Error('routeKey required');
+  }
   const base = apiBaseUrl.replace(/\/$/, '');
   const q = new URLSearchParams({
     pnIdentifier: identityId,
+    routeKey: routeKey.trim(),
     limit: String(limit)
   });
-  if (routeKey) q.set('routeKey', routeKey);
   const res = await fetch(`${base}/api/mailbox/pending?${q}`, {
     headers: {
       Authorization: `Bearer ${authToken}`,
@@ -250,9 +241,10 @@ export async function enqueueMailboxThroughway(opts: {
   routeKey: string;
   jobType: string;
   payload: Record<string, unknown>;
-  /** @deprecated Prefer routeKey only. */
-  recipientIdentityId?: string;
 }): Promise<{ created: boolean; jobId?: string }> {
+  if (!isMailboxRouteKey(opts.routeKey)) {
+    throw new Error('routeKey required');
+  }
   const base = opts.apiBaseUrl.replace(/\/$/, '');
   const res = await fetch(`${base}/api/mailbox/enqueue`, {
     method: 'POST',
@@ -263,8 +255,7 @@ export async function enqueueMailboxThroughway(opts: {
     },
     body: JSON.stringify({
       pnIdentifier: opts.identityId,
-      routeKey: opts.routeKey,
-      ...(opts.recipientIdentityId ? { recipientIdentityId: opts.recipientIdentityId } : {}),
+      routeKey: opts.routeKey.trim(),
       jobType: opts.jobType,
       payload: opts.payload
     })
@@ -283,19 +274,21 @@ export async function lookupMailboxThroughway(opts: {
   messageId?: string;
   commentId?: string;
   fileId?: string;
-  /** @deprecated Prefer routeKey only. */
-  recipientIdentityId?: string;
+  requestId?: string;
 }): Promise<{ found: boolean; pending: boolean }> {
+  if (!isMailboxRouteKey(opts.routeKey)) {
+    throw new Error('routeKey required');
+  }
   const base = opts.apiBaseUrl.replace(/\/$/, '');
   const q = new URLSearchParams({
     pnIdentifier: opts.identityId,
-    routeKey: opts.routeKey,
+    routeKey: opts.routeKey.trim(),
     jobType: opts.jobType
   });
-  if (opts.recipientIdentityId) q.set('recipientIdentityId', opts.recipientIdentityId);
   if (opts.messageId) q.set('messageId', opts.messageId);
   if (opts.commentId) q.set('commentId', opts.commentId);
   if (opts.fileId) q.set('fileId', opts.fileId);
+  if (opts.requestId) q.set('requestId', opts.requestId);
   const res = await fetch(`${base}/api/mailbox/lookup?${q}`, {
     headers: {
       Authorization: `Bearer ${opts.authToken}`,

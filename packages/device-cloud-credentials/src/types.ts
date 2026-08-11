@@ -35,10 +35,8 @@ export interface FlushContext {
   identityId: string;
   authToken: string;
   apiBaseUrl: string;
-  /** Opaque inbox route key for this identity. */
-  routeKey?: string;
-  /** Pre-exchange fallback (SHA-256 of pepper + identity). */
-  legacyRouteKey?: string;
+  /** Opaque claimed inbox route key for this identity (required). */
+  routeKey: string;
   /** Unsealed credentials for applying jobs to the user's cloud */
   credentials: StorageCredentialsEnvelope;
   /** Required: apply a job into user cloud; return true only if materialized (safe to ack) */

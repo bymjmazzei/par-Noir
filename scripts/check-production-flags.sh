@@ -34,5 +34,8 @@ fi
 [[ -n "${PN_OAUTH_ISSUER:-}" ]] || fail "PN_OAUTH_ISSUER must be set in strict mode"
 [[ -n "${PN_OAUTH_AUDIENCE:-}" ]] || fail "PN_OAUTH_AUDIENCE must be set in strict mode"
 
+# Opaque mailbox owner hashing — no soft default in code.
+[[ -n "${MAILBOX_ROUTE_PEPPER:-}" ]] || fail "MAILBOX_ROUTE_PEPPER must be set in strict mode"
+
 echo "check-production-flags: ok"
 

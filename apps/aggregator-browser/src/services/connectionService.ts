@@ -12,6 +12,7 @@ import { notifyMessagingInboxRefresh, refreshMessagingInbox } from './messageSer
 import { API_ENDPOINT } from '../config/api';
 import { ensureMailboxRouteKey } from '@par-noir/device-cloud-credentials';
 import { sealSocialEnvelope } from '@par-noir/dm-crypto';
+import { PNOAuthService } from './pnOAuthService';
 
 // Helper function to get auth headers (after vault hydrate)
 async function getAuthHeaders(): Promise<HeadersInit> {
@@ -61,11 +62,27 @@ export async function sendConnectionRequest(
   }
 
   const identity = getDmIdentity();
-  const mailboxRouteKey = await ensureMailboxRouteKey(requesterPnIdentifier, {
-    sessionId: requesterPnIdentifier,
-    pnName: identity.pnName || 'browser-mailbox',
-    passcode: identity.mlKemSecretKey
-  });
+  const session = PNOAuthService.loadSession();
+  if (!session?.accessToken) {
+    throw new Error('Not authenticated. Unlock before sending a connection request.');
+  }
+  const mailboxRouteKey = await ensureMailboxRouteKey(
+    requesterPnIdentifier,
+    {
+      sessionId: requesterPnIdentifier,
+      pnName: identity.pnName || 'browser-mailbox',
+      passcode: identity.mlKemSecretKey
+    },
+    {
+      apiBaseUrl: API_ENDPOINT,
+      authToken: session.accessToken,
+      buildAuthHeaders: async () => {
+        const headers = await ownerApiHeadersAsync();
+        delete headers.Authorization;
+        return headers;
+      }
+    }
+  );
 
   // The mailbox strips clear pn fields from durable rows, so who this is from
   // and the key to answer it are sealed to the recipient's published ML-KEM key.
@@ -158,11 +175,27 @@ export async function acceptConnectionRequest(
   const wrappedMessageRootKey = await wrapAcceptorMessageRootKey(messageRootKey, connectionId);
 
   const identity = getDmIdentity();
-  const mailboxRouteKey = await ensureMailboxRouteKey(userPnIdentifier, {
-    sessionId: userPnIdentifier,
-    pnName: identity.pnName || 'browser-mailbox',
-    passcode: identity.mlKemSecretKey
-  });
+  const session = PNOAuthService.loadSession();
+  if (!session?.accessToken) {
+    throw new Error('Not authenticated. Unlock before accepting a connection request.');
+  }
+  const mailboxRouteKey = await ensureMailboxRouteKey(
+    userPnIdentifier,
+    {
+      sessionId: userPnIdentifier,
+      pnName: identity.pnName || 'browser-mailbox',
+      passcode: identity.mlKemSecretKey
+    },
+    {
+      apiBaseUrl: API_ENDPOINT,
+      authToken: session.accessToken,
+      buildAuthHeaders: async () => {
+        const headers = await ownerApiHeadersAsync();
+        delete headers.Authorization;
+        return headers;
+      }
+    }
+  );
 
   try {
     const response = await fetch(`${API_ENDPOINT}/api/connections/${connectionId}/accept`, {

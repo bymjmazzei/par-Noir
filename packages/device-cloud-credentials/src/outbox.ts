@@ -23,10 +23,8 @@ export type OutboxKind =
 export type OutboxStatus = 'pending' | 'enqueued' | 'materialized' | 'failed';
 
 export interface OutboxFanoutTarget {
-  /** Opaque mailbox route for recipient inbox (preferred). */
+  /** Opaque claimed mailbox route for recipient inbox. */
   routeKey: string;
-  /** @deprecated Prefer routeKey; kept for legacy reconcile only. */
-  recipientIdentityId?: string;
   jobType: OutboxKind;
 }
 
@@ -65,21 +63,13 @@ export function createOutboxRecord(input: {
   };
 }
 
-export function messageSendFanout(
-  routeKey: string,
-  hasMedia: boolean,
-  recipientIdentityId?: string
-): OutboxFanoutTarget[] {
-  const base = {
-    routeKey,
-    ...(recipientIdentityId ? { recipientIdentityId } : {})
-  };
+export function messageSendFanout(routeKey: string, hasMedia: boolean): OutboxFanoutTarget[] {
   const targets: OutboxFanoutTarget[] = [
-    { ...base, jobType: 'message_append' },
-    { ...base, jobType: 'notification_row' }
+    { routeKey, jobType: 'message_append' },
+    { routeKey, jobType: 'notification_row' }
   ];
   if (hasMedia) {
-    targets.push({ ...base, jobType: 'message_attachment' });
+    targets.push({ routeKey, jobType: 'message_attachment' });
   }
   return targets;
 }

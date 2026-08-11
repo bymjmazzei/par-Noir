@@ -9,27 +9,21 @@
 
 import {
   enqueueSocialMailboxJob,
-  legacyRouteKeyForIdentity,
+  getMailboxRouteKeyForOwner,
   type SocialMailboxJobType
 } from './socialMailboxService';
 import { hashIdentifier, safeLogger } from '../../utils/logger';
 import { getDatabasePool } from '../utils/database';
 
 /**
- * Social jobs always address the recipient's derived route, never a minted one.
+ * Social jobs address the recipient's claimed opaque route only.
  *
- * A minted route key is sealed to one client's seal session, so the dashboard
- * and the browser mint different keys for the same identity and neither can
- * read the other's. Addressing a minted route would strand every job whenever
- * the user happened to be in the other app — which is the same class of silent
- * dead end this whole change exists to remove.
- *
- * The derived route keeps the privacy property that mattered: it is a peppered
- * hash, so a database dump is still not a clear social graph. It needs no claim
- * because the server derives it from the bearer, so both clients can drain it.
+ * Dashboard and browser converge on one route via mailbox_route_binding (server
+ * SoT). If the peer has never claimed a route, fail closed — inventing a
+ * pn-derived address would make every inbox world-computable from a pepper.
  */
-export function routeKeyForPeer(peerPn: string): string {
-  return legacyRouteKeyForIdentity(peerPn);
+export async function routeKeyForPeer(peerPn: string): Promise<string | null> {
+  return getMailboxRouteKeyForOwner(peerPn);
 }
 
 export interface SocialJobParams {
@@ -81,7 +75,14 @@ async function publishedMlKemPublicKey(peerPn: string): Promise<string | null> {
  * a silent drop is how a disabled feature stays invisible.
  */
 export async function enqueueSocialJob(params: SocialJobParams): Promise<boolean> {
-  const routeKey = routeKeyForPeer(params.peerPn);
+  const routeKey = await routeKeyForPeer(params.peerPn);
+  if (!routeKey) {
+    safeLogger.warn('[SocialRail] Peer has no claimed mailbox route; job not enqueued', {
+      jobType: params.jobType,
+      peerPnHash: hashIdentifier(params.peerPn)
+    });
+    return false;
+  }
   try {
     let envelope = params.envelope;
     const envelopeContext = params.envelopeContext || params.requestId;

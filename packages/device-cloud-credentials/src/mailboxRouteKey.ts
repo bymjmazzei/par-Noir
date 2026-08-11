@@ -1,6 +1,6 @@
 /**
  * Opaque mailbox route keys — cross-cloud throughway addressing without clear pn columns.
- * Each identity mints a high-entropy key; peers store it on connection rows as peerMailboxRouteKey.
+ * Server binding is SoT: dashboard and browser converge via GET/POST /api/mailbox/route.
  */
 
 import type { SealedEnvelope, SealSession } from './types.js';
@@ -57,11 +57,95 @@ export async function saveMailboxRouteKey(
   localStorage.setItem(storageKey(identityId), JSON.stringify(envelope));
 }
 
-/** Load or mint+persist the identity's inbox route key. */
+export interface MailboxRouteApiContext {
+  apiBaseUrl: string;
+  authToken: string;
+  buildAuthHeaders?: (
+    method: string,
+    path: string,
+    body?: unknown
+  ) => Record<string, string> | Promise<Record<string, string>>;
+}
+
+async function mergeAuthHeaders(
+  api: MailboxRouteApiContext,
+  method: string,
+  path: string,
+  body?: unknown
+): Promise<Record<string, string>> {
+  const extra = api.buildAuthHeaders ? await api.buildAuthHeaders(method, path, body) : {};
+  return {
+    Authorization: `Bearer ${api.authToken}`,
+    Accept: 'application/json',
+    ...extra
+  };
+}
+
+/** Fetch the authoritative inbox route for this identity from the server. */
+export async function fetchMailboxRoute(
+  identityId: string,
+  api: MailboxRouteApiContext
+): Promise<string | null> {
+  const base = api.apiBaseUrl.replace(/\/$/, '');
+  const path = `/api/mailbox/route?pnIdentifier=${encodeURIComponent(identityId)}`;
+  const res = await fetch(`${base}${path}`, {
+    headers: await mergeAuthHeaders(api, 'GET', path)
+  });
+  if (res.status === 404) return null;
+  if (!res.ok) throw new Error(`mailbox route get failed: HTTP ${res.status}`);
+  const body = (await res.json()) as { routeKey?: string };
+  return isMailboxRouteKey(body.routeKey) ? body.routeKey!.trim() : null;
+}
+
+/**
+ * Claim (or adopt) an opaque route. Server returns the authoritative key so a
+ * second client mint converges on the first claim.
+ */
+export async function claimMailboxRouteKey(
+  identityId: string,
+  routeKey: string,
+  api: MailboxRouteApiContext
+): Promise<string> {
+  const base = api.apiBaseUrl.replace(/\/$/, '');
+  const path = '/api/mailbox/route';
+  const body = { pnIdentifier: identityId, routeKey };
+  const res = await fetch(`${base}${path}`, {
+    method: 'POST',
+    headers: {
+      ...(await mergeAuthHeaders(api, 'POST', path, body)),
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify(body)
+  });
+  if (!res.ok) throw new Error(`mailbox route claim failed: HTTP ${res.status}`);
+  const parsed = (await res.json()) as { routeKey?: string };
+  if (!isMailboxRouteKey(parsed.routeKey)) {
+    throw new Error('mailbox route claim returned invalid routeKey');
+  }
+  return parsed.routeKey.trim();
+}
+
+/**
+ * Load or mint the identity's inbox route, syncing with server SoT when api is
+ * provided so dashboard and browser share one claimed route.
+ */
 export async function ensureMailboxRouteKey(
   identityId: string,
-  session: SealSession
+  session: SealSession,
+  api?: MailboxRouteApiContext
 ): Promise<string> {
+  if (api) {
+    const remote = await fetchMailboxRoute(identityId, api).catch(() => null);
+    if (remote) {
+      await saveMailboxRouteKey(identityId, session, remote);
+      return remote;
+    }
+    const local = (await loadMailboxRouteKey(identityId, session)) || mintMailboxRouteKey();
+    const authoritative = await claimMailboxRouteKey(identityId, local, api);
+    await saveMailboxRouteKey(identityId, session, authoritative);
+    return authoritative;
+  }
+
   const existing = await loadMailboxRouteKey(identityId, session);
   if (existing) return existing;
   const minted = mintMailboxRouteKey();

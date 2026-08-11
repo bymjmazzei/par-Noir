@@ -8,3 +8,5 @@
 process.env.NODE_ENV = process.env.NODE_ENV || 'test';
 process.env.STORAGE_CREDENTIALS_SECRET =
   process.env.STORAGE_CREDENTIALS_SECRET || 'test-only-placeholder-not-a-real-secret';
+process.env.MAILBOX_ROUTE_PEPPER =
+  process.env.MAILBOX_ROUTE_PEPPER || 'test-only-mailbox-route-pepper';

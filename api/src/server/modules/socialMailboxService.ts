@@ -67,28 +67,23 @@ export function isMailboxRouteKey(value: unknown): boolean {
   return typeof value === 'string' && /^[a-f0-9]{64}$/i.test(value.trim());
 }
 
-function routePepper(): string {
-  return (
-    process.env.MAILBOX_ROUTE_PEPPER ||
-    process.env.DEVICE_TOKEN_PEPPER ||
-    'parnoir-mailbox-dev-pepper'
-  );
-}
-
 /**
- * Legacy fallback when peers have not exchanged a route key yet.
- * Uses deployment pepper so DB dump alone is not a clear pn graph.
+ * Fail closed: no soft default and no DEVICE_TOKEN_PEPPER substitute.
+ * A missing pepper would make owner hashes (and any future peppered material)
+ * globally reproducible from source.
  */
-export function legacyRouteKeyForIdentity(identityId: string): string {
-  return createHash('sha256')
-    .update(`parnoir-mailbox-legacy-v1:${routePepper()}:${identityId}`, 'utf8')
-    .digest('hex');
+function routePepper(): string {
+  const pepper = process.env.MAILBOX_ROUTE_PEPPER?.trim();
+  if (!pepper) {
+    throw new Error('MAILBOX_ROUTE_PEPPER must be set');
+  }
+  return pepper;
 }
 
 /**
- * Owner of a route, at rest. Domain-separated from legacyRouteKeyForIdentity so
- * an owner hash is never itself a usable route key. Peppered so a DB dump is
- * still not a clear pn graph — the privacy goal the opaque route was built for.
+ * Owner of a route, at rest. Peppered so a DB dump is still not a clear pn
+ * graph — the privacy goal the opaque route was built for. Never usable as a
+ * route key itself (domain-separated prefix).
  */
 export function mailboxOwnerHash(identityId: string): string {
   return createHash('sha256')
@@ -96,30 +91,55 @@ export function mailboxOwnerHash(identityId: string): string {
     .digest('hex');
 }
 
+export type RegisterMailboxRouteResult =
+  | { ok: true; routeKey: string; adopted: boolean }
+  | { ok: false; reason: 'route_already_claimed' };
+
 /**
- * Claim a minted route for an owner. First claim wins: a route key is 32 random
- * bytes, so only its minter can register it before it is handed to peers.
- * Returns false when the route is already bound to somebody else.
+ * Claim a minted route for an owner. One inbox route per owner: if this owner
+ * already has a binding, return that key (dashboard/browser converge). If the
+ * offered key is bound to someone else, reject.
  */
 export async function registerMailboxRoute(
   routeKey: string,
   identityId: string
-): Promise<boolean> {
+): Promise<RegisterMailboxRouteResult> {
   const key = String(routeKey || '').trim();
   if (!isMailboxRouteKey(key)) {
     throw new Error('routeKey required (opaque mailbox route)');
   }
   const ownerHash = mailboxOwnerHash(identityId);
+  const existing = await getMailboxRouteKeyForOwner(identityId);
+  if (existing) {
+    return { ok: true, routeKey: existing, adopted: existing !== key };
+  }
+
   const db = getDatabasePool();
-  const result = await db.query(
-    `INSERT INTO mailbox_route_binding (route_key, owner_hash)
-     VALUES ($1, $2)
-     ON CONFLICT (route_key) DO NOTHING
-     RETURNING route_key`,
-    [key, ownerHash]
-  );
-  if (result.rowCount && result.rowCount > 0) return true;
-  return (await getMailboxRouteOwnerHash(key)) === ownerHash;
+  try {
+    const result = await db.query(
+      `INSERT INTO mailbox_route_binding (route_key, owner_hash)
+       VALUES ($1, $2)
+       ON CONFLICT (route_key) DO NOTHING
+       RETURNING route_key`,
+      [key, ownerHash]
+    );
+    if (result.rowCount && result.rowCount > 0) {
+      return { ok: true, routeKey: key, adopted: false };
+    }
+  } catch (err: unknown) {
+    // Unique owner_hash race: another claim landed first — adopt it.
+    const adopted = await getMailboxRouteKeyForOwner(identityId);
+    if (adopted) {
+      return { ok: true, routeKey: adopted, adopted: true };
+    }
+    throw err;
+  }
+
+  const ownerOfKey = await getMailboxRouteOwnerHash(key);
+  if (ownerOfKey === ownerHash) {
+    return { ok: true, routeKey: key, adopted: false };
+  }
+  return { ok: false, reason: 'route_already_claimed' };
 }
 
 export async function getMailboxRouteOwnerHash(routeKey: string): Promise<string | null> {
@@ -131,9 +151,22 @@ export async function getMailboxRouteOwnerHash(routeKey: string): Promise<string
   return result.rows[0] ? String(result.rows[0].owner_hash) : null;
 }
 
+/** Reverse lookup: which opaque inbox route this identity has claimed. */
+export async function getMailboxRouteKeyForOwner(
+  identityId: string
+): Promise<string | null> {
+  const ownerHash = mailboxOwnerHash(identityId);
+  const db = getDatabasePool();
+  const result = await db.query(
+    `SELECT route_key FROM mailbox_route_binding WHERE owner_hash = $1`,
+    [ownerHash]
+  );
+  return result.rows[0] ? String(result.rows[0].route_key) : null;
+}
+
 /**
- * A route the caller is entitled to drain. Their own legacy route always
- * qualifies; a minted route only qualifies once bound to them.
+ * A route the caller is entitled to drain. Possession of a route key proves
+ * nothing — only a binding to this identity's owner_hash does.
  */
 export async function ownsMailboxRoute(
   routeKey: string,
@@ -141,7 +174,6 @@ export async function ownsMailboxRoute(
 ): Promise<boolean> {
   const key = String(routeKey || '').trim();
   if (!key) return false;
-  if (key === legacyRouteKeyForIdentity(identityId)) return true;
   const ownerHash = await getMailboxRouteOwnerHash(key);
   return ownerHash !== null && ownerHash === mailboxOwnerHash(identityId);
 }
@@ -310,11 +342,7 @@ export async function purgeExpiredMailboxJobs(): Promise<number> {
 }
 
 function mapRow(row: Record<string, unknown>): SocialMailboxJob {
-  const routeKey =
-    (row.route_key != null && String(row.route_key)) ||
-    (row.recipient_identity_id != null
-      ? legacyRouteKeyForIdentity(String(row.recipient_identity_id))
-      : '');
+  const routeKey = row.route_key != null ? String(row.route_key) : '';
   return {
     id: String(row.id),
     routeKey,

@@ -14,6 +14,7 @@
 
 import {
   ackMailboxJobsRemote,
+  ensureMailboxRouteKey,
   fetchMailboxPending,
   createApiSocialApplier,
   getCloudAccessTokenFromSession,
@@ -53,10 +54,35 @@ export async function drainSocialMailbox(): Promise<MailboxDrainResult> {
   const errors: string[] = [];
 
   let mlKemSecretKey: string | undefined;
+  let identity;
   try {
-    mlKemSecretKey = getDmIdentity().mlKemSecretKey;
+    identity = getDmIdentity();
+    mlKemSecretKey = identity.mlKemSecretKey;
   } catch {
     // Sealed jobs stay in the mailbox until an unlocked session can open them.
+    return EMPTY;
+  }
+
+  const api = {
+    apiBaseUrl: API_ENDPOINT,
+    authToken,
+    buildAuthHeaders
+  };
+
+  let routeKey: string;
+  try {
+    routeKey = await ensureMailboxRouteKey(
+      identityId,
+      {
+        sessionId: identityId,
+        pnName: identity.pnName || 'browser-mailbox',
+        passcode: identity.mlKemSecretKey
+      },
+      api
+    );
+  } catch (e) {
+    errors.push(`route: ${e instanceof Error ? e.message : 'failed'}`);
+    return { ...EMPTY, errors };
   }
 
   const applySocialJob = createApiSocialApplier({
@@ -73,11 +99,9 @@ export async function drainSocialMailbox(): Promise<MailboxDrainResult> {
       : {})
   });
 
-  // Social jobs are addressed to the bearer-derived route (see routeKeyForPeer
-  // on the API), which needs no claim and is drainable from either client.
   let jobs: MailboxJob[] = [];
   try {
-    jobs = await fetchMailboxPending(API_ENDPOINT, authToken, identityId);
+    jobs = await fetchMailboxPending(API_ENDPOINT, authToken, identityId, routeKey);
   } catch (e) {
     errors.push(`pending: ${e instanceof Error ? e.message : 'failed'}`);
   }
@@ -100,6 +124,7 @@ export async function drainSocialMailbox(): Promise<MailboxDrainResult> {
         apiBaseUrl: API_ENDPOINT,
         authToken,
         identityId,
+        routeKey,
         jobIds: appliedIds,
         buildAuthHeaders
       });

@@ -5,6 +5,7 @@
 import {
   isDeviceCloudCustodyEnabled,
   isMailboxRouteKey,
+  mailboxOwnerHash,
   sanitizeMailboxPayload,
 } from './socialMailboxService';
 
@@ -34,6 +35,35 @@ describe('DEVICE_CLOUD_CUSTODY flag', () => {
       process.env.DEVICE_CLOUD_CUSTODY = value;
       expect(isDeviceCloudCustodyEnabled()).toBe(true);
     }
+  });
+});
+
+describe('MAILBOX_ROUTE_PEPPER fail-closed', () => {
+  const original = process.env.MAILBOX_ROUTE_PEPPER;
+
+  afterEach(() => {
+    if (original === undefined) delete process.env.MAILBOX_ROUTE_PEPPER;
+    else process.env.MAILBOX_ROUTE_PEPPER = original;
+  });
+
+  it('THE GUARD: throws when MAILBOX_ROUTE_PEPPER is unset (no soft default)', () => {
+    delete process.env.MAILBOX_ROUTE_PEPPER;
+    expect(() => mailboxOwnerHash('pn-bob')).toThrow(/MAILBOX_ROUTE_PEPPER must be set/);
+  });
+
+  it('THE GUARD: throws when MAILBOX_ROUTE_PEPPER is blank', () => {
+    process.env.MAILBOX_ROUTE_PEPPER = '   ';
+    expect(() => mailboxOwnerHash('pn-bob')).toThrow(/MAILBOX_ROUTE_PEPPER must be set/);
+  });
+
+  it('hashes when pepper is set', () => {
+    process.env.MAILBOX_ROUTE_PEPPER = 'unit-test-pepper';
+    const a = mailboxOwnerHash('pn-bob');
+    const b = mailboxOwnerHash('pn-bob');
+    const c = mailboxOwnerHash('pn-alice');
+    expect(a).toBe(b);
+    expect(a).not.toBe(c);
+    expect(a).toMatch(/^[a-f0-9]{64}$/);
   });
 });
 

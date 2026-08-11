@@ -60,7 +60,7 @@ jest.mock('../middleware/authMiddleware', () => ({
 import express from 'express';
 import request from 'supertest';
 import { registerMailboxRoutes } from './mailboxRoutes';
-import { legacyRouteKeyForIdentity, mailboxOwnerHash } from './socialMailboxService';
+import { mailboxOwnerHash } from './socialMailboxService';
 
 const BOB = 'pn-bob';
 const ALICE = 'pn-alice';
@@ -79,7 +79,14 @@ function buildApp() {
  */
 function dbWithBobsClaimedRoute() {
   mockQuery.mockImplementation(async (sql: string, params: unknown[]) => {
-    if (sql.includes('FROM mailbox_route_binding')) {
+    if (sql.includes('SELECT route_key FROM mailbox_route_binding')) {
+      const ownerHash = String(params[0]);
+      if (ownerHash === mailboxOwnerHash(BOB)) {
+        return { rows: [{ route_key: BOB_MINTED_ROUTE }], rowCount: 1 };
+      }
+      return { rows: [], rowCount: 0 };
+    }
+    if (sql.includes('SELECT owner_hash FROM mailbox_route_binding') || sql.includes('FROM mailbox_route_binding')) {
       const key = String(params[0]);
       return key === BOB_MINTED_ROUTE
         ? { rows: [{ owner_hash: mailboxOwnerHash(BOB) }], rowCount: 1 }
@@ -147,17 +154,10 @@ describe('GET /api/mailbox/pending — route ownership', () => {
     expect(res.body.reason).toBe('route_not_owned');
   });
 
-  it('always allows an identity its own derived legacy route', async () => {
-    mockQuery.mockImplementation(async (sql: string) => {
-      if (sql.includes('FROM social_mailbox')) return { rows: [], rowCount: 0 };
-      return { rows: [], rowCount: 0 };
-    });
-
+  it('refuses pending without an opaque routeKey (no legacy pn derive)', async () => {
     await request(buildApp())
-      .get(
-        `/api/mailbox/pending?pnIdentifier=${BOB}&routeKey=${legacyRouteKeyForIdentity(BOB)}`
-      )
-      .expect(200);
+      .get(`/api/mailbox/pending?pnIdentifier=${BOB}`)
+      .expect(400);
   });
 });
 
@@ -216,22 +216,56 @@ describe('capability separation', () => {
   });
 });
 
-describe('POST /api/mailbox/route — claiming', () => {
-  it('first claim wins', async () => {
-    mockQuery.mockResolvedValue({ rows: [{ route_key: BOB_MINTED_ROUTE }], rowCount: 1 });
+describe('POST /api/mailbox/route — claiming and convergence', () => {
+  it('first claim wins and returns routeKey', async () => {
+    mockQuery.mockImplementation(async (sql: string) => {
+      if (sql.includes('SELECT route_key FROM mailbox_route_binding WHERE owner_hash')) {
+        return { rows: [], rowCount: 0 };
+      }
+      if (sql.includes('INSERT INTO mailbox_route_binding')) {
+        return { rows: [{ route_key: BOB_MINTED_ROUTE }], rowCount: 1 };
+      }
+      return { rows: [], rowCount: 0 };
+    });
 
-    await request(buildApp())
+    const res = await request(buildApp())
       .post('/api/mailbox/route')
       .send({ pnIdentifier: BOB, routeKey: BOB_MINTED_ROUTE })
       .expect(200);
+
+    expect(res.body.routeKey).toBe(BOB_MINTED_ROUTE);
+    expect(res.body.adopted).toBe(false);
+  });
+
+  it('second mint for the same owner adopts the existing route', async () => {
+    mockQuery.mockImplementation(async (sql: string) => {
+      if (sql.includes('SELECT route_key FROM mailbox_route_binding WHERE owner_hash')) {
+        return { rows: [{ route_key: BOB_MINTED_ROUTE }], rowCount: 1 };
+      }
+      return { rows: [], rowCount: 0 };
+    });
+
+    const res = await request(buildApp())
+      .post('/api/mailbox/route')
+      .send({ pnIdentifier: BOB, routeKey: 'd'.repeat(64) })
+      .expect(200);
+
+    expect(res.body.routeKey).toBe(BOB_MINTED_ROUTE);
+    expect(res.body.adopted).toBe(true);
   });
 
   it('a route already bound to someone else is refused', async () => {
     mockQuery.mockImplementation(async (sql: string) => {
+      if (sql.includes('SELECT route_key FROM mailbox_route_binding WHERE owner_hash')) {
+        return { rows: [], rowCount: 0 };
+      }
       if (sql.includes('INSERT INTO mailbox_route_binding')) {
         return { rows: [], rowCount: 0 };
       }
-      return { rows: [{ owner_hash: mailboxOwnerHash(ALICE) }], rowCount: 1 };
+      if (sql.includes('SELECT owner_hash FROM mailbox_route_binding')) {
+        return { rows: [{ owner_hash: mailboxOwnerHash(ALICE) }], rowCount: 1 };
+      }
+      return { rows: [], rowCount: 0 };
     });
 
     const res = await request(buildApp())
@@ -240,5 +274,42 @@ describe('POST /api/mailbox/route — claiming', () => {
       .expect(409);
 
     expect(res.body.error).toBe('route_already_claimed');
+  });
+
+  it('GET returns the claimed route for the owner', async () => {
+    mockQuery.mockImplementation(async (sql: string) => {
+      if (sql.includes('SELECT route_key FROM mailbox_route_binding WHERE owner_hash')) {
+        return { rows: [{ route_key: BOB_MINTED_ROUTE }], rowCount: 1 };
+      }
+      return { rows: [], rowCount: 0 };
+    });
+
+    const res = await request(buildApp())
+      .get(`/api/mailbox/route?pnIdentifier=${BOB}`)
+      .expect(200);
+
+    expect(res.body.routeKey).toBe(BOB_MINTED_ROUTE);
+  });
+
+  it('GET 404 when no route claimed', async () => {
+    mockQuery.mockResolvedValue({ rows: [], rowCount: 0 });
+
+    await request(buildApp())
+      .get(`/api/mailbox/route?pnIdentifier=${BOB}`)
+      .expect(404);
+  });
+});
+
+describe('enqueue requires opaque routeKey', () => {
+  it('refuses recipientIdentityId-only addressing', async () => {
+    await request(buildApp())
+      .post('/api/mailbox/enqueue')
+      .send({
+        pnIdentifier: BOB,
+        recipientIdentityId: ALICE,
+        jobType: 'message_append',
+        payload: { messageId: 'm1' },
+      })
+      .expect(400);
   });
 });

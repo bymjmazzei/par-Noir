@@ -1225,6 +1225,22 @@ export async function initializeDatabase(): Promise<void> {
     try {
       const fs = await import('fs');
       const path = await import('path');
+      const ownerUniquePath = path.join(
+        __dirname,
+        '../../migrations/add_mailbox_route_binding_owner_unique.sql'
+      );
+      await db.query(fs.readFileSync(ownerUniquePath, 'utf-8'));
+      console.log('✅ mailbox_route_binding owner_unique migration executed');
+    } catch (migrationError: unknown) {
+      console.debug(
+        'ℹ️ mailbox_route_binding owner_unique migration error (may already be applied):',
+        migrationError instanceof Error ? migrationError.message : migrationError
+      );
+    }
+
+    try {
+      const fs = await import('fs');
+      const path = await import('path');
       const mlKemPath = path.join(
         __dirname,
         '../../migrations/add_user_profile_ml_kem_public_key.sql'

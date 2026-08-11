@@ -11,11 +11,12 @@ import { ml_kem768 } from '@noble/post-quantum/ml-kem.js';
 import { openSocialEnvelope, bytesToBase64 } from '@par-noir/dm-crypto';
 
 const enqueueSocialMailboxJob = jest.fn();
+const getMailboxRouteKeyForOwner = jest.fn();
 const query = jest.fn();
 
 jest.mock('./socialMailboxService', () => ({
   enqueueSocialMailboxJob: (...args: unknown[]) => enqueueSocialMailboxJob(...args),
-  legacyRouteKeyForIdentity: (pn: string) => `route-for-${pn}`,
+  getMailboxRouteKeyForOwner: (...args: unknown[]) => getMailboxRouteKeyForOwner(...args),
   sanitizeMailboxPayload: (p: Record<string, unknown>) => p
 }));
 
@@ -30,6 +31,7 @@ jest.mock('../../utils/logger', () => ({
 
 const RECIPIENT = 'pn-bob';
 const SENDER = 'pn-alice';
+const BOB_ROUTE = 'b'.repeat(64);
 
 function recipientKeypair() {
   const seed = new Uint8Array(64).fill(7);
@@ -39,7 +41,9 @@ function recipientKeypair() {
 
 describe('social rail sealing', () => {
   beforeEach(() => {
+    jest.resetModules();
     enqueueSocialMailboxJob.mockReset().mockResolvedValue({ created: true });
+    getMailboxRouteKeyForOwner.mockReset().mockResolvedValue(BOB_ROUTE);
     query.mockReset();
   });
 
@@ -60,7 +64,7 @@ describe('social rail sealing', () => {
     expect(enqueueSocialMailboxJob).toHaveBeenCalledTimes(1);
 
     const { payload, routeKey } = enqueueSocialMailboxJob.mock.calls[0][0];
-    expect(routeKey).toBe(`route-for-${RECIPIENT}`);
+    expect(routeKey).toBe(BOB_ROUTE);
 
     // The sender's pn must not appear anywhere in what gets persisted.
     expect(JSON.stringify(payload)).not.toContain(SENDER);
@@ -71,6 +75,21 @@ describe('social rail sealing', () => {
       payload.envelopeContext
     );
     expect(opened.peerPnIdentifier).toBe(SENDER);
+  });
+
+  it('refuses to enqueue when peer has no claimed mailbox route', async () => {
+    getMailboxRouteKeyForOwner.mockResolvedValue(null);
+
+    const { enqueueSocialJob } = await import('./socialRail');
+    const ok = await enqueueSocialJob({
+      jobType: 'follower_add',
+      peerPn: RECIPIENT,
+      requestId: 'follow:no-route',
+      sealed: { peerPnIdentifier: SENDER }
+    });
+
+    expect(ok).toBe(false);
+    expect(enqueueSocialMailboxJob).not.toHaveBeenCalled();
   });
 
   it('refuses to enqueue rather than dropping the pn in the clear when no key is published', async () => {
