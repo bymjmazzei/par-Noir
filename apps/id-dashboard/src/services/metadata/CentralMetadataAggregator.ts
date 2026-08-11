@@ -14,6 +14,7 @@ import {
 } from '@par-noir/aggregator-domain';
 import { retry } from '../../utils/helpers';
 import { API_ENDPOINT } from '../../config/api';
+import { ownerFetchForPn } from '../ownerApiService';
 
 export type {
   CentralIndexEntry,
@@ -23,7 +24,7 @@ export type {
 
 export class CentralMetadataAggregator {
   /**
-   * Submit public metadata to the central aggregator API
+   * Submit public metadata to the central aggregator API (owner auth required).
    */
   async submitPublicMetadata(metadata: PublicMetadataSubmission): Promise<void> {
     try {
@@ -57,6 +58,9 @@ export class CentralMetadataAggregator {
       }
 
       const { pnIdentifier, ...metadataWithoutIdentity } = metadata;
+      if (!pnIdentifier) {
+        throw new Error('pnIdentifier required to submit metadata with owner auth');
+      }
 
       const payload = {
         ...metadataWithoutIdentity,
@@ -74,15 +78,9 @@ export class CentralMetadataAggregator {
       // Retry on 429 (rate limit) errors with exponential backoff
       const response = await retry(
         async () => {
-          const res = await fetch(`${API_ENDPOINT}${CENTRAL_INDEX_PATH}`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-              metadata: payload,
-              pnIdentifier
-            }),
+          const res = await ownerFetchForPn(pnIdentifier, 'POST', CENTRAL_INDEX_PATH, {
+            metadata: payload,
+            pnIdentifier,
           });
 
           // If 429, throw to trigger retry

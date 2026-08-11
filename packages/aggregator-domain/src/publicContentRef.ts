@@ -4,6 +4,7 @@
  */
 import type { PublicCipherEnvelope } from './tokenDecryption';
 export type { PublicCipherEnvelope } from './tokenDecryption';
+import { isSafePublicFetchUrlShape } from './safePublicFetchUrl';
 
 export type PublicContentBackend =
   | 'google_drive'
@@ -34,7 +35,7 @@ export function isPublicContentRef(value: unknown): value is PublicContentRef {
     typeof v.objectId === 'string' &&
     v.objectId.length > 0 &&
     typeof v.publicUrl === 'string' &&
-    /^https?:\/\//i.test(v.publicUrl)
+    isSafePublicFetchUrlShape(v.publicUrl, v.backend)
   );
 }
 

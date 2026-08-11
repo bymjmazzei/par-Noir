@@ -314,8 +314,33 @@ export function setupAggregatorRoutes(app: any, deps: AggregatorRouteDeps) {
       }
 
       const tokenPayload = getBearerTokenPayload(req);
-      if (tokenPayload?.pnIdentifier) {
-        if (!(await gateOwnerRoute(req, res, DEVICE_CAPABILITIES.driveUpload))) return;
+      if (!tokenPayload?.pnIdentifier) {
+        return res.status(401).json({
+          error: 'unauthorized',
+          error_description: 'Bearer required to submit metadata',
+          requestId,
+        });
+      }
+      if (!(await gateOwnerRoute(req, res, DEVICE_CAPABILITIES.driveUpload, tokenPayload.pnIdentifier))) {
+        return;
+      }
+      // Owner identity from token only — never trust body pnIdentifier.
+      const ownerPnIdentifier = tokenPayload.pnIdentifier;
+
+      if (metadata.publicContentRef && typeof metadata.publicContentRef === 'object') {
+        const ref = metadata.publicContentRef as { publicUrl?: string; backend?: string };
+        if (typeof ref.publicUrl === 'string' && typeof ref.backend === 'string') {
+          try {
+            const { assertSafePublicFetchUrlResolved } = await import('./safePublicFetchUrl');
+            await assertSafePublicFetchUrlResolved(ref.publicUrl, ref.backend);
+          } catch (err) {
+            return res.status(400).json({
+              error: 'unsafe_public_url',
+              error_description: err instanceof Error ? err.message : 'publicUrl rejected',
+              requestId,
+            });
+          }
+        }
       }
 
       // Validate metadata (support both legacy and semantic web format)
@@ -348,15 +373,8 @@ export function setupAggregatorRoutes(app: any, deps: AggregatorRouteDeps) {
 
       // When making content public, run repeat-infringer (timeout), Prism bypass, and DMCA gate
       if (validatedMetadata.isPublic === true) {
-        if (!pnIdentifier) {
-          return res.status(400).json({
-            error: 'Missing pnIdentifier',
-            message: 'pnIdentifier is required when submitting public metadata.',
-            requestId
-          });
-        }
         const { isRepeatInfringer } = await import('./repeatInfringerService');
-        if (await isRepeatInfringer(pnIdentifier)) {
+        if (await isRepeatInfringer(ownerPnIdentifier)) {
           return res.status(403).json({
             error: 'Account restricted',
             message: 'Your account is temporarily restricted from making new content public due to repeated copyright issues. This restriction will be lifted automatically after the timeout period.',
@@ -370,17 +388,17 @@ export function setupAggregatorRoutes(app: any, deps: AggregatorRouteDeps) {
           const { runDMCACheck } = await import('./dmcaGate');
           const driveFileId = validatedMetadata.backendFileId || validatedMetadata.fileId;
           const mimeType = (validatedMetadata as any).mimeType || 'application/octet-stream';
-          const dmcaResult = await runDMCACheck(googleDriveProxyService, pnIdentifier, driveFileId, mimeType, undefined);
+          const dmcaResult = await runDMCACheck(googleDriveProxyService, ownerPnIdentifier, driveFileId, mimeType, undefined);
           if (!dmcaResult.passed) {
             const queueItemId = await addToPrismQueue({
               fileId: validatedMetadata.fileId,
-              ownerPnIdentifier: pnIdentifier,
+              ownerPnIdentifier: ownerPnIdentifier,
               flagSource: 'bot',
               reporterPnIdentifier: null,
             });
             const { addContentNotice } = await import('./contentNoticesService');
             await addContentNotice({
-              ownerPnIdentifier: pnIdentifier,
+              ownerPnIdentifier: ownerPnIdentifier,
               fileId: validatedMetadata.fileId,
               type: 'pending_review',
               source: 'bot',
@@ -396,17 +414,17 @@ export function setupAggregatorRoutes(app: any, deps: AggregatorRouteDeps) {
         }
       }
 
-      // Submit metadata to central index
-      await service.submitMetadata(validatedMetadata, pnIdentifier);
+      // Submit metadata to central index (owner from bearer only)
+      await service.submitMetadata(validatedMetadata, ownerPnIdentifier);
 
       // Also update Google Drive index (source of truth) if file is public
-      if (validatedMetadata.isPublic === true && pnIdentifier) {
+      if (validatedMetadata.isPublic === true && ownerPnIdentifier) {
         try {
           const { IndexSheetsService } = await import('./indexSheetsService');
           const { storageCredentialsService } = await import('./storageCredentialsService');
           
           // Get user's credentials
-          const credentialsRecord = await storageCredentialsService.getCredentials(pnIdentifier);
+          const credentialsRecord = await storageCredentialsService.getCredentials(ownerPnIdentifier);
           if (credentialsRecord?.credentials) {
             const googleDriveAccounts = credentialsRecord.credentials.googleDriveAccounts || 
               (credentialsRecord.credentials.googleDrive ? [credentialsRecord.credentials.googleDrive] : []);
@@ -416,13 +434,13 @@ export function setupAggregatorRoutes(app: any, deps: AggregatorRouteDeps) {
               const { resolveOwnerDriveToken, respondDriveTokenError } = await import('./ownerDriveToken');
               let token;
               try {
-                const resolved = await resolveOwnerDriveToken(req, pnIdentifier, { account, accountId });
+                const resolved = await resolveOwnerDriveToken(req, ownerPnIdentifier, { account, accountId });
                 token = resolved.token;
               } catch (error) {
                 if (respondDriveTokenError(res, error)) return;
                 throw error;
               }
-              const out = await deps.getMetadataFolder(token, pnIdentifier, accountId);
+              const out = await deps.getMetadataFolder(token, ownerPnIdentifier, accountId);
               if (!out) {
                 return deps.driveNotInitialized(res);
               }
@@ -433,7 +451,7 @@ export function setupAggregatorRoutes(app: any, deps: AggregatorRouteDeps) {
                 token,
                 metadataFolder,
                 'public',
-                pnIdentifier,
+                ownerPnIdentifier,
                 accountId
               );
             
@@ -471,7 +489,7 @@ export function setupAggregatorRoutes(app: any, deps: AggregatorRouteDeps) {
                   spreadsheetId,
                   validatedMetadata.fileId,
                   indexEntry,
-                  pnIdentifier,
+                  ownerPnIdentifier,
                   accountId
                 );
                 console.log(`✅ [${requestId}] Updated Google Drive public-file-index.xlsx for ${validatedMetadata.fileId}`);
@@ -482,7 +500,7 @@ export function setupAggregatorRoutes(app: any, deps: AggregatorRouteDeps) {
                     token,
                     spreadsheetId,
                     indexEntry,
-                    pnIdentifier,
+                    ownerPnIdentifier,
                     accountId
                   );
                 console.log(`✅ [${requestId}] Added to Google Drive public-file-index.xlsx for ${validatedMetadata.fileId}`);
@@ -1490,7 +1508,7 @@ export function setupAggregatorRoutes(app: any, deps: AggregatorRouteDeps) {
           });
           const createIsPublic = isPublic !== undefined ? isPublic : defaultIsPublic;
           {
-            const { validatePublicRowShareFields } = await import('./publicRowGuard');
+            const { validatePublicRowShareFields, rejectUnsafePublicContentRefWrite } = await import('./publicRowGuard');
             const publicGuardFailure = validatePublicRowShareFields({
               isPublic: createIsPublic === true,
               publicToken,
@@ -1499,6 +1517,7 @@ export function setupAggregatorRoutes(app: any, deps: AggregatorRouteDeps) {
             if (publicGuardFailure) {
               return res.status(400).json(publicGuardFailure);
             }
+            if (await rejectUnsafePublicContentRefWrite(res, publicContentRef)) return;
           }
           const initialMetadata: any = {
             fileId: fileId,
@@ -1616,7 +1635,7 @@ export function setupAggregatorRoutes(app: any, deps: AggregatorRouteDeps) {
           });
           const createIsPublic = isPublic !== undefined ? isPublic : defaultIsPublic;
           {
-            const { validatePublicRowShareFields } = await import('./publicRowGuard');
+            const { validatePublicRowShareFields, rejectUnsafePublicContentRefWrite } = await import('./publicRowGuard');
             const publicGuardFailure = validatePublicRowShareFields({
               isPublic: createIsPublic === true,
               publicToken,
@@ -1625,6 +1644,7 @@ export function setupAggregatorRoutes(app: any, deps: AggregatorRouteDeps) {
             if (publicGuardFailure) {
               return res.status(400).json(publicGuardFailure);
             }
+            if (await rejectUnsafePublicContentRefWrite(res, publicContentRef)) return;
           }
           const minimalMetadata: any = {
             fileId: fileId,
@@ -2432,7 +2452,7 @@ export function setupAggregatorRoutes(app: any, deps: AggregatorRouteDeps) {
           const existingMeta = current?.metadata as
             | { publicToken?: unknown; publicContentRef?: unknown }
             | undefined;
-          const { validatePublicRowShareFields } = await import('./publicRowGuard');
+          const { validatePublicRowShareFields, rejectUnsafePublicContentRefWrite } = await import('./publicRowGuard');
           const publicGuardFailure = validatePublicRowShareFields({
             isPublic: true,
             publicToken:
@@ -2445,7 +2465,19 @@ export function setupAggregatorRoutes(app: any, deps: AggregatorRouteDeps) {
           if (publicGuardFailure) {
             return res.status(400).json(publicGuardFailure);
           }
+          const refToCheck =
+            publicContentRef !== undefined
+              ? publicContentRef
+              : existingMeta?.publicContentRef;
+          if (await rejectUnsafePublicContentRefWrite(res, refToCheck)) return;
         }
+      }
+      if (
+        publicContentRef != null &&
+        typeof publicContentRef === 'object'
+      ) {
+        const { rejectUnsafePublicContentRefWrite } = await import('./publicRowGuard');
+        if (await rejectUnsafePublicContentRefWrite(res, publicContentRef)) return;
       }
       const updated = await service.updateMetadata(actualFileId, {
         name,

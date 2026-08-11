@@ -8,6 +8,7 @@ import {
   isPublicContentRef,
   publicTokenContainsEmbeddedCiphertext,
 } from '@par-noir/aggregator-domain';
+import type { Response } from 'express';
 
 export type PublicRowGuardInput = {
   isPublic?: unknown;
@@ -60,5 +61,48 @@ export function assertPublicRowShareFields(input: PublicRowGuardInput): void {
   const failure = validatePublicRowShareFields(input);
   if (failure) {
     throw new Error(`${failure.error}: ${failure.error_description}`);
+  }
+}
+
+/**
+ * DNS + allowlist check for a publicContentRef being written. Returns true if response was sent.
+ */
+export async function rejectUnsafePublicContentRefWrite(
+  res: Response,
+  publicContentRef: unknown
+): Promise<boolean> {
+  if (publicContentRef == null || publicContentRef === undefined) {
+    return false;
+  }
+  if (typeof publicContentRef !== 'object') {
+    res.status(400).json({
+      error: 'unsafe_public_url',
+      error_description: 'publicContentRef must be an object',
+    });
+    return true;
+  }
+  const ref = publicContentRef as { publicUrl?: unknown; backend?: unknown };
+  if (typeof ref.publicUrl !== 'string' || typeof ref.backend !== 'string') {
+    // Shape errors are handled by validatePublicRowShareFields when isPublic.
+    // When setting a partial/malformed ref, still reject unsafe-looking URLs.
+    if (typeof ref.publicUrl === 'string') {
+      res.status(400).json({
+        error: 'unsafe_public_url',
+        error_description: 'publicContentRef requires backend and publicUrl',
+      });
+      return true;
+    }
+    return false;
+  }
+  try {
+    const { assertSafePublicFetchUrlResolved } = await import('./safePublicFetchUrl');
+    await assertSafePublicFetchUrlResolved(ref.publicUrl, ref.backend);
+    return false;
+  } catch (err) {
+    res.status(400).json({
+      error: 'unsafe_public_url',
+      error_description: err instanceof Error ? err.message : 'publicUrl rejected',
+    });
+    return true;
   }
 }

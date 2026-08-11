@@ -78,7 +78,7 @@ export async function revokeDrivePublicReadable(accessToken: string, fileId: str
 }
 
 /**
- * Dropbox / OneDrive / S3 / Azure / FTP: require a durable publicUrl already on the ref.
+ * Dropbox / OneDrive / S3 / Azure: require a durable allowlisted publicUrl already on the ref.
  * ensure* helpers for those providers live beside their adapters; publish must fail
  * closed if a publicUrl cannot be produced (no embed fallback).
  */
@@ -87,21 +87,39 @@ export async function ensurePortablePublicReadable(
   objectId: string,
   publicUrl: string | undefined
 ): Promise<PublicContentRef> {
-  if (!publicUrl || !/^https?:\/\//i.test(publicUrl)) {
+  if (!publicUrl) {
     throw new PublicBlobAccessError(
       `Backend ${backend} cannot expose anonymous ciphertext without a publicUrl`,
       'UNSUPPORTED',
       400
     );
   }
+  try {
+    const { assertSafePublicFetchUrlResolved } = await import('./safePublicFetchUrl');
+    await assertSafePublicFetchUrlResolved(publicUrl, backend);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'publicUrl rejected';
+    throw new PublicBlobAccessError(message, 'UNSUPPORTED', 400);
+  }
   return { backend, objectId, publicUrl };
 }
 
-async function fetchUrlBytes(url: string): Promise<{ status: number; buffer: Buffer; contentType: string | null }> {
+async function fetchUrlBytes(
+  url: string,
+  backend: string
+): Promise<{ status: number; buffer: Buffer; contentType: string | null }> {
+  const { fetchSafePublicBytes } = await import('./safePublicFetchUrl');
+  const result = await fetchSafePublicBytes(url, backend);
+  return { status: result.status, buffer: result.buffer, contentType: result.contentType };
+}
+
+/** Server-built URLs only (never client publicUrl). Fixed host; no redirect follow to arbitrary targets. */
+async function fetchServerBuiltUrlBytes(
+  url: string
+): Promise<{ status: number; buffer: Buffer; contentType: string | null }> {
   const res = await fetch(url, {
-    redirect: 'follow',
+    redirect: 'error',
     headers: {
-      // Avoid HTML interstitial where possible
       Accept: 'application/octet-stream,application/json,*/*',
     },
   });
@@ -146,8 +164,17 @@ export async function fetchPublicBytesTimed(ref: PublicContentRef): Promise<Fetc
     throw new PublicBlobAccessError('publicContentRef.publicUrl required', 'CONFIG', 500);
   }
 
-  const isDrive =
-    ref.backend === 'google_drive' || /drive\.google|googleapis\.com\/drive|drive\.usercontent/i.test(ref.publicUrl);
+  const { assertSafePublicFetchUrlResolved, UnsafePublicFetchUrlError } = await import('./safePublicFetchUrl');
+  try {
+    await assertSafePublicFetchUrlResolved(ref.publicUrl, ref.backend);
+  } catch (err) {
+    if (err instanceof UnsafePublicFetchUrlError) {
+      throw new PublicBlobAccessError(err.message, 'FORBIDDEN', 400);
+    }
+    throw err;
+  }
+
+  const isDrive = ref.backend === 'google_drive';
 
   const tryUrls: Array<{ url: string; path: FetchPublicBytesTiming['path'] }> = [];
   if (isDrive && ref.objectId) {
@@ -163,7 +190,15 @@ export async function fetchPublicBytesTimed(ref: PublicContentRef): Promise<Fetc
 
   for (const candidate of tryUrls) {
     const t0 = Date.now();
-    const result = await fetchUrlBytes(candidate.url);
+    let result: { status: number; buffer: Buffer; contentType: string | null };
+    try {
+      result = await fetchUrlBytes(candidate.url, ref.backend);
+    } catch (err) {
+      if (err instanceof UnsafePublicFetchUrlError) {
+        throw new PublicBlobAccessError(err.message, 'FORBIDDEN', 400);
+      }
+      throw err;
+    }
     primaryMs += Date.now() - t0;
     lastStatus = result.status;
     lastHtml = looksLikeHtml(result.buffer, result.contentType);
@@ -185,7 +220,7 @@ export async function fetchPublicBytesTimed(ref: PublicContentRef): Promise<Fetc
     }
   }
 
-  // Drive fallback: platform API key (not owner / peer OAuth)
+  // Drive fallback: platform API key (not owner / peer OAuth). Server-built URL only.
   if (isDrive) {
     const apiKey = (process.env.GOOGLE_DRIVE_API_KEY || process.env.GOOGLE_API_KEY || '').trim();
     if (!apiKey) {
@@ -202,7 +237,7 @@ export async function fetchPublicBytesTimed(ref: PublicContentRef): Promise<Fetc
     }
     const apiUrl = `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(ref.objectId)}?alt=media&key=${encodeURIComponent(apiKey)}`;
     const t1 = Date.now();
-    const secondary = await fetchUrlBytes(apiUrl);
+    const secondary = await fetchServerBuiltUrlBytes(apiUrl);
     const fallbackMs = Date.now() - t1;
     if (secondary.status === 404 || secondary.status === 410) {
       throw new PublicBlobAccessError('Public content not found', 'NOT_FOUND', secondary.status);

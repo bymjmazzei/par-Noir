@@ -3,6 +3,7 @@ export * from './feedCategories';
 export * from './subjectExtractor';
 export * from './tokenDecryption';
 export * from './publicContentRef';
+export * from './safePublicFetchUrl';
 export * from './publicShare';
 export * from './publicContentClient';
 export * from './volumeIdGenerator';

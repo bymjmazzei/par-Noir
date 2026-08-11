@@ -426,24 +426,35 @@ class ProductionServer {
 
     // CORS configuration with security improvements
     // SECURITY FIX: Restrict no-origin requests to prevent CSRF attacks
-    const publicNoOriginPaths = [
+    // Discovery GETs may omit Origin; mutating metadata writes must not.
+    const publicNoOriginAlways = [
       '/health',
       '/health/ready',
       '/favicon.ico',
-      '/api/aggregator/metadata-index', 
-      '/api/aggregator/nsfw-index',
       '/api/aggregator/fix-feeds',
       '/api/aggregator/metadata-index/debug',
-      '/api/monetization/stripe-webhook'
+      '/api/monetization/stripe-webhook',
     ];
-    const isPublicNoOriginPath = (path: string): boolean =>
-      publicNoOriginPaths.some((p) => path === p || path.startsWith(p));
+    const publicNoOriginGetOnlyPrefixes = [
+      '/api/aggregator/metadata-index',
+      '/api/aggregator/nsfw-index',
+    ];
+    const isPublicNoOriginPath = (path: string, method: string): boolean => {
+      if (publicNoOriginAlways.some((p) => path === p || path.startsWith(p))) {
+        return true;
+      }
+      const methodUpper = (method || 'GET').toUpperCase();
+      if (methodUpper === 'GET' || methodUpper === 'HEAD') {
+        return publicNoOriginGetOnlyPrefixes.some((p) => path === p || path.startsWith(p));
+      }
+      return false;
+    };
 
     // Custom CORS middleware that checks path before allowing no-origin requests
     this.app.use((req, res, next) => {
       const origin = req.headers.origin;
       const path = req.path || req.url?.split('?')[0] || '';
-      const isPublicPath = isPublicNoOriginPath(path);
+      const isPublicPath = isPublicNoOriginPath(path, req.method);
 
       // SECURITY FIX: In production, block no-origin requests except for public endpoints,
       // OAuth consent HTML entry, and consent same-origin GETs (grant poll / catalog).
@@ -481,7 +492,7 @@ class ProductionServer {
             if (allowNoOriginConsentXhr) {
               return callback(null, true);
             }
-            if (isPublicNoOriginPath(pathForCors)) {
+            if (isPublicNoOriginPath(pathForCors, req.method)) {
               return callback(null, true);
             }
             return callback(new Error('Origin header required'));

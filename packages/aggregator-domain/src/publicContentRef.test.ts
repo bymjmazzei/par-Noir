@@ -24,6 +24,30 @@ describe('publicContentRef', () => {
       })
     ).toBe(false);
   });
+
+  it('rejects http and non-allowlisted hosts', () => {
+    expect(
+      isPublicContentRef({
+        backend: 'google_drive',
+        objectId: 'abc',
+        publicUrl: 'http://drive.google.com/uc?id=abc',
+      })
+    ).toBe(false);
+    expect(
+      isPublicContentRef({
+        backend: 'google_drive',
+        objectId: 'abc',
+        publicUrl: 'https://169.254.169.254/',
+      })
+    ).toBe(false);
+    expect(
+      isPublicContentRef({
+        backend: 'google_drive',
+        objectId: 'abc',
+        publicUrl: 'https://evil.example/blob',
+      })
+    ).toBe(false);
+  });
 });
 
 describe('publicTokenContainsEmbeddedCiphertext', () => {
