@@ -48,10 +48,11 @@ async function buildAuthHeaders(): Promise<Record<string, string>> {
 }
 
 export async function drainSocialMailbox(): Promise<MailboxDrainResult> {
+  const authToken = await PNOAuthService.getValidAccessToken();
+  if (!authToken) return EMPTY;
   const session = PNOAuthService.loadSession();
   const identityId = session?.pnIdentifier;
-  const authToken = session?.accessToken;
-  if (!identityId || !authToken) return EMPTY;
+  if (!identityId) return EMPTY;
 
   // Case B unkeyed web: server refuses pending/ack — skip to avoid 403 spam.
   const registry = await fetchDeviceRegistry(identityId, authToken);

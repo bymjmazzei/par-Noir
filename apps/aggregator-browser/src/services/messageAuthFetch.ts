@@ -11,18 +11,20 @@ export async function messageAuthHeaders(
   method: string,
   path: string,
   body?: unknown
-): Promise<HeadersInit> {
+): Promise<HeadersInit | null> {
+  const accessToken = await PNOAuthService.getValidAccessToken();
+  if (!accessToken) {
+    return null;
+  }
   const session = PNOAuthService.loadSession();
   // Base: bearer + X-PN-Cloud-Access-Token from vault hydrate (+ refresh)
   const headers: Record<string, string> = {
-    ...(await ownerApiHeadersAsync(session?.accessToken, session?.pnIdentifier))
+    ...(await ownerApiHeadersAsync(accessToken, session?.pnIdentifier))
   };
   if (!headers['Content-Type']) {
     headers['Content-Type'] = 'application/json';
   }
-  if (session?.accessToken) {
-    headers.Authorization = `Bearer ${session.accessToken}`;
-  }
+  headers.Authorization = `Bearer ${accessToken}`;
   const pn = session?.pnIdentifier;
   if (pn) {
     const proof = await buildLocalDeviceProofHeaders(pn, method, path, body);
@@ -43,6 +45,13 @@ export async function messageFetch(
     await waitForOwnerCloudAccess(session.pnIdentifier);
   }
   const headers = await messageAuthHeaders(method, path, body);
+  if (!headers) {
+    // Auth death already notified via getValidAccessToken; do not hit the API.
+    return new Response(JSON.stringify({ error: 'unauthorized', reason: 'session_dead' }), {
+      status: 401,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  }
   return fetch(`${API_ENDPOINT}${path}`, {
     ...init,
     method,

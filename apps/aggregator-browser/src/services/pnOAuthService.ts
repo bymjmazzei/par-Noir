@@ -23,6 +23,9 @@ const REDIRECT_URI = typeof window !== 'undefined'
   ? `${window.location.origin}/oauth-callback.html`
   : '';
 
+/** Fired when OAuth session is unrecoverable (refresh failed or expired with no refresh). */
+export const PN_OAUTH_SESSION_DEAD_EVENT = 'pn_oauth_session_dead';
+
 export interface OAuthTokenResponse {
   access_token: string;
   token_type: 'Bearer';
@@ -451,6 +454,7 @@ export class PNOAuthService {
    * Save session to sessionStorage (reduced persistence surface).
    */
   static saveSession(session: AuthSession): void {
+    this.sessionDeadNotified = false;
     if (typeof window !== 'undefined') {
       sessionStorage.setItem('pn_oauth_session', JSON.stringify(session));
     }
@@ -479,8 +483,8 @@ export class PNOAuthService {
           // Refresh will be handled by caller
           return session;
         }
-        // Session expired and no refresh token
-        this.clearSession();
+        // Session expired and no refresh token — auth is dead
+        this.notifySessionDead();
         return null;
       }
 
@@ -509,6 +513,16 @@ export class PNOAuthService {
 
   // Track ongoing token refresh to prevent concurrent refreshes
   private static refreshPromise: Promise<string | null> | null = null;
+  /** Emit auth-death at most once until a new session is saved. */
+  private static sessionDeadNotified = false;
+
+  private static notifySessionDead(): void {
+    this.clearSession();
+    if (typeof window === 'undefined') return;
+    if (this.sessionDeadNotified) return;
+    this.sessionDeadNotified = true;
+    window.dispatchEvent(new CustomEvent(PN_OAUTH_SESSION_DEAD_EVENT));
+  }
 
   /**
    * Get a valid access token, refreshing if necessary
@@ -526,7 +540,7 @@ export class PNOAuthService {
     if (isExpired || forceRefresh) {
       if (!session.refreshToken) {
         console.warn('[PNOAuth] Session expired and no refresh token available');
-        this.clearSession();
+        this.notifySessionDead();
         return null;
       }
 
@@ -555,9 +569,8 @@ export class PNOAuthService {
           return tokenResponse.access_token;
         } catch (error: any) {
           console.error('[PNOAuth] Failed to refresh token:', error);
-          // Don't clear session immediately - let user try to reconnect
-          // The session will be cleared when they try to use it again
           console.warn('[PNOAuth] Refresh token invalid or expired. User needs to re-authenticate.');
+          this.notifySessionDead();
           return null;
         } finally {
           // Clear the promise so future refreshes can proceed
