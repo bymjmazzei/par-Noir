@@ -20,21 +20,44 @@ export interface ListedPublicName {
   isVanity: boolean;
 }
 
+const BY_PN_CACHE_TTL_MS = 5 * 60 * 1000;
+
+const byPnCache = new Map<string, { names: ListedPublicName[]; expiresAt: number }>();
+const byPnInFlight = new Map<string, Promise<ListedPublicName[]>>();
+
 export async function fetchListedPublicNamesForPn(
   pnIdentifier: string
 ): Promise<ListedPublicName[]> {
   if (!pnIdentifier) return [];
-  try {
-    const res = await fetch(
-      `${API_ENDPOINT}/api/public-names/by-pn/${encodeURIComponent(pnIdentifier)}`,
-      { headers: getAuthHeaders() }
-    );
-    if (!res.ok) return [];
-    const data = (await res.json()) as { names?: ListedPublicName[] };
-    return data.names || [];
-  } catch {
-    return [];
+
+  const cached = byPnCache.get(pnIdentifier);
+  if (cached && cached.expiresAt > Date.now()) {
+    return cached.names;
   }
+
+  const pending = byPnInFlight.get(pnIdentifier);
+  if (pending) return pending;
+
+  const fetchPromise = (async (): Promise<ListedPublicName[]> => {
+    try {
+      const res = await fetch(
+        `${API_ENDPOINT}/api/public-names/by-pn/${encodeURIComponent(pnIdentifier)}`,
+        { headers: getAuthHeaders() }
+      );
+      if (!res.ok) return [];
+      const data = (await res.json()) as { names?: ListedPublicName[] };
+      const names = data.names || [];
+      byPnCache.set(pnIdentifier, { names, expiresAt: Date.now() + BY_PN_CACHE_TTL_MS });
+      return names;
+    } catch {
+      return [];
+    } finally {
+      byPnInFlight.delete(pnIdentifier);
+    }
+  })();
+
+  byPnInFlight.set(pnIdentifier, fetchPromise);
+  return fetchPromise;
 }
 
 export async function resolveVanityPublicName(

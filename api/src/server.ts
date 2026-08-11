@@ -588,7 +588,9 @@ class ProductionServer {
       if (req.path === '/api/v1/identity/successor' && req.method === 'GET') {
         return next();
       }
-      // Apply lenient limiter for read-only endpoints and bulk operations
+      // Apply lenient limiter for read-only endpoints and bulk operations.
+      // public-names GETs, userinfo, and storage/accounts must not share the
+      // strict general IP bucket — feed discovery was exhausting it and 429'ing unlock.
       if (
         (req.method === 'GET' && (
           req.path.startsWith('/api/profile/') ||
@@ -599,10 +601,13 @@ class ProductionServer {
           req.path.startsWith('/api/activity-ledger') ||
           req.path.startsWith('/api/connections') ||
           req.path.startsWith('/api/messages') ||
+          req.path.startsWith('/api/public-names') ||
+          req.path.startsWith('/api/storage/accounts') ||
+          req.path === '/oauth/userinfo' ||
           req.path.startsWith('/api/monetization/status') ||
           req.path.startsWith('/api/creator-fund/periods/recent') ||
           req.path.startsWith('/api/v1/music/registry/catalog') ||
-          (req.method === 'GET' && req.path.startsWith('/api/v1/music/registry/post-uses/'))
+          req.path.startsWith('/api/v1/music/registry/post-uses/')
         )) ||
         (req.method === 'POST' && (
           req.path === '/api/engagement/bulk-stats'
