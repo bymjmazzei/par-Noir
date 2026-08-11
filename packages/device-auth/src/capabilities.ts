@@ -24,7 +24,11 @@ export const DEVICE_CAPABILITIES = {
 
 export type DeviceCapabilityId = (typeof DEVICE_CAPABILITIES)[keyof typeof DEVICE_CAPABILITIES];
 
-/** Blocked from unkeyed sessions once first device is keyed — not editable in UI. */
+/**
+ * Blocked from unkeyed sessions — not editable in UI.
+ * `drive.upload` is also listed here so restricted unkeyed cannot opt it back in;
+ * Case A (`unkeyed_legacy`) may still allow it via LEGACY_BOOTSTRAP_ALLOWS.
+ */
 export const IMMUTABLE_UNKEYED_DENY: ReadonlySet<string> = new Set([
   DEVICE_CAPABILITIES.recoveryVaultWrite,
   DEVICE_CAPABILITIES.recoveryCustodianManage,
@@ -33,26 +37,42 @@ export const IMMUTABLE_UNKEYED_DENY: ReadonlySet<string> = new Set([
   DEVICE_CAPABILITIES.identityRotate,
   DEVICE_CAPABILITIES.deviceManage,
   DEVICE_CAPABILITIES.oauthWrite,
-]);
-
-/**
- * Default allows for unkeyed devices after first device is keyed.
- * Drive/messages are included so cloud reconnect works without keying;
- * unkeyed sessions wipe local cloud tokens on lock (see clearCloudCredentialsOnLock).
- */
-export const DEFAULT_UNKEYED_ALLOWS: readonly string[] = [
-  DEVICE_CAPABILITIES.recoveryInitiate,
-  DEVICE_CAPABILITIES.recoveryRead,
-  DEVICE_CAPABILITIES.custodianAccept,
-  DEVICE_CAPABILITIES.custodianApprove,
-  DEVICE_CAPABILITIES.profileRead,
-  DEVICE_CAPABILITIES.custodiansRead,
-  DEVICE_CAPABILITIES.driveRead,
   DEVICE_CAPABILITIES.driveUpload,
   DEVICE_CAPABILITIES.messagesRead,
   DEVICE_CAPABILITIES.messagesSend,
   DEVICE_CAPABILITIES.socialRead,
   DEVICE_CAPABILITIES.socialWrite,
+]);
+
+/** Recovery / custodian flows that remain available without a keyed device. */
+export const RECOVERY_ALWAYS_UNKEYED: readonly string[] = [
+  DEVICE_CAPABILITIES.recoveryInitiate,
+  DEVICE_CAPABILITIES.recoveryRead,
+  DEVICE_CAPABILITIES.custodianAccept,
+  DEVICE_CAPABILITIES.custodianApprove,
+];
+
+/**
+ * Explicit Case A bootstrap when no device has been keyed yet (`unkeyed_legacy`).
+ * Not allow-all: mailbox drain and other high-risk caps are excluded.
+ */
+export const LEGACY_BOOTSTRAP_ALLOWS: readonly string[] = [
+  ...RECOVERY_ALWAYS_UNKEYED,
+  DEVICE_CAPABILITIES.profileRead,
+  DEVICE_CAPABILITIES.custodiansRead,
+  DEVICE_CAPABILITIES.driveRead,
+  DEVICE_CAPABILITIES.driveUpload,
+];
+
+/**
+ * Default allows for unkeyed devices after first device is keyed.
+ * Browse/reconnect only — no Drive mutate, mailbox drain, or social write.
+ */
+export const DEFAULT_UNKEYED_ALLOWS: readonly string[] = [
+  ...RECOVERY_ALWAYS_UNKEYED,
+  DEVICE_CAPABILITIES.profileRead,
+  DEVICE_CAPABILITIES.custodiansRead,
+  DEVICE_CAPABILITIES.driveRead,
 ];
 
 /** Human-readable labels for policy UI toggles (configurable allows only). */
@@ -60,12 +80,13 @@ export const CONFIGURABLE_CAPABILITY_LABELS: Record<string, string> = {
   [DEVICE_CAPABILITIES.profileRead]: 'View profile',
   [DEVICE_CAPABILITIES.profileWrite]: 'Edit profile',
   [DEVICE_CAPABILITIES.driveRead]: 'Browse Drive files',
-  [DEVICE_CAPABILITIES.driveUpload]: 'Upload to Drive',
-  [DEVICE_CAPABILITIES.messagesRead]: 'Read messages',
-  [DEVICE_CAPABILITIES.messagesSend]: 'Send messages',
-  [DEVICE_CAPABILITIES.socialRead]: 'Read connections and follows',
-  [DEVICE_CAPABILITIES.socialWrite]: 'Manage connections and follows',
   [DEVICE_CAPABILITIES.custodiansRead]: 'View recovery custodians',
 };
 
 export const CONFIGURABLE_CAPABILITIES = Object.keys(CONFIGURABLE_CAPABILITY_LABELS);
+
+/** Caps that must never appear in stored `unkeyedAllows` (immutable or non-configurable). */
+export function isAllowedInUnkeyedPolicyList(capability: string): boolean {
+  if (IMMUTABLE_UNKEYED_DENY.has(capability)) return false;
+  return (CONFIGURABLE_CAPABILITIES as string[]).includes(capability);
+}

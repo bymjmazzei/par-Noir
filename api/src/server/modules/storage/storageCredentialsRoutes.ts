@@ -7,6 +7,7 @@
 
 import type { Application, Request, Response } from 'express';
 import { safeClientErrorMessage } from '../../utils/safeError';
+import { hashIdentifier, safeLogger } from '../../../utils/logger';
 import {
   gateOwnerRoute,
   gateStorageCredentialsPut,
@@ -472,7 +473,8 @@ export function setupStorageVolumeMigrationRoute(app: Application) {
           return res.status(400).json({ error: 'Missing identityId parameter' });
         }
         const pnIdentifier = identityId.startsWith('pn-') ? identityId : `pn-${identityId}`;
-        if (!(await gateOwnerRoute(req, res, DEVICE_CAPABILITIES.driveUpload, pnIdentifier))) return;
+        const ctx = await gateOwnerRoute(req, res, DEVICE_CAPABILITIES.driveUpload, pnIdentifier);
+        if (!ctx) return;
 
         const { isPnRevokedForNetwork } = await import('../identitySuccessionService');
         if (isPnRevokedForNetwork(pnIdentifier)) {
@@ -492,6 +494,19 @@ export function setupStorageVolumeMigrationRoute(app: Application) {
           return res.status(400).json({
             error: 'plaintext_not_allowed',
             error_description: 'Cloud vault accepts only a client-sealed envelope, not OAuth secrets'
+          });
+        }
+
+        // Overwrite of an existing sealed vault requires a keyed device (even in Case A).
+        // Empty vault first-seal remains allowed via legacy drive.upload bootstrap.
+        const existingVault = await cloudVaultService.getSealedVault(pnIdentifier);
+        if (existingVault && !ctx.isKeyed) {
+          safeLogger.warn('[cloud-vault] overwrite denied for unkeyed session', {
+            pnHash: hashIdentifier(pnIdentifier),
+          });
+          return res.status(403).json({
+            error: 'device_key_required',
+            reason: 'device_required',
           });
         }
 

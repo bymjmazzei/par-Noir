@@ -24,9 +24,9 @@ Dev-only escape: `ALLOW_DEVICE_REGISTRY_RESET_WITHOUT_QUORUM=1` enables `POST /a
 
 | Mode | When | Owner capabilities |
 |------|------|-------------------|
-| `unkeyed_legacy` | No keyed device registered yet | Full owner access (unchanged) |
+| `unkeyed_legacy` | No keyed device registered yet | **Not** allow-all. Only `LEGACY_BOOTSTRAP_ALLOWS` (drive read/upload, profile/custodian read, recovery always-on). Mailbox drain denied. |
 | `keyed` | Valid device proof on request | Full owner access |
-| `unkeyed_restricted` | After first device keyed; no valid proof | Immutable deny-list blocked; optional allow-list from policy |
+| `unkeyed_restricted` | After first device keyed; no valid proof | `IMMUTABLE_UNKEYED_DENY` blocked; optional allow-list from policy (browse/reconnect defaults only) |
 
 ## Drive artifacts
 
@@ -54,13 +54,16 @@ Under **device cloud custody**, the API does not store Google OAuth secrets. Own
 Shared constants and evaluation live in `@par-noir/device-auth`:
 
 - `DEVICE_CAPABILITIES` — capability IDs
-- `IMMUTABLE_UNKEYED_DENY` — hardcoded; active once `firstDeviceKeyedAt` is set
-- `DEFAULT_UNKEYED_ALLOWS` — default configurable allows
+- `IMMUTABLE_UNKEYED_DENY` — hardcoded deny when unkeyed (mailbox, drive.upload, recovery vault write, identity mutate, device.manage, oauth.write). Case A may still allow `drive.upload` via bootstrap.
+- `LEGACY_BOOTSTRAP_ALLOWS` — explicit Case A allow-list before `firstDeviceKeyedAt` (not allow-all)
+- `DEFAULT_UNKEYED_ALLOWS` — defaults after first key (recovery always-on + profile/custodians/drive **read** only)
 - `evaluateDeviceCapability({ policy, isKeyed, capability })` — pure gate function (API + dashboard)
 
-**Always allowed on unkeyed** (even after first device): `recovery.initiate`, `recovery.read`, `custodian.accept`, `custodian.approve`.
+**Always allowed on unkeyed** (legacy bootstrap and default restricted): `recovery.initiate`, `recovery.read`, `custodian.accept`, `custodian.approve`.
 
-**Immutable deny** (unkeyed after first device): vault writes, custodian manage, migration, export, rotation, device manage, oauth write scopes.
+**Immutable deny when unkeyed (restricted always; legacy except bootstrap):** recovery vault write, custodian manage, migration, export, rotation, device manage, oauth write, **drive.upload**, **messages.*** , **social.***.
+
+**Case A cloud vault:** `PUT /api/storage/cloud-vault` may first-seal an empty vault via legacy `drive.upload`. Overwriting an **existing** sealed vault requires a keyed device (`403 device_key_required`).
 
 ## Device proof (v1)
 

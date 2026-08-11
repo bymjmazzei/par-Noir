@@ -3,12 +3,56 @@ import { DEVICE_CAPABILITIES } from './capabilities';
 import { defaultDevicePolicy, evaluateDeviceCapability } from './evaluate';
 
 describe('evaluateDeviceCapability', () => {
-  it('allows all before first device keyed', () => {
+  it('denies vault write in unkeyed_legacy (not allow-all)', () => {
     const policy = defaultDevicePolicy();
     const result = evaluateDeviceCapability({
       policy,
       isKeyed: false,
       capability: DEVICE_CAPABILITIES.recoveryVaultWrite,
+    });
+    expect(result.allowed).toBe(false);
+    expect(result.mode).toBe('unkeyed_legacy');
+    expect(result.reason).toBe('device_required');
+  });
+
+  it('denies mailbox drain caps in unkeyed_legacy', () => {
+    const policy = defaultDevicePolicy();
+    for (const capability of [
+      DEVICE_CAPABILITIES.messagesRead,
+      DEVICE_CAPABILITIES.messagesSend,
+      DEVICE_CAPABILITIES.socialRead,
+      DEVICE_CAPABILITIES.socialWrite,
+    ]) {
+      const result = evaluateDeviceCapability({ policy, isKeyed: false, capability });
+      expect(result.allowed).toBe(false);
+      expect(result.reason).toBe('device_required');
+    }
+  });
+
+  it('allows Case A bootstrap drive.upload and drive.read in unkeyed_legacy', () => {
+    const policy = defaultDevicePolicy();
+    expect(
+      evaluateDeviceCapability({
+        policy,
+        isKeyed: false,
+        capability: DEVICE_CAPABILITIES.driveUpload,
+      }).allowed
+    ).toBe(true);
+    expect(
+      evaluateDeviceCapability({
+        policy,
+        isKeyed: false,
+        capability: DEVICE_CAPABILITIES.driveRead,
+      }).allowed
+    ).toBe(true);
+  });
+
+  it('allows recovery initiate in unkeyed_legacy', () => {
+    const policy = defaultDevicePolicy();
+    const result = evaluateDeviceCapability({
+      policy,
+      isKeyed: false,
+      capability: DEVICE_CAPABILITIES.recoveryInitiate,
     });
     expect(result.allowed).toBe(true);
     expect(result.mode).toBe('unkeyed_legacy');
@@ -36,6 +80,32 @@ describe('evaluateDeviceCapability', () => {
     expect(result.reason).toBe('device_required');
   });
 
+  it('denies drive.upload on unkeyed restricted even if sneaked into unkeyedAllows', () => {
+    const policy = {
+      ...defaultDevicePolicy(),
+      firstDeviceKeyedAt: new Date().toISOString(),
+      unkeyedAllows: [...defaultDevicePolicy().unkeyedAllows, DEVICE_CAPABILITIES.driveUpload],
+    };
+    const result = evaluateDeviceCapability({
+      policy,
+      isKeyed: false,
+      capability: DEVICE_CAPABILITIES.driveUpload,
+    });
+    expect(result.allowed).toBe(false);
+    expect(result.reason).toBe('device_required');
+  });
+
+  it('denies messages.read on unkeyed restricted by default', () => {
+    const policy = { ...defaultDevicePolicy(), firstDeviceKeyedAt: new Date().toISOString() };
+    const result = evaluateDeviceCapability({
+      policy,
+      isKeyed: false,
+      capability: DEVICE_CAPABILITIES.messagesRead,
+    });
+    expect(result.allowed).toBe(false);
+    expect(result.reason).toBe('device_required');
+  });
+
   it('allows recovery initiate on unkeyed restricted', () => {
     const policy = { ...defaultDevicePolicy(), firstDeviceKeyedAt: new Date().toISOString() };
     const result = evaluateDeviceCapability({
@@ -57,16 +127,6 @@ describe('evaluateDeviceCapability', () => {
     expect(result.reason).toBe('capability_not_allowed');
   });
 
-  it('allows drive.upload on unkeyed by default (session cloud; wipe on lock)', () => {
-    const policy = { ...defaultDevicePolicy(), firstDeviceKeyedAt: new Date().toISOString() };
-    const result = evaluateDeviceCapability({
-      policy,
-      isKeyed: false,
-      capability: DEVICE_CAPABILITIES.driveUpload,
-    });
-    expect(result.allowed).toBe(true);
-  });
-
   it('allows profile.write on unkeyed when owner toggled it in policy', () => {
     const policy = {
       ...defaultDevicePolicy(),
@@ -81,17 +141,14 @@ describe('evaluateDeviceCapability', () => {
     expect(result.allowed).toBe(true);
   });
 
-  it('allows drive.upload on unkeyed when owner toggled it in policy', () => {
-    const policy = {
-      ...defaultDevicePolicy(),
-      firstDeviceKeyedAt: new Date().toISOString(),
-      unkeyedAllows: [...defaultDevicePolicy().unkeyedAllows, DEVICE_CAPABILITIES.driveUpload],
-    };
+  it('allows drive.upload for keyed session', () => {
+    const policy = { ...defaultDevicePolicy(), firstDeviceKeyedAt: new Date().toISOString() };
     const result = evaluateDeviceCapability({
       policy,
-      isKeyed: false,
+      isKeyed: true,
       capability: DEVICE_CAPABILITIES.driveUpload,
     });
     expect(result.allowed).toBe(true);
+    expect(result.mode).toBe('keyed');
   });
 });

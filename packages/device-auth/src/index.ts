@@ -8,9 +8,12 @@ export {
 export {
   DEVICE_CAPABILITIES,
   IMMUTABLE_UNKEYED_DENY,
+  RECOVERY_ALWAYS_UNKEYED,
+  LEGACY_BOOTSTRAP_ALLOWS,
   DEFAULT_UNKEYED_ALLOWS,
   CONFIGURABLE_CAPABILITY_LABELS,
   CONFIGURABLE_CAPABILITIES,
+  isAllowedInUnkeyedPolicyList,
   type DeviceCapabilityId,
 } from './capabilities';
 export {

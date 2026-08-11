@@ -214,6 +214,26 @@ describe('capability separation', () => {
 
     expect(res.body.reason).toBe('no_mailbox_read');
   });
+
+  it('unkeyed-equivalent (no messages/social read) cannot drain via pending or ack', async () => {
+    grantedCapabilities = [];
+    dbWithBobsClaimedRoute();
+
+    const pending = await request(buildApp())
+      .get(`/api/mailbox/pending?pnIdentifier=${BOB}&routeKey=${BOB_MINTED_ROUTE}`)
+      .expect(403);
+    expect(pending.body.reason).toBe('no_mailbox_read');
+
+    const ack = await request(buildApp())
+      .post('/api/mailbox/ack')
+      .send({
+        pnIdentifier: BOB,
+        routeKey: BOB_MINTED_ROUTE,
+        jobIds: ['11111111-1111-1111-1111-111111111111'],
+      })
+      .expect(403);
+    expect(ack.body.reason).toBe('no_mailbox_read');
+  });
 });
 
 describe('POST /api/mailbox/route — claiming and convergence', () => {

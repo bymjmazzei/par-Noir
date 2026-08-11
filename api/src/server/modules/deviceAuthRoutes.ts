@@ -3,7 +3,7 @@
  */
 
 import type { Application, Request, Response } from 'express';
-import { defaultDevicePolicy, type DeviceRow } from '@par-noir/device-auth';
+import { defaultDevicePolicy, normalizeDevicePolicy, type DeviceRow } from '@par-noir/device-auth';
 import { PNOAuthService } from './pnOAuthService';
 import {
   getDeviceById,
@@ -114,10 +114,11 @@ export function registerDeviceAuthRoutes(app: Application): void {
 
       const existing = await readPolicy(bundle);
 
-      const policy = {
+      // Strip immutable / non-configurable caps so crafted bodies cannot store mailbox or drive.upload.
+      const policy = normalizeDevicePolicy({
         ...existing,
         unkeyedAllows: unkeyedAllows.filter((x: unknown) => typeof x === 'string'),
-      };
+      });
 
       await writePolicy(bundle, policy);
 

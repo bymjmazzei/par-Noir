@@ -7,6 +7,8 @@
 
 /** Bearer identity under test — swapped to prove pn_mismatch / unauthorized. */
 let currentBearer: string | null = 'pn-test';
+/** When false, cloud-vault overwrite path treats the session as unkeyed. */
+let gateIsKeyed = false;
 
 jest.mock('../deviceCapabilityService', () => {
   const DEVICE_CAPABILITIES = {
@@ -16,7 +18,7 @@ jest.mock('../deviceCapabilityService', () => {
   };
   return {
     DEVICE_CAPABILITIES,
-    gateStorageCredentialsPut: jest.fn(async () => ({ pnIdentifier: 'pn-test' })),
+    gateStorageCredentialsPut: jest.fn(async () => ({ pnIdentifier: 'pn-test', isKeyed: gateIsKeyed })),
     gateOwnerRoute: jest.fn(async (_req: unknown, res: any, _cap: string, targetPn?: string) => {
       if (!currentBearer) {
         res.status(401).json({ error: 'unauthorized' });
@@ -26,7 +28,7 @@ jest.mock('../deviceCapabilityService', () => {
         res.status(403).json({ error: 'forbidden', reason: 'pn_mismatch' });
         return null;
       }
-      return { pnIdentifier: currentBearer };
+      return { pnIdentifier: currentBearer, isKeyed: gateIsKeyed };
     }),
   };
 });
@@ -77,6 +79,19 @@ jest.mock('../driveInitSteps', () => ({
   runFullDriveInitAndPersist: jest.fn(),
 }));
 
+jest.mock('../cloudVaultService', () => ({
+  cloudVaultService: {
+    getSealedVault: jest.fn(),
+    putSealedVault: jest.fn(),
+  },
+  looksLikePlaintextCloudSecrets: jest.fn(() => false),
+}));
+
+jest.mock('../../../utils/logger', () => ({
+  safeLogger: { info: jest.fn(), warn: jest.fn(), error: jest.fn(), debug: jest.fn() },
+  hashIdentifier: (v: string) => `hash(${v})`,
+}));
+
 import express from 'express';
 import request from 'supertest';
 import {
@@ -90,6 +105,7 @@ import { googleDriveProxyService } from '../googleDriveProxy';
 import { isRetryableGoogleError } from '../googleApiRetry';
 import { runFullDriveInitAndPersist } from '../driveInitSteps';
 import { getDriveInitProgress, isDriveInitProgressActive } from '../driveInitProgress';
+import { cloudVaultService, looksLikePlaintextCloudSecrets } from '../cloudVaultService';
 
 const mockGetCredentials = storageCredentialsService.getCredentials as jest.Mock;
 const mockUpsertCredentials = storageCredentialsService.upsertCredentials as jest.Mock;
@@ -102,6 +118,9 @@ const mockIsRetryable = isRetryableGoogleError as jest.Mock;
 const mockRunFullDriveInit = runFullDriveInitAndPersist as jest.Mock;
 const mockGetProgress = getDriveInitProgress as jest.Mock;
 const mockProgressActive = isDriveInitProgressActive as jest.Mock;
+const mockGetSealedVault = cloudVaultService.getSealedVault as jest.Mock;
+const mockPutSealedVault = cloudVaultService.putSealedVault as jest.Mock;
+const mockLooksLikePlaintext = looksLikePlaintextCloudSecrets as jest.Mock;
 
 const PN = 'pn-test';
 
@@ -127,6 +146,7 @@ function upsertResult() {
 describe('storage credentials routes', () => {
   beforeEach(() => {
     currentBearer = PN;
+    gateIsKeyed = false;
     mockGetCredentials.mockReset();
     mockUpsertCredentials.mockReset().mockResolvedValue(upsertResult());
     mockMigrateIdentityId.mockReset();
@@ -140,6 +160,9 @@ describe('storage credentials routes', () => {
     mockRunFullDriveInit.mockReset();
     mockGetProgress.mockReset().mockReturnValue(null);
     mockProgressActive.mockReset().mockReturnValue(false);
+    mockGetSealedVault.mockReset().mockResolvedValue(null);
+    mockPutSealedVault.mockReset().mockResolvedValue(undefined);
+    mockLooksLikePlaintext.mockReset().mockReturnValue(false);
   });
 
   describe('PUT /api/storage/credentials/:identityId', () => {
@@ -337,6 +360,55 @@ describe('storage credentials routes', () => {
 
       expect(res.body.inFlight).toBe(true);
       expect(res.body.progress).toEqual({ step: 'sheets', completed: 3, total: 9 });
+    });
+  });
+
+  describe('PUT /api/storage/cloud-vault/:identityId', () => {
+    const sealedEnvelope = {
+      v: 1,
+      alg: 'test',
+      ciphertext: 'c',
+      iv: 'i',
+      salt: 's',
+    };
+
+    it('allows first seal when vault is empty and session is unkeyed (Case A bootstrap)', async () => {
+      gateIsKeyed = false;
+      mockGetSealedVault.mockResolvedValue(null);
+
+      const res = await request(buildApp())
+        .put(`/api/storage/cloud-vault/${PN}`)
+        .send({ envelope: sealedEnvelope })
+        .expect(200);
+
+      expect(res.body.success).toBe(true);
+      expect(mockPutSealedVault).toHaveBeenCalledWith(PN, sealedEnvelope);
+    });
+
+    it('denies overwrite of existing vault when session is unkeyed', async () => {
+      gateIsKeyed = false;
+      mockGetSealedVault.mockResolvedValue(sealedEnvelope);
+
+      const res = await request(buildApp())
+        .put(`/api/storage/cloud-vault/${PN}`)
+        .send({ envelope: { ...sealedEnvelope, ciphertext: 'new' } })
+        .expect(403);
+
+      expect(res.body).toEqual({ error: 'device_key_required', reason: 'device_required' });
+      expect(mockPutSealedVault).not.toHaveBeenCalled();
+    });
+
+    it('allows overwrite when session is keyed', async () => {
+      gateIsKeyed = true;
+      mockGetSealedVault.mockResolvedValue(sealedEnvelope);
+
+      const res = await request(buildApp())
+        .put(`/api/storage/cloud-vault/${PN}`)
+        .send({ envelope: { ...sealedEnvelope, ciphertext: 'new' } })
+        .expect(200);
+
+      expect(res.body.success).toBe(true);
+      expect(mockPutSealedVault).toHaveBeenCalled();
     });
   });
 

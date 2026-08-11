@@ -289,6 +289,11 @@ export const DeviceManagementPanel: React.FC<DeviceManagementPanelProps> = ({
     [DEVICE_CAPABILITIES.identityRotate]: 'Identity rotation',
     [DEVICE_CAPABILITIES.deviceManage]: 'Device registration and policy',
     [DEVICE_CAPABILITIES.oauthWrite]: 'OAuth write scopes',
+    [DEVICE_CAPABILITIES.driveUpload]: 'Upload to Drive / overwrite cloud vault',
+    [DEVICE_CAPABILITIES.messagesRead]: 'Read / drain mailbox messages',
+    [DEVICE_CAPABILITIES.messagesSend]: 'Send messages',
+    [DEVICE_CAPABILITIES.socialRead]: 'Read social mailbox jobs',
+    [DEVICE_CAPABILITIES.socialWrite]: 'Write social / connection jobs',
   };
 
   return (

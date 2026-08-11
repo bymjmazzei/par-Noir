@@ -164,7 +164,8 @@ export async function resolveDeviceAuthContext(req: Request): Promise<DeviceAuth
 
   const bundle = await loadDeviceContext(auth.pnIdentifier);
   if (!bundle) {
-    // Drive layout not provisioned yet (first storage credential save). unkeyed_legacy allows bootstrap.
+    // Drive layout not provisioned yet (first storage credential save).
+    // unkeyed_legacy uses LEGACY_BOOTSTRAP_ALLOWS only — not allow-all.
     return {
       pnIdentifier: auth.pnIdentifier,
       policy: defaultDevicePolicy(),

@@ -5,6 +5,7 @@ import {
   DEFAULT_UNKEYED_ALLOWS,
   DEVICE_CAPABILITIES,
   IMMUTABLE_UNKEYED_DENY,
+  LEGACY_BOOTSTRAP_ALLOWS,
 } from './capabilities';
 import { defaultDevicePolicy, evaluateDeviceCapability, normalizeDevicePolicy } from './evaluate';
 
@@ -33,10 +34,25 @@ describe('device capability catalog', () => {
     }
   });
 
+  it('defaults exclude mailbox drain and drive.upload', () => {
+    expect(DEFAULT_UNKEYED_ALLOWS).not.toContain(DEVICE_CAPABILITIES.driveUpload);
+    expect(DEFAULT_UNKEYED_ALLOWS).not.toContain(DEVICE_CAPABILITIES.messagesRead);
+    expect(DEFAULT_UNKEYED_ALLOWS).not.toContain(DEVICE_CAPABILITIES.messagesSend);
+    expect(DEFAULT_UNKEYED_ALLOWS).not.toContain(DEVICE_CAPABILITIES.socialRead);
+    expect(DEFAULT_UNKEYED_ALLOWS).not.toContain(DEVICE_CAPABILITIES.socialWrite);
+  });
+
+  it('legacy bootstrap includes drive.upload for Case A first seal', () => {
+    expect(LEGACY_BOOTSTRAP_ALLOWS).toContain(DEVICE_CAPABILITIES.driveUpload);
+    expect(LEGACY_BOOTSTRAP_ALLOWS).toContain(DEVICE_CAPABILITIES.driveRead);
+    expect(LEGACY_BOOTSTRAP_ALLOWS).not.toContain(DEVICE_CAPABILITIES.messagesRead);
+  });
+
   it('draws every known list entry from the capability catalog', () => {
     for (const capability of [
       ...IMMUTABLE_UNKEYED_DENY,
       ...DEFAULT_UNKEYED_ALLOWS,
+      ...LEGACY_BOOTSTRAP_ALLOWS,
       ...CONFIGURABLE_CAPABILITIES,
     ]) {
       expect(ALL_CAPABILITIES).toContain(capability);
@@ -76,6 +92,21 @@ describe('normalizeDevicePolicy', () => {
     ]);
   });
 
+  it('strips immutable caps from unkeyedAllows', () => {
+    const policy = normalizeDevicePolicy({
+      unkeyedAllows: [
+        DEVICE_CAPABILITIES.profileRead,
+        DEVICE_CAPABILITIES.messagesRead,
+        DEVICE_CAPABILITIES.driveUpload,
+        DEVICE_CAPABILITIES.profileWrite,
+      ],
+    });
+    expect(policy.unkeyedAllows).toEqual([
+      DEVICE_CAPABILITIES.profileRead,
+      DEVICE_CAPABILITIES.profileWrite,
+    ]);
+  });
+
   it('treats an explicitly empty allow list as empty, not as the default set', () => {
     expect(normalizeDevicePolicy({ unkeyedAllows: [] }).unkeyedAllows).toEqual([]);
   });
@@ -87,14 +118,15 @@ describe('normalizeDevicePolicy', () => {
     );
   });
 
-  it('a normalized policy without a keyed device still permits everything', () => {
+  it('a normalized policy without a keyed device does not permit identity.export', () => {
     const policy = normalizeDevicePolicy({ unkeyedAllows: [] });
     const result = evaluateDeviceCapability({
       policy,
       isKeyed: false,
       capability: DEVICE_CAPABILITIES.identityExport,
     });
-    expect(result.allowed).toBe(true);
+    expect(result.allowed).toBe(false);
     expect(result.mode).toBe('unkeyed_legacy');
+    expect(result.reason).toBe('device_required');
   });
 });

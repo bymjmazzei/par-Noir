@@ -181,6 +181,33 @@ describe('gateOwnerRoute', () => {
     expect(res.statusCode).toBeUndefined();
   });
 
+  it('denies mailbox drain when device bundle is missing (legacy bootstrap, not allow-all)', async () => {
+    mockValidate.mockReturnValue({ pnIdentifier: PN } as ReturnType<
+      typeof PNOAuthService.validateAccessToken
+    >);
+    deviceStorage.loadDeviceBundle.mockResolvedValue(null);
+    const req = bearerReq({ path: '/api/mailbox/pending', method: 'GET' });
+    const res = mockRes();
+
+    const ctx = await gateOwnerRoute(req, res, DEVICE_CAPABILITIES.messagesRead, PN);
+
+    expect(ctx).toBeNull();
+    expect(res.statusCode).toBe(403);
+    expect(res.body).toEqual({ error: 'device_key_required', reason: 'device_required' });
+  });
+
+  it('returns 403 device_key_required for drive.upload on unkeyed restricted', async () => {
+    setupDriveContext({ ...defaultDevicePolicy(), firstDeviceKeyedAt: KEYED_AT }, false);
+    const req = bearerReq({ path: `/api/storage/cloud-vault/${PN}`, method: 'PUT' });
+    const res = mockRes();
+
+    const ctx = await gateOwnerRoute(req, res, DEVICE_CAPABILITIES.driveUpload, PN);
+
+    expect(ctx).toBeNull();
+    expect(res.statusCode).toBe(403);
+    expect(res.body).toEqual({ error: 'device_key_required', reason: 'device_required' });
+  });
+
   it('allows unkeyed session when capability is toggled in unkeyedAllows', async () => {
     setupDriveContext(
       {
