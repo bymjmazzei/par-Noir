@@ -34,16 +34,45 @@ export interface DeviceRegistrySummary {
   hasKeyedDevices: boolean;
 }
 
+const REGISTRY_TTL_MS = 60_000;
+const registryCache = new Map<string, { at: number; value: DeviceRegistrySummary | null }>();
+const registryInflight = new Map<string, Promise<DeviceRegistrySummary | null>>();
+
+export function invalidateDeviceRegistryCache(userPnIdentifier?: string): void {
+  if (userPnIdentifier) {
+    registryCache.delete(userPnIdentifier);
+    registryInflight.delete(userPnIdentifier);
+    return;
+  }
+  registryCache.clear();
+  registryInflight.clear();
+}
+
 export async function fetchDeviceRegistry(
   userPnIdentifier: string,
   authToken: string
 ): Promise<DeviceRegistrySummary | null> {
-  const path = `/api/devices/${encodeURIComponent(userPnIdentifier)}/registry`;
-  const res = await fetch(`${API_ENDPOINT}${path}`, {
-    headers: { Authorization: `Bearer ${authToken}` },
+  const cached = registryCache.get(userPnIdentifier);
+  if (cached && Date.now() - cached.at < REGISTRY_TTL_MS) {
+    return cached.value;
+  }
+  const inflight = registryInflight.get(userPnIdentifier);
+  if (inflight) return inflight;
+
+  const work = (async () => {
+    const path = `/api/devices/${encodeURIComponent(userPnIdentifier)}/registry`;
+    const res = await fetch(`${API_ENDPOINT}${path}`, {
+      headers: { Authorization: `Bearer ${authToken}` },
+    });
+    const value = res.ok ? ((await res.json()) as DeviceRegistrySummary) : null;
+    registryCache.set(userPnIdentifier, { at: Date.now(), value });
+    return value;
+  })().finally(() => {
+    registryInflight.delete(userPnIdentifier);
   });
-  if (!res.ok) return null;
-  return res.json();
+
+  registryInflight.set(userPnIdentifier, work);
+  return work;
 }
 
 async function registerDeviceOnServer(params: {
@@ -152,6 +181,7 @@ export async function keyThisDevice(params: {
     label: 'Browser',
     deviceType: 'other',
   });
+  invalidateDeviceRegistryCache(params.userPnIdentifier);
   setDeviceProofSigner((method, path, body) =>
     buildLocalDeviceProofHeaders(params.userPnIdentifier, method, path, body)
   );

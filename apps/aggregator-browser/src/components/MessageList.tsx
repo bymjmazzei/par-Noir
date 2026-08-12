@@ -190,24 +190,26 @@ export function MessageList({ onThreadSelect, refreshKey = 0 }: MessageListProps
     };
     window.addEventListener(MESSAGING_INBOX_REFRESH_EVENT, onInboxRefresh);
 
-    // Realtime is primary; poll only as a backstop when the socket is disconnected.
-    const interval =
-      socketConnected
-        ? null
-        : setInterval(() => {
-            if (document.visibilityState === 'visible' && !isMessagingRateLimited()) {
-              void loadThreadsFromApi(false);
-            }
-          }, MESSAGING_POLL_BACKSTOP_MS);
-    
     return () => {
-      if (interval) clearInterval(interval);
       if (rateLimitRetryRef.current) {
         clearTimeout(rateLimitRetryRef.current);
       }
       window.removeEventListener(MESSAGING_INBOX_REFRESH_EVENT, onInboxRefresh);
     };
-  }, [userState.isUnlocked, userState.pnIdentifier, socketConnected, refreshKey]);
+  }, [userState.isUnlocked, userState.pnIdentifier, refreshKey]);
+
+  // Realtime is primary; poll only as a backstop when the socket is disconnected.
+  // Keep this separate so socket flaps do not re-run the initial inbox fetch.
+  useEffect(() => {
+    if (!userState.isUnlocked || !userState.pnIdentifier) return;
+    if (socketConnected) return;
+    const interval = setInterval(() => {
+      if (document.visibilityState === 'visible' && !isMessagingRateLimited()) {
+        void loadThreadsFromApi(false);
+      }
+    }, MESSAGING_POLL_BACKSTOP_MS);
+    return () => clearInterval(interval);
+  }, [socketConnected, userState.isUnlocked, userState.pnIdentifier]);
 
   // Close menu when clicking outside
   useEffect(() => {

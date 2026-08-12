@@ -26,6 +26,12 @@ import {
 } from '../services/dmIdentitySession';
 import { registerMessagingReconnect } from '../services/messagingReconnect';
 import { disconnectRealtimeSync } from '../services/realtimeSyncService';
+import { isOauthCodeConsumed, markOauthCodeConsumed } from '../services/oauthConsumedCodes';
+import {
+  startSocialMailboxConsumer,
+  stopSocialMailboxConsumer,
+} from '../services/socialMailboxConsumer';
+import { invalidateDeviceRegistryCache } from '../services/deviceService';
 import type { Feed, MetadataFilters } from '../types/aggregator';
 import {
   applyAllMessagingHandoffSources,
@@ -195,6 +201,10 @@ export function useAuthAndSession({
       }
       if (!data.code) {
         pushPnOAuthDebug('run_oauth_callback_no_code', {});
+        return;
+      }
+      if (isOauthCodeConsumed(data.code)) {
+        pushPnOAuthDebug('run_oauth_callback_code_already_consumed', {});
         return;
       }
 
@@ -369,6 +379,7 @@ export function useAuthAndSession({
         }
       })();
 
+      markOauthCodeConsumed(data.code);
       oauthCallbackInflightRef.current.set(data.code, work);
       try {
         await work;
@@ -491,7 +502,7 @@ export function useAuthAndSession({
         const code = data.code;
         const err = data.error;
         if (!code && !err) return;
-        if (code && oauthCallbackInflightRef.current.has(code)) return;
+        if (code && (isOauthCodeConsumed(code) || oauthCallbackInflightRef.current.has(code))) return;
         const ts = Number(data.timestamp);
         if (Number.isFinite(ts) && Date.now() - ts > 120_000) return;
 
@@ -524,17 +535,28 @@ export function useAuthAndSession({
       }
     };
 
-    // Immediate check + short poll for handshake races.
+    // Already unlocked — do not poll leftover callback storage.
+    if (userState.isUnlocked) {
+      return () => {
+        mounted = false;
+      };
+    }
+
+    // Immediate check + short poll for handshake races, then stop.
     void tryConsumePendingOAuthStorage();
     const id = window.setInterval(() => {
       void tryConsumePendingOAuthStorage();
     }, 500);
+    const cap = window.setTimeout(() => {
+      clearInterval(id);
+    }, 30_000);
 
     return () => {
       mounted = false;
       clearInterval(id);
+      clearTimeout(cap);
     };
-  }, [redirectUriForOAuth, runOAuthCallback]);
+  }, [redirectUriForOAuth, runOAuthCallback, userState.isUnlocked]);
 
   const loadUserDisplayName = useCallback(
     async (pnIdentifier: string) => {
@@ -804,6 +826,8 @@ export function useAuthAndSession({
       /* ignore */
     }
     disconnectRealtimeSync();
+    stopSocialMailboxConsumer();
+    invalidateDeviceRegistryCache();
     setLocked();
     clearDmIdentity();
     PNOAuthService.clearSession();
@@ -816,6 +840,15 @@ export function useAuthAndSession({
     window.addEventListener(PN_OAUTH_SESSION_DEAD_EVENT, onSessionDead);
     return () => window.removeEventListener(PN_OAUTH_SESSION_DEAD_EVENT, onSessionDead);
   }, [applyAuthDeathLock]);
+
+  useEffect(() => {
+    if (!userState.isUnlocked || !userState.pnIdentifier) {
+      stopSocialMailboxConsumer();
+      return;
+    }
+    startSocialMailboxConsumer();
+    return () => stopSocialMailboxConsumer();
+  }, [userState.isUnlocked, userState.pnIdentifier]);
 
   // On return from idle: refresh/validate token; unrecoverable → session-dead event → lock
   useEffect(() => {

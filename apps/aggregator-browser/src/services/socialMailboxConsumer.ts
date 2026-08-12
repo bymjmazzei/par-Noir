@@ -37,6 +37,14 @@ export interface MailboxDrainResult {
 
 const EMPTY: MailboxDrainResult = { pulled: 0, applied: 0, acked: 0, errors: [] };
 
+/** Visible + unlocked backstop only — not a heartbeat. */
+const DRAIN_INTERVAL_MS = 5 * 60_000;
+
+let running = false;
+let started = false;
+let intervalId: ReturnType<typeof setInterval> | number | null = null;
+let cachedRoute: { identityId: string; routeKey: string } | null = null;
+
 /**
  * Only the headers the API needs beyond Bearer. ownerApiHeadersAsync already
  * waits for the cloud token, so Drive-backed applies do not race the unlock.
@@ -48,11 +56,11 @@ async function buildAuthHeaders(): Promise<Record<string, string>> {
 }
 
 export async function drainSocialMailbox(): Promise<MailboxDrainResult> {
-  const authToken = await PNOAuthService.getValidAccessToken();
-  if (!authToken) return EMPTY;
   const session = PNOAuthService.loadSession();
-  const identityId = session?.pnIdentifier;
-  if (!identityId) return EMPTY;
+  if (!session || !PNOAuthService.isSessionValid(session)) return EMPTY;
+  const identityId = session.pnIdentifier;
+  const authToken = session.accessToken;
+  if (!identityId || !authToken) return EMPTY;
 
   // Case B unkeyed web: server refuses pending/ack — skip to avoid 403 spam.
   const registry = await fetchDeviceRegistry(identityId, authToken);
@@ -83,19 +91,24 @@ export async function drainSocialMailbox(): Promise<MailboxDrainResult> {
   };
 
   let routeKey: string;
-  try {
-    routeKey = await ensureMailboxRouteKey(
-      identityId,
-      {
-        sessionId: identityId,
-        pnName: identity.pnName || 'browser-mailbox',
-        passcode: identity.mlKemSecretKey
-      },
-      api
-    );
-  } catch (e) {
-    errors.push(`route: ${e instanceof Error ? e.message : 'failed'}`);
-    return { ...EMPTY, errors };
+  if (cachedRoute?.identityId === identityId) {
+    routeKey = cachedRoute.routeKey;
+  } else {
+    try {
+      routeKey = await ensureMailboxRouteKey(
+        identityId,
+        {
+          sessionId: identityId,
+          pnName: identity.pnName || 'browser-mailbox',
+          passcode: identity.mlKemSecretKey
+        },
+        api
+      );
+      cachedRoute = { identityId, routeKey };
+    } catch (e) {
+      errors.push(`route: ${e instanceof Error ? e.message : 'failed'}`);
+      return { ...EMPTY, errors };
+    }
   }
 
   const applySocialJob = createApiSocialApplier({
@@ -149,12 +162,9 @@ export async function drainSocialMailbox(): Promise<MailboxDrainResult> {
   return { pulled: jobs.length, applied: appliedIds.length, acked, errors };
 }
 
-const DRAIN_INTERVAL_MS = 60_000;
-let running = false;
-let started = false;
-
 async function drainOnce(): Promise<void> {
   if (running) return;
+  if (typeof document !== 'undefined' && document.visibilityState !== 'visible') return;
   running = true;
   try {
     const result = await drainSocialMailbox();
@@ -168,21 +178,39 @@ async function drainOnce(): Promise<void> {
   }
 }
 
+function onCloudCredentialsReady(): void {
+  void drainOnce();
+}
+
+function onVisibilityChange(): void {
+  if (document.visibilityState === 'visible') void drainOnce();
+}
+
 /**
- * Idempotent. Drains on cloud-credential readiness (the unlock that makes the
- * forwarded token available) and then on an interval, so a peer's request shows
- * up without the user having to open the dashboard.
+ * Drain after unlock / cloud ready, then a slow visible backstop.
+ * Call stopSocialMailboxConsumer on lock.
  */
 export function startSocialMailboxConsumer(): void {
   if (started || typeof window === 'undefined') return;
   started = true;
-  window.addEventListener(PN_CLOUD_CREDENTIALS_READY_EVENT, () => {
-    void drainOnce();
-  });
-  window.setInterval(() => {
+  window.addEventListener(PN_CLOUD_CREDENTIALS_READY_EVENT, onCloudCredentialsReady);
+  document.addEventListener('visibilitychange', onVisibilityChange);
+  intervalId = window.setInterval(() => {
     void drainOnce();
   }, DRAIN_INTERVAL_MS);
   void drainOnce();
 }
 
-startSocialMailboxConsumer();
+export function stopSocialMailboxConsumer(): void {
+  if (!started) return;
+  started = false;
+  if (intervalId != null) {
+    clearInterval(intervalId);
+    intervalId = null;
+  }
+  if (typeof window !== 'undefined') {
+    window.removeEventListener(PN_CLOUD_CREDENTIALS_READY_EVENT, onCloudCredentialsReady);
+    document.removeEventListener('visibilitychange', onVisibilityChange);
+  }
+  cachedRoute = null;
+}

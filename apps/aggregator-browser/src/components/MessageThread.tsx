@@ -92,6 +92,9 @@ export function MessageThread({
   const isPollingRef = useRef(false);
   const errorCountRef = useRef(0);
   const currentOffsetRef = useRef(0);
+  const loadMessagesRef = useRef<(isInitial: boolean, loadMore: boolean) => Promise<void>>(
+    async () => undefined
+  );
   const [showGroupSettings, setShowGroupSettings] = useState(false);
   const [showMediaPicker, setShowMediaPicker] = useState(false);
   const [senderNames, setSenderNames] = useState<Record<string, string>>({});
@@ -334,24 +337,26 @@ export function MessageThread({
       loadMessages(true, false);
     }
 
-    // Realtime is primary; poll only as a backstop when the socket is disconnected.
-    const interval =
-      socketConnected
-        ? null
-        : setInterval(() => {
-            if (document.visibilityState === 'visible' && !isPollingRef.current && !isMessagingRateLimited()) {
-              if (errorCountRef.current >= 3) {
-                console.warn('Too many polling errors, stopping automatic refresh');
-                return;
-              }
-              loadMessages(false, false);
-            }
-          }, MESSAGING_POLL_BACKSTOP_MS);
+    loadMessagesRef.current = (isInitial, loadMore) => loadMessages(isInitial, loadMore);
+  }, [userState.isUnlocked, userState.pnIdentifier, participantPnIdentifier, preloadedMessages, groupId, spreadsheetId]);
 
-    return () => {
-      if (interval) clearInterval(interval);
-    };
-  }, [userState.isUnlocked, userState.pnIdentifier, participantPnIdentifier, preloadedMessages, groupId, spreadsheetId, socketConnected]);
+  // Realtime is primary; poll only as a backstop when the socket is disconnected.
+  // Separate from initial load so ping-timeout flaps do not refetch the thread.
+  useEffect(() => {
+    if (!userState.isUnlocked || !userState.pnIdentifier) return;
+    if (socketConnected) return;
+    const interval = setInterval(() => {
+      if (document.visibilityState !== 'visible' || isPollingRef.current || isMessagingRateLimited()) {
+        return;
+      }
+      if (errorCountRef.current >= 3) {
+        console.warn('Too many polling errors, stopping automatic refresh');
+        return;
+      }
+      void loadMessagesRef.current(false, false);
+    }, MESSAGING_POLL_BACKSTOP_MS);
+    return () => clearInterval(interval);
+  }, [socketConnected, userState.isUnlocked, userState.pnIdentifier]);
 
   useEffect(() => {
     if (realtimeRefresh === 0 || !userState.isUnlocked || !userState.pnIdentifier) return;

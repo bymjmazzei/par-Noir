@@ -23,6 +23,8 @@ export interface DmSessionHandoff {
 }
 
 let state: DmIdentityState | null = null;
+let publishedMlKemPublicKey: string | null = null;
+let publishMlKemInflight: Promise<void> | null = null;
 
 export const DM_IDENTITY_CHANGE_EVENT = 'pn_dm_identity_change';
 
@@ -156,6 +158,8 @@ export function applyDmSessionHandoff(session: DmSessionHandoff): void {
 
 export function clearDmIdentity(): void {
   state = null;
+  publishedMlKemPublicKey = null;
+  publishMlKemInflight = null;
   clearDmSessionCache();
   clearDmSessionStorage();
   notifyDmIdentityChange();
@@ -250,17 +254,30 @@ export async function unlockDmIdentity(pnName: string, passcode: string): Promis
 }
 
 async function publishMlKemPublicKey(mlKemPublicKey: string): Promise<void> {
-  const session = PNOAuthService.loadSession();
-  const pnIdentifier = session?.pnIdentifier;
-  if (!pnIdentifier) return;
+  if (!mlKemPublicKey) return;
+  if (publishedMlKemPublicKey === mlKemPublicKey) return;
+  if (publishMlKemInflight) return publishMlKemInflight;
 
-  const { ownerFetch } = await import('./ownerApiFetch');
-  const response = await ownerFetch('POST', '/api/profile/ml-kem-public-key', {
-    userPnIdentifier: pnIdentifier,
-    mlKemPublicKey
+  publishMlKemInflight = (async () => {
+    const session = PNOAuthService.loadSession();
+    const pnIdentifier = session?.pnIdentifier;
+    if (!pnIdentifier) return;
+
+    const { ownerFetch } = await import('./ownerApiFetch');
+    const response = await ownerFetch('POST', '/api/profile/ml-kem-public-key', {
+      userPnIdentifier: pnIdentifier,
+      mlKemPublicKey
+    });
+    if (response.ok) {
+      publishedMlKemPublicKey = mlKemPublicKey;
+      return;
+    }
+    throw new Error(`publish ml-kem-public-key failed: ${response.status}`);
+  })().finally(() => {
+    publishMlKemInflight = null;
   });
-  if (response.ok) return;
-  throw new Error(`publish ml-kem-public-key failed: ${response.status}`);
+
+  return publishMlKemInflight;
 }
 
 /** Retry profile publish after vault hydrate / OAuth session ready. */

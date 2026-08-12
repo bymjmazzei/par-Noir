@@ -35,7 +35,6 @@ import { useDiscoverFiles } from './hooks/useDiscoverFiles';
 import { useDiscovery } from './hooks/useDiscovery';
 import './services/uploadProcessor'; // Initialize upload processor event listeners
 import './services/backgroundTaskProcessor'; // Initialize background task processor event listeners
-import './services/socialMailboxConsumer'; // Drain inbound social mailbox jobs into this user's own cloud
 import { SearchPage } from './pages/SearchPage';
 import { MessagesPage } from './pages/MessagesPage';
 import { UploadPage } from './pages/UploadPage';
