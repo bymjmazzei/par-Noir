@@ -58,6 +58,8 @@ export function useDiscovery({
   const discoverFilesTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const discoveryEnabledRef = useRef(discoveryEnabled);
   const prevDiscoveryEnabledRef = useRef(discoveryEnabled);
+  const prevShowNsfwRef = useRef(userState.preferences.showNSFW);
+  const nsfwRefreshInflightRef = useRef<Promise<void> | null>(null);
 
   useEffect(() => {
     discoveryEnabledRef.current = discoveryEnabled;
@@ -72,6 +74,96 @@ export function useDiscovery({
     },
     [activeFeedId]
   );
+
+  const mergeNsfwFiles = useCallback(
+    async (
+      contentTypes: ContentType[],
+      searchFilters?: MetadataFilters,
+      page: number = 0,
+      forceRefresh = false
+    ) => {
+      if (
+        !userState.preferences?.hasAgeZKP ||
+        !userState.preferences?.isOver18 ||
+        !userState.preferences?.showNSFW
+      ) {
+        return;
+      }
+      const { CentralMetadataAggregator } = await import('../services/storage/CentralMetadataAggregator');
+      const f = searchFilters ?? filters;
+      const nsfwResult = await CentralMetadataAggregator.fetchNSFWIndex(
+        { tags: f?.tags, authorDid: f?.authorDid, limit: PAGE_SIZE, offset: page * PAGE_SIZE },
+        forceRefresh
+      );
+      const nsfwEntries = nsfwResult.files || [];
+      const nsfwFiles: IndexedFile[] = nsfwEntries
+        .filter((entry: any) => {
+          const m = entry.metadata || {};
+          return (m.isPublic !== false || m.publicToken != null) && m.isNSFW === true;
+        })
+        .map((entry: any) => {
+          const pnId = entry.pnIdentifier;
+          const normalizedPnId = pnId && pnId.startsWith('pn-') ? pnId.substring(3) : pnId;
+          const m = entry.metadata || {};
+          return {
+            metadata: {
+              ...m,
+              textPost: m.textPost || m.thought,
+              thought: m.thought || m.textPost,
+              creatorId: normalizedPnId || m.creatorId,
+              creator:
+                m.creator ||
+                (entry.pnIdentifier
+                  ? {
+                      '@type': 'Person',
+                      '@id': entry.pnIdentifier,
+                      identifier: { '@type': 'PropertyValue', name: 'DID', value: entry.pnIdentifier },
+                    }
+                  : undefined),
+              author: m.author || (entry.pnIdentifier ? { did: entry.pnIdentifier } : undefined),
+              publicToken: entry.publicToken || m.publicToken,
+            },
+            thumbnail: m.thumbnail,
+            publicToken: entry.publicToken || m.publicToken,
+            pnIdentifier: entry.pnIdentifier || normalizedPnId,
+          };
+        });
+      const nsfwByClass: Partial<Record<ContentType, IndexedFile[]>> = {
+        media: nsfwFiles.filter((f) => (f.metadata as any).contentClass === 'media'),
+        thoughts: nsfwFiles.filter((f) => (f.metadata as any).contentClass === 'thought'),
+        collections: nsfwFiles.filter((f) => (f.metadata as any).contentClass === 'collection'),
+      };
+      const mergeNsfw = (
+        type: ContentType,
+        setter: (value: IndexedFile[] | ((prev: IndexedFile[]) => IndexedFile[])) => void
+      ) => {
+        if (!contentTypes.includes(type)) return;
+        const batch = nsfwByClass[type] ?? [];
+        setter((prev) => {
+          const existingIds = new Set(prev.map((f) => f.metadata.fileId));
+          const newFiles = batch.filter((f) => !existingIds.has(f.metadata.fileId));
+          return [...prev, ...newFiles];
+        });
+      };
+      mergeNsfw('media', setMediaFiles);
+      mergeNsfw('thoughts', setThoughtsFiles);
+      mergeNsfw('collections', setCollectionsFiles);
+    },
+    [filters, userState.preferences, setMediaFiles, setThoughtsFiles, setCollectionsFiles]
+  );
+
+  const refreshNsfwIndexOnly = useCallback(async () => {
+    if (nsfwRefreshInflightRef.current) {
+      await nsfwRefreshInflightRef.current;
+      return;
+    }
+    const contentTypes = resolveContentTypes();
+    const work = mergeNsfwFiles(contentTypes, filters, 0, false).finally(() => {
+      nsfwRefreshInflightRef.current = null;
+    });
+    nsfwRefreshInflightRef.current = work;
+    await work;
+  }, [filters, mergeNsfwFiles, resolveContentTypes]);
 
   const loadContentTypeIndices = useCallback(
     async (_searchFilters?: MetadataFilters, forceRefresh: boolean = false, page: number = 0) => {
@@ -160,65 +252,7 @@ export function useDiscovery({
           userState.preferences?.showNSFW
         ) {
           try {
-            const { CentralMetadataAggregator } = await import('../services/storage/CentralMetadataAggregator');
-            const f = _searchFilters ?? filters;
-            const nsfwResult = await CentralMetadataAggregator.fetchNSFWIndex(
-              { tags: f?.tags, authorDid: f?.authorDid, limit: PAGE_SIZE, offset: page * PAGE_SIZE },
-              forceRefresh
-            );
-            const nsfwEntries = nsfwResult.files || [];
-            const nsfwFiles: IndexedFile[] = nsfwEntries
-              .filter((entry: any) => {
-                const m = entry.metadata || {};
-                return (m.isPublic !== false || m.publicToken != null) && m.isNSFW === true;
-              })
-              .map((entry: any) => {
-                const pnId = entry.pnIdentifier;
-                const normalizedPnId = pnId && pnId.startsWith('pn-') ? pnId.substring(3) : pnId;
-                const m = entry.metadata || {};
-                return {
-                  metadata: {
-                    ...m,
-                    textPost: m.textPost || m.thought,
-                    thought: m.thought || m.textPost,
-                    creatorId: normalizedPnId || m.creatorId,
-                    creator:
-                      m.creator ||
-                      (entry.pnIdentifier
-                        ? {
-                            '@type': 'Person',
-                            '@id': entry.pnIdentifier,
-                            identifier: { '@type': 'PropertyValue', name: 'DID', value: entry.pnIdentifier },
-                          }
-                        : undefined),
-                    author: m.author || (entry.pnIdentifier ? { did: entry.pnIdentifier } : undefined),
-                    publicToken: entry.publicToken || m.publicToken,
-                  },
-                  thumbnail: m.thumbnail,
-                  publicToken: entry.publicToken || m.publicToken,
-                  pnIdentifier: entry.pnIdentifier || normalizedPnId,
-                };
-              });
-            const nsfwByClass: Partial<Record<ContentType, IndexedFile[]>> = {
-              media: nsfwFiles.filter((f) => (f.metadata as any).contentClass === 'media'),
-              thoughts: nsfwFiles.filter((f) => (f.metadata as any).contentClass === 'thought'),
-              collections: nsfwFiles.filter((f) => (f.metadata as any).contentClass === 'collection'),
-            };
-            const mergeNsfw = (
-              type: ContentType,
-              setter: (value: IndexedFile[] | ((prev: IndexedFile[]) => IndexedFile[])) => void
-            ) => {
-              if (!contentTypes.includes(type)) return;
-              const batch = nsfwByClass[type] ?? [];
-              setter((prev) => {
-                const existingIds = new Set(prev.map((f) => f.metadata.fileId));
-                const newFiles = batch.filter((f) => !existingIds.has(f.metadata.fileId));
-                return [...prev, ...newFiles];
-              });
-            };
-            mergeNsfw('media', setMediaFiles);
-            mergeNsfw('thoughts', setThoughtsFiles);
-            mergeNsfw('collections', setCollectionsFiles);
+            await mergeNsfwFiles(contentTypes, _searchFilters, page, forceRefresh);
           } catch (e) {
             console.warn('Failed to fetch NSFW index:', e);
           }
@@ -239,6 +273,7 @@ export function useDiscovery({
       resolveContentTypes,
       filters,
       userState.preferences,
+      mergeNsfwFiles,
       metadataIndexService,
       mediaFiles,
       thoughtsFiles,
@@ -292,31 +327,45 @@ export function useDiscovery({
   }, [activeFeedId, discoveryEnabled]);
 
   useEffect(() => {
+    const becameEnabled = discoveryEnabled && !prevDiscoveryEnabledRef.current;
+    prevDiscoveryEnabledRef.current = discoveryEnabled;
+
     if (!discoveryEnabled) return;
     if (activeFeedId === 'discovery') return;
+
     if (discoverFilesTimeoutRef.current) clearTimeout(discoverFilesTimeoutRef.current);
     initialDiscoveryCompleteRef.current = false;
     setCurrentPage(0);
     setHasMore(true);
     hasMoreRef.current = true;
+
     discoverFilesTimeoutRef.current = setTimeout(() => {
       if (discoverFilesRef.current && !isDiscoveringRef.current) {
         discoverFilesRef.current(undefined, false, 0, false);
       }
-    }, 500);
+    }, becameEnabled ? 0 : 500);
+
     return () => {
       if (discoverFilesTimeoutRef.current) clearTimeout(discoverFilesTimeoutRef.current);
     };
-  }, [activeFeedId, discoveryEnabled, userState.preferences.showNSFW, setCurrentPage, setHasMore]);
+  }, [activeFeedId, discoveryEnabled, setCurrentPage, setHasMore]);
 
   useEffect(() => {
-    if (discoveryEnabled && !prevDiscoveryEnabledRef.current) {
-      if (activeFeedId !== 'discovery' && discoverFilesRef.current && !isDiscoveringRef.current) {
-        discoverFilesRef.current(undefined, false, 0, false);
-      }
-    }
-    prevDiscoveryEnabledRef.current = discoveryEnabled;
-  }, [discoveryEnabled, activeFeedId]);
+    const prevShowNsfw = prevShowNsfwRef.current;
+    const nextShowNsfw = userState.preferences.showNSFW;
+    prevShowNsfwRef.current = nextShowNsfw;
+
+    if (!initialDiscoveryCompleteRef.current) return;
+    if (prevShowNsfw || !nextShowNsfw) return;
+    if (!userState.preferences.hasAgeZKP || !userState.preferences.isOver18) return;
+
+    void refreshNsfwIndexOnly();
+  }, [
+    userState.preferences.showNSFW,
+    userState.preferences.hasAgeZKP,
+    userState.preferences.isOver18,
+    refreshNsfwIndexOnly,
+  ]);
 
   const handleSearch = useCallback(() => {
     if (!discoveryEnabledRef.current) return;

@@ -8,7 +8,8 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { useHorizontalSwipe } from '../hooks/useHorizontalSwipe';
 import { API_ENDPOINT } from '../config/api';
 import type { ShareToken } from '../utils/tokenDecryption';
-import { apiGet, ownerGet } from '../services/ownerApiFetch';
+import { ownerGet } from '../services/ownerApiFetch';
+import { fetchStorageAccounts } from '../services/storageApiClient';
 
 interface HorizontalThumbnailFeedProps {
   thumbnailIds: string[]; // Array of thumbnail file IDs
@@ -61,12 +62,11 @@ export function HorizontalThumbnailFeed({
           const session = PNOAuthService.loadSession();
           if (session?.did || session?.pnIdentifier) {
             const userId = session.pnIdentifier || session.did;
-            const accountsResponse = await apiGet(`/api/storage/accounts/${userId}`);
-            if (accountsResponse.ok) {
-              const accountsData = await accountsResponse.json();
-              const accounts = accountsData.accounts || [];
-              if (accounts.length > 0) {
-                accountIdToUse = accounts[0].accountId;
+            const accessToken = await PNOAuthService.getValidAccessToken();
+            if (accessToken) {
+              const accountsResult = await fetchStorageAccounts(accessToken, userId);
+              if (accountsResult.accounts.length > 0) {
+                accountIdToUse = accountsResult.accounts[0].accountId;
               }
             }
           }

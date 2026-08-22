@@ -23,6 +23,7 @@ import { PreferenceQuestionService, PreferenceState } from '../services/preferen
 import { useUserState } from '../contexts/UserStateContext';
 import { API_ENDPOINT } from '../config/api';
 import { apiGet, ownerGet } from '../services/ownerApiFetch';
+import { fetchStorageAccounts } from '../services/storageApiClient';
 
 interface FullScreenFeedProps {
   files: IndexedFile[];
@@ -1381,12 +1382,8 @@ export function FullScreenFeed({
                                  collectionFileMetadata.creator?.["@id"] || collectionFileMetadata.author?.did;
             if (pnIdentifier && !accountIdCacheRef.current) {
               try {
-                const accountResponse = await apiGet(
-                  `/api/storage/accounts/${encodeURIComponent(pnIdentifier)}`
-                );
-                
-                if (accountResponse.ok) {
-                  const accounts = (await accountResponse.json()).accounts || [];
+                if (accessToken) {
+                  const { accounts } = await fetchStorageAccounts(accessToken, pnIdentifier);
                   if (accounts.length > 0) {
                     accountId = accounts[0].accountId;
                     accountIdCacheRef.current = accountId;
@@ -1821,11 +1818,8 @@ export function FullScreenFeed({
                                            collectionFileMetadata.creator?.["@id"] || collectionFileMetadata.author?.did;
                       if (pnIdentifier && !accountIdCacheRef.current) {
                         try {
-                          const accountResponse = await apiGet(
-                            `/api/storage/accounts/${encodeURIComponent(pnIdentifier)}`
-                          );
-                          if (accountResponse.ok) {
-                            const accounts = (await accountResponse.json()).accounts || [];
+                          if (accessToken) {
+                            const { accounts } = await fetchStorageAccounts(accessToken, pnIdentifier);
                             if (accounts.length > 0) {
                               accountId = accounts[0].accountId;
                               accountIdCacheRef.current = accountId;

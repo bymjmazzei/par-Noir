@@ -8,6 +8,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { useUserState } from '../contexts/UserStateContext';
 
 import { API_ENDPOINT } from '../config/api';
+import { fetchBulkEngagementStats } from '../services/engagementBulkStatsClient';
 
 interface EngagementData {
   likes: Set<string>; // Set of file IDs that user has liked
@@ -116,7 +117,6 @@ export function useEngagement() {
   const loadBulkEngagementStats = useCallback(async (fileIds: string[]) => {
     if (fileIds.length === 0) return;
 
-    // Mark files as loading
     setLoadingStats(prev => {
       const next = new Set(prev);
       fileIds.forEach(id => next.add(id));
@@ -124,51 +124,30 @@ export function useEngagement() {
     });
 
     try {
-      const response = await fetch(`${API_ENDPOINT}/api/engagement/bulk-stats`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          fileIds,
-          userPnIdentifier: userState.isUnlocked ? userState.pnIdentifier : undefined
-        })
-      });
+      const { stats, likedFiles } = await fetchBulkEngagementStats(
+        fileIds,
+        userState.isUnlocked ? userState.pnIdentifier : undefined
+      );
 
-      if (response.status === 429) {
-        // Rate limited - don't retry immediately, just log and return
-        console.warn('Rate limited (429) when loading bulk engagement stats, skipping');
-        return;
-      }
+      setEngagement(prev => {
+        const newLikes = new Set(prev.likes);
+        const newShares = new Map(prev.shares);
 
-      if (response.ok) {
-        const result = await response.json();
-        const { stats, likedFiles } = result;
-
-        // Update engagement state with backend stats
-        setEngagement(prev => {
-          const newLikes = new Set(prev.likes);
-          const newShares = new Map(prev.shares);
-
-          // Update liked files
-          if (likedFiles && Array.isArray(likedFiles)) {
-            likedFiles.forEach((fileId: string) => {
-              newLikes.add(fileId);
-            });
-          }
-
-          // Update share counts
-          Object.entries(stats || {}).forEach(([fileId, fileStats]: [string, any]) => {
-            if (fileStats && typeof fileStats.shares === 'number') {
-              newShares.set(fileId, fileStats.shares);
-            }
-          });
-
-          return { ...prev, likes: newLikes, shares: newShares };
+        likedFiles.forEach((fileId: string) => {
+          newLikes.add(fileId);
         });
-      }
+
+        Object.entries(stats || {}).forEach(([fileId, fileStats]) => {
+          if (fileStats && typeof fileStats.shares === 'number') {
+            newShares.set(fileId, fileStats.shares);
+          }
+        });
+
+        return { ...prev, likes: newLikes, shares: newShares };
+      });
     } catch (error) {
       console.warn('Failed to load bulk engagement stats:', error);
     } finally {
-      // Remove loading state
       setLoadingStats(prev => {
         const next = new Set(prev);
         fileIds.forEach(id => next.delete(id));

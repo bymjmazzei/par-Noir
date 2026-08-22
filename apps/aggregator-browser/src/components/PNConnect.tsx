@@ -8,7 +8,7 @@ import { Lock, Heart, MessageCircle, Share2 } from 'lucide-react';
 import { UnlockButton, type PnOAuthPopupResult } from '@par-noir/oauth-ui';
 import { useUserState } from '../contexts/UserStateContext';
 import { PNOAuthService } from '../services/pnOAuthService';
-import { runUnlockBootstrap } from '../services/unlockBootstrap';
+import { completeOAuthUnlock } from '../services/oauthSessionCoordinator';
 import { useToast } from '../hooks/useToast';
 import { API_ENDPOINT } from '../config/api';
 
@@ -29,33 +29,20 @@ export function PNConnect({ onConnect, compact = false }: PNConnectProps) {
     if (!result.code) return;
 
     try {
-      const tokenResponse = await PNOAuthService.exchangeCodeForToken(
-        result.code,
-        `${window.location.origin}/oauth-callback.html`
-      );
-      const userInfo = await PNOAuthService.getUserInfo(tokenResponse.access_token);
+      const redirectUri = `${window.location.origin}/oauth-callback.html`;
+      const unlockResult = await completeOAuthUnlock({
+        code: result.code,
+        redirectUri,
+      });
+      const { userInfo, session } = unlockResult;
 
-      let feedTokens: import('../services/pnOAuthService').FeedToken[] = [];
-      const pnId = userInfo.pn_identifier;
-      if (pnId && !pnId.startsWith('did:key:')) {
-        const boot = await runUnlockBootstrap(tokenResponse.access_token, pnId);
-        feedTokens = boot.feedTokens;
-        if (boot.profileDisplayName) {
-          updateDisplayName(boot.profileDisplayName);
-        } else if (userInfo.nickname && !userState.preferences.displayName) {
-          updateDisplayName(userInfo.nickname);
-        }
+      if (unlockResult.bootstrap.profileDisplayName) {
+        updateDisplayName(unlockResult.bootstrap.profileDisplayName);
+      } else if (userInfo.nickname && !userState.preferences.displayName) {
+        updateDisplayName(userInfo.nickname);
       }
 
-      PNOAuthService.saveSession({
-        accessToken: tokenResponse.access_token,
-        refreshToken: tokenResponse.refresh_token,
-        expiresAt: Date.now() + tokenResponse.expires_in * 1000,
-        did: userInfo.did,
-        pnIdentifier: userInfo.pn_identifier,
-        nickname: userInfo.nickname,
-        feedTokens,
-      });
+      PNOAuthService.saveSession(session);
 
       const identifier = userInfo.pn_identifier || userInfo.did;
       if (!identifier) throw new Error('No identifier available from user info');

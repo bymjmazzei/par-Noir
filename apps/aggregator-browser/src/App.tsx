@@ -454,7 +454,12 @@ function App() {
 
   // Load engagement for visible feed window only (not entire index)
   useEffect(() => {
-    if (!discoveryEnabled || filteredFilesByFeed.length === 0 || !loadBulkEngagementStatsRef.current) {
+    if (
+      !userState.isUnlocked ||
+      !discoveryEnabled ||
+      filteredFilesByFeed.length === 0 ||
+      !loadBulkEngagementStatsRef.current
+    ) {
       return;
     }
     const PREFETCH = 8;
@@ -473,7 +478,7 @@ function App() {
       });
     }, 2500);
     return () => clearTimeout(timer);
-  }, [discoveryEnabled, filteredFilesByFeed.length, currentFeedIndex, activeFeedId]);
+  }, [discoveryEnabled, filteredFilesByFeed.length, currentFeedIndex, activeFeedId, userState.isUnlocked]);
 
   const {
     thumbnails,

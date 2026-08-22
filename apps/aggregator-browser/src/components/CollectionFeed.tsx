@@ -14,6 +14,7 @@ import { useViewportHeightCSS } from '../hooks/useViewportHeight';
 import { calculateMediaScaling, getContainerDimensions, type MediaDimensions } from '../utils/mediaScaling';
 import { API_ENDPOINT } from '../config/api';
 import { apiGet, ownerGet } from '../services/ownerApiFetch';
+import { fetchStorageAccounts } from '../services/storageApiClient';
 
 interface CollectionFeedProps {
   collectionFileIds: string[];
@@ -89,14 +90,9 @@ export function CollectionFeed({
         const accessToken = await PNOAuthService.getValidAccessToken();
         if (!accessToken) return null;
         
-        const accountsResponse = await apiGet(`/api/storage/accounts/${userId}`);
-        
-        if (accountsResponse.ok) {
-          const accountsData = await accountsResponse.json();
-          const accounts = accountsData.accounts || [];
-          if (accounts.length > 0) {
-            return accounts[0].accountId;
-          }
+        const accountsResult = await fetchStorageAccounts(accessToken, userId);
+        if (accountsResult.accounts.length > 0) {
+          return accountsResult.accounts[0].accountId;
         }
       }
     } catch (err) {

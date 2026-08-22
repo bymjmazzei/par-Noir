@@ -26,7 +26,12 @@ import {
 } from '../services/dmIdentitySession';
 import { registerMessagingReconnect } from '../services/messagingReconnect';
 import { disconnectRealtimeSync } from '../services/realtimeSyncService';
-import { isOauthCodeConsumed, markOauthCodeConsumed } from '../services/oauthConsumedCodes';
+import { isOauthCodeConsumed } from '../services/oauthConsumedCodes';
+import {
+  completeOAuthUnlock,
+  getOAuthUnlockInflight,
+  isOAuthUnlockInflight,
+} from '../services/oauthSessionCoordinator';
 import {
   startSocialMailboxConsumer,
   stopSocialMailboxConsumer,
@@ -41,7 +46,6 @@ import {
   restoreMessagingAfterOAuth,
   waitForAndApplyMessagingHandoff,
 } from '../services/messagingOAuthHandoff';
-import { MESSAGING_ONLY } from '../config/buildFlags';
 
 /**
  * oauth-callback.html may hand off via `opener.location.replace(/?oauth_resume=1&code=...)`.
@@ -162,7 +166,7 @@ export function useAuthAndSession({
   setShowUploadModal,
   setViewingBrandedFeed,
   showErrorToast,
-  discoverFilesRef,
+  discoverFilesRef: _discoverFilesRef,
 }: UseAuthAndSessionParams) {
   const { userState, setLocked, setUnlocked, updateDisplayName } = useUserState();
   const loadingDisplayNameRef = useRef<Set<string>>(new Set());
@@ -203,15 +207,17 @@ export function useAuthAndSession({
         pushPnOAuthDebug('run_oauth_callback_no_code', {});
         return;
       }
-      if (isOauthCodeConsumed(data.code)) {
+      const authCode = data.code;
+      if (isOauthCodeConsumed(authCode)) {
         pushPnOAuthDebug('run_oauth_callback_code_already_consumed', {});
         return;
       }
 
-      const inflight = oauthCallbackInflightRef.current.get(data.code);
-      if (inflight) {
+      const hookInflight = oauthCallbackInflightRef.current.get(authCode);
+      const coordinatorInflight = getOAuthUnlockInflight(authCode);
+      if (hookInflight || coordinatorInflight) {
         pushPnOAuthDebug('run_oauth_callback_await_inflight', {});
-        await inflight;
+        await (hookInflight ?? coordinatorInflight);
         const session = PNOAuthService.loadSession();
         if (
           session &&
@@ -222,26 +228,28 @@ export function useAuthAndSession({
           const pnId = session.pnIdentifier || session.did;
           setUnlocked(pnId);
           restoreMessagingAfterOAuth();
-          if (!MESSAGING_ONLY && discoverFilesRef.current) {
-            discoverFilesRef.current(undefined, true);
-          }
         }
         return;
       }
 
       const exchangeRedirectUri = options?.redirectUri ?? redirectUriForOAuth;
 
-      const work = (async () => {
+      let resolveWork!: () => void;
+      let rejectWork!: (e: unknown) => void;
+      const work = new Promise<void>((resolve, reject) => {
+        resolveWork = resolve;
+        rejectWork = reject;
+      });
+      oauthCallbackInflightRef.current.set(authCode, work);
+
+      void (async () => {
         try {
-          // Apply handoff from popup result first (consent may post oauth_callback+messagingHandoff
-          // from the API origin before redirect). Do this before token exchange.
           applyAllMessagingHandoffSources(data.messagingHandoff);
           if (!isDmIdentityReady() && data.messagingHandoff) {
             await waitForAndApplyMessagingHandoff(3_000);
             applyAllMessagingHandoffSources(data.messagingHandoff);
           }
 
-          // Absent means consent was skipped; empty string means "shared nothing"
           const grantedDataPoints =
             typeof data.granted_data_points === 'string'
               ? data.granted_data_points.split(',').filter(Boolean)
@@ -251,24 +259,19 @@ export function useAuthAndSession({
             messagingReadyBeforeExchange: isDmIdentityReady(),
             hasMessagingHandoffPayload: Boolean(data.messagingHandoff),
           });
-          const tokenResponse = await PNOAuthService.exchangeCodeForToken(
-            data.code!,
-            exchangeRedirectUri,
-            grantedDataPoints
-          );
 
-          // The exchange above runs before the cloud vault is hydrated, so under
-          // device cloud custody the server cannot write the grant yet. Hold the
-          // choice until a Drive token exists, or the next unlock re-prompts.
-          // typeof === 'string' (including "") means consent completed; absent means skipped.
+          const unlockResult = await completeOAuthUnlock({
+            code: authCode,
+            redirectUri: exchangeRedirectUri,
+            grantedDataPoints,
+          });
+          const { userInfo, session: sessionWithIdentifier } = unlockResult;
+
           const consentCompleted = typeof data.granted_data_points === 'string';
           if (consentCompleted) {
             const { setPendingGrant } = await import('../services/pendingGrantPersist');
             setPendingGrant(grantedDataPoints ?? []);
           }
-          const userInfo = await PNOAuthService.getUserInfo(tokenResponse.access_token);
-          // Grant persist waits for AggregatorCloudReconnectHost after vault hydrate + Drive mint.
-          // Early flush here only produced no_account noise before Drive was ready.
 
           if (!isDmIdentityReady()) {
             await waitForAndApplyMessagingHandoff(20_000);
@@ -287,47 +290,31 @@ export function useAuthAndSession({
             throw new Error(MESSAGING_HANDOFF_INCOMPLETE);
           }
 
-          const pnForBootstrap = userInfo.pn_identifier;
-          let feedTokens: import('../services/pnOAuthService').FeedToken[] = [];
-          if (pnForBootstrap && !pnForBootstrap.startsWith('did:key:')) {
-            const { runUnlockBootstrap } = await import('../services/unlockBootstrap');
-            const boot = await runUnlockBootstrap(tokenResponse.access_token, pnForBootstrap, userInfo);
-            feedTokens = boot.feedTokens;
-            if (boot.profileDisplayName) {
-              updateDisplayName(boot.profileDisplayName);
-            } else if (userInfo.nickname && !userState.preferences.displayName) {
-              updateDisplayName(userInfo.nickname);
-            }
+          if (unlockResult.bootstrap.profileDisplayName) {
+            updateDisplayName(unlockResult.bootstrap.profileDisplayName);
+          } else if (userInfo.nickname && !userState.preferences.displayName) {
+            updateDisplayName(userInfo.nickname);
           }
 
-        const sessionWithIdentifier = {
-          accessToken: tokenResponse.access_token,
-          refreshToken: tokenResponse.refresh_token,
-          expiresAt: Date.now() + tokenResponse.expires_in * 1000,
-          did: userInfo.did,
-          nickname: userInfo.nickname,
-          pnIdentifier: userInfo.pn_identifier || undefined,
-          publicKey: userInfo.public_key,
-          feedTokens,
-        };
-        PNOAuthService.saveSession(sessionWithIdentifier);
+          PNOAuthService.saveSession(sessionWithIdentifier);
 
-        if (userInfo.pn_identifier && !userInfo.pn_identifier.startsWith('did:key:')) {
-          setUnlocked(userInfo.pn_identifier);
-        } else {
-          setUnlocked(userInfo.did);
-        }
+          if (userInfo.pn_identifier && !userInfo.pn_identifier.startsWith('did:key:')) {
+            setUnlocked(userInfo.pn_identifier);
+          } else {
+            setUnlocked(userInfo.did);
+          }
 
-        // Discovery already runs on mount; avoid forced triple metadata-index refresh on unlock.
-        pushPnOAuthDebug('run_oauth_callback_success', {
-          hasPnIdentifier: Boolean(userInfo.pn_identifier),
-        });
+          pushPnOAuthDebug('run_oauth_callback_success', {
+            hasPnIdentifier: Boolean(userInfo.pn_identifier),
+          });
+          resolveWork();
         } catch (err) {
           pushPnOAuthDebug('run_oauth_callback_exception', {
             name: err instanceof Error ? err.name : 'unknown',
           });
           if (err instanceof Error && err.message === MESSAGING_HANDOFF_INCOMPLETE) {
-            throw err;
+            rejectWork(err);
+            return;
           }
           setLocked();
           clearDmIdentity();
@@ -335,16 +322,16 @@ export function useAuthAndSession({
           const rawMessage = err instanceof Error ? err.message : String(err);
           const safeMessage = rawMessage ? rawMessage.slice(0, 180) : 'Authentication failed';
           showErrorToast(safeMessage);
-          throw err;
+          rejectWork(err);
+        } finally {
+          oauthCallbackInflightRef.current.delete(authCode);
         }
       })();
 
-      markOauthCodeConsumed(data.code);
-      oauthCallbackInflightRef.current.set(data.code, work);
       try {
         await work;
-      } finally {
-        oauthCallbackInflightRef.current.delete(data.code);
+      } catch {
+        /* surfaced via toast */
       }
 
       const popup = options?.popup;
@@ -370,7 +357,6 @@ export function useAuthAndSession({
       setUnlocked,
       updateDisplayName,
       showErrorToast,
-      discoverFilesRef,
       userState.preferences.displayName,
     ]
   );
@@ -462,7 +448,14 @@ export function useAuthAndSession({
         const code = data.code;
         const err = data.error;
         if (!code && !err) return;
-        if (code && (isOauthCodeConsumed(code) || oauthCallbackInflightRef.current.has(code))) return;
+        if (
+          code &&
+          (isOauthCodeConsumed(code) ||
+            oauthCallbackInflightRef.current.has(code) ||
+            isOAuthUnlockInflight(code))
+        ) {
+          return;
+        }
         const ts = Number(data.timestamp);
         if (Number.isFinite(ts) && Date.now() - ts > 120_000) return;
 
@@ -868,9 +861,6 @@ export function useAuthAndSession({
             if (pnId && !pnId.startsWith('did:key:')) {
               setTimeout(() => loadUserDisplayName(pnId), 500);
             }
-            if (!MESSAGING_ONLY && discoverFilesRef.current) {
-              discoverFilesRef.current(undefined, true);
-            }
             return;
           }
           setLocked();
@@ -903,7 +893,6 @@ export function useAuthAndSession({
     setLocked,
     setUnlocked,
     showErrorToast,
-    discoverFilesRef,
     loadUserDisplayName,
     redirectUriForOAuth,
   ]);
