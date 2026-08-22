@@ -8,6 +8,7 @@ import { Lock, Heart, MessageCircle, Share2 } from 'lucide-react';
 import { UnlockButton, type PnOAuthPopupResult } from '@par-noir/oauth-ui';
 import { useUserState } from '../contexts/UserStateContext';
 import { PNOAuthService } from '../services/pnOAuthService';
+import { runUnlockBootstrap } from '../services/unlockBootstrap';
 import { useToast } from '../hooks/useToast';
 import { API_ENDPOINT } from '../config/api';
 
@@ -17,7 +18,7 @@ interface PNConnectProps {
 }
 
 export function PNConnect({ onConnect, compact = false }: PNConnectProps) {
-  const { setUnlocked, userState } = useUserState();
+  const { setUnlocked, userState, updateDisplayName } = useUserState();
   const { success, error: showError } = useToast();
 
   const handlePopupResult = async (result: PnOAuthPopupResult) => {
@@ -34,21 +35,16 @@ export function PNConnect({ onConnect, compact = false }: PNConnectProps) {
       );
       const userInfo = await PNOAuthService.getUserInfo(tokenResponse.access_token);
 
-      let feedTokens: any[] = [];
-      try {
-        if (userInfo.pn_identifier) {
-          const feedTokensResponse = await fetch(`${API_ENDPOINT}/api/feeds/tokens`, {
-            headers: {
-              Authorization: `Bearer ${tokenResponse.access_token}`,
-            },
-          });
-          if (feedTokensResponse.ok) {
-            const feedTokensData = await feedTokensResponse.json();
-            feedTokens = feedTokensData.feedTokens || [];
-          }
+      let feedTokens: import('../services/pnOAuthService').FeedToken[] = [];
+      const pnId = userInfo.pn_identifier;
+      if (pnId && !pnId.startsWith('did:key:')) {
+        const boot = await runUnlockBootstrap(tokenResponse.access_token, pnId);
+        feedTokens = boot.feedTokens;
+        if (boot.profileDisplayName) {
+          updateDisplayName(boot.profileDisplayName);
+        } else if (userInfo.nickname && !userState.preferences.displayName) {
+          updateDisplayName(userInfo.nickname);
         }
-      } catch {
-        // Do not fail auth if feed token hydration fails
       }
 
       PNOAuthService.saveSession({
@@ -148,4 +144,3 @@ export function PNConnect({ onConnect, compact = false }: PNConnectProps) {
     </>
   );
 }
-

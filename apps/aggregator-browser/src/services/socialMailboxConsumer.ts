@@ -198,7 +198,14 @@ export function startSocialMailboxConsumer(): void {
   intervalId = window.setInterval(() => {
     void drainOnce();
   }, DRAIN_INTERVAL_MS);
-  void drainOnce();
+  void (async () => {
+    const session = PNOAuthService.loadSession();
+    if (session?.pnIdentifier) {
+      const { awaitCloudUnlockComplete } = await import('./cloudUnlockCoordinator');
+      await awaitCloudUnlockComplete(session.pnIdentifier, 60_000);
+    }
+    await drainOnce();
+  })();
 }
 
 export function stopSocialMailboxConsumer(): void {

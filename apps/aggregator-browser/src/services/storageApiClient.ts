@@ -1,4 +1,5 @@
 import { API_ENDPOINT } from '../config/api';
+import { accountsCacheService } from './accountsCacheService';
 import { ownerApiHeadersAsync } from './ownerApiHeaders';
 
 export type StorageProviderId =
@@ -349,25 +350,60 @@ export async function listStorageFiles(
   );
 }
 
+export type StorageAccountsResult = {
+  connected: boolean;
+  accounts: Array<{ provider: string; accountId: string; email?: string; displayName?: string }>;
+  socialCloudProvider?: string | null;
+};
+
+const storageAccountsInflight = new Map<string, Promise<StorageAccountsResult>>();
+
+/** Clear cached storage accounts (call on lock or after account mutations). */
+export function invalidateStorageAccountsCache(pnIdentifier?: string): void {
+  if (pnIdentifier) {
+    accountsCacheService.clear(pnIdentifier);
+    storageAccountsInflight.delete(pnIdentifier);
+  } else {
+    accountsCacheService.clearAll();
+    storageAccountsInflight.clear();
+  }
+}
+
 export async function fetchStorageAccounts(
   authToken: string,
   pnIdentifier: string
-): Promise<{
-  connected: boolean;
-  accounts: Array<{ provider: string; accountId: string }>;
-  socialCloudProvider?: string | null;
-}> {
-  const res = await fetch(`${API_ENDPOINT}/api/storage/accounts/${encodeURIComponent(pnIdentifier)}`, {
-    headers: await driveAuthHeaders(authToken, pnIdentifier)
-  });
-  if (!res.ok) {
-    return { connected: false, accounts: [], socialCloudProvider: null };
+): Promise<StorageAccountsResult> {
+  const cached = accountsCacheService.get(pnIdentifier);
+  if (cached) {
+    return {
+      connected: cached.length > 0,
+      accounts: cached,
+      socialCloudProvider: null
+    };
   }
-  const data = await res.json();
-  const accounts = Array.isArray(data.accounts) ? data.accounts : [];
-  return {
-    connected: accounts.length > 0,
-    accounts,
-    socialCloudProvider: data.socialCloudProvider ?? data.primaryProvider ?? null
-  };
+
+  const inflight = storageAccountsInflight.get(pnIdentifier);
+  if (inflight) return inflight;
+
+  const work = (async (): Promise<StorageAccountsResult> => {
+    const res = await fetch(`${API_ENDPOINT}/api/storage/accounts/${encodeURIComponent(pnIdentifier)}`, {
+      headers: await driveAuthHeaders(authToken, pnIdentifier)
+    });
+    if (!res.ok) {
+      return { connected: false, accounts: [], socialCloudProvider: null };
+    }
+    const data = await res.json();
+    const accounts = Array.isArray(data.accounts) ? data.accounts : [];
+    accountsCacheService.set(pnIdentifier, accounts);
+    return {
+      connected: accounts.length > 0,
+      accounts,
+      socialCloudProvider: data.socialCloudProvider ?? data.primaryProvider ?? null
+    };
+  })().finally(() => {
+    storageAccountsInflight.delete(pnIdentifier);
+  });
+
+  storageAccountsInflight.set(pnIdentifier, work);
+  return work;
 }

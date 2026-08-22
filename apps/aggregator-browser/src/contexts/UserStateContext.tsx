@@ -197,8 +197,16 @@ export function UserStateProvider({ children }: { children: ReactNode }) {
     }
 
     let cancelled = false;
+    let inflight = false;
+
     const loadPreferencesFromDrive = async () => {
+      if (inflight || cancelled) return;
+      inflight = true;
       try {
+        const { awaitCloudUnlockComplete } = await import('../services/cloudUnlockCoordinator');
+        const ready = await awaitCloudUnlockComplete(userState.pnIdentifier!, 60_000);
+        if (!ready || cancelled) return;
+
         const { PNOAuthService } = await import('../services/pnOAuthService');
         const session = PNOAuthService.loadSession();
         if (!session?.accessToken) {
@@ -251,6 +259,8 @@ export function UserStateProvider({ children }: { children: ReactNode }) {
         }
       } catch (error) {
         console.warn('Failed to load preferences from Google Drive:', error);
+      } finally {
+        inflight = false;
       }
     };
 
@@ -258,7 +268,6 @@ export function UserStateProvider({ children }: { children: ReactNode }) {
       void loadPreferencesFromDrive();
     };
     window.addEventListener('pn-cloud-credentials-ready', onReady);
-    void loadPreferencesFromDrive();
     return () => {
       cancelled = true;
       window.removeEventListener('pn-cloud-credentials-ready', onReady);
@@ -486,8 +495,23 @@ export function UserStateProvider({ children }: { children: ReactNode }) {
   };
 
   const setLocked = () => {
-    // Clear accounts cache on logout
+    // Clear caches on logout
     accountsCacheService.clearAll();
+    void import('../services/storageApiClient').then(({ invalidateStorageAccountsCache }) =>
+      invalidateStorageAccountsCache()
+    );
+    void import('../services/cloudUnlockCoordinator').then(({ resetCloudUnlockCoordinator }) =>
+      resetCloudUnlockCoordinator()
+    );
+    void import('../services/unlockBootstrap').then(({ invalidateUnlockBootstrap }) =>
+      invalidateUnlockBootstrap()
+    );
+    void import('../services/connectionService').then(({ invalidateConnectionsCache }) =>
+      invalidateConnectionsCache()
+    );
+    void import('../services/pnOAuthService').then(({ PNOAuthService }) =>
+      PNOAuthService.invalidateUserInfoCache()
+    );
     // Clear inbox cache on logout
     if (userState.pnIdentifier) {
       inboxCacheService.clear(userState.pnIdentifier);

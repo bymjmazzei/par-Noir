@@ -263,21 +263,46 @@ export class PNOAuthService {
   }
 
   /**
-   * Get user info using access token
+   * Get user info using access token (60s TTL + in-flight dedupe per token).
    */
+  private static userInfoCache = new Map<string, { at: number; value: OAuthUserInfo }>();
+  private static userInfoInflight = new Map<string, Promise<OAuthUserInfo>>();
+  private static readonly USERINFO_TTL_MS = 60_000;
+
+  static invalidateUserInfoCache(): void {
+    PNOAuthService.userInfoCache.clear();
+    PNOAuthService.userInfoInflight.clear();
+  }
+
   static async getUserInfo(accessToken: string): Promise<OAuthUserInfo> {
-    const response = await fetch(`${API_ENDPOINT}/oauth/userinfo`, {
-      headers: {
-        'Authorization': `Bearer ${accessToken}`
+    const cached = PNOAuthService.userInfoCache.get(accessToken);
+    if (cached && Date.now() - cached.at < PNOAuthService.USERINFO_TTL_MS) {
+      return cached.value;
+    }
+    const inflight = PNOAuthService.userInfoInflight.get(accessToken);
+    if (inflight) return inflight;
+
+    const work = (async (): Promise<OAuthUserInfo> => {
+      const response = await fetch(`${API_ENDPOINT}/oauth/userinfo`, {
+        headers: {
+          Authorization: `Bearer ${accessToken}`
+        }
+      });
+
+      if (!response.ok) {
+        const error = await response.json().catch(() => ({ error: 'Failed to get user info' }));
+        throw new Error(error.error_description || error.error || 'Failed to get user info');
       }
+
+      const value = (await response.json()) as OAuthUserInfo;
+      PNOAuthService.userInfoCache.set(accessToken, { at: Date.now(), value });
+      return value;
+    })().finally(() => {
+      PNOAuthService.userInfoInflight.delete(accessToken);
     });
 
-    if (!response.ok) {
-      const error = await response.json().catch(() => ({ error: 'Failed to get user info' }));
-      throw new Error(error.error_description || error.error || 'Failed to get user info');
-    }
-
-    return response.json();
+    PNOAuthService.userInfoInflight.set(accessToken, work);
+    return work;
   }
 
   /**

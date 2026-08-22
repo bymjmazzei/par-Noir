@@ -19,6 +19,7 @@ import {
 } from '@par-noir/device-cloud-credentials';
 import { envelopeHasUsableSecrets } from '@par-noir/user-owned-storage';
 import type { StorageCredentialsEnvelope } from '@par-noir/user-owned-storage';
+import { markCloudUnlockComplete, resetCloudUnlockCoordinator } from '../services/cloudUnlockCoordinator';
 import { API_ENDPOINT } from '../config/api';
 import { PNOAuthService } from '../services/pnOAuthService';
 import { fetchDeviceRegistry } from '../services/deviceService';
@@ -217,11 +218,16 @@ export const AggregatorCloudReconnectHost: React.FC = () => {
         pnIdentifier,
         apiEndpoint: API_ENDPOINT
       });
-      if (ok) void retryPublishMlKemPublicKey();
-      // A Drive token exists now, so the consent choice held from this unlock can
-      // finally be written. Without this the user re-consents on every unlock.
-      const { flushPendingGrant } = await import('../services/pendingGrantPersist');
-      await flushPendingGrant({ authToken, pnIdentifier });
+      markCloudUnlockComplete(pnIdentifier, ok);
+      if (ok) {
+        void retryPublishMlKemPublicKey();
+        const { prefetchConnectionsList } = await import('../services/connectionService');
+        void prefetchConnectionsList(pnIdentifier);
+        // A Drive token exists now, so the consent choice held from this unlock can
+        // finally be written. Without this the user re-consents on every unlock.
+        const { flushPendingGrant } = await import('../services/pendingGrantPersist');
+        await flushPendingGrant({ authToken, pnIdentifier });
+      }
     })();
   }, [vaultHydrated, gate.markReady, authToken, pnIdentifier]);
 
@@ -280,11 +286,16 @@ export const AggregatorCloudReconnectHost: React.FC = () => {
       gate.markReady();
       setVaultHydrated(true);
       if (authToken) {
-        await publishCloudDriveReady({
+        const ok = await publishCloudDriveReady({
           authToken,
           pnIdentifier,
           apiEndpoint: API_ENDPOINT
         });
+        markCloudUnlockComplete(pnIdentifier, ok);
+        if (ok) {
+          const { prefetchConnectionsList } = await import('../services/connectionService');
+          void prefetchConnectionsList(pnIdentifier);
+        }
         // Manual reconnect also gets a Drive token; flush any held consent choice.
         const { flushPendingGrant } = await import('../services/pendingGrantPersist');
         await flushPendingGrant({ authToken, pnIdentifier });
@@ -323,6 +334,7 @@ export async function wipeAggregatorCloudOnLock(
   pnIdentifier: string | null | undefined,
   opts?: { hasKeyedDevices?: boolean }
 ): Promise<void> {
+  resetCloudUnlockCoordinator(pnIdentifier ?? undefined);
   if (!pnIdentifier) return;
   const hasKeyedDevices = opts?.hasKeyedDevices ?? true;
   await clearCloudCredentialsOnLock({

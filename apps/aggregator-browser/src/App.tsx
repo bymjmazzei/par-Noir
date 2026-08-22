@@ -268,34 +268,6 @@ function App() {
     loadBulkEngagementStatsRef.current = loadBulkEngagementStats;
   }, [loadBulkEngagementStats]);
 
-  useEffect(() => {
-    if (!discoveryEnabled || indexedFiles.length === 0 || !loadBulkEngagementStatsRef.current) {
-      return;
-    }
-    const timer = setTimeout(() => {
-      if (!loadBulkEngagementStatsRef.current) return;
-      const fileIds = indexedFiles.map((file) => file.metadata.fileId);
-      // Only load engagement stats for files we haven't loaded yet
-      const newFileIds = fileIds.filter(id => !loadedEngagementFileIdsRef.current.has(id));
-      
-      if (newFileIds.length > 0) {
-        // Mark all new files as being loaded
-        newFileIds.forEach(id => loadedEngagementFileIdsRef.current.add(id));
-        
-      // Load engagement stats in batches to avoid overwhelming the API
-      const batchSize = 50;
-        for (let i = 0; i < newFileIds.length; i += batchSize) {
-          const batch = newFileIds.slice(i, i + batchSize);
-          loadBulkEngagementStatsRef.current(batch).catch(error => {
-            if (import.meta.env.DEV) console.warn('Failed to load engagement stats, will retry:', error);
-            batch.forEach(id => loadedEngagementFileIdsRef.current.delete(id));
-          });
-        }
-      }
-    }, 2500);
-    return () => clearTimeout(timer);
-  }, [discoveryEnabled, indexedFiles.length]);
-
   // Initialize from URL params - only on mount and when file param changes
   const hasInitializedFromURLRef = useRef<boolean>(false);
   const [vanityNotFound, setVanityNotFound] = useState(false);
@@ -479,6 +451,29 @@ function App() {
     feeds,
     viewMode,
   });
+
+  // Load engagement for visible feed window only (not entire index)
+  useEffect(() => {
+    if (!discoveryEnabled || filteredFilesByFeed.length === 0 || !loadBulkEngagementStatsRef.current) {
+      return;
+    }
+    const PREFETCH = 8;
+    const start = Math.max(0, currentFeedIndex - PREFETCH);
+    const end = Math.min(filteredFilesByFeed.length, currentFeedIndex + PREFETCH + 1);
+    const windowFiles = filteredFilesByFeed.slice(start, end);
+    const timer = setTimeout(() => {
+      if (!loadBulkEngagementStatsRef.current) return;
+      const fileIds = windowFiles.map((file) => file.metadata.fileId);
+      const newFileIds = fileIds.filter((id) => !loadedEngagementFileIdsRef.current.has(id));
+      if (newFileIds.length === 0) return;
+      newFileIds.forEach((id) => loadedEngagementFileIdsRef.current.add(id));
+      loadBulkEngagementStatsRef.current(newFileIds).catch((error) => {
+        if (import.meta.env.DEV) console.warn('Failed to load engagement stats, will retry:', error);
+        newFileIds.forEach((id) => loadedEngagementFileIdsRef.current.delete(id));
+      });
+    }, 2500);
+    return () => clearTimeout(timer);
+  }, [discoveryEnabled, filteredFilesByFeed.length, currentFeedIndex, activeFeedId]);
 
   const {
     thumbnails,

@@ -153,8 +153,9 @@ export function useThumbnailsAndMedia({
     generateThumbnailsForImagesRef.current = generateThumbnailsForImages;
   }, [generateThumbnailsForImages]);
 
-  // Generate thumbnails when indices change
+  // Generate thumbnails when indices change (grid mode only — feed uses viewport decrypt in FullScreenFeed)
   useEffect(() => {
+    if (viewMode === 'feed') return;
     if (mediaFiles.length === 0 && thoughtsFiles.length === 0 && collectionsFiles.length === 0) return;
     const allFiles = [...mediaFiles, ...thoughtsFiles, ...collectionsFiles];
     const filesToThumbnail = allFiles.filter((f) => {
@@ -164,11 +165,11 @@ export function useThumbnailsAndMedia({
     if (filesToThumbnail.length > 0 && generateThumbnailsForImagesRef.current) {
       generateThumbnailsForImagesRef.current(filesToThumbnail);
     }
-  }, [mediaFiles, thoughtsFiles, collectionsFiles, thumbnails, generatingThumbnails, generateThumbnailsForImages]);
+  }, [mediaFiles, thoughtsFiles, collectionsFiles, thumbnails, generatingThumbnails, generateThumbnailsForImages, viewMode]);
 
-  // Pre-load video blobs when in feed mode and indices change
+  // Pre-load video blobs when in grid mode and indices change
   useEffect(() => {
-    if (viewMode !== 'feed') return;
+    if (viewMode !== 'grid') return;
     const allFiles = [...mediaFiles, ...thoughtsFiles, ...collectionsFiles];
     for (const indexedFile of allFiles) {
       const file = indexedFile.metadata;

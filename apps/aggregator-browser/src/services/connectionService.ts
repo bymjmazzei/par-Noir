@@ -280,25 +280,41 @@ export async function rejectConnectionRequest(
  * Uses Google Drive via API
  */
 export async function getConnections(userPnIdentifier: string): Promise<Connection[]> {
-  // Use Google Drive API directly
-  try {
-    const response = await fetch(`${API_ENDPOINT}/api/connections?userPnIdentifier=${userPnIdentifier}`, {
-      headers: await getAuthHeaders()
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text().catch(() => 'Unknown error');
-      console.error(`[getConnections] API returned ${response.status}:`, errorText);
-      throw new Error(`Failed to load connections: ${response.status}`);
-    }
-
-    const result = await response.json();
-    const connections = result.connections || [];
-    return connections;
-  } catch (error) {
-    console.error('[getConnections] Failed to get connections:', error);
-    return [];
+  if (
+    connectionsCache?.pn === userPnIdentifier &&
+    Date.now() - connectionsCache.at < CONNECTIONS_TTL_MS
+  ) {
+    return connectionsCache.value;
   }
+  const inflight = connectionsInflight.get(userPnIdentifier);
+  if (inflight) return inflight;
+
+  const work = (async (): Promise<Connection[]> => {
+    try {
+      const response = await fetch(`${API_ENDPOINT}/api/connections?userPnIdentifier=${userPnIdentifier}`, {
+        headers: await getAuthHeaders()
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text().catch(() => 'Unknown error');
+        console.error(`[getConnections] API returned ${response.status}:`, errorText);
+        throw new Error(`Failed to load connections: ${response.status}`);
+      }
+
+      const result = await response.json();
+      const connections = result.connections || [];
+      connectionsCache = { pn: userPnIdentifier, at: Date.now(), value: connections };
+      return connections;
+    } catch (error) {
+      console.error('[getConnections] Failed to get connections:', error);
+      return [];
+    }
+  })().finally(() => {
+    connectionsInflight.delete(userPnIdentifier);
+  });
+
+  connectionsInflight.set(userPnIdentifier, work);
+  return work;
 }
 
 /**
@@ -306,6 +322,57 @@ export async function getConnections(userPnIdentifier: string): Promise<Connecti
  * Uses Google Drive via API
  */
 const pendingRequestsInflight = new Map<string, Promise<PendingRequests>>();
+
+const CONNECTIONS_TTL_MS = 5 * 60_000;
+const connectionsInflight = new Map<string, Promise<Connection[]>>();
+let connectionsCache: { pn: string; at: number; value: Connection[] } | null = null;
+
+export function invalidateConnectionsCache(pnIdentifier?: string): void {
+  if (!pnIdentifier || connectionsCache?.pn === pnIdentifier) {
+    connectionsCache = null;
+  }
+  if (pnIdentifier) {
+    connectionsInflight.delete(pnIdentifier);
+  } else {
+    connectionsInflight.clear();
+  }
+}
+
+function normalizePnId(id: string): string {
+  return id.startsWith('pn-') ? id.slice(3) : id;
+}
+
+/** Warm connections list after cloud unlock (single GET, cached). */
+export function prefetchConnectionsList(userPnIdentifier: string): Promise<Connection[]> {
+  return getConnections(userPnIdentifier);
+}
+
+/**
+ * Resolve status from cached connections list; falls back to per-peer status API.
+ */
+export async function resolveConnectionStatusFromCache(
+  userPnIdentifier: string,
+  otherUserPnIdentifier: string
+): Promise<ConnectionStatus> {
+  const connections = await getConnections(userPnIdentifier);
+  const other = normalizePnId(otherUserPnIdentifier);
+  for (const c of connections) {
+    if (normalizePnId(c.userPnIdentifier) !== other) continue;
+    if (c.status === 'accepted') {
+      return { status: 'connected', connectionId: c.connectionId };
+    }
+    if (c.status === 'pending_sent') {
+      return { status: 'pending_sent', connectionId: c.connectionId };
+    }
+    if (c.status === 'pending_received') {
+      return { status: 'pending_received', connectionId: c.connectionId };
+    }
+    if (c.status === 'blocked') {
+      return { status: 'blocked', connectionId: c.connectionId };
+    }
+  }
+  return getConnectionStatus(userPnIdentifier, otherUserPnIdentifier);
+}
 
 export async function getPendingRequests(userPnIdentifier: string): Promise<PendingRequests> {
   const inflight = pendingRequestsInflight.get(userPnIdentifier);

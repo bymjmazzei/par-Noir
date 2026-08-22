@@ -37,6 +37,8 @@ export class CentralMetadataAggregator {
     } catch (error) {
       console.warn('Failed to clear cache:', error);
     }
+    this.ttlCache.clear();
+    this.pendingRequests.clear();
   }
 
 
@@ -183,8 +185,14 @@ export class CentralMetadataAggregator {
     },
     forceRefresh: boolean = false
   ): Promise<{ files: CentralIndexEntry[]; total: number; hasMore: boolean }> {
-    // Create a unique key for this request to deduplicate (include pagination params)
     const requestKey = `nsfw-${JSON.stringify({ ...filters, limit: filters?.limit, offset: filters?.offset })}`;
+
+    if (!forceRefresh) {
+      const cached = this.ttlCache.get(requestKey);
+      if (cached && Date.now() - cached.ts < TTL_MS) {
+        return { files: cached.files, total: cached.total, hasMore: cached.hasMore };
+      }
+    }
     
     // If there's already a pending request with the same filters and pagination, return it
     if (!forceRefresh && this.pendingRequests.has(requestKey)) {
@@ -193,7 +201,12 @@ export class CentralMetadataAggregator {
     }
     
     // Create the request promise
-    const requestPromise = this._fetchNSFWWithRetry(filters);
+    const requestPromise = this._fetchNSFWWithRetry(filters).then((res) => {
+      if (!forceRefresh) {
+        this.ttlCache.set(requestKey, { ...res, ts: Date.now() });
+      }
+      return res;
+    });
     
     // Store it for deduplication
     this.pendingRequests.set(requestKey, requestPromise);

@@ -7,6 +7,7 @@ import { useState, useEffect } from 'react';
 import { Bell, Check, Trash2, X } from 'lucide-react';
 import { useUserState } from '../contexts/UserStateContext';
 import { NotificationService, Notification } from '../services/notificationService';
+import { PNOAuthService } from '../services/pnOAuthService';
 import { useToast } from '../hooks/useToast';
 import { LoadingSkeleton } from './LoadingSkeleton';
 import { useRealtimeSync } from '../hooks/useRealtimeSync';
@@ -25,7 +26,10 @@ export function NotificationBell({ onNotificationClick }: NotificationBellProps)
 
   const loadUnreadCount = async () => {
     if (!userState.isUnlocked || !userState.pnIdentifier) return;
+    if (typeof document !== 'undefined' && document.visibilityState !== 'visible') return;
     try {
+      const token = await PNOAuthService.getValidAccessToken();
+      if (!token) return;
       const result = await NotificationService.getNotifications(userState.pnIdentifier, {
         limit: 100,
         unreadOnly: true
@@ -60,8 +64,18 @@ export function NotificationBell({ onNotificationClick }: NotificationBellProps)
     if (socketConnected) {
       return;
     }
-    const interval = setInterval(loadUnreadCount, 30000);
-    return () => clearInterval(interval);
+    const interval = setInterval(() => {
+      if (typeof document !== 'undefined' && document.visibilityState !== 'visible') return;
+      void loadUnreadCount();
+    }, 30000);
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') void loadUnreadCount();
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => {
+      clearInterval(interval);
+      document.removeEventListener('visibilitychange', onVisible);
+    };
   }, [userState.isUnlocked, userState.pnIdentifier, socketConnected]);
 
   const loadNotifications = async () => {

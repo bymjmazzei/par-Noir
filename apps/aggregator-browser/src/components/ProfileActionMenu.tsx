@@ -7,7 +7,7 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { User, MessageCircle, UserPlus, Check, X, Clock, Pencil, UserMinus, BadgeCheck } from 'lucide-react';
 import { useUserState } from '../contexts/UserStateContext';
-import { getConnectionStatus, sendConnectionRequest, acceptConnectionRequest, rejectConnectionRequest, removeConnection } from '../services/connectionService';
+import { sendConnectionRequest, acceptConnectionRequest, rejectConnectionRequest, removeConnection, resolveConnectionStatusFromCache } from '../services/connectionService';
 import { ConnectionStatus } from '../services/connectionService';
 import { useToast } from '../hooks/useToast';
 import { ToastContainer } from './Toast';
@@ -86,6 +86,7 @@ export const ProfileActionMenu = React.memo(function ProfileActionMenu({ creator
   const [publicNameProofType, setPublicNameProofType] = useState<string | null>(null);
 
   useEffect(() => {
+    if (!isOpen) return;
     let cancelled = false;
     (async () => {
       if (!creatorId) {
@@ -107,7 +108,7 @@ export const ProfileActionMenu = React.memo(function ProfileActionMenu({ creator
     return () => {
       cancelled = true;
     };
-  }, [creatorId]);
+  }, [creatorId, isOpen]);
 
   // Helper to check if ID is a valid pN identifier (not a DID or public key)
   const isValidPnIdentifier = (id: string): boolean => {
@@ -149,7 +150,7 @@ export const ProfileActionMenu = React.memo(function ProfileActionMenu({ creator
   const loadedProfilesRef = useRef<Set<string>>(new Set());
   
   useEffect(() => {
-    if (!creatorId || !isValidPnIdentifier(creatorId)) return;
+    if (!isOpen || !creatorId || !isValidPnIdentifier(creatorId)) return;
     
     // Skip if we've already loaded this profile
     if (loadedProfilesRef.current.has(creatorId)) {
@@ -168,14 +169,13 @@ export const ProfileActionMenu = React.memo(function ProfileActionMenu({ creator
           // Cache it in user state
           setUserDisplayName(creatorId, profile.displayName);
         }
-      } catch (error) {
+      } catch {
         // Silently fail - profile may not exist for this user
-        // Don't log to console to avoid spam
       }
     };
 
     loadProfileData();
-  }, [creatorId]); // Removed setUserDisplayName from deps - it's stable from context
+  }, [creatorId, isOpen]); // Removed setUserDisplayName from deps - it's stable from context
 
   // Create a stable key for indexedFiles based on fileIds to prevent unnecessary recalculations
   const indexedFilesKey = useMemo(() => {
@@ -329,17 +329,26 @@ export const ProfileActionMenu = React.memo(function ProfileActionMenu({ creator
     }
   }, [isEditingName, displayName]);
 
-  // Load connection status (after cloud vault hydrate when possible)
+  // Load connection status when menu opens (uses cached connections list when available)
   useEffect(() => {
-    if (!userState.isUnlocked || !userState.pnIdentifier || isOwnProfile || !creatorId || !isValidPnIdentifier(creatorId)) {
-      setConnectionStatus({ status: 'not_connected' });
+    if (
+      !isOpen ||
+      !userState.isUnlocked ||
+      !userState.pnIdentifier ||
+      isOwnProfile ||
+      !creatorId ||
+      !isValidPnIdentifier(creatorId)
+    ) {
+      if (!isOpen) {
+        setConnectionStatus({ status: 'not_connected' });
+      }
       return;
     }
 
     let cancelled = false;
     const loadStatus = async () => {
       try {
-        const status = await getConnectionStatus(userState.pnIdentifier!, creatorId);
+        const status = await resolveConnectionStatusFromCache(userState.pnIdentifier!, creatorId);
         if (!cancelled) setConnectionStatus(status);
       } catch {
         if (!cancelled) setConnectionStatus({ status: 'not_connected' });
@@ -347,12 +356,10 @@ export const ProfileActionMenu = React.memo(function ProfileActionMenu({ creator
     };
 
     void loadStatus();
-    window.addEventListener('pn-cloud-credentials-ready', loadStatus);
     return () => {
       cancelled = true;
-      window.removeEventListener('pn-cloud-credentials-ready', loadStatus);
     };
-  }, [userState.isUnlocked, userState.pnIdentifier, creatorId, isOwnProfile]);
+  }, [isOpen, userState.isUnlocked, userState.pnIdentifier, creatorId, isOwnProfile]);
 
   const handleConnect = async () => {
     if (!userState.isUnlocked || !userState.pnIdentifier) return;

@@ -287,33 +287,18 @@ export function useAuthAndSession({
             throw new Error(MESSAGING_HANDOFF_INCOMPLETE);
           }
 
-        let feedTokens: import('../services/pnOAuthService').FeedToken[] = [];
-        try {
-          if (!MESSAGING_ONLY && userInfo.pn_identifier) {
-            const feedTokensResponse = await fetch(`${API_ENDPOINT}/api/feeds/tokens`, {
-              headers: {
-                Authorization: `Bearer ${tokenResponse.access_token}`,
-                Accept: 'application/json'
-              }
-            });
-            if (feedTokensResponse.ok) {
-              const feedTokensData = await feedTokensResponse.json();
-              const raw = feedTokensData.feedTokens;
-              if (Array.isArray(raw)) {
-                feedTokens = raw.filter(
-                  (t: unknown): t is import('../services/pnOAuthService').FeedToken =>
-                    !!t &&
-                    typeof t === 'object' &&
-                    typeof (t as { feedId?: unknown }).feedId === 'string' &&
-                    typeof (t as { feedName?: unknown }).feedName === 'string' &&
-                    typeof (t as { subPnIdentifier?: unknown }).subPnIdentifier === 'string'
-                );
-              }
+          const pnForBootstrap = userInfo.pn_identifier;
+          let feedTokens: import('../services/pnOAuthService').FeedToken[] = [];
+          if (pnForBootstrap && !pnForBootstrap.startsWith('did:key:')) {
+            const { runUnlockBootstrap } = await import('../services/unlockBootstrap');
+            const boot = await runUnlockBootstrap(tokenResponse.access_token, pnForBootstrap, userInfo);
+            feedTokens = boot.feedTokens;
+            if (boot.profileDisplayName) {
+              updateDisplayName(boot.profileDisplayName);
+            } else if (userInfo.nickname && !userState.preferences.displayName) {
+              updateDisplayName(userInfo.nickname);
             }
           }
-        } catch {
-          // Don't fail auth if feed tokens can't be loaded
-        }
 
         const sessionWithIdentifier = {
           accessToken: tokenResponse.access_token,
@@ -327,33 +312,8 @@ export function useAuthAndSession({
         };
         PNOAuthService.saveSession(sessionWithIdentifier);
 
-        try {
-          const { retryPublishMlKemPublicKey } = await import('../services/dmIdentitySession');
-          void retryPublishMlKemPublicKey();
-        } catch {
-          /* non-fatal */
-        }
-
         if (userInfo.pn_identifier && !userInfo.pn_identifier.startsWith('did:key:')) {
           setUnlocked(userInfo.pn_identifier);
-          try {
-            const { wireLocalDeviceProofSigner } = await import('../services/deviceService');
-            await wireLocalDeviceProofSigner(userInfo.pn_identifier, tokenResponse.access_token);
-          } catch {
-            /* non-fatal — messaging may prompt to key device */
-          }
-          try {
-            const profile = await getUserProfile(userInfo.pn_identifier);
-            if (profile.displayName) {
-              updateDisplayName(profile.displayName);
-            } else if (userInfo.nickname && !userState.preferences.displayName) {
-              updateDisplayName(userInfo.nickname);
-            }
-          } catch {
-            if (userInfo.nickname && !userState.preferences.displayName) {
-              updateDisplayName(userInfo.nickname);
-            }
-          }
         } else {
           setUnlocked(userInfo.did);
         }
