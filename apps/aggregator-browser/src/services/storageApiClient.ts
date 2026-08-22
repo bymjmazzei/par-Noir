@@ -388,6 +388,19 @@ export function invalidateStorageAccountsCache(pnIdentifier?: string): void {
   }
 }
 
+/** Read warmed viewer accounts cache without a network call. */
+export function readCachedStorageAccounts(pnIdentifier: string): StorageAccountsResult | null {
+  const resolvedPnId = resolveStorageAccountsPnId(pnIdentifier);
+  if (!resolvedPnId) return null;
+  const cached = accountsCacheService.get(resolvedPnId);
+  if (!cached) return null;
+  return {
+    connected: cached.length > 0,
+    accounts: cached,
+    socialCloudProvider: null,
+  };
+}
+
 export async function fetchStorageAccounts(
   authToken: string,
   pnIdentifier: string

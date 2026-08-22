@@ -43,9 +43,12 @@ const CONSENT_MAX = {
 };
 
 const consentRequests = [];
+const seenRequests = new WeakSet();
 
 function trackConsent(target) {
   target.on('request', (req) => {
+    if (seenRequests.has(req)) return;
+    seenRequests.add(req);
     const u = req.url();
     if (!u.includes('api.parnoir.com')) return;
     try {
@@ -75,8 +78,8 @@ function summarizeConsent(list) {
 
 const browser = await chromium.launch({ headless: true });
 const context = await browser.newContext();
+trackConsent(context);
 const page = await context.newPage();
-trackConsent(page);
 
 await page.goto(`${BROWSE_URL}/?view=feed&qa=consent-audit`, {
   waitUntil: 'domcontentloaded',
@@ -86,7 +89,6 @@ await page.goto(`${BROWSE_URL}/?view=feed&qa=consent-audit`, {
 const popupPromise = page.waitForEvent('popup', { timeout: 15_000 });
 await page.getByTitle('Unlock pN').click();
 const popup = await popupPromise;
-trackConsent(popup);
 
 await popup.waitForURL(/oauth\/consent/, { timeout: 30_000 });
 await popup.locator('#identityFile').setInputFiles(identityPath);

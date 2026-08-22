@@ -5,6 +5,7 @@
 import { useState, useEffect } from 'react';
 import { PNOAuthService } from '../services/pnOAuthService';
 import { fetchStorageAccounts } from '../services/storageApiClient';
+import { isUnlockPrefetchComplete } from '../services/unlockSessionCoordinator';
 import type { DriveAccount } from '../components/storage/storageTypes';
 
 export interface UseDriveAccountsParams {
@@ -20,6 +21,10 @@ export function useDriveAccounts({ authenticatedUserId, userState }: UseDriveAcc
     const loadAccounts = async () => {
       if (!authenticatedUserId) {
         setAccounts([]);
+        return;
+      }
+
+      if (!isUnlockPrefetchComplete(authenticatedUserId)) {
         return;
       }
 

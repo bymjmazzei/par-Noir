@@ -5,6 +5,7 @@
 import { useEffect, useState } from 'react';
 import { PNOAuthService } from '../services/pnOAuthService';
 import { fetchStorageAccounts } from '../services/storageApiClient';
+import { isUnlockPrefetchComplete } from '../services/unlockSessionCoordinator';
 
 export function useStorageConnected(pnIdentifier?: string): boolean | null {
   const [connected, setConnected] = useState<boolean | null>(null);
@@ -15,6 +16,10 @@ export function useStorageConnected(pnIdentifier?: string): boolean | null {
     (async () => {
       if (!pnIdentifier || pnIdentifier.startsWith('did:key:')) {
         if (!cancelled) setConnected(false);
+        return;
+      }
+
+      if (!isUnlockPrefetchComplete(pnIdentifier)) {
         return;
       }
 

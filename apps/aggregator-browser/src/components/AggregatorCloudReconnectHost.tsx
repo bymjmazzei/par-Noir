@@ -22,6 +22,8 @@ import type { StorageCredentialsEnvelope } from '@par-noir/user-owned-storage';
 import { markCloudUnlockComplete, resetCloudUnlockCoordinator } from '../services/cloudUnlockCoordinator';
 import { API_ENDPOINT } from '../config/api';
 import { PNOAuthService } from '../services/pnOAuthService';
+import { readCachedStorageAccounts } from '../services/storageApiClient';
+import { isUnlockPrefetchComplete } from '../services/unlockSessionCoordinator';
 import { fetchDeviceRegistry } from '../services/deviceService';
 import {
   DM_IDENTITY_CHANGE_EVENT,
@@ -197,7 +199,8 @@ export const AggregatorCloudReconnectHost: React.FC = () => {
 
   const gateEnabled =
     !!(authToken && pnIdentifier && session && PNOAuthService.isSessionValid(session)) &&
-    identityReady;
+    identityReady &&
+    isUnlockPrefetchComplete(pnIdentifier);
 
   const gate = useCloudReconnectGate({
     enabled: gateEnabled,
@@ -205,7 +208,16 @@ export const AggregatorCloudReconnectHost: React.FC = () => {
     pnIdentifier,
     apiEndpoint: API_ENDPOINT,
     loadLocalEnvelope,
-    dismissStorageKey: pnIdentifier ? `pn_cloud_reconnect_dismiss:${pnIdentifier}` : undefined
+    dismissStorageKey: pnIdentifier ? `pn_cloud_reconnect_dismiss:${pnIdentifier}` : undefined,
+    preferCachedAccounts: () => {
+      if (!pnIdentifier || !isUnlockPrefetchComplete(pnIdentifier)) return null;
+      const cached = readCachedStorageAccounts(pnIdentifier);
+      if (!cached) return null;
+      return {
+        accounts: cached.accounts,
+        socialCloudProvider: cached.socialCloudProvider ?? null,
+      };
+    },
   });
 
   // When vault hydrate succeeds, mint access token then signal Drive-ready.
@@ -221,8 +233,6 @@ export const AggregatorCloudReconnectHost: React.FC = () => {
       markCloudUnlockComplete(pnIdentifier, ok);
       if (ok) {
         void retryPublishMlKemPublicKey();
-        const { runUnlockPostPrefetch } = await import('../services/unlockSessionCoordinator');
-        void runUnlockPostPrefetch(pnIdentifier);
         const { flushPendingGrant } = await import('../services/pendingGrantPersist');
         await flushPendingGrant({ authToken, pnIdentifier });
       }

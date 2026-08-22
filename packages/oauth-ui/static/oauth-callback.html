@@ -438,16 +438,17 @@
 
       if (handedOffViaOpenerNav) {
         tryClosePopup();
-      } else if (lackOpener) {
+      } else       if (lackOpener) {
         if (pnPopupFlow) {
+          deliverHandshake();
+          tryClosePopup();
+        } else {
           if (!tryNavigateNamedOpener()) {
             deliverHandshake();
           } else {
             handedOffViaOpenerNav = true;
           }
           tryClosePopup();
-        } else {
-          window.location.replace(resumeUrl);
         }
       } else {
         tryClosePopup();

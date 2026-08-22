@@ -6,6 +6,7 @@ import {
 } from '../services/dmIdentitySession';
 import { restoreMessagingAfterOAuth } from '../services/messagingOAuthHandoff';
 import { fetchStorageAccounts } from '../services/storageApiClient';
+import { isUnlockPrefetchComplete } from '../services/unlockSessionCoordinator';
 import { getSessionCloudCredentials } from '@par-noir/device-cloud-credentials';
 import { assessCloudSessionReadiness } from '@par-noir/user-owned-storage';
 
@@ -45,6 +46,9 @@ export const ConnectionHealthBanner: React.FC = () => {
       if (!session?.accessToken || !pnIdentifier) {
         setStorageOk(false);
         setLinkedInactive(false);
+        return;
+      }
+      if (!isUnlockPrefetchComplete(pnIdentifier)) {
         return;
       }
       try {

@@ -54,12 +54,12 @@ export function PNConnect({ onConnect, compact = false }: PNConnectProps) {
 
         const identifier = userInfo.pn_identifier || userInfo.did;
         if (!identifier) throw new Error('No identifier available from user info');
+        if (userInfo.pn_identifier && !userInfo.pn_identifier.startsWith('did:key:')) {
+          await runUnlockPostPrefetch(userInfo.pn_identifier);
+        }
         setUnlocked(identifier);
         markOAuthHandoffComplete();
         clearStaleOAuthCallbackStorage();
-        if (userInfo.pn_identifier && !userInfo.pn_identifier.startsWith('did:key:')) {
-          void runUnlockPostPrefetch(userInfo.pn_identifier);
-        }
         success('Successfully connected your pN!');
         onConnect?.();
       });

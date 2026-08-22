@@ -57,9 +57,12 @@ const BROWSE_MAX = {
 
 const requests = [];
 let consentPhaseEnded = false;
+const seenRequests = new WeakSet();
 
 function track(target) {
   target.on('request', (req) => {
+    if (seenRequests.has(req)) return;
+    seenRequests.add(req);
     const u = req.url();
     if (u.includes('api.parnoir.com')) {
       requests.push({ method: req.method(), url: u, phase: consentPhaseEnded ? 'browse' : 'consent' });
@@ -97,7 +100,6 @@ const context = await browser.newContext();
 track(context);
 
 const page = await context.newPage();
-track(page);
 
 await page.goto(`${BROWSE_URL}/?view=feed&qa=solo-path-audit`, {
   waitUntil: 'domcontentloaded',
@@ -107,7 +109,6 @@ await page.goto(`${BROWSE_URL}/?view=feed&qa=solo-path-audit`, {
 const popupPromise = page.waitForEvent('popup', { timeout: 15_000 });
 await page.getByTitle('Unlock pN').click();
 const popup = await popupPromise;
-track(popup);
 
 await popup.waitForURL(/oauth\/consent/, { timeout: 30_000 });
 await popup.locator('#identityFile').setInputFiles(identityPath);
@@ -138,6 +139,7 @@ const browseSummary = summarize(requests, 'browse');
 const fullSummary = summarize(requests);
 const consentCounts = Object.fromEntries(consentSummary);
 const browseCounts = Object.fromEntries(browseSummary);
+const fullCounts = Object.fromEntries(fullSummary);
 
 console.log('UNLOCKED', !unlockVisible);
 console.log('TOTAL_API_REQUESTS', requests.length);
@@ -159,9 +161,9 @@ for (const [pattern, max] of Object.entries(CONSENT_MAX)) {
   }
 }
 for (const [pattern, max] of Object.entries(BROWSE_MAX)) {
-  const actual = browseCounts[pattern] ?? 0;
+  const actual = fullCounts[pattern] ?? 0;
   if (actual > max) {
-    violations.push(`browse ${pattern}: ${actual} > max ${max}`);
+    violations.push(`${pattern}: ${actual} > max ${max}`);
   }
 }
 

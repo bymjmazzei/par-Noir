@@ -310,10 +310,10 @@ export function useAuthAndSession({
         PNOAuthService.saveSession(sessionWithIdentifier);
 
         if (userInfo.pn_identifier && !userInfo.pn_identifier.startsWith('did:key:')) {
+          await runUnlockPostPrefetch(userInfo.pn_identifier);
           setUnlocked(userInfo.pn_identifier);
           markOAuthHandoffComplete();
           clearStaleOAuthCallbackStorage();
-          void runUnlockPostPrefetch(userInfo.pn_identifier);
         } else {
           setUnlocked(userInfo.did);
         }
@@ -391,6 +391,19 @@ export function useAuthAndSession({
         /* ignore */
       }
       clearOAuthQuery();
+      return;
+    }
+
+    if (isOAuthPopupUnlockActive()) {
+      pushPnOAuthDebug('oauth_resume_popup_exchange_active', {});
+      return;
+    }
+
+    if (
+      code &&
+      (isOAuthCallbackInflight(code) || isOAuthUnlockInflight(code))
+    ) {
+      pushPnOAuthDebug('oauth_resume_await_popup_exchange', {});
       return;
     }
 
@@ -700,37 +713,36 @@ export function useAuthAndSession({
 
   const runOAuthPopupUnlock = useCallback(
     async () => {
-      restoreMessagingAfterOAuth();
-
-      let authUrl = PNOAuthService.getAuthorizationUrl({
-        usePopup: true,
-        // Permissions skip is independent of messaging handoff (unlock step always stashes keys).
-        identityHandoffRequired: false,
-      });
-
-      try {
-        const url = new URL(authUrl);
-        url.searchParams.set('popup', 'true');
-        authUrl = url.toString();
-      } catch (e) {
-        console.error('Failed to add popup parameter:', e);
-      }
-
-      const expectedState = new URL(authUrl).searchParams.get('state') || '';
-
-      pushPnOAuthDebug('lock_unlock_popup_open', {
-        expectedStateLen: expectedState.length,
-      });
-
-      if (Capacitor.isNativePlatform()) {
-        const u = new URL(authUrl);
-        u.searchParams.set('popup', 'false');
-        window.location.href = u.toString();
-        return;
-      }
-
       setOAuthPopupUnlockActive(true);
       try {
+        restoreMessagingAfterOAuth();
+
+        let authUrl = PNOAuthService.getAuthorizationUrl({
+          usePopup: true,
+          identityHandoffRequired: false,
+        });
+
+        try {
+          const url = new URL(authUrl);
+          url.searchParams.set('popup', 'true');
+          authUrl = url.toString();
+        } catch (e) {
+          console.error('Failed to add popup parameter:', e);
+        }
+
+        const expectedState = new URL(authUrl).searchParams.get('state') || '';
+
+        pushPnOAuthDebug('lock_unlock_popup_open', {
+          expectedStateLen: expectedState.length,
+        });
+
+        if (Capacitor.isNativePlatform()) {
+          const u = new URL(authUrl);
+          u.searchParams.set('popup', 'false');
+          window.location.href = u.toString();
+          return;
+        }
+
         const result = await startPnOAuthPopup({
           url: authUrl,
           expectedState,
