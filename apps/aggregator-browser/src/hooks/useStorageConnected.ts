@@ -13,7 +13,7 @@ export function useStorageConnected(pnIdentifier?: string): boolean | null {
     let cancelled = false;
 
     (async () => {
-      if (!pnIdentifier) {
+      if (!pnIdentifier || pnIdentifier.startsWith('did:key:')) {
         if (!cancelled) setConnected(false);
         return;
       }

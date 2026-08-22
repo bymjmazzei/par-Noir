@@ -96,7 +96,7 @@ await page.goto(`${BROWSE_URL}/?view=feed&qa=solo-path-audit`, {
 });
 
 const popupPromise = page.waitForEvent('popup', { timeout: 15_000 });
-await page.getByRole('button', { name: 'Unlock pN' }).click();
+await page.getByTitle('Unlock pN').click();
 const popup = await popupPromise;
 track(popup);
 
@@ -106,14 +106,19 @@ await popup.getByPlaceholder('Enter Key 1').fill(PN_NAME);
 await popup.getByPlaceholder('Enter Key 2').fill(PASSCODE);
 await popup.getByRole('button', { name: 'Unlock pN' }).click();
 
+// Step 2 consent appears for new grants; existing-grant flows may skip Approve.
 const approve = popup.getByRole('button', { name: 'Approve' });
-await approve.waitFor({ timeout: 60_000 });
-await approve.click();
+try {
+  await approve.waitFor({ state: 'visible', timeout: 90_000 });
+  await approve.click();
+} catch {
+  /* redirecting without second consent step */
+}
 
 await popup.waitForEvent('close', { timeout: 120_000 }).catch(() => {});
 await page.waitForTimeout(15_000);
 
-const unlockVisible = await page.getByRole('button', { name: 'Unlock pN' }).isVisible().catch(() => false);
+const unlockVisible = await page.getByTitle('Unlock pN').isVisible().catch(() => false);
 const summary = summarize(requests);
 const counts = Object.fromEntries(summary);
 
@@ -133,7 +138,7 @@ for (const [pattern, max] of Object.entries(MAX_COUNTS)) {
 
 await browser.close();
 
-if (!unlockVisible) {
+if (unlockVisible) {
   console.error('FAIL: unlock did not complete');
   process.exit(1);
 }

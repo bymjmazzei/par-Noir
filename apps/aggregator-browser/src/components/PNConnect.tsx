@@ -9,6 +9,7 @@ import { UnlockButton, type PnOAuthPopupResult } from '@par-noir/oauth-ui';
 import { useUserState } from '../contexts/UserStateContext';
 import { PNOAuthService } from '../services/pnOAuthService';
 import { completeOAuthUnlock } from '../services/oauthSessionCoordinator';
+import { runExclusiveOAuthCallback } from '../services/oauthCallbackGate';
 import { useToast } from '../hooks/useToast';
 import { API_ENDPOINT } from '../config/api';
 
@@ -30,25 +31,27 @@ export function PNConnect({ onConnect, compact = false }: PNConnectProps) {
 
     try {
       const redirectUri = `${window.location.origin}/oauth-callback.html`;
-      const unlockResult = await completeOAuthUnlock({
-        code: result.code,
-        redirectUri,
+      await runExclusiveOAuthCallback(result.code, async () => {
+        const unlockResult = await completeOAuthUnlock({
+          code: result.code!,
+          redirectUri,
+        });
+        const { userInfo, session } = unlockResult;
+
+        if (unlockResult.bootstrap.profileDisplayName) {
+          updateDisplayName(unlockResult.bootstrap.profileDisplayName);
+        } else if (userInfo.nickname && !userState.preferences.displayName) {
+          updateDisplayName(userInfo.nickname);
+        }
+
+        PNOAuthService.saveSession(session);
+
+        const identifier = userInfo.pn_identifier || userInfo.did;
+        if (!identifier) throw new Error('No identifier available from user info');
+        setUnlocked(identifier);
+        success('Successfully connected your pN!');
+        onConnect?.();
       });
-      const { userInfo, session } = unlockResult;
-
-      if (unlockResult.bootstrap.profileDisplayName) {
-        updateDisplayName(unlockResult.bootstrap.profileDisplayName);
-      } else if (userInfo.nickname && !userState.preferences.displayName) {
-        updateDisplayName(userInfo.nickname);
-      }
-
-      PNOAuthService.saveSession(session);
-
-      const identifier = userInfo.pn_identifier || userInfo.did;
-      if (!identifier) throw new Error('No identifier available from user info');
-      setUnlocked(identifier);
-      success('Successfully connected your pN!');
-      onConnect?.();
     } catch (err: any) {
       showError(err?.message || 'Failed to complete authorization');
     }

@@ -8,7 +8,13 @@ export interface BulkEngagementStatsResult {
 }
 
 export function bulkStatsRequestKey(pnIdentifier: string | undefined, fileIds: string[]): string {
-  return `${pnIdentifier ?? 'anon'}:${[...fileIds].sort().join(',')}`;
+  const pn =
+    pnIdentifier && !pnIdentifier.startsWith('did:key:')
+      ? pnIdentifier.startsWith('pn-')
+        ? pnIdentifier.slice(3)
+        : pnIdentifier
+      : 'anon';
+  return `${pn}:${[...fileIds].sort().join(',')}`;
 }
 
 /** Test-only. */

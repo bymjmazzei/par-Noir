@@ -326,15 +326,19 @@ const pendingRequestsInflight = new Map<string, Promise<PendingRequests>>();
 const CONNECTIONS_TTL_MS = 5 * 60_000;
 const connectionsInflight = new Map<string, Promise<Connection[]>>();
 let connectionsCache: { pn: string; at: number; value: Connection[] } | null = null;
+const connectionsPrefetchInflight = new Map<string, Promise<Connection[]>>();
 
 export function invalidateConnectionsCache(pnIdentifier?: string): void {
   if (!pnIdentifier || connectionsCache?.pn === pnIdentifier) {
     connectionsCache = null;
   }
   if (pnIdentifier) {
+    const norm = normalizePnId(pnIdentifier);
     connectionsInflight.delete(pnIdentifier);
+    connectionsPrefetchInflight.delete(norm);
   } else {
     connectionsInflight.clear();
+    connectionsPrefetchInflight.clear();
   }
 }
 
@@ -344,7 +348,15 @@ function normalizePnId(id: string): string {
 
 /** Warm connections list after cloud unlock (single GET, cached). */
 export function prefetchConnectionsList(userPnIdentifier: string): Promise<Connection[]> {
-  return getConnections(userPnIdentifier);
+  const norm = normalizePnId(userPnIdentifier);
+  const existing = connectionsPrefetchInflight.get(norm);
+  if (existing) return existing;
+
+  const work = getConnections(userPnIdentifier).finally(() => {
+    connectionsPrefetchInflight.delete(norm);
+  });
+  connectionsPrefetchInflight.set(norm, work);
+  return work;
 }
 
 /**

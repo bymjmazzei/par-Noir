@@ -55,6 +55,7 @@ export function useDiscovery({
   const discoverFilesRef = useRef<((a?: MetadataFilters, b?: boolean, c?: number, d?: boolean) => Promise<void>) | null>(null);
   const isDiscoveringRef = useRef(false);
   const initialDiscoveryCompleteRef = useRef(false);
+  const lastBootstrappedFeedKeyRef = useRef<string | null>(null);
   const discoverFilesTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const discoveryEnabledRef = useRef(discoveryEnabled);
   const prevDiscoveryEnabledRef = useRef(discoveryEnabled);
@@ -293,15 +294,31 @@ export function useDiscovery({
       // Messaging build must never hit aggregator discovery endpoints.
       if (MESSAGING_ONLY) return;
       if (!discoveryEnabledRef.current && !forceRefresh) return;
+
+      const contentTypes = resolveContentTypes(searchFilters);
+      const feedKey = `${activeFeedId}:${contentTypes.slice().sort().join(',')}`;
+      if (
+        page === 0 &&
+        !forceRefresh &&
+        !append &&
+        initialDiscoveryCompleteRef.current &&
+        lastBootstrappedFeedKeyRef.current === feedKey
+      ) {
+        return;
+      }
+
       if (isDiscoveringRef.current && !forceRefresh && !append) return;
       isDiscoveringRef.current = true;
       try {
         await loadContentTypeIndices(searchFilters, forceRefresh, page);
+        if (page === 0) {
+          lastBootstrappedFeedKeyRef.current = feedKey;
+        }
       } finally {
         isDiscoveringRef.current = false;
       }
     },
-    [loadContentTypeIndices]
+    [loadContentTypeIndices, activeFeedId, resolveContentTypes]
   );
 
   const refreshContentType = useCallback(
@@ -324,6 +341,7 @@ export function useDiscovery({
 
   useEffect(() => {
     initialDiscoveryCompleteRef.current = false;
+    lastBootstrappedFeedKeyRef.current = null;
   }, [activeFeedId, discoveryEnabled]);
 
   useEffect(() => {

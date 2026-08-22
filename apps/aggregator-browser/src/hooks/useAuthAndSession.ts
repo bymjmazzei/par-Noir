@@ -33,6 +33,13 @@ import {
   isOAuthUnlockInflight,
 } from '../services/oauthSessionCoordinator';
 import {
+  getOAuthCallbackInflight,
+  isOAuthCallbackInflight,
+  isOAuthPopupUnlockActive,
+  runExclusiveOAuthCallback,
+  setOAuthPopupUnlockActive,
+} from '../services/oauthCallbackGate';
+import {
   startSocialMailboxConsumer,
   stopSocialMailboxConsumer,
 } from '../services/socialMailboxConsumer';
@@ -170,8 +177,6 @@ export function useAuthAndSession({
 }: UseAuthAndSessionParams) {
   const { userState, setLocked, setUnlocked, updateDisplayName } = useUserState();
   const loadingDisplayNameRef = useRef<Set<string>>(new Set());
-  /** Serialize token exchange per authorization code (postMessage + storage recovery + URL resume). */
-  const oauthCallbackInflightRef = useRef<Map<string, Promise<void>>>(new Map());
 
   const redirectUriForOAuth = `${typeof window !== 'undefined' ? window.location.origin : ''}/oauth-callback.html`;
 
@@ -213,11 +218,11 @@ export function useAuthAndSession({
         return;
       }
 
-      const hookInflight = oauthCallbackInflightRef.current.get(authCode);
+      const callbackInflight = getOAuthCallbackInflight(authCode);
       const coordinatorInflight = getOAuthUnlockInflight(authCode);
-      if (hookInflight || coordinatorInflight) {
+      if (callbackInflight || coordinatorInflight) {
         pushPnOAuthDebug('run_oauth_callback_await_inflight', {});
-        await (hookInflight ?? coordinatorInflight);
+        await (callbackInflight ?? coordinatorInflight);
         const session = PNOAuthService.loadSession();
         if (
           session &&
@@ -234,105 +239,81 @@ export function useAuthAndSession({
 
       const exchangeRedirectUri = options?.redirectUri ?? redirectUriForOAuth;
 
-      let resolveWork!: () => void;
-      let rejectWork!: (e: unknown) => void;
-      const work = new Promise<void>((resolve, reject) => {
-        resolveWork = resolve;
-        rejectWork = reject;
-      });
-      oauthCallbackInflightRef.current.set(authCode, work);
-
-      void (async () => {
-        try {
+      await runExclusiveOAuthCallback(authCode, async () => {
+        applyAllMessagingHandoffSources(data.messagingHandoff);
+        if (!isDmIdentityReady() && data.messagingHandoff) {
+          await waitForAndApplyMessagingHandoff(3_000);
           applyAllMessagingHandoffSources(data.messagingHandoff);
-          if (!isDmIdentityReady() && data.messagingHandoff) {
-            await waitForAndApplyMessagingHandoff(3_000);
-            applyAllMessagingHandoffSources(data.messagingHandoff);
-          }
+        }
 
-          const grantedDataPoints =
-            typeof data.granted_data_points === 'string'
-              ? data.granted_data_points.split(',').filter(Boolean)
-              : undefined;
-          pushPnOAuthDebug('run_oauth_callback_exchange', {
-            redirectUriLen: exchangeRedirectUri.length,
-            messagingReadyBeforeExchange: isDmIdentityReady(),
-            hasMessagingHandoffPayload: Boolean(data.messagingHandoff),
-          });
+        const grantedDataPoints =
+          typeof data.granted_data_points === 'string'
+            ? data.granted_data_points.split(',').filter(Boolean)
+            : undefined;
+        pushPnOAuthDebug('run_oauth_callback_exchange', {
+          redirectUriLen: exchangeRedirectUri.length,
+          messagingReadyBeforeExchange: isDmIdentityReady(),
+          hasMessagingHandoffPayload: Boolean(data.messagingHandoff),
+        });
 
-          const unlockResult = await completeOAuthUnlock({
-            code: authCode,
-            redirectUri: exchangeRedirectUri,
-            grantedDataPoints,
-          });
-          const { userInfo, session: sessionWithIdentifier } = unlockResult;
+        const unlockResult = await completeOAuthUnlock({
+          code: authCode,
+          redirectUri: exchangeRedirectUri,
+          grantedDataPoints,
+        });
+        const { userInfo, session: sessionWithIdentifier } = unlockResult;
 
-          const consentCompleted = typeof data.granted_data_points === 'string';
-          if (consentCompleted) {
-            const { setPendingGrant } = await import('../services/pendingGrantPersist');
-            setPendingGrant(grantedDataPoints ?? []);
-          }
+        const consentCompleted = typeof data.granted_data_points === 'string';
+        if (consentCompleted) {
+          const { setPendingGrant } = await import('../services/pendingGrantPersist');
+          setPendingGrant(grantedDataPoints ?? []);
+        }
 
-          if (!isDmIdentityReady()) {
-            await waitForAndApplyMessagingHandoff(20_000);
-            applyAllMessagingHandoffSources(data.messagingHandoff);
-          }
+        if (!isDmIdentityReady()) {
+          await waitForAndApplyMessagingHandoff(20_000);
+          applyAllMessagingHandoffSources(data.messagingHandoff);
+        }
 
-          pushPnOAuthDebug('run_oauth_callback_messaging_gate', {
-            messagingReady: isDmIdentityReady(),
-          });
+        pushPnOAuthDebug('run_oauth_callback_messaging_gate', {
+          messagingReady: isDmIdentityReady(),
+        });
 
-          if (!isDmIdentityReady()) {
-            setLocked();
-            clearDmIdentity();
-            PNOAuthService.clearSession();
-            showErrorToast(messagingHandoffIncompleteMessage());
-            throw new Error(MESSAGING_HANDOFF_INCOMPLETE);
-          }
-
-          if (unlockResult.bootstrap.profileDisplayName) {
-            updateDisplayName(unlockResult.bootstrap.profileDisplayName);
-          } else if (userInfo.nickname && !userState.preferences.displayName) {
-            updateDisplayName(userInfo.nickname);
-          }
-
-          PNOAuthService.saveSession(sessionWithIdentifier);
-
-          if (userInfo.pn_identifier && !userInfo.pn_identifier.startsWith('did:key:')) {
-            setUnlocked(userInfo.pn_identifier);
-          } else {
-            setUnlocked(userInfo.did);
-          }
-
-          pushPnOAuthDebug('run_oauth_callback_success', {
-            hasPnIdentifier: Boolean(userInfo.pn_identifier),
-          });
-          resolveWork();
-        } catch (err) {
-          pushPnOAuthDebug('run_oauth_callback_exception', {
-            name: err instanceof Error ? err.name : 'unknown',
-          });
-          if (err instanceof Error && err.message === MESSAGING_HANDOFF_INCOMPLETE) {
-            rejectWork(err);
-            return;
-          }
+        if (!isDmIdentityReady()) {
           setLocked();
           clearDmIdentity();
           PNOAuthService.clearSession();
-          const rawMessage = err instanceof Error ? err.message : String(err);
-          const safeMessage = rawMessage ? rawMessage.slice(0, 180) : 'Authentication failed';
-          showErrorToast(safeMessage);
-          rejectWork(err);
-        } finally {
-          oauthCallbackInflightRef.current.delete(authCode);
+          showErrorToast(messagingHandoffIncompleteMessage());
+          throw new Error(MESSAGING_HANDOFF_INCOMPLETE);
         }
-      })();
 
-      try {
-        await work;
-      } catch {
-        /* surfaced via toast */
-      }
+        if (unlockResult.bootstrap.profileDisplayName) {
+          updateDisplayName(unlockResult.bootstrap.profileDisplayName);
+        } else if (userInfo.nickname && !userState.preferences.displayName) {
+          updateDisplayName(userInfo.nickname);
+        }
+
+        PNOAuthService.saveSession(sessionWithIdentifier);
+
+        if (userInfo.pn_identifier && !userInfo.pn_identifier.startsWith('did:key:')) {
+          setUnlocked(userInfo.pn_identifier);
+        } else {
+          setUnlocked(userInfo.did);
+        }
+
+        pushPnOAuthDebug('run_oauth_callback_success', {
+          hasPnIdentifier: Boolean(userInfo.pn_identifier),
+        });
+      }).catch((err) => {
+        if (err instanceof Error && err.message === MESSAGING_HANDOFF_INCOMPLETE) {
+          return;
+        }
+        setLocked();
+        clearDmIdentity();
+        PNOAuthService.clearSession();
+        const rawMessage = err instanceof Error ? err.message : String(err);
+        const safeMessage = rawMessage ? rawMessage.slice(0, 180) : 'Authentication failed';
+        showErrorToast(safeMessage);
+      });
 
       const popup = options?.popup;
       if (popup && !popup.closed) {
@@ -379,6 +360,22 @@ export function useAuthAndSession({
     const granted_data_points = params.get('granted_data_points');
     const error_description = params.get('error_description') || undefined;
 
+    const clearOAuthQuery = () => {
+      window.history.replaceState({}, '', window.location.pathname);
+    };
+
+    if (code && isOauthCodeConsumed(code)) {
+      pushPnOAuthDebug('oauth_resume_code_already_consumed', {});
+      try {
+        sessionStorage.removeItem(PN_OAUTH_RESUME_SEARCH_KEY);
+        sessionStorage.removeItem(PN_OAUTH_RESUME_HASH_KEY);
+      } catch {
+        /* ignore */
+      }
+      clearOAuthQuery();
+      return;
+    }
+
     const resumeHash =
       (typeof sessionStorage !== 'undefined' && sessionStorage.getItem(PN_OAUTH_RESUME_HASH_KEY)) ||
       window.location.hash;
@@ -386,10 +383,6 @@ export function useAuthAndSession({
     if (identityFromHash) {
       applyMessagingOAuthHandoff({ v: 1, timestamp: Date.now(), identity: identityFromHash });
     }
-
-    const clearOAuthQuery = () => {
-      window.history.replaceState({}, '', window.location.pathname);
-    };
 
     void (async () => {
       try {
@@ -429,6 +422,7 @@ export function useAuthAndSession({
 
     const tryConsumePendingOAuthStorage = async () => {
       if (!mounted) return;
+      if (isOAuthPopupUnlockActive()) return;
       try {
         const latestKey = localStorage.getItem(PN_OAUTH_STORAGE_LATEST_KEY);
         if (!latestKey) return;
@@ -451,7 +445,7 @@ export function useAuthAndSession({
         if (
           code &&
           (isOauthCodeConsumed(code) ||
-            oauthCallbackInflightRef.current.has(code) ||
+            isOAuthCallbackInflight(code) ||
             isOAuthUnlockInflight(code))
         ) {
           return;
@@ -704,25 +698,28 @@ export function useAuthAndSession({
         return;
       }
 
-      const result = await startPnOAuthPopup({
-        url: authUrl,
-        expectedState,
-        timeoutMs: 120_000,
-        completeViaParentNavigation: false,
-        // Messaging gate lives in runOAuthCallback (token exchange + wait loop).
-        // Blocking the popup on handoff causes POPUP_CLOSED when the callback tab closes first.
-        requireMessagingHandoff: false,
-        isMessagingReady: () => isDmIdentityReady(),
-        messagingHandoffTimeoutMs: 15_000,
-        // Consent posts messaging keys from the API origin before redirecting to callback.
-        allowedMessageOrigins: (() => {
-          try {
-            return [new URL(API_ENDPOINT).origin];
-          } catch {
-            return [];
-          }
-        })(),
-      });
+      setOAuthPopupUnlockActive(true);
+      let result: Awaited<ReturnType<typeof startPnOAuthPopup>>;
+      try {
+        result = await startPnOAuthPopup({
+          url: authUrl,
+          expectedState,
+          timeoutMs: 120_000,
+          completeViaParentNavigation: false,
+          requireMessagingHandoff: false,
+          isMessagingReady: () => isDmIdentityReady(),
+          messagingHandoffTimeoutMs: 15_000,
+          allowedMessageOrigins: (() => {
+            try {
+              return [new URL(API_ENDPOINT).origin];
+            } catch {
+              return [];
+            }
+          })(),
+        });
+      } finally {
+        setOAuthPopupUnlockActive(false);
+      }
 
       if (!result.code && !result.error) {
         pushPnOAuthDebug('lock_unlock_popup_empty_result', {});

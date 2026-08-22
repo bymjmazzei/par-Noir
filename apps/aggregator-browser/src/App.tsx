@@ -452,10 +452,17 @@ function App() {
     viewMode,
   });
 
-  // Load engagement for visible feed window only (not entire index)
+  // Load bulk engagement stats when files are loaded (stable pn id only — skip did:key transition).
+  const stablePnIdentifier =
+    userState.isUnlocked &&
+    userState.pnIdentifier &&
+    !userState.pnIdentifier.startsWith('did:key:')
+      ? userState.pnIdentifier
+      : null;
+
   useEffect(() => {
     if (
-      !userState.isUnlocked ||
+      !stablePnIdentifier ||
       !discoveryEnabled ||
       filteredFilesByFeed.length === 0 ||
       !loadBulkEngagementStatsRef.current
@@ -478,7 +485,7 @@ function App() {
       });
     }, 2500);
     return () => clearTimeout(timer);
-  }, [discoveryEnabled, filteredFilesByFeed.length, currentFeedIndex, activeFeedId, userState.isUnlocked]);
+  }, [discoveryEnabled, filteredFilesByFeed.length, currentFeedIndex, activeFeedId, stablePnIdentifier]);
 
   const {
     thumbnails,

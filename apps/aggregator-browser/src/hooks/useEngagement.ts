@@ -117,6 +117,14 @@ export function useEngagement() {
   const loadBulkEngagementStats = useCallback(async (fileIds: string[]) => {
     if (fileIds.length === 0) return;
 
+    const viewerPn =
+      userState.isUnlocked &&
+      userState.pnIdentifier &&
+      !userState.pnIdentifier.startsWith('did:key:')
+        ? userState.pnIdentifier
+        : undefined;
+    if (userState.isUnlocked && !viewerPn) return;
+
     setLoadingStats(prev => {
       const next = new Set(prev);
       fileIds.forEach(id => next.add(id));
@@ -124,10 +132,7 @@ export function useEngagement() {
     });
 
     try {
-      const { stats, likedFiles } = await fetchBulkEngagementStats(
-        fileIds,
-        userState.isUnlocked ? userState.pnIdentifier : undefined
-      );
+      const { stats, likedFiles } = await fetchBulkEngagementStats(fileIds, viewerPn);
 
       setEngagement(prev => {
         const newLikes = new Set(prev.likes);

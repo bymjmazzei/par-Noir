@@ -293,14 +293,11 @@ export const AggregatorCloudReconnectHost: React.FC = () => {
         });
         markCloudUnlockComplete(pnIdentifier, ok);
         if (ok) {
-          const { prefetchConnectionsList } = await import('../services/connectionService');
-          void prefetchConnectionsList(pnIdentifier);
+          void retryPublishMlKemPublicKey();
         }
-        // Manual reconnect also gets a Drive token; flush any held consent choice.
         const { flushPendingGrant } = await import('../services/pendingGrantPersist');
         await flushPendingGrant({ authToken, pnIdentifier });
       }
-      void retryPublishMlKemPublicKey();
     },
     [pnIdentifier, gate, hasKeyedDevices, authToken]
   );

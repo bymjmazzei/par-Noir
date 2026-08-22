@@ -187,56 +187,65 @@ export class PNOAuthService {
   }
 
   /**
-   * Exchange authorization code for access token
+   * Exchange authorization code for access token (in-flight dedupe per code + redirect URI).
    */
+  private static tokenExchangeInflight = new Map<string, Promise<OAuthTokenResponse>>();
+
   static async exchangeCodeForToken(
     code: string,
     redirectUri?: string,
     grantedDataPoints?: string[]
   ): Promise<OAuthTokenResponse> {
-    // Use provided redirect_uri or default to REDIRECT_URI
-    // Must match the redirect_uri used in the authorization request exactly
-    // Normalize to ensure exact match (remove trailing slashes, ensure consistent encoding)
-    const finalRedirectUri = (redirectUri || REDIRECT_URI).replace(/\/$/, ''); // Remove trailing slash
+    const finalRedirectUri = (redirectUri || REDIRECT_URI).replace(/\/$/, '');
+    const exchangeKey = `${code}:${finalRedirectUri}`;
 
-    pushPnOAuthDebug('exchange_token_attempt', {
-      redirectUriLen: finalRedirectUri.length,
-      grantedCount: grantedDataPoints?.length ?? 0,
-    });
+    const inflight = PNOAuthService.tokenExchangeInflight.get(exchangeKey);
+    if (inflight) return inflight;
 
-    const response = await fetch(`${API_ENDPOINT}/oauth/token`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        code,
-        client_id: getClientId(),
-        redirect_uri: finalRedirectUri,
-        grant_type: 'authorization_code',
-        // Per-data-point consent choices; omitted when consent was skipped
-        granted_data_points: grantedDataPoints
-      })
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      let error;
-      try {
-        error = JSON.parse(errorText);
-      } catch {
-        error = { error: 'Token exchange failed', error_description: errorText };
-      }
-      pushPnOAuthDebug('exchange_token_http_error', {
-        status: response.status,
-        errKey:
-          typeof error?.error === 'string' ? String(error.error).slice(0, 80) : 'unknown',
+    const work = (async (): Promise<OAuthTokenResponse> => {
+      pushPnOAuthDebug('exchange_token_attempt', {
+        redirectUriLen: finalRedirectUri.length,
+        grantedCount: grantedDataPoints?.length ?? 0,
       });
-      throw new Error(error.error_description || error.error || 'Token exchange failed');
-    }
 
-    pushPnOAuthDebug('exchange_token_ok', { status: response.status });
-    return response.json();
+      const response = await fetch(`${API_ENDPOINT}/oauth/token`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          code,
+          client_id: getClientId(),
+          redirect_uri: finalRedirectUri,
+          grant_type: 'authorization_code',
+          granted_data_points: grantedDataPoints
+        })
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        let error;
+        try {
+          error = JSON.parse(errorText);
+        } catch {
+          error = { error: 'Token exchange failed', error_description: errorText };
+        }
+        pushPnOAuthDebug('exchange_token_http_error', {
+          status: response.status,
+          errKey:
+            typeof error?.error === 'string' ? String(error.error).slice(0, 80) : 'unknown',
+        });
+        throw new Error(error.error_description || error.error || 'Token exchange failed');
+      }
+
+      pushPnOAuthDebug('exchange_token_ok', { status: response.status });
+      return response.json();
+    })().finally(() => {
+      PNOAuthService.tokenExchangeInflight.delete(exchangeKey);
+    });
+
+    PNOAuthService.tokenExchangeInflight.set(exchangeKey, work);
+    return work;
   }
 
   /**

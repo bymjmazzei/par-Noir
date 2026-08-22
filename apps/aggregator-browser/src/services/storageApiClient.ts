@@ -1,6 +1,24 @@
 import { API_ENDPOINT } from '../config/api';
 import { accountsCacheService } from './accountsCacheService';
 import { ownerApiHeadersAsync } from './ownerApiHeaders';
+import { PNOAuthService } from './pnOAuthService';
+
+/** Canonical cache/API key for viewer storage accounts (bare id, no pn- prefix). */
+export function canonicalStorageAccountsPnId(pnIdentifier: string): string {
+  if (pnIdentifier.startsWith('did:key:')) return pnIdentifier;
+  return pnIdentifier.startsWith('pn-') ? pnIdentifier.slice(3) : pnIdentifier;
+}
+
+function resolveStorageAccountsPnId(pnIdentifier: string): string | null {
+  if (pnIdentifier.startsWith('did:key:')) {
+    const sessionPn = PNOAuthService.loadSession()?.pnIdentifier;
+    if (sessionPn && !sessionPn.startsWith('did:key:')) {
+      return canonicalStorageAccountsPnId(sessionPn);
+    }
+    return null;
+  }
+  return canonicalStorageAccountsPnId(pnIdentifier);
+}
 
 export type StorageProviderId =
   | 'google_drive'
@@ -361,8 +379,9 @@ const storageAccountsInflight = new Map<string, Promise<StorageAccountsResult>>(
 /** Clear cached storage accounts (call on lock or after account mutations). */
 export function invalidateStorageAccountsCache(pnIdentifier?: string): void {
   if (pnIdentifier) {
-    accountsCacheService.clear(pnIdentifier);
-    storageAccountsInflight.delete(pnIdentifier);
+    const resolved = canonicalStorageAccountsPnId(pnIdentifier);
+    accountsCacheService.clear(resolved);
+    storageAccountsInflight.delete(resolved);
   } else {
     accountsCacheService.clearAll();
     storageAccountsInflight.clear();
@@ -373,7 +392,12 @@ export async function fetchStorageAccounts(
   authToken: string,
   pnIdentifier: string
 ): Promise<StorageAccountsResult> {
-  const cached = accountsCacheService.get(pnIdentifier);
+  const resolvedPnId = resolveStorageAccountsPnId(pnIdentifier);
+  if (!resolvedPnId) {
+    return { connected: false, accounts: [], socialCloudProvider: null };
+  }
+
+  const cached = accountsCacheService.get(resolvedPnId);
   if (cached) {
     return {
       connected: cached.length > 0,
@@ -382,28 +406,28 @@ export async function fetchStorageAccounts(
     };
   }
 
-  const inflight = storageAccountsInflight.get(pnIdentifier);
+  const inflight = storageAccountsInflight.get(resolvedPnId);
   if (inflight) return inflight;
 
   const work = (async (): Promise<StorageAccountsResult> => {
-    const res = await fetch(`${API_ENDPOINT}/api/storage/accounts/${encodeURIComponent(pnIdentifier)}`, {
-      headers: await driveAuthHeaders(authToken, pnIdentifier)
+    const res = await fetch(`${API_ENDPOINT}/api/storage/accounts/${encodeURIComponent(resolvedPnId)}`, {
+      headers: await driveAuthHeaders(authToken, resolvedPnId)
     });
     if (!res.ok) {
       return { connected: false, accounts: [], socialCloudProvider: null };
     }
     const data = await res.json();
     const accounts = Array.isArray(data.accounts) ? data.accounts : [];
-    accountsCacheService.set(pnIdentifier, accounts);
+    accountsCacheService.set(resolvedPnId, accounts);
     return {
       connected: accounts.length > 0,
       accounts,
       socialCloudProvider: data.socialCloudProvider ?? data.primaryProvider ?? null
     };
   })().finally(() => {
-    storageAccountsInflight.delete(pnIdentifier);
+    storageAccountsInflight.delete(resolvedPnId);
   });
 
-  storageAccountsInflight.set(pnIdentifier, work);
+  storageAccountsInflight.set(resolvedPnId, work);
   return work;
 }
