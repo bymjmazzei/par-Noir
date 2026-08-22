@@ -15,6 +15,10 @@ import {
   contentClassToContentType,
   getContentTypesForFeed,
 } from '../utils/feedContentTypes';
+import {
+  isDiscoverySeededForUnlock,
+  markDiscoverySeededForUnlock,
+} from '../services/unlockSessionCoordinator';
 import { MESSAGING_ONLY } from '../config/buildFlags';
 
 const PAGE_SIZE = 50;
@@ -302,7 +306,8 @@ export function useDiscovery({
         !forceRefresh &&
         !append &&
         initialDiscoveryCompleteRef.current &&
-        lastBootstrappedFeedKeyRef.current === feedKey
+        lastBootstrappedFeedKeyRef.current === feedKey &&
+        isDiscoverySeededForUnlock()
       ) {
         return;
       }
@@ -313,6 +318,7 @@ export function useDiscovery({
         await loadContentTypeIndices(searchFilters, forceRefresh, page);
         if (page === 0) {
           lastBootstrappedFeedKeyRef.current = feedKey;
+          markDiscoverySeededForUnlock();
         }
       } finally {
         isDiscoveringRef.current = false;
@@ -342,7 +348,7 @@ export function useDiscovery({
   useEffect(() => {
     initialDiscoveryCompleteRef.current = false;
     lastBootstrappedFeedKeyRef.current = null;
-  }, [activeFeedId, discoveryEnabled]);
+  }, [activeFeedId]);
 
   useEffect(() => {
     const becameEnabled = discoveryEnabled && !prevDiscoveryEnabledRef.current;
@@ -350,6 +356,7 @@ export function useDiscovery({
 
     if (!discoveryEnabled) return;
     if (activeFeedId === 'discovery') return;
+    if (isDiscoverySeededForUnlock() && initialDiscoveryCompleteRef.current) return;
 
     if (discoverFilesTimeoutRef.current) clearTimeout(discoverFilesTimeoutRef.current);
     initialDiscoveryCompleteRef.current = false;

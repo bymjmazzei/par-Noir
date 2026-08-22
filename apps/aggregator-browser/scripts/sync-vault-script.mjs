@@ -16,22 +16,30 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 const APP_ROOT = resolve(HERE, '..');
 const REPO_ROOT = resolve(APP_ROOT, '../..');
 
-const ASSETS = [{ name: 'oauth-cloud-vault.js', generated: true }];
+const ASSETS = [
+  { name: 'oauth-cloud-vault.js', generated: true, targetSubdir: 'js' },
+  { name: 'oauth-callback.html', generated: false, targetSubdir: '' },
+];
 
 const SOURCE_DIR = resolve(REPO_ROOT, 'packages/oauth-ui/static');
-const TARGET_DIR = resolve(APP_ROOT, 'public/js');
+const PUBLIC_ROOT = resolve(APP_ROOT, 'public');
 
-mkdirSync(TARGET_DIR, { recursive: true });
+mkdirSync(resolve(PUBLIC_ROOT, 'js'), { recursive: true });
 
 for (const asset of ASSETS) {
   const source = resolve(SOURCE_DIR, asset.name);
   if (!existsSync(source)) {
-    console.error(
-      `[sync-vault-script] Missing ${source}.\n` +
-        "Run 'npm run build:vault-script' in packages/oauth-ui first."
-    );
+    const hint = asset.generated
+      ? "Run 'npm run build:vault-script' in packages/oauth-ui first."
+      : 'Ensure packages/oauth-ui/static/oauth-callback.html exists.';
+    console.error(`[sync-vault-script] Missing ${source}.\n${hint}`);
     process.exit(1);
   }
-  copyFileSync(source, resolve(TARGET_DIR, asset.name));
-  console.log(`[sync-vault-script] ${asset.name} -> public/js`);
+  const targetDir = asset.targetSubdir
+    ? resolve(PUBLIC_ROOT, asset.targetSubdir)
+    : PUBLIC_ROOT;
+  mkdirSync(targetDir, { recursive: true });
+  copyFileSync(source, resolve(targetDir, asset.name));
+  const rel = asset.targetSubdir ? `public/${asset.targetSubdir}/` : 'public/';
+  console.log(`[sync-vault-script] ${asset.name} -> ${rel}`);
 }

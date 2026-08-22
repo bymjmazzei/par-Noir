@@ -512,6 +512,15 @@ export function UserStateProvider({ children }: { children: ReactNode }) {
     void import('../services/pnOAuthService').then(({ PNOAuthService }) =>
       PNOAuthService.invalidateUserInfoCache()
     );
+    void import('../services/oauthHandoffState').then(
+      ({ clearOAuthHandoffComplete, clearStaleOAuthCallbackStorage }) => {
+        clearOAuthHandoffComplete();
+        clearStaleOAuthCallbackStorage();
+      }
+    );
+    void import('../services/unlockSessionCoordinator').then(({ resetUnlockSessionCoordinator }) =>
+      resetUnlockSessionCoordinator()
+    );
     // Clear inbox cache on logout
     if (userState.pnIdentifier) {
       inboxCacheService.clear(userState.pnIdentifier);

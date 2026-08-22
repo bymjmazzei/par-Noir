@@ -52,6 +52,7 @@ import { useMePageData } from './hooks/useMePageData';
 import { usePushNotifications } from './hooks/usePushNotifications';
 import { reportCopyright } from './services/reportCopyrightService';
 import { PNOAuthService } from './services/pnOAuthService';
+import { isEngagementPrefetchAllowed, isUnlockPrefetchComplete } from './services/unlockSessionCoordinator';
 import { MESSAGING_ONLY } from './config/buildFlags';
 import { SplashScreen } from '@capacitor/splash-screen';
 
@@ -475,6 +476,12 @@ function App() {
     const windowFiles = filteredFilesByFeed.slice(start, end);
     const timer = setTimeout(() => {
       if (!loadBulkEngagementStatsRef.current) return;
+      if (
+        !isEngagementPrefetchAllowed() &&
+        !isUnlockPrefetchComplete(stablePnIdentifier)
+      ) {
+        return;
+      }
       const fileIds = windowFiles.map((file) => file.metadata.fileId);
       const newFileIds = fileIds.filter((id) => !loadedEngagementFileIdsRef.current.has(id));
       if (newFileIds.length === 0) return;

@@ -39,6 +39,14 @@ import {
   runExclusiveOAuthCallback,
   setOAuthPopupUnlockActive,
 } from '../services/oauthCallbackGate';
+import { browseOAuthRedirectUri } from '../services/browseOAuthRedirect';
+import {
+  clearOAuthHandoffComplete,
+  clearStaleOAuthCallbackStorage,
+  isOAuthHandoffComplete,
+  markOAuthHandoffComplete,
+} from '../services/oauthHandoffState';
+import { runUnlockPostPrefetch } from '../services/unlockSessionCoordinator';
 import {
   startSocialMailboxConsumer,
   stopSocialMailboxConsumer,
@@ -178,7 +186,7 @@ export function useAuthAndSession({
   const { userState, setLocked, setUnlocked, updateDisplayName } = useUserState();
   const loadingDisplayNameRef = useRef<Set<string>>(new Set());
 
-  const redirectUriForOAuth = `${typeof window !== 'undefined' ? window.location.origin : ''}/oauth-callback.html`;
+  const redirectUriForOAuth = browseOAuthRedirectUri();
 
   const runOAuthCallback = useCallback(
     async (
@@ -237,7 +245,14 @@ export function useAuthAndSession({
         return;
       }
 
-      const exchangeRedirectUri = options?.redirectUri ?? redirectUriForOAuth;
+      const exchangeRedirectUri = browseOAuthRedirectUri();
+      if (
+        options?.redirectUri &&
+        options.redirectUri.replace(/\/$/, '') !== exchangeRedirectUri &&
+        import.meta.env.DEV
+      ) {
+        console.warn('[OAuth] redirect_uri mismatch; using canonical browse callback URI');
+      }
 
       await runExclusiveOAuthCallback(authCode, async () => {
         applyAllMessagingHandoffSources(data.messagingHandoff);
@@ -296,6 +311,9 @@ export function useAuthAndSession({
 
         if (userInfo.pn_identifier && !userInfo.pn_identifier.startsWith('did:key:')) {
           setUnlocked(userInfo.pn_identifier);
+          markOAuthHandoffComplete();
+          clearStaleOAuthCallbackStorage();
+          void runUnlockPostPrefetch(userInfo.pn_identifier);
         } else {
           setUnlocked(userInfo.did);
         }
@@ -364,6 +382,18 @@ export function useAuthAndSession({
       window.history.replaceState({}, '', window.location.pathname);
     };
 
+    if (isOAuthHandoffComplete()) {
+      pushPnOAuthDebug('oauth_resume_handoff_already_complete', {});
+      try {
+        sessionStorage.removeItem(PN_OAUTH_RESUME_SEARCH_KEY);
+        sessionStorage.removeItem(PN_OAUTH_RESUME_HASH_KEY);
+      } catch {
+        /* ignore */
+      }
+      clearOAuthQuery();
+      return;
+    }
+
     if (code && isOauthCodeConsumed(code)) {
       pushPnOAuthDebug('oauth_resume_code_already_consumed', {});
       try {
@@ -422,7 +452,11 @@ export function useAuthAndSession({
 
     const tryConsumePendingOAuthStorage = async () => {
       if (!mounted) return;
-      if (isOAuthPopupUnlockActive()) return;
+      if (isOAuthPopupUnlockActive() || isOAuthHandoffComplete()) return;
+      if (userState.isUnlocked) {
+        clearStaleOAuthCallbackStorage();
+        return;
+      }
       try {
         const latestKey = localStorage.getItem(PN_OAUTH_STORAGE_LATEST_KEY);
         if (!latestKey) return;
@@ -668,14 +702,11 @@ export function useAuthAndSession({
     async () => {
       restoreMessagingAfterOAuth();
 
-      const redirectUri = `${window.location.origin}/oauth-callback.html`;
       let authUrl = PNOAuthService.getAuthorizationUrl({
         usePopup: true,
         // Permissions skip is independent of messaging handoff (unlock step always stashes keys).
         identityHandoffRequired: false,
       });
-      const authUrlObj = new URL(authUrl);
-      const actualRedirectUri = authUrlObj.searchParams.get('redirect_uri') || redirectUri;
 
       try {
         const url = new URL(authUrl);
@@ -699,9 +730,8 @@ export function useAuthAndSession({
       }
 
       setOAuthPopupUnlockActive(true);
-      let result: Awaited<ReturnType<typeof startPnOAuthPopup>>;
       try {
-        result = await startPnOAuthPopup({
+        const result = await startPnOAuthPopup({
           url: authUrl,
           expectedState,
           timeoutMs: 120_000,
@@ -717,34 +747,34 @@ export function useAuthAndSession({
             }
           })(),
         });
+
+        if (!result.code && !result.error) {
+          pushPnOAuthDebug('lock_unlock_popup_empty_result', {});
+          setLocked();
+          PNOAuthService.clearSession();
+          showErrorToast('Sign-in did not complete. Please try again.');
+          return;
+        }
+
+        pushPnOAuthDebug('lock_unlock_popup_got_result', {
+          hasCode: Boolean(result.code),
+          hasError: Boolean(result.error),
+        });
+
+        await runOAuthCallback(
+          {
+            code: result.code,
+            state: result.state,
+            error: result.error,
+            error_description: result.error_description,
+            granted_data_points: result.granted_data_points,
+            messagingHandoff: result.messagingHandoff,
+          },
+          { redirectUri: browseOAuthRedirectUri() }
+        );
       } finally {
         setOAuthPopupUnlockActive(false);
       }
-
-      if (!result.code && !result.error) {
-        pushPnOAuthDebug('lock_unlock_popup_empty_result', {});
-        setLocked();
-        PNOAuthService.clearSession();
-        showErrorToast('Sign-in did not complete. Please try again.');
-        return;
-      }
-
-      pushPnOAuthDebug('lock_unlock_popup_got_result', {
-        hasCode: Boolean(result.code),
-        hasError: Boolean(result.error),
-      });
-
-      await runOAuthCallback(
-        {
-          code: result.code,
-          state: result.state,
-          error: result.error,
-          error_description: result.error_description,
-          granted_data_points: result.granted_data_points,
-          messagingHandoff: result.messagingHandoff,
-        },
-        { redirectUri: actualRedirectUri }
-      );
     },
     [runOAuthCallback, setLocked, setUnlocked, showErrorToast]
   );
@@ -769,6 +799,10 @@ export function useAuthAndSession({
   /** Full teardown when OAuth cannot be recovered (same as manual lock). */
   const applyAuthDeathLock = useCallback(async () => {
     const pn = userState.pnIdentifier;
+    clearOAuthHandoffComplete();
+    clearStaleOAuthCallbackStorage();
+    const { resetUnlockSessionCoordinator } = await import('../services/unlockSessionCoordinator');
+    resetUnlockSessionCoordinator();
     try {
       const { wipeAggregatorCloudOnLock } = await import('../components/AggregatorCloudReconnectHost');
       await wipeAggregatorCloudOnLock(pn);

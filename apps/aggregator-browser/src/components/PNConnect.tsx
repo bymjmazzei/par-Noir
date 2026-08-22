@@ -10,6 +10,12 @@ import { useUserState } from '../contexts/UserStateContext';
 import { PNOAuthService } from '../services/pnOAuthService';
 import { completeOAuthUnlock } from '../services/oauthSessionCoordinator';
 import { runExclusiveOAuthCallback } from '../services/oauthCallbackGate';
+import { browseOAuthRedirectUri } from '../services/browseOAuthRedirect';
+import {
+  markOAuthHandoffComplete,
+  clearStaleOAuthCallbackStorage,
+} from '../services/oauthHandoffState';
+import { runUnlockPostPrefetch } from '../services/unlockSessionCoordinator';
 import { useToast } from '../hooks/useToast';
 import { API_ENDPOINT } from '../config/api';
 
@@ -30,8 +36,8 @@ export function PNConnect({ onConnect, compact = false }: PNConnectProps) {
     if (!result.code) return;
 
     try {
-      const redirectUri = `${window.location.origin}/oauth-callback.html`;
       await runExclusiveOAuthCallback(result.code, async () => {
+        const redirectUri = browseOAuthRedirectUri();
         const unlockResult = await completeOAuthUnlock({
           code: result.code!,
           redirectUri,
@@ -49,6 +55,11 @@ export function PNConnect({ onConnect, compact = false }: PNConnectProps) {
         const identifier = userInfo.pn_identifier || userInfo.did;
         if (!identifier) throw new Error('No identifier available from user info');
         setUnlocked(identifier);
+        markOAuthHandoffComplete();
+        clearStaleOAuthCallbackStorage();
+        if (userInfo.pn_identifier && !userInfo.pn_identifier.startsWith('did:key:')) {
+          void runUnlockPostPrefetch(userInfo.pn_identifier);
+        }
         success('Successfully connected your pN!');
         onConnect?.();
       });
@@ -69,7 +80,7 @@ export function PNConnect({ onConnect, compact = false }: PNConnectProps) {
           config={{
             clientId: import.meta.env.VITE_PN_CLIENT_ID || 'browser-app',
             apiEndpoint: API_ENDPOINT,
-            redirectUri: `${window.location.origin}/oauth-callback.html`,
+            redirectUri: browseOAuthRedirectUri(),
             scope: ['openid', 'profile'],
           }}
           onPopupResult={handlePopupResult}
@@ -115,7 +126,7 @@ export function PNConnect({ onConnect, compact = false }: PNConnectProps) {
             config={{
               clientId: import.meta.env.VITE_PN_CLIENT_ID || 'browser-app',
               apiEndpoint: API_ENDPOINT,
-              redirectUri: `${window.location.origin}/oauth-callback.html`,
+              redirectUri: browseOAuthRedirectUri(),
               scope: ['openid', 'profile'],
             }}
             onPopupResult={handlePopupResult}

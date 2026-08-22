@@ -221,10 +221,8 @@ export const AggregatorCloudReconnectHost: React.FC = () => {
       markCloudUnlockComplete(pnIdentifier, ok);
       if (ok) {
         void retryPublishMlKemPublicKey();
-        const { prefetchConnectionsList } = await import('../services/connectionService');
-        void prefetchConnectionsList(pnIdentifier);
-        // A Drive token exists now, so the consent choice held from this unlock can
-        // finally be written. Without this the user re-consents on every unlock.
+        const { runUnlockPostPrefetch } = await import('../services/unlockSessionCoordinator');
+        void runUnlockPostPrefetch(pnIdentifier);
         const { flushPendingGrant } = await import('../services/pendingGrantPersist');
         await flushPendingGrant({ authToken, pnIdentifier });
       }

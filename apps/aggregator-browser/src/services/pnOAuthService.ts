@@ -15,13 +15,13 @@ import {
 } from '@par-noir/pqc-crypto/oauth-unlock-proof';
 import { API_ENDPOINT } from '../config/api';
 import { PN_CLIENT_ID, getPnOAuthScopes } from '../config/oauthClient';
+import { browseOAuthRedirectUri } from './browseOAuthRedirect';
 
 function getClientId(): string {
   return PN_CLIENT_ID;
 }
-const REDIRECT_URI = typeof window !== 'undefined'
-  ? `${window.location.origin}/oauth-callback.html`
-  : '';
+const REDIRECT_URI =
+  typeof window !== 'undefined' ? browseOAuthRedirectUri() : '';
 
 /** Fired when OAuth session is unrecoverable (refresh failed or expired with no refresh). */
 export const PN_OAUTH_SESSION_DEAD_EVENT = 'pn_oauth_session_dead';

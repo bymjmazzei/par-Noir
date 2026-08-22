@@ -37,7 +37,14 @@ if (!PN_NAME || !PASSCODE) {
 }
 
 /** Post-unlock solo-path targets from dedupe plan. */
-const MAX_COUNTS = {
+const CONSENT_MAX = {
+  'POST /oauth/authorize/challenge': 1,
+  'POST /oauth/authorize/authenticate': 1,
+  'GET /oauth/existing-grant': 4,
+};
+
+/** Post-unlock solo-path targets from dedupe plan. */
+const BROWSE_MAX = {
   'POST /oauth/token': 1,
   'GET /oauth/userinfo': 1,
   'GET /api/storage/accounts': 1,
@@ -49,19 +56,21 @@ const MAX_COUNTS = {
 };
 
 const requests = [];
+let consentPhaseEnded = false;
 
 function track(target) {
   target.on('request', (req) => {
     const u = req.url();
     if (u.includes('api.parnoir.com')) {
-      requests.push({ method: req.method(), url: u });
+      requests.push({ method: req.method(), url: u, phase: consentPhaseEnded ? 'browse' : 'consent' });
     }
   });
 }
 
-function summarize(list) {
+function summarize(list, phaseFilter) {
+  const filtered = phaseFilter ? list.filter((r) => r.phase === phaseFilter) : list;
   const byPath = new Map();
-  for (const r of list) {
+  for (const r of filtered) {
     try {
       const u = new URL(r.url);
       let p = u.pathname;
@@ -115,24 +124,44 @@ try {
   /* redirecting without second consent step */
 }
 
+popup.waitForURL(/oauth-callback\.html/, { timeout: 120_000 }).then(() => {
+  consentPhaseEnded = true;
+}).catch(() => {});
+
 await popup.waitForEvent('close', { timeout: 120_000 }).catch(() => {});
+consentPhaseEnded = true;
 await page.waitForTimeout(15_000);
 
 const unlockVisible = await page.getByTitle('Unlock pN').isVisible().catch(() => false);
-const summary = summarize(requests);
-const counts = Object.fromEntries(summary);
+const consentSummary = summarize(requests, 'consent');
+const browseSummary = summarize(requests, 'browse');
+const fullSummary = summarize(requests);
+const consentCounts = Object.fromEntries(consentSummary);
+const browseCounts = Object.fromEntries(browseSummary);
 
 console.log('UNLOCKED', !unlockVisible);
 console.log('TOTAL_API_REQUESTS', requests.length);
+console.log('CONSENT_PHASE_START');
+for (const [k, c] of consentSummary) console.log(`${c}x ${k}`);
+console.log('CONSENT_PHASE_END');
+console.log('BROWSE_PHASE_START');
+for (const [k, c] of browseSummary) console.log(`${c}x ${k}`);
+console.log('BROWSE_PHASE_END');
 console.log('SUMMARY_START');
-for (const [k, c] of summary) console.log(`${c}x ${k}`);
+for (const [k, c] of fullSummary) console.log(`${c}x ${k}`);
 console.log('SUMMARY_END');
 
 const violations = [];
-for (const [pattern, max] of Object.entries(MAX_COUNTS)) {
-  const actual = counts[pattern] ?? 0;
+for (const [pattern, max] of Object.entries(CONSENT_MAX)) {
+  const actual = consentCounts[pattern] ?? 0;
   if (actual > max) {
-    violations.push(`${pattern}: ${actual} > max ${max}`);
+    violations.push(`consent ${pattern}: ${actual} > max ${max}`);
+  }
+}
+for (const [pattern, max] of Object.entries(BROWSE_MAX)) {
+  const actual = browseCounts[pattern] ?? 0;
+  if (actual > max) {
+    violations.push(`browse ${pattern}: ${actual} > max ${max}`);
   }
 }
 

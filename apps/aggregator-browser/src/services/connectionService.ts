@@ -280,18 +280,19 @@ export async function rejectConnectionRequest(
  * Uses Google Drive via API
  */
 export async function getConnections(userPnIdentifier: string): Promise<Connection[]> {
+  const norm = normalizePnId(userPnIdentifier);
   if (
-    connectionsCache?.pn === userPnIdentifier &&
+    connectionsCache?.pn === norm &&
     Date.now() - connectionsCache.at < CONNECTIONS_TTL_MS
   ) {
     return connectionsCache.value;
   }
-  const inflight = connectionsInflight.get(userPnIdentifier);
+  const inflight = connectionsInflight.get(norm);
   if (inflight) return inflight;
 
   const work = (async (): Promise<Connection[]> => {
     try {
-      const response = await fetch(`${API_ENDPOINT}/api/connections?userPnIdentifier=${userPnIdentifier}`, {
+      const response = await fetch(`${API_ENDPOINT}/api/connections?userPnIdentifier=${encodeURIComponent(userPnIdentifier)}`, {
         headers: await getAuthHeaders()
       });
 
@@ -303,17 +304,17 @@ export async function getConnections(userPnIdentifier: string): Promise<Connecti
 
       const result = await response.json();
       const connections = result.connections || [];
-      connectionsCache = { pn: userPnIdentifier, at: Date.now(), value: connections };
+      connectionsCache = { pn: norm, at: Date.now(), value: connections };
       return connections;
     } catch (error) {
       console.error('[getConnections] Failed to get connections:', error);
       return [];
     }
   })().finally(() => {
-    connectionsInflight.delete(userPnIdentifier);
+    connectionsInflight.delete(norm);
   });
 
-  connectionsInflight.set(userPnIdentifier, work);
+  connectionsInflight.set(norm, work);
   return work;
 }
 
@@ -329,17 +330,18 @@ let connectionsCache: { pn: string; at: number; value: Connection[] } | null = n
 const connectionsPrefetchInflight = new Map<string, Promise<Connection[]>>();
 
 export function invalidateConnectionsCache(pnIdentifier?: string): void {
-  if (!pnIdentifier || connectionsCache?.pn === pnIdentifier) {
+  if (!pnIdentifier) {
     connectionsCache = null;
-  }
-  if (pnIdentifier) {
-    const norm = normalizePnId(pnIdentifier);
-    connectionsInflight.delete(pnIdentifier);
-    connectionsPrefetchInflight.delete(norm);
-  } else {
     connectionsInflight.clear();
     connectionsPrefetchInflight.clear();
+    return;
   }
+  const norm = normalizePnId(pnIdentifier);
+  if (connectionsCache?.pn === norm) {
+    connectionsCache = null;
+  }
+  connectionsInflight.delete(norm);
+  connectionsPrefetchInflight.delete(norm);
 }
 
 function normalizePnId(id: string): string {

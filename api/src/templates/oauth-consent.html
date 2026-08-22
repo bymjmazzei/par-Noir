@@ -920,6 +920,9 @@
     let authorizationCode = null;
     let pnIdentifier = null;
     let decryptedIdentity = null;
+    /** Serialize consent unlock — one challenge/authenticate per user action. */
+    let unlockInFlight = false;
+    let unlockInFlightPromise = null;
     /** Retained for messaging E2E handoff to browser-app opener (postMessage). */
     let lastMessagingIdentity = null;
     let lastMessagingSession = null;
@@ -1187,8 +1190,8 @@
       return `pn-${hexHash.substring(0, 12)}`;
     }
 
-    /** The inline lookup races a deadline; retry briefly before falling back to consent. */
-    async function pollExistingGrant(pnId, didValue, attempts = 4) {
+    /** The inline lookup races a deadline; retry once before falling back to consent. */
+    async function pollExistingGrant(pnId, didValue, attempts = 2) {
       if (!pnId) return null;
       for (let i = 0; i < attempts; i++) {
         if (i > 0) {
@@ -1218,6 +1221,11 @@
     }
 
     async function completeOAuthUnlock(encryptedIdentity, publicKey, did, decryptedIdentity, pnName, passcode) {
+      if (unlockInFlight && unlockInFlightPromise) {
+        return unlockInFlightPromise;
+      }
+      unlockInFlight = true;
+      unlockInFlightPromise = (async () => {
       identityData = null;
       sendMessagingIdentityToOpener(encryptedIdentity, decryptedIdentity);
       sendMessagingSessionToOpener(decryptedIdentity);
@@ -1321,11 +1329,17 @@
       document.getElementById('pnIdentifierDisplay').textContent = pnIdentifier;
       document.getElementById('unlockStep').style.display = 'none';
       document.getElementById('consentStep').style.display = 'block';
+      })().finally(function () {
+        unlockInFlight = false;
+        unlockInFlightPromise = null;
+      });
+      return unlockInFlightPromise;
     }
     
     // Unlock form handler
     document.getElementById('unlockForm').addEventListener('submit', async (e) => {
       e.preventDefault();
+      if (unlockInFlight) return;
       
       const pnName = pnNameInput.value;
       const passcode = passcodeInput.value;
