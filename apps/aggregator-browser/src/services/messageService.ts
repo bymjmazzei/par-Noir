@@ -19,8 +19,28 @@ import {
   upsertLocalOutboxRecord,
   type OutboxRecord
 } from '@par-noir/device-cloud-credentials';
+import {
+  CHANNEL_FILTER_ALL,
+  PLATFORM_CHANNEL_CLIENT_ID,
+} from '@par-noir/messaging-ui';
+import { MESSAGING_ONLY } from '../config/buildFlags';
+
 export const MESSAGING_INBOX_REFRESH_EVENT = 'pn_messaging_inbox_refresh';
 export const MESSAGING_POLL_BACKSTOP_MS = 60_000;
+
+/** Browse = primary only; messaging app = aggregator (*). Embed overrides via arg. */
+export function defaultChannelListFilter(override?: string): string {
+  if (override) return override;
+  return MESSAGING_ONLY ? CHANNEL_FILTER_ALL : PLATFORM_CHANNEL_CLIENT_ID;
+}
+
+export function channelLabelForClientId(channelClientId?: string): string {
+  const id = channelClientId?.trim() || PLATFORM_CHANNEL_CLIENT_ID;
+  if (id === PLATFORM_CHANNEL_CLIENT_ID || id === 'browser-app' || id === 'messaging-app') {
+    return 'Platform';
+  }
+  return id;
+}
 
 const inboxThreadsInflight = new Map<string, Promise<MessageThread[]>>();
 const conversationMessagesInflight = new Map<
@@ -32,9 +52,10 @@ function conversationInflightKey(
   userPnIdentifier: string,
   participantPnIdentifier: string,
   limit?: number,
-  offset?: number
+  offset?: number,
+  channelClientId?: string
 ): string {
-  return `${userPnIdentifier}:${participantPnIdentifier}:${limit ?? ''}:${offset ?? ''}`;
+  return `${userPnIdentifier}:${participantPnIdentifier}:${channelClientId || PLATFORM_CHANNEL_CLIENT_ID}:${limit ?? ''}:${offset ?? ''}`;
 }
 
 function resolveRecoveryFromCache(
@@ -209,6 +230,9 @@ export interface MessageThread {
   ownerPnIdentifier?: string;
   accessRole?: 'readWrite' | 'readOnly';
   wrappedChatKey?: string;
+  /** Missing / legacy = platform primary. */
+  channelClientId?: string;
+  channelLabel?: string;
 }
 
 /**
@@ -314,35 +338,46 @@ function mergeMessagesById(primary: Message[], extra: Message[]): Message[] {
 
 /**
  * Merged DM + group inbox threads, sorted by lastMessageAt.
+ * @param channelClientId - list filter override (embed passes L5 client_id).
  */
-export async function getInboxThreads(userPnIdentifier: string): Promise<MessageThread[]> {
-  const inflight = inboxThreadsInflight.get(userPnIdentifier);
+export async function getInboxThreads(
+  userPnIdentifier: string,
+  channelClientId?: string
+): Promise<MessageThread[]> {
+  const channel = defaultChannelListFilter(channelClientId);
+  const inflightKey = `${userPnIdentifier}:${channel}`;
+  const inflight = inboxThreadsInflight.get(inflightKey);
   if (inflight) return inflight;
 
   const work = (async (): Promise<MessageThread[]> => {
-    const dmThreads = await getMessageThreads(userPnIdentifier);
+    const dmThreads = await getMessageThreads(userPnIdentifier, channel);
 
     const dmOnly = dmThreads.filter((t) => t.threadType !== 'group');
     const groupThreads: MessageThread[] = [];
 
-    for (const conv of dmThreads) {
-      if (conv.threadType !== 'group') continue;
-      const gid = conv.groupId || conv.participantPnIdentifier;
-      groupThreads.push({
-        threadType: 'group',
-        participantPnIdentifier: gid,
-        participantName: conv.groupTitle || 'Group',
-        lastMessage: conv.lastMessage,
-        unreadCount: conv.unreadCount || 0,
-        messages: [],
-        spreadsheetId: conv.spreadsheetId,
-        connectionId: conv.ownerPnIdentifier || conv.connectionId,
-        groupId: gid,
-        groupTitle: conv.groupTitle || 'Group',
-        ownerPnIdentifier: conv.ownerPnIdentifier || conv.connectionId,
-        accessRole: conv.accessRole || 'readWrite',
-        wrappedChatKey: conv.wrappedChatKey || '',
-      });
+    // Groups only on platform / aggregator — not L5 channel embeds.
+    if (channel === CHANNEL_FILTER_ALL || channel === PLATFORM_CHANNEL_CLIENT_ID) {
+      for (const conv of dmThreads) {
+        if (conv.threadType !== 'group') continue;
+        const gid = conv.groupId || conv.participantPnIdentifier;
+        groupThreads.push({
+          threadType: 'group',
+          participantPnIdentifier: gid,
+          participantName: conv.groupTitle || 'Group',
+          lastMessage: conv.lastMessage,
+          unreadCount: conv.unreadCount || 0,
+          messages: [],
+          spreadsheetId: conv.spreadsheetId,
+          connectionId: conv.ownerPnIdentifier || conv.connectionId,
+          groupId: gid,
+          groupTitle: conv.groupTitle || 'Group',
+          ownerPnIdentifier: conv.ownerPnIdentifier || conv.connectionId,
+          accessRole: conv.accessRole || 'readWrite',
+          wrappedChatKey: conv.wrappedChatKey || '',
+          channelClientId: PLATFORM_CHANNEL_CLIENT_ID,
+          channelLabel: 'Platform',
+        });
+      }
     }
 
     const merged = [...dmOnly, ...groupThreads];
@@ -354,11 +389,11 @@ export async function getInboxThreads(userPnIdentifier: string): Promise<Message
     return merged;
   })();
 
-  inboxThreadsInflight.set(userPnIdentifier, work);
+  inboxThreadsInflight.set(inflightKey, work);
   try {
     return await work;
   } finally {
-    inboxThreadsInflight.delete(userPnIdentifier);
+    inboxThreadsInflight.delete(inflightKey);
   }
 }
 
@@ -387,10 +422,15 @@ export async function refreshMessagingInbox(
 }
 
 /**
- * Get message threads (conversations)
+ * Get message threads (conversations).
+ * @param channelClientId - list filter: `platform` (browse), `*` (messaging aggregator), or L5 id (embed).
  */
-export async function getMessageThreads(userPnIdentifier: string): Promise<MessageThread[]> {
-  const path = `/api/messages/conversations?userPnIdentifier=${encodeURIComponent(userPnIdentifier)}`;
+export async function getMessageThreads(
+  userPnIdentifier: string,
+  channelClientId?: string
+): Promise<MessageThread[]> {
+  const channel = defaultChannelListFilter(channelClientId);
+  const path = `/api/messages/conversations?userPnIdentifier=${encodeURIComponent(userPnIdentifier)}&channelClientId=${encodeURIComponent(channel)}`;
   const response = await messageFetch(path, { method: 'GET' });
 
   const rateLimited = await parseDriveRateLimitedResponse(response);
@@ -406,23 +446,31 @@ export async function getMessageThreads(userPnIdentifier: string): Promise<Messa
   const result = await response.json();
   const conversations = result.conversations || result.threads || [];
 
-  return conversations.map((conv: any) => ({
-    threadType: conv.threadType === 'group' ? 'group' : 'dm',
-    participantPnIdentifier: conv.participantPnIdentifier || conv.otherUserPnIdentifier,
-    participantName: conv.participantName,
-    lastMessage: conv.lastMessage,
-    unreadCount: conv.unreadCount || 0,
-    messages: [],
-    spreadsheetId: conv.spreadsheetId,
-    connectionId: conv.connectionId,
-    kemCiphertext: conv.kemCiphertext,
-    wrappedMessageRootKey: conv.wrappedMessageRootKey,
-    groupId: conv.groupId,
-    groupTitle: conv.groupTitle,
-    ownerPnIdentifier: conv.ownerPnIdentifier,
-    accessRole: conv.accessRole,
-    wrappedChatKey: conv.wrappedChatKey
-  }));
+  return conversations.map((conv: any) => {
+    const channelId =
+      conv.threadType === 'group'
+        ? PLATFORM_CHANNEL_CLIENT_ID
+        : conv.channelClientId || PLATFORM_CHANNEL_CLIENT_ID;
+    return {
+      threadType: conv.threadType === 'group' ? 'group' : 'dm',
+      participantPnIdentifier: conv.participantPnIdentifier || conv.otherUserPnIdentifier,
+      participantName: conv.participantName,
+      lastMessage: conv.lastMessage,
+      unreadCount: conv.unreadCount || 0,
+      messages: [],
+      spreadsheetId: conv.spreadsheetId,
+      connectionId: conv.connectionId,
+      kemCiphertext: conv.kemCiphertext,
+      wrappedMessageRootKey: conv.wrappedMessageRootKey,
+      groupId: conv.groupId,
+      groupTitle: conv.groupTitle,
+      ownerPnIdentifier: conv.ownerPnIdentifier,
+      accessRole: conv.accessRole,
+      wrappedChatKey: conv.wrappedChatKey,
+      channelClientId: channelId,
+      channelLabel: channelLabelForClientId(channelId),
+    };
+  });
 }
 
 /**
@@ -441,13 +489,15 @@ export async function getConversationMessages(
   connectionId?: string,
   kemCiphertext?: string,
   spreadsheetId?: string,
-  wrappedMessageRootKey?: string
+  wrappedMessageRootKey?: string,
+  channelClientId: string = PLATFORM_CHANNEL_CLIENT_ID
 ): Promise<{ messages: Message[]; total: number }> {
   const inflightKey = conversationInflightKey(
     userPnIdentifier,
     participantPnIdentifier,
     limit,
-    offset
+    offset,
+    channelClientId
   );
   const inflight = conversationMessagesInflight.get(inflightKey);
   if (inflight) return inflight;
@@ -463,6 +513,7 @@ export async function getConversationMessages(
     const body = {
       userPnIdentifier,
       participantPnIdentifier,
+      channelClientId,
       ...(limit != null && { limit }),
       ...(offset != null && { offset }),
       ...(hasCached && { connectionId, spreadsheetId })
@@ -477,6 +528,7 @@ export async function getConversationMessages(
           `/api/messages/conversation?${new URLSearchParams({
             userPnIdentifier,
             participantPnIdentifier,
+            channelClientId,
             ...(limit != null && { limit: String(limit) }),
             ...(offset != null && { offset: String(offset) })
           }).toString()}`,
@@ -570,7 +622,8 @@ export async function sendMessage(
   mediaMimeType?: string,
   wrappedMessageRootKey?: string,
   mediaEnvelopesByPn?: Record<string, string>,
-  mediaBackend?: string
+  mediaBackend?: string,
+  channelClientId: string = PLATFORM_CHANNEL_CLIENT_ID
 ): Promise<Message> {
   if (!isDmIdentityReady()) {
     throw new Error('Messaging keys unavailable. Lock and unlock your pN again to send messages.');
@@ -582,7 +635,9 @@ export async function sendMessage(
   };
   if (!connId || (!recovery.kemCiphertext && !recovery.wrappedMessageRootKey)) {
     const thread = (await getMessageThreads(fromPnIdentifier)).find(
-      (t) => t.participantPnIdentifier === toPnIdentifier
+      (t) =>
+        t.participantPnIdentifier === toPnIdentifier &&
+        (t.channelClientId || PLATFORM_CHANNEL_CLIENT_ID) === channelClientId
     );
     connId = thread?.connectionId;
     recovery = {
@@ -609,6 +664,7 @@ export async function sendMessage(
     read: true,
     connectionId: connId,
     threadId,
+    channelClientId,
     ...(mediaFileId
       ? {
           mediaFileId,

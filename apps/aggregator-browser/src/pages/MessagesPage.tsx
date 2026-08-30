@@ -20,12 +20,19 @@ import { restoreMessagingAfterOAuth } from '../services/messagingOAuthHandoff';
 const SHOW_DM_UNLOCK_EVENT = 'pn_show_dm_unlock_modal';
 
 export interface MessagesPageProps {
-  initialThread: { participantPnIdentifier: string; participantName?: string } | null;
+  initialThread: { participantPnIdentifier: string; participantName?: string; channelClientId?: string } | null;
   onCreatorClick: (creatorId: string) => void;
   onNotificationClick: (notification: Notification) => void;
+  /** L5 embed channel filter. */
+  channelClientId?: string;
 }
 
-export function MessagesPage({ initialThread, onCreatorClick, onNotificationClick }: MessagesPageProps) {
+export function MessagesPage({
+  initialThread,
+  onCreatorClick,
+  onNotificationClick,
+  channelClientId,
+}: MessagesPageProps) {
   const { userState } = useUserState();
   const [showDmUnlock, setShowDmUnlock] = useState(false);
   const [dmUnlockDismissed, setDmUnlockDismissed] = useState(false);
@@ -77,6 +84,7 @@ export function MessagesPage({ initialThread, onCreatorClick, onNotificationClic
           initialThread={initialThread}
           onCreatorClick={onCreatorClick}
           onNotificationClick={onNotificationClick}
+          channelClientId={channelClientId}
         />
       </div>
       {showDmUnlock && hasStoredEncryptedIdentity() && (

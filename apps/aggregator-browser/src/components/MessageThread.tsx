@@ -55,6 +55,7 @@ interface MessageThreadProps {
   ownerPnIdentifier?: string;
   accessRole?: GroupAccessRole;
   wrappedChatKey?: string;
+  channelClientId?: string;
 }
 
 export function MessageThread({
@@ -70,7 +71,8 @@ export function MessageThread({
   groupTitle,
   ownerPnIdentifier,
   accessRole = 'readWrite',
-  wrappedChatKey = ''
+  wrappedChatKey = '',
+  channelClientId = 'platform',
 }: MessageThreadProps) {
   const isGroup = !!groupId;
   const { userState } = useUserState();
@@ -186,7 +188,8 @@ export function MessageThread({
       connectionId,
       kemCiphertext,
       spreadsheetId,
-      wrappedMessageRootKey
+      wrappedMessageRootKey,
+      channelClientId
     );
   };
 
@@ -513,7 +516,10 @@ export function MessageThread({
           connectionId,
           kemCiphertext,
           undefined,
-          wrappedMessageRootKey
+          wrappedMessageRootKey,
+          undefined,
+          undefined,
+          channelClientId
         );
         setMessages((prev) =>
           prev.map((msg) => (msg.messageId === tempMessageId ? sentMessage : msg))

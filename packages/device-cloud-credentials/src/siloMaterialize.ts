@@ -13,6 +13,7 @@ import type {
 } from '@par-noir/user-owned-storage';
 import {
   conversationLogPath,
+  messagesPath,
   outboxRecordPath,
   pnRootFolderName,
   resolveSocialCloudProvider,
@@ -499,7 +500,14 @@ export async function appendConversationLine(
   message: Record<string, unknown>
 ): Promise<void> {
   void ownerPn;
-  const key = conversationLogPath(otherPn);
+  const channel =
+    typeof message.channelClientId === 'string' && message.channelClientId.trim()
+      ? message.channelClientId.trim()
+      : 'platform';
+  const key =
+    channel === 'platform' || channel === 'browser-app' || channel === 'messaging-app'
+      ? conversationLogPath(otherPn)
+      : messagesPath('channels', channel, `conversation-${otherPn.replace(/^pn-/, '')}.jsonl`);
   const existing = (await writer.getText(key)) || '';
   const messageId = String(message.messageId || '');
   if (messageId && existing.includes(`"messageId":"${messageId}"`)) {

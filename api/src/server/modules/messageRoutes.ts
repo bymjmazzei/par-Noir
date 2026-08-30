@@ -10,8 +10,33 @@ import { messagingLog } from '../utils/messagingLog';
 import { hashIdentifier } from '../../utils/logger';
 import { getBearerTokenPayload } from '../middleware/authMiddleware';
 import { gateFirstPartyOwnerRoute, DEVICE_CAPABILITIES } from './deviceCapabilityService';
+import type { parseChannelListFilter } from './messagingChannel';
+import { normalizeChannelClientId as normalizeChannelClientIdSync } from './messagingChannel';
 
 const NODE_ENV = process.env.NODE_ENV || 'development';
+
+type ChannelListFilter = ReturnType<typeof parseChannelListFilter>;
+
+function filterConversationsByChannel<
+  T extends {
+    conversations: Array<{ threadType?: string; channelClientId?: string }>;
+    threads: Array<{ channelClientId?: string }>;
+  }
+>(payload: T, filter: ChannelListFilter): T {
+  if (filter.mode === 'all') return payload;
+  const channel = filter.channelClientId;
+  const conversations = payload.conversations.filter((c) => {
+    if (c.threadType === 'group') {
+      // Groups stay on the platform viewport / aggregator, not L5 channel embeds.
+      return channel === 'platform';
+    }
+    return normalizeChannelClientIdSync(c.channelClientId) === channel;
+  });
+  const threads = payload.threads.filter((t) =>
+    normalizeChannelClientIdSync(t.channelClientId) === channel
+  );
+  return { ...payload, conversations, threads };
+}
 
 export interface MessageRouteDeps {
   extractAccountId: (account: any) => string | undefined;
@@ -69,6 +94,12 @@ export function setupMessageRoutes(app: express.Application, deps: MessageRouteD
         }
         if (!(await gateFirstPartyOwnerRoute(req, res, DEVICE_CAPABILITIES.messagesRead, userPnIdentifier))) return;
 
+        const { parseChannelListFilter, normalizeChannelClientId } =
+          await import('./messagingChannel');
+        const channelFilter = parseChannelListFilter(
+          typeof req.query.channelClientId === 'string' ? req.query.channelClientId : undefined
+        );
+
         const { MessageSheetsService } = await import('./messageSheetsService');
         const { storageCredentialsService } = await import('./storageCredentialsService');
 
@@ -122,7 +153,8 @@ export function setupMessageRoutes(app: express.Application, deps: MessageRouteD
 
           const cachedInbox = await getCachedInboxConversations<InboxCachePayload>(pnIdentifier);
           if (cachedInbox) {
-            return res.json(cachedInbox);
+            const filteredCached = filterConversationsByChannel(cachedInbox, channelFilter);
+            return res.json(filteredCached);
           }
 
           const resolveOwnerDriveContext = ownDriveOnlyContext(pnIdentifier, token, accountId);
@@ -181,6 +213,9 @@ export function setupMessageRoutes(app: express.Application, deps: MessageRouteD
                 lastMessagePreview: conv.lastMessagePreview,
                 lastMessage,
                 unreadCount: 0,
+                channelClientId: isGroup
+                  ? undefined
+                  : normalizeChannelClientId(conv.channelClientId),
                 ...(isGroup && {
                   groupId: conv.groupId || conv.participantPnIdentifier,
                   ownerPnIdentifier: conv.ownerPnIdentifier || conv.connectionId,
@@ -192,11 +227,12 @@ export function setupMessageRoutes(app: express.Application, deps: MessageRouteD
           const threads = enrichedConversations.map((conv) => ({
             participantPnIdentifier: conv.participantPnIdentifier,
             lastMessageAt: conv.lastMessageAt,
+            channelClientId: conv.channelClientId,
           }));
 
           const payload = { conversations: enrichedConversations, threads };
           await setCachedInboxConversations(pnIdentifier, payload);
-          return res.json(payload);
+          return res.json(filterConversationsByChannel(payload, channelFilter));
         } catch (inboxError: unknown) {
           const { isGoogleSheetsRateLimit } = await import('./googleSheetsRateLimit');
           console.warn(
@@ -489,9 +525,14 @@ export function setupMessageRoutes(app: express.Application, deps: MessageRouteD
         const offset = src.offset != null ? parseInt(String(src.offset), 10) : 0;
         const connectionId = src.connectionId as string | undefined;
         const spreadsheetId = src.spreadsheetId as string | undefined;
+        const { normalizeChannelClientId } = await import('./messagingChannel');
+        const channelClientId = normalizeChannelClientId(
+          typeof src.channelClientId === 'string' ? src.channelClientId : undefined
+        );
         messagingLog.debug('[GetConversation] Request received', {
           hasConnectionId: !!connectionId,
           hasSpreadsheetId: !!spreadsheetId,
+          channelClientId,
           method: req.method
         });
 
@@ -568,7 +609,8 @@ export function setupMessageRoutes(app: express.Application, deps: MessageRouteD
               normalizedParticipantPnIdentifier,
               pnIdentifier,
               accountId,
-              50
+              50,
+              channelClientId
             );
 
             if (inboxEntry?.connectionId && inboxEntry?.spreadsheetId) {
@@ -591,7 +633,11 @@ export function setupMessageRoutes(app: express.Application, deps: MessageRouteD
             const userCtx = await requireOwnerDriveContext(pnIdentifier, accountId, {
               accessToken: extractCloudAccessToken(req),
             });
-            const resolved = await resolveDmConnectionFromIndex(userCtx, normalizedParticipantPnIdentifier);
+            const resolved = await resolveDmConnectionFromIndex(
+              userCtx,
+              normalizedParticipantPnIdentifier,
+              channelClientId
+            );
 
             if (!resolved?.connectionId || resolved.status !== 'connected') {
               return res.status(403).json({
@@ -623,9 +669,17 @@ export function setupMessageRoutes(app: express.Application, deps: MessageRouteD
               resolved.conversationSpreadsheetId;
 
             if (!conversationSheetId) {
+              const channelMessagesFolderId =
+                await MessageSheetsService.getOrCreateChannelMessagesFolder(
+                  token,
+                  driveIndex.pnFolderId,
+                  pnIdentifier,
+                  accountId,
+                  channelClientId
+                );
               conversationSheetId = await MessageSheetsService.getConversationSheet(
                 token,
-                messagesFolderId,
+                channelMessagesFolderId,
                 normalizedParticipantPnIdentifier,
                 pnIdentifier,
                 accountId
@@ -830,6 +884,9 @@ export function setupMessageRoutes(app: express.Application, deps: MessageRouteD
                 : undefined,
             connectionId,
             threadId,
+            channelClientId: normalizeChannelClientIdSync(
+              typeof req.body?.channelClientId === 'string' ? req.body.channelClientId : undefined
+            ),
             isConnectionRequest: !!isConnectionRequest,
             role: 'recipient'
           });
@@ -1194,7 +1251,10 @@ export function setupMessageRoutes(app: express.Application, deps: MessageRouteD
               normalizedParticipantPnIdentifier,
               pnIdentifier,
               accountId,
-              50
+              50,
+              normalizeChannelClientIdSync(
+                typeof req.body?.channelClientId === 'string' ? req.body.channelClientId : undefined
+              )
             );
             conversationSheetId = inboxEntry?.spreadsheetId;
           } catch {

@@ -71,6 +71,7 @@ describe('resolveDmConnectionFromIndex', () => {
       conversationSpreadsheetId: 'conv-sheet',
       wrappedMessageRootKey: 'wrapped',
       status: 'connected',
+      channelClientId: 'platform',
     });
     expect(mockGetConnections).not.toHaveBeenCalled();
   });
@@ -101,6 +102,30 @@ describe('resolveDmConnectionFromIndex', () => {
     expect(result).toEqual({
       connectionId: 'conn_xyz',
       kemCiphertext: 'kem-fallback',
+      status: 'connected',
+      channelClientId: 'platform',
+    });
+  });
+
+  it('resolves L5 channel against inbox with channel arg', async () => {
+    mockGetInbox.mockResolvedValue({
+      connectionId: 'conn_acme',
+      spreadsheetId: 'acme-sheet',
+      channelClientId: 'acme',
+    });
+    const result = await resolveDmConnectionFromIndex(makeCtx(), 'pn-user2', 'acme');
+    expect(mockGetInbox).toHaveBeenCalledWith(
+      expect.anything(),
+      'inbox-sheet',
+      'pn-user2',
+      'pn-user1',
+      'acc-1',
+      50,
+      'acme'
+    );
+    expect(result).toMatchObject({
+      connectionId: 'conn_acme',
+      channelClientId: 'acme',
       status: 'connected',
     });
   });

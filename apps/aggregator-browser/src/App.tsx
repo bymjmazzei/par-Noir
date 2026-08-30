@@ -55,6 +55,7 @@ import { PNOAuthService } from './services/pnOAuthService';
 import { isEngagementPrefetchAllowed, isUnlockPrefetchComplete } from './services/unlockSessionCoordinator';
 import { MESSAGING_ONLY } from './config/buildFlags';
 import { SplashScreen } from '@capacitor/splash-screen';
+import { EmbedMessagingPage } from './pages/EmbedMessagingPage';
 
 // Shared types - importing from id-dashboard
 // In production, these would come from a shared package
@@ -63,6 +64,10 @@ function App() {
   useEffect(() => {
     SplashScreen.hide().catch(() => {});
   }, []);
+
+  const isMessagingEmbed =
+    typeof window !== 'undefined' &&
+    (window.location.pathname === '/embed' || window.location.pathname.startsWith('/embed/'));
 
   const { userState, getDisplayName } = useUserState();
   const discover = useDiscoverFiles();
@@ -988,6 +993,10 @@ function App() {
     success,
     showErrorToast: (msg: string) => { showErrorToast(msg); },
   };
+
+  if (isMessagingEmbed) {
+    return <EmbedMessagingPage />;
+  }
 
   return (
     <>

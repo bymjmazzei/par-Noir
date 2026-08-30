@@ -25,16 +25,24 @@ interface InboxProps {
   initialThread?: {
     participantPnIdentifier: string;
     participantName?: string;
+    channelClientId?: string;
   } | null;
   onCreatorClick?: (creatorId: string) => void;
+  /** L5 embed: restrict inbox to this OAuth client_id channel. */
+  channelClientId?: string;
 }
 
-export function Inbox({ initialThread = null, onCreatorClick }: InboxProps) {
+export function Inbox({ initialThread = null, onCreatorClick, channelClientId }: InboxProps) {
   const { userState } = useUserState();
   const [activeView, setActiveView] = useState<'messages' | 'notifications' | 'requests' | 'activity' | 'connections'>('messages');
   const [selectedThread, setSelectedThread] = useState<SelectedInboxThread | null>(
     initialThread
-      ? { kind: 'dm', participantPnIdentifier: initialThread.participantPnIdentifier, participantName: initialThread.participantName }
+      ? {
+          kind: 'dm',
+          participantPnIdentifier: initialThread.participantPnIdentifier,
+          participantName: initialThread.participantName,
+          channelClientId: initialThread.channelClientId || channelClientId || 'platform',
+        }
       : null
   );
   const [showNotificationPreferences, setShowNotificationPreferences] = useState(false);
@@ -55,11 +63,12 @@ export function Inbox({ initialThread = null, onCreatorClick }: InboxProps) {
       setSelectedThread({
         kind: 'dm',
         participantPnIdentifier: initialThread.participantPnIdentifier,
-        participantName: initialThread.participantName
+        participantName: initialThread.participantName,
+        channelClientId: initialThread.channelClientId || channelClientId || 'platform',
       });
       setActiveView('messages');
     }
-  }, [initialThread]);
+  }, [initialThread, channelClientId]);
 
   if (selectedThread) {
     if (selectedThread.kind === 'group') {
@@ -86,6 +95,7 @@ export function Inbox({ initialThread = null, onCreatorClick }: InboxProps) {
         kemCiphertext={selectedThread.kemCiphertext}
         wrappedMessageRootKey={selectedThread.wrappedMessageRootKey}
         spreadsheetId={selectedThread.spreadsheetId}
+        channelClientId={selectedThread.channelClientId || channelClientId || 'platform'}
       />
     );
   }
@@ -184,8 +194,9 @@ export function Inbox({ initialThread = null, onCreatorClick }: InboxProps) {
       <div className="flex-1 overflow-hidden">
         {activeView === 'messages' ? (
           <MessageList
-            key={`messages-${inboxRefreshKey}`}
+            key={`messages-${inboxRefreshKey}-${channelClientId || 'default'}`}
             refreshKey={inboxRefreshKey}
+            channelClientId={channelClientId}
             onThreadSelect={(thread) => setSelectedThread(thread)}
           />
         ) : activeView === 'notifications' ? (

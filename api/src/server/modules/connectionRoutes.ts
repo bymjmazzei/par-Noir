@@ -244,7 +244,11 @@ export function setupConnectionRoutes(app: express.Application, deps: Connection
     app.post('/api/connections/:connectionId/accept', async (req, res) => {
       try {
         const { connectionId } = req.params;
-        const { userPnIdentifier, kemCiphertext, wrappedMessageRootKey, kemAlgId, acceptorMailboxRouteKey, mailboxRouteKey } = req.body;
+        const { userPnIdentifier, kemCiphertext, wrappedMessageRootKey, kemAlgId, acceptorMailboxRouteKey, mailboxRouteKey, channelClientId: bodyChannelClientId } = req.body;
+        const { normalizeChannelClientId } = await import('./messagingChannel');
+        const channelClientId = normalizeChannelClientId(
+          typeof bodyChannelClientId === 'string' ? bodyChannelClientId : undefined
+        );
         if (!connectionId || !userPnIdentifier) {
           return res.status(400).json({ error: 'connectionId and userPnIdentifier are required' });
         }
@@ -466,6 +470,7 @@ export function setupConnectionRoutes(app: express.Application, deps: Connection
           // without their ML-KEM secret.
           extra: {
             kemCiphertext,
+            channelClientId,
             ...(acceptorRouteKey ? { acceptorMailboxRouteKey: acceptorRouteKey } : {})
           }
         });
@@ -503,12 +508,13 @@ export function setupConnectionRoutes(app: express.Application, deps: Connection
           // identifier stands in.
 
           if (acceptorPnFolderId) {
-              // Get or create messages folder for acceptor
-              const acceptorMessagesFolderId = await MessageSheetsService.getOrCreateMessagesFolder(
+              // Channel-scoped messages folder (platform → par-noir-messages; L5 → integrators/{id}/messages)
+              const acceptorMessagesFolderId = await MessageSheetsService.getOrCreateChannelMessagesFolder(
                 token,
                 acceptorPnFolderId,
                 pnIdentifier,
-                accountId
+                accountId,
+                channelClientId
               );
 
               // Check if acceptor's conversation file exists, if not create
@@ -571,14 +577,27 @@ export function setupConnectionRoutes(app: express.Application, deps: Connection
                 accountId
               );
 
-              // Update inbox for acceptor
+              // Update inbox for acceptor (this channel only — L5 does not create platform row)
               try {
-                const acceptorInboxSheetId = await MessageSheetsService.getOrCreateInboxSheet(
-                  token,
-                  acceptorMessagesFolderId,
-                  pnIdentifier,
-                  accountId
-                );
+                const { readPnDriveIndex, isPnDriveIndexComplete } = await import('./pnDriveIndex');
+                const driveIndex = readPnDriveIndex(userCredentials.credentials as Record<string, unknown>);
+                // Inbox directory stays in platform messages folder for aggregator discovery
+                const platformMessagesFolderId = isPnDriveIndexComplete(driveIndex)
+                  ? driveIndex.messagesFolderId
+                  : await MessageSheetsService.getOrCreateMessagesFolder(
+                      token,
+                      acceptorPnFolderId,
+                      pnIdentifier,
+                      accountId
+                    );
+                const acceptorInboxSheetId = isPnDriveIndexComplete(driveIndex)
+                  ? driveIndex.inboxSheetId
+                  : await MessageSheetsService.getOrCreateInboxSheet(
+                      token,
+                      platformMessagesFolderId,
+                      pnIdentifier,
+                      accountId
+                    );
                 await MessageSheetsService.updateInboxEntryWithRetry(
                   token,
                   acceptorInboxSheetId,
@@ -590,9 +609,10 @@ export function setupConnectionRoutes(app: express.Application, deps: Connection
                   accountId,
                   systemMessageContent,
                   kemCiphertext,
-                  wrappedMessageRootKey
+                  wrappedMessageRootKey,
+                  channelClientId
                 );
-                messagingLog.debug('[AcceptConnection] Updated acceptor inbox');
+                messagingLog.debug('[AcceptConnection] Updated acceptor inbox', { channelClientId });
               } catch (inboxError: any) {
                 messagingLog.warn('[AcceptConnection] Failed to update acceptor inbox', { message: inboxError?.message });
               }

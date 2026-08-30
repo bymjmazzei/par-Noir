@@ -4,6 +4,12 @@
 
 export type MessagingSurface = 'messaging_app' | 'browse_modal' | 'l5_embed';
 
+/** Primary DM channel shared by browse + messaging first-party surfaces. */
+export const PLATFORM_CHANNEL_CLIENT_ID = 'platform' as const;
+
+/** Messaging-app aggregator: list every channel. */
+export const CHANNEL_FILTER_ALL = '*' as const;
+
 export const PN_MESSAGING_IDENTITY_MESSAGE = 'pn_messaging_identity' as const;
 export const PN_MESSAGING_SESSION_MESSAGE = 'pn_messaging_session' as const;
 
@@ -22,6 +28,10 @@ export interface MessagingThreadSummary {
   ownerPnIdentifier?: string;
   lastMessageAt?: string;
   unreadCount?: number;
+  /** Missing / legacy = platform primary. */
+  channelClientId?: string;
+  /** Display label for aggregator (e.g. Platform, Acme). */
+  channelLabel?: string;
 }
 
 export interface SelectedMessagingThread {
@@ -35,6 +45,7 @@ export interface SelectedMessagingThread {
   wrappedMessageRootKey?: string;
   spreadsheetId?: string;
   accessRole?: 'readWrite' | 'readOnly';
+  channelClientId?: string;
 }
 
 export type MediaPickSource = 'ownPn' | 'sharedWithMe' | 'saved' | 'device';

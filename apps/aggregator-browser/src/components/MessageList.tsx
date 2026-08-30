@@ -14,13 +14,19 @@ import { useToast } from '../hooks/useToast';
 import { inboxCacheService } from '../services/inboxCacheService';
 import { getUserProfile } from '../services/profileService';
 import { useRealtimeSync } from '../hooks/useRealtimeSync';
+import { MESSAGING_ONLY } from '../config/buildFlags';
+import { PLATFORM_CHANNEL_CLIENT_ID } from '@par-noir/messaging-ui';
+import { MESSAGING_ONLY } from '../config/buildFlags';
+import { PLATFORM_CHANNEL_CLIENT_ID } from '@par-noir/messaging-ui';
 
 interface MessageListProps {
   onThreadSelect: (thread: SelectedInboxThread) => void;
   refreshKey?: number;
+  /** When set (L5 embed), list only that channel. */
+  channelClientId?: string;
 }
 
-export function MessageList({ onThreadSelect, refreshKey = 0 }: MessageListProps) {
+export function MessageList({ onThreadSelect, refreshKey = 0, channelClientId }: MessageListProps) {
   const { userState, getDisplayName, setUserDisplayName } = useUserState();
   const { success, error: showError } = useToast();
   const [threads, setThreads] = useState<MessageThreadType[]>([]);
@@ -82,7 +88,7 @@ export function MessageList({ onThreadSelect, refreshKey = 0 }: MessageListProps
       if (clearCacheFirst || refreshKey > 0) {
         inboxCacheService.clear(pn);
       }
-      const threadsData = await getInboxThreads(pn);
+      const threadsData = await getInboxThreads(pn, channelClientId);
       
       const threadsWithoutPreview = threadsData.map(thread => ({
         ...thread,
@@ -251,12 +257,12 @@ export function MessageList({ onThreadSelect, refreshKey = 0 }: MessageListProps
       success('Conversation deleted');
       
       // Refresh thread list to ensure consistency
-      const threadsData = await getInboxThreads(userState.pnIdentifier);
+      const threadsData = await getInboxThreads(userState.pnIdentifier, channelClientId);
       setThreads(threadsData);
     } catch (error: any) {
       console.error('Failed to delete conversation:', error);
       // Restore thread on error
-      const threadsData = await getInboxThreads(userState.pnIdentifier!);
+      const threadsData = await getInboxThreads(userState.pnIdentifier!, channelClientId);
       setThreads(threadsData);
       const errorMessage = error?.message || 'Failed to delete conversation';
       showError(errorMessage);
@@ -296,7 +302,10 @@ export function MessageList({ onThreadSelect, refreshKey = 0 }: MessageListProps
           <div className="divide-y divide-neutral-700">
             {threads.filter(t => t.participantPnIdentifier).map((thread) => {
               const isGroup = thread.threadType === 'group';
-              const rowKey = isGroup ? `group-${thread.groupId}` : thread.participantPnIdentifier;
+              const channelId = thread.channelClientId || PLATFORM_CHANNEL_CLIENT_ID;
+              const rowKey = isGroup
+                ? `group-${thread.groupId}`
+                : `${thread.participantPnIdentifier}|${channelId}`;
               const label = isGroup
                 ? (thread.groupTitle || 'Group')
                 : (() => {
@@ -305,6 +314,10 @@ export function MessageList({ onThreadSelect, refreshKey = 0 }: MessageListProps
                       ? displayName
                       : (thread.participantPnIdentifier || 'Unknown').substring(0, 16) + '...';
                   })();
+              const channelBadge =
+                (MESSAGING_ONLY || !!channelClientId) && !isGroup
+                  ? thread.channelLabel || (channelId === PLATFORM_CHANNEL_CLIENT_ID ? 'Platform' : channelId)
+                  : null;
               return (
               <div key={rowKey} className="relative">
                 <button
@@ -327,7 +340,8 @@ export function MessageList({ onThreadSelect, refreshKey = 0 }: MessageListProps
                         connectionId: thread.connectionId,
                         kemCiphertext: thread.kemCiphertext,
                         wrappedMessageRootKey: thread.wrappedMessageRootKey,
-                        spreadsheetId: thread.spreadsheetId
+                        spreadsheetId: thread.spreadsheetId,
+                        channelClientId: channelId,
                       });
                     }
                   }}
@@ -349,6 +363,11 @@ export function MessageList({ onThreadSelect, refreshKey = 0 }: MessageListProps
                           <h3 className="text-white font-medium truncate">
                             {label}
                           </h3>
+                          {channelBadge && (
+                            <span className="shrink-0 text-[10px] uppercase tracking-wide text-neutral-400 border border-neutral-600 px-1.5 py-0.5 rounded">
+                              {channelBadge}
+                            </span>
+                          )}
                           {thread.unreadCount > 0 && (
                             <span className="px-2 py-0.5 bg-blue-500 text-white text-xs rounded-full">
                               {thread.unreadCount}

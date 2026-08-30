@@ -151,7 +151,8 @@ export async function acceptConnectionRequest(
   connectionId: string,
   userPnIdentifier: string,
   requesterPnIdentifier: string,
-  requesterMlKemPublicKey?: string
+  requesterMlKemPublicKey?: string,
+  channelClientId: string = 'platform'
 ): Promise<void> {
   if (!isDmIdentityReady()) {
     throw new Error('Messaging keys unavailable. Lock and unlock your pN again to accept connections.');
@@ -206,7 +207,8 @@ export async function acceptConnectionRequest(
         kemCiphertext,
         wrappedMessageRootKey,
         kemAlgId: 'ML-KEM-768',
-        acceptorMailboxRouteKey: mailboxRouteKey
+        acceptorMailboxRouteKey: mailboxRouteKey,
+        channelClientId
       })
     });
 

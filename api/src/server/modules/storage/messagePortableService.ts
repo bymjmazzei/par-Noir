@@ -12,6 +12,11 @@ import {
   portableTableScan
 } from './portableTableService';
 import { INBOX_SCHEMA } from './tableSchemas';
+import {
+  PLATFORM_CHANNEL_CLIENT_ID,
+  dmInboxRowKey,
+  normalizeChannelClientId,
+} from '../messagingChannel';
 
 export const PORTABLE_MESSAGES_FOLDER = 'pn-portable-messages';
 export const PORTABLE_INBOX_SHEET = 'pn-portable-inbox';
@@ -188,6 +193,8 @@ export async function countUnreadMessagesPortable(
 }
 
 export interface InboxRow {
+  /** Storage key: groupId, peer (legacy/platform), or peer|channel. */
+  inboxRowKey?: string;
   threadType?: 'dm' | 'group';
   participantPnIdentifier: string;
   spreadsheetId: string;
@@ -197,6 +204,26 @@ export interface InboxRow {
   kemCiphertext?: string;
   wrappedMessageRootKey?: string;
   groupId?: string;
+  channelClientId?: string;
+}
+
+function normalizeInboxRow(r: InboxRow): InboxRow {
+  const threadType = r.threadType ?? 'dm';
+  if (threadType === 'group') {
+    return {
+      ...r,
+      threadType: 'group',
+      channelClientId: undefined,
+      inboxRowKey: r.inboxRowKey || r.groupId || r.participantPnIdentifier,
+    };
+  }
+  const channelClientId = normalizeChannelClientId(r.channelClientId);
+  return {
+    ...r,
+    threadType: 'dm',
+    channelClientId,
+    inboxRowKey: r.inboxRowKey || dmInboxRowKey(r.participantPnIdentifier, channelClientId),
+  };
 }
 
 export async function updateInboxEntryPortable(
@@ -204,10 +231,31 @@ export async function updateInboxEntryPortable(
   entry: InboxRow,
   accountId?: string
 ): Promise<void> {
+  const channelClientId = normalizeChannelClientId(entry.channelClientId);
+  const inboxRowKey = dmInboxRowKey(entry.participantPnIdentifier, channelClientId);
+  const rows = await portableTableScan<InboxRow>(pnIdentifier, INBOX_SCHEMA, accountId);
+  for (const existing of rows) {
+    const n = normalizeInboxRow(existing);
+    if (n.threadType === 'group') continue;
+    if (
+      n.participantPnIdentifier === entry.participantPnIdentifier &&
+      normalizeChannelClientId(n.channelClientId) === channelClientId
+    ) {
+      const oldKey = existing.inboxRowKey || existing.participantPnIdentifier;
+      if (oldKey && oldKey !== inboxRowKey) {
+        await portableTableDelete(pnIdentifier, INBOX_SCHEMA, oldKey, accountId);
+      }
+    }
+  }
   await portableTableAppend(
     pnIdentifier,
     INBOX_SCHEMA,
-    { threadType: 'dm', ...entry } as unknown as Record<string, unknown>,
+    {
+      threadType: 'dm',
+      ...entry,
+      channelClientId,
+      inboxRowKey,
+    } as unknown as Record<string, unknown>,
     accountId
   );
 }
@@ -215,9 +263,30 @@ export async function updateInboxEntryPortable(
 export async function removeInboxEntryPortable(
   pnIdentifier: string,
   participantPnIdentifier: string,
-  accountId?: string
+  accountId?: string,
+  channelClientId?: string
 ): Promise<void> {
-  await portableTableDelete(pnIdentifier, INBOX_SCHEMA, participantPnIdentifier, accountId);
+  const channel = normalizeChannelClientId(channelClientId);
+  const preferred = dmInboxRowKey(participantPnIdentifier, channel);
+  const rows = await portableTableScan<InboxRow>(pnIdentifier, INBOX_SCHEMA, accountId);
+  for (const existing of rows) {
+    const n = normalizeInboxRow(existing);
+    if (n.threadType === 'group') continue;
+    if (
+      n.participantPnIdentifier === participantPnIdentifier &&
+      normalizeChannelClientId(n.channelClientId) === channel
+    ) {
+      const key = existing.inboxRowKey || existing.participantPnIdentifier;
+      if (key) await portableTableDelete(pnIdentifier, INBOX_SCHEMA, key, accountId);
+      return;
+    }
+  }
+  await portableTableDelete(pnIdentifier, INBOX_SCHEMA, preferred, accountId).catch(() => undefined);
+  if (channel === PLATFORM_CHANNEL_CLIENT_ID) {
+    await portableTableDelete(pnIdentifier, INBOX_SCHEMA, participantPnIdentifier, accountId).catch(
+      () => undefined
+    );
+  }
 }
 
 export async function getInboxConversationsPortable(
@@ -225,21 +294,26 @@ export async function getInboxConversationsPortable(
   accountId?: string
 ): Promise<InboxRow[]> {
   const rows = await portableTableScan<InboxRow>(pnIdentifier, INBOX_SCHEMA, accountId);
-  return rows.sort(
-    (a, b) => new Date(b.lastMessageAt).getTime() - new Date(a.lastMessageAt).getTime()
-  );
+  return rows
+    .map(normalizeInboxRow)
+    .sort((a, b) => new Date(b.lastMessageAt).getTime() - new Date(a.lastMessageAt).getTime());
 }
 
 export async function getInboxConversationByParticipantPortable(
   pnIdentifier: string,
   participantPnIdentifier: string,
-  accountId?: string
+  accountId?: string,
+  channelClientId?: string
 ): Promise<InboxRow | null> {
-  return portableTableGetByKey<InboxRow>(
-    pnIdentifier,
-    INBOX_SCHEMA,
-    participantPnIdentifier,
-    accountId
+  const channel = normalizeChannelClientId(channelClientId);
+  const rows = await getInboxConversationsPortable(pnIdentifier, accountId);
+  return (
+    rows.find(
+      (r) =>
+        (r.threadType ?? 'dm') === 'dm' &&
+        r.participantPnIdentifier === participantPnIdentifier &&
+        normalizeChannelClientId(r.channelClientId) === channel
+    ) ?? null
   );
 }
 
@@ -259,6 +333,7 @@ export async function getInboxEntriesPortable(
     groupId?: string;
     ownerPnIdentifier?: string;
     groupTitle?: string;
+    channelClientId?: string;
   }>
 > {
   const rows = await getInboxConversationsPortable(pnIdentifier, accountId);
@@ -271,11 +346,11 @@ export async function getInboxEntriesPortable(
         spreadsheetId: r.spreadsheetId,
         connectionId: r.connectionId,
         lastMessageAt: r.lastMessageAt,
-      lastMessagePreview: r.lastMessagePreview,
-      kemCiphertext: r.kemCiphertext,
-      wrappedMessageRootKey: r.wrappedMessageRootKey,
-      groupId: r.groupId ?? r.participantPnIdentifier,
-        ownerPnIdentifier: r.connectionId
+        lastMessagePreview: r.lastMessagePreview,
+        kemCiphertext: r.kemCiphertext,
+        wrappedMessageRootKey: r.wrappedMessageRootKey,
+        groupId: r.groupId ?? r.participantPnIdentifier,
+        ownerPnIdentifier: r.connectionId,
       };
     }
     return {
@@ -286,7 +361,8 @@ export async function getInboxEntriesPortable(
       lastMessageAt: r.lastMessageAt,
       lastMessagePreview: r.lastMessagePreview,
       kemCiphertext: r.kemCiphertext,
-      wrappedMessageRootKey: r.wrappedMessageRootKey
+      wrappedMessageRootKey: r.wrappedMessageRootKey,
+      channelClientId: normalizeChannelClientId(r.channelClientId),
     };
   });
 }
@@ -359,6 +435,7 @@ export async function updateGroupInboxEntryPortable(
       threadType: 'group',
       participantPnIdentifier: groupId,
       groupId,
+      inboxRowKey: groupId,
       ...entry
     } as unknown as Record<string, unknown>,
     accountId

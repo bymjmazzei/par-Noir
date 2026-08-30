@@ -20,8 +20,10 @@ Google Drive Root
     │       └── collections-owner-index.xlsx
     ├── integrators/ (empty root created at Drive setup; per-app subfolders on first `cloud:app` grant)
     │   └── {oauth_client_id}/   (one silo per connected integrator)
-    └── par-noir-messages/ (created on-demand when first message is sent)
-        └── conversation-{otherUserDid}.xlsx (created when connection is accepted)
+    │       └── messages/        (L5 channel DM sheets + Inbox for that client_id; see ADR_MESSAGING_CHANNEL_THREADS)
+    └── par-noir-messages/ (platform primary channel; created on-demand)
+        ├── Inbox
+        └── conversation-o-{opaquePeerRef}.xlsx / conversation-group-{groupId}.xlsx
 ```
 
 ## Main Folder: `par Noir - {pnIdentifier}`
@@ -103,6 +105,7 @@ Each content-class folder may also contain **`{fileId}.metadata`** companion Goo
 - **Created**: On first OAuth grant with `cloud:app` scope (token exchange or `GET /api/integrator/storage-root`)
 - **Name**: Sanitized OAuth `client_id` (alphanumeric, `-`, `_` only)
 - **Access**: Third-party apps may read/write **only** under their own subfolder via par Noir API (`/api/drive/*` with `cloud:app` scope). The API enforces this server-side.
+- **Messaging channel**: Channel DM ciphertext for that L5 lives under `integrators/{client_id}/messages/` (peer edge stays in `_metadata/connections.xlsx`). See `docs/architecture/ADR_MESSAGING_CHANNEL_THREADS.md`.
 - **Not for pN data points**: Standard ZKP data points live in `_metadata/zkp-data-points.xlsx`. Integrators receive proofs via par Noir APIs after consent (`third-party-permissions.xlsx` row keyed by `toolId` = `client_id`), not by copying rows into the integrator folder.
 
 ### First-party vs layer-5 (L5)
@@ -118,19 +121,26 @@ Each content-class folder may also contain **`{fileId}.metadata`** companion Goo
 ## Messages Folder: `par-noir-messages`
 
 - **Location**: Inside `par Noir - {pnIdentifier}/`
-- **Created**: On-demand when first message is sent or connection is accepted
-- **Purpose**: Contains conversation sheets
+- **Created**: On-demand when first **platform** (`channelClientId=platform`) message is sent or platform connection is accepted
+- **Purpose**: Primary-channel conversation sheets (browse + messaging.parnoir.com default DM)
 
 ### Inbox and conversation files:
-- **`Inbox`** - Spreadsheet (not `.xlsx` suffix) with thread metadata
-- **`conversation-{otherUserPn}.xlsx`** and **`conversation-group-{groupId}.xlsx`** - One sheet per DM or group thread
-- **`attachments/`** - E2E-encrypted media blobs (conversation-key encrypted, not identity re-wrapped)
+- **`Inbox`** — Spreadsheet (not `.xlsx` suffix) with thread metadata. Columns include `participantPnIdentifier`, `spreadsheetId`, `connectionId`, …, and **`channelClientId`** (`platform` for primary; missing on legacy rows ⇒ treat as `platform`). Thread uniqueness for DMs is `(connectionId, channelClientId)`.
+- **`conversation-o-{opaquePeerRef}.xlsx`** and **`conversation-group-{groupId}.xlsx`** — One sheet per platform DM or group thread
+- **`attachments/`** — E2E-encrypted media blobs (conversation-key encrypted, not identity re-wrapped)
+
+### L5 channel messages:
+- Conversation sheets under `integrators/{client_id}/messages/` (ciphertext confinement).
+- Thread rows still appear in the platform **`Inbox`** with `channelClientId=<client_id>` so messaging.parnoir.com can aggregate; L5 connect does **not** create a `platform` Inbox row.
+- L5 sites must not call `/api/messages` — use the messaging embed filtered to their `client_id`.
 
 ### Legacy conversation naming:
-- **`conversation-{otherUserDid}.xlsx`** - One sheet per conversation (legacy pn/did in filename)
-  - Created automatically when a connection is accepted
-  - Contains messages between two users
+- **`conversation-{otherUserDid}.xlsx`** / **`conversation-{otherUserPn}.xlsx`** — legacy filenames under `par-noir-messages/`
+  - Created automatically when a **platform** connection is accepted
+  - Contains messages between two users on the primary channel
   - First message is system message: "{acceptor} accepted {requester}'s connection request"
+
+See `docs/architecture/ADR_MESSAGING_CHANNEL_THREADS.md`.
 
 ## Files That Should NOT Be Created
 

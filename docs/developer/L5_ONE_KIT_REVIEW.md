@@ -313,6 +313,6 @@ Treat §2 (delete list), §3 (exposure), and §7 (ordered work) as the backlog s
 | 3 One public index (`/api/v1/...` only); feed widgets kept for dashboard | Done |
 | 4 SDK barrel = integrator façade; callback via oauth-ui | Done |
 | 5 Portal dogfoods `createPNOAuthClient` | Done |
-| 6 Hosted messaging widget | **Deferred** |
+| 6 Hosted messaging widget | **Done** — `messaging.parnoir.com/embed?client_id=` (channel-filtered first-party viewport; see ADR_MESSAGING_CHANNEL_THREADS) |
 | 7 Docs + workspace install narrative | Done |
 | 8 Acceptance / gate tests + CI ratchet | Done (`l5ProductRouteBoundary.gate.test.ts`, `scripts/check-l5-product-route-boundary.sh`) |

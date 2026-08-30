@@ -30,7 +30,26 @@ Copy the OAuth callback page into your app’s `public/` folder:
 
 It must match your registered `redirect_uri` path.
 
-User OAuth is **`/oauth/*` only** (interactive unlock). Do not call messaging, mailbox, connections, or groups APIs from an L5 client — those require first-party apps. Hosted messaging widgets are deferred; see [L5_ONE_KIT_REVIEW.md](./L5_ONE_KIT_REVIEW.md).
+User OAuth is **`/oauth/*` only** (interactive unlock). Do not call messaging, mailbox, connections, or groups APIs from an L5 client — those return `403 first_party_required`.
+
+### Messaging (hosted embed)
+
+Show chat scoped to your app with a first-party iframe (no message REST for your Bearer):
+
+```html
+<iframe
+  src="https://messaging.parnoir.com/embed?client_id=YOUR_CLIENT_ID"
+  title="par Noir messaging"
+  style="width:100%;height:640px;border:0;"
+  allow="clipboard-write"
+></iframe>
+```
+
+- Unlock happens **inside** the iframe (messaging origin handoff).
+- Connect/accept on this viewport creates a peer edge + **your channel’s thread only** — it does **not** create the platform primary DM.
+- Aggregated view of all channels lives on messaging.parnoir.com (not in your iframe).
+
+See [MESSAGING_UI_SURFACES.md](../MESSAGING_UI_SURFACES.md) and [ADR_MESSAGING_CHANNEL_THREADS.md](../architecture/ADR_MESSAGING_CHANNEL_THREADS.md).
 
 ---
 

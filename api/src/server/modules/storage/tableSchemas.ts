@@ -92,7 +92,8 @@ export const DATA_POINT_REQUESTS_SCHEMA: TableSchema = {
 
 export const INBOX_SCHEMA: TableSchema = {
   id: 'inbox',
-  keyColumn: 'participantPnIdentifier',
+  /** DM: peer or peer|channel; group: groupId. Legacy rows keyed by participant alone = platform. */
+  keyColumn: 'inboxRowKey',
   path: messagesPath('inbox')
 };
 

@@ -42,6 +42,7 @@ export type SelectedInboxThread =
       kemCiphertext?: string;
       wrappedMessageRootKey?: string;
       spreadsheetId?: string;
+      channelClientId?: string;
     }
   | {
       kind: 'group';
