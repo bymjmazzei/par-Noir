@@ -147,8 +147,16 @@ export function setupMessageRoutes(app: express.Application, deps: MessageRouteD
           } = await import('./messagingReadCache');
 
           type InboxCachePayload = {
-            conversations: unknown[];
-            threads: Array<{ participantPnIdentifier: string; lastMessageAt: string }>;
+            conversations: Array<{
+              threadType?: string;
+              channelClientId?: string;
+              [key: string]: unknown;
+            }>;
+            threads: Array<{
+              participantPnIdentifier: string;
+              lastMessageAt: string;
+              channelClientId?: string;
+            }>;
           };
 
           const cachedInbox = await getCachedInboxConversations<InboxCachePayload>(pnIdentifier);
