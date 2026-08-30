@@ -16,8 +16,6 @@ import { getUserProfile } from '../services/profileService';
 import { useRealtimeSync } from '../hooks/useRealtimeSync';
 import { MESSAGING_ONLY } from '../config/buildFlags';
 import { PLATFORM_CHANNEL_CLIENT_ID } from '@par-noir/messaging-ui';
-import { MESSAGING_ONLY } from '../config/buildFlags';
-import { PLATFORM_CHANNEL_CLIENT_ID } from '@par-noir/messaging-ui';
 
 interface MessageListProps {
   onThreadSelect: (thread: SelectedInboxThread) => void;
