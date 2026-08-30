@@ -37,5 +37,10 @@ fi
 # Opaque mailbox owner hashing — no soft default in code.
 [[ -n "${MAILBOX_ROUTE_PEPPER:-}" ]] || fail "MAILBOX_ROUTE_PEPPER must be set in strict mode"
 
+# Socket.IO must require auth in production (default in code is off).
+if [[ "${SOCKET_REQUIRE_AUTH:-}" != "true" ]]; then
+  fail "SOCKET_REQUIRE_AUTH must be true in strict mode"
+fi
+
 echo "check-production-flags: ok"
 

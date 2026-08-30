@@ -5,6 +5,7 @@
 
 import type { Application, Request, Response } from 'express';
 import { safeClientErrorMessage } from '../utils/safeError';
+import { gateOwnerRoute, DEVICE_CAPABILITIES } from './deviceCapabilityService';
 
 const NODE_ENV = process.env.NODE_ENV || 'development';
 
@@ -49,6 +50,10 @@ export function registerThirdPartyRoutes(app: Application): void {
 
       if (!identity) {
         res.status(400).json({ error: 'Identity is required' });
+        return;
+      }
+
+      if (!(await gateOwnerRoute(req, res, DEVICE_CAPABILITIES.profileWrite, identity))) {
         return;
       }
 
@@ -109,6 +114,10 @@ export function registerThirdPartyRoutes(app: Application): void {
 
       if (!fileId) {
         res.status(400).json({ error: 'fileId parameter is required' });
+        return;
+      }
+
+      if (!(await gateOwnerRoute(req, res, DEVICE_CAPABILITIES.profileWrite))) {
         return;
       }
 

@@ -15,9 +15,12 @@
     "open:ios": "npx cap open ios",
     "preview": "vite preview",
     "build:e2e": "VITE_API_ENDPOINT=\"${VITE_API_ENDPOINT:-https://api.parnoir.com}\" npm run build",
+    "build:e2e:messaging": "VITE_API_ENDPOINT=\"${VITE_API_ENDPOINT:-https://api.parnoir.com}\" npm run build:messaging",
     "test:e2e": "playwright test",
     "test:e2e:smoke": "npm run build:e2e && playwright test --project=chromium",
-    "test:e2e:smoke:prebuilt": "playwright test --project=chromium"
+    "test:e2e:smoke:prebuilt": "playwright test --project=chromium",
+    "test:e2e:messaging:smoke": "npm run build:e2e:messaging && playwright test -c playwright.messaging.config.ts",
+    "test:e2e:messaging:smoke:prebuilt": "playwright test -c playwright.messaging.config.ts"
   },
   "dependencies": {
     "@capacitor/app": "^6.0.0",

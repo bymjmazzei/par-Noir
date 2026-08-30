@@ -48,6 +48,7 @@ export {
   parseMessagingIdentityFromHash,
   mergeMessagingHandoffParts,
   clearMessagingHandoffFromWindowName,
+  clearMessagingHandoffFromStorage,
   serializeMessagingHandoffForStorage,
   parseMessagingHandoffFromStorage,
   isMessagingOAuthHandoffPayload,

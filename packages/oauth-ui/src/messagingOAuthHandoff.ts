@@ -146,6 +146,16 @@ export function clearMessagingHandoffFromWindowName(windowName: string | null | 
   return '';
 }
 
+/** Remove durable ML-KEM handoff stash after session is applied (clear-after-consume). */
+export function clearMessagingHandoffFromStorage(): void {
+  if (typeof localStorage === 'undefined') return;
+  try {
+    localStorage.removeItem(PN_MESSAGING_OAUTH_HANDOFF_STORAGE);
+  } catch {
+    /* ignore */
+  }
+}
+
 export function serializeMessagingHandoffForStorage(payload: MessagingOAuthHandoffPayload): string {
   return JSON.stringify(payload);
 }

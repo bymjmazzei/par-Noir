@@ -23,6 +23,7 @@ const localProjects = [
 
 export default defineConfig({
   testDir: './tests',
+  testIgnore: /messaging-smoke\.spec\.ts/,
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 1 : 0,

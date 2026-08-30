@@ -130,14 +130,18 @@ Deploy / API env preflight (not PR CI — needs production secrets in the enviro
 
 ```bash
 PN_STRICT_GUARDRAILS=1 bash scripts/check-production-flags.sh
+# Requires SOCKET_REQUIRE_AUTH=true (plus OAuth + MAILBOX_ROUTE_PEPPER).
 # Also runs from ./deploy.sh when PN_STRICT_GUARDRAILS=1 is set.
+bash scripts/check-production-flags.selftest.sh   # falsification: missing socket auth must fail
 ```
+
+Manual soft / dual-pN residual checks: [MVP_SOFT_SWEEP_CHECKLIST.md](../ops/MVP_SOFT_SWEEP_CHECKLIST.md).
 
 Hermetic identity gate (package tests, part of `npm run test:packages`):
 
 - `packages/identity-crypto` — create→unlock→OAuth unlock proof + no-demo-crypto falsification
 - `packages/device-cloud-credentials` — `syncHeaderGap.gate.test.ts`
-- `api` — `pnOAuthPqc.test.ts`
+- `api` — `pnOAuthPqc.test.ts`, `softUnauthRoutes.gate.test.ts`
 
 ## What CI runs
 
@@ -147,13 +151,16 @@ parallel jobs. Any red job fails the run.
 1. **Guardrails** — secrets scan (strict), backup-file check, app→app import boundary, quantum
    import boundary, Drive token resolver/freshness/owner-fetch/googleapis, OAuth unlock-proof +
    passcode-wire, postMessage origin, legacy identity crypto quarantine, and Sheets import
-   boundary (**soft-warn**). `check-production-flags.sh` is **not** in PR CI (needs API env).
+   boundary (**soft-warn**). `check-production-flags.sh` is **not** in PR CI (needs API env);
+   it now also requires `SOCKET_REQUIRE_AUTH=true` under `PN_STRICT_GUARDRAILS=1`.
 2. **Unit tests** — root `npm ci`, API `npm ci` + `npm run build:deps`, then `npm test`
-   (includes hermetic `identity-crypto` create→unlock→unlock-proof).
+   (includes hermetic `identity-crypto` create→unlock→unlock-proof, soft unauth API gates,
+   and `apps/aggregator-browser` vitest via `test:browser:unit`).
 3. **E2E smoke (dashboard)** — builds `apps/id-dashboard` with `VITE_API_ENDPOINT`, then runs the
    Playwright smoke suite on chromium.
-4. **E2E smoke (aggregator browser)** — the same for `apps/aggregator-browser`.
-5. **Type check** — `tsc --noEmit` for `apps/id-dashboard` and `apps/aggregator-browser`.
+4. **E2E smoke (aggregator browser)** — the same for `apps/aggregator-browser` browse host.
+5. **E2E smoke (messaging host)** — `build:messaging` + messaging Playwright smoke (boot + no direct Google).
+6. **Type check** — `tsc --noEmit` for `apps/id-dashboard` and `apps/aggregator-browser`.
 
 Both E2E jobs upload their Playwright HTML report as an artifact when they fail.
 

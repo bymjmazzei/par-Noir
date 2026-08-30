@@ -431,8 +431,6 @@ class ProductionServer {
       '/health',
       '/health/ready',
       '/favicon.ico',
-      '/api/aggregator/fix-feeds',
-      '/api/aggregator/metadata-index/debug',
       '/api/monetization/stripe-webhook',
     ];
     const publicNoOriginGetOnlyPrefixes = [

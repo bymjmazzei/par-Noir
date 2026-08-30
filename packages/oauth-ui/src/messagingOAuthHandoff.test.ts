@@ -6,6 +6,7 @@ import {
   buildMessagingIdentityPayload,
   buildMessagingSessionWindowName,
   clearMessagingHandoffFromWindowName,
+  clearMessagingHandoffFromStorage,
   extractMessagingSessionFromDecrypted,
   handoffProvidesMessagingSession,
   normalizeMessagingHandoffPayload,
@@ -160,5 +161,33 @@ describe('messagingOAuthHandoff', () => {
         { requireSession: true }
       )
     ).toThrow(/messaging encryption keys/);
+  });
+
+  it('clearMessagingHandoffFromStorage removes ML-KEM stash after consume', () => {
+    const store = new Map<string, string>();
+    const ls = {
+      getItem: (k: string) => store.get(k) ?? null,
+      setItem: (k: string, v: string) => {
+        store.set(k, v);
+      },
+      removeItem: (k: string) => {
+        store.delete(k);
+      },
+      clear: () => store.clear(),
+    };
+    const prev = globalThis.localStorage;
+    Object.defineProperty(globalThis, 'localStorage', { value: ls, configurable: true });
+    try {
+      stashMessagingHandoffOnOrigin(samplePayload, { requireSession: true });
+      expect(ls.getItem(PN_MESSAGING_OAUTH_HANDOFF_STORAGE)).toBeTruthy();
+      clearMessagingHandoffFromStorage();
+      expect(ls.getItem(PN_MESSAGING_OAUTH_HANDOFF_STORAGE)).toBeNull();
+      expect(store.has(PN_MESSAGING_OAUTH_HANDOFF_STORAGE)).toBe(false);
+    } finally {
+      Object.defineProperty(globalThis, 'localStorage', {
+        value: prev,
+        configurable: true,
+      });
+    }
   });
 });

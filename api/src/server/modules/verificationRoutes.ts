@@ -4,6 +4,7 @@
 
 import type { Application, Request, Response } from 'express';
 import { safeClientErrorMessage } from '../utils/safeError';
+import { requireAdminApiKey } from './adminDeveloperRoutes';
 
 const NODE_ENV = process.env.NODE_ENV || 'development';
 const VERIFF_API_KEY = process.env.VERIFF_API_KEY || '';
@@ -73,9 +74,9 @@ export function registerVerificationRoutes(app: Application): void {
   });
 }
 
-/** POST /api/verification/sync - Sync verification status to engagement system */
+/** POST /api/verification/sync - Sync verification status to engagement system (admin only). */
 export function registerVerificationSyncRoute(app: Application): void {
-  app.post('/api/verification/sync', async (req: Request, res: Response) => {
+  app.post('/api/verification/sync', requireAdminApiKey, async (req: Request, res: Response) => {
     try {
       const { VerificationIntegrationService } = await import('./verificationIntegrationService');
       const { identityId, verificationId, verifiedAt } = req.body;

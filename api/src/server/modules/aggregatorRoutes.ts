@@ -9,6 +9,7 @@ import { safeClientErrorMessage } from '../utils/safeError';
 import { determineFileType, getFileTypeFromMime, determineContentClass } from '../utils/fileTypeUtils';
 import { hashIdentifier, isDevVerbose, safeLogger } from '../../utils/logger';
 import { gateOwnerRoute, DEVICE_CAPABILITIES } from './deviceCapabilityService';
+import { requireAdminApiKey } from './adminDeveloperRoutes';
 
 const NODE_ENV = process.env.NODE_ENV || 'development';
 
@@ -540,8 +541,8 @@ export function setupAggregatorRoutes(app: any, deps: AggregatorRouteDeps) {
   });
 
   // POST /api/aggregator/metadata-index/reconcile - Align aggregator cache with owner public indexes
-  // Also run automatically every 5 minutes. MUST be before /:fileId route.
-  app.post('/api/aggregator/metadata-index/reconcile', async (req: Request, res: Response) => {
+  // Also run automatically every 5 minutes. MUST be before /:fileId route. Admin-only HTTP trigger.
+  app.post('/api/aggregator/metadata-index/reconcile', requireAdminApiKey, async (req: Request, res: Response) => {
     try {
       const { runReconcilePublicAggregator } = await import('../jobs/reconcilePublicAggregatorJob');
       const result = await runReconcilePublicAggregator();
@@ -560,8 +561,8 @@ export function setupAggregatorRoutes(app: any, deps: AggregatorRouteDeps) {
   });
 
   // POST /api/aggregator/metadata-index/cleanup-tables - Clear all database entries (for fresh start)
-  // MUST be before /:fileId route to avoid route conflict
-  app.post('/api/aggregator/metadata-index/cleanup-tables', async (req: Request, res: Response) => {
+  // MUST be before /:fileId route to avoid route conflict. Admin-only — destructive.
+  app.post('/api/aggregator/metadata-index/cleanup-tables', requireAdminApiKey, async (req: Request, res: Response) => {
     try {
       const db = (await import('../utils/database')).getDatabasePool();
       await db.query('DELETE FROM aggregator_media');
@@ -870,8 +871,8 @@ export function setupAggregatorRoutes(app: any, deps: AggregatorRouteDeps) {
     }
   });
 
-  // GET /api/aggregator/metadata-index/debug - Debug endpoint to check database state
-  app.get('/api/aggregator/metadata-index/debug', async (req: Request, res: Response) => {
+  // GET /api/aggregator/metadata-index/debug - Admin-only debug (leaks private sample names)
+  app.get('/api/aggregator/metadata-index/debug', requireAdminApiKey, async (req: Request, res: Response) => {
     try {
       const db = (await import('../utils/database')).getDatabasePool();
       
@@ -964,8 +965,8 @@ export function setupAggregatorRoutes(app: any, deps: AggregatorRouteDeps) {
     }
   });
 
-  // POST /api/aggregator/metadata-index/invalidate-cache - Invalidate index cache
-  app.post('/api/aggregator/metadata-index/invalidate-cache', async (req: Request, res: Response) => {
+  // POST /api/aggregator/metadata-index/invalidate-cache - Invalidate index cache (admin)
+  app.post('/api/aggregator/metadata-index/invalidate-cache', requireAdminApiKey, async (req: Request, res: Response) => {
     try {
       const { invalidateIndexCache } = await import('../utils/cache');
       await invalidateIndexCache();
@@ -982,8 +983,8 @@ export function setupAggregatorRoutes(app: any, deps: AggregatorRouteDeps) {
     }
   });
 
-  // GET /api/aggregator/fix-feeds - Diagnostic and fix endpoint for feed issues
-  app.get('/api/aggregator/fix-feeds', async (req: Request, res: Response) => {
+  // GET /api/aggregator/fix-feeds - Diagnostic and fix endpoint for feed issues (admin)
+  app.get('/api/aggregator/fix-feeds', requireAdminApiKey, async (req: Request, res: Response) => {
     try {
       const db = (await import('../utils/database')).getDatabasePool();
       const { invalidateIndexCache } = await import('../utils/cache');
@@ -3277,8 +3278,8 @@ export function setupAggregatorRoutes(app: any, deps: AggregatorRouteDeps) {
     }
   });
 
-  // POST /api/aggregator/metadata-index/sync - Portable index upsert + public cache reconcile
-  app.post('/api/aggregator/metadata-index/sync', async (req: Request, res: Response) => {
+  // POST /api/aggregator/metadata-index/sync - Portable index upsert + public cache reconcile (admin)
+  app.post('/api/aggregator/metadata-index/sync', requireAdminApiKey, async (req: Request, res: Response) => {
     try {
       const { userStorageSyncService } = await import('./userStorageSyncService');
       const { runReconcilePublicAggregator } = await import('../jobs/reconcilePublicAggregatorJob');

@@ -5,6 +5,7 @@
 import {
   PN_MESSAGING_OAUTH_BROADCAST,
   PN_MESSAGING_OAUTH_HANDOFF_STORAGE,
+  clearMessagingHandoffFromStorage,
   normalizeMessagingHandoffPayload,
   parseMessagingHandoffFromStorage,
   type MessagingOAuthHandoffPayload,
@@ -54,7 +55,7 @@ export function applyPendingMessagingOAuthHandoffFromStorage(): boolean {
     applyMessagingOAuthHandoff(payload);
     // Keep stashed payload until ML-KEM session is in memory (identity-only is not enough).
     if (isDmIdentityReady()) {
-      localStorage.removeItem(PN_MESSAGING_OAUTH_HANDOFF_STORAGE);
+      clearMessagingHandoffFromStorage();
     }
     return isDmIdentityReady();
   } catch {
@@ -130,11 +131,7 @@ export async function waitForAndApplyMessagingHandoff(maxMs = 8_000): Promise<bo
         if (applyMessagingHandoffFromUnknown(event.data)) {
           restoreDmSessionFromStorage();
           if (isDmIdentityReady()) {
-            try {
-              localStorage.removeItem(PN_MESSAGING_OAUTH_HANDOFF_STORAGE);
-            } catch {
-              /* ignore */
-            }
+            clearMessagingHandoffFromStorage();
           }
         }
         if (tryApply()) finish(true);
