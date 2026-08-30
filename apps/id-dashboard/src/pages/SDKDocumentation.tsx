@@ -15,82 +15,44 @@ export const SDKDocumentation: React.FC = () => {
   ];
 
   const codeExamples = {
-    basic: `import { createIdentitySDK, createSimpleConfig } from '@identity-protocol/identity-sdk';
+    basic: `import { createPnIntegratorClient, PN_INTEGRATOR_SCOPES } from '@identity-protocol/identity-sdk';
 
-// Create SDK configuration
-const config = createSimpleConfig(
-  'your-client-id',
-  'https://your-app.com/callback',
-  { 
-    scopes: ['openid', 'profile', 'email'],
-    storage: 'localStorage',
-    autoRefresh: true 
-  }
-);
+const pn = createPnIntegratorClient({
+  clientId: 'your-client-id',
+  redirectUri: 'https://your-app.com/oauth-callback.html',
+  apiEndpoint: 'https://api.parnoir.com',
+  scopes: [...PN_INTEGRATOR_SCOPES],
+  usePopup: true
+});
 
-// Initialize SDK
-const sdk = createIdentitySDK(config);
+const session = await pn.auth.authenticate();`,
 
-// Start authentication - user creates/uses their own identity
-await sdk.authenticate('par-noir');`,
-
-    react: `import { useIdentitySDK, createSimpleConfig } from '@identity-protocol/identity-sdk';
+    react: `import { UnlockButton } from '@par-noir/oauth-ui';
 
 function MyApp() {
-  const config = createSimpleConfig(
-    'your-client-id',
-    'https://your-app.com/callback'
-  );
-
-  const {
-    session,
-    isAuthenticated,
-    isLoading,
-    error,
-    authenticate,
-    logout
-  } = useIdentitySDK(config);
-
-  if (isAuthenticated) {
-    return (
-      <div>
-        <p>Welcome! You&apos;re signed in with your par Noir ID</p>
-        <p>Your identity ID: {session?.identity.id}</p>
-        <button onClick={logout}>Logout</button>
-      </div>
-    );
-  }
-
   return (
-    <button onClick={() => authenticate('par-noir')}>
-      Sign in with your par Noir ID
-    </button>
+    <UnlockButton
+      config={{
+        clientId: 'your-client-id',
+        apiEndpoint: 'https://api.parnoir.com',
+        redirectUri: 'https://your-app.com/oauth-callback.html',
+        scope: ['openid', 'profile', 'cloud:app']
+      }}
+    />
   );
 }`,
 
-    compliance: `// Request additional data from user for compliance
-// This doesn't verify the data - it just collects what the user provides
-const complianceData = await sdk.requestDataCollection({
-  platform: 'your-platform',
-  fields: {
-    phone: {
-      required: true,
-      type: 'phone',
-      description: 'Phone number for account verification'
-    },
-    address: {
-      required: false,
-      type: 'text',
-      description: 'Billing address'
-    },
-    terms: {
-      required: true,
-      type: 'checkbox',
-      description: 'I agree to the terms and conditions'
-    }
-  },
-  consentText: 'I consent to the collection and processing of my data',
-  dataUsage: 'This data will be used for account verification and compliance purposes'
+    compliance: `import { createPnIntegratorClient, PN_INTEGRATOR_SCOPES } from '@identity-protocol/identity-sdk';
+
+const pn = createPnIntegratorClient({
+  clientId: 'your-client-id',
+  redirectUri: 'https://your-app.com/oauth-callback.html',
+  scopes: [...PN_INTEGRATOR_SCOPES, 'zkp:age_attestation']
+});
+
+const session = await pn.auth.authenticate();
+const { dataPoints } = await pn.zkp.getDataPoints(session.accessToken, {
+  dataPoints: ['age_attestation']
 });`
   };
 

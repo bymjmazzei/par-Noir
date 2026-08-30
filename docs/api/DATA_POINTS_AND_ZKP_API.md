@@ -364,57 +364,35 @@ function extractLocationFromProof(proof) {
 ### JavaScript/TypeScript SDK
 
 ```javascript
-import { createIdentitySDK } from '@identity-protocol/identity-sdk';
+import { createPnIntegratorClient, PN_INTEGRATOR_SCOPES } from '@identity-protocol/identity-sdk';
 
-const sdk = createIdentitySDK({
+const pn = createPnIntegratorClient({
   clientId: 'your-client-id',
-  redirectUri: 'https://your-app.com/callback'
+  redirectUri: 'https://your-app.com/oauth-callback.html',
+  scopes: [...PN_INTEGRATOR_SCOPES, 'zkp:age_attestation']
 });
 
-// Request age verification
-const ageResponse = await sdk.requestStandardDataPoint({
-  dataPointId: 'age_attestation',
-  platform: 'your-platform-id',
-  purpose: 'Age verification for content access',
-  verificationLevel: 'enhanced',
-  expirationDays: 365
+const session = await pn.auth.authenticate();
+const { dataPoints } = await pn.zkp.getDataPoints(session.accessToken, {
+  dataPoints: ['age_attestation']
 });
-
-if (ageResponse.success) {
-  const proof = ageResponse.proof;
-  const userAge = extractAgeFromProof(proof);
-  
-  if (userAge >= 18) {
-    console.log('User is verified as adult');
-  }
-}
 ```
 
 ### React Integration
 
 ```javascript
-import { useIdentitySDK } from '@identity-protocol/identity-sdk';
+import { UnlockButton } from '@par-noir/oauth-ui';
 
-function AgeVerificationComponent() {
-  const { requestStandardDataPoint } = useIdentitySDK(config);
-
-  const handleAgeVerification = async () => {
-    const response = await requestStandardDataPoint({
-      dataPointId: 'age_attestation',
-      platform: 'age-restricted-platform',
-      purpose: 'Age verification for content access'
-    });
-
-    if (response.success) {
-      // Handle successful verification
-      console.log('Age verification successful');
-    }
-  };
-
+function AgeVerificationUnlock() {
   return (
-    <button onClick={handleAgeVerification}>
-      Verify Age
-    </button>
+    <UnlockButton
+      config={{
+        clientId: 'your-client-id',
+        apiEndpoint: 'https://api.parnoir.com',
+        redirectUri: 'https://your-app.com/oauth-callback.html',
+        scope: ['openid', 'profile', 'zkp:age_attestation']
+      }}
+    />
   );
 }
 ```
@@ -427,13 +405,8 @@ function AgeVerificationComponent() {
 class AgeRestrictedPlatform {
   async checkUserAccess(userId) {
     try {
-      const ageResponse = await sdk.requestStandardDataPoint({
-        dataPointId: 'age_attestation',
-        platform: 'age-restricted-platform',
-        purpose: 'Age verification for content access',
-        verificationLevel: 'enhanced',
-        expirationDays: 365
-      });
+      // Prefer createPnIntegratorClient + pn.zkp.getDataPoints after user OAuth grant
+      const ageResponse = await fetchGrantedAgeProof(userId);
 
       if (ageResponse.success) {
         const proof = ageResponse.proof;

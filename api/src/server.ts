@@ -640,6 +640,9 @@ class ProductionServer {
   }
 
   private async setupRoutes(): Promise<void> {
+    const { mountL5ProductFirstPartyBoundary } = await import('./server/modules/l5ProductRouteBoundary');
+    mountL5ProductFirstPartyBoundary(this.app);
+
     registerCoreRoutes(this.app, NODE_ENV);
 
     registerThirdPartyRoutes(this.app);
@@ -656,16 +659,14 @@ class ProductionServer {
 
     registerSearchRoutes(this.app);
 
-    // API Routes (v1) - OAuth, Data Points, Content Portability
+    // API Routes (v1) - Data Points, Content Portability (user OAuth is /oauth/* only)
     const {
       setupIdentityPublicRoutes,
-      setupOAuthRoutes,
       setupDataPointRoutes,
       setupDataPointUserRoutes,
       setupContentPortabilityRoutes
     } = await import('./server/modules/apiRoutes');
     setupIdentityPublicRoutes(this.app);
-    setupOAuthRoutes(this.app);
     setupDataPointRoutes(this.app);
     setupDataPointUserRoutes(this.app);
     setupContentPortabilityRoutes(this.app);

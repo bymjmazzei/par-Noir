@@ -206,16 +206,15 @@ export const CrossPlatformAuth: React.FC<CrossPlatformAuthProps> = ({
             To integrate this SDK into your application:
           </p>
           <pre className="text-xs text-gray-800 bg-gray-100 p-2 rounded overflow-x-auto">
-{`import { createIdentitySDK, createSimpleConfig } from '@identity-protocol/identity-sdk';
+{`import { createPnIntegratorClient, PN_INTEGRATOR_SCOPES } from '@identity-protocol/identity-sdk';
 
-const config = createSimpleConfig(
-  'your-client-id',
-  'https://your-app.com/callback',
-  { scopes: ['openid', 'profile', 'email'] }
-);
+const pn = createPnIntegratorClient({
+  clientId: 'your-client-id',
+  redirectUri: 'https://your-app.com/oauth-callback.html',
+  scopes: [...PN_INTEGRATOR_SCOPES]
+});
 
-const sdk = createIdentitySDK(config);
-await sdk.authenticate('par-noir');`}
+const session = await pn.auth.authenticate();`}
           </pre>
         </div>
       </div>

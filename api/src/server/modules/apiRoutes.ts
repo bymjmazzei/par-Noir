@@ -1,13 +1,12 @@
 /**
  * API Routes
- * Handles API key authentication, OAuth, data points, and content portability
+ * Handles API key authentication, data points, and content portability.
+ * User OAuth lives only under `/oauth/*` (see pnOAuthRoutes).
  */
 
 import { Request, Response } from 'express';
 import { getStandardDataPointsPublic, DATA_POINT_CATEGORIES } from './standardDataPointsCatalog';
 import { ApiKeyService } from './apiKeyService';
-import { PNOAuthService } from './pnOAuthService';
-import { ClientRegistrationService } from './clientRegistration';
 
 /**
  * Middleware to authenticate API requests using API key
@@ -124,125 +123,6 @@ export function setupIdentityPublicRoutes(app: any) {
       return res.status(500).json({
         error: 'server_error',
         error_description: 'Failed to load revocation state'
-      });
-    }
-  });
-}
-
-export function setupOAuthRoutes(app: any) {
-  /**
-   * GET /api/v1/oauth/authorize
-   * Generate authorization code for OAuth flow
-   */
-  app.get('/api/v1/oauth/authorize', authenticateApiKey, async (req: Request, res: Response) => {
-    try {
-      const { client_id, redirect_uri, scope, state, nonce } = req.query;
-      const apiKey = (req as any).apiKey;
-
-      if (!client_id || !redirect_uri) {
-        return res.status(400).json({
-          error: 'invalid_request',
-          error_description: 'client_id and redirect_uri are required'
-        });
-      }
-
-      // Validate registered OAuth client and redirect URI
-      const validClient = await ClientRegistrationService.validateClient(
-        client_id as string,
-        redirect_uri as string
-      );
-      if (!validClient) {
-        return res.status(400).json({
-          error: 'invalid_client',
-          error_description: 'Invalid or inactive client_id, or redirect_uri not registered'
-        });
-      }
-
-      const scopes = scope ? (scope as string).split(' ') : ['openid', 'profile'];
-      const scopesOk = await ClientRegistrationService.validateScopes(client_id as string, scopes);
-      if (!scopesOk) {
-        return res.status(400).json({
-          error: 'invalid_scope',
-          error_description: 'One or more requested scopes are not allowed for this client'
-        });
-      }
-
-      let code: string;
-      try {
-        code = PNOAuthService.issueAuthorizationCodeForApiKey({
-          clientId: client_id as string,
-          redirectUri: redirect_uri as string,
-          scope: scopes,
-          state: state as string,
-          nonce: nonce as string,
-          pnId: apiKey.pnId,
-        });
-      } catch (e: unknown) {
-        if ((e as Error & { code?: string }).code === 'IDENTITY_SUPERSEDED') {
-          return res.status(403).json({
-            error: 'access_denied',
-            error_description: 'This pN identifier is superseded on the par Noir network. Use the successor identity.'
-          });
-        }
-        throw e;
-      }
-
-      // Return authorization code
-      const redirectUrl = new URL(redirect_uri as string);
-      redirectUrl.searchParams.set('code', code);
-      if (state) redirectUrl.searchParams.set('state', state as string);
-
-      return res.redirect(redirectUrl.toString());
-    } catch (error) {
-      console.error('[OAuth] Authorization error:', error);
-      return res.status(500).json({
-        error: 'server_error',
-        error_description: 'Failed to generate authorization code'
-      });
-    }
-  });
-
-  /**
-   * POST /api/v1/oauth/token
-   * Exchange authorization code for access token
-   */
-  app.post('/api/v1/oauth/token', authenticateApiKey, async (req: Request, res: Response) => {
-    try {
-      const { grant_type, code, redirect_uri, client_id } = req.body;
-
-      if (grant_type !== 'authorization_code') {
-        return res.status(400).json({
-          error: 'unsupported_grant_type',
-          error_description: 'Only authorization_code grant type is supported'
-        });
-      }
-
-      if (!code || !redirect_uri || !client_id) {
-        return res.status(400).json({
-          error: 'invalid_request',
-          error_description: 'code, redirect_uri, and client_id are required'
-        });
-      }
-
-      const token = await PNOAuthService.exchangeCodeForToken({
-        code: code as string,
-        redirectUri: redirect_uri as string,
-        clientId: client_id as string
-      });
-
-      if (!token) {
-        return res.status(400).json({
-          error: 'invalid_grant',
-          error_description: 'Invalid or expired authorization code'
-        });
-      }
-
-      return res.json(token);
-    } catch (error) {
-      console.error('[OAuth] Token exchange error:', error);
-      return res.status(500).json({
-        error: 'server_error',
-        error_description: 'Failed to exchange code for token'
       });
     }
   });

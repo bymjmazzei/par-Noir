@@ -9,7 +9,7 @@ import { safeClientErrorMessage } from '../utils/safeError';
 import { messagingLog } from '../utils/messagingLog';
 import { hashIdentifier } from '../../utils/logger';
 import { getBearerTokenPayload } from '../middleware/authMiddleware';
-import { gateOwnerRoute, DEVICE_CAPABILITIES } from './deviceCapabilityService';
+import { gateFirstPartyOwnerRoute, DEVICE_CAPABILITIES } from './deviceCapabilityService';
 
 const NODE_ENV = process.env.NODE_ENV || 'development';
 
@@ -67,7 +67,7 @@ export function setupMessageRoutes(app: express.Application, deps: MessageRouteD
         if (!userPnIdentifier) {
           return res.status(400).json({ error: 'userPnIdentifier is required' });
         }
-        if (!(await gateOwnerRoute(req, res, DEVICE_CAPABILITIES.messagesRead, userPnIdentifier))) return;
+        if (!(await gateFirstPartyOwnerRoute(req, res, DEVICE_CAPABILITIES.messagesRead, userPnIdentifier))) return;
 
         const { MessageSheetsService } = await import('./messageSheetsService');
         const { storageCredentialsService } = await import('./storageCredentialsService');
@@ -260,7 +260,7 @@ export function setupMessageRoutes(app: express.Application, deps: MessageRouteD
         if (!userPnIdentifier) {
           return res.status(400).json({ error: 'userPnIdentifier is required' });
         }
-        if (!(await gateOwnerRoute(req, res, DEVICE_CAPABILITIES.messagesRead, userPnIdentifier))) return;
+        if (!(await gateFirstPartyOwnerRoute(req, res, DEVICE_CAPABILITIES.messagesRead, userPnIdentifier))) return;
 
         const { MessageRequestSheetsService } = await import('./messageRequestSheetsService');
         const { storageCredentialsService } = await import('./storageCredentialsService');
@@ -340,7 +340,7 @@ export function setupMessageRoutes(app: express.Application, deps: MessageRouteD
             error_description: 'Invalid or expired access token'
           });
         }
-        if (!(await gateOwnerRoute(req, res, DEVICE_CAPABILITIES.messagesRead, tokenPayload.pnIdentifier))) return;
+        if (!(await gateFirstPartyOwnerRoute(req, res, DEVICE_CAPABILITIES.messagesRead, tokenPayload.pnIdentifier))) return;
         const accountId = req.query.accountId as string | undefined;
         const { extractCloudAccessToken } = await import('./ownerDriveToken');
         const { ensureMessagesAttachmentsFolder } = await import('./messagingMediaService');
@@ -370,7 +370,7 @@ export function setupMessageRoutes(app: express.Application, deps: MessageRouteD
         if (!userPnIdentifier) {
           return res.status(400).json({ error: 'userPnIdentifier is required' });
         }
-        if (!(await gateOwnerRoute(req, res, DEVICE_CAPABILITIES.messagesRead, userPnIdentifier))) return;
+        if (!(await gateFirstPartyOwnerRoute(req, res, DEVICE_CAPABILITIES.messagesRead, userPnIdentifier))) return;
 
         const { MessageSheetsService } = await import('./messageSheetsService');
         const { googleDriveProxyService } = await import('./googleDriveProxy');
@@ -501,7 +501,7 @@ export function setupMessageRoutes(app: express.Application, deps: MessageRouteD
         }
 
         const msgCap = req.method === 'POST' ? DEVICE_CAPABILITIES.messagesSend : DEVICE_CAPABILITIES.messagesRead;
-        if (!(await gateOwnerRoute(req, res, msgCap, userPnIdentifier))) return;
+        if (!(await gateFirstPartyOwnerRoute(req, res, msgCap, userPnIdentifier))) return;
 
         const { MessageSheetsService } = await import('./messageSheetsService');
         const { googleDriveProxyService } = await import('./googleDriveProxy');
@@ -764,7 +764,7 @@ export function setupMessageRoutes(app: express.Application, deps: MessageRouteD
         if (!fromPnIdentifier || !toPnIdentifier) {
           return res.status(400).json({ error: 'fromPnIdentifier and toPnIdentifier are required' });
         }
-        if (!(await gateOwnerRoute(req, res, DEVICE_CAPABILITIES.messagesSend, fromPnIdentifier))) return;
+        if (!(await gateFirstPartyOwnerRoute(req, res, DEVICE_CAPABILITIES.messagesSend, fromPnIdentifier))) return;
         if (!isE2E) {
           return res.status(400).json({
             error: 'encryptedContent with cryptoVersion 2 is required (client-side E2E only)'
@@ -962,7 +962,7 @@ export function setupMessageRoutes(app: express.Application, deps: MessageRouteD
         if (!fromPnIdentifier || !toPnIdentifier) {
           return res.status(400).json({ error: 'fromPnIdentifier and toPnIdentifier are required' });
         }
-        if (!(await gateOwnerRoute(req, res, DEVICE_CAPABILITIES.messagesSend, fromPnIdentifier))) return;
+        if (!(await gateFirstPartyOwnerRoute(req, res, DEVICE_CAPABILITIES.messagesSend, fromPnIdentifier))) return;
 
         const storedContent = encryptedContent || content;
         if (!storedContent) {
@@ -1037,7 +1037,7 @@ export function setupMessageRoutes(app: express.Application, deps: MessageRouteD
         if (!requestId || !userPnIdentifier || typeof accept !== 'boolean') {
           return res.status(400).json({ error: 'requestId, userPnIdentifier, and accept are required' });
         }
-        if (!(await gateOwnerRoute(req, res, DEVICE_CAPABILITIES.messagesSend, userPnIdentifier))) return;
+        if (!(await gateFirstPartyOwnerRoute(req, res, DEVICE_CAPABILITIES.messagesSend, userPnIdentifier))) return;
 
         const { MessageRequestSheetsService } = await import('./messageRequestSheetsService');
         const { storageCredentialsService } = await import('./storageCredentialsService');
@@ -1129,7 +1129,7 @@ export function setupMessageRoutes(app: express.Application, deps: MessageRouteD
         if (!messageId || !userPnIdentifier) {
           return res.status(400).json({ error: 'messageId and userPnIdentifier are required' });
         }
-        if (!(await gateOwnerRoute(req, res, DEVICE_CAPABILITIES.messagesSend, userPnIdentifier))) return;
+        if (!(await gateFirstPartyOwnerRoute(req, res, DEVICE_CAPABILITIES.messagesSend, userPnIdentifier))) return;
 
         const { MessageSheetsService } = await import('./messageSheetsService');
         const { storageCredentialsService } = await import('./storageCredentialsService');
@@ -1256,7 +1256,7 @@ export function setupMessageRoutes(app: express.Application, deps: MessageRouteD
         if (!messageId || !userPnIdentifier) {
           return res.status(400).json({ error: 'messageId and userPnIdentifier are required' });
         }
-        if (!(await gateOwnerRoute(req, res, DEVICE_CAPABILITIES.messagesSend, userPnIdentifier))) return;
+        if (!(await gateFirstPartyOwnerRoute(req, res, DEVICE_CAPABILITIES.messagesSend, userPnIdentifier))) return;
 
         const { MessageSheetsService } = await import('./messageSheetsService');
         const { storageCredentialsService } = await import('./storageCredentialsService');
@@ -1383,7 +1383,7 @@ export function setupMessageRoutes(app: express.Application, deps: MessageRouteD
         if (!userPnIdentifier || !participantPnIdentifier) {
           return res.status(400).json({ error: 'userPnIdentifier and participantPnIdentifier are required' });
         }
-        if (!(await gateOwnerRoute(req, res, DEVICE_CAPABILITIES.messagesSend, userPnIdentifier))) return;
+        if (!(await gateFirstPartyOwnerRoute(req, res, DEVICE_CAPABILITIES.messagesSend, userPnIdentifier))) return;
 
         const { MessageSheetsService } = await import('./messageSheetsService');
         const { ConnectionsService } = await import('./connectionsService');

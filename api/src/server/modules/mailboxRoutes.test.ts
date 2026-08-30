@@ -56,6 +56,23 @@ jest.mock('./deviceCapabilityService', () => {
       }
       return { isKeyed: sessionIsKeyed, policy: sessionPolicy };
     },
+    gateFirstPartyOwnerRoute: async (_req: unknown, res: any, cap: string, targetPn: string) => {
+      if (!currentBearer) {
+        res.status(401).json({ error: 'unauthorized' });
+        return null;
+      }
+      if (currentBearer !== targetPn) {
+        res.status(403).json({ error: 'forbidden', reason: 'pn_mismatch' });
+        return null;
+      }
+      if (!grantedCapabilities.includes(cap)) {
+        res.status(403).json({ error: 'capability_not_allowed' });
+        return null;
+      }
+      return { isKeyed: sessionIsKeyed, policy: sessionPolicy };
+    },
+    requireFirstPartyOAuthClient: () =>
+      currentBearer ? { pnIdentifier: currentBearer, clientId: 'messaging-app' } : null,
   };
 });
 

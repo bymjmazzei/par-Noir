@@ -11,6 +11,7 @@ import { safeClientErrorMessage } from '../utils/safeError';
 import { hashIdentifier, isDevVerbose, safeLogger } from '../../utils/logger';
 import { getBearerTokenPayload } from '../middleware/authMiddleware';
 import { requireAdminApiKey } from './adminDeveloperRoutes';
+import { isFirstPartyClient } from './integratorStoragePaths';
 
 const NODE_ENV = process.env.NODE_ENV || 'development';
 
@@ -436,6 +437,17 @@ export function setupPnOAuthRoutes(app: express.Application, deps: PnOAuthRouteD
           return res.status(401).json({
             error: 'invalid_grant',
             error_description: 'Authorization code is unknown, expired, or for another client'
+          });
+        }
+
+        if (!isFirstPartyClient(String(clientId))) {
+          safeLogger.warn('[OAuth] Drive token refused: non-first-party client', {
+            pnIdHash: authCode.pnIdentifier ? hashIdentifier(authCode.pnIdentifier) : undefined
+          });
+          return res.status(403).json({
+            error: 'forbidden',
+            error_description: 'Drive token mint is limited to first-party unlock clients',
+            reason: 'first_party_required'
           });
         }
 

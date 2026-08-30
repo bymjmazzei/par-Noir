@@ -14,16 +14,23 @@ Build a third-party app on par Noir: **pN login**, optional **ZKP data points**,
 
 ## 2. Install SDK and OAuth callback
 
-```bash
-npm install @identity-protocol/identity-sdk @par-noir/oauth-ui
+Packages are **workspace / `file:`** (not on the public npm registry yet):
+
+```json
+{
+  "@identity-protocol/identity-sdk": "file:../../sdk/identity-sdk",
+  "@par-noir/oauth-ui": "file:../../packages/oauth-ui"
+}
 ```
 
 Copy the OAuth callback page into your app’s `public/` folder:
 
-- From npm: `node_modules/@identity-protocol/identity-sdk/static/oauth-callback.html`
-- Or from this repo: `packages/oauth-ui/static/oauth-callback.html`
+- Canonical: `packages/oauth-ui/static/oauth-callback.html`
+- Or after install: `node_modules/@par-noir/oauth-ui/static/oauth-callback.html`
 
 It must match your registered `redirect_uri` path.
+
+User OAuth is **`/oauth/*` only** (interactive unlock). Do not call messaging, mailbox, connections, or groups APIs from an L5 client — those require first-party apps. Hosted messaging widgets are deferred; see [L5_ONE_KIT_REVIEW.md](./L5_ONE_KIT_REVIEW.md).
 
 ---
 

@@ -34,8 +34,8 @@ export function HomePage() {
             ).
           </li>
           <li>
-            <Link to="/docs">Guides</Link> — quickstart with <code>@par-noir/oauth-ui</code> and the identity SDK workspace
-            package.
+            <Link to="/docs">Guides</Link> — quickstart with <code>createPnIntegratorClient</code> and{' '}
+            <code>@par-noir/oauth-ui</code> (workspace packages).
           </li>
           <li>
             <Link to="/integrate">Layer 5</Link> — third-party access patterns and consent.

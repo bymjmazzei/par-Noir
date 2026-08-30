@@ -172,14 +172,4 @@ describe('OAuth unlock proof gate', () => {
     expect(payload?.did).toBe(expectedDid);
     expect(payload?.pnIdentifier).toBe(expectedPn);
   });
-
-  it('API-key mint path still issues a code without calling generateAuthorizationCode from outside', () => {
-    const code = PNOAuthService.issueAuthorizationCodeForApiKey({
-      clientId: 'integrator',
-      redirectUri: 'https://example.com/cb',
-      scope: ['openid'],
-      pnId: 'pn-abcdef123456',
-    });
-    expect(code).toMatch(/^[a-f0-9]{64}$/);
-  });
 });

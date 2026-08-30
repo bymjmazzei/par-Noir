@@ -52,6 +52,9 @@ jobs:
       - name: OAuth unlock-proof boundary
         run: PN_CHECK_ALL=1 bash scripts/check-oauth-unlock-proof-boundary.sh
 
+      - name: L5 product route first-party boundary
+        run: PN_CHECK_ALL=1 bash scripts/check-l5-product-route-boundary.sh
+
       - name: Passcode not on OAuth authenticate wire
         run: PN_CHECK_ALL=1 bash scripts/check-no-passcode-on-oauth-wire.sh
 

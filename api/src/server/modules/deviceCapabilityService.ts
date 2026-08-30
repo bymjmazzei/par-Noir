@@ -14,7 +14,7 @@ import {
   type DeviceProofPayload,
   type DeviceRow,
 } from '@par-noir/device-auth';
-import { PNOAuthService } from './pnOAuthService';
+import { PNOAuthService, type TokenPayload } from './pnOAuthService';
 import { hashIdentifier, safeLogger } from '../../utils/logger';
 import {
   loadDeviceBundle,
@@ -22,6 +22,7 @@ import {
   readPolicy,
 } from './storage/deviceStorageService';
 import type { DeviceStorageBundle } from './storage/deviceStorageService';
+import { isFirstPartyClient } from './integratorStoragePaths';
 
 export { DEVICE_CAPABILITIES };
 
@@ -62,13 +63,51 @@ export function getBearerPnIdentifier(req: Request): string | null {
 }
 
 function bearerPn(req: Request): { pnIdentifier: string } | null {
-  const authHeader = req.headers.authorization;
-  if (!authHeader?.startsWith('Bearer ')) return null;
-  const token = authHeader.substring(7).trim();
-  const payload = PNOAuthService.validateAccessToken(token);
+  const payload = bearerTokenPayload(req);
   if (!payload?.pnIdentifier) return null;
   const pn = payload.pnIdentifier.startsWith('pn-') ? payload.pnIdentifier : `pn-${payload.pnIdentifier}`;
   return { pnIdentifier: pn };
+}
+
+function bearerTokenPayload(req: Request): TokenPayload | null {
+  const authHeader = req.headers.authorization;
+  if (!authHeader?.startsWith('Bearer ')) return null;
+  const token = authHeader.substring(7).trim();
+  return PNOAuthService.validateAccessToken(token);
+}
+
+/**
+ * Require a valid Bearer issued to a first-party OAuth client.
+ * L5 / third-party integrators must not reach product routes (messages, social, …).
+ */
+export function requireFirstPartyOAuthClient(req: Request, res: Response): TokenPayload | null {
+  const payload = bearerTokenPayload(req);
+  if (!payload?.pnIdentifier) {
+    res.status(401).json({ error: 'unauthorized' });
+    return null;
+  }
+  if (!isFirstPartyClient(payload.clientId)) {
+    safeLogger.warn('[requireFirstPartyOAuthClient] third-party client denied product route', {
+      pnIdHash: hashIdentifier(payload.pnIdentifier),
+      path: req.path,
+    });
+    res.status(403).json({ error: 'forbidden', reason: 'first_party_required' });
+    return null;
+  }
+  return payload;
+}
+
+/**
+ * First-party client gate + device capability gate for owner product routes.
+ */
+export async function gateFirstPartyOwnerRoute(
+  req: Request,
+  res: Response,
+  capability: string,
+  targetPn?: string
+): Promise<DeviceAuthContext | null> {
+  if (!requireFirstPartyOAuthClient(req, res)) return null;
+  return gateOwnerRoute(req, res, capability, targetPn);
 }
 
 async function loadDeviceContextUncached(pn: string): Promise<DeviceContextLoad | null> {

@@ -9,8 +9,6 @@ Hand-maintained index of **major** HTTP routes. When you add a user-facing or in
 | GET | `/api/v1/identity/successor` | Query `pn_identifier` — succession / revocation (public read) |
 | GET | `/api/v1/identity/revocations` | Alias of successor response shape |
 | GET | `/api/v1/standard-data-points` | Public catalog of standard data point metadata (no auth) |
-| GET | `/api/v1/oauth/authorize` | API-key gated OAuth authorize |
-| POST | `/api/v1/oauth/token` | API-key gated token exchange |
 | GET | `/api/v1/data-points/:dataPointId` | API key + `data_points` scope; query `identity_id`, `client_id` |
 | POST | `/api/v1/data-points/request` | API key; create consent request on user Drive |
 | GET | `/api/v1/data-points/requests/:requestId` | API key; poll consent request status |

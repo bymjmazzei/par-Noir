@@ -9,6 +9,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@identity-protocol/identity-sdk": "file:../../sdk/identity-sdk",
     "@par-noir/oauth-ui": "file:../../packages/oauth-ui",
     "@par-noir/device-cloud-credentials": "file:../../packages/device-cloud-credentials",
     "@par-noir/user-owned-storage": "file:../../packages/user-owned-storage",

@@ -326,32 +326,9 @@ export class PNOAuthService {
   }
 
   /**
-   * Mint an authorization code for a request already authenticated by API key.
-   * Trust is the server-side API key binding, not a client-claimed identity.
-   */
-  static issueAuthorizationCodeForApiKey(params: {
-    clientId: string;
-    redirectUri: string;
-    scope: string[];
-    state?: string;
-    nonce?: string;
-    pnId: string;
-  }): string {
-    return this.generateAuthorizationCode({
-      clientId: params.clientId,
-      redirectUri: params.redirectUri,
-      scope: params.scope,
-      state: params.state,
-      nonce: params.nonce,
-      did: params.pnId,
-      pnIdentifier: params.pnId,
-    });
-  }
-
-  /**
-   * Internal mint after unlock proof or API-key binding.
-   * Call sites outside this module must use authenticateWithUnlockProof or
-   * issueAuthorizationCodeForApiKey — never trust client-claimed identity alone.
+   * Internal mint after unlock proof.
+   * Call sites outside this module must use authenticateWithUnlockProof —
+   * never trust client-claimed identity alone.
    */
   static generateAuthorizationCode(params: {
     clientId: string;

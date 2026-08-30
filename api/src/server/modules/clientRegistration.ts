@@ -178,6 +178,10 @@ export class ClientRegistrationService {
     }
 
     const ownerPnId = client.ownerPnId?.trim() || null;
+    const scopes =
+      Array.isArray(client.scopes) && client.scopes.length > 0
+        ? client.scopes
+        : ['openid', 'profile'];
 
     const result = await pool.query(
       `INSERT INTO oauth_clients (client_id, name, description, redirect_uris, scopes, client_secret_hash, is_active, owner_pn_id)
@@ -188,7 +192,7 @@ export class ClientRegistrationService {
         client.name,
         client.description ?? null,
         JSON.stringify(client.redirectUris),
-        JSON.stringify(client.scopes ?? []),
+        JSON.stringify(scopes),
         clientSecretHash,
         client.isActive !== false,
         ownerPnId
@@ -238,7 +242,8 @@ export class ClientRegistrationService {
   static async validateScopes(clientId: string, requestedScopes: string[]): Promise<boolean> {
     const client = await this.getClient(clientId);
     if (!client || !client.isActive) return false;
-    if (!client.scopes || client.scopes.length === 0) return true;
+    // Fail closed: empty registered scopes must not allow arbitrary requests.
+    if (!client.scopes || client.scopes.length === 0) return false;
     return requestedScopes.every((scope) => client.scopes!.includes(scope));
   }
 

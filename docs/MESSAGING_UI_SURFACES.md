@@ -8,7 +8,7 @@ Same E2E behavior on every surface: **one pN unlock** (OAuth consent with identi
 |---------|--------|------------|
 | **Messaging app** | `messages.parnoir.com` — `MessagesPage` / `Inbox` | Full inbox, New group |
 | **Browse modal** | `App.tsx` `showInbox`, `BottomNav`, profile/feed Message actions | Same `Inbox` + `MessageThread` overlay |
-| **L5 embed** | Third-party app with OAuth + `@par-noir/messaging-ui` contract | Provide `apiEndpoint`, `getAccessToken()`, OAuth handoff listeners |
+| **L5 embed** | Deferred — types-only `@par-noir/messaging-ui` contract; **no** third-party `/api/messages` access | Third parties must not call messaging REST; use first-party hosted UI when shipped |
 
 ## OAuth handoff (single unlock)
 
@@ -22,7 +22,7 @@ When the user unlocks pN via the padlock on `browse.parnoir.com` or `messaging.p
 
 **Conversation recovery:** DM session keys are **not** stored in `localStorage`. Each thread’s opaque recovery blob lives on the user’s Drive inbox (`kemCiphertext` for the requester, `wrappedMessageRootKey` for the acceptor). Opening or sending a thread always re-derives `messageRootKey` from that blob plus the unlocked ML-KEM secret. The in-memory session cache is performance-only; lock/unlock or tab refresh recovers from Drive after unlock.
 
-**Third-party OAuth** (Prism, developer portal, L5 integrators) still uses API-hosted `/oauth/consent` — they do not need ML-KEM handoff.
+**Third-party OAuth** (Prism, developer portal, L5 integrators) still uses API-hosted `/oauth/consent` — they do not receive messaging ML-KEM handoff. L5 clients are **denied** product routes (`/api/messages`, `/api/mailbox`, `/api/connections`, `/api/groups`, …). A hosted messaging iframe for embeds is **deferred** (see `docs/developer/L5_ONE_KIT_REVIEW.md`).
 
 `identity_handoff=required` is set on authorize when messaging keys are not in memory on that origin.
 

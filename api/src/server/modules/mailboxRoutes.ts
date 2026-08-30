@@ -6,7 +6,7 @@ import type { Application, Request, Response } from 'express';
 import { getBearerTokenPayload } from '../middleware/authMiddleware';
 import { getDeviceAccessMode } from '@par-noir/device-auth';
 import {
-  gateOwnerRoute,
+  gateFirstPartyOwnerRoute,
   assertDeviceCapability,
   getBearerPnIdentifier,
   normalizePnIdentifier,
@@ -230,7 +230,7 @@ export function registerMailboxRoutes(app: Application, nodeEnv: string): void {
       const sendCapability = isSocialJobType(jobType)
         ? DEVICE_CAPABILITIES.socialWrite
         : DEVICE_CAPABILITIES.messagesSend;
-      if (!(await gateOwnerRoute(req, res, sendCapability, actor))) {
+      if (!(await gateFirstPartyOwnerRoute(req, res, sendCapability, actor))) {
         return;
       }
       const routeKey = resolveRouteKey(bodyRouteKey);
@@ -299,7 +299,7 @@ export function registerMailboxRoutes(app: Application, nodeEnv: string): void {
       const lookupCapability = isSocialJobType(jobType)
         ? DEVICE_CAPABILITIES.socialWrite
         : DEVICE_CAPABILITIES.messagesSend;
-      if (!(await gateOwnerRoute(req, res, lookupCapability, pnIdentifier))) {
+      if (!(await gateFirstPartyOwnerRoute(req, res, lookupCapability, pnIdentifier))) {
         return;
       }
       const routeKey = resolveRouteKey(routeKeyParam);
@@ -352,7 +352,7 @@ export function registerMailboxRoutes(app: Application, nodeEnv: string): void {
       if (!pnIdentifier) {
         return res.status(400).json({ error: 'pnIdentifier required' });
       }
-      if (!(await gateOwnerRoute(req, res, DEVICE_CAPABILITIES.messagesRead, pnIdentifier))) {
+      if (!(await gateFirstPartyOwnerRoute(req, res, DEVICE_CAPABILITIES.messagesRead, pnIdentifier))) {
         return;
       }
       const routeKey = await getMailboxRouteKeyForOwner(pnIdentifier);
@@ -383,7 +383,7 @@ export function registerMailboxRoutes(app: Application, nodeEnv: string): void {
       if (!identity) {
         return res.status(400).json({ error: 'pnIdentifier required' });
       }
-      if (!(await gateOwnerRoute(req, res, DEVICE_CAPABILITIES.messagesRead, identity))) {
+      if (!(await gateFirstPartyOwnerRoute(req, res, DEVICE_CAPABILITIES.messagesRead, identity))) {
         return;
       }
       if (!isMailboxRouteKey(routeKey)) {

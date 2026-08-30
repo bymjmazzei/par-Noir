@@ -10,6 +10,7 @@ Prose rules are not enough. These scripts refuse new violations on commit/CI:
 - `scripts/check-oauth-unlock-proof-boundary.sh` + `scripts/oauth-unlock-proof-allowlist.txt`
 - `scripts/check-no-passcode-on-oauth-wire.sh` + `scripts/passcode-oauth-wire-allowlist.txt`
 - `scripts/check-token-resolver-boundary.sh` + `scripts/token-resolver-allowlist.txt` + `scripts/peer-credential-allowlist.txt` (Drive token via `resolveOwnerDriveToken`; peer raw `access_token` burn-down)
+- `scripts/check-l5-product-route-boundary.sh` (first-party only for messages/mailbox/connections/groups/engagement/notifications)
 - `scripts/check-legacy-identity-crypto.sh` (no RSA / app-local IdentityManager reintroduction)
 
 ## Hard bans
@@ -20,5 +21,4 @@ Prose rules are not enough. These scripts refuse new violations on commit/CI:
 4. Do **not** add allowlist entries — only remove them after a real fix. That includes unlock-proof, passcode-wire, token-resolver, peer-credential, and legacy-identity allowlists.
 5. Do **not** delete, skip, or weaken these scripts or their CI/pre-commit wiring.
 6. Do **not** reintroduce demo JWT / mock `decryptIdentity` in `@par-noir/identity-crypto`.
-
-Allowlisted files are known debt until a separate job clears them. New paths must fail closed.
+7. Do **not** expose `/api/messages`, `/api/mailbox`, `/api/connections`, `/api/groups`, `/api/engagement`, or `/api/notifications` to third-party OAuth clients — use `requireFirstPartyOAuthClient` / `mountL5ProductFirstPartyBoundary`.

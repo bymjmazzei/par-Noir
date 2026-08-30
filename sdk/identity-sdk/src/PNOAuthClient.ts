@@ -127,18 +127,25 @@ export class PNOAuthClient {
   /**
    * Exchange authorization code for access token
    */
-  async exchangeCodeForToken(code: string): Promise<PNOAuthTokenResponse> {
+  async exchangeCodeForToken(
+    code: string,
+    options?: { grantedDataPoints?: string; redirectUri?: string }
+  ): Promise<PNOAuthTokenResponse> {
+    const body: Record<string, unknown> = {
+      code,
+      client_id: this.config.clientId,
+      redirect_uri: options?.redirectUri || this.config.redirectUri,
+      grant_type: 'authorization_code'
+    };
+    if (options?.grantedDataPoints !== undefined) {
+      body.granted_data_points = options.grantedDataPoints;
+    }
     const response = await fetch(`${this.config.apiEndpoint}/oauth/token`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'
       },
-      body: JSON.stringify({
-        code,
-        client_id: this.config.clientId,
-        redirect_uri: this.config.redirectUri,
-        grant_type: 'authorization_code'
-      })
+      body: JSON.stringify(body)
     });
 
     if (!response.ok) {

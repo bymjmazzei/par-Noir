@@ -409,51 +409,5 @@ export function setupWidgetRoutes(app: any) {
       return res.status(500).send('Failed to load widget');
     }
   });
-
-  /**
-   * GET /api/public-index/:identityId
-   * Get user's public index (portable content)
-   */
-  app.get('/api/public-index/:identityId', async (req: Request, res: Response) => {
-    try {
-      const { identityId } = req.params;
-
-      // Get public files from aggregator metadata service
-      const { AggregatorMetadataServiceDB } = await import('./aggregatorMetadataServiceDB');
-      const service = AggregatorMetadataServiceDB.getInstance();
-
-      // Search for public files by creator DID
-      const result = await service.searchMetadata('', {
-        authorDid: identityId,
-        limit: 1000,
-        offset: 0
-      });
-
-      // Filter to only public files
-      const publicFiles = result.files
-        .filter((entry: any) => entry.metadata?.isPublic === true)
-        .map((entry: any) => ({
-          fileId: entry.metadata?.fileId,
-          name: entry.metadata?.name,
-          description: entry.metadata?.description,
-          keywords: entry.metadata?.keywords,
-          uploadDate: entry.metadata?.uploadDate,
-          fileType: entry.metadata?.fileType,
-          thumbnail: entry.metadata?.thumbnail,
-          engagement: entry.metadata?.engagement,
-          contentRating: entry.metadata?.contentRating
-        }));
-
-      return res.json({
-        identityId,
-        files: publicFiles,
-        total: publicFiles.length,
-        updatedAt: new Date().toISOString()
-      });
-    } catch (error) {
-      console.error('Public index error:', error);
-      return res.status(500).json({ error: 'Failed to retrieve public index' });
-    }
-  });
 }
 

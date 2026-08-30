@@ -15,7 +15,7 @@ See [GOOGLE_DRIVE_STRUCTURE.md](../../GOOGLE_DRIVE_STRUCTURE.md) for the full fo
 ## Principles
 
 1. **User grants, user revokes** — Tools receive only what the user approved in privacy / tool settings. Revocation is reflected in stored permission rows (`active` / `revoked`) and in ZKP-backed data points where applicable.
-2. **API is the broker** — Third parties call **par Noir API** with the user’s OAuth access token (PN OAuth) or, for platform scenarios, an **API key** tied to a pN identifier plus the documented OAuth flows (`/api/v1/...`). Do not ask users for pn name or passcode.
+2. **API is the broker** — Third parties call **par Noir API** with the user’s OAuth access token (interactive `/oauth/*`) or, for server scenarios, an **API key** on `/api/v1/...` (public index, catalog). Do not ask users for pn name or passcode.
 3. **Data points vs OAuth scopes** — `dataPoints` on a tool permission reference **zkp-data-points** rows for ZKP types. OAuth-style scopes (`openid`, `profile`, `cloud:read`) are not rows in `zkp-data-points`; access follows the permission sheet and token scopes together. See `docs/api/DATA_POINTS_AND_ZKP_API.md`.
 4. **Integrator silo** — Drive setup creates empty `integrators/` and caches `integratorsRootId` in `credentials.cachedFolderIds`. Scope `cloud:app` provisions `integrators/{client_id}/` on first grant and restricts L5 Drive proxy calls to that subtree. L5 clients must not read `_metadata` via Drive.
 
@@ -43,8 +43,10 @@ See [GOOGLE_DRIVE_STRUCTURE.md](../../GOOGLE_DRIVE_STRUCTURE.md) for the full fo
 - **Portable public index (API key):**  
   `GET` `/api/v1/public-index/:identityId` with `content` scope — public aggregator metadata.
 
-- **OAuth for L5 apps:**  
-  `GET` `/api/v1/oauth/authorize` and `POST` `/api/v1/oauth/token` after registering a client. See `docs/developer/PN_OAUTH_INTEGRATION.md`.
+- **OAuth for L5 apps (interactive unlock only):**  
+  `GET` `/oauth/authorize` → consent → `POST` `/oauth/token`. See `docs/developer/PN_OAUTH_INTEGRATION.md`.
+
+- **Not available to L5:** `/api/messages`, `/api/mailbox`, `/api/connections`, `/api/groups`, `/api/engagement`, `/api/notifications` — first-party OAuth clients only.
 
 ## Revocation and succession
 

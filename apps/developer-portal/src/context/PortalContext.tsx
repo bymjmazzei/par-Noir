@@ -8,6 +8,7 @@ import {
   type ReactNode
 } from 'react';
 import type { PnOAuthPopupResult } from '@par-noir/oauth-ui';
+import { createPNOAuthClient } from '@identity-protocol/identity-sdk';
 import { ownerCloudHeadersAsync } from '@par-noir/device-cloud-credentials';
 import { API_ENDPOINT } from '../config/api';
 import { PN_CLIENT_ID } from '../config/client';
@@ -17,6 +18,16 @@ const STORAGE_REFRESH = 'dev_portal_refresh_token';
 const STORAGE_OAUTH_CTX = 'dev_portal_oauth';
 const STORAGE_POPUP_STATE = 'pn_oauth_state';
 const STORAGE_PN = 'dev_portal_pn_identifier';
+
+function portalOAuthClient(redirectUri?: string) {
+  return createPNOAuthClient({
+    clientId: PN_CLIENT_ID,
+    apiEndpoint: API_ENDPOINT,
+    redirectUri: redirectUri || `${typeof window !== 'undefined' ? window.location.origin : ''}/oauth-callback.html`,
+    scopes: ['openid', 'profile'],
+    usePopup: false
+  });
+}
 
 function oauthStatesMatch(incoming: string, expected: string): boolean {
   const a = incoming.trim();
@@ -104,22 +115,17 @@ async function tryRefreshDeveloperPortalAccessToken(): Promise<string | null> {
   if (typeof sessionStorage === 'undefined') return null;
   const refresh = sessionStorage.getItem(STORAGE_REFRESH);
   if (!refresh?.trim()) return null;
-  const res = await fetch(`${API_ENDPOINT}/oauth/refresh`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      refresh_token: refresh.trim(),
-      client_id: PN_CLIENT_ID
-    })
-  });
-  if (!res.ok) return null;
-  const data = (await res.json()) as { access_token?: string; refresh_token?: string };
-  if (!data.access_token) return null;
-  sessionStorage.setItem(STORAGE_ACCESS, data.access_token);
-  if (data.refresh_token) {
-    sessionStorage.setItem(STORAGE_REFRESH, data.refresh_token);
+  try {
+    const data = await portalOAuthClient().refreshAccessToken(refresh.trim());
+    if (!data.access_token) return null;
+    sessionStorage.setItem(STORAGE_ACCESS, data.access_token);
+    if (data.refresh_token) {
+      sessionStorage.setItem(STORAGE_REFRESH, data.refresh_token);
+    }
+    return data.access_token;
+  } catch {
+    return null;
   }
-  return data.access_token;
 }
 
 export function PortalProvider({ children }: { children: ReactNode }) {
@@ -171,46 +177,31 @@ export function PortalProvider({ children }: { children: ReactNode }) {
       sessionStorage.removeItem(STORAGE_POPUP_STATE);
       return;
     }
-    if (result.state !== undefined && result.state !== ctx.state) {
+    if (result.state !== undefined && !oauthStatesMatch(result.state, ctx.state)) {
       setError('Invalid OAuth state');
       sessionStorage.removeItem(STORAGE_POPUP_STATE);
       return;
     }
-    const body: Record<string, unknown> = {
-      code: result.code,
-      client_id: ctx.clientId,
-      redirect_uri: ctx.redirectUri,
-      grant_type: 'authorization_code'
-    };
-    if (result.granted_data_points !== undefined) {
-      body.granted_data_points = result.granted_data_points;
-    }
-    const tokenRes = await fetch(`${API_ENDPOINT}/oauth/token`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body)
-    });
-    const data = (await tokenRes.json().catch(() => ({}))) as {
-      access_token?: string;
-      refresh_token?: string;
-      error_description?: string;
-      error?: string;
-    };
-    if (!tokenRes.ok) {
-      setError(data.error_description || data.error || 'Token exchange failed');
+    try {
+      const oauth = portalOAuthClient(ctx.redirectUri);
+      const data = await oauth.exchangeCodeForToken(result.code, {
+        redirectUri: ctx.redirectUri,
+        grantedDataPoints: result.granted_data_points
+      });
+      if (data.access_token) {
+        sessionStorage.setItem(STORAGE_ACCESS, data.access_token);
+      }
+      if (data.refresh_token) {
+        sessionStorage.setItem(STORAGE_REFRESH, data.refresh_token);
+      }
+      sessionStorage.removeItem(STORAGE_OAUTH_CTX);
       sessionStorage.removeItem(STORAGE_POPUP_STATE);
-      return;
+      setToken(data.access_token ?? null);
+      setError(null);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Token exchange failed');
+      sessionStorage.removeItem(STORAGE_POPUP_STATE);
     }
-    if (data.access_token) {
-      sessionStorage.setItem(STORAGE_ACCESS, data.access_token);
-    }
-    if (data.refresh_token) {
-      sessionStorage.setItem(STORAGE_REFRESH, data.refresh_token);
-    }
-    sessionStorage.removeItem(STORAGE_OAUTH_CTX);
-    sessionStorage.removeItem(STORAGE_POPUP_STATE);
-    setToken(data.access_token ?? null);
-    setError(null);
   }, []);
 
   const refreshDashboard = useCallback(async () => {
@@ -224,40 +215,46 @@ export function PortalProvider({ children }: { children: ReactNode }) {
     }
     setToken(t);
     try {
-      const fetchAll = (access: string) =>
+      const oauth = portalOAuthClient();
+      const fetchKeysClients = (access: string) =>
         Promise.all([
-          fetch(`${API_ENDPOINT}/oauth/userinfo`, { headers: { Authorization: `Bearer ${access}` } }),
           fetch(`${API_ENDPOINT}/api/developer/api-keys`, { headers: { Authorization: `Bearer ${access}` } }),
           fetch(`${API_ENDPOINT}/api/developer/oauth-clients`, { headers: { Authorization: `Bearer ${access}` } })
         ]);
-      let [uRes, kRes, cRes] = await fetchAll(t);
-      if (uRes.status === 401) {
+      let info: UserInfo | null = null;
+      try {
+        info = (await oauth.getUserInfo(t)) as UserInfo;
+      } catch {
         const newAccess = await tryRefreshDeveloperPortalAccessToken();
         if (newAccess) {
           setToken(newAccess);
-          [uRes, kRes, cRes] = await fetchAll(newAccess);
-        }
-      }
-      if (uRes.status === 401) {
-        clearSession();
-        setUser(null);
-        setKeys([]);
-        setOauthClients([]);
-        setToken(null);
-        return;
-      }
-      if (uRes.ok) {
-        const info = (await uRes.json()) as UserInfo;
-        if (info.pn_identifier) {
-          sessionStorage.setItem(STORAGE_PN, info.pn_identifier);
+          t = newAccess;
+          try {
+            info = (await oauth.getUserInfo(newAccess)) as UserInfo;
+          } catch {
+            clearSession();
+            setUser(null);
+            setKeys([]);
+            setOauthClients([]);
+            setToken(null);
+            return;
+          }
         } else {
-          sessionStorage.removeItem(STORAGE_PN);
+          clearSession();
+          setUser(null);
+          setKeys([]);
+          setOauthClients([]);
+          setToken(null);
+          return;
         }
-        setUser(info);
+      }
+      if (info?.pn_identifier) {
+        sessionStorage.setItem(STORAGE_PN, info.pn_identifier);
       } else {
         sessionStorage.removeItem(STORAGE_PN);
-        setUser(null);
       }
+      setUser(info);
+      const [kRes, cRes] = await fetchKeysClients(t);
       if (kRes.ok) {
         const kd = (await kRes.json()) as { keys?: KeyRow[] };
         setKeys(Array.isArray(kd.keys) ? kd.keys : []);
@@ -333,11 +330,7 @@ export function PortalProvider({ children }: { children: ReactNode }) {
     const refresh = sessionStorage.getItem(STORAGE_REFRESH);
     if (refresh) {
       try {
-        await fetch(`${API_ENDPOINT}/oauth/revoke`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ token: refresh, token_type_hint: 'refresh_token' })
-        });
+        await portalOAuthClient().revokeToken(refresh, 'refresh_token');
       } catch {
         /* best-effort */
       }
