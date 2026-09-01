@@ -289,6 +289,39 @@ export async function removeInboxEntryPortable(
   }
 }
 
+/**
+ * Layout migration: rewrite inbox rows to channel-aware keys (legacy peer-only → platform).
+ * Idempotent — safe to re-run.
+ */
+export async function migrateInboxChannelClientIdPortable(
+  pnIdentifier: string,
+  accountId?: string
+): Promise<void> {
+  const rows = await portableTableScan<InboxRow>(pnIdentifier, INBOX_SCHEMA, accountId);
+  for (const existing of rows) {
+    const n = normalizeInboxRow(existing);
+    const oldKey = existing.inboxRowKey || existing.participantPnIdentifier;
+    const newKey = n.inboxRowKey || oldKey;
+    const needsRewrite =
+      oldKey !== newKey ||
+      (n.threadType !== 'group' && existing.channelClientId !== n.channelClientId) ||
+      existing.inboxRowKey !== newKey;
+    if (!needsRewrite) continue;
+    if (oldKey) {
+      await portableTableDelete(pnIdentifier, INBOX_SCHEMA, oldKey, accountId).catch(() => undefined);
+    }
+    if (oldKey !== newKey && newKey) {
+      await portableTableDelete(pnIdentifier, INBOX_SCHEMA, newKey, accountId).catch(() => undefined);
+    }
+    await portableTableAppend(
+      pnIdentifier,
+      INBOX_SCHEMA,
+      { ...n, inboxRowKey: newKey } as unknown as Record<string, unknown>,
+      accountId
+    );
+  }
+}
+
 export async function getInboxConversationsPortable(
   pnIdentifier: string,
   accountId?: string

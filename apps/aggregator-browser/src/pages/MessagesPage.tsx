@@ -16,6 +16,11 @@ import {
   isDmIdentityReady,
 } from '../services/dmIdentitySession';
 import { restoreMessagingAfterOAuth } from '../services/messagingOAuthHandoff';
+import {
+  CloudLayoutUpdateBanner,
+  isCloudLayoutBehind,
+} from '../components/CloudLayoutUpdateBanner';
+import { dashboardStorageUrl } from '../config/dashboard';
 
 const SHOW_DM_UNLOCK_EVENT = 'pn_show_dm_unlock_modal';
 
@@ -36,6 +41,7 @@ export function MessagesPage({
   const { userState } = useUserState();
   const [showDmUnlock, setShowDmUnlock] = useState(false);
   const [dmUnlockDismissed, setDmUnlockDismissed] = useState(false);
+  const [layoutBehind, setLayoutBehind] = useState(false);
 
   const refreshDmUnlockOffer = useCallback(() => {
     restoreMessagingAfterOAuth();
@@ -71,6 +77,23 @@ export function MessagesPage({
     };
   }, [refreshDmUnlockOffer]);
 
+  useEffect(() => {
+    const oauthSession = PNOAuthService.loadSession();
+    const token = oauthSession?.accessToken;
+    const pn = userState.pnIdentifier || oauthSession?.pnIdentifier;
+    if (!token || !pn || !userState.isUnlocked) {
+      setLayoutBehind(false);
+      return;
+    }
+    let cancelled = false;
+    void isCloudLayoutBehind(token, pn).then((behind) => {
+      if (!cancelled) setLayoutBehind(behind);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [userState.isUnlocked, userState.pnIdentifier]);
+
   const session = PNOAuthService.loadSession();
   const pnNameHint =
     (session as { pnName?: string } | null)?.pnName || session?.nickname || undefined;
@@ -79,13 +102,31 @@ export function MessagesPage({
     <div className="h-screen w-full bg-neutral-900 flex flex-col">
       <KeyDeviceBanner />
       <ConnectionHealthBanner />
+      <CloudLayoutUpdateBanner />
       <div className="flex-1 min-h-0">
-        <Inbox
-          initialThread={initialThread}
-          onCreatorClick={onCreatorClick}
-          onNotificationClick={onNotificationClick}
-          channelClientId={channelClientId}
-        />
+        {layoutBehind ? (
+          <div className="flex flex-col items-center justify-center h-full px-6 text-center text-text-secondary">
+            <p className="text-text-primary font-medium mb-2">Messaging paused</p>
+            <p className="text-sm max-w-md mb-4">
+              Complete the cloud layout update in the dashboard Storage section, then return here.
+            </p>
+            <a
+              href={dashboardStorageUrl()}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-sm text-amber-300 underline underline-offset-2"
+            >
+              Open dashboard Storage
+            </a>
+          </div>
+        ) : (
+          <Inbox
+            initialThread={initialThread}
+            onCreatorClick={onCreatorClick}
+            onNotificationClick={onNotificationClick}
+            channelClientId={channelClientId}
+          />
+        )}
       </div>
       {showDmUnlock && hasStoredEncryptedIdentity() && (
         <DmCryptoUnlockModal

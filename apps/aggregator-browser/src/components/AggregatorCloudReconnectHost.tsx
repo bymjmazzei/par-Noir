@@ -31,6 +31,7 @@ import {
   isDmIdentityReady,
   retryPublishMlKemPublicKey
 } from '../services/dmIdentitySession';
+import { CloudLayoutUpdateBanner } from './CloudLayoutUpdateBanner';
 
 /**
  * Post-unlock cloud reconnect for aggregator browse/messaging.
@@ -314,6 +315,11 @@ export const AggregatorCloudReconnectHost: React.FC = () => {
 
   return (
     <>
+      <div className="fixed bottom-4 left-0 right-0 z-40 px-0 pointer-events-none">
+        <div className="pointer-events-auto max-w-lg mx-auto">
+          <CloudLayoutUpdateBanner />
+        </div>
+      </div>
       <CloudReconnectPrompt
         open={gate.promptOpen && !gate.panelOpen && !vaultHydrated}
         socialCloudProvider={gate.socialCloudProvider}

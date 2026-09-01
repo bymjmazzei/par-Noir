@@ -31,7 +31,9 @@ Hand-maintained index of **major** HTTP routes. When you add a user-facing or in
 |--------|------|--------|
 | PUT | `/api/storage/credentials/:identityId` | Encrypted storage credentials |
 | GET | `/api/storage/credentials/:identityId` | Retrieve credentials |
-| POST | `/api/storage/initialize/:identityId` | Re-init Drive folders |
+| POST | `/api/storage/initialize/:identityId` | Re-init Drive folders (first connect / incomplete index); stamps `cloudLayoutVersion` |
+| GET | `/api/storage/:identityId/layout/status` | Owner — cloud layout version vs required migrations (no Drive writes) |
+| POST | `/api/storage/:identityId/layout/upgrade` | Owner — run pending additive layout migrations (custody: cloud access token) |
 
 ## Feeds & aggregator (selection)
 

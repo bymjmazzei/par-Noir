@@ -89,6 +89,17 @@ jest.mock('../driveInitSteps', () => ({
   runFullDriveInitAndPersist: jest.fn(),
 }));
 
+jest.mock('./storageProviderUtils', () => ({
+  isPortableSocialCloud: jest.fn(async () => false),
+  isPortableStorageProvider: jest.fn(async () => false),
+}));
+
+jest.mock('../messageSheetsService', () => ({
+  MessageSheetsService: {
+    ensureInboxChannelColumn: jest.fn(async () => undefined),
+  },
+}));
+
 jest.mock('../cloudVaultService', () => ({
   cloudVaultService: {
     getSealedVault: jest.fn(),
@@ -116,6 +127,12 @@ import { isRetryableGoogleError } from '../googleApiRetry';
 import { runFullDriveInitAndPersist } from '../driveInitSteps';
 import { getDriveInitProgress, isDriveInitProgressActive } from '../driveInitProgress';
 import { cloudVaultService, looksLikePlaintextCloudSecrets } from '../cloudVaultService';
+import { MessageSheetsService } from '../messageSheetsService';
+import {
+  CURRENT_CLOUD_LAYOUT_VERSION,
+  MIGRATION_INBOX_CHANNEL_CLIENT_ID_V1,
+} from './cloudLayoutMigrations';
+import { PN_DRIVE_SHEET_KEYS, REQUIRED_PN_DRIVE_SHEET_KEYS } from '../pnDriveIndex';
 
 const mockGetCredentials = storageCredentialsService.getCredentials as jest.Mock;
 const mockUpsertCredentials = storageCredentialsService.upsertCredentials as jest.Mock;
@@ -131,8 +148,27 @@ const mockProgressActive = isDriveInitProgressActive as jest.Mock;
 const mockGetSealedVault = cloudVaultService.getSealedVault as jest.Mock;
 const mockPutSealedVault = cloudVaultService.putSealedVault as jest.Mock;
 const mockLooksLikePlaintext = looksLikePlaintextCloudSecrets as jest.Mock;
+const mockEnsureInboxChannel = MessageSheetsService.ensureInboxChannelColumn as jest.Mock;
 
 const PN = 'pn-test';
+
+function completePnDriveIndex() {
+  const sheetIds: Record<string, string> = {};
+  for (const key of REQUIRED_PN_DRIVE_SHEET_KEYS) {
+    sheetIds[key] = `sheet-${key}`;
+  }
+  sheetIds[PN_DRIVE_SHEET_KEYS.OWNED_ASSETS] = 'sheet-owned-assets';
+  return {
+    schemaVersion: 1,
+    pnFolderId: 'pn-folder',
+    metadataFolderId: 'meta-folder',
+    integratorsRootId: 'int-root',
+    messagesFolderId: 'msg-folder',
+    inboxSheetId: 'inbox-sheet',
+    sheetIds,
+    conversationSheets: {},
+  };
+}
 
 function buildApp() {
   const app = express();
@@ -437,6 +473,75 @@ describe('storage credentials routes', () => {
 
       expect(res.body.success).toBe(true);
       expect(mockPutSealedVault).toHaveBeenCalled();
+    });
+  });
+
+  describe('GET /api/storage/:identityId/layout/status', () => {
+    it('reports incomplete when index exists but migrations are missing', async () => {
+      mockGetCredentials.mockResolvedValue({
+        credentials: { pnDriveIndex: completePnDriveIndex() },
+      });
+
+      const res = await request(buildApp()).get(`/api/storage/${PN}/layout/status`).expect(200);
+
+      expect(res.body.complete).toBe(false);
+      expect(res.body.required).toBe(CURRENT_CLOUD_LAYOUT_VERSION);
+      expect(res.body.pending.map((p: { id: string }) => p.id)).toContain(
+        MIGRATION_INBOX_CHANNEL_CLIENT_ID_V1
+      );
+    });
+
+    it('reports complete when stamped', async () => {
+      mockGetCredentials.mockResolvedValue({
+        credentials: {
+          pnDriveIndex: completePnDriveIndex(),
+          cloudLayoutVersion: CURRENT_CLOUD_LAYOUT_VERSION,
+          appliedMigrations: [MIGRATION_INBOX_CHANNEL_CLIENT_ID_V1],
+        },
+      });
+
+      const res = await request(buildApp()).get(`/api/storage/${PN}/layout/status`).expect(200);
+      expect(res.body.complete).toBe(true);
+      expect(res.body.pending).toEqual([]);
+    });
+  });
+
+  describe('POST /api/storage/:identityId/layout/upgrade', () => {
+    it('returns 409 cloud_token_required under custody without X-PN-Cloud-Access-Token', async () => {
+      mockCustodyEnabled.mockReturnValue(true);
+      mockGetCredentials.mockResolvedValue({
+        credentials: {
+          googleDriveAccounts: [{ backendId: 'acct-1' }],
+          pnDriveIndex: completePnDriveIndex(),
+        },
+      });
+
+      const res = await request(buildApp()).post(`/api/storage/${PN}/layout/upgrade`).expect(409);
+      expect(res.body.error).toBe('cloud_token_required');
+      expect(mockEnsureInboxChannel).not.toHaveBeenCalled();
+    });
+
+    it('runs inbox migration and stamps complete when cloud token is forwarded', async () => {
+      mockCustodyEnabled.mockReturnValue(true);
+      const creds: Record<string, unknown> = {
+        googleDriveAccounts: [{ backendId: 'acct-1' }],
+        pnDriveIndex: completePnDriveIndex(),
+      };
+      mockGetCredentials.mockImplementation(async () => ({ credentials: { ...creds } }));
+      mockUpsertCredentials.mockImplementation(async (_id: string, next: Record<string, unknown>) => {
+        Object.assign(creds, next);
+        return upsertResult();
+      });
+
+      const res = await request(buildApp())
+        .post(`/api/storage/${PN}/layout/upgrade`)
+        .set('X-PN-Cloud-Access-Token', 'ya29.test-upgrade')
+        .expect(200);
+
+      expect(mockEnsureInboxChannel).toHaveBeenCalled();
+      expect(res.body.success).toBe(true);
+      expect(res.body.complete).toBe(true);
+      expect(res.body.appliedMigrations).toContain(MIGRATION_INBOX_CHANNEL_CLIENT_ID_V1);
     });
   });
 

@@ -182,6 +182,8 @@ async function registerBackendsFromEnvelope(
 }
 
 async function ensureDriveLayout(pnIdentifier: string, apiToken: string): Promise<boolean> {
+  // Only for incomplete / missing Drive index (403/409 on owner-index).
+  // Layout *version* drift uses GET/POST .../layout/status|upgrade — not full initialize.
   const cloudTok = await resolveLocalGoogleAccessTokenAsync(pnIdentifier);
   if (!cloudTok) return false;
 

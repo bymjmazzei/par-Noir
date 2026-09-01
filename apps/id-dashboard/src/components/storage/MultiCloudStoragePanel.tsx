@@ -7,6 +7,7 @@ import { PN_CLOUD_CREDENTIALS_READY_EVENT } from '@par-noir/oauth-ui';
 import { ownerFetch } from '../../services/ownerApiService';
 import { API_ENDPOINT } from '../../config/api';
 import { SocialCloudMigrationWizard } from './SocialCloudMigrationWizard';
+import { CloudLayoutUpdateBanner } from './CloudLayoutUpdateBanner';
 import { SectionInfo } from '../common/SectionInfo';
 
 type ProviderId = 'google_drive' | 'dropbox' | 'aws_s3' | 'azure_blob' | 'onedrive' | 'ftp';
@@ -453,6 +454,16 @@ export function MultiCloudStoragePanel({
           )}
         </div>
       </div>
+
+      {pnIdentifier && authToken ? (
+        <CloudLayoutUpdateBanner
+          apiToken={authToken}
+          pnIdentifier={pnIdentifier}
+          allowUpgrade
+          refreshKey={`${connectedStorageCount}-${socialCloudProvider ?? ''}`}
+          className="mb-4"
+        />
+      ) : null}
 
       <div className="flex flex-wrap gap-2 mb-4">
         {(['google_drive', 'dropbox', 'aws_s3', 'azure_blob', 'onedrive', 'ftp'] as ProviderId[]).map((p) => (

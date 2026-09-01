@@ -212,29 +212,11 @@ export class MessageSheetsService {
       if (searchResponse.data.files && searchResponse.data.files.length > 0) {
         const spreadsheetId = searchResponse.data.files[0].id!;
         messagingLog.debug(`[MessageSheetsService] Found existing Inbox sheet: ${spreadsheetId}`);
-        
-        // Ensure headers are set (for existing sheets that might not have them)
-        try {
-          await sheets.spreadsheets.values.get({
-            spreadsheetId,
-            range: 'Inbox!A1:F1'
-          });
-        } catch {
-          // Headers missing, set them up
-          await sheets.spreadsheets.values.update({
-            spreadsheetId,
-            range: 'Inbox!A1:F1',
-            valueInputOption: 'RAW',
-            requestBody: {
-              values: [['participantPnIdentifier', 'spreadsheetId', 'connectionId', 'lastMessageAt', 'lastMessagePreview', 'kemCiphertext']]
-            }
-          });
-        }
-        
+        await this.ensureInboxChannelColumn(token, spreadsheetId, userPnIdentifier, accountId);
         return spreadsheetId;
       }
 
-      // Create new Inbox sheet
+      // Create new Inbox sheet (full A–I channel-thread headers — layout SoT)
       messagingLog.debug(`[MessageSheetsService] Creating new Inbox sheet in ${messagesFolderId}`);
       const spreadsheet = await sheets.spreadsheets.create({
         requestBody: {
@@ -247,7 +229,7 @@ export class MessageSheetsService {
                 title: 'Inbox',
                 gridProperties: {
                   rowCount: 10000,
-                  columnCount: 6
+                  columnCount: 9
                 }
               }
             }
@@ -267,13 +249,12 @@ export class MessageSheetsService {
         fields: 'id, parents'
       });
 
-      // Set up headers
       await sheets.spreadsheets.values.update({
         spreadsheetId,
-        range: 'Inbox!A1:E1',
+        range: 'Inbox!A1:I1',
         valueInputOption: 'RAW',
         requestBody: {
-          values: [['participantPnIdentifier', 'spreadsheetId', 'connectionId', 'lastMessageAt', 'lastMessagePreview']]
+          values: [this.INBOX_HEADERS_WITH_THREAD]
         }
       });
 

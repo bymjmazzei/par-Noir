@@ -1,6 +1,6 @@
 # User storage layout (provider-agnostic)
 
-Logical tree used by all storage providers. See [GOOGLE_DRIVE_STRUCTURE.md](../../GOOGLE_DRIVE_STRUCTURE.md) for Google-specific details.
+Logical tree used by all storage providers. See [GOOGLE_DRIVE_STRUCTURE.md](../../GOOGLE_DRIVE_STRUCTURE.md) for Google-specific details. Layout/protocol versioning touch points: [CLOUD_PROTOCOL_VERSIONING_TOUCHPOINTS.md](./CLOUD_PROTOCOL_VERSIONING_TOUCHPOINTS.md).
 
 ```
 par-noir-{pn}/

@@ -179,6 +179,8 @@ export async function initializePortableStorage(
     primaryProvider: provider
   });
 
+  const { stampCloudLayoutCurrent } = await import('./cloudLayoutMigrations');
+  stampCloudLayoutCurrent(updated as Record<string, unknown>);
   await storageCredentialsService.upsertCredentials(pnIdentifier, updated);
 
   return { pathPrefix: prefix };

@@ -233,8 +233,10 @@ export async function runFullDriveInitAndPersist(
 
   console.log(`[DriveInit] phase=persist for ${pnIdentifier}`);
   setDriveInitProgress(pnIdentifier, 'persist', 'Saving storage index…', 97);
+  const { stampCloudLayoutCurrent } = await import('./storage/cloudLayoutMigrations');
+  stampCloudLayoutCurrent(credentials);
   await persistPnDriveIndex(pnIdentifier, credentials, index);
-  console.log(`${logPrefix} Persisted complete pnDriveIndex`);
+  console.log(`${logPrefix} Persisted complete pnDriveIndex + cloud layout stamp`);
 
   return { metadataFolderId: index.metadataFolderId, pnFolderId: index.pnFolderId };
 }

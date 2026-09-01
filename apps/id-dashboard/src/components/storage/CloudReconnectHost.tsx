@@ -26,6 +26,8 @@ import { DevicePairFromReconnect } from '../DevicePairFromReconnect';
 import { isKeyableClient } from '@par-noir/device-client';
 import { APP_DOWNLOAD_URL } from '../../config/appDownload';
 import { publishCloudVaultForIdentity } from '../../services/deviceCloudCredentials';
+import { CloudLayoutUpdateBanner } from './CloudLayoutUpdateBanner';
+
 export interface CloudReconnectHostProps {
   apiToken: string | null;
   pnIdentifier: string | null;
@@ -34,6 +36,8 @@ export interface CloudReconnectHostProps {
   /** True when this pN already has at least one keyed device registered */
   hasKeyedDevices?: boolean;
   onPaired?: () => void | Promise<void>;
+  /** Navigate to dashboard Storage tab (layout upgrade CTA). */
+  onOpenStorage?: () => void;
 }
 
 /**
@@ -48,7 +52,8 @@ export const CloudReconnectHost: React.FC<CloudReconnectHostProps> = ({
   sessionId,
   isKeyedSession,
   hasKeyedDevices = false,
-  onPaired
+  onPaired,
+  onOpenStorage,
 }) => {
   const [googleClientId, setGoogleClientId] = useState<string | null>(null);
   const [pairOpen, setPairOpen] = useState(false);
@@ -341,6 +346,16 @@ export const CloudReconnectHost: React.FC<CloudReconnectHostProps> = ({
 
   return (
     <>
+      {apiToken && pnIdentifier ? (
+        <div className="fixed bottom-4 left-4 right-4 z-40 max-w-lg mx-auto sm:left-auto sm:right-6 sm:mx-0 pointer-events-auto">
+          <CloudLayoutUpdateBanner
+            apiToken={apiToken}
+            pnIdentifier={pnIdentifier}
+            allowUpgrade={false}
+            onOpenStorage={onOpenStorage}
+          />
+        </div>
+      ) : null}
       <CloudReconnectPrompt
         open={gate.promptOpen && !gate.panelOpen && !pairOpen}
         socialCloudProvider={gate.socialCloudProvider}

@@ -595,6 +595,20 @@ function App() {
   
 
   
+  // Deep-link: #storage (and other known tabs) from browser layout-upgrade CTA.
+  useEffect(() => {
+    if (!authenticatedUser) return;
+    const applyHash = () => {
+      const raw = (window.location.hash || '').replace(/^#/, '').split('?')[0];
+      if (raw === 'storage' || raw === 'recovery' || raw === 'privacy' || raw === 'monetization') {
+        setActiveTab(raw);
+      }
+    };
+    applyHash();
+    window.addEventListener('hashchange', applyHash);
+    return () => window.removeEventListener('hashchange', applyHash);
+  }, [authenticatedUser, setActiveTab]);
+
   // Load third-party permissions after cloud secrets warm. Same unlock READY burst as ZKP —
   // memoize 404/409 so we do not re-hit the API until layout init clears the memo.
   const permissionsLoadedKeyRef = useRef<string | null>(null);
@@ -1458,6 +1472,7 @@ function App() {
           isKeyedSession={deviceAuth.isKeyedSession}
           hasKeyedDevices={deviceAuth.hasKeyedDevices}
           onPaired={() => deviceAuth.refresh({ force: true })}
+          onOpenStorage={() => setActiveTab('storage')}
         />
         <UnkeyedUnlockAlertEmitter
           apiToken={apiToken}

@@ -383,6 +383,105 @@ export function setupStorageCredentialsRoutes(app: Application, deps: StorageCre
       }
     });
 
+    /** GET /api/storage/:identityId/layout/status — cloud layout version vs required (no Drive writes) */
+    app.get('/api/storage/:identityId/layout/status', async (req: Request, res: Response) => {
+      try {
+        const rawId = req.params.identityId;
+        if (!rawId) return res.status(400).json({ error: 'identityId required' });
+        const pnIdentifier = rawId.startsWith('pn-') ? rawId : `pn-${rawId}`;
+        if (!(await gateOwnerRoute(req, res, DEVICE_CAPABILITIES.driveRead, pnIdentifier))) return;
+
+        const { loadCloudLayoutStatus } = await import('./cloudLayoutMigrations');
+        const status = await loadCloudLayoutStatus(pnIdentifier);
+        if (!status) {
+          return res.status(404).json({
+            error: 'NO_STORAGE_CREDENTIALS',
+            message: 'Connect cloud storage first',
+            complete: false,
+            current: 0,
+            required: (await import('./cloudLayoutMigrations')).CURRENT_CLOUD_LAYOUT_VERSION,
+            pending: [],
+            appliedMigrations: [],
+          });
+        }
+        return res.json({ identityId: pnIdentifier, ...status });
+      } catch (error: unknown) {
+        console.error('Error reading cloud layout status:', error);
+        return res.status(500).json({
+          error: 'Failed to read cloud layout status',
+          message: safeClientErrorMessage(error, NODE_ENV === 'production'),
+        });
+      }
+    });
+
+    /** POST /api/storage/:identityId/layout/upgrade — run pending additive layout migrations */
+    app.post('/api/storage/:identityId/layout/upgrade', async (req: Request, res: Response) => {
+      try {
+        const rawId = req.params.identityId;
+        if (!rawId) return res.status(400).json({ error: 'identityId required' });
+        const pnIdentifier = rawId.startsWith('pn-') ? rawId : `pn-${rawId}`;
+        if (!(await gateOwnerRoute(req, res, DEVICE_CAPABILITIES.driveUpload, pnIdentifier))) return;
+
+        const { isPnRevokedForNetwork } = await import('../identitySuccessionService');
+        if (isPnRevokedForNetwork(pnIdentifier)) {
+          return res.status(403).json({
+            error: 'identity_superseded',
+            error_description: 'This pN identifier is retired on the par Noir network.',
+          });
+        }
+
+        try {
+          const { upgradeCloudLayoutFromRequest } = await import('./cloudLayoutMigrations');
+          const status = await upgradeCloudLayoutFromRequest(req, pnIdentifier);
+          return res.json({ success: true, identityId: pnIdentifier, ...status });
+        } catch (upgradeErr: unknown) {
+          const { DriveIndexError } = await import('../pnDriveIndex');
+          const { respondDriveTokenError } = await import('../ownerDriveToken');
+          if (respondDriveTokenError(res, upgradeErr)) return;
+          if (upgradeErr instanceof DriveIndexError) {
+            const status =
+              upgradeErr.code === 'CLOUD_TOKEN_REQUIRED' || upgradeErr.code === 'CLOUD_TOKEN_EXPIRED'
+                ? 409
+                : upgradeErr.code === 'DRIVE_NOT_INITIALIZED' ||
+                    upgradeErr.code === 'DRIVE_INDEX_INCOMPLETE'
+                  ? 409
+                  : 500;
+            return res.status(status).json({
+              error: upgradeErr.code,
+              message: upgradeErr.message,
+            });
+          }
+          const code =
+            upgradeErr && typeof upgradeErr === 'object' && 'code' in upgradeErr
+              ? String((upgradeErr as { code: unknown }).code)
+              : '';
+          if (code === 'DRIVE_NOT_INITIALIZED') {
+            return res.status(409).json({
+              error: 'DRIVE_NOT_INITIALIZED',
+              message: 'Connect and initialize cloud storage before upgrading layout',
+            });
+          }
+          if (
+            upgradeErr instanceof Error &&
+            (upgradeErr.message === 'CLOUD_TOKEN_REQUIRED' ||
+              upgradeErr.message.includes('CLOUD_TOKEN'))
+          ) {
+            return res.status(409).json({
+              error: 'CLOUD_TOKEN_REQUIRED',
+              message: upgradeErr.message,
+            });
+          }
+          throw upgradeErr;
+        }
+      } catch (error: unknown) {
+        console.error('Error upgrading cloud layout:', error);
+        return res.status(500).json({
+          error: 'Failed to upgrade cloud layout',
+          message: safeClientErrorMessage(error, NODE_ENV === 'production'),
+        });
+      }
+    });
+
     /** Ensure private `_metadata/zkp-docs` folder exists; patch pnDriveIndex.zkpDocsFolderId */
     app.post('/api/storage/:identityId/zkp-docs/ensure', async (req: Request, res: Response) => {
       try {
