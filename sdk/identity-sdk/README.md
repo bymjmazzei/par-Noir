@@ -16,6 +16,14 @@ Packages are not published to the public npm registry yet. From this repo:
 "@par-noir/oauth-ui": "file:../../packages/oauth-ui"
 ```
 
+When published to npm:
+
+```bash
+npm install @identity-protocol/identity-sdk @par-noir/oauth-ui
+```
+
+Copy `packages/oauth-ui/static/oauth-callback.html` into your app `public/` after install (see `static/README.md`).
+
 ## Quick start
 
 ```typescript
@@ -45,3 +53,4 @@ Copy `packages/oauth-ui/static/oauth-callback.html` into your app `public/` fold
 - `docs/developer/L5_INTEGRATOR_QUICKSTART.md`
 - `docs/developer/L5_ONE_KIT_REVIEW.md`
 - Example: `examples/l5-integrator-starter/`
+- Community publish example: `examples/l5-community-starter/`

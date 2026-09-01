@@ -22,6 +22,7 @@ export interface UserPreferences {
   
   // Feed subscriptions
   subscribedFeedIds: string[]; // Individual feed subscriptions
+  subscribedCommunityIds: string[]; // L5 community (third-party indexer) subscriptions
   subscribedCategories: string[]; // Legacy: Niche category subscriptions (deprecated, use blockedCategories)
   blockedCategories: string[]; // Categories to exclude from curated feed (negative filter)
   
@@ -56,6 +57,9 @@ interface UserStateContextType {
   subscribeToFeed: (feedId: string) => void;
   unsubscribeFromFeed: (feedId: string) => void;
   isSubscribedToFeed: (feedId: string) => boolean;
+  subscribeToCommunity: (clientId: string) => void;
+  unsubscribeFromCommunity: (clientId: string) => void;
+  isSubscribedToCommunity: (clientId: string) => boolean;
   subscribeToCategory: (categoryId: string) => void; // Legacy function
   unsubscribeFromCategory: (categoryId: string) => void; // Legacy function
   isSubscribedToCategory: (categoryId: string) => boolean; // Legacy function
@@ -81,6 +85,7 @@ const defaultPreferences: UserPreferences = {
   isOver18: false,
   showNSFW: false,
   subscribedFeedIds: [],
+  subscribedCommunityIds: [],
   subscribedCategories: [],
   blockedCategories: [],
   subscribedSubjects: [],
@@ -147,6 +152,12 @@ export function UserStateProvider({ children }: { children: ReactNode }) {
           parsed.preferences = {
             ...parsed.preferences,
             mePageSortOrder: 'recommended'
+          };
+        }
+        if (!parsed.preferences?.subscribedCommunityIds) {
+          parsed.preferences = {
+            ...parsed.preferences,
+            subscribedCommunityIds: []
           };
         }
         // Migrate old rating preferences to new NSFW system
@@ -236,6 +247,8 @@ export function UserStateProvider({ children }: { children: ReactNode }) {
               const updatedPreferences = {
                 ...prev.preferences,
                 // Only update if API provides these values (preserve local state if not provided)
+                ...(data.preferences.subscribedFeedIds !== undefined && { subscribedFeedIds: data.preferences.subscribedFeedIds }),
+                ...(data.preferences.subscribedCommunityIds !== undefined && { subscribedCommunityIds: data.preferences.subscribedCommunityIds }),
                 ...(data.preferences.subscribedCategories !== undefined && { subscribedCategories: data.preferences.subscribedCategories }),
                 blockedCategories: finalBlockedCategories, // Always set (either from API or preserve local)
                 ...(data.preferences.subscribedSubjects !== undefined && { subscribedSubjects: data.preferences.subscribedSubjects }),
@@ -648,6 +661,35 @@ export function UserStateProvider({ children }: { children: ReactNode }) {
     return userState.preferences.subscribedFeedIds.includes(feedId);
   };
 
+  const subscribeToCommunity = (clientId: string) => {
+    setUserState(prev => {
+      if (prev.preferences.subscribedCommunityIds.includes(clientId)) {
+        return prev;
+      }
+      return {
+        ...prev,
+        preferences: {
+          ...prev.preferences,
+          subscribedCommunityIds: [...prev.preferences.subscribedCommunityIds, clientId]
+        }
+      };
+    });
+  };
+
+  const unsubscribeFromCommunity = (clientId: string) => {
+    setUserState(prev => ({
+      ...prev,
+      preferences: {
+        ...prev.preferences,
+        subscribedCommunityIds: prev.preferences.subscribedCommunityIds.filter(id => id !== clientId)
+      }
+    }));
+  };
+
+  const isSubscribedToCommunity = (clientId: string): boolean => {
+    return userState.preferences.subscribedCommunityIds.includes(clientId);
+  };
+
   const subscribeToCategory = (categoryId: string) => {
     setUserState(prev => {
       const currentCategories = prev.preferences.subscribedCategories || [];
@@ -1003,6 +1045,9 @@ export function UserStateProvider({ children }: { children: ReactNode }) {
         subscribeToFeed,
         unsubscribeFromFeed,
         isSubscribedToFeed,
+        subscribeToCommunity,
+        unsubscribeFromCommunity,
+        isSubscribedToCommunity,
         subscribeToCategory,
         unsubscribeFromCategory,
         isSubscribedToCategory,

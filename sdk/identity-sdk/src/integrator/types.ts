@@ -2,6 +2,12 @@
  * Types for L5 integrator Drive and API responses.
  */
 
+export interface IntegratorApiContext {
+  accessToken: string;
+  cloudAccessToken?: string;
+  accountId?: string;
+}
+
 export interface IntegratorStorageRoot {
   integratorFolderId: string;
   integratorPath: string;

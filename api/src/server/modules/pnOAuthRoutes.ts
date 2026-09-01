@@ -1025,13 +1025,17 @@ export function setupPnOAuthRoutes(app: express.Application, deps: PnOAuthRouteD
       }
 
       const scopes = scope ? (scope as string).split(' ') : ['openid', 'profile'];
-      const scopesHtml = scopes
-        .map((s) => {
-          const label =
-            s === 'openid' ? 'Verify your identity' : s === 'profile' ? 'Access your profile information' : s;
-          return `<div class="permission-desc" style="margin:6px 0">• ${label}</div>`;
-        })
-        .join('');
+      const { normalizePermissionManifest, renderManifestHtml } = await import('@par-noir/standard-data-points');
+      const manifest = normalizePermissionManifest(client.permissionManifest, client.scopes || scopes);
+      const manifestHtml = renderManifestHtml(manifest, client_id as string);
+      const scopesHtml = manifestHtml
+        || scopes
+          .map((s) => {
+            const label =
+              s === 'openid' ? 'Verify your identity' : s === 'profile' ? 'Access your profile information' : s;
+            return `<div class="permission-desc" style="margin:6px 0">• ${label}</div>`;
+          })
+          .join('');
 
       try {
         const fs = await import('fs');

@@ -50,7 +50,7 @@ export class MetadataIndexService {
    * - SCALABILITY: Supports pagination via limit/offset parameters
    */
   async discoverFiles(
-    filters?: MetadataFilters & { limit?: number; offset?: number }, 
+    filters?: MetadataFilters & { limit?: number; offset?: number; indexerId?: string }, 
     forceRefresh: boolean = false
   ): Promise<IndexedFile[] | { files: IndexedFile[]; total: number; hasMore: boolean }> {
     try {
@@ -63,6 +63,7 @@ export class MetadataIndexService {
         tags: filters?.tags,
         contentClass: filters?.contentClass,
         authorDid: filters?.authorDid,
+        indexerId: filters?.indexerId,
         limit: filters?.limit,      // SCALABILITY: Pagination support
         offset: filters?.offset      // SCALABILITY: Pagination support
       }, forceRefresh);

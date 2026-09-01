@@ -158,6 +158,26 @@ export class ThirdPartyIndexersService {
     }));
   }
 
+  async upsertIndexerFromOAuthClient(params: {
+    clientId: string;
+    name: string;
+    description?: string;
+    status: ThirdPartyStatus;
+  }): Promise<void> {
+    await this.seedIndexersIfNeeded();
+    const db = getDatabasePool();
+    await db.query(
+      `INSERT INTO third_party_indexers (id, name, description, status, requested_scopes)
+       VALUES ($1, $2, $3, $4, $5::text[])
+       ON CONFLICT (id) DO UPDATE SET
+         name = EXCLUDED.name,
+         description = EXCLUDED.description,
+         status = EXCLUDED.status,
+         updated_at = NOW()`,
+      [params.clientId, params.name, params.description ?? null, params.status, ['index_media']]
+    );
+  }
+
   async upsertAccess(identity: string, updates: AccessUpdate[]): Promise<void> {
     if (!identity) {
       throw new Error('Identity is required to update third-party access');

@@ -6,6 +6,8 @@ import { getDatabasePool } from '../utils/database';
 import { PlatformRegistryStorage } from './platformRegistryStorage';
 import { isPlatformRegistryConfigured } from './platformOperatorService';
 import { isFirstPartyClient } from './integratorStoragePaths';
+import { getThirdPartyIndexersService } from './thirdPartyIndexersService';
+import { normalizePermissionManifest } from '@par-noir/standard-data-points';
 import type { PlatformRegistrySyncResult } from './platformRegistryTypes';
 
 const SEEDED_CLIENT_IDS = new Set([
@@ -45,16 +47,18 @@ export class PlatformRegistrySyncService {
 
     for (const row of oauthRows) {
       const isActive = row.status === 'active';
+      const permissionManifest = normalizePermissionManifest(row.permissionManifest, row.scopes);
       await pool.query(
         `INSERT INTO oauth_clients (
-          client_id, name, description, redirect_uris, scopes, is_active, owner_pn_id,
+          client_id, name, description, redirect_uris, scopes, permission_manifest, is_active, owner_pn_id,
           verified, commercial_license_id, registry_source, updated_at
-        ) VALUES ($1, $2, $3, $4::jsonb, $5::jsonb, $6, $7, $8, $9, 'registry', NOW())
+        ) VALUES ($1, $2, $3, $4::jsonb, $5::jsonb, $6::jsonb, $7, $8, $9, $10, 'registry', NOW())
         ON CONFLICT (client_id) DO UPDATE SET
           name = EXCLUDED.name,
           description = EXCLUDED.description,
           redirect_uris = EXCLUDED.redirect_uris,
           scopes = EXCLUDED.scopes,
+          permission_manifest = EXCLUDED.permission_manifest,
           is_active = CASE
             WHEN oauth_clients.registry_source = 'seed' THEN oauth_clients.is_active
             ELSE EXCLUDED.is_active
@@ -73,6 +77,7 @@ export class PlatformRegistrySyncService {
           row.description ?? null,
           JSON.stringify(row.redirectUris),
           JSON.stringify(row.scopes),
+          JSON.stringify(permissionManifest),
           isActive,
           row.ownerPnId || null,
           row.verified,
@@ -82,6 +87,15 @@ export class PlatformRegistrySyncService {
       oauthClientsUpserted += 1;
       if (!isActive && !SEEDED_CLIENT_IDS.has(row.clientId)) {
         oauthClientsDeactivated += 1;
+      }
+
+      if (isActive && !isFirstPartyClient(row.clientId)) {
+        await getThirdPartyIndexersService().upsertIndexerFromOAuthClient({
+          clientId: row.clientId,
+          name: row.name,
+          description: row.description,
+          status: 'active'
+        });
       }
     }
 

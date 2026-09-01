@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>par Noir L5 community starter</title>
+    <style>
+      body { font-family: system-ui, sans-serif; max-width: 42rem; margin: 2rem auto; padding: 0 1rem; }
+      button { margin: 0.25rem 0.5rem 0.25rem 0; padding: 0.5rem 1rem; }
+      pre { background: #111; color: #eee; padding: 1rem; overflow: auto; font-size: 12px; }
+      .muted { color: #666; font-size: 14px; }
+    </style>
+  </head>
+  <body>
+    <h1>L5 community starter</h1>
+    <p class="muted">
+      Login → cloud reconnect → publish a demo post → list public metadata by your <code>client_id</code> indexer.
+    </p>
+    <div>
+      <button id="login">Login with pN</button>
+      <button id="publish" disabled>Publish demo post</button>
+      <button id="list" disabled>List by indexerId</button>
+    </div>
+    <pre id="out">Not signed in.</pre>
+    <div id="cloud-reconnect"></div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

@@ -29,7 +29,38 @@ export function CredentialsPage() {
   const [ocDescription, setOcDescription] = useState('');
   const [ocRedirectUris, setOcRedirectUris] = useState('https://localhost/oauth-callback.html');
   const [ocScopes, setOcScopes] = useState('openid profile cloud:app');
+  const [manifestItems, setManifestItems] = useState<
+    Array<{ id: string; label: string; rationale: string }>
+  >([
+    { id: 'openid', label: 'Verify your identity', rationale: 'Required to unlock your pN for this app.' },
+    { id: 'profile', label: 'Access your public profile', rationale: 'Show your display name and avatar in the community.' },
+    {
+      id: 'cloud:app',
+      label: 'Store app data in your integrator folder',
+      rationale: 'Posts and app settings live in integrators/{client_id}/ on your cloud — not on our servers.'
+    }
+  ]);
   const [akScopes, setAkScopes] = useState('oauth,data_points,content');
+
+  const buildManifestFromScopes = () => {
+    const scopes = ocScopes.split(/\s+/).map((s) => s.trim()).filter(Boolean);
+    setManifestItems(
+      scopes.map((id) => ({
+        id,
+        label:
+          id === 'openid'
+            ? 'Verify your identity'
+            : id === 'profile'
+              ? 'Access your public profile'
+              : id === 'cloud:app'
+                ? 'Store app data in your integrator folder'
+                : id.startsWith('zkp:') || id.startsWith('data_point:')
+                  ? `Access verified data: ${id.replace(/^(zkp:|data_point:)/, '')}`
+                  : id,
+        rationale: ''
+      }))
+    );
+  };
 
   const registerOAuthClient = async () => {
     setError(null);
@@ -41,6 +72,17 @@ export function CredentialsPage() {
     }
     const redirectUris = ocRedirectUris.split('\n').map((s) => s.trim()).filter(Boolean);
     const scopes = ocScopes.split(/\s+/).map((s) => s.trim()).filter(Boolean);
+    const permissionManifest = {
+      items: manifestItems
+        .filter((item) => item.id.trim())
+        .map((item) => ({
+          id: item.id.trim(),
+          type: item.id === 'cloud:app' ? 'storage' : item.id.startsWith('zkp:') || item.id.startsWith('data_point:') ? 'data_point' : 'scope',
+          label: item.label.trim() || item.id.trim(),
+          rationale: item.rationale.trim(),
+          required: item.id === 'openid'
+        }))
+    };
     try {
       const res = await fetch(`${apiEndpoint}/api/developer/oauth-clients`, {
         method: 'POST',
@@ -50,7 +92,8 @@ export function CredentialsPage() {
           name: ocName.trim(),
           description: ocDescription.trim() || undefined,
           redirectUris,
-          scopes: scopes.length ? scopes : undefined
+          scopes: scopes.length ? scopes : undefined,
+          permissionManifest
         })
       });
       const data = await res.json().catch(() => ({}));
@@ -221,7 +264,58 @@ export function CredentialsPage() {
               <div className="dev-field">
                 <label htmlFor="oc-scopes">Scopes</label>
                 <input id="oc-scopes" className="dev-input" value={ocScopes} onChange={(e) => setOcScopes(e.target.value)} />
-                <FieldHelp>Space-separated. Typical: openid profile</FieldHelp>
+                <FieldHelp>Space-separated. Typical: openid profile cloud:app</FieldHelp>
+              </div>
+              <div className="dev-field">
+                <div className="dev-field-header">
+                  <label>Permission manifest (shown at user unlock)</label>
+                  <button type="button" className="dev-btn dev-btn--ghost" onClick={buildManifestFromScopes}>
+                    Sync from scopes
+                  </button>
+                </div>
+                <FieldHelp>Each scope needs a plain-language label and why the user should grant it.</FieldHelp>
+                {manifestItems.map((item, idx) => (
+                  <div key={`${item.id}-${idx}`} className="dev-manifest-row">
+                    <input
+                      className="dev-input"
+                      value={item.id}
+                      placeholder="scope id"
+                      onChange={(e) => {
+                        const next = [...manifestItems];
+                        next[idx] = { ...next[idx], id: e.target.value };
+                        setManifestItems(next);
+                      }}
+                    />
+                    <input
+                      className="dev-input"
+                      value={item.label}
+                      placeholder="Label users see"
+                      onChange={(e) => {
+                        const next = [...manifestItems];
+                        next[idx] = { ...next[idx], label: e.target.value };
+                        setManifestItems(next);
+                      }}
+                    />
+                    <textarea
+                      className="dev-textarea"
+                      value={item.rationale}
+                      placeholder="Why does your app need this?"
+                      rows={2}
+                      onChange={(e) => {
+                        const next = [...manifestItems];
+                        next[idx] = { ...next[idx], rationale: e.target.value };
+                        setManifestItems(next);
+                      }}
+                    />
+                  </div>
+                ))}
+                <button
+                  type="button"
+                  className="dev-btn dev-btn--ghost"
+                  onClick={() => setManifestItems([...manifestItems, { id: '', label: '', rationale: '' }])}
+                >
+                  Add permission row
+                </button>
               </div>
               <button type="button" className="dev-btn" onClick={registerOAuthClient}>
                 Save OAuth client

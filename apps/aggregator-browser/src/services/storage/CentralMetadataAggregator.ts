@@ -54,6 +54,7 @@ export class CentralMetadataAggregator {
       fileType?: string; 
       contentClass?: 'media' | 'thought' | 'collection';
       authorDid?: string;
+      indexerId?: string;
       limit?: number;      // SCALABILITY: Pagination support
       offset?: number;     // SCALABILITY: Pagination support
     },
@@ -98,6 +99,7 @@ export class CentralMetadataAggregator {
       fileType?: string; 
       contentClass?: 'media' | 'thought' | 'collection';
       authorDid?: string;
+      indexerId?: string;
       limit?: number;
       offset?: number;
     },
@@ -115,6 +117,7 @@ export class CentralMetadataAggregator {
         params.append('contentClass', filters.contentClass);
       }
       if (filters?.authorDid) params.append('authorDid', filters.authorDid);
+      if (filters?.indexerId) params.append('indexerId', filters.indexerId);
       if (filters?.limit !== undefined) params.append('limit', filters.limit.toString());      // SCALABILITY: Pagination
       if (filters?.offset !== undefined) params.append('offset', filters.offset.toString());    // SCALABILITY: Pagination
 

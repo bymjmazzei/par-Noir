@@ -8,6 +8,7 @@ import { ChevronDown } from 'lucide-react';
 import { Feed } from '../types/aggregator';
 import { useUserState } from '../contexts/UserStateContext';
 import { FEED_CATEGORIES } from '../constants/feedCategories';
+import { COMMUNITY_FEED_PREFIX } from '../utils/communityFeed';
 import { CuratedFeedDropdown } from './CuratedFeedDropdown';
 
 export interface FeedRailItem {
@@ -327,7 +328,9 @@ export function buildFeedRailItems(
   subscribedFeedIds: string[],
   activeFeedId: string,
   isUnlocked: boolean,
-  hasNewThirdPartyContent: boolean = false
+  hasNewThirdPartyContent: boolean = false,
+  subscribedCommunityIds: string[] = [],
+  communityCatalog: Array<{ id: string; name: string }> = []
 ): FeedRailItem[] {
   // Always show DISCOVER, PUBLIC
   const items: FeedRailItem[] = [
@@ -408,6 +411,18 @@ export function buildFeedRailItems(
           isActive: activeFeedId === feed.feedId
         });
       }
+    });
+  }
+
+  // Add subscribed L5 community feeds
+  if (isUnlocked && subscribedCommunityIds.length > 0) {
+    subscribedCommunityIds.forEach((clientId) => {
+      const catalogEntry = communityCatalog.find((c) => c.id === clientId);
+      items.push({
+        feedId: `${COMMUNITY_FEED_PREFIX}${clientId}`,
+        name: (catalogEntry?.name || clientId).toUpperCase(),
+        isActive: activeFeedId === `${COMMUNITY_FEED_PREFIX}${clientId}`,
+      });
     });
   }
 

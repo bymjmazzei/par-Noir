@@ -16,12 +16,27 @@ export {
 export {
   IntegratorStorageClient,
   createIntegratorStorageClient,
+  type IntegratorApiContext,
   type IntegratorStorageRoot,
   type IntegratorClientConfig as IntegratorStorageClientConfig,
   type DriveFileRef,
   type DriveFolderRef,
   SCOPE_CLOUD_APP
 } from './IntegratorStorageClient';
+
+export {
+  IntegratorPublishClient,
+  createIntegratorPublishClient,
+  type PublicContentRef,
+  type PublicMetadataSubmission,
+  type PublicShareGenerationResult
+} from './IntegratorPublishClient';
+
+export {
+  IntegratorFeedClient,
+  createIntegratorFeedClient,
+  type CentralIndexResponse
+} from './IntegratorFeedClient';
 
 export {
   IntegratorZkpClient,
@@ -55,5 +70,6 @@ export {
   SCOPE_OPENID,
   SCOPE_PROFILE,
   PN_INTEGRATOR_SCOPES as PN_OAUTH_INTEGRATOR_SCOPES,
-  normalizeApiEndpoint
+  normalizeApiEndpoint,
+  integratorAuthHeaders
 } from './integrator/pnApiClient';

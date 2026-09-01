@@ -15,6 +15,7 @@ import {
   contentClassToContentType,
   getContentTypesForFeed,
 } from '../utils/feedContentTypes';
+import { parseCommunityFeedId } from '../utils/communityFeed';
 import {
   isDiscoverySeededForUnlock,
   markDiscoverySeededForUnlock,
@@ -186,12 +187,18 @@ export function useDiscovery({
         const contentTypeService = new ContentTypeIndexService();
         const limit = PAGE_SIZE;
         const offset = page * PAGE_SIZE;
+        const communityIndexerId = parseCommunityFeedId(activeFeedId);
 
         const results = await Promise.all(
           contentTypes.map((type) =>
             contentTypeService.loadContentTypeIndex(
               type,
-              { contentClass: CONTENT_CLASS_BY_TYPE[type], limit, offset },
+              {
+                contentClass: CONTENT_CLASS_BY_TYPE[type],
+                limit,
+                offset,
+                ...(communityIndexerId ? { indexerId: communityIndexerId } : {}),
+              },
               forceRefresh
             )
           )
@@ -277,6 +284,7 @@ export function useDiscovery({
     [
       resolveContentTypes,
       filters,
+      activeFeedId,
       userState.preferences,
       mergeNsfwFiles,
       metadataIndexService,

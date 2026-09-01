@@ -12,10 +12,11 @@
 import { google } from 'googleapis';
 import { ThirdPartyPermission } from './thirdPartyPermissionsService';
 import { GoogleOAuth2Helper, GoogleDriveToken } from './googleOAuth2Helper';
+import { normalizePermissionManifest } from '@par-noir/standard-data-points';
 
 export class ThirdPartyPermissionsSheetsService {
   private static readonly THIRD_PARTY_PERMISSIONS_FILE_NAME = 'third-party-permissions.xlsx';
-  private static readonly PERMISSION_COLUMN_COUNT = 14;
+  private static readonly PERMISSION_COLUMN_COUNT = 15;
   private static readonly PERMISSION_HEADERS = [
     'Tool ID',
     'Tool Name',
@@ -31,6 +32,7 @@ export class ThirdPartyPermissionsSheetsService {
     'Updated At',
     'Integrator Folder ID',
     'Data Point Levels (JSON)',
+    'Permission Manifest (JSON)',
   ];
 
   /** Normalize status from sheet cells (trim, lowercase). */
@@ -70,6 +72,7 @@ export class ThirdPartyPermissionsSheetsService {
     let requiredDataPointsArray: string[] = [];
     let optionalDataPointsArray: string[] = [];
     let dataPointLevels: ThirdPartyPermission['dataPointLevels'];
+    let permissionManifest: ThirdPartyPermission['permissionManifest'];
 
     try {
       if (cells[3]) permissionsArray = JSON.parse(cells[3] as string);
@@ -81,6 +84,9 @@ export class ThirdPartyPermissionsSheetsService {
         if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
           dataPointLevels = parsed as ThirdPartyPermission['dataPointLevels'];
         }
+      }
+      if (cells[14]) {
+        permissionManifest = normalizePermissionManifest(JSON.parse(cells[14] as string), permissionsArray);
       }
     } catch {
       /* use empty arrays */
@@ -99,6 +105,7 @@ export class ThirdPartyPermissionsSheetsService {
       requiredDataPoints: requiredDataPointsArray,
       optionalDataPoints: optionalDataPointsArray,
       dataPointLevels,
+      permissionManifest,
       grantedAt: (cells[7] as string) || new Date().toISOString(),
       expiresAt: cells[8] ? (cells[8] as string) : undefined,
       status,
@@ -156,7 +163,7 @@ export class ThirdPartyPermissionsSheetsService {
 
     await sheets.spreadsheets.values.update({
       spreadsheetId,
-      range: 'Permissions!A1:N1',
+      range: 'Permissions!A1:O1',
       valueInputOption: 'RAW',
       requestBody: {
         values: [this.PERMISSION_HEADERS],
@@ -254,7 +261,7 @@ export class ThirdPartyPermissionsSheetsService {
 
     const response = await sheets.spreadsheets.values.get({
       spreadsheetId,
-      range: 'Permissions!A2:N'
+      range: 'Permissions!A2:O'
     });
 
     const rows = response.data.values || [];
@@ -302,7 +309,7 @@ export class ThirdPartyPermissionsSheetsService {
     // Find the row with this tool ID
     const response = await sheets.spreadsheets.values.get({
       spreadsheetId,
-      range: 'Permissions!A2:N'
+      range: 'Permissions!A2:O'
     });
 
     const rows = response.data.values || [];
@@ -346,10 +353,10 @@ export class ThirdPartyPermissionsSheetsService {
   ): Promise<void> {
     const auth = GoogleOAuth2Helper.createClient(token, userPnIdentifier, accountId);
     const sheets = google.sheets({ version: 'v4', auth });
-    await sheets.spreadsheets.values.clear({ spreadsheetId, range: 'Permissions!A2:N' });
+    await sheets.spreadsheets.values.clear({ spreadsheetId, range: 'Permissions!A2:O' });
     await sheets.spreadsheets.values.update({
       spreadsheetId,
-      range: 'Permissions!A1:N1',
+      range: 'Permissions!A1:O1',
       valueInputOption: 'RAW',
       requestBody: { values: [this.PERMISSION_HEADERS] },
     });
@@ -370,10 +377,11 @@ export class ThirdPartyPermissionsSheetsService {
       now,
       p.integratorFolderId ?? '',
       JSON.stringify(p.dataPointLevels ?? {}),
+      JSON.stringify(p.permissionManifest ?? normalizePermissionManifest(null, p.permissions)),
     ]);
     await sheets.spreadsheets.values.update({
       spreadsheetId,
-      range: `Permissions!A2:N${permissions.length + 1}`,
+      range: `Permissions!A2:O${permissions.length + 1}`,
       valueInputOption: 'RAW',
       requestBody: { values: rows },
     });

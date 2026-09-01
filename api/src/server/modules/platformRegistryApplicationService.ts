@@ -4,6 +4,11 @@
 
 import { PlatformRegistryStorage } from './platformRegistryStorage';
 import type { PlatformApplication } from './platformRegistryTypes';
+import {
+  normalizePermissionManifest,
+  validatePermissionManifest,
+  type IntegratorPermissionManifest
+} from '@par-noir/standard-data-points';
 
 export async function submitOAuthClientApplication(params: {
   clientId: string;
@@ -11,6 +16,7 @@ export async function submitOAuthClientApplication(params: {
   description?: string;
   redirectUris: string[];
   scopes: string[];
+  permissionManifest?: IntegratorPermissionManifest;
   ownerPnId: string;
 }): Promise<{ applicationId: string; status: 'pending' }> {
   const normalizedOwner = params.ownerPnId.startsWith('pn-') ? params.ownerPnId : `pn-${params.ownerPnId}`;
@@ -21,6 +27,12 @@ export async function submitOAuthClientApplication(params: {
     });
   }
 
+  const permissionManifest = normalizePermissionManifest(params.permissionManifest, params.scopes);
+  const manifestErr = validatePermissionManifest(permissionManifest);
+  if (manifestErr) {
+    throw Object.assign(new Error(manifestErr), { statusCode: 400 });
+  }
+
   const applicationId = `app_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
   const application: PlatformApplication = {
     applicationId,
@@ -29,6 +41,7 @@ export async function submitOAuthClientApplication(params: {
     description: params.description,
     redirectUris: params.redirectUris,
     scopes: params.scopes,
+    permissionManifest,
     ownerPnId: normalizedOwner,
     status: 'pending',
     submittedAt: new Date().toISOString()

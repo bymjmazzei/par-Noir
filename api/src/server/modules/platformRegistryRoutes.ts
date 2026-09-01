@@ -163,6 +163,7 @@ export function registerPlatformRegistryRoutes(app: Application): void {
         description: app.description,
         redirectUris: app.redirectUris,
         scopes: app.scopes,
+        permissionManifest: app.permissionManifest,
         ownerPnId: app.ownerPnId,
         status: 'active',
         verified: verified === true,

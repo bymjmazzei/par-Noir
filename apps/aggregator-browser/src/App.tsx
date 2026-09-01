@@ -54,6 +54,7 @@ import { reportCopyright } from './services/reportCopyrightService';
 import { PNOAuthService } from './services/pnOAuthService';
 import { isEngagementPrefetchAllowed, isUnlockPrefetchComplete } from './services/unlockSessionCoordinator';
 import { MESSAGING_ONLY } from './config/buildFlags';
+import { API_ENDPOINT } from './config/api';
 import { SplashScreen } from '@capacitor/splash-screen';
 import { EmbedMessagingPage } from './pages/EmbedMessagingPage';
 
@@ -113,6 +114,7 @@ function App() {
   } = useFeedState();
 
   const [feedsCatalogReady, setFeedsCatalogReady] = useState(false);
+  const [communityCatalog, setCommunityCatalog] = useState<Array<{ id: string; name: string }>>([]);
   const [includeDelegatedContexts, setIncludeDelegatedContexts] = useState(false);
 
   const { activeContext, setActiveContext, availableContexts } = useAppContext(userState.pnIdentifier, feeds, {
@@ -255,6 +257,38 @@ function App() {
       cancelled = true;
     };
   }, [setFeeds]);
+
+  useEffect(() => {
+    if (MESSAGING_ONLY) {
+      setCommunityCatalog([]);
+      return;
+    }
+    let cancelled = false;
+    const loadCommunityCatalog = async () => {
+      try {
+        const response = await fetch(`${API_ENDPOINT}/api/third-party/indexers`);
+        if (!response.ok) return;
+        const data = await response.json();
+        if (cancelled) return;
+        const indexers = Array.isArray(data.indexers) ? data.indexers : [];
+        setCommunityCatalog(
+          indexers.map((indexer: { id: string; name: string }) => ({
+            id: indexer.id,
+            name: indexer.name,
+          }))
+        );
+      } catch (error) {
+        if (import.meta.env.DEV) {
+          console.warn('Failed to load community catalog:', error);
+        }
+        if (!cancelled) setCommunityCatalog([]);
+      }
+    };
+    void loadCommunityCatalog();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   // Reload feeds when a new feed is created
   const handleFeedCreated = async (feed: Feed) => {
@@ -443,9 +477,19 @@ function App() {
       userState.isUnlocked ? userState.preferences.subscribedFeedIds : [],
       activeFeedId,
       userState.isUnlocked,
-      hasNewThirdPartyContent
+      hasNewThirdPartyContent,
+      userState.isUnlocked ? userState.preferences.subscribedCommunityIds : [],
+      communityCatalog
     );
-  }, [feeds, userState.isUnlocked, userState.preferences.subscribedFeedIds, activeFeedId, hasNewThirdPartyContent]);
+  }, [
+    feeds,
+    userState.isUnlocked,
+    userState.preferences.subscribedFeedIds,
+    userState.preferences.subscribedCommunityIds,
+    activeFeedId,
+    hasNewThirdPartyContent,
+    communityCatalog,
+  ]);
 
   const { filteredFilesByFeed, isThought } = useFeedFiltering({
     mediaFiles,

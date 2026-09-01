@@ -45,3 +45,13 @@ export {
   contractDataPointIds,
   applyStaticContract
 } from './clientContracts';
+export {
+  type PermissionManifestItem,
+  type PermissionManifestItemType,
+  type IntegratorPermissionManifest,
+  defaultLabelForScope,
+  manifestFromScopes,
+  normalizePermissionManifest,
+  validatePermissionManifest,
+  renderManifestHtml
+} from './integratorPermissionManifest';

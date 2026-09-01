@@ -7,7 +7,10 @@ import bcrypt from 'bcryptjs';
 import {
   BROWSER_APP_CLIENT_ID,
   CLIENT_CONTRACTS,
-  MESSAGING_APP_CLIENT_ID
+  MESSAGING_APP_CLIENT_ID,
+  type IntegratorPermissionManifest,
+  normalizePermissionManifest,
+  validatePermissionManifest
 } from '@par-noir/standard-data-points';
 
 export interface OAuthClient {
@@ -18,6 +21,7 @@ export interface OAuthClient {
   description?: string;
   redirectUris: string[];
   scopes?: string[];
+  permissionManifest?: IntegratorPermissionManifest;
   /** Set when registered via developer portal (self-service) */
   ownerPnId?: string;
   createdAt: number;
@@ -29,12 +33,15 @@ function rowToClient(row: Record<string, unknown>): OAuthClient {
   const redirectUris = row.redirect_uris as string[] | unknown;
   const scopes = row.scopes as string[] | unknown;
   const ownerRaw = row.owner_pn_id;
+  const manifestRaw = row.permission_manifest;
+  const scopeList = Array.isArray(scopes) && scopes.length > 0 ? scopes : [];
   return {
     clientId: row.client_id as string,
     name: row.name as string,
     description: (row.description as string) || undefined,
     redirectUris: Array.isArray(redirectUris) ? redirectUris : [],
-    scopes: Array.isArray(scopes) && scopes.length > 0 ? scopes : [],
+    scopes: scopeList,
+    permissionManifest: normalizePermissionManifest(manifestRaw, scopeList),
     ownerPnId: ownerRaw != null && String(ownerRaw).length > 0 ? String(ownerRaw) : undefined,
     createdAt: new Date(row.created_at as string).getTime(),
     updatedAt: new Date(row.updated_at as string).getTime(),
@@ -182,10 +189,13 @@ export class ClientRegistrationService {
       Array.isArray(client.scopes) && client.scopes.length > 0
         ? client.scopes
         : ['openid', 'profile'];
+    const permissionManifest = JSON.stringify(
+      normalizePermissionManifest(client.permissionManifest, scopes)
+    );
 
     const result = await pool.query(
-      `INSERT INTO oauth_clients (client_id, name, description, redirect_uris, scopes, client_secret_hash, is_active, owner_pn_id)
-       VALUES ($1, $2, $3, $4::jsonb, $5::jsonb, $6, $7, $8)
+      `INSERT INTO oauth_clients (client_id, name, description, redirect_uris, scopes, permission_manifest, client_secret_hash, is_active, owner_pn_id)
+       VALUES ($1, $2, $3, $4::jsonb, $5::jsonb, $6::jsonb, $7, $8, $9)
        RETURNING *`,
       [
         client.clientId,
@@ -193,6 +203,7 @@ export class ClientRegistrationService {
         client.description ?? null,
         JSON.stringify(client.redirectUris),
         JSON.stringify(scopes),
+        permissionManifest,
         clientSecretHash,
         client.isActive !== false,
         ownerPnId

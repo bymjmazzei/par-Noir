@@ -30,8 +30,22 @@ export function IntegratePage() {
             are read via API only (not copied into the silo).
           </li>
           <li>
-            <strong>No messaging/social REST for L5</strong> — those routes require first-party clients. Optional hosted
-            widgets are deferred (see <code>L5_ONE_KIT_REVIEW.md</code>).
+            <strong>Permission manifest</strong> — each requested scope needs a label and rationale at registration;
+            shown on OAuth consent via <code>@par-noir/standard-data-points</code>.
+          </li>
+          <li>
+            <strong>Cloud reconnect</strong> — mount <code>ThirdPartyCloudReconnectHost</code> from{' '}
+            <code>@par-noir/oauth-ui</code> after login so Drive routes receive{' '}
+            <code>X-PN-Cloud-Access-Token</code>.
+          </li>
+          <li>
+            <strong>Messaging embed</strong> — L5 Bearer tokens cannot call message REST. Use{' '}
+            <code>buildMessagingEmbedUrl</code> from <code>@par-noir/oauth-ui</code> for a hosted iframe at{' '}
+            <code>messaging.parnoir.com/embed</code>.
+          </li>
+          <li>
+            <strong>No messaging/social REST for L5</strong> — mailbox/connections/groups routes require first-party
+            clients. Channel threads for your app live under <code>integrators/&#123;client_id&#125;/messages/</code>.
           </li>
         </ul>
       </section>
@@ -63,7 +77,9 @@ export function IntegratePage() {
         <h3>SDK</h3>
         <p>
           Workspace package <code>@identity-protocol/identity-sdk</code> — see{' '}
-          <code>docs/developer/L5_INTEGRATOR_QUICKSTART.md</code> and <code>examples/l5-integrator-starter/</code>.
+          <code>docs/developer/L5_INTEGRATOR_QUICKSTART.md</code>,{' '}
+          <code>examples/l5-integrator-starter/</code>, and{' '}
+          <code>examples/l5-community-starter/</code>.
         </p>
       </section>
 

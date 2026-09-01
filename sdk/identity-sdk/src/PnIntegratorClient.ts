@@ -4,6 +4,8 @@
 
 import { PNOAuthClient, type PNOAuthConfig } from './PNOAuthClient';
 import { IntegratorStorageClient } from './IntegratorStorageClient';
+import { IntegratorPublishClient } from './IntegratorPublishClient';
+import { IntegratorFeedClient } from './IntegratorFeedClient';
 import { IntegratorZkpClient } from './IntegratorZkpClient';
 import { IdentitySuccessionClient } from './IdentitySuccessionClient';
 import { PublicIndexClient } from './PublicIndexClient';
@@ -16,6 +18,8 @@ export interface PnIntegratorClientConfig extends PNOAuthConfig {
 export class PnIntegratorClient {
   readonly auth: PNOAuthClient;
   readonly storage: IntegratorStorageClient;
+  readonly publish: IntegratorPublishClient;
+  readonly feed: IntegratorFeedClient;
   readonly zkp: IntegratorZkpClient;
   readonly succession: IdentitySuccessionClient;
   readonly publicIndex: PublicIndexClient;
@@ -24,6 +28,8 @@ export class PnIntegratorClient {
     const apiEndpoint = config.apiEndpoint;
     this.auth = new PNOAuthClient(config);
     this.storage = new IntegratorStorageClient({ apiEndpoint });
+    this.publish = new IntegratorPublishClient({ apiEndpoint });
+    this.feed = new IntegratorFeedClient({ apiEndpoint });
     this.zkp = new IntegratorZkpClient({ apiEndpoint });
     this.succession = new IdentitySuccessionClient({ apiEndpoint });
     this.publicIndex = new PublicIndexClient({ apiEndpoint });

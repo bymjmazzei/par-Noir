@@ -104,3 +104,16 @@ export type {
   ReconnectOAuthParams,
   CloudVaultHydrateResult,
 } from './cloudReconnect';
+export {
+  MESSAGING_EMBED_ORIGIN,
+  PN_MESSAGING_EMBED_READY,
+  PN_MESSAGING_EMBED_HANDSHAKE,
+  buildMessagingEmbedUrl,
+  isMessagingEmbedPostMessage,
+} from './messagingEmbed';
+export type {
+  MessagingEmbedOptions,
+  MessagingEmbedHandshakeMessage,
+  MessagingEmbedReadyMessage,
+  MessagingEmbedPostMessage,
+} from './messagingEmbed';

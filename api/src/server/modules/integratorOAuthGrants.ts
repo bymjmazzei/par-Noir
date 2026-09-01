@@ -17,7 +17,8 @@ import {
 import { isPnDriveIndexComplete, loadPnDriveIndex } from './pnDriveIndex';
 import type { TokenPayload } from './pnOAuthService';
 import { hashIdentifier, safeLogger } from '../../utils/logger';
-import { applyStaticContract, getClientContract } from '@par-noir/standard-data-points';
+import { applyStaticContract, getClientContract, normalizePermissionManifest } from '@par-noir/standard-data-points';
+import { autoSubscribeCommunityOnIntegratorGrant } from './communityGrantHelper';
 
 export async function persistIntegratorGrantAfterTokenExchange(params: {
   clientId: string;
@@ -88,6 +89,10 @@ export async function persistIntegratorGrantAfterTokenExchange(params: {
     requiredDataPoints: prev?.requiredDataPoints || [],
     optionalDataPoints: consideredOptional,
     dataPointLevels: prev?.dataPointLevels,
+    permissionManifest: normalizePermissionManifest(
+      client?.permissionManifest || prev?.permissionManifest,
+      scopes
+    ),
     grantedAt: prev?.grantedAt || new Date().toISOString(),
     status: 'active',
     integratorFolderId
@@ -103,6 +108,21 @@ export async function persistIntegratorGrantAfterTokenExchange(params: {
     normalizedPn,
     accountId
   );
+
+  try {
+    await autoSubscribeCommunityOnIntegratorGrant({
+      clientId,
+      userAccessToken,
+      metadataFolderId,
+      normalizedPn,
+      accountId
+    });
+  } catch (err) {
+    safeLogger.warn('[OAuth] Community auto-subscribe failed (non-fatal)', {
+      clientId,
+      pnIdHash: hashIdentifier(normalizedPn)
+    });
+  }
 
   // storePermissions syncs the consent-skip hint for what it just wrote.
   safeLogger.info('[OAuth] Persisted integrator grant to Drive third-party-permissions', {

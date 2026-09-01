@@ -140,7 +140,7 @@ export function registerDeveloperSelfServiceRoutes(app: Application): void {
         });
       }
 
-      const { clientId, name, description, redirectUris, scopes, clientSecret } = req.body || {};
+      const { clientId, name, description, redirectUris, scopes, clientSecret, permissionManifest } = req.body || {};
       if (!clientId || typeof clientId !== 'string' || !name || typeof name !== 'string') {
         return res.status(400).json({
           error: 'invalid_request',
@@ -161,6 +161,11 @@ export function registerDeveloperSelfServiceRoutes(app: Application): void {
       const trimmedClientId = clientId.trim();
       const redirectUriList = redirectUris.map((u: unknown) => String(u).trim()).filter(Boolean);
       const scopeList = Array.isArray(scopes) ? scopes.map(String) : ['openid', 'profile'];
+      const manifest = normalizePermissionManifest(permissionManifest, scopeList);
+      const manifestErr = validatePermissionManifest(manifest);
+      if (manifestErr) {
+        return res.status(400).json({ error: 'invalid_request', error_description: manifestErr });
+      }
 
       if (isPlatformRegistryConfigured()) {
         if (await ClientRegistrationService.clientExists(trimmedClientId)) {
@@ -180,6 +185,7 @@ export function registerDeveloperSelfServiceRoutes(app: Application): void {
             description: typeof description === 'string' ? description.trim() : undefined,
             redirectUris: redirectUriList,
             scopes: scopeList,
+            permissionManifest: manifest,
             ownerPnId: ownerPn
           });
 
@@ -221,6 +227,7 @@ export function registerDeveloperSelfServiceRoutes(app: Application): void {
         description: typeof description === 'string' ? description.trim() : undefined,
         redirectUris: redirectUriList,
         scopes: scopeList,
+        permissionManifest: manifest,
         clientSecret: typeof clientSecret === 'string' ? clientSecret : undefined,
         isActive: true,
         ownerPnId: ownerPn

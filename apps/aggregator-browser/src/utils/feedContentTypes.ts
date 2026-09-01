@@ -1,10 +1,12 @@
 import type { ContentType } from '../types/contentTypes';
+import { COMMUNITY_FEED_PREFIX } from './communityFeed';
 
 const ALL_CONTENT_TYPES: ContentType[] = ['media', 'thoughts', 'collections'];
 
 /** Content classes needed for the active feed tab (discovery loads none). */
 export function getContentTypesForFeed(activeFeedId: string): ContentType[] {
   if (activeFeedId === 'discovery') return [];
+  if (activeFeedId.startsWith(COMMUNITY_FEED_PREFIX)) return ALL_CONTENT_TYPES;
   if (activeFeedId === 'media') return ['media'];
   if (activeFeedId === 'thoughts') return ['thoughts'];
   if (activeFeedId === 'collections') return ['collections'];

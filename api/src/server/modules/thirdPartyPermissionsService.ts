@@ -24,6 +24,8 @@ export interface ThirdPartyPermission {
   optionalDataPoints: string[];
   /** Min verification level per data point id. Omitted id ⇒ attested. */
   dataPointLevels?: DataPointLevels;
+  /** Consent manifest shown at unlock (labels + rationales). */
+  permissionManifest?: import('@par-noir/standard-data-points').IntegratorPermissionManifest;
   grantedAt: string;
   expiresAt?: string;
   status: 'active' | 'pending' | 'revoked';

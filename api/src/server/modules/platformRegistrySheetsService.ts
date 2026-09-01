@@ -5,6 +5,10 @@
 
 import { google } from 'googleapis';
 import { GoogleOAuth2Helper, GoogleDriveToken } from './googleOAuth2Helper';
+import {
+  normalizePermissionManifest,
+  type IntegratorPermissionManifest
+} from '@par-noir/standard-data-points';
 import type {
   ApplicationStatus,
   CommercialLicenseStatus,
@@ -56,8 +60,8 @@ export class PlatformRegistrySheetsService {
       requestBody: {
         properties: { title: FILE_NAME },
         sheets: [
-          { properties: { title: TAB_APPLICATIONS, gridProperties: { rowCount: 5000, columnCount: 12 } } },
-          { properties: { title: TAB_OAUTH_CLIENTS, gridProperties: { rowCount: 5000, columnCount: 12 } } },
+          { properties: { title: TAB_APPLICATIONS, gridProperties: { rowCount: 5000, columnCount: 13 } } },
+          { properties: { title: TAB_OAUTH_CLIENTS, gridProperties: { rowCount: 5000, columnCount: 13 } } },
           { properties: { title: TAB_COMMERCIAL_LICENSES, gridProperties: { rowCount: 5000, columnCount: 13 } } }
         ]
       }
@@ -81,17 +85,19 @@ export class PlatformRegistrySheetsService {
         valueInputOption: 'RAW',
         data: [
           {
-            range: `${TAB_APPLICATIONS}!A1:L1`,
+            range: `${TAB_APPLICATIONS}!A1:M1`,
             values: [[
               'Application ID', 'Client ID', 'Name', 'Description', 'Redirect URIs (JSON)', 'Scopes (JSON)',
-              'Owner PN ID', 'Status', 'Submitted At', 'Reviewed At', 'Reviewed By PN', 'Notes'
+              'Owner PN ID', 'Status', 'Submitted At', 'Reviewed At', 'Reviewed By PN', 'Notes',
+              'Permission Manifest (JSON)'
             ]]
           },
           {
-            range: `${TAB_OAUTH_CLIENTS}!A1:L1`,
+            range: `${TAB_OAUTH_CLIENTS}!A1:M1`,
             values: [[
               'Client ID', 'Name', 'Description', 'Redirect URIs (JSON)', 'Scopes (JSON)', 'Owner PN ID',
-              'Status', 'Verified', 'Commercial License ID', 'Approved At', 'Updated At', 'Notes'
+              'Status', 'Verified', 'Commercial License ID', 'Approved At', 'Updated At', 'Notes',
+              'Permission Manifest (JSON)'
             ]]
           },
           {
@@ -151,7 +157,8 @@ export class PlatformRegistrySheetsService {
         submittedAt: String(row[8] || ''),
         reviewedAt: row[9] ? String(row[9]) : undefined,
         reviewedByPn: row[10] ? String(row[10]) : undefined,
-        notes: row[11] ? String(row[11]) : undefined
+        notes: row[11] ? String(row[11]) : undefined,
+        permissionManifest: normalizePermissionManifest(parseJsonObject(row[12], null), parseJsonArray(row[5]))
       };
       if (filter?.status && app.status !== filter.status) continue;
       if (filter?.ownerPnId && app.ownerPnId !== filter.ownerPnId) continue;
@@ -182,7 +189,7 @@ export class PlatformRegistrySheetsService {
     const sheets = google.sheets({ version: 'v4', auth });
     await sheets.spreadsheets.values.append({
       spreadsheetId,
-      range: `${TAB_APPLICATIONS}!A:L`,
+      range: `${TAB_APPLICATIONS}!A:M`,
       valueInputOption: 'RAW',
       requestBody: {
         values: [[
@@ -197,7 +204,8 @@ export class PlatformRegistrySheetsService {
           application.submittedAt,
           application.reviewedAt || '',
           application.reviewedByPn || '',
-          application.notes || ''
+          application.notes || '',
+          JSON.stringify(application.permissionManifest || normalizePermissionManifest(null, application.scopes))
         ]]
       }
     });
@@ -227,7 +235,8 @@ export class PlatformRegistrySheetsService {
         application.submittedAt,
         application.reviewedAt || '',
         application.reviewedByPn || '',
-        application.notes || ''
+        application.notes || '',
+        JSON.stringify(application.permissionManifest || normalizePermissionManifest(null, application.scopes))
       ],
       userPnIdentifier,
       accountId
@@ -256,7 +265,8 @@ export class PlatformRegistrySheetsService {
         commercialLicenseId: row[8] ? String(row[8]) : undefined,
         approvedAt: row[9] ? String(row[9]) : undefined,
         updatedAt: String(row[10] || ''),
-        notes: row[11] ? String(row[11]) : undefined
+        notes: row[11] ? String(row[11]) : undefined,
+        permissionManifest: normalizePermissionManifest(parseJsonObject(row[12], null), parseJsonArray(row[4]))
       });
     }
     return out;
@@ -286,7 +296,8 @@ export class PlatformRegistrySheetsService {
         row.commercialLicenseId || '',
         row.approvedAt || '',
         row.updatedAt,
-        row.notes || ''
+        row.notes || '',
+        JSON.stringify(row.permissionManifest || normalizePermissionManifest(null, row.scopes))
       ],
       userPnIdentifier,
       accountId

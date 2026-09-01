@@ -8,6 +8,7 @@ import type { IndexedFile, Feed } from '../types/aggregator';
 import { isNSFWContent } from '../constants/contentRatings';
 import { isThought, isCollection, isMedia, getCreatorIdentifier, normalizeId } from '../utils/contentClass';
 import { sortIndexedFilesForDiscovery } from '../utils/discoverySort';
+import { COMMUNITY_FEED_PREFIX } from '../utils/communityFeed';
 
 export interface UseFeedFilteringParams {
   mediaFiles: IndexedFile[];
@@ -181,6 +182,11 @@ export function useFeedFiltering({
         return fileFeeds.some((feed) => feed.feedCategory === categoryId);
       });
       return sortByScore(filtered, true);
+    }
+
+    if (activeFeedId.startsWith(COMMUNITY_FEED_PREFIX)) {
+      const allFiles = [...filteredMedia, ...filteredThoughts, ...filteredCollections];
+      return sortByScore(allFiles, true);
     }
 
     const allFiles = [...filteredMedia, ...filteredThoughts, ...filteredCollections];

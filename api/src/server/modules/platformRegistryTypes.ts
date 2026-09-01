@@ -1,3 +1,5 @@
+import type { IntegratorPermissionManifest } from '@par-noir/standard-data-points';
+
 export type ApplicationStatus = 'pending' | 'approved' | 'rejected';
 export type OAuthClientRegistryStatus = 'active' | 'suspended' | 'revoked';
 export type CommercialLicenseStatus = 'active' | 'suspended' | 'revoked' | 'expired';
@@ -11,6 +13,7 @@ export interface PlatformApplication {
   description?: string;
   redirectUris: string[];
   scopes: string[];
+  permissionManifest?: IntegratorPermissionManifest;
   ownerPnId: string;
   status: ApplicationStatus;
   submittedAt: string;
@@ -25,6 +28,7 @@ export interface PlatformOAuthClientRow {
   description?: string;
   redirectUris: string[];
   scopes: string[];
+  permissionManifest?: IntegratorPermissionManifest;
   ownerPnId: string;
   status: OAuthClientRegistryStatus;
   verified: boolean;

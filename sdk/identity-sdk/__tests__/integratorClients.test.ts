@@ -1,4 +1,6 @@
 import { IntegratorStorageClient } from '../src/IntegratorStorageClient';
+import { IntegratorFeedClient } from '../src/IntegratorFeedClient';
+import { IntegratorPublishClient } from '../src/IntegratorPublishClient';
 import { IntegratorZkpClient } from '../src/IntegratorZkpClient';
 import { IdentitySuccessionClient } from '../src/IdentitySuccessionClient';
 import { PublicIndexClient } from '../src/PublicIndexClient';
@@ -63,6 +65,22 @@ describe('IntegratorStorageClient', () => {
     });
     const client = new IntegratorStorageClient({ apiEndpoint: 'https://api.test' });
     await expect(client.getStorageRoot(token)).rejects.toThrow(PnApiError);
+  });
+
+  it('sends cloud access token header when ctx is object', async () => {
+    fetchMock.mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        integratorFolderId: 'f1',
+        integratorPath: 'integrators/my-app',
+        clientId: 'my-app'
+      })
+    });
+    const client = new IntegratorStorageClient({ apiEndpoint: 'https://api.test' });
+    await client.getStorageRoot({ accessToken: token, cloudAccessToken: 'cloud-tok' });
+    const headers = fetchMock.mock.calls[0][1].headers;
+    expect(headers.Authorization).toBe('Bearer test-token');
+    expect(headers['X-PN-Cloud-Access-Token']).toBe('cloud-tok');
   });
 });
 
@@ -174,5 +192,46 @@ describe('PublicIndexClient', () => {
     await client.getPublicIndex('pn-x', 'key-123');
     const headers = (global.fetch as jest.Mock).mock.calls[0][1].headers;
     expect(headers['X-Api-Key']).toBe('key-123');
+  });
+});
+
+describe('IntegratorFeedClient', () => {
+  it('listByIndexerId queries metadata-index', async () => {
+    global.fetch = jest.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ files: [], updatedAt: '2020', totalFiles: 0 })
+    });
+    const client = new IntegratorFeedClient({ apiEndpoint: 'https://api.test' });
+    await client.listByIndexerId('tok', { indexerId: 'idx-1', limit: 5 });
+    expect((global.fetch as jest.Mock).mock.calls[0][0]).toContain('indexerId=idx-1');
+    expect((global.fetch as jest.Mock).mock.calls[0][0]).toContain('limit=5');
+  });
+});
+
+describe('IntegratorPublishClient', () => {
+  it('submitMetadataIndex posts metadata payload', async () => {
+    global.fetch = jest.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ success: true })
+    });
+    const client = new IntegratorPublishClient({ apiEndpoint: 'https://api.test' });
+    await client.submitMetadataIndex(
+      { accessToken: 'tok', cloudAccessToken: 'cloud' },
+      {
+        fileId: 'f1',
+        backend: 'google_drive',
+        backendFileId: 'bf1',
+        name: 'test',
+        isPublic: true,
+        uploadDate: '2020-01-01',
+        pnIdentifier: 'pn-1'
+      }
+    );
+    const init = (global.fetch as jest.Mock).mock.calls[0][1];
+    expect(init.method).toBe('POST');
+    expect(init.headers['X-PN-Cloud-Access-Token']).toBe('cloud');
+    const body = JSON.parse(init.body);
+    expect(body.metadata.fileId).toBe('f1');
+    expect(body.pnIdentifier).toBe('pn-1');
   });
 });

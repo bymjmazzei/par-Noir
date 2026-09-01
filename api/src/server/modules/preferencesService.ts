@@ -42,6 +42,8 @@ export interface UserPreferences {
   verifiedAge?: number;
   subscribedCategories?: string[];
   subscribedFeedIds?: string[];
+  /** L5 community apps (OAuth client ids) the user subscribed to in the browser feed rail */
+  subscribedCommunityIds?: string[];
   displayName?: string;
   profileImageFileId?: string;
   userDisplayNames?: Record<string, string>;

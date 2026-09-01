@@ -2,6 +2,8 @@
  * Shared HTTP helpers for par Noir L5 integrator API clients.
  */
 
+import type { IntegratorApiContext } from './types';
+
 export const SCOPE_OPENID = 'openid';
 export const SCOPE_PROFILE = 'profile';
 export const SCOPE_CLOUD_APP = 'cloud:app';
@@ -55,6 +57,21 @@ export function authHeaders(accessToken: string, extra?: Record<string, string>)
     Authorization: `Bearer ${accessToken}`,
     ...extra
   };
+}
+
+export function integratorAuthHeaders(
+  ctx: IntegratorApiContext | string,
+  extra?: Record<string, string>
+): HeadersInit {
+  const accessToken = typeof ctx === 'string' ? ctx : ctx.accessToken;
+  const headers: Record<string, string> = {
+    Authorization: `Bearer ${accessToken}`,
+    ...extra
+  };
+  if (typeof ctx !== 'string' && ctx.cloudAccessToken) {
+    headers['X-PN-Cloud-Access-Token'] = ctx.cloudAccessToken;
+  }
+  return headers;
 }
 
 export function apiKeyHeaders(apiKey: string, extra?: Record<string, string>): HeadersInit {

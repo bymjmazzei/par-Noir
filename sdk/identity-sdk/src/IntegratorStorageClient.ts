@@ -3,8 +3,8 @@
  */
 
 import {
-  authHeaders,
   buildQuery,
+  integratorAuthHeaders,
   normalizeApiEndpoint,
   parseJsonResponse,
   throwIfNotOk
@@ -12,6 +12,7 @@ import {
 import type {
   DriveFileRef,
   DriveFolderRef,
+  IntegratorApiContext,
   IntegratorClientConfig,
   IntegratorStorageRoot
 } from './integrator/types';
@@ -19,11 +20,16 @@ import type {
 export type {
   DriveFileRef,
   DriveFolderRef,
+  IntegratorApiContext,
   IntegratorClientConfig,
   IntegratorStorageRoot
 };
 
 export { SCOPE_CLOUD_APP } from './integrator/pnApiClient';
+
+function accountIdFromCtx(ctx: IntegratorApiContext | string): string | undefined {
+  return typeof ctx === 'string' ? undefined : ctx.accountId;
+}
 
 export class IntegratorStorageClient {
   private apiEndpoint: string;
@@ -32,10 +38,10 @@ export class IntegratorStorageClient {
     this.apiEndpoint = normalizeApiEndpoint(config.apiEndpoint);
   }
 
-  async getStorageRoot(accessToken: string, accountId?: string): Promise<IntegratorStorageRoot> {
+  async getStorageRoot(ctx: IntegratorApiContext | string): Promise<IntegratorStorageRoot> {
     const res = await fetch(
-      `${this.apiEndpoint}/api/integrator/storage-root${buildQuery({ accountId })}`,
-      { headers: authHeaders(accessToken) }
+      `${this.apiEndpoint}/api/integrator/storage-root${buildQuery({ accountId: accountIdFromCtx(ctx) })}`,
+      { headers: integratorAuthHeaders(ctx) }
     );
     const data = await parseJsonResponse<IntegratorStorageRoot & { error?: string }>(res);
     await throwIfNotOk(res, data);
@@ -43,16 +49,16 @@ export class IntegratorStorageClient {
   }
 
   async listFiles(
-    accessToken: string,
+    ctx: IntegratorApiContext | string,
     params?: { q?: string; pageSize?: number; accountId?: string }
   ): Promise<{ files: DriveFileRef[] }> {
     const res = await fetch(
       `${this.apiEndpoint}/api/drive/files${buildQuery({
         q: params?.q,
         pageSize: params?.pageSize,
-        accountId: params?.accountId
+        accountId: params?.accountId ?? accountIdFromCtx(ctx)
       })}`,
-      { headers: authHeaders(accessToken) }
+      { headers: integratorAuthHeaders(ctx) }
     );
     const data = await parseJsonResponse<{ files: DriveFileRef[] }>(res);
     await throwIfNotOk(res, data);
@@ -60,17 +66,17 @@ export class IntegratorStorageClient {
   }
 
   async getFile(
-    accessToken: string,
+    ctx: IntegratorApiContext | string,
     fileId: string,
     options?: { accountId?: string; download?: boolean; thumbnail?: boolean }
   ): Promise<{ file: DriveFileRef }> {
     const res = await fetch(
       `${this.apiEndpoint}/api/drive/files/${encodeURIComponent(fileId)}${buildQuery({
-        accountId: options?.accountId,
+        accountId: options?.accountId ?? accountIdFromCtx(ctx),
         download: options?.download ? 'true' : undefined,
         thumbnail: options?.thumbnail ? 'true' : undefined
       })}`,
-      { headers: authHeaders(accessToken) }
+      { headers: integratorAuthHeaders(ctx) }
     );
     const data = await parseJsonResponse<{ file: DriveFileRef }>(res);
     await throwIfNotOk(res, data);
@@ -78,7 +84,7 @@ export class IntegratorStorageClient {
   }
 
   async uploadFile(
-    accessToken: string,
+    ctx: IntegratorApiContext | string,
     params: {
       fileDataBase64: string;
       fileName: string;
@@ -90,12 +96,12 @@ export class IntegratorStorageClient {
   ): Promise<{ file: DriveFileRef }> {
     const res = await fetch(`${this.apiEndpoint}/api/drive/files`, {
       method: 'POST',
-      headers: authHeaders(accessToken, { 'Content-Type': 'application/json' }),
+      headers: integratorAuthHeaders(ctx, { 'Content-Type': 'application/json' }),
       body: JSON.stringify({
         fileData: params.fileDataBase64,
         fileName: params.fileName,
         mimeType: params.mimeType || 'application/octet-stream',
-        accountId: params.accountId,
+        accountId: params.accountId ?? accountIdFromCtx(ctx),
         encrypt: params.encrypt !== false,
         parents: params.parents
       })
@@ -107,7 +113,7 @@ export class IntegratorStorageClient {
 
   /** @deprecated Use uploadFile */
   async uploadToSilo(
-    accessToken: string,
+    ctx: IntegratorApiContext | string,
     params: {
       fileDataBase64: string;
       fileName: string;
@@ -116,18 +122,19 @@ export class IntegratorStorageClient {
       encrypt?: boolean;
     }
   ): Promise<{ file: DriveFileRef }> {
-    return this.uploadFile(accessToken, params);
+    return this.uploadFile(ctx, params);
   }
 
   async updateFile(
-    accessToken: string,
+    ctx: IntegratorApiContext | string,
     fileId: string,
     updates: { name?: string; description?: string; parents?: string[]; accountId?: string }
   ): Promise<{ file: DriveFileRef }> {
-    const { accountId, ...body } = updates;
+    const accountId = updates.accountId ?? accountIdFromCtx(ctx);
+    const { accountId: _omit, ...body } = updates;
     const res = await fetch(`${this.apiEndpoint}/api/drive/files/${encodeURIComponent(fileId)}`, {
       method: 'PUT',
-      headers: authHeaders(accessToken, { 'Content-Type': 'application/json' }),
+      headers: integratorAuthHeaders(ctx, { 'Content-Type': 'application/json' }),
       body: JSON.stringify({ ...body, accountId })
     });
     const data = await parseJsonResponse<{ file: DriveFileRef }>(res);
@@ -136,20 +143,22 @@ export class IntegratorStorageClient {
   }
 
   async deleteFile(
-    accessToken: string,
+    ctx: IntegratorApiContext | string,
     fileId: string,
     accountId?: string
   ): Promise<void> {
     const res = await fetch(
-      `${this.apiEndpoint}/api/drive/files/${encodeURIComponent(fileId)}${buildQuery({ accountId })}`,
-      { method: 'DELETE', headers: authHeaders(accessToken) }
+      `${this.apiEndpoint}/api/drive/files/${encodeURIComponent(fileId)}${buildQuery({
+        accountId: accountId ?? accountIdFromCtx(ctx)
+      })}`,
+      { method: 'DELETE', headers: integratorAuthHeaders(ctx) }
     );
     const data = await parseJsonResponse<Record<string, unknown>>(res);
     await throwIfNotOk(res, data);
   }
 
   async createFolder(
-    accessToken: string,
+    ctx: IntegratorApiContext | string,
     params: {
       folderName: string;
       accountId?: string;
@@ -158,10 +167,10 @@ export class IntegratorStorageClient {
   ): Promise<{ folder: DriveFolderRef }> {
     const res = await fetch(`${this.apiEndpoint}/api/drive/folders`, {
       method: 'POST',
-      headers: authHeaders(accessToken, { 'Content-Type': 'application/json' }),
+      headers: integratorAuthHeaders(ctx, { 'Content-Type': 'application/json' }),
       body: JSON.stringify({
         folderName: params.folderName,
-        accountId: params.accountId,
+        accountId: params.accountId ?? accountIdFromCtx(ctx),
         parentFolderId: params.parentFolderId
       })
     });

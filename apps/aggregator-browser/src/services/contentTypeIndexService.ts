@@ -22,7 +22,7 @@ export class ContentTypeIndexService {
    */
   async loadContentTypeIndex(
     contentType: ContentType,
-    filters?: MetadataFilters & { limit?: number; offset?: number },
+    filters?: MetadataFilters & { limit?: number; offset?: number; indexerId?: string },
     forceRefresh: boolean = false
   ): Promise<{ files: IndexedFile[]; hasMore: boolean }> {
     const metadataService = getMetadataIndexService();

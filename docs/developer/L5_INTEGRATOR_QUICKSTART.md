@@ -9,6 +9,24 @@ Build a third-party app on par Noir: **pN login**, optional **ZKP data points**,
 1. Open [developers.parnoir.com](https://developers.parnoir.com) and unlock with pN.
 2. **Credentials** → create an OAuth client (`client_id`, redirect URIs).
 3. Add redirect URI: `https://your-app.com/oauth-callback.html` (or `http://localhost:5173/oauth-callback.html` for local dev).
+4. Supply a **permission manifest** — each scope/data point needs a human-readable **label** and **rationale** (why the user should grant it). The API rejects registration when rationale is missing; consent renders rationale in the OAuth UI.
+
+Example manifest item:
+
+```json
+{
+  "items": [
+    {
+      "id": "cloud:app",
+      "type": "storage",
+      "label": "Store drafts in your pN cloud",
+      "rationale": "We save encrypted drafts under integrators/your-client-id/ so you can edit offline."
+    }
+  ]
+}
+```
+
+Use `@par-noir/standard-data-points` helpers `validatePermissionManifest` / `renderManifestHtml` in tests and tooling.
 
 ---
 
@@ -45,6 +63,20 @@ Show chat scoped to your app with a first-party iframe (no message REST for your
 ></iframe>
 ```
 
+Or build the URL with `@par-noir/oauth-ui`:
+
+```typescript
+import {
+  MESSAGING_EMBED_ORIGIN,
+  buildMessagingEmbedUrl,
+  PN_MESSAGING_EMBED_READY,
+  PN_MESSAGING_EMBED_HANDSHAKE,
+} from '@par-noir/oauth-ui';
+
+const src = buildMessagingEmbedUrl('YOUR_CLIENT_ID');
+// Listen for postMessage types PN_MESSAGING_EMBED_READY / PN_MESSAGING_EMBED_HANDSHAKE from MESSAGING_EMBED_ORIGIN
+```
+
 - Unlock happens **inside** the iframe (messaging origin handoff).
 - Connect/accept on this viewport creates a peer edge + **your channel’s thread only** — it does **not** create the platform primary DM.
 - Aggregated view of all channels lives on messaging.parnoir.com (not in your iframe).
@@ -71,6 +103,22 @@ const session = await pn.auth.authenticate();
 ```
 
 Consent includes **Step 2** when you request `cloud:app`: user approves the integrator Drive silo.
+
+### Cloud reconnect (Drive owner routes)
+
+Drive reads/writes require a forwarded **`X-PN-Cloud-Access-Token`** in addition to the OAuth Bearer. After login, mount `@par-noir/oauth-ui` cloud reconnect:
+
+```tsx
+import { ThirdPartyCloudReconnectHost } from '@par-noir/oauth-ui';
+
+<ThirdPartyCloudReconnectHost
+  apiEndpoint={import.meta.env.VITE_API_ENDPOINT}
+  authToken={session.accessToken}
+  pnIdentifier={session.pnIdentifier}
+/>
+```
+
+Pass `IntegratorApiContext` (Bearer + cloud token) to SDK storage/publish clients — see `examples/l5-integrator-starter/` and `examples/l5-community-starter/`.
 
 ---
 
@@ -150,4 +198,5 @@ Requires an API key with `content` scope from the developer portal.
 | Storage model | [third-party-sharing-and-L5.md](./third-party-sharing-and-L5.md) |
 | Drive layout | [GOOGLE_DRIVE_STRUCTURE.md](../../GOOGLE_DRIVE_STRUCTURE.md) |
 | Example app | `examples/l5-integrator-starter/` in the repo |
+| Community publish example | `examples/l5-community-starter/` |
 | SDK source | `sdk/identity-sdk/` |
