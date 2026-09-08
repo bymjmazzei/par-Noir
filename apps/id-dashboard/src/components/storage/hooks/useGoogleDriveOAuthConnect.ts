@@ -306,6 +306,10 @@ export function useGoogleDriveOAuthConnect({
         return;
       }
       setError(null);
+      // Intentional reconnect must not be blocked by the post-disconnect guard
+      // (same Google account reuses the same backendId within the block window).
+      disconnectTimestampRef.current = 0;
+      disconnectedBackendIdsRef.current.clear();
       setDriveSetupProgress({
         phase: 'starting',
         stepLabel: 'Connecting to Google Drive…',
@@ -499,10 +503,11 @@ export function useGoogleDriveOAuthConnect({
       }
 
       // Layout-only API persistence (no live Google tokens in SecureMetadata).
+      // Force: disconnect may have PUT within the debounce window; connect must still run initialize.
       try {
         const payload = buildStorageCredentialPayload();
         if (payload && payload.googleDriveAccounts && payload.googleDriveAccounts.length > 0) {
-          await persistStorageCredentialsToAPI(payload);
+          await persistStorageCredentialsToAPI(payload, null, { force: true });
         }
       } catch (persistError) {
         console.warn('⚠️ [handleConnectGoogleDrive] Failed to persist layout to API (non-critical):', persistError);
@@ -672,6 +677,21 @@ export function useGoogleDriveOAuthConnect({
 
         // Build payload from current state (after removal)
         const payload = buildStorageCredentialPayload();
+        const remainingAccounts = payload?.googleDriveAccounts?.length || 0;
+        // Explicit disconnect wipe: empty accounts + null layout so API merge cannot keep
+        // stale pnDriveIndex / legacy googleDrive after the user deletes Drive folders.
+        const disconnectCredentials =
+          remainingAccounts > 0
+            ? payload
+            : {
+                googleDriveAccounts: [] as unknown[],
+                googleDrive: null,
+                pnDriveIndex: null,
+                cachedFolderIds: null,
+                driveFolderId: null,
+                socialCloudProvider: null,
+                socialCloudAccountId: null,
+              };
 
         // Even if payload is empty (no accounts left), we need to persist it to clear the API
         // This ensures the disconnected account is removed from API storage
@@ -688,7 +708,7 @@ export function useGoogleDriveOAuthConnect({
               'PUT',
               `/api/storage/credentials/${encodeURIComponent(pnId)}`,
               {
-                credentials: payload || { googleDriveAccounts: [] },
+                credentials: disconnectCredentials,
                 cid: null,
               },
               { pnIdentifier: pnId }
@@ -701,11 +721,54 @@ export function useGoogleDriveOAuthConnect({
                   error: errorText,
                 });
               } else {
-                const accountsCount = payload?.googleDriveAccounts?.length || 0;
-                console.log(`✅ [handleDisconnect] API storage credentials updated (account removed). Current accounts: ${accountsCount}`);
+                console.log(`✅ [handleDisconnect] API storage credentials updated (account removed). Current accounts: ${remainingAccounts}`);
               }
             } catch (apiError) {
               console.error('❌ [handleDisconnect] Failed to update API storage credentials:', apiError);
+            }
+          }
+
+          // Clear device-cloud vault/session so reconnect cannot hydrate deleted Drive accounts
+          // and CloudReconnectHost does not treat Drive as still linked.
+          if (remainingAccounts === 0) {
+            try {
+              const {
+                clearSessionCloudCredentials,
+                wipeSealedCloudCredentials,
+              } = await import('@par-noir/device-cloud-credentials');
+              clearSessionCloudCredentials(pnId);
+              await wipeSealedCloudCredentials(pnId);
+              if (disconnectToken) {
+                const sessionId =
+                  authenticatedUser?.id ||
+                  (authenticatedUser as { publicKey?: string })?.publicKey ||
+                  null;
+                const sessionCreds = sessionId
+                  ? SecureCredentialManager.getCredentials(sessionId)
+                  : null;
+                if (sessionCreds) {
+                  try {
+                    const { publishCloudVaultForIdentity } = await import(
+                      '../../../services/deviceCloudCredentials'
+                    );
+                    await publishCloudVaultForIdentity({
+                      identityId: pnId,
+                      authToken: disconnectToken,
+                      pnName: sessionCreds.pnName,
+                      passcode: sessionCreds.passcode,
+                      credentials: { googleDriveAccounts: [] },
+                      publicKey: authenticatedUser?.publicKey,
+                    });
+                  } catch {
+                    /* best-effort vault clear */
+                  }
+                }
+              }
+            } catch (vaultClearErr) {
+              console.warn(
+                '⚠️ [handleDisconnect] Failed to clear device-cloud vault (non-blocking):',
+                vaultClearErr
+              );
             }
           }
         } else {

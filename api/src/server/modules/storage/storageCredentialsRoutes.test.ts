@@ -230,6 +230,59 @@ describe('storage credentials routes', () => {
       expect(res.body.error).toBe('Missing credentials in request body');
     });
 
+    it('clears stale Drive layout when googleDriveAccounts is explicitly emptied', async () => {
+      mockGetCredentials.mockResolvedValue({
+        credentials: {
+          googleDriveAccounts: [{ backendId: 'old' }],
+          googleDrive: { email: 'x@example.com' },
+          pnDriveIndex: { rootFolderId: 'stale-root' },
+          cachedFolderIds: { root: 'stale-root' },
+          driveFolderId: 'stale-root',
+          socialCloudProvider: 'google_drive',
+        },
+      });
+
+      const res = await request(buildApp())
+        .put(`/api/storage/credentials/${PN}`)
+        .send({
+          credentials: {
+            googleDriveAccounts: [],
+            googleDrive: null,
+            pnDriveIndex: null,
+            cachedFolderIds: null,
+            driveFolderId: null,
+            socialCloudProvider: null,
+          },
+        })
+        .expect(200);
+
+      expect(res.body.success).toBe(true);
+      const stored = mockUpsertCredentials.mock.calls[0][1] as Record<string, unknown>;
+      expect(stored.googleDriveAccounts).toEqual([]);
+      expect(stored.googleDrive).toBeUndefined();
+      expect(stored.pnDriveIndex).toBeUndefined();
+      expect(stored.cachedFolderIds).toBeUndefined();
+      expect(stored.driveFolderId).toBeUndefined();
+      expect(stored.socialCloudProvider).toBeUndefined();
+    });
+
+    it('preserves pnDriveIndex when reconnect updates accounts without re-sending layout', async () => {
+      mockGetCredentials.mockResolvedValue({
+        credentials: {
+          googleDriveAccounts: [{ backendId: 'acct-1' }],
+          pnDriveIndex: { rootFolderId: 'keep-me' },
+        },
+      });
+
+      await request(buildApp())
+        .put(`/api/storage/credentials/${PN}`)
+        .send({ credentials: { googleDriveAccounts: [{ backendId: 'acct-1' }] } })
+        .expect(200);
+
+      const stored = mockUpsertCredentials.mock.calls[0][1] as Record<string, unknown>;
+      expect(stored.pnDriveIndex).toEqual({ rootFolderId: 'keep-me' });
+    });
+
     it('defers the Drive layout build to /storage/initialize', async () => {
       const res = await request(buildApp())
         .put(`/api/storage/credentials/${PN}`)

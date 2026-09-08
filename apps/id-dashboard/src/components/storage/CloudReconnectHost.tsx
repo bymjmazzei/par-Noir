@@ -26,6 +26,7 @@ import { DevicePairFromReconnect } from '../DevicePairFromReconnect';
 import { isKeyableClient } from '@par-noir/device-client';
 import { APP_DOWNLOAD_URL } from '../../config/appDownload';
 import { publishCloudVaultForIdentity } from '../../services/deviceCloudCredentials';
+import { ownerFetch } from '../../services/ownerApiService';
 import { CloudLayoutUpdateBanner } from './CloudLayoutUpdateBanner';
 
 export interface CloudReconnectHostProps {
@@ -294,6 +295,34 @@ export const CloudReconnectHost: React.FC<CloudReconnectHostProps> = ({
 
       markReady();
       if (apiToken) {
+        // Layout-only credential row so API merge knows Drive is linked again after disconnect wipe.
+        try {
+          const accounts = Array.isArray(envelope.googleDriveAccounts)
+            ? envelope.googleDriveAccounts
+            : [];
+          const layoutAccounts = accounts.map((a) => ({
+            backendId: a.backendId || a.accountId,
+            keyPrefix: a.keyPrefix,
+            email: a.email,
+            connectedAt: a.connectedAt,
+          }));
+          await ownerFetch(
+            apiToken,
+            'PUT',
+            `/api/storage/credentials/${encodeURIComponent(pnIdentifier)}`,
+            {
+              credentials: {
+                socialCloudProvider: envelope.socialCloudProvider || 'google_drive',
+                socialCloudAccountId: envelope.socialCloudAccountId,
+                googleDriveAccounts: layoutAccounts,
+              },
+              cid: null,
+            },
+            { pnIdentifier }
+          );
+        } catch {
+          /* best-effort; Storage hydrate still registers backends from sealed vault */
+        }
         await publishCloudDriveReady({
           authToken: apiToken,
           pnIdentifier,

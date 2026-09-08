@@ -388,14 +388,15 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
   React.useEffect(() => {
     let debounceTimer: ReturnType<typeof setTimeout> | null = null;
     const onReady = () => {
-      // Coalesce burst READY events. With keep-alive, only hydrate when no Drive backends yet.
+      // Coalesce burst READY events. Reconnect after disconnect must always hydrate —
+      // do not skip when Drive backends briefly remain, and clear the disconnect guard
+      // so intentional READY is not blocked for 10s.
       if (debounceTimer != null) clearTimeout(debounceTimer);
       debounceTimer = setTimeout(() => {
         debounceTimer = null;
-        const hasDrive = driveAccountsRef.current.length > 0 || connectedBackendsRef.current.size > 0;
-        if (!hasDrive) {
-          void hydrateStorageCredentialsFromAPIRef.current(true);
-        }
+        disconnectTimestampRef.current = 0;
+        disconnectedBackendIdsRef.current.clear();
+        void hydrateStorageCredentialsFromAPIRef.current(true);
         void registerPortableCloudBackendsRef.current();
       }, 250);
     };

@@ -100,17 +100,45 @@ export function setupStorageCredentialsRoutes(app: Application, deps: StorageCre
           );
         }
 
-        // Merge with existing so reconnect/layout updates cannot wipe pnDriveIndex / sheet IDs.
+        // Merge with existing so reconnect/layout updates cannot wipe pnDriveIndex / sheet IDs
+        // while Drive remains linked. Explicit empty googleDriveAccounts (disconnect) must
+        // clear legacy googleDrive + layout — otherwise deleted Drive folders leave a stale
+        // index and reconnect skips folder recreate.
         const existingRecord = await storageCredentialsService.getCredentials(pnIdentifier);
         const existingCreds = (existingRecord?.credentials || {}) as Record<string, unknown>;
         const incoming = credentialsToStore as Record<string, unknown>;
         credentialsToStore = {
           ...existingCreds,
           ...incoming,
-          pnDriveIndex: incoming.pnDriveIndex ?? existingCreds.pnDriveIndex,
-          cachedFolderIds: incoming.cachedFolderIds ?? existingCreds.cachedFolderIds,
-          driveFolderId: incoming.driveFolderId ?? existingCreds.driveFolderId,
         };
+        const incomingClearedAccounts =
+          Array.isArray(incoming.googleDriveAccounts) &&
+          incoming.googleDriveAccounts.length === 0;
+        if (incomingClearedAccounts) {
+          delete credentialsToStore.googleDrive;
+          delete credentialsToStore.pnDriveIndex;
+          delete credentialsToStore.cachedFolderIds;
+          delete credentialsToStore.driveFolderId;
+          if (incoming.socialCloudProvider == null) {
+            delete credentialsToStore.socialCloudProvider;
+            delete credentialsToStore.socialCloudAccountId;
+          }
+        } else {
+          const pickLayout = (key: 'pnDriveIndex' | 'cachedFolderIds' | 'driveFolderId') => {
+            if (Object.prototype.hasOwnProperty.call(incoming, key)) {
+              if (incoming[key] == null) {
+                delete credentialsToStore[key];
+              } else {
+                credentialsToStore[key] = incoming[key];
+              }
+            } else if (existingCreds[key] != null) {
+              credentialsToStore[key] = existingCreds[key];
+            }
+          };
+          pickLayout('pnDriveIndex');
+          pickLayout('cachedFolderIds');
+          pickLayout('driveFolderId');
+        }
 
         const record = await storageCredentialsService.upsertCredentials(
           pnIdentifier,

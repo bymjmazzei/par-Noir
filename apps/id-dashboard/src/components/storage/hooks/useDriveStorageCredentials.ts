@@ -184,7 +184,12 @@ export function useDriveStorageCredentials({
   // CRITICAL: Global lock to prevent multiple persistence calls
   const globalPersistenceLockRef = React.useRef(false);
 
-  const persistStorageCredentialsToAPI = React.useCallback(async (credentialsPayload?: any, cid?: string | null) => {
+  const persistStorageCredentialsToAPI = React.useCallback(async (
+    credentialsPayload?: any,
+    cid?: string | null,
+    options?: { force?: boolean }
+  ) => {
+    const force = options?.force === true;
     // CRITICAL: Global lock to prevent multiple simultaneous persistence calls
     if (globalPersistenceLockRef.current) {
       console.warn('🚫 [StorageCredentials] BLOCKED: Global persistence lock active, skipping...');
@@ -197,10 +202,10 @@ export function useDriveStorageCredentials({
       return;
     }
 
-    // Debounce rapid calls
+    // Debounce rapid calls (explicit connect/reconnect may pass force to skip)
     const now = Date.now();
     const timeSinceLastCall = now - lastPersistenceTimeRef.current;
-    if (timeSinceLastCall < PERSISTENCE_DEBOUNCE_MS) {
+    if (!force && timeSinceLastCall < PERSISTENCE_DEBOUNCE_MS) {
       console.warn(`🚫 [StorageCredentials] BLOCKED: Persistence debounced (${timeSinceLastCall}ms < ${PERSISTENCE_DEBOUNCE_MS}ms since last call)`);
       return;
     }
@@ -326,14 +331,24 @@ export function useDriveStorageCredentials({
             clientSideLayoutRequired: result.clientSideLayoutRequired,
           });
 
-          const googleTok =
+          const googleTokFromPayload =
             (payload.googleDriveAccounts?.[0] as { accessToken?: string; access_token?: string } | undefined)
               ?.accessToken ||
             (payload.googleDriveAccounts?.[0] as { access_token?: string } | undefined)?.access_token;
+          // Prefer live cache token when layout-only payload omitted secrets (device custody).
+          let googleTok = typeof googleTokFromPayload === 'string' ? googleTokFromPayload : '';
+          if (!googleTok.trim()) {
+            for (const entry of driveCredentialCacheRef.current.values()) {
+              if (typeof entry.accessToken === 'string' && entry.accessToken.trim()) {
+                googleTok = entry.accessToken.trim();
+                break;
+              }
+            }
+          }
 
           // Device custody: API has no Google secrets — forward ephemeral token and
           // run initialize so pnDriveIndex is written (needed for device keying).
-          if (shouldSkipServerDriveInit(result) && typeof googleTok === 'string' && googleTok.trim()) {
+          if (shouldSkipServerDriveInit(result) && googleTok.trim()) {
             console.log(
               '🔄 [StorageCredentials] Device custody — building Drive layout with forwarded Google token…'
             );
@@ -373,9 +388,7 @@ export function useDriveStorageCredentials({
             });
             const ok = await postDriveInitializeWithRetry(pnIdentifier, accessToken, {
               onProgress: setDriveSetupProgress,
-              ...(typeof googleTok === 'string' && googleTok.trim()
-                ? { googleAccessToken: googleTok.trim() }
-                : {}),
+              ...(googleTok.trim() ? { googleAccessToken: googleTok.trim() } : {}),
             });
             clearDriveSetupProgress();
             if (!ok) {
