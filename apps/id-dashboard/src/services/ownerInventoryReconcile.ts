@@ -31,6 +31,7 @@ export async function reconcileOwnerInventory(params?: {
   }
 
   const pnId = pnIdentifier.startsWith('pn-') ? pnIdentifier : `pn-${pnIdentifier}`;
+  const cloudTok = params?.googleAccessToken?.trim();
   const res = await ownerFetch(
     ownerToken,
     'POST',
@@ -38,7 +39,9 @@ export async function reconcileOwnerInventory(params?: {
     undefined,
     {
       pnIdentifier: pnId,
-      googleAccessToken: params?.googleAccessToken,
+      ...(cloudTok
+        ? { extraHeaders: { 'X-PN-Cloud-Access-Token': cloudTok } }
+        : {}),
     }
   );
 
