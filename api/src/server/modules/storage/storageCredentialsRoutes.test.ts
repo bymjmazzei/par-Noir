@@ -387,7 +387,7 @@ describe('storage credentials routes', () => {
       expect(mockRunFullDriveInit).not.toHaveBeenCalled();
     });
 
-    it('returns folder ids on a successful init', async () => {
+    it('returns 202 and starts Drive init without awaiting completion', async () => {
       mockGetCredentials.mockResolvedValue({
         credentials: { googleDriveAccounts: [{ backendId: 'acct-1' }] },
       });
@@ -397,17 +397,19 @@ describe('storage credentials routes', () => {
         pnFolderId: 'pn-folder',
       });
 
-      const res = await request(buildApp()).post(`/api/storage/initialize/${PN}`).expect(200);
+      const res = await request(buildApp()).post(`/api/storage/initialize/${PN}`).expect(202);
 
       expect(res.body).toMatchObject({
         success: true,
+        initInProgress: true,
         identityId: PN,
-        metadataFolderId: 'meta-folder',
-        pnFolderId: 'pn-folder',
       });
+      expect(res.body.metadataFolderId).toBeUndefined();
+      await new Promise((r) => setImmediate(r));
+      expect(mockRunFullDriveInit).toHaveBeenCalled();
     });
 
-    it('maps a retryable Google failure to 503 with retryable=true', async () => {
+    it('still returns 202 when background Drive init fails later', async () => {
       mockGetCredentials.mockResolvedValue({
         credentials: { googleDriveAccounts: [{ backendId: 'acct-1' }] },
       });
@@ -415,19 +417,10 @@ describe('storage credentials routes', () => {
       mockRunFullDriveInit.mockRejectedValue(new Error('rateLimitExceeded'));
       mockIsRetryable.mockReturnValue(true);
 
-      const res = await request(buildApp()).post(`/api/storage/initialize/${PN}`).expect(503);
-      expect(res.body.retryable).toBe(true);
-    });
-
-    it('maps a non-retryable failure to 500', async () => {
-      mockGetCredentials.mockResolvedValue({
-        credentials: { googleDriveAccounts: [{ backendId: 'acct-1' }] },
-      });
-      mockGetAccessToken.mockResolvedValue('fresh-token');
-      mockRunFullDriveInit.mockRejectedValue(new Error('bad layout'));
-
-      const res = await request(buildApp()).post(`/api/storage/initialize/${PN}`).expect(500);
-      expect(res.body.retryable).toBe(false);
+      const res = await request(buildApp()).post(`/api/storage/initialize/${PN}`).expect(202);
+      expect(res.body.initInProgress).toBe(true);
+      await new Promise((r) => setImmediate(r));
+      expect(mockRunFullDriveInit).toHaveBeenCalled();
     });
   });
 
@@ -447,19 +440,52 @@ describe('storage credentials routes', () => {
         .get(`/api/storage/initialize/${PN}/status`)
         .expect(200);
 
-      expect(res.body).toEqual({ identityId: PN, inFlight: false, progress: null });
+      expect(res.body).toEqual({
+        identityId: PN,
+        inFlight: false,
+        progress: null,
+        complete: false,
+        failed: false,
+      });
     });
 
     it('reports in-flight when progress is active', async () => {
       mockProgressActive.mockReturnValue(true);
-      mockGetProgress.mockReturnValue({ step: 'sheets', completed: 3, total: 9 });
+      mockGetProgress.mockReturnValue({
+        phase: 'metadataSheets',
+        stepLabel: 'Sheets',
+        percent: 60,
+      });
 
       const res = await request(buildApp())
         .get(`/api/storage/initialize/${PN}/status`)
         .expect(200);
 
       expect(res.body.inFlight).toBe(true);
-      expect(res.body.progress).toEqual({ step: 'sheets', completed: 3, total: 9 });
+      expect(res.body.complete).toBe(false);
+      expect(res.body.failed).toBe(false);
+      expect(res.body.progress).toEqual({
+        phase: 'metadataSheets',
+        stepLabel: 'Sheets',
+        percent: 60,
+      });
+    });
+
+    it('reports complete when progress phase is complete', async () => {
+      mockGetProgress.mockReturnValue({
+        phase: 'complete',
+        stepLabel: 'Storage ready',
+        percent: 100,
+      });
+      mockProgressActive.mockReturnValue(false);
+
+      const res = await request(buildApp())
+        .get(`/api/storage/initialize/${PN}/status`)
+        .expect(200);
+
+      expect(res.body.complete).toBe(true);
+      expect(res.body.failed).toBe(false);
+      expect(res.body.inFlight).toBe(false);
     });
   });
 

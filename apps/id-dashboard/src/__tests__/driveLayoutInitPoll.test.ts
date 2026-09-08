@@ -1,10 +1,8 @@
 /**
  * @jest-environment jsdom
  *
- * Drive layout init must not storm /status after POST /storage/initialize completes.
- * The server awaits full init and clears inFlight in finally — a post-POST status wait
- * previously polled for ~90s and, with a parallel interval, produced ~1000 API calls
- * when recreating a deleted Drive folder.
+ * Drive layout init: POST returns 202 and work runs in the background.
+ * Client polls /status infrequently (~15s) until complete — never a tight loop.
  */
 import React from 'react';
 import { renderHook, act } from '@testing-library/react';
@@ -27,28 +25,25 @@ const GOOGLE_TOKEN = 'ya29.google-token';
 beforeEach(() => {
   jest.clearAllMocks();
   clearOwnerIndexUnavailable();
-  jest.useFakeTimers({ advanceTimers: true });
-});
-
-afterEach(() => {
-  jest.useRealTimers();
 });
 
 describe('useDriveLayoutInit postDriveInitializeWithRetry', () => {
-  it('does not keep polling /status after a successful initialize POST', async () => {
+  it('polls /status after 202 until complete, without a request storm', async () => {
     ownerFetch.mockResolvedValue({
       ok: true,
-      status: 200,
+      status: 202,
       text: async () => '',
-      json: async () => ({ success: true }),
+      json: async () => ({ success: true, initInProgress: true }),
     });
     ownerGet.mockImplementation(async (_token: string, path: string) => {
       if (path.includes('/status')) {
         return {
           ok: true,
           json: async () => ({
-            inFlight: true,
-            progress: { phase: 'creating', stepLabel: 'Creating…', percent: 40 },
+            inFlight: false,
+            complete: true,
+            failed: false,
+            progress: { phase: 'complete', stepLabel: 'Storage ready', percent: 100 },
           }),
         };
       }
@@ -80,10 +75,47 @@ describe('useDriveLayoutInit postDriveInitializeWithRetry', () => {
       String(call[1]).includes('/owner-index/')
     );
 
-    // At most a couple of progress ticks during the POST — never a 90s post-completion storm.
+    // First status poll is immediate; complete ends the loop — no 90s storm.
+    expect(statusCalls.length).toBeGreaterThanOrEqual(1);
     expect(statusCalls.length).toBeLessThanOrEqual(3);
     expect(ownerIndexCalls.length).toBeGreaterThanOrEqual(1);
     expect(ownerIndexCalls.length).toBeLessThanOrEqual(4);
+  });
+
+  it('treats legacy sync 200 with folder ids as done without status polls', async () => {
+    ownerFetch.mockResolvedValue({
+      ok: true,
+      status: 200,
+      text: async () => '',
+      json: async () => ({
+        success: true,
+        metadataFolderId: 'meta',
+        pnFolderId: 'pn-folder',
+      }),
+    });
+    ownerGet.mockImplementation(async (_token: string, path: string) => {
+      if (path.includes('/owner-index/')) {
+        return { ok: true, status: 200, json: async () => ({ entries: [] }) };
+      }
+      return { ok: false, status: 404, json: async () => ({}) };
+    });
+
+    const setError = jest.fn();
+    const { result } = renderHook(() => useDriveLayoutInit({ setError }));
+
+    let ok = false;
+    await act(async () => {
+      ok = await result.current.postDriveInitializeWithRetry(PN_ID, OWNER_TOKEN, {
+        googleAccessToken: GOOGLE_TOKEN,
+        maxAttempts: 1,
+      });
+    });
+
+    expect(ok).toBe(true);
+    const statusCalls = ownerGet.mock.calls.filter((call) =>
+      String(call[1]).includes('/status')
+    );
+    expect(statusCalls.length).toBe(0);
   });
 
   it('does not retry non-transient initialize failures', async () => {

@@ -1,5 +1,6 @@
 /**
- * In-memory Drive init progress for dashboard polling during POST /storage/initialize.
+ * In-memory Drive init progress for dashboard polling via GET .../initialize/.../status.
+ * Survives after POST returns 202 so clients can observe phase/percent until complete/failed TTL.
  */
 
 import { normalizePnIdentifier } from './integratorStoragePaths';

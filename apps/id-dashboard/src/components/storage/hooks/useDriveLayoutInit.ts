@@ -6,15 +6,19 @@
  * when the API has no Google secrets *and* no forwarded token. With
  * `googleAccessToken` (device custody), initialize is required and failures surface.
  *
- * POST /api/storage/initialize awaits the full server init before responding.
- * Do **not** poll `/status` while waiting — that stormed ~1 request / 5s for minutes
- * (and each poll hit gateOwnerRoute → RecoveryDrive soft-warn under custody).
- * Progress UI is client-local (phase labels + elapsed time) until the POST settles.
+ * POST /api/storage/initialize returns 202 and runs Drive work in the background
+ * (proxies time out long sync awaits). Client polls GET .../status infrequently
+ * (~15s) with the forwarded cloud token until complete/failed.
  */
 import React, { useState } from 'react';
 import { ownerFetch, ownerGet } from '../../../services/ownerApiService';
 import { sleep } from '../../../utils/helpers';
 import type { DriveSetupProgress } from '../FileStorageAggregatorTypes';
+
+/** Infrequent enough to avoid RecoveryDrive soft-warn storms under custody. */
+const STATUS_POLL_MS = 15_000;
+/** Drive layout builds can take several minutes after a wipe. */
+const STATUS_MAX_WAIT_MS = 10 * 60_000;
 
 export interface UseDriveLayoutInitParams {
   setError: React.Dispatch<React.SetStateAction<string | null>>;
@@ -60,6 +64,9 @@ export function useDriveLayoutInit({ setError }: UseDriveLayoutInitParams) {
       const maxAttempts = options?.maxAttempts ?? 3;
       const onProgress = options?.onProgress;
       const googleAccessToken = options?.googleAccessToken?.trim() || '';
+      const cloudInit = googleAccessToken
+        ? { extraHeaders: { 'X-PN-Cloud-Access-Token': googleAccessToken } }
+        : {};
 
       // Custody with a forwarded Google token can recover from a prior soft-skip this session.
       if (googleAccessToken) {
@@ -89,7 +96,7 @@ export function useDriveLayoutInit({ setError }: UseDriveLayoutInitParams) {
           const idxRes = await ownerGet(
             accessToken,
             `/api/storage/owner-index/${encodeURIComponent(normalized)}`,
-            { pnIdentifier: normalized }
+            { pnIdentifier: normalized, ...cloudInit }
           );
           if (idxRes.ok) {
             clearOwnerIndexUnavailable(normalized);
@@ -111,6 +118,104 @@ export function useDriveLayoutInit({ setError }: UseDriveLayoutInitParams) {
         return false;
       };
 
+      const pollInitStatusUntilSettled = async (): Promise<'complete' | 'failed' | 'timeout'> => {
+        const deadline = Date.now() + STATUS_MAX_WAIT_MS;
+        while (Date.now() < deadline) {
+          try {
+            const statusRes = await ownerGet(
+              accessToken,
+              `/api/storage/initialize/${encodeURIComponent(normalized)}/status`,
+              { pnIdentifier: normalized, ...cloudInit }
+            );
+            if (statusRes.ok) {
+              const body = (await statusRes.json()) as {
+                inFlight?: boolean;
+                complete?: boolean;
+                failed?: boolean;
+                progress?: DriveSetupProgress | null;
+              };
+              if (body.progress && typeof body.progress.percent === 'number') {
+                applyProgress({
+                  phase: body.progress.phase || 'folders',
+                  stepLabel:
+                    body.progress.stepLabel ||
+                    'Building Drive folders and sheets (this can take a few minutes)…',
+                  percent: body.progress.percent,
+                  updatedAt: body.progress.updatedAt,
+                });
+              } else if (body.inFlight) {
+                applyProgress({
+                  phase: 'folders',
+                  stepLabel: 'Building Drive folders and sheets (this can take a few minutes)…',
+                  percent: Math.max(driveSetupProgressRef.current?.percent ?? 15, 15),
+                });
+              }
+              if (body.complete || body.progress?.phase === 'complete') {
+                return 'complete';
+              }
+              if (body.failed || body.progress?.phase === 'failed') {
+                return 'failed';
+              }
+            }
+          } catch {
+            /* transient network — keep polling */
+          }
+          await sleep(STATUS_POLL_MS);
+        }
+        return 'timeout';
+      };
+
+      const finishSuccessfulInit = async (): Promise<true> => {
+        applyProgress({
+          phase: 'finishing',
+          stepLabel: 'Confirming storage index…',
+          percent: 95,
+        });
+        await waitForOwnerIndexReady();
+
+        driveLayoutInitJustCompletedRef.current.set(normalized, Date.now());
+        clearDriveSetupProgress();
+        const { clearOwnerIndexUnavailable } = await import(
+          '../../../services/storage/ownerIndexAvailability'
+        );
+        const {
+          isMetadataSheetsUnavailable,
+          clearMetadataSheetsUnavailable,
+        } = await import('../../../services/storage/metadataSheetsAvailability');
+        const wasSheetsBlocked = isMetadataSheetsUnavailable(normalized);
+        clearOwnerIndexUnavailable(normalized);
+        clearMetadataSheetsUnavailable(normalized);
+        if (wasSheetsBlocked) {
+          try {
+            const { publishCloudDriveReady } = await import('@par-noir/device-cloud-credentials');
+            const { API_ENDPOINT } = await import('../../../config/api');
+            await publishCloudDriveReady({
+              authToken: accessToken,
+              pnIdentifier: normalized,
+              apiEndpoint: API_ENDPOINT,
+            });
+          } catch {
+            /* non-DOM */
+          }
+        }
+        console.log('✅ [StorageCredentials] Drive layout built on server');
+        try {
+          const { reconcileOwnerPublicAggregator } = await import(
+            '../../../services/ownerPublicReconcile'
+          );
+          const result = await reconcileOwnerPublicAggregator({
+            pnIdentifier: normalized,
+            googleAccessToken: options?.googleAccessToken,
+          });
+          if (result.removed > 0 || result.checked > 0) {
+            console.log('🧹 [Storage] Owner public aggregator reconcile', result);
+          }
+        } catch (reconcileErr) {
+          console.warn('⚠️ [Storage] Owner public reconcile skipped', reconcileErr);
+        }
+        return true;
+      };
+
       let lastError: Error | null = null;
       try {
         for (let attempt = 1; attempt <= maxAttempts; attempt++) {
@@ -120,16 +225,8 @@ export function useDriveLayoutInit({ setError }: UseDriveLayoutInitParams) {
             percent: 5,
           });
 
-          // Local heartbeat only — no /status API loop (POST already awaits full init).
-          const progressHeartbeat = setInterval(() => {
-            applyProgress({
-              phase: 'folders',
-              stepLabel: 'Building Drive folders and sheets (this can take a few minutes)…',
-              percent: 40,
-            });
-          }, 15_000);
-
-          let initRes: Response;
+          let initRes: Response | null = null;
+          let postNetworkFailed = false;
           try {
             initRes = await ownerFetch(
               accessToken,
@@ -138,19 +235,43 @@ export function useDriveLayoutInit({ setError }: UseDriveLayoutInitParams) {
               undefined,
               {
                 pnIdentifier: normalized,
-                ...(googleAccessToken
-                  ? { extraHeaders: { 'X-PN-Cloud-Access-Token': googleAccessToken } }
-                  : {})
+                ...cloudInit,
               }
             );
           } catch (err) {
-            clearInterval(progressHeartbeat);
+            postNetworkFailed = true;
             lastError = err instanceof Error ? err : new Error(String(err));
+          }
+
+          // Proxy 502 / CORS (no ACAO on error) — init may still be running server-side.
+          const proxyTimedOut =
+            postNetworkFailed ||
+            (initRes != null && (initRes.status === 502 || initRes.status === 504));
+
+          if (proxyTimedOut) {
+            applyProgress({
+              phase: 'folders',
+              stepLabel: 'Building Drive folders and sheets (this can take a few minutes)…',
+              percent: 20,
+            });
+            const settled = await pollInitStatusUntilSettled();
+            if (settled === 'complete') {
+              return finishSuccessfulInit();
+            }
+            if (settled === 'failed') {
+              lastError = new Error('Drive layout init failed on server');
+              if (attempt >= maxAttempts) break;
+              await sleep(2000 * attempt);
+              continue;
+            }
+            lastError = new Error('Drive layout init timed out waiting for status');
+            break;
+          }
+
+          if (!initRes) {
             if (attempt >= maxAttempts) break;
             await sleep(2000 * attempt);
             continue;
-          } finally {
-            clearInterval(progressHeartbeat);
           }
 
           if (!initRes.ok) {
@@ -181,55 +302,43 @@ export function useDriveLayoutInit({ setError }: UseDriveLayoutInitParams) {
             continue;
           }
 
-          // POST already awaited full init. One short owner-index confirm — no /status loop.
-          applyProgress({
-            phase: 'finishing',
-            stepLabel: 'Confirming storage index…',
-            percent: 95,
-          });
-          await waitForOwnerIndexReady();
-
-          driveLayoutInitJustCompletedRef.current.set(normalized, Date.now());
-          clearDriveSetupProgress();
-          const { clearOwnerIndexUnavailable } = await import(
-            '../../../services/storage/ownerIndexAvailability'
-          );
-          const {
-            isMetadataSheetsUnavailable,
-            clearMetadataSheetsUnavailable,
-          } = await import('../../../services/storage/metadataSheetsAvailability');
-          const wasSheetsBlocked = isMetadataSheetsUnavailable(normalized);
-          clearOwnerIndexUnavailable(normalized);
-          clearMetadataSheetsUnavailable(normalized);
-          if (wasSheetsBlocked) {
-            try {
-              const { publishCloudDriveReady } = await import('@par-noir/device-cloud-credentials');
-              const { API_ENDPOINT } = await import('../../../config/api');
-              await publishCloudDriveReady({
-                authToken: accessToken,
-                pnIdentifier: normalized,
-                apiEndpoint: API_ENDPOINT
-              });
-            } catch {
-              /* non-DOM */
-            }
-          }
-          console.log('✅ [StorageCredentials] Drive layout built on server');
+          // Legacy sync API returned folder ids on 200; new API returns 202 + background work.
+          let body: {
+            initInProgress?: boolean;
+            metadataFolderId?: string;
+            pnFolderId?: string;
+          } = {};
           try {
-            const { reconcileOwnerPublicAggregator } = await import(
-              '../../../services/ownerPublicReconcile'
-            );
-            const result = await reconcileOwnerPublicAggregator({
-              pnIdentifier: normalized,
-              googleAccessToken: options?.googleAccessToken,
-            });
-            if (result.removed > 0 || result.checked > 0) {
-              console.log('🧹 [Storage] Owner public aggregator reconcile', result);
-            }
-          } catch (reconcileErr) {
-            console.warn('⚠️ [Storage] Owner public reconcile skipped', reconcileErr);
+            body = (await initRes.json()) as typeof body;
+          } catch {
+            /* empty body */
           }
-          return true;
+
+          const syncDone =
+            initRes.status === 200 &&
+            !body.initInProgress &&
+            Boolean(body.metadataFolderId || body.pnFolderId);
+          if (syncDone) {
+            return finishSuccessfulInit();
+          }
+
+          applyProgress({
+            phase: 'folders',
+            stepLabel: 'Building Drive folders and sheets (this can take a few minutes)…',
+            percent: 15,
+          });
+          const settled = await pollInitStatusUntilSettled();
+          if (settled === 'complete') {
+            return finishSuccessfulInit();
+          }
+          if (settled === 'failed') {
+            lastError = new Error('Drive layout init failed on server');
+            if (attempt >= maxAttempts) break;
+            await sleep(2000 * attempt);
+            continue;
+          }
+          lastError = new Error('Drive layout init timed out waiting for status');
+          break;
         }
 
         console.warn('⚠️ [StorageCredentials] Drive layout build failed after retries:', lastError);

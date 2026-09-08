@@ -328,43 +328,36 @@ export function setupStorageCredentialsRoutes(app: Application, deps: StorageCre
 
         console.log(`[StorageInitialize POST] Re-initializing folder structure for identityId: ${sanitizedIdentityId}`);
 
-        try {
-          const { runDriveInitOnce } = await import('../driveInitCoordinator');
-          const { withGoogleRetry } = await import('../googleApiRetry');
-          const { metadataFolderId, pnFolderId } = await withGoogleRetry(
+        // Do not await Drive layout here — proxies (Railway) time out long sync POSTs
+        // with 502 and no CORS headers. Start work, return 202; client polls /status.
+        const { runDriveInitOnce } = await import('../driveInitCoordinator');
+        const { withGoogleRetry } = await import('../googleApiRetry');
+        const work = runDriveInitOnce(pnIdentifier, () =>
+          withGoogleRetry(
             'driveInitFull',
             () =>
-              runDriveInitOnce(pnIdentifier, () =>
-                initializeGoogleDriveStorage(
-                  token,
-                  pnIdentifier,
-                  accountId,
-                  credentials.credentials as Record<string, unknown>,
-                  sanitizedIdentityId,
-                  `[StorageInitialize POST]`
-                )
+              initializeGoogleDriveStorage(
+                token,
+                pnIdentifier,
+                accountId,
+                credentials.credentials as Record<string, unknown>,
+                sanitizedIdentityId,
+                `[StorageInitialize POST]`
               ),
             3
-          );
+          )
+        );
+        void work.catch((initError: unknown) => {
+          const msg = initError instanceof Error ? initError.message : String(initError);
+          console.error(`[StorageInitialize POST] Background init failed:`, msg);
+        });
 
-          return res.json({
-            success: true,
-            message: 'Google Drive folder structure initialized successfully',
-            identityId: pnIdentifier,
-            metadataFolderId,
-            pnFolderId
-          });
-        } catch (initError: any) {
-          console.error(`[StorageInitialize POST] Failed to initialize:`, initError);
-          const { isRetryableGoogleError } = await import('../googleApiRetry');
-          const retryable = isRetryableGoogleError(initError);
-          return res.status(retryable ? 503 : 500).json({
-            error: 'Failed to initialize Google Drive folder structure',
-            message: initError.message || String(initError),
-            retryable,
-            details: 'Check Railway logs for more details'
-          });
-        }
+        return res.status(202).json({
+          success: true,
+          initInProgress: true,
+          identityId: pnIdentifier,
+          message: 'Google Drive folder structure initialization started',
+        });
       } catch (error: any) {
         console.error('Error in storage initialize endpoint:', error);
         return res.status(500).json({
@@ -396,11 +389,25 @@ export function setupStorageCredentialsRoutes(app: Application, deps: StorageCre
 
         const progress = getDriveInitProgress(pnIdentifier);
         const inFlight = isDriveInitInFlight(pnIdentifier) || isDriveInitProgressActive(pnIdentifier);
+        let complete = progress?.phase === 'complete';
+        const failed = progress?.phase === 'failed';
+
+        // After progress TTL clears, still report complete when the persisted index is ready.
+        if (!inFlight && !complete && !failed) {
+          try {
+            const { loadPnDriveIndex, isPnDriveIndexComplete } = await import('../pnDriveIndex');
+            complete = isPnDriveIndexComplete(await loadPnDriveIndex(pnIdentifier));
+          } catch {
+            /* index unread — leave complete false */
+          }
+        }
 
         return res.json({
           identityId: pnIdentifier,
           inFlight,
           progress,
+          complete,
+          failed,
         });
       } catch (error: unknown) {
         console.error('Error in storage initialize status endpoint:', error);
