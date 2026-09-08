@@ -370,8 +370,83 @@ export function companionToPublicMetadata(companion: any, creatorDid?: string): 
   };
 }
 
+function inferContentClassFromEntry(fileEntry: any): ContentClassFolder | null {
+  if (!fileEntry) return null;
+  const metadataAny = fileEntry as any;
+  const cc = metadataAny.contentClass;
+  if (cc === 'thought' || cc === 'thoughts') return 'thoughts';
+  if (cc === 'collection' || cc === 'collections') return 'collections';
+  if (cc === 'media') return 'media';
+  if (metadataAny.collection?.collectionFileIds?.length || metadataAny.collectionFileIds?.length) {
+    return 'collections';
+  }
+  if (metadataAny.isThoughtThumbnail || metadataAny.thought || metadataAny.textPost) {
+    return 'thoughts';
+  }
+  return 'media';
+}
+
+async function removeFromContentClassOwnerSheets(
+  token: DriveToken,
+  accessToken: string,
+  pnIdentifier: string,
+  metadataFolderId: string,
+  fileId: string,
+  contentTypeFolderName: ContentClassFolder,
+  accountId?: string
+): Promise<boolean> {
+  const contentTypeFolderQuery = `name='${contentTypeFolderName}' and '${metadataFolderId}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`;
+  const contentTypeFolderResponse = await fetch(
+    `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(contentTypeFolderQuery)}&fields=files(id)&pageSize=1`,
+    { headers: { Authorization: `Bearer ${accessToken}` } }
+  );
+  if (!contentTypeFolderResponse.ok) return false;
+  const contentTypeFolderData = (await contentTypeFolderResponse.json()) as {
+    files?: Array<{ id: string }>;
+  };
+  if (!contentTypeFolderData.files?.length) return false;
+
+  const contentTypeFolderId = contentTypeFolderData.files[0].id;
+  const contentClassIndex = await getContentClassOwnerIndex(
+    token,
+    contentTypeFolderId,
+    pnIdentifier,
+    contentTypeFolderName,
+    accountId
+  );
+  if (!contentClassIndex?.files) return false;
+
+  const before = contentClassIndex.files.length;
+  contentClassIndex.files = contentClassIndex.files.filter(
+    (f: any) => f.googleDriveFileId !== fileId && f.fileId !== fileId
+  );
+  if (contentClassIndex.files.length === before) return false;
+
+  contentClassIndex.updatedAt = new Date().toISOString();
+  const { IndexSheetsService } = await import('../indexSheetsService');
+  const ownerSheetId = await IndexSheetsService.getIndexSheet(
+    token,
+    contentTypeFolderId,
+    'owner',
+    pnIdentifier,
+    accountId,
+    contentTypeFolderName
+  );
+  await IndexSheetsService.setAllFiles(
+    token,
+    ownerSheetId,
+    contentClassIndex.files,
+    pnIdentifier,
+    accountId,
+    contentClassIndex.updatedAt,
+    'owner'
+  );
+  return true;
+}
+
 /**
- * Remove file from owner index
+ * Remove file from owner index (root + content-class Sheets).
+ * Content-class sheets are SoT for modern inventory — do not early-return when root lacks the row.
  */
 export async function removeFromOwnerIndex(
   token: DriveToken,
@@ -380,86 +455,73 @@ export async function removeFromOwnerIndex(
   fileId: string,
   accountId?: string
 ): Promise<void> {
-  const accessToken = token.access_token; // Keep for backward compatibility in fetch calls
-  // Get existing owner index
+  const accessToken = token.access_token;
   const index = await getOwnerFileIndex(token, metadataFolderId, pnIdentifier, accountId);
 
-  if (!index || !index.files) {
-    // No index or no files, nothing to remove
-    return;
-  }
+  let contentClass: ContentClassFolder | null = null;
+  if (index?.files) {
+    const fileEntry = index.files.find(
+      (f: any) => f.googleDriveFileId === fileId || f.fileId === fileId
+    );
+    contentClass = inferContentClassFromEntry(fileEntry);
 
-  // Find the file to determine its contentClass
-  const fileEntry = index.files.find((f: any) => f.googleDriveFileId === fileId || f.fileId === fileId);
-  let contentClass: string | null = null;
-  if (fileEntry) {
-    // Try to determine contentClass from file entry
-    const metadataAny = fileEntry as any;
-    if (metadataAny.collection?.collectionFileIds?.length) {
-      contentClass = 'collection';
-    } else if (metadataAny.isThoughtThumbnail || metadataAny.thought || metadataAny.textPost) {
-      contentClass = 'thought';
-    } else {
-      contentClass = 'media';
+    const initialLength = index.files.length;
+    index.files = index.files.filter(
+      (f: any) => f.googleDriveFileId !== fileId && f.fileId !== fileId
+    );
+
+    if (index.files.length !== initialLength) {
+      index.updatedAt = new Date().toISOString();
+      const { IndexSheetsService } = await import('../indexSheetsService');
+      const ownerSheetId = await IndexSheetsService.getIndexSheet(
+        token,
+        metadataFolderId,
+        'owner',
+        pnIdentifier,
+        accountId
+      );
+      await IndexSheetsService.setAllFiles(
+        token,
+        ownerSheetId,
+        index.files,
+        pnIdentifier,
+        accountId,
+        index.updatedAt,
+        'owner'
+      );
     }
   }
 
-  // Remove file from root index
-  const initialLength = index.files.length;
-  index.files = index.files.filter((f: any) => f.googleDriveFileId !== fileId && f.fileId !== fileId);
-
-  if (index.files.length === initialLength) {
-    // File wasn't in the index, nothing to do
-    return;
-  }
-
-  index.updatedAt = new Date().toISOString();
-
-  // Save updated root index (Sheets)
-  const { IndexSheetsService } = await import('../indexSheetsService');
-  const ownerSheetId = await IndexSheetsService.getIndexSheet(token, metadataFolderId, 'owner', pnIdentifier, accountId);
-  await IndexSheetsService.setAllFiles(token, ownerSheetId, index.files, pnIdentifier, accountId, index.updatedAt, 'owner');
-
-  // Also remove from content class-specific index if we know the contentClass (thought→thoughts, collection→collections)
-  if (contentClass) {
-    const contentTypeFolderName = contentClass === 'thought' ? 'thoughts' : contentClass === 'collection' ? 'collections' : contentClass;
-    const contentTypeFolderQuery = `name='${contentTypeFolderName}' and '${metadataFolderId}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`;
-    const contentTypeFolderResponse = await fetch(
-      `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(contentTypeFolderQuery)}&fields=files(id)&pageSize=1`,
-      {
-        headers: {
-          'Authorization': `Bearer ${accessToken}`
-        }
-      }
-    );
-
-    if (contentTypeFolderResponse.ok) {
-      const contentTypeFolderData = await contentTypeFolderResponse.json() as { files?: Array<{ id: string }> };
-      if (contentTypeFolderData.files && contentTypeFolderData.files.length > 0) {
-        const contentTypeFolderId = contentTypeFolderData.files[0].id;
-
-        // Get content class-specific owner index
-        const contentClassIndex = await getContentClassOwnerIndex(token, contentTypeFolderId, pnIdentifier, contentTypeFolderName as ContentClassFolder, accountId);
-        if (contentClassIndex && contentClassIndex.files) {
-          const contentClassInitialLength = contentClassIndex.files.length;
-          contentClassIndex.files = contentClassIndex.files.filter(
-            (f: any) => f.googleDriveFileId !== fileId && f.fileId !== fileId
-          );
-
-          if (contentClassIndex.files.length !== contentClassInitialLength) {
-            contentClassIndex.updatedAt = new Date().toISOString();
-            const { IndexSheetsService } = await import('../indexSheetsService');
-            const ownerSheetId = await IndexSheetsService.getIndexSheet(token, contentTypeFolderId, 'owner', pnIdentifier, accountId, contentTypeFolderName as ContentClassFolder);
-            await IndexSheetsService.setAllFiles(token, ownerSheetId, contentClassIndex.files, pnIdentifier, accountId, contentClassIndex.updatedAt, 'owner');
-          }
-        }
-      }
+  // Always scrub content-class sheets (merged GET reads these, not only root).
+  const classesToTry: ContentClassFolder[] = contentClass
+    ? [contentClass]
+    : ['media', 'thoughts', 'collections'];
+  for (const contentTypeFolderName of classesToTry) {
+    try {
+      const removed = await removeFromContentClassOwnerSheets(
+        token,
+        accessToken,
+        pnIdentifier,
+        metadataFolderId,
+        fileId,
+        contentTypeFolderName,
+        accountId
+      );
+      // If we found it in a guessed class, no need to keep scanning.
+      if (removed && !contentClass) break;
+    } catch (err) {
+      safeLogger.warn('[removeFromOwnerIndex] content-class scrub failed', {
+        fileIdHash: hashIdentifier(fileId),
+        contentClass: contentTypeFolderName,
+        error: err instanceof Error ? err.message : String(err),
+      });
     }
   }
 }
 
 /**
- * Remove file from public index
+ * Remove file from public index (root + content-class). Same root early-return bug
+ * as owner: content-class sheets are the merged SoT for public inventory.
  */
 export async function removeFromPublicIndex(
   token: DriveToken,
@@ -469,75 +531,70 @@ export async function removeFromPublicIndex(
   accountId?: string
 ): Promise<void> {
   try {
-  const accessToken = token.access_token; // Keep for backward compatibility in fetch calls
-  // Get existing public index to find the file and determine contentClass
-  const index = await getPublicFileIndex(token, metadataFolderId, pnIdentifier, accountId);
+    const accessToken = token.access_token;
+    const { IndexStorageService } = await import('./indexStorageService');
+    const { isPortableStorageProvider } = await import('./storageProviderUtils');
+    const isPortableRemove = await isPortableStorageProvider(pnIdentifier);
 
-  if (!index || !index.files) {
-    // No index or no files, nothing to remove
-    return;
-  }
+    const index = await getPublicFileIndex(token, metadataFolderId, pnIdentifier, accountId);
+    let contentClass: ContentClassFolder | null = null;
 
-  // Find the file to determine its contentClass
-  const fileEntry = index.files.find((f: any) => f.googleDriveFileId === fileId || f.fileId === fileId);
-  let contentClass: string | null = null;
-  if (fileEntry) {
-    // Try to determine contentClass from file entry
-    const metadataAny = fileEntry as any;
-    if (metadataAny.collection?.collectionFileIds?.length) {
-      contentClass = 'collection';
-    } else if (metadataAny.isThoughtThumbnail || metadataAny.thought || metadataAny.textPost) {
-      contentClass = 'thought';
-    } else {
-      contentClass = 'media';
-    }
-  }
-
-  // Remove file from root index
-  const initialLength = index.files.length;
-  index.files = index.files.filter((f: any) => f.googleDriveFileId !== fileId && f.fileId !== fileId);
-
-  if (index.files.length === initialLength) {
-    // File wasn't in the index, nothing to do
-    return;
-  }
-
-  index.updatedAt = new Date().toISOString();
-
-  const { IndexStorageService } = await import('./indexStorageService');
-  const { isPortableStorageProvider } = await import('./storageProviderUtils');
-  await IndexStorageService.setAllFiles(
-    pnIdentifier,
-    'public',
-    index.files,
-    token,
-    metadataFolderId,
-    accountId,
-    index.updatedAt
-  );
-  const isPortableRemove = await isPortableStorageProvider(pnIdentifier);
-  if (!isPortableRemove) {
-    const { IndexSheetsService } = await import('../indexSheetsService');
-    const publicSheetId = await IndexSheetsService.getIndexSheet(token, metadataFolderId, 'public', pnIdentifier, accountId);
-    await setPublicPermissionOnDriveFile(accessToken, publicSheetId);
-  }
-
-  if (contentClass) {
-    const contentTypeFolderName = contentClass === 'thought' ? 'thoughts' : contentClass === 'collection' ? 'collections' : contentClass;
-    if (isPortableRemove) {
-      const contentClassIndex = await IndexStorageService.getContentClassPublicIndex(
-        pnIdentifier,
-        contentTypeFolderName as ContentClassFolder,
-        token,
-        metadataFolderId,
-        accountId
+    if (index?.files) {
+      const fileEntry = index.files.find(
+        (f: any) => f.googleDriveFileId === fileId || f.fileId === fileId
       );
-      if (contentClassIndex?.files) {
-        const before = contentClassIndex.files.length;
-        contentClassIndex.files = contentClassIndex.files.filter(
-          (f: any) => f.googleDriveFileId !== fileId && f.fileId !== fileId
+      contentClass = inferContentClassFromEntry(fileEntry);
+
+      const initialLength = index.files.length;
+      index.files = index.files.filter(
+        (f: any) => f.googleDriveFileId !== fileId && f.fileId !== fileId
+      );
+
+      if (index.files.length !== initialLength) {
+        index.updatedAt = new Date().toISOString();
+        await IndexStorageService.setAllFiles(
+          pnIdentifier,
+          'public',
+          index.files,
+          token,
+          metadataFolderId,
+          accountId,
+          index.updatedAt
         );
-        if (contentClassIndex.files.length !== before) {
+        if (!isPortableRemove) {
+          const { IndexSheetsService } = await import('../indexSheetsService');
+          const publicSheetId = await IndexSheetsService.getIndexSheet(
+            token,
+            metadataFolderId,
+            'public',
+            pnIdentifier,
+            accountId
+          );
+          await setPublicPermissionOnDriveFile(accessToken, publicSheetId);
+        }
+      }
+    }
+
+    const classesToTry: ContentClassFolder[] = contentClass
+      ? [contentClass]
+      : ['media', 'thoughts', 'collections'];
+
+    for (const contentTypeFolderName of classesToTry) {
+      try {
+        if (isPortableRemove) {
+          const contentClassIndex = await IndexStorageService.getContentClassPublicIndex(
+            pnIdentifier,
+            contentTypeFolderName,
+            token,
+            metadataFolderId,
+            accountId
+          );
+          if (!contentClassIndex?.files) continue;
+          const before = contentClassIndex.files.length;
+          contentClassIndex.files = contentClassIndex.files.filter(
+            (f: any) => f.googleDriveFileId !== fileId && f.fileId !== fileId
+          );
+          if (contentClassIndex.files.length === before) continue;
           contentClassIndex.updatedAt = new Date().toISOString();
           await IndexStorageService.setAllFiles(
             pnIdentifier,
@@ -547,56 +604,69 @@ export async function removeFromPublicIndex(
             metadataFolderId,
             accountId,
             contentClassIndex.updatedAt,
-            contentTypeFolderName as ContentClassFolder
+            contentTypeFolderName
           );
+          if (!contentClass) break;
+          continue;
         }
-      }
-      return;
-    }
-    const contentTypeFolderQuery = `name='${contentTypeFolderName}' and '${metadataFolderId}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`;
-    const contentTypeFolderResponse = await fetch(
-      `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(contentTypeFolderQuery)}&fields=files(id)&pageSize=1`,
-      {
-        headers: {
-          'Authorization': `Bearer ${accessToken}`
-        }
-      }
-    );
 
-    if (contentTypeFolderResponse.ok) {
-      const contentTypeFolderData = await contentTypeFolderResponse.json() as { files?: Array<{ id: string }> };
-      if (contentTypeFolderData.files && contentTypeFolderData.files.length > 0) {
+        const contentTypeFolderQuery = `name='${contentTypeFolderName}' and '${metadataFolderId}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`;
+        const contentTypeFolderResponse = await fetch(
+          `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(contentTypeFolderQuery)}&fields=files(id)&pageSize=1`,
+          { headers: { Authorization: `Bearer ${accessToken}` } }
+        );
+        if (!contentTypeFolderResponse.ok) continue;
+        const contentTypeFolderData = (await contentTypeFolderResponse.json()) as {
+          files?: Array<{ id: string }>;
+        };
+        if (!contentTypeFolderData.files?.length) continue;
+
         const contentTypeFolderId = contentTypeFolderData.files[0].id;
+        const contentClassIndex = await getContentClassPublicIndex(
+          token,
+          contentTypeFolderId,
+          pnIdentifier,
+          contentTypeFolderName,
+          accountId
+        );
+        if (!contentClassIndex?.files) continue;
 
-        const contentClassIndex = await getContentClassPublicIndex(token, contentTypeFolderId, pnIdentifier, contentTypeFolderName as ContentClassFolder, accountId);
-        if (contentClassIndex && contentClassIndex.files) {
-          const contentClassInitialLength = contentClassIndex.files.length;
-          contentClassIndex.files = contentClassIndex.files.filter(
-            (f: any) => f.googleDriveFileId !== fileId && f.fileId !== fileId
-          );
+        const before = contentClassIndex.files.length;
+        contentClassIndex.files = contentClassIndex.files.filter(
+          (f: any) => f.googleDriveFileId !== fileId && f.fileId !== fileId
+        );
+        if (contentClassIndex.files.length === before) continue;
 
-          if (contentClassIndex.files.length !== contentClassInitialLength) {
-            contentClassIndex.updatedAt = new Date().toISOString();
-            await IndexStorageService.setAllFiles(
-              pnIdentifier,
-              'public',
-              contentClassIndex.files,
-              token,
-              metadataFolderId,
-              accountId,
-              contentClassIndex.updatedAt,
-              contentTypeFolderName as ContentClassFolder
-            );
-            if (!isPortableRemove) {
-              const { IndexSheetsService } = await import('../indexSheetsService');
-              const publicSheetId = await IndexSheetsService.getIndexSheet(token, contentTypeFolderId, 'public', pnIdentifier, accountId, contentTypeFolderName as ContentClassFolder);
-              await setPublicPermissionOnDriveFile(accessToken, publicSheetId);
-            }
-          }
-        }
+        contentClassIndex.updatedAt = new Date().toISOString();
+        await IndexStorageService.setAllFiles(
+          pnIdentifier,
+          'public',
+          contentClassIndex.files,
+          token,
+          metadataFolderId,
+          accountId,
+          contentClassIndex.updatedAt,
+          contentTypeFolderName
+        );
+        const { IndexSheetsService } = await import('../indexSheetsService');
+        const publicSheetId = await IndexSheetsService.getIndexSheet(
+          token,
+          contentTypeFolderId,
+          'public',
+          pnIdentifier,
+          accountId,
+          contentTypeFolderName
+        );
+        await setPublicPermissionOnDriveFile(accessToken, publicSheetId);
+        if (!contentClass) break;
+      } catch (err) {
+        safeLogger.warn('[removeFromPublicIndex] content-class scrub failed', {
+          fileIdHash: hashIdentifier(fileId),
+          contentClass: contentTypeFolderName,
+          error: err instanceof Error ? err.message : String(err),
+        });
       }
     }
-  }
   } catch (error) {
     const { isIndexSheetNotFoundError } = await import('../indexSheetsService');
     if (isIndexSheetNotFoundError(error)) {

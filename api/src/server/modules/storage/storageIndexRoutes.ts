@@ -20,6 +20,8 @@ import {
 } from './fileIndexHelpers';
 import {
   loadMergedOwnerIndexFiles,
+  loadOwnerPublicPostgresEntries,
+  mergeInventoryEntries,
   reconcileOwnerInventory,
 } from './ownerInventoryReconcile';
 
@@ -219,12 +221,22 @@ export function setupStorageIndexRoutes(app: Application, deps: StorageIndexRout
           });
         }
 
-        const files = await loadMergedOwnerIndexFiles({
+        const sheetsFiles = await loadMergedOwnerIndexFiles({
           token: resolved,
           pnIdentifier,
           metadataFolderId: out.metadataFolderId,
           accountId,
         });
+        let postgresPublic: Awaited<ReturnType<typeof loadOwnerPublicPostgresEntries>> = [];
+        try {
+          postgresPublic = await loadOwnerPublicPostgresEntries(pnIdentifier);
+        } catch (pgErr) {
+          console.warn(
+            '[OwnerIndexReconcile] Postgres public inventory load failed (continuing with Sheets)',
+            pgErr instanceof Error ? pgErr.message : pgErr
+          );
+        }
+        const files = mergeInventoryEntries(sheetsFiles, postgresPublic);
         const result = await reconcileOwnerInventory({
           token: resolved,
           pnIdentifier,

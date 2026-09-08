@@ -3,6 +3,9 @@
  * purged from Sheets (owner + public) and Postgres. This is the single durable
  * “blob gone ⇒ inventory gone” path. Public aggregator cache sync
  * (reconcilePublicAggregator) remains Postgres ↔ public Sheets only.
+ *
+ * Browse feed is Postgres-backed — reconcile unions Sheets owner-index with this
+ * owner's public aggregator_* rows so feed orphans are not left behind.
  */
 
 import {
@@ -19,6 +22,8 @@ export interface OwnerIndexEntry {
   backendFileId?: string;
   mainFileId?: string;
   thumbnailFileId?: string;
+  publicContentObjectId?: string;
+  publicContentRef?: { objectId?: string };
   contentClass?: string;
   isThoughtThumbnail?: boolean;
   thought?: unknown;
@@ -90,7 +95,6 @@ export async function probeGoogleDriveBlob(
     );
     if (res.status === 404) return 'missing';
     if (res.ok) return 'ok';
-    // 403 with notFound in body is also missing
     if (res.status === 403) {
       try {
         const body = (await res.json()) as { error?: { errors?: Array<{ reason?: string }> } };
@@ -114,19 +118,28 @@ export async function probeGoogleDriveBlob(
   }
 }
 
-function blobIdForEntry(entry: OwnerIndexEntry): string | null {
-  const id = entry.googleDriveFileId || entry.backendFileId;
-  return typeof id === 'string' && id.length > 0 ? id : null;
+function blobIdsToProbe(entry: OwnerIndexEntry): string[] {
+  const ids = new Set<string>();
+  const primary = entry.googleDriveFileId || entry.backendFileId;
+  if (primary) ids.add(primary);
+  const contentRef =
+    entry.publicContentObjectId ||
+    (typeof entry.publicContentRef?.objectId === 'string' ? entry.publicContentRef.objectId : undefined);
+  if (contentRef) ids.add(contentRef);
+  return [...ids];
 }
 
-function inventoryIdsToPurge(entry: OwnerIndexEntry, blobId: string): string[] {
-  const ids = new Set<string>();
-  ids.add(blobId);
+function inventoryIdsToPurge(entry: OwnerIndexEntry, probedMissing: string[]): string[] {
+  const ids = new Set<string>(probedMissing);
   if (entry.fileId) ids.add(entry.fileId);
   if (entry.googleDriveFileId) ids.add(entry.googleDriveFileId);
   if (entry.backendFileId) ids.add(entry.backendFileId);
   if (entry.mainFileId) ids.add(entry.mainFileId);
   if (entry.thumbnailFileId) ids.add(entry.thumbnailFileId);
+  const contentRef =
+    entry.publicContentObjectId ||
+    (typeof entry.publicContentRef?.objectId === 'string' ? entry.publicContentRef.objectId : undefined);
+  if (contentRef) ids.add(contentRef);
   const collectionIds = entry.collectionFileIds || entry.collection?.collectionFileIds;
   if (Array.isArray(collectionIds)) {
     for (const id of collectionIds) {
@@ -136,8 +149,51 @@ function inventoryIdsToPurge(entry: OwnerIndexEntry, blobId: string): string[] {
   return [...ids];
 }
 
+function entryKey(entry: OwnerIndexEntry): string {
+  return (
+    entry.fileId ||
+    entry.googleDriveFileId ||
+    entry.backendFileId ||
+    entry.publicContentObjectId ||
+    ''
+  );
+}
+
+/** Merge Sheets owner-index with Postgres public rows (dedupe by fileId / blob). */
+export function mergeInventoryEntries(
+  sheetsFiles: OwnerIndexEntry[],
+  postgresPublic: OwnerIndexEntry[]
+): OwnerIndexEntry[] {
+  const byKey = new Map<string, OwnerIndexEntry>();
+
+  const upsert = (entry: OwnerIndexEntry) => {
+    const key = entryKey(entry);
+    if (!key) return;
+    const existing = byKey.get(key);
+    if (!existing) {
+      byKey.set(key, { ...entry });
+      return;
+    }
+    byKey.set(key, {
+      ...existing,
+      ...entry,
+      fileId: existing.fileId || entry.fileId,
+      googleDriveFileId: existing.googleDriveFileId || entry.googleDriveFileId,
+      backendFileId: existing.backendFileId || entry.backendFileId,
+      publicContentObjectId: existing.publicContentObjectId || entry.publicContentObjectId,
+      publicContentRef: existing.publicContentRef || entry.publicContentRef,
+      mainFileId: existing.mainFileId || entry.mainFileId,
+      thumbnailFileId: existing.thumbnailFileId || entry.thumbnailFileId,
+    });
+  };
+
+  for (const e of sheetsFiles) upsert(e);
+  for (const e of postgresPublic) upsert(e);
+  return [...byKey.values()];
+}
+
 /**
- * Probe each owner-index entry's blob; purge inventory for missing blobs.
+ * Probe each inventory entry's blob(s); purge when any required blob is missing.
  * Does not delete live Drive files.
  */
 export async function reconcileOwnerInventory(params: {
@@ -159,8 +215,8 @@ export async function reconcileOwnerInventory(params: {
   const removedFileIds: string[] = [];
 
   for (const entry of files) {
-    const blobId = blobIdForEntry(entry);
-    if (!blobId) {
+    const probeIds = blobIdsToProbe(entry);
+    if (probeIds.length === 0) {
       safeLogger.warn('[ownerInventoryReconcile] skipping entry with no blob id', {
         fileIdHash: entry.fileId ? hashIdentifier(entry.fileId) : undefined,
       });
@@ -168,14 +224,20 @@ export async function reconcileOwnerInventory(params: {
     }
 
     checked++;
-    const status = await probe(blobId);
-    if (status === 'ok') continue;
-    if (status === 'error') {
-      errors++;
+    const missing: string[] = [];
+    let hadError = false;
+    for (const blobId of probeIds) {
+      const status = await probe(blobId);
+      if (status === 'missing') missing.push(blobId);
+      else if (status === 'error') hadError = true;
+    }
+
+    if (missing.length === 0) {
+      if (hadError) errors++;
       continue;
     }
 
-    const ids = inventoryIdsToPurge(entry, blobId);
+    const ids = inventoryIdsToPurge(entry, missing);
     try {
       const result = await purgeInventoryForFileIds({
         token,
@@ -190,15 +252,33 @@ export async function reconcileOwnerInventory(params: {
       }
       removed++;
       if (entry.fileId) removedFileIds.push(entry.fileId);
-      else removedFileIds.push(blobId);
+      else removedFileIds.push(missing[0]);
     } catch (err) {
       errors++;
       safeLogger.warn('[ownerInventoryReconcile] purge failed', {
-        blobIdHash: hashIdentifier(blobId),
+        blobIdHash: hashIdentifier(missing[0]),
         error: err instanceof Error ? err.message : String(err),
       });
     }
   }
 
   return { checked, removed, errors, removedFileIds };
+}
+
+/** Load Postgres public rows for this owner as inventory entries. */
+export async function loadOwnerPublicPostgresEntries(
+  pnIdentifier: string
+): Promise<OwnerIndexEntry[]> {
+  const { AggregatorMetadataServiceDB } = await import('../aggregatorMetadataServiceDB');
+  const rows = await AggregatorMetadataServiceDB.getInstance().listPublicInventoryBlobRefsForUser(
+    pnIdentifier
+  );
+  return rows.map((row) => ({
+    fileId: row.fileId,
+    backendFileId: row.backendFileId,
+    googleDriveFileId: row.googleDriveFileId || row.backendFileId,
+    publicContentObjectId: row.publicContentObjectId,
+    mainFileId: row.mainFileId,
+    thumbnailFileId: row.thumbnailFileId,
+  }));
 }

@@ -1142,6 +1142,60 @@ export class AggregatorMetadataServiceDB {
   }
 
   /**
+   * Public inventory rows for owner reconcile: file id + blob refs to probe.
+   * Browse feed is Postgres-backed — Sheets-only reconcile misses orphans that
+   * remain only in aggregator_* tables.
+   */
+  async listPublicInventoryBlobRefsForUser(pnIdentifier: string): Promise<
+    Array<{
+      fileId: string;
+      backendFileId?: string;
+      googleDriveFileId?: string;
+      publicContentObjectId?: string;
+      mainFileId?: string;
+      thumbnailFileId?: string;
+    }>
+  > {
+    const db = getDatabasePool();
+    const where = AggregatorMetadataServiceDB.PUBLIC_METADATA_WHERE;
+    const tables = this.getAllContentTypeTables();
+    const out: Array<{
+      fileId: string;
+      backendFileId?: string;
+      googleDriveFileId?: string;
+      publicContentObjectId?: string;
+      mainFileId?: string;
+      thumbnailFileId?: string;
+    }> = [];
+
+    for (const table of tables) {
+      const result = await db.query(
+        `SELECT file_id,
+                metadata->>'backendFileId' AS backend_file_id,
+                metadata->>'googleDriveFileId' AS google_drive_file_id,
+                metadata->'publicContentRef'->>'objectId' AS public_content_object_id,
+                metadata->>'mainFileId' AS main_file_id,
+                metadata->>'thumbnailFileId' AS thumbnail_file_id
+         FROM ${table}
+         WHERE pn_identifier = $1 AND ${where}`,
+        [pnIdentifier]
+      );
+      for (const row of result.rows) {
+        if (!row.file_id) continue;
+        out.push({
+          fileId: row.file_id,
+          backendFileId: row.backend_file_id || undefined,
+          googleDriveFileId: row.google_drive_file_id || undefined,
+          publicContentObjectId: row.public_content_object_id || undefined,
+          mainFileId: row.main_file_id || undefined,
+          thumbnailFileId: row.thumbnail_file_id || undefined,
+        });
+      }
+    }
+    return out;
+  }
+
+  /**
    * Get ALL files (public + private) for a specific user
    * Used for authenticated users viewing their own content
    */
