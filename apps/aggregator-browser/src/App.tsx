@@ -539,7 +539,7 @@ function App() {
         if (import.meta.env.DEV) console.warn('Failed to load engagement stats, will retry:', error);
         newFileIds.forEach((id) => loadedEngagementFileIdsRef.current.delete(id));
       });
-    }, 2500);
+    }, 0);
     return () => clearTimeout(timer);
   }, [discoveryEnabled, filteredFilesByFeed.length, currentFeedIndex, activeFeedId, stablePnIdentifier]);
 

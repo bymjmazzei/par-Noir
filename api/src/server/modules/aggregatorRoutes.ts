@@ -120,7 +120,11 @@ export function setupAggregatorRoutes(app: any, deps: AggregatorRouteDeps) {
       if (isDevVerbose()) {
         console.log(`📤 [GET /api/aggregator/metadata-index] Returning ${response.files.length} files`);
       }
-      return res.json(response);
+      const { redactCentralIndexEntryForClient } = await import('./feedPreviewClientRedact');
+      return res.json({
+        ...response,
+        files: (response.files || []).map((f: any) => redactCentralIndexEntryForClient(f)),
+      });
     } catch (error: any) {
       console.error('❌ [GET /api/aggregator/metadata-index] Error:', error);
       return res.status(500).json({ 
@@ -182,7 +186,11 @@ export function setupAggregatorRoutes(app: any, deps: AggregatorRouteDeps) {
       }
 
       console.log(`📤 [GET /api/aggregator/nsfw-index] Returning ${response.files.length} NSFW files`);
-      return res.json(response);
+      const { redactCentralIndexEntryForClient } = await import('./feedPreviewClientRedact');
+      return res.json({
+        ...response,
+        files: (response.files || []).map((f: any) => redactCentralIndexEntryForClient(f)),
+      });
     } catch (error: any) {
       console.error('❌ [GET /api/aggregator/nsfw-index] Error:', error);
       return res.status(500).json({ 
@@ -366,6 +374,18 @@ export function setupAggregatorRoutes(app: any, deps: AggregatorRouteDeps) {
           error: 'Missing required field: fileId after validation',
           requestId
         });
+      }
+
+      {
+        const { validatePublicFeedPreviewRefs } = await import('./feedPreviewClientRedact');
+        const previewCheck = validatePublicFeedPreviewRefs(validatedMetadata as any);
+        if (!previewCheck.ok) {
+          return res.status(400).json({
+            error: previewCheck.error,
+            error_description: 'Public visual media requires CDN feed preview refs',
+            requestId,
+          });
+        }
       }
 
       console.log(`📝 [${requestId}] Submitting metadata for file: ${validatedMetadata.fileId}`);
@@ -1300,7 +1320,12 @@ export function setupAggregatorRoutes(app: any, deps: AggregatorRouteDeps) {
       }
 
       const meta = metadata.metadata || metadata;
-      const out: { metadata: any; pnIdentifier?: string } = { metadata: meta };
+      const { redactFeedPreviewFieldsInMetadata } = await import('./feedPreviewClientRedact');
+      const out: { metadata: any; pnIdentifier?: string } = {
+        metadata: redactFeedPreviewFieldsInMetadata(
+          typeof meta === 'object' && meta ? (meta as unknown as Record<string, unknown>) : {}
+        ),
+      };
       if ((metadata as any).pnIdentifier) {
         out.pnIdentifier = (metadata as any).pnIdentifier;
       }
@@ -1338,6 +1363,9 @@ export function setupAggregatorRoutes(app: any, deps: AggregatorRouteDeps) {
         isPublic,
         publicToken,
         publicContentRef,
+        feedPoster,
+        feedPreviewSd,
+        feedPreviewHd,
         isTopPost,
         textPost,
         thought,
@@ -1531,6 +1559,9 @@ export function setupAggregatorRoutes(app: any, deps: AggregatorRouteDeps) {
             isPublic: createIsPublic,
             ...(publicToken && { publicToken }),
             ...(publicContentRef && { publicContentRef }),
+            ...(feedPoster !== undefined && { feedPoster }),
+            ...(feedPreviewSd !== undefined && { feedPreviewSd }),
+            ...(feedPreviewHd !== undefined && { feedPreviewHd }),
             ...(textPost && { textPost }),
             ...(thought && { thought }),
             ...(collection && { collection }), // Include collection data if provided
@@ -1555,6 +1586,14 @@ export function setupAggregatorRoutes(app: any, deps: AggregatorRouteDeps) {
           // Private files should NOT be in the database (they only exist in Google Drive + companion metadata)
           if (initialMetadata.isPublic === true) {
             try {
+              const { validatePublicFeedPreviewRefs } = await import('./feedPreviewClientRedact');
+              const previewCheck = validatePublicFeedPreviewRefs(initialMetadata);
+              if (!previewCheck.ok) {
+                return res.status(400).json({
+                  error: previewCheck.error,
+                  error_description: 'Public visual media requires CDN feed preview refs',
+                });
+              }
               // Repeat infringer: block making new content public
               const { isRepeatInfringer } = await import('./repeatInfringerService');
               if (await isRepeatInfringer(userIdentifier)) {
@@ -1658,6 +1697,9 @@ export function setupAggregatorRoutes(app: any, deps: AggregatorRouteDeps) {
             isPublic: createIsPublic,
             ...(publicToken && { publicToken }),
             ...(publicContentRef && { publicContentRef }),
+            ...(feedPoster !== undefined && { feedPoster }),
+            ...(feedPreviewSd !== undefined && { feedPreviewSd }),
+            ...(feedPreviewHd !== undefined && { feedPreviewHd }),
             ...(textPost && { textPost }),
             ...(thought && { thought }),
             ...(collection && { collection }), // Include collection data if provided
@@ -1681,6 +1723,14 @@ export function setupAggregatorRoutes(app: any, deps: AggregatorRouteDeps) {
           // Private files should NOT be in the database (they only exist in Google Drive + companion metadata)
           if (minimalMetadata.isPublic === true) {
             try {
+              const { validatePublicFeedPreviewRefs } = await import('./feedPreviewClientRedact');
+              const previewCheck = validatePublicFeedPreviewRefs(minimalMetadata);
+              if (!previewCheck.ok) {
+                return res.status(400).json({
+                  error: previewCheck.error,
+                  error_description: 'Public visual media requires CDN feed preview refs',
+                });
+              }
               const userIdentifier = tokenPayload.pnIdentifier || tokenPayload.did;
               // Repeat infringer (timeout) and DMCA gate - same as initial-metadata path
               const { isRepeatInfringer } = await import('./repeatInfringerService');
@@ -2480,6 +2530,33 @@ export function setupAggregatorRoutes(app: any, deps: AggregatorRouteDeps) {
         const { rejectUnsafePublicContentRefWrite } = await import('./publicRowGuard');
         if (await rejectUnsafePublicContentRefWrite(res, publicContentRef)) return;
       }
+
+      {
+        const existingMeta = current?.metadata as Record<string, unknown> | undefined;
+        const willBePublic =
+          (finalIsPublic !== undefined ? finalIsPublic : isPublic) === true ||
+          ((finalIsPublic === undefined && isPublic === undefined) &&
+            (existingMeta?.isPublic === true || existingMeta?.isPublic === 'true'));
+        if (willBePublic) {
+          const { validatePublicFeedPreviewRefs } = await import('./feedPreviewClientRedact');
+          const previewCheck = validatePublicFeedPreviewRefs({
+            isPublic: true,
+            fileType: determinedFileTypeForUpdate || (existingMeta?.fileType as string),
+            name: name || (existingMeta?.name as string),
+            title: title || (existingMeta?.title as string),
+            feedPoster: feedPoster !== undefined ? feedPoster : existingMeta?.feedPoster,
+            feedPreviewSd: feedPreviewSd !== undefined ? feedPreviewSd : existingMeta?.feedPreviewSd,
+            feedPreviewHd: feedPreviewHd !== undefined ? feedPreviewHd : existingMeta?.feedPreviewHd,
+          });
+          if (!previewCheck.ok) {
+            return res.status(400).json({
+              error: previewCheck.error,
+              error_description: 'Public visual media requires CDN feed preview refs',
+            });
+          }
+        }
+      }
+
       const updated = await service.updateMetadata(actualFileId, {
         name,
         title,
@@ -2501,6 +2578,9 @@ export function setupAggregatorRoutes(app: any, deps: AggregatorRouteDeps) {
         isPublic: finalIsPublic !== undefined ? finalIsPublic : isPublic,
         publicToken, // Include publicToken from request body (null = delete, undefined = preserve)
         publicContentRef, // null = delete, undefined = preserve
+        feedPoster,
+        feedPreviewSd,
+        feedPreviewHd,
         subjects,
         feedCategories,
         thumbnailFileId,
@@ -3016,7 +3096,19 @@ export function setupAggregatorRoutes(app: any, deps: AggregatorRouteDeps) {
       console.log(
         `[MetadataIndex PUT] Completed for ${fileId} in ${Date.now() - putStartedAt}ms`
       );
-      return res.json({ success: true, metadata: result });
+      const { redactFeedPreviewFieldsInMetadata } = await import('./feedPreviewClientRedact');
+      const resultMeta =
+        result && typeof result === 'object' && 'metadata' in (result as any)
+          ? {
+              ...(result as any),
+              metadata: redactFeedPreviewFieldsInMetadata(
+                ((result as any).metadata || {}) as Record<string, unknown>
+              ),
+            }
+          : result && typeof result === 'object'
+            ? redactFeedPreviewFieldsInMetadata(result as unknown as Record<string, unknown>)
+            : result;
+      return res.json({ success: true, metadata: resultMeta });
     } catch (error: any) {
       console.error('Error updating metadata:', error);
       return res.status(500).json({ 

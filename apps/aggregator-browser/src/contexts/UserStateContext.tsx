@@ -46,6 +46,16 @@ export interface UserState {
   isUnlocked: boolean;
   pnIdentifier?: string;
   preferences: UserPreferences;
+  /** From GET /api/users/:pn/verification-status */
+  identityVerified?: boolean;
+  publishPlanId?: string;
+  publishPlan?: {
+    maxDurationSec: number;
+    allowHd: boolean;
+    uploadBytesUsed: number;
+    uploadBytesLimit: number;
+    softDegraded: boolean;
+  };
 }
 
 interface UserStateContextType {
@@ -505,6 +515,42 @@ export function UserStateProvider({ children }: { children: ReactNode }) {
       isUnlocked: true,
       pnIdentifier
     }));
+    void (async () => {
+      try {
+        const { API_ENDPOINT } = await import('../config/api');
+        const res = await fetch(
+          `${API_ENDPOINT}/api/users/${encodeURIComponent(pnIdentifier)}/verification-status?planId=floor`
+        );
+        if (!res.ok) return;
+        const data = (await res.json()) as {
+          verified?: boolean;
+          plan?: {
+            planId?: string;
+            maxDurationSec?: number;
+            allowHd?: boolean;
+            uploadBytesUsed?: number;
+            uploadBytesLimit?: number;
+            softDegraded?: boolean;
+          };
+        };
+        setUserState((prev) => ({
+          ...prev,
+          identityVerified: Boolean(data.verified),
+          publishPlanId: data.plan?.planId,
+          publishPlan: data.plan
+            ? {
+                maxDurationSec: data.plan.maxDurationSec ?? 60,
+                allowHd: Boolean(data.plan.allowHd),
+                uploadBytesUsed: data.plan.uploadBytesUsed ?? 0,
+                uploadBytesLimit: data.plan.uploadBytesLimit ?? 0,
+                softDegraded: Boolean(data.plan.softDegraded),
+              }
+            : undefined,
+        }));
+      } catch {
+        /* non-fatal */
+      }
+    })();
   };
 
   const setLocked = () => {

@@ -1,16 +1,17 @@
 /**
  * Thumbnails and video blob state, generation, and preload.
- * Isolates thumbnail/video-asset logic so edits here don't affect discovery or feed filtering.
+ * Public feed media: CDN only (poster / sd via public-media).
  */
 
 import { useState, useRef, useEffect, useCallback } from 'react';
 import type { IndexedFile } from '../types/aggregator';
 import type { MediaDimensions } from '../utils/mediaScaling';
-import type { ShareToken } from '../utils/tokenDecryption';
-import { decryptPublicFeedMedia } from '../utils/publicMediaDecrypt';
 import { createThumbnailFromBlob, createVideoThumbnailFromBlob } from '../utils/thumbnailUtils';
-import { PNOAuthService } from '../services/pnOAuthService';
-import { ownerGet } from '../services/ownerApiFetch';
+import {
+  fetchPublicMediaBlob,
+  hasFeedPreviewPlayback,
+  loadPublicFeedMediaBlob,
+} from '../services/feedPreviewPlayback';
 
 export interface UseThumbnailsAndMediaParams {
   mediaFiles: IndexedFile[];
@@ -79,24 +80,21 @@ export function useThumbnailsAndMedia({
         const isVideo =
           file.fileType === 'video' ||
           !!(file.name || file.title || '').match(/\.(mp4|mov|avi|webm|mkv|flv|wmv)$/i);
-        const hasValidToken =
-          file.publicToken &&
-          typeof file.publicToken === 'string' &&
-          file.publicToken.trim().length > 0;
+        const hasFeedPreview = hasFeedPreviewPlayback(file);
         const hasThumbnailFile = !!file.thumbnailFileId;
         const fileName = (file.name || file.title || '').toLowerCase();
         const isThumbnailFile = fileName.startsWith('thumb_');
 
         if (
           (!isImage && !isVideo) ||
-          !hasValidToken ||
+          !hasFeedPreview ||
           thumbnailsRef.current.has(file.fileId) ||
           generatingThumbnailsRef.current.has(file.fileId) ||
           hasThumbnailFile ||
           isThumbnailFile
         ) {
-          if (hasValidToken === false && (isImage || isVideo) && import.meta.env.DEV) {
-            console.warn(`⚠️ [Feed] Skipping ${file.fileId} - missing or invalid publicToken`);
+          if (!hasFeedPreview && (isImage || isVideo) && import.meta.env.DEV) {
+            console.warn(`[Feed] Skipping ${file.fileId} - missing feed preview refs`);
           }
           return;
         }
@@ -106,20 +104,7 @@ export function useThumbnailsAndMedia({
         setGeneratingThumbnails(next);
 
         try {
-          let token: ShareToken;
-          try {
-            token = typeof file.publicToken === 'string' ? JSON.parse(file.publicToken) : file.publicToken;
-            if (!token || !token.shareKey) throw new Error('Invalid token structure');
-          } catch (e) {
-            if (import.meta.env.DEV) console.error(`❌ [Feed] Failed to parse/validate token for ${file.fileId}:`, e);
-            return;
-          }
-
-          const decryptedBlob = await decryptPublicFeedMedia(
-            file.fileId,
-            token,
-            file.name || file.title
-          );
+          const decryptedBlob = await fetchPublicMediaBlob(file.fileId, 'poster');
           const thumbnailUrl = isVideo
             ? await createVideoThumbnailFromBlob(decryptedBlob, 300, 300)
             : await createThumbnailFromBlob(decryptedBlob, 300, 300);
@@ -153,7 +138,7 @@ export function useThumbnailsAndMedia({
     generateThumbnailsForImagesRef.current = generateThumbnailsForImages;
   }, [generateThumbnailsForImages]);
 
-  // Generate thumbnails when indices change (grid mode only — feed uses viewport decrypt in FullScreenFeed)
+  // Grid mode thumbnails; feed mode uses FullScreenFeed viewport CDN load
   useEffect(() => {
     if (viewMode === 'feed') return;
     if (mediaFiles.length === 0 && thoughtsFiles.length === 0 && collectionsFiles.length === 0) return;
@@ -167,7 +152,7 @@ export function useThumbnailsAndMedia({
     }
   }, [mediaFiles, thoughtsFiles, collectionsFiles, thumbnails, generatingThumbnails, generateThumbnailsForImages, viewMode]);
 
-  // Pre-load video blobs when in grid mode and indices change
+  // Pre-load video blobs in grid mode (CDN sd only)
   useEffect(() => {
     if (viewMode !== 'grid') return;
     const allFiles = [...mediaFiles, ...thoughtsFiles, ...collectionsFiles];
@@ -177,37 +162,10 @@ export function useThumbnailsAndMedia({
         file.fileType === 'video' ||
         !!(file.name || file.title || '').match(/\.(mp4|mov|avi|webm|mkv|flv|wmv)$/i);
       if (!isVideo || videoBlobsRef.current.has(file.fileId)) continue;
-      const isUnencrypted = file.isEncrypted === false;
-      const hasToken = file.publicToken && typeof file.publicToken === 'string' && file.publicToken.trim().length > 0;
-      if (!isUnencrypted && !hasToken) continue;
+      if (!hasFeedPreviewPlayback(file)) continue;
       (async () => {
         try {
-          let videoBlob: Blob;
-          if (isUnencrypted) {
-            const ownerId = indexedFile.pnIdentifier || (file.creator as any)?.identifier?.value || (file as any).author?.did;
-            if (!ownerId) {
-              if (import.meta.env.DEV) console.warn('Cannot pre-load unencrypted video: missing owner identifier');
-              return;
-            }
-            const session = PNOAuthService.loadSession();
-            const accessToken = session?.accessToken;
-            if (!accessToken) return;
-            const backend = file.backend || 'google_drive';
-            const backendFileId = file.backendFileId || file.fileId;
-            const { resolveFileUrl } = await import('../services/storageApiClient');
-            const url = resolveFileUrl(ownerId, backend, backendFileId, file.accountId);
-            const response = await ownerGet(url);
-            if (!response.ok) throw new Error(`Failed to fetch: ${response.status}`);
-            videoBlob = await response.blob();
-          } else {
-            let token: ShareToken;
-            try {
-              token = typeof file.publicToken === 'string' ? JSON.parse(file.publicToken) : file.publicToken;
-            } catch {
-              return;
-            }
-            videoBlob = await decryptPublicFeedMedia(file.fileId, token, file.name || file.title);
-          }
+          const videoBlob = await loadPublicFeedMediaBlob(file.fileId, file as any, { variant: 'sd' });
           const videoUrl = URL.createObjectURL(videoBlob);
           setVideoBlobs((prev) => {
             const n = new Map(prev);

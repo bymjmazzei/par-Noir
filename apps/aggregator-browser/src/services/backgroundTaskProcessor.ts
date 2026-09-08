@@ -188,6 +188,7 @@ async function processShareSettingsUpdate(
   // When making private: revoke envelope link and clear both fields.
   let publicToken: string | undefined = undefined;
   let publicContentRef: PublicContentRef | undefined = undefined;
+  let feedPreviewFields: Record<string, unknown> = {};
   if (makePublic) {
     uploadQueueService.updateTaskProgress(task.id, 20);
 
@@ -236,6 +237,34 @@ async function processShareSettingsUpdate(
       });
       publicToken = published.publicToken;
       publicContentRef = published.publicContentRef;
+
+      // CDN feed previews from decrypted plaintext when visual media
+      const mime = encryptedPackage.metadata?.originalMimeType || '';
+      if (mime.startsWith('image/') || mime.startsWith('video/')) {
+        const { EncryptionManager } = await import('../utils/encryptionManager');
+        const encryptionManager = new EncryptionManager();
+        const decrypted = await encryptionManager.decrypt(
+          encryptedPackage.encrypted,
+          encryptedPackage.iv,
+          encryptedPackage.salt,
+          session.did,
+          session.publicKey
+        );
+        const arrayBuffer = decrypted.buffer.slice(
+          decrypted.byteOffset,
+          decrypted.byteOffset + decrypted.byteLength
+        ) as ArrayBuffer;
+        const blob = new Blob([arrayBuffer], { type: mime });
+        const { publishFeedPreviews } = await import('./feedPreviewPublish');
+        feedPreviewFields = await publishFeedPreviews({
+          file: blob,
+          mimeType: mime,
+          fileId: targetFileId,
+          accessToken,
+          accountId,
+          planId: 'floor',
+        });
+      }
     } catch (tokenError: any) {
       console.error('[BackgroundTaskProcessor] Failed to generate share token:', tokenError);
       throw new Error(`Failed to generate share token: ${tokenError.message}`);
@@ -268,12 +297,16 @@ async function processShareSettingsUpdate(
     }
     updateBody.publicToken = publicToken;
     updateBody.publicContentRef = publicContentRef;
+    Object.assign(updateBody, feedPreviewFields);
   } else if (makePublic !== isCurrentlyPublic) {
     updateBody.isPublic = false;
     updateBody.publicToken = null;
     updateBody.publicContentRef = null;
+    updateBody.feedPoster = null;
+    updateBody.feedPreviewSd = null;
+    updateBody.feedPreviewHd = null;
   }
-  
+
   if (makePublic || isCurrentlyPublic) {
     updateBody.isNSFW = shareNSFW;
   } else if (shareNSFW !== existingIsNSFW) {

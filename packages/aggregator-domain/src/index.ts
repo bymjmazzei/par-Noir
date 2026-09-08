@@ -10,3 +10,4 @@ export * from './volumeIdGenerator';
 export * from './contentNotices';
 export * from './types';
 export * from './centralMetadata';
+export * from './feedPreview';

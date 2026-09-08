@@ -11,7 +11,7 @@ import { useUserState } from '../contexts/UserStateContext';
 import { getUserProfile } from '../services/profileService';
 import { cleanTitle } from '../utils/cleanTitle';
 import { isNSFWContent } from '../constants/contentRatings';
-import { ShareToken } from '../utils/tokenDecryption';
+import { hasFeedPreviewPlayback, fetchPublicMediaBlob } from '../services/feedPreviewPlayback';
 import { sortIndexedFilesForDiscovery } from '../utils/discoverySort';
 
 interface DiscoveryPageProps {
@@ -127,10 +127,9 @@ export function DiscoveryPage({
           return;
         }
 
-        // Get publicToken (REQUIRED - no fallback)
-        const publicToken = indexedFile.publicToken || file.publicToken;
-        if (!publicToken) {
-          if (import.meta.env.DEV) console.warn(`[DiscoveryPage] Thumbnail ${fileId} (${fileName}) has no publicToken - cannot decrypt`);
+        // CDN poster only
+        if (!hasFeedPreviewPlayback(file)) {
+          if (import.meta.env.DEV) console.warn(`[DiscoveryPage] Thumbnail ${fileId} (${fileName}) has no feed preview`);
           processedThumbnailsRef.current.add(fileId);
           setFailedThumbnails((prev) => {
             if (prev.has(fileId)) return prev;
@@ -142,31 +141,9 @@ export function DiscoveryPage({
         }
 
         try {
-          if (import.meta.env.DEV) console.log(`[DiscoveryPage] Loading thumbnail for ${fileId} (${fileName})`);
-          // Parse publicToken
-          let token: ShareToken;
-          try {
-            token = typeof publicToken === 'string' ? JSON.parse(publicToken) : publicToken;
-          } catch (e) {
-            if (import.meta.env.DEV) console.warn(`[DiscoveryPage] Failed to parse token for thumbnail ${fileId}:`, e);
-            processedThumbnailsRef.current.add(fileId);
-            setFailedThumbnails((prev) => {
-              if (prev.has(fileId)) return prev;
-              const next = new Set(prev);
-              next.add(fileId);
-              return next;
-            });
-            return;
-          }
-          
-          // Fetch envelope via blind public-content proxy; decrypt with slim shareKey
-          const { decryptPublicFeedMedia } = await import('../utils/publicMediaDecrypt');
-          const decryptedBlob = await decryptPublicFeedMedia(fileId, token, fileName);
+          const decryptedBlob = await fetchPublicMediaBlob(fileId, 'poster');
           const thumbnailUrlObj = URL.createObjectURL(decryptedBlob);
           
-          if (import.meta.env.DEV) console.log(`[DiscoveryPage] Successfully loaded thumbnail for ${fileId} (${fileName}), blob URL: ${thumbnailUrlObj.substring(0, 50)}...`);
-          
-          // Track this blob URL for cleanup
           createdBlobUrlsRef.current.add(thumbnailUrlObj);
           
           setThumbnails(prev => {
@@ -175,7 +152,7 @@ export function DiscoveryPage({
             return newMap;
           });
         } catch (err) {
-          if (import.meta.env.DEV) console.error(`[DiscoveryPage] Failed to decrypt thumbnail for ${fileId} (${fileName}):`, err);
+          if (import.meta.env.DEV) console.error(`[DiscoveryPage] Failed CDN thumbnail for ${fileId} (${fileName}):`, err);
           setFailedThumbnails((prev) => {
             if (prev.has(fileId)) return prev;
             const next = new Set(prev);
@@ -420,20 +397,10 @@ export function DiscoveryPage({
           
           // If not loaded yet, trigger immediate loading (don't wait for useEffect)
           if (!processedThumbnailsRef.current.has(thumbnailFileId)) {
-            const publicToken = thumbnailFile.publicToken || thumbnailFile.metadata.publicToken;
-            if (publicToken) {
-              // Trigger immediate async load
+            if (hasFeedPreviewPlayback(thumbnailFile.metadata)) {
               (async () => {
                 try {
-                  let token: ShareToken;
-                  try {
-                    token = typeof publicToken === 'string' ? JSON.parse(publicToken) : publicToken;
-                  } catch (e) {
-                    return;
-                  }
-                  
-                  const { decryptPublicFeedMedia } = await import('../utils/publicMediaDecrypt');
-                  const decryptedBlob = await decryptPublicFeedMedia(thumbnailFileId, token);
+                  const decryptedBlob = await fetchPublicMediaBlob(thumbnailFileId, 'poster');
                   const thumbnailUrlObj = URL.createObjectURL(decryptedBlob);
                   
                   createdBlobUrlsRef.current.add(thumbnailUrlObj);

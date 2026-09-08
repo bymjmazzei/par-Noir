@@ -359,7 +359,6 @@ export function useDiscovery({
   }, [activeFeedId]);
 
   useEffect(() => {
-    const becameEnabled = discoveryEnabled && !prevDiscoveryEnabledRef.current;
     prevDiscoveryEnabledRef.current = discoveryEnabled;
 
     if (!discoveryEnabled) return;
@@ -376,7 +375,7 @@ export function useDiscovery({
       if (discoverFilesRef.current && !isDiscoveringRef.current) {
         discoverFilesRef.current(undefined, false, 0, false);
       }
-    }, becameEnabled ? 0 : 500);
+    }, 0);
 
     return () => {
       if (discoverFilesTimeoutRef.current) clearTimeout(discoverFilesTimeoutRef.current);

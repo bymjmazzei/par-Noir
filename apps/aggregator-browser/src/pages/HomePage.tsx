@@ -6,10 +6,9 @@
 import React, { useContext } from 'react';
 import { useStorageConnected } from '../hooks/useStorageConnected';
 import { Search, Filter, User, RefreshCw, Image as ImageIcon } from 'lucide-react';
-import { ShareToken } from '../utils/tokenDecryption';
-import { decryptPublicFeedMedia } from '../utils/publicMediaDecrypt';
 import { calculateMediaScaling } from '../utils/mediaScaling';
 import { saveToFeed } from '../services/savedFeedService';
+import { fetchPublicMediaBlob, hasFeedPreviewPlayback } from '../services/feedPreviewPlayback';
 import { FeedRail } from '../components/FeedRail';
 import { FullScreenFeed } from '../components/FullScreenFeed';
 import { FeedEngagementSidebar } from '../components/FeedEngagementSidebar';
@@ -423,11 +422,9 @@ export function HomePage() {
                   <div
                     className="w-full h-48 bg-neutral-800 flex items-center justify-center relative overflow-hidden group"
                     onMouseEnter={async () => {
-                      if (isVideo && file.publicToken && !videoBlobs.has(file.fileId)) {
+                      if (isVideo && hasFeedPreviewPlayback(file) && !videoBlobs.has(file.fileId)) {
                         try {
-                          let token: ShareToken;
-                          try { token = typeof file.publicToken === 'string' ? JSON.parse(file.publicToken) : file.publicToken; } catch { return; }
-                          const blob = await decryptPublicFeedMedia(file.fileId, token);
+                          const blob = await fetchPublicMediaBlob(file.fileId, 'sd');
                           const url = URL.createObjectURL(blob);
                           setVideoBlobs(prev => { const m = new Map(prev); m.set(file.fileId, url); return m; });
                         } catch (_) {}

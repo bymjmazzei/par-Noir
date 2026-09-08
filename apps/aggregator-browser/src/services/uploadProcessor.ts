@@ -10,6 +10,7 @@ import { getEncryptionService } from './encryptionService';
 import { uploadStorageFile } from './storageApiClient';
 import { ownerFetch } from './ownerApiFetch';
 import { publishPublicShare } from './publicSharePublish';
+import { publishFeedPreviews } from './feedPreviewPublish';
 import type { PublicContentRef, PublicShareGenerationResult } from '@par-noir/aggregator-domain';
 
 interface EncryptedFilePackage {
@@ -299,6 +300,27 @@ async function processFileUpload(
       console.warn('[UploadProcessor] Warning: Public file metadata created without publicToken - thumbnail will not be decryptable in public feed');
     }
 
+    let feedPreviewFields: Record<string, unknown> = {};
+    if (isPublic && (isImage || isVideo)) {
+      try {
+        uploadQueueService.updateTaskProgress(task.id, 92);
+        const previews = await publishFeedPreviews({
+          file,
+          mimeType: file.type,
+          fileId: thumbnailFileId,
+          accessToken,
+          accountId: task.accountId,
+          planId: task.metadata?.publishPlanId || 'floor',
+        });
+        feedPreviewFields = previews;
+      } catch (previewErr) {
+        if (import.meta.env.DEV) console.error('[UploadProcessor] Feed preview publish failed:', previewErr);
+        throw previewErr instanceof Error
+          ? previewErr
+          : new Error('Failed to prepare feed preview');
+      }
+    }
+
     try {
       await createMetadata(thumbnailFileId, {
         name: `thumb_${file.name}`,
@@ -308,6 +330,7 @@ async function processFileUpload(
         fileType: 'image', // Thumbnails are always images
         isPublic: isPublic,
         ...shareFields,
+        ...feedPreviewFields,
         uploadDate: new Date().toISOString(),
         isNSFW: task.metadata?.isNSFW || false,
         mainFileId: fileId,
@@ -328,6 +351,18 @@ async function processFileUpload(
       task.accountId,
       `public-envelope-${fileId}.json`
     );
+    let feedPreviewFields: Record<string, unknown> = {};
+    if (isPublic && (isImage || isVideo)) {
+      const previews = await publishFeedPreviews({
+        file,
+        mimeType: file.type,
+        fileId,
+        accessToken,
+        accountId: task.accountId,
+        planId: task.metadata?.publishPlanId || 'floor',
+      });
+      feedPreviewFields = previews;
+    }
     await createMetadata(fileId, {
       name: file.name,
       description: task.metadata?.description || '',
@@ -336,6 +371,7 @@ async function processFileUpload(
       fileType,
       isPublic,
       ...shareFields,
+      ...feedPreviewFields,
       isEncrypted: mainFileIsEncrypted,
       uploadDate: new Date().toISOString(),
       isNSFW: task.metadata?.isNSFW || false,
@@ -713,7 +749,60 @@ async function processMultiPageUpload(
   if (collectionThumbnailFileId) {
     const page = task.pages![0];
     const titleFromContent = (page.content || '').replace(/<[^>]*>/g, '').split(/\n|<br\s*\/?>/i)[0]?.trim().substring(0, 100) || 'Thought';
-    // Collection page thumbs start private; make-public path materializes envelope later.
+    const isPublic = task.metadata?.isPublic === true;
+    let feedPreviewFields: Record<string, unknown> = {};
+    let shareFields: Record<string, unknown> = {};
+    if (isPublic && thumbnails[0]?.blob) {
+      const share = await publicShareFields(
+        collectionThumbnailShareToken,
+        true,
+        accessToken,
+        task.accountId,
+        `public-envelope-${collectionThumbnailFileId}.json`
+      );
+      shareFields = share;
+      feedPreviewFields = await publishFeedPreviews({
+        file: thumbnails[0].blob,
+        mimeType: 'image/png',
+        fileId: collectionThumbnailFileId,
+        accessToken,
+        accountId: task.accountId,
+        planId: task.metadata?.publishPlanId || 'floor',
+      });
+      // Each page thumb is a collection member — index + CDN poster
+      for (let i = 0; i < thumbnailResults.length; i++) {
+        const pageResult = thumbnailResults[i];
+        const pageBlob = thumbnails[i]?.blob;
+        if (!pageResult.fileId || !pageBlob) continue;
+        const pageShare = await publicShareFields(
+          pageResult.shareToken,
+          true,
+          accessToken,
+          task.accountId,
+          `public-envelope-${pageResult.fileId}.json`
+        );
+        const pagePreviews = await publishFeedPreviews({
+          file: pageBlob,
+          mimeType: 'image/png',
+          fileId: pageResult.fileId,
+          accessToken,
+          accountId: task.accountId,
+          planId: task.metadata?.publishPlanId || 'floor',
+        });
+        await createMetadata(pageResult.fileId, {
+          name: `thumb_${task.metadata?.name || 'thought-collection'}-page-${i + 1}.png`,
+          fileType: 'image',
+          isPublic: true,
+          isThoughtThumbnail: true,
+          isPartOfCollection: true,
+          mainFileId: thoughtFileId,
+          uploadDate: new Date().toISOString(),
+          isNSFW: task.metadata?.isNSFW || false,
+          ...pageShare,
+          ...pagePreviews,
+        }, accessToken);
+      }
+    }
     await createMetadata(collectionThumbnailFileId, {
       name: `thumb_${task.metadata?.name || 'thought-collection'}.png`,
       title: task.metadata?.title || titleFromContent,
@@ -721,19 +810,19 @@ async function processMultiPageUpload(
       keywords: task.metadata?.keywords || task.metadata?.tags || [],
       tags: task.metadata?.tags || task.metadata?.keywords || [],
       fileType: 'thought-collection',
-      isPublic: false,
+      isPublic,
       isThoughtThumbnail: true,
       isPartOfCollection: true,
       mainFileId: thoughtFileId, // Reference to main file for downloads
       uploadDate: new Date().toISOString(),
       isNSFW: task.metadata?.isNSFW || false,
-      // Include collection data - all page thumbnail IDs
       collection: {
         collectionFileIds: thumbnailFileIds
       },
-      // Include collection textPost/thought data
       textPost: thoughtCollectionData.textPost,
       thought: thoughtCollectionData.textPost,
+      ...shareFields,
+      ...feedPreviewFields,
     }, accessToken);
     if (import.meta.env.DEV) console.log(`[UploadProcessor] Created collection metadata for collection thumbnail ${collectionThumbnailFileId} with ${thumbnailResults.length} pages`);
   }
@@ -776,6 +865,8 @@ async function processPDFUpload(
     session,
     publicKey,
     accessToken,
+    isPublic: task.metadata?.isPublic || false,
+    planId: task.metadata?.publishPlanId || 'floor',
   });
 
   uploadQueueService.updateTaskProgress(task.id, 70);

@@ -1,11 +1,14 @@
 /**
  * PDF upload service: processPDFPagesParallel and helpers.
  * Extracted from FileStorageAggregator; used by uploadProcessor.
+ * Public pages get CDN feed preview refs (poster) at index time.
  */
 
 import { getEncryptionService, EncryptedFilePackage } from './encryptionService';
 import { ownerFetch } from './ownerApiFetch';
 import { slimPublicTokenJson, type PublicShareGenerationResult } from '@par-noir/aggregator-domain';
+import { publishFeedPreviews } from './feedPreviewPublish';
+import { publishPublicShare } from './publicSharePublish';
 
 function blobToBase64(blob: Blob): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -47,18 +50,60 @@ async function uploadFile(
   return { id: uploadedFile.id };
 }
 
-async function createMetadataForThumbnail(
-  fileId: string,
-  fileName: string,
-  _shareToken: PublicShareGenerationResult | undefined,
-  accountId: string,
-  _accessToken: string
-): Promise<void> {
-  // PDF page thumbs start private; make-public materializes envelope + slim token.
+async function createMetadataForThumbnail(params: {
+  fileId: string;
+  fileName: string;
+  shareToken: PublicShareGenerationResult | undefined;
+  accountId: string;
+  accessToken: string;
+  isPublic: boolean;
+  thumbnailBlob: Blob;
+  planId?: string;
+}): Promise<void> {
+  const {
+    fileId,
+    fileName,
+    shareToken,
+    accountId,
+    accessToken,
+    isPublic,
+    thumbnailBlob,
+    planId,
+  } = params;
+
+  let feedPreviewFields: Record<string, unknown> = {};
+  let publicToken: string | undefined;
+  let publicContentRef: unknown;
+
+  if (isPublic) {
+    if (!shareToken) {
+      throw new Error(`Public PDF page ${fileName} requires share token`);
+    }
+    const published = await publishPublicShare({
+      generation: shareToken,
+      accessToken,
+      accountId,
+      envelopeFileName: `public-envelope-${fileId}.json`,
+    });
+    publicToken = published.publicToken;
+    publicContentRef = published.publicContentRef;
+    feedPreviewFields = await publishFeedPreviews({
+      file: thumbnailBlob,
+      mimeType: 'image/jpeg',
+      fileId,
+      accessToken,
+      accountId,
+      planId: planId || 'floor',
+    });
+  }
+
   await ownerFetch('PUT', `/api/aggregator/metadata-index/${fileId}?accountId=${accountId}`, {
     name: `thumb_${fileName}`,
     fileType: 'image',
-    isPublic: false,
+    isPublic,
+    ...(publicToken ? { publicToken } : {}),
+    ...(publicContentRef ? { publicContentRef } : {}),
+    ...feedPreviewFields,
   });
 }
 
@@ -68,13 +113,23 @@ export interface ProcessPDFPagesParallelParams {
   session: { did: string };
   publicKey: string;
   accessToken: string;
+  isPublic?: boolean;
+  planId?: string;
 }
 
 export async function processPDFPagesParallel(params: ProcessPDFPagesParallelParams): Promise<{
   thumbnailFileIds: string[];
   thumbnailTokens: Record<string, string>;
 }> {
-  const { pdfFile, accountId, session, publicKey, accessToken } = params;
+  const {
+    pdfFile,
+    accountId,
+    session,
+    publicKey,
+    accessToken,
+    isPublic = false,
+    planId,
+  } = params;
   const { workerManager } = await import('./workerManager');
   const pdfjsLib = await import('pdfjs-dist');
   pdfjsLib.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs';
@@ -85,13 +140,13 @@ export async function processPDFPagesParallel(params: ProcessPDFPagesParallelPar
   const numPages = pdf.numPages;
   const baseFileName = pdfFile.name.replace(/\.pdf$/i, '');
 
-  console.log(`[PDF Upload] Processing ${numPages} pages in parallel...`);
+  if (import.meta.env.DEV) {
+    console.log(`[PDF Upload] Processing ${numPages} pages in parallel...`);
+  }
 
-  // Step 1: Load all pages in parallel
   const pagePromises = Array.from({ length: numPages }, (_, i) => pdf.getPage(i + 1));
   const pages = await Promise.all(pagePromises);
 
-  // Step 2: Generate all thumbnails in parallel (canvas rendering)
   const thumbnailBlobPromises = pages.map(async (page, index) => {
     const pageNum = index + 1;
     const viewport = page.getViewport({ scale: 1.0 });
@@ -117,7 +172,6 @@ export async function processPDFPagesParallel(params: ProcessPDFPagesParallelPar
 
   const thumbnailData = await Promise.all(thumbnailBlobPromises);
 
-  // Step 3: Encrypt all thumbnails in parallel using workers
   const encryptedThumbnailPromises = thumbnailData.map(async ({ thumbnailBlob, fileName }) => {
     const thumbnailArrayBuffer = await thumbnailBlob.arrayBuffer();
     const thumbData = new Uint8Array(thumbnailArrayBuffer);
@@ -132,7 +186,6 @@ export async function processPDFPagesParallel(params: ProcessPDFPagesParallelPar
 
   const encryptedThumbnails = await Promise.all(encryptedThumbnailPromises);
 
-  // Step 4: Create share tokens for all thumbnails in parallel
   const encryptionService = getEncryptionService();
   const thumbnailPackagePromises = encryptedThumbnails.map(async ({ fileName, encrypted, thumbnailBlob }) => {
     const thumbnailPackage: EncryptedFilePackage = {
@@ -156,38 +209,45 @@ export async function processPDFPagesParallel(params: ProcessPDFPagesParallelPar
       console.warn(`[PDF Upload] Failed to generate share token for ${fileName}:`, err);
     }
 
-    return { fileName, thumbnailPackage, shareToken };
+    return { fileName, thumbnailPackage, shareToken, thumbnailBlob };
   });
 
   const thumbnailPackages = await Promise.all(thumbnailPackagePromises);
 
-  // Step 5: Upload all thumbnails in parallel
-  const thumbnailUploadPromises = thumbnailPackages.map(async ({ fileName, thumbnailPackage, shareToken }) => {
+  const thumbnailUploadPromises = thumbnailPackages.map(async ({ fileName, thumbnailPackage, shareToken, thumbnailBlob }) => {
     const thumbnailBase64 = await blobToBase64(
       new Blob([JSON.stringify(thumbnailPackage)], { type: 'application/json' })
     );
     const thumbnailFileName = `thumb_${fileName}.encrypted`;
     const result = await uploadFile(thumbnailBase64, thumbnailFileName, accountId, accessToken);
-    return { fileName, fileId: result?.id, shareToken };
+    return { fileName, fileId: result?.id, shareToken, thumbnailBlob };
   });
 
   const thumbnailUploadResults = await Promise.all(thumbnailUploadPromises);
 
-  // Step 6: Create metadata for all thumbnails in parallel
   const metadataPromises = thumbnailUploadResults
     .filter((result) => result.fileId)
-    .map(async ({ fileName, fileId, shareToken }) => {
+    .map(async ({ fileName, fileId, shareToken, thumbnailBlob }) => {
       try {
-        await createMetadataForThumbnail(fileId!, fileName, shareToken, accountId, accessToken);
+        await createMetadataForThumbnail({
+          fileId: fileId!,
+          fileName,
+          shareToken,
+          accountId,
+          accessToken,
+          isPublic,
+          thumbnailBlob,
+          planId,
+        });
       } catch (err) {
         console.warn(`[PDF Upload] Failed to create metadata for ${fileName}:`, err);
+        throw err;
       }
       return { fileName, fileId, shareToken };
     });
 
   await Promise.all(metadataPromises);
 
-  // Build results — slim tokens only (no envelope / shareEncrypted)
   const thumbnailFileIds: string[] = [];
   const thumbnailTokens: Record<string, string> = {};
 
@@ -200,6 +260,8 @@ export async function processPDFPagesParallel(params: ProcessPDFPagesParallelPar
     }
   });
 
-  console.log(`[PDF Upload] Completed processing ${numPages} pages in parallel`);
+  if (import.meta.env.DEV) {
+    console.log(`[PDF Upload] Completed processing ${numPages} pages in parallel`);
+  }
   return { thumbnailFileIds, thumbnailTokens };
 }

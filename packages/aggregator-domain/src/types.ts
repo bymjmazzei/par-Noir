@@ -336,6 +336,10 @@ export interface PublicMetadata {
     objectId: string;
     publicUrl: string;
   };
+  /** Warm CDN + owner-canonical feed preview objects (plaintext). */
+  feedPoster?: import('./feedPreview').FeedPreviewObjectRef;
+  feedPreviewSd?: import('./feedPreview').FeedPreviewObjectRef;
+  feedPreviewHd?: import('./feedPreview').FeedPreviewObjectRef;
   isPublic: boolean;
   sameAs?: string[];
 

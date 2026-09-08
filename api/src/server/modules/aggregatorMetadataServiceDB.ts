@@ -1812,6 +1812,9 @@ export class AggregatorMetadataServiceDB {
       isPublic?: boolean;
       publicToken?: string | null; // null = delete, string = set, undefined = preserve
       publicContentRef?: unknown | null; // null = delete, object = set, undefined = preserve
+      feedPoster?: unknown | null;
+      feedPreviewSd?: unknown | null;
+      feedPreviewHd?: unknown | null;
       subjects?: string[];
       feedCategories?: string[];
       thumbnailFileId?: string;
@@ -1845,6 +1848,9 @@ export class AggregatorMetadataServiceDB {
       const {
         publicToken: existingPublicToken,
         publicContentRef: existingPublicContentRef,
+        feedPoster: existingFeedPoster,
+        feedPreviewSd: existingFeedPreviewSd,
+        feedPreviewHd: existingFeedPreviewHd,
         ...metadataWithoutShareFields
       } = metadata as any;
       
@@ -1907,7 +1913,28 @@ export class AggregatorMetadataServiceDB {
             : { publicContentRef: updates.publicContentRef }
         ) : (
           existingPublicContentRef ? { publicContentRef: existingPublicContentRef } : {}
-        ))
+        )),
+        ...(updates.feedPoster !== undefined
+          ? updates.feedPoster === null
+            ? {}
+            : { feedPoster: updates.feedPoster }
+          : existingFeedPoster
+            ? { feedPoster: existingFeedPoster }
+            : {}),
+        ...(updates.feedPreviewSd !== undefined
+          ? updates.feedPreviewSd === null
+            ? {}
+            : { feedPreviewSd: updates.feedPreviewSd }
+          : existingFeedPreviewSd
+            ? { feedPreviewSd: existingFeedPreviewSd }
+            : {}),
+        ...(updates.feedPreviewHd !== undefined
+          ? updates.feedPreviewHd === null
+            ? {}
+            : { feedPreviewHd: updates.feedPreviewHd }
+          : existingFeedPreviewHd
+            ? { feedPreviewHd: existingFeedPreviewHd }
+            : {}),
       };
 
       // Ensure keywords and tags are in sync

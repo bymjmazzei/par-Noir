@@ -15,7 +15,7 @@ import {
   ensureLocalMessagingKeysForAccept,
   reportConnectionAcceptError,
 } from '../services/messagingReconnect';
-import { decryptWithToken, ShareToken } from '../utils/tokenDecryption';
+import { hasFeedPreviewPlayback, fetchPublicMediaBlob } from '../services/feedPreviewPlayback';
 import { IndexedFile } from '../types/aggregator';
 import { getUserProfile, updateDisplayName as updateDisplayNameAPI } from '../services/profileService';
 import { fetchListedPublicNamesForPn } from '../services/publicNamesService';
@@ -246,12 +246,10 @@ export const ProfileActionMenu = React.memo(function ProfileActionMenu({ creator
       return;
     }
     
-    // Check for publicToken at IndexedFile level or in metadata
-    const publicToken = topPostFile.publicToken || topPostFile.metadata.publicToken;
-    
-    if (!publicToken) {
+    // CDN poster required for public top-post image
+    if (!hasFeedPreviewPlayback(topPostFile.metadata)) {
       setProfileImageUrl(null);
-      lastProcessedFileIdRef.current = fileId; // Mark as processed even if no token
+      lastProcessedFileIdRef.current = fileId;
       return;
     }
 
@@ -285,24 +283,13 @@ export const ProfileActionMenu = React.memo(function ProfileActionMenu({ creator
 
       setProfileImageLoading(true);
       try {
-        const token: ShareToken = typeof publicToken === 'string' 
-          ? JSON.parse(publicToken) 
-          : publicToken;
-        
-        if (isImage || isThought) {
-          // Thoughts are rendered as PNG images, so decrypt and use them
-          const decryptedBlob = await decryptWithToken(token);
-          const url = URL.createObjectURL(decryptedBlob);
+        if (isImage || isThought || isVideo) {
+          const blob = await fetchPublicMediaBlob(fileId, 'poster');
+          const url = URL.createObjectURL(blob);
           setProfileImageUrl(url);
-          lastProcessedFileIdRef.current = fileId; // Mark as processed
-        } else if (isVideo) {
-          // For videos, we'd ideally use a thumbnail, but for now we'll skip
-          // In the future, we could generate/extract a thumbnail
-          setProfileImageUrl(null);
           lastProcessedFileIdRef.current = fileId;
         }
       } catch (error) {
-        // Silently fail - don't log to avoid console spam
         setProfileImageUrl(null);
         lastProcessedFileIdRef.current = fileId;
       } finally {

@@ -97,6 +97,21 @@ export async function togglePublicVisibility(
           console.warn('[handleTogglePublic] revoke-public failed (continuing unpublish):', revokeErr);
         }
       }
+      try {
+        const ownerToken = resolveOwnerApiToken();
+        const fileId = existingMetadata?.fileId || file.id;
+        if (ownerToken && fileId) {
+          await ownerFetch(
+            ownerToken,
+            'POST',
+            `/api/aggregator/feed-media/${encodeURIComponent(fileId)}/revoke`,
+            {},
+            { pnIdentifier: getOwnerApiPnIdentifier() || undefined }
+          );
+        }
+      } catch (feedRevokeErr) {
+        console.warn('[handleTogglePublic] feed-media revoke failed (continuing):', feedRevokeErr);
+      }
       await metadataIndexService.removeFromIndex(existingMetadata?.fileId || file.id);
       setFileMetadataMap(prev => {
         const next = new Map(prev);
@@ -366,6 +381,53 @@ export async function togglePublicVisibility(
           hasShareKey: !!shareToken?.shareKey,
           envelopeObjectId: published.publicContentRef.objectId,
         });
+
+        if ((mimeCategory === 'image' || mimeCategory === 'video') && aggregatorService && encryptionService) {
+          try {
+            const backend = aggregatorService.getBackend(file.backend);
+            if (backend?.isConnected()) {
+              const encBlob = await backend.downloadFile(file.backendFileId || file.id);
+              let previewSource: Blob = encBlob;
+              if (file.encrypted !== false) {
+                try {
+                  const encJson = JSON.parse(await encBlob.text()) as EncryptedFilePackage;
+                  const sessionId2 = authenticatedUser?.id || (authenticatedUser as any)?.publicKey || null;
+                  const creds2 = sessionId2 ? SecureCredentialManager.getCredentials(sessionId2) : null;
+                  if (creds2) {
+                    const { decryptedBlob } = await encryptionService.decryptFileFromDownload(
+                      encJson,
+                      {
+                        id: authenticatedUser?.id || resolvedAuth.publicKey,
+                        publicKey: resolvedAuth.publicKey,
+                      }
+                    );
+                    previewSource = decryptedBlob;
+                  }
+                } catch {
+                  previewSource = encBlob;
+                }
+              }
+              const { publishFeedPreviewsForDashboard } = await import(
+                '../../../../services/feedPreviewPublish'
+              );
+              const previews = await publishFeedPreviewsForDashboard({
+                file: previewSource,
+                mimeType: file.mimeType || (mimeCategory === 'video' ? 'video/mp4' : 'image/jpeg'),
+                fileId: publicMetadata.fileId || file.backendFileId || file.id,
+                aggregatorService,
+                backendId: file.backend || activeBackendId || 'google_drive',
+                folderId,
+                planId: 'floor',
+              });
+              Object.assign(publicMetadata, previews);
+            }
+          } catch (previewErr) {
+            console.error('❌ [Phase 3] Feed preview publish failed:', previewErr);
+            throw previewErr instanceof Error
+              ? previewErr
+              : new Error('Failed to prepare feed preview');
+          }
+        }
       } catch (publishErr) {
         console.error('❌ [Phase 3] Failed to materialize public share:', publishErr);
         const errorMessage = publishErr instanceof Error ? publishErr.message : 'Unknown error';
@@ -406,6 +468,9 @@ export async function togglePublicVisibility(
                 isPublic: publicMetadata.isPublic,
                 publicToken: publicMetadata.publicToken,
                 publicContentRef: publicMetadata.publicContentRef,
+                feedPoster: (publicMetadata as any).feedPoster,
+                feedPreviewSd: (publicMetadata as any).feedPreviewSd,
+                feedPreviewHd: (publicMetadata as any).feedPreviewHd,
                 name: publicMetadata.name || file.name,
                 description: publicMetadata.description || '',
                 keywords: publicMetadata.keywords || [],

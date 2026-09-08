@@ -691,6 +691,13 @@ class ProductionServer {
     const { registerPublicContentRoutes } = await import('./server/modules/publicContentRoutes');
     registerPublicContentRoutes(this.app);
 
+    const { registerFeedMediaRoutes } = await import('./server/modules/feedMediaRoutes');
+    registerFeedMediaRoutes(this.app);
+    const { registerFeedPreviewLifecycleRoutes } = await import(
+      './server/modules/feedPreviewLifecycle'
+    );
+    registerFeedPreviewLifecycleRoutes(this.app);
+
     const { setupEngagementRoutes } = await import('./server/modules/engagementRoutes');
     setupEngagementRoutes(this.app, {
       extractAccountId: (account) => this.extractAccountId(account),
