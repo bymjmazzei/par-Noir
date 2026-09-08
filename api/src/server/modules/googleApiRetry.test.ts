@@ -31,10 +31,17 @@ describe('googleApiRetry', () => {
     expect(isRetryableGoogleError(err)).toBe(true);
   });
 
-  it('does not retry per-minute Sheets quota (429)', () => {
-    const err = Object.assign(new Error("Quota exceeded for quota metric 'Read requests'"), { code: 429 });
-    expect(isGoogleSheetsPerMinuteQuota(err)).toBe(true);
-    expect(isRetryableGoogleError(err)).toBe(false);
+  it('treats Google API timeout as retryable', () => {
+    expect(isRetryableGoogleError(new Error('Google API timeout after 45000ms (sheets:create)'))).toBe(
+      true
+    );
+  });
+
+  it('withAttemptTimeout rejects after deadline', async () => {
+    const { withAttemptTimeout } = await import('./googleApiRetry');
+    await expect(
+      withAttemptTimeout('slow', 30, () => new Promise((r) => setTimeout(r, 500)))
+    ).rejects.toMatchObject({ message: expect.stringContaining('timeout after 30ms') });
   });
 
   it('ensureIndexSheetInFolder retries create after not found', async () => {

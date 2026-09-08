@@ -50,8 +50,9 @@ export async function initializeContentClassFolders(
   accountId?: string
 ): Promise<void> {
   const accessToken = token.access_token;
+  const { mapWithConcurrency } = await import('./googleApiRetry');
 
-  for (const folderName of CONTENT_CLASSES) {
+  await mapWithConcurrency(CONTENT_CLASSES, CONTENT_CLASSES.length, async (folderName) => {
     const cc = folderName as ContentClassName;
     setDriveInitProgress(
       pnIdentifier,
@@ -74,7 +75,7 @@ export async function initializeContentClassFolders(
         folderId = searchData.files[0].id;
         console.log(`[initializeContentClassFolders] Folder '${folderName}' already exists`);
         await initializeContentClassIndexFiles(token, folderId, folderName, pnIdentifier, accountId);
-        continue;
+        return;
       }
     }
 
@@ -106,7 +107,7 @@ export async function initializeContentClassFolders(
     folderId = folderData.id;
     console.log(`[initializeContentClassFolders] Created folder '${folderName}' (ID: ${folderId})`);
     await initializeContentClassIndexFiles(token, folderId, folderName, pnIdentifier, accountId);
-  }
+  });
 }
 
 export async function initializeContentClassIndexFiles(

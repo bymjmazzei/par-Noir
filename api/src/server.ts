@@ -463,7 +463,14 @@ class ProductionServer {
         !isOAuthBrowserHtmlEntryGet(req) &&
         !isOAuthConsentSameOriginGet(req)
       ) {
-        console.error(`[CORS] Blocked no-origin request to ${path} in production`);
+        // Internet scanners probe /.git, robots.txt, etc. — still block, don't flood logs.
+        const isScannerNoise =
+          /^\/(\.git|robots\.txt|favicon\.ico|sitemap\.xml|wp-|phpmyadmin|actuator|\.env|xmlrpc)/i.test(
+            path
+          );
+        if (!isScannerNoise) {
+          console.error(`[CORS] Blocked no-origin request to ${path} in production`);
+        }
         res.status(403).json({ error: 'Origin header required in production' });
         return;
       }

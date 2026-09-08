@@ -10,10 +10,6 @@ export interface RecoveryDriveContext {
   metadataFolderId: string;
 }
 
-/** Rate-limit softMissingToken warns (gateOwnerRoute probes fire often during Drive init). */
-const softMissingTokenWarnAt = new Map<string, number>();
-const SOFT_MISSING_TOKEN_WARN_MS = 60_000;
-
 function extractAccountId(account: Record<string, unknown>): string | undefined {
   return (
     (account.backendId as string | undefined) ||
@@ -55,18 +51,7 @@ export async function getRecoveryDriveContext(
     if (!isPnDriveIndexComplete(indexEarly)) return null;
 
     if (opts?.softMissingToken) {
-      // Soft probes (gateOwnerRoute / device bundle) hit this on owner GETs under custody
-      // until a Google token is forwarded — rate-limit so reconnect init does not flood logs.
-      const now = Date.now();
-      const last = softMissingTokenWarnAt.get(pnIdentifier) ?? 0;
-      if (now - last > SOFT_MISSING_TOKEN_WARN_MS) {
-        softMissingTokenWarnAt.set(pnIdentifier, now);
-        safeLogger.warn('[RecoveryDrive] Cloud access token missing', {
-          reason: 'cloud_token_required',
-          pnIdHash: hashIdentifier(pnIdentifier),
-          soft: true,
-        });
-      }
+      // JWT-only owner probes under custody are expected; do not warn (was flooding Railway).
       return null;
     }
     safeLogger.warn('[RecoveryDrive] Cloud access token missing', {

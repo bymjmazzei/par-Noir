@@ -4,11 +4,15 @@
 
 import type { GoogleDriveToken } from './googleOAuth2Helper';
 import { DriveIndexError } from './pnDriveIndex';
+import { safeLogger } from '../../utils/logger';
 
 const RETRYABLE_STATUSES = new Set([429, 500, 502, 503, 504]);
 
 /** Bounded concurrency for independent metadata/index sheet ensures during Drive init. */
 export const DRIVE_INIT_SHEET_CONCURRENCY = 4;
+
+/** Per-attempt wall clock — googleapis can hang without responding; don't block init for minutes. */
+export const GOOGLE_API_ATTEMPT_TIMEOUT_MS = 45_000;
 
 /**
  * Map items with a concurrency cap. Preserves result order.
@@ -52,6 +56,30 @@ export function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+/** Reject if `fn` does not settle within `ms` (retryable 504). */
+export async function withAttemptTimeout<T>(
+  label: string,
+  ms: number,
+  fn: () => Promise<T>
+): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      fn(),
+      new Promise<T>((_resolve, reject) => {
+        timer = setTimeout(() => {
+          const err = new Error(`Google API timeout after ${ms}ms (${label})`);
+          (err as { code?: number; status?: number }).code = 504;
+          (err as { status?: number }).status = 504;
+          reject(err);
+        }, ms);
+      }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
 export function isGoogleSheetsPerMinuteQuota(err: unknown): boolean {
   const msg = err instanceof Error ? err.message : String(err);
   if (/Read requests per minute per user/i.test(msg)) return true;
@@ -67,6 +95,7 @@ export function isRetryableGoogleError(err: unknown): boolean {
   if (isGoogleSheetsPerMinuteQuota(err)) return false;
   const msg = err instanceof Error ? err.message : String(err);
   if (/service is currently unavailable/i.test(msg)) return true;
+  if (/Google API timeout after/i.test(msg)) return true;
   if (/layout incomplete after init/i.test(msg)) return true;
   const code = (err as { code?: string })?.code;
   if (code === 'DRIVE_LAYOUT_INCOMPLETE') return true;
@@ -113,17 +142,21 @@ export async function withGoogleRetry<T>(
   let lastErr: unknown;
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     try {
-      return await fn();
+      return await withAttemptTimeout(label, GOOGLE_API_ATTEMPT_TIMEOUT_MS, fn);
     } catch (err: unknown) {
       lastErr = err;
       if (!isRetryableGoogleError(err) || attempt === maxAttempts) {
         throw translateGoogleCredentialError(err);
       }
       const delayMs = Math.min(30_000, 1000 * 2 ** (attempt - 1));
-      console.warn(
-        `[GoogleRetry] ${label} failed (attempt ${attempt}/${maxAttempts}), retrying in ${delayMs}ms:`,
-        err instanceof Error ? err.message : err
-      );
+      // info (not console.warn/err) — retries are expected under Google 503 pressure.
+      safeLogger.info('[GoogleRetry] transient failure; retrying', {
+        label,
+        attempt,
+        maxAttempts,
+        delayMs,
+        message: err instanceof Error ? err.message.slice(0, 160) : String(err).slice(0, 160),
+      });
       await sleep(delayMs);
     }
   }
@@ -179,7 +212,12 @@ export async function fetchGoogleDriveWithRetry(
   label: string
 ): Promise<Response> {
   return withGoogleRetry(label, async () => {
-    const res = await fetch(url, init);
+    const timeoutSignal = AbortSignal.timeout(GOOGLE_API_ATTEMPT_TIMEOUT_MS);
+    const signal =
+      init.signal != null
+        ? AbortSignal.any([init.signal, timeoutSignal])
+        : timeoutSignal;
+    const res = await fetch(url, { ...init, signal });
     if (res.status === 429 || res.status >= 500) {
       const text = await res.text().catch(() => '');
       const err = new Error(`Google Drive ${res.status}: ${text.slice(0, 200)}`);
