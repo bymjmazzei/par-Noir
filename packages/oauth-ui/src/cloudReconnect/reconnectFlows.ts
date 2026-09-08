@@ -118,10 +118,12 @@ export async function reconnectOAuthProvider(
       `redirect_uri=${encodeURIComponent(redirectUri)}&` +
       `response_type=code&` +
       `scope=${encodeURIComponent(scope)}&` +
+      `state=${encodeURIComponent('pn_popup')}&` +
       `prompt=consent&access_type=offline`;
+    const codePromise = waitForOAuthPopupCode();
     const popup = window.open(authUrl, 'pn-cloud-google-oauth', 'width=500,height=700');
     if (!popup) throw new Error('Popup blocked — allow popups for OAuth.');
-    const code = await waitForOAuthPopupCode();
+    const code = await codePromise;
     const tokens = await exchangeGoogleOAuthCode({ apiEndpoint, code, redirectUri });
     const email = await fetchGoogleUserEmail(tokens.accessToken);
     const existing = await resolveExistingGoogleLayout(apiEndpoint, authToken, pnIdentifier);

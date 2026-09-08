@@ -9,6 +9,7 @@
  */
 import React from 'react';
 import { SecureCredentialManager } from '@par-noir/identity-crypto';
+import { waitForOAuthPopupCode } from '@par-noir/oauth-ui';
 import type { FileAggregatorService } from '../../../services/aggregator/FileAggregatorService';
 import { API_ENDPOINT } from '../../../config/api';
 import { ownerFetch } from '../../../services/ownerApiService';
@@ -326,14 +327,20 @@ export function useGoogleDriveOAuthConnect({
       const redirectUri = `${window.location.origin}/oauth-callback.html`;
       const scope = 'https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/userinfo.email';
 
-      // Use authorization code flow to get refresh tokens
+      // Use authorization code flow to get refresh tokens.
+      // state=pn_popup tells oauth-callback to deliver via postMessage/BC (never navigate opener).
       const authUrl = `https://accounts.google.com/o/oauth2/v2/auth?` +
         `client_id=${encodeURIComponent(clientId)}&` +
         `redirect_uri=${encodeURIComponent(redirectUri)}&` +
         `response_type=code&` +
         `scope=${encodeURIComponent(scope)}&` +
+        `state=${encodeURIComponent('pn_popup')}&` +
         `prompt=consent` +
         `&access_type=offline`; // Required for refresh token
+
+      // Register listeners BEFORE window.open so BroadcastChannel/localStorage handoff
+      // cannot race ahead of the waiter (common when Google nulls window.opener).
+      const codePromise = waitForOAuthPopupCode();
 
       const popup = window.open(
         authUrl,
@@ -345,51 +352,8 @@ export function useGoogleDriveOAuthConnect({
         throw new Error('Popup blocked. Please allow popups for this site.');
       }
 
-      // Wait for OAuth callback with authorization code
-      const tokenData = await new Promise<{ accessToken: string; refreshToken: string; expiresIn: number }>((resolve, reject) => {
-        // Don't check popup.closed - COOP blocks it. Just wait for message
-        // const checkClosed = setInterval(() => {
-        //   try {
-        //     if (popup.closed) {
-        //       clearInterval(checkClosed);
-        //       window.removeEventListener('message', messageHandler);
-        //       reject(new Error('OAuth popup was closed'));
-        //     }
-        //   } catch (e) {
-        //     // COOP policy - ignore
-        //   }
-        // }, 1000);
-
-        // Set timeout instead of checking popup.closed
-        const timeout = setTimeout(() => {
-          window.removeEventListener('message', messageHandler);
-          reject(new Error('OAuth timeout - please try again'));
-        }, 300000); // 5 minute timeout
-
-        const messageHandler = (event: MessageEvent) => {
-          if (event.origin !== window.location.origin) return;
-
-          if (event.data.type === 'GOOGLE_OAUTH_CODE' || event.data.type === 'oauth_callback') {
-            clearTimeout(timeout);
-            window.removeEventListener('message', messageHandler);
-            // Avoid popup.close() from opener: COOP can block it and trigger console errors.
-            // oauth-callback.html will try to close itself; user can close manually if it stays open.
-
-            if (event.data.error) {
-              reject(new Error(event.data.error));
-            } else if (event.data.code) {
-              // Exchange code for tokens via API
-              exchangeCodeForTokens(event.data.code, redirectUri)
-                .then(resolve)
-                .catch(reject);
-            } else {
-              reject(new Error('No authorization code received'));
-            }
-          }
-        };
-
-        window.addEventListener('message', messageHandler);
-      });
+      const code = await codePromise;
+      const tokenData = await exchangeCodeForTokens(code, redirectUri);
 
       const token = tokenData.accessToken;
 

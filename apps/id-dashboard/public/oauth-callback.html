@@ -75,11 +75,15 @@
       var urlParams = new URLSearchParams(window.location.search);
       var issuer = urlParams.get('iss') || '';
       var isGoogleIssuer = issuer.indexOf('accounts.google.com') !== -1;
-      var pnPopupFlow = urlParams.get('pn_popup') === '1' || isGoogleIssuer;
       var code = urlParams.get('code');
       var state = urlParams.get('state');
       var error = urlParams.get('error');
       var ageShared = urlParams.get('age_shared');
+      var pnPopupFlow =
+        urlParams.get('pn_popup') === '1' ||
+        state === 'pn_popup' ||
+        (typeof state === 'string' && state.indexOf('pn_popup') !== -1) ||
+        isGoogleIssuer;
 
       oauthDbg('callback_start', {
         hasCode: !!code,

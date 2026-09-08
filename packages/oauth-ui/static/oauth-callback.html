@@ -75,11 +75,19 @@
       /** Must match @par-noir/oauth-ui PN_OAUTH_OPENER_WINDOW_NAME */
       var OPENER_WIN_NAME = 'parnoir_oauth_parent_v1';
       var urlParams = new URLSearchParams(window.location.search);
-      var pnPopupFlow = urlParams.get('pn_popup') === '1';
+      var issuer = urlParams.get('iss') || '';
+      var isGoogleIssuer = issuer.indexOf('accounts.google.com') !== -1;
       var code = urlParams.get('code');
       var state = urlParams.get('state');
       var error = urlParams.get('error');
       var grantedDataPoints = urlParams.get('granted_data_points');
+      // Google Drive Connect / cloud reconnect open a popup; never navigate the opener SPA.
+      // Prefer explicit pn_popup (query or OAuth state) or Google's iss param.
+      var pnPopupFlow =
+        urlParams.get('pn_popup') === '1' ||
+        state === 'pn_popup' ||
+        (typeof state === 'string' && state.indexOf('pn_popup') !== -1) ||
+        isGoogleIssuer;
 
       oauthDbg('callback_start', {
         hasCode: !!code,
