@@ -17,9 +17,11 @@ jest.mock('../services/ownerApiService', () => ({
 import { fetchOwnedAssets } from '../services/ownedAssetsApi';
 
 describe('fetchOwnedAssets 409 memo', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     clearOwnedAssetsUnavailable();
     jest.clearAllMocks();
+    const { resetDriveLayoutInitGate } = await import('../services/storage/driveLayoutInitGate');
+    resetDriveLayoutInitGate();
   });
 
   it('memos 409 and does not re-GET owned-assets', async () => {
@@ -70,5 +72,17 @@ describe('fetchOwnedAssets 409 memo', () => {
     expect(list).toEqual([{ id: '1' }]);
     expect(ownerGet).toHaveBeenCalledTimes(1);
     expect(isOwnedAssetsUnavailable('pn-abc')).toBe(false);
+  });
+
+  it('skips the network GET while Drive layout init is active', async () => {
+    const gate = await import('../services/storage/driveLayoutInitGate');
+    gate.beginDriveLayoutInit();
+    try {
+      const list = await fetchOwnedAssets('tok', 'pn-busy');
+      expect(list).toEqual([]);
+      expect(ownerGet).not.toHaveBeenCalled();
+    } finally {
+      gate.endDriveLayoutInit();
+    }
   });
 });

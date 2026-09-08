@@ -8,6 +8,7 @@ import {
   isOwnedAssetsUnavailable,
   markOwnedAssetsUnavailable,
 } from './storage/ownedAssetsAvailability';
+import { isDriveLayoutInitActive } from './storage/driveLayoutInitGate';
 
 export interface OwnedAssetDto {
   id: string;
@@ -34,7 +35,8 @@ async function parseError(res: Response): Promise<string> {
 /**
  * List owned assets. On 409/401 (cloud token / Drive not ready), memoize and
  * return [] so keep-alive tabs do not re-storm the endpoint. Concurrent callers
- * share one in-flight GET.
+ * share one in-flight GET. Skip the network call entirely while Drive layout
+ * init is running (token exists but index incomplete → red 409 in console).
  */
 const ownedAssetsInFlight = new Map<string, Promise<OwnedAssetDto[]>>();
 
@@ -51,12 +53,21 @@ export async function fetchOwnedAssets(
     clearOwnedAssetsUnavailable(key);
     ownedAssetsInFlight.delete(key);
   }
+
+  if (!opts?.force && isDriveLayoutInitActive()) {
+    return [];
+  }
+
   const existing = ownedAssetsInFlight.get(key);
   if (existing && !opts?.force) {
     return existing;
   }
 
   const run = (async (): Promise<OwnedAssetDto[]> => {
+    // Re-check after await gaps — init may have started while we waited for single-flight.
+    if (!opts?.force && isDriveLayoutInitActive()) {
+      return [];
+    }
     const res = await ownerGet(accessToken, '/api/owned-assets', { pnIdentifier: key });
     if (res.status === 409 || res.status === 401) {
       markOwnedAssetsUnavailable(key);

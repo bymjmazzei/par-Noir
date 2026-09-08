@@ -14,6 +14,10 @@ import React, { useState } from 'react';
 import { ownerFetch, ownerGet } from '../../../services/ownerApiService';
 import { sleep } from '../../../utils/helpers';
 import type { DriveSetupProgress } from '../FileStorageAggregatorTypes';
+import {
+  beginDriveLayoutInit,
+  endDriveLayoutInit,
+} from '../../../services/storage/driveLayoutInitGate';
 
 /** Infrequent enough to avoid RecoveryDrive soft-warn storms under custody. */
 const STATUS_POLL_MS = 20_000;
@@ -82,6 +86,7 @@ export function useDriveLayoutInit({ setError }: UseDriveLayoutInitParams) {
         return false;
       }
       driveLayoutInitInFlightRef.current.add(normalized);
+      beginDriveLayoutInit();
 
       const applyProgress = (progress: DriveSetupProgress) => {
         onProgress?.(progress);
@@ -347,6 +352,24 @@ export function useDriveLayoutInit({ setError }: UseDriveLayoutInitParams) {
         return false;
       } finally {
         driveLayoutInitInFlightRef.current.delete(normalized);
+        endDriveLayoutInit();
+        try {
+          const { clearOwnedAssetsUnavailable } = await import(
+            '../../../services/storage/ownedAssetsAvailability'
+          );
+          clearOwnedAssetsUnavailable(normalized);
+        } catch {
+          /* non-DOM */
+        }
+        // Re-probe owned-assets / delegations now that layout (or attempt) settled.
+        try {
+          const { PN_CLOUD_CREDENTIALS_READY_EVENT } = await import('@par-noir/oauth-ui');
+          if (typeof window !== 'undefined') {
+            window.dispatchEvent(new CustomEvent(PN_CLOUD_CREDENTIALS_READY_EVENT));
+          }
+        } catch {
+          /* non-DOM */
+        }
       }
     },
     [clearDriveSetupProgress, setError]

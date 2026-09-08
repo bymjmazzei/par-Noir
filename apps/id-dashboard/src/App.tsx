@@ -922,6 +922,12 @@ function App() {
         setDelegationsError(null);
         return;
       }
+      const { isDriveLayoutInitActive } = await import('./services/storage/driveLayoutInitGate');
+      if (isDriveLayoutInitActive()) {
+        setAssetDelegations([]);
+        setDelegationsError(null);
+        return;
+      }
       const list = await listAllDelegations(apiToken, recoveryVaultPnId);
       setAssetDelegations(list);
     } catch (e) {
