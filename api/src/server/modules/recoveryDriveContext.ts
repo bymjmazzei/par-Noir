@@ -49,8 +49,13 @@ export async function getRecoveryDriveContext(
     : String(forwarded || account.access_token || account.accessToken || '').trim();
 
   if (!access_token) {
+    const { readPnDriveIndex, isPnDriveIndexComplete } = await import('./pnDriveIndex');
+    const indexEarly = readPnDriveIndex(userCredentials.credentials as Record<string, unknown>);
+    // Incomplete layout (Connect / first init): JWT-only probes are expected — stay quiet.
+    if (!isPnDriveIndexComplete(indexEarly)) return null;
+
     if (opts?.softMissingToken) {
-      // Soft probes (gateOwnerRoute / device bundle) hit this on every owner GET under custody
+      // Soft probes (gateOwnerRoute / device bundle) hit this on owner GETs under custody
       // until a Google token is forwarded — rate-limit so reconnect init does not flood logs.
       const now = Date.now();
       const last = softMissingTokenWarnAt.get(pnIdentifier) ?? 0;

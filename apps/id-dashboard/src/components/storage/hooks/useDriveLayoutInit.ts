@@ -16,7 +16,7 @@ import { sleep } from '../../../utils/helpers';
 import type { DriveSetupProgress } from '../FileStorageAggregatorTypes';
 
 /** Infrequent enough to avoid RecoveryDrive soft-warn storms under custody. */
-const STATUS_POLL_MS = 15_000;
+const STATUS_POLL_MS = 20_000;
 /** Drive layout builds can take several minutes after a wipe. */
 const STATUS_MAX_WAIT_MS = 10 * 60_000;
 

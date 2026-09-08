@@ -110,10 +110,13 @@ export async function gateFirstPartyOwnerRoute(
   return gateOwnerRoute(req, res, capability, targetPn);
 }
 
-async function loadDeviceContextUncached(pn: string): Promise<DeviceContextLoad | null> {
+async function loadDeviceContextUncached(
+  pn: string,
+  opts?: { accessToken?: string }
+): Promise<DeviceContextLoad | null> {
   let bundle: DeviceStorageBundle | null;
   try {
-    bundle = await loadDeviceBundle(pn);
+    bundle = await loadDeviceBundle(pn, opts);
   } catch (error) {
     // Belt: custody miss must not 500 device gates (ownerStorageContext soft-paths this).
     const { DriveIndexError } = await import('./pnDriveIndex');
@@ -143,7 +146,10 @@ async function loadDeviceContextUncached(pn: string): Promise<DeviceContextLoad 
   }
 }
 
-async function loadDeviceContext(pn: string): Promise<DeviceContextLoad | null> {
+async function loadDeviceContext(
+  pn: string,
+  opts?: { accessToken?: string }
+): Promise<DeviceContextLoad | null> {
   const normalized = normalizePnIdentifier(pn);
   const now = Date.now();
   const cached = deviceContextCache.get(normalized);
@@ -151,7 +157,7 @@ async function loadDeviceContext(pn: string): Promise<DeviceContextLoad | null> 
     return cached.value;
   }
 
-  const loaded = await loadDeviceContextUncached(normalized);
+  const loaded = await loadDeviceContextUncached(normalized, opts);
   if (loaded) {
     deviceContextCache.set(normalized, {
       expiresAt: now + DEVICE_CONTEXT_CACHE_TTL_MS,
@@ -201,7 +207,12 @@ export async function resolveDeviceAuthContext(req: Request): Promise<DeviceAuth
   const auth = bearerPn(req);
   if (!auth) return null;
 
-  const bundle = await loadDeviceContext(auth.pnIdentifier);
+  const { extractCloudAccessToken } = await import('./cloudAccessToken');
+  const accessToken = extractCloudAccessToken(req);
+  const bundle = await loadDeviceContext(
+    auth.pnIdentifier,
+    accessToken ? { accessToken } : undefined
+  );
   if (!bundle) {
     // Drive layout not provisioned yet (first storage credential save).
     // unkeyed_legacy uses LEGACY_BOOTSTRAP_ALLOWS only — not allow-all.

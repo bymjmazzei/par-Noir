@@ -383,6 +383,24 @@ describe('assertDeviceCapability', () => {
     expect(ctx?.isKeyed).toBe(false);
     expect(res.statusCode).toBeUndefined();
   });
+
+  it('forwards X-PN-Cloud-Access-Token into loadDeviceBundle', async () => {
+    clearDeviceContextCache(PN);
+    mockValidate.mockReturnValue({ pnIdentifier: PN } as ReturnType<typeof PNOAuthService.validateAccessToken>);
+    deviceStorage.loadDeviceBundle.mockResolvedValue(null);
+    const req = bearerReq({
+      headers: {
+        authorization: 'Bearer test-token',
+        'x-pn-cloud-access-token': 'ya29.forwarded-token',
+      },
+    });
+
+    await assertDeviceCapability(req, DEVICE_CAPABILITIES.driveRead);
+
+    expect(deviceStorage.loadDeviceBundle).toHaveBeenCalledWith(PN, {
+      accessToken: 'ya29.forwarded-token',
+    });
+  });
 });
 
 describe('getDeviceRegistrySummary custody soft path', () => {
