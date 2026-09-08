@@ -400,6 +400,7 @@ function startPeriodicFlush(opts: {
   session: SealSession;
 }): void {
   if (flushInterval) clearInterval(flushInterval);
+  // 2 min — unlock + Drive reconnect already stress the API; avoid stacking with layout init.
   flushInterval = setInterval(() => {
     void promoteAndReconcileOutbox(opts)
       .then(() => runMailboxFlush(opts))
@@ -409,7 +410,7 @@ function startPeriodicFlush(opts: {
           stopDeviceCloudWorkers();
         }
       });
-  }, 60_000);
+  }, 120_000);
 }
 
 export function stopDeviceCloudWorkers(): void {

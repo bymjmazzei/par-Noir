@@ -6,18 +6,15 @@
  * when the API has no Google secrets *and* no forwarded token. With
  * `googleAccessToken` (device custody), initialize is required and failures surface.
  *
- * POST /storage/initialize awaits the full server init before responding. Progress
- * polling is UI-only while that POST is in flight — never continue polling `/status`
- * after the POST settles (that previously burned hundreds of calls looking for
- * `inFlight` that the server already cleared in `finally`).
+ * POST /api/storage/initialize awaits the full server init before responding.
+ * Do **not** poll `/status` while waiting — that stormed ~1 request / 5s for minutes
+ * (and each poll hit gateOwnerRoute → RecoveryDrive soft-warn under custody).
+ * Progress UI is client-local (phase labels + elapsed time) until the POST settles.
  */
 import React, { useState } from 'react';
 import { ownerFetch, ownerGet } from '../../../services/ownerApiService';
 import { sleep } from '../../../utils/helpers';
 import type { DriveSetupProgress } from '../FileStorageAggregatorTypes';
-
-/** Progress UI poll while POST /storage/initialize is in flight (not a completion wait). */
-const DRIVE_INIT_POLL_INTERVAL_MS = 5_000;
 
 export interface UseDriveLayoutInitParams {
   setError: React.Dispatch<React.SetStateAction<string | null>>;
@@ -84,21 +81,6 @@ export function useDriveLayoutInit({ setError }: UseDriveLayoutInitParams) {
         setDriveSetupProgress(progress);
       };
 
-      const pollInitStatus = async (): Promise<DriveSetupProgress | null> => {
-        const statusRes = await ownerGet(
-          accessToken,
-          `/api/storage/initialize/${encodeURIComponent(normalized)}/status`,
-          { pnIdentifier: normalized }
-        );
-        if (!statusRes.ok) {
-          return null;
-        }
-        const statusData = (await statusRes.json()) as {
-          progress?: DriveSetupProgress | null;
-        };
-        return statusData.progress ?? null;
-      };
-
       const waitForOwnerIndexReady = async (): Promise<boolean> => {
         const { markOwnerIndexUnavailable, clearOwnerIndexUnavailable } = await import(
           '../../../services/storage/ownerIndexAvailability'
@@ -129,44 +111,23 @@ export function useDriveLayoutInit({ setError }: UseDriveLayoutInitParams) {
         return false;
       };
 
-      let pollTimer: ReturnType<typeof setInterval> | null = null;
-      const stopPolling = () => {
-        if (pollTimer != null) {
-          clearInterval(pollTimer);
-          pollTimer = null;
-        }
-      };
-
-      const pollProgressTick = async () => {
-        try {
-          const progress = await pollInitStatus();
-          if (
-            progress &&
-            progress.phase !== 'complete' &&
-            progress.phase !== 'failed'
-          ) {
-            applyProgress(progress);
-          }
-        } catch {
-          /* non-blocking */
-        }
-      };
-
       let lastError: Error | null = null;
       try {
         for (let attempt = 1; attempt <= maxAttempts; attempt++) {
           applyProgress({
             phase: 'starting',
             stepLabel: 'Preparing your par Noir storage…',
-            percent: 0,
+            percent: 5,
           });
 
-          // Progress UI only — stop as soon as POST settles. Do not dual-poll or
-          // keep hitting /status after the server clears inFlight in finally.
-          void pollProgressTick();
-          pollTimer = setInterval(() => {
-            void pollProgressTick();
-          }, DRIVE_INIT_POLL_INTERVAL_MS);
+          // Local heartbeat only — no /status API loop (POST already awaits full init).
+          const progressHeartbeat = setInterval(() => {
+            applyProgress({
+              phase: 'folders',
+              stepLabel: 'Building Drive folders and sheets (this can take a few minutes)…',
+              percent: 40,
+            });
+          }, 15_000);
 
           let initRes: Response;
           try {
@@ -183,13 +144,13 @@ export function useDriveLayoutInit({ setError }: UseDriveLayoutInitParams) {
               }
             );
           } catch (err) {
-            stopPolling();
+            clearInterval(progressHeartbeat);
             lastError = err instanceof Error ? err : new Error(String(err));
             if (attempt >= maxAttempts) break;
             await sleep(2000 * attempt);
             continue;
           } finally {
-            stopPolling();
+            clearInterval(progressHeartbeat);
           }
 
           if (!initRes.ok) {
@@ -276,7 +237,6 @@ export function useDriveLayoutInit({ setError }: UseDriveLayoutInitParams) {
         clearDriveSetupProgress();
         return false;
       } finally {
-        stopPolling();
         driveLayoutInitInFlightRef.current.delete(normalized);
       }
     },
