@@ -1,6 +1,9 @@
 /**
  * Keeps aggregator PostgreSQL cache aligned with each owner's public-file-index.
  * DB-scoped: only identities with public rows in aggregator_* tables are checked.
+ *
+ * Owner blob orphans (Sheets row whose Drive file is gone) are owned exclusively by
+ * POST /api/storage/owner-index/:identityId/reconcile — this job must not probe Drive.
  */
 
 import type { IndexFileEntry } from './indexSheetsService';

@@ -3,7 +3,8 @@
  *
  * Owns loadFiles, loadStorageQuota and the token-retry scheduling that backs them.
  * Per-backend owner-index resolution lives in loadFiles/fetchOwnerIndex, and the
- * Drive-scan reconciliation lives in loadFiles/mergeDriveScanWithIndex.
+ * Drive-scan for unindexed discovery lives in loadFiles/mergeDriveScanWithIndex.
+ * Durable orphan cleanup is POST /api/storage/owner-index/:id/reconcile (owner inventory).
  *
  * Device custody note: an owner-index 409 means the server-side Drive index is
  * incomplete (expected when OAuth secrets live on the device, not the API).
@@ -143,6 +144,23 @@ export function useLoadAggregatedFiles({
     try {
       setIsLoading(true);
       setError(null);
+
+      // Refresh / verify path: durable inventory reconcile before trusting owner-index.
+      if (verifyWithDrive) {
+        try {
+          const { reconcileOwnerInventory } = await import(
+            '../../../services/ownerInventoryReconcile'
+          );
+          const result = await reconcileOwnerInventory({
+            pnIdentifier: pnIdentifierRef.current || undefined,
+          });
+          if (result.removed > 0 || result.errors > 0) {
+            console.log('🧹 [loadFiles] Owner inventory reconcile', result);
+          }
+        } catch (reconcileErr) {
+          console.warn('⚠️ [loadFiles] Owner inventory reconcile skipped', reconcileErr);
+        }
+      }
       
       // Ensure backends are initialized (gracefully fail if Google Drive not connected)
       // Don't block unlock if Google Drive initialization fails
@@ -396,7 +414,7 @@ export function useLoadAggregatedFiles({
         isLoadingFilesRef.current = false;
       }
     }
-  }, [aggregatorService, authenticatedUser, resolvedAuth, driveAccounts, loadFileMetadata, scheduleTokenRetry, driveReadBlocked, deviceGate, registerPortableCloudBackends]);
+  }, [aggregatorService, authenticatedUser, resolvedAuth, driveAccounts, loadFileMetadata, scheduleTokenRetry, driveReadBlocked, deviceGate, registerPortableCloudBackends, pnIdentifierRef]);
 
   const loadStorageQuota = React.useCallback(async () => {
     if (!aggregatorService) {

@@ -205,18 +205,18 @@ export function useDriveLayoutInit({ setError }: UseDriveLayoutInitParams) {
         }
         console.log('✅ [StorageCredentials] Drive layout built on server');
         try {
-          const { reconcileOwnerPublicAggregator } = await import(
-            '../../../services/ownerPublicReconcile'
+          const { reconcileOwnerInventory } = await import(
+            '../../../services/ownerInventoryReconcile'
           );
-          const result = await reconcileOwnerPublicAggregator({
+          const result = await reconcileOwnerInventory({
             pnIdentifier: normalized,
             googleAccessToken: options?.googleAccessToken,
           });
           if (result.removed > 0 || result.checked > 0) {
-            console.log('🧹 [Storage] Owner public aggregator reconcile', result);
+            console.log('🧹 [Storage] Owner inventory reconcile', result);
           }
         } catch (reconcileErr) {
-          console.warn('⚠️ [Storage] Owner public reconcile skipped', reconcileErr);
+          console.warn('⚠️ [Storage] Owner inventory reconcile skipped', reconcileErr);
         }
         return true;
       };

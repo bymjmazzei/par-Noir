@@ -46,8 +46,6 @@ import {
 } from './server/modules/storage/storageCredentialsRoutes';
 import { setupStorageIndexRoutes } from './server/modules/storage/storageIndexRoutes';
 import {
-  removeFromOwnerIndex,
-  removeFromPublicIndex,
   scheduleDriveIndexUpdates,
 } from './server/modules/storage/fileIndexHelpers';
 import { registerMailboxRoutes } from './server/modules/mailboxRoutes';
@@ -758,8 +756,6 @@ class ProductionServer {
 
     setupDriveRoutes(this.app, {
       extractAccountId: (account) => this.extractAccountId(account),
-      removeFromOwnerIndex,
-      removeFromPublicIndex,
     });
 
     registerDidResolveRoute(this.app);

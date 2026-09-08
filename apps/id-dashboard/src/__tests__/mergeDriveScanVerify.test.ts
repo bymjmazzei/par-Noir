@@ -23,6 +23,14 @@ describe('mergeDriveScanWithIndex verifyWithDrive', () => {
             visibility: 'private',
             uploadedAt: '2026-01-01T00:00:00.000Z',
           },
+          {
+            fileId: 'orphan-thought',
+            googleDriveFileId: 'gone-blob',
+            fileName: 'thought-1.thought',
+            originalName: 'thought-1.thought',
+            visibility: 'private',
+            uploadedAt: '2026-01-01T00:00:00.000Z',
+          },
         ],
       },
       ownerIndexFromApi: true,
@@ -43,7 +51,7 @@ describe('mergeDriveScanWithIndex verifyWithDrive', () => {
     const params = makeParams({ verifyWithDrive: false });
     const result = await mergeDriveScanWithIndex(params as any);
     expect(params.listFiles).not.toHaveBeenCalled();
-    expect(result.filesForBackend).toHaveLength(1);
+    expect(result.filesForBackend).toHaveLength(2);
     expect(result.filesForBackend[0].backendFileId).toBe('g1');
   });
 
@@ -53,5 +61,11 @@ describe('mergeDriveScanWithIndex verifyWithDrive', () => {
     expect(params.listFiles).toHaveBeenCalledTimes(1);
     expect(result.filesForBackend.some((f: any) => f.backendFileId === 'drive-1')).toBe(true);
     expect(result.filesForBackend.some((f: any) => f.backendFileId === 'g1')).toBe(true);
+  });
+
+  it('does not filter index orphans (durable reconcile owns that)', async () => {
+    const params = makeParams({ verifyWithDrive: true });
+    const result = await mergeDriveScanWithIndex(params as any);
+    expect(result.filesForBackend.some((f: any) => f.id === 'orphan-thought')).toBe(true);
   });
 });

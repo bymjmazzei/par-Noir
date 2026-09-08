@@ -1,9 +1,10 @@
 /**
- * Reconciles a backend's owner index with a live Google Drive scan.
+ * Merges a backend's owner index with an optional live Google Drive scan.
  *
- * Drops index entries whose blob no longer exists in Drive (orphans), folds in
- * files discovered by the scan that the index does not know about, and builds
- * the PublicMetadata map / share-token cache entries for the backend.
+ * When verifyWithDrive is true, discovers Drive files that the index does not
+ * know about. Orphan inventory cleanup (index row, blob gone) is owned by
+ * POST /api/storage/owner-index/:id/reconcile — this module does not filter or
+ * delete ghosts from Sheets.
  */
 import React from 'react';
 import { GoogleDriveBackend } from '../../../../services/storage/GoogleDriveBackend';
@@ -17,8 +18,8 @@ export interface MergeDriveScanWithIndexParams {
   ownerIndex: any;
   ownerIndexFromApi: boolean;
   /**
-   * When false (default), trust owner-index for listing and skip live Drive verify.
-   * When true (Refresh / mutations), scan Drive to drop orphans and discover unindexed files.
+   * When false (default), trust owner-index for listing and skip live Drive scan.
+   * When true (Refresh / mutations), scan Drive to discover unindexed files.
    */
   verifyWithDrive?: boolean;
   /** Mutated in place: fileId/backendFileId → metadata for the whole load pass. */
@@ -66,27 +67,20 @@ export async function mergeDriveScanWithIndex({
     if (verifyWithDrive) {
       try {
         scannedFiles = await backend.listFiles(undefined, currentPnIdentifier);
-        console.debug('✅ [loadFiles] Scanned Google Drive to verify file existence', {
+        console.debug('✅ [loadFiles] Scanned Google Drive to discover unindexed files', {
           backendId,
           scannedCount: scannedFiles.length,
-          ownerIndexCount: ownerIndex.files.length
+          ownerIndexCount: ownerIndex.files.length,
         });
       } catch (scanError) {
-        console.warn('⚠️ [loadFiles] Failed to scan Drive for orphaned file cleanup (non-blocking)', {
+        console.warn('⚠️ [loadFiles] Failed to scan Drive for unindexed discovery (non-blocking)', {
           backendId,
           error: scanError,
         });
       }
     } else {
-      console.debug('ℹ️ [loadFiles] Index-only load; skipping Drive verify scan', { backendId });
+      console.debug('ℹ️ [loadFiles] Index-only load; skipping Drive discover scan', { backendId });
     }
-
-    const backendProvider = backendId.includes('::') ? backendId.split('::')[0] : backendId;
-    const isPortableBackend = backendProvider !== 'google_drive';
-    const existingFileIds = new Set(
-      scannedFiles.map((f: any) => f.id).concat(scannedFiles.map((f: any) => f.name))
-    );
-    const shouldFilterOrphans = verifyWithDrive && scannedFiles.length > 0;
 
     const ownerIndexFileIds = new Set(
       ownerIndex.files
@@ -94,44 +88,32 @@ export async function mergeDriveScanWithIndex({
         .filter(Boolean)
     );
 
-    filesForBackend = ownerIndex.files
-      .filter((entry: any) => {
-        const blobId = entry.backendFileId || entry.googleDriveFileId;
-        if (shouldFilterOrphans && !isPortableBackend && blobId && !existingFileIds.has(blobId)) {
-          console.debug('🗑️ [loadFiles] Filtering out orphaned file from files list', {
-            backendId,
-            fileId: blobId,
-            fileName: entry.fileName || entry.originalName
-          });
-          return false;
-        }
-        return true;
-      })
-      .map((entry: any) => {
-        const derivedMime =
-          entry.mimeType ||
-          (entry.fileName?.toLowerCase().endsWith('.encrypted') ? 'application/octet-stream' : undefined);
+    filesForBackend = ownerIndex.files.map((entry: any) => {
+      const derivedMime =
+        entry.mimeType ||
+        (entry.fileName?.toLowerCase().endsWith('.encrypted') ? 'application/octet-stream' : undefined);
 
-        const normalizedName = entry.fileName || entry.originalName || 'Untitled';
-        const parsedSize = typeof entry.size === 'number' ? entry.size : Number(entry.size || 0);
-        const fileId = entry.fileId || entry.backendFileId || entry.googleDriveFileId || `${backendId}:${entry.fileName}`;
+      const normalizedName = entry.fileName || entry.originalName || 'Untitled';
+      const parsedSize = typeof entry.size === 'number' ? entry.size : Number(entry.size || 0);
+      const fileId =
+        entry.fileId || entry.backendFileId || entry.googleDriveFileId || `${backendId}:${entry.fileName}`;
 
-        return {
-          id: fileId,
-          backend: backendId,
-          backendFileId: entry.backendFileId || entry.googleDriveFileId,
-          storageProvider: entry.backend || backendId.split('::')[0],
-          name: normalizedName,
-          originalName: entry.originalName || normalizedName,
-          mimeType: derivedMime,
-          size: Number.isFinite(parsedSize) ? parsedSize.toString() : '0',
-          encrypted: true,
-          visibility: normalizeVisibility(entry.visibility),
-          aggregatedAt: entry.uploadedAt || new Date().toISOString(),
-        };
-      });
+      return {
+        id: fileId,
+        backend: backendId,
+        backendFileId: entry.backendFileId || entry.googleDriveFileId,
+        storageProvider: entry.backend || backendId.split('::')[0],
+        name: normalizedName,
+        originalName: entry.originalName || normalizedName,
+        mimeType: derivedMime,
+        size: Number.isFinite(parsedSize) ? parsedSize.toString() : '0',
+        encrypted: true,
+        visibility: normalizeVisibility(entry.visibility),
+        aggregatedAt: entry.uploadedAt || new Date().toISOString(),
+      };
+    });
 
-    if (verifyWithDrive) {
+    if (verifyWithDrive && scannedFiles.length > 0) {
       const filesNotInIndex = scannedFiles.filter((scannedFile: any) => {
         return !ownerIndexFileIds.has(scannedFile.id);
       });
@@ -155,21 +137,7 @@ export async function mergeDriveScanWithIndex({
       }
     }
 
-    const orphanedEntries: any[] = [];
-
     ownerIndex.files.forEach((entry: any) => {
-      const googleDriveFileId = entry.googleDriveFileId;
-
-      if (shouldFilterOrphans && googleDriveFileId && !existingFileIds.has(googleDriveFileId)) {
-        orphanedEntries.push(entry);
-        console.debug('🗑️ [loadFiles] Filtering out orphaned file from owner index', {
-          backendId,
-          fileId: googleDriveFileId,
-          fileName: entry.fileName || entry.originalName
-        });
-        return;
-      }
-
       const fileId = entry.fileId || entry.googleDriveFileId || `${backendId}:${entry.fileName}`;
       const name = entry.originalName || entry.fileName || 'Untitled';
       const mime =
@@ -194,19 +162,26 @@ export async function mergeDriveScanWithIndex({
       const metadata: PublicMetadata = {
         fileId,
         backend: backendId,
-        backendFileId: entry.googleDriveFileId,
+        backendFileId: entry.googleDriveFileId || entry.backendFileId,
         name,
         description: entry.description || '',
         keywords: entry.tags || [],
         uploadDate: entry.uploadedAt,
-        fileType: schemaType === 'ImageObject' ? 'image' : schemaType === 'VideoObject' ? 'video' : schemaType === 'AudioObject' ? 'audio' : 'document',
+        fileType:
+          schemaType === 'ImageObject'
+            ? 'image'
+            : schemaType === 'VideoObject'
+            ? 'video'
+            : schemaType === 'AudioObject'
+            ? 'audio'
+            : 'document',
         isPublic,
         creator: entry.owner?.did
           ? {
-              "@type": "Person",
-              "@id": entry.owner.did,
+              '@type': 'Person',
+              '@id': entry.owner.did,
               identifier: {
-                "@type": "PropertyValue",
+                '@type': 'PropertyValue',
                 name: 'DID',
                 value: entry.owner.did,
               },
@@ -218,9 +193,9 @@ export async function mergeDriveScanWithIndex({
         inReplyTo: entry.inReplyTo,
         repostOf: entry.repostOf,
         isPartOf: entry.isPartOf,
-        "@context": ["https://schema.org/", "https://parnoir.com/ns/v1#"],
-        "@type": schemaType,
-        "@id": `https://parnoir.com/resource/${fileId}`,
+        '@context': ['https://schema.org/', 'https://parnoir.com/ns/v1#'],
+        '@type': schemaType,
+        '@id': `https://parnoir.com/resource/${fileId}`,
       };
       aggregatedMetadataMap.set(fileId, metadata);
       if (metadata.backendFileId && metadata.backendFileId !== fileId) {
@@ -229,10 +204,12 @@ export async function mergeDriveScanWithIndex({
 
       if (entry.publicToken) {
         try {
-          const shareToken = typeof entry.publicToken === 'string'
-            ? JSON.parse(entry.publicToken)
-            : entry.publicToken;
-          const cacheKey = makeShareTokenCacheKey(backendId, entry.googleDriveFileId);
+          const shareToken =
+            typeof entry.publicToken === 'string' ? JSON.parse(entry.publicToken) : entry.publicToken;
+          const cacheKey = makeShareTokenCacheKey(
+            backendId,
+            entry.googleDriveFileId || entry.backendFileId
+          );
           shareTokenCache.current.set(cacheKey, shareToken);
           console.debug('💾 [loadFiles] Cached share token from owner index', { backendId, fileId });
         } catch (tokenError) {
@@ -244,16 +221,6 @@ export async function mergeDriveScanWithIndex({
         }
       }
     });
-
-    // Log orphaned entries found and clean them up
-    if (orphanedEntries.length > 0) {
-      console.warn(`⚠️ [loadFiles] Found ${orphanedEntries.length} orphaned file(s) in owner index for ${(backendId || '').substring(0, 8)}...`, {
-        orphanedFiles: orphanedEntries.map(e => ({
-          fileId: e.googleDriveFileId,
-          fileName: e.fileName || e.originalName
-        }))
-      });
-    }
   } else if (!ownerIndexFromApi) {
     console.debug('ℹ️ [loadFiles] No API owner index; scanning Drive contents', { backendId });
     try {
@@ -267,12 +234,15 @@ export async function mergeDriveScanWithIndex({
 
       if (ownerIndex?.files?.length) {
         filesForBackend.forEach((file) => {
-          const indexEntry = ownerIndex.files.find((entry: any) => entry.googleDriveFileId === file.backendFileId);
+          const indexEntry = ownerIndex.files.find(
+            (entry: any) => entry.googleDriveFileId === file.backendFileId
+          );
           if (indexEntry?.publicToken) {
             try {
-              const shareToken = typeof indexEntry.publicToken === 'string'
-                ? JSON.parse(indexEntry.publicToken)
-                : indexEntry.publicToken;
+              const shareToken =
+                typeof indexEntry.publicToken === 'string'
+                  ? JSON.parse(indexEntry.publicToken)
+                  : indexEntry.publicToken;
               const cacheKey = makeShareTokenCacheKey(backendId, file.backendFileId);
               shareTokenCache.current.set(cacheKey, shareToken);
             } catch (tokenError) {
@@ -286,8 +256,7 @@ export async function mergeDriveScanWithIndex({
         });
       }
     } catch (scanError) {
-      const scanMessage =
-        scanError instanceof Error ? scanError.message : String(scanError);
+      const scanMessage = scanError instanceof Error ? scanError.message : String(scanError);
       const scanCode = (scanError as any)?.code;
 
       if (

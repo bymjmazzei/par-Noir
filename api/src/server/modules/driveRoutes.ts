@@ -14,27 +14,13 @@ const NODE_ENV = process.env.NODE_ENV || 'development';
 
 export interface DriveRouteDeps {
   extractAccountId: (account: any) => string | undefined;
-  removeFromOwnerIndex: (
-    token: { access_token: string; refresh_token?: string; expires_at?: number; expires_in?: number },
-    pnIdentifier: string,
-    metadataFolderId: string,
-    fileId: string,
-    accountId?: string
-  ) => Promise<void>;
-  removeFromPublicIndex: (
-    token: { access_token: string; refresh_token?: string; expires_at?: number; expires_in?: number },
-    pnIdentifier: string,
-    metadataFolderId: string,
-    fileId: string,
-    accountId?: string
-  ) => Promise<void>;
 }
 
 /**
  * Setup Google Drive proxy routes
  */
 export function setupDriveRoutes(app: express.Application, deps: DriveRouteDeps) {
-  const { extractAccountId, removeFromOwnerIndex, removeFromPublicIndex } = deps;
+  const { extractAccountId } = deps;
 
     // Google Drive API Proxy Endpoints
     // These endpoints require pN OAuth authentication and proxy Google Drive operations
@@ -1133,23 +1119,21 @@ export function setupDriveRoutes(app: express.Application, deps: DriveRouteDeps)
                         if (metadataFolderData.files && metadataFolderData.files.length > 0) {
                           const metadataFolderId = metadataFolderData.files[0].id;
 
-                          // Remove files from indexes
-                          for (const indexFileId of filesToDelete) {
-                            try {
-                              await removeFromOwnerIndex(token, pnIdentifier, metadataFolderId, indexFileId, accountIdForToken);
-                              console.log(`✅ [DeleteFile] Removed ${indexFileId} from owner index`);
-                            } catch (ownerIndexError: any) {
-                              console.warn(`⚠️ [DeleteFile] Failed to remove ${indexFileId} from owner index:`, ownerIndexError);
-                            }
-
-                            try {
-                              await removeFromPublicIndex(token, pnIdentifier, metadataFolderId, indexFileId, accountIdForToken);
-                              console.log(`✅ [DeleteFile] Removed ${indexFileId} from public index`);
-                            } catch (publicIndexError: unknown) {
-                              const msg = publicIndexError instanceof Error ? publicIndexError.message : String(publicIndexError);
-                              console.warn(`⚠️ [DeleteFile] Failed to remove ${indexFileId} from public index: ${msg}`);
-                            }
-                          }
+                          const { purgeInventoryForFileIds } = await import(
+                            './storage/purgeInventoryForFileIds'
+                          );
+                          await purgeInventoryForFileIds({
+                            token,
+                            pnIdentifier,
+                            metadataFolderId,
+                            fileIds: filesToDelete,
+                            accountId: accountIdForToken,
+                            // Drive delete already removed Postgres rows earlier in this handler.
+                            removePostgres: false,
+                          });
+                          console.log(
+                            `✅ [DeleteFile] Purged owner/public index for ${filesToDelete.length} id(s)`
+                          );
                         }
                       }
                     }

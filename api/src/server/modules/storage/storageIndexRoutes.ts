@@ -13,13 +13,15 @@ import {
   DEVICE_CAPABILITIES,
 } from '../deviceCapabilityService';
 import {
-  getContentClassOwnerIndex,
   getContentClassPublicIndex,
-  getOwnerFileIndex,
   getPublicFileIndex,
   updateOwnerFileIndex,
   updatePublicFileIndex,
 } from './fileIndexHelpers';
+import {
+  loadMergedOwnerIndexFiles,
+  reconcileOwnerInventory,
+} from './ownerInventoryReconcile';
 
 const NODE_ENV = process.env.NODE_ENV || 'development';
 
@@ -98,7 +100,6 @@ export function setupStorageIndexRoutes(app: Application, deps: StorageIndexRout
         }
         let accountId: string | undefined;
         let token: DriveToken = { access_token: '' };
-        let accessToken = '';
         let out: any = null;
         if (!_portableSocial) {
           const account = googleDriveAccounts.length > 0 ? googleDriveAccounts[0] : null;
@@ -106,7 +107,6 @@ export function setupStorageIndexRoutes(app: Application, deps: StorageIndexRout
           const resolved = await resolveIndexDriveToken(req, res, pnIdentifier, account, accountId);
           if (!resolved) return;
           token = resolved;
-          accessToken = token.access_token;
           out = await getMetadataFolder(token, pnIdentifier, accountId);
         }
         if (!_portableSocial && !out) {
@@ -118,34 +118,24 @@ export function setupStorageIndexRoutes(app: Application, deps: StorageIndexRout
           });
         }
 
-        // Merged view: aggregate from content-class indices, fallback to root
-        const contentTypes: Array<'media' | 'thoughts' | 'collections'> =
-          contentClassFilter === 'media' || contentClassFilter === 'thoughts' || contentClassFilter === 'collections'
-            ? [contentClassFilter]
-            : ['media', 'thoughts', 'collections'];
-        const allFiles: any[] = [];
-        for (const contentType of contentTypes) {
-          const folderQuery = `name='${contentType}' and '${out.metadataFolderId}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`;
-          const folderRes = await fetch(
-            `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(folderQuery)}&fields=files(id)&pageSize=1`,
-            { headers: { 'Authorization': `Bearer ${accessToken}` } }
-          );
-          if (!folderRes.ok) continue;
-          const folderData = await folderRes.json() as { files?: Array<{ id: string }> };
-          if (!folderData.files?.length) continue;
-          const idx = await getContentClassOwnerIndex(token, folderData.files[0].id, identityId, contentType, accountId);
-          if (idx?.files?.length) allFiles.push(...idx.files);
-        }
-        if (allFiles.length > 0) {
-          return res.json({ identifier: identityId, files: allFiles, updatedAt: new Date().toISOString() });
-        }
-
-        // Fallback to root owner index
-        const rootIndex = await getOwnerFileIndex(token, out.metadataFolderId, identityId, accountId);
-        if (!rootIndex) {
-          return res.json({ identifier: identityId, files: [], updatedAt: new Date().toISOString() });
-        }
-        return res.json({ identifier: identityId, files: rootIndex.files, updatedAt: rootIndex.updatedAt });
+        const filter =
+          contentClassFilter === 'media' ||
+          contentClassFilter === 'thoughts' ||
+          contentClassFilter === 'collections'
+            ? contentClassFilter
+            : undefined;
+        const allFiles = await loadMergedOwnerIndexFiles({
+          token,
+          pnIdentifier,
+          metadataFolderId: out.metadataFolderId,
+          accountId,
+          contentClassFilter: filter,
+        });
+        return res.json({
+          identifier: identityId,
+          files: allFiles,
+          updatedAt: new Date().toISOString(),
+        });
       } catch (error: any) {
         const { respondDriveTokenError } = await import('../ownerDriveToken');
         if (respondDriveTokenError(res, error)) return;
@@ -179,6 +169,77 @@ export function setupStorageIndexRoutes(app: Application, deps: StorageIndexRout
         return res.status(500).json({
           error: 'Failed to read owner index',
           message: safeClientErrorMessage(error, NODE_ENV === 'production')
+        });
+      }
+    });
+
+    // POST /api/storage/owner-index/:identityId/reconcile
+    // Owner inventory SoT: drop Sheets/Postgres rows whose cloud blobs are gone.
+    // (Public aggregator scheduled job stays Postgres ↔ public Sheets only.)
+    app.post('/api/storage/owner-index/:identityId/reconcile', async (req: Request, res: Response) => {
+      try {
+        const { identityId } = req.params;
+        if (!identityId) {
+          return res.status(400).json({ error: 'Missing identityId parameter' });
+        }
+
+        const pnIdentifier = identityId.startsWith('pn-') ? identityId : `pn-${identityId}`;
+        if (!(await gateOwnerSelfRoute(req, res, DEVICE_CAPABILITIES.driveRead, pnIdentifier))) return;
+
+        const { isPortableSocialCloud } = await import('./storageProviderUtils');
+        if (await isPortableSocialCloud(pnIdentifier)) {
+          // Portable blob probe is not wired here yet; no-op with explicit empty result.
+          return res.json({ checked: 0, removed: 0, errors: 0, removedFileIds: [] });
+        }
+
+        const { storageCredentialsService } = await import('../storageCredentialsService');
+        const userCredentials = await storageCredentialsService.getCredentials(pnIdentifier);
+        if (!userCredentials?.credentials) {
+          return res.status(404).json({ error: 'Google Drive not connected for this identity' });
+        }
+        const googleDriveAccounts =
+          userCredentials.credentials.googleDriveAccounts ||
+          (userCredentials.credentials.googleDrive ? [userCredentials.credentials.googleDrive] : []);
+        if (googleDriveAccounts.length === 0) {
+          return res.status(404).json({ error: 'Storage not connected' });
+        }
+
+        const account = googleDriveAccounts[0] || null;
+        const accountId = extractAccountId(account);
+        const resolved = await resolveIndexDriveToken(req, res, pnIdentifier, account, accountId);
+        if (!resolved) return;
+
+        const out = await getMetadataFolder(resolved, pnIdentifier, accountId);
+        if (!out) {
+          return res.status(409).json({
+            error: 'drive_not_initialized',
+            code: 'DRIVE_INDEX_INCOMPLETE',
+            message:
+              'Google Drive layout is missing or was deleted. Re-save Google Drive in Storage settings to rebuild.',
+          });
+        }
+
+        const files = await loadMergedOwnerIndexFiles({
+          token: resolved,
+          pnIdentifier,
+          metadataFolderId: out.metadataFolderId,
+          accountId,
+        });
+        const result = await reconcileOwnerInventory({
+          token: resolved,
+          pnIdentifier,
+          metadataFolderId: out.metadataFolderId,
+          files,
+          accountId,
+        });
+        return res.json(result);
+      } catch (error: any) {
+        const { respondDriveTokenError } = await import('../ownerDriveToken');
+        if (respondDriveTokenError(res, error)) return;
+        console.error('[OwnerIndexReconcile] Error:', error?.message || error);
+        return res.status(500).json({
+          error: 'Failed to reconcile owner inventory',
+          message: safeClientErrorMessage(error, NODE_ENV === 'production'),
         });
       }
     });

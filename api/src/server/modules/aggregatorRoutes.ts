@@ -776,7 +776,7 @@ export function setupAggregatorRoutes(app: any, deps: AggregatorRouteDeps) {
         }
       }
 
-      // STEP 3: Delete companion metadata spreadsheet
+      // STEP 3: Delete companion metadata spreadsheet + purge Sheets owner/public indexes
       if (userIdentifier && pnIdentifier) {
         try {
           const { googleDriveProxyService } = await import('./googleDriveProxy');
@@ -832,7 +832,7 @@ export function setupAggregatorRoutes(app: any, deps: AggregatorRouteDeps) {
                     const metadataFolderData = await metadataFolderResponse.json() as { files?: Array<{ id: string; name: string }> };
                     if (metadataFolderData.files && metadataFolderData.files.length > 0) {
                       const metadataFolderId = metadataFolderData.files[0].id;
-                      
+
                       // Find companion metadata spreadsheet
                       const spreadsheetId = await CompanionMetadataSheets.findSpreadsheet(
                         token,
@@ -857,6 +857,20 @@ export function setupAggregatorRoutes(app: any, deps: AggregatorRouteDeps) {
                       } else {
                         console.log(`ℹ️ [MetadataIndex DELETE] Companion metadata spreadsheet not found for ${actualFileId}`);
                       }
+
+                      // Sheets owner/public indexes must be purged too (not only Postgres).
+                      const { purgeInventoryForFileIds } = await import('./storage/purgeInventoryForFileIds');
+                      await purgeInventoryForFileIds({
+                        token,
+                        pnIdentifier,
+                        metadataFolderId,
+                        fileIds: filesToDelete,
+                        accountId: accountIdForToken,
+                        removePostgres: false,
+                      });
+                      console.log(
+                        `✅ [MetadataIndex DELETE] Purged owner/public Sheets for ${filesToDelete.length} id(s)`
+                      );
                     }
                   }
                 }
@@ -864,8 +878,8 @@ export function setupAggregatorRoutes(app: any, deps: AggregatorRouteDeps) {
             }
           }
         } catch (companionError: any) {
-          console.warn(`⚠️ [MetadataIndex DELETE] Failed to delete companion metadata:`, companionError?.message || companionError);
-          // Continue even if companion metadata deletion fails
+          console.warn(`⚠️ [MetadataIndex DELETE] Failed companion/Sheets cleanup:`, companionError?.message || companionError);
+          // Continue even if companion metadata / Sheets purge fails
         }
       }
 
