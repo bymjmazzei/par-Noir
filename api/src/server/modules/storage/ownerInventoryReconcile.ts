@@ -1,11 +1,8 @@
 /**
- * Owner inventory reconcile: owner-index rows whose cloud blobs are gone get
- * purged from Sheets (owner + public) and Postgres. This is the single durable
- * “blob gone ⇒ inventory gone” path. Public aggregator cache sync
- * (reconcilePublicAggregator) remains Postgres ↔ public Sheets only.
+ * Owner inventory helpers (Sheets merge + optional private blob probe).
  *
- * Browse feed is Postgres-backed — reconcile unions Sheets owner-index with this
- * owner's public aggregator_* rows so feed orphans are not left behind.
+ * LIVE public posts use OAuth-less publicContentRef reconcile
+ * (reconcilePublicCacheToCloud / publicCloudSot) — not this module's Drive files.get path.
  */
 
 import {

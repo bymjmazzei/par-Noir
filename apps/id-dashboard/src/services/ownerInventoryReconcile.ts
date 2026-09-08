@@ -1,6 +1,6 @@
 /**
- * Owner inventory reconcile: purge Sheets/Postgres rows whose cloud blobs are gone.
- * Single durable path — POST /api/storage/owner-index/:id/reconcile.
+ * Owner-triggered public cache reconcile (Cloud SoT).
+ * Server probes publicContentRef OAuth-less — no googleAccessToken required for liveness.
  */
 
 import { ownerFetch, getOwnerApiPnIdentifier } from './ownerApiService';
@@ -14,7 +14,7 @@ export interface OwnerInventoryReconcileResult {
 }
 
 /**
- * After Drive layout ready / Refresh: align owner inventory with live cloud blobs.
+ * After Drive layout ready / Refresh: purge public cache rows whose envelopes are gone.
  */
 export async function reconcileOwnerInventory(params?: {
   pnIdentifier?: string;
@@ -31,6 +31,7 @@ export async function reconcileOwnerInventory(params?: {
   }
 
   const pnId = pnIdentifier.startsWith('pn-') ? pnIdentifier : `pn-${pnIdentifier}`;
+  // Optional cloud token only helps Sheets scrub on other paths; liveness probe is OAuth-less.
   const cloudTok = params?.googleAccessToken?.trim();
   const res = await ownerFetch(
     ownerToken,

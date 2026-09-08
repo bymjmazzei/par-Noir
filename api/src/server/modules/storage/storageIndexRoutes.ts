@@ -20,9 +20,6 @@ import {
 } from './fileIndexHelpers';
 import {
   loadMergedOwnerIndexFiles,
-  loadOwnerPublicPostgresEntries,
-  mergeInventoryEntries,
-  reconcileOwnerInventory,
 } from './ownerInventoryReconcile';
 
 const NODE_ENV = process.env.NODE_ENV || 'development';
@@ -176,8 +173,7 @@ export function setupStorageIndexRoutes(app: Application, deps: StorageIndexRout
     });
 
     // POST /api/storage/owner-index/:identityId/reconcile
-    // Owner inventory SoT: drop Sheets/Postgres rows whose cloud blobs are gone.
-    // (Public aggregator scheduled job stays Postgres ↔ public Sheets only.)
+    // Public cache ↔ cloud SoT (OAuth-less publicContentRef probe). No owner Drive token required.
     app.post('/api/storage/owner-index/:identityId/reconcile', async (req: Request, res: Response) => {
       try {
         const { identityId } = req.params;
@@ -188,69 +184,15 @@ export function setupStorageIndexRoutes(app: Application, deps: StorageIndexRout
         const pnIdentifier = identityId.startsWith('pn-') ? identityId : `pn-${identityId}`;
         if (!(await gateOwnerSelfRoute(req, res, DEVICE_CAPABILITIES.driveRead, pnIdentifier))) return;
 
-        const { isPortableSocialCloud } = await import('./storageProviderUtils');
-        if (await isPortableSocialCloud(pnIdentifier)) {
-          // Portable blob probe is not wired here yet; no-op with explicit empty result.
-          return res.json({ checked: 0, removed: 0, errors: 0, removedFileIds: [] });
-        }
-
-        const { storageCredentialsService } = await import('../storageCredentialsService');
-        const userCredentials = await storageCredentialsService.getCredentials(pnIdentifier);
-        if (!userCredentials?.credentials) {
-          return res.status(404).json({ error: 'Google Drive not connected for this identity' });
-        }
-        const googleDriveAccounts =
-          userCredentials.credentials.googleDriveAccounts ||
-          (userCredentials.credentials.googleDrive ? [userCredentials.credentials.googleDrive] : []);
-        if (googleDriveAccounts.length === 0) {
-          return res.status(404).json({ error: 'Storage not connected' });
-        }
-
-        const account = googleDriveAccounts[0] || null;
-        const accountId = extractAccountId(account);
-        const resolved = await resolveIndexDriveToken(req, res, pnIdentifier, account, accountId);
-        if (!resolved) return;
-
-        const out = await getMetadataFolder(resolved, pnIdentifier, accountId);
-        if (!out) {
-          return res.status(409).json({
-            error: 'drive_not_initialized',
-            code: 'DRIVE_INDEX_INCOMPLETE',
-            message:
-              'Google Drive layout is missing or was deleted. Re-save Google Drive in Storage settings to rebuild.',
-          });
-        }
-
-        const sheetsFiles = await loadMergedOwnerIndexFiles({
-          token: resolved,
-          pnIdentifier,
-          metadataFolderId: out.metadataFolderId,
-          accountId,
-        });
-        let postgresPublic: Awaited<ReturnType<typeof loadOwnerPublicPostgresEntries>> = [];
-        try {
-          postgresPublic = await loadOwnerPublicPostgresEntries(pnIdentifier);
-        } catch (pgErr) {
-          console.warn(
-            '[OwnerIndexReconcile] Postgres public inventory load failed (continuing with Sheets)',
-            pgErr instanceof Error ? pgErr.message : pgErr
-          );
-        }
-        const files = mergeInventoryEntries(sheetsFiles, postgresPublic);
-        const result = await reconcileOwnerInventory({
-          token: resolved,
-          pnIdentifier,
-          metadataFolderId: out.metadataFolderId,
-          files,
-          accountId,
-        });
+        const { reconcilePublicCacheToCloud } = await import('./reconcilePublicCacheToCloud');
+        const result = await reconcilePublicCacheToCloud({ pnIdentifier });
         return res.json(result);
       } catch (error: any) {
         const { respondDriveTokenError } = await import('../ownerDriveToken');
         if (respondDriveTokenError(res, error)) return;
         console.error('[OwnerIndexReconcile] Error:', error?.message || error);
         return res.status(500).json({
-          error: 'Failed to reconcile owner inventory',
+          error: 'Failed to reconcile public cache to cloud SoT',
           message: safeClientErrorMessage(error, NODE_ENV === 'production'),
         });
       }

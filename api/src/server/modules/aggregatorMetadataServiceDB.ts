@@ -587,6 +587,13 @@ export class AggregatorMetadataServiceDB {
       const joinType = 'LEFT';
     const params: any[] = [];
     let paramIndex = 1;
+    // Cloud SoT: public list requires complete publicContentRef (not isPublic alone).
+    const publicRefSql = `(
+      am.metadata->'publicContentRef' IS NOT NULL
+      AND COALESCE(am.metadata->'publicContentRef'->>'backend', '') <> ''
+      AND COALESCE(am.metadata->'publicContentRef'->>'objectId', '') <> ''
+      AND COALESCE(am.metadata->'publicContentRef'->>'publicUrl', '') <> ''
+    )`;
       
       let query = `
         SELECT 
@@ -602,6 +609,7 @@ export class AggregatorMetadataServiceDB {
           OR (am.metadata->>'isPublic')::boolean = true
           OR am.metadata->'isPublic' = 'true'::jsonb
         )
+        AND ${publicRefSql}
         AND (
           am.metadata->>'isNSFW' IS NULL 
           OR am.metadata->>'isNSFW' = 'false'
@@ -660,6 +668,7 @@ export class AggregatorMetadataServiceDB {
           OR (am.metadata->>'isPublic')::boolean = true
           OR am.metadata->'isPublic' = 'true'::jsonb
         )
+        AND ${publicRefSql}
         AND (
           am.metadata->>'isNSFW' IS NULL 
           OR am.metadata->>'isNSFW' = 'false'
@@ -1189,6 +1198,48 @@ export class AggregatorMetadataServiceDB {
           publicContentObjectId: row.public_content_object_id || undefined,
           mainFileId: row.main_file_id || undefined,
           thumbnailFileId: row.thumbnail_file_id || undefined,
+        });
+      }
+    }
+    return out;
+  }
+
+  /**
+   * Public cache rows for OAuth-less envelope reconcile (Cloud SoT).
+   * When pnIdentifier is set, scope to that owner; otherwise all public rows.
+   */
+  async listPublicCacheRowsForReconcile(pnIdentifier?: string): Promise<
+    Array<{ fileId: string; pnIdentifier?: string; publicContentRef?: unknown }>
+  > {
+    const db = getDatabasePool();
+    const where = AggregatorMetadataServiceDB.PUBLIC_METADATA_WHERE;
+    const tables = this.getAllContentTypeTables();
+    const out: Array<{ fileId: string; pnIdentifier?: string; publicContentRef?: unknown }> = [];
+    const pn = pnIdentifier
+      ? pnIdentifier.startsWith('pn-')
+        ? pnIdentifier
+        : `pn-${pnIdentifier}`
+      : null;
+
+    for (const table of tables) {
+      const result = pn
+        ? await db.query(
+            `SELECT file_id, pn_identifier, metadata->'publicContentRef' AS public_content_ref
+             FROM ${table}
+             WHERE pn_identifier = $1 AND ${where}`,
+            [pn]
+          )
+        : await db.query(
+            `SELECT file_id, pn_identifier, metadata->'publicContentRef' AS public_content_ref
+             FROM ${table}
+             WHERE ${where}`
+          );
+      for (const row of result.rows) {
+        if (!row.file_id) continue;
+        out.push({
+          fileId: row.file_id,
+          pnIdentifier: row.pn_identifier || undefined,
+          publicContentRef: row.public_content_ref ?? undefined,
         });
       }
     }

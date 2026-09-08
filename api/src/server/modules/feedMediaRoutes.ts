@@ -341,6 +341,22 @@ export function registerFeedMediaRoutes(app: Application): void {
           ref = await pullThroughToR2(fileId, variant === 'hd' && ref === refForVariant(meta, 'hd') ? 'hd' : 'sd', ref);
         } catch (err: unknown) {
           if (err instanceof PublicBlobAccessError) {
+            if (err.code === 'NOT_FOUND') {
+              try {
+                const { purgePublicCacheForFileIds } = await import('./storage/publicCloudSot');
+                await purgePublicCacheForFileIds({
+                  fileIds: [fileId],
+                  pnIdentifier: entry.pnIdentifier || undefined,
+                });
+                safeLogger.info('[public-media] Purged dead public row after canonical SoT NOT_FOUND', {
+                  fileHash: hashIdentifier(fileId),
+                });
+              } catch (purgeErr: unknown) {
+                safeLogger.warn('[public-media] Purge failed', {
+                  message: purgeErr instanceof Error ? purgeErr.message : 'unknown',
+                });
+              }
+            }
             return res.status(err.httpStatus).json({ error: err.code.toLowerCase() });
           }
           throw err;

@@ -196,12 +196,21 @@ export function registerPublicContentRoutes(app: Application): void {
 
       const ref = meta.publicContentRef;
       if (!isPublicContentRef(ref)) {
-        safeLogger.warn('[public-content] Missing publicContentRef', {
+        safeLogger.warn('[public-content] Missing publicContentRef — purging cache row', {
           fileHash: hashIdentifier(fileId),
         });
-        return res.status(409).json({
-          error: 'missing_public_content_ref',
-          error_description: 'Public row missing publicContentRef',
+        try {
+          const { purgePublicCacheForFileIds } = await import('./storage/publicCloudSot');
+          await purgePublicCacheForFileIds({
+            fileIds: [fileId],
+            pnIdentifier: entry.pnIdentifier || undefined,
+          });
+        } catch {
+          /* best-effort */
+        }
+        return res.status(404).json({
+          error: 'not_found',
+          error_description: 'Public row missing publicContentRef; cache purged',
         });
       }
 
@@ -234,9 +243,11 @@ export function registerPublicContentRoutes(app: Application): void {
           if (now - last > PURGE_COOLDOWN_MS) {
             recentPurges.set(fileId, now);
             try {
-              await service.removeMetadata(fileId);
-              const { invalidateIndexCache } = await import('../utils/cache');
-              await invalidateIndexCache();
+              const { purgePublicCacheForFileIds } = await import('./storage/publicCloudSot');
+              await purgePublicCacheForFileIds({
+                fileIds: [fileId],
+                pnIdentifier: entry.pnIdentifier || undefined,
+              });
               await invalidateEnvelopeCache(ref.objectId);
               safeLogger.info('[public-content] Purged dead public row after 404', {
                 fileHash: hashIdentifier(fileId),

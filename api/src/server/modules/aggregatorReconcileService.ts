@@ -1,9 +1,10 @@
 /**
- * Keeps aggregator PostgreSQL cache aligned with each owner's public-file-index.
- * DB-scoped: only identities with public rows in aggregator_* tables are checked.
+ * Keeps aggregator PostgreSQL cache aligned with owner-cloud public envelopes (SoT)
+ * and secondarily with public Sheets ids when credentials allow.
  *
- * Owner blob orphans (Sheets row whose Drive file is gone) are owned exclusively by
- * POST /api/storage/owner-index/:identityId/reconcile — this job must not probe Drive.
+ * LIVE public post = publicContentRef envelope still fetchable OAuth-less.
+ * That probe does not need owner cloud tokens (device custody safe).
+ * Sheets ↔ Postgres id sync is secondary and must never define liveness.
  */
 
 import type { IndexFileEntry } from './indexSheetsService';
@@ -13,6 +14,7 @@ import { isIndexSheetNotFoundError } from './indexSheetsService';
 import { getOwnerStorageContext, type OwnerStorageContext } from './storage/ownerStorageContext';
 import { storageCredentialsService } from './storageCredentialsService';
 import { hashIdentifier, safeLogger } from '../../utils/logger';
+import { reconcilePublicCacheToCloud } from './storage/reconcilePublicCacheToCloud';
 
 export interface ReconcilePublicAggregatorResult {
   usersChecked: number;
@@ -20,6 +22,10 @@ export interface ReconcilePublicAggregatorResult {
   filesRemoved: number;
   usersSkipped: number;
   errors: number;
+  /** OAuth-less public envelope reconcile totals */
+  envelopeChecked?: number;
+  envelopeRemoved?: number;
+  envelopeErrors?: number;
 }
 
 const CONTENT_CLASSES = ['media', 'thoughts', 'collections'] as const;
@@ -105,9 +111,33 @@ export async function reconcilePublicAggregator(): Promise<ReconcilePublicAggreg
   let filesRemoved = 0;
   let usersSkipped = 0;
   let errors = 0;
+  let envelopeChecked = 0;
+  let envelopeRemoved = 0;
+  let envelopeErrors = 0;
+
+  // Primary live SoT: OAuth-less publicContentRef probe (no owner cloud token).
+  try {
+    const envelope = await reconcilePublicCacheToCloud();
+    envelopeChecked = envelope.checked;
+    envelopeRemoved = envelope.removed;
+    envelopeErrors = envelope.errors;
+    filesRemoved += envelope.removed;
+    errors += envelope.errors;
+    if (envelope.removed > 0 || envelope.checked > 0) {
+      safeLogger.info('[Reconcile] Public envelope OAuth-less reconcile', {
+        checked: envelope.checked,
+        removed: envelope.removed,
+        errors: envelope.errors,
+      });
+    }
+  } catch (envelopeErr) {
+    errors++;
+    safeLogger.warn('[Reconcile] Public envelope reconcile failed', {
+      error: envelopeErr as Error,
+    });
+  }
 
   // Drop public rows that can never be served (missing publicContentRef).
-  // Safe under device custody — Postgres only, no Drive crawl.
   try {
     const missingRefRemoved = await metadataService.purgePublicRowsMissingContentRef();
     filesRemoved += missingRefRemoved;
@@ -131,12 +161,8 @@ export async function reconcilePublicAggregator(): Promise<ReconcilePublicAggreg
     try {
       const { isDeviceCloudCustodyEnabled } = await import('./socialMailboxService');
       if (isDeviceCloudCustodyEnabled()) {
-        // Device custody: do not crawl private clouds with stored tokens.
-        // Rely on publish-time client push of public index into aggregator DB.
+        // Device custody: skip Sheets credential crawl. Live SoT already handled OAuth-less above.
         usersSkipped++;
-        safeLogger.info('[Reconcile] Skipping credential crawl (device cloud custody)', {
-          pnHash: hashIdentifier(pnIdentifier),
-        });
         continue;
       }
 
@@ -268,7 +294,19 @@ export async function reconcilePublicAggregator(): Promise<ReconcilePublicAggreg
     filesRemoved,
     usersSkipped,
     errors,
+    envelopeChecked,
+    envelopeRemoved,
+    envelopeErrors,
   });
 
-  return { usersChecked, usersPurged, filesRemoved, usersSkipped, errors };
+  return {
+    usersChecked,
+    usersPurged,
+    filesRemoved,
+    usersSkipped,
+    errors,
+    envelopeChecked,
+    envelopeRemoved,
+    envelopeErrors,
+  };
 }

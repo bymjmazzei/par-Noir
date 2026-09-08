@@ -4,7 +4,8 @@
  * Owns loadFiles, loadStorageQuota and the token-retry scheduling that backs them.
  * Per-backend owner-index resolution lives in loadFiles/fetchOwnerIndex, and the
  * Drive-scan for unindexed discovery lives in loadFiles/mergeDriveScanWithIndex.
- * Durable orphan cleanup is POST /api/storage/owner-index/:id/reconcile (owner inventory).
+ * Durable public-cache cleanup is Cloud SoT reconcile
+ * (POST /api/storage/owner-index/:id/reconcile → OAuth-less publicContentRef probe).
  *
  * Device custody note: an owner-index 409 means the server-side Drive index is
  * incomplete (expected when OAuth secrets live on the device, not the API).

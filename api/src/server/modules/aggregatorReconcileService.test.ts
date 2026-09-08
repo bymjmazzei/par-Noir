@@ -36,6 +36,15 @@ jest.mock('../utils/cache', () => ({
   invalidateIndexCache: jest.fn().mockResolvedValue(undefined),
 }));
 
+jest.mock('./storage/reconcilePublicCacheToCloud', () => ({
+  reconcilePublicCacheToCloud: jest.fn().mockResolvedValue({
+    checked: 0,
+    removed: 0,
+    errors: 0,
+    removedFileIds: [],
+  }),
+}));
+
 const mockMetadataService = AggregatorMetadataServiceDB.getInstance as jest.MockedFunction<
   typeof AggregatorMetadataServiceDB.getInstance
 >;
@@ -55,6 +64,8 @@ function serviceMock(overrides: Partial<AggregatorMetadataServiceDB> = {}) {
       { fileId: 'B', submittedAt: new Date('2020-01-01T00:00:00Z') },
       { fileId: 'C', submittedAt: new Date('2020-01-01T00:00:00Z') },
     ]),
+    listPublicCacheRowsForReconcile: jest.fn().mockResolvedValue([]),
+    purgePublicRowsMissingContentRef: jest.fn().mockResolvedValue(0),
     removeAllMetadataForUser: jest.fn().mockResolvedValue(3),
     removeMetadata: jest.fn().mockResolvedValue(true),
   };
