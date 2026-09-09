@@ -749,27 +749,37 @@ export function useAuthUnlockHandlers(params: UseAuthUnlockHandlersParams) {
           await storage.storeSession(authSession);
           logDebug('Session stored:', authSession);
 
-          // Use stored identity nickname or derive from filename
-          let finalNickname = selectedStoredIdentity?.nickname;
+          // Nickname: stored → session (from decrypted identity) → filename → stable suffix.
+          // Do not require identityToUnlock.id (portable .pn envelopes often omit it).
+          // Filename "identity.pn" must not become "" via stripping the word "identity".
+          let finalNickname = selectedStoredIdentity?.nickname || authSession.nickname || '';
           if (!finalNickname && mainForm.uploadFile?.name) {
-            finalNickname = mainForm.uploadFile.name
+            const base = mainForm.uploadFile.name
               .replace(/\.(json|pn|id|identity)$/i, '')
               .replace(/\([0-9]+\)$/, '')
               .replace(/backup$/i, '')
-              .replace(/identity$/i, '')
               .replace(/[-_]/g, ' ')
               .trim();
+            if (base && !/^identity$/i.test(base)) {
+              finalNickname = base;
+            }
           }
           if (!finalNickname) {
-            finalNickname = `Identity (${identityToUnlock.id.slice(-8)})`;
+            const suffix = String(
+              authSession.id || identityToUnlock.publicKey || identityToUnlock.id || 'pn'
+            ).slice(-8);
+            finalNickname = `Identity (${suffix})`;
           }
 
           logDebug('Using nickname:', finalNickname);
 
+          const didId =
+            authSession.id || identityToUnlock.id || identityToUnlock.publicKey || finalNickname;
+
           // Create DID info for UI
           const didInfo: DIDInfo = {
-            id: identityToUnlock.id,
-            pnName: identityToUnlock.pnName,
+            id: didId,
+            pnName: identityToUnlock.pnName || '',
             nickname: finalNickname,
             email: identityToUnlock.email || '',
             phone: identityToUnlock.phone || '',

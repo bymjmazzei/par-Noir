@@ -15,7 +15,7 @@ Apply these on every edit. Product north star: `guiding-principles.mdc`. Full do
 
 ## 2. Where shared code lives
 
-- **Identity / crypto:** `packages/identity-crypto`, `packages/pqc-crypto` (canonical). Prefer these over app-local crypto.
+- **Identity / crypto:** `packages/identity-crypto`, `packages/pqc-crypto` (canonical). Prefer these over app-local crypto. Apps must **not** import `@identity-protocol/identity-core` — enforced by `scripts/check-no-identity-core-in-apps.sh`.
 - **SDK / client helpers:** `sdk/` (e.g. identity-sdk).
 - **Types, API clients, central metadata:** When shared by multiple apps, use `core/`, `sdk/`, or `packages/`. Browser: fetch only. Dashboard: fetch + submit.
 - **Pure logic:** `packages/` or `services/` in one app; if both need it → `core/`, `sdk/`, or `packages/`.
@@ -27,7 +27,7 @@ Apply these on every edit. Product north star: `guiding-principles.mdc`. Full do
 2. **Services do NOT import from UI components** to get a function. Put the function in `packages/` or `services/`; the component imports it.
 3. **Aggregator-browser: storage is API-only.** No direct `googleapis.com` or `oauth2.googleapis.com`. Storage = par Noir API.
 4. **When adding shared code:** Prefer `core/` or `sdk/`. If using `packages/`: create `packages/<name>/` with `package.json` and `src/index.ts`; add `packages/*` to root `workspaces`; apps use `"@par-noir/<name>": "workspace:*"`.
-5. **We are in development.** Do not prioritize backwards compatibility. Prefer correct, simple behavior over preserving legacy or broken behavior.
+5. **We are in development.** Do not prioritize backwards compatibility. Prefer correct, simple behavior over preserving legacy or broken behavior. See `rebuild-not-patch.mdc`.
 6. **Do not patch symptoms.** Find the root cause and fix it. Avoid workarounds, compatibility shims, or "quick fixes" that hide the real bug.
 7. **Do not commit .env, API keys, secrets, or other sensitive config to git.** Pre-commit runs `scripts/check-secrets.sh`; do not bypass or remove it.
 8. **Do not add hardcoded API keys, client IDs, or secrets as fallbacks** when env is unset. Use `VITE_*` only; fail when required and unset.

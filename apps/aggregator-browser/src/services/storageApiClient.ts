@@ -394,10 +394,11 @@ export function readCachedStorageAccounts(pnIdentifier: string): StorageAccounts
   if (!resolvedPnId) return null;
   const cached = accountsCacheService.get(resolvedPnId);
   if (!cached) return null;
+  const social = cached.socialCloudProvider ?? null;
   return {
-    connected: cached.length > 0,
-    accounts: cached,
-    socialCloudProvider: null,
+    connected: cached.accounts.length > 0 || !!social,
+    accounts: cached.accounts,
+    socialCloudProvider: social,
   };
 }
 
@@ -412,10 +413,11 @@ export async function fetchStorageAccounts(
 
   const cached = accountsCacheService.get(resolvedPnId);
   if (cached) {
+    const social = cached.socialCloudProvider ?? null;
     return {
-      connected: cached.length > 0,
-      accounts: cached,
-      socialCloudProvider: null
+      connected: cached.accounts.length > 0 || !!social,
+      accounts: cached.accounts,
+      socialCloudProvider: social
     };
   }
 
@@ -431,11 +433,15 @@ export async function fetchStorageAccounts(
     }
     const data = await res.json();
     const accounts = Array.isArray(data.accounts) ? data.accounts : [];
-    accountsCacheService.set(resolvedPnId, accounts);
+    const socialCloudProvider =
+      (data.socialCloudProvider as string | undefined) ??
+      (data.primaryProvider as string | undefined) ??
+      null;
+    accountsCacheService.set(resolvedPnId, accounts, socialCloudProvider);
     return {
-      connected: accounts.length > 0,
+      connected: accounts.length > 0 || !!socialCloudProvider,
       accounts,
-      socialCloudProvider: data.socialCloudProvider ?? data.primaryProvider ?? null
+      socialCloudProvider
     };
   })().finally(() => {
     storageAccountsInflight.delete(resolvedPnId);

@@ -7,6 +7,8 @@ alwaysApply: true
 
 A hard ban **without** a `scripts/check-*.sh` (or a unit/gate test that fails on the violation) is **not** a hard ban. Prefer adding a ratchet over writing more Cursor prose.
 
+Architecture debt (dual paths, shims, wrong package) is governed by `rebuild-not-patch.mdc`. Apps must not import `@identity-protocol/identity-core` — `scripts/check-no-identity-core-in-apps.sh` (no allowlist).
+
 When introducing a new invariant:
 
 1. Encode it in a check script or falsification test.

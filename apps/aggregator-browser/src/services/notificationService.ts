@@ -74,7 +74,9 @@ export class NotificationService {
     if (options?.unreadOnly) params.append('unreadOnly', 'true');
     if (options?.type) params.append('type', options.type);
 
-    const response = await fetch(`${API_ENDPOINT}/api/notifications?${params.toString()}`);
+    const response = await fetch(`${API_ENDPOINT}/api/notifications?${params.toString()}`, {
+      headers: await authHeaders(),
+    });
 
     if (!response.ok) {
       const error = await response.json().catch(() => ({ error: 'Failed to get notifications' }));
@@ -88,7 +90,10 @@ export class NotificationService {
    * Get unread notification count
    */
   static async getUnreadCount(userPnIdentifier: string): Promise<number> {
-    const response = await fetch(`${API_ENDPOINT}/api/notifications/unread-count?userPnIdentifier=${userPnIdentifier}`);
+    const response = await fetch(
+      `${API_ENDPOINT}/api/notifications/unread-count?userPnIdentifier=${userPnIdentifier}`,
+      { headers: await authHeaders() }
+    );
 
     if (!response.ok) {
       const error = await response.json().catch(() => ({ error: 'Failed to get unread count' }));
@@ -105,9 +110,7 @@ export class NotificationService {
   static async markAsRead(notificationId: string, userPnIdentifier: string): Promise<void> {
     const response = await fetch(`${API_ENDPOINT}/api/notifications/${notificationId}/read`, {
       method: 'PUT',
-      headers: {
-        'Content-Type': 'application/json'
-      },
+      headers: await authHeaders(),
       body: JSON.stringify({ userPnIdentifier })
     });
 
@@ -123,9 +126,7 @@ export class NotificationService {
   static async markAllAsRead(userPnIdentifier: string): Promise<number> {
     const response = await fetch(`${API_ENDPOINT}/api/notifications/read-all`, {
       method: 'PUT',
-      headers: {
-        'Content-Type': 'application/json'
-      },
+      headers: await authHeaders(),
       body: JSON.stringify({ userPnIdentifier })
     });
 
@@ -142,9 +143,13 @@ export class NotificationService {
    * Delete notification
    */
   static async deleteNotification(notificationId: string, userPnIdentifier: string): Promise<void> {
-    const response = await fetch(`${API_ENDPOINT}/api/notifications/${notificationId}?userPnIdentifier=${userPnIdentifier}`, {
-      method: 'DELETE'
-    });
+    const response = await fetch(
+      `${API_ENDPOINT}/api/notifications/${notificationId}?userPnIdentifier=${userPnIdentifier}`,
+      {
+        method: 'DELETE',
+        headers: await authHeaders(),
+      }
+    );
 
     if (!response.ok) {
       const error = await response.json().catch(() => ({ error: 'Failed to delete notification' }));

@@ -49,6 +49,10 @@ if [ -f scripts/check-legacy-identity-crypto.sh ]; then
   bash scripts/check-legacy-identity-crypto.sh || { echo "❌ check-legacy-identity-crypto: use @par-noir/identity-crypto; do not reintroduce RSA IdentityManager."; exit 1; }
 fi
 
+if [ -f scripts/check-no-identity-core-in-apps.sh ]; then
+  bash scripts/check-no-identity-core-in-apps.sh || { echo "❌ check-no-identity-core-in-apps: apps must not import @identity-protocol/identity-core; use @par-noir/identity-crypto."; exit 1; }
+fi
+
 echo "🔒 Running security audit before commit..."
 
 # Run security audit

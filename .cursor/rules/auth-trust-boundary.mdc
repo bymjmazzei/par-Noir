@@ -12,6 +12,7 @@ Prose rules are not enough. These scripts refuse new violations on commit/CI:
 - `scripts/check-token-resolver-boundary.sh` + `scripts/token-resolver-allowlist.txt` + `scripts/peer-credential-allowlist.txt` (Drive token via `resolveOwnerDriveToken`; peer raw `access_token` burn-down)
 - `scripts/check-l5-product-route-boundary.sh` (first-party only for messages/mailbox/connections/groups/engagement/notifications)
 - `scripts/check-legacy-identity-crypto.sh` (no RSA / app-local IdentityManager reintroduction)
+- `scripts/check-no-identity-core-in-apps.sh` (apps must not import `@identity-protocol/identity-core`; use `@par-noir/identity-crypto`)
 
 ## Hard bans
 
@@ -22,3 +23,4 @@ Prose rules are not enough. These scripts refuse new violations on commit/CI:
 5. Do **not** delete, skip, or weaken these scripts or their CI/pre-commit wiring.
 6. Do **not** reintroduce demo JWT / mock `decryptIdentity` in `@par-noir/identity-crypto`.
 7. Do **not** expose `/api/messages`, `/api/mailbox`, `/api/connections`, `/api/groups`, `/api/engagement`, or `/api/notifications` to third-party OAuth clients — use `requireFirstPartyOAuthClient` / `mountL5ProductFirstPartyBoundary`.
+8. Do **not** import `@identity-protocol/identity-core` (or `core/identity-core` path imports) from `apps/` — canonical identity is `@par-noir/identity-crypto`.

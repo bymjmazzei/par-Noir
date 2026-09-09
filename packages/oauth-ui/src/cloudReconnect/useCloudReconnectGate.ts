@@ -75,11 +75,16 @@ export function useCloudReconnectGate(config: CloudReconnectGateConfig): CloudRe
       let social: string | null = null;
 
       const cached = preferCachedAccounts ? preferCachedAccounts() : null;
-      if (cached && !opts?.force) {
+      // Empty layout cache is not authoritative (social provider used to be dropped from cache).
+      const cachedHasLayout =
+        !!cached && ((cached.accounts?.length ?? 0) > 0 || !!cached.socialCloudProvider);
+      if (cachedHasLayout && !opts?.force) {
         accounts = cached.accounts ?? [];
         social = cached.socialCloudProvider ?? null;
       } else {
-        const url = `${apiEndpoint.replace(/\/$/, '')}/api/storage/accounts/${encodeURIComponent(pnIdentifier)}`;
+        const url = `${apiEndpoint.replace(/\/$/, '')}/api/storage/accounts/${encodeURIComponent(
+          pnIdentifier.startsWith('pn-') ? pnIdentifier.slice(3) : pnIdentifier
+        )}`;
         const res = await fetch(url, {
           headers: { Authorization: `Bearer ${authToken}` }
         });

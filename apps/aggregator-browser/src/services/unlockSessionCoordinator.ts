@@ -71,6 +71,11 @@ export function runUnlockPostPrefetch(pnIdentifier: string): Promise<void> {
 
     completedUnlockPn.add(key);
     engagementPrefetchAllowed = true;
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(
+        new CustomEvent('pn_unlock_prefetch_complete', { detail: { pnIdentifier } })
+      );
+    }
   })().finally(() => {
     prefetchInflight = null;
   });

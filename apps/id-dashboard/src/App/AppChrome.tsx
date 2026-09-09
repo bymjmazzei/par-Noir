@@ -101,8 +101,8 @@ export function AppChrome(props: AppChromeProps) {
         </div>
       )}
 
-      {/* Error Display */}
-      {error && authenticatedUser && (
+      {/* Error Display — include unlock gate (no session yet); was gated on authenticatedUser and hid all unlock failures */}
+      {error && (
         <div
           className="fixed left-1/2 transform -translate-x-1/2 z-50 mb-4 p-3 bg-red-100 border border-red-200 rounded-lg shadow-lg"
           style={{ top: 'calc(5rem + env(safe-area-inset-top, 0px))' }}

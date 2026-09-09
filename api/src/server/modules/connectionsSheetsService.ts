@@ -376,6 +376,7 @@ export class ConnectionsSheetsService {
 
     await drive.files.update({
       fileId: spreadsheetId,
+      removeParents: (await drive.files.get({ fileId: spreadsheetId, fields: 'parents' })).data.parents?.join(',') || '',
       addParents: metadataFolderId,
       fields: 'id, parents'
     });
@@ -445,6 +446,7 @@ export class ConnectionsSheetsService {
 
     await drive.files.update({
       fileId: spreadsheetId,
+      removeParents: (await drive.files.get({ fileId: spreadsheetId, fields: 'parents' })).data.parents?.join(',') || '',
       addParents: metadataFolderId,
       fields: 'id, parents'
     });

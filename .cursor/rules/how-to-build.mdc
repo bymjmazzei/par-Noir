@@ -13,8 +13,18 @@ alwaysApply: true
 - **Large components:** Prefer splitting. Avoid multi-thousand-line components; extract subcomponents and hooks.
 - **aggregator-browser:** Only talks to par Noir API for storage. No direct Google or OAuth URLs.
 - **id-dashboard:** May use API and/or direct Google; do not replicate that pattern in aggregator-browser.
-- **We are in development.** Do not prioritize backwards compatibility. Prefer correct, simple behavior over preserving legacy or broken behavior.
+- **We are in development.** Do not prioritize backwards compatibility. Prefer correct, simple behavior over preserving legacy or broken behavior. See `rebuild-not-patch.mdc` — minimal-diff does not authorize shims.
 - **Do not patch symptoms.** Find the root cause and fix it. Avoid workarounds, compatibility shims, or "quick fixes" that hide the real bug.
+- **Shared spine** (put logic here first; app `*Service.ts` = API wiring only):
+  | Concern | Package |
+  |---|---|
+  | Identity create / unlock | `@par-noir/identity-crypto` |
+  | OAuth unlock proofs (ML-DSA) | `@par-noir/pqc-crypto` |
+  | DMs / group message crypto | `@par-noir/dm-crypto` |
+  | Feed / public share domain | `@par-noir/aggregator-domain` |
+  | OAuth UI chrome / handoff helpers | `@par-noir/oauth-ui` |
+  | Device cloud credential headers | `@par-noir/device-cloud-credentials` |
+  Apps must not import `@identity-protocol/identity-core` (`scripts/check-no-identity-core-in-apps.sh`).
 - **API base URL:** One config module per app (e.g. `config/api.ts`), one env var **`VITE_API_ENDPOINT`**. At **production build time** that value must be defined (Vite inlines it). There is **no** secret default inside the bundle for prod—wrong URLs are worse than a failed build. **Root `./deploy.sh` exports `VITE_API_ENDPOINT` for you** (default `https://api.parnoir.com`; override: `VITE_API_ENDPOINT=https://… ./deploy.sh`). If you run `npm run build` inside an app without `./deploy.sh`, put `VITE_API_ENDPOINT=…` in that app’s `.env` or export it in the shell first. Do not scatter `REACT_APP_*` or inline API URLs.
 - **Secrets:** Do not commit .env, API keys, or secrets to git. Do not add hardcoded API keys or client IDs as fallbacks; use VITE_* only; fail when unset. Pre-commit runs scripts/check-secrets.sh; do not bypass it.
 - **Sensitive data:** Never expose in plain text pn name, passcode, Google Drive account, age, email, or anything the identity protocol and ZKPs protect—not in code, logs, or console. Encrypt or ZKP; never raw.

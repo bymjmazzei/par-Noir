@@ -1039,7 +1039,14 @@ function App() {
   };
 
   if (isMessagingEmbed) {
-    return <EmbedMessagingPage />;
+    // Same cloud reconnect / vault hydrate path as browse — without this host,
+    // messaging shows "linked but not signed in" with no prompt (ConnectionHealthBanner only).
+    return (
+      <>
+        {userState.isUnlocked ? <AggregatorCloudReconnectHost /> : null}
+        <EmbedMessagingPage />
+      </>
+    );
   }
 
   return (

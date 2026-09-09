@@ -95,10 +95,14 @@ export class RecoverySheetsService {
       throw new Error('Failed to create recovery spreadsheet');
     }
 
+    // Sheets API creates under My Drive root; move fully into _metadata (do not leave a root parent).
+    const fileInfo = await drive.files.get({ fileId: spreadsheetId, fields: 'parents' });
+    const currentParents = fileInfo.data.parents || [];
     await drive.files.update({
       fileId: spreadsheetId,
+      removeParents: currentParents.join(','),
       addParents: metadataFolderId,
-      fields: 'id',
+      fields: 'id, parents',
     });
 
     await sheets.spreadsheets.values.batchUpdate({

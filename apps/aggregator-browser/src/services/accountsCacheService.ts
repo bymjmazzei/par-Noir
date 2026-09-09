@@ -1,6 +1,6 @@
 /**
  * Accounts Cache Service
- * In-memory cache for Google Drive accounts to eliminate redundant API calls
+ * In-memory cache for storage accounts to eliminate redundant API calls
  * Cache persists during session (cleared on page refresh)
  */
 
@@ -13,6 +13,7 @@ interface DriveAccount {
 
 interface CachedAccounts {
   accounts: DriveAccount[];
+  socialCloudProvider: string | null;
   timestamp: number;
 }
 
@@ -24,12 +25,14 @@ class AccountsCacheService {
    * Get cached accounts for a pN identifier
    * Returns null if cache miss or expired
    */
-  get(pnIdentifier: string): DriveAccount[] | null {
+  get(pnIdentifier: string): { accounts: DriveAccount[]; socialCloudProvider: string | null } | null {
     const cached = this.cache.get(pnIdentifier);
     if (cached && Date.now() - cached.timestamp < this.TTL) {
-      return cached.accounts;
+      return {
+        accounts: cached.accounts,
+        socialCloudProvider: cached.socialCloudProvider ?? null
+      };
     }
-    // Remove expired entry
     if (cached) {
       this.cache.delete(pnIdentifier);
     }
@@ -39,27 +42,25 @@ class AccountsCacheService {
   /**
    * Store accounts in cache for a pN identifier
    */
-  set(pnIdentifier: string, accounts: DriveAccount[]): void {
+  set(
+    pnIdentifier: string,
+    accounts: DriveAccount[],
+    socialCloudProvider: string | null = null
+  ): void {
     this.cache.set(pnIdentifier, {
       accounts,
+      socialCloudProvider,
       timestamp: Date.now()
     });
   }
 
-  /**
-   * Clear cache for a specific pN identifier
-   */
   clear(pnIdentifier: string): void {
     this.cache.delete(pnIdentifier);
   }
 
-  /**
-   * Clear all cached accounts
-   */
   clearAll(): void {
     this.cache.clear();
   }
 }
 
 export const accountsCacheService = new AccountsCacheService();
-

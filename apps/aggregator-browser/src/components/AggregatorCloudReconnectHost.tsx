@@ -214,12 +214,24 @@ export const AggregatorCloudReconnectHost: React.FC = () => {
       if (!pnIdentifier || !isUnlockPrefetchComplete(pnIdentifier)) return null;
       const cached = readCachedStorageAccounts(pnIdentifier);
       if (!cached) return null;
+      // Force network when cache has no layout signal (avoids linkedInactive → unlinked).
+      if ((cached.accounts?.length ?? 0) === 0 && !cached.socialCloudProvider) return null;
       return {
         accounts: cached.accounts,
         socialCloudProvider: cached.socialCloudProvider ?? null,
       };
     },
   });
+
+  // Banner / messaging can request the reconnect panel when the prompt never mounted.
+  useEffect(() => {
+    const open = () => {
+      gate.refresh();
+      gate.openPanel();
+    };
+    window.addEventListener('pn_open_cloud_reconnect', open);
+    return () => window.removeEventListener('pn_open_cloud_reconnect', open);
+  }, [gate.refresh, gate.openPanel]);
 
   // When vault hydrate succeeds, mint access token then signal Drive-ready.
   useEffect(() => {

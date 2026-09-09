@@ -64,6 +64,9 @@ jobs:
       - name: Legacy identity crypto quarantine
         run: PN_CHECK_ALL=1 bash scripts/check-legacy-identity-crypto.sh
 
+      - name: No identity-core imports in apps
+        run: PN_CHECK_ALL=1 bash scripts/check-no-identity-core-in-apps.sh
+
       - name: Sheets import boundary (soft-warn)
         run: bash scripts/check-sheets-import-boundary.sh
 

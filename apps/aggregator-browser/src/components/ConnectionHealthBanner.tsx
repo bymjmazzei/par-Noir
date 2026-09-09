@@ -5,6 +5,7 @@ import {
   isDmIdentityReady,
 } from '../services/dmIdentitySession';
 import { restoreMessagingAfterOAuth } from '../services/messagingOAuthHandoff';
+import { requestMessagingReconnect } from '../services/messagingReconnect';
 import { fetchStorageAccounts } from '../services/storageApiClient';
 import { isUnlockPrefetchComplete } from '../services/unlockSessionCoordinator';
 import { getSessionCloudCredentials } from '@par-noir/device-cloud-credentials';
@@ -26,6 +27,35 @@ export const ConnectionHealthBanner: React.FC = () => {
     setMessagingOk(isDmIdentityReady());
   }, []);
 
+  const refreshStorageState = useCallback(async () => {
+    const pnIdentifier = session?.pnIdentifier;
+    if (!session?.accessToken || !pnIdentifier) {
+      setStorageOk(false);
+      setLinkedInactive(false);
+      return;
+    }
+    if (!isUnlockPrefetchComplete(pnIdentifier)) {
+      return;
+    }
+    try {
+      const { connected, accounts, socialCloudProvider } = await fetchStorageAccounts(
+        session.accessToken,
+        pnIdentifier
+      );
+      const local = getSessionCloudCredentials(pnIdentifier);
+      const readiness = assessCloudSessionReadiness({
+        apiAccounts: accounts ?? [],
+        socialCloudProvider: socialCloudProvider ?? null,
+        localEnvelope: local
+      });
+      setLinkedInactive(readiness === 'linkedInactive');
+      setStorageOk(readiness === 'ready' || (connected && readiness !== 'linkedInactive'));
+    } catch {
+      setStorageOk(false);
+      setLinkedInactive(false);
+    }
+  }, [session?.accessToken, session?.pnIdentifier]);
+
   useEffect(() => {
     refreshMessagingState();
     const onChange = () => {
@@ -40,43 +70,21 @@ export const ConnectionHealthBanner: React.FC = () => {
   }, [refreshMessagingState]);
 
   useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      const pnIdentifier = session?.pnIdentifier;
-      if (!session?.accessToken || !pnIdentifier) {
-        setStorageOk(false);
-        setLinkedInactive(false);
-        return;
-      }
-      if (!isUnlockPrefetchComplete(pnIdentifier)) {
-        return;
-      }
-      try {
-        const { connected, accounts, socialCloudProvider } = await fetchStorageAccounts(
-          session.accessToken,
-          pnIdentifier
-        );
-        const local = getSessionCloudCredentials(pnIdentifier);
-        const readiness = assessCloudSessionReadiness({
-          apiAccounts: accounts ?? [],
-          socialCloudProvider: socialCloudProvider ?? null,
-          localEnvelope: local
-        });
-        if (!cancelled) {
-          setLinkedInactive(readiness === 'linkedInactive');
-          setStorageOk(readiness === 'ready' || (connected && readiness !== 'linkedInactive'));
-        }
-      } catch {
-        if (!cancelled) {
-          setStorageOk(false);
-          setLinkedInactive(false);
-        }
-      }
-    })();
-    return () => {
-      cancelled = true;
+    void refreshStorageState();
+    const onPrefetch = () => {
+      void refreshStorageState();
     };
-  }, [session?.accessToken, session?.pnIdentifier]);
+    window.addEventListener('pn_unlock_prefetch_complete', onPrefetch);
+    window.addEventListener('pn_cloud_drive_ready', onPrefetch);
+    return () => {
+      window.removeEventListener('pn_unlock_prefetch_complete', onPrefetch);
+      window.removeEventListener('pn_cloud_drive_ready', onPrefetch);
+    };
+  }, [refreshStorageState]);
+
+  const openCloudReconnect = useCallback(() => {
+    window.dispatchEvent(new CustomEvent('pn_open_cloud_reconnect'));
+  }, []);
 
   if (oauthOk && storageOk && messagingOk && !linkedInactive) return null;
 
@@ -87,17 +95,39 @@ export const ConnectionHealthBanner: React.FC = () => {
         {!oauthOk && <li>Not connected — use the lock icon to unlock with pN OAuth</li>}
         {oauthOk && linkedInactive && (
           <li>
-            Cloud storage is linked but not signed in on this device — use the reconnect prompt to
-            authorize this unlock
+            Cloud storage is linked but not signed in on this device —{' '}
+            <button
+              type="button"
+              className="underline text-amber-50 hover:text-white"
+              onClick={openCloudReconnect}
+            >
+              reconnect cloud storage
+            </button>
           </li>
         )}
         {oauthOk && storageOk === false && !linkedInactive && (
-          <li>Cloud storage not connected — reconnect from the prompt or connect a provider</li>
+          <li>
+            Cloud storage not connected —{' '}
+            <button
+              type="button"
+              className="underline text-amber-50 hover:text-white"
+              onClick={openCloudReconnect}
+            >
+              reconnect from here
+            </button>{' '}
+            or connect a provider
+          </li>
         )}
         {oauthOk && !messagingOk && (
           <li>
-            Messaging encryption not loaded — lock and unlock your pN with the lock icon to restore
-            messaging keys
+            Messaging encryption not loaded —{' '}
+            <button
+              type="button"
+              className="underline text-amber-50 hover:text-white"
+              onClick={() => requestMessagingReconnect()}
+            >
+              restore messaging keys
+            </button>
           </li>
         )}
       </ul>

@@ -1,0 +1,30 @@
+---
+description: Wrong architecture → delete and rebuild; minimal-diff does not authorize shims
+alwaysApply: true
+---
+
+# Rebuild, do not patch
+
+This repo is in development. Dual paths, compatibility shims, and stubs on live call sites are bugs — not temporary options.
+
+## Default
+
+When the architecture of the touched path is wrong (wrong package, duplicated across apps, stub/mock on unlock/auth/credential/Drive paths, second resolver for the same external credential):
+
+1. **Delete** the wrong code (or the dead dual path).
+2. **Rebuild** in the canonical `packages/` module (see shared spine in `how-to-build.mdc`).
+3. Wire apps as thin importers only.
+
+Do **not** add a shim, re-export “for compat,” verify-later stub, JSON/API dual fallback, or second token/credential resolver.
+
+## Minimal change
+
+“Only modify what’s required” applies **only when the architecture of the touched path is already correct**. It does not authorize leaving legacy next to a fix.
+
+## Machine ratchets (not optional)
+
+- Apps must not import `@identity-protocol/identity-core` — `scripts/check-no-identity-core-in-apps.sh`
+- Canonical identity crypto — `scripts/check-legacy-identity-crypto.sh` + `@par-noir/identity-crypto`
+- Auth / Drive / OAuth boundaries — see `auth-trust-boundary.mdc` and `enforcement.mdc`
+
+Do not grow burn-down allowlists. Do not skip these scripts.

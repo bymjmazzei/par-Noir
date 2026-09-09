@@ -21,7 +21,8 @@ describe('fetchStorageAccounts cache', () => {
     const fetchMock = vi.fn(async () => ({
       ok: true,
       json: async () => ({
-        accounts: [{ provider: 'google_drive', accountId: 'acc-1' }]
+        accounts: [{ provider: 'google_drive', accountId: 'acc-1' }],
+        socialCloudProvider: 'google_drive'
       })
     }));
     vi.stubGlobal('fetch', fetchMock);
@@ -31,6 +32,26 @@ describe('fetchStorageAccounts cache', () => {
 
     expect(a.connected).toBe(true);
     expect(b.accounts).toEqual(a.accounts);
+    expect(b.socialCloudProvider).toBe('google_drive');
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps linked layout when accounts[] is empty but socialCloudProvider is set', async () => {
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      json: async () => ({
+        accounts: [],
+        socialCloudProvider: 'google_drive'
+      })
+    }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const a = await fetchStorageAccounts('token', 'pn-social-only');
+    const b = await fetchStorageAccounts('token', 'pn-social-only');
+
+    expect(a.connected).toBe(true);
+    expect(a.socialCloudProvider).toBe('google_drive');
+    expect(b.socialCloudProvider).toBe('google_drive');
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 

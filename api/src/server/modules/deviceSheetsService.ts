@@ -51,10 +51,13 @@ export class DeviceSheetsService {
     const spreadsheetId = created.data.spreadsheetId;
     if (!spreadsheetId) throw new Error('Failed to create devices spreadsheet');
 
+    const fileInfo = await drive.files.get({ fileId: spreadsheetId, fields: 'parents' });
+    const currentParents = fileInfo.data.parents || [];
     await drive.files.update({
       fileId: spreadsheetId,
+      removeParents: currentParents.join(','),
       addParents: metadataFolderId,
-      fields: 'id',
+      fields: 'id, parents',
     });
 
     await sheets.spreadsheets.values.update({
