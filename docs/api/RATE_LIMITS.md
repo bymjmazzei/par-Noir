@@ -17,6 +17,10 @@ All windows are **15 minutes**. Limits depend on whether the request includes a 
 
 Responses use `standardHeaders: true` (e.g. `RateLimit-Limit`, `RateLimit-Remaining`, `RateLimit-Reset`). On 429, clients should honor `Retry-After` when present.
 
+### Dev / QA IP bypass
+
+Set **`RATE_LIMIT_BYPASS_IPS`** (comma-separated) on the API process (e.g. Railway). Matching `req.ip` values skip all HTTP limiters above. This does **not** bypass Google OAuth/Drive quotas or reCAPTCHA.
+
 ## Request body size
 
 - **Default:** 10 MB (JSON and URL-encoded).

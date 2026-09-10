@@ -5,7 +5,13 @@
  * On linkedInactive, completes product "reconnect cloud storage" with QA Google.
  * Playwright Chromium. No secrets logged.
  *
- *   node scripts/ux-messaging-qa.mjs
+ * Pace like a human — dual unlocks / tab storms burn Google refresh quota.
+ *
+ *   PN_QA_HEADLESS=0 node scripts/ux-messaging-qa.mjs
+ *   PN_QA_PACE_MS=4000          # default delay between UI steps
+ *   PN_QA_UNLOCK_GAP_MS=60000   # cool-down between fixture A and B unlock
+ *   PN_QA_PHASE_GAP_MS=20000    # cool-down between major phases (gate → connect → browse)
+ *   PN_QA_SKIP_BROWSE_ENGAGEMENT=1
  */
 import { chromium } from 'playwright';
 import { mkdirSync, writeFileSync, readFileSync, existsSync } from 'fs';
@@ -18,8 +24,21 @@ const ROOT = process.env.REPO_ROOT || resolve(scriptDir, '../../..');
 const OUT = resolve(ROOT, '.local/ux-playwright/messaging-qa');
 mkdirSync(OUT, { recursive: true });
 
+/** Default step delay (ms). Override with PN_QA_PACE_MS. */
+const PACE_MS = Math.max(500, Number(process.env.PN_QA_PACE_MS) || 4_000);
+/** Cool-down between A unlock session and B unlock. */
+const UNLOCK_GAP_MS = Math.max(0, Number(process.env.PN_QA_UNLOCK_GAP_MS) || 60_000);
+/** Cool-down between major phases. */
+const PHASE_GAP_MS = Math.max(0, Number(process.env.PN_QA_PHASE_GAP_MS) || 20_000);
+
 function slog(...a) {
   process.stderr.write(a.join(' ') + '\n');
+}
+
+async function pace(ms = PACE_MS, why = '') {
+  if (ms <= 0) return;
+  if (why) slog(`pace ${ms}ms — ${why}`);
+  await new Promise((r) => setTimeout(r, ms));
 }
 
 function loadEnv(path) {
@@ -376,7 +395,7 @@ async function makeTrackedPage() {
   return { context, page, oauth, apiBag };
 }
 
-async function runMessagingSession(label, creds) {
+async function runMessagingSession(label, creds, { assessTabs = true } = {}) {
   const { context, page, oauth, apiBag } = await makeTrackedPage();
   const result = {
     fixture: creds.which,
@@ -398,7 +417,7 @@ async function runMessagingSession(label, creds) {
   try {
     await page.goto('https://messaging.parnoir.com/', { waitUntil: 'domcontentloaded', timeout: 60_000 }).catch(async (e) => {
       slog(`[${label}] goto retry after`, String(e?.message || e).slice(0, 80));
-      await page.waitForTimeout(2000);
+      await pace(PACE_MS, 'goto retry');
       await page.goto('https://messaging.parnoir.com/', { waitUntil: 'domcontentloaded', timeout: 60_000 });
     });
     await shot(page, `${label}-01-load`);
@@ -413,6 +432,8 @@ async function runMessagingSession(label, creds) {
       await context.close().catch(() => {});
       return result;
     }
+    // Let vault hydrate / first Google mint settle before tab storm.
+    await pace(Math.max(PACE_MS, 8_000), `${label} post-unlock settle`);
     const cloudWait = await waitForMessagingCloudReady(page, 45_000);
     result.reconnectNotes.push(...cloudWait.notes);
     result.pnIdentifier = await readSessionPn(page);
@@ -447,45 +468,49 @@ async function runMessagingSession(label, creds) {
       result.reconnectNotes.push('X-PN-Cloud-Access-Token OBSERVED on ≥1 API call');
     }
 
-    // Tabs — assess FINAL statuses
-    for (const name of ['Messages', 'Notifications', 'Requests']) {
-      const before = apiBag.length;
-      const clicked = await clickTab(page, name);
-      await page.waitForTimeout(1500);
-      const slice = apiBag.slice(before);
-      const unauthorized = await bodyHas(page, /unauthorized/i);
-      result.tabFlows.push({
-        id: `messaging.${label}.tab.${name.toLowerCase()}`,
-        title: `${label} tab ${name}`,
-        label:
-          clicked &&
-          ((name === 'Notifications' && hasOk(slice, '/api/notifications') && !unauthorized) ||
-            (name !== 'Notifications' && (hasOk(slice, '/api/') || true)))
-            ? name === 'Notifications'
-              ? hasOk(slice, '/api/notifications')
-                ? 'LIVE_REAL'
-                : 'LIVE_UNFINISHED'
-              : 'LIVE_REAL'
-            : clicked
-              ? 'LIVE_UNFINISHED'
-              : 'BLOCKED',
-        clicked,
-        api: summarizeApi(apiBag, before),
-        unauthorizedUi: unauthorized,
-        screenshot: await shot(page, `${label}-tab-${name.toLowerCase()}`),
-      });
-    }
+    if (assessTabs) {
+      // Tabs — assess FINAL statuses (one at a time, paced)
+      for (const name of ['Messages', 'Notifications', 'Requests']) {
+        await pace(PACE_MS, `${label} before tab ${name}`);
+        const before = apiBag.length;
+        const clicked = await clickTab(page, name);
+        await pace(PACE_MS, `${label} after tab ${name}`);
+        const slice = apiBag.slice(before);
+        const unauthorized = await bodyHas(page, /unauthorized/i);
+        result.tabFlows.push({
+          id: `messaging.${label}.tab.${name.toLowerCase()}`,
+          title: `${label} tab ${name}`,
+          label:
+            clicked &&
+            ((name === 'Notifications' && hasOk(slice, '/api/notifications') && !unauthorized) ||
+              (name !== 'Notifications' && (hasOk(slice, '/api/') || true)))
+              ? name === 'Notifications'
+                ? hasOk(slice, '/api/notifications')
+                  ? 'LIVE_REAL'
+                  : 'LIVE_UNFINISHED'
+                : 'LIVE_REAL'
+              : clicked
+                ? 'LIVE_UNFINISHED'
+                : 'BLOCKED',
+          clicked,
+          api: summarizeApi(apiBag, before),
+          unauthorizedUi: unauthorized,
+          screenshot: await shot(page, `${label}-tab-${name.toLowerCase()}`),
+        });
+      }
 
-    {
-      const before = apiBag.length;
-      await clickTab(page, 'Connections');
-      await page.waitForTimeout(2000);
-      result.tabFlows.push({
-        id: `messaging.${label}.connections`,
-        title: `${label} Connections`,
-        api: summarizeApi(apiBag, before),
-        screenshot: await shot(page, `${label}-connections`),
-      });
+      {
+        await pace(PACE_MS, `${label} before Connections`);
+        const before = apiBag.length;
+        await clickTab(page, 'Connections');
+        await pace(PACE_MS, `${label} after Connections`);
+        result.tabFlows.push({
+          id: `messaging.${label}.connections`,
+          title: `${label} Connections`,
+          api: summarizeApi(apiBag, before),
+          screenshot: await shot(page, `${label}-connections`),
+        });
+      }
     }
 
     // Final credential-sensitive calls
@@ -514,6 +539,14 @@ async function runMessagingSession(label, creds) {
       result.gateLabel = 'LIVE_UNFINISHED';
     else result.gateLabel = 'LIVE_REAL';
 
+    // Unlock-only reopen: if we skipped tabs, treat cloud+session as enough for LIVE_REAL.
+    if (!assessTabs && result.unlocked && !result.bannerBad) {
+      result.notifFinalBad = false;
+      result.notifOk = true;
+      result.connectionsFinal409 = false;
+      result.gateLabel = 'LIVE_REAL';
+    }
+
     result.apiSample = summarizeApi(apiBag, 0).slice(-45);
     result._keep = { context, page, apiBag, oauth };
     return result;
@@ -527,8 +560,18 @@ async function runMessagingSession(label, creds) {
 }
 
 slog('Fixtures', fixtureA.identityPath, '|', fixtureB.identityPath);
+slog(
+  `Pacing: step=${PACE_MS}ms unlockGap=${UNLOCK_GAP_MS}ms phaseGap=${PHASE_GAP_MS}ms (sequential unlocks, one browser active when possible)`
+);
 
 const gateA = await runMessagingSession('A', fixtureA);
+// Close A before B unlock so two vaults are not minting/refreshing Google in parallel.
+if (gateA._keep?.context) {
+  slog('[A] closing session before B unlock (avoid dual Google refresh)');
+  await gateA._keep.context.close().catch(() => {});
+  gateA._keep = null;
+}
+await pace(UNLOCK_GAP_MS, 'cool-down before B unlock');
 const gateB = await runMessagingSession('B', fixtureB);
 
 report.gate = {
@@ -598,14 +641,26 @@ if (gateFailed) {
     'Gate falsified after reconnect attempt — stop before dual-DM/outbox.'
   );
   slog('GATE FAILED — stopping before DM/outbox');
+  if (gateB._keep?.context) await gateB._keep.context.close().catch(() => {});
 } else {
   slog('Gate passed. Dual connection + DM…');
-  const pageA = gateA._keep.page;
+  await pace(PHASE_GAP_MS, 'cool-down before Connect / dual-DM');
+
+  // Re-open A (closed after its gate pass). B stays live.
+  slog('[A] re-unlock for Connect/DM (tabs skipped)');
+  const gateALive = await runMessagingSession('A', fixtureA, { assessTabs: false });
+  if (!gateALive.unlocked || !gateALive._keep) {
+    report.notes.push('A re-unlock for DM failed');
+    slog('A re-unlock failed — stopping dual-DM');
+    if (gateB._keep?.context) await gateB._keep.context.close().catch(() => {});
+  } else {
+  const pageA = gateALive._keep.page;
   const pageB = gateB._keep.page;
-  const apiA = gateA._keep.apiBag;
+  const apiA = gateALive._keep.apiBag;
   const apiB = gateB._keep.apiBag;
   const pnB = gateB.pnIdentifier;
 
+  await pace(PHASE_GAP_MS, 'cool-down before browse Connect');
   const browseA = await makeTrackedPage();
   let connectLabel = 'BLOCKED';
   let connectNotes = [];
@@ -613,40 +668,85 @@ if (gateFailed) {
     const creatorUrl = `https://browse.parnoir.com/?creator=${encodeURIComponent(pnB)}`;
     await browseA.page.goto(creatorUrl, { waitUntil: 'domcontentloaded', timeout: 60_000 });
     await unlockBrowse(browseA.page, fixtureA);
-    await browseA.page.waitForTimeout(5000);
+    const browseUnlocked = await waitForMessagingUnlock(browseA.page, 60_000);
+    connectNotes.push(`browseUnlocked=${browseUnlocked}`);
+    if (!browseUnlocked) {
+      throw new Error('Browse unlock did not reach Lock pN + session before Connect');
+    }
+    await pace(Math.max(PACE_MS, 8_000), 'browse post-unlock settle');
     if (await bannerLinkedInactive(browseA.page)) {
       const rec = await recoverCloudOnDevice(browseA.page, 'browseA');
       connectNotes.push(...rec.notes.map((n) => `browse:${n}`));
     }
+    // Profile menu Connect needs cloud AT for connection status / request.
+    await browseA.page
+      .waitForResponse(
+        (r) =>
+          r.url().includes('/api/') &&
+          (r.request().headers()['x-pn-cloud-access-token'] ||
+            r.request().headers()['X-PN-Cloud-Access-Token']),
+        { timeout: 45_000 }
+      )
+      .catch(() => null);
     await shot(browseA.page, 'connect-01-creator');
 
-    // Open profile menu — Me page often has avatar + Connect in ProfileActionMenu
-    let connectBtn = browseA.page.getByRole('button', { name: /^Connect$/i }).first();
-    if (!(await connectBtn.isVisible().catch(() => false))) {
+    // Empty Me/creator page: avatar button title="Profile actions"
+    const profileBtn = browseA.page.getByTitle('Profile actions').first();
+    if (await profileBtn.isVisible().catch(() => false)) {
+      await profileBtn.click();
+      await pace(PACE_MS, 'profile menu open');
+      connectNotes.push('opened Profile actions menu');
+    } else {
+      connectNotes.push('Profile actions button missing — scanning buttons');
       const avatars = browseA.page.locator('button');
       const n = Math.min(await avatars.count(), 25);
       for (let i = 0; i < n; i++) {
         await avatars.nth(i).click().catch(() => {});
-        await browseA.page.waitForTimeout(400);
-        if (await browseA.page.getByRole('button', { name: /^Connect$/i }).first().isVisible().catch(() => false))
+        await pace(Math.min(PACE_MS, 1500));
+        if (
+          await browseA.page
+            .getByRole('button', { name: /^Connect$/i })
+            .first()
+            .isVisible()
+            .catch(() => false)
+        )
           break;
       }
     }
-    connectBtn = browseA.page.getByRole('button', { name: /^Connect$/i }).first();
-    const connectVisible = await connectBtn.isVisible().catch(() => false);
-    connectNotes.push(`connectVisible=${connectVisible}`);
-    if (connectVisible) {
-      const before = browseA.apiBag.length;
-      await connectBtn.click();
-      await browseA.page.waitForTimeout(5000);
-      const slice = summarizeApi(browseA.apiBag, before);
-      const reqOk = slice.some((l) => /\/api\/connections/.test(l) && / (2|3)\d\d$/.test(l));
-      const toast = await bodyHas(browseA.page, /Connection request sent|pending/i);
-      connectLabel = reqOk || toast ? 'LIVE_REAL' : 'LIVE_UNFINISHED';
-      connectNotes.push(...slice.slice(-15));
-    } else {
-      connectNotes.push('Connect button not found on creator profile');
+
+    const connectBtn = browseA.page.getByRole('button', { name: /^Connect$/i }).first();
+    // Wait until Connect is both visible and enabled (unlocked UI).
+    let connectReady = false;
+    const readyDeadline = Date.now() + 30_000;
+    while (Date.now() < readyDeadline) {
+      const visible = await connectBtn.isVisible().catch(() => false);
+      const enabled = visible && (await connectBtn.isEnabled().catch(() => false));
+      if (enabled) {
+        connectReady = true;
+        break;
+      }
+      // Re-open menu if it closed while still locked.
+      if (!visible && (await profileBtn.isVisible().catch(() => false))) {
+        await profileBtn.click().catch(() => {});
+      }
+      await pace(1000);
     }
+    connectNotes.push(`connectReady=${connectReady}`);
+    if (!connectReady) {
+      const visible = await connectBtn.isVisible().catch(() => false);
+      const enabled = visible ? await connectBtn.isEnabled().catch(() => false) : false;
+      connectNotes.push(`connectVisible=${visible} connectEnabled=${enabled}`);
+      throw new Error('Connect never became enabled after browse unlock');
+    }
+
+    const before = browseA.apiBag.length;
+    await connectBtn.click();
+    await pace(Math.max(PACE_MS, 5_000), 'after Connect click');
+    const slice = summarizeApi(browseA.apiBag, before);
+    const reqOk = slice.some((l) => /\/api\/connections/.test(l) && / (2|3)\d\d$/.test(l));
+    const toast = await bodyHas(browseA.page, /Connection request sent|pending/i);
+    connectLabel = reqOk || toast ? 'LIVE_REAL' : 'LIVE_UNFINISHED';
+    connectNotes.push(...slice.slice(-15));
     await shot(browseA.page, 'connect-02-after');
   } catch (e) {
     connectNotes.push(String(e?.message || e).slice(0, 300));
@@ -662,21 +762,22 @@ if (gateFailed) {
   let acceptLabel = 'BLOCKED';
   let acceptNotes = [];
   try {
+    await pace(PACE_MS, 'before B Requests/Accept');
     await clickTab(pageB, 'Requests');
-    await pageB.waitForTimeout(2000);
+    await pace(PACE_MS);
     await clickTab(pageB, 'Connections');
-    await pageB.waitForTimeout(1500);
+    await pace(PACE_MS);
     await shot(pageB, 'accept-01');
     const before = apiB.length;
     let acceptBtn = pageB.getByRole('button', { name: /^Accept$/i }).first();
     if (!(await acceptBtn.isVisible().catch(() => false))) {
       await clickTab(pageB, 'Requests');
-      await pageB.waitForTimeout(2000);
+      await pace(PACE_MS);
       acceptBtn = pageB.getByRole('button', { name: /^Accept$/i }).first();
     }
     if (await acceptBtn.isVisible().catch(() => false)) {
       await acceptBtn.click();
-      await pageB.waitForTimeout(6000);
+      await pace(Math.max(PACE_MS, 6_000), 'after Accept');
       const ok = hasOk(apiB.slice(before), '/api/connections') || (await bodyHas(pageB, /accepted|Connected/i));
       acceptLabel = ok ? 'LIVE_REAL' : 'LIVE_UNFINISHED';
       acceptNotes.push(...summarizeApi(apiB, before).slice(-20));
@@ -781,13 +882,18 @@ if (gateFailed) {
   });
   slog('  dm →', dmLabel, 'outbox →', outboxLabel);
   await browseA.context.close().catch(() => {});
+  await pageA.context().close().catch(() => {});
+  await pageB.context().close().catch(() => {});
+  } // gateALive
 }
 
-await gateA._keep?.context.close().catch(() => {});
-await gateB._keep?.context.close().catch(() => {});
-
 // --- Browse engagement: DISCOVER public feed + like / follow ---
-slog('Browse engagement…');
+if (process.env.PN_QA_SKIP_BROWSE_ENGAGEMENT === '1') {
+  slog('Browse engagement… skipped (PN_QA_SKIP_BROWSE_ENGAGEMENT=1)');
+  report.notes.push('browse engagement skipped to reduce Google/API load');
+} else {
+  await pace(PHASE_GAP_MS, 'cool-down before browse engagement');
+  slog('Browse engagement…');
 {
   const { context, page, apiBag } = await makeTrackedPage();
   const eng = { id: 'browse.engagement_like', title: 'Engagement sidebar / like', label: 'BLOCKED', notes: [] };
@@ -913,6 +1019,7 @@ slog('Browse engagement…');
   report.flows.push(eng, follow);
   slog('  engagement →', eng.label, 'follow →', follow.label);
 }
+} // PN_QA_SKIP_BROWSE_ENGAGEMENT else
 
 await browser.close();
 

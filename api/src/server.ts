@@ -126,6 +126,37 @@ function isSameOriginAsApiHost(origin: string, req: express.Request): boolean {
   }
 }
 
+/**
+ * Comma-separated client IPs that skip HTTP rate limiters (dev/QA NAT).
+ * Railway: set RATE_LIMIT_BYPASS_IPS=x.x.x.x (req.ip with trust proxy).
+ * Does not bypass Google quota / reCAPTCHA.
+ */
+function parseRateLimitBypassIps(): Set<string> {
+  const raw = process.env.RATE_LIMIT_BYPASS_IPS || '';
+  const out = new Set<string>();
+  for (const part of raw.split(',')) {
+    const ip = part.trim();
+    if (!ip) continue;
+    out.add(ip);
+    if (ip.startsWith('::ffff:')) out.add(ip.slice('::ffff:'.length));
+    else if (/^\d+\.\d+\.\d+\.\d+$/.test(ip)) out.add(`::ffff:${ip}`);
+  }
+  return out;
+}
+
+const RATE_LIMIT_BYPASS_IPS = parseRateLimitBypassIps();
+
+function skipRateLimitForBypassIp(req: { ip?: string; socket?: { remoteAddress?: string } }): boolean {
+  if (RATE_LIMIT_BYPASS_IPS.size === 0) return false;
+  const raw = (req.ip || req.socket?.remoteAddress || '').trim();
+  if (!raw) return false;
+  if (RATE_LIMIT_BYPASS_IPS.has(raw)) return true;
+  const v4 = raw.replace(/^::ffff:/i, '');
+  return RATE_LIMIT_BYPASS_IPS.has(v4);
+}
+
+const rateLimitSkip = { skip: skipRateLimitForBypassIp };
+
 // Rate limiting configuration - higher limit for authenticated requests
 // SECURITY FIX: Rate limits now check for valid token format, not just presence
 const limiter = rateLimit({
@@ -146,6 +177,7 @@ const limiter = rateLimit({
   message: 'Too many requests from this IP, please try again later.',
   standardHeaders: true,
   legacyHeaders: false,
+  ...rateLimitSkip,
 });
 
 // More lenient rate limiter for aggregator endpoints (read-heavy, frequently accessed)
@@ -166,6 +198,7 @@ const aggregatorLimiter = rateLimit({
   message: 'Too many requests from this IP, please try again later.',
   standardHeaders: true,
   legacyHeaders: false,
+  ...rateLimitSkip,
 });
 
 // Very lenient limiter for public discovery: GET metadata-index and nsfw-index.
@@ -183,6 +216,7 @@ const metadataIndexReadLimiter = rateLimit({
   message: 'Too many requests from this IP, please try again later.',
   standardHeaders: true,
   legacyHeaders: false,
+  ...rateLimitSkip,
 });
 
 // Lenient rate limiter for read-heavy endpoints (profile, feeds, engagement GET requests)
@@ -203,6 +237,7 @@ const readOnlyLimiter = rateLimit({
   message: 'Too many requests from this IP, please try again later.',
   standardHeaders: true,
   legacyHeaders: false,
+  ...rateLimitSkip,
 });
 
 // Authentication rate limiting (for login/auth endpoints)
@@ -210,6 +245,7 @@ const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
   max: 20, // Increased from 5 to 20 - OAuth token exchange can happen multiple times during setup
   message: 'Too many authentication attempts, please try again later.',
+  ...rateLimitSkip,
 });
 
 // OAuth token exchange rate limiting (more lenient - users may need multiple attempts during setup)
@@ -220,6 +256,7 @@ const oauthTokenLimiter = rateLimit({
   message: 'Too many OAuth token requests, please try again later.',
   standardHeaders: true,
   legacyHeaders: false,
+  ...rateLimitSkip,
 });
 
 class ProductionServer {
