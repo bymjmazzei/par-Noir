@@ -66,15 +66,18 @@ Harness / report: [`apps/aggregator-browser/scripts/ux-messaging-qa.mjs`](../app
 
 | Flow | Label | Evidence | API (sample) | Source | Notes |
 |---|---|---|---|---|---|
-| Unlock + OAuth session | LIVE_REAL | OBSERVED | POST /oauth/token (200), GET /oauth/userinfo (200) | OAuth consent + pnOAuthService | both fixtures |
-| Cloud signed-in on messaging origin | LIVE_UNFINISHED | OBSERVED (prod) / CODE_READY (tree) | banner linkedInactive after unlock; harness: `cloud_wait=timeout`; reconnect → **GOOGLE_REDIRECT_URI_MISMATCH** for `messaging.parnoir.com/oauth-callback.html`; notifications still bad | ConnectionHealthBanner / AggregatorCloudReconnectHost / reconnectFlows / dashboard vault publish | Tree: hard vault publish, gate refresh after hydrate, banner listens `pn-cloud-credentials-ready`, markReady-after-AT. Needs **deploy** + Google Console §6b, then re-run harness for Accept→DM→outbox. |
-| Messages / Requests / Connections tabs | LIVE_REAL | OBSERVED | conversations/requests/pending/connections often 200 after bootstrap | Inbox / RequestsList / ConnectionsPanel | — |
-| Notifications | LIVE_UNFINISHED | OBSERVED | GET /api/notifications still failing without usable messaging-origin cloud AT | notificationService | Needs device cloud AT on messaging origin |
-| A→B connection request (`?creator=`) | LIVE_REAL | OBSERVED (prior) | POST /api/connections/request **200**; UI toast sent | ProfileActionMenu Connect | Empty profile enough; tonight’s harness stopped before dual-DM (gate) |
-| B accept pending | LIVE_UNFINISHED | OBSERVED | Gate failed — Accept not reached | RequestsList | Blocked on messaging cloud AT |
-| Compose / send / offline outbox | BLOCKED | OBSERVED | — | messageService outbox | Blocked until accept + messaging cloud AT |
+| Unlock + OAuth session | LIVE_REAL | OBSERVED (2026-09-10) | POST /oauth/token (200), GET /oauth/userinfo (200) | OAuth consent + pnOAuthService | both fixtures; headed dual-window |
+| Cloud signed-in on messaging origin | LIVE_REAL | OBSERVED (2026-09-10 dual-DM deploy) | Unlock → no linkedInactive banner; `X-PN-Cloud-Access-Token` on API; gate `LIVE_REAL` for A+B | ConnectionHealthBanner / vault hydrate | Prior reCAPTCHA/429 path cleared for these fixtures in headed run |
+| Messages / Requests / Connections tabs | LIVE_REAL | OBSERVED | conversations/requests/pending/connections often 200 after bootstrap | Inbox / RequestsList / ConnectionsPanel | Drain-on-open shipped |
+| Notifications | LIVE_UNFINISHED | OBSERVED | Notifications tab sometimes never hits `/api/notifications` in silo harness (non-blocking for dual-DM) | notificationService | Softened harness gate; not dual-DM blocker |
+| A→B connection request (`?creator=`) | LIVE_REAL | OBSERVED | POST /api/connections/request **200** when fresh; stale **Pending** UI without re-POST is a false green | ProfileActionMenu Connect | Harness now cancels pending_sent then re-POSTs |
+| B accept pending | LIVE_UNFINISHED | OBSERVED (2026-09-10) | Fresh `POST /request` **200**; B Requests still empty after **page.reload** drain. Probe after reload: `409 cloud_token_required` — reload wipes in-memory cloud vault while OAuth session stays. Soft drain (Requests tab) is the correct path. | RequestsList + mailbox drain | Harness no longer full-reloads B; re-run needed for Accept UI |
+| Compose / send / offline outbox | BLOCKED | OBSERVED | — | messageService outbox | Blocked until Accept |
+| dual_dm_success (A send + B receive marker) | BLOCKED | OBSERVED | accept unfinished → dm skipped | ux-messaging-qa.mjs | Acceptance bar unmet; not waiting on 5‑min mailbox interval |
 
-**Offline queues:** not exercised — blocked on B accept + messaging-origin cloud AT.
+**Offline queues:** not exercised — blocked on B accept.
+
+**Dual-DM path (2026-09-10):** hosting+API deployed (`e582a1f5` drain-on-inbox, realtime nudge, Case B device keying). Observed blockers with evidence: (1) scoring Connect LIVE on stale Pending without new mailbox job; (2) Accept harness `page.reload()` wiped in-memory cloud vault → `409 cloud_token_required`. Harness now cancel+re-POST + soft drain (no vault wipe). Latest headed attempts also hit OAuth consent flake (`#identityFile` timeout / no challenge) after repeated unlocks — cool down before re-running. `messaging.dual_dm_success` remains BLOCKED.
 
 ---
 

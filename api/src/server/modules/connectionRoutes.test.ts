@@ -245,17 +245,21 @@ describe('POST /api/connections/request', () => {
     });
   });
 
-  it('reports the request as undelivered rather than failing when the mailbox refuses', async () => {
+  it('returns 409 when the peer mailbox cannot receive the job', async () => {
     bothPartiesConnected();
     mockEnqueueSocialJob.mockResolvedValue(false);
 
     const res = await withCloudToken(request(buildApp().app).post('/api/connections/request'))
       .send(validRequestBody())
-      .expect(200);
+      .expect(409);
 
-    // The requester's own row landed, so the call succeeded; delivered says
-    // plainly that the peer has not been told.
-    expect(res.body).toMatchObject({ success: true, delivered: false });
+    // Requester row still landed; HTTP status tells the client not to toast success.
+    expect(mockUpsertOwnRow).toHaveBeenCalledTimes(1);
+    expect(res.body).toMatchObject({
+      success: false,
+      delivered: false,
+      error: 'peer_mailbox_unavailable',
+    });
   });
 
   it('still succeeds when the activity ledger and notification fail', async () => {

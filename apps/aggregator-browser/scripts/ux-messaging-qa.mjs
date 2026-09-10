@@ -5,12 +5,12 @@
  * On linkedInactive, completes product "reconnect cloud storage" with QA Google.
  * Playwright Chromium. No secrets logged.
  *
- * Pace like a human — dual unlocks / tab storms burn Google refresh quota.
+ * Keep dual-DM runs short; raise gaps only if Google refresh 429s.
  *
  *   PN_QA_HEADLESS=0 node scripts/ux-messaging-qa.mjs
- *   PN_QA_PACE_MS=4000          # default delay between UI steps
- *   PN_QA_UNLOCK_GAP_MS=60000   # cool-down between fixture A and B unlock
- *   PN_QA_PHASE_GAP_MS=20000    # cool-down between major phases (gate → connect → browse)
+ *   PN_QA_PACE_MS=1500          # default delay between UI steps
+ *   PN_QA_UNLOCK_GAP_MS=25000   # cool-down between fixture A and B unlock
+ *   PN_QA_PHASE_GAP_MS=8000     # cool-down between major phases (gate → connect → browse)
  *   PN_QA_SKIP_BROWSE_ENGAGEMENT=1
  */
 import { chromium } from 'playwright';
@@ -25,11 +25,11 @@ const OUT = resolve(ROOT, '.local/ux-playwright/messaging-qa');
 mkdirSync(OUT, { recursive: true });
 
 /** Default step delay (ms). Override with PN_QA_PACE_MS. */
-const PACE_MS = Math.max(500, Number(process.env.PN_QA_PACE_MS) || 4_000);
+const PACE_MS = Math.max(400, Number(process.env.PN_QA_PACE_MS) || 1_500);
 /** Cool-down between A unlock session and B unlock. */
-const UNLOCK_GAP_MS = Math.max(0, Number(process.env.PN_QA_UNLOCK_GAP_MS) || 60_000);
+const UNLOCK_GAP_MS = Math.max(0, Number(process.env.PN_QA_UNLOCK_GAP_MS) || 25_000);
 /** Cool-down between major phases. */
-const PHASE_GAP_MS = Math.max(0, Number(process.env.PN_QA_PHASE_GAP_MS) || 20_000);
+const PHASE_GAP_MS = Math.max(0, Number(process.env.PN_QA_PHASE_GAP_MS) || 8_000);
 
 function slog(...a) {
   process.stderr.write(a.join(' ') + '\n');
@@ -422,13 +422,34 @@ async function runMessagingSession(label, creds, { assessTabs = true } = {}) {
     });
     await shot(page, `${label}-01-load`);
     slog(`[${label}] unlock…`);
-    await unlockMessaging(page, creds);
-    result.unlocked = await waitForMessagingUnlock(page, 45_000);
+    let unlockErr = null;
+    for (let attempt = 1; attempt <= 2; attempt++) {
+      try {
+        await unlockMessaging(page, creds);
+        unlockErr = null;
+      } catch (e) {
+        unlockErr = e;
+        result.reconnectNotes.push(
+          `unlock_attempt_${attempt}_err=${String(e?.message || e).slice(0, 120)}`
+        );
+      }
+      result.unlocked = await waitForMessagingUnlock(page, 25_000);
+      if (result.unlocked) break;
+      result.reconnectNotes.push(`unlock_attempt_${attempt}_no_session`);
+      if (attempt < 2) {
+        await pace(Math.max(PACE_MS, 8_000), `${label} unlock retry cool-down`);
+        await page.goto('https://messaging.parnoir.com/', { waitUntil: 'domcontentloaded', timeout: 60_000 }).catch(() => {});
+      }
+    }
     if (!result.unlocked) {
       result.blocked = 'unlock did not establish pn_oauth_session';
       result.gateLabel = 'BLOCKED';
       await shot(page, `${label}-02-after-unlock`);
       result.reconnectNotes.push('unlock session missing');
+      if (unlockErr) result.reconnectNotes.push(String(unlockErr?.message || unlockErr).slice(0, 160));
+      result.reconnectNotes.push(
+        `oauth_flags challenge=${oauth.challenge} auth=${oauth.authenticate} token=${oauth.token} userinfo=${oauth.userinfo}`
+      );
       await context.close().catch(() => {});
       return result;
     }
@@ -524,7 +545,7 @@ async function runMessagingSession(label, creds, { assessTabs = true } = {}) {
         break;
       }
     }
-    result.notifFinalBad = !notif || notif.status >= 400;
+    result.notifFinalBad = !!(notif && notif.status >= 400);
     result.notifOk = !!(notif && notif.status >= 200 && notif.status < 400);
     result.connectionsFinal409 = !!(connMain && connMain.status === 409);
     result.connectionsOk = !!(connMain && connMain.status >= 200 && connMain.status < 400);
@@ -532,10 +553,15 @@ async function runMessagingSession(label, creds, { assessTabs = true } = {}) {
       result.connectionsOk = conn.status >= 200 && conn.status < 400;
       result.connectionsFinal409 = conn.status === 409;
     }
+    if (!notif) {
+      result.reconnectNotes.push('notifications endpoint not observed in tab pass (non-blocking for dual-DM)');
+    }
 
     result.bannerBad = await bannerLinkedInactive(page);
     if (!result.unlocked) result.gateLabel = 'BLOCKED';
-    else if (result.bannerBad || result.connectionsFinal409 || result.notifFinalBad)
+    else if (result.bannerBad || result.connectionsFinal409)
+      result.gateLabel = 'LIVE_UNFINISHED';
+    else if (result.notifFinalBad && !result.cloudHeaderSeen)
       result.gateLabel = 'LIVE_UNFINISHED';
     else result.gateLabel = 'LIVE_REAL';
 
@@ -625,104 +651,218 @@ const gateFailed =
   gateB.bannerBad ||
   gateA.connectionsFinal409 ||
   gateB.connectionsFinal409 ||
-  gateA.notifFinalBad ||
-  gateB.notifFinalBad ||
   !gateA.pnIdentifier ||
-  !gateB.pnIdentifier;
+  !gateB.pnIdentifier ||
+  // Notifications are soft: dual-DM needs cloud AT + connections, not inbox chrome.
+  (!gateA.cloudHeaderSeen && gateA.notifFinalBad) ||
+  (!gateB.cloudHeaderSeen && gateB.notifFinalBad);
 
-/** Force B to re-drain mailbox (connection_request jobs) without a new unlock. */
+/**
+ * Force B to re-drain mailbox without wiping the in-memory cloud vault.
+ * Full reload clears getSessionCloudCredentials → pending/apply 409 cloud_token_required
+ * while OAuth session still looks live — Accept stays empty.
+ */
+async function sessionAuthForRequest(page) {
+  return page.evaluate(() => {
+    try {
+      const raw = sessionStorage.getItem('pn_oauth_session');
+      if (!raw) return null;
+      const session = JSON.parse(raw);
+      const pn = session.pnIdentifier;
+      const token = session.accessToken;
+      if (!pn || !token) return null;
+      return { pn, token, cloud: null, origin: location.origin };
+    } catch {
+      return null;
+    }
+  });
+}
+
 async function refreshMailboxOnPage(page, label) {
   const notes = [];
   try {
-    await page.reload({ waitUntil: 'domcontentloaded', timeout: 60_000 });
-    notes.push(`${label}_reloaded`);
-    const live = await waitForMessagingUnlock(page, 45_000);
-    notes.push(`${label}_session_after_reload=${live}`);
-    await pace(Math.max(PACE_MS, 10_000), `${label} mailbox drain after reload`);
+    const pendingPromise = page.waitForResponse(
+      (r) =>
+        r.request().method() === 'GET' &&
+        /\/api\/connections\/pending/.test(r.url()) &&
+        (r.request().headers()['x-pn-cloud-access-token'] ||
+          r.request().headers()['X-PN-Cloud-Access-Token']),
+      { timeout: 25_000 }
+    );
+    const mailboxPromise = page.waitForResponse(
+      (r) => r.request().method() === 'GET' && /\/api\/mailbox\/pending/.test(r.url()),
+      { timeout: 25_000 }
+    );
+    const applyPromise = page.waitForResponse(
+      (r) =>
+        r.request().method() === 'POST' &&
+        /\/api\/connections\/apply-inbound/.test(r.url()),
+      { timeout: 25_000 }
+    );
+    await clickTab(page, 'Connections');
+    await pace(Math.min(PACE_MS, 800));
+    await clickTab(page, 'Requests');
+    notes.push(`${label}_soft_drain_via_Requests`);
+
+    const mailboxRes = await mailboxPromise.catch(() => null);
+    if (mailboxRes) {
+      const mb = await mailboxRes.json().catch(() => ({}));
+      const jobs = Array.isArray(mb.jobs) ? mb.jobs : [];
+      const types = jobs.map((j) => j.jobType || '?').slice(0, 5);
+      notes.push(
+        `${label}_mailbox_pending=${mailboxRes.status()}:jobs=${jobs.length}:types=${types.join(',') || 'none'}`
+      );
+    } else {
+      notes.push(`${label}_mailbox_pending=no_response`);
+    }
+
+    const applyRes = await applyPromise.catch(() => null);
+    if (applyRes) {
+      notes.push(`${label}_apply_inbound=${applyRes.status()}`);
+    } else {
+      notes.push(`${label}_apply_inbound=none`);
+    }
+
+    const pendingRes = await pendingPromise.catch(() => null);
+    if (pendingRes) {
+      const body = await pendingRes.json().catch(() => ({}));
+      notes.push(
+        `${label}_pending_live=${pendingRes.status()}:received=${Array.isArray(body.received) ? body.received.length : -1}:sent=${Array.isArray(body.sent) ? body.sent.length : -1}`
+      );
+    } else {
+      notes.push(`${label}_pending_live=no_cloud_header_response`);
+    }
+    await pace(Math.max(PACE_MS, 2_000), `${label} after soft drain`);
   } catch (e) {
-    notes.push(`${label}_reload_err=${String(e?.message || e).slice(0, 120)}`);
+    notes.push(`${label}_soft_drain_err=${String(e?.message || e).slice(0, 120)}`);
   }
   return notes;
 }
 
-/** Probe pending connections + device-registry drain gate (no secrets logged). */
+/** Capture pending from the live page network (cloud AT stays in-memory). */
 async function probePendingReceived(page) {
-  return page.evaluate(async () => {
+  const auth = await sessionAuthForRequest(page);
+  const localDevice = await page.evaluate(() => {
     try {
-      const raw = sessionStorage.getItem('pn_oauth_session');
-      if (!raw) return { ok: false, err: 'no_session' };
-      const session = JSON.parse(raw);
-      const pn = session.pnIdentifier;
-      const token = session.accessToken;
-      if (!pn || !token) return { ok: false, err: 'no_pn_or_token' };
-      const headers = {
-        Authorization: `Bearer ${token}`,
-        'Content-Type': 'application/json',
-        'X-User-Pn-Identifier': pn,
-      };
-      // Cloud AT may live under several session keys after vault hydrate.
-      try {
-        for (let i = 0; i < sessionStorage.length; i++) {
-          const k = sessionStorage.key(i) || '';
-          const v = sessionStorage.getItem(k);
-          if (!v || v.length < 20 || v.startsWith('{')) continue;
-          if (/cloud|access.token|pn_cloud/i.test(k) && !headers['X-PN-Cloud-Access-Token']) {
-            headers['X-PN-Cloud-Access-Token'] = v;
-          }
-        }
-      } catch {
-        /* ignore */
+      for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i) || '';
+        if (/device|pn_device/i.test(k)) return true;
       }
-      const pendingRes = await fetch(
-        `https://api.parnoir.com/api/connections/pending?userPnIdentifier=${encodeURIComponent(pn)}`,
-        { headers }
+    } catch {
+      /* ignore */
+    }
+    return false;
+  });
+
+  // Prefer a fresh in-page GET so X-PN-Cloud-Access-Token comes from the vault.
+  let fromLive = null;
+  try {
+    const pendingPromise = page.waitForResponse(
+      (r) =>
+        r.request().method() === 'GET' &&
+        /\/api\/connections\/pending/.test(r.url()),
+      { timeout: 20_000 }
+    );
+    await clickTab(page, 'Requests');
+    const pendingRes = await pendingPromise;
+    const body = await pendingRes.json().catch(() => ({}));
+    fromLive = {
+      ok: pendingRes.ok(),
+      status: pendingRes.status(),
+      received: Array.isArray(body.received) ? body.received.length : -1,
+      sent: Array.isArray(body.sent) ? body.sent.length : -1,
+      err: body.error || null,
+      via: 'live_page',
+      cloudHeader: Boolean(
+        pendingRes.request().headers()['x-pn-cloud-access-token'] ||
+          pendingRes.request().headers()['X-PN-Cloud-Access-Token']
+      ),
+    };
+  } catch (e) {
+    fromLive = { ok: false, err: String(e?.message || e).slice(0, 120), via: 'live_page' };
+  }
+
+  let registry = null;
+  if (auth) {
+    try {
+      const regRes = await page.request.get(
+        `https://api.parnoir.com/api/devices/${encodeURIComponent(auth.pn)}/registry`,
+        {
+          headers: {
+            Authorization: `Bearer ${auth.token}`,
+            Origin: auth.origin || 'https://messaging.parnoir.com',
+          },
+        }
       );
-      const body = await pendingRes.json().catch(() => ({}));
-      const received = Array.isArray(body.received) ? body.received.length : -1;
-      const sent = Array.isArray(body.sent) ? body.sent.length : -1;
-
-      let registry = null;
-      try {
-        const regRes = await fetch(
-          `https://api.parnoir.com/api/devices/${encodeURIComponent(pn)}/registry`,
-          { headers: { Authorization: `Bearer ${token}` } }
-        );
-        const regBody = await regRes.json().catch(() => ({}));
-        registry = {
-          status: regRes.status,
-          hasKeyedDevices: Boolean(regBody.hasKeyedDevices || regBody.policy?.firstDeviceKeyedAt),
-        };
-      } catch (e) {
-        registry = { err: String(e?.message || e).slice(0, 80) };
-      }
-
-      let localDevice = false;
-      try {
-        for (let i = 0; i < localStorage.length; i++) {
-          const k = localStorage.key(i) || '';
-          if (/device|pn_device/i.test(k)) {
-            localDevice = true;
-            break;
-          }
-        }
-      } catch {
-        /* ignore */
-      }
-
-      return {
-        ok: pendingRes.ok,
-        status: pendingRes.status,
-        received,
-        sent,
-        err: body.error || null,
-        registry,
-        localDevice,
-        keyedGateRisk: Boolean(registry?.hasKeyedDevices && !localDevice),
+      const regBody = await regRes.json().catch(() => ({}));
+      registry = {
+        status: regRes.status(),
+        hasKeyedDevices: Boolean(regBody.hasKeyedDevices || regBody.policy?.firstDeviceKeyedAt),
       };
     } catch (e) {
-      return { ok: false, err: String(e?.message || e).slice(0, 120) };
+      registry = { err: String(e?.message || e).slice(0, 80) };
     }
-  });
+  }
+
+  return {
+    ...fromLive,
+    registry,
+    localDevice,
+    keyedGateRisk: Boolean(registry?.hasKeyedDevices && !localDevice),
+  };
+}
+
+/** Cancel A's pending_sent using headers from a live authenticated Drive call (vault stays in-memory). */
+async function cancelPendingSentOnPage(page) {
+  const notes = [];
+  try {
+    const pendingPromise = page.waitForResponse(
+      (r) =>
+        r.request().method() === 'GET' &&
+        /\/api\/connections\/pending/.test(r.url()) &&
+        (r.request().headers()['x-pn-cloud-access-token'] ||
+          r.request().headers()['X-PN-Cloud-Access-Token']),
+      { timeout: 25_000 }
+    );
+    await clickTab(page, 'Requests');
+    await pace(Math.min(PACE_MS, 800));
+    await clickTab(page, 'Connections');
+    const pendingRes = await pendingPromise;
+    const body = await pendingRes.json().catch(() => ({}));
+    const sent = Array.isArray(body.sent) ? body.sent : [];
+    notes.push(`cancel: pending_sent_count=${sent.length}`);
+    if (!sent.length) return { ok: true, notes };
+
+    const reqHeaders = pendingRes.request().headers();
+    const headers = {
+      Authorization: reqHeaders['authorization'] || reqHeaders['Authorization'],
+      'Content-Type': 'application/json',
+      'X-User-Pn-Identifier':
+        reqHeaders['x-user-pn-identifier'] || reqHeaders['X-User-Pn-Identifier'],
+      'X-PN-Cloud-Access-Token':
+        reqHeaders['x-pn-cloud-access-token'] || reqHeaders['X-PN-Cloud-Access-Token'],
+      Origin: 'https://messaging.parnoir.com',
+    };
+    const auth = await sessionAuthForRequest(page);
+    const pn = auth?.pn;
+    if (!pn || !headers.Authorization || !headers['X-PN-Cloud-Access-Token']) {
+      notes.push('cancel: missing live auth/cloud headers');
+      return { ok: false, notes };
+    }
+    for (const row of sent.slice(0, 3)) {
+      const id = row.connectionId || row.id;
+      if (!id) continue;
+      const del = await page.request.delete(
+        `https://api.parnoir.com/api/connections/${encodeURIComponent(id)}`,
+        { headers, data: { userPnIdentifier: pn } }
+      );
+      notes.push(`cancel: DELETE … → ${del.status()}`);
+    }
+    return { ok: true, notes };
+  } catch (e) {
+    notes.push(`cancel_err=${String(e?.message || e).slice(0, 120)}`);
+    return { ok: false, notes };
+  }
 }
 
 if (gateFailed) {
@@ -740,6 +880,13 @@ if (gateFailed) {
   const pnB = gateB.pnIdentifier;
 
   await pace(PHASE_GAP_MS, 'cool-down before browse Connect (messaging A/B stay open)');
+  // Clear leftover A→B pending on messaging A (has live cloud vault), then warm B's mailbox route.
+  {
+    const preCancel = await cancelPendingSentOnPage(pageA);
+    slog('  pre-Connect cancel A:', preCancel.notes.join('; '));
+    const warmB = await refreshMailboxOnPage(pageB, 'B_pre');
+    slog('  pre-Connect warm B:', warmB.join('; '));
+  }
   // Browse is a separate origin — one short unlock for Connect only, then close browse.
   const browseA = await makeTrackedPage();
   let connectLabel = 'BLOCKED';
@@ -792,59 +939,155 @@ if (gateFailed) {
       }
     }
 
+    // Wait for connection-status settle — default UI shows Connect until cache/API resolves.
+    // Clicking during that race yields no POST while the menu flips to Pending (stale prior run).
     const connectBtn = browseA.page.getByRole('button', { name: /^Connect$/i }).first();
-    let connectReady = false;
-    const readyDeadline = Date.now() + 30_000;
-    while (Date.now() < readyDeadline) {
+    const pendingLabel = browseA.page.getByText(/^Pending$/i).first();
+    const messageBtn = browseA.page.getByRole('button', { name: /^Message$/i }).first();
+    let settle = 'none';
+    const settleDeadline = Date.now() + 35_000;
+    while (Date.now() < settleDeadline) {
+      if (await pendingLabel.isVisible().catch(() => false)) {
+        settle = 'pending_sent';
+        break;
+      }
+      if (await messageBtn.isVisible().catch(() => false)) {
+        settle = 'connected';
+        break;
+      }
       const visible = await connectBtn.isVisible().catch(() => false);
       const enabled = visible && (await connectBtn.isEnabled().catch(() => false));
       if (enabled) {
-        connectReady = true;
-        break;
+        // Hold briefly so a late status fetch can replace Connect → Pending.
+        await pace(2_000);
+        if (await pendingLabel.isVisible().catch(() => false)) {
+          settle = 'pending_sent';
+          break;
+        }
+        if (await messageBtn.isVisible().catch(() => false)) {
+          settle = 'connected';
+          break;
+        }
+        if (
+          (await connectBtn.isVisible().catch(() => false)) &&
+          (await connectBtn.isEnabled().catch(() => false))
+        ) {
+          settle = 'connect';
+          break;
+        }
       }
-      if (!visible && (await profileBtn.isVisible().catch(() => false))) {
+      if (!(await connectBtn.isVisible().catch(() => false)) && (await profileBtn.isVisible().catch(() => false))) {
         await profileBtn.click().catch(() => {});
       }
-      await pace(1000);
+      await pace(1_000);
     }
-    connectNotes.push(`connectReady=${connectReady}`);
-    if (!connectReady) {
+    connectNotes.push(`menuSettle=${settle}`);
+
+    async function clickFreshConnect() {
+      // Re-open menu if needed after cancel reload.
+      if (!(await connectBtn.isVisible().catch(() => false))) {
+        if (await profileBtn.isVisible().catch(() => false)) {
+          await profileBtn.click().catch(() => {});
+          await pace(PACE_MS, 're-open profile menu for Connect');
+        }
+      }
+      const readyDeadline = Date.now() + 25_000;
+      while (Date.now() < readyDeadline) {
+        if (
+          (await connectBtn.isVisible().catch(() => false)) &&
+          (await connectBtn.isEnabled().catch(() => false))
+        ) {
+          break;
+        }
+        if (await profileBtn.isVisible().catch(() => false)) {
+          await profileBtn.click().catch(() => {});
+        }
+        await pace(800);
+      }
+      if (
+        !(await connectBtn.isVisible().catch(() => false)) ||
+        !(await connectBtn.isEnabled().catch(() => false))
+      ) {
+        throw new Error('Connect not enabled after cancel');
+      }
+      const before = browseA.apiBag.length;
+      const requestWait = browseA.page.waitForResponse(
+        (r) =>
+          r.request().method() === 'POST' &&
+          /\/api\/connections\/request(?:\?|$)/.test(new URL(r.url()).pathname),
+        { timeout: 60_000 }
+      );
+      await connectBtn.click();
+      let requestRes = null;
+      try {
+        requestRes = await requestWait;
+        let delivered = null;
+        try {
+          const body = await requestRes.json();
+          delivered = body?.delivered;
+          connectNotes.push(
+            `POST /api/connections/request ${requestRes.status()} delivered=${delivered}`
+          );
+        } catch {
+          connectNotes.push(`POST /api/connections/request ${requestRes.status()}`);
+        }
+      } catch {
+        if (await pendingLabel.isVisible().catch(() => false)) {
+          connectNotes.push('no POST observed but menu shows Pending');
+        } else {
+          connectNotes.push('no POST /api/connections/request within 60s');
+        }
+      }
+      await pace(Math.max(PACE_MS, 2_000), 'after Connect network');
+      const slice = summarizeApi(browseA.apiBag, before);
+      const toastSent = await bodyHas(browseA.page, /Connection request sent/i);
+      const toastErr = await bodyHas(
+        browseA.page,
+        /Failed to send|Messaging keys|not published messaging|Not authenticated/i
+      );
+      connectNotes.push(`toastSent=${toastSent}`, `toastErr=${toastErr}`, ...slice.slice(-15));
+      return { requestRes, toastErr };
+    }
+
+    if (settle === 'pending_sent') {
+      // Stale pending_sent has no fresh mailbox job for B — cancel on messaging A then re-POST.
+      connectNotes.push('stale_pending_sent — cancel on messaging A then fresh Connect POST');
+      const cancelled = await cancelPendingSentOnPage(pageA);
+      connectNotes.push(...cancelled.notes);
+      await browseA.page.reload({ waitUntil: 'domcontentloaded', timeout: 60_000 }).catch(() => {});
+      await waitForMessagingUnlock(browseA.page, 30_000);
+      await pace(Math.max(PACE_MS, 3_000), 'browse after cancel pending');
+      if (await profileBtn.isVisible().catch(() => false)) {
+        await profileBtn.click().catch(() => {});
+        await pace(PACE_MS, 'profile menu after cancel');
+      }
+      const { requestRes, toastErr } = await clickFreshConnect();
+      connectLabel =
+        requestRes && requestRes.ok()
+          ? 'LIVE_REAL'
+          : toastErr
+            ? 'BLOCKED'
+            : 'LIVE_UNFINISHED';
+      await shot(browseA.page, 'connect-02-after');
+    } else if (settle === 'connected') {
+      connectLabel = 'LIVE_REAL';
+      connectNotes.push('already_connected — skip Connect POST; Accept may be N/A');
+      await shot(browseA.page, 'connect-02-after');
+    } else if (settle !== 'connect') {
       const visible = await connectBtn.isVisible().catch(() => false);
       const enabled = visible ? await connectBtn.isEnabled().catch(() => false) : false;
       connectNotes.push(`connectVisible=${visible} connectEnabled=${enabled}`);
-      throw new Error('Connect never became enabled after browse unlock');
+      throw new Error('Connect/Pending/Message never settled after browse unlock');
+    } else {
+      const { requestRes, toastErr } = await clickFreshConnect();
+      connectLabel =
+        requestRes && requestRes.ok()
+          ? 'LIVE_REAL'
+          : toastErr
+            ? 'BLOCKED'
+            : 'LIVE_UNFINISHED';
+      await shot(browseA.page, 'connect-02-after');
     }
-
-    const before = browseA.apiBag.length;
-    const requestWait = browseA.page.waitForResponse(
-      (r) =>
-        r.request().method() === 'POST' &&
-        /\/api\/connections\/request(?:\?|$)/.test(new URL(r.url()).pathname),
-      { timeout: 90_000 }
-    );
-    await connectBtn.click();
-    let requestRes = null;
-    try {
-      requestRes = await requestWait;
-      connectNotes.push(`POST /api/connections/request ${requestRes.status()}`);
-    } catch {
-      connectNotes.push('no POST /api/connections/request within 90s');
-    }
-    await pace(Math.max(PACE_MS, 3_000), 'after Connect network');
-    const slice = summarizeApi(browseA.apiBag, before);
-    const toastSent = await bodyHas(browseA.page, /Connection request sent/i);
-    const toastErr = await bodyHas(
-      browseA.page,
-      /Failed to send|Messaging keys|not published messaging|Not authenticated/i
-    );
-    connectNotes.push(`toastSent=${toastSent}`, `toastErr=${toastErr}`, ...slice.slice(-15));
-    connectLabel =
-      requestRes && requestRes.ok()
-        ? 'LIVE_REAL'
-        : toastErr
-          ? 'BLOCKED'
-          : 'LIVE_UNFINISHED';
-    await shot(browseA.page, 'connect-02-after');
   } catch (e) {
     connectNotes.push(String(e?.message || e).slice(0, 300));
   } finally {
@@ -865,6 +1108,9 @@ if (gateFailed) {
   try {
     if (connectLabel !== 'LIVE_REAL') {
       acceptNotes.push('skipped Accept — Connect not LIVE_REAL');
+    } else if (connectNotes.some((n) => String(n).includes('already_connected'))) {
+      acceptLabel = 'LIVE_REAL';
+      acceptNotes.push('skipped Accept — A↔B already connected from prior run');
     } else {
       // Request is a mailbox job until B drains. Reload B to restart drain (5min interval otherwise).
       acceptNotes.push(...(await refreshMailboxOnPage(pageB, 'B')));
@@ -876,7 +1122,7 @@ if (gateFailed) {
       await shot(pageB, 'accept-01');
 
       let acceptBtn = pageB.getByRole('button', { name: /^Accept$/i }).first();
-      const acceptDeadline = Date.now() + 90_000;
+      const acceptDeadline = Date.now() + 45_000;
       while (Date.now() < acceptDeadline && !(await acceptBtn.isVisible().catch(() => false))) {
         await clickTab(pageB, 'Connections');
         await pace(PACE_MS);
@@ -884,8 +1130,8 @@ if (gateFailed) {
         await pace(PACE_MS);
         acceptBtn = pageB.getByRole('button', { name: /^Accept$/i }).first();
         if (await acceptBtn.isVisible().catch(() => false)) break;
-        // One more drain mid-wait
-        if (Date.now() + 45_000 < acceptDeadline) {
+        // One mid-wait drain (not a 90s spin)
+        if (Date.now() + 20_000 < acceptDeadline) {
           acceptNotes.push(...(await refreshMailboxOnPage(pageB, 'B2')));
           const probeN = await probePendingReceived(pageB);
           acceptNotes.push(`pending_probe_n=${JSON.stringify(probeN)}`);

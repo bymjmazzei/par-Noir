@@ -108,8 +108,18 @@ async function gateMailboxRead(
   }
 
   const allowed: SocialMailboxJobType[] = [];
-  if (messagesGate.ok) allowed.push(...MESSAGING_JOB_TYPES);
-  if (socialGate.ok) allowed.push(...SOCIAL_JOB_TYPES);
+  if (messagesGate.ok) {
+    allowed.push(...MESSAGING_JOB_TYPES);
+    // Case A LEGACY_BOOTSTRAP grants messages.* but not social.* — without this,
+    // connection_request jobs are delivered (enqueue uses route binding) then
+    // invisible to drain, so Accept never appears for web-only messaging users.
+    allowed.push(...SOCIAL_JOB_TYPES);
+  }
+  if (socialGate.ok) {
+    for (const t of SOCIAL_JOB_TYPES) {
+      if (!allowed.includes(t)) allowed.push(t);
+    }
+  }
   return allowed;
 }
 

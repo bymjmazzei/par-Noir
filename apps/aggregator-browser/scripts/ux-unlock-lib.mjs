@@ -54,8 +54,9 @@ export function trackApi(page, bag) {
 }
 
 export async function fillConsentAndUnlock(popupOrPage, { identityPath, PN_NAME, PASSCODE, expectClose = true }) {
-  await popupOrPage.waitForURL(/oauth\/consent|authorize/, { timeout: 30_000 });
+  await popupOrPage.waitForURL(/oauth\/consent|authorize/, { timeout: 45_000 });
   const fileInput = popupOrPage.locator('#identityFile, input[type="file"]').first();
+  await fileInput.waitFor({ state: 'attached', timeout: 45_000 });
   await fileInput.setInputFiles(identityPath);
   await popupOrPage.getByPlaceholder('Enter Key 1').fill(PN_NAME);
   await popupOrPage.getByPlaceholder('Enter Key 2').fill(PASSCODE);
@@ -75,7 +76,7 @@ export async function fillConsentAndUnlock(popupOrPage, { identityPath, PN_NAME,
 }
 
 export async function unlockViaPopup(page, unlockClick, creds) {
-  const popupPromise = page.waitForEvent('popup', { timeout: 20_000 });
+  const popupPromise = page.waitForEvent('popup', { timeout: 45_000 });
   await unlockClick(page);
   const popup = await popupPromise;
   await fillConsentAndUnlock(popup, { ...creds, expectClose: true });

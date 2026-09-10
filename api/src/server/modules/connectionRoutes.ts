@@ -204,6 +204,22 @@ export function setupConnectionRoutes(app: express.Application, deps: Connection
           extra: { createdAt: now, connectionId }
         });
 
+        if (!delivered) {
+          // Requester row already written; peer cannot receive until they claim a
+          // mailbox route (unlock messaging/dashboard once). Do not pretend success.
+          safeLogger.warn('[ConnectionRequest] peer mailbox not ready; request not delivered', {
+            category: 'connections'
+          });
+          return res.status(409).json({
+            success: false,
+            connection,
+            delivered: false,
+            error: 'peer_mailbox_unavailable',
+            error_description:
+              'Connection saved on your side, but their inbox is not ready yet. Ask them to unlock messaging once, then try Connect again.'
+          });
+        }
+
         const { ActivityLedgerService } = await import('./activityLedgerService');
         try {
           await ActivityLedgerService.recordActivity(
@@ -227,7 +243,7 @@ export function setupConnectionRoutes(app: express.Application, deps: Connection
         return res.json({
           success: true,
           connection,
-          delivered
+          delivered: true
         });
       } catch (error: any) {
         console.error('Error sending connection request:', error);

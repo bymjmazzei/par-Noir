@@ -136,6 +136,12 @@ export async function sendConnectionRequest(
     }
 
     const result = await response.json();
+    if (result?.delivered === false) {
+      throw new Error(
+        result.error_description ||
+          'Recipient inbox is not ready. Ask them to unlock messaging once, then Connect again.'
+      );
+    }
     return result.connection;
   } catch (error) {
     console.error('Failed to send connection request:', error);

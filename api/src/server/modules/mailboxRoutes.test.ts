@@ -260,6 +260,20 @@ describe('capability separation', () => {
     expect(ack.body.reason).toBe('no_mailbox_read');
   });
 
+  it('Case A with only messages.read still drains connection_request jobs', async () => {
+    sessionIsKeyed = false;
+    sessionPolicy = { unkeyedAllows: [] };
+    // Mirrors LEGACY_BOOTSTRAP_ALLOWS — no social.* capability.
+    grantedCapabilities = ['messages.read', 'messages.send'];
+    dbWithBobsClaimedRoute();
+
+    const pending = await request(buildApp())
+      .get(`/api/mailbox/pending?pnIdentifier=${BOB}&routeKey=${BOB_MINTED_ROUTE}`)
+      .expect(200);
+    expect(pending.body.jobs).toHaveLength(1);
+    expect(pending.body.jobs[0].jobType).toBe('connection_request');
+  });
+
   it('unkeyed Case A session with messages.read can drain pending and ack', async () => {
     sessionIsKeyed = false;
     sessionPolicy = { unkeyedAllows: [] };
