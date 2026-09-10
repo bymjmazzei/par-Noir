@@ -22,6 +22,8 @@ export const ConnectionHealthBanner: React.FC = () => {
   const [storageOk, setStorageOk] = useState<boolean | null>(null);
   const [linkedInactive, setLinkedInactive] = useState(false);
   const [mintFailed, setMintFailed] = useState(false);
+  /** Hide linkedInactive UX until hydrate settles (READY or mint failed). */
+  const [cloudHydrateSettled, setCloudHydrateSettled] = useState(false);
   const [messagingOk, setMessagingOk] = useState(() => isDmIdentityReady());
   const session = PNOAuthService.loadSession();
   const oauthOk = !!(session?.accessToken && PNOAuthService.isSessionValid(session));
@@ -74,13 +76,22 @@ export const ConnectionHealthBanner: React.FC = () => {
   }, [refreshMessagingState]);
 
   useEffect(() => {
+    setCloudHydrateSettled(false);
+    setMintFailed(false);
+  }, [session?.accessToken, session?.pnIdentifier]);
+
+  useEffect(() => {
     void refreshStorageState();
     const onPrefetch = () => {
       void refreshStorageState();
     };
-    const onMintFailed = () => setMintFailed(true);
+    const onMintFailed = () => {
+      setMintFailed(true);
+      setCloudHydrateSettled(true);
+    };
     const onReady = () => {
       setMintFailed(false);
+      setCloudHydrateSettled(true);
       void refreshStorageState();
     };
     window.addEventListener('pn_unlock_prefetch_complete', onPrefetch);
@@ -97,14 +108,16 @@ export const ConnectionHealthBanner: React.FC = () => {
     window.dispatchEvent(new CustomEvent('pn_open_cloud_reconnect'));
   }, []);
 
-  if (oauthOk && storageOk && messagingOk && !linkedInactive && !mintFailed) return null;
+  const showLinkedInactive = linkedInactive && cloudHydrateSettled;
+
+  if (oauthOk && storageOk && messagingOk && !showLinkedInactive && !mintFailed) return null;
 
   return (
     <div className="mx-3 mb-3 p-3 rounded-lg bg-amber-950/50 border border-amber-800/60 text-amber-100 text-xs space-y-2">
       <p className="font-medium">Connection status</p>
       <ul className="list-disc pl-4 space-y-0.5">
         {!oauthOk && <li>Not connected — use the lock icon to unlock with pN OAuth</li>}
-        {oauthOk && mintFailed && !linkedInactive && (
+        {oauthOk && mintFailed && !showLinkedInactive && (
           <li>
             Cloud secrets are on this device but Drive sign-in failed —{' '}
             <button
@@ -116,7 +129,7 @@ export const ConnectionHealthBanner: React.FC = () => {
             </button>
           </li>
         )}
-        {oauthOk && linkedInactive && (
+        {oauthOk && showLinkedInactive && (
           <li>
             Cloud storage is linked but not signed in on this device —{' '}
             <button
@@ -128,7 +141,7 @@ export const ConnectionHealthBanner: React.FC = () => {
             </button>
           </li>
         )}
-        {oauthOk && storageOk === false && !linkedInactive && !mintFailed && (
+        {oauthOk && storageOk === false && !showLinkedInactive && !mintFailed && (
           <li>
             Cloud storage not connected —{' '}
             <button

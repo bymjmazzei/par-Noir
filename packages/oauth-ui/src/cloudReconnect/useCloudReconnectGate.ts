@@ -34,6 +34,14 @@ export function useCloudReconnectGate(config: CloudReconnectGateConfig): CloudRe
   const loadLocalEnvelopeRef = useRef(loadLocalEnvelope);
   loadLocalEnvelopeRef.current = loadLocalEnvelope;
 
+  const preferCachedAccountsRef = useRef(preferCachedAccounts);
+  preferCachedAccountsRef.current = preferCachedAccounts;
+
+  const apiAccountsRef = useRef<ApiStorageAccountRef[]>(apiAccounts);
+  apiAccountsRef.current = apiAccounts;
+  const socialCloudProviderRef = useRef<string | null>(socialCloudProvider);
+  socialCloudProviderRef.current = socialCloudProvider;
+
   const rateLimitedUntilRef = useRef(0);
   const inFlightRef = useRef(false);
   const lastFetchKeyRef = useRef<string | null>(null);
@@ -55,7 +63,27 @@ export function useCloudReconnectGate(config: CloudReconnectGateConfig): CloudRe
     }
 
     const fetchKey = `${apiEndpoint}|${pnIdentifier}|${authToken.slice(0, 12)}`;
-    if (!opts?.force && lastFetchKeyRef.current === fetchKey) {
+    const force = !!opts?.force;
+
+    // Same identity: reassess local envelope only — do not re-hit accounts API.
+    if (!force && lastFetchKeyRef.current === fetchKey) {
+      let localEnvelope: StorageCredentialsEnvelope | null = null;
+      try {
+        localEnvelope = await loadLocalEnvelopeRef.current();
+      } catch {
+        localEnvelope = null;
+      }
+      const next = assessCloudSessionReadiness({
+        apiAccounts: apiAccountsRef.current,
+        socialCloudProvider: socialCloudProviderRef.current,
+        localEnvelope
+      });
+      setReadiness(next);
+      // Do not auto-open the reconnect prompt while hydrate may still succeed.
+      // Hosts open the panel only after mint/hydrate failure.
+      if (next === 'ready') {
+        setPromptOpen(false);
+      }
       return;
     }
 
@@ -74,11 +102,11 @@ export function useCloudReconnectGate(config: CloudReconnectGateConfig): CloudRe
       let accounts: ApiStorageAccountRef[] = [];
       let social: string | null = null;
 
-      const cached = preferCachedAccounts ? preferCachedAccounts() : null;
+      const cached = preferCachedAccountsRef.current ? preferCachedAccountsRef.current() : null;
       // Empty layout cache is not authoritative (social provider used to be dropped from cache).
       const cachedHasLayout =
         !!cached && ((cached.accounts?.length ?? 0) > 0 || !!cached.socialCloudProvider);
-      if (cachedHasLayout && !opts?.force) {
+      if (cachedHasLayout && !force) {
         accounts = cached.accounts ?? [];
         social = cached.socialCloudProvider ?? null;
       } else {
@@ -127,12 +155,8 @@ export function useCloudReconnectGate(config: CloudReconnectGateConfig): CloudRe
         localEnvelope
       });
       setReadiness(next);
-      if (next === 'linkedInactive' && !isDismissed()) {
-        setPromptOpen(true);
-      } else if (next === 'ready') {
-        // Dismiss auto-prompt only. Do not close panelOpen — a concurrent refresh
-        // scoring ready (sealed local secrets) was racing user-opened reconnect and
-        // tearing down the panel before AT mint / Authorize completed.
+      if (next === 'ready') {
+        // Do not close panelOpen — user-opened reconnect must stay until mint finishes.
         setPromptOpen(false);
       }
     } catch (e) {
@@ -142,7 +166,7 @@ export function useCloudReconnectGate(config: CloudReconnectGateConfig): CloudRe
       inFlightRef.current = false;
       setChecking(false);
     }
-  }, [enabled, authToken, pnIdentifier, apiEndpoint, isDismissed, preferCachedAccounts]);
+  }, [enabled, authToken, pnIdentifier, apiEndpoint, isDismissed]);
 
   // Run once per identity/token — not when refresh identity changes.
   useEffect(() => {
@@ -187,7 +211,11 @@ export function useCloudReconnectGate(config: CloudReconnectGateConfig): CloudRe
     }
   }, [dismissStorageKey]);
 
-  const refreshStable = useCallback(() => refresh({ force: true }), [refresh]);
+  /** Forced network refresh (user reconnect / panel). */
+  const refreshForced = useCallback(() => refresh({ force: true }), [refresh]);
+
+  /** Reassess local envelope; hits accounts API only when identity fetchKey is new. */
+  const refreshStable = useCallback(() => refresh({ force: false }), [refresh]);
 
   return {
     readiness,
@@ -201,6 +229,7 @@ export function useCloudReconnectGate(config: CloudReconnectGateConfig): CloudRe
     closePanel,
     dismissPrompt,
     refresh: refreshStable,
+    refreshForced,
     markReady
   };
 }

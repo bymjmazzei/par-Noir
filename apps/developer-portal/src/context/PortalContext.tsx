@@ -194,6 +194,13 @@ export function PortalProvider({ children }: { children: ReactNode }) {
       if (data.refresh_token) {
         sessionStorage.setItem(STORAGE_REFRESH, data.refresh_token);
       }
+      if (typeof result.granted_data_points === 'string' && result.consent_shown === '1') {
+        const { setPendingGrant } = await import('@par-noir/oauth-ui');
+        setPendingGrant(
+          ctx.clientId || PN_CLIENT_ID,
+          result.granted_data_points.split(',').filter(Boolean)
+        );
+      }
       sessionStorage.removeItem(STORAGE_OAUTH_CTX);
       sessionStorage.removeItem(STORAGE_POPUP_STATE);
       setToken(data.access_token ?? null);
@@ -282,7 +289,8 @@ export function PortalProvider({ children }: { children: ReactNode }) {
         code: params.get('code') || undefined,
         state: params.get('state') || undefined,
         error: params.get('error') || undefined,
-        granted_data_points: params.get('granted_data_points') ?? undefined
+        granted_data_points: params.get('granted_data_points') ?? undefined,
+        consent_shown: params.get('consent_shown') === '1' ? '1' : undefined
       };
       void (async () => {
         try {

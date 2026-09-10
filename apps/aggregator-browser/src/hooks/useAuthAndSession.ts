@@ -17,6 +17,7 @@ import { useUserState } from '../contexts/UserStateContext';
 import { PNOAuthService, PN_OAUTH_SESSION_DEAD_EVENT } from '../services/pnOAuthService';
 import { getUserProfile } from '../services/profileService';
 import { API_ENDPOINT } from '../config/api';
+import { PN_CLIENT_ID } from '../config/oauthClient';
 import { PN_OAUTH_RESUME_SEARCH_KEY } from '../oauthResumeBootstrap';
 import { installOAuthMessagingIdentityListener } from '../services/oauthMessagingIdentityBridge';
 import {
@@ -74,6 +75,7 @@ type OAuthCallbackStoragePayload = {
   error?: string;
   error_description?: string;
   granted_data_points?: string;
+  consent_shown?: string;
   timestamp?: number;
   messagingHandoff?: unknown;
 };
@@ -196,6 +198,7 @@ export function useAuthAndSession({
         error?: string;
         error_description?: string;
         granted_data_points?: string;
+        consent_shown?: string;
         messagingHandoff?: unknown;
       },
       options?: { popup?: Window | null; redirectUri?: string }
@@ -278,10 +281,10 @@ export function useAuthAndSession({
         });
         const { userInfo, session: sessionWithIdentifier } = unlockResult;
 
-        const consentCompleted = typeof data.granted_data_points === 'string';
+        const consentCompleted = data.consent_shown === '1';
         if (consentCompleted) {
-          const { setPendingGrant } = await import('../services/pendingGrantPersist');
-          setPendingGrant(grantedDataPoints ?? []);
+          const { setPendingGrant } = await import('@par-noir/oauth-ui');
+          setPendingGrant(PN_CLIENT_ID, grantedDataPoints ?? []);
         }
 
         if (!isDmIdentityReady()) {
@@ -376,6 +379,7 @@ export function useAuthAndSession({
     const error = params.get('error');
     const state = params.get('state');
     const granted_data_points = params.get('granted_data_points');
+    const consent_shown = params.get('consent_shown');
     const error_description = params.get('error_description') || undefined;
 
     const clearOAuthQuery = () => {
@@ -440,6 +444,7 @@ export function useAuthAndSession({
             error: error || undefined,
             error_description,
             granted_data_points: granted_data_points ?? undefined,
+            consent_shown: consent_shown === '1' ? '1' : undefined,
           },
           {}
         );
@@ -482,6 +487,7 @@ export function useAuthAndSession({
           error?: string;
           error_description?: string;
           granted_data_points?: string;
+          consent_shown?: string;
           timestamp?: number;
           messagingHandoff?: unknown;
         };
@@ -520,6 +526,7 @@ export function useAuthAndSession({
             error: err || undefined,
             error_description: data.error_description || undefined,
             granted_data_points: data.granted_data_points ?? undefined,
+            consent_shown: data.consent_shown === '1' ? '1' : undefined,
             messagingHandoff: data.messagingHandoff,
           },
           { redirectUri: redirectUriForOAuth }
@@ -780,6 +787,7 @@ export function useAuthAndSession({
             error: result.error,
             error_description: result.error_description,
             granted_data_points: result.granted_data_points,
+            consent_shown: result.consent_shown === '1' ? '1' : undefined,
             messagingHandoff: result.messagingHandoff,
           },
           { redirectUri: browseOAuthRedirectUri() }

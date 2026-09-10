@@ -81,6 +81,10 @@ export {
   publishCloudCredentialsVault,
   cloudAccessHeaders,
   PN_CLOUD_ACCESS_TOKEN_HEADER,
+  setPendingGrant,
+  clearPendingGrant,
+  hasPendingGrant,
+  flushPendingGrant,
 } from './cloudReconnect';
 export {
   getCloudAccessTokenFromSession,

@@ -584,6 +584,7 @@
 
   <script src="/oauth-assets/oauth-physical-unlock.js"></script>
   <script src="/oauth-assets/oauth-unlock-proof.js"></script>
+  <script src="/oauth-assets/oauth-cloud-vault.js"></script>
   <script>
     // Get OAuth parameters from URL
     const urlParams = new URLSearchParams(window.location.search);
@@ -786,8 +787,9 @@
      * Messaging clients: window.name is often cleared on API→browse navigation. Primary path is
      * postMessage oauth_callback (with messagingHandoff) to opener before redirect; window.name is backup.
      */
-    function redirectWithAuthCodeFixed(code, grantedDataPoints) {
+    function redirectWithAuthCodeFixed(code, grantedDataPoints, consentShown) {
       var grantedParam = (grantedDataPoints || []).join(',');
+      var consentShownFlag = !!consentShown;
       if (isMessagingHandoffClient) {
         if (!lastMessagingSession) {
           throw new Error(
@@ -829,8 +831,9 @@
           code: codeValue,
           state: state || undefined,
           // Always send a string (including "") so "shared nothing" is not dropped
-          // by `|| undefined` and the parent can setPendingGrant([]).
+          // by `|| undefined`. Parent sets pending grant only when consent_shown is set.
           granted_data_points: typeof grantedValue === 'string' ? grantedValue : undefined,
+          consent_shown: consentShownFlag ? '1' : undefined,
           timestamp: Date.now(),
           messagingHandoff: handoff || undefined
         };
@@ -902,6 +905,7 @@
         if (grantedDataPoints) {
           qs0 += '&granted_data_points=' + encodeURIComponent(grantedParam);
         }
+        if (consentShownFlag) qs0 += '&consent_shown=1';
         if (popupFlow) qs0 += '&pn_popup=1';
         var fallbackUrl = redirectUri + sep0 + qs0;
         if (identityHash) fallbackUrl += '#' + identityHash;
@@ -911,6 +915,7 @@
       u.searchParams.set('code', code);
       if (state) u.searchParams.set('state', state);
       if (grantedDataPoints) u.searchParams.set('granted_data_points', grantedParam);
+      if (consentShownFlag) u.searchParams.set('consent_shown', '1');
       if (popupFlow) u.searchParams.set('pn_popup', '1');
       if (identityHash) u.hash = identityHash;
       navigateToCallback(u.toString());
@@ -1190,8 +1195,8 @@
       return `pn-${hexHash.substring(0, 12)}`;
     }
 
-    /** The inline lookup races a deadline; retry once before falling back to consent. */
-    async function pollExistingGrant(pnId, didValue, attempts = 2) {
+    /** Lookup stored grant; pass cloudAccessToken under device custody so Drive can be read. */
+    async function pollExistingGrant(pnId, didValue, cloudAccessToken, attempts = 2) {
       if (!pnId) return null;
       for (let i = 0; i < attempts; i++) {
         if (i > 0) {
@@ -1207,7 +1212,11 @@
             typeof location !== 'undefined' && location.origin === String(apiEndpoint).replace(/\/$/, '')
               ? ''
               : apiEndpoint;
-          var grantRes = await fetch(grantBase + '/oauth/existing-grant?' + q);
+          var headers = {};
+          if (cloudAccessToken) {
+            headers['X-PN-Cloud-Access-Token'] = cloudAccessToken;
+          }
+          var grantRes = await fetch(grantBase + '/oauth/existing-grant?' + q, { headers: headers });
           if (!grantRes.ok) continue;
           var grantData = await grantRes.json();
           if (grantData && grantData.existingGrant) {
@@ -1218,6 +1227,32 @@
         }
       }
       return null;
+    }
+
+    /**
+     * Unseal sealedCloudVault and mint a live Drive AT for grant lookup.
+     * Factors stay in this page only — never sent on the wire or postMessaged.
+     */
+    async function mintCloudAccessTokenForGrant(sealedCloudVault, decryptedIdentity, pnName, passcode, code) {
+      if (!sealedCloudVault || !window.ParNoirCloudVault) {
+        console.warn('[OAuth] Cloud vault helper unavailable; grant lookup may require consent');
+        return null;
+      }
+      var session = extractMessagingSession(decryptedIdentity);
+      var mlKemSecretKey = session && session.mlKemSecretKey ? session.mlKemSecretKey : null;
+      try {
+        return await ParNoirCloudVault.accessTokenFromSealedVault(sealedCloudVault, {
+          mlKemSecretKey: mlKemSecretKey,
+          pnName: pnName || null,
+          passcode: passcode || null,
+          apiEndpoint: apiEndpoint,
+          code: code,
+          clientId: clientId
+        });
+      } catch (e) {
+        console.warn('[OAuth] Cloud vault unseal/mint failed; falling through to consent');
+        return null;
+      }
     }
 
     async function completeOAuthUnlock(encryptedIdentity, publicKey, did, decryptedIdentity, pnName, passcode) {
@@ -1243,9 +1278,7 @@
           'This pN identity does not include ML-DSA signing keys. Create or update your identity at pn.parnoir.com, then try again.'
         );
       }
-      // pnName/passcode used only for local decrypt above; never sent on the wire.
-      void pnName;
-      void passcode;
+      // pnName/passcode: local decrypt + vault unseal only; never sent on the wire.
 
       pnIdentifier = await derivePnIdentifierFromUnlock(publicKey);
 
@@ -1300,9 +1333,18 @@
       const authResult = await authResponse.json();
       authorizationCode = authResult.code;
       
+      // Cache hit from authenticate can skip without Drive. Otherwise hydrate vault
+      // then re-read the authoritative grant with a live cloud AT.
       let existingGrant = authResult.existingGrant;
       if (!existingGrant) {
-        existingGrant = await pollExistingGrant(pnIdentifier, did);
+        var cloudAt = await mintCloudAccessTokenForGrant(
+          authResult.sealedCloudVault,
+          decryptedIdentity,
+          pnName,
+          passcode,
+          authorizationCode
+        );
+        existingGrant = await pollExistingGrant(pnIdentifier, did, cloudAt);
       }
       console.log('[OAuth] Auth result:', {
         hasCode: !!authorizationCode,
@@ -1311,12 +1353,12 @@
       });
 
       if (existingGrant) {
-        redirectWithAuthCodeFixed(authorizationCode, existingGrant.dataPoints || []);
+        redirectWithAuthCodeFixed(authorizationCode, existingGrant.dataPoints || [], false);
         return;
       }
 
       if (!needsConsentScreen) {
-        redirectWithAuthCodeFixed(authorizationCode, []);
+        redirectWithAuthCodeFixed(authorizationCode, [], false);
         return;
       }
 
@@ -1488,7 +1530,7 @@
         postMessagingToOpener({ type: 'pn_messaging_session', session: lastMessagingSession });
       }
       try {
-        redirectWithAuthCodeFixed(authorizationCode, grantedDataPoints);
+        redirectWithAuthCodeFixed(authorizationCode, grantedDataPoints, true);
       } catch (err) {
         var msg = (err && err.message) ? err.message : 'Could not complete unlock. Try again.';
         alert(msg);

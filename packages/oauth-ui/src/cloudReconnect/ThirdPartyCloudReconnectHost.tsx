@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   clearCloudCredentialsOnLock,
   getSessionCloudCredentials,
@@ -12,6 +12,7 @@ import { CloudReconnectPrompt } from './CloudReconnectPrompt';
 import { isOAuthCloudProvider, reconnectOAuthProvider } from './reconnectFlows';
 import { useCloudReconnectGate } from './useCloudReconnectGate';
 import { ensureCloudCredentialsReady } from './cloudVaultHydrate';
+import { flushPendingGrant } from '../pendingGrantPersist';
 
 export interface ThirdPartyCloudReconnectHostProps {
   apiEndpoint: string;
@@ -42,6 +43,9 @@ export function ThirdPartyCloudReconnectHost({
   const [oauthBusy, setOauthBusy] = useState(false);
   const [oauthError, setOauthError] = useState<string | null>(null);
   const [vaultHydrated, setVaultHydrated] = useState(false);
+  const [hydrateFailed, setHydrateFailed] = useState(false);
+  const mintCompletedKeyRef = useRef<string | null>(null);
+  const mintInFlightRef = useRef(false);
 
   useEffect(() => {
     if (googleClientIdProp) {
@@ -104,44 +108,71 @@ export function ThirdPartyCloudReconnectHost({
     dismissStorageKey: pnIdentifier ? `pn_cloud_reconnect_dismiss:${pnIdentifier}` : undefined
   });
 
+  const gateRef = useRef(gate);
+  gateRef.current = gate;
+
+  useEffect(() => {
+    mintCompletedKeyRef.current = null;
+    mintInFlightRef.current = false;
+    setHydrateFailed(false);
+  }, [authToken, pnIdentifier]);
+
   useEffect(() => {
     if (!vaultHydrated || !authToken || !pnIdentifier) return;
+    const mintKey = `${pnIdentifier}|${authToken.slice(0, 12)}`;
+    if (mintCompletedKeyRef.current === mintKey || mintInFlightRef.current) return;
+    mintInFlightRef.current = true;
     let cancelled = false;
     void (async () => {
-      await gate.refresh();
-      if (cancelled) return;
-      const ok = await publishCloudDriveReady({
-        authToken,
-        pnIdentifier,
-        apiEndpoint
-      });
-      if (cancelled) return;
-      if (ok) {
-        gate.markReady();
-      } else {
-        gate.openPanel();
+      try {
+        await gateRef.current.refresh();
+        if (cancelled) return;
+        const ok = await publishCloudDriveReady({
+          authToken,
+          pnIdentifier,
+          apiEndpoint
+        });
+        if (cancelled) return;
+        if (ok) {
+          mintCompletedKeyRef.current = mintKey;
+          setHydrateFailed(false);
+          gateRef.current.markReady();
+          await flushPendingGrant({ authToken, pnIdentifier, apiEndpoint });
+        } else {
+          setHydrateFailed(true);
+          gateRef.current.openPanel();
+        }
+      } finally {
+        mintInFlightRef.current = false;
       }
     })();
     return () => {
       cancelled = true;
     };
-  }, [vaultHydrated, gate.markReady, gate.refresh, gate.openPanel, authToken, pnIdentifier, apiEndpoint]);
+  }, [vaultHydrated, authToken, pnIdentifier, apiEndpoint]);
 
   const handleConnected = useCallback(
     async (envelope: StorageCredentialsEnvelope) => {
       if (!pnIdentifier || !authToken) return;
       setSessionCloudCredentials(pnIdentifier, envelope);
       setVaultHydrated(true);
-      await gate.refresh();
+      await gateRef.current.refreshForced();
       const ok = await publishCloudDriveReady({
         authToken,
         pnIdentifier,
         apiEndpoint
       });
-      if (ok) gate.markReady();
-      else gate.openPanel();
+      if (ok) {
+        mintCompletedKeyRef.current = `${pnIdentifier}|${authToken.slice(0, 12)}`;
+        setHydrateFailed(false);
+        gateRef.current.markReady();
+        await flushPendingGrant({ authToken, pnIdentifier, apiEndpoint });
+      } else {
+        setHydrateFailed(true);
+        gateRef.current.openPanel();
+      }
     },
-    [pnIdentifier, gate, authToken, apiEndpoint]
+    [pnIdentifier, authToken, apiEndpoint]
   );
 
   const handleReconnect = useCallback(() => {
@@ -180,10 +211,13 @@ export function ThirdPartyCloudReconnectHost({
   return (
     <>
       <CloudReconnectPrompt
-        open={gate.promptOpen && !gate.panelOpen && !vaultHydrated}
+        open={hydrateFailed && !gate.panelOpen}
         socialCloudProvider={gate.socialCloudProvider}
         onReconnect={handleReconnect}
-        onDismiss={gate.dismissPrompt}
+        onDismiss={() => {
+          setHydrateFailed(false);
+          gate.dismissPrompt();
+        }}
         busy={oauthBusy}
       >
         {oauthError ? (

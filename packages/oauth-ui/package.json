@@ -13,7 +13,7 @@
   },
   "scripts": {
     "build": "npm run build:vault-script && tsc",
-    "build:vault-script": "esbuild src/cloudVaultBrowser.ts --bundle --format=iife --target=es2017 --outfile=static/oauth-cloud-vault.js --banner:js=\"/* GENERATED from src/cloudVaultBrowser.ts by 'npm run build:vault-script'. Do not edit by hand. */\"",
+    "build:vault-script": "esbuild src/cloudVaultBrowser.ts --bundle --format=iife --target=es2017 --outfile=static/oauth-cloud-vault.js --banner:js=\"/* GENERATED from src/cloudVaultBrowser.ts by 'npm run build:vault-script'. Do not edit by hand. */\" && cp static/oauth-cloud-vault.js ../../api/src/static/oauth/oauth-cloud-vault.js",
     "clean": "rm -rf dist",
     "test": "vitest run"
   },

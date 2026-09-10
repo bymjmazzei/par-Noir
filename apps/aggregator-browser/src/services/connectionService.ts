@@ -294,11 +294,20 @@ export async function getConnections(userPnIdentifier: string): Promise<Connecti
 
   const work = (async (): Promise<Connection[]> => {
     try {
+      // Under device custody this needs X-PN-Cloud-Access-Token — wait for vault hydrate.
+      const ready = await waitForOwnerCloudAccess(userPnIdentifier);
+      if (!ready) {
+        return [];
+      }
+
       const response = await fetch(`${API_ENDPOINT}/api/connections?userPnIdentifier=${encodeURIComponent(userPnIdentifier)}`, {
         headers: await getAuthHeaders()
       });
 
       if (!response.ok) {
+        if (response.status === 409 || response.status === 401) {
+          return [];
+        }
         const errorText = await response.text().catch(() => 'Unknown error');
         console.error(`[getConnections] API returned ${response.status}:`, errorText);
         throw new Error(`Failed to load connections: ${response.status}`);

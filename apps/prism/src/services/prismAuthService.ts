@@ -25,7 +25,10 @@ function getRedirectUri(): string {
   return getPrismRedirectUri();
 }
 
-export async function exchangeCodeForToken(code: string): Promise<PrismSession> {
+export async function exchangeCodeForToken(
+  code: string,
+  opts?: { grantedDataPoints?: string; consentShown?: boolean }
+): Promise<PrismSession> {
   const response = await fetch(`${API_ENDPOINT}/oauth/token`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -34,12 +37,20 @@ export async function exchangeCodeForToken(code: string): Promise<PrismSession> 
       client_id: CLIENT_ID,
       redirect_uri: getRedirectUri(),
       grant_type: 'authorization_code',
+      ...(typeof opts?.grantedDataPoints === 'string'
+        ? { granted_data_points: opts.grantedDataPoints }
+        : {}),
     }),
   });
 
   if (!response.ok) {
     const err = await response.json().catch(() => ({ error: 'Token exchange failed' }));
     throw new Error(err.error_description || err.error || 'Token exchange failed');
+  }
+
+  if (opts?.consentShown && typeof opts?.grantedDataPoints === 'string') {
+    const { setPendingGrant } = await import('@par-noir/oauth-ui');
+    setPendingGrant(CLIENT_ID, opts.grantedDataPoints.split(',').filter(Boolean));
   }
 
   const data = await response.json();

@@ -233,6 +233,13 @@ export function LicensingSessionProvider({ children }: { children: ReactNode }) 
     }
     if (data.access_token) sessionStorage.setItem(STORAGE_ACCESS, data.access_token);
     if (data.refresh_token) sessionStorage.setItem(STORAGE_REFRESH, data.refresh_token);
+    if (typeof result.granted_data_points === 'string' && result.consent_shown === '1') {
+      const { setPendingGrant } = await import('@par-noir/oauth-ui');
+      setPendingGrant(
+        ctx.clientId || PN_CLIENT_ID,
+        result.granted_data_points.split(',').filter(Boolean)
+      );
+    }
     sessionStorage.removeItem(STORAGE_OAUTH_CTX);
     sessionStorage.removeItem(STORAGE_POPUP_STATE);
     sessionStorage.setItem(STORAGE_PROCESSED_CODE, codeKey);
@@ -253,7 +260,8 @@ export function LicensingSessionProvider({ children }: { children: ReactNode }) 
       state: params.get('state') || undefined,
       error: params.get('error') || undefined,
       error_description: params.get('error_description') || undefined,
-      granted_data_points: params.get('granted_data_points') ?? undefined
+      granted_data_points: params.get('granted_data_points') ?? undefined,
+      consent_shown: params.get('consent_shown') === '1' ? '1' : undefined
     };
 
     void (async () => {

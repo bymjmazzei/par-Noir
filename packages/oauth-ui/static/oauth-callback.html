@@ -81,6 +81,7 @@
       var state = urlParams.get('state');
       var error = urlParams.get('error');
       var grantedDataPoints = urlParams.get('granted_data_points');
+      var consentShown = urlParams.get('consent_shown');
       // Google Drive Connect / cloud reconnect open a popup; never navigate the opener SPA.
       // Prefer explicit pn_popup (query or OAuth state) or Google's iss param.
       var pnPopupFlow =
@@ -334,6 +335,7 @@
         state: state,
         error: error,
         granted_data_points: grantedDataPoints,
+        consent_shown: consentShown === '1' ? '1' : undefined,
         timestamp: Date.now(),
         messagingHandoff: messagingHandoffPayload || undefined
       };

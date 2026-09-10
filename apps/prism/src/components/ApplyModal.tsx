@@ -67,7 +67,13 @@ export function ApplyModal({ open, onClose }: ApplyModalProps) {
         return;
       }
       if (!result.code) return;
-      const session = await exchangeCodeForToken(result.code);
+      const session = await exchangeCodeForToken(result.code, {
+        grantedDataPoints:
+          typeof result.granted_data_points === 'string'
+            ? result.granted_data_points
+            : undefined,
+        consentShown: result.consent_shown === '1',
+      });
       await refreshSession();
       try {
         const reputation = await fetchReputation(session.accessToken);

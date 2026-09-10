@@ -32,3 +32,9 @@ export {
   PN_CLOUD_ACCESS_TOKEN_HEADER
 } from './cloudVaultHydrate';
 export type { CloudVaultHydrateResult } from './cloudVaultHydrate';
+export {
+  setPendingGrant,
+  clearPendingGrant,
+  hasPendingGrant,
+  flushPendingGrant
+} from '../pendingGrantPersist';

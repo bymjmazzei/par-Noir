@@ -50,6 +50,8 @@ export interface PnOAuthPopupResult {
   error_description?: string;
   /** Comma-separated data point ids the user chose to share at consent. */
   granted_data_points?: string;
+  /** "1" when the consent UI was shown; omit on consent-skip. */
+  consent_shown?: string;
   /** ML-KEM session + encrypted identity from consent (same unlock as OAuth code). */
   messagingHandoff?: Record<string, unknown>;
 }
@@ -171,6 +173,7 @@ function parseOAuthPayload(raw: Record<string, unknown>): PnOAuthPopupResult | n
   const err = coerceOAuthString(raw.error);
   const errDesc = coerceOAuthString(raw.error_description);
   const granted = coerceOAuthString(raw.granted_data_points);
+  const consentShown = coerceOAuthString(raw.consent_shown);
   const messagingHandoff =
     raw.messagingHandoff && typeof raw.messagingHandoff === 'object'
       ? (raw.messagingHandoff as Record<string, unknown>)
@@ -181,6 +184,7 @@ function parseOAuthPayload(raw: Record<string, unknown>): PnOAuthPopupResult | n
     error: err !== undefined && err.length > 0 ? err : undefined,
     error_description: errDesc !== undefined && errDesc.length > 0 ? errDesc : undefined,
     granted_data_points: granted !== undefined ? granted : undefined,
+    consent_shown: consentShown === '1' ? '1' : undefined,
     messagingHandoff,
   };
 }
@@ -195,6 +199,9 @@ function buildOAuthResumeUrl(pageOrigin: string, parsed: PnOAuthPopupResult): st
   if (parsed.error_description) p.set('error_description', parsed.error_description);
   if (parsed.granted_data_points !== undefined) {
     p.set('granted_data_points', parsed.granted_data_points);
+  }
+  if (parsed.consent_shown === '1') {
+    p.set('consent_shown', '1');
   }
   return `${base}/?${p.toString()}`;
 }
@@ -485,6 +492,7 @@ export function startPnOAuthPopup(options: StartPnOAuthPopupOptions): Promise<Pn
           error: sp.get('error') ?? undefined,
           error_description: sp.get('error_description') ?? undefined,
           granted_data_points: sp.get('granted_data_points') ?? undefined,
+          consent_shown: sp.get('consent_shown') ?? undefined,
           timestamp: Date.now(),
         };
         acceptPayload(raw, 'opener_url');

@@ -82,7 +82,13 @@ function LockedView({
                 if (!r.code) return;
                 onMessagingHandoff?.(r);
                 try {
-                  await exchangeCodeForToken(r.code);
+                  await exchangeCodeForToken(r.code, {
+                    grantedDataPoints:
+                      typeof r.granted_data_points === 'string'
+                        ? r.granted_data_points
+                        : undefined,
+                    consentShown: r.consent_shown === '1',
+                  });
                   await onOAuthComplete();
                 } catch (e) {
                   console.error('[Prism] Unlock: token exchange failed', e);

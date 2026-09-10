@@ -38,7 +38,10 @@ export interface CloudReconnectGateState {
   openPanel: () => void;
   closePanel: () => void;
   dismissPrompt: () => void;
+  /** Reassess readiness; network accounts only when identity fetchKey is new. */
   refresh: () => Promise<void>;
+  /** Force GET /api/storage/accounts (user reconnect / panel). */
+  refreshForced: () => Promise<void>;
   markReady: () => void;
 }
 

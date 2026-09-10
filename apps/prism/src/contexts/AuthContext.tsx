@@ -83,7 +83,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       void (async () => {
         try {
-          await exchangeCodeForToken(code);
+          const granted = params.get('granted_data_points');
+          await exchangeCodeForToken(code, {
+            grantedDataPoints: typeof granted === 'string' ? granted : undefined,
+            consentShown: params.get('consent_shown') === '1',
+          });
           await refreshSession();
         } catch {
           const s = await getSession();
