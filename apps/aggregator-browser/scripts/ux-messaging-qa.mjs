@@ -127,8 +127,27 @@ async function bodyHas(page, re) {
 async function bannerLinkedInactive(page) {
   return (
     (await page.getByText(/linked but not signed in/i).first().isVisible().catch(() => false)) ||
-    (await bodyHas(page, /linked but not signed in/i))
+    (await page.getByText(/Drive sign-in failed/i).first().isVisible().catch(() => false)) ||
+    (await bodyHas(page, /linked but not signed in|Drive sign-in failed/i))
   );
+}
+
+async function waitForMessagingUnlock(page, timeoutMs = 45_000) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const pn = await readSessionPn(page);
+    const lockVisible = await page.getByTitle('Lock pN').first().isVisible().catch(() => false);
+    if (pn && lockVisible) return true;
+    await page.waitForTimeout(1000);
+  }
+  return isMessagingSessionLive(page);
+}
+
+async function isMessagingSessionLive(page) {
+  const pn = await readSessionPn(page);
+  const lockVisible = await page.getByTitle('Lock pN').first().isVisible().catch(() => false);
+  // "Not connected" can flash briefly after token exchange — prefer lock + session.
+  return !!(pn && lockVisible);
 }
 
 /** Complete Google OAuth popup/page for Drive reconnect. Never logs secrets. */
@@ -170,7 +189,8 @@ async function googleOauth(popup) {
 }
 
 /**
- * Product path: banner → reconnect → Authorize (fast — panel races closed in ~200ms on prod) → Google OAuth.
+ * Product path: banner/panel → Authorize Google Drive → Google OAuth.
+ * Panel may already be open after mint-fail; do not require clicking the banner under the modal.
  */
 async function recoverCloudOnDevice(page, label) {
   const notes = [];
@@ -179,45 +199,59 @@ async function recoverCloudOnDevice(page, label) {
     return { recovered: true, notes };
   }
   notes.push('linkedInactive OBSERVED — starting reconnect');
-  const reconnectLink = page
-    .getByRole('button', { name: /reconnect cloud storage|reconnect from here/i })
-    .first();
-  if (!(await reconnectLink.isVisible().catch(() => false))) {
-    notes.push('reconnect CTA missing');
-    return { recovered: false, notes };
-  }
 
   const popupPromise = page.waitForEvent('popup', { timeout: 45_000 }).catch(() => null);
 
-  // Open panel and click Authorize in the same tight loop (prod tears panel down ~200–400ms).
-  await reconnectLink.click();
   let authorized = false;
-  const raceDeadline = Date.now() + 2500;
-  while (Date.now() < raceDeadline && !authorized) {
-    const authorize = page.getByRole('button', { name: /Authorize/i }).first();
-    const modalReconnect = page.getByRole('button', { name: /^Reconnect$/i }).first();
-    if (await authorize.isVisible().catch(() => false)) {
-      await authorize.click().catch(() => {});
-      authorized = true;
-      notes.push('clicked Authorize in reconnect panel');
-      break;
+  const authorizeOpen = page
+    .getByRole('button', { name: /Authorize Google Drive|^Authorize$/i })
+    .first();
+  if (await authorizeOpen.isVisible().catch(() => false)) {
+    await authorizeOpen.click({ force: true });
+    authorized = true;
+    notes.push('clicked Authorize (panel already open)');
+  } else {
+    const reconnectLink = page
+      .getByRole('button', { name: /reconnect cloud storage|reconnect from here/i })
+      .first();
+    if (await reconnectLink.isVisible().catch(() => false)) {
+      await reconnectLink.click({ force: true }).catch(() => {});
+      notes.push('clicked banner reconnect CTA');
+    } else {
+      await page.evaluate(() => window.dispatchEvent(new CustomEvent('pn_open_cloud_reconnect')));
+      notes.push('dispatched pn_open_cloud_reconnect');
     }
-    if (await modalReconnect.isVisible().catch(() => false)) {
-      await modalReconnect.click().catch(() => {});
-      notes.push('clicked Reconnect prompt');
+    const raceDeadline = Date.now() + 4000;
+    while (Date.now() < raceDeadline && !authorized) {
+      const authorize = page
+        .getByRole('button', { name: /Authorize Google Drive|^Authorize$/i })
+        .first();
+      const modalReconnect = page.getByRole('button', { name: /^Reconnect$/i }).first();
+      if (await authorize.isVisible().catch(() => false)) {
+        await authorize.click({ force: true }).catch(() => {});
+        authorized = true;
+        notes.push('clicked Authorize in reconnect panel');
+        break;
+      }
+      if (await modalReconnect.isVisible().catch(() => false)) {
+        await modalReconnect.click({ force: true }).catch(() => {});
+        notes.push('clicked Reconnect prompt');
+      }
+      await page.waitForTimeout(40);
     }
-    await page.waitForTimeout(30);
   }
   if (!authorized) {
     await page.evaluate(() => window.dispatchEvent(new CustomEvent('pn_open_cloud_reconnect')));
-    const authorize = page.getByRole('button', { name: /Authorize/i }).first();
+    const authorize = page
+      .getByRole('button', { name: /Authorize Google Drive|^Authorize$/i })
+      .first();
     try {
-      await authorize.waitFor({ state: 'visible', timeout: 800 });
-      await authorize.click();
+      await authorize.waitFor({ state: 'visible', timeout: 2000 });
+      await authorize.click({ force: true });
       authorized = true;
       notes.push('clicked Authorize after forced event');
     } catch {
-      notes.push('Authorize never stayed visible (panel race)');
+      notes.push('Authorize never stayed visible');
     }
   }
   await shot(page, `${label}-reconnect-prompt`);
@@ -225,14 +259,24 @@ async function recoverCloudOnDevice(page, label) {
   const popup = await popupPromise;
   if (popup) {
     const popupUrl = popup.url();
-    if (/redirect_uri_mismatch|error=redirect/i.test(popupUrl) || (await popup.content().catch(() => '')).match(/redirect_uri_mismatch/i)) {
-      notes.push('GOOGLE_REDIRECT_URI_MISMATCH — register https://messaging.parnoir.com/oauth-callback.html');
+    if (
+      /redirect_uri_mismatch|error=redirect/i.test(popupUrl) ||
+      (await popup.content().catch(() => '')).match(/redirect_uri_mismatch/i)
+    ) {
+      notes.push(
+        'GOOGLE_REDIRECT_URI_MISMATCH — register https://messaging.parnoir.com/oauth-callback.html'
+      );
       await shot(popup, `${label}-redirect-mismatch`);
       return { recovered: false, notes };
     }
     await googleOauth(popup);
     await popup.waitForEvent('close', { timeout: 90_000 }).catch(() => {});
-    const finalUrl = popup.url().catch ? await popup.url().catch(() => '') : '';
+    let finalUrl = '';
+    try {
+      finalUrl = popup.url();
+    } catch {
+      finalUrl = '';
+    }
     if (/redirect_uri_mismatch/i.test(String(finalUrl))) {
       notes.push('GOOGLE_REDIRECT_URI_MISMATCH after oauth');
       return { recovered: false, notes };
@@ -240,7 +284,9 @@ async function recoverCloudOnDevice(page, label) {
     notes.push('google oauth popup completed');
   } else if (/accounts\.google|google\.com/.test(page.url())) {
     if (/redirect_uri_mismatch/i.test(page.url()) || (await bodyHas(page, /redirect_uri_mismatch/i))) {
-      notes.push('GOOGLE_REDIRECT_URI_MISMATCH — register https://messaging.parnoir.com/oauth-callback.html');
+      notes.push(
+        'GOOGLE_REDIRECT_URI_MISMATCH — register https://messaging.parnoir.com/oauth-callback.html'
+      );
       return { recovered: false, notes };
     }
     await googleOauth(page);
@@ -271,31 +317,39 @@ async function recoverCloudOnDevice(page, label) {
   return { recovered: false, notes };
 }
 
-/** Wait for vault hydrate + AT mint (or give up). Prefer READY event; fall back to no banner. */
+/** Wait for vault hydrate + AT mint (or give up). Poll banner + session. */
 async function waitForMessagingCloudReady(page, timeoutMs = 45_000) {
   const notes = [];
-  const ready = await page
-    .evaluate((ms) => {
-      return new Promise((resolve) => {
-        let done = false;
-        const finish = (v) => {
-          if (done) return;
-          done = true;
-          window.removeEventListener('pn-cloud-credentials-ready', onReady);
-          clearTimeout(t);
-          resolve(v);
-        };
-        const onReady = () => finish('ready_event');
-        window.addEventListener('pn-cloud-credentials-ready', onReady);
-        const t = setTimeout(() => finish('timeout'), ms);
-      });
-    }, timeoutMs)
-    .catch(() => 'eval_failed');
-  notes.push(`cloud_wait=${ready}`);
-  if (ready === 'ready_event') return { ok: true, notes };
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const readyFired = await page
+      .evaluate(() => Boolean(window.__pnCloudReadySeen))
+      .catch(() => false);
+    if (!readyFired) {
+      await page
+        .evaluate(() => {
+          if (window.__pnCloudReadyHooked) return;
+          window.__pnCloudReadyHooked = true;
+          window.__pnCloudReadySeen = false;
+          window.addEventListener('pn-cloud-credentials-ready', () => {
+            window.__pnCloudReadySeen = true;
+          });
+        })
+        .catch(() => {});
+    } else {
+      notes.push('cloud_wait=ready_event');
+      return { ok: true, notes };
+    }
+    if (!(await bannerLinkedInactive(page)) && (await isMessagingSessionLive(page))) {
+      notes.push('cloud_wait=no_banner_session_live');
+      return { ok: true, notes };
+    }
+    await page.waitForTimeout(1000);
+  }
   const bannerBad = await bannerLinkedInactive(page);
+  notes.push('cloud_wait=timeout');
   notes.push(bannerBad ? 'banner still bad after wait' : 'no banner after wait');
-  return { ok: !bannerBad, notes };
+  return { ok: !bannerBad && (await isMessagingSessionLive(page)), notes };
 }
 
 const report = {
@@ -307,7 +361,10 @@ const report = {
   stoppedEarly: false,
 };
 
-const browser = await chromium.launch({ headless: true });
+const browser = await chromium.launch({
+  headless: process.env.PN_QA_HEADLESS !== '0',
+  args: ['--disable-blink-features=AutomationControlled'],
+});
 
 async function makeTrackedPage() {
   const context = await browser.newContext({ viewport: { width: 1280, height: 800 } });
@@ -339,14 +396,23 @@ async function runMessagingSession(label, creds) {
     gateLabel: 'BLOCKED',
   };
   try {
-    await page.goto('https://messaging.parnoir.com/', { waitUntil: 'domcontentloaded', timeout: 60_000 });
+    await page.goto('https://messaging.parnoir.com/', { waitUntil: 'domcontentloaded', timeout: 60_000 }).catch(async (e) => {
+      slog(`[${label}] goto retry after`, String(e?.message || e).slice(0, 80));
+      await page.waitForTimeout(2000);
+      await page.goto('https://messaging.parnoir.com/', { waitUntil: 'domcontentloaded', timeout: 60_000 });
+    });
     await shot(page, `${label}-01-load`);
     slog(`[${label}] unlock…`);
     await unlockMessaging(page, creds);
-    result.unlocked =
-      oauth.token ||
-      oauth.userinfo ||
-      (await page.getByTitle('Lock pN').first().isVisible().catch(() => false));
+    result.unlocked = await waitForMessagingUnlock(page, 45_000);
+    if (!result.unlocked) {
+      result.blocked = 'unlock did not establish pn_oauth_session';
+      result.gateLabel = 'BLOCKED';
+      await shot(page, `${label}-02-after-unlock`);
+      result.reconnectNotes.push('unlock session missing');
+      await context.close().catch(() => {});
+      return result;
+    }
     const cloudWait = await waitForMessagingCloudReady(page, 45_000);
     result.reconnectNotes.push(...cloudWait.notes);
     result.pnIdentifier = await readSessionPn(page);

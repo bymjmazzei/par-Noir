@@ -4,13 +4,15 @@
  */
 
 import { API_ENDPOINT } from '../config/api';
+import { ownerApiHeadersAsync, waitForOwnerCloudAccess } from './ownerApiHeaders';
 import { PNOAuthService } from './pnOAuthService';
 
-async function authHeaders(): Promise<HeadersInit> {
-  const token = await PNOAuthService.getValidAccessToken();
-  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-  if (token) headers.Authorization = `Bearer ${token}`;
-  return headers;
+/** Drive-backed notification routes need X-PN-Cloud-Access-Token under device custody. */
+async function authHeaders(userPnIdentifier?: string): Promise<HeadersInit> {
+  const session = PNOAuthService.loadSession();
+  const pn = userPnIdentifier || session?.pnIdentifier;
+  if (pn) await waitForOwnerCloudAccess(pn);
+  return ownerApiHeadersAsync(undefined, pn);
 }
 
 export interface Notification {
@@ -75,7 +77,7 @@ export class NotificationService {
     if (options?.type) params.append('type', options.type);
 
     const response = await fetch(`${API_ENDPOINT}/api/notifications?${params.toString()}`, {
-      headers: await authHeaders(),
+      headers: await authHeaders(userPnIdentifier),
     });
 
     if (!response.ok) {
@@ -92,7 +94,7 @@ export class NotificationService {
   static async getUnreadCount(userPnIdentifier: string): Promise<number> {
     const response = await fetch(
       `${API_ENDPOINT}/api/notifications/unread-count?userPnIdentifier=${userPnIdentifier}`,
-      { headers: await authHeaders() }
+      { headers: await authHeaders(userPnIdentifier) }
     );
 
     if (!response.ok) {
@@ -110,7 +112,7 @@ export class NotificationService {
   static async markAsRead(notificationId: string, userPnIdentifier: string): Promise<void> {
     const response = await fetch(`${API_ENDPOINT}/api/notifications/${notificationId}/read`, {
       method: 'PUT',
-      headers: await authHeaders(),
+      headers: await authHeaders(userPnIdentifier),
       body: JSON.stringify({ userPnIdentifier })
     });
 
@@ -126,7 +128,7 @@ export class NotificationService {
   static async markAllAsRead(userPnIdentifier: string): Promise<number> {
     const response = await fetch(`${API_ENDPOINT}/api/notifications/read-all`, {
       method: 'PUT',
-      headers: await authHeaders(),
+      headers: await authHeaders(userPnIdentifier),
       body: JSON.stringify({ userPnIdentifier })
     });
 
@@ -147,7 +149,7 @@ export class NotificationService {
       `${API_ENDPOINT}/api/notifications/${notificationId}?userPnIdentifier=${userPnIdentifier}`,
       {
         method: 'DELETE',
-        headers: await authHeaders(),
+        headers: await authHeaders(userPnIdentifier),
       }
     );
 
@@ -162,7 +164,7 @@ export class NotificationService {
    */
   static async getPreferences(userPnIdentifier: string): Promise<NotificationPreferences> {
     const response = await fetch(`${API_ENDPOINT}/api/notifications/preferences?userPnIdentifier=${userPnIdentifier}`, {
-      headers: await authHeaders()
+      headers: await authHeaders(userPnIdentifier)
     });
 
     if (!response.ok) {
@@ -182,7 +184,7 @@ export class NotificationService {
   ): Promise<NotificationPreferences> {
     const response = await fetch(`${API_ENDPOINT}/api/notifications/preferences`, {
       method: 'PUT',
-      headers: await authHeaders(),
+      headers: await authHeaders(userPnIdentifier),
       body: JSON.stringify({
           userPnIdentifier,
         ...preferences

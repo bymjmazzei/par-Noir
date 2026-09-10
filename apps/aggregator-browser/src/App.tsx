@@ -187,8 +187,9 @@ function App() {
 
   // (handleMeClick lives in useAuthAndSession)
 
-  // MOBILE FIX: Use actual viewport height instead of 100vh to account for mobile browser UI
-  const viewportHeightCSS = useViewportHeightCSS(true); // true = exclude bottom nav
+  // MOBILE FIX: Use actual viewport height instead of 100vh to account for mobile browser UI.
+  // Messaging silo has no bottom nav — do not reserve that strip.
+  const viewportHeightCSS = useViewportHeightCSS(!MESSAGING_ONLY);
 
   // Push notifications (native only): register token when authenticated, handle tap → open thread
   usePushNotifications({
@@ -894,6 +895,8 @@ function App() {
   }, []);
 
   const handleCreatorClick = useCallback((creatorId: string) => {
+    // Messaging host is inbox-only — never open browse Me/profile.
+    if (MESSAGING_ONLY) return;
     setViewingCreatorId(creatorId);
     setViewMode('feed');
     mePageData.setMePageTab('all');
@@ -1141,7 +1144,7 @@ function App() {
             }, 100);
           }}
         />
-      ) : showInbox ? (
+      ) : MESSAGING_ONLY || showInbox ? (
         <MessagesPage
           initialThread={initialThread}
           onCreatorClick={handleCreatorClick}

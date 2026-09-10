@@ -54,5 +54,9 @@ test.describe('messaging-mode smoke', () => {
 
     const directGoogle = requested.filter((u) => DIRECT_GOOGLE_PATTERN.test(u));
     expect(directGoogle, `direct Google requests:\n${directGoogle.join('\n')}`).toEqual([]);
+
+    // Messaging silo: no browse bottom bar / Me profile entry.
+    await expect(page.getByTitle('Me')).toHaveCount(0);
+    await expect(page.getByTitle('Home')).toHaveCount(0);
   });
 });

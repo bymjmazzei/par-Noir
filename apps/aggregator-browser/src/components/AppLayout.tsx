@@ -15,7 +15,7 @@ import type { Feed } from '../types/aggregator';
 import type { Toast } from './Toast';
 
 export interface AppLayoutProps {
-  /** Messaging standalone build: hide upload chrome, slim bottom nav */
+  /** Messaging standalone build: hide upload chrome and bottom nav (inbox silo) */
   messagingOnly?: boolean;
   viewMode: 'grid' | 'feed';
   activeBottomTab: 'home' | 'search' | 'upload' | 'index' | 'messages';
@@ -82,45 +82,46 @@ export function AppLayout({
       <ContentNoticesBanner isUnlocked={userState.isUnlocked} enabled={fetchContentNotices} />
       {children}
       <ToastContainer toasts={toasts} onClose={removeToast} />
-      <BottomNav
-        messagingOnly={messagingOnly}
-        activeTab={activeBottomTab}
-        onTabChange={setActiveBottomTab}
-        onHomeClick={() => {
-          setActiveBottomTab('home');
-          setViewMode('feed');
-          setShowInbox(false);
-          setShowSearch(false);
-          setShowUploadModal(false);
-          setViewingCreatorId(null);
-          setViewingBrandedFeed(null);
-        }}
-        onSearchClick={() => {
-          setShowSearch(true);
-          setShowInbox(false);
-          setShowUploadModal(false);
-          setActiveBottomTab('search');
-          setViewingCreatorId(null);
-          setViewingBrandedFeed(null);
-        }}
-        onUploadClick={() => {
-          setShowUploadModal(true);
-          setShowInbox(false);
-          setShowSearch(false);
-          setViewingCreatorId(null);
-          setViewingBrandedFeed(null);
-          setActiveBottomTab('upload');
-        }}
-        onIndexClick={onMeClick}
-        onInboxClick={() => {
-          setShowInbox(true);
-          setShowSearch(false);
-          setShowUploadModal(false);
-          setActiveBottomTab('messages');
-          setViewingCreatorId(null);
-          setViewingBrandedFeed(null);
-        }}
-      />
+      {!messagingOnly && (
+        <BottomNav
+          activeTab={activeBottomTab}
+          onTabChange={setActiveBottomTab}
+          onHomeClick={() => {
+            setActiveBottomTab('home');
+            setViewMode('feed');
+            setShowInbox(false);
+            setShowSearch(false);
+            setShowUploadModal(false);
+            setViewingCreatorId(null);
+            setViewingBrandedFeed(null);
+          }}
+          onSearchClick={() => {
+            setShowSearch(true);
+            setShowInbox(false);
+            setShowUploadModal(false);
+            setActiveBottomTab('search');
+            setViewingCreatorId(null);
+            setViewingBrandedFeed(null);
+          }}
+          onUploadClick={() => {
+            setShowUploadModal(true);
+            setShowInbox(false);
+            setShowSearch(false);
+            setViewingCreatorId(null);
+            setViewingBrandedFeed(null);
+            setActiveBottomTab('upload');
+          }}
+          onIndexClick={onMeClick}
+          onInboxClick={() => {
+            setShowInbox(true);
+            setShowSearch(false);
+            setShowUploadModal(false);
+            setActiveBottomTab('messages');
+            setViewingCreatorId(null);
+            setViewingBrandedFeed(null);
+          }}
+        />
+      )}
     </div>
   );
 }

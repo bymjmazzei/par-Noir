@@ -18,6 +18,7 @@ import { PNOAuthService, PN_OAUTH_SESSION_DEAD_EVENT } from '../services/pnOAuth
 import { getUserProfile } from '../services/profileService';
 import { API_ENDPOINT } from '../config/api';
 import { PN_CLIENT_ID } from '../config/oauthClient';
+import { MESSAGING_ONLY } from '../config/buildFlags';
 import { PN_OAUTH_RESUME_SEARCH_KEY } from '../oauthResumeBootstrap';
 import { installOAuthMessagingIdentityListener } from '../services/oauthMessagingIdentityBridge';
 import {
@@ -577,6 +578,7 @@ export function useAuthAndSession({
   );
 
   const handleMeClick = useCallback(async () => {
+    if (MESSAGING_ONLY) return;
     setShowInbox(false);
     setShowSearch(false);
     setShowUploadModal(false);
