@@ -16,6 +16,7 @@ import {
   ensureLocalMessagingKeysForAccept,
   reportConnectionAcceptError,
 } from '../services/messagingReconnect';
+import { drainSocialMailbox } from '../services/socialMailboxConsumer';
 
 interface RequestsListProps {
   onRequestAccept?: () => void; // Callback when a request is accepted (to reload threads)
@@ -41,6 +42,8 @@ export function RequestsList({ onRequestAccept }: RequestsListProps) {
 
     const loadData = async () => {
       try {
+        // Connection requests arrive as mailbox jobs; drain before reading Drive pending.
+        await drainSocialMailbox().catch(() => null);
         const [requestsData, connectionRequests] = await Promise.all([
           getMessageRequests(userState.pnIdentifier!),
           getConnectionPendingRequests(userState.pnIdentifier!)

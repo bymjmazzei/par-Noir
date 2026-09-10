@@ -53,10 +53,9 @@ import {
   startSocialMailboxConsumer,
   stopSocialMailboxConsumer,
 } from '../services/socialMailboxConsumer';
-import { invalidateDeviceRegistryCache } from '../services/deviceService';
+import { ensureMailboxCapableDevice, invalidateDeviceRegistryCache } from '../services/deviceService';
 import type { Feed, MetadataFilters } from '../types/aggregator';
-import {
-  applyAllMessagingHandoffSources,
+import {  applyAllMessagingHandoffSources,
   applyMessagingOAuthHandoff,
   MESSAGING_HANDOFF_INCOMPLETE,
   messagingHandoffIncompleteMessage,
@@ -852,8 +851,21 @@ export function useAuthAndSession({
       stopSocialMailboxConsumer();
       return;
     }
-    startSocialMailboxConsumer();
-    return () => stopSocialMailboxConsumer();
+    let cancelled = false;
+    void (async () => {
+      const token = await PNOAuthService.getValidAccessToken();
+      if (!token || cancelled) return;
+      await ensureMailboxCapableDevice({
+        userPnIdentifier: userState.pnIdentifier!,
+        authToken: token,
+      });
+      if (cancelled) return;
+      startSocialMailboxConsumer();
+    })();
+    return () => {
+      cancelled = true;
+      stopSocialMailboxConsumer();
+    };
   }, [userState.isUnlocked, userState.pnIdentifier]);
 
   // On return from idle: refresh/validate token; unrecoverable → session-dead event → lock

@@ -112,6 +112,13 @@ export async function enqueueSocialJob(params: SocialJobParams): Promise<boolean
         ...(params.extra || {})
       }
     });
+    // Best-effort: nudge live recipients to drain mailbox (Requests/inbox listeners).
+    try {
+      const { emitNewNotification } = await import('./realtimeEvents');
+      emitNewNotification(params.peerPn, params.jobType);
+    } catch {
+      /* socket optional */
+    }
     return true;
   } catch (error) {
     safeLogger.warn('[SocialRail] Failed to enqueue peer job', {

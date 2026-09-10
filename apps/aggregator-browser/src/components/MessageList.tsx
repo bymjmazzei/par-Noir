@@ -16,6 +16,7 @@ import { getUserProfile } from '../services/profileService';
 import { useRealtimeSync } from '../hooks/useRealtimeSync';
 import { MESSAGING_ONLY } from '../config/buildFlags';
 import { PLATFORM_CHANNEL_CLIENT_ID } from '@par-noir/messaging-ui';
+import { drainSocialMailbox } from '../services/socialMailboxConsumer';
 
 interface MessageListProps {
   onThreadSelect: (thread: SelectedInboxThread) => void;
@@ -83,6 +84,8 @@ export function MessageList({ onThreadSelect, refreshKey = 0, channelClientId }:
     if (!isInitial && isMessagingRateLimited()) return;
     const pn = userState.pnIdentifier;
     try {
+      // Inbound DMs/connection material may still be mailbox jobs — drain before inbox read.
+      await drainSocialMailbox().catch(() => null);
       if (clearCacheFirst || refreshKey > 0) {
         inboxCacheService.clear(pn);
       }

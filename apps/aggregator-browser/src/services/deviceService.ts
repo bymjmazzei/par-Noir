@@ -113,8 +113,11 @@ export async function bootstrapThisDevice(params: {
     throw new Error('Unlock messaging identity before keying this device');
   }
   const identity = getDmIdentity();
-  if (!identity.pnName || !identity.passcode) {
-    throw new Error('Unlock messaging with your passcode before keying this device');
+  // OAuth ML-KEM handoff may omit Key1/Key2; seal privateDisplay with ML-KEM material.
+  const pnName = (identity.pnName && identity.pnName.trim()) || 'browser';
+  const passcode = identity.passcode || identity.mlKemSecretKey;
+  if (!passcode) {
+    throw new Error('Unlock messaging before keying this device');
   }
   const keypair = await generateDeviceKeypair();
   const label = params.label ?? 'Browser';
@@ -133,8 +136,8 @@ export async function bootstrapThisDevice(params: {
       deviceType,
       lastSeenAt: new Date().toISOString(),
     },
-    identity.pnName,
-    identity.passcode
+    pnName,
+    passcode
   );
   await registerDeviceOnServer({
     userPnIdentifier: params.userPnIdentifier,
@@ -186,4 +189,37 @@ export async function keyThisDevice(params: {
     buildLocalDeviceProofHeaders(params.userPnIdentifier, method, path, body)
   );
   return reg;
+}
+
+/**
+ * Case B (identity already has keyed devices): mailbox drain requires a local
+ * device proof. Fresh browser profiles have none — key this browser so Accept
+ * / inbox drain is not a silent empty. Case A (no keyed devices) can drain
+ * without registering.
+ */
+export async function ensureMailboxCapableDevice(params: {
+  userPnIdentifier: string;
+  authToken: string;
+}): Promise<{ keyed: boolean; reason: string }> {
+  const { localDeviceId, registry } = await wireLocalDeviceProofSigner(
+    params.userPnIdentifier,
+    params.authToken
+  );
+  if (localDeviceId) return { keyed: true, reason: 'local_device_active' };
+  if (!registry?.hasKeyedDevices) {
+    return { keyed: false, reason: 'case_a_unkeyed_ok' };
+  }
+  if (!isDmIdentityReady()) {
+    return { keyed: false, reason: 'dm_identity_not_ready' };
+  }
+  try {
+    await keyThisDevice(params);
+    return { keyed: true, reason: 'keyed_this_browser' };
+  } catch (e) {
+    console.warn(
+      '[ensureMailboxCapableDevice] failed to key browser for Case B drain:',
+      e instanceof Error ? e.message : e
+    );
+    return { keyed: false, reason: 'key_failed' };
+  }
 }

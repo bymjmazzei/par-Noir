@@ -561,17 +561,12 @@ async function runMessagingSession(label, creds, { assessTabs = true } = {}) {
 
 slog('Fixtures', fixtureA.identityPath, '|', fixtureB.identityPath);
 slog(
-  `Pacing: step=${PACE_MS}ms unlockGap=${UNLOCK_GAP_MS}ms phaseGap=${PHASE_GAP_MS}ms (sequential unlocks, one browser active when possible)`
+  `Pacing: step=${PACE_MS}ms unlockGap=${UNLOCK_GAP_MS}ms phaseGap=${PHASE_GAP_MS}ms — keep A+B windows open (no re-unlock)`
 );
 
+// Two persistent messaging windows. Unlock sequentially with a cool-down, but do not close A.
 const gateA = await runMessagingSession('A', fixtureA);
-// Close A before B unlock so two vaults are not minting/refreshing Google in parallel.
-if (gateA._keep?.context) {
-  slog('[A] closing session before B unlock (avoid dual Google refresh)');
-  await gateA._keep.context.close().catch(() => {});
-  gateA._keep = null;
-}
-await pace(UNLOCK_GAP_MS, 'cool-down before B unlock');
+await pace(UNLOCK_GAP_MS, 'cool-down before B unlock (A window stays open)');
 const gateB = await runMessagingSession('B', fixtureB);
 
 report.gate = {
@@ -635,32 +630,117 @@ const gateFailed =
   !gateA.pnIdentifier ||
   !gateB.pnIdentifier;
 
+/** Force B to re-drain mailbox (connection_request jobs) without a new unlock. */
+async function refreshMailboxOnPage(page, label) {
+  const notes = [];
+  try {
+    await page.reload({ waitUntil: 'domcontentloaded', timeout: 60_000 });
+    notes.push(`${label}_reloaded`);
+    const live = await waitForMessagingUnlock(page, 45_000);
+    notes.push(`${label}_session_after_reload=${live}`);
+    await pace(Math.max(PACE_MS, 10_000), `${label} mailbox drain after reload`);
+  } catch (e) {
+    notes.push(`${label}_reload_err=${String(e?.message || e).slice(0, 120)}`);
+  }
+  return notes;
+}
+
+/** Probe pending connections + device-registry drain gate (no secrets logged). */
+async function probePendingReceived(page) {
+  return page.evaluate(async () => {
+    try {
+      const raw = sessionStorage.getItem('pn_oauth_session');
+      if (!raw) return { ok: false, err: 'no_session' };
+      const session = JSON.parse(raw);
+      const pn = session.pnIdentifier;
+      const token = session.accessToken;
+      if (!pn || !token) return { ok: false, err: 'no_pn_or_token' };
+      const headers = {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
+        'X-User-Pn-Identifier': pn,
+      };
+      // Cloud AT may live under several session keys after vault hydrate.
+      try {
+        for (let i = 0; i < sessionStorage.length; i++) {
+          const k = sessionStorage.key(i) || '';
+          const v = sessionStorage.getItem(k);
+          if (!v || v.length < 20 || v.startsWith('{')) continue;
+          if (/cloud|access.token|pn_cloud/i.test(k) && !headers['X-PN-Cloud-Access-Token']) {
+            headers['X-PN-Cloud-Access-Token'] = v;
+          }
+        }
+      } catch {
+        /* ignore */
+      }
+      const pendingRes = await fetch(
+        `https://api.parnoir.com/api/connections/pending?userPnIdentifier=${encodeURIComponent(pn)}`,
+        { headers }
+      );
+      const body = await pendingRes.json().catch(() => ({}));
+      const received = Array.isArray(body.received) ? body.received.length : -1;
+      const sent = Array.isArray(body.sent) ? body.sent.length : -1;
+
+      let registry = null;
+      try {
+        const regRes = await fetch(
+          `https://api.parnoir.com/api/devices/${encodeURIComponent(pn)}/registry`,
+          { headers: { Authorization: `Bearer ${token}` } }
+        );
+        const regBody = await regRes.json().catch(() => ({}));
+        registry = {
+          status: regRes.status,
+          hasKeyedDevices: Boolean(regBody.hasKeyedDevices || regBody.policy?.firstDeviceKeyedAt),
+        };
+      } catch (e) {
+        registry = { err: String(e?.message || e).slice(0, 80) };
+      }
+
+      let localDevice = false;
+      try {
+        for (let i = 0; i < localStorage.length; i++) {
+          const k = localStorage.key(i) || '';
+          if (/device|pn_device/i.test(k)) {
+            localDevice = true;
+            break;
+          }
+        }
+      } catch {
+        /* ignore */
+      }
+
+      return {
+        ok: pendingRes.ok,
+        status: pendingRes.status,
+        received,
+        sent,
+        err: body.error || null,
+        registry,
+        localDevice,
+        keyedGateRisk: Boolean(registry?.hasKeyedDevices && !localDevice),
+      };
+    } catch (e) {
+      return { ok: false, err: String(e?.message || e).slice(0, 120) };
+    }
+  });
+}
+
 if (gateFailed) {
   report.stoppedEarly = true;
   report.notes.push(
     'Gate falsified after reconnect attempt — stop before dual-DM/outbox.'
   );
   slog('GATE FAILED — stopping before DM/outbox');
-  if (gateB._keep?.context) await gateB._keep.context.close().catch(() => {});
 } else {
-  slog('Gate passed. Dual connection + DM…');
-  await pace(PHASE_GAP_MS, 'cool-down before Connect / dual-DM');
-
-  // Re-open A (closed after its gate pass). B stays live.
-  slog('[A] re-unlock for Connect/DM (tabs skipped)');
-  const gateALive = await runMessagingSession('A', fixtureA, { assessTabs: false });
-  if (!gateALive.unlocked || !gateALive._keep) {
-    report.notes.push('A re-unlock for DM failed');
-    slog('A re-unlock failed — stopping dual-DM');
-    if (gateB._keep?.context) await gateB._keep.context.close().catch(() => {});
-  } else {
-  const pageA = gateALive._keep.page;
+  slog('Gate passed. Dual connection + DM (A+B windows kept open)…');
+  const pageA = gateA._keep.page;
   const pageB = gateB._keep.page;
-  const apiA = gateALive._keep.apiBag;
+  const apiA = gateA._keep.apiBag;
   const apiB = gateB._keep.apiBag;
   const pnB = gateB.pnIdentifier;
 
-  await pace(PHASE_GAP_MS, 'cool-down before browse Connect');
+  await pace(PHASE_GAP_MS, 'cool-down before browse Connect (messaging A/B stay open)');
+  // Browse is a separate origin — one short unlock for Connect only, then close browse.
   const browseA = await makeTrackedPage();
   let connectLabel = 'BLOCKED';
   let connectNotes = [];
@@ -678,7 +758,6 @@ if (gateFailed) {
       const rec = await recoverCloudOnDevice(browseA.page, 'browseA');
       connectNotes.push(...rec.notes.map((n) => `browse:${n}`));
     }
-    // Profile menu Connect needs cloud AT for connection status / request.
     await browseA.page
       .waitForResponse(
         (r) =>
@@ -690,7 +769,6 @@ if (gateFailed) {
       .catch(() => null);
     await shot(browseA.page, 'connect-01-creator');
 
-    // Empty Me/creator page: avatar button title="Profile actions"
     const profileBtn = browseA.page.getByTitle('Profile actions').first();
     if (await profileBtn.isVisible().catch(() => false)) {
       await profileBtn.click();
@@ -715,7 +793,6 @@ if (gateFailed) {
     }
 
     const connectBtn = browseA.page.getByRole('button', { name: /^Connect$/i }).first();
-    // Wait until Connect is both visible and enabled (unlocked UI).
     let connectReady = false;
     const readyDeadline = Date.now() + 30_000;
     while (Date.now() < readyDeadline) {
@@ -725,7 +802,6 @@ if (gateFailed) {
         connectReady = true;
         break;
       }
-      // Re-open menu if it closed while still locked.
       if (!visible && (await profileBtn.isVisible().catch(() => false))) {
         await profileBtn.click().catch(() => {});
       }
@@ -740,16 +816,41 @@ if (gateFailed) {
     }
 
     const before = browseA.apiBag.length;
+    const requestWait = browseA.page.waitForResponse(
+      (r) =>
+        r.request().method() === 'POST' &&
+        /\/api\/connections\/request(?:\?|$)/.test(new URL(r.url()).pathname),
+      { timeout: 90_000 }
+    );
     await connectBtn.click();
-    await pace(Math.max(PACE_MS, 5_000), 'after Connect click');
+    let requestRes = null;
+    try {
+      requestRes = await requestWait;
+      connectNotes.push(`POST /api/connections/request ${requestRes.status()}`);
+    } catch {
+      connectNotes.push('no POST /api/connections/request within 90s');
+    }
+    await pace(Math.max(PACE_MS, 3_000), 'after Connect network');
     const slice = summarizeApi(browseA.apiBag, before);
-    const reqOk = slice.some((l) => /\/api\/connections/.test(l) && / (2|3)\d\d$/.test(l));
-    const toast = await bodyHas(browseA.page, /Connection request sent|pending/i);
-    connectLabel = reqOk || toast ? 'LIVE_REAL' : 'LIVE_UNFINISHED';
-    connectNotes.push(...slice.slice(-15));
+    const toastSent = await bodyHas(browseA.page, /Connection request sent/i);
+    const toastErr = await bodyHas(
+      browseA.page,
+      /Failed to send|Messaging keys|not published messaging|Not authenticated/i
+    );
+    connectNotes.push(`toastSent=${toastSent}`, `toastErr=${toastErr}`, ...slice.slice(-15));
+    connectLabel =
+      requestRes && requestRes.ok()
+        ? 'LIVE_REAL'
+        : toastErr
+          ? 'BLOCKED'
+          : 'LIVE_UNFINISHED';
     await shot(browseA.page, 'connect-02-after');
   } catch (e) {
     connectNotes.push(String(e?.message || e).slice(0, 300));
+  } finally {
+    // Browse was only for Connect — free that unlock; keep messaging A/B windows.
+    await browseA.context.close().catch(() => {});
+    connectNotes.push('browse_context_closed messaging_A_B_kept');
   }
   report.flows.push({
     id: 'messaging.connection_request',
@@ -762,30 +863,65 @@ if (gateFailed) {
   let acceptLabel = 'BLOCKED';
   let acceptNotes = [];
   try {
-    await pace(PACE_MS, 'before B Requests/Accept');
-    await clickTab(pageB, 'Requests');
-    await pace(PACE_MS);
-    await clickTab(pageB, 'Connections');
-    await pace(PACE_MS);
-    await shot(pageB, 'accept-01');
-    const before = apiB.length;
-    let acceptBtn = pageB.getByRole('button', { name: /^Accept$/i }).first();
-    if (!(await acceptBtn.isVisible().catch(() => false))) {
+    if (connectLabel !== 'LIVE_REAL') {
+      acceptNotes.push('skipped Accept — Connect not LIVE_REAL');
+    } else {
+      // Request is a mailbox job until B drains. Reload B to restart drain (5min interval otherwise).
+      acceptNotes.push(...(await refreshMailboxOnPage(pageB, 'B')));
+      const probe1 = await probePendingReceived(pageB);
+      acceptNotes.push(`pending_probe_1=${JSON.stringify(probe1)}`);
+
       await clickTab(pageB, 'Requests');
       await pace(PACE_MS);
-      acceptBtn = pageB.getByRole('button', { name: /^Accept$/i }).first();
+      await shot(pageB, 'accept-01');
+
+      let acceptBtn = pageB.getByRole('button', { name: /^Accept$/i }).first();
+      const acceptDeadline = Date.now() + 90_000;
+      while (Date.now() < acceptDeadline && !(await acceptBtn.isVisible().catch(() => false))) {
+        await clickTab(pageB, 'Connections');
+        await pace(PACE_MS);
+        await clickTab(pageB, 'Requests');
+        await pace(PACE_MS);
+        acceptBtn = pageB.getByRole('button', { name: /^Accept$/i }).first();
+        if (await acceptBtn.isVisible().catch(() => false)) break;
+        // One more drain mid-wait
+        if (Date.now() + 45_000 < acceptDeadline) {
+          acceptNotes.push(...(await refreshMailboxOnPage(pageB, 'B2')));
+          const probeN = await probePendingReceived(pageB);
+          acceptNotes.push(`pending_probe_n=${JSON.stringify(probeN)}`);
+        }
+      }
+
+      if (await acceptBtn.isVisible().catch(() => false)) {
+        const before = apiB.length;
+        const acceptWait = pageB.waitForResponse(
+          (r) =>
+            r.request().method() === 'POST' &&
+            /\/api\/connections\/[^/]+\/accept/.test(new URL(r.url()).pathname),
+          { timeout: 90_000 }
+        );
+        await acceptBtn.click();
+        let acceptRes = null;
+        try {
+          acceptRes = await acceptWait;
+          acceptNotes.push(`POST accept ${acceptRes.status()}`);
+        } catch {
+          acceptNotes.push('no POST …/accept within 90s');
+        }
+        await pace(Math.max(PACE_MS, 6_000), 'after Accept');
+        acceptNotes.push(...summarizeApi(apiB, before).slice(-20));
+        acceptLabel = acceptRes && acceptRes.ok() ? 'LIVE_REAL' : 'LIVE_UNFINISHED';
+      } else {
+        const probeFinal = await probePendingReceived(pageB);
+        acceptNotes.push(
+          'Accept not visible after mailbox reload+wait',
+          `pending_probe_final=${JSON.stringify(probeFinal)}`,
+          'LIKELY: connection_request still in mailbox (drain skipped or keyed-device gate) — product: drain on Requests open'
+        );
+        acceptLabel = 'LIVE_UNFINISHED';
+      }
+      await shot(pageB, 'accept-02');
     }
-    if (await acceptBtn.isVisible().catch(() => false)) {
-      await acceptBtn.click();
-      await pace(Math.max(PACE_MS, 6_000), 'after Accept');
-      const ok = hasOk(apiB.slice(before), '/api/connections') || (await bodyHas(pageB, /accepted|Connected/i));
-      acceptLabel = ok ? 'LIVE_REAL' : 'LIVE_UNFINISHED';
-      acceptNotes.push(...summarizeApi(apiB, before).slice(-20));
-    } else {
-      acceptLabel = connectLabel === 'LIVE_REAL' ? 'LIVE_UNFINISHED' : 'BLOCKED';
-      acceptNotes.push('Accept not visible');
-    }
-    await shot(pageB, 'accept-02');
   } catch (e) {
     acceptNotes.push(String(e?.message || e).slice(0, 300));
   }
@@ -801,22 +937,36 @@ if (gateFailed) {
   let dmNotes = [];
   let outboxLabel = 'LIVE_UNFINISHED';
   let outboxNotes = [];
+  let dualDmOk = false;
   try {
+    if (acceptLabel !== 'LIVE_REAL') {
+      dmNotes.push('skipped DM — Accept not LIVE_REAL');
+      outboxNotes.push('skipped — no accept');
+    } else {
+    await pace(PACE_MS, 'before A open thread');
     await clickTab(pageA, 'Messages');
-    await pageA.waitForTimeout(2000);
+    await pace(PACE_MS);
     await clickTab(pageA, 'Connections');
-    await pageA.waitForTimeout(1500);
+    await pace(PACE_MS);
     await shot(pageA, 'dm-01');
 
-    const rows = pageA.locator('button, a, div[role="button"]');
-    const rowCount = Math.min(await rows.count().catch(() => 0), 40);
-    for (let i = 0; i < rowCount; i++) {
-      const r = rows.nth(i);
-      const txt = ((await r.innerText().catch(() => '')) || '').slice(0, 80);
-      if (/connected|message|pn-/i.test(txt) || (txt.length > 2 && txt.length < 48)) {
-        await r.click().catch(() => {});
-        await pageA.waitForTimeout(600);
-        if (await pageA.getByPlaceholder(/Type a message/i).first().isVisible().catch(() => false)) break;
+    // Prefer Message control, then connection rows.
+    const messageBtn = pageA.getByRole('button', { name: /^Message$/i }).first();
+    if (await messageBtn.isVisible().catch(() => false)) {
+      await messageBtn.click();
+      await pace(PACE_MS);
+    } else {
+      const rows = pageA.locator('button, a, div[role="button"]');
+      const rowCount = Math.min(await rows.count().catch(() => 0), 40);
+      for (let i = 0; i < rowCount; i++) {
+        const r = rows.nth(i);
+        const txt = ((await r.innerText().catch(() => '')) || '').slice(0, 80);
+        if (/message|pn-|connected/i.test(txt) || (txt.length > 2 && txt.length < 48)) {
+          await r.click().catch(() => {});
+          await pace(800);
+          if (await pageA.getByPlaceholder(/Type a message/i).first().isVisible().catch(() => false))
+            break;
+        }
       }
     }
 
@@ -828,63 +978,92 @@ if (gateFailed) {
       await pageA.locator('[aria-label="Send"]').first().click().catch(async () => {
         await pageA.getByRole('button', { name: /Send/i }).first().click();
       });
-      await pageA.waitForTimeout(5000);
+      await pace(Math.max(PACE_MS, 8_000), 'after DM send');
       const sendApi = summarizeApi(apiA, before);
-      const sendOk = sendApi.some((l) => /\/api\/(messages|mailbox)/i.test(l) && / (2|3)\d\d$/.test(l));
-      dmLabel = sendOk ? 'LIVE_REAL' : 'LIVE_UNFINISHED';
-      dmNotes.push(...sendApi.slice(-15));
+      const sendOk = sendApi.some(
+        (l) => /POST \/api\/(messages|mailbox)/i.test(l) && / (2|3)\d\d$/.test(l)
+      );
+      dmNotes.push(`sendOk=${sendOk}`, ...sendApi.slice(-15));
       await shot(pageA, 'dm-02-sent');
 
       await clickTab(pageB, 'Messages');
-      await pageB.waitForTimeout(4000);
+      await pace(Math.max(PACE_MS, 6_000), 'B inbox refresh');
+      // Open thread with A if needed
+      const bRows = pageB.locator('button, a, div[role="button"]');
+      const bCount = Math.min(await bRows.count().catch(() => 0), 40);
+      for (let i = 0; i < bCount; i++) {
+        if (await bodyHas(pageB, new RegExp(marker, 'i'))) break;
+        await bRows.nth(i).click().catch(() => {});
+        await pace(600);
+      }
       await shot(pageB, 'dm-03-b');
-      dmNotes.push(`B_body_has_marker=${await bodyHas(pageB, new RegExp(marker, 'i'))}`);
+      const bHas = await bodyHas(pageB, new RegExp(marker, 'i'));
+      dmNotes.push(`B_received_marker=${bHas}`);
+      dualDmOk = !!(sendOk && bHas);
+      dmLabel = dualDmOk ? 'LIVE_REAL' : sendOk ? 'LIVE_UNFINISHED' : 'BLOCKED';
 
-      // Offline outbox
-      try {
-        await pageA.context().setOffline(true);
-        const marker2 = `qa-off-${Date.now().toString(36)}`;
-        const beforeOff = apiA.length;
-        await compose.fill(marker2);
-        await pageA.locator('[aria-label="Send"]').first().click().catch(async () => {
-          await pageA.getByRole('button', { name: /Send/i }).first().click();
-        });
-        await pageA.waitForTimeout(1500);
-        outboxNotes.push('queued offline');
-        await pageA.context().setOffline(false);
-        await pageA.waitForTimeout(8000);
-        const after = summarizeApi(apiA, beforeOff);
-        const flushed = after.some((l) => /\/api\/(messages|mailbox)/i.test(l) && / (2|3)\d\d$/.test(l));
-        outboxLabel = flushed ? 'LIVE_REAL' : 'LIVE_UNFINISHED';
-        outboxNotes.push(...after.slice(-12));
-        outboxNotes.push(flushed ? 'flush OBSERVED' : 'no flush traffic');
-        await shot(pageA, 'outbox-after');
-      } catch (e) {
-        await pageA.context().setOffline(false).catch(() => {});
-        outboxLabel = 'LIVE_UNFINISHED';
-        outboxNotes.push(String(e?.message || e).slice(0, 300));
+      // Offline outbox (only if send path works)
+      if (sendOk) {
+        try {
+          await pageA.context().setOffline(true);
+          const marker2 = `qa-off-${Date.now().toString(36)}`;
+          const beforeOff = apiA.length;
+          await compose.fill(marker2);
+          await pageA.locator('[aria-label="Send"]').first().click().catch(async () => {
+            await pageA.getByRole('button', { name: /Send/i }).first().click();
+          });
+          await pace(PACE_MS);
+          outboxNotes.push('queued offline');
+          await pageA.context().setOffline(false);
+          await pace(Math.max(PACE_MS, 8_000), 'outbox flush');
+          const after = summarizeApi(apiA, beforeOff);
+          const flushed = after.some(
+            (l) => /POST \/api\/(messages|mailbox)/i.test(l) && / (2|3)\d\d$/.test(l)
+          );
+          outboxLabel = flushed ? 'LIVE_REAL' : 'LIVE_UNFINISHED';
+          outboxNotes.push(...after.slice(-12));
+          outboxNotes.push(flushed ? 'flush OBSERVED' : 'no flush traffic');
+          await shot(pageA, 'outbox-after');
+        } catch (e) {
+          await pageA.context().setOffline(false).catch(() => {});
+          outboxLabel = 'LIVE_UNFINISHED';
+          outboxNotes.push(String(e?.message || e).slice(0, 300));
+        }
+      } else {
+        outboxNotes.push('skipped — send not ok');
       }
     } else {
-      dmLabel = acceptLabel === 'LIVE_REAL' ? 'LIVE_UNFINISHED' : 'BLOCKED';
+      dmLabel = 'BLOCKED';
       dmNotes.push('compose not found');
       outboxNotes.push('skipped — no compose');
     }
+    } // accept LIVE_REAL
   } catch (e) {
     dmNotes.push(String(e?.message || e).slice(0, 300));
     outboxNotes.push('skipped due to DM error');
   }
-  report.flows.push({ id: 'messaging.dm_send', title: 'A→B DM send', label: dmLabel, notes: dmNotes });
+  report.flows.push({ id: 'messaging.dm_send', title: 'A→B DM send + B receive', label: dmLabel, notes: dmNotes });
   report.flows.push({
     id: 'messaging.outbox_offline_flush',
     title: 'Offline outbox → online flush',
     label: outboxLabel,
     notes: outboxNotes,
   });
-  slog('  dm →', dmLabel, 'outbox →', outboxLabel);
-  await browseA.context.close().catch(() => {});
-  await pageA.context().close().catch(() => {});
-  await pageB.context().close().catch(() => {});
-  } // gateALive
+  report.flows.push({
+    id: 'messaging.dual_dm_success',
+    title: 'Dual pN can send/receive (acceptance bar)',
+    label: dualDmOk ? 'LIVE_REAL' : 'BLOCKED',
+    notes: [
+      `connect=${connectLabel}`,
+      `accept=${acceptLabel}`,
+      `dm=${dmLabel}`,
+      dualDmOk
+        ? 'SUCCESS: A sent and B showed plaintext marker'
+        : 'FAIL: need POST request + Accept + B receives marker',
+    ],
+  });
+  slog('  dm →', dmLabel, 'outbox →', outboxLabel, 'dual_dm →', dualDmOk ? 'LIVE_REAL' : 'BLOCKED');
+  // Keep messaging A+B open through end of script (closed in finally below).
 }
 
 // --- Browse engagement: DISCOVER public feed + like / follow ---
@@ -1021,6 +1200,8 @@ if (process.env.PN_QA_SKIP_BROWSE_ENGAGEMENT === '1') {
 }
 } // PN_QA_SKIP_BROWSE_ENGAGEMENT else
 
+await gateA._keep?.context.close().catch(() => {});
+await gateB._keep?.context.close().catch(() => {});
 await browser.close();
 
 const outPath = resolve(OUT, 'messaging-qa-report.json');

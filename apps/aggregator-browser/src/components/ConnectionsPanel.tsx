@@ -20,6 +20,8 @@ import {
   ensureLocalMessagingKeysForAccept,
   reportConnectionAcceptError,
 } from '../services/messagingReconnect';
+import { drainSocialMailbox } from '../services/socialMailboxConsumer';
+import { ownerFetch, ownerGet } from '../services/ownerApiFetch';
 
 interface Follower {
   followerPnIdentifier: string;
@@ -37,8 +39,6 @@ interface ConnectionsPanelProps {
   userPnIdentifier: string;
   onCreatorClick?: (creatorId: string) => void;
 }
-
-import { ownerFetch, ownerGet } from '../services/ownerApiFetch';
 
 export function ConnectionsPanel({ userPnIdentifier, onCreatorClick }: ConnectionsPanelProps) {
   useUserState();
@@ -65,6 +65,8 @@ export function ConnectionsPanel({ userPnIdentifier, onCreatorClick }: Connectio
 
     try {
       if (activeTab === 'connections') {
+        // Pending connection requests arrive as mailbox jobs — drain before Drive read.
+        await drainSocialMailbox().catch(() => null);
         // Load connections and pending requests
         const [connectionsData, pendingData] = await Promise.all([
           getConnections(userPnIdentifier),
