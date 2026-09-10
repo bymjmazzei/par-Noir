@@ -30,17 +30,22 @@ export function trackOAuth(page, bag) {
   });
 }
 
-/** Capture api.parnoir.com calls (method, pathname, status) — no bodies/secrets. */
+/** Capture api.parnoir.com calls (method, pathname, status, cloud header present) — no bodies/secrets. */
 export function trackApi(page, bag) {
   page.on('response', async (res) => {
     try {
       const u = res.url();
       if (!u.includes('api.parnoir.com')) return;
       const url = new URL(u);
+      const headers = res.request().headers();
+      const cloudHeader = Boolean(
+        headers['x-pn-cloud-access-token'] || headers['X-PN-Cloud-Access-Token']
+      );
       bag.push({
         method: res.request().method(),
         path: url.pathname,
         status: res.status(),
+        cloudHeader,
       });
     } catch {
       /* ignore */

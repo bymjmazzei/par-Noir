@@ -61,15 +61,18 @@ See [`NEEDS_USER_REVIEW.md`](NEEDS_USER_REVIEW.md) and [`SAFE_DELETE_CANDIDATES.
 - Bottom nav Upload (open only) — **LIVE_REAL**
 - Bottom nav Inbox — **LIVE_REAL**
 - Bottom nav Me — **LIVE_REAL**
-- Engagement sidebar / like affordance — **BLOCKED**
+- Engagement sidebar / like affordance — **LIVE_UNFINISHED** (DISCOVER empty; `?creator=` profile has chrome)
+- Profile Connect via `?creator=` — **LIVE_REAL** (POST /api/connections/request 200)
 - Lock pN — **LIVE_REAL**
 
 ### messaging
-- Messages — **LIVE_UNFINISHED**
-- Notifications — **LIVE_UNFINISHED**
-- Requests — **LIVE_UNFINISHED**
+- Messages — **LIVE_REAL**
+- Notifications — **LIVE_UNFINISHED** (409 cloud_token on messaging origin)
+- Requests — **LIVE_REAL** (API); Accept UI empty for pending while linkedInactive
 - Connections — **LIVE_REAL**
-- New group modal (open only) — **BLOCKED**
+- A→B Connect via `?creator=` — **LIVE_REAL**
+- B accept / DM / outbox — **LIVE_UNFINISHED** / **BLOCKED** until messaging cloud AT works on prod (deploy cross-app vault hydrate + register `https://messaging.parnoir.com/oauth-callback.html` in Google Console — see NEEDS_USER_REVIEW + OAUTH checklist §6b)
+- New group modal (open only) — **LIVE_REAL** (earlier)
 - Lock pN — **LIVE_REAL**
 
 ### prism

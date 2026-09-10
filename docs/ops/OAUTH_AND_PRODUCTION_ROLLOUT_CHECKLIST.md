@@ -79,6 +79,19 @@ If you are not ready for KMS, **skip** this until you are.
 
 ---
 
+## 6b. Google Drive OAuth redirect URIs (cross-app cloud reconnect)
+
+Device-cloud reconnect uses `${origin}/oauth-callback.html` ([`reconnectFlows.ts`](../../packages/oauth-ui/src/cloudReconnect/reconnectFlows.ts)). The **same** Google OAuth client (`GOOGLE_DRIVE_CLIENT_ID` / `VITE_GOOGLE_DRIVE_CLIENT_ID`) must list every first-party origin that can open reconnect:
+
+- [ ] `https://pn.parnoir.com/oauth-callback.html` (dashboard)
+- [ ] `https://browse.parnoir.com/oauth-callback.html`
+- [ ] `https://messaging.parnoir.com/oauth-callback.html` (**required** — OBSERVED `redirect_uri_mismatch` when missing)
+- [ ] Local / Capacitor redirects you already use (e.g. `http://localhost:…/oauth-callback.html`, `https://localhost/oauth-callback.html`)
+
+No app code can fix a Console misconfig. After adding URIs, wait a few minutes, then falsify: messaging linkedInactive → Authorize → Google completes without `redirect_uri_mismatch` → banner clears.
+
+---
+
 ## 6. Ops baseline (ongoing)
 
 In **production** API env, confirm:

@@ -53,30 +53,28 @@ Evidence: **OBSERVED** (this pass) vs **INFERRED** (imports/package).
 | Bottom nav Upload (open only) | LIVE_REAL | OBSERVED | GET /api/v1/music/registry/catalog (200) | UploadPage.tsx / UploadModal.tsx | — |
 | Bottom nav Inbox | LIVE_REAL | OBSERVED | GET /api/storage/pn-87f49f0fb345/layout/status (200), GET /api/drive/files (200), GET /api/storage/pn-87f49f0fb345/layout/status (200) | MessagesPage.tsx / Inbox.tsx | — |
 | Bottom nav Me | LIVE_REAL | OBSERVED | GET /api/aggregator/metadata-index/1D_Ey5ESOD2OsX9f35dy9O7mS_THLrmyb (404), GET /api/aggregator/metadata-index/1mgUxk0dOrkBndHg2NjWcLsJv8Q8hvkbc (404) | MePage.tsx | — |
-| Engagement sidebar / like affordance | BLOCKED | OBSERVED | GET /api/messages/conversations (200) | FeedEngagementSidebar.tsx | entry control not found or not clickable |
+| Engagement sidebar / like affordance | LIVE_UNFINISHED | OBSERVED | — | FeedEngagementSidebar / ProfileActionMenu | DISCOVER empty (“no public files”); Me `?creator=` empty profile **has** engagement chrome + Connect in Profile actions |
+| Profile Connect via `?creator=` | LIVE_REAL | OBSERVED | POST /api/connections/request (200); toast “Connection request sent!” | MePage empty + ProfileActionMenu | test-pn → test-pn-2; no public post required if pn id known |
 | Lock pN | LIVE_REAL | OBSERVED | — | LockButtonWithContext.tsx | — |
 
 ---
 
 ## messaging (`https://messaging.parnoir.com/`)
 
-**Follow-up QA (2026-09-09, fixture `.local/test-pn-2`, Drive linked on dashboard):**  
-Harness: [`apps/aggregator-browser/scripts/ux-messaging-qa.mjs`](../apps/aggregator-browser/scripts/ux-messaging-qa.mjs) → `.local/ux-playwright/messaging-qa/messaging-qa-report.json`
+**Follow-up QA (2026-09-09 evening + post-implement harness):** dual-pN via known `?creator=` URL.  
+Harness / report: [`apps/aggregator-browser/scripts/ux-messaging-qa.mjs`](../apps/aggregator-browser/scripts/ux-messaging-qa.mjs) → `.local/ux-playwright/messaging-qa/messaging-qa-report.json`
 
 | Flow | Label | Evidence | API (sample) | Source | Notes |
 |---|---|---|---|---|---|
-| Unlock + OAuth session | LIVE_REAL | OBSERVED | POST /oauth/token (200), GET /oauth/userinfo (200) | OAuth consent + pnOAuthService | test-pn-2 |
-| Post-unlock bootstrap | LIVE_REAL | OBSERVED | GET cloud-vault (200), GET mailbox/route (200), GET mailbox/pending (200), GET messages/conversations (200) | AggregatorCloudReconnectHost / mailbox | Vault **exists**; session still lacks Drive AT |
-| Cloud signed-in on device | LIVE_UNFINISHED | OBSERVED | GET /api/connections → **409 cloud_token_required**; banner “linked but not signed in”; **no** “Reconnect cloud storage” dialog for ~18s | ConnectionHealthBanner vs useCloudReconnectGate | Root: accounts cache dropped `socialCloudProvider` → gate can assess `unlinked` and never open prompt. **Local fix** in accountsCacheService + gate + banner CTA (needs deploy to verify on prod) |
-| Messages tab | LIVE_REAL | OBSERVED | (empty shell; conversations already 200) | Inbox.tsx | Empty “No messages yet” expected for new pN |
-| Notifications | LIVE_UNFINISHED | OBSERVED | GET /api/notifications (**401**) ×2; UI “unauthorized” | notificationService.ts | List/unread/mark/delete omitted Bearer; L5 boundary requires first-party token. **Local fix:** wire `authHeaders()` (needs deploy) |
-| Requests | LIVE_REAL | OBSERVED | GET /api/messages/requests (200), GET /api/connections/pending (200) | RequestsList.tsx | — |
-| Connections | LIVE_REAL | OBSERVED | GET /api/connections (200) after earlier 409 | ConnectionsPanel.tsx | List UI works; Drive-backed accept/DM still blocked without cloud AT |
-| New group | LIVE_REAL | OBSERVED | Button visible (“New group”) | CreateGroupModal.tsx | Earlier deep map missed button (icon-row timing); visible in messaging-qa screenshots |
-| Compose / send / offline outbox | BLOCKED | OBSERVED | — | messageService outbox + throughway | No second peer send in this pass; also blocked until cloud AT on device |
-| Lock pN | LIVE_REAL | OBSERVED | — | LockButtonWithContext.tsx | — |
+| Unlock + OAuth session | LIVE_REAL | OBSERVED | POST /oauth/token (200), GET /oauth/userinfo (200) | OAuth consent + pnOAuthService | both fixtures |
+| Cloud signed-in on messaging origin | LIVE_UNFINISHED | OBSERVED (prod) / CODE_READY (tree) | banner linkedInactive after unlock; harness: `cloud_wait=timeout`; reconnect → **GOOGLE_REDIRECT_URI_MISMATCH** for `messaging.parnoir.com/oauth-callback.html`; notifications still bad | ConnectionHealthBanner / AggregatorCloudReconnectHost / reconnectFlows / dashboard vault publish | Tree: hard vault publish, gate refresh after hydrate, banner listens `pn-cloud-credentials-ready`, markReady-after-AT. Needs **deploy** + Google Console §6b, then re-run harness for Accept→DM→outbox. |
+| Messages / Requests / Connections tabs | LIVE_REAL | OBSERVED | conversations/requests/pending/connections often 200 after bootstrap | Inbox / RequestsList / ConnectionsPanel | — |
+| Notifications | LIVE_UNFINISHED | OBSERVED | GET /api/notifications still failing without usable messaging-origin cloud AT | notificationService | Needs device cloud AT on messaging origin |
+| A→B connection request (`?creator=`) | LIVE_REAL | OBSERVED (prior) | POST /api/connections/request **200**; UI toast sent | ProfileActionMenu Connect | Empty profile enough; tonight’s harness stopped before dual-DM (gate) |
+| B accept pending | LIVE_UNFINISHED | OBSERVED | Gate failed — Accept not reached | RequestsList | Blocked on messaging cloud AT |
+| Compose / send / offline outbox | BLOCKED | OBSERVED | — | messageService outbox | Blocked until accept + messaging cloud AT |
 
-**Offline queues:** not exercised end-to-end yet — requires cloud reconnect on messaging origin after the local fixes ship, then dual-pN send (test-pn + test-pn-2).
+**Offline queues:** not exercised — blocked on B accept + messaging-origin cloud AT.
 
 ---
 

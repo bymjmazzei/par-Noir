@@ -8,7 +8,10 @@ import { restoreMessagingAfterOAuth } from '../services/messagingOAuthHandoff';
 import { requestMessagingReconnect } from '../services/messagingReconnect';
 import { fetchStorageAccounts } from '../services/storageApiClient';
 import { isUnlockPrefetchComplete } from '../services/unlockSessionCoordinator';
-import { getSessionCloudCredentials } from '@par-noir/device-cloud-credentials';
+import {
+  getSessionCloudCredentials,
+  PN_CLOUD_CREDENTIALS_READY_EVENT
+} from '@par-noir/device-cloud-credentials';
 import { assessCloudSessionReadiness } from '@par-noir/user-owned-storage';
 
 /**
@@ -18,6 +21,7 @@ import { assessCloudSessionReadiness } from '@par-noir/user-owned-storage';
 export const ConnectionHealthBanner: React.FC = () => {
   const [storageOk, setStorageOk] = useState<boolean | null>(null);
   const [linkedInactive, setLinkedInactive] = useState(false);
+  const [mintFailed, setMintFailed] = useState(false);
   const [messagingOk, setMessagingOk] = useState(() => isDmIdentityReady());
   const session = PNOAuthService.loadSession();
   const oauthOk = !!(session?.accessToken && PNOAuthService.isSessionValid(session));
@@ -74,11 +78,18 @@ export const ConnectionHealthBanner: React.FC = () => {
     const onPrefetch = () => {
       void refreshStorageState();
     };
+    const onMintFailed = () => setMintFailed(true);
+    const onReady = () => {
+      setMintFailed(false);
+      void refreshStorageState();
+    };
     window.addEventListener('pn_unlock_prefetch_complete', onPrefetch);
-    window.addEventListener('pn_cloud_drive_ready', onPrefetch);
+    window.addEventListener(PN_CLOUD_CREDENTIALS_READY_EVENT, onReady);
+    window.addEventListener('pn_cloud_at_mint_failed', onMintFailed);
     return () => {
       window.removeEventListener('pn_unlock_prefetch_complete', onPrefetch);
-      window.removeEventListener('pn_cloud_drive_ready', onPrefetch);
+      window.removeEventListener(PN_CLOUD_CREDENTIALS_READY_EVENT, onReady);
+      window.removeEventListener('pn_cloud_at_mint_failed', onMintFailed);
     };
   }, [refreshStorageState]);
 
@@ -86,13 +97,25 @@ export const ConnectionHealthBanner: React.FC = () => {
     window.dispatchEvent(new CustomEvent('pn_open_cloud_reconnect'));
   }, []);
 
-  if (oauthOk && storageOk && messagingOk && !linkedInactive) return null;
+  if (oauthOk && storageOk && messagingOk && !linkedInactive && !mintFailed) return null;
 
   return (
     <div className="mx-3 mb-3 p-3 rounded-lg bg-amber-950/50 border border-amber-800/60 text-amber-100 text-xs space-y-2">
       <p className="font-medium">Connection status</p>
       <ul className="list-disc pl-4 space-y-0.5">
         {!oauthOk && <li>Not connected — use the lock icon to unlock with pN OAuth</li>}
+        {oauthOk && mintFailed && !linkedInactive && (
+          <li>
+            Cloud secrets are on this device but Drive sign-in failed —{' '}
+            <button
+              type="button"
+              className="underline text-amber-50 hover:text-white"
+              onClick={openCloudReconnect}
+            >
+              reconnect cloud storage
+            </button>
+          </li>
+        )}
         {oauthOk && linkedInactive && (
           <li>
             Cloud storage is linked but not signed in on this device —{' '}
@@ -105,7 +128,7 @@ export const ConnectionHealthBanner: React.FC = () => {
             </button>
           </li>
         )}
-        {oauthOk && storageOk === false && !linkedInactive && (
+        {oauthOk && storageOk === false && !linkedInactive && !mintFailed && (
           <li>
             Cloud storage not connected —{' '}
             <button

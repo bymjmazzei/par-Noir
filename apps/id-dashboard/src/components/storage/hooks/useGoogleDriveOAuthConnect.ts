@@ -388,7 +388,8 @@ export function useGoogleDriveOAuthConnect({
       // Do NOT fire PN_CLOUD_CREDENTIALS_READY yet — token exists but Drive layout/index
       // is not built until persistStorageCredentialsToAPI finishes initialize. Early READY
       // causes App to storm GET zkp-data-points (409) and third-party-permissions (404).
-      try {
+      // Cross-app reuse requires a sealed vault PUT; treat publish failure as Connect incomplete.
+      {
         const {
           persistCloudCredentials,
           resolveCloudPersistMode
@@ -396,74 +397,81 @@ export function useGoogleDriveOAuthConnect({
         const { derivePnIdentifierForToken } = await import('../../../services/parNoirOAuthInline');
         const sessionId = authenticatedUser?.id || null;
         const sessionCreds = sessionId ? SecureCredentialManager.getCredentials(sessionId) : null;
-        if (sessionCreds && sessionId && authenticatedUser?.publicKey) {
-          const pnIdentifier = await derivePnIdentifierForToken(
-            sessionCreds.pnName,
-            sessionCreds.passcode,
-            authenticatedUser.publicKey
+        if (!sessionCreds || !sessionId || !authenticatedUser?.publicKey) {
+          throw new Error(
+            'Drive connected locally, but identity seal factors are missing — unlock again, then reconnect Drive to publish the cloud vault for browse/messaging.'
           );
-          const accountId = identifiers.backendId;
-          const mode = isKeyedSession
-            ? 'sealed'
-            : resolveCloudPersistMode({ hasKeyedDevices });
-          await persistCloudCredentials({
-            identityId: pnIdentifier,
-            credentials: {
-              socialCloudProvider: 'google_drive',
-              socialCloudAccountId: accountId,
-              googleDriveAccounts: [
-                {
-                  accountId,
-                  backendId: identifiers.backendId,
-                  keyPrefix: identifiers.keyPrefix,
-                  accessToken: token,
-                  refreshToken: tokenData.refreshToken,
-                  email: connectedEmail || undefined,
-                  connectedAt: new Date().toISOString(),
-                  expires_at: tokenExpiresAt,
-                }
-              ]
-            },
-            session: {
-              sessionId: 'pn-cloud-creds-v1',
-              pnName: sessionCreds.pnName,
-              passcode: sessionCreds.passcode
-            },
-            mode
-          });
-          try {
-            const { publishCloudVaultForIdentity } = await import('../../../services/deviceCloudCredentials');
-            const authTok = resolveOwnerApiToken(pnIdentifier);
-            if (authTok) {
-              await publishCloudVaultForIdentity({
-                identityId: pnIdentifier,
-                authToken: authTok,
-                pnName: sessionCreds.pnName,
-                passcode: sessionCreds.passcode,
-                credentials: {
-                  socialCloudProvider: 'google_drive',
-                  socialCloudAccountId: accountId,
-                  googleDriveAccounts: [
-                    {
-                      accountId,
-                      backendId: identifiers.backendId,
-                      keyPrefix: identifiers.keyPrefix,
-                      accessToken: token,
-                      refreshToken: tokenData.refreshToken,
-                      email: connectedEmail || undefined,
-                      connectedAt: new Date().toISOString(),
-                      expires_at: tokenExpiresAt,
-                    }
-                  ]
-                }
-              });
-            }
-          } catch {
-            /* best-effort vault publish */
-          }
         }
-      } catch (sealErr) {
-        console.warn('[Google Drive] Device cloud persist skipped:', sealErr);
+        const pnIdentifier = await derivePnIdentifierForToken(
+          sessionCreds.pnName,
+          sessionCreds.passcode,
+          authenticatedUser.publicKey
+        );
+        const accountId = identifiers.backendId;
+        const cloudEnvelope = {
+          socialCloudProvider: 'google_drive' as const,
+          socialCloudAccountId: accountId,
+          googleDriveAccounts: [
+            {
+              accountId,
+              backendId: identifiers.backendId,
+              keyPrefix: identifiers.keyPrefix,
+              accessToken: token,
+              refreshToken: tokenData.refreshToken,
+              email: connectedEmail || undefined,
+              connectedAt: new Date().toISOString(),
+              expires_at: tokenExpiresAt,
+            }
+          ]
+        };
+        const mode = isKeyedSession
+          ? 'sealed'
+          : resolveCloudPersistMode({ hasKeyedDevices });
+        await persistCloudCredentials({
+          identityId: pnIdentifier,
+          credentials: cloudEnvelope,
+          session: {
+            sessionId: 'pn-cloud-creds-v1',
+            pnName: sessionCreds.pnName,
+            passcode: sessionCreds.passcode
+          },
+          mode
+        });
+        const { publishCloudVaultForIdentity } = await import(
+          '../../../services/deviceCloudCredentials'
+        );
+        const authTok = resolveOwnerApiToken(pnIdentifier);
+        if (!authTok) {
+          throw new Error(
+            'Drive connected locally, but no owner API session — cannot publish cloud vault for other apps. Unlock the dashboard session, then reconnect Drive.'
+          );
+        }
+        const vault = await publishCloudVaultForIdentity({
+          identityId: pnIdentifier,
+          authToken: authTok,
+          pnName: sessionCreds.pnName,
+          passcode: sessionCreds.passcode,
+          credentials: cloudEnvelope,
+          publicKey: authenticatedUser.publicKey
+        });
+        if (!vault.ok) {
+          const idTag = await crypto.subtle
+            .digest('SHA-256', new TextEncoder().encode(pnIdentifier))
+            .then((buf) =>
+              Array.from(new Uint8Array(buf))
+                .map((b) => b.toString(16).padStart(2, '0'))
+                .join('')
+                .slice(0, 12)
+            );
+          console.warn(
+            `[Google Drive] Cloud vault publish failed for identity hash=${idTag}:`,
+            vault.error || 'unknown'
+          );
+          throw new Error(
+            vault.error ||
+              'Cloud vault publish failed — other apps cannot reuse this Drive connection until reconnect succeeds.'
+          );
+        }
       }
 
       // Layout-only API persistence (no live Google tokens in SecureMetadata).

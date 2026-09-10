@@ -157,7 +157,7 @@ export const CloudReconnectHost: React.FC<CloudReconnectHostProps> = ({
           const toPublish = warmed || getSessionCloudCredentials(pnIdentifier);
           if (toPublish) {
             try {
-              await publishCloudVaultForIdentity({
+              const vault = await publishCloudVaultForIdentity({
                 identityId: pnIdentifier,
                 authToken: apiToken,
                 pnName: creds.pnName,
@@ -166,8 +166,17 @@ export const CloudReconnectHost: React.FC<CloudReconnectHostProps> = ({
                 publicKey: sessionId,
                 mlKemSecretKey,
               });
-            } catch {
-              /* best-effort on unlock migrate; reconnect path surfaces errors */
+              if (!vault.ok) {
+                console.warn(
+                  '[CloudReconnectHost] Unlock vault publish incomplete:',
+                  vault.error || 'unknown'
+                );
+              }
+            } catch (e) {
+              console.warn(
+                '[CloudReconnectHost] Unlock vault publish error (reconnect can retry):',
+                e instanceof Error ? e.message : e
+              );
             }
             // Also re-seal locally under canonical session id for this origin
             await persistCloudCredentials({
@@ -277,7 +286,7 @@ export const CloudReconnectHost: React.FC<CloudReconnectHostProps> = ({
       setSessionCloudCredentials(pnIdentifier, envelope);
       if (apiToken) {
         try {
-          await publishCloudVaultForIdentity({
+          const vault = await publishCloudVaultForIdentity({
             identityId: pnIdentifier,
             authToken: apiToken,
             pnName: creds.pnName,
@@ -285,6 +294,12 @@ export const CloudReconnectHost: React.FC<CloudReconnectHostProps> = ({
             credentials: envelope,
             publicKey: sessionId,
           });
+          if (!vault.ok) {
+            const msg =
+              vault.error || 'Failed to publish cloud vault for other apps';
+            setOauthError(msg);
+            throw new Error(msg);
+          }
         } catch (e: unknown) {
           const msg =
             e instanceof Error ? e.message : 'Failed to publish cloud vault for other apps';

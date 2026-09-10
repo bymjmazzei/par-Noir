@@ -180,7 +180,7 @@ export function useDriveTokenRefresh({
                 const { resolveOwnerApiToken } = await import('../../../services/ownerApiToken');
                 const authTok = resolveOwnerApiToken(pnId);
                 if (authTok) {
-                  await publishCloudVaultForIdentity({
+                  const vault = await publishCloudVaultForIdentity({
                     identityId: pnId,
                     authToken: authTok,
                     pnName: sessionCreds.pnName,
@@ -193,9 +193,18 @@ export function useDriveTokenRefresh({
                       googleDriveAccounts: accounts
                     }
                   });
+                  if (!vault.ok) {
+                    console.warn(
+                      '[FileStorageAggregator] Cloud vault refresh publish incomplete:',
+                      vault.error || 'unknown'
+                    );
+                  }
                 }
-              } catch {
-                /* best-effort */
+              } catch (e) {
+                console.warn(
+                  '[FileStorageAggregator] Cloud vault refresh publish error:',
+                  e instanceof Error ? e.message : e
+                );
               }
             }
           } catch (deviceSealErr) {

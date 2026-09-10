@@ -224,33 +224,54 @@ export const AggregatorCloudReconnectHost: React.FC = () => {
   });
 
   // Banner / messaging can request the reconnect panel when the prompt never mounted.
+  // Open panel first — do not await refresh beforehand; a refresh that scores "ready"
+  // (local sealed secrets) used to close the panel before AT mint finished.
   useEffect(() => {
     const open = () => {
-      gate.refresh();
       gate.openPanel();
+      void gate.refresh();
     };
     window.addEventListener('pn_open_cloud_reconnect', open);
     return () => window.removeEventListener('pn_open_cloud_reconnect', open);
   }, [gate.refresh, gate.openPanel]);
 
-  // When vault hydrate succeeds, mint access token then signal Drive-ready.
+  // When vault hydrate succeeds, mint access token then mark ready — never mark ready first.
+  // Early markReady closed the reconnect UI while linkedInactive banner still showed (no AT).
   useEffect(() => {
     if (!vaultHydrated || !authToken || !pnIdentifier) return;
-    gate.markReady();
+    let cancelled = false;
     void (async () => {
+      // Secrets are in session — re-score so linkedInactive clears even before AT mint.
+      await gate.refresh();
+      if (cancelled) return;
       const ok = await publishCloudDriveReady({
         authToken,
         pnIdentifier,
         apiEndpoint: API_ENDPOINT
       });
+      if (cancelled) return;
       markCloudUnlockComplete(pnIdentifier, ok);
       if (ok) {
+        gate.markReady();
         void retryPublishMlKemPublicKey();
         const { flushPendingGrant } = await import('../services/pendingGrantPersist');
         await flushPendingGrant({ authToken, pnIdentifier });
+      } else {
+        console.warn(
+          '[AggregatorCloudReconnectHost] Cloud AT mint failed after vault hydrate — opening reconnect'
+        );
+        try {
+          window.dispatchEvent(new CustomEvent('pn_cloud_at_mint_failed'));
+        } catch {
+          /* non-DOM */
+        }
+        gate.openPanel();
       }
     })();
-  }, [vaultHydrated, gate.markReady, authToken, pnIdentifier]);
+    return () => {
+      cancelled = true;
+    };
+  }, [vaultHydrated, gate.markReady, gate.refresh, gate.openPanel, authToken, pnIdentifier]);
 
   const handleConnected = useCallback(
     async (envelope: StorageCredentialsEnvelope) => {
@@ -304,9 +325,9 @@ export const AggregatorCloudReconnectHost: React.FC = () => {
           }).catch(() => ({ ok: false }));
         }
       }
-      gate.markReady();
       setVaultHydrated(true);
       if (authToken) {
+        await gate.refresh();
         const ok = await publishCloudDriveReady({
           authToken,
           pnIdentifier,
@@ -314,10 +335,21 @@ export const AggregatorCloudReconnectHost: React.FC = () => {
         });
         markCloudUnlockComplete(pnIdentifier, ok);
         if (ok) {
+          gate.markReady();
           void retryPublishMlKemPublicKey();
+          const { flushPendingGrant } = await import('../services/pendingGrantPersist');
+          await flushPendingGrant({ authToken, pnIdentifier });
+        } else {
+          console.warn(
+            '[AggregatorCloudReconnectHost] Cloud AT mint failed after reconnect — keeping panel open'
+          );
+          try {
+            window.dispatchEvent(new CustomEvent('pn_cloud_at_mint_failed'));
+          } catch {
+            /* non-DOM */
+          }
+          gate.openPanel();
         }
-        const { flushPendingGrant } = await import('../services/pendingGrantPersist');
-        await flushPendingGrant({ authToken, pnIdentifier });
       }
     },
     [pnIdentifier, gate, hasKeyedDevices, authToken]

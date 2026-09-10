@@ -14,14 +14,14 @@ Generated 2026-09-09.
 - **Options:** KEEP_SCAFFOLD | NEEDS_CURRENT_STACK rebuild ticket | other
 
 ### messaging.inbox.tabs (no API on tab click alone)
-- **Observed (superseded 2026-09-09):** With test-pn-2, Requests hit API; Messages empty-state after conversations bootstrap; Notifications 401 (Bearer missing — local fix pending deploy).
-- **Question:** After deploy of notification auth + cloud-reconnect cache fix, run dual-pN DM + outbox pass?
-- **Options:** approve follow-up probe | wait
+- **Observed (2026-09-09 code path):** Dual-pN Connect via `?creator=` works (POST request 200). B Accept blocked while messaging origin lacks cloud AT. Race fix + vault publish hard-fail + banner `pn-cloud-credentials-ready` listen are in tree; **not on prod until deploy**.
+- **Ops blocker (cannot fix in code):** Google Cloud Console must authorize redirect `https://messaging.parnoir.com/oauth-callback.html` (see [OAUTH_AND_PRODUCTION_ROLLOUT_CHECKLIST.md](./ops/OAUTH_AND_PRODUCTION_ROLLOUT_CHECKLIST.md) §6b).
+- **Question:** Deploy aggregator-browser (browse + messaging) + register messaging Google redirect, then re-run Accept → DM → outbox?
+- **Options:** deploy + Google Console redirect | hold
 
 ### messaging.cloud_reconnect_on_device (test-pn-2)
-- **Observed:** Drive linked on dashboard; messaging unlock shows linked-inactive banner; connections return `cloud_token_required`; reconnect dialog absent on prod.
-- **Local fixes (not on prod until deploy):** preserve `socialCloudProvider` in accounts cache; gate ignores empty layout cache; banner opens `pn_open_cloud_reconnect`; notification Bearer headers; `/embed` mounts reconnect host.
-- **Question:** Deploy aggregator-browser (messaging + browse) so we can finish offline-queue / DM QA?
+- **Observed:** Banner linkedInactive on messaging; panel briefly opens then closes (markReady-before-AT race — **fixed in tree**). Authorize click works; Google returns **redirect_uri_mismatch** for messaging oauth-callback until Console is updated. Browse often hydrates OK without banner.
+- **Question:** After deploy + Console redirect, confirm messaging unlock hydrates vault (no banner) without Google reconnect?
 - **Options:** deploy now | hold
 
 ### Unused same-name UI (KEEP until canonical chosen)

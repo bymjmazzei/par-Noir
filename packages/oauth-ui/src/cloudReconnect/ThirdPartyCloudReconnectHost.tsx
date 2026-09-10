@@ -106,25 +106,40 @@ export function ThirdPartyCloudReconnectHost({
 
   useEffect(() => {
     if (!vaultHydrated || !authToken || !pnIdentifier) return;
-    gate.markReady();
-    void publishCloudDriveReady({
-      authToken,
-      pnIdentifier,
-      apiEndpoint
-    });
-  }, [vaultHydrated, gate.markReady, authToken, pnIdentifier, apiEndpoint]);
+    let cancelled = false;
+    void (async () => {
+      await gate.refresh();
+      if (cancelled) return;
+      const ok = await publishCloudDriveReady({
+        authToken,
+        pnIdentifier,
+        apiEndpoint
+      });
+      if (cancelled) return;
+      if (ok) {
+        gate.markReady();
+      } else {
+        gate.openPanel();
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [vaultHydrated, gate.markReady, gate.refresh, gate.openPanel, authToken, pnIdentifier, apiEndpoint]);
 
   const handleConnected = useCallback(
     async (envelope: StorageCredentialsEnvelope) => {
       if (!pnIdentifier || !authToken) return;
       setSessionCloudCredentials(pnIdentifier, envelope);
-      gate.markReady();
       setVaultHydrated(true);
-      await publishCloudDriveReady({
+      await gate.refresh();
+      const ok = await publishCloudDriveReady({
         authToken,
         pnIdentifier,
         apiEndpoint
       });
+      if (ok) gate.markReady();
+      else gate.openPanel();
     },
     [pnIdentifier, gate, authToken, apiEndpoint]
   );

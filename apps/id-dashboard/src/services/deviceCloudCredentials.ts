@@ -128,7 +128,7 @@ export async function publishCloudVaultForIdentity(opts: {
   /** Optional storage public key when identityId is a pn- identifier */
   publicKey?: string | null;
   mlKemSecretKey?: string | null;
-}): Promise<void> {
+}): Promise<{ ok: boolean; error?: string }> {
   const { publishCloudCredentialsVault } = await import('@par-noir/device-cloud-credentials');
   let mlKemSecretKey = opts.mlKemSecretKey || null;
   if (!mlKemSecretKey) {
@@ -140,7 +140,7 @@ export async function publishCloudVaultForIdentity(opts: {
       passcode: opts.passcode
     });
   }
-  await publishCloudCredentialsVault({
+  const result = await publishCloudCredentialsVault({
     apiEndpoint: API_ENDPOINT,
     authToken: opts.authToken,
     pnIdentifier: opts.identityId,
@@ -150,6 +150,10 @@ export async function publishCloudVaultForIdentity(opts: {
     passcode: opts.passcode,
     credentials: opts.credentials
   });
+  if (!result.ok) {
+    return { ok: false, error: result.error || `cloud-vault PUT failed (${result.status})` };
+  }
+  return { ok: true };
 }
 
 export async function loadUnsealedCloudCredentials(

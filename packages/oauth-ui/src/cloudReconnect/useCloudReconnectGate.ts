@@ -130,8 +130,10 @@ export function useCloudReconnectGate(config: CloudReconnectGateConfig): CloudRe
       if (next === 'linkedInactive' && !isDismissed()) {
         setPromptOpen(true);
       } else if (next === 'ready') {
+        // Dismiss auto-prompt only. Do not close panelOpen — a concurrent refresh
+        // scoring ready (sealed local secrets) was racing user-opened reconnect and
+        // tearing down the panel before AT mint / Authorize completed.
         setPromptOpen(false);
-        setPanelOpen(false);
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to check cloud status');
