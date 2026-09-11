@@ -484,10 +484,17 @@ export function setupConnectionRoutes(app: express.Application, deps: Connection
           // kemCiphertext is already public key-exchange material: it is what
           // the requester needs to derive the shared root, and it is useless
           // without their ML-KEM secret.
+          // connectionId must be in extra (not only requestId) — apply-inbound
+          // reads body.connectionId. peerMailboxRouteKey is the acceptor's
+          // route so the requester can deliver DMs after apply.
           extra: {
+            connectionId,
             kemCiphertext,
+            wrappedMessageRootKey,
             channelClientId,
-            ...(acceptorRouteKey ? { acceptorMailboxRouteKey: acceptorRouteKey } : {})
+            ...(acceptorRouteKey
+              ? { peerMailboxRouteKey: acceptorRouteKey, acceptorMailboxRouteKey: acceptorRouteKey }
+              : {})
           }
         });
 
@@ -1748,15 +1755,29 @@ export function setupConnectionRoutes(app: express.Application, deps: Connection
         }
 
         let metadataFolderId = '';
+        let pnFolderId = '';
         if (account) {
           const _g = await getMetadataFolder(token, pnIdentifier, accountId);
           if (!_g) return driveNotInitialized(res);
           metadataFolderId = _g.metadataFolderId;
+          pnFolderId = _g.pnFolderId;
         }
+
+        /** Prefer explicit connectionId; accept jobs historically only set requestId. */
+        const resolveConnectionId = (): string | undefined => {
+          const raw = req.body?.connectionId ?? req.body?.requestId;
+          if (typeof raw !== 'string' || !raw.trim()) return undefined;
+          // reject:/delete: prefixes are not connection ids
+          if (raw.startsWith('reject:') || raw.startsWith('delete:') || raw.startsWith('follow:')) {
+            return undefined;
+          }
+          return raw.trim();
+        };
 
         switch (String(jobType)) {
           case 'connection_request': {
-            const { connectionId, peerMlKemPublicKey, peerMailboxRouteKey, createdAt } = req.body;
+            const { peerMlKemPublicKey, peerMailboxRouteKey, createdAt } = req.body;
+            const connectionId = resolveConnectionId();
             if (!connectionId) {
               return res.status(400).json({ error: 'connectionId is required' });
             }
@@ -1780,10 +1801,16 @@ export function setupConnectionRoutes(app: express.Application, deps: Connection
           }
 
           case 'connection_accept': {
-            const { connectionId, kemCiphertext, peerMailboxRouteKey } = req.body;
+            const { kemCiphertext, wrappedMessageRootKey, channelClientId: bodyChannel } = req.body;
+            const connectionId = resolveConnectionId();
             if (!connectionId) {
               return res.status(400).json({ error: 'connectionId is required' });
             }
+            const peerRoute =
+              (typeof req.body.peerMailboxRouteKey === 'string' && req.body.peerMailboxRouteKey.trim()) ||
+              (typeof req.body.acceptorMailboxRouteKey === 'string' &&
+                req.body.acceptorMailboxRouteKey.trim()) ||
+              undefined;
             await ConnectionsService.updateOtherUserConnectionStatus(
               token.access_token,
               metadataFolderId,
@@ -1793,14 +1820,106 @@ export function setupConnectionRoutes(app: express.Application, deps: Connection
               peerPn,
               typeof kemCiphertext === 'string' ? kemCiphertext : undefined,
               accountId,
-              typeof peerMailboxRouteKey === 'string' ? peerMailboxRouteKey : undefined
+              peerRoute
             );
+
+            // Requester half of Accept: conversation sheet + inbox used to be
+            // written with the requester's Drive token on Accept. Under custody
+            // that write lands here with the caller's forwarded token.
+            try {
+              const { MessageSheetsService } = await import('./messageSheetsService');
+              const { normalizeChannelClientId } = await import('./messagingChannel');
+              const { readPnDriveIndex, isPnDriveIndexComplete } = await import('./pnDriveIndex');
+              const { isPortableStorageProvider } = await import('./storage/storageProviderUtils');
+              const channelClientId = normalizeChannelClientId(
+                typeof bodyChannel === 'string' ? bodyChannel : undefined
+              );
+              const now = new Date().toISOString();
+              const portable = await isPortableStorageProvider(pnIdentifier);
+              if (!pnFolderId && !portable) {
+                messagingLog.warn('[ApplyInbound] connection_accept missing pn folder', {
+                  category: 'connections'
+                });
+              } else {
+                const messagesFolderId = pnFolderId
+                  ? await MessageSheetsService.getOrCreateChannelMessagesFolder(
+                      token,
+                      pnFolderId,
+                      pnIdentifier,
+                      accountId,
+                      channelClientId
+                    )
+                  : '';
+                let conversationSheetId: string;
+                try {
+                  conversationSheetId = await MessageSheetsService.getConversationSheet(
+                    token,
+                    messagesFolderId,
+                    peerPn,
+                    pnIdentifier,
+                    accountId
+                  );
+                } catch (error: any) {
+                  if (!error?.message?.includes('not found')) throw error;
+                  conversationSheetId = await MessageSheetsService.createConversationSheet(
+                    token,
+                    messagesFolderId,
+                    peerPn,
+                    pnIdentifier,
+                    accountId
+                  );
+                }
+                const driveIndex = readPnDriveIndex(
+                  userCredentials.credentials as Record<string, unknown>
+                );
+                let inboxSheetId: string;
+                if (isPnDriveIndexComplete(driveIndex)) {
+                  inboxSheetId = driveIndex.inboxSheetId;
+                } else {
+                  const platformMessagesFolderId = pnFolderId
+                    ? await MessageSheetsService.getOrCreateMessagesFolder(
+                        token,
+                        pnFolderId,
+                        pnIdentifier,
+                        accountId
+                      )
+                    : messagesFolderId;
+                  inboxSheetId = await MessageSheetsService.getOrCreateInboxSheet(
+                    token,
+                    platformMessagesFolderId || messagesFolderId,
+                    pnIdentifier,
+                    accountId
+                  );
+                }
+                await MessageSheetsService.updateInboxEntryWithRetry(
+                  token,
+                  inboxSheetId,
+                  peerPn,
+                  conversationSheetId,
+                  String(connectionId),
+                  now,
+                  pnIdentifier,
+                  accountId,
+                  undefined,
+                  typeof kemCiphertext === 'string' ? kemCiphertext : undefined,
+                  typeof wrappedMessageRootKey === 'string' ? wrappedMessageRootKey : undefined,
+                  channelClientId
+                );
+              }
+            } catch (inboxError: any) {
+              messagingLog.warn('[ApplyInbound] connection_accept inbox materialize failed', {
+                message: inboxError?.message
+              });
+              // Connection status already updated; inbox can be repaired on next send.
+            }
             break;
           }
 
           case 'connection_reject':
           case 'connection_delete': {
-            const { connectionId } = req.body;
+            const connectionId =
+              resolveConnectionId() ||
+              (typeof req.body.connectionId === 'string' ? req.body.connectionId.trim() : undefined);
             if (!connectionId) {
               return res.status(400).json({ error: 'connectionId is required' });
             }

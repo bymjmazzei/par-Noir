@@ -71,13 +71,13 @@ Harness / report: [`apps/aggregator-browser/scripts/ux-messaging-qa.mjs`](../app
 | Messages / Requests / Connections tabs | LIVE_REAL | OBSERVED | conversations/requests/pending/connections often 200 after bootstrap | Inbox / RequestsList / ConnectionsPanel | Drain-on-open shipped |
 | Notifications | LIVE_UNFINISHED | OBSERVED | Notifications tab sometimes never hits `/api/notifications` in silo harness (non-blocking for dual-DM) | notificationService | Softened harness gate; not dual-DM blocker |
 | A→B connection request (`?creator=`) | LIVE_REAL | OBSERVED | POST /api/connections/request **200** when fresh; stale **Pending** UI without re-POST is a false green | ProfileActionMenu Connect | Harness now cancels pending_sent then re-POSTs |
-| B accept pending | LIVE_UNFINISHED | OBSERVED (2026-09-10) | Fresh `POST /request` **200**; B Requests still empty after **page.reload** drain. Probe after reload: `409 cloud_token_required` — reload wipes in-memory cloud vault while OAuth session stays. Soft drain (Requests tab) is the correct path. | RequestsList + mailbox drain | Harness no longer full-reloads B; re-run needed for Accept UI |
-| Compose / send / offline outbox | BLOCKED | OBSERVED | — | messageService outbox | Blocked until Accept |
-| dual_dm_success (A send + B receive marker) | BLOCKED | OBSERVED | accept unfinished → dm skipped | ux-messaging-qa.mjs | Acceptance bar unmet; not waiting on 5‑min mailbox interval |
+| B accept pending | LIVE_REAL | OBSERVED (post-mailbox fix) | Accept `POST 200` after soft drain; Case A mailbox now lists `connection_request` when `messages.read` | RequestsList + mailboxRoutes | Prior Case A capability gap fixed in `9ff4338b` |
+| Compose / send / offline outbox | BLOCKED | OBSERVED | A's Messages empty after Accept; `apply-inbound connection_accept` **400** (`connectionId` missing — job only had `requestId`) and apply never materializes requester inbox/conversation | connectionRoutes apply-inbound | **Fix ready locally** (enqueue `connectionId` + requester inbox on apply); needs API deploy then re-QA |
+| dual_dm_success (A send + B receive marker) | BLOCKED | OBSERVED | Accept works; compose not found until requester half of Accept lands in A's Drive | ux-messaging-qa.mjs | Persistent Chromium CDP reuse OK; blocked on API ship |
 
-**Offline queues:** not exercised — blocked on B accept.
+**Offline queues:** not exercised — blocked on A compose after Accept.
 
-**Dual-DM path (2026-09-10):** hosting+API deployed (`e582a1f5` drain-on-inbox, realtime nudge, Case B device keying). Observed blockers with evidence: (1) scoring Connect LIVE on stale Pending without new mailbox job; (2) Accept harness `page.reload()` wiped in-memory cloud vault → `409 cloud_token_required`. Harness now cancel+re-POST + soft drain (no vault wipe). Latest headed attempts also hit OAuth consent flake (`#identityFile` timeout / no challenge) after repeated unlocks — cool down before re-running. `messaging.dual_dm_success` remains BLOCKED.
+**Dual-DM path (2026-09-11):** Accept proven LIVE_REAL. Remaining product bug: `connection_accept` mailbox job omitted `connectionId` in payload (only `requestId`) → apply 400; even with id, apply did not create requester conversation/inbox (comment claimed device would; handler never did). Local fix in `connectionRoutes.ts` + harness DM open via Messages threads. **Ship API to Railway, then headed `PN_QA_HEADLESS=0` reuse run.**
 
 ---
 

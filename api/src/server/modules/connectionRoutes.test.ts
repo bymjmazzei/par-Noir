@@ -29,6 +29,34 @@ jest.mock('./connectionsService', () => ({
   ConnectionsService: {
     generateConnectionId: jest.fn(() => 'conn-1'),
     upsertOwnConnectionRow: jest.fn(),
+    updateOtherUserConnectionStatus: jest.fn(),
+    removeConnection: jest.fn(),
+  },
+}));
+
+jest.mock('./messageSheetsService', () => ({
+  MessageSheetsService: {
+    getOrCreateChannelMessagesFolder: jest.fn(async () => 'msg-folder'),
+    getConversationSheet: jest.fn(async () => {
+      throw new Error('Conversation sheet not found');
+    }),
+    createConversationSheet: jest.fn(async () => 'conv-sheet'),
+    getOrCreateMessagesFolder: jest.fn(async () => 'platform-msg'),
+    getOrCreateInboxSheet: jest.fn(async () => 'inbox-sheet'),
+    updateInboxEntryWithRetry: jest.fn(async () => undefined),
+  },
+}));
+
+jest.mock('./pnDriveIndex', () => ({
+  readPnDriveIndex: jest.fn(() => ({})),
+  isPnDriveIndexComplete: jest.fn(() => false),
+}));
+
+jest.mock('./connectionsSheetsService', () => ({
+  ConnectionsSheetsService: {
+    getFollowersSheet: jest.fn(),
+    addFollower: jest.fn(),
+    removeFollower: jest.fn(),
   },
 }));
 
@@ -57,13 +85,17 @@ import { ConnectionsService } from './connectionsService';
 import { enqueueSocialJob } from './socialRail';
 import { ActivityLedgerService } from './activityLedgerService';
 import { NotificationService } from './notificationService';
+import { MessageSheetsService } from './messageSheetsService';
 
 const mockGetCredentials = storageCredentialsService.getCredentials as jest.Mock;
 const mockGetAccessToken = googleDriveProxyService.getAccessToken as jest.Mock;
 const mockUpsertOwnRow = ConnectionsService.upsertOwnConnectionRow as jest.Mock;
+const mockUpdateOtherStatus = ConnectionsService.updateOtherUserConnectionStatus as jest.Mock;
 const mockEnqueueSocialJob = enqueueSocialJob as jest.Mock;
 const mockRecordActivity = ActivityLedgerService.recordActivity as jest.Mock;
 const mockNotify = NotificationService.notifyConnectionRequest as jest.Mock;
+const mockCreateConversation = MessageSheetsService.createConversationSheet as jest.Mock;
+const mockUpdateInbox = MessageSheetsService.updateInboxEntryWithRetry as jest.Mock;
 
 const REQUESTER = 'pn-requester';
 const RECIPIENT = 'pn-recipient';
@@ -350,5 +382,86 @@ describe('POST /api/connections/:connectionId/accept', () => {
       })
       .expect(404);
     expect(res.body.error).toBe('User credentials not found');
+  });
+});
+
+describe('POST /api/connections/apply-inbound connection_accept', () => {
+  beforeEach(() => {
+    mockGetCredentials.mockReset();
+    mockUpdateOtherStatus.mockReset().mockResolvedValue(undefined);
+    mockCreateConversation.mockClear();
+    mockUpdateInbox.mockClear();
+    bothPartiesConnected();
+  });
+
+  it('rejects when neither connectionId nor requestId is present', async () => {
+    const res = await withCloudToken(
+      request(buildApp().app).post('/api/connections/apply-inbound')
+    )
+      .send({
+        userPnIdentifier: REQUESTER,
+        jobType: 'connection_accept',
+        peerPnIdentifier: RECIPIENT,
+        kemCiphertext: 'ct',
+      })
+      .expect(400);
+    expect(res.body.error).toBe('connectionId is required');
+    expect(mockUpdateOtherStatus).not.toHaveBeenCalled();
+  });
+
+  it('accepts legacy jobs that only carry requestId (= connectionId)', async () => {
+    const res = await withCloudToken(
+      request(buildApp().app).post('/api/connections/apply-inbound')
+    )
+      .send({
+        userPnIdentifier: REQUESTER,
+        jobType: 'connection_accept',
+        peerPnIdentifier: RECIPIENT,
+        requestId: 'conn-legacy-1',
+        kemCiphertext: 'ct',
+        wrappedMessageRootKey: 'wk',
+        channelClientId: 'platform',
+      })
+      .expect(200);
+
+    expect(res.body.success).toBe(true);
+    expect(mockUpdateOtherStatus).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.any(String),
+      REQUESTER,
+      'conn-legacy-1',
+      'accepted',
+      RECIPIENT,
+      'ct',
+      expect.anything(),
+      undefined
+    );
+    expect(mockCreateConversation).toHaveBeenCalled();
+    expect(mockUpdateInbox).toHaveBeenCalled();
+  });
+
+  it('maps acceptorMailboxRouteKey onto peerMailboxRouteKey for the requester row', async () => {
+    await withCloudToken(request(buildApp().app).post('/api/connections/apply-inbound'))
+      .send({
+        userPnIdentifier: REQUESTER,
+        jobType: 'connection_accept',
+        peerPnIdentifier: RECIPIENT,
+        connectionId: 'conn-2',
+        kemCiphertext: 'ct',
+        acceptorMailboxRouteKey: 'route-b',
+      })
+      .expect(200);
+
+    expect(mockUpdateOtherStatus).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.any(String),
+      REQUESTER,
+      'conn-2',
+      'accepted',
+      RECIPIENT,
+      'ct',
+      expect.anything(),
+      'route-b'
+    );
   });
 });

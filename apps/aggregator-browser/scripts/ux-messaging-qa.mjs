@@ -5,16 +5,20 @@
  * On linkedInactive, completes product "reconnect cloud storage" with QA Google.
  * Playwright Chromium. No secrets logged.
  *
- * Keep dual-DM runs short; raise gaps only if Google refresh 429s.
+ * Default: one Chromium profile per surface×pn, left open between runs via CDP.
+ * Unlock only when that profile is not already live (Lock pN + session).
  *
  *   PN_QA_HEADLESS=0 node scripts/ux-messaging-qa.mjs
- *   PN_QA_PACE_MS=1500          # default delay between UI steps
- *   PN_QA_UNLOCK_GAP_MS=25000   # cool-down between fixture A and B unlock
- *   PN_QA_PHASE_GAP_MS=8000     # cool-down between major phases (gate → connect → browse)
+ *   PN_QA_PACE_MS=1500
+ *   PN_QA_UNLOCK_GAP_MS=5000      # only used when a fresh unlock is required
+ *   PN_QA_PHASE_GAP_MS=3000
  *   PN_QA_SKIP_BROWSE_ENGAGEMENT=1
+ *   PN_QA_CLOSE=1                 # optional: close Chromium profiles at end
+ *   PN_QA_HARD_REFRESH=1          # optional: hard reload before reuse check
  */
 import { chromium } from 'playwright';
 import { mkdirSync, writeFileSync, readFileSync, existsSync } from 'fs';
+import { spawn } from 'child_process';
 import { resolve, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import { trackOAuth, trackApi, unlockViaPopup } from './ux-unlock-lib.mjs';
@@ -22,14 +26,26 @@ import { trackOAuth, trackApi, unlockViaPopup } from './ux-unlock-lib.mjs';
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const ROOT = process.env.REPO_ROOT || resolve(scriptDir, '../../..');
 const OUT = resolve(ROOT, '.local/ux-playwright/messaging-qa');
+const PROFILES = resolve(ROOT, '.local/ux-playwright/profiles');
 mkdirSync(OUT, { recursive: true });
+mkdirSync(PROFILES, { recursive: true });
 
 /** Default step delay (ms). Override with PN_QA_PACE_MS. */
 const PACE_MS = Math.max(400, Number(process.env.PN_QA_PACE_MS) || 1_500);
-/** Cool-down between A unlock session and B unlock. */
-const UNLOCK_GAP_MS = Math.max(0, Number(process.env.PN_QA_UNLOCK_GAP_MS) || 25_000);
+/** Cool-down between A unlock session and B unlock — only when unlocking. */
+const UNLOCK_GAP_MS = Math.max(0, Number(process.env.PN_QA_UNLOCK_GAP_MS) || 5_000);
 /** Cool-down between major phases. */
-const PHASE_GAP_MS = Math.max(0, Number(process.env.PN_QA_PHASE_GAP_MS) || 8_000);
+const PHASE_GAP_MS = Math.max(0, Number(process.env.PN_QA_PHASE_GAP_MS) || 3_000);
+const CLOSE_AT_END = process.env.PN_QA_CLOSE === '1';
+const HARD_REFRESH = process.env.PN_QA_HARD_REFRESH === '1';
+const HEADLESS = process.env.PN_QA_HEADLESS !== '0';
+
+/** Detached Chromium per surface so A/B messaging do not share sessionStorage. */
+const SURFACES = {
+  'messaging-a': { port: 9333, origin: 'https://messaging.parnoir.com/' },
+  'messaging-b': { port: 9334, origin: 'https://messaging.parnoir.com/' },
+  'browse-a': { port: 9335, origin: 'https://browse.parnoir.com/' },
+};
 
 function slog(...a) {
   process.stderr.write(a.join(' ') + '\n');
@@ -380,23 +396,84 @@ const report = {
   stoppedEarly: false,
 };
 
-const browser = await chromium.launch({
-  headless: process.env.PN_QA_HEADLESS !== '0',
-  args: ['--disable-blink-features=AutomationControlled'],
-});
+const CHROME_BIN = chromium.executablePath();
+/** CDP browsers we connected to this run (never close unless PN_QA_CLOSE=1). */
+const openBrowsers = [];
 
-async function makeTrackedPage() {
-  const context = await browser.newContext({ viewport: { width: 1280, height: 800 } });
-  const page = await context.newPage();
+async function cdpAlive(port) {
+  try {
+    const res = await fetch(`http://127.0.0.1:${port}/json/version`, {
+      signal: AbortSignal.timeout(800),
+    });
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
+async function ensureSurfaceBrowser(surfaceId) {
+  const spec = SURFACES[surfaceId];
+  if (!spec) throw new Error(`Unknown surface ${surfaceId}`);
+  const userDataDir = resolve(PROFILES, surfaceId);
+  mkdirSync(userDataDir, { recursive: true });
+  const endpoint = `http://127.0.0.1:${spec.port}`;
+
+  if (!(await cdpAlive(spec.port))) {
+    slog(`[${surfaceId}] starting Chromium on :${spec.port} (persistent profile)`);
+    const child = spawn(
+      CHROME_BIN,
+      [
+        `--remote-debugging-port=${spec.port}`,
+        `--user-data-dir=${userDataDir}`,
+        '--no-first-run',
+        '--no-default-browser-check',
+        '--disable-blink-features=AutomationControlled',
+        ...(HEADLESS ? ['--headless=new'] : []),
+        spec.origin,
+      ],
+      { detached: true, stdio: 'ignore' }
+    );
+    child.unref();
+    const deadline = Date.now() + 45_000;
+    while (Date.now() < deadline) {
+      if (await cdpAlive(spec.port)) break;
+      await pace(500);
+    }
+    if (!(await cdpAlive(spec.port))) {
+      throw new Error(`Chromium CDP not up on :${spec.port} for ${surfaceId}`);
+    }
+  } else {
+    slog(`[${surfaceId}] reusing open Chromium on :${spec.port}`);
+  }
+
+  const browser = await chromium.connectOverCDP(endpoint);
+  openBrowsers.push({ surfaceId, browser, port: spec.port });
+  const context = browser.contexts()[0] || (await browser.newContext({ viewport: { width: 1280, height: 800 } }));
+  let page =
+    context.pages().find((p) => {
+      try {
+        return p.url().includes(new URL(spec.origin).host);
+      } catch {
+        return false;
+      }
+    }) ||
+    context.pages()[0] ||
+    (await context.newPage());
   const oauth = { challenge: false, authenticate: false, token: false, userinfo: false };
   const apiBag = [];
   trackOAuth(page, oauth);
   trackApi(page, apiBag);
-  return { context, page, oauth, apiBag };
+  return { browser, context, page, oauth, apiBag, surfaceId, endpoint };
 }
 
-async function runMessagingSession(label, creds, { assessTabs = true } = {}) {
-  const { context, page, oauth, apiBag } = await makeTrackedPage();
+/** Ephemeral tracked page only when a throwaway context is needed (avoid). */
+async function makeTrackedPage(surfaceId = 'browse-a') {
+  return ensureSurfaceBrowser(surfaceId);
+}
+
+async function runMessagingSession(label, creds, { assessTabs = true, surfaceId } = {}) {
+  const sid = surfaceId || (label === 'A' ? 'messaging-a' : 'messaging-b');
+  const { context, page, oauth, apiBag, endpoint } = await ensureSurfaceBrowser(sid);
   const result = {
     fixture: creds.which,
     label,
@@ -404,7 +481,7 @@ async function runMessagingSession(label, creds, { assessTabs = true } = {}) {
     pnIdentifier: null,
     oauth,
     bannerBad: false,
-    reconnectNotes: [],
+    reconnectNotes: [`cdp=${endpoint}`, `profile=${sid}`],
     cloudHeaderSeen: false,
     connectionsFinal409: false,
     notifFinalBad: false,
@@ -415,46 +492,59 @@ async function runMessagingSession(label, creds, { assessTabs = true } = {}) {
     gateLabel: 'BLOCKED',
   };
   try {
-    await page.goto('https://messaging.parnoir.com/', { waitUntil: 'domcontentloaded', timeout: 60_000 }).catch(async (e) => {
-      slog(`[${label}] goto retry after`, String(e?.message || e).slice(0, 80));
-      await pace(PACE_MS, 'goto retry');
-      await page.goto('https://messaging.parnoir.com/', { waitUntil: 'domcontentloaded', timeout: 60_000 });
-    });
+    const origin = SURFACES[sid].origin;
+    if (!page.url().includes(new URL(origin).host)) {
+      await page.goto(origin, { waitUntil: 'domcontentloaded', timeout: 60_000 });
+    } else if (HARD_REFRESH) {
+      await page.reload({ waitUntil: 'domcontentloaded', timeout: 60_000 });
+      result.reconnectNotes.push('hard_refresh');
+    } else {
+      // Soft bring-to-front navigation without wiping in-memory cloud vault when already on origin.
+      await page.bringToFront().catch(() => {});
+    }
     await shot(page, `${label}-01-load`);
-    slog(`[${label}] unlock…`);
-    let unlockErr = null;
-    for (let attempt = 1; attempt <= 2; attempt++) {
-      try {
-        await unlockMessaging(page, creds);
-        unlockErr = null;
-      } catch (e) {
-        unlockErr = e;
+
+    // Reuse live session — do not unlock again.
+    if (await isMessagingSessionLive(page)) {
+      slog(`[${label}] session already live — skip unlock`);
+      result.unlocked = true;
+      result.reconnectNotes.push('reuse_live_session skip_unlock');
+    } else {
+      slog(`[${label}] unlock…`);
+      let unlockErr = null;
+      for (let attempt = 1; attempt <= 2; attempt++) {
+        try {
+          await unlockMessaging(page, creds);
+          unlockErr = null;
+        } catch (e) {
+          unlockErr = e;
+          result.reconnectNotes.push(
+            `unlock_attempt_${attempt}_err=${String(e?.message || e).slice(0, 120)}`
+          );
+        }
+        result.unlocked = await waitForMessagingUnlock(page, 25_000);
+        if (result.unlocked) break;
+        result.reconnectNotes.push(`unlock_attempt_${attempt}_no_session`);
+        if (attempt < 2) {
+          await pace(Math.max(PACE_MS, 8_000), `${label} unlock retry cool-down`);
+          await page.goto(origin, { waitUntil: 'domcontentloaded', timeout: 60_000 }).catch(() => {});
+        }
+      }
+      if (!result.unlocked) {
+        result.blocked = 'unlock did not establish pn_oauth_session';
+        result.gateLabel = 'BLOCKED';
+        await shot(page, `${label}-02-after-unlock`);
+        result.reconnectNotes.push('unlock session missing');
+        if (unlockErr) result.reconnectNotes.push(String(unlockErr?.message || unlockErr).slice(0, 160));
         result.reconnectNotes.push(
-          `unlock_attempt_${attempt}_err=${String(e?.message || e).slice(0, 120)}`
+          `oauth_flags challenge=${oauth.challenge} auth=${oauth.authenticate} token=${oauth.token} userinfo=${oauth.userinfo}`
         );
+        // Keep Chromium open for next attempt.
+        return result;
       }
-      result.unlocked = await waitForMessagingUnlock(page, 25_000);
-      if (result.unlocked) break;
-      result.reconnectNotes.push(`unlock_attempt_${attempt}_no_session`);
-      if (attempt < 2) {
-        await pace(Math.max(PACE_MS, 8_000), `${label} unlock retry cool-down`);
-        await page.goto('https://messaging.parnoir.com/', { waitUntil: 'domcontentloaded', timeout: 60_000 }).catch(() => {});
-      }
+      await pace(Math.max(PACE_MS, 8_000), `${label} post-unlock settle`);
     }
-    if (!result.unlocked) {
-      result.blocked = 'unlock did not establish pn_oauth_session';
-      result.gateLabel = 'BLOCKED';
-      await shot(page, `${label}-02-after-unlock`);
-      result.reconnectNotes.push('unlock session missing');
-      if (unlockErr) result.reconnectNotes.push(String(unlockErr?.message || unlockErr).slice(0, 160));
-      result.reconnectNotes.push(
-        `oauth_flags challenge=${oauth.challenge} auth=${oauth.authenticate} token=${oauth.token} userinfo=${oauth.userinfo}`
-      );
-      await context.close().catch(() => {});
-      return result;
-    }
-    // Let vault hydrate / first Google mint settle before tab storm.
-    await pace(Math.max(PACE_MS, 8_000), `${label} post-unlock settle`);
+
     const cloudWait = await waitForMessagingCloudReady(page, 45_000);
     result.reconnectNotes.push(...cloudWait.notes);
     result.pnIdentifier = await readSessionPn(page);
@@ -574,26 +664,29 @@ async function runMessagingSession(label, creds, { assessTabs = true } = {}) {
     }
 
     result.apiSample = summarizeApi(apiBag, 0).slice(-45);
-    result._keep = { context, page, apiBag, oauth };
+    result._keep = { context, page, apiBag, oauth, surfaceId: sid };
     return result;
   } catch (e) {
     result.blocked = String(e?.message || e).slice(0, 400);
     result.gateLabel = 'BLOCKED';
-    await shot(page, `${label}-error`);
-    await context.close().catch(() => {});
+    await shot(page, `${label}-error`).catch(() => {});
+    // Leave Chromium open for reuse.
+    result._keep = { context, page, apiBag, oauth, surfaceId: sid };
     return result;
   }
 }
 
 slog('Fixtures', fixtureA.identityPath, '|', fixtureB.identityPath);
 slog(
-  `Pacing: step=${PACE_MS}ms unlockGap=${UNLOCK_GAP_MS}ms phaseGap=${PHASE_GAP_MS}ms — keep A+B windows open (no re-unlock)`
+  `Pacing: step=${PACE_MS}ms unlockGap=${UNLOCK_GAP_MS}ms phaseGap=${PHASE_GAP_MS}ms — CDP profiles kept open (PN_QA_CLOSE=1 to quit)`
 );
 
-// Two persistent messaging windows. Unlock sequentially with a cool-down, but do not close A.
-const gateA = await runMessagingSession('A', fixtureA);
-await pace(UNLOCK_GAP_MS, 'cool-down before B unlock (A window stays open)');
-const gateB = await runMessagingSession('B', fixtureB);
+// Two persistent messaging windows. Unlock only if that profile is not already live.
+const gateA = await runMessagingSession('A', fixtureA, { surfaceId: 'messaging-a' });
+if (!gateA.reconnectNotes?.some((n) => String(n).includes('reuse_live_session'))) {
+  await pace(UNLOCK_GAP_MS, 'cool-down before B unlock (only when A freshly unlocked)');
+}
+const gateB = await runMessagingSession('B', fixtureB, { surfaceId: 'messaging-b' });
 
 report.gate = {
   A: {
@@ -816,18 +909,24 @@ async function probePendingReceived(page) {
 async function cancelPendingSentOnPage(page) {
   const notes = [];
   try {
-    const pendingPromise = page.waitForResponse(
-      (r) =>
-        r.request().method() === 'GET' &&
-        /\/api\/connections\/pending/.test(r.url()) &&
-        (r.request().headers()['x-pn-cloud-access-token'] ||
-          r.request().headers()['X-PN-Cloud-Access-Token']),
-      { timeout: 25_000 }
-    );
+    const pendingPromise = page
+      .waitForResponse(
+        (r) =>
+          r.request().method() === 'GET' &&
+          /\/api\/connections\/pending/.test(r.url()) &&
+          (r.request().headers()['x-pn-cloud-access-token'] ||
+            r.request().headers()['X-PN-Cloud-Access-Token']),
+        { timeout: 25_000 }
+      )
+      .catch(() => null);
     await clickTab(page, 'Requests');
     await pace(Math.min(PACE_MS, 800));
     await clickTab(page, 'Connections');
     const pendingRes = await pendingPromise;
+    if (!pendingRes) {
+      notes.push('cancel: no pending response (ok if already empty)');
+      return { ok: true, notes };
+    }
     const body = await pendingRes.json().catch(() => ({}));
     const sent = Array.isArray(body.sent) ? body.sent : [];
     notes.push(`cancel: pending_sent_count=${sent.length}`);
@@ -888,19 +987,25 @@ if (gateFailed) {
     slog('  pre-Connect warm B:', warmB.join('; '));
   }
   // Browse is a separate origin — one short unlock for Connect only, then close browse.
-  const browseA = await makeTrackedPage();
+  const browseA = await makeTrackedPage('browse-a');
   let connectLabel = 'BLOCKED';
   let connectNotes = [];
   try {
     const creatorUrl = `https://browse.parnoir.com/?creator=${encodeURIComponent(pnB)}`;
     await browseA.page.goto(creatorUrl, { waitUntil: 'domcontentloaded', timeout: 60_000 });
-    await unlockBrowse(browseA.page, fixtureA);
-    const browseUnlocked = await waitForMessagingUnlock(browseA.page, 60_000);
-    connectNotes.push(`browseUnlocked=${browseUnlocked}`);
+    let browseUnlocked = await isMessagingSessionLive(browseA.page);
+    if (browseUnlocked) {
+      connectNotes.push('browse_reuse_live_session skip_unlock');
+      slog('  browse session already live — skip unlock');
+    } else {
+      await unlockBrowse(browseA.page, fixtureA);
+      browseUnlocked = await waitForMessagingUnlock(browseA.page, 60_000);
+      connectNotes.push(`browseUnlocked=${browseUnlocked}`);
+      await pace(Math.max(PACE_MS, 8_000), 'browse post-unlock settle');
+    }
     if (!browseUnlocked) {
       throw new Error('Browse unlock did not reach Lock pN + session before Connect');
     }
-    await pace(Math.max(PACE_MS, 8_000), 'browse post-unlock settle');
     if (await bannerLinkedInactive(browseA.page)) {
       const rec = await recoverCloudOnDevice(browseA.page, 'browseA');
       connectNotes.push(...rec.notes.map((n) => `browse:${n}`));
@@ -1091,9 +1196,8 @@ if (gateFailed) {
   } catch (e) {
     connectNotes.push(String(e?.message || e).slice(0, 300));
   } finally {
-    // Browse was only for Connect — free that unlock; keep messaging A/B windows.
-    await browseA.context.close().catch(() => {});
-    connectNotes.push('browse_context_closed messaging_A_B_kept');
+    // Browse profile stays open for the next run (same as messaging A/B).
+    connectNotes.push('browse_profile_kept_open messaging_A_B_kept');
   }
   report.flows.push({
     id: 'messaging.connection_request',
@@ -1190,33 +1294,66 @@ if (gateFailed) {
       outboxNotes.push('skipped — no accept');
     } else {
     await pace(PACE_MS, 'before A open thread');
+    // Accept creates a conversation row in Messages — Connections has no Message button.
+    dmNotes.push(...(await refreshMailboxOnPage(pageA, 'A_post_accept')));
+    const conversationsWait = pageA
+      .waitForResponse(
+        (r) =>
+          r.request().method() === 'GET' &&
+          /\/api\/messages\/conversations/.test(r.url()) &&
+          r.ok(),
+        { timeout: 25_000 }
+      )
+      .catch(() => null);
     await clickTab(pageA, 'Messages');
-    await pace(PACE_MS);
-    await clickTab(pageA, 'Connections');
-    await pace(PACE_MS);
+    await pace(Math.max(PACE_MS, 4_000), 'A Messages after Accept');
+    await conversationsWait;
+    await pageA.getByText(/^Loading\.\.\.$/i).waitFor({ state: 'hidden', timeout: 15_000 }).catch(() => {});
     await shot(pageA, 'dm-01');
 
-    // Prefer Message control, then connection rows.
-    const messageBtn = pageA.getByRole('button', { name: /^Message$/i }).first();
-    if (await messageBtn.isVisible().catch(() => false)) {
-      await messageBtn.click();
-      await pace(PACE_MS);
-    } else {
-      const rows = pageA.locator('button, a, div[role="button"]');
-      const rowCount = Math.min(await rows.count().catch(() => 0), 40);
-      for (let i = 0; i < rowCount; i++) {
-        const r = rows.nth(i);
-        const txt = ((await r.innerText().catch(() => '')) || '').slice(0, 80);
-        if (/message|pn-|connected/i.test(txt) || (txt.length > 2 && txt.length < 48)) {
-          await r.click().catch(() => {});
-          await pace(800);
-          if (await pageA.getByPlaceholder(/Type a message/i).first().isVisible().catch(() => false))
-            break;
+    // Open DM thread: click a conversation row (prefer peer pn / "Platform" badge rows).
+    const composeSel = pageA.getByPlaceholder(/Type a message/i);
+    if (!(await composeSel.first().isVisible().catch(() => false))) {
+      const peerHint = (pnB || '').slice(0, 12);
+      const threadBtns = pageA.locator('button.w-full.p-4, button:has(h3)');
+      const n = Math.min(await threadBtns.count().catch(() => 0), 20);
+      dmNotes.push(`thread_rows=${n} peerHint=${peerHint}`);
+      let opened = false;
+      for (let i = 0; i < n; i++) {
+        const txt = ((await threadBtns.nth(i).innerText().catch(() => '')) || '').slice(0, 120);
+        if (peerHint && txt.includes(peerHint)) {
+          await threadBtns.nth(i).click();
+          opened = true;
+          dmNotes.push(`opened_thread_by_peer=${txt.slice(0, 40)}`);
+          break;
+        }
+      }
+      if (!opened && n > 0) {
+        await threadBtns.first().click();
+        dmNotes.push('opened_first_thread');
+      }
+      await pace(Math.max(PACE_MS, 2_000), 'after open thread');
+    }
+
+    // Soft re-drain once if Messages still empty (apply may have just landed).
+    if (!(await pageA.getByPlaceholder(/Type a message/i).first().isVisible().catch(() => false))) {
+      const empty = await bodyHas(pageA, /No messages yet/i);
+      if (empty || (await pageA.locator('button.w-full.p-4').count().catch(() => 0)) === 0) {
+        dmNotes.push('messages_empty — soft-drain A again');
+        dmNotes.push(...(await refreshMailboxOnPage(pageA, 'A_post_accept_2')));
+        await clickTab(pageA, 'Messages');
+        await pace(Math.max(PACE_MS, 4_000), 'A Messages retry');
+        const threadBtns2 = pageA.locator('button.w-full.p-4, button:has(h3)');
+        if ((await threadBtns2.count().catch(() => 0)) > 0) {
+          await threadBtns2.first().click();
+          dmNotes.push('opened_first_thread_retry');
+          await pace(Math.max(PACE_MS, 2_000), 'after open thread retry');
         }
       }
     }
 
     const compose = pageA.getByPlaceholder(/Type a message/i).first();
+    await compose.waitFor({ state: 'visible', timeout: 20_000 }).catch(() => {});
     if (await compose.isVisible().catch(() => false)) {
       const marker = `qa-${Date.now().toString(36)}`;
       const before = apiA.length;
@@ -1439,16 +1576,23 @@ if (process.env.PN_QA_SKIP_BROWSE_ENGAGEMENT === '1') {
     eng.notes.push(String(e?.message || e).slice(0, 300));
     follow.notes.push(String(e?.message || e).slice(0, 300));
   } finally {
-    await context.close().catch(() => {});
+    /* browse profile kept open */
   }
   report.flows.push(eng, follow);
   slog('  engagement →', eng.label, 'follow →', follow.label);
 }
 } // PN_QA_SKIP_BROWSE_ENGAGEMENT else
 
-await gateA._keep?.context.close().catch(() => {});
-await gateB._keep?.context.close().catch(() => {});
-await browser.close();
+if (CLOSE_AT_END) {
+  slog('PN_QA_CLOSE=1 — closing Chromium profiles');
+  for (const { browser } of openBrowsers) {
+    await browser.close().catch(() => {});
+  }
+} else {
+  slog(
+    'Chromium profiles left open (ports 9333/9334/9335). Next run reuses them and skips unlock when live. Set PN_QA_CLOSE=1 to quit.'
+  );
+}
 
 const outPath = resolve(OUT, 'messaging-qa-report.json');
 writeFileSync(outPath, JSON.stringify(report, null, 2));
@@ -1457,6 +1601,7 @@ console.log(
     {
       outPath,
       stoppedEarly: report.stoppedEarly,
+      profilesKeptOpen: !CLOSE_AT_END,
       gate: {
         A: { ...report.gate.A, apiSample: report.gate.A.apiSample?.slice(-12) },
         B: { ...report.gate.B, apiSample: report.gate.B.apiSample?.slice(-12) },
@@ -1464,7 +1609,7 @@ console.log(
       flows: report.flows.map((f) => ({
         id: f.id,
         label: f.label,
-        notes: (f.notes || []).slice(0, 6),
+        notes: (f.notes || []).slice(0, 8),
       })),
     },
     null,
