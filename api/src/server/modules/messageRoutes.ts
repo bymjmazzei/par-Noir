@@ -753,13 +753,64 @@ export function setupMessageRoutes(app: express.Application, deps: MessageRouteD
               peerPnIdentifier: normalizedParticipantPnIdentifier,
             }
           );
-          await setCachedConversationMessages(
-            pnIdentifier,
-            normalizedParticipantPnIdentifier,
-            messageLimit,
-            messageOffset,
-            { messages: result.messages, total: result.total }
-          );
+
+          // Client-cached spreadsheetId can point at a stale empty sheet while
+          // apply-inbound wrote to the inbox-canonical conversation. Re-resolve.
+          if (
+            result.messages.length === 0 &&
+            connectionId &&
+            spreadsheetId &&
+            messageOffset === 0
+          ) {
+            const { readPnDriveIndex, isPnDriveIndexComplete } = await import('./pnDriveIndex');
+            const driveIndex = readPnDriveIndex(
+              userCredentials.credentials as Record<string, unknown>
+            );
+            if (isPnDriveIndexComplete(driveIndex)) {
+              const inboxEntry = await MessageSheetsService.getInboxConversationByParticipant(
+                token,
+                driveIndex.inboxSheetId,
+                normalizedParticipantPnIdentifier,
+                pnIdentifier,
+                accountId,
+                200,
+                channelClientId
+              ).catch(() => null);
+              if (
+                inboxEntry?.spreadsheetId &&
+                inboxEntry.spreadsheetId !== conversationSheetId
+              ) {
+                conversationSheetId = inboxEntry.spreadsheetId;
+                finalConnectionId = inboxEntry.connectionId || finalConnectionId;
+                result = await MessageSheetsService.getMessages(
+                  token,
+                  conversationSheetId,
+                  finalConnectionId,
+                  '',
+                  pnIdentifier,
+                  accountId,
+                  {
+                    limit: messageLimit,
+                    offset: messageOffset,
+                    includeTotal: false,
+                    relayOnly: true,
+                    peerPnIdentifier: normalizedParticipantPnIdentifier,
+                  }
+                );
+              }
+            }
+          }
+
+          // Never cache empty reads — they race apply-inbound and poison the open thread.
+          if (result.messages.length > 0) {
+            await setCachedConversationMessages(
+              pnIdentifier,
+              normalizedParticipantPnIdentifier,
+              messageLimit,
+              messageOffset,
+              { messages: result.messages, total: result.total }
+            );
+          }
         }
         messagingLog.debug(`[GetConversation] getMessages took ${Date.now() - fetchStart}ms`);
 
@@ -1763,17 +1814,33 @@ export function setupMessageRoutes(app: express.Application, deps: MessageRouteD
           } as any);
         if (isPnDriveIndexComplete(driveIndex)) {
           try {
-            const inboxEntry = await MessageSheetsService.getInboxConversationByParticipant(
+            // Prefer connectionId match (same row the send path keyed), then peer+channel.
+            const byConnection = await MessageSheetsService.getInboxConversationByConnectionId(
               token,
               driveIndex.inboxSheetId,
-              peerPn,
+              connectionId,
               pnIdentifier,
               accountId,
-              50,
-              channelClientId
+              200
             );
-            if (inboxEntry?.spreadsheetId) {
-              conversationSheetId = inboxEntry.spreadsheetId;
+            if (byConnection?.spreadsheetId) {
+              conversationSheetId = byConnection.spreadsheetId;
+              if (byConnection.participantPnIdentifier) {
+                peerPn = byConnection.participantPnIdentifier;
+              }
+            } else {
+              const inboxEntry = await MessageSheetsService.getInboxConversationByParticipant(
+                token,
+                driveIndex.inboxSheetId,
+                peerPn,
+                pnIdentifier,
+                accountId,
+                200,
+                channelClientId
+              );
+              if (inboxEntry?.spreadsheetId) {
+                conversationSheetId = inboxEntry.spreadsheetId;
+              }
             }
           } catch {
             /* fall through to create */
@@ -1894,7 +1961,12 @@ export function setupMessageRoutes(app: express.Application, deps: MessageRouteD
           [{ pn: pnIdentifier, other: peerPn }]
         ).catch(() => undefined);
 
-        return res.json({ success: true });
+        return res.json({
+          success: true,
+          spreadsheetId: conversationSheetId,
+          connectionId,
+          peerPnIdentifier: peerPn
+        });
       } catch (error: any) {
         messagingLog.error('[ApplyInbound] message_append failed', {
           message: error?.message

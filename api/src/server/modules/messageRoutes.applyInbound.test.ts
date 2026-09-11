@@ -59,6 +59,11 @@ jest.mock('./messageSheetsService', () => ({
       spreadsheetId: 'conv-sheet',
       connectionId: 'conn-1',
     })),
+    getInboxConversationByConnectionId: jest.fn(async () => ({
+      spreadsheetId: 'conv-sheet',
+      connectionId: 'conn-1',
+      participantPnIdentifier: 'pn-sender',
+    })),
     getOrCreateChannelMessagesFolder: jest.fn(async () => 'channel-msg'),
     getConversationSheet: jest.fn(async () => 'conv-sheet'),
     createConversationSheet: jest.fn(async () => 'conv-sheet'),
@@ -166,6 +171,8 @@ describe('POST /api/messages/apply-inbound', () => {
       .send(opaqueBody())
       .expect(200);
     expect(res.body.success).toBe(true);
+    expect(res.body.spreadsheetId).toBe('conv-sheet');
+    expect(res.body.peerPnIdentifier).toBe(PEER);
     expect(mockGetConnectionById).toHaveBeenCalled();
     expect(mockAppendMessage).toHaveBeenCalledTimes(1);
     const msgArg = mockAppendMessage.mock.calls[0][2];

@@ -159,6 +159,18 @@ export async function drainSocialMailbox(): Promise<MailboxDrainResult> {
     }
   }
 
+  if (appliedIds.length) {
+    try {
+      const { notifyMessagingInboxRefresh, notifyMessagingMailboxApplied } = await import(
+        './messageService'
+      );
+      notifyMessagingMailboxApplied();
+      notifyMessagingInboxRefresh();
+    } catch {
+      /* ignore */
+    }
+  }
+
   return { pulled: jobs.length, applied: appliedIds.length, acked, errors };
 }
 

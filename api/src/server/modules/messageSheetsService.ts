@@ -1694,6 +1694,79 @@ export class MessageSheetsService {
   }
 
   /**
+   * Resolve inbox conversation by connectionId (channel-agnostic).
+   * Used by message_append apply-inbound so ciphertext lands on the same sheet
+   * the open-thread path already holds.
+   */
+  static async getInboxConversationByConnectionId(
+    token: GoogleDriveToken,
+    inboxSheetId: string,
+    connectionId: string,
+    userPnIdentifier: string,
+    accountId?: string,
+    maxRowsToRead: number = 200
+  ): Promise<{
+    participantPnIdentifier: string;
+    spreadsheetId: string;
+    connectionId: string;
+    lastMessageAt: string;
+    lastMessagePreview?: string;
+    kemCiphertext?: string;
+    wrappedMessageRootKey?: string;
+    channelClientId: string;
+  } | null> {
+    const want = String(connectionId || '').trim();
+    if (!want) return null;
+    try {
+      if (await isPortableStorageProvider(userPnIdentifier)) {
+        const rows = await MsgPortable.getInboxConversationsPortable(userPnIdentifier, accountId);
+        const hit = rows.find(
+          (r) => r.connectionId === want && (r.threadType || 'dm') !== 'group'
+        );
+        if (!hit) return null;
+        return {
+          participantPnIdentifier: hit.participantPnIdentifier || '',
+          spreadsheetId: hit.spreadsheetId || '',
+          connectionId: want,
+          lastMessageAt: hit.lastMessageAt || new Date().toISOString(),
+          lastMessagePreview: hit.lastMessagePreview,
+          kemCiphertext: hit.kemCiphertext,
+          wrappedMessageRootKey: hit.wrappedMessageRootKey,
+          channelClientId: normalizeChannelClientId(hit.channelClientId),
+        };
+      }
+      const auth = GoogleOAuth2Helper.createClient(token, userPnIdentifier, accountId);
+      const sheets = google.sheets({ version: 'v4', auth });
+      const endRow = maxRowsToRead + 1;
+      const response = await sheets.spreadsheets.values.get({
+        spreadsheetId: inboxSheetId,
+        range: `Inbox!A2:I${endRow}`
+      });
+      const rows = response.data.values || [];
+      for (const row of rows) {
+        if ((row[6] || 'dm') === 'group') continue;
+        if (String(row[2] || '') !== want) continue;
+        return {
+          participantPnIdentifier: row[0] || '',
+          spreadsheetId: row[1] || '',
+          connectionId: want,
+          lastMessageAt: row[3] || new Date().toISOString(),
+          lastMessagePreview: row[4] || undefined,
+          kemCiphertext: row[5] || undefined,
+          wrappedMessageRootKey: row[7] || undefined,
+          channelClientId: normalizeChannelClientId(row[8]),
+        };
+      }
+      return null;
+    } catch (error: any) {
+      messagingLog.warn('[MessageSheetsService] getInboxConversationByConnectionId failed', {
+        message: error?.message,
+      });
+      throw error;
+    }
+  }
+
+  /**
    * Count unread messages in a conversation sheet (newest-first storage).
    */
   static async countUnreadMessages(

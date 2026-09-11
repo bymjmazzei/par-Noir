@@ -26,6 +26,8 @@ import {
 import { MESSAGING_ONLY } from '../config/buildFlags';
 
 export const MESSAGING_INBOX_REFRESH_EVENT = 'pn_messaging_inbox_refresh';
+/** Fired after mailbox message_append jobs are applied into this user's Drive. */
+export const MESSAGING_MAILBOX_APPLIED_EVENT = 'pn_messaging_mailbox_applied';
 export const MESSAGING_POLL_BACKSTOP_MS = 60_000;
 
 /** Browse = primary only; messaging app = aggregator (*). Embed overrides via arg. */
@@ -129,6 +131,16 @@ async function parseDriveRateLimitedResponse(response: Response): Promise<DriveR
 export function notifyMessagingInboxRefresh(): void {
   if (typeof window !== 'undefined') {
     window.dispatchEvent(new CustomEvent(MESSAGING_INBOX_REFRESH_EVENT));
+  }
+}
+
+/** Open thread should reload after message_append landed in Drive. */
+export function notifyMessagingMailboxApplied(detail?: {
+  connectionId?: string;
+  peerPnIdentifier?: string;
+}): void {
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent(MESSAGING_MAILBOX_APPLIED_EVENT, { detail: detail || {} }));
   }
 }
 
@@ -619,7 +631,32 @@ export async function getConversationMessages(
     }
 
     const result = await response.json();
-    const raw = result.messages || [];
+    let raw = result.messages || [];
+
+    // Stale client spreadsheetId → empty sheet. Retry via inbox resolution.
+    if (
+      raw.length === 0 &&
+      hasCached &&
+      (offset == null || offset === 0)
+    ) {
+      const retry = await messageFetch(
+        `/api/messages/conversation?${new URLSearchParams({
+          userPnIdentifier,
+          participantPnIdentifier,
+          channelClientId,
+          ...(limit != null && { limit: String(limit) }),
+          ...(offset != null && { offset: String(offset) })
+        }).toString()}`,
+        { method: 'GET' }
+      );
+      if (retry.ok) {
+        const retryJson = await retry.json().catch(() => null);
+        if (Array.isArray(retryJson?.messages)) {
+          raw = retryJson.messages;
+        }
+      }
+    }
+
     const mailboxHints = await loadMailboxMessageHints(userPnIdentifier);
     const recovery = await resolveRecoveryForDecrypt(
       userPnIdentifier,
