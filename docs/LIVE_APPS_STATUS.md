@@ -72,12 +72,12 @@ Harness / report: [`apps/aggregator-browser/scripts/ux-messaging-qa.mjs`](../app
 | Notifications | LIVE_UNFINISHED | OBSERVED | Notifications tab sometimes never hits `/api/notifications` in silo harness (non-blocking for dual-DM) | notificationService | Softened harness gate; not dual-DM blocker |
 | A→B connection request (`?creator=`) | LIVE_REAL | OBSERVED | POST /api/connections/request **200** when fresh; stale **Pending** UI without re-POST is a false green | ProfileActionMenu Connect | Harness now cancels pending_sent then re-POSTs |
 | B accept pending | LIVE_REAL | OBSERVED (post-mailbox fix) | Accept `POST 200` after soft drain; Case A mailbox now lists `connection_request` when `messages.read` | RequestsList + mailboxRoutes | Prior Case A capability gap fixed in `9ff4338b` |
-| Compose / send / offline outbox | BLOCKED | OBSERVED | A's Messages empty after Accept; `apply-inbound connection_accept` **400** (`connectionId` missing — job only had `requestId`) and apply never materializes requester inbox/conversation | connectionRoutes apply-inbound | **Fix ready locally** (enqueue `connectionId` + requester inbox on apply); needs API deploy then re-QA |
-| dual_dm_success (A send + B receive marker) | BLOCKED | OBSERVED | Accept works; compose not found until requester half of Accept lands in A's Drive | ux-messaging-qa.mjs | Persistent Chromium CDP reuse OK; blocked on API ship |
+| Compose / send / offline outbox | LIVE_UNFINISHED / outbox LIVE_REAL | OBSERVED (2026-09-11 post-`91a11196`) | A: thread open + `POST /api/messages/send` **200**; offline outbox flush **LIVE_REAL**. B marker not yet shown in harness (need B mailbox soft-drain after send) | messageService + ux-messaging-qa | Requester inbox fix shipped; dual receive still harness-tightening |
+| dual_dm_success (A send + B receive marker) | BLOCKED | OBSERVED | sendOk=true; `B_received_marker=false` on last headed run | ux-messaging-qa.mjs | API deploy `91a11196` live; B drain-after-send next |
 
-**Offline queues:** not exercised — blocked on A compose after Accept.
+**Offline queues:** LIVE_REAL (OBSERVED) — offline queue then flush after A send.
 
-**Dual-DM path (2026-09-11):** Accept proven LIVE_REAL. Remaining product bug: `connection_accept` mailbox job omitted `connectionId` in payload (only `requestId`) → apply 400; even with id, apply did not create requester conversation/inbox (comment claimed device would; handler never did). Local fix in `connectionRoutes.ts` + harness DM open via Messages threads. **Ship API to Railway, then headed `PN_QA_HEADLESS=0` reuse run.**
+**Dual-DM path (2026-09-11):** API `91a11196` on Railway (health 200). After modal dismiss + A cloud traffic restored: A Messages thread + send 200 + outbox LIVE_REAL. Remaining: B must drain DM mailbox and show plaintext marker (`messaging.dual_dm_success`).
 
 ---
 

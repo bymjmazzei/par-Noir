@@ -112,19 +112,53 @@ async function shot(page, name) {
 }
 
 async function clickTab(page, name) {
+  // Stuck "New group" (or similar) overlays eat tab clicks on messaging A.
+  await dismissMessagingOverlays(page);
   const btn = page.getByRole('button', { name: new RegExp(`^${name}$`, 'i') }).first();
   if (await btn.isVisible().catch(() => false)) {
-    await btn.click();
+    await btn.click({ timeout: 8_000 }).catch(async () => {
+      await btn.click({ force: true, timeout: 5_000 });
+    });
     await page.waitForTimeout(1200);
     return true;
   }
   const any = page.getByRole('button', { name: new RegExp(name, 'i') }).first();
   if (await any.isVisible().catch(() => false)) {
-    await any.click();
+    await any.click({ timeout: 8_000 }).catch(async () => {
+      await any.click({ force: true, timeout: 5_000 });
+    });
     await page.waitForTimeout(1200);
     return true;
   }
   return false;
+}
+
+/** Close New group / dialogs that block the messaging chrome. */
+async function dismissMessagingOverlays(page) {
+  for (let i = 0; i < 4; i++) {
+    const heading = page.getByRole('heading', { name: /^New group$/i });
+    if (!(await heading.isVisible().catch(() => false))) {
+      // Escape any other dialog
+      if (await page.locator('.fixed.inset-0').first().isVisible().catch(() => false)) {
+        await page.keyboard.press('Escape').catch(() => {});
+        await page.waitForTimeout(300);
+      }
+      break;
+    }
+    // CreateGroupModal close is an unlabeled button next to the h2.
+    const closeBtn = heading.locator('xpath=following-sibling::button[1]');
+    const clicked = await closeBtn.click({ timeout: 3_000 }).then(() => true).catch(() => false);
+    if (!clicked) {
+      await page
+        .locator('div.fixed.inset-0')
+        .filter({ hasText: 'New group' })
+        .locator('button')
+        .first()
+        .click({ timeout: 3_000 })
+        .catch(() => {});
+    }
+    await page.waitForTimeout(400);
+  }
 }
 
 async function unlockMessaging(page, creds) {
@@ -774,30 +808,38 @@ async function sessionAuthForRequest(page) {
 async function refreshMailboxOnPage(page, label) {
   const notes = [];
   try {
-    const pendingPromise = page.waitForResponse(
-      (r) =>
-        r.request().method() === 'GET' &&
-        /\/api\/connections\/pending/.test(r.url()) &&
-        (r.request().headers()['x-pn-cloud-access-token'] ||
-          r.request().headers()['X-PN-Cloud-Access-Token']),
-      { timeout: 25_000 }
-    );
-    const mailboxPromise = page.waitForResponse(
-      (r) => r.request().method() === 'GET' && /\/api\/mailbox\/pending/.test(r.url()),
-      { timeout: 25_000 }
-    );
-    const applyPromise = page.waitForResponse(
-      (r) =>
-        r.request().method() === 'POST' &&
-        /\/api\/connections\/apply-inbound/.test(r.url()),
-      { timeout: 25_000 }
-    );
+    // Attach .catch immediately — Playwright timeouts become unhandled rejections
+    // if the waiter rejects before a later await … .catch().
+    const pendingPromise = page
+      .waitForResponse(
+        (r) =>
+          r.request().method() === 'GET' &&
+          /\/api\/connections\/pending/.test(r.url()) &&
+          (r.request().headers()['x-pn-cloud-access-token'] ||
+            r.request().headers()['X-PN-Cloud-Access-Token']),
+        { timeout: 25_000 }
+      )
+      .catch(() => null);
+    const mailboxPromise = page
+      .waitForResponse(
+        (r) => r.request().method() === 'GET' && /\/api\/mailbox\/pending/.test(r.url()),
+        { timeout: 25_000 }
+      )
+      .catch(() => null);
+    const applyPromise = page
+      .waitForResponse(
+        (r) =>
+          r.request().method() === 'POST' &&
+          /\/api\/connections\/apply-inbound/.test(r.url()),
+        { timeout: 25_000 }
+      )
+      .catch(() => null);
     await clickTab(page, 'Connections');
     await pace(Math.min(PACE_MS, 800));
     await clickTab(page, 'Requests');
     notes.push(`${label}_soft_drain_via_Requests`);
 
-    const mailboxRes = await mailboxPromise.catch(() => null);
+    const mailboxRes = await mailboxPromise;
     if (mailboxRes) {
       const mb = await mailboxRes.json().catch(() => ({}));
       const jobs = Array.isArray(mb.jobs) ? mb.jobs : [];
@@ -809,14 +851,14 @@ async function refreshMailboxOnPage(page, label) {
       notes.push(`${label}_mailbox_pending=no_response`);
     }
 
-    const applyRes = await applyPromise.catch(() => null);
+    const applyRes = await applyPromise;
     if (applyRes) {
       notes.push(`${label}_apply_inbound=${applyRes.status()}`);
     } else {
       notes.push(`${label}_apply_inbound=none`);
     }
 
-    const pendingRes = await pendingPromise.catch(() => null);
+    const pendingRes = await pendingPromise;
     if (pendingRes) {
       const body = await pendingRes.json().catch(() => ({}));
       notes.push(
@@ -850,14 +892,17 @@ async function probePendingReceived(page) {
   // Prefer a fresh in-page GET so X-PN-Cloud-Access-Token comes from the vault.
   let fromLive = null;
   try {
-    const pendingPromise = page.waitForResponse(
-      (r) =>
-        r.request().method() === 'GET' &&
-        /\/api\/connections\/pending/.test(r.url()),
-      { timeout: 20_000 }
-    );
+    const pendingPromise = page
+      .waitForResponse(
+        (r) =>
+          r.request().method() === 'GET' &&
+          /\/api\/connections\/pending/.test(r.url()),
+        { timeout: 20_000 }
+      )
+      .catch(() => null);
     await clickTab(page, 'Requests');
     const pendingRes = await pendingPromise;
+    if (!pendingRes) throw new Error('no pending response');
     const body = await pendingRes.json().catch(() => ({}));
     fromLive = {
       ok: pendingRes.ok(),
@@ -977,6 +1022,44 @@ if (gateFailed) {
   const apiA = gateA._keep.apiBag;
   const apiB = gateB._keep.apiBag;
   const pnB = gateB.pnIdentifier;
+
+  await dismissMessagingOverlays(pageA);
+  await dismissMessagingOverlays(pageB);
+  // Dead vault without linkedInactive banner: tabs look live but no X-PN-Cloud-Access-Token.
+  if (!gateA.cloudHeaderSeen) {
+    slog('  A missing cloud header — open reconnect / Authorize');
+    await pageA.evaluate(() => window.dispatchEvent(new CustomEvent('pn_open_cloud_reconnect')));
+    await pace(1_500);
+    let recovered = false;
+    if (await bannerLinkedInactive(pageA)) {
+      const rec = await recoverCloudOnDevice(pageA, 'A_force');
+      recovered = rec.recovered;
+      slog('  A force via banner:', rec.notes.join('; '));
+    } else {
+      const authorize = pageA
+        .getByRole('button', { name: /Authorize Google Drive|^Authorize$/i })
+        .first();
+      if (await authorize.isVisible().catch(() => false)) {
+        const popupPromise = pageA.waitForEvent('popup', { timeout: 45_000 }).catch(() => null);
+        await authorize.click({ force: true });
+        const popup = await popupPromise;
+        if (popup) {
+          await googleOauth(popup);
+          await popup.waitForEvent('close', { timeout: 90_000 }).catch(() => {});
+          recovered = true;
+          slog('  A Google authorize completed');
+        }
+      } else {
+        slog('  A: no Authorize control visible after pn_open_cloud_reconnect');
+      }
+    }
+    await dismissMessagingOverlays(pageA);
+    const before = apiA.length;
+    await clickTab(pageA, 'Messages');
+    await pace(Math.max(PACE_MS, 3_000), 'A after force cloud');
+    gateA.cloudHeaderSeen = apiA.slice(before).some((a) => a.cloudHeader) || apiA.some((a) => a.cloudHeader);
+    slog('  A cloudHeaderSeen after force=', String(gateA.cloudHeaderSeen), 'recovered=', String(recovered));
+  }
 
   await pace(PHASE_GAP_MS, 'cool-down before browse Connect (messaging A/B stay open)');
   // Clear leftover A→B pending on messaging A (has live cloud vault), then warm B's mailbox route.
@@ -1175,9 +1258,71 @@ if (gateFailed) {
             : 'LIVE_UNFINISHED';
       await shot(browseA.page, 'connect-02-after');
     } else if (settle === 'connected') {
-      connectLabel = 'LIVE_REAL';
-      connectNotes.push('already_connected — skip Connect POST; Accept may be N/A');
-      await shot(browseA.page, 'connect-02-after');
+      // Prior Accept may have left B with a thread while A's requester inbox
+      // never materialized (pre-fix apply 400). Force Disconnect → fresh Connect
+      // so the fixed apply-inbound path runs.
+      await dismissMessagingOverlays(pageA);
+      await clickTab(pageA, 'Messages');
+      await pace(Math.max(PACE_MS, 2_000), 'A Messages probe before reuse Connect');
+      const aHasThread =
+        (await pageA.locator('button.w-full.p-4, button:has(h3)').count().catch(() => 0)) > 0 &&
+        !(await bodyHas(pageA, /No messages yet/i));
+      if (aHasThread) {
+        connectLabel = 'LIVE_REAL';
+        connectNotes.push('already_connected — A has Messages thread; skip Connect POST');
+        await shot(browseA.page, 'connect-02-after');
+      } else {
+        connectNotes.push(
+          'already_connected but A Messages empty — Disconnect then fresh Connect for requester inbox fix'
+        );
+        const disconnectBtn = browseA.page.getByRole('button', { name: /^Disconnect$/i }).first();
+        if (!(await disconnectBtn.isVisible().catch(() => false))) {
+          if (await profileBtn.isVisible().catch(() => false)) {
+            await profileBtn.click().catch(() => {});
+            await pace(PACE_MS);
+          }
+        }
+        if (await disconnectBtn.isVisible().catch(() => false)) {
+          const delWait = browseA.page
+            .waitForResponse(
+              (r) =>
+                r.request().method() === 'DELETE' &&
+                /\/api\/connections\//.test(r.url()),
+              { timeout: 60_000 }
+            )
+            .catch(() => null);
+          await disconnectBtn.click();
+          const delRes = await delWait;
+          connectNotes.push(
+            delRes
+              ? `Disconnect DELETE ${delRes.status()}`
+              : 'Disconnect clicked — no DELETE observed'
+          );
+          await pace(Math.max(PACE_MS, 3_000), 'after Disconnect');
+          // Soft-drain both so connection_delete jobs land before re-Connect.
+          connectNotes.push(...(await refreshMailboxOnPage(pageA, 'A_post_disconnect')));
+          connectNotes.push(...(await refreshMailboxOnPage(pageB, 'B_post_disconnect')));
+          await browseA.page.reload({ waitUntil: 'domcontentloaded', timeout: 60_000 }).catch(() => {});
+          await waitForMessagingUnlock(browseA.page, 30_000);
+          await pace(Math.max(PACE_MS, 3_000), 'browse after Disconnect');
+          if (await profileBtn.isVisible().catch(() => false)) {
+            await profileBtn.click().catch(() => {});
+            await pace(PACE_MS, 'profile menu after Disconnect');
+          }
+          const { requestRes, toastErr } = await clickFreshConnect();
+          connectLabel =
+            requestRes && requestRes.ok()
+              ? 'LIVE_REAL'
+              : toastErr
+                ? 'BLOCKED'
+                : 'LIVE_UNFINISHED';
+          await shot(browseA.page, 'connect-02-after');
+        } else {
+          connectLabel = 'LIVE_UNFINISHED';
+          connectNotes.push('Disconnect control missing — cannot refresh Accept path');
+          await shot(browseA.page, 'connect-02-after');
+        }
+      }
     } else if (settle !== 'connect') {
       const visible = await connectBtn.isVisible().catch(() => false);
       const enabled = visible ? await connectBtn.isEnabled().catch(() => false) : false;
@@ -1212,9 +1357,9 @@ if (gateFailed) {
   try {
     if (connectLabel !== 'LIVE_REAL') {
       acceptNotes.push('skipped Accept — Connect not LIVE_REAL');
-    } else if (connectNotes.some((n) => String(n).includes('already_connected'))) {
+    } else if (connectNotes.some((n) => String(n).includes('already_connected — A has Messages'))) {
       acceptLabel = 'LIVE_REAL';
-      acceptNotes.push('skipped Accept — A↔B already connected from prior run');
+      acceptNotes.push('skipped Accept — A↔B already connected and A has Messages thread');
     } else {
       // Request is a mailbox job until B drains. Reload B to restart drain (5min interval otherwise).
       acceptNotes.push(...(await refreshMailboxOnPage(pageB, 'B')));
@@ -1370,17 +1515,43 @@ if (gateFailed) {
       await shot(pageA, 'dm-02-sent');
 
       await clickTab(pageB, 'Messages');
-      await pace(Math.max(PACE_MS, 6_000), 'B inbox refresh');
-      // Open thread with A if needed
-      const bRows = pageB.locator('button, a, div[role="button"]');
-      const bCount = Math.min(await bRows.count().catch(() => 0), 40);
-      for (let i = 0; i < bCount; i++) {
-        if (await bodyHas(pageB, new RegExp(marker, 'i'))) break;
-        await bRows.nth(i).click().catch(() => {});
-        await pace(600);
+      await pace(Math.max(PACE_MS, 3_000), 'B inbox refresh');
+      // DM arrives as a mailbox job — soft-drain B then open A's thread.
+      dmNotes.push(...(await refreshMailboxOnPage(pageB, 'B_post_dm')));
+      await clickTab(pageB, 'Messages');
+      await pace(Math.max(PACE_MS, 4_000), 'B Messages after DM drain');
+      const peerA = (gateA.pnIdentifier || '').slice(0, 12);
+      const bThreadBtns = pageB.locator('button.w-full.p-4, button:has(h3)');
+      const bN = Math.min(await bThreadBtns.count().catch(() => 0), 20);
+      dmNotes.push(`B_thread_rows=${bN} peerA=${peerA}`);
+      let bOpened = false;
+      for (let i = 0; i < bN; i++) {
+        const txt = ((await bThreadBtns.nth(i).innerText().catch(() => '')) || '').slice(0, 120);
+        if (peerA && txt.includes(peerA)) {
+          await bThreadBtns.nth(i).click();
+          bOpened = true;
+          dmNotes.push(`B_opened_thread=${txt.slice(0, 40)}`);
+          break;
+        }
       }
+      if (!bOpened && bN > 0) {
+        await bThreadBtns.first().click();
+        dmNotes.push('B_opened_first_thread');
+      }
+      await pace(Math.max(PACE_MS, 3_000), 'B after open thread');
       await shot(pageB, 'dm-03-b');
-      const bHas = await bodyHas(pageB, new RegExp(marker, 'i'));
+      let bHas = await bodyHas(pageB, new RegExp(marker, 'i'));
+      if (!bHas) {
+        // One more drain+refresh in case the job landed late.
+        dmNotes.push(...(await refreshMailboxOnPage(pageB, 'B_post_dm_2')));
+        await clickTab(pageB, 'Messages');
+        await pace(Math.max(PACE_MS, 3_000));
+        if (bN > 0 || (await bThreadBtns.count().catch(() => 0)) > 0) {
+          await bThreadBtns.first().click().catch(() => {});
+          await pace(2_000);
+        }
+        bHas = await bodyHas(pageB, new RegExp(marker, 'i'));
+      }
       dmNotes.push(`B_received_marker=${bHas}`);
       dualDmOk = !!(sendOk && bHas);
       dmLabel = dualDmOk ? 'LIVE_REAL' : sendOk ? 'LIVE_UNFINISHED' : 'BLOCKED';
