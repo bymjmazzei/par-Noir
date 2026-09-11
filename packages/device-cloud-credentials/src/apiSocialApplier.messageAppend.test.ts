@@ -15,10 +15,11 @@ describe('createApiSocialApplier message_append', () => {
     });
 
     const job: MailboxJob = {
-      jobId: 'job-1',
+      id: 'job-1',
       routeKey: 'a'.repeat(64),
       jobType: 'message_append',
       createdAt: new Date().toISOString(),
+      expiresAt: new Date(Date.now() + 86_400_000).toISOString(),
       payload: {
         messageId: 'msg_1',
         encryptedContent: 'ciphertext',
@@ -29,7 +30,10 @@ describe('createApiSocialApplier message_append', () => {
 
     await expect(apply(job)).resolves.toBe(true);
     expect(fetchMock).toHaveBeenCalledTimes(1);
-    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    const call = fetchMock.mock.calls[0];
+    expect(call).toBeDefined();
+    const url = call![0] as string;
+    const init = call![1] as RequestInit;
     expect(url).toBe('https://api.example.test/api/messages/apply-inbound');
     expect(init.method).toBe('POST');
     const body = JSON.parse(String(init.body));
