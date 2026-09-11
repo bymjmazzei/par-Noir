@@ -1628,4 +1628,294 @@ export function setupMessageRoutes(app: express.Application, deps: MessageRouteD
         });
       }
     });
+
+    // POST /api/messages/apply-inbound
+    //
+    // Receiving half of the DM rail. Browser drains message_append from its
+    // opaque mailbox and posts ciphertext here so the write lands in the
+    // caller's own Drive with the forwarded cloud token. Peer identity is
+    // resolved from connectionId (durable payload has no clear from/to).
+    app.post('/api/messages/apply-inbound', async (req, res) => {
+      try {
+        const {
+          userPnIdentifier,
+          jobType,
+          connectionId: bodyConnectionId,
+          messageId,
+          encryptedContent,
+          timestamp,
+          role,
+          mediaFileId,
+          mediaMimeType,
+          mediaBackend,
+          channelClientId: bodyChannel
+        } = req.body || {};
+
+        if (!userPnIdentifier || !jobType) {
+          return res.status(400).json({ error: 'userPnIdentifier and jobType are required' });
+        }
+        if (String(jobType) !== 'message_append') {
+          return res.status(400).json({ error: 'Unsupported jobType' });
+        }
+        const connectionId =
+          typeof bodyConnectionId === 'string' ? bodyConnectionId.trim() : '';
+        if (!connectionId) {
+          return res.status(400).json({ error: 'connectionId is required' });
+        }
+        if (typeof messageId !== 'string' || !messageId.trim()) {
+          return res.status(400).json({ error: 'messageId is required' });
+        }
+        if (typeof encryptedContent !== 'string' || !encryptedContent) {
+          return res.status(400).json({
+            error: 'encryptedContent with cryptoVersion 2 is required'
+          });
+        }
+
+        const { MessageSheetsService } = await import('./messageSheetsService');
+        const { ConnectionsSheetsService } = await import('./connectionsSheetsService');
+        const { storageCredentialsService } = await import('./storageCredentialsService');
+        const { resolveOwnerDriveToken, respondDriveTokenError } = await import('./ownerDriveToken');
+        const { normalizeChannelClientId } = await import('./messagingChannel');
+        const { isPortableStorageProvider } = await import('./storage/storageProviderUtils');
+
+        const pnIdentifier = String(userPnIdentifier);
+        const credentials = await storageCredentialsService.getCredentials(pnIdentifier);
+        if (!credentials?.credentials) {
+          return res.status(404).json({ error: 'User credentials not found' });
+        }
+        const accounts =
+          credentials.credentials.googleDriveAccounts ||
+          (credentials.credentials.googleDrive ? [credentials.credentials.googleDrive] : []);
+        const account = accounts.length > 0 ? accounts[0] : null;
+        let accountId = account ? extractAccountId(account) : undefined;
+        let token;
+        try {
+          const resolved = await resolveOwnerDriveToken(req, pnIdentifier, { account, accountId });
+          token = resolved.token;
+          accountId = resolved.accountId ?? accountId;
+        } catch (e) {
+          if (respondDriveTokenError(res, e)) return;
+          throw e;
+        }
+
+        const metadataFolder = await getMetadataFolder(token, pnIdentifier, accountId);
+        if (!metadataFolder?.metadataFolderId && !(await isPortableStorageProvider(pnIdentifier))) {
+          return driveNotInitialized(res);
+        }
+
+        let peerPn: string | null = null;
+        const portable = await isPortableStorageProvider(pnIdentifier);
+        if (portable) {
+          const { listConnectionsPortable } = await import('./storage/connectionsPortableService');
+          const rows = await listConnectionsPortable(pnIdentifier, accountId);
+          const hit = rows.find((c) => c.connectionId === connectionId);
+          peerPn = hit?.userPnIdentifier || null;
+        } else {
+          const { readPnDriveIndex, isPnDriveIndexComplete, PN_DRIVE_SHEET_KEYS } =
+            await import('./pnDriveIndex');
+          const driveIndex = readPnDriveIndex(credentials.credentials as Record<string, unknown>);
+          let connectionsSheetId =
+            isPnDriveIndexComplete(driveIndex)
+              ? driveIndex.sheetIds[PN_DRIVE_SHEET_KEYS.CONNECTIONS]
+              : '';
+          if (!connectionsSheetId && metadataFolder?.metadataFolderId) {
+            connectionsSheetId = await ConnectionsSheetsService.getConnectionsSheet(
+              token,
+              metadataFolder.metadataFolderId,
+              pnIdentifier,
+              accountId
+            );
+          }
+          if (connectionsSheetId) {
+            const connection = await ConnectionsSheetsService.getConnectionById(
+              token,
+              connectionsSheetId,
+              connectionId,
+              pnIdentifier,
+              accountId
+            );
+            peerPn = connection?.userPnIdentifier || null;
+          }
+        }
+
+        if (!peerPn) {
+          return res.status(404).json({
+            error: 'Connection not found',
+            message: 'Cannot resolve conversation peer from connectionId'
+          });
+        }
+
+        const channelClientId = normalizeChannelClientId(
+          typeof bodyChannel === 'string' ? bodyChannel : undefined
+        );
+
+        let conversationSheetId: string | undefined;
+        const { readPnDriveIndex, isPnDriveIndexComplete } = await import('./pnDriveIndex');
+        const driveIndex =
+          readPnDriveIndex(credentials.credentials as Record<string, unknown>) ||
+          ({
+            pnFolderId: '',
+            metadataFolderId: '',
+            messagesFolderId: '',
+            inboxSheetId: '',
+            sheetIds: {},
+            conversationSheets: {}
+          } as any);
+        if (isPnDriveIndexComplete(driveIndex)) {
+          try {
+            const inboxEntry = await MessageSheetsService.getInboxConversationByParticipant(
+              token,
+              driveIndex.inboxSheetId,
+              peerPn,
+              pnIdentifier,
+              accountId,
+              50,
+              channelClientId
+            );
+            if (inboxEntry?.spreadsheetId) {
+              conversationSheetId = inboxEntry.spreadsheetId;
+            }
+          } catch {
+            /* fall through to create */
+          }
+        }
+
+        const pnFolderId = metadataFolder?.pnFolderId || driveIndex.pnFolderId || '';
+        if (!conversationSheetId) {
+          if (!pnFolderId && !portable) {
+            return res.status(404).json({ error: 'Messages folder not found' });
+          }
+          const messagesFolderId = pnFolderId
+            ? await MessageSheetsService.getOrCreateChannelMessagesFolder(
+                token,
+                pnFolderId,
+                pnIdentifier,
+                accountId,
+                channelClientId
+              )
+            : '';
+          try {
+            conversationSheetId = await MessageSheetsService.getConversationSheet(
+              token,
+              messagesFolderId,
+              peerPn,
+              pnIdentifier,
+              accountId
+            );
+          } catch (error: any) {
+            if (!error?.message?.includes('not found')) throw error;
+            conversationSheetId = await MessageSheetsService.createConversationSheet(
+              token,
+              messagesFolderId,
+              peerPn,
+              pnIdentifier,
+              accountId
+            );
+          }
+        }
+
+        const messageRole = String(role || 'recipient');
+        const fromPn =
+          messageRole === 'sender' ? pnIdentifier : peerPn;
+        const toPn = messageRole === 'sender' ? peerPn : pnIdentifier;
+        const ts =
+          typeof timestamp === 'string' && timestamp
+            ? timestamp
+            : new Date().toISOString();
+
+        await MessageSheetsService.appendMessage(
+          token,
+          conversationSheetId,
+          {
+            messageId: String(messageId).trim(),
+            fromPnIdentifier: fromPn,
+            toPnIdentifier: toPn,
+            content: '',
+            timestamp: ts,
+            read: messageRole === 'sender' ? true : false,
+            encryptedContent: String(encryptedContent),
+            cryptoVersion: 2 as const,
+            ...(mediaFileId
+              ? {
+                  mediaFileId: String(mediaFileId),
+                  ...(mediaMimeType ? { mediaMimeType: String(mediaMimeType) } : {}),
+                  ...(mediaBackend ? { mediaBackend: String(mediaBackend) } : {})
+                }
+              : {})
+          },
+          connectionId,
+          '',
+          pnIdentifier,
+          accountId
+        );
+
+        try {
+          const inboxSheetId = isPnDriveIndexComplete(driveIndex)
+            ? driveIndex.inboxSheetId
+            : await MessageSheetsService.getOrCreateInboxSheet(
+                token,
+                driveIndex.messagesFolderId ||
+                  (pnFolderId
+                    ? await MessageSheetsService.getOrCreateMessagesFolder(
+                        token,
+                        pnFolderId,
+                        pnIdentifier,
+                        accountId
+                      )
+                    : ''),
+                pnIdentifier,
+                accountId
+              );
+          if (inboxSheetId) {
+            await MessageSheetsService.updateInboxEntryWithRetry(
+              token,
+              inboxSheetId,
+              peerPn,
+              conversationSheetId,
+              connectionId,
+              ts,
+              pnIdentifier,
+              accountId,
+              undefined,
+              undefined,
+              undefined,
+              channelClientId
+            );
+          }
+        } catch (inboxErr: any) {
+          messagingLog.warn('[ApplyInbound] message_append inbox update failed', {
+            message: inboxErr?.message
+          });
+        }
+
+        const { invalidateMessagingCachesForUsers } = await import('./messagingReadCache');
+        await invalidateMessagingCachesForUsers(
+          [pnIdentifier, peerPn],
+          [{ pn: pnIdentifier, other: peerPn }]
+        ).catch(() => undefined);
+
+        return res.json({ success: true });
+      } catch (error: any) {
+        messagingLog.error('[ApplyInbound] message_append failed', {
+          message: error?.message
+        });
+        if (
+          error?.message?.includes('authentication failed') ||
+          error?.response?.status === 401 ||
+          error?.code === 401
+        ) {
+          return res.status(401).json({
+            error: 'Google Drive authentication failed',
+            code: 'DRIVE_AUTH_FAILED',
+            message: 'Please reconnect your Google Drive account in the dashboard.'
+          });
+        }
+        return res.status(500).json({
+          error: 'Failed to apply inbound message',
+          error_description:
+            safeClientErrorMessage(error, NODE_ENV === 'production') ||
+            'Failed to apply inbound message'
+        });
+      }
+    });
 }

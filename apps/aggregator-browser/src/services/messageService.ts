@@ -146,6 +146,10 @@ export interface Message {
   read: boolean;
   readAt?: string;
   encrypted: boolean;
+  /** Opaque mailbox hint: match thread by connectionId (durable payload has no from/to). */
+  connectionId?: string;
+  role?: string;
+  threadId?: string;
 }
 
 /** Optimistic client-only ids before the server assigns a real messageId. */
@@ -314,7 +318,10 @@ async function loadMailboxMessageHints(userPnIdentifier: string): Promise<Messag
         read: !!p.read,
         encrypted: true,
         mediaFileId: typeof p.mediaFileId === 'string' ? p.mediaFileId : undefined,
-        mediaMimeType: typeof p.mediaMimeType === 'string' ? p.mediaMimeType : undefined
+        mediaMimeType: typeof p.mediaMimeType === 'string' ? p.mediaMimeType : undefined,
+        connectionId: typeof p.connectionId === 'string' ? p.connectionId : undefined,
+        role: typeof p.role === 'string' ? p.role : undefined,
+        threadId: typeof p.threadId === 'string' ? p.threadId : undefined
       } as Message);
     }
     return out;
@@ -333,6 +340,72 @@ function mergeMessagesById(primary: Message[], extra: Message[]): Message[] {
   }
   return Array.from(map.values()).sort(
     (a, b) => new Date(a.timestamp || 0).getTime() - new Date(b.timestamp || 0).getTime()
+  );
+}
+
+/**
+ * Select opaque mailbox message_append hints for an open thread.
+ * Durable throughway payloads strip from/to — prefer connectionId match.
+ * Exported for unit falsification of the legacy from/to-only filter.
+ */
+export function filterMailboxHintsForPeer(
+  hints: Message[],
+  opts: {
+    userPnIdentifier: string;
+    participantPnIdentifier: string;
+    connectionId?: string;
+  }
+): Message[] {
+  const { userPnIdentifier, participantPnIdentifier, connectionId } = opts;
+  return hints
+    .filter((m) => {
+      if (connectionId && m.connectionId) {
+        return m.connectionId === connectionId;
+      }
+      if (m.fromPnIdentifier && m.toPnIdentifier) {
+        return (
+          (m.fromPnIdentifier === participantPnIdentifier &&
+            m.toPnIdentifier === userPnIdentifier) ||
+          (m.fromPnIdentifier === userPnIdentifier &&
+            m.toPnIdentifier === participantPnIdentifier)
+        );
+      }
+      if (m.threadId) {
+        return (
+          m.threadId.includes(userPnIdentifier) &&
+          m.threadId.includes(participantPnIdentifier)
+        );
+      }
+      return false;
+    })
+    .map((m) => {
+      if (m.fromPnIdentifier && m.toPnIdentifier) return m;
+      const role = String(m.role || 'recipient');
+      return {
+        ...m,
+        fromPnIdentifier:
+          role === 'sender' ? userPnIdentifier : participantPnIdentifier,
+        toPnIdentifier:
+          role === 'sender' ? participantPnIdentifier : userPnIdentifier
+      };
+    });
+}
+
+/**
+ * Legacy from/to-only filter (pre-opaque throughway). Kept only so tests can
+ * prove it drops sanitized mailbox jobs.
+ */
+export function filterMailboxHintsByFromToLegacy(
+  hints: Message[],
+  userPnIdentifier: string,
+  participantPnIdentifier: string
+): Message[] {
+  return hints.filter(
+    (m) =>
+      (m.fromPnIdentifier === participantPnIdentifier &&
+        m.toPnIdentifier === userPnIdentifier) ||
+      (m.fromPnIdentifier === userPnIdentifier &&
+        m.toPnIdentifier === participantPnIdentifier)
   );
 }
 
@@ -548,12 +621,6 @@ export async function getConversationMessages(
     const result = await response.json();
     const raw = result.messages || [];
     const mailboxHints = await loadMailboxMessageHints(userPnIdentifier);
-    const mailboxForPeer = mailboxHints.filter(
-      (m) =>
-        (m.fromPnIdentifier === participantPnIdentifier && m.toPnIdentifier === userPnIdentifier) ||
-        (m.fromPnIdentifier === userPnIdentifier && m.toPnIdentifier === participantPnIdentifier)
-    );
-    const mergedRaw = mergeMessagesById(raw, mailboxForPeer);
     const recovery = await resolveRecoveryForDecrypt(
       userPnIdentifier,
       participantPnIdentifier,
@@ -566,6 +633,13 @@ export async function getConversationMessages(
       inboxCacheService
         .get(userPnIdentifier)
         ?.find((e) => e.participantPnIdentifier === participantPnIdentifier)?.connectionId;
+
+    const mailboxForPeer = filterMailboxHintsForPeer(mailboxHints, {
+      userPnIdentifier,
+      participantPnIdentifier,
+      connectionId: effectiveConnectionId
+    });
+    const mergedRaw = mergeMessagesById(raw, mailboxForPeer);
 
     const messages: Message[] = await Promise.all(
       mergedRaw.map(async (row: Message & { encryptedContent?: string; cryptoVersion?: number }) => {
