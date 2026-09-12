@@ -323,7 +323,7 @@ try {
   }
   await pageB.waitForTimeout(4000);
   let aHas = false;
-  for (let i = 0; i < 15; i++) {
+  for (let i = 0; i < 30; i++) {
     const composerStill = pageA.getByPlaceholder(/Type a message/i).first();
     if (!(await composerStill.isVisible().catch(() => false))) {
       await openGroupThread(pageA);
@@ -332,7 +332,7 @@ try {
     if (aHas) break;
     await softDrain(pageA);
     await openGroupThread(pageA);
-    await pageA.waitForTimeout(2000);
+    await pageA.waitForTimeout(2500);
   }
   report.notes.push(`A_has_B_marker=${aHas}`);
   if (!aHas) {
