@@ -211,8 +211,8 @@ export async function unlockDmIdentity(pnName: string, passcode: string): Promis
       const session = PNOAuthService.loadSession();
       const pn = session?.pnIdentifier;
       if (pn) {
-        const { reconcileSenderOutboxFanout } = await import('./messageService');
-        await reconcileSenderOutboxFanout(pn);
+        const { promoteSenderOutbox } = await import('./messageService');
+        await promoteSenderOutbox(pn);
       }
     } catch {
       /* non-blocking */

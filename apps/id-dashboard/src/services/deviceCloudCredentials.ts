@@ -8,24 +8,22 @@ import {
   CloudFlushWorker,
   NativeSecureStore,
   WebSealedStore,
-  appendConversationLine,
+  createApiSocialApplier,
   createDeviceCloudWriter,
-  enqueueMailboxThroughway,
   ensureMailboxRouteKey,
+  freshAccessTokenFromEnvelope,
   loadLocalCloudCredentials,
-  loadLocalOutbox,
-  lookupMailboxThroughway,
   materializeMailboxJob,
   migrateServerSecretsToDevice,
   persistCloudCredentials,
+  promoteLocalOutbox,
   publishCloudDriveReady,
   sealCredentials,
   setSessionCloudCredentials,
+  SOCIAL_JOB_TYPES_APPLIED_VIA_API,
   unsealCredentials,
-  upsertLocalOutboxRecord,
   writeOutboxToCloud,
   type CredentialStore,
-  type OutboxRecord,
   type SealSession,
   type SealedEnvelope
 } from '@par-noir/device-cloud-credentials';
@@ -261,7 +259,7 @@ export async function migrateAndFlushOnUnlock(opts: {
   }
 }
 
-/** Promote local/bridge outbox → cloud SoT; rebuild throughway if wiped. */
+/** Promote local outbox → Sheets SoT via apply-inbound; rebuild throughway if wiped. */
 export async function promoteAndReconcileOutbox(opts: {
   identityId: string;
   authToken: string;
@@ -270,98 +268,27 @@ export async function promoteAndReconcileOutbox(opts: {
   const credentials = await loadUnsealedCloudCredentials(opts.identityId, opts.session);
   if (!credentials) return;
 
-  // Only the dashboard's own outbox. The browser used to hand its records over
-  // through a localStorage bridge, but the apps are separate origins and seal
-  // with different keys, so nothing ever arrived. The browser now promotes its
-  // own records through the API.
-  const records = await loadLocalOutbox(opts.identityId, opts.session);
-
   let writer;
   try {
     writer = await createDeviceCloudWriter(opts.identityId, credentials);
   } catch {
-    return;
+    writer = null;
   }
 
-  for (const record of records) {
-    if (record.status === 'materialized') continue;
-    try {
-      await writeOutboxToCloud(writer, record);
-
-      if (record.kind === 'message_append') {
-        const from = String(record.payload.fromPnIdentifier || '');
-        const to = String(record.payload.toPnIdentifier || '');
-        const peer = from === opts.identityId ? to : from;
-        await appendConversationLine(writer, opts.identityId, peer, {
-          ...record.payload,
-          role: 'sender',
-          read: true,
-          content: ''
-        });
-      }
-
-      for (const target of record.fanout) {
-        const messageId =
-          typeof record.payload.messageId === 'string' ? record.payload.messageId : undefined;
-        const commentId =
-          typeof record.payload.commentId === 'string' ? record.payload.commentId : undefined;
-        const fileId =
-          typeof record.payload.fileId === 'string' ? record.payload.fileId : undefined;
-        const routeKey = target.routeKey;
-        if (!routeKey || !/^[a-f0-9]{64}$/i.test(routeKey)) continue;
-        const lookup = await lookupMailboxThroughway({
-          apiBaseUrl: API_ENDPOINT,
-          authToken: opts.authToken,
-          identityId: opts.identityId,
-          routeKey,
-          jobType: target.jobType,
-          messageId,
-          commentId,
-          fileId
-        }).catch(() => ({ found: false, pending: false }));
-
-        if (!lookup.pending) {
-          const basePayload =
-            target.jobType === 'message_append'
-              ? { ...record.payload, role: 'recipient' }
-              : target.jobType === 'notification_row'
-                ? {
-                    type: record.payload.type || 'new_message',
-                    messageId: record.payload.messageId,
-                    threadId: record.payload.threadId,
-                    connectionId: record.payload.connectionId,
-                    fileId: record.payload.fileId,
-                    commentId: record.payload.commentId
-                  }
-                : { ...record.payload };
-          const { fromPnIdentifier: _f, toPnIdentifier: _t, ...payload } = basePayload as Record<
-            string,
-            unknown
-          >;
-          await enqueueMailboxThroughway({
-            apiBaseUrl: API_ENDPOINT,
-            authToken: opts.authToken,
-            identityId: opts.identityId,
-            routeKey,
-            jobType: target.jobType,
-            payload
-          });
+  const { deviceProofHeaders } = await import('./deviceProofContext');
+  await promoteLocalOutbox({
+    apiBaseUrl: API_ENDPOINT,
+    authToken: opts.authToken,
+    identityId: opts.identityId,
+    session: opts.session,
+    buildAuthHeaders: async (method, path, body) => deviceProofHeaders(method, path, body),
+    getCloudAccessToken: () => freshAccessTokenFromEnvelope(credentials) || undefined,
+    writeOutboxCloudBackup: writer
+      ? async (record) => {
+          await writeOutboxToCloud(writer!, record);
         }
-      }
-
-      await upsertLocalOutboxRecord(opts.identityId, opts.session, {
-        ...record,
-        status: 'materialized',
-        updatedAt: new Date().toISOString()
-      });
-    } catch {
-      await upsertLocalOutboxRecord(opts.identityId, opts.session, {
-        ...record,
-        status: 'failed',
-        updatedAt: new Date().toISOString()
-      });
-    }
-  }
+      : undefined
+  });
 }
 
 export async function runMailboxFlush(opts: {
@@ -377,6 +304,13 @@ export async function runMailboxFlush(opts: {
     authToken: opts.authToken,
     buildAuthHeaders: async (method, path, body) => deviceProofHeaders(method, path, body)
   });
+  const applySocial = createApiSocialApplier({
+    apiBaseUrl: API_ENDPOINT,
+    authToken: opts.authToken,
+    identityId: opts.identityId,
+    buildAuthHeaders: async (method, path, body) => deviceProofHeaders(method, path, body),
+    getCloudAccessToken: () => freshAccessTokenFromEnvelope(credentials) || undefined
+  });
   const worker = new CloudFlushWorker();
   try {
     await worker.flush({
@@ -385,7 +319,12 @@ export async function runMailboxFlush(opts: {
       apiBaseUrl: API_ENDPOINT,
       routeKey,
       credentials,
-      applyJob: async (job, creds) => materializeMailboxJob(opts.identityId, job, creds),
+      applyJob: async (job, creds) => {
+        if (SOCIAL_JOB_TYPES_APPLIED_VIA_API.has(job.jobType)) {
+          return applySocial(job);
+        }
+        return materializeMailboxJob(opts.identityId, job, creds);
+      },
       buildAuthHeaders: async (method, path, body) => deviceProofHeaders(method, path, body)
     });
   } catch (e) {

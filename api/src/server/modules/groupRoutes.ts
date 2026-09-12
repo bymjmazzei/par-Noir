@@ -161,8 +161,31 @@ export function setupGroupRoutes(app: express.Application, deps: GroupRouteDeps)
           accountId
         );
 
-        // Each member keeps their own copy of the group row, so the rename
-        // fans out over the rail rather than through their Drive credentials.
+        const { MessageSheetsService } = await import('./messageSheetsService');
+        const messagesFolderId = await MessageSheetsService.getOrCreateMessagesFolder(
+          token,
+          metadataFolder.pnFolderId!,
+          ownerPnIdentifier,
+          accountId
+        );
+        const ownerConvId = await MessageSheetsService.getOrCreateGroupConversationSheet(
+          token,
+          messagesFolderId,
+          groupId,
+          ownerPnIdentifier,
+          accountId
+        );
+        await GroupSheetsService.updateConversationSpreadsheetId(
+          token,
+          sheetId,
+          groupId,
+          ownerPnIdentifier,
+          ownerConvId,
+          ownerPnIdentifier,
+          accountId
+        );
+
+        // Dual silo: each member creates their own conversation sheet on apply.
         const { enqueueSocialJob } = await import('./socialRail');
         await Promise.all(
           members
@@ -171,16 +194,31 @@ export function setupGroupRoutes(app: express.Application, deps: GroupRouteDeps)
               enqueueSocialJob({
                 jobType: 'group_inbox_update',
                 peerPn: m.memberPnIdentifier,
-                requestId: `title:${groupId}:${title.trim()}`,
-                extra: { groupId, title: title.trim() }
+                requestId: `create:${groupId}:${m.memberPnIdentifier}`,
+                sealed: {
+                  ownerPnIdentifier,
+                  members: members.map((m) => ({
+                    memberPnIdentifier: m.memberPnIdentifier,
+                    wrappedChatKey: m.wrappedChatKey,
+                    accessRole: m.accessRole === 'readOnly' ? 'readOnly' : 'readWrite'
+                  }))
+                },
+                extra: {
+                  groupId,
+                  title: title.trim(),
+                  createdAt,
+                  accessRole: m.accessRole === 'readOnly' ? 'readOnly' : 'readWrite',
+                  wrappedChatKey: m.wrappedChatKey,
+                  preview: `Added to group: ${title.trim()}`
+                }
               })
             )
         );
-        return res.json({ success: true, title: title.trim() });
+        return res.json({ success: true, groupId, title: title.trim() });
       } catch (error: any) {
-        console.error('Error updating group title:', error);
+        console.error('Error creating group:', error);
         return res.status(500).json({
-          error: 'Failed to update group',
+          error: 'Failed to create group',
           error_description: safeClientErrorMessage(error, NODE_ENV === 'production')
         });
       }
@@ -286,19 +324,6 @@ export function setupGroupRoutes(app: express.Application, deps: GroupRouteDeps)
           return res.status(404).json({ error: 'Group conversation not found on owner Drive' });
         }
 
-        // The owner records where the member's conversation points; everything
-        // on the member's side — their group row, their messages folder, their
-        // inbox entry — is theirs to write, so it goes over the rail.
-        await GroupSheetsService.updateConversationSpreadsheetId(
-          token,
-          sheetId,
-          groupId,
-          memberPnIdentifier,
-          ownerConvSheetId,
-          ownerPnIdentifier,
-          accountId
-        );
-
         const { enqueueSocialJob } = await import('./socialRail');
         const delivered = await enqueueSocialJob({
           jobType: 'group_inbox_update',
@@ -311,13 +336,11 @@ export function setupGroupRoutes(app: express.Application, deps: GroupRouteDeps)
             createdAt,
             accessRole: role,
             wrappedChatKey,
-            conversationSpreadsheetId: ownerConvSheetId,
             preview: `Added to group: ${title}`
           }
         });
 
         return res.json({ success: true, delivered });
-        return res.json({ success: true });
       } catch (error: any) {
         console.error('Error adding group member:', error);
         return res.status(500).json({
@@ -441,6 +464,233 @@ export function setupGroupRoutes(app: express.Application, deps: GroupRouteDeps)
       }
     });
 
+    // POST /api/groups/:groupId/messages — throughway fan-out only (own sheet via apply).
+    app.post('/api/groups/:groupId/messages', async (req, res) => {
+      try {
+        const { groupId } = req.params;
+        const {
+          fromPnIdentifier,
+          userPnIdentifier,
+          encryptedContent,
+          cryptoVersion,
+          messageId: bodyMessageId,
+          timestamp: bodyTimestamp,
+          mediaFileId,
+          mediaMimeType,
+          mediaBackend,
+          mediaEnvelopesByPn
+        } = req.body || {};
+        const senderPn = String(fromPnIdentifier || userPnIdentifier || '');
+        if (!senderPn || !groupId) {
+          return res.status(400).json({ error: 'fromPnIdentifier and groupId are required' });
+        }
+        if (cryptoVersion !== 2 || typeof encryptedContent !== 'string' || !encryptedContent) {
+          return res.status(400).json({
+            error: 'encryptedContent with cryptoVersion 2 is required'
+          });
+        }
+
+        const { GroupSheetsService } = await import('./groupSheetsService');
+        const { requireOwnerDriveContextFromReq, DriveIndexError } = await import('./ownerDriveToken');
+        const { PN_DRIVE_SHEET_KEYS } = await import('./pnDriveIndex');
+        const { enqueueSocialJob } = await import('./socialRail');
+        const { isDeviceCloudCustodyEnabled } = await import('./socialMailboxService');
+
+        if (!isDeviceCloudCustodyEnabled()) {
+          return res.status(503).json({
+            error: 'device_cloud_custody_required',
+            message: 'Group messaging requires device cloud custody.'
+          });
+        }
+
+        let ctx;
+        try {
+          ctx = await requireOwnerDriveContextFromReq(req, senderPn);
+        } catch (error: unknown) {
+          if (error instanceof DriveIndexError) {
+            return res.status(404).json({ error: 'Drive not initialized' });
+          }
+          throw error;
+        }
+
+        const groups = await GroupSheetsService.listGroupsForUser(
+          ctx.token,
+          ctx.sheetId(PN_DRIVE_SHEET_KEYS.GROUPS),
+          ctx.pnIdentifier,
+          ctx.accountId
+        );
+        const myRows = groups.filter((g) => g.groupId === groupId);
+        const myRow = myRows.find((g) => g.memberPnIdentifier === senderPn) || myRows[0];
+        if (!myRow) {
+          return res.status(403).json({ error: 'Not a member of this group' });
+        }
+        if (myRow.accessRole === 'readOnly') {
+          return res.status(403).json({ error: 'Read-only members cannot send' });
+        }
+
+        const messageId =
+          (typeof bodyMessageId === 'string' && bodyMessageId.trim()) ||
+          `gmsg_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
+        const timestamp =
+          (typeof bodyTimestamp === 'string' && bodyTimestamp) || new Date().toISOString();
+
+        const memberPns = [
+          ...new Set(myRows.map((r) => r.memberPnIdentifier).filter(Boolean))
+        ];
+
+        const peers = memberPns.filter((pn) => pn !== senderPn);
+        if (peers.length === 0 && Array.isArray(req.body?.recipientPnIdentifiers)) {
+          for (const pn of req.body.recipientPnIdentifiers) {
+            if (typeof pn === 'string' && pn && pn !== senderPn) peers.push(pn);
+          }
+        }
+        await Promise.all(
+          peers.map(async (peerPn) => {
+            await enqueueSocialJob({
+              jobType: 'group_message_append',
+              peerPn,
+              requestId: `gmsg:${messageId}:${peerPn}`,
+              sealed: {
+                fromPnIdentifier: senderPn,
+                encryptedContent,
+                mediaFileId,
+                mediaMimeType,
+                mediaBackend,
+                mediaEnvelopesByPn
+              },
+              extra: {
+                groupId,
+                messageId,
+                timestamp,
+                cryptoVersion: 2,
+                role: 'recipient'
+              }
+            });
+          })
+        );
+
+        emitRealtime(senderPn, 'new_message', { groupId, messageId, throughway: true });
+        for (const peerPn of peers) {
+          emitRealtime(peerPn, 'mailbox_pending', { jobType: 'group_message_append', messageId });
+        }
+
+        return res.json({
+          success: true,
+          delivery: 'throughway',
+          message: {
+            messageId,
+            fromPnIdentifier: senderPn,
+            toPnIdentifier: groupId,
+            encryptedContent,
+            cryptoVersion: 2,
+            timestamp,
+            read: true,
+            encrypted: true,
+            mediaFileId,
+            mediaMimeType,
+            mediaBackend
+          }
+        });
+      } catch (error: any) {
+        console.error('Error sending group message:', error);
+        return res.status(500).json({
+          error: 'Failed to send group message',
+          error_description: safeClientErrorMessage(error, NODE_ENV === 'production')
+        });
+      }
+    });
+
+    // GET /api/groups/:groupId/messages — read caller's own dual-silo conversation sheet.
+    app.get('/api/groups/:groupId/messages', async (req, res) => {
+      try {
+        const { groupId } = req.params;
+        const userPnIdentifier = req.query.userPnIdentifier as string;
+        const limit = req.query.limit ? parseInt(String(req.query.limit), 10) : 50;
+        const offset = req.query.offset ? parseInt(String(req.query.offset), 10) : 0;
+        if (!userPnIdentifier || !groupId) {
+          return res.status(400).json({ error: 'userPnIdentifier and groupId are required' });
+        }
+
+        const { GroupSheetsService } = await import('./groupSheetsService');
+        const { MessageSheetsService } = await import('./messageSheetsService');
+        const { requireOwnerDriveContextFromReq, DriveIndexError } = await import('./ownerDriveToken');
+        const { PN_DRIVE_SHEET_KEYS } = await import('./pnDriveIndex');
+
+        let ctx;
+        try {
+          ctx = await requireOwnerDriveContextFromReq(req, userPnIdentifier);
+        } catch (error: unknown) {
+          if (error instanceof DriveIndexError) {
+            return res.json({ messages: [], total: 0 });
+          }
+          throw error;
+        }
+
+        const groups = await GroupSheetsService.listGroupsForUser(
+          ctx.token,
+          ctx.sheetId(PN_DRIVE_SHEET_KEYS.GROUPS),
+          ctx.pnIdentifier,
+          ctx.accountId
+        );
+        const myRow = groups.find(
+          (g) => g.groupId === groupId && g.memberPnIdentifier === userPnIdentifier
+        ) || groups.find((g) => g.groupId === groupId);
+        if (!myRow) {
+          return res.status(403).json({ error: 'Not a member of this group' });
+        }
+
+        let convSheetId =
+          (typeof req.query.spreadsheetId === 'string' && req.query.spreadsheetId) ||
+          myRow.conversationSpreadsheetId;
+        if (!convSheetId) {
+          const messagesFolderId = await MessageSheetsService.getOrCreateMessagesFolder(
+            ctx.token,
+            ctx.index.pnFolderId,
+            ctx.pnIdentifier,
+            ctx.accountId
+          );
+          convSheetId = await MessageSheetsService.getOrCreateGroupConversationSheet(
+            ctx.token,
+            messagesFolderId,
+            groupId,
+            ctx.pnIdentifier,
+            ctx.accountId
+          );
+          await GroupSheetsService.updateConversationSpreadsheetId(
+            ctx.token,
+            ctx.sheetId(PN_DRIVE_SHEET_KEYS.GROUPS),
+            groupId,
+            userPnIdentifier,
+            convSheetId,
+            ctx.pnIdentifier,
+            ctx.accountId
+          );
+        }
+
+        const result = await MessageSheetsService.getMessages(
+          ctx.token,
+          convSheetId,
+          '',
+          '',
+          ctx.pnIdentifier,
+          ctx.accountId,
+          {
+            limit,
+            offset,
+            includeTotal: true,
+            relayOnly: true
+          }
+        );
+        return res.json({ messages: result.messages, total: result.total, spreadsheetId: convSheetId });
+      } catch (error: any) {
+        console.error('Error loading group messages:', error);
+        return res.status(500).json({
+          error: 'Failed to load group messages',
+          error_description: safeClientErrorMessage(error, NODE_ENV === 'production')
+        });
+      }
+    });
+
     // POST /api/groups/apply-inbound
     //
     // Receiving half of the rail for group jobs. The member's or owner's own
@@ -492,8 +742,7 @@ export function setupGroupRoutes(app: express.Application, deps: GroupRouteDeps)
         );
 
         if (jobType === 'group_message_append') {
-          // Only the group owner holds the canonical conversation, so only the
-          // owner can apply an append.
+          // Dual silo: every member appends into their own conversation sheet.
           const ownRow = await GroupSheetsService.getMemberRow(
             token,
             groupsSheetId,
@@ -502,17 +751,11 @@ export function setupGroupRoutes(app: express.Application, deps: GroupRouteDeps)
             pnIdentifier,
             accountId
           );
-          if (!ownRow || ownRow.ownerPnIdentifier !== pnIdentifier) {
-            return res.status(403).json({ error: 'Not the owner of this group' });
+          if (!ownRow) {
+            return res.status(403).json({ error: 'Not a member of this group' });
           }
 
-          let convSheetId = await GroupSheetsService.getCanonicalGroupConversationSpreadsheetId(
-            token,
-            groupsSheetId,
-            String(groupId),
-            pnIdentifier,
-            accountId
-          );
+          let convSheetId = ownRow.conversationSpreadsheetId;
           if (!convSheetId) {
             const messagesFolderId = await MessageSheetsService.getOrCreateMessagesFolder(
               token,
@@ -527,22 +770,61 @@ export function setupGroupRoutes(app: express.Application, deps: GroupRouteDeps)
               pnIdentifier,
               accountId
             );
+            await GroupSheetsService.updateConversationSpreadsheetId(
+              token,
+              groupsSheetId,
+              String(groupId),
+              pnIdentifier,
+              convSheetId,
+              pnIdentifier,
+              accountId
+            );
           }
 
-          const { messageId, timestamp, encryptedContent, fromPnIdentifier, mediaFileId, mediaBackend, mediaMimeType } = req.body;
+          const {
+            messageId,
+            timestamp,
+            encryptedContent,
+            fromPnIdentifier,
+            mediaFileId,
+            mediaBackend,
+            mediaMimeType,
+            role: messageRole
+          } = req.body;
+          if (typeof encryptedContent !== 'string' || !encryptedContent) {
+            return res.status(400).json({ error: 'encryptedContent is required' });
+          }
+          if (typeof messageId !== 'string' || !messageId.trim()) {
+            return res.status(400).json({ error: 'messageId is required' });
+          }
+
+          const role = String(messageRole || 'recipient');
+          const fromPn =
+            typeof fromPnIdentifier === 'string' && fromPnIdentifier
+              ? String(fromPnIdentifier)
+              : role === 'sender'
+                ? pnIdentifier
+                : '';
+
           await MessageSheetsService.appendMessage(
             token,
             convSheetId,
             {
-              messageId: String(messageId),
-              fromPnIdentifier: String(fromPnIdentifier || ''),
+              messageId: String(messageId).trim(),
+              fromPnIdentifier: fromPn,
               toPnIdentifier: String(groupId),
               content: '',
               timestamp: String(timestamp || new Date().toISOString()),
-              read: false,
+              read: role === 'sender',
               encryptedContent,
               cryptoVersion: 2 as const,
-              ...(mediaFileId ? { mediaFileId, mediaBackend, ...(mediaMimeType ? { mediaMimeType } : {}) } : {})
+              ...(mediaFileId
+                ? {
+                    mediaFileId,
+                    mediaBackend,
+                    ...(mediaMimeType ? { mediaMimeType } : {})
+                  }
+                : {})
             },
             '',
             '',
@@ -552,11 +834,11 @@ export function setupGroupRoutes(app: express.Application, deps: GroupRouteDeps)
 
           const { invalidateGroupFileMtime } = await import('./messagingReadCache');
           await invalidateGroupFileMtime(pnIdentifier, convSheetId);
-          return res.json({ success: true });
+          return res.json({ success: true, spreadsheetId: convSheetId });
         }
 
         // group_inbox_update: the member maintains its own group row and inbox.
-        const { removed, keyRotation, ownerPnIdentifier, title, createdAt, accessRole, wrappedChatKey, conversationSpreadsheetId, preview } = req.body;
+        const { removed, keyRotation, ownerPnIdentifier, title, createdAt, accessRole, wrappedChatKey, preview } = req.body;
 
         if (removed) {
           await GroupSheetsService.removeGroupMember(
@@ -599,19 +881,59 @@ export function setupGroupRoutes(app: express.Application, deps: GroupRouteDeps)
           return res.json({ success: true });
         }
 
-        if (ownerPnIdentifier && conversationSpreadsheetId) {
-          await GroupSheetsService.appendSingleMember(
+        if (ownerPnIdentifier) {
+          const messagesFolderId = await MessageSheetsService.getOrCreateMessagesFolder(
+            token,
+            metadataFolder.pnFolderId!,
+            pnIdentifier,
+            accountId
+          );
+          const ownConvId = await MessageSheetsService.getOrCreateGroupConversationSheet(
+            token,
+            messagesFolderId,
+            String(groupId),
+            pnIdentifier,
+            accountId
+          );
+          const roster = Array.isArray(req.body?.members)
+            ? (req.body.members as Array<{
+                memberPnIdentifier?: string;
+                wrappedChatKey?: string;
+                accessRole?: string;
+              }>)
+            : [
+                {
+                  memberPnIdentifier: pnIdentifier,
+                  wrappedChatKey: String(wrappedChatKey || ''),
+                  accessRole: accessRole === 'readOnly' ? 'readOnly' : 'readWrite'
+                }
+              ];
+          const memberInputs = roster
+            .filter((m) => m.memberPnIdentifier)
+            .map((m) => ({
+              memberPnIdentifier: String(m.memberPnIdentifier),
+              wrappedChatKey: String(m.wrappedChatKey || ''),
+              accessRole: (m.accessRole === 'readOnly' ? 'readOnly' : 'readWrite') as
+                | 'readWrite'
+                | 'readOnly'
+            }));
+          if (!memberInputs.some((m) => m.memberPnIdentifier === pnIdentifier)) {
+            memberInputs.push({
+              memberPnIdentifier: pnIdentifier,
+              wrappedChatKey: String(wrappedChatKey || ''),
+              accessRole: (accessRole === 'readOnly' ? 'readOnly' : 'readWrite') as
+                | 'readWrite'
+                | 'readOnly'
+            });
+          }
+          await GroupSheetsService.appendGroupMembers(
             token,
             groupsSheetId,
             String(groupId),
             String(ownerPnIdentifier),
             String(title || ''),
             String(createdAt || new Date().toISOString()),
-            {
-              memberPnIdentifier: pnIdentifier,
-              accessRole: (accessRole === 'readOnly' ? 'readOnly' : 'readWrite') as 'readWrite' | 'readOnly',
-              wrappedChatKey: String(wrappedChatKey || '')
-            },
+            memberInputs,
             pnIdentifier,
             accountId
           );
@@ -620,13 +942,7 @@ export function setupGroupRoutes(app: express.Application, deps: GroupRouteDeps)
             groupsSheetId,
             String(groupId),
             pnIdentifier,
-            String(conversationSpreadsheetId),
-            pnIdentifier,
-            accountId
-          );
-          const messagesFolderId = await MessageSheetsService.getOrCreateMessagesFolder(
-            token,
-            metadataFolder.pnFolderId!,
+            ownConvId,
             pnIdentifier,
             accountId
           );
@@ -640,7 +956,7 @@ export function setupGroupRoutes(app: express.Application, deps: GroupRouteDeps)
             token,
             inboxSheetId,
             String(groupId),
-            String(conversationSpreadsheetId),
+            ownConvId,
             String(ownerPnIdentifier),
             new Date().toISOString(),
             pnIdentifier,

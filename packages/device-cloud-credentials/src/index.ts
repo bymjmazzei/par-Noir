@@ -29,6 +29,7 @@ export type {
 export {
   createOutboxRecord,
   messageSendFanout,
+  groupMessageSendFanout,
   loadLocalOutbox,
   saveLocalOutbox,
   upsertLocalOutboxRecord,
@@ -37,7 +38,6 @@ export {
 export {
   createDeviceCloudWriter,
   writeOutboxToCloud,
-  appendConversationLine,
   materializeMailboxJob,
   SOCIAL_JOB_TYPES_APPLIED_VIA_API
 } from './siloMaterialize.js';
@@ -46,6 +46,12 @@ export {
   createApiOnlyApplyJob,
   type ApiSocialApplierOptions
 } from './apiSocialApplier.js';
+export {
+  promoteLocalOutbox,
+  promoteOutboxRecord,
+  type PromoteOutboxOptions,
+  type PromoteOutboxResult
+} from './promoteOutbox.js';
 export {
   mintMailboxRouteKey,
   isMailboxRouteKey,

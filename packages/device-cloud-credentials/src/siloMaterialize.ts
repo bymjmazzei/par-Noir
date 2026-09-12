@@ -12,8 +12,6 @@ import type {
   StorageCredentialsEnvelope
 } from '@par-noir/user-owned-storage';
 import {
-  conversationLogPath,
-  messagesPath,
   outboxRecordPath,
   pnRootFolderName,
   resolveSocialCloudProvider,
@@ -493,31 +491,6 @@ export async function writeOutboxToCloud(
   void key;
 }
 
-export async function appendConversationLine(
-  writer: DeviceCloudWriter,
-  ownerPn: string,
-  otherPn: string,
-  message: Record<string, unknown>
-): Promise<void> {
-  void ownerPn;
-  const channel =
-    typeof message.channelClientId === 'string' && message.channelClientId.trim()
-      ? message.channelClientId.trim()
-      : 'platform';
-  const key =
-    channel === 'platform' || channel === 'browser-app' || channel === 'messaging-app'
-      ? conversationLogPath(otherPn)
-      : messagesPath('channels', channel, `conversation-${otherPn.replace(/^pn-/, '')}.jsonl`);
-  const existing = (await writer.getText(key)) || '';
-  const messageId = String(message.messageId || '');
-  if (messageId && existing.includes(`"messageId":"${messageId}"`)) {
-    return; // idempotent
-  }
-  const line = JSON.stringify(message);
-  const next = existing.trim() ? `${existing.trim()}\n${line}\n` : `${line}\n`;
-  await writer.putText(key, next, 'application/x-ndjson');
-}
-
 export async function appendNotificationLine(
   writer: DeviceCloudWriter,
   row: Record<string, unknown>
@@ -533,60 +506,6 @@ export async function appendNotificationLine(
   await writer.putText(key, next, 'application/x-ndjson');
 }
 
-async function resolvePeerPn(
-  writer: DeviceCloudWriter,
-  identityId: string,
-  p: Record<string, unknown>
-): Promise<string | null> {
-  const from = typeof p.fromPnIdentifier === 'string' ? p.fromPnIdentifier : '';
-  const to = typeof p.toPnIdentifier === 'string' ? p.toPnIdentifier : '';
-  const role = String(p.role || 'recipient');
-  if (from || to) {
-    const other = role === 'sender' ? to : from === identityId ? to : from;
-    return other || (from === identityId ? to : from) || null;
-  }
-  const connectionId = typeof p.connectionId === 'string' ? p.connectionId.trim() : '';
-  if (!connectionId) return null;
-
-  const candidates = [
-    `${TABLE_PATHS.connections}.json`,
-    `${TABLE_PATHS.connections}.jsonl`,
-    TABLE_PATHS.connections
-  ];
-  for (const key of candidates) {
-    const raw = await writer.getText(key);
-    if (!raw) continue;
-    try {
-      const parsed = JSON.parse(raw) as
-        | { connections?: Array<{ connectionId?: string; userPnIdentifier?: string }> }
-        | Array<{ connectionId?: string; userPnIdentifier?: string }>;
-      const rows = Array.isArray(parsed)
-        ? parsed
-        : Array.isArray(parsed.connections)
-          ? parsed.connections
-          : [];
-      const hit = rows.find((c) => c.connectionId === connectionId);
-      if (hit?.userPnIdentifier) return hit.userPnIdentifier;
-    } catch {
-      for (const line of raw.split('\n')) {
-        if (!line.trim() || !line.includes(connectionId)) continue;
-        try {
-          const row = JSON.parse(line) as {
-            connectionId?: string;
-            userPnIdentifier?: string;
-          };
-          if (row.connectionId === connectionId && row.userPnIdentifier) {
-            return row.userPnIdentifier;
-          }
-        } catch {
-          /* next line */
-        }
-      }
-    }
-  }
-  return null;
-}
-
 export const SOCIAL_JOB_TYPES_APPLIED_VIA_API: ReadonlySet<string> = new Set([
   'connection_request',
   'connection_accept',
@@ -596,44 +515,29 @@ export const SOCIAL_JOB_TYPES_APPLIED_VIA_API: ReadonlySet<string> = new Set([
   'follower_remove',
   'group_message_append',
   'group_inbox_update',
-  'message_request'
+  'message_request',
+  /** DM chat SoT is Sheets via apply-inbound — never JSONL. */
+  'message_append'
 ]);
 
 /**
- * Apply a throughway mailbox job into the unlocked user's cloud.
- * Returns true only when materialization succeeded (safe to ack).
- * Peer identity is resolved locally (payload from/to or connectionId → connections silo).
+ * Non-Sheets mailbox leftovers (notifications). Chat and social graph jobs
+ * must go through createApiSocialApplier → apply-inbound (Sheets).
  */
 export async function materializeMailboxJob(
   identityId: string,
   job: MailboxJob,
   credentials: StorageCredentialsEnvelope
 ): Promise<boolean> {
+  void identityId;
   const writer = await createDeviceCloudWriter(identityId, credentials);
   const p = job.payload || {};
 
-  if (job.jobType === 'message_append') {
-    const peer = await resolvePeerPn(writer, identityId, p);
-    if (!peer) {
-      throw new Error('cannot resolve conversation peer (connectionId or from/to required)');
-    }
-    const role = String(p.role || 'recipient');
-    await appendConversationLine(writer, identityId, peer, {
-      ...p,
-      fromPnIdentifier: p.fromPnIdentifier || (role === 'sender' ? identityId : peer),
-      toPnIdentifier: p.toPnIdentifier || (role === 'sender' ? peer : identityId),
-      content: '',
-      read: role === 'sender' ? true : !!p.read
-    });
-    return true;
-  }
-
   if (job.jobType === 'message_attachment') {
-    const note = {
+    await appendNotificationLine(writer, {
       type: 'message_attachment',
       ...p
-    };
-    await appendNotificationLine(writer, note);
+    });
     return true;
   }
 
@@ -642,19 +546,12 @@ export async function materializeMailboxJob(
     return true;
   }
 
-  // Engagement is public-aggregator only (no mailbox jobs). Ignore legacy rows if any remain.
   if (job.jobType === 'engagement_like' || job.jobType === 'engagement_comment') {
     return true;
   }
 
-  // Connections, follows, and group delivery land in real Sheets silos
-  // (connections.xlsx, followers.xlsx, the group log). This writer rewrites every
-  // key under par-noir-messages/, so applying them here would create a shadow
-  // tree the rest of the product never reads. The browser applies them through
-  // the API instead, with its own forwarded token.
-  //
-  // Returning false rather than throwing matters: an unknown type is never acked
-  // and re-errors every 60 seconds until the 30 day TTL.
+  // Chat + social graph: API apply-inbound only (Sheets). Returning false keeps
+  // the job pending until a client uses createApiSocialApplier.
   if (SOCIAL_JOB_TYPES_APPLIED_VIA_API.has(job.jobType)) {
     return false;
   }

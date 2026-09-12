@@ -57,10 +57,16 @@ async function buildAuthHeaders(): Promise<Record<string, string>> {
 
 export async function drainSocialMailbox(): Promise<MailboxDrainResult> {
   const session = PNOAuthService.loadSession();
-  if (!session || !PNOAuthService.isSessionValid(session)) return EMPTY;
+  if (!session || !PNOAuthService.isSessionValid(session)) {
+    console.warn('[socialMailbox] drain skipped: no valid session');
+    return EMPTY;
+  }
   const identityId = session.pnIdentifier;
   const authToken = session.accessToken;
-  if (!identityId || !authToken) return EMPTY;
+  if (!identityId || !authToken) {
+    console.warn('[socialMailbox] drain skipped: missing identity or auth token');
+    return EMPTY;
+  }
 
   // Case B unkeyed web: server refuses pending/ack — skip to avoid 403 spam.
   const registry = await fetchDeviceRegistry(identityId, authToken);
@@ -69,7 +75,12 @@ export async function drainSocialMailbox(): Promise<MailboxDrainResult> {
   );
   if (hasKeyedDevices) {
     const local = await loadDeviceRegistration(identityId);
-    if (!local?.deviceId) return EMPTY;
+    if (!local?.deviceId) {
+      console.warn(
+        '[socialMailbox] drain skipped: identity has keyed devices but this browser has no local device registration'
+      );
+      return EMPTY;
+    }
   }
 
   const errors: string[] = [];
@@ -80,8 +91,12 @@ export async function drainSocialMailbox(): Promise<MailboxDrainResult> {
     identity = getDmIdentity();
     mlKemSecretKey = identity.mlKemSecretKey;
   } catch {
-    // Sealed jobs stay in the mailbox until an unlocked session can open them.
+    console.warn('[socialMailbox] drain skipped: messaging ML-KEM session not ready');
     return EMPTY;
+  }
+
+  if (!getCloudAccessTokenFromSession(identityId)) {
+    console.warn('[socialMailbox] drain proceeding without cloud AT — Drive apply will fail until credentials are ready');
   }
 
   const api = {
@@ -107,8 +122,17 @@ export async function drainSocialMailbox(): Promise<MailboxDrainResult> {
       cachedRoute = { identityId, routeKey };
     } catch (e) {
       errors.push(`route: ${e instanceof Error ? e.message : 'failed'}`);
+      console.warn('[socialMailbox] route claim failed', errors);
       return { ...EMPTY, errors };
     }
+  }
+
+  // Sender outbox → own Sheets (same SoT as conversation GET).
+  try {
+    const { promoteSenderOutbox } = await import('./messageService');
+    await promoteSenderOutbox(identityId);
+  } catch (e) {
+    errors.push(`outbox: ${e instanceof Error ? e.message : 'promote failed'}`);
   }
 
   const applySocialJob = createApiSocialApplier({
@@ -169,6 +193,10 @@ export async function drainSocialMailbox(): Promise<MailboxDrainResult> {
     } catch {
       /* ignore */
     }
+  }
+
+  if (errors.length) {
+    console.warn('[socialMailbox] drain errors', errors);
   }
 
   return { pulled: jobs.length, applied: appliedIds.length, acked, errors };

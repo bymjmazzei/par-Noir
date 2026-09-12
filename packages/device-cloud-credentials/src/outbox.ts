@@ -74,6 +74,20 @@ export function messageSendFanout(routeKey: string, hasMedia: boolean): OutboxFa
   return targets;
 }
 
+/** Fanout group ciphertext to each peer's opaque mailbox route. */
+export function groupMessageSendFanout(routeKeys: string[]): OutboxFanoutTarget[] {
+  const seen = new Set<string>();
+  const targets: OutboxFanoutTarget[] = [];
+  for (const routeKey of routeKeys) {
+    const rk = routeKey.trim();
+    if (!/^[a-f0-9]{64}$/i.test(rk) || seen.has(rk)) continue;
+    seen.add(rk);
+    targets.push({ routeKey: rk, jobType: 'group_message_append' });
+    targets.push({ routeKey: rk, jobType: 'notification_row' });
+  }
+  return targets;
+}
+
 /** Sealed bag of outbox records stored on device (browser / web dashboard). */
 export interface LocalOutboxBag {
   records: OutboxRecord[];

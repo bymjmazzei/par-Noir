@@ -50,13 +50,10 @@ const CONNECTION_JOBS = new Set([
 
 const GROUP_JOBS = new Set(['group_message_append', 'group_inbox_update']);
 
-/** Browser DM rail — kept out of SOCIAL_JOB_TYPES so dashboard materializeMailboxJob still applies message_append. */
-const MESSAGE_JOBS = new Set(['message_append']);
-
 function endpointFor(jobType: string): string | null {
   if (CONNECTION_JOBS.has(jobType)) return '/api/connections/apply-inbound';
   if (GROUP_JOBS.has(jobType)) return '/api/groups/apply-inbound';
-  if (MESSAGE_JOBS.has(jobType)) return '/api/messages/apply-inbound';
+  if (jobType === 'message_append') return '/api/messages/apply-inbound';
   return null;
 }
 
@@ -64,10 +61,7 @@ export function createApiSocialApplier(opts: ApiSocialApplierOptions) {
   const base = opts.apiBaseUrl.replace(/\/$/, '');
 
   return async function applySocialJob(job: MailboxJob): Promise<boolean> {
-    if (
-      !SOCIAL_JOB_TYPES_APPLIED_VIA_API.has(job.jobType) &&
-      !MESSAGE_JOBS.has(job.jobType)
-    ) {
+    if (!SOCIAL_JOB_TYPES_APPLIED_VIA_API.has(job.jobType) && job.jobType !== 'message_append') {
       return false;
     }
 

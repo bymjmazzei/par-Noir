@@ -18,6 +18,15 @@ import type { DmSessionRecovery } from './dmCryptoClient';
 import { isDmIdentityReady, getDmIdentity } from './dmIdentitySession';
 import type { Message } from './messageService';
 import { ownerApiHeadersAsync, waitForOwnerCloudAccess } from './ownerApiHeaders';
+import { PNOAuthService } from './pnOAuthService';
+import {
+  createOutboxRecord,
+  groupMessageSendFanout,
+  promoteOutboxRecord,
+  upsertLocalOutboxRecord,
+  getCloudAccessTokenFromSession,
+  type OutboxRecord
+} from '@par-noir/device-cloud-credentials';
 
 const groupChatKeys = new Map<string, string>();
 
@@ -335,6 +344,66 @@ export async function sendGroupMessage(
   }
   const chatKey = await getGroupChatKey(userPn, record);
   const encryptedContent = await encryptGroupMessage(plaintext, chatKey);
+  const messageId = `gmsg_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`;
+  const timestamp = new Date().toISOString();
+
+  const allGroups = await listGroups(userPn);
+  const recipientPnIdentifiers = [
+    ...new Set(
+      allGroups
+        .filter((g) => g.groupId === groupId)
+        .map((g) => g.memberPnIdentifier)
+        .filter((pn) => pn && pn !== userPn)
+    )
+  ];
+
+  const routeKeys: string[] = [];
+  try {
+    const { getConnections } = await import('./connectionService');
+    const connections = await getConnections(userPn);
+    for (const pn of recipientPnIdentifiers) {
+      const row = connections.find((c) => c.userPnIdentifier === pn);
+      if (row?.peerMailboxRouteKey && /^[a-f0-9]{64}$/i.test(row.peerMailboxRouteKey)) {
+        routeKeys.push(row.peerMailboxRouteKey.trim());
+      }
+    }
+  } catch {
+    /* server resolves claimed routes via enqueueSocialJob */
+  }
+
+  const identity = getDmIdentity();
+  const sealSession = {
+    sessionId: userPn,
+    pnName: identity.pnName || 'browser-outbox',
+    passcode: identity.mlKemSecretKey
+  };
+  const payload = {
+    messageId,
+    groupId,
+    fromPnIdentifier: userPn,
+    encryptedContent,
+    cryptoVersion: 2 as const,
+    timestamp,
+    read: true,
+    role: 'sender',
+    ...(mediaFileId
+      ? {
+          mediaFileId,
+          ...(mediaMimeType ? { mediaMimeType } : {}),
+          ...(mediaBackend ? { mediaBackend } : {}),
+          ...(mediaEnvelopesByPn ? { mediaEnvelopesByPn } : {})
+        }
+      : {})
+  };
+  const outbox: OutboxRecord = createOutboxRecord({
+    outboxId: messageId,
+    kind: 'group_message_append',
+    payload,
+    fanout: groupMessageSendFanout(routeKeys),
+    status: 'pending'
+  });
+  await upsertLocalOutboxRecord(userPn, sealSession, outbox);
+
   const res = await fetch(`${API_ENDPOINT}/api/groups/${encodeURIComponent(groupId)}/messages`, {
     method: 'POST',
     headers: await getAuthHeaders(),
@@ -343,6 +412,9 @@ export async function sendGroupMessage(
       userPnIdentifier: userPn,
       encryptedContent,
       cryptoVersion: 2,
+      messageId,
+      timestamp,
+      recipientPnIdentifiers,
       ...(mediaFileId
         ? {
             mediaFileId,
@@ -357,6 +429,33 @@ export async function sendGroupMessage(
     const err = await res.json().catch(() => ({}));
     throw new Error((err as { error?: string }).error || 'Failed to send group message');
   }
+
+  const enqueued: OutboxRecord = {
+    ...outbox,
+    status: 'enqueued',
+    updatedAt: new Date().toISOString()
+  };
+  await upsertLocalOutboxRecord(userPn, sealSession, enqueued);
+
+  const session = PNOAuthService.loadSession();
+  if (!session?.accessToken) {
+    throw new Error('Not authenticated');
+  }
+  await promoteOutboxRecord(
+    {
+      apiBaseUrl: API_ENDPOINT,
+      authToken: session.accessToken,
+      identityId: userPn,
+      session: sealSession,
+      buildAuthHeaders: async () => {
+        const headers = await ownerApiHeadersAsync();
+        delete (headers as Record<string, string>).Authorization;
+        return headers as Record<string, string>;
+      },
+      getCloudAccessToken: () => getCloudAccessTokenFromSession(userPn) || undefined
+    },
+    enqueued
+  );
 }
 
 export async function addGroupMember(

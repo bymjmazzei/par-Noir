@@ -13,9 +13,9 @@ import { messageFetch } from './messageAuthFetch';
 import { setMessagingRateLimited } from './messagingRateLimitState';
 import {
   createOutboxRecord,
-  enqueueMailboxThroughway,
-  lookupMailboxThroughway,
   messageSendFanout,
+  promoteLocalOutbox,
+  promoteOutboxRecord,
   upsertLocalOutboxRecord,
   type OutboxRecord
 } from '@par-noir/device-cloud-credentials';
@@ -264,161 +264,51 @@ export async function getMessages(userPnIdentifier: string): Promise<Message[]> 
     }
 
     const result = await response.json();
-    const fromDrive: Message[] = result.messages || [];
-    const fromMailbox = await loadMailboxMessageHints(userPnIdentifier);
-    return mergeMessagesById(fromDrive, fromMailbox);
+    return result.messages || [];
   } catch (error) {
     console.error('Failed to get messages:', error);
     return [];
   }
 }
 
-/** Opaque mailbox ciphertext visible before Drive flush (device cloud custody). */
-async function loadMailboxMessageHints(userPnIdentifier: string): Promise<Message[]> {
-  try {
-    const { ensureMailboxRouteKey, fetchMailboxPending } = await import(
-      '@par-noir/device-cloud-credentials'
-    );
-    const session = (await import('./pnOAuthService')).PNOAuthService.loadSession();
-    if (!session?.accessToken) return [];
-    const { getDmIdentity } = await import('./dmIdentitySession');
-    let identity;
-    try {
-      identity = getDmIdentity();
-    } catch {
-      return [];
-    }
-    const { ownerApiHeadersAsync } = await import('./ownerApiHeaders');
-    const routeKey = await ensureMailboxRouteKey(
-      userPnIdentifier,
-      {
-        sessionId: userPnIdentifier,
-        pnName: identity.pnName || 'browser-mailbox',
-        passcode: identity.mlKemSecretKey
-      },
-      {
-        apiBaseUrl: API_ENDPOINT,
-        authToken: session.accessToken,
-        buildAuthHeaders: async () => {
-          const headers = await ownerApiHeadersAsync();
-          delete headers.Authorization;
-          return headers;
-        }
-      }
-    );
-    const jobs = await fetchMailboxPending(
-      API_ENDPOINT,
-      session.accessToken,
-      userPnIdentifier,
-      routeKey,
-      100
-    );
-    const out: Message[] = [];
-    for (const job of jobs) {
-      if (job.jobType !== 'message_append') continue;
-      const p = job.payload || {};
-      const messageId = typeof p.messageId === 'string' ? p.messageId : '';
-      if (!messageId) continue;
-      out.push({
-        messageId,
-        fromPnIdentifier: String(p.fromPnIdentifier || ''),
-        toPnIdentifier: String(p.toPnIdentifier || ''),
-        content: '',
-        encryptedContent: typeof p.encryptedContent === 'string' ? p.encryptedContent : undefined,
-        cryptoVersion: 2,
-        timestamp: typeof p.timestamp === 'string' ? p.timestamp : job.createdAt,
-        read: !!p.read,
-        encrypted: true,
-        mediaFileId: typeof p.mediaFileId === 'string' ? p.mediaFileId : undefined,
-        mediaMimeType: typeof p.mediaMimeType === 'string' ? p.mediaMimeType : undefined,
-        connectionId: typeof p.connectionId === 'string' ? p.connectionId : undefined,
-        role: typeof p.role === 'string' ? p.role : undefined,
-        threadId: typeof p.threadId === 'string' ? p.threadId : undefined
-      } as Message);
-    }
-    return out;
-  } catch {
-    return [];
-  }
+function sealSessionForOutbox(userPnIdentifier: string) {
+  const identity = getDmIdentity();
+  return {
+    sessionId: userPnIdentifier,
+    pnName: identity.pnName || 'browser-outbox',
+    passcode: identity.mlKemSecretKey
+  };
 }
 
-function mergeMessagesById(primary: Message[], extra: Message[]): Message[] {
-  const map = new Map<string, Message>();
-  for (const m of primary) {
-    if (m.messageId) map.set(m.messageId, m);
+async function promoteOpts(userPnIdentifier: string) {
+  const session = PNOAuthService.loadSession();
+  if (!session?.accessToken) {
+    throw new Error('Not authenticated');
   }
-  for (const m of extra) {
-    if (m.messageId && !map.has(m.messageId)) map.set(m.messageId, m);
-  }
-  return Array.from(map.values()).sort(
-    (a, b) => new Date(a.timestamp || 0).getTime() - new Date(b.timestamp || 0).getTime()
-  );
+  const { ownerApiHeadersAsync } = await import('./ownerApiHeaders');
+  const { getCloudAccessTokenFromSession } = await import('@par-noir/device-cloud-credentials');
+  return {
+    apiBaseUrl: API_ENDPOINT,
+    authToken: session.accessToken,
+    identityId: userPnIdentifier,
+    session: sealSessionForOutbox(userPnIdentifier),
+    buildAuthHeaders: async () => {
+      const headers = await ownerApiHeadersAsync();
+      delete headers.Authorization;
+      return headers;
+    },
+    getCloudAccessToken: () => getCloudAccessTokenFromSession(userPnIdentifier) || undefined
+  };
 }
 
-/**
- * Select opaque mailbox message_append hints for an open thread.
- * Durable throughway payloads strip from/to — prefer connectionId match.
- * Exported for unit falsification of the legacy from/to-only filter.
- */
-export function filterMailboxHintsForPeer(
-  hints: Message[],
-  opts: {
-    userPnIdentifier: string;
-    participantPnIdentifier: string;
-    connectionId?: string;
+/** Promote sender outbox into own Sheets + rebuild peer throughway. */
+export async function promoteSenderOutbox(userPnIdentifier: string): Promise<void> {
+  if (!isDmIdentityReady()) return;
+  const opts = await promoteOpts(userPnIdentifier);
+  const result = await promoteLocalOutbox(opts);
+  if (result.errors.length && import.meta.env.DEV) {
+    console.warn('[outbox] promote errors', result.errors);
   }
-): Message[] {
-  const { userPnIdentifier, participantPnIdentifier, connectionId } = opts;
-  return hints
-    .filter((m) => {
-      if (connectionId && m.connectionId) {
-        return m.connectionId === connectionId;
-      }
-      if (m.fromPnIdentifier && m.toPnIdentifier) {
-        return (
-          (m.fromPnIdentifier === participantPnIdentifier &&
-            m.toPnIdentifier === userPnIdentifier) ||
-          (m.fromPnIdentifier === userPnIdentifier &&
-            m.toPnIdentifier === participantPnIdentifier)
-        );
-      }
-      if (m.threadId) {
-        return (
-          m.threadId.includes(userPnIdentifier) &&
-          m.threadId.includes(participantPnIdentifier)
-        );
-      }
-      return false;
-    })
-    .map((m) => {
-      if (m.fromPnIdentifier && m.toPnIdentifier) return m;
-      const role = String(m.role || 'recipient');
-      return {
-        ...m,
-        fromPnIdentifier:
-          role === 'sender' ? userPnIdentifier : participantPnIdentifier,
-        toPnIdentifier:
-          role === 'sender' ? participantPnIdentifier : userPnIdentifier
-      };
-    });
-}
-
-/**
- * Legacy from/to-only filter (pre-opaque throughway). Kept only so tests can
- * prove it drops sanitized mailbox jobs.
- */
-export function filterMailboxHintsByFromToLegacy(
-  hints: Message[],
-  userPnIdentifier: string,
-  participantPnIdentifier: string
-): Message[] {
-  return hints.filter(
-    (m) =>
-      (m.fromPnIdentifier === participantPnIdentifier &&
-        m.toPnIdentifier === userPnIdentifier) ||
-      (m.fromPnIdentifier === userPnIdentifier &&
-        m.toPnIdentifier === participantPnIdentifier)
-  );
 }
 
 /**
@@ -657,7 +547,6 @@ export async function getConversationMessages(
       }
     }
 
-    const mailboxHints = await loadMailboxMessageHints(userPnIdentifier);
     const recovery = await resolveRecoveryForDecrypt(
       userPnIdentifier,
       participantPnIdentifier,
@@ -671,15 +560,8 @@ export async function getConversationMessages(
         .get(userPnIdentifier)
         ?.find((e) => e.participantPnIdentifier === participantPnIdentifier)?.connectionId;
 
-    const mailboxForPeer = filterMailboxHintsForPeer(mailboxHints, {
-      userPnIdentifier,
-      participantPnIdentifier,
-      connectionId: effectiveConnectionId
-    });
-    const mergedRaw = mergeMessagesById(raw, mailboxForPeer);
-
     const messages: Message[] = await Promise.all(
-      mergedRaw.map(async (row: Message & { encryptedContent?: string; cryptoVersion?: number }) => {
+      raw.map(async (row: Message & { encryptedContent?: string; cryptoVersion?: number }) => {
         const enc = row.encryptedContent || row.content || '';
         let content = '';
         if (effectiveConnectionId && enc) {
@@ -761,7 +643,6 @@ export async function sendMessage(
   }
 
   const encryptedContent = await encryptOutgoingMessage(content, connId, recovery);
-  const identity = getDmIdentity();
   const messageId = `msg_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`;
   const timestamp = new Date().toISOString();
   const threadId = [fromPnIdentifier, toPnIdentifier].sort().join('_');
@@ -799,11 +680,7 @@ export async function sendMessage(
   }
 
   // Commit first (local sealed outbox = durable SoT). API fan-out is throughway only.
-  const sealSession = {
-    sessionId: fromPnIdentifier,
-    pnName: identity.pnName || 'browser-outbox',
-    passcode: identity.mlKemSecretKey
-  };
+  const sealSession = sealSessionForOutbox(fromPnIdentifier);
   const outbox: OutboxRecord = createOutboxRecord({
     outboxId: messageId,
     kind: 'message_append',
@@ -848,11 +725,15 @@ export async function sendMessage(
     }
 
     const result = await response.json();
-    await upsertLocalOutboxRecord(fromPnIdentifier, sealSession, {
+    const enqueued: OutboxRecord = {
       ...outbox,
       status: 'enqueued',
       updatedAt: new Date().toISOString()
-    });
+    };
+    await upsertLocalOutboxRecord(fromPnIdentifier, sealSession, enqueued);
+
+    // Own Sheets materialize — conversation GET reads Sheets only.
+    await promoteOutboxRecord(await promoteOpts(fromPnIdentifier), enqueued);
 
     const message = {
       ...(result.message || messagePayload),
@@ -878,63 +759,6 @@ export async function sendMessage(
   } catch (error) {
     console.error('Failed to send message:', error);
     throw error;
-  }
-}
-
-/** Rebuild throughway jobs from local outbox if Railway wiped them. */
-export async function reconcileSenderOutboxFanout(userPnIdentifier: string): Promise<void> {
-  if (!isDmIdentityReady()) return;
-  const identity = getDmIdentity();
-  const session = PNOAuthService.loadSession();
-  if (!session?.accessToken) return;
-  const sealSession = {
-    sessionId: userPnIdentifier,
-    pnName: identity.pnName || 'browser-outbox',
-    passcode: identity.mlKemSecretKey
-  };
-  const { loadLocalOutbox } = await import('@par-noir/device-cloud-credentials');
-  const records = await loadLocalOutbox(userPnIdentifier, sealSession);
-  for (const record of records) {
-    if (record.status === 'materialized') continue;
-    for (const target of record.fanout) {
-      const messageId =
-        typeof record.payload.messageId === 'string' ? record.payload.messageId : undefined;
-      const routeKey = target.routeKey;
-      if (!routeKey || !/^[a-f0-9]{64}$/i.test(routeKey)) continue;
-      const lookup = await lookupMailboxThroughway({
-        apiBaseUrl: API_ENDPOINT,
-        authToken: session.accessToken,
-        identityId: userPnIdentifier,
-        routeKey,
-        jobType: target.jobType,
-        messageId
-      }).catch(() => ({ found: false, pending: false }));
-      if (lookup.pending) continue;
-      const payload =
-        target.jobType === 'message_append'
-          ? {
-              ...record.payload,
-              role: 'recipient',
-              read: false,
-              // Strip clear graph before throughway persist (server also sanitizes).
-              fromPnIdentifier: undefined,
-              toPnIdentifier: undefined
-            }
-          : { ...record.payload, fromPnIdentifier: undefined, toPnIdentifier: undefined };
-      await enqueueMailboxThroughway({
-        apiBaseUrl: API_ENDPOINT,
-        authToken: session.accessToken,
-        identityId: userPnIdentifier,
-        routeKey,
-        jobType: target.jobType,
-        payload
-      }).catch(() => undefined);
-    }
-    await upsertLocalOutboxRecord(userPnIdentifier, sealSession, {
-      ...record,
-      status: 'enqueued',
-      updatedAt: new Date().toISOString()
-    });
   }
 }
 
