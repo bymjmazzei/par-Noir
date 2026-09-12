@@ -283,14 +283,29 @@ export async function getGroupChatKey(
   userPn: string,
   record: GroupRecord
 ): Promise<string> {
-  const { groupId, ownerPnIdentifier, wrappedChatKey, memberPnIdentifier } = record;
-  if (memberPnIdentifier === ownerPnIdentifier) {
+  let { groupId, ownerPnIdentifier, wrappedChatKey, memberPnIdentifier } = record;
+  if (!wrappedChatKey) {
+    const groups = await listGroups(userPn);
+    const row = groups.find(
+      (g) => g.groupId === groupId && g.memberPnIdentifier === userPn
+    );
+    if (!row?.wrappedChatKey) {
+      throw new Error('Group chat key missing. Re-open the group after unlocking.');
+    }
+    wrappedChatKey = row.wrappedChatKey;
+    ownerPnIdentifier = row.ownerPnIdentifier || ownerPnIdentifier;
+    memberPnIdentifier = row.memberPnIdentifier || memberPnIdentifier || userPn;
+  }
+  if (memberPnIdentifier === ownerPnIdentifier || userPn === ownerPnIdentifier) {
     const cached = getGroupChatKeyCache().get(groupId);
     if (cached) return cached;
     const { mlKemSecretKey } = getDmIdentity();
     return unwrapChatKeyForOwner(wrappedChatKey, mlKemSecretKey, groupId);
   }
-  const { connectionId, kemCiphertext, wrappedMessageRootKey } = await getDmThreadToOwner(userPn, ownerPnIdentifier);
+  const { connectionId, kemCiphertext, wrappedMessageRootKey } = await getDmThreadToOwner(
+    userPn,
+    ownerPnIdentifier
+  );
   if (!connectionId) {
     throw new Error('No encrypted session with group owner. Connect first.');
   }

@@ -18,8 +18,8 @@ const ROOT = resolve(scriptDir, '../../..');
 const OUT = resolve(ROOT, '.local/ux-playwright/messaging-qa');
 mkdirSync(OUT, { recursive: true });
 
-const MARKER_A = `grp-a-${Date.now().toString(36)}`;
-const MARKER_B = `grp-b-${Date.now().toString(36)}`;
+const MARKER_A = `gmsg-a-${Date.now().toString(36)}`;
+const MARKER_B = `gmsg-b-${Date.now().toString(36)}`;
 
 function slog(...a) {
   process.stderr.write(a.join(' ') + '\n');
@@ -188,7 +188,7 @@ try {
     report.notes.push('BLOCKED: New group modal not open');
     throw new Error(report.notes[0]);
   }
-  const title = `QA ${MARKER_A}`;
+  const title = `QA Group ${Date.now().toString(36)}`;
   await titleInput.fill(title);
 
   const checks = pageA.locator('input[type="checkbox"]');
@@ -229,14 +229,10 @@ try {
     await openInbox(pageA);
     const groupRowA = pageA
       .getByRole('button')
-      .filter({ hasText: new RegExp(title.slice(0, 12), 'i') })
+      .filter({ hasText: new RegExp(title.slice(0, 16).replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i') })
       .first();
     if (await groupRowA.isVisible().catch(() => false)) await groupRowA.click();
-    else {
-      const any = pageA.locator('button').filter({ hasText: new RegExp(MARKER_A, 'i') }).first();
-      if (await any.isVisible().catch(() => false)) await any.click();
-      else throw new Error('Group thread not open after create and not in A inbox');
-    }
+    else throw new Error('Group thread not open after create and not in A inbox');
     await pageA.waitForTimeout(1500);
     composerA = pageA.getByPlaceholder(/Type a message/i).first();
   }
@@ -270,34 +266,39 @@ try {
   await pageA.waitForTimeout(4000);
   await softDrain(pageB);
   await pageB.waitForTimeout(2500);
-  await openInbox(pageB);
-  const groupRowB = pageB
-    .getByRole('button')
-    .filter({ hasText: new RegExp(title.slice(0, 12), 'i') })
-    .first();
-  if (await groupRowB.isVisible().catch(() => false)) await groupRowB.click();
-  else {
-    const any = pageB.locator('button').filter({ hasText: new RegExp(MARKER_A, 'i') }).first();
-    if (await any.isVisible().catch(() => false)) await any.click();
+
+  async function openGroupThread(page) {
+    await openInbox(page);
+    const row = page
+      .getByRole('button')
+      .filter({ hasText: new RegExp(title.slice(0, 16).replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i') })
+      .first();
+    if (await row.isVisible().catch(() => false)) {
+      await row.click({ force: true });
+    }
+    await page.waitForTimeout(1500);
+    return page.getByPlaceholder(/Type a message/i).first();
   }
-  await pageB.waitForTimeout(3000);
-  // Poll for plaintext up to ~45s (mailbox drain + promote)
+
+  let composerB = await openGroupThread(pageB);
+  // Poll for plaintext inside an open thread (composer must be present).
   let bHas = false;
   for (let i = 0; i < 15; i++) {
+    if (!(await composerB.isVisible().catch(() => false))) {
+      composerB = await openGroupThread(pageB);
+    }
     bHas = await bodyHas(pageB, new RegExp(MARKER_A));
-    if (bHas) break;
+    if (bHas && (await composerB.isVisible().catch(() => false))) break;
     await softDrain(pageB);
-    await openInbox(pageB);
-    if (await groupRowB.isVisible().catch(() => false)) await groupRowB.click().catch(() => {});
+    composerB = await openGroupThread(pageB);
     await pageB.waitForTimeout(2000);
   }
   report.notes.push(`B_has_A_marker=${bHas}`);
-  if (!bHas) {
+  if (!bHas || !(await composerB.isVisible().catch(() => false))) {
     await pageB.screenshot({ path: resolve(OUT, 'group-qa-b-missing.png') }).catch(() => {});
-    throw new Error('B did not show A group plaintext');
+    throw new Error('B did not show A group plaintext in open thread');
   }
 
-  const composerB = pageB.getByPlaceholder(/Type a message/i).first();
   await composerB.fill(MARKER_B);
   const sendWaitB = pageB
     .waitForResponse(
@@ -323,19 +324,14 @@ try {
   await pageB.waitForTimeout(4000);
   let aHas = false;
   for (let i = 0; i < 15; i++) {
+    const composerStill = pageA.getByPlaceholder(/Type a message/i).first();
+    if (!(await composerStill.isVisible().catch(() => false))) {
+      await openGroupThread(pageA);
+    }
     aHas = await bodyHas(pageA, new RegExp(MARKER_B));
     if (aHas) break;
     await softDrain(pageA);
-    await openInbox(pageA);
-    const rowA = pageA
-      .getByRole('button')
-      .filter({ hasText: new RegExp(title.slice(0, 12), 'i') })
-      .first();
-    if (await rowA.isVisible().catch(() => false)) await rowA.click().catch(() => {});
-    else {
-      const any = pageA.locator('button').filter({ hasText: new RegExp(MARKER_A, 'i') }).first();
-      if (await any.isVisible().catch(() => false)) await any.click().catch(() => {});
-    }
+    await openGroupThread(pageA);
     await pageA.waitForTimeout(2000);
   }
   report.notes.push(`A_has_B_marker=${aHas}`);

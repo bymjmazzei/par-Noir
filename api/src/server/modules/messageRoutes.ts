@@ -178,6 +178,10 @@ export function setupMessageRoutes(app: express.Application, deps: MessageRouteD
 
           const { GroupSheetsService } = await import('./groupSheetsService');
           let groupTitleById = new Map<string, string>();
+          let groupSelfById = new Map<
+            string,
+            { wrappedChatKey: string; accessRole: 'readWrite' | 'readOnly'; ownerPnIdentifier: string }
+          >();
           try {
             const groupsSheetId = driveIndex.sheetIds[PN_DRIVE_SHEET_KEYS.GROUPS];
             const groupRows = await GroupSheetsService.listGroupsForUser(
@@ -189,6 +193,13 @@ export function setupMessageRoutes(app: express.Application, deps: MessageRouteD
             for (const g of groupRows) {
               if (!groupTitleById.has(g.groupId)) {
                 groupTitleById.set(g.groupId, g.title);
+              }
+              if (g.memberPnIdentifier === pnIdentifier && !groupSelfById.has(g.groupId)) {
+                groupSelfById.set(g.groupId, {
+                  wrappedChatKey: g.wrappedChatKey || '',
+                  accessRole: g.accessRole === 'readOnly' ? 'readOnly' : 'readWrite',
+                  ownerPnIdentifier: g.ownerPnIdentifier
+                });
               }
             }
           } catch {
@@ -209,6 +220,8 @@ export function setupMessageRoutes(app: express.Application, deps: MessageRouteD
                 : undefined;
 
               const isGroup = conv.threadType === 'group';
+              const gid = conv.groupId || conv.participantPnIdentifier;
+              const selfRow = isGroup ? groupSelfById.get(gid) : undefined;
               return {
                 threadType: conv.threadType || 'dm',
                 otherUserPnIdentifier: conv.participantPnIdentifier,
@@ -225,9 +238,12 @@ export function setupMessageRoutes(app: express.Application, deps: MessageRouteD
                   ? undefined
                   : normalizeChannelClientId(conv.channelClientId),
                 ...(isGroup && {
-                  groupId: conv.groupId || conv.participantPnIdentifier,
-                  ownerPnIdentifier: conv.ownerPnIdentifier || conv.connectionId,
-                  groupTitle: groupTitleById.get(conv.groupId || conv.participantPnIdentifier) || 'Group',
+                  groupId: gid,
+                  ownerPnIdentifier:
+                    selfRow?.ownerPnIdentifier || conv.ownerPnIdentifier || conv.connectionId,
+                  groupTitle: groupTitleById.get(gid) || 'Group',
+                  wrappedChatKey: selfRow?.wrappedChatKey || '',
+                  accessRole: selfRow?.accessRole || 'readWrite',
                 }),
               };
             });
