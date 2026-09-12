@@ -622,9 +622,9 @@ export function setupGroupRoutes(app: express.Application, deps: GroupRouteDeps)
               'Group roster has no other members to deliver to. Re-open the group or re-add members so the local roster is complete.'
           });
         }
-        await Promise.all(
+        const delivered = await Promise.all(
           peers.map(async (peerPn) => {
-            await enqueueSocialJob({
+            const ok = await enqueueSocialJob({
               jobType: 'group_message_append',
               peerPn,
               requestId: `gmsg:${messageId}:${peerPn}`,
@@ -644,8 +644,17 @@ export function setupGroupRoutes(app: express.Application, deps: GroupRouteDeps)
                 role: 'recipient'
               }
             });
+            return ok;
           })
         );
+        const deliveredCount = delivered.filter(Boolean).length;
+        if (deliveredCount === 0) {
+          return res.status(502).json({
+            error: 'group_fanout_failed',
+            message:
+              'Could not enqueue the group message to any peer mailbox. Peers may need to unlock messaging once to claim a route.'
+          });
+        }
 
         emitRealtime(senderPn, 'new_message', { groupId, messageId, throughway: true });
         for (const peerPn of peers) {
@@ -656,6 +665,8 @@ export function setupGroupRoutes(app: express.Application, deps: GroupRouteDeps)
         return res.json({
           success: true,
           delivery: 'throughway',
+          deliveredPeers: deliveredCount,
+          peerCount: peers.length,
           message: {
             messageId,
             fromPnIdentifier: senderPn,

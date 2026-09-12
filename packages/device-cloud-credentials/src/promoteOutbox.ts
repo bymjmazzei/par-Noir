@@ -46,10 +46,11 @@ function applyPathFor(kind: OutboxKind): string | null {
 
 function stripGraph(payload: Record<string, unknown>): Record<string, unknown> {
   const {
-    fromPnIdentifier: _f,
     toPnIdentifier: _t,
     ...rest
   } = payload;
+  // Keep fromPnIdentifier for group_message_append — apply-inbound requires it for
+  // absoluteFrom rows. DM message_append can resolve sender from the sealed envelope.
   return rest;
 }
 
