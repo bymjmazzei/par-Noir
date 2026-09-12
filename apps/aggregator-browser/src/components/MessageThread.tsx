@@ -383,16 +383,16 @@ export function MessageThread({
       });
   }, [realtimeRefresh]);
 
-  // After mailbox message_append apply+ack, hints are gone — must reload Drive conversation.
+  // After mailbox apply+ack (DM or group), reload Drive conversation.
   useEffect(() => {
-    if (!userState.isUnlocked || !userState.pnIdentifier || isGroup) return;
+    if (!userState.isUnlocked || !userState.pnIdentifier) return;
     const onApplied = () => {
       if (isPollingRef.current || isMessagingRateLimited() || sendingRef.current) return;
       void loadMessagesRef.current(false, false);
     };
     window.addEventListener(MESSAGING_MAILBOX_APPLIED_EVENT, onApplied);
     return () => window.removeEventListener(MESSAGING_MAILBOX_APPLIED_EVENT, onApplied);
-  }, [userState.isUnlocked, userState.pnIdentifier, isGroup, participantPnIdentifier]);
+  }, [userState.isUnlocked, userState.pnIdentifier, isGroup, participantPnIdentifier, groupId]);
 
   // Auto-scroll to bottom on first load; follow new messages when already near bottom.
   useEffect(() => {

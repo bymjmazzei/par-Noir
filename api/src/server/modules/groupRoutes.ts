@@ -324,12 +324,32 @@ export function setupGroupRoutes(app: express.Application, deps: GroupRouteDeps)
           return res.status(404).json({ error: 'Group conversation not found on owner Drive' });
         }
 
+        const roster = await GroupSheetsService.getGroupMembers(
+          token,
+          sheetId,
+          groupId,
+          ownerPnIdentifier,
+          accountId
+        );
+        const sealedMembers = roster.map((m) => ({
+          memberPnIdentifier: m.memberPnIdentifier,
+          wrappedChatKey: m.wrappedChatKey,
+          accessRole: m.accessRole
+        }));
+        if (!sealedMembers.some((m) => m.memberPnIdentifier === memberPnIdentifier)) {
+          sealedMembers.push({
+            memberPnIdentifier,
+            wrappedChatKey,
+            accessRole: role
+          });
+        }
+
         const { enqueueSocialJob } = await import('./socialRail');
         const delivered = await enqueueSocialJob({
           jobType: 'group_inbox_update',
           peerPn: memberPnIdentifier,
           requestId: `member:${groupId}:${memberPnIdentifier}`,
-          sealed: { ownerPnIdentifier },
+          sealed: { ownerPnIdentifier, members: sealedMembers },
           extra: {
             groupId,
             title,
@@ -339,6 +359,28 @@ export function setupGroupRoutes(app: express.Application, deps: GroupRouteDeps)
             preview: `Added to group: ${title}`
           }
         });
+
+        // Existing members need the new row for fanout.
+        await Promise.all(
+          sealedMembers
+            .filter((m) => m.memberPnIdentifier !== ownerPnIdentifier && m.memberPnIdentifier !== memberPnIdentifier)
+            .map((m) =>
+              enqueueSocialJob({
+                jobType: 'group_inbox_update',
+                peerPn: m.memberPnIdentifier,
+                requestId: `roster:${groupId}:${memberPnIdentifier}:${m.memberPnIdentifier}`,
+                sealed: { ownerPnIdentifier, members: sealedMembers },
+                extra: {
+                  groupId,
+                  title,
+                  createdAt,
+                  accessRole: m.accessRole,
+                  wrappedChatKey: m.wrappedChatKey,
+                  preview: `Member added: ${title}`
+                }
+              })
+            )
+        );
 
         return res.json({ success: true, delivered });
       } catch (error: any) {
@@ -519,8 +561,9 @@ export function setupGroupRoutes(app: express.Application, deps: GroupRouteDeps)
           ctx.pnIdentifier,
           ctx.accountId
         );
-        const myRows = groups.filter((g) => g.groupId === groupId);
-        const myRow = myRows.find((g) => g.memberPnIdentifier === senderPn) || myRows[0];
+        const myRow =
+          groups.find((g) => g.groupId === groupId && g.memberPnIdentifier === senderPn) ||
+          groups.find((g) => g.groupId === groupId);
         if (!myRow) {
           return res.status(403).json({ error: 'Not a member of this group' });
         }
@@ -534,8 +577,16 @@ export function setupGroupRoutes(app: express.Application, deps: GroupRouteDeps)
         const timestamp =
           (typeof bodyTimestamp === 'string' && bodyTimestamp) || new Date().toISOString();
 
+        // Full roster (not listGroupsForUser) — members need other members for fanout.
+        const roster = await GroupSheetsService.listGroupRoster(
+          ctx.token,
+          ctx.sheetId(PN_DRIVE_SHEET_KEYS.GROUPS),
+          groupId,
+          ctx.pnIdentifier,
+          ctx.accountId
+        );
         const memberPns = [
-          ...new Set(myRows.map((r) => r.memberPnIdentifier).filter(Boolean))
+          ...new Set(roster.map((r) => r.memberPnIdentifier).filter(Boolean))
         ];
 
         const peers = memberPns.filter((pn) => pn !== senderPn);
@@ -543,6 +594,13 @@ export function setupGroupRoutes(app: express.Application, deps: GroupRouteDeps)
           for (const pn of req.body.recipientPnIdentifiers) {
             if (typeof pn === 'string' && pn && pn !== senderPn) peers.push(pn);
           }
+        }
+        if (peers.length === 0) {
+          return res.status(400).json({
+            error: 'no_group_peers',
+            message:
+              'Group roster has no other members to deliver to. Re-open the group or re-add members so the local roster is complete.'
+          });
         }
         await Promise.all(
           peers.map(async (peerPn) => {
@@ -571,6 +629,7 @@ export function setupGroupRoutes(app: express.Application, deps: GroupRouteDeps)
 
         emitRealtime(senderPn, 'new_message', { groupId, messageId, throughway: true });
         for (const peerPn of peers) {
+          emitRealtime(peerPn, 'new_message', { groupId, messageId, throughway: true });
           emitRealtime(peerPn, 'mailbox_pending', { jobType: 'group_message_append', messageId });
         }
 
@@ -595,6 +654,53 @@ export function setupGroupRoutes(app: express.Application, deps: GroupRouteDeps)
         console.error('Error sending group message:', error);
         return res.status(500).json({
           error: 'Failed to send group message',
+          error_description: safeClientErrorMessage(error, NODE_ENV === 'production')
+        });
+      }
+    });
+
+    // GET /api/groups/:groupId/roster — full member list for fanout (caller must be a member).
+    app.get('/api/groups/:groupId/roster', async (req, res) => {
+      try {
+        const { groupId } = req.params;
+        const userPnIdentifier = req.query.userPnIdentifier as string;
+        if (!userPnIdentifier || !groupId) {
+          return res.status(400).json({ error: 'userPnIdentifier and groupId are required' });
+        }
+        const { GroupSheetsService } = await import('./groupSheetsService');
+        const { requireOwnerDriveContextFromReq, DriveIndexError } = await import('./ownerDriveToken');
+        const { PN_DRIVE_SHEET_KEYS } = await import('./pnDriveIndex');
+        let ctx;
+        try {
+          ctx = await requireOwnerDriveContextFromReq(req, userPnIdentifier);
+        } catch (error: unknown) {
+          if (error instanceof DriveIndexError) {
+            return res.json({ members: [] });
+          }
+          throw error;
+        }
+        const roster = await GroupSheetsService.listGroupRoster(
+          ctx.token,
+          ctx.sheetId(PN_DRIVE_SHEET_KEYS.GROUPS),
+          groupId,
+          ctx.pnIdentifier,
+          ctx.accountId
+        );
+        if (roster.length === 0) {
+          return res.status(403).json({ error: 'Not a member of this group' });
+        }
+        return res.json({
+          members: roster.map((r) => ({
+            memberPnIdentifier: r.memberPnIdentifier,
+            ownerPnIdentifier: r.ownerPnIdentifier,
+            accessRole: r.accessRole,
+            title: r.title
+          }))
+        });
+      } catch (error: any) {
+        console.error('Error listing group roster:', error);
+        return res.status(500).json({
+          error: 'Failed to list group roster',
           error_description: safeClientErrorMessage(error, NODE_ENV === 'production')
         });
       }
@@ -805,6 +911,11 @@ export function setupGroupRoutes(app: express.Application, deps: GroupRouteDeps)
               : role === 'sender'
                 ? pnIdentifier
                 : '';
+          if (!fromPn) {
+            return res.status(400).json({
+              error: 'fromPnIdentifier is required for group_message_append'
+            });
+          }
 
           await MessageSheetsService.appendMessage(
             token,
@@ -829,7 +940,8 @@ export function setupGroupRoutes(app: express.Application, deps: GroupRouteDeps)
             '',
             '',
             pnIdentifier,
-            accountId
+            accountId,
+            { absoluteFrom: true }
           );
 
           const { invalidateGroupFileMtime } = await import('./messagingReadCache');

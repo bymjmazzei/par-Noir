@@ -544,12 +544,15 @@ export class MessageSheetsService {
     connectionId: string,
     sharedSecret: string, // Decrypted shared secret
     userPnIdentifier: string,
-    accountId: string | undefined
+    accountId: string | undefined,
+    options?: { absoluteFrom?: boolean }
   ): Promise<void> {
     if (await isPortableStorageProvider(userPnIdentifier)) {
       const portableMessage = {
         ...message,
-        fromPnIdentifier: relativeFromMarker(message.fromPnIdentifier, userPnIdentifier),
+        fromPnIdentifier: options?.absoluteFrom
+          ? message.fromPnIdentifier
+          : relativeFromMarker(message.fromPnIdentifier, userPnIdentifier),
       };
       await MsgPortable.appendMessagePortable(userPnIdentifier, spreadsheetId, portableMessage as Message, accountId);
       return;
@@ -585,7 +588,9 @@ export class MessageSheetsService {
       const fromCell =
         message.fromPnIdentifier === 'system'
           ? 'system'
-          : relativeFromMarker(message.fromPnIdentifier, userPnIdentifier);
+          : options?.absoluteFrom
+            ? message.fromPnIdentifier
+            : relativeFromMarker(message.fromPnIdentifier, userPnIdentifier);
 
       const auth = GoogleOAuth2Helper.createClient(token, userPnIdentifier, accountId);
       const sheets = google.sheets({ version: 'v4', auth });

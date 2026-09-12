@@ -56,6 +56,20 @@ export async function listGroupsForUserPortable(
     .filter((r) => r.memberPnIdentifier === userPnIdentifier || r.ownerPnIdentifier === userPnIdentifier);
 }
 
+/** Full roster for one group (all member rows), if caller is a member. */
+export async function listGroupRosterPortable(
+  userPnIdentifier: string,
+  groupId: string,
+  accountId?: string
+): Promise<GroupRecord[]> {
+  const rows = await portableTableScan<Record<string, unknown>>(userPnIdentifier, GROUPS_SCHEMA, accountId);
+  const forGroup = rows.map(rowToRecord).filter((r) => r.groupId === groupId);
+  const amMember = forGroup.some(
+    (r) => r.memberPnIdentifier === userPnIdentifier || r.ownerPnIdentifier === userPnIdentifier
+  );
+  return amMember ? forGroup : [];
+}
+
 export async function getMemberRowPortable(
   userPnIdentifier: string,
   groupId: string,
@@ -75,7 +89,7 @@ export async function getGroupMembersPortable(
   groupId: string,
   accountId?: string
 ): Promise<GroupMemberInput[]> {
-  const rows = await listGroupsForUserPortable(userPnIdentifier, accountId);
+  const rows = await listGroupRosterPortable(userPnIdentifier, groupId, accountId);
   const byMember = new Map<string, GroupMemberInput>();
   for (const row of rows.filter((r) => r.groupId === groupId)) {
     byMember.set(row.memberPnIdentifier, {

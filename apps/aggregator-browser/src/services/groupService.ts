@@ -70,6 +70,23 @@ export async function listGroups(userPnIdentifier: string): Promise<GroupRecord[
   return data.groups || [];
 }
 
+/** Full group roster (all members) — required for send fanout; listGroups alone is insufficient. */
+export async function listGroupRoster(
+  userPnIdentifier: string,
+  groupId: string
+): Promise<Array<{ memberPnIdentifier: string; accessRole: GroupAccessRole }>> {
+  const params = new URLSearchParams({ userPnIdentifier });
+  const res = await fetch(
+    `${API_ENDPOINT}/api/groups/${encodeURIComponent(groupId)}/roster?${params}`,
+    { headers: await getAuthHeaders() }
+  );
+  if (!res.ok) {
+    throw new Error('Failed to load group roster');
+  }
+  const data = await res.json();
+  return Array.isArray(data.members) ? data.members : [];
+}
+
 export async function createGroup(
   ownerPnIdentifier: string,
   title: string,
@@ -347,15 +364,17 @@ export async function sendGroupMessage(
   const messageId = `gmsg_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`;
   const timestamp = new Date().toISOString();
 
-  const allGroups = await listGroups(userPn);
+  const roster = await listGroupRoster(userPn, groupId);
   const recipientPnIdentifiers = [
     ...new Set(
-      allGroups
-        .filter((g) => g.groupId === groupId)
-        .map((g) => g.memberPnIdentifier)
+      roster
+        .map((m) => m.memberPnIdentifier)
         .filter((pn) => pn && pn !== userPn)
     )
   ];
+  if (recipientPnIdentifiers.length === 0) {
+    throw new Error('Group has no other members to message');
+  }
 
   const routeKeys: string[] = [];
   try {

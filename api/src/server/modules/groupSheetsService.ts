@@ -163,6 +163,45 @@ export class GroupSheetsService {
       }));
   }
 
+  /**
+   * Full roster for one group on the caller's Groups sheet.
+   * Unlike listGroupsForUser, does not drop other members' rows — required for send fanout.
+   * Returns [] if the caller is not a member of the group.
+   */
+  static async listGroupRoster(
+    token: GoogleDriveToken,
+    spreadsheetId: string,
+    groupId: string,
+    userPnIdentifier: string,
+    accountId: string | undefined
+  ): Promise<GroupRecord[]> {
+    if (await isPortableStorageProvider(userPnIdentifier)) {
+      return GroupPortable.listGroupRosterPortable(userPnIdentifier, groupId, accountId);
+    }
+    const auth = GoogleOAuth2Helper.createClient(token, userPnIdentifier, accountId);
+    const sheets = google.sheets({ version: 'v4', auth });
+    const res = await sheets.spreadsheets.values.get({
+      spreadsheetId,
+      range: 'Groups!A2:H'
+    });
+    const rows = (res.data.values || [])
+      .filter((row) => row[0] === groupId)
+      .map((row) => ({
+        groupId: row[0] || '',
+        ownerPnIdentifier: row[1] || '',
+        title: row[2] || '',
+        createdAt: row[3] || '',
+        memberPnIdentifier: row[4] || '',
+        accessRole: (row[5] === 'readOnly' ? 'readOnly' : 'readWrite') as GroupAccessRole,
+        wrappedChatKey: row[6] || '',
+        conversationSpreadsheetId: row[7] || undefined
+      }));
+    const amMember = rows.some(
+      (r) => r.memberPnIdentifier === userPnIdentifier || r.ownerPnIdentifier === userPnIdentifier
+    );
+    return amMember ? rows : [];
+  }
+
   static async updateMemberAccessRole(
     token: GoogleDriveToken,
     spreadsheetId: string,
@@ -199,7 +238,7 @@ export class GroupSheetsService {
     return true;
   }
 
-  /** Unique members for a group from owner's groups sheet. */
+  /** Unique members for a group from the caller's groups sheet (full roster). */
   static async getGroupMembers(
     token: GoogleDriveToken,
     spreadsheetId: string,
@@ -207,10 +246,15 @@ export class GroupSheetsService {
     userPnIdentifier: string,
     accountId: string | undefined
   ): Promise<GroupMemberInput[]> {
-    const rows = await this.listGroupsForUser(token, spreadsheetId, userPnIdentifier, accountId);
+    const rows = await this.listGroupRoster(
+      token,
+      spreadsheetId,
+      groupId,
+      userPnIdentifier,
+      accountId
+    );
     const byMember = new Map<string, GroupMemberInput>();
     for (const row of rows) {
-      if (row.groupId !== groupId) continue;
       byMember.set(row.memberPnIdentifier, {
         memberPnIdentifier: row.memberPnIdentifier,
         accessRole: row.accessRole,
