@@ -185,6 +185,26 @@ export function setupGroupRoutes(app: express.Application, deps: GroupRouteDeps)
           accountId
         );
 
+        // Owner Inbox row — without this the group only exists in UI state until a
+        // peer-applied inbox update; leaving the thread makes the group disappear.
+        const ownerInboxSheetId = await MessageSheetsService.getOrCreateInboxSheet(
+          token,
+          messagesFolderId,
+          ownerPnIdentifier,
+          accountId
+        );
+        await MessageSheetsService.updateGroupInboxEntry(
+          token,
+          ownerInboxSheetId,
+          groupId,
+          ownerConvId,
+          ownerPnIdentifier,
+          createdAt,
+          ownerPnIdentifier,
+          accountId,
+          `Created group: ${title.trim()}`
+        );
+
         // Dual silo: each member creates their own conversation sheet on apply.
         const { enqueueSocialJob } = await import('./socialRail');
         await Promise.all(
@@ -917,6 +937,7 @@ export function setupGroupRoutes(app: express.Application, deps: GroupRouteDeps)
             });
           }
 
+          const appliedAt = String(timestamp || new Date().toISOString());
           await MessageSheetsService.appendMessage(
             token,
             convSheetId,
@@ -925,7 +946,7 @@ export function setupGroupRoutes(app: express.Application, deps: GroupRouteDeps)
               fromPnIdentifier: fromPn,
               toPnIdentifier: String(groupId),
               content: '',
-              timestamp: String(timestamp || new Date().toISOString()),
+              timestamp: appliedAt,
               read: role === 'sender',
               encryptedContent,
               cryptoVersion: 2 as const,
@@ -942,6 +963,34 @@ export function setupGroupRoutes(app: express.Application, deps: GroupRouteDeps)
             pnIdentifier,
             accountId,
             { absoluteFrom: true }
+          );
+
+          const messagesFolderId = await MessageSheetsService.getOrCreateMessagesFolder(
+            token,
+            metadataFolder.pnFolderId!,
+            pnIdentifier,
+            accountId
+          );
+          const inboxSheetId = await MessageSheetsService.getOrCreateInboxSheet(
+            token,
+            messagesFolderId,
+            pnIdentifier,
+            accountId
+          );
+          const ownerPn =
+            (typeof req.body?.ownerPnIdentifier === 'string' && req.body.ownerPnIdentifier) ||
+            ownRow.ownerPnIdentifier ||
+            pnIdentifier;
+          await MessageSheetsService.updateGroupInboxEntry(
+            token,
+            inboxSheetId,
+            String(groupId),
+            convSheetId,
+            String(ownerPn),
+            appliedAt,
+            pnIdentifier,
+            accountId,
+            role === 'sender' ? 'You: (encrypted)' : '(encrypted)'
           );
 
           const { invalidateGroupFileMtime } = await import('./messagingReadCache');

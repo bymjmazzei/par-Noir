@@ -4,7 +4,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { X } from 'lucide-react';
-import { getConnections, type Connection } from '../services/connectionService';
+import { getConnections, invalidateConnectionsCache, type Connection } from '../services/connectionService';
 import { createGroup } from '../services/groupService';
 import { isDmIdentityReady } from '../services/dmIdentitySession';
 import { requestMessagingReconnect } from '../services/messagingReconnect';
@@ -23,8 +23,10 @@ export function CreateGroupModal({ ownerPnIdentifier, onClose, onCreated }: Crea
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    // Drop stale empty cache after Disconnect/Accept so the picker is not blank for TTL.
+    invalidateConnectionsCache(ownerPnIdentifier);
     getConnections(ownerPnIdentifier)
-      .then((list) => setConnections(list))
+      .then((list) => setConnections(list.filter((c) => c.status === 'accepted')))
       .catch(() => setConnections([]));
   }, [ownerPnIdentifier]);
 

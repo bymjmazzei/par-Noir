@@ -142,6 +142,7 @@ export async function sendConnectionRequest(
           'Recipient inbox is not ready. Ask them to unlock messaging once, then Connect again.'
       );
     }
+    invalidateConnectionsCache(requesterPnIdentifier);
     return result.connection;
   } catch (error) {
     console.error('Failed to send connection request:', error);
@@ -234,6 +235,7 @@ export async function acceptConnectionRequest(
       }
       throw new Error(errorMessage);
     }
+    invalidateConnectionsCache(userPnIdentifier);
     try {
       await refreshMessagingInbox(userPnIdentifier);
     } catch {
@@ -277,6 +279,7 @@ export async function rejectConnectionRequest(
       }
       throw new Error(errorMessage);
     }
+    invalidateConnectionsCache(userPnIdentifier);
   } catch (error) {
     console.error('Failed to reject connection request:', error);
     throw error;
@@ -508,6 +511,7 @@ export async function removeConnection(
       const error = await response.json();
       throw new Error(error.error || 'Failed to remove connection');
     }
+    invalidateConnectionsCache(userPnIdentifier);
   } catch (error) {
     console.error('Failed to remove connection:', error);
     throw error;

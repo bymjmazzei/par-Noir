@@ -1,16 +1,17 @@
 #!/usr/bin/env node
 /**
- * Live group messaging QA (assumes messaging-a/b CDP unlocked + A↔B connected).
+ * Live group messaging QA (CDP messaging-a :9333 / messaging-b :9334).
+ *
+ * Reuses live sessions when Lock pN is present; otherwise unlocks via fixtures.
+ * Requires A↔B already connected (run ux-messaging-qa.mjs Connect phase first).
  *
  *   node apps/aggregator-browser/scripts/ux-messaging-group-qa.mjs
- *
- * Steps: A creates group with B → B drains → A sends → B sees plaintext →
- * B sends → A sees plaintext.
  */
 import { chromium } from 'playwright';
-import { writeFileSync, mkdirSync } from 'fs';
+import { writeFileSync, mkdirSync, readFileSync, existsSync } from 'fs';
 import { resolve, dirname } from 'path';
 import { fileURLToPath } from 'url';
+import { unlockViaPopup } from './ux-unlock-lib.mjs';
 
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(scriptDir, '../../..');
@@ -22,6 +23,24 @@ const MARKER_B = `grp-b-${Date.now().toString(36)}`;
 
 function slog(...a) {
   process.stderr.write(a.join(' ') + '\n');
+}
+
+function loadFixture(which) {
+  const dir = resolve(ROOT, `.local/${which}`);
+  const keysPath = resolve(dir, 'keys.env');
+  if (!existsSync(keysPath)) throw new Error(`Missing .local/${which}/keys.env`);
+  const keys = readFileSync(keysPath, 'utf8');
+  const PN_NAME = keys.match(/^PN_NAME=(.+)$/m)?.[1]?.trim();
+  const PASSCODE = keys.match(/^PASSCODE=(.+)$/m)?.[1]?.trim();
+  const fileName = keys.match(/^IDENTITY_FILE=(.+)$/m)?.[1]?.trim();
+  const candidates = [
+    fileName ? resolve(dir, fileName) : null,
+    resolve(dir, 'identity.pn'),
+    resolve(dir, 'live-created.pn'),
+  ].filter(Boolean);
+  const identityPath = candidates.find((p) => existsSync(p));
+  if (!identityPath || !PN_NAME || !PASSCODE) throw new Error(`Incomplete fixture ${which}`);
+  return { identityPath, PN_NAME, PASSCODE };
 }
 
 async function attach(port, origin) {
@@ -37,22 +56,94 @@ async function attach(port, origin) {
     }) ||
     context.pages()[0];
   if (!page) throw new Error(`No page on :${port}`);
+  if (!page.url().includes(new URL(origin).host)) {
+    await page.goto(origin, { waitUntil: 'domcontentloaded', timeout: 60_000 });
+  }
   return { browser, page };
 }
 
-async function clickTab(page, name) {
-  const tab = page.getByRole('button', { name: new RegExp(`^${name}$`, 'i') }).first();
-  if (await tab.isVisible().catch(() => false)) {
-    await tab.click();
-    await page.waitForTimeout(1200);
+async function isLive(page) {
+  const lock = await page.getByTitle('Lock pN').first().isVisible().catch(() => false);
+  const pn = await page.evaluate(() => {
+    try {
+      const raw = sessionStorage.getItem('pn_oauth_session');
+      return raw ? JSON.parse(raw).pnIdentifier || null : null;
+    } catch {
+      return null;
+    }
+  });
+  return !!(lock && pn);
+}
+
+async function ensureUnlocked(page, creds, label) {
+  if (await isLive(page)) {
+    slog(`[${label}] session live — skip unlock`);
+    return;
+  }
+  slog(`[${label}] unlock…`);
+  const unlockClick = async (p) => {
+    const byTitle = p.getByTitle('Unlock pN');
+    if (await byTitle.first().isVisible().catch(() => false)) {
+      await byTitle.first().click();
+      return;
+    }
+    await p.getByRole('button', { name: /Unlock pN/i }).first().click();
+  };
+  await unlockViaPopup(page, unlockClick, creds);
+  const deadline = Date.now() + 60_000;
+  while (Date.now() < deadline) {
+    if (await isLive(page)) return;
+    await page.waitForTimeout(1000);
+  }
+  throw new Error(`${label} unlock did not establish Lock pN + session`);
+}
+
+/**
+ * Messaging silo (MESSAGING_ONLY) has no bottom nav — Inbox is the root.
+ * Leave any open thread first so the list + "New group" chrome is visible.
+ */
+async function dismissOverlays(page) {
+  for (let i = 0; i < 6; i++) {
+    const overlay = page.locator('.fixed.inset-0').first();
+    if (!(await overlay.isVisible().catch(() => false))) break;
+    const heading = page.getByRole('heading', { name: /^New group$/i });
+    if (await heading.isVisible().catch(() => false)) {
+      await overlay.locator('button').first().click({ force: true }).catch(() => {});
+    } else {
+      await page.keyboard.press('Escape').catch(() => {});
+    }
+    await page.waitForTimeout(350);
+  }
+}
+
+async function openInbox(page) {
+  await dismissOverlays(page);
+  for (let i = 0; i < 4; i++) {
+    const back = page.getByLabel('Back').first();
+    if (!(await back.isVisible().catch(() => false))) break;
+    await back.click({ force: true }).catch(() => {});
+    await page.waitForTimeout(600);
+  }
+  await dismissOverlays(page);
+  const messagesIcon = page.getByLabel('Messages').first();
+  if (await messagesIcon.isVisible().catch(() => false)) {
+    await messagesIcon.click({ force: true });
+    await page.waitForTimeout(800);
   }
 }
 
 async function softDrain(page) {
-  await clickTab(page, 'Requests');
-  await page.waitForTimeout(2500);
-  await clickTab(page, 'Messages');
-  await page.waitForTimeout(1500);
+  await openInbox(page);
+  const requests = page.getByLabel('Requests').first();
+  if (await requests.isVisible().catch(() => false)) {
+    await requests.click({ force: true });
+    await page.waitForTimeout(2500);
+  }
+  const messages = page.getByLabel('Messages').first();
+  if (await messages.isVisible().catch(() => false)) {
+    await messages.click({ force: true });
+    await page.waitForTimeout(1500);
+  }
 }
 
 async function bodyHas(page, re) {
@@ -60,103 +151,115 @@ async function bodyHas(page, re) {
   return re.test(t);
 }
 
-const report = { generatedAt: new Date().toISOString(), markerA: MARKER_A, markerB: MARKER_B, notes: [], ok: false };
+const report = {
+  generatedAt: new Date().toISOString(),
+  markerA: MARKER_A,
+  markerB: MARKER_B,
+  notes: [],
+  ok: false,
+};
 
 try {
+  const fixtureA = loadFixture('test-pn');
+  const fixtureB = loadFixture('test-pn-2');
   const a = await attach(9333, 'https://messaging.parnoir.com/');
   const b = await attach(9334, 'https://messaging.parnoir.com/');
   const pageA = a.page;
   const pageB = b.page;
 
+  await ensureUnlocked(pageA, fixtureA, 'A');
+  await ensureUnlocked(pageB, fixtureB, 'B');
+
   await softDrain(pageA);
   await softDrain(pageB);
 
-  // Open New group from messaging chrome
-  const newGroup = pageA.getByRole('button', { name: /New group|Create group/i }).first();
+  await openInbox(pageA);
+  const newGroup = pageA.getByRole('button', { name: /^New group$/i }).first();
   if (!(await newGroup.isVisible().catch(() => false))) {
-    // Try overflow / Connections area
-    await clickTab(pageA, 'Messages');
-    const alt = pageA.getByRole('button', { name: /group/i }).first();
-    if (await alt.isVisible().catch(() => false)) await alt.click();
-  } else {
-    await newGroup.click();
+    report.notes.push('BLOCKED: New group button missing (open Inbox?)');
+    await pageA.screenshot({ path: resolve(OUT, 'group-qa-no-new-group.png') }).catch(() => {});
+    throw new Error(report.notes[0]);
   }
-  await pageA.waitForTimeout(1000);
+  await newGroup.click();
+  await pageA.waitForTimeout(800);
 
-  const titleInput = pageA.getByPlaceholder(/group|title|name/i).first();
+  const titleInput = pageA.getByPlaceholder('Group title').first();
   if (!(await titleInput.isVisible().catch(() => false))) {
-    report.notes.push('BLOCKED: New group UI not found');
+    report.notes.push('BLOCKED: New group modal not open');
     throw new Error(report.notes[0]);
   }
   const title = `QA ${MARKER_A}`;
   await titleInput.fill(title);
 
-  // Pick first available member checkbox / row (B)
-  const memberToggle = pageA
-    .locator('input[type="checkbox"], button')
-    .filter({ hasText: /pn-|PLATFORM|Member/i })
-    .first();
-  // Prefer checkboxes next to connection rows
   const checks = pageA.locator('input[type="checkbox"]');
+  // Connections load async after modal mount — wait before counting.
+  try {
+    await checks.first().waitFor({ state: 'visible', timeout: 30_000 });
+  } catch {
+    report.notes.push('BLOCKED: no connections to add (run Connect QA first)');
+    await pageA.screenshot({ path: resolve(OUT, 'group-qa-no-members.png') }).catch(() => {});
+    throw new Error(report.notes[report.notes.length - 1]);
+  }
   const nCheck = await checks.count();
   report.notes.push(`member_checkboxes=${nCheck}`);
-  if (nCheck > 0) {
-    await checks.first().check({ force: true }).catch(async () => {
-      await checks.first().click({ force: true });
-    });
-  } else {
-    // Click a connection row to add
-    const row = pageA.locator('[role="dialog"] button, [role="dialog"] label').nth(1);
-    if (await row.isVisible().catch(() => false)) await row.click();
-  }
+  await checks.first().check({ force: true }).catch(async () => {
+    await checks.first().click({ force: true });
+  });
 
-  const createBtn = pageA.getByRole('button', { name: /^(Create|Create group)$/i }).first();
+  const createBtn = pageA.getByRole('button', { name: /^Create group$/i }).first();
   const createWait = pageA
     .waitForResponse(
       (r) => r.request().method() === 'POST' && /\/api\/groups$/.test(new URL(r.url()).pathname),
-      { timeout: 60_000 }
+      { timeout: 90_000 }
     )
     .catch(() => null);
   await createBtn.click();
   const createRes = await createWait;
-  report.notes.push(
-    createRes ? `POST /api/groups ${createRes.status()}` : 'create=no_response'
-  );
+  report.notes.push(createRes ? `POST /api/groups ${createRes.status()}` : 'create=no_response');
   if (!createRes || !createRes.ok()) {
-    throw new Error('Group create failed');
+    const body = createRes ? await createRes.text().catch(() => '') : '';
+    throw new Error(`Group create failed ${body.slice(0, 200)}`);
   }
 
+  // CreateGroupModal onCreated opens the group thread immediately — do not Back out.
   await pageA.waitForTimeout(2000);
-  await softDrain(pageB);
-  await softDrain(pageA);
-
-  // Open group thread on A (Messages list)
-  await clickTab(pageA, 'Messages');
-  await pageA.waitForTimeout(1500);
-  const groupRowA = pageA.getByRole('button').filter({ hasText: new RegExp(title.slice(0, 12), 'i') }).first();
-  if (!(await groupRowA.isVisible().catch(() => false))) {
-    // fallback: any group-looking row
-    const any = pageA.locator('button.w-full.p-4').filter({ hasText: /QA |Group/i }).first();
-    if (await any.isVisible().catch(() => false)) await any.click();
-    else throw new Error('Group thread not in A inbox');
-  } else {
-    await groupRowA.click();
+  let composerA = pageA.getByPlaceholder(/Type a message/i).first();
+  if (!(await composerA.isVisible().catch(() => false))) {
+    await softDrain(pageA);
+    await openInbox(pageA);
+    const groupRowA = pageA
+      .getByRole('button')
+      .filter({ hasText: new RegExp(title.slice(0, 12), 'i') })
+      .first();
+    if (await groupRowA.isVisible().catch(() => false)) await groupRowA.click();
+    else {
+      const any = pageA.locator('button').filter({ hasText: new RegExp(MARKER_A, 'i') }).first();
+      if (await any.isVisible().catch(() => false)) await any.click();
+      else throw new Error('Group thread not open after create and not in A inbox');
+    }
+    await pageA.waitForTimeout(1500);
+    composerA = pageA.getByPlaceholder(/Type a message/i).first();
   }
-  await pageA.waitForTimeout(1500);
 
-  const composerA = pageA.getByPlaceholder(/Type a message/i).first();
+  // Peer must drain group_inbox_update before they can open/send.
+  await softDrain(pageB);
+
   await composerA.fill(MARKER_A);
   const sendWaitA = pageA
     .waitForResponse(
       (r) =>
         r.request().method() === 'POST' &&
         /\/api\/groups\/[^/]+\/messages/.test(new URL(r.url()).pathname),
-      { timeout: 60_000 }
+      { timeout: 90_000 }
     )
     .catch(() => null);
-  await pageA.getByRole('button', { name: /^Send$/i }).first().click().catch(async () => {
-    await pageA.keyboard.press('Enter');
-  });
+  await pageA
+    .getByRole('button', { name: /^Send$/i })
+    .first()
+    .click()
+    .catch(async () => {
+      await pageA.keyboard.press('Enter');
+    });
   const sendResA = await sendWaitA;
   report.notes.push(sendResA ? `A_send ${sendResA.status()}` : 'A_send=no_response');
   if (!sendResA || !sendResA.ok()) {
@@ -164,23 +267,36 @@ try {
     throw new Error(`A group send failed ${body.slice(0, 200)}`);
   }
 
-  // Promote apply may also fire
-  await pageA.waitForTimeout(3000);
+  await pageA.waitForTimeout(4000);
   await softDrain(pageB);
-  await pageB.waitForTimeout(2000);
-  await clickTab(pageB, 'Messages');
-  const groupRowB = pageB.getByRole('button').filter({ hasText: new RegExp(title.slice(0, 12), 'i') }).first();
+  await pageB.waitForTimeout(2500);
+  await openInbox(pageB);
+  const groupRowB = pageB
+    .getByRole('button')
+    .filter({ hasText: new RegExp(title.slice(0, 12), 'i') })
+    .first();
   if (await groupRowB.isVisible().catch(() => false)) await groupRowB.click();
   else {
-    const any = pageB.locator('button.w-full.p-4').filter({ hasText: /QA |Group/i }).first();
+    const any = pageB.locator('button').filter({ hasText: new RegExp(MARKER_A, 'i') }).first();
     if (await any.isVisible().catch(() => false)) await any.click();
   }
-  await pageB.waitForTimeout(2500);
-  const bHas = await bodyHas(pageB, new RegExp(MARKER_A));
+  await pageB.waitForTimeout(3000);
+  // Poll for plaintext up to ~45s (mailbox drain + promote)
+  let bHas = false;
+  for (let i = 0; i < 15; i++) {
+    bHas = await bodyHas(pageB, new RegExp(MARKER_A));
+    if (bHas) break;
+    await softDrain(pageB);
+    await openInbox(pageB);
+    if (await groupRowB.isVisible().catch(() => false)) await groupRowB.click().catch(() => {});
+    await pageB.waitForTimeout(2000);
+  }
   report.notes.push(`B_has_A_marker=${bHas}`);
-  if (!bHas) throw new Error('B did not show A group plaintext');
+  if (!bHas) {
+    await pageB.screenshot({ path: resolve(OUT, 'group-qa-b-missing.png') }).catch(() => {});
+    throw new Error('B did not show A group plaintext');
+  }
 
-  // Reverse: B sends
   const composerB = pageB.getByPlaceholder(/Type a message/i).first();
   await composerB.fill(MARKER_B);
   const sendWaitB = pageB
@@ -188,23 +304,45 @@ try {
       (r) =>
         r.request().method() === 'POST' &&
         /\/api\/groups\/[^/]+\/messages/.test(new URL(r.url()).pathname),
-      { timeout: 60_000 }
+      { timeout: 90_000 }
     )
     .catch(() => null);
-  await pageB.getByRole('button', { name: /^Send$/i }).first().click().catch(async () => {
-    await pageB.keyboard.press('Enter');
-  });
+  await pageB
+    .getByRole('button', { name: /^Send$/i })
+    .first()
+    .click()
+    .catch(async () => {
+      await pageB.keyboard.press('Enter');
+    });
   const sendResB = await sendWaitB;
   report.notes.push(sendResB ? `B_send ${sendResB.status()}` : 'B_send=no_response');
   if (!sendResB || !sendResB.ok()) {
-    throw new Error('B group send failed');
+    const body = sendResB ? await sendResB.text().catch(() => '') : '';
+    throw new Error(`B group send failed ${body.slice(0, 200)}`);
   }
-  await pageB.waitForTimeout(3000);
-  await softDrain(pageA);
-  await pageA.waitForTimeout(2000);
-  const aHas = await bodyHas(pageA, new RegExp(MARKER_B));
+  await pageB.waitForTimeout(4000);
+  let aHas = false;
+  for (let i = 0; i < 15; i++) {
+    aHas = await bodyHas(pageA, new RegExp(MARKER_B));
+    if (aHas) break;
+    await softDrain(pageA);
+    await openInbox(pageA);
+    const rowA = pageA
+      .getByRole('button')
+      .filter({ hasText: new RegExp(title.slice(0, 12), 'i') })
+      .first();
+    if (await rowA.isVisible().catch(() => false)) await rowA.click().catch(() => {});
+    else {
+      const any = pageA.locator('button').filter({ hasText: new RegExp(MARKER_A, 'i') }).first();
+      if (await any.isVisible().catch(() => false)) await any.click().catch(() => {});
+    }
+    await pageA.waitForTimeout(2000);
+  }
   report.notes.push(`A_has_B_marker=${aHas}`);
-  if (!aHas) throw new Error('A did not show B group plaintext');
+  if (!aHas) {
+    await pageA.screenshot({ path: resolve(OUT, 'group-qa-a-missing.png') }).catch(() => {});
+    throw new Error('A did not show B group plaintext');
+  }
 
   report.ok = true;
   report.label = 'LIVE_REAL';
@@ -215,10 +353,10 @@ try {
   report.ok = false;
   report.label = 'BLOCKED';
   report.notes.push(String(e?.message || e).slice(0, 300));
-  slog('GROUP QA FAIL', e?.message || e);
+  slog('GROUP QA FAIL', String(e?.message || e).slice(0, 200));
 }
 
 const outPath = resolve(OUT, 'group-qa-report.json');
-writeFileSync(outPath, JSON.stringify(report, null, 2));
+writeFileSync(outPath, JSON.stringify({ outPath, ...report }, null, 2));
 console.log(JSON.stringify({ outPath, ...report }, null, 2));
 process.exit(report.ok ? 0 : 1);
