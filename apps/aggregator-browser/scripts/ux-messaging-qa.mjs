@@ -39,6 +39,8 @@ const PHASE_GAP_MS = Math.max(0, Number(process.env.PN_QA_PHASE_GAP_MS) || 3_000
 const CLOSE_AT_END = process.env.PN_QA_CLOSE === '1';
 const HARD_REFRESH = process.env.PN_QA_HARD_REFRESH === '1';
 const HEADLESS = process.env.PN_QA_HEADLESS !== '0';
+/** Always Disconnect + fresh Connect/Accept even if a Messages thread exists. */
+const FORCE_FRESH = process.env.PN_QA_FORCE_FRESH === '1';
 
 /** Detached Chromium per surface so A/B messaging do not share sessionStorage. */
 const SURFACES = {
@@ -1261,19 +1263,22 @@ if (gateFailed) {
       // Prior Accept may have left B with a thread while A's requester inbox
       // never materialized (pre-fix apply 400). Force Disconnect → fresh Connect
       // so the fixed apply-inbound path runs.
+      // PN_QA_FORCE_FRESH=1: never reuse — always wipe connection first.
       await dismissMessagingOverlays(pageA);
       await clickTab(pageA, 'Messages');
       await pace(Math.max(PACE_MS, 2_000), 'A Messages probe before reuse Connect');
       const aHasThread =
         (await pageA.locator('button.w-full.p-4, button:has(h3)').count().catch(() => 0)) > 0 &&
         !(await bodyHas(pageA, /No messages yet/i));
-      if (aHasThread) {
+      if (aHasThread && !FORCE_FRESH) {
         connectLabel = 'LIVE_REAL';
         connectNotes.push('already_connected — A has Messages thread; skip Connect POST');
         await shot(browseA.page, 'connect-02-after');
       } else {
         connectNotes.push(
-          'already_connected but A Messages empty — Disconnect then fresh Connect for requester inbox fix'
+          FORCE_FRESH
+            ? 'PN_QA_FORCE_FRESH=1 — Disconnect then fresh Connect'
+            : 'already_connected but A Messages empty — Disconnect then fresh Connect for requester inbox fix'
         );
         const disconnectBtn = browseA.page.getByRole('button', { name: /^Disconnect$/i }).first();
         if (!(await disconnectBtn.isVisible().catch(() => false))) {
