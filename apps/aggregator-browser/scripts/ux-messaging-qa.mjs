@@ -1520,7 +1520,6 @@ if (gateFailed) {
       });
       const sendRes = await sendWait;
       const t0 = Date.now();
-      await pace(Math.max(PACE_MS, 2_000), 'after DM send');
       const sendApi = summarizeApi(apiA, before);
       const sendOk =
         (sendRes && sendRes.ok()) ||
@@ -1532,44 +1531,41 @@ if (gateFailed) {
       );
       await shot(pageA, 'dm-02-sent');
 
+      // Poll-first receive: measure hot-drain path without burning fixed soft-drain paces first.
       await clickTab(pageB, 'Messages');
-      await pace(Math.max(PACE_MS, 3_000), 'B inbox refresh');
-      // DM arrives as a mailbox job — soft-drain B then open A's thread.
-      dmNotes.push(...(await refreshMailboxOnPage(pageB, 'B_post_dm')));
-      await clickTab(pageB, 'Messages');
-      await pace(Math.max(PACE_MS, 4_000), 'B Messages after DM drain');
       const peerA = (gateA.pnIdentifier || '').slice(0, 12);
-      const bThreadBtns = pageB.locator('button.w-full.p-4, button:has(h3)');
-      const bN = Math.min(await bThreadBtns.count().catch(() => 0), 20);
-      dmNotes.push(`B_thread_rows=${bN} peerA=${peerA}`);
-      let bOpened = false;
-      for (let i = 0; i < bN; i++) {
-        const txt = ((await bThreadBtns.nth(i).innerText().catch(() => '')) || '').slice(0, 120);
-        if (peerA && txt.includes(peerA)) {
-          await bThreadBtns.nth(i).click();
-          bOpened = true;
-          dmNotes.push(`B_opened_thread=${txt.slice(0, 40)}`);
-          break;
+      let bHas = false;
+      let softDrainUsed = false;
+      for (let i = 0; i < 60; i++) {
+        const bThreadBtns = pageB.locator('button.w-full.p-4, button:has(h3)');
+        const bN = Math.min(await bThreadBtns.count().catch(() => 0), 20);
+        if (i === 0) dmNotes.push(`B_thread_rows=${bN} peerA=${peerA}`);
+        let opened = false;
+        for (let j = 0; j < bN; j++) {
+          const txt = ((await bThreadBtns.nth(j).innerText().catch(() => '')) || '').slice(0, 120);
+          if (peerA && txt.includes(peerA)) {
+            await bThreadBtns.nth(j).click().catch(() => {});
+            opened = true;
+            if (i === 0) dmNotes.push(`B_opened_thread=${txt.slice(0, 40)}`);
+            break;
+          }
         }
-      }
-      if (!bOpened && bN > 0) {
-        await bThreadBtns.first().click();
-        dmNotes.push('B_opened_first_thread');
-      }
-      await pace(Math.max(PACE_MS, 3_000), 'B after open thread');
-      await shot(pageB, 'dm-03-b');
-      let bHas = await bodyHas(pageB, new RegExp(marker, 'i'));
-      if (!bHas) {
-        // One more drain+refresh in case the job landed late.
-        dmNotes.push(...(await refreshMailboxOnPage(pageB, 'B_post_dm_2')));
-        await clickTab(pageB, 'Messages');
-        await pace(Math.max(PACE_MS, 3_000));
-        if (bN > 0 || (await bThreadBtns.count().catch(() => 0)) > 0) {
+        if (!opened && bN > 0) {
           await bThreadBtns.first().click().catch(() => {});
-          await pace(2_000);
+          if (i === 0) dmNotes.push('B_opened_first_thread');
         }
         bHas = await bodyHas(pageB, new RegExp(marker, 'i'));
+        if (bHas) break;
+        // Soft-drain backstop only if still missing after ~3s (hot drain should win first).
+        if (!softDrainUsed && Date.now() - t0 > 3_000) {
+          softDrainUsed = true;
+          dmNotes.push(...(await refreshMailboxOnPage(pageB, 'B_post_dm_soft')));
+          await clickTab(pageB, 'Messages');
+        }
+        await pageB.waitForTimeout(500);
       }
+      await shot(pageB, 'dm-03-b');
+      dmNotes.push(`softDrainUsed=${softDrainUsed}`);
       if (bHas) {
         receiveLatencyMs = Date.now() - t0;
         dmNotes.push(`receiveLatencyMs=${receiveLatencyMs}`);

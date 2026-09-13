@@ -266,9 +266,8 @@ try {
     throw new Error(`A group send failed ${body.slice(0, 200)}`);
   }
 
-  await pageA.waitForTimeout(1500);
-  await softDrain(pageB);
-  await pageB.waitForTimeout(1000);
+  await pageA.waitForTimeout(500);
+  // Peer hot-drain should land group_message_append; softDrain only as backstop in the poll loop.
 
   async function openGroupThread(page) {
     await openInbox(page);
@@ -279,22 +278,22 @@ try {
     if (await row.isVisible().catch(() => false)) {
       await row.click({ force: true });
     }
-    await page.waitForTimeout(1500);
+    await page.waitForTimeout(800);
     return page.getByPlaceholder(/Type a message/i).first();
   }
 
   let composerB = await openGroupThread(pageB);
   // Poll for plaintext inside an open thread (composer must be present).
   let bHas = false;
-  for (let i = 0; i < 15; i++) {
+  for (let i = 0; i < 40; i++) {
     if (!(await composerB.isVisible().catch(() => false))) {
       composerB = await openGroupThread(pageB);
     }
     bHas = await bodyHas(pageB, new RegExp(MARKER_A));
     if (bHas && (await composerB.isVisible().catch(() => false))) break;
-    await softDrain(pageB);
+    if (i === 2 || i === 8) await softDrain(pageB);
     composerB = await openGroupThread(pageB);
-    await pageB.waitForTimeout(2000);
+    await pageB.waitForTimeout(500);
   }
   if (bHas) {
     report.receiveLatencyMs = Date.now() - t0AtoB;
@@ -329,18 +328,18 @@ try {
     const body = sendResB ? await sendResB.text().catch(() => '') : '';
     throw new Error(`B group send failed ${body.slice(0, 200)}`);
   }
-  await pageB.waitForTimeout(1500);
+  await pageB.waitForTimeout(500);
   let aHas = false;
-  for (let i = 0; i < 30; i++) {
+  for (let i = 0; i < 50; i++) {
     const composerStill = pageA.getByPlaceholder(/Type a message/i).first();
     if (!(await composerStill.isVisible().catch(() => false))) {
       await openGroupThread(pageA);
     }
     aHas = await bodyHas(pageA, new RegExp(MARKER_B));
     if (aHas) break;
-    await softDrain(pageA);
+    if (i === 2 || i === 10) await softDrain(pageA);
     await openGroupThread(pageA);
-    await pageA.waitForTimeout(2500);
+    await pageA.waitForTimeout(500);
   }
   if (aHas) {
     report.receiveLatencyMsBA = Date.now() - t0BtoA;
