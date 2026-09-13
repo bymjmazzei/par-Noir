@@ -291,7 +291,7 @@ try {
     }
     bHas = await bodyHas(pageB, new RegExp(MARKER_A));
     if (bHas && (await composerB.isVisible().catch(() => false))) break;
-    if (i === 2 || i === 8) await softDrain(pageB);
+    if (i > 0 && i % 3 === 0) await softDrain(pageB);
     composerB = await openGroupThread(pageB);
     await pageB.waitForTimeout(500);
   }
@@ -337,7 +337,7 @@ try {
     }
     aHas = await bodyHas(pageA, new RegExp(MARKER_B));
     if (aHas) break;
-    if (i === 2 || i === 10) await softDrain(pageA);
+    if (i > 0 && i % 3 === 0) await softDrain(pageA);
     await openGroupThread(pageA);
     await pageA.waitForTimeout(500);
   }
