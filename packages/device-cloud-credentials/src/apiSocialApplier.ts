@@ -61,6 +61,12 @@ export function createApiSocialApplier(opts: ApiSocialApplierOptions) {
   const base = opts.apiBaseUrl.replace(/\/$/, '');
 
   return async function applySocialJob(job: MailboxJob): Promise<boolean> {
+    // Legacy chat fanout left notification_row jobs that the browser never applied.
+    // Ack as intentional no-op so backlog cannot starve message_append.
+    if (job.jobType === 'notification_row') {
+      return true;
+    }
+
     if (!SOCIAL_JOB_TYPES_APPLIED_VIA_API.has(job.jobType) && job.jobType !== 'message_append') {
       return false;
     }

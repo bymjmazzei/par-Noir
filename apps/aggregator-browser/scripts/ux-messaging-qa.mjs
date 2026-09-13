@@ -430,6 +430,7 @@ const report = {
   flows: [],
   notes: [],
   stoppedEarly: false,
+  receiveLatencyMs: null,
 };
 
 const CHROME_BIN = chromium.executablePath();
@@ -1435,13 +1436,11 @@ if (gateFailed) {
 
   let dmLabel = 'BLOCKED';
   let dmNotes = [];
-  let outboxLabel = 'LIVE_UNFINISHED';
-  let outboxNotes = [];
   let dualDmOk = false;
+  let receiveLatencyMs = null;
   try {
     if (acceptLabel !== 'LIVE_REAL') {
       dmNotes.push('skipped DM — Accept not LIVE_REAL');
-      outboxNotes.push('skipped — no accept');
     } else {
     await pace(PACE_MS, 'before A open thread');
     // Accept creates a conversation row in Messages — Connections has no Message button.
@@ -1508,15 +1507,29 @@ if (gateFailed) {
       const marker = `qa-${Date.now().toString(36)}`;
       const before = apiA.length;
       await compose.fill(marker);
+      const sendWait = pageA
+        .waitForResponse(
+          (r) =>
+            r.request().method() === 'POST' &&
+            /\/api\/messages\/send/.test(new URL(r.url()).pathname),
+          { timeout: 90_000 }
+        )
+        .catch(() => null);
       await pageA.locator('[aria-label="Send"]').first().click().catch(async () => {
         await pageA.getByRole('button', { name: /Send/i }).first().click();
       });
-      await pace(Math.max(PACE_MS, 8_000), 'after DM send');
+      const sendRes = await sendWait;
+      const t0 = Date.now();
+      await pace(Math.max(PACE_MS, 2_000), 'after DM send');
       const sendApi = summarizeApi(apiA, before);
-      const sendOk = sendApi.some(
-        (l) => /POST \/api\/(messages|mailbox)/i.test(l) && / (2|3)\d\d$/.test(l)
+      const sendOk =
+        (sendRes && sendRes.ok()) ||
+        sendApi.some((l) => /POST \/api\/(messages|mailbox)/i.test(l) && / (2|3)\d\d$/.test(l));
+      dmNotes.push(
+        `sendOk=${sendOk}`,
+        sendRes ? `sendStatus=${sendRes.status()}` : 'send=no_waited_response',
+        ...sendApi.slice(-15)
       );
-      dmNotes.push(`sendOk=${sendOk}`, ...sendApi.slice(-15));
       await shot(pageA, 'dm-02-sent');
 
       await clickTab(pageB, 'Messages');
@@ -1557,56 +1570,29 @@ if (gateFailed) {
         }
         bHas = await bodyHas(pageB, new RegExp(marker, 'i'));
       }
+      if (bHas) {
+        receiveLatencyMs = Date.now() - t0;
+        dmNotes.push(`receiveLatencyMs=${receiveLatencyMs}`);
+      }
       dmNotes.push(`B_received_marker=${bHas}`);
       dualDmOk = !!(sendOk && bHas);
       dmLabel = dualDmOk ? 'LIVE_REAL' : sendOk ? 'LIVE_UNFINISHED' : 'BLOCKED';
-
-      // Offline outbox (only if send path works)
-      if (sendOk) {
-        try {
-          await pageA.context().setOffline(true);
-          const marker2 = `qa-off-${Date.now().toString(36)}`;
-          const beforeOff = apiA.length;
-          await compose.fill(marker2);
-          await pageA.locator('[aria-label="Send"]').first().click().catch(async () => {
-            await pageA.getByRole('button', { name: /Send/i }).first().click();
-          });
-          await pace(PACE_MS);
-          outboxNotes.push('queued offline');
-          await pageA.context().setOffline(false);
-          await pace(Math.max(PACE_MS, 8_000), 'outbox flush');
-          const after = summarizeApi(apiA, beforeOff);
-          const flushed = after.some(
-            (l) => /POST \/api\/(messages|mailbox)/i.test(l) && / (2|3)\d\d$/.test(l)
-          );
-          outboxLabel = flushed ? 'LIVE_REAL' : 'LIVE_UNFINISHED';
-          outboxNotes.push(...after.slice(-12));
-          outboxNotes.push(flushed ? 'flush OBSERVED' : 'no flush traffic');
-          await shot(pageA, 'outbox-after');
-        } catch (e) {
-          await pageA.context().setOffline(false).catch(() => {});
-          outboxLabel = 'LIVE_UNFINISHED';
-          outboxNotes.push(String(e?.message || e).slice(0, 300));
-        }
-      } else {
-        outboxNotes.push('skipped — send not ok');
-      }
+      // Deferred offline outbox removed under device-cloud custody (fail closed without AT/network).
     } else {
       dmLabel = 'BLOCKED';
       dmNotes.push('compose not found');
-      outboxNotes.push('skipped — no compose');
     }
     } // accept LIVE_REAL
   } catch (e) {
     dmNotes.push(String(e?.message || e).slice(0, 300));
-    outboxNotes.push('skipped due to DM error');
   }
-  report.flows.push({ id: 'messaging.dm_send', title: 'A→B DM send + B receive', label: dmLabel, notes: dmNotes });
+  report.receiveLatencyMs = receiveLatencyMs;
   report.flows.push({
-    id: 'messaging.outbox_offline_flush',
-    title: 'Offline outbox → online flush',
-    label: outboxLabel,
-    notes: outboxNotes,
+    id: 'messaging.dm_send',
+    title: 'A→B DM send + B receive',
+    label: dmLabel,
+    notes: dmNotes,
+    receiveLatencyMs,
   });
   report.flows.push({
     id: 'messaging.dual_dm_success',
@@ -1616,12 +1602,13 @@ if (gateFailed) {
       `connect=${connectLabel}`,
       `accept=${acceptLabel}`,
       `dm=${dmLabel}`,
+      receiveLatencyMs != null ? `receiveLatencyMs=${receiveLatencyMs}` : 'receiveLatencyMs=n/a',
       dualDmOk
         ? 'SUCCESS: A sent and B showed plaintext marker'
         : 'FAIL: need POST request + Accept + B receives marker',
     ],
   });
-  slog('  dm →', dmLabel, 'outbox →', outboxLabel, 'dual_dm →', dualDmOk ? 'LIVE_REAL' : 'BLOCKED');
+  slog('  dm →', dmLabel, 'dual_dm →', dualDmOk ? 'LIVE_REAL' : 'BLOCKED', 'latencyMs=', receiveLatencyMs);
   // Keep messaging A+B open through end of script (closed in finally below).
 }
 

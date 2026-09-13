@@ -295,6 +295,7 @@ export async function listPendingMailboxJobs(
 ): Promise<SocialMailboxJob[]> {
   if (jobTypes && jobTypes.length === 0) return [];
   const db = getDatabasePool();
+  // Chat/social before notification_row so stuck notification backlog cannot hide delivery.
   const result = await db.query(
     `SELECT id, route_key, job_type, payload, created_at, expires_at, acked_at
      FROM social_mailbox
@@ -302,7 +303,22 @@ export async function listPendingMailboxJobs(
        AND acked_at IS NULL
        AND expires_at > NOW()
        AND ($3::text[] IS NULL OR job_type = ANY($3::text[]))
-     ORDER BY created_at ASC
+     ORDER BY
+       CASE job_type
+         WHEN 'message_append' THEN 0
+         WHEN 'group_message_append' THEN 0
+         WHEN 'group_inbox_update' THEN 0
+         WHEN 'message_attachment' THEN 1
+         WHEN 'connection_request' THEN 1
+         WHEN 'connection_accept' THEN 1
+         WHEN 'connection_reject' THEN 1
+         WHEN 'connection_delete' THEN 1
+         WHEN 'follower_add' THEN 1
+         WHEN 'follower_remove' THEN 1
+         WHEN 'notification_row' THEN 9
+         ELSE 5
+       END ASC,
+       created_at ASC
      LIMIT $2`,
     [routeKey.trim(), Math.min(Math.max(limit, 1), 500), jobTypes ? [...jobTypes] : null]
   );

@@ -30,6 +30,16 @@ import {
 
 const groupChatKeys = new Map<string, string>();
 
+/** Device-cloud custody: send requires unlocked session + live network + cloud AT. */
+function requireOnlineCloudForSend(userPnIdentifier: string): void {
+  if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+    throw new Error('You are offline. Connect to the network to send messages.');
+  }
+  if (!getCloudAccessTokenFromSession(userPnIdentifier)) {
+    throw new Error('Cloud storage is not ready. Unlock and reconnect cloud storage to send.');
+  }
+}
+
 export function getGroupChatKeyCache(): Map<string, string> {
   return groupChatKeys;
 }
@@ -371,6 +381,7 @@ export async function sendGroupMessage(
   if (!isDmIdentityReady()) {
     throw new Error('Messaging keys unavailable. Lock and unlock your pN again to send messages.');
   }
+  requireOnlineCloudForSend(userPn);
   if (record.accessRole === 'readOnly') {
     throw new Error('You have read-only access in this group');
   }
@@ -475,6 +486,7 @@ export async function sendGroupMessage(
   if (!session?.accessToken) {
     throw new Error('Not authenticated');
   }
+  requireOnlineCloudForSend(userPn);
   await promoteOutboxRecord(
     {
       apiBaseUrl: API_ENDPOINT,

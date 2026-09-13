@@ -39,6 +39,7 @@ import {
 } from '../services/messagingMediaService';
 import { useDriveAccounts } from '../hooks/useDriveAccounts';
 import { useRealtimeSync } from '../hooks/useRealtimeSync';
+import { requestHotDrain } from '../services/socialMailboxConsumer';
 import { isMessagingKeysError, requestMessagingReconnect } from '../services/messagingReconnect';
 import { BOTTOM_NAV_PADDING } from '../constants/layout';
 
@@ -104,7 +105,9 @@ export function MessageThread({
   const [realtimeRefresh, setRealtimeRefresh] = useState(0);
   const sendingRef = useRef(false);
   const pendingInitialScrollRef = useRef(true);
-  const socketConnected = useRealtimeSync(['new_message'], () => setRealtimeRefresh((n) => n + 1));
+  const socketConnected = useRealtimeSync(['new_message', 'mailbox_pending'], () =>
+    setRealtimeRefresh((n) => n + 1)
+  );
 
   useEffect(() => {
     sendingRef.current = sending;
@@ -367,7 +370,10 @@ export function MessageThread({
     if (isGroup && !groupRecord) return;
     if (isPollingRef.current || isMessagingRateLimited() || sendingRef.current) return;
     isPollingRef.current = true;
-    fetchMessages(10, 0)
+    // Drain mailbox before Sheets read — realtime can fire before apply-inbound lands.
+    void requestHotDrain()
+      .catch(() => undefined)
+      .then(() => fetchMessages(10, 0))
       .then((result) => {
         errorCountRef.current = 0;
         setTotalMessages(result.total);

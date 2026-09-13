@@ -64,10 +64,9 @@ export function createOutboxRecord(input: {
 }
 
 export function messageSendFanout(routeKey: string, hasMedia: boolean): OutboxFanoutTarget[] {
-  const targets: OutboxFanoutTarget[] = [
-    { routeKey, jobType: 'message_append' },
-    { routeKey, jobType: 'notification_row' }
-  ];
+  // Chat UI uses /api/notifications + new_message realtime — do not enqueue notification_row
+  // (browser applier never applied it; backlog starved message_append).
+  const targets: OutboxFanoutTarget[] = [{ routeKey, jobType: 'message_append' }];
   if (hasMedia) {
     targets.push({ routeKey, jobType: 'message_attachment' });
   }
@@ -83,7 +82,6 @@ export function groupMessageSendFanout(routeKeys: string[]): OutboxFanoutTarget[
     if (!/^[a-f0-9]{64}$/i.test(rk) || seen.has(rk)) continue;
     seen.add(rk);
     targets.push({ routeKey: rk, jobType: 'group_message_append' });
-    targets.push({ routeKey: rk, jobType: 'notification_row' });
   }
   return targets;
 }

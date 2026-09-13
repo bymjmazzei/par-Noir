@@ -158,6 +158,12 @@ export async function drainSocialMailbox(): Promise<MailboxDrainResult> {
 
   // Ack only what actually landed. Acking an unapplied job loses it, since the
   // mailbox is a throughway and not a source of truth.
+  const leftoverNotificationRows = jobs.filter((j) => j.jobType === 'notification_row').length;
+  if (leftoverNotificationRows > 0) {
+    console.warn(
+      `[socialMailbox] acking ${leftoverNotificationRows} leftover notification_row job(s) as no-op`
+    );
+  }
   const appliedIds: string[] = [];
   for (const job of jobs) {
     try {
@@ -202,28 +208,65 @@ export async function drainSocialMailbox(): Promise<MailboxDrainResult> {
   return { pulled: jobs.length, applied: appliedIds.length, acked, errors };
 }
 
-async function drainOnce(): Promise<void> {
-  if (running) return;
-  if (typeof document !== 'undefined' && document.visibilityState !== 'visible') return;
+const HOT_DRAIN_DEBOUNCE_MS = 400;
+let hotDrainTimer: ReturnType<typeof setTimeout> | null = null;
+let hotDrainWaiters: Array<{
+  resolve: (r: MailboxDrainResult) => void;
+  reject: (e: unknown) => void;
+}> = [];
+
+async function drainOnce(): Promise<MailboxDrainResult> {
+  if (running) return EMPTY;
+  if (typeof document !== 'undefined' && document.visibilityState !== 'visible') return EMPTY;
   running = true;
   try {
     const result = await drainSocialMailbox();
     if (import.meta.env.DEV && (result.pulled || result.errors.length)) {
       console.info('[socialMailbox] drain', result);
     }
+    return result;
   } catch (e) {
     console.warn('[socialMailbox] drain failed:', e instanceof Error ? e.message : e);
+    return { ...EMPTY, errors: [e instanceof Error ? e.message : String(e)] };
   } finally {
     running = false;
   }
 }
 
+/**
+ * Debounced drain for realtime hints (new_message / mailbox_pending).
+ * Callers that must reload Sheets after apply should await this.
+ */
+export function requestHotDrain(): Promise<MailboxDrainResult> {
+  return new Promise((resolve, reject) => {
+    hotDrainWaiters.push({ resolve, reject });
+    if (hotDrainTimer != null) clearTimeout(hotDrainTimer);
+    hotDrainTimer = setTimeout(() => {
+      hotDrainTimer = null;
+      const waiters = hotDrainWaiters;
+      hotDrainWaiters = [];
+      void (async () => {
+        try {
+          // If a drain is already running, wait briefly then run again so we catch new jobs.
+          if (running) {
+            await new Promise((r) => setTimeout(r, HOT_DRAIN_DEBOUNCE_MS));
+          }
+          const result = await drainOnce();
+          for (const w of waiters) w.resolve(result);
+        } catch (e) {
+          for (const w of waiters) w.reject(e);
+        }
+      })();
+    }, HOT_DRAIN_DEBOUNCE_MS);
+  });
+}
+
 function onCloudCredentialsReady(): void {
-  void drainOnce();
+  void requestHotDrain();
 }
 
 function onVisibilityChange(): void {
-  if (document.visibilityState === 'visible') void drainOnce();
+  if (document.visibilityState === 'visible') void requestHotDrain();
 }
 
 /**
@@ -236,7 +279,7 @@ export function startSocialMailboxConsumer(): void {
   window.addEventListener(PN_CLOUD_CREDENTIALS_READY_EVENT, onCloudCredentialsReady);
   document.addEventListener('visibilitychange', onVisibilityChange);
   intervalId = window.setInterval(() => {
-    void drainOnce();
+    void requestHotDrain();
   }, DRAIN_INTERVAL_MS);
   void (async () => {
     const session = PNOAuthService.loadSession();
@@ -244,7 +287,7 @@ export function startSocialMailboxConsumer(): void {
       const { awaitCloudUnlockComplete } = await import('./cloudUnlockCoordinator');
       await awaitCloudUnlockComplete(session.pnIdentifier, 60_000);
     }
-    await drainOnce();
+    await requestHotDrain();
   })();
 }
 
@@ -255,6 +298,11 @@ export function stopSocialMailboxConsumer(): void {
     clearInterval(intervalId);
     intervalId = null;
   }
+  if (hotDrainTimer != null) {
+    clearTimeout(hotDrainTimer);
+    hotDrainTimer = null;
+  }
+  hotDrainWaiters = [];
   if (typeof window !== 'undefined') {
     window.removeEventListener(PN_CLOUD_CREDENTIALS_READY_EVENT, onCloudCredentialsReady);
     document.removeEventListener('visibilitychange', onVisibilityChange);

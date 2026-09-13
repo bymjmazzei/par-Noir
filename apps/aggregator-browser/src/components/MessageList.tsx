@@ -16,7 +16,7 @@ import { getUserProfile } from '../services/profileService';
 import { useRealtimeSync } from '../hooks/useRealtimeSync';
 import { MESSAGING_ONLY } from '../config/buildFlags';
 import { PLATFORM_CHANNEL_CLIENT_ID } from '@par-noir/messaging-ui';
-import { drainSocialMailbox } from '../services/socialMailboxConsumer';
+import { drainSocialMailbox, requestHotDrain } from '../services/socialMailboxConsumer';
 
 interface MessageListProps {
   onThreadSelect: (thread: SelectedInboxThread) => void;
@@ -36,10 +36,12 @@ export function MessageList({ onThreadSelect, refreshKey = 0, channelClientId }:
   const loadingDisplayNamesRef = useRef<Set<string>>(new Set());
   const rateLimitRetryRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const socketConnected = useRealtimeSync(['new_message'], () => {
+  const socketConnected = useRealtimeSync(['new_message', 'mailbox_pending'], () => {
     if (userState.pnIdentifier && !isMessagingRateLimited()) {
       inboxCacheService.clear(userState.pnIdentifier);
-      void loadThreadsFromApi(false);
+      void requestHotDrain()
+        .catch(() => undefined)
+        .then(() => loadThreadsFromApi(false));
     }
   });
 

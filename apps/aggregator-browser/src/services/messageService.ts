@@ -17,6 +17,7 @@ import {
   promoteLocalOutbox,
   promoteOutboxRecord,
   upsertLocalOutboxRecord,
+  getCloudAccessTokenFromSession,
   type OutboxRecord
 } from '@par-noir/device-cloud-credentials';
 import {
@@ -29,6 +30,16 @@ export const MESSAGING_INBOX_REFRESH_EVENT = 'pn_messaging_inbox_refresh';
 /** Fired after mailbox message_append jobs are applied into this user's Drive. */
 export const MESSAGING_MAILBOX_APPLIED_EVENT = 'pn_messaging_mailbox_applied';
 export const MESSAGING_POLL_BACKSTOP_MS = 60_000;
+
+/** Device-cloud custody: send requires unlocked session + live network + cloud AT. */
+function requireOnlineCloudForSend(userPnIdentifier: string): void {
+  if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+    throw new Error('You are offline. Connect to the network to send messages.');
+  }
+  if (!getCloudAccessTokenFromSession(userPnIdentifier)) {
+    throw new Error('Cloud storage is not ready. Unlock and reconnect cloud storage to send.');
+  }
+}
 
 /** Browse = primary only; messaging app = aggregator (*). Embed overrides via arg. */
 export function defaultChannelListFilter(override?: string): string {
@@ -285,8 +296,8 @@ async function promoteOpts(userPnIdentifier: string) {
   if (!session?.accessToken) {
     throw new Error('Not authenticated');
   }
+  requireOnlineCloudForSend(userPnIdentifier);
   const { ownerApiHeadersAsync } = await import('./ownerApiHeaders');
-  const { getCloudAccessTokenFromSession } = await import('@par-noir/device-cloud-credentials');
   return {
     apiBaseUrl: API_ENDPOINT,
     authToken: session.accessToken,
@@ -621,6 +632,7 @@ export async function sendMessage(
   if (!isDmIdentityReady()) {
     throw new Error('Messaging keys unavailable. Lock and unlock your pN again to send messages.');
   }
+  requireOnlineCloudForSend(fromPnIdentifier);
   let connId = connectionId;
   let recovery: DmSessionRecovery = {
     kemCiphertext,
@@ -679,7 +691,7 @@ export async function sendMessage(
     /* server may still resolve recipient claimed route */
   }
 
-  // Commit first (local sealed outbox = durable SoT). API fan-out is throughway only.
+  // Online sealed outbox ledger (promote/materialize) — not deferred offline queue.
   const sealSession = sealSessionForOutbox(fromPnIdentifier);
   const outbox: OutboxRecord = createOutboxRecord({
     outboxId: messageId,
@@ -720,7 +732,7 @@ export async function sendMessage(
             ? 'Server error occurred while sending message. Please try again.'
             : `Failed to send message: ${statusText}`;
       }
-      // Keep outbox pending — caller can retry; commit already happened.
+      // Leave non-materialized only for crash recovery of this online session — not offline queue.
       throw new Error(errorMessage);
     }
 

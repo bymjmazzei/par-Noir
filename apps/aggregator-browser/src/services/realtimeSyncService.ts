@@ -5,7 +5,7 @@
 import { API_ENDPOINT } from '../config/api';
 import { PNOAuthService } from './pnOAuthService';
 
-export type RealtimeEventType = 'new_message' | 'new_notification';
+export type RealtimeEventType = 'new_message' | 'new_notification' | 'mailbox_pending';
 
 type Subscriber = {
   events: Set<RealtimeEventType>;
@@ -62,6 +62,8 @@ async function ensureConnected(): Promise<void> {
 
     s.on('new_message', () => fanOut('new_message'));
     s.on('new_notification', () => fanOut('new_notification'));
+    // Server emits mailbox_pending when throughway jobs are enqueued — drain before Sheets read.
+    s.on('mailbox_pending', () => fanOut('mailbox_pending'));
     s.on('connect', () => notifyConnected(true));
     s.on('disconnect', () => notifyConnected(false));
     socket = s;

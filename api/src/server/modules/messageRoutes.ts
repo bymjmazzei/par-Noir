@@ -985,16 +985,8 @@ export function setupMessageRoutes(app: express.Application, deps: MessageRouteD
               })
             });
           }
-          await enqueueSocialMailboxJob({
-            routeKey,
-            jobType: 'notification_row',
-            payload: sanitizeMailboxPayload({
-              type: 'new_message',
-              messageId,
-              threadId,
-              connectionId
-            })
-          });
+          // Notifications UI uses /api/notifications Sheets + push/new_message realtime —
+          // do not enqueue notification_row (browser never applied it; backlog starved chat).
 
           try {
             const { PushService } = await import('./pushService');

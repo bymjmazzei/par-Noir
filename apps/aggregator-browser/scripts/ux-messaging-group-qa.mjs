@@ -155,6 +155,8 @@ const report = {
   generatedAt: new Date().toISOString(),
   markerA: MARKER_A,
   markerB: MARKER_B,
+  receiveLatencyMs: null,
+  receiveLatencyMsBA: null,
   notes: [],
   ok: false,
 };
@@ -257,15 +259,16 @@ try {
       await pageA.keyboard.press('Enter');
     });
   const sendResA = await sendWaitA;
+  const t0AtoB = Date.now();
   report.notes.push(sendResA ? `A_send ${sendResA.status()}` : 'A_send=no_response');
   if (!sendResA || !sendResA.ok()) {
     const body = sendResA ? await sendResA.text().catch(() => '') : '';
     throw new Error(`A group send failed ${body.slice(0, 200)}`);
   }
 
-  await pageA.waitForTimeout(4000);
+  await pageA.waitForTimeout(1500);
   await softDrain(pageB);
-  await pageB.waitForTimeout(2500);
+  await pageB.waitForTimeout(1000);
 
   async function openGroupThread(page) {
     await openInbox(page);
@@ -293,6 +296,10 @@ try {
     composerB = await openGroupThread(pageB);
     await pageB.waitForTimeout(2000);
   }
+  if (bHas) {
+    report.receiveLatencyMs = Date.now() - t0AtoB;
+    report.notes.push(`receiveLatencyMs=${report.receiveLatencyMs}`);
+  }
   report.notes.push(`B_has_A_marker=${bHas}`);
   if (!bHas || !(await composerB.isVisible().catch(() => false))) {
     await pageB.screenshot({ path: resolve(OUT, 'group-qa-b-missing.png') }).catch(() => {});
@@ -316,12 +323,13 @@ try {
       await pageB.keyboard.press('Enter');
     });
   const sendResB = await sendWaitB;
+  const t0BtoA = Date.now();
   report.notes.push(sendResB ? `B_send ${sendResB.status()}` : 'B_send=no_response');
   if (!sendResB || !sendResB.ok()) {
     const body = sendResB ? await sendResB.text().catch(() => '') : '';
     throw new Error(`B group send failed ${body.slice(0, 200)}`);
   }
-  await pageB.waitForTimeout(4000);
+  await pageB.waitForTimeout(1500);
   let aHas = false;
   for (let i = 0; i < 30; i++) {
     const composerStill = pageA.getByPlaceholder(/Type a message/i).first();
@@ -333,6 +341,10 @@ try {
     await softDrain(pageA);
     await openGroupThread(pageA);
     await pageA.waitForTimeout(2500);
+  }
+  if (aHas) {
+    report.receiveLatencyMsBA = Date.now() - t0BtoA;
+    report.notes.push(`receiveLatencyMsBA=${report.receiveLatencyMsBA}`);
   }
   report.notes.push(`A_has_B_marker=${aHas}`);
   if (!aHas) {
