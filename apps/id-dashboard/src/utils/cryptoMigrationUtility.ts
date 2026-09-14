@@ -2,7 +2,7 @@
 // Provi helper functions to migrate existing crypto operations to use the crypto worker manager
 
 
-import { cryptoWorkerManager } from './cryptoWorkerManager';
+import { cryptoWorkerManager } from '@par-noir/identity-crypto';
 
 export class CryptoMigrationUtility {
   /**

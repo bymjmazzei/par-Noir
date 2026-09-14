@@ -1,4 +1,4 @@
-import { cryptoWorkerManager } from '../crypto/cryptoWorkerManager';
+import { cryptoWorkerManager } from '@par-noir/identity-crypto';
 // Main LicenseVerification Class - Maintains backward compatibility while using modular components
 import { LicenseInfo, LicenseProof } from '../../types/licenseVerification';
 import { APICallMonitor } from './apiCallMonitor';

@@ -1,4 +1,4 @@
-import { cryptoWorkerManager } from '../crypto/cryptoWorkerManager';
+import { cryptoWorkerManager } from '@par-noir/identity-crypto';
 // Crypto Validator - Handles cryptographic data validation
 import { ValidationResult } from '../../types/validation';
 import { ValidationPatterns } from './validationPatterns';

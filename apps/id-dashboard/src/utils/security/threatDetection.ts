@@ -1,4 +1,4 @@
-import { cryptoWorkerManager } from '../cryptoWorkerManager';
+import { cryptoWorkerManager } from '@par-noir/identity-crypto';
 
 export interface ThreatPattern {
   id: string;

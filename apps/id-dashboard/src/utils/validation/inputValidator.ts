@@ -1,4 +1,4 @@
-import { cryptoWorkerManager } from '../crypto/cryptoWorkerManager';
+import { cryptoWorkerManager } from '@par-noir/identity-crypto';
 // Main InputValidator Class - Maintains backward compatibility while using modular components
 import { ValidationResult } from '../../types/validation';
 import { IdentityValidator } from './identityValidator';

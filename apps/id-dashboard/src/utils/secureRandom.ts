@@ -1,4 +1,4 @@
-import { cryptoWorkerManager } from './cryptoWorkerManager';
+import { cryptoWorkerManager } from '@par-noir/identity-crypto';
 /**
  * Secure Random Number Generation Utilities for ID Dashboard
  * 
@@ -90,7 +90,7 @@ export class SecureRandom {
    */
   static async generateHex(length: number = 32): Promise<string> {
     const bytes = await cryptoWorkerManager.generateRandom(new Uint8Array(Math.ceil(length / 2)));
-    return Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join('').substring(0, length);
+    return Array.from(bytes as Uint8Array).map((b: number) => b.toString(16).padStart(2, '0')).join('').substring(0, length);
   }
 
   /**
@@ -108,11 +108,11 @@ export class SecureRandom {
    * @returns Secure random UUID
    */
   static async generateUUID(): Promise<string> {
-    const bytes = await cryptoWorkerManager.generateRandom(new Uint8Array(16));
+    const bytes = (await cryptoWorkerManager.generateRandom(new Uint8Array(16))) as Uint8Array;
     bytes[6] = (bytes[6] & 0x0f) | 0x40; // Version 4
     bytes[8] = (bytes[8] & 0x3f) | 0x80; // Variant
     
-    const hex = Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join('');
+    const hex = Array.from(bytes).map((b: number) => b.toString(16).padStart(2, '0')).join('');
     return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20, 32)}`;
   }
 

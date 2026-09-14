@@ -1,4 +1,4 @@
-import { cryptoWorkerManager } from '../crypto/cryptoWorkerManager';
+import { cryptoWorkerManager } from '@par-noir/identity-crypto';
 // Main HybridStorage Class - Maintains backward compatibility while using modular components
 import { StorageConfig, StorageStats } from '../../types/hybridStorage';
 import { EnvironmentDetector } from './environmentDetector';

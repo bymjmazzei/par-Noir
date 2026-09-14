@@ -1,4 +1,4 @@
-import { cryptoWorkerManager } from '../crypto/cryptoWorkerManager';
+import { cryptoWorkerManager } from '@par-noir/identity-crypto';
 // Validation Patterns - Regex patterns and constants for validation
 export class ValidationPatterns {
   // DID format validation

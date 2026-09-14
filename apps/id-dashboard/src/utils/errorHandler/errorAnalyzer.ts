@@ -1,4 +1,4 @@
-import { cryptoWorkerManager } from '../crypto/cryptoWorkerManager';
+import { cryptoWorkerManager } from '@par-noir/identity-crypto';
 // Error Analyzer - Handles error analysis, severity determination, and sanitization
 import { ErrorContext, ErrorHandlerConfig } from '../../types/errorHandler';
 

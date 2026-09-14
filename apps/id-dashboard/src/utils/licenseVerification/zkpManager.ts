@@ -1,4 +1,4 @@
-import { cryptoWorkerManager } from '../cryptoWorkerManager';
+import { cryptoWorkerManager } from '@par-noir/identity-crypto';
 // ZKP Manager - Handles Zero-Knowledge Proof and cryptographic operations for license verification
 import { LicenseInfo, LicenseProof } from '../../types/licenseVerification';
 import { LicenseManager } from './licenseManager';
