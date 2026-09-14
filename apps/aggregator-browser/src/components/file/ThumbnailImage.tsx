@@ -6,7 +6,7 @@
 import React, { useState, useEffect } from 'react';
 import { Lock } from 'lucide-react';
 import { PNOAuthService } from '../../services/pnOAuthService';
-import { EncryptionManager } from '@par-noir/identity-crypto';
+import { EncryptionManager } from '@par-noir/identity-crypto/browser';
 import { fetchStorageFile } from '../../services/storageApiClient';
 import { apiGet } from '../../services/ownerApiFetch';
 

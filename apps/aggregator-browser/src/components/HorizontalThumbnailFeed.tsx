@@ -149,7 +149,7 @@ export function HorizontalThumbnailFeed({
             }
             
             // PRIORITY 2: Fall back to session-based decryption (for private files)
-            const { EncryptionManager } = await import('@par-noir/identity-crypto');
+            const { EncryptionManager } = await import('@par-noir/identity-crypto/browser');
             const session = PNOAuthService.loadSession();
             if (!session?.did) {
               console.warn(`[HorizontalThumbnailFeed] Cannot decrypt - no session and no token`);

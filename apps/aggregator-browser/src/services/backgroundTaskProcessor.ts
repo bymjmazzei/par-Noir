@@ -241,7 +241,7 @@ async function processShareSettingsUpdate(
       // CDN feed previews from decrypted plaintext when visual media
       const mime = encryptedPackage.metadata?.originalMimeType || '';
       if (mime.startsWith('image/') || mime.startsWith('video/')) {
-        const { EncryptionManager } = await import('@par-noir/identity-crypto');
+        const { EncryptionManager } = await import('@par-noir/identity-crypto/browser');
         const encryptionManager = new EncryptionManager();
         const decrypted = await encryptionManager.decrypt(
           encryptedPackage.encrypted,

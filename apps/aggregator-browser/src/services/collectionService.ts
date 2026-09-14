@@ -1,5 +1,5 @@
 import { PNOAuthService } from './pnOAuthService';
-import { EncryptionManager } from '@par-noir/identity-crypto';
+import { EncryptionManager } from '@par-noir/identity-crypto/browser';
 import { getEncryptionService } from '../services/encryptionService';
 import { ownerFetch } from './ownerApiFetch';
 import { publishPublicShare } from './publicSharePublish';

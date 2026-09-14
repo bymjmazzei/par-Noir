@@ -34,6 +34,14 @@ if [ $? -ne 0 ]; then
     exit 1
 fi
 
+echo "📦 Building packages/identity-crypto..."
+cd ../identity-crypto
+npm run build
+if [ $? -ne 0 ]; then
+    echo "❌ identity-crypto build failed"
+    exit 1
+fi
+
 echo "📦 Building packages/device-auth..."
 cd ../device-auth
 npm run build
