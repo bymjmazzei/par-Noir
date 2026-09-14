@@ -10,15 +10,15 @@ Under **device cloud custody** ([ADR_DEVICE_CLOUD_CUSTODY.md](./architecture/ADR
 
 1. Each user may publish `mlKemPublicKey` on their Drive `profile.json` (and via `POST /api/profile/ml-kem-public-key`) for **discovery** and cold-DM flows.
 2. On **connection send**, the requester attaches `requesterMlKemPublicKey` and opaque `requesterMailboxRouteKey` to the recipient’s `pending_received` row (`peerMlKemPublicKey` in column F; `peerMailboxRouteKey` in column H of the connections sheet).
-3. On **connection accept**, the acceptor reads `peerMlKemPublicKey` from that pending row (profile publish is a legacy fallback for requests sent before this change). The acceptor runs ML-KEM-768 encapsulation client-side and sends `kemCiphertext`, `wrappedMessageRootKey`, and `acceptorMailboxRouteKey` to `POST /api/connections/:id/accept`. The API stores KEM blobs and writes the acceptor’s route key onto the requester’s connection row (no server-side derivation).
-4. On **every open** (after identity unlock), each party re-derives `messageRootKey` from their own Drive inbox:
+3. On **connection accept**, the acceptor reads `peerMlKemPublicKey` from that pending row (profile publish is a legacy fallback for requests sent before this change). The acceptor runs ML-KEM-768 encapsulation client-side and sends `kemCiphertext`, `wrappedMessageRootKey`, and `acceptorMailboxRouteKey` to `POST /api/connections/:id/accept`. The API stores KEM blobs on the **acceptor** Drive and enqueues a `connection_accept` mailbox job for the **requester** (peer route + KEM material). **Fail-closed:** if that job is not delivered (requester has no claimed mailbox route), Accept returns **409** `peer_mailbox_unavailable` — never `{ success: true }` with only one half complete. Missing `acceptorMailboxRouteKey` is **400**.
+4. On **every open** (after identity unlock), the browser opens one `@par-noir/dm-crypto` **`DmThreadSession`** per `connectionId` (role, recovery blobs, peer `routeKey`, resolved `messageRootKey`). That session is the only encrypt/decrypt SoT:
    - **Requester:** `openDmSession(kemCiphertext, mlKemSecretKey)` — inbox column **F** (`kemCiphertext`).
    - **Acceptor:** `unwrapMessageRootKey(wrappedMessageRootKey, mlKemSecretKey, connectionId)` — inbox column **H** (`wrappedMessageRootKey`).
-   Both paths require an unlocked identity session (`mlKemSecretKey` from OAuth handoff). `@par-noir/dm-crypto` `resolveMessageRootKey` tries wrapped, then kem, then optional legacy root (identity migration only).
+   `resolveMessageRootKey` tries wrapped, then kem, then optional legacy root (identity migration only).
 5. Per-message keys via HKDF (`par-noir-dm-v1` + `connectionId`).
-6. **Send:** `POST /api/messages/send` with `encryptedContent`, `cryptoVersion: 2`, `connectionId`, and peer `routeKey` when known.
+6. **Send:** Client refuses send without peer `routeKey` + openable session. Then `POST /api/messages/send` with `encryptedContent`, `cryptoVersion: 2`, `connectionId`, and peer `routeKey`.
    - **Device custody (default on):** Client commits sender outbox first; API fans out recipient-only **opaque** throughway jobs (`delivery: throughway`). Devices flush with locally held cloud keys and materialize silos before ack.
-7. **Read:** `GET|POST /api/messages/conversation` returns `encryptedContent` from user storage after flush; clients claim pending via `GET /api/mailbox/pending?routeKey=…` (device auth) before materialization.
+7. **Read / paint:** `GET|POST /api/messages/conversation` returns `encryptedContent`; client decrypts **only** via `DmThreadSession`. Ciphertext without a session or failed decrypt ⇒ `[Unable to decrypt message]` — **never** an empty bubble. Socket / mailbox events are **wake-only** (reload SoT); they must not invent peer-attributed Message rows.
 8. **Public likes/comments:** aggregator public counts only (`delivery: public`) — not mailbox jobs.
 
 Inbox sheets cache opaque recovery blobs on user Drive—column F (`kemCiphertext`) for the requester, column H (`wrappedMessageRootKey`) for the acceptor—not a server-held secret and never plaintext `messageRootKey`.

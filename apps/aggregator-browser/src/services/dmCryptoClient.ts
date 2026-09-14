@@ -1,74 +1,119 @@
 /**
- * Client-side E2E encrypt/decrypt for DMs.
+ * Thin browser wiring for @par-noir/dm-crypto DmThreadSession.
+ * Identity unlock supplies mlKemSecretKey; package owns crypto + session SoT.
  */
 
 import {
-  deriveMessageKey,
-  encryptDmMessage,
-  decryptDmMessage,
+  DmThreadSession,
+  openAndRegisterDmThreadSession,
+  getDmThreadSession,
   establishDmSession,
-  isDmCiphertext,
-  resolveMessageRootKey,
   wrapMessageRootKey,
+  resolveMessageRootKey,
+  UNABLE_TO_DECRYPT_MESSAGE,
+  type DmThreadRole
 } from '@par-noir/dm-crypto';
+import { getDmIdentity } from './dmIdentitySession';
+import { PNOAuthService } from './pnOAuthService';
 import {
-  setMessageRootKey,
   getLegacyMessageRootKey,
   setLegacyMessageRootKey,
+  clearDmSessionCache as clearLegacyAndSessions
 } from './dmSessionCache';
-import { getDmIdentity } from './dmIdentitySession';
 
 /** Recovery blobs from user Drive inbox (not localStorage). */
 export interface DmSessionRecovery {
   kemCiphertext?: string;
   wrappedMessageRootKey?: string;
+  legacyRoot?: string;
 }
 
-export async function ensureMessageRootKey(
-  connectionId: string,
-  recovery?: DmSessionRecovery,
-  opts?: { allowLegacyFallback?: boolean }
-): Promise<string> {
+export { UNABLE_TO_DECRYPT_MESSAGE };
+export type { DmThreadSession };
+
+export function clearDmSessionCache(): void {
+  clearLegacyAndSessions();
+}
+
+export async function openDmThreadSession(opts: {
+  connectionId: string;
+  peerPnIdentifier: string;
+  peerRouteKey?: string;
+  role?: DmThreadRole;
+  recovery: DmSessionRecovery;
+}): Promise<DmThreadSession> {
   const { mlKemSecretKey } = getDmIdentity();
-  const legacy =
-    opts?.allowLegacyFallback !== false ? getLegacyMessageRootKey(connectionId) : undefined;
-
-  const root = await resolveMessageRootKey(connectionId, mlKemSecretKey, {
-    kemCiphertext: recovery?.kemCiphertext,
-    wrappedMessageRootKey: recovery?.wrappedMessageRootKey,
-    legacyRoot: legacy,
+  const pnIdentifier = PNOAuthService.loadSession()?.pnIdentifier;
+  if (!pnIdentifier) {
+    throw new Error('Messaging identity not ready');
+  }
+  const legacyRoot =
+    opts.recovery.legacyRoot || getLegacyMessageRootKey(opts.connectionId);
+  return openAndRegisterDmThreadSession({
+    connectionId: opts.connectionId,
+    mlKemSecretKey,
+    myPnIdentifier: pnIdentifier,
+    peerPnIdentifier: opts.peerPnIdentifier,
+    peerRouteKey: opts.peerRouteKey,
+    role: opts.role,
+    recovery: {
+      kemCiphertext: opts.recovery.kemCiphertext,
+      wrappedMessageRootKey: opts.recovery.wrappedMessageRootKey,
+      legacyRoot
+    }
   });
-
-  setMessageRootKey(connectionId, root);
-  return root;
 }
 
-export function cacheLegacyMessageRoot(connectionId: string, rootB64: string): void {
-  setLegacyMessageRootKey(connectionId, rootB64);
+export async function ensureDmThreadSession(opts: {
+  connectionId: string;
+  peerPnIdentifier: string;
+  peerRouteKey?: string;
+  role?: DmThreadRole;
+  recovery: DmSessionRecovery;
+}): Promise<DmThreadSession> {
+  const existing = getDmThreadSession(opts.connectionId);
+  if (existing) {
+    if (opts.peerRouteKey) existing.setPeerRouteKey(opts.peerRouteKey);
+    return existing;
+  }
+  return openDmThreadSession(opts);
 }
 
 export async function encryptOutgoingMessage(
   plaintext: string,
   connectionId: string,
-  recovery?: DmSessionRecovery
+  recovery?: DmSessionRecovery,
+  opts?: { peerPnIdentifier?: string; peerRouteKey?: string; role?: DmThreadRole }
 ): Promise<string> {
-  const root = await ensureMessageRootKey(connectionId, recovery);
-  const messageKey = deriveMessageKey(root, connectionId);
-  return encryptDmMessage(plaintext, messageKey);
+  const session = await ensureDmThreadSession({
+    connectionId,
+    peerPnIdentifier: opts?.peerPnIdentifier || '',
+    peerRouteKey: opts?.peerRouteKey,
+    role: opts?.role,
+    recovery: recovery || {}
+  });
+  return session.encryptOutgoing(plaintext);
 }
 
 export async function decryptIncomingMessage(
   encryptedContent: string,
   connectionId: string,
-  recovery?: DmSessionRecovery
+  recovery?: DmSessionRecovery,
+  opts?: { peerPnIdentifier?: string; peerRouteKey?: string; role?: DmThreadRole }
 ): Promise<string> {
   if (!encryptedContent) return '';
-  if (!isDmCiphertext(encryptedContent)) {
-    return encryptedContent;
+  try {
+    const session = await ensureDmThreadSession({
+      connectionId,
+      peerPnIdentifier: opts?.peerPnIdentifier || '',
+      peerRouteKey: opts?.peerRouteKey,
+      role: opts?.role,
+      recovery: recovery || {}
+    });
+    return session.decryptIncoming(encryptedContent);
+  } catch {
+    return UNABLE_TO_DECRYPT_MESSAGE;
   }
-  const root = await ensureMessageRootKey(connectionId, recovery, { allowLegacyFallback: true });
-  const messageKey = deriveMessageKey(root, connectionId);
-  return decryptDmMessage(encryptedContent, messageKey);
 }
 
 export function createKemSession(peerMlKemPublicKey: string): {
@@ -86,4 +131,28 @@ export async function wrapAcceptorMessageRootKey(
 ): Promise<string> {
   const { mlKemSecretKey } = getDmIdentity();
   return wrapMessageRootKey(messageRootKey, mlKemSecretKey, connectionId);
+}
+
+export async function ensureMessageRootKey(
+  connectionId: string,
+  recovery?: DmSessionRecovery
+): Promise<string> {
+  const { mlKemSecretKey } = getDmIdentity();
+  const legacyRoot = recovery?.legacyRoot || getLegacyMessageRootKey(connectionId);
+  const root = await resolveMessageRootKey(connectionId, mlKemSecretKey, {
+    kemCiphertext: recovery?.kemCiphertext,
+    wrappedMessageRootKey: recovery?.wrappedMessageRootKey,
+    legacyRoot
+  });
+  // Register a session so subsequent encrypt/decrypt share the same SoT.
+  await ensureDmThreadSession({
+    connectionId,
+    peerPnIdentifier: '',
+    recovery: { ...recovery, legacyRoot: root }
+  }).catch(() => undefined);
+  return root;
+}
+
+export function cacheLegacyMessageRoot(connectionId: string, rootB64: string): void {
+  setLegacyMessageRootKey(connectionId, rootB64);
 }

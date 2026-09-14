@@ -67,3 +67,14 @@ export {
   genericAttachmentFileName,
   type RelativeFromMarker
 } from './opaquePeer.js';
+export {
+  DmThreadSession,
+  openAndRegisterDmThreadSession,
+  getDmThreadSession,
+  setDmThreadSession,
+  clearDmThreadSessions,
+  UNABLE_TO_DECRYPT_MESSAGE,
+  MISSING_SESSION_FOR_CIPHERTEXT,
+  type DmThreadRole,
+  type DmThreadSessionOpenParams
+} from './dmThreadSession.js';

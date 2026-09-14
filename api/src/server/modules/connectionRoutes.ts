@@ -475,6 +475,19 @@ export function setupConnectionRoutes(app: express.Application, deps: Connection
           (typeof mailboxRouteKey === 'string' && mailboxRouteKey.trim()) ||
           undefined;
 
+        if (!acceptorRouteKey) {
+          safeLogger.warn('[AcceptConnection] missing acceptor mailbox route; refuse success', {
+            category: 'connections'
+          });
+          return res.status(400).json({
+            success: false,
+            delivered: false,
+            error: 'acceptor_mailbox_route_required',
+            error_description:
+              'Accept needs your mailbox route so the requester can message you. Unlock messaging once and try Accept again.'
+          });
+        }
+
         const { enqueueSocialJob } = await import('./socialRail');
         const delivered = await enqueueSocialJob({
           jobType: 'connection_accept',
@@ -492,11 +505,25 @@ export function setupConnectionRoutes(app: express.Application, deps: Connection
             kemCiphertext,
             wrappedMessageRootKey,
             channelClientId,
-            ...(acceptorRouteKey
-              ? { peerMailboxRouteKey: acceptorRouteKey, acceptorMailboxRouteKey: acceptorRouteKey }
-              : {})
+            peerMailboxRouteKey: acceptorRouteKey,
+            acceptorMailboxRouteKey: acceptorRouteKey
           }
         });
+
+        if (!delivered) {
+          // Acceptor Drive already updated; requester cannot apply until they claim a
+          // mailbox route. Do not pretend Accept finished both halves.
+          safeLogger.warn('[AcceptConnection] requester mailbox not ready; accept not delivered', {
+            category: 'connections'
+          });
+          return res.status(409).json({
+            success: false,
+            delivered: false,
+            error: 'peer_mailbox_unavailable',
+            error_description:
+              'Accepted on your side, but their inbox is not ready yet. Ask them to unlock messaging once, then try Accept again.'
+          });
+        }
 
         // Create conversation sheets for both users when connection is accepted
         // Note: connectionId and sharedSecret are available from the outer scope
@@ -513,7 +540,11 @@ export function setupConnectionRoutes(app: express.Application, deps: Connection
           // Ensure connectionId and sharedSecret are available for system messages
           if (!connectionId) {
             messagingLog.warn('[AcceptConnection] No connectionId available for system messages');
-            return res.json({ success: true });
+            return res.status(500).json({
+              success: false,
+              error: 'connection_id_missing',
+              error_description: 'Accept completed delivery but connectionId was missing for conversation setup.'
+            });
           }
           
           try {
@@ -666,7 +697,7 @@ export function setupConnectionRoutes(app: express.Application, deps: Connection
           ]
         ).catch(() => undefined);
 
-        return res.json({ success: true });
+        return res.json({ success: true, delivered: true });
       } catch (error: any) {
         messagingLog.error('[AcceptConnection] Error accepting connection request', {
           message: error?.message,

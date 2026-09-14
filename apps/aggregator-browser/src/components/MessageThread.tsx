@@ -19,9 +19,7 @@ import {
   notifyMessagingInboxRefresh,
 } from '../services/messageService';
 import {
-  MESSAGING_INBOUND_PREVIEW_EVENT,
-  inboundPreviewToMessage,
-  type InboundMessagePreview,
+  MESSAGING_INBOUND_WAKE_EVENT,
 } from '../services/inboundMailboxPreview';
 import { useUserState } from '../contexts/UserStateContext';
 import { isMessagingRateLimited } from '../services/messagingRateLimitState';
@@ -383,26 +381,22 @@ export function MessageThread({
       });
   }, [realtimeRefresh]);
 
-  // Decrypt-from-mailbox preview: paint before Sheets apply completes.
+  // Wake-only: opaque ciphertext arrived — reload Sheets SoT via DmThreadSession decrypt.
   useEffect(() => {
     if (!userState.isUnlocked || !userState.pnIdentifier) return;
-    const onPreview = (ev: Event) => {
-      const detail = (ev as CustomEvent<{ previews?: InboundMessagePreview[] }>).detail;
-      const previews = detail?.previews || [];
-      const matching = previews.filter((p) => {
-        if (isGroup) return !!groupId && p.groupId === groupId;
-        if (connectionId && p.connectionId === connectionId) return true;
-        if (participantPnIdentifier && p.fromPnIdentifier === participantPnIdentifier) return true;
-        return false;
-      });
-      if (!matching.length) return;
-      const asMessages = matching.map(inboundPreviewToMessage);
-      setMessages((prev) => mergeChatMessages(asMessages, prev));
-      setLoading(false);
+    const onWake = (ev: Event) => {
+      const detail = (ev as CustomEvent<{ connectionId?: string; groupId?: string }>).detail || {};
+      if (isGroup) {
+        if (detail.groupId && groupId && detail.groupId !== groupId) return;
+      } else if (detail.connectionId && connectionId && detail.connectionId !== connectionId) {
+        return;
+      }
+      if (isPollingRef.current || isMessagingRateLimited() || sendingRef.current) return;
+      void loadMessagesRef.current(false, false);
       notifyMessagingInboxRefresh();
     };
-    window.addEventListener(MESSAGING_INBOUND_PREVIEW_EVENT, onPreview);
-    return () => window.removeEventListener(MESSAGING_INBOUND_PREVIEW_EVENT, onPreview);
+    window.addEventListener(MESSAGING_INBOUND_WAKE_EVENT, onWake);
+    return () => window.removeEventListener(MESSAGING_INBOUND_WAKE_EVENT, onWake);
   }, [
     userState.isUnlocked,
     userState.pnIdentifier,

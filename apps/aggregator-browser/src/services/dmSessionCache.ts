@@ -1,18 +1,6 @@
-/**
- * In-memory DM session keys (never persisted).
- * Legacy roots from identity migration are loaded from localStorage migration state only.
- */
+import { clearDmThreadSessions } from '@par-noir/dm-crypto';
 
-const rootKeys = new Map<string, string>();
 const legacyRootKeys = new Map<string, string>();
-
-export function setMessageRootKey(connectionId: string, messageRootKeyB64: string): void {
-  rootKeys.set(connectionId, messageRootKeyB64);
-}
-
-export function getMessageRootKey(connectionId: string): string | undefined {
-  return rootKeys.get(connectionId);
-}
 
 export function setLegacyMessageRootKey(connectionId: string, messageRootKeyB64: string): void {
   legacyRootKeys.set(connectionId, messageRootKeyB64);
@@ -22,7 +10,15 @@ export function getLegacyMessageRootKey(connectionId: string): string | undefine
   return legacyRootKeys.get(connectionId);
 }
 
+/** @deprecated No-op for live path — sessions live in dm-crypto registry. */
+export function setMessageRootKey(_connectionId: string, _messageRootKeyB64: string): void {}
+
+/** @deprecated */
+export function getMessageRootKey(_connectionId: string): string | undefined {
+  return undefined;
+}
+
 export function clearDmSessionCache(): void {
-  rootKeys.clear();
   legacyRootKeys.clear();
+  clearDmThreadSessions();
 }

@@ -233,6 +233,63 @@ async function wipeSide(label, page) {
     }
   }
 
+  // Groups: leave / disband so DM QA starts with no group residue
+  {
+    const listRes = await page.evaluate(
+      async ({ api, pn, cloud, bearer }) => {
+        const res = await fetch(`${api}/api/groups?userPnIdentifier=${encodeURIComponent(pn)}`, {
+          headers: {
+            Accept: 'application/json',
+            Authorization: `Bearer ${bearer}`,
+            'X-PN-Cloud-Access-Token': cloud,
+            Origin: 'https://messaging.parnoir.com',
+          },
+        });
+        const body = await res.json().catch(() => ({}));
+        return { status: res.status, groups: body.groups || [] };
+      },
+      { api: API, pn, cloud: creds.cloud, bearer: creds.bearer }
+    );
+    const groups = Array.isArray(listRes.groups) ? listRes.groups : [];
+    notes.push(`groups_listed=${listRes.status}:n=${groups.length}`);
+    const seen = new Set();
+    for (const g of groups) {
+      const groupId = g.groupId;
+      if (!groupId || seen.has(groupId)) continue;
+      seen.add(groupId);
+      const owner = g.ownerPnIdentifier;
+      const member = g.memberPnIdentifier || pn;
+      if (owner === pn) {
+        // Remove peer members first, then self row via member delete of each listed member
+        for (const row of groups.filter((x) => x.groupId === groupId)) {
+          const m = row.memberPnIdentifier;
+          if (!m) continue;
+          const d = await apiDelete(
+            page,
+            `/api/groups/${encodeURIComponent(groupId)}/members/${encodeURIComponent(m)}`,
+            {
+              cloud: creds.cloud,
+              bearer: creds.bearer,
+              body: { ownerPnIdentifier: pn },
+            }
+          );
+          notes.push(`api_del_group_member=${d.status}`);
+        }
+      } else if (member) {
+        const d = await apiDelete(
+          page,
+          `/api/groups/${encodeURIComponent(groupId)}/members/${encodeURIComponent(member)}`,
+          {
+            cloud: creds.cloud,
+            bearer: creds.bearer,
+            body: { ownerPnIdentifier: owner },
+          }
+        );
+        notes.push(`api_leave_group=${d.status}`);
+      }
+    }
+  }
+
   // UI Disconnect leftovers
   await clickTab(page, 'Connections');
   await page.waitForTimeout(1000);

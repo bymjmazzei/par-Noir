@@ -6,7 +6,12 @@
 import { PNOAuthService } from './pnOAuthService';
 import { API_ENDPOINT } from '../config/api';
 import { inboxCacheService } from './inboxCacheService';
-import { encryptOutgoingMessage, decryptIncomingMessage, type DmSessionRecovery } from './dmCryptoClient';
+import {
+  encryptOutgoingMessage,
+  decryptIncomingMessage,
+  UNABLE_TO_DECRYPT_MESSAGE,
+  type DmSessionRecovery
+} from './dmCryptoClient';
 import { isDmIdentityReady, getDmIdentity } from './dmIdentitySession';
 import { encryptMessageRequest, decryptMessageRequest } from '@par-noir/dm-crypto';
 import { messageFetch } from './messageAuthFetch';
@@ -585,15 +590,36 @@ export async function getConversationMessages(
         .get(userPnIdentifier)
         ?.find((e) => e.participantPnIdentifier === participantPnIdentifier)?.connectionId;
 
+    let peerRouteKey: string | undefined;
+    try {
+      const { getConnections } = await import('./connectionService');
+      const connections = await getConnections(userPnIdentifier);
+      const row = connections.find(
+        (c) =>
+          c.connectionId === effectiveConnectionId ||
+          c.userPnIdentifier === participantPnIdentifier
+      );
+      peerRouteKey = row?.peerMailboxRouteKey;
+    } catch {
+      /* optional for decrypt */
+    }
+
     const messages: Message[] = await Promise.all(
       raw.map(async (row: Message & { encryptedContent?: string; cryptoVersion?: number }) => {
         const enc = row.encryptedContent || row.content || '';
         let content = '';
-        if (effectiveConnectionId && enc) {
-          try {
-            content = await decryptIncomingMessage(enc, effectiveConnectionId, recovery);
-          } catch {
-            content = '[Unable to decrypt message]';
+        if (enc) {
+          if (!effectiveConnectionId) {
+            // Ciphertext without session id must never paint as a blank bubble.
+            content = UNABLE_TO_DECRYPT_MESSAGE;
+          } else {
+            content = await decryptIncomingMessage(enc, effectiveConnectionId, recovery, {
+              peerPnIdentifier: participantPnIdentifier,
+              peerRouteKey
+            });
+            if (!content && enc) {
+              content = UNABLE_TO_DECRYPT_MESSAGE;
+            }
           }
         }
         return {
@@ -668,7 +694,28 @@ export async function sendMessage(
     throw new Error('No encrypted session for this conversation. Re-accept the connection.');
   }
 
-  const encryptedContent = await encryptOutgoingMessage(content, connId, recovery);
+  let peerRouteKey: string | undefined;
+  try {
+    const { getConnections } = await import('./connectionService');
+    const connections = await getConnections(fromPnIdentifier);
+    const row = connections.find((c) => c.connectionId === connId || c.userPnIdentifier === toPnIdentifier);
+    if (row?.peerMailboxRouteKey && /^[a-f0-9]{64}$/i.test(row.peerMailboxRouteKey)) {
+      peerRouteKey = row.peerMailboxRouteKey.trim();
+    }
+  } catch {
+    /* server may still resolve recipient claimed route */
+  }
+
+  if (!peerRouteKey) {
+    throw new Error(
+      'Peer mailbox route missing. Re-accept the connection after both sides unlock messaging.'
+    );
+  }
+
+  const encryptedContent = await encryptOutgoingMessage(content, connId, recovery, {
+    peerPnIdentifier: toPnIdentifier,
+    peerRouteKey
+  });
   const messageId = `msg_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`;
   const { rememberOutboundMessageId } = await import('./outboundMessageIds');
   rememberOutboundMessageId(messageId);
@@ -695,25 +742,13 @@ export async function sendMessage(
       : {})
   };
 
-  let peerRouteKey: string | undefined;
-  try {
-    const { getConnections } = await import('./connectionService');
-    const connections = await getConnections(fromPnIdentifier);
-    const row = connections.find((c) => c.connectionId === connId || c.userPnIdentifier === toPnIdentifier);
-    if (row?.peerMailboxRouteKey && /^[a-f0-9]{64}$/i.test(row.peerMailboxRouteKey)) {
-      peerRouteKey = row.peerMailboxRouteKey.trim();
-    }
-  } catch {
-    /* server may still resolve recipient claimed route */
-  }
-
   // Online sealed outbox ledger (promote/materialize) — not deferred offline queue.
   const sealSession = sealSessionForOutbox(fromPnIdentifier);
   const outbox: OutboxRecord = createOutboxRecord({
     outboxId: messageId,
     kind: 'message_append',
     payload: messagePayload,
-    fanout: peerRouteKey ? messageSendFanout(peerRouteKey, !!mediaFileId) : [],
+    fanout: messageSendFanout(peerRouteKey, !!mediaFileId),
     status: 'pending'
   });
   await upsertLocalOutboxRecord(fromPnIdentifier, sealSession, outbox);
@@ -723,7 +758,7 @@ export async function sendMessage(
       ...messagePayload,
       cryptoVersion: 2,
       connectionId: connId,
-      ...(peerRouteKey ? { routeKey: peerRouteKey } : {})
+      routeKey: peerRouteKey
     };
     const response = await messageFetch('/api/messages/send', {
       method: 'POST',

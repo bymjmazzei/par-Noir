@@ -18,9 +18,7 @@ import { MESSAGING_ONLY } from '../config/buildFlags';
 import { PLATFORM_CHANNEL_CLIENT_ID } from '@par-noir/messaging-ui';
 import { requestHotDrain } from '../services/socialMailboxConsumer';
 import {
-  MESSAGING_INBOUND_PREVIEW_EVENT,
-  inboundPreviewToMessage,
-  type InboundMessagePreview,
+  MESSAGING_INBOUND_WAKE_EVENT,
 } from '../services/inboundMailboxPreview';
 
 interface MessageListProps {
@@ -50,43 +48,14 @@ export function MessageList({ onThreadSelect, refreshKey = 0, channelClientId }:
     }
   });
 
-  // Optimistic inbox snippet from decrypt-from-mailbox previews.
+  // Wake-only: opaque inbound arrived — refresh inbox SoT (no peer-default preview rows).
   useEffect(() => {
     if (!userState.pnIdentifier) return;
-    const onPreview = (ev: Event) => {
-      const detail = (ev as CustomEvent<{ previews?: InboundMessagePreview[] }>).detail;
-      const previews = detail?.previews || [];
-      if (!previews.length) return;
-      setThreads((prev) => {
-        let next = [...prev];
-        for (const preview of previews) {
-          const msg = inboundPreviewToMessage(preview);
-          const idx = next.findIndex((t) => {
-            if (preview.groupId) return t.groupId === preview.groupId;
-            if (preview.connectionId && t.connectionId === preview.connectionId) return true;
-            return (
-              !!preview.fromPnIdentifier &&
-              t.participantPnIdentifier === preview.fromPnIdentifier
-            );
-          });
-          if (idx >= 0) {
-            next[idx] = {
-              ...next[idx],
-              lastMessage: msg,
-              unreadCount: (next[idx].unreadCount || 0) + 1
-            };
-          }
-        }
-        next = next.sort((a, b) => {
-          const ta = a.lastMessage?.timestamp || '';
-          const tb = b.lastMessage?.timestamp || '';
-          return new Date(tb).getTime() - new Date(ta).getTime();
-        });
-        return next;
-      });
+    const onWake = () => {
+      void loadThreadsFromApi(false, false);
     };
-    window.addEventListener(MESSAGING_INBOUND_PREVIEW_EVENT, onPreview);
-    return () => window.removeEventListener(MESSAGING_INBOUND_PREVIEW_EVENT, onPreview);
+    window.addEventListener(MESSAGING_INBOUND_WAKE_EVENT, onWake);
+    return () => window.removeEventListener(MESSAGING_INBOUND_WAKE_EVENT, onWake);
   }, [userState.pnIdentifier]);
 
   // Load display names for participants

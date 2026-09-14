@@ -180,23 +180,19 @@ export async function drainSocialMailbox(): Promise<MailboxDrainResult> {
     }
   }
 
-  const previews: import('./inboundMailboxPreview').InboundMessagePreview[] = [];
   try {
-    const { tryBuildInboundPreview, notifyMessagingInboundPreview } = await import(
-      './inboundMailboxPreview'
-    );
+    const { tryBuildInboundPreview } = await import('./inboundMailboxPreview');
     for (const job of jobs) {
       if (!chatJobTypes.has(job.jobType)) continue;
       try {
-        const preview = await tryBuildInboundPreview(identityId, job);
-        if (preview) previews.push(preview);
+        // Wake UI only — does not invent Message rows.
+        await tryBuildInboundPreview(identityId, job);
       } catch {
-        /* preview must never block drain/apply */
+        /* wake must never block drain/apply */
       }
     }
-    if (previews.length) notifyMessagingInboundPreview(previews);
   } catch {
-    /* ignore preview module failures */
+    /* ignore wake module failures */
   }
 
   for (const job of jobs) {

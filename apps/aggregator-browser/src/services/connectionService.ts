@@ -219,21 +219,24 @@ export async function acceptConnectionRequest(
       })
     });
 
+    const result = await response.json().catch(() => ({} as Record<string, unknown>));
     if (!response.ok) {
       let errorMessage = 'Failed to accept connection request';
-      try {
-        const error = await response.json();
-        errorMessage = error.error || error.error_description || errorMessage;
-        if (error.details) {
-          errorMessage += ` - ${error.details}`;
-        }
-        console.error('Accept connection request API error:', error);
-      } catch (e) {
-        const errorText = await response.text().catch(() => 'Unknown error');
-        errorMessage = `HTTP ${response.status}: ${errorText}`;
-        console.error('Accept connection request API error (non-JSON):', response.status, errorText);
+      errorMessage =
+        (typeof result.error_description === 'string' && result.error_description) ||
+        (typeof result.error === 'string' && result.error) ||
+        errorMessage;
+      if (typeof result.details === 'string') {
+        errorMessage += ` - ${result.details}`;
       }
+      console.error('Accept connection request API error:', result);
       throw new Error(errorMessage);
+    }
+    if (result?.delivered === false) {
+      throw new Error(
+        (typeof result.error_description === 'string' && result.error_description) ||
+          'Accept did not reach their inbox. Ask them to unlock messaging once, then try again.'
+      );
     }
     invalidateConnectionsCache(userPnIdentifier);
     try {

@@ -27,7 +27,7 @@ Canonical shared owners. Apps may only **import and wire**; they must not reimpl
 |---|---|---|
 | Identity create / unlock | `@par-noir/identity-crypto` | Call create/unlock; no local EncryptionManager fork |
 | OAuth unlock proofs (ML-DSA) | `@par-noir/pqc-crypto` | Sign proofs in OAuth authenticate |
-| DMs / group message crypto | `@par-noir/dm-crypto` | Encrypt/decrypt; session host may hold keys in memory |
+| DMs / group message crypto | `@par-noir/dm-crypto` | Encrypt/decrypt; **`DmThreadSession`** is the only per-connection SoT (root, peer route, paint decrypt) |
 | Feed / public share domain | `@par-noir/aggregator-domain` | Types + public decrypt helpers |
 | OAuth UI / handoff / CloudReconnect | `@par-noir/oauth-ui` | UnlockButton, popup, resume snapshot, `FirstPartyCloudReconnectHost`, `ThirdPartyCloudReconnectHost`, portal session helpers, pending grant |
 | Device cloud credentials / mailbox / outbox / owner headers | `@par-noir/device-cloud-credentials` | Single waiter `waitForCloudCredentialsReady`; `ownerCloudHeadersAsync`; `requireOnlineCloudForSend`; promote/pending/ack |
@@ -119,6 +119,15 @@ Ratchet: `scripts/check-route-manifest.sh` (+ husky/CI).
 | D14 | Unlock-proof mint in `@par-noir/oauth-ui` (`mintAccessTokenWithUnlockProof`); dashboard decrypt-only wrapper; browse dead `authenticate`/`completeAuthFlow` deleted |
 | D20 | Developer-portal off `@identity-protocol/identity-sdk`; `fetchPortalUserInfo` / `revokePortalToken`; ratchet extended |
 | D21 | Migrate Drive routes on `resolveOwnerDriveToken` + client `ownerFetch`; peer-credential allowlist **empty** |
+
+### Messaging session spine rebuild (2026-09-14)
+
+| Item | Action |
+|---|---|
+| Soft Accept | **Fail-closed** — `connection_accept` mailbox must deliver or Accept returns 409; client surfaces unfinished |
+| Multi-writer paint | **Deleted** peer-default inbound preview Message rows; wake-only + Sheets SoT via `DmThreadSession` |
+| Session SoT | `@par-noir/dm-crypto` `DmThreadSession` (root, peer route, encrypt/decrypt-or-fail) |
+| QA | Force-wipe DMs/groups/connections; gate **A→B and B→A** |
 
 ---
 

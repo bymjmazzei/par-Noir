@@ -41,6 +41,8 @@ const HARD_REFRESH = process.env.PN_QA_HARD_REFRESH === '1';
 const HEADLESS = process.env.PN_QA_HEADLESS !== '0';
 /** Always Disconnect + fresh Connect/Accept even if a Messages thread exists. */
 const FORCE_FRESH = process.env.PN_QA_FORCE_FRESH === '1';
+/** Wipe DMs/groups/connections on both clouds before Connect (default on). Set PN_QA_WIPE=0 to skip. */
+const WIPE_BEFORE = process.env.PN_QA_WIPE !== '0';
 
 /** Detached Chromium per surface so A/B messaging do not share sessionStorage. */
 const SURFACES = {
@@ -1026,6 +1028,24 @@ if (gateFailed) {
   const apiB = gateB._keep.apiBag;
   const pnB = gateB.pnIdentifier;
 
+  if (WIPE_BEFORE) {
+    slog('Wiping DMs / groups / connections on both clouds before Connect…');
+    await new Promise((resolve, reject) => {
+      const child = spawn(
+        process.execPath,
+        [resolve(scriptDir, 'ux-messaging-force-wipe.mjs')],
+        { stdio: ['ignore', 'inherit', 'inherit'], cwd: ROOT, env: process.env }
+      );
+      child.on('exit', (code) => {
+        if (code === 0) resolve();
+        else reject(new Error(`force-wipe exited ${code}`));
+      });
+      child.on('error', reject);
+    });
+    report.notes.push('force_wipe_before_connect=ok');
+    await pace(PHASE_GAP_MS, 'after force-wipe');
+  }
+
   await dismissMessagingOverlays(pageA);
   await dismissMessagingOverlays(pageB);
   // Dead vault without linkedInactive banner: tabs look live but no X-PN-Cloud-Access-Token.
@@ -1600,6 +1620,59 @@ if (gateFailed) {
         dmLabel = 'LIVE_UNFINISHED';
         dmNotes.push('dual path ok but sender echo failed gate');
       }
+
+      // Bidirectional gate: B→A on the same connection
+      let reverseOk = false;
+      let markerHitsB = 0;
+      let aHasReverse = false;
+      if (dualDmOk) {
+        const marker2 = `qa-rev-${Date.now().toString(36)}`;
+        const composeB = pageB.getByPlaceholder(/Type a message/i).first();
+        await composeB.waitFor({ state: 'visible', timeout: 20_000 }).catch(() => {});
+        if (await composeB.isVisible().catch(() => false)) {
+          await composeB.fill(marker2);
+          const sendWaitB = pageB
+            .waitForResponse(
+              (r) =>
+                r.request().method() === 'POST' &&
+                /\/api\/messages\/send/.test(new URL(r.url()).pathname),
+              { timeout: 90_000 }
+            )
+            .catch(() => null);
+          await pageB.locator('[aria-label="Send"]').first().click().catch(async () => {
+            await pageB.getByRole('button', { name: /Send/i }).first().click();
+          });
+          const sendResB = await sendWaitB;
+          const sendOkB = !!(sendResB && sendResB.ok());
+          dmNotes.push(`reverse_sendOk=${sendOkB}`);
+          await shot(pageB, 'dm-04-b-sent');
+          markerHitsB = await pageB.locator(`text=${marker2}`).count().catch(() => 0);
+          dmNotes.push(`B_marker_bubble_count=${markerHitsB}`);
+          const t1 = Date.now();
+          for (let i = 0; i < 80; i++) {
+            aHasReverse = await bodyHas(pageA, new RegExp(marker2, 'i'));
+            if (aHasReverse) break;
+            if (Date.now() - t1 > 3_000 && i === 30) {
+              dmNotes.push(...(await refreshMailboxOnPage(pageA, 'A_post_reverse_soft')));
+            }
+            await pageA.waitForTimeout(100);
+          }
+          await shot(pageA, 'dm-05-a-reverse');
+          dmNotes.push(`A_received_reverse=${aHasReverse}`);
+          reverseOk = !!(sendOkB && aHasReverse && markerHitsB === 1);
+          if (!reverseOk) {
+            dualDmOk = false;
+            dmLabel = 'LIVE_UNFINISHED';
+            dmNotes.push('FAIL: B→A reverse DM gate');
+          } else {
+            dmNotes.push('SUCCESS: B→A reverse plaintext');
+          }
+        } else {
+          dualDmOk = false;
+          dmLabel = 'LIVE_UNFINISHED';
+          dmNotes.push('reverse compose not found on B');
+        }
+      }
       // Deferred offline outbox removed under device-cloud custody (fail closed without AT/network).
     } else {
       dmLabel = 'BLOCKED';
@@ -1619,7 +1692,7 @@ if (gateFailed) {
   });
   report.flows.push({
     id: 'messaging.dual_dm_success',
-    title: 'Dual pN can send/receive (acceptance bar)',
+    title: 'Dual pN bidirectional send/receive (acceptance bar)',
     label: dualDmOk ? 'LIVE_REAL' : 'BLOCKED',
     notes: [
       `connect=${connectLabel}`,
@@ -1627,8 +1700,8 @@ if (gateFailed) {
       `dm=${dmLabel}`,
       receiveLatencyMs != null ? `receiveLatencyMs=${receiveLatencyMs}` : 'receiveLatencyMs=n/a',
       dualDmOk
-        ? 'SUCCESS: A sent and B showed plaintext marker'
-        : 'FAIL: need POST request + Accept + B receives marker',
+        ? 'SUCCESS: A→B and B→A plaintext markers'
+        : 'FAIL: need POST request + Accept + A→B + B→A',
     ],
   });
   slog('  dm →', dmLabel, 'dual_dm →', dualDmOk ? 'LIVE_REAL' : 'BLOCKED', 'latencyMs=', receiveLatencyMs);
