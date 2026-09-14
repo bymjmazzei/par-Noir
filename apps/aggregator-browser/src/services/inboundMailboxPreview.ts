@@ -81,6 +81,12 @@ async function previewDmMessage(
   const messageId = typeof payload.messageId === 'string' ? payload.messageId.trim() : '';
   if (!connectionId || !encryptedContent || !messageId) return null;
 
+  const { isRecentOutboundMessageId } = await import('./outboundMessageIds');
+  if (isRecentOutboundMessageId(messageId)) {
+    // Sender also receives new_message; opaque payload has no from — skip echo paint.
+    return null;
+  }
+
   const { getConnections } = await import('./connectionService');
   const { getMessageThreads } = await import('./messageService');
 
@@ -134,6 +140,11 @@ async function previewGroupMessage(
     typeof payload.encryptedContent === 'string' ? payload.encryptedContent : '';
   const messageId = typeof payload.messageId === 'string' ? payload.messageId.trim() : '';
   if (!groupId || !encryptedContent || !messageId) return null;
+
+  const { isRecentOutboundMessageId } = await import('./outboundMessageIds');
+  if (isRecentOutboundMessageId(messageId)) {
+    return null;
+  }
 
   const { listGroups, getGroupChatKey } = await import('./groupService');
   const groups = await listGroups(identityId).catch(() => []);

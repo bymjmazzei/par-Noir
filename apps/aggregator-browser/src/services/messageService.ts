@@ -171,13 +171,31 @@ export function isPendingMessageId(messageId: string): boolean {
   return messageId.startsWith('temp-') || messageId.startsWith('sent-');
 }
 
+/**
+ * Match optimistic send to a server/realtime row.
+ * Do not require matching fromPnIdentifier — sender-side new_message previews
+ * mis-attribute as peer until Sheets SoT arrives.
+ */
 function pendingMessageMatchesConfirmed(pending: Message, confirmed: Message): boolean {
-  if (pending.fromPnIdentifier !== confirmed.fromPnIdentifier) return false;
   if ((pending.content || '').trim() !== (confirmed.content || '').trim()) return false;
   const deltaMs = Math.abs(
     new Date(pending.timestamp).getTime() - new Date(confirmed.timestamp).getTime()
   );
   return deltaMs < 60_000;
+}
+
+/** Prefer UI-known attribution when the same messageId conflicts (own send vs peer echo). */
+function resolveSameIdMessage(existing: Message, incoming: Message): Message {
+  if (existing.fromPnIdentifier === incoming.fromPnIdentifier) {
+    return { ...existing, ...incoming, fromPnIdentifier: existing.fromPnIdentifier };
+  }
+  // Keep existing from/to; take newer read/content fields from incoming when useful.
+  return {
+    ...incoming,
+    fromPnIdentifier: existing.fromPnIdentifier,
+    toPnIdentifier: existing.toPnIdentifier || incoming.toPnIdentifier,
+    content: existing.content || incoming.content
+  };
 }
 
 /** Merge server-fetched messages (oldest-first) with in-flight optimistic sends. */
@@ -187,19 +205,35 @@ export function mergeChatMessages(
 ): Message[] {
   const byId = new Map<string, Message>();
   for (const message of fetchedOldestFirst) {
-    byId.set(message.messageId, message);
+    const existing = byId.get(message.messageId);
+    byId.set(
+      message.messageId,
+      existing ? resolveSameIdMessage(existing, message) : message
+    );
   }
   for (const message of currentMessages) {
     if (!isPendingMessageId(message.messageId)) {
-      if (!byId.has(message.messageId)) {
+      const existing = byId.get(message.messageId);
+      if (!existing) {
         byId.set(message.messageId, message);
+      } else {
+        // Current UI wins attribution (own optimistic→confirmed send vs peer echo).
+        byId.set(message.messageId, resolveSameIdMessage(message, existing));
       }
       continue;
     }
-    const hasConfirmed = fetchedOldestFirst.some((confirmed) =>
-      pendingMessageMatchesConfirmed(message, confirmed)
+    const confirmed = fetchedOldestFirst.find((row) =>
+      pendingMessageMatchesConfirmed(message, row)
     );
-    if (!hasConfirmed) {
+    if (confirmed) {
+      const merged = {
+        ...byId.get(confirmed.messageId)!,
+        fromPnIdentifier: message.fromPnIdentifier,
+        toPnIdentifier: message.toPnIdentifier,
+        content: message.content || byId.get(confirmed.messageId)!.content
+      };
+      byId.set(confirmed.messageId, merged);
+    } else {
       byId.set(message.messageId, message);
     }
   }
@@ -636,6 +670,8 @@ export async function sendMessage(
 
   const encryptedContent = await encryptOutgoingMessage(content, connId, recovery);
   const messageId = `msg_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`;
+  const { rememberOutboundMessageId } = await import('./outboundMessageIds');
+  rememberOutboundMessageId(messageId);
   const timestamp = new Date().toISOString();
   const threadId = [fromPnIdentifier, toPnIdentifier].sort().join('_');
   const messagePayload = {

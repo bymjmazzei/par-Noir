@@ -377,6 +377,8 @@ export async function sendGroupMessage(
   const chatKey = await getGroupChatKey(userPn, record);
   const encryptedContent = await encryptGroupMessage(plaintext, chatKey);
   const messageId = `gmsg_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`;
+  const { rememberOutboundMessageId } = await import('./outboundMessageIds');
+  rememberOutboundMessageId(messageId);
   const timestamp = new Date().toISOString();
 
   const roster = await listGroupRoster(userPn, groupId);

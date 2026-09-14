@@ -563,7 +563,10 @@ export function MessageThread({
           channelClientId
         );
         setMessages((prev) =>
-          prev.map((msg) => (msg.messageId === tempMessageId ? sentMessage : msg))
+          mergeChatMessages(
+            [sentMessage],
+            prev.map((msg) => (msg.messageId === tempMessageId ? sentMessage : msg))
+          )
         );
       }
       notifyMessagingInboxRefresh();
