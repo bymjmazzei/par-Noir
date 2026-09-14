@@ -1002,15 +1002,29 @@ export function setupMessageRoutes(app: express.Application, deps: MessageRouteD
             /* optional */
           }
 
+          const realtimeChannel =
+            typeof messagePayload.channelClientId === 'string'
+              ? messagePayload.channelClientId
+              : undefined;
           emitRealtime(fromPnIdentifier, 'new_message', {
             threadId,
             messageId,
-            throughway: true
+            throughway: true,
+            encryptedContent,
+            cryptoVersion: 2,
+            connectionId,
+            timestamp,
+            ...(realtimeChannel ? { channelClientId: realtimeChannel } : {})
           });
           emitRealtime(toPnIdentifier, 'new_message', {
             threadId,
             messageId,
-            throughway: true
+            throughway: true,
+            encryptedContent,
+            cryptoVersion: 2,
+            connectionId,
+            timestamp,
+            ...(realtimeChannel ? { channelClientId: realtimeChannel } : {})
           });
           emitRealtime(toPnIdentifier, 'mailbox_pending', {
             jobType: 'message_append',

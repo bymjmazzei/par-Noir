@@ -164,13 +164,48 @@ export async function drainSocialMailbox(): Promise<MailboxDrainResult> {
       `[socialMailbox] acking ${leftoverNotificationRows} leftover notification_row job(s) as no-op`
     );
   }
+  // Preview without cloud AT is allowed; ack without successful apply is not.
+  // Apply group_inbox / social jobs first so chat preview can resolve chatKey / recovery.
+  const chatJobTypes = new Set(['message_append', 'group_message_append']);
   const appliedIds: string[] = [];
-  for (const job of jobs) {
+
+  async function applyOne(job: (typeof jobs)[0]): Promise<void> {
     try {
       if (await applySocialJob(job)) appliedIds.push(job.id);
     } catch (e) {
       errors.push(`${job.jobType}: ${e instanceof Error ? e.message : 'apply failed'}`);
     }
+  }
+
+  for (const job of jobs) {
+    if (!chatJobTypes.has(job.jobType) && job.jobType !== 'notification_row') {
+      await applyOne(job);
+    } else if (job.jobType === 'notification_row') {
+      await applyOne(job);
+    }
+  }
+
+  const previews: import('./inboundMailboxPreview').InboundMessagePreview[] = [];
+  try {
+    const { tryBuildInboundPreview, notifyMessagingInboundPreview } = await import(
+      './inboundMailboxPreview'
+    );
+    for (const job of jobs) {
+      if (!chatJobTypes.has(job.jobType)) continue;
+      try {
+        const preview = await tryBuildInboundPreview(identityId, job);
+        if (preview) previews.push(preview);
+      } catch {
+        /* preview must never block drain/apply */
+      }
+    }
+    if (previews.length) notifyMessagingInboundPreview(previews);
+  } catch {
+    /* ignore preview module failures */
+  }
+
+  for (const job of jobs) {
+    if (chatJobTypes.has(job.jobType)) await applyOne(job);
   }
 
   let acked = 0;

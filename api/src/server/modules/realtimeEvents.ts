@@ -1,9 +1,26 @@
 /**
- * Real-time event payloads (metadata only — no message bodies).
+ * Real-time event payloads.
+ * Opaque ciphertext (same class as mailbox jobs) is allowed for online delivery speed.
+ * Never plaintext message bodies, passcode, or pn name.
  */
 
 export type RealtimeEvent =
-  | { type: 'new_message'; threadId: string; messageId: string }
+  | {
+      type: 'new_message';
+      threadId?: string;
+      groupId?: string;
+      messageId: string;
+      /** Opaque E2E ciphertext — same bytes as mailbox message_append when present. */
+      encryptedContent?: string;
+      cryptoVersion?: number;
+      connectionId?: string;
+      timestamp?: string;
+      channelClientId?: string;
+      throughway?: boolean;
+      /** Group sealed envelope (opaque); peer opens with ML-KEM. */
+      envelope?: { kemCiphertext: string; ciphertext: string };
+      envelopeContext?: string;
+    }
   | { type: 'new_notification'; notificationType: string }
   | { type: 'data_point_request'; requestId: string };
 

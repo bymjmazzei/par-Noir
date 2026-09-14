@@ -656,9 +656,23 @@ export function setupGroupRoutes(app: express.Application, deps: GroupRouteDeps)
           });
         }
 
-        emitRealtime(senderPn, 'new_message', { groupId, messageId, throughway: true });
+        emitRealtime(senderPn, 'new_message', {
+          groupId,
+          messageId,
+          throughway: true,
+          encryptedContent,
+          cryptoVersion: 2,
+          timestamp
+        });
         for (const peerPn of peers) {
-          emitRealtime(peerPn, 'new_message', { groupId, messageId, throughway: true });
+          emitRealtime(peerPn, 'new_message', {
+            groupId,
+            messageId,
+            throughway: true,
+            encryptedContent,
+            cryptoVersion: 2,
+            timestamp
+          });
           emitRealtime(peerPn, 'mailbox_pending', { jobType: 'group_message_append', messageId });
         }
 

@@ -17,6 +17,11 @@ import { useRealtimeSync } from '../hooks/useRealtimeSync';
 import { MESSAGING_ONLY } from '../config/buildFlags';
 import { PLATFORM_CHANNEL_CLIENT_ID } from '@par-noir/messaging-ui';
 import { drainSocialMailbox, requestHotDrain } from '../services/socialMailboxConsumer';
+import {
+  MESSAGING_INBOUND_PREVIEW_EVENT,
+  inboundPreviewToMessage,
+  type InboundMessagePreview,
+} from '../services/inboundMailboxPreview';
 
 interface MessageListProps {
   onThreadSelect: (thread: SelectedInboxThread) => void;
@@ -38,12 +43,51 @@ export function MessageList({ onThreadSelect, refreshKey = 0, channelClientId }:
 
   const socketConnected = useRealtimeSync(['new_message', 'mailbox_pending'], () => {
     if (userState.pnIdentifier && !isMessagingRateLimited()) {
-      inboxCacheService.clear(userState.pnIdentifier);
+      // Drain emits inbound previews; then reload inbox for durable group rows / ordering.
       void requestHotDrain()
         .catch(() => undefined)
         .then(() => loadThreadsFromApi(false));
     }
   });
+
+  // Optimistic inbox snippet from decrypt-from-mailbox previews.
+  useEffect(() => {
+    if (!userState.pnIdentifier) return;
+    const onPreview = (ev: Event) => {
+      const detail = (ev as CustomEvent<{ previews?: InboundMessagePreview[] }>).detail;
+      const previews = detail?.previews || [];
+      if (!previews.length) return;
+      setThreads((prev) => {
+        let next = [...prev];
+        for (const preview of previews) {
+          const msg = inboundPreviewToMessage(preview);
+          const idx = next.findIndex((t) => {
+            if (preview.groupId) return t.groupId === preview.groupId;
+            if (preview.connectionId && t.connectionId === preview.connectionId) return true;
+            return (
+              !!preview.fromPnIdentifier &&
+              t.participantPnIdentifier === preview.fromPnIdentifier
+            );
+          });
+          if (idx >= 0) {
+            next[idx] = {
+              ...next[idx],
+              lastMessage: msg,
+              unreadCount: (next[idx].unreadCount || 0) + 1
+            };
+          }
+        }
+        next = next.sort((a, b) => {
+          const ta = a.lastMessage?.timestamp || '';
+          const tb = b.lastMessage?.timestamp || '';
+          return new Date(tb).getTime() - new Date(ta).getTime();
+        });
+        return next;
+      });
+    };
+    window.addEventListener(MESSAGING_INBOUND_PREVIEW_EVENT, onPreview);
+    return () => window.removeEventListener(MESSAGING_INBOUND_PREVIEW_EVENT, onPreview);
+  }, [userState.pnIdentifier]);
 
   // Load display names for participants
   const loadDisplayNames = async (participantPnIdentifiers: string[]) => {

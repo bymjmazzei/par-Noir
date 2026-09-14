@@ -1506,6 +1506,30 @@ if (gateFailed) {
     if (await compose.isVisible().catch(() => false)) {
       const marker = `qa-${Date.now().toString(36)}`;
       const before = apiA.length;
+
+      // Open B's thread to A *before* send — measures open-thread realtime paint (sub-1s target).
+      await clickTab(pageB, 'Messages');
+      await pace(Math.max(PACE_MS, 2_000), 'B open thread before send');
+      const peerA = (gateA.pnIdentifier || '').slice(0, 12);
+      const bThreadBtnsPre = pageB.locator('button.w-full.p-4, button:has(h3)');
+      const bNPre = Math.min(await bThreadBtnsPre.count().catch(() => 0), 20);
+      dmNotes.push(`B_thread_rows_pre=${bNPre} peerA=${peerA}`);
+      let bOpenedPre = false;
+      for (let j = 0; j < bNPre; j++) {
+        const txt = ((await bThreadBtnsPre.nth(j).innerText().catch(() => '')) || '').slice(0, 120);
+        if (peerA && txt.includes(peerA)) {
+          await bThreadBtnsPre.nth(j).click().catch(() => {});
+          bOpenedPre = true;
+          dmNotes.push(`B_opened_thread_pre=${txt.slice(0, 40)}`);
+          break;
+        }
+      }
+      if (!bOpenedPre && bNPre > 0) {
+        await bThreadBtnsPre.first().click().catch(() => {});
+        dmNotes.push('B_opened_first_thread_pre');
+      }
+      await pace(Math.max(PACE_MS, 1_500), 'B thread settle before send');
+
       await compose.fill(marker);
       const sendWait = pageA
         .waitForResponse(
@@ -1531,44 +1555,36 @@ if (gateFailed) {
       );
       await shot(pageA, 'dm-02-sent');
 
-      // Poll-first receive: measure hot-drain path without burning fixed soft-drain paces first.
-      await clickTab(pageB, 'Messages');
-      const peerA = (gateA.pnIdentifier || '').slice(0, 12);
+      // Poll open thread on B — realtime ciphertext should paint without soft-drain.
       let bHas = false;
       let softDrainUsed = false;
-      for (let i = 0; i < 60; i++) {
-        const bThreadBtns = pageB.locator('button.w-full.p-4, button:has(h3)');
-        const bN = Math.min(await bThreadBtns.count().catch(() => 0), 20);
-        if (i === 0) dmNotes.push(`B_thread_rows=${bN} peerA=${peerA}`);
-        let opened = false;
-        for (let j = 0; j < bN; j++) {
-          const txt = ((await bThreadBtns.nth(j).innerText().catch(() => '')) || '').slice(0, 120);
-          if (peerA && txt.includes(peerA)) {
-            await bThreadBtns.nth(j).click().catch(() => {});
-            opened = true;
-            if (i === 0) dmNotes.push(`B_opened_thread=${txt.slice(0, 40)}`);
-            break;
-          }
-        }
-        if (!opened && bN > 0) {
-          await bThreadBtns.first().click().catch(() => {});
-          if (i === 0) dmNotes.push('B_opened_first_thread');
-        }
+      for (let i = 0; i < 80; i++) {
         bHas = await bodyHas(pageB, new RegExp(marker, 'i'));
         if (bHas) break;
-        // Soft-drain backstop only if still missing after ~3s (hot drain should win first).
         if (!softDrainUsed && Date.now() - t0 > 3_000) {
           softDrainUsed = true;
           dmNotes.push(...(await refreshMailboxOnPage(pageB, 'B_post_dm_soft')));
           await clickTab(pageB, 'Messages');
+          const bThreadBtns = pageB.locator('button.w-full.p-4, button:has(h3)');
+          const bN = Math.min(await bThreadBtns.count().catch(() => 0), 20);
+          for (let j = 0; j < bN; j++) {
+            const txt = ((await bThreadBtns.nth(j).innerText().catch(() => '')) || '').slice(0, 120);
+            if (peerA && txt.includes(peerA)) {
+              await bThreadBtns.nth(j).click().catch(() => {});
+              break;
+            }
+          }
         }
-        await pageB.waitForTimeout(500);
+        await pageB.waitForTimeout(100);
       }
       await shot(pageB, 'dm-03-b');
       dmNotes.push(`softDrainUsed=${softDrainUsed}`);
       if (bHas) {
         receiveLatencyMs = Date.now() - t0;
+        const paintSource = softDrainUsed ? 'soft_drain' : 'realtime';
         dmNotes.push(`receiveLatencyMs=${receiveLatencyMs}`);
+        dmNotes.push(`paintSource=${paintSource}`);
+        dmNotes.push(`sub1s=${receiveLatencyMs < 1000}`);
       }
       dmNotes.push(`B_received_marker=${bHas}`);
       dualDmOk = !!(sendOk && bHas);

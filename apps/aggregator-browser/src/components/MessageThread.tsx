@@ -18,6 +18,11 @@ import {
   MESSAGING_MAILBOX_APPLIED_EVENT,
   notifyMessagingInboxRefresh,
 } from '../services/messageService';
+import {
+  MESSAGING_INBOUND_PREVIEW_EVENT,
+  inboundPreviewToMessage,
+  type InboundMessagePreview,
+} from '../services/inboundMailboxPreview';
 import { useUserState } from '../contexts/UserStateContext';
 import { isMessagingRateLimited } from '../services/messagingRateLimitState';
 import {
@@ -368,26 +373,44 @@ export function MessageThread({
   useEffect(() => {
     if (realtimeRefresh === 0 || !userState.isUnlocked || !userState.pnIdentifier) return;
     if (isGroup && !groupRecord) return;
-    if (isPollingRef.current || isMessagingRateLimited() || sendingRef.current) return;
-    isPollingRef.current = true;
-    // Drain mailbox before Sheets read — realtime can fire before apply-inbound lands.
+    if (isMessagingRateLimited() || sendingRef.current) return;
+    // Hot drain emits inbound previews for first paint; Sheets reload reconciles after apply.
     void requestHotDrain()
       .catch(() => undefined)
-      .then(() => fetchMessages(10, 0))
-      .then((result) => {
-        errorCountRef.current = 0;
-        setTotalMessages(result.total);
-        const reversedMessages = [...result.messages].reverse();
-        setMessages((prev) => mergeChatMessages(reversedMessages, prev));
-        currentOffsetRef.current = reversedMessages.length;
-        setHasMore(reversedMessages.length < result.total);
-        notifyMessagingInboxRefresh();
-      })
-      .catch(() => undefined)
-      .finally(() => {
-        isPollingRef.current = false;
+      .then(() => {
+        if (isPollingRef.current || isMessagingRateLimited() || sendingRef.current) return;
+        void loadMessagesRef.current(false, false);
       });
   }, [realtimeRefresh]);
+
+  // Decrypt-from-mailbox preview: paint before Sheets apply completes.
+  useEffect(() => {
+    if (!userState.isUnlocked || !userState.pnIdentifier) return;
+    const onPreview = (ev: Event) => {
+      const detail = (ev as CustomEvent<{ previews?: InboundMessagePreview[] }>).detail;
+      const previews = detail?.previews || [];
+      const matching = previews.filter((p) => {
+        if (isGroup) return !!groupId && p.groupId === groupId;
+        if (connectionId && p.connectionId === connectionId) return true;
+        if (participantPnIdentifier && p.fromPnIdentifier === participantPnIdentifier) return true;
+        return false;
+      });
+      if (!matching.length) return;
+      const asMessages = matching.map(inboundPreviewToMessage);
+      setMessages((prev) => mergeChatMessages(asMessages, prev));
+      setLoading(false);
+      notifyMessagingInboxRefresh();
+    };
+    window.addEventListener(MESSAGING_INBOUND_PREVIEW_EVENT, onPreview);
+    return () => window.removeEventListener(MESSAGING_INBOUND_PREVIEW_EVENT, onPreview);
+  }, [
+    userState.isUnlocked,
+    userState.pnIdentifier,
+    isGroup,
+    groupId,
+    connectionId,
+    participantPnIdentifier
+  ]);
 
   // After mailbox apply+ack (DM or group), reload Drive conversation.
   useEffect(() => {

@@ -7,11 +7,12 @@ import {
   subscribeRealtimeConnected,
   subscribeRealtimeSync,
   type RealtimeEventType,
+  type RealtimePayload,
 } from '../services/realtimeSyncService';
 
 export function useRealtimeSync(
   events: RealtimeEventType[] = ['new_message', 'new_notification'],
-  onEvent?: () => void
+  onEvent?: (payload?: RealtimePayload) => void
 ): boolean {
   const callbackRef = useRef(onEvent);
   callbackRef.current = onEvent;
@@ -25,7 +26,7 @@ export function useRealtimeSync(
   useEffect(() => {
     if (!onEvent) return;
     const parsed = eventsKey.split(',').filter(Boolean) as RealtimeEventType[];
-    return subscribeRealtimeSync(parsed, () => callbackRef.current?.());
+    return subscribeRealtimeSync(parsed, (payload) => callbackRef.current?.(payload));
   }, [eventsKey, onEvent]);
 
   return connected;

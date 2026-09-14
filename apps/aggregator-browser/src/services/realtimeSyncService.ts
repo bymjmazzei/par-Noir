@@ -7,14 +7,16 @@ import { PNOAuthService } from './pnOAuthService';
 
 export type RealtimeEventType = 'new_message' | 'new_notification' | 'mailbox_pending';
 
+export type RealtimePayload = Record<string, unknown>;
+
 type Subscriber = {
   events: Set<RealtimeEventType>;
-  callback: () => void;
+  callback: (payload?: RealtimePayload) => void;
 };
 
 type SocketLike = {
   disconnect: () => void;
-  on: (ev: string, fn: () => void) => void;
+  on: (ev: string, fn: (...args: unknown[]) => void) => void;
 };
 
 let socket: SocketLike | null = null;
@@ -30,17 +32,27 @@ function notifyConnected(value: boolean): void {
   }
 }
 
-function fanOut(event: RealtimeEventType): void {
+function asPayload(raw: unknown): RealtimePayload | undefined {
+  if (raw && typeof raw === 'object' && !Array.isArray(raw)) {
+    return raw as RealtimePayload;
+  }
+  return undefined;
+}
+
+function fanOut(event: RealtimeEventType, payload?: RealtimePayload): void {
   for (const sub of subscribers) {
     if (sub.events.has(event)) {
-      sub.callback();
+      sub.callback(payload);
     }
   }
 }
 
 /** Test hook for subscriber fan-out. */
-export function dispatchRealtimeEventForTest(event: RealtimeEventType): void {
-  fanOut(event);
+export function dispatchRealtimeEventForTest(
+  event: RealtimeEventType,
+  payload?: RealtimePayload
+): void {
+  fanOut(event, payload);
 }
 
 async function ensureConnected(): Promise<void> {
@@ -60,10 +72,17 @@ async function ensureConnected(): Promise<void> {
       auth: { token: session.accessToken },
     });
 
-    s.on('new_message', () => fanOut('new_message'));
-    s.on('new_notification', () => fanOut('new_notification'));
-    // Server emits mailbox_pending when throughway jobs are enqueued — drain before Sheets read.
-    s.on('mailbox_pending', () => fanOut('mailbox_pending'));
+    s.on('new_message', (raw: unknown) => {
+      const payload = asPayload(raw);
+      // Ciphertext-bearing events: paint before mailbox drain (sub-1s path).
+      void import('./inboundMailboxPreview')
+        .then((m) => m.handleRealtimeCiphertextPreview(payload))
+        .catch(() => undefined);
+      fanOut('new_message', payload);
+    });
+    s.on('new_notification', (raw: unknown) => fanOut('new_notification', asPayload(raw)));
+    // Thin wake — drain/apply for durable Sheets (does not block socket paint).
+    s.on('mailbox_pending', (raw: unknown) => fanOut('mailbox_pending', asPayload(raw)));
     s.on('connect', () => notifyConnected(true));
     s.on('disconnect', () => notifyConnected(false));
     socket = s;
@@ -76,7 +95,7 @@ async function ensureConnected(): Promise<void> {
 
 export function subscribeRealtimeSync(
   events: RealtimeEventType[],
-  callback: () => void
+  callback: (payload?: RealtimePayload) => void
 ): () => void {
   const sub: Subscriber = { events: new Set(events), callback };
   subscribers.add(sub);

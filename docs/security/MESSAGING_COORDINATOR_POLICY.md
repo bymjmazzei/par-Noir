@@ -31,7 +31,7 @@ This document defines what the par Noir **API operator** may see, store, and log
 | ML-KEM secret keys | **No** | Client memory / sessionStorage | — | Never |
 | Connection rows | Yes (during accept/list) | User Drive `connections` sheet | Request-scoped memory only | Hash pn identifiers |
 | Messaging ledger rows | Yes (during append) | User Drive `messaging_ledger` | User-owned; user may delete sheet | Hash pn identifiers |
-| Realtime `new_message` | Yes (WebSocket fan-out) | Not persisted by API | Ephemeral event | Payload: `threadId` + `messageId` only |
+| Realtime `new_message` | Yes (WebSocket fan-out) | Not persisted by API | Ephemeral event | Opaque ciphertext allowed (same fields as mailbox jobs); never plaintext; never log blob |
 | OAuth `oauth_refresh_tokens` | Yes (session mgmt) | Postgres | Until token expiry/revoke; see `AUDIT_RETENTION_DAYS` | Hash pn identifier |
 | `storage_credentials` (legacy / layout-only) | Layout metadata may remain; **provider secrets must not** under device custody | Postgres | While account connected | Never log tokens; purge refresh/access secrets after migration |
 | `social_mailbox` jobs | Yes (opaque payload + `route_key`) | Postgres until device ack | Until ack or `expires_at` | Never log ciphertext or full route key; hash route/ids |

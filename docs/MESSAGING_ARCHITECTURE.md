@@ -70,7 +70,7 @@ The API is a **coordinator**, not a **conversation participant**.
 
 | Role | Description |
 |------|-------------|
-| **Coordinator / mailbox** | Sees routing metadata **in transit** to enqueue opaque jobs (or, on the legacy path, dual-write ciphertext). Push/realtime hints may fire without cloud tokens. |
+| **Coordinator / mailbox** | Sees routing metadata **in transit** to enqueue opaque jobs (or, on the legacy path, dual-write ciphertext). Push stays a thin wake; Socket.IO `new_message` may carry the **same opaque ciphertext** as mailbox jobs for online sub-1s paint (still not plaintext). |
 | **Not a participant** | Must not decrypt bodies, derive `messageRootKey` / `chatKey`, or retain passcode for messaging. |
 | **Not a cloud custodian (device custody)** | Must not store long-lived provider refresh tokens; devices hold those secrets. |
 
