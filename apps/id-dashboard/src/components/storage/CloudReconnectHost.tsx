@@ -1,8 +1,7 @@
-import React, { useCallback, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import {
   loadLocalCloudCredentials,
   persistCloudCredentials,
-  publishCloudDriveReady,
   resolveCloudPersistMode,
   getSessionCloudCredentials,
   setSessionCloudCredentials,
@@ -10,13 +9,8 @@ import {
 } from '@par-noir/device-cloud-credentials';
 import { SecureCredentialManager } from '@par-noir/identity-crypto';
 import {
-  CloudReconnectPanel,
-  CloudReconnectPrompt,
-  isOAuthCloudProvider,
-  PN_CLOUD_CREDENTIALS_READY_EVENT,
-  reconnectOAuthProvider,
-  useCloudReconnectGate,
-  ensureCloudCredentialsReady,
+  FirstPartyCloudReconnectHost,
+  ensureCloudCredentialsReady
 } from '@par-noir/oauth-ui';
 import { envelopeHasUsableSecrets } from '@par-noir/user-owned-storage';
 import type { StorageCredentialsEnvelope } from '@par-noir/user-owned-storage';
@@ -42,10 +36,7 @@ export interface CloudReconnectHostProps {
 }
 
 /**
- * Post-unlock cloud reconnect — same shape as AggregatorCloudReconnectHost.
- * Case A (no keyed devices): durable sealed local cloud.
- * Case B (keyed apps exist): session-only; wiped on lock.
- * No unlock-time bootstrap / initialize / owner-index gate.
+ * Thin dashboard mount: migrate/hydrate + device-pair slots over shared first-party host.
  */
 export const CloudReconnectHost: React.FC<CloudReconnectHostProps> = ({
   apiToken,
@@ -54,14 +45,11 @@ export const CloudReconnectHost: React.FC<CloudReconnectHostProps> = ({
   isKeyedSession,
   hasKeyedDevices = false,
   onPaired,
-  onOpenStorage,
+  onOpenStorage
 }) => {
   const [googleClientId, setGoogleClientId] = useState<string | null>(null);
   const [pairOpen, setPairOpen] = useState(false);
-  const [oauthBusy, setOauthBusy] = useState(false);
-  const [oauthError, setOauthError] = useState<string | null>(null);
   const [migrateSettled, setMigrateSettled] = useState(false);
-  const warmedReadyRef = useRef(false);
 
   React.useEffect(() => {
     let cancelled = false;
@@ -78,7 +66,6 @@ export const CloudReconnectHost: React.FC<CloudReconnectHostProps> = ({
     };
   }, []);
 
-  // Wait for unlock migrate; hydrate from vault; publish vault if local secrets exist.
   React.useEffect(() => {
     if (!pnIdentifier || !sessionId || !apiToken) {
       setMigrateSettled(false);
@@ -152,7 +139,6 @@ export const CloudReconnectHost: React.FC<CloudReconnectHostProps> = ({
             warmed = getSessionCloudCredentials(pnIdentifier);
           }
         }
-        // Migrate / re-seal: publish ML-KEM vault so browse/messaging OAuth unlock can hydrate
         if (creds && envelopeHasUsableSecrets(warmed || getSessionCloudCredentials(pnIdentifier))) {
           const toPublish = warmed || getSessionCloudCredentials(pnIdentifier);
           if (toPublish) {
@@ -164,7 +150,7 @@ export const CloudReconnectHost: React.FC<CloudReconnectHostProps> = ({
                 passcode: creds.passcode,
                 credentials: toPublish,
                 publicKey: sessionId,
-                mlKemSecretKey,
+                mlKemSecretKey
               });
               if (!vault.ok) {
                 console.warn(
@@ -178,7 +164,6 @@ export const CloudReconnectHost: React.FC<CloudReconnectHostProps> = ({
                 e instanceof Error ? e.message : e
               );
             }
-            // Also re-seal locally under canonical session id for this origin
             await persistCloudCredentials({
               identityId: pnIdentifier,
               credentials: toPublish,
@@ -224,41 +209,6 @@ export const CloudReconnectHost: React.FC<CloudReconnectHostProps> = ({
     });
   }, [pnIdentifier, sessionId]);
 
-  const gate = useCloudReconnectGate({
-    enabled: !!(apiToken && pnIdentifier && sessionId && migrateSettled),
-    authToken: apiToken,
-    pnIdentifier,
-    apiEndpoint: API_ENDPOINT,
-    loadLocalEnvelope,
-    dismissStorageKey: pnIdentifier ? `pn_cloud_reconnect_dismiss:${pnIdentifier}` : undefined
-  });
-
-  // Case A warm: gate becomes ready without reconnect — mint access token then fire READY.
-  React.useEffect(() => {
-    if (gate.readiness !== 'ready') {
-      warmedReadyRef.current = false;
-      return;
-    }
-    if (warmedReadyRef.current) return;
-    if (!apiToken || !pnIdentifier) return;
-    warmedReadyRef.current = true;
-    void publishCloudDriveReady({
-      authToken: apiToken,
-      pnIdentifier,
-      apiEndpoint: API_ENDPOINT
-    });
-  }, [gate.readiness, apiToken, pnIdentifier]);
-
-  // Migrate / Storage connect may publish secrets after the first gate check.
-  React.useEffect(() => {
-    if (!migrateSettled) return;
-    const onReady = () => {
-      void gate.refresh();
-    };
-    window.addEventListener(PN_CLOUD_CREDENTIALS_READY_EVENT, onReady);
-    return () => window.removeEventListener(PN_CLOUD_CREDENTIALS_READY_EVENT, onReady);
-  }, [migrateSettled, gate.refresh]);
-
   const persistMode: PersistCloudCredentialsMode = resolveCloudPersistMode({
     hasKeyedDevices
   });
@@ -266,13 +216,11 @@ export const CloudReconnectHost: React.FC<CloudReconnectHostProps> = ({
     ? 'sealed'
     : persistMode;
 
-  const markReady = gate.markReady;
-  const handleConnected = useCallback(
+  const persistConnected = useCallback(
     async (envelope: StorageCredentialsEnvelope) => {
       if (!pnIdentifier || !sessionId) return;
       const creds = SecureCredentialManager.getCredentials(sessionId);
       if (!creds) throw new Error('Session credentials missing — unlock again.');
-      setOauthError(null);
       await persistCloudCredentials({
         identityId: pnIdentifier,
         credentials: envelope,
@@ -285,32 +233,17 @@ export const CloudReconnectHost: React.FC<CloudReconnectHostProps> = ({
       });
       setSessionCloudCredentials(pnIdentifier, envelope);
       if (apiToken) {
-        try {
-          const vault = await publishCloudVaultForIdentity({
-            identityId: pnIdentifier,
-            authToken: apiToken,
-            pnName: creds.pnName,
-            passcode: creds.passcode,
-            credentials: envelope,
-            publicKey: sessionId,
-          });
-          if (!vault.ok) {
-            const msg =
-              vault.error || 'Failed to publish cloud vault for other apps';
-            setOauthError(msg);
-            throw new Error(msg);
-          }
-        } catch (e: unknown) {
-          const msg =
-            e instanceof Error ? e.message : 'Failed to publish cloud vault for other apps';
-          setOauthError(msg);
-          throw e instanceof Error ? e : new Error(msg);
+        const vault = await publishCloudVaultForIdentity({
+          identityId: pnIdentifier,
+          authToken: apiToken,
+          pnName: creds.pnName,
+          passcode: creds.passcode,
+          credentials: envelope,
+          publicKey: sessionId
+        });
+        if (!vault.ok) {
+          throw new Error(vault.error || 'Failed to publish cloud vault for other apps');
         }
-      }
-
-      markReady();
-      if (apiToken) {
-        // Layout-only credential row so API merge knows Drive is linked again after disconnect wipe.
         try {
           const accounts = Array.isArray(envelope.googleDriveAccounts)
             ? envelope.googleDriveAccounts
@@ -319,7 +252,7 @@ export const CloudReconnectHost: React.FC<CloudReconnectHostProps> = ({
             backendId: a.backendId || a.accountId,
             keyPrefix: a.keyPrefix,
             email: a.email,
-            connectedAt: a.connectedAt,
+            connectedAt: a.connectedAt
           }));
           await ownerFetch(
             apiToken,
@@ -329,56 +262,21 @@ export const CloudReconnectHost: React.FC<CloudReconnectHostProps> = ({
               credentials: {
                 socialCloudProvider: envelope.socialCloudProvider || 'google_drive',
                 socialCloudAccountId: envelope.socialCloudAccountId,
-                googleDriveAccounts: layoutAccounts,
+                googleDriveAccounts: layoutAccounts
               },
-              cid: null,
+              cid: null
             },
             { pnIdentifier }
           );
         } catch {
-          /* best-effort; Storage hydrate still registers backends from sealed vault */
+          /* best-effort */
         }
-        await publishCloudDriveReady({
-          authToken: apiToken,
-          pnIdentifier,
-          apiEndpoint: API_ENDPOINT
-        });
       }
     },
-    [pnIdentifier, sessionId, effectivePersistMode, markReady, apiToken]
+    [pnIdentifier, sessionId, effectivePersistMode, apiToken]
   );
 
-  const handleReconnect = useCallback(() => {
-    const provider = gate.socialCloudProvider;
-    if (isOAuthCloudProvider(provider) && apiToken && pnIdentifier) {
-      setOauthBusy(true);
-      setOauthError(null);
-      const pending = reconnectOAuthProvider({
-        provider,
-        pnIdentifier,
-        authToken: apiToken,
-        apiEndpoint: API_ENDPOINT,
-        googleClientId
-      });
-      void pending
-        .then((envelope) => handleConnected(envelope))
-        .catch((err) => {
-          setOauthError(err instanceof Error ? err.message : 'Reconnect failed');
-        })
-        .finally(() => setOauthBusy(false));
-      return;
-    }
-    gate.openPanel();
-  }, [
-    gate.socialCloudProvider,
-    gate.openPanel,
-    apiToken,
-    pnIdentifier,
-    googleClientId,
-    handleConnected
-  ]);
-
-  const show = useMemo(
+  const enabled = useMemo(
     () => !!(apiToken && pnIdentifier && sessionId && migrateSettled),
     [apiToken, pnIdentifier, sessionId, migrateSettled]
   );
@@ -386,63 +284,56 @@ export const CloudReconnectHost: React.FC<CloudReconnectHostProps> = ({
   const showPairDevice = hasKeyedDevices && !isKeyedSession && isKeyableClient();
   const showDownloadApp = hasKeyedDevices && !isKeyedSession && !isKeyableClient();
 
-  if (!show) return null;
-
   return (
-    <>
-      {apiToken && pnIdentifier ? (
-        <div className="fixed bottom-4 left-4 right-4 z-40 max-w-lg mx-auto sm:left-auto sm:right-6 sm:mx-0 pointer-events-auto">
-          <CloudLayoutUpdateBanner
-            apiToken={apiToken}
-            pnIdentifier={pnIdentifier}
-            allowUpgrade={false}
-            onOpenStorage={onOpenStorage}
-          />
-        </div>
-      ) : null}
-      <CloudReconnectPrompt
-        open={gate.promptOpen && !gate.panelOpen && !pairOpen}
-        socialCloudProvider={gate.socialCloudProvider}
-        onReconnect={handleReconnect}
-        onDismiss={gate.dismissPrompt}
-        showPairDevice={showPairDevice}
-        onPairDevice={() => setPairOpen(true)}
-        busy={oauthBusy}
-      >
-        {showDownloadApp ? (
+    <FirstPartyCloudReconnectHost
+      apiEndpoint={API_ENDPOINT}
+      authToken={apiToken}
+      pnIdentifier={pnIdentifier}
+      googleClientId={googleClientId}
+      enabled={enabled}
+      loadLocalEnvelope={loadLocalEnvelope}
+      mintStrategy="onGateReady"
+      persistConnected={persistConnected}
+      banner={
+        apiToken && pnIdentifier ? (
+          <div className="fixed bottom-4 left-4 right-4 z-40 max-w-lg mx-auto sm:left-auto sm:right-6 sm:mx-0 pointer-events-auto">
+            <CloudLayoutUpdateBanner
+              apiToken={apiToken}
+              pnIdentifier={pnIdentifier}
+              allowUpgrade={false}
+              onOpenStorage={onOpenStorage}
+            />
+          </div>
+        ) : null
+      }
+      showPairDevice={showPairDevice}
+      onPairDevice={() => setPairOpen(true)}
+      suppressPrompt={pairOpen}
+      promptChildren={
+        showDownloadApp ? (
           <p style={{ margin: '12px 0 0', fontSize: 13 }}>
             <a href={APP_DOWNLOAD_URL} target="_blank" rel="noopener noreferrer" style={{ color: '#a78bfa' }}>
               Download the app
             </a>{' '}
             to key a phone or computer.
           </p>
-        ) : null}
-        {gate.error || oauthError ? (
-          <p style={{ margin: '12px 0 0', fontSize: 13, color: '#f87171' }} role="alert">
-            {oauthError || gate.error}
-          </p>
-        ) : null}
-      </CloudReconnectPrompt>
-      <CloudReconnectPanel
-        open={gate.panelOpen}
-        onClose={gate.closePanel}
-        pnIdentifier={pnIdentifier!}
-        authToken={apiToken!}
-        apiEndpoint={API_ENDPOINT}
-        googleClientId={googleClientId}
-        preferredProvider={gate.socialCloudProvider}
-        onConnected={handleConnected}
-      />
-      <DevicePairFromReconnect
-        open={pairOpen}
-        onClose={() => setPairOpen(false)}
-        authToken={apiToken!}
-        pnIdentifier={pnIdentifier!}
-        sessionId={sessionId!}
-        onPaired={async () => {
-          await onPaired?.();
-        }}
-      />
-    </>
+        ) : null
+      }
+      afterSlot={
+        apiToken && pnIdentifier && sessionId ? (
+          <DevicePairFromReconnect
+            open={pairOpen}
+            onClose={() => setPairOpen(false)}
+            authToken={apiToken}
+            pnIdentifier={pnIdentifier}
+            sessionId={sessionId}
+            onPaired={async () => {
+              await onPaired?.();
+            }}
+          />
+        ) : null
+      }
+      logTag="CloudReconnectHost"
+    />
   );
 };

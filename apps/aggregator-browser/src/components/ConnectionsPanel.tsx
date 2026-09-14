@@ -20,7 +20,7 @@ import {
   ensureLocalMessagingKeysForAccept,
   reportConnectionAcceptError,
 } from '../services/messagingReconnect';
-import { drainSocialMailbox } from '../services/socialMailboxConsumer';
+import { requestHotDrain } from '../services/socialMailboxConsumer';
 import { ownerFetch, ownerGet } from '../services/ownerApiFetch';
 
 interface Follower {
@@ -65,8 +65,8 @@ export function ConnectionsPanel({ userPnIdentifier, onCreatorClick }: Connectio
 
     try {
       if (activeTab === 'connections') {
-        // Pending connection requests arrive as mailbox jobs — drain before Drive read.
-        await drainSocialMailbox().catch(() => null);
+        // Pending connection requests may still be mailbox jobs — drain in background.
+        void requestHotDrain().catch(() => undefined);
         // Load connections and pending requests
         const [connectionsData, pendingData] = await Promise.all([
           getConnections(userPnIdentifier),

@@ -22,6 +22,7 @@
   },
   "dependencies": {
     "@par-noir/device-cloud-credentials": "file:../device-cloud-credentials",
+    "@par-noir/pqc-crypto": "file:../pqc-crypto",
     "@par-noir/user-owned-storage": "file:../user-owned-storage"
   },
   "devDependencies": {

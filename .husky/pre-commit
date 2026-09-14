@@ -53,6 +53,18 @@ if [ -f scripts/check-no-identity-core-in-apps.sh ]; then
   bash scripts/check-no-identity-core-in-apps.sh || { echo "❌ check-no-identity-core-in-apps: apps must not import @identity-protocol/identity-core; use @par-noir/identity-crypto."; exit 1; }
 fi
 
+if [ -f scripts/check-unlock-critical-path.sh ]; then
+  bash scripts/check-unlock-critical-path.sh || { echo "❌ check-unlock-critical-path: do not await prefetch or use 20s handoff before setUnlocked."; exit 1; }
+fi
+
+if [ -f scripts/check-messaging-list-no-await-drain.sh ]; then
+  bash scripts/check-messaging-list-no-await-drain.sh || { echo "❌ check-messaging-list-no-await-drain: list hosts must not await drain before paint."; exit 1; }
+fi
+
+if [ -f scripts/check-route-manifest.sh ]; then
+  bash scripts/check-route-manifest.sh || { echo "❌ check-route-manifest: ROUTE_MANIFEST drift vs API mounts."; exit 1; }
+fi
+
 echo "🔒 Running security audit before commit..."
 
 # Run security audit

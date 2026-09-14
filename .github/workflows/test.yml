@@ -67,6 +67,15 @@ jobs:
       - name: No identity-core imports in apps
         run: PN_CHECK_ALL=1 bash scripts/check-no-identity-core-in-apps.sh
 
+      - name: Unlock critical path (no await prefetch / no 20s handoff)
+        run: bash scripts/check-unlock-critical-path.sh
+
+      - name: Messaging list hosts must not await drain
+        run: bash scripts/check-messaging-list-no-await-drain.sh
+
+      - name: Route manifest vs API mounts
+        run: bash scripts/check-route-manifest.sh
+
       - name: Sheets import boundary (soft-warn)
         run: bash scripts/check-sheets-import-boundary.sh
 

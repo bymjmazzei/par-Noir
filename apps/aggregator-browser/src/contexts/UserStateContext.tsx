@@ -224,8 +224,8 @@ export function UserStateProvider({ children }: { children: ReactNode }) {
       if (inflight || cancelled) return;
       inflight = true;
       try {
-        const { awaitCloudUnlockComplete } = await import('../services/cloudUnlockCoordinator');
-        const ready = await awaitCloudUnlockComplete(userState.pnIdentifier!, 60_000);
+        const { waitForCloudCredentialsReady } = await import('@par-noir/device-cloud-credentials');
+        const ready = await waitForCloudCredentialsReady(userState.pnIdentifier!, 60_000);
         if (!ready || cancelled) return;
 
         const { PNOAuthService } = await import('../services/pnOAuthService');
@@ -558,9 +558,6 @@ export function UserStateProvider({ children }: { children: ReactNode }) {
     accountsCacheService.clearAll();
     void import('../services/storageApiClient').then(({ invalidateStorageAccountsCache }) =>
       invalidateStorageAccountsCache()
-    );
-    void import('../services/cloudUnlockCoordinator').then(({ resetCloudUnlockCoordinator }) =>
-      resetCloudUnlockCoordinator()
     );
     void import('../services/unlockBootstrap').then(({ invalidateUnlockBootstrap }) =>
       invalidateUnlockBootstrap()

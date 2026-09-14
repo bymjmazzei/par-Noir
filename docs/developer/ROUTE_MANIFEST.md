@@ -117,14 +117,24 @@ Device proof headers (v1): `X-PN-Device-Id`, `X-PN-Device-Signature`, `X-PN-Devi
 
 See `api/src/server.ts` and `api/src/server/modules/*Routes.ts` for the full surface.
 
+## Messaging (first-party)
+
+| Method | Path | Notes |
+|--------|------|--------|
+| POST | `/api/messages/conversation` | Load thread messages (canonical; GET twin removed) |
+| GET | `/api/messages/conversations` | Inbox thread list |
+
 ## Deprecated / removed
 
 | Method | Path | Status |
 |--------|------|--------|
-| POST | `/api/auth/verify` | **410 Gone** — use pN OAuth (`/oauth/token`) |
-| POST | `/api/auth/challenge` | Legacy; unused by current apps |
-| POST/DELETE | `/api/feeds/:feedId/subscriptions` | **410 Gone** — platform paid subscriptions removed |
-| POST | `/api/subscriptions/confirm` | **410 Gone** |
+| POST/DELETE | `/api/feeds/:feedId/subscriptions` | **410 Gone** — platform paid subscriptions removed (intentional tombstone) |
+| POST | `/api/subscriptions/confirm` | **410 Gone** — intentional tombstone |
+| GET | `/oauth/popup-bridge` | **Removed** — OAuth completes via registered `redirect_uri` only |
+| POST | `/api/recovery/requests/:requestId/shares` | **Removed** — use `/approvals` |
+| POST | `/api/auth/verify` | **Removed** — use pN OAuth (`/oauth/token`) |
+| POST | `/api/auth/challenge` | **Removed** — unused legacy challenge mint |
+| GET | `/api/messages/conversation` | **Removed** — use POST `/api/messages/conversation` |
 
 ## Integrator ZKP (OAuth bearer — preferred for user-present consent)
 

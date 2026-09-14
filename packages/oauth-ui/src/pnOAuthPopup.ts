@@ -207,7 +207,7 @@ function buildOAuthResumeUrl(pageOrigin: string, parsed: PnOAuthPopupResult): st
 }
 
 /** Compare OAuth state values (handles minor encoding differences across redirects). */
-function oauthStatesMatch(incoming: string, expected: string): boolean {
+export function oauthStatesMatch(incoming: string, expected: string): boolean {
   const a = incoming.trim();
   const b = expected.trim();
   if (a === b) return true;

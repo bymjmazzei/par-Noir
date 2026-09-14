@@ -17,7 +17,7 @@ import { getMessageThreads, type MessageThread } from './messageService';
 import type { DmSessionRecovery } from './dmCryptoClient';
 import { isDmIdentityReady, getDmIdentity } from './dmIdentitySession';
 import type { Message } from './messageService';
-import { ownerApiHeadersAsync, waitForOwnerCloudAccess } from './ownerApiHeaders';
+import { ownerApiHeadersAsync } from './ownerApiHeaders';
 import { PNOAuthService } from './pnOAuthService';
 import {
   createOutboxRecord,
@@ -25,28 +25,17 @@ import {
   promoteOutboxRecord,
   upsertLocalOutboxRecord,
   getCloudAccessTokenFromSession,
+  requireOnlineCloudForSend,
   type OutboxRecord
 } from '@par-noir/device-cloud-credentials';
 
 const groupChatKeys = new Map<string, string>();
-
-/** Device-cloud custody: send requires unlocked session + live network + cloud AT. */
-function requireOnlineCloudForSend(userPnIdentifier: string): void {
-  if (typeof navigator !== 'undefined' && navigator.onLine === false) {
-    throw new Error('You are offline. Connect to the network to send messages.');
-  }
-  if (!getCloudAccessTokenFromSession(userPnIdentifier)) {
-    throw new Error('Cloud storage is not ready. Unlock and reconnect cloud storage to send.');
-  }
-}
 
 export function getGroupChatKeyCache(): Map<string, string> {
   return groupChatKeys;
 }
 
 async function getAuthHeaders(): Promise<HeadersInit> {
-  const sessionPn = (await import('./pnOAuthService')).PNOAuthService.loadSession()?.pnIdentifier;
-  if (sessionPn) await waitForOwnerCloudAccess(sessionPn);
   return ownerApiHeadersAsync();
 }
 

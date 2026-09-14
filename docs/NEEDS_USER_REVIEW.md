@@ -7,11 +7,9 @@ Generated 2026-09-09.
 ---
 
 ### developer.identity_sdk_note
-- **Observed:** Session stack note (identity-sdk)
-- **Source:** PortalContext.tsx → @identity-protocol/identity-sdk
-- **Notes:** Unlock REAL via OAuth; PortalContext still depends on identity-sdk → identity-core
-- **Question:** Keep developer portal on `@identity-protocol/identity-sdk` until migrated to `@par-noir/*`, or schedule rebuild now?
-- **Options:** KEEP_SCAFFOLD | NEEDS_CURRENT_STACK rebuild ticket | other
+- **Resolved (Plan #3 / D20):** Portal session rebuilt onto `@par-noir/oauth-ui` portal helpers. Runtime dep on `@identity-protocol/identity-sdk` removed from `apps/developer-portal`. External L5 integrator docs may still mention identity-sdk as the integrator kit only.
+- **Was:** PortalContext → identity-sdk → identity-core
+- **Answer:** Rebuilt to `@par-noir/*` (not KEEP_SCAFFOLD).
 
 ### messaging.inbox.tabs (no API on tab click alone)
 - **Observed (2026-09-09 code path):** Dual-pN Connect via `?creator=` works (POST request 200). B Accept blocked while messaging origin lacks cloud AT. Race fix + vault publish hard-fail + banner `pn-cloud-credentials-ready` listen are in tree; **not on prod until deploy**.
@@ -20,9 +18,9 @@ Generated 2026-09-09.
 - **Options:** deploy + Google Console redirect | hold
 
 ### messaging.cloud_reconnect_on_device (test-pn-2)
-- **Observed:** Banner linkedInactive on messaging; panel briefly opens then closes (markReady-before-AT race — **fixed in tree**). Authorize click works; Google returns **redirect_uri_mismatch** for messaging oauth-callback until Console is updated. Browse often hydrates OK without banner.
-- **Question:** After deploy + Console redirect, confirm messaging unlock hydrates vault (no banner) without Google reconnect?
-- **Options:** deploy now | hold
+- **Observed (2026-09-10 post-deploy):** Messaging unlock still linkedInactive (vault auto-hydrate not sticky-ready). Google reconnect popup **no longer** `redirect_uri_mismatch` after Console update. Completing Authorize in automation hits Google **reCAPTCHA**; `POST /api/auth/google-oauth/refresh` **429** after hammering mint.
+- **Question:** Manually finish Authorize once (after rate-limit cool-down), confirm banner clears, then continue Accept→DM QA?
+- **Options:** manual Google complete now | hold / investigate vault hydrate 429 separately
 
 ### Unused same-name UI (KEEP until canonical chosen)
 

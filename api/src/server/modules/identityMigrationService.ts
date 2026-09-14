@@ -12,6 +12,8 @@ import { registerSuccession } from './identitySuccessionService';
 import { appendAuditEvent } from './auditService';
 import { safeClientErrorMessage } from '../utils/safeError';
 import { assertDeviceCapability, DEVICE_CAPABILITIES } from './deviceCapabilityService';
+import { resolveOwnerDriveToken } from './ownerDriveToken';
+import { DriveIndexError } from './pnDriveIndex';
 
 async function gateMigration(req: Request, res: Response): Promise<boolean> {
   const gate = await assertDeviceCapability(req, DEVICE_CAPABILITIES.identityMigrate);
@@ -35,40 +37,66 @@ const REQUIRED_STEPS = [
   'owned_assets_sync',
 ] as const;
 
-async function resolveMigrationDriveAccess(migrationId: string): Promise<{
+async function resolveMigrationDriveAccess(
+  req: Request,
+  migrationId: string
+): Promise<{
   pred: string;
   succ: string;
   token: { access_token: string; refresh_token?: string };
   accountId?: string;
   folders: { metadataFolderId: string; pnFolderId: string };
   pinnedFolderId: string | null;
-} | null> {
+}> {
   const row = await getMigrationRow(migrationId);
-  if (!row) return null;
+  if (!row) {
+    throw new DriveIndexError('Migration not found', 'DRIVE_NOT_INITIALIZED');
+  }
   const pred = normalizePn(row.predecessor_pn_identifier);
   const succ = normalizePn(row.successor_pn_identifier);
-  const creds = await storageCredentialsService.getCredentials(pred);
-  if (!creds?.credentials) return null;
-  const accounts = creds.credentials.googleDriveAccounts
-    || (creds.credentials.googleDrive ? [creds.credentials.googleDrive] : []);
-  const account = accounts[0];
-  if (!account) return null;
-  const token = {
-    access_token: account.access_token || account.accessToken,
-    refresh_token: account.refresh_token || account.refreshToken,
-  };
+  const resolved = await resolveOwnerDriveToken(req, pred);
   const { loadPnDriveFolders } = await import('./pnDriveIndex');
   const folders = await loadPnDriveFolders(pred);
-  if (!folders) return null;
+  if (!folders) {
+    throw new DriveIndexError('Drive folders not found', 'DRIVE_INDEX_INCOMPLETE');
+  }
   const pinned = await storageCredentialsService.getDriveFolderId(pred);
   return {
     pred,
     succ,
-    token,
-    accountId: account.accountId,
+    token: resolved.token,
+    accountId: resolved.accountId,
     folders,
     pinnedFolderId: pinned ?? folders.pnFolderId,
   };
+}
+
+function migrationDriveError(res: Response, error: unknown): Response {
+  if (error instanceof DriveIndexError) {
+    const status =
+      error.code === 'CLOUD_TOKEN_REQUIRED' || error.code === 'CLOUD_TOKEN_EXPIRED' ? 409 : 404;
+    console.warn('[migration] Drive access failed', { code: error.code });
+    return res.status(status).json({
+      error: error.code,
+      error_description: error.message,
+    });
+  }
+  console.error('[migration] Drive access unexpected error:', error);
+  return res.status(500).json({ error: 'server_error' });
+}
+
+async function resolveOwnerDriveForPn(req: Request, pn: string): Promise<{
+  token: { access_token: string; refresh_token?: string };
+  accountId?: string;
+  folders: { metadataFolderId: string; pnFolderId: string };
+}> {
+  const resolved = await resolveOwnerDriveToken(req, pn);
+  const { loadPnDriveFolders } = await import('./pnDriveIndex');
+  const folders = await loadPnDriveFolders(pn);
+  if (!folders) {
+    throw new DriveIndexError('Drive folders not found', 'DRIVE_INDEX_INCOMPLETE');
+  }
+  return { token: resolved.token, accountId: resolved.accountId, folders };
 }
 
 function normalizePn(pn: string): string {
@@ -296,35 +324,21 @@ export function registerIdentityMigrationRoutes(app: Application): void {
 
       const pn = normalizePn(String(userPnIdentifier));
       const { ConnectionsSheetsService } = await import('./connectionsSheetsService');
-      const { loadPnDriveFolders } = await import('./pnDriveIndex');
-      const creds = await storageCredentialsService.getCredentials(pn);
-      if (!creds?.credentials) return res.status(404).json({ error: 'Drive not connected' });
-
-      const accounts = creds.credentials.googleDriveAccounts
-        || (creds.credentials.googleDrive ? [creds.credentials.googleDrive] : []);
-      if (!accounts.length) return res.status(404).json({ error: 'Drive not connected' });
-
-      const account = accounts[0];
-      const token = {
-        access_token: account.access_token || account.accessToken,
-        refresh_token: account.refresh_token || account.refreshToken,
-      };
-      const folders = await loadPnDriveFolders(pn);
-      if (!folders) return res.status(404).json({ error: 'Drive folders not found' });
+      const drive = await resolveOwnerDriveForPn(req, pn);
 
       const spreadsheetId = await ConnectionsSheetsService.getConnectionsSheet(
-        token,
-        folders.metadataFolderId,
+        drive.token,
+        drive.folders.metadataFolderId,
         pn,
-        account.accountId
+        drive.accountId
       );
       await ConnectionsSheetsService.updateConnectionStatus(
-        token,
+        drive.token,
         spreadsheetId,
         String(connectionId),
         'accepted',
         pn,
-        account.accountId,
+        drive.accountId,
         new Date().toISOString(),
         undefined,
         String(kemCiphertext)
@@ -332,8 +346,7 @@ export function registerIdentityMigrationRoutes(app: Application): void {
 
       return res.json({ success: true, connectionId });
     } catch (error: unknown) {
-      console.error('[migration] connections/rekey:', error);
-      return res.status(500).json({ error: 'server_error' });
+      return migrationDriveError(res, error);
     }
   });
 
@@ -355,25 +368,16 @@ export function registerIdentityMigrationRoutes(app: Application): void {
       if (!row) return res.status(404).json({ error: 'not_found' });
 
       const pn = normalizePn(String(userPnIdentifier));
+      const drive = await resolveOwnerDriveForPn(req, pn);
+      const token = drive.token;
+      const account = { accountId: drive.accountId };
+      const folders = drive.folders;
       const creds = await storageCredentialsService.getCredentials(pn);
-      if (!creds?.credentials) return res.status(404).json({ error: 'Drive not connected' });
-
-      const accounts = creds.credentials.googleDriveAccounts
-        || (creds.credentials.googleDrive ? [creds.credentials.googleDrive] : []);
-      if (!accounts.length) return res.status(404).json({ error: 'Drive not connected' });
-
-      const account = accounts[0];
-      const token = {
-        access_token: account.access_token || account.accessToken,
-        refresh_token: account.refresh_token || account.refreshToken,
-      };
       const { MessageSheetsService } = await import('./messageSheetsService');
-      const { loadPnDriveFolders } = await import('./pnDriveIndex');
-      const folders = await loadPnDriveFolders(pn);
       if (!folders?.pnFolderId) return res.status(404).json({ error: 'Drive folders not found' });
 
       const { readPnDriveIndex, isPnDriveIndexComplete } = await import('./pnDriveIndex');
-      const driveIndex = readPnDriveIndex(creds.credentials as Record<string, unknown>);
+      const driveIndex = readPnDriveIndex((creds?.credentials || {}) as Record<string, unknown>);
       const messagesFolderId = isPnDriveIndexComplete(driveIndex)
         ? driveIndex.messagesFolderId
         : await MessageSheetsService.getOrCreateMessagesFolder(
@@ -417,8 +421,7 @@ export function registerIdentityMigrationRoutes(app: Application): void {
 
       return res.json({ success: true, connectionId });
     } catch (error: unknown) {
-      console.error('[migration] connections/rewrap-root:', error);
-      return res.status(500).json({ error: 'server_error' });
+      return migrationDriveError(res, error);
     }
   });
 
@@ -435,43 +438,30 @@ export function registerIdentityMigrationRoutes(app: Application): void {
       }
 
       const ownerPn = normalizePn(String(ownerPnIdentifier));
-      const creds = await storageCredentialsService.getCredentials(ownerPn);
-      if (!creds?.credentials) return res.status(404).json({ error: 'Drive not connected' });
-
-      const accounts = creds.credentials.googleDriveAccounts
-        || (creds.credentials.googleDrive ? [creds.credentials.googleDrive] : []);
-      const account = accounts[0];
-      const token = {
-        access_token: account.access_token || account.accessToken,
-        refresh_token: account.refresh_token || account.refreshToken,
-      };
-      const { loadPnDriveFolders } = await import('./pnDriveIndex');
-      const folders = await loadPnDriveFolders(ownerPn);
-      if (!folders) return res.status(404).json({ error: 'Drive folders not found' });
+      const drive = await resolveOwnerDriveForPn(req, ownerPn);
 
       const { GroupSheetsService } = await import('./groupSheetsService');
       const spreadsheetId = await GroupSheetsService.getOrCreateGroupsSheet(
-        token,
-        folders.metadataFolderId,
+        drive.token,
+        drive.folders.metadataFolderId,
         ownerPn,
-        account.accountId
+        drive.accountId
       );
 
       const successorOwnerPn = normalizePn(String(req.body.successorOwnerPnIdentifier || ownerPn));
       await GroupSheetsService.rewrapGroupKeysForMigration(
-        token,
+        drive.token,
         spreadsheetId,
         String(groupId),
         successorOwnerPn,
         keyRotation,
         ownerPn,
-        account.accountId
+        drive.accountId
       );
 
       return res.json({ success: true, groupId });
     } catch (error: unknown) {
-      console.error('[migration] groups/rewrap:', error);
-      return res.status(500).json({ error: 'server_error' });
+      return migrationDriveError(res, error);
     }
   });
 
@@ -482,8 +472,7 @@ export function registerIdentityMigrationRoutes(app: Application): void {
       const auth = bearerPn(req);
       if (!auth) return res.status(401).json({ error: 'unauthorized' });
 
-      const drive = await resolveMigrationDriveAccess(req.params.id);
-      if (!drive) return res.status(404).json({ error: 'Drive not connected' });
+      const drive = await resolveMigrationDriveAccess(req, req.params.id);
 
       const { ZKPDataPointsSheetsService } = await import('./zkpDataPointsSheetsService');
       const spreadsheetId = await ZKPDataPointsSheetsService.getZKPDataPointsSheet(
@@ -507,8 +496,7 @@ export function registerIdentityMigrationRoutes(app: Application): void {
         }));
       return res.json({ proofs });
     } catch (error: unknown) {
-      console.error('[migration] zkp-data-points/from-drive:', error);
-      return res.status(500).json({ error: 'server_error' });
+      return migrationDriveError(res, error);
     }
   });
 
@@ -524,32 +512,11 @@ export function registerIdentityMigrationRoutes(app: Application): void {
         return res.status(400).json({ error: 'userPnIdentifier and updates array required' });
       }
 
-      const driveAccess = await resolveMigrationDriveAccess(req.params.id);
-      let token: { access_token: string };
-      let pn: string;
-      let accountId: string | undefined;
-      let metadataFolderId: string;
-
-      if (driveAccess) {
-        token = driveAccess.token;
-        pn = driveAccess.pred;
-        accountId = driveAccess.accountId;
-        metadataFolderId = driveAccess.folders.metadataFolderId;
-      } else {
-        pn = normalizePn(String(userPnIdentifier));
-        const creds = await storageCredentialsService.getCredentials(pn);
-        if (!creds?.credentials) return res.status(404).json({ error: 'Drive not connected' });
-
-        const accounts = creds.credentials.googleDriveAccounts
-          || (creds.credentials.googleDrive ? [creds.credentials.googleDrive] : []);
-        const account = accounts[0];
-        token = { access_token: account.access_token || account.accessToken };
-        accountId = account.accountId;
-      const { loadPnDriveFolders } = await import('./pnDriveIndex');
-      const folders = await loadPnDriveFolders(pn);
-        if (!folders) return res.status(404).json({ error: 'Drive folders not found' });
-        metadataFolderId = folders.metadataFolderId;
-      }
+      const driveAccess = await resolveMigrationDriveAccess(req, req.params.id);
+      const token = driveAccess.token;
+      const pn = driveAccess.pred;
+      const accountId = driveAccess.accountId;
+      const metadataFolderId = driveAccess.folders.metadataFolderId;
 
       const { ZKPDataPointsSheetsService } = await import('./zkpDataPointsSheetsService');
       const spreadsheetId = await ZKPDataPointsSheetsService.getZKPDataPointsSheet(
@@ -584,8 +551,7 @@ export function registerIdentityMigrationRoutes(app: Application): void {
 
       return res.json({ success: true, updated: count });
     } catch (error: unknown) {
-      console.error('[migration] zkp batch:', error);
-      return res.status(500).json({ error: 'server_error' });
+      return migrationDriveError(res, error);
     }
   });
 
@@ -601,8 +567,7 @@ export function registerIdentityMigrationRoutes(app: Application): void {
         return res.status(400).json({ error: 'userPnIdentifier and custodians array required' });
       }
 
-      const drive = await resolveMigrationDriveAccess(req.params.id);
-      if (!drive) return res.status(404).json({ error: 'Drive not connected' });
+      const drive = await resolveMigrationDriveAccess(req, req.params.id);
 
       const pn = normalizePn(String(userPnIdentifier));
       const { RecoverySheetsService } = await import('./recoverySheetsService');
@@ -642,8 +607,7 @@ export function registerIdentityMigrationRoutes(app: Application): void {
 
       return res.json({ success: true, updated: count });
     } catch (error: unknown) {
-      console.error('[migration] recovery custodians:', error);
-      return res.status(500).json({ error: 'server_error' });
+      return migrationDriveError(res, error);
     }
   });
 
@@ -681,8 +645,7 @@ export function registerIdentityMigrationRoutes(app: Application): void {
       const auth = bearerPn(req);
       if (!auth) return res.status(401).json({ error: 'unauthorized' });
 
-      const drive = await resolveMigrationDriveAccess(req.params.id);
-      if (!drive) return res.status(404).json({ error: 'Drive not connected' });
+      const drive = await resolveMigrationDriveAccess(req, req.params.id);
 
       const row = await getMigrationRow(req.params.id);
       let messagesFolderId: string | null = null;
@@ -722,8 +685,7 @@ export function registerIdentityMigrationRoutes(app: Application): void {
 
       return res.json({ success: true, ...sheetResult, ...companionResult });
     } catch (error: unknown) {
-      console.error('[migration] drive/sheets/migrate:', error);
-      return res.status(500).json({ error: 'server_error' });
+      return migrationDriveError(res, error);
     }
   });
 
@@ -734,8 +696,7 @@ export function registerIdentityMigrationRoutes(app: Application): void {
       const auth = bearerPn(req);
       if (!auth) return res.status(401).json({ error: 'unauthorized' });
 
-      const drive = await resolveMigrationDriveAccess(req.params.id);
-      if (!drive) return res.status(404).json({ error: 'Drive not connected' });
+      const drive = await resolveMigrationDriveAccess(req, req.params.id);
 
       const spreadsheetId = typeof req.query.spreadsheetId === 'string' ? req.query.spreadsheetId : '';
       const participantPn = req.params.participantPn;
@@ -781,8 +742,7 @@ export function registerIdentityMigrationRoutes(app: Application): void {
 
       return res.json({ rows, spreadsheetId: convSpreadsheetId });
     } catch (error: unknown) {
-      console.error('[migration] conversation rows:', error);
-      return res.status(500).json({ error: 'server_error' });
+      return migrationDriveError(res, error);
     }
   });
 
@@ -799,8 +759,7 @@ export function registerIdentityMigrationRoutes(app: Application): void {
         return res.status(400).json({ error: 'connectionId and rowUpdates required' });
       }
 
-      const drive = await resolveMigrationDriveAccess(req.params.id);
-      if (!drive) return res.status(404).json({ error: 'Drive not connected' });
+      const drive = await resolveMigrationDriveAccess(req, req.params.id);
 
       if (kemCiphertext) {
         const { ConnectionsSheetsService } = await import('./connectionsSheetsService');
@@ -865,8 +824,7 @@ export function registerIdentityMigrationRoutes(app: Application): void {
 
       return res.json({ success: true, updated: rowsWritten || rowUpdates.length });
     } catch (error: unknown) {
-      console.error('[migration] drive/messages/rows:', error);
-      return res.status(500).json({ error: 'server_error' });
+      return migrationDriveError(res, error);
     }
   });
 

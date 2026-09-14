@@ -206,6 +206,8 @@ export async function unlockDmIdentity(pnName: string, passcode: string): Promis
   });
   void publishMlKemPublicKey(mlKemPublicKey).catch(() => {});
 
+  // Single post-unlock promote owner (send path also promotes per message).
+  // Not invoked from mailbox drain — keeps inbox paint off the promote critical path.
   void (async () => {
     try {
       const session = PNOAuthService.loadSession();

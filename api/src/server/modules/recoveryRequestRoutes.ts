@@ -207,11 +207,6 @@ export function setupRecoveryRequestRoutes(app: express.Application, deps: Recov
       }
     });
 
-    /** @deprecated Use POST /api/recovery/requests/:requestId/approvals */
-    app.post('/api/recovery/requests/:requestId/shares', async (req, res) => {
-      return res.status(410).json({ error: 'Share submission deprecated; use /approvals with ZK authorization' });
-    });
-
     app.get('/api/recovery/:userPnIdentifier/requests/:requestId/vault-shares', async (req, res) => {
       try {
         const { userPnIdentifier, requestId } = req.params;

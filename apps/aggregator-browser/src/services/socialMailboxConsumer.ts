@@ -127,13 +127,8 @@ export async function drainSocialMailbox(): Promise<MailboxDrainResult> {
     }
   }
 
-  // Sender outbox → own Sheets (same SoT as conversation GET).
-  try {
-    const { promoteSenderOutbox } = await import('./messageService');
-    await promoteSenderOutbox(identityId);
-  } catch (e) {
-    errors.push(`outbox: ${e instanceof Error ? e.message : 'promote failed'}`);
-  }
+  // Sender outbox → own Sheets runs on send + single post-unlock promote
+  // (dmIdentitySession). Do not promote on every drain — that gates inbox reads.
 
   const applySocialJob = createApiSocialApplier({
     apiBaseUrl: API_ENDPOINT,
@@ -319,8 +314,8 @@ export function startSocialMailboxConsumer(): void {
   void (async () => {
     const session = PNOAuthService.loadSession();
     if (session?.pnIdentifier) {
-      const { awaitCloudUnlockComplete } = await import('./cloudUnlockCoordinator');
-      await awaitCloudUnlockComplete(session.pnIdentifier, 60_000);
+      const { waitForCloudCredentialsReady } = await import('@par-noir/device-cloud-credentials');
+      await waitForCloudCredentialsReady(session.pnIdentifier, 60_000);
     }
     await requestHotDrain();
   })();

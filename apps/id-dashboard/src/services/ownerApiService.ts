@@ -1,7 +1,7 @@
 import { API_ENDPOINT } from '../config/api';
 import { deviceProofHeaders } from './deviceProofContext';
-import { resolveLocalGoogleAccessTokenAsync } from './deviceApiService';
 import { resolveOwnerApiToken } from './ownerApiToken';
+import { ownerCloudHeadersAsync } from '@par-noir/device-cloud-credentials';
 
 const PN_CLOUD_ACCESS_TOKEN_HEADER = 'X-PN-Cloud-Access-Token';
 
@@ -42,8 +42,7 @@ function hasForwardedCloudToken(extra?: Record<string, string>): boolean {
 }
 
 /**
- * Resolve X-PN-Cloud-Access-Token for owner Drive calls.
- * Returns missing=true when a pn is known but no access token could be minted.
+ * Resolve cloud headers via the single package mint path (ownerCloudHeadersAsync).
  */
 async function cloudTokenHeaders(
   authToken: string,
@@ -55,34 +54,22 @@ async function cloudTokenHeaders(
   const pn = pnIdentifier || ownerApiPnIdentifier || undefined;
   if (!pn) return { headers: {}, missing: false };
 
-  let tok = await resolveLocalGoogleAccessTokenAsync(pn);
-  if (!tok) {
-    try {
-      const {
-        waitForCloudHydrateMaterial,
-        ensureCloudAccessToken,
-        getCloudAccessTokenFromSession
-      } = await import('@par-noir/device-cloud-credentials');
-      await waitForCloudHydrateMaterial(pn);
-      tok =
-        (await ensureCloudAccessToken({
-          authToken,
-          pnIdentifier: pn,
-          apiEndpoint: API_ENDPOINT
-        })) || getCloudAccessTokenFromSession(pn);
-      if (!tok) {
-        await waitForCloudHydrateMaterial(pn, 3_000);
-        tok = getCloudAccessTokenFromSession(pn);
-      }
-    } catch {
-      /* best-effort */
+  try {
+    const headers = await ownerCloudHeadersAsync({
+      authToken,
+      pnIdentifier: pn,
+      apiEndpoint: API_ENDPOINT
+    });
+    const tok = headers[PN_CLOUD_ACCESS_TOKEN_HEADER] || headers['x-pn-cloud-access-token'];
+    if (!tok || !String(tok).trim()) {
+      return { headers: {}, missing: true };
     }
+    // Strip Authorization if present — ownerFetch adds Bearer separately.
+    const { Authorization: _a, ...cloudOnly } = headers;
+    return { headers: cloudOnly, missing: false };
+  } catch {
+    return { headers: {}, missing: true };
   }
-  if (!tok) {
-    tok = await resolveLocalGoogleAccessTokenAsync(pn);
-  }
-  if (!tok) return { headers: {}, missing: true };
-  return { headers: { [PN_CLOUD_ACCESS_TOKEN_HEADER]: tok }, missing: false };
 }
 
 export type OwnerFetchInit = Omit<RequestInit, 'method' | 'headers' | 'body'> & {

@@ -130,3 +130,4 @@ export {
   // without X-PN-Cloud-Access-Token and gets a 409. Use the async builder.
   ownerCloudHeadersAsync
 } from './ownerCloudHeaders.js';
+export { requireOnlineCloudForSend } from './requireOnlineCloudForSend.js';

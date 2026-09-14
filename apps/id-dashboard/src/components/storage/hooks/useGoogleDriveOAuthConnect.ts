@@ -394,7 +394,7 @@ export function useGoogleDriveOAuthConnect({
           persistCloudCredentials,
           resolveCloudPersistMode
         } = await import('@par-noir/device-cloud-credentials');
-        const { derivePnIdentifierForToken } = await import('../../../services/parNoirOAuthInline');
+        const { deriveCanonicalPnIdentifier } = await import('@par-noir/pqc-crypto/oauth-unlock-proof');
         const sessionId = authenticatedUser?.id || null;
         const sessionCreds = sessionId ? SecureCredentialManager.getCredentials(sessionId) : null;
         if (!sessionCreds || !sessionId || !authenticatedUser?.publicKey) {
@@ -402,11 +402,7 @@ export function useGoogleDriveOAuthConnect({
             'Drive connected locally, but identity seal factors are missing — unlock again, then reconnect Drive to publish the cloud vault for browse/messaging.'
           );
         }
-        const pnIdentifier = await derivePnIdentifierForToken(
-          sessionCreds.pnName,
-          sessionCreds.passcode,
-          authenticatedUser.publicKey
-        );
+        const pnIdentifier = deriveCanonicalPnIdentifier(authenticatedUser.publicKey);
         const accountId = identifiers.backendId;
         const cloudEnvelope = {
           socialCloudProvider: 'google_drive' as const,
@@ -488,15 +484,11 @@ export function useGoogleDriveOAuthConnect({
       // Signal Drive-ready only after access token is in session (OAuth just minted it).
       try {
         const { publishCloudDriveReady } = await import('@par-noir/device-cloud-credentials');
-        const { derivePnIdentifierForToken } = await import('../../../services/parNoirOAuthInline');
+        const { deriveCanonicalPnIdentifier } = await import('@par-noir/pqc-crypto/oauth-unlock-proof');
         const sessionId = authenticatedUser?.id || null;
         const sessionCreds = sessionId ? SecureCredentialManager.getCredentials(sessionId) : null;
         if (sessionCreds && sessionId && authenticatedUser?.publicKey) {
-          const readyPn = await derivePnIdentifierForToken(
-            sessionCreds.pnName,
-            sessionCreds.passcode,
-            authenticatedUser.publicKey
-          );
+          const readyPn = deriveCanonicalPnIdentifier(authenticatedUser.publicKey);
           const authTok = resolveOwnerApiToken(readyPn);
           if (authTok) {
             await publishCloudDriveReady({

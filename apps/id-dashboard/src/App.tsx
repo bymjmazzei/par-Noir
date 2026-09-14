@@ -318,10 +318,8 @@ function App() {
           if (!token || cancelled) return;
           try {
             const { migrateAndFlushOnUnlock } = await import('./services/deviceCloudCredentials');
-            const { derivePnIdentifierForToken } = await import('./services/parNoirOAuthInline');
-            const pnIdentifier = await derivePnIdentifierForToken(
-              credentials.pnName,
-              credentials.passcode,
+            const { deriveCanonicalPnIdentifier } = await import('@par-noir/pqc-crypto/oauth-unlock-proof');
+            const pnIdentifier = deriveCanonicalPnIdentifier(
               authenticatedUser.publicKey || identityKey
             );
             await migrateAndFlushOnUnlock({

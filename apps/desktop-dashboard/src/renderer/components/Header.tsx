@@ -36,7 +36,7 @@ const Header: React.FC<HeaderProps> = ({
           <h1 className="text-xl font-semibold tracking-tight text-text-primary">Secure Desktop Control Center</h1>
           {authenticatedUser ? (
             <p className="text-xs text-text-tertiary mt-1">
-              Signed in as {authenticatedUser.pnName ?? authenticatedUser.nickname ?? 'identity'}
+              Signed in as {authenticatedUser.nickname ?? 'identity'}
             </p>
           ) : (
             <p className="text-xs text-text-tertiary mt-1">

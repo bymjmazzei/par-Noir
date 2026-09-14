@@ -12,6 +12,8 @@ import {
   getOAuthResumeSearchParams,
   isOAuthResumeUrl,
   PN_OAUTH_RESUME_SEARCH_KEY,
+  oauthStatesMatch,
+  refreshPortalAccessToken,
   type PnOAuthPopupResult
 } from '@par-noir/oauth-ui';
 import { ownerCloudHeadersAsync } from '@par-noir/device-cloud-credentials';
@@ -26,17 +28,6 @@ const STORAGE_POPUP_STATE = 'pn_oauth_state';
 const STORAGE_PROCESSED_CODE = 'licensing_portal_oauth_code_done';
 /** Cross-mount guard while oauth_resume exchange runs. */
 const STORAGE_RESUME_INFLIGHT = 'licensing_portal_oauth_resume_inflight';
-
-function oauthStatesMatch(incoming: string, expected: string): boolean {
-  const a = incoming.trim();
-  const b = expected.trim();
-  if (a === b) return true;
-  try {
-    return decodeURIComponent(a) === decodeURIComponent(b);
-  } catch {
-    return false;
-  }
-}
 
 function clearOAuthResumeQuery(): void {
   window.history.replaceState({}, '', window.location.pathname);
@@ -58,17 +49,12 @@ async function tryRefreshAccessToken(): Promise<string | null> {
   if (typeof sessionStorage === 'undefined') return null;
   const refresh = sessionStorage.getItem(STORAGE_REFRESH);
   if (!refresh?.trim()) return null;
-  const res = await fetch(`${API_ENDPOINT}/oauth/refresh`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      refresh_token: refresh.trim(),
-      client_id: PN_CLIENT_ID
-    })
+  const data = await refreshPortalAccessToken({
+    apiEndpoint: API_ENDPOINT,
+    clientId: PN_CLIENT_ID,
+    refreshToken: refresh
   });
-  if (!res.ok) return null;
-  const data = (await res.json()) as { access_token?: string; refresh_token?: string };
-  if (!data.access_token) return null;
+  if (!data?.access_token) return null;
   sessionStorage.setItem(STORAGE_ACCESS, data.access_token);
   if (data.refresh_token) {
     sessionStorage.setItem(STORAGE_REFRESH, data.refresh_token);

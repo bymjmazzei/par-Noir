@@ -309,7 +309,7 @@ Enable v2 in **staging** first; verify read/write of credentials; then productio
 
 See `docs/developer/INTEGRATOR_IDENTITY_SUCCESSION.md` for public succession reads (`GET /api/v1/identity/successor`).
 
-**Third-party OAuth:** The canonical flow is **authorization code** with a registered **`redirect_uri`**; after consent the user agent is always redirected there with `code` / `state` (or OAuth `error` params). Popup UX is optional and still uses the same redirect. See [`docs/developer/PN_OAUTH_INTEGRATION.md`](../docs/developer/PN_OAUTH_INTEGRATION.md). **`GET /oauth/popup-bridge`** is deprecated (**410 Gone**).
+**Third-party OAuth:** The canonical flow is **authorization code** with a registered **`redirect_uri`**; after consent the user agent is always redirected there with `code` / `state` (or OAuth `error` params). Popup UX is optional and still uses the same redirect. See [`docs/developer/PN_OAUTH_INTEGRATION.md`](../docs/developer/PN_OAUTH_INTEGRATION.md). **`GET /oauth/popup-bridge`** has been **removed**.
 
 ### Platform registry (operator Drive + developer portal)
 

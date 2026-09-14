@@ -1,7 +1,7 @@
 import React, { useState, useCallback, useMemo, useEffect } from 'react';
 import { Shield, AlertTriangle, CheckCircle, Lock, Eye, EyeOff, Settings, RefreshCw } from 'lucide-react';
 import { security } from '../utils/security';
-import { cryptoWorkerManager } from '../utils/cryptoWorkerManager';
+import { cryptoWorkerManager } from '@par-noir/identity-crypto';
 
 interface SecurityStatus {
   deviceSecurity: boolean;

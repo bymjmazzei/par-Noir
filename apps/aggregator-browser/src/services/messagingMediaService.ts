@@ -15,7 +15,7 @@ import { API_ENDPOINT } from '../config/api';
 import { ensureMessageRootKey } from './dmCryptoClient';
 import { getGroupChatKey, sendGroupMessage, type GroupRecord } from './groupService';
 import { sendMessage } from './messageService';
-import { EncryptionManager } from '../utils/encryptionManager';
+import { EncryptionManager } from '@par-noir/identity-crypto';
 import { decryptWithToken, type ShareToken } from '../utils/tokenDecryption';
 import {
   uploadStorageFile,

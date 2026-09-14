@@ -288,7 +288,7 @@ export function useAuthAndSession({
         }
 
         if (!isDmIdentityReady()) {
-          await waitForAndApplyMessagingHandoff(20_000);
+          await waitForAndApplyMessagingHandoff(3_000);
           applyAllMessagingHandoffSources(data.messagingHandoff);
         }
 
@@ -313,10 +313,10 @@ export function useAuthAndSession({
         PNOAuthService.saveSession(sessionWithIdentifier);
 
         if (userInfo.pn_identifier && !userInfo.pn_identifier.startsWith('did:key:')) {
-          await runUnlockPostPrefetch(userInfo.pn_identifier);
           setUnlocked(userInfo.pn_identifier);
           markOAuthHandoffComplete();
           clearStaleOAuthCallbackStorage();
+          void runUnlockPostPrefetch(userInfo.pn_identifier);
         } else {
           setUnlocked(userInfo.did);
         }

@@ -9,7 +9,6 @@ import {
   acquireApiTokenInline,
   clearStoredToken,
   consumeOAuthResumeFromUrl,
-  derivePnIdentifierForToken,
   exchangeCodeForToken,
   getStoredToken,
   setStoredToken,
@@ -74,11 +73,8 @@ export function useApiToken() {
       // The OAuth access token embeds a pN identifier; the API rejects (403) any owner route
       // whose URL pN differs from the token's pN. When switching between pNs we MUST re-acquire
       // a token for the active pN instead of reusing a stored token from a different pN.
-      const wantedPn = await derivePnIdentifierForToken(
-        input.pnName,
-        input.passcode,
-        input.publicKey
-      );
+      const { deriveCanonicalPnIdentifier } = await import('@par-noir/pqc-crypto/oauth-unlock-proof');
+      const wantedPn = deriveCanonicalPnIdentifier(input.publicKey);
 
       const existing = getStoredToken();
       if (existing?.accessToken && existing.pnIdentifier === wantedPn) {

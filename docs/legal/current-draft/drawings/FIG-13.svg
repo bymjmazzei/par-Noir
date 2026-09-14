@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="612" height="792"
+     viewBox="0 0 612 792" version="1.1">
+  <defs>
+    <marker id="arrow" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+      <path d="M0,0 L6,3 L0,6 Z" fill="#000"/>
+    </marker>
+  </defs>
+  <rect x="0" y="0" width="612" height="792" fill="#fff"/>
+  <text x="28" y="26" font-family="Helvetica, Arial, sans-serif" font-size="13" font-weight="bold" fill="#000">FIG. 13</text>
+  <text x="100" y="26" font-family="Helvetica, Arial, sans-serif" font-size="11" fill="#000">Selective disclosure via broker entity</text>
+  <line x1="28" y1="34" x2="584" y2="34" stroke="#000" stroke-width="1"/>
+  <rect x="30" y="50" width="100" height="36" fill="none" stroke="#000" stroke-width="1.5"/>
+  <text x="80" y="73" text-anchor="middle" fill="#000" font-family="Helvetica, Arial, sans-serif" font-size="9" font-weight="bold">User 100</text>
+  <line x1="80" y1="86" x2="80" y2="560" stroke="#000" stroke-width="1.25" stroke-dasharray="5 4"/>
+  <rect x="140" y="50" width="100" height="36" fill="none" stroke="#000" stroke-width="1.5"/>
+  <text x="190" y="73" text-anchor="middle" fill="#000" font-family="Helvetica, Arial, sans-serif" font-size="9" font-weight="bold">API 120</text>
+  <line x1="190" y1="86" x2="190" y2="560" stroke="#000" stroke-width="1.25" stroke-dasharray="5 4"/>
+  <rect x="250" y="50" width="100" height="36" fill="none" stroke="#000" stroke-width="1.5"/>
+  <text x="300" y="73" text-anchor="middle" fill="#000" font-family="Helvetica, Arial, sans-serif" font-size="9" font-weight="bold">Cloud 110</text>
+  <line x1="300" y1="86" x2="300" y2="560" stroke="#000" stroke-width="1.25" stroke-dasharray="5 4"/>
+  <rect x="370" y="50" width="100" height="36" fill="none" stroke="#000" stroke-width="1.5"/>
+  <text x="420" y="73" text-anchor="middle" fill="#000" font-family="Helvetica, Arial, sans-serif" font-size="9" font-weight="bold">Broker 158</text>
+  <line x1="420" y1="86" x2="420" y2="560" stroke="#000" stroke-width="1.25" stroke-dasharray="5 4"/>
+  <rect x="490" y="50" width="100" height="36" fill="none" stroke="#000" stroke-width="1.5"/>
+  <text x="540" y="73" text-anchor="middle" fill="#000" font-family="Helvetica, Arial, sans-serif" font-size="9" font-weight="bold">Verifier 159</text>
+  <line x1="540" y1="86" x2="540" y2="560" stroke="#000" stroke-width="1.25" stroke-dasharray="5 4"/>
+  <line x1="80" y1="130" x2="190" y2="130" stroke="#000" stroke-width="1.25" marker-end="url(#arrow)"/>
+  <text x="135" y="118" text-anchor="middle" fill="#000" font-family="Helvetica, Arial, sans-serif" font-size="9" font-weight="normal">authorize grant  1300</text>
+  <line x1="190" y1="180" x2="300" y2="180" stroke="#000" stroke-width="1.25" marker-end="url(#arrow)"/>
+  <text x="245" y="168" text-anchor="middle" fill="#000" font-family="Helvetica, Arial, sans-serif" font-size="9" font-weight="normal">write permissions  160</text>
+  <line x1="420" y1="250" x2="190" y2="250" stroke="#000" stroke-width="1.25" marker-end="url(#arrow)"/>
+  <text x="245" y="238" text-anchor="middle" fill="#000" font-family="Helvetica, Arial, sans-serif" font-size="9" font-weight="normal">proof request  1302</text>
+  <line x1="190" y1="310" x2="300" y2="310" stroke="#000" stroke-width="1.25" marker-end="url(#arrow)"/>
+  <text x="245" y="298" text-anchor="middle" fill="#000" font-family="Helvetica, Arial, sans-serif" font-size="9" font-weight="normal">read permissions  160</text>
+  <line x1="190" y1="370" x2="300" y2="370" stroke="#000" stroke-width="1.25" marker-end="url(#arrow)"/>
+  <text x="245" y="358" text-anchor="middle" fill="#000" font-family="Helvetica, Arial, sans-serif" font-size="9" font-weight="normal">read data-points  162</text>
+  <line x1="190" y1="430" x2="420" y2="430" stroke="#000" stroke-width="1.25" marker-end="url(#arrow)"/>
+  <text x="360" y="418" text-anchor="middle" fill="#000" font-family="Helvetica, Arial, sans-serif" font-size="9" font-weight="normal">proof envelope  1308</text>
+  <line x1="420" y1="490" x2="540" y2="490" stroke="#000" stroke-width="1.25" marker-end="url(#arrow)"/>
+  <text x="480" y="478" text-anchor="middle" fill="#000" font-family="Helvetica, Arial, sans-serif" font-size="9" font-weight="normal">relay proof</text>
+  <rect x="200" y="580" width="160" height="40" rx="4" ry="4" fill="#fff" stroke="#000" stroke-width="1.5"/>
+  <text x="280.0" y="600.0" text-anchor="middle" fill="#000" font-family="Helvetica, Arial, sans-serif" font-size="11" font-weight="normal">Proof API</text>
+  <text x="370" y="594" text-anchor="start" fill="#000" font-family="Helvetica, Arial, sans-serif" font-size="11" font-weight="bold">156</text>
+  <text x="30" y="680" text-anchor="start" fill="#000" font-family="Helvetica, Arial, sans-serif" font-size="9" font-weight="normal" font-style="italic">Broker 158 does not receive pn name, passcode, private keys, or plaintext sensitive attributes.</text>
+</svg>

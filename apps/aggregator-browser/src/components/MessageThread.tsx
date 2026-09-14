@@ -374,7 +374,7 @@ export function MessageThread({
     if (realtimeRefresh === 0 || !userState.isUnlocked || !userState.pnIdentifier) return;
     if (isGroup && !groupRecord) return;
     if (isMessagingRateLimited() || sendingRef.current) return;
-    // Hot drain emits inbound previews for first paint; Sheets reload reconciles after apply.
+    // Hot drain + Sheets reconcile in background; do not flip loading spinner (preview/socket paint first).
     void requestHotDrain()
       .catch(() => undefined)
       .then(() => {

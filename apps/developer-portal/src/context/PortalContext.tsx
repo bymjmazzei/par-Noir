@@ -8,7 +8,14 @@ import {
   type ReactNode
 } from 'react';
 import type { PnOAuthPopupResult } from '@par-noir/oauth-ui';
-import { createPNOAuthClient } from '@identity-protocol/identity-sdk';
+import {
+  exchangePortalAuthorizationCode,
+  fetchPortalUserInfo,
+  oauthStatesMatch,
+  refreshPortalAccessToken,
+  revokePortalToken,
+  setPendingGrant
+} from '@par-noir/oauth-ui';
 import { ownerCloudHeadersAsync } from '@par-noir/device-cloud-credentials';
 import { API_ENDPOINT } from '../config/api';
 import { PN_CLIENT_ID } from '../config/client';
@@ -18,27 +25,6 @@ const STORAGE_REFRESH = 'dev_portal_refresh_token';
 const STORAGE_OAUTH_CTX = 'dev_portal_oauth';
 const STORAGE_POPUP_STATE = 'pn_oauth_state';
 const STORAGE_PN = 'dev_portal_pn_identifier';
-
-function portalOAuthClient(redirectUri?: string) {
-  return createPNOAuthClient({
-    clientId: PN_CLIENT_ID,
-    apiEndpoint: API_ENDPOINT,
-    redirectUri: redirectUri || `${typeof window !== 'undefined' ? window.location.origin : ''}/oauth-callback.html`,
-    scopes: ['openid', 'profile'],
-    usePopup: false
-  });
-}
-
-function oauthStatesMatch(incoming: string, expected: string): boolean {
-  const a = incoming.trim();
-  const b = expected.trim();
-  if (a === b) return true;
-  try {
-    return decodeURIComponent(a) === decodeURIComponent(b);
-  } catch {
-    return false;
-  }
-}
 
 export function getAccessToken(): string | null {
   if (typeof sessionStorage === 'undefined') return null;
@@ -116,8 +102,12 @@ async function tryRefreshDeveloperPortalAccessToken(): Promise<string | null> {
   const refresh = sessionStorage.getItem(STORAGE_REFRESH);
   if (!refresh?.trim()) return null;
   try {
-    const data = await portalOAuthClient().refreshAccessToken(refresh.trim());
-    if (!data.access_token) return null;
+    const data = await refreshPortalAccessToken({
+      apiEndpoint: API_ENDPOINT,
+      clientId: PN_CLIENT_ID,
+      refreshToken: refresh.trim()
+    });
+    if (!data?.access_token) return null;
     sessionStorage.setItem(STORAGE_ACCESS, data.access_token);
     if (data.refresh_token) {
       sessionStorage.setItem(STORAGE_REFRESH, data.refresh_token);
@@ -183,10 +173,16 @@ export function PortalProvider({ children }: { children: ReactNode }) {
       return;
     }
     try {
-      const oauth = portalOAuthClient(ctx.redirectUri);
-      const data = await oauth.exchangeCodeForToken(result.code, {
+      const granted =
+        typeof result.granted_data_points === 'string'
+          ? result.granted_data_points.split(',').filter(Boolean)
+          : undefined;
+      const data = await exchangePortalAuthorizationCode({
+        apiEndpoint: API_ENDPOINT,
+        clientId: ctx.clientId || PN_CLIENT_ID,
+        code: result.code,
         redirectUri: ctx.redirectUri,
-        grantedDataPoints: result.granted_data_points
+        grantedDataPoints: granted
       });
       if (data.access_token) {
         sessionStorage.setItem(STORAGE_ACCESS, data.access_token);
@@ -194,12 +190,8 @@ export function PortalProvider({ children }: { children: ReactNode }) {
       if (data.refresh_token) {
         sessionStorage.setItem(STORAGE_REFRESH, data.refresh_token);
       }
-      if (typeof result.granted_data_points === 'string' && result.consent_shown === '1') {
-        const { setPendingGrant } = await import('@par-noir/oauth-ui');
-        setPendingGrant(
-          ctx.clientId || PN_CLIENT_ID,
-          result.granted_data_points.split(',').filter(Boolean)
-        );
+      if (granted && granted.length > 0 && result.consent_shown === '1') {
+        setPendingGrant(ctx.clientId || PN_CLIENT_ID, granted);
       }
       sessionStorage.removeItem(STORAGE_OAUTH_CTX);
       sessionStorage.removeItem(STORAGE_POPUP_STATE);
@@ -222,7 +214,6 @@ export function PortalProvider({ children }: { children: ReactNode }) {
     }
     setToken(t);
     try {
-      const oauth = portalOAuthClient();
       const fetchKeysClients = (access: string) =>
         Promise.all([
           fetch(`${API_ENDPOINT}/api/developer/api-keys`, { headers: { Authorization: `Bearer ${access}` } }),
@@ -230,14 +221,17 @@ export function PortalProvider({ children }: { children: ReactNode }) {
         ]);
       let info: UserInfo | null = null;
       try {
-        info = (await oauth.getUserInfo(t)) as UserInfo;
+        info = (await fetchPortalUserInfo({ apiEndpoint: API_ENDPOINT, accessToken: t })) as UserInfo;
       } catch {
         const newAccess = await tryRefreshDeveloperPortalAccessToken();
         if (newAccess) {
           setToken(newAccess);
           t = newAccess;
           try {
-            info = (await oauth.getUserInfo(newAccess)) as UserInfo;
+            info = (await fetchPortalUserInfo({
+              apiEndpoint: API_ENDPOINT,
+              accessToken: newAccess
+            })) as UserInfo;
           } catch {
             clearSession();
             setUser(null);
@@ -338,7 +332,11 @@ export function PortalProvider({ children }: { children: ReactNode }) {
     const refresh = sessionStorage.getItem(STORAGE_REFRESH);
     if (refresh) {
       try {
-        await portalOAuthClient().revokeToken(refresh, 'refresh_token');
+        await revokePortalToken({
+          apiEndpoint: API_ENDPOINT,
+          token: refresh,
+          tokenTypeHint: 'refresh_token'
+        });
       } catch {
         /* best-effort */
       }

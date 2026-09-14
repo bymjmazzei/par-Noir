@@ -7,7 +7,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useVerticalSwipe } from '../hooks/useVerticalSwipe';
 import { PNOAuthService } from '../services/pnOAuthService';
-import { EncryptionManager } from '../utils/encryptionManager';
+import { EncryptionManager } from '@par-noir/identity-crypto';
 import { ShareToken } from '../utils/tokenDecryption';
 import { decryptPublicFeedMedia } from '../utils/publicMediaDecrypt';
 import { useViewportHeightCSS } from '../hooks/useViewportHeight';

@@ -13,6 +13,7 @@ import {
   PrismSession,
 } from '../services/prismAuthService';
 import { setPrismPnIdentifier } from '../services/prismApi';
+import { oauthStatesMatch } from '@par-noir/oauth-ui';
 
 interface AuthContextValue {
   session: PrismSession | null;
@@ -23,18 +24,6 @@ interface AuthContextValue {
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
-
-/** Match OAuth state across redirects (encoding differences); same idea as packages/oauth-ui pnOAuthPopup. */
-function oauthStatesMatch(incoming: string, expected: string): boolean {
-  const a = incoming.trim();
-  const b = expected.trim();
-  if (a === b) return true;
-  try {
-    return decodeURIComponent(a) === decodeURIComponent(b);
-  } catch {
-    return false;
-  }
-}
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [session, setSession] = useState<PrismSession | null>(null);

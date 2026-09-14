@@ -4,7 +4,7 @@
 import React, { useState, useEffect } from 'react';
 import { Lock, X } from 'lucide-react';
 import { PNOAuthService } from '../../services/pnOAuthService';
-import { EncryptionManager } from '../../utils/encryptionManager';
+import { EncryptionManager } from '@par-noir/identity-crypto';
 import { fetchStorageFile } from '../../services/storageApiClient';
 import { API_ENDPOINT } from '../../config/api';
 import type { DriveFile } from '../storage/storageTypes';

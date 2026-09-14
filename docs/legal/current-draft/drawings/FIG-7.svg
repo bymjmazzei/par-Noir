@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="612" height="792"
+     viewBox="0 0 612 792" version="1.1">
+  <defs>
+    <marker id="arrow" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+      <path d="M0,0 L6,3 L0,6 Z" fill="#000"/>
+    </marker>
+  </defs>
+  <rect x="0" y="0" width="612" height="792" fill="#fff"/>
+  <text x="28" y="26" font-family="Helvetica, Arial, sans-serif" font-size="13" font-weight="bold" fill="#000">FIG. 7</text>
+  <text x="100" y="26" font-family="Helvetica, Arial, sans-serif" font-size="11" fill="#000">Re-key migration pipeline</text>
+  <line x1="28" y1="34" x2="584" y2="34" stroke="#000" stroke-width="1"/>
+  <rect x="140" y="45" width="360" height="56" rx="4" ry="4" fill="#fff" stroke="#000" stroke-width="1.5"/>
+  <text x="320.0" y="73.0" text-anchor="middle" fill="#000" font-family="Helvetica, Arial, sans-serif" font-size="11" font-weight="normal">Unlock predecessor identity</text>
+  <text x="130" y="59" text-anchor="end" fill="#000" font-family="Helvetica, Arial, sans-serif" font-size="11" font-weight="bold">700</text>
+  <line x1="320.0" y1="101" x2="320.0" y2="115" stroke="#000" stroke-width="1.25" marker-end="url(#arrow)"/>
+  <rect x="140" y="117" width="360" height="56" rx="4" ry="4" fill="#fff" stroke="#000" stroke-width="1.5"/>
+  <text x="320.0" y="138.0" text-anchor="middle" fill="#000" font-family="Helvetica, Arial, sans-serif" font-size="11" font-weight="normal">Generate successor</text>
+  <text x="320.0" y="152.0" text-anchor="middle" fill="#000" font-family="Helvetica, Arial, sans-serif" font-size="11" font-weight="normal">ML-DSA / ML-KEM key pair</text>
+  <text x="130" y="131" text-anchor="end" fill="#000" font-family="Helvetica, Arial, sans-serif" font-size="11" font-weight="bold">702</text>
+  <line x1="320.0" y1="173" x2="320.0" y2="187" stroke="#000" stroke-width="1.25" marker-end="url(#arrow)"/>
+  <rect x="140" y="189" width="360" height="56" rx="4" ry="4" fill="#fff" stroke="#000" stroke-width="1.5"/>
+  <text x="320.0" y="210.0" text-anchor="middle" fill="#000" font-family="Helvetica, Arial, sans-serif" font-size="11" font-weight="normal">Pin cloud folder id</text>
+  <text x="320.0" y="224.0" text-anchor="middle" fill="#000" font-family="Helvetica, Arial, sans-serif" font-size="11" font-weight="normal">in storage credentials</text>
+  <text x="130" y="203" text-anchor="end" fill="#000" font-family="Helvetica, Arial, sans-serif" font-size="11" font-weight="bold">704</text>
+  <line x1="320.0" y1="245" x2="320.0" y2="259" stroke="#000" stroke-width="1.25" marker-end="url(#arrow)"/>
+  <rect x="140" y="261" width="360" height="56" rx="4" ry="4" fill="#fff" stroke="#000" stroke-width="1.5"/>
+  <text x="320.0" y="282.0" text-anchor="middle" fill="#000" font-family="Helvetica, Arial, sans-serif" font-size="11" font-weight="normal">Re-wrap encrypted objects</text>
+  <text x="320.0" y="296.0" text-anchor="middle" fill="#000" font-family="Helvetica, Arial, sans-serif" font-size="11" font-weight="normal">to successor key</text>
+  <text x="130" y="275" text-anchor="end" fill="#000" font-family="Helvetica, Arial, sans-serif" font-size="11" font-weight="bold">708</text>
+  <line x1="320.0" y1="317" x2="320.0" y2="331" stroke="#000" stroke-width="1.25" marker-end="url(#arrow)"/>
+  <rect x="140" y="333" width="360" height="56" rx="4" ry="4" fill="#fff" stroke="#000" stroke-width="1.5"/>
+  <text x="320.0" y="354.0" text-anchor="middle" fill="#000" font-family="Helvetica, Arial, sans-serif" font-size="11" font-weight="normal">Rewrite index spreadsheet</text>
+  <text x="320.0" y="368.0" text-anchor="middle" fill="#000" font-family="Helvetica, Arial, sans-serif" font-size="11" font-weight="normal">identifier fields</text>
+  <text x="130" y="347" text-anchor="end" fill="#000" font-family="Helvetica, Arial, sans-serif" font-size="11" font-weight="bold">710</text>
+  <line x1="320.0" y1="389" x2="320.0" y2="403" stroke="#000" stroke-width="1.25" marker-end="url(#arrow)"/>
+  <rect x="140" y="405" width="360" height="56" rx="4" ry="4" fill="#fff" stroke="#000" stroke-width="1.5"/>
+  <text x="320.0" y="426.0" text-anchor="middle" fill="#000" font-family="Helvetica, Arial, sans-serif" font-size="11" font-weight="normal">Generate lineage ZK proof</text>
+  <text x="320.0" y="440.0" text-anchor="middle" fill="#000" font-family="Helvetica, Arial, sans-serif" font-size="11" font-weight="normal">(pred + succ + migration id)</text>
+  <text x="130" y="419" text-anchor="end" fill="#000" font-family="Helvetica, Arial, sans-serif" font-size="11" font-weight="bold">714</text>
+  <line x1="320.0" y1="461" x2="320.0" y2="475" stroke="#000" stroke-width="1.25" marker-end="url(#arrow)"/>
+  <rect x="140" y="477" width="360" height="56" rx="4" ry="4" fill="#fff" stroke="#000" stroke-width="1.5"/>
+  <text x="320.0" y="498.0" text-anchor="middle" fill="#000" font-family="Helvetica, Arial, sans-serif" font-size="11" font-weight="normal">Rename folder to successor</text>
+  <text x="320.0" y="512.0" text-anchor="middle" fill="#000" font-family="Helvetica, Arial, sans-serif" font-size="11" font-weight="normal">pn identifier</text>
+  <text x="130" y="491" text-anchor="end" fill="#000" font-family="Helvetica, Arial, sans-serif" font-size="11" font-weight="bold">716</text>
+  <line x1="320.0" y1="533" x2="320.0" y2="547" stroke="#000" stroke-width="1.25" marker-end="url(#arrow)"/>
+  <rect x="140" y="549" width="360" height="56" rx="4" ry="4" fill="#fff" stroke="#000" stroke-width="1.5"/>
+  <text x="320.0" y="577.0" text-anchor="middle" fill="#000" font-family="Helvetica, Arial, sans-serif" font-size="11" font-weight="normal">Register network succession</text>
+  <text x="130" y="563" text-anchor="end" fill="#000" font-family="Helvetica, Arial, sans-serif" font-size="11" font-weight="bold">718</text>
+</svg>

@@ -8,11 +8,6 @@
 
 import { pushPnOAuthDebug } from '@par-noir/oauth-ui';
 import { buildOAuthConsentUrl } from '@par-noir/oauth-ui';
-import { base64ToBytes } from '@par-noir/pqc-crypto/encoding';
-import {
-  deriveCanonicalPnIdentifier,
-  signOauthUnlockProof,
-} from '@par-noir/pqc-crypto/oauth-unlock-proof';
 import { API_ENDPOINT } from '../config/api';
 import { PN_CLIENT_ID, getPnOAuthScopes } from '../config/oauthClient';
 import { browseOAuthRedirectUri } from './browseOAuthRedirect';
@@ -99,91 +94,6 @@ export class PNOAuthService {
       forPopup: usePopup,
       identityHandoffRequired: params?.identityHandoffRequired,
     });
-  }
-
-  /**
-   * Authenticate with a local three-factor unlock: challenge → ML-DSA proof → code.
-   * Passcode/pn name stay on device; only the signature is sent.
-   */
-  static async authenticate(params: {
-    publicKey: string;
-    mlDsaSecretKeyB64: string;
-    scope?: string[];
-    state?: string;
-    nonce?: string;
-  }): Promise<{ code: string; state?: string }> {
-    const scope = params.scope || getPnOAuthScopes();
-    const scopeStr = scope.join(' ');
-    const state = params.state || sessionStorage.getItem('pn_oauth_state') || undefined;
-    const nonce = params.nonce || sessionStorage.getItem('pn_oauth_nonce') || undefined;
-    const clientId = getClientId();
-    const redirectUri = REDIRECT_URI;
-
-    try {
-      await deriveCanonicalPnIdentifier(params.publicKey);
-      pushPnOAuthDebug('oauth_derive_pn_id_ok', { ok: true });
-    } catch (error) {
-      pushPnOAuthDebug('oauth_derive_pn_id_fail', {
-        name: error instanceof Error ? error.name : 'unknown',
-      });
-    }
-
-    const challengeResponse = await fetch(`${API_ENDPOINT}/oauth/authorize/challenge`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        client_id: clientId,
-        redirect_uri: redirectUri,
-      }),
-    });
-    if (!challengeResponse.ok) {
-      const error = await challengeResponse.json().catch(() => ({ error: 'Challenge failed' }));
-      throw new Error(error.error_description || error.error || 'OAuth unlock challenge failed');
-    }
-    const challengeBody = (await challengeResponse.json()) as {
-      challenge_id?: string;
-      challenge?: string;
-    };
-    if (!challengeBody.challenge_id || !challengeBody.challenge) {
-      throw new Error('OAuth unlock challenge response incomplete');
-    }
-
-    const signature = signOauthUnlockProof(
-      {
-        challenge: challengeBody.challenge,
-        clientId,
-        redirectUri,
-        scope: scopeStr,
-        state,
-        nonce,
-        publicKey: params.publicKey,
-      },
-      base64ToBytes(params.mlDsaSecretKeyB64)
-    );
-
-    const response = await fetch(`${API_ENDPOINT}/oauth/authorize/authenticate`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        client_id: clientId,
-        redirect_uri: redirectUri,
-        scope: scopeStr,
-        state,
-        nonce,
-        challenge_id: challengeBody.challenge_id,
-        public_key: params.publicKey,
-        signature,
-      })
-    });
-
-    if (!response.ok) {
-      const error = await response.json().catch(() => ({ error: 'Authentication failed' }));
-      throw new Error(error.error_description || error.error || 'Authentication failed');
-    }
-
-    return response.json();
   }
 
   /**
@@ -333,98 +243,6 @@ export class PNOAuthService {
       const error = await response.json().catch(() => ({ error: 'Token revocation failed' }));
       throw new Error(error.error_description || error.error || 'Token revocation failed');
     }
-  }
-
-  /**
-   * Complete OAuth flow: authenticate and get tokens.
-   * Requires ML-DSA secret from a local three-factor unlock (never sent to the server).
-   */
-  static async completeAuthFlow(params: {
-    publicKey: string;
-    mlDsaSecretKeyB64: string;
-    /** Optional local stash for messaging; never sent to authenticate. */
-    encryptedIdentity?: {
-      encryptedData: string;
-      iv: string;
-      salt: string;
-      mlKemPublicKey?: string;
-    };
-  }): Promise<AuthSession> {
-    // Step 1: Authenticate and get authorization code
-    const { code } = await this.authenticate({
-      publicKey: params.publicKey,
-      mlDsaSecretKeyB64: params.mlDsaSecretKeyB64,
-    });
-
-    // Step 2: Exchange code for tokens
-    const tokenResponse = await this.exchangeCodeForToken(code);
-
-    // Step 3: Get user info
-    const userInfo = await this.getUserInfo(tokenResponse.access_token);
-
-    // Step 4: Load feed tokens for owned feeds
-    let feedTokens: FeedToken[] = [];
-    try {
-      if (userInfo.pn_identifier) {
-        const feedTokensResponse = await fetch(`${API_ENDPOINT}/api/feeds/tokens`, {
-          headers: {
-            'Authorization': `Bearer ${tokenResponse.access_token}`
-          }
-        });
-        
-        if (feedTokensResponse.ok) {
-          const feedTokensData = await feedTokensResponse.json();
-          feedTokens = feedTokensData.feedTokens || [];
-          console.log(`✅ Loaded ${feedTokens.length} feed tokens`);
-        } else {
-          console.warn('⚠️ Failed to load feed tokens:', feedTokensResponse.status);
-        }
-      }
-    } catch (error) {
-      console.error('❌ Error loading feed tokens:', error);
-      // Don't fail auth if feed tokens can't be loaded
-    }
-
-    // Step 5: Create session
-    const session: AuthSession = {
-      accessToken: tokenResponse.access_token,
-      refreshToken: tokenResponse.refresh_token,
-      expiresAt: Date.now() + (tokenResponse.expires_in * 1000),
-      did: userInfo.did,
-      publicKey: params.publicKey, // Store publicKey for file decryption
-      pnIdentifier: userInfo.pn_identifier, // Store pN identifier from server
-      nickname: userInfo.nickname,
-      feedTokens: feedTokens // Store feed tokens for context switching
-      // pN name is NOT stored - it's a secret
-    };
-
-    // Store session
-    this.saveSession(session);
-
-    const encryptedForMessaging = params.encryptedIdentity;
-    if (
-      encryptedForMessaging?.encryptedData &&
-      encryptedForMessaging?.iv &&
-      encryptedForMessaging?.salt
-    ) {
-      import('./dmIdentitySession').then(({ storeEncryptedIdentityForMessaging }) => {
-        storeEncryptedIdentityForMessaging({
-          encryptedData: encryptedForMessaging.encryptedData,
-          iv: encryptedForMessaging.iv,
-          salt: encryptedForMessaging.salt,
-          publicKey: params.publicKey,
-          mlKemPublicKey: encryptedForMessaging.mlKemPublicKey
-        });
-      });
-    }
-
-    // Clear OAuth state
-    if (typeof window !== 'undefined') {
-      sessionStorage.removeItem('pn_oauth_state');
-      sessionStorage.removeItem('pn_oauth_nonce');
-    }
-
-    return session;
   }
 
   /**

@@ -1,17 +1,13 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
-  CloudReconnectPanel,
-  CloudReconnectPrompt,
-  useCloudReconnectGate,
+  FirstPartyCloudReconnectHost,
   ensureCloudCredentialsReady,
-  publishCloudCredentialsVault,
-  flushPendingGrant
+  publishCloudCredentialsVault
 } from '@par-noir/oauth-ui';
 import {
   clearCloudCredentialsOnLock,
   loadLocalCloudCredentials,
   persistCloudCredentials,
-  publishCloudDriveReady,
   resolveCloudPersistMode,
   setSessionCloudCredentials,
   getSessionCloudCredentials,
@@ -20,7 +16,6 @@ import {
 } from '@par-noir/device-cloud-credentials';
 import { envelopeHasUsableSecrets } from '@par-noir/user-owned-storage';
 import type { StorageCredentialsEnvelope } from '@par-noir/user-owned-storage';
-import { markCloudUnlockComplete, resetCloudUnlockCoordinator } from '../services/cloudUnlockCoordinator';
 import { API_ENDPOINT } from '../config/api';
 import { PNOAuthService } from '../services/pnOAuthService';
 import { readCachedStorageAccounts } from '../services/storageApiClient';
@@ -35,8 +30,7 @@ import {
 import { CloudLayoutUpdateBanner } from './CloudLayoutUpdateBanner';
 
 /**
- * Post-unlock cloud reconnect for aggregator browse/messaging.
- * Prefer ML-KEM-sealed vault hydrate (dashboard-published) over Google reconnect.
+ * Thin browse mount: DM identity hydrate + layout banner over shared first-party host.
  */
 export const AggregatorCloudReconnectHost: React.FC = () => {
   const session = PNOAuthService.loadSession();
@@ -46,9 +40,6 @@ export const AggregatorCloudReconnectHost: React.FC = () => {
   const [hasKeyedDevices, setHasKeyedDevices] = useState(false);
   const [identityReady, setIdentityReady] = useState(() => isDmIdentityReady());
   const [vaultHydrated, setVaultHydrated] = useState(false);
-  const [hydrateFailed, setHydrateFailed] = useState(false);
-  const mintCompletedKeyRef = useRef<string | null>(null);
-  const mintInFlightRef = useRef(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -91,7 +82,6 @@ export const AggregatorCloudReconnectHost: React.FC = () => {
     return () => window.removeEventListener(DM_IDENTITY_CHANGE_EVENT, sync);
   }, []);
 
-  // Hydrate from cross-app sealed vault once ML-KEM (or identity factors) are available.
   useEffect(() => {
     let cancelled = false;
     const markHydratedIfGoogleReady = (env: StorageCredentialsEnvelope | null | undefined) => {
@@ -117,7 +107,6 @@ export const AggregatorCloudReconnectHost: React.FC = () => {
       if (markHydratedIfGoogleReady(getSessionCloudCredentials(pnIdentifier))) {
         return;
       }
-      // Try local sealed (same origin) then API vault
       try {
         if (mlKemSecretKey) {
           const localMlKem = await loadLocalCloudCredentials({
@@ -161,7 +150,6 @@ export const AggregatorCloudReconnectHost: React.FC = () => {
         passcode: passcode || undefined
       });
       if (cancelled) return;
-      // Only ready when unsealed session has Google secrets — leave reconnect gate open otherwise.
       if (status === 'ready' && envelopeHasUsableSecrets(getSessionCloudCredentials(pnIdentifier), 'google_drive')) {
         setVaultHydrated(true);
       } else {
@@ -206,7 +194,6 @@ export const AggregatorCloudReconnectHost: React.FC = () => {
     if (!pnIdentifier || !isUnlockPrefetchComplete(pnIdentifier)) return null;
     const cached = readCachedStorageAccounts(pnIdentifier);
     if (!cached) return null;
-    // Force network when cache has no layout signal (avoids linkedInactive → unlinked).
     if ((cached.accounts?.length ?? 0) === 0 && !cached.socialCloudProvider) return null;
     return {
       accounts: cached.accounts,
@@ -214,92 +201,7 @@ export const AggregatorCloudReconnectHost: React.FC = () => {
     };
   }, [pnIdentifier]);
 
-  const gateEnabled =
-    !!(authToken && pnIdentifier && session && PNOAuthService.isSessionValid(session)) &&
-    identityReady &&
-    isUnlockPrefetchComplete(pnIdentifier);
-
-  const gate = useCloudReconnectGate({
-    enabled: gateEnabled,
-    authToken,
-    pnIdentifier,
-    apiEndpoint: API_ENDPOINT,
-    loadLocalEnvelope,
-    dismissStorageKey: pnIdentifier ? `pn_cloud_reconnect_dismiss:${pnIdentifier}` : undefined,
-    preferCachedAccounts
-  });
-
-  const gateRef = useRef(gate);
-  gateRef.current = gate;
-
-  // Reset mint guard when identity changes.
-  useEffect(() => {
-    mintCompletedKeyRef.current = null;
-    mintInFlightRef.current = false;
-    setHydrateFailed(false);
-  }, [authToken, pnIdentifier]);
-
-  // Banner / messaging can request the reconnect panel when the prompt never mounted.
-  useEffect(() => {
-    const open = () => {
-      gateRef.current.openPanel();
-      void gateRef.current.refreshForced();
-    };
-    window.addEventListener('pn_open_cloud_reconnect', open);
-    return () => window.removeEventListener('pn_open_cloud_reconnect', open);
-  }, []);
-
-  // When vault hydrate succeeds, mint access token then mark ready — once per unlock.
-  useEffect(() => {
-    if (!vaultHydrated || !authToken || !pnIdentifier) return;
-    const mintKey = `${pnIdentifier}|${authToken.slice(0, 12)}`;
-    if (mintCompletedKeyRef.current === mintKey || mintInFlightRef.current) return;
-    mintInFlightRef.current = true;
-    let cancelled = false;
-    void (async () => {
-      try {
-        // Secrets are in session — reassess without forcing another accounts fetch.
-        await gateRef.current.refresh();
-        if (cancelled) return;
-        const ok = await publishCloudDriveReady({
-          authToken,
-          pnIdentifier,
-          apiEndpoint: API_ENDPOINT
-        });
-        if (cancelled) return;
-        markCloudUnlockComplete(pnIdentifier, ok);
-        if (ok) {
-          mintCompletedKeyRef.current = mintKey;
-          setHydrateFailed(false);
-          gateRef.current.markReady();
-          void retryPublishMlKemPublicKey();
-          await flushPendingGrant({
-            authToken,
-            pnIdentifier,
-            apiEndpoint: API_ENDPOINT
-          });
-        } else {
-          console.warn(
-            '[AggregatorCloudReconnectHost] Cloud AT mint failed after vault hydrate — opening reconnect'
-          );
-          setHydrateFailed(true);
-          try {
-            window.dispatchEvent(new CustomEvent('pn_cloud_at_mint_failed'));
-          } catch {
-            /* non-DOM */
-          }
-          gateRef.current.openPanel();
-        }
-      } finally {
-        mintInFlightRef.current = false;
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [vaultHydrated, authToken, pnIdentifier]);
-
-  const handleConnected = useCallback(
+  const persistConnected = useCallback(
     async (envelope: StorageCredentialsEnvelope) => {
       if (!pnIdentifier || !isDmIdentityReady()) return;
       const identity = getDmIdentity();
@@ -352,70 +254,41 @@ export const AggregatorCloudReconnectHost: React.FC = () => {
         }
       }
       setVaultHydrated(true);
-      if (authToken) {
-        await gateRef.current.refreshForced();
-        const ok = await publishCloudDriveReady({
-          authToken,
-          pnIdentifier,
-          apiEndpoint: API_ENDPOINT
-        });
-        markCloudUnlockComplete(pnIdentifier, ok);
-        if (ok) {
-          mintCompletedKeyRef.current = `${pnIdentifier}|${authToken.slice(0, 12)}`;
-          setHydrateFailed(false);
-          gateRef.current.markReady();
-          void retryPublishMlKemPublicKey();
-          await flushPendingGrant({
-            authToken,
-            pnIdentifier,
-            apiEndpoint: API_ENDPOINT
-          });
-        } else {
-          console.warn(
-            '[AggregatorCloudReconnectHost] Cloud AT mint failed after reconnect — keeping panel open'
-          );
-          setHydrateFailed(true);
-          try {
-            window.dispatchEvent(new CustomEvent('pn_cloud_at_mint_failed'));
-          } catch {
-            /* non-DOM */
-          }
-          gateRef.current.openPanel();
-        }
-      }
     },
     [pnIdentifier, hasKeyedDevices, authToken]
   );
 
-  if (!authToken || !pnIdentifier) return null;
+  const enabled =
+    !!(authToken && pnIdentifier && session && PNOAuthService.isSessionValid(session)) &&
+    identityReady &&
+    isUnlockPrefetchComplete(pnIdentifier);
 
   return (
-    <>
-      <div className="fixed bottom-4 left-0 right-0 z-40 px-0 pointer-events-none">
-        <div className="pointer-events-auto max-w-lg mx-auto">
-          <CloudLayoutUpdateBanner />
+    <FirstPartyCloudReconnectHost
+      apiEndpoint={API_ENDPOINT}
+      authToken={authToken}
+      pnIdentifier={pnIdentifier}
+      googleClientId={googleClientId}
+      enabled={enabled}
+      loadLocalEnvelope={loadLocalEnvelope}
+      preferCachedAccounts={preferCachedAccounts}
+      mintStrategy="onVaultHydrated"
+      vaultHydrated={vaultHydrated}
+      listenOpenEvent
+      flushGrant
+      persistConnected={persistConnected}
+      onAfterMintSuccess={() => {
+        void retryPublishMlKemPublicKey();
+      }}
+      banner={
+        <div className="fixed bottom-4 left-0 right-0 z-40 px-0 pointer-events-none">
+          <div className="pointer-events-auto max-w-lg mx-auto">
+            <CloudLayoutUpdateBanner />
+          </div>
         </div>
-      </div>
-      <CloudReconnectPrompt
-        open={hydrateFailed && !gate.panelOpen}
-        socialCloudProvider={gate.socialCloudProvider}
-        onReconnect={gate.openPanel}
-        onDismiss={() => {
-          setHydrateFailed(false);
-          gate.dismissPrompt();
-        }}
-      />
-      <CloudReconnectPanel
-        open={gate.panelOpen}
-        onClose={gate.closePanel}
-        pnIdentifier={pnIdentifier}
-        authToken={authToken}
-        apiEndpoint={API_ENDPOINT}
-        googleClientId={googleClientId}
-        preferredProvider={gate.socialCloudProvider}
-        onConnected={handleConnected}
-      />
-    </>
+      }
+      logTag="AggregatorCloudReconnectHost"
+    />
   );
 };
 
@@ -424,7 +297,6 @@ export async function wipeAggregatorCloudOnLock(
   pnIdentifier: string | null | undefined,
   opts?: { hasKeyedDevices?: boolean }
 ): Promise<void> {
-  resetCloudUnlockCoordinator(pnIdentifier ?? undefined);
   if (!pnIdentifier) return;
   const hasKeyedDevices = opts?.hasKeyedDevices ?? true;
   await clearCloudCredentialsOnLock({

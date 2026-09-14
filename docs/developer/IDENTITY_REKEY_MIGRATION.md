@@ -30,6 +30,8 @@ Distinct from **Shamir custodian recovery**, which keeps the same `publicKey` an
 
 ## API routes (OAuth Bearer — predecessor or successor during migration)
 
+Drive-backed migrate routes require **`X-PN-Cloud-Access-Token`** (same as other owner Drive calls). Clients must use `ownerFetch` / `ownerCloudHeadersAsync`. The API resolves Google AT only via `resolveOwnerDriveToken` — never from DB credential shells.
+
 | Method | Path | Purpose |
 |--------|------|---------|
 | POST | `/api/identity/migration/start` | Create `migration_id`, return checklist + pinned `driveFolderId` |

@@ -186,7 +186,7 @@ export async function runIdentityMigrationCore(ctx: MigrationContext): Promise<M
   await loadMlDsaKeypairForZk(succMat.did, ctx.successor.encryptedIdentity);
   const seenZkpIds = new Set(zkpUpdates.map((u) => u.dataPointId));
   try {
-    const fromDrive = await fetchZkpsFromDrive(ctx.authToken, plan.migrationId);
+    const fromDrive = await fetchZkpsFromDrive(ctx.authToken, plan.migrationId, predMat.pnIdentifier);
     const proofStrings = fromDrive.map((p) => p.zkpProof).filter(Boolean);
     if (proofStrings.length) {
       const reissued = await reissueZkProofsFromEnvelopes(proofStrings, {

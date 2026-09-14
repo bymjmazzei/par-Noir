@@ -9,6 +9,26 @@ export {
 } from './UnlockButton';
 export type { UnlockButtonConfig, UnlockButtonProps } from './UnlockButton';
 export type { OAuthConsentUrlConfig, BrowserAppOAuthUnlockUrlConfig, PnOAuthPopupResult, StartPnOAuthPopupOptions } from './pnOAuthPopup';
+export { oauthStatesMatch } from './pnOAuthPopup';
+export {
+  exchangePortalAuthorizationCode,
+  refreshPortalAccessToken,
+  fetchPortalUserInfo,
+  revokePortalToken,
+  markPortalCodeProcessed,
+  isPortalCodeProcessed,
+  assertPortalOAuthState
+} from './portalOAuthSession';
+export type { PortalTokenResponse, PortalOAuthSessionKeys } from './portalOAuthSession';
+export {
+  requestOauthUnlockChallenge,
+  authenticateWithUnlockProof,
+  mintAccessTokenWithUnlockProof,
+} from './oauthUnlockProofMint';
+export type {
+  OauthUnlockChallenge,
+  AuthenticateWithUnlockProofParams,
+} from './oauthUnlockProofMint';
 export {
   PN_OAUTH_BROADCAST_CHANNEL,
   PN_OAUTH_MESSAGE_TYPE,
@@ -73,6 +93,7 @@ export {
   exchangeGoogleOAuthCode,
   ThirdPartyCloudReconnectHost,
   wipeThirdPartyCloudOnLock,
+  FirstPartyCloudReconnectHost,
   isOAuthCloudProvider,
   isCloudProviderId,
   reconnectOAuthProvider,
@@ -105,6 +126,7 @@ export type {
   CloudReconnectGateState,
   PortableConnectForms,
   ThirdPartyCloudReconnectHostProps,
+  FirstPartyCloudReconnectHostProps,
   ReconnectOAuthParams,
   CloudVaultHydrateResult,
 } from './cloudReconnect';

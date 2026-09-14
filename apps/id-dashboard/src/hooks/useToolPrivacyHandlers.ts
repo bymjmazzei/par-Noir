@@ -89,12 +89,8 @@ export function useToolPrivacyHandlers(params: UseToolPrivacyHandlersParams) {
       try {
         const credentials = SecureCredentialManager.getCredentials(sessionId);
         if (credentials?.pnName && credentials?.passcode) {
-          const { derivePnIdentifierForToken } = await import('../services/parNoirOAuthInline');
-          pn = await derivePnIdentifierForToken(
-            credentials.pnName,
-            credentials.passcode,
-            authenticatedUser.publicKey || sessionId
-          );
+          const { deriveCanonicalPnIdentifier } = await import('@par-noir/pqc-crypto/oauth-unlock-proof');
+          pn = deriveCanonicalPnIdentifier(authenticatedUser.publicKey || sessionId);
         }
       } catch {
         return;

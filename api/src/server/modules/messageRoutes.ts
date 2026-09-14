@@ -530,10 +530,9 @@ export function setupMessageRoutes(app: express.Application, deps: MessageRouteD
       }
     });
 
-    // GET & POST /api/messages/conversation - Get messages in a specific conversation
-    // POST with body used when passing cached credentials (avoids URL length / encoding issues)
+    // POST /api/messages/conversation — load thread messages (canonical)
     const conversationHandler = async (req: express.Request, res: express.Response) => {
-      const src = req.method === 'POST' ? (req.body as Record<string, unknown>) : req.query as Record<string, unknown>;
+      const src = (req.body || {}) as Record<string, unknown>;
       messagingLog.debug('[GetConversation] Endpoint called', { 
         userPnIdentifier: src.userPnIdentifier, 
         participantPnIdentifier: src.participantPnIdentifier,
@@ -565,8 +564,7 @@ export function setupMessageRoutes(app: express.Application, deps: MessageRouteD
           return res.status(400).json({ error: 'userPnIdentifier and participantPnIdentifier are required' });
         }
 
-        const msgCap = req.method === 'POST' ? DEVICE_CAPABILITIES.messagesSend : DEVICE_CAPABILITIES.messagesRead;
-        if (!(await gateFirstPartyOwnerRoute(req, res, msgCap, userPnIdentifier))) return;
+        if (!(await gateFirstPartyOwnerRoute(req, res, DEVICE_CAPABILITIES.messagesRead, userPnIdentifier))) return;
 
         const { MessageSheetsService } = await import('./messageSheetsService');
         const { googleDriveProxyService } = await import('./googleDriveProxy');
@@ -865,7 +863,6 @@ export function setupMessageRoutes(app: express.Application, deps: MessageRouteD
         });
       }
     };
-    app.get('/api/messages/conversation', conversationHandler);
     app.post('/api/messages/conversation', conversationHandler);
 
     app.post('/api/messages/send', async (req, res) => {

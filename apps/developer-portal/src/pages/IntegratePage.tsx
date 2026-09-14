@@ -76,7 +76,8 @@ export function IntegratePage() {
       <section className="dev-card dev-doc-block">
         <h3>SDK</h3>
         <p>
-          Workspace package <code>@identity-protocol/identity-sdk</code> — see{' '}
+          External L5 kit: workspace package <code>@identity-protocol/identity-sdk</code> (integrator apps only — not
+          this portal&apos;s runtime). Portal session uses <code>@par-noir/oauth-ui</code>. See{' '}
           <code>docs/developer/L5_INTEGRATOR_QUICKSTART.md</code>,{' '}
           <code>examples/l5-integrator-starter/</code>, and{' '}
           <code>examples/l5-community-starter/</code>.

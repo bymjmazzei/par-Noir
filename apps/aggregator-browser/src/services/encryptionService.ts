@@ -3,7 +3,7 @@
  * Public share = slim token (API) + ciphertext envelope (owner cloud only).
  */
 
-import { EncryptionManager } from '../utils/encryptionManager';
+import { EncryptionManager } from '@par-noir/identity-crypto';
 import type { PublicShareGenerationResult, ShareToken } from '@par-noir/aggregator-domain';
 
 export type { ShareToken };

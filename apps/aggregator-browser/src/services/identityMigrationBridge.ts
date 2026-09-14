@@ -147,6 +147,7 @@ export async function migrateConnectionsOnUnlock(params: {
         params.authToken,
         migrationId,
         thread.participantPnIdentifier,
+        userPn,
         thread.spreadsheetId
       );
       if (rows.length) {
@@ -170,7 +171,7 @@ export async function migrateConnectionsOnUnlock(params: {
           }
         );
         if (history.rowUpdates.length) {
-          await postDmMessageRowUpdates(params.authToken, migrationId, {
+          await postDmMessageRowUpdates(params.authToken, migrationId, userPn, {
             connectionId: thread.connectionId,
             kemCiphertext: history.newKemCiphertext,
             spreadsheetId,

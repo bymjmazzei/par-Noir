@@ -5,7 +5,7 @@
 import { PNOAuthService } from './pnOAuthService';
 import { API_ENDPOINT } from '../config/api';
 import { buildLocalDeviceProofHeaders } from '@par-noir/device-client';
-import { ownerApiHeadersAsync, waitForOwnerCloudAccess } from './ownerApiHeaders';
+import { ownerApiHeadersAsync } from './ownerApiHeaders';
 
 export async function messageAuthHeaders(
   method: string,
@@ -39,11 +39,7 @@ export async function messageFetch(
 ): Promise<Response> {
   const method = init?.method || 'GET';
   const body = init?.bodyObject;
-  const session = PNOAuthService.loadSession();
-  // Drive-backed messaging needs vault hydrate under device custody
-  if (session?.pnIdentifier) {
-    await waitForOwnerCloudAccess(session.pnIdentifier);
-  }
+  // ownerApiHeadersAsync (via messageAuthHeaders) waits/mints cloud AT once.
   const headers = await messageAuthHeaders(method, path, body);
   if (!headers) {
     // Auth death already notified via getValidAccessToken; do not hit the API.

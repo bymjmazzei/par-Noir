@@ -217,12 +217,8 @@ export function useAuthUnlockHandlers(params: UseAuthUnlockHandlersParams) {
             if (token) {
               try {
                 const { migrateAndFlushOnUnlock } = await import('../services/deviceCloudCredentials');
-                const { derivePnIdentifierForToken } = await import('../services/parNoirOAuthInline');
-                const pnIdentifier = await derivePnIdentifierForToken(
-                  credentials.pnName,
-                  credentials.passcode,
-                  session.publicKey
-                );
+                const { deriveCanonicalPnIdentifier } = await import('@par-noir/pqc-crypto/oauth-unlock-proof');
+                const pnIdentifier = deriveCanonicalPnIdentifier(session.publicKey);
                 await migrateAndFlushOnUnlock({
                   identityId: pnIdentifier,
                   authToken: token,

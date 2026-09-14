@@ -18,6 +18,8 @@ export {
   wipeThirdPartyCloudOnLock
 } from './ThirdPartyCloudReconnectHost';
 export type { ThirdPartyCloudReconnectHostProps } from './ThirdPartyCloudReconnectHost';
+export { FirstPartyCloudReconnectHost } from './FirstPartyCloudReconnectHost';
+export type { FirstPartyCloudReconnectHostProps } from './FirstPartyCloudReconnectHost';
 export type {
   CloudProviderId,
   CloudReconnectGateConfig,

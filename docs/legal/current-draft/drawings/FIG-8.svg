@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="612" height="792"
+     viewBox="0 0 612 792" version="1.1">
+  <defs>
+    <marker id="arrow" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+      <path d="M0,0 L6,3 L0,6 Z" fill="#000"/>
+    </marker>
+  </defs>
+  <rect x="0" y="0" width="612" height="792" fill="#fff"/>
+  <text x="28" y="26" font-family="Helvetica, Arial, sans-serif" font-size="13" font-weight="bold" fill="#000">FIG. 8</text>
+  <text x="100" y="26" font-family="Helvetica, Arial, sans-serif" font-size="11" fill="#000">Network succession effects</text>
+  <line x1="28" y1="34" x2="584" y2="34" stroke="#000" stroke-width="1"/>
+  <rect x="60" y="55" width="480" height="110" rx="4" ry="4" fill="#fff" stroke="#000" stroke-width="1.5"/>
+  <text x="300.0" y="89.0" text-anchor="middle" fill="#000" font-family="Helvetica, Arial, sans-serif" font-size="11" font-weight="normal">Predecessor identifier</text>
+  <text x="300.0" y="103.0" text-anchor="middle" fill="#000" font-family="Helvetica, Arial, sans-serif" font-size="11" font-weight="normal">OAuth codes — REJECTED</text>
+  <text x="300.0" y="117.0" text-anchor="middle" fill="#000" font-family="Helvetica, Arial, sans-serif" font-size="11" font-weight="normal">Token refresh — REJECTED</text>
+  <text x="300.0" y="131.0" text-anchor="middle" fill="#000" font-family="Helvetica, Arial, sans-serif" font-size="11" font-weight="normal">Feed ingest — REJECTED</text>
+  <text x="550" y="69" text-anchor="start" fill="#000" font-family="Helvetica, Arial, sans-serif" font-size="11" font-weight="bold">800</text>
+  <rect x="60" y="220" width="480" height="80" rx="4" ry="4" fill="#fff" stroke="#000" stroke-width="1.5"/>
+  <text x="300.0" y="253.0" text-anchor="middle" fill="#000" font-family="Helvetica, Arial, sans-serif" font-size="11" font-weight="normal">Successor identifier</text>
+  <text x="300.0" y="267.0" text-anchor="middle" fill="#000" font-family="Helvetica, Arial, sans-serif" font-size="11" font-weight="normal">Assumes network-backed features</text>
+  <text x="550" y="234" text-anchor="start" fill="#000" font-family="Helvetica, Arial, sans-serif" font-size="11" font-weight="bold">802</text>
+  <rect x="60" y="360" width="480" height="90" rx="4" ry="4" fill="#fff" stroke="#000" stroke-width="1.5"/>
+  <text x="300.0" y="391.0" text-anchor="middle" fill="#000" font-family="Helvetica, Arial, sans-serif" font-size="11" font-weight="normal">Offline: predecessor file 104</text>
+  <text x="300.0" y="405.0" text-anchor="middle" fill="#000" font-family="Helvetica, Arial, sans-serif" font-size="11" font-weight="normal">still decrypts locally</text>
+  <text x="300.0" y="419.0" text-anchor="middle" fill="#000" font-family="Helvetica, Arial, sans-serif" font-size="11" font-weight="normal">(&quot;picture on the wall&quot;)</text>
+  <text x="550" y="374" text-anchor="start" fill="#000" font-family="Helvetica, Arial, sans-serif" font-size="11" font-weight="bold">804</text>
+  <rect x="60" y="510" width="480" height="90" rx="4" ry="4" fill="#fff" stroke="#000" stroke-width="1.5"/>
+  <text x="300.0" y="548.0" text-anchor="middle" fill="#000" font-family="Helvetica, Arial, sans-serif" font-size="11" font-weight="normal">Succession endpoint</text>
+  <text x="300.0" y="562.0" text-anchor="middle" fill="#000" font-family="Helvetica, Arial, sans-serif" font-size="11" font-weight="normal">Integrators poll to stop trusting predecessor</text>
+  <text x="550" y="524" text-anchor="start" fill="#000" font-family="Helvetica, Arial, sans-serif" font-size="11" font-weight="bold">806</text>
+  <line x1="300" y1="165" x2="300" y2="220" stroke="#000" stroke-width="1.25" marker-end="url(#arrow)"/>
+  <text x="340" y="198" text-anchor="start" fill="#000" font-family="Helvetica, Arial, sans-serif" font-size="9" font-weight="normal">succession record</text>
+  <line x1="300" y1="300" x2="300" y2="360" stroke="#000" stroke-width="1.25" marker-end="url(#arrow)"/>
+  <line x1="300" y1="450" x2="300" y2="510" stroke="#000" stroke-width="1.25" marker-end="url(#arrow)"/>
+</svg>

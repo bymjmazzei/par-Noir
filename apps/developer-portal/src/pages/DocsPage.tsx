@@ -4,9 +4,10 @@ export function DocsPage() {
       <section className="dev-intro">
         <h2 className="dev-intro-title">Integration guides</h2>
         <p>
-          One kit: register an OAuth client on Credentials, then wire{' '}
-          <code>createPnIntegratorClient</code> + <code>@par-noir/oauth-ui</code>. User unlock is interactive{' '}
-          <code>/oauth/*</code> only — never collect pn name or passcode in your UI.
+          One kit for <strong>external</strong> L5 apps: register an OAuth client on Credentials, then wire{' '}
+          <code>createPnIntegratorClient</code> + <code>@par-noir/oauth-ui</code>. This portal&apos;s own session uses{' '}
+          <code>@par-noir/oauth-ui</code> portal helpers only. User unlock is interactive <code>/oauth/*</code> — never
+          collect pn name or passcode in your UI.
         </p>
       </section>
 

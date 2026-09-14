@@ -16,7 +16,7 @@ import { getUserProfile } from '../services/profileService';
 import { useRealtimeSync } from '../hooks/useRealtimeSync';
 import { MESSAGING_ONLY } from '../config/buildFlags';
 import { PLATFORM_CHANNEL_CLIENT_ID } from '@par-noir/messaging-ui';
-import { drainSocialMailbox, requestHotDrain } from '../services/socialMailboxConsumer';
+import { requestHotDrain } from '../services/socialMailboxConsumer';
 import {
   MESSAGING_INBOUND_PREVIEW_EVENT,
   inboundPreviewToMessage,
@@ -92,8 +92,9 @@ export function MessageList({ onThreadSelect, refreshKey = 0, channelClientId }:
   // Load display names for participants
   const loadDisplayNames = async (participantPnIdentifiers: string[]) => {
     const toLoad = participantPnIdentifiers.filter(
-      pnId => 
-        pnId && 
+      pnId =>
+        pnId &&
+        !pnId.startsWith('grp_') &&
         !loadingDisplayNamesRef.current.has(pnId) &&
         getDisplayName(pnId) === pnId // Only load if we don't have a display name
     );
@@ -130,8 +131,8 @@ export function MessageList({ onThreadSelect, refreshKey = 0, channelClientId }:
     if (!isInitial && isMessagingRateLimited()) return;
     const pn = userState.pnIdentifier;
     try {
-      // Inbound DMs/connection material may still be mailbox jobs — drain before inbox read.
-      await drainSocialMailbox().catch(() => null);
+  // Inbound DMs may still be mailbox jobs — drain in background; do not gate first paint.
+      void requestHotDrain().catch(() => undefined);
       if (clearCacheFirst || refreshKey > 0) {
         inboxCacheService.clear(pn);
       }

@@ -32,7 +32,7 @@ The user consents **once per client**. On later authorizations the grant is read
 
 Popup-based UX (e.g. `@par-noir/oauth-ui` or the identity SDK with `usePopup: true`) is **optional**; it still ends with that same redirect to **`your`** `redirect_uri` (e.g. `https://yourapp/oauth-callback.html?code=...`). The static callback page typically `postMessage`s to `window.opener` and/or uses `localStorage` + `BroadcastChannel` so the parent can finish **same-origin**—but **third parties who only implement full-page redirect** already match the API contract.
 
-**Legacy:** `GET /oauth/popup-bridge` on the API host is **removed** (responds with `410 Gone`). Do not depend on it.
+**Legacy:** `GET /oauth/popup-bridge` on the API host is **removed**. Do not depend on it.
 
 ### Public key in the authorize / consent flow (PQC)
 

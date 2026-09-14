@@ -1,11 +1,16 @@
+/**
+ * Dashboard API token session + thin decrypt→mint wrapper.
+ * Unlock-proof mint lives in `@par-noir/oauth-ui` (never send passcode on the wire).
+ */
+
 import { API_ENDPOINT } from '../config/api';
 import { retry } from '../utils/helpers';
 import { IdentityCrypto } from '@par-noir/identity-crypto';
-import { base64ToBytes } from '@par-noir/pqc-crypto/encoding';
 import {
-  deriveCanonicalPnIdentifier,
-  signOauthUnlockProof,
-} from '@par-noir/pqc-crypto/oauth-unlock-proof';
+  exchangePortalAuthorizationCode,
+  mintAccessTokenWithUnlockProof,
+  oauthStatesMatch,
+} from '@par-noir/oauth-ui';
 
 const PN_CLIENT_ID = import.meta.env.VITE_PN_CLIENT_ID || 'browser-app';
 const STORAGE_KEY = 'pn_api_token';
@@ -36,27 +41,6 @@ interface OAuthResumeResult {
   code: string | null;
   error: string | null;
   errorDescription: string | null;
-}
-
-function randomHex(bytes: number): string {
-  const arr = new Uint8Array(bytes);
-  crypto.getRandomValues(arr);
-  return Array.from(arr, (b) => b.toString(16).padStart(2, '0')).join('');
-}
-
-function oauthStatesMatch(incoming: string, expected: string): boolean {
-  const a = incoming.trim();
-  const b = expected.trim();
-  if (a === b) return true;
-  try {
-    return decodeURIComponent(a) === decodeURIComponent(b);
-  } catch {
-    return false;
-  }
-}
-
-function getScope(scope?: string[]): string[] {
-  return scope && scope.length > 0 ? scope : ['openid', 'profile'];
 }
 
 function extractMlDsaSecretKeyB64(decrypted: {
@@ -101,18 +85,16 @@ export function clearStoredToken(): void {
 }
 
 /**
- * Challenge → local unlock → ML-DSA proof → authorization code → access token.
- * Passcode and pn name are used only on-device to decrypt; they never hit the wire.
+ * Decrypt on-device, then mint via shared oauth-ui unlock-proof helpers.
+ * Passcode / pn name never leave this function onto the wire.
  */
 export async function acquireApiTokenInline(
   input: InlineOAuthAcquireInput
 ): Promise<{ accessToken: string; pnIdentifier: string }> {
   const redirectUri = input.redirectUri || `${window.location.origin}/oauth-callback.html`;
-  const scope = getScope(input.scope);
-  const scopeStr = scope.join(' ');
-  const state = randomHex(16);
-  const nonce = randomHex(16);
-  sessionStorage.setItem(OAUTH_STATE_KEY, state);
+  const state = crypto.getRandomValues(new Uint8Array(16));
+  const stateHex = Array.from(state, (b) => b.toString(16).padStart(2, '0')).join('');
+  sessionStorage.setItem(OAUTH_STATE_KEY, stateHex);
 
   const raw = await IdentityCrypto.decryptData(
     {
@@ -128,113 +110,37 @@ export async function acquireApiTokenInline(
     pqcSecrets?: { mlDsaSecretKey?: string };
   };
   const mlDsaSecretKeyB64 = extractMlDsaSecretKeyB64(decrypted);
-  const pnIdentifier = deriveCanonicalPnIdentifier(input.publicKey);
 
-  const challengeResponse = await fetch(`${API_ENDPOINT}/oauth/authorize/challenge`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      client_id: PN_CLIENT_ID,
-      redirect_uri: redirectUri,
-    }),
+  return mintAccessTokenWithUnlockProof({
+    apiEndpoint: API_ENDPOINT,
+    clientId: PN_CLIENT_ID,
+    redirectUri,
+    publicKey: input.publicKey,
+    mlDsaSecretKeyB64,
+    scope: input.scope,
+    state: stateHex,
   });
-  if (!challengeResponse.ok) {
-    const err = await challengeResponse.json().catch(() => ({}));
-    throw new Error(
-      (err as { error_description?: string }).error_description || 'OAuth unlock challenge failed'
-    );
-  }
-  const challengeBody = (await challengeResponse.json()) as {
-    challenge_id?: string;
-    challenge?: string;
-  };
-  if (!challengeBody.challenge_id || !challengeBody.challenge) {
-    throw new Error('OAuth unlock challenge response incomplete');
-  }
-
-  const signature = signOauthUnlockProof(
-    {
-      challenge: challengeBody.challenge,
-      clientId: PN_CLIENT_ID,
-      redirectUri,
-      scope: scopeStr,
-      state,
-      nonce,
-      publicKey: input.publicKey,
-    },
-    base64ToBytes(mlDsaSecretKeyB64)
-  );
-
-  const authResponse = await fetch(`${API_ENDPOINT}/oauth/authorize/authenticate`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      client_id: PN_CLIENT_ID,
-      redirect_uri: redirectUri,
-      scope: scopeStr,
-      state,
-      nonce,
-      challenge_id: challengeBody.challenge_id,
-      public_key: input.publicKey,
-      signature,
-    }),
-  });
-
-  if (!authResponse.ok) {
-    const err = await authResponse.json().catch(() => ({}));
-    throw new Error((err as { error_description?: string }).error_description || 'Inline OAuth authentication failed');
-  }
-
-  const authResult = (await authResponse.json()) as { code?: string };
-  if (!authResult.code) {
-    throw new Error('No authorization code received from OAuth authentication');
-  }
-
-  const accessToken = await exchangeCodeForToken(authResult.code, redirectUri);
-  return { accessToken, pnIdentifier };
-}
-
-/** Public: derive the pN identifier used for OAuth (matches the token's embedded pN). */
-export async function derivePnIdentifierForToken(
-  _unusedPnName: string,
-  _unusedLocalSecret: string,
-  publicKey: string
-): Promise<string> {
-  return deriveCanonicalPnIdentifier(publicKey);
 }
 
 export async function exchangeCodeForToken(code: string, redirectUri: string): Promise<string> {
   return retry(async () => {
-    const res = await fetch(`${API_ENDPOINT}/oauth/token`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
+    try {
+      const data = await exchangePortalAuthorizationCode({
+        apiEndpoint: API_ENDPOINT,
+        clientId: PN_CLIENT_ID,
         code,
-        client_id: PN_CLIENT_ID,
-        redirect_uri: redirectUri,
-        grant_type: 'authorization_code',
-      }),
-    });
-
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({}));
-      const message =
-        res.status === 429
+        redirectUri,
+      });
+      return data.access_token;
+    } catch (e) {
+      const message = e instanceof Error ? e.message : 'Token exchange failed';
+      const error = new Error(
+        message.includes('429') || /busy|rate/i.test(message)
           ? 'API is busy — retrying sign-in…'
-          : (err as { error_description?: string }).error_description || 'Token exchange failed';
-      const error = new Error(message);
-      if (res.status === 429) {
-        const retryAfterHeader = res.headers.get('Retry-After');
-        const retryAfterSec = retryAfterHeader ? Number.parseInt(retryAfterHeader, 10) : NaN;
-        (error as { retryAfter?: number }).retryAfter = Number.isFinite(retryAfterSec)
-          ? retryAfterSec * 1000
-          : 5000;
-      }
+          : message
+      );
       throw error;
     }
-
-    const data = (await res.json()) as { access_token: string };
-    return data.access_token;
   }, 5, 2000);
 }
 
@@ -255,7 +161,7 @@ export async function consumeOAuthResumeFromUrl(redirectUri?: string): Promise<O
     return {
       code,
       error,
-      errorDescription: errorDescription ? decodeURIComponent(errorDescription.replace(/\+/g, ' ')) : null
+      errorDescription: errorDescription ? decodeURIComponent(errorDescription.replace(/\+/g, ' ')) : null,
     };
   } finally {
     const url = `${window.location.pathname}${window.location.hash}`;

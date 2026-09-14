@@ -1,5 +1,6 @@
 import type { CSSProperties, ReactNode } from 'react';
 import { UnlockIcon } from './UnlockIcon';
+import { revokePortalToken } from './portalOAuthSession';
 
 export interface LockButtonProps {
   onLock: () => void | Promise<void>;
@@ -29,13 +30,10 @@ export function LockButton({
   const handleClick = async () => {
     if (refreshToken && apiEndpoint) {
       try {
-        await fetch(`${apiEndpoint.replace(/\/$/, '')}/oauth/revoke`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            token: refreshToken,
-            token_type_hint: 'refresh_token',
-          }),
+        await revokePortalToken({
+          apiEndpoint,
+          token: refreshToken,
+          tokenTypeHint: 'refresh_token',
         });
       } catch {
         /* best-effort */

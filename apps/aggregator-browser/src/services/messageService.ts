@@ -18,6 +18,7 @@ import {
   promoteOutboxRecord,
   upsertLocalOutboxRecord,
   getCloudAccessTokenFromSession,
+  requireOnlineCloudForSend,
   type OutboxRecord
 } from '@par-noir/device-cloud-credentials';
 import {
@@ -30,16 +31,6 @@ export const MESSAGING_INBOX_REFRESH_EVENT = 'pn_messaging_inbox_refresh';
 /** Fired after mailbox message_append jobs are applied into this user's Drive. */
 export const MESSAGING_MAILBOX_APPLIED_EVENT = 'pn_messaging_mailbox_applied';
 export const MESSAGING_POLL_BACKSTOP_MS = 60_000;
-
-/** Device-cloud custody: send requires unlocked session + live network + cloud AT. */
-function requireOnlineCloudForSend(userPnIdentifier: string): void {
-  if (typeof navigator !== 'undefined' && navigator.onLine === false) {
-    throw new Error('You are offline. Connect to the network to send messages.');
-  }
-  if (!getCloudAccessTokenFromSession(userPnIdentifier)) {
-    throw new Error('Cloud storage is not ready. Unlock and reconnect cloud storage to send.');
-  }
-}
 
 /** Browse = primary only; messaging app = aggregator (*). Embed overrides via arg. */
 export function defaultChannelListFilter(override?: string): string {
@@ -505,21 +496,10 @@ export async function getConversationMessages(
       ...(hasCached && { connectionId, spreadsheetId })
     };
 
-    const response = hasCached
-      ? await messageFetch('/api/messages/conversation', {
-          method: 'POST',
-          bodyObject: body,
-        })
-      : await messageFetch(
-          `/api/messages/conversation?${new URLSearchParams({
-            userPnIdentifier,
-            participantPnIdentifier,
-            channelClientId,
-            ...(limit != null && { limit: String(limit) }),
-            ...(offset != null && { offset: String(offset) })
-          }).toString()}`,
-          { method: 'GET' }
-        );
+    const response = await messageFetch('/api/messages/conversation', {
+      method: 'POST',
+      bodyObject: body,
+    });
 
     const rateLimited = await parseDriveRateLimitedResponse(response);
     if (rateLimited) {
@@ -534,22 +514,22 @@ export async function getConversationMessages(
     const result = await response.json();
     let raw = result.messages || [];
 
-    // Stale client spreadsheetId → empty sheet. Retry via inbox resolution.
+    // Stale client spreadsheetId → empty sheet. Retry without cached ids (server re-resolves).
     if (
       raw.length === 0 &&
       hasCached &&
       (offset == null || offset === 0)
     ) {
-      const retry = await messageFetch(
-        `/api/messages/conversation?${new URLSearchParams({
+      const retry = await messageFetch('/api/messages/conversation', {
+        method: 'POST',
+        bodyObject: {
           userPnIdentifier,
           participantPnIdentifier,
           channelClientId,
-          ...(limit != null && { limit: String(limit) }),
-          ...(offset != null && { offset: String(offset) })
-        }).toString()}`,
-        { method: 'GET' }
-      );
+          ...(limit != null && { limit }),
+          ...(offset != null && { offset })
+        },
+      });
       if (retry.ok) {
         const retryJson = await retry.json().catch(() => null);
         if (Array.isArray(retryJson?.messages)) {

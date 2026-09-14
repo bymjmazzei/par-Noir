@@ -18,20 +18,8 @@ describe('isOAuthBrowserHtmlEntryGet', () => {
     expect(isOAuthBrowserHtmlEntryGet(mockReq('GET', '/oauth/consent?client_id=foo'))).toBe(true);
   });
 
-  it('allows GET deprecated popup-bridge path (no-Origin GETs; handler returns 410)', () => {
-    expect(isOAuthBrowserHtmlEntryGet(mockReq('GET', '/oauth/popup-bridge'))).toBe(true);
-    expect(
-      isOAuthBrowserHtmlEntryGet(
-        mockReq(
-          'GET',
-          '/oauth/popup-bridge?code=abc&state=def&redirect_uri=https%3A%2F%2Fpn.parnoir.com%2Foauth-callback.html&client_id=browser-app'
-        )
-      )
-    ).toBe(true);
-  });
-
-  it('rejects non-GET on popup-bridge', () => {
-    expect(isOAuthBrowserHtmlEntryGet(mockReq('POST', '/oauth/popup-bridge'))).toBe(false);
+  it('rejects removed popup-bridge path', () => {
+    expect(isOAuthBrowserHtmlEntryGet(mockReq('GET', '/oauth/popup-bridge'))).toBe(false);
   });
 
   it('rejects unrelated paths', () => {

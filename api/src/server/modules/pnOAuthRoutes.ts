@@ -1073,14 +1073,6 @@ export function setupPnOAuthRoutes(app: express.Application, deps: PnOAuthRouteD
       }
     });
 
-    // GET /oauth/popup-bridge — deprecated (OAuth now redirects to registered redirect_uri only)
-    app.get('/oauth/popup-bridge', (_req, res) => {
-      res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, private');
-      res.status(410).type('text/plain').send(
-        'Gone: popup-bridge is removed. OAuth completes via redirect to your registered redirect_uri (RFC 6749). Update bookmarks and client flows.'
-      );
-    });
-
     // Client Management Endpoints (admin key required)
     // POST /oauth/clients - Register a new OAuth client
     app.post('/oauth/clients', requireAdminApiKey, async (req, res) => {

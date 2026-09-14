@@ -1,10 +1,17 @@
-import { API_ENDPOINT } from '../config/api';
+import { apiFetch, ownerFetch, ownerGet } from './ownerApiFetch';
 
-function authHeaders(token: string): HeadersInit {
-  return {
-    'Content-Type': 'application/json',
-    Authorization: `Bearer ${token}`,
-  };
+/** Non-Drive step ack — Bearer session only. */
+export async function ackMigrationStep(
+  authToken: string,
+  migrationId: string,
+  stepId: string
+): Promise<void> {
+  await apiFetch(
+    'PATCH',
+    `/api/identity/migration/${encodeURIComponent(migrationId)}/steps/${encodeURIComponent(stepId)}`,
+    {},
+    { authToken }
+  );
 }
 
 export async function rekeyConnection(
@@ -14,13 +21,11 @@ export async function rekeyConnection(
   userPnIdentifier: string,
   kemCiphertext: string
 ): Promise<void> {
-  const res = await fetch(
-    `${API_ENDPOINT}/api/identity/migration/${encodeURIComponent(migrationId)}/connections/rekey`,
-    {
-      method: 'POST',
-      headers: authHeaders(authToken),
-      body: JSON.stringify({ connectionId, userPnIdentifier, kemCiphertext }),
-    }
+  const res = await ownerFetch(
+    'POST',
+    `/api/identity/migration/${encodeURIComponent(migrationId)}/connections/rekey`,
+    { connectionId, userPnIdentifier, kemCiphertext },
+    { authToken, pnIdentifier: userPnIdentifier }
   );
   if (!res.ok) throw new Error('Failed to rekey connection');
 }
@@ -33,18 +38,16 @@ export async function rewrapConnectionRoot(
   participantPnIdentifier: string,
   wrappedMessageRootKey: string
 ): Promise<void> {
-  const res = await fetch(
-    `${API_ENDPOINT}/api/identity/migration/${encodeURIComponent(migrationId)}/connections/rewrap-root`,
+  const res = await ownerFetch(
+    'POST',
+    `/api/identity/migration/${encodeURIComponent(migrationId)}/connections/rewrap-root`,
     {
-      method: 'POST',
-      headers: authHeaders(authToken),
-      body: JSON.stringify({
-        connectionId,
-        userPnIdentifier,
-        participantPnIdentifier,
-        wrappedMessageRootKey,
-      }),
-    }
+      connectionId,
+      userPnIdentifier,
+      participantPnIdentifier,
+      wrappedMessageRootKey,
+    },
+    { authToken, pnIdentifier: userPnIdentifier }
   );
   if (!res.ok) throw new Error('Failed to rewrap connection root');
 }
@@ -57,45 +60,29 @@ export async function rewrapGroupKeys(
   groupId: string,
   keyRotation: Array<{ memberPnIdentifier: string; wrappedChatKey: string; accessRole: string }>
 ): Promise<void> {
-  const res = await fetch(
-    `${API_ENDPOINT}/api/identity/migration/${encodeURIComponent(migrationId)}/groups/rewrap`,
-    {
-      method: 'POST',
-      headers: authHeaders(authToken),
-      body: JSON.stringify({ ownerPnIdentifier, successorOwnerPnIdentifier, groupId, keyRotation }),
-    }
+  const res = await ownerFetch(
+    'POST',
+    `/api/identity/migration/${encodeURIComponent(migrationId)}/groups/rewrap`,
+    { ownerPnIdentifier, successorOwnerPnIdentifier, groupId, keyRotation },
+    { authToken, pnIdentifier: ownerPnIdentifier }
   );
   if (!res.ok) throw new Error('Failed to rewrap group keys');
-}
-
-export async function ackMigrationStep(
-  authToken: string,
-  migrationId: string,
-  stepId: string
-): Promise<void> {
-  await fetch(
-    `${API_ENDPOINT}/api/identity/migration/${encodeURIComponent(migrationId)}/steps/${encodeURIComponent(stepId)}`,
-    {
-      method: 'PATCH',
-      headers: authHeaders(authToken),
-      body: JSON.stringify({}),
-    }
-  );
 }
 
 export async function fetchConversationRowsForMigration(
   authToken: string,
   migrationId: string,
   participantPn: string,
+  ownerPnIdentifier: string,
   spreadsheetId?: string
 ): Promise<{
   rows: Array<{ rowIndex: number; fromPnIdentifier: string; encryptedContent: string }>;
   spreadsheetId: string;
 }> {
   const qs = spreadsheetId ? `?spreadsheetId=${encodeURIComponent(spreadsheetId)}` : '';
-  const res = await fetch(
-    `${API_ENDPOINT}/api/identity/migration/${encodeURIComponent(migrationId)}/conversations/${encodeURIComponent(participantPn)}/rows${qs}`,
-    { headers: authHeaders(authToken) }
+  const res = await ownerGet(
+    `/api/identity/migration/${encodeURIComponent(migrationId)}/conversations/${encodeURIComponent(participantPn)}/rows${qs}`,
+    { authToken, pnIdentifier: ownerPnIdentifier }
   );
   if (!res.ok) return { rows: [], spreadsheetId: spreadsheetId || '' };
   return res.json();
@@ -104,6 +91,7 @@ export async function fetchConversationRowsForMigration(
 export async function postDmMessageRowUpdates(
   authToken: string,
   migrationId: string,
+  ownerPnIdentifier: string,
   body: {
     connectionId: string;
     kemCiphertext?: string;
@@ -116,13 +104,11 @@ export async function postDmMessageRowUpdates(
     }>;
   }
 ): Promise<void> {
-  const res = await fetch(
-    `${API_ENDPOINT}/api/identity/migration/${encodeURIComponent(migrationId)}/drive/messages/rows`,
-    {
-      method: 'POST',
-      headers: authHeaders(authToken),
-      body: JSON.stringify(body),
-    }
+  const res = await ownerFetch(
+    'POST',
+    `/api/identity/migration/${encodeURIComponent(migrationId)}/drive/messages/rows`,
+    body,
+    { authToken, pnIdentifier: ownerPnIdentifier }
   );
   if (!res.ok) throw new Error('Failed to update conversation rows');
 }

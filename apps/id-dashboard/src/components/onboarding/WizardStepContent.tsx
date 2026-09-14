@@ -1,4 +1,4 @@
-import { cryptoWorkerManager } from '../../utils/cryptoWorkerManager';
+import { cryptoWorkerManager } from '@par-noir/identity-crypto';
 import React from 'react';
 import { CheckCircle } from 'lucide-react';
 
