@@ -3,18 +3,19 @@
  * Force-wipe A↔B messaging state on BOTH clouds before a fresh QA run.
  *
  * Uses open CDP Chromium profiles (messaging-a :9333, messaging-b :9334).
- * For each side: delete all DM conversations, disconnect all connections,
- * clear local sealed outbox, soft-drain Requests (acks via app).
+ * API-first: list + DELETE conversations/connections/groups; then verify empty.
+ * Fail closed if either side still has conv/groups/connections after wipe.
  *
  * Does not log secrets.
  *
  *   node apps/aggregator-browser/scripts/ux-messaging-force-wipe.mjs
  */
 import { chromium } from 'playwright';
-import { resolve, dirname } from 'path';
+import { dirname } from 'path';
 import { fileURLToPath } from 'url';
 
 const scriptDir = dirname(fileURLToPath(import.meta.url));
+void scriptDir;
 const API = 'https://api.parnoir.com';
 
 const SURFACES = [
@@ -69,21 +70,32 @@ async function sessionPn(page) {
   });
 }
 
-async function clearLocalOutbox(page) {
+async function clearLocalCaches(page) {
   return page.evaluate(() => {
-    const removed = [];
+    let removed = 0;
     try {
       for (let i = localStorage.length - 1; i >= 0; i--) {
         const k = localStorage.key(i) || '';
-        if (k.startsWith('pn_sender_outbox_v1:')) {
+        if (
+          k.startsWith('pn_sender_outbox_v1:') ||
+          k.startsWith('pn_inbox_') ||
+          /inbox|message|thread|connection|group/i.test(k)
+        ) {
           localStorage.removeItem(k);
-          removed.push(k.slice(0, 28));
+          removed += 1;
+        }
+      }
+      for (let i = sessionStorage.length - 1; i >= 0; i--) {
+        const k = sessionStorage.key(i) || '';
+        if (/inbox|message|thread/i.test(k) && !/pn_oauth_session|pn_dm_session/i.test(k)) {
+          sessionStorage.removeItem(k);
+          removed += 1;
         }
       }
     } catch {
       /* ignore */
     }
-    return removed.length;
+    return removed;
   });
 }
 
@@ -91,14 +103,14 @@ async function clickTab(page, name) {
   const tab = page.getByRole('button', { name: new RegExp(`^${name}$`, 'i') }).first();
   if (await tab.isVisible().catch(() => false)) {
     await tab.click();
-    await page.waitForTimeout(1500);
+    await page.waitForTimeout(800);
     return true;
   }
   return false;
 }
 
-/** Capture cloud AT from the next authenticated API response after an action. */
-async function withCloudHeader(page, action) {
+/** Wait until a Drive-ready cloud AT appears on an authenticated API request. */
+async function waitForCloudCreds(page, timeoutMs = 45_000) {
   let cloud = null;
   let bearer = null;
   const onReq = (req) => {
@@ -106,7 +118,8 @@ async function withCloudHeader(page, action) {
       const u = req.url();
       if (!u.includes('api.parnoir.com')) return;
       const h = req.headers();
-      cloud = h['x-pn-cloud-access-token'] || h['X-PN-Cloud-Access-Token'] || cloud;
+      const c = h['x-pn-cloud-access-token'] || h['X-PN-Cloud-Access-Token'];
+      if (c) cloud = c;
       const auth = h.authorization || h.Authorization;
       if (auth?.startsWith('Bearer ')) bearer = auth.slice(7);
     } catch {
@@ -114,29 +127,59 @@ async function withCloudHeader(page, action) {
     }
   };
   page.on('request', onReq);
+  const deadline = Date.now() + timeoutMs;
   try {
-    await action();
-    await page.waitForTimeout(2000);
+    await page.goto('https://messaging.parnoir.com/?view=messages', {
+      waitUntil: 'domcontentloaded',
+      timeout: 60_000,
+    });
+    while (Date.now() < deadline && !cloud) {
+      await clickTab(page, 'Messages');
+      await clickTab(page, 'Connections');
+      await page.waitForTimeout(1500);
+      if (cloud) break;
+      // Nudge vault hydrate / ownerFetch
+      await page.evaluate(() => {
+        try {
+          window.dispatchEvent(new Event('pn-cloud-credentials-ready'));
+        } catch {
+          /* ignore */
+        }
+      });
+      await page.waitForTimeout(1500);
+    }
   } finally {
     page.off('request', onReq);
   }
   return { cloud, bearer };
 }
 
-async function apiDelete(page, path, { cloud, bearer, body }) {
-  const headers = {
-    Accept: 'application/json',
-    Origin: 'https://messaging.parnoir.com',
-  };
-  if (bearer) headers.Authorization = `Bearer ${bearer}`;
-  if (cloud) headers['X-PN-Cloud-Access-Token'] = cloud;
-  if (body) headers['Content-Type'] = 'application/json';
-  const res = await page.request.fetch(`${API}${path}`, {
-    method: 'DELETE',
-    headers,
-    data: body ? JSON.stringify(body) : undefined,
-  });
-  return { status: res.status(), ok: res.ok() };
+async function apiFetch(page, path, { cloud, bearer, method = 'GET', body } = {}) {
+  return page.evaluate(
+    async ({ api, path, cloud, bearer, method, body }) => {
+      const headers = {
+        Accept: 'application/json',
+        Origin: 'https://messaging.parnoir.com',
+      };
+      if (bearer) headers.Authorization = `Bearer ${bearer}`;
+      if (cloud) headers['X-PN-Cloud-Access-Token'] = cloud;
+      if (body) headers['Content-Type'] = 'application/json';
+      const res = await fetch(`${api}${path}`, {
+        method,
+        headers,
+        body: body ? JSON.stringify(body) : undefined,
+      });
+      const text = await res.text();
+      let json = {};
+      try {
+        json = text ? JSON.parse(text) : {};
+      } catch {
+        json = {};
+      }
+      return { status: res.status, ok: res.ok, json };
+    },
+    { api: API, path, cloud, bearer, method, body }
+  );
 }
 
 async function wipeSide(label, page) {
@@ -144,88 +187,82 @@ async function wipeSide(label, page) {
   const pn = await sessionPn(page);
   if (!pn) {
     notes.push('no_session');
-    return notes;
+    return { notes, empty: false };
   }
   notes.push(`pn=${pn.slice(0, 12)}…`);
 
-  const outboxN = await clearLocalOutbox(page);
-  notes.push(`outbox_cleared=${outboxN}`);
+  const cacheN = await clearLocalCaches(page);
+  notes.push(`local_cleared=${cacheN}`);
 
-  const creds = await withCloudHeader(page, async () => {
-    await clickTab(page, 'Messages');
-    await clickTab(page, 'Connections');
-  });
-  if (!creds.cloud) {
-    notes.push('no_cloud_at — UI wipe only');
+  slog(`[${label}] waiting for cloud AT (vault hydrate)…`);
+  const creds = await waitForCloudCreds(page, 45_000);
+  if (!creds.cloud || !creds.bearer) {
+    notes.push('no_cloud_at — cannot wipe Drive; unlock + wait for device cloud hydrate');
+    return { notes, empty: false };
   }
+  notes.push('cloud_at=ready');
 
-  // Delete every DM conversation visible in Messages (menu → Delete).
-  await clickTab(page, 'Messages');
-  await page.waitForTimeout(2000);
-  for (let pass = 0; pass < 15; pass++) {
-    const menus = page.locator('button[aria-label="Menu"]');
-    const n = await menus.count();
-    if (n === 0) break;
-    await menus.first().click();
-    await page.waitForTimeout(400);
-    const del = page.getByRole('button', { name: /Delete/i }).first();
-    if (!(await del.isVisible().catch(() => false))) {
-      await page.keyboard.press('Escape').catch(() => {});
-      break;
-    }
-    const delPromise = page
-      .waitForResponse(
-        (r) => r.request().method() === 'DELETE' && /\/api\/messages\/conversation\//.test(r.url()),
-        { timeout: 20_000 }
-      )
-      .catch(() => null);
-    await del.click();
-    const confirm = page.getByRole('button', { name: /^(Delete|Confirm|Yes)$/i }).first();
-    if (await confirm.isVisible().catch(() => false)) await confirm.click();
-    const res = await delPromise;
-    notes.push(
-      res
-        ? `delete_conversation=${res.status()}`
-        : 'delete_conversation=clicked_no_response'
+  // Pass 1–2: list + delete conversations (DMs + groups in inbox)
+  for (let pass = 0; pass < 2; pass++) {
+    const convRes = await apiFetch(
+      page,
+      `/api/messages/conversations?userPnIdentifier=${encodeURIComponent(pn)}&channelClientId=platform`,
+      { cloud: creds.cloud, bearer: creds.bearer }
     );
-    await page.waitForTimeout(1500);
-  }
-
-  // Also DELETE via API for every connection peer (covers empty inbox / missed UI).
-  if (creds.cloud && creds.bearer) {
-    const listRes = await page.request.get(
-      `${API}/api/connections?userPnIdentifier=${encodeURIComponent(pn)}`,
-      {
-        headers: {
-          Authorization: `Bearer ${creds.bearer}`,
-          'X-PN-Cloud-Access-Token': creds.cloud,
-          Origin: 'https://messaging.parnoir.com',
-          Accept: 'application/json',
-        },
-      }
-    );
-    const listBody = await listRes.json().catch(() => ({}));
-    const rows = Array.isArray(listBody.connections)
-      ? listBody.connections
-      : Array.isArray(listBody)
-        ? listBody
+    const convs = Array.isArray(convRes.json.conversations)
+      ? convRes.json.conversations
+      : Array.isArray(convRes.json.threads)
+        ? convRes.json.threads
         : [];
-    notes.push(`connections_listed=${listRes.status()}:n=${rows.length}`);
+    notes.push(`conversations_listed_p${pass}=${convRes.status}:n=${convs.length}`);
+    for (const conv of convs) {
+      const isGroup = conv.threadType === 'group' || !!conv.groupId;
+      const peer =
+        (isGroup && (conv.groupId || conv.participantPnIdentifier)) ||
+        conv.participantPnIdentifier ||
+        conv.otherUserPnIdentifier ||
+        conv.peerPnIdentifier ||
+        conv.userPnIdentifier;
+      if (!peer) continue;
+      const q = isGroup ? '&threadType=group' : '';
+      const d = await apiFetch(
+        page,
+        `/api/messages/conversation/${encodeURIComponent(peer)}?userPnIdentifier=${encodeURIComponent(pn)}${q}`,
+        { cloud: creds.cloud, bearer: creds.bearer, method: 'DELETE' }
+      );
+      notes.push(`api_del_conv=${d.status}:${isGroup ? 'g' : 'd'}:${String(peer).slice(0, 12)}`);
+    }
+  }
+
+  // Connections: delete conversation + disconnect
+  {
+    const listRes = await apiFetch(
+      page,
+      `/api/connections?userPnIdentifier=${encodeURIComponent(pn)}`,
+      { cloud: creds.cloud, bearer: creds.bearer }
+    );
+    const rows = Array.isArray(listRes.json.connections)
+      ? listRes.json.connections
+      : Array.isArray(listRes.json)
+        ? listRes.json
+        : [];
+    notes.push(`connections_listed=${listRes.status}:n=${rows.length}`);
     for (const row of rows) {
       const peer = row.userPnIdentifier || row.participantPnIdentifier;
       const connectionId = row.connectionId;
       if (peer) {
-        const d = await apiDelete(
+        const d = await apiFetch(
           page,
           `/api/messages/conversation/${encodeURIComponent(peer)}?userPnIdentifier=${encodeURIComponent(pn)}`,
-          { cloud: creds.cloud, bearer: creds.bearer }
+          { cloud: creds.cloud, bearer: creds.bearer, method: 'DELETE' }
         );
-        notes.push(`api_del_conv=${d.status}`);
+        notes.push(`api_del_conn_conv=${d.status}`);
       }
       if (connectionId) {
-        const d = await apiDelete(page, `/api/connections/${encodeURIComponent(connectionId)}`, {
+        const d = await apiFetch(page, `/api/connections/${encodeURIComponent(connectionId)}`, {
           cloud: creds.cloud,
           bearer: creds.bearer,
+          method: 'DELETE',
           body: { userPnIdentifier: pn },
         });
         notes.push(`api_del_conn=${d.status}`);
@@ -233,87 +270,89 @@ async function wipeSide(label, page) {
     }
   }
 
-  // Groups: leave / disband so DM QA starts with no group residue
+  // Groups roster: delete each as group thread (inbox + local roster)
   {
-    const listRes = await page.evaluate(
-      async ({ api, pn, cloud, bearer }) => {
-        const res = await fetch(`${api}/api/groups?userPnIdentifier=${encodeURIComponent(pn)}`, {
-          headers: {
-            Accept: 'application/json',
-            Authorization: `Bearer ${bearer}`,
-            'X-PN-Cloud-Access-Token': cloud,
-            Origin: 'https://messaging.parnoir.com',
-          },
-        });
-        const body = await res.json().catch(() => ({}));
-        return { status: res.status, groups: body.groups || [] };
-      },
-      { api: API, pn, cloud: creds.cloud, bearer: creds.bearer }
-    );
-    const groups = Array.isArray(listRes.groups) ? listRes.groups : [];
+    const listRes = await apiFetch(page, `/api/groups?userPnIdentifier=${encodeURIComponent(pn)}`, {
+      cloud: creds.cloud,
+      bearer: creds.bearer,
+    });
+    const groups = Array.isArray(listRes.json.groups) ? listRes.json.groups : [];
     notes.push(`groups_listed=${listRes.status}:n=${groups.length}`);
     const seen = new Set();
     for (const g of groups) {
       const groupId = g.groupId;
       if (!groupId || seen.has(groupId)) continue;
       seen.add(groupId);
-      const owner = g.ownerPnIdentifier;
-      const member = g.memberPnIdentifier || pn;
-      if (owner === pn) {
-        // Remove peer members first, then self row via member delete of each listed member
-        for (const row of groups.filter((x) => x.groupId === groupId)) {
-          const m = row.memberPnIdentifier;
-          if (!m) continue;
-          const d = await apiDelete(
-            page,
-            `/api/groups/${encodeURIComponent(groupId)}/members/${encodeURIComponent(m)}`,
-            {
-              cloud: creds.cloud,
-              bearer: creds.bearer,
-              body: { ownerPnIdentifier: pn },
-            }
-          );
-          notes.push(`api_del_group_member=${d.status}`);
-        }
-      } else if (member) {
-        const d = await apiDelete(
-          page,
-          `/api/groups/${encodeURIComponent(groupId)}/members/${encodeURIComponent(member)}`,
-          {
-            cloud: creds.cloud,
-            bearer: creds.bearer,
-            body: { ownerPnIdentifier: owner },
-          }
-        );
-        notes.push(`api_leave_group=${d.status}`);
-      }
+      const d = await apiFetch(
+        page,
+        `/api/messages/conversation/${encodeURIComponent(groupId)}?userPnIdentifier=${encodeURIComponent(pn)}&threadType=group`,
+        { cloud: creds.cloud, bearer: creds.bearer, method: 'DELETE' }
+      );
+      notes.push(`api_del_group=${d.status}:${String(groupId).slice(0, 12)}`);
     }
   }
 
-  // UI Disconnect leftovers
-  await clickTab(page, 'Connections');
-  await page.waitForTimeout(1000);
-  for (let i = 0; i < 10; i++) {
-    const btn = page.getByRole('button', { name: /^Disconnect$/i }).first();
-    if (!(await btn.isVisible().catch(() => false))) break;
-    const delPromise = page
-      .waitForResponse(
-        (r) => r.request().method() === 'DELETE' && /\/api\/connections\//.test(r.url()),
-        { timeout: 15_000 }
-      )
-      .catch(() => null);
-    await btn.click();
-    const res = await delPromise;
-    notes.push(res ? `ui_disconnect=${res.status()}` : 'ui_disconnect=clicked');
-    await page.waitForTimeout(1500);
-  }
-
-  // Soft drain Requests so pending mailbox jobs get a chance to ack/fail visibly
+  // Soft drain Requests
   await clickTab(page, 'Requests');
-  await page.waitForTimeout(2500);
+  await page.waitForTimeout(1500);
   notes.push('requests_drained');
 
-  return notes;
+  await clearLocalCaches(page);
+  await page.reload({ waitUntil: 'domcontentloaded', timeout: 60_000 });
+  await page.waitForTimeout(2500);
+  await clickTab(page, 'Messages');
+
+  const verify = await page.evaluate(
+    async ({ api, pn, cloud, bearer }) => {
+      const [cRes, gRes, connRes] = await Promise.all([
+        fetch(
+          `${api}/api/messages/conversations?userPnIdentifier=${encodeURIComponent(pn)}&channelClientId=platform`,
+          {
+            headers: {
+              Accept: 'application/json',
+              Authorization: `Bearer ${bearer}`,
+              'X-PN-Cloud-Access-Token': cloud,
+              Origin: 'https://messaging.parnoir.com',
+            },
+          }
+        ),
+        fetch(`${api}/api/groups?userPnIdentifier=${encodeURIComponent(pn)}`, {
+          headers: {
+            Accept: 'application/json',
+            Authorization: `Bearer ${bearer}`,
+            'X-PN-Cloud-Access-Token': cloud,
+            Origin: 'https://messaging.parnoir.com',
+          },
+        }),
+        fetch(`${api}/api/connections?userPnIdentifier=${encodeURIComponent(pn)}`, {
+          headers: {
+            Accept: 'application/json',
+            Authorization: `Bearer ${bearer}`,
+            'X-PN-Cloud-Access-Token': cloud,
+            Origin: 'https://messaging.parnoir.com',
+          },
+        }),
+      ]);
+      const cBody = await cRes.json().catch(() => ({}));
+      const gBody = await gRes.json().catch(() => ({}));
+      const connBody = await connRes.json().catch(() => ({}));
+      const conversations = cBody.conversations || cBody.threads || [];
+      const groups = gBody.groups || [];
+      const connections = connBody.connections || (Array.isArray(connBody) ? connBody : []);
+      return {
+        conversations: conversations.length,
+        groups: groups.length,
+        connections: connections.length,
+      };
+    },
+    { api: API, pn, cloud: creds.cloud, bearer: creds.bearer }
+  );
+  notes.push(
+    `verify_empty conv=${verify.conversations} groups=${verify.groups} connections=${verify.connections}`
+  );
+  const empty =
+    verify.conversations === 0 && verify.groups === 0 && verify.connections === 0;
+  return { notes, empty };
 }
 
 async function main() {
@@ -325,21 +364,26 @@ async function main() {
     }
   }
 
-  const report = { wipedAt: new Date().toISOString(), sides: {} };
+  const report = { wipedAt: new Date().toISOString(), sides: {}, allEmpty: true };
   for (const s of SURFACES) {
     slog(`[${s.id}] wiping…`);
     const { browser, page } = await attach(s.port, s.origin);
     try {
-      const notes = await wipeSide(s.id, page);
-      report.sides[s.id] = notes;
-      slog(`[${s.id}]`, notes.join('; '));
+      const { notes, empty } = await wipeSide(s.id, page);
+      report.sides[s.id] = { notes, empty };
+      report.allEmpty = report.allEmpty && empty;
+      slog(`[${s.id}]`, notes.join('; '), empty ? 'EMPTY_OK' : 'NOT_EMPTY');
     } finally {
       await browser.close().catch(() => {});
     }
   }
 
   console.log(JSON.stringify(report, null, 2));
-  slog('Wipe done. Re-run ux-messaging-qa.mjs — it must Connect→Accept→DM from empty state.');
+  if (!report.allEmpty) {
+    slog('Wipe incomplete — refuse Connect until both sides are empty (API may need deploy for group delete).');
+    process.exit(1);
+  }
+  slog('Wipe done. Both clouds empty — safe to Connect→Accept→DM.');
 }
 
 main().catch((e) => {

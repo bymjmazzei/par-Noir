@@ -431,6 +431,56 @@ export class GroupSheetsService {
     return true;
   }
 
+  /** Drop every local Groups-sheet row for groupId (own silo only). */
+  static async deleteGroupLocal(
+    token: GoogleDriveToken,
+    spreadsheetId: string,
+    groupId: string,
+    userPnIdentifier: string,
+    accountId: string | undefined
+  ): Promise<boolean> {
+    if (await isPortableStorageProvider(userPnIdentifier)) {
+      const roster = await GroupPortable.listGroupRosterPortable(
+        userPnIdentifier,
+        groupId,
+        accountId
+      );
+      let removed = false;
+      for (const row of roster) {
+        const ok = await GroupPortable.removeGroupMemberPortable(
+          userPnIdentifier,
+          groupId,
+          row.memberPnIdentifier,
+          accountId
+        );
+        removed = removed || ok;
+      }
+      return removed;
+    }
+    const auth = GoogleOAuth2Helper.createClient(token, userPnIdentifier, accountId);
+    const sheets = google.sheets({ version: 'v4', auth });
+    const res = await sheets.spreadsheets.values.get({
+      spreadsheetId,
+      range: 'Groups!A2:H'
+    });
+    const rows = res.data.values || [];
+    const kept = rows.filter((row) => row[0] !== groupId);
+    if (kept.length === rows.length) return false;
+    await sheets.spreadsheets.values.clear({
+      spreadsheetId,
+      range: 'Groups!A2:H'
+    });
+    if (kept.length > 0) {
+      await sheets.spreadsheets.values.update({
+        spreadsheetId,
+        range: `Groups!A2:H${kept.length + 1}`,
+        valueInputOption: 'RAW',
+        requestBody: { values: kept }
+      });
+    }
+    return true;
+  }
+
   /** Replace wrapped keys for remaining members after key rotation. */
   static async rotateGroupMemberKeys(
     token: GoogleDriveToken,

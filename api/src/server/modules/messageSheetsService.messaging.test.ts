@@ -61,6 +61,8 @@ describe('MessageSheetsService messaging quota optimizations', () => {
     mockGet.mockReset();
     mockUpdate.mockResolvedValue({});
     mockAppend.mockResolvedValue({});
+    mockClear.mockReset();
+    mockClear.mockResolvedValue({});
     mockBatchUpdate.mockResolvedValue({});
     mockSpreadsheetsGet.mockResolvedValue({
       data: {
@@ -151,12 +153,29 @@ describe('MessageSheetsService messaging quota optimizations', () => {
           },
         });
       }
-      if (range === 'Inbox!A2:H') {
+      if (range === 'Inbox!A1:I1') {
+        return Promise.resolve({
+          data: {
+            values: [[
+              'participantPnIdentifier',
+              'spreadsheetId',
+              'connectionId',
+              'lastMessageAt',
+              'lastMessagePreview',
+              'kemCiphertext',
+              'threadType',
+              'wrappedMessageRootKey',
+              'channelClientId',
+            ]],
+          },
+        });
+      }
+      if (range === 'Inbox!A2:H' || range === 'Inbox!A2:I') {
         return Promise.resolve({
           data: {
             values: [
-              ['pn-other', 'sheet-old', 'conn-1', '2020-01-01T00:00:00.000Z', '', '', 'dm', ''],
-              ['pn-new', 'sheet-new', 'conn-2', '2021-01-01T00:00:00.000Z', '', '', 'dm', ''],
+              ['pn-other', 'sheet-old', 'conn-1', '2020-01-01T00:00:00.000Z', '', '', 'dm', '', 'platform'],
+              ['pn-new', 'sheet-new', 'conn-2', '2021-01-01T00:00:00.000Z', '', '', 'dm', '', 'platform'],
             ],
           },
         });
@@ -269,5 +288,49 @@ describe('MessageSheetsService messaging quota optimizations', () => {
     expect(threads[0].lastMessageAt).toBe('2025-07-01T00:00:00.000Z');
     expect(threads[1].participantPnIdentifier).toBe('pn-a');
     expect(threads[1].lastMessageAt).toBe('2025-05-01T00:00:00.000Z');
+  });
+
+  it('removeGroupInboxEntry deletes the group row (DM remove skips groups)', async () => {
+    mockGet.mockResolvedValueOnce({
+      data: {
+        values: [
+          ['pn-peer', 'sheet-dm', 'conn', '2020-01-01T00:00:00.000Z', '', '', 'dm', ''],
+          ['group-xyz', 'sheet-g', 'pn-owner', '2020-01-01T00:00:00.000Z', '', '', 'group', ''],
+        ],
+      },
+    });
+    mockSpreadsheetsGet.mockResolvedValueOnce({
+      data: {
+        sheets: [{ properties: { title: 'Inbox', sheetId: 9 } }],
+      },
+    });
+
+    await MessageSheetsService.removeGroupInboxEntry(
+      token,
+      'inbox-sheet',
+      'group-xyz',
+      'pn-test',
+      'acct-1'
+    );
+
+    expect(mockBatchUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        spreadsheetId: 'inbox-sheet',
+        requestBody: {
+          requests: [
+            {
+              deleteDimension: {
+                range: {
+                  sheetId: 9,
+                  dimension: 'ROWS',
+                  startIndex: 2,
+                  endIndex: 3,
+                },
+              },
+            },
+          ],
+        },
+      })
+    );
   });
 });

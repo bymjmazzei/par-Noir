@@ -1035,6 +1035,42 @@ export function setupGroupRoutes(app: express.Application, deps: GroupRouteDeps)
             pnIdentifier,
             accountId
           );
+          try {
+            const { MessageSheetsService } = await import('./messageSheetsService');
+            const messagesFolderId = await MessageSheetsService.getOrCreateMessagesFolder(
+              token,
+              metadataFolder.pnFolderId!,
+              pnIdentifier,
+              accountId
+            );
+            const inboxSheetId = await MessageSheetsService.getOrCreateInboxSheet(
+              token,
+              messagesFolderId,
+              pnIdentifier,
+              accountId
+            );
+            await MessageSheetsService.removeGroupInboxEntry(
+              token,
+              inboxSheetId,
+              String(groupId),
+              pnIdentifier,
+              accountId
+            );
+            await MessageSheetsService.deleteGroupConversationSheet(
+              token,
+              messagesFolderId,
+              String(groupId),
+              pnIdentifier,
+              accountId
+            );
+          } catch (cleanupErr: unknown) {
+            console.warn(
+              '[group_inbox_update] removed cleanup failed:',
+              cleanupErr instanceof Error ? cleanupErr.message : cleanupErr
+            );
+          }
+          const { invalidateMessagingCachesForUsers } = await import('./messagingReadCache');
+          await invalidateMessagingCachesForUsers([pnIdentifier]).catch(() => undefined);
           return res.json({ success: true });
         }
 

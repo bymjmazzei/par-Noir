@@ -1571,9 +1571,80 @@ export function setupMessageRoutes(app: express.Application, deps: MessageRouteD
         const inboxSheetId = driveIndex.inboxSheetId;
         const metadataFolderId = driveIndex.metadataFolderId;
 
-        const normalizedParticipantPnIdentifier = participantPnIdentifier.startsWith('pn-')
-          ? participantPnIdentifier
-          : `pn-${participantPnIdentifier}`;
+        const rawParticipant = decodeURIComponent(String(participantPnIdentifier));
+        const threadTypeHint = String(req.query.threadType || req.body?.threadType || '');
+        let inboxEntries: Awaited<
+          ReturnType<typeof MessageSheetsService.getInboxEntries>
+        > = [];
+        try {
+          inboxEntries = await MessageSheetsService.getInboxEntries(
+            token,
+            inboxSheetId,
+            pnIdentifier,
+            accountId
+          );
+        } catch (e) {
+          console.warn(
+            '[DeleteConversation] Inbox read failed before delete:',
+            e instanceof Error ? e.message : e
+          );
+        }
+        const groupEntry = inboxEntries.find(
+          (e) =>
+            e.threadType === 'group' &&
+            (e.groupId === rawParticipant || e.participantPnIdentifier === rawParticipant)
+        );
+
+        if (groupEntry || threadTypeHint === 'group') {
+          const groupId = groupEntry?.groupId || rawParticipant;
+          await MessageSheetsService.removeGroupInboxEntry(
+            token,
+            inboxSheetId,
+            groupId,
+            pnIdentifier,
+            accountId
+          );
+          await MessageSheetsService.deleteGroupConversationSheet(
+            token,
+            messagesFolderId,
+            groupId,
+            pnIdentifier,
+            accountId
+          ).catch((err: unknown) => {
+            console.warn(
+              '[DeleteConversation] Group sheet delete failed:',
+              err instanceof Error ? err.message : err
+            );
+          });
+
+          try {
+            const { GroupSheetsService } = await import('./groupSheetsService');
+            const { PN_DRIVE_SHEET_KEYS } = await import('./pnDriveIndex');
+            const groupsSheetId = driveIndex.sheetIds[PN_DRIVE_SHEET_KEYS.GROUPS];
+            if (groupsSheetId) {
+              await GroupSheetsService.deleteGroupLocal(
+                token,
+                groupsSheetId,
+                groupId,
+                pnIdentifier,
+                accountId
+              );
+            }
+          } catch (err: unknown) {
+            console.warn(
+              '[DeleteConversation] Local group roster cleanup failed:',
+              err instanceof Error ? err.message : err
+            );
+          }
+
+          const { invalidateMessagingCachesForUsers } = await import('./messagingReadCache');
+          await invalidateMessagingCachesForUsers([pnIdentifier]).catch(() => undefined);
+          return res.json({ success: true, threadType: 'group', groupId });
+        }
+
+        const normalizedParticipantPnIdentifier = rawParticipant.startsWith('pn-')
+          ? rawParticipant
+          : `pn-${rawParticipant}`;
 
         await MessageSheetsService.deleteConversation(
           token,
@@ -1672,10 +1743,10 @@ export function setupMessageRoutes(app: express.Application, deps: MessageRouteD
 
         const { invalidateMessagingCachesForUsers } = await import('./messagingReadCache');
         await invalidateMessagingCachesForUsers(
-          [pnIdentifier, participantPnIdentifier],
+          [pnIdentifier, normalizedParticipantPnIdentifier],
           [
-            { pn: pnIdentifier, other: participantPnIdentifier },
-            { pn: participantPnIdentifier, other: pnIdentifier },
+            { pn: pnIdentifier, other: normalizedParticipantPnIdentifier },
+            { pn: normalizedParticipantPnIdentifier, other: pnIdentifier },
           ]
         ).catch(() => undefined);
 

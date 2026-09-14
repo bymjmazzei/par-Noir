@@ -1568,6 +1568,110 @@ export class MessageSheetsService {
     }
   }
 
+  /** Remove a group thread from the inbox sheet (DM removeInboxEntry intentionally skips groups). */
+  static async removeGroupInboxEntry(
+    token: GoogleDriveToken,
+    inboxSheetId: string,
+    groupId: string,
+    userPnIdentifier: string,
+    accountId: string | undefined
+  ): Promise<void> {
+    if (await isPortableStorageProvider(userPnIdentifier)) {
+      await MsgPortable.removeGroupInboxEntryPortable(userPnIdentifier, groupId, accountId);
+      return;
+    }
+    try {
+      const auth = GoogleOAuth2Helper.createClient(token, userPnIdentifier, accountId);
+      const sheets = google.sheets({ version: 'v4', auth });
+      const response = await sheets.spreadsheets.values.get({
+        spreadsheetId: inboxSheetId,
+        range: 'Inbox!A2:I'
+      });
+      const rows = response.data.values || [];
+      const rowIndex = rows.findIndex((row) => row[0] === groupId && row[6] === 'group');
+      if (rowIndex === -1) {
+        messagingLog.warn(`[MessageSheetsService] Group inbox entry not found for ${groupId}`);
+        return;
+      }
+      const spreadsheet = await sheets.spreadsheets.get({
+        spreadsheetId: inboxSheetId,
+        fields: 'sheets.properties'
+      });
+      const inboxSheet = spreadsheet.data.sheets?.find(
+        (sheet) => sheet.properties?.title === 'Inbox'
+      );
+      if (!inboxSheet?.properties?.sheetId) {
+        throw new Error('Inbox sheet not found in spreadsheet');
+      }
+      await sheets.spreadsheets.batchUpdate({
+        spreadsheetId: inboxSheetId,
+        requestBody: {
+          requests: [
+            {
+              deleteDimension: {
+                range: {
+                  sheetId: inboxSheet.properties.sheetId,
+                  dimension: 'ROWS',
+                  startIndex: rowIndex + 1,
+                  endIndex: rowIndex + 2
+                }
+              }
+            }
+          ]
+        }
+      });
+      messagingLog.debug(`[MessageSheetsService] Removed group inbox entry for ${groupId}`);
+    } catch (error: any) {
+      console.error('[MessageSheetsService] Error removing group inbox entry:', {
+        inboxSheetId,
+        groupId,
+        error: error?.message,
+        status: error?.response?.status
+      });
+      throw error;
+    }
+  }
+
+  /** Delete the caller's dual-silo group conversation spreadsheet. */
+  static async deleteGroupConversationSheet(
+    token: GoogleDriveToken,
+    messagesFolderId: string,
+    groupId: string,
+    userPnIdentifier: string,
+    accountId: string | undefined
+  ): Promise<void> {
+    if (await isPortableStorageProvider(userPnIdentifier)) {
+      await MsgPortable.deleteGroupConversationPortable(userPnIdentifier, groupId, accountId);
+      return;
+    }
+    try {
+      const auth = GoogleOAuth2Helper.createClient(token, userPnIdentifier, accountId);
+      const drive = google.drive({ version: 'v3', auth });
+      const sheetFileName = `conversation-group-${groupId}`;
+      const fileQuery = `name='${sheetFileName}' and '${messagesFolderId}' in parents and mimeType='application/vnd.google-apps.spreadsheet' and trashed=false`;
+      const searchResponse = await drive.files.list({
+        q: fileQuery,
+        fields: 'files(id,name)',
+        pageSize: 1
+      });
+      const fileId = searchResponse.data.files?.[0]?.id;
+      if (!fileId) {
+        messagingLog.warn(`[MessageSheetsService] Group conversation sheet not found for ${groupId}`);
+        return;
+      }
+      await drive.files.delete({ fileId });
+      messagingLog.debug(`[MessageSheetsService] Deleted group conversation sheet ${fileId}`);
+    } catch (error: any) {
+      console.error('[MessageSheetsService] Error deleting group conversation sheet:', {
+        groupId,
+        messagesFolderId,
+        error: error?.message,
+        status: error?.response?.status
+      });
+      throw error;
+    }
+  }
+
   /**
    * Get all conversations from inbox sheet
    */

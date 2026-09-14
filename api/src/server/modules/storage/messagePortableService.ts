@@ -289,6 +289,37 @@ export async function removeInboxEntryPortable(
   }
 }
 
+/** Remove a group thread row from the portable inbox (DM remove skips groups). */
+export async function removeGroupInboxEntryPortable(
+  pnIdentifier: string,
+  groupId: string,
+  accountId?: string
+): Promise<void> {
+  const rows = await portableTableScan<InboxRow>(pnIdentifier, INBOX_SCHEMA, accountId);
+  for (const existing of rows) {
+    const n = normalizeInboxRow(existing);
+    if (n.threadType !== 'group') continue;
+    if (n.groupId === groupId || n.participantPnIdentifier === groupId) {
+      const key = existing.inboxRowKey || existing.groupId || existing.participantPnIdentifier;
+      if (key) await portableTableDelete(pnIdentifier, INBOX_SCHEMA, key, accountId);
+      return;
+    }
+  }
+  await portableTableDelete(pnIdentifier, INBOX_SCHEMA, groupId, accountId).catch(() => undefined);
+}
+
+export async function deleteGroupConversationPortable(
+  pnIdentifier: string,
+  groupId: string,
+  accountId?: string
+): Promise<void> {
+  await deleteConversationPortable(
+    pnIdentifier,
+    portableGroupConversationSheetId(groupId),
+    accountId
+  );
+}
+
 /**
  * Layout migration: rewrite inbox rows to channel-aware keys (legacy peer-only → platform).
  * Idempotent — safe to re-run.
