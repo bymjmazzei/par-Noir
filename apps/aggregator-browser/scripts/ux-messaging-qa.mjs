@@ -1555,6 +1555,13 @@ if (gateFailed) {
       );
       await shot(pageA, 'dm-02-sent');
 
+      // Sender echo regression: own send must not also paint as peer inbound.
+      const markerHitsA = await pageA.locator(`text=${marker}`).count().catch(() => 0);
+      dmNotes.push(`A_marker_bubble_count=${markerHitsA}`);
+      if (markerHitsA > 1) {
+        dmNotes.push('SENDER_ECHO_REGRESSION: marker appears more than once on A thread');
+      }
+
       // Poll open thread on B — realtime ciphertext should paint without soft-drain.
       let bHas = false;
       let softDrainUsed = false;
@@ -1587,8 +1594,12 @@ if (gateFailed) {
         dmNotes.push(`sub1s=${receiveLatencyMs < 1000}`);
       }
       dmNotes.push(`B_received_marker=${bHas}`);
-      dualDmOk = !!(sendOk && bHas);
+      dualDmOk = !!(sendOk && bHas && markerHitsA === 1);
       dmLabel = dualDmOk ? 'LIVE_REAL' : sendOk ? 'LIVE_UNFINISHED' : 'BLOCKED';
+      if (sendOk && bHas && markerHitsA > 1) {
+        dmLabel = 'LIVE_UNFINISHED';
+        dmNotes.push('dual path ok but sender echo failed gate');
+      }
       // Deferred offline outbox removed under device-cloud custody (fail closed without AT/network).
     } else {
       dmLabel = 'BLOCKED';
