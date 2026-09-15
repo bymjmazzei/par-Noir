@@ -1634,8 +1634,8 @@ if (gateFailed) {
         await pageA.evaluate((text) => {
           const el = document.querySelector(
             'textarea[placeholder*="Type a message"]'
-          ) as HTMLTextAreaElement | null;
-          if (!el) return;
+          );
+          if (!el || !(el instanceof HTMLTextAreaElement)) return;
           const proto = Object.getOwnPropertyDescriptor(
             window.HTMLTextAreaElement.prototype,
             'value'
