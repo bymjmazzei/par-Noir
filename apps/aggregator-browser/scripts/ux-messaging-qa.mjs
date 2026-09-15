@@ -1030,17 +1030,17 @@ if (gateFailed) {
 
   if (WIPE_BEFORE) {
     slog('Wiping DMs / groups / connections on both clouds before Connect…');
-    await new Promise((resolve, reject) => {
+    await new Promise((done, fail) => {
       const child = spawn(
         process.execPath,
         [resolve(scriptDir, 'ux-messaging-force-wipe.mjs')],
         { stdio: ['ignore', 'inherit', 'inherit'], cwd: ROOT, env: process.env }
       );
       child.on('exit', (code) => {
-        if (code === 0) resolve();
-        else reject(new Error(`force-wipe exited ${code}`));
+        if (code === 0) done();
+        else fail(new Error(`force-wipe exited ${code}`));
       });
-      child.on('error', reject);
+      child.on('error', fail);
     });
     report.notes.push('force_wipe_before_connect=ok');
     await pace(PHASE_GAP_MS, 'after force-wipe');
