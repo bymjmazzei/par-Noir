@@ -367,31 +367,42 @@ export function setupProfileRoutes(app: express.Application, deps: ProfileRouteD
 
         const { ProfileService } = await import('./profileService');
         const { storageCredentialsService } = await import('./storageCredentialsService');
+        const { resolveOwnerDriveToken, respondDriveTokenError } = await import('./ownerDriveToken');
+        const { isDeviceCloudCustodyEnabled } = await import('./socialMailboxService');
+        const { extractCloudAccessToken } = await import('./cloudAccessToken');
 
         const pnIdentifier = String(userPnIdentifier);
         const userCredentials = await storageCredentialsService.getCredentials(pnIdentifier);
-        if (!userCredentials?.credentials) {
-          return res.status(404).json({ error: 'User credentials not found' });
-        }
         const googleDriveAccounts =
-          userCredentials.credentials.googleDriveAccounts ||
-          (userCredentials.credentials.googleDrive ? [userCredentials.credentials.googleDrive] : []);
-        if (googleDriveAccounts.length === 0) {
-          return res.status(404).json({ error: 'No Google Drive connected' });
-        }
+          userCredentials?.credentials?.googleDriveAccounts ||
+          (userCredentials?.credentials?.googleDrive
+            ? [userCredentials.credentials.googleDrive]
+            : []);
         const account = googleDriveAccounts.length > 0 ? googleDriveAccounts[0] : null;
         const accountId = account ? extractAccountId(account) : undefined;
+
+        // Under device custody the server shell may have no Drive secrets — forwarded
+        // X-PN-Cloud-Access-Token is enough. Fail closed when neither path exists.
+        if (!userCredentials?.credentials && !isDeviceCloudCustodyEnabled()) {
+          return res.status(404).json({ error: 'User credentials not found' });
+        }
+        if (
+          googleDriveAccounts.length === 0 &&
+          !(isDeviceCloudCustodyEnabled() && extractCloudAccessToken(req))
+        ) {
+          return res.status(404).json({ error: 'No Google Drive connected' });
+        }
+
         let userAccessToken = '';
-        if (account) {
-          try {
-            const { resolveOwnerDriveToken } = await import('./ownerDriveToken');
-            const resolved = await resolveOwnerDriveToken(req, pnIdentifier, { account, accountId });
-            userAccessToken = resolved.token.access_token;
-          } catch (tokenErr) {
-            const { respondDriveTokenError } = await import('./ownerDriveToken');
-            if (respondDriveTokenError(res, tokenErr)) return;
-            throw tokenErr;
-          }
+        try {
+          const resolved = await resolveOwnerDriveToken(req, pnIdentifier, {
+            account,
+            accountId
+          });
+          userAccessToken = resolved.token.access_token;
+        } catch (tokenErr) {
+          if (respondDriveTokenError(res, tokenErr)) return;
+          throw tokenErr;
         }
         if (!userAccessToken) {
           return res.status(409).json({

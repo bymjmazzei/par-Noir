@@ -64,6 +64,7 @@ export {
 } from './mailboxRouteKey.js';
 export type { MailboxRouteApiContext } from './mailboxRouteKey.js';
 export {
+  normalizeCloudIdentityId,
   setSessionCloudCredentials,
   getSessionCloudCredentials,
   clearSessionCloudCredentials,

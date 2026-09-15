@@ -258,10 +258,11 @@ export const AggregatorCloudReconnectHost: React.FC = () => {
     [pnIdentifier, hasKeyedDevices, authToken]
   );
 
+  // Do not gate mint on unlock prefetch — prefetchConnections waits for cloud AT,
+  // and mint used to wait for prefetch complete (deadlock → 15s of 409s).
   const enabled =
     !!(authToken && pnIdentifier && session && PNOAuthService.isSessionValid(session)) &&
-    identityReady &&
-    isUnlockPrefetchComplete(pnIdentifier);
+    identityReady;
 
   return (
     <FirstPartyCloudReconnectHost

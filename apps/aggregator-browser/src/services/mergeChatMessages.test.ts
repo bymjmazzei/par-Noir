@@ -70,3 +70,45 @@ describe('mergeChatMessages sender echo', () => {
     expect(merged[0].fromPnIdentifier).toBe('pn-me');
   });
 });
+
+describe('mergeChatMessages empty Sheets reload', () => {
+  it('keeps socket-painted plaintext when Sheets row has empty content', () => {
+    const painted = msg({
+      messageId: 'msg_1',
+      fromPnIdentifier: 'pn-peer',
+      toPnIdentifier: 'pn-me',
+      content: 'hello',
+      encryptedContent: 'cipher_old'
+    });
+    const sheetsEmpty = msg({
+      messageId: 'msg_1',
+      fromPnIdentifier: 'pn-peer',
+      toPnIdentifier: 'pn-me',
+      content: '',
+      encryptedContent: 'cipher_new'
+    });
+    const merged = mergeChatMessages([sheetsEmpty], [painted]);
+    expect(merged).toHaveLength(1);
+    expect(merged[0].content).toBe('hello');
+    expect(merged[0].encryptedContent).toBe('cipher_new');
+  });
+
+  it('keeps painted plaintext when merge order puts UI after empty fetched row', () => {
+    const painted = msg({
+      messageId: 'msg_2',
+      fromPnIdentifier: 'pn-peer',
+      toPnIdentifier: 'pn-me',
+      content: 'world'
+    });
+    const sheetsEmpty = msg({
+      messageId: 'msg_2',
+      fromPnIdentifier: 'pn-peer',
+      toPnIdentifier: 'pn-me',
+      content: '   ',
+      encryptedContent: 'cipher'
+    });
+    // Same call shape as MessageThread: mergeChatMessages(fetched, prev)
+    const merged = mergeChatMessages([sheetsEmpty], [painted]);
+    expect(merged[0].content).toBe('world');
+  });
+});

@@ -24,8 +24,13 @@ vi.mock('./connectionService', () => ({
   prefetchConnectionsList: vi.fn(async () => []),
 }));
 
+vi.mock('./ownerApiHeaders', () => ({
+  waitForOwnerCloudAccess: vi.fn(async () => true),
+}));
+
 const { fetchStorageAccounts } = await import('./storageApiClient');
 const { prefetchConnectionsList } = await import('./connectionService');
+const { waitForOwnerCloudAccess } = await import('./ownerApiHeaders');
 
 describe('runUnlockPostPrefetch', () => {
   afterEach(() => {
@@ -38,6 +43,7 @@ describe('runUnlockPostPrefetch', () => {
     const b = runUnlockPostPrefetch('pn-test-user');
     await Promise.all([a, b]);
     expect(fetchStorageAccounts).toHaveBeenCalledTimes(1);
+    expect(waitForOwnerCloudAccess).toHaveBeenCalled();
     expect(prefetchConnectionsList).toHaveBeenCalledTimes(1);
     expect(isUnlockPrefetchComplete('pn-test-user')).toBe(true);
     expect(isEngagementPrefetchAllowed()).toBe(true);
@@ -46,5 +52,13 @@ describe('runUnlockPostPrefetch', () => {
   it('skips did:key identifiers', async () => {
     await runUnlockPostPrefetch('did:key:abc');
     expect(fetchStorageAccounts).not.toHaveBeenCalled();
+  });
+
+  it('marks complete even when cloud AT never arrives (connections deferred)', async () => {
+    vi.mocked(waitForOwnerCloudAccess).mockResolvedValueOnce(false);
+    await runUnlockPostPrefetch('pn-test-user');
+    expect(isUnlockPrefetchComplete('pn-test-user')).toBe(true);
+    expect(prefetchConnectionsList).not.toHaveBeenCalled();
+    expect(isEngagementPrefetchAllowed()).toBe(true);
   });
 });

@@ -6,21 +6,28 @@ import type { StorageCredentialsEnvelope } from '@par-noir/user-owned-storage';
  */
 const sessionCloudByIdentity = new Map<string, StorageCredentialsEnvelope>();
 
+/** One key form for vault lookups — bare ids and `pn-` ids must hit the same slot. */
+export function normalizeCloudIdentityId(identityId: string): string {
+  const t = (identityId || '').trim();
+  if (!t || t.startsWith('did:key:')) return t;
+  return t.startsWith('pn-') ? t : `pn-${t}`;
+}
+
 export function setSessionCloudCredentials(
   identityId: string,
   credentials: StorageCredentialsEnvelope
 ): void {
-  sessionCloudByIdentity.set(identityId, credentials);
+  sessionCloudByIdentity.set(normalizeCloudIdentityId(identityId), credentials);
 }
 
 export function getSessionCloudCredentials(
   identityId: string
 ): StorageCredentialsEnvelope | null {
-  return sessionCloudByIdentity.get(identityId) ?? null;
+  return sessionCloudByIdentity.get(normalizeCloudIdentityId(identityId)) ?? null;
 }
 
 export function clearSessionCloudCredentials(identityId: string): void {
-  sessionCloudByIdentity.delete(identityId);
+  sessionCloudByIdentity.delete(normalizeCloudIdentityId(identityId));
 }
 
 export function clearAllSessionCloudCredentials(): void {

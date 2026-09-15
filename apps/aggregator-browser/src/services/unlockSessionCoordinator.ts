@@ -5,6 +5,7 @@
 import { PNOAuthService } from './pnOAuthService';
 import { fetchStorageAccounts, canonicalStorageAccountsPnId } from './storageApiClient';
 import { prefetchConnectionsList } from './connectionService';
+import { waitForOwnerCloudAccess } from './ownerApiHeaders';
 
 const completedUnlockPn = new Set<string>();
 let discoverySeededForUnlock = false;
@@ -43,7 +44,8 @@ function isStablePn(pnIdentifier: string | undefined): pnIdentifier is string {
 }
 
 /**
- * Warm viewer storage accounts + connections list once after unlock stabilizes.
+ * Warm viewer storage accounts after unlock; connections wait for cloud AT mint.
+ * Marking complete does not require connections — that used to deadlock mint.
  */
 export function runUnlockPostPrefetch(pnIdentifier: string): Promise<void> {
   if (!isStablePn(pnIdentifier)) {
@@ -64,18 +66,22 @@ export function runUnlockPostPrefetch(pnIdentifier: string): Promise<void> {
     const token = await PNOAuthService.getValidAccessToken();
     if (!token) return;
 
-    await Promise.all([
-      fetchStorageAccounts(token, pnIdentifier).catch(() => null),
-      prefetchConnectionsList(pnIdentifier).catch(() => []),
-    ]);
+    // Accounts layout (may mint if vault already hydrated); do not block mint host.
+    await fetchStorageAccounts(token, pnIdentifier).catch(() => null);
 
     completedUnlockPn.add(key);
-    engagementPrefetchAllowed = true;
     if (typeof window !== 'undefined') {
       window.dispatchEvent(
         new CustomEvent('pn_unlock_prefetch_complete', { detail: { pnIdentifier } })
       );
     }
+
+    // Connections need X-PN-Cloud-Access-Token — wait for mint, then warm list.
+    const cloudReady = await waitForOwnerCloudAccess(pnIdentifier, 60_000);
+    if (cloudReady) {
+      await prefetchConnectionsList(pnIdentifier).catch(() => []);
+    }
+    engagementPrefetchAllowed = true;
   })().finally(() => {
     prefetchInflight = null;
   });

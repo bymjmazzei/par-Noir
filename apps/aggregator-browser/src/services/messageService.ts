@@ -194,17 +194,29 @@ function pendingMessageMatchesConfirmed(pending: Message, confirmed: Message): b
   return deltaMs < 60_000;
 }
 
+/** Non-empty plaintext wins — Sheets relayOnly rows arrive with content: ''. */
+function preferMessageContent(a?: string, b?: string): string {
+  const at = (a || '').trim();
+  const bt = (b || '').trim();
+  if (at) return a as string;
+  if (bt) return b as string;
+  return a || b || '';
+}
+
 /** Prefer UI-known attribution when the same messageId conflicts (own send vs peer echo). */
 function resolveSameIdMessage(existing: Message, incoming: Message): Message {
-  if (existing.fromPnIdentifier === incoming.fromPnIdentifier) {
-    return { ...existing, ...incoming, fromPnIdentifier: existing.fromPnIdentifier };
-  }
-  // Keep existing from/to; take newer read/content fields from incoming when useful.
+  const base =
+    existing.fromPnIdentifier === incoming.fromPnIdentifier
+      ? { ...existing, ...incoming, fromPnIdentifier: existing.fromPnIdentifier }
+      : {
+          ...incoming,
+          fromPnIdentifier: existing.fromPnIdentifier,
+          toPnIdentifier: existing.toPnIdentifier || incoming.toPnIdentifier
+        };
   return {
-    ...incoming,
-    fromPnIdentifier: existing.fromPnIdentifier,
-    toPnIdentifier: existing.toPnIdentifier || incoming.toPnIdentifier,
-    content: existing.content || incoming.content
+    ...base,
+    content: preferMessageContent(existing.content, incoming.content),
+    encryptedContent: incoming.encryptedContent || existing.encryptedContent
   };
 }
 
