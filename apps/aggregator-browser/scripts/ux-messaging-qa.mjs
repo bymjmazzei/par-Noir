@@ -1621,32 +1621,63 @@ if (gateFailed) {
       }
       await pace(Math.max(PACE_MS, 1_500), 'B thread settle before send');
 
-      await compose.fill(marker);
-      const sendWait = pageA
-        .waitForResponse(
-          (r) => {
-            if (r.request().method() !== 'POST') return false;
-            const path = new URL(r.url()).pathname;
-            return (
-              /\/api\/messages\/send(?:\/|$)/.test(path) ||
-              /\/api\/messages\/conversation(?:\/|$)/.test(path)
-            );
-          },
-          { timeout: 90_000 }
-        )
-        .catch(() => null);
-      await pageA.locator('[aria-label="Send"]').first().click().catch(async () => {
-        await pageA.getByRole('button', { name: /Send/i }).first().click();
+      // Controlled React textarea: fill() can leave DOM value without onChange → Send stays disabled.
+      await compose.click();
+      await compose.fill('');
+      await compose.pressSequentially(marker, { delay: 15 });
+      await pace(500, 'compose settle');
+      const sendBtn = pageA.locator('[aria-label="Send"]').first();
+      const sendEnabled = await sendBtn.isEnabled().catch(() => false);
+      dmNotes.push(`sendEnabled=${sendEnabled}`);
+      if (!sendEnabled) {
+        // Fallback: dispatch input/change so React state catches up.
+        await pageA.evaluate((text) => {
+          const el = document.querySelector(
+            'textarea[placeholder*="Type a message"]'
+          ) as HTMLTextAreaElement | null;
+          if (!el) return;
+          const proto = Object.getOwnPropertyDescriptor(
+            window.HTMLTextAreaElement.prototype,
+            'value'
+          );
+          proto?.set?.call(el, text);
+          el.dispatchEvent(new Event('input', { bubbles: true }));
+          el.dispatchEvent(new Event('change', { bubbles: true }));
+        }, marker);
+        await pace(400, 'compose react fallback');
+        dmNotes.push(
+          `sendEnabled_after_fallback=${await sendBtn.isEnabled().catch(() => false)}`
+        );
+      }
+      const sendWait = pageA.waitForResponse(
+        (r) => {
+          if (r.request().method() !== 'POST') return false;
+          const path = new URL(r.url()).pathname;
+          return /\/api\/messages\/send(?:\/|$)/.test(path);
+        },
+        { timeout: 90_000 }
+      );
+      await sendBtn.click({ force: true }).catch(async () => {
+        await pageA.getByRole('button', { name: /Send/i }).first().click({ force: true });
       });
-      const sendRes = await sendWait;
+      let sendRes = await sendWait.catch(() => null);
+      if (!sendRes) {
+        dmNotes.push('send_click_no_POST — trying Enter');
+        const sendWait2 = pageA.waitForResponse(
+          (r) =>
+            r.request().method() === 'POST' &&
+            /\/api\/messages\/send(?:\/|$)/.test(new URL(r.url()).pathname),
+          { timeout: 30_000 }
+        );
+        await compose.press('Enter').catch(() => {});
+        sendRes = await sendWait2.catch(() => null);
+      }
       const t0 = Date.now();
       const sendApi = summarizeApi(apiA, before);
-      const sendOk =
-        (sendRes && sendRes.ok()) ||
-        sendApi.some((l) => /POST \/api\/(messages|mailbox)/i.test(l) && / (2|3)\d\d$/.test(l));
+      const sendOk = !!(sendRes && sendRes.ok());
       dmNotes.push(
         `sendOk=${sendOk}`,
-        sendRes ? `sendStatus=${sendRes.status()}` : 'send=no_waited_response',
+        sendRes ? `sendStatus=${sendRes.status()}` : 'send=no_POST_/api/messages/send',
         ...sendApi.slice(-15)
       );
       await shot(pageA, 'dm-02-sent');
