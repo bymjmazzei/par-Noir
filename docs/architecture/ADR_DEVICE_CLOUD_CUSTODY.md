@@ -22,6 +22,26 @@
 
 ---
 
+## Owner Drive path (source of truth)
+
+How owner Google Drive I/O moves under custody — non-negotiable:
+
+| Rule | Meaning |
+|------|---------|
+| Secrets on device | AT/RT only in the local vault; DB holds layout shells (`pnDriveIndex`), never OAuth secrets |
+| Forward, don’t mint on server | Every Drive-backed call carries `X-PN-Cloud-Access-Token` |
+| One server resolver | Only `resolveOwnerDriveToken` (req-scoped layout: `requireOwnerDriveContextFromReq`) |
+| One client gate per app | Browser: `ownerFetch` / `ownerGet` (+ thin `messageFetch`). Dashboard: `ownerApiService` |
+| Incomplete index → ensure | With a resolved token, `ensureCompletePnDriveIndex` runs the init spine; do not abort grant/consent as `cloud_token_required` |
+| No silent peer Drive | Peer half = mailbox job → peer device `apply-inbound` with **their** forwarded AT |
+| Soft null = probes only | Capability probes may soft-null; grant/write paths that soft-no-op without AT are bugs |
+
+**Distinct grant persist errors:** `cloud_token_required` (missing/failed header) vs `drive_index_incomplete` (ensure still failed).
+
+**Ratchets:** `scripts/check-token-resolver-boundary.sh`, `scripts/check-owner-fetch-boundary.sh`. Do not grow allowlists.
+
+---
+
 ## Flow
 
 ```

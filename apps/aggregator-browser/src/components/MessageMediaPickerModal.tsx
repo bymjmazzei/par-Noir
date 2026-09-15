@@ -6,7 +6,6 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { X, FolderOpen, Users, Bookmark, Smartphone, Loader2, Image as ImageIcon } from 'lucide-react';
 import type { MediaPickItem, MediaPickSource } from '@par-noir/messaging-ui';
 import { PNOAuthService } from '../services/pnOAuthService';
-import { API_ENDPOINT } from '../config/api';
 import { getSavedFeed } from '../services/savedFeedService';
 import type { IndexedFile } from '../types/aggregator';
 import { isMediaMimeType } from '../services/messagingMediaService';
@@ -14,7 +13,7 @@ import { pickImageFromNative } from '../hooks/useNativeFilePicker';
 import { Capacitor } from '@capacitor/core';
 import { useDriveAccounts } from '../hooks/useDriveAccounts';
 import { useUserState } from '../contexts/UserStateContext';
-import { ownerApiHeadersAsync } from '../services/ownerApiHeaders';
+import { ownerGet } from '../services/ownerApiFetch';
 
 type TabId = MediaPickSource;
 
@@ -79,9 +78,9 @@ export function MessageMediaPickerModal({
       throw new Error('Unlock your pN to browse files');
     }
     const pn = userPnIdentifier.startsWith('pn-') ? userPnIdentifier : `pn-${userPnIdentifier}`;
-    const res = await fetch(
-      `${API_ENDPOINT}/api/storage/owner-index/${encodeURIComponent(pn)}?contentClass=media`,
-      { headers: await ownerApiHeadersAsync(token, userPnIdentifier) }
+    const res = await ownerGet(
+      `/api/storage/owner-index/${encodeURIComponent(pn)}?contentClass=media`,
+      { authToken: token, pnIdentifier: userPnIdentifier }
     );
     if (!res.ok) {
       throw new Error('Failed to load your media library');
@@ -102,8 +101,9 @@ export function MessageMediaPickerModal({
       throw new Error('Unlock your pN to browse shared files');
     }
     const q = accountId ? `scope=sharedWithMe&accountId=${encodeURIComponent(accountId)}` : 'scope=sharedWithMe';
-    const res = await fetch(`${API_ENDPOINT}/api/drive/files?${q}`, {
-      headers: await ownerApiHeadersAsync(token, userPnIdentifier)
+    const res = await ownerGet(`/api/drive/files?${q}`, {
+      authToken: token,
+      pnIdentifier: userPnIdentifier
     });
     if (!res.ok) {
       throw new Error('Failed to load shared files');
@@ -124,9 +124,10 @@ export function MessageMediaPickerModal({
     const resolved: IndexedFile[] = [];
     for (const fileId of ids.slice(0, 100)) {
       try {
-        const res = await fetch(`${API_ENDPOINT}/api/aggregator/metadata-index/${encodeURIComponent(fileId)}`, {
-          headers: await ownerApiHeadersAsync(token, userPnIdentifier)
-        });
+        const res = await ownerGet(
+          `/api/aggregator/metadata-index/${encodeURIComponent(fileId)}`,
+          { authToken: token || undefined, pnIdentifier: userPnIdentifier }
+        );
         if (res.ok) {
           const entry = await res.json();
           if (entry?.metadata) {

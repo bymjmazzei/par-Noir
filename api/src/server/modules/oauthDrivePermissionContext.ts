@@ -1,6 +1,9 @@
 /**
  * Resolve Google Drive + metadata layout for OAuth permission read/write.
  * Uses credential candidate lookup (pn + DID) consistent with googleDriveProxy.
+ *
+ * Under custody: forwarded X-PN-Cloud-Access-Token + complete pnDriveIndex
+ * (incomplete index is bootstrapped via ensureCompletePnDriveIndex, not aborted).
  */
 
 import type { Request } from 'express';
@@ -16,6 +19,7 @@ import { ThirdPartyPermissionsService } from './thirdPartyPermissionsService';
 import { isPortableStorageProvider } from './storage/storageProviderUtils';
 import { hashIdentifier, safeLogger } from '../../utils/logger';
 import { getCachedGrant, setCachedGrant } from './oauthPermissionCache';
+
 export interface OAuthDrivePermissionContext {
   credentialsRecord: StoredCredentialsRecord;
   userAccessToken: string;
@@ -24,6 +28,16 @@ export interface OAuthDrivePermissionContext {
   thirdPartyPermissionsSheetId: string;
   normalizedPn: string;
 }
+
+export type OAuthDriveResolveFailure =
+  | 'cloud_token_required'
+  | 'drive_index_incomplete'
+  | 'no_credentials'
+  | 'unknown';
+
+export type OAuthDriveResolveResult =
+  | { ok: true; ctx: OAuthDrivePermissionContext }
+  | { ok: false; reason: OAuthDriveResolveFailure };
 
 export function buildOAuthIdentityCandidates(params: {
   pnIdentifier?: string;
@@ -67,6 +81,115 @@ function pickGoogleDriveAccount(credentials: Record<string, unknown>): Record<st
 
 /**
  * Resolve Drive access token + _metadata folder for OAuth flows.
+ * Prefer this when callers need distinct failure reasons (grant persist).
+ */
+export async function resolveOAuthDriveContextDetailed(
+  req: Request,
+  params: {
+    pnIdentifier?: string;
+    did?: string;
+  }
+): Promise<OAuthDriveResolveResult> {
+  const candidates = buildOAuthIdentityCandidates(params);
+  if (candidates.length === 0) {
+    return { ok: false, reason: 'no_credentials' };
+  }
+
+  const credentialsRecord = await storageCredentialsService.findCredentialsByIdentityCandidates(candidates);
+  if (!credentialsRecord?.credentials) {
+    return { ok: false, reason: 'no_credentials' };
+  }
+
+  const normalizedPn = params.pnIdentifier
+    ? normalizePnIdentifier(params.pnIdentifier)
+    : normalizePnIdentifier(credentialsRecord.identityId);
+
+  const account = pickGoogleDriveAccount(credentialsRecord.credentials as Record<string, unknown>);
+  if (!account) {
+    return { ok: false, reason: 'no_credentials' };
+  }
+
+  const accountId = extractDriveAccountId(account);
+
+  let userAccessToken: string;
+  try {
+    const { resolveOwnerDriveToken } = await import('./ownerDriveToken');
+    const resolved = await resolveOwnerDriveToken(req, normalizedPn, { account, accountId });
+    userAccessToken = resolved.token.access_token;
+  } catch (error: unknown) {
+    const code = (error as { code?: string } | null)?.code;
+    if (code === 'CLOUD_TOKEN_REQUIRED') {
+      safeLogger.warn('[OAuth] No forwarded cloud access token — grant path unavailable', {
+        reason: 'cloud_token_required',
+        pnIdHash: hashIdentifier(normalizedPn),
+      });
+      return { ok: false, reason: 'cloud_token_required' };
+    }
+    safeLogger.warn('[OAuth] resolveOAuthDriveContext token resolve failed', {
+      reason: code || 'unknown',
+      message: error instanceof Error ? error.message : String(error),
+      pnIdHash: hashIdentifier(normalizedPn),
+    });
+    return { ok: false, reason: 'unknown' };
+  }
+
+  let credentials = credentialsRecord.credentials as Record<string, unknown>;
+  let index = readPnDriveIndex(credentials);
+
+  if (!isPnDriveIndexComplete(index)) {
+    safeLogger.warn('[OAuth] Drive index incomplete — bootstrapping with forwarded token', {
+      reason: 'drive_index_incomplete',
+      pnIdHash: hashIdentifier(normalizedPn),
+    });
+    try {
+      const { ensureCompletePnDriveIndex } = await import('./driveInitSteps');
+      await ensureCompletePnDriveIndex({
+        token: { access_token: userAccessToken },
+        pnIdentifier: normalizedPn,
+        accountId,
+        credentials,
+        identityId: credentialsRecord.identityId || normalizedPn,
+        logPrefix: '[OAuth ensureCompletePnDriveIndex]',
+      });
+      const refreshed = await storageCredentialsService.getCredentials(normalizedPn);
+      if (refreshed?.credentials) {
+        credentialsRecord.credentials = refreshed.credentials;
+        credentials = refreshed.credentials as Record<string, unknown>;
+      }
+      index = readPnDriveIndex(credentials);
+    } catch (ensureErr: unknown) {
+      safeLogger.warn('[OAuth] ensureCompletePnDriveIndex failed', {
+        reason: 'drive_index_incomplete',
+        message: ensureErr instanceof Error ? ensureErr.message : String(ensureErr),
+        pnIdHash: hashIdentifier(normalizedPn),
+      });
+      return { ok: false, reason: 'drive_index_incomplete' };
+    }
+  }
+
+  if (!isPnDriveIndexComplete(index)) {
+    safeLogger.warn('[OAuth] Drive index still incomplete after ensure', {
+      reason: 'drive_index_incomplete',
+      pnIdHash: hashIdentifier(normalizedPn),
+    });
+    return { ok: false, reason: 'drive_index_incomplete' };
+  }
+
+  return {
+    ok: true,
+    ctx: {
+      credentialsRecord,
+      userAccessToken,
+      accountId,
+      metadataFolderId: index.metadataFolderId,
+      thirdPartyPermissionsSheetId: index.sheetIds[PN_DRIVE_SHEET_KEYS.THIRD_PARTY_PERMISSIONS],
+      normalizedPn,
+    },
+  };
+}
+
+/**
+ * Resolve Drive access token + _metadata folder for OAuth flows.
  *
  * Under device cloud custody the server holds no Google secrets, so the owner's
  * token must arrive as a forwarded X-PN-Cloud-Access-Token. `resolveOwnerDriveToken`
@@ -79,62 +202,8 @@ export async function resolveOAuthDriveContext(
     did?: string;
   }
 ): Promise<OAuthDrivePermissionContext | null> {
-  const candidates = buildOAuthIdentityCandidates(params);
-  if (candidates.length === 0) return null;
-
-  const credentialsRecord = await storageCredentialsService.findCredentialsByIdentityCandidates(candidates);
-  if (!credentialsRecord?.credentials) return null;
-
-  const normalizedPn = params.pnIdentifier
-    ? normalizePnIdentifier(params.pnIdentifier)
-    : normalizePnIdentifier(credentialsRecord.identityId);
-
-  const account = pickGoogleDriveAccount(credentialsRecord.credentials as Record<string, unknown>);
-  if (!account) return null;
-
-  const accountId = extractDriveAccountId(account);
-
-  try {
-    const { resolveOwnerDriveToken } = await import('./ownerDriveToken');
-    const resolved = await resolveOwnerDriveToken(req, normalizedPn, { account, accountId });
-    const userAccessToken = resolved.token.access_token;
-
-    const index = readPnDriveIndex(credentialsRecord.credentials as Record<string, unknown>);
-    if (!isPnDriveIndexComplete(index)) {
-      safeLogger.warn('[OAuth] Drive index incomplete — grant path unavailable', {
-        reason: 'drive_index_incomplete',
-        pnIdHash: hashIdentifier(normalizedPn),
-      });
-      return null;
-    }
-
-    return {
-      credentialsRecord,
-      userAccessToken,
-      accountId,
-      metadataFolderId: index.metadataFolderId,
-      thirdPartyPermissionsSheetId: index.sheetIds[PN_DRIVE_SHEET_KEYS.THIRD_PARTY_PERMISSIONS],
-      normalizedPn,
-    };
-  } catch (error: unknown) {
-    const code = (error as { code?: string } | null)?.code;
-    if (code === 'CLOUD_TOKEN_REQUIRED') {
-      // The owner's device did not forward X-PN-Cloud-Access-Token. Consent will
-      // be shown again because the grant cannot be read. Never fail silently here:
-      // a quiet null is what disabled this path for weeks.
-      safeLogger.warn('[OAuth] No forwarded cloud access token — grant path unavailable', {
-        reason: 'cloud_token_required',
-        pnIdHash: hashIdentifier(normalizedPn),
-      });
-      return null;
-    }
-    safeLogger.warn('[OAuth] resolveOAuthDriveContext failed', {
-      reason: code || 'unknown',
-      message: error instanceof Error ? error.message : String(error),
-      pnIdHash: hashIdentifier(normalizedPn),
-    });
-    return null;
-  }
+  const result = await resolveOAuthDriveContextDetailed(req, params);
+  return result.ok ? result.ctx : null;
 }
 
 export const GRANT_LOOKUP_TIMEOUT_MS = 5_000;

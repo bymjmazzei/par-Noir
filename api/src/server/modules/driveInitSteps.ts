@@ -241,3 +241,43 @@ export async function runFullDriveInitAndPersist(
 
   return { metadataFolderId: index.metadataFolderId, pnFolderId: index.pnFolderId };
 }
+
+/**
+ * Bootstrap a complete pnDriveIndex using the owner's forwarded Drive token.
+ * Dedupes concurrent ensure/initialize via runDriveInitOnce.
+ * Does not mint tokens — caller must already have a usable GoogleDriveToken.
+ */
+export async function ensureCompletePnDriveIndex(params: {
+  token: GoogleDriveToken;
+  pnIdentifier: string;
+  accountId: string | undefined;
+  credentials: Record<string, unknown>;
+  identityId: string;
+  logPrefix?: string;
+}): Promise<{ metadataFolderId: string; pnFolderId: string }> {
+  const {
+    token,
+    pnIdentifier,
+    accountId,
+    credentials,
+    identityId,
+    logPrefix = '[ensureCompletePnDriveIndex]',
+  } = params;
+  const { runDriveInitOnce } = await import('./driveInitCoordinator');
+  const { withGoogleRetry } = await import('./googleApiRetry');
+  return runDriveInitOnce(pnIdentifier, () =>
+    withGoogleRetry(
+      'driveInitFull',
+      () =>
+        runFullDriveInitAndPersist(
+          token,
+          pnIdentifier,
+          accountId,
+          credentials,
+          identityId,
+          logPrefix
+        ),
+      3
+    )
+  );
+}

@@ -5,9 +5,8 @@ import type { FeedPreviewObjectRef, PublishTierId } from '@par-noir/aggregator-d
 import { getPublishTier, r2ObjectKey } from '@par-noir/aggregator-domain';
 import { encodeFeedPreviewsForPublish, type EncodedPreview } from './feedPreviewEncode';
 import { uploadStorageFile } from './storageApiClient';
-import { ownerApiHeadersAsync } from './ownerApiHeaders';
+import { ownerFetch } from './ownerApiFetch';
 import { PNOAuthService } from './pnOAuthService';
-import { API_ENDPOINT } from '../config/api';
 
 async function blobToBase64(blob: Blob): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -48,14 +47,11 @@ async function ensureOwnerCanonical(
     accountId,
     encrypt: false,
   });
-  const headers = await ownerApiHeadersAsync(accessToken);
-  const ensureRes = await fetch(
-    `${API_ENDPOINT}/api/aggregator/public-content/${encodeURIComponent(uploaded.id)}/ensure-public`,
-    {
-      method: 'POST',
-      headers: { ...headers, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ backend: uploaded.backend || 'google_drive' }),
-    }
+  const ensureRes = await ownerFetch(
+    'POST',
+    `/api/aggregator/public-content/${encodeURIComponent(uploaded.id)}/ensure-public`,
+    { backend: uploaded.backend || 'google_drive' },
+    { authToken: accessToken, pnIdentifier }
   );
   if (!ensureRes.ok) {
     throw new Error(`ensure_public_canonical_failed_${ensureRes.status}`);
@@ -134,18 +130,18 @@ async function uploadOneVariant(params: {
   encoded: EncodedPreview;
 }): Promise<FeedPreviewObjectRef> {
   const { encoded, fileId, accessToken, accountId, planId, pnIdentifier } = params;
-  const headers = await ownerApiHeadersAsync(accessToken);
-  const presignRes = await fetch(`${API_ENDPOINT}/api/aggregator/feed-media/presign-upload`, {
-    method: 'POST',
-    headers: { ...headers, 'Content-Type': 'application/json' },
-    body: JSON.stringify({
+  const presignRes = await ownerFetch(
+    'POST',
+    '/api/aggregator/feed-media/presign-upload',
+    {
       fileId,
       variant: encoded.variant,
       contentType: encoded.contentType,
       contentLength: encoded.byteSize,
       planId,
-    }),
-  });
+    },
+    { authToken: accessToken, pnIdentifier }
+  );
   if (!presignRes.ok) {
     const err = await presignRes.json().catch(() => ({}));
     throw new Error((err as { error?: string }).error || `presign_failed_${presignRes.status}`);
@@ -176,15 +172,16 @@ async function uploadOneVariant(params: {
     lastPlayedAt: new Date().toISOString(),
   };
 
-  const confirmRes = await fetch(`${API_ENDPOINT}/api/aggregator/feed-media/confirm-upload`, {
-    method: 'POST',
-    headers: { ...headers, 'Content-Type': 'application/json' },
-    body: JSON.stringify({
+  const confirmRes = await ownerFetch(
+    'POST',
+    '/api/aggregator/feed-media/confirm-upload',
+    {
       fileId,
       variant: encoded.variant,
       ref,
-    }),
-  });
+    },
+    { authToken: accessToken, pnIdentifier }
+  );
   if (!confirmRes.ok) {
     throw new Error(`confirm_upload_failed_${confirmRes.status}`);
   }

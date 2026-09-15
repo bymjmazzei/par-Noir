@@ -636,24 +636,33 @@ export function setupPnOAuthRoutes(app: express.Application, deps: PnOAuthRouteD
           });
         }
 
-        const { resolveOAuthDriveContext } = await import('./oauthDrivePermissionContext');
+        const { resolveOAuthDriveContextDetailed } = await import('./oauthDrivePermissionContext');
         const { persistIntegratorGrantAfterTokenExchange } = await import(
           './integratorOAuthGrants'
         );
 
-        const driveCtx = await resolveOAuthDriveContext(req, {
+        const driveResult = await resolveOAuthDriveContextDetailed(req, {
           pnIdentifier: tokenPayload.pnIdentifier,
           did: tokenPayload.did
         });
 
-        if (!driveCtx) {
-          // resolveOAuthDriveContext already logged why at warn level.
+        if (!driveResult.ok) {
+          const reason = driveResult.reason;
+          if (reason === 'drive_index_incomplete') {
+            return res.status(409).json({
+              error: 'drive_index_incomplete',
+              error_description:
+                'Drive layout index is incomplete. Call POST /api/storage/initialize then retry grant persist.'
+            });
+          }
           return res.status(409).json({
             error: 'cloud_token_required',
             error_description:
               'Forward X-PN-Cloud-Access-Token from the unsealed cloud vault to persist the grant'
           });
         }
+
+        const driveCtx = driveResult.ctx;
 
         await persistIntegratorGrantAfterTokenExchange({
           clientId,

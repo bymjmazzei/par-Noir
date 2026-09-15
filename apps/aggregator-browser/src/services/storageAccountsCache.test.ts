@@ -7,10 +7,6 @@ import {
   invalidateStorageAccountsCache
 } from './storageApiClient';
 
-vi.mock('./ownerApiHeaders', () => ({
-  ownerApiHeadersAsync: vi.fn(async () => ({ Authorization: 'Bearer t' }))
-}));
-
 describe('fetchStorageAccounts cache', () => {
   afterEach(() => {
     invalidateStorageAccountsCache();

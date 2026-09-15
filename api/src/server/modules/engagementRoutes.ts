@@ -150,11 +150,7 @@ app.get('/api/engagement/:fileId/like', async (req: Request, res: Response) => {
 app.post('/api/engagement/:fileId/dislike', async (req: Request, res: Response) => {
   try {
     const { EngagementService } = await import('./engagementService');
-    const { EngagementDriveService } = await import('./engagementDriveService');
-    const { PreferencesService } = await import('./preferencesService');
-    const { extractTagsFromMetadata } = await import('../utils/tagExtractor');
     const { AggregatorMetadataServiceDB } = await import('./aggregatorMetadataServiceDB');
-    const { storageCredentialsService } = await import('./storageCredentialsService');
     const { fileId } = req.params;
     const { userPnIdentifier } = req.body;
 
@@ -162,168 +158,46 @@ app.post('/api/engagement/:fileId/dislike', async (req: Request, res: Response) 
       return res.status(400).json({ error: 'userPnIdentifier is required' });
     }
 
-    // Use pn identifier directly (already normalized)
     const pnIdentifier = userPnIdentifier;
 
-    // Get user's credentials and metadata folder for Google Drive operations
-    const userCredentials = await storageCredentialsService.getCredentials(pnIdentifier);
-    if (!userCredentials?.credentials) {
-      return res.status(404).json({ error: 'User credentials not found' });
-    }
-
-    const googleDriveAccounts = userCredentials.credentials.googleDriveAccounts || 
-      (userCredentials.credentials.googleDrive ? [userCredentials.credentials.googleDrive] : []);
-    
-    const { isPortableStorageProvider } = await import('./storage/storageProviderUtils');
-    const _portableSocial = await isPortableStorageProvider(pnIdentifier || userPnIdentifier || '');
-    if (!_portableSocial && googleDriveAccounts.length === 0) {
-      return res.status(404).json({ error: 'Storage not connected' });
-    }
-
-    let accountId: string | undefined;
-    let token: any = { access_token: '' };
-    let userAccessToken = '';
-    let metadataFolderId = '';
-    if (!_portableSocial) {
-      const account = googleDriveAccounts.length > 0 ? googleDriveAccounts[0] : null;
-      accountId = extractAccountId(account);
-      const { resolveOwnerDriveToken, respondDriveTokenError } = await import('./ownerDriveToken');
-      try {
-        const resolved = await resolveOwnerDriveToken(req, pnIdentifier, { account, accountId });
-        token = resolved.token;
-        accountId = resolved.accountId ?? accountId;
-      } catch (error) {
-        if (respondDriveTokenError(res, error)) return;
-        throw error;
-      }
-      userAccessToken = token.access_token;
-      const _g = await getMetadataFolder(token, pnIdentifier, accountId);
-      if (!_g) return driveNotInitialized(res);
-      metadataFolderId = _g.metadataFolderId;
-    }
-
-    // 1. Update user's Google Drive engagement.xlsx (Sheets)
-    const driveResult = await EngagementDriveService.toggleDislike(
-      pnIdentifier,
-      fileId,
-      userAccessToken,
-      metadataFolderId
-    );
-
-    // 2. Update database public count (event-driven)
-    await EngagementService.toggleDislikePublicCount(fileId, pnIdentifier, driveResult.disliked);
-
-    // Get file metadata for tag extraction
-    const aggregator = AggregatorMetadataServiceDB.getInstance();
-    const fileMetadata = await aggregator.getFileMetadata(fileId);
-
-    // 3. Extract tags and save as preferences (only when disliking, not removing dislike)
-    if (driveResult.disliked && fileMetadata?.metadata) {
-      try {
-        const tags = extractTagsFromMetadata(fileMetadata.metadata, {
-          fileId
-        });
-
-        for (const tag of tags) {
-          await PreferencesService.addTagPreference(
-            userAccessToken,
-            metadataFolderId,
-            pnIdentifier,
-            tag.id,
-            'dislike',
-            'swipe_dislike',
-            {
-              sourceFileId: fileId,
-              confidence: 0.7,
-              metadata: {
-                fileType: fileMetadata.metadata.fileType,
-                category: fileMetadata.metadata.feedCategories?.[0],
-                subject: tag.displayName
-              }
-            }
-          );
+    const { isDeviceCloudCustodyEnabled } = await import('./socialMailboxService');
+    if (isDeviceCloudCustodyEnabled()) {
+      // Public aggregator only — align with like/comment under custody (no actor Drive write).
+      const aggregator = AggregatorMetadataServiceDB.getInstance();
+      const fileMetadata = await aggregator.getFileMetadata(fileId);
+      const fileOwnerDid = fileMetadata?.pnIdentifier;
+      const currentlyDisliked = await EngagementService.isDisliked(fileId, pnIdentifier);
+      const disliked = !currentlyDisliked;
+      await EngagementService.toggleDislikePublicCount(fileId, pnIdentifier, disliked);
+      if (disliked && fileOwnerDid && fileOwnerDid !== pnIdentifier) {
+        try {
+          const { PushService } = await import('./pushService');
+          PushService.send(fileOwnerDid, {
+            title: 'Feedback on your post',
+            body: 'Someone reacted to your post',
+            data: { file_id: fileId }
+          }).catch(() => undefined);
+        } catch {
+          /* optional */
         }
-      } catch (tagError) {
-        console.warn('Failed to extract and save tags:', tagError);
-        // Don't fail the dislike operation if tag extraction fails
       }
+      const publicStats = await EngagementService.getEngagementStats(fileId);
+      return res.json({
+        disliked,
+        count: publicStats.likes,
+        delivery: 'public'
+      });
     }
 
-    // Get file owner for activity logging and notifications (fileMetadata already fetched above)
-    const fileOwnerDid = fileMetadata?.pnIdentifier;
-
-    // Get public count for response
-    const publicStats = await EngagementService.getEngagementStats(fileId);
-    const result = {
-      disliked: driveResult.disliked,
-      count: publicStats.likes // Note: dislikes count not currently tracked separately in stats
-    };
-
-    // Record activity and send notification (only when disliking, not removing dislike)
-    if (result.disliked && fileOwnerDid && fileOwnerDid !== userPnIdentifier) {
-      try {
-        const { ActivityLedgerService } = await import('./activityLedgerService');
-        const { NotificationService } = await import('./notificationService');
-        const { storageCredentialsService } = await import('./storageCredentialsService');
-
-        // Get user's credentials and metadata folder
-        const pnIdentifier = userPnIdentifier;
-        const userCredentials = await storageCredentialsService.getCredentials(pnIdentifier);
-        if (userCredentials?.credentials) {
-          const googleDriveAccounts = userCredentials.credentials.googleDriveAccounts || 
-            (userCredentials.credentials.googleDrive ? [userCredentials.credentials.googleDrive] : []);
-          
-          if (googleDriveAccounts.length > 0) {
-            const account = googleDriveAccounts.length > 0 ? googleDriveAccounts[0] : null;
-            const accountId = account ? extractAccountId(account) : undefined;
-
-            // Caller side-effect: resolve custody token; skip if unavailable (do not invent peer tokens).
-            let token;
-            try {
-              const { resolveOwnerDriveToken } = await import('./ownerDriveToken');
-              token = (await resolveOwnerDriveToken(req, pnIdentifier, { account, accountId })).token;
-            } catch {
-              console.warn('[Engagement] Skipping activity: cloud access token unavailable');
-              token = null;
-            }
-            if (token) {
-            const userAccessToken = token.access_token;
-            const _gUser = await getMetadataFolder(token, pnIdentifier, accountId);
-            if (!_gUser) {
-              console.warn('[Engagement] Skipping activity: metadata folder not found');
-            } else {
-            const userMetadataFolderId = _gUser.metadataFolderId;
-
-            // Record activity for disliker (optional - may not want to track dislikes in activity)
-            // Uncomment if you want to track dislikes in activity ledger
-            // await ActivityLedgerService.recordActivity(
-            //   userAccessToken,
-            //   userMetadataFolderId,
-            //   userCredentials.identityId,
-            //   'dislike',
-            //   {
-            //     targetType: 'file',
-            //     targetId: fileId,
-            //     metadata: { fileOwnerDid }
-            //   }
-            // );
-
-            }
-            }
-          }
-        }
-      } catch (activityError) {
-        console.error('Failed to record activity or send notification:', activityError);
-        // Don't fail the request if activity/notification fails
-      }
-    }
-
-    return res.json(result);
+    return res.status(503).json({
+      error: 'device_cloud_custody_required',
+      message: 'Engagement requires device cloud custody. Set DEVICE_CLOUD_CUSTODY=1.'
+    });
   } catch (error: any) {
     console.error('Failed to toggle dislike:', error);
     return res.status(500).json({
       error: 'Failed to toggle dislike',
-      message: safeClientErrorMessage(error, NODE_ENV === 'production') 
+      message: safeClientErrorMessage(error, NODE_ENV === 'production')
     });
   }
 });

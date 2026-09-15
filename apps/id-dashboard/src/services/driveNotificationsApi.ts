@@ -1,4 +1,4 @@
-import { API_ENDPOINT } from '../config/api';
+import { ownerFetch, ownerGet } from './ownerApiService';
 
 export interface DriveNotification {
   notification_id: string;
@@ -9,13 +9,6 @@ export interface DriveNotification {
   data?: Record<string, unknown>;
   read: boolean;
   created_at: string;
-}
-
-function authHeaders(authToken: string): HeadersInit {
-  return {
-    Authorization: `Bearer ${authToken}`,
-    'Content-Type': 'application/json',
-  };
 }
 
 export async function fetchDriveNotifications(
@@ -29,8 +22,8 @@ export async function fetchDriveNotifications(
   if (options?.unreadOnly) params.set('unreadOnly', 'true');
   if (options?.type) params.set('type', options.type);
 
-  const res = await fetch(`${API_ENDPOINT}/api/notifications?${params.toString()}`, {
-    headers: authHeaders(authToken),
+  const res = await ownerGet(authToken, `/api/notifications?${params.toString()}`, {
+    pnIdentifier: userPnIdentifier
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
@@ -48,13 +41,12 @@ export async function markDriveNotificationRead(
   userPnIdentifier: string,
   authToken: string
 ): Promise<void> {
-  const res = await fetch(
-    `${API_ENDPOINT}/api/notifications/${encodeURIComponent(notificationId)}/read`,
-    {
-      method: 'PUT',
-      headers: authHeaders(authToken),
-      body: JSON.stringify({ userPnIdentifier }),
-    }
+  const res = await ownerFetch(
+    authToken,
+    'PUT',
+    `/api/notifications/${encodeURIComponent(notificationId)}/read`,
+    { userPnIdentifier },
+    { pnIdentifier: userPnIdentifier }
   );
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));

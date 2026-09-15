@@ -5,6 +5,7 @@
  */
 
 import { ownerApiHeadersAsync, waitForOwnerCloudAccess } from './ownerApiHeaders';
+import { ownerFetch, ownerGet } from './ownerApiFetch';
 import { getUserProfile } from './profileService';
 import { createKemSession, wrapAcceptorMessageRootKey } from './dmCryptoClient';
 import { getMessagingMlKemPublicKey, getDmIdentity, isDmIdentityReady } from './dmIdentitySession';
@@ -17,11 +18,6 @@ import {
   cachePeerMailboxRouteKey,
   clearPeerMailboxRouteKeyCache
 } from './peerMailboxRouteCache';
-
-// Helper function to get auth headers (after vault hydrate)
-async function getAuthHeaders(): Promise<HeadersInit> {
-  return ownerApiHeadersAsync();
-}
 
 export interface Connection {
   connectionId: string;
@@ -109,18 +105,19 @@ export async function sendConnectionRequest(
   );
 
   try {
-    const response = await fetch(`${API_ENDPOINT}/api/connections/request`, {
-      method: 'POST',
-      headers: await getAuthHeaders(),
-      body: JSON.stringify({
+    const response = await ownerFetch(
+      'POST',
+      '/api/connections/request',
+      {
         requesterPnIdentifier,
         recipientPnIdentifier,
         requesterMlKemPublicKey: mlKemPublicKey,
         requesterMailboxRouteKey: mailboxRouteKey,
         recipientEnvelope,
         envelopeContext
-      })
-    });
+      },
+      { pnIdentifier: requesterPnIdentifier }
+    );
 
     if (!response.ok) {
       let errorMessage = 'Failed to send connection request';
@@ -210,18 +207,19 @@ export async function acceptConnectionRequest(
   );
 
   try {
-    const response = await fetch(`${API_ENDPOINT}/api/connections/${connectionId}/accept`, {
-      method: 'POST',
-      headers: await getAuthHeaders(),
-      body: JSON.stringify({
+    const response = await ownerFetch(
+      'POST',
+      `/api/connections/${connectionId}/accept`,
+      {
         userPnIdentifier,
         kemCiphertext,
         wrappedMessageRootKey,
         kemAlgId: 'ML-KEM-768',
         acceptorMailboxRouteKey: mailboxRouteKey,
         channelClientId
-      })
-    });
+      },
+      { pnIdentifier: userPnIdentifier }
+    );
 
     const result = await response.json().catch(() => ({} as Record<string, unknown>));
     if (!response.ok) {
@@ -262,13 +260,12 @@ export async function rejectConnectionRequest(
   userPnIdentifier: string
 ): Promise<void> {
   try {
-    const response = await fetch(`${API_ENDPOINT}/api/connections/${connectionId}/reject`, {
-      method: 'POST',
-      headers: await getAuthHeaders(),
-      body: JSON.stringify({
-        userPnIdentifier
-      })
-    });
+    const response = await ownerFetch(
+      'POST',
+      `/api/connections/${connectionId}/reject`,
+      { userPnIdentifier },
+      { pnIdentifier: userPnIdentifier }
+    );
 
     if (!response.ok) {
       let errorMessage = 'Failed to reject connection request';
@@ -316,9 +313,10 @@ export async function getConnections(userPnIdentifier: string): Promise<Connecti
         return [];
       }
 
-      const response = await fetch(`${API_ENDPOINT}/api/connections?userPnIdentifier=${encodeURIComponent(userPnIdentifier)}`, {
-        headers: await getAuthHeaders()
-      });
+      const response = await ownerGet(
+        `/api/connections?userPnIdentifier=${encodeURIComponent(userPnIdentifier)}`,
+        { pnIdentifier: userPnIdentifier }
+      );
 
       if (!response.ok) {
         if (response.status === 409 || response.status === 401) {
@@ -432,9 +430,10 @@ export async function getPendingRequests(userPnIdentifier: string): Promise<Pend
 
   const work = (async (): Promise<PendingRequests> => {
     try {
-      const response = await fetch(`${API_ENDPOINT}/api/connections/pending?userPnIdentifier=${userPnIdentifier}`, {
-        headers: await getAuthHeaders()
-      });
+      const response = await ownerGet(
+        `/api/connections/pending?userPnIdentifier=${encodeURIComponent(userPnIdentifier)}`,
+        { pnIdentifier: userPnIdentifier }
+      );
 
       if (!response.ok) {
         if (response.status === 409 || response.status === 401) {
@@ -477,20 +476,13 @@ export async function getConnectionStatus(
       return { status: 'not_connected' };
     }
 
-    const response = await fetch(
-      `${API_ENDPOINT}/api/connections/${encodeURIComponent(otherUserPnIdentifier)}/status?userPnIdentifier=${encodeURIComponent(userPnIdentifier)}`,
-      {
-        headers: await getAuthHeaders()
-      }
-    );
+    const statusPath = `/api/connections/${encodeURIComponent(otherUserPnIdentifier)}/status?userPnIdentifier=${encodeURIComponent(userPnIdentifier)}`;
+    const response = await ownerGet(statusPath, { pnIdentifier: userPnIdentifier });
 
     if (response.status === 409) {
       // Rare race if hydrate just landed — one short retry.
       await waitForOwnerCloudAccess(userPnIdentifier, 3_000);
-      const retry = await fetch(
-        `${API_ENDPOINT}/api/connections/${encodeURIComponent(otherUserPnIdentifier)}/status?userPnIdentifier=${encodeURIComponent(userPnIdentifier)}`,
-        { headers: await getAuthHeaders() }
-      );
+      const retry = await ownerGet(statusPath, { pnIdentifier: userPnIdentifier });
       if (!retry.ok) return { status: 'not_connected' };
       return await retry.json();
     }
@@ -517,13 +509,12 @@ export async function removeConnection(
   userPnIdentifier: string
 ): Promise<void> {
   try {
-    const response = await fetch(`${API_ENDPOINT}/api/connections/${connectionId}`, {
-      method: 'DELETE',
-      headers: await getAuthHeaders(),
-      body: JSON.stringify({
-        userPnIdentifier
-      })
-    });
+    const response = await ownerFetch(
+      'DELETE',
+      `/api/connections/${connectionId}`,
+      { userPnIdentifier },
+      { pnIdentifier: userPnIdentifier }
+    );
 
     if (!response.ok) {
       const error = await response.json();

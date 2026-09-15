@@ -35,7 +35,14 @@ export async function persistIntegratorGrantAfterTokenExchange(params: {
 
   const normalizedPn = normalizePnIdentifier(pnIdentifier);
   const index = await loadPnDriveIndex(normalizedPn);
-  if (!isPnDriveIndexComplete(index)) return;
+  if (!isPnDriveIndexComplete(index)) {
+    safeLogger.warn('[OAuth] persistIntegratorGrant skipped — Drive index incomplete after resolve', {
+      reason: 'drive_index_incomplete',
+      pnIdHash: hashIdentifier(normalizedPn),
+      clientId,
+    });
+    throw new Error('drive_index_incomplete');
+  }
 
   const { metadataFolderId } = index;
   const existing = await ThirdPartyPermissionsService.getPermissions(

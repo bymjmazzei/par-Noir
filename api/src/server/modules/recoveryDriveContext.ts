@@ -1,3 +1,11 @@
+/**
+ * Recovery Drive layout + forwarded token for recovery/device routes.
+ *
+ * Token assembly goes through the custody rules of resolveOwnerDriveToken when a
+ * Request is available. This helper exists for routes that already extracted the
+ * forwarded token (or soft probes). It does not mint from DB secrets under custody.
+ */
+
 import { storageCredentialsService } from './storageCredentialsService';
 import { DriveIndexError } from './pnDriveIndex';
 import { hashIdentifier, safeLogger } from '../../utils/logger';
@@ -20,8 +28,9 @@ function extractAccountId(account: Record<string, unknown>): string | undefined 
 }
 
 /**
- * Resolve recovery Drive context. Under custody: forwarded accessToken only.
+ * Resolve recovery Drive context from a forwarded access token (layout from index shell).
  * Pass softMissingToken for GET unlock probes that should soft-empty instead of 409.
+ * Under custody this never reads OAuth secrets from the DB shell.
  */
 export async function getRecoveryDriveContext(
   userPnIdentifier: string,
@@ -40,9 +49,12 @@ export async function getRecoveryDriveContext(
   const accountId = extractAccountId(account);
   const custody = isDeviceCloudCustodyEnabled();
   const forwarded = String(opts?.accessToken || '').trim();
-  const access_token = custody
-    ? forwarded
-    : String(forwarded || account.access_token || account.accessToken || '').trim();
+
+  // Under custody: forwarded AT only. Opt-out may use live stored AT (no refresh mint here).
+  let access_token = forwarded;
+  if (!custody && !access_token) {
+    access_token = String(account.access_token || account.accessToken || '').trim();
+  }
 
   if (!access_token) {
     const { readPnDriveIndex, isPnDriveIndexComplete } = await import('./pnDriveIndex');
@@ -51,7 +63,6 @@ export async function getRecoveryDriveContext(
     if (!isPnDriveIndexComplete(indexEarly)) return null;
 
     if (opts?.softMissingToken) {
-      // JWT-only owner probes under custody are expected; do not warn (was flooding Railway).
       return null;
     }
     safeLogger.warn('[RecoveryDrive] Cloud access token missing', {

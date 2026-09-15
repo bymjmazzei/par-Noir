@@ -8,9 +8,7 @@ import { X, Settings, Plus } from 'lucide-react';
 import { useUserState } from '../contexts/UserStateContext';
 import { FEED_CATEGORY_LIST } from '../constants/feedCategories';
 import { FeedCategory } from '../types/aggregator';
-import { PNOAuthService } from '../services/pnOAuthService';
-
-import { API_ENDPOINT } from '../config/api';
+import { ownerFetch } from '../services/ownerApiFetch';
 
 interface ContentPreferencesPanelProps {
   onClose: () => void;
@@ -34,22 +32,15 @@ export function ContentPreferencesPanel({ onClose }: ContentPreferencesPanelProp
     }
 
     try {
-      const session = PNOAuthService.loadSession();
-      if (!session?.accessToken) {
-        return;
-      }
-
-      const response = await fetch(`${API_ENDPOINT}/api/users/${userState.pnIdentifier}/preferences`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${session.accessToken}`
-        },
-        body: JSON.stringify({
+      const response = await ownerFetch(
+        'PUT',
+        `/api/users/${userState.pnIdentifier}/preferences`,
+        {
           blockedCategories: userState.preferences.blockedCategories || [],
           showNSFW: userState.preferences.showNSFW || false
-        })
-      });
+        },
+        { pnIdentifier: userState.pnIdentifier }
+      );
 
       if (response.ok) {
         console.log('Successfully saved preferences to Google Drive');

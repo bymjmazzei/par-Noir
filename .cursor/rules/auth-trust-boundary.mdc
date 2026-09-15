@@ -10,6 +10,8 @@ Prose rules are not enough. These scripts refuse new violations on commit/CI:
 - `scripts/check-oauth-unlock-proof-boundary.sh` + `scripts/oauth-unlock-proof-allowlist.txt`
 - `scripts/check-no-passcode-on-oauth-wire.sh` + `scripts/passcode-oauth-wire-allowlist.txt`
 - `scripts/check-token-resolver-boundary.sh` + `scripts/token-resolver-allowlist.txt` + `scripts/peer-credential-allowlist.txt` (Drive token via `resolveOwnerDriveToken`; peer raw `access_token` burn-down)
+- `scripts/check-owner-fetch-boundary.sh` + `scripts/owner-api-headers-allowlist.txt` (client ownerFetch gate; no sync builders; no new ownerApiHeadersAsync duals)
+- `scripts/check-dual-drive-helper-boundary.sh` + `scripts/dual-drive-helper-allowlist.txt` (no `getOwnerDriveContext` duals)
 - `scripts/check-l5-product-route-boundary.sh` (first-party only for messages/mailbox/connections/groups/engagement/notifications)
 - `scripts/check-legacy-identity-crypto.sh` (no RSA / app-local IdentityManager reintroduction)
 - `scripts/check-no-identity-core-in-apps.sh` (apps must not import `@identity-protocol/identity-core`; use `@par-noir/identity-crypto`)

@@ -9,6 +9,7 @@ import { useUserState } from '../contexts/UserStateContext';
 
 import { API_ENDPOINT } from '../config/api';
 import { fetchBulkEngagementStats } from '../services/engagementBulkStatsClient';
+import { ownerGet } from '../services/ownerApiFetch';
 
 interface EngagementData {
   likes: Set<string>; // Set of file IDs that user has liked
@@ -527,7 +528,10 @@ export function useEngagement() {
     if (!userState.isUnlocked || !userState.pnIdentifier) return;
 
     try {
-      const response = await fetch(`${API_ENDPOINT}/api/engagement/${fileId}/like?userPnIdentifier=${userState.pnIdentifier}`);
+      const response = await ownerGet(
+        `/api/engagement/${fileId}/like?userPnIdentifier=${encodeURIComponent(userState.pnIdentifier)}`,
+        { pnIdentifier: userState.pnIdentifier }
+      );
       if (response.ok) {
         const result = await response.json();
         setEngagement(prev => {

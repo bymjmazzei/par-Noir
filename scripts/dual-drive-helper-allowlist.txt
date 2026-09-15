@@ -1,0 +1,10 @@
+# Burn-down: API modules that still assemble Drive token/layout outside
+# resolveOwnerDriveToken / requireOwnerDriveContextFromReq for write paths.
+# Entries are only ever REMOVED, never added.
+#
+# Soft probes (getRecoveryDriveContext with softMissingToken / forwarded AT only)
+# stay in recoveryDriveContext.ts — that file is canonical for layout+forwarded AT
+# probes, not a second mint.
+
+api/src/server/modules/recoveryDriveContext.ts
+api/src/server/modules/storage/ownerStorageContext.ts

@@ -3,17 +3,7 @@
  * Handles notifications for feed subscriptions, comments, likes, etc.
  */
 
-import { API_ENDPOINT } from '../config/api';
-import { ownerApiHeadersAsync, waitForOwnerCloudAccess } from './ownerApiHeaders';
-import { PNOAuthService } from './pnOAuthService';
-
-/** Drive-backed notification routes need X-PN-Cloud-Access-Token under device custody. */
-async function authHeaders(userPnIdentifier?: string): Promise<HeadersInit> {
-  const session = PNOAuthService.loadSession();
-  const pn = userPnIdentifier || session?.pnIdentifier;
-  if (pn) await waitForOwnerCloudAccess(pn);
-  return ownerApiHeadersAsync(undefined, pn);
-}
+import { ownerFetch, ownerGet } from './ownerApiFetch';
 
 export interface Notification {
   notification_id: string;
@@ -76,8 +66,8 @@ export class NotificationService {
     if (options?.unreadOnly) params.append('unreadOnly', 'true');
     if (options?.type) params.append('type', options.type);
 
-    const response = await fetch(`${API_ENDPOINT}/api/notifications?${params.toString()}`, {
-      headers: await authHeaders(userPnIdentifier),
+    const response = await ownerGet(`/api/notifications?${params.toString()}`, {
+      pnIdentifier: userPnIdentifier
     });
 
     if (!response.ok) {
@@ -92,9 +82,9 @@ export class NotificationService {
    * Get unread notification count
    */
   static async getUnreadCount(userPnIdentifier: string): Promise<number> {
-    const response = await fetch(
-      `${API_ENDPOINT}/api/notifications/unread-count?userPnIdentifier=${userPnIdentifier}`,
-      { headers: await authHeaders(userPnIdentifier) }
+    const response = await ownerGet(
+      `/api/notifications/unread-count?userPnIdentifier=${encodeURIComponent(userPnIdentifier)}`,
+      { pnIdentifier: userPnIdentifier }
     );
 
     if (!response.ok) {
@@ -110,11 +100,12 @@ export class NotificationService {
    * Mark notification as read
    */
   static async markAsRead(notificationId: string, userPnIdentifier: string): Promise<void> {
-    const response = await fetch(`${API_ENDPOINT}/api/notifications/${notificationId}/read`, {
-      method: 'PUT',
-      headers: await authHeaders(userPnIdentifier),
-      body: JSON.stringify({ userPnIdentifier })
-    });
+    const response = await ownerFetch(
+      'PUT',
+      `/api/notifications/${notificationId}/read`,
+      { userPnIdentifier },
+      { pnIdentifier: userPnIdentifier }
+    );
 
     if (!response.ok) {
       const error = await response.json().catch(() => ({ error: 'Failed to mark as read' }));
@@ -126,11 +117,12 @@ export class NotificationService {
    * Mark all notifications as read
    */
   static async markAllAsRead(userPnIdentifier: string): Promise<number> {
-    const response = await fetch(`${API_ENDPOINT}/api/notifications/read-all`, {
-      method: 'PUT',
-      headers: await authHeaders(userPnIdentifier),
-      body: JSON.stringify({ userPnIdentifier })
-    });
+    const response = await ownerFetch(
+      'PUT',
+      '/api/notifications/read-all',
+      { userPnIdentifier },
+      { pnIdentifier: userPnIdentifier }
+    );
 
     if (!response.ok) {
       const error = await response.json().catch(() => ({ error: 'Failed to mark all as read' }));
@@ -145,12 +137,11 @@ export class NotificationService {
    * Delete notification
    */
   static async deleteNotification(notificationId: string, userPnIdentifier: string): Promise<void> {
-    const response = await fetch(
-      `${API_ENDPOINT}/api/notifications/${notificationId}?userPnIdentifier=${userPnIdentifier}`,
-      {
-        method: 'DELETE',
-        headers: await authHeaders(userPnIdentifier),
-      }
+    const response = await ownerFetch(
+      'DELETE',
+      `/api/notifications/${notificationId}?userPnIdentifier=${encodeURIComponent(userPnIdentifier)}`,
+      undefined,
+      { pnIdentifier: userPnIdentifier }
     );
 
     if (!response.ok) {
@@ -163,9 +154,10 @@ export class NotificationService {
    * Get notification preferences
    */
   static async getPreferences(userPnIdentifier: string): Promise<NotificationPreferences> {
-    const response = await fetch(`${API_ENDPOINT}/api/notifications/preferences?userPnIdentifier=${userPnIdentifier}`, {
-      headers: await authHeaders(userPnIdentifier)
-    });
+    const response = await ownerGet(
+      `/api/notifications/preferences?userPnIdentifier=${encodeURIComponent(userPnIdentifier)}`,
+      { pnIdentifier: userPnIdentifier }
+    );
 
     if (!response.ok) {
       const error = await response.json().catch(() => ({ error: 'Failed to get preferences' }));
@@ -182,14 +174,15 @@ export class NotificationService {
     userPnIdentifier: string,
     preferences: Partial<Omit<NotificationPreferences, 'user_did'>>
   ): Promise<NotificationPreferences> {
-    const response = await fetch(`${API_ENDPOINT}/api/notifications/preferences`, {
-      method: 'PUT',
-      headers: await authHeaders(userPnIdentifier),
-      body: JSON.stringify({
-          userPnIdentifier,
+    const response = await ownerFetch(
+      'PUT',
+      '/api/notifications/preferences',
+      {
+        userPnIdentifier,
         ...preferences
-      })
-    });
+      },
+      { pnIdentifier: userPnIdentifier }
+    );
 
     if (!response.ok) {
       const error = await response.json().catch(() => ({ error: 'Failed to update preferences' }));
@@ -199,4 +192,3 @@ export class NotificationService {
     return response.json();
   }
 }
-

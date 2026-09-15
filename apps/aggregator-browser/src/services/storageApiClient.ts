@@ -1,6 +1,6 @@
 import { API_ENDPOINT } from '../config/api';
 import { accountsCacheService } from './accountsCacheService';
-import { ownerApiHeadersAsync } from './ownerApiHeaders';
+import { apiGet, ownerFetch, ownerGet } from './ownerApiFetch';
 import { PNOAuthService } from './pnOAuthService';
 
 /** Canonical cache/API key for viewer storage accounts (bare id, no pn- prefix). */
@@ -28,10 +28,6 @@ export type StorageProviderId =
   | 'onedrive'
   | 'ftp';
 
-async function driveAuthHeaders(authToken: string, pnIdentifier?: string): Promise<Record<string, string>> {
-  return ownerApiHeadersAsync(authToken, pnIdentifier);
-}
-
 function normalizeBackend(backend?: string): StorageProviderId {
   return (backend || 'google_drive') as StorageProviderId;
 }
@@ -50,18 +46,18 @@ export async function uploadBlob(
 ): Promise<void> {
   const bytes = fileData instanceof ArrayBuffer ? new Uint8Array(fileData) : fileData;
   const base64 = bytesToBase64(bytes);
-  const endpoint = API_ENDPOINT;
-  const res = await fetch(`${endpoint}/api/storage/blobs/${encodeURIComponent(pnIdentifier)}/upload`, {
-    method: 'POST',
-    headers: await driveAuthHeaders(authToken, pnIdentifier),
-    body: JSON.stringify({
+  const res = await ownerFetch(
+    'POST',
+    `/api/storage/blobs/${encodeURIComponent(pnIdentifier)}/upload`,
+    {
       provider,
       accountId: opts?.accountId,
       key,
       fileData: base64,
       contentType: opts?.contentType || 'application/octet-stream'
-    })
-  });
+    },
+    { authToken, pnIdentifier }
+  );
   if (!res.ok) {
     const err = (await res.json().catch(() => ({}))) as { message?: string };
     throw new Error(err.message || 'Blob upload failed');
@@ -75,16 +71,15 @@ export async function downloadBlob(
   key: string,
   accountId?: string
 ): Promise<Blob> {
-  const endpoint = API_ENDPOINT;
   const q = new URLSearchParams({
     provider,
     key,
     download: 'true',
     ...(accountId ? { accountId } : {})
   });
-  const res = await fetch(
-    `${endpoint}/api/storage/blobs/${encodeURIComponent(pnIdentifier)}/download?${q}`,
-    { headers: await driveAuthHeaders(authToken, pnIdentifier) }
+  const res = await ownerGet(
+    `/api/storage/blobs/${encodeURIComponent(pnIdentifier)}/download?${q}`,
+    { authToken, pnIdentifier }
   );
   if (!res.ok) throw new Error('Blob download failed');
   return res.blob();
@@ -149,7 +144,7 @@ export async function fetchStorageFile(
   opts?: ResolveFileUrlOptions
 ): Promise<Response> {
   const url = resolveFileUrl(pnIdentifier, backend, backendFileId, opts?.accountId, opts);
-  return fetch(url, { headers: await driveAuthHeaders(authToken, pnIdentifier) });
+  return ownerGet(url, { authToken, pnIdentifier });
 }
 
 export async function downloadStorageBlob(
@@ -185,20 +180,22 @@ export interface UploadDriveFileOptions {
 
 export async function uploadDriveFile(
   authToken: string,
-  opts: UploadDriveFileOptions
+  opts: UploadDriveFileOptions,
+  pnIdentifier?: string
 ): Promise<{ id: string }> {
-  const res = await fetch(`${API_ENDPOINT}/api/drive/files`, {
-    method: 'POST',
-    headers: await driveAuthHeaders(authToken),
-    body: JSON.stringify({
+  const res = await ownerFetch(
+    'POST',
+    '/api/drive/files',
+    {
       fileData: opts.fileData,
       fileName: opts.fileName,
       mimeType: opts.mimeType ?? 'application/json',
       accountId: opts.accountId,
       parents: opts.parents,
       encrypt: opts.encrypt
-    })
-  });
+    },
+    { authToken, pnIdentifier }
+  );
   if (!res.ok) {
     const err = (await res.text().catch(() => 'Unknown error'));
     throw new Error(`Upload failed: ${err}`);
@@ -229,14 +226,18 @@ export async function uploadStorageFile(
   if (provider === 'google_drive') {
     const base64 =
       typeof opts.fileData === 'string' ? opts.fileData : bytesToBase64(opts.fileData);
-    const { id } = await uploadDriveFile(authToken, {
-      fileData: base64,
-      fileName: opts.fileName,
-      mimeType: opts.mimeType,
-      accountId: opts.accountId,
-      parents: opts.parents,
-      encrypt: opts.encrypt
-    });
+    const { id } = await uploadDriveFile(
+      authToken,
+      {
+        fileData: base64,
+        fileName: opts.fileName,
+        mimeType: opts.mimeType,
+        accountId: opts.accountId,
+        parents: opts.parents,
+        encrypt: opts.encrypt
+      },
+      pnIdentifier
+    );
     return { id, backend: 'google_drive' };
   }
 
@@ -262,10 +263,12 @@ export async function deleteStorageFile(
   const provider = normalizeBackend(backend);
   if (provider === 'google_drive') {
     const q = accountId ? `?accountId=${encodeURIComponent(accountId)}` : '';
-    const res = await fetch(`${API_ENDPOINT}/api/drive/files/${encodeURIComponent(backendFileId)}${q}`, {
-      method: 'DELETE',
-      headers: await driveAuthHeaders(authToken, pnIdentifier)
-    });
+    const res = await ownerFetch(
+      'DELETE',
+      `/api/drive/files/${encodeURIComponent(backendFileId)}${q}`,
+      undefined,
+      { authToken, pnIdentifier }
+    );
     if (!res.ok) throw new Error('File delete failed');
     return;
   }
@@ -275,12 +278,11 @@ export async function deleteStorageFile(
     key: backendFileId,
     ...(accountId ? { accountId } : {})
   });
-  const res = await fetch(
-    `${API_ENDPOINT}/api/storage/blobs/${encodeURIComponent(pnIdentifier)}?${q}`,
-    {
-      method: 'DELETE',
-      headers: await driveAuthHeaders(authToken, pnIdentifier)
-    }
+  const res = await ownerFetch(
+    'DELETE',
+    `/api/storage/blobs/${encodeURIComponent(pnIdentifier)}?${q}`,
+    undefined,
+    { authToken, pnIdentifier }
   );
   if (!res.ok) throw new Error('Blob delete failed');
 }
@@ -331,9 +333,7 @@ export async function listStorageFiles(
   const backend = normalizeBackend(provider);
   if (backend === 'google_drive') {
     const q = accountId ? `?accountId=${encodeURIComponent(accountId)}` : '';
-    const res = await fetch(`${API_ENDPOINT}/api/drive/files${q}`, {
-      headers: await driveAuthHeaders(authToken, pnIdentifier)
-    });
+    const res = await ownerGet(`/api/drive/files${q}`, { authToken, pnIdentifier });
     if (!res.ok) {
       const err = await res.text().catch(() => 'Unknown error');
       throw new Error(`Failed to list files: ${err}`);
@@ -354,9 +354,9 @@ export async function listStorageFiles(
     ...(prefix ? { prefix } : {}),
     ...(accountId ? { accountId } : {})
   });
-  const res = await fetch(
-    `${API_ENDPOINT}/api/storage/blobs/${encodeURIComponent(pnIdentifier)}?${q}`,
-    { headers: await driveAuthHeaders(authToken, pnIdentifier) }
+  const res = await ownerGet(
+    `/api/storage/blobs/${encodeURIComponent(pnIdentifier)}?${q}`,
+    { authToken, pnIdentifier }
   );
   if (!res.ok) {
     const err = await res.text().catch(() => 'Unknown error');
@@ -425,8 +425,10 @@ export async function fetchStorageAccounts(
   if (inflight) return inflight;
 
   const work = (async (): Promise<StorageAccountsResult> => {
-    const res = await fetch(`${API_ENDPOINT}/api/storage/accounts/${encodeURIComponent(resolvedPnId)}`, {
-      headers: await driveAuthHeaders(authToken, resolvedPnId)
+    // Credentials-only list: bearer is enough; no Drive mint required.
+    const res = await apiGet(`/api/storage/accounts/${encodeURIComponent(resolvedPnId)}`, {
+      authToken,
+      pnIdentifier: resolvedPnId
     });
     if (!res.ok) {
       return { connected: false, accounts: [], socialCloudProvider: null };

@@ -10,14 +10,9 @@ import { createCollection } from './collectionService';
 import { FeedService } from './feedService';
 import { saveToFeed, removeFromSavedFeed } from './savedFeedService';
 
-import { API_ENDPOINT } from '../config/api';
-import { ownerApiHeadersAsync } from './ownerApiHeaders';
+import { ownerFetch, ownerGet } from './ownerApiFetch';
 import { publishPublicShare, revokePublishedPublicContent } from './publicSharePublish';
 import type { PublicContentRef } from '@par-noir/aggregator-domain';
-
-async function driveHeaders(accessToken: string): Promise<Record<string, string>> {
-  return ownerApiHeadersAsync(accessToken);
-}
 
 interface EncryptedFilePackage {
   encrypted: string;
@@ -108,8 +103,8 @@ export async function processBackgroundTask(task: UploadTask): Promise<void> {
 async function resolveToThumbnailFileId(fileId: string, accessToken: string): Promise<string> {
   try {
     // Try to get metadata for fileId
-    const response = await fetch(`${API_ENDPOINT}/api/aggregator/metadata-index/${fileId}`, {
-      headers: await driveHeaders(accessToken)
+    const response = await ownerGet(`/api/aggregator/metadata-index/${fileId}`, {
+      authToken: accessToken
     });
     
     if (response.ok) {
@@ -193,11 +188,9 @@ async function processShareSettingsUpdate(
     uploadQueueService.updateTaskProgress(task.id, 20);
 
     try {
-      const downloadResponse = await fetch(
-        `${API_ENDPOINT}/api/drive/files/${targetFileId}?accountId=${encodeURIComponent(accountId)}&download=true`,
-        {
-          headers: await driveHeaders(accessToken)
-        }
+      const downloadResponse = await ownerGet(
+        `/api/drive/files/${targetFileId}?accountId=${encodeURIComponent(accountId)}&download=true`,
+        { authToken: accessToken }
       );
 
       uploadQueueService.updateTaskProgress(task.id, 30);
@@ -313,14 +306,12 @@ async function processShareSettingsUpdate(
     updateBody.isNSFW = shareNSFW;
   }
   
-  const metadataResponse = await fetch(`${API_ENDPOINT}/api/aggregator/metadata-index/${targetFileId}${accountIdParam}`, {
-    method: 'PUT',
-    headers: {
-      'Content-Type': 'application/json',
-      ...(await driveHeaders(accessToken))
-    },
-    body: JSON.stringify(updateBody),
-  });
+  const metadataResponse = await ownerFetch(
+    'PUT',
+    `/api/aggregator/metadata-index/${targetFileId}${accountIdParam}`,
+    updateBody,
+    { authToken: accessToken }
+  );
   
   if (!metadataResponse.ok) {
     const errorText = await metadataResponse.text().catch(() => 'Unknown error');
@@ -338,18 +329,11 @@ async function processShareSettingsUpdate(
 
   // Persist indexer permissions whenever the file is (or will be) public
   if ((makePublic || isCurrentlyPublic) && nextPermissions) {
-    const response = await fetch(
-      `${API_ENDPOINT}/api/third-party/files/${encodeURIComponent(targetFileId)}/index-visibility`,
-      {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(await driveHeaders(accessToken))
-        },
-        body: JSON.stringify({
-          indexingPermissions: nextPermissions
-        })
-      }
+    const response = await ownerFetch(
+      'PUT',
+      `/api/third-party/files/${encodeURIComponent(targetFileId)}/index-visibility`,
+      { indexingPermissions: nextPermissions },
+      { authToken: accessToken }
     );
 
     if (!response.ok) {
@@ -462,9 +446,9 @@ async function processMetadataUpdate(
         throw new Error('Session keys required to make a file public');
       }
       const targetFileId = await resolveToThumbnailFileId(fileId, accessToken);
-      const downloadResponse = await fetch(
-        `${API_ENDPOINT}/api/drive/files/${targetFileId}?accountId=${encodeURIComponent(accountId)}&download=true`,
-        { headers: await driveHeaders(accessToken) }
+      const downloadResponse = await ownerGet(
+        `/api/drive/files/${targetFileId}?accountId=${encodeURIComponent(accountId)}&download=true`,
+        { authToken: accessToken }
       );
       if (!downloadResponse.ok) {
         throw new Error(`Failed to download file for share generation: ${downloadResponse.status}`);
@@ -498,14 +482,12 @@ async function processMetadataUpdate(
   }
 
   // Update via API endpoint
-  const response = await fetch(`${API_ENDPOINT}/api/aggregator/metadata-index/${fileId}`, {
-    method: 'PUT',
-    headers: {
-      'Content-Type': 'application/json',
-      ...(await driveHeaders(accessToken))
-    },
-    body: JSON.stringify(updateBody),
-  });
+  const response = await ownerFetch(
+    'PUT',
+    `/api/aggregator/metadata-index/${fileId}`,
+    updateBody,
+    { authToken: accessToken }
+  );
 
   uploadQueueService.updateTaskProgress(task.id, 80);
 
@@ -596,8 +578,8 @@ async function processFileDeletion(
   // Load metadata if isCollection wasn't determined upfront (non-blocking in UI)
   if (isCollection === undefined) {
     try {
-      const metadataResponse = await fetch(`${API_ENDPOINT}/api/aggregator/metadata-index/${fileId}`, {
-        headers: await driveHeaders(accessToken)
+      const metadataResponse = await ownerGet(`/api/aggregator/metadata-index/${fileId}`, {
+        authToken: accessToken
       });
       if (metadataResponse.ok) {
         const metadata = await metadataResponse.json();
@@ -622,9 +604,10 @@ async function processFileDeletion(
     // For thought collections, get main file ID from first thumbnail
     if (isThoughtCollection && collectionFileIds.length > 0) {
       try {
-        const metadataResponse = await fetch(`${API_ENDPOINT}/api/aggregator/metadata-index/${collectionFileIds[0]}`, {
-          headers: await driveHeaders(accessToken)
-        });
+        const metadataResponse = await ownerGet(
+          `/api/aggregator/metadata-index/${collectionFileIds[0]}`,
+          { authToken: accessToken }
+        );
         if (metadataResponse.ok) {
           const metadata = await metadataResponse.json();
           thoughtCollectionFileId = metadata.metadata?.mainFileId || null;
@@ -642,10 +625,12 @@ async function processFileDeletion(
     
     for (const thumbnailId of collectionFileIds) {
       try {
-        const deleteResponse = await fetch(`${API_ENDPOINT}/api/drive/files/${thumbnailId}?accountId=${accountId}`, {
-          method: 'DELETE',
-          headers: await driveHeaders(accessToken)
-        });
+        const deleteResponse = await ownerFetch(
+          'DELETE',
+          `/api/drive/files/${thumbnailId}?accountId=${accountId}`,
+          undefined,
+          { authToken: accessToken }
+        );
         
         if (deleteResponse.ok) {
           deletedCount++;
@@ -660,10 +645,12 @@ async function processFileDeletion(
     // Delete main thought-collection file if exists
     if (isThoughtCollection && thoughtCollectionFileId) {
       try {
-        const deleteResponse = await fetch(`${API_ENDPOINT}/api/drive/files/${thoughtCollectionFileId}?accountId=${accountId}`, {
-          method: 'DELETE',
-          headers: await driveHeaders(accessToken)
-        });
+        const deleteResponse = await ownerFetch(
+          'DELETE',
+          `/api/drive/files/${thoughtCollectionFileId}?accountId=${accountId}`,
+          undefined,
+          { authToken: accessToken }
+        );
         
         if (deleteResponse.ok) {
           deletedCount++;
@@ -679,10 +666,12 @@ async function processFileDeletion(
   }
 
   // Delete main file
-  const response = await fetch(`${API_ENDPOINT}/api/drive/files/${fileId}?accountId=${accountId}`, {
-    method: 'DELETE',
-    headers: await driveHeaders(accessToken)
-  });
+  const response = await ownerFetch(
+    'DELETE',
+    `/api/drive/files/${fileId}?accountId=${accountId}`,
+    undefined,
+    { authToken: accessToken }
+  );
 
   uploadQueueService.updateTaskProgress(task.id, 95);
 
@@ -720,10 +709,12 @@ async function processBulkDeletion(
   for (let i = 0; i < fileIds.length; i++) {
     const fileId = fileIds[i];
     try {
-      const response = await fetch(`${API_ENDPOINT}/api/drive/files/${fileId}?accountId=${accountId}`, {
-        method: 'DELETE',
-        headers: await driveHeaders(accessToken)
-      });
+      const response = await ownerFetch(
+        'DELETE',
+        `/api/drive/files/${fileId}?accountId=${accountId}`,
+        undefined,
+        { authToken: accessToken }
+      );
 
       if (response.ok) {
         deletedCount++;
@@ -851,14 +842,12 @@ async function processSaveToFeed(
 
   // Record engagement (save/unsave)
   try {
-    await fetch(`${API_ENDPOINT}/api/engagement/${fileId}/save`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        ...(await driveHeaders(accessToken))
-      },
-      body: JSON.stringify({ userPnIdentifier })
-    });
+    await ownerFetch(
+      'POST',
+      `/api/engagement/${fileId}/save`,
+      { userPnIdentifier },
+      { authToken: accessToken, pnIdentifier: userPnIdentifier }
+    );
   } catch (engagementErr) {
     console.warn('[BackgroundTaskProcessor] Failed to record save engagement:', engagementErr);
     // Don't fail the operation if engagement recording fails

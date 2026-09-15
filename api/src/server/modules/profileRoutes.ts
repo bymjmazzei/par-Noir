@@ -412,10 +412,7 @@ export function setupProfileRoutes(app: express.Application, deps: ProfileRouteD
         }
         const metadataFolder = await getMetadataFolder(
           {
-            access_token: userAccessToken || account?.access_token || account?.accessToken || '',
-            refresh_token: account?.refresh_token || account?.refreshToken,
-            expires_at: account?.expires_at,
-            expires_in: account?.expires_in
+            access_token: userAccessToken,
           },
           pnIdentifier,
           accountId

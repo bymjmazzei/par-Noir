@@ -140,7 +140,7 @@ export function registerRecoveryFailsafeRoutes(app: Application): void {
       try {
         const { getRecoveryDriveContext } = await import('./recoveryDriveContext');
         const { RecoverySheetsService } = await import('./recoverySheetsService');
-        const ctx = await getRecoveryDriveContext(record.pnIdentifier);
+        const ctx = await getRecoveryDriveContext(record.pnIdentifier, { softMissingToken: true });
         if (ctx) {
           const spreadsheetId = await RecoverySheetsService.getOrCreateSpreadsheet(
             ctx.token,

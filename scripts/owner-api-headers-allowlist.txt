@@ -1,0 +1,14 @@
+# Burn-down: aggregator-browser files allowed to call ownerApiHeadersAsync outside
+# the ownerFetch / messageFetch gates (package buildAuthHeaders callbacks only).
+# Entries are only ever REMOVED, never added.
+#
+# Canonical gates (not listed — always allowed):
+#   apps/aggregator-browser/src/services/ownerApiFetch.ts
+#   apps/aggregator-browser/src/services/ownerApiHeaders.ts
+#   apps/aggregator-browser/src/services/messageAuthFetch.ts
+
+apps/aggregator-browser/src/services/connectionService.ts
+apps/aggregator-browser/src/services/groupService.ts
+apps/aggregator-browser/src/services/messageService.ts
+apps/aggregator-browser/src/services/socialMailboxConsumer.ts
+apps/aggregator-browser/src/services/publicSharePublish.ts

@@ -11,7 +11,6 @@ import {
 } from '@par-noir/dm-crypto';
 import type { MediaPickItem } from '@par-noir/messaging-ui';
 import { PNOAuthService } from './pnOAuthService';
-import { API_ENDPOINT } from '../config/api';
 import { ensureMessageRootKey } from './dmCryptoClient';
 import { getGroupChatKey, sendGroupMessage, type GroupRecord } from './groupService';
 import { sendMessage } from './messageService';
@@ -22,7 +21,7 @@ import {
   downloadStorageBlob,
   type StorageProviderId
 } from './storageApiClient';
-import { ownerApiHeadersAsync } from './ownerApiHeaders';
+import { messageFetch } from './messageAuthFetch';
 
 export type DmThreadContext = {
   threadType: 'dm';
@@ -255,9 +254,8 @@ export async function prepareMessageAttachment(
     throw new Error('Unlock your pN to upload attachments');
   }
 
-  const folderRes = await fetch(
-    `${API_ENDPOINT}/api/messages/attachments-folder${accountId ? `?accountId=${encodeURIComponent(accountId)}` : ''}`,
-    { headers: await ownerApiHeadersAsync(token, pnIdentifier) }
+  const folderRes = await messageFetch(
+    `/api/messages/attachments-folder${accountId ? `?accountId=${encodeURIComponent(accountId)}` : ''}`
   );
   if (!folderRes.ok) {
     throw new Error('Failed to resolve messaging attachments folder');

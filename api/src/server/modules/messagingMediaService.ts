@@ -71,11 +71,11 @@ async function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-async function getOwnerDriveContext(
+async function resolveMessagingOwnerDriveLayout(
   ownerPn: string,
-  accountId?: string,
-  /** Prefer a forwarded cloud access token (e.g. extractCloudAccessToken(req)). */
-  accessTokenOverride?: string
+  accountId: string | undefined,
+  /** Forwarded X-PN-Cloud-Access-Token — required under device cloud custody. */
+  accessToken: string
 ): Promise<{
   pnIdentifier: string;
   accessToken: string;
@@ -84,6 +84,19 @@ async function getOwnerDriveContext(
   pnFolderId: string;
 }> {
   const pnIdentifier = normalizePn(ownerPn);
+  const forwarded = String(accessToken || '').trim();
+  if (!forwarded) {
+    const { hashIdentifier, safeLogger } = await import('../../utils/logger');
+    safeLogger.warn('[MessagingMedia] Cloud access token required', {
+      reason: 'cloud_token_required',
+      pnIdHash: hashIdentifier(pnIdentifier),
+    });
+    throw new DriveIndexError(
+      'Google Drive access token required. Forward X-PN-Cloud-Access-Token after unlocking with cloud credentials.',
+      'CLOUD_TOKEN_REQUIRED'
+    );
+  }
+
   const credentialsRecord = await storageCredentialsService.getCredentials(pnIdentifier);
   const credentials = credentialsRecord?.credentials;
   if (!credentials) {
@@ -97,19 +110,13 @@ async function getOwnerDriveContext(
   }
 
   let account = accounts[0] as {
-    access_token?: string;
-    accessToken?: string;
-    refresh_token?: string;
-    refreshToken?: string;
-    expires_at?: number;
-    expires_in?: number;
     backendId?: string;
     keyPrefix?: string;
     accountId?: string;
   };
   if (accountId) {
     const match = accounts.find(
-      (acc: any) =>
+      (acc: { backendId?: string; keyPrefix?: string; accountId?: string }) =>
         acc.backendId === accountId ||
         acc.keyPrefix === accountId ||
         acc.accountId === accountId
@@ -126,44 +133,20 @@ async function getOwnerDriveContext(
     account.keyPrefix ||
     'default';
 
-  // Callers forward the owner's device-held token. Under custody there is no
-  // server-side DB fallback because shells hold no Google secrets.
-  const { isDeviceCloudCustodyEnabled } = await import('./socialMailboxService');
-  const { hashIdentifier, safeLogger } = await import('../../utils/logger');
-  const custody = isDeviceCloudCustodyEnabled();
-  const forwarded =
-    typeof accessTokenOverride === 'string' ? accessTokenOverride.trim() : '';
-  const accessToken = custody
-    ? forwarded
-    : forwarded || String(account.access_token || account.accessToken || '').trim();
-  if (!accessToken) {
-    safeLogger.warn('[MessagingMedia] Cloud access token required', {
-      reason: 'cloud_token_required',
-      pnIdHash: hashIdentifier(pnIdentifier),
-    });
-    throw new DriveIndexError(
-      'Google Drive access token required. Forward X-PN-Cloud-Access-Token after unlocking with cloud credentials.',
-      'CLOUD_TOKEN_REQUIRED'
-    );
-  }
-
-  const token: GoogleDriveToken = custody
-    ? { access_token: accessToken }
-    : {
-        access_token: accessToken,
-        refresh_token: account.refresh_token || account.refreshToken,
-        expires_at: account.expires_at,
-        expires_in: account.expires_in
-      };
-
+  // Layout only from index shell — never assemble AT from DB under custody.
   const { readPnDriveIndex, isPnDriveIndexComplete } = await import('./pnDriveIndex');
   const index = readPnDriveIndex(credentials as Record<string, unknown>);
   if (!isPnDriveIndexComplete(index)) {
     throw new Error('Google Drive index not initialized');
   }
-  const pnFolderId = index.pnFolderId;
 
-  return { pnIdentifier, accessToken, token, accountId: resolvedAccountId, pnFolderId };
+  return {
+    pnIdentifier,
+    accessToken: forwarded,
+    token: { access_token: forwarded },
+    accountId: resolvedAccountId,
+    pnFolderId: index.pnFolderId,
+  };
 }
 
 async function downloadAttachmentBytes(ownerPn: string, ref: MediaAttachmentRef): Promise<Buffer> {
@@ -192,7 +175,8 @@ async function uploadAttachmentBytes(
   ownerPn: string,
   body: Buffer,
   fileName: string,
-  refAccountId?: string
+  refAccountId: string | undefined,
+  accessToken: string
 ): Promise<MediaAttachmentRef> {
   const pnIdentifier = normalizePn(ownerPn);
 
@@ -211,7 +195,7 @@ async function uploadAttachmentBytes(
     };
   }
 
-  const ctx = await getOwnerDriveContext(pnIdentifier, refAccountId);
+  const ctx = await resolveMessagingOwnerDriveLayout(pnIdentifier, refAccountId, accessToken);
   const folderId = await ensureMessagesAttachmentsFolderDrive(ctx);
   const uploaded = await googleDriveProxyService.uploadFile(
     pnIdentifier,
@@ -301,7 +285,7 @@ export async function ensureMessagesAttachmentsFolder(
     };
   }
 
-  const ctx = await getOwnerDriveContext(pnIdentifier, accountId, accessToken);
+  const ctx = await resolveMessagingOwnerDriveLayout(pnIdentifier, accountId, accessToken || '');
   const folderId = await ensureMessagesAttachmentsFolderDrive(ctx);
   return {
     backend: 'google_drive',
@@ -321,7 +305,12 @@ export async function dualWriteAttachmentToRecipients(
   senderRef: MediaAttachmentRef | string,
   recipientPnIdentifiers: string[],
   senderAccountId?: string,
-  opts?: MediaCopyInput & { jitterMs?: number; senderMediaBackend?: StorageProviderId }
+  opts?: MediaCopyInput & {
+    jitterMs?: number;
+    senderMediaBackend?: StorageProviderId;
+    /** Per-recipient forwarded cloud AT (required under custody for Drive uploads). */
+    accessTokenByPn?: Record<string, string>;
+  }
 ): Promise<Record<string, MediaAttachmentRef>> {
   const senderNorm = normalizePn(senderPn);
   const resolvedSenderRef: MediaAttachmentRef =
@@ -360,7 +349,8 @@ export async function dualWriteAttachmentToRecipients(
     const fileName = genericAttachmentFileName();
     const envelope = opts?.envelopeByPn?.[recipientPn];
     const body = envelope ? Buffer.from(envelope, 'utf8') : senderBytes!;
-    const uploaded = await uploadAttachmentBytes(recipientPn, body, fileName);
+    const recipientTok = opts?.accessTokenByPn?.[recipientPn] || '';
+    const uploaded = await uploadAttachmentBytes(recipientPn, body, fileName, undefined, recipientTok);
     result[recipientPn] = uploaded;
   }
 

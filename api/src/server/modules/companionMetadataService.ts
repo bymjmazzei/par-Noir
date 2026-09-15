@@ -23,9 +23,10 @@ export class CompanionMetadataService {
   static async create(
     ownerPn: string,
     fileId: string,
-    metadata: CompanionMetadata
+    metadata: CompanionMetadata,
+    accessToken?: string
   ): Promise<string> {
-    const ctx = await getOwnerStorageContext(normalizePn(ownerPn));
+    const ctx = await getOwnerStorageContext(normalizePn(ownerPn), { accessToken });
     if (!ctx) throw new Error('Storage not connected');
     if (ctx.kind === 'portable') {
       return portable.createCompanionPortable(ctx.pnIdentifier, fileId, metadata, ctx.accountId);
@@ -81,9 +82,10 @@ export class CompanionMetadataService {
   static async update(
     ownerPn: string,
     fileId: string,
-    patch: Partial<CompanionMetadata>
+    patch: Partial<CompanionMetadata>,
+    accessToken?: string
   ): Promise<void> {
-    const ctx = await getOwnerStorageContext(normalizePn(ownerPn));
+    const ctx = await getOwnerStorageContext(normalizePn(ownerPn), { accessToken });
     if (!ctx) throw new Error('Storage not connected');
     if (ctx.kind === 'portable') {
       await portable.updateCompanionPortable(ctx.pnIdentifier, fileId, patch, ctx.accountId);
@@ -106,8 +108,8 @@ export class CompanionMetadataService {
     );
   }
 
-  static async appendLike(ownerPn: string, fileId: string, like: LikeRecord): Promise<void> {
-    const ctx = await getOwnerStorageContext(normalizePn(ownerPn));
+  static async appendLike(ownerPn: string, fileId: string, like: LikeRecord, accessToken?: string): Promise<void> {
+    const ctx = await getOwnerStorageContext(normalizePn(ownerPn), { accessToken });
     if (!ctx) return;
     if (ctx.kind === 'portable') {
       await portable.appendLikePortable(ctx.pnIdentifier, fileId, like, ctx.accountId);
@@ -130,8 +132,8 @@ export class CompanionMetadataService {
     );
   }
 
-  static async removeLike(ownerPn: string, fileId: string, pnIdentifier: string): Promise<void> {
-    const ctx = await getOwnerStorageContext(normalizePn(ownerPn));
+  static async removeLike(ownerPn: string, fileId: string, pnIdentifier: string, accessToken?: string): Promise<void> {
+    const ctx = await getOwnerStorageContext(normalizePn(ownerPn), { accessToken });
     if (!ctx) return;
     if (ctx.kind === 'portable') {
       await portable.removeLikePortable(ctx.pnIdentifier, fileId, pnIdentifier, ctx.accountId);
@@ -158,9 +160,10 @@ export class CompanionMetadataService {
   static async appendComment(
     ownerPn: string,
     fileId: string,
-    comment: CommentRecord
+    comment: CommentRecord,
+    accessToken?: string
   ): Promise<void> {
-    const ctx = await getOwnerStorageContext(normalizePn(ownerPn));
+    const ctx = await getOwnerStorageContext(normalizePn(ownerPn), { accessToken });
     if (!ctx) return;
     if (ctx.kind === 'portable') {
       await portable.appendCommentPortable(ctx.pnIdentifier, fileId, comment, ctx.accountId);
@@ -183,8 +186,8 @@ export class CompanionMetadataService {
     );
   }
 
-  static async appendShare(ownerPn: string, fileId: string, share: ShareRecord): Promise<void> {
-    const ctx = await getOwnerStorageContext(normalizePn(ownerPn));
+  static async appendShare(ownerPn: string, fileId: string, share: ShareRecord, accessToken?: string): Promise<void> {
+    const ctx = await getOwnerStorageContext(normalizePn(ownerPn), { accessToken });
     if (!ctx) return;
     if (ctx.kind === 'portable') {
       await portable.appendSharePortable(ctx.pnIdentifier, fileId, share, ctx.accountId);
@@ -207,8 +210,8 @@ export class CompanionMetadataService {
     );
   }
 
-  static async appendSave(ownerPn: string, fileId: string, save: SaveRecord): Promise<void> {
-    const ctx = await getOwnerStorageContext(normalizePn(ownerPn));
+  static async appendSave(ownerPn: string, fileId: string, save: SaveRecord, accessToken?: string): Promise<void> {
+    const ctx = await getOwnerStorageContext(normalizePn(ownerPn), { accessToken });
     if (!ctx) return;
     if (ctx.kind === 'portable') {
       await portable.appendSavePortable(ctx.pnIdentifier, fileId, save, ctx.accountId);
@@ -231,8 +234,8 @@ export class CompanionMetadataService {
     );
   }
 
-  static async removeSave(ownerPn: string, fileId: string, pnIdentifier: string): Promise<void> {
-    const ctx = await getOwnerStorageContext(normalizePn(ownerPn));
+  static async removeSave(ownerPn: string, fileId: string, pnIdentifier: string, accessToken?: string): Promise<void> {
+    const ctx = await getOwnerStorageContext(normalizePn(ownerPn), { accessToken });
     if (!ctx) return;
     if (ctx.kind === 'portable') {
       await portable.removeSavePortable(ctx.pnIdentifier, fileId, pnIdentifier, ctx.accountId);
@@ -256,8 +259,8 @@ export class CompanionMetadataService {
     );
   }
 
-  static async appendView(ownerPn: string, fileId: string, view: ViewRecord): Promise<void> {
-    const ctx = await getOwnerStorageContext(normalizePn(ownerPn));
+  static async appendView(ownerPn: string, fileId: string, view: ViewRecord, accessToken?: string): Promise<void> {
+    const ctx = await getOwnerStorageContext(normalizePn(ownerPn), { accessToken });
     if (!ctx) return;
     if (ctx.kind === 'portable') {
       await portable.appendViewPortable(ctx.pnIdentifier, fileId, view, ctx.accountId);

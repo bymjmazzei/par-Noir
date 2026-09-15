@@ -455,7 +455,7 @@ export function registerDeviceAuthRoutes(app: Application): void {
         data?: Record<string, unknown>;
       }> = [];
       try {
-        const drive = await getRecoveryDriveContext(pn);
+        const drive = await getRecoveryDriveContext(pn, { softMissingToken: true });
         const token = drive?.token?.access_token || '';
         const metaId = drive?.metadataFolderId || '';
         const result = await NotificationService.getUserNotifications(token, metaId, pn, drive?.accountId, {
@@ -507,7 +507,7 @@ export function registerDeviceAuthRoutes(app: Application): void {
         return res.json({ success: true });
       }
 
-      const drive = await getRecoveryDriveContext(pn);
+      const drive = await getRecoveryDriveContext(pn, { softMissingToken: true });
       if (!drive?.token?.access_token || !drive.metadataFolderId) {
         const record = await storageCredentialsService.getCredentials(pn);
         const creds = { ...(record?.credentials || {}) } as Record<string, unknown>;

@@ -36,10 +36,14 @@ Commit `e4306317` ("Align dashboard Drive calls with custody owner routes") norm
 - There is exactly **one** function that resolves a given external credential. Everything needing that credential calls it.
 - A second resolver, or an early return standing in for a call, is a **bug by definition**. If a normalized path exists it must be used; if it is not used, it is not normalized.
 - **Google Drive access tokens:** `resolveOwnerDriveToken` in `api/src/server/modules/ownerDriveToken.ts`. Under device cloud custody the supported path is forwarding `X-PN-Cloud-Access-Token`; the server holds no OAuth secrets.
+- **Incomplete `pnDriveIndex` is not a hard abort on a credential path:** with a resolved owner token, call `ensureCompletePnDriveIndex` (init spine in `driveInitSteps`) then re-read. OAuth grant paths must not null out as `cloud_token_required` when the real reason is `drive_index_incomplete`.
+- **No dual Drive-token helpers** below the route layer (`getOwnerDriveContext`, bare `getRecoveryDriveContext(pn)` for writes, companion writes via `getOwnerStorageContext(pn)` without AT). Soft-null is for probes only; writes fail closed or go through mailbox → peer `apply-inbound`.
+- **Client gate:** aggregator Drive owner I/O goes through `ownerFetch` / `ownerGet` / `messageFetch` — not raw `fetch` + `ownerApiHeadersAsync`. Ratchet: `scripts/check-owner-fetch-boundary.sh` (extend, do not duplicate).
 - Enforced as a ratchet by `scripts/check-token-resolver-boundary.sh`. Burn-down lists (entries only ever removed):
   - `scripts/token-resolver-allowlist.txt` — paths not yet on `resolveOwnerDriveToken`
   - `scripts/peer-credential-allowlist.txt` — paths that still read raw peer `access_token` from DB shells (identity migrate under custody is known dead debt)
 - Sync cloud-header builders that cannot mint after AT expiry are a known fail mode — see `packages/device-cloud-credentials/src/syncHeaderGap.gate.test.ts`. Do not paper over with a second resolver.
+- SoT for custody data movement: `docs/architecture/ADR_DEVICE_CLOUD_CUSTODY.md` (owner path section).
 
 ## 5. No silent dead ends on a credential path
 

@@ -18,6 +18,7 @@ import type { DmSessionRecovery } from './dmCryptoClient';
 import { isDmIdentityReady, getDmIdentity } from './dmIdentitySession';
 import type { Message } from './messageService';
 import { ownerApiHeadersAsync } from './ownerApiHeaders';
+import { ownerFetch, ownerGet } from './ownerApiFetch';
 import { PNOAuthService } from './pnOAuthService';
 import {
   createOutboxRecord,
@@ -33,10 +34,6 @@ const groupChatKeys = new Map<string, string>();
 
 export function getGroupChatKeyCache(): Map<string, string> {
   return groupChatKeys;
-}
-
-async function getAuthHeaders(): Promise<HeadersInit> {
-  return ownerApiHeadersAsync();
 }
 
 export type GroupAccessRole = 'readWrite' | 'readOnly';
@@ -59,9 +56,7 @@ export interface CreateGroupMemberInput {
 
 export async function listGroups(userPnIdentifier: string): Promise<GroupRecord[]> {
   const params = new URLSearchParams({ userPnIdentifier });
-  const res = await fetch(`${API_ENDPOINT}/api/groups?${params}`, {
-    headers: await getAuthHeaders()
-  });
+  const res = await ownerGet(`/api/groups?${params}`, { pnIdentifier: userPnIdentifier });
   if (!res.ok) {
     throw new Error('Failed to load groups');
   }
@@ -75,9 +70,9 @@ export async function listGroupRoster(
   groupId: string
 ): Promise<Array<{ memberPnIdentifier: string; accessRole: GroupAccessRole }>> {
   const params = new URLSearchParams({ userPnIdentifier });
-  const res = await fetch(
-    `${API_ENDPOINT}/api/groups/${encodeURIComponent(groupId)}/roster?${params}`,
-    { headers: await getAuthHeaders() }
+  const res = await ownerGet(
+    `/api/groups/${encodeURIComponent(groupId)}/roster?${params}`,
+    { pnIdentifier: userPnIdentifier }
   );
   if (!res.ok) {
     throw new Error('Failed to load group roster');
@@ -143,16 +138,17 @@ export async function createGroup(
     });
   }
 
-  const res = await fetch(`${API_ENDPOINT}/api/groups`, {
-    method: 'POST',
-    headers: await getAuthHeaders(),
-    body: JSON.stringify({
+  const res = await ownerFetch(
+    'POST',
+    '/api/groups',
+    {
       ownerPnIdentifier,
       title,
       groupId,
       members
-    })
-  });
+    },
+    { pnIdentifier: ownerPnIdentifier }
+  );
 
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
@@ -168,13 +164,11 @@ export async function updateMemberAccessRole(
   memberPnIdentifier: string,
   accessRole: GroupAccessRole
 ): Promise<void> {
-  const res = await fetch(
-    `${API_ENDPOINT}/api/groups/${encodeURIComponent(groupId)}/members/${encodeURIComponent(memberPnIdentifier)}`,
-    {
-      method: 'PATCH',
-      headers: await getAuthHeaders(),
-      body: JSON.stringify({ ownerPnIdentifier, accessRole })
-    }
+  const res = await ownerFetch(
+    'PATCH',
+    `/api/groups/${encodeURIComponent(groupId)}/members/${encodeURIComponent(memberPnIdentifier)}`,
+    { ownerPnIdentifier, accessRole },
+    { pnIdentifier: ownerPnIdentifier }
   );
   if (!res.ok) {
     throw new Error('Failed to update member role');
@@ -186,11 +180,12 @@ export async function updateGroupTitle(
   groupId: string,
   title: string
 ): Promise<void> {
-  const res = await fetch(`${API_ENDPOINT}/api/groups/${encodeURIComponent(groupId)}`, {
-    method: 'PATCH',
-    headers: await getAuthHeaders(),
-    body: JSON.stringify({ ownerPnIdentifier, title })
-  });
+  const res = await ownerFetch(
+    'PATCH',
+    `/api/groups/${encodeURIComponent(groupId)}`,
+    { ownerPnIdentifier, title },
+    { pnIdentifier: ownerPnIdentifier }
+  );
   if (!res.ok) {
     throw new Error('Failed to update group title');
   }
@@ -244,13 +239,11 @@ export async function removeGroupMember(
     });
   }
 
-  const res = await fetch(
-    `${API_ENDPOINT}/api/groups/${encodeURIComponent(groupId)}/members/${encodeURIComponent(memberPnIdentifier)}`,
-    {
-      method: 'DELETE',
-      headers: await getAuthHeaders(),
-      body: JSON.stringify({ ownerPnIdentifier, keyRotation })
-    }
+  const res = await ownerFetch(
+    'DELETE',
+    `/api/groups/${encodeURIComponent(groupId)}/members/${encodeURIComponent(memberPnIdentifier)}`,
+    { ownerPnIdentifier, keyRotation },
+    { pnIdentifier: ownerPnIdentifier }
   );
   if (!res.ok) {
     throw new Error('Failed to remove group member');
@@ -331,9 +324,9 @@ export async function getGroupMessages(
     offset: String(offset)
   });
   if (spreadsheetId) params.set('spreadsheetId', spreadsheetId);
-  const res = await fetch(
-    `${API_ENDPOINT}/api/groups/${encodeURIComponent(groupId)}/messages?${params}`,
-    { headers: await getAuthHeaders() }
+  const res = await ownerGet(
+    `/api/groups/${encodeURIComponent(groupId)}/messages?${params}`,
+    { pnIdentifier: userPn }
   );
   if (!res.ok) {
     throw new Error('Failed to load group messages');
@@ -440,10 +433,10 @@ export async function sendGroupMessage(
   });
   await upsertLocalOutboxRecord(userPn, sealSession, outbox);
 
-  const res = await fetch(`${API_ENDPOINT}/api/groups/${encodeURIComponent(groupId)}/messages`, {
-    method: 'POST',
-    headers: await getAuthHeaders(),
-    body: JSON.stringify({
+  const res = await ownerFetch(
+    'POST',
+    `/api/groups/${encodeURIComponent(groupId)}/messages`,
+    {
       fromPnIdentifier: userPn,
       userPnIdentifier: userPn,
       encryptedContent,
@@ -459,8 +452,9 @@ export async function sendGroupMessage(
             ...(mediaEnvelopesByPn ? { mediaEnvelopesByPn } : {})
           }
         : {})
-    })
-  });
+    },
+    { pnIdentifier: userPn }
+  );
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
     throw new Error((err as { error?: string }).error || 'Failed to send group message');
@@ -522,16 +516,17 @@ export async function addGroupMember(
     dmSessionFromThread(thread),
     groupId
   );
-  const res = await fetch(`${API_ENDPOINT}/api/groups/${encodeURIComponent(groupId)}/members`, {
-    method: 'POST',
-    headers: await getAuthHeaders(),
-    body: JSON.stringify({
+  const res = await ownerFetch(
+    'POST',
+    `/api/groups/${encodeURIComponent(groupId)}/members`,
+    {
       ownerPnIdentifier,
       memberPnIdentifier,
       wrappedChatKey,
       accessRole
-    })
-  });
+    },
+    { pnIdentifier: ownerPnIdentifier }
+  );
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
     throw new Error((err as { error?: string }).error || 'Failed to add group member');
