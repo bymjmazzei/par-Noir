@@ -31,11 +31,16 @@ import {
   PLATFORM_CHANNEL_CLIENT_ID,
 } from '@par-noir/messaging-ui';
 import { MESSAGING_ONLY } from '../config/buildFlags';
+import {
+  cachePeerMailboxRouteKey,
+  getCachedPeerMailboxRouteKey
+} from './peerMailboxRouteCache';
 
 export const MESSAGING_INBOX_REFRESH_EVENT = 'pn_messaging_inbox_refresh';
 /** Fired after mailbox message_append jobs are applied into this user's Drive. */
 export const MESSAGING_MAILBOX_APPLIED_EVENT = 'pn_messaging_mailbox_applied';
-export const MESSAGING_POLL_BACKSTOP_MS = 60_000;
+/** Disconnected-socket inbox backstop (aligned with mailbox drain interval). */
+export const MESSAGING_POLL_BACKSTOP_MS = 5 * 60_000;
 
 /** Browse = primary only; messaging app = aggregator (*). Embed overrides via arg. */
 export function defaultChannelListFilter(override?: string): string {
@@ -590,18 +595,30 @@ export async function getConversationMessages(
         .get(userPnIdentifier)
         ?.find((e) => e.participantPnIdentifier === participantPnIdentifier)?.connectionId;
 
-    let peerRouteKey: string | undefined;
-    try {
-      const { getConnections } = await import('./connectionService');
-      const connections = await getConnections(userPnIdentifier);
-      const row = connections.find(
-        (c) =>
-          c.connectionId === effectiveConnectionId ||
-          c.userPnIdentifier === participantPnIdentifier
-      );
-      peerRouteKey = row?.peerMailboxRouteKey;
-    } catch {
-      /* optional for decrypt */
+    let peerRouteKey = getCachedPeerMailboxRouteKey({
+      connectionId: effectiveConnectionId,
+      peerPnIdentifier: participantPnIdentifier
+    });
+    if (!peerRouteKey) {
+      try {
+        const { getConnections } = await import('./connectionService');
+        const connections = await getConnections(userPnIdentifier);
+        const row = connections.find(
+          (c) =>
+            c.connectionId === effectiveConnectionId ||
+            c.userPnIdentifier === participantPnIdentifier
+        );
+        peerRouteKey = row?.peerMailboxRouteKey;
+        if (peerRouteKey) {
+          cachePeerMailboxRouteKey({
+            connectionId: row?.connectionId || effectiveConnectionId,
+            peerPnIdentifier: participantPnIdentifier,
+            peerMailboxRouteKey: peerRouteKey
+          });
+        }
+      } catch {
+        /* optional for decrypt */
+      }
     }
 
     const messages: Message[] = await Promise.all(
@@ -694,16 +711,29 @@ export async function sendMessage(
     throw new Error('No encrypted session for this conversation. Re-accept the connection.');
   }
 
-  let peerRouteKey: string | undefined;
-  try {
-    const { getConnections } = await import('./connectionService');
-    const connections = await getConnections(fromPnIdentifier);
-    const row = connections.find((c) => c.connectionId === connId || c.userPnIdentifier === toPnIdentifier);
-    if (row?.peerMailboxRouteKey && /^[a-f0-9]{64}$/i.test(row.peerMailboxRouteKey)) {
-      peerRouteKey = row.peerMailboxRouteKey.trim();
+  let peerRouteKey = getCachedPeerMailboxRouteKey({
+    connectionId: connId,
+    peerPnIdentifier: toPnIdentifier
+  });
+  if (!peerRouteKey || !/^[a-f0-9]{64}$/i.test(peerRouteKey)) {
+    peerRouteKey = undefined;
+    try {
+      const { getConnections } = await import('./connectionService');
+      const connections = await getConnections(fromPnIdentifier);
+      const row = connections.find((c) => c.connectionId === connId || c.userPnIdentifier === toPnIdentifier);
+      if (row?.peerMailboxRouteKey && /^[a-f0-9]{64}$/i.test(row.peerMailboxRouteKey)) {
+        peerRouteKey = row.peerMailboxRouteKey.trim();
+        cachePeerMailboxRouteKey({
+          connectionId: row.connectionId || connId,
+          peerPnIdentifier: toPnIdentifier,
+          peerMailboxRouteKey: peerRouteKey
+        });
+      }
+    } catch {
+      /* server may still resolve recipient claimed route */
     }
-  } catch {
-    /* server may still resolve recipient claimed route */
+  } else {
+    peerRouteKey = peerRouteKey.trim();
   }
 
   if (!peerRouteKey) {

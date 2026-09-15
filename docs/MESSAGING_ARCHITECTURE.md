@@ -18,7 +18,9 @@ Under **device cloud custody** ([ADR_DEVICE_CLOUD_CUSTODY.md](./architecture/ADR
 5. Per-message keys via HKDF (`par-noir-dm-v1` + `connectionId`).
 6. **Send:** Client refuses send without peer `routeKey` + openable session. Then `POST /api/messages/send` with `encryptedContent`, `cryptoVersion: 2`, `connectionId`, and peer `routeKey`.
    - **Device custody (default on):** Client commits sender outbox first; API fans out recipient-only **opaque** throughway jobs (`delivery: throughway`). Devices flush with locally held cloud keys and materialize silos before ack.
-7. **Read / paint:** `GET|POST /api/messages/conversation` returns `encryptedContent`; client decrypts **only** via `DmThreadSession`. Ciphertext without a session or failed decrypt ⇒ `[Unable to decrypt message]` — **never** an empty bubble. Socket / mailbox events are **wake-only** (reload SoT); they must not invent peer-attributed Message rows.
+7. **Read / paint:** Durable SoT is `GET|POST /api/messages/conversation` (ciphertext); client decrypts **only** via `DmThreadSession`. Ciphertext without a session or failed decrypt ⇒ `[Unable to decrypt message]` — **never** an empty bubble.
+   - **Online sub-1s path:** Socket.IO `new_message` may carry the **same opaque ciphertext** as the mailbox job. An **open** thread may decrypt that blob with its existing `DmThreadSession` / group `chatKey` and merge by `messageId`. Attribution uses open-thread peer/self (plus in-transit `fromPnIdentifier` when present) — never invent a peer-default Message row when no session is open. Mailbox drain + Sheets apply remain durable; UI reloads SoT after apply to confirm.
+   - **Wake without ciphertext / no open session:** reload SoT only — do not invent rows.
 8. **Public likes/comments:** aggregator public counts only (`delivery: public`) — not mailbox jobs.
 
 Inbox sheets cache opaque recovery blobs on user Drive—column F (`kemCiphertext`) for the requester, column H (`wrappedMessageRootKey`) for the acceptor—not a server-held secret and never plaintext `messageRootKey`.

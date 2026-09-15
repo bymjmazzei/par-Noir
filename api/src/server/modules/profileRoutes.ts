@@ -284,9 +284,13 @@ export function setupProfileRoutes(app: express.Application, deps: ProfileRouteD
           mlKemPublicKey: (dbProfile?.ml_kem_public_key as string | null) || null
         };
 
-        // Enrich from Drive when possible; never 500 if Drive/custody token is unavailable.
+        // Enrich from Drive when a cloud AT is present; skip quietly otherwise (Postgres SoT).
         const driveProfile = await (async () => {
           try {
+            const { extractCloudAccessToken } = await import('./cloudAccessToken');
+            if (!extractCloudAccessToken(req)) {
+              return null;
+            }
             const userCredentials = await storageCredentialsService.getCredentials(pnIdentifier);
             if (!userCredentials?.credentials) return null;
             const googleDriveAccounts =
@@ -304,11 +308,6 @@ export function setupProfileRoutes(app: express.Application, deps: ProfileRouteD
               });
               userAccessToken = resolved.token.access_token;
             } catch {
-              // Profile falls back to the non-Drive shape rather than failing the request.
-              safeLogger.warn('[Profile] Drive enrichment skipped — no Drive token', {
-                reason: 'cloud_token_required',
-                pnIdHash: hashIdentifier(pnIdentifier)
-              });
               return null;
             }
             if (!userAccessToken) return null;

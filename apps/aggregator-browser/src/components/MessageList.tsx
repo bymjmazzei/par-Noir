@@ -48,7 +48,7 @@ export function MessageList({ onThreadSelect, refreshKey = 0, channelClientId }:
     }
   });
 
-  // Wake-only: opaque inbound arrived — refresh inbox SoT (no peer-default preview rows).
+  // Online wake: refresh inbox listing (thread paint is MessageThread session decrypt).
   useEffect(() => {
     if (!userState.pnIdentifier) return;
     const onWake = () => {
@@ -100,7 +100,7 @@ export function MessageList({ onThreadSelect, refreshKey = 0, channelClientId }:
     if (!isInitial && isMessagingRateLimited()) return;
     const pn = userState.pnIdentifier;
     try {
-  // Inbound DMs may still be mailbox jobs — drain in background; do not gate first paint.
+      // Inbound DMs may still be mailbox jobs — drain in background; do not gate first paint.
       void requestHotDrain().catch(() => undefined);
       if (clearCacheFirst || refreshKey > 0) {
         inboxCacheService.clear(pn);
@@ -221,8 +221,9 @@ export function MessageList({ onThreadSelect, refreshKey = 0, channelClientId }:
     };
   }, [userState.isUnlocked, userState.pnIdentifier, refreshKey]);
 
-  // Realtime is primary; poll only as a backstop when the socket is disconnected.
+  // Realtime is primary; poll only as a backstop when the socket is disconnected (5 min).
   // Keep this separate so socket flaps do not re-run the initial inbox fetch.
+  // Open MessageThread does not run a second conversation poller.
   useEffect(() => {
     if (!userState.isUnlocked || !userState.pnIdentifier) return;
     if (socketConnected) return;

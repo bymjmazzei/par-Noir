@@ -288,16 +288,24 @@ export async function reconcilePublicAggregator(): Promise<ReconcilePublicAggreg
     }
   }
 
-  safeLogger.info('[Reconcile] Complete', {
-    usersChecked,
-    usersPurged,
-    filesRemoved,
-    usersSkipped,
-    errors,
-    envelopeChecked,
-    envelopeRemoved,
-    envelopeErrors,
-  });
+  const hasWork =
+    usersPurged > 0 ||
+    filesRemoved > 0 ||
+    errors > 0 ||
+    envelopeRemoved > 0 ||
+    envelopeErrors > 0;
+  if (hasWork) {
+    safeLogger.info('[Reconcile] Complete', {
+      usersChecked,
+      usersPurged,
+      filesRemoved,
+      usersSkipped,
+      errors,
+      envelopeChecked,
+      envelopeRemoved,
+      envelopeErrors,
+    });
+  }
 
   return {
     usersChecked,

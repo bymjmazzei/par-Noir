@@ -14,18 +14,20 @@ import {
   markAsRead,
   deleteConversation,
   DriveRateLimitedError,
-  MESSAGING_POLL_BACKSTOP_MS,
   MESSAGING_MAILBOX_APPLIED_EVENT,
   notifyMessagingInboxRefresh,
 } from '../services/messageService';
 import {
   MESSAGING_INBOUND_WAKE_EVENT,
+  decryptOpenThreadWakeMessage,
+  type InboundWakeDetail,
 } from '../services/inboundMailboxPreview';
 import { useUserState } from '../contexts/UserStateContext';
 import { isMessagingRateLimited } from '../services/messagingRateLimitState';
 import {
   getGroupMessages,
   sendGroupMessage,
+  getGroupChatKey,
   type GroupAccessRole,
   type GroupRecord
 } from '../services/groupService';
@@ -45,6 +47,7 @@ import { useRealtimeSync } from '../hooks/useRealtimeSync';
 import { requestHotDrain } from '../services/socialMailboxConsumer';
 import { isMessagingKeysError, requestMessagingReconnect } from '../services/messagingReconnect';
 import { BOTTOM_NAV_PADDING } from '../constants/layout';
+import { getCachedPeerMailboxRouteKey } from '../services/peerMailboxRouteCache';
 
 interface MessageThreadProps {
   participantPnIdentifier?: string;
@@ -108,7 +111,7 @@ export function MessageThread({
   const [realtimeRefresh, setRealtimeRefresh] = useState(0);
   const sendingRef = useRef(false);
   const pendingInitialScrollRef = useRef(true);
-  const socketConnected = useRealtimeSync(['new_message', 'mailbox_pending'], () =>
+  useRealtimeSync(['new_message', 'mailbox_pending'], () =>
     setRealtimeRefresh((n) => n + 1)
   );
 
@@ -350,29 +353,13 @@ export function MessageThread({
     loadMessagesRef.current = (isInitial, loadMore) => loadMessages(isInitial, loadMore);
   }, [userState.isUnlocked, userState.pnIdentifier, participantPnIdentifier, preloadedMessages, groupId, spreadsheetId]);
 
-  // Realtime is primary; poll only as a backstop when the socket is disconnected.
-  // Separate from initial load so ping-timeout flaps do not refetch the thread.
-  useEffect(() => {
-    if (!userState.isUnlocked || !userState.pnIdentifier) return;
-    if (socketConnected) return;
-    const interval = setInterval(() => {
-      if (document.visibilityState !== 'visible' || isPollingRef.current || isMessagingRateLimited()) {
-        return;
-      }
-      if (errorCountRef.current >= 3) {
-        console.warn('Too many polling errors, stopping automatic refresh');
-        return;
-      }
-      void loadMessagesRef.current(false, false);
-    }, MESSAGING_POLL_BACKSTOP_MS);
-    return () => clearInterval(interval);
-  }, [socketConnected, userState.isUnlocked, userState.pnIdentifier]);
-
+  // Realtime is primary. Disconnected backstop lives on MessageList (inbox) only —
+  // open threads avoid a second GetConversation timer; wake + applied reload the thread.
   useEffect(() => {
     if (realtimeRefresh === 0 || !userState.isUnlocked || !userState.pnIdentifier) return;
     if (isGroup && !groupRecord) return;
     if (isMessagingRateLimited() || sendingRef.current) return;
-    // Hot drain + Sheets reconcile in background; do not flip loading spinner (preview/socket paint first).
+    // Hot drain + Sheets reconcile in background; socket paint already updated UI when possible.
     void requestHotDrain()
       .catch(() => undefined)
       .then(() => {
@@ -381,19 +368,59 @@ export function MessageThread({
       });
   }, [realtimeRefresh]);
 
-  // Wake-only: opaque ciphertext arrived — reload Sheets SoT via DmThreadSession decrypt.
+  // Online sub-1s paint: decrypt socket ciphertext via open DmThreadSession / group chatKey.
+  // Do not GetConversation here (races apply-inbound); durable reload is on applied / drain.
   useEffect(() => {
     if (!userState.isUnlocked || !userState.pnIdentifier) return;
     const onWake = (ev: Event) => {
-      const detail = (ev as CustomEvent<{ connectionId?: string; groupId?: string }>).detail || {};
+      const detail = ((ev as CustomEvent<InboundWakeDetail>).detail || {}) as InboundWakeDetail;
       if (isGroup) {
         if (detail.groupId && groupId && detail.groupId !== groupId) return;
       } else if (detail.connectionId && connectionId && detail.connectionId !== connectionId) {
         return;
       }
-      if (isPollingRef.current || isMessagingRateLimited() || sendingRef.current) return;
-      void loadMessagesRef.current(false, false);
-      notifyMessagingInboxRefresh();
+      if (isMessagingRateLimited() || sendingRef.current) return;
+
+      void (async () => {
+        if (!userState.pnIdentifier || !detail.encryptedContent || !detail.messageId) {
+          notifyMessagingInboxRefresh();
+          return;
+        }
+        try {
+          let painted: Message | null = null;
+          if (isGroup && groupRecord && groupId) {
+            const chatKey = await getGroupChatKey(userState.pnIdentifier, groupRecord);
+            painted = await decryptOpenThreadWakeMessage(detail, {
+              kind: 'group',
+              myPnIdentifier: userState.pnIdentifier,
+              groupId,
+              chatKey
+            });
+          } else if (connectionId) {
+            painted = await decryptOpenThreadWakeMessage(detail, {
+              kind: 'dm',
+              myPnIdentifier: userState.pnIdentifier,
+              peerPnIdentifier: participantPnIdentifier,
+              connectionId,
+              kemCiphertext,
+              wrappedMessageRootKey,
+              peerRouteKey: getCachedPeerMailboxRouteKey({
+                connectionId,
+                peerPnIdentifier: participantPnIdentifier
+              })
+            });
+          }
+          if (painted) {
+            setMessages((prev) => {
+              if (prev.some((m) => m.messageId === painted!.messageId)) return prev;
+              return mergeChatMessages([painted!], prev);
+            });
+          }
+        } catch {
+          /* drain/applied will reload SoT */
+        }
+        notifyMessagingInboxRefresh();
+      })();
     };
     window.addEventListener(MESSAGING_INBOUND_WAKE_EVENT, onWake);
     return () => window.removeEventListener(MESSAGING_INBOUND_WAKE_EVENT, onWake);
@@ -403,7 +430,14 @@ export function MessageThread({
     isGroup,
     groupId,
     connectionId,
-    participantPnIdentifier
+    participantPnIdentifier,
+    kemCiphertext,
+    wrappedMessageRootKey,
+    ownerPnIdentifier,
+    accessRole,
+    wrappedChatKey,
+    spreadsheetId,
+    groupTitle
   ]);
 
   // After mailbox apply+ack (DM or group), reload Drive conversation.

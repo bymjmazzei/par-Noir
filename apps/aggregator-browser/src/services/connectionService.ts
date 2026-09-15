@@ -13,6 +13,10 @@ import { API_ENDPOINT } from '../config/api';
 import { ensureMailboxRouteKey } from '@par-noir/device-cloud-credentials';
 import { sealSocialEnvelope } from '@par-noir/dm-crypto';
 import { PNOAuthService } from './pnOAuthService';
+import {
+  cachePeerMailboxRouteKey,
+  clearPeerMailboxRouteKeyCache
+} from './peerMailboxRouteCache';
 
 // Helper function to get auth headers (after vault hydrate)
 async function getAuthHeaders(): Promise<HeadersInit> {
@@ -326,8 +330,17 @@ export async function getConnections(userPnIdentifier: string): Promise<Connecti
       }
 
       const result = await response.json();
-      const connections = result.connections || [];
+      const connections = (result.connections || []) as Connection[];
       connectionsCache = { pn: norm, at: Date.now(), value: connections };
+      for (const row of connections) {
+        if (row.peerMailboxRouteKey && /^[a-f0-9]{64}$/i.test(row.peerMailboxRouteKey)) {
+          cachePeerMailboxRouteKey({
+            connectionId: row.connectionId,
+            peerPnIdentifier: row.userPnIdentifier,
+            peerMailboxRouteKey: row.peerMailboxRouteKey.trim()
+          });
+        }
+      }
       return connections;
     } catch (error) {
       console.error('[getConnections] Failed to get connections:', error);
@@ -357,6 +370,7 @@ export function invalidateConnectionsCache(pnIdentifier?: string): void {
     connectionsCache = null;
     connectionsInflight.clear();
     connectionsPrefetchInflight.clear();
+    clearPeerMailboxRouteKeyCache();
     return;
   }
   const norm = normalizePnId(pnIdentifier);
@@ -365,6 +379,7 @@ export function invalidateConnectionsCache(pnIdentifier?: string): void {
   }
   connectionsInflight.delete(norm);
   connectionsPrefetchInflight.delete(norm);
+  clearPeerMailboxRouteKeyCache();
 }
 
 function normalizePnId(id: string): string {

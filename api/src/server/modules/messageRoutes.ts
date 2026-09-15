@@ -1011,6 +1011,8 @@ export function setupMessageRoutes(app: express.Application, deps: MessageRouteD
             cryptoVersion: 2,
             connectionId,
             timestamp,
+            fromPnIdentifier,
+            toPnIdentifier,
             ...(realtimeChannel ? { channelClientId: realtimeChannel } : {})
           });
           emitRealtime(toPnIdentifier, 'new_message', {
@@ -1021,6 +1023,8 @@ export function setupMessageRoutes(app: express.Application, deps: MessageRouteD
             cryptoVersion: 2,
             connectionId,
             timestamp,
+            fromPnIdentifier,
+            toPnIdentifier,
             ...(realtimeChannel ? { channelClientId: realtimeChannel } : {})
           });
           emitRealtime(toPnIdentifier, 'mailbox_pending', {

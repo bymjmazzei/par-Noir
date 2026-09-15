@@ -4,9 +4,9 @@
 
 import { deleteCache, deleteCachePattern, getCache, setCache } from '../utils/cache';
 
-const INBOX_TTL_SECONDS = 20;
-const CONVERSATION_TTL_SECONDS = 15;
-const GROUP_MTIME_TTL_SECONDS = 20;
+const INBOX_TTL_SECONDS = 120;
+const CONVERSATION_TTL_SECONDS = 120;
+const GROUP_MTIME_TTL_SECONDS = 120;
 
 function normalizePn(pnIdentifier: string): string {
   return pnIdentifier.startsWith('pn-') ? pnIdentifier : `pn-${pnIdentifier}`;

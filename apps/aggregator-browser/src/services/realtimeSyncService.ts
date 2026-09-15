@@ -74,7 +74,7 @@ async function ensureConnected(): Promise<void> {
 
     s.on('new_message', (raw: unknown) => {
       const payload = asPayload(raw);
-      // Ciphertext-bearing events: paint before mailbox drain (sub-1s path).
+      // Ciphertext-bearing events: fan wake with opaque fields for online session paint.
       void import('./inboundMailboxPreview')
         .then((m) => m.handleRealtimeCiphertextPreview(payload))
         .catch(() => undefined);
