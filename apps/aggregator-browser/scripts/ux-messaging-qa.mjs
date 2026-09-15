@@ -543,13 +543,18 @@ async function runMessagingSession(label, creds, { assessTabs = true, surfaceId 
     }
     await shot(page, `${label}-01-load`);
 
-    // Reuse live session — do not unlock again.
-    if (await isMessagingSessionLive(page)) {
+    // Reuse live session — do not unlock again (hard refresh alone wipes in-memory vault).
+    if (await isMessagingSessionLive(page) && !HARD_REFRESH) {
       slog(`[${label}] session already live — skip unlock`);
       result.unlocked = true;
       result.reconnectNotes.push('reuse_live_session skip_unlock');
     } else {
-      slog(`[${label}] unlock…`);
+      if (await isMessagingSessionLive(page) && HARD_REFRESH) {
+        slog(`[${label}] live session but force unlock (hard_refresh clears vault)`);
+        result.reconnectNotes.push('force_unlock_after_hard_refresh');
+      } else {
+        slog(`[${label}] unlock…`);
+      }
       let unlockErr = null;
       for (let attempt = 1; attempt <= 2; attempt++) {
         try {
@@ -1046,6 +1051,68 @@ if (gateFailed) {
     await pace(PHASE_GAP_MS, 'after force-wipe');
   }
 
+  // Wipe clears conversation/connection rows but Connect still needs a claimed
+  // peer mailbox route. Force both messaging profiles to POST /api/mailbox/route
+  // before browse Connect (peer_mailbox_unavailable → 409 otherwise).
+  async function claimMailboxRoute(page, label) {
+    const notes = [];
+    try {
+      const result = await page.evaluate(async () => {
+        const raw = sessionStorage.getItem('pn_oauth_session');
+        if (!raw) return { ok: false, reason: 'no_session' };
+        const s = JSON.parse(raw);
+        const pn = s.pnIdentifier;
+        const token = s.accessToken;
+        if (!pn || !token) return { ok: false, reason: 'no_pn_or_token' };
+        const hdrs = {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+          Accept: 'application/json',
+        };
+        const getRes = await fetch(
+          `https://api.parnoir.com/api/mailbox/route?pnIdentifier=${encodeURIComponent(pn)}`,
+          { headers: hdrs }
+        );
+        if (getRes.ok) {
+          const body = await getRes.json().catch(() => ({}));
+          if (typeof body?.routeKey === 'string' && /^[a-f0-9]{64}$/i.test(body.routeKey)) {
+            return { ok: true, via: 'get', status: getRes.status };
+          }
+        }
+        const bytes = new Uint8Array(32);
+        crypto.getRandomValues(bytes);
+        const routeKey = Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
+        const postRes = await fetch('https://api.parnoir.com/api/mailbox/route', {
+          method: 'POST',
+          headers: hdrs,
+          body: JSON.stringify({ pnIdentifier: pn, routeKey }),
+        });
+        const postBody = await postRes.json().catch(() => ({}));
+        return {
+          ok:
+            postRes.ok &&
+            typeof postBody?.routeKey === 'string' &&
+            /^[a-f0-9]{64}$/i.test(postBody.routeKey),
+          via: 'post',
+          status: postRes.status,
+          err: postBody?.error || null,
+        };
+      });
+      notes.push(`${label}_mailbox_claim=${JSON.stringify(result)}`);
+      slog(`  ${label} mailbox claim →`, JSON.stringify(result));
+    } catch (e) {
+      notes.push(`${label}_mailbox_claim_err=${String(e?.message || e).slice(0, 120)}`);
+    }
+    return notes;
+  }
+
+  const routeClaimNotes = [];
+  routeClaimNotes.push(...(await claimMailboxRoute(pageA, 'A_post_wipe')));
+  routeClaimNotes.push(...(await claimMailboxRoute(pageB, 'B_post_wipe')));
+  await clickTab(pageA, 'Messages');
+  await clickTab(pageB, 'Messages');
+  await pace(Math.max(PACE_MS, 3_000), 'after mailbox route claim');
+
   await dismissMessagingOverlays(pageA);
   await dismissMessagingOverlays(pageB);
   // Dead vault without linkedInactive banner: tabs look live but no X-PN-Cloud-Access-Token.
@@ -1095,15 +1162,19 @@ if (gateFailed) {
   // Browse is a separate origin — one short unlock for Connect only, then close browse.
   const browseA = await makeTrackedPage('browse-a');
   let connectLabel = 'BLOCKED';
-  let connectNotes = [];
+  let connectNotes = [...routeClaimNotes];
   try {
     const creatorUrl = `https://browse.parnoir.com/?creator=${encodeURIComponent(pnB)}`;
     await browseA.page.goto(creatorUrl, { waitUntil: 'domcontentloaded', timeout: 60_000 });
     let browseUnlocked = await isMessagingSessionLive(browseA.page);
-    if (browseUnlocked) {
+    if (browseUnlocked && !FORCE_FRESH && !HARD_REFRESH) {
       connectNotes.push('browse_reuse_live_session skip_unlock');
       slog('  browse session already live — skip unlock');
     } else {
+      if (browseUnlocked && (FORCE_FRESH || HARD_REFRESH)) {
+        connectNotes.push('browse_force_reunlock');
+        slog('  browse force re-unlock for fresh Connect');
+      }
       await unlockBrowse(browseA.page, fixtureA);
       browseUnlocked = await waitForMessagingUnlock(browseA.page, 60_000);
       connectNotes.push(`browseUnlocked=${browseUnlocked}`);
@@ -1553,9 +1624,14 @@ if (gateFailed) {
       await compose.fill(marker);
       const sendWait = pageA
         .waitForResponse(
-          (r) =>
-            r.request().method() === 'POST' &&
-            /\/api\/messages\/send/.test(new URL(r.url()).pathname),
+          (r) => {
+            if (r.request().method() !== 'POST') return false;
+            const path = new URL(r.url()).pathname;
+            return (
+              /\/api\/messages\/send(?:\/|$)/.test(path) ||
+              /\/api\/messages\/conversation(?:\/|$)/.test(path)
+            );
+          },
           { timeout: 90_000 }
         )
         .catch(() => null);
@@ -1590,6 +1666,16 @@ if (gateFailed) {
         if (bHas) break;
         if (!softDrainUsed && Date.now() - t0 > 3_000) {
           softDrainUsed = true;
+          // Soft-drain needs X-PN-Cloud-Access-Token; remint wait before Requests tab.
+          await pageB
+            .waitForResponse(
+              (r) =>
+                r.url().includes('/api/') &&
+                (r.request().headers()['x-pn-cloud-access-token'] ||
+                  r.request().headers()['X-PN-Cloud-Access-Token']),
+              { timeout: 30_000 }
+            )
+            .catch(() => null);
           dmNotes.push(...(await refreshMailboxOnPage(pageB, 'B_post_dm_soft')));
           await clickTab(pageB, 'Messages');
           const bThreadBtns = pageB.locator('button.w-full.p-4, button:has(h3)');
