@@ -532,6 +532,25 @@ async function processTextPostUpload(
       task.accountId,
       `public-envelope-${thumbnailFileId}.json`
     );
+    let feedPreviewFields: Record<string, unknown> = {};
+    if (isPublic) {
+      try {
+        uploadQueueService.updateTaskProgress(task.id, 92);
+        feedPreviewFields = await publishFeedPreviews({
+          file: thumbnailBlob,
+          mimeType: 'image/png',
+          fileId: thumbnailFileId,
+          accessToken,
+          accountId: task.accountId,
+          planId: task.metadata?.publishPlanId || 'floor',
+        });
+      } catch (previewErr) {
+        if (import.meta.env.DEV) console.error('[UploadProcessor] Thought feed preview publish failed:', previewErr);
+        throw previewErr instanceof Error
+          ? previewErr
+          : new Error('Failed to prepare feed preview');
+      }
+    }
     await createMetadata(thumbnailFileId, {
       name: `thumb_${fileName.replace('.thought', '.png')}`,
       title: task.metadata?.title || titleFromContent,
@@ -543,6 +562,7 @@ async function processTextPostUpload(
       isThoughtThumbnail: true,
       mainFileId: fileId, // Reference to main file for downloads
       ...shareFields,
+      ...feedPreviewFields,
       uploadDate: new Date().toISOString(),
       isNSFW: task.metadata?.isNSFW || false,
       textPost: thoughtData.textPost,

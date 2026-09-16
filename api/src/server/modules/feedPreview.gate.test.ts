@@ -79,6 +79,27 @@ describe('feed preview client redact + public require', () => {
     if (!r.ok) expect(r.error).toBe('feed_poster_required');
   });
 
+  it('rejects public thought-thumbnail without poster', () => {
+    const r = validatePublicFeedPreviewRefs({
+      isPublic: true,
+      fileType: 'thought-thumbnail',
+      name: 'thumb_thought-1.png',
+    });
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.error).toBe('feed_poster_required');
+  });
+
+  it('accepts public thought-thumbnail with poster', () => {
+    expect(
+      validatePublicFeedPreviewRefs({
+        isPublic: true,
+        fileType: 'thought-thumbnail',
+        name: 'thumb_thought-1.png',
+        feedPoster: { contentType: 'image/png', byteSize: 10, r2Key: 'p' },
+      }).ok
+    ).toBe(true);
+  });
+
   it('accepts public image with poster', () => {
     expect(
       validatePublicFeedPreviewRefs({
