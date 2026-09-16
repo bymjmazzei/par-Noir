@@ -182,7 +182,7 @@ describe('GoogleDriveBackend check-then-mint', () => {
     const driveOwnerCalls = [...ownerGet.mock.calls, ...ownerFetch.mock.calls];
     expect(driveOwnerCalls.length).toBeGreaterThan(0);
     for (const call of driveOwnerCalls) {
-      const pathArg = call.find((a) => typeof a === 'string' && String(a).includes('/api/'));
+      const pathArg = call.find((a: unknown) => typeof a === 'string' && String(a).includes('/api/'));
       assertNoGoogleApis(pathArg);
       expect(isDriveApiPath(pathArg)).toBe(true);
     }
