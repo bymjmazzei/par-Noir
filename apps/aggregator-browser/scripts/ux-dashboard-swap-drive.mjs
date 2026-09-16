@@ -4,7 +4,7 @@
  * for one or both test pNs. Secrets stay under .local/ — never logged.
  *
  *   node scripts/ux-dashboard-swap-drive.mjs            # both
- *   node scripts/ux-dashboard-swap-drive.mjs test-pn-2  # one
+ *   node scripts/ux-dashboard-swap-drive.mjs cursor-test-pn  # one
  *
  * Uses a persistent Chromium profile so Google login can stick across pNs.
  */
@@ -39,10 +39,10 @@ function loadEnvFile(path) {
 function loadPnFixture(which) {
   const dir = resolve(ROOT, `.local/${which}`);
   const keys = loadEnvFile(resolve(dir, 'keys.env'));
-  const fileName = keys.IDENTITY_FILE || (which === 'test-pn-2' ? 'pn374951080.pn' : 'identity.pn');
+  const fileName = keys.IDENTITY_FILE || (which === 'cursor-test-pn' ? 'pn374951080.pn' : 'identity.pn');
   let identityPath = resolve(dir, fileName);
   if (!existsSync(identityPath)) {
-    const alt = resolve(dir, which === 'test-pn-2' ? 'live-created.pn' : 'identity.pn');
+    const alt = resolve(dir, which === 'cursor-test-pn' ? 'live-created.pn' : 'identity.pn');
     if (!existsSync(alt)) throw new Error(`No identity file in ${dir}`);
     identityPath = alt;
   }
@@ -58,7 +58,7 @@ if (!google.GOOGLE_EMAIL || !google.GOOGLE_PASSWORD) {
 const whichArg = process.argv[2];
 const fixtures = whichArg
   ? [loadPnFixture(whichArg)]
-  : [loadPnFixture('test-pn'), loadPnFixture('test-pn-2')];
+  : [loadPnFixture('test-pn'), loadPnFixture('cursor-test-pn')];
 
 async function shot(page, name) {
   const p = resolve(OUT, `${name}.png`);

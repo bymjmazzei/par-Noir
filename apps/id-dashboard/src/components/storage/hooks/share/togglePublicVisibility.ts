@@ -567,69 +567,52 @@ export async function togglePublicVisibility(
           });
 
           if (backend && backend.isConnected()) {
-            // Get access token from backend
-            const accessToken = backend.getAccessToken?.();
+            const { GoogleDriveMetadataService } = await import('../../../../services/storage/GoogleDriveMetadataService');
 
-            console.log('🔍 [Phase 3] Access token check:', {
-              hasAccessToken: !!accessToken,
-              tokenLength: accessToken ? accessToken.length : 0
+            // API metadata-index already creates Sheets companion; mirror public index via Sheets API.
+            // file.backendFileId is the Google Drive file ID, file.id might be a composite ID
+            const companionMetadata: CompanionMetadata = {
+              fileId: file.id,
+              googleDriveFileId: file.backendFileId || file.id,
+              fileName: file.name,
+              originalName: file.originalName || file.name.replace('.encrypted', ''),
+              mimeType: file.mimeType || 'application/octet-stream',
+              size: parseInt(String(file.size || 0), 10),
+              visibility: 'public',
+              uploadedAt: file.aggregatedAt || new Date().toISOString(),
+              owner: {
+                did: resolvedAuth?.publicKey ? (resolvedAuth.publicKey.startsWith('did:') ? resolvedAuth.publicKey : `did:key:${resolvedAuth.publicKey}`) : undefined,
+                identifier: metadataPnIdentifier
+              },
+              tags: publicMetadata.keywords || [],
+              description: publicMetadata.description || '',
+              publicToken: publicMetadata.publicToken,
+              publicContentRef: publicMetadata.publicContentRef,
+              engagement: publicMetadata.engagement
+            };
+
+            console.log('📝 [Phase 3] Updating public index via API...', {
+              fileId: companionMetadata.fileId,
+              googleDriveFileId: companionMetadata.googleDriveFileId,
+              fileName: companionMetadata.fileName,
+              visibility: companionMetadata.visibility
             });
 
-            if (accessToken) {
-              const { GoogleDriveMetadataService } = await import('../../../../services/storage/GoogleDriveMetadataService');
+            const publicIndexResult = await GoogleDriveMetadataService.updatePublicFileIndex(
+              '',
+              metadataPnIdentifier,
+              companionMetadata
+            ).catch(err => {
+              console.warn('⚠️ [Phase 3] Failed to update public index (non-critical, API is source of truth):', err);
+              return null;
+            });
 
-              // SIMPLIFIED: The API endpoint already creates Google Sheets companion metadata
-              // We only need to update the public-file-index.json as a backup/cache
-              // The database (updated via API) is the source of truth
-              // CRITICAL: Ensure we use the actual Google Drive file ID for googleDriveFileId
-              // file.backendFileId is the Google Drive file ID, file.id might be a composite ID
-              const companionMetadata: CompanionMetadata = {
-                fileId: file.id,
-                googleDriveFileId: file.backendFileId || file.id,
-                fileName: file.name,
-                originalName: file.originalName || file.name.replace('.encrypted', ''),
-                mimeType: file.mimeType || 'application/octet-stream',
-                size: parseInt(String(file.size || 0), 10),
-                visibility: 'public',
-                uploadedAt: file.aggregatedAt || new Date().toISOString(),
-                owner: {
-                  did: resolvedAuth?.publicKey ? (resolvedAuth.publicKey.startsWith('did:') ? resolvedAuth.publicKey : `did:key:${resolvedAuth.publicKey}`) : undefined,
-                  identifier: metadataPnIdentifier
-                },
-                tags: publicMetadata.keywords || [],
-                description: publicMetadata.description || '',
-                publicToken: publicMetadata.publicToken,
-                publicContentRef: publicMetadata.publicContentRef,
-                engagement: publicMetadata.engagement
-              };
-
-              console.log('📝 [Phase 3] Updating public index file (backup/cache only)...', {
-                fileId: companionMetadata.fileId,
-                googleDriveFileId: companionMetadata.googleDriveFileId,
-                fileName: companionMetadata.fileName,
-                visibility: companionMetadata.visibility
-              });
-
-              // Only update the public index file - API endpoint handles Google Sheets creation
-              const publicIndexResult = await GoogleDriveMetadataService.updatePublicFileIndex(
-                accessToken,
-                metadataPnIdentifier,
-                companionMetadata
-              ).catch(err => {
-                console.warn('⚠️ [Phase 3] Failed to update public index (non-critical, API is source of truth):', err);
-                return null;
-              });
-
-              if (publicIndexResult) {
-                console.log('✅ [Phase 3] Public index file updated successfully (backup/cache)');
-                setSuccessMessage('File made public!');
-              }
-            } else {
-              console.warn('⚠️ [Phase 3] No access token available to update Google Drive public index');
-              setError('Failed to update public index: No access token available');
+            if (publicIndexResult !== undefined) {
+              console.log('✅ [Phase 3] Public index updated successfully');
+              setSuccessMessage('File made public!');
             }
           } else {
-            console.warn('⚠️ [Phase 3] Backend not connected - cannot update Google Drive public index', {
+            console.warn('⚠️ [Phase 3] Backend not connected - cannot update public index', {
               backendFound: !!backend,
               isConnected: backend ? backend.isConnected() : false
             });

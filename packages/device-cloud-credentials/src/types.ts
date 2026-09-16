@@ -43,7 +43,8 @@ export interface FlushContext {
   applyJob: (job: MailboxJob, credentials: StorageCredentialsEnvelope) => Promise<boolean>;
   /**
    * Extra auth headers (e.g. device proof). Merged after Bearer.
-   * Factory receives method + path + optional JSON body for proof signing.
+   * Cloud AT is minted internally when apiBaseUrl is set — do not pass
+   * ownerApiHeadersAsync here. Factory receives method + path + optional JSON body.
    */
   buildAuthHeaders?: (
     method: string,

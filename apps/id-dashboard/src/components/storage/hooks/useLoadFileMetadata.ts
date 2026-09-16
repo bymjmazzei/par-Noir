@@ -55,15 +55,14 @@ export function useLoadFileMetadata({
       if (backend && backend.isConnected() && credentials?.pnName) {
         try {
           const { GoogleDriveMetadataService } = await import('../../../services/storage/GoogleDriveMetadataService');
-          let ensuredToken: string | null = null;
-          if (typeof backend.ensureAccessToken === 'function') {
-            ensuredToken = await backend.ensureAccessToken();
+          const ownerApiToken = resolveOwnerApiToken();
+          if (!ownerApiToken) {
+            console.warn('⚠️ [Metadata] No owner API token — skipping owner-index load');
+            return;
           }
-          const token = ensuredToken;
 
-          if (token) {
-            console.log('✅ [Metadata] Google Drive connected, loading owner index...');
-            let pnIdentifier: string | undefined;
+          console.log('✅ [Metadata] Loading owner index via API...');
+          let pnIdentifier: string | undefined;
             
             // Use VolumeIdGenerator for consistent pnIdentifier generation (same as desktop app)
             try {
@@ -113,7 +112,7 @@ export function useLoadFileMetadata({
             // under custody this returns null and we fall through below.
             const ownerIndex = await GoogleDriveMetadataService.getOwnerFileIndexFromContentClasses(
               pnIdentifier,
-              resolveOwnerApiToken()
+              ownerApiToken
             );
 
             if (ownerIndex && ownerIndex.files) {
@@ -186,7 +185,6 @@ export function useLoadFileMetadata({
               setFileMetadataMap(normalized);
               return;
             }
-          }
         } catch (ownerIndexError) {
           console.warn('Failed to load from owner index, falling back to metadata service:', ownerIndexError);
         }

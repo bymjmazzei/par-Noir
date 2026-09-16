@@ -22,7 +22,6 @@ import {
   promoteLocalOutbox,
   promoteOutboxRecord,
   upsertLocalOutboxRecord,
-  getCloudAccessTokenFromSession,
   requireOnlineCloudForSend,
   type OutboxRecord
 } from '@par-noir/device-cloud-credentials';
@@ -344,18 +343,11 @@ async function promoteOpts(userPnIdentifier: string) {
     throw new Error('Not authenticated');
   }
   requireOnlineCloudForSend(userPnIdentifier);
-  const { ownerApiHeadersAsync } = await import('./ownerApiHeaders');
   return {
     apiBaseUrl: API_ENDPOINT,
     authToken: session.accessToken,
     identityId: userPnIdentifier,
-    session: sealSessionForOutbox(userPnIdentifier),
-    buildAuthHeaders: async () => {
-      const headers = await ownerApiHeadersAsync();
-      delete headers.Authorization;
-      return headers;
-    },
-    getCloudAccessToken: () => getCloudAccessTokenFromSession(userPnIdentifier) || undefined
+    session: sealSessionForOutbox(userPnIdentifier)
   };
 }
 

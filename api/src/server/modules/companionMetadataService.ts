@@ -1,6 +1,7 @@
 /**
  * Provider-agnostic companion metadata facade.
  * Portable social cloud → JSON blobs; Google → Sheets.
+ * Google writes require accessToken (fail closed). Probes without AT return false/null.
  */
 
 import {
@@ -13,10 +14,24 @@ import {
   type ViewRecord
 } from './companionMetadataSheets';
 import { getOwnerStorageContext } from './storage/ownerStorageContext';
+import { isPortableStorageProvider } from './storage/storageProviderUtils';
 import * as portable from './storage/companionMetadataPortableService';
 
 function normalizePn(pn: string): string {
   return pn.startsWith('pn-') ? pn : `pn-${pn}`;
+}
+
+function requireCtx(
+  ctx: Awaited<ReturnType<typeof getOwnerStorageContext>>,
+  accessToken?: string
+): NonNullable<Awaited<ReturnType<typeof getOwnerStorageContext>>> {
+  if (!ctx) {
+    throw Object.assign(
+      new Error(accessToken ? 'Storage not connected' : 'Google Drive access token required'),
+      { code: accessToken ? 'STORAGE_NOT_CONNECTED' : 'CLOUD_TOKEN_REQUIRED' }
+    );
+  }
+  return ctx;
 }
 
 export class CompanionMetadataService {
@@ -26,8 +41,10 @@ export class CompanionMetadataService {
     metadata: CompanionMetadata,
     accessToken?: string
   ): Promise<string> {
-    const ctx = await getOwnerStorageContext(normalizePn(ownerPn), { accessToken });
-    if (!ctx) throw new Error('Storage not connected');
+    const ctx = requireCtx(
+      await getOwnerStorageContext(normalizePn(ownerPn), { accessToken }),
+      accessToken
+    );
     if (ctx.kind === 'portable') {
       return portable.createCompanionPortable(ctx.pnIdentifier, fileId, metadata, ctx.accountId);
     }
@@ -41,12 +58,15 @@ export class CompanionMetadataService {
     );
   }
 
-  static async exists(ownerPn: string, fileId: string): Promise<boolean> {
-    const ctx = await getOwnerStorageContext(normalizePn(ownerPn));
-    if (!ctx) return false;
-    if (ctx.kind === 'portable') {
-      return portable.existsCompanionPortable(ctx.pnIdentifier, fileId, ctx.accountId);
+  /** Probe: portable without AT; Google requires AT (else false). */
+  static async exists(ownerPn: string, fileId: string, accessToken?: string): Promise<boolean> {
+    const pn = normalizePn(ownerPn);
+    if (await isPortableStorageProvider(pn)) {
+      return portable.existsCompanionPortable(pn, fileId, undefined);
     }
+    if (!String(accessToken || '').trim()) return false;
+    const ctx = await getOwnerStorageContext(pn, { accessToken });
+    if (!ctx || ctx.kind !== 'google_drive') return false;
     const id = await CompanionMetadataSheets.findSpreadsheet(
       ctx.token,
       ctx.metadataFolderId,
@@ -57,12 +77,19 @@ export class CompanionMetadataService {
     return id != null;
   }
 
-  static async read(ownerPn: string, fileId: string): Promise<CompanionMetadata | null> {
-    const ctx = await getOwnerStorageContext(normalizePn(ownerPn));
-    if (!ctx) return null;
-    if (ctx.kind === 'portable') {
-      return portable.readCompanionPortable(ctx.pnIdentifier, fileId, ctx.accountId);
+  /** Probe: portable without AT; Google requires AT (else null). */
+  static async read(
+    ownerPn: string,
+    fileId: string,
+    accessToken?: string
+  ): Promise<CompanionMetadata | null> {
+    const pn = normalizePn(ownerPn);
+    if (await isPortableStorageProvider(pn)) {
+      return portable.readCompanionPortable(pn, fileId, undefined);
     }
+    if (!String(accessToken || '').trim()) return null;
+    const ctx = await getOwnerStorageContext(pn, { accessToken });
+    if (!ctx || ctx.kind !== 'google_drive') return null;
     const spreadsheetId = await CompanionMetadataSheets.findSpreadsheet(
       ctx.token,
       ctx.metadataFolderId,
@@ -85,8 +112,10 @@ export class CompanionMetadataService {
     patch: Partial<CompanionMetadata>,
     accessToken?: string
   ): Promise<void> {
-    const ctx = await getOwnerStorageContext(normalizePn(ownerPn), { accessToken });
-    if (!ctx) throw new Error('Storage not connected');
+    const ctx = requireCtx(
+      await getOwnerStorageContext(normalizePn(ownerPn), { accessToken }),
+      accessToken
+    );
     if (ctx.kind === 'portable') {
       await portable.updateCompanionPortable(ctx.pnIdentifier, fileId, patch, ctx.accountId);
       return;
@@ -109,8 +138,10 @@ export class CompanionMetadataService {
   }
 
   static async appendLike(ownerPn: string, fileId: string, like: LikeRecord, accessToken?: string): Promise<void> {
-    const ctx = await getOwnerStorageContext(normalizePn(ownerPn), { accessToken });
-    if (!ctx) return;
+    const ctx = requireCtx(
+      await getOwnerStorageContext(normalizePn(ownerPn), { accessToken }),
+      accessToken
+    );
     if (ctx.kind === 'portable') {
       await portable.appendLikePortable(ctx.pnIdentifier, fileId, like, ctx.accountId);
       return;
@@ -133,8 +164,10 @@ export class CompanionMetadataService {
   }
 
   static async removeLike(ownerPn: string, fileId: string, pnIdentifier: string, accessToken?: string): Promise<void> {
-    const ctx = await getOwnerStorageContext(normalizePn(ownerPn), { accessToken });
-    if (!ctx) return;
+    const ctx = requireCtx(
+      await getOwnerStorageContext(normalizePn(ownerPn), { accessToken }),
+      accessToken
+    );
     if (ctx.kind === 'portable') {
       await portable.removeLikePortable(ctx.pnIdentifier, fileId, pnIdentifier, ctx.accountId);
       return;
@@ -163,8 +196,10 @@ export class CompanionMetadataService {
     comment: CommentRecord,
     accessToken?: string
   ): Promise<void> {
-    const ctx = await getOwnerStorageContext(normalizePn(ownerPn), { accessToken });
-    if (!ctx) return;
+    const ctx = requireCtx(
+      await getOwnerStorageContext(normalizePn(ownerPn), { accessToken }),
+      accessToken
+    );
     if (ctx.kind === 'portable') {
       await portable.appendCommentPortable(ctx.pnIdentifier, fileId, comment, ctx.accountId);
       return;
@@ -187,8 +222,10 @@ export class CompanionMetadataService {
   }
 
   static async appendShare(ownerPn: string, fileId: string, share: ShareRecord, accessToken?: string): Promise<void> {
-    const ctx = await getOwnerStorageContext(normalizePn(ownerPn), { accessToken });
-    if (!ctx) return;
+    const ctx = requireCtx(
+      await getOwnerStorageContext(normalizePn(ownerPn), { accessToken }),
+      accessToken
+    );
     if (ctx.kind === 'portable') {
       await portable.appendSharePortable(ctx.pnIdentifier, fileId, share, ctx.accountId);
       return;
@@ -211,8 +248,10 @@ export class CompanionMetadataService {
   }
 
   static async appendSave(ownerPn: string, fileId: string, save: SaveRecord, accessToken?: string): Promise<void> {
-    const ctx = await getOwnerStorageContext(normalizePn(ownerPn), { accessToken });
-    if (!ctx) return;
+    const ctx = requireCtx(
+      await getOwnerStorageContext(normalizePn(ownerPn), { accessToken }),
+      accessToken
+    );
     if (ctx.kind === 'portable') {
       await portable.appendSavePortable(ctx.pnIdentifier, fileId, save, ctx.accountId);
       return;
@@ -235,8 +274,10 @@ export class CompanionMetadataService {
   }
 
   static async removeSave(ownerPn: string, fileId: string, pnIdentifier: string, accessToken?: string): Promise<void> {
-    const ctx = await getOwnerStorageContext(normalizePn(ownerPn), { accessToken });
-    if (!ctx) return;
+    const ctx = requireCtx(
+      await getOwnerStorageContext(normalizePn(ownerPn), { accessToken }),
+      accessToken
+    );
     if (ctx.kind === 'portable') {
       await portable.removeSavePortable(ctx.pnIdentifier, fileId, pnIdentifier, ctx.accountId);
       return;
@@ -260,8 +301,10 @@ export class CompanionMetadataService {
   }
 
   static async appendView(ownerPn: string, fileId: string, view: ViewRecord, accessToken?: string): Promise<void> {
-    const ctx = await getOwnerStorageContext(normalizePn(ownerPn), { accessToken });
-    if (!ctx) return;
+    const ctx = requireCtx(
+      await getOwnerStorageContext(normalizePn(ownerPn), { accessToken }),
+      accessToken
+    );
     if (ctx.kind === 'portable') {
       await portable.appendViewPortable(ctx.pnIdentifier, fileId, view, ctx.accountId);
       return;

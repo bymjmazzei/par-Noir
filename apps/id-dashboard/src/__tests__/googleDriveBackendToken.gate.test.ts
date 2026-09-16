@@ -2,7 +2,8 @@
  * @jest-environment jsdom
  *
  * Gate: GoogleDriveBackend must check token freshness (or mint) before any
- * googleapis.com fetch. Unknown expiry is not fresh; dead tokens are cleared.
+ * /api/drive/ owner call. Unknown expiry is not fresh; dead tokens are cleared.
+ * Drive I/O must use API paths (/api/drive/ or api.parnoir.com), never googleapis.
  */
 const GOOGLE_REFRESH_PATH = '/api/auth/google-oauth/refresh';
 const DRIVE_TOKEN_SKEW_MS = 60_000;
@@ -17,6 +18,15 @@ jest.mock('../utils/integrationCredentialManager', () => ({
     getCredentials: jest.fn(),
     removeCredentials: jest.fn()
   }
+}));
+
+const ownerFetch = jest.fn();
+const ownerGet = jest.fn();
+
+jest.mock('../services/ownerApiService', () => ({
+  ownerFetch: (...args: unknown[]) => ownerFetch(...args),
+  ownerGet: (...args: unknown[]) => ownerGet(...args),
+  getOwnerApiPnIdentifier: () => 'pn-abcdef123456'
 }));
 
 jest.mock('@par-noir/device-cloud-credentials', () => {
@@ -71,9 +81,24 @@ jest.mock('@par-noir/device-cloud-credentials', () => {
 });
 
 import { GoogleDriveBackend } from '../services/storage/GoogleDriveBackend';
+import * as fs from 'fs';
+import * as path from 'path';
 
 const API = 'https://api.example.com';
 const TWO_HOURS_AGO = Date.now() - 2 * 60 * 60 * 1000;
+
+function isDriveApiPath(urlOrPath: unknown): boolean {
+  const s = String(urlOrPath);
+  return (
+    s.includes('/api/drive/') ||
+    s.includes('api.parnoir.com') ||
+    s.includes('api.example.com')
+  );
+}
+
+function assertNoGoogleApis(urlOrPath: unknown): void {
+  expect(String(urlOrPath)).not.toMatch(/googleapis\.com/i);
+}
 
 describe('GoogleDriveBackend check-then-mint', () => {
   let fetchMock: jest.Mock;
@@ -81,6 +106,18 @@ describe('GoogleDriveBackend check-then-mint', () => {
   beforeEach(() => {
     fetchMock = jest.fn();
     global.fetch = fetchMock as typeof fetch;
+    ownerFetch.mockReset();
+    ownerGet.mockReset();
+  });
+
+  it('source file has no googleapis.com URLs', () => {
+    const src = fs.readFileSync(
+      path.join(__dirname, '../services/storage/GoogleDriveBackend.ts'),
+      'utf8'
+    );
+    expect(src).not.toMatch(/googleapis\.com/i);
+    expect(src).not.toMatch(/makeRequest/);
+    expect(src).toMatch(/\/api\/drive\//);
   });
 
   it('does not treat unknown expiry as fresh after connect', async () => {
@@ -95,21 +132,33 @@ describe('GoogleDriveBackend check-then-mint', () => {
     expect(backend.getAccessToken()).toBeNull();
   });
 
-  it('refreshes via canonical API path before the first googleapis.com request', async () => {
+  it('refreshes via canonical API path before the first /api/drive/ request', async () => {
     fetchMock.mockImplementation(async (url: string) => {
+      assertNoGoogleApis(url);
       if (url.includes(GOOGLE_REFRESH_PATH)) {
         return {
           ok: true,
           json: async () => ({ access_token: 'minted-ga', expires_in: 3600 })
         };
       }
-      if (url.includes('googleapis.com')) {
-        return {
-          ok: true,
-          json: async () => ({ files: [] })
-        };
-      }
       throw new Error(`unexpected fetch: ${url}`);
+    });
+
+    ownerGet.mockImplementation(async (_auth: string, pathArg: string) => {
+      assertNoGoogleApis(pathArg);
+      expect(isDriveApiPath(pathArg)).toBe(true);
+      return {
+        ok: true,
+        json: async () => ({ files: [] })
+      };
+    });
+    ownerFetch.mockImplementation(async (_auth: string, _method: string, pathArg: string) => {
+      assertNoGoogleApis(pathArg);
+      expect(isDriveApiPath(pathArg)).toBe(true);
+      return {
+        ok: true,
+        json: async () => ({ folder: { id: 'folder-1', name: 'par Noir - pn-abcdef123456' } })
+      };
     });
 
     const backend = new GoogleDriveBackend({
@@ -128,13 +177,23 @@ describe('GoogleDriveBackend check-then-mint', () => {
     const firstRefreshIdx = fetchMock.mock.calls.findIndex(([u]) =>
       String(u).includes(GOOGLE_REFRESH_PATH)
     );
-    const firstDriveIdx = fetchMock.mock.calls.findIndex(([u]) => String(u).includes('googleapis.com'));
-
     expect(firstRefreshIdx).toBeGreaterThanOrEqual(0);
-    expect(firstDriveIdx).toBeGreaterThan(firstRefreshIdx);
+
+    const driveOwnerCalls = [...ownerGet.mock.calls, ...ownerFetch.mock.calls];
+    expect(driveOwnerCalls.length).toBeGreaterThan(0);
+    for (const call of driveOwnerCalls) {
+      const pathArg = call.find((a) => typeof a === 'string' && String(a).includes('/api/'));
+      assertNoGoogleApis(pathArg);
+      expect(isDriveApiPath(pathArg)).toBe(true);
+    }
+
+    const googleApisFetch = fetchMock.mock.calls.find(([u]) =>
+      String(u).includes('googleapis.com')
+    );
+    expect(googleApisFetch).toBeUndefined();
   });
 
-  it('ensureAccessToken returns null and skips google when refresh is unavailable', async () => {
+  it('ensureAccessToken returns null and skips drive API when refresh is unavailable', async () => {
     const backend = new GoogleDriveBackend({
       id: 'gd-test',
       apiEndpoint: API,
@@ -150,6 +209,8 @@ describe('GoogleDriveBackend check-then-mint', () => {
 
     expect(tok).toBeNull();
     expect(fetchMock).not.toHaveBeenCalled();
+    expect(ownerFetch).not.toHaveBeenCalled();
+    expect(ownerGet).not.toHaveBeenCalled();
     expect(backend.getAccessToken()).toBeNull();
   });
 
@@ -178,5 +239,6 @@ describe('GoogleDriveBackend check-then-mint', () => {
     );
     expect(tok).toBe('minted-ga');
     expect(backend.getAccessToken()).toBe('minted-ga');
+    expect(String(fetchMock.mock.calls[0]?.[0])).not.toMatch(/googleapis\.com/i);
   });
 });

@@ -163,7 +163,7 @@ const report = {
 
 try {
   const fixtureA = loadFixture('test-pn');
-  const fixtureB = loadFixture('test-pn-2');
+  const fixtureB = loadFixture('cursor-test-pn');
   const a = await attach(9333, 'https://messaging.parnoir.com/');
   const b = await attach(9334, 'https://messaging.parnoir.com/');
   const pageA = a.page;

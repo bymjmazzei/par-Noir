@@ -10,6 +10,18 @@ Evidence: **OBSERVED** (this pass) vs **INFERRED** (imports/package).
 
 ---
 
+## Custody philosophy burn-down (2026-09-16)
+
+Architecture allowlists emptied (`dual-drive-helper`, `owner-api-headers`, `googleapis-resolver`). Soft-null companion Drive mirrors removed under custody; public engagement remains server aggregator DB (`delivery: public`).
+
+| Check | Result |
+|---|---|
+| Unlock browse (agent `.local/cursor-test-pn`) | **OBSERVED** `UNLOCKED true` — challenge/authenticate/token/userinfo + cloud-vault GET + `POST /api/auth/google-oauth/refresh` |
+| Boundary scripts (`PN_CHECK_ALL=1`) | **OK** dual-drive / owner-fetch / googleapis-resolver |
+| dual_dm_success | Still **BLOCKED** until dual harness re-run with `test-pn` + `cursor-test-pn` (formerly test-pn-2) |
+
+---
+
 ## Summary by app
 
 | App | Unlocked | Flows walked | Labels |
@@ -54,7 +66,7 @@ Evidence: **OBSERVED** (this pass) vs **INFERRED** (imports/package).
 | Bottom nav Inbox | LIVE_REAL | OBSERVED | GET /api/storage/pn-87f49f0fb345/layout/status (200), GET /api/drive/files (200), GET /api/storage/pn-87f49f0fb345/layout/status (200) | MessagesPage.tsx / Inbox.tsx | — |
 | Bottom nav Me | LIVE_REAL | OBSERVED | GET /api/aggregator/metadata-index/1D_Ey5ESOD2OsX9f35dy9O7mS_THLrmyb (404), GET /api/aggregator/metadata-index/1mgUxk0dOrkBndHg2NjWcLsJv8Q8hvkbc (404) | MePage.tsx | — |
 | Engagement sidebar / like affordance | LIVE_UNFINISHED | OBSERVED | — | FeedEngagementSidebar / ProfileActionMenu | DISCOVER empty (“no public files”); Me `?creator=` empty profile **has** engagement chrome + Connect in Profile actions |
-| Profile Connect via `?creator=` | LIVE_REAL | OBSERVED | POST /api/connections/request (200); toast “Connection request sent!” | MePage empty + ProfileActionMenu | test-pn → test-pn-2; no public post required if pn id known |
+| Profile Connect via `?creator=` | LIVE_REAL | OBSERVED | POST /api/connections/request (200); toast “Connection request sent!” | MePage empty + ProfileActionMenu | test-pn → cursor-test-pn (agent B); no public post required if pn id known |
 | Lock pN | LIVE_REAL | OBSERVED | — | LockButtonWithContext.tsx | — |
 
 ---

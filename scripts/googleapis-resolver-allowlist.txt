@@ -6,13 +6,5 @@
 # without that import; entries are only ever REMOVED, never added.
 #
 # Paths relative to repo root. Blank lines and # comments ignored.
-
-# Parameter sink: receives a token from callers. Callers must ensure freshness.
-apps/id-dashboard/src/services/storage/GoogleDriveMetadataService.ts
-
-# Uses GoogleDriveBackend.ensureAccessToken() then fetches Drive; migrate off direct fetch.
-apps/id-dashboard/src/services/feeds/FeedGoogleDriveService.ts
-
-# OAuth connect path: Bearer is a token just minted from a code exchange.
-apps/id-dashboard/src/components/storage/hooks/useGoogleDriveOAuthConnect.ts
-packages/oauth-ui/src/cloudReconnect/reconnectFlows.ts
+#
+# Phase 4 complete: allowlist empty (comments only).

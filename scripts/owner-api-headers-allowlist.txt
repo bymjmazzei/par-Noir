@@ -6,9 +6,6 @@
 #   apps/aggregator-browser/src/services/ownerApiFetch.ts
 #   apps/aggregator-browser/src/services/ownerApiHeaders.ts
 #   apps/aggregator-browser/src/services/messageAuthFetch.ts
-
-apps/aggregator-browser/src/services/connectionService.ts
-apps/aggregator-browser/src/services/groupService.ts
-apps/aggregator-browser/src/services/messageService.ts
-apps/aggregator-browser/src/services/socialMailboxConsumer.ts
-apps/aggregator-browser/src/services/publicSharePublish.ts
+#
+# Phase 2 complete: allowlist empty — mailbox/outbox mint in
+# @par-noir/device-cloud-credentials; publicShare via ownerFetch.

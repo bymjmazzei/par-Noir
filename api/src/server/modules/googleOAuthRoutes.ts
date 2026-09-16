@@ -118,11 +118,38 @@ export function setupGoogleOAuthRoutes(app: express.Application, deps: GoogleOAu
           });
         }
 
+        // Server-side userinfo probe so clients never call googleapis userinfo/about.
+        let email: string | undefined;
+        let name: string | undefined;
+        if (tokenData.access_token) {
+          try {
+            const userInfoResponse = await fetch('https://www.googleapis.com/oauth2/v2/userinfo', {
+              headers: { Authorization: `Bearer ${tokenData.access_token}` },
+            });
+            if (userInfoResponse.ok) {
+              const userInfo = (await userInfoResponse.json()) as { email?: string; name?: string };
+              if (typeof userInfo.email === 'string' && userInfo.email.includes('@')) {
+                email = userInfo.email;
+              }
+              if (typeof userInfo.name === 'string' && userInfo.name.trim()) {
+                name = userInfo.name.trim();
+              }
+            }
+          } catch (probeErr) {
+            console.warn(
+              '[Google OAuth Token Exchange] userinfo probe failed (non-fatal):',
+              probeErr instanceof Error ? probeErr.message : probeErr
+            );
+          }
+        }
+
         return res.json({
           access_token: tokenData.access_token,
           refresh_token: tokenData.refresh_token,
           expires_in: tokenData.expires_in,
           token_type: tokenData.token_type || 'Bearer',
+          ...(email ? { email } : {}),
+          ...(name ? { name } : {}),
         });
       } catch (error: any) {
         console.error('Error exchanging Google OAuth code:', error);

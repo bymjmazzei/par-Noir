@@ -1,5 +1,6 @@
 import type { FlushContext, MailboxJob } from './types.js';
 import { isMailboxRouteKey } from './mailboxRouteKey.js';
+import { mintDriveAuthExtras, type BuildAuthHeaders } from './mintDriveAuthHeaders.js';
 
 export interface FlushResult {
   pulled: number;
@@ -43,9 +44,15 @@ export class CloudFlushWorker {
       pathWithQuery: string,
       body?: unknown
     ): Promise<Record<string, string>> => {
-      const extra = ctx.buildAuthHeaders
-        ? await ctx.buildAuthHeaders(method, pathWithQuery, body)
-        : {};
+      const extra = await mintDriveAuthExtras({
+        authToken: ctx.authToken,
+        pnIdentifier: ctx.identityId,
+        apiEndpoint: ctx.apiBaseUrl,
+        buildAuthHeaders: ctx.buildAuthHeaders,
+        method,
+        path: pathWithQuery,
+        body
+      });
       return {
         Authorization: `Bearer ${ctx.authToken}`,
         Accept: 'application/json',
@@ -135,18 +142,20 @@ export async function claimMailboxRoute(opts: {
   authToken: string;
   identityId: string;
   routeKey: string;
-  buildAuthHeaders?: (
-    method: string,
-    path: string,
-    body?: unknown
-  ) => Record<string, string> | Promise<Record<string, string>>;
+  buildAuthHeaders?: BuildAuthHeaders;
 }): Promise<string> {
   const base = opts.apiBaseUrl.replace(/\/$/, '');
   const path = '/api/mailbox/route';
   const body = { pnIdentifier: opts.identityId, routeKey: opts.routeKey };
-  const extra = opts.buildAuthHeaders
-    ? await opts.buildAuthHeaders('POST', path, body)
-    : {};
+  const extra = await mintDriveAuthExtras({
+    authToken: opts.authToken,
+    pnIdentifier: opts.identityId,
+    apiEndpoint: opts.apiBaseUrl,
+    buildAuthHeaders: opts.buildAuthHeaders,
+    method: 'POST',
+    path,
+    body
+  });
   const res = await fetch(`${base}${path}`, {
     method: 'POST',
     headers: {
@@ -172,11 +181,7 @@ export async function ackMailboxJobsRemote(opts: {
   identityId: string;
   routeKey: string;
   jobIds: string[];
-  buildAuthHeaders?: (
-    method: string,
-    path: string,
-    body?: unknown
-  ) => Record<string, string> | Promise<Record<string, string>>;
+  buildAuthHeaders?: BuildAuthHeaders;
 }): Promise<number> {
   if (!opts.jobIds.length) return 0;
   if (!isMailboxRouteKey(opts.routeKey)) {
@@ -189,9 +194,15 @@ export async function ackMailboxJobsRemote(opts: {
     routeKey: opts.routeKey.trim(),
     jobIds: opts.jobIds
   };
-  const extra = opts.buildAuthHeaders
-    ? await opts.buildAuthHeaders('POST', path, body)
-    : {};
+  const extra = await mintDriveAuthExtras({
+    authToken: opts.authToken,
+    pnIdentifier: opts.identityId,
+    apiEndpoint: opts.apiBaseUrl,
+    buildAuthHeaders: opts.buildAuthHeaders,
+    method: 'POST',
+    path,
+    body
+  });
   const res = await fetch(`${base}${path}`, {
     method: 'POST',
     headers: {

@@ -3,7 +3,7 @@
  * Connect QA Google Drive to test pN(s). Wait only while setup UI is active.
  *
  *   node scripts/ux-dashboard-connect-drive.mjs
- *   node scripts/ux-dashboard-connect-drive.mjs test-pn-2
+ *   node scripts/ux-dashboard-connect-drive.mjs cursor-test-pn
  */
 import { chromium } from 'playwright';
 import { mkdirSync, writeFileSync, readFileSync, existsSync } from 'fs';
@@ -33,17 +33,17 @@ function loadEnv(path) {
 function loadPn(which) {
   const dir = resolve(ROOT, `.local/${which}`);
   const keys = loadEnv(resolve(dir, 'keys.env'));
-  const fileName = keys.IDENTITY_FILE || (which === 'test-pn-2' ? 'pn374951080.pn' : 'identity.pn');
+  const fileName = keys.IDENTITY_FILE || (which === 'cursor-test-pn' ? 'pn374951080.pn' : 'identity.pn');
   let identityPath = resolve(dir, fileName);
   if (!existsSync(identityPath)) {
-    identityPath = resolve(dir, which === 'test-pn-2' ? 'live-created.pn' : 'identity.pn');
+    identityPath = resolve(dir, which === 'cursor-test-pn' ? 'live-created.pn' : 'identity.pn');
   }
   return { which, identityPath, PN_NAME: keys.PN_NAME, PASSCODE: keys.PASSCODE };
 }
 
 const google = loadEnv(resolve(ROOT, '.local/test-google-drive/credentials.env'));
 const whichArg = process.argv[2];
-const fixtures = whichArg ? [loadPn(whichArg)] : [loadPn('test-pn'), loadPn('test-pn-2')];
+const fixtures = whichArg ? [loadPn(whichArg)] : [loadPn('test-pn'), loadPn('cursor-test-pn')];
 
 async function shot(page, name) {
   await page.screenshot({ path: resolve(OUT, `${name}.png`), fullPage: false }).catch(() => {});

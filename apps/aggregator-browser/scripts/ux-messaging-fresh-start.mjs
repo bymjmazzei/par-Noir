@@ -20,14 +20,11 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), '../../..');
 
 function hasFixture(name) {
   const dir = resolve(root, `.local/${name}`);
-  return existsSync(resolve(dir, 'keys.env')) && (
-    existsSync(resolve(dir, 'identity.pn')) ||
-    (() => {
-      const keys = readFileSync(resolve(dir, 'keys.env'), 'utf8');
-      const file = keys.match(/^IDENTITY_FILE=(.+)$/m)?.[1]?.trim();
-      return file ? existsSync(resolve(dir, file)) : false;
-    })()
-  );
+  if (!existsSync(resolve(dir, 'keys.env'))) return false;
+  if (existsSync(resolve(dir, 'identity.pn')) || existsSync(resolve(dir, 'live-created.pn'))) return true;
+  const keys = readFileSync(resolve(dir, 'keys.env'), 'utf8');
+  const file = keys.match(/^IDENTITY_FILE=(.+)$/m)?.[1]?.trim();
+  return file ? existsSync(resolve(dir, file)) : false;
 }
 
 function slog(...a) {
@@ -40,7 +37,7 @@ slog('=== Messaging fresh-start checklist ===');
 slog('');
 slog('1. Both fixtures present:');
 slog(`   test-pn:   ${hasFixture('test-pn') ? 'OK' : 'MISSING'}`);
-slog(`   test-pn-2: ${hasFixture('test-pn-2') ? 'OK' : 'MISSING'}`);
+slog(`   cursor-test-pn: ${hasFixture('cursor-test-pn') ? 'OK' : 'MISSING'}`);
 slog('');
 slog('2. On BOTH Google Drives (each pN account):');
 slog('   - Disconnect / remove connection both ways in messaging UI');
@@ -73,7 +70,7 @@ if (test.status !== 0) {
 slog('PASS: promoteOutbox / apply-inbound unit gates');
 
 if (checkOnly) {
-  if (!hasFixture('test-pn') || !hasFixture('test-pn-2')) process.exit(2);
+  if (!hasFixture('test-pn') || !hasFixture('cursor-test-pn')) process.exit(2);
   process.exit(0);
 }
 

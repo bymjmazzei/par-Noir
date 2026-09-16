@@ -153,9 +153,27 @@ export function setupDataPointRoutes(app: any) {
       }
 
       const { getUserDriveMetadataContext } = await import('./driveMetadataHelper');
-      const ctx = await getUserDriveMetadataContext(identity_id);
+      const { resolveOwnerDriveToken, respondDriveTokenError } = await import('./ownerDriveToken');
+      let ownerToken: { token: { access_token: string } };
+      try {
+        ownerToken = await resolveOwnerDriveToken(req, identity_id);
+      } catch (err) {
+        const { hashIdentifier, safeLogger } = await import('../../utils/logger');
+        safeLogger.warn('[DataPoints] poll: cloud token required', {
+          reason: 'cloud_token_required',
+          pnIdHash: hashIdentifier(identity_id),
+        });
+        if (respondDriveTokenError(res, err)) return;
+        throw err;
+      }
+      const ctx = await getUserDriveMetadataContext(identity_id, {
+        accessToken: ownerToken.token.access_token,
+      });
       if (!ctx) {
-        return res.status(404).json({ error: 'not_found', error_description: 'User not found' });
+        return res.status(409).json({
+          error: 'cloud_token_required',
+          error_description: 'Google Drive access token required.'
+        });
       }
 
       const { DataPointRequestSheetsService } = await import('./dataPointRequestSheetsService');
@@ -220,10 +238,24 @@ export function setupDataPointRoutes(app: any) {
       }
 
       const { fetchGrantedZkpProofs } = await import('./integratorDataPointService');
+      const { resolveOwnerDriveToken, respondDriveTokenError } = await import('./ownerDriveToken');
+      let ownerToken: { token: { access_token: string } } | null = null;
+      try {
+        ownerToken = await resolveOwnerDriveToken(req, identity_id);
+      } catch (err) {
+        const { hashIdentifier, safeLogger } = await import('../../utils/logger');
+        safeLogger.warn('[DataPoints] GET: cloud token required', {
+          reason: 'cloud_token_required',
+          pnIdHash: hashIdentifier(String(identity_id)),
+        });
+        if (respondDriveTokenError(res, err)) return;
+        throw err;
+      }
       const proofs = await fetchGrantedZkpProofs({
         userPnIdentifier: identity_id,
         clientId: client_id,
-        dataPointIds: [dataPointId]
+        dataPointIds: [dataPointId],
+        accessToken: ownerToken.token.access_token,
       });
 
       const proof = proofs.find((p) => p.dataPointId === dataPointId);
@@ -264,11 +296,26 @@ export function setupDataPointRoutes(app: any) {
       }
 
       const { getUserDriveMetadataContext } = await import('./driveMetadataHelper');
-      const ctx = await getUserDriveMetadataContext(identity_id);
+      const { resolveOwnerDriveToken, respondDriveTokenError } = await import('./ownerDriveToken');
+      let ownerToken: { token: { access_token: string } };
+      try {
+        ownerToken = await resolveOwnerDriveToken(req, identity_id);
+      } catch (err) {
+        const { hashIdentifier, safeLogger } = await import('../../utils/logger');
+        safeLogger.warn('[DataPoints] request: cloud token required', {
+          reason: 'cloud_token_required',
+          pnIdHash: hashIdentifier(identity_id),
+        });
+        if (respondDriveTokenError(res, err)) return;
+        throw err;
+      }
+      const ctx = await getUserDriveMetadataContext(identity_id, {
+        accessToken: ownerToken.token.access_token,
+      });
       if (!ctx) {
-        return res.status(404).json({
-          error: 'not_found',
-          error_description: 'User Drive not connected'
+        return res.status(409).json({
+          error: 'cloud_token_required',
+          error_description: 'Google Drive access token required.'
         });
       }
 
@@ -496,7 +543,8 @@ export function setupDataPointUserRoutes(app: any) {
           userPnIdentifier: normalized,
           clientId: row.clientId,
           toolName: row.toolName,
-          dataPointIds
+          dataPointIds,
+          accessToken: ctx.accessToken,
         });
       }
 

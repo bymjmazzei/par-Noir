@@ -1,7 +1,7 @@
 /**
  * Google Drive Metadata Service (Client-Side)
- * Creates companion metadata files and public indexing using Google Drive API directly.
- * Owner/public index read and write go through the par Noir API (Sheets); no JSON index files.
+ * Companion + owner/public indexes via par Noir API (Sheets / metadata-index).
+ * No direct googleapis.com Drive or OAuth fetches from the dashboard client.
  */
 
 import { API_ENDPOINT } from '../../config/api';
@@ -316,795 +316,94 @@ export interface PublicFileIndex {
   updatedAt: string;
 }
 
+/**
+ * Client metadata facade: companion + indexes via par Noir API only.
+ * Folder layout / Sheets companion writes happen server-side (storage initialize,
+ * metadata-index PUT). No direct googleapis.com Drive/OAuth fetches.
+ */
 export class GoogleDriveMetadataService {
-  private static readonly METADATA_FOLDER_NAME = '_metadata';
-  private static readonly PUBLIC_INDEX_FILE_NAME = 'public-file-index.json';
-  private static readonly OWNER_INDEX_FILE_NAME = 'owner-file-index.json';
-  private static readonly PN_FOLDER_PREFIX = 'par Noir - pn-';
-  
   /**
-   * Standard semantic web contexts (comprehensive)
+   * Create or update companion metadata via aggregator metadata-index.
+   * API creates/updates Sheets companion under custody (X-PN-Cloud-Access-Token).
+   * `_accessToken` retained for call-site compat; ignored (owner session token used).
    */
-  private static readonly SEMANTIC_CONTEXTS = [
-    'https://schema.org/',
-    'http://purl.org/dc/terms/',
-    'http://www.w3.org/ns/prov#',
-    'http://xmlns.com/foaf/0.1/',
-    'https://www.w3.org/ns/activitystreams#',
-    'https://parnoir.com/ns/v1#'
-  ];
-  
-  /**
-   * Generate resource URI for a file
-   */
-  private static generateResourceUri(fileId: string): string {
-    return `https://parnoir.com/resource/${fileId}`;
-  }
-  
-  /**
-   * Ensure @context is always an array
-   */
-  private static ensureContextArray(context?: string | string[]): string[] {
-    if (!context) {
-      return this.SEMANTIC_CONTEXTS;
-    }
-    if (Array.isArray(context)) {
-      return context;
-    }
-    return [context, ...this.SEMANTIC_CONTEXTS.filter(c => c !== context)];
-  }
-  
-  /**
-   * Convert CompanionMetadata to PublicMetadata (semantic web format)
-   */
-  private static companionToPublicMetadata(
-    companion: CompanionMetadata,
-    creatorDid?: string
-  ): any {
-    // Determine schema.org type from mime type
-    const mimeCategory = companion.mimeType?.split('/')[0] || 'file';
-    const schemaType = 
-      mimeCategory === 'image' ? 'ImageObject' :
-      mimeCategory === 'video' ? 'VideoObject' :
-      mimeCategory === 'audio' ? 'AudioObject' :
-      'CreativeWork';
-    
-    // Generate resource URI
-    const resourceUri = this.generateResourceUri(companion.fileId);
-    const didUri = creatorDid || companion.owner.did || `did:key:${companion.owner.identifier}`;
-    
-    // Build comprehensive public metadata with full semantic web structure
-    const publicMetadata: any = {
-      '@context': this.SEMANTIC_CONTEXTS,
-      '@type': schemaType,
-      '@id': resourceUri,
-      
-      // ============================================================================
-      // CORE IDENTIFIERS
-      // ============================================================================
-      fileId: companion.fileId,
-      backend: 'google_drive',
-      backendFileId: companion.googleDriveFileId,
-      
-      // ============================================================================
-      // SCHEMA.ORG CREATIVEWORK PROPERTIES
-      // ============================================================================
-      name: companion.originalName || companion.fileName,
-      description: companion.description || '',
-      keywords: companion.tags || [],
-      uploadDate: companion.uploadedAt,
-      datePublished: companion.uploadedAt,
-      fileType: mimeCategory,
-      
-      // Creator (schema.org:creator)
-      creator: {
-        '@type': 'Person',
-        '@id': didUri,
-        identifier: {
-          '@type': 'PropertyValue',
-          name: 'DID',
-          value: didUri
-        }
-      },
-      
-      // Legacy author support (for backward compatibility)
-      author: {
-        did: didUri
-      },
-      
-      // ============================================================================
-      // DUBLIN CORE METADATA (dc:)
-      // ============================================================================
-      ...(companion.dc && {
-        'dc:title': companion.dc.title || companion.originalName || companion.fileName,
-        'dc:creator': companion.dc.creator || didUri,
-        'dc:subject': companion.dc.subject || companion.tags || [],
-        'dc:description': companion.dc.description || companion.description || '',
-        'dc:publisher': companion.dc.publisher || didUri,
-        'dc:contributor': companion.dc.contributor || [],
-        'dc:date': companion.dc.date || companion.uploadedAt,
-        'dc:type': companion.dc.type || schemaType,
-        'dc:format': companion.dc.format || companion.mimeType,
-        'dc:identifier': companion.dc.identifier || resourceUri,
-        'dc:source': companion.dc.source,
-        'dc:language': companion.dc.language,
-        'dc:relation': companion.dc.relation || [],
-        'dc:coverage': companion.dc.coverage,
-        'dc:rights': companion.dc.rights,
-        'dc:rightsHolder': companion.dc.rightsHolder || didUri
-      }),
-      
-      // ============================================================================
-      // SCHEMA.ORG EXTENDED PROPERTIES
-      // ============================================================================
-      ...(companion.schema && {
-        // Temporal metadata
-        dateCreated: companion.schema.dateCreated || companion.uploadedAt,
-        dateModified: companion.schema.dateModified || companion.uploadedAt,
-        datePublished: companion.schema.datePublished || companion.uploadedAt,
-        copyrightYear: companion.schema.copyrightYear,
-        expires: companion.schema.expires,
-        
-        // Content classification
-        genre: companion.schema.genre || [],
-        category: companion.schema.category,
-        about: companion.schema.about || [],
-        
-        // Location
-        locationCreated: companion.schema.locationCreated,
-        
-        // Technical metadata
-        encodingFormat: companion.schema.encodingFormat || companion.mimeType,
-        fileSize: companion.schema.fileSize || companion.size,
-        contentSize: companion.schema.contentSize,
-        
-        // Media-specific
-        width: companion.schema.width,
-        height: companion.schema.height,
-        duration: companion.schema.duration,
-        bitrate: companion.schema.bitrate,
-        frameRate: companion.schema.frameRate,
-        audioSampleRate: companion.schema.audioSampleRate,
-        videoQuality: companion.schema.videoQuality,
-        
-        // Rights and licensing
-        license: companion.schema.license,
-        copyrightHolder: companion.schema.copyrightHolder,
-        copyrightNotice: companion.schema.copyrightNotice,
-        usageInfo: companion.schema.usageInfo,
-        
-        // Accessibility
-        accessibilityFeature: companion.schema.accessibilityFeature || [],
-        accessibilityHazard: companion.schema.accessibilityHazard || [],
-        accessibilitySummary: companion.schema.accessibilitySummary,
-        
-        // Language
-        inLanguage: companion.schema.inLanguage,
-        
-        // Publishing
-        publisher: companion.schema.publisher,
-        publishingPrinciples: companion.schema.publishingPrinciples,
-        
-        // Creative work properties
-        alternativeHeadline: companion.schema.alternativeHeadline,
-        headline: companion.schema.headline,
-        abstract: companion.schema.abstract,
-        text: companion.schema.text,
-        citation: companion.schema.citation,
-        
-        // Collections
-        isPartOf: companion.schema.isPartOf || (companion.isPartOf ? `https://parnoir.com/curated/${companion.isPartOf}` : undefined),
-        hasPart: companion.schema.hasPart || [],
-        
-        // Ratings
-        aggregateRating: companion.schema.aggregateRating,
-        
-        // Comments
-        commentCount: companion.schema.commentCount || companion.engagement?.comments || 0,
-        
-        // Keywords (merge with tags)
-        keywords: [...(companion.schema.keywords || []), ...(companion.tags || [])],
-        subjectOf: companion.schema.subjectOf
-      }),
-      
-      // ============================================================================
-      // PROV-O (PROVENANCE)
-      // ============================================================================
-      ...(companion.prov && {
-        'prov:wasGeneratedBy': companion.prov.wasGeneratedBy,
-        'prov:wasAttributedTo': companion.prov.wasAttributedTo || [didUri],
-        'prov:wasDerivedFrom': companion.prov.wasDerivedFrom || [],
-        'prov:wasInfluencedBy': companion.prov.wasInfluencedBy || [],
-        'prov:hadPrimarySource': companion.prov.hadPrimarySource,
-        'prov:qualifiedDerivation': companion.prov.qualifiedDerivation || []
-      }),
-      
-      // ============================================================================
-      // FOAF (FRIEND OF A FRIEND)
-      // ============================================================================
-      ...(companion.foaf && {
-        'foaf:maker': companion.foaf.maker || [didUri],
-        'foaf:primaryTopic': companion.foaf.primaryTopic,
-        'foaf:topic': companion.foaf.topic || [],
-        'foaf:depicts': companion.foaf.depicts || [],
-        'foaf:thumbnail': companion.foaf.thumbnail || (companion.thumbnail ? `${resourceUri}/thumbnail` : undefined),
-        'foaf:homepage': companion.foaf.homepage
-      }),
-      
-      // ============================================================================
-      // ACTIVITYPUB COMPATIBILITY
-      // ============================================================================
-      ...(companion.activitypub && {
-        'as:type': companion.activitypub.type || 'Create',
-        'as:actor': companion.activitypub.actor || didUri,
-        'as:object': companion.activitypub.object,
-        'as:target': companion.activitypub.target,
-        'as:to': companion.activitypub.to || ['https://www.w3.org/ns/activitystreams#Public'],
-        'as:cc': companion.activitypub.cc || [],
-        'as:published': companion.activitypub.published || companion.uploadedAt,
-        'as:updated': companion.activitypub.updated || companion.uploadedAt,
-        'as:attachment': companion.activitypub.attachment || [],
-        'as:tag': companion.activitypub.tag || (companion.tags?.map(tag => ({ type: 'Hashtag', name: tag })) || []),
-        'as:inReplyTo': companion.activitypub.inReplyTo || (companion.inReplyTo ? this.generateResourceUri(companion.inReplyTo) : undefined),
-        'as:content': companion.activitypub.content || companion.description || '',
-        'as:summary': companion.activitypub.summary,
-        'as:sensitive': companion.activitypub.sensitive || false,
-        'as:replies': companion.activitypub.replies
-      }),
-      
-      // ============================================================================
-      // MEDIA PROPERTIES
-      // ============================================================================
-      thumbnail: companion.thumbnail ? {
-        '@type': 'ImageObject',
-        '@id': `${resourceUri}/thumbnail`,
-        'foaf:thumbnail': `${resourceUri}/thumbnail`
-      } : undefined,
-
-      // Third-party indexing permissions
-      indexingPermissions: companion.indexingPermissions,
-      
-      // ============================================================================
-      // CONTENT RELATIONSHIPS
-      // ============================================================================
-      inReplyTo: companion.inReplyTo ? this.generateResourceUri(companion.inReplyTo) : undefined,
-      repostOf: companion.repostOf ? this.generateResourceUri(companion.repostOf) : undefined,
-      isPartOf: companion.isPartOf ? `https://parnoir.com/curated/${companion.isPartOf}` : undefined,
-      
-      // ============================================================================
-      // ENGAGEMENT METRICS (always include, initialize if not present)
-      // ============================================================================
-      engagement: {
-        views: companion.engagement?.views || 0,
-        likes: companion.engagement?.likes || 0,
-        comments: companion.engagement?.comments || 0,
-        shares: companion.engagement?.shares || 0,
-        lastUpdated: companion.engagement?.lastUpdated || companion.uploadedAt,
-        engagementHistory: companion.engagement?.engagementHistory || []
-      },
-      
-      // ============================================================================
-      // PAR NOIR SPECIFIC
-      // ============================================================================
-      publicToken: companion.publicToken,
-      isPublic: companion.visibility === 'public',
-      
-      // Additional semantic relationships
-      sameAs: companion.metadata?.sameAs || [],
-      about: companion.metadata?.about || []
-    };
-    
-    // Remove undefined fields
-    Object.keys(publicMetadata).forEach(key => {
-      if (publicMetadata[key] === undefined || 
-          (Array.isArray(publicMetadata[key]) && publicMetadata[key].length === 0 && !key.includes(':'))) {
-        delete publicMetadata[key];
-      }
-    });
-    
-    return publicMetadata;
-  }
-  
-  /**
-   * Get service account email for sharing folders
-   * This allows the API server to scan Google Drive for public files
-   */
-  private static getServiceAccountEmail(): string | null {
-    // Try to get from environment variable (set at build time)
-    const serviceAccountKey = import.meta.env.VITE_GOOGLE_SERVICE_ACCOUNT_KEY;
-    if (serviceAccountKey) {
-      try {
-        const key = typeof serviceAccountKey === 'string' ? JSON.parse(serviceAccountKey) : serviceAccountKey;
-        return key.client_email || null;
-      } catch {
-        // If parsing fails, try direct email env var
-        return import.meta.env.VITE_GOOGLE_SERVICE_ACCOUNT_EMAIL || null;
-      }
-    }
-    // Fallback to direct email env var
-    return import.meta.env.VITE_GOOGLE_SERVICE_ACCOUNT_EMAIL || null;
-  }
-
-  /**
-   * Share folder with service account (for API server scanning)
-   */
-  private static async shareFolderWithServiceAccount(
-    accessToken: string,
-    folderId: string
+  static async createCompanionMetadataFile(
+    _accessToken: string,
+    pnIdentifier: string,
+    fileMetadata: CompanionMetadata
   ): Promise<void> {
-    const serviceAccountEmail = this.getServiceAccountEmail();
-    
-    if (!serviceAccountEmail) {
-      // Service account not configured - this is okay, just skip sharing
-      console.log('ℹ️ Service account email not configured - skipping folder sharing');
-      return;
+    const ownerToken = resolveOwnerApiToken(pnIdentifier);
+    if (!ownerToken) {
+      throw new Error('par Noir API session not ready');
     }
-
-    try {
-      // Check if permission already exists
-      const permissionsResponse = await fetch(
-        `https://www.googleapis.com/drive/v3/files/${folderId}/permissions?fields=permissions(emailAddress)`,
-        {
-          headers: {
-            'Authorization': `Bearer ${accessToken}`
-          }
-        }
-      );
-
-      if (permissionsResponse.ok) {
-        const permissionsData = await permissionsResponse.json();
-        const hasPermission = permissionsData.permissions?.some(
-          (p: any) => p.emailAddress === serviceAccountEmail
-        );
-        
-        if (hasPermission) {
-          console.log('✅ Folder already shared with service account');
-          return;
-        }
-      }
-
-      // Share folder with service account
-      const shareResponse = await fetch(
-        `https://www.googleapis.com/drive/v3/files/${folderId}/permissions`,
-        {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${accessToken}`,
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({
-            role: 'reader',
-            type: 'user',
-            emailAddress: serviceAccountEmail
-          })
-        }
-      );
-
-      if (shareResponse.ok) {
-        console.log(`✅ Shared folder with service account: ${serviceAccountEmail}`);
-      } else {
-        const errorText = await shareResponse.text();
-        console.warn(`⚠️ Failed to share folder with service account: ${shareResponse.status} - ${errorText}`);
-        // Don't throw - this is not critical, just log a warning
-      }
-    } catch (error) {
-      console.warn('⚠️ Error sharing folder with service account:', error);
-      // Don't throw - this is not critical for the main operation
+    const fileId = fileMetadata.googleDriveFileId || fileMetadata.fileId;
+    if (!fileId) {
+      throw new Error('Companion metadata requires googleDriveFileId or fileId');
+    }
+    const metaAny = fileMetadata as CompanionMetadata & Record<string, unknown>;
+    const path = `/api/aggregator/metadata-index/${encodeURIComponent(fileId)}`;
+    const res = await ownerFetch(
+      ownerToken,
+      'PUT',
+      path,
+      {
+        name: fileMetadata.originalName || fileMetadata.fileName,
+        description: fileMetadata.description || '',
+        keywords: fileMetadata.tags || [],
+        tags: fileMetadata.tags || [],
+        isPublic: fileMetadata.visibility === 'public',
+        publicToken: fileMetadata.publicToken,
+        publicContentRef: fileMetadata.publicContentRef,
+        fileType: (metaAny.fileType as string) || fileMetadata.mimeType?.split('/')[0] || 'other',
+        uploadDate: fileMetadata.uploadedAt,
+        thumbnailFileId: fileMetadata.thumbnailFileId ?? null,
+        mainFileId: fileMetadata.mainFileId ?? null,
+        textPost: metaAny.textPost ?? null,
+        thought: metaAny.thought ?? null,
+        collection: metaAny.collection ?? null,
+        isThoughtThumbnail: metaAny.isThoughtThumbnail,
+        isPartOfCollection: metaAny.isPartOfCollection,
+        genre: fileMetadata.schema?.genre,
+        category: fileMetadata.schema?.category,
+        feedCategories: (fileMetadata.schema as { feedCategories?: string[] } | undefined)?.feedCategories,
+        locationCreated: fileMetadata.schema?.locationCreated,
+        license: fileMetadata.schema?.license,
+        indexingPermissions: fileMetadata.indexingPermissions,
+        engagement: fileMetadata.engagement,
+      },
+      { pnIdentifier }
+    );
+    if (!res.ok) {
+      const err = await res.text();
+      throw new Error(`Failed to create/update companion metadata: ${res.status} ${err}`);
     }
   }
 
   /**
-   * Get or create the pN folder structure
-   */
-  static async getOrCreatePNFolder(
-    accessToken: string,
-    pnIdentifier: string
-  ): Promise<string> {
-    // Strip 'pn-' prefix if it exists (pnIdentifier might already include it)
-    const cleanIdentifier = pnIdentifier.startsWith('pn-') 
-      ? pnIdentifier.substring(3) 
-      : pnIdentifier;
-    const folderName = `${this.PN_FOLDER_PREFIX}${cleanIdentifier}`;
-    
-    // Search for existing folder
-    const searchResponse = await fetch(
-      `https://www.googleapis.com/drive/v3/files?q=name='${encodeURIComponent(folderName)}' and mimeType='application/vnd.google-apps.folder' and trashed=false&fields=files(id,name)`,
-      {
-        headers: {
-          'Authorization': `Bearer ${accessToken}`
-        }
-      }
-    );
-
-    if (!searchResponse.ok) {
-      // Handle expired/invalid token gracefully
-      if (searchResponse.status === 401 || searchResponse.status === 403) {
-        throw new Error(`Token expired or invalid (${searchResponse.status}) - cannot access Google Drive folders`);
-      }
-      throw new Error(`Failed to search for pN folder: ${searchResponse.status} ${searchResponse.statusText}`);
-    }
-
-    const searchData = await searchResponse.json();
-    
-    if (searchData.files && searchData.files.length > 0) {
-      return searchData.files[0].id;
-    }
-
-    // Create new folder
-    const createResponse = await fetch(
-      'https://www.googleapis.com/drive/v3/files',
-      {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${accessToken}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          name: folderName,
-          mimeType: 'application/vnd.google-apps.folder'
-        })
-      }
-    );
-
-    if (!createResponse.ok) {
-      throw new Error('Failed to create pN folder');
-    }
-
-    const folderData = await createResponse.json();
-    return folderData.id;
-  }
-
-  /**
-   * Get or create the _metadata folder
-   */
-  static async getOrCreateMetadataFolder(
-    accessToken: string,
-    pnFolderId: string
-  ): Promise<string> {
-    // Search for existing _metadata folder
-    const searchResponse = await fetch(
-      `https://www.googleapis.com/drive/v3/files?q=name='${this.METADATA_FOLDER_NAME}' and '${pnFolderId}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false&fields=files(id,name)`,
-      {
-        headers: {
-          'Authorization': `Bearer ${accessToken}`
-        }
-      }
-    );
-
-    if (!searchResponse.ok) {
-      throw new Error('Failed to search for metadata folder');
-    }
-
-    const searchData = await searchResponse.json();
-    
-    if (searchData.files && searchData.files.length > 0) {
-      return searchData.files[0].id;
-    }
-
-    // Create new _metadata folder
-    const createResponse = await fetch(
-      'https://www.googleapis.com/drive/v3/files',
-      {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${accessToken}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          name: this.METADATA_FOLDER_NAME,
-          mimeType: 'application/vnd.google-apps.folder',
-          parents: [pnFolderId]
-        })
-      }
-    );
-
-    if (!createResponse.ok) {
-      throw new Error('Failed to create metadata folder');
-    }
-
-    const folderData = await createResponse.json();
-    return folderData.id;
-  }
-
-  /**
-   * Initialize all content class folders (media, thoughts, collections)
-   * This ensures the folder structure exists before any files are uploaded
+   * Folder / index file init is owned by POST /api/storage/initialize (server).
+   * Kept as no-ops for any legacy callers.
    */
   static async initializeContentClassFolders(
-    accessToken: string,
-    metadataFolderId: string
+    _accessToken: string,
+    _metadataFolderId: string
   ): Promise<void> {
-    const contentClassFolders = ['media', 'thoughts', 'collections'];
-    
-    for (const folderName of contentClassFolders) {
-      try {
-        // Check if folder already exists
-        const folderQuery = `name='${folderName}' and '${metadataFolderId}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`;
-        const searchUrl = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(folderQuery)}&fields=files(id)&pageSize=1`;
-        const searchResponse = await fetch(searchUrl, {
-          headers: { 'Authorization': `Bearer ${accessToken}` }
-        });
-
-        let folderId: string | null = null;
-        if (searchResponse.ok) {
-          const searchData = await searchResponse.json() as { files?: Array<{ id: string }> };
-          if (searchData.files && searchData.files.length > 0) {
-            folderId = searchData.files[0].id;
-            console.log(`[GoogleDriveMetadataService] Folder '${folderName}' already exists`);
-            // Still initialize index files even if folder exists (they might not exist yet)
-            await this.initializeContentClassIndexFiles(accessToken, folderId, folderName);
-            continue;
-          }
-        }
-
-        // Create folder if it doesn't exist
-        const createResponse = await fetch('https://www.googleapis.com/drive/v3/files', {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${accessToken}`,
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({
-            name: folderName,
-            mimeType: 'application/vnd.google-apps.folder',
-            parents: [metadataFolderId]
-          })
-        });
-
-        if (createResponse.ok) {
-          const folderData = await createResponse.json() as { id: string };
-          folderId = folderData.id;
-          console.log(`[GoogleDriveMetadataService] Created folder '${folderName}' (ID: ${folderId})`);
-          
-          // Create content class-specific index files in this folder
-          await this.initializeContentClassIndexFiles(accessToken, folderId, folderName);
-        } else {
-          const errorText = await createResponse.text();
-          console.warn(`[GoogleDriveMetadataService] Failed to create folder '${folderName}': ${createResponse.status} ${errorText}`);
-        }
-      } catch (error: any) {
-        console.error(`[GoogleDriveMetadataService] Error creating folder '${folderName}':`, error);
-        // Don't throw - continue with other folders
-      }
-    }
+    /* no-op: API drive init */
   }
 
-  /**
-   * Initialize content class-specific index files in a content class folder
-   */
   static async initializeContentClassIndexFiles(
     _accessToken: string,
     _folderId: string,
     _folderName: string
   ): Promise<void> {
-    // Index Sheets (e.g. thoughts-owner-index.xlsx) are created by the API when credentials are stored. No JSON.
+    /* no-op: API creates Sheets indexes on connect */
   }
 
-  /**
-   * Initialize root index files - NO-OP.
-   * Root public-file-index and owner-file-index are created as Sheets by the API on StorageCredentials PUT.
-   * The frontend reads owner index via GET /api/storage/owner-index. JSON creation has been removed.
-   */
   static async initializeIndexFiles(
     _accessToken: string,
     _metadataFolderId: string,
     _pnIdentifier: string
   ): Promise<void> {
-    // No-op: API creates owner-file-index.xlsx and public-file-index.xlsx (Sheets) on connect.
-  }
-
-  /**
-   * Create or update companion metadata file
-   */
-  static async createCompanionMetadataFile(
-    accessToken: string,
-    pnIdentifier: string,
-    fileMetadata: CompanionMetadata
-  ): Promise<void> {
-    try {
-      console.log('Creating companion metadata file for:', fileMetadata.googleDriveFileId);
-      
-      // Get or create folder structure
-      // Get or create pN folder (pN identifier is secret - not logged)
-      const pnFolderId = await this.getOrCreatePNFolder(accessToken, pnIdentifier);
-      
-      console.log('Getting/creating metadata folder');
-      const metadataFolderId = await this.getOrCreateMetadataFolder(accessToken, pnFolderId);
-      console.log('Metadata folder ID:', metadataFolderId);
-
-      // Initialize all content class folders if this is a new metadata folder
-      await this.initializeContentClassFolders(accessToken, metadataFolderId);
-
-      // Initialize root index files if they don't exist
-      await this.initializeIndexFiles(accessToken, metadataFolderId, pnIdentifier);
-
-      // Determine contentClass from metadata
-      // Use same logic as server-side determineContentClass utility for consistency
-      let contentClass = (fileMetadata as any).contentClass;
-      if (!contentClass) {
-        const metadataAny = fileMetadata as any;
-        // Collection takes precedence
-        if (metadataAny.collection?.collectionFileIds?.length) {
-          contentClass = 'collection';
-        }
-        // Thought (including thumbnails) - CRITICAL: isThoughtThumbnail must be checked
-        else if (metadataAny.isThoughtThumbnail || metadataAny.thought || metadataAny.textPost) {
-          contentClass = 'thought';
-        }
-        // Default to media for everything else
-        // fileType is NOT checked - contentClass is for feed filtering, not technical file type
-        else {
-          contentClass = 'media';
-        }
-      }
-
-      // Get or create content type subfolder
-      const contentTypeFolderName = contentClass === 'thought' ? 'thoughts' : contentClass; // Map 'thought' to 'thoughts' folder
-      const contentTypeFolderQuery = `name='${contentTypeFolderName}' and '${metadataFolderId}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`;
-      const contentTypeFolderResponse = await fetch(
-        `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(contentTypeFolderQuery)}&fields=files(id,name)&pageSize=1`,
-        {
-          headers: {
-            'Authorization': `Bearer ${accessToken}`
-          }
-        }
-      );
-
-      let contentTypeFolderId: string;
-      if (contentTypeFolderResponse.ok) {
-        const contentTypeFolderData = await contentTypeFolderResponse.json();
-        if (contentTypeFolderData.files && contentTypeFolderData.files.length > 0) {
-          contentTypeFolderId = contentTypeFolderData.files[0].id;
-        } else {
-          // Create subfolder
-          const createFolderResponse = await fetch(
-            'https://www.googleapis.com/drive/v3/files',
-            {
-              method: 'POST',
-              headers: {
-                'Authorization': `Bearer ${accessToken}`,
-                'Content-Type': 'application/json'
-              },
-              body: JSON.stringify({
-                name: contentTypeFolderName,
-                mimeType: 'application/vnd.google-apps.folder',
-                parents: [metadataFolderId]
-              })
-            }
-          );
-          if (!createFolderResponse.ok) {
-            throw new Error('Failed to create content type subfolder');
-          }
-          const folderData = await createFolderResponse.json();
-          contentTypeFolderId = folderData.id;
-        }
-      } else {
-        throw new Error('Failed to search for content type subfolder');
-      }
-
-      const metadataFileName = `${fileMetadata.googleDriveFileId}.metadata.json`;
-      
-      // Check if metadata file already exists in the subfolder
-      const searchResponse = await fetch(
-        `https://www.googleapis.com/drive/v3/files?q=name='${encodeURIComponent(metadataFileName)}' and '${contentTypeFolderId}' in parents and trashed=false&fields=files(id)`,
-        {
-          headers: {
-            'Authorization': `Bearer ${accessToken}`
-          }
-        }
-      );
-
-      if (!searchResponse.ok) {
-        throw new Error('Failed to search for existing metadata file');
-      }
-
-      const searchData = await searchResponse.json();
-      const metadataContent = JSON.stringify(fileMetadata, null, 2);
-      const metadataBlob = new Blob([metadataContent], { type: 'application/json' });
-
-      if (searchData.files && searchData.files.length > 0) {
-        // Update existing metadata file
-        const fileId = searchData.files[0].id;
-        
-        // Get current metadata to check if we need to update
-        try {
-          const getResponse = await fetch(
-            `https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`,
-            {
-              headers: {
-                'Authorization': `Bearer ${accessToken}`
-              }
-            }
-          );
-
-          if (getResponse.ok) {
-            const existingMetadataText = await getResponse.text();
-            try {
-              const existingMetadata = JSON.parse(existingMetadataText) as CompanionMetadata;
-              // Merge with new metadata, preserving existing fields
-              if (existingMetadata.publicToken) {
-                (fileMetadata as any).publicToken = existingMetadata.publicToken;
-              }
-              // Preserve engagement metrics if they exist
-              if (existingMetadata.engagement) {
-                fileMetadata.engagement = existingMetadata.engagement;
-              }
-              // Preserve relationships if they exist
-              if (existingMetadata.inReplyTo) {
-                fileMetadata.inReplyTo = existingMetadata.inReplyTo;
-              }
-              if (existingMetadata.repostOf) {
-                fileMetadata.repostOf = existingMetadata.repostOf;
-              }
-              if (existingMetadata.isPartOf) {
-                fileMetadata.isPartOf = existingMetadata.isPartOf;
-              }
-              if (existingMetadata.indexingPermissions && !fileMetadata.indexingPermissions) {
-                fileMetadata.indexingPermissions = existingMetadata.indexingPermissions;
-              }
-            } catch (parseError) {
-              console.warn('Failed to parse existing metadata, continuing with new metadata');
-            }
-          }
-        } catch (getError) {
-          console.warn('Failed to get existing metadata, continuing with new metadata:', getError);
-        }
-
-        // Update file content (JSON) using media upload (avoids multipart issues)
-        const updateResponse = await fetch(
-          `https://www.googleapis.com/upload/drive/v3/files/${fileId}?uploadType=media`,
-          {
-            method: 'PATCH',
-            headers: {
-              'Authorization': `Bearer ${accessToken}`,
-              'Content-Type': 'application/json; charset=UTF-8'
-            },
-            body: JSON.stringify(fileMetadata)
-          }
-        );
-
-        if (!updateResponse.ok) {
-          const errorText = await updateResponse.text();
-          console.error('Failed to update companion metadata file:', {
-            status: updateResponse.status,
-            statusText: updateResponse.statusText,
-            errorText
-          });
-          throw new Error('Failed to update metadata file');
-        }
-      } else {
-        // Create new metadata file
-        const formData = new FormData();
-        formData.append('metadata', new Blob([JSON.stringify({
-          name: metadataFileName,
-          parents: [contentTypeFolderId]
-        })], { type: 'application/json' }));
-        formData.append('file', metadataBlob);
-
-        const createResponse = await fetch(
-          'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart',
-          {
-            method: 'POST',
-            headers: {
-              'Authorization': `Bearer ${accessToken}`
-            },
-            body: formData
-          }
-        );
-
-        if (!createResponse.ok) {
-          const errorText = await createResponse.text();
-          console.error('Failed to create metadata file. Status:', createResponse.status, 'StatusText:', createResponse.statusText);
-          console.error('Error response:', errorText);
-          throw new Error(`Failed to create metadata file: ${createResponse.status} ${createResponse.statusText}. ${errorText}`);
-        }
-        
-        console.log('✅ Metadata file created successfully');
-      }
-    } catch (error) {
-      console.error('Error creating companion metadata file:', error);
-      throw error;
-    }
+    /* no-op: API creates owner/public index Sheets on connect */
   }
 
   /**
@@ -1120,7 +419,11 @@ export class GoogleDriveMetadataService {
       const res = await fetch(`${API_ENDPOINT}/api/storage/public-index/${encodeURIComponent(pnIdentifier)}`);
       if (!res.ok) return null;
       const data = await res.json();
-      return { identifier: data.identifier ?? pnIdentifier, files: data.files ?? [], updatedAt: data.updatedAt ?? new Date().toISOString() };
+      return {
+        identifier: data.identifier ?? pnIdentifier,
+        files: data.files ?? [],
+        updatedAt: data.updatedAt ?? new Date().toISOString(),
+      };
     } catch {
       return null;
     }
@@ -1128,9 +431,7 @@ export class GoogleDriveMetadataService {
 
   /**
    * Get owner file index (merged content-class + root) from the API (Sheets).
-   * API-only — does not read Drive with a Google token. Under device custody
-   * the route may return 409; callers should treat null as “use Drive listFiles”.
-   * Skips the network call when this session already saw 403/409 for the pn.
+   * Under device custody the route may return 409; callers treat null as Drive listFiles.
    */
   static async getOwnerFileIndexFromContentClasses(
     pnIdentifier: string,
@@ -1139,10 +440,6 @@ export class GoogleDriveMetadataService {
     return this.getOwnerFileIndex(pnIdentifier, ownerApiToken);
   }
 
-  /**
-   * Get owner file index (merged content-class + root) from the API (Sheets).
-   * API-only — does not read Drive with a Google token.
-   */
   static async getOwnerFileIndex(
     pnIdentifier: string,
     ownerApiToken?: string | null
@@ -1164,14 +461,18 @@ export class GoogleDriveMetadataService {
       }
       if (!res.ok) return null;
       const data = await res.json();
-      return { identifier: data.identifier ?? pnIdentifier, files: data.files ?? [], updatedAt: data.updatedAt ?? new Date().toISOString() };
+      return {
+        identifier: data.identifier ?? pnIdentifier,
+        files: data.files ?? [],
+        updatedAt: data.updatedAt ?? new Date().toISOString(),
+      };
     } catch {
       return null;
     }
   }
 
   /**
-   * Update owner file index (includes ALL files, regardless of visibility) via API (Sheets).
+   * Update owner file index via API (Sheets). `_accessToken` ignored.
    */
   static async updateOwnerFileIndex(
     _accessToken: string,
@@ -1196,59 +497,7 @@ export class GoogleDriveMetadataService {
   }
 
   /**
-   * Get content class-specific owner index (unused after migration to API; kept for type/reference)
-   */
-  private static async getContentClassOwnerIndex(
-    accessToken: string,
-    folderId: string,
-    pnIdentifier: string
-  ): Promise<PublicFileIndex | null> {
-    const searchResponse = await fetch(
-      `https://www.googleapis.com/drive/v3/files?q=name='${this.OWNER_INDEX_FILE_NAME}' and '${folderId}' in parents and trashed=false&fields=files(id)`,
-      {
-        headers: {
-          'Authorization': `Bearer ${accessToken}`
-        }
-      }
-    );
-
-    if (!searchResponse.ok || !searchResponse) {
-      return null;
-    }
-
-    const searchData = await searchResponse.json();
-    
-    if (!searchData.files || searchData.files.length === 0) {
-      return null;
-    }
-
-    const fileId = searchData.files[0].id;
-    const getResponse = await fetch(
-      `https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`,
-      {
-        headers: {
-          'Authorization': `Bearer ${accessToken}`
-        }
-      }
-    );
-
-    if (!getResponse.ok) {
-      return null;
-    }
-
-    try {
-      return await getResponse.json();
-    } catch {
-      return {
-        identifier: pnIdentifier,
-        files: [],
-        updatedAt: new Date().toISOString()
-      };
-    }
-  }
-
-  /**
-   * Update public file index via API (Sheets). API handles add/update/remove based on visibility.
+   * Update public file index via API (Sheets). `_accessToken` ignored.
    */
   static async updatePublicFileIndex(
     _accessToken: string,
@@ -1269,304 +518,6 @@ export class GoogleDriveMetadataService {
     if (!res.ok) {
       const err = await res.text();
       throw new Error(`Failed to update public index: ${res.status} ${err}`);
-    }
-  }
-
-  /**
-   * Get content class-specific public index
-   */
-  private static async getContentClassPublicIndex(
-    accessToken: string,
-    folderId: string,
-    pnIdentifier: string
-  ): Promise<PublicFileIndex | null> {
-    const searchResponse = await fetch(
-      `https://www.googleapis.com/drive/v3/files?q=name='${this.PUBLIC_INDEX_FILE_NAME}' and '${folderId}' in parents and trashed=false&fields=files(id)`,
-      {
-        headers: {
-          'Authorization': `Bearer ${accessToken}`
-        }
-      }
-    );
-
-    if (!searchResponse.ok) {
-      return null;
-    }
-
-    const searchData = await searchResponse.json();
-    
-    if (!searchData.files || searchData.files.length === 0) {
-      return null;
-    }
-
-    const fileId = searchData.files[0].id;
-    const getResponse = await fetch(
-      `https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`,
-      {
-        headers: {
-          'Authorization': `Bearer ${accessToken}`
-        }
-      }
-    );
-
-    if (!getResponse.ok) {
-      return null;
-    }
-
-    try {
-      return await getResponse.json();
-    } catch {
-      return {
-        identifier: pnIdentifier,
-        files: [],
-        updatedAt: new Date().toISOString()
-      };
-    }
-  }
-
-  /**
-   * Save index file to a specific folder in Google Drive (helper method)
-   */
-  private static async saveIndexFileToFolder(
-    accessToken: string,
-    folderId: string,
-    fileName: string,
-    index: any
-  ): Promise<void> {
-    const indexContent = JSON.stringify(index, null, 2);
-    const indexBlob = new Blob([indexContent], { type: 'application/json' });
-
-    // Check if index file exists
-    const searchResponse = await fetch(
-      `https://www.googleapis.com/drive/v3/files?q=name='${fileName}' and '${folderId}' in parents and trashed=false&fields=files(id)`,
-      {
-        headers: {
-          'Authorization': `Bearer ${accessToken}`
-        }
-      }
-    );
-
-    if (!searchResponse.ok) {
-      throw new Error('Failed to search for index file');
-    }
-
-    const searchData = await searchResponse.json();
-    
-    if (searchData.files && searchData.files.length > 0) {
-      // Update existing index
-      const fileId = searchData.files[0].id;
-
-      const updateResponse = await fetch(
-        `https://www.googleapis.com/upload/drive/v3/files/${fileId}?uploadType=media`,
-        {
-          method: 'PATCH',
-          headers: {
-            'Authorization': `Bearer ${accessToken}`,
-            'Content-Type': 'application/json; charset=UTF-8'
-          },
-          body: JSON.stringify(index)
-        }
-      );
-
-      if (!updateResponse.ok) {
-        const errorText = await updateResponse.text();
-        console.error(`Failed to update ${fileName}:`, {
-          status: updateResponse.status,
-          statusText: updateResponse.statusText,
-          errorText
-        });
-        throw new Error(`Failed to update ${fileName}`);
-      }
-    } else {
-      // Create new index file
-      const formData = new FormData();
-      formData.append('metadata', new Blob([JSON.stringify({
-        name: fileName,
-        parents: [folderId]
-      })], { type: 'application/json' }));
-      formData.append('file', indexBlob);
-
-      const createResponse = await fetch(
-        `https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart`,
-        {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${accessToken}`
-          },
-          body: formData
-        }
-      );
-
-      if (!createResponse.ok) {
-        const errorText = await createResponse.text();
-        console.error(`Failed to create ${fileName}:`, {
-          status: createResponse.status,
-          statusText: createResponse.statusText,
-          errorText
-        });
-        throw new Error(`Failed to create ${fileName}`);
-      }
-    }
-    
-    // Make public index file publicly readable (only for public index)
-    if (fileName === this.PUBLIC_INDEX_FILE_NAME) {
-      try {
-        const searchResponse = await fetch(
-          `https://www.googleapis.com/drive/v3/files?q=name='${fileName}' and '${folderId}' in parents and trashed=false&fields=files(id)`,
-          {
-            headers: {
-              'Authorization': `Bearer ${accessToken}`
-            }
-          }
-        );
-        
-        if (searchResponse.ok) {
-          const searchData = await searchResponse.json();
-          if (searchData.files && searchData.files.length > 0) {
-            const fileId = searchData.files[0].id;
-            await fetch(
-              `https://www.googleapis.com/drive/v3/files/${fileId}/permissions`,
-              {
-                method: 'POST',
-                headers: {
-                  'Authorization': `Bearer ${accessToken}`,
-                  'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                  role: 'reader',
-                  type: 'anyone'
-                })
-              }
-            );
-          }
-        }
-      } catch (permError) {
-        // Permission might already exist, ignore
-        console.warn('Failed to set public permissions:', permError);
-      }
-    }
-  }
-
-  /**
-   * Save index file to Google Drive (helper method)
-   */
-  private static async saveIndexFile(
-    accessToken: string,
-    metadataFolderId: string,
-    fileName: string,
-    index: any
-  ): Promise<void> {
-      const indexContent = JSON.stringify(index, null, 2);
-      const indexBlob = new Blob([indexContent], { type: 'application/json' });
-
-      // Check if index file exists
-      const searchResponse = await fetch(
-      `https://www.googleapis.com/drive/v3/files?q=name='${fileName}' and '${metadataFolderId}' in parents and trashed=false&fields=files(id)`,
-        {
-          headers: {
-            'Authorization': `Bearer ${accessToken}`
-          }
-        }
-      );
-
-      if (!searchResponse.ok) {
-        throw new Error('Failed to search for index file');
-      }
-
-      const searchData = await searchResponse.json();
-      
-      if (searchData.files && searchData.files.length > 0) {
-        // Update existing index
-        const fileId = searchData.files[0].id;
-
-        const updateResponse = await fetch(
-          `https://www.googleapis.com/upload/drive/v3/files/${fileId}?uploadType=media`,
-          {
-            method: 'PATCH',
-            headers: {
-              'Authorization': `Bearer ${accessToken}`,
-              'Content-Type': 'application/json; charset=UTF-8'
-            },
-            body: JSON.stringify(index)
-          }
-        );
-
-        if (!updateResponse.ok) {
-          const errorText = await updateResponse.text();
-        console.error(`Failed to update ${fileName}:`, {
-            status: updateResponse.status,
-            statusText: updateResponse.statusText,
-            errorText
-          });
-        throw new Error(`Failed to update ${fileName}`);
-        }
-      } else {
-      // Create new index file
-        const formData = new FormData();
-        formData.append('metadata', new Blob([JSON.stringify({
-        name: fileName,
-          parents: [metadataFolderId]
-        })], { type: 'application/json' }));
-        formData.append('file', indexBlob);
-
-        const createResponse = await fetch(
-        `https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart`,
-          {
-            method: 'POST',
-            headers: {
-              'Authorization': `Bearer ${accessToken}`
-            },
-            body: formData
-          }
-        );
-
-        if (!createResponse.ok) {
-        const errorText = await createResponse.text();
-        console.error(`Failed to create ${fileName}:`, {
-          status: createResponse.status,
-          statusText: createResponse.statusText,
-          errorText
-        });
-        throw new Error(`Failed to create ${fileName}`);
-      }
-    }
-    
-    // Make public index file publicly readable (only for public index)
-    if (fileName === this.PUBLIC_INDEX_FILE_NAME) {
-      try {
-        const searchResponse = await fetch(
-          `https://www.googleapis.com/drive/v3/files?q=name='${fileName}' and '${metadataFolderId}' in parents and trashed=false&fields=files(id)`,
-          {
-            headers: {
-              'Authorization': `Bearer ${accessToken}`
-            }
-          }
-        );
-        
-        if (searchResponse.ok) {
-          const searchData = await searchResponse.json();
-          if (searchData.files && searchData.files.length > 0) {
-            const fileId = searchData.files[0].id;
-          await fetch(
-              `https://www.googleapis.com/drive/v3/files/${fileId}/permissions`,
-            {
-              method: 'POST',
-              headers: {
-                'Authorization': `Bearer ${accessToken}`,
-                'Content-Type': 'application/json'
-              },
-              body: JSON.stringify({
-                role: 'reader',
-                type: 'anyone'
-              })
-            }
-          );
-          }
-        }
-        } catch (permError) {
-        // Permission might already exist, ignore
-          console.warn('Failed to set public permissions:', permError);
-        }
     }
   }
 }

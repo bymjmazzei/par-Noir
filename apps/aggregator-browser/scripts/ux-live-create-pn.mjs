@@ -1,16 +1,21 @@
 #!/usr/bin/env node
 /**
- * Create a real pN on live pn.parnoir.com (product path) and save download + keys
- * under .local/test-pn-2/. Secrets only written to keys.env (gitignored).
+ * Create a real pN on live pn.parnoir.com (product path) and save download + keys.
+ * Requires PN_FIXTURE_OUT (path relative to repo root). Secrets only in keys.env (gitignored).
+ * Do not use this to replace the agent fixture — restore `.local/cursor-test-pn` instead of minting.
  */
 import { chromium } from 'playwright';
 import { mkdirSync, writeFileSync, copyFileSync, readFileSync } from 'fs';
 import { randomBytes, webcrypto } from 'crypto';
-import { resolve, dirname } from 'path';
+import { resolve, dirname, basename } from 'path';
 import { fileURLToPath } from 'url';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../../..');
-const OUT = resolve(ROOT, '.local/test-pn-2');
+if (!process.env.PN_FIXTURE_OUT) {
+  console.error('Set PN_FIXTURE_OUT to an output dir under .local/ (relative to repo root).');
+  process.exit(2);
+}
+const OUT = resolve(ROOT, process.env.PN_FIXTURE_OUT);
 mkdirSync(OUT, { recursive: true });
 
 function strongKey(prefix) {
@@ -65,9 +70,10 @@ async function fillReact(page, placeholder, value) {
   await typeInto(page, placeholder, value);
 }
 
-const PN_NAME = strongKey('Live');
-const PASSCODE = strongKey('Drive');
+const PN_NAME = strongKey(process.env.PN_NAME_PREFIX || 'Live');
+const PASSCODE = strongKey(process.env.PASSCODE_PREFIX || 'Drive');
 const RECOVERY_EMAIL = `qa-live-${webcrypto.getRandomValues(new Uint32Array(1))[0]}@example.com`;
+const FIXTURE_LABEL = basename(OUT);
 
 const browser = await chromium.launch({ headless: true });
 const context = await browser.newContext({ acceptDownloads: true });
@@ -139,7 +145,7 @@ try {
   writeFileSync(
     resolve(OUT, 'README.md'),
     [
-      '# test-pn-2 (live-created)',
+      `# ${FIXTURE_LABEL}`,
       '',
       'Created on production dashboard Create New pN → auto-download.',
       `File: \`${destName}\` (also \`live-created.pn\`)`,

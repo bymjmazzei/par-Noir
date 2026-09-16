@@ -1,16 +1,10 @@
-import { ownerCloudHeadersAsync } from '@par-noir/device-cloud-credentials';
 import { API_ENDPOINT } from '../config/api';
 
+/** Bearer only — platform registry routes are Postgres-backed, not Drive. */
 async function authHeadersAsync(): Promise<HeadersInit> {
   const t = sessionStorage.getItem('dev_portal_access_token')?.trim();
   if (!t) return { 'Content-Type': 'application/json' };
-  const pn = sessionStorage.getItem('dev_portal_pn_identifier')?.trim() || null;
-  return ownerCloudHeadersAsync({
-    authToken: t,
-    pnIdentifier: pn,
-    apiEndpoint: API_ENDPOINT,
-    extra: { 'Content-Type': 'application/json' }
-  });
+  return { 'Content-Type': 'application/json', Authorization: `Bearer ${t}` };
 }
 
 async function platformFetch(path: string, init?: RequestInit) {

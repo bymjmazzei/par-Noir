@@ -4,9 +4,9 @@
  * Used when Cursor browser MCP cannot drive file inputs.
  */
 import { chromium } from 'playwright';
-import { readFileSync, existsSync } from 'fs';
 import { resolve, dirname } from 'path';
 import { fileURLToPath } from 'url';
+import { loadTestPn } from './ux-unlock-lib.mjs';
 
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const ROOT = process.env.REPO_ROOT || resolve(scriptDir, '../../..');
@@ -16,17 +16,13 @@ if (!consentUrl) {
   process.exit(2);
 }
 
-const identityPath = resolve(ROOT, '.local/test-pn/identity.pn');
-const keysPath = resolve(ROOT, '.local/test-pn/keys.env');
-if (!existsSync(identityPath) || !existsSync(keysPath)) {
-  console.error('Missing .local/test-pn fixture');
+let identityPath, PN_NAME, PASSCODE;
+try {
+  ({ identityPath, PN_NAME, PASSCODE } = loadTestPn(ROOT));
+} catch (e) {
+  console.error(e.message || e);
   process.exit(2);
 }
-
-const keys = readFileSync(keysPath, 'utf8');
-const PN_NAME = keys.match(/^PN_NAME=(.+)$/m)?.[1]?.trim();
-const PASSCODE = keys.match(/^PASSCODE=(.+)$/m)?.[1]?.trim();
-if (!PN_NAME || !PASSCODE) process.exit(2);
 
 const browser = await chromium.launch({ headless: true });
 const page = await browser.newPage();

@@ -18,13 +18,13 @@ import {
   fetchMailboxPending,
   createApiSocialApplier,
   getCloudAccessTokenFromSession,
+  PN_CLOUD_CREDENTIALS_READY_EVENT,
   type MailboxJob
 } from '@par-noir/device-cloud-credentials';
 import { openSocialEnvelope } from '@par-noir/dm-crypto';
 import { API_ENDPOINT } from '../config/api';
 import { PNOAuthService } from './pnOAuthService';
 import { getDmIdentity } from './dmIdentitySession';
-import { ownerApiHeadersAsync, PN_CLOUD_CREDENTIALS_READY_EVENT } from './ownerApiHeaders';
 import { fetchDeviceRegistry } from './deviceService';
 import { loadDeviceRegistration } from '@par-noir/device-client';
 
@@ -44,16 +44,6 @@ let running = false;
 let started = false;
 let intervalId: ReturnType<typeof setInterval> | number | null = null;
 let cachedRoute: { identityId: string; routeKey: string } | null = null;
-
-/**
- * Only the headers the API needs beyond Bearer. ownerApiHeadersAsync already
- * waits for the cloud token, so Drive-backed applies do not race the unlock.
- */
-async function buildAuthHeaders(): Promise<Record<string, string>> {
-  const headers = await ownerApiHeadersAsync();
-  delete headers.Authorization;
-  return headers;
-}
 
 export async function drainSocialMailbox(): Promise<MailboxDrainResult> {
   const session = PNOAuthService.loadSession();
@@ -102,7 +92,7 @@ export async function drainSocialMailbox(): Promise<MailboxDrainResult> {
   const api = {
     apiBaseUrl: API_ENDPOINT,
     authToken,
-    buildAuthHeaders
+    pnIdentifier: identityId
   };
 
   let routeKey: string;
@@ -130,12 +120,11 @@ export async function drainSocialMailbox(): Promise<MailboxDrainResult> {
   // Sender outbox → own Sheets runs on send + single post-unlock promote
   // (dmIdentitySession). Do not promote on every drain — that gates inbox reads.
 
+  // Package mints X-PN-Cloud-Access-Token via apiBaseUrl; no app buildAuthHeaders.
   const applySocialJob = createApiSocialApplier({
     apiBaseUrl: API_ENDPOINT,
     authToken,
     identityId,
-    buildAuthHeaders,
-    getCloudAccessToken: () => getCloudAccessTokenFromSession(identityId) || undefined,
     ...(mlKemSecretKey
       ? {
           openEnvelope: async (envelope, contextId) =>
@@ -207,8 +196,7 @@ export async function drainSocialMailbox(): Promise<MailboxDrainResult> {
         authToken,
         identityId,
         routeKey,
-        jobIds: appliedIds,
-        buildAuthHeaders
+        jobIds: appliedIds
       });
     } catch (e) {
       errors.push(`ack: ${e instanceof Error ? e.message : 'failed'}`);

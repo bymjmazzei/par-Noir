@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * Dual-pN messaging + browse engagement live QA.
- * Fixtures: .local/test-pn + .local/test-pn-2
+ * Fixtures: .local/test-pn + .local/cursor-test-pn
  * On linkedInactive, completes product "reconnect cloud storage" with QA Google.
  * Playwright Chromium. No secrets logged.
  *
@@ -92,7 +92,7 @@ function loadFixture(which) {
 
 const google = loadEnv(resolve(ROOT, '.local/test-google-drive/credentials.env'));
 const fixtureA = loadFixture('test-pn');
-const fixtureB = loadFixture('test-pn-2');
+const fixtureB = loadFixture('cursor-test-pn');
 
 function summarizeApi(apiBag, since = 0) {
   return apiBag.slice(since).map((a) => `${a.method} ${a.path} ${a.status}`);
@@ -427,7 +427,7 @@ async function waitForMessagingCloudReady(page, timeoutMs = 45_000) {
 
 const report = {
   generatedAt: new Date().toISOString(),
-  fixtures: ['test-pn', 'test-pn-2'],
+  fixtures: ['test-pn', 'cursor-test-pn'],
   gate: null,
   flows: [],
   notes: [],

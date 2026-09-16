@@ -39,19 +39,6 @@ async function ownerFetch(
   });
 }
 
-async function fetchGoogleUserEmail(accessToken: string): Promise<string | null> {
-  try {
-    const res = await fetch('https://www.googleapis.com/oauth2/v2/userinfo', {
-      headers: { Authorization: `Bearer ${accessToken}` }
-    });
-    if (!res.ok) return null;
-    const data = (await res.json()) as { email?: string };
-    return typeof data.email === 'string' && data.email.includes('@') ? data.email : null;
-  } catch {
-    return null;
-  }
-}
-
 /** Prefer existing linked Google account ids so reconnect does not create a second layout row. */
 async function resolveExistingGoogleLayout(
   apiEndpoint: string,
@@ -124,8 +111,9 @@ export async function reconnectOAuthProvider(
     const popup = window.open(authUrl, 'pn-cloud-google-oauth', 'width=500,height=700');
     if (!popup) throw new Error('Popup blocked — allow popups for OAuth.');
     const code = await codePromise;
+    // Email comes from /api/auth/google-oauth/token (server userinfo probe) — no client googleapis.
     const tokens = await exchangeGoogleOAuthCode({ apiEndpoint, code, redirectUri });
-    const email = await fetchGoogleUserEmail(tokens.accessToken);
+    const email = tokens.email ?? null;
     const existing = await resolveExistingGoogleLayout(apiEndpoint, authToken, pnIdentifier);
     const slug =
       email?.split('@')[0]?.replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 48) || 'default';

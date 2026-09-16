@@ -17,7 +17,6 @@ import { getMessageThreads, type MessageThread } from './messageService';
 import type { DmSessionRecovery } from './dmCryptoClient';
 import { isDmIdentityReady, getDmIdentity } from './dmIdentitySession';
 import type { Message } from './messageService';
-import { ownerApiHeadersAsync } from './ownerApiHeaders';
 import { ownerFetch, ownerGet } from './ownerApiFetch';
 import { PNOAuthService } from './pnOAuthService';
 import {
@@ -25,7 +24,6 @@ import {
   groupMessageSendFanout,
   promoteOutboxRecord,
   upsertLocalOutboxRecord,
-  getCloudAccessTokenFromSession,
   requireOnlineCloudForSend,
   type OutboxRecord
 } from '@par-noir/device-cloud-credentials';
@@ -477,13 +475,7 @@ export async function sendGroupMessage(
       apiBaseUrl: API_ENDPOINT,
       authToken: session.accessToken,
       identityId: userPn,
-      session: sealSession,
-      buildAuthHeaders: async () => {
-        const headers = await ownerApiHeadersAsync();
-        delete (headers as Record<string, string>).Authorization;
-        return headers as Record<string, string>;
-      },
-      getCloudAccessToken: () => getCloudAccessTokenFromSession(userPn) || undefined
+      session: sealSession
     },
     enqueued
   );

@@ -2,7 +2,7 @@
 /**
  * Disconnect Google Drive only (no reconnect) for test pN fixtures.
  *   node scripts/ux-dashboard-disconnect-drive.mjs
- *   node scripts/ux-dashboard-disconnect-drive.mjs test-pn-2
+ *   node scripts/ux-dashboard-disconnect-drive.mjs cursor-test-pn
  */
 import { chromium } from 'playwright';
 import { mkdirSync, writeFileSync, readFileSync, existsSync } from 'fs';
@@ -33,10 +33,10 @@ function loadEnvFile(path) {
 function loadPnFixture(which) {
   const dir = resolve(ROOT, `.local/${which}`);
   const keys = loadEnvFile(resolve(dir, 'keys.env'));
-  const fileName = keys.IDENTITY_FILE || (which === 'test-pn-2' ? 'pn374951080.pn' : 'identity.pn');
+  const fileName = keys.IDENTITY_FILE || (which === 'cursor-test-pn' ? 'pn374951080.pn' : 'identity.pn');
   let identityPath = resolve(dir, fileName);
   if (!existsSync(identityPath)) {
-    identityPath = resolve(dir, which === 'test-pn-2' ? 'live-created.pn' : 'identity.pn');
+    identityPath = resolve(dir, which === 'cursor-test-pn' ? 'live-created.pn' : 'identity.pn');
   }
   return { which, identityPath, PN_NAME: keys.PN_NAME, PASSCODE: keys.PASSCODE };
 }
@@ -44,7 +44,7 @@ function loadPnFixture(which) {
 const whichArg = process.argv[2];
 const fixtures = whichArg
   ? [loadPnFixture(whichArg)]
-  : [loadPnFixture('test-pn'), loadPnFixture('test-pn-2')];
+  : [loadPnFixture('test-pn'), loadPnFixture('cursor-test-pn')];
 
 async function shot(page, name) {
   await page.screenshot({ path: resolve(OUT, `${name}.png`), fullPage: false }).catch(() => {});

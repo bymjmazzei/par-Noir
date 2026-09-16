@@ -1,21 +1,53 @@
 /**
  * Shared Playwright unlock helpers for live UX diagnostics.
- * Secrets loaded from .local/test-pn — never log Key 1 / Key 2 / passcode / pn name.
+ * Agent default: .local/cursor-test-pn — never log Key 1 / Key 2 / passcode / pn name.
+ * User dual-pN A (.local/test-pn) only via loadPnFixture(root, 'test-pn') when asked.
  */
 import { readFileSync, existsSync } from 'fs';
 import { resolve } from 'path';
 
+/** Resolve identity path inside a fixture dir (keys.env IDENTITY_FILE, live-created.pn, or identity.pn). */
+function resolveIdentityInDir(dir, keys) {
+  const fromEnv = keys.match(/^IDENTITY_FILE=(.+)$/m)?.[1]?.trim();
+  const candidates = [
+    fromEnv ? resolve(dir, fromEnv) : null,
+    resolve(dir, 'live-created.pn'),
+    resolve(dir, 'identity.pn'),
+  ].filter(Boolean);
+  for (const p of candidates) {
+    if (existsSync(p)) return p;
+  }
+  return null;
+}
+
+/** Agent-only fixture. Never falls back to .local/test-pn. Never mints a replacement. */
 export function loadTestPn(root) {
-  const identityPath = resolve(root, '.local/test-pn/identity.pn');
-  const keysPath = resolve(root, '.local/test-pn/keys.env');
-  if (!existsSync(identityPath) || !existsSync(keysPath)) {
-    throw new Error('Missing .local/test-pn fixture');
+  return loadPnFixture(root, 'cursor-test-pn');
+}
+
+/** Explicit fixture loader: 'cursor-test-pn' | 'test-pn' */
+export function loadPnFixture(root, which = 'cursor-test-pn') {
+  if (which === 'test-pn-2') {
+    throw new Error(
+      'Fixture test-pn-2 was renamed to cursor-test-pn. Use loadPnFixture(root, \'cursor-test-pn\').'
+    );
+  }
+  const dir = resolve(root, `.local/${which}`);
+  const keysPath = resolve(dir, 'keys.env');
+  if (!existsSync(keysPath)) {
+    throw new Error(
+      `Missing .local/${which} fixture (keys.env). If this is the agent fixture, restore .local/cursor-test-pn — do not mint a new identity.`
+    );
   }
   const keys = readFileSync(keysPath, 'utf8');
   const PN_NAME = keys.match(/^PN_NAME=(.+)$/m)?.[1]?.trim();
   const PASSCODE = keys.match(/^PASSCODE=(.+)$/m)?.[1]?.trim();
-  if (!PN_NAME || !PASSCODE) throw new Error('keys.env must define PN_NAME and PASSCODE');
-  return { identityPath, PN_NAME, PASSCODE };
+  if (!PN_NAME || !PASSCODE) throw new Error(`keys.env in ${which} must define PN_NAME and PASSCODE`);
+  const identityPath = resolveIdentityInDir(dir, keys);
+  if (!identityPath) {
+    throw new Error(`Missing identity .pn under .local/${which}`);
+  }
+  return { identityPath, PN_NAME, PASSCODE, fixture: which };
 }
 
 export function trackOAuth(page, bag) {
@@ -118,19 +150,19 @@ export async function fillReactControlled(page, placeholder, value) {
   }
 }
 
-export function identityUploadPayload(identityPath) {
+export function identityUploadPayload(identityPath, displayName = 'cursor-test-pn.pn') {
   return {
-    name: 'test-pn.pn',
+    name: displayName,
     mimeType: 'application/json',
     buffer: readFileSync(identityPath),
   };
 }
 
-export async function unlockDashboard(page, notes, { identityPath, PN_NAME, PASSCODE }) {
+export async function unlockDashboard(page, notes, { identityPath, PN_NAME, PASSCODE, uploadName = 'cursor-test-pn.pn' }) {
   await page.getByRole('button', { name: 'Unlock pN' }).waitFor({ state: 'visible', timeout: 30_000 });
   const fileInput = page.locator('#file-upload-web, #file-upload-pwa, #file-upload').first();
-  await fileInput.setInputFiles(identityUploadPayload(identityPath));
-  await page.getByText('test-pn.pn', { exact: false }).first().waitFor({ state: 'visible', timeout: 15_000 });
+  await fileInput.setInputFiles(identityUploadPayload(identityPath, uploadName));
+  await page.getByText(uploadName, { exact: false }).first().waitFor({ state: 'visible', timeout: 15_000 });
   await fillReactControlled(page, 'Enter Key 1', PN_NAME);
   await fillReactControlled(page, 'Enter Key 2', PASSCODE);
   notes.push('reactProps onChange applied for Key 1/2');

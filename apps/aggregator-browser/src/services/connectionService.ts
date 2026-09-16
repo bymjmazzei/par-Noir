@@ -4,7 +4,7 @@
  * Uses Google Drive via API (no IPFS/decentralized coordination)
  */
 
-import { ownerApiHeadersAsync, waitForOwnerCloudAccess } from './ownerApiHeaders';
+import { waitForOwnerCloudAccess } from './ownerApiHeaders';
 import { ownerFetch, ownerGet } from './ownerApiFetch';
 import { getUserProfile } from './profileService';
 import { createKemSession, wrapAcceptorMessageRootKey } from './dmCryptoClient';
@@ -76,11 +76,7 @@ export async function sendConnectionRequest(
     {
       apiBaseUrl: API_ENDPOINT,
       authToken: session.accessToken,
-      buildAuthHeaders: async () => {
-        const headers = await ownerApiHeadersAsync();
-        delete headers.Authorization;
-        return headers;
-      }
+      pnIdentifier: requesterPnIdentifier
     }
   );
 
@@ -198,11 +194,7 @@ export async function acceptConnectionRequest(
     {
       apiBaseUrl: API_ENDPOINT,
       authToken: session.accessToken,
-      buildAuthHeaders: async () => {
-        const headers = await ownerApiHeadersAsync();
-        delete headers.Authorization;
-        return headers;
-      }
+      pnIdentifier: userPnIdentifier
     }
   );
 

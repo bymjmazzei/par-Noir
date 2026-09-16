@@ -1,33 +1,28 @@
 #!/usr/bin/env node
 /**
  * Full live-apps diagnostic (Playwright Chromium only).
- * Unlock with .local/test-pn; write report to .local/ux-playwright/live-apps-report.json.
+ * Unlock with .local/cursor-test-pn; write report to .local/ux-playwright/live-apps-report.json.
  *
  * Usage (from apps/aggregator-browser or repo root scripts/ux-live-apps-diagnostic.mjs):
  *   node scripts/ux-live-apps-diagnostic.mjs
  *   node scripts/ux-live-apps-diagnostic.mjs --only=dashboard
  */
 import { chromium } from 'playwright';
-import { readFileSync, existsSync, mkdirSync, writeFileSync } from 'fs';
+import { existsSync, mkdirSync, writeFileSync } from 'fs';
 import { resolve, dirname } from 'path';
 import { fileURLToPath } from 'url';
+import { loadTestPn, identityUploadPayload } from './ux-unlock-lib.mjs';
 
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const ROOT = process.env.REPO_ROOT || resolve(scriptDir, '../../..');
 const OUT = resolve(ROOT, '.local/ux-playwright');
 mkdirSync(OUT, { recursive: true });
 
-const identityPath = resolve(ROOT, '.local/test-pn/identity.pn');
-const keysPath = resolve(ROOT, '.local/test-pn/keys.env');
-if (!existsSync(identityPath) || !existsSync(keysPath)) {
-  console.error('Missing .local/test-pn fixture');
-  process.exit(2);
-}
-const keys = readFileSync(keysPath, 'utf8');
-const PN_NAME = keys.match(/^PN_NAME=(.+)$/m)?.[1]?.trim();
-const PASSCODE = keys.match(/^PASSCODE=(.+)$/m)?.[1]?.trim();
-if (!PN_NAME || !PASSCODE) {
-  console.error('keys.env must define PN_NAME and PASSCODE');
+let identityPath, PN_NAME, PASSCODE;
+try {
+  ({ identityPath, PN_NAME, PASSCODE } = loadTestPn(ROOT));
+} catch (e) {
+  console.error(e.message || e);
   process.exit(2);
 }
 
@@ -177,13 +172,7 @@ async function fillReactControlled(page, placeholder, value) {
 }
 
 /** Upload payload — avoid filename identity.pn (prod nickname path crashed on that name). */
-function identityUploadPayload() {
-  return {
-    name: 'test-pn.pn',
-    mimeType: 'application/json',
-    buffer: readFileSync(identityPath),
-  };
-}
+const UPLOAD_NAME = 'cursor-test-pn.pn';
 
 /**
  * Dashboard unlock is in-page (UnlockGate → IdentityCrypto.authenticateIdentity).
@@ -203,8 +192,8 @@ async function unlockDashboard(page, notes) {
     await page.getByRole('button', { name: 'Unlock pN' }).waitFor({ state: 'visible', timeout: 45_000 });
 
     const fileInput = page.locator('#file-upload-web, #file-upload-pwa, #file-upload').first();
-    await fileInput.setInputFiles(identityUploadPayload());
-    await page.getByText('test-pn.pn', { exact: false }).first().waitFor({
+    await fileInput.setInputFiles(identityUploadPayload(identityPath, UPLOAD_NAME));
+    await page.getByText(UPLOAD_NAME, { exact: false }).first().waitFor({
       state: 'visible',
       timeout: 15_000,
     });

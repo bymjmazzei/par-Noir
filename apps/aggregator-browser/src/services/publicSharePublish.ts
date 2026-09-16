@@ -9,7 +9,7 @@ import {
   type PublicShareGenerationResult,
 } from '@par-noir/aggregator-domain';
 import { API_ENDPOINT } from '../config/api';
-import { ownerApiHeadersAsync } from './ownerApiHeaders';
+import { ownerFetch } from './ownerApiFetch';
 import { uploadStorageFile } from './storageApiClient';
 import { PNOAuthService } from './pnOAuthService';
 
@@ -38,12 +38,15 @@ export async function publishPublicShare(params: {
     throw new Error('Unlock your pN to publish public content');
   }
   const backend = params.backend || 'google_drive';
-  const headers = await ownerApiHeadersAsync(params.accessToken);
 
   const { publicToken, publicContentRef } = await materializePublicShare({
     generation: params.generation,
     apiBase: API_ENDPOINT,
-    headers,
+    request: (method, path, body) =>
+      ownerFetch(method, path, body, {
+        authToken: params.accessToken,
+        pnIdentifier
+      }),
     backend,
     envelopeFileName: params.envelopeFileName,
     uploadEnvelope: async (blob, fileName) => {
@@ -67,11 +70,15 @@ export async function revokePublishedPublicContent(params: {
   accessToken: string;
   backend?: string;
 }): Promise<void> {
-  const headers = await ownerApiHeadersAsync(params.accessToken);
+  const session = PNOAuthService.loadSession();
   await revokePublicContentRef({
     objectId: params.objectId,
     backend: params.backend || 'google_drive',
     apiBase: API_ENDPOINT,
-    headers,
+    request: (method, path, body) =>
+      ownerFetch(method, path, body, {
+        authToken: params.accessToken,
+        pnIdentifier: session?.pnIdentifier
+      }),
   });
 }

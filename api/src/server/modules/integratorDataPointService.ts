@@ -22,8 +22,11 @@ export async function fetchGrantedZkpProofs(params: {
   clientId: string;
   dataPointIds: string[];
   skipPermissionCheck?: boolean;
+  accessToken?: string;
 }): Promise<IntegratorZkpProofPayload[]> {
-  const zkpBundle = await loadZkpBundle(params.userPnIdentifier);
+  const zkpBundle = await loadZkpBundle(params.userPnIdentifier, {
+    accessToken: params.accessToken,
+  });
   if (!zkpBundle) {
     return [];
   }
@@ -36,7 +39,13 @@ export async function fetchGrantedZkpProofs(params: {
   let finalAllowed = allowedIds;
 
   if (!params.skipPermissionCheck && params.clientId !== 'browser-app') {
-    const ctx = await getUserDriveMetadataContext(params.userPnIdentifier);
+    const at = String(params.accessToken || '').trim();
+    if (!at) {
+      return [];
+    }
+    const ctx = await getUserDriveMetadataContext(params.userPnIdentifier, {
+      accessToken: at,
+    });
     if (!ctx) {
       return [];
     }
@@ -94,10 +103,21 @@ export async function grantDataPointsToClient(params: {
   clientId: string;
   toolName: string;
   dataPointIds: string[];
+  accessToken?: string;
 }): Promise<void> {
-  const ctx = await getUserDriveMetadataContext(params.userPnIdentifier);
+  const at = String(params.accessToken || '').trim();
+  if (!at) {
+    throw Object.assign(new Error('Google Drive access token required'), {
+      code: 'CLOUD_TOKEN_REQUIRED',
+    });
+  }
+  const ctx = await getUserDriveMetadataContext(params.userPnIdentifier, {
+    accessToken: at,
+  });
   if (!ctx) {
-    throw new Error('User Drive not connected');
+    throw Object.assign(new Error('User Drive not connected'), {
+      code: 'CLOUD_TOKEN_REQUIRED',
+    });
   }
 
   const permissions = await ThirdPartyPermissionsService.getPermissions(

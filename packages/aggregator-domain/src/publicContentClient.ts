@@ -11,31 +11,60 @@ import {
 import { isPublicCipherEnvelope, isPublicContentRef, type PublicContentRef } from './publicContentRef';
 import { envelopeJsonBytes, slimPublicTokenJson, type PublicShareGenerationResult } from './publicShare';
 
+/** Injected request (e.g. ownerFetch) so apps mint cloud AT via their gate. */
+export type PublicContentRequest = (
+  method: string,
+  path: string,
+  body?: unknown
+) => Promise<Response>;
+
 export interface EnsurePublicContentRefParams {
   objectId: string;
   backend?: string;
   apiBase: string;
-  /** Auth + cloud-token headers (e.g. ownerApiHeaders / Authorization + X-PN-Cloud-Access-Token) */
-  headers: HeadersInit;
+  /**
+   * Auth + cloud-token headers when `request` is omitted.
+   * Prefer `request` (ownerFetch) in first-party apps.
+   */
+  headers?: HeadersInit;
+  /** When set, used instead of raw fetch + headers (mint-capable gate). */
+  request?: PublicContentRequest;
   publicUrl?: string;
+}
+
+async function postPublicContent(
+  params: {
+    apiBase: string;
+    path: string;
+    body: unknown;
+    headers?: HeadersInit;
+    request?: PublicContentRequest;
+  }
+): Promise<Response> {
+  if (params.request) {
+    return params.request('POST', params.path, params.body);
+  }
+  if (!params.headers) {
+    throw new Error('headers or request required for public-content mutation');
+  }
+  const base = params.apiBase.replace(/\/$/, '');
+  return fetch(`${base}${params.path}`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(params.headers as Record<string, string>),
+    },
+    body: JSON.stringify(params.body),
+  });
 }
 
 export async function ensurePublicContentRef(
   params: EnsurePublicContentRefParams
 ): Promise<PublicContentRef> {
-  const { objectId, backend = 'google_drive', apiBase, headers, publicUrl } = params;
-  const base = apiBase.replace(/\/$/, '');
-  const res = await fetch(
-    `${base}/api/aggregator/public-content/${encodeURIComponent(objectId)}/ensure-public`,
-    {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        ...(headers as Record<string, string>),
-      },
-      body: JSON.stringify({ backend, ...(publicUrl ? { publicUrl } : {}) }),
-    }
-  );
+  const { objectId, backend = 'google_drive', apiBase, headers, publicUrl, request } = params;
+  const path = `/api/aggregator/public-content/${encodeURIComponent(objectId)}/ensure-public`;
+  const body = { backend, ...(publicUrl ? { publicUrl } : {}) };
+  const res = await postPublicContent({ apiBase, path, body, headers, request });
   if (!res.ok) {
     const text = await res.text().catch(() => res.statusText);
     throw new Error(`ensure-public failed: ${res.status} ${text}`);
@@ -51,21 +80,13 @@ export async function revokePublicContentRef(params: {
   objectId: string;
   backend?: string;
   apiBase: string;
-  headers: HeadersInit;
+  headers?: HeadersInit;
+  request?: PublicContentRequest;
 }): Promise<void> {
-  const { objectId, backend = 'google_drive', apiBase, headers } = params;
-  const base = apiBase.replace(/\/$/, '');
-  const res = await fetch(
-    `${base}/api/aggregator/public-content/${encodeURIComponent(objectId)}/revoke-public`,
-    {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        ...(headers as Record<string, string>),
-      },
-      body: JSON.stringify({ backend }),
-    }
-  );
+  const { objectId, backend = 'google_drive', apiBase, headers, request } = params;
+  const path = `/api/aggregator/public-content/${encodeURIComponent(objectId)}/revoke-public`;
+  const body = { backend };
+  const res = await postPublicContent({ apiBase, path, body, headers, request });
   if (!res.ok) {
     const text = await res.text().catch(() => res.statusText);
     throw new Error(`revoke-public failed: ${res.status} ${text}`);
@@ -78,7 +99,8 @@ export async function revokePublicContentRef(params: {
 export async function materializePublicShare(params: {
   generation: PublicShareGenerationResult;
   apiBase: string;
-  headers: HeadersInit;
+  headers?: HeadersInit;
+  request?: PublicContentRequest;
   backend?: string;
   envelopeFileName?: string;
   uploadEnvelope: (blob: Blob, fileName: string) => Promise<{ objectId: string; publicUrl?: string }>;
@@ -92,6 +114,7 @@ export async function materializePublicShare(params: {
     backend,
     apiBase: params.apiBase,
     headers: params.headers,
+    request: params.request,
     publicUrl: uploaded.publicUrl,
   });
   return {

@@ -16,7 +16,6 @@ import {
   refreshPortalAccessToken,
   type PnOAuthPopupResult
 } from '@par-noir/oauth-ui';
-import { ownerCloudHeadersAsync } from '@par-noir/device-cloud-credentials';
 import { API_ENDPOINT } from '../config/api';
 import { PN_CLIENT_ID } from '../config/client';
 
@@ -106,18 +105,13 @@ export function LicensingSessionProvider({ children }: { children: ReactNode }) 
   const processedCodesRef = useRef<Set<string>>(new Set());
   const bootstrapStartedRef = useRef(false);
 
-  // No sync counterpart: a sync builder cannot mint a Drive token, so any
-  // Drive-backed caller reaching for it would silently send none.
+  // Bearer only. Music registry tracks are Postgres-backed and do not resolve
+  // owner Drive. Do not invent a sync cloud-header helper for this surface.
   const authHeadersAsync = useCallback(async (): Promise<HeadersInit> => {
     const t = getAccessToken();
     if (!t) return { 'Content-Type': 'application/json' };
-    return ownerCloudHeadersAsync({
-      authToken: t,
-      pnIdentifier: user?.pn_identifier,
-      apiEndpoint: API_ENDPOINT,
-      extra: { 'Content-Type': 'application/json' }
-    });
-  }, [user?.pn_identifier]);
+    return { 'Content-Type': 'application/json', Authorization: `Bearer ${t}` };
+  }, []);
 
   const refreshUser = useCallback(async () => {
     let t = getAccessToken();

@@ -1,17 +1,28 @@
 ---
-description: Always use the local gitignored test pN for unlock/OAuth QA
+description: Agent unlock uses cursor-test-pn only — never the user's test-pn
 alwaysApply: true
 ---
 
 # Local test pN for unlock QA
 
-When diagnosing or verifying identity unlock, OAuth consent, browse unlock, messaging handoff, or dashboard auth:
+## Hard split (do not blur)
 
-1. **Prefer hermetic package/API tests first** (ephemeral create→unlock→unlock-proof in `packages/identity-crypto` / `pnOAuthPqc.test.ts`). Use those in CI; do not rely on live-site `e2e-create-unlock.mjs` as a gate.
-2. **For manual/local product QA**, use the fixture at `.local/test-pn/` (gitignored via `.local/`).
-   - Identity file: `.local/test-pn/identity.pn`
-   - Credentials: `.local/test-pn/keys.env` (`PN_NAME` = Key 1, `PASSCODE` = Key 2)
-3. **Do not** ask the user to re-supply this test pN if those files exist.
-4. **Do not** commit `.local/`, log Key 1/Key 2 / passcode / pn name, or paste secrets into git, PRs, or plan files.
-5. **Before telling the user to manually retest**, run an automated check when possible (hermetic package test, or decrypt `.local/test-pn` + ML-DSA unlock proof against API).
-6. If `.local/test-pn/` is missing and a local product check needs it, ask once for the test identity + keys and write them back under `.local/test-pn/` immediately.
+| Fixture | Who | When |
+|---------|-----|------|
+| **`.local/cursor-test-pn/`** | **Agent only** | Headed browse unlock, OAuth consent, dashboard unlock, any agent product QA. This is the renamed former `test-pn-2` (already set up). |
+| `.local/test-pn/` | **User** dual-pN A | Only when the user explicitly asks for dual-pN / messaging QA |
+
+**Never** open, unlock, or upload `.local/test-pn` for agent-driven headed unlock, screenshots, or “just checking browse.” That is the user’s identity.
+
+**There is no third fixture.** Do not create `.local/test-pn-2` again. Dual-pN B is `cursor-test-pn`.
+
+## Agent default
+
+1. **Prefer hermetic package/API tests first** (ephemeral create→unlock→unlock-proof in `packages/identity-crypto` / `pnOAuthPqc.test.ts`). Use those in CI.
+2. **For agent/local product QA**, use **`.local/cursor-test-pn/`** only:
+   - Identity: `IDENTITY_FILE` / `live-created.pn` / `.pn` in that folder
+   - Credentials: `.local/cursor-test-pn/keys.env` (`PN_NAME` = Key 1, `PASSCODE` = Key 2)
+3. If `.local/cursor-test-pn/` is missing: **stop and tell the user**. Do **not** create, mint, or live-create a replacement. Do **not** fall back to `.local/test-pn`.
+4. **Do not** ask the user to re-supply keys for cursor-test-pn if those files exist.
+5. **Do not** commit `.local/`, log Key 1/Key 2 / passcode / pn name, or paste secrets into git, PRs, or plan files.
+6. Dual-pN scripts may load `test-pn` + `cursor-test-pn` **only** when the user asked for that dual-pN messaging/connect QA.

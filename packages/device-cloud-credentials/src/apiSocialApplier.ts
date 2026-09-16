@@ -16,17 +16,15 @@
 import type { StorageCredentialsEnvelope } from '@par-noir/user-owned-storage';
 import type { MailboxJob } from './types.js';
 import { SOCIAL_JOB_TYPES_APPLIED_VIA_API } from './siloMaterialize.js';
+import { mintDriveAuthExtras, type BuildAuthHeaders } from './mintDriveAuthHeaders.js';
 
 export interface ApiSocialApplierOptions {
   apiBaseUrl: string;
   authToken: string;
   identityId: string;
-  buildAuthHeaders?: (
-    method: string,
-    path: string,
-    body?: unknown
-  ) => Promise<Record<string, string>> | Record<string, string>;
-  /** Forwarded as X-PN-Cloud-Access-Token so the API can reach the caller's own Drive. */
+  /** Extra headers only (e.g. device proof). Cloud AT is minted internally. */
+  buildAuthHeaders?: BuildAuthHeaders;
+  /** Fallback when session vault cannot mint (dashboard unsealed envelope). */
   getCloudAccessToken?: () => Promise<string | undefined> | string | undefined;
   /**
    * Opens an envelope sealed to this identity's ML-KEM public key. Omit and any
@@ -101,12 +99,16 @@ export function createApiSocialApplier(opts: ApiSocialApplierOptions) {
       jobType: job.jobType
     };
 
-    const cloudAccessToken = opts.getCloudAccessToken
-      ? await opts.getCloudAccessToken()
-      : undefined;
-    const extra = opts.buildAuthHeaders
-      ? await opts.buildAuthHeaders('POST', path, body)
-      : {};
+    const extra = await mintDriveAuthExtras({
+      authToken: opts.authToken,
+      pnIdentifier: opts.identityId,
+      apiEndpoint: opts.apiBaseUrl,
+      buildAuthHeaders: opts.buildAuthHeaders,
+      getCloudAccessToken: opts.getCloudAccessToken,
+      method: 'POST',
+      path,
+      body
+    });
 
     const res = await fetch(`${base}${path}`, {
       method: 'POST',
@@ -114,7 +116,6 @@ export function createApiSocialApplier(opts: ApiSocialApplierOptions) {
         Authorization: `Bearer ${opts.authToken}`,
         'Content-Type': 'application/json',
         Accept: 'application/json',
-        ...(cloudAccessToken ? { 'X-PN-Cloud-Access-Token': cloudAccessToken } : {}),
         ...extra
       },
       body: JSON.stringify(body)

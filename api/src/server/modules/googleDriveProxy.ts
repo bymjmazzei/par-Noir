@@ -581,6 +581,7 @@ export class GoogleDriveProxyService {
   /**
    * List files from Google Drive.
    * Prefer accessTokenOverride (X-PN-Cloud-Access-Token) under device custody.
+   * Pass pageToken for pagination; response includes nextPageToken when more pages exist.
    */
   async listFiles(
     userPnIdentifier: string,
@@ -588,8 +589,9 @@ export class GoogleDriveProxyService {
     pageSize: number = 50,
     accountId?: string,
     additionalCandidates?: string[],
-    accessTokenOverride?: string
-  ): Promise<GoogleDriveFile[]> {
+    accessTokenOverride?: string,
+    pageToken?: string
+  ): Promise<{ files: GoogleDriveFile[]; nextPageToken?: string }> {
     const override = accessTokenOverride?.trim() || '';
     let accessToken =
       override || (await this.getAccessToken(userPnIdentifier, accountId, additionalCandidates));
@@ -602,6 +604,9 @@ export class GoogleDriveProxyService {
 
     if (query) {
       params.append('q', query);
+    }
+    if (pageToken?.trim()) {
+      params.append('pageToken', pageToken.trim());
     }
 
     // Try the request, and if we get a 401, refresh the token and retry once
@@ -694,8 +699,11 @@ export class GoogleDriveProxyService {
       throw new Error(`Failed to list files: ${errorText}`);
     }
 
-    const data = await response.json() as { files?: GoogleDriveFile[] };
-    return data.files || [];
+    const data = await response.json() as { files?: GoogleDriveFile[]; nextPageToken?: string };
+    return {
+      files: data.files || [],
+      nextPageToken: data.nextPageToken || undefined,
+    };
   }
 
   /**
@@ -1268,6 +1276,56 @@ export class GoogleDriveProxyService {
     if (!response.ok) {
       const errorText = await response.text();
       throw new Error(`Failed to update file: ${errorText}`);
+    }
+
+    return response.json() as Promise<GoogleDriveFile>;
+  }
+
+  /**
+   * Replace file media content in place (preserves file id).
+   * Requires forwarded cloud token under custody.
+   */
+  async replaceFileContent(
+    userPnIdentifier: string,
+    fileId: string,
+    file: Buffer,
+    mimeType: string,
+    accountId?: string,
+    accessTokenOverride?: string
+  ): Promise<GoogleDriveFile> {
+    const override = accessTokenOverride?.trim() || '';
+    const { isDeviceCloudCustodyEnabled } = await import('./socialMailboxService');
+    let accessToken: string;
+    if (override) {
+      accessToken = override;
+    } else if (isDeviceCloudCustodyEnabled()) {
+      safeLogger.warn('[GoogleDriveProxy] replaceFileContent requires forwarded token under custody', {
+        reason: 'cloud_token_required',
+        pnIdHash: hashIdentifier(userPnIdentifier),
+      });
+      throw new Error(
+        'Google Drive access token required. Forward X-PN-Cloud-Access-Token after unlocking with cloud credentials.'
+      );
+    } else {
+      accessToken = await this.getAccessToken(userPnIdentifier, accountId);
+    }
+
+    const response = await fetch(
+      `https://www.googleapis.com/upload/drive/v3/files/${encodeURIComponent(fileId)}?uploadType=media`,
+      {
+        method: 'PATCH',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'Content-Type': mimeType || 'application/octet-stream',
+          'Content-Length': file.length.toString(),
+        },
+        body: file,
+      }
+    );
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Failed to replace file content: ${errorText}`);
     }
 
     return response.json() as Promise<GoogleDriveFile>;

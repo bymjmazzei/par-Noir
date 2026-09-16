@@ -14,17 +14,16 @@ import {
   enqueueMailboxThroughway,
   lookupMailboxThroughway
 } from './flushWorker.js';
+import { mintDriveAuthExtras, type BuildAuthHeaders } from './mintDriveAuthHeaders.js';
 
 export interface PromoteOutboxOptions {
   apiBaseUrl: string;
   authToken: string;
   identityId: string;
   session: SealSession;
-  buildAuthHeaders?: (
-    method: string,
-    path: string,
-    body?: unknown
-  ) => Promise<Record<string, string>> | Record<string, string>;
+  /** Extra headers only (e.g. device proof). Cloud AT is minted internally. */
+  buildAuthHeaders?: BuildAuthHeaders;
+  /** Fallback when session vault cannot mint (dashboard unsealed envelope). */
   getCloudAccessToken?: () => Promise<string | undefined> | string | undefined;
   /** Optional durable outbox backup (dashboard). Must not be used as chat SoT. */
   writeOutboxCloudBackup?: (record: OutboxRecord) => Promise<void>;
@@ -69,19 +68,22 @@ async function postOwnSheetApply(
     jobType: record.kind,
     role: 'sender'
   };
-  const cloudAccessToken = opts.getCloudAccessToken
-    ? await opts.getCloudAccessToken()
-    : undefined;
-  const extra = opts.buildAuthHeaders
-    ? await opts.buildAuthHeaders('POST', path, body)
-    : {};
+  const extra = await mintDriveAuthExtras({
+    authToken: opts.authToken,
+    pnIdentifier: opts.identityId,
+    apiEndpoint: opts.apiBaseUrl,
+    buildAuthHeaders: opts.buildAuthHeaders,
+    getCloudAccessToken: opts.getCloudAccessToken,
+    method: 'POST',
+    path,
+    body
+  });
   const res = await fetch(`${base}${path}`, {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${opts.authToken}`,
       'Content-Type': 'application/json',
       Accept: 'application/json',
-      ...(cloudAccessToken ? { 'X-PN-Cloud-Access-Token': cloudAccessToken } : {}),
       ...extra
     },
     body: JSON.stringify(body)

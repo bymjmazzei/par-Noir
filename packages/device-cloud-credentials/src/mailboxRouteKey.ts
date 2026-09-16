@@ -5,6 +5,7 @@
 
 import type { SealedEnvelope, SealSession } from './types.js';
 import { sealCredentials, unsealCredentials } from './seal.js';
+import { mintDriveAuthExtras, type BuildAuthHeaders } from './mintDriveAuthHeaders.js';
 
 const LOCAL_KEY_PREFIX = 'pn_mailbox_route_v1:';
 const ROUTE_KEY_BYTES = 32;
@@ -60,20 +61,31 @@ export async function saveMailboxRouteKey(
 export interface MailboxRouteApiContext {
   apiBaseUrl: string;
   authToken: string;
-  buildAuthHeaders?: (
-    method: string,
-    path: string,
-    body?: unknown
-  ) => Record<string, string> | Promise<Record<string, string>>;
+  /**
+   * Identity for package-internal cloud AT mint. Defaults to the identityId
+   * argument on ensureMailboxRouteKey / fetch / claim when omitted.
+   */
+  pnIdentifier?: string;
+  /** Extra headers only (e.g. device proof). Cloud AT is minted internally. */
+  buildAuthHeaders?: BuildAuthHeaders;
 }
 
 async function mergeAuthHeaders(
   api: MailboxRouteApiContext,
   method: string,
   path: string,
-  body?: unknown
+  body: unknown | undefined,
+  pnIdentifier: string
 ): Promise<Record<string, string>> {
-  const extra = api.buildAuthHeaders ? await api.buildAuthHeaders(method, path, body) : {};
+  const extra = await mintDriveAuthExtras({
+    authToken: api.authToken,
+    pnIdentifier: api.pnIdentifier ?? pnIdentifier,
+    apiEndpoint: api.apiBaseUrl,
+    buildAuthHeaders: api.buildAuthHeaders,
+    method,
+    path,
+    body
+  });
   return {
     Authorization: `Bearer ${api.authToken}`,
     Accept: 'application/json',
@@ -89,7 +101,7 @@ export async function fetchMailboxRoute(
   const base = api.apiBaseUrl.replace(/\/$/, '');
   const path = `/api/mailbox/route?pnIdentifier=${encodeURIComponent(identityId)}`;
   const res = await fetch(`${base}${path}`, {
-    headers: await mergeAuthHeaders(api, 'GET', path)
+    headers: await mergeAuthHeaders(api, 'GET', path, undefined, identityId)
   });
   if (res.status === 404) return null;
   if (!res.ok) throw new Error(`mailbox route get failed: HTTP ${res.status}`);
@@ -112,7 +124,7 @@ export async function claimMailboxRouteKey(
   const res = await fetch(`${base}${path}`, {
     method: 'POST',
     headers: {
-      ...(await mergeAuthHeaders(api, 'POST', path, body)),
+      ...(await mergeAuthHeaders(api, 'POST', path, body, identityId)),
       'Content-Type': 'application/json'
     },
     body: JSON.stringify(body)

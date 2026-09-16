@@ -64,6 +64,7 @@ export function setupDriveRoutes(app: express.Application, deps: DriveRouteDeps)
         const scope = req.query.scope as string | undefined;
         const pageSize = req.query.pageSize ? parseInt(req.query.pageSize as string, 10) : 50;
         const accountId = req.query.accountId as string | undefined;
+        const pageToken = (req.query.pageToken as string | undefined)?.trim() || undefined;
 
         const { resolveIntegratorDriveContext } = await import('./integratorDriveContext');
         const { IntegratorFolderService } = await import('./integratorFolderService');
@@ -85,16 +86,20 @@ export function setupDriveRoutes(app: express.Application, deps: DriveRouteDeps)
           const { isMessagingLibraryDriveFile } = await import('./messagingMediaService');
           const sharedQuery =
             "sharedWithMe=true and trashed=false and mimeType != 'application/vnd.google-apps.folder'";
-          const sharedFiles = await googleDriveProxyService.listFiles(
+          const sharedPage = await googleDriveProxyService.listFiles(
             userIdentifier,
             sharedQuery,
             pageSize,
             accountId,
             identifierCandidates,
-            driveCtx.accessToken
+            driveCtx.accessToken,
+            pageToken
           );
-          const files = sharedFiles.filter(isMessagingLibraryDriveFile);
-          return res.json({ files });
+          const files = sharedPage.files.filter(isMessagingLibraryDriveFile);
+          return res.json({
+            files,
+            ...(sharedPage.nextPageToken ? { nextPageToken: sharedPage.nextPageToken } : {}),
+          });
         }
         
         // If no query provided and we have a pN identifier, try to find files in the pN folder
@@ -198,17 +203,21 @@ export function setupDriveRoutes(app: express.Application, deps: DriveRouteDeps)
         
         // Pass forwarded cloud token so list works under device custody
         console.log(`[DriveFiles] Final query for listFiles: ${finalQuery || '(none - will list all files)'}`);
-        const files = await googleDriveProxyService.listFiles(
+        const listPage = await googleDriveProxyService.listFiles(
           userIdentifier,
           finalQuery,
           pageSize,
           accountId,
           identifierCandidates,
-          driveCtx.accessToken
+          driveCtx.accessToken,
+          pageToken
         );
         
-        console.log(`[DriveFiles] Returning ${files.length} file(s) to client`);
-        return res.json({ files });
+        console.log(`[DriveFiles] Returning ${listPage.files.length} file(s) to client`);
+        return res.json({
+          files: listPage.files,
+          ...(listPage.nextPageToken ? { nextPageToken: listPage.nextPageToken } : {}),
+        });
       } catch (error: any) {
         console.error('Error listing Google Drive files:', error);
         const msg = String(error?.message || '');
@@ -1161,6 +1170,79 @@ export function setupDriveRoutes(app: express.Application, deps: DriveRouteDeps)
           removedFromDatabase: dbRemoved,
           warning: 'Database cleaned but Google Drive operations may have failed',
           error: error.message
+        });
+      }
+    });
+
+    // PUT /api/drive/files/:fileId/content — replace media in place (migration / writeJsonFile)
+    app.put('/api/drive/files/:fileId/content', async (req, res) => {
+      try {
+        const tokenPayload = getBearerTokenPayload(req);
+        if (!tokenPayload) {
+          return res.status(401).json({
+            error: 'unauthorized',
+            error_description: 'Invalid or expired access token'
+          });
+        }
+
+        if (!(await gateOwnerRoute(req, res, DEVICE_CAPABILITIES.driveUpload))) return;
+
+        const userIdentifier = tokenPayload.pnIdentifier || tokenPayload.did;
+        if (!userIdentifier) {
+          return res.status(400).json({
+            error: 'pnIdentifier required',
+            error_description: 'Token must include pnIdentifier for storage access'
+          });
+        }
+
+        const { fileId } = req.params;
+        const { fileData, mimeType, accountId } = req.body || {};
+        if (!fileData || typeof fileData !== 'string') {
+          return res.status(400).json({
+            error: 'Missing required fields',
+            error_description: 'fileData (base64) is required'
+          });
+        }
+
+        const { googleDriveProxyService } = await import('./googleDriveProxy');
+        const { extractCloudAccessToken } = await import('./cloudAccessToken');
+        const { respondDriveTokenError } = await import('./ownerDriveToken');
+        const { resolveIntegratorDriveContext } = await import('./integratorDriveContext');
+        const driveCtx = await resolveIntegratorDriveContext(req, accountId);
+        if ('error' in driveCtx) {
+          return res.status(driveCtx.status).json({
+            error: driveCtx.code || 'forbidden',
+            error_description: driveCtx.error
+          });
+        }
+
+        try {
+          const fileBuffer = Buffer.from(fileData, 'base64');
+          const updated = await googleDriveProxyService.replaceFileContent(
+            userIdentifier,
+            fileId,
+            fileBuffer,
+            mimeType || 'application/octet-stream',
+            accountId,
+            driveCtx.accessToken || extractCloudAccessToken(req)
+          );
+          return res.json({ file: updated });
+        } catch (tokenErr: unknown) {
+          if (respondDriveTokenError(res, tokenErr)) return;
+          throw tokenErr;
+        }
+      } catch (error: any) {
+        console.error('Error replacing Google Drive file content:', error);
+        const msg = String(error?.message || '');
+        if (/access token|cloud token|reconnect|authentication failed/i.test(msg)) {
+          return res.status(409).json({
+            error: 'cloud_token_required',
+            error_description: msg || 'Google Drive access token required'
+          });
+        }
+        return res.status(500).json({
+          error: 'Failed to replace file content',
+          error_description: safeClientErrorMessage(error, NODE_ENV === 'production') || 'Failed to replace Google Drive file content'
         });
       }
     });

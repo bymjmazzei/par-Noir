@@ -159,7 +159,7 @@ export function useEditFileMetadata({
 
       const updatedMetadata = await response.json();
 
-      // Also update Google Drive metadata file if we have access
+      // Also update companion + indexes via API (Sheets) when Drive backend is connected
       const backend = aggregatorService?.getBackend(editingFile.backend);
       // SECURITY: Check credentials instead of resolvedAuth.pnName (secret)
       const sessionId = authenticatedUser?.id || (authenticatedUser as any)?.publicKey || null;
@@ -167,150 +167,144 @@ export function useEditFileMetadata({
       if (backend && backend.isConnected() && credentials?.pnName) {
         try {
           const { GoogleDriveMetadataService } = await import('../../../services/storage/GoogleDriveMetadataService');
-          const token = (backend as any).token || localStorage.getItem('google_drive_token');
+          const publicKey = resolvedAuth?.publicKey;
+          if (!publicKey) {
+            throw new Error('Public identity key is required to update metadata');
+          }
+          // Generate stable pN identifier using VolumeIdGenerator for consistency
+          let pnIdentifier: string | undefined;
+          try {
+            const { VolumeIdGenerator } = await import('@par-noir/identity-crypto');
+            pnIdentifier = await VolumeIdGenerator.generateCanonicalVolumeId(publicKey);
+          } catch (volumeIdError) {
+            console.warn('⚠️ [UpdateMetadata] Failed to generate volume ID:', volumeIdError);
+          }
 
-          if (token) {
-            const publicKey = resolvedAuth?.publicKey;
-            if (!publicKey) {
-              throw new Error('Public identity key is required to update metadata');
-            }
-            // Generate stable pN identifier using VolumeIdGenerator for consistency
-            let pnIdentifier: string | undefined;
-            try {
-              const { VolumeIdGenerator } = await import('@par-noir/identity-crypto');
-              pnIdentifier = await VolumeIdGenerator.generateCanonicalVolumeId(publicKey);
-            } catch (volumeIdError) {
-              console.warn('⚠️ [UpdateMetadata] Failed to generate volume ID:', volumeIdError);
-            }
+          // STANDARDIZED: Only use VolumeIdGenerator - no fallbacks
+          if (!pnIdentifier) {
+            console.warn('⚠️ [UpdateMetadata] Cannot generate standardized pN identifier - credentials required');
+            console.warn('⚠️ [UpdateMetadata] Metadata update skipped - pN identifier required');
+            return;
+          }
 
-            // STANDARDIZED: Only use VolumeIdGenerator - no fallbacks
-            if (!pnIdentifier) {
-              console.warn('⚠️ [UpdateMetadata] Cannot generate standardized pN identifier - credentials required');
-              console.warn('⚠️ [UpdateMetadata] Metadata update skipped - pN identifier required');
-              return;
-            }
+          // Get current metadata from fileMetadataMap or construct from file
+          let currentMetadata = fileMetadataMap.get(editingFile.id);
 
-            // Get current metadata from fileMetadataMap or construct from file
-            let currentMetadata = fileMetadataMap.get(editingFile.id);
-
-            // If no metadata exists, create a basic structure
-            if (!currentMetadata) {
-              currentMetadata = {
-                fileId: editingFile.id,
-                backend: editingFile.backend,
-                backendFileId: editingFile.backendFileId,
-                name: editForm.name,
-                description: editForm.description,
-                keywords: tags,
-                tags: tags,
-                uploadDate: new Date().toISOString(),
-                fileType: editingFile.mimeType?.split('/')[0] || 'other',
-                isPublic: false,
-                creator: {
-                  '@type': 'Person',
-                  '@id': publicKey.startsWith('did:') ? publicKey : `did:key:${publicKey}`,
-                  identifier: {
-                    '@type': 'PropertyValue',
-                    name: 'DID',
-                    value: publicKey.startsWith('did:') ? publicKey : `did:key:${publicKey}`
-                  }
-                }
-              } as PublicMetadata;
-            }
-
-            // Parse genre for companion metadata
-            const genre = editForm.genre
-              .split(',')
-              .map(g => g.trim())
-              .filter(g => g.length > 0);
-
-            // Build location object for companion metadata (without lat/lng)
-            let locationCreated = undefined;
-            if (editForm.locationName || editForm.locationAddress) {
-              locationCreated = {
-                '@type': 'Place',
-                ...(editForm.locationName && { name: editForm.locationName }),
-                ...(editForm.locationAddress && {
-                  address: {
-                    '@type': 'PostalAddress',
-                    addressLocality: editForm.locationAddress.split(',')[0]?.trim() || '',
-                    addressRegion: editForm.locationAddress.split(',')[1]?.trim() || '',
-                    addressCountry: editForm.locationAddress.split(',')[2]?.trim() || ''
-                  }
-                })
-              };
-            }
-
-            // Preserve existing schema metadata (static/auto-extracted fields)
-            const existingSchema = (currentMetadata as any)?.schema || {};
-
-            // Update companion metadata file
-            const companionMetadata: CompanionMetadata = {
+          // If no metadata exists, create a basic structure
+          if (!currentMetadata) {
+            currentMetadata = {
               fileId: editingFile.id,
-              googleDriveFileId: editingFile.backendFileId,
-              fileName: editingFile.name,
-              originalName: editForm.name,
-              mimeType: editingFile.mimeType || 'application/octet-stream',
-              size: parseInt(editingFile.size?.toString() || '0', 10),
-              visibility: currentMetadata.isPublic ? 'public' : 'private',
-              uploadedAt: currentMetadata.uploadDate || new Date().toISOString(),
-              owner: {
-                did: publicKey.startsWith('did:') ? publicKey : `did:key:${publicKey}`,
-                identifier: pnIdentifier
-              },
-              tags: tags,
+              backend: editingFile.backend,
+              backendFileId: editingFile.backendFileId,
+              name: editForm.name,
               description: editForm.description,
-              metadata: {},
-              publicToken: currentMetadata.publicToken,
-              thumbnail:
-                typeof currentMetadata.thumbnail === 'string'
-                  ? currentMetadata.thumbnail
-                  : currentMetadata.thumbnail?.['@id'],
-              inReplyTo: currentMetadata.inReplyTo,
-              repostOf: currentMetadata.repostOf,
-              isPartOf: currentMetadata.isPartOf,
-              indexingPermissions: currentMetadata.indexingPermissions,
-              schema: {
-                ...existingSchema, // Preserve auto-extracted technical metadata (width, height, duration, etc.)
-                ...(genre.length > 0 && { genre }),
-                ...(editForm.category && { category: editForm.category }),
-                ...(editForm.category && { feedCategories: [editForm.category as FeedCategory] }),
-                ...(locationCreated && { locationCreated }),
-                ...(editForm.license && { license: editForm.license }),
-                // Preserve existing NSFW value (managed via Share Settings)
-                ...(currentMetadata.isNSFW !== undefined && { isNSFW: currentMetadata.isNSFW })
-              },
-              engagement: currentMetadata.engagement || {
-                views: 0,
-                likes: 0,
-                comments: 0,
-                shares: 0,
-                lastUpdated: currentMetadata.uploadDate || new Date().toISOString()
+              keywords: tags,
+              tags: tags,
+              uploadDate: new Date().toISOString(),
+              fileType: editingFile.mimeType?.split('/')[0] || 'other',
+              isPublic: false,
+              creator: {
+                '@type': 'Person',
+                '@id': publicKey.startsWith('did:') ? publicKey : `did:key:${publicKey}`,
+                identifier: {
+                  '@type': 'PropertyValue',
+                  name: 'DID',
+                  value: publicKey.startsWith('did:') ? publicKey : `did:key:${publicKey}`
+                }
               }
+            } as PublicMetadata;
+          }
+
+          // Parse genre for companion metadata
+          const genre = editForm.genre
+            .split(',')
+            .map(g => g.trim())
+            .filter(g => g.length > 0);
+
+          // Build location object for companion metadata (without lat/lng)
+          let locationCreated = undefined;
+          if (editForm.locationName || editForm.locationAddress) {
+            locationCreated = {
+              '@type': 'Place',
+              ...(editForm.locationName && { name: editForm.locationName }),
+              ...(editForm.locationAddress && {
+                address: {
+                  '@type': 'PostalAddress',
+                  addressLocality: editForm.locationAddress.split(',')[0]?.trim() || '',
+                  addressRegion: editForm.locationAddress.split(',')[1]?.trim() || '',
+                  addressCountry: editForm.locationAddress.split(',')[2]?.trim() || ''
+                }
+              })
             };
+          }
 
-            // Always update companion metadata (even for private files)
-              await GoogleDriveMetadataService.createCompanionMetadataFile(
-                token,
-                pnIdentifier,
-                companionMetadata
-              );
+          // Preserve existing schema metadata (static/auto-extracted fields)
+          const existingSchema = (currentMetadata as any)?.schema || {};
 
-              // Always update owner index (contains ALL files)
-              await GoogleDriveMetadataService.updateOwnerFileIndex(
-                token,
-                pnIdentifier,
-                companionMetadata
-              );
+          // Update companion metadata file
+          const companionMetadata: CompanionMetadata = {
+            fileId: editingFile.id,
+            googleDriveFileId: editingFile.backendFileId,
+            fileName: editingFile.name,
+            originalName: editForm.name,
+            mimeType: editingFile.mimeType || 'application/octet-stream',
+            size: parseInt(editingFile.size?.toString() || '0', 10),
+            visibility: currentMetadata.isPublic ? 'public' : 'private',
+            uploadedAt: currentMetadata.uploadDate || new Date().toISOString(),
+            owner: {
+              did: publicKey.startsWith('did:') ? publicKey : `did:key:${publicKey}`,
+              identifier: pnIdentifier
+            },
+            tags: tags,
+            description: editForm.description,
+            metadata: {},
+            publicToken: currentMetadata.publicToken,
+            thumbnail:
+              typeof currentMetadata.thumbnail === 'string'
+                ? currentMetadata.thumbnail
+                : currentMetadata.thumbnail?.['@id'],
+            inReplyTo: currentMetadata.inReplyTo,
+            repostOf: currentMetadata.repostOf,
+            isPartOf: currentMetadata.isPartOf,
+            indexingPermissions: currentMetadata.indexingPermissions,
+            schema: {
+              ...existingSchema, // Preserve auto-extracted technical metadata (width, height, duration, etc.)
+              ...(genre.length > 0 && { genre }),
+              ...(editForm.category && { category: editForm.category }),
+              ...(editForm.category && { feedCategories: [editForm.category as FeedCategory] }),
+              ...(locationCreated && { locationCreated }),
+              ...(editForm.license && { license: editForm.license }),
+              // Preserve existing NSFW value (managed via Share Settings)
+              ...(currentMetadata.isNSFW !== undefined && { isNSFW: currentMetadata.isNSFW })
+            },
+            engagement: currentMetadata.engagement || {
+              views: 0,
+              likes: 0,
+              comments: 0,
+              shares: 0,
+              lastUpdated: currentMetadata.uploadDate || new Date().toISOString()
+            }
+          };
 
-              // Update public index if public
-              if (currentMetadata.isPublic) {
-                await GoogleDriveMetadataService.updatePublicFileIndex(
-                  token,
-                  pnIdentifier,
-                  companionMetadata
-                );
-              }
+          // Companion + indexes via ownerFetch API (no Google token).
+          await GoogleDriveMetadataService.createCompanionMetadataFile(
+            '',
+            pnIdentifier,
+            companionMetadata
+          );
+
+          await GoogleDriveMetadataService.updateOwnerFileIndex(
+            '',
+            pnIdentifier,
+            companionMetadata
+          );
+
+          if (currentMetadata.isPublic) {
+            await GoogleDriveMetadataService.updatePublicFileIndex(
+              '',
+              pnIdentifier,
+              companionMetadata
+            );
           }
         } catch (driveError) {
           console.warn('Failed to update Google Drive metadata (non-critical):', driveError);

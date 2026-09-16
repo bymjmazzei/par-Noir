@@ -2,7 +2,7 @@
 /**
  * Live browse unlock network audit.
  *
- * Requires `.local/test-pn/identity.pn` + `keys.env` and Playwright chromium.
+ * Requires `.local/cursor-test-pn/` (agent fixture) and Playwright chromium.
  * Usage (from repo root or apps/aggregator-browser):
  *   node apps/aggregator-browser/scripts/browse-unlock-network-audit.mjs
  *
@@ -12,27 +12,19 @@
  */
 
 import { chromium } from 'playwright';
-import { readFileSync, existsSync } from 'fs';
 import { resolve, dirname } from 'path';
 import { fileURLToPath } from 'url';
+import { loadTestPn } from './ux-unlock-lib.mjs';
 
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const ROOT = process.env.REPO_ROOT || resolve(scriptDir, '../../..');
 const BROWSE_URL = process.env.BROWSE_URL || 'https://browse.parnoir.com';
 
-const identityPath = resolve(ROOT, '.local/test-pn/identity.pn');
-const keysPath = resolve(ROOT, '.local/test-pn/keys.env');
-
-if (!existsSync(identityPath) || !existsSync(keysPath)) {
-  console.error('Missing .local/test-pn fixture (identity.pn + keys.env)');
-  process.exit(2);
-}
-
-const keys = readFileSync(keysPath, 'utf8');
-const PN_NAME = keys.match(/^PN_NAME=(.+)$/m)?.[1]?.trim();
-const PASSCODE = keys.match(/^PASSCODE=(.+)$/m)?.[1]?.trim();
-if (!PN_NAME || !PASSCODE) {
-  console.error('keys.env must define PN_NAME and PASSCODE');
+let identityPath, PN_NAME, PASSCODE;
+try {
+  ({ identityPath, PN_NAME, PASSCODE } = loadTestPn(ROOT));
+} catch (e) {
+  console.error(e.message || e);
   process.exit(2);
 }
 

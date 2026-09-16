@@ -40,13 +40,13 @@ function loadPn(which) {
   const fileName = keys.match(/^IDENTITY_FILE=(.+)$/m)?.[1]?.trim();
   let identityPath = resolve(dir, fileName || 'identity.pn');
   if (!existsSync(identityPath)) {
-    identityPath = resolve(dir, which === 'test-pn-2' ? 'live-created.pn' : 'identity.pn');
+    identityPath = resolve(dir, which === 'cursor-test-pn' ? 'live-created.pn' : 'identity.pn');
   }
   return { which, identityPath, PN_NAME, PASSCODE };
 }
 
 const whichArg = process.argv[2];
-const fixtures = whichArg ? [loadPn(whichArg)] : [loadPn('test-pn'), loadPn('test-pn-2')];
+const fixtures = whichArg ? [loadPn(whichArg)] : [loadPn('test-pn'), loadPn('cursor-test-pn')];
 
 async function shot(page, name) {
   await page.screenshot({ path: resolve(OUT, `${name}.png`), fullPage: false }).catch(() => {});

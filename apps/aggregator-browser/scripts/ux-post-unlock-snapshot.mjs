@@ -4,9 +4,10 @@
  * Writes screenshots under .local/ux-playwright/ (gitignored via .local/).
  */
 import { chromium } from 'playwright';
-import { readFileSync, existsSync, mkdirSync, writeFileSync } from 'fs';
+import { mkdirSync, writeFileSync } from 'fs';
 import { resolve, dirname } from 'path';
 import { fileURLToPath } from 'url';
+import { loadTestPn } from './ux-unlock-lib.mjs';
 
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const ROOT = process.env.REPO_ROOT || resolve(scriptDir, '../../..');
@@ -14,11 +15,7 @@ const BROWSE_URL = process.env.BROWSE_URL || 'https://browse.parnoir.com';
 const OUT = resolve(ROOT, '.local/ux-playwright');
 mkdirSync(OUT, { recursive: true });
 
-const identityPath = resolve(ROOT, '.local/test-pn/identity.pn');
-const keysPath = resolve(ROOT, '.local/test-pn/keys.env');
-const keys = readFileSync(keysPath, 'utf8');
-const PN_NAME = keys.match(/^PN_NAME=(.+)$/m)?.[1]?.trim();
-const PASSCODE = keys.match(/^PASSCODE=(.+)$/m)?.[1]?.trim();
+const { identityPath, PN_NAME, PASSCODE } = loadTestPn(ROOT);
 
 const browser = await chromium.launch({ headless: true });
 const context = await browser.newContext({ viewport: { width: 390, height: 844 } });

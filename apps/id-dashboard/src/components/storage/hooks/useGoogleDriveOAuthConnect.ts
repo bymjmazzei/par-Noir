@@ -147,48 +147,6 @@ export function useGoogleDriveOAuthConnect({
     }
   }, [activeBackendId]);
 
-  const fetchDriveUserInfo = React.useCallback(async (accessToken: string) => {
-    try {
-      const response = await fetch('https://www.googleapis.com/drive/v3/about?fields=user', {
-        headers: {
-          Authorization: `Bearer ${accessToken}`
-        }
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        if (data?.user) {
-          return {
-            email: data.user.emailAddress as string | undefined,
-            name: data.user.displayName as string | undefined,
-          };
-        }
-      }
-    } catch (driveError) {
-      console.warn('⚠️ [fetchDriveUserInfo] drive/v3/about failed, falling back', driveError);
-    }
-
-    try {
-      const response = await fetch('https://www.googleapis.com/oauth2/v2/userinfo', {
-        headers: {
-          Authorization: `Bearer ${accessToken}`
-        }
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        return {
-          email: data?.email as string | undefined,
-          name: data?.name as string | undefined,
-        };
-      }
-    } catch (oauthError) {
-      console.warn('⚠️ [fetchDriveUserInfo] oauth2 userinfo failed', oauthError);
-    }
-
-    return { email: undefined, name: undefined };
-  }, []);
-
   React.useEffect(() => {
     const handleTokenExpired = (event: Event) => {
       const detailBackendId = (event as CustomEvent)?.detail?.backendId as string | undefined;
@@ -210,95 +168,72 @@ export function useGoogleDriveOAuthConnect({
     };
   }, [activeBackendId, removeDriveAccount]);
 
-  // Helper function to exchange authorization code for tokens
-  // Uses Google OAuth endpoint directly (client-side exchange) or API fallback
-  const exchangeCodeForTokens = async (code: string, redirectUri: string): Promise<{ accessToken: string; refreshToken: string; expiresIn: number }> => {
-    const clientId = import.meta.env.VITE_GOOGLE_DRIVE_CLIENT_ID || (await getGoogleDriveClientId());
-    if (!clientId || clientId.trim() === '') {
-      throw new Error('Google Drive client ID not configured. Set VITE_GOOGLE_DRIVE_CLIENT_ID or configure GOOGLE_DRIVE_CLIENT_ID on the API.');
-    }
-    const clientSecret = import.meta.env.VITE_GOOGLE_DRIVE_CLIENT_SECRET;
+  // Exchange authorization code via par Noir API (server probes userinfo for email).
+  const exchangeCodeForTokens = async (
+    code: string,
+    redirectUri: string
+  ): Promise<{
+    accessToken: string;
+    refreshToken: string;
+    expiresIn: number;
+    email?: string;
+    name?: string;
+  }> => {
+    const maxAttempts = 3;
+    const delays = [0, 1000, 2000];
+    let lastError: Error | null = null;
 
-    // If we have client secret, use it (should be in backend, but allowing frontend for now)
-    // Otherwise, try the API endpoint as fallback
-    if (clientSecret) {
-      // Direct exchange with Google (not recommended for production, but works)
-      const response = await fetch('https://oauth2.googleapis.com/token', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/x-www-form-urlencoded',
-        },
-        body: new URLSearchParams({
-          code: code,
-          client_id: clientId,
-          client_secret: clientSecret,
-          redirect_uri: redirectUri,
-          grant_type: 'authorization_code',
-        }),
-      });
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`Google token exchange failed: ${errorText}`);
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+      if (delays[attempt] > 0) {
+        await new Promise((r) => setTimeout(r, delays[attempt]));
       }
+      try {
+        const response = await fetch(`${API_ENDPOINT}/api/auth/google-oauth/token`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ code, redirectUri }),
+        });
 
-      const data = await response.json();
-      return {
-        accessToken: data.access_token,
-        refreshToken: data.refresh_token,
-        expiresIn: data.expires_in || 3600,
-      };
-    } else {
-      // Fallback to API endpoint with retry for transient network errors (e.g. ERR_SOCKET_NOT_CONNECTED)
-      const maxAttempts = 3;
-      const delays = [0, 1000, 2000];
-      let lastError: Error | null = null;
-
-      for (let attempt = 0; attempt < maxAttempts; attempt++) {
-        if (delays[attempt] > 0) {
-          await new Promise((r) => setTimeout(r, delays[attempt]));
+        if (!response.ok) {
+          let errorMessage = 'Failed to exchange authorization code';
+          try {
+            const error = await response.json();
+            errorMessage = error.message || error.error || JSON.stringify(error);
+            console.error('[Google OAuth] API Error:', error);
+          } catch (e) {
+            const errorText = await response.text().catch(() => 'Unknown error');
+            errorMessage = errorText || 'Failed to exchange authorization code';
+            console.error('[Google OAuth] API Error (text):', errorText);
+          }
+          throw new Error(errorMessage);
         }
-        try {
-          const response = await fetch(`${API_ENDPOINT}/api/auth/google-oauth/token`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({ code, redirectUri }),
-          });
 
-          if (!response.ok) {
-            let errorMessage = 'Failed to exchange authorization code';
-            try {
-              const error = await response.json();
-              errorMessage = error.message || error.error || JSON.stringify(error);
-              console.error('[Google OAuth] API Error:', error);
-            } catch (e) {
-              const errorText = await response.text().catch(() => 'Unknown error');
-              errorMessage = errorText || 'Failed to exchange authorization code';
-              console.error('[Google OAuth] API Error (text):', errorText);
-            }
-            throw new Error(errorMessage);
-          }
-
-          const data = await response.json();
-          return {
-            accessToken: data.access_token,
-            refreshToken: data.refresh_token,
-            expiresIn: data.expires_in || 3600,
-          };
-        } catch (e) {
-          lastError = e instanceof Error ? e : new Error(String(e));
-          const isNetwork = lastError?.message === 'Failed to fetch' || lastError?.name === 'TypeError';
-          if (isNetwork && attempt < maxAttempts - 1) {
-            console.warn(`[Google OAuth] Token exchange attempt ${attempt + 1} failed (network), retrying...`, lastError?.message);
-          } else {
-            throw lastError;
-          }
+        const data = await response.json();
+        return {
+          accessToken: data.access_token,
+          refreshToken: data.refresh_token,
+          expiresIn: data.expires_in || 3600,
+          email:
+            typeof data.email === 'string' && data.email.includes('@') ? data.email : undefined,
+          name:
+            typeof data.name === 'string' && data.name.trim() ? data.name.trim() : undefined,
+        };
+      } catch (e) {
+        lastError = e instanceof Error ? e : new Error(String(e));
+        const isNetwork = lastError?.message === 'Failed to fetch' || lastError?.name === 'TypeError';
+        if (isNetwork && attempt < maxAttempts - 1) {
+          console.warn(
+            `[Google OAuth] Token exchange attempt ${attempt + 1} failed (network), retrying...`,
+            lastError?.message
+          );
+        } else {
+          throw lastError;
         }
       }
-      throw lastError || new Error('Failed to exchange authorization code');
     }
+    throw lastError || new Error('Failed to exchange authorization code');
   };
 
   const handleConnectGoogleDrive = async () => {
@@ -363,9 +298,8 @@ export function useGoogleDriveOAuthConnect({
 
       await aggregatorService.ensureInitialized();
 
-      // Resolve user info so we can scope the backend to a specific account
-    const oauthUserInfo = await fetchDriveUserInfo(token);
-    const connectedEmail = oauthUserInfo?.email || null;
+      // Resolve user info from token exchange (API userinfo probe) — no client googleapis.
+    const connectedEmail = tokenData.email || null;
     const identifiers = resolveIdentifiersForEmail(connectedEmail);
 
       const tokenExpiresAt = Date.now() + Math.max(60, tokenData.expiresIn || 3600) * 1000;
@@ -772,7 +706,6 @@ export function useGoogleDriveOAuthConnect({
 
   return {
     removeDriveAccount,
-    fetchDriveUserInfo,
     exchangeCodeForTokens,
     handleConnectGoogleDrive,
     handleDisconnect,

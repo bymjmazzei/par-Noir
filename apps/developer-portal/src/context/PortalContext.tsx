@@ -16,7 +16,6 @@ import {
   revokePortalToken,
   setPendingGrant
 } from '@par-noir/oauth-ui';
-import { ownerCloudHeadersAsync } from '@par-noir/device-cloud-credentials';
 import { API_ENDPOINT } from '../config/api';
 import { PN_CLIENT_ID } from '../config/client';
 
@@ -38,12 +37,6 @@ export function clearSession(): void {
   sessionStorage.removeItem(STORAGE_OAUTH_CTX);
   sessionStorage.removeItem(STORAGE_POPUP_STATE);
   sessionStorage.removeItem(STORAGE_PN);
-}
-
-function getStoredPnIdentifier(): string | null {
-  if (typeof sessionStorage === 'undefined') return null;
-  const t = sessionStorage.getItem(STORAGE_PN);
-  return t && t.trim() ? t.trim() : null;
 }
 
 export interface UserInfo {
@@ -135,16 +128,9 @@ export function PortalProvider({ children }: { children: ReactNode }) {
     return { 'Content-Type': 'application/json', Authorization: `Bearer ${t}` };
   }, []);
 
-  const authHeadersAsync = useCallback(async (): Promise<HeadersInit> => {
-    const t = getAccessToken();
-    if (!t) return { 'Content-Type': 'application/json' };
-    return ownerCloudHeadersAsync({
-      authToken: t,
-      pnIdentifier: user?.pn_identifier || getStoredPnIdentifier(),
-      apiEndpoint: API_ENDPOINT,
-      extra: { 'Content-Type': 'application/json' }
-    });
-  }, [user?.pn_identifier]);
+  const authHeadersAsync = useCallback(async (): Promise<HeadersInit> => authHeaders(), [
+    authHeaders
+  ]);
 
   const completePortalOAuth = useCallback(async (result: PnOAuthPopupResult) => {
     if (result.error) {

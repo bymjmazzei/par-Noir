@@ -102,7 +102,13 @@ export async function exchangeGoogleOAuthCode(opts: {
   apiEndpoint: string;
   code: string;
   redirectUri: string;
-}): Promise<{ accessToken: string; refreshToken?: string; expiresIn?: number }> {
+}): Promise<{
+  accessToken: string;
+  refreshToken?: string;
+  expiresIn?: number;
+  email?: string;
+  name?: string;
+}> {
   const response = await fetch(`${opts.apiEndpoint.replace(/\/$/, '')}/api/auth/google-oauth/token`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -121,11 +127,15 @@ export async function exchangeGoogleOAuthCode(opts: {
     access_token?: string;
     refresh_token?: string;
     expires_in?: number;
+    email?: string;
+    name?: string;
   };
   if (!data.access_token) throw new Error('Google token response missing access_token');
   return {
     accessToken: data.access_token,
     refreshToken: data.refresh_token,
-    expiresIn: data.expires_in
+    expiresIn: data.expires_in,
+    email: typeof data.email === 'string' && data.email.includes('@') ? data.email : undefined,
+    name: typeof data.name === 'string' && data.name.trim() ? data.name.trim() : undefined
   };
 }

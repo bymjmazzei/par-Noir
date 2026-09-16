@@ -6,9 +6,11 @@
 import { METADATA_DIR } from '@par-noir/user-owned-storage';
 import { getPlatformRegistryPnIdentifier, isPlatformRegistryConfigured } from './platformOperatorService';
 import { getOwnerStorageContext } from './storage/ownerStorageContext';
+import { isPortableStorageProvider } from './storage/storageProviderUtils';
 import { readPortableJsonBlob, writePortableJsonBlob } from './storage/portableJsonBlob';
 import { PlatformRegistrySheetsService } from './platformRegistrySheetsService';
 import { getUserDriveMetadataContext } from './driveMetadataHelper';
+import { hashIdentifier, safeLogger } from '../../utils/logger';
 import type {
   PlatformApplication,
   PlatformCommercialLicense,
@@ -56,13 +58,29 @@ export async function getPlatformRegistryContext(): Promise<PlatformRegistryCont
   const registryPn = getPlatformRegistryPnIdentifier();
   if (!registryPn) return null;
 
-  const owner = await getOwnerStorageContext(registryPn);
-  if (owner?.kind === 'portable') {
-    return { kind: 'portable', pnIdentifier: owner.pnIdentifier, accountId: owner.accountId };
+  // Portable operator cloud — no Google AT required.
+  if (await isPortableStorageProvider(registryPn)) {
+    return { kind: 'portable', pnIdentifier: registryPn, accountId: undefined };
   }
 
-  const drive = await getUserDriveMetadataContext(registryPn);
-  if (!drive) return null;
+  // Google path: require dedicated operator AT (env). Never soft-null via bare layout probe.
+  const operatorAt = String(process.env.PLATFORM_REGISTRY_CLOUD_ACCESS_TOKEN || '').trim();
+  if (!operatorAt) {
+    safeLogger.warn('[PlatformRegistry] Missing PLATFORM_REGISTRY_CLOUD_ACCESS_TOKEN under custody', {
+      reason: 'cloud_token_required',
+      pnIdHash: hashIdentifier(registryPn),
+    });
+    return null;
+  }
+
+  const drive = await getUserDriveMetadataContext(registryPn, { accessToken: operatorAt });
+  if (!drive) {
+    const owner = await getOwnerStorageContext(registryPn, { accessToken: operatorAt });
+    if (owner?.kind === 'portable') {
+      return { kind: 'portable', pnIdentifier: owner.pnIdentifier, accountId: owner.accountId };
+    }
+    return null;
+  }
   return {
     kind: 'google_drive',
     accessToken: drive.accessToken,
