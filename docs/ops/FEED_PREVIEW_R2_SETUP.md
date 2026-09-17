@@ -56,6 +56,8 @@ Browse loads previews with `fetch(public-media)` then follows the **302** to the
 
 Without this, DevTools shows a CORS failure on `*.r2.cloudflarestorage.com` after a successful API 302.
 
+Also allow R2 in **browse CSP** `connect-src` (`apps/aggregator-browser/index.html`): `https://*.r2.cloudflarestorage.com` and optionally `https://feed-media.parnoir.com`. Without that, the browser reports **Refused to connect** / `Failed to fetch` on presigned PUT even when CORS is correct.
+
 ## Rotate tokens
 
 1. Create a new R2 token with the same scope.
