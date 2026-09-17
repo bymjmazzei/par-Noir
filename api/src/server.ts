@@ -566,6 +566,8 @@ class ProductionServer {
           'X-PN-Device-Nonce',
           // Ephemeral Drive token under device cloud custody (reconnect / device register)
           'X-PN-Cloud-Access-Token',
+          // Anonymous feed view metering (browse public-media)
+          'X-PN-Anon-Id',
         ],
         exposedHeaders: ['Content-Type'],
         maxAge: 86400, // 24 hours
