@@ -1,6 +1,6 @@
 /**
- * Public feed playback via CDN public-media route (signed R2 redirect).
- * No public-content decrypt / Drive peer fetch — CDN only.
+ * Public feed playback via CDN public-media route (signed R2 URL).
+ * Metering headers stay on the API hop only; R2 is fetched without custom headers.
  */
 import { API_ENDPOINT } from '../config/api';
 import type { FeedPreviewVariant } from '@par-noir/aggregator-domain';
@@ -13,11 +13,29 @@ export function publicMediaUrl(
   return `${API_ENDPOINT}/api/aggregator/public-media/${encodeURIComponent(fileId)}?variant=${variant}`;
 }
 
+/** Signed feed preview hosts only — never follow arbitrary Location from JSON. */
+export function isAllowedFeedMediaSignedUrl(urlStr: string): boolean {
+  try {
+    const u = new URL(urlStr);
+    if (u.protocol !== 'https:') return false;
+    const h = u.hostname.toLowerCase();
+    return (
+      h.endsWith('.r2.cloudflarestorage.com') ||
+      h === 'feed-media.parnoir.com' ||
+      h.endsWith('.r2.dev')
+    );
+  } catch {
+    return false;
+  }
+}
+
 export async function fetchPublicMediaBlob(
   fileId: string,
   variant: FeedPreviewVariant = 'sd'
 ): Promise<Blob> {
-  const headers: Record<string, string> = {};
+  const headers: Record<string, string> = {
+    Accept: 'application/json',
+  };
   try {
     const token = await PNOAuthService.getValidAccessToken(false);
     if (token) headers.Authorization = `Bearer ${token}`;
@@ -33,7 +51,7 @@ export async function fetchPublicMediaBlob(
 
   const res = await fetch(publicMediaUrl(fileId, variant), {
     headers,
-    redirect: 'follow',
+    redirect: 'error',
   });
   if (res.status === 429) {
     const body = await res.json().catch(() => ({}));
@@ -46,7 +64,18 @@ export async function fetchPublicMediaBlob(
   if (!res.ok) {
     throw new Error(`public_media_${res.status}`);
   }
-  return res.blob();
+  const body = (await res.json()) as { url?: unknown };
+  const url = typeof body.url === 'string' ? body.url : '';
+  if (!url || !isAllowedFeedMediaSignedUrl(url)) {
+    throw new Error('public_media_bad_url');
+  }
+
+  // Second hop: no custom headers → simple CORS GET to R2 (ACAO only).
+  const media = await fetch(url);
+  if (!media.ok) {
+    throw new Error(`feed_media_${media.status}`);
+  }
+  return media.blob();
 }
 
 export function hasFeedPreviewPlayback(metadata: {

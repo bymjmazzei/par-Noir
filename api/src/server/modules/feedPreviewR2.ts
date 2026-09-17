@@ -72,6 +72,9 @@ export function getFeedR2(): { config: FeedR2Config; client: S3Client } | null {
     region: 'auto',
     endpoint: config.endpoint,
     forcePathStyle: true,
+    // Avoid x-amz-checksum-mode=ENABLED on browser-facing signed GETs (CORS noise).
+    requestChecksumCalculation: 'WHEN_REQUIRED',
+    responseChecksumValidation: 'WHEN_REQUIRED',
     credentials: {
       accessKeyId: config.accessKeyId,
       secretAccessKey: config.secretAccessKey,

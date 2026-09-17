@@ -46,15 +46,18 @@ Fail closed for feed-media routes when R2 env is unset in production.
 
 ## CORS (required for browse `fetch` + blob)
 
-Browse loads previews with `fetch(public-media)` then follows the **302** to the signed R2 URL and reads the body as a blob (metering headers on the API hop). The **final** R2 response must allow the browse origin:
+Browse loads previews in **two hops**:
+
+1. `GET /api/aggregator/public-media/:fileId?variant=…` with metering headers (`Authorization`, `X-PN-Anon-Id`) → **200 JSON** `{ url }` (signed R2 GET). Use `?redirect=1` only for media-element `src` that cannot parse JSON.
+2. `fetch(url)` **without** custom headers → blob. Do **not** `redirect: follow` from the API hop with metering headers — browsers re-attach those headers on the R2 hop and CORS preflight fails.
+
+R2 bucket CORS still required for hop 2:
 
 1. R2 bucket → **Settings** → **CORS policy**
 2. Allow origins: browse hosting origins (e.g. `https://browse.parnoir.com`, local Vite origins)
 3. Methods: `GET`, `HEAD` (and `PUT` if uploading from the browser to presigned URLs)
-4. Allowed headers: `*` or at least those used by signed requests
+4. Allowed headers: `*` or at least those used by signed PUT
 5. Expose headers as needed for Range (optional)
-
-Without this, DevTools shows a CORS failure on `*.r2.cloudflarestorage.com` after a successful API 302.
 
 Also allow R2 in **browse CSP** `connect-src` (`apps/aggregator-browser/index.html`): `https://*.r2.cloudflarestorage.com` and optionally `https://feed-media.parnoir.com`. Without that, the browser reports **Refused to connect** / `Failed to fetch` on presigned PUT even when CORS is correct.
 

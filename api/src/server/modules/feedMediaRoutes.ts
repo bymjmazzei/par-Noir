@@ -367,7 +367,17 @@ export function registerFeedMediaRoutes(app: Application): void {
 
       const key = ref.r2Key!;
       const url = await feedR2SignedGetUrl(key);
-      return res.redirect(302, url);
+      // Default JSON: browse must fetch R2 without API metering headers (302+follow
+      // re-attaches X-PN-Anon-Id / Authorization and breaks R2 CORS preflight).
+      // Opt-in ?redirect=1 for media-element src that cannot JSON-parse.
+      if (String(req.query.redirect || '') === '1') {
+        return res.redirect(302, url);
+      }
+      return res.status(200).json({
+        url,
+        variant,
+        expiresInSec: getFeedR2()!.config.signedGetTtlSec,
+      });
     } catch (err: unknown) {
       safeLogger.warn('[public-media] failed', {
         message: err instanceof Error ? err.message : 'unknown',

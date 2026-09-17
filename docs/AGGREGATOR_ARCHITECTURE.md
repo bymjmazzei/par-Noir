@@ -47,7 +47,7 @@ Public file IDs live in each user's `public-file-index`. Drive path: `par Noir -
 **Swipe / grid playback (CDN previews):**
 
 1. Publish: on-device adaptive encode (poster + SD [+ HD]) under tier duration/byte caps → dual-write **R2** (warm) + **owner-cloud canonical** plaintext → index refs
-2. Reader: `GET /api/aggregator/public-media/:fileId?variant=poster|sd|hd` → free daily caps / HD verification gate → **302** to signed R2 URL (Range-friendly)
+2. Reader: `GET /api/aggregator/public-media/:fileId?variant=poster|sd|hd` → free daily caps / HD verification gate → **200 JSON** `{ url }` signed R2 GET (optional `?redirect=1` for 302); browse fetches R2 without metering headers
 3. Cold miss (SD/HD idle &gt; 30d): API pull-through from owner canonical → rehydrate R2 → redirect. **Poster + metadata** stay hot while public
 4. Slider publish tiers (`$9` floor / `$20` average creator / …): max **post length** + monthly **upload GB**; soft degrade when GB exhausted
 
@@ -79,7 +79,7 @@ Routes act only on the authenticated pn's cloud. Cross-user `ownerPnIdentifier` 
 | `GET /api/aggregator/public-content/:fileId` | Blind ciphertext proxy; 404 purge |
 | `POST /api/aggregator/feed-media/presign-upload` | Owner: R2 PUT presign for poster/sd/hd |
 | `POST /api/aggregator/feed-media/confirm-upload` | Owner: meter GB + patch index refs |
-| `GET /api/aggregator/public-media/:fileId?variant=` | Signed R2 redirect; pull-through; free/HD gates |
+| `GET /api/aggregator/public-media/:fileId?variant=` | Signed R2 URL JSON (or `?redirect=1`); pull-through; free/HD gates |
 | `POST /api/aggregator/feed-media/:fileId/revoke` | Owner: delete R2 previews |
 | `POST /api/aggregator/feed-media/evict-idle` | Cron: cold-evict idle SD/HD |
 | `GET /api/users/:pn/verification-status` | Verified + publish plan ceilings |
