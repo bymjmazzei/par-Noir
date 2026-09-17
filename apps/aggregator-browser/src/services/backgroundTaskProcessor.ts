@@ -187,6 +187,7 @@ async function processShareSettingsUpdate(
   if (makePublic) {
     uploadQueueService.updateTaskProgress(task.id, 20);
 
+    let encryptedPackage: EncryptedFilePackage;
     try {
       const downloadResponse = await ownerGet(
         `/api/drive/files/${targetFileId}?accountId=${encodeURIComponent(accountId)}&download=true`,
@@ -206,7 +207,7 @@ async function processShareSettingsUpdate(
         throw new Error('Downloaded file is empty');
       }
 
-      const encryptedPackage: EncryptedFilePackage = JSON.parse(fileText);
+      encryptedPackage = JSON.parse(fileText) as EncryptedFilePackage;
 
       if (!encryptedPackage.encrypted || !encryptedPackage.iv || !encryptedPackage.salt) {
         throw new Error('Invalid encrypted file package structure');
@@ -230,37 +231,41 @@ async function processShareSettingsUpdate(
       });
       publicToken = published.publicToken;
       publicContentRef = published.publicContentRef;
+    } catch (shareError: any) {
+      console.error('[BackgroundTaskProcessor] Failed to publish share material:', shareError);
+      throw new Error(
+        `Failed to publish share material: ${shareError?.message || shareError}`
+      );
+    }
 
-      // CDN feed previews from decrypted plaintext when visual media
-      const mime = encryptedPackage.metadata?.originalMimeType || '';
-      if (mime.startsWith('image/') || mime.startsWith('video/')) {
-        const { EncryptionManager } = await import('@par-noir/identity-crypto/browser');
-        const encryptionManager = new EncryptionManager();
-        const decrypted = await encryptionManager.decrypt(
-          encryptedPackage.encrypted,
-          encryptedPackage.iv,
-          encryptedPackage.salt,
-          session.did,
-          session.publicKey
-        );
-        const arrayBuffer = decrypted.buffer.slice(
-          decrypted.byteOffset,
-          decrypted.byteOffset + decrypted.byteLength
-        ) as ArrayBuffer;
-        const blob = new Blob([arrayBuffer], { type: mime });
-        const { publishFeedPreviews } = await import('./feedPreviewPublish');
-        feedPreviewFields = await publishFeedPreviews({
-          file: blob,
-          mimeType: mime,
-          fileId: targetFileId,
-          accessToken,
-          accountId,
-          planId: 'floor',
-        });
+    try {
+      if (!session?.publicKey) {
+        throw new Error('Missing publicKey for feed preview');
       }
-    } catch (tokenError: any) {
-      console.error('[BackgroundTaskProcessor] Failed to generate share token:', tokenError);
-      throw new Error(`Failed to generate share token: ${tokenError.message}`);
+      const collectionFileIds =
+        existingMetadata?.collection?.collectionFileIds ||
+        existingMetadata?.collectionFileIds ||
+        undefined;
+      const { publishFeedPreviewsForPublicVisual } = await import('./feedPreviewMakePublic');
+      feedPreviewFields = await publishFeedPreviewsForPublicVisual({
+        encryptedPackage,
+        fileId: targetFileId,
+        accessToken,
+        accountId,
+        session: { did: session.did, publicKey: session.publicKey },
+        fileType: existingMetadata?.fileType,
+        name: existingMetadata?.name,
+        title: existingMetadata?.title,
+        collectionFileIds: Array.isArray(collectionFileIds) ? collectionFileIds : undefined,
+        planId: 'floor',
+      });
+    } catch (previewError: any) {
+      console.error('[BackgroundTaskProcessor] Failed to publish feed preview:', previewError);
+      const code = previewError?.code || previewError?.error;
+      const detail = previewError?.message || previewError;
+      throw new Error(
+        `Failed to publish feed preview: ${code ? `${code}: ${detail}` : detail}`
+      );
     }
   } else if (makePublic !== isCurrentlyPublic) {
     const envelopeObjectId = existingMetadata?.publicContentRef?.objectId;

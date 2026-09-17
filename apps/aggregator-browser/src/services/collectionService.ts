@@ -91,7 +91,9 @@ export async function createCollection(
       );
     } catch (tokenError: any) {
       if (isPublic) {
-        throw new Error(`Share token generation failed: ${tokenError?.message || tokenError}`);
+        throw new Error(
+          `Failed to publish share material: ${tokenError?.message || tokenError}`
+        );
       }
       console.error('Share token generation failed:', tokenError);
     }
@@ -138,20 +140,55 @@ export async function createCollection(
 
     let publicToken: string | undefined;
     let publicContentRef: { backend: string; objectId: string; publicUrl: string } | undefined;
+    let feedPreviewFields: Record<string, unknown> = {};
     if (isPublic) {
       if (!generation) {
         throw new Error('Cannot publish collection publicly without share generation');
       }
-      const published = await publishPublicShare({
-        generation,
-        accessToken,
-        accountId,
-        envelopeFileName: `public-envelope-${fileId}.json`,
-      });
-      publicToken = published.publicToken;
-      publicContentRef = published.publicContentRef;
-      if (!publicToken || !publicContentRef) {
-        throw new Error('Cannot publish collection publicly without publicToken and publicContentRef');
+      try {
+        const published = await publishPublicShare({
+          generation,
+          accessToken,
+          accountId,
+          envelopeFileName: `public-envelope-${fileId}.json`,
+        });
+        publicToken = published.publicToken;
+        publicContentRef = published.publicContentRef;
+        if (!publicToken || !publicContentRef) {
+          throw new Error('Cannot publish collection publicly without publicToken and publicContentRef');
+        }
+      } catch (shareErr: any) {
+        throw new Error(
+          `Failed to publish share material: ${shareErr?.message || shareErr}`
+        );
+      }
+
+      try {
+        const { publishFeedPreviewsForPublicVisual } = await import('./feedPreviewMakePublic');
+        feedPreviewFields = await publishFeedPreviewsForPublicVisual({
+          encryptedPackage: packageData as {
+            encrypted: string;
+            iv: string;
+            salt: string;
+            metadata: {
+              originalName: string;
+              originalSize: number;
+              originalMimeType: string;
+            };
+          },
+          fileId,
+          accessToken,
+          accountId,
+          session: { did: session.did, publicKey },
+          fileType: metadata?.isThoughtCollection ? 'thought-collection' : 'collection',
+          name: metadata?.title || collectionData.title || 'Collection',
+          collectionFileIds: collectionData.collectionFileIds,
+          planId: 'floor',
+        });
+      } catch (previewErr: any) {
+        throw new Error(
+          `Failed to publish feed preview: ${previewErr?.message || previewErr}`
+        );
       }
     }
 
@@ -171,6 +208,7 @@ export async function createCollection(
       },
       isNSFW: metadata?.isNSFW || false,
       isThoughtCollection: metadata?.isThoughtCollection || false, // Mark if this is a thought collection
+      ...feedPreviewFields,
     });
 
     if (!metadataResponse.ok) {

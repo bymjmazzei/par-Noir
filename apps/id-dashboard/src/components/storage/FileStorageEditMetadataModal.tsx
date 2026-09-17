@@ -61,13 +61,13 @@ export function FileStorageEditMetadataModal({
 
           <div>
             <label className="block text-sm font-medium text-text-secondary mb-1">
-              Description
+              Caption
             </label>
             <textarea
               value={editForm.description}
               onChange={(e) => setEditForm({ ...editForm, description: e.target.value })}
               className="w-full px-3 py-2 bg-neutral-700 border border-neutral-600 rounded-lg text-text-primary focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
-              placeholder="File description"
+              placeholder="Optional caption"
               rows={3}
             />
           </div>

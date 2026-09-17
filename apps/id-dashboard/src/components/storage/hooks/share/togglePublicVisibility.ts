@@ -316,9 +316,9 @@ export async function togglePublicVisibility(
         );
         shareTokenCache.current.set(shareTokenKey, shareToken);
       } catch (tokenError) {
-        console.error('❌ [Phase 3] Failed to generate share material:', tokenError);
+        console.error('❌ [Phase 3] Failed to publish share material:', tokenError);
         const errorMessage = tokenError instanceof Error ? tokenError.message : 'Unknown error';
-        throw new Error(`Failed to generate share token: ${errorMessage}`);
+        throw new Error(`Failed to publish share material: ${errorMessage}`);
       }
 
       // Index the file - pass pN identifier so metadata folder is created inside pN folder
@@ -381,57 +381,53 @@ export async function togglePublicVisibility(
           hasShareKey: !!shareToken?.shareKey,
           envelopeObjectId: published.publicContentRef.objectId,
         });
-
-        if ((mimeCategory === 'image' || mimeCategory === 'video') && aggregatorService && encryptionService) {
-          try {
-            const backend = aggregatorService.getBackend(file.backend);
-            if (backend?.isConnected()) {
-              const encBlob = await backend.downloadFile(file.backendFileId || file.id);
-              let previewSource: Blob = encBlob;
-              if (file.encrypted !== false) {
-                try {
-                  const encJson = JSON.parse(await encBlob.text()) as EncryptedFilePackage;
-                  const sessionId2 = authenticatedUser?.id || (authenticatedUser as any)?.publicKey || null;
-                  const creds2 = sessionId2 ? SecureCredentialManager.getCredentials(sessionId2) : null;
-                  if (creds2) {
-                    const { decryptedBlob } = await encryptionService.decryptFileFromDownload(
-                      encJson,
-                      {
-                        id: authenticatedUser?.id || resolvedAuth.publicKey,
-                        publicKey: resolvedAuth.publicKey,
-                      }
-                    );
-                    previewSource = decryptedBlob;
-                  }
-                } catch {
-                  previewSource = encBlob;
-                }
-              }
-              const { publishFeedPreviewsForDashboard } = await import(
-                '../../../../services/feedPreviewPublish'
-              );
-              const previews = await publishFeedPreviewsForDashboard({
-                file: previewSource,
-                mimeType: file.mimeType || (mimeCategory === 'video' ? 'video/mp4' : 'image/jpeg'),
-                fileId: publicMetadata.fileId || file.backendFileId || file.id,
-                aggregatorService,
-                backendId: file.backend || activeBackendId || 'google_drive',
-                folderId,
-                planId: 'floor',
-              });
-              Object.assign(publicMetadata, previews);
-            }
-          } catch (previewErr) {
-            console.error('❌ [Phase 3] Feed preview publish failed:', previewErr);
-            throw previewErr instanceof Error
-              ? previewErr
-              : new Error('Failed to prepare feed preview');
-          }
-        }
       } catch (publishErr) {
         console.error('❌ [Phase 3] Failed to materialize public share:', publishErr);
         const errorMessage = publishErr instanceof Error ? publishErr.message : 'Unknown error';
-        throw new Error(`Failed to publish public content: ${errorMessage}`);
+        throw new Error(`Failed to publish share material: ${errorMessage}`);
+      }
+
+      try {
+        if (!aggregatorService || !encryptionService) {
+          throw new Error('Aggregator/encryption service not available for feed preview');
+        }
+        let folderId: string | undefined;
+        try {
+          const backend = aggregatorService.getBackend(file.backend);
+          folderId = await backend?.getOrCreateFolder?.('par Noir', metadataPnIdentifier);
+        } catch {
+          folderId = undefined;
+        }
+        const collectionFileIds =
+          (existingMetadata as any)?.collection?.collectionFileIds ||
+          (existingMetadata as any)?.collectionFileIds ||
+          undefined;
+        const { publishFeedPreviewsForDashboardMakePublic } = await import(
+          '../../../../services/feedPreviewMakePublic'
+        );
+        const previews = await publishFeedPreviewsForDashboardMakePublic({
+          aggregatorService,
+          backendId: file.backend || activeBackendId || 'google_drive',
+          folderId,
+          fileId: publicMetadata.fileId || file.backendFileId || file.id,
+          mimeType: file.mimeType || (mimeCategory === 'video' ? 'video/mp4' : mimeCategory === 'image' ? 'image/jpeg' : undefined),
+          fileType: existingMetadata?.fileType || mimeCategory,
+          name: publicMetadata.name || file.name,
+          title: publicMetadata.name,
+          collectionFileIds: Array.isArray(collectionFileIds) ? collectionFileIds : undefined,
+          encrypted: file.encrypted !== false,
+          encryptionService,
+          session: {
+            id: authenticatedUser?.id || resolvedAuth.publicKey,
+            publicKey: resolvedAuth.publicKey,
+          },
+          planId: 'floor',
+        });
+        Object.assign(publicMetadata, previews);
+      } catch (previewErr) {
+        console.error('❌ [Phase 3] Feed preview publish failed:', previewErr);
+        const errorMessage = previewErr instanceof Error ? previewErr.message : 'Unknown error';
+        throw new Error(`Failed to publish feed preview: ${errorMessage}`);
       }
 
       // OPTIMIZATION: Run API metadata operations in parallel

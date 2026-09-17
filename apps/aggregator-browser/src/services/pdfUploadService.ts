@@ -206,7 +206,7 @@ export async function processPDFPagesParallel(params: ProcessPDFPagesParallelPar
         publicKey: publicKey,
       });
     } catch (err) {
-      console.warn(`[PDF Upload] Failed to generate share token for ${fileName}:`, err);
+      console.warn(`[PDF Upload] Failed to publish share material for ${fileName}:`, err);
     }
 
     return { fileName, thumbnailPackage, shareToken, thumbnailBlob };

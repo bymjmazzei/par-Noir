@@ -46,7 +46,7 @@ export interface AccountFilesPanelProps {
   menuButtonRefs: React.MutableRefObject<Map<string, HTMLButtonElement | null>>;
   loadFilesForAccount: (accountId: string) => Promise<void>;
   handleUploadForAccount: (accountId: string, event: React.ChangeEvent<HTMLInputElement>) => Promise<void>;
-  addUploadTask: (file: File, accountId: string, encrypt: boolean) => void;
+  beginMediaUpload: (file: File, accountId: string, encrypt: boolean) => void;
   handleCreateCollection: (accountId: string) => Promise<void>;
   handleBulkDelete: (accountId: string) => void;
   onOpenTextEditor?: (accountId: string) => void;
@@ -86,7 +86,7 @@ export const AccountFilesPanel: React.FC<AccountFilesPanelProps> = ({
   menuButtonRefs,
   loadFilesForAccount,
   handleUploadForAccount,
-  addUploadTask,
+  beginMediaUpload,
   handleCreateCollection,
   handleBulkDelete,
   onOpenTextEditor,
@@ -190,7 +190,7 @@ export const AccountFilesPanel: React.FC<AccountFilesPanelProps> = ({
                         setSelectedAccountId(account.accountId);
                         const file = await pickImageFromNative('camera');
                         if (file) {
-                          addUploadTask(file, account.accountId, true);
+                          beginMediaUpload(file, account.accountId, true);
                         }
                         setShowAddMenuFor(null);
                         setAddMenuPosition(null);
@@ -205,7 +205,7 @@ export const AccountFilesPanel: React.FC<AccountFilesPanelProps> = ({
                         setSelectedAccountId(account.accountId);
                         const file = await pickImageFromNative('photos');
                         if (file) {
-                          addUploadTask(file, account.accountId, true);
+                          beginMediaUpload(file, account.accountId, true);
                         }
                         setShowAddMenuFor(null);
                         setAddMenuPosition(null);

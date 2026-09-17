@@ -52,6 +52,11 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
   const [pendingCollectionData, setPendingCollectionData] = useState<{ accountId: string; fileIds: string[] } | null>(null);
   const [showUnencryptedAlert, setShowUnencryptedAlert] = useState(false);
   const [pendingUnencryptedUpload, setPendingUnencryptedUpload] = useState<{ file: File; accountId: string; limitMb: number } | null>(null);
+  const [pendingMediaUpload, setPendingMediaUpload] = useState<{
+    file: File;
+    accountId: string;
+    encrypt: boolean;
+  } | null>(null);
   const [musicCatalog, setMusicCatalog] = useState<CatalogTrack[]>([]);
   const [nextAudioRegistryTrackId, setNextAudioRegistryTrackId] = useState('');
   const fileInputRefs = useRef<Map<string, HTMLInputElement | null>>(new Map());
@@ -1220,23 +1225,30 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
 
   // Convert PDF pages to thumbnails and upload them
 
-  const addUploadTask = (file: File, accountId: string, encrypt: boolean) => {
+  const addUploadTask = (
+    file: File,
+    accountId: string,
+    encrypt: boolean,
+    meta?: { title?: string; description?: string; tags?: string[]; isNSFW?: boolean }
+  ) => {
     const isPDF = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
     const taskType = isPDF ? 'pdf' : 'file';
     const isAudio = file.type.startsWith('audio/');
     const registryTrackId =
       isAudio && nextAudioRegistryTrackId.trim().length > 0 ? nextAudioRegistryTrackId.trim() : undefined;
+    const tags = meta?.tags || [];
     uploadQueueService.addTask({
       type: taskType,
       file,
       accountId,
       metadata: {
-        title: file.name,
-        description: '',
-        keywords: [],
-        tags: [],
-        isPublic: false,
-        isNSFW: false,
+        title: meta?.title?.trim() || file.name,
+        description: meta?.description || '',
+        keywords: tags,
+        tags,
+        // Browser uploads are public to the feed by default
+        isPublic: true,
+        isNSFW: meta?.isNSFW === true,
         encrypt,
         registryTrackId,
       },
@@ -1248,6 +1260,10 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
         setError(`Upload failed: ${err.message}`);
       },
     });
+  };
+
+  const beginMediaUpload = (file: File, accountId: string, encrypt: boolean) => {
+    setPendingMediaUpload({ file, accountId, encrypt });
   };
 
   const handleUploadForAccount = async (accountId: string, event: React.ChangeEvent<HTMLInputElement>) => {
@@ -1275,7 +1291,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
           headers: { Authorization: `Bearer ${accessToken}` },
         });
         if (!res.ok) {
-          addUploadTask(file, accountId, true);
+          beginMediaUpload(file, accountId, true);
           if (event.target) event.target.value = '';
           return;
         }
@@ -1291,21 +1307,22 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
           return;
         }
       } catch {
-        addUploadTask(file, accountId, true);
+        beginMediaUpload(file, accountId, true);
         if (event.target) event.target.value = '';
         return;
       }
     }
 
-    addUploadTask(file, accountId, true);
+    beginMediaUpload(file, accountId, true);
     if (event.target) event.target.value = '';
   };
 
   const handleUnencryptedUploadConfirm = () => {
     if (!pendingUnencryptedUpload) return;
-    addUploadTask(pendingUnencryptedUpload.file, pendingUnencryptedUpload.accountId, false);
+    const { file, accountId } = pendingUnencryptedUpload;
     setPendingUnencryptedUpload(null);
     setShowUnencryptedAlert(false);
+    beginMediaUpload(file, accountId, false);
   };
 
   const handleUnencryptedUploadCancel = () => {
@@ -1411,7 +1428,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
               menuButtonRefs={menuButtonRefs}
               loadFilesForAccount={loadFilesForAccount}
               handleUploadForAccount={handleUploadForAccount}
-              addUploadTask={addUploadTask}
+              beginMediaUpload={beginMediaUpload}
               handleCreateCollection={handleCreateCollection}
               handleBulkDelete={handleBulkDelete}
               onOpenTextEditor={onOpenTextEditor}
@@ -1429,6 +1446,39 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
           onDownload={() => viewingFile.accountId && handleDownload(viewingFile, viewingFile.accountId)}
         />
       )}
+
+      {/* Pre-upload title + caption (browser media/PDF) */}
+      <EditMetadataModal
+        isOpen={!!pendingMediaUpload}
+        onClose={() => setPendingMediaUpload(null)}
+        onSave={(formData: MetadataFormData) => {
+          if (!pendingMediaUpload) return;
+          const tags = String(formData.tags || '')
+            .split(',')
+            .map((t) => t.trim())
+            .filter(Boolean);
+          addUploadTask(pendingMediaUpload.file, pendingMediaUpload.accountId, pendingMediaUpload.encrypt, {
+            title: formData.name || pendingMediaUpload.file.name,
+            description: formData.description || '',
+            tags,
+            isNSFW: formData.isNSFW === true,
+          });
+          setPendingMediaUpload(null);
+        }}
+        initialData={
+          pendingMediaUpload
+            ? {
+                name: pendingMediaUpload.file.name,
+                description: '',
+                tags: '',
+                categories: [],
+                isNSFW: false,
+              }
+            : undefined
+        }
+        title="Upload"
+        submitButtonText="Upload"
+      />
 
       {/* Edit Metadata Modal */}
       <EditMetadataModal

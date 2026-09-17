@@ -315,15 +315,18 @@ async function processFileUpload(
         feedPreviewFields = previews;
       } catch (previewErr) {
         if (import.meta.env.DEV) console.error('[UploadProcessor] Feed preview publish failed:', previewErr);
-        throw previewErr instanceof Error
-          ? previewErr
-          : new Error('Failed to prepare feed preview');
+        throw new Error(
+          `Failed to publish feed preview: ${
+            previewErr instanceof Error ? previewErr.message : previewErr
+          }`
+        );
       }
     }
 
     try {
       await createMetadata(thumbnailFileId, {
         name: `thumb_${file.name}`,
+        title: task.metadata?.title || file.name,
         description: task.metadata?.description || '',
         keywords: task.metadata?.keywords || [],
         tags: task.metadata?.tags || [],
@@ -365,6 +368,7 @@ async function processFileUpload(
     }
     await createMetadata(fileId, {
       name: file.name,
+      title: task.metadata?.title || file.name,
       description: task.metadata?.description || '',
       keywords: task.metadata?.keywords || [],
       tags: task.metadata?.tags || [],
@@ -546,9 +550,11 @@ async function processTextPostUpload(
         });
       } catch (previewErr) {
         if (import.meta.env.DEV) console.error('[UploadProcessor] Thought feed preview publish failed:', previewErr);
-        throw previewErr instanceof Error
-          ? previewErr
-          : new Error('Failed to prepare feed preview');
+        throw new Error(
+          `Failed to publish feed preview: ${
+            previewErr instanceof Error ? previewErr.message : previewErr
+          }`
+        );
       }
     }
     await createMetadata(thumbnailFileId, {
@@ -935,11 +941,14 @@ async function processPDFUpload(
       {
         collectionFileIds: pdfResult.thumbnailFileIds,
         title: pdfFile.name.replace(/\.pdf$/i, ''),
+        description: task.metadata?.description || '',
         thumbnailTokens: pdfResult.thumbnailTokens
       },
       task.accountId,
       {
-        isPublic: task.metadata?.isPublic || false,
+        title: task.metadata?.title || pdfFile.name.replace(/\.pdf$/i, ''),
+        description: task.metadata?.description || '',
+        isPublic: task.metadata?.isPublic === true,
         isNSFW: task.metadata?.isNSFW || false
       }
     );
