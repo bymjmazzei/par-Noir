@@ -556,6 +556,9 @@ export function UserStateProvider({ children }: { children: ReactNode }) {
   const setLocked = () => {
     // Clear caches on logout
     accountsCacheService.clearAll();
+    void import('../services/feedMediaSessionCache').then(({ clearFeedMediaSessionCache }) =>
+      clearFeedMediaSessionCache()
+    );
     void import('../services/storageApiClient').then(({ invalidateStorageAccountsCache }) =>
       invalidateStorageAccountsCache()
     );

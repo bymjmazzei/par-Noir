@@ -1,10 +1,12 @@
 /**
  * Public feed playback via CDN public-media route (signed R2 URL).
  * Metering headers stay on the API hop only; R2 is fetched without custom headers.
+ * Session cache holds blob object URLs so feed switches reuse media without re-sign.
  */
 import { API_ENDPOINT } from '../config/api';
 import type { FeedPreviewVariant } from '@par-noir/aggregator-domain';
 import { PNOAuthService } from './pnOAuthService';
+import { feedMediaSessionCache } from './feedMediaSessionCache';
 
 export function publicMediaUrl(
   fileId: string,
@@ -29,9 +31,9 @@ export function isAllowedFeedMediaSignedUrl(urlStr: string): boolean {
   }
 }
 
-export async function fetchPublicMediaBlob(
+async function fetchPublicMediaFromNetwork(
   fileId: string,
-  variant: FeedPreviewVariant = 'sd'
+  variant: FeedPreviewVariant
 ): Promise<Blob> {
   const headers: Record<string, string> = {
     Accept: 'application/json',
@@ -70,12 +72,39 @@ export async function fetchPublicMediaBlob(
     throw new Error('public_media_bad_url');
   }
 
-  // Second hop: no custom headers → simple CORS GET to R2 (ACAO only).
   const media = await fetch(url);
   if (!media.ok) {
     throw new Error(`feed_media_${media.status}`);
   }
   return media.blob();
+}
+
+/**
+ * Resolve a stable blob: object URL for display. Hits session cache when warm.
+ */
+export async function resolvePublicMediaObjectUrl(
+  fileId: string,
+  variant: FeedPreviewVariant = 'sd'
+): Promise<string> {
+  const hit = feedMediaSessionCache.getObjectUrl(fileId, variant);
+  if (hit) return hit;
+
+  const blob = await fetchPublicMediaFromNetwork(fileId, variant);
+  const objectUrl = URL.createObjectURL(blob);
+  feedMediaSessionCache.set(fileId, variant, objectUrl);
+  return objectUrl;
+}
+
+export async function fetchPublicMediaBlob(
+  fileId: string,
+  variant: FeedPreviewVariant = 'sd'
+): Promise<Blob> {
+  const objectUrl = await resolvePublicMediaObjectUrl(fileId, variant);
+  const res = await fetch(objectUrl);
+  if (!res.ok) {
+    throw new Error(`feed_media_blob_${res.status}`);
+  }
+  return res.blob();
 }
 
 export function hasFeedPreviewPlayback(metadata: {
@@ -136,4 +165,16 @@ export async function loadPublicFeedMediaBlob(
   }
   const variant = feedPlaybackVariant(metadata, opts?.variant);
   return fetchPublicMediaBlob(fileId, variant);
+}
+
+export async function resolvePublicFeedObjectUrl(
+  fileId: string,
+  metadata: FeedPlaybackMetadata,
+  opts?: { variant?: FeedPreviewVariant }
+): Promise<string> {
+  if (!hasFeedPreviewPlayback(metadata)) {
+    throw new Error('feed_preview_required');
+  }
+  const variant = feedPlaybackVariant(metadata, opts?.variant);
+  return resolvePublicMediaObjectUrl(fileId, variant);
 }

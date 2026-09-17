@@ -24,31 +24,10 @@ import { API_ENDPOINT } from '../config/api';
 import { apiGet } from '../services/ownerApiFetch';
 import {
   hasFeedPreviewPlayback,
-  loadPublicFeedMediaBlob,
-  fetchPublicMediaBlob,
+  resolvePublicFeedObjectUrl,
+  resolvePublicMediaObjectUrl,
 } from '../services/feedPreviewPlayback';
-
-
-async function resolvePublicFeedBlob(
-  fileId: string,
-  metadata?: {
-    feedPoster?: unknown;
-    feedPreviewSd?: unknown;
-    feedPreviewHd?: unknown;
-    fileType?: string;
-    name?: string;
-    title?: string;
-    isPublic?: boolean | string;
-  },
-  opts?: { variant?: 'poster' | 'sd' | 'hd' }
-): Promise<Blob> {
-  if (!metadata || !hasFeedPreviewPlayback(metadata)) {
-    throw new Error('feed_preview_required');
-  }
-  return loadPublicFeedMediaBlob(fileId, metadata as any, {
-    variant: opts?.variant || 'poster',
-  });
-}
+import { feedMediaSessionCache } from '../services/feedMediaSessionCache';
 
 async function loadMemberFeedMeta(fileId: string): Promise<Record<string, unknown> | null> {
   const res = await apiGet(`/api/aggregator/metadata-index/${encodeURIComponent(fileId)}`);
@@ -92,6 +71,8 @@ interface FullScreenFeedProps {
   mePageTab?: 'all' | 'media' | 'thoughts' | 'collections' | 'likes' | 'comments' | 'shares' | 'saved' | 'connections'; // For Me page tab context
   thumbnails?: Map<string, string>; // Optional: pre-generated thumbnails from parent
   videoBlobs?: Map<string, string>; // Optional: pre-loaded video blobs from parent
+  /** When this changes, scroll snaps to index 0 without remounting (parent resets currentIndex). */
+  activeFeedId?: string;
 }
 
 export function FullScreenFeed({
@@ -118,12 +99,14 @@ export function FullScreenFeed({
   onSwipeRight,
   mePageTab,
   thumbnails: externalThumbnails,
-  videoBlobs: externalVideoBlobs
+  videoBlobs: externalVideoBlobs,
+  activeFeedId,
 }: FullScreenFeedProps) {
   // CACHE BUSTER: Version: 2026-cdn-only
   (window as any).__fullScreenFeedVersion = '2026-cdn-only';
   
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
+  const prevActiveFeedIdRef = useRef(activeFeedId);
   const videoRefs = useRef<Map<string, HTMLVideoElement>>(new Map());
   const imageRefs = useRef<Map<string, HTMLImageElement>>(new Map());
   const [videoBlobs, setVideoBlobs] = useState<Map<string, string>>(externalVideoBlobs || new Map());
@@ -148,7 +131,18 @@ export function FullScreenFeed({
   }, [failedThumbnails]);
   filesRef.current = files;
   externalThumbnailsRef.current = externalThumbnails;
-  
+
+  // Feed switch without remount: snap scroll to top (parent already sets currentIndex to 0).
+  useEffect(() => {
+    if (activeFeedId === undefined) return;
+    if (prevActiveFeedIdRef.current === activeFeedId) return;
+    prevActiveFeedIdRef.current = activeFeedId;
+    const el = scrollContainerRef.current;
+    if (el) {
+      el.scrollTop = 0;
+    }
+  }, [activeFeedId]);
+
   // Helper function to clear loading state for a file ID
   const clearLoadingState = (fileId: string) => {
     loadingCollectionThumbnailsRef.current.delete(fileId);
@@ -733,12 +727,22 @@ export function FullScreenFeed({
       if (!isImage && !isThumb && !isVideo) return;
 
       const ext = externalThumbnailsRef.current;
+      const cachedPoster = feedMediaSessionCache.getObjectUrl(fileId, 'poster');
       if (
         !isVideo &&
         (thumbnailsRef.current.has(fileId) ||
           failedThumbnailsRef.current.has(fileId) ||
-          (ext && ext.has(fileId)))
+          (ext && ext.has(fileId)) ||
+          cachedPoster)
       ) {
+        if (cachedPoster && !thumbnailsRef.current.has(fileId)) {
+          setThumbnails((prev) => {
+            if (prev.has(fileId)) return prev;
+            const newMap = new Map(prev);
+            newMap.set(fileId, cachedPoster);
+            return newMap;
+          });
+        }
         return;
       }
 
@@ -761,47 +765,43 @@ export function FullScreenFeed({
       const work = (async () => {
         try {
           if (isVideo) {
-            if (!videoBlobs.has(fileId)) {
-              const blob = await fetchPublicMediaBlob(fileId, 'sd');
-              const url = URL.createObjectURL(blob);
+            const cachedSd = feedMediaSessionCache.getObjectUrl(fileId, 'sd');
+            if (!videoBlobs.has(fileId) && !cachedSd) {
+              const url = await resolvePublicMediaObjectUrl(fileId, 'sd');
               setVideoBlobs((prev) => {
-                if (prev.has(fileId)) {
-                  URL.revokeObjectURL(url);
-                  return prev;
-                }
+                if (prev.has(fileId)) return prev;
                 const newMap = new Map(prev);
                 newMap.set(fileId, url);
+                return newMap;
+              });
+            } else if (cachedSd && !videoBlobs.has(fileId)) {
+              setVideoBlobs((prev) => {
+                if (prev.has(fileId)) return prev;
+                const newMap = new Map(prev);
+                newMap.set(fileId, cachedSd);
                 return newMap;
               });
             }
             // Poster for poster frame / background while video loads
             if (!thumbnailsRef.current.has(fileId)) {
-              const posterBlob = await fetchPublicMediaBlob(fileId, 'poster');
-              const thumbnailUrlObj = URL.createObjectURL(posterBlob);
+              const posterUrl = await resolvePublicMediaObjectUrl(fileId, 'poster');
               setThumbnails((prev) => {
-                if (prev.has(fileId)) {
-                  URL.revokeObjectURL(thumbnailUrlObj);
-                  return prev;
-                }
+                if (prev.has(fileId)) return prev;
                 const newMap = new Map(prev);
-                newMap.set(fileId, thumbnailUrlObj);
+                newMap.set(fileId, posterUrl);
                 return newMap;
               });
             }
             return;
           }
 
-          const decryptedBlob = await resolvePublicFeedBlob(fileId, file as any, {
+          const posterUrl = await resolvePublicFeedObjectUrl(fileId, file as any, {
             variant: 'poster',
           });
-          const thumbnailUrlObj = URL.createObjectURL(decryptedBlob);
           setThumbnails((prev) => {
-            if (prev.has(fileId)) {
-              URL.revokeObjectURL(thumbnailUrlObj);
-              return prev;
-            }
+            if (prev.has(fileId)) return prev;
             const newMap = new Map(prev);
-            newMap.set(fileId, thumbnailUrlObj);
+            newMap.set(fileId, posterUrl);
             return newMap;
           });
         } catch (err) {
@@ -901,11 +901,13 @@ export function FullScreenFeed({
             clearLoadingState(cfId);
             return;
           }
-          const blob = await resolvePublicFeedBlob(cfId, meta as any, { variant: 'poster' });
-          const thumbnailUrlObj = URL.createObjectURL(blob);
+          const posterUrl = await resolvePublicFeedObjectUrl(cfId, meta as any, {
+            variant: 'poster',
+          });
           setThumbnails((prev) => {
+            if (prev.has(cfId)) return prev;
             const newMap = new Map(prev);
-            newMap.set(cfId, thumbnailUrlObj);
+            newMap.set(cfId, posterUrl);
             return newMap;
           });
         } catch (err) {
@@ -1095,13 +1097,6 @@ export function FullScreenFeed({
       observer.disconnect();
     };
   }, [files, videoBlobs, visibleFileId]);
-
-  // Cleanup video URLs on unmount
-  useEffect(() => {
-    return () => {
-      videoBlobs.forEach(url => URL.revokeObjectURL(url));
-    };
-  }, []);
 
   const currentFile = files[currentIndex];
   if (!currentFile) {

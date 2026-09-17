@@ -11,7 +11,7 @@ import { useUserState } from '../contexts/UserStateContext';
 import { getUserProfile } from '../services/profileService';
 import { cleanTitle } from '../utils/cleanTitle';
 import { isNSFWContent } from '../constants/contentRatings';
-import { hasFeedPreviewPlayback, fetchPublicMediaBlob } from '../services/feedPreviewPlayback';
+import { hasFeedPreviewPlayback, resolvePublicMediaObjectUrl } from '../services/feedPreviewPlayback';
 import { sortIndexedFilesForDiscovery } from '../utils/discoverySort';
 
 interface DiscoveryPageProps {
@@ -141,10 +141,8 @@ export function DiscoveryPage({
         }
 
         try {
-          const decryptedBlob = await fetchPublicMediaBlob(fileId, 'poster');
-          const thumbnailUrlObj = URL.createObjectURL(decryptedBlob);
-          
-          createdBlobUrlsRef.current.add(thumbnailUrlObj);
+          const thumbnailUrlObj = await resolvePublicMediaObjectUrl(fileId, 'poster');
+          // Session cache owns revoke — do not track for Discovery unmount cleanup.
           
           setThumbnails(prev => {
             const newMap = new Map(prev);
@@ -400,10 +398,7 @@ export function DiscoveryPage({
             if (hasFeedPreviewPlayback(thumbnailFile.metadata)) {
               (async () => {
                 try {
-                  const decryptedBlob = await fetchPublicMediaBlob(thumbnailFileId, 'poster');
-                  const thumbnailUrlObj = URL.createObjectURL(decryptedBlob);
-                  
-                  createdBlobUrlsRef.current.add(thumbnailUrlObj);
+                  const thumbnailUrlObj = await resolvePublicMediaObjectUrl(thumbnailFileId, 'poster');
                   processedThumbnailsRef.current.add(thumbnailFileId);
                   
                   setThumbnails(prev => {

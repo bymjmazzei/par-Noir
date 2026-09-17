@@ -46,10 +46,14 @@ Fail closed for feed-media routes when R2 env is unset in production.
 
 ## CORS (required for browse `fetch` + blob)
 
-Browse loads previews in **two hops**:
+Browse loads previews in **two hops** on cold miss:
 
-1. `GET /api/aggregator/public-media/:fileId?variant=…` with metering headers (`Authorization`, `X-PN-Anon-Id`) → **200 JSON** `{ url }` (signed R2 GET). Use `?redirect=1` only for media-element `src` that cannot parse JSON.
-2. `fetch(url)` **without** custom headers → blob. Do **not** `redirect: follow` from the API hop with metering headers — browsers re-attach those headers on the R2 hop and CORS preflight fails.
+1. `GET /api/aggregator/public-media/:fileId?variant=…` with metering headers (`Authorization`, `X-PN-Anon-Id`) → **200 JSON** `{ url }` (signed R2 GET). Use `?redirect=1` only for media-element `src` that cannot parse JSON. Warm refs skip R2 `Head` (trust `r2Warm` metadata).
+2. `fetch(url)` **without** custom headers → blob → store as a session **object URL** keyed by `fileId:variant` ([`feedMediaSessionCache`](../../apps/aggregator-browser/src/services/feedMediaSessionCache.ts)).
+
+**Persistent viewer:** Home `FullScreenFeed` must not remount on feed switch (`activeFeedId` is a prop; scroll/index reset separately). Revisit within the same tab hits the session cache — no second public-media/R2 round trip until LRU eviction or lock/logout (`clearFeedMediaSessionCache`).
+
+Do **not** `redirect: follow` from the API hop with metering headers — browsers re-attach those headers on the R2 hop and CORS preflight fails.
 
 R2 bucket CORS still required for hop 2:
 
@@ -60,6 +64,8 @@ R2 bucket CORS still required for hop 2:
 5. Expose headers as needed for Range (optional)
 
 Also allow R2 in **browse CSP** `connect-src` (`apps/aggregator-browser/index.html`): `https://*.r2.cloudflarestorage.com` and optionally `https://feed-media.parnoir.com`. Without that, the browser reports **Refused to connect** / `Failed to fetch` on presigned PUT even when CORS is correct.
+
+Custom domain / long-lived HTTP-cacheable media URLs remain a later ops layer for cross-session cache.
 
 ## Rotate tokens
 

@@ -8,7 +8,7 @@ import { useStorageConnected } from '../hooks/useStorageConnected';
 import { Search, Filter, User, RefreshCw, Image as ImageIcon } from 'lucide-react';
 import { calculateMediaScaling } from '../utils/mediaScaling';
 import { saveToFeed } from '../services/savedFeedService';
-import { fetchPublicMediaBlob, hasFeedPreviewPlayback } from '../services/feedPreviewPlayback';
+import { resolvePublicMediaObjectUrl, hasFeedPreviewPlayback } from '../services/feedPreviewPlayback';
 import { FeedRail } from '../components/FeedRail';
 import { FullScreenFeed } from '../components/FullScreenFeed';
 import { FeedEngagementSidebar } from '../components/FeedEngagementSidebar';
@@ -280,7 +280,7 @@ export function HomePage() {
             <>
               <FullScreenFeed
                 files={filteredFilesByFeed}
-                key={`feed-${activeFeedId}-${filteredFilesByFeed.length}`}
+                activeFeedId={activeFeedId}
                 currentIndex={currentFeedIndex}
                 thumbnails={thumbnails}
                 videoBlobs={videoBlobs}
@@ -424,8 +424,7 @@ export function HomePage() {
                     onMouseEnter={async () => {
                       if (isVideo && hasFeedPreviewPlayback(file) && !videoBlobs.has(file.fileId)) {
                         try {
-                          const blob = await fetchPublicMediaBlob(file.fileId, 'sd');
-                          const url = URL.createObjectURL(blob);
+                          const url = await resolvePublicMediaObjectUrl(file.fileId, 'sd');
                           setVideoBlobs(prev => { const m = new Map(prev); m.set(file.fileId, url); return m; });
                         } catch (_) {}
                       }

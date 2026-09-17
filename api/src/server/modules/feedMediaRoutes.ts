@@ -330,10 +330,10 @@ export function registerFeedMediaRoutes(app: Application): void {
       }
 
       const warmKey = ref.r2Key;
-      const warm =
-        warmKey && ref.r2Warm !== false ? await feedR2Head(warmKey) : null;
-
-      if (!warm || !warmKey) {
+      // Trust metadata warm flag — skip R2 Head on the hot path (Head was adding ~RTT per view).
+      if (warmKey && ref.r2Warm !== false) {
+        await touchLastPlayed(fileId, variant, ref).catch(() => undefined);
+      } else {
         if (variant === 'poster') {
           return res.status(404).json({ error: 'poster_cold_unexpected' });
         }
@@ -361,8 +361,6 @@ export function registerFeedMediaRoutes(app: Application): void {
           }
           throw err;
         }
-      } else {
-        await touchLastPlayed(fileId, variant, ref).catch(() => undefined);
       }
 
       const key = ref.r2Key!;

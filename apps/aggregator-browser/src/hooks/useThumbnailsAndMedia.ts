@@ -6,12 +6,12 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import type { IndexedFile } from '../types/aggregator';
 import type { MediaDimensions } from '../utils/mediaScaling';
-import { createThumbnailFromBlob, createVideoThumbnailFromBlob } from '../utils/thumbnailUtils';
 import {
-  fetchPublicMediaBlob,
   hasFeedPreviewPlayback,
-  loadPublicFeedMediaBlob,
+  resolvePublicMediaObjectUrl,
+  resolvePublicFeedObjectUrl,
 } from '../services/feedPreviewPlayback';
+import { feedMediaSessionCache } from '../services/feedMediaSessionCache';
 
 export interface UseThumbnailsAndMediaParams {
   mediaFiles: IndexedFile[];
@@ -48,20 +48,11 @@ export function useThumbnailsAndMedia({
   }, [generatingThumbnails]);
 
   const cleanupThumbnailsForFiles = useCallback((fileIds: string[]) => {
+    // Drop React mirrors only — session cache keeps blob URLs for feed revisit.
     setThumbnails((prev) => {
       const newMap = new Map(prev);
       fileIds.forEach((fileId) => {
-        const thumbnailUrl = newMap.get(fileId);
-        if (thumbnailUrl) {
-          if (thumbnailUrl.startsWith('blob:')) {
-            try {
-              URL.revokeObjectURL(thumbnailUrl);
-            } catch (err) {
-              if (import.meta.env.DEV) console.warn(`Failed to revoke thumbnail URL for ${fileId}:`, err);
-            }
-          }
-          newMap.delete(fileId);
-        }
+        newMap.delete(fileId);
       });
       return newMap;
     });
@@ -96,6 +87,15 @@ export function useThumbnailsAndMedia({
           if (!hasFeedPreview && (isImage || isVideo) && import.meta.env.DEV) {
             console.warn(`[Feed] Skipping ${file.fileId} - missing feed preview refs`);
           }
+          const cached = feedMediaSessionCache.getObjectUrl(file.fileId, 'poster');
+          if (cached && !thumbnailsRef.current.has(file.fileId) && hasFeedPreview) {
+            setThumbnails((prev) => {
+              if (prev.has(file.fileId)) return prev;
+              const n = new Map(prev);
+              n.set(file.fileId, cached);
+              return n;
+            });
+          }
           return;
         }
 
@@ -104,10 +104,17 @@ export function useThumbnailsAndMedia({
         setGeneratingThumbnails(next);
 
         try {
-          const decryptedBlob = await fetchPublicMediaBlob(file.fileId, 'poster');
-          const thumbnailUrl = isVideo
-            ? await createVideoThumbnailFromBlob(decryptedBlob, 300, 300)
-            : await createThumbnailFromBlob(decryptedBlob, 300, 300);
+          const cached = feedMediaSessionCache.getObjectUrl(file.fileId, 'poster');
+          if (cached) {
+            setThumbnails((prev) => {
+              const n = new Map(prev);
+              n.set(file.fileId, cached);
+              return n;
+            });
+            return;
+          }
+          // Poster is already CDN preview-sized — use object URL directly (session cache).
+          const thumbnailUrl = await resolvePublicMediaObjectUrl(file.fileId, 'poster');
           setThumbnails((prev) => {
             const n = new Map(prev);
             n.set(file.fileId, thumbnailUrl);
@@ -163,11 +170,23 @@ export function useThumbnailsAndMedia({
         !!(file.name || file.title || '').match(/\.(mp4|mov|avi|webm|mkv|flv|wmv)$/i);
       if (!isVideo || videoBlobsRef.current.has(file.fileId)) continue;
       if (!hasFeedPreviewPlayback(file)) continue;
+      const cachedSd = feedMediaSessionCache.getObjectUrl(file.fileId, 'sd');
+      if (cachedSd) {
+        setVideoBlobs((prev) => {
+          if (prev.has(file.fileId)) return prev;
+          const n = new Map(prev);
+          n.set(file.fileId, cachedSd);
+          return n;
+        });
+        continue;
+      }
       (async () => {
         try {
-          const videoBlob = await loadPublicFeedMediaBlob(file.fileId, file as any, { variant: 'sd' });
-          const videoUrl = URL.createObjectURL(videoBlob);
+          const videoUrl = await resolvePublicFeedObjectUrl(file.fileId, file as any, {
+            variant: 'sd',
+          });
           setVideoBlobs((prev) => {
+            if (prev.has(file.fileId)) return prev;
             const n = new Map(prev);
             n.set(file.fileId, videoUrl);
             return n;

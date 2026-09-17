@@ -15,7 +15,7 @@ import {
   ensureLocalMessagingKeysForAccept,
   reportConnectionAcceptError,
 } from '../services/messagingReconnect';
-import { hasFeedPreviewPlayback, fetchPublicMediaBlob } from '../services/feedPreviewPlayback';
+import { hasFeedPreviewPlayback, resolvePublicMediaObjectUrl } from '../services/feedPreviewPlayback';
 import { IndexedFile } from '../types/aggregator';
 import { getUserProfile, updateDisplayName as updateDisplayNameAPI } from '../services/profileService';
 import { fetchListedPublicNamesForPn } from '../services/publicNamesService';
@@ -284,8 +284,7 @@ export const ProfileActionMenu = React.memo(function ProfileActionMenu({ creator
       setProfileImageLoading(true);
       try {
         if (isImage || isThought || isVideo) {
-          const blob = await fetchPublicMediaBlob(fileId, 'poster');
-          const url = URL.createObjectURL(blob);
+          const url = await resolvePublicMediaObjectUrl(fileId, 'poster');
           setProfileImageUrl(url);
           lastProcessedFileIdRef.current = fileId;
         }
@@ -300,14 +299,7 @@ export const ProfileActionMenu = React.memo(function ProfileActionMenu({ creator
     loadProfileImage();
   }, [topPostFile]);
 
-  // Clean up object URL
-  useEffect(() => {
-    return () => {
-      if (profileImageUrl) {
-        URL.revokeObjectURL(profileImageUrl);
-      }
-    };
-  }, [profileImageUrl]);
+  // Session cache owns object URL lifetime — do not revoke here.
 
   // Initialize edit name value
   useEffect(() => {
