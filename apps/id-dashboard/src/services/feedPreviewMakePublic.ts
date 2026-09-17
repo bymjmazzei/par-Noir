@@ -1,12 +1,21 @@
 /**
  * Dashboard: resolve plaintext preview blob for make-public (not MIME-only).
  */
+import type { EncryptedFilePackage } from '../types/aggregator';
 import type { FileAggregatorService } from './aggregator/FileAggregatorService';
 import {
   publishFeedPreviewsForDashboard,
   type PublishedFeedPreviews,
 } from './feedPreviewPublish';
 
+type DecryptSession = { id: string; publicKey: string };
+
+type FeedPreviewEncryptionService = {
+  decryptFileFromDownload: (
+    encryptedPackage: EncryptedFilePackage,
+    session: DecryptSession
+  ) => Promise<{ decryptedBlob: Blob }>;
+};
 export function visualFeedPreviewKind(meta: {
   fileType?: string;
   name?: string;
@@ -43,13 +52,8 @@ async function downloadDecryptPreviewBlob(params: {
   aggregatorService: FileAggregatorService;
   backendId: string;
   fileId: string;
-  encryptionService: {
-    decryptFileFromDownload: (
-      encJson: unknown,
-      session: { id: string; publicKey: string }
-    ) => Promise<{ decryptedBlob: Blob }>;
-  };
-  session: { id: string; publicKey: string };
+  encryptionService: FeedPreviewEncryptionService;
+  session: DecryptSession;
   encrypted?: boolean;
 }): Promise<{ blob: Blob; mimeType: string }> {
   const backend = params.aggregatorService.getBackend(params.backendId);
@@ -59,14 +63,12 @@ async function downloadDecryptPreviewBlob(params: {
   const encBlob = await backend.downloadFile(params.fileId);
   let mimeType = 'application/octet-stream';
   if (params.encrypted !== false) {
-    const encJson = JSON.parse(await encBlob.text()) as {
-      encrypted?: string;
-      iv?: string;
-      salt?: string;
-      metadata?: { originalMimeType?: string };
-    };
+    const encJson = JSON.parse(await encBlob.text()) as EncryptedFilePackage;
     mimeType = encJson.metadata?.originalMimeType || mimeType;
-    const { decryptedBlob } = await params.encryptionService.decryptFileFromDownload(encJson, params.session);
+    const { decryptedBlob } = await params.encryptionService.decryptFileFromDownload(
+      encJson,
+      params.session
+    );
     return { blob: decryptedBlob, mimeType };
   }
   return { blob: encBlob, mimeType: encBlob.type || mimeType };
@@ -87,13 +89,8 @@ export async function publishFeedPreviewsForDashboardMakePublic(params: {
   title?: string;
   collectionFileIds?: string[];
   encrypted?: boolean;
-  encryptionService: {
-    decryptFileFromDownload: (
-      encJson: unknown,
-      session: { id: string; publicKey: string }
-    ) => Promise<{ decryptedBlob: Blob }>;
-  };
-  session: { id: string; publicKey: string };
+  encryptionService: FeedPreviewEncryptionService;
+  session: DecryptSession;
   planId?: string;
 }): Promise<PublishedFeedPreviews | Record<string, never>> {
   const mime = params.mimeType || '';
