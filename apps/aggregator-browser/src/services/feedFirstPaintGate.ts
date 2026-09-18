@@ -1,41 +1,33 @@
 /**
- * Session-once gate: brand splash until the first successful feed poster paints.
+ * Page-load gate: brand splash until the first successful feed poster paints.
+ * Resets on full navigation/refresh (in-memory only). Survives in-app feed switches.
+ * Also cleared on lock/logout via resetFeedFirstPaintGate().
  */
-const STORAGE_KEY = 'pn_feed_first_paint_done';
+const LEGACY_STORAGE_KEY = 'pn_feed_first_paint_done';
 
 let memoryDone = false;
 
-function readStorage(): boolean {
-  if (typeof sessionStorage === 'undefined') return memoryDone;
+function clearLegacyStorage(): void {
+  if (typeof sessionStorage === 'undefined') return;
   try {
-    return sessionStorage.getItem(STORAGE_KEY) === '1';
+    sessionStorage.removeItem(LEGACY_STORAGE_KEY);
   } catch {
-    return memoryDone;
+    /* ignore */
   }
 }
 
 export function isFeedFirstPaintDone(): boolean {
-  if (memoryDone) return true;
-  memoryDone = readStorage();
   return memoryDone;
 }
 
 export function markFeedFirstPaintDone(): void {
   memoryDone = true;
-  if (typeof sessionStorage === 'undefined') return;
-  try {
-    sessionStorage.setItem(STORAGE_KEY, '1');
-  } catch {
-    /* ignore quota */
-  }
 }
 
 export function resetFeedFirstPaintGate(): void {
   memoryDone = false;
-  if (typeof sessionStorage === 'undefined') return;
-  try {
-    sessionStorage.removeItem(STORAGE_KEY);
-  } catch {
-    /* ignore */
-  }
+  clearLegacyStorage();
 }
+
+// Drop prior sessionStorage flag from older builds so refresh behavior matches page-load scope.
+clearLegacyStorage();
