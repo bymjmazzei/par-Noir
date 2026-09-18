@@ -13,7 +13,7 @@ export function useStorageConnected(pnIdentifier?: string): boolean | null {
   useEffect(() => {
     let cancelled = false;
 
-    (async () => {
+    const run = async () => {
       if (!pnIdentifier || pnIdentifier.startsWith('did:key:')) {
         if (!cancelled) setConnected(false);
         return;
@@ -35,10 +35,16 @@ export function useStorageConnected(pnIdentifier?: string): boolean | null {
       } catch {
         if (!cancelled) setConnected(false);
       }
-    })();
+    };
 
+    void run();
+    const onPrefetch = () => {
+      void run();
+    };
+    window.addEventListener('pn_unlock_prefetch_complete', onPrefetch);
     return () => {
       cancelled = true;
+      window.removeEventListener('pn_unlock_prefetch_complete', onPrefetch);
     };
   }, [pnIdentifier]);
 
