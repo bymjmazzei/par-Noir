@@ -13,7 +13,7 @@ type Props = {
 export function FeedBrandSplash({ mode, exiting = false, onRetry }: Props) {
   return (
     <div
-      className="fixed inset-0 z-[100] flex flex-col items-center justify-center"
+      className="fixed inset-0 z-[150] flex flex-col items-center justify-center"
       style={{
         backgroundColor: '#000',
         backgroundImage: 'url(/branding/Par-Noir-Background-Dark.png)',

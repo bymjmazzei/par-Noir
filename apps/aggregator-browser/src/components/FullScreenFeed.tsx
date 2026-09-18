@@ -32,8 +32,10 @@ import { feedMediaSessionCache } from '../services/feedMediaSessionCache';
 import {
   isFeedFirstPaintDone,
   markFeedFirstPaintDone,
+  setFeedSplashMode,
+  getFeedSplashMode,
 } from '../services/feedFirstPaintGate';
-import { FeedBrandSplash, type FeedBrandSplashMode } from './FeedBrandSplash';
+import { useFeedFirstPaintSplash } from '../hooks/useFeedFirstPaintSplash';
 
 async function loadMemberFeedMeta(fileId: string): Promise<Record<string, unknown> | null> {
   const res = await apiGet(`/api/aggregator/metadata-index/${encodeURIComponent(fileId)}`);
@@ -113,10 +115,7 @@ export function FullScreenFeed({
   
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
   const prevActiveFeedIdRef = useRef(activeFeedId);
-  const [splashMode, setSplashMode] = useState<FeedBrandSplashMode>('loading');
-  const [showSplash, setShowSplash] = useState(() => !isFeedFirstPaintDone());
-  const [splashExiting, setSplashExiting] = useState(false);
-  const [mediaRetryToken, setMediaRetryToken] = useState(0);
+  const { showSplash, mediaRetryEpoch } = useFeedFirstPaintSplash();
   const gatingRef = useRef(!isFeedFirstPaintDone());
   const softSkipInFlightRef = useRef(false);
   const videoRefs = useRef<Map<string, HTMLVideoElement>>(new Map());
@@ -156,24 +155,15 @@ export function FullScreenFeed({
   }, [activeFeedId]);
 
   const dismissSplash = useCallback(() => {
-    if (!gatingRef.current && isFeedFirstPaintDone()) {
-      setShowSplash(false);
-      return;
-    }
-    markFeedFirstPaintDone();
     gatingRef.current = false;
-    setSplashExiting(true);
-    window.setTimeout(() => {
-      setShowSplash(false);
-      setSplashExiting(false);
-    }, 280);
+    markFeedFirstPaintDone();
   }, []);
 
   // First successful poster for the visible item → dismiss brand splash.
   useEffect(() => {
-    if (!showSplash || splashMode === 'network' || splashMode === 'empty') return;
-    if (isFeedFirstPaintDone() && !gatingRef.current) {
-      setShowSplash(false);
+    if (!showSplash) return;
+    if (isFeedFirstPaintDone()) {
+      gatingRef.current = false;
       return;
     }
     const fileId = files[currentIndex]?.metadata?.fileId;
@@ -187,7 +177,6 @@ export function FullScreenFeed({
     }
   }, [
     showSplash,
-    splashMode,
     thumbnails,
     externalThumbnails,
     currentIndex,
@@ -198,11 +187,16 @@ export function FullScreenFeed({
   // Soft-skip broken tiles while gating; never first-paint into Image unavailable.
   useEffect(() => {
     if (!showSplash || !gatingRef.current) return;
-    if (splashMode === 'network' || splashMode === 'empty') return;
     if (softSkipInFlightRef.current) return;
+    const mode = getFeedSplashMode();
+    if (mode === 'network' || mode === 'empty') return;
+    if (files.length === 0) {
+      setFeedSplashMode('empty');
+      return;
+    }
     const file = files[currentIndex]?.metadata;
     if (!file?.fileId) {
-      if (files.length === 0) setSplashMode('empty');
+      setFeedSplashMode('empty');
       return;
     }
     const fileId = file.fileId;
@@ -231,10 +225,9 @@ export function FullScreenFeed({
       }
       next += 1;
     }
-    setSplashMode('empty');
+    setFeedSplashMode('empty');
   }, [
     showSplash,
-    splashMode,
     failedThumbnails,
     currentIndex,
     files,
@@ -908,7 +901,7 @@ export function FullScreenFeed({
             console.warn(`[FullScreenFeed] Failed CDN load for ${fileId}:`, err);
           }
           if (gatingRef.current && isNetworkFeedMediaError(err)) {
-            setSplashMode('network');
+            setFeedSplashMode('network');
             return;
           }
           setFailedThumbnails((prev) => {
@@ -939,7 +932,7 @@ export function FullScreenFeed({
     };
 
     void runPool();
-  }, [feedThumbPriorityKey, currentIndex, mediaRetryToken]);
+  }, [feedThumbPriorityKey, currentIndex, mediaRetryEpoch]);
 
   // Retry loading thumbnails when authentication becomes available
   useEffect(() => {
@@ -1207,22 +1200,7 @@ export function FullScreenFeed({
   if (!currentFile) {
     return (
       <div className="h-screen w-full flex items-center justify-center bg-black text-white relative">
-        {showSplash ? (
-          <FeedBrandSplash
-            mode={files.length === 0 ? 'empty' : splashMode}
-            exiting={splashExiting}
-            onRetry={
-              splashMode === 'network'
-                ? () => {
-                    setSplashMode('loading');
-                    setMediaRetryToken((t) => t + 1);
-                  }
-                : undefined
-            }
-          />
-        ) : (
-          <p>No content available</p>
-        )}
+        {!showSplash && <p>No content available</p>}
       </div>
     );
   }
@@ -1262,20 +1240,7 @@ export function FullScreenFeed({
         position: 'relative'
       }}
     >
-      {showSplash && (
-        <FeedBrandSplash
-          mode={splashMode}
-          exiting={splashExiting}
-          onRetry={
-            splashMode === 'network'
-              ? () => {
-                  setSplashMode('loading');
-                  setMediaRetryToken((t) => t + 1);
-                }
-              : undefined
-          }
-        />
-      )}
+      {/* Brand splash is owned by HomePage so it covers chrome before this mounts. */}
       {/* Only render visible files (currentIndex ± 1) for better performance */}
       {(() => {
         // Show currentIndex and next 2 files (or previous if at start)

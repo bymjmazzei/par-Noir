@@ -3,7 +3,7 @@
  * Uses HomePageContext for state and handlers from App.
  */
 
-import React, { useContext } from 'react';
+import React, { useContext, useEffect, useState } from 'react';
 import { useStorageConnected } from '../hooks/useStorageConnected';
 import { Search, Filter, User, RefreshCw, Image as ImageIcon } from 'lucide-react';
 import { calculateMediaScaling } from '../utils/mediaScaling';
@@ -17,6 +17,9 @@ import { LoadingSkeleton } from '../components/LoadingSkeleton';
 import { EmptyState } from '../components/EmptyState';
 import { ContentRatingBadge } from '../components/ContentRatingBadge';
 import { NotificationBell } from '../components/NotificationBell';
+import { FeedBrandSplash } from '../components/FeedBrandSplash';
+import { useFeedFirstPaintSplash } from '../hooks/useFeedFirstPaintSplash';
+import { requestFeedMediaRetry } from '../services/feedFirstPaintGate';
 import { Settings, Upload, Plus } from 'lucide-react';
 import { IndexedFile } from '../types/aggregator';
 import { HomePageContext } from '../contexts/HomePageContext';
@@ -102,8 +105,39 @@ export function HomePage() {
     showErrorToast,
   } = ctx;
 
+  const { showSplash, mode: splashMode } = useFeedFirstPaintSplash();
+  const [splashExiting, setSplashExiting] = useState(false);
+  const [splashMounted, setSplashMounted] = useState(showSplash);
+
+  useEffect(() => {
+    if (showSplash) {
+      setSplashMounted(true);
+      setSplashExiting(false);
+      return;
+    }
+    if (!splashMounted) return;
+    setSplashExiting(true);
+    const t = window.setTimeout(() => {
+      setSplashMounted(false);
+      setSplashExiting(false);
+    }, 280);
+    return () => window.clearTimeout(t);
+  }, [showSplash, splashMounted]);
+
+  const coverWithBrandSplash =
+    viewMode === 'feed' && activeFeedId !== 'discovery' && splashMounted;
+
   return (
     <div className={`${viewMode === 'feed' ? 'h-full flex flex-col' : 'max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8'}`}>
+      {coverWithBrandSplash && (
+        <FeedBrandSplash
+          mode={splashMode}
+          exiting={splashExiting}
+          onRetry={
+            splashMode === 'network' ? () => requestFeedMediaRetry() : undefined
+          }
+        />
+      )}
       {viewMode !== 'feed' && (
         <div className="mb-8">
           <h1 className="text-3xl font-bold text-white mb-2">par Noir Content Browser</h1>
