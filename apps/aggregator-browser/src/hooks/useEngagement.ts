@@ -114,7 +114,7 @@ export function useEngagement() {
     }
   }, [loadingStats]);
 
-  // Load bulk engagement stats for multiple files
+  // Load bulk engagement stats for multiple files (works locked — public reads)
   const loadBulkEngagementStats = useCallback(async (fileIds: string[]) => {
     if (fileIds.length === 0) return;
 
@@ -124,7 +124,7 @@ export function useEngagement() {
       !userState.pnIdentifier.startsWith('did:key:')
         ? userState.pnIdentifier
         : undefined;
-    if (userState.isUnlocked && !viewerPn) return;
+    // Unlocked with unusable pn: still fetch public stats as anon (skip likedFiles only)
 
     setLoadingStats(prev => {
       const next = new Set(prev);

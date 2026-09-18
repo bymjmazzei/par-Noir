@@ -1,9 +1,10 @@
 import { API_ENDPOINT } from '../config/api';
+import { PNOAuthService } from './pnOAuthService';
 
 const bulkStatsInflight = new Map<string, Promise<BulkEngagementStatsResult>>();
 
 export interface BulkEngagementStatsResult {
-  stats: Record<string, { shares?: number }>;
+  stats: Record<string, { shares?: number; likes?: number; comments?: number }>;
   likedFiles: string[];
 }
 
@@ -35,9 +36,17 @@ export async function fetchBulkEngagementStats(
   if (existing) return existing;
 
   const work = (async (): Promise<BulkEngagementStatsResult> => {
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    try {
+      const token = await PNOAuthService.getValidAccessToken(false);
+      if (token) headers.Authorization = `Bearer ${token}`;
+    } catch {
+      /* anonymous ok — public stats */
+    }
+
     const response = await fetch(`${API_ENDPOINT}/api/engagement/bulk-stats`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers,
       body: JSON.stringify({ fileIds, userPnIdentifier })
     });
 

@@ -2,6 +2,13 @@
  * @vitest-environment jsdom
  */
 import { afterEach, describe, expect, it, vi } from 'vitest';
+
+vi.mock('./pnOAuthService', () => ({
+  PNOAuthService: {
+    getValidAccessToken: vi.fn(async () => null),
+  },
+}));
+
 import {
   fetchBulkEngagementStats,
   resetBulkStatsInflightForTests
@@ -33,6 +40,7 @@ describe('fetchBulkEngagementStats', () => {
 
     resolveFetch({
       ok: true,
+      status: 200,
       json: async () => ({ stats: {}, likedFiles: [] })
     });
 

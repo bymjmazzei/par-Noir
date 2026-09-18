@@ -594,6 +594,8 @@ app.get('/api/engagement/:fileId/stats', async (req: Request, res: Response) => 
 app.post('/api/engagement/bulk-stats', async (req: Request, res: Response) => {
   try {
     const { EngagementService } = await import('./engagementService');
+    const { getBearerTokenPayload } = await import('../middleware/authMiddleware');
+    const { isFirstPartyClient } = await import('./integratorStoragePaths');
     const { fileIds, userPnIdentifier } = req.body;
 
     if (!fileIds || !Array.isArray(fileIds)) {
@@ -608,11 +610,22 @@ app.post('/api/engagement/bulk-stats', async (req: Request, res: Response) => {
       stats[key] = value;
     });
 
-    // Also check which files the user has liked if userPnIdentifier is provided
+    // likedFiles only when a first-party Bearer proves the viewer — ignore body pn alone.
     const likedFiles: string[] = [];
-    if (userPnIdentifier && fileIds.length > 0) {
-      const likedSet = await EngagementService.getBulkLikedFiles(fileIds, userPnIdentifier);
-      likedFiles.push(...Array.from(likedSet));
+    const payload = getBearerTokenPayload(req);
+    const viewerPn =
+      payload?.pnIdentifier && isFirstPartyClient(payload.clientId)
+        ? payload.pnIdentifier
+        : null;
+    if (viewerPn && fileIds.length > 0) {
+      // Optional body pn must match token when both present (no spoofing another user).
+      const bodyPn = typeof userPnIdentifier === 'string' ? userPnIdentifier.trim() : '';
+      const normalize = (id: string) =>
+        id.startsWith('pn-') ? id.slice(3) : id;
+      if (!bodyPn || normalize(bodyPn) === normalize(viewerPn)) {
+        const likedSet = await EngagementService.getBulkLikedFiles(fileIds, viewerPn);
+        likedFiles.push(...Array.from(likedSet));
+      }
     }
 
     return res.json({

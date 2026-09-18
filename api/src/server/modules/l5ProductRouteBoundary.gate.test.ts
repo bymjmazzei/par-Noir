@@ -33,6 +33,7 @@ import { requireFirstPartyOAuthClient } from './deviceCapabilityService';
 import {
   L5_PRODUCT_ROUTE_PREFIXES,
   mountL5ProductFirstPartyBoundary,
+  isPublicEngagementRead,
 } from './l5ProductRouteBoundary';
 
 function mockRes() {
@@ -158,5 +159,59 @@ describe('l5ProductRouteBoundary gate', () => {
         server.close((err) => (err ? reject(err) : resolve()));
       });
     }
+  });
+
+  describe('public engagement reads', () => {
+    it('allowlists comments stats metrics and bulk-stats', () => {
+      expect(isPublicEngagementRead('GET', '/api/engagement/file1/comments')).toBe(true);
+      expect(isPublicEngagementRead('GET', '/api/engagement/file1/stats')).toBe(true);
+      expect(isPublicEngagementRead('GET', '/api/engagement/file1/metrics')).toBe(true);
+      expect(isPublicEngagementRead('POST', '/api/engagement/bulk-stats')).toBe(true);
+      expect(isPublicEngagementRead('GET', '/file1/comments')).toBe(true); // mount-relative
+      expect(isPublicEngagementRead('POST', '/api/engagement/file1/like')).toBe(false);
+      expect(isPublicEngagementRead('GET', '/api/engagement/file1/like')).toBe(false);
+      expect(isPublicEngagementRead('GET', '/api/engagement/file1/monetization')).toBe(false);
+    });
+
+    it('mounted middleware allows anonymous GET comments', async () => {
+      const app = express();
+      mountL5ProductFirstPartyBoundary(app);
+      app.get('/api/engagement/:fileId/comments', (_req, res) =>
+        res.status(200).json({ comments: [] })
+      );
+
+      const server = app.listen(0);
+      const port = (server.address() as { port: number }).port;
+      try {
+        const response = await fetch(
+          `http://127.0.0.1:${port}/api/engagement/fileABC/comments`
+        );
+        expect(response.status).toBe(200);
+        expect(validateAccessToken).not.toHaveBeenCalled();
+      } finally {
+        await new Promise<void>((resolve, reject) => {
+          server.close((err) => (err ? reject(err) : resolve()));
+        });
+      }
+    });
+
+    it('mounted middleware still 401s anonymous POST like', async () => {
+      const app = express();
+      mountL5ProductFirstPartyBoundary(app);
+      app.post('/api/engagement/:fileId/like', (_req, res) => res.status(200).json({ ok: true }));
+
+      const server = app.listen(0);
+      const port = (server.address() as { port: number }).port;
+      try {
+        const response = await fetch(`http://127.0.0.1:${port}/api/engagement/fileABC/like`, {
+          method: 'POST',
+        });
+        expect(response.status).toBe(401);
+      } finally {
+        await new Promise<void>((resolve, reject) => {
+          server.close((err) => (err ? reject(err) : resolve()));
+        });
+      }
+    });
   });
 });
