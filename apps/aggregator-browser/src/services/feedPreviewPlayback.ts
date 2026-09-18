@@ -8,6 +8,27 @@ import type { FeedPreviewVariant } from '@par-noir/aggregator-domain';
 import { PNOAuthService } from './pnOAuthService';
 import { feedMediaSessionCache } from './feedMediaSessionCache';
 
+export class FeedMediaNetworkError extends Error {
+  constructor(message = 'feed_media_network') {
+    super(message);
+    this.name = 'FeedMediaNetworkError';
+  }
+}
+
+export function isNetworkFeedMediaError(err: unknown): boolean {
+  if (typeof navigator !== 'undefined' && navigator.onLine === false) return true;
+  if (err instanceof FeedMediaNetworkError) return true;
+  if (err instanceof TypeError) return true;
+  const msg = err instanceof Error ? err.message : String(err ?? '');
+  if (/failed to fetch|networkerror|net::|load failed|network request failed/i.test(msg)) {
+    return true;
+  }
+  if (/public_media_5\d\d|feed_media_5\d\d|feed_media_blob_5\d\d/.test(msg)) {
+    return true;
+  }
+  return false;
+}
+
 export function publicMediaUrl(
   fileId: string,
   variant: FeedPreviewVariant = 'sd'
@@ -35,6 +56,9 @@ async function fetchPublicMediaFromNetwork(
   fileId: string,
   variant: FeedPreviewVariant
 ): Promise<Blob> {
+  if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+    throw new FeedMediaNetworkError('offline');
+  }
   const headers: Record<string, string> = {
     Accept: 'application/json',
   };
@@ -51,10 +75,17 @@ async function fetchPublicMediaFromNetwork(
   }
   headers['X-PN-Anon-Id'] = anon;
 
-  const res = await fetch(publicMediaUrl(fileId, variant), {
-    headers,
-    redirect: 'error',
-  });
+  let res: Response;
+  try {
+    res = await fetch(publicMediaUrl(fileId, variant), {
+      headers,
+      redirect: 'error',
+    });
+  } catch (err) {
+    throw new FeedMediaNetworkError(
+      err instanceof Error ? err.message : 'public_media_fetch_failed'
+    );
+  }
   if (res.status === 429) {
     const body = await res.json().catch(() => ({}));
     const err = new Error((body as { error?: string }).error || 'daily_view_cap') as Error & {
@@ -62,6 +93,9 @@ async function fetchPublicMediaFromNetwork(
     };
     err.code = (body as { error?: string }).error || 'daily_view_cap';
     throw err;
+  }
+  if (res.status >= 500) {
+    throw new FeedMediaNetworkError(`public_media_${res.status}`);
   }
   if (!res.ok) {
     throw new Error(`public_media_${res.status}`);
@@ -72,7 +106,17 @@ async function fetchPublicMediaFromNetwork(
     throw new Error('public_media_bad_url');
   }
 
-  const media = await fetch(url);
+  let media: Response;
+  try {
+    media = await fetch(url);
+  } catch (err) {
+    throw new FeedMediaNetworkError(
+      err instanceof Error ? err.message : 'feed_media_fetch_failed'
+    );
+  }
+  if (media.status >= 500) {
+    throw new FeedMediaNetworkError(`feed_media_${media.status}`);
+  }
   if (!media.ok) {
     throw new Error(`feed_media_${media.status}`);
   }

@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { isAllowedFeedMediaSignedUrl } from './feedPreviewPlayback';
+import {
+  FeedMediaNetworkError,
+  isAllowedFeedMediaSignedUrl,
+  isNetworkFeedMediaError,
+} from './feedPreviewPlayback';
 
 describe('isAllowedFeedMediaSignedUrl', () => {
   it('allows R2 and feed-media hosts', () => {
@@ -15,5 +19,14 @@ describe('isAllowedFeedMediaSignedUrl', () => {
     expect(isAllowedFeedMediaSignedUrl('http://feed-media.parnoir.com/x')).toBe(false);
     expect(isAllowedFeedMediaSignedUrl('https://evil.example/x')).toBe(false);
     expect(isAllowedFeedMediaSignedUrl('not-a-url')).toBe(false);
+  });
+});
+
+describe('isNetworkFeedMediaError', () => {
+  it('detects FeedMediaNetworkError and TypeError', () => {
+    expect(isNetworkFeedMediaError(new FeedMediaNetworkError())).toBe(true);
+    expect(isNetworkFeedMediaError(new TypeError('Failed to fetch'))).toBe(true);
+    expect(isNetworkFeedMediaError(new Error('public_media_503'))).toBe(true);
+    expect(isNetworkFeedMediaError(new Error('public_media_404'))).toBe(false);
   });
 });

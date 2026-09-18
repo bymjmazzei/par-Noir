@@ -559,6 +559,9 @@ export function UserStateProvider({ children }: { children: ReactNode }) {
     void import('../services/feedMediaSessionCache').then(({ clearFeedMediaSessionCache }) =>
       clearFeedMediaSessionCache()
     );
+    void import('../services/feedFirstPaintGate').then(({ resetFeedFirstPaintGate }) =>
+      resetFeedFirstPaintGate()
+    );
     void import('../services/storageApiClient').then(({ invalidateStorageAccountsCache }) =>
       invalidateStorageAccountsCache()
     );

@@ -12,6 +12,7 @@ import { API_ENDPOINT } from '../config/api';
 import { PN_CLIENT_ID, getPnOAuthScopes } from '../config/oauthClient';
 import { browseOAuthRedirectUri } from './browseOAuthRedirect';
 import { clearFeedMediaSessionCache } from './feedMediaSessionCache';
+import { resetFeedFirstPaintGate } from './feedFirstPaintGate';
 
 function getClientId(): string {
   return PN_CLIENT_ID;
@@ -356,6 +357,7 @@ export class PNOAuthService {
       sessionStorage.removeItem('pn_oauth_session');
     }
     clearFeedMediaSessionCache();
+    resetFeedFirstPaintGate();
   }
 
   /**
