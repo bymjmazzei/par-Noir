@@ -31,6 +31,8 @@ interface EditMetadataModalProps {
   title?: string;
   submitButtonText?: string;
   isLoading?: boolean;
+  /** When false, backdrop clicks do not dismiss (needed after native file picker). Default true. */
+  closeOnBackdropClick?: boolean;
 }
 
 export function EditMetadataModal({
@@ -40,7 +42,8 @@ export function EditMetadataModal({
   initialData,
   title = 'Edit Metadata',
   submitButtonText = 'Save Changes',
-  isLoading = false
+  isLoading = false,
+  closeOnBackdropClick = true,
 }: EditMetadataModalProps) {
   // Handle legacy single category from initialData
   const initialCategories = initialData?.category 
@@ -118,7 +121,7 @@ export function EditMetadataModal({
   return (
     <div 
       className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
-      onClick={handleClose}
+      onClick={closeOnBackdropClick ? handleClose : undefined}
     >
       <div 
         className="bg-neutral-800 rounded-lg p-6 max-w-md w-full text-text-primary border border-neutral-700 shadow-2xl max-h-[85vh] flex flex-col"

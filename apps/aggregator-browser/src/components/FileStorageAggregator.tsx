@@ -1478,6 +1478,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
         }
         title="Upload"
         submitButtonText="Upload"
+        closeOnBackdropClick={false}
       />
 
       {/* Edit Metadata Modal */}
