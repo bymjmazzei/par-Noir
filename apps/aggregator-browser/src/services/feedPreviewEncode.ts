@@ -289,3 +289,38 @@ export async function encodeFeedPreviewsForPublish(
   // Non-AV: poster from empty — reject for public video path
   throw new Error('unsupported_media_for_feed_preview');
 }
+
+const PLACEHOLDER_MAX_CHARS = 2800;
+
+/** Tiny LQIP (or solid color fallback) for first-paint underlay. */
+export async function encodeFeedPosterPlaceholder(
+  posterBlob: Blob
+): Promise<{ type: 'lqip'; data: string } | { type: 'color'; data: string } | undefined> {
+  try {
+    const img = await loadImage(posterBlob);
+    const sample = document.createElement('canvas');
+    sample.width = 1;
+    sample.height = 1;
+    const sctx = sample.getContext('2d');
+    if (!sctx) return undefined;
+    sctx.drawImage(img, 0, 0, 1, 1);
+    const [r, g, b] = sctx.getImageData(0, 0, 1, 1).data;
+    const color = `#${[r, g, b].map((n) => n!.toString(16).padStart(2, '0')).join('')}`;
+
+    const tw = 24;
+    const th = Math.max(1, Math.round((img.naturalHeight / Math.max(1, img.naturalWidth)) * tw));
+    const tiny = document.createElement('canvas');
+    tiny.width = tw;
+    tiny.height = th;
+    const ctx = tiny.getContext('2d');
+    if (!ctx) return { type: 'color', data: color };
+    ctx.drawImage(img, 0, 0, tw, th);
+    const dataUrl = tiny.toDataURL('image/jpeg', 0.45);
+    if (dataUrl.length > PLACEHOLDER_MAX_CHARS) {
+      return { type: 'color', data: color };
+    }
+    return { type: 'lqip', data: dataUrl };
+  } catch {
+    return undefined;
+  }
+}

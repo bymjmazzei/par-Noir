@@ -24,13 +24,16 @@ interface FeedRailProps {
   feeds: FeedRailItem[];
   activeFeedId: string;
   onFeedSelect: (feedId: string) => void;
+  onFeedPrefetch?: (feedId: string) => void;
   onBrowseFeeds?: () => void;
 }
 
 export function FeedRail({ 
   feeds, 
   activeFeedId, 
-  onFeedSelect}: FeedRailProps) {
+  onFeedSelect,
+  onFeedPrefetch,
+}: FeedRailProps) {
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const innerContainerRef = useRef<HTMLDivElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
@@ -236,6 +239,9 @@ export function FeedRail({
                   ref={isPublicFeed ? pNButtonRef : undefined}
                   data-feed-id={feed.feedId}
                   onClick={() => onFeedSelect(feed.feedId)}
+                  onPointerEnter={() => {
+                    if (!isActive) onFeedPrefetch?.(feed.feedId);
+                  }}
                   className="relative whitespace-nowrap text-white/85 hover:text-white transition-colors flex items-center justify-center"
                   style={{ opacity: isActive ? 1 : 0.85 }}
                 >

@@ -73,6 +73,7 @@ export interface HomePageContextValue {
   handleCreatorClick: (creatorId: string) => void;
   handleNextFeed: () => void;
   handlePreviousFeed: () => void;
+  prefetchFeedMedia: (feedId: string) => void;
   handleFeedCreated: (feed: Feed) => void;
   setViewingCreatorId: (id: string | null) => void;
   setViewingBrandedFeed: (f: Feed | null) => void;

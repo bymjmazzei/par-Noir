@@ -48,6 +48,10 @@ import { contentClassToContentType } from './utils/feedContentTypes';
 import { useFeedFiltering } from './hooks/useFeedFiltering';
 import { useThumbnailsAndMedia } from './hooks/useThumbnailsAndMedia';
 import { useAuthAndSession } from './hooks/useAuthAndSession';
+import { filterFilesForFeed } from './utils/filterFilesForFeed';
+import { posterFileIdsForPrefetch, prefetchFeedPosters } from './services/feedPosterPrefetch';
+import { batchSignAndCachePosters } from './services/feedMediaBatchSign';
+import { hasFeedPreviewPlayback } from './services/feedPreviewPlayback';
 import { useMePageData } from './hooks/useMePageData';
 import { usePushNotifications } from './hooks/usePushNotifications';
 import { reportCopyright } from './services/reportCopyrightService';
@@ -503,6 +507,60 @@ function App() {
     viewMode,
   });
 
+  const prefetchFeedMedia = useCallback(
+    (feedId: string) => {
+      if (feedId === 'discovery' || feedId === activeFeedId) return;
+      const files = filterFilesForFeed({
+        mediaFiles,
+        thoughtsFiles,
+        collectionsFiles,
+        feedId,
+        userState: {
+          isUnlocked: userState.isUnlocked,
+          pnIdentifier: userState.pnIdentifier,
+          preferences: userState.preferences,
+        },
+        connectionsList: mePageData.connectionsList,
+        feeds,
+      });
+      prefetchFeedPosters(posterFileIdsForPrefetch(files, 3));
+    },
+    [
+      mediaFiles,
+      thoughtsFiles,
+      collectionsFiles,
+      activeFeedId,
+      userState.isUnlocked,
+      userState.pnIdentifier,
+      userState.preferences,
+      mePageData.connectionsList,
+      feeds,
+    ]
+  );
+
+  // Cold open: batch-sign first-screen posters once the active feed list lands.
+  const firstScreenPosterKey = useMemo(
+    () =>
+      filteredFilesByFeed
+        .filter((f) => hasFeedPreviewPlayback(f.metadata))
+        .slice(0, 8)
+        .map((f) => f.metadata.fileId)
+        .join(','),
+    [filteredFilesByFeed]
+  );
+  useEffect(() => {
+    if (viewMode !== 'feed' || activeFeedId === 'discovery') return;
+    if (!firstScreenPosterKey) return;
+    const ids = firstScreenPosterKey.split(',').filter(Boolean);
+    let cancelled = false;
+    void batchSignAndCachePosters(ids).catch(() => {
+      if (!cancelled) prefetchFeedPosters(ids.slice(0, 3));
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [viewMode, activeFeedId, firstScreenPosterKey]);
+
   // Load bulk engagement stats when files are loaded (stable pn id only — skip did:key transition).
   const stablePnIdentifier =
     userState.isUnlocked &&
@@ -618,18 +676,20 @@ function App() {
   const handleNextFeed = useCallback(() => {
     const nextFeedId = getNextFeed(activeFeedId);
     if (nextFeedId) {
+      prefetchFeedMedia(nextFeedId);
       setActiveFeedId(nextFeedId);
       setCurrentFeedIndex(0); // Reset to first item in new feed
     }
-  }, [getNextFeed, activeFeedId]);
+  }, [getNextFeed, activeFeedId, prefetchFeedMedia]);
 
   const handlePreviousFeed = useCallback(() => {
     const prevFeedId = getPreviousFeed(activeFeedId);
     if (prevFeedId) {
+      prefetchFeedMedia(prevFeedId);
       setActiveFeedId(prevFeedId);
       setCurrentFeedIndex(0); // Reset to first item in new feed
     }
-  }, [getPreviousFeed, activeFeedId]);
+  }, [getPreviousFeed, activeFeedId, prefetchFeedMedia]);
   
   // Feed post navigation (for keyboard shortcuts)
   const handleNextPost = useCallback(() => {
@@ -1021,6 +1081,7 @@ function App() {
     handleCreatorClick,
     handleNextFeed,
     handlePreviousFeed,
+    prefetchFeedMedia,
     handleFeedCreated,
     setViewingCreatorId,
     setViewingBrandedFeed,

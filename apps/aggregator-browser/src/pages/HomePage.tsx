@@ -89,6 +89,7 @@ export function HomePage() {
     handleCreatorClick,
     handleNextFeed,
     handlePreviousFeed,
+    prefetchFeedMedia,
     setViewingCreatorId,
     setViewingBrandedFeed,
     setMePageTab,
@@ -157,6 +158,7 @@ export function HomePage() {
               isManualFeedChangeRef.current = true;
               setActiveFeedId(feedId);
             }}
+            onFeedPrefetch={prefetchFeedMedia}
             onBrowseFeeds={undefined}
           />
         </div>

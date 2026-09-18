@@ -97,6 +97,147 @@ async function pullThroughToR2(
   return warmed;
 }
 
+type SignPublicMediaOk = {
+  ok: true;
+  fileId: string;
+  variant: FeedPreviewVariant;
+  url: string;
+  expiresInSec: number;
+};
+type SignPublicMediaErr = {
+  ok: false;
+  fileId: string;
+  status: number;
+  error: string;
+  startsUsed?: number;
+  mbUsed?: number;
+};
+
+/**
+ * Shared public-media sign path (single GET + batch-sign).
+ * Warm posters skip Head; metering matches free-view rules.
+ */
+async function signPublicMediaForFile(
+  req: Request,
+  fileId: string,
+  variant: FeedPreviewVariant
+): Promise<SignPublicMediaOk | SignPublicMediaErr> {
+  const { AggregatorMetadataServiceDB } = await import('./aggregatorMetadataServiceDB');
+  const entry = await AggregatorMetadataServiceDB.getInstance().getFileMetadata(fileId);
+  if (!entry?.metadata) {
+    return { ok: false, fileId, status: 404, error: 'not_found' };
+  }
+  const meta = entry.metadata as unknown as Record<string, unknown>;
+  if (meta.isPublic !== true && meta.isPublic !== 'true') {
+    return { ok: false, fileId, status: 404, error: 'not_public' };
+  }
+
+  let ref = refForVariant(meta, variant);
+  if (!ref && variant === 'hd') {
+    ref = refForVariant(meta, 'sd');
+  }
+  if (!ref) {
+    return { ok: false, fileId, status: 404, error: 'preview_missing' };
+  }
+
+  let viewerPn: string | null = null;
+  try {
+    const { getBearerTokenPayload } = await import('../middleware/authMiddleware');
+    viewerPn = getBearerTokenPayload(req)?.pnIdentifier || null;
+  } catch {
+    viewerPn = null;
+  }
+
+  let viewerVerified = false;
+  if (viewerPn) {
+    const { EngagementService } = await import('./engagementService');
+    viewerVerified = await EngagementService.isIdentityVerifiedForMonetization(viewerPn);
+  }
+
+  let effectiveVariant = variant;
+  if (variant === 'hd' && !viewerVerified) {
+    const sd = refForVariant(meta, 'sd');
+    if (sd) {
+      ref = sd;
+      effectiveVariant = 'sd';
+    } else {
+      return { ok: false, fileId, status: 403, error: 'hd_requires_verification' };
+    }
+  }
+
+  if (!viewerVerified) {
+    const anon =
+      typeof req.headers['x-pn-anon-id'] === 'string' ? req.headers['x-pn-anon-id'] : null;
+    const gate = await checkAndConsumeFreeView(
+      viewerKeyFromRequest(viewerPn, anon),
+      ref.byteSize
+    );
+    if (!gate.ok) {
+      return {
+        ok: false,
+        fileId,
+        status: 429,
+        error: gate.reason,
+        startsUsed: gate.startsUsed,
+        mbUsed: gate.mbUsed,
+      };
+    }
+  }
+
+  const warmKey = ref.r2Key;
+  // Trust metadata warm flag — skip R2 Head on the hot path (Head was adding ~RTT per view).
+  if (warmKey && ref.r2Warm !== false) {
+    await touchLastPlayed(fileId, effectiveVariant, ref).catch(() => undefined);
+  } else {
+    if (effectiveVariant === 'poster') {
+      return { ok: false, fileId, status: 404, error: 'poster_cold_unexpected' };
+    }
+    try {
+      ref = await pullThroughToR2(
+        fileId,
+        effectiveVariant === 'hd' && ref === refForVariant(meta, 'hd') ? 'hd' : 'sd',
+        ref
+      );
+    } catch (err: unknown) {
+      if (err instanceof PublicBlobAccessError) {
+        if (err.code === 'NOT_FOUND') {
+          try {
+            const { purgePublicCacheForFileIds } = await import('./storage/publicCloudSot');
+            await purgePublicCacheForFileIds({
+              fileIds: [fileId],
+              pnIdentifier: entry.pnIdentifier || undefined,
+            });
+            safeLogger.info('[public-media] Purged dead public row after canonical SoT NOT_FOUND', {
+              fileHash: hashIdentifier(fileId),
+            });
+          } catch (purgeErr: unknown) {
+            safeLogger.warn('[public-media] Purge failed', {
+              message: purgeErr instanceof Error ? purgeErr.message : 'unknown',
+            });
+          }
+        }
+        return {
+          ok: false,
+          fileId,
+          status: err.httpStatus,
+          error: err.code.toLowerCase(),
+        };
+      }
+      throw err;
+    }
+  }
+
+  const key = ref.r2Key!;
+  const url = await feedR2SignedGetUrl(key);
+  return {
+    ok: true,
+    fileId,
+    variant: effectiveVariant,
+    url,
+    expiresInSec: getFeedR2()!.config.signedGetTtlSec,
+  };
+}
+
 export function registerFeedMediaRoutes(app: Application): void {
   app.get('/api/users/:pn/verification-status', async (req: Request, res: Response) => {
     try {
@@ -273,114 +414,90 @@ export function registerFeedMediaRoutes(app: Application): void {
         return res.status(400).json({ error: 'fileId_and_variant_required' });
       }
 
-      const { AggregatorMetadataServiceDB } = await import('./aggregatorMetadataServiceDB');
-      const entry = await AggregatorMetadataServiceDB.getInstance().getFileMetadata(fileId);
-      if (!entry?.metadata) {
-        return res.status(404).json({ error: 'not_found' });
-      }
-      const meta = entry.metadata as unknown as Record<string, unknown>;
-      if (meta.isPublic !== true && meta.isPublic !== 'true') {
-        return res.status(404).json({ error: 'not_public' });
+      const signed = await signPublicMediaForFile(req, fileId, variant);
+      if (!signed.ok) {
+        const body: Record<string, unknown> = { error: signed.error };
+        if (signed.startsUsed !== undefined) body.startsUsed = signed.startsUsed;
+        if (signed.mbUsed !== undefined) body.mbUsed = signed.mbUsed;
+        return res.status(signed.status).json(body);
       }
 
-      let ref = refForVariant(meta, variant);
-      if (!ref && variant === 'hd') {
-        ref = refForVariant(meta, 'sd');
-      }
-      if (!ref) {
-        return res.status(404).json({ error: 'preview_missing' });
-      }
-
-      let viewerPn: string | null = null;
-      try {
-        const { getBearerTokenPayload } = await import('../middleware/authMiddleware');
-        viewerPn = getBearerTokenPayload(req)?.pnIdentifier || null;
-      } catch {
-        viewerPn = null;
-      }
-
-      let viewerVerified = false;
-      if (viewerPn) {
-        const { EngagementService } = await import('./engagementService');
-        viewerVerified = await EngagementService.isIdentityVerifiedForMonetization(viewerPn);
-      }
-
-      if (variant === 'hd' && !viewerVerified) {
-        const sd = refForVariant(meta, 'sd');
-        if (sd) ref = sd;
-        else {
-          return res.status(403).json({ error: 'hd_requires_verification' });
-        }
-      }
-
-      if (!viewerVerified) {
-        const anon =
-          typeof req.headers['x-pn-anon-id'] === 'string' ? req.headers['x-pn-anon-id'] : null;
-        const gate = await checkAndConsumeFreeView(
-          viewerKeyFromRequest(viewerPn, anon),
-          ref.byteSize
-        );
-        if (!gate.ok) {
-          return res.status(429).json({
-            error: gate.reason,
-            startsUsed: gate.startsUsed,
-            mbUsed: gate.mbUsed,
-          });
-        }
-      }
-
-      const warmKey = ref.r2Key;
-      // Trust metadata warm flag — skip R2 Head on the hot path (Head was adding ~RTT per view).
-      if (warmKey && ref.r2Warm !== false) {
-        await touchLastPlayed(fileId, variant, ref).catch(() => undefined);
-      } else {
-        if (variant === 'poster') {
-          return res.status(404).json({ error: 'poster_cold_unexpected' });
-        }
-        try {
-          ref = await pullThroughToR2(fileId, variant === 'hd' && ref === refForVariant(meta, 'hd') ? 'hd' : 'sd', ref);
-        } catch (err: unknown) {
-          if (err instanceof PublicBlobAccessError) {
-            if (err.code === 'NOT_FOUND') {
-              try {
-                const { purgePublicCacheForFileIds } = await import('./storage/publicCloudSot');
-                await purgePublicCacheForFileIds({
-                  fileIds: [fileId],
-                  pnIdentifier: entry.pnIdentifier || undefined,
-                });
-                safeLogger.info('[public-media] Purged dead public row after canonical SoT NOT_FOUND', {
-                  fileHash: hashIdentifier(fileId),
-                });
-              } catch (purgeErr: unknown) {
-                safeLogger.warn('[public-media] Purge failed', {
-                  message: purgeErr instanceof Error ? purgeErr.message : 'unknown',
-                });
-              }
-            }
-            return res.status(err.httpStatus).json({ error: err.code.toLowerCase() });
-          }
-          throw err;
-        }
-      }
-
-      const key = ref.r2Key!;
-      const url = await feedR2SignedGetUrl(key);
       // Default JSON: browse must fetch R2 without API metering headers (302+follow
       // re-attaches X-PN-Anon-Id / Authorization and breaks R2 CORS preflight).
       // Opt-in ?redirect=1 for media-element src that cannot JSON-parse.
       if (String(req.query.redirect || '') === '1') {
-        return res.redirect(302, url);
+        return res.redirect(302, signed.url);
       }
       return res.status(200).json({
-        url,
-        variant,
-        expiresInSec: getFeedR2()!.config.signedGetTtlSec,
+        url: signed.url,
+        variant: signed.variant,
+        expiresInSec: signed.expiresInSec,
       });
     } catch (err: unknown) {
       safeLogger.warn('[public-media] failed', {
         message: err instanceof Error ? err.message : 'unknown',
       });
       return res.status(500).json({ error: 'public_media_failed' });
+    }
+  });
+
+  /**
+   * Batch sign warm posters for first-screen paint (cap 12).
+   * Same metering / warm rules as public-media; no pull-through for cold posters.
+   */
+  app.post('/api/aggregator/feed-media/batch-sign', async (req: Request, res: Response) => {
+    try {
+      if (!getFeedR2()) {
+        return res.status(503).json({ error: 'feed_r2_not_configured' });
+      }
+      const rawItems = Array.isArray(req.body?.items) ? req.body.items : [];
+      if (rawItems.length === 0) {
+        return res.status(400).json({ error: 'items_required' });
+      }
+      const items = rawItems.slice(0, 12).map((it: unknown) => {
+        const row = it && typeof it === 'object' ? (it as Record<string, unknown>) : {};
+        const fileId = typeof row.fileId === 'string' ? row.fileId : '';
+        const variant = variantFromParam(String(row.variant || 'poster')) || 'poster';
+        return { fileId, variant };
+      }).filter((it: { fileId: string }) => it.fileId.length > 0);
+
+      if (items.length === 0) {
+        return res.status(400).json({ error: 'items_required' });
+      }
+
+      const results = await Promise.all(
+        items.map(async (it: { fileId: string; variant: FeedPreviewVariant }) => {
+          try {
+            const signed = await signPublicMediaForFile(req, it.fileId, it.variant);
+            if (!signed.ok) {
+              return {
+                fileId: it.fileId,
+                error: signed.error,
+                status: signed.status,
+              };
+            }
+            return {
+              fileId: signed.fileId,
+              variant: signed.variant,
+              url: signed.url,
+              expiresInSec: signed.expiresInSec,
+            };
+          } catch (err: unknown) {
+            return {
+              fileId: it.fileId,
+              error: err instanceof Error ? err.message : 'sign_failed',
+              status: 500,
+            };
+          }
+        })
+      );
+
+      return res.status(200).json({ results });
+    } catch (err: unknown) {
+      safeLogger.warn('[feed-media/batch-sign] failed', {
+        message: err instanceof Error ? err.message : 'unknown',
+      });
+      return res.status(500).json({ error: 'batch_sign_failed' });
     }
   });
 

@@ -3,7 +3,7 @@
  */
 import type { FeedPreviewObjectRef, PublishTierId } from '@par-noir/aggregator-domain';
 import { getPublishTier, r2ObjectKey } from '@par-noir/aggregator-domain';
-import { encodeFeedPreviewsForPublish, type EncodedPreview } from './feedPreviewEncode';
+import { encodeFeedPreviewsForPublish, type EncodedPreview, encodeFeedPosterPlaceholder } from './feedPreviewEncode';
 import { uploadStorageFile } from './storageApiClient';
 import { ownerFetch } from './ownerApiFetch';
 import { PNOAuthService } from './pnOAuthService';
@@ -171,6 +171,11 @@ async function uploadOneVariant(params: {
     r2Warm: true,
     lastPlayedAt: new Date().toISOString(),
   };
+
+  if (encoded.variant === 'poster') {
+    const placeholder = await encodeFeedPosterPlaceholder(encoded.blob);
+    if (placeholder) ref.placeholder = placeholder;
+  }
 
   const confirmRes = await ownerFetch(
     'POST',

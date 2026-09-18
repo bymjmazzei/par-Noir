@@ -7,7 +7,7 @@ import {
   getPublishTier,
   r2ObjectKey,
 } from '@par-noir/aggregator-domain';
-import { encodeFeedPreviewsForPublish, type EncodedPreview } from './feedPreviewEncode';
+import { encodeFeedPreviewsForPublish, type EncodedPreview, encodeFeedPosterPlaceholder } from './feedPreviewEncode';
 import { API_ENDPOINT } from '../config/api';
 import { resolveOwnerApiToken } from './ownerApiToken';
 import { getOwnerApiPnIdentifier, ownerFetch } from './ownerApiService';
@@ -132,6 +132,11 @@ async function uploadOne(params: {
     r2Warm: true,
     lastPlayedAt: new Date().toISOString(),
   };
+
+  if (encoded.variant === 'poster') {
+    const placeholder = await encodeFeedPosterPlaceholder(encoded.blob);
+    if (placeholder) ref.placeholder = placeholder;
+  }
 
   const confirmRes = await ownerFetch(
     ownerToken,

@@ -65,7 +65,11 @@ R2 bucket CORS still required for hop 2:
 
 Also allow R2 in **browse CSP** `connect-src` (`apps/aggregator-browser/index.html`): `https://*.r2.cloudflarestorage.com` and optionally `https://feed-media.parnoir.com`. Without that, the browser reports **Refused to connect** / `Failed to fetch` on presigned PUT even when CORS is correct.
 
-Custom domain / long-lived HTTP-cacheable media URLs remain a later ops layer for cross-session cache.
+Custom domain / long-lived HTTP-cacheable media URLs: set `FEED_R2_PUBLIC_HOST=https://feed-media.parnoir.com` after the hostname is on Cloudflare DNS. The API rewrites signed GET hosts (and strips the bucket path prefix) so browse fetches the custom domain. Confirm R2 custom-domain + SigV4 works for your bucket; if GETs 403, leave `FEED_R2_PUBLIC_HOST` unset until CF confirms, or use a Worker.
+
+## First-screen speed
+
+Browse also calls `POST /api/aggregator/feed-media/batch-sign` (up to 12 warm posters) after the discovery list lands, and prefetches the next rail feed’s first 3 posters on hover. Same free-view metering as `public-media`.
 
 ## Rotate tokens
 

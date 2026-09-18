@@ -28,6 +28,27 @@ import {
   resolvePublicMediaObjectUrl,
   isNetworkFeedMediaError,
 } from '../services/feedPreviewPlayback';
+import { isFeedPreviewPlaceholder } from '@par-noir/aggregator-domain';
+
+function feedPosterUnderlayStyle(
+  metadata: IndexedFile['metadata'] | undefined
+): React.CSSProperties | undefined {
+  const raw =
+    metadata && typeof metadata === 'object'
+      ? (metadata as { feedPoster?: { placeholder?: unknown } }).feedPoster?.placeholder
+      : undefined;
+  if (!isFeedPreviewPlaceholder(raw)) return undefined;
+  if (raw.type === 'color') {
+    return { backgroundColor: raw.data };
+  }
+  return {
+    backgroundImage: `url(${raw.data})`,
+    backgroundSize: 'cover',
+    backgroundPosition: 'center',
+    filter: 'blur(12px)',
+    transform: 'scale(1.08)',
+  };
+}
 import { feedMediaSessionCache } from '../services/feedMediaSessionCache';
 import {
   isFeedFirstPaintDone,
@@ -1550,7 +1571,14 @@ export function FullScreenFeed({
                   );
                 }
                 if (suppressTileSpinner) {
-                  return <div className="w-full h-full bg-black" />;
+                  const underlay = feedPosterUnderlayStyle(indexedFile.metadata);
+                  return (
+                    <div
+                      className="w-full h-full bg-black"
+                      style={underlay}
+                      aria-hidden
+                    />
+                  );
                 }
                 // Show placeholder while cover loads
                 return (
@@ -1628,9 +1656,16 @@ export function FullScreenFeed({
                     </div>
                   );
                 }
-                // Under brand splash: empty black — no blue spinner.
+                // Under brand splash: soft placeholder underlay when present — no blue spinner.
                 if (suppressTileSpinner) {
-                  return <div className="w-full h-full bg-black" />;
+                  const underlay = feedPosterUnderlayStyle(indexedFile.metadata);
+                  return (
+                    <div
+                      className="w-full h-full bg-black"
+                      style={underlay}
+                      aria-hidden
+                    />
+                  );
                 }
                 // Show placeholder while thumbnail loads
                 return (

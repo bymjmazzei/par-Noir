@@ -4,6 +4,14 @@
 
 export type FeedPreviewVariant = 'poster' | 'sd' | 'hd';
 
+/**
+ * Tiny public underlay while full poster loads (LQIP data-URL or solid color).
+ * Kept ≤ ~2KB when type is lqip; safe to ship in metadata-index.
+ */
+export type FeedPreviewPlaceholder =
+  | { type: 'lqip'; data: string }
+  | { type: 'color'; data: string };
+
 /** Opaque R2 object + optional owner-cloud canonical (pull-through source). */
 export interface FeedPreviewObjectRef {
   /** R2 object key (warm CDN). Empty/missing when cold for sd/hd. */
@@ -29,6 +37,8 @@ export interface FeedPreviewObjectRef {
   lastPlayedAt?: string;
   /** False when SD/HD evicted from R2; poster should remain warm. */
   r2Warm?: boolean;
+  /** Optional soft underlay for first paint (poster only). */
+  placeholder?: FeedPreviewPlaceholder;
 }
 
 export interface FeedPreviewRefs {
@@ -160,16 +170,29 @@ export function softBytesForVariant(variant: FeedPreviewVariant): number {
   return FEED_PREVIEW_SD_SOFT_BYTES;
 }
 
+export function isFeedPreviewPlaceholder(value: unknown): value is FeedPreviewPlaceholder {
+  if (!value || typeof value !== 'object') return false;
+  const v = value as Record<string, unknown>;
+  if (v.type !== 'lqip' && v.type !== 'color') return false;
+  return typeof v.data === 'string' && v.data.length > 0 && v.data.length <= 4096;
+}
+
 export function isFeedPreviewObjectRef(value: unknown): value is FeedPreviewObjectRef {
   if (!value || typeof value !== 'object') return false;
   const v = value as Record<string, unknown>;
-  return (
-    typeof v.contentType === 'string' &&
-    v.contentType.length > 0 &&
-    typeof v.byteSize === 'number' &&
-    Number.isFinite(v.byteSize) &&
-    v.byteSize >= 0
-  );
+  if (
+    typeof v.contentType !== 'string' ||
+    v.contentType.length === 0 ||
+    typeof v.byteSize !== 'number' ||
+    !Number.isFinite(v.byteSize) ||
+    v.byteSize < 0
+  ) {
+    return false;
+  }
+  if (v.placeholder !== undefined && !isFeedPreviewPlaceholder(v.placeholder)) {
+    return false;
+  }
+  return true;
 }
 
 export function validateFeedPreviewByteSize(

@@ -157,7 +157,36 @@ export async function feedR2SignedGetUrl(key: string): Promise<string> {
   const r2 = getFeedR2();
   if (!r2) throw new Error('feed_r2_not_configured');
   const cmd = new GetObjectCommand({ Bucket: r2.config.bucket, Key: key });
-  return getSignedUrl(r2.client, cmd, { expiresIn: r2.config.signedGetTtlSec });
+  const signed = await getSignedUrl(r2.client, cmd, { expiresIn: r2.config.signedGetTtlSec });
+  return rewriteSignedGetHost(signed, r2.config.publicHost, r2.config.bucket);
+}
+
+/**
+ * When FEED_R2_PUBLIC_HOST is set, serve signed GETs on the custom domain.
+ * Path-style S3 URLs include `/bucket/key`; custom domains expect `/key`.
+ */
+export function rewriteSignedGetHost(
+  signedUrl: string,
+  publicHost?: string,
+  bucket?: string
+): string {
+  const host = publicHost?.trim();
+  if (!host) return signedUrl;
+  try {
+    const signed = new URL(signedUrl);
+    const pub = new URL(host.includes('://') ? host : `https://${host}`);
+    signed.protocol = pub.protocol;
+    signed.host = pub.host;
+    if (bucket) {
+      const prefix = `/${bucket}`;
+      if (signed.pathname === prefix || signed.pathname.startsWith(`${prefix}/`)) {
+        signed.pathname = signed.pathname.slice(prefix.length) || '/';
+      }
+    }
+    return signed.toString();
+  } catch {
+    return signedUrl;
+  }
 }
 
 export async function feedR2PresignedPutUrl(
