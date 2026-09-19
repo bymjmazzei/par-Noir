@@ -1894,6 +1894,84 @@ export class AggregatorMetadataServiceDB {
   }
 
   /**
+   * Recompute engagement.topComments (and optionally sync comment count) on aggregator metadata.
+   * SoT for comment bodies remains the engagement table.
+   */
+  async refreshEngagementTopComments(
+    fileId: string,
+    opts?: { bumpCommentCount?: boolean; userPnIdentifier?: string }
+  ): Promise<PublicMetadata | null> {
+    const db = getDatabasePool();
+    try {
+      const current = await this.getFileMetadata(fileId);
+      if (!current) {
+        return null;
+      }
+
+      const { EngagementService } = await import('./engagementService');
+      const topComments = await EngagementService.computeTopComments(fileId);
+      const commentCount = await EngagementService.countComments(fileId);
+
+      const metadata = current.metadata;
+      const engagement = metadata.engagement || {
+        views: 0,
+        likes: 0,
+        comments: 0,
+        shares: 0,
+        lastUpdated: metadata.uploadDate || new Date().toISOString(),
+        engagementHistory: [] as NonNullable<PublicMetadata['engagement']>['engagementHistory'],
+      };
+
+      if (opts?.bumpCommentCount) {
+        engagement.comments = Math.max((engagement.comments || 0) + 1, commentCount);
+        if (!engagement.engagementHistory) {
+          engagement.engagementHistory = [];
+        }
+        engagement.engagementHistory.push({
+          type: 'comment',
+          pn_identifier: opts.userPnIdentifier,
+          timestamp: new Date().toISOString(),
+        });
+      } else {
+        engagement.comments = commentCount;
+      }
+
+      engagement.topComments = topComments;
+      engagement.lastUpdated = new Date().toISOString();
+
+      const updatedMetadata: PublicMetadata = {
+        ...metadata,
+        engagement,
+      };
+
+      const allTables = this.getAllContentTypeTables();
+      let targetTable: string | null = null;
+      for (const table of allTables) {
+        const checkResult = await db.query(`SELECT file_id FROM ${table} WHERE file_id = $1`, [fileId]);
+        if (checkResult.rows.length > 0) {
+          targetTable = table;
+          break;
+        }
+      }
+      if (!targetTable) {
+        return null;
+      }
+
+      await db.query(
+        `UPDATE ${targetTable}
+         SET metadata = $1, updated_at = NOW()
+         WHERE file_id = $2`,
+        [JSON.stringify(updatedMetadata), fileId]
+      );
+
+      return updatedMetadata;
+    } catch (error) {
+      console.error(`❌ Failed to refresh topComments for file ${fileId}:`, error);
+      throw error;
+    }
+  }
+
+  /**
    * Update metadata fields (title, description, tags, etc.)
    */
   async updateMetadata(

@@ -373,6 +373,7 @@ export class EngagementService {
       // In production, you might want to add a separate file_owner column
       const commentData = {
         content,
+        authorName: authorName || null,
         fileOwnerDid: ownerDid || null,
         commentorDid: userPnIdentifier,
         parentCommentId: parentCommentId || null,
@@ -406,7 +407,7 @@ export class EngagementService {
         id: row.engagement_id,
         fileId: row.file_id,
         authorId: row.user_did, // Commentor DID
-        authorName: authorName || row.user_did.substring(0, 8),
+        authorName: authorName || parsedContent.authorName || row.user_did.substring(0, 8),
         content: parsedContent.content || content,
         timestamp: row.created_at,
         likes: [],
@@ -497,7 +498,7 @@ export class EngagementService {
           id: commentId,
           fileId: row.file_id,
           authorId: row.user_did, // Commentor DID
-          authorName: row.user_did.substring(0, 8),
+          authorName: parsedContent.authorName || row.user_did.substring(0, 8),
           content: commentContent,
           timestamp: row.created_at,
           likes,
@@ -1162,6 +1163,120 @@ export class EngagementService {
     } catch {
       return false;
     }
+  }
+
+  /**
+   * Ranked top-level comment previews for feed tile denormalization (cap 10).
+   */
+  static async computeTopComments(
+    fileId: string,
+    cap = 10,
+    contentMaxLen = 120
+  ): Promise<
+    Array<{
+      id: string;
+      authorName: string;
+      content: string;
+      timestamp: string;
+      likeCount: number;
+    }>
+  > {
+    const comments = await this.getComments(fileId);
+    const authorIds = [...new Set(comments.map((c) => c.authorId).filter(Boolean))];
+    const displayByPn = await this.lookupDisplayNames(authorIds);
+
+    const ranked = comments
+      .filter((c) => !c.parentCommentId && c.content && c.content.trim().length >= 1)
+      .map((c) => {
+        const likeCount = Array.isArray(c.likes) ? c.likes.length : 0;
+        const fromProfile = displayByPn.get(c.authorId);
+        const authorName =
+          (c.authorName && c.authorName.length > 8 ? c.authorName : null) ||
+          fromProfile ||
+          c.authorName ||
+          c.authorId.substring(0, 8);
+        const raw = c.content.trim();
+        const content = raw.length > contentMaxLen ? `${raw.slice(0, contentMaxLen - 1)}…` : raw;
+        return {
+          id: c.id,
+          authorName,
+          content,
+          timestamp: c.timestamp,
+          likeCount,
+        };
+      })
+      .sort((a, b) => {
+        if (b.likeCount !== a.likeCount) return b.likeCount - a.likeCount;
+        return new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime();
+      })
+      .slice(0, cap);
+
+    return ranked;
+  }
+
+  static async countComments(fileId: string): Promise<number> {
+    const db = getDatabasePool();
+    try {
+      const result = await db.query(
+        `SELECT COUNT(*)::int AS n FROM engagement WHERE file_id = $1 AND type = 'comment'`,
+        [fileId]
+      );
+      return result.rows[0]?.n ?? 0;
+    } catch {
+      return 0;
+    }
+  }
+
+  /**
+   * Public likers list for who-liked sheet (newest first).
+   */
+  static async listLikers(
+    fileId: string,
+    limit = 100
+  ): Promise<Array<{ pnIdentifier: string; displayName: string | null; likedAt: string }>> {
+    const db = getDatabasePool();
+    const capped = Math.min(Math.max(limit, 1), 200);
+    const result = await db.query<{ user_did: string; created_at: string }>(
+      `
+      SELECT user_did, created_at
+      FROM engagement
+      WHERE file_id = $1 AND type = 'like'
+      ORDER BY created_at DESC
+      LIMIT $2
+      `,
+      [fileId, capped]
+    );
+    const pns = result.rows.map((r) => r.user_did);
+    const displayByPn = await this.lookupDisplayNames(pns);
+    return result.rows.map((r) => ({
+      pnIdentifier: r.user_did,
+      displayName: displayByPn.get(r.user_did) ?? null,
+      likedAt: r.created_at,
+    }));
+  }
+
+  private static async lookupDisplayNames(pnIdentifiers: string[]): Promise<Map<string, string>> {
+    const out = new Map<string, string>();
+    if (pnIdentifiers.length === 0) return out;
+    const db = getDatabasePool();
+    try {
+      const result = await db.query<{ pn_identifier: string; display_name: string | null }>(
+        `
+        SELECT pn_identifier, display_name
+        FROM user_profiles
+        WHERE pn_identifier = ANY($1::text[])
+        `,
+        [pnIdentifiers]
+      );
+      for (const row of result.rows) {
+        if (row.display_name && row.display_name.trim()) {
+          out.set(row.pn_identifier, row.display_name.trim());
+        }
+      }
+    } catch {
+      /* best-effort */
+    }
+    return out;
   }
 }
 

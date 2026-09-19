@@ -256,6 +256,15 @@ app.post('/api/engagement/:fileId/comment', async (req: Request, res: Response) 
         parentCommentId,
         postReply
       );
+      // Denormalize top-10 + sync comment count on aggregator metadata (feed tile).
+      try {
+        await AggregatorMetadataServiceDB.getInstance().refreshEngagementTopComments(fileId, {
+          bumpCommentCount: true,
+          userPnIdentifier: pnIdentifier,
+        });
+      } catch (err) {
+        console.warn('[engagement] refreshEngagementTopComments after comment failed:', err);
+      }
       const ownerPn =
         fileOwnerDid ||
         (await AggregatorMetadataServiceDB.getInstance().getFileMetadata(fileId))?.pnIdentifier;
@@ -293,6 +302,7 @@ app.post('/api/engagement/:fileId/comment', async (req: Request, res: Response) 
 app.post('/api/engagement/:fileId/comment/:commentId/like', async (req: Request, res: Response) => {
   try {
     const { EngagementService } = await import('./engagementService');
+    const { AggregatorMetadataServiceDB } = await import('./aggregatorMetadataServiceDB');
     const { fileId, commentId } = req.params;
     const { userPnIdentifier } = req.body;
 
@@ -301,6 +311,12 @@ app.post('/api/engagement/:fileId/comment/:commentId/like', async (req: Request,
     }
 
     const result = await EngagementService.likeComment(fileId, commentId, userPnIdentifier);
+
+    try {
+      await AggregatorMetadataServiceDB.getInstance().refreshEngagementTopComments(fileId);
+    } catch (err) {
+      console.warn('[engagement] refreshEngagementTopComments after comment-like failed:', err);
+    }
 
     return res.json({
       liked: result.liked,
@@ -329,6 +345,30 @@ app.get('/api/engagement/:fileId/comments', async (req: Request, res: Response) 
   } catch (error: any) {
     console.error('Error getting comments:', error);
     return res.status(500).json({ error: 'Failed to get comments', message: safeClientErrorMessage(error, NODE_ENV === 'production') });
+  }
+});
+
+// GET /api/engagement/:fileId/likes - Public likers list (who-liked sheet)
+app.get('/api/engagement/:fileId/likes', async (req: Request, res: Response) => {
+  try {
+    const { EngagementService } = await import('./engagementService');
+    const { fileId } = req.params;
+    const limitRaw = typeof req.query.limit === 'string' ? parseInt(req.query.limit, 10) : 100;
+    const limit = Number.isFinite(limitRaw) ? limitRaw : 100;
+
+    const likes = await EngagementService.listLikers(fileId, limit);
+
+    return res.json({
+      fileId,
+      likes,
+      count: likes.length,
+    });
+  } catch (error: any) {
+    console.error('Error listing likes:', error);
+    return res.status(500).json({
+      error: 'Failed to list likes',
+      message: safeClientErrorMessage(error, NODE_ENV === 'production'),
+    });
   }
 });
 

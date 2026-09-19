@@ -36,6 +36,7 @@ export function isPublicEngagementRead(method: string, pathOrUrl: string): boole
   }
   if (m === 'GET') {
     if (/^\/api\/engagement\/[^/]+\/comments$/.test(full)) return true;
+    if (/^\/api\/engagement\/[^/]+\/likes$/.test(full)) return true;
     if (/^\/api\/engagement\/[^/]+\/stats$/.test(full)) return true;
     if (/^\/api\/engagement\/[^/]+\/metrics$/.test(full)) return true;
   }

@@ -17,7 +17,7 @@ interface MediaViewerProps {
 }
 
 export function MediaViewer({ file, url, onClose }: MediaViewerProps) {
-  const { getLikeCount, getComments, getShareCount } = useEngagement();
+  const { getLikeCount, getShareCount } = useEngagement();
   const [zoom, setZoom] = useState(1);
   const [rotation, setRotation] = useState(0);
   const [isFullscreen, setIsFullscreen] = useState(false);
@@ -202,7 +202,7 @@ export function MediaViewer({ file, url, onClose }: MediaViewerProps) {
                   ...file.metadata.engagement,
                   views: file.metadata.engagement?.views || 0,
                   likes: getLikeCount(file.metadata.fileId, file.metadata.engagement?.likes || 0),
-                  comments: getComments(file.metadata.fileId).length + (file.metadata.engagement?.comments || 0),
+                  comments: file.metadata.engagement?.comments || 0,
                   shares: getShareCount(file.metadata.fileId, file.metadata.engagement?.shares || 0),
                   saves: file.metadata.engagement?.saves || 0,
                   lastUpdated: file.metadata.engagement?.lastUpdated || new Date().toISOString()

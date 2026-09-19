@@ -21,7 +21,7 @@ interface BrandedFeedPageProps {
 }
 
 export function BrandedFeedPage({ feed, files, onBack, onFileClick }: BrandedFeedPageProps) {
-  const { getLikeCount, getComments, getShareCount } = useEngagement();
+  const { getLikeCount, getShareCount } = useEngagement();
   const { userState } = useUserState();
   const [showSettings, setShowSettings] = useState(false);
   const [editTitle, setEditTitle] = useState(feed.feedName);
@@ -232,7 +232,7 @@ export function BrandedFeedPage({ feed, files, onBack, onFileClick }: BrandedFee
                               ...indexedFile.metadata.engagement,
                               views: indexedFile.metadata.engagement?.views || 0,
                               likes: getLikeCount(file.fileId, indexedFile.metadata.engagement?.likes || 0),
-                              comments: getComments(file.fileId).length + (indexedFile.metadata.engagement?.comments || 0),
+                              comments: indexedFile.metadata.engagement?.comments || 0,
                               shares: getShareCount(file.fileId, indexedFile.metadata.engagement?.shares || 0),
                               saves: indexedFile.metadata.engagement?.saves || 0,
                               lastUpdated: indexedFile.metadata.engagement?.lastUpdated || new Date().toISOString()

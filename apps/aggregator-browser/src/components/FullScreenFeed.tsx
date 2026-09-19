@@ -533,32 +533,17 @@ export function FullScreenFeed({
     holdDuration: 250
   });
 
-  // Function to get popular comments for a file
+  // Popular comments for live strip — from denormalized metadata.topComments (no network).
   const getPopularComments = useCallback((fileId: string): any[] => {
-    const allComments = getComments(fileId);
-    if (!allComments || allComments.length === 0) {
-      return [];
+    const indexed = files.find((f) => f.metadata?.fileId === fileId);
+    const top = indexed?.metadata?.engagement?.topComments;
+    if (Array.isArray(top) && top.length > 0) {
+      return top.filter(
+        (c) => c && typeof c.content === 'string' && c.content.trim().length >= 1
+      );
     }
-    // Filter to top-level comments only (no replies), sort by likes, filter very short comments
-    const topLevelComments = allComments
-      .filter((c: any) => {
-        // Include comments that are top-level (no parent) and have content
-        return !c.parentCommentId && c.content && typeof c.content === 'string' && c.content.trim().length >= 3;
-      })
-      .sort((a: any, b: any) => {
-        const aLikes = Array.isArray(a.likes) ? a.likes.length : 0;
-        const bLikes = Array.isArray(b.likes) ? b.likes.length : 0;
-        // If likes are equal, prefer more recent comments
-        if (aLikes === bLikes) {
-          const aTime = new Date(a.timestamp || 0).getTime();
-          const bTime = new Date(b.timestamp || 0).getTime();
-          return bTime - aTime;
-        }
-        return bLikes - aLikes; // Most liked first
-      })
-      .slice(0, 15); // Top 15 most liked
-    return topLevelComments;
-  }, [getComments]);
+    return [];
+  }, [files]);
 
   // Track previous index and file ID to prevent unnecessary scrolling
   const prevIndexRef = useRef<number>(-1);
@@ -642,14 +627,6 @@ export function FullScreenFeed({
         if (userState.isUnlocked && userState.pnIdentifier) {
           viewStartTimeRef.current.set(fileId, Date.now());
         }
-        
-        // Preload comments for the visible file if loadComments is available
-        if (loadComments) {
-          loadComments(fileId).catch(err => {
-            // Silently fail - comments will be loaded when modal opens
-            console.debug('Failed to preload comments:', err);
-          });
-        }
       }
     }, 50);
 
@@ -658,7 +635,15 @@ export function FullScreenFeed({
         clearTimeout(scrollTimeoutRef.current);
       }
     };
-  }, [currentIndex, files, loadComments, userState.isUnlocked, userState.pnIdentifier]);
+  }, [currentIndex, files, userState.isUnlocked, userState.pnIdentifier]);
+
+  // Me "comments" tab: load full comments only when that tab is active (not on feed scroll).
+  useEffect(() => {
+    if (mePageTab !== 'comments' || !loadComments) return;
+    const fileId = files[currentIndex]?.metadata?.fileId;
+    if (!fileId) return;
+    loadComments(fileId).catch(() => undefined);
+  }, [mePageTab, currentIndex, files, loadComments]);
 
   // Track viewing behavior and send to backend for bot detection
   useEffect(() => {
@@ -1883,7 +1868,7 @@ export function FullScreenFeed({
                     ...indexedFile.metadata.engagement,
                     views: indexedFile.metadata.engagement?.views || 0,
                     likes: getLikeCount(fileId, indexedFile.metadata.engagement?.likes || 0),
-                    comments: getComments(fileId).length + (indexedFile.metadata.engagement?.comments || 0),
+                    comments: indexedFile.metadata.engagement?.comments || 0,
                     shares: getShareCount(fileId, indexedFile.metadata.engagement?.shares || 0),
                     saves: indexedFile.metadata.engagement?.saves || 0,
                     lastUpdated: indexedFile.metadata.engagement?.lastUpdated || new Date().toISOString()
@@ -1932,7 +1917,7 @@ export function FullScreenFeed({
                 file={indexedFile}
                 isLiked={isLiked(fileId)}
                 likeCount={getLikeCount(fileId, indexedFile.metadata.engagement?.likes || 0)}
-                commentCount={getComments(fileId).length + (indexedFile.metadata.engagement?.comments || 0)}
+                commentCount={indexedFile.metadata.engagement?.comments || 0}
                 shareCount={getShareCount(fileId, indexedFile.metadata.engagement?.shares || 0)}
                 onLike={() => onLike(fileId)}
                 onComment={() => {
@@ -2056,11 +2041,11 @@ export function FullScreenFeed({
                       return null;
                     }
                     
-                    const allComments = getComments(fileId);
                     const popularComments = getPopularComments(fileId);
                     
-                    // If on Comments tab, show user's comment statically
+                    // If on Comments tab, show user's comment statically (loaded via mePageTab effect)
                     if (mePageTab === 'comments' && userState.pnIdentifier) {
+                      const allComments = getComments(fileId);
                       const userComment = allComments?.find((comment: any) => 
                         comment.authorId === userState.pnIdentifier || 
                         comment.authorId === `pn-${userState.pnIdentifier}` ||
@@ -2114,7 +2099,12 @@ export function FullScreenFeed({
                       return null;
                     }
                     
-                    const likeCount = Array.isArray(currentComment.likes) ? currentComment.likes.length : 0;
+                    const likeCount =
+                      typeof currentComment.likeCount === 'number'
+                        ? currentComment.likeCount
+                        : Array.isArray(currentComment.likes)
+                          ? currentComment.likes.length
+                          : 0;
                     
                     return (
                       <div

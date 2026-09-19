@@ -3,12 +3,13 @@
  * Like, comment, and share buttons with unlock gating
  */
 
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { Heart, MessageCircle, Share2, Lock, Plus } from 'lucide-react';
 import { useUserState } from '../contexts/UserStateContext';
 import { PNConnect } from './PNConnect';
 import { IndexedFile } from '../types/aggregator';
 import { useToast } from '../hooks/useToast';
+import { LikersListModal } from './LikersListModal';
 
 interface EngagementActionsProps {
   file: IndexedFile;
@@ -18,6 +19,7 @@ interface EngagementActionsProps {
   onAddToFeed?: () => void;
   compact?: boolean;
   isOwner?: boolean;
+  onCreatorClick?: (creatorId: string) => void;
 }
 
 export function EngagementActions({
@@ -27,11 +29,16 @@ export function EngagementActions({
   onShare,
   onAddToFeed,
   compact = false,
-  isOwner = false
+  isOwner = false,
+  onCreatorClick,
 }: EngagementActionsProps) {
   const { userState } = useUserState();
   const { success, error } = useToast();
   const [showConnectPrompt, setShowConnectPrompt] = useState(false);
+  const [showLikers, setShowLikers] = useState(false);
+  const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const longPressFiredRef = useRef(false);
+  const LONG_PRESS_MS = 450;
   const engagement = file.metadata.engagement;
   const likes = engagement?.likes || 0;
   const comments = engagement?.comments || 0;
@@ -75,13 +82,62 @@ export function EngagementActions({
     }
   };
 
+  const clearLongPress = () => {
+    if (longPressTimerRef.current) {
+      clearTimeout(longPressTimerRef.current);
+      longPressTimerRef.current = null;
+    }
+  };
+
+  const onLikePointerDown = (e: React.PointerEvent) => {
+    e.stopPropagation();
+    longPressFiredRef.current = false;
+    clearLongPress();
+    longPressTimerRef.current = setTimeout(() => {
+      longPressFiredRef.current = true;
+      setShowLikers(true);
+    }, LONG_PRESS_MS);
+  };
+
+  const onLikePointerUp = () => clearLongPress();
+
+  const onLikeClick = (e: React.MouseEvent) => {
+    if (longPressFiredRef.current) {
+      longPressFiredRef.current = false;
+      e.stopPropagation();
+      e.preventDefault();
+      return;
+    }
+    handleAction(e, 'like', onLike);
+  };
+
+  const likeButtonProps = {
+    onClick: onLikeClick,
+    onPointerDown: onLikePointerDown,
+    onPointerUp: onLikePointerUp,
+    onPointerLeave: onLikePointerUp,
+    onPointerCancel: onLikePointerUp,
+    title: !userState.isUnlocked
+      ? 'Connect pN to like · hold to see who liked'
+      : 'Like · hold to see who liked',
+  };
+
+  const likersModal =
+    showLikers && file.metadata.fileId ? (
+      <LikersListModal
+        fileId={file.metadata.fileId}
+        onClose={() => setShowLikers(false)}
+        onCreatorClick={onCreatorClick}
+      />
+    ) : null;
+
   if (compact) {
     return (
       <div className="flex items-center space-x-4" onClick={(e) => e.stopPropagation()}>
         <button
-          onClick={(e) => handleAction(e, 'like', onLike)}
+          type="button"
+          {...likeButtonProps}
           className="flex items-center space-x-1 text-text-secondary hover:text-red-400 transition-colors"
-          title={!userState.isUnlocked ? 'Connect pN to like' : 'Like'}
         >
           {!userState.isUnlocked && <Lock className="h-3 w-3" />}
           <Heart className="h-4 w-4" />
@@ -116,6 +172,7 @@ export function EngagementActions({
             <Plus className="h-4 w-4" />
           </button>
         )}
+        {likersModal}
       </div>
     );
   }
@@ -124,9 +181,9 @@ export function EngagementActions({
     <>
       <div className="flex items-center space-x-6" onClick={(e) => e.stopPropagation()}>
         <button
-          onClick={(e) => handleAction(e, 'like', onLike)}
+          type="button"
+          {...likeButtonProps}
           className="flex flex-col items-center space-y-1 group"
-          title={!userState.isUnlocked ? 'Connect pN to like' : 'Like'}
         >
           <div className="relative">
             {!userState.isUnlocked && (
@@ -165,8 +222,24 @@ export function EngagementActions({
           title="Share"
         >
           <Share2 className="h-6 w-6 text-text-secondary group-hover:text-green-400 transition-colors" />
+          <span className="text-xs text-text-secondary">Share</span>
         </button>
+        {isOwner && onAddToFeed && (
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              e.preventDefault();
+              onAddToFeed();
+            }}
+            className="flex flex-col items-center space-y-1 group"
+            title="Add to Feed"
+          >
+            <Plus className="h-6 w-6 text-text-secondary group-hover:text-blue-400 transition-colors" />
+            <span className="text-xs text-text-secondary">Add</span>
+          </button>
+        )}
       </div>
+      {likersModal}
 
       {showConnectPrompt && (
         <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">

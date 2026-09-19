@@ -3,7 +3,7 @@
  * TikTok-style vertical engagement buttons on the right side of feed posts
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Heart, MessageCircle, Bookmark, MoreVertical, Flag } from 'lucide-react';
 import { IndexedFile } from '../types/aggregator';
 import { useUserState } from '../contexts/UserStateContext';
@@ -14,6 +14,7 @@ import { isFileSaved } from '../services/savedFeedService';
 import { uploadQueueService } from '../services/uploadQueueService';
 import { API_ENDPOINT } from '../config/api';
 import { shareContent } from '../utils/nativeShare';
+import { LikersListModal } from './LikersListModal';
 
 interface FeedEngagementSidebarProps {
   file: IndexedFile;
@@ -67,6 +68,10 @@ export function FeedEngagementSidebar({
   const views = engagement?.views || 0;
   const [isSaved, setIsSaved] = useState(false);
   const [isCheckingSaved, setIsCheckingSaved] = useState(false);
+  const [showLikers, setShowLikers] = useState(false);
+  const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const longPressFiredRef = useRef(false);
+  const LONG_PRESS_MS = 450;
   
   // Get creatorId - pnIdentifier is primary, others are compatibility fallbacks
   const creatorId = (file as any).pnIdentifier ||
@@ -207,6 +212,37 @@ export function FeedEngagementSidebar({
     }
   };
 
+  const clearLongPress = () => {
+    if (longPressTimerRef.current) {
+      clearTimeout(longPressTimerRef.current);
+      longPressTimerRef.current = null;
+    }
+  };
+
+  const onLikePointerDown = (e: React.PointerEvent) => {
+    e.stopPropagation();
+    longPressFiredRef.current = false;
+    clearLongPress();
+    longPressTimerRef.current = setTimeout(() => {
+      longPressFiredRef.current = true;
+      setShowLikers(true);
+    }, LONG_PRESS_MS);
+  };
+
+  const onLikePointerUp = () => {
+    clearLongPress();
+  };
+
+  const onLikeClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    e.preventDefault();
+    if (longPressFiredRef.current) {
+      longPressFiredRef.current = false;
+      return;
+    }
+    handleAction(e, 'like', onLike);
+  };
+
   return (
     <div 
       className="absolute right-2 md:right-4 flex flex-col items-center z-20 pointer-events-auto" 
@@ -230,11 +266,16 @@ export function FeedEngagementSidebar({
         />
       )}
 
-      {/* Like Button */}
+      {/* Like Button — short tap toggles; long-press opens who-liked sheet */}
       <button
-        onClick={(e) => handleAction(e, 'like', onLike)}
+        type="button"
+        onClick={onLikeClick}
+        onPointerDown={onLikePointerDown}
+        onPointerUp={onLikePointerUp}
+        onPointerLeave={onLikePointerUp}
+        onPointerCancel={onLikePointerUp}
         className="flex items-center justify-center group"
-        title={!userState.isUnlocked ? 'Connect pN to like' : 'Like'}
+        title={!userState.isUnlocked ? 'Connect pN to like · hold to see who liked' : 'Like · hold to see who liked'}
       >
         <div className="relative">
           {!userState.isUnlocked && (
@@ -257,6 +298,14 @@ export function FeedEngagementSidebar({
           </span>
         </div>
       </button>
+
+      {showLikers && file.metadata.fileId ? (
+        <LikersListModal
+          fileId={file.metadata.fileId}
+          onClose={() => setShowLikers(false)}
+          onCreatorClick={onCreatorClick}
+        />
+      ) : null}
 
       {/* Comment Button */}
       <button

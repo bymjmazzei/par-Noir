@@ -173,6 +173,16 @@ export interface Feed {
 // Engagement & Public Metadata
 // ============================================================================
 
+/** Denormalized comment preview for feed tile strip (max 10 on EngagementMetrics). */
+export interface EngagementTopComment {
+  id: string;
+  authorName: string;
+  /** Truncated for tile strip (e.g. max 120 chars). */
+  content: string;
+  timestamp: string;
+  likeCount: number;
+}
+
 export interface EngagementMetrics {
   views: number;
   likes: number;
@@ -180,6 +190,8 @@ export interface EngagementMetrics {
   shares: number;
   saves?: number;
   lastUpdated: string;
+  /** Top-level comment previews for the live feed strip (cap 10). */
+  topComments?: EngagementTopComment[];
   engagementHistory?: Array<{
     type: 'like' | 'comment' | 'share' | 'view' | 'save';
     /** Optional: who engaged (privacy-preserving analytics) */

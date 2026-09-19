@@ -162,12 +162,14 @@ describe('l5ProductRouteBoundary gate', () => {
   });
 
   describe('public engagement reads', () => {
-    it('allowlists comments stats metrics and bulk-stats', () => {
+    it('allowlists comments stats metrics likes and bulk-stats', () => {
       expect(isPublicEngagementRead('GET', '/api/engagement/file1/comments')).toBe(true);
+      expect(isPublicEngagementRead('GET', '/api/engagement/file1/likes')).toBe(true);
       expect(isPublicEngagementRead('GET', '/api/engagement/file1/stats')).toBe(true);
       expect(isPublicEngagementRead('GET', '/api/engagement/file1/metrics')).toBe(true);
       expect(isPublicEngagementRead('POST', '/api/engagement/bulk-stats')).toBe(true);
       expect(isPublicEngagementRead('GET', '/file1/comments')).toBe(true); // mount-relative
+      expect(isPublicEngagementRead('GET', '/file1/likes')).toBe(true);
       expect(isPublicEngagementRead('POST', '/api/engagement/file1/like')).toBe(false);
       expect(isPublicEngagementRead('GET', '/api/engagement/file1/like')).toBe(false);
       expect(isPublicEngagementRead('GET', '/api/engagement/file1/monetization')).toBe(false);

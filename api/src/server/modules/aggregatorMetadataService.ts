@@ -5,6 +5,16 @@
  * See docs/architecture/ADR_AGGREGATOR_METADATA_SOT.md.
  */
 
+/** Denormalized comment preview for feed tile strip (max 10 on EngagementMetrics). */
+export interface EngagementTopComment {
+  id: string;
+  authorName: string;
+  /** Truncated for tile strip (e.g. max 120 chars). */
+  content: string;
+  timestamp: string;
+  likeCount: number;
+}
+
 /**
  * Engagement Metrics (semantic web compatible)
  */
@@ -15,6 +25,8 @@ export interface EngagementMetrics {
   shares: number;
   saves?: number;
   lastUpdated: string;
+  /** Top-level comment previews for the live feed strip (cap 10). */
+  topComments?: EngagementTopComment[];
   engagementHistory?: Array<{
     type: 'like' | 'comment' | 'share' | 'view';
     did?: string; // Legacy field for backward compatibility
