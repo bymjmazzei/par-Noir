@@ -1319,7 +1319,7 @@ export class GoogleDriveProxyService {
           'Content-Type': mimeType || 'application/octet-stream',
           'Content-Length': file.length.toString(),
         },
-        body: file,
+        body: new Uint8Array(file),
       }
     );
 
