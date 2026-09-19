@@ -39,9 +39,9 @@
     "vitest": "^3.2.4"
   },
   "dependencies": {
-    "@par-noir/zk-protocol-v1": "file:../../packages/zk-protocol-v1",
-    "@par-noir/zk-protocol-v2": "file:../../packages/zk-protocol-v2",
-    "@par-noir/pqc-crypto": "file:../../packages/pqc-crypto",
+    "@par-noir/zk-protocol-v1": "^0.1.0",
+    "@par-noir/zk-protocol-v2": "^0.1.0",
+    "@par-noir/pqc-crypto": "^0.1.0",
     "@azure/identity": "^4.11.1",
     "@azure/keyvault-keys": "^4.10.0",
     "@noble/secp256k1": "^2.3.0",
@@ -58,5 +58,8 @@
   "files": [
     "dist/**/*",
     "src/**/*"
-  ]
+  ],
+  "publishConfig": {
+    "access": "public"
+  }
 }

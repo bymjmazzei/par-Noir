@@ -30,7 +30,9 @@
     "test:watch": "vitest"
   },
   "license": "UNLICENSED",
-  "private": true,
+  "publishConfig": {
+    "access": "public"
+  },
   "dependencies": {
     "better-sqlite3": "^11.10.0"
   },

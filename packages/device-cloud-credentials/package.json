@@ -19,9 +19,11 @@
     "test:watch": "vitest"
   },
   "license": "UNLICENSED",
-  "private": true,
+  "publishConfig": {
+    "access": "public"
+  },
   "dependencies": {
-    "@par-noir/user-owned-storage": "file:../user-owned-storage"
+    "@par-noir/user-owned-storage": "^0.1.0"
   },
   "devDependencies": {
     "typescript": "^5.0.0",

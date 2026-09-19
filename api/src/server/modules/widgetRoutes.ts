@@ -1,6 +1,7 @@
 /**
- * Widget Routes
- * Handles feed widgets and public index APIs for content portability
+ * Widget Routes (LEGACY)
+ * Script-tag feed widgets — deprecated for L5. Prefer browse.parnoir.com/embed/feed?client_id=
+ * via @par-noir/oauth-ui buildFeedEmbedUrl.
  */
 
 import { Request, Response } from 'express';

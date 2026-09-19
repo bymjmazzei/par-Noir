@@ -29,11 +29,11 @@
   "author": "Identity Protocol Team",
   "license": "MIT",
   "dependencies": {
-    "@identity-protocol/identity-core": "file:../../core/identity-core",
-    "@par-noir/aggregator-domain": "file:../../packages/aggregator-domain",
-    "@par-noir/oauth-ui": "file:../../packages/oauth-ui",
-    "@par-noir/zk-protocol-v1": "file:../../packages/zk-protocol-v1",
-    "@par-noir/zk-protocol-v2": "file:../../packages/zk-protocol-v2"
+    "@identity-protocol/identity-core": "^1.0.0",
+    "@par-noir/aggregator-domain": "^1.0.0",
+    "@par-noir/oauth-ui": "^1.0.0",
+    "@par-noir/zk-protocol-v1": "^0.1.0",
+    "@par-noir/zk-protocol-v2": "^0.1.0"
   },
   "peerDependencies": {
     "@par-noir/oauth-ui": ">=1.0.0",

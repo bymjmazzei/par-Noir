@@ -24,6 +24,10 @@ import { AccountFilesPanel } from './storage/AccountFilesPanel';
 import { FileActionMenu } from './storage/FileActionMenu';
 import { ShareSettingsModal } from './storage/ShareSettingsModal';
 import { UnencryptedUploadAlert } from './storage/UnencryptedUploadAlert';
+import {
+  ContentExpiryValue,
+  inferExpiryPreset,
+} from './ContentExpiryFields';
 
 export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({ 
   authenticatedUser, 
@@ -312,6 +316,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
     locationName: string;
     locationAddress: string;
     license: string;
+    expiresAt: string | null;
   }>({
     name: '',
     description: '',
@@ -322,7 +327,8 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
     isNSFW: false,
     locationName: '',
     locationAddress: '',
-    license: 'all-rights-reserved'
+    license: 'all-rights-reserved',
+    expiresAt: null,
   });
   const [fileMetadataMap, setFileMetadataMap] = useState<Map<string, any>>(new Map());
 
@@ -331,6 +337,10 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
   const [sharingAccountId, setSharingAccountId] = useState<string | null>(null);
   const [shareVisibility, setShareVisibility] = useState<'public' | 'private'>('private');
   const [shareNSFW, setShareNSFW] = useState<boolean>(false);
+  const [shareExpiry, setShareExpiry] = useState<ContentExpiryValue>({
+    preset: 'never',
+    expiresAt: null,
+  });
   const [isSavingShare] = useState(false);
   const [thirdPartyIndexers, setThirdPartyIndexers] = useState<any[]>([]);
   const [indexerToggles, setIndexerToggles] = useState<Record<string, boolean>>({});
@@ -513,7 +523,8 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
       isNSFW: metadata?.isNSFW === true || metadata?.isNSFW === 'true',
       locationName: locationName,
       locationAddress: locationAddress,
-      license: licenseString
+      license: licenseString,
+      expiresAt: metadata?.expiresAt ?? null,
     });
     setEditingFile(file);
   };
@@ -532,7 +543,8 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
       isNSFW: editForm.isNSFW,
       locationName: editForm.locationName,
       locationAddress: editForm.locationAddress,
-      license: editForm.license
+      license: editForm.license,
+      expiresAt: editForm.expiresAt,
     };
 
     // Validate required category
@@ -559,7 +571,8 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
       tags: formData.tags.split(',').map(t => t.trim()).filter(t => t.length > 0),
       feedCategories: categories,
       category: categories[0],
-      isNSFW: formData.isNSFW
+      isNSFW: formData.isNSFW,
+      expiresAt: formData.expiresAt ?? null,
     };
     setFileMetadataMap(prev => {
       const next = new Map(prev);
@@ -598,7 +611,8 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
       isNSFW: false,
       locationName: '',
       locationAddress: '',
-      license: 'all-rights-reserved'
+      license: 'all-rights-reserved',
+      expiresAt: null,
     });
 
     // Queue background task after closing modal
@@ -667,6 +681,11 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
     const isNSFW = metadata?.isNSFW === true;
 
     setShareVisibility(isPublic ? 'public' : 'private');
+    const expiresAt = metadata?.expiresAt ?? null;
+    setShareExpiry({
+      preset: inferExpiryPreset(expiresAt),
+      expiresAt,
+    });
 
     if (isPublic) {
       await loadThirdPartyIndexers(file.id);
@@ -690,6 +709,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
     setSharingAccountId(null);
     setShareVisibility('private');
     setShareNSFW(false);
+    setShareExpiry({ preset: 'never', expiresAt: null });
     setThirdPartyIndexers([]);
     setIndexerToggles({});
     setIndexingPermissionsState(null);
@@ -721,6 +741,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
     const isCurrentlyPublic = existingMetadata?.isPublic || false;
     const existingIsNSFW = existingMetadata?.isNSFW === true;
     const makePublic = shareVisibility === 'public';
+    const expiresAtForSave = makePublic ? shareExpiry.expiresAt : null;
 
     const blockedIds = Object.entries(indexerToggles)
       .filter(([, enabled]) => !enabled)
@@ -770,6 +791,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
             ...current,
             isPublic: makePublic,
             isNSFW: shareNSFW,
+            expiresAt: expiresAtForSave,
             ...(nextPermissions && { indexingPermissions: nextPermissions })
           });
         } else {
@@ -777,6 +799,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
             fileId: fileId,
             isPublic: makePublic,
             isNSFW: shareNSFW,
+            expiresAt: expiresAtForSave,
             ...(nextPermissions && { indexingPermissions: nextPermissions })
           } as any);
         }
@@ -796,6 +819,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
         accountId: accountId,
         shareVisibility,
         shareNSFW,
+        expiresAt: expiresAtForSave,
         indexerToggles,
         thirdPartyIndexers,
         nextPermissions,
@@ -1229,7 +1253,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
     file: File,
     accountId: string,
     encrypt: boolean,
-    meta?: { title?: string; description?: string; tags?: string[]; isNSFW?: boolean }
+    meta?: { title?: string; description?: string; tags?: string[]; isNSFW?: boolean; expiresAt?: string | null }
   ) => {
     const isPDF = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
     const taskType = isPDF ? 'pdf' : 'file';
@@ -1249,6 +1273,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
         // Browser uploads are public to the feed by default
         isPublic: true,
         isNSFW: meta?.isNSFW === true,
+        expiresAt: meta?.expiresAt ?? null,
         encrypt,
         registryTrackId,
       },
@@ -1462,6 +1487,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
             description: formData.description || '',
             tags,
             isNSFW: formData.isNSFW === true,
+            expiresAt: formData.expiresAt ?? null,
           });
           setPendingMediaUpload(null);
         }}
@@ -1496,7 +1522,8 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
             isNSFW: false,
             locationName: '',
             locationAddress: '',
-            license: 'all-rights-reserved'
+            license: 'all-rights-reserved',
+            expiresAt: null,
           });
         }}
         onSave={(metadata) => {
@@ -1512,7 +1539,8 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
           isNSFW: editForm.isNSFW,
           locationName: editForm.locationName,
           locationAddress: editForm.locationAddress,
-          license: editForm.license
+          license: editForm.license,
+          expiresAt: editForm.expiresAt,
         } : undefined}
         title="Edit Metadata"
         submitButtonText="Save Changes"
@@ -1526,6 +1554,8 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
           setShareVisibility={setShareVisibility}
           shareNSFW={shareNSFW}
           setShareNSFW={setShareNSFW}
+          shareExpiry={shareExpiry}
+          setShareExpiry={setShareExpiry}
           thirdPartyIndexers={thirdPartyIndexers}
           indexerToggles={indexerToggles}
           isLoadingIndexers={isLoadingIndexers}

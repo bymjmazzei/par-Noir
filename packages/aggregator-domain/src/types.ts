@@ -353,6 +353,16 @@ export interface PublicMetadata {
   feedPreviewSd?: import('./feedPreview').FeedPreviewObjectRef;
   feedPreviewHd?: import('./feedPreview').FeedPreviewObjectRef;
   isPublic: boolean;
+  /**
+   * When set, public/community feeds hide the post after this time.
+   * Durable end state (unless persistOnDiscover): becomes private on the index.
+   */
+  expiresAt?: string | null;
+  /**
+   * When true, discover (no indexerId) may still show the post after expiresAt;
+   * community/indexer queries still hide after expiresAt. Default false.
+   */
+  persistOnDiscover?: boolean;
   sameAs?: string[];
 
   /** false = Public (default), true = NSFW (browser simplified rating) */

@@ -1,5 +1,9 @@
 import { X, RefreshCw } from 'lucide-react';
 import type { DriveFile } from './storageTypes';
+import {
+  ContentExpiryFields,
+  ContentExpiryValue,
+} from '../ContentExpiryFields';
 
 export type ShareIndexer = {
   id: string;
@@ -13,6 +17,8 @@ export interface ShareSettingsModalProps {
   setShareVisibility: (v: 'public' | 'private') => void;
   shareNSFW: boolean;
   setShareNSFW: (v: boolean) => void;
+  shareExpiry: ContentExpiryValue;
+  setShareExpiry: (v: ContentExpiryValue) => void;
   thirdPartyIndexers: ShareIndexer[];
   indexerToggles: Record<string, boolean>;
   isLoadingIndexers: boolean;
@@ -30,6 +36,8 @@ export function ShareSettingsModal({
   setShareVisibility,
   shareNSFW,
   setShareNSFW,
+  shareExpiry,
+  setShareExpiry,
   thirdPartyIndexers,
   indexerToggles,
   isLoadingIndexers,
@@ -129,6 +137,14 @@ export function ShareSettingsModal({
                   >
                     {shareNSFW ? 'NSFW' : 'PUBLIC'}
                   </button>
+                </div>
+
+                <div className="border border-neutral-800 bg-neutral-900/70 rounded-lg px-4 py-3">
+                  <ContentExpiryFields
+                    value={shareExpiry}
+                    onChange={setShareExpiry}
+                    disabled={isSavingShare}
+                  />
                 </div>
               </div>
             </section>

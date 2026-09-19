@@ -224,7 +224,9 @@ describe('IntegratorPublishClient', () => {
         name: 'test',
         isPublic: true,
         uploadDate: '2020-01-01',
-        pnIdentifier: 'pn-1'
+        pnIdentifier: 'pn-1',
+        ttlSeconds: 172800,
+        persistOnDiscover: true
       }
     );
     const init = (global.fetch as jest.Mock).mock.calls[0][1];
@@ -233,5 +235,7 @@ describe('IntegratorPublishClient', () => {
     const body = JSON.parse(init.body);
     expect(body.metadata.fileId).toBe('f1');
     expect(body.pnIdentifier).toBe('pn-1');
+    expect(body.metadata.ttlSeconds).toBe(172800);
+    expect(body.metadata.persistOnDiscover).toBe(true);
   });
 });

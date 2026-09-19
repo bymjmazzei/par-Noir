@@ -27,24 +27,24 @@ export function HomePage() {
         </p>
         <ul>
           <li>
-            <Link to="/credentials">Credentials</Link> — register an OAuth client and create backend API keys.
+            <Link to="/credentials">Credentials</Link> — register an OAuth client (may need operator approval) and create
+            backend API keys; use Get started when Active.
           </li>
           <li>
-            <Link to="/data-points">Data points</Link> — browse the public catalog (<code>GET /api/v1/standard-data-points</code>
-            ).
+            <Link to="/integrate">Layer 5</Link> — login, silo, ZKPs, messaging + feed iframes.
+          </li>
+          <li>
+            <Link to="/data-points">Data points</Link> — catalog + consent vs API-key request lanes.
           </li>
           <li>
             <Link to="/docs">Guides</Link> — quickstart with <code>createPnIntegratorClient</code> and{' '}
-            <code>@par-noir/oauth-ui</code> (workspace packages).
-          </li>
-          <li>
-            <Link to="/integrate">Layer 5</Link> — third-party access patterns and consent.
+            <code>npm install @identity-protocol/identity-sdk @par-noir/oauth-ui</code>.
           </li>
           <li>
             <Link to="/api-reference">API reference</Link> — OpenAPI (Redoc).
           </li>
           <li>
-            <Link to="/proposals">Proposals</Link> — suggest new standard data points (requires unlock).
+            <Link to="/proposals">Proposals</Link> — suggest new standard data points (requires unlock; not auto-catalog).
           </li>
         </ul>
       </section>

@@ -130,7 +130,7 @@ async function processShareSettingsUpdate(
   session: any,
   accessToken: string
 ): Promise<void> {
-  const { fileId, accountId, shareVisibility, shareNSFW, indexerToggles, thirdPartyIndexers, nextPermissions: providedNextPermissions, existingMetadata } = task.metadata || {};
+  const { fileId, accountId, shareVisibility, shareNSFW, expiresAt, indexerToggles, thirdPartyIndexers, nextPermissions: providedNextPermissions, existingMetadata } = task.metadata || {};
   
   if (!fileId || !accountId) {
     throw new Error('Missing required fields: fileId, accountId');
@@ -310,6 +310,15 @@ async function processShareSettingsUpdate(
   } else if (shareNSFW !== existingIsNSFW) {
     updateBody.isNSFW = shareNSFW;
   }
+
+  if (makePublic) {
+    updateBody.expiresAt = expiresAt ?? null;
+    updateBody.persistOnDiscover = false;
+  } else if (makePublic !== isCurrentlyPublic) {
+    // Going private — clear scheduled expiry
+    updateBody.expiresAt = null;
+    updateBody.persistOnDiscover = false;
+  }
   
   const metadataResponse = await ownerFetch(
     'PUT',
@@ -441,6 +450,10 @@ async function processMetadataUpdate(
   if ('isNSFW' in formData) updateBody.isNSFW = formData.isNSFW;
   if ('isTopPost' in formData) updateBody.isTopPost = formData.isTopPost;
   if ('title' in formData) updateBody.title = formData.title;
+  if ('expiresAt' in formData) {
+    updateBody.expiresAt = formData.expiresAt ?? null;
+    updateBody.persistOnDiscover = false;
+  }
 
   if ('isPublic' in formData) {
     if (formData.isPublic === true) {

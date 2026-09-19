@@ -1,6 +1,6 @@
 # L5 integrator quickstart
 
-Build a third-party app on par Noir: **pN login**, optional **ZKP data points**, and **app-owned files** in the user’s Drive silo.
+Build a third-party app on par Noir: **pN login**, **app silo storage**, **consented ZKPs**, and **hosted social iframes** (messaging + community feed).
 
 ---
 
@@ -8,8 +8,9 @@ Build a third-party app on par Noir: **pN login**, optional **ZKP data points**,
 
 1. Open [developers.parnoir.com](https://developers.parnoir.com) and unlock with pN.
 2. **Credentials** → create an OAuth client (`client_id`, redirect URIs).
-3. Add redirect URI: `https://your-app.com/oauth-callback.html` (or `http://localhost:5173/oauth-callback.html` for local dev).
-4. Supply a **permission manifest** — each scope/data point needs a human-readable **label** and **rationale** (why the user should grant it). The API rejects registration when rationale is missing; consent renders rationale in the OAuth UI.
+3. Add redirect URI: `https://your-app.com/oauth-callback.html` (or `http://localhost:5180/oauth-callback.html` for local dev).
+4. Supply a **permission manifest** — each scope/data point needs a human-readable **label** and **rationale**. The API rejects registration when rationale is missing.
+5. If the platform registry is configured, the client stays **Pending** until a platform operator approves it. See [OAUTH_CLIENT_APPROVAL_RUNBOOK.md](./OAUTH_CLIENT_APPROVAL_RUNBOOK.md). When **Active**, use the Credentials **Get started** panel.
 
 Example manifest item:
 
@@ -26,33 +27,25 @@ Example manifest item:
 }
 ```
 
-Use `@par-noir/standard-data-points` helpers `validatePermissionManifest` / `renderManifestHtml` in tests and tooling.
-
 ---
 
 ## 2. Install SDK and OAuth callback
 
-Packages are **workspace / `file:`** (not on the public npm registry yet):
-
-```json
-{
-  "@identity-protocol/identity-sdk": "file:../../sdk/identity-sdk",
-  "@par-noir/oauth-ui": "file:../../packages/oauth-ui"
-}
+```bash
+npm install @identity-protocol/identity-sdk @par-noir/oauth-ui
 ```
+
+(Monorepo contributors may still use `workspace:*` / `file:` links.)
 
 Copy the OAuth callback page into your app’s `public/` folder:
 
-- Canonical: `packages/oauth-ui/static/oauth-callback.html`
-- Or after install: `node_modules/@par-noir/oauth-ui/static/oauth-callback.html`
+- After install: `node_modules/@par-noir/oauth-ui/static/oauth-callback.html`
 
 It must match your registered `redirect_uri` path.
 
-User OAuth is **`/oauth/*` only** (interactive unlock). Do not call messaging, mailbox, connections, or groups APIs from an L5 client — those return `403 first_party_required`.
+User OAuth is **`/oauth/*` only** (interactive unlock). Do **not** call messaging, mailbox, connections, groups, or engagement APIs from an L5 client — those return `403 first_party_required`.
 
-### Messaging (hosted embed)
-
-Show chat scoped to your app with a first-party iframe (no message REST for your Bearer):
+### Social (hosted iframes)
 
 ```html
 <iframe
@@ -61,25 +54,35 @@ Show chat scoped to your app with a first-party iframe (no message REST for your
   style="width:100%;height:640px;border:0;"
   allow="clipboard-write"
 ></iframe>
+
+<iframe
+  src="https://browse.parnoir.com/embed/feed?client_id=YOUR_CLIENT_ID"
+  title="par Noir community feed"
+  style="width:100%;height:640px;border:0;"
+></iframe>
 ```
 
-Or build the URL with `@par-noir/oauth-ui`:
+Or with `@par-noir/oauth-ui`:
 
 ```typescript
 import {
-  MESSAGING_EMBED_ORIGIN,
   buildMessagingEmbedUrl,
+  buildFeedEmbedUrl,
+  MESSAGING_EMBED_ORIGIN,
+  BROWSE_EMBED_ORIGIN,
   PN_MESSAGING_EMBED_READY,
-  PN_MESSAGING_EMBED_HANDSHAKE,
+  PN_FEED_EMBED_READY,
 } from '@par-noir/oauth-ui';
 
-const src = buildMessagingEmbedUrl('YOUR_CLIENT_ID');
-// Listen for postMessage types PN_MESSAGING_EMBED_READY / PN_MESSAGING_EMBED_HANDSHAKE from MESSAGING_EMBED_ORIGIN
+const messagingSrc = buildMessagingEmbedUrl('YOUR_CLIENT_ID');
+const feedSrc = buildFeedEmbedUrl('YOUR_CLIENT_ID');
+// Listen for ready/handshake postMessage types from MESSAGING_EMBED_ORIGIN / BROWSE_EMBED_ORIGIN only
 ```
 
-- Unlock happens **inside** the iframe (messaging origin handoff).
-- Connect/accept on this viewport creates a peer edge + **your channel’s thread only** — it does **not** create the platform primary DM.
-- Aggregated view of all channels lives on messaging.parnoir.com (not in your iframe).
+- Unlock happens **inside** each iframe (first-party origin).
+- Messaging connect/accept creates a peer edge + **your channel’s thread only**.
+- Feed embed shows the `community-{client_id}` public index (display). To **publish** posts into that index, use the community publish API (see `examples/l5-community-starter`), not product feed mutate routes.
+- **Deprecated:** API script-tag feed widgets (`/api/widgets/feed/...`). Do not use for new L5 apps.
 
 See [MESSAGING_UI_SURFACES.md](../MESSAGING_UI_SURFACES.md) and [ADR_MESSAGING_CHANNEL_THREADS.md](../architecture/ADR_MESSAGING_CHANNEL_THREADS.md).
 
@@ -143,6 +146,8 @@ Files stay under `integrators/{client_id}/` on the user’s Drive. The API enfor
 
 ## 5. ZKP data points (API only)
 
+**Lane A (consent):** request scopes at login, then:
+
 ```typescript
 const { dataPoints } = await pn.zkp.getDataPoints(session.accessToken, {
   dataPoints: ['age_attestation']
@@ -150,7 +155,9 @@ const { dataPoints } = await pn.zkp.getDataPoints(session.accessToken, {
 // Proofs only — verify with @par-noir/zk-protocol-v2; never log raw tokens or pn name
 ```
 
-User must have granted the data point at consent. Permissions live in `_metadata/third-party-permissions.xlsx` (API-managed).
+**Lane B (server):** API key with `data_points` → `/api/v1/data-points/*` request/poll (optional webhooks).
+
+User must have granted the data point. Permissions live in `_metadata/third-party-permissions.xlsx` (API-managed).
 
 ---
 
@@ -167,7 +174,7 @@ See [INTEGRATOR_IDENTITY_SUCCESSION.md](./INTEGRATOR_IDENTITY_SUCCESSION.md).
 
 ---
 
-## 7. Public feed (optional, API key)
+## 7. Public feed metadata (optional, API key)
 
 For aggregator-style public metadata (not user OAuth):
 
@@ -179,6 +186,33 @@ const feed = await index.getPublicIndex('pn-creator-id', process.env.PN_API_KEY!
 ```
 
 Requires an API key with `content` scope from the developer portal.
+
+---
+
+## 8. Content expiry (browse + L5)
+
+Public index posts may set:
+
+| Field | Meaning |
+|-------|---------|
+| `expiresAt` | ISO timestamp; omit/null = never |
+| `ttlSeconds` | Write-only; server sets `expiresAt = now + ttl` |
+| `persistOnDiscover` | L5 only: after expiry, keep on browse discover; community/`indexerId` queries still hide. Default `false`. |
+
+When due (and not `persistOnDiscover`), the post becomes **private** (`isPublic: false`) — same end state as manually unpublishing. File stays in user storage.
+
+**48h community pattern:**
+
+```typescript
+await pn.publish.submitMetadataIndex(ctx, {
+  // …file fields…
+  isPublic: true,
+  ttlSeconds: 172800,
+  persistOnDiscover: false, // also flip private on browse; set true to keep discover
+});
+```
+
+Browse users set Never / 24h / 48h / 7d / custom datetime in upload and share settings (no `persistOnDiscover` control).
 
 ---
 
@@ -195,8 +229,8 @@ Requires an API key with `content` scope from the developer portal.
 | Topic | Doc |
 |-------|-----|
 | OAuth details | [PN_OAUTH_INTEGRATION.md](./PN_OAUTH_INTEGRATION.md) |
+| Approval ops | [OAUTH_CLIENT_APPROVAL_RUNBOOK.md](./OAUTH_CLIENT_APPROVAL_RUNBOOK.md) |
 | Storage model | [third-party-sharing-and-L5.md](./third-party-sharing-and-L5.md) |
-| Drive layout | [GOOGLE_DRIVE_STRUCTURE.md](../../GOOGLE_DRIVE_STRUCTURE.md) |
-| Example app | `examples/l5-integrator-starter/` in the repo |
-| Community publish example | `examples/l5-community-starter/` |
+| Launch QA | [LAUNCH_QA_INTEGRATOR.md](./LAUNCH_QA_INTEGRATOR.md) |
+| Example apps | `examples/l5-integrator-starter/`, `examples/l5-community-starter/` |
 | SDK source | `sdk/identity-sdk/` |

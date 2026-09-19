@@ -5,24 +5,43 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>par Noir L5 community starter</title>
     <style>
-      body { font-family: system-ui, sans-serif; max-width: 42rem; margin: 2rem auto; padding: 0 1rem; }
+      body { font-family: system-ui, sans-serif; max-width: 56rem; margin: 2rem auto; padding: 0 1rem; }
       button { margin: 0.25rem 0.5rem 0.25rem 0; padding: 0.5rem 1rem; }
       pre { background: #111; color: #eee; padding: 1rem; overflow: auto; font-size: 12px; }
       .muted { color: #666; font-size: 14px; }
+      .embeds { display: grid; gap: 1rem; margin-top: 1.5rem; }
+      @media (min-width: 900px) { .embeds { grid-template-columns: 1fr 1fr; } }
+      .embeds iframe { width: 100%; height: 420px; border: 1px solid #333; border-radius: 8px; background: #0a0a0a; }
+      .embeds h2 { font-size: 1rem; margin: 0 0 0.5rem; }
     </style>
   </head>
   <body>
     <h1>L5 community starter</h1>
     <p class="muted">
-      Login → cloud reconnect → publish a demo post → list public metadata by your <code>client_id</code> indexer.
+      Login → cloud reconnect → publish a demo post → list by indexerId. Hosted iframes show messaging + community feed
+      (display only; no L5 product REST).
     </p>
     <div>
       <button id="login">Login with pN</button>
-      <button id="publish" disabled>Publish demo post</button>
+      <button id="publish" disabled>Publish demo post (48h)</button>
       <button id="list" disabled>List by indexerId</button>
     </div>
+    <label class="muted" style="display:block;margin:0.75rem 0">
+      <input type="checkbox" id="persist-discover" />
+      Also keep on browse discover after 48h (persistOnDiscover)
+    </label>
     <pre id="out">Not signed in.</pre>
     <div id="cloud-reconnect"></div>
+    <div class="embeds">
+      <div>
+        <h2>Messaging embed</h2>
+        <iframe id="msg-embed" title="par Noir messaging" allow="clipboard-write"></iframe>
+      </div>
+      <div>
+        <h2>Feed embed</h2>
+        <iframe id="feed-embed" title="par Noir community feed"></iframe>
+      </div>
+    </div>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>

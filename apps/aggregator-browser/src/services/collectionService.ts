@@ -23,6 +23,7 @@ export async function createCollection(
     isPublic?: boolean;
     isNSFW?: boolean;
     isThoughtCollection?: boolean; // Flag to distinguish thought collections from regular collections
+    expiresAt?: string | null;
   }
 ): Promise<{ fileId: string; success: boolean; error?: string }> {
   try {
@@ -208,6 +209,9 @@ export async function createCollection(
       },
       isNSFW: metadata?.isNSFW || false,
       isThoughtCollection: metadata?.isThoughtCollection || false, // Mark if this is a thought collection
+      ...(Object.prototype.hasOwnProperty.call(metadata || {}, 'expiresAt')
+        ? { expiresAt: metadata?.expiresAt ?? null, persistOnDiscover: false }
+        : {}),
       ...feedPreviewFields,
     });
 

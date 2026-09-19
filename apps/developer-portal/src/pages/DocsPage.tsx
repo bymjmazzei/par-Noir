@@ -5,22 +5,20 @@ export function DocsPage() {
         <h2 className="dev-intro-title">Integration guides</h2>
         <p>
           One kit for <strong>external</strong> L5 apps: register an OAuth client on Credentials, then wire{' '}
-          <code>createPnIntegratorClient</code> + <code>@par-noir/oauth-ui</code>. This portal&apos;s own session uses{' '}
-          <code>@par-noir/oauth-ui</code> portal helpers only. User unlock is interactive <code>/oauth/*</code> — never
-          collect pn name or passcode in your UI.
+          <code>createPnIntegratorClient</code> + <code>@par-noir/oauth-ui</code>. User unlock is interactive{' '}
+          <code>/oauth/*</code> — never collect pn name or passcode in your UI.
         </p>
       </section>
 
       <section className="dev-card dev-doc-block">
         <h3>L5 integrator quickstart</h3>
         <p>
-          Login, <code>cloud:app</code> Drive silo, ZKP data points. See{' '}
-          <code>docs/developer/L5_INTEGRATOR_QUICKSTART.md</code> and{' '}
-          <code>examples/l5-integrator-starter/</code>. Packages are workspace / <code>file:</code> until npm publish.
+          Login, <code>cloud:app</code> Drive silo, ZKPs, messaging + feed iframes. See{' '}
+          <code>docs/developer/L5_INTEGRATOR_QUICKSTART.md</code>,{' '}
+          <code>examples/l5-integrator-starter/</code>, and <code>examples/l5-community-starter/</code>.
         </p>
         <pre className="dev-code-block">
-          <code>{`"@identity-protocol/identity-sdk": "file:../../sdk/identity-sdk"
-"@par-noir/oauth-ui": "file:../../packages/oauth-ui"`}</code>
+          <code>{`npm install @identity-protocol/identity-sdk @par-noir/oauth-ui`}</code>
         </pre>
       </section>
 
@@ -28,7 +26,7 @@ export function DocsPage() {
         <h3>Identity SDK (one façade)</h3>
         <p>
           <code>createPnIntegratorClient</code> — OAuth + <code>IntegratorStorageClient</code> +{' '}
-          <code>IntegratorZkpClient</code>. Login only: <code>createPNOAuthClient</code>.
+          <code>IntegratorZkpClient</code> + publish/feed helpers. Login only: <code>createPNOAuthClient</code>.
         </p>
         <pre className="dev-code-block">
           <code>{`import { createPnIntegratorClient, PN_INTEGRATOR_SCOPES } from '@identity-protocol/identity-sdk';
@@ -41,15 +39,17 @@ const pn = createPnIntegratorClient({
 });`}</code>
         </pre>
         <p className="dev-muted">
-          Copy <code>packages/oauth-ui/static/oauth-callback.html</code> into your <code>public/</code> folder.
+          Copy <code>node_modules/@par-noir/oauth-ui/static/oauth-callback.html</code> into your <code>public/</code>{' '}
+          folder.
         </p>
       </section>
 
       <section className="dev-card dev-doc-block">
-        <h3>React unlock button</h3>
+        <h3>React unlock + embeds</h3>
         <p>
-          Install <code>@par-noir/oauth-ui</code> for <code>UnlockButton</code> / <code>LockButton</code> with your{' '}
-          <code>clientId</code>, <code>apiEndpoint</code>, and registered <code>redirectUri</code>.
+          Install <code>@par-noir/oauth-ui</code> for <code>UnlockButton</code> / <code>LockButton</code>,{' '}
+          <code>ThirdPartyCloudReconnectHost</code>, <code>buildMessagingEmbedUrl</code>, and{' '}
+          <code>buildFeedEmbedUrl</code>.
         </p>
       </section>
 
@@ -70,38 +70,24 @@ const pn = createPnIntegratorClient({
           </li>
         </ul>
         <p className="dev-muted">
-          Messaging and social graph are first-party only. Hosted messaging widgets for L5 are deferred — see{' '}
-          <code>docs/developer/L5_ONE_KIT_REVIEW.md</code>.
+          Messaging and engagement REST are first-party only. L5 uses hosted iframes — see Layer 5 / quickstart.
         </p>
       </section>
 
       <section className="dev-card dev-doc-block">
         <h3>Backend API keys</h3>
         <p>
-          API keys (<code>X-Api-Key</code>) power <code>/api/v1/...</code> routes (public index, catalog). User OAuth
-          tokens power siloed <code>/api/drive/*</code> and <code>/oauth/zkp-data-points</code>.
+          Create on Credentials for server calls to <code>/api/v1/...</code> (public index, async data-point request). Not
+          a substitute for interactive user OAuth.
         </p>
       </section>
 
       <section className="dev-card dev-doc-block">
-        <h3>Repository docs</h3>
-        <ul>
-          <li>
-            <code>docs/developer/L5_INTEGRATOR_QUICKSTART.md</code>
-          </li>
-          <li>
-            <code>docs/developer/L5_ONE_KIT_REVIEW.md</code>
-          </li>
-          <li>
-            <code>docs/developer/PN_OAUTH_INTEGRATION.md</code>
-          </li>
-          <li>
-            <code>docs/developer/third-party-sharing-and-L5.md</code>
-          </li>
-          <li>
-            <code>docs/developer/ROUTE_MANIFEST.md</code>
-          </li>
-        </ul>
+        <h3>Approval</h3>
+        <p>
+          When the platform registry is configured, new OAuth clients stay pending until an operator approves them. See{' '}
+          <code>docs/developer/OAUTH_CLIENT_APPROVAL_RUNBOOK.md</code>.
+        </p>
       </section>
     </main>
   );

@@ -18,7 +18,10 @@ See [GOOGLE_DRIVE_STRUCTURE.md](../../GOOGLE_DRIVE_STRUCTURE.md) for the full fo
 2. **API is the broker** — Third parties call **par Noir API** with the user’s OAuth access token (interactive `/oauth/*`) or, for server scenarios, an **API key** on `/api/v1/...` (public index, catalog). Do not ask users for pn name or passcode.
 3. **Data points vs OAuth scopes** — `dataPoints` on a tool permission reference **zkp-data-points** rows for ZKP types. OAuth-style scopes (`openid`, `profile`, `cloud:read`) are not rows in `zkp-data-points`; access follows the permission sheet and token scopes together. See `docs/api/DATA_POINTS_AND_ZKP_API.md`.
 4. **Integrator silo** — Drive setup creates empty `integrators/` and caches `integratorsRootId` in `credentials.cachedFolderIds`. Scope `cloud:app` provisions `integrators/{client_id}/` on first grant and restricts L5 Drive proxy calls to that subtree. L5 clients must not read `_metadata` via Drive.
-5. **Messaging** — L5 Bearer tokens cannot call `/api/messages` (or mailbox/connections/groups). Embed `https://messaging.parnoir.com/embed?client_id=YOUR_CLIENT_ID`. Channel threads for your app live under `integrators/{client_id}/messages/`; the platform primary DM is separate. See [ADR_MESSAGING_CHANNEL_THREADS.md](../architecture/ADR_MESSAGING_CHANNEL_THREADS.md).
+5. **Messaging / community feed** — L5 Bearer tokens cannot call `/api/messages` (or mailbox/connections/groups/engagement). Embed:
+   - `https://messaging.parnoir.com/embed?client_id=YOUR_CLIENT_ID` (`buildMessagingEmbedUrl`)
+   - `https://browse.parnoir.com/embed/feed?client_id=YOUR_CLIENT_ID` (`buildFeedEmbedUrl`)
+   Channel threads for your app live under `integrators/{client_id}/messages/`; the platform primary DM is separate. Community **publish** uses the thin L5 metadata/publish API, not product feed mutate routes. Posts may set `ttlSeconds` / `expiresAt` / `persistOnDiscover` so community TTL can hide from the embed while optionally remaining on browse discover. Legacy `/api/widgets/feed/*` script embeds are deprecated. See [MESSAGING_UI_SURFACES.md](../MESSAGING_UI_SURFACES.md) and [ADR_MESSAGING_CHANNEL_THREADS.md](../architecture/ADR_MESSAGING_CHANNEL_THREADS.md).
 
 ## OAuth scopes (integrators)
 

@@ -169,6 +169,16 @@ export class AggregatorMetadataServiceDB {
       ? existingIsPublic  // Preserve whatever it was (true, false, null, undefined)
       : metadata.isPublic;
 
+    const finalExpiresAt =
+      metadata.expiresAt !== undefined ||
+      (metadata as { ttlSeconds?: unknown }).ttlSeconds !== undefined
+        ? (metadata.expiresAt === undefined ? null : metadata.expiresAt)
+        : (existingMetadata?.expiresAt ?? null);
+    const finalPersistOnDiscover =
+      metadata.persistOnDiscover !== undefined
+        ? metadata.persistOnDiscover === true
+        : existingMetadata?.persistOnDiscover === true;
+
     // Validate and auto-fix fileType to match metadata content
     let validatedFileType = metadata.fileType || 'other';
     
@@ -223,6 +233,8 @@ export class AggregatorMetadataServiceDB {
     const validatedMetadata: PublicMetadata = {
       ...metadata,
       isPublic: finalIsPublic,
+      expiresAt: finalExpiresAt,
+      persistOnDiscover: finalPersistOnDiscover,
       backend: metadata.backend || 'google_drive',
       backendFileId: metadata.backendFileId || metadata.fileId,
       name: metadata.name || metadata.title || metadata.fileId,
@@ -257,15 +269,15 @@ export class AggregatorMetadataServiceDB {
       if (existingRow && !contentClassChanged) {
         // UPDATE: Use jsonb_set to preserve isPublic unless explicitly changing it
         // Only update isPublic if it was explicitly provided in metadata parameter
-        if (metadata.isPublic !== undefined) {
-          // Explicitly changing isPublic - use jsonb_set to update only that field
+        if (metadata.isPublic !== undefined || expiryTouched) {
+          // Merge isPublic + expiry into stored JSON (full replace of metadata object for consistency)
           await db.query(
             `UPDATE ${targetTable} 
-             SET metadata = jsonb_set(metadata, '{isPublic}', $1::jsonb, true),
+             SET metadata = $1::jsonb,
                  pn_identifier = COALESCE($2, pn_identifier),
                  updated_at = NOW()
              WHERE file_id = $3`,
-            [JSON.stringify(finalIsPublic), pnIdentifier, validatedMetadata.fileId]
+            [JSON.stringify(validatedMetadata), pnIdentifier, validatedMetadata.fileId]
           );
         } else {
           // Not changing isPublic - preserve existing value by using jsonb_set for other fields only
@@ -655,6 +667,24 @@ export class AggregatorMetadataServiceDB {
         paramIndex++;
       }
 
+    const nowParam = `$${paramIndex}`;
+    params.push(new Date().toISOString());
+    paramIndex++;
+    const expirySql = filters?.indexerId
+      ? ` AND (
+          am.metadata->>'expiresAt' IS NULL
+          OR TRIM(COALESCE(am.metadata->>'expiresAt', '')) = ''
+          OR (am.metadata->>'expiresAt')::timestamptz >= ${nowParam}::timestamptz
+        )`
+      : ` AND (
+          am.metadata->>'expiresAt' IS NULL
+          OR TRIM(COALESCE(am.metadata->>'expiresAt', '')) = ''
+          OR (am.metadata->>'expiresAt')::timestamptz >= ${nowParam}::timestamptz
+          OR am.metadata->>'persistOnDiscover' = 'true'
+          OR (am.metadata->>'persistOnDiscover')::boolean = true
+        )`;
+    query += expirySql;
+
     query += ` GROUP BY am.file_id, am.metadata, am.submitted_at, am.pn_identifier`;
       query += ` ORDER BY am.updated_at DESC`;
 
@@ -711,8 +741,55 @@ export class AggregatorMetadataServiceDB {
         )`;
         countParamIndex++;
       }
+
+    countQuery += expirySql;
       
     return { query, countQuery, params };
+  }
+
+  /**
+   * Durable end-state for expired public posts (unless persistOnDiscover): set isPublic false.
+   * Keeps expiresAt for audit. Fire-and-forget safe from read paths.
+   */
+  async flipExpiredPublicToPrivate(now: Date = new Date()): Promise<number> {
+    const db = getDatabasePool();
+    const nowIso = now.toISOString();
+    let flipped = 0;
+    for (const table of this.getAllContentTypeTables()) {
+      try {
+        const result = await db.query(
+          `UPDATE ${table}
+           SET metadata = jsonb_set(metadata, '{isPublic}', 'false'::jsonb, true),
+               updated_at = NOW()
+           WHERE (
+             metadata->>'isPublic' = 'true'
+             OR (metadata->>'isPublic')::boolean = true
+             OR metadata->'isPublic' = 'true'::jsonb
+           )
+           AND COALESCE(metadata->>'persistOnDiscover', 'false') NOT IN ('true', 'True', 'TRUE')
+           AND metadata->>'expiresAt' IS NOT NULL
+           AND TRIM(COALESCE(metadata->>'expiresAt', '')) <> ''
+           AND (metadata->>'expiresAt')::timestamptz < $1::timestamptz
+           RETURNING file_id`,
+          [nowIso]
+        );
+        flipped += result.rowCount ?? 0;
+      } catch (err) {
+        safeLogger.warn('[flipExpiredPublicToPrivate] table update failed', {
+          table,
+          error: err as Error
+        });
+      }
+    }
+    if (flipped > 0) {
+      try {
+        const { invalidateIndexCache } = await import('../utils/cache');
+        await invalidateIndexCache();
+      } catch {
+        /* non-critical */
+      }
+    }
+    return flipped;
   }
 
   /**
@@ -924,6 +1001,24 @@ export class AggregatorMetadataServiceDB {
         paramIndex++;
       }
 
+      const nowParam = `$${paramIndex}`;
+      params.push(new Date().toISOString());
+      paramIndex++;
+      const expirySql = filters?.indexerId
+        ? ` AND (
+            am.metadata->>'expiresAt' IS NULL
+            OR TRIM(COALESCE(am.metadata->>'expiresAt', '')) = ''
+            OR (am.metadata->>'expiresAt')::timestamptz >= ${nowParam}::timestamptz
+          )`
+        : ` AND (
+            am.metadata->>'expiresAt' IS NULL
+            OR TRIM(COALESCE(am.metadata->>'expiresAt', '')) = ''
+            OR (am.metadata->>'expiresAt')::timestamptz >= ${nowParam}::timestamptz
+            OR am.metadata->>'persistOnDiscover' = 'true'
+            OR (am.metadata->>'persistOnDiscover')::boolean = true
+          )`;
+      query += expirySql;
+
         query += ` GROUP BY am.file_id, am.metadata, am.submitted_at, am.pn_identifier`;
       query += ` ORDER BY am.updated_at DESC`;
         query += ` LIMIT $${paramIndex} OFFSET $${paramIndex + 1}`;
@@ -971,6 +1066,23 @@ export class AggregatorMetadataServiceDB {
           params.push(filters.indexerId);
           paramIndex++;
         }
+
+        const nowParam = `$${paramIndex}`;
+        params.push(new Date().toISOString());
+        paramIndex++;
+        countQuery += filters?.indexerId
+          ? ` AND (
+              am.metadata->>'expiresAt' IS NULL
+              OR TRIM(COALESCE(am.metadata->>'expiresAt', '')) = ''
+              OR (am.metadata->>'expiresAt')::timestamptz >= ${nowParam}::timestamptz
+            )`
+          : ` AND (
+              am.metadata->>'expiresAt' IS NULL
+              OR TRIM(COALESCE(am.metadata->>'expiresAt', '')) = ''
+              OR (am.metadata->>'expiresAt')::timestamptz >= ${nowParam}::timestamptz
+              OR am.metadata->>'persistOnDiscover' = 'true'
+              OR (am.metadata->>'persistOnDiscover')::boolean = true
+            )`;
         
         return { countQuery, params };
       });
@@ -1685,6 +1797,9 @@ export class AggregatorMetadataServiceDB {
     const result = await this.getPublicMetadata(filters);
     const stats = await this.getStats();
 
+    // Lazy durable private flip for expired rows (does not affect this response's SQL filter)
+    void this.flipExpiredPublicToPrivate().catch(() => undefined);
+
     const response = {
       files: result.files,
       updatedAt: stats.lastUpdated,
@@ -1722,6 +1837,8 @@ export class AggregatorMetadataServiceDB {
     
     const result = await this.getNSFWMetadata(filters);
     console.log(`📤 [getNSFWIndexResponse] Returning ${result.files.length} NSFW file(s)`);
+
+    void this.flipExpiredPublicToPrivate().catch(() => undefined);
     
     const stats = await this.getStats();
 
@@ -2005,6 +2122,9 @@ export class AggregatorMetadataServiceDB {
       isPartOfCollection?: boolean; // Collection files inherit collection classification
       mainFileId?: string; // Reference to source file for thumbnails
       isEncrypted?: boolean; // True if main file is encrypted; false for raw uploads over tier limit
+      /** null clears expiry; omit to preserve */
+      expiresAt?: string | null;
+      persistOnDiscover?: boolean;
     }
   ): Promise<PublicMetadata | null> {
     const db = getDatabasePool();
@@ -2081,6 +2201,10 @@ export class AggregatorMetadataServiceDB {
         ...(updates.isPartOfCollection !== undefined && { isPartOfCollection: updates.isPartOfCollection }),
         ...(updates.mainFileId !== undefined && { mainFileId: updates.mainFileId }),
         ...(updates.isEncrypted !== undefined && { isEncrypted: updates.isEncrypted }),
+        ...(updates.expiresAt !== undefined && { expiresAt: updates.expiresAt }),
+        ...(updates.persistOnDiscover !== undefined && {
+          persistOnDiscover: updates.persistOnDiscover === true
+        }),
         // Handle publicToken: null = delete, string = set, undefined = preserve
         ...(updates.publicToken !== undefined ? (
           updates.publicToken === null 

@@ -12,11 +12,13 @@
   },
   "dependencies": {
     "@noble/hashes": "^2.0.0",
-    "@par-noir/pqc-crypto": "file:../pqc-crypto"
+    "@par-noir/pqc-crypto": "^0.1.0"
   },
   "devDependencies": {
     "typescript": "^5.0.0"
   },
   "license": "UNLICENSED",
-  "private": true
+  "publishConfig": {
+    "access": "public"
+  }
 }

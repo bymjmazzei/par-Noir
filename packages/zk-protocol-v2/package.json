@@ -24,12 +24,14 @@
     "@guildofweavers/genstark": "^0.7.6",
     "@guildofweavers/galois": "^0.4.22",
     "@noble/hashes": "^2.0.0",
-    "@par-noir/pqc-crypto": "file:../pqc-crypto",
+    "@par-noir/pqc-crypto": "^0.1.0",
     "buffer": "^6.0.3"
   },
   "devDependencies": {
     "typescript": "^5.0.0"
   },
   "license": "UNLICENSED",
-  "private": true
+  "publishConfig": {
+    "access": "public"
+  }
 }

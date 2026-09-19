@@ -1,12 +1,52 @@
 # Live apps status (deep flow map)
 
-Generated 2026-09-09 from Playwright deep walk (`.local/ux-playwright/deep-flow-report.json` + code correlation).
-Harness: [`apps/aggregator-browser/scripts/ux-deep-flow-map.mjs`](../apps/aggregator-browser/scripts/ux-deep-flow-map.mjs)
+Catalog: [`USER_WORKFLOW_CATALOG.md`](USER_WORKFLOW_CATALOG.md).  
+Harness: [`apps/aggregator-browser/scripts/ux-new-user-qa.mjs`](../apps/aggregator-browser/scripts/ux-new-user-qa.mjs) (2026-09-16) plus historical [`ux-deep-flow-map.mjs`](../apps/aggregator-browser/scripts/ux-deep-flow-map.mjs) (2026-09-09).
 
-Labels: `LIVE_REAL` | `LIVE_MOCK` | `LIVE_UNFINISHED` | `BLOCKED` | `NEEDS_USER_REVIEW` | `KEEP_SCAFFOLD`
-Evidence: **OBSERVED** (this pass) vs **INFERRED** (imports/package).
+Labels: `LIVE_REAL` | `LIVE_MOCK` | `LIVE_UNFINISHED` | `BLOCKED` | `DEFERRED` | `SKIPPED_PROVEN` | `POLICY_410` | `NEEDS_USER_REVIEW` | `KEEP_SCAFFOLD`  
+Evidence: **OBSERVED** (this pass) vs **INFERRED**. 429 / cancelled → `BLOCKED`.
 
 **No deletes in this pass.** Ambiguous items → [`NEEDS_USER_REVIEW.md`](NEEDS_USER_REVIEW.md).
+
+---
+
+## New-user QA (2026-09-16)
+
+Headless Chromium against production, agent `.local/cursor-test-pn` only. Did **not** mint a pN, reconnect Drive, or populate index root (already proven). ≥90s between unlocks. No 429 observed this pass.
+
+**Skipped proven:** live Create-pN submit; Google Drive connect; index-root population.
+
+**Deferred (not filed as product bugs):** Veriff (`Identity Verify (Veriff) not enabled` on Privacy); Stripe/monetization tab copy.
+
+### Broken / unfinished beyond Veriff/Stripe
+
+| Severity | Surface | Observation |
+|---|---|---|
+| Product | Browse **Me** | After unlock, bottom-nav Me still showed Home **DISCOVER** rail (`No Content Available`). MePage tabs (all / likes / saved / …) were **not** OBSERVED. |
+| Product | Browse **public feed / engagement** | All rails honest-empty: “No files have been marked as public yet. Mark files as public in the dashboard.” Like / comment / save / share / copyright-report had **no post to act on**. |
+| Product | Browse **thought publish** | Add Content (+) → Add Thought → editor → **Add Metadata** (Submit) OBSERVED. Follow-up did **not** see a Drive upload POST or the thought on Me/feed. Publish loop did not conclude. |
+| Product | Browse **Create Feed** | No Create Feed control on empty home. In-tree modal only points at paid dashboard Sub-pN (`$5/month`). |
+| Product | Dashboard **Privacy lists** | Public names + data-sharing requests stayed on **Loading…** while the tab otherwise rendered. Third-Party Permissions is a collapsed accordion; no Revoke row visible. |
+| Product | OAuth **authorize/revoke** | Throwaway client `qa-cursor-*` **registered** (LIVE_REAL). Direct `/oauth/authorize` never showed the identity file input (BLOCKED). Revoke not testable without a grant. |
+| Harness / UX | Messaging **New group** | “New group” **is** on the Messages tab (OBSERVED in body). Dedicated step ran after leaving Messages so send was not completed. |
+| Expected gate | Prism apply | Reputation 30, copy “Build activity… to qualify” — valid ineligible conclusion. Queue showed a card with **Preview unavailable**. Not admin (seed hidden). |
+| Expected gate | Developer `/platform` | Non-operator redirected to `/`. |
+
+### Per-app conclusions (this pass)
+
+**Dashboard** `https://pn.parnoir.com/` — unlocked LIVE_REAL. Create modal opened and dismissed without submit. Privacy / Sub-pN / Delegation / Recovery / Storage (existing custody list, no reconnect) / Lock LIVE_REAL. Verify DEFERRED (control absent; header copy “Veriff not enabled”). Monetization DEFERRED. Devices chrome lives under Recovery (“Devices & sessions”), not a separate header button.
+
+**Browse** `https://browse.parnoir.com/` — unlock LIVE_REAL (Lock visible, no keys-missing banner). Search LIVE_REAL. Inbox overlay LIVE_REAL. Rails honest-empty (valid empty copy; engagement cannot conclude). Upload: composer reachable via **Add Content**; publish not confirmed. Me did not show profile. Create Feed BLOCKED (no entry). Lock LIVE_REAL.
+
+**Messaging** `https://messaging.parnoir.com/` — unlock LIVE_REAL, no linkedInactive. Messages / Notifications (`GET /api/notifications` 200 + cloud AT) / Requests / Connections LIVE_REAL (a connected peer listed). Group send not finished. Lock LIVE_REAL.
+
+**Developer** `https://developers.parnoir.com/` — unlock + all nav pages LIVE_REAL. OAuth client register LIVE_REAL. Authorize BLOCKED; revoke unfinished. Platform gate LIVE_REAL (non-operator).
+
+**Prism** `https://prism.parnoir.com/` — unlock LIVE_REAL. Apply ineligible copy LIVE_REAL. Queue chrome LIVE_REAL (preview unavailable on the card). Admin seed hidden (expected).
+
+**Licensing** `https://licensing.parnoir.com/` — unlock LIVE_REAL. Track list LIVE_REAL. Add track `POST /api/v1/music/registry/tracks` **201**. Partner inquiry form LIVE_REAL.
+
+Screenshots: `.local/ux-playwright/new-user/` (not committed).
 
 ---
 

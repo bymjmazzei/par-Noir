@@ -9,6 +9,11 @@ import { X, ChevronDown, ChevronUp } from 'lucide-react';
 import { FEED_CATEGORY_LIST } from '../constants/feedCategories';
 import { LICENSE_TYPES } from '../constants/licenses';
 import { FeedCategory } from '../types/aggregator';
+import {
+  ContentExpiryFields,
+  ContentExpiryValue,
+  inferExpiryPreset,
+} from './ContentExpiryFields';
 
 export interface MetadataFormData {
   name: string;
@@ -21,6 +26,8 @@ export interface MetadataFormData {
   locationName: string;
   locationAddress: string;
   license: string;
+  /** null = never expires */
+  expiresAt?: string | null;
 }
 
 interface EditMetadataModalProps {
@@ -59,8 +66,14 @@ export function EditMetadataModal({
     isNSFW: initialData?.isNSFW === true,
     locationName: initialData?.locationName || '',
     locationAddress: initialData?.locationAddress || '',
-    license: initialData?.license || 'all-rights-reserved'
+    license: initialData?.license || 'all-rights-reserved',
+    expiresAt: initialData?.expiresAt ?? null,
   });
+
+  const [expiry, setExpiry] = useState<ContentExpiryValue>(() => ({
+    preset: inferExpiryPreset(initialData?.expiresAt ?? null),
+    expiresAt: initialData?.expiresAt ?? null,
+  }));
   
   const [isExpanded, setIsExpanded] = useState(false);
 
@@ -70,11 +83,17 @@ export function EditMetadataModal({
       const categories = initialData.category 
         ? [initialData.category as FeedCategory]
         : (initialData.categories || []);
+      const expiresAt = initialData.expiresAt ?? null;
       setEditForm(prev => ({
         ...prev,
         ...initialData,
-        categories
+        categories,
+        expiresAt,
       }));
+      setExpiry({
+        preset: inferExpiryPreset(expiresAt),
+        expiresAt,
+      });
     }
   }, [initialData]);
   
@@ -97,7 +116,7 @@ export function EditMetadataModal({
   };
 
   const handleSave = () => {
-    onSave(editForm);
+    onSave({ ...editForm, expiresAt: expiry.expiresAt });
   };
 
   const handleClose = () => {
@@ -110,8 +129,10 @@ export function EditMetadataModal({
       isNSFW: false,
       locationName: '',
       locationAddress: '',
-      license: 'all-rights-reserved'
+      license: 'all-rights-reserved',
+      expiresAt: null,
     });
+    setExpiry({ preset: 'never', expiresAt: null });
     setIsExpanded(false);
     onClose();
   };
@@ -191,6 +212,14 @@ export function EditMetadataModal({
               })}
             </div>
             <p className="text-xs text-text-secondary mt-2">Select one or more categories</p>
+          </div>
+
+          <div className="border border-neutral-700 rounded-lg px-3 py-3">
+            <ContentExpiryFields
+              value={expiry}
+              onChange={setExpiry}
+              disabled={isLoading}
+            />
           </div>
 
           {/* Expand/Collapse button */}

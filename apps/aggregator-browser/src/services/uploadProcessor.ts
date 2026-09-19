@@ -338,6 +338,7 @@ async function processFileUpload(
         isNSFW: task.metadata?.isNSFW || false,
         mainFileId: fileId,
         mainFileIsEncrypted: mainFileIsEncrypted,
+        ...browseExpiryFields(task),
       }, accessToken);
       if (import.meta.env.DEV) console.log('[UploadProcessor] Thumbnail metadata created successfully');
     } catch (metadataError: any) {
@@ -379,6 +380,7 @@ async function processFileUpload(
       isEncrypted: mainFileIsEncrypted,
       uploadDate: new Date().toISOString(),
       isNSFW: task.metadata?.isNSFW || false,
+      ...browseExpiryFields(task),
     }, accessToken);
   }
 
@@ -573,6 +575,7 @@ async function processTextPostUpload(
       isNSFW: task.metadata?.isNSFW || false,
       textPost: thoughtData.textPost,
       thought: thoughtData.textPost,
+      ...browseExpiryFields(task),
     }, accessToken);
   } else {
     // Fallback: if no thumbnail, create metadata for main file (shouldn't happen for thoughts)
@@ -596,6 +599,7 @@ async function processTextPostUpload(
       isNSFW: task.metadata?.isNSFW || false,
       textPost: thoughtData.textPost,
       thought: thoughtData.textPost,
+      ...browseExpiryFields(task),
     }, accessToken);
   }
 
@@ -826,6 +830,7 @@ async function processMultiPageUpload(
           isNSFW: task.metadata?.isNSFW || false,
           ...pageShare,
           ...pagePreviews,
+          ...browseExpiryFields(task),
         }, accessToken);
       }
     }
@@ -849,6 +854,7 @@ async function processMultiPageUpload(
       thought: thoughtCollectionData.textPost,
       ...shareFields,
       ...feedPreviewFields,
+      ...browseExpiryFields(task),
     }, accessToken);
     if (import.meta.env.DEV) console.log(`[UploadProcessor] Created collection metadata for collection thumbnail ${collectionThumbnailFileId} with ${thumbnailResults.length} pages`);
   }
@@ -949,7 +955,12 @@ async function processPDFUpload(
         title: task.metadata?.title || pdfFile.name.replace(/\.pdf$/i, ''),
         description: task.metadata?.description || '',
         isPublic: task.metadata?.isPublic === true,
-        isNSFW: task.metadata?.isNSFW || false
+        isNSFW: task.metadata?.isNSFW || false,
+        ...(Object.prototype.hasOwnProperty.call(task.metadata || {}, 'expiresAt')
+          ? {
+              expiresAt: (task.metadata as { expiresAt?: string | null }).expiresAt ?? null,
+            }
+          : {}),
       }
     );
   }
@@ -1001,6 +1012,20 @@ async function uploadFile(
   });
 
   return { id };
+}
+
+/** Browse expiry for public index writes (never = null). */
+function browseExpiryFields(task: UploadTask): {
+  expiresAt?: string | null;
+  persistOnDiscover?: boolean;
+} {
+  if (!task.metadata || !Object.prototype.hasOwnProperty.call(task.metadata, 'expiresAt')) {
+    return {};
+  }
+  return {
+    expiresAt: (task.metadata as { expiresAt?: string | null }).expiresAt ?? null,
+    persistOnDiscover: false,
+  };
 }
 
 /**

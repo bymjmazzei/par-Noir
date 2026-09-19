@@ -21,9 +21,9 @@
     "react": ">=17.0.0"
   },
   "dependencies": {
-    "@par-noir/device-cloud-credentials": "file:../device-cloud-credentials",
-    "@par-noir/pqc-crypto": "file:../pqc-crypto",
-    "@par-noir/user-owned-storage": "file:../user-owned-storage"
+    "@par-noir/device-cloud-credentials": "^0.1.0",
+    "@par-noir/pqc-crypto": "^0.1.0",
+    "@par-noir/user-owned-storage": "^0.1.0"
   },
   "devDependencies": {
     "@types/react": "^18.0.0",

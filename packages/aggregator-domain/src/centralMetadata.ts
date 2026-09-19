@@ -27,6 +27,12 @@ export interface PublicMetadataSubmission {
   creator?: unknown;
   isPublic: boolean;
   uploadDate: string;
+  /** Absolute expiry; omit/null = never. Prefer ttlSeconds for relative. */
+  expiresAt?: string | null;
+  /** Write-only convenience; server sets expiresAt = now + ttlSeconds */
+  ttlSeconds?: number;
+  /** Keep on browse discover after expiresAt (L5 dual-visibility). Default false. */
+  persistOnDiscover?: boolean;
   /** String or ShareToken-like object (stringified before POST) */
   publicToken?: string | unknown;
   /** Pointer to anonymously readable share-ciphertext on the owner's cloud */

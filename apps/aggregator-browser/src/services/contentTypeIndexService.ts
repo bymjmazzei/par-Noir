@@ -35,9 +35,14 @@ export class ContentTypeIndexService {
     };
     const contentClass = contentClassMap[contentType];
 
-    // Query API with contentClass and optional limit/offset
+    // Query API with contentClass and optional limit/offset / community indexerId
     const result = await metadataService.discoverFiles(
-      { contentClass, limit: filters?.limit, offset: filters?.offset },
+      {
+        contentClass,
+        limit: filters?.limit,
+        offset: filters?.offset,
+        ...(filters?.indexerId ? { indexerId: filters.indexerId } : {})
+      },
       forceRefresh
     );
 

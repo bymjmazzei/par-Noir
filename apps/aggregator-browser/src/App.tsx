@@ -61,6 +61,7 @@ import { MESSAGING_ONLY } from './config/buildFlags';
 import { API_ENDPOINT } from './config/api';
 import { SplashScreen } from '@capacitor/splash-screen';
 import { EmbedMessagingPage } from './pages/EmbedMessagingPage';
+import { EmbedFeedPage } from './pages/EmbedFeedPage';
 
 // Shared types - importing from id-dashboard
 // In production, these would come from a shared package
@@ -70,9 +71,11 @@ function App() {
     SplashScreen.hide().catch(() => {});
   }, []);
 
+  const pathname = typeof window !== 'undefined' ? window.location.pathname : '';
+  const isFeedEmbed =
+    pathname === '/embed/feed' || pathname.startsWith('/embed/feed/');
   const isMessagingEmbed =
-    typeof window !== 'undefined' &&
-    (window.location.pathname === '/embed' || window.location.pathname.startsWith('/embed/'));
+    !isFeedEmbed && (pathname === '/embed' || pathname.startsWith('/embed/'));
 
   const { userState, getDisplayName } = useUserState();
   const discover = useDiscoverFiles();
@@ -1102,13 +1105,22 @@ function App() {
     showErrorToast: (msg: string) => { showErrorToast(msg); },
   };
 
+  if (isFeedEmbed) {
+    return (
+      <>
+        {userState.isUnlocked ? <AggregatorCloudReconnectHost /> : null}
+        <EmbedFeedPage onLockUnlock={handleLockUnlock} />
+      </>
+    );
+  }
+
   if (isMessagingEmbed) {
     // Same cloud reconnect / vault hydrate path as browse — without this host,
     // messaging shows "linked but not signed in" with no prompt (ConnectionHealthBanner only).
     return (
       <>
         {userState.isUnlocked ? <AggregatorCloudReconnectHost /> : null}
-        <EmbedMessagingPage />
+        <EmbedMessagingPage onLockUnlock={handleLockUnlock} />
       </>
     );
   }

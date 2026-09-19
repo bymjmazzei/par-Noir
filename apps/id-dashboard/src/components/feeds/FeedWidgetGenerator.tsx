@@ -54,10 +54,15 @@ export const FeedWidgetGenerator: React.FC<FeedWidgetGeneratorProps> = ({
 
   return (
     <div className="bg-neutral-900 border border-neutral-700 rounded-lg p-6">
+      <div className="mb-3 rounded border border-amber-700/50 bg-amber-950/40 px-3 py-2 text-xs text-amber-200">
+        Deprecated for L5: prefer the hosted browse feed iframe (
+        <code className="text-amber-100">browse.parnoir.com/embed/feed?client_id=…</code> via{' '}
+        <code className="text-amber-100">buildFeedEmbedUrl</code>). API script-tag widgets are legacy.
+      </div>
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center space-x-2">
           <Code className="h-5 w-5 text-blue-400" />
-          <h3 className="text-lg font-semibold text-white">Embed Feed Widget</h3>
+          <h3 className="text-lg font-semibold text-white">Embed Feed Widget (legacy)</h3>
           <SectionInfo title="Embed Feed Widget" className="text-neutral-400 hover:text-white">
             <p>
               Copy and paste this code into your website to embed your feed. The widget is not customizable to

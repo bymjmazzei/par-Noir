@@ -8,6 +8,7 @@ export * from './publicShare';
 export * from './publicContentClient';
 export * from './volumeIdGenerator';
 export * from './contentNotices';
+export * from './contentExpiry';
 export * from './types';
 export * from './centralMetadata';
 export * from './feedPreview';

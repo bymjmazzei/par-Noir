@@ -840,6 +840,7 @@ export function TextPostEditor({ onSave }: TextPostEditorProps) {
             })
           } : undefined,
           license: metadata.license || undefined,
+          expiresAt: metadata.expiresAt ?? null,
         }
       }));
     

@@ -96,6 +96,7 @@ export function UploadModal({ feeds: propsFeeds, onClose, onUploadComplete }: Up
             tags: metadata.tags || metadata.keywords || [],
             isPublic: metadata.isPublic !== undefined ? metadata.isPublic : true,
             isNSFW: textPost.isNSFW || metadata.isNSFW || false,
+            expiresAt: metadata.expiresAt ?? null,
           },
           onComplete: (result) => {
             console.log('[UploadModal] Multi-page thought upload completed:', result);
@@ -126,6 +127,7 @@ export function UploadModal({ feeds: propsFeeds, onClose, onUploadComplete }: Up
             tags: textPost.metadata?.tags || textPost.metadata?.keywords || (textPost.category ? [textPost.category] : undefined),
             isPublic: metadata.isPublic !== undefined ? metadata.isPublic : true,
             isNSFW: textPost.isNSFW || false,
+            expiresAt: metadata.expiresAt ?? null,
           },
           onComplete: (result) => {
             console.log('[UploadModal] Single-page thought upload completed:', result);

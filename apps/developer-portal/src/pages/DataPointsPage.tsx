@@ -77,8 +77,27 @@ export function DataPointsPage() {
       <section className="dev-intro">
         <h2 className="dev-intro-title">Standard data points</h2>
         <p>
-          Public catalog from <code>GET /api/v1/standard-data-points</code> (no auth). Integrators request proofs via user
-          consent and OAuth; see Guides and Layer 5.
+          Public catalog from <code>GET /api/v1/standard-data-points</code> (no auth). Use one of the two access lanes
+          below. Proposing a new type on Proposals does <strong>not</strong> add it to this catalog until platform
+          review.
+        </p>
+      </section>
+
+      <section className="dev-card dev-doc-block">
+        <h3>Lane A — Request at OAuth consent</h3>
+        <p>
+          Include scopes such as <code>zkp:age_attestation</code> (or <code>data_point:…</code>) on your OAuth client
+          and in <code>createPnIntegratorClient</code> scopes. After the user grants, fetch proofs with the user Bearer
+          (SDK <code>pn.zkp.getDataPoints</code> / <code>/oauth/zkp-data-points</code>).
+        </p>
+      </section>
+
+      <section className="dev-card dev-doc-block">
+        <h3>Lane B — Async API-key request</h3>
+        <p>
+          Create a backend API key with <code>data_points</code> scope on Credentials. Your server calls{' '}
+          <code>/api/v1/data-points/*</code> (request → poll / optional webhook). The user still approves in their
+          dashboard; you never see raw secrets.
         </p>
       </section>
 
@@ -87,6 +106,7 @@ export function DataPointsPage() {
 
       {!loading && !loadError && (
         <>
+          <h3 className="dev-section-label">Catalog</h3>
           <div className="dev-field dev-field--inline">
             <label htmlFor="dp-search">Search</label>
             <input
@@ -131,6 +151,9 @@ export function DataPointsPage() {
                     <p>{p.description}</p>
                     <p className="dev-muted">
                       ZKP: <code>{p.zkpType}</code> · type: <code>{p.dataType}</code> · privacy: {p.defaultPrivacy}
+                    </p>
+                    <p className="dev-help">
+                      OAuth scope hint: <code>zkp:{p.id}</code>
                     </p>
                     {p.requiredFields && p.requiredFields.length > 0 && (
                       <p>

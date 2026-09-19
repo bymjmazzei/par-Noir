@@ -5,6 +5,12 @@ import {
   type PNOAuthSession
 } from '@identity-protocol/identity-sdk';
 import { getCloudAccessTokenFromSession } from '@par-noir/device-cloud-credentials';
+import {
+  buildFeedEmbedUrl,
+  buildMessagingEmbedUrl,
+  isFeedEmbedPostMessage,
+  isMessagingEmbedPostMessage
+} from '@par-noir/oauth-ui';
 import { mountCloudReconnectHost } from './cloudReconnectMount';
 
 const clientId = import.meta.env.VITE_PN_CLIENT_ID as string;
@@ -32,6 +38,22 @@ interface StarterSession extends PNOAuthSession {
 }
 
 let session: StarterSession | null = null;
+
+function wireEmbeds() {
+  if (!clientId) return;
+  const msg = document.getElementById('msg-embed') as HTMLIFrameElement | null;
+  const feed = document.getElementById('feed-embed') as HTMLIFrameElement | null;
+  if (msg) msg.src = buildMessagingEmbedUrl(clientId);
+  if (feed) feed.src = buildFeedEmbedUrl(clientId);
+}
+
+window.addEventListener('message', (event) => {
+  if (isMessagingEmbedPostMessage(event.data) || isFeedEmbedPostMessage(event.data)) {
+    console.info('[l5-community-starter] embed postMessage', event.data);
+  }
+});
+
+wireEmbeds();
 
 function apiContext(): IntegratorApiContext | string {
   if (!session) return '';
@@ -93,6 +115,8 @@ document.getElementById('publish')!.onclick = async () => {
       isPublic: true,
       uploadDate: new Date().toISOString(),
       pnIdentifier: session.pnIdentifier,
+      ttlSeconds: 48 * 60 * 60,
+      persistOnDiscover: (document.getElementById('persist-discover') as HTMLInputElement)?.checked === true,
       indexingPermissions: {
         mode: 'custom',
         allowed: [clientId],
@@ -100,7 +124,13 @@ document.getElementById('publish')!.onclick = async () => {
       }
     });
 
-    log({ published: true, fileId, indexerId: clientId });
+    log({
+      published: true,
+      fileId,
+      indexerId: clientId,
+      ttlSeconds: 172800,
+      persistOnDiscover: (document.getElementById('persist-discover') as HTMLInputElement)?.checked === true
+    });
   } catch (e) {
     log(e instanceof Error ? e.message : String(e));
   }

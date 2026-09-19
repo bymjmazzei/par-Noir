@@ -357,7 +357,7 @@ export function setupAggregatorRoutes(app: any, deps: AggregatorRouteDeps) {
       const authorDid = metadata.creator?.identifier?.value || metadata.creator?.["@id"] || metadata.author?.did;
       
       // More lenient validation - allow missing fields with defaults
-      const validatedMetadata = {
+      const validatedMetadata: Record<string, unknown> = {
         ...metadata,
         backend: metadata.backend || 'google_drive',
         backendFileId: metadata.backendFileId || metadata.fileId,
@@ -366,6 +366,40 @@ export function setupAggregatorRoutes(app: any, deps: AggregatorRouteDeps) {
         isPublic: metadata.isPublic === true, // Default to false (private) if not explicitly set to true
         fileType: metadata.fileType || getFileTypeFromMime(metadata.mimeType) || 'other'
       };
+
+      const expiryTouched =
+        metadata.expiresAt !== undefined ||
+        metadata.ttlSeconds !== undefined ||
+        metadata.persistOnDiscover !== undefined;
+      if (expiryTouched) {
+        try {
+          const { normalizeContentExpiry, ContentExpiryError } = await import('@par-noir/aggregator-domain');
+          const clockTouched =
+            metadata.expiresAt !== undefined || metadata.ttlSeconds !== undefined;
+          if (clockTouched) {
+            const expiry = normalizeContentExpiry({
+              expiresAt: metadata.expiresAt,
+              ttlSeconds: metadata.ttlSeconds,
+              persistOnDiscover: metadata.persistOnDiscover
+            });
+            validatedMetadata.expiresAt = expiry.expiresAt;
+            if (metadata.persistOnDiscover !== undefined) {
+              validatedMetadata.persistOnDiscover = expiry.persistOnDiscover;
+            }
+          } else if (metadata.persistOnDiscover !== undefined) {
+            validatedMetadata.persistOnDiscover = metadata.persistOnDiscover === true;
+          }
+        } catch (err) {
+          const message = err instanceof Error ? err.message : 'Invalid content expiry';
+          const code = err && typeof err === 'object' && 'code' in err ? String((err as { code: string }).code) : 'invalid_expiry';
+          return res.status(400).json({
+            error: code,
+            error_description: message,
+            requestId
+          });
+        }
+      }
+      delete validatedMetadata.ttlSeconds;
 
       // Only require fileId - other fields can be optional
       if (!validatedMetadata.fileId) {
@@ -1392,7 +1426,10 @@ export function setupAggregatorRoutes(app: any, deps: AggregatorRouteDeps) {
         isThoughtThumbnail, // Flag indicating this is a thumbnail of a thought
         isPartOfCollection, // Flag indicating this file is part of a collection
         mainFileId, // Reference to the source file (for thumbnails)
-        isEncrypted // True if main file is encrypted; false for raw uploads over tier limit
+        isEncrypted, // True if main file is encrypted; false for raw uploads over tier limit
+        expiresAt,
+        ttlSeconds,
+        persistOnDiscover
       } = req.body;
 
       if (!fileId) {
@@ -1595,6 +1632,26 @@ export function setupAggregatorRoutes(app: any, deps: AggregatorRouteDeps) {
               lastUpdated: new Date().toISOString()
             }
           };
+
+          if (expiresAt !== undefined || ttlSeconds !== undefined || persistOnDiscover !== undefined) {
+            try {
+              const { normalizeContentExpiry } = await import('@par-noir/aggregator-domain');
+              const expiry = normalizeContentExpiry({
+                expiresAt,
+                ttlSeconds,
+                persistOnDiscover: persistOnDiscover === true
+              });
+              initialMetadata.expiresAt = expiry.expiresAt;
+              initialMetadata.persistOnDiscover = expiry.persistOnDiscover;
+            } catch (err) {
+              const message = err instanceof Error ? err.message : 'Invalid content expiry';
+              const code = err && typeof err === 'object' && 'code' in err ? String((err as { code: string }).code) : 'invalid_expiry';
+              return res.status(400).json({
+                error: code,
+                error_description: message
+              });
+            }
+          }
 
           // Submit initial metadata - ONLY for public files
           // Private files should NOT be in the database (they only exist in Google Drive + companion metadata)
@@ -2571,6 +2628,36 @@ export function setupAggregatorRoutes(app: any, deps: AggregatorRouteDeps) {
         }
       }
 
+      let normalizedExpiry: { expiresAt?: string | null; persistOnDiscover?: boolean } | undefined;
+      const expiryClockTouched = expiresAt !== undefined || ttlSeconds !== undefined;
+      const persistTouched = persistOnDiscover !== undefined;
+      if (expiryClockTouched || persistTouched) {
+        try {
+          normalizedExpiry = {};
+          if (expiryClockTouched) {
+            const { normalizeContentExpiry } = await import('@par-noir/aggregator-domain');
+            const expiry = normalizeContentExpiry({
+              expiresAt,
+              ttlSeconds,
+              persistOnDiscover: persistOnDiscover === true ? true : persistOnDiscover === false ? false : undefined
+            });
+            normalizedExpiry.expiresAt = expiry.expiresAt;
+            if (persistTouched) {
+              normalizedExpiry.persistOnDiscover = expiry.persistOnDiscover;
+            }
+          } else if (persistTouched) {
+            normalizedExpiry.persistOnDiscover = persistOnDiscover === true;
+          }
+        } catch (err) {
+          const message = err instanceof Error ? err.message : 'Invalid content expiry';
+          const code = err && typeof err === 'object' && 'code' in err ? String((err as { code: string }).code) : 'invalid_expiry';
+          return res.status(400).json({
+            error: code,
+            error_description: message
+          });
+        }
+      }
+
       const updated = await service.updateMetadata(actualFileId, {
         name,
         title,
@@ -2600,7 +2687,13 @@ export function setupAggregatorRoutes(app: any, deps: AggregatorRouteDeps) {
         thumbnailFileId,
         isThoughtThumbnail, // Thumbnails inherit classification from source
         isPartOfCollection, // Collection files inherit collection classification
-        mainFileId // Reference to source file for thumbnails
+        mainFileId, // Reference to source file for thumbnails
+        ...(normalizedExpiry?.expiresAt !== undefined
+          ? { expiresAt: normalizedExpiry.expiresAt }
+          : {}),
+        ...(normalizedExpiry?.persistOnDiscover !== undefined
+          ? { persistOnDiscover: normalizedExpiry.persistOnDiscover }
+          : {})
       });
 
       // Also update Google Drive index (source of truth) if file is public
