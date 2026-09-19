@@ -7,6 +7,13 @@
 
 import React, { useState } from 'react';
 import { Lock, X } from 'lucide-react';
+import { SECRET_KEY_FORM_ATTRS, secretKeyInputProps } from '@par-noir/oauth-ui';
+import {
+  KEY_1_LABEL,
+  KEY_2_LABEL,
+  KEY_1_PLACEHOLDER,
+  KEY_2_PLACEHOLDER,
+} from '../../constants/credentialLabels';
 
 interface BiometricPasscodeModalProps {
   isOpen: boolean;
@@ -86,20 +93,21 @@ export const BiometricPasscodeModal: React.FC<BiometricPasscodeModalProps> = ({
           )}
         </p>
 
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form onSubmit={handleSubmit} className="space-y-4" {...SECRET_KEY_FORM_ATTRS}>
           {/* SECURITY: Require BOTH pnName and passcode - both are secrets */}
           <div>
-            <label htmlFor="biometric-pnname" className="block text-sm font-medium text-text-primary mb-2">
-              pN Name
+            <label htmlFor="pn-key-1" className="block text-sm font-medium text-text-primary mb-2">
+              {KEY_1_LABEL}
             </label>
             <div className="relative">
               <input
-                id="biometric-pnname"
+                {...secretKeyInputProps('key1', 'unlock')}
+                id="pn-key-1"
                 type={showPnName ? 'text' : 'password'}
                 value={pnName}
                 onChange={(e) => setPnName(e.target.value)}
                 className="w-full px-3 py-2 pr-10 border border-input-border bg-input-bg rounded-md focus:outline-none focus:ring-2 focus:ring-primary text-text-primary"
-                placeholder="Enter Key 1"
+                placeholder={KEY_1_PLACEHOLDER}
                 autoFocus
                 required
                 disabled={isSubmitting}
@@ -125,18 +133,18 @@ export const BiometricPasscodeModal: React.FC<BiometricPasscodeModalProps> = ({
           </div>
 
           <div>
-            <label htmlFor="biometric-passcode" className="block text-sm font-medium text-text-primary mb-2">
-              Passcode
+            <label htmlFor="pn-key-2" className="block text-sm font-medium text-text-primary mb-2">
+              {KEY_2_LABEL}
             </label>
             <div className="relative">
               <input
-                id="biometric-passcode"
+                {...secretKeyInputProps('key2', 'unlock')}
+                id="pn-key-2"
                 type={showPasscode ? 'text' : 'password'}
                 value={passcode}
                 onChange={(e) => setPasscode(e.target.value)}
                 className="w-full px-3 py-2 pr-10 border border-input-border bg-input-bg rounded-md focus:outline-none focus:ring-2 focus:ring-primary text-text-primary"
-                placeholder="Enter Key 2"
-                autoFocus
+                placeholder={KEY_2_PLACEHOLDER}
                 required
                 disabled={isSubmitting}
               />

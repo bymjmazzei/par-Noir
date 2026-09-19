@@ -1,6 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { Download, CheckCircle, XCircle, AlertCircle } from 'lucide-react';
+import { SECRET_KEY_FORM_ATTRS, secretKeyInputProps } from '@par-noir/oauth-ui';
 import { PNNameHash } from '../utils/security/pnNameHash';
+import {
+  KEY_1_LABEL,
+  KEY_2_LABEL,
+  KEY_1_PLACEHOLDER,
+  KEY_2_PLACEHOLDER,
+} from '../constants/credentialLabels';
 
 interface SyncReceiverProps {
   syncCode: string;
@@ -230,32 +237,32 @@ export const SyncReceiver: React.FC<SyncReceiverProps> = ({ syncCode }) => {
         </div>
 
         {step === 'verify' && (
-          <form onSubmit={handleVerify} className="space-y-4">
+          <form onSubmit={handleVerify} className="space-y-4" {...SECRET_KEY_FORM_ATTRS}>
             <div>
               <label className="block text-sm font-medium text-text-primary mb-1">
-                pN Name
+                {KEY_1_LABEL}
               </label>
               <input
-                type="text"
+                {...secretKeyInputProps('key1', 'unlock')}
                 value={pnName}
                 onChange={(e) => setPnName(e.target.value)}
                 required
                 className="w-full px-3 py-2 border border-input-border bg-input-bg rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
-                placeholder="Enter Key 1"
+                placeholder={KEY_1_PLACEHOLDER}
               />
             </div>
             
             <div>
               <label className="block text-sm font-medium text-text-primary mb-1">
-                Passcode
+                {KEY_2_LABEL}
               </label>
               <input
-                type="password"
+                {...secretKeyInputProps('key2', 'unlock')}
                 value={passcode}
                 onChange={(e) => setPasscode(e.target.value)}
                 required
                 className="w-full px-3 py-2 border border-input-border bg-input-bg rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
-                placeholder="Enter Key 2"
+                placeholder={KEY_2_PLACEHOLDER}
               />
             </div>
 

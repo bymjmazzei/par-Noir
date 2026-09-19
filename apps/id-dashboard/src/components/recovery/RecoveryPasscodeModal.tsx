@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { SectionInfo } from '../common/SectionInfo';
+import { SECRET_KEY_FORM_ATTRS, secretKeyInputProps } from '@par-noir/oauth-ui';
 import {
   KEY_1_LABEL,
   KEY_2_LABEL,
@@ -70,35 +71,32 @@ export function RecoveryPasscodeModal({
             <p>{KEYS_HELPER}</p>
           </SectionInfo>
         </div>
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form onSubmit={handleSubmit} className="space-y-4" {...SECRET_KEY_FORM_ATTRS}>
           <label className="block text-sm">
             New {KEY_1_LABEL}
             <input
-              type="password"
+              {...secretKeyInputProps('key1', 'create')}
               className="mt-1 w-full px-3 py-2 bg-secondary border border-border rounded"
               value={newPnName}
               onChange={(e) => setNewPnName(e.target.value)}
-              autoComplete="off"
             />
           </label>
           <label className="block text-sm">
             New {KEY_2_LABEL}
             <input
-              type="password"
+              {...secretKeyInputProps('key2', 'create')}
               className="mt-1 w-full px-3 py-2 bg-secondary border border-border rounded"
               value={newPasscode}
               onChange={(e) => setNewPasscode(e.target.value)}
-              autoComplete="new-password"
             />
           </label>
           <label className="block text-sm">
             Confirm {KEY_2_LABEL}
             <input
-              type="password"
+              {...secretKeyInputProps('key2', 'create')}
               className="mt-1 w-full px-3 py-2 bg-secondary border border-border rounded"
               value={confirmPasscode}
               onChange={(e) => setConfirmPasscode(e.target.value)}
-              autoComplete="new-password"
               placeholder={KEY_2_CONFIRM_PLACEHOLDER}
             />
           </label>

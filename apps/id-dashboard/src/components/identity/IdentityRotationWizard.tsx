@@ -14,6 +14,7 @@ import { fetchOwnedAssets } from '../../services/ownedAssetsApi';
 import { summarizeOwnedAssetsByKind } from '../../services/ownedAssetsManifestService';
 import { SimpleStorage } from '../../utils/simpleStorage';
 import { SecureCredentialManager } from '@par-noir/identity-crypto';
+import { secretKeyInputProps } from '@par-noir/oauth-ui';
 import { KEY_MIN_LENGTH } from '../../constants/credentialLabels';
 
 interface IdentityRotationWizardProps {
@@ -322,20 +323,18 @@ export const IdentityRotationWizard: React.FC<IdentityRotationWizardProps> = ({
             className="text-sm w-full"
           />
           <input
-            type="text"
+            {...secretKeyInputProps('key1', 'unlock')}
             placeholder="Key 1"
             value={oldPnName}
             onChange={(e) => setOldPnName(e.target.value)}
             className="w-full px-3 py-2 rounded border border-border bg-background text-sm"
-            autoComplete="off"
           />
           <input
-            type="password"
+            {...secretKeyInputProps('key2', 'unlock')}
             placeholder="current Key 2"
             value={oldPasscode}
             onChange={(e) => setOldPasscode(e.target.value)}
             className="w-full px-3 py-2 rounded border border-border bg-background text-sm"
-            autoComplete="off"
           />
           <button type="button" className="px-4 py-2 bg-primary text-bg-primary rounded-lg text-sm" onClick={handleUnlockOld}>
             Continue
@@ -347,29 +346,26 @@ export const IdentityRotationWizard: React.FC<IdentityRotationWizardProps> = ({
         <div className="space-y-3">
           {storedIdentity && (
             <input
-              type="password"
+              {...secretKeyInputProps('key2', 'unlock')}
               placeholder="current Key 2"
               value={oldPasscode}
               onChange={(e) => setOldPasscode(e.target.value)}
               className="w-full px-3 py-2 rounded border border-border bg-background text-sm"
-              autoComplete="off"
             />
           )}
           <input
-            type="password"
+            {...secretKeyInputProps('key2', 'create')}
             placeholder="new Key 2"
             value={newPasscode}
             onChange={(e) => setNewPasscode(e.target.value)}
             className="w-full px-3 py-2 rounded border border-border bg-background text-sm"
-            autoComplete="new-password"
           />
           <input
-            type="password"
+            {...secretKeyInputProps('key2', 'create')}
             placeholder="confirm new Key 2"
             value={confirmPasscode}
             onChange={(e) => setConfirmPasscode(e.target.value)}
             className="w-full px-3 py-2 rounded border border-border bg-background text-sm"
-            autoComplete="new-password"
           />
           <button type="button" className="px-4 py-2 bg-primary text-bg-primary rounded-lg text-sm" onClick={handleMigrate}>
             Run migration

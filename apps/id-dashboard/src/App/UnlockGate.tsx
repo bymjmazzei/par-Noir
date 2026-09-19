@@ -1,6 +1,7 @@
 import React from 'react';
 import { Logo } from '../components/Logo';
 import IdentitySelector from '../components/IdentitySelector';
+import { SECRET_KEY_FORM_ATTRS, secretKeyInputProps } from '@par-noir/oauth-ui';
 import {
   KEY_1_LABEL,
   KEY_1_PLACEHOLDER,
@@ -77,7 +78,7 @@ export function UnlockGate(props: UnlockGateProps) {
             {/* Simple Form */}
             <div className="max-w-md mx-auto relative z-20">
               <div className="bg-modal-bg rounded-lg shadow p-6">
-                <form className="space-y-4" onSubmit={handleMainFormSubmit}>
+                <form className="space-y-4" onSubmit={handleMainFormSubmit} {...SECRET_KEY_FORM_ATTRS}>
 
 
                   
@@ -216,6 +217,7 @@ export function UnlockGate(props: UnlockGateProps) {
                     </label>
                     <div className="relative">
                       <input
+                        {...secretKeyInputProps('key1', 'unlock')}
                         type={showMainPNName ? "text" : "password"}
                         value={mainForm.pnName || ''}
                         onChange={(e) => setMainForm((prev: any) => ({ ...prev, pnName: e.target.value }))}
@@ -248,6 +250,7 @@ export function UnlockGate(props: UnlockGateProps) {
                     </label>
                     <div className="relative">
                       <input
+                        {...secretKeyInputProps('key2', 'unlock')}
                         type={showMainPasscode ? "text" : "password"}
                         value={mainForm.passcode || ''}
                         onChange={(e) => setMainForm((prev: any) => ({ ...prev, passcode: e.target.value }))}

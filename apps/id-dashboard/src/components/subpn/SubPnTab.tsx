@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { Layers, RefreshCw, Plus, Download, Shield, UserPlus, Trash2 } from 'lucide-react';
 import { SectionInfo } from '../common/SectionInfo';
 import { IdentityCrypto, VolumeIdGenerator, type EncryptedIdentity } from '@par-noir/identity-crypto';
-import { PN_CLOUD_CREDENTIALS_READY_EVENT } from '@par-noir/oauth-ui';
+import { PN_CLOUD_CREDENTIALS_READY_EVENT, secretKeyInputProps } from '@par-noir/oauth-ui';
 import { sealSubExportPayload, unsealSubExportPayload } from '../../utils/subIdentitySeal';
 import {
   createOwnedAsset,
@@ -927,14 +927,14 @@ export const SubPnTab: React.FC<SubPnTabProps> = ({
               className="w-full text-sm"
             />
             <input
-              type="password"
+              {...secretKeyInputProps('key1', 'unlock')}
               placeholder="Root Key 1"
               value={authPnName}
               onChange={(e) => setAuthPnName(e.target.value)}
               className="w-full rounded-md bg-secondary border border-border px-3 py-2 text-sm"
             />
             <input
-              type="password"
+              {...secretKeyInputProps('key2', 'unlock')}
               placeholder="Root Key 2"
               value={authPasscode}
               onChange={(e) => setAuthPasscode(e.target.value)}

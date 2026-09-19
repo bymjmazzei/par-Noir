@@ -1,7 +1,9 @@
 import React, { useState, useRef } from 'react';
 import { Usb } from 'lucide-react';
 import { IdentityCrypto, EncryptedData, AuthSession } from '@par-noir/identity-crypto';
+import { secretKeyInputProps } from '@par-noir/oauth-ui';
 import { decryptFromDrive, decryptUidFromDrive } from '../../utils/physicalKeyCrypto';
+import { KEY_1_PLACEHOLDER, KEY_2_PLACEHOLDER } from '../../constants/credentialLabels';
 
 export interface UnlockFromUsbResult {
   authSession: AuthSession;
@@ -300,25 +302,25 @@ export function UnlockFromUsbModal({
         {step === 'credentials' && (
           <div className="space-y-4">
             <p className="text-sm text-text-secondary">
-              Enter Key 1 and passcode to unlock your identity.
+              Enter Key 1 and Key 2 to unlock your identity.
             </p>
             <div>
               <label className="block text-sm font-medium mb-2">Key 1</label>
               <input
-                type="text"
+                {...secretKeyInputProps('key1', 'unlock')}
                 value={pnName}
                 onChange={(e) => setPnName(e.target.value)}
-                placeholder="pN name"
+                placeholder={KEY_1_PLACEHOLDER}
                 className="w-full px-3 py-2 border border-border rounded-md bg-input-bg text-text-primary"
               />
             </div>
             <div>
               <label className="block text-sm font-medium mb-2">Key 2</label>
               <input
-                type="password"
+                {...secretKeyInputProps('key2', 'unlock')}
                 value={passcode}
                 onChange={(e) => setPasscode(e.target.value)}
-                placeholder="Passcode"
+                placeholder={KEY_2_PLACEHOLDER}
                 className="w-full px-3 py-2 border border-border rounded-md bg-input-bg text-text-primary"
               />
             </div>

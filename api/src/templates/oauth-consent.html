@@ -434,7 +434,7 @@
     <div class="form-container" id="unlockStep">
       <div class="step-indicator active">Step 1: Unlock Your pN</div>
       
-      <form id="unlockForm">
+      <form id="unlockForm" autocomplete="off">
         <div class="mode-row" role="tablist" aria-label="Unlock method">
           <button type="button" class="mode-btn active" id="modeFile" data-mode="file">File</button>
           <button type="button" class="mode-btn" id="modeUsb" data-mode="usb">USB</button>
@@ -486,7 +486,21 @@
         <div class="form-group">
           <label>Key 1</label>
           <div class="input-wrapper">
-            <input type="password" id="pnName" placeholder="Enter Key 1" required autocomplete="off" />
+            <input
+              type="password"
+              id="pn-key-1"
+              name="pn-key-1"
+              placeholder="Enter Key 1"
+              required
+              autocomplete="off"
+              spellcheck="false"
+              autocapitalize="off"
+              autocorrect="off"
+              data-1p-ignore="true"
+              data-lpignore="true"
+              data-bwignore="true"
+              data-form-type="other"
+            />
             <button type="button" class="eye-toggle" id="togglePnName" aria-label="Toggle Key 1 visibility">
               <svg id="eyeIconPnName" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
@@ -499,7 +513,21 @@
         <div class="form-group">
           <label>Key 2</label>
           <div class="input-wrapper">
-            <input type="password" id="passcode" placeholder="Enter Key 2" required />
+            <input
+              type="password"
+              id="pn-key-2"
+              name="pn-key-2"
+              placeholder="Enter Key 2"
+              required
+              autocomplete="off"
+              spellcheck="false"
+              autocapitalize="off"
+              autocorrect="off"
+              data-1p-ignore="true"
+              data-lpignore="true"
+              data-bwignore="true"
+              data-form-type="other"
+            />
             <button type="button" class="eye-toggle" id="togglePasscode" aria-label="Toggle Key 2 visibility">
               <svg id="eyeIconPasscode" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
@@ -1079,7 +1107,7 @@
     // Show/hide toggle for pN name
     let showPnName = false;
     const togglePnNameBtn = document.getElementById('togglePnName');
-    const pnNameInput = document.getElementById('pnName');
+    const pnNameInput = document.getElementById('pn-key-1');
     const eyeIconPnName = document.getElementById('eyeIconPnName');
     
     togglePnNameBtn.addEventListener('click', () => {
@@ -1093,10 +1121,10 @@
       }
     });
     
-    // Show/hide toggle for passcode
+    // Show/hide toggle for Key 2
     let showPasscode = false;
     const togglePasscodeBtn = document.getElementById('togglePasscode');
-    const passcodeInput = document.getElementById('passcode');
+    const passcodeInput = document.getElementById('pn-key-2');
     const eyeIconPasscode = document.getElementById('eyeIconPasscode');
     
     togglePasscodeBtn.addEventListener('click', () => {

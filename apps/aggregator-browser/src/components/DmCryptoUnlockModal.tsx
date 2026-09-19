@@ -4,10 +4,11 @@
 
 import React, { useState } from 'react';
 import { Lock } from 'lucide-react';
+import { SECRET_KEY_FORM_ATTRS, secretKeyInputProps } from '@par-noir/oauth-ui';
 import { unlockDmIdentity } from '../services/dmIdentitySession';
 
 interface DmCryptoUnlockModalProps {
-  /** Hint only — user must enter their secret pN name when unlocking locally. */
+  /** Hint only — user must enter their secret Key 1 when unlocking locally. */
   pnName?: string;
   onUnlocked: () => void;
   onCancel?: () => void;
@@ -23,7 +24,7 @@ export function DmCryptoUnlockModal({ pnName, onUnlocked, onCancel }: DmCryptoUn
     e.preventDefault();
     const pn = nameInput.trim();
     if (!pn) {
-      setError('Enter your pN name');
+      setError('Enter Key 1');
       return;
     }
     setError(null);
@@ -47,23 +48,20 @@ export function DmCryptoUnlockModal({ pnName, onUnlocked, onCancel }: DmCryptoUn
           <h2 className="text-lg font-semibold">Restore messaging</h2>
         </div>
         <p className="mb-4 text-sm text-neutral-400">
-          Enter your pN name and passcode to load encryption keys on this device. They never leave
-          the browser.
+          Enter Key 1 and Key 2 to load encryption keys on this device. They never leave the browser.
         </p>
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form onSubmit={handleSubmit} className="space-y-4" {...SECRET_KEY_FORM_ATTRS}>
           <input
-            type="password"
-            autoComplete="off"
-            placeholder="pN name"
+            {...secretKeyInputProps('key1', 'unlock')}
+            placeholder="Key 1"
             value={nameInput}
             onChange={(e) => setNameInput(e.target.value)}
             className="w-full rounded-lg border border-neutral-600 bg-neutral-800 px-3 py-2 text-white placeholder:text-neutral-500 focus:border-neutral-400 focus:outline-none"
             disabled={loading}
           />
           <input
-            type="password"
-            autoComplete="off"
-            placeholder="Passcode"
+            {...secretKeyInputProps('key2', 'unlock')}
+            placeholder="Key 2"
             value={passcode}
             onChange={(e) => setPasscode(e.target.value)}
             className="w-full rounded-lg border border-neutral-600 bg-neutral-800 px-3 py-2 text-white placeholder:text-neutral-500 focus:border-neutral-400 focus:outline-none"
@@ -93,4 +91,4 @@ export function DmCryptoUnlockModal({ pnName, onUnlocked, onCancel }: DmCryptoUn
       </div>
     </div>
   );
-};
+}

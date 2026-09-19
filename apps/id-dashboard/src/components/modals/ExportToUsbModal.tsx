@@ -1,12 +1,14 @@
 import React, { useState } from 'react';
 import { Usb } from 'lucide-react';
 import { IdentityCrypto, EncryptedData } from '@par-noir/identity-crypto';
+import { secretKeyInputProps } from '@par-noir/oauth-ui';
 import {
   generateUid,
   uidToBase64,
   encryptUidForDrive,
 } from '../../utils/physicalKeyCrypto';
 import { SectionInfo } from '../common/SectionInfo';
+import { KEY_1_PLACEHOLDER, KEY_2_PLACEHOLDER } from '../../constants/credentialLabels';
 
 function downloadBlob(blob: Blob, filename: string) {
   const url = URL.createObjectURL(blob);
@@ -188,20 +190,20 @@ export function ExportToUsbModal({
             <div>
               <label className="block text-sm font-medium mb-2">Key 1</label>
               <input
-                type="text"
+                {...secretKeyInputProps('key1', 'unlock')}
                 value={pnName}
                 onChange={(e) => setPnName(e.target.value)}
-                placeholder="Enter Key 1"
+                placeholder={KEY_1_PLACEHOLDER}
                 className="w-full px-3 py-2 border border-border rounded-md bg-input-bg text-text-primary"
               />
             </div>
             <div>
               <label className="block text-sm font-medium mb-2">Key 2</label>
               <input
-                type="password"
+                {...secretKeyInputProps('key2', 'unlock')}
                 value={passcode}
                 onChange={(e) => setPasscode(e.target.value)}
-                placeholder="Enter Key 2"
+                placeholder={KEY_2_PLACEHOLDER}
                 className="w-full px-3 py-2 border border-border rounded-md bg-input-bg text-text-primary"
               />
             </div>

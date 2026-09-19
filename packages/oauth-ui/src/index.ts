@@ -143,3 +143,30 @@ export type {
   MessagingEmbedReadyMessage,
   MessagingEmbedPostMessage,
 } from './messagingEmbed';
+export {
+  BROWSE_EMBED_ORIGIN,
+  PN_FEED_EMBED_READY,
+  PN_FEED_EMBED_HANDSHAKE,
+  buildFeedEmbedUrl,
+  isFeedEmbedPostMessage,
+} from './feedEmbed';
+export type {
+  FeedEmbedOptions,
+  FeedEmbedHandshakeMessage,
+  FeedEmbedReadyMessage,
+  FeedEmbedPostMessage,
+} from './feedEmbed';
+export {
+  SECRET_KEY_1_NAME,
+  SECRET_KEY_2_NAME,
+  SECRET_KEY_1_ID,
+  SECRET_KEY_2_ID,
+  SECRET_KEY_FORM_ATTRS,
+  secretKeyInputProps,
+  secretKeyHtmlAttrs,
+} from './secretKeyInputAttrs';
+export type {
+  SecretKeyWhich,
+  SecretKeyMode,
+  SecretKeyInputProps,
+} from './secretKeyInputAttrs';

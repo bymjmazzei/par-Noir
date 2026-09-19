@@ -1,5 +1,7 @@
 import React from 'react';
 import { SectionInfo } from '../common/SectionInfo';
+import { secretKeyInputProps } from '@par-noir/oauth-ui';
+import { KEY_1_PLACEHOLDER, KEY_2_PLACEHOLDER } from '../../constants/credentialLabels';
 
 interface ExportAuthModalProps {
   isOpen: boolean;
@@ -75,11 +77,12 @@ export function ExportAuthModal({
             <label className="block text-sm font-medium mb-2">Key 1</label>
             <div className="relative">
               <input
+                {...secretKeyInputProps('key1', 'unlock')}
                 type={showExportPnName ? "text" : "password"}
                 value={exportAuthData.pnName}
                 onChange={(e) => setExportAuthData(prev => ({ ...prev, pnName: e.target.value }))}
                 className="w-full px-3 py-2 pr-10 border border-border rounded-md bg-input-bg text-text-primary"
-                placeholder="Enter Key 1"
+                placeholder={KEY_1_PLACEHOLDER}
               />
               <button
                 type="button"
@@ -95,11 +98,12 @@ export function ExportAuthModal({
             <label className="block text-sm font-medium mb-2">Key 2</label>
             <div className="relative">
               <input
+                {...secretKeyInputProps('key2', 'unlock')}
                 type={showExportPasscode ? "text" : "password"}
                 value={exportAuthData.passcode}
                 onChange={(e) => setExportAuthData(prev => ({ ...prev, passcode: e.target.value }))}
                 className="w-full px-3 py-2 pr-10 border border-border rounded-md bg-input-bg text-text-primary"
-                placeholder="Enter Key 2"
+                placeholder={KEY_2_PLACEHOLDER}
               />
               <button
                 type="button"

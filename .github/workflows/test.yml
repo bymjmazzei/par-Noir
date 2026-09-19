@@ -61,6 +61,9 @@ jobs:
       - name: Passcode not on OAuth authenticate wire
         run: PN_CHECK_ALL=1 bash scripts/check-no-passcode-on-oauth-wire.sh
 
+      - name: Secret Key 1/Key 2 input markup (no username autofill)
+        run: PN_CHECK_ALL=1 bash scripts/check-secret-key-input-markup.sh
+
       - name: postMessage targetOrigin not wildcard
         run: PN_CHECK_ALL=1 bash scripts/check-postmessage-origin-boundary.sh
 

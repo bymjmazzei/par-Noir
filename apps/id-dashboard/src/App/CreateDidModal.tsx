@@ -1,4 +1,5 @@
 import React from 'react';
+import { SECRET_KEY_FORM_ATTRS, secretKeyInputProps } from '@par-noir/oauth-ui';
 import {
   KEY_STRENGTH_RULES,
   meetsKeyStrengthRequirements,
@@ -134,7 +135,7 @@ export function CreateDidModal(props: CreateDidModalProps) {
                 )}
                 
               {createStep === 1 ? (
-                <form key="step1" onSubmit={(e) => { e.preventDefault(); setCreateStep(2); }} className="space-y-6">
+                <form key="step1" onSubmit={(e) => { e.preventDefault(); setCreateStep(2); }} className="space-y-6" {...SECRET_KEY_FORM_ATTRS}>
                   <div className="space-y-4">
                     <h3 className="text-lg font-medium text-text-primary border-b border-border pb-2">Step 1: Enter Your Information</h3>
                     
@@ -144,6 +145,7 @@ export function CreateDidModal(props: CreateDidModalProps) {
                       </label>
                       <div className="relative">
                         <input
+                          {...secretKeyInputProps('key1', 'create')}
                           type={showPNName ? "text" : "password"}
                           value={createForm.pnName}
                           onChange={(e) => setCreateForm(prev => ({ ...prev, pnName: e.target.value }))}
@@ -189,6 +191,7 @@ export function CreateDidModal(props: CreateDidModalProps) {
                       </label>
                       <div className="relative">
                         <input
+                          {...secretKeyInputProps('key2', 'create')}
                           type={showPasscode ? "text" : "password"}
                           value={createForm.passcode}
                           onChange={(e) => setCreateForm(prev => ({ ...prev, passcode: e.target.value }))}
@@ -311,7 +314,7 @@ export function CreateDidModal(props: CreateDidModalProps) {
                   </div>
                 </form>
               ) : (
-                <form key="step2" onSubmit={handleCreateDID} className="space-y-6">
+                <form key="step2" onSubmit={handleCreateDID} className="space-y-6" {...SECRET_KEY_FORM_ATTRS}>
                   <div className="space-y-4">
                     <h3 className="text-lg font-medium text-text-primary border-b border-border pb-2">Step 2: Confirm Your Information</h3>
                     
@@ -321,6 +324,7 @@ export function CreateDidModal(props: CreateDidModalProps) {
                       </label>
                       <div className="relative">
                         <input
+                          {...secretKeyInputProps('key1', 'create')}
                           type={showConfirmPNName ? "text" : "password"}
                           value={createForm.confirmPNName}
                           onChange={(e) => setCreateForm(prev => ({ ...prev, confirmPNName: e.target.value }))}
@@ -358,6 +362,7 @@ export function CreateDidModal(props: CreateDidModalProps) {
                       </label>
                       <div className="relative">
                         <input
+                          {...secretKeyInputProps('key2', 'create')}
                           type={showConfirmPasscode ? "text" : "password"}
                           value={createForm.confirmPasscode}
                           onChange={(e) => setCreateForm(prev => ({ ...prev, confirmPasscode: e.target.value }))}

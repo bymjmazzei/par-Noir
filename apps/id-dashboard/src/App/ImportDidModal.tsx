@@ -1,4 +1,11 @@
 import React from 'react';
+import { SECRET_KEY_FORM_ATTRS, secretKeyInputProps } from '@par-noir/oauth-ui';
+import {
+  KEY_1_LABEL,
+  KEY_2_LABEL,
+  KEY_1_PLACEHOLDER,
+  KEY_2_PLACEHOLDER,
+} from '../constants/credentialLabels';
 import type { ImportFormState } from '../hooks/useAppState';
 
 export interface ImportDidModalProps {
@@ -35,7 +42,7 @@ export function ImportDidModal(props: ImportDidModalProps) {
                   ×
                   </button>
                 </div>
-              <form onSubmit={handleImportDID} className="space-y-4">
+              <form onSubmit={handleImportDID} className="space-y-4" {...SECRET_KEY_FORM_ATTRS}>
                 <div>
                   <label className="block text-sm font-medium text-text-primary mb-1">
                     Identity File
@@ -53,27 +60,27 @@ export function ImportDidModal(props: ImportDidModalProps) {
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-text-primary mb-1">
-                    pN Name
+                    {KEY_1_LABEL}
                   </label>
                   <input
-                    type="text"
+                    {...secretKeyInputProps('key1', 'unlock')}
                     value={importForm.pnName}
                     onChange={(e) => setImportForm(prev => ({ ...prev, pnName: e.target.value }))}
                     className="w-full px-3 py-2 border border-input-border bg-input-bg text-text-primary rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
-                    placeholder="Enter Key 1"
+                    placeholder={KEY_1_PLACEHOLDER}
                     required
                   />
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-text-primary mb-1">
-                    Passcode
+                    {KEY_2_LABEL}
                   </label>
                   <input
-                    type="password"
+                    {...secretKeyInputProps('key2', 'unlock')}
                     value={importForm.passcode}
                     onChange={(e) => setImportForm(prev => ({ ...prev, passcode: e.target.value }))}
                     className="w-full px-3 py-2 border border-input-border bg-input-bg text-text-primary rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
-                    placeholder="Enter Key 2"
+                    placeholder={KEY_2_PLACEHOLDER}
                     required
                   />
                 </div>
