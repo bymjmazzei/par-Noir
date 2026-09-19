@@ -96,6 +96,16 @@ export interface PublicMetadata {
   publicToken?: string;
   isPublic: boolean;
   isNSFW?: boolean; // NSFW content flag
+  /**
+   * When set, public/community feeds hide the post after this time.
+   * Durable end state (unless persistOnDiscover): becomes private on the index.
+   */
+  expiresAt?: string | null;
+  /**
+   * When true, discover (no indexerId) may still show the post after expiresAt;
+   * community/indexer queries still hide after expiresAt. Default false.
+   */
+  persistOnDiscover?: boolean;
   
   // Linked Data
   sameAs?: string[];

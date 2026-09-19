@@ -357,7 +357,7 @@ export function setupAggregatorRoutes(app: any, deps: AggregatorRouteDeps) {
       const authorDid = metadata.creator?.identifier?.value || metadata.creator?.["@id"] || metadata.author?.did;
       
       // More lenient validation - allow missing fields with defaults
-      const validatedMetadata: Record<string, unknown> = {
+      const validatedMetadata: any = {
         ...metadata,
         backend: metadata.backend || 'google_drive',
         backendFileId: metadata.backendFileId || metadata.fileId,

@@ -178,6 +178,10 @@ export class AggregatorMetadataServiceDB {
       metadata.persistOnDiscover !== undefined
         ? metadata.persistOnDiscover === true
         : existingMetadata?.persistOnDiscover === true;
+    const expiryTouched =
+      metadata.expiresAt !== undefined ||
+      (metadata as { ttlSeconds?: unknown }).ttlSeconds !== undefined ||
+      metadata.persistOnDiscover !== undefined;
 
     // Validate and auto-fix fileType to match metadata content
     let validatedFileType = metadata.fileType || 'other';
