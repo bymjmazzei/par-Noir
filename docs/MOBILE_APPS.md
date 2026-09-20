@@ -16,12 +16,14 @@ The Dashboard, Browser, Messaging, Prism, and **Unlock** web apps are wrapped wi
 
 Canonical interactive unlock UI is **`https://unlock.parnoir.com`** (`ConsentUnlockApp` in `@par-noir/oauth-ui`). Callers use `buildOAuthConsentUrl` / `UnlockButton` — they never collect Key 1 / Key 2.
 
-- **Web fallback:** SPA on Firebase target `unlock` (site `unlock-parnoir`).
-- **Native:** Capacitor app claims Universal/App Links for `unlock.parnoir.com` (see `apps/pn-unlock/STORE_ASSOCIATION_CHECKLIST.md` and `src/nativeDeeplinkConfig.ts`).
+- **Web broker (live):** SPA on Firebase target `unlock` (site `unlock-parnoir`). Custom domain must show Connected TLS.
+- **Native claim:** Capacitor app `com.parnoir.unlock` — Universal/App Links for `unlock.parnoir.com`. **Phishing-hardening is not complete** until association stubs are burned down and [`ACCEPTANCE_MATRIX.md`](../apps/pn-unlock/ACCEPTANCE_MATRIX.md) native rows pass on real devices. See [`STORE_ASSOCIATION_CHECKLIST.md`](../apps/pn-unlock/STORE_ASSOCIATION_CHECKLIST.md) and [`INTERNAL_BUILDS.md`](../apps/pn-unlock/INTERNAL_BUILDS.md).
+- **Session vault:** Native enroll + biometric re-mint of sealed `unlock_keys` (includes `encryptedIdentityJson`) is wired in `apps/pn-unlock`; web has no vault.
 - **API:** `GET /oauth/consent` and `/oauth/authorize/consent` **302** to the unlock origin with `api_endpoint` for challenge/authenticate.
+- **Ratchet:** `scripts/check-unlock-association-stubs.sh` (pre-commit + CI) — Apple `TEAMID` may remain on the burn-down allowlist until filled; Android SHA256 stub is forbidden.
 - Env: `PN_UNLOCK_ORIGIN` (API), `VITE_UNLOCK_ORIGIN` / `VITE_API_ENDPOINT` (unlock + callers).
 
-After `npx cap add android|ios`, wire App Links / Associated Domains per the checklist. Store submission is ops, not a merge blocker.
+Public store submission paperwork is ops, not a merge blocker. Verified App Links + matrix pass **are** required before claiming the mobile trust story.
 
 ## Build and run
 

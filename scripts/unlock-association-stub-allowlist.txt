@@ -1,0 +1,4 @@
+# Burn-down: unlock association files that still contain placeholder stubs.
+# Entries are only ever REMOVED after filling real Apple Team ID / cert fingerprints.
+# Paths relative to repo root.
+apps/pn-unlock/public/.well-known/apple-app-site-association

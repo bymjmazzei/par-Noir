@@ -20,7 +20,12 @@ export type { ConsentAuthenticateResult, CompleteConsentUnlockInput } from './mi
 export { redirectWithAuthCode, denyOAuthConsent } from './redirectWithAuthCode';
 export type { RedirectWithAuthCodeArgs } from './redirectWithAuthCode';
 export { ConsentUnlockApp } from './ConsentUnlockApp';
-export type { ConsentUnlockAppProps } from './ConsentUnlockApp';
+export type {
+  ConsentUnlockAppProps,
+  ConsentVaultFactors,
+  ConsentVaultEnrollMaterial,
+} from './ConsentUnlockApp';
+export { toUnlockVaultEnrollMaterial, assertNoVaultSecretsOnWire } from './vaultEnroll';
 export {
   loadParNoirOAuthPhysical,
   physicalResultToBundle,

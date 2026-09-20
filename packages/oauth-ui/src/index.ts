@@ -201,6 +201,8 @@ export {
 } from './consentUnlock';
 export type {
   ConsentUnlockAppProps,
+  ConsentVaultFactors,
+  ConsentVaultEnrollMaterial,
   ConsentUnlockParams,
   ConsentAuthenticateResult,
   UnlockedIdentityBundle,
@@ -208,3 +210,4 @@ export type {
   PhysicalUnlockResult,
   NfcIdentityPayload,
 } from './consentUnlock';
+export { toUnlockVaultEnrollMaterial, assertNoVaultSecretsOnWire } from './consentUnlock';

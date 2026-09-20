@@ -27,6 +27,24 @@ import {
 } from './physicalUnlockLoader';
 import { denyOAuthConsent, redirectWithAuthCode } from './redirectWithAuthCode';
 import { consentUnlockCss, resolveConsentAssetBase } from './consentUnlockStyles';
+import { toUnlockVaultEnrollMaterial } from './vaultEnroll';
+
+/** Factors + sealed identity for biometric vault re-mint (never sent to API). */
+export type ConsentVaultFactors = {
+  pnName: string;
+  passcode: string;
+  /** JSON of EncryptedIdentityRow (or single-identity file shape). */
+  encryptedIdentityJson: string;
+};
+
+/** Material the host may seal into device-session-vault after a successful local unlock. */
+export type ConsentVaultEnrollMaterial = {
+  identityId: string;
+  publicKey: string;
+  pnName: string;
+  passcode: string;
+  encryptedIdentityJson: string;
+};
 
 export type ConsentUnlockAppProps = {
   /** Override search string (tests / deep links). Default: window.location.search */
@@ -36,6 +54,15 @@ export type ConsentUnlockAppProps = {
   openExternal?: (url: string) => void | Promise<void>;
   /** Optional branding asset base for logo / background (defaults to page origin) */
   assetBase?: string;
+  /**
+   * When set (native biometric path), decrypt + mint without the factor form.
+   * Host should clear after consume to avoid re-entry loops.
+   */
+  vaultFactors?: ConsentVaultFactors | null;
+  /** Fired after successful local decrypt (before redirect); host may offer vault enroll. */
+  onUnlockedForVault?: (material: ConsentVaultEnrollMaterial) => void | Promise<void>;
+  /** Called once vaultFactors path finishes or fails so the host can clear vaultFactors. */
+  onVaultFactorsConsumed?: () => void;
 };
 
 type Step = 'unlock' | 'consent';
@@ -115,15 +142,34 @@ export function ConsentUnlockApp(props: ConsentUnlockAppProps): React.ReactEleme
     [props.search, props.apiEndpointDefault]
   );
 
-  return <ConsentUnlockInner params={params} openExternal={props.openExternal} assetBase={props.assetBase} />;
+  return (
+    <ConsentUnlockInner
+      params={params}
+      openExternal={props.openExternal}
+      assetBase={props.assetBase}
+      vaultFactors={props.vaultFactors}
+      onUnlockedForVault={props.onUnlockedForVault}
+      onVaultFactorsConsumed={props.onVaultFactorsConsumed}
+    />
+  );
 }
 
 function ConsentUnlockInner(props: {
   params: ConsentUnlockParams;
   openExternal?: (url: string) => void | Promise<void>;
   assetBase?: string;
+  vaultFactors?: ConsentVaultFactors | null;
+  onUnlockedForVault?: (material: ConsentVaultEnrollMaterial) => void | Promise<void>;
+  onVaultFactorsConsumed?: () => void;
 }): React.ReactElement {
-  const { params, openExternal, assetBase } = props;
+  const {
+    params,
+    openExternal,
+    assetBase,
+    vaultFactors,
+    onUnlockedForVault,
+    onVaultFactorsConsumed,
+  } = props;
   const [step, setStep] = useState<Step>('unlock');
   const [unlockMode, setUnlockMode] = useState<UnlockMode>('file');
   const [pnName, setPnName] = useState('');
@@ -261,9 +307,18 @@ function ConsentUnlockInner(props: {
     }
   }, [dataPointIds.length, params.apiEndpoint]);
 
+  const notifyVault = useCallback(
+    async (unlocked: UnlockedIdentityBundle, key1: string, key2: string) => {
+      if (!onUnlockedForVault) return;
+      await onUnlockedForVault(toUnlockVaultEnrollMaterial(unlocked, key1, key2));
+    },
+    [onUnlockedForVault]
+  );
+
   const afterUnlock = useCallback(
-    async (unlocked: UnlockedIdentityBundle) => {
+    async (unlocked: UnlockedIdentityBundle, key1: string, key2: string) => {
       setBundle(unlocked);
+      await notifyVault(unlocked, key1, key2);
       const mint = await mintConsentAuthorizationCode({
         apiEndpoint: params.apiEndpoint,
         clientId: params.clientId,
@@ -294,8 +349,46 @@ function ConsentUnlockInner(props: {
       setDataPointChoices(initial);
       setStep('consent');
     },
-    [params, needsConsent, finishWithCode, loadCatalog, dataPointIds]
+    [params, needsConsent, finishWithCode, loadCatalog, dataPointIds, notifyVault]
   );
+
+  /** Biometric vault path: decrypt sealed identity + mint without the factor form. */
+  useEffect(() => {
+    if (!vaultFactors?.encryptedIdentityJson || !vaultFactors.pnName || !vaultFactors.passcode) {
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      setBusy(true);
+      setError(null);
+      try {
+        const raw = JSON.parse(vaultFactors.encryptedIdentityJson) as unknown;
+        const row = parseIdentityFileJson(raw);
+        const unlocked = await decryptIdentityFileLocal(
+          row,
+          vaultFactors.pnName,
+          vaultFactors.passcode
+        );
+        if (cancelled) return;
+        await afterUnlock(unlocked, vaultFactors.pnName, vaultFactors.passcode);
+      } catch (err) {
+        if (!cancelled) {
+          setError(err instanceof Error ? err.message : 'Biometric unlock failed');
+          setStep('unlock');
+        }
+      } finally {
+        if (!cancelled) {
+          setBusy(false);
+          onVaultFactorsConsumed?.();
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // Only re-run when vaultFactors identity changes (host clears after consume).
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional: vaultFactors object identity
+  }, [vaultFactors]);
 
   const onUnlock = useCallback(
     async (e: React.FormEvent) => {
@@ -350,7 +443,7 @@ function ConsentUnlockInner(props: {
           unlocked = await decryptIdentityFileLocal(row, pnName, passcode);
         }
 
-        await afterUnlock(unlocked);
+        await afterUnlock(unlocked, pnName, passcode);
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to unlock');
       } finally {
@@ -421,7 +514,15 @@ function ConsentUnlockInner(props: {
           </div>
         </div>
 
-        {step === 'unlock' && (
+        {step === 'unlock' && vaultFactors ? (
+          <div className="form-container">
+            <div className="step-indicator">Unlocking with biometrics…</div>
+            {error ? <div className="error">{error}</div> : null}
+            {busy ? <span className="loading" /> : null}
+          </div>
+        ) : null}
+
+        {step === 'unlock' && !vaultFactors && (
           <div className="form-container">
             <div className="step-indicator">Step 1: Unlock Your pN</div>
 

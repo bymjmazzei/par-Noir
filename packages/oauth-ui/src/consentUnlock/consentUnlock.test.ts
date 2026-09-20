@@ -3,6 +3,7 @@ import { authenticateWithUnlockProofDetailed } from './mintConsentCode';
 import { parseConsentUnlockParams, resolveUnlockOrigin } from './parseConsentParams';
 import { DEFAULT_UNLOCK_ORIGIN } from './constants';
 import { extractMlDsaSecretKeyB64 } from './extractMlDsa';
+import { toUnlockVaultEnrollMaterial, assertNoVaultSecretsOnWire } from './vaultEnroll';
 
 vi.mock('@par-noir/pqc-crypto/encoding', () => ({
   base64ToBytes: (s: string) => new TextEncoder().encode(s),
@@ -83,5 +84,45 @@ describe('extractMlDsaSecretKeyB64', () => {
         pqcSecrets: { mlDsaSecretKey: 'abc' },
       })
     ).toBe('abc');
+  });
+});
+
+describe('vault enroll material', () => {
+  it('includes sealed identity json for re-mint without re-upload', () => {
+    const material = toUnlockVaultEnrollMaterial(
+      {
+        did: 'did:pn:1',
+        publicKey: 'pk',
+        encryptedIdentity: {
+          publicKey: 'pk',
+          encryptedData: 'ed',
+          iv: 'iv',
+          salt: 'salt',
+        },
+        decryptedIdentity: { id: 'did:pn:1', username: 'u' },
+      },
+      'key1',
+      'key2'
+    );
+    expect(material.identityId).toBe('did:pn:1');
+    expect(material.encryptedIdentityJson).toContain('encryptedData');
+    expect(JSON.parse(material.encryptedIdentityJson).publicKey).toBe('pk');
+  });
+
+  it('rejects vault secrets on authenticate-shaped bodies', () => {
+    expect(() =>
+      assertNoVaultSecretsOnWire({
+        public_key: 'pk',
+        signature: 'sig',
+        passcode: 'nope',
+      })
+    ).toThrow(/passcode/);
+    expect(() =>
+      assertNoVaultSecretsOnWire({
+        public_key: 'pk',
+        signature: 'sig',
+        challenge_id: 'c',
+      })
+    ).not.toThrow();
   });
 });

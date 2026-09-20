@@ -76,6 +76,9 @@ jobs:
       - name: Unlock critical path (no await prefetch / no 20s handoff)
         run: bash scripts/check-unlock-critical-path.sh
 
+      - name: Unlock association stubs (TEAMID / SHA256)
+        run: bash scripts/check-unlock-association-stubs.sh
+
       - name: Messaging list hosts must not await drain
         run: bash scripts/check-messaging-list-no-await-drain.sh
 
