@@ -6,7 +6,9 @@ const pqcSrc = path.resolve(__dirname, '../../packages/pqc-crypto/src');
 const oauthUiSrc = path.resolve(__dirname, '../../packages/oauth-ui/src');
 
 export default defineConfig({
-  base: './',
+  // Absolute base so /oauth/consent does not resolve assets as /oauth/assets/*
+  // (Firebase SPA rewrite would serve index.html as JS and the app would never mount).
+  base: '/',
   plugins: [react()],
   resolve: {
     alias: {

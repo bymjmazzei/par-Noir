@@ -26,6 +26,7 @@ import {
   type NfcIdentityPayload,
 } from './physicalUnlockLoader';
 import { denyOAuthConsent, redirectWithAuthCode } from './redirectWithAuthCode';
+import { consentUnlockCss, resolveConsentAssetBase } from './consentUnlockStyles';
 
 export type ConsentUnlockAppProps = {
   /** Override search string (tests / deep links). Default: window.location.search */
@@ -33,7 +34,7 @@ export type ConsentUnlockAppProps = {
   apiEndpointDefault?: string;
   /** Capacitor: open redirect_uri outside the unlock WebView */
   openExternal?: (url: string) => void | Promise<void>;
-  /** Optional branding asset base for logo */
+  /** Optional branding asset base for logo / background (defaults to page origin) */
   assetBase?: string;
 };
 
@@ -41,100 +42,68 @@ type Step = 'unlock' | 'consent';
 type UnlockMode = 'file' | 'usb' | 'nfc';
 type DataPointChoice = '' | 'shared' | 'not-shared';
 
-const styles: Record<string, React.CSSProperties> = {
-  page: {
-    minHeight: '100vh',
-    margin: 0,
-    fontFamily:
-      "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif",
-    background: '#000',
-    color: '#fff',
-    display: 'flex',
-    flexDirection: 'column',
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 20,
-  },
-  container: { width: '100%', maxWidth: 420 },
-  formBox: {
-    background: 'rgba(26, 26, 26, 0.95)',
-    border: '1px solid #333',
-    borderRadius: 12,
-    padding: 32,
-  },
-  label: { display: 'block', color: '#e5e7eb', fontSize: 14, fontWeight: 500, marginBottom: 8 },
-  input: {
-    width: '100%',
-    padding: '12px 16px',
-    background: 'rgba(26, 26, 26, 0.95)',
-    border: '1px solid #333',
-    borderRadius: 8,
-    color: '#fff',
-    fontSize: 14,
-    boxSizing: 'border-box' as const,
-  },
-  error: {
-    background: '#7f1d1d',
-    border: '1px solid #991b1b',
-    color: '#fca5a5',
-    padding: 12,
-    borderRadius: 8,
-    fontSize: 14,
-    marginBottom: 16,
-  },
-  btnRow: { display: 'flex', gap: 12, marginTop: 24 },
-  btn: {
-    flex: 1,
-    padding: '12px 24px',
-    borderRadius: 8,
-    fontSize: 14,
-    fontWeight: 500,
-    cursor: 'pointer',
-    background: 'rgba(26, 26, 26, 0.95)',
-    border: '1px solid #4b5563',
-    color: '#fff',
-  },
-  modeRow: { display: 'flex', gap: 8, marginBottom: 20 },
-  modeBtn: {
-    flex: 1,
-    padding: '10px 8px',
-    fontSize: 13,
-    borderRadius: 8,
-    cursor: 'pointer',
-    background: 'rgba(40, 40, 40, 0.95)',
-    border: '1px solid #444',
-    color: '#9ca3af',
-  },
-  modeBtnActive: {
-    borderColor: '#3b82f6',
-    color: '#fff',
-    background: 'rgba(30, 58, 138, 0.35)',
-  },
-  fileArea: {
-    border: '2px dashed #4b5563',
-    borderRadius: 8,
-    padding: 16,
-    textAlign: 'center' as const,
-    cursor: 'pointer',
-    marginBottom: 16,
-  },
-  hint: { color: '#6b7280', fontSize: 12, marginBottom: 16, lineHeight: 1.4 },
-  step: {
-    textAlign: 'center' as const,
-    fontSize: 12,
-    textTransform: 'uppercase' as const,
-    letterSpacing: 1,
-    marginBottom: 24,
-    color: '#fff',
-  },
-  permItem: {
-    display: 'flex',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    marginBottom: 12,
-    gap: 12,
-  },
-};
+function EyeIcon({ open }: { open: boolean }): React.ReactElement {
+  if (open) {
+    return (
+      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden>
+        <path
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          strokeWidth={2}
+          d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21"
+        />
+      </svg>
+    );
+  }
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden>
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth={2}
+        d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
+      />
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth={2}
+        d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"
+      />
+    </svg>
+  );
+}
+
+function FileDrop(props: {
+  hasFile: boolean;
+  title: string;
+  hint?: string;
+  inputId: string;
+  accept?: string;
+  onFile: (file: File | null) => void;
+}): React.ReactElement {
+  const open = () => document.getElementById(props.inputId)?.click();
+  return (
+    <div
+      className={`file-upload-area${props.hasFile ? ' has-file' : ''}`}
+      onClick={open}
+      onKeyDown={(ev) => {
+        if (ev.key === 'Enter' || ev.key === ' ') open();
+      }}
+      role="button"
+      tabIndex={0}
+    >
+      <div className="upload-icon">↑</div>
+      <div className="file-name">{props.title}</div>
+      {props.hint ? <div className="file-hint">{props.hint}</div> : null}
+      <input
+        id={props.inputId}
+        type="file"
+        accept={props.accept}
+        onChange={(ev) => props.onFile(ev.target.files?.[0] || null)}
+      />
+    </div>
+  );
+}
 
 export function ConsentUnlockApp(props: ConsentUnlockAppProps): React.ReactElement {
   const params = useMemo(
@@ -428,7 +397,8 @@ function ConsentUnlockInner(props: {
 
   const key1Props = secretKeyInputProps('key1', 'unlock');
   const key2Props = secretKeyInputProps('key2', 'unlock');
-  const logoSrc = `${(assetBase || 'https://browse.parnoir.com').replace(/\/$/, '')}/branding/Par-Noir-Icon-White.png`;
+  const resolvedAssetBase = resolveConsentAssetBase(assetBase);
+  const logoSrc = `${resolvedAssetBase}/branding/Par-Noir-Logo-White.png`;
 
   let redirectHost = params.redirectUri;
   try {
@@ -437,113 +407,97 @@ function ConsentUnlockInner(props: {
     /* keep */
   }
 
-  const modeBtnStyle = (mode: UnlockMode): React.CSSProperties => ({
-    ...styles.modeBtn,
-    ...(unlockMode === mode ? styles.modeBtnActive : null),
-  });
+  const genericScopes = params.scope
+    .split(/\s+/)
+    .filter((s) => s && !s.startsWith('datapoint:') && s !== 'cloud:app' && !s.startsWith('cloud:'));
 
   return (
-    <div style={styles.page}>
-      <div style={styles.container}>
-        <div style={{ textAlign: 'center', marginBottom: 32 }}>
-          <img src={logoSrc} alt="par Noir" style={{ width: 96, height: 96, objectFit: 'contain' }} />
-          <h1 style={{ fontSize: 22, marginTop: 12 }}>Unlock pN</h1>
-          <p style={{ color: '#9ca3af', fontSize: 14, marginTop: 8 }}>
-            {params.clientId} · {redirectHost}
-          </p>
+    <div className="pn-consent-page">
+      <style>{consentUnlockCss(resolvedAssetBase)}</style>
+      <div className="container">
+        <div className="header">
+          <div className="logo-container">
+            <img src={logoSrc} alt="par Noir" />
+          </div>
         </div>
 
         {step === 'unlock' && (
-          <div style={styles.formBox}>
-            <div style={styles.step}>Step 1 — Unlock</div>
-            {error && <div style={styles.error}>{error}</div>}
+          <div className="form-container">
+            <div className="step-indicator">Step 1: Unlock Your pN</div>
 
-            <div style={styles.modeRow} role="tablist" aria-label="Unlock method">
-              <button type="button" style={modeBtnStyle('file')} onClick={() => changeMode('file')}>
+            <div className="mode-row" role="tablist" aria-label="Unlock method">
+              <button
+                type="button"
+                className={`mode-btn${unlockMode === 'file' ? ' active' : ''}`}
+                onClick={() => changeMode('file')}
+              >
                 File
               </button>
-              <button type="button" style={modeBtnStyle('usb')} onClick={() => changeMode('usb')}>
+              <button
+                type="button"
+                className={`mode-btn${unlockMode === 'usb' ? ' active' : ''}`}
+                onClick={() => changeMode('usb')}
+              >
                 USB
               </button>
-              <button type="button" style={modeBtnStyle('nfc')} onClick={() => changeMode('nfc')}>
+              <button
+                type="button"
+                className={`mode-btn${unlockMode === 'nfc' ? ' active' : ''}`}
+                onClick={() => changeMode('nfc')}
+              >
                 NFC
               </button>
             </div>
 
             <form {...SECRET_KEY_FORM_ATTRS} onSubmit={onUnlock}>
               {unlockMode === 'file' && (
-                <div
-                  style={styles.fileArea}
-                  onClick={() => document.getElementById('pn-identity-file')?.click()}
-                  onKeyDown={(ev) => {
-                    if (ev.key === 'Enter' || ev.key === ' ') {
-                      document.getElementById('pn-identity-file')?.click();
-                    }
-                  }}
-                  role="button"
-                  tabIndex={0}
-                >
-                  <div style={{ color: '#e5e7eb', fontWeight: 500 }}>{fileName || 'Select .pn identity file'}</div>
-                  <div style={{ color: '#6b7280', fontSize: 12, marginTop: 4 }}>File stays on this device</div>
-                  <input
-                    id="pn-identity-file"
-                    type="file"
-                    accept=".pn,.json,application/json"
-                    style={{ display: 'none' }}
-                    onChange={(ev) => void onFile(ev.target.files?.[0] || null)}
+                <div className="form-group">
+                  <label>pN Identity File</label>
+                  <FileDrop
+                    hasFile={!!fileName}
+                    title={fileName || 'Tap to upload pN file'}
+                    hint="(.did or .json files)"
+                    inputId="pn-identity-file"
+                    accept=".did,.json,.pn,.id,.identity,application/json"
+                    onFile={(f) => void onFile(f)}
                   />
                 </div>
               )}
 
               {unlockMode === 'usb' && (
                 <>
-                  <p style={styles.hint}>
-                    Use the USB key export from the dashboard (key file + drive passcode; optional payload).
+                  <p className="physical-hint">
+                    Use the same USB backup as in the dashboard: key file (and payload if you use two
+                    files), plus the drive passcode you set when exporting.
                   </p>
-                  <div
-                    style={styles.fileArea}
-                    onClick={() => document.getElementById('pn-usb-key')?.click()}
-                    role="button"
-                    tabIndex={0}
-                    onKeyDown={(ev) => {
-                      if (ev.key === 'Enter' || ev.key === ' ') document.getElementById('pn-usb-key')?.click();
-                    }}
-                  >
-                    <div style={{ color: '#e5e7eb', fontWeight: 500 }}>{usbKeyName || 'Select key file'}</div>
-                    <input
-                      id="pn-usb-key"
-                      type="file"
-                      style={{ display: 'none' }}
-                      onChange={(ev) => void onUsbKey(ev.target.files?.[0] || null)}
+                  <div className="form-group">
+                    <label>Key file (parnoir-key.enc)</label>
+                    <FileDrop
+                      hasFile={!!usbKeyName}
+                      title={usbKeyName || 'Select key file'}
+                      inputId="pn-usb-key"
+                      accept=".enc,application/octet-stream,text/plain,.json"
+                      onFile={(f) => void onUsbKey(f)}
                     />
                   </div>
-                  <div
-                    style={styles.fileArea}
-                    onClick={() => document.getElementById('pn-usb-payload')?.click()}
-                    role="button"
-                    tabIndex={0}
-                    onKeyDown={(ev) => {
-                      if (ev.key === 'Enter' || ev.key === ' ') document.getElementById('pn-usb-payload')?.click();
-                    }}
-                  >
-                    <div style={{ color: '#e5e7eb', fontWeight: 500 }}>
-                      {usbPayloadName || 'Optional — parnoir-payload.enc'}
-                    </div>
-                    <input
-                      id="pn-usb-payload"
-                      type="file"
-                      style={{ display: 'none' }}
-                      onChange={(ev) => void onUsbPayload(ev.target.files?.[0] || null)}
-                    />
-                  </div>
-                  <div style={{ marginBottom: 16 }}>
-                    <label style={styles.label}>Drive passcode</label>
+                  <div className="form-group">
+                    <label>Drive passcode</label>
                     <input
                       type="password"
                       autoComplete="off"
-                      style={styles.input}
+                      placeholder="Passcode for USB key file"
                       value={usbDrivePasscode}
                       onChange={(ev) => setUsbDrivePasscode(ev.target.value)}
+                    />
+                  </div>
+                  <div className="form-group">
+                    <label>Payload file (if separate)</label>
+                    <FileDrop
+                      hasFile={!!usbPayloadName}
+                      title={usbPayloadName || 'Optional — parnoir-payload.enc'}
+                      inputId="pn-usb-payload"
+                      accept=".enc,application/json,text/plain"
+                      onFile={(f) => void onUsbPayload(f)}
                     />
                   </div>
                 </>
@@ -551,127 +505,186 @@ function ConsentUnlockInner(props: {
 
               {unlockMode === 'nfc' && (
                 <>
-                  <p style={styles.hint}>Web NFC on Chrome Android. Tap the card, then enter Key 1 and Key 2.</p>
+                  <p className="physical-hint">
+                    Hold your NFC card or fob to the back of your phone (Chrome on Android). Then enter
+                    Key 1 and Key 2 below.
+                  </p>
                   <button
                     type="button"
-                    style={{ ...styles.btn, marginBottom: 12 }}
+                    className="btn-primary btn-full"
+                    style={{ marginBottom: 8 }}
                     disabled={nfcScanning || busy}
                     onClick={() => void onNfcScan()}
                   >
                     {nfcScanning ? 'Scanning…' : 'Tap NFC card'}
                   </button>
-                  {nfcStatus ? (
-                    <p style={{ color: nfcPayload ? '#86efac' : '#9ca3af', fontSize: 13, marginBottom: 16 }}>
-                      {nfcStatus}
-                    </p>
-                  ) : null}
+                  <div className={`nfc-status${nfcPayload ? ' ok' : ''}`}>{nfcStatus}</div>
                 </>
               )}
 
-              <div style={{ marginBottom: 16 }}>
-                <label style={styles.label}>Key 1</label>
-                <input
-                  {...key1Props}
-                  type={showKey1 ? 'text' : 'password'}
-                  style={styles.input}
-                  value={pnName}
-                  onChange={(ev) => setPnName(ev.target.value)}
-                />
-                <button type="button" style={{ ...styles.btn, marginTop: 8 }} onClick={() => setShowKey1((v) => !v)}>
-                  {showKey1 ? 'Hide' : 'Show'}
-                </button>
+              <div className="form-group">
+                <label>Key 1</label>
+                <div className="input-wrapper">
+                  <input
+                    {...key1Props}
+                    type={showKey1 ? 'text' : 'password'}
+                    placeholder="Enter Key 1"
+                    value={pnName}
+                    onChange={(ev) => setPnName(ev.target.value)}
+                  />
+                  <button
+                    type="button"
+                    className="eye-toggle"
+                    aria-label="Toggle Key 1 visibility"
+                    onClick={() => setShowKey1((v) => !v)}
+                  >
+                    <EyeIcon open={showKey1} />
+                  </button>
+                </div>
               </div>
 
-              <div style={{ marginBottom: 16 }}>
-                <label style={styles.label}>Key 2</label>
-                <input
-                  {...key2Props}
-                  type={showKey2 ? 'text' : 'password'}
-                  style={styles.input}
-                  value={passcode}
-                  onChange={(ev) => setPasscode(ev.target.value)}
-                />
-                <button type="button" style={{ ...styles.btn, marginTop: 8 }} onClick={() => setShowKey2((v) => !v)}>
-                  {showKey2 ? 'Hide' : 'Show'}
-                </button>
+              <div className="form-group">
+                <label>Key 2</label>
+                <div className="input-wrapper">
+                  <input
+                    {...key2Props}
+                    type={showKey2 ? 'text' : 'password'}
+                    placeholder="Enter Key 2"
+                    value={passcode}
+                    onChange={(ev) => setPasscode(ev.target.value)}
+                  />
+                  <button
+                    type="button"
+                    className="eye-toggle"
+                    aria-label="Toggle Key 2 visibility"
+                    onClick={() => setShowKey2((v) => !v)}
+                  >
+                    <EyeIcon open={showKey2} />
+                  </button>
+                </div>
               </div>
 
-              <button type="submit" style={styles.btn} disabled={busy}>
-                {busy ? 'Unlocking…' : 'Unlock pN'}
+              {error ? <div className="error">{error}</div> : null}
+
+              <button type="submit" className="btn-primary btn-full" disabled={busy}>
+                {busy ? (
+                  <>
+                    <span className="loading" />
+                    Unlocking…
+                  </>
+                ) : (
+                  'Unlock pN'
+                )}
               </button>
             </form>
           </div>
         )}
 
         {step === 'consent' && (
-          <div style={styles.formBox}>
-            <div style={styles.step}>Step 2 — Consent</div>
-            <p style={{ color: '#9ca3af', fontSize: 13, marginBottom: 16 }}>
-              Identity <code>{pnIdentifier}</code>
-            </p>
-            {error && <div style={styles.error}>{error}</div>}
+          <div className="form-container">
+            <div className="step-indicator">Step 2: Authorize Application</div>
 
-            {!isMessagingHandoffClient(params.clientId) && (
-              <div style={{ marginBottom: 16, color: '#e5e7eb', fontSize: 14 }}>
-                <div>• Verify your identity</div>
-                <div>• Access profile information allowed by scopes</div>
+            <div className="app-info">
+              <div className="app-icon">
+                <img src={logoSrc} alt="par Noir" />
               </div>
-            )}
-
-            {integrator && (
-              <div style={{ marginBottom: 16, fontSize: 14, color: '#e5e7eb' }}>
-                App storage under <code>integrators/{params.clientId}/</code>
+              <div className="app-details">
+                <div className="app-name">{params.clientId}</div>
+                <div className="app-url">{redirectHost}</div>
               </div>
-            )}
+            </div>
 
-            {cloudAccess && (
-              <div style={{ marginBottom: 16, fontSize: 14, color: '#9ca3af' }}>
-                Cloud access scopes requested
+            {error ? <div className="error">{error}</div> : null}
+
+            <div className="permissions-list">
+              <div className="permission-item">
+                <div className="permission-text">
+                  <div className="permission-title">
+                    pN Identifier <span className="required-badge">(Required)</span>
+                  </div>
+                  <div className="permission-desc">{pnIdentifier || '…'}</div>
+                </div>
               </div>
-            )}
 
-            {dataPointIds.map((id) => {
-              const meta = catalog[id] || {};
-              const offerable =
-                availableDataPoints &&
-                availableDataPoints[id] &&
-                availableDataPoints[id].available === true;
-              return (
-                <div key={id} style={styles.permItem}>
-                  <div>
-                    <div style={{ fontWeight: 500 }}>{meta.name || id}</div>
-                    <div style={{ fontSize: 12, color: '#9ca3af' }}>
-                      {offerable
-                        ? meta.description || `Share this proof with ${params.clientId}`
-                        : availableDataPoints == null
-                          ? 'Proof availability unknown (cloud not readable during unlock).'
-                          : 'You do not have this proof available to share.'}
+              {integrator && (
+                <div className="permission-item">
+                  <div className="permission-text">
+                    <div className="permission-title">App storage on your Drive</div>
+                    <div className="permission-desc">
+                      This app may store its own files in your par Noir folder under{' '}
+                      <strong>integrators/{params.clientId}/</strong>. Standard pN data points stay in
+                      your pN metadata and are shared only through par Noir APIs, not copied into this
+                      folder.
                     </div>
                   </div>
-                  {offerable && (
-                    <select
-                      value={dataPointChoices[id] || ''}
-                      onChange={(ev) =>
-                        setDataPointChoices((prev) => ({
-                          ...prev,
-                          [id]: ev.target.value as DataPointChoice,
-                        }))
-                      }
-                      style={{ ...styles.input, width: 120 }}
-                    >
-                      <option value="">Select…</option>
-                      <option value="shared">Share</option>
-                      <option value="not-shared">Don&apos;t Share</option>
-                    </select>
-                  )}
                 </div>
-              );
-            })}
+              )}
 
-            <div style={styles.btnRow}>
+              {!isMessagingHandoffClient(params.clientId) && genericScopes.length > 0 && (
+                <div className="permission-item">
+                  <div className="permission-text">
+                    <div className="permission-title">Requested permissions</div>
+                    <div className="permission-desc">{genericScopes.join(', ')}</div>
+                  </div>
+                </div>
+              )}
+
+              {cloudAccess && (
+                <div className="permission-item">
+                  <div className="permission-text">
+                    <div className="permission-title">
+                      Secure Cloud Access <span className="required-badge">(Required)</span>
+                    </div>
+                    <div className="permission-desc">
+                      Access your media, companion metadata, and engagements stored in your secure cloud
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {dataPointIds.map((id) => {
+                const meta = catalog[id] || {};
+                const offerable =
+                  availableDataPoints &&
+                  availableDataPoints[id] &&
+                  availableDataPoints[id].available === true;
+                return (
+                  <div key={id} className="permission-item">
+                    <div className="permission-text">
+                      <div className="permission-title">{meta.name || id}</div>
+                      <div className="permission-desc">
+                        {offerable
+                          ? meta.description || `Share this proof with ${params.clientId}`
+                          : availableDataPoints == null
+                            ? 'Proof availability unknown (cloud not readable during unlock).'
+                            : 'You do not have this proof available to share.'}
+                      </div>
+                    </div>
+                    {offerable && (
+                      <select
+                        className="permission-select"
+                        value={dataPointChoices[id] || ''}
+                        onChange={(ev) =>
+                          setDataPointChoices((prev) => ({
+                            ...prev,
+                            [id]: ev.target.value as DataPointChoice,
+                          }))
+                        }
+                      >
+                        <option value="">Select…</option>
+                        <option value="shared">Share</option>
+                        <option value="not-shared">Don&apos;t Share</option>
+                      </select>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+
+            <div className="button-group">
               <button
                 type="button"
-                style={styles.btn}
+                className="btn-cancel"
                 disabled={busy}
                 onClick={() =>
                   denyOAuthConsent({
@@ -683,7 +696,7 @@ function ConsentUnlockInner(props: {
               >
                 Deny
               </button>
-              <button type="button" style={styles.btn} disabled={busy} onClick={() => void onApprove()}>
+              <button type="button" className="btn-primary" disabled={busy} onClick={() => void onApprove()}>
                 {busy ? 'Continuing…' : 'Approve'}
               </button>
             </div>
