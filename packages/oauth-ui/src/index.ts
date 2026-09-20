@@ -1,11 +1,10 @@
-export { LockIcon } from './LockIcon';
-export { UnlockIcon } from './UnlockIcon';
 export {
   UnlockButton,
   buildOAuthAuthorizeUrl,
   buildOAuthConsentUrl,
   buildBrowserAppOAuthUnlockUrl,
   startPnOAuthPopup,
+  startPnOAuthUnlock,
 } from './UnlockButton';
 export type { UnlockButtonConfig, UnlockButtonProps } from './UnlockButton';
 export type { OAuthConsentUrlConfig, BrowserAppOAuthUnlockUrlConfig, PnOAuthPopupResult, StartPnOAuthPopupOptions } from './pnOAuthPopup';
@@ -170,3 +169,40 @@ export type {
   SecretKeyMode,
   SecretKeyInputProps,
 } from './secretKeyInputAttrs';
+export {
+  SessionVaultEnrollPrompt,
+  SessionVaultUnlockOverlay,
+} from './sessionVaultUi';
+export type {
+  SessionVaultEnrollPromptProps,
+  SessionVaultUnlockOverlayProps,
+} from './sessionVaultUi';
+export {
+  ConsentUnlockApp,
+  MESSAGING_HANDOFF_CLIENT_IDS,
+  isMessagingHandoffClient,
+  DEFAULT_UNLOCK_ORIGIN,
+  UNLOCK_APP_ID,
+  UNLOCK_CUSTOM_SCHEME,
+  parseConsentUnlockParams,
+  resolveUnlockOrigin,
+  isUnlockBrokerHost,
+  mintConsentAuthorizationCode,
+  authenticateWithUnlockProofDetailed,
+  decryptIdentityFileLocal,
+  parseIdentityFileJson,
+  extractMlDsaSecretKeyB64,
+  redirectWithAuthCode,
+  denyOAuthConsent,
+  loadParNoirOAuthPhysical,
+  physicalResultToBundle,
+} from './consentUnlock';
+export type {
+  ConsentUnlockAppProps,
+  ConsentUnlockParams,
+  ConsentAuthenticateResult,
+  UnlockedIdentityBundle,
+  DecryptedIdentityRecord,
+  PhysicalUnlockResult,
+  NfcIdentityPayload,
+} from './consentUnlock';

@@ -7,7 +7,7 @@ import {
 } from './pnOAuthPopup';
 
 export type { OAuthConsentUrlConfig, BrowserAppOAuthUnlockUrlConfig } from './pnOAuthPopup';
-export { buildOAuthConsentUrl, buildOAuthAuthorizeUrl, buildBrowserAppOAuthUnlockUrl, startPnOAuthPopup } from './pnOAuthPopup';
+export { buildOAuthConsentUrl, buildOAuthAuthorizeUrl, buildBrowserAppOAuthUnlockUrl, startPnOAuthPopup, startPnOAuthUnlock } from './pnOAuthPopup';
 export type { PnOAuthPopupResult } from './pnOAuthPopup';
 
 export interface UnlockButtonConfig {
@@ -17,6 +17,7 @@ export interface UnlockButtonConfig {
   scope?: string[];
   state?: string;
   nonce?: string;
+  unlockOrigin?: string;
 }
 
 function generateState(): string {

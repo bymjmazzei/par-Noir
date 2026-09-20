@@ -5,6 +5,7 @@
  */
 
 import { Lock, Heart, MessageCircle, Share2 } from 'lucide-react';
+import { Capacitor } from '@capacitor/core';
 import { UnlockButton, type PnOAuthPopupResult } from '@par-noir/oauth-ui';
 import { useUserState } from '../contexts/UserStateContext';
 import { PNOAuthService } from '../services/pnOAuthService';
@@ -27,6 +28,7 @@ interface PNConnectProps {
 export function PNConnect({ onConnect, compact = false }: PNConnectProps) {
   const { setUnlocked, userState, updateDisplayName } = useUserState();
   const { success, error: showError } = useToast();
+  const forceRedirect = Capacitor.isNativePlatform();
 
   const handlePopupResult = async (result: PnOAuthPopupResult) => {
     if (result.error) {
@@ -83,6 +85,8 @@ export function PNConnect({ onConnect, compact = false }: PNConnectProps) {
             redirectUri: browseOAuthRedirectUri(),
             scope: ['openid', 'profile'],
           }}
+          forceRedirect={forceRedirect}
+          completeViaParentNavigation={forceRedirect}
           onPopupResult={handlePopupResult}
           onPopupFlowFailed={(msg) => showError(msg)}
           className="flex items-center space-x-2 px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors"
@@ -129,6 +133,8 @@ export function PNConnect({ onConnect, compact = false }: PNConnectProps) {
               redirectUri: browseOAuthRedirectUri(),
               scope: ['openid', 'profile'],
             }}
+            forceRedirect={forceRedirect}
+            completeViaParentNavigation={forceRedirect}
             onPopupResult={handlePopupResult}
             onPopupFlowFailed={(msg) => showError(msg)}
             className="px-6 py-3 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 transition-colors"

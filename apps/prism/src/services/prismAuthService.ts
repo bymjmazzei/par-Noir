@@ -163,4 +163,10 @@ export async function getSession(): Promise<PrismSession | null> {
 
 export async function clearSession(): Promise<void> {
   await secureStorageAdapter.removeItem(SESSION_KEY);
+  try {
+    const { wipePrismSessionVaultOnLogout } = await import('../components/PrismSessionVaultHost');
+    await wipePrismSessionVaultOnLogout();
+  } catch {
+    /* ignore */
+  }
 }

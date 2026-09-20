@@ -1,5 +1,6 @@
 import { pushPnOAuthDebug } from './pnOAuthDebug';
 import { handoffProvidesMessagingSession, PN_MESSAGING_OAUTH_HANDOFF_STORAGE } from './messagingOAuthHandoff';
+import { resolveUnlockOrigin } from './consentUnlock/parseConsentParams';
 
 /**
  * Shared pN OAuth popup flow. Must stay in sync with static oauth-callback.html
@@ -41,6 +42,11 @@ export interface OAuthConsentUrlConfig {
   forPopup?: boolean;
   /** Force identity unlock on consent even when OAuth permissions already exist */
   identityHandoffRequired?: boolean;
+  /**
+   * Unlock broker origin (default https://unlock.parnoir.com).
+   * Challenge/authenticate still use apiEndpoint.
+   */
+  unlockOrigin?: string;
 }
 
 export interface PnOAuthPopupResult {
@@ -63,13 +69,16 @@ function generateRandomHex(bytes: number): string {
 }
 
 /**
- * Build URL to the single OAuth unlock surface: API /oauth/consent.
+ * Build URL to the single OAuth unlock surface: unlock broker `/oauth/consent`.
+ * API remains the token/challenge host via `api_endpoint` query param.
  */
 export function buildOAuthConsentUrl(config: OAuthConsentUrlConfig): string {
   const state = config.state ?? generateRandomHex(16);
   const nonce = config.nonce ?? generateRandomHex(16);
   const scope = (config.scope ?? ['openid', 'profile']).join(' ');
   const forPopup = config.forPopup !== false;
+  const apiEndpoint = config.apiEndpoint.replace(/\/$/, '');
+  const unlockBase = resolveUnlockOrigin(config.unlockOrigin);
 
   const params = new URLSearchParams({
     client_id: config.clientId,
@@ -78,6 +87,7 @@ export function buildOAuthConsentUrl(config: OAuthConsentUrlConfig): string {
     scope,
     state,
     nonce,
+    api_endpoint: apiEndpoint,
   });
   if (forPopup) {
     params.set('popup', 'true');
@@ -86,8 +96,7 @@ export function buildOAuthConsentUrl(config: OAuthConsentUrlConfig): string {
     params.set('identity_handoff', 'required');
   }
 
-  const base = config.apiEndpoint.replace(/\/$/, '');
-  return `${base}/oauth/consent?${params.toString()}`;
+  return `${unlockBase}/oauth/consent?${params.toString()}`;
 }
 
 /** browser-app / messaging: same-origin unlock page (not API consent). */
@@ -630,4 +639,12 @@ export function startPnOAuthPopup(options: StartPnOAuthPopupOptions): Promise<Pn
       }
     }, timeoutMs);
   });
+}
+
+/**
+ * Launch unlock broker (popup on web; callers should use full-page on native Cap).
+ * Same handoff contract as startPnOAuthPopup.
+ */
+export function startPnOAuthUnlock(options: StartPnOAuthPopupOptions): Promise<PnOAuthPopupResult> {
+  return startPnOAuthPopup(options);
 }

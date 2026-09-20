@@ -28,6 +28,7 @@ import {
 } from './services/ownedAssetService';
 import { AuthenticatedShell } from './App/AuthenticatedShell';
 import { AppModals } from './App/AppModals';
+import { DashboardSessionVaultHost } from './components/DashboardSessionVaultHost';
 import { UnlockGate } from './App/UnlockGate';
 import { CreateDidModal } from './App/CreateDidModal';
 import { ImportDidModal } from './App/ImportDidModal';
@@ -1326,6 +1327,11 @@ function App() {
         pnIdentifier={recoveryVaultPnId}
         sessionId={authenticatedUser?.id ?? null}
       >
+        <DashboardSessionVaultHost
+          storage={storage}
+          authenticatedUser={authenticatedUser}
+          onAuthSuccess={handleAuthSuccess}
+        />
         <UnlockGate
           authenticatedUser={authenticatedUser}
           showTransferReceiver={showTransferReceiver}

@@ -324,6 +324,15 @@ export function useAuthUnlockHandlers(params: UseAuthUnlockHandlersParams) {
     try {
       logDebug('Logging out...');
       
+      try {
+        const { wipeDashboardSessionVaultOnLogout } = await import(
+          '../components/DashboardSessionVaultHost'
+        );
+        await wipeDashboardSessionVaultOnLogout();
+      } catch {
+        /* ignore */
+      }
+
       // SECURITY: Clear all credentials from memory
       SecureCredentialManager.clearAll();
       

@@ -35,7 +35,39 @@
     return out;
   }
 
-  // ../../node_modules/@noble/hashes/utils.js
+  // node_modules/@noble/curves/utils.js
+  function abool(value, title = "") {
+    if (typeof value !== "boolean") {
+      const prefix = title && `"${title}" `;
+      throw new Error(prefix + "expected boolean, got type=" + typeof value);
+    }
+    return value;
+  }
+
+  // node_modules/@noble/post-quantum/node_modules/@noble/hashes/_u64.js
+  var U32_MASK64 = /* @__PURE__ */ BigInt(2 ** 32 - 1);
+  var _32n = /* @__PURE__ */ BigInt(32);
+  function fromBig(n, le = false) {
+    if (le)
+      return { h: Number(n & U32_MASK64), l: Number(n >> _32n & U32_MASK64) };
+    return { h: Number(n >> _32n & U32_MASK64) | 0, l: Number(n & U32_MASK64) | 0 };
+  }
+  function split(lst, le = false) {
+    const len = lst.length;
+    let Ah = new Uint32Array(len);
+    let Al = new Uint32Array(len);
+    for (let i = 0; i < len; i++) {
+      const { h, l } = fromBig(lst[i], le);
+      [Ah[i], Al[i]] = [h, l];
+    }
+    return [Ah, Al];
+  }
+  var rotlSH = (h, l, s) => h << s | l >>> 32 - s;
+  var rotlSL = (h, l, s) => l << s | h >>> 32 - s;
+  var rotlBH = (h, l, s) => l << s - 32 | h >>> 64 - s;
+  var rotlBL = (h, l, s) => h << s - 32 | l >>> 64 - s;
+
+  // node_modules/@noble/post-quantum/node_modules/@noble/hashes/utils.js
   function isBytes(a) {
     return a instanceof Uint8Array || ArrayBuffer.isView(a) && a.constructor.name === "Uint8Array";
   }
@@ -123,39 +155,7 @@
     oid: Uint8Array.from([6, 9, 96, 134, 72, 1, 101, 3, 4, 2, suffix])
   });
 
-  // ../../node_modules/@noble/hashes/_u64.js
-  var U32_MASK64 = /* @__PURE__ */ BigInt(2 ** 32 - 1);
-  var _32n = /* @__PURE__ */ BigInt(32);
-  function fromBig(n, le = false) {
-    if (le)
-      return { h: Number(n & U32_MASK64), l: Number(n >> _32n & U32_MASK64) };
-    return { h: Number(n >> _32n & U32_MASK64) | 0, l: Number(n & U32_MASK64) | 0 };
-  }
-  function split(lst, le = false) {
-    const len = lst.length;
-    let Ah = new Uint32Array(len);
-    let Al = new Uint32Array(len);
-    for (let i = 0; i < len; i++) {
-      const { h, l } = fromBig(lst[i], le);
-      [Ah[i], Al[i]] = [h, l];
-    }
-    return [Ah, Al];
-  }
-  var rotlSH = (h, l, s) => h << s | l >>> 32 - s;
-  var rotlSL = (h, l, s) => l << s | h >>> 32 - s;
-  var rotlBH = (h, l, s) => l << s - 32 | h >>> 64 - s;
-  var rotlBL = (h, l, s) => h << s - 32 | l >>> 64 - s;
-
-  // ../../node_modules/@noble/curves/utils.js
-  function abool(value, title = "") {
-    if (typeof value !== "boolean") {
-      const prefix = title && `"${title}" `;
-      throw new Error(prefix + "expected boolean, got type=" + typeof value);
-    }
-    return value;
-  }
-
-  // ../../node_modules/@noble/hashes/sha3.js
+  // node_modules/@noble/post-quantum/node_modules/@noble/hashes/sha3.js
   var _0n = BigInt(0);
   var _1n = BigInt(1);
   var _2n = BigInt(2);
@@ -341,7 +341,7 @@
   var shake128 = /* @__PURE__ */ genShake(31, 168, 16, /* @__PURE__ */ oidNist(11));
   var shake256 = /* @__PURE__ */ genShake(31, 136, 32, /* @__PURE__ */ oidNist(12));
 
-  // ../../node_modules/@noble/curves/abstract/fft.js
+  // node_modules/@noble/curves/abstract/fft.js
   function checkU32(n) {
     if (!Number.isSafeInteger(n) || n < 0 || n > 4294967295)
       throw new Error("wrong u32 integer:" + n);
@@ -422,7 +422,7 @@
     };
   };
 
-  // ../../node_modules/@noble/post-quantum/utils.js
+  // node_modules/@noble/post-quantum/utils.js
   var randomBytes2 = randomBytes;
   function equalBytes(a, b) {
     if (a.length !== b.length)
@@ -541,7 +541,7 @@
     return concatBytes(new Uint8Array([1, ctx.length]), ctx, hash.oid, hashed);
   }
 
-  // ../../node_modules/@noble/post-quantum/_crystals.js
+  // node_modules/@noble/post-quantum/_crystals.js
   var genCrystals = (opts) => {
     const { newPoly: newPoly2, N: N2, Q: Q2, F: F2, ROOT_OF_UNITY: ROOT_OF_UNITY2, brvBits, isKyber } = opts;
     const mod2 = (a, modulo = Q2) => {
@@ -651,7 +651,7 @@
   var XOF128 = /* @__PURE__ */ createXofShake(shake128);
   var XOF256 = /* @__PURE__ */ createXofShake(shake256);
 
-  // ../../node_modules/@noble/post-quantum/ml-dsa.js
+  // node_modules/@noble/post-quantum/ml-dsa.js
   function validateInternalOpts(opts) {
     validateOpts(opts);
     if (opts.externalMu !== void 0)
@@ -1190,11 +1190,11 @@
 })();
 /*! Bundled license information:
 
-@noble/hashes/utils.js:
-  (*! noble-hashes - MIT License (c) 2022 Paul Miller (paulmillr.com) *)
-
 @noble/curves/utils.js:
   (*! noble-curves - MIT License (c) 2022 Paul Miller (paulmillr.com) *)
+
+@noble/hashes/utils.js:
+  (*! noble-hashes - MIT License (c) 2022 Paul Miller (paulmillr.com) *)
 
 @noble/post-quantum/utils.js:
 @noble/post-quantum/_crystals.js:

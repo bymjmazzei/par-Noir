@@ -6,7 +6,6 @@
 
 import express, { RequestHandler } from 'express';
 import crypto from 'crypto';
-import path from 'path';
 import { safeClientErrorMessage } from '../utils/safeError';
 import { hashIdentifier, isDevVerbose, safeLogger } from '../../utils/logger';
 import { getBearerTokenPayload } from '../middleware/authMiddleware';
@@ -169,7 +168,7 @@ export function setupPnOAuthRoutes(app: express.Application, deps: PnOAuthRouteD
       });
     });
 
-    // GET /oauth/authorize/consent — one unlock surface for every client (API /oauth/consent)
+    // GET /oauth/authorize/consent — validate client, then 302 to unlock broker
     app.get('/oauth/authorize/consent', async (req, res) => {
       const { client_id, redirect_uri, scope, state, nonce } = req.query;
 
@@ -189,9 +188,14 @@ export function setupPnOAuthRoutes(app: express.Application, deps: PnOAuthRouteD
         });
       }
 
-      const consentUrl = new URL(`${req.protocol}://${req.get('host')}/oauth/consent`);
+      const unlockOrigin = (process.env.PN_UNLOCK_ORIGIN || 'https://unlock.parnoir.com').replace(/\/$/, '');
+      const apiPublic =
+        (process.env.API_PUBLIC_URL || process.env.PUBLIC_API_URL || '').replace(/\/$/, '') ||
+        `${req.protocol}://${req.get('host')}`;
+      const consentUrl = new URL(`${unlockOrigin}/oauth/consent`);
       consentUrl.searchParams.set('client_id', client_id as string);
       consentUrl.searchParams.set('redirect_uri', redirect_uri as string);
+      consentUrl.searchParams.set('api_endpoint', apiPublic);
       if (scope) consentUrl.searchParams.set('scope', scope as string);
       if (state) consentUrl.searchParams.set('state', state as string);
       if (nonce) consentUrl.searchParams.set('nonce', nonce as string);
@@ -203,7 +207,7 @@ export function setupPnOAuthRoutes(app: express.Application, deps: PnOAuthRouteD
         consentUrl.searchParams.set('identity_handoff', 'required');
       }
 
-      return res.redirect(consentUrl.toString());
+      return res.redirect(302, consentUrl.toString());
     });
 
     // POST /oauth/authorize/challenge — single-use unlock challenge for ML-DSA proof
@@ -999,7 +1003,7 @@ export function setupPnOAuthRoutes(app: express.Application, deps: PnOAuthRouteD
       }
     });
 
-    // GET /oauth/consent - Canonical OAuth consent page for all clients
+    // GET /oauth/consent — 302 to unlock broker SPA (single interactive unlock surface)
     app.get('/oauth/consent', async (req, res) => {
       const { client_id, redirect_uri, scope, state, nonce } = req.query;
 
@@ -1018,9 +1022,7 @@ export function setupPnOAuthRoutes(app: express.Application, deps: PnOAuthRouteD
 
       const { ClientRegistrationService } = await import('./clientRegistration');
       await ClientRegistrationService.ensureDefaultClientsSeeded();
-      let client = await ClientRegistrationService.getClient(client_id as string);
-
-      if (!client || !(await ClientRegistrationService.validateClient(client_id as string, redirect_uri as string))) {
+      if (!(await ClientRegistrationService.validateClient(client_id as string, redirect_uri as string))) {
         res.status(400).send(`
           <html>
             <head><title>OAuth Error</title></head>
@@ -1033,53 +1035,18 @@ export function setupPnOAuthRoutes(app: express.Application, deps: PnOAuthRouteD
         return;
       }
 
-      const scopes = scope ? (scope as string).split(' ') : ['openid', 'profile'];
-      const { normalizePermissionManifest, renderManifestHtml } = await import('@par-noir/standard-data-points');
-      const manifest = normalizePermissionManifest(client.permissionManifest, client.scopes || scopes);
-      const manifestHtml = renderManifestHtml(manifest, client_id as string);
-      const scopesHtml = manifestHtml
-        || scopes
-          .map((s) => {
-            const label =
-              s === 'openid' ? 'Verify your identity' : s === 'profile' ? 'Access your profile information' : s;
-            return `<div class="permission-desc" style="margin:6px 0">• ${label}</div>`;
-          })
-          .join('');
-
-      try {
-        const fs = await import('fs');
-        // Compiled to dist/server/modules; templates are copied to dist/templates by api build.
-        const templatePath = path.join(__dirname, '../../templates', 'oauth-consent.html');
-        let html = fs.readFileSync(templatePath, 'utf8');
-        const assetBase =
-          (process.env.OAUTH_UI_ASSET_ORIGIN && process.env.OAUTH_UI_ASSET_ORIGIN.replace(/\/$/, '')) ||
-          'https://browse.parnoir.com';
-        html = html
-          .replace(/\{\{CLIENT_NAME\}\}/g, (client.name || client_id as string).replace(/</g, '&lt;'))
-          .replace(/\{\{CLIENT_DESCRIPTION\}\}/g, (client.description || 'This application wants to access your pN identity').replace(/</g, '&lt;'))
-          .replace(/\{\{SCOPES_HTML\}\}/g, scopesHtml)
-          .replace(/\{\{ASSET_BASE\}\}/g, assetBase);
-
-        const { PlatformCommercialLicenseService } = await import('./platformRegistrySyncService');
-        const verified = await PlatformCommercialLicenseService.getClientVerified(client_id as string);
-        const verifiedBadgeHtml = verified
-          ? '<div class="verified-badge" style="margin-top:8px;padding:6px 10px;background:#1a3d1a;border:1px solid #2d6a2d;border-radius:6px;font-size:12px;color:#8fdf8f;">Verified by par Noir</div>'
-          : '<div class="unverified-notice" style="margin-top:8px;padding:6px 10px;background:#3d2a1a;border:1px solid #6a4a2d;border-radius:6px;font-size:12px;color:#dfbf8f;">Unverified integrator — confirm the redirect domain before unlocking.</div>';
-        html = html.replace(/\{\{VERIFIED_BADGE_HTML\}\}/g, verifiedBadgeHtml);
-
-        res.send(html);
-      } catch (error: any) {
-        console.error('[oauth/consent] Failed to render consent page:', error?.message || error);
-        res.status(500).send(`
-          <html>
-            <head><title>OAuth Error</title></head>
-            <body style="font-family: sans-serif; padding: 40px; text-align: center;">
-              <h1>OAuth Error</h1>
-              <p>Consent page unavailable. Please try again.</p>
-            </body>
-          </html>
-        `);
+      const unlockOrigin = (process.env.PN_UNLOCK_ORIGIN || 'https://unlock.parnoir.com').replace(/\/$/, '');
+      const apiPublic =
+        (process.env.API_PUBLIC_URL || process.env.PUBLIC_API_URL || '').replace(/\/$/, '') ||
+        `${req.protocol}://${req.get('host')}`;
+      const consentUrl = new URL(`${unlockOrigin}/oauth/consent`);
+      for (const [key, value] of Object.entries(req.query)) {
+        if (typeof value === 'string' && key !== 'api_endpoint') {
+          consentUrl.searchParams.set(key, value);
+        }
       }
+      consentUrl.searchParams.set('api_endpoint', apiPublic);
+      return res.redirect(302, consentUrl.toString());
     });
 
     // Client Management Endpoints (admin key required)

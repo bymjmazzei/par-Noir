@@ -1,0 +1,8 @@
+{
+  "appId": "com.parnoir.unlock",
+  "appName": "par Noir Unlock",
+  "webDir": "dist",
+  "server": {
+    "androidScheme": "https"
+  }
+}

@@ -63,6 +63,7 @@
     "@par-noir/device-auth": "file:../../packages/device-auth",
     "@par-noir/device-client": "file:../../packages/device-client",
     "@par-noir/device-cloud-credentials": "file:../../packages/device-cloud-credentials",
+    "@par-noir/device-session-vault": "file:../../packages/device-session-vault",
     "@par-noir/dm-crypto": "file:../../packages/dm-crypto",
     "@par-noir/user-owned-storage": "file:../../packages/user-owned-storage",
     "@par-noir/identity-crypto": "file:../../packages/identity-crypto",

@@ -1,19 +1,32 @@
 # Native mobile apps (iOS and Android)
 
-The Dashboard, Browser, Messaging, and Prism web apps are wrapped with [Capacitor](https://capacitorjs.com/) for iOS and Android. Same codebase as web; native shells load the built web assets.
+The Dashboard, Browser, Messaging, Prism, and **Unlock** web apps are wrapped with [Capacitor](https://capacitorjs.com/) for iOS and Android. Same codebase as web; native shells load the built web assets.
 
 ## App overview
 
 | App | App ID | Source | Scripts |
 |-----|--------|--------|---------|
+| **Unlock** | `com.parnoir.unlock` | `apps/pn-unlock` | `build:mobile`, `open:android`, `open:ios` |
 | **Dashboard** | `com.parnoir.dashboard` | `apps/id-dashboard` | `build:mobile`, `open:android`, `open:ios` |
 | **Browser** | `com.parnoir.browser` | `apps/aggregator-browser` | `build:mobile`, `open:android`, `open:ios` |
 | **Messaging** | `com.parnoir.messaging` | `apps/aggregator-browser` (variant) | `build:mobile:messaging`; sync in `capacitor-messaging/` |
 | **Prism** | `com.parnoir.prism` | `apps/prism` | `build:mobile`, `open:android`, `open:ios` |
 
+## Unlock broker (phishing-hardened OAuth)
+
+Canonical interactive unlock UI is **`https://unlock.parnoir.com`** (`ConsentUnlockApp` in `@par-noir/oauth-ui`). Callers use `buildOAuthConsentUrl` / `UnlockButton` — they never collect Key 1 / Key 2.
+
+- **Web fallback:** SPA on Firebase target `unlock` (site `unlock-parnoir`).
+- **Native:** Capacitor app claims Universal/App Links for `unlock.parnoir.com` (see `apps/pn-unlock/STORE_ASSOCIATION_CHECKLIST.md` and `src/nativeDeeplinkConfig.ts`).
+- **API:** `GET /oauth/consent` and `/oauth/authorize/consent` **302** to the unlock origin with `api_endpoint` for challenge/authenticate.
+- Env: `PN_UNLOCK_ORIGIN` (API), `VITE_UNLOCK_ORIGIN` / `VITE_API_ENDPOINT` (unlock + callers).
+
+After `npx cap add android|ios`, wire App Links / Associated Domains per the checklist. Store submission is ops, not a merge blocker.
+
 ## Build and run
 
 1. **Build web assets and sync to native**
+   - Unlock: `cd apps/pn-unlock && npm run build:mobile` (run `npm run cap:add` once if android/ios folders are missing)
    - Dashboard: `cd apps/id-dashboard && npm run build:mobile`
    - Browser: `cd apps/aggregator-browser && npm run build:mobile`
    - Messaging: `cd apps/aggregator-browser && npm run build:mobile:messaging` (uses `vite build --mode messaging` and `.env.messaging` → **`dist-messaging`**; then syncs `capacitor-messaging/`). Open **`capacitor-messaging/android`** in Android Studio, not the main browser project.

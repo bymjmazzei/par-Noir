@@ -5,6 +5,7 @@
   "dependencies": {
     "@capacitor/camera": "^6.0.0",
     "@capacitor/clipboard": "^6.0.0",
+    "@bytetrade/capacitor-native-biometric": "^6.0.5",
     "capacitor-secure-storage-plugin": "^0.10.0",
     "@capacitor/core": "^6.0.0",
     "@capacitor/push-notifications": "^6.0.0",

@@ -124,6 +124,14 @@ if [ $? -ne 0 ]; then
     exit 1
 fi
 
+echo "📦 Building packages/device-session-vault..."
+cd ../device-session-vault
+npm run build
+if [ $? -ne 0 ]; then
+    echo "❌ device-session-vault build failed"
+    exit 1
+fi
+
 # Fail deploy if app TypeScript is unclean (Vite does not typecheck).
 echo "🔎 Type-checking id-dashboard..."
 cd ../../apps/id-dashboard
@@ -195,7 +203,16 @@ if [ $? -ne 0 ]; then
     exit 1
 fi
 
-# Deploy to Firebase (hosting: id-dashboard + browse + messaging + prism + licensing + developer)
+# Build pn-unlock broker (unlock.parnoir.com)
+echo "📦 Building pn-unlock..."
+cd ../pn-unlock
+VITE_API_ENDPOINT="${VITE_API_ENDPOINT}" VITE_UNLOCK_ORIGIN="${VITE_UNLOCK_ORIGIN:-https://unlock.parnoir.com}" npm run build
+if [ $? -ne 0 ]; then
+    echo "❌ pn-unlock build failed"
+    exit 1
+fi
+
+# Deploy to Firebase (hosting: id-dashboard + browse + messaging + prism + licensing + developer + unlock)
 echo "🔥 Deploying to Firebase..."
 cd ../..
 firebase deploy --only hosting

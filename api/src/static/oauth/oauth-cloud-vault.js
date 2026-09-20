@@ -70,43 +70,6 @@
     }
   };
 
-  // ../user-owned-storage/dist/pnLayout.js
-  var METADATA_DIR = "_metadata";
-  var INTEGRATORS_DIR = "integrators";
-  function metadataPath(...segments) {
-    return [METADATA_DIR, ...segments].join("/");
-  }
-  function integratorPath(clientId, ...segments) {
-    return [INTEGRATORS_DIR, clientId, ...segments].join("/");
-  }
-  var TABLE_PATHS = {
-    connections: metadataPath("connections"),
-    followers: metadataPath("followers"),
-    following: metadataPath("following"),
-    notifications: metadataPath("notifications"),
-    activityLedger: metadataPath("activity_ledger"),
-    engagement: metadataPath("engagement"),
-    messagingLedger: metadataPath("messaging_ledger"),
-    prismLedger: metadataPath("prism_ledger"),
-    preferences: metadataPath("preferences"),
-    zkpDataPoints: metadataPath("zkp-data-points"),
-    thirdPartyPermissions: metadataPath("third-party-permissions"),
-    publicFileIndex: metadataPath("public-file-index"),
-    ownerFileIndex: metadataPath("owner-file-index"),
-    groups: metadataPath("groups"),
-    devices: metadataPath("devices"),
-    ownedAssets: metadataPath("owned-assets"),
-    recovery: metadataPath("recovery"),
-    messageRequests: metadataPath("message_requests"),
-    dataPointRequests: metadataPath("data-point-requests")
-  };
-  var JSON_BLOB_PATHS = {
-    profile: metadataPath("profile.json"),
-    preferences: metadataPath("preferences.json"),
-    devicePolicy: metadataPath("device-policy.json"),
-    migrationManifest: integratorPath("_pn_migration_manifest.json")
-  };
-
   // ../device-cloud-credentials/dist/driveTokenResolver.js
   var DRIVE_TOKEN_SKEW_MS = 6e4;
   function googleAccountsFromEnvelope(env) {
@@ -163,9 +126,6 @@
     return null;
   }
 
-  // ../device-cloud-credentials/dist/webCloudCredentialLifecycle.js
-  var defaultStore = new WebSealedStore();
-
   // ../device-cloud-credentials/dist/cloudVault.js
   var CLOUD_VAULT_SEAL_SESSION_ID = "pn-cloud-creds-v1";
   var CLOUD_VAULT_MLKEM_SESSION_ID = "pn-cloud-creds-v1-mlkem";
@@ -213,6 +173,46 @@
     const o = value;
     return typeof o.encryptedData === "string" && o.encryptedData.length > 0 && typeof o.iv === "string" && o.iv.length > 0 && typeof o.salt === "string" && o.salt.length > 0 && typeof o.updatedAt === "string";
   }
+
+  // ../user-owned-storage/dist/pnLayout.js
+  var METADATA_DIR = "_metadata";
+  var INTEGRATORS_DIR = "integrators";
+  function metadataPath(...segments) {
+    return [METADATA_DIR, ...segments].join("/");
+  }
+  function integratorPath(clientId, ...segments) {
+    return [INTEGRATORS_DIR, clientId, ...segments].join("/");
+  }
+  var TABLE_PATHS = {
+    connections: metadataPath("connections"),
+    followers: metadataPath("followers"),
+    following: metadataPath("following"),
+    notifications: metadataPath("notifications"),
+    activityLedger: metadataPath("activity_ledger"),
+    engagement: metadataPath("engagement"),
+    messagingLedger: metadataPath("messaging_ledger"),
+    prismLedger: metadataPath("prism_ledger"),
+    preferences: metadataPath("preferences"),
+    zkpDataPoints: metadataPath("zkp-data-points"),
+    thirdPartyPermissions: metadataPath("third-party-permissions"),
+    publicFileIndex: metadataPath("public-file-index"),
+    ownerFileIndex: metadataPath("owner-file-index"),
+    groups: metadataPath("groups"),
+    devices: metadataPath("devices"),
+    ownedAssets: metadataPath("owned-assets"),
+    recovery: metadataPath("recovery"),
+    messageRequests: metadataPath("message_requests"),
+    dataPointRequests: metadataPath("data-point-requests")
+  };
+  var JSON_BLOB_PATHS = {
+    profile: metadataPath("profile.json"),
+    preferences: metadataPath("preferences.json"),
+    devicePolicy: metadataPath("device-policy.json"),
+    migrationManifest: integratorPath("_pn_migration_manifest.json")
+  };
+
+  // ../device-cloud-credentials/dist/webCloudCredentialLifecycle.js
+  var defaultStore = new WebSealedStore();
 
   // src/cloudVaultBrowser.ts
   async function mintAccessToken(refreshToken, opts) {

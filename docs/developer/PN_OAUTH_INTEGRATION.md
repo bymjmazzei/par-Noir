@@ -166,10 +166,12 @@ const session = await pnAuth.authenticate();
 
 ### 2. Popup Shows Unlock Screen
 
-The popup displays the pN unlock interface where users:
-- Upload their pN identity file (.did or .json)
-- Enter their pN name
-- Enter their passcode
+The popup/redirect opens the **pN Unlock broker** (`https://unlock.parnoir.com/oauth/consent`, or the native Unlock app via Universal/App Links). Users:
+
+- Upload their pN identity file (`.pn` / `.json`)
+- Enter Key 1 and Key 2
+
+Factors never leave that first-party surface. On phone/tablet with the Unlock app installed, the OS should open `com.parnoir.unlock` instead of an in-app WebView owned by the third party.
 
 ### 3. User Approves Permissions
 

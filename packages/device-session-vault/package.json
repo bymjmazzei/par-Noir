@@ -1,0 +1,26 @@
+{
+  "name": "@par-noir/device-session-vault",
+  "version": "0.1.0",
+  "description": "Capacitor Keychain/Keystore session vault behind biometric for native apps",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "license": "UNLICENSED",
+  "devDependencies": {
+    "typescript": "^5.0.0",
+    "vitest": "^3.2.4"
+  }
+}

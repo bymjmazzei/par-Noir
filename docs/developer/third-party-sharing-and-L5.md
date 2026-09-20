@@ -48,7 +48,7 @@ See [GOOGLE_DRIVE_STRUCTURE.md](../../GOOGLE_DRIVE_STRUCTURE.md) for the full fo
   `GET` `/api/v1/public-index/:identityId` with `content` scope — public aggregator metadata.
 
 - **OAuth for L5 apps (interactive unlock only):**  
-  `GET` `/oauth/authorize` → consent → `POST` `/oauth/token`. See `docs/developer/PN_OAUTH_INTEGRATION.md`.
+  `GET` `/oauth/authorize` → unlock broker (`https://unlock.parnoir.com/oauth/consent`, API may 302) → consent → `POST` `/oauth/token`. Factors stay on the unlock broker (web or native Unlock app). See `docs/developer/PN_OAUTH_INTEGRATION.md`.
 
 - **Not available to L5:** `/api/messages`, `/api/mailbox`, `/api/connections`, `/api/groups`, `/api/engagement`, `/api/notifications` — first-party OAuth clients only.
 

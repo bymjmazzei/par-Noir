@@ -48,6 +48,7 @@ import { contentClassToContentType } from './utils/feedContentTypes';
 import { useFeedFiltering } from './hooks/useFeedFiltering';
 import { useThumbnailsAndMedia } from './hooks/useThumbnailsAndMedia';
 import { useAuthAndSession } from './hooks/useAuthAndSession';
+import { BrowserSessionVaultHost } from './components/BrowserSessionVaultHost';
 import { filterFilesForFeed } from './utils/filterFilesForFeed';
 import { posterFileIdsForPrefetch, prefetchFeedPosters } from './services/feedPosterPrefetch';
 import { batchSignAndCachePosters } from './services/feedMediaBatchSign';
@@ -1127,6 +1128,7 @@ function App() {
 
   return (
     <>
+      <BrowserSessionVaultHost />
       {vanityNotFound && (
         <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/80 p-6">
           <div className="max-w-sm text-center space-y-4">

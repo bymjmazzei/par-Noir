@@ -95,6 +95,11 @@ export class PNOAuthService {
       nonce,
       forPopup: usePopup,
       identityHandoffRequired: params?.identityHandoffRequired,
+      unlockOrigin:
+        (typeof import.meta !== 'undefined' &&
+          (import.meta as ImportMeta & { env?: { VITE_UNLOCK_ORIGIN?: string } }).env
+            ?.VITE_UNLOCK_ORIGIN) ||
+        undefined,
     });
   }
 
@@ -357,6 +362,9 @@ export class PNOAuthService {
       sessionStorage.removeItem('pn_oauth_session');
     }
     clearFeedMediaSessionCache();
+    void import('./sessionVaultNative')
+      .then((m) => m.clearBrowserSessionVault())
+      .catch(() => undefined);
     resetFeedFirstPaintGate();
   }
 

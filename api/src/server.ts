@@ -89,6 +89,7 @@ const DEFAULT_ORIGINS = [
   'https://prism.parnoir.com',
   'https://licensing.parnoir.com',
   'https://developers.parnoir.com',
+  'https://unlock.parnoir.com',
   'https://developers-parnoir.web.app',
   'capacitor://localhost',
   'ionic://localhost',

@@ -14,6 +14,8 @@ import {
 } from '../services/prismAuthService';
 import { setPrismPnIdentifier } from '../services/prismApi';
 import { oauthStatesMatch } from '@par-noir/oauth-ui';
+import { PrismSessionVaultHost } from '../components/PrismSessionVaultHost';
+import { hasPrismSessionVault } from '../services/sessionVaultNative';
 
 interface AuthContextValue {
   session: PrismSession | null;
@@ -96,11 +98,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       window.history.replaceState({}, '', window.location.pathname);
     }
 
-    void getSession().then((s) => {
+    void (async () => {
+      // Native + vault: let PrismSessionVaultHost drive biometric restore; skip ungated getSession.
+      if (Capacitor.isNativePlatform() && (await hasPrismSessionVault())) {
+        setLoading(false);
+        return;
+      }
+      const s = await getSession();
       setPrismPnIdentifier(s?.pnIdentifier);
       setSession(s);
       setLoading(false);
-    });
+    })();
   }, [refreshSession]);
 
   useEffect(() => {
@@ -111,8 +119,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     void CapApp.addListener('appStateChange', ({ isActive }) => {
       if (!isActive && sessionRef.current) {
-        lockTimeout = setTimeout(async () => {
-          await clearSession();
+        // Clear in-memory session only — keep Keychain vault for biometric reopen.
+        lockTimeout = setTimeout(() => {
           setSession(null);
         }, 5 * 60 * 1000);
       } else if (isActive && lockTimeout) {
@@ -143,6 +151,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   return (
     <AuthContext.Provider value={{ session, loading, signOut, refreshSession }}>
+      <PrismSessionVaultHost
+        session={session}
+        onSession={(s) => {
+          setPrismPnIdentifier(s?.pnIdentifier);
+          setSession(s);
+        }}
+        onLoadingDone={() => setLoading(false)}
+      />
       {children}
     </AuthContext.Provider>
   );
