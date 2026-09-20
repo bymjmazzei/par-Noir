@@ -1,3 +1,5 @@
+export { LockIcon } from './LockIcon';
+export { UnlockIcon } from './UnlockIcon';
 export {
   UnlockButton,
   buildOAuthAuthorizeUrl,
