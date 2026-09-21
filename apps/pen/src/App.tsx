@@ -4,7 +4,12 @@
 
 import React, { useCallback, useEffect, useState } from 'react';
 import { Link, Route, Routes, useNavigate, useParams } from 'react-router-dom';
-import { UnlockButton, type PnOAuthPopupResult } from '@par-noir/oauth-ui';
+import {
+  UnlockButton,
+  exchangePortalAuthorizationCode,
+  fetchPortalUserInfo,
+  type PnOAuthPopupResult
+} from '@par-noir/oauth-ui';
 import { API_ENDPOINT, PN_CLIENT_ID } from './config/api';
 import { DocEditorPage } from './pages/DocEditorPage';
 import { DocListPage } from './pages/DocListPage';
@@ -12,39 +17,91 @@ import { listLocalDocs, type LocalDocSummary } from './services/penLocalStore';
 
 export interface PenSession {
   accessToken: string;
+  refreshToken?: string;
   pnIdentifier: string;
   mlDsaPublicKey?: string;
   mlDsaSecretKey?: string;
   mlKemSecretKey?: string;
 }
 
+const SESSION_KEY = 'pen_session';
+const OAUTH_STATE_KEY = 'pen_oauth_state';
+
 function Locked() {
   const [session, setSession] = useState<PenSession | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const navigate = useNavigate();
 
-  const onPopup = useCallback(async (r: PnOAuthPopupResult) => {
-    if (!r.accessToken) return;
-    const pn =
-      (r as any).pnIdentifier ||
-      (r as any).identityId ||
-      (r as any).user?.pnIdentifier ||
-      '';
-    const handoff = (r as any).messagingHandoff?.session || (r as any).session;
-    const next: PenSession = {
-      accessToken: r.accessToken,
-      pnIdentifier: String(pn || handoff?.pnIdentifier || 'unknown'),
-      mlDsaPublicKey: handoff?.mlDsaPublicKey,
-      mlDsaSecretKey: handoff?.mlDsaSecretKey,
-      mlKemSecretKey: handoff?.mlKemSecretKey
-    };
-    sessionStorage.setItem('pen_session', JSON.stringify(next));
-    setSession(next);
-    navigate('/');
-  }, [navigate]);
+  const applySession = useCallback(
+    (next: PenSession) => {
+      sessionStorage.setItem(SESSION_KEY, JSON.stringify(next));
+      setSession(next);
+      navigate('/');
+    },
+    [navigate]
+  );
+
+  const onPopup = useCallback(
+    async (r: PnOAuthPopupResult) => {
+      setError(null);
+      if (r.error) {
+        setError(r.error_description || r.error);
+        return;
+      }
+      if (!r.code) {
+        setError('Sign-in did not return an authorization code. Try again.');
+        return;
+      }
+
+      setBusy(true);
+      try {
+        const redirectUri = `${window.location.origin}/oauth-callback.html`;
+        const tokens = await exchangePortalAuthorizationCode({
+          apiEndpoint: API_ENDPOINT,
+          clientId: PN_CLIENT_ID,
+          code: r.code,
+          redirectUri
+        });
+
+        const user = await fetchPortalUserInfo({
+          apiEndpoint: API_ENDPOINT,
+          accessToken: tokens.access_token
+        });
+
+        const handoff =
+          (r.messagingHandoff as { session?: Record<string, unknown> } | undefined)?.session ||
+          (r.messagingHandoff as Record<string, unknown> | undefined);
+
+        const pn =
+          String(
+            user.pn_identifier ||
+              user.sub ||
+              (handoff as { pnIdentifier?: string } | undefined)?.pnIdentifier ||
+              ''
+          ).trim() || 'unknown';
+
+        applySession({
+          accessToken: tokens.access_token,
+          refreshToken: tokens.refresh_token,
+          pnIdentifier: pn,
+          mlDsaPublicKey: (handoff as { mlDsaPublicKey?: string } | undefined)?.mlDsaPublicKey,
+          mlDsaSecretKey: (handoff as { mlDsaSecretKey?: string } | undefined)?.mlDsaSecretKey,
+          mlKemSecretKey: (handoff as { mlKemSecretKey?: string } | undefined)?.mlKemSecretKey
+        });
+      } catch (e) {
+        setError(e instanceof Error ? e.message : 'Unlock failed');
+      } finally {
+        setBusy(false);
+        sessionStorage.removeItem(OAUTH_STATE_KEY);
+      }
+    },
+    [applySession]
+  );
 
   useEffect(() => {
     try {
-      const raw = sessionStorage.getItem('pen_session');
+      const raw = sessionStorage.getItem(SESSION_KEY);
       if (raw) setSession(JSON.parse(raw) as PenSession);
     } catch {
       /* ignore */
@@ -52,10 +109,15 @@ function Locked() {
   }, []);
 
   if (session?.accessToken) {
-    return <AuthenticatedApp session={session} onLock={() => {
-      sessionStorage.removeItem('pen_session');
-      setSession(null);
-    }} />;
+    return (
+      <AuthenticatedApp
+        session={session}
+        onLock={() => {
+          sessionStorage.removeItem(SESSION_KEY);
+          setSession(null);
+        }}
+      />
+    );
   }
 
   return (
@@ -64,6 +126,8 @@ function Locked() {
       <p className="text-neutral-400 text-center max-w-md">
         Authored content for par Noir — Notes, posts, feeds. Collaborate with people and agents.
       </p>
+      {error && <p className="text-sm text-red-400 text-center max-w-md">{error}</p>}
+      {busy && <p className="text-sm text-neutral-400">Finishing unlock…</p>}
       <UnlockButton
         config={{
           clientId: PN_CLIENT_ID,
@@ -71,7 +135,12 @@ function Locked() {
           apiEndpoint: API_ENDPOINT,
           scopes: ['openid', 'profile', 'cloud:read', 'cloud:app']
         }}
+        onBeforeNavigate={(state) => {
+          sessionStorage.setItem(OAUTH_STATE_KEY, state);
+          setError(null);
+        }}
         onPopupResult={onPopup}
+        onPopupFlowFailed={(reason) => setError(reason)}
       />
     </div>
   );
