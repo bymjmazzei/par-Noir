@@ -1,22 +1,77 @@
 PODS:
+  - BytetradeCapacitorNativeBiometric (6.0.5):
+    - Capacitor
   - Capacitor (6.2.1):
     - CapacitorCordova
+  - CapacitorCamera (6.1.3):
+    - Capacitor
+  - CapacitorClipboard (6.0.3):
+    - Capacitor
   - CapacitorCordova (6.2.1)
+  - CapacitorFilesystem (6.0.4):
+    - Capacitor
+  - CapacitorPushNotifications (6.0.5):
+    - Capacitor
+  - CapacitorSecureStoragePlugin (0.10.0):
+    - Capacitor
+    - SwiftKeychainWrapper
+  - CapacitorShare (6.0.4):
+    - Capacitor
+  - CapacitorSplashScreen (6.0.4):
+    - Capacitor
+  - SwiftKeychainWrapper (4.0.1)
 
 DEPENDENCIES:
+  - "BytetradeCapacitorNativeBiometric (from `../../../../../node_modules/@bytetrade/capacitor-native-biometric`)"
   - "Capacitor (from `../../node_modules/@capacitor/ios`)"
+  - "CapacitorCamera (from `../../../../../node_modules/@capacitor/camera`)"
+  - "CapacitorClipboard (from `../../../../../node_modules/@capacitor/clipboard`)"
   - "CapacitorCordova (from `../../node_modules/@capacitor/ios`)"
+  - "CapacitorFilesystem (from `../../../../../node_modules/@capacitor/filesystem`)"
+  - "CapacitorPushNotifications (from `../../../../../node_modules/@capacitor/push-notifications`)"
+  - CapacitorSecureStoragePlugin (from `../../../../../node_modules/capacitor-secure-storage-plugin`)
+  - "CapacitorShare (from `../../../../../node_modules/@capacitor/share`)"
+  - "CapacitorSplashScreen (from `../../../../../node_modules/@capacitor/splash-screen`)"
+
+SPEC REPOS:
+  trunk:
+    - SwiftKeychainWrapper
 
 EXTERNAL SOURCES:
+  BytetradeCapacitorNativeBiometric:
+    :path: "../../../../../node_modules/@bytetrade/capacitor-native-biometric"
   Capacitor:
     :path: "../../node_modules/@capacitor/ios"
+  CapacitorCamera:
+    :path: "../../../../../node_modules/@capacitor/camera"
+  CapacitorClipboard:
+    :path: "../../../../../node_modules/@capacitor/clipboard"
   CapacitorCordova:
     :path: "../../node_modules/@capacitor/ios"
+  CapacitorFilesystem:
+    :path: "../../../../../node_modules/@capacitor/filesystem"
+  CapacitorPushNotifications:
+    :path: "../../../../../node_modules/@capacitor/push-notifications"
+  CapacitorSecureStoragePlugin:
+    :path: "../../../../../node_modules/capacitor-secure-storage-plugin"
+  CapacitorShare:
+    :path: "../../../../../node_modules/@capacitor/share"
+  CapacitorSplashScreen:
+    :path: "../../../../../node_modules/@capacitor/splash-screen"
 
 SPEC CHECKSUMS:
+  BytetradeCapacitorNativeBiometric: d1773eb3d38148f008480304f77dd1ecc1cdb577
   Capacitor: c95400d761e376be9da6be5a05f226c0e865cebf
+  CapacitorCamera: 5ba135b0cb55a788758139fa2404d726bf60f0f3
+  CapacitorClipboard: 6479f3d5c20e5f985cb72e620e11f20a351777e2
   CapacitorCordova: 8d93e14982f440181be7304aa9559ca631d77fff
+  CapacitorFilesystem: 5b9aec35c0212bd0064e26d278c93e925864f212
+  CapacitorPushNotifications: 35abece14371c57172e8321c9ccc8b6fa35fabfe
+  CapacitorSecureStoragePlugin: 545b51d782d35e61a39231ecf99a966b060a2cbb
+  CapacitorShare: 77ff779e3b7c6ae9fb5461e52cf7ef805d429491
+  CapacitorSplashScreen: ef140a8b1ea7244e0c245ce2dd4ce5251e7ab86a
+  SwiftKeychainWrapper: 807ba1d63c33a7d0613288512399cd1eda1e470c
 
-PODFILE CHECKSUM: 8ab55909c5de2b217f9841e5e5b329f5ec901553
+PODFILE CHECKSUM: 73f3e1b1058924e93dc2bbe4cc5be8cf95162e75
 
 COCOAPODS: 1.16.2

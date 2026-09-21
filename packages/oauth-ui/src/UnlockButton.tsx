@@ -5,7 +5,6 @@ import {
   startPnOAuthPopup,
   type PnOAuthPopupResult,
 } from './pnOAuthPopup';
-import { launchUnlockBroker } from './unlockPreferApp';
 
 export type { OAuthConsentUrlConfig, BrowserAppOAuthUnlockUrlConfig } from './pnOAuthPopup';
 export { buildOAuthConsentUrl, buildOAuthConsentAppUrl, buildOAuthAuthorizeUrl, buildBrowserAppOAuthUnlockUrl, startPnOAuthPopup, startPnOAuthUnlock } from './pnOAuthPopup';
@@ -100,13 +99,33 @@ export function UnlockButton({
     });
 
     if (forceRedirect) {
+      // Cap/native: always go through startPnOAuthPopup so prefer-app starts
+      // broker-pending poll. Do not assign unlock.parnoir.com onto the Cap WebView.
       void (async () => {
-        const launch = await launchUnlockBroker({ httpsUrl: url, preferApp: true });
-        if (launch.usedApp) {
-          // App opened; Cap/desktop will return via redirect_uri. Stay on this page.
-          return;
+        try {
+          const result = await startPnOAuthPopup({
+            url,
+            expectedState: state,
+            preferApp: true,
+            // Prefer-app finishes in the same Cap document via broker-pending.
+            // Parent navigation drops messagingHandoff from the resume URL.
+            completeViaParentNavigation: false,
+          });
+          await onPopupResult?.(result);
+        } catch (e) {
+          const msg = e instanceof Error ? e.message : String(e);
+          if (msg === 'POPUP_BLOCKED') {
+            onPopupFlowFailed?.('Popup blocked. Allow popups for this site.');
+          } else if (msg === 'POPUP_TIMEOUT') {
+            onPopupFlowFailed?.('Authentication timed out. Try again.');
+          } else if (msg === 'POPUP_CLOSED') {
+            onPopupFlowFailed?.('Sign-in was cancelled or the window closed.');
+          } else if (msg === 'OAUTH_STATE_MISMATCH' || msg === 'OAUTH_STATE_MISSING') {
+            onPopupFlowFailed?.('Sign-in could not be verified. Close other tabs and try again.');
+          } else {
+            onPopupFlowFailed?.(msg);
+          }
         }
-        window.location.href = launch.httpsUrl;
       })();
       return;
     }

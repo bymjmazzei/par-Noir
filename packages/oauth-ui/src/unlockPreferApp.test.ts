@@ -5,7 +5,7 @@ import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 import { buildOAuthConsentAppUrl, buildOAuthConsentUrl } from './pnOAuthPopup';
 import { httpsConsentUrlToAppUrl, tryPreferUnlockApp } from './unlockPreferApp';
 import { searchFromUnlockUrl } from './consentUnlock/searchFromUnlockUrl';
-import { DEFAULT_UNLOCK_ORIGIN } from './consentUnlock/constants';
+import { DEFAULT_UNLOCK_ORIGIN, callerCapAppResumeUrl } from './consentUnlock/constants';
 
 describe('buildOAuthConsentAppUrl', () => {
   it('uses custom scheme with same query and popup=false', () => {
@@ -81,5 +81,47 @@ describe('tryPreferUnlockApp', () => {
     const r = await p;
     expect(r.opened).toBe(true);
     expect(r.mode).toBe('app');
+  });
+
+  it('assumes opened on Capacitor native even when page stays visible', async () => {
+    Object.defineProperty(document, 'hidden', { configurable: true, get: () => false });
+    (window as Window & { Capacitor?: { isNativePlatform: () => boolean } }).Capacitor = {
+      isNativePlatform: () => true,
+    };
+    const p = tryPreferUnlockApp('com.parnoir.unlock://oauth/consent?x=1', { waitMs: 100 });
+    await vi.advanceTimersByTimeAsync(150);
+    const r = await p;
+    expect(r.opened).toBe(true);
+    expect(r.mode).toBe('app');
+    delete (window as Window & { Capacitor?: unknown }).Capacitor;
+  });
+});
+
+describe('callerCapAppResumeUrl', () => {
+  it('maps messaging-app and messaging redirect host', () => {
+    expect(callerCapAppResumeUrl({ clientId: 'messaging-app' })).toBe(
+      'com.parnoir.messaging://oauth/resume'
+    );
+    expect(
+      callerCapAppResumeUrl({
+        redirectUri: 'https://messaging.parnoir.com/oauth-callback.html',
+      })
+    ).toBe('com.parnoir.messaging://oauth/resume');
+  });
+
+  it('maps browser-app and browse redirect host', () => {
+    expect(callerCapAppResumeUrl({ clientId: 'browser-app' })).toBe(
+      'com.parnoir.browser://oauth/resume'
+    );
+    expect(
+      callerCapAppResumeUrl({
+        redirectUri: 'https://browse.parnoir.com/oauth-callback.html',
+      })
+    ).toBe('com.parnoir.browser://oauth/resume');
+  });
+
+  it('returns null when unknown', () => {
+    expect(callerCapAppResumeUrl({ clientId: 'third-party' })).toBeNull();
+    expect(callerCapAppResumeUrl({})).toBeNull();
   });
 });

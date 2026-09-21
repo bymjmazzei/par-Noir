@@ -13,6 +13,7 @@ def capacitor_pods
   pod 'CapacitorCordova', :path => '../../node_modules/@capacitor/ios'
   pod 'CapacitorCamera', :path => '../../../../../node_modules/@capacitor/camera'
   pod 'CapacitorClipboard', :path => '../../../../../node_modules/@capacitor/clipboard'
+  pod 'BytetradeCapacitorNativeBiometric', :path => '../../../../../node_modules/@bytetrade/capacitor-native-biometric'
   pod 'CapacitorSecureStoragePlugin', :path => '../../../../../node_modules/capacitor-secure-storage-plugin'
   pod 'CapacitorPushNotifications', :path => '../../../../../node_modules/@capacitor/push-notifications'
   pod 'CapacitorFilesystem', :path => '../../../../../node_modules/@capacitor/filesystem'

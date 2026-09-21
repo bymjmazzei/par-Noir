@@ -17,6 +17,8 @@ import { isDidRevokedForNetwork, isPnRevokedForNetwork } from './identitySuccess
 import { appendSecurityAuditEvent } from './auditService';
 import { securityFlags } from '../utils/securityFlags';
 import { hashIdentifier, safeLogger } from '../../utils/logger';
+import { peekAuthCodeRecord, putAuthCodeRecord, takeAuthCodeRecord } from './oauthAuthCodeStore';
+import { storeBrokerPendingRecord, takeBrokerPendingRecord } from './oauthBrokerPendingStore';
 
 export class OauthUnlockProofError extends Error {
   readonly code: string;
@@ -89,40 +91,25 @@ interface RefreshTokenRecord {
   reuse_detected_at?: Date | null;
 }
 
-// In-memory storage for authorization codes and access tokens (short-lived)
-const authorizationCodes = new Map<string, AuthorizationCode>();
+// In-memory storage for access tokens (short-lived). Auth codes + broker pending
+// use oauthAuthCodeStore / oauthBrokerPendingStore (Redis when REDIS_URL is set).
 const accessTokens = new Map<string, TokenPayload>();
 // Map of recently exchanged codes to their tokens (for idempotency - prevents duplicate exchange errors)
 const codeToTokenMap = new Map<string, { token: AccessToken; expiresAt: number }>();
 const unlockChallenges = new Map<string, UnlockChallengeRecord>();
-/**
- * Prefer-app Unlock → browse handoff (cross-browser). Keyed by OAuth `state`.
- * Holds code + messaging handoff briefly; consumed by browse poll. No loopback.
- */
-const brokerPendingByState = new Map<
-  string,
-  { clientId: string; payload: Record<string, unknown>; expiresAt: number }
->();
 // Note: refreshTokens are now stored in PostgreSQL database for persistence
 
 // Cleanup expired codes/tokens every 5 minutes
 setInterval(() => {
   const now = Date.now();
-  
-  // Clean expired authorization codes
-  for (const [code, authCode] of authorizationCodes.entries()) {
-    if (authCode.expiresAt < now) {
-      authorizationCodes.delete(code);
-    }
-  }
-  
+
   // Clean expired access tokens
   for (const [token, payload] of accessTokens.entries()) {
     if (payload.expiresAt < now) {
       accessTokens.delete(token);
     }
   }
-  
+
   // Clean expired code-to-token mappings (for idempotency)
   for (const [code, exchange] of codeToTokenMap.entries()) {
     if (exchange.expiresAt < now) {
@@ -136,12 +123,6 @@ setInterval(() => {
     }
   }
 
-  for (const [state, pending] of brokerPendingByState.entries()) {
-    if (pending.expiresAt < now) {
-      brokerPendingByState.delete(state);
-    }
-  }
-  
   // Clean expired refresh tokens from database (async, don't wait)
   PNOAuthService.cleanupExpiredRefreshTokens().catch((err: unknown) => {
     safeLogger.error('[OAuth] Error in scheduled refresh token cleanup', {
@@ -328,7 +309,7 @@ export class PNOAuthService {
 
     const did = deriveDidFromPublicKey(params.publicKey);
     const pnIdentifier = deriveCanonicalPnIdentifier(params.publicKey);
-    const code = this.generateAuthorizationCode({
+    const code = await this.generateAuthorizationCode({
       clientId: params.clientId,
       redirectUri: normalizedRedirectUri,
       scope: params.scope,
@@ -346,7 +327,7 @@ export class PNOAuthService {
    * Call sites outside this module must use authenticateWithUnlockProof —
    * never trust client-claimed identity alone.
    */
-  static generateAuthorizationCode(params: {
+  static async generateAuthorizationCode(params: {
     clientId: string;
     redirectUri: string;
     scope: string[];
@@ -355,7 +336,7 @@ export class PNOAuthService {
     did: string;
     publicKey?: string;
     pnIdentifier?: string;
-  }): string {
+  }): Promise<string> {
     if (isPnRevokedForNetwork(params.pnIdentifier)) {
       const err = new Error('identity_superseded') as Error & { code: string };
       err.code = 'IDENTITY_SUPERSEDED';
@@ -368,29 +349,32 @@ export class PNOAuthService {
     }
 
     const code = crypto.randomBytes(32).toString('hex');
-    
+
     // Normalize redirect URI (remove trailing slash) for consistent comparison
     const normalizedRedirectUri = params.redirectUri.replace(/\/$/, '');
-    
+
     if (process.env.NODE_ENV === 'development') {
       safeLogger.info('[OAuth] Generating authorization code', {
         clientId: params.clientId,
         pnIdSuffix: params.pnIdentifier ? params.pnIdentifier.slice(-8) : 'none',
       });
     }
-    
-    authorizationCodes.set(code, {
-      code,
-      clientId: params.clientId,
-      redirectUri: normalizedRedirectUri,
-      scope: params.scope,
-      state: params.state,
-      nonce: params.nonce,
-      did: params.did,
-      publicKey: params.publicKey,
-      pnIdentifier: params.pnIdentifier,
-      expiresAt: Date.now() + this.CODE_EXPIRY
-    });
+
+    await putAuthCodeRecord(
+      {
+        code,
+        clientId: params.clientId,
+        redirectUri: normalizedRedirectUri,
+        scope: params.scope,
+        state: params.state,
+        nonce: params.nonce,
+        did: params.did,
+        publicKey: params.publicKey || '',
+        pnIdentifier: params.pnIdentifier,
+        expiresAt: Date.now() + this.CODE_EXPIRY,
+      },
+      this.CODE_EXPIRY
+    );
 
     return code;
   }
@@ -402,14 +386,12 @@ export class PNOAuthService {
    * exchange has happened, so it presents the code it was handed. This must not
    * delete or mark the code: the real exchange still has to run afterwards.
    */
-  static peekAuthorizationCode(
+  static async peekAuthorizationCode(
     code: string,
     clientId: string
-  ): { pnIdentifier?: string; did: string; state?: string } | null {
-    const authCode = authorizationCodes.get(code);
+  ): Promise<{ pnIdentifier?: string; did: string; state?: string } | null> {
+    const authCode = await peekAuthCodeRecord(code, clientId);
     if (!authCode) return null;
-    if (authCode.expiresAt < Date.now()) return null;
-    if (authCode.clientId !== clientId) return null;
     return {
       pnIdentifier: authCode.pnIdentifier,
       did: authCode.did,
@@ -421,22 +403,26 @@ export class PNOAuthService {
    * Store Unlock→browse prefer-app result for polling (HTTPS, all browsers).
    * Requires a live authorization code proving unlock just completed.
    */
-  static storeBrokerPending(params: {
+  static async storeBrokerPending(params: {
     state: string;
     clientId: string;
     code: string;
     payload: Record<string, unknown>;
-  }): boolean {
+  }): Promise<boolean> {
     const state = String(params.state || '').trim();
     if (!state || state.length < 8) return false;
-    const peeked = this.peekAuthorizationCode(params.code, params.clientId);
+    const peeked = await this.peekAuthorizationCode(params.code, params.clientId);
     if (!peeked) return false;
     if (peeked.state && peeked.state !== state) return false;
-    brokerPendingByState.set(state, {
-      clientId: params.clientId,
-      expiresAt: Date.now() + this.BROKER_PENDING_EXPIRY,
-      payload: { ...params.payload },
-    });
+    await storeBrokerPendingRecord(
+      state,
+      {
+        clientId: params.clientId,
+        expiresAt: Date.now() + this.BROKER_PENDING_EXPIRY,
+        payload: { ...params.payload },
+      },
+      this.BROKER_PENDING_EXPIRY
+    );
     return true;
   }
 
@@ -444,38 +430,34 @@ export class PNOAuthService {
    * Store access_denied (or other error) without an auth code.
    * Caller must supply the same high-entropy OAuth state the browse tab holds.
    */
-  static storeBrokerPendingError(params: {
+  static async storeBrokerPendingError(params: {
     state: string;
     clientId: string;
     payload: Record<string, unknown>;
-  }): boolean {
+  }): Promise<boolean> {
     const state = String(params.state || '').trim();
     if (!state || state.length < 8) return false;
     if (!params.clientId) return false;
-    brokerPendingByState.set(state, {
-      clientId: params.clientId,
-      expiresAt: Date.now() + this.BROKER_PENDING_EXPIRY,
-      payload: { ...params.payload },
-    });
+    await storeBrokerPendingRecord(
+      state,
+      {
+        clientId: params.clientId,
+        expiresAt: Date.now() + this.BROKER_PENDING_EXPIRY,
+        payload: { ...params.payload },
+      },
+      this.BROKER_PENDING_EXPIRY
+    );
     return true;
   }
 
   /** One-shot take for browse poll. */
-  static takeBrokerPending(
+  static async takeBrokerPending(
     state: string,
     clientId: string
-  ): Record<string, unknown> | null {
+  ): Promise<Record<string, unknown> | null> {
     const key = String(state || '').trim();
     if (!key) return null;
-    const pending = brokerPendingByState.get(key);
-    if (!pending) return null;
-    if (pending.expiresAt < Date.now()) {
-      brokerPendingByState.delete(key);
-      return null;
-    }
-    if (pending.clientId !== clientId) return null;
-    brokerPendingByState.delete(key);
-    return pending.payload;
+    return takeBrokerPendingRecord(key, clientId);
   }
 
   /**
@@ -496,7 +478,7 @@ export class PNOAuthService {
       return existingExchange.token;
     }
 
-    const authCode = authorizationCodes.get(params.code);
+    const authCode = await takeAuthCodeRecord(params.code);
 
     if (!authCode) {
       // Code not found - might have been already used
@@ -517,7 +499,6 @@ export class PNOAuthService {
         expiresAt: new Date(authCode.expiresAt).toISOString(),
         now: new Date().toISOString(),
       });
-      authorizationCodes.delete(params.code);
       return null;
     }
 
@@ -537,11 +518,11 @@ export class PNOAuthService {
     // Verify client ID and redirect URI match
     if (authCode.clientId !== params.clientId || storedRedirectUri !== providedRedirectUri) {
       safeLogger.warn('[OAuth] Redirect URI or Client ID mismatch');
+      // put back — take already removed it
+      const remaining = Math.max(1, authCode.expiresAt - Date.now());
+      await putAuthCodeRecord(authCode, remaining);
       return null;
     }
-
-    // Remove used authorization code (one-time use)
-    authorizationCodes.delete(params.code);
 
     if (isPnRevokedForNetwork(authCode.pnIdentifier) || isDidRevokedForNetwork(authCode.did)) {
       return null;

@@ -448,7 +448,7 @@ export function setupPnOAuthRoutes(app: express.Application, deps: PnOAuthRouteD
           if (body.error_description != null) {
             payload.error_description = String(body.error_description);
           }
-          const ok = PNOAuthService.storeBrokerPendingError({
+          const ok = await PNOAuthService.storeBrokerPendingError({
             state,
             clientId,
             payload,
@@ -470,7 +470,7 @@ export function setupPnOAuthRoutes(app: express.Application, deps: PnOAuthRouteD
         }
 
         payload.code = code;
-        const ok = PNOAuthService.storeBrokerPending({
+        const ok = await PNOAuthService.storeBrokerPending({
           state,
           clientId,
           code,
@@ -506,7 +506,7 @@ export function setupPnOAuthRoutes(app: express.Application, deps: PnOAuthRouteD
             error_description: 'state and client_id are required',
           });
         }
-        const payload = PNOAuthService.takeBrokerPending(state, clientId);
+        const payload = await PNOAuthService.takeBrokerPending(state, clientId);
         if (!payload) {
           return res.status(204).end();
         }

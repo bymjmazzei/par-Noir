@@ -94,7 +94,12 @@ export class ClientRegistrationService {
           'http://localhost:3001/pn-oauth-callback.html',
           'http://localhost:3001/',
           'http://127.0.0.1:3001/pn-oauth-callback.html',
-          'http://127.0.0.1:3001/'
+          'http://127.0.0.1:3001/',
+          // Cap native WebView origin (prefer HTTPS callback from apps when possible)
+          'capacitor://localhost/oauth-callback.html',
+          'capacitor://localhost/',
+          'ionic://localhost/oauth-callback.html',
+          'ionic://localhost/'
         ],
         scopes: [...CLIENT_CONTRACTS[BROWSER_APP_CLIENT_ID].scopes]
       },
@@ -110,7 +115,12 @@ export class ClientRegistrationService {
           'http://localhost:3001/oauth-callback.html',
           'http://localhost:3001/',
           'http://127.0.0.1:3001/oauth-callback.html',
-          'http://127.0.0.1:3001/'
+          'http://127.0.0.1:3001/',
+          // Cap native WebView origin (prefer HTTPS callback from apps when possible)
+          'capacitor://localhost/oauth-callback.html',
+          'capacitor://localhost/',
+          'ionic://localhost/oauth-callback.html',
+          'ionic://localhost/'
         ],
         scopes: [...CLIENT_CONTRACTS[MESSAGING_APP_CLIENT_ID].scopes]
       },

@@ -8,6 +8,9 @@ project(':capacitor-camera').projectDir = new File('../../../../node_modules/@ca
 include ':capacitor-clipboard'
 project(':capacitor-clipboard').projectDir = new File('../../../../node_modules/@capacitor/clipboard/android')
 
+include ':bytetrade-capacitor-native-biometric'
+project(':bytetrade-capacitor-native-biometric').projectDir = new File('../../../../node_modules/@bytetrade/capacitor-native-biometric/android')
+
 include ':capacitor-secure-storage-plugin'
 project(':capacitor-secure-storage-plugin').projectDir = new File('../../../../node_modules/capacitor-secure-storage-plugin/android')
 

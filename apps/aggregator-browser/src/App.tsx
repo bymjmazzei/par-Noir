@@ -199,8 +199,9 @@ function App() {
   // Messaging silo has no bottom nav — do not reserve that strip.
   const viewportHeightCSS = useViewportHeightCSS(!MESSAGING_ONLY);
 
-  // Push notifications (native only): register token when authenticated, handle tap → open thread
+  // Push notifications (native only): only after unlock — never prompt over locked/OAuth UI
   usePushNotifications({
+    enabled: userState.isUnlocked,
     getAccessToken: () => PNOAuthService.getValidAccessToken(),
     onNotificationAction: (data) => {
       const participantPnIdentifier = data.from_pn_identifier || data.participant_pn_identifier;

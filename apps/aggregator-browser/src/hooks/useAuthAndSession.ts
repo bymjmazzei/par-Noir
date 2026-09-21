@@ -4,7 +4,6 @@
  */
 
 import { useCallback, useEffect, useRef } from 'react';
-import { Capacitor } from '@capacitor/core';
 import {
   pushPnOAuthDebug,
   startPnOAuthPopup,
@@ -22,6 +21,7 @@ import { PN_CLIENT_ID } from '../config/oauthClient';
 import { MESSAGING_ONLY } from '../config/buildFlags';
 import { PN_OAUTH_RESUME_SEARCH_KEY } from '../oauthResumeBootstrap';
 import { installOAuthMessagingIdentityListener } from '../services/oauthMessagingIdentityBridge';
+import { installPreferAppBrokerResume } from '../services/preferAppBrokerResume';
 import {
   clearDmIdentity,
   isDmIdentityReady,
@@ -729,6 +729,30 @@ export function useAuthAndSession({
 
   useEffect(() => installOAuthMessagingIdentityListener(), []);
 
+  // Cap prefer-app: if Messages was killed during Unlock, resume broker-pending
+  // from localStorage when we return (oauth/resume / foreground). No mouse automation.
+  useEffect(() => {
+    return installPreferAppBrokerResume(async (payload) => {
+      pushPnOAuthDebug('prefer_app_resume_callback', {
+        hasCode: Boolean(payload.code),
+        hasError: Boolean(payload.error),
+        hasMessagingHandoff: Boolean(payload.messagingHandoff),
+      });
+      await runOAuthCallback(
+        {
+          code: payload.code,
+          state: payload.state,
+          error: payload.error,
+          error_description: payload.error_description,
+          granted_data_points: payload.granted_data_points,
+          consent_shown: payload.consent_shown === '1' ? '1' : undefined,
+          messagingHandoff: payload.messagingHandoff,
+        },
+        { redirectUri: browseOAuthRedirectUri() }
+      );
+    });
+  }, [runOAuthCallback]);
+
   const runOAuthPopupUnlock = useCallback(
     async () => {
       setOAuthPopupUnlockActive(true);
@@ -754,17 +778,14 @@ export function useAuthAndSession({
           expectedStateLen: expectedState.length,
         });
 
-        if (Capacitor.isNativePlatform()) {
-          const u = new URL(authUrl);
-          u.searchParams.set('popup', 'false');
-          window.location.href = u.toString();
-          return;
-        }
-
+        // Cap prefer-app: same WebView document polls broker-pending — finish in-process
+        // with full messagingHandoff. completeViaParentNavigation strips handoff from the
+        // resume URL and leaves Messages locked after code exchange (DM gate).
         const result = await startPnOAuthPopup({
           url: authUrl,
           expectedState,
           timeoutMs: 120_000,
+          preferApp: true,
           completeViaParentNavigation: false,
           requireMessagingHandoff: false,
           isMessagingReady: () => isDmIdentityReady(),

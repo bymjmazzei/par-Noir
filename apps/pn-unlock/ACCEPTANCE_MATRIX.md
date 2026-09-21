@@ -20,16 +20,18 @@ Symptom-based checks (not “tests pass”). Record outcomes below.
 ## Native (Unlock app installed + App Links verified)
 
 1. Same OAuth start → OS opens `com.parnoir.unlock`.
-2. Factors entered only in Unlock app → `Browser.open` / redirect returns code to caller.
+2. Factors entered only in Unlock app → POST `/oauth/authorize/broker-complete`; browse polls `broker-pending` (same as desktop). Do **not** rely on `Browser.open(oauth-callback)` for prefer-app.
 3. Messaging (`browser-app` / `messaging-app`): ML-KEM handoff still present after unlock.
 
 | Check | Status | Observed |
 |-------|--------|----------|
 | Debug APK builds; cert matches assetlinks | PASS | see `INTERNAL_BUILDS.md` |
 | iOS project sync + pods | PASS (Xcode archive ops) | Team ID still required for UL verify |
+| Cap prefer-app uses API broker-complete | PASS | `deliverLocalBroker` in Cap App |
+| Cap Unlock yields to caller Cap app after broker | PASS (code) | `App.openUrl(com.parnoir.messaging://oauth/resume)`; vault enroll no longer blocks yield |
 | App Links open native app on device | PENDING | needs physical device + (iOS) Team ID |
 | Vault enroll + biometric re-mint | PENDING | code wired; needs Cap device QA |
-| Messaging handoff after native unlock | PENDING | needs device |
+| Messaging handoff after native unlock | PENDING | sim rebuild installed; needs headed re-unlock |
 
 ## Prefer-app launch (web callers)
 

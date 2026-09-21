@@ -1,11 +1,20 @@
 import { pushPnOAuthDebug } from './pnOAuthDebug';
-import { handoffProvidesMessagingSession, PN_MESSAGING_OAUTH_HANDOFF_STORAGE } from './messagingOAuthHandoff';
+import {
+  handoffProvidesMessagingSession,
+  normalizeMessagingHandoffPayload,
+  PN_MESSAGING_OAUTH_HANDOFF_STORAGE,
+  stashMessagingHandoffOnOrigin,
+} from './messagingOAuthHandoff';
 import { resolveUnlockOrigin } from './consentUnlock/parseConsentParams';
 import { launchUnlockBroker } from './unlockPreferApp';
 import {
   brokerPollContextFromConsentUrl,
   pollUnlockDesktopBrokerOnce,
 } from './unlockDesktopBrokerPoll';
+import {
+  clearPreferAppBrokerWait,
+  stashPreferAppBrokerWaitFromConsentUrl,
+} from './preferAppBrokerWait';
 
 /**
  * Shared pN OAuth popup flow. Must stay in sync with static oauth-callback.html
@@ -407,6 +416,8 @@ function startPnOAuthPopupAfterLaunch(
     let oauthBc: BroadcastChannel | undefined;
     let pendingOAuthResult: PnOAuthPopupResult | null = null;
     let messagingHandoffWaitStarted: number | null = null;
+    /** Prefer-app: flush broker poll when Cap caller returns to foreground. */
+    let onBrokerVisible: () => void = () => {};
 
     const closeOauthBc = () => {
       try {
@@ -426,6 +437,8 @@ function startPnOAuthPopupAfterLaunch(
       if (timeoutId !== undefined) clearTimeout(timeoutId);
       window.removeEventListener('message', onMessage, true);
       window.removeEventListener('storage', onStorage);
+      document.removeEventListener('visibilitychange', onBrokerVisible);
+      window.removeEventListener('focus', onBrokerVisible);
       try {
         localStorage.removeItem(PN_OAUTH_STORAGE_PENDING);
         localStorage.removeItem(PN_OAUTH_STORAGE_LATEST_KEY);
@@ -437,6 +450,7 @@ function startPnOAuthPopupAfterLaunch(
     const finish = (result: PnOAuthPopupResult) => {
       if (settled) return;
       settled = true;
+      clearPreferAppBrokerWait();
       disposeAwait();
       resolve(result);
     };
@@ -444,6 +458,7 @@ function startPnOAuthPopupAfterLaunch(
     const fail = (err: Error) => {
       if (settled) return;
       settled = true;
+      clearPreferAppBrokerWait();
       disposeAwait();
       pushPnOAuthDebug('popup_reject', { reason: err.message });
       reject(err);
@@ -503,6 +518,18 @@ function startPnOAuthPopupAfterLaunch(
 
       if (completeViaParentNavigation) {
         if (settled) return;
+        // Resume URL cannot carry messagingHandoff (too large / not in query). Stash
+        // on origin so oauth_resume / applyAllMessagingHandoffSources can load ML-KEM.
+        if (parsed.messagingHandoff) {
+          const normalized = normalizeMessagingHandoffPayload(parsed.messagingHandoff);
+          if (normalized) {
+            try {
+              stashMessagingHandoffOnOrigin(normalized);
+            } catch {
+              /* ignore */
+            }
+          }
+        }
         settled = true;
         disposeAwait();
         pushPnOAuthDebug('popup_parent_nav', { source });
@@ -653,6 +680,7 @@ function startPnOAuthPopupAfterLaunch(
 
     // Prefer-app API poll: ~1/s is enough; 50ms flooded the console (~300 GETs per unlock).
     if (usedApp) {
+      stashPreferAppBrokerWaitFromConsentUrl(url);
       const BROKER_POLL_MS = 1000;
       brokerPollStartTimeout = setTimeout(() => {
         brokerPollStartTimeout = undefined;
@@ -660,6 +688,13 @@ function startPnOAuthPopupAfterLaunch(
         pollDesktopBrokerOnce();
         brokerPollInterval = setInterval(pollDesktopBrokerOnce, BROKER_POLL_MS);
       }, 400);
+      // Cap/iOS suspends timers while Messages is backgrounded — flush on return.
+      onBrokerVisible = () => {
+        if (settled || document.hidden) return;
+        pollDesktopBrokerOnce();
+      };
+      document.addEventListener('visibilitychange', onBrokerVisible);
+      window.addEventListener('focus', onBrokerVisible);
     }
 
     const POPUP_CLOSED_GRACE_MS = 25_000;

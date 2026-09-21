@@ -82,9 +82,7 @@ export class PNOAuthService {
       sessionStorage.setItem('pn_oauth_nonce', nonce);
     }
 
-    const redirectUri = usePopup
-      ? `${typeof window !== 'undefined' ? window.location.origin : ''}/oauth-callback.html`
-      : REDIRECT_URI;
+    const redirectUri = browseOAuthRedirectUri();
 
     return buildOAuthConsentUrl({
       clientId: getClientId(),

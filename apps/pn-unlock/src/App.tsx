@@ -5,11 +5,14 @@ import {
   ConsentUnlockApp,
   SessionVaultEnrollPrompt,
   SessionVaultUnlockOverlay,
+  callerCapAppResumeUrl,
+  postOAuthBrokerComplete,
   type ConsentVaultEnrollMaterial,
   type ConsentVaultFactors,
 } from '@par-noir/oauth-ui';
 import type { UnlockKeysPayload } from '@par-noir/device-session-vault';
 import { searchFromUnlockUrl, subscribeUnlockDeepLinks } from './deepLinks';
+import { OpenExternalApp } from './openExternalApp';
 import {
   clearUnlockSessionVault,
   enrollUnlockSessionVault,
@@ -18,12 +21,48 @@ import {
   unlockSessionVault,
 } from './sessionVaultNative';
 
+/** Bundled branding — same assets as desktop; avoids CDN CORP in the Cap WebView. */
+import logoUrl from '../public/branding/Par-Noir-Logo-White.png';
+import backgroundUrl from '../public/branding/Par-Noir-Background-Dark.png';
+
 const API_DEFAULT =
   (typeof import.meta !== 'undefined' &&
     (import.meta as ImportMeta & { env?: { VITE_API_ENDPOINT?: string } }).env?.VITE_API_ENDPOINT) ||
   'https://api.parnoir.com';
 
 const DECLINED_KEY = 'pn_vault_enroll_declined_unlock';
+
+function resumeUrlFromSearch(search: string): string | null {
+  try {
+    const q = new URLSearchParams(search.startsWith('?') ? search.slice(1) : search);
+    return callerCapAppResumeUrl({
+      clientId: q.get('client_id'),
+      redirectUri: q.get('redirect_uri'),
+    });
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Cap `@capacitor/app` has no `openUrl` on iOS. Prefer-app opened Unlock via custom
+ * scheme; return with native UIApplication.open (+ `<a>` fallback).
+ */
+function openCallerViaCustomScheme(resumeUrl: string): void {
+  void OpenExternalApp.open({ url: resumeUrl }).catch(() => {
+    try {
+      const a = document.createElement('a');
+      a.href = resumeUrl;
+      a.rel = 'noopener';
+      a.style.display = 'none';
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+    } catch {
+      /* ignore */
+    }
+  });
+}
 
 export default function App(): React.ReactElement {
   const [search, setSearch] = useState(() =>
@@ -76,6 +115,40 @@ export default function App(): React.ReactElement {
     };
   }, []);
 
+  /**
+   * Prefer-app handoff for Cap / native: same API broker as desktop.
+   * Do not Browser.open(oauth-callback) — that is a separate SFSafariViewController
+   * and never reaches the Safari/Chrome tab that is polling broker-pending.
+   */
+  const deliverLocalBroker = async (payload: Record<string, unknown>) => {
+    let apiBase = API_DEFAULT.replace(/\/$/, '');
+    try {
+      const q = search.startsWith('?') ? search.slice(1) : search;
+      const fromQ = new URLSearchParams(q).get('api_endpoint')?.replace(/\/$/, '');
+      if (fromQ) apiBase = fromQ;
+    } catch {
+      /* keep default */
+    }
+    await postOAuthBrokerComplete(apiBase, payload);
+  };
+
+  const onBrokerHandoffComplete = useCallback(() => {
+    // Prefer-app opens Unlock via custom scheme — Cap Browser was never opened, so
+    // Browser.close is a no-op. Cap App also has no openUrl on iOS — navigate via
+    // the caller's custom scheme so OS brings Messages/Browse forward to poll.
+    void Browser.close().catch(() => {
+      /* none open */
+    });
+    const resume = resumeUrlFromSearch(search);
+    if (!resume || !Capacitor.isNativePlatform()) return;
+    window.setTimeout(() => {
+      openCallerViaCustomScheme(resume);
+    }, 200);
+  }, [search]);
+
+  /**
+   * Deny / non-broker fallback only — success path uses deliverLocalBroker.
+   */
   const openExternal = async (url: string) => {
     if (Capacitor.isNativePlatform()) {
       await Browser.open({ url });
@@ -200,7 +273,12 @@ export default function App(): React.ReactElement {
       <ConsentUnlockApp
         search={search}
         apiEndpointDefault={API_DEFAULT.replace(/\/$/, '')}
+        deliverLocalBroker={deliverLocalBroker}
+        onBrokerHandoffComplete={onBrokerHandoffComplete}
         openExternal={openExternal}
+        logoUrl={logoUrl}
+        backgroundUrl={backgroundUrl}
+        layout="broker"
         vaultFactors={vaultFactors}
         onVaultFactorsConsumed={() => setVaultFactors(null)}
         onUnlockedForVault={onUnlockedForVault}

@@ -196,8 +196,11 @@ export {
   DEFAULT_UNLOCK_ORIGIN,
   UNLOCK_APP_ID,
   UNLOCK_CUSTOM_SCHEME,
+  MESSAGING_CUSTOM_SCHEME,
+  BROWSE_CUSTOM_SCHEME,
   OAUTH_BROKER_COMPLETE_PATH,
   OAUTH_BROKER_PENDING_PATH,
+  callerCapAppResumeUrl,
   parseConsentUnlockParams,
   resolveUnlockOrigin,
   isUnlockBrokerHost,
@@ -231,3 +234,12 @@ export {
   brokerPollContextFromConsentUrl,
 } from './unlockDesktopBrokerPoll';
 export type { DesktopBrokerPendingResult } from './unlockDesktopBrokerPoll';
+export {
+  PN_PREFER_APP_BROKER_WAIT_KEY,
+  stashPreferAppBrokerWait,
+  clearPreferAppBrokerWait,
+  readPreferAppBrokerWait,
+  stashPreferAppBrokerWaitFromConsentUrl,
+  pollStashedPreferAppBrokerOnce,
+} from './preferAppBrokerWait';
+export type { PreferAppBrokerWait } from './preferAppBrokerWait';

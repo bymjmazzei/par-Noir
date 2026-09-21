@@ -21,6 +21,21 @@ function envPreferAppEnabled(): boolean {
   return true;
 }
 
+/** Capacitor WKWebView / native shell — do not import @capacitor/core from oauth-ui. */
+function isCapacitorNative(): boolean {
+  if (typeof window === 'undefined') return false;
+  try {
+    const cap = (
+      window as Window & {
+        Capacitor?: { isNativePlatform?: () => boolean };
+      }
+    ).Capacitor;
+    return typeof cap?.isNativePlatform === 'function' && cap.isNativePlatform();
+  } catch {
+    return false;
+  }
+}
+
 /** True when already running inside the Unlock broker (web host / Electron flag). */
 export function isRunningInsideUnlockBroker(): boolean {
   if (typeof window === 'undefined') return false;
@@ -99,6 +114,15 @@ export async function tryPreferUnlockApp(
     document.removeEventListener('visibilitychange', onVis);
     window.removeEventListener('blur', onBlur);
     return { opened: false, mode: 'fallback' };
+  }
+
+  // Cap iOS often shows "Open in Unlock?" without hiding the caller WebView, so
+  // visibility never flips — still treat as prefer-app so callers poll broker-pending
+  // instead of navigating the Cap shell to unlock.parnoir.com.
+  if (isCapacitorNative()) {
+    document.removeEventListener('visibilitychange', onVis);
+    window.removeEventListener('blur', onBlur);
+    return { opened: true, mode: 'app' };
   }
 
   await new Promise<void>((resolve) => {

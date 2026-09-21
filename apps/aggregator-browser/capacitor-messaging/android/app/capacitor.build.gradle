@@ -11,6 +11,7 @@ apply from: "../capacitor-cordova-android-plugins/cordova.variables.gradle"
 dependencies {
     implementation project(':capacitor-camera')
     implementation project(':capacitor-clipboard')
+    implementation project(':bytetrade-capacitor-native-biometric')
     implementation project(':capacitor-secure-storage-plugin')
     implementation project(':capacitor-push-notifications')
     implementation project(':capacitor-filesystem')

@@ -60,5 +60,10 @@
 			</array>
 		</dict>
 	</array>
+	<key>LSApplicationQueriesSchemes</key>
+	<array>
+		<string>com.parnoir.messaging</string>
+		<string>com.parnoir.browser</string>
+	</array>
 </dict>
 </plist>

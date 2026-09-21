@@ -2,6 +2,9 @@
  * Push notification registration and handlers.
  * Uses @capacitor/push-notifications on native only.
  * Registers device token with par Noir API when user has valid access token.
+ *
+ * Do not call requestPermissions() until unlocked — the iOS system sheet blocks
+ * the whole Cap WebView (unlock / OAuth) and reappears after every reinstall.
  */
 
 import { useEffect, useRef } from 'react';
@@ -12,6 +15,8 @@ import { API_ENDPOINT } from '../config/api';
 export interface UsePushNotificationsOptions {
   /** Returns current access token or null if not authenticated. Used for Bearer auth. */
   getAccessToken: () => Promise<string | null>;
+  /** When false, do not prompt or register (e.g. locked session). */
+  enabled?: boolean;
   /** Called when user taps a notification; data may contain threadId, messageId, etc. */
   onNotificationAction?: (data: Record<string, string>) => void;
 }
@@ -26,19 +31,23 @@ function getPlatform(): 'ios' | 'android' | null {
 
 export function usePushNotifications({
   getAccessToken,
+  enabled = true,
   onNotificationAction,
 }: UsePushNotificationsOptions): void {
   const registeredTokenRef = useRef<string | null>(null);
   const onActionRef = useRef(onNotificationAction);
   onActionRef.current = onNotificationAction;
+  const getAccessTokenRef = useRef(getAccessToken);
+  getAccessTokenRef.current = getAccessToken;
 
   useEffect(() => {
     if (!Capacitor.isNativePlatform()) return;
+    if (!enabled) return;
     const platform = getPlatform();
     if (!platform) return;
 
     const registerTokenWithApi = async (token: string) => {
-      const accessToken = await getAccessToken();
+      const accessToken = await getAccessTokenRef.current();
       if (!accessToken) return;
       if (registeredTokenRef.current === token) return;
       try {
@@ -59,7 +68,7 @@ export function usePushNotifications({
     };
 
     const unregisterTokenFromApi = async (token: string) => {
-      const accessToken = await getAccessToken();
+      const accessToken = await getAccessTokenRef.current();
       if (!accessToken) return;
       try {
         await fetch(`${API_ENDPOINT}/api/push/register`, {
@@ -81,11 +90,26 @@ export function usePushNotifications({
     let regListener: { remove: () => Promise<void> } | null = null;
     let receivedListener: { remove: () => Promise<void> } | null = null;
     let actionListener: { remove: () => Promise<void> } | null = null;
+    let cancelled = false;
 
     const setup = async () => {
       try {
-        const perm = await PushNotifications.requestPermissions();
-        if (perm.receive !== 'granted') return;
+        // Wait until OAuth session exists — never prompt over the locked / unlock UI.
+        const accessToken = await getAccessTokenRef.current();
+        if (!accessToken || cancelled) return;
+
+        const existing = await PushNotifications.checkPermissions();
+        if (cancelled) return;
+        if (existing.receive === 'denied') return;
+
+        let receive = existing.receive;
+        if (receive === 'prompt' || receive === 'prompt-with-rationale') {
+          const perm = await PushNotifications.requestPermissions();
+          if (cancelled) return;
+          receive = perm.receive;
+        }
+        if (receive !== 'granted') return;
+
         await PushNotifications.register();
 
         regListener = await PushNotifications.addListener(
@@ -110,9 +134,10 @@ export function usePushNotifications({
       }
     };
 
-    setup();
+    void setup();
 
     return () => {
+      cancelled = true;
       regListener?.remove();
       receivedListener?.remove();
       actionListener?.remove();
@@ -121,5 +146,5 @@ export function usePushNotifications({
         registeredTokenRef.current = null;
       }
     };
-  }, [getAccessToken]);
+  }, [enabled]);
 }

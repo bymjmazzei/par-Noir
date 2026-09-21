@@ -409,9 +409,11 @@ function ConsentUnlockInner(props: {
           false,
           unlocked
         );
-        await notifyVault(unlocked, key1, key2);
+        // Yield before vault enroll — Cap Messages is suspended while Unlock is
+        // foreground; awaiting enroll blocked broker-pending forever.
         resetFormAfterBrokerHandoff();
         onBrokerHandoffComplete?.();
+        void notifyVault(unlocked, key1, key2);
         return;
       }
 
