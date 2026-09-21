@@ -792,6 +792,7 @@ function ConsentUnlockInner(props: {
                     redirectUri: params.redirectUri,
                     state: params.state,
                     popupFlow: params.popup,
+                    openExternal,
                   })
                 }
               >

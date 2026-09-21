@@ -31,6 +31,29 @@ Symptom-based checks (not “tests pass”). Record outcomes below.
 | Vault enroll + biometric re-mint | PENDING | code wired; needs Cap device QA |
 | Messaging handoff after native unlock | PENDING | needs device |
 
+## Prefer-app launch (web callers)
+
+Callers (`startPnOAuthPopup` / `UnlockButton`) try `com.parnoir.unlock://oauth/consent?...` first, then fall back to the HTTPS popup. Disable with `VITE_UNLOCK_PREFER_APP=0`.
+
+| Check | Status | Observed |
+|-------|--------|----------|
+| Scheme URL builder forces popup=false | PASS | unit tests |
+| Visible-page → HTTPS fallback | PASS | unit tests |
+| Hidden-page → treat as app opened | PASS | unit tests |
+| Installed Cap/Electron opens Unlock | PENDING | device / desktop QA |
+| Not installed → web popup | PENDING | manual |
+
+## Desktop Unlock (Mac / Windows Electron)
+
+See [`../pn-unlock-desktop/ACCEPTANCE.md`](../pn-unlock-desktop/ACCEPTANCE.md) and [`../pn-unlock-desktop/README.md`](../pn-unlock-desktop/README.md).
+
+| Check | Status | Observed |
+|-------|--------|----------|
+| Electron shell + protocol registration | PASS | `apps/pn-unlock-desktop` |
+| Deep link → ConsentUnlock search | PASS | shared `searchFromUnlockUrl` |
+| Return via shell.openExternal(redirect_uri) | PASS | wired; bridges via oauth-callback |
+| safeStorage vault | PASS | code wired |
+
 ## Native (app not installed)
 
 1. Universal Link falls through to web SPA on unlock.parnoir.com.

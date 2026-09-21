@@ -1,6 +1,7 @@
 import { pushPnOAuthDebug } from './pnOAuthDebug';
 import { handoffProvidesMessagingSession, PN_MESSAGING_OAUTH_HANDOFF_STORAGE } from './messagingOAuthHandoff';
 import { resolveUnlockOrigin } from './consentUnlock/parseConsentParams';
+import { launchUnlockBroker } from './unlockPreferApp';
 
 /**
  * Shared pN OAuth popup flow. Must stay in sync with static oauth-callback.html
@@ -99,6 +100,14 @@ export function buildOAuthConsentUrl(config: OAuthConsentUrlConfig): string {
   return `${unlockBase}/oauth/consent?${params.toString()}`;
 }
 
+/** Custom-scheme consent URL for installed Unlock app (Cap / Electron). */
+export function buildOAuthConsentAppUrl(config: OAuthConsentUrlConfig): string {
+  const httpsUrl = buildOAuthConsentUrl({ ...config, forPopup: false });
+  const u = new URL(httpsUrl);
+  u.searchParams.set('popup', 'false');
+  return `com.parnoir.unlock://oauth/consent?${u.searchParams.toString()}`;
+}
+
 /** browser-app / messaging: same-origin unlock page (not API consent). */
 export interface BrowserAppOAuthUnlockUrlConfig {
   clientId: string;
@@ -159,6 +168,11 @@ export interface StartPnOAuthPopupOptions {
    * Use **true** for full-window / native flows that complete OAuth from a fresh load.
    */
   completeViaParentNavigation?: boolean;
+  /**
+   * Try custom-scheme Unlock app before opening the HTTPS popup (default true).
+   * Set false to force web popup. Also disabled by VITE_UNLOCK_PREFER_APP=0.
+   */
+  preferApp?: boolean;
   /** When true, do not resolve until messagingHandoff is valid or isMessagingReady() returns true. */
   requireMessagingHandoff?: boolean;
   /** Check whether messaging keys landed (e.g. after handoff applied from storage). */
@@ -296,10 +310,32 @@ function defaultPopupName(): string {
 }
 
 /**
- * Opens consent URL in a popup and resolves when oauth_callback is received
- * (postMessage, BroadcastChannel, or localStorage poll).
+ * Opens consent URL in a popup (or Unlock app via custom scheme) and resolves when
+ * oauth_callback is received (postMessage, BroadcastChannel, or localStorage poll).
  */
 export function startPnOAuthPopup(options: StartPnOAuthPopupOptions): Promise<PnOAuthPopupResult> {
+  return (async () => {
+    let usedApp = false;
+    try {
+      const launch = await launchUnlockBroker({
+        httpsUrl: options.url,
+        preferApp: options.preferApp,
+      });
+      usedApp = launch.usedApp;
+      if (usedApp) {
+        pushPnOAuthDebug('prefer_app_opened', {});
+      }
+    } catch {
+      usedApp = false;
+    }
+    return startPnOAuthPopupAfterLaunch(options, usedApp);
+  })();
+}
+
+function startPnOAuthPopupAfterLaunch(
+  options: StartPnOAuthPopupOptions,
+  usedApp: boolean
+): Promise<PnOAuthPopupResult> {
   const {
     url,
     expectedState,
@@ -332,6 +368,7 @@ export function startPnOAuthPopup(options: StartPnOAuthPopupOptions): Promise<Pn
       completeViaParentNavigation,
       expectedStateEmpty: expectedState === '',
       requireMessagingHandoff,
+      usedApp,
     });
     // Named window lets oauth-callback.html navigate this tab when window.opener is lost.
     try {
@@ -342,8 +379,8 @@ export function startPnOAuthPopup(options: StartPnOAuthPopupOptions): Promise<Pn
       /* ignore */
     }
 
-    const popup = window.open(url, popupName, popupFeatures);
-    if (!popup) {
+    const popup = usedApp ? null : window.open(url, popupName, popupFeatures);
+    if (!popup && !usedApp) {
       pushPnOAuthDebug('popup_blocked', {});
       reject(new Error('POPUP_BLOCKED'));
       return;
@@ -440,8 +477,6 @@ export function startPnOAuthPopup(options: StartPnOAuthPopupOptions): Promise<Pn
         hasMessagingHandoff: Boolean(parsed.messagingHandoff),
       });
 
-      // CSRF: when we sent a non-empty state, require a match (payload or sessionStorage fallback).
-      // Silent mismatch used to block navigation entirely — parent never unlocked with no error.
       if (expectedState !== '') {
         const incoming = resolveIncomingOAuthState(parsed);
         if (incoming === undefined) {
@@ -488,7 +523,6 @@ export function startPnOAuthPopup(options: StartPnOAuthPopupOptions): Promise<Pn
       }
     };
 
-    /** oauth-callback.html may call opener.location.replace(/?oauth_resume=1&code=...) before postMessage is observed. */
     const tryAcceptFromOpenerUrl = () => {
       if (settled) return;
       try {
@@ -539,13 +573,11 @@ export function startPnOAuthPopup(options: StartPnOAuthPopupOptions): Promise<Pn
         }
         return;
       }
-      // Messaging handoff may land after oauth code when popup is already closing.
       if (key === PN_MESSAGING_OAUTH_HANDOFF_STORAGE && pendingOAuthResult?.code) {
         pollMessagingHandoffReady();
       }
     };
 
-    // Capture phase: some embeds / timing edge cases deliver message after microtasks; capture runs first.
     window.addEventListener('message', onMessage, true);
     window.addEventListener('storage', onStorage);
 
@@ -591,46 +623,43 @@ export function startPnOAuthPopup(options: StartPnOAuthPopupOptions): Promise<Pn
       pollMessagingHandoffReady();
     }, 50);
 
-    // Wait after popup closes before failing: callback defers window.close() so parent can still
-    // receive postMessage / BroadcastChannel / poll localStorage in slow browsers.
     const POPUP_CLOSED_GRACE_MS = 25_000;
-    checkClosedInterval = setInterval(() => {
-      if (settled) return;
-      tryAcceptFromOpenerUrl();
-      if (settled) return;
-      pollMessagingHandoffReady();
-      try {
-        if (!popup.closed) {
-          popupEverSeenOpen = true;
-          popupClosedTime = null;
-          return;
-        }
-        // closed === true
-        if (!popupEverSeenOpen) {
-          // Do not treat as user cancel: during API consent the opener often sees closed===true
-          // until the redirect hits same-origin oauth-callback.html.
-          return;
-        }
-        if (popupClosedTime === null) popupClosedTime = Date.now();
-        else if (Date.now() - popupClosedTime > POPUP_CLOSED_GRACE_MS) {
-          tryAcceptFromOpenerUrl();
-          pollStorageOnce();
-          if (pendingOAuthResult?.code) {
-            if (messagingHandoffSatisfied(pendingOAuthResult)) {
-              finish(pendingOAuthResult);
-              return;
-            }
-            if (requireMessagingHandoff) {
-              fail(new Error(MESSAGING_HANDOFF_INCOMPLETE));
-              return;
-            }
+    if (popup) {
+      checkClosedInterval = setInterval(() => {
+        if (settled) return;
+        tryAcceptFromOpenerUrl();
+        if (settled) return;
+        pollMessagingHandoffReady();
+        try {
+          if (!popup.closed) {
+            popupEverSeenOpen = true;
+            popupClosedTime = null;
+            return;
           }
-          if (!settled) fail(new Error('POPUP_CLOSED'));
+          if (!popupEverSeenOpen) {
+            return;
+          }
+          if (popupClosedTime === null) popupClosedTime = Date.now();
+          else if (Date.now() - popupClosedTime > POPUP_CLOSED_GRACE_MS) {
+            tryAcceptFromOpenerUrl();
+            pollStorageOnce();
+            if (pendingOAuthResult?.code) {
+              if (messagingHandoffSatisfied(pendingOAuthResult)) {
+                finish(pendingOAuthResult);
+                return;
+              }
+              if (requireMessagingHandoff) {
+                fail(new Error(MESSAGING_HANDOFF_INCOMPLETE));
+                return;
+              }
+            }
+            if (!settled) fail(new Error('POPUP_CLOSED'));
+          }
+        } catch {
+          /* COOP may throw when reading popup.closed during cross-origin navigation */
         }
-      } catch {
-        /* COOP may throw when reading popup.closed during cross-origin navigation */
-      }
-    }, 500);
+      }, 500);
+    }
 
     timeoutId = setTimeout(() => {
       if (!settled) {
@@ -642,7 +671,7 @@ export function startPnOAuthPopup(options: StartPnOAuthPopupOptions): Promise<Pn
 }
 
 /**
- * Launch unlock broker (popup on web; callers should use full-page on native Cap).
+ * Launch unlock broker (prefer app, then popup on web).
  * Same handoff contract as startPnOAuthPopup.
  */
 export function startPnOAuthUnlock(options: StartPnOAuthPopupOptions): Promise<PnOAuthPopupResult> {

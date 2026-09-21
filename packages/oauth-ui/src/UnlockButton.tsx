@@ -5,9 +5,10 @@ import {
   startPnOAuthPopup,
   type PnOAuthPopupResult,
 } from './pnOAuthPopup';
+import { launchUnlockBroker } from './unlockPreferApp';
 
 export type { OAuthConsentUrlConfig, BrowserAppOAuthUnlockUrlConfig } from './pnOAuthPopup';
-export { buildOAuthConsentUrl, buildOAuthAuthorizeUrl, buildBrowserAppOAuthUnlockUrl, startPnOAuthPopup, startPnOAuthUnlock } from './pnOAuthPopup';
+export { buildOAuthConsentUrl, buildOAuthConsentAppUrl, buildOAuthAuthorizeUrl, buildBrowserAppOAuthUnlockUrl, startPnOAuthPopup, startPnOAuthUnlock } from './pnOAuthPopup';
 export type { PnOAuthPopupResult } from './pnOAuthPopup';
 
 export interface UnlockButtonConfig {
@@ -99,7 +100,14 @@ export function UnlockButton({
     });
 
     if (forceRedirect) {
-      window.location.href = url;
+      void (async () => {
+        const launch = await launchUnlockBroker({ httpsUrl: url, preferApp: true });
+        if (launch.usedApp) {
+          // App opened; Cap/desktop will return via redirect_uri. Stay on this page.
+          return;
+        }
+        window.location.href = launch.httpsUrl;
+      })();
       return;
     }
 

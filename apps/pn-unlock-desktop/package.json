@@ -1,0 +1,63 @@
+{
+  "name": "par-noir-unlock-desktop",
+  "version": "1.0.0",
+  "private": true,
+  "description": "par Noir Unlock desktop broker (Mac / Windows)",
+  "productName": "par Noir Unlock",
+  "main": "dist-electron/main/main.js",
+  "scripts": {
+    "dev": "concurrently -k \"vite --config vite.config.ts\" \"wait-on http://127.0.0.1:5179 && VITE_DEV_SERVER_URL=http://127.0.0.1:5179 electron .\"",
+    "build": "npm run build:renderer && npm run build:main && npm run build:preload",
+    "build:renderer": "vite build --config vite.config.ts",
+    "build:main": "tsc -p tsconfig.main.json",
+    "build:preload": "tsc -p tsconfig.preload.json",
+    "dist:mac": "npm run build && electron-builder --mac --dir",
+    "dist:win": "npm run build && electron-builder --win --dir",
+    "dist:all": "npm run build && electron-builder --mac --win --dir",
+    "lint": "tsc -p tsconfig.main.json --noEmit && tsc -p tsconfig.preload.json --noEmit"
+  },
+  "dependencies": {
+    "@par-noir/device-session-vault": "file:../../packages/device-session-vault",
+    "@par-noir/oauth-ui": "file:../../packages/oauth-ui",
+    "@par-noir/pqc-crypto": "file:../../packages/pqc-crypto",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.9",
+    "@types/react": "^18.3.3",
+    "@types/react-dom": "^18.3.0",
+    "@vitejs/plugin-react": "^4.0.0",
+    "concurrently": "^8.2.2",
+    "electron": "29.3.0",
+    "electron-builder": "^24.13.1",
+    "typescript": "^5.4.5",
+    "vite": "^5.2.11",
+    "wait-on": "^7.2.0"
+  },
+  "build": {
+    "appId": "com.parnoir.unlock",
+    "productName": "par Noir Unlock",
+    "directories": {
+      "buildResources": "build"
+    },
+    "protocols": [
+      {
+        "name": "par Noir Unlock",
+        "schemes": ["com.parnoir.unlock"]
+      }
+    ],
+    "mac": {
+      "category": "public.app-category.utilities",
+      "target": ["dmg", "dir"]
+    },
+    "win": {
+      "target": ["portable", "dir"]
+    },
+    "files": [
+      "dist/**",
+      "dist-electron/**",
+      "package.json"
+    ]
+  }
+}

@@ -2,6 +2,7 @@ export { MESSAGING_HANDOFF_CLIENT_IDS, isMessagingHandoffClient, DEFAULT_UNLOCK_
 export type { MessagingHandoffClientId } from './constants';
 export { parseConsentUnlockParams, resolveUnlockOrigin, isUnlockBrokerHost } from './parseConsentParams';
 export type { ConsentUnlockParams } from './parseConsentParams';
+export { searchFromUnlockUrl } from './searchFromUnlockUrl';
 export {
   parseIdentityFileJson,
   decryptIdentityFileLocal,

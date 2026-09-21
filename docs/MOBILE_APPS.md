@@ -7,6 +7,7 @@ The Dashboard, Browser, Messaging, Prism, and **Unlock** web apps are wrapped wi
 | App | App ID | Source | Scripts |
 |-----|--------|--------|---------|
 | **Unlock** | `com.parnoir.unlock` | `apps/pn-unlock` | `build:mobile`, `open:android`, `open:ios` |
+| **Unlock Desktop** | `com.parnoir.unlock` | `apps/pn-unlock-desktop` | Electron: `build`, `dist:mac`, `dist:win` |
 | **Dashboard** | `com.parnoir.dashboard` | `apps/id-dashboard` | `build:mobile`, `open:android`, `open:ios` |
 | **Browser** | `com.parnoir.browser` | `apps/aggregator-browser` | `build:mobile`, `open:android`, `open:ios` |
 | **Messaging** | `com.parnoir.messaging` | `apps/aggregator-browser` (variant) | `build:mobile:messaging`; sync in `capacitor-messaging/` |
@@ -18,7 +19,8 @@ Canonical interactive unlock UI is **`https://unlock.parnoir.com`** (`ConsentUnl
 
 - **Web broker (live):** SPA on Firebase target `unlock` (site `unlock-parnoir`). Custom domain must show Connected TLS.
 - **Native claim:** Capacitor app `com.parnoir.unlock` — Universal/App Links for `unlock.parnoir.com`. **Phishing-hardening is not complete** until association stubs are burned down and [`ACCEPTANCE_MATRIX.md`](../apps/pn-unlock/ACCEPTANCE_MATRIX.md) native rows pass on real devices. See [`STORE_ASSOCIATION_CHECKLIST.md`](../apps/pn-unlock/STORE_ASSOCIATION_CHECKLIST.md) and [`INTERNAL_BUILDS.md`](../apps/pn-unlock/INTERNAL_BUILDS.md).
-- **Session vault:** Native enroll + biometric re-mint of sealed `unlock_keys` (includes `encryptedIdentityJson`) is wired in `apps/pn-unlock`; web has no vault.
+- **Desktop Unlock:** Electron shell [`apps/pn-unlock-desktop`](../apps/pn-unlock-desktop) registers `com.parnoir.unlock://` and hosts the same consent UI. Callers **prefer the app** (custom scheme) before the HTTPS popup (`launchUnlockBroker` / `startPnOAuthPopup`).
+- **Session vault:** Native enroll + biometric re-mint of sealed `unlock_keys` (includes `encryptedIdentityJson`) is wired in `apps/pn-unlock`; desktop uses Electron `safeStorage`. Web has no vault.
 - **API:** `GET /oauth/consent` and `/oauth/authorize/consent` **302** to the unlock origin with `api_endpoint` for challenge/authenticate.
 - **Ratchet:** `scripts/check-unlock-association-stubs.sh` (pre-commit + CI) — Apple `TEAMID` may remain on the burn-down allowlist until filled; Android SHA256 stub is forbidden.
 - Env: `PN_UNLOCK_ORIGIN` (API), `VITE_UNLOCK_ORIGIN` / `VITE_API_ENDPOINT` (unlock + callers).

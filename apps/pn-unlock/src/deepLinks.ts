@@ -4,8 +4,10 @@
 
 import { Capacitor } from '@capacitor/core';
 import { App as CapApp } from '@capacitor/app';
+import { searchFromUnlockUrl } from '@par-noir/oauth-ui';
 
 export type UnlockLaunchHandler = (url: string) => void;
+export { searchFromUnlockUrl };
 
 /**
  * Subscribe to appUrlOpen + getLaunchUrl. Returns unsubscribe.
@@ -30,26 +32,4 @@ export function subscribeUnlockDeepLinks(onUrl: UnlockLaunchHandler): () => void
     removed = true;
     void listenerPromise.then((h) => h.remove());
   };
-}
-
-/** Convert unlock.parnoir.com or custom-scheme URL into location.search for ConsentUnlockApp. */
-export function searchFromUnlockUrl(url: string): string | null {
-  try {
-    if (url.startsWith('com.parnoir.unlock:')) {
-      const normalized = url.replace(/^com\.parnoir\.unlock:\/\//, 'https://unlock.parnoir.com/');
-      const u = new URL(normalized);
-      return u.search || '';
-    }
-    const u = new URL(url);
-    if (
-      u.hostname === 'unlock.parnoir.com' ||
-      u.hostname === 'localhost' ||
-      u.pathname.includes('oauth')
-    ) {
-      return u.search || '';
-    }
-  } catch {
-    return null;
-  }
-  return null;
 }

@@ -4,6 +4,7 @@ export {
   UnlockButton,
   buildOAuthAuthorizeUrl,
   buildOAuthConsentUrl,
+  buildOAuthConsentAppUrl,
   buildBrowserAppOAuthUnlockUrl,
   startPnOAuthPopup,
   startPnOAuthUnlock,
@@ -11,6 +12,12 @@ export {
 export type { UnlockButtonConfig, UnlockButtonProps } from './UnlockButton';
 export type { OAuthConsentUrlConfig, BrowserAppOAuthUnlockUrlConfig, PnOAuthPopupResult, StartPnOAuthPopupOptions } from './pnOAuthPopup';
 export { oauthStatesMatch } from './pnOAuthPopup';
+export {
+  launchUnlockBroker,
+  httpsConsentUrlToAppUrl,
+  tryPreferUnlockApp,
+  isRunningInsideUnlockBroker,
+} from './unlockPreferApp';
 export {
   exchangePortalAuthorizationCode,
   refreshPortalAccessToken,
@@ -189,6 +196,7 @@ export {
   parseConsentUnlockParams,
   resolveUnlockOrigin,
   isUnlockBrokerHost,
+  searchFromUnlockUrl,
   mintConsentAuthorizationCode,
   authenticateWithUnlockProofDetailed,
   decryptIdentityFileLocal,

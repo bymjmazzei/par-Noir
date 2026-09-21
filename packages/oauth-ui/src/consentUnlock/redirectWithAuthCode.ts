@@ -178,8 +178,9 @@ export function denyOAuthConsent(args: {
   redirectUri: string;
   state: string;
   popupFlow: boolean;
+  openExternal?: (url: string) => void | Promise<void>;
 }): void {
-  const { redirectUri, state, popupFlow } = args;
+  const { redirectUri, state, popupFlow, openExternal } = args;
   let appOrigin = '';
   try {
     appOrigin = new URL(redirectUri).origin;
@@ -209,7 +210,12 @@ export function denyOAuthConsent(args: {
     du.searchParams.set('error_description', 'User denied access');
     if (state) du.searchParams.set('state', state);
     if (popupFlow) du.searchParams.set('pn_popup', '1');
-    window.location.href = du.toString();
+    const target = du.toString();
+    if (openExternal) {
+      void openExternal(target);
+      return;
+    }
+    window.location.href = target;
   } catch {
     const sep = redirectUri.includes('?') ? '&' : '?';
     let q =
@@ -217,6 +223,11 @@ export function denyOAuthConsent(args: {
       encodeURIComponent('User denied access') +
       (state ? '&state=' + encodeURIComponent(state) : '');
     if (popupFlow) q += '&pn_popup=1';
-    window.location.href = redirectUri + sep + q;
+    const target = redirectUri + sep + q;
+    if (openExternal) {
+      void openExternal(target);
+      return;
+    }
+    window.location.href = target;
   }
 }
