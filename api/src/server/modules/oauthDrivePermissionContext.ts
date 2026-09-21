@@ -19,6 +19,7 @@ import { ThirdPartyPermissionsService } from './thirdPartyPermissionsService';
 import { isPortableStorageProvider } from './storage/storageProviderUtils';
 import { hashIdentifier, safeLogger } from '../../utils/logger';
 import { getCachedGrant, setCachedGrant } from './oauthPermissionCache';
+import { extractCloudAccessToken } from './cloudAccessToken';
 
 export interface OAuthDrivePermissionContext {
   credentialsRecord: StoredCredentialsRecord;
@@ -302,6 +303,63 @@ async function lookupGrantFromDrive(
   }
 }
 
+/**
+ * Consent-skip hint for a client. Cache first; Drive only when the device
+ * forwarded X-PN-Cloud-Access-Token (or portable path needs no Drive AT).
+ *
+ * Unlock brokers (desktop/Cap/web unlock page) mint the code *before* browse
+ * hydrates the cloud vault — probing Drive there stalls unlock and falsely
+ * looks like "no grant" / re-prompt. Defer authoritative Drive reads until
+ * post-handoff grant persist with a cloud token.
+ */
+export async function getExistingGrant(
+  req: Request,
+  clientId: string,
+  params: { pnIdentifier?: string; did?: string }
+): Promise<ExistingGrant | null> {
+  const normalizedPn = params.pnIdentifier
+    ? normalizePnIdentifier(params.pnIdentifier)
+    : undefined;
+  if (normalizedPn) {
+    const cached = await getCachedGrant(clientId, normalizedPn);
+    if (cached) return cached;
+  }
+
+  const hasCloudToken = Boolean(extractCloudAccessToken(req));
+  if (!hasCloudToken) {
+    if (normalizedPn && (await isPortableStorageProvider(normalizedPn))) {
+      try {
+        const permissions = await ThirdPartyPermissionsService.getPermissions(
+          '',
+          '',
+          normalizedPn
+        );
+        const grant = activeGrant(clientId, permissions[clientId]);
+        if (grant) await setCachedGrant(clientId, normalizedPn, grant);
+        return grant;
+      } catch (error: unknown) {
+        safeLogger.warn('[OAuth] Portable grant lookup failed during unlock', {
+          clientId,
+          message: error instanceof Error ? error.message : String(error),
+          pnIdHash: hashIdentifier(normalizedPn),
+        });
+        return null;
+      }
+    }
+    safeLogger.info('[OAuth] Grant lookup deferred — no cloud token on unlock path', {
+      clientId,
+      pnIdHash: normalizedPn ? hashIdentifier(normalizedPn) : undefined,
+    });
+    return null;
+  }
+
+  const result = await lookupGrantFromDrive(req, clientId, params);
+  if (normalizedPn && result) {
+    await setCachedGrant(clientId, normalizedPn, result);
+  }
+  return result;
+}
+
 /** Race the lookup; returns null on timeout so unlock is not blocked by slow Drive. */
 export async function getExistingGrantWithTimeout(
   req: Request,
@@ -309,6 +367,22 @@ export async function getExistingGrantWithTimeout(
   params: { pnIdentifier?: string; did?: string },
   timeoutMs: number = GRANT_LOOKUP_TIMEOUT_MS
 ): Promise<ExistingGrant | null> {
+  // No cloud token → getExistingGrant is cache/portable only; do not burn the
+  // 5s timeout waiting for a Drive path that cannot run under custody.
+  if (!extractCloudAccessToken(req)) {
+    try {
+      return await getExistingGrant(req, clientId, params);
+    } catch (error: unknown) {
+      safeLogger.warn('[OAuth] Grant lookup failed during unlock', {
+        clientId,
+        reason:
+          error instanceof DriveIndexError ? error.code.toLowerCase() : 'unknown',
+        pnIdHash: params.pnIdentifier ? hashIdentifier(params.pnIdentifier) : undefined,
+      });
+      return null;
+    }
+  }
+
   try {
     return await Promise.race([
       getExistingGrant(req, clientId, params),
@@ -334,29 +408,4 @@ export async function getExistingGrantWithTimeout(
     });
     return null;
   }
-}
-
-/**
- * Consent-skip hint for a client. Cache is consulted first, but a cache miss
- * falls through to the authoritative Drive record rather than being treated as
- * "no grant".
- */
-export async function getExistingGrant(
-  req: Request,
-  clientId: string,
-  params: { pnIdentifier?: string; did?: string }
-): Promise<ExistingGrant | null> {
-  const normalizedPn = params.pnIdentifier
-    ? normalizePnIdentifier(params.pnIdentifier)
-    : undefined;
-  if (normalizedPn) {
-    const cached = await getCachedGrant(clientId, normalizedPn);
-    if (cached) return cached;
-  }
-
-  const result = await lookupGrantFromDrive(req, clientId, params);
-  if (normalizedPn && result) {
-    await setCachedGrant(clientId, normalizedPn, result);
-  }
-  return result;
 }

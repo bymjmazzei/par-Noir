@@ -4,6 +4,7 @@
 
 import {
   buildMessagingHandoffFromUnlock,
+  buildMessagingHandoffHash,
   buildMessagingIdentityHash,
   buildMessagingSessionWindowName,
   handoffProvidesMessagingSession,
@@ -22,7 +23,7 @@ export type RedirectWithAuthCodeArgs = {
   consentShown: boolean;
   encryptedIdentity?: unknown;
   decryptedIdentity?: unknown;
-  /** Optional external open (Capacitor Browser) when leaving the unlock WebView. */
+  /** Optional external open (Capacitor Browser / Electron) when leaving the unlock WebView. */
   openExternal?: (url: string) => void | Promise<void>;
 };
 
@@ -43,7 +44,7 @@ function buildCallbackUrl(
   grantedDataPoints: string[],
   consentShown: boolean,
   popupFlow: boolean,
-  identityHash?: string
+  hashPayload?: string
 ): string {
   const u = new URL(redirectUri);
   u.searchParams.set('code', code);
@@ -53,8 +54,8 @@ function buildCallbackUrl(
   }
   if (consentShown) u.searchParams.set('consent_shown', '1');
   if (popupFlow) u.searchParams.set('pn_popup', '1');
-  if (identityHash) {
-    u.hash = identityHash.startsWith('#') ? identityHash.slice(1) : identityHash;
+  if (hashPayload) {
+    u.hash = hashPayload.startsWith('#') ? hashPayload.slice(1) : hashPayload;
   }
   return u.toString();
 }
@@ -100,7 +101,7 @@ export async function redirectWithAuthCode(args: RedirectWithAuthCodeArgs): Prom
   } = args;
 
   let messagingHandoff: MessagingOAuthHandoffPayload | null = null;
-  let identityHash: string | undefined;
+  let hashPayload: string | undefined;
 
   if (isMessagingHandoffClient(clientId)) {
     messagingHandoff = buildMessagingHandoffFromUnlock(encryptedIdentity, decryptedIdentity);
@@ -109,15 +110,28 @@ export async function redirectWithAuthCode(args: RedirectWithAuthCodeArgs): Prom
         'This pN identity does not include messaging encryption keys. Create or update your identity at pn.parnoir.com, then try again.'
       );
     }
-    if (messagingHandoff.session) {
-      try {
-        window.name = buildMessagingSessionWindowName(messagingHandoff.session, messagingHandoff.timestamp);
-      } catch {
-        /* ignore */
+    // Cross-process (Electron / Cap Browser.open): window.name and BroadcastChannel
+    // do not reach the system browser — put full handoff (session+identity) in the hash.
+    const crossProcess = Boolean(openExternal) || (!popupFlow && !resolveOpener());
+    if (crossProcess) {
+      hashPayload = buildMessagingHandoffHash(messagingHandoff);
+    } else {
+      if (messagingHandoff.session) {
+        try {
+          window.name = buildMessagingSessionWindowName(
+            messagingHandoff.session,
+            messagingHandoff.timestamp
+          );
+        } catch {
+          /* ignore */
+        }
       }
-    }
-    if (messagingHandoff.identity) {
-      identityHash = buildMessagingIdentityHash(messagingHandoff.identity, messagingHandoff.timestamp);
+      if (messagingHandoff.identity) {
+        hashPayload = buildMessagingIdentityHash(
+          messagingHandoff.identity,
+          messagingHandoff.timestamp
+        );
+      }
     }
   }
 
@@ -151,7 +165,7 @@ export async function redirectWithAuthCode(args: RedirectWithAuthCodeArgs): Prom
     grantedDataPoints,
     consentShown,
     popupFlow,
-    identityHash
+    hashPayload
   );
 
   if (openExternal) {

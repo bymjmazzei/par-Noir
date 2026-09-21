@@ -5,11 +5,19 @@
  * - packages/oauth-ui/static/oauth-callback.html (read + deliver same-origin)
  * - apps/aggregator-browser/public/oauth-callback.html
  * - sdk/identity-sdk/static/oauth-callback.html
+ *
+ * Same-browser popup: session in window.name, identity in `#pn_messaging_identity_v1:…`.
+ * Cross-process (Electron / Cap openExternal): full payload in `#pn_messaging_handoff_hash_v1:…`.
  */
 
 export const PN_MESSAGING_HANDOFF_WINDOW_PREFIX = 'pn_messaging_handoff_v1:' as const;
 /** Large encrypted identity travels in the redirect URL hash (session stays in window.name). */
 export const PN_MESSAGING_IDENTITY_HASH_PREFIX = 'pn_messaging_identity_v1:' as const;
+/**
+ * Full handoff (session + identity) in the URL hash for cross-process brokers
+ * (Electron Unlock / Cap Browser.open) where window.name does not follow openExternal.
+ */
+export const PN_MESSAGING_HANDOFF_HASH_PREFIX = 'pn_messaging_handoff_hash_v1:' as const;
 export const PN_MESSAGING_OAUTH_HANDOFF_STORAGE = 'pn_messaging_oauth_handoff' as const;
 export const PN_MESSAGING_OAUTH_BROADCAST = 'par-noir-messaging-oauth-v1' as const;
 
@@ -94,6 +102,15 @@ export function buildMessagingIdentityHash(
   return `${PN_MESSAGING_IDENTITY_HASH_PREFIX}${encodeURIComponent(JSON.stringify(payload))}`;
 }
 
+/** Full payload in hash — required when leaving the unlock process via openExternal. */
+export function buildMessagingHandoffHash(payload: MessagingOAuthHandoffPayload): string {
+  const normalized = normalizeMessagingHandoffPayload(payload);
+  if (!normalized) {
+    throw new Error('Invalid messaging handoff payload for hash');
+  }
+  return `${PN_MESSAGING_HANDOFF_HASH_PREFIX}${encodeURIComponent(JSON.stringify(normalized))}`;
+}
+
 export function parseMessagingIdentityFromHash(
   hash: string | null | undefined
 ): MessagingHandoffIdentity | null {
@@ -105,6 +122,22 @@ export function parseMessagingIdentityFromHash(
     const parsed: unknown = JSON.parse(decodeURIComponent(encoded));
     if (!isRecord(parsed) || parsed.v !== 1) return null;
     return isMessagingHandoffIdentity(parsed.identity) ? parsed.identity : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Parse full handoff from hash (desktop/Cap openExternal path). */
+export function parseMessagingHandoffFromHash(
+  hash: string | null | undefined
+): MessagingOAuthHandoffPayload | null {
+  if (!hash) return null;
+  const raw = hash.startsWith('#') ? hash.slice(1) : hash;
+  if (!raw.startsWith(PN_MESSAGING_HANDOFF_HASH_PREFIX)) return null;
+  const encoded = raw.slice(PN_MESSAGING_HANDOFF_HASH_PREFIX.length);
+  try {
+    const parsed: unknown = JSON.parse(decodeURIComponent(encoded));
+    return normalizeMessagingHandoffPayload(parsed);
   } catch {
     return null;
   }

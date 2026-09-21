@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   buildMessagingHandoffFromUnlock,
+  buildMessagingHandoffHash,
   buildMessagingHandoffWindowName,
   buildMessagingIdentityHash,
   buildMessagingIdentityPayload,
@@ -11,9 +12,11 @@ import {
   handoffProvidesMessagingSession,
   normalizeMessagingHandoffPayload,
   mergeMessagingHandoffParts,
+  parseMessagingHandoffFromHash,
   parseMessagingHandoffFromStorage,
   parseMessagingHandoffFromWindowName,
   parseMessagingIdentityFromHash,
+  PN_MESSAGING_HANDOFF_HASH_PREFIX,
   PN_MESSAGING_OAUTH_HANDOFF_STORAGE,
   PN_MESSAGING_HANDOFF_WINDOW_PREFIX,
   serializeMessagingHandoffForStorage,
@@ -73,6 +76,15 @@ describe('messagingOAuthHandoff', () => {
     );
     expect(merged?.session).toEqual(samplePayload.session);
     expect(merged?.identity).toEqual(samplePayload.identity);
+  });
+
+  it('round-trips full handoff hash for cross-process openExternal', () => {
+    const hash = buildMessagingHandoffHash(samplePayload);
+    expect(hash.startsWith(PN_MESSAGING_HANDOFF_HASH_PREFIX)).toBe(true);
+    expect(parseMessagingHandoffFromHash(hash)).toEqual(samplePayload);
+    expect(parseMessagingHandoffFromHash('#' + hash)).toEqual(samplePayload);
+    // identity-only parser must not mis-read the full-handoff prefix
+    expect(parseMessagingIdentityFromHash(hash)).toBeNull();
   });
 
   it('returns null when merge has neither session nor identity', () => {
