@@ -12,6 +12,7 @@
     "auth:start": "node dist/decentralized-auth-server.js",
     "auth:build": "tsc decentralized-auth-server.ts --outDir dist",
     "test": "jest",
+    "test:prism": "bash ./scripts/test-prism.sh",
     "test:pagination": "ts-node scripts/test-pagination.ts",
     "smoke:health": "bash scripts/smoke-api-health.sh",
     "clean": "rm -rf dist"
