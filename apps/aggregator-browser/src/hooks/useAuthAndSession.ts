@@ -801,9 +801,13 @@ export function useAuthAndSession({
 
         if (!result.code && !result.error) {
           pushPnOAuthDebug('lock_unlock_popup_empty_result', {});
-          setLocked();
-          PNOAuthService.clearSession();
-          showErrorToast('Sign-in did not complete. Please try again.');
+          // Prefer-app Cap: do not wipe a session that already hydrated (e.g. resume
+          // race). Empty waiter after Unlock yield otherwise re-locks Messages.
+          if (!isDmIdentityReady() && !PNOAuthService.loadSession()) {
+            setLocked();
+            PNOAuthService.clearSession();
+            showErrorToast('Sign-in did not complete. Please try again.');
+          }
           return;
         }
 

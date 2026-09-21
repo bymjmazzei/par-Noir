@@ -9,6 +9,7 @@ import {
   pollStashedPreferAppBrokerOnce,
   pushPnOAuthDebug,
   readPreferAppBrokerWait,
+  wakePreferAppBrokerPoll,
 } from '@par-noir/oauth-ui';
 import { isOAuthPopupUnlockActive } from './oauthCallbackGate';
 
@@ -27,7 +28,18 @@ export type PreferAppResumePayload = {
  * poll broker-pending once and return the payload for runOAuthCallback.
  */
 export async function tryResumePreferAppBroker(): Promise<PreferAppResumePayload | null> {
-  if (isOAuthPopupUnlockActive()) return null;
+  // Cap custom-scheme resume does not always fire document.visibilitychange.
+  // Always wake the live startPnOAuthPopup poll when a wait is stashed.
+  if (readPreferAppBrokerWait()) {
+    wakePreferAppBrokerPoll();
+  }
+  // If the live waiter is still active, do NOT consume broker-pending here —
+  // that race unlocks briefly then the empty popup result calls setLocked again.
+  // The wake event above is the Cap path; cold-start (no live waiter) polls below.
+  if (isOAuthPopupUnlockActive()) {
+    pushPnOAuthDebug('prefer_app_resume_wake_live_waiter', {});
+    return null;
+  }
   if (!readPreferAppBrokerWait()) return null;
   pushPnOAuthDebug('prefer_app_resume_attempt', {});
   const data = await pollStashedPreferAppBrokerOnce();

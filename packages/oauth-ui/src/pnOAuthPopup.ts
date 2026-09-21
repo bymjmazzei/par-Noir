@@ -13,6 +13,7 @@ import {
 } from './unlockDesktopBrokerPoll';
 import {
   clearPreferAppBrokerWait,
+  PN_PREFER_APP_RESUME_WAKE_EVENT,
   stashPreferAppBrokerWaitFromConsentUrl,
 } from './preferAppBrokerWait';
 
@@ -417,7 +418,8 @@ function startPnOAuthPopupAfterLaunch(
     let pendingOAuthResult: PnOAuthPopupResult | null = null;
     let messagingHandoffWaitStarted: number | null = null;
     /** Prefer-app: flush broker poll when Cap caller returns to foreground. */
-    let onBrokerVisible: () => void = () => {};
+    let onBrokerVisible: (() => void) | undefined;
+    let onBrokerVisibilityChange: (() => void) | undefined;
 
     const closeOauthBc = () => {
       try {
@@ -437,8 +439,13 @@ function startPnOAuthPopupAfterLaunch(
       if (timeoutId !== undefined) clearTimeout(timeoutId);
       window.removeEventListener('message', onMessage, true);
       window.removeEventListener('storage', onStorage);
-      document.removeEventListener('visibilitychange', onBrokerVisible);
-      window.removeEventListener('focus', onBrokerVisible);
+      if (onBrokerVisibilityChange) {
+        document.removeEventListener('visibilitychange', onBrokerVisibilityChange);
+      }
+      if (onBrokerVisible) {
+        window.removeEventListener('focus', onBrokerVisible);
+        window.removeEventListener(PN_PREFER_APP_RESUME_WAKE_EVENT, onBrokerVisible);
+      }
       try {
         localStorage.removeItem(PN_OAUTH_STORAGE_PENDING);
         localStorage.removeItem(PN_OAUTH_STORAGE_LATEST_KEY);
@@ -689,12 +696,19 @@ function startPnOAuthPopupAfterLaunch(
         brokerPollInterval = setInterval(pollDesktopBrokerOnce, BROKER_POLL_MS);
       }, 400);
       // Cap/iOS suspends timers while Messages is backgrounded — flush on return.
+      // Custom-scheme resume often skips document.visibilitychange; Cap dispatches
+      // PN_PREFER_APP_RESUME_WAKE_EVENT from preferAppBrokerResume.
       onBrokerVisible = () => {
-        if (settled || document.hidden) return;
+        if (settled) return;
         pollDesktopBrokerOnce();
       };
-      document.addEventListener('visibilitychange', onBrokerVisible);
+      onBrokerVisibilityChange = () => {
+        if (document.hidden) return;
+        onBrokerVisible?.();
+      };
+      document.addEventListener('visibilitychange', onBrokerVisibilityChange);
       window.addEventListener('focus', onBrokerVisible);
+      window.addEventListener(PN_PREFER_APP_RESUME_WAKE_EVENT, onBrokerVisible);
     }
 
     const POPUP_CLOSED_GRACE_MS = 25_000;

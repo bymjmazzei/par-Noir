@@ -13,8 +13,24 @@ import {
 
 export const PN_PREFER_APP_BROKER_WAIT_KEY = 'pn_prefer_app_broker_wait_v1';
 
+/**
+ * Cap: custom-scheme resume / app foreground does not always fire document
+ * visibility/focus. Dispatch this so the live startPnOAuthPopup broker poll wakes.
+ */
+export const PN_PREFER_APP_RESUME_WAKE_EVENT = 'pn_prefer_app_resume_wake';
+
 /** Prefer-app wait TTL — slightly under API broker pending (2 min). */
 export const PREFER_APP_BROKER_WAIT_TTL_MS = 110_000;
+
+/** Wake any in-document prefer-app broker poll (Cap resume / foreground). */
+export function wakePreferAppBrokerPoll(): void {
+  if (typeof window === 'undefined') return;
+  try {
+    window.dispatchEvent(new Event(PN_PREFER_APP_RESUME_WAKE_EVENT));
+  } catch {
+    /* ignore */
+  }
+}
 
 export type PreferAppBrokerWait = {
   v: 1;

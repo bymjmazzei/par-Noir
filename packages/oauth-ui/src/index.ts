@@ -236,10 +236,12 @@ export {
 export type { DesktopBrokerPendingResult } from './unlockDesktopBrokerPoll';
 export {
   PN_PREFER_APP_BROKER_WAIT_KEY,
+  PN_PREFER_APP_RESUME_WAKE_EVENT,
   stashPreferAppBrokerWait,
   clearPreferAppBrokerWait,
   readPreferAppBrokerWait,
   stashPreferAppBrokerWaitFromConsentUrl,
   pollStashedPreferAppBrokerOnce,
+  wakePreferAppBrokerPoll,
 } from './preferAppBrokerWait';
 export type { PreferAppBrokerWait } from './preferAppBrokerWait';
