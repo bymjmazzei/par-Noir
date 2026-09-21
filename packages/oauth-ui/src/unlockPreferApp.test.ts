@@ -55,9 +55,11 @@ describe('searchFromUnlockUrl', () => {
 describe('tryPreferUnlockApp', () => {
   beforeEach(() => {
     vi.useFakeTimers();
+    vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
   });
   afterEach(() => {
     vi.useRealTimers();
+    vi.restoreAllMocks();
   });
 
   it('falls back when page stays visible', async () => {

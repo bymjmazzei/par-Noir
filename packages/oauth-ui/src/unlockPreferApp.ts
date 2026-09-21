@@ -56,6 +56,21 @@ export type PreferUnlockAppResult =
   | { opened: false; mode: 'fallback' };
 
 /**
+ * Fire custom-scheme navigation without an iframe.
+ * Browse CSP is `frame-src 'self'`, so iframe loads of `com.parnoir.unlock://…`
+ * are blocked (DevTools: Framing '' violates frame-src) and prefer-app never runs.
+ */
+function triggerCustomScheme(appUrl: string): void {
+  const a = document.createElement('a');
+  a.href = appUrl;
+  a.rel = 'noopener';
+  a.style.display = 'none';
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+}
+
+/**
  * Attempt to open the Unlock app via custom scheme.
  * If the page loses visibility within waitMs, assume the app took over.
  */
@@ -79,31 +94,11 @@ export async function tryPreferUnlockApp(
   window.addEventListener('blur', onBlur);
 
   try {
-    const iframe = document.createElement('iframe');
-    iframe.style.display = 'none';
-    iframe.setAttribute('aria-hidden', 'true');
-    iframe.src = appUrl;
-    document.body.appendChild(iframe);
-    window.setTimeout(() => {
-      try {
-        iframe.remove();
-      } catch {
-        /* ignore */
-      }
-    }, waitMs + 200);
+    triggerCustomScheme(appUrl);
   } catch {
-    try {
-      const a = document.createElement('a');
-      a.href = appUrl;
-      a.style.display = 'none';
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-    } catch {
-      document.removeEventListener('visibilitychange', onVis);
-      window.removeEventListener('blur', onBlur);
-      return { opened: false, mode: 'fallback' };
-    }
+    document.removeEventListener('visibilitychange', onVis);
+    window.removeEventListener('blur', onBlur);
+    return { opened: false, mode: 'fallback' };
   }
 
   await new Promise<void>((resolve) => {
