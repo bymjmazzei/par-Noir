@@ -309,7 +309,7 @@ export function setupPnOAuthRoutes(app: express.Application, deps: PnOAuthRouteD
           publicKey: string;
         };
         try {
-          authResult = PNOAuthService.authenticateWithUnlockProof({
+          authResult = await PNOAuthService.authenticateWithUnlockProof({
             clientId: client_id,
             redirectUri: redirect_uri,
             scope: scopes,

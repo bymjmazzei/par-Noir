@@ -249,7 +249,7 @@ export class PNOAuthService {
    * Verify ML-DSA unlock proof, then mint an authorization code.
    * Identity (did / pnIdentifier) is derived from the verified public key only.
    */
-  static authenticateWithUnlockProof(params: {
+  static async authenticateWithUnlockProof(params: {
     clientId: string;
     redirectUri: string;
     scope: string[];
@@ -258,7 +258,7 @@ export class PNOAuthService {
     challengeId: string;
     publicKey: string;
     signature: string;
-  }): { code: string; did: string; pnIdentifier: string; publicKey: string } {
+  }): Promise<{ code: string; did: string; pnIdentifier: string; publicKey: string }> {
     const normalizedRedirectUri = params.redirectUri.replace(/\/$/, '');
     const record = unlockChallenges.get(params.challengeId);
     unlockChallenges.delete(params.challengeId);

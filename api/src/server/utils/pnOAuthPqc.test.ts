@@ -35,12 +35,12 @@ describe('OAuth unlock proof gate', () => {
   const redirectUri = 'https://browse.parnoir.com/oauth-callback.html';
   const scope = ['openid', 'profile'];
 
-  it('rejects forged authenticate without a valid unlock signature', () => {
+  it('rejects forged authenticate without a valid unlock signature', async () => {
     const issued = PNOAuthService.createUnlockChallenge({ clientId, redirectUri });
     const forged = mlDsa65Keygen();
     const publicKey = bytesToBase64(forged.publicKey);
 
-    expect(() =>
+    await expect(
       PNOAuthService.authenticateWithUnlockProof({
         clientId,
         redirectUri,
@@ -51,10 +51,10 @@ describe('OAuth unlock proof gate', () => {
         publicKey,
         signature: Buffer.from('not-a-real-signature').toString('base64'),
       })
-    ).toThrow(OauthUnlockProofError);
+    ).rejects.toBeInstanceOf(OauthUnlockProofError);
   });
 
-  it('rejects authenticate that reuses a consumed challenge', () => {
+  it('rejects authenticate that reuses a consumed challenge', async () => {
     const dsa = mlDsa65Keygen();
     const publicKey = bytesToBase64(dsa.publicKey);
     const issued = PNOAuthService.createUnlockChallenge({ clientId, redirectUri });
@@ -71,7 +71,7 @@ describe('OAuth unlock proof gate', () => {
       dsa.secretKey
     );
 
-    const first = PNOAuthService.authenticateWithUnlockProof({
+    const first = await PNOAuthService.authenticateWithUnlockProof({
       clientId,
       redirectUri,
       scope,
@@ -83,7 +83,7 @@ describe('OAuth unlock proof gate', () => {
     });
     expect(first.code).toBeTruthy();
 
-    expect(() =>
+    await expect(
       PNOAuthService.authenticateWithUnlockProof({
         clientId,
         redirectUri,
@@ -94,10 +94,10 @@ describe('OAuth unlock proof gate', () => {
         publicKey,
         signature,
       })
-    ).toThrow(OauthUnlockProofError);
+    ).rejects.toBeInstanceOf(OauthUnlockProofError);
   });
 
-  it('rejects signature from a different key than public_key', () => {
+  it('rejects signature from a different key than public_key', async () => {
     const owner = mlDsa65Keygen();
     const attacker = mlDsa65Keygen();
     const publicKey = bytesToBase64(owner.publicKey);
@@ -113,7 +113,7 @@ describe('OAuth unlock proof gate', () => {
       attacker.secretKey
     );
 
-    expect(() =>
+    await expect(
       PNOAuthService.authenticateWithUnlockProof({
         clientId,
         redirectUri,
@@ -122,7 +122,7 @@ describe('OAuth unlock proof gate', () => {
         publicKey,
         signature,
       })
-    ).toThrow(OauthUnlockProofError);
+    ).rejects.toBeInstanceOf(OauthUnlockProofError);
   });
 
   it('real unlock proof issues code → token with derived did/pnIdentifier', async () => {
@@ -145,7 +145,7 @@ describe('OAuth unlock proof gate', () => {
       dsa.secretKey
     );
 
-    const auth = PNOAuthService.authenticateWithUnlockProof({
+    const auth = await PNOAuthService.authenticateWithUnlockProof({
       clientId,
       redirectUri,
       scope,
