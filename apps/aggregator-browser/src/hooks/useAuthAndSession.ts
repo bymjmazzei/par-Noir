@@ -11,6 +11,7 @@ import {
   PN_OAUTH_STORAGE_LATEST_KEY,
   PN_OAUTH_STORAGE_PENDING,
   PN_OAUTH_RESUME_HASH_KEY,
+  parseMessagingHandoffFromHash,
   parseMessagingIdentityFromHash,
 } from '@par-noir/oauth-ui';
 import { useUserState } from '../contexts/UserStateContext';
@@ -426,9 +427,16 @@ export function useAuthAndSession({
     const resumeHash =
       (typeof sessionStorage !== 'undefined' && sessionStorage.getItem(PN_OAUTH_RESUME_HASH_KEY)) ||
       window.location.hash;
-    const identityFromHash = parseMessagingIdentityFromHash(resumeHash);
-    if (identityFromHash) {
-      applyMessagingOAuthHandoff({ v: 1, timestamp: Date.now(), identity: identityFromHash });
+    // Desktop Unlock openExternal uses full handoff hash (session); older popup
+    // path uses identity-only hash. Apply whichever is present before exchange.
+    const handoffFromHash = parseMessagingHandoffFromHash(resumeHash);
+    if (handoffFromHash) {
+      applyMessagingOAuthHandoff(handoffFromHash);
+    } else {
+      const identityFromHash = parseMessagingIdentityFromHash(resumeHash);
+      if (identityFromHash) {
+        applyMessagingOAuthHandoff({ v: 1, timestamp: Date.now(), identity: identityFromHash });
+      }
     }
 
     void (async () => {
@@ -436,6 +444,7 @@ export function useAuthAndSession({
         pushPnOAuthDebug('oauth_resume_before_exchange', {
           hasCode: Boolean(code),
           hasError: Boolean(error),
+          hasHandoffFromHash: Boolean(handoffFromHash),
         });
         await runOAuthCallback(
           {
@@ -445,6 +454,7 @@ export function useAuthAndSession({
             error_description,
             granted_data_points: granted_data_points ?? undefined,
             consent_shown: consent_shown === '1' ? '1' : undefined,
+            messagingHandoff: handoffFromHash ?? undefined,
           },
           {}
         );

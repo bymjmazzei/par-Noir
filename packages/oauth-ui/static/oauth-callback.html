@@ -168,7 +168,7 @@
         }
       }
 
-      /** Full session+identity hash from desktop/Cap openExternal (window.name does not cross processes). */
+      /** Session-only hash from desktop/Cap openExternal (full identity exceeds URL limits). */
       function parseMessagingHandoffFromHash(hash) {
         if (!hash) return null;
         var raw = hash.charAt(0) === '#' ? hash.slice(1) : hash;

@@ -111,10 +111,21 @@ export async function redirectWithAuthCode(args: RedirectWithAuthCodeArgs): Prom
       );
     }
     // Cross-process (Electron / Cap Browser.open): window.name and BroadcastChannel
-    // do not reach the system browser — put full handoff (session+identity) in the hash.
+    // do not reach the system browser. Put ML-KEM *session only* in the hash —
+    // a full encrypted identity is ~30KB+ and blows past openExternal URL limits
+    // (Unlock then looks like it "failed" before browse ever receives the code).
     const crossProcess = Boolean(openExternal) || (!popupFlow && !resolveOpener());
     if (crossProcess) {
-      hashPayload = buildMessagingHandoffHash(messagingHandoff);
+      if (!messagingHandoff.session) {
+        throw new Error(
+          'This pN identity does not include messaging encryption keys. Create or update your identity at pn.parnoir.com, then try again.'
+        );
+      }
+      hashPayload = buildMessagingHandoffHash({
+        v: 1,
+        timestamp: messagingHandoff.timestamp,
+        session: messagingHandoff.session,
+      });
     } else {
       if (messagingHandoff.session) {
         try {

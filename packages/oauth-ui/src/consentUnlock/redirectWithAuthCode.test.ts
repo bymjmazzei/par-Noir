@@ -10,8 +10,9 @@ import {
 } from '../messagingOAuthHandoff';
 
 describe('redirectWithAuthCode cross-process', () => {
-  it('puts full messaging handoff in hash when openExternal is set', async () => {
+  it('puts session-only messaging handoff in hash when openExternal is set', async () => {
     const opened: string[] = [];
+    const hugeEnc = 'x'.repeat(40_000);
     await redirectWithAuthCode({
       code: 'auth-code',
       redirectUri: 'https://browse.parnoir.com/oauth-callback.html',
@@ -21,7 +22,7 @@ describe('redirectWithAuthCode cross-process', () => {
       grantedDataPoints: [],
       consentShown: false,
       encryptedIdentity: {
-        encryptedData: 'enc',
+        encryptedData: hugeEnc,
         iv: 'iv',
         salt: 'salt',
         publicKey: 'pk',
@@ -37,12 +38,12 @@ describe('redirectWithAuthCode cross-process', () => {
     expect(opened).toHaveLength(1);
     const u = new URL(opened[0]!);
     expect(u.searchParams.get('code')).toBe('auth-code');
-    expect(u.hash.startsWith('#' + PN_MESSAGING_HANDOFF_HASH_PREFIX) || u.hash.startsWith(PN_MESSAGING_HANDOFF_HASH_PREFIX)).toBe(
-      true
-    );
+    expect(u.hash.includes(PN_MESSAGING_HANDOFF_HASH_PREFIX)).toBe(true);
+    // Must stay under typical openExternal / OS URL limits (~2–8KB).
+    expect(opened[0]!.length).toBeLessThan(4_000);
     const handoff = parseMessagingHandoffFromHash(u.hash);
     expect(handoffProvidesMessagingSession(handoff)).toBe(true);
     expect(handoff?.session?.mlKemSecretKey).toBe('sk');
-    expect(handoff?.identity?.encryptedData).toBe('enc');
+    expect(handoff?.identity).toBeUndefined();
   });
 });

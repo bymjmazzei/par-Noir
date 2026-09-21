@@ -7,7 +7,8 @@
  * - sdk/identity-sdk/static/oauth-callback.html
  *
  * Same-browser popup: session in window.name, identity in `#pn_messaging_identity_v1:…`.
- * Cross-process (Electron / Cap openExternal): full payload in `#pn_messaging_handoff_hash_v1:…`.
+ * Cross-process (Electron / Cap openExternal): ML-KEM *session* in
+ * `#pn_messaging_handoff_hash_v1:…` only — full identity exceeds URL limits.
  */
 
 export const PN_MESSAGING_HANDOFF_WINDOW_PREFIX = 'pn_messaging_handoff_v1:' as const;
@@ -16,6 +17,7 @@ export const PN_MESSAGING_IDENTITY_HASH_PREFIX = 'pn_messaging_identity_v1:' as 
 /**
  * Full handoff (session + identity) in the URL hash for cross-process brokers
  * (Electron Unlock / Cap Browser.open) where window.name does not follow openExternal.
+ * Callers must put *session only* in this hash — encrypted identity is too large for URLs.
  */
 export const PN_MESSAGING_HANDOFF_HASH_PREFIX = 'pn_messaging_handoff_hash_v1:' as const;
 export const PN_MESSAGING_OAUTH_HANDOFF_STORAGE = 'pn_messaging_oauth_handoff' as const;

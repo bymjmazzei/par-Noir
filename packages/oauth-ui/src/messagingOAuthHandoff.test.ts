@@ -78,12 +78,17 @@ describe('messagingOAuthHandoff', () => {
     expect(merged?.identity).toEqual(samplePayload.identity);
   });
 
-  it('round-trips full handoff hash for cross-process openExternal', () => {
-    const hash = buildMessagingHandoffHash(samplePayload);
+  it('round-trips session handoff hash for cross-process openExternal', () => {
+    const sessionOnly = {
+      v: 1 as const,
+      timestamp: samplePayload.timestamp,
+      session: samplePayload.session,
+    };
+    const hash = buildMessagingHandoffHash(sessionOnly);
     expect(hash.startsWith(PN_MESSAGING_HANDOFF_HASH_PREFIX)).toBe(true);
-    expect(parseMessagingHandoffFromHash(hash)).toEqual(samplePayload);
-    expect(parseMessagingHandoffFromHash('#' + hash)).toEqual(samplePayload);
-    // identity-only parser must not mis-read the full-handoff prefix
+    expect(parseMessagingHandoffFromHash(hash)).toEqual(sessionOnly);
+    expect(parseMessagingHandoffFromHash('#' + hash)).toEqual(sessionOnly);
+    // identity-only parser must not mis-read the handoff-hash prefix
     expect(parseMessagingIdentityFromHash(hash)).toBeNull();
   });
 

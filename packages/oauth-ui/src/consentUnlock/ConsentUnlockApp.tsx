@@ -318,7 +318,6 @@ function ConsentUnlockInner(props: {
   const afterUnlock = useCallback(
     async (unlocked: UnlockedIdentityBundle, key1: string, key2: string) => {
       setBundle(unlocked);
-      await notifyVault(unlocked, key1, key2);
       const mint = await mintConsentAuthorizationCode({
         apiEndpoint: params.apiEndpoint,
         clientId: params.clientId,
@@ -332,6 +331,23 @@ function ConsentUnlockInner(props: {
 
       setAuthCode(mint.code);
       setPnIdentifier(mint.pnIdentifier);
+
+      // Cross-process broker (Electron/Cap openExternal): hand off to the caller
+      // immediately. Grant lookup has no cloud AT here, so "existingGrant" is
+      // almost always null and showing consent re-asks permissions before browse
+      // ever gets the code. Browse checks grants after session + cloud hydrate.
+      if (openExternal) {
+        await finishWithCode(
+          mint.code,
+          mint.existingGrant?.dataPoints || [],
+          false,
+          unlocked
+        );
+        await notifyVault(unlocked, key1, key2);
+        return;
+      }
+
+      await notifyVault(unlocked, key1, key2);
 
       if (mint.existingGrant) {
         await finishWithCode(mint.code, mint.existingGrant.dataPoints || [], false, unlocked);
@@ -349,7 +365,7 @@ function ConsentUnlockInner(props: {
       setDataPointChoices(initial);
       setStep('consent');
     },
-    [params, needsConsent, finishWithCode, loadCatalog, dataPointIds, notifyVault]
+    [params, needsConsent, finishWithCode, loadCatalog, dataPointIds, notifyVault, openExternal]
   );
 
   /** Biometric vault path: decrypt sealed identity + mint without the factor form. */
