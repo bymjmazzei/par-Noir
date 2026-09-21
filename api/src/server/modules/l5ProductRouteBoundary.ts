@@ -23,6 +23,9 @@ export const L5_PRODUCT_ROUTE_PREFIXES = [
 /**
  * Public engagement reads — no Bearer required (locked browse / anonymous).
  * Mutations and viewer-private GETs still require first-party OAuth.
+ *
+ * Profile activity (`GET …/user/:pn`) is public server-cache data so anyone can
+ * open a creator's Me page; likes/comments mutations stay first-party.
  */
 export function isPublicEngagementRead(method: string, pathOrUrl: string): boolean {
   const raw = String(pathOrUrl || '').split('?')[0];
@@ -35,6 +38,7 @@ export function isPublicEngagementRead(method: string, pathOrUrl: string): boole
     return true;
   }
   if (m === 'GET') {
+    if (/^\/api\/engagement\/user\/[^/]+$/.test(full)) return true;
     if (/^\/api\/engagement\/[^/]+\/comments$/.test(full)) return true;
     if (/^\/api\/engagement\/[^/]+\/likes$/.test(full)) return true;
     if (/^\/api\/engagement\/[^/]+\/stats$/.test(full)) return true;

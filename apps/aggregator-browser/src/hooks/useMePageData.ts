@@ -226,7 +226,7 @@ export function useMePageData({
     return () => { cancelled = true; };
   }, [viewingCreatorId]);
 
-  // --- user engagement fileIds ---
+  // --- user engagement fileIds (public server cache; Bearer optional) ---
   useEffect(() => {
     if (MESSAGING_ONLY || !viewingCreatorId || !userState.isUnlocked || !userState.pnIdentifier) {
       setUserLikedFileIds([]);
@@ -240,20 +240,14 @@ export function useMePageData({
     setIsLoadingUserEngagement(true);
     (async () => {
       try {
-        const token = await PNOAuthService.getValidAccessToken();
-        if (!token) {
-          setUserLikedFileIds([]);
-          setUserCommentedFileIds([]);
-          setUserSharedFileIds([]);
-          return;
-        }
         const n = viewingCreatorId.startsWith('pn-') ? viewingCreatorId : `pn-${viewingCreatorId}`;
+        const headers: Record<string, string> = { Accept: 'application/json' };
+        // Own Me page: prefer Bearer when unlocked. Endpoint is also a public cache read.
+        const token = await PNOAuthService.getValidAccessToken();
+        if (token) headers.Authorization = `Bearer ${token}`;
         const r = await fetch(`${API_ENDPOINT}/api/engagement/user/${encodeURIComponent(n)}`, {
           method: 'GET',
-          headers: {
-            Accept: 'application/json',
-            Authorization: `Bearer ${token}`,
-          },
+          headers,
         });
         if (r.ok) {
           const d = await r.json();
@@ -310,7 +304,7 @@ export function useMePageData({
     });
   }, [ulKey, ucKey, usKey, indexedFilesKey, userLikedFileIds, userCommentedFileIds, userSharedFileIds, indexedFilesMap]);
 
-  // --- viewed user's liked/commented ---
+  // --- viewed user's liked/commented (public cache; no auth required) ---
   useEffect(() => {
     if (MESSAGING_ONLY || !viewingCreatorId || viewingCreatorId === userState.pnIdentifier) {
       setViewedUserLikedFiles((p) => (p.length === 0 ? p : []));
@@ -319,19 +313,10 @@ export function useMePageData({
     }
     (async () => {
       try {
-        const token = await PNOAuthService.getValidAccessToken();
-        if (!token) {
-          setViewedUserLikedFiles((p) => (p.length === 0 ? p : []));
-          setViewedUserCommentedFiles((p) => (p.length === 0 ? p : []));
-          return;
-        }
         const n = viewingCreatorId.startsWith('pn-') ? viewingCreatorId : `pn-${viewingCreatorId}`;
         const r = await fetch(`${API_ENDPOINT}/api/engagement/user/${encodeURIComponent(n)}`, {
           method: 'GET',
-          headers: {
-            Accept: 'application/json',
-            Authorization: `Bearer ${token}`,
-          },
+          headers: { Accept: 'application/json' },
         });
         if (!r.ok) {
           setViewedUserLikedFiles((p) => (p.length === 0 ? p : []));
