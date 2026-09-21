@@ -196,9 +196,8 @@ export {
   DEFAULT_UNLOCK_ORIGIN,
   UNLOCK_APP_ID,
   UNLOCK_CUSTOM_SCHEME,
-  UNLOCK_DESKTOP_BROKER_PORT,
-  UNLOCK_DESKTOP_BROKER_ORIGIN,
-  UNLOCK_DESKTOP_BROKER_PENDING_PATH,
+  OAUTH_BROKER_COMPLETE_PATH,
+  OAUTH_BROKER_PENDING_PATH,
   parseConsentUnlockParams,
   resolveUnlockOrigin,
   isUnlockBrokerHost,
@@ -210,6 +209,7 @@ export {
   extractMlDsaSecretKeyB64,
   redirectWithAuthCode,
   denyOAuthConsent,
+  postOAuthBrokerComplete,
   loadParNoirOAuthPhysical,
   physicalResultToBundle,
 } from './consentUnlock';
@@ -228,5 +228,6 @@ export { toUnlockVaultEnrollMaterial, assertNoVaultSecretsOnWire } from './conse
 export {
   pollUnlockDesktopBrokerOnce,
   unlockDesktopBrokerPendingUrl,
+  brokerPollContextFromConsentUrl,
 } from './unlockDesktopBrokerPoll';
 export type { DesktopBrokerPendingResult } from './unlockDesktopBrokerPoll';

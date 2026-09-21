@@ -11,7 +11,7 @@ import {
   type MessagingOAuthHandoffPayload,
 } from '../messagingOAuthHandoff';
 import { PN_OAUTH_MESSAGE_TYPE } from '../pnOAuthPopup';
-import { isMessagingHandoffClient } from './constants';
+import { isMessagingHandoffClient, OAUTH_BROKER_COMPLETE_PATH } from './constants';
 
 export type RedirectWithAuthCodeArgs = {
   code: string;
@@ -26,10 +26,12 @@ export type RedirectWithAuthCodeArgs = {
   /** Optional external open (Capacitor Browser / Electron) when leaving the unlock WebView. */
   openExternal?: (url: string) => void | Promise<void>;
   /**
-   * Desktop Unlock loopback: deliver full payload (incl. messaging handoff) to the
-   * waiting browse tab without openExternal / URL hash limits.
+   * Prefer-app desktop: deliver full payload (incl. messaging handoff) via API broker
+   * so browse can poll without loopback / openExternal URL limits.
    */
   deliverLocalBroker?: (payload: Record<string, unknown>) => void | Promise<void>;
+  /** API base for broker-complete when deliverLocalBroker is not provided. */
+  apiEndpoint?: string;
 };
 
 function resolveOpener(): Window | null {
@@ -177,6 +179,7 @@ export async function redirectWithAuthCode(args: RedirectWithAuthCodeArgs): Prom
     type: PN_OAUTH_MESSAGE_TYPE,
     code,
     state: state || undefined,
+    client_id: clientId,
     granted_data_points: grantedDataPoints.join(',') || undefined,
     consent_shown: consentShown ? '1' : undefined,
     timestamp: Date.now(),
@@ -228,9 +231,25 @@ export function denyOAuthConsent(args: {
   redirectUri: string;
   state: string;
   popupFlow: boolean;
+  clientId?: string;
   openExternal?: (url: string) => void | Promise<void>;
+  deliverLocalBroker?: (payload: Record<string, unknown>) => void | Promise<void>;
 }): void {
-  const { redirectUri, state, popupFlow, openExternal } = args;
+  const { redirectUri, state, popupFlow, clientId, openExternal, deliverLocalBroker } = args;
+  const denyPayload: Record<string, unknown> = {
+    type: PN_OAUTH_MESSAGE_TYPE,
+    error: 'access_denied',
+    error_description: 'User denied access',
+    state: state || undefined,
+    client_id: clientId,
+    timestamp: Date.now(),
+  };
+  if (deliverLocalBroker) {
+    void Promise.resolve(deliverLocalBroker(denyPayload)).catch(() => {
+      /* browse will time out */
+    });
+    return;
+  }
   let appOrigin = '';
   try {
     appOrigin = new URL(redirectUri).origin;
@@ -279,5 +298,30 @@ export function denyOAuthConsent(args: {
       return;
     }
     window.location.href = target;
+  }
+}
+
+/** POST prefer-app result to API so browse can poll (all browsers). */
+export async function postOAuthBrokerComplete(
+  apiEndpoint: string,
+  payload: Record<string, unknown>
+): Promise<void> {
+  const base = apiEndpoint.replace(/\/$/, '');
+  const res = await fetch(`${base}${OAUTH_BROKER_COMPLETE_PATH}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+    body: JSON.stringify(payload),
+    mode: 'cors',
+    credentials: 'omit',
+  });
+  if (!res.ok) {
+    let detail = '';
+    try {
+      const j = (await res.json()) as { error_description?: string };
+      detail = j.error_description || '';
+    } catch {
+      /* ignore */
+    }
+    throw new Error(detail || `Broker complete failed (${res.status})`);
   }
 }

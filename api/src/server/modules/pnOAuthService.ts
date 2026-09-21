@@ -95,6 +95,14 @@ const accessTokens = new Map<string, TokenPayload>();
 // Map of recently exchanged codes to their tokens (for idempotency - prevents duplicate exchange errors)
 const codeToTokenMap = new Map<string, { token: AccessToken; expiresAt: number }>();
 const unlockChallenges = new Map<string, UnlockChallengeRecord>();
+/**
+ * Prefer-app Unlock → browse handoff (cross-browser). Keyed by OAuth `state`.
+ * Holds code + messaging handoff briefly; consumed by browse poll. No loopback.
+ */
+const brokerPendingByState = new Map<
+  string,
+  { clientId: string; payload: Record<string, unknown>; expiresAt: number }
+>();
 // Note: refreshTokens are now stored in PostgreSQL database for persistence
 
 // Cleanup expired codes/tokens every 5 minutes
@@ -127,6 +135,12 @@ setInterval(() => {
       unlockChallenges.delete(id);
     }
   }
+
+  for (const [state, pending] of brokerPendingByState.entries()) {
+    if (pending.expiresAt < now) {
+      brokerPendingByState.delete(state);
+    }
+  }
   
   // Clean expired refresh tokens from database (async, don't wait)
   PNOAuthService.cleanupExpiredRefreshTokens().catch((err: unknown) => {
@@ -139,6 +153,8 @@ setInterval(() => {
 export class PNOAuthService {
   private static readonly CODE_EXPIRY = 10 * 60 * 1000; // 10 minutes
   private static readonly CHALLENGE_EXPIRY = 5 * 60 * 1000; // 5 minutes
+  /** Prefer-app broker handoff TTL (shorter than auth code). */
+  private static readonly BROKER_PENDING_EXPIRY = 2 * 60 * 1000;
   private static readonly ACCESS_TOKEN_EXPIRY = 60 * 60 * 1000; // 1 hour
   private static readonly REFRESH_TOKEN_EXPIRY = 30 * 24 * 60 * 60 * 1000; // 30 days
   private static readonly TOKEN_SECRET = (() => {
@@ -389,12 +405,77 @@ export class PNOAuthService {
   static peekAuthorizationCode(
     code: string,
     clientId: string
-  ): { pnIdentifier?: string; did: string } | null {
+  ): { pnIdentifier?: string; did: string; state?: string } | null {
     const authCode = authorizationCodes.get(code);
     if (!authCode) return null;
     if (authCode.expiresAt < Date.now()) return null;
     if (authCode.clientId !== clientId) return null;
-    return { pnIdentifier: authCode.pnIdentifier, did: authCode.did };
+    return {
+      pnIdentifier: authCode.pnIdentifier,
+      did: authCode.did,
+      state: authCode.state,
+    };
+  }
+
+  /**
+   * Store Unlock→browse prefer-app result for polling (HTTPS, all browsers).
+   * Requires a live authorization code proving unlock just completed.
+   */
+  static storeBrokerPending(params: {
+    state: string;
+    clientId: string;
+    code: string;
+    payload: Record<string, unknown>;
+  }): boolean {
+    const state = String(params.state || '').trim();
+    if (!state || state.length < 8) return false;
+    const peeked = this.peekAuthorizationCode(params.code, params.clientId);
+    if (!peeked) return false;
+    if (peeked.state && peeked.state !== state) return false;
+    brokerPendingByState.set(state, {
+      clientId: params.clientId,
+      expiresAt: Date.now() + this.BROKER_PENDING_EXPIRY,
+      payload: { ...params.payload },
+    });
+    return true;
+  }
+
+  /**
+   * Store access_denied (or other error) without an auth code.
+   * Caller must supply the same high-entropy OAuth state the browse tab holds.
+   */
+  static storeBrokerPendingError(params: {
+    state: string;
+    clientId: string;
+    payload: Record<string, unknown>;
+  }): boolean {
+    const state = String(params.state || '').trim();
+    if (!state || state.length < 8) return false;
+    if (!params.clientId) return false;
+    brokerPendingByState.set(state, {
+      clientId: params.clientId,
+      expiresAt: Date.now() + this.BROKER_PENDING_EXPIRY,
+      payload: { ...params.payload },
+    });
+    return true;
+  }
+
+  /** One-shot take for browse poll. */
+  static takeBrokerPending(
+    state: string,
+    clientId: string
+  ): Record<string, unknown> | null {
+    const key = String(state || '').trim();
+    if (!key) return null;
+    const pending = brokerPendingByState.get(key);
+    if (!pending) return null;
+    if (pending.expiresAt < Date.now()) {
+      brokerPendingByState.delete(key);
+      return null;
+    }
+    if (pending.clientId !== clientId) return null;
+    brokerPendingByState.delete(key);
+    return pending.payload;
   }
 
   /**

@@ -72,8 +72,6 @@
       }
 
       var BC_NAME = 'par-noir-oauth-v1';
-      /** Must match @par-noir/oauth-ui PN_OAUTH_OPENER_WINDOW_NAME */
-      var OPENER_WIN_NAME = 'parnoir_oauth_parent_v1';
       var urlParams = new URLSearchParams(window.location.search);
       var issuer = urlParams.get('iss') || '';
       var isGoogleIssuer = issuer.indexOf('accounts.google.com') !== -1;
@@ -435,27 +433,17 @@
       var resumeUrl = buildResumeUrl();
 
       /**
-       * When window.opener is null (noopener / COOP), postMessage and partitioned localStorage
-       * may not reach the parent. Navigate the opener tab by its window.name instead.
-       */
-      function tryNavigateNamedOpener() {
-        try {
-          var w = window.open(resumeUrl, OPENER_WIN_NAME);
-          if (w) {
-            oauthDbg('named_opener_nav', { ok: true });
-            try { w.focus(); } catch (e) {}
-            return true;
-          }
-        } catch (e) {
-          oauthDbg('named_opener_nav', { ok: false });
-        }
-        return false;
-      }
-
-      /**
-       * Popup OAuth (pn_popup=1): do NOT navigate opener — that breaks startPnOAuthPopup on the parent.
+       * Prefer-app / Electron openExternal: no window.opener. The browse tab is
+       * already waiting in startPnOAuthPopup (storage + BC poll). Do NOT also
+       * named-navigate that tab — deliverHandshake + navigation races unload
+       * mid token-exchange and surfaces "couldn't unlock".
+       *
+       * Popup OAuth (pn_popup=1): handshake only; never navigate opener.
+       * Full-page redirect with live opener: navigate opener to oauth_resume.
        */
       var handedOffViaOpenerNav = false;
+      var lackOpener = !window.opener || window.opener.closed;
+
       if (window.opener && !window.opener.closed && pnPopupFlow) {
         deliverHandshake();
       } else if (window.opener && !window.opener.closed) {
@@ -466,18 +454,20 @@
           deliverHandshake();
         }
       } else {
+        // lackOpener: storage/BC only (prefer-app + openExternal)
         deliverHandshake();
       }
 
       oauthDbg('callback_handoff', {
         handedOffViaOpenerNav: handedOffViaOpenerNav,
-        hasOpener: !!(window.opener && !window.opener.closed)
+        hasOpener: !!(window.opener && !window.opener.closed),
+        pnPopupFlow: pnPopupFlow,
+        lackOpener: lackOpener
       });
 
-      var lackOpener = !window.opener || window.opener.closed;
-
       function tryClosePopup() {
-        var base = handedOffViaOpenerNav ? 400 : 2600;
+        // Prefer-app: give the waiting tab time to poll storage/BC before close.
+        var base = handedOffViaOpenerNav ? 400 : 2800;
         for (var i = 1; i <= 20; i++) {
           setTimeout(function () {
             try {
@@ -487,23 +477,7 @@
         }
       }
 
-      if (handedOffViaOpenerNav) {
-        tryClosePopup();
-      } else       if (lackOpener) {
-        if (pnPopupFlow) {
-          deliverHandshake();
-          tryClosePopup();
-        } else {
-          if (!tryNavigateNamedOpener()) {
-            deliverHandshake();
-          } else {
-            handedOffViaOpenerNav = true;
-          }
-          tryClosePopup();
-        }
-      } else {
-        tryClosePopup();
-      }
+      tryClosePopup();
 
       collectMessagingHandoffPayload(true);
     })();

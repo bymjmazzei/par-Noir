@@ -409,6 +409,119 @@ export function setupPnOAuthRoutes(app: express.Application, deps: PnOAuthRouteD
     });
 
     /**
+     * Prefer-app Unlock → browse handoff (all browsers).
+     * Unlock POSTs the minted code + messaging handoff keyed by OAuth state;
+     * browse polls GET broker-pending. Replaces 127.0.0.1 loopback (blocked by PNA).
+     */
+    app.post('/oauth/authorize/broker-complete', authLimiter, async (req, res) => {
+      try {
+        const body = req.body || {};
+        const state = String(body.state || '').trim();
+        const clientId = String(body.client_id || '').trim();
+        const code = body.code != null ? String(body.code) : '';
+        const err = body.error != null ? String(body.error) : '';
+
+        if (!state || !clientId) {
+          return res.status(400).json({
+            error: 'invalid_request',
+            error_description: 'state and client_id are required',
+          });
+        }
+
+        const payload: Record<string, unknown> = {
+          type: 'oauth_callback',
+          state,
+          timestamp: typeof body.timestamp === 'number' ? body.timestamp : Date.now(),
+        };
+        if (body.granted_data_points != null) {
+          payload.granted_data_points = String(body.granted_data_points);
+        }
+        if (body.consent_shown != null) {
+          payload.consent_shown = String(body.consent_shown);
+        }
+        if (body.messagingHandoff && typeof body.messagingHandoff === 'object') {
+          payload.messagingHandoff = body.messagingHandoff;
+        }
+
+        if (err) {
+          payload.error = err;
+          if (body.error_description != null) {
+            payload.error_description = String(body.error_description);
+          }
+          const ok = PNOAuthService.storeBrokerPendingError({
+            state,
+            clientId,
+            payload,
+          });
+          if (!ok) {
+            return res.status(400).json({
+              error: 'invalid_request',
+              error_description: 'Could not store broker error',
+            });
+          }
+          return res.json({ ok: true });
+        }
+
+        if (!code) {
+          return res.status(400).json({
+            error: 'invalid_request',
+            error_description: 'code is required unless error is set',
+          });
+        }
+
+        payload.code = code;
+        const ok = PNOAuthService.storeBrokerPending({
+          state,
+          clientId,
+          code,
+          payload,
+        });
+        if (!ok) {
+          safeLogger.warn('[OAuth] broker-complete refused: no live authorization code', {
+            clientId,
+          });
+          return res.status(401).json({
+            error: 'invalid_grant',
+            error_description: 'Authorization code is unknown, expired, or mismatched',
+          });
+        }
+        return res.json({ ok: true });
+      } catch (error: unknown) {
+        const msg = error instanceof Error ? error.message : String(error);
+        console.error('OAuth broker-complete error:', msg);
+        return res.status(500).json({
+          error: 'server_error',
+          error_description: 'Broker complete failed',
+        });
+      }
+    });
+
+    app.get('/oauth/authorize/broker-pending', async (req, res) => {
+      try {
+        const state = String(req.query.state || '').trim();
+        const clientId = String(req.query.client_id || '').trim();
+        if (!state || !clientId) {
+          return res.status(400).json({
+            error: 'invalid_request',
+            error_description: 'state and client_id are required',
+          });
+        }
+        const payload = PNOAuthService.takeBrokerPending(state, clientId);
+        if (!payload) {
+          return res.status(204).end();
+        }
+        return res.json(payload);
+      } catch (error: unknown) {
+        const msg = error instanceof Error ? error.message : String(error);
+        console.error('OAuth broker-pending error:', msg);
+        return res.status(500).json({
+          error: 'server_error',
+          error_description: 'Broker pending failed',
+        });
+      }
+    });
+
+    /**
      * Mint a fresh Google access token for the unlock page.
      *
      * The page holds the owner's sealed vault but no pN access token yet, so it

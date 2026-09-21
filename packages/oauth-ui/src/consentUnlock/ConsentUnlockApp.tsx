@@ -548,6 +548,9 @@ function ConsentUnlockInner(props: {
 
   return (
     <div className={`pn-consent-page${broker ? ' pn-consent-broker' : ''}`}>
+      {backgroundUrl ? (
+        <img className="pn-consent-bg" src={backgroundUrl} alt="" aria-hidden="true" />
+      ) : null}
       <style>
         {consentUnlockCss(resolvedAssetBase, backgroundUrl)}
         {broker ? consentUnlockBrokerCssExtras() : ''}
@@ -837,7 +840,9 @@ function ConsentUnlockInner(props: {
                     redirectUri: params.redirectUri,
                     state: params.state,
                     popupFlow: params.popup,
+                    clientId: params.clientId,
                     openExternal,
+                    deliverLocalBroker,
                   })
                 }
               >

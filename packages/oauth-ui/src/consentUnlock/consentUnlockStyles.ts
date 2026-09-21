@@ -4,12 +4,15 @@
  */
 export function consentUnlockCss(assetBase: string, backgroundUrl?: string): string {
   const base = assetBase.replace(/\/$/, '') || '';
-  const bg = backgroundUrl || `${base}/branding/Par-Noir-Background-Dark.png`;
+  // Prefer explicit URL (Electron Vite asset). Quote for file:// paths with spaces.
+  const bgCss = backgroundUrl
+    ? `background-color: #000;`
+    : `background: #000 url("${base}/branding/Par-Noir-Background-Dark.png") center/cover no-repeat;`;
   return `
 .pn-consent-page * { margin: 0; padding: 0; box-sizing: border-box; }
 .pn-consent-page {
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
-  background: #000 url('${bg}') center/cover no-repeat fixed;
+  ${bgCss}
   color: #fff;
   min-height: 100vh;
   display: flex;
@@ -19,18 +22,28 @@ export function consentUnlockCss(assetBase: string, backgroundUrl?: string): str
   padding: 20px;
   position: relative;
 }
+.pn-consent-page .pn-consent-bg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  z-index: 0;
+  pointer-events: none;
+}
 .pn-consent-page::before {
   content: '';
-  position: fixed;
+  position: absolute;
   top: 0; left: 0; right: 0; bottom: 0;
-  background: rgba(0, 0, 0, 0.7);
-  z-index: 0;
+  background: rgba(0, 0, 0, 0.55);
+  z-index: 1;
+  pointer-events: none;
 }
 .pn-consent-page .container {
   width: 100%;
   max-width: 420px;
   position: relative;
-  z-index: 1;
+  z-index: 2;
 }
 .pn-consent-page .header {
   text-align: center;
@@ -329,6 +342,9 @@ export function consentUnlockBrokerCssExtras(): string {
   padding: 16px 16px;
   overflow: hidden;
   justify-content: flex-start;
+}
+.pn-consent-page.pn-consent-broker::before {
+  background: rgba(0, 0, 0, 0.4);
 }
 .pn-consent-page.pn-consent-broker .container {
   max-width: 340px;

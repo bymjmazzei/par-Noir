@@ -1,13 +1,10 @@
 /**
- * Poll Electron Unlock loopback for OAuth completion (prefer-app desktop path).
- * Chrome allows https → http://127.0.0.1 as a trustworthy localhost exception.
+ * Poll API for Unlock prefer-app completion (cross-browser).
+ * Replaces 127.0.0.1 loopback, which public HTTPS pages cannot reach (Private Network Access).
  */
 
-import {
-  UNLOCK_DESKTOP_BROKER_ORIGIN,
-  UNLOCK_DESKTOP_BROKER_PENDING_PATH,
-} from './consentUnlock/constants';
 import { PN_OAUTH_MESSAGE_TYPE } from './pnOAuthPopup';
+import { OAUTH_BROKER_PENDING_PATH } from './consentUnlock/constants';
 
 export type DesktopBrokerPendingResult = {
   type: typeof PN_OAUTH_MESSAGE_TYPE;
@@ -21,9 +18,15 @@ export type DesktopBrokerPendingResult = {
   messagingHandoff?: unknown;
 };
 
-export function unlockDesktopBrokerPendingUrl(state: string): string {
-  const u = new URL(UNLOCK_DESKTOP_BROKER_PENDING_PATH, UNLOCK_DESKTOP_BROKER_ORIGIN);
-  if (state) u.searchParams.set('state', state);
+export function unlockDesktopBrokerPendingUrl(
+  apiEndpoint: string,
+  state: string,
+  clientId: string
+): string {
+  const base = apiEndpoint.replace(/\/$/, '');
+  const u = new URL(`${base}${OAUTH_BROKER_PENDING_PATH}`);
+  u.searchParams.set('state', state);
+  u.searchParams.set('client_id', clientId);
   return u.toString();
 }
 
@@ -31,13 +34,18 @@ export function unlockDesktopBrokerPendingUrl(state: string): string {
  * One poll. Returns payload when Unlock has completed for this state; null if not ready.
  */
 export async function pollUnlockDesktopBrokerOnce(
-  expectedState: string
+  expectedState: string,
+  opts: { apiEndpoint: string; clientId: string }
 ): Promise<DesktopBrokerPendingResult | null> {
+  const apiEndpoint = String(opts.apiEndpoint || '').replace(/\/$/, '');
+  const clientId = String(opts.clientId || '');
+  if (!apiEndpoint || !clientId || !expectedState) return null;
   try {
-    const res = await fetch(unlockDesktopBrokerPendingUrl(expectedState), {
+    const res = await fetch(unlockDesktopBrokerPendingUrl(apiEndpoint, expectedState, clientId), {
       method: 'GET',
       cache: 'no-store',
       mode: 'cors',
+      credentials: 'omit',
     });
     if (res.status === 204 || res.status === 404) return null;
     if (!res.ok) return null;
@@ -47,7 +55,21 @@ export async function pollUnlockDesktopBrokerOnce(
     if (!data.code && !data.error) return null;
     return data;
   } catch {
-    // Unlock app not running / loopback down — not an error while waiting.
+    return null;
+  }
+}
+
+/** Parse api_endpoint + client_id from a consent / unlock launch URL. */
+export function brokerPollContextFromConsentUrl(
+  url: string
+): { apiEndpoint: string; clientId: string } | null {
+  try {
+    const u = new URL(url);
+    const apiEndpoint = (u.searchParams.get('api_endpoint') || '').replace(/\/$/, '');
+    const clientId = u.searchParams.get('client_id') || '';
+    if (!apiEndpoint || !clientId) return null;
+    return { apiEndpoint, clientId };
+  } catch {
     return null;
   }
 }

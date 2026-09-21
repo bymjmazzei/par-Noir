@@ -4,6 +4,7 @@ import {
   SessionVaultEnrollPrompt,
   SessionVaultUnlockOverlay,
   searchFromUnlockUrl,
+  postOAuthBrokerComplete,
   type ConsentVaultEnrollMaterial,
   type ConsentVaultFactors,
 } from '@par-noir/oauth-ui';
@@ -96,11 +97,15 @@ export default function App(): React.ReactElement {
   }, []);
 
   const deliverLocalBroker = async (payload: Record<string, unknown>) => {
-    const api = desktopApi();
-    if (!api) {
-      throw new Error('Desktop broker unavailable');
+    let apiBase = API_DEFAULT.replace(/\/$/, '');
+    try {
+      const q = search.startsWith('?') ? search.slice(1) : search;
+      const fromQ = new URLSearchParams(q).get('api_endpoint')?.replace(/\/$/, '');
+      if (fromQ) apiBase = fromQ;
+    } catch {
+      /* keep default */
     }
-    await api.brokerComplete(payload);
+    await postOAuthBrokerComplete(apiBase, payload);
   };
 
   const onVaultUnlock = async () => {

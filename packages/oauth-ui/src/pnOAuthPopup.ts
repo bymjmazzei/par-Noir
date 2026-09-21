@@ -2,7 +2,10 @@ import { pushPnOAuthDebug } from './pnOAuthDebug';
 import { handoffProvidesMessagingSession, PN_MESSAGING_OAUTH_HANDOFF_STORAGE } from './messagingOAuthHandoff';
 import { resolveUnlockOrigin } from './consentUnlock/parseConsentParams';
 import { launchUnlockBroker } from './unlockPreferApp';
-import { pollUnlockDesktopBrokerOnce } from './unlockDesktopBrokerPoll';
+import {
+  brokerPollContextFromConsentUrl,
+  pollUnlockDesktopBrokerOnce,
+} from './unlockDesktopBrokerPoll';
 
 /**
  * Shared pN OAuth popup flow. Must stay in sync with static oauth-callback.html
@@ -620,7 +623,9 @@ function startPnOAuthPopupAfterLaunch(
 
     const pollDesktopBrokerOnce = () => {
       if (settled || !usedApp) return;
-      void pollUnlockDesktopBrokerOnce(expectedState).then((data) => {
+      const ctx = brokerPollContextFromConsentUrl(url);
+      if (!ctx) return;
+      void pollUnlockDesktopBrokerOnce(expectedState, ctx).then((data) => {
         if (!data || settled) return;
         acceptPayload(data as Record<string, unknown>, 'desktop_broker');
       });
