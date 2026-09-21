@@ -402,6 +402,16 @@ async function processFileUpload(
   });
 }
 
+/** Note publish fields: always contentClass note; optional Pen handoff proofs. */
+function notePublishMetaFields(task: UploadTask): Record<string, unknown> {
+  const fields: Record<string, unknown> = { contentClass: 'note' };
+  if (task.metadata?.headProof != null) fields.headProof = task.metadata.headProof;
+  if (typeof task.metadata?.templateId === 'string' && task.metadata.templateId) {
+    fields.templateId = task.metadata.templateId;
+  }
+  return fields;
+}
+
 /**
  * Process text post upload
  */
@@ -417,18 +427,18 @@ async function processTextPostUpload(
 
   uploadQueueService.updateTaskProgress(task.id, 5);
 
-  // Step 1: Prepare thought file and generate thumbnail in parallel
+  // Step 1: Prepare note file and generate thumbnail in parallel
   uploadQueueService.updateTaskStatus(task.id, 'processing');
   uploadQueueService.updateTaskProgress(task.id, 10);
 
-  const thoughtData = {
+  const noteData = {
     textPost: task.textPost,
     version: '1.0',
     createdAt: new Date().toISOString()
   };
 
-  const fileName = `thought-${Date.now()}.thought`;
-  const fileContent = JSON.stringify(thoughtData);
+  const fileName = `note-${Date.now()}.note`;
+  const fileContent = JSON.stringify(noteData);
   const file = new File([fileContent], fileName, { type: 'application/json' });
 
   const fileArrayBuffer = await file.arrayBuffer();
@@ -489,7 +499,7 @@ async function processTextPostUpload(
     iv: encryptedThumbnail.iv,
     salt: encryptedThumbnail.salt,
     metadata: {
-      originalName: `thumb_${fileName.replace('.thought', '.png')}`,
+      originalName: `thumb_${fileName.replace('.note', '.png')}`,
       originalSize: thumbnailBlob.size,
       originalMimeType: 'image/png',
     },
@@ -515,7 +525,7 @@ async function processTextPostUpload(
 
   const [fileResult, thumbnailResult] = await Promise.all([
     uploadFile(base64File, `${fileName}.encrypted`, accessToken, task.accountId),
-    uploadFile(thumbnailBase64, `thumb_${fileName.replace('.thought', '.png')}.encrypted`, accessToken, task.accountId)
+    uploadFile(thumbnailBase64, `thumb_${fileName.replace('.note', '.png')}.encrypted`, accessToken, task.accountId)
   ]);
 
   const fileId = fileResult?.id;
@@ -524,7 +534,7 @@ async function processTextPostUpload(
   uploadQueueService.updateTaskProgress(task.id, 90);
 
   // Step 3: Create metadata for THUMBNAIL only (main file has no metadata - only used for downloads)
-  const titleFromContent = (task.textPost.content || '').replace(/<[^>]*>/g, '').split(/\n|<br\s*\/?>/i)[0]?.trim().substring(0, 100) || 'Thought';
+  const titleFromContent = (task.textPost.content || '').replace(/<[^>]*>/g, '').split(/\n|<br\s*\/?>/i)[0]?.trim().substring(0, 100) || 'Note';
   const isPublic = task.metadata?.isPublic || false;
 
   // CRITICAL: Only create metadata for the THUMBNAIL, not the main file
@@ -551,7 +561,7 @@ async function processTextPostUpload(
           planId: task.metadata?.publishPlanId || 'floor',
         });
       } catch (previewErr) {
-        if (import.meta.env.DEV) console.error('[UploadProcessor] Thought feed preview publish failed:', previewErr);
+        if (import.meta.env.DEV) console.error('[UploadProcessor] Note feed preview publish failed:', previewErr);
         throw new Error(
           `Failed to publish feed preview: ${
             previewErr instanceof Error ? previewErr.message : previewErr
@@ -560,25 +570,25 @@ async function processTextPostUpload(
       }
     }
     await createMetadata(thumbnailFileId, {
-      name: `thumb_${fileName.replace('.thought', '.png')}`,
+      name: `thumb_${fileName.replace('.note', '.png')}`,
       title: task.metadata?.title || titleFromContent,
       description: task.metadata?.description || task.textPost.content,
       keywords: task.metadata?.keywords || task.metadata?.tags || [],
       tags: task.metadata?.tags || task.metadata?.keywords || [],
-      fileType: 'thought-thumbnail',
+      fileType: 'note-thumbnail',
       isPublic,
-      isThoughtThumbnail: true,
+      isNoteThumbnail: true,
       mainFileId: fileId, // Reference to main file for downloads
       ...shareFields,
       ...feedPreviewFields,
       uploadDate: new Date().toISOString(),
       isNSFW: task.metadata?.isNSFW || false,
-      textPost: thoughtData.textPost,
-      thought: thoughtData.textPost,
+      textPost: noteData.textPost,
+      ...notePublishMetaFields(task),
       ...browseExpiryFields(task),
     }, accessToken);
   } else {
-    // Fallback: if no thumbnail, create metadata for main file (shouldn't happen for thoughts)
+    // Fallback: if no thumbnail, create metadata for main file (shouldn't happen for notes)
     const shareFields = await publicShareFields(
       shareToken,
       isPublic,
@@ -592,13 +602,13 @@ async function processTextPostUpload(
       description: task.metadata?.description || task.textPost.content,
       keywords: task.metadata?.keywords || task.metadata?.tags || [],
       tags: task.metadata?.tags || task.metadata?.keywords || [],
-      fileType: 'thought',
+      fileType: 'note',
       isPublic,
       ...shareFields,
       uploadDate: new Date().toISOString(),
       isNSFW: task.metadata?.isNSFW || false,
-      textPost: thoughtData.textPost,
-      thought: thoughtData.textPost,
+      textPost: noteData.textPost,
+      ...notePublishMetaFields(task),
       ...browseExpiryFields(task),
     }, accessToken);
   }
@@ -611,7 +621,7 @@ async function processTextPostUpload(
 }
 
 /**
- * Process multi-page upload (for multi-page thoughts)
+ * Process multi-page upload (for multi-page notes)
  */
 async function processMultiPageUpload(
   task: UploadTask,
@@ -626,8 +636,8 @@ async function processMultiPageUpload(
   uploadQueueService.updateTaskProgress(task.id, 5);
   uploadQueueService.updateTaskStatus(task.id, 'processing');
 
-  // Create thought collection file
-  const thoughtCollectionData = {
+  // Create note collection file
+  const noteCollectionData = {
     textPost: {
       ...task.pages[0],
       pages: task.pages
@@ -637,8 +647,8 @@ async function processMultiPageUpload(
     isMultiPage: true
   };
 
-  const fileName = `thought-collection-${Date.now()}.thought-collection`;
-  const fileContent = JSON.stringify(thoughtCollectionData);
+  const fileName = `note-collection-${Date.now()}.note-collection`;
+  const fileContent = JSON.stringify(noteCollectionData);
   const file = new File([fileContent], fileName, { type: 'application/json' });
 
   const fileArrayBuffer = await file.arrayBuffer();
@@ -687,7 +697,7 @@ async function processMultiPageUpload(
   uploadQueueService.updateTaskStatus(task.id, 'uploading');
   const base64File = await blobToBase64(new Blob([JSON.stringify(packageData)], { type: 'application/json' }));
   const fileResult = await uploadFile(base64File, `${fileName}.encrypted`, accessToken, task.accountId);
-  const thoughtFileId = fileResult?.id;
+  const noteFileId = fileResult?.id;
 
   uploadQueueService.updateTaskProgress(task.id, 70);
 
@@ -698,7 +708,7 @@ async function processMultiPageUpload(
       iv: encryptedThumbnail.iv,
       salt: encryptedThumbnail.salt,
       metadata: {
-        originalName: `thumb_${task.metadata?.name || 'thought-collection'}-page-${index + 1}.png`,
+        originalName: `thumb_${task.metadata?.name || 'note-collection'}-page-${index + 1}.png`,
         originalSize: blob.size,
         originalMimeType: 'image/png',
       },
@@ -716,7 +726,7 @@ async function processMultiPageUpload(
     }
 
     const thumbnailBase64 = await blobToBase64(new Blob([JSON.stringify(thumbnailPackage)], { type: 'application/json' }));
-    const thumbnailFileName = `thumb_${task.metadata?.name || 'thought-collection'}-page-${index + 1}.png.encrypted`;
+    const thumbnailFileName = `thumb_${task.metadata?.name || 'note-collection'}-page-${index + 1}.png.encrypted`;
     const result = await uploadFile(thumbnailBase64, thumbnailFileName, accessToken, task.accountId);
     return { index, fileId: result?.id, shareToken: thumbnailShareToken };
   });
@@ -724,7 +734,7 @@ async function processMultiPageUpload(
   const thumbnailResults = await Promise.all(thumbnailUploadPromises);
   uploadQueueService.updateTaskProgress(task.id, 85);
 
-  // CRITICAL: Thought collections are ONE file entity
+  // CRITICAL: Note collections are ONE file entity
   // Create a SEPARATE collection thumbnail file (not one of the page thumbnails)
   // This collection thumbnail uses the first page thumbnail's image as its content
   const thumbnailFileIds = thumbnailResults.map(r => r.fileId).filter(Boolean) as string[];
@@ -751,7 +761,7 @@ async function processMultiPageUpload(
       iv: encryptedCollectionThumbnail.iv,
       salt: encryptedCollectionThumbnail.salt,
       metadata: {
-        originalName: `thumb_${task.metadata?.name || 'thought-collection'}.png`,
+        originalName: `thumb_${task.metadata?.name || 'note-collection'}.png`,
         originalSize: firstPageBlob.size,
         originalMimeType: 'image/png',
       },
@@ -768,7 +778,7 @@ async function processMultiPageUpload(
     }
 
     const collectionThumbnailBase64 = await blobToBase64(new Blob([JSON.stringify(collectionThumbnailPackage)], { type: 'application/json' }));
-    const collectionThumbnailFileName = `thumb_${task.metadata?.name || 'thought-collection'}.png.encrypted`;
+    const collectionThumbnailFileName = `thumb_${task.metadata?.name || 'note-collection'}.png.encrypted`;
     const collectionThumbnailResult = await uploadFile(collectionThumbnailBase64, collectionThumbnailFileName, accessToken, task.accountId);
     collectionThumbnailFileId = collectionThumbnailResult?.id;
     
@@ -778,7 +788,7 @@ async function processMultiPageUpload(
   // Create ONE metadata entry for the collection thumbnail (not for page thumbnails)
   if (collectionThumbnailFileId) {
     const page = task.pages![0];
-    const titleFromContent = (page.content || '').replace(/<[^>]*>/g, '').split(/\n|<br\s*\/?>/i)[0]?.trim().substring(0, 100) || 'Thought';
+    const titleFromContent = (page.content || '').replace(/<[^>]*>/g, '').split(/\n|<br\s*\/?>/i)[0]?.trim().substring(0, 100) || 'Note';
     const isPublic = task.metadata?.isPublic === true;
     let feedPreviewFields: Record<string, unknown> = {};
     let shareFields: Record<string, unknown> = {};
@@ -820,14 +830,15 @@ async function processMultiPageUpload(
           planId: task.metadata?.publishPlanId || 'floor',
         });
         await createMetadata(pageResult.fileId, {
-          name: `thumb_${task.metadata?.name || 'thought-collection'}-page-${i + 1}.png`,
+          name: `thumb_${task.metadata?.name || 'note-collection'}-page-${i + 1}.png`,
           fileType: 'image',
           isPublic: true,
-          isThoughtThumbnail: true,
+          isNoteThumbnail: true,
           isPartOfCollection: true,
-          mainFileId: thoughtFileId,
+          mainFileId: noteFileId,
           uploadDate: new Date().toISOString(),
           isNSFW: task.metadata?.isNSFW || false,
+          ...notePublishMetaFields(task),
           ...pageShare,
           ...pagePreviews,
           ...browseExpiryFields(task),
@@ -835,23 +846,23 @@ async function processMultiPageUpload(
       }
     }
     await createMetadata(collectionThumbnailFileId, {
-      name: `thumb_${task.metadata?.name || 'thought-collection'}.png`,
+      name: `thumb_${task.metadata?.name || 'note-collection'}.png`,
       title: task.metadata?.title || titleFromContent,
       description: task.metadata?.description || '',
       keywords: task.metadata?.keywords || task.metadata?.tags || [],
       tags: task.metadata?.tags || task.metadata?.keywords || [],
-      fileType: 'thought-collection',
+      fileType: 'note-collection',
       isPublic,
-      isThoughtThumbnail: true,
+      isNoteThumbnail: true,
       isPartOfCollection: true,
-      mainFileId: thoughtFileId, // Reference to main file for downloads
+      mainFileId: noteFileId, // Reference to main file for downloads
       uploadDate: new Date().toISOString(),
       isNSFW: task.metadata?.isNSFW || false,
       collection: {
         collectionFileIds: thumbnailFileIds
       },
-      textPost: thoughtCollectionData.textPost,
-      thought: thoughtCollectionData.textPost,
+      textPost: noteCollectionData.textPost,
+      ...notePublishMetaFields(task),
       ...shareFields,
       ...feedPreviewFields,
       ...browseExpiryFields(task),
@@ -862,7 +873,7 @@ async function processMultiPageUpload(
   // Page thumbnails are just visual proxies - NO metadata entries
 
   uploadQueueService.setTaskResult(task.id, {
-    fileId: thoughtFileId,
+    fileId: noteFileId,
     thumbnailFileIds,
     thumbnailTokens,
     collectionThumbnailFileId, // The separate collection thumbnail file

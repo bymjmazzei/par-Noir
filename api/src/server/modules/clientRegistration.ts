@@ -165,6 +165,20 @@ export class ClientRegistrationService {
           'http://127.0.0.1:5175/oauth-callback.html'
         ],
         scopes: ['openid', 'profile', 'zkp:age_attestation']
+      },
+      {
+        clientId: 'pen-app',
+        name: 'par Noir Pen',
+        description: 'Official Pen app for authored content, Notes, and collaborator replicas',
+        redirectUris: [
+          'https://pen.parnoir.com/oauth-callback.html',
+          'https://pen.parnoir.com/',
+          'https://pen-parnoir.web.app/oauth-callback.html',
+          'https://pen-parnoir.web.app/',
+          'http://localhost:5177/oauth-callback.html',
+          'http://127.0.0.1:5177/oauth-callback.html'
+        ],
+        scopes: ['openid', 'profile', 'cloud:read', 'cloud:app']
       }
     ];
 

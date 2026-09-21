@@ -9,16 +9,16 @@ import { useUserState } from '../contexts/UserStateContext';
 import { MePageDropdown } from './MePageDropdown';
 
 interface MePageTabsRailProps {
-  activeTab: 'all' | 'media' | 'thoughts' | 'collections' | 'likes' | 'comments' | 'shares' | 'saved' | 'connections';
-  onTabSelect: (tab: 'all' | 'media' | 'thoughts' | 'collections' | 'likes' | 'comments' | 'shares' | 'saved' | 'connections') => void;
-  availableTabs?: ('all' | 'media' | 'thoughts' | 'collections' | 'likes' | 'comments' | 'shares' | 'saved' | 'connections')[];
+  activeTab: 'all' | 'media' | 'notes' | 'collections' | 'likes' | 'comments' | 'shares' | 'saved' | 'connections';
+  onTabSelect: (tab: 'all' | 'media' | 'notes' | 'collections' | 'likes' | 'comments' | 'shares' | 'saved' | 'connections') => void;
+  availableTabs?: ('all' | 'media' | 'notes' | 'collections' | 'likes' | 'comments' | 'shares' | 'saved' | 'connections')[];
 }
 
-const TABS = ['connections', 'all', 'media', 'thoughts', 'collections', 'likes', 'comments', 'shares', 'saved'] as const;
+const TABS = ['connections', 'all', 'media', 'notes', 'collections', 'likes', 'comments', 'shares', 'saved'] as const;
 const TAB_LABELS: Record<typeof TABS[number], string> = {
   all: 'ALL',
   media: 'MEDIA',
-  thoughts: 'THOUGHTS',
+  notes: 'NOTES',
   collections: 'COLLECTIONS',
   likes: 'LIKES',
   comments: 'COMMENTS',

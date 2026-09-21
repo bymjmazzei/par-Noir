@@ -30,6 +30,7 @@ export {
   createOutboxRecord,
   messageSendFanout,
   groupMessageSendFanout,
+  penSectionPromoteFanout,
   loadLocalOutbox,
   saveLocalOutbox,
   upsertLocalOutboxRecord,

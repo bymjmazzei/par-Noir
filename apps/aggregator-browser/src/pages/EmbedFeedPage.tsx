@@ -56,12 +56,12 @@ export function EmbedFeedPage({ onLockUnlock }: { onLockUnlock: () => void }) {
     setError(null);
     try {
       const service = new ContentTypeIndexService();
-      const [media, thoughts, collections] = await Promise.all([
+      const [media, notes, collections] = await Promise.all([
         service.loadContentTypeIndex('media', { indexerId: clientId, limit: 40, offset: 0 }, true),
-        service.loadContentTypeIndex('thoughts', { indexerId: clientId, limit: 40, offset: 0 }, true),
+        service.loadContentTypeIndex('notes', { indexerId: clientId, limit: 40, offset: 0 }, true),
         service.loadContentTypeIndex('collections', { indexerId: clientId, limit: 40, offset: 0 }, true)
       ]);
-      const merged = [...media.files, ...thoughts.files, ...collections.files];
+      const merged = [...media.files, ...notes.files, ...collections.files];
       const seen = new Set<string>();
       setFiles(
         merged.filter((f) => {

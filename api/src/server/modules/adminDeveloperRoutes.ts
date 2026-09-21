@@ -328,7 +328,7 @@ export function registerAdminDeveloperRoutes(app: Application): void {
           FROM (
             SELECT metadata FROM aggregator_media
             UNION ALL
-            SELECT metadata FROM aggregator_thoughts
+            SELECT metadata FROM aggregator_notes
             UNION ALL
             SELECT metadata FROM aggregator_collections
           ) AS all_content
@@ -436,7 +436,7 @@ export function registerAdminDeveloperRoutes(app: Application): void {
             FROM (
               SELECT pn_identifier, metadata FROM aggregator_media
               UNION ALL
-              SELECT pn_identifier, metadata FROM aggregator_thoughts
+              SELECT pn_identifier, metadata FROM aggregator_notes
               UNION ALL
               SELECT pn_identifier, metadata FROM aggregator_collections
             ) all_content

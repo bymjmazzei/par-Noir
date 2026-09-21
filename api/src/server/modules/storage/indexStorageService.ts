@@ -12,7 +12,7 @@ import {
   updateIndexFilePortable
 } from './indexPortableService';
 
-type ContentClassFolder = 'media' | 'thoughts' | 'collections';
+type ContentClassFolder = 'media' | 'notes' | 'collections';
 
 function normalizePn(pn: string): string {
   return pn.startsWith('pn-') ? pn : `pn-${pn}`;

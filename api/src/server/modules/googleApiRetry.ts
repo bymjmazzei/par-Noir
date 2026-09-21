@@ -279,7 +279,7 @@ export async function setPublicPermissionWithRetry(
   }
 }
 
-export type ContentClassName = 'media' | 'thoughts' | 'collections';
+export type ContentClassName = 'media' | 'notes' | 'collections';
 
 /** Get-or-create index sheet in a folder with per-step retry (init-only). */
 export async function ensureIndexSheetInFolder(

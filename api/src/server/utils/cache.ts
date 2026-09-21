@@ -74,7 +74,7 @@ function generateCacheKey(
   filters?: {
     tags?: string[];
     fileType?: string;
-    contentClass?: 'media' | 'thought' | 'collection';
+    contentClass?: 'media' | 'note' | 'collection';
     authorDid?: string;
     indexerId?: string;
     limit?: number;
@@ -190,7 +190,7 @@ export async function getCachedIndex(
   filters?: {
     tags?: string[];
     fileType?: string;
-    contentClass?: 'media' | 'thought' | 'collection';
+    contentClass?: 'media' | 'note' | 'collection';
     authorDid?: string;
     indexerId?: string;
     limit?: number;
@@ -208,7 +208,7 @@ export async function setCachedIndex(
   filters: {
     tags?: string[];
     fileType?: string;
-    contentClass?: 'media' | 'thought' | 'collection';
+    contentClass?: 'media' | 'note' | 'collection';
     authorDid?: string;
     indexerId?: string;
     limit?: number;

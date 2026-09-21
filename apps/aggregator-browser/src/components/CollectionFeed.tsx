@@ -1,6 +1,6 @@
 /**
  * Collection Feed Component
- * Displays a collection of mixed file types (images, videos, thoughts) in a slideshow
+ * Displays a collection of mixed file types (images, videos, notes) in a slideshow
  * Swipe up/down to navigate between items
  */
 
@@ -23,8 +23,8 @@ interface CollectionFeedProps {
 }
 
 interface FileContent {
-  type: 'thought' | 'image' | 'video';
-  data: any; // URL for image/video, textPost data for thought
+  type: 'note' | 'image' | 'video';
+  data: any; // URL for image/video, textPost data for note
 }
 
 export function CollectionFeed({ 
@@ -38,7 +38,7 @@ export function CollectionFeed({
   const [loading, setLoading] = useState<Map<string, boolean>>(new Map());
   const [error, setError] = useState<Map<string, string>>(new Map());
   const [mediaDimensions, setMediaDimensions] = useState<Map<string, MediaDimensions>>(new Map());
-  // Thought thumbnails are stored directly in content.data, no need for separate state
+  // Note thumbnails are stored directly in content.data, no need for separate state
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
   const videoRefs = useRef<Map<string, HTMLVideoElement>>(new Map());
   const loadedFilesRef = useRef<Set<string>>(new Set());
@@ -124,19 +124,19 @@ export function CollectionFeed({
       const fileType = metadata.fileType;
       const fileName = metadata.name || metadata.title || '';
       const hasTextPost = !!(metadata.textPost || metadata.thought);
-      const isThoughtCollectionThumbnail = fileType === 'thought-collection-thumbnail';
-      const isThought = fileType === 'thought' || fileType === 'text' || hasTextPost;
-      // Thought-collection-thumbnails are already rendered PNG images, treat them as images
-      const isImage = (!isThought && !isThoughtCollectionThumbnail && (fileType === 'image' || /\.(jpg|jpeg|png|gif|webp|svg|bmp|ico|heic|heif)$/i.test(fileName))) || isThoughtCollectionThumbnail;
-      const isVideo = !isThought && !isThoughtCollectionThumbnail && (fileType === 'video' || /\.(mp4|mov|avi|webm|mkv|flv|wmv)$/i.test(fileName));
+      const isNoteCollectionThumbnail = fileType === 'note-collection-thumbnail';
+      const isNote = fileType === 'note' || fileType === 'text' || hasTextPost;
+      // Note-collection-thumbnails are already rendered PNG images, treat them as images
+      const isImage = (!isNote && !isNoteCollectionThumbnail && (fileType === 'image' || /\.(jpg|jpeg|png|gif|webp|svg|bmp|ico|heic|heif)$/i.test(fileName))) || isNoteCollectionThumbnail;
+      const isVideo = !isNote && !isNoteCollectionThumbnail && (fileType === 'video' || /\.(mp4|mov|avi|webm|mkv|flv|wmv)$/i.test(fileName));
 
       let content: FileContent | null = null;
 
-      if (isThought) {
-        // For thoughts, try to load thumbnail first (thoughts should render as images)
+      if (isNote) {
+        // For notes, try to load thumbnail first (notes should render as images)
         const thumbnailFileId = metadata.thumbnailFileId;
         if (thumbnailFileId) {
-          // Load thought thumbnail as image
+          // Load note thumbnail as image
           let thumbnailUrl = `${API_ENDPOINT}/api/drive/files/${thumbnailFileId}?thumbnail=true`;
           if (accountIdToUse) {
             thumbnailUrl += `&accountId=${encodeURIComponent(accountIdToUse)}`;
@@ -178,7 +178,7 @@ export function CollectionFeed({
                     });
                     const thumbnailUrlObj = URL.createObjectURL(imageBlob);
                     content = {
-                      type: 'image', // Treat thought thumbnail as image
+                      type: 'image', // Treat note thumbnail as image
                       data: thumbnailUrlObj
                     };
                   }
@@ -187,17 +187,17 @@ export function CollectionFeed({
                 // Not encrypted, use directly
                 const thumbnailUrlObj = URL.createObjectURL(thumbnailBlob);
                 content = {
-                  type: 'image', // Treat thought thumbnail as image
+                  type: 'image', // Treat note thumbnail as image
                   data: thumbnailUrlObj
                 };
               }
             }
           } catch (thumbnailErr) {
-            if (import.meta.env.DEV) console.warn(`Failed to load thought thumbnail for ${fileId}, falling back to text rendering:`, thumbnailErr);
+            if (import.meta.env.DEV) console.warn(`Failed to load note thumbnail for ${fileId}, falling back to text rendering:`, thumbnailErr);
           }
         }
         
-        // Fallback: Load and decrypt thought text if thumbnail not available
+        // Fallback: Load and decrypt note text if thumbnail not available
         if (!content) {
           const publicToken = metadata.publicToken;
           if (publicToken) {
@@ -205,16 +205,16 @@ export function CollectionFeed({
               const token: ShareToken = typeof publicToken === 'string' ? JSON.parse(publicToken) : publicToken;
               const decryptedBlob = await decryptPublicFeedMedia(fileId, token);
               const text = await decryptedBlob.text();
-              const thoughtData = JSON.parse(text);
+              const noteData = JSON.parse(text);
               content = {
-                type: 'thought',
-                data: thoughtData.textPost || thoughtData.thought || thoughtData
+                type: 'note',
+                data: noteData.textPost || noteData.thought || noteData
               };
             } catch (err) {
-              if (import.meta.env.DEV) console.error('Failed to decrypt thought:', err);
+              if (import.meta.env.DEV) console.error('Failed to decrypt note:', err);
               setError(prev => {
                 const newMap = new Map(prev);
-                newMap.set(fileId, 'Failed to load thought');
+                newMap.set(fileId, 'Failed to load note');
                 return newMap;
               });
             }
@@ -222,9 +222,9 @@ export function CollectionFeed({
         }
       } else if (isImage) {
         // Load image
-        // For thought-collection-thumbnails, they ARE the image files, so use download=true
+        // For note-collection-thumbnails, they ARE the image files, so use download=true
         // For regular images, thumbnail=true might generate a thumbnail, but for collection thumbnails we want the full file
-        const useDownload = isThoughtCollectionThumbnail;
+        const useDownload = isNoteCollectionThumbnail;
         let imageUrl = `${API_ENDPOINT}/api/drive/files/${fileId}?${useDownload ? 'download' : 'thumbnail'}=true`;
         if (accountIdToUse) {
           imageUrl += `&accountId=${encodeURIComponent(accountIdToUse)}`;
@@ -436,10 +436,10 @@ export function CollectionFeed({
     }
 
     // Render based on content type
-    if (content.type === 'thought') {
+    if (content.type === 'note') {
       const textPost = content.data;
       const style = textPost.style || {};
-      // Thoughts are square (1080x1080) - calculate scale for text rendering (based on container)
+      // Notes are square (1080x1080) - calculate scale for text rendering (based on container)
       const containerDims = getContainerDimensions(64);
       const REFERENCE_WIDTH = 1080;
       const REFERENCE_HEIGHT = 1080;

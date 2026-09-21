@@ -35,11 +35,12 @@ export interface PromoteOutboxResult {
   errors: string[];
 }
 
-const SHEET_KINDS = new Set<OutboxKind>(['message_append', 'group_message_append']);
+const SHEET_KINDS = new Set<OutboxKind>(['message_append', 'group_message_append', 'pen.section_promote']);
 
 function applyPathFor(kind: OutboxKind): string | null {
   if (kind === 'message_append') return '/api/messages/apply-inbound';
   if (kind === 'group_message_append') return '/api/groups/apply-inbound';
+  if (kind === 'pen.section_promote') return '/api/pen/apply-inbound';
   return null;
 }
 

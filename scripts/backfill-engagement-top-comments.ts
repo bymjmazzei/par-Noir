@@ -28,7 +28,7 @@ async function main() {
       : 0;
 
   const db = getDatabasePool();
-  const tables = ['aggregator_media', 'aggregator_thoughts', 'aggregator_collections'];
+  const tables = ['aggregator_media', 'aggregator_notes', 'aggregator_collections'];
   const fileIds = new Set<string>();
 
   for (const table of tables) {

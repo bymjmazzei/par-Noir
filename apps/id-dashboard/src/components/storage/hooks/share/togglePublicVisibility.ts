@@ -168,24 +168,35 @@ export async function togglePublicVisibility(
         ? resolvedAuth.publicKey
         : `did:key:${resolvedAuth.publicKey}`;
 
-      // CRITICAL: If this is a thought file and we don't have content, load it from Google Drive
-      const thoughtFileName = fileTitle.toLowerCase();
-      const isThoughtFile = /^thought-\d+\.(thought|png)/i.test(thoughtFileName);
-      const isTextFile = mimeCategory === 'text' || file.fileType === 'text' || file.fileType === 'thought';
+      // If this is a note file and we don't have content, load it from Drive
+      const noteFileName = fileTitle.toLowerCase();
+      const isNoteFile =
+        /^(?:note|thought)-\d+\.(?:note|thought|png)/i.test(noteFileName);
+      const isTextFile =
+        mimeCategory === 'text' ||
+        file.fileType === 'text' ||
+        file.fileType === 'note' ||
+        file.fileType === 'thought';
 
-      let existingTextPost = existingMetadata?.textPost || existingMetadata?.thought || (file as any).textPost || (file as any).thought;
+      let existingTextPost =
+        existingMetadata?.textPost ||
+        existingMetadata?.note ||
+        existingMetadata?.thought ||
+        (file as any).textPost ||
+        (file as any).note ||
+        (file as any).thought;
 
-      // If it's a thought file but we don't have content, load it from Google Drive
-      if ((isThoughtFile || isTextFile) && !existingTextPost?.content) {
+      // If it's a note file but we don't have content, load it from Google Drive
+      if ((isNoteFile || isTextFile) && !existingTextPost?.content) {
         try {
-          console.log(`[handleTogglePublic] Loading thought content from Google Drive for ${file.id}...`);
+          console.log(`[handleTogglePublic] Loading note content from Google Drive for ${file.id}...`);
           const backend = aggregatorService?.getBackend(file.backend);
           if (backend && backend.isConnected()) {
             const encryptedBlob = await backend.downloadFile(file.backendFileId);
             const encryptedPackageJson = await encryptedBlob.text();
             const encryptedPackage: EncryptedFilePackage = JSON.parse(encryptedPackageJson);
 
-            // Decrypt the thought file
+            // Decrypt the note file
             const sessionId = authenticatedUser?.id || (authenticatedUser as any)?.publicKey || null;
             const credentials = sessionId ? SecureCredentialManager.getCredentials(sessionId) : null;
 
@@ -200,16 +211,16 @@ export async function togglePublicVisibility(
               const decryptedData = new Uint8Array(await decryptedBlob.arrayBuffer());
 
               const decryptedText = new TextDecoder().decode(decryptedData);
-              const thoughtData = JSON.parse(decryptedText);
+              const noteData = JSON.parse(decryptedText);
 
-              if (thoughtData.textPost || thoughtData.thought) {
-                existingTextPost = thoughtData.textPost || thoughtData.thought;
-                console.log(`[handleTogglePublic] ✅ Loaded thought content from Google Drive`);
+              if (noteData.textPost || noteData.note || noteData.thought) {
+                existingTextPost = noteData.textPost || noteData.note || noteData.thought;
+                console.log(`[handleTogglePublic] ✅ Loaded note content from Google Drive`);
               }
             }
           }
         } catch (error) {
-          console.warn(`[handleTogglePublic] Failed to load thought content from Google Drive:`, error);
+          console.warn(`[handleTogglePublic] Failed to load note content from Google Drive:`, error);
           // Continue without content - user can manually fix later
         }
       }

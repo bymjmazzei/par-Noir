@@ -28,7 +28,7 @@ export type FeedFilterUserState = {
 
 export type FilterFilesForFeedParams = {
   mediaFiles: IndexedFile[];
-  thoughtsFiles: IndexedFile[];
+  notesFiles: IndexedFile[];
   collectionsFiles: IndexedFile[];
   feedId: string;
   userState: FeedFilterUserState;
@@ -45,7 +45,7 @@ export type FilterFilesForFeedParams = {
 export function filterFilesForFeed(params: FilterFilesForFeedParams): IndexedFile[] {
   const {
     mediaFiles,
-    thoughtsFiles,
+    notesFiles,
     collectionsFiles,
     feedId,
     userState,
@@ -115,21 +115,21 @@ export function filterFilesForFeed(params: FilterFilesForFeedParams): IndexedFil
       return dateB - dateA;
     });
 
-  const shouldExcludeThoughtPage = (file: IndexedFile): boolean => {
+  const shouldExcludeNotePage = (file: IndexedFile): boolean => {
     const ft = file.metadata.fileType;
     return (
-      ft === 'thought-collection-thumbnail' ||
-      ft === 'thought-collection-page' ||
-      ft === 'thought-collection'
+      ft === 'note-collection-thumbnail' ||
+      ft === 'note-collection-page' ||
+      ft === 'note-collection'
     );
   };
 
-  const filteredMedia = mediaFiles.filter((f) => shouldShowFile(f) && !shouldExcludeThoughtPage(f));
-  const filteredThoughts = thoughtsFiles.filter(
-    (f) => shouldShowFile(f) && !shouldExcludeThoughtPage(f)
+  const filteredMedia = mediaFiles.filter((f) => shouldShowFile(f) && !shouldExcludeNotePage(f));
+  const filteredNotes = notesFiles.filter(
+    (f) => shouldShowFile(f) && !shouldExcludeNotePage(f)
   );
   const filteredCollections = collectionsFiles.filter(
-    (f) => shouldShowFile(f) && !shouldExcludeThoughtPage(f)
+    (f) => shouldShowFile(f) && !shouldExcludeNotePage(f)
   );
 
   const curatedFeedPreferences = userState.isUnlocked
@@ -162,18 +162,18 @@ export function filterFilesForFeed(params: FilterFilesForFeedParams): IndexedFil
 
   if (feedId === 'public') {
     return processPublicFeed(
-      [...filteredMedia, ...filteredThoughts, ...filteredCollections],
+      [...filteredMedia, ...filteredNotes, ...filteredCollections],
       connectionsList
     );
   }
   if (feedId === 'media') return processPublicFeed(filteredMedia, connectionsList);
-  if (feedId === 'thoughts') return processPublicFeed(filteredThoughts, connectionsList);
+  if (feedId === 'notes') return processPublicFeed(filteredNotes, connectionsList);
   if (feedId === 'collections') return processPublicFeed(filteredCollections, connectionsList);
   if (feedId === 'discovery') return [];
 
   if (feedId.startsWith('niche-')) {
     const categoryId = feedId.replace('niche-', '');
-    const allFiles = [...filteredMedia, ...filteredThoughts, ...filteredCollections];
+    const allFiles = [...filteredMedia, ...filteredNotes, ...filteredCollections];
     const filtered = allFiles.filter((file) => {
       const fileCategories = file.metadata.feedCategories || [];
       const flat = Array.isArray(fileCategories) ? fileCategories.flat(Infinity) : [fileCategories];
@@ -186,11 +186,11 @@ export function filterFilesForFeed(params: FilterFilesForFeedParams): IndexedFil
   }
 
   if (feedId.startsWith(COMMUNITY_FEED_PREFIX)) {
-    const allFiles = [...filteredMedia, ...filteredThoughts, ...filteredCollections];
+    const allFiles = [...filteredMedia, ...filteredNotes, ...filteredCollections];
     return sortByScore(allFiles, true);
   }
 
-  const allFiles = [...filteredMedia, ...filteredThoughts, ...filteredCollections];
+  const allFiles = [...filteredMedia, ...filteredNotes, ...filteredCollections];
   const filtered = allFiles.filter((file) => file.metadata.feedIds?.includes(feedId));
   return sortByScore(filtered, true);
 }

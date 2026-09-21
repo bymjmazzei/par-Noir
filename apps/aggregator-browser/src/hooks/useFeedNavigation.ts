@@ -31,7 +31,7 @@ export function useFeedNavigation(
     const hierarchy: FeedNavigationItem[] = [];
 
     if (userState.isUnlocked) {
-      // Unlocked users: Public → Media → Thoughts → Collections → Subscribed → Discovery
+      // Unlocked users: Public → Media → Notes → Collections → Subscribed → Discovery
       
       // 1. Public Index
       hierarchy.push({
@@ -49,10 +49,10 @@ export function useFeedNavigation(
         index: 1
       });
 
-      // 3. Thoughts Feed
+      // 3. Notes Feed
       hierarchy.push({
-        feedId: 'thoughts',
-        name: 'Thoughts',
+        feedId: 'notes',
+        name: 'Notes',
         type: 'public',
         index: 2
       });
@@ -118,7 +118,7 @@ export function useFeedNavigation(
         index: hierarchy.length
       });
     } else {
-      // Locked users: Public Index → Media → Thoughts → Collections → 20 Niche Feeds
+      // Locked users: Public Index → Media → Notes → Collections → 20 Niche Feeds
       
       // 1. Public Index (default for locked users)
       hierarchy.push({
@@ -136,10 +136,10 @@ export function useFeedNavigation(
         index: 1
       });
 
-      // 3. Thoughts Feed
+      // 3. Notes Feed
       hierarchy.push({
-        feedId: 'thoughts',
-        name: 'Thoughts',
+        feedId: 'notes',
+        name: 'Notes',
         type: 'public',
         index: 2
       });

@@ -1,5 +1,5 @@
 /** First-party apps that also receive ML-KEM messaging handoff after unlock. */
-export const MESSAGING_HANDOFF_CLIENT_IDS = ['browser-app', 'messaging-app'] as const;
+export const MESSAGING_HANDOFF_CLIENT_IDS = ['browser-app', 'messaging-app', 'pen-app'] as const;
 
 export type MessagingHandoffClientId = (typeof MESSAGING_HANDOFF_CLIENT_IDS)[number];
 

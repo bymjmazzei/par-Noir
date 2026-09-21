@@ -1,5 +1,5 @@
 /**
- * Gate: public single-page thoughts must publish CDN feedPoster before metadata create.
+ * Gate: public single-page notes must publish CDN feedPoster before metadata create.
  * Fails closed on feed_poster_required if this wire-up is removed.
  */
 import { readFileSync } from 'fs';
@@ -18,8 +18,8 @@ function sliceBetween(haystack: string, startMarker: string, endMarker: string):
   return haystack.slice(start, end);
 }
 
-describe('single-page thought feed preview wire-up', () => {
-  it('processTextPostUpload calls publishFeedPreviews for public thoughts', () => {
+describe('single-page note feed preview wire-up', () => {
+  it('processTextPostUpload calls publishFeedPreviews for public notes', () => {
     const body = sliceBetween(
       src,
       'async function processTextPostUpload(',

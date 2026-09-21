@@ -12,6 +12,7 @@ import type { DataPointLevels } from './verificationLevel';
 
 export const BROWSER_APP_CLIENT_ID = 'browser-app';
 export const MESSAGING_APP_CLIENT_ID = 'messaging-app';
+export const PEN_APP_CLIENT_ID = 'pen-app';
 
 export interface ClientContract {
   clientId: string;
@@ -48,9 +49,21 @@ const MESSAGING_APP_CONTRACT: ClientContract = {
   scopes: ['openid', 'profile', 'cloud:read'],
 };
 
+/** Pen: authored content + Drive replicas + group collab outbox. */
+const PEN_APP_CONTRACT: ClientContract = {
+  clientId: PEN_APP_CLIENT_ID,
+  name: 'par Noir Pen',
+  description: 'Official Pen application for authored documents, Notes, and collaborator replicas',
+  requiredDataPoints: [],
+  optionalDataPoints: [],
+  dataPointLevels: {},
+  scopes: ['openid', 'profile', 'cloud:read', 'cloud:app'],
+};
+
 export const CLIENT_CONTRACTS: Readonly<Record<string, ClientContract>> = {
   [BROWSER_APP_CLIENT_ID]: BROWSER_APP_CONTRACT,
   [MESSAGING_APP_CLIENT_ID]: MESSAGING_APP_CONTRACT,
+  [PEN_APP_CLIENT_ID]: PEN_APP_CONTRACT,
 };
 
 export function getClientContract(clientId: string | undefined | null): ClientContract | null {

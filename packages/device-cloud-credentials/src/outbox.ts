@@ -18,7 +18,8 @@ export type OutboxKind =
   | 'follower_remove'
   | 'group_message_append'
   | 'group_inbox_update'
-  | 'message_request';
+  | 'message_request'
+  | 'pen.section_promote';
 
 export type OutboxStatus = 'pending' | 'enqueued' | 'materialized' | 'failed';
 
@@ -82,6 +83,19 @@ export function groupMessageSendFanout(routeKeys: string[]): OutboxFanoutTarget[
     if (!/^[a-f0-9]{64}$/i.test(rk) || seen.has(rk)) continue;
     seen.add(rk);
     targets.push({ routeKey: rk, jobType: 'group_message_append' });
+  }
+  return targets;
+}
+
+/** Fanout Pen section promote to each collaborator's mailbox route. */
+export function penSectionPromoteFanout(routeKeys: string[]): OutboxFanoutTarget[] {
+  const seen = new Set<string>();
+  const targets: OutboxFanoutTarget[] = [];
+  for (const routeKey of routeKeys) {
+    const rk = routeKey.trim();
+    if (!/^[a-f0-9]{64}$/i.test(rk) || seen.has(rk)) continue;
+    seen.add(rk);
+    targets.push({ routeKey: rk, jobType: 'pen.section_promote' });
   }
   return targets;
 }

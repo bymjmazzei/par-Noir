@@ -64,7 +64,7 @@ export interface HomePageContextValue {
   getShareCount: (fileId: string, defaultCount: number) => number;
   share: (fileId: string) => void;
   getFileProps: (f: IndexedFile) => { file: IndexedFile; isLiked: boolean; isOwner: boolean };
-  isThought: (f: IndexedFile) => boolean;
+  isNote: (f: IndexedFile) => boolean;
   getCreatorIdentifier: (f: IndexedFile) => string | null;
   handleComment: (f: IndexedFile) => void;
   handleLike: (fileId: string) => void;

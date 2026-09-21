@@ -33,8 +33,8 @@ export interface IndexFileEntry {
   repostOf?: string;
   isPartOf?: string;
   indexingPermissions?: any;
-  contentClass?: 'media' | 'thought' | 'collection';
-  isThoughtThumbnail?: boolean;
+  contentClass?: 'media' | 'note' | 'collection';
+  isNoteThumbnail?: boolean;
   thought?: any;
   textPost?: any;
   collection?: any;
@@ -58,7 +58,7 @@ export class IndexSheetsService {
 
   /**
    * Create an index sheet in the given folder. Used only at Drive connection init.
-   * @param folderId - _metadata or a content-class folder (e.g. media, thoughts, collections)
+   * @param folderId - _metadata or a content-class folder (e.g. media, notes, collections)
    */
   static async createIndexSheet(
     token: GoogleDriveToken,
@@ -66,7 +66,7 @@ export class IndexSheetsService {
     indexType: 'public' | 'owner',
     userPnIdentifier: string,
     accountId: string | undefined,
-    contentClass?: 'media' | 'thoughts' | 'collections'
+    contentClass?: 'media' | 'notes' | 'collections'
   ): Promise<string> {
     const auth = GoogleOAuth2Helper.createClient(token, userPnIdentifier, accountId);
     const sheets = google.sheets({ version: 'v4', auth });
@@ -122,7 +122,7 @@ export class IndexSheetsService {
   /**
    * Get index sheet. Scoped search only; throws if not found.
    * Sheets are created at Drive connection init; this does not create, move, or delete.
-   * @param contentClass - When set (e.g. 'media'|'thoughts'|'collections'), uses {contentClass}-{owner|public}-index.xlsx. Omit for root indexes.
+   * @param contentClass - When set (e.g. 'media'|'notes'|'collections'), uses {contentClass}-{owner|public}-index.xlsx. Omit for root indexes.
    */
   static async getIndexSheet(
     token: GoogleDriveToken,
@@ -130,7 +130,7 @@ export class IndexSheetsService {
     indexType: 'public' | 'owner',
     userPnIdentifier: string,
     accountId: string | undefined,
-    contentClass?: 'media' | 'thoughts' | 'collections'
+    contentClass?: 'media' | 'notes' | 'collections'
   ): Promise<string> {
     const auth = GoogleOAuth2Helper.createClient(token, userPnIdentifier, accountId);
     const drive = google.drive({ version: 'v3', auth });
@@ -419,7 +419,7 @@ export class IndexSheetsService {
     accountId: string | undefined,
     options?: {
       visibility?: 'public' | 'private' | 'friends';
-      contentClass?: 'media' | 'thought' | 'collection';
+      contentClass?: 'media' | 'note' | 'collection';
       limit?: number;
       offset?: number;
     }

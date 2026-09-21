@@ -1,5 +1,5 @@
 /**
- * Thumbnail component that handles authenticated loading, decryption, and thought rendering.
+ * Thumbnail component that handles authenticated loading, decryption, and note rendering.
  * Extracted from FileStorageAggregator.
  */
 
@@ -9,6 +9,7 @@ import { PNOAuthService } from '../../services/pnOAuthService';
 import { EncryptionManager } from '@par-noir/identity-crypto/browser';
 import { fetchStorageFile } from '../../services/storageApiClient';
 import { apiGet } from '../../services/ownerApiFetch';
+import { isNoteFileName, isNoteThumbnailFileName } from '../../utils/noteFileName';
 
 interface EncryptedFilePackage {
   encrypted: string;
@@ -113,16 +114,12 @@ export const ThumbnailImage: React.FC<ThumbnailImageProps> = ({
         }
 
         const fileNameWithoutEncrypted = fileName.replace(/\.encrypted$/i, '');
-        const isThoughtFile =
-          fileNameWithoutEncrypted.toLowerCase().startsWith('thought-') &&
-          (fileNameWithoutEncrypted.toLowerCase().endsWith('.thought') || fileNameWithoutEncrypted.toLowerCase().endsWith('.png'));
-        const isThoughtThumbnail =
-          fileNameWithoutEncrypted.toLowerCase().startsWith('thumb_thought-') &&
-          (fileNameWithoutEncrypted.toLowerCase().endsWith('.thought') || fileNameWithoutEncrypted.toLowerCase().endsWith('.png'));
-        const isThought = isThoughtFile || isThoughtThumbnail;
+        const isNoteFile = isNoteFileName(fileNameWithoutEncrypted);
+        const isNoteThumbnail = isNoteThumbnailFileName(fileNameWithoutEncrypted);
+        const isNote = isNoteFile || isNoteThumbnail;
 
-        // Thought thumbnails are encrypted PNGs on Drive — load thumb fileId, not private main .thought
-        if (isThoughtThumbnail) {
+        // Note thumbnails are encrypted PNGs on Drive — load thumb fileId, not private main .note
+        if (isNoteThumbnail) {
           const session = PNOAuthService.loadSession();
           if (!session?.did) {
             setError(true);
@@ -177,7 +174,7 @@ export const ThumbnailImage: React.FC<ThumbnailImageProps> = ({
           }
         }
 
-        if (isThought && !isThoughtThumbnail && isEncrypted && !isThumbnail) {
+        if (isNote && !isNoteThumbnail && isEncrypted && !isThumbnail) {
           try {
             const metadataResponse = await apiGet(`/api/aggregator/metadata-index/${fileId}`);
             if (metadataResponse.ok) {
@@ -223,7 +220,7 @@ export const ThumbnailImage: React.FC<ThumbnailImageProps> = ({
           }
         }
 
-        if (isEncrypted && !isThoughtFile && !isThoughtThumbnail) {
+        if (isEncrypted && !isNoteFile && !isNoteThumbnail) {
           const session = PNOAuthService.loadSession();
           if (!session?.did) {
             setError(true);
@@ -269,11 +266,11 @@ export const ThumbnailImage: React.FC<ThumbnailImageProps> = ({
             type: encryptedPackage.metadata?.originalMimeType || 'image/jpeg',
           });
           const originalName = encryptedPackage.metadata?.originalName?.toLowerCase() || '';
-          const isThoughtFileCheck =
-            (originalName.startsWith('thought-') && (originalName.endsWith('.thought') || originalName.endsWith('.png'))) ||
-            fileNameWithoutEncrypted.toLowerCase().startsWith('thought-') ||
-            fileNameWithoutEncrypted.toLowerCase().startsWith('thumb_thought-');
-          if (isThoughtFileCheck) {
+          const isNoteFileCheck =
+            isNoteFileName(originalName) ||
+            isNoteFileName(fileNameWithoutEncrypted) ||
+            isNoteThumbnailFileName(fileNameWithoutEncrypted);
+          if (isNoteFileCheck) {
             setError(true);
             return;
           }

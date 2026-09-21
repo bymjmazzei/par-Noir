@@ -11,11 +11,11 @@ export function cleanTitle(title: string | undefined | null): string {
   cleaned = cleaned.replace(/^thumb_/i, '');
   
   // Remove file extensions (.encrypted, .jpg, .jpeg, .png, etc.)
-  // But keep .thought extension for thoughts
-  if (!cleaned.toLowerCase().endsWith('.thought') && !cleaned.toLowerCase().endsWith('.thought.encrypted')) {
+  // Keep .note / historical .thought extension for notes
+  if (!cleaned.toLowerCase().endsWith('.note') && !cleaned.toLowerCase().endsWith('.note.encrypted') && !cleaned.toLowerCase().endsWith('.thought') && !cleaned.toLowerCase().endsWith('.thought.encrypted')) {
     cleaned = cleaned.replace(/\.(encrypted|jpg|jpeg|png|gif|webp|svg|bmp|ico|mp4|mov|avi|webm|mkv|flv|wmv|pdf|doc|docx|xls|xlsx|ppt|pptx|txt|zip|rar)$/i, '');
   } else {
-    // For thoughts, only remove .encrypted
+    // For notes, only remove .encrypted
     cleaned = cleaned.replace(/\.encrypted$/i, '');
   }
   

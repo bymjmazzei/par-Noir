@@ -15,14 +15,14 @@ import { feedMediaSessionCache } from '../services/feedMediaSessionCache';
 
 export interface UseThumbnailsAndMediaParams {
   mediaFiles: IndexedFile[];
-  thoughtsFiles: IndexedFile[];
+  notesFiles: IndexedFile[];
   collectionsFiles: IndexedFile[];
   viewMode: 'grid' | 'feed';
 }
 
 export function useThumbnailsAndMedia({
   mediaFiles,
-  thoughtsFiles,
+  notesFiles,
   collectionsFiles,
   viewMode,
 }: UseThumbnailsAndMediaParams) {
@@ -148,8 +148,8 @@ export function useThumbnailsAndMedia({
   // Grid mode thumbnails; feed mode uses FullScreenFeed viewport CDN load
   useEffect(() => {
     if (viewMode === 'feed') return;
-    if (mediaFiles.length === 0 && thoughtsFiles.length === 0 && collectionsFiles.length === 0) return;
-    const allFiles = [...mediaFiles, ...thoughtsFiles, ...collectionsFiles];
+    if (mediaFiles.length === 0 && notesFiles.length === 0 && collectionsFiles.length === 0) return;
+    const allFiles = [...mediaFiles, ...notesFiles, ...collectionsFiles];
     const filesToThumbnail = allFiles.filter((f) => {
       const fileId = f.metadata.fileId;
       return !thumbnails.has(fileId) && !generatingThumbnails.has(fileId);
@@ -157,12 +157,12 @@ export function useThumbnailsAndMedia({
     if (filesToThumbnail.length > 0 && generateThumbnailsForImagesRef.current) {
       generateThumbnailsForImagesRef.current(filesToThumbnail);
     }
-  }, [mediaFiles, thoughtsFiles, collectionsFiles, thumbnails, generatingThumbnails, generateThumbnailsForImages, viewMode]);
+  }, [mediaFiles, notesFiles, collectionsFiles, thumbnails, generatingThumbnails, generateThumbnailsForImages, viewMode]);
 
   // Pre-load video blobs in grid mode (CDN sd only)
   useEffect(() => {
     if (viewMode !== 'grid') return;
-    const allFiles = [...mediaFiles, ...thoughtsFiles, ...collectionsFiles];
+    const allFiles = [...mediaFiles, ...notesFiles, ...collectionsFiles];
     for (const indexedFile of allFiles) {
       const file = indexedFile.metadata;
       const isVideo =
@@ -196,7 +196,7 @@ export function useThumbnailsAndMedia({
         }
       })();
     }
-  }, [mediaFiles, thoughtsFiles, collectionsFiles, viewMode]);
+  }, [mediaFiles, notesFiles, collectionsFiles, viewMode]);
 
   return {
     thumbnails,

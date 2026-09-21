@@ -124,7 +124,7 @@ export async function initializeGoogleDriveIndex(
 
   if (hooks.initializeContentClassFolders) {
     console.log(`[pnDriveInit] Content-class folders for ${normalized}`);
-    setDriveInitProgress(normalized, 'contentClass', 'Building media, thoughts, and collections…', 15);
+    setDriveInitProgress(normalized, 'contentClass', 'Building media, notes, and collections…', 15);
     await withGoogleRetry('contentClassFolders', () =>
       hooks.initializeContentClassFolders!(token, metadataFolderId, pnIdentifier, accountId)
     );

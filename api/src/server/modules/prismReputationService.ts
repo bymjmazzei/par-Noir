@@ -141,7 +141,7 @@ async function getPublicFileCount(db: ReturnType<typeof getDatabasePool>, pn: st
       [pn]
     ),
     db.query(
-      `SELECT COUNT(*)::int as count FROM aggregator_thoughts WHERE pn_identifier = $1 AND (metadata->>'isPublic')::text = 'true'`,
+      `SELECT COUNT(*)::int as count FROM aggregator_notes WHERE pn_identifier = $1 AND (metadata->>'isPublic')::text = 'true'`,
       [pn]
     ),
     db.query(

@@ -2,7 +2,7 @@
  * Publish safety gate (before DMCA)
  * Classifies content as public | nsfw | prohibited via Gemini.
  * Prohibited → hard fail (no Prism). NSFW → force isNSFW. Public → continue.
- * Video/audio: samples clips (same as DMCA). Encrypted thoughts/text: skip.
+ * Video/audio: samples clips (same as DMCA). Encrypted notes/text: skip.
  */
 
 import { getGeminiModerationService, type PublishLane } from './geminiModerationService';
@@ -29,8 +29,9 @@ function isVideoOrAudio(mimeType: string): boolean {
 }
 
 export function shouldSkipPublishSafetyGate(params: {
-  isThoughtThumbnail?: boolean;
+  isNoteThumbnail?: boolean;
   thought?: unknown;
+  note?: unknown;
   textPost?: unknown;
 }): boolean {
   return shouldSkipDmcaGate(params);

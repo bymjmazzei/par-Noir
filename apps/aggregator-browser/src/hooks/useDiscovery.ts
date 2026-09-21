@@ -43,7 +43,7 @@ export function useDiscovery({
 }: UseDiscoveryParams) {
   const {
     setMediaFiles,
-    setThoughtsFiles,
+    setNotesFiles,
     setCollectionsFiles,
     setError,
     setCurrentPage,
@@ -51,7 +51,7 @@ export function useDiscovery({
     setFilters,
     setIsLoading,
     mediaFiles,
-    thoughtsFiles,
+    notesFiles,
     collectionsFiles,
     filters,
   } = discoverState;
@@ -136,7 +136,7 @@ export function useDiscovery({
         });
       const nsfwByClass: Partial<Record<ContentType, IndexedFile[]>> = {
         media: nsfwFiles.filter((f) => (f.metadata as any).contentClass === 'media'),
-        thoughts: nsfwFiles.filter((f) => (f.metadata as any).contentClass === 'thought'),
+        notes: nsfwFiles.filter((f) => (f.metadata as any).contentClass === 'note'),
         collections: nsfwFiles.filter((f) => (f.metadata as any).contentClass === 'collection'),
       };
       const mergeNsfw = (
@@ -152,10 +152,10 @@ export function useDiscovery({
         });
       };
       mergeNsfw('media', setMediaFiles);
-      mergeNsfw('thoughts', setThoughtsFiles);
+      mergeNsfw('notes', setNotesFiles);
       mergeNsfw('collections', setCollectionsFiles);
     },
-    [filters, userState.preferences, setMediaFiles, setThoughtsFiles, setCollectionsFiles]
+    [filters, userState.preferences, setMediaFiles, setNotesFiles, setCollectionsFiles]
   );
 
   const refreshNsfwIndexOnly = useCallback(async () => {
@@ -218,9 +218,9 @@ export function useDiscovery({
             mediaFiles.forEach((f) => oldIds.add(f.metadata.fileId));
             (loaded.media?.files ?? []).forEach((f) => newIds.add(f.metadata.fileId));
           }
-          if (contentTypes.includes('thoughts')) {
-            thoughtsFiles.forEach((f) => oldIds.add(f.metadata.fileId));
-            (loaded.thoughts?.files ?? []).forEach((f) => newIds.add(f.metadata.fileId));
+          if (contentTypes.includes('notes')) {
+            notesFiles.forEach((f) => oldIds.add(f.metadata.fileId));
+            (loaded.notes?.files ?? []).forEach((f) => newIds.add(f.metadata.fileId));
           }
           if (contentTypes.includes('collections')) {
             collectionsFiles.forEach((f) => oldIds.add(f.metadata.fileId));
@@ -230,7 +230,7 @@ export function useDiscovery({
           if (removed.length > 0) cleanupThumbnailsForFiles(removed);
 
           if (contentTypes.includes('media') && loaded.media) setMediaFiles(loaded.media.files);
-          if (contentTypes.includes('thoughts') && loaded.thoughts) setThoughtsFiles(loaded.thoughts.files);
+          if (contentTypes.includes('notes') && loaded.notes) setNotesFiles(loaded.notes.files);
           if (contentTypes.includes('collections') && loaded.collections) {
             setCollectionsFiles(loaded.collections.files);
           }
@@ -242,10 +242,10 @@ export function useDiscovery({
               return [...prev, ...newFiles];
             });
           }
-          if (contentTypes.includes('thoughts') && loaded.thoughts) {
-            setThoughtsFiles((prev) => {
+          if (contentTypes.includes('notes') && loaded.notes) {
+            setNotesFiles((prev) => {
               const existingIds = new Set(prev.map((f) => f.metadata.fileId));
-              const newFiles = loaded.thoughts!.files.filter((f) => !existingIds.has(f.metadata.fileId));
+              const newFiles = loaded.notes!.files.filter((f) => !existingIds.has(f.metadata.fileId));
               return [...prev, ...newFiles];
             });
           }
@@ -289,13 +289,13 @@ export function useDiscovery({
       mergeNsfwFiles,
       metadataIndexService,
       mediaFiles,
-      thoughtsFiles,
+      notesFiles,
       collectionsFiles,
       cleanupThumbnailsForFiles,
       setError,
       setIsLoading,
       setMediaFiles,
-      setThoughtsFiles,
+      setNotesFiles,
       setCollectionsFiles,
       setHasMore,
     ]

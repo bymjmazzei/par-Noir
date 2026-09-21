@@ -8,7 +8,7 @@ import { driveV3FetchWithRetry } from './googleApiRetry';
 import { DriveIndexError, type PnDriveIndex } from './pnDriveIndex';
 import { findFolderByNameUnderParent } from './pnDriveLayout';
 
-const CONTENT_CLASSES = ['media', 'thoughts', 'collections'] as const;
+const CONTENT_CLASSES = ['media', 'notes', 'collections'] as const;
 
 function escapeDriveQueryName(name: string): string {
   return name.replace(/'/g, "\\'");

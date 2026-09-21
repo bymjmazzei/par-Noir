@@ -353,7 +353,7 @@ export function buildFeedRailItems(
     }
   ];
 
-  // Add Media, Thoughts, and Collections feeds after PUBLIC
+  // Add Media, Notes, and Collections feeds after PUBLIC
   items.push(
     {
       feedId: 'media',
@@ -361,9 +361,9 @@ export function buildFeedRailItems(
       isActive: activeFeedId === 'media'
     },
     {
-      feedId: 'thoughts',
-      name: 'THOUGHTS',
-      isActive: activeFeedId === 'thoughts'
+      feedId: 'notes',
+      name: 'NOTES',
+      isActive: activeFeedId === 'notes'
     },
     {
       feedId: 'collections',

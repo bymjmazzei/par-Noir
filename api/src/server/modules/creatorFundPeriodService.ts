@@ -216,7 +216,7 @@ async function allocateCreatorBountyShares(
               tr.splits_metadata AS splits_metadata
        FROM engagement e
        LEFT JOIN aggregator_media m ON m.file_id = e.file_id
-       LEFT JOIN aggregator_thoughts t ON t.file_id = e.file_id
+       LEFT JOIN aggregator_notes t ON t.file_id = e.file_id
        LEFT JOIN aggregator_collections c ON c.file_id = e.file_id
        LEFT JOIN music_registry_post_uses pu ON pu.post_file_id = e.file_id
        LEFT JOIN music_registry_tracks tr ON tr.id = pu.registry_track_id

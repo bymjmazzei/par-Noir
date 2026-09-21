@@ -6,7 +6,7 @@ import { MetadataEncryption } from '../utils/metadataEncryption';
 import type { GoogleDriveToken } from './googleOAuth2Helper';
 import { replaceInCell } from './driveMigrationSheetsService';
 
-const CONTENT_CLASS_FOLDERS = new Set(['media', 'thoughts', 'collections']);
+const CONTENT_CLASS_FOLDERS = new Set(['media', 'notes', 'collections']);
 
 async function listChildFolders(
   token: GoogleDriveToken,

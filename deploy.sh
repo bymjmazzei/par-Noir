@@ -84,6 +84,14 @@ if [ $? -ne 0 ]; then
     exit 1
 fi
 
+echo "📦 Building packages/pen-protocol..."
+cd ../pen-protocol
+npm run build
+if [ $? -ne 0 ]; then
+    echo "❌ pen-protocol build failed"
+    exit 1
+fi
+
 echo "📦 Building packages/aggregator-domain..."
 cd ../aggregator-domain
 npm run build
@@ -209,6 +217,15 @@ cd ../pn-unlock
 VITE_API_ENDPOINT="${VITE_API_ENDPOINT}" VITE_UNLOCK_ORIGIN="${VITE_UNLOCK_ORIGIN:-https://unlock.parnoir.com}" npm run build
 if [ $? -ne 0 ]; then
     echo "❌ pn-unlock build failed"
+    exit 1
+fi
+
+# Build Pen (pen.parnoir.com)
+echo "📦 Building pen..."
+cd ../pen
+VITE_PN_CLIENT_ID="${VITE_PN_CLIENT_ID:-pen-app}" npm run build
+if [ $? -ne 0 ]; then
+    echo "❌ pen build failed"
     exit 1
 fi
 

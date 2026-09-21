@@ -5,7 +5,7 @@
 
 import { useState, useEffect, useMemo, useRef } from 'react';
 import type { IndexedFile } from '../types/aggregator';
-import { getCreatorIdentifier, normalizeId, isThought, isCollection, isMedia } from '../utils/contentClass';
+import { getCreatorIdentifier, normalizeId, isNote, isCollection, isMedia } from '../utils/contentClass';
 import { getSavedFeed } from '../services/savedFeedService';
 import { getMetadataIndexService } from '../services/metadata/MetadataIndexService';
 import { API_ENDPOINT } from '../config/api';
@@ -14,7 +14,7 @@ import { PNOAuthService } from '../services/pnOAuthService';
 
 const EMPTY_ARRAY: IndexedFile[] = [];
 
-export type MePageTab = 'all' | 'media' | 'thoughts' | 'collections' | 'likes' | 'comments' | 'shares' | 'saved' | 'connections';
+export type MePageTab = 'all' | 'media' | 'notes' | 'collections' | 'likes' | 'comments' | 'shares' | 'saved' | 'connections';
 
 export interface ConnectionRow {
   connectionId: string;
@@ -34,7 +34,7 @@ export interface UseMePageDataParams {
     preferences: { displayName?: string; mePageSortOrder?: string };
   };
   mediaFiles: IndexedFile[];
-  thoughtsFiles: IndexedFile[];
+  notesFiles: IndexedFile[];
   collectionsFiles: IndexedFile[];
   indexedFiles: IndexedFile[];
   visibleFileId: string | null;
@@ -48,7 +48,7 @@ export function useMePageData({
   mePageActive = false,
   userState,
   mediaFiles,
-  thoughtsFiles,
+  notesFiles,
   collectionsFiles,
   indexedFiles,
   visibleFileId,
@@ -114,7 +114,7 @@ export function useMePageData({
   const creatorFiles = useMemo(() => {
     if (!viewingCreatorId) return EMPTY_ARRAY;
     const n = normalizeId(viewingCreatorId);
-    const all = [...mediaFiles, ...thoughtsFiles, ...collectionsFiles];
+    const all = [...mediaFiles, ...notesFiles, ...collectionsFiles];
     const fromDiscovery = all.filter((f) => {
       const id = getCreatorIdentifier(f);
       return id != null && normalizeId(id) === n;
@@ -124,7 +124,7 @@ export function useMePageData({
       if (!byId.has(f.metadata.fileId)) byId.set(f.metadata.fileId, f);
     });
     return Array.from(byId.values());
-  }, [viewingCreatorId, mediaFiles, thoughtsFiles, collectionsFiles, creatorOverrideFiles]);
+  }, [viewingCreatorId, mediaFiles, notesFiles, collectionsFiles, creatorOverrideFiles]);
 
   const isOwnIndex = !!(viewingCreatorId === userState.pnIdentifier && userState.isUnlocked);
 
@@ -137,7 +137,7 @@ export function useMePageData({
   }
 
   const creatorMediaFiles = useMemo(() => creatorFiles.filter(isMedia), [creatorFiles]);
-  const creatorThoughtsFiles = useMemo(() => creatorFiles.filter(isThought), [creatorFiles]);
+  const creatorNotesFiles = useMemo(() => creatorFiles.filter(isNote), [creatorFiles]);
   const creatorCollectionsFiles = useMemo(() => creatorFiles.filter(isCollection), [creatorFiles]);
 
   // --- saved feed load (Me tab only) ---
@@ -438,7 +438,7 @@ export function useMePageData({
     let filtered: IndexedFile[] = [];
     if (isOwnIndex) {
       const mediaF = creatorMediaFiles;
-      const thoughtsF = creatorThoughtsFiles;
+      const notesF = creatorNotesFiles;
       const collectionsF = creatorCollectionsFiles;
       const likesF = userLikedFiles.filter((f) => isThirdPartyContent(f, viewingCreatorId!));
       const commentsF = userCommentedFiles.filter((f) => isThirdPartyContent(f, viewingCreatorId!));
@@ -447,10 +447,10 @@ export function useMePageData({
       const connF = connectionTopPosts;
       switch (mePageTab) {
         case 'all':
-          filtered = [...mediaF, ...thoughtsF, ...collectionsF];
+          filtered = [...mediaF, ...notesF, ...collectionsF];
           break;
         case 'media': filtered = mediaF; break;
-        case 'thoughts': filtered = thoughtsF; break;
+        case 'notes': filtered = notesF; break;
         case 'collections': filtered = collectionsF; break;
         case 'likes': filtered = likesF; break;
         case 'comments': filtered = commentsF; break;
@@ -458,7 +458,7 @@ export function useMePageData({
         case 'saved': filtered = savedF; break;
         case 'connections': filtered = connF; break;
       }
-      if (['all', 'media', 'thoughts', 'collections'].includes(mePageTab) && filtered.length > 0) {
+      if (['all', 'media', 'notes', 'collections'].includes(mePageTab) && filtered.length > 0) {
         const i = filtered.findIndex((f) => f.metadata.isTopPost === true);
         if (i > 0) {
           const [top] = filtered.splice(i, 1);
@@ -467,18 +467,18 @@ export function useMePageData({
       }
     } else if (viewingCreatorId) {
       const mediaF = creatorMediaFiles;
-      const thoughtsF = creatorThoughtsFiles;
+      const notesF = creatorNotesFiles;
       const collectionsF = creatorCollectionsFiles;
       switch (mePageTab) {
-        case 'all': filtered = [...mediaF, ...thoughtsF, ...collectionsF]; break;
+        case 'all': filtered = [...mediaF, ...notesF, ...collectionsF]; break;
         case 'media': filtered = mediaF; break;
-        case 'thoughts': filtered = thoughtsF; break;
+        case 'notes': filtered = notesF; break;
         case 'collections': filtered = collectionsF; break;
         case 'likes': filtered = viewedUserLikedFiles; break;
         case 'comments': filtered = viewedUserCommentedFiles; break;
         default: filtered = creatorFiles;
       }
-      if (['all', 'media', 'thoughts', 'collections'].includes(mePageTab) && filtered.length > 0) {
+      if (['all', 'media', 'notes', 'collections'].includes(mePageTab) && filtered.length > 0) {
         const i = filtered.findIndex((f) => f.metadata.isTopPost === true);
         if (i > 0) {
           const [top] = filtered.splice(i, 1);
@@ -506,7 +506,7 @@ export function useMePageData({
     }
     return filtered;
   }, [
-    isOwnIndex, mePageTab, creatorMediaFiles, creatorThoughtsFiles, creatorCollectionsFiles,
+    isOwnIndex, mePageTab, creatorMediaFiles, creatorNotesFiles, creatorCollectionsFiles,
     userLikedFiles, userCommentedFiles, userSharedFiles, savedFiles, connectionTopPosts,
     viewedUserLikedFiles, viewedUserCommentedFiles, viewingCreatorId, indexedFilesMap, creatorFiles,
     userState.isUnlocked, userState.preferences.mePageSortOrder,
@@ -584,7 +584,7 @@ export function useMePageData({
             cur = Array.from(new Map([...curCreator, ...userLikedFiles, ...userCommentedFiles].map((f) => [f.metadata.fileId, f])).values());
             break;
           case 'media': cur = curCreator.filter(isMedia); break;
-          case 'thoughts': cur = curCreator.filter(isThought); break;
+          case 'notes': cur = curCreator.filter(isNote); break;
           case 'likes': cur = userLikedFiles.filter((f) => normalizeId(getCreatorIdentifier(f) ?? '') !== normalizeId(viewingCreatorId!)); break;
           case 'comments': cur = userCommentedFiles.filter((f) => normalizeId(getCreatorIdentifier(f) ?? '') !== normalizeId(viewingCreatorId!)); break;
           case 'saved': cur = savedFiles; break;
@@ -595,13 +595,13 @@ export function useMePageData({
         switch (mePageTab) {
           case 'all': cur = Array.from(new Map([...curCreator, ...viewedUserLikedFiles, ...viewedUserCommentedFiles].map((f) => [f.metadata.fileId, f])).values()); break;
           case 'media': cur = curCreator.filter(isMedia); break;
-          case 'thoughts': cur = curCreator.filter(isThought); break;
+          case 'notes': cur = curCreator.filter(isNote); break;
           case 'likes': cur = viewedUserLikedFiles; break;
           case 'comments': cur = viewedUserCommentedFiles; break;
           default: cur = curCreator;
         }
       }
-      if (['all', 'media', 'thoughts'].includes(mePageTab) && cur.length > 0) {
+      if (['all', 'media', 'notes'].includes(mePageTab) && cur.length > 0) {
         const i = cur.findIndex((f) => f.metadata.isTopPost === true);
         if (i > 0) { const [tp] = cur.splice(i, 1); cur = [tp, ...cur]; }
       }
@@ -630,11 +630,11 @@ export function useMePageData({
           return true;
         }
       }
-      if (mePageTab !== 'thoughts' && curCreator.length > 0) {
-        const tf = curCreator.filter(isThought);
+      if (mePageTab !== 'notes' && curCreator.length > 0) {
+        const tf = curCreator.filter(isNote);
         const i = tf.findIndex((f) => f.metadata.fileId === visibleFileId);
         if (i !== -1) {
-          setMePageTab('thoughts');
+          setMePageTab('notes');
           if (currentFeedIndex !== i) setCurrentFeedIndex(i);
           lastNavigatedFileIdRef.current = visibleFileId;
           lastNavigatedFileIndexRef.current = i;
@@ -690,7 +690,7 @@ export function useMePageData({
     }, iv);
     return () => { clearInterval(t); isNavigatingToFileRef.current = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- currentFeedIndex intentionally omitted
-  }, [visibleFileId, viewingCreatorId, mePageTab, mediaFiles, thoughtsFiles, collectionsFiles, userState.pnIdentifier, userState.isUnlocked, userLikedFiles, userCommentedFiles, viewedUserLikedFiles, viewedUserCommentedFiles, savedFiles, connectionTopPosts, creatorFiles]);
+  }, [visibleFileId, viewingCreatorId, mePageTab, mediaFiles, notesFiles, collectionsFiles, userState.pnIdentifier, userState.isUnlocked, userLikedFiles, userCommentedFiles, viewedUserLikedFiles, viewedUserCommentedFiles, savedFiles, connectionTopPosts, creatorFiles]);
 
   // --- refreshSavedFeed for onSave onComplete ---
   const refreshSavedFeed = async () => {

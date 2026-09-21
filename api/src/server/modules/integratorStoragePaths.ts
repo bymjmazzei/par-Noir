@@ -8,7 +8,9 @@ const FIRST_PARTY_CLIENT_IDS = new Set([
   'browser-app',
   'messaging-app',
   'prism-app',
-  'developer-portal'
+  'developer-portal',
+  'pen-app',
+  'licensing-portal'
 ]);
 
 /** OAuth scope: read/write only under integrators/{client_id}/ */

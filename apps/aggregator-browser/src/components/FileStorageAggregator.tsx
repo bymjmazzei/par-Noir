@@ -190,7 +190,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
         // For text posts, create a placeholder with the content preview
         const placeholderFile: DriveFile = {
           id: `uploading_${task.id}`,
-          name: task.metadata?.name || task.textPost.content?.substring(0, 50) || 'New Thought',
+          name: task.metadata?.name || task.textPost.content?.substring(0, 50) || 'New Note',
           mimeType: 'application/json',
           size: '0 KB',
           accountId: task.accountId,
@@ -422,14 +422,14 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
         const finalMetadata = metadata.metadata || metadata;
         metadataMissingIdsRef.current.delete(fileId);
 
-        // Debug logging for collections to check isThoughtCollection flag
+        // Debug logging for collections to check isNoteCollection flag
         if (finalMetadata?.fileType === 'collection' && import.meta.env.DEV) {
           console.log(`[FileStorageAggregator] loadFileMetadata for collection ${fileId}:`, {
             rawResponse: metadata,
             finalMetadata: finalMetadata,
-            hasIsThoughtCollection: 'isThoughtCollection' in finalMetadata,
-            isThoughtCollectionValue: finalMetadata.isThoughtCollection,
-            isThoughtCollectionType: typeof finalMetadata.isThoughtCollection,
+            hasIsNoteCollection: 'isNoteCollection' in finalMetadata,
+            isNoteCollectionValue: finalMetadata.isNoteCollection,
+            isNoteCollectionType: typeof finalMetadata.isNoteCollection,
             allKeys: Object.keys(finalMetadata)
           });
         }
@@ -899,8 +899,8 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
               (fileToUpdate as { fileType?: string }).fileType ||
               ''
           ).toLowerCase();
-          const contentClass: 'media' | 'thought' | 'collection' =
-            ft.includes('collection') ? 'collection' : ft.includes('thought') ? 'thought' : 'media';
+          const contentClass: 'media' | 'note' | 'collection' =
+            ft.includes('collection') ? 'collection' : ft.includes('note') || ft.includes('thought') ? 'note' : 'media';
           onUploadComplete?.(contentClass);
         } else {
           void loadFileMetadata(fileId, { force: true });
@@ -930,15 +930,15 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
     const existingMetadata = fileMetadataMap.get(file.id);
     const isCollection = existingMetadata?.fileType === 'collection' && existingMetadata?.collection?.collectionFileIds;
     const collectionFileIds = isCollection ? existingMetadata.collection.collectionFileIds : [];
-    const isThoughtCollection = existingMetadata?.isThoughtCollection === true;
+    const isNoteCollection = existingMetadata?.isNoteCollection === true;
     
-    // For thought collections, we need to count: collection + thumbnails + main thought-collection file
+    // For note collections, we need to count: collection + thumbnails + main note-collection file
     // For regular collections, we count: collection + collectionFileIds
     let totalFilesToDelete = 1; // Collection file itself
     if (isCollection) {
-      if (isThoughtCollection) {
-        // For thought collections: collection + thumbnails + main thought-collection file
-        totalFilesToDelete = collectionFileIds.length + 1 + 1; // thumbnails + thought-collection file + collection
+      if (isNoteCollection) {
+        // For note collections: collection + thumbnails + main note-collection file
+        totalFilesToDelete = collectionFileIds.length + 1 + 1; // thumbnails + note-collection file + collection
       } else {
         // For regular collections: just the collectionFileIds
         totalFilesToDelete = collectionFileIds.length + 1;
@@ -946,8 +946,8 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
     }
     
     const confirmMessage = isCollection 
-      ? isThoughtCollection
-        ? `Are you sure you want to delete this thought collection and all ${totalFilesToDelete - 1} associated files (${collectionFileIds.length} thumbnails and the main thought-collection file)?`
+      ? isNoteCollection
+        ? `Are you sure you want to delete this note collection and all ${totalFilesToDelete - 1} associated files (${collectionFileIds.length} thumbnails and the main note-collection file)?`
         : `Are you sure you want to delete this collection and all ${collectionFileIds.length} associated files?`
       : `Are you sure you want to delete "${file.name}"?`;
     
@@ -975,7 +975,7 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
         accountId,
         isCollection: !!isCollection,
         collectionFileIds: isCollection && collectionFileIds ? collectionFileIds : undefined,
-        isThoughtCollection: isCollection ? isThoughtCollection : undefined
+        isNoteCollection: isCollection ? isNoteCollection : undefined
       },
       onComplete: (result) => {
         if (import.meta.env.DEV) console.log('✅ [Delete] File deleted:', result);

@@ -111,10 +111,10 @@ export const UploadQueueOverlay: React.FC<UploadQueueOverlayProps> = ({ isOpen, 
     }
     if (task.textPost) {
       const content = task.textPost.content || '';
-      return content.replace(/<[^>]*>/g, '').substring(0, 50) || 'Thought';
+      return content.replace(/<[^>]*>/g, '').substring(0, 50) || 'Note';
     }
     if (task.pages && task.pages.length > 0) {
-      return `Multi-page thought (${task.pages.length} pages)`;
+      return `Multi-page note (${task.pages.length} pages)`;
     }
 
     // Handle background task types

@@ -1106,7 +1106,7 @@ export class GoogleDriveProxyService {
       
       // Try JSON metadata file first - check content type subfolders, then flat structure
       const jsonMetadataFileName = `${fileId}.metadata.json`;
-      const contentTypes = ['media', 'thoughts', 'collections'];
+      const contentTypes = ['media', 'notes', 'collections'];
       
       // Try content type subfolders first (new structure)
       for (const contentType of contentTypes) {

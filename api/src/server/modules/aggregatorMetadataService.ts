@@ -59,7 +59,7 @@ export interface PublicMetadata {
   tags?: string[]; // Legacy support (deprecated, use keywords)
   uploadDate: string; // Schema.org:datePublished
   fileType: string;
-  contentClass?: 'media' | 'thought' | 'collection'; // Content classification for feed filtering
+  contentClass?: 'media' | 'note' | 'collection'; // Content classification for feed filtering
   
   // Author/Creator (schema.org:creator)
   creator?: {
@@ -132,7 +132,7 @@ export interface PublicMetadata {
   isEncrypted?: boolean; // True if main file is encrypted; false for raw (unencrypted) uploads over tier limit
 
   // Thought/Collection metadata
-  isThoughtThumbnail?: boolean; // True if this is a thumbnail image for a thought
+  isNoteThumbnail?: boolean; // True if this is a thumbnail image for a note
   isPartOfCollection?: boolean; // True if this file is part of a collection
   collection?: {
     collectionFileIds: string[]; // Array of file IDs in order

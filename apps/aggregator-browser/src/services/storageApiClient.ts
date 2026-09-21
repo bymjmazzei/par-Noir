@@ -302,8 +302,8 @@ function guessMimeType(name: string): string {
   if (lower.endsWith('.png')) return 'image/png';
   if (lower.endsWith('.jpg') || lower.endsWith('.jpeg')) return 'image/jpeg';
   if (lower.endsWith('.mp4')) return 'video/mp4';
-  if (lower.endsWith('.thought')) return 'application/json';
-  if (lower.endsWith('.thought-collection')) return 'application/json';
+  if (lower.endsWith('.note') || lower.endsWith('.thought')) return 'application/json';
+  if (lower.endsWith('.note-collection') || lower.endsWith('.thought-collection')) return 'application/json';
   if (lower.includes('folder')) return 'application/vnd.google-apps.folder';
   return 'application/octet-stream';
 }

@@ -363,28 +363,28 @@ export function DiscoveryPage({
       return thumbnails.get(fileId)!;
     }
     
-    // If this is a thought file (fileType: 'text'), try to find its corresponding thumbnail file
+    // If this is a note file (fileType: 'text'), try to find its corresponding thumbnail file
     const fileType = file.metadata.fileType || '';
-    const isThought = fileType === 'text' || 
-                     fileType === 'thought' ||
+    const isNote = fileType === 'text' || 
+                     fileType === 'note' ||
                      !!(file.metadata as any).textPost ||
                      !!(file.metadata as any).thought;
     
-    if (isThought) {
-      // Look for the corresponding thought thumbnail file
-      // Thumbnail files are named like: thumb_thought-123.png
-      // Thought files are named like: thought-123.thought or thought-123.png
+    if (isNote) {
+      // Look for the corresponding note thumbnail (note- / historical thought-)
+      // Thumbnail: thumb_note-123.png or thumb_thought-123.png
+      // Note: note-123.note|.png or thought-123.thought|.png
       const fileNameLower = fileName.toLowerCase();
-      const thoughtNameMatch = fileNameLower.match(/^thought-(\d+)/);
+      const noteNameMatch = fileNameLower.match(/^(?:note|thought)-(\d+)/);
       
-      if (thoughtNameMatch) {
-        const thoughtId = thoughtNameMatch[1];
-        const thumbnailFileName = `thumb_thought-${thoughtId}`;
+      if (noteNameMatch) {
+        const noteId = noteNameMatch[1];
+        const thumbnailPrefixes = [`thumb_note-${noteId}`, `thumb_thought-${noteId}`];
         
         // Find the thumbnail file in the files array
         const thumbnailFile = files.find((f) => {
           const thumbFileName = (f.metadata.name || f.metadata.title || '').toLowerCase();
-          return thumbFileName.startsWith(thumbnailFileName);
+          return thumbnailPrefixes.some((prefix) => thumbFileName.startsWith(prefix));
         });
         
         if (thumbnailFile) {

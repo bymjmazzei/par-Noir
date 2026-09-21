@@ -11,7 +11,7 @@ export type DriveListFile = {
   [key: string]: unknown;
 };
 
-export type ThoughtThumbnailListEntry = DriveListFile & {
+export type NoteThumbnailListEntry = DriveListFile & {
   isThumbnail: true;
   mainFileId: string;
   displayName: string;
@@ -24,12 +24,12 @@ export type ThoughtThumbnailListEntry = DriveListFile & {
 export type CollectionListEntry = DriveListFile & {
   fileType: string;
   collection?: unknown;
-  isThoughtCollection?: boolean;
+  isNoteCollection?: boolean;
   displayName: string;
   indexMissing?: boolean;
 };
 
-export function cleanThoughtThumbDisplayName(name: string): string {
+export function cleanNoteThumbDisplayName(name: string): string {
   return name
     .replace(/^thumb_/i, '')
     .replace(/\.encrypted$/i, '')
@@ -41,25 +41,25 @@ export function cleanCollectionDisplayName(name: string): string {
 }
 
 /**
- * Build a Storage list entry for a thought thumbnail.
+ * Build a Storage list entry for a note thumbnail.
  * When metadata is missing (public-index 404), keep the Drive file as unindexed/private.
  */
-export function mapThoughtThumbnailEntry(params: {
+export function mapNoteThumbnailEntry(params: {
   thumb: DriveListFile;
-  thoughtFileId?: string;
+  noteFileId?: string;
   metadata: Record<string, unknown> | null | undefined;
-}): ThoughtThumbnailListEntry {
-  const { thumb, thoughtFileId, metadata } = params;
-  const displayName = cleanThoughtThumbDisplayName(thumb.name);
+}): NoteThumbnailListEntry {
+  const { thumb, noteFileId, metadata } = params;
+  const displayName = cleanNoteThumbDisplayName(thumb.name);
 
   if (!metadata) {
     return {
       ...thumb,
       isThumbnail: true,
-      mainFileId: thoughtFileId || thumb.id,
+      mainFileId: noteFileId || thumb.id,
       displayName,
       isPartOfCollection: false,
-      fileType: 'thought-thumbnail',
+      fileType: 'note-thumbnail',
       indexMissing: true,
     };
   }
@@ -67,18 +67,18 @@ export function mapThoughtThumbnailEntry(params: {
   const fileType =
     typeof metadata.fileType === 'string' && metadata.fileType
       ? metadata.fileType
-      : 'thought-thumbnail';
+      : 'note-thumbnail';
   const mainFileIdFromMetadata =
     typeof metadata.mainFileId === 'string' ? metadata.mainFileId : undefined;
   let mainFileType: string | undefined;
-  if (fileType === 'thought-collection-thumbnail') {
-    mainFileType = 'thought-collection';
+  if (fileType === 'note-collection-thumbnail') {
+    mainFileType = 'note-collection';
   }
 
   return {
     ...thumb,
     isThumbnail: true,
-    mainFileId: mainFileIdFromMetadata || thoughtFileId || thumb.id,
+    mainFileId: mainFileIdFromMetadata || noteFileId || thumb.id,
     displayName,
     isPartOfCollection: metadata.isPartOfCollection === true,
     fileType,
@@ -110,7 +110,7 @@ export function mapCollectionEntry(params: {
     ...file,
     fileType: (typeof metadata.fileType === 'string' && metadata.fileType) || 'collection',
     collection: metadata.collection,
-    isThoughtCollection: metadata.isThoughtCollection === true,
+    isNoteCollection: metadata.isNoteCollection === true,
     displayName:
       (typeof metadata.name === 'string' && metadata.name) ||
       (typeof metadata.title === 'string' && metadata.title) ||

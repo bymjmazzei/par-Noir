@@ -1,0 +1,50 @@
+---
+description: Pen templates — template-first authored content; starter pack then community
+alwaysApply: true
+---
+
+# Pen templates (authored content IR)
+
+Pen is the universal **authored-content** language for par Noir (humans, collaborators, AI agents). Social/browser artifacts are **Notes** (and related compile targets), not a separate Thought kingdom. Full product plan: living Pen ADR / build plan when present.
+
+## Template-first (hard process rule)
+
+When building any new pN surface for **authored or publishable content** (posts, notes, carousels, feeds, later sites/communities):
+
+1. **Define and register the Pen template first** (`docType` / template in `@par-noir/pen-protocol` or the template registry).
+2. **Then** build UI (Pen, Pen Mini, browse, L5) as a thin renderer/compiler of that template.
+3. Do **not** invent a parallel content model, storage layout, or one-off “special case” blob format beside Pen.
+
+Structured/relational personal data (sheets, standard data points) may be additional template families on the same spine — not a second custody story.
+
+## First-party vs community
+
+- **First-party:** build only what scales the pN ecosystem.
+- **Starter pack (platform-owned):** a couple **post** templates, a couple **carousel** templates, a few **Notes** templates, a couple **self-hosted feed** templates.
+- **Community:** open template building **after** IR, compile contract, and permissions are stable. Do not ship a template marketplace before the spine.
+
+## Editing UX (when implementing Pen / Pen Mini)
+
+- **Flow-first:** block document; images in text **reflow** automatically (no Quark pasteboard learning curve).
+- **Quark-like** means **templates** + optional **page grid** (see all pages) — not free-drag frames in v1.
+
+## Storage / collab invariants
+
+- Per-user cloud replica under `par-noir-pen/{docId}/` (same idea as group messaging materialization).
+- Section versioning = fixed current filename; supersede moves to `past/` with **date in the title**.
+- Updates use messaging-style **outbox** fanout — do not invent a second sync bus.
+- No shared single Drive folder as multi-writer SoT.
+
+## Naming
+
+| Term | Use |
+|---|---|
+| Pen | App / builder / protocol |
+| Pen Mini | Browse miniature composer |
+| Note / Notes | Feed/social `contentClass` (replaces Thought) |
+
+Do not reintroduce Thought as product vocabulary for new work. Hard-cut legacy thought paths when touching that code (dev-only; no compat shims).
+
+## Package
+
+Shared logic lives in `@par-noir/pen-protocol` (when the package exists). Apps only wire unlock, Drive I/O via `ownerFetch`, and UI.

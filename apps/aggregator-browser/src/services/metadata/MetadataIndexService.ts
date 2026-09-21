@@ -117,9 +117,9 @@ export class MetadataIndexService {
         // Feed filters
         if (filters.feedId) {
           // Map feedId to contentClass - we have content class indices, use them!
-          const feedIdToContentClass: Record<string, 'media' | 'thought' | 'collection'> = {
+          const feedIdToContentClass: Record<string, 'media' | 'note' | 'collection'> = {
             'media': 'media',
-            'thoughts': 'thought',
+            'notes': 'note',
             'collections': 'collection'
           };
           const contentClass = feedIdToContentClass[filters.feedId];

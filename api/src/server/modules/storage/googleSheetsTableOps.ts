@@ -15,10 +15,10 @@ const MAX_ROWS = 100_000;
 
 function parseContentClassIndex(
   schema: TableSchema
-): { contentClass: 'media' | 'thoughts' | 'collections'; indexType: 'public' | 'owner' } | null {
-  const m = schema.path.match(/^_metadata\/(media|thoughts|collections)\/\1-(public|owner)-index$/);
+): { contentClass: 'media' | 'notes' | 'collections'; indexType: 'public' | 'owner' } | null {
+  const m = schema.path.match(/^_metadata\/(media|notes|collections)\/\1-(public|owner)-index$/);
   if (!m) return null;
-  return { contentClass: m[1] as 'media' | 'thoughts' | 'collections', indexType: m[2] as 'public' | 'owner' };
+  return { contentClass: m[1] as 'media' | 'notes' | 'collections', indexType: m[2] as 'public' | 'owner' };
 }
 
 export async function scanGoogleTableRows(

@@ -47,10 +47,10 @@ describe('upload visibility policy gates', () => {
     expect(makePublicSlice).not.toMatch(/if\s*\(\s*mime\.startsWith\('image\/'\)/);
   });
 
-  it('feedPreviewMakePublic handles collections and thought fileTypes', () => {
+  it('feedPreviewMakePublic handles collections and note fileTypes', () => {
     const src = read('./feedPreviewMakePublic.ts');
-    expect(src).toContain("ft === 'thought-thumbnail'");
-    expect(src).toContain("ft === 'thought-collection'");
+    expect(src).toContain("ft === 'note-thumbnail'");
+    expect(src).toContain("ft === 'note-collection'");
     expect(src).toContain("ft === 'collection'");
     expect(src).toContain('wantsCollectionCover');
     expect(src).toContain('collectionFileIds');

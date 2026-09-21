@@ -5,12 +5,12 @@
 
 import { useMemo } from 'react';
 import type { IndexedFile, Feed } from '../types/aggregator';
-import { isThought, isCollection, isMedia } from '../utils/contentClass';
+import { isNote, isCollection, isMedia } from '../utils/contentClass';
 import { filterFilesForFeed } from '../utils/filterFilesForFeed';
 
 export interface UseFeedFilteringParams {
   mediaFiles: IndexedFile[];
-  thoughtsFiles: IndexedFile[];
+  notesFiles: IndexedFile[];
   collectionsFiles: IndexedFile[];
   activeFeedId: string;
   userState: {
@@ -43,7 +43,7 @@ export interface UseFeedFilteringParams {
 
 export function useFeedFiltering({
   mediaFiles,
-  thoughtsFiles,
+  notesFiles,
   collectionsFiles,
   activeFeedId,
   userState,
@@ -54,7 +54,7 @@ export function useFeedFiltering({
   const filteredFilesByFeed = useMemo(() => {
     const processed = filterFilesForFeed({
       mediaFiles,
-      thoughtsFiles,
+      notesFiles,
       collectionsFiles,
       feedId: activeFeedId,
       userState,
@@ -67,7 +67,7 @@ export function useFeedFiltering({
     return processed;
   }, [
     mediaFiles,
-    thoughtsFiles,
+    notesFiles,
     collectionsFiles,
     activeFeedId,
     userState.preferences.subscribedFeedIds,
@@ -85,5 +85,5 @@ export function useFeedFiltering({
     viewMode,
   ]);
 
-  return { filteredFilesByFeed, isThought, isCollection, isMedia };
+  return { filteredFilesByFeed, isNote, isCollection, isMedia };
 }

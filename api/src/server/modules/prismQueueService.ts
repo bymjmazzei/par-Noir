@@ -285,7 +285,7 @@ export async function seedDemoQueueItems(limit = 5): Promise<{ added: number; fi
 
   const candidates: { file_id: string; pn_identifier: string }[] = [];
 
-  const tables = ['aggregator_media', 'aggregator_thoughts', 'aggregator_collections'] as const;
+  const tables = ['aggregator_media', 'aggregator_notes', 'aggregator_collections'] as const;
   for (const table of tables) {
     const r = await db.query(
       `SELECT file_id, pn_identifier FROM ` + table + `

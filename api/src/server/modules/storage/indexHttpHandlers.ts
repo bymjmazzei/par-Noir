@@ -2,17 +2,17 @@ import type { Request, Response } from 'express';
 import { IndexStorageService } from './indexStorageService';
 import { isPortableSocialCloud } from './storageProviderUtils';
 
-type ContentClass = 'media' | 'thoughts' | 'collections';
+type ContentClass = 'media' | 'notes' | 'collections';
 
 function normalizePn(identityId: string): string {
   return identityId.startsWith('pn-') ? identityId : `pn-${identityId}`;
 }
 
 function contentTypes(filter?: string): ContentClass[] {
-  if (filter === 'media' || filter === 'thoughts' || filter === 'collections') {
+  if (filter === 'media' || filter === 'notes' || filter === 'collections') {
     return [filter];
   }
-  return ['media', 'thoughts', 'collections'];
+  return ['media', 'notes', 'collections'];
 }
 
 export async function handleGetOwnerIndex(

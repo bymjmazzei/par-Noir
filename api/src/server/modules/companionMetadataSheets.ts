@@ -24,7 +24,7 @@ export interface CompanionMetadata {
   mimeType: string;
   size: number;
   fileType?: string; // Technical file type (image, video, text, thought, collection, etc.)
-  contentClass?: 'media' | 'thought' | 'collection'; // Content classification for feed filtering
+  contentClass?: 'media' | 'note' | 'collection'; // Content classification for feed filtering
   visibility: 'public' | 'private' | 'friends';
   uploadedAt: string;
   owner: {
@@ -179,13 +179,13 @@ export class CompanionMetadataSheets {
           collection: metadataAny.collection,
           textPost: metadataAny.textPost,
           thought: metadataAny.thought,
-          isThoughtThumbnail: metadataAny.isThoughtThumbnail,
+          isNoteThumbnail: metadataAny.isNoteThumbnail,
           isPartOfCollection: metadataAny.isPartOfCollection
         });
       }
 
       // Lookup content type subfolder only (created at connect via initializeContentClassFolders)
-      const contentTypeFolderName = contentClass === 'thought' ? 'thoughts' : contentClass;
+      const contentTypeFolderName = contentClass === 'note' ? 'notes' : contentClass;
       const contentTypeFolderQuery = `name='${contentTypeFolderName}' and '${folderId}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`;
       const contentTypeFolderResponse = await drive.files.list({
         q: contentTypeFolderQuery,
@@ -345,7 +345,7 @@ export class CompanionMetadataSheets {
 
     try {
       // Search in content type subfolders first (new structure)
-      const contentTypes = ['media', 'thoughts', 'collections'];
+      const contentTypes = ['media', 'notes', 'collections'];
       for (const contentType of contentTypes) {
         const subfolderQuery = `name='${contentType}' and '${folderId}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`;
         const subfolderResponse = await drive.files.list({
@@ -434,7 +434,7 @@ export class CompanionMetadataSheets {
         originalName: data[getColumnIndex('originalName')] || '',
         mimeType: data[getColumnIndex('mimeType')] || '',
         fileType: getColumnIndex('fileType') >= 0 ? (data[getColumnIndex('fileType')] || undefined) : undefined,
-        contentClass: getColumnIndex('contentClass') >= 0 ? (data[getColumnIndex('contentClass')] as 'media' | 'thought' | 'collection' | undefined) : undefined,
+        contentClass: getColumnIndex('contentClass') >= 0 ? (data[getColumnIndex('contentClass')] as 'media' | 'note' | 'collection' | undefined) : undefined,
         size: parseInt(data[getColumnIndex('size')] || '0', 10),
         visibility: (data[getColumnIndex('visibility')] || 'private') as 'public' | 'private' | 'friends',
         uploadedAt: data[getColumnIndex('uploadedAt')] || new Date().toISOString(),

@@ -1,6 +1,6 @@
 /**
  * Text Post Service
- * Handles creation and upload of text-based posts (Thoughts)
+ * Handles creation and upload of text-based posts (Notes)
  */
 
 import { TextPostData, TextPostStyle } from '../types/aggregator';
@@ -9,11 +9,11 @@ import { uploadQueueService } from './uploadQueueService';
 
 
 /**
- * Convert multiple thought pages to a PDF document
+ * Convert multiple note pages to a PDF document
  * @param pages - Array of text post data to render as PDF pages
  * @returns PDF blob
  */
-export async function convertThoughtPagesToPDF(pages: TextPostData[]): Promise<Blob> {
+export async function convertNotePagesToPDF(pages: TextPostData[]): Promise<Blob> {
   const { jsPDF } = await import('jspdf');
   
   // Render each page to a canvas/image
@@ -199,7 +199,7 @@ function wrapText(ctx: CanvasRenderingContext2D, text: string, maxWidth: number)
 }
 
 /**
- * Create and upload a text post (Thought)
+ * Create and upload a text post (Note)
  */
 export async function createTextPost(
   textPost: TextPostData,

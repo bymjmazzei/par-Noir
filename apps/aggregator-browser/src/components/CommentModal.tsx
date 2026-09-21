@@ -514,7 +514,7 @@ export function CommentModal({ file, onClose }: CommentModalProps) {
           )}
         </div>
 
-        {/* Comment Input - Thoughts-style sticky bar */}
+        {/* Comment Input - Notes-style sticky bar */}
         {!userState.isUnlocked ? (
           <div className="p-6 border-t border-neutral-700 text-center">
             <p className="text-text-secondary text-sm mb-4">Connect your pN to comment</p>

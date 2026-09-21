@@ -17,7 +17,7 @@ describe('slimIndexEntry', () => {
       mimeType: 'application/octet-stream',
       size: 4096,
       owner: { did: 'did:key:owner', identifier: 'pn-owner' },
-      tags: ['thought'],
+      tags: ['note'],
       description: 'A public thought',
       thought: longThought,
       textPost: longThought,

@@ -22,7 +22,7 @@ export interface OwnerIndexEntry {
   publicContentObjectId?: string;
   publicContentRef?: { objectId?: string };
   contentClass?: string;
-  isThoughtThumbnail?: boolean;
+  isNoteThumbnail?: boolean;
   thought?: unknown;
   textPost?: unknown;
   collection?: { collectionFileIds?: string[] };
@@ -44,16 +44,16 @@ export async function loadMergedOwnerIndexFiles(params: {
   pnIdentifier: string;
   metadataFolderId: string;
   accountId?: string;
-  contentClassFilter?: 'media' | 'thoughts' | 'collections';
+  contentClassFilter?: 'media' | 'notes' | 'collections';
 }): Promise<OwnerIndexEntry[]> {
   const { token, pnIdentifier, metadataFolderId, accountId, contentClassFilter } = params;
   const accessToken = token.access_token;
-  const contentTypes: Array<'media' | 'thoughts' | 'collections'> =
+  const contentTypes: Array<'media' | 'notes' | 'collections'> =
     contentClassFilter === 'media' ||
-    contentClassFilter === 'thoughts' ||
+    contentClassFilter === 'notes' ||
     contentClassFilter === 'collections'
       ? [contentClassFilter]
-      : ['media', 'thoughts', 'collections'];
+      : ['media', 'notes', 'collections'];
 
   const allFiles: OwnerIndexEntry[] = [];
   for (const contentType of contentTypes) {

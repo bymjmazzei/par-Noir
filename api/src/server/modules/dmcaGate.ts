@@ -29,20 +29,22 @@ function isVideoOrAudio(mimeType: string): boolean {
   return base.startsWith('video/') || base.startsWith('audio/');
 }
 
-/** Encrypted thoughts/thumbnails cannot be meaningfully moderated before publish. */
+/** Encrypted notes/thumbnails cannot be meaningfully moderated before publish. */
 export function shouldSkipDmcaGate(params: {
-  isThoughtThumbnail?: boolean;
+  isNoteThumbnail?: boolean;
   thought?: unknown;
+  note?: unknown;
   textPost?: unknown;
 }): boolean {
-  if (params.isThoughtThumbnail === true) return true;
-  return !!(params.thought || params.textPost);
+  if (params.isNoteThumbnail === true) return true;
+  return !!(params.note || params.thought || params.textPost);
 }
 
-/** Thoughts: Postgres is feed truth; companion spreadsheet can be created after HTTP response. */
+/** Notes: Postgres is feed truth; companion spreadsheet can be created after HTTP response. */
 export function shouldDeferCompanionMetadata(params: {
-  isThoughtThumbnail?: boolean;
+  isNoteThumbnail?: boolean;
   thought?: unknown;
+  note?: unknown;
   textPost?: unknown;
 }): boolean {
   return shouldSkipDmcaGate(params);

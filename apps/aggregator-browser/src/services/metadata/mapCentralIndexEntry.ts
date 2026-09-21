@@ -28,7 +28,7 @@ export function mapCentralIndexEntryToIndexedFile(entry: {
       fileId: metadata.fileId || entry.fileId,
       title: metadata.title || metadata.name || undefined,
       fileType: metadata.fileType || undefined,
-      // Public thought rows are often named thumb_thought-… — preserve thought/textPost.
+      // Public note rows may be named thumb_note-… / historical thumb_thought-… — preserve note/textPost/thought.
       textPost: metadata.textPost || metadata.thought || undefined,
       thought: metadata.thought || metadata.textPost || undefined,
       collection: metadata.collection !== undefined ? metadata.collection : undefined,

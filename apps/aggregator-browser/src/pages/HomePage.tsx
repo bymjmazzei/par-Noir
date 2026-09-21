@@ -93,7 +93,7 @@ export function HomePage() {
     getShareCount,
     share,
     getFileProps,
-    isThought,
+    isNote,
     handleComment,
     handleLike,
     handleShare,
@@ -380,7 +380,7 @@ export function HomePage() {
             const fileName = file.name || file.title || 'Untitled';
             const collectionData = indexedFile.metadata?.collection;
             const isCollectionFile = file.fileType === 'collection' && collectionData && typeof collectionData === 'object' && Array.isArray(collectionData.collectionFileIds) && collectionData.collectionFileIds.length > 0;
-            const isThoughtFile = isThought(indexedFile);
+            const isNoteFile = isNote(indexedFile);
 
             return (
               <div
@@ -420,20 +420,20 @@ export function HomePage() {
                   </div>
                 )}
 
-                {!isCollectionFile && isThoughtFile && (
+                {!isCollectionFile && isNoteFile && (
                   <div className="w-full h-48 bg-neutral-800 flex items-center justify-center relative overflow-hidden">
                     {(() => {
                       const textPostData = getTextPostData(indexedFile);
-                      const thoughtThumbnail = thumbnails.get(file.fileId);
-                      if (thoughtThumbnail) {
+                      const noteThumbnail = thumbnails.get(file.fileId);
+                      if (noteThumbnail) {
                         const dims = mediaDimensions.get(file.fileId) || { width: 1080, height: 1080 };
                         const s = calculateMediaScaling(dims, { width: 192, height: 192 });
                         return (
                           <>
-                            <img src={thoughtThumbnail} alt="" className="absolute" style={s.background} loading="lazy" decoding="async" />
+                            <img src={noteThumbnail} alt="" className="absolute" style={s.background} loading="lazy" decoding="async" />
                             <div className="w-full h-full flex items-center justify-center relative z-10">
                               <img
-                                src={thoughtThumbnail}
+                                src={noteThumbnail}
                                 alt={fileName}
                                 style={s.mainMedia}
                                 onLoad={(e) => setMediaDimensions(prev => { const m = new Map(prev); m.set(file.fileId, { width: e.currentTarget.naturalWidth || 1080, height: e.currentTarget.naturalHeight || 1080 }); return m; })}
@@ -455,7 +455,7 @@ export function HomePage() {
                             }}
                           >
                             <div className="w-full px-4 text-center" style={{ fontFamily: textPostData?.style?.fontFamily || 'Arial', fontSize: `${Math.min(textPostData?.style?.fontSize || 16, 24)}px`, color: textPostData?.style?.textColor || '#FFF', padding: `${Math.min(textPostData?.style?.padding || 20, 20)}px`, lineHeight: 1.2, wordWrap: 'break-word', overflow: 'hidden' }}>
-                              {textPostData?.content || file.description || fileName || 'Thought'}
+                              {textPostData?.content || file.description || fileName || 'Note'}
                             </div>
                           </div>
                         );
@@ -463,14 +463,14 @@ export function HomePage() {
                       return (
                         <div className="flex flex-col items-center justify-center text-neutral-500">
                           <div className="text-2xl mb-2">💭</div>
-                          <span className="text-xs">Thought</span>
+                          <span className="text-xs">Note</span>
                         </div>
                       );
                     })()}
                   </div>
                 )}
 
-                {!isCollectionFile && !isThoughtFile && (isImage || isVideo) && (
+                {!isCollectionFile && !isNoteFile && (isImage || isVideo) && (
                   <div
                     className="w-full h-48 bg-neutral-800 flex items-center justify-center relative overflow-hidden group"
                     onMouseEnter={async () => {
@@ -501,7 +501,7 @@ export function HomePage() {
                   <div className="flex items-start justify-between mb-2">
                     <div className="flex-1 min-w-0">
                       <h3 className="text-white font-medium truncate group-hover:text-blue-400 transition-colors">{fileName}</h3>
-                      <p className="text-text-secondary text-xs mt-1">{isThoughtFile ? 'Thought' : isVideo ? 'Video' : file.fileType === 'image' ? 'Image' : file.fileType || 'File'} • {new Date(file.uploadDate).toLocaleDateString()}</p>
+                      <p className="text-text-secondary text-xs mt-1">{isNoteFile ? 'Note' : isVideo ? 'Video' : file.fileType === 'image' ? 'Image' : file.fileType || 'File'} • {new Date(file.uploadDate).toLocaleDateString()}</p>
                     </div>
                     {file.metadata?.isNSFW && <ContentRatingBadge isNSFW={true} size="sm" className="ml-2 flex-shrink-0" />}
                   </div>

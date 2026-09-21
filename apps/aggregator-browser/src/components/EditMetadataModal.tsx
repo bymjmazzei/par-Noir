@@ -1,7 +1,7 @@
 /**
  * Edit Metadata Modal
  * Reusable metadata editor matching the FileStorageAggregator edit metadata modal
- * Used for thoughts, collections, and file editing
+ * Used for notes, collections, and file editing
  */
 
 import { useState, useEffect } from 'react';

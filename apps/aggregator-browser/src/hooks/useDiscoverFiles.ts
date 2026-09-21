@@ -1,5 +1,5 @@
 /**
- * Hook for discover/index file state: media, thoughts, collections, pagination, filters.
+ * Hook for discover/index file state: media, notes, collections, pagination, filters.
  * discoverFiles and loadMore stay in the consumer (e.g. App) and use these setters.
  */
 
@@ -9,7 +9,7 @@ import type { MetadataFilters } from '../types/aggregator';
 
 export function useDiscoverFiles() {
   const [mediaFiles, setMediaFiles] = useState<IndexedFile[]>([]);
-  const [thoughtsFiles, setThoughtsFiles] = useState<IndexedFile[]>([]);
+  const [notesFiles, setNotesFiles] = useState<IndexedFile[]>([]);
   const [collectionsFiles, setCollectionsFiles] = useState<IndexedFile[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -19,15 +19,15 @@ export function useDiscoverFiles() {
   const [filters, setFilters] = useState<MetadataFilters>({});
 
   const indexedFiles = useMemo(
-    () => [...mediaFiles, ...thoughtsFiles, ...collectionsFiles],
-    [mediaFiles, thoughtsFiles, collectionsFiles]
+    () => [...mediaFiles, ...notesFiles, ...collectionsFiles],
+    [mediaFiles, notesFiles, collectionsFiles]
   );
 
   return {
     mediaFiles,
     setMediaFiles,
-    thoughtsFiles,
-    setThoughtsFiles,
+    notesFiles,
+    setNotesFiles,
     collectionsFiles,
     setCollectionsFiles,
     indexedFiles,

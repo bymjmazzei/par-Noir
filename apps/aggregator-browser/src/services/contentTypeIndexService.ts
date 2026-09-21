@@ -1,7 +1,7 @@
 /**
  * Content Type Index Service
  * 
- * Manages separate indices for each content type (media, thoughts, collections).
+ * Manages separate indices for each content type (media, notes, collections).
  * Queries the API with contentClass filters and applies contentClass-based filtering.
  */
 
@@ -11,7 +11,7 @@ import { ContentType } from '../types/contentTypes';
 
 export class ContentTypeIndexService {
   private mediaIndex: IndexedFile[] = [];
-  private thoughtsIndex: IndexedFile[] = [];
+  private notesIndex: IndexedFile[] = [];
   private collectionsIndex: IndexedFile[] = [];
   private lastUpdated: Map<ContentType, number> = new Map();
   
@@ -28,9 +28,9 @@ export class ContentTypeIndexService {
     const metadataService = getMetadataIndexService();
 
     // Map ContentType to contentClass for API query
-    const contentClassMap: Record<ContentType, 'media' | 'thought' | 'collection'> = {
+    const contentClassMap: Record<ContentType, 'media' | 'note' | 'collection'> = {
       'media': 'media',
-      'thoughts': 'thought',
+      'notes': 'note',
       'collections': 'collection'
     };
     const contentClass = contentClassMap[contentType];
@@ -87,7 +87,7 @@ export class ContentTypeIndexService {
    */
   clearIndices(): void {
     this.mediaIndex = [];
-    this.thoughtsIndex = [];
+    this.notesIndex = [];
     this.collectionsIndex = [];
     this.lastUpdated.clear();
   }

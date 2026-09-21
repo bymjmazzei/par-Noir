@@ -10,7 +10,7 @@ export const MESSAGES_DIR = 'par-noir-messages';
 export const OUTBOX_DIR = 'par-noir-messages/_outbox';
 export const ATTACHMENTS_DIR = 'attachments';
 
-export const CONTENT_CLASSES = ['media', 'thoughts', 'collections'] as const;
+export const CONTENT_CLASSES = ['media', 'notes', 'collections'] as const;
 export type ContentClass = (typeof CONTENT_CLASSES)[number];
 
 /** Root folder name: `par-noir-{pnIdentifier}` */

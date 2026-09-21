@@ -70,12 +70,12 @@ export class AggregatorMetadataServiceDB {
   /**
    * Get table name for a given content class
    */
-  private getTableNameForContentClass(contentClass: 'media' | 'thought' | 'collection'): string {
+  private getTableNameForContentClass(contentClass: 'media' | 'note' | 'collection'): string {
     switch (contentClass) {
       case 'media':
         return 'aggregator_media';
-      case 'thought':
-        return 'aggregator_thoughts';
+      case 'note':
+        return 'aggregator_notes';
       case 'collection':
         return 'aggregator_collections';
       default:
@@ -87,7 +87,7 @@ export class AggregatorMetadataServiceDB {
    * Get all content type table names
    */
   private getAllContentTypeTables(): string[] {
-    return ['aggregator_media', 'aggregator_thoughts', 'aggregator_collections'];
+    return ['aggregator_media', 'aggregator_notes', 'aggregator_collections'];
   }
 
   /**
@@ -111,7 +111,7 @@ export class AggregatorMetadataServiceDB {
         collection: (metadata as any).collection,
         textPost: (metadata as any).textPost,
         thought: (metadata as any).thought,
-        isThoughtThumbnail: (metadata as any).isThoughtThumbnail,
+        isNoteThumbnail: (metadata as any).isNoteThumbnail,
         isPartOfCollection: (metadata as any).isPartOfCollection
       });
     }
@@ -199,10 +199,10 @@ export class AggregatorMetadataServiceDB {
     
     // Auto-set fileType to 'text' if textPost/thought data is present but fileType doesn't match
     // Preserve thought-collection types as they're explicitly set
-    const thoughtCollectionTypes = ['thought-collection-thumbnail', 'thought-collection-page', 'thought-collection'];
+    const thoughtCollectionTypes = ['note-collection-thumbnail', 'note-collection-page', 'note-collection'];
     if ((metadata.textPost || (metadata as any).thought) && 
         validatedFileType !== 'text' && 
-        validatedFileType !== 'thought' && 
+        validatedFileType !== 'note' && 
         !thoughtCollectionTypes.includes(validatedFileType)) {
       if (process.env.LOG_LEVEL === 'debug') {
         console.warn(`[AggregatorMetadataServiceDB] Text/thought data present but fileType is '${validatedFileType}', auto-setting to 'text': ${metadata.fileId}`);
@@ -218,7 +218,7 @@ export class AggregatorMetadataServiceDB {
         collection: (metadata as any).collection,
         textPost: (metadata as any).textPost,
         thought: (metadata as any).thought,
-        isThoughtThumbnail: (metadata as any).isThoughtThumbnail,
+        isNoteThumbnail: (metadata as any).isNoteThumbnail,
         isPartOfCollection: (metadata as any).isPartOfCollection
       });
       // Log if we had to determine it (helps debug missing contentClass issues)
@@ -228,7 +228,7 @@ export class AggregatorMetadataServiceDB {
     }
 
     // Get target table name based on contentClass
-    const targetTable = this.getTableNameForContentClass(validatedContentClass as 'media' | 'thought' | 'collection');
+    const targetTable = this.getTableNameForContentClass(validatedContentClass as 'media' | 'note' | 'collection');
     
     // If contentClass changed, we need to move the row from old table to new table
     const contentClassChanged = existingTable && existingTable !== targetTable;
@@ -368,7 +368,7 @@ export class AggregatorMetadataServiceDB {
         contentClass,
         hasTextPost,
         hasThought,
-        isThoughtThumbnail: !!(validatedMetadata as any).isThoughtThumbnail,
+        isNoteThumbnail: !!(validatedMetadata as any).isNoteThumbnail,
         textPostKeysCount: hasTextPost ? Object.keys((validatedMetadata as any).textPost || {}).length : 0,
         thoughtKeysCount: hasThought ? Object.keys((validatedMetadata as any).thought || {}).length : 0
       });
@@ -806,7 +806,7 @@ export class AggregatorMetadataServiceDB {
   async getPublicMetadata(filters?: {
     tags?: string[];
     fileType?: string;
-    contentClass?: 'media' | 'thought' | 'collection';
+    contentClass?: 'media' | 'note' | 'collection';
     authorDid?: string;
     indexerId?: string;
     feedId?: string;
@@ -1221,7 +1221,7 @@ export class AggregatorMetadataServiceDB {
       SELECT DISTINCT pn_identifier FROM aggregator_media
         WHERE pn_identifier IS NOT NULL AND ${where}
       UNION
-      SELECT DISTINCT pn_identifier FROM aggregator_thoughts
+      SELECT DISTINCT pn_identifier FROM aggregator_notes
         WHERE pn_identifier IS NOT NULL AND ${where}
       UNION
       SELECT DISTINCT pn_identifier FROM aggregator_collections
@@ -1772,7 +1772,7 @@ export class AggregatorMetadataServiceDB {
   async getIndexResponse(filters?: {
     tags?: string[];
     fileType?: string;
-    contentClass?: 'media' | 'thought' | 'collection';
+    contentClass?: 'media' | 'note' | 'collection';
     authorDid?: string;
     indexerId?: string;
     limit?: number;
@@ -2123,7 +2123,7 @@ export class AggregatorMetadataServiceDB {
       subjects?: string[];
       feedCategories?: string[];
       thumbnailFileId?: string;
-      isThoughtThumbnail?: boolean; // Thumbnails inherit classification from source
+      isNoteThumbnail?: boolean; // Thumbnails inherit classification from source
       isPartOfCollection?: boolean; // Collection files inherit collection classification
       mainFileId?: string; // Reference to source file for thumbnails
       isEncrypted?: boolean; // True if main file is encrypted; false for raw uploads over tier limit
@@ -2203,7 +2203,7 @@ export class AggregatorMetadataServiceDB {
         // Update thumbnail file ID
         ...(updates.thumbnailFileId !== undefined && { thumbnailFileId: updates.thumbnailFileId }),
         // Update classification flags - thumbnails inherit classification from source
-        ...(updates.isThoughtThumbnail !== undefined && { isThoughtThumbnail: updates.isThoughtThumbnail }),
+        ...(updates.isNoteThumbnail !== undefined && { isNoteThumbnail: updates.isNoteThumbnail }),
         ...(updates.isPartOfCollection !== undefined && { isPartOfCollection: updates.isPartOfCollection }),
         ...(updates.mainFileId !== undefined && { mainFileId: updates.mainFileId }),
         ...(updates.isEncrypted !== undefined && { isEncrypted: updates.isEncrypted }),
@@ -2269,7 +2269,7 @@ export class AggregatorMetadataServiceDB {
 
       // Recalculate contentClass if classification flags changed or if it's missing
       const oldContentClass = (updatedMetadata as any).contentClass;
-      if (updates.isThoughtThumbnail !== undefined || 
+      if (updates.isNoteThumbnail !== undefined || 
           updates.isPartOfCollection !== undefined || 
           updates.collection !== undefined ||
           updates.textPost !== undefined ||
@@ -2281,7 +2281,7 @@ export class AggregatorMetadataServiceDB {
           collection: (updatedMetadata as any).collection,
           textPost: (updatedMetadata as any).textPost,
           thought: (updatedMetadata as any).thought,
-          isThoughtThumbnail: (updatedMetadata as any).isThoughtThumbnail,
+          isNoteThumbnail: (updatedMetadata as any).isNoteThumbnail,
           isPartOfCollection: (updatedMetadata as any).isPartOfCollection
         });
         (updatedMetadata as any).contentClass = recalculatedContentClass;
@@ -2307,7 +2307,7 @@ export class AggregatorMetadataServiceDB {
       }
 
       // Determine target table based on new contentClass
-      const newContentClass = (updatedMetadata as any).contentClass as 'media' | 'thought' | 'collection';
+      const newContentClass = (updatedMetadata as any).contentClass as 'media' | 'note' | 'collection';
       const targetTable = this.getTableNameForContentClass(newContentClass);
 
       // If contentClass changed, move row to new table
@@ -2545,7 +2545,7 @@ export class AggregatorMetadataServiceDB {
             collection: (metadata as any).collection,
             textPost: (metadata as any).textPost,
             thought: (metadata as any).thought,
-            isThoughtThumbnail: (metadata as any).isThoughtThumbnail,
+            isNoteThumbnail: (metadata as any).isNoteThumbnail,
             isPartOfCollection: (metadata as any).isPartOfCollection
           });
         }
@@ -2585,10 +2585,10 @@ export class AggregatorMetadataServiceDB {
           name: metadata.name || metadata.title || metadata.fileId,
           uploadDate: metadata.uploadDate || new Date().toISOString(),
           fileType: metadata.fileType || 'other',
-          contentClass: contentClass as 'media' | 'thought' | 'collection'
+          contentClass: contentClass as 'media' | 'note' | 'collection'
         };
 
-        const targetTable = this.getTableNameForContentClass(contentClass as 'media' | 'thought' | 'collection');
+        const targetTable = this.getTableNameForContentClass(contentClass as 'media' | 'note' | 'collection');
 
         if (existingRow && existingTable) {
           // If contentClass changed, move to new table

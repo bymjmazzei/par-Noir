@@ -66,6 +66,11 @@ export {
 } from './PnIntegratorClient';
 
 export {
+  IntegratorPenClient,
+  createIntegratorPenClient
+} from './IntegratorPenClient';
+
+export {
   PnApiError,
   SCOPE_OPENID,
   SCOPE_PROFILE,

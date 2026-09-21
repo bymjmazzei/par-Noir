@@ -1,11 +1,12 @@
 /**
- * Text Post Editor Component
- * Full-featured editor for creating "Thoughts" (text-based posts)
+ * Pen Mini — browse composer for Notes (text-based posts).
+ * Prefer importing via PenMiniComposer for product naming.
  */
 
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { X, Check, Image as ImageIcon, AlignLeft, AlignCenter, AlignRight, AlignJustify, Minus, Plus as PlusIcon, Send, ChevronLeft, ChevronRight } from 'lucide-react';
+import { compileDocumentToNote } from '@par-noir/pen-protocol';
 import { TextPostData } from '../types/aggregator';
 import { useUserState } from '../contexts/UserStateContext';
 import { useHorizontalSwipe } from '../hooks/useHorizontalSwipe';
@@ -797,6 +798,27 @@ export function TextPostEditor({ onSave }: TextPostEditorProps) {
     // Parse tags and genre from comma-separated strings
     const tags = metadata.tags.split(',').map(t => t.trim()).filter(Boolean);
     const genre = metadata.genre.split(',').map(g => g.trim()).filter(Boolean);
+
+    let templateId = 'note.basic.v1';
+    let contentClass: 'note' = 'note';
+    try {
+      const bodyText = pages
+        .filter(page => page.content.trim())
+        .map(page => page.content.trim())
+        .join('\n\n');
+      const compiled = compileDocumentToNote({
+        templateId: 'note.basic.v1',
+        title: metadata.name || 'Note',
+        sections: [{
+          slug: 'body',
+          blocks: [{ id: 'body-1', type: 'paragraph', text: bodyText }],
+        }],
+      });
+      templateId = compiled.templateId;
+      contentClass = compiled.contentClass;
+    } catch {
+      // Styled Pen Mini still publishes as Note even if compile fails
+    }
     
     // Convert all pages to TextPostData format
     const textPosts: TextPostData[] = pages
@@ -827,6 +849,8 @@ export function TextPostEditor({ onSave }: TextPostEditorProps) {
           genre: genre.length > 0 ? genre : undefined,
           feedCategories: metadata.categories && metadata.categories.length > 0 ? metadata.categories : undefined,
           category: metadata.categories && metadata.categories.length > 0 ? metadata.categories[0] : undefined,
+          contentClass,
+          templateId,
           locationCreated: (metadata.locationName || metadata.locationAddress) ? {
             '@type': 'Place',
             ...(metadata.locationName && { name: metadata.locationName }),
@@ -849,7 +873,7 @@ export function TextPostEditor({ onSave }: TextPostEditorProps) {
     if (textPosts.length === 1) {
       onSave(textPosts[0]);
     } else {
-      // Multiple pages - save first page with metadata indicating it's part of a multi-page thought
+      // Multiple pages - save first page with metadata indicating it's part of a multi-page note
       // Create a clean copy of the first post without circular references
       const firstPost = {
         ...textPosts[0],
@@ -1351,7 +1375,8 @@ export function TextPostEditor({ onSave }: TextPostEditorProps) {
                     </div>
                   </>
                 ) : (
-                  <div className="text-neutral-500">
+                  <div className="text-neutral-500 text-center px-6">
+                    <p className="text-xs uppercase tracking-wide text-neutral-400 mb-2">Pen Mini · Note</p>
                     <p>Preview will appear here</p>
                   </div>
                 )}
@@ -1608,7 +1633,7 @@ export function TextPostEditor({ onSave }: TextPostEditorProps) {
                 setTextareaHeight(newHeight + 32 + 40); // Add padding + emoji railway height
               }
             }}
-            placeholder="Type your thought here..."
+            placeholder="Write a Note…"
             className="flex-1 bg-neutral-800 text-white rounded-lg p-3 border border-neutral-700 focus:border-blue-500 focus:outline-none resize-none overflow-y-auto"
             style={{ 
               minHeight: '44px',
@@ -1646,8 +1671,8 @@ export function TextPostEditor({ onSave }: TextPostEditorProps) {
         isOpen={showMetadataModal}
         onClose={() => setShowMetadataModal(false)}
         onSave={handleMetadataSave}
-        title="Add Metadata"
-        submitButtonText="Submit"
+        title="Note details"
+        submitButtonText="Publish Note"
       />
     </div>
   );

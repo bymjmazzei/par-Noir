@@ -361,7 +361,7 @@ export class GoogleDriveMetadataService {
         textPost: metaAny.textPost ?? null,
         thought: metaAny.thought ?? null,
         collection: metaAny.collection ?? null,
-        isThoughtThumbnail: metaAny.isThoughtThumbnail,
+        isNoteThumbnail: metaAny.isNoteThumbnail === true || metaAny.isThoughtThumbnail === true,
         isPartOfCollection: metaAny.isPartOfCollection,
         genre: fileMetadata.schema?.genre,
         category: fileMetadata.schema?.category,

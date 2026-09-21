@@ -1,11 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import {
   mapCollectionEntry,
-  mapThoughtThumbnailEntry,
+  mapNoteThumbnailEntry,
 } from './mapStorageListEntries';
 import { mapCentralIndexEntryToIndexedFile } from '../services/metadata/mapCentralIndexEntry';
 
-describe('mapThoughtThumbnailEntry', () => {
+describe('mapNoteThumbnailEntry', () => {
   const thumb = {
     id: 'thumb-drive-id',
     name: 'thumb_thought-123.png.encrypted',
@@ -14,15 +14,15 @@ describe('mapThoughtThumbnailEntry', () => {
   };
 
   it('keeps orphan Drive thumbs when metadata is null (indexMissing)', () => {
-    const entry = mapThoughtThumbnailEntry({
+    const entry = mapNoteThumbnailEntry({
       thumb,
-      thoughtFileId: 'main-thought-id',
+      noteFileId: 'main-thought-id',
       metadata: null,
     });
 
     expect(entry).not.toBeNull();
     expect(entry.indexMissing).toBe(true);
-    expect(entry.fileType).toBe('thought-thumbnail');
+    expect(entry.fileType).toBe('note-thumbnail');
     expect(entry.isThumbnail).toBe(true);
     expect(entry.mainFileId).toBe('main-thought-id');
     expect(entry.displayName).toBe('thought-123');
@@ -30,11 +30,11 @@ describe('mapThoughtThumbnailEntry', () => {
   });
 
   it('uses metadata when present', () => {
-    const entry = mapThoughtThumbnailEntry({
+    const entry = mapNoteThumbnailEntry({
       thumb,
-      thoughtFileId: 'main-thought-id',
+      noteFileId: 'main-thought-id',
       metadata: {
-        fileType: 'thought-thumbnail',
+        fileType: 'note-thumbnail',
         mainFileId: 'from-meta',
         isPartOfCollection: true,
       },
@@ -63,14 +63,14 @@ describe('mapCollectionEntry', () => {
 });
 
 describe('mapCentralIndexEntryToIndexedFile', () => {
-  it('preserves thought/textPost on thumb_thought rows', () => {
+  it('preserves thought/textPost on historical thumb_thought rows', () => {
     const mapped = mapCentralIndexEntryToIndexedFile({
       fileId: '1YK6',
       pnIdentifier: 'pn-abc',
       metadata: {
         name: 'thumb_thought-1786289955537.png',
-        fileType: 'thought-thumbnail',
-        contentClass: 'thought',
+        fileType: 'note-thumbnail',
+        contentClass: 'note',
         thought: { content: 'test', style: {} },
         textPost: { content: 'test', style: {} },
         publicToken: '{"shareKey":"x"}',

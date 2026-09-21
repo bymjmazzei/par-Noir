@@ -28,7 +28,7 @@ export interface UploadTask {
   type: UploadTaskType;
   file?: File;
   textPost?: any;
-  pages?: any[]; // For multi-page thoughts
+  pages?: any[]; // For multi-page notes
   accountId: string;
   metadata?: UploadMetadata;
   status: UploadTaskStatus;

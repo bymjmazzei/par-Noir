@@ -15,7 +15,7 @@ export type DriveToken = {
   expires_in?: number;
 };
 
-export type ContentClassFolder = 'media' | 'thoughts' | 'collections';
+export type ContentClassFolder = 'media' | 'notes' | 'collections';
 
 /**
  * Get owner file index (contains all files owned by the user)
@@ -99,7 +99,7 @@ export async function updateOwnerFileIndex(
     collection: metadataAny.collection,
     textPost: metadataAny.textPost,
     thought: metadataAny.thought,
-    isThoughtThumbnail: metadataAny.isThoughtThumbnail,
+    isNoteThumbnail: metadataAny.isNoteThumbnail === true || metadataAny.isThoughtThumbnail === true,
     isPartOfCollection: metadataAny.isPartOfCollection
   });
 
@@ -126,7 +126,7 @@ export async function updateOwnerFileIndex(
     isPartOf: fileMetadata.isPartOf,
     indexingPermissions: fileMetadata.indexingPermissions,
     contentClass: contentClass,
-    isThoughtThumbnail: metadataAny.isThoughtThumbnail,
+    isNoteThumbnail: metadataAny.isNoteThumbnail === true || metadataAny.isThoughtThumbnail === true,
     mainFileId: metadataAny.mainFileId,
     thumbnailFileId: metadataAny.thumbnailFileId,
     collectionFileIds: metadataAny.collectionFileIds ?? metadataAny.collection?.collectionFileIds
@@ -178,7 +178,7 @@ export async function updateOwnerFileIndex(
     );
   }
 
-  const contentTypeFolderName = indexEntry.contentClass === 'thought' ? 'thoughts' : indexEntry.contentClass === 'collection' ? 'collections' : indexEntry.contentClass;
+  const contentTypeFolderName = indexEntry.contentClass === 'note' ? 'notes' : indexEntry.contentClass === 'collection' ? 'collections' : indexEntry.contentClass;
   const isPortable = await isPortableStorageProvider(pnIdentifier);
 
   if (isPortable && contentTypeFolderName) {
@@ -374,14 +374,19 @@ function inferContentClassFromEntry(fileEntry: any): ContentClassFolder | null {
   if (!fileEntry) return null;
   const metadataAny = fileEntry as any;
   const cc = metadataAny.contentClass;
-  if (cc === 'thought' || cc === 'thoughts') return 'thoughts';
+  if (cc === 'note' || cc === 'notes') return 'notes';
   if (cc === 'collection' || cc === 'collections') return 'collections';
   if (cc === 'media') return 'media';
   if (metadataAny.collection?.collectionFileIds?.length || metadataAny.collectionFileIds?.length) {
     return 'collections';
   }
-  if (metadataAny.isThoughtThumbnail || metadataAny.thought || metadataAny.textPost) {
-    return 'thoughts';
+  if (
+    metadataAny.isNoteThumbnail ||
+    metadataAny.note ||
+    metadataAny.thought ||
+    metadataAny.textPost
+  ) {
+    return 'notes';
   }
   return 'media';
 }
@@ -495,7 +500,7 @@ export async function removeFromOwnerIndex(
   // Always scrub content-class sheets (merged GET reads these, not only root).
   const classesToTry: ContentClassFolder[] = contentClass
     ? [contentClass]
-    : ['media', 'thoughts', 'collections'];
+    : ['media', 'notes', 'collections'];
   for (const contentTypeFolderName of classesToTry) {
     try {
       const removed = await removeFromContentClassOwnerSheets(
@@ -577,7 +582,7 @@ export async function removeFromPublicIndex(
 
     const classesToTry: ContentClassFolder[] = contentClass
       ? [contentClass]
-      : ['media', 'thoughts', 'collections'];
+      : ['media', 'notes', 'collections'];
 
     for (const contentTypeFolderName of classesToTry) {
       try {
@@ -713,11 +718,11 @@ export async function updatePublicFileIndex(
     collection: metadataAny.collection,
     textPost: metadataAny.textPost,
     thought: metadataAny.thought,
-    isThoughtThumbnail: metadataAny.isThoughtThumbnail,
+    isNoteThumbnail: metadataAny.isNoteThumbnail === true || metadataAny.isThoughtThumbnail === true,
     isPartOfCollection: metadataAny.isPartOfCollection
   });
   const contentTypeFolderName =
-    contentClass === 'thought' ? 'thoughts' : contentClass === 'collection' ? 'collections' : contentClass;
+    contentClass === 'note' ? 'notes' : contentClass === 'collection' ? 'collections' : contentClass;
 
   if (fileMetadata.visibility === 'public') {
     const indexEntry: any = {
@@ -734,7 +739,7 @@ export async function updatePublicFileIndex(
       description: fileMetadata.description,
       indexingPermissions: fileMetadata.indexingPermissions,
       contentClass,
-      isThoughtThumbnail: metadataAny.isThoughtThumbnail,
+      isNoteThumbnail: metadataAny.isNoteThumbnail === true || metadataAny.isThoughtThumbnail === true,
       mainFileId: metadataAny.mainFileId,
       thumbnailFileId: metadataAny.thumbnailFileId,
       inReplyTo: fileMetadata.inReplyTo,
@@ -935,7 +940,7 @@ export async function updatePublicFileIndex(
           description: fileMetadata.description,
           indexingPermissions: fileMetadata.indexingPermissions,
           contentClass,
-          isThoughtThumbnail: metadataAny.isThoughtThumbnail,
+          isNoteThumbnail: metadataAny.isNoteThumbnail === true || metadataAny.isThoughtThumbnail === true,
           mainFileId: metadataAny.mainFileId,
           thumbnailFileId: metadataAny.thumbnailFileId,
           engagement: fileMetadata.engagement

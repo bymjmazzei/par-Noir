@@ -39,6 +39,7 @@ export {
   type ClientContract,
   BROWSER_APP_CLIENT_ID,
   MESSAGING_APP_CLIENT_ID,
+  PEN_APP_CLIENT_ID,
   CLIENT_CONTRACTS,
   getClientContract,
   hasClientContract,

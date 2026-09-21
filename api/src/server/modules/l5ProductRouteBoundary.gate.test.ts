@@ -21,7 +21,14 @@ jest.mock('./pnOAuthService', () => ({
 }));
 
 jest.mock('./integratorStoragePaths', () => {
-  const FIRST = new Set(['browser-app', 'messaging-app', 'prism-app', 'developer-portal']);
+  const FIRST = new Set([
+    'browser-app',
+    'messaging-app',
+    'prism-app',
+    'developer-portal',
+    'pen-app',
+    'licensing-portal'
+  ]);
   return {
     isFirstPartyClient: (id: string | undefined | null) => !!id && FIRST.has(id),
   };

@@ -52,7 +52,7 @@ export class CentralMetadataAggregator {
     filters?: { 
       tags?: string[]; 
       fileType?: string; 
-      contentClass?: 'media' | 'thought' | 'collection';
+      contentClass?: 'media' | 'note' | 'collection';
       authorDid?: string;
       indexerId?: string;
       limit?: number;      // SCALABILITY: Pagination support
@@ -97,7 +97,7 @@ export class CentralMetadataAggregator {
     filters?: { 
       tags?: string[]; 
       fileType?: string; 
-      contentClass?: 'media' | 'thought' | 'collection';
+      contentClass?: 'media' | 'note' | 'collection';
       authorDid?: string;
       indexerId?: string;
       limit?: number;

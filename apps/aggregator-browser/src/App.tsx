@@ -83,8 +83,8 @@ function App() {
   const {
     mediaFiles,
     setMediaFiles,
-    thoughtsFiles,
-    setThoughtsFiles,
+    notesFiles,
+    setNotesFiles,
     collectionsFiles,
     setCollectionsFiles,
     indexedFiles,
@@ -175,7 +175,7 @@ function App() {
     mePageActive: Boolean(viewingCreatorId && activeBottomTab === 'index'),
     userState,
     mediaFiles,
-    thoughtsFiles,
+    notesFiles,
     collectionsFiles,
     indexedFiles,
     visibleFileId,
@@ -501,9 +501,9 @@ function App() {
     communityCatalog,
   ]);
 
-  const { filteredFilesByFeed, isThought } = useFeedFiltering({
+  const { filteredFilesByFeed, isNote } = useFeedFiltering({
     mediaFiles,
-    thoughtsFiles,
+    notesFiles,
     collectionsFiles,
     activeFeedId,
     userState,
@@ -517,7 +517,7 @@ function App() {
       if (feedId === 'discovery' || feedId === activeFeedId) return;
       const files = filterFilesForFeed({
         mediaFiles,
-        thoughtsFiles,
+        notesFiles,
         collectionsFiles,
         feedId,
         userState: {
@@ -532,7 +532,7 @@ function App() {
     },
     [
       mediaFiles,
-      thoughtsFiles,
+      notesFiles,
       collectionsFiles,
       activeFeedId,
       userState.isUnlocked,
@@ -619,7 +619,7 @@ function App() {
     mediaDimensions,
     setMediaDimensions,
     cleanupThumbnailsForFiles,
-  } = useThumbnailsAndMedia({ mediaFiles, thoughtsFiles, collectionsFiles, viewMode });
+  } = useThumbnailsAndMedia({ mediaFiles, notesFiles, collectionsFiles, viewMode });
 
   const {
     discoverFiles,
@@ -1077,7 +1077,7 @@ function App() {
     getShareCount,
     share,
     getFileProps,
-    isThought,
+    isNote,
     getCreatorIdentifier,
     handleComment,
     handleLike,
@@ -1349,7 +1349,7 @@ function App() {
           onClose={() => setEditingFile(null)}
           onSave={async (updatedFile) => {
             setMediaFiles(prev => prev.map(f => f.metadata.fileId === updatedFile.metadata.fileId ? updatedFile : f));
-            setThoughtsFiles(prev => prev.map(f => f.metadata.fileId === updatedFile.metadata.fileId ? updatedFile : f));
+            setNotesFiles(prev => prev.map(f => f.metadata.fileId === updatedFile.metadata.fileId ? updatedFile : f));
             setCollectionsFiles(prev => prev.map(f => f.metadata.fileId === updatedFile.metadata.fileId ? updatedFile : f));
             setEditingFile(null);
             success('File updated successfully!');

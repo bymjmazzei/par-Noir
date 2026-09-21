@@ -5,6 +5,7 @@ describe('OAuth client verified status', () => {
     expect(isFirstPartyClient('browser-app')).toBe(true);
     expect(isFirstPartyClient('prism-app')).toBe(true);
     expect(isFirstPartyClient('developer-portal')).toBe(true);
+    expect(isFirstPartyClient('pen-app')).toBe(true);
   });
 
   it('does not treat arbitrary integrators as first-party', () => {

@@ -605,7 +605,7 @@ async function processFileDeletion(
   task: UploadTask,
   accessToken: string
 ): Promise<void> {
-  let { fileId, accountId, isCollection, collectionFileIds, isThoughtCollection } = task.metadata || {};
+  let { fileId, accountId, isCollection, collectionFileIds, isNoteCollection } = task.metadata || {};
   
   if (!fileId || !accountId) {
     throw new Error('Missing required fields: fileId, accountId');
@@ -625,7 +625,7 @@ async function processFileDeletion(
         isCollection = metadataObj.fileType === 'collection' && metadataObj.collection?.collectionFileIds;
         if (isCollection) {
           collectionFileIds = metadataObj.collection.collectionFileIds;
-          isThoughtCollection = metadataObj.isThoughtCollection === true;
+          isNoteCollection = metadataObj.isNoteCollection === true;
         }
       }
     } catch (err) {
@@ -637,10 +637,10 @@ async function processFileDeletion(
 
   // Delete associated files if collection
   if (isCollection && collectionFileIds && Array.isArray(collectionFileIds) && collectionFileIds.length > 0) {
-    let thoughtCollectionFileId: string | null = null;
+    let noteCollectionFileId: string | null = null;
     
-    // For thought collections, get main file ID from first thumbnail
-    if (isThoughtCollection && collectionFileIds.length > 0) {
+    // For note collections, get main file ID from first thumbnail
+    if (isNoteCollection && collectionFileIds.length > 0) {
       try {
         const metadataResponse = await ownerGet(
           `/api/aggregator/metadata-index/${collectionFileIds[0]}`,
@@ -648,7 +648,7 @@ async function processFileDeletion(
         );
         if (metadataResponse.ok) {
           const metadata = await metadataResponse.json();
-          thoughtCollectionFileId = metadata.metadata?.mainFileId || null;
+          noteCollectionFileId = metadata.metadata?.mainFileId || null;
         }
       } catch (err) {
         console.warn('[BackgroundTaskProcessor] Failed to load metadata for first thumbnail:', err);
@@ -658,7 +658,7 @@ async function processFileDeletion(
     uploadQueueService.updateTaskProgress(task.id, 20);
     
     // Delete all thumbnail files
-    const totalFiles = collectionFileIds.length + (thoughtCollectionFileId ? 1 : 0);
+    const totalFiles = collectionFileIds.length + (noteCollectionFileId ? 1 : 0);
     let deletedCount = 0;
     
     for (const thumbnailId of collectionFileIds) {
@@ -680,12 +680,12 @@ async function processFileDeletion(
       }
     }
     
-    // Delete main thought-collection file if exists
-    if (isThoughtCollection && thoughtCollectionFileId) {
+    // Delete main note-collection file if exists
+    if (isNoteCollection && noteCollectionFileId) {
       try {
         const deleteResponse = await ownerFetch(
           'DELETE',
-          `/api/drive/files/${thoughtCollectionFileId}?accountId=${accountId}`,
+          `/api/drive/files/${noteCollectionFileId}?accountId=${accountId}`,
           undefined,
           { authToken: accessToken }
         );
@@ -694,7 +694,7 @@ async function processFileDeletion(
           deletedCount++;
         }
       } catch (err: any) {
-        console.warn(`[BackgroundTaskProcessor] Error deleting thought-collection file ${thoughtCollectionFileId}:`, err);
+        console.warn(`[BackgroundTaskProcessor] Error deleting note-collection file ${noteCollectionFileId}:`, err);
       }
     }
     

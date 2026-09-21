@@ -39,7 +39,8 @@ function collectionFileIdsFrom(raw: Record<string, unknown>): string[] | undefin
 function normalizeContentClass(raw: Record<string, unknown>): string | undefined {
   const cc = raw.contentClass;
   if (typeof cc !== 'string') return undefined;
-  if (cc === 'thoughts') return 'thought';
+  if (cc === 'notes' || cc === 'thoughts') return 'note';
+  if (cc === 'thought') return 'note';
   if (cc === 'collections') return 'collection';
   return cc;
 }
@@ -76,7 +77,7 @@ export function slimIndexEntry(
   if (Array.isArray(raw.tags)) slim.tags = raw.tags;
   if (typeof raw.description === 'string') slim.description = raw.description;
 
-  if (raw.isThoughtThumbnail === true) slim.isThoughtThumbnail = true;
+  if (raw.isNoteThumbnail === true || raw.isThoughtThumbnail === true) slim.isNoteThumbnail = true;
   if (typeof raw.mainFileId === 'string') slim.mainFileId = raw.mainFileId;
   if (typeof raw.thumbnailFileId === 'string') slim.thumbnailFileId = raw.thumbnailFileId;
   if (typeof raw.inReplyTo === 'string') slim.inReplyTo = raw.inReplyTo;

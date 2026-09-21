@@ -1,0 +1,31 @@
+{
+  "name": "@par-noir/pen-protocol",
+  "version": "0.1.0",
+  "description": "Pen authored-content IR: paths, templates, promote/past, genesis/promote chain, compile",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "@noble/hashes": "^2.0.0",
+    "@par-noir/pqc-crypto": "file:../pqc-crypto"
+  },
+  "devDependencies": {
+    "typescript": "^5.0.0",
+    "vitest": "^3.2.4"
+  },
+  "license": "UNLICENSED",
+  "private": true
+}

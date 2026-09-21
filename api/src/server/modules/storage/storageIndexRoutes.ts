@@ -1,7 +1,7 @@
 /**
  * Owner/public file index HTTP routes.
  *
- * Merged reads aggregate the content-class indexes (media/thoughts/collections) and
+ * Merged reads aggregate the content-class indexes (media/notes/collections) and
  * fall back to the root index; writes upsert a single entry into both.
  */
 
@@ -119,7 +119,7 @@ export function setupStorageIndexRoutes(app: Application, deps: StorageIndexRout
 
         const filter =
           contentClassFilter === 'media' ||
-          contentClassFilter === 'thoughts' ||
+          contentClassFilter === 'notes' ||
           contentClassFilter === 'collections'
             ? contentClassFilter
             : undefined;
@@ -305,7 +305,7 @@ export function setupStorageIndexRoutes(app: Application, deps: StorageIndexRout
           return res.json({ identifier: identityId, files: [], updatedAt: new Date().toISOString() });
         }
 
-        const contentTypes: Array<'media' | 'thoughts' | 'collections'> = ['media', 'thoughts', 'collections'];
+        const contentTypes: Array<'media' | 'notes' | 'collections'> = ['media', 'notes', 'collections'];
         const allFiles: any[] = [];
         for (const contentType of contentTypes) {
           const folderQuery = `name='${contentType}' and '${out.metadataFolderId}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`;

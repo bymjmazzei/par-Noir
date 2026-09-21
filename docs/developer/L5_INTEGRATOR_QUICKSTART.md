@@ -216,6 +216,40 @@ Browse users set Never / 24h / 48h / 7d / custom datetime in upload and share se
 
 ---
 
+## 9. Pen (authored content — silo + Note publish)
+
+First-party Pen (`pen.parnoir.com`) owns multi-writer collab. L5 gets **silo CRUD + templates + compile/publish Note** via `pn.pen` — not groups/outbox/docKey.
+
+```typescript
+const templates = pn.pen.listTemplatesLocal();
+const compiled = pn.pen.compileToNote({
+  templateId: templates[0]!.id,
+  title: 'Hello',
+  sections: [/* PenSectionContent */],
+});
+
+// Write under integrators/{client_id}/par-noir-pen/{docId}/
+await pn.pen.writeManifestJson(ctx, docId, manifest);
+
+// Publish Note to the public index (contentClass forced to 'note')
+await pn.pen.publishCompiledNote(ctx, {
+  pnIdentifier: session.pnIdentifier,
+  title: compiled.title,
+  contentClass: 'note',
+  isPublic: true,
+  // …file / publicToken fields…
+});
+
+// Verify a published history chain (ML-DSA links)
+const ok = pn.pen.verifyHistory(chain);
+```
+
+Do **not** call `/api/groups`, `/api/messages`, or `/api/mailbox` from L5 — they return `403 first_party_required`. Deep-link or iframe Pen for collab.
+
+See [ADR_PEN.md](../architecture/ADR_PEN.md).
+
+---
+
 ## Security
 
 - Never collect **pn name** or **passcode** in your UI.

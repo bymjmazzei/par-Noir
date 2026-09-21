@@ -108,9 +108,9 @@ export async function initializeDatabase(): Promise<void> {
       )
     `);
 
-    // Thoughts table (text posts, thoughts)
+    // Notes table (ex-Thoughts / text posts)
     await db.query(`
-      CREATE TABLE IF NOT EXISTS aggregator_thoughts (
+      CREATE TABLE IF NOT EXISTS aggregator_notes (
         file_id VARCHAR(255) PRIMARY KEY,
         metadata JSONB NOT NULL,
         submitted_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
@@ -118,6 +118,26 @@ export async function initializeDatabase(): Promise<void> {
         updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
         created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
       )
+    `);
+
+    // Hard-cut: migrate legacy aggregator_thoughts → aggregator_notes once
+    await db.query(`
+      DO $$
+      BEGIN
+        IF EXISTS (
+          SELECT 1 FROM information_schema.tables
+          WHERE table_name = 'aggregator_thoughts'
+        ) AND EXISTS (
+          SELECT 1 FROM information_schema.tables
+          WHERE table_name = 'aggregator_notes'
+        ) THEN
+          INSERT INTO aggregator_notes (file_id, metadata, submitted_at, pn_identifier, updated_at, created_at)
+          SELECT file_id, metadata, submitted_at, pn_identifier, updated_at, created_at
+          FROM aggregator_thoughts
+          ON CONFLICT (file_id) DO NOTHING;
+          DROP TABLE IF EXISTS aggregator_thoughts;
+        END IF;
+      END $$;
     `);
 
     // Collections table (collections of files)
@@ -164,36 +184,36 @@ export async function initializeDatabase(): Promise<void> {
       ON aggregator_media USING GIN((metadata->'feedCategories'))
     `);
 
-    // Create indexes for aggregator_thoughts
+    // Create indexes for aggregator_notes
     await db.query(`
-      CREATE INDEX IF NOT EXISTS idx_aggregator_thoughts_pn_identifier 
-      ON aggregator_thoughts(pn_identifier)
+      CREATE INDEX IF NOT EXISTS idx_aggregator_notes_pn_identifier 
+      ON aggregator_notes(pn_identifier)
     `);
 
     await db.query(`
-      CREATE INDEX IF NOT EXISTS idx_aggregator_thoughts_is_public 
-      ON aggregator_thoughts((metadata->>'isPublic'))
+      CREATE INDEX IF NOT EXISTS idx_aggregator_notes_is_public 
+      ON aggregator_notes((metadata->>'isPublic'))
     `);
 
     await db.query(`
-      CREATE INDEX IF NOT EXISTS idx_aggregator_thoughts_updated_at 
-      ON aggregator_thoughts(updated_at DESC)
+      CREATE INDEX IF NOT EXISTS idx_aggregator_notes_updated_at 
+      ON aggregator_notes(updated_at DESC)
     `);
 
     await db.query(`
-      CREATE INDEX IF NOT EXISTS idx_thoughts_public_only 
-      ON aggregator_thoughts(updated_at DESC)
+      CREATE INDEX IF NOT EXISTS idx_notes_public_only 
+      ON aggregator_notes(updated_at DESC)
       WHERE metadata->>'isPublic' = 'true'
     `);
 
     await db.query(`
-      CREATE INDEX IF NOT EXISTS idx_thoughts_keywords_gin 
-      ON aggregator_thoughts USING GIN((metadata->'keywords'))
+      CREATE INDEX IF NOT EXISTS idx_notes_keywords_gin 
+      ON aggregator_notes USING GIN((metadata->'keywords'))
     `);
 
     await db.query(`
-      CREATE INDEX IF NOT EXISTS idx_thoughts_feed_category
-      ON aggregator_thoughts USING GIN((metadata->'feedCategories'))
+      CREATE INDEX IF NOT EXISTS idx_notes_feed_category
+      ON aggregator_notes USING GIN((metadata->'feedCategories'))
     `);
 
     // Create indexes for aggregator_collections

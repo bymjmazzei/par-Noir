@@ -26,6 +26,9 @@
         ],
         "unlock": [
           "unlock-parnoir"
+        ],
+        "pen": [
+          "pen-parnoir"
         ]
       }
     }

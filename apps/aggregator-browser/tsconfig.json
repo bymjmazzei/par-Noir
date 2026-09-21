@@ -17,7 +17,8 @@
     "noFallthroughCasesInSwitch": true,
     "baseUrl": ".",
     "paths": {
-      "@/*": ["./src/*"]
+      "@/*": ["./src/*"],
+      "@par-noir/pen-protocol": ["../../packages/pen-protocol/src/index.ts"]
     }
   },
   "include": ["src"],

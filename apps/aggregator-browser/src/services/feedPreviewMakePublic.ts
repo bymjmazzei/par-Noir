@@ -28,8 +28,8 @@ export function visualFeedPreviewKind(meta: {
   if (ft === 'video' || mime.startsWith('video/')) return 'video';
   if (
     ft === 'image' ||
-    ft === 'thought-thumbnail' ||
-    ft === 'thought-collection' ||
+    ft === 'note-thumbnail' ||
+    ft === 'note-collection' ||
     mime.startsWith('image/') ||
     name.startsWith('thumb_') ||
     /\.(jpg|jpeg|png|gif|webp|svg|bmp|ico)$/i.test(name)
@@ -42,7 +42,7 @@ export function visualFeedPreviewKind(meta: {
 function wantsCollectionCover(fileType?: string, collectionFileIds?: string[]): boolean {
   const ft = String(fileType || '').toLowerCase();
   return (
-    (ft === 'collection' || ft === 'thought-collection') &&
+    (ft === 'collection' || ft === 'note-collection') &&
     Array.isArray(collectionFileIds) &&
     collectionFileIds.length > 0
   );
@@ -133,7 +133,7 @@ export async function publishFeedPreviewsForPublicVisual(params: {
     previewBlob = await decryptPackageToBlob(coverPkg, params.session);
     previewMime = coverMime;
   } else if (kind === 'image' || kind === 'video') {
-    // Thought / thumb fileType but unexpected MIME — still try decrypt as image
+    // Note / thumb fileType but unexpected MIME — still try decrypt as image
     previewBlob = await decryptPackageToBlob(params.encryptedPackage, params.session);
     previewMime = mime.startsWith('image/') || mime.startsWith('video/') ? mime : 'image/png';
   }

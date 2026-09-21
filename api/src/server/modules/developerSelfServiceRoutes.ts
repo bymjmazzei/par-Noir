@@ -21,7 +21,8 @@ const RESERVED_CLIENT_IDS = new Set([
   'messaging-app',
   'prism-app',
   'developer-portal',
-  'licensing-portal'
+  'licensing-portal',
+  'pen-app'
 ]);
 
 const DATA_POINT_PROPOSAL_EVENT = 'data_point.proposal';

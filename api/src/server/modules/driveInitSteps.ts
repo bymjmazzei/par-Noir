@@ -15,10 +15,10 @@ import { PN_DRIVE_SHEET_KEYS, persistPnDriveIndex, type PnDriveIndex } from './p
 import { setDriveInitProgress } from './driveInitProgress';
 import { verifyPnDriveLayout } from './driveInitVerify';
 
-const CONTENT_CLASSES: ContentClassName[] = ['media', 'thoughts', 'collections'];
+const CONTENT_CLASSES: ContentClassName[] = ['media', 'notes', 'collections'];
 const CONTENT_CLASS_PROGRESS: Record<ContentClassName, number> = {
   media: 18,
-  thoughts: 28,
+  notes: 28,
   collections: 38,
 };
 

@@ -5,8 +5,8 @@
 
 import type { IndexedFile } from '../types/aggregator';
 
-export function isThought(file: IndexedFile): boolean {
-  return (file.metadata as any).contentClass === 'thought';
+export function isNote(file: IndexedFile): boolean {
+  return (file.metadata as any).contentClass === 'note';
 }
 
 export function isCollection(file: IndexedFile): boolean {

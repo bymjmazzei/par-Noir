@@ -7,7 +7,8 @@ import type React from 'react';
 import { PNOAuthService } from '../services/pnOAuthService';
 import { listStorageFiles } from '../services/storageApiClient';
 import type { DriveAccount, DriveFile } from '../components/storage/storageTypes';
-import { mapCollectionEntry, mapThoughtThumbnailEntry } from './mapStorageListEntries';
+import { mapCollectionEntry, mapNoteThumbnailEntry } from './mapStorageListEntries';
+import { isNoteCollectionFileName, isNoteFileName, isNoteThumbnailFileName } from '../utils/noteFileName';
 
 export interface UseLoadFilesForAccountParams {
   authenticatedUserId: string | undefined;
@@ -88,16 +89,14 @@ export function useLoadFilesForAccount({
 
         const regularThumbnails = thumbnails;
 
-        // Separate thought thumbnails from regular thumbnails
-        const thoughtThumbnails = regularThumbnails.filter((thumb: DriveFile) => {
-          const name = thumb.name.toLowerCase();
-          return name.startsWith('thumb_thought-') && (name.endsWith('.thought.encrypted') || name.endsWith('.png.encrypted'));
-        });
+        // Separate note thumbnails (note- / historical thought-) from regular thumbnails
+        const noteThumbnails = regularThumbnails.filter((thumb: DriveFile) =>
+          isNoteThumbnailFileName(thumb.name)
+        );
 
-        const nonThoughtThumbnails = regularThumbnails.filter((thumb: DriveFile) => {
+        const nonNoteThumbnails = regularThumbnails.filter((thumb: DriveFile) => {
           const name = thumb.name.toLowerCase();
-          // Exclude thought thumbnails
-          if (name.startsWith('thumb_thought-')) {
+          if (isNoteThumbnailFileName(thumb.name)) {
             return false;
           }
           // Exclude PDF page thumbnails (format: thumb_filename-page-N.png.encrypted)
@@ -107,8 +106,8 @@ export function useLoadFilesForAccount({
           return true;
         });
 
-        // Map regular (non-thought) thumbnails to their main files and create display entries
-        const thumbnailEntries = nonThoughtThumbnails.map((thumb: DriveFile) => {
+        // Map regular (non-note) thumbnails to their main files and create display entries
+        const thumbnailEntries = nonNoteThumbnails.map((thumb: DriveFile) => {
           // Remove "thumb_" prefix and ".encrypted" suffix to find main file
           const thumbNameWithoutPrefix = thumb.name.replace(/^thumb_/i, '').replace(/\.encrypted$/i, '');
 
@@ -131,34 +130,30 @@ export function useLoadFilesForAccount({
           };
         });
 
-        // Map thought thumbnails to thought files
-        // Exclude thought-collection files (they're handled separately)
-        const thoughtFiles = mainFiles.filter((file: DriveFile) => {
-          const name = file.name.toLowerCase();
-          return name.startsWith('thought-') &&
-                 (name.endsWith('.thought.encrypted') || name.endsWith('.png.encrypted')) &&
-                 !name.endsWith('.thought-collection.encrypted'); // Exclude thought collections
+        // Map note thumbnails to note files
+        // Exclude note-collection files (they're handled separately)
+        const noteFiles = mainFiles.filter((file: DriveFile) => {
+          return isNoteFileName(file.name) && !isNoteCollectionFileName(file.name);
         });
 
-        // Filter out thought-collection files from main files (they should never appear individually)
-        const thoughtCollectionFiles = mainFiles.filter((file: DriveFile) => {
-          const name = file.name.toLowerCase();
-          return name.endsWith('.thought-collection.encrypted');
-        });
+        // Filter out note-collection files from main files (they should never appear individually)
+        const noteCollectionFiles = mainFiles.filter((file: DriveFile) =>
+          isNoteCollectionFileName(file.name)
+        );
 
-        if (import.meta.env.DEV) console.log(`[FileStorageAggregator] Found ${thoughtCollectionFiles.length} thought-collection files (will be excluded)`);
+        if (import.meta.env.DEV) console.log(`[FileStorageAggregator] Found ${noteCollectionFiles.length} note-collection files (will be excluded)`);
 
-        // Map thought thumbnails to thought files and load metadata to check if they're part of collections.
+        // Map note thumbnails to note files and load metadata to check if they're part of collections.
         // Missing public-index metadata must NOT drop Drive thumbs from Storage (orphan after index purge).
-        const thoughtThumbnailEntries = await Promise.all(
-          thoughtThumbnails.map(async (thumb: DriveFile) => {
+        const noteThumbnailEntries = await Promise.all(
+          noteThumbnails.map(async (thumb: DriveFile) => {
             // Remove "thumb_" prefix, ".encrypted" suffix, and file extension to get base name
-            const thumbNameBase = thumb.name.replace(/^thumb_/i, '').replace(/\.encrypted$/i, '').replace(/\.(thought|png)$/i, '');
+            const thumbNameBase = thumb.name.replace(/^thumb_/i, '').replace(/\.encrypted$/i, '').replace(/\.(note|thought|png)$/i, '');
 
-            // Find the corresponding thought file by comparing base names (ignoring extension differences)
-            const thoughtFile = thoughtFiles.find((tf: DriveFile) => {
-              const thoughtFileNameBase = tf.name.replace(/\.encrypted$/i, '').replace(/\.(thought|png)$/i, '');
-              return thoughtFileNameBase === thumbNameBase;
+            // Find the corresponding note file by comparing base names (ignoring extension differences)
+            const noteFile = noteFiles.find((tf: DriveFile) => {
+              const noteFileNameBase = tf.name.replace(/\.encrypted$/i, '').replace(/\.(note|thought|png)$/i, '');
+              return noteFileNameBase === thumbNameBase;
             });
 
             let thumbMetadata: Record<string, unknown> | null = null;
@@ -168,17 +163,17 @@ export function useLoadFilesForAccount({
               if (import.meta.env.DEV) console.warn(`[FileStorageAggregator] Failed to load thumbnail metadata for ${thumb.id}:`, err);
             }
 
-            const entry = mapThoughtThumbnailEntry({
+            const entry = mapNoteThumbnailEntry({
               thumb,
-              thoughtFileId: thoughtFile?.id,
+              noteFileId: noteFile?.id,
               metadata: thumbMetadata,
             });
 
             if (
-              thoughtFile?.name.toLowerCase().endsWith('.thought-collection.encrypted') &&
+              noteFile?.name.toLowerCase().endsWith('.note-collection.encrypted') &&
               !entry.mainFileType
             ) {
-              entry.mainFileType = 'thought-collection';
+              entry.mainFileType = 'note-collection';
             }
 
             if (import.meta.env.DEV) {
@@ -211,7 +206,7 @@ export function useLoadFilesForAccount({
             if (import.meta.env.DEV && metadata) {
               console.log(`[FileStorageAggregator] Loaded collection metadata for ${file.id}:`, {
                 name: metadata?.name || metadata?.title,
-                isThoughtCollection: entry.isThoughtCollection,
+                isNoteCollection: entry.isNoteCollection,
                 collectionFileIds: (metadata?.collection as { collectionFileIds?: unknown[] } | undefined)?.collectionFileIds?.length || 0,
                 indexMissing: entry.indexMissing === true,
               });
@@ -220,11 +215,11 @@ export function useLoadFilesForAccount({
           })
         );
 
-        // Build set of fileIds (thumbnails and thought files) that are part of THOUGHT COLLECTIONS (to exclude them from individual display)
-        // Only filter out thoughts that are in thought collections (multi-page thoughts), not regular collections or single thoughts
-        // This way manually created collections still show their individual files, and single thoughts are visible
-        const thoughtFilesInCollections = new Set<string>();
-        const thumbnailIdsInCollections = new Set<string>(); // Track thumbnail IDs that are in thought collections
+        // Build set of fileIds (thumbnails and note files) that are part of NOTE COLLECTIONS (to exclude them from individual display)
+        // Only filter out notes that are in note collections (multi-page notes), not regular collections or single notes
+        // This way manually created collections still show their individual files, and single notes are visible
+        const noteFilesInCollections = new Set<string>();
+        const thumbnailIdsInCollections = new Set<string>(); // Track thumbnail IDs that are in note collections
 
         collectionFilesWithMetadata.forEach((collectionFile: any) => {
           const collectionData = collectionFile.collection;
@@ -232,89 +227,89 @@ export function useLoadFilesForAccount({
             return; // Skip collections without valid collectionFileIds
           }
 
-          // Only filter files from thought collections, not regular collections
-          // IMPORTANT: Only collections explicitly marked as thought collections should filter their files
+          // Only filter files from note collections, not regular collections
+          // IMPORTANT: Only collections explicitly marked as note collections should filter their files
           // Regular collections (manually created) and collections without the flag should not filter
-          const isThoughtCollection = collectionFile.isThoughtCollection === true;
+          const isNoteCollection = collectionFile.isNoteCollection === true;
 
-          // FALLBACK: If isThoughtCollection flag is not set, check if ALL collectionFileIds are thought thumbnails
+          // FALLBACK: If isNoteCollection flag is not set, check if ALL collectionFileIds are note thumbnails
           // This handles cases where the flag wasn't saved correctly or collections created before the flag existed
-          let shouldTreatAsThoughtCollection = isThoughtCollection;
-          if (!shouldTreatAsThoughtCollection) {
-            // Check if all collectionFileIds are thought thumbnails
-            const allAreThoughtThumbnails = collectionData.collectionFileIds.every((fileId: string) => {
-              return thoughtThumbnailEntries.some((entry: any) => entry.id === fileId);
+          let shouldTreatAsNoteCollection = isNoteCollection;
+          if (!shouldTreatAsNoteCollection) {
+            // Check if all collectionFileIds are note thumbnails
+            const allAreNoteThumbnails = collectionData.collectionFileIds.every((fileId: string) => {
+              return noteThumbnailEntries.some((entry: any) => entry.id === fileId);
             });
-            if (allAreThoughtThumbnails && collectionData.collectionFileIds.length > 0) {
-              shouldTreatAsThoughtCollection = true;
-              if (import.meta.env.DEV) console.log(`[FileStorageAggregator] Collection ${collectionFile.id} detected as thought collection (fallback: all ${collectionData.collectionFileIds.length} files are thought thumbnails)`);
+            if (allAreNoteThumbnails && collectionData.collectionFileIds.length > 0) {
+              shouldTreatAsNoteCollection = true;
+              if (import.meta.env.DEV) console.log(`[FileStorageAggregator] Collection ${collectionFile.id} detected as note collection (fallback: all ${collectionData.collectionFileIds.length} files are note thumbnails)`);
             }
           }
 
-          if (!shouldTreatAsThoughtCollection) {
-            if (import.meta.env.DEV) console.log(`[FileStorageAggregator] Skipping collection ${collectionFile.id} - not a thought collection (isThoughtCollection: ${isThoughtCollection})`);
+          if (!shouldTreatAsNoteCollection) {
+            if (import.meta.env.DEV) console.log(`[FileStorageAggregator] Skipping collection ${collectionFile.id} - not a note collection (isNoteCollection: ${isNoteCollection})`);
             return; // Skip regular collections - their files should still be visible
           }
 
-          if (import.meta.env.DEV) console.log(`[FileStorageAggregator] Processing thought collection ${collectionFile.id} with ${collectionData.collectionFileIds.length} files`);
+          if (import.meta.env.DEV) console.log(`[FileStorageAggregator] Processing note collection ${collectionFile.id} with ${collectionData.collectionFileIds.length} files`);
           // Check each fileId in the collection - EXCLUDE ALL OF THEM from individual display
           collectionData.collectionFileIds.forEach((fileId: string) => {
-            // ALWAYS add the fileId to thumbnailIdsInCollections (for multi-page thoughts, collections use thumbnail fileIds)
+            // ALWAYS add the fileId to thumbnailIdsInCollections (for multi-page notes, collections use thumbnail fileIds)
             // This ensures the thumbnail itself is excluded
             thumbnailIdsInCollections.add(fileId);
-            if (import.meta.env.DEV) console.log(`[FileStorageAggregator] Marking thumbnail ${fileId} as part of thought collection (direct exclusion)`);
+            if (import.meta.env.DEV) console.log(`[FileStorageAggregator] Marking thumbnail ${fileId} as part of note collection (direct exclusion)`);
 
-            // Try to find the corresponding thought thumbnail entry to get the mainFileId
-            const thoughtThumbnail = thoughtThumbnailEntries.find((entry: any) => entry.id === fileId);
-            if (thoughtThumbnail?.mainFileId) {
-              thoughtFilesInCollections.add(thoughtThumbnail.mainFileId);
-              if (import.meta.env.DEV) console.log(`[FileStorageAggregator] Marking thought file ${thoughtThumbnail.mainFileId} as part of thought collection (via thumbnail ${fileId})`);
+            // Try to find the corresponding note thumbnail entry to get the mainFileId
+            const noteThumbnail = noteThumbnailEntries.find((entry: any) => entry.id === fileId);
+            if (noteThumbnail?.mainFileId) {
+              noteFilesInCollections.add(noteThumbnail.mainFileId);
+              if (import.meta.env.DEV) console.log(`[FileStorageAggregator] Marking note file ${noteThumbnail.mainFileId} as part of note collection (via thumbnail ${fileId})`);
             } else {
-              // If we can't find it in thoughtThumbnailEntries, check if it's a thought file directly
+              // If we can't find it in noteThumbnailEntries, check if it's a note file directly
               const fileInCollection = allFiles.find((f: DriveFile) => f.id === fileId);
               if (fileInCollection) {
                 const fileName = fileInCollection.name.toLowerCase();
-                if (fileName.startsWith('thought-') && (fileName.endsWith('.thought.encrypted') || fileName.endsWith('.png.encrypted'))) {
-                  thoughtFilesInCollections.add(fileId);
-                  if (import.meta.env.DEV) console.log(`[FileStorageAggregator] Marking thought file ${fileId} as part of thought collection (direct file match)`);
+                if (isNoteFileName(fileName)) {
+                  noteFilesInCollections.add(fileId);
+                  if (import.meta.env.DEV) console.log(`[FileStorageAggregator] Marking note file ${fileId} as part of note collection (direct file match)`);
                 }
               }
             }
           });
         });
 
-        if (import.meta.env.DEV) console.log(`[FileStorageAggregator] Filtering: ${thoughtThumbnailEntries.length} total thought thumbnails, ${thumbnailIdsInCollections.size} in collections, ${thoughtFilesInCollections.size} thought files in collections`);
+        if (import.meta.env.DEV) console.log(`[FileStorageAggregator] Filtering: ${noteThumbnailEntries.length} total note thumbnails, ${thumbnailIdsInCollections.size} in collections, ${noteFilesInCollections.size} note files in collections`);
 
-        // Filter to show thumbnails (representing main files), thought thumbnails, and collections
+        // Filter to show thumbnails (representing main files), note thumbnails, and collections
         // IMPORTANT: Exclude collections from allFiles since they're already added via collectionFilesWithMetadata
-        // Exclude thought-collection-thumbnail fileType (these are pages in multi-page thought collections)
-        // Single thoughts (fileType: 'image' with isThoughtThumbnail) should remain visible
-        const filteredThoughtThumbnailEntries = thoughtThumbnailEntries.filter((entry: any) => {
+        // Exclude note-collection-thumbnail fileType (these are pages in multi-page note collections)
+        // Single notes (fileType: 'image' with isNoteThumbnail) should remain visible
+        const filteredNoteThumbnailEntries = noteThumbnailEntries.filter((entry: any) => {
           // Use fileType from entry (loaded during mapping) or fallback to fileMetadataMap
           const fileType = entry.fileType || fileMetadataMap.get(entry.id)?.fileType;
           const mainFileType = entry.mainFileType || (entry.mainFileId ? fileMetadataMap.get(entry.mainFileId)?.fileType : undefined);
 
-          // Also check filename pattern as a fallback - thought collection thumbnails have "-page-" in the name
+          // Also check filename pattern as a fallback - note collection thumbnails have "-page-" in the name
           const isPageThumbnail = entry.name && /thumb_.*-page-\d+\.(png|jpg|jpeg)\.encrypted$/i.test(entry.name.toLowerCase());
 
           // Exclude if:
-          // 1. fileType is 'thought-collection-thumbnail' (collection thought pages)
-          // 2. mainFileType is 'thought-collection' (thumbnails from thought collections)
-          // 3. Filename matches page thumbnail pattern (thumb_*-page-N.png.encrypted) AND it's a thought thumbnail
-          // 4. Thumbnail ID is in a thought collection (fallback for existing data)
-          // 5. mainFileId is in a thought collection (fallback for existing data)
-          const isCollectionThought = fileType === 'thought-collection-thumbnail' ||
-                                     mainFileType === 'thought-collection' ||
-                                     (isPageThumbnail && entry.name.toLowerCase().includes('thumb_thought')) ||
+          // 1. fileType is 'note-collection-thumbnail' (collection note pages)
+          // 2. mainFileType is 'note-collection' (thumbnails from note collections)
+          // 3. Filename matches page thumbnail pattern (thumb_*-page-N.png.encrypted) AND it's a note thumbnail
+          // 4. Thumbnail ID is in a note collection (fallback for existing data)
+          // 5. mainFileId is in a note collection (fallback for existing data)
+          const isCollectionNote = fileType === 'note-collection-thumbnail' ||
+                                     mainFileType === 'note-collection' ||
+                                     (isPageThumbnail && entry.name.toLowerCase().includes('thumb_note') || entry.name.toLowerCase().includes('thumb_thought')) ||
                                      thumbnailIdsInCollections.has(entry.id) ||
-                                     thoughtFilesInCollections.has(entry.mainFileId);
-          if (isCollectionThought) {
-            if (import.meta.env.DEV) console.log(`[FileStorageAggregator] Filtering out thought thumbnail ${entry.id} (name: ${entry.name}, fileType: ${fileType}, mainFileId: ${entry.mainFileId}, mainFileType: ${mainFileType}, isPageThumbnail: ${isPageThumbnail}) - collection thought`);
+                                     noteFilesInCollections.has(entry.mainFileId);
+          if (isCollectionNote) {
+            if (import.meta.env.DEV) console.log(`[FileStorageAggregator] Filtering out note thumbnail ${entry.id} (name: ${entry.name}, fileType: ${fileType}, mainFileId: ${entry.mainFileId}, mainFileType: ${mainFileType}, isPageThumbnail: ${isPageThumbnail}) - collection note`);
           }
-          return !isCollectionThought;
+          return !isCollectionNote;
         });
 
-        if (import.meta.env.DEV) console.log(`[FileStorageAggregator] After filtering: ${filteredThoughtThumbnailEntries.length} thought thumbnails will be displayed`);
+        if (import.meta.env.DEV) console.log(`[FileStorageAggregator] After filtering: ${filteredNoteThumbnailEntries.length} note thumbnails will be displayed`);
         const collectionFileIds = new Set(collectionFiles.map((f: { id: string }) => f.id));
         const mediaFiles: Array<{
           id: string;
@@ -331,7 +326,7 @@ export function useLoadFilesForAccount({
           [key: string]: unknown;
         }> = [
           ...thumbnailEntries,
-          ...filteredThoughtThumbnailEntries.filter((e): e is NonNullable<typeof e> => e != null),
+          ...filteredNoteThumbnailEntries.filter((e): e is NonNullable<typeof e> => e != null),
           ...collectionFilesWithMetadata,
           ...allFiles.filter((file: DriveFile) => {
           const name = file.name.toLowerCase();
@@ -341,8 +336,8 @@ export function useLoadFilesForAccount({
             return false;
           }
 
-          // Exclude thought files that are part of collections (multi-page thoughts)
-          // Check fileType first - collection thoughts have fileType 'thought-collection-page'
+          // Exclude note files that are part of collections (multi-page notes)
+          // Check fileType first - collection notes have fileType 'note-collection-page'
           // This prevents showing individual pages when they're already in a collection
           // Media files in collections are NOT excluded (so manually created collections still show their files)
 
@@ -350,24 +345,24 @@ export function useLoadFilesForAccount({
           const fileMetadata = fileMetadataMap.get(file.id);
           const fileType = fileMetadata?.fileType;
 
-          // Exclude if fileType is 'thought-collection-page' or 'thought-collection' (collection thought pages or main collection file)
-          if (fileType === 'thought-collection-page' || fileType === 'thought-collection') {
+          // Exclude if fileType is 'note-collection-page' or 'note-collection' (collection note pages or main collection file)
+          if (fileType === 'note-collection-page' || fileType === 'note-collection') {
             return false;
           }
 
-          // Fallback: exclude if in thoughtFilesInCollections (for existing data)
-          if (thoughtFilesInCollections.has(file.id)) {
+          // Fallback: exclude if in noteFilesInCollections (for existing data)
+          if (noteFilesInCollections.has(file.id)) {
             return false;
           }
 
-          // Exclude thought-collection files by extension (they should never appear individually)
-          if (name.endsWith('.thought-collection.encrypted')) {
-            if (import.meta.env.DEV) console.log(`[FileStorageAggregator] Filtering out thought-collection file ${file.id} by extension`);
+          // Exclude note-collection files by extension (they should never appear individually)
+          if (name.endsWith('.note-collection.encrypted')) {
+            if (import.meta.env.DEV) console.log(`[FileStorageAggregator] Filtering out note-collection file ${file.id} by extension`);
             return false;
           }
 
-          // Legacy main-only thoughts (no thumb, no index) are Drive orphans — hide to avoid 404 metadata probes.
-          if (name.startsWith('thought-') && (name.endsWith('.thought.encrypted') || name.endsWith('.png.encrypted'))) {
+          // Legacy main-only notes (no thumb, no index) are Drive orphans — hide to avoid 404 metadata probes.
+          if (isNoteFileName(name)) {
             return false;
           }
 

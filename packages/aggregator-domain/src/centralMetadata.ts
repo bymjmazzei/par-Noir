@@ -75,7 +75,7 @@ export interface CentralIndexResponse {
 export interface CentralIndexFilters {
   tags?: string[];
   fileType?: string;
-  contentClass?: 'media' | 'thought' | 'collection' | string;
+  contentClass?: 'media' | 'note' | 'collection' | string;
   authorDid?: string;
   indexerId?: string;
   limit?: number;

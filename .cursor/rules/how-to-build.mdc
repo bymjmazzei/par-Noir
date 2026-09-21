@@ -24,6 +24,7 @@ alwaysApply: true
   | Feed / public share domain | `@par-noir/aggregator-domain` |
   | OAuth UI chrome / handoff helpers | `@par-noir/oauth-ui` |
   | Device cloud credential headers | `@par-noir/device-cloud-credentials` |
+  | Authored content / Pen templates | `@par-noir/pen-protocol` (see `pen-templates.mdc` — template-first) |
   Apps must not import `@identity-protocol/identity-core` (`scripts/check-no-identity-core-in-apps.sh`).
 - **API base URL:** One config module per app (e.g. `config/api.ts`), one env var **`VITE_API_ENDPOINT`**. At **production build time** that value must be defined (Vite inlines it). There is **no** secret default inside the bundle for prod—wrong URLs are worse than a failed build. **Root `./deploy.sh` exports `VITE_API_ENDPOINT` for you** (default `https://api.parnoir.com`; override: `VITE_API_ENDPOINT=https://… ./deploy.sh`). If you run `npm run build` inside an app without `./deploy.sh`, put `VITE_API_ENDPOINT=…` in that app’s `.env` or export it in the shell first. Do not scatter `REACT_APP_*` or inline API URLs.
 - **Secrets:** Do not commit .env, API keys, or secrets to git. Do not add hardcoded API keys or client IDs as fallbacks; use VITE_* only; fail when unset. Pre-commit runs scripts/check-secrets.sh; do not bypass it.

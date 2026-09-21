@@ -114,8 +114,11 @@ export function setupFeedRoutes(app: Application) {
             driveFileId,
             mimeType,
             skip: shouldSkipPublishSafetyGate({
-              isThoughtThumbnail: (fileEntry.metadata as any)?.isThoughtThumbnail,
+              isNoteThumbnail:
+                (fileEntry.metadata as any)?.isNoteThumbnail === true ||
+                (fileEntry.metadata as any)?.isThoughtThumbnail === true,
               thought: (fileEntry.metadata as any)?.thought,
+              note: (fileEntry.metadata as any)?.note,
               textPost: (fileEntry.metadata as any)?.textPost,
             }),
             existingIsProhibited: isMetadataProhibited(fileEntry.metadata as any),

@@ -117,7 +117,7 @@ export class EngagementService {
       const r = await db.query(
         `SELECT COALESCE(
            (SELECT pn_identifier FROM aggregator_media WHERE file_id = $1 LIMIT 1),
-           (SELECT pn_identifier FROM aggregator_thoughts WHERE file_id = $1 LIMIT 1),
+           (SELECT pn_identifier FROM aggregator_notes WHERE file_id = $1 LIMIT 1),
            (SELECT pn_identifier FROM aggregator_collections WHERE file_id = $1 LIMIT 1)
          ) AS owner_pn`,
         [fileId]

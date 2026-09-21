@@ -22,7 +22,7 @@ export async function createCollection(
     tags?: string[];
     isPublic?: boolean;
     isNSFW?: boolean;
-    isThoughtCollection?: boolean; // Flag to distinguish thought collections from regular collections
+    isNoteCollection?: boolean; // Flag to distinguish note collections from regular collections
     expiresAt?: string | null;
   }
 ): Promise<{ fileId: string; success: boolean; error?: string }> {
@@ -46,7 +46,7 @@ export async function createCollection(
       throw new Error('No publicKey available for encryption');
     }
 
-    // Create collection data file (similar to thought files)
+    // Create collection data file (similar to note files)
     const collectionFileData = {
       collection: collectionData,
       version: '1.0',
@@ -181,7 +181,7 @@ export async function createCollection(
           accessToken,
           accountId,
           session: { did: session.did, publicKey },
-          fileType: metadata?.isThoughtCollection ? 'thought-collection' : 'collection',
+          fileType: metadata?.isNoteCollection ? 'note-collection' : 'collection',
           name: metadata?.title || collectionData.title || 'Collection',
           collectionFileIds: collectionData.collectionFileIds,
           planId: 'floor',
@@ -208,7 +208,7 @@ export async function createCollection(
         collectionFileIds: collectionData.collectionFileIds
       },
       isNSFW: metadata?.isNSFW || false,
-      isThoughtCollection: metadata?.isThoughtCollection || false, // Mark if this is a thought collection
+      isNoteCollection: metadata?.isNoteCollection || false, // Mark if this is a note collection
       ...(Object.prototype.hasOwnProperty.call(metadata || {}, 'expiresAt')
         ? { expiresAt: metadata?.expiresAt ?? null, persistOnDiscover: false }
         : {}),

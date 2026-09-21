@@ -60,10 +60,10 @@ class UploadNotificationService {
     }
     if (task.textPost) {
       const content = task.textPost.content || '';
-      return content.replace(/<[^>]*>/g, '').substring(0, 30) || 'Thought';
+      return content.replace(/<[^>]*>/g, '').substring(0, 30) || 'Note';
     }
     if (task.pages && task.pages.length > 0) {
-      return `Multi-page thought (${task.pages.length} pages)`;
+      return `Multi-page note (${task.pages.length} pages)`;
     }
     return 'Upload';
   }

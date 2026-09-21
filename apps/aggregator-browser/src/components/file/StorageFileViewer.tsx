@@ -7,32 +7,32 @@ import { PNOAuthService } from '../../services/pnOAuthService';
 import { EncryptionManager } from '@par-noir/identity-crypto/browser';
 import { fetchStorageFile } from '../../services/storageApiClient';
 import { API_ENDPOINT } from '../../config/api';
+import { isNoteFileName, isNoteThumbnailFileName } from '../../utils/noteFileName';
 import type { DriveFile } from '../storage/storageTypes';
 import type { EncryptedFilePackage } from '../../services/encryptionService';
 
 export const FileViewerModal: React.FC<{ file: DriveFile; fileMetadataMap: Map<string, any>; onClose: () => void; onDownload: () => void }> = ({ file, fileMetadataMap, onClose, onDownload }) => {
-  const [thoughtTitle, setThoughtTitle] = useState<string | null>(null);
+  const [noteTitle, setNoteTitle] = useState<string | null>(null);
   const [isLoadingTitle, setIsLoadingTitle] = useState(false);
 
-  // Check if this is a thought file
+  // Check if this is a note file (note- / historical thought-)
   const nameWithoutEncrypted = file.name.replace(/\.encrypted$/i, '');
-  const isThought = nameWithoutEncrypted.toLowerCase().startsWith('thought-') && 
-                    (nameWithoutEncrypted.toLowerCase().endsWith('.thought') || nameWithoutEncrypted.toLowerCase().endsWith('.png'));
-  const isThoughtThumbnail = nameWithoutEncrypted.toLowerCase().startsWith('thumb_thought-');
+  const isNote = isNoteFileName(nameWithoutEncrypted);
+  const isNoteThumbnail = isNoteThumbnailFileName(nameWithoutEncrypted);
 
-  // Load thought title
+  // Load note title
   useEffect(() => {
-    if (!isThought && !isThoughtThumbnail) {
+    if (!isNote && !isNoteThumbnail) {
       return;
     }
 
-    const loadThoughtTitle = async () => {
+    const loadNoteTitle = async () => {
       setIsLoadingTitle(true);
       try {
         // First check metadata map
         const metadata = fileMetadataMap.get(file.id);
         if (metadata?.title) {
-          setThoughtTitle(metadata.title);
+          setNoteTitle(metadata.title);
           setIsLoadingTitle(false);
           return;
         }
@@ -61,26 +61,26 @@ export const FileViewerModal: React.FC<{ file: DriveFile; fileMetadataMap: Map<s
         if (response.ok) {
           const metadata = await response.json();
           if (metadata.metadata?.title) {
-            setThoughtTitle(metadata.metadata.title);
+            setNoteTitle(metadata.metadata.title);
           } else if (metadata.metadata?.textPost?.content || metadata.metadata?.thought?.content) {
             // Extract title from content (first line or first 50 chars)
             const content = metadata.metadata.textPost?.content || metadata.metadata.thought?.content || '';
             const firstLine = content.split('\n')[0].trim();
-            setThoughtTitle(firstLine.length > 50 ? firstLine.substring(0, 50) + '...' : firstLine || 'Thought');
+            setNoteTitle(firstLine.length > 50 ? firstLine.substring(0, 50) + '...' : firstLine || 'Note');
           }
         }
       } catch (err) {
-        if (import.meta.env.DEV) console.error('[FileViewerModal] Failed to load thought title:', err);
+        if (import.meta.env.DEV) console.error('[FileViewerModal] Failed to load note title:', err);
       } finally {
         setIsLoadingTitle(false);
       }
     };
 
-    loadThoughtTitle();
-  }, [file.id, file.name, isThought, isThoughtThumbnail, fileMetadataMap]);
+    loadNoteTitle();
+  }, [file.id, file.name, isNote, isNoteThumbnail, fileMetadataMap]);
 
   // Get display title
-  const displayTitle = thoughtTitle || (isThought || isThoughtThumbnail ? 'Thought' : null);
+  const displayTitle = noteTitle || (isNote || isNoteThumbnail ? 'Note' : null);
 
   return (
     <div 

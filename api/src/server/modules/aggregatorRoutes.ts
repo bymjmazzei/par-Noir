@@ -69,7 +69,7 @@ export function setupAggregatorRoutes(app: any, deps: AggregatorRouteDeps) {
       // Parse query parameters
       const tags = req.query.tags ? (req.query.tags as string).split(',').map(t => t.trim()) : undefined;
       const fileType = req.query.fileType as string | undefined;
-      const contentClass = req.query.contentClass as 'media' | 'thought' | 'collection' | undefined;
+      const contentClass = req.query.contentClass as 'media' | 'note' | 'collection' | undefined;
       const authorDid = req.query.authorDid as string | undefined;
       const indexerId = req.query.indexerId as string | undefined;
       const limit = req.query.limit ? parseInt(req.query.limit as string, 10) : undefined;
@@ -90,7 +90,7 @@ export function setupAggregatorRoutes(app: any, deps: AggregatorRouteDeps) {
         // Debug mode: return additional info
         const db = (await import('../utils/database')).getDatabasePool();
         // Query all three tables for debug info
-        const allTables = ['aggregator_media', 'aggregator_thoughts', 'aggregator_collections'];
+        const allTables = ['aggregator_media', 'aggregator_notes', 'aggregator_collections'];
         const debugQueries = allTables.map(table =>
           db.query(`
             SELECT file_id, metadata->>'isPublic' as is_public, metadata->>'name' as name, updated_at, '${table}' as table_name
@@ -449,7 +449,7 @@ export function setupAggregatorRoutes(app: any, deps: AggregatorRouteDeps) {
         const existingEntry = await service.getFileMetadata(validatedMetadata.fileId);
         const existingMeta = (existingEntry?.metadata || validatedMetadata) as any;
         const skipSafety = shouldSkipPublishSafetyGate({
-          isThoughtThumbnail: existingMeta?.isThoughtThumbnail,
+          isNoteThumbnail: existingMeta?.isNoteThumbnail,
           thought: existingMeta?.thought ?? (validatedMetadata as any).thought,
           textPost: existingMeta?.textPost ?? (validatedMetadata as any).textPost,
         });
@@ -566,7 +566,7 @@ export function setupAggregatorRoutes(app: any, deps: AggregatorRouteDeps) {
               publicToken: validatedMetadata.publicToken,
               engagement: validatedMetadata.engagement,
               contentClass: (validatedMetadata as any).contentClass,
-              isThoughtThumbnail: (validatedMetadata as any).isThoughtThumbnail,
+              isNoteThumbnail: (validatedMetadata as any).isNoteThumbnail,
               mainFileId: (validatedMetadata as any).mainFileId,
               thumbnailFileId: (validatedMetadata as any).thumbnailFileId,
               collectionFileIds: (validatedMetadata as any).collection?.collectionFileIds
@@ -655,7 +655,7 @@ export function setupAggregatorRoutes(app: any, deps: AggregatorRouteDeps) {
     try {
       const db = (await import('../utils/database')).getDatabasePool();
       await db.query('DELETE FROM aggregator_media');
-      await db.query('DELETE FROM aggregator_thoughts');
+      await db.query('DELETE FROM aggregator_notes');
       await db.query('DELETE FROM aggregator_collections');
       try {
         await db.query('DELETE FROM feed_posts');
@@ -757,7 +757,7 @@ export function setupAggregatorRoutes(app: any, deps: AggregatorRouteDeps) {
             `SELECT file_id, metadata, submitted_at, pn_identifier FROM aggregator_media 
              WHERE metadata->>'mainFileId' = $1 
              UNION ALL
-             SELECT file_id, metadata, submitted_at, pn_identifier FROM aggregator_thoughts 
+             SELECT file_id, metadata, submitted_at, pn_identifier FROM aggregator_notes 
              WHERE metadata->>'mainFileId' = $1 
              UNION ALL
              SELECT file_id, metadata, submitted_at, pn_identifier FROM aggregator_collections 
@@ -991,7 +991,7 @@ export function setupAggregatorRoutes(app: any, deps: AggregatorRouteDeps) {
           metadata->>'backendFileId' as backend_file_id,
           metadata->>'backend' as backend,
           CASE 
-            WHEN metadata->>'textPost' IS NOT NULL OR metadata->>'thought' IS NOT NULL THEN 'thought'
+            WHEN metadata->>'textPost' IS NOT NULL OR metadata->>'thought' IS NOT NULL THEN 'note'
             ELSE metadata->>'fileType'
           END as detected_type,
           updated_at
@@ -1011,10 +1011,10 @@ export function setupAggregatorRoutes(app: any, deps: AggregatorRouteDeps) {
       const googleDriveFiles = allFiles.rows.filter((r: any) => r.backend === 'google_drive');
       
       // Count by file type
-      const thoughts = allFiles.rows.filter((r: any) => 
-        r.file_type === 'thought' || r.file_type === 'text' || r.detected_type === 'thought'
+      const notes = allFiles.rows.filter((r: any) => 
+        r.file_type === 'note' || r.file_type === 'text' || r.detected_type === 'note'
       );
-      const publicThoughts = thoughts.filter((r: any) => 
+      const publicNotes = notes.filter((r: any) => 
         r.is_public === 'true' || r.is_public_bool === true
       );
       
@@ -1372,7 +1372,7 @@ export function setupAggregatorRoutes(app: any, deps: AggregatorRouteDeps) {
             `SELECT file_id, metadata, submitted_at, pn_identifier FROM aggregator_media 
              WHERE metadata->>'mainFileId' = $1 
              UNION ALL
-             SELECT file_id, metadata, submitted_at, pn_identifier FROM aggregator_thoughts 
+             SELECT file_id, metadata, submitted_at, pn_identifier FROM aggregator_notes 
              WHERE metadata->>'mainFileId' = $1 
              UNION ALL
              SELECT file_id, metadata, submitted_at, pn_identifier FROM aggregator_collections 
@@ -1458,7 +1458,7 @@ export function setupAggregatorRoutes(app: any, deps: AggregatorRouteDeps) {
         subjects,
         feedCategories,
         thumbnailFileId,
-        isThoughtThumbnail, // Flag indicating this is a thumbnail of a thought
+        isNoteThumbnail, // Flag indicating this is a thumbnail of a note
         isPartOfCollection, // Flag indicating this file is part of a collection
         mainFileId, // Reference to the source file (for thumbnails)
         isEncrypted, // True if main file is encrypted; false for raw uploads over tier limit
@@ -1484,7 +1484,7 @@ export function setupAggregatorRoutes(app: any, deps: AggregatorRouteDeps) {
             `SELECT file_id, metadata, submitted_at, pn_identifier FROM aggregator_media 
              WHERE metadata->>'mainFileId' = $1 
              UNION ALL
-             SELECT file_id, metadata, submitted_at, pn_identifier FROM aggregator_thoughts 
+             SELECT file_id, metadata, submitted_at, pn_identifier FROM aggregator_notes 
              WHERE metadata->>'mainFileId' = $1 
              UNION ALL
              SELECT file_id, metadata, submitted_at, pn_identifier FROM aggregator_collections 
@@ -1618,7 +1618,7 @@ export function setupAggregatorRoutes(app: any, deps: AggregatorRouteDeps) {
             textPost,
             thought,
             mimeType: driveFile.mimeType,
-            isThoughtThumbnail,
+            isNoteThumbnail,
             isPartOfCollection
           });
           const createIsPublic = isPublic !== undefined ? isPublic : defaultIsPublic;
@@ -1652,7 +1652,7 @@ export function setupAggregatorRoutes(app: any, deps: AggregatorRouteDeps) {
             ...(thought && { thought }),
             ...(collection && { collection }), // Include collection data if provided
             ...(isNSFW !== undefined && { isNSFW: isNSFW === true }),
-            ...(isThoughtThumbnail !== undefined && { isThoughtThumbnail }), // Thumbnails inherit classification from source
+            ...(isNoteThumbnail !== undefined && { isNoteThumbnail }), // Thumbnails inherit classification from source
             ...(isPartOfCollection !== undefined && { isPartOfCollection }), // Collection files inherit collection classification
             ...(mainFileId && { mainFileId }), // Reference to source file for thumbnails
             ...(thumbnailFileId && { thumbnailFileId }), // Reference to thumbnail file
@@ -1712,7 +1712,7 @@ export function setupAggregatorRoutes(app: any, deps: AggregatorRouteDeps) {
               const { isFileApprovedByPrism, addToPrismQueue } = await import('./prismQueueService');
               const alreadyApproved = await isFileApprovedByPrism(fileId);
               const { shouldSkipDmcaGate } = await import('./dmcaGate');
-              const skipDmca = shouldSkipDmcaGate({ isThoughtThumbnail, thought, textPost });
+              const skipDmca = shouldSkipDmcaGate({ isNoteThumbnail, thought, textPost });
               const {
                 applyPublishSafetyGate,
                 isMetadataProhibited,
@@ -1726,7 +1726,7 @@ export function setupAggregatorRoutes(app: any, deps: AggregatorRouteDeps) {
                 driveFileId: fileId,
                 mimeType: mimeForSafety,
                 accountId,
-                skip: shouldSkipPublishSafetyGate({ isThoughtThumbnail, thought, textPost }),
+                skip: shouldSkipPublishSafetyGate({ isNoteThumbnail, thought, textPost }),
                 existingIsProhibited: isMetadataProhibited(initialMetadata as any),
               });
               if (safety.status === 'prohibited') {
@@ -1805,7 +1805,7 @@ export function setupAggregatorRoutes(app: any, deps: AggregatorRouteDeps) {
             collection,
             textPost,
             thought,
-            isThoughtThumbnail,
+            isNoteThumbnail,
             isPartOfCollection
           });
           const createIsPublic = isPublic !== undefined ? isPublic : defaultIsPublic;
@@ -1839,7 +1839,7 @@ export function setupAggregatorRoutes(app: any, deps: AggregatorRouteDeps) {
             ...(thought && { thought }),
             ...(collection && { collection }), // Include collection data if provided
             ...(isNSFW !== undefined && { isNSFW: isNSFW === true }),
-            ...(isThoughtThumbnail !== undefined && { isThoughtThumbnail }), // Thumbnails inherit classification from source
+            ...(isNoteThumbnail !== undefined && { isNoteThumbnail }), // Thumbnails inherit classification from source
             ...(isPartOfCollection !== undefined && { isPartOfCollection }), // Collection files inherit collection classification
             ...(mainFileId && { mainFileId }), // Reference to source file for thumbnails
             ...(thumbnailFileId && { thumbnailFileId }), // Reference to thumbnail file
@@ -1878,7 +1878,7 @@ export function setupAggregatorRoutes(app: any, deps: AggregatorRouteDeps) {
               const { isFileApprovedByPrism, addToPrismQueue } = await import('./prismQueueService');
               const alreadyApproved = await isFileApprovedByPrism(fileId);
               const { shouldSkipDmcaGate } = await import('./dmcaGate');
-              const skipDmca = shouldSkipDmcaGate({ isThoughtThumbnail, thought, textPost });
+              const skipDmca = shouldSkipDmcaGate({ isNoteThumbnail, thought, textPost });
               const { googleDriveProxyService } = await import('./googleDriveProxy');
               const {
                 applyPublishSafetyGate,
@@ -1892,7 +1892,7 @@ export function setupAggregatorRoutes(app: any, deps: AggregatorRouteDeps) {
                 driveFileId: fileId,
                 mimeType: 'application/octet-stream',
                 accountId: (req.query.accountId as string) || undefined,
-                skip: shouldSkipPublishSafetyGate({ isThoughtThumbnail, thought, textPost }),
+                skip: shouldSkipPublishSafetyGate({ isNoteThumbnail, thought, textPost }),
                 existingIsProhibited: isMetadataProhibited(minimalMetadata as any),
               });
               if (safety.status === 'prohibited') {
@@ -1990,7 +1990,7 @@ export function setupAggregatorRoutes(app: any, deps: AggregatorRouteDeps) {
               fileType,
               isPublic,
               mainFileId,
-              isThoughtThumbnail,
+              isNoteThumbnail,
               hasTextPost: !!textPost,
               hasThought: !!thought
             }
@@ -2125,7 +2125,7 @@ export function setupAggregatorRoutes(app: any, deps: AggregatorRouteDeps) {
         collection,
         textPost,
         thought,
-        isThoughtThumbnail,
+        isNoteThumbnail,
         isPartOfCollection
       });
 
@@ -2153,7 +2153,7 @@ export function setupAggregatorRoutes(app: any, deps: AggregatorRouteDeps) {
         console.log(`[MetadataIndex PUT] File ${fileId} is new - creating companion metadata (visibility=${finalVisibility})...`);
         const { shouldDeferCompanionMetadata } = await import('./dmcaGate');
         const deferCompanionCreate = shouldDeferCompanionMetadata({
-          isThoughtThumbnail: isThoughtThumbnail ?? current?.metadata?.isThoughtThumbnail,
+          isNoteThumbnail: isNoteThumbnail ?? current?.metadata?.isNoteThumbnail,
           thought: thought ?? current?.metadata?.thought,
           textPost: textPost ?? current?.metadata?.textPost,
         });
@@ -2207,7 +2207,7 @@ export function setupAggregatorRoutes(app: any, deps: AggregatorRouteDeps) {
                 textPost: textPost,
                 thought: thought,
                 mimeType: (req.body && req.body.mimeType) || 'application/octet-stream',
-                isThoughtThumbnail: isThoughtThumbnail,
+                isNoteThumbnail: isNoteThumbnail,
                 isPartOfCollection: isPartOfCollection
               });
               const determinedContentClassEarly = determineContentClass({
@@ -2215,7 +2215,7 @@ export function setupAggregatorRoutes(app: any, deps: AggregatorRouteDeps) {
                 collection: collection,
                 textPost: textPost,
                 thought: thought,
-                isThoughtThumbnail: isThoughtThumbnail,
+                isNoteThumbnail: isNoteThumbnail,
                 isPartOfCollection: isPartOfCollection
               });
 
@@ -2321,7 +2321,7 @@ export function setupAggregatorRoutes(app: any, deps: AggregatorRouteDeps) {
                         usingToken: !!tokenToUse,
                         hasMainFileId: !!mainFileId,
                         mainFileId: mainFileId,
-                        isThoughtThumbnail: isThoughtThumbnail
+                        isNoteThumbnail: isNoteThumbnail
                       });
                       
                       // Determine fileType and contentClass from req.body values - companion metadata is source of truth
@@ -2331,7 +2331,7 @@ export function setupAggregatorRoutes(app: any, deps: AggregatorRouteDeps) {
                         textPost: textPost,
                         thought: thought,
                         mimeType: originalMimeType,
-                        isThoughtThumbnail: isThoughtThumbnail,
+                        isNoteThumbnail: isNoteThumbnail,
                         isPartOfCollection: isPartOfCollection
                       });
                       const determinedContentClass = determineContentClass({
@@ -2339,7 +2339,7 @@ export function setupAggregatorRoutes(app: any, deps: AggregatorRouteDeps) {
                         collection: collection,
                         textPost: textPost,
                         thought: thought,
-                        isThoughtThumbnail: isThoughtThumbnail,
+                        isNoteThumbnail: isNoteThumbnail,
                         isPartOfCollection: isPartOfCollection
                       });
                       
@@ -2363,7 +2363,7 @@ export function setupAggregatorRoutes(app: any, deps: AggregatorRouteDeps) {
                         mainFileId: mainFileId,
                         ...(textPost && { textPost }),
                         ...(thought && { thought }),
-                        ...(isThoughtThumbnail !== undefined && { isThoughtThumbnail }),
+                        ...(isNoteThumbnail !== undefined && { isNoteThumbnail }),
                         ...(collection && { collection }),
                         ...(isPartOfCollection !== undefined && { isPartOfCollection }),
                         engagement: {
@@ -2380,7 +2380,7 @@ export function setupAggregatorRoutes(app: any, deps: AggregatorRouteDeps) {
                         fileId: companionMetadata.fileId,
                         hasMainFileId: !!companionMetadata.mainFileId,
                         mainFileId: companionMetadata.mainFileId,
-                        isThoughtThumbnail: isThoughtThumbnail
+                        isNoteThumbnail: isNoteThumbnail
                       });
                       
                       // Create new metadata spreadsheet
@@ -2423,7 +2423,7 @@ export function setupAggregatorRoutes(app: any, deps: AggregatorRouteDeps) {
                         mainFileId: mainFileIdForUpdate,
                         ...(textPost && { textPost }),
                         ...(thought && { thought }),
-                        ...(isThoughtThumbnail !== undefined && { isThoughtThumbnail }),
+                        ...(isNoteThumbnail !== undefined && { isNoteThumbnail }),
                         ...(collection && { collection }),
                         ...(isPartOfCollection !== undefined && { isPartOfCollection }),
                         engagement: {
@@ -2470,7 +2470,7 @@ export function setupAggregatorRoutes(app: any, deps: AggregatorRouteDeps) {
                       ...(tokenToUseForIndex && { publicToken: tokenToUseForIndex }),
                       ...(textPost && { textPost }),
                       ...(thought && { thought }),
-                      ...(isThoughtThumbnail !== undefined && { isThoughtThumbnail }),
+                      ...(isNoteThumbnail !== undefined && { isNoteThumbnail }),
                       ...(collection && { collection }),
                       ...(isPartOfCollection !== undefined && { isPartOfCollection }),
                       engagement: {
@@ -2777,7 +2777,7 @@ export function setupAggregatorRoutes(app: any, deps: AggregatorRouteDeps) {
         subjects,
         feedCategories,
         thumbnailFileId,
-        isThoughtThumbnail, // Thumbnails inherit classification from source
+        isNoteThumbnail, // Thumbnails inherit classification from source
         isPartOfCollection, // Collection files inherit collection classification
         mainFileId, // Reference to source file for thumbnails
         ...(normalizedExpiry?.expiresAt !== undefined
@@ -2853,7 +2853,7 @@ export function setupAggregatorRoutes(app: any, deps: AggregatorRouteDeps) {
                 publicToken: updated.publicToken,
                 engagement: updated.engagement,
                 contentClass: (updated as any).contentClass,
-                isThoughtThumbnail: (updated as any).isThoughtThumbnail,
+                isNoteThumbnail: (updated as any).isNoteThumbnail,
                 mainFileId: (updated as any).mainFileId,
                 thumbnailFileId: (updated as any).thumbnailFileId,
                 collectionFileIds: (updated as any).collection?.collectionFileIds
@@ -3057,7 +3057,7 @@ export function setupAggregatorRoutes(app: any, deps: AggregatorRouteDeps) {
                           textPost: metadataForType.textPost,
                           thought: metadataForType.thought,
                           mimeType: metadataForType.mimeType,
-                          isThoughtThumbnail: metadataForType.isThoughtThumbnail,
+                          isNoteThumbnail: metadataForType.isNoteThumbnail,
                           isPartOfCollection: metadataForType.isPartOfCollection
                         });
                         const determinedContentClass = determineContentClass({
@@ -3065,7 +3065,7 @@ export function setupAggregatorRoutes(app: any, deps: AggregatorRouteDeps) {
                           collection: metadataForType.collection,
                           textPost: metadataForType.textPost,
                           thought: metadataForType.thought,
-                          isThoughtThumbnail: metadataForType.isThoughtThumbnail,
+                          isNoteThumbnail: metadataForType.isNoteThumbnail,
                           isPartOfCollection: metadataForType.isPartOfCollection
                         });
                         
@@ -3118,7 +3118,7 @@ export function setupAggregatorRoutes(app: any, deps: AggregatorRouteDeps) {
                 textPost: metadataForType.textPost,
                 thought: metadataForType.thought,
                 mimeType: metadataForType.mimeType,
-                isThoughtThumbnail: metadataForType.isThoughtThumbnail,
+                isNoteThumbnail: metadataForType.isNoteThumbnail,
                 isPartOfCollection: metadataForType.isPartOfCollection
               });
               const determinedContentClass = determineContentClass({
@@ -3126,7 +3126,7 @@ export function setupAggregatorRoutes(app: any, deps: AggregatorRouteDeps) {
                 collection: metadataForType.collection,
                 textPost: metadataForType.textPost,
                 thought: metadataForType.thought,
-                isThoughtThumbnail: metadataForType.isThoughtThumbnail,
+                isNoteThumbnail: metadataForType.isNoteThumbnail,
                 isPartOfCollection: metadataForType.isPartOfCollection
               });
               
@@ -3160,7 +3160,7 @@ export function setupAggregatorRoutes(app: any, deps: AggregatorRouteDeps) {
               const alreadyApproved = await isFileApprovedByPrism(fileId);
               const { shouldSkipDmcaGate } = await import('./dmcaGate');
               const skipDmca = shouldSkipDmcaGate({
-                isThoughtThumbnail: (current.metadata as any)?.isThoughtThumbnail,
+                isNoteThumbnail: (current.metadata as any)?.isNoteThumbnail,
                 thought: (current.metadata as any)?.thought,
                 textPost: (current.metadata as any)?.textPost,
               });
@@ -3178,7 +3178,7 @@ export function setupAggregatorRoutes(app: any, deps: AggregatorRouteDeps) {
                 mimeType,
                 accountId: (req.query.accountId as string) || undefined,
                 skip: shouldSkipPublishSafetyGate({
-                  isThoughtThumbnail: (current.metadata as any)?.isThoughtThumbnail,
+                  isNoteThumbnail: (current.metadata as any)?.isNoteThumbnail,
                   thought: (current.metadata as any)?.thought,
                   textPost: (current.metadata as any)?.textPost,
                 }),

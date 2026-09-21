@@ -32,6 +32,7 @@
     "@identity-protocol/identity-core": "^1.0.0",
     "@par-noir/aggregator-domain": "^1.0.0",
     "@par-noir/oauth-ui": "^1.0.0",
+    "@par-noir/pen-protocol": "file:../../packages/pen-protocol",
     "@par-noir/zk-protocol-v1": "^0.1.0",
     "@par-noir/zk-protocol-v2": "^0.1.0"
   },

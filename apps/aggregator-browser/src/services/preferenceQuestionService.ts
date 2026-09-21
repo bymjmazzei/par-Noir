@@ -102,7 +102,7 @@ export class PreferenceQuestionService {
             const fileTypeLabel = fileType === 'video' ? 'videos' : 
                                  fileType === 'image' ? 'photos' : 
                                  fileType === 'text' ? 'posts' : 
-                                 fileType === 'thought' ? 'thoughts' :
+                                 fileType === 'note' ? 'notes' :
                                  `${fileType}s`;
             questionId = `contentType-${tag.id}-${fileType}`;
             if (askedQuestions.has(questionId)) return;

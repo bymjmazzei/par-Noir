@@ -45,13 +45,13 @@ describe('verifyPnDriveLayout', () => {
       if (url.includes("name='media'") && url.includes('folder')) {
         return new Response(JSON.stringify({ files: [{ id: 'media-folder' }] }), { status: 200 });
       }
-      if (url.includes("name='thoughts'")) {
-        return new Response(JSON.stringify({ files: [{ id: 'thoughts-folder' }] }), { status: 200 });
+      if (url.includes("name='notes'")) {
+        return new Response(JSON.stringify({ files: [{ id: 'notes-folder' }] }), { status: 200 });
       }
       if (url.includes("name='collections'")) {
         return new Response(JSON.stringify({ files: [{ id: 'collections-folder' }] }), { status: 200 });
       }
-      if (url.includes('thoughts-owner-index')) {
+      if (url.includes('notes-owner-index')) {
         return new Response(JSON.stringify({ files: [] }), { status: 200 });
       }
       return new Response(JSON.stringify({ files: [{ id: 'x' }] }), { status: 200 });

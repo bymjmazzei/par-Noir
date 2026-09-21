@@ -8,6 +8,7 @@ import React from 'react';
 import { File, RefreshCw, Lock, Globe, Eye, Grid, List, Plus, Cloud, MoreVertical, Type, Upload, Minus, Trash2, Layers, Camera, Image } from 'lucide-react';
 import { Capacitor } from '@capacitor/core';
 import { cleanTitle } from '../../utils/cleanTitle';
+import { hasNoteExtension, isNoteFileName, isNoteThumbnailFileName } from '../../utils/noteFileName';
 import { ThumbnailImage } from '../file/ThumbnailImage';
 import { pickImageFromNative } from '../../hooks/useNativeFilePicker';
 import type { DriveAccount, DriveFile } from './storageTypes';
@@ -181,7 +182,7 @@ export const AccountFilesPanel: React.FC<AccountFilesPanelProps> = ({
                   className="w-full px-4 py-2 text-left text-white hover:bg-neutral-700 flex items-center gap-2 text-sm"
                 >
                   <Type className="h-4 w-4" />
-                  Add Thought
+                  Pen Mini
                 </button>
                 {Capacitor.isNativePlatform() && (
                   <>
@@ -310,18 +311,14 @@ export const AccountFilesPanel: React.FC<AccountFilesPanelProps> = ({
                                nameWithoutEncrypted.toLowerCase().endsWith('.collection');
 
             // For encrypted files, check if they're media files by extension
-            const isThought = nameWithoutEncrypted.toLowerCase().startsWith('thought-') &&
-                             (nameWithoutEncrypted.toLowerCase().endsWith('.thought') || nameWithoutEncrypted.toLowerCase().endsWith('.png'));
-            const isThoughtThumbnail = nameWithoutEncrypted.toLowerCase().startsWith('thumb_thought-') &&
-                                      (nameWithoutEncrypted.toLowerCase().endsWith('.thought') || nameWithoutEncrypted.toLowerCase().endsWith('.png'));
-            let isMediaFile = isImage || isVideo || isThought || isThoughtThumbnail || isCollection;
+            const isNote = isNoteFileName(nameWithoutEncrypted);
+            const isNoteThumbnail = isNoteThumbnailFileName(nameWithoutEncrypted);
+            let isMediaFile = isImage || isVideo || isNote || isNoteThumbnail || isCollection;
             if (isEncrypted && !isCollection) {
               const hasImageExt = /\.(jpg|jpeg|png|gif|webp|bmp|svg|heic|heif)$/i.test(nameWithoutEncrypted);
               const hasVideoExt = /\.(mp4|mov|avi|mkv|webm|flv|wmv|m4v|3gp)$/i.test(nameWithoutEncrypted);
-              const hasThoughtExt = /\.thought$/i.test(nameWithoutEncrypted) ||
-                                   (nameWithoutEncrypted.toLowerCase().startsWith('thought-') && nameWithoutEncrypted.toLowerCase().endsWith('.png')) ||
-                                   nameWithoutEncrypted.toLowerCase().startsWith('thumb_thought-');
-              isMediaFile = hasImageExt || hasVideoExt || hasThoughtExt;
+              const hasNoteExt = hasNoteExtension(nameWithoutEncrypted);
+              isMediaFile = hasImageExt || hasVideoExt || hasNoteExt;
             }
 
             return (
@@ -528,18 +525,14 @@ export const AccountFilesPanel: React.FC<AccountFilesPanelProps> = ({
                                nameWithoutEncrypted.toLowerCase().endsWith('.collection');
 
             // For encrypted files, check if they're media files by extension
-            const isThought = nameWithoutEncrypted.toLowerCase().startsWith('thought-') &&
-                             (nameWithoutEncrypted.toLowerCase().endsWith('.thought') || nameWithoutEncrypted.toLowerCase().endsWith('.png'));
-            const isThoughtThumbnail = nameWithoutEncrypted.toLowerCase().startsWith('thumb_thought-') &&
-                                      (nameWithoutEncrypted.toLowerCase().endsWith('.thought') || nameWithoutEncrypted.toLowerCase().endsWith('.png'));
-            let isMediaFile = isImage || isVideo || isThought || isThoughtThumbnail || isCollection;
+            const isNote = isNoteFileName(nameWithoutEncrypted);
+            const isNoteThumbnail = isNoteThumbnailFileName(nameWithoutEncrypted);
+            let isMediaFile = isImage || isVideo || isNote || isNoteThumbnail || isCollection;
             if (isEncrypted && !isCollection) {
               const hasImageExt = /\.(jpg|jpeg|png|gif|webp|bmp|svg|heic|heif)$/i.test(nameWithoutEncrypted);
               const hasVideoExt = /\.(mp4|mov|avi|mkv|webm|flv|wmv|m4v|3gp)$/i.test(nameWithoutEncrypted);
-              const hasThoughtExt = /\.thought$/i.test(nameWithoutEncrypted) ||
-                                   (nameWithoutEncrypted.toLowerCase().startsWith('thought-') && nameWithoutEncrypted.toLowerCase().endsWith('.png')) ||
-                                   nameWithoutEncrypted.toLowerCase().startsWith('thumb_thought-');
-              isMediaFile = hasImageExt || hasVideoExt || hasThoughtExt;
+              const hasNoteExt = hasNoteExtension(nameWithoutEncrypted);
+              isMediaFile = hasImageExt || hasVideoExt || hasNoteExt;
             }
 
             return (

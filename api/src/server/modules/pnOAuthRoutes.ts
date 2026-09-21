@@ -18,7 +18,7 @@ const NODE_ENV = process.env.NODE_ENV || 'development';
  * First-party apps that receive messaging key handoff from the (single) API consent page.
  * Not a separate unlock UI — all OAuth clients use /oauth/consent.
  */
-const MESSAGING_HANDOFF_CLIENT_IDS = new Set(['browser-app', 'messaging-app']);
+const MESSAGING_HANDOFF_CLIENT_IDS = new Set(['browser-app', 'messaging-app', 'pen-app']);
 
 function isMessagingHandoffClient(clientId: string | undefined): boolean {
   return !!clientId && MESSAGING_HANDOFF_CLIENT_IDS.has(clientId);

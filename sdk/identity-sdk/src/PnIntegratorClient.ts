@@ -9,6 +9,7 @@ import { IntegratorFeedClient } from './IntegratorFeedClient';
 import { IntegratorZkpClient } from './IntegratorZkpClient';
 import { IdentitySuccessionClient } from './IdentitySuccessionClient';
 import { PublicIndexClient } from './PublicIndexClient';
+import { IntegratorPenClient } from './IntegratorPenClient';
 import { PN_INTEGRATOR_SCOPES, SCOPE_CLOUD_APP } from './integrator/pnApiClient';
 
 export interface PnIntegratorClientConfig extends PNOAuthConfig {
@@ -23,6 +24,7 @@ export class PnIntegratorClient {
   readonly zkp: IntegratorZkpClient;
   readonly succession: IdentitySuccessionClient;
   readonly publicIndex: PublicIndexClient;
+  readonly pen: IntegratorPenClient;
 
   constructor(config: PnIntegratorClientConfig) {
     const apiEndpoint = config.apiEndpoint;
@@ -33,6 +35,7 @@ export class PnIntegratorClient {
     this.zkp = new IntegratorZkpClient({ apiEndpoint });
     this.succession = new IdentitySuccessionClient({ apiEndpoint });
     this.publicIndex = new PublicIndexClient({ apiEndpoint });
+    this.pen = new IntegratorPenClient({ apiEndpoint });
   }
 }
 

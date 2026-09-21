@@ -264,7 +264,7 @@ export function requirePublicVideoFeedPreviews(
   return { ok: true };
 }
 
-/** Image / thought: poster only. */
+/** Image / note: poster only. */
 export function requirePublicImageFeedPreviews(
   refs: FeedPreviewRefs | null | undefined
 ): PublicVideoPreviewRequirement {

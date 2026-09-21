@@ -15,7 +15,8 @@ const SEEDED_CLIENT_IDS = new Set([
   'messaging-app',
   'prism-app',
   'developer-portal',
-  'licensing-portal'
+  'licensing-portal',
+  'pen-app'
 ]);
 
 let lastSyncResult: PlatformRegistrySyncResult | null = null;

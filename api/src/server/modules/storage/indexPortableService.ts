@@ -12,7 +12,7 @@ import { OWNER_FILE_INDEX_SCHEMA, PUBLIC_FILE_INDEX_SCHEMA } from './tableSchema
 import { readPortableJsonBlob, writePortableJsonBlob } from './portableJsonBlob';
 import { METADATA_DIR } from '@par-noir/user-owned-storage';
 
-type ContentClassFolder = 'media' | 'thoughts' | 'collections';
+type ContentClassFolder = 'media' | 'notes' | 'collections';
 
 function indexMetaPath(indexType: 'public' | 'owner', contentClass?: ContentClassFolder): string {
   if (contentClass) {
@@ -59,7 +59,7 @@ export async function getIndexFilesPortable(
   accountId?: string,
   options?: {
     visibility?: 'public' | 'private' | 'friends';
-    contentClass?: 'media' | 'thought' | 'collection';
+    contentClass?: 'media' | 'note' | 'collection';
     limit?: number;
     offset?: number;
   },

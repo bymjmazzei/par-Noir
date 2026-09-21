@@ -70,9 +70,9 @@ export class UserStorageSyncService {
         if (!(await isPortableSocialCloud(pnIdentifier))) continue;
 
         const entries: { metadata: PublicMetadata; pnIdentifier: string }[] = [];
-        const contentClasses: Array<'media' | 'thoughts' | 'collections'> = [
+        const contentClasses: Array<'media' | 'notes' | 'collections'> = [
           'media',
-          'thoughts',
+          'notes',
           'collections'
         ];
 

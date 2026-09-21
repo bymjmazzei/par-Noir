@@ -1,6 +1,6 @@
 /**
  * Portable companion metadata: single JSON blob per file on social cloud.
- * Path: _metadata/{media|thoughts|collections}/{fileId}.metadata.json
+ * Path: _metadata/{media|notes|collections}/{fileId}.metadata.json
  */
 
 import { companionMetadataPath, type ContentClass } from '@par-noir/user-owned-storage';
@@ -24,16 +24,18 @@ export interface PortableCompanionDocument extends CompanionMetadata {
 }
 
 function toLayoutContentClass(
-  contentClass?: 'media' | 'thought' | 'collection' | string
+  contentClass?: 'media' | 'note' | 'collection' | string
 ): ContentClass {
-  if (contentClass === 'thought' || contentClass === 'thoughts') return 'thoughts';
+  if (contentClass === 'note' || contentClass === 'notes') {
+    return 'notes';
+  }
   if (contentClass === 'collection' || contentClass === 'collections') return 'collections';
   return 'media';
 }
 
 export function portableCompanionRelPath(
   fileId: string,
-  contentClass?: 'media' | 'thought' | 'collection' | string
+  contentClass?: 'media' | 'note' | 'collection' | string
 ): string {
   return companionMetadataPath(toLayoutContentClass(contentClass), fileId);
 }
@@ -45,8 +47,8 @@ async function findPortableDoc(
   hint?: string
 ): Promise<{ path: string; doc: PortableCompanionDocument } | null> {
   const order: ContentClass[] = hint
-    ? [toLayoutContentClass(hint), 'media', 'thoughts', 'collections']
-    : ['media', 'thoughts', 'collections'];
+    ? [toLayoutContentClass(hint), 'media', 'notes', 'collections']
+    : ['media', 'notes', 'collections'];
   const seen = new Set<string>();
   for (const cc of order) {
     if (seen.has(cc)) continue;

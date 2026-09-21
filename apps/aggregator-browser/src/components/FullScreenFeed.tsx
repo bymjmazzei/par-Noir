@@ -111,7 +111,7 @@ interface FullScreenFeedProps {
   onReportCopyright?: (file: IndexedFile) => void;
   onSwipeLeft?: () => void; // Horizontal swipe left handler
   onSwipeRight?: () => void; // Horizontal swipe right handler
-  mePageTab?: 'all' | 'media' | 'thoughts' | 'collections' | 'likes' | 'comments' | 'shares' | 'saved' | 'connections'; // For Me page tab context
+  mePageTab?: 'all' | 'media' | 'notes' | 'collections' | 'likes' | 'comments' | 'shares' | 'saved' | 'connections'; // For Me page tab context
   thumbnails?: Map<string, string>; // Optional: pre-generated thumbnails from parent
   videoBlobs?: Map<string, string>; // Optional: pre-loaded video blobs from parent
   /** When this changes, scroll snaps to index 0 without remounting (parent resets currentIndex). */
@@ -831,7 +831,7 @@ export function FullScreenFeed({
       const isThumb = fileName.startsWith('thumb_');
       const isImage =
         file.fileType === 'image' ||
-        file.fileType === 'thought-thumbnail' ||
+        file.fileType === 'note-thumbnail' ||
         isThumb ||
         !!fileName.match(/\.(jpg|jpeg|png|gif|webp|svg|bmp|ico)$/i);
       const isVideo =
@@ -1293,7 +1293,7 @@ export function FullScreenFeed({
         const fileId = file.fileId;
         
         
-        // Thoughts now render as images (thumbnails) - no special detection needed!
+        // Notes now render as images (thumbnails) - no special detection needed!
         // Just detect images, videos, and collections
         
         // Check fileType in ALL possible locations
@@ -1312,7 +1312,7 @@ export function FullScreenFeed({
           !!(file.name || file.title || '').match(/\.(mp4|mov|avi|webm|mkv|flv|wmv)$/i) ||
           sdCt.startsWith('video/');
         
-        // Detect images (includes thought thumbnails which are just PNG images)
+        // Detect images (includes note thumbnails which are just PNG images)
         const fileNameForImageCheck = file.name || file.title || '';
         const hasImageExtension = !!(fileNameForImageCheck.match(/\.(jpg|jpeg|png|gif|webp|svg|bmp|ico|heic|heif)$/i));
         const mimeType = (file as any).mimeType || indexedFile.metadata?.mimeType || file.encodingFormat || indexedFile.metadata?.encodingFormat || '';
@@ -1389,7 +1389,7 @@ export function FullScreenFeed({
         const isVideoFinal = isCollectionFile ? false : isVideo;
         const isImageFinal = isCollectionFile ? false : isImage;
         
-        // NO THOUGHT DETECTION - thoughts are just images (thumbnails) now!
+        // NO THOUGHT DETECTION - notes are just images (thumbnails) now!
         
         // Debug logging for image detection (only in development)
         if (process.env.NODE_ENV === 'development' && (file.fileType === 'image' || (file.name || file.title || '').match(/\.(jpg|jpeg|png|gif|webp|svg|bmp|ico)$/i)) && !isImageFinal) {
@@ -1440,7 +1440,7 @@ export function FullScreenFeed({
               zIndex: 0 // Ensure all tiles are on the same z-index level
             }}
           >
-            {/* Thoughts now render as images (thumbnails) - no special rendering needed! */}
+            {/* Notes now render as images (thumbnails) - no special rendering needed! */}
             
             {/* Full-screen video */}
             {!isConnectionPlaceholder && isVideoFinal && videoBlobs.get(fileId) && (() => {

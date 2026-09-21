@@ -10,7 +10,7 @@ par-noir-{pn}/
     {table}.db          # portable providers (SQLite)
     {table}.xlsx        # Google Drive (Sheets)
     media/
-    thoughts/
+    notes/
     collections/
   integrators/
     {oauth_client_id}/

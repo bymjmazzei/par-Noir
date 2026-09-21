@@ -254,14 +254,14 @@ export const ProfileActionMenu = React.memo(function ProfileActionMenu({ creator
     }
 
     const loadProfileImage = async () => {
-      // Check if it's an image, video, or thought (thoughts are rendered as PNG images)
+      // Check if it's an image, video, or note (notes are rendered as PNG images)
       // Handle both MIME types (image/jpeg) and simple types (image)
       const fileType = topPostFile.metadata.fileType || '';
       const encodingFormat = topPostFile.metadata.encodingFormat || '';
       
-      // Check if it's a thought (text post) - these are rendered as PNG images
-      const isThought = fileType === 'text' || 
-                       fileType === 'thought' ||
+      // Check if it's a note (text post) - these are rendered as PNG images
+      const isNote = fileType === 'text' || 
+                       fileType === 'note' ||
                        !!(topPostFile.metadata as any).textPost ||
                        !!(topPostFile.metadata as any).thought;
       
@@ -274,8 +274,8 @@ export const ProfileActionMenu = React.memo(function ProfileActionMenu({ creator
                      encodingFormat.startsWith('video/') ||
                      encodingFormat === 'video';
       
-      // Thoughts are stored as PNG images, so treat them as images
-      if (!isImage && !isVideo && !isThought) {
+      // Notes are stored as PNG images, so treat them as images
+      if (!isImage && !isVideo && !isNote) {
         setProfileImageUrl(null);
         lastProcessedFileIdRef.current = fileId;
         return;
@@ -283,7 +283,7 @@ export const ProfileActionMenu = React.memo(function ProfileActionMenu({ creator
 
       setProfileImageLoading(true);
       try {
-        if (isImage || isThought || isVideo) {
+        if (isImage || isNote || isVideo) {
           const url = await resolvePublicMediaObjectUrl(fileId, 'poster');
           setProfileImageUrl(url);
           lastProcessedFileIdRef.current = fileId;

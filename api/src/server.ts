@@ -65,6 +65,7 @@ import { setupProfileRoutes } from './server/modules/profileRoutes';
 import { setupRecoveryRequestRoutes } from './server/modules/recoveryRequestRoutes';
 import { setupMessageRoutes } from './server/modules/messageRoutes';
 import { setupGroupRoutes } from './server/modules/groupRoutes';
+import { setupPenRoutes } from './server/modules/penRoutes';
 import { setupConnectionRoutes } from './server/modules/connectionRoutes';
 import { setupUserRoutes } from './server/modules/userRoutes';
 import { setupGoogleOAuthRoutes } from './server/modules/googleOAuthRoutes';
@@ -87,6 +88,7 @@ const DEFAULT_ORIGINS = [
   'https://browse.parnoir.com',
   'https://messaging.parnoir.com',
   'https://prism.parnoir.com',
+  'https://pen.parnoir.com',
   'https://licensing.parnoir.com',
   'https://developers.parnoir.com',
   'https://unlock.parnoir.com',
@@ -971,6 +973,11 @@ class ProductionServer {
       extractAccountId: (account) => this.extractAccountId(account),
       getMetadataFolder: (token, pnIdentifier, accountId) => this.getMetadataFolder(token, pnIdentifier, accountId),
       emitRealtime: (pnIdentifier, event, payload) => this.emitRealtime(pnIdentifier, event, payload),
+    });
+
+    setupPenRoutes(this.app, {
+      extractAccountId: (account) => this.extractAccountId(account),
+      getMetadataFolder: (token, pnIdentifier, accountId) => this.getMetadataFolder(token, pnIdentifier, accountId),
     });
 
     setupConnectionRoutes(this.app, {

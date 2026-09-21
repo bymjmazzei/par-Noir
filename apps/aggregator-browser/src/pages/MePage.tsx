@@ -11,7 +11,7 @@ import { HomePageContext } from '../contexts/HomePageContext';
 import { useRegisterSoftRefresh } from '../contexts/SoftRefreshContext';
 import { OverscrollRefreshHost } from '../components/OverscrollRefreshHost';
 
-export type MePageTab = 'all' | 'media' | 'thoughts' | 'collections' | 'likes' | 'comments' | 'shares' | 'saved' | 'connections';
+export type MePageTab = 'all' | 'media' | 'notes' | 'collections' | 'likes' | 'comments' | 'shares' | 'saved' | 'connections';
 
 export interface MePageProps {
   commentingFile: unknown;
@@ -124,7 +124,7 @@ export function MePage({
           onTabSelect(tab);
           setCurrentFeedIndex(0);
         }}
-        availableTabs={isOwnIndex ? ['connections', 'all', 'media', 'thoughts', 'collections', 'likes', 'comments', 'shares', 'saved'] : ['all', 'media', 'thoughts', 'collections', 'likes', 'comments']}
+        availableTabs={isOwnIndex ? ['connections', 'all', 'media', 'notes', 'collections', 'likes', 'comments', 'shares', 'saved'] : ['all', 'media', 'notes', 'collections', 'likes', 'comments']}
       />
 
       {filteredMeFiles.length > 0 && filteredMeFiles[currentFeedIndex] ? (
