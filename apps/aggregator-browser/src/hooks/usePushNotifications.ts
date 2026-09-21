@@ -102,13 +102,13 @@ export function usePushNotifications({
         if (cancelled) return;
         if (existing.receive === 'denied') return;
 
-        let receive = existing.receive;
-        if (receive === 'prompt' || receive === 'prompt-with-rationale') {
+        if (existing.receive === 'prompt' || existing.receive === 'prompt-with-rationale') {
           const perm = await PushNotifications.requestPermissions();
           if (cancelled) return;
-          receive = perm.receive;
+          if (perm.receive !== 'granted') return;
+        } else if (existing.receive !== 'granted') {
+          return;
         }
-        if (receive !== 'granted') return;
 
         await PushNotifications.register();
 
