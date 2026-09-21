@@ -2,6 +2,8 @@ import { contextBridge, ipcRenderer } from 'electron';
 
 export type UnlockDesktopApi = {
   openExternal: (url: string) => Promise<void>;
+  /** Hide Unlock and activate the previous app (usually the browser that launched OAuth). */
+  yieldToBrowser: () => Promise<void>;
   getPendingDeepLink: () => Promise<string | null>;
   onDeepLink: (handler: (url: string) => void) => () => void;
   vaultAvailable: () => Promise<boolean>;
@@ -13,6 +15,7 @@ export type UnlockDesktopApi = {
 
 const api: UnlockDesktopApi = {
   openExternal: (url) => ipcRenderer.invoke('unlock:open-external', url),
+  yieldToBrowser: () => ipcRenderer.invoke('unlock:yield-to-browser'),
   getPendingDeepLink: () => ipcRenderer.invoke('unlock:get-pending-deep-link'),
   onDeepLink: (handler) => {
     const listener = (_event: Electron.IpcRendererEvent, url: string) => {

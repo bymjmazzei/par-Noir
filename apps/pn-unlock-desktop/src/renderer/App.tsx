@@ -108,6 +108,15 @@ export default function App(): React.ReactElement {
     await postOAuthBrokerComplete(apiBase, payload);
   };
 
+  const onBrokerHandoffComplete = useCallback(() => {
+    const api = desktopApi();
+    if (!api) return;
+    // Brief pause so "Signed in" paints before we hide Unlock.
+    window.setTimeout(() => {
+      void api.yieldToBrowser();
+    }, 350);
+  }, []);
+
   const onVaultUnlock = async () => {
     setVaultError(null);
     setVaultBusy(true);
@@ -223,6 +232,7 @@ export default function App(): React.ReactElement {
         search={search}
         apiEndpointDefault={API_DEFAULT.replace(/\/$/, '')}
         deliverLocalBroker={deliverLocalBroker}
+        onBrokerHandoffComplete={onBrokerHandoffComplete}
         logoUrl={logoUrl}
         backgroundUrl={backgroundUrl}
         layout="broker"

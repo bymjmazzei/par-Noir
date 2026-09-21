@@ -376,5 +376,19 @@ export function consentUnlockBrokerCssExtras(): string {
   font-size: 24px;
   margin-bottom: 4px;
 }
+.pn-consent-page .handoff-done {
+  text-align: center;
+  font-size: 18px;
+  font-weight: 600;
+  color: #e5e7eb;
+  margin-bottom: 10px;
+}
+.pn-consent-page .handoff-done-hint {
+  text-align: center;
+  font-size: 13px;
+  line-height: 1.45;
+  color: #9ca3af;
+  margin: 0;
+}
 `;
 }

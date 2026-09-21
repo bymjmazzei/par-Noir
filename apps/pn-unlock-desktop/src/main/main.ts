@@ -138,6 +138,21 @@ function registerIpc(): void {
     await shell.openExternal(url);
   });
 
+  /**
+   * After prefer-app handoff: get out of the way so the user sees the browse tab
+   * that is polling for the OAuth result. Do not openExternal browse — that can
+   * spawn a new tab and interrupt the waiting document.
+   */
+  ipcMain.handle('unlock:yield-to-browser', async () => {
+    if (process.platform === 'darwin') {
+      app.hide();
+      return;
+    }
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.minimize();
+    }
+  });
+
   ipcMain.handle('unlock:get-pending-deep-link', async () => pendingDeepLink);
 
   ipcMain.handle('unlock:vault-available', async () => {

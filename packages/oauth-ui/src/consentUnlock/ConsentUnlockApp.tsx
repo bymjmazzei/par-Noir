@@ -64,9 +64,14 @@ export type ConsentUnlockAppProps = {
    */
   layout?: 'default' | 'broker';
   /**
-   * Desktop loopback handoff — preferred over openExternal when set.
+   * Prefer-app desktop: deliver full payload via API broker-complete.
    */
   deliverLocalBroker?: (payload: Record<string, unknown>) => void | Promise<void>;
+  /**
+   * After prefer-app / openExternal handoff succeeds — host may yield focus to the
+   * browser and clear ephemeral UI state.
+   */
+  onBrokerHandoffComplete?: () => void;
   /**
    * When set (native biometric path), decrypt + mint without the factor form.
    * Host should clear after consume to avoid re-entry loops.
@@ -160,6 +165,7 @@ export function ConsentUnlockApp(props: ConsentUnlockAppProps): React.ReactEleme
       params={params}
       openExternal={props.openExternal}
       deliverLocalBroker={props.deliverLocalBroker}
+      onBrokerHandoffComplete={props.onBrokerHandoffComplete}
       assetBase={props.assetBase}
       logoUrl={props.logoUrl}
       backgroundUrl={props.backgroundUrl}
@@ -175,6 +181,7 @@ function ConsentUnlockInner(props: {
   params: ConsentUnlockParams;
   openExternal?: (url: string) => void | Promise<void>;
   deliverLocalBroker?: (payload: Record<string, unknown>) => void | Promise<void>;
+  onBrokerHandoffComplete?: () => void;
   assetBase?: string;
   logoUrl?: string;
   backgroundUrl?: string;
@@ -187,6 +194,7 @@ function ConsentUnlockInner(props: {
     params,
     openExternal,
     deliverLocalBroker,
+    onBrokerHandoffComplete,
     assetBase,
     logoUrl,
     backgroundUrl,
@@ -213,6 +221,8 @@ function ConsentUnlockInner(props: {
   const [busy, setBusy] = useState(false);
   const [showKey1, setShowKey1] = useState(false);
   const [showKey2, setShowKey2] = useState(false);
+  /** Prefer-app / openExternal: show idle success after handoff + form wipe. */
+  const [handoffDone, setHandoffDone] = useState(false);
 
   const [authCode, setAuthCode] = useState<string | null>(null);
   const [pnIdentifier, setPnIdentifier] = useState('');
@@ -236,6 +246,11 @@ function ConsentUnlockInner(props: {
       });
     }
   }, [unlockMode, params.apiEndpoint]);
+
+  // New prefer-app launch: clear prior "signed in" banner.
+  useEffect(() => {
+    setHandoffDone(false);
+  }, [params.state, params.clientId, params.redirectUri]);
 
   const changeMode = useCallback((mode: UnlockMode) => {
     setUnlockMode(mode);
@@ -315,6 +330,32 @@ function ConsentUnlockInner(props: {
     [params, openExternal, deliverLocalBroker]
   );
 
+  const resetFormAfterBrokerHandoff = useCallback(() => {
+    setPnName('');
+    setPasscode('');
+    setFileName('');
+    setIdentityJson(null);
+    setUsbKeyName('');
+    setUsbKeyText(null);
+    setUsbPayloadName('');
+    setUsbPayloadText(null);
+    setUsbDrivePasscode('');
+    setNfcPayload(null);
+    setNfcStatus('');
+    setNfcScanning(false);
+    setShowKey1(false);
+    setShowKey2(false);
+    setAuthCode(null);
+    setPnIdentifier('');
+    setBundle(null);
+    setDataPointChoices({});
+    setAvailableDataPoints(null);
+    setError(null);
+    setBusy(false);
+    setStep('unlock');
+    setHandoffDone(true);
+  }, []);
+
   const loadCatalog = useCallback(async () => {
     if (dataPointIds.length === 0) return;
     try {
@@ -358,8 +399,8 @@ function ConsentUnlockInner(props: {
       setAuthCode(mint.code);
       setPnIdentifier(mint.pnIdentifier);
 
-      // Cross-process broker (Electron/Cap): hand off immediately. Prefer local
-      // loopback when available; otherwise openExternal. Skip in-app consent —
+      // Cross-process broker (Electron/Cap): hand off immediately. Prefer API
+      // broker when available; otherwise openExternal. Skip in-app consent —
       // grant lookup has no cloud AT here; browse checks after hydrate.
       if (openExternal || deliverLocalBroker) {
         await finishWithCode(
@@ -369,6 +410,8 @@ function ConsentUnlockInner(props: {
           unlocked
         );
         await notifyVault(unlocked, key1, key2);
+        resetFormAfterBrokerHandoff();
+        onBrokerHandoffComplete?.();
         return;
       }
 
@@ -390,7 +433,18 @@ function ConsentUnlockInner(props: {
       setDataPointChoices(initial);
       setStep('consent');
     },
-    [params, needsConsent, finishWithCode, loadCatalog, dataPointIds, notifyVault, openExternal, deliverLocalBroker]
+    [
+      params,
+      needsConsent,
+      finishWithCode,
+      loadCatalog,
+      dataPointIds,
+      notifyVault,
+      openExternal,
+      deliverLocalBroker,
+      resetFormAfterBrokerHandoff,
+      onBrokerHandoffComplete,
+    ]
   );
 
   /** Biometric vault path: decrypt sealed identity + mint without the factor form. */
@@ -570,7 +624,18 @@ function ConsentUnlockInner(props: {
           </div>
         ) : null}
 
-        {step === 'unlock' && !vaultFactors && (
+        {step === 'unlock' && !vaultFactors && handoffDone ? (
+          <div className="form-container">
+            <div className="handoff-done" role="status">
+              Signed in
+            </div>
+            <p className="handoff-done-hint">
+              Return to your browser to continue. This window is ready for the next unlock.
+            </p>
+          </div>
+        ) : null}
+
+        {step === 'unlock' && !vaultFactors && !handoffDone && (
           <div className="form-container">
             {!broker ? <div className="step-indicator">Step 1: Unlock Your pN</div> : null}
 
