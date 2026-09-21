@@ -394,11 +394,15 @@ function startPnOAuthPopupAfterLaunch(
 
     let settled = false;
     let pollInterval: ReturnType<typeof setInterval> | undefined;
+    let brokerPollInterval: ReturnType<typeof setInterval> | undefined;
+    let brokerPollStartTimeout: ReturnType<typeof setTimeout> | undefined;
     let checkClosedInterval: ReturnType<typeof setInterval> | undefined;
     let timeoutId: ReturnType<typeof setTimeout> | undefined;
     let popupClosedTime: number | null = null;
     /** Until true, ignore popup.closed — cross-origin OAuth can report closed until the popup reaches same-origin callback. */
     let popupEverSeenOpen = false;
+    /** Prefer-app API poll: avoid overlapping GETs when the previous one is still in flight. */
+    let brokerPollInFlight = false;
 
     let oauthBc: BroadcastChannel | undefined;
     let pendingOAuthResult: PnOAuthPopupResult | null = null;
@@ -416,6 +420,8 @@ function startPnOAuthPopupAfterLaunch(
     const disposeAwait = () => {
       closeOauthBc();
       if (pollInterval !== undefined) clearInterval(pollInterval);
+      if (brokerPollInterval !== undefined) clearInterval(brokerPollInterval);
+      if (brokerPollStartTimeout !== undefined) clearTimeout(brokerPollStartTimeout);
       if (checkClosedInterval !== undefined) clearInterval(checkClosedInterval);
       if (timeoutId !== undefined) clearTimeout(timeoutId);
       window.removeEventListener('message', onMessage, true);
@@ -622,24 +628,39 @@ function startPnOAuthPopupAfterLaunch(
     };
 
     const pollDesktopBrokerOnce = () => {
-      if (settled || !usedApp) return;
+      if (settled || !usedApp || brokerPollInFlight) return;
       const ctx = brokerPollContextFromConsentUrl(url);
       if (!ctx) return;
-      void pollUnlockDesktopBrokerOnce(expectedState, ctx).then((data) => {
-        if (!data || settled) return;
-        acceptPayload(data as Record<string, unknown>, 'desktop_broker');
-      });
+      brokerPollInFlight = true;
+      void pollUnlockDesktopBrokerOnce(expectedState, ctx)
+        .then((data) => {
+          if (!data || settled) return;
+          acceptPayload(data as Record<string, unknown>, 'desktop_broker');
+        })
+        .finally(() => {
+          brokerPollInFlight = false;
+        });
     };
 
     queueMicrotask(() => {
       pollStorageOnce();
-      pollDesktopBrokerOnce();
     });
+    // Local storage / BC: cheap, keep snappy for popup flows.
     pollInterval = setInterval(() => {
       pollStorageOnce();
-      pollDesktopBrokerOnce();
       pollMessagingHandoffReady();
     }, 50);
+
+    // Prefer-app API poll: ~1/s is enough; 50ms flooded the console (~300 GETs per unlock).
+    if (usedApp) {
+      const BROKER_POLL_MS = 1000;
+      brokerPollStartTimeout = setTimeout(() => {
+        brokerPollStartTimeout = undefined;
+        if (settled) return;
+        pollDesktopBrokerOnce();
+        brokerPollInterval = setInterval(pollDesktopBrokerOnce, BROKER_POLL_MS);
+      }, 400);
+    }
 
     const POPUP_CLOSED_GRACE_MS = 25_000;
     if (popup) {
