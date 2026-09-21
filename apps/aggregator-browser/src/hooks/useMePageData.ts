@@ -10,6 +10,7 @@ import { getSavedFeed } from '../services/savedFeedService';
 import { getMetadataIndexService } from '../services/metadata/MetadataIndexService';
 import { API_ENDPOINT } from '../config/api';
 import { MESSAGING_ONLY } from '../config/buildFlags';
+import { PNOAuthService } from '../services/pnOAuthService';
 
 const EMPTY_ARRAY: IndexedFile[] = [];
 
@@ -239,10 +240,20 @@ export function useMePageData({
     setIsLoadingUserEngagement(true);
     (async () => {
       try {
+        const token = await PNOAuthService.getValidAccessToken();
+        if (!token) {
+          setUserLikedFileIds([]);
+          setUserCommentedFileIds([]);
+          setUserSharedFileIds([]);
+          return;
+        }
         const n = viewingCreatorId.startsWith('pn-') ? viewingCreatorId : `pn-${viewingCreatorId}`;
         const r = await fetch(`${API_ENDPOINT}/api/engagement/user/${encodeURIComponent(n)}`, {
           method: 'GET',
-          headers: { 'Content-Type': 'application/json' },
+          headers: {
+            Accept: 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
         });
         if (r.ok) {
           const d = await r.json();
@@ -308,10 +319,19 @@ export function useMePageData({
     }
     (async () => {
       try {
+        const token = await PNOAuthService.getValidAccessToken();
+        if (!token) {
+          setViewedUserLikedFiles((p) => (p.length === 0 ? p : []));
+          setViewedUserCommentedFiles((p) => (p.length === 0 ? p : []));
+          return;
+        }
         const n = viewingCreatorId.startsWith('pn-') ? viewingCreatorId : `pn-${viewingCreatorId}`;
         const r = await fetch(`${API_ENDPOINT}/api/engagement/user/${encodeURIComponent(n)}`, {
           method: 'GET',
-          headers: { 'Content-Type': 'application/json' },
+          headers: {
+            Accept: 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
         });
         if (!r.ok) {
           setViewedUserLikedFiles((p) => (p.length === 0 ? p : []));
