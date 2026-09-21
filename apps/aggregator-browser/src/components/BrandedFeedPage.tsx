@@ -3,7 +3,7 @@
  * Feed page for paid-tier creators with branding and community controls
  */
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback, useContext } from 'react';
 import { ArrowLeft, Settings, Users, Calendar, Tag, Sparkles } from 'lucide-react';
 import { Feed, IndexedFile } from '../types/aggregator';
 import { ContentRatingBadge } from './ContentRatingBadge'; // Still used for isNSFW badge
@@ -12,6 +12,9 @@ import { useEngagement } from '../hooks/useEngagement';
 import { cleanTitle } from '../utils/cleanTitle';
 import { FeedService } from '../services/feedService';
 import { useUserState } from '../contexts/UserStateContext';
+import { HomePageContext } from '../contexts/HomePageContext';
+import { useRegisterSoftRefresh } from '../contexts/SoftRefreshContext';
+import { OverscrollRefreshHost } from './OverscrollRefreshHost';
 
 interface BrandedFeedPageProps {
   feed: Feed;
@@ -23,6 +26,7 @@ interface BrandedFeedPageProps {
 export function BrandedFeedPage({ feed, files, onBack, onFileClick }: BrandedFeedPageProps) {
   const { getLikeCount, getShareCount } = useEngagement();
   const { userState } = useUserState();
+  const homeCtx = useContext(HomePageContext);
   const [showSettings, setShowSettings] = useState(false);
   const [editTitle, setEditTitle] = useState(feed.feedName);
   const [editDescription, setEditDescription] = useState(feed.feedDescription || '');
@@ -31,6 +35,13 @@ export function BrandedFeedPage({ feed, files, onBack, onFileClick }: BrandedFee
   const [editBio, setEditBio] = useState(feed.branding?.bio || '');
   const [saving, setSaving] = useState(false);
   const [topPostContent, setTopPostContent] = useState<string | null>(null);
+
+  const reloadTopPost = useCallback(async () => {
+    const { topPost } = await FeedService.getTopPost(feed.feedId);
+    if (topPost?.content) {
+      setTopPostContent(String(topPost.content));
+    }
+  }, [feed.feedId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -43,6 +54,17 @@ export function BrandedFeedPage({ feed, files, onBack, onFileClick }: BrandedFee
       cancelled = true;
     };
   }, [feed.feedId]);
+
+  const softRefreshBranded = useCallback(async () => {
+    if (homeCtx) {
+      homeCtx.setCurrentPage(0);
+      homeCtx.setHasMore(true);
+      homeCtx.hasMoreRef.current = true;
+      await homeCtx.discoverFiles(undefined, true, 0, false);
+    }
+    await reloadTopPost();
+  }, [homeCtx, reloadTopPost]);
+  useRegisterSoftRefresh(softRefreshBranded);
 
   const isOwner = userState.pnIdentifier === feed.creatorId;
 
@@ -67,6 +89,7 @@ export function BrandedFeedPage({ feed, files, onBack, onFileClick }: BrandedFee
   };
 
   return (
+    <OverscrollRefreshHost scrollRef={null} enabled={!showSettings}>
     <div className="min-h-screen bg-gradient-to-br from-neutral-900 via-neutral-800 to-neutral-900">
       {/* Header with Branding */}
       <div className="bg-neutral-900 border-b border-neutral-700">
@@ -316,6 +339,7 @@ export function BrandedFeedPage({ feed, files, onBack, onFileClick }: BrandedFee
         </div>
       )}
     </div>
+    </OverscrollRefreshHost>
   );
 }
 

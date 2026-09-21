@@ -115,7 +115,7 @@ const UserStateContext = createContext<UserStateContextType | undefined>(undefin
 
 export function UserStateProvider({ children }: { children: ReactNode }) {
   const [userState, setUserState] = useState<UserState>(() => {
-    // Load from localStorage on init
+    // Load prefs from localStorage on init — never restore unlocked session after reload.
     try {
       const stored = localStorage.getItem('pn_user_state');
       if (stored) {
@@ -188,15 +188,15 @@ export function UserStateProvider({ children }: { children: ReactNode }) {
           delete parsed.preferences.ageVerified;
           delete parsed.preferences.verifiedAge;
         }
-        // Debug logging removed for cleaner console
-        // console.log('Loaded user state from localStorage, subscribedCategories:', parsed.preferences?.subscribedCategories);
-        return parsed;
+        return {
+          ...parsed,
+          isUnlocked: false,
+          pnIdentifier: undefined,
+        } as UserState;
       }
     } catch (e) {
       console.warn('Failed to load user state from localStorage:', e);
     }
-    // Debug logging removed for cleaner console
-    // console.log('Using default user state');
     return defaultUserState;
   });
 

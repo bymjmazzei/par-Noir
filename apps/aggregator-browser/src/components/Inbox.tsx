@@ -3,7 +3,7 @@
  * Tabbed interface for Messages and Notifications
  */
 
-import React, { useState } from 'react';
+import React, { useState, useCallback, useRef } from 'react';
 import { Bell, List, Users, UserPlus, Inbox as InboxIcon } from 'lucide-react';
 import { MessageList } from './MessageList';
 import { MessageThread } from './MessageThread';
@@ -19,6 +19,8 @@ import type { SelectedInboxThread } from '../types/messaging';
 import { listGroups } from '../services/groupService';
 import { inboxCacheService } from '../services/inboxCacheService';
 import { BOTTOM_NAV_PADDING } from '../constants/layout';
+import { useRegisterSoftRefresh } from '../contexts/SoftRefreshContext';
+import { OverscrollRefreshHost } from './OverscrollRefreshHost';
 
 interface InboxProps {
   onNotificationClick?: (notification: Notification) => void;
@@ -48,6 +50,15 @@ export function Inbox({ initialThread = null, onCreatorClick, channelClientId }:
   const [showNotificationPreferences, setShowNotificationPreferences] = useState(false);
   const [showCreateGroup, setShowCreateGroup] = useState(false);
   const [inboxRefreshKey, setInboxRefreshKey] = useState(0);
+  const inboxScrollRef = useRef<HTMLDivElement | null>(null);
+
+  const softRefreshInbox = useCallback(async () => {
+    if (userState.pnIdentifier) {
+      inboxCacheService.clear(userState.pnIdentifier);
+    }
+    setInboxRefreshKey((k) => k + 1);
+  }, [userState.pnIdentifier]);
+  useRegisterSoftRefresh(selectedThread ? null : softRefreshInbox);
 
   const handleConnectionRequestHandled = () => {
     if (userState.pnIdentifier) {
@@ -199,53 +210,57 @@ export function Inbox({ initialThread = null, onCreatorClick, channelClientId }:
             channelClientId={channelClientId}
             onThreadSelect={(thread) => setSelectedThread(thread)}
           />
-        ) : activeView === 'notifications' ? (
-          <div className="h-full overflow-y-auto">
-            {userState.isUnlocked && userState.pnIdentifier ? (
-              <NotificationList
-                userPnIdentifier={userState.pnIdentifier}
-                onPreferencesClick={() => setShowNotificationPreferences(true)}
-                onConnectionRequestHandled={handleConnectionRequestHandled}
-                onNavigateToRequests={() => setActiveView('requests')}
-              />
-            ) : (
-              <div className="p-4">
-                <p className="text-neutral-400 text-sm mb-4">
-                  Unlock your identity to view notifications.
-                </p>
-              </div>
-            )}
-          </div>
-        ) : activeView === 'requests' ? (
-          <RequestsList
-            key={`requests-${inboxRefreshKey}`}
-            onRequestAccept={handleConnectionRequestHandled}
-          />
-        ) : activeView === 'activity' ? (
-          userState.isUnlocked && userState.pnIdentifier ? (
-            <ActivityLedgerPanel userPnIdentifier={userState.pnIdentifier} />
-          ) : (
-            <div className="p-4">
-              <p className="text-neutral-400 text-sm mb-4">
-                Unlock your identity to view activity ledger.
-              </p>
+        ) : (
+          <OverscrollRefreshHost scrollRef={inboxScrollRef} enabled={!selectedThread}>
+            <div ref={inboxScrollRef} className="h-full overflow-y-auto pn-soft-refresh-scroll">
+              {activeView === 'notifications' ? (
+                userState.isUnlocked && userState.pnIdentifier ? (
+                  <NotificationList
+                    userPnIdentifier={userState.pnIdentifier}
+                    onPreferencesClick={() => setShowNotificationPreferences(true)}
+                    onConnectionRequestHandled={handleConnectionRequestHandled}
+                    onNavigateToRequests={() => setActiveView('requests')}
+                  />
+                ) : (
+                  <div className="p-4">
+                    <p className="text-neutral-400 text-sm mb-4">
+                      Unlock your identity to view notifications.
+                    </p>
+                  </div>
+                )
+              ) : activeView === 'requests' ? (
+                <RequestsList
+                  key={`requests-${inboxRefreshKey}`}
+                  onRequestAccept={handleConnectionRequestHandled}
+                />
+              ) : activeView === 'activity' ? (
+                userState.isUnlocked && userState.pnIdentifier ? (
+                  <ActivityLedgerPanel userPnIdentifier={userState.pnIdentifier} />
+                ) : (
+                  <div className="p-4">
+                    <p className="text-neutral-400 text-sm mb-4">
+                      Unlock your identity to view activity ledger.
+                    </p>
+                  </div>
+                )
+              ) : activeView === 'connections' ? (
+                userState.isUnlocked && userState.pnIdentifier ? (
+                  <ConnectionsPanel
+                    key={`connections-${inboxRefreshKey}`}
+                    userPnIdentifier={userState.pnIdentifier}
+                    onCreatorClick={onCreatorClick}
+                  />
+                ) : (
+                  <div className="p-4">
+                    <p className="text-neutral-400 text-sm mb-4">
+                      Unlock your identity to view connections.
+                    </p>
+                  </div>
+                )
+              ) : null}
             </div>
-          )
-        ) : activeView === 'connections' ? (
-          userState.isUnlocked && userState.pnIdentifier ? (
-            <ConnectionsPanel
-              key={`connections-${inboxRefreshKey}`}
-              userPnIdentifier={userState.pnIdentifier}
-              onCreatorClick={onCreatorClick}
-            />
-          ) : (
-            <div className="p-4">
-              <p className="text-neutral-400 text-sm mb-4">
-                Unlock your identity to view connections.
-              </p>
-            </div>
-          )
-        ) : null}
+          </OverscrollRefreshHost>
+        )}
       </div>
 
       {showCreateGroup && userState.pnIdentifier && (

@@ -43,6 +43,7 @@ export function applyAllMessagingHandoffSources(messagingHandoff?: unknown): voi
     applyMessagingHandoffFromUnknown(messagingHandoff);
   }
   applyPendingMessagingOAuthHandoffFromStorage();
+  // Wipe legacy pn_dm_session_v1; never rehydrate ML-KEM across reload.
   restoreDmSessionFromStorage();
 }
 
@@ -63,7 +64,7 @@ export function applyPendingMessagingOAuthHandoffFromStorage(): boolean {
   }
 }
 
-/** Apply oauth-callback messaging backup, then restore sessionStorage ML-KEM session. */
+/** Apply oauth-callback messaging backup; wipe any legacy ML-KEM sessionStorage (no restore). */
 export function restoreMessagingAfterOAuth(): void {
   applyPendingMessagingOAuthHandoffFromStorage();
   restoreDmSessionFromStorage();

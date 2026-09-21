@@ -3,7 +3,7 @@
  * Uses HomePageContext for state and handlers from App.
  */
 
-import React, { useContext, useEffect, useState } from 'react';
+import React, { useContext, useEffect, useState, useCallback } from 'react';
 import { useStorageConnected } from '../hooks/useStorageConnected';
 import { Search, Filter, User, RefreshCw, Image as ImageIcon } from 'lucide-react';
 import { calculateMediaScaling } from '../utils/mediaScaling';
@@ -23,6 +23,8 @@ import { requestFeedMediaRetry } from '../services/feedFirstPaintGate';
 import { Settings, Upload, Plus } from 'lucide-react';
 import { IndexedFile } from '../types/aggregator';
 import { HomePageContext } from '../contexts/HomePageContext';
+import { useRegisterSoftRefresh } from '../contexts/SoftRefreshContext';
+import { OverscrollRefreshHost } from '../components/OverscrollRefreshHost';
 
 function getTextPostData(file: IndexedFile) {
   return (file.metadata as any).textPost || (file.metadata as any).thought || null;
@@ -31,6 +33,16 @@ function getTextPostData(file: IndexedFile) {
 export function HomePage() {
   const ctx = useContext(HomePageContext);
   const storageConnected = useStorageConnected(ctx?.userState.pnIdentifier);
+
+  const softRefreshHome = useCallback(async () => {
+    if (!ctx) return;
+    ctx.setCurrentPage(0);
+    ctx.setHasMore(true);
+    ctx.hasMoreRef.current = true;
+    await ctx.discoverFiles(undefined, true, 0, false);
+  }, [ctx]);
+  useRegisterSoftRefresh(ctx ? softRefreshHome : null);
+
   if (!ctx) return null;
 
   const {
@@ -128,7 +140,11 @@ export function HomePage() {
   const coverWithBrandSplash =
     viewMode === 'feed' && activeFeedId !== 'discovery' && splashMounted;
 
+  // Window/document overscroll only for grid home (feed + discovery own their scrollers).
+  const gridSoftRefresh = viewMode !== 'feed';
+
   return (
+    <OverscrollRefreshHost scrollRef={null} enabled={gridSoftRefresh}>
     <div className={`${viewMode === 'feed' ? 'h-full flex flex-col' : 'max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8'}`}>
       {coverWithBrandSplash && (
         <FeedBrandSplash
@@ -517,5 +533,6 @@ export function HomePage() {
         </div>
       )}
     </div>
+    </OverscrollRefreshHost>
   );
 }

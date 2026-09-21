@@ -2,10 +2,13 @@
  * Me / profile page - creator view with MePageTabsRail and FullScreenFeed or empty state.
  */
 
+import { useCallback, useContext } from 'react';
 import { MePageTabsRail } from '../components/MePageTabsRail';
 import { FullScreenFeed } from '../components/FullScreenFeed';
 import { FeedEngagementSidebar } from '../components/FeedEngagementSidebar';
 import { IndexedFile } from '../types/aggregator';
+import { HomePageContext } from '../contexts/HomePageContext';
+import { useRegisterSoftRefresh } from '../contexts/SoftRefreshContext';
 
 export type MePageTab = 'all' | 'media' | 'thoughts' | 'collections' | 'likes' | 'comments' | 'shares' | 'saved' | 'connections';
 
@@ -72,6 +75,16 @@ export function MePage({
   success,
   onReportCopyright,
 }: MePageProps) {
+  const homeCtx = useContext(HomePageContext);
+  const softRefreshMe = useCallback(async () => {
+    if (!homeCtx) return;
+    homeCtx.setCurrentPage(0);
+    homeCtx.setHasMore(true);
+    homeCtx.hasMoreRef.current = true;
+    await homeCtx.discoverFiles(undefined, true, 0, false);
+  }, [homeCtx]);
+  useRegisterSoftRefresh(softRefreshMe);
+
   const emptyStateCreatorId = viewingCreatorId || (isOwnIndex ? userState.pnIdentifier : null) || null;
   const emptyStateName = emptyStateCreatorId ? (getDisplayName(emptyStateCreatorId) || emptyStateCreatorId) : 'User';
 

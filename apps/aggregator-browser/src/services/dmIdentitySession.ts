@@ -41,19 +41,13 @@ export function hasStoredEncryptedIdentity(): boolean {
   return loadStoredIdentity() !== null;
 }
 
+/** Always false — ML-KEM is memory-only; browser reload ends the unlock session. */
 export function hasRestorableDmSession(): boolean {
-  try {
-    const raw = sessionStorage.getItem(DM_SESSION_STORAGE_KEY);
-    if (!raw) return false;
-    const parsed = JSON.parse(raw) as DmSessionHandoff;
-    return typeof parsed.mlKemSecretKey === 'string' && parsed.mlKemSecretKey.length > 0;
-  } catch {
-    return false;
-  }
+  return false;
 }
 
 export function needsMessagingIdentityHandoff(): boolean {
-  return !hasStoredEncryptedIdentity() || (!isDmIdentityReady() && !hasRestorableDmSession());
+  return !hasStoredEncryptedIdentity() || !isDmIdentityReady();
 }
 
 export function getDmIdentity(): DmIdentityState {
@@ -85,18 +79,9 @@ export function getMessagingMlKemPublicKey(): string | undefined {
   return state?.mlKemPublicKey;
 }
 
-function persistDmSessionToStorage(session: DmSessionHandoff): void {
-  try {
-    sessionStorage.setItem(
-      DM_SESSION_STORAGE_KEY,
-      JSON.stringify({
-        mlKemSecretKey: session.mlKemSecretKey,
-        mlKemPublicKey: session.mlKemPublicKey
-      })
-    );
-  } catch {
-    /* ignore quota / private mode */
-  }
+/** No-op: ML-KEM must not survive browser reload (security). */
+function persistDmSessionToStorage(_session: DmSessionHandoff): void {
+  clearDmSessionStorage();
 }
 
 function clearDmSessionStorage(): void {
@@ -107,31 +92,13 @@ function clearDmSessionStorage(): void {
   }
 }
 
-/** Restore ML-KEM session from sessionStorage after tab refresh. */
+/**
+ * Browser reload ends the unlock session — never rehydrate ML-KEM from storage.
+ * Clears any legacy `pn_dm_session_v1` residue. Returns true only if already in memory.
+ */
 export function restoreDmSessionFromStorage(): boolean {
-  if (state) return true;
-  try {
-    const raw = sessionStorage.getItem(DM_SESSION_STORAGE_KEY);
-    if (!raw) return false;
-    const parsed = JSON.parse(raw) as DmSessionHandoff;
-    if (!parsed.mlKemSecretKey) return false;
-    const mlKemPublicKey = resolveMlKemPublicKey(
-      parsed.mlKemSecretKey,
-      parsed.mlKemPublicKey
-    );
-    state = {
-      mlKemSecretKey: parsed.mlKemSecretKey,
-      mlKemPublicKey,
-      pnName: '',
-      passcode: '',
-    };
-    persistDmSessionToStorage({ mlKemSecretKey: parsed.mlKemSecretKey, mlKemPublicKey });
-    void publishMlKemPublicKey(mlKemPublicKey).catch(() => {});
-    notifyDmIdentityChange();
-    return true;
-  } catch {
-    return false;
-  }
+  clearDmSessionStorage();
+  return state !== null;
 }
 
 /** Apply ML-KEM keys handed off from OAuth consent (postMessage). */

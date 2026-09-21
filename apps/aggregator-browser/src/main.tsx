@@ -7,6 +7,7 @@ import { initBrowserSentry } from './config/sentry';
 import App from './App';
 import './index.css';
 import { UserStateProvider } from './contexts/UserStateContext';
+import { SoftRefreshProvider } from './contexts/SoftRefreshContext';
 import { RealtimeSyncProvider } from './contexts/RealtimeSyncContext';
 import { ErrorBoundary } from './components/ErrorBoundary';
 
@@ -21,9 +22,11 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
     <ErrorBoundary>
       <UserStateProvider>
-        <RealtimeSyncProvider>
-          <App />
-        </RealtimeSyncProvider>
+        <SoftRefreshProvider>
+          <RealtimeSyncProvider>
+            <App />
+          </RealtimeSyncProvider>
+        </SoftRefreshProvider>
       </UserStateProvider>
     </ErrorBoundary>
   </React.StrictMode>

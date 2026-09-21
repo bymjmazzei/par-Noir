@@ -83,8 +83,14 @@ body {
   }
 }
 
-/* Prevent pull-to-refresh on mobile */
+/* Block native browser pull-to-refresh (would reload and end unlock session).
+   In-app soft refresh uses JS overscroll detection instead. */
 body {
+  overscroll-behavior-y: contain;
+}
+
+/* Soft-refresh scroll hosts: allow local overscroll feel without document navigation */
+.pn-soft-refresh-scroll {
   overscroll-behavior-y: contain;
 }
 

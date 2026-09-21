@@ -4,7 +4,7 @@
  * Like a store with different sections
  */
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { Search, Plus, Check, Globe, TrendingUp, Clock, Star, Grid } from 'lucide-react';
 import { Feed, FeedCategory } from '../types/aggregator';
 import { useUserState } from '../contexts/UserStateContext';
@@ -12,6 +12,8 @@ import { FEED_CATEGORIES } from '../constants/feedCategories';
 import { FeedService } from '../services/feedService';
 import { useToast } from '../hooks/useToast';
 import { LoadingSkeleton } from './LoadingSkeleton';
+import { useRegisterSoftRefresh } from '../contexts/SoftRefreshContext';
+import { OverscrollRefreshHost } from './OverscrollRefreshHost';
 
 interface FeedBrowserProps {
   feeds: Feed[];
@@ -35,75 +37,69 @@ export function FeedBrowser({ feeds, onClose, onFeedClick, onCreateFeed }: FeedB
   const [categories, setCategories] = useState<Array<{ category: FeedCategory; count: number }>>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [categoryFeeds, setCategoryFeeds] = useState<Map<FeedCategory, Feed[]>>(new Map());
+  const bodyScrollRef = useRef<HTMLDivElement | null>(null);
 
-  // Load discovery data
-  useEffect(() => {
-    const loadDiscoveryData = async () => {
-      setIsLoading(true);
-      try {
-        // Load categories
-        const cats = await FeedService.getFeedCategories();
-        setCategories(cats);
+  const loadDiscoveryData = useCallback(async () => {
+    setIsLoading(true);
+    try {
+      const cats = await FeedService.getFeedCategories();
+      setCategories(cats);
 
-        // Load trending feeds
-        const trending = await FeedService.getTrendingFeeds({ limit: 20 });
-        setTrendingFeeds(trending);
+      const trending = await FeedService.getTrendingFeeds({ limit: 20 });
+      setTrendingFeeds(trending);
 
-        // Load new feeds
-        const newFeedsResult = await FeedService.discoverFeeds({ 
-          sort: 'new', 
-          limit: 20 
-        });
-        setNewFeeds(newFeedsResult.feeds);
+      const newFeedsResult = await FeedService.discoverFeeds({
+        sort: 'new',
+        limit: 20
+      });
+      setNewFeeds(newFeedsResult.feeds);
 
-        // Load recommended feeds (if user is unlocked)
-        if (userState.isUnlocked && userState.pnIdentifier) {
-          try {
-            const recommended = await FeedService.getRecommendedFeeds(userState.pnIdentifier, 10);
-            setRecommendedFeeds(recommended);
-          } catch (err) {
-            console.warn('Failed to load recommended feeds:', err);
-          }
+      if (userState.isUnlocked && userState.pnIdentifier) {
+        try {
+          const recommended = await FeedService.getRecommendedFeeds(userState.pnIdentifier, 10);
+          setRecommendedFeeds(recommended);
+        } catch (err) {
+          console.warn('Failed to load recommended feeds:', err);
         }
-
-        // Load feeds by category
-        const categoryMap = new Map<FeedCategory, Feed[]>();
-        for (const cat of cats) {
-          try {
-            const result = await FeedService.discoverFeeds({
-              category: cat.category,
-              limit: 10
-            });
-            categoryMap.set(cat.category, result.feeds);
-          } catch (err) {
-            console.warn(`Failed to load feeds for category ${cat.category}:`, err);
-          }
-        }
-        setCategoryFeeds(categoryMap);
-
-        // Combine all feeds for search
-        const allFeeds = [
-          ...trending,
-          ...newFeedsResult.feeds,
-          ...Array.from(categoryMap.values()).flat()
-        ];
-        // Remove duplicates
-        const uniqueFeeds = Array.from(
-          new Map(allFeeds.map(feed => [feed.feedId, feed])).values()
-        );
-        setAvailableFeeds(uniqueFeeds);
-      } catch (err: any) {
-        console.error('Failed to load discovery data:', err);
-        showError(err.message || 'Failed to load feeds');
-        // Fallback to existing feeds
-        setAvailableFeeds(feeds);
-      } finally {
-        setIsLoading(false);
       }
-    };
 
-    loadDiscoveryData();
-  }, [userState.isUnlocked, userState.pnIdentifier]);
+      const categoryMap = new Map<FeedCategory, Feed[]>();
+      for (const cat of cats) {
+        try {
+          const result = await FeedService.discoverFeeds({
+            category: cat.category,
+            limit: 10
+          });
+          categoryMap.set(cat.category, result.feeds);
+        } catch (err) {
+          console.warn(`Failed to load feeds for category ${cat.category}:`, err);
+        }
+      }
+      setCategoryFeeds(categoryMap);
+
+      const allFeeds = [
+        ...trending,
+        ...newFeedsResult.feeds,
+        ...Array.from(categoryMap.values()).flat()
+      ];
+      const uniqueFeeds = Array.from(
+        new Map(allFeeds.map(feed => [feed.feedId, feed])).values()
+      );
+      setAvailableFeeds(uniqueFeeds);
+    } catch (err: any) {
+      console.error('Failed to load discovery data:', err);
+      showError(err.message || 'Failed to load feeds');
+      setAvailableFeeds(feeds);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [userState.isUnlocked, userState.pnIdentifier, feeds, showError]);
+
+  useEffect(() => {
+    void loadDiscoveryData();
+  }, [loadDiscoveryData]);
+
+  useRegisterSoftRefresh(loadDiscoveryData);
 
   // Get feeds based on view mode
   const getDisplayFeeds = (): Feed[] => {
@@ -275,7 +271,8 @@ export function FeedBrowser({ feeds, onClose, onFeedClick, onCreateFeed }: FeedB
         </div>
 
         {/* Feeds List */}
-        <div className="flex-1 overflow-y-auto p-6">
+        <div ref={bodyScrollRef} className="flex-1 overflow-y-auto p-6 pn-soft-refresh-scroll">
+        <OverscrollRefreshHost scrollRef={bodyScrollRef}>
           {isLoading ? (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {[...Array(6)].map((_, i) => (
@@ -334,6 +331,7 @@ export function FeedBrowser({ feeds, onClose, onFeedClick, onCreateFeed }: FeedB
               )}
             </>
           )}
+        </OverscrollRefreshHost>
         </div>
       </div>
     </div>

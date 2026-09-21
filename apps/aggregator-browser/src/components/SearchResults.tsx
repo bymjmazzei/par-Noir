@@ -3,12 +3,14 @@
  * Redesigned search screen with recent/popular/trending searches and railway navigation
  */
 
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { IndexedFile } from '../types/aggregator';
 import { Search, X, Clock, TrendingUp, Flame, BadgeCheck } from 'lucide-react';
 import { searchFiles, searchProfiles, SearchOptions, ProfileSearchResult } from '../services/searchService';
 import { useUserState } from '../contexts/UserStateContext';
 import { FeedRail } from './FeedRail';
+import { useRegisterSoftRefresh } from '../contexts/SoftRefreshContext';
+import { OverscrollRefreshHost } from './OverscrollRefreshHost';
 
 interface SearchResultsProps {
   initialQuery?: string;
@@ -66,6 +68,7 @@ export function SearchResults({ initialQuery = '', onFileClick, indexedFiles = [
   // Track if search is in progress to prevent duplicate calls
   const isSearchingRef = useRef(false);
   const currentSearchRef = useRef<string>('');
+  const resultsScrollRef = useRef<HTMLDivElement | null>(null);
 
   // Perform search with debouncing
   const performSearch = React.useCallback(async (searchQuery: string) => {
@@ -203,6 +206,12 @@ export function SearchResults({ initialQuery = '', onFileClick, indexedFiles = [
     localStorage.removeItem(RECENT_SEARCHES_KEY);
   };
 
+  const softRefreshSearch = useCallback(async () => {
+    const q = query.trim();
+    if (q) await performSearch(q);
+  }, [query, performSearch]);
+  useRegisterSoftRefresh(softRefreshSearch);
+
   return (
     <div className="h-full flex flex-col bg-neutral-900" style={{ paddingBottom: '64px' }}>
       {/* Search Bar */}
@@ -251,7 +260,8 @@ export function SearchResults({ initialQuery = '', onFileClick, indexedFiles = [
       </div>
 
       {/* Content */}
-      <div className="flex-1 overflow-y-auto">
+      <OverscrollRefreshHost scrollRef={resultsScrollRef} enabled>
+      <div ref={resultsScrollRef} className="flex-1 overflow-y-auto pn-soft-refresh-scroll">
         {loading ? (
           <div className="text-center py-12">
             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-400 mx-auto mb-2"></div>
@@ -422,6 +432,7 @@ export function SearchResults({ initialQuery = '', onFileClick, indexedFiles = [
           </div>
         )}
       </div>
+      </OverscrollRefreshHost>
     </div>
   );
 }

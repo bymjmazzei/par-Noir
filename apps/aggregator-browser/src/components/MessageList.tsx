@@ -20,6 +20,8 @@ import { requestHotDrain } from '../services/socialMailboxConsumer';
 import {
   MESSAGING_INBOUND_WAKE_EVENT,
 } from '../services/inboundMailboxPreview';
+import { useSoftRefresh } from '../contexts/SoftRefreshContext';
+import { useOverscrollRefresh } from '../hooks/useOverscrollRefresh';
 
 interface MessageListProps {
   onThreadSelect: (thread: SelectedInboxThread) => void;
@@ -38,6 +40,13 @@ export function MessageList({ onThreadSelect, refreshKey = 0, channelClientId }:
   const [deleting, setDeleting] = useState(false);
   const loadingDisplayNamesRef = useRef<Set<string>>(new Set());
   const rateLimitRetryRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const listScrollRef = useRef<HTMLDivElement | null>(null);
+  const { runSoftRefresh, isRefreshing } = useSoftRefresh();
+  useOverscrollRefresh({
+    scrollRef: listScrollRef,
+    onRefresh: runSoftRefresh,
+    enabled: !isRefreshing(),
+  });
 
   const socketConnected = useRealtimeSync(['new_message', 'mailbox_pending'], () => {
     if (userState.pnIdentifier && !isMessagingRateLimited()) {
@@ -305,7 +314,7 @@ export function MessageList({ onThreadSelect, refreshKey = 0, channelClientId }:
   return (
     <div className="h-full flex flex-col bg-neutral-900">
       {/* Content */}
-      <div className="flex-1 overflow-y-auto">
+      <div ref={listScrollRef} className="flex-1 overflow-y-auto pn-soft-refresh-scroll">
         {loading ? (
           <div className="p-4 text-center">
             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-400 mx-auto mb-2"></div>

@@ -3,7 +3,7 @@
  * Conversation view for messaging
  */
 
-import { useState, useEffect, useRef, useMemo } from 'react';
+import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { ArrowLeft, Send, Paperclip, MoreVertical, Trash2, Check, Settings } from 'lucide-react';
 import {
   Message,
@@ -38,6 +38,8 @@ import { GroupSettingsModal } from './GroupSettingsModal';
 import { MessageMediaPickerModal } from './MessageMediaPickerModal';
 import { MessageMediaAttachment } from './MessageMediaAttachment';
 import type { MediaPickItem } from '@par-noir/messaging-ui';
+import { useRegisterSoftRefresh, useSoftRefresh } from '../contexts/SoftRefreshContext';
+import { useOverscrollRefresh } from '../hooks/useOverscrollRefresh';
 import {
   sendMessageWithMedia,
   type MessagingThreadContext
@@ -114,6 +116,17 @@ export function MessageThread({
   useRealtimeSync(['new_message', 'mailbox_pending'], () =>
     setRealtimeRefresh((n) => n + 1)
   );
+
+  const softRefreshThread = useCallback(async () => {
+    await loadMessagesRef.current(false, false);
+  }, []);
+  useRegisterSoftRefresh(softRefreshThread);
+  const { isRefreshing } = useSoftRefresh();
+  useOverscrollRefresh({
+    scrollRef: messagesContainerRef,
+    onRefresh: softRefreshThread,
+    enabled: !isRefreshing(),
+  });
 
   useEffect(() => {
     sendingRef.current = sending;
@@ -789,7 +802,7 @@ export function MessageThread({
       )}
 
       {/* Messages */}
-      <div ref={messagesContainerRef} className="flex-1 overflow-y-auto p-4 space-y-4">
+      <div ref={messagesContainerRef} className="flex-1 overflow-y-auto p-4 space-y-4 pn-soft-refresh-scroll">
         {loading ? (
           <div className="text-center py-12">
             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-400 mx-auto mb-2"></div>

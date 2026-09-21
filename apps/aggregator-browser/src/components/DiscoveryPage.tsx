@@ -13,6 +13,8 @@ import { cleanTitle } from '../utils/cleanTitle';
 import { isNSFWContent } from '../constants/contentRatings';
 import { hasFeedPreviewPlayback, resolvePublicMediaObjectUrl } from '../services/feedPreviewPlayback';
 import { sortIndexedFilesForDiscovery } from '../utils/discoverySort';
+import { useSoftRefresh } from '../contexts/SoftRefreshContext';
+import { useOverscrollRefresh } from '../hooks/useOverscrollRefresh';
 
 interface DiscoveryPageProps {
   files: IndexedFile[];
@@ -37,6 +39,13 @@ export function DiscoveryPage({
     console.log('[DiscoveryPage] Component rendering with files:', files.length, 'externalThumbnails:', externalThumbnails?.size || 0);
   }
   const { userState, getDisplayName, setUserDisplayName } = useUserState();
+  const scrollContainerRef = useRef<HTMLDivElement | null>(null);
+  const { runSoftRefresh, isRefreshing } = useSoftRefresh();
+  useOverscrollRefresh({
+    scrollRef: scrollContainerRef,
+    onRefresh: runSoftRefresh,
+    enabled: !isRefreshing(),
+  });
   const [activeTopFeed, setActiveTopFeed] = useState<TopFeedOption>('all');
   const [selectedNiche, setSelectedNiche] = useState<NicheFeedOption>(null);
   const [showInfo, setShowInfo] = useState<string | null>(null);
@@ -699,7 +708,10 @@ export function DiscoveryPage({
   }, [selectedNiche]);
 
   return (
-    <div className="h-full overflow-y-auto bg-neutral-900">
+    <div
+      ref={scrollContainerRef}
+      className="h-full overflow-y-auto bg-neutral-900 pn-soft-refresh-scroll"
+    >
       {/* Top Feed Railway - Text only, no backgrounds, active option bold and centered */}
       <div className="sticky top-0 z-10 bg-neutral-900 border-b border-neutral-700">
         <div 

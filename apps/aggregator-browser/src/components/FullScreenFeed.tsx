@@ -57,6 +57,8 @@ import {
   getFeedSplashMode,
 } from '../services/feedFirstPaintGate';
 import { useFeedFirstPaintSplash } from '../hooks/useFeedFirstPaintSplash';
+import { useSoftRefresh } from '../contexts/SoftRefreshContext';
+import { useOverscrollRefresh } from '../hooks/useOverscrollRefresh';
 
 async function loadMemberFeedMeta(fileId: string): Promise<Record<string, unknown> | null> {
   const res = await apiGet(`/api/aggregator/metadata-index/${encodeURIComponent(fileId)}`);
@@ -137,6 +139,14 @@ export function FullScreenFeed({
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
   const prevActiveFeedIdRef = useRef(activeFeedId);
   const { showSplash, mediaRetryEpoch } = useFeedFirstPaintSplash();
+  const { runSoftRefresh, isRefreshing } = useSoftRefresh();
+  const [softPullPx, setSoftPullPx] = useState(0);
+  useOverscrollRefresh({
+    scrollRef: scrollContainerRef,
+    onRefresh: runSoftRefresh,
+    enabled: !isRefreshing(),
+    onPullDistance: setSoftPullPx,
+  });
   const gatingRef = useRef(!isFeedFirstPaintDone());
   const softSkipInFlightRef = useRef(false);
   const videoRefs = useRef<Map<string, HTMLVideoElement>>(new Map());
@@ -1225,7 +1235,7 @@ export function FullScreenFeed({
           (likeDislikeSwipeRef as React.MutableRefObject<HTMLDivElement | null>).current = el;
         }
       }}
-      className="w-full overflow-y-scroll snap-y snap-mandatory bg-black"
+      className="w-full overflow-y-scroll snap-y snap-mandatory bg-black pn-soft-refresh-scroll"
       style={{ 
         scrollbarWidth: 'none', 
         msOverflowStyle: 'none', 
@@ -1246,6 +1256,16 @@ export function FullScreenFeed({
         position: 'relative'
       }}
     >
+      {(softPullPx > 8 || isRefreshing()) && (
+        <div
+          className="pointer-events-none sticky top-2 z-[60] flex justify-center"
+          aria-live="polite"
+        >
+          <div className="rounded-full bg-neutral-800/90 border border-neutral-600 px-3 py-1.5 text-xs text-neutral-200">
+            {isRefreshing() ? 'Refreshing…' : softPullPx >= 72 ? 'Release to refresh' : 'Pull to refresh'}
+          </div>
+        </div>
+      )}
       {/* Brand splash is owned by HomePage so it covers chrome before this mounts. */}
       {/* Only render visible files (currentIndex ± 1) for better performance */}
       {(() => {

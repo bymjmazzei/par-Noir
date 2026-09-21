@@ -3,7 +3,7 @@
  * Uses API endpoints instead of direct Google Drive access
  */
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { AlertCircle } from 'lucide-react';
 import { PNOAuthService } from '../services/pnOAuthService';
 import { uploadQueueService } from '../services/uploadQueueService';
@@ -14,9 +14,15 @@ import { useDriveAccounts } from '../hooks/useDriveAccounts';
 import { useLoadFilesForAccount } from '../hooks/useLoadFilesForAccount';
 import type { DriveFile } from './storage/storageTypes';
 import { API_ENDPOINT } from '../config/api';
-import { downloadStorageBlob } from '../services/storageApiClient';
+import { downloadStorageBlob, fetchStorageAccounts } from '../services/storageApiClient';
 import { fetchMusicRegistryCatalog, type CatalogTrack } from '../services/musicRegistryApi';
 import { apiGet, ownerFetch } from '../services/ownerApiFetch';
+import {
+  getSessionCloudCredentials,
+  PN_CLOUD_CREDENTIALS_READY_EVENT,
+} from '@par-noir/device-cloud-credentials';
+import { assessCloudSessionReadiness } from '@par-noir/user-owned-storage';
+import { isUnlockPrefetchComplete } from '../services/unlockSessionCoordinator';
 
 import { FileViewerModal } from './file/StorageFileViewer';
 import type { FileStorageAggregatorProps } from './storage/FileStorageAggregatorTypes';
@@ -38,10 +44,61 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
   const [isLoading, setIsLoading] = useState(false);
   const [filesByAccount, setFilesByAccount] = useState<Map<string, DriveFile[]>>(new Map());
   const [error, setError] = useState<string | null>(null);
+  const [cloudBanner, setCloudBanner] = useState<'none' | 'unlinked' | 'linkedInactive'>('none');
   const { accounts: driveAccounts, setSelectedId: setSelectedAccountId, setAccounts: setDriveAccounts } = useDriveAccounts({
     authenticatedUserId: authenticatedUser?.id,
     userState: { isUnlocked: userState.isUnlocked, pnIdentifier: userState.pnIdentifier },
   });
+
+  const refreshCloudBanner = useCallback(async () => {
+    if (!userState.isUnlocked || !userState.pnIdentifier) {
+      setCloudBanner('none');
+      return;
+    }
+    if (driveAccounts.length > 0) {
+      setCloudBanner('none');
+      return;
+    }
+    if (!isUnlockPrefetchComplete(userState.pnIdentifier)) {
+      return;
+    }
+    try {
+      const accessToken = await PNOAuthService.getValidAccessToken();
+      if (!accessToken) {
+        setCloudBanner('unlinked');
+        return;
+      }
+      const { accounts, socialCloudProvider } = await fetchStorageAccounts(
+        accessToken,
+        userState.pnIdentifier
+      );
+      const readiness = assessCloudSessionReadiness({
+        apiAccounts: accounts ?? [],
+        socialCloudProvider: socialCloudProvider ?? null,
+        localEnvelope: getSessionCloudCredentials(userState.pnIdentifier),
+      });
+      if (readiness === 'ready') {
+        setCloudBanner('none');
+      } else if (readiness === 'linkedInactive') {
+        setCloudBanner('linkedInactive');
+      } else {
+        setCloudBanner('unlinked');
+      }
+    } catch {
+      setCloudBanner(driveAccounts.length === 0 ? 'unlinked' : 'none');
+    }
+  }, [userState.isUnlocked, userState.pnIdentifier, driveAccounts.length]);
+
+  useEffect(() => {
+    void refreshCloudBanner();
+  }, [refreshCloudBanner]);
+
+  useEffect(() => {
+    const onReady = () => void refreshCloudBanner();
+    window.addEventListener(PN_CLOUD_CREDENTIALS_READY_EVENT, onReady);
+    return () => window.removeEventListener(PN_CLOUD_CREDENTIALS_READY_EVENT, onReady);
+  }, [refreshCloudBanner]);
+
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('list');
   const [viewingFile, setViewingFile] = useState<DriveFile | null>(null);
   const [openMenuFor, setOpenMenuFor] = useState<string | null>(null);
@@ -1357,8 +1414,33 @@ export const FileStorageAggregator: React.FC<FileStorageAggregatorProps> = ({
 
   return (
     <div className="space-y-6">
-      {/* Show warning if no accounts */}
-      {driveAccounts.length === 0 && (
+      {/* Cloud readiness — empty list is not always "never connected" */}
+      {driveAccounts.length === 0 && cloudBanner === 'linkedInactive' && (
+        <div className="bg-yellow-500/10 border border-yellow-500/20 rounded-lg p-4">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex items-center space-x-2">
+              <AlertCircle className="h-4 w-4 text-yellow-400 flex-shrink-0" />
+              <span className="text-yellow-400 text-sm">
+                Cloud storage is linked to this pN but not signed in on this device. Reconnect here to upload.
+              </span>
+            </div>
+            <button
+              type="button"
+              className="text-sm text-yellow-300 underline hover:text-yellow-200 self-start sm:self-auto"
+              onClick={() => {
+                try {
+                  window.dispatchEvent(new CustomEvent('pn_open_cloud_reconnect'));
+                } catch {
+                  /* non-DOM */
+                }
+              }}
+            >
+              Reconnect cloud
+            </button>
+          </div>
+        </div>
+      )}
+      {driveAccounts.length === 0 && cloudBanner === 'unlinked' && (
         <div className="bg-yellow-500/10 border border-yellow-500/20 rounded-lg p-4">
           <div className="flex items-center space-x-2">
             <AlertCircle className="h-4 w-4 text-yellow-400" />
