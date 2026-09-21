@@ -1,6 +1,9 @@
 /**
  * Overscroll / pull-past-top soft refresh on a scroll container (or window).
  * Fires once per gesture when scrollTop === 0 and pull exceeds threshold.
+ *
+ * When `scrollRef` is provided, waits until `current` is set before binding —
+ * otherwise listeners land on window and never see feed/discovery scrollers.
  */
 
 import { useEffect, useRef } from 'react';
@@ -21,7 +24,7 @@ export function shouldTriggerSoftRefresh(opts: {
 }
 
 export interface UseOverscrollRefreshOptions {
-  /** Scroll element; null = window / document scrollingElement. */
+  /** Scroll element; null/omit = window / document scrollingElement. */
   scrollRef?: React.RefObject<HTMLElement | null> | null;
   onRefresh: () => void | Promise<void>;
   /** Disable while false (e.g. compose overlays). */
@@ -48,10 +51,10 @@ export function useOverscrollRefresh({
   const onRefreshRef = useRef(onRefresh);
   const onPullRef = useRef(onPullDistance);
   const armedRef = useRef(false);
-  const pullingRef = useRef(false);
-  const startYRef = useRef(0);
   const triggeredRef = useRef(false);
+  const startYRef = useRef(0);
   const inflightRef = useRef(false);
+  const wheelAccRef = useRef(0);
 
   onRefreshRef.current = onRefresh;
   onPullRef.current = onPullDistance;
@@ -59,16 +62,16 @@ export function useOverscrollRefresh({
   useEffect(() => {
     if (!enabled) return;
 
-    const resolveEl = (): HTMLElement | null => {
-      if (scrollRef?.current) return scrollRef.current;
-      return (document.scrollingElement as HTMLElement | null) ?? document.documentElement;
-    };
+    let cancelled = false;
+    let detach: (() => void) | null = null;
+    let raf = 0;
+    let pollTimer: ReturnType<typeof setInterval> | null = null;
 
     const resetPull = () => {
-      pullingRef.current = false;
       armedRef.current = false;
       triggeredRef.current = false;
       startYRef.current = 0;
+      wheelAccRef.current = 0;
       onPullRef.current?.(0);
     };
 
@@ -85,34 +88,40 @@ export function useOverscrollRefresh({
       }
     };
 
-    const onTouchStart = (e: TouchEvent) => {
-      const el = resolveEl();
-      if (getScrollTop(el) > 0) {
-        armedRef.current = false;
-        return;
-      }
-      armedRef.current = true;
-      pullingRef.current = false;
-      triggeredRef.current = false;
-      startYRef.current = e.touches[0]?.clientY ?? 0;
-    };
+    const bind = (scrollEl: HTMLElement | null) => {
+      if (cancelled) return;
+      detach?.();
 
-    const onTouchMove = (e: TouchEvent) => {
-      if (!armedRef.current || inflightRef.current) return;
-      const el = resolveEl();
-      if (getScrollTop(el) > 0) {
-        resetPull();
-        return;
-      }
-      const y = e.touches[0]?.clientY ?? 0;
-      const delta = y - startYRef.current;
-      if (delta <= 0) {
-        onPullRef.current?.(0);
-        return;
-      }
-      pullingRef.current = true;
-      onPullRef.current?.(Math.min(delta, thresholdPx * 1.5));
-      if (delta >= thresholdPx && !triggeredRef.current) {
+      const resolveEl = (): HTMLElement | null => {
+        if (scrollRef) return scrollRef.current;
+        return (document.scrollingElement as HTMLElement | null) ?? document.documentElement;
+      };
+
+      const onTouchStart = (e: TouchEvent) => {
+        const el = resolveEl();
+        if (getScrollTop(el) > 0) {
+          armedRef.current = false;
+          return;
+        }
+        armedRef.current = true;
+        triggeredRef.current = false;
+        startYRef.current = e.touches[0]?.clientY ?? 0;
+      };
+
+      const onTouchMove = (e: TouchEvent) => {
+        if (!armedRef.current || inflightRef.current) return;
+        const el = resolveEl();
+        if (getScrollTop(el) > 0) {
+          resetPull();
+          return;
+        }
+        const y = e.touches[0]?.clientY ?? 0;
+        const delta = y - startYRef.current;
+        if (delta <= 0) {
+          onPullRef.current?.(0);
+          return;
+        }
+        onPullRef.current?.(Math.min(delta, thresholdPx * 1.5));
         if (
           shouldTriggerSoftRefresh({
             scrollTop: 0,
@@ -123,62 +132,117 @@ export function useOverscrollRefresh({
         ) {
           void fire();
         }
-      }
-    };
+      };
 
-    const onTouchEnd = () => {
-      if (!triggeredRef.current) resetPull();
-    };
+      const onTouchEnd = () => {
+        if (!triggeredRef.current) resetPull();
+      };
 
-    const onWheel = (e: WheelEvent) => {
-      if (inflightRef.current) return;
-      const el = resolveEl();
-      if (getScrollTop(el) > 0) return;
-      // Trackpad / mouse: negative deltaY = scroll up (pull past top when already at top)
-      if (e.deltaY >= 0) {
-        onPullRef.current?.(0);
-        return;
-      }
-      const pull = Math.min(Math.abs(e.deltaY), thresholdPx * 1.5);
-      onPullRef.current?.(pull);
-      if (Math.abs(e.deltaY) >= thresholdPx * 0.35) {
-        // Accumulate small wheel ticks toward threshold via a simple burst window
-        startYRef.current += Math.abs(e.deltaY);
-        if (startYRef.current >= thresholdPx) {
-          startYRef.current = 0;
+      const onWheel = (e: WheelEvent) => {
+        if (inflightRef.current) return;
+        const el = resolveEl();
+        if (getScrollTop(el) > 0) {
+          wheelAccRef.current = 0;
+          return;
+        }
+        if (e.deltaY >= 0) {
+          onPullRef.current?.(0);
+          wheelAccRef.current = 0;
+          return;
+        }
+        wheelAccRef.current += Math.abs(e.deltaY);
+        onPullRef.current?.(Math.min(wheelAccRef.current, thresholdPx * 1.5));
+        if (wheelAccRef.current >= thresholdPx) {
+          wheelAccRef.current = 0;
           void fire();
         }
-      }
+      };
+
+      const onScroll = () => {
+        if (getScrollTop(resolveEl()) > 0) {
+          wheelAccRef.current = 0;
+          onPullRef.current?.(0);
+        }
+      };
+
+      // Bind on the scroll element when we have one; otherwise document/window.
+      const touchTarget: EventTarget = scrollEl ?? document;
+      const wheelTarget: EventTarget = scrollEl ?? window;
+
+      touchTarget.addEventListener('touchstart', onTouchStart as EventListener, {
+        passive: true,
+        capture: true,
+      });
+      touchTarget.addEventListener('touchmove', onTouchMove as EventListener, {
+        passive: true,
+        capture: true,
+      });
+      touchTarget.addEventListener('touchend', onTouchEnd as EventListener, {
+        passive: true,
+        capture: true,
+      });
+      wheelTarget.addEventListener('wheel', onWheel as EventListener, {
+        passive: true,
+        capture: true,
+      });
+      wheelTarget.addEventListener('scroll', onScroll as EventListener, {
+        passive: true,
+        capture: true,
+      });
+
+      detach = () => {
+        touchTarget.removeEventListener('touchstart', onTouchStart as EventListener, true);
+        touchTarget.removeEventListener('touchmove', onTouchMove as EventListener, true);
+        touchTarget.removeEventListener('touchend', onTouchEnd as EventListener, true);
+        wheelTarget.removeEventListener('wheel', onWheel as EventListener, true);
+        wheelTarget.removeEventListener('scroll', onScroll as EventListener, true);
+      };
     };
 
-    // Reset wheel accumulation when user scrolls down or leaves top
-    const onScroll = () => {
-      const el = resolveEl();
-      if (getScrollTop(el) > 0) {
-        startYRef.current = 0;
-        onPullRef.current?.(0);
+    const tryAttach = () => {
+      if (cancelled) return;
+      // Window/document mode
+      if (!scrollRef) {
+        bind(null);
+        return;
       }
+      const el = scrollRef.current;
+      if (el) {
+        bind(el);
+        return;
+      }
+      // Ref not mounted yet — poll briefly until it attaches
+      raf = requestAnimationFrame(tryAttach);
     };
 
-    const target: EventTarget = scrollRef?.current ?? window;
-    // Prefer listening on the scroll element when available; fall back to window.
-    const listenTarget: EventTarget =
-      scrollRef && !scrollRef.current ? window : target;
-
-    // Re-bind when ref attaches: use capture on window for touch/wheel so nested scrollers work
-    const touchTarget: EventTarget = scrollRef?.current ?? document;
-    touchTarget.addEventListener('touchstart', onTouchStart as EventListener, { passive: true });
-    touchTarget.addEventListener('touchmove', onTouchMove as EventListener, { passive: true });
-    touchTarget.addEventListener('touchend', onTouchEnd as EventListener, { passive: true });
-    listenTarget.addEventListener('wheel', onWheel as EventListener, { passive: true });
-    listenTarget.addEventListener('scroll', onScroll as EventListener, { passive: true });
+    tryAttach();
+    // Safety: some layouts attach the ref after paint without another effect dep.
+    if (scrollRef) {
+      pollTimer = setInterval(() => {
+        if (cancelled || !scrollRef.current) return;
+        if (!detach) tryAttach();
+        else {
+          // Already bound; stop polling
+          if (pollTimer) {
+            clearInterval(pollTimer);
+            pollTimer = null;
+          }
+        }
+      }, 200);
+      // Stop polling after a few seconds
+      setTimeout(() => {
+        if (pollTimer) {
+          clearInterval(pollTimer);
+          pollTimer = null;
+        }
+      }, 5000);
+    }
 
     return () => {
-      touchTarget.removeEventListener('touchstart', onTouchStart as EventListener);
-      touchTarget.removeEventListener('touchmove', onTouchMove as EventListener);
-      touchTarget.removeEventListener('touchend', onTouchEnd as EventListener);
-      listenTarget.removeEventListener('wheel', onWheel as EventListener);
-      listenTarget.removeEventListener('scroll', onScroll as EventListener);
+      cancelled = true;
+      if (raf) cancelAnimationFrame(raf);
+      if (pollTimer) clearInterval(pollTimer);
+      detach?.();
     };
   }, [enabled, scrollRef, thresholdPx]);
 }

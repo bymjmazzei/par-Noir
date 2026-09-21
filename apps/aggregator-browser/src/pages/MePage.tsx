@@ -2,13 +2,14 @@
  * Me / profile page - creator view with MePageTabsRail and FullScreenFeed or empty state.
  */
 
-import { useCallback, useContext } from 'react';
+import { useCallback, useContext, useRef } from 'react';
 import { MePageTabsRail } from '../components/MePageTabsRail';
 import { FullScreenFeed } from '../components/FullScreenFeed';
 import { FeedEngagementSidebar } from '../components/FeedEngagementSidebar';
 import { IndexedFile } from '../types/aggregator';
 import { HomePageContext } from '../contexts/HomePageContext';
 import { useRegisterSoftRefresh } from '../contexts/SoftRefreshContext';
+import { OverscrollRefreshHost } from '../components/OverscrollRefreshHost';
 
 export type MePageTab = 'all' | 'media' | 'thoughts' | 'collections' | 'likes' | 'comments' | 'shares' | 'saved' | 'connections';
 
@@ -85,6 +86,8 @@ export function MePage({
   }, [homeCtx]);
   useRegisterSoftRefresh(softRefreshMe);
 
+  const meScrollRef = useRef<HTMLDivElement | null>(null);
+
   const emptyStateCreatorId = viewingCreatorId || (isOwnIndex ? userState.pnIdentifier : null) || null;
   const emptyStateName = emptyStateCreatorId ? (getDisplayName(emptyStateCreatorId) || emptyStateCreatorId) : 'User';
 
@@ -103,6 +106,10 @@ export function MePage({
   };
 
   return (
+    <OverscrollRefreshHost
+      scrollRef={filteredMeFiles.length > 0 ? null : meScrollRef}
+      enabled={filteredMeFiles.length === 0}
+    >
     <div
       className="h-screen flex flex-col bg-black"
       style={{
@@ -154,7 +161,11 @@ export function MePage({
           />
         </div>
       ) : (
-        <div className="flex-1" style={{ height: viewportHeightCSS, maxHeight: viewportHeightCSS }}>
+        <div
+          ref={meScrollRef}
+          className="flex-1 overflow-y-auto pn-soft-refresh-scroll"
+          style={{ height: viewportHeightCSS, maxHeight: viewportHeightCSS }}
+        >
           <div className="relative w-full h-full flex">
             <div
               className="flex-1 relative overflow-hidden"
@@ -216,5 +227,6 @@ export function MePage({
         </div>
       )}
     </div>
+    </OverscrollRefreshHost>
   );
 }

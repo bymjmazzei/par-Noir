@@ -60,11 +60,23 @@ import { useFeedFirstPaintSplash } from '../hooks/useFeedFirstPaintSplash';
 import { useSoftRefresh } from '../contexts/SoftRefreshContext';
 import { useOverscrollRefresh } from '../hooks/useOverscrollRefresh';
 
+/** Skip repeat GETs for fileIds that already 404'd from metadata-index (collection members often aren't cached). */
+const metadataIndexMisses = new Set<string>();
+
 async function loadMemberFeedMeta(fileId: string): Promise<Record<string, unknown> | null> {
-  const res = await apiGet(`/api/aggregator/metadata-index/${encodeURIComponent(fileId)}`);
-  if (!res.ok) return null;
-  const data = await res.json();
-  return (data.metadata || data) as Record<string, unknown>;
+  if (metadataIndexMisses.has(fileId)) return null;
+  try {
+    const res = await apiGet(`/api/aggregator/metadata-index/${encodeURIComponent(fileId)}`);
+    if (res.status === 404) {
+      metadataIndexMisses.add(fileId);
+      return null;
+    }
+    if (!res.ok) return null;
+    const data = await res.json();
+    return (data.metadata || data) as Record<string, unknown>;
+  } catch {
+    return null;
+  }
 }
 
 interface FullScreenFeedProps {
@@ -1351,39 +1363,20 @@ export function FullScreenFeed({
                 return;
               }
               
-              console.log(`[FullScreenFeed] Fetching collection data for ${fileId}`);
               const response = await apiGet(`/api/aggregator/metadata-index/${fileId}`);
               
               if (response.ok) {
                 const data = await response.json();
-                console.log(`[FullScreenFeed] API response for collection ${fileId}:`, {
-                  hasMetadata: !!data.metadata,
-                  hasCollection: !!data.metadata?.collection,
-                  hasTopLevelCollection: !!data.collection,
-                  metadataKeys: data.metadata ? Object.keys(data.metadata) : [],
-                  dataKeys: Object.keys(data),
-                  fullResponse: JSON.stringify(data, null, 2)
-                });
-                
                 const fetchedCollection = data.metadata?.collection || data.collection;
                 if (fetchedCollection?.collectionFileIds) {
-                  console.log(`[FullScreenFeed] Successfully fetched collection data for ${fileId}:`, fetchedCollection);
                   setCollectionDataCache(prev => {
                     const newMap = new Map(prev);
                     newMap.set(fileId, fetchedCollection);
                     return newMap;
                   });
-                } else {
-                  console.warn(`[FullScreenFeed] Collection data fetch returned no collectionFileIds for ${fileId}`, {
-                    fetchedCollection,
-                    dataMetadata: data.metadata,
-                    fullData: data
-                  });
                 }
-              } else {
-                const errorText = await response.text().catch(() => 'Unknown error');
-                console.warn(`[FullScreenFeed] Failed to fetch collection data for ${fileId}: ${response.status}`, errorText);
               }
+              // 404 / missing collection: leave cache empty; no console noise for expected misses.
             } catch (err) {
               import.meta.env.DEV && console.warn(`[FullScreenFeed] Error fetching collection data for ${fileId}:`, err);
             } finally {
