@@ -90,10 +90,12 @@ function extractDeepLinkFromArgv(argv: string[]): string | null {
 
 function createWindow(): void {
   mainWindow = new BrowserWindow({
-    width: 480,
-    height: 720,
-    minWidth: 400,
-    minHeight: 560,
+    width: 400,
+    height: 600,
+    minWidth: 380,
+    minHeight: 540,
+    useContentSize: true,
+    resizable: true,
     title: 'par Noir Unlock',
     backgroundColor: '#000000',
     webPreferences: {

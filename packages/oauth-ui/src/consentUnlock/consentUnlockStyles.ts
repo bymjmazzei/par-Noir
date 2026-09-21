@@ -310,7 +310,55 @@ export function consentUnlockCss(assetBase: string): string {
 export function resolveConsentAssetBase(explicit?: string): string {
   if (explicit && explicit.trim()) return explicit.replace(/\/$/, '');
   if (typeof window !== 'undefined' && window.location?.origin) {
-    return window.location.origin.replace(/\/$/, '');
+    const origin = window.location.origin;
+    // Electron / Capacitor file loads: origin is "file://" or "null" — relative assets.
+    if (!origin || origin === 'null' || origin === 'file://' || origin.startsWith('file:')) {
+      return '.';
+    }
+    return origin.replace(/\/$/, '');
   }
   return 'https://browse.parnoir.com';
+}
+
+/** Tighter chrome for native Unlock brokers (no scroll at default window size). */
+export function consentUnlockBrokerCssExtras(): string {
+  return `
+.pn-consent-page.pn-consent-broker {
+  min-height: 100%;
+  height: 100%;
+  padding: 16px 16px;
+  overflow: hidden;
+  justify-content: flex-start;
+}
+.pn-consent-page.pn-consent-broker .container {
+  max-width: 340px;
+}
+.pn-consent-page.pn-consent-broker .header {
+  margin-bottom: 16px;
+}
+.pn-consent-page.pn-consent-broker .logo-container {
+  width: 88px;
+  height: 88px;
+  margin-bottom: 0;
+}
+.pn-consent-page.pn-consent-broker .form-container {
+  padding: 20px 20px 22px;
+}
+.pn-consent-page.pn-consent-broker .form-group {
+  margin-bottom: 14px;
+}
+.pn-consent-page.pn-consent-broker .mode-row {
+  margin-bottom: 14px;
+}
+.pn-consent-page.pn-consent-broker .button-group {
+  margin-top: 18px;
+}
+.pn-consent-page.pn-consent-broker .file-upload-area {
+  padding: 12px;
+}
+.pn-consent-page.pn-consent-broker .upload-icon {
+  font-size: 24px;
+  margin-bottom: 4px;
+}
+`;
 }

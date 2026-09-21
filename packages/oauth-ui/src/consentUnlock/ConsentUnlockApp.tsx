@@ -26,7 +26,7 @@ import {
   type NfcIdentityPayload,
 } from './physicalUnlockLoader';
 import { denyOAuthConsent, redirectWithAuthCode } from './redirectWithAuthCode';
-import { consentUnlockCss, resolveConsentAssetBase } from './consentUnlockStyles';
+import { consentUnlockCss, consentUnlockBrokerCssExtras, resolveConsentAssetBase } from './consentUnlockStyles';
 import { toUnlockVaultEnrollMaterial } from './vaultEnroll';
 
 /** Factors + sealed identity for biometric vault re-mint (never sent to API). */
@@ -54,6 +54,11 @@ export type ConsentUnlockAppProps = {
   openExternal?: (url: string) => void | Promise<void>;
   /** Optional branding asset base for logo / background (defaults to page origin) */
   assetBase?: string;
+  /**
+   * Native Unlock broker chrome: relative assets, tighter layout, no step label.
+   * Use with Electron / Cap shells that size the window to the form.
+   */
+  layout?: 'default' | 'broker';
   /**
    * When set (native biometric path), decrypt + mint without the factor form.
    * Host should clear after consume to avoid re-entry loops.
@@ -147,6 +152,7 @@ export function ConsentUnlockApp(props: ConsentUnlockAppProps): React.ReactEleme
       params={params}
       openExternal={props.openExternal}
       assetBase={props.assetBase}
+      layout={props.layout ?? 'default'}
       vaultFactors={props.vaultFactors}
       onUnlockedForVault={props.onUnlockedForVault}
       onVaultFactorsConsumed={props.onVaultFactorsConsumed}
@@ -158,6 +164,7 @@ function ConsentUnlockInner(props: {
   params: ConsentUnlockParams;
   openExternal?: (url: string) => void | Promise<void>;
   assetBase?: string;
+  layout: 'default' | 'broker';
   vaultFactors?: ConsentVaultFactors | null;
   onUnlockedForVault?: (material: ConsentVaultEnrollMaterial) => void | Promise<void>;
   onVaultFactorsConsumed?: () => void;
@@ -166,6 +173,7 @@ function ConsentUnlockInner(props: {
     params,
     openExternal,
     assetBase,
+    layout,
     vaultFactors,
     onUnlockedForVault,
     onVaultFactorsConsumed,
@@ -508,6 +516,7 @@ function ConsentUnlockInner(props: {
   const key2Props = secretKeyInputProps('key2', 'unlock');
   const resolvedAssetBase = resolveConsentAssetBase(assetBase);
   const logoSrc = `${resolvedAssetBase}/branding/Par-Noir-Logo-White.png`;
+  const broker = layout === 'broker';
 
   let redirectHost = params.redirectUri;
   try {
@@ -521,8 +530,11 @@ function ConsentUnlockInner(props: {
     .filter((s) => s && !s.startsWith('datapoint:') && s !== 'cloud:app' && !s.startsWith('cloud:'));
 
   return (
-    <div className="pn-consent-page">
-      <style>{consentUnlockCss(resolvedAssetBase)}</style>
+    <div className={`pn-consent-page${broker ? ' pn-consent-broker' : ''}`}>
+      <style>
+        {consentUnlockCss(resolvedAssetBase)}
+        {broker ? consentUnlockBrokerCssExtras() : ''}
+      </style>
       <div className="container">
         <div className="header">
           <div className="logo-container">
@@ -540,7 +552,7 @@ function ConsentUnlockInner(props: {
 
         {step === 'unlock' && !vaultFactors && (
           <div className="form-container">
-            <div className="step-indicator">Step 1: Unlock Your pN</div>
+            {!broker ? <div className="step-indicator">Step 1: Unlock Your pN</div> : null}
 
             <div className="mode-row" role="tablist" aria-label="Unlock method">
               <button

@@ -28,6 +28,9 @@ function desktopApi(): UnlockDesktopApi | null {
   return (window as Window & { pnUnlockDesktop?: UnlockDesktopApi }).pnUnlockDesktop ?? null;
 }
 
+/** Hosted branding (Electron file:// cannot reliably load asar-relative CSS backgrounds). */
+const DESKTOP_BRANDING_BASE = 'https://browse.parnoir.com';
+
 export default function App(): React.ReactElement {
   const [search, setSearch] = useState(() =>
     typeof window !== 'undefined' ? window.location.search : ''
@@ -215,6 +218,8 @@ export default function App(): React.ReactElement {
         search={search}
         apiEndpointDefault={API_DEFAULT.replace(/\/$/, '')}
         openExternal={openExternal}
+        assetBase={DESKTOP_BRANDING_BASE}
+        layout="broker"
         vaultFactors={vaultFactors}
         onVaultFactorsConsumed={() => setVaultFactors(null)}
         onUnlockedForVault={onUnlockedForVault}
