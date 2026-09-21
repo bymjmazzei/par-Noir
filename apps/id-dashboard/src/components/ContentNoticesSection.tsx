@@ -40,6 +40,7 @@ export function ContentNoticesSection({ accessToken }: ContentNoticesSectionProp
 
   const pending = notices.filter((n) => n.type === 'pending_review');
   const takenDown = notices.filter((n) => n.type === 'taken_down');
+  const prohibited = notices.filter((n) => n.type === 'prohibited');
 
   return (
     <section className="rounded-lg border border-white/10 bg-neutral-900/60 p-4 mb-6">
@@ -51,6 +52,9 @@ export function ContentNoticesSection({ accessToken }: ContentNoticesSectionProp
             Pending review means content was flagged for copyright review; human reviewers will decide.
           </p>
           <p>
+            Prohibited means content cannot be made public on the network. Your file stays in your private cloud; upload a new file to retry.
+          </p>
+          <p>
             Removed from index means items were removed from the par Noir index and third-party indexes only.
             Your file is still in your Google Drive; we do not host or delete your files.
           </p>
@@ -59,6 +63,11 @@ export function ContentNoticesSection({ accessToken }: ContentNoticesSectionProp
       {pending.length > 0 && (
         <div className="mb-2 text-sm text-amber-200/90">
           <strong>{pending.length} item{pending.length !== 1 ? 's' : ''} pending review.</strong>
+        </div>
+      )}
+      {prohibited.length > 0 && (
+        <div className="mb-2 text-sm text-red-200/90">
+          <strong>{prohibited.length} item{prohibited.length !== 1 ? 's' : ''} marked prohibited (cannot be made public).</strong>
         </div>
       )}
       {takenDown.length > 0 && (

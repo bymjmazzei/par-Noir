@@ -6,8 +6,11 @@
 
 import { getDatabasePool } from '../utils/database';
 
-export type ContentNoticeType = 'pending_review' | 'taken_down' | 'restored';
+export type ContentNoticeType = 'pending_review' | 'taken_down' | 'restored' | 'prohibited';
 export type ContentNoticeSource = 'bot' | 'prism_denied' | 'dmca_notice' | 'counter_notice';
+
+const PROHIBITED_REASON =
+  'This content was classified as prohibited and cannot be made public on the network. Your file remains in your private cloud. To retry, upload a new file.';
 
 export interface ContentNotice {
   id: string;
@@ -36,7 +39,7 @@ export async function addContentNotice(params: {
   const { ownerPnIdentifier, fileId, type, source } = params;
   const reason =
     params.reason ??
-    (type === 'taken_down' ? TAKEN_DOWN_REASON : null);
+    (type === 'taken_down' ? TAKEN_DOWN_REASON : type === 'prohibited' ? PROHIBITED_REASON : null);
   const result = await db.query(
     `INSERT INTO content_notices (owner_pn_identifier, file_id, type, reason, source)
      VALUES ($1, $2, $3, $4, $5)

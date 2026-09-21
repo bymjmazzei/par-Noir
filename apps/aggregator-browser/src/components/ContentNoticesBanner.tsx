@@ -40,6 +40,7 @@ export function ContentNoticesBanner({ isUnlocked, enabled = true }: ContentNoti
 
   const pending = notices.filter((n) => n.type === 'pending_review');
   const takenDown = notices.filter((n) => n.type === 'taken_down');
+  const prohibited = notices.filter((n) => n.type === 'prohibited');
 
   return (
     <div className="px-3 py-2 bg-amber-950/40 border-b border-amber-800/50 text-amber-200/90 text-sm flex items-center gap-2 flex-wrap">
@@ -47,6 +48,11 @@ export function ContentNoticesBanner({ isUnlocked, enabled = true }: ContentNoti
       {pending.length > 0 && (
         <span>
           {pending.length} item{pending.length !== 1 ? 's' : ''} pending copyright review.
+        </span>
+      )}
+      {prohibited.length > 0 && (
+        <span>
+          {prohibited.length} item{prohibited.length !== 1 ? 's' : ''} marked prohibited (cannot be made public; reupload to retry).
         </span>
       )}
       {takenDown.length > 0 && (

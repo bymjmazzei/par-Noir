@@ -96,6 +96,8 @@ export interface PublicMetadata {
   publicToken?: string;
   isPublic: boolean;
   isNSFW?: boolean; // NSFW content flag
+  /** true = never index / make public; file stays on private cloud */
+  isProhibited?: boolean;
   /**
    * When set, public/community feeds hide the post after this time.
    * Durable end state (unless persistOnDiscover): becomes private on the index.

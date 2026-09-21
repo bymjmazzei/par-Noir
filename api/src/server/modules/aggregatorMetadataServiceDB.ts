@@ -2113,6 +2113,7 @@ export class AggregatorMetadataServiceDB {
       thought?: any;
       collection?: any; // Collection data with collectionFileIds
       isNSFW?: boolean;
+      isProhibited?: boolean;
       isPublic?: boolean;
       publicToken?: string | null; // null = delete, string = set, undefined = preserve
       publicContentRef?: unknown | null; // null = delete, object = set, undefined = preserve
@@ -2177,6 +2178,7 @@ export class AggregatorMetadataServiceDB {
         ...(updates.collection !== undefined ? { collection: updates.collection } : (existingCollection !== undefined ? { collection: existingCollection } : {})),
         // Always update isNSFW if provided (even if false, to ensure it's saved)
         ...(updates.isNSFW !== undefined && { isNSFW: Boolean(updates.isNSFW) }),
+        ...(updates.isProhibited !== undefined && { isProhibited: Boolean(updates.isProhibited) }),
         // CRITICAL: Only update isPublic if explicitly provided
         // If not provided, preserve existing value (don't accidentally make public files private)
         ...(updates.isPublic !== undefined && { isPublic: updates.isPublic === true }),

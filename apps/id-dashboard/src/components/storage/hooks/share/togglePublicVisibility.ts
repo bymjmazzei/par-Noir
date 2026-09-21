@@ -501,6 +501,17 @@ export async function togglePublicVisibility(
               throw new Error('PENDING_REVIEW');
             }
 
+            // 422 = prohibited — stay private; no dispute; reupload to retry
+            if (res.status === 422) {
+              const data = await res.json().catch(() => ({}));
+              const msg =
+                data.message ||
+                data.error ||
+                'This content cannot be made public on the network. It remains private. Upload a new file to retry.';
+              setError(msg);
+              throw new Error('PROHIBITED');
+            }
+
             // 403 = e.g. account restricted (repeat infringer) or other denial
             if (res.status === 403) {
               const data = await res.json().catch(() => ({}));
@@ -536,6 +547,10 @@ export async function togglePublicVisibility(
         const reason = putResult.reason as Error | undefined;
         if (reason?.message === 'PENDING_REVIEW') {
           // Content is pending copyright review; success message already set; do not continue to Drive index update
+          await loadFileMetadata([file]);
+          return;
+        }
+        if (reason?.message === 'PROHIBITED') {
           await loadFileMetadata([file]);
           return;
         }
@@ -651,6 +666,10 @@ export async function togglePublicVisibility(
     const errorMessage = err instanceof Error ? err.message : 'Failed to update file visibility';
     if (errorMessage === 'PENDING_REVIEW') {
       // Success message already set; do not overwrite with error
+      return;
+    }
+    if (errorMessage === 'PROHIBITED') {
+      // Error message already set for prohibited
       return;
     }
     console.error('Failed to toggle public status:', err);

@@ -13,7 +13,7 @@ export function setupPrismRoutes(app: any): void {
    * POST /api/reports
    * Submit a content report. Copyright reports are added to the Prism queue.
    * Requires Bearer token.
-   * Body: { fileId, reportType: 'copyright' | 'nsfw' | 'spam' | 'other', reason? }
+   * Body: { fileId, reportType: 'copyright' | 'nsfw' | 'spam' | 'other' | 'prohibited', reason? }
    */
   app.post('/api/reports', async (req: Request, res: Response) => {
     try {
@@ -26,11 +26,11 @@ export function setupPrismRoutes(app: any): void {
       if (!fileId || !reportType) {
         return res.status(400).json({ error: 'fileId and reportType required' });
       }
-      if (!['copyright', 'nsfw', 'spam', 'other'].includes(reportType)) {
+      if (!['copyright', 'nsfw', 'spam', 'other', 'prohibited'].includes(reportType)) {
         return res.status(400).json({ error: 'Invalid reportType' });
       }
 
-      if (reportType === 'copyright') {
+      if (reportType === 'copyright' || reportType === 'prohibited') {
         const { AggregatorMetadataServiceDB } = await import('./aggregatorMetadataServiceDB');
         const metadataService = AggregatorMetadataServiceDB.getInstance();
         const entry = await metadataService.getFileMetadata(fileId);
@@ -43,6 +43,7 @@ export function setupPrismRoutes(app: any): void {
           ownerPnIdentifier: ownerPn,
           flagSource: 'user_report',
           reporterPnIdentifier: payload.pnIdentifier,
+          reportType,
         });
         try {
           const { recordPrismEntry } = await import('./prismLedgerService');
@@ -132,7 +133,23 @@ export function setupPrismRoutes(app: any): void {
       }
       if (result.resolved && result.status === 'denied' && item) {
         const { executeTakedown } = await import('./dmcaTakedownService');
-        await executeTakedown(item.file_id, 'Prism review: content denied (copyright).', 'prism_denied');
+        const isProhibitedReport = item.report_type === 'prohibited';
+        await executeTakedown(
+          item.file_id,
+          isProhibitedReport
+            ? 'Prism review: content denied (prohibited).'
+            : 'Prism review: content denied (copyright).',
+          'prism_denied'
+        );
+        if (isProhibitedReport) {
+          const { markContentProhibited } = await import('./publishSafetyGate');
+          await markContentProhibited({
+            ownerPnIdentifier: item.owner_pn_identifier,
+            fileId: item.file_id,
+            reason: 'Prism review denied this content as prohibited. It cannot be made public. Upload a new file to retry.',
+            source: 'prism_denied',
+          });
+        }
       }
       return res.json({ success: true, resolved: result.resolved, status: result.status });
     } catch (err: any) {

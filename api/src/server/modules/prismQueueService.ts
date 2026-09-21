@@ -11,6 +11,9 @@ const PRISM_ESCALATED_MIN_REPUTATION = parseInt(process.env.PRISM_ESCALATED_MIN_
 
 export type FlagSource = 'bot' | 'user_report';
 
+/** Why the item was queued — used on deny to decide isProhibited mark. */
+export type PrismReportType = 'copyright' | 'prohibited' | 'dmca_bot' | 'other';
+
 export type RayVote = 'approve' | 'deny' | 'skip';
 
 export interface PrismQueueItem {
@@ -23,6 +26,7 @@ export interface PrismQueueItem {
   created_at: string;
   updated_at: string;
   min_required_reputation?: number | null;
+  report_type?: string | null;
 }
 
 export interface AddToQueueParams {
@@ -30,6 +34,7 @@ export interface AddToQueueParams {
   ownerPnIdentifier: string;
   flagSource: FlagSource;
   reporterPnIdentifier?: string | null;
+  reportType?: PrismReportType | string | null;
 }
 
 /**
@@ -37,12 +42,12 @@ export interface AddToQueueParams {
  */
 export async function addToPrismQueue(params: AddToQueueParams): Promise<string> {
   const db = getDatabasePool();
-  const { fileId, ownerPnIdentifier, flagSource, reporterPnIdentifier } = params;
+  const { fileId, ownerPnIdentifier, flagSource, reporterPnIdentifier, reportType } = params;
   const result = await db.query(
-    `INSERT INTO prism_review_queue (file_id, owner_pn_identifier, flag_source, reporter_pn_identifier, status)
-     VALUES ($1, $2, $3, $4, 'pending')
+    `INSERT INTO prism_review_queue (file_id, owner_pn_identifier, flag_source, reporter_pn_identifier, status, report_type)
+     VALUES ($1, $2, $3, $4, 'pending', $5)
      RETURNING id`,
-    [fileId, ownerPnIdentifier, flagSource, reporterPnIdentifier ?? null]
+    [fileId, ownerPnIdentifier, flagSource, reporterPnIdentifier ?? null, reportType ?? null]
   );
   const queueItemId = result.rows[0]?.id ?? '';
   try {
@@ -53,7 +58,7 @@ export async function addToPrismQueue(params: AddToQueueParams): Promise<string>
       activity_type: 'flagged',
       target_file_id: fileId,
       target_owner_pn_identifier: ownerPnIdentifier,
-      metadata: JSON.stringify({ flagSource, queueItemId })
+      metadata: JSON.stringify({ flagSource, queueItemId, reportType: reportType ?? null })
     });
   } catch (ledgerErr) {
     console.warn('[Prism] Flag ledger write failed:', ledgerErr);
@@ -67,7 +72,7 @@ export async function addToPrismQueue(params: AddToQueueParams): Promise<string>
 export async function getPendingQueueItems(limit = 20): Promise<PrismQueueItem[]> {
   const db = getDatabasePool();
   const result = await db.query(
-    `SELECT id, file_id, owner_pn_identifier, flag_source, reporter_pn_identifier, status, created_at, updated_at, min_required_reputation
+    `SELECT id, file_id, owner_pn_identifier, flag_source, reporter_pn_identifier, status, created_at, updated_at, min_required_reputation, report_type
      FROM prism_review_queue
      WHERE status = 'pending'
      ORDER BY created_at ASC
@@ -91,7 +96,7 @@ export async function getPendingQueueItemsForRay(
 
   const db = getDatabasePool();
   const result = await db.query(
-    `SELECT id, file_id, owner_pn_identifier, flag_source, reporter_pn_identifier, status, created_at, updated_at, min_required_reputation
+    `SELECT id, file_id, owner_pn_identifier, flag_source, reporter_pn_identifier, status, created_at, updated_at, min_required_reputation, report_type
      FROM prism_review_queue
      WHERE status = 'pending'
        AND (min_required_reputation IS NULL OR min_required_reputation <= $1)
@@ -108,7 +113,7 @@ export async function getPendingQueueItemsForRay(
 export async function getQueueItemById(id: string): Promise<PrismQueueItem | null> {
   const db = getDatabasePool();
   const result = await db.query(
-    `SELECT id, file_id, owner_pn_identifier, flag_source, reporter_pn_identifier, status, created_at, updated_at, min_required_reputation
+    `SELECT id, file_id, owner_pn_identifier, flag_source, reporter_pn_identifier, status, created_at, updated_at, min_required_reputation, report_type
      FROM prism_review_queue
      WHERE id = $1`,
     [id]

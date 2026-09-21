@@ -7,7 +7,7 @@ import { API_ENDPOINT } from '../config/api';
 export async function submitContentReport(
   fileId: string,
   accessToken: string,
-  reportType: 'nsfw' | 'spam' | 'copyright' | 'other',
+  reportType: 'nsfw' | 'spam' | 'copyright' | 'other' | 'prohibited',
   reason?: string
 ): Promise<void> {
   const res = await fetch(`${API_ENDPOINT}/api/reports`, {

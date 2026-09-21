@@ -3,6 +3,7 @@
  */
 import {
   DEFAULT_GEMINI_MODEL,
+  parsePublishLaneResponse,
   resolveGeminiModelName,
   resetGeminiModerationServiceForTests,
 } from './geminiModerationService';
@@ -33,5 +34,18 @@ describe('resolveGeminiModelName', () => {
   it('trims whitespace from GEMINI_MODEL', () => {
     process.env.GEMINI_MODEL = '  gemini-2.0-flash-lite  ';
     expect(resolveGeminiModelName()).toBe('gemini-2.0-flash-lite');
+  });
+});
+
+describe('parsePublishLaneResponse', () => {
+  it('maps prohibited / nsfw / public', () => {
+    expect(parsePublishLaneResponse({ lane: 'prohibited' }).lane).toBe('prohibited');
+    expect(parsePublishLaneResponse({ lane: 'NSFW', confidence: 0.9 }).lane).toBe('nsfw');
+    expect(parsePublishLaneResponse({ lane: 'public', reason: 'ok' }).reason).toBe('ok');
+  });
+
+  it('defaults invalid lane to public', () => {
+    expect(parsePublishLaneResponse({}).lane).toBe('public');
+    expect(parsePublishLaneResponse({ lane: 'weird' }).lane).toBe('public');
   });
 });

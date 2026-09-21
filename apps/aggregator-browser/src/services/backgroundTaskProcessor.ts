@@ -328,8 +328,28 @@ async function processShareSettingsUpdate(
   );
   
   if (!metadataResponse.ok) {
-    const errorText = await metadataResponse.text().catch(() => 'Unknown error');
-    throw new Error(`Failed to update file visibility: ${errorText}`);
+    let data: { message?: string; error?: string; status?: string } = {};
+    try {
+      data = await metadataResponse.json();
+    } catch {
+      const text = await metadataResponse.text().catch(() => 'Unknown error');
+      data = { error: text };
+    }
+    if (metadataResponse.status === 202) {
+      throw new Error(
+        data.message ||
+          "Content is under copyright review. You'll be notified when it's decided."
+      );
+    }
+    if (metadataResponse.status === 422 || data.status === 'prohibited') {
+      throw new Error(
+        data.message ||
+          'This content cannot be made public on the network. It remains private. Upload a new file to retry.'
+      );
+    }
+    throw new Error(
+      `Failed to update file visibility: ${data.message || data.error || metadataResponse.statusText}`
+    );
   }
 
   uploadQueueService.updateTaskProgress(task.id, 70);

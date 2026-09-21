@@ -55,7 +55,7 @@ import { batchSignAndCachePosters } from './services/feedMediaBatchSign';
 import { hasFeedPreviewPlayback } from './services/feedPreviewPlayback';
 import { useMePageData } from './hooks/useMePageData';
 import { usePushNotifications } from './hooks/usePushNotifications';
-import { reportCopyright } from './services/reportCopyrightService';
+import { reportContent } from './services/reportCopyrightService';
 import { PNOAuthService } from './services/pnOAuthService';
 import { isEngagementPrefetchAllowed, isUnlockPrefetchComplete } from './services/unlockSessionCoordinator';
 import { MESSAGING_ONLY } from './config/buildFlags';
@@ -1157,10 +1157,10 @@ function App() {
           isOpen={!!reportingCopyrightFile}
           onClose={() => setReportingCopyrightFile(null)}
           fileName={reportingCopyrightFile.metadata.name || reportingCopyrightFile.metadata.title}
-          onSubmit={async () => {
+          onSubmit={async (reportType) => {
             const token = await PNOAuthService.getValidAccessToken();
             if (!token) throw new Error('Please sign in to report');
-            await reportCopyright(reportingCopyrightFile.metadata.fileId, token);
+            await reportContent(reportingCopyrightFile.metadata.fileId, token, reportType);
             success('Report submitted. Content will be reviewed by Prism Rays.');
           }}
         />

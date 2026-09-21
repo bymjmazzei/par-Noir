@@ -87,7 +87,7 @@ export function setupFeedRoutes(app: Application) {
         const metadataService = AggregatorMetadataServiceDB.getInstance();
         const fileEntry = await metadataService.getFileMetadata(fileId);
 
-        // Repeat infringer and DMCA gate
+        // Repeat infringer, publish safety, DMCA gate
         if (fileEntry) {
           const ownerPn = fileEntry.pnIdentifier ?? '';
           const { isRepeatInfringer } = await import('./repeatInfringerService');
@@ -99,11 +99,45 @@ export function setupFeedRoutes(app: Application) {
           }
           const { isFileApprovedByPrism, addToPrismQueue } = await import('./prismQueueService');
           const alreadyApproved = await isFileApprovedByPrism(fileId);
+          const { googleDriveProxyService } = await import('./googleDriveProxy');
+          const driveFileId = String((fileEntry.metadata as any)?.backendFileId ?? fileId ?? '');
+          const mimeType = String((fileEntry.metadata as any)?.mimeType ?? 'application/octet-stream');
+          const {
+            applyPublishSafetyGate,
+            isMetadataProhibited,
+            shouldSkipPublishSafetyGate,
+          } = await import('./publishSafetyGate');
+          const safety = await applyPublishSafetyGate({
+            googleDriveProxy: googleDriveProxyService,
+            ownerPnIdentifier: ownerPn,
+            fileId,
+            driveFileId,
+            mimeType,
+            skip: shouldSkipPublishSafetyGate({
+              isThoughtThumbnail: (fileEntry.metadata as any)?.isThoughtThumbnail,
+              thought: (fileEntry.metadata as any)?.thought,
+              textPost: (fileEntry.metadata as any)?.textPost,
+            }),
+            existingIsProhibited: isMetadataProhibited(fileEntry.metadata as any),
+          });
+          if (safety.status === 'prohibited') {
+            return res.status(422).json({
+              status: 'prohibited',
+              error: 'Content prohibited',
+              message:
+                safety.reason ||
+                'This content cannot be made public on the network. Your file remains private. Upload a new file to retry.',
+            });
+          }
+          if (safety.forceNsfw) {
+            try {
+              await metadataService.updateMetadata(fileId, { isNSFW: true });
+            } catch (nsfwErr) {
+              console.warn('[Feed] Failed to auto-set isNSFW:', (nsfwErr as Error)?.message);
+            }
+          }
           if (!alreadyApproved) {
-            const { googleDriveProxyService } = await import('./googleDriveProxy');
             const { runDMCACheck } = await import('./dmcaGate');
-            const driveFileId = String((fileEntry.metadata as any)?.backendFileId ?? fileId ?? '');
-            const mimeType = String((fileEntry.metadata as any)?.mimeType ?? 'application/octet-stream');
             const dmcaResult = await runDMCACheck(googleDriveProxyService, ownerPn, driveFileId, mimeType);
             if (!dmcaResult.passed) {
               const queueItemId = await addToPrismQueue({
@@ -111,6 +145,7 @@ export function setupFeedRoutes(app: Application) {
                 ownerPnIdentifier: ownerPn,
                 flagSource: 'bot',
                 reporterPnIdentifier: null,
+                reportType: 'dmca_bot',
               });
               const { addContentNotice } = await import('./contentNoticesService');
               await addContentNotice({

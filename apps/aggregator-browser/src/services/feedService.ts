@@ -268,6 +268,12 @@ export class FeedService {
     if (response.status === 202) {
       throw new Error(data.message || "Content is under copyright review. You'll be notified when it's decided.");
     }
+    if (response.status === 422 || data.status === 'prohibited') {
+      throw new Error(
+        data.message ||
+          'This content cannot be made public on the network. It remains private. Upload a new file to retry.'
+      );
+    }
     if (response.status === 403) {
       throw new Error(data.message || data.error || 'Your account is restricted due to repeated copyright issues. Contact support if you believe this is an error.');
     }

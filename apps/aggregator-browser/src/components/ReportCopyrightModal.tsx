@@ -1,16 +1,17 @@
 /**
- * Report Copyright Modal
- * Simple confirmation for reporting content as copyright violation
+ * Report content modal (copyright or prohibited) → Prism queue
  */
 
 import { useState } from 'react';
 import { AlertTriangle, X } from 'lucide-react';
 
+export type ContentReportType = 'copyright' | 'prohibited';
+
 interface ReportCopyrightModalProps {
   isOpen: boolean;
   onClose: () => void;
   fileName?: string;
-  onSubmit: () => Promise<void>;
+  onSubmit: (reportType: ContentReportType) => Promise<void>;
 }
 
 export function ReportCopyrightModal({
@@ -21,6 +22,7 @@ export function ReportCopyrightModal({
 }: ReportCopyrightModalProps) {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [reportType, setReportType] = useState<ContentReportType>('copyright');
 
   if (!isOpen) return null;
 
@@ -28,7 +30,7 @@ export function ReportCopyrightModal({
     setSubmitting(true);
     setError(null);
     try {
-      await onSubmit();
+      await onSubmit(reportType);
       onClose();
     } catch (e) {
       setError((e as Error).message);
@@ -55,14 +57,26 @@ export function ReportCopyrightModal({
         </button>
         <div className="flex items-center gap-3 mb-4">
           <AlertTriangle className="h-6 w-6 text-amber-400 shrink-0" />
-          <h3 className="text-lg font-semibold text-white">Report copyright</h3>
+          <h3 className="text-lg font-semibold text-white">Report content</h3>
         </div>
-        <p className="text-neutral-400 text-sm mb-4">
-          Report this content as a copyright violation? It will be reviewed by Prism Rays.
+        <p className="text-neutral-400 text-sm mb-3">
+          Reports are reviewed by Prism Rays.
           {fileName && (
             <span className="block mt-2 text-neutral-500 truncate">File: {fileName}</span>
           )}
         </p>
+        <label className="block text-sm font-medium text-neutral-300 mb-2">
+          Reason
+        </label>
+        <select
+          value={reportType}
+          onChange={(e) => setReportType(e.target.value as ContentReportType)}
+          disabled={submitting}
+          className="w-full mb-4 p-2 bg-neutral-800 border border-neutral-700 rounded text-white text-sm focus:outline-none focus:ring-2 focus:ring-amber-500 disabled:opacity-50"
+        >
+          <option value="copyright">Copyright violation</option>
+          <option value="prohibited">Prohibited / illegal</option>
+        </select>
         {error && (
           <p className="text-red-400 text-sm mb-4">{error}</p>
         )}

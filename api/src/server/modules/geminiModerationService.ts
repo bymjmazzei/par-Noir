@@ -1,6 +1,7 @@
 /**
  * API-side Gemini Moderation Service
- * DMCA-focused content check for private→indexed gating
+ * - DMCA/copyright check for private→indexed gating
+ * - Publish-lane classify: public | nsfw | prohibited (separate from copyright)
  * Uses GEMINI_API_KEY and optional GEMINI_MODEL env vars
  */
 
@@ -12,12 +13,56 @@ export interface DMCACheckResult {
   confidence: number;
 }
 
+/** Mutually exclusive publish lanes (not copyright — that stays on checkDMCA). */
+export type PublishLane = 'public' | 'nsfw' | 'prohibited';
+
+export interface PublishLaneResult {
+  lane: PublishLane;
+  reason?: string;
+  confidence: number;
+}
+
+/**
+ * Policy for classifyPublishLane prompts:
+ * - public: safe for general feeds
+ * - nsfw: adult/sexual/nudity that adults may consent to (allowed on network with age gate)
+ * - prohibited: illegal / never-on-network (CSAM, NCII, exploitation, malware, etc.)
+ * Do not use copyright criteria here.
+ */
+const PUBLISH_LANE_PROMPT = `Classify this content into exactly one publish lane for a social network.
+Lanes (mutually exclusive):
+- "prohibited": Illegal or never-allowed-on-network content. Examples: CSAM / child sexual exploitation, non-consensual intimate imagery, clear sexual exploitation, malware/phishing payloads, solicitation of violent crime. When in doubt between nsfw and prohibited for adult sexual content between consenting adults, prefer "nsfw".
+- "nsfw": Adult sexual content, nudity, or strongly sexual material that adults may consent to view. Not illegal.
+- "public": Safe for a general audience; no adult sexual content and not prohibited.
+Do NOT classify based on copyright or trademark. Return JSON only: {"lane": "public"|"nsfw"|"prohibited", "reason": string, "confidence": number (0-1)}.`;
+
+const PUBLISH_LANE_SAMPLED_PROMPT = (n: number) =>
+  `These are ${n} clips sampled from the same file. Classify the file into exactly one publish lane.
+Lanes (mutually exclusive):
+- "prohibited": Illegal or never-allowed-on-network (CSAM, NCII, exploitation, malware, violent-crime solicitation). Prefer "nsfw" over "prohibited" for consensual adult sexual content.
+- "nsfw": Adult sexual content / nudity adults may consent to.
+- "public": Safe for general audiences.
+If ANY clip is prohibited, return lane "prohibited". Else if ANY clip is nsfw, return "nsfw". Else "public".
+Do NOT use copyright criteria. Return JSON only: {"lane": "public"|"nsfw"|"prohibited", "reason": string, "confidence": number (0-1)}.`;
+
 /** Default flash model for DMCA checks (override with GEMINI_MODEL on Railway). */
 export const DEFAULT_GEMINI_MODEL = 'gemini-2.0-flash';
 
 export function resolveGeminiModelName(): string {
   const fromEnv = process.env.GEMINI_MODEL?.trim();
   return fromEnv && fromEnv.length > 0 ? fromEnv : DEFAULT_GEMINI_MODEL;
+}
+
+/** Map Gemini JSON to a publish lane (invalid/missing → public). */
+export function parsePublishLaneResponse(response: Record<string, unknown>): PublishLaneResult {
+  const raw = typeof response.lane === 'string' ? response.lane.toLowerCase().trim() : '';
+  const lane: PublishLane =
+    raw === 'prohibited' || raw === 'nsfw' || raw === 'public' ? raw : 'public';
+  return {
+    lane,
+    reason: typeof response.reason === 'string' ? response.reason : undefined,
+    confidence: typeof response.confidence === 'number' ? response.confidence : 0.8,
+  };
 }
 
 export class GeminiModerationService {
@@ -54,8 +99,66 @@ export class GeminiModerationService {
     this.modelErrorLogged = true;
     const msg = error instanceof Error ? error.message : String(error);
     console.warn(
-      `⚠️ [GeminiModerationService] DMCA model "${this.modelName}" unavailable (${msg.slice(0, 120)}); checks fail open. Set GEMINI_MODEL on Railway if needed.`
+      `⚠️ [GeminiModerationService] model "${this.modelName}" unavailable (${msg.slice(0, 120)}); checks fail open. Set GEMINI_MODEL on Railway if needed.`
     );
+  }
+
+  private parsePublishLane(response: Record<string, unknown>): PublishLaneResult {
+    return parsePublishLaneResponse(response);
+  }
+
+  /**
+   * Classify content for publish lane (public | nsfw | prohibited).
+   * Fail-open to public on service/model errors — only explicit prohibited hard-blocks.
+   */
+  async classifyPublishLane(content: Buffer | Blob, mimeType: string): Promise<PublishLaneResult> {
+    if (!this.isInitialized || !this.genAI) {
+      console.warn('⚠️ [GeminiModerationService] Service not initialized; publish lane fail open to public');
+      return { lane: 'public', confidence: 0 };
+    }
+
+    try {
+      const base64 = await this.toBase64(content);
+      const model = this.getModel();
+      const result = await model.generateContent([
+        { inlineData: { data: base64, mimeType } },
+        { text: PUBLISH_LANE_PROMPT },
+      ]);
+      const response = this.parseJSONResponse(result.response.text());
+      return this.parsePublishLane(response);
+    } catch (error) {
+      this.logModelErrorOnce(error);
+      return { lane: 'public', confidence: 0, reason: 'Classify unavailable' };
+    }
+  }
+
+  /**
+   * Classify multiple sampled clips; any prohibited clip → prohibited; else any nsfw → nsfw.
+   */
+  async classifyPublishLaneSampled(clips: { buffer: Buffer; mimeType: string }[]): Promise<PublishLaneResult> {
+    if (!this.isInitialized || !this.genAI || !clips.length) {
+      if (!clips.length) {
+        console.warn('⚠️ [GeminiModerationService] No clips to classify; fail open to public');
+      } else {
+        console.warn('⚠️ [GeminiModerationService] Service not initialized; publish lane fail open to public');
+      }
+      return { lane: 'public', confidence: 0 };
+    }
+
+    try {
+      const parts: Array<{ inlineData: { data: string; mimeType: string } } | { text: string }> = [];
+      for (const clip of clips) {
+        parts.push({ inlineData: { data: clip.buffer.toString('base64'), mimeType: clip.mimeType } });
+      }
+      parts.push({ text: PUBLISH_LANE_SAMPLED_PROMPT(clips.length) });
+      const model = this.getModel();
+      const result = await model.generateContent(parts);
+      const response = this.parseJSONResponse(result.response.text());
+      return this.parsePublishLane(response);
+    } catch (error) {
+      this.logModelErrorOnce(error);
+      return { lane: 'public', confidence: 0, reason: 'Classify unavailable' };
+    }
   }
 
   /**

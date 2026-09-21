@@ -825,6 +825,10 @@ export async function initializeDatabase(): Promise<void> {
     await db.query(`CREATE INDEX IF NOT EXISTS idx_prism_review_queue_status ON prism_review_queue(status)`);
     await db.query(`CREATE INDEX IF NOT EXISTS idx_prism_review_queue_file_id ON prism_review_queue(file_id)`);
     await db.query(`CREATE INDEX IF NOT EXISTS idx_prism_review_queue_created_at ON prism_review_queue(created_at DESC)`);
+    await db.query(`
+      ALTER TABLE prism_review_queue
+      ADD COLUMN IF NOT EXISTS report_type VARCHAR(50)
+    `);
 
     await db.query(`
       CREATE TABLE IF NOT EXISTS prism_votes (

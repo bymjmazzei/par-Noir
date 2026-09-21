@@ -1,7 +1,7 @@
 export interface ContentNotice {
   id: string;
   fileId: string;
-  type: 'pending_review' | 'taken_down' | 'restored';
+  type: 'pending_review' | 'taken_down' | 'restored' | 'prohibited';
   reason?: string;
   source: string;
   createdAt: string;

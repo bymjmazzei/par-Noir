@@ -368,6 +368,9 @@ export interface PublicMetadata {
   /** false = Public (default), true = NSFW (browser simplified rating) */
   isNSFW?: boolean;
 
+  /** true = never index / make public (hard gate); file stays on private cloud */
+  isProhibited?: boolean;
+
   feedIds?: string[];
   feedCategories?: FeedCategory[];
   creatorTier?: 'free' | 'feed' | 'self-hosted';
@@ -403,7 +406,7 @@ export interface PublicMetadata {
     id: string;
     fileId: string;
     reporterPnId: string;
-    reportType: 'nsfw' | 'spam' | 'copyright' | 'other';
+    reportType: 'nsfw' | 'spam' | 'copyright' | 'other' | 'prohibited';
     reason?: string;
     timestamp: string;
     validatedByGemini?: boolean;

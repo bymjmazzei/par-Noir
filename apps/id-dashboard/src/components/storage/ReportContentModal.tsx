@@ -26,7 +26,7 @@ export const ReportContentModal: React.FC<ReportContentModalProps> = ({
   accessToken,
   onReportSubmitted
 }) => {
-  const [reportType, setReportType] = useState<'nsfw' | 'spam' | 'copyright' | 'other'>('nsfw');
+  const [reportType, setReportType] = useState<'nsfw' | 'spam' | 'copyright' | 'other' | 'prohibited'>('nsfw');
   const [reason, setReason] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -133,6 +133,7 @@ export const ReportContentModal: React.FC<ReportContentModalProps> = ({
               )}
               <option value="spam">Spam</option>
               <option value="copyright">Copyright Violation</option>
+              <option value="prohibited">Prohibited / illegal</option>
               <option value="other">Other</option>
             </select>
             {!canReportNSFW && reportType === 'nsfw' && (
