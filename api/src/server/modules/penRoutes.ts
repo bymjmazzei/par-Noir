@@ -10,11 +10,15 @@ import {
   DEVICE_CAPABILITIES
 } from './deviceCapabilityService';
 import { resolveOwnerDriveToken, respondDriveTokenError } from './ownerDriveToken';
+import type { GoogleDriveToken } from './googleOAuth2Helper';
 import { storageCredentialsService } from './storageCredentialsService';
 import { safeClientErrorMessage } from '../utils/safeError';
 import { hashIdentifier, safeLogger } from '../../utils/logger';
 import { google } from 'googleapis';
 import { Readable } from 'stream';
+
+const NODE_ENV = process.env.NODE_ENV || 'development';
+const isProduction = NODE_ENV === 'production';
 
 function getNotarySecret(): Buffer {
   const raw =
@@ -87,12 +91,19 @@ async function writeDriveFile(
   return created.data.id as string;
 }
 
+type OwnerTokenShape = {
+  access_token: string;
+  refresh_token?: string;
+  expires_at?: number;
+  expires_in?: number;
+};
+
 export function setupPenRoutes(
   app: Application,
   deps: {
     extractAccountId: (account: any) => string | undefined;
     getMetadataFolder: (
-      token: string,
+      token: OwnerTokenShape,
       pnIdentifier: string,
       accountId?: string
     ) => Promise<{ metadataFolderId?: string; pnFolderId?: string } | null>;
@@ -118,7 +129,7 @@ export function setupPenRoutes(
       safeLogger.warn('[pen/notary] failed', {
         err: e instanceof Error ? e.message : 'unknown'
       });
-      return res.status(500).json({ error: safeClientErrorMessage(e) });
+      return res.status(500).json({ error: safeClientErrorMessage(e, isProduction) });
     }
   });
 
@@ -167,23 +178,28 @@ export function setupPenRoutes(
         (credentials.credentials.googleDrive ? [credentials.credentials.googleDrive] : []);
       const account = accounts.length > 0 ? accounts[0] : null;
       let accountId = account ? deps.extractAccountId(account) : undefined;
-      let token: string;
+      let driveToken: GoogleDriveToken;
       try {
         const resolved = await resolveOwnerDriveToken(req, pnIdentifier, { account, accountId });
-        token = resolved.token;
+        driveToken = resolved.token;
         accountId = resolved.accountId ?? accountId;
       } catch (e) {
         if (respondDriveTokenError(res, e)) return;
         throw e;
       }
 
-      const meta = await deps.getMetadataFolder(token, pnIdentifier, accountId);
+      const accessToken = String(driveToken.access_token || '').trim();
+      if (!accessToken) {
+        return res.status(409).json({ error: 'cloud_token_required' });
+      }
+
+      const meta = await deps.getMetadataFolder(driveToken, pnIdentifier, accountId);
       if (!meta?.pnFolderId) {
         return res.status(404).json({ error: 'pn_folder_not_found' });
       }
 
       const auth = new google.auth.OAuth2();
-      auth.setCredentials({ access_token: token });
+      auth.setCredentials({ access_token: accessToken });
       const drive = google.drive({ version: 'v3', auth });
 
       const penRootId = await ensureDriveFolder(drive, 'par-noir-pen', meta.pnFolderId);
@@ -199,7 +215,6 @@ export function setupPenRoutes(
         const cur = await drive.files.list({ q, fields: 'files(id,name)', pageSize: 1 });
         const curId = cur.data.files?.[0]?.id;
         if (curId) {
-          // Download then write to past with dated name (Drive rename+move)
           await drive.files.update({
             fileId: curId,
             addParents: pastFolderId,
@@ -245,20 +260,18 @@ export function setupPenRoutes(
       safeLogger.warn('[pen/apply-inbound] failed', {
         err: e instanceof Error ? e.message : 'unknown'
       });
-      return res.status(500).json({ error: safeClientErrorMessage(e) });
+      return res.status(500).json({ error: safeClientErrorMessage(e, isProduction) });
     }
   });
 
-  /** List starter templates (first-party + usable by SDK via same path when first-party). */
+  /** List starter templates (first-party). */
   app.get('/api/pen/templates', async (req: Request, res: Response) => {
     try {
-      // Templates are non-secret; still gate to authenticated first-party for v1 consistency
       if (!requireFirstPartyOAuthClient(req, res)) return;
       const { listStarterTemplates } = await import('@par-noir/pen-protocol');
       return res.json({ templates: listStarterTemplates() });
     } catch (e) {
-      return res.status(500).json({ error: safeClientErrorMessage(e) });
+      return res.status(500).json({ error: safeClientErrorMessage(e, isProduction) });
     }
   });
 }
-

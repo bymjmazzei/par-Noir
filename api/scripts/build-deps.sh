@@ -28,6 +28,7 @@ PACKAGES=(
   user-owned-storage
   identity-migration
   storage-migration
+  pen-protocol
 )
 
 for pkg in "${PACKAGES[@]}"; do
