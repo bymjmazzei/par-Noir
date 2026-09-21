@@ -2,9 +2,9 @@
  * Visual SoT: api/src/templates/oauth-consent.html
  * Injected so ConsentUnlockApp matches the OAuth popup chrome exactly.
  */
-export function consentUnlockCss(assetBase: string): string {
+export function consentUnlockCss(assetBase: string, backgroundUrl?: string): string {
   const base = assetBase.replace(/\/$/, '') || '';
-  const bg = `${base}/branding/Par-Noir-Background-Dark.png`;
+  const bg = backgroundUrl || `${base}/branding/Par-Noir-Background-Dark.png`;
   return `
 .pn-consent-page * { margin: 0; padding: 0; box-sizing: border-box; }
 .pn-consent-page {

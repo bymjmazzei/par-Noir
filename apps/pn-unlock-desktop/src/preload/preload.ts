@@ -2,6 +2,8 @@ import { contextBridge, ipcRenderer } from 'electron';
 
 export type UnlockDesktopApi = {
   openExternal: (url: string) => Promise<void>;
+  /** Deliver OAuth result to browse via 127.0.0.1 loopback (prefer-app handoff). */
+  brokerComplete: (payload: Record<string, unknown>) => Promise<{ ok: boolean }>;
   getPendingDeepLink: () => Promise<string | null>;
   onDeepLink: (handler: (url: string) => void) => () => void;
   vaultAvailable: () => Promise<boolean>;
@@ -13,6 +15,7 @@ export type UnlockDesktopApi = {
 
 const api: UnlockDesktopApi = {
   openExternal: (url) => ipcRenderer.invoke('unlock:open-external', url),
+  brokerComplete: (payload) => ipcRenderer.invoke('unlock:broker-complete', payload),
   getPendingDeepLink: () => ipcRenderer.invoke('unlock:get-pending-deep-link'),
   onDeepLink: (handler) => {
     const listener = (_event: Electron.IpcRendererEvent, url: string) => {

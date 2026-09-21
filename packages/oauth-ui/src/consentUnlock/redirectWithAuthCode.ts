@@ -25,6 +25,11 @@ export type RedirectWithAuthCodeArgs = {
   decryptedIdentity?: unknown;
   /** Optional external open (Capacitor Browser / Electron) when leaving the unlock WebView. */
   openExternal?: (url: string) => void | Promise<void>;
+  /**
+   * Desktop Unlock loopback: deliver full payload (incl. messaging handoff) to the
+   * waiting browse tab without openExternal / URL hash limits.
+   */
+  deliverLocalBroker?: (payload: Record<string, unknown>) => void | Promise<void>;
 };
 
 function resolveOpener(): Window | null {
@@ -98,6 +103,7 @@ export async function redirectWithAuthCode(args: RedirectWithAuthCodeArgs): Prom
     encryptedIdentity,
     decryptedIdentity,
     openExternal,
+    deliverLocalBroker,
   } = args;
 
   let messagingHandoff: MessagingOAuthHandoffPayload | null = null;
@@ -110,12 +116,15 @@ export async function redirectWithAuthCode(args: RedirectWithAuthCodeArgs): Prom
         'This pN identity does not include messaging encryption keys. Create or update your identity at pn.parnoir.com, then try again.'
       );
     }
-    // Cross-process (Electron / Cap Browser.open): window.name and BroadcastChannel
-    // do not reach the system browser. Put ML-KEM *session only* in the hash —
-    // a full encrypted identity is ~30KB+ and blows past openExternal URL limits
-    // (Unlock then looks like it "failed" before browse ever receives the code).
-    const crossProcess = Boolean(openExternal) || (!popupFlow && !resolveOpener());
-    if (crossProcess) {
+    // Local broker carries the full payload (no URL length limit). openExternal
+    // hash is session-only so OS URL limits are not blown.
+    const crossProcess =
+      Boolean(openExternal) ||
+      Boolean(deliverLocalBroker) ||
+      (!popupFlow && !resolveOpener());
+    if (deliverLocalBroker) {
+      // Full handoff goes in the broker payload below — no hash needed.
+    } else if (crossProcess && openExternal) {
       if (!messagingHandoff.session) {
         throw new Error(
           'This pN identity does not include messaging encryption keys. Create or update your identity at pn.parnoir.com, then try again.'
@@ -126,7 +135,7 @@ export async function redirectWithAuthCode(args: RedirectWithAuthCodeArgs): Prom
         timestamp: messagingHandoff.timestamp,
         session: messagingHandoff.session,
       });
-    } else {
+    } else if (!crossProcess) {
       if (messagingHandoff.session) {
         try {
           window.name = buildMessagingSessionWindowName(
@@ -143,6 +152,17 @@ export async function redirectWithAuthCode(args: RedirectWithAuthCodeArgs): Prom
           messagingHandoff.timestamp
         );
       }
+    } else if (crossProcess) {
+      if (!messagingHandoff.session) {
+        throw new Error(
+          'This pN identity does not include messaging encryption keys. Create or update your identity at pn.parnoir.com, then try again.'
+        );
+      }
+      hashPayload = buildMessagingHandoffHash({
+        v: 1,
+        timestamp: messagingHandoff.timestamp,
+        session: messagingHandoff.session,
+      });
     }
   }
 
@@ -168,6 +188,11 @@ export async function redirectWithAuthCode(args: RedirectWithAuthCodeArgs): Prom
   const burst = () => postOAuthCallback(appOrigin, callbackPayload);
   burst();
   [50, 150, 300].forEach((ms) => setTimeout(burst, ms));
+
+  if (deliverLocalBroker) {
+    await deliverLocalBroker(callbackPayload);
+    return;
+  }
 
   const targetUrl = buildCallbackUrl(
     redirectUri,

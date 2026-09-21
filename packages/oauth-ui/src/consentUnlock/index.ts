@@ -1,4 +1,4 @@
-export { MESSAGING_HANDOFF_CLIENT_IDS, isMessagingHandoffClient, DEFAULT_UNLOCK_ORIGIN, UNLOCK_APP_ID, UNLOCK_CUSTOM_SCHEME } from './constants';
+export { MESSAGING_HANDOFF_CLIENT_IDS, isMessagingHandoffClient, DEFAULT_UNLOCK_ORIGIN, UNLOCK_APP_ID, UNLOCK_CUSTOM_SCHEME, UNLOCK_DESKTOP_BROKER_PORT, UNLOCK_DESKTOP_BROKER_ORIGIN, UNLOCK_DESKTOP_BROKER_PENDING_PATH } from './constants';
 export type { MessagingHandoffClientId } from './constants';
 export { parseConsentUnlockParams, resolveUnlockOrigin, isUnlockBrokerHost } from './parseConsentParams';
 export type { ConsentUnlockParams } from './parseConsentParams';

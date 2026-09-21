@@ -17,6 +17,10 @@ import {
   unlockSessionVault,
 } from './sessionVaultDesktop';
 
+/** Bundled branding — never load from the network (Electron file:// + CDN CORP blocks HTTPS). */
+import logoUrl from '../../../pn-unlock/public/branding/Par-Noir-Logo-White.png';
+import backgroundUrl from '../../../pn-unlock/public/branding/Par-Noir-Background-Dark.png';
+
 const API_DEFAULT =
   (typeof import.meta !== 'undefined' &&
     (import.meta as ImportMeta & { env?: { VITE_API_ENDPOINT?: string } }).env?.VITE_API_ENDPOINT) ||
@@ -27,9 +31,6 @@ const DECLINED_KEY = 'pn_vault_enroll_declined_unlock';
 function desktopApi(): UnlockDesktopApi | null {
   return (window as Window & { pnUnlockDesktop?: UnlockDesktopApi }).pnUnlockDesktop ?? null;
 }
-
-/** Hosted branding (Electron file:// cannot reliably load asar-relative CSS backgrounds). */
-const DESKTOP_BRANDING_BASE = 'https://browse.parnoir.com';
 
 export default function App(): React.ReactElement {
   const [search, setSearch] = useState(() =>
@@ -94,13 +95,12 @@ export default function App(): React.ReactElement {
     };
   }, []);
 
-  const openExternal = async (url: string) => {
+  const deliverLocalBroker = async (payload: Record<string, unknown>) => {
     const api = desktopApi();
-    if (api) {
-      await api.openExternal(url);
-      return;
+    if (!api) {
+      throw new Error('Desktop broker unavailable');
     }
-    window.location.href = url;
+    await api.brokerComplete(payload);
   };
 
   const onVaultUnlock = async () => {
@@ -217,8 +217,9 @@ export default function App(): React.ReactElement {
       <ConsentUnlockApp
         search={search}
         apiEndpointDefault={API_DEFAULT.replace(/\/$/, '')}
-        openExternal={openExternal}
-        assetBase={DESKTOP_BRANDING_BASE}
+        deliverLocalBroker={deliverLocalBroker}
+        logoUrl={logoUrl}
+        backgroundUrl={backgroundUrl}
         layout="broker"
         vaultFactors={vaultFactors}
         onVaultFactorsConsumed={() => setVaultFactors(null)}

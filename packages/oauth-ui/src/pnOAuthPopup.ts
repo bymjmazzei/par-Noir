@@ -2,6 +2,7 @@ import { pushPnOAuthDebug } from './pnOAuthDebug';
 import { handoffProvidesMessagingSession, PN_MESSAGING_OAUTH_HANDOFF_STORAGE } from './messagingOAuthHandoff';
 import { resolveUnlockOrigin } from './consentUnlock/parseConsentParams';
 import { launchUnlockBroker } from './unlockPreferApp';
+import { pollUnlockDesktopBrokerOnce } from './unlockDesktopBrokerPoll';
 
 /**
  * Shared pN OAuth popup flow. Must stay in sync with static oauth-callback.html
@@ -9,8 +10,8 @@ import { launchUnlockBroker } from './unlockPreferApp';
  *
  * After consent, the API redirects the popup to the registered redirect_uri (RFC 6749) — typically
  * oauth-callback.html on the **same origin** as the opener. Handoff uses postMessage from that
- * Handoff uses postMessage from that origin, BroadcastChannel (par-noir-oauth-v1), same-origin
- * localStorage polling, and named-window navigation (PN_OAUTH_OPENER_WINDOW_NAME) when opener is lost.
+ * origin, BroadcastChannel (par-noir-oauth-v1), same-origin localStorage polling, and (desktop
+ * prefer-app) the Unlock loopback at 127.0.0.1.
  *
  * Contract:
  * - Callback page posts message: { type: 'oauth_callback', code?, state?, error?, granted_data_points?, timestamp? }
@@ -617,9 +618,21 @@ function startPnOAuthPopupAfterLaunch(
       }
     };
 
-    queueMicrotask(() => pollStorageOnce());
+    const pollDesktopBrokerOnce = () => {
+      if (settled || !usedApp) return;
+      void pollUnlockDesktopBrokerOnce(expectedState).then((data) => {
+        if (!data || settled) return;
+        acceptPayload(data as Record<string, unknown>, 'desktop_broker');
+      });
+    };
+
+    queueMicrotask(() => {
+      pollStorageOnce();
+      pollDesktopBrokerOnce();
+    });
     pollInterval = setInterval(() => {
       pollStorageOnce();
+      pollDesktopBrokerOnce();
       pollMessagingHandoffReady();
     }, 50);
 

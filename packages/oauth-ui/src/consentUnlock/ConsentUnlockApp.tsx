@@ -54,11 +54,19 @@ export type ConsentUnlockAppProps = {
   openExternal?: (url: string) => void | Promise<void>;
   /** Optional branding asset base for logo / background (defaults to page origin) */
   assetBase?: string;
+  /** Explicit logo URL (Electron: Vite-bundled asset — bypasses CDN CORP). */
+  logoUrl?: string;
+  /** Explicit background image URL (Electron: Vite-bundled asset). */
+  backgroundUrl?: string;
   /**
    * Native Unlock broker chrome: relative assets, tighter layout, no step label.
    * Use with Electron / Cap shells that size the window to the form.
    */
   layout?: 'default' | 'broker';
+  /**
+   * Desktop loopback handoff — preferred over openExternal when set.
+   */
+  deliverLocalBroker?: (payload: Record<string, unknown>) => void | Promise<void>;
   /**
    * When set (native biometric path), decrypt + mint without the factor form.
    * Host should clear after consume to avoid re-entry loops.
@@ -151,7 +159,10 @@ export function ConsentUnlockApp(props: ConsentUnlockAppProps): React.ReactEleme
     <ConsentUnlockInner
       params={params}
       openExternal={props.openExternal}
+      deliverLocalBroker={props.deliverLocalBroker}
       assetBase={props.assetBase}
+      logoUrl={props.logoUrl}
+      backgroundUrl={props.backgroundUrl}
       layout={props.layout ?? 'default'}
       vaultFactors={props.vaultFactors}
       onUnlockedForVault={props.onUnlockedForVault}
@@ -163,7 +174,10 @@ export function ConsentUnlockApp(props: ConsentUnlockAppProps): React.ReactEleme
 function ConsentUnlockInner(props: {
   params: ConsentUnlockParams;
   openExternal?: (url: string) => void | Promise<void>;
+  deliverLocalBroker?: (payload: Record<string, unknown>) => void | Promise<void>;
   assetBase?: string;
+  logoUrl?: string;
+  backgroundUrl?: string;
   layout: 'default' | 'broker';
   vaultFactors?: ConsentVaultFactors | null;
   onUnlockedForVault?: (material: ConsentVaultEnrollMaterial) => void | Promise<void>;
@@ -172,7 +186,10 @@ function ConsentUnlockInner(props: {
   const {
     params,
     openExternal,
+    deliverLocalBroker,
     assetBase,
+    logoUrl,
+    backgroundUrl,
     layout,
     vaultFactors,
     onUnlockedForVault,
@@ -292,9 +309,10 @@ function ConsentUnlockInner(props: {
         encryptedIdentity: unlocked.encryptedIdentity,
         decryptedIdentity: unlocked.decryptedIdentity,
         openExternal,
+        deliverLocalBroker,
       });
     },
-    [params, openExternal]
+    [params, openExternal, deliverLocalBroker]
   );
 
   const loadCatalog = useCallback(async () => {
@@ -340,11 +358,10 @@ function ConsentUnlockInner(props: {
       setAuthCode(mint.code);
       setPnIdentifier(mint.pnIdentifier);
 
-      // Cross-process broker (Electron/Cap openExternal): hand off to the caller
-      // immediately. Grant lookup has no cloud AT here, so "existingGrant" is
-      // almost always null and showing consent re-asks permissions before browse
-      // ever gets the code. Browse checks grants after session + cloud hydrate.
-      if (openExternal) {
+      // Cross-process broker (Electron/Cap): hand off immediately. Prefer local
+      // loopback when available; otherwise openExternal. Skip in-app consent —
+      // grant lookup has no cloud AT here; browse checks after hydrate.
+      if (openExternal || deliverLocalBroker) {
         await finishWithCode(
           mint.code,
           mint.existingGrant?.dataPoints || [],
@@ -373,7 +390,7 @@ function ConsentUnlockInner(props: {
       setDataPointChoices(initial);
       setStep('consent');
     },
-    [params, needsConsent, finishWithCode, loadCatalog, dataPointIds, notifyVault, openExternal]
+    [params, needsConsent, finishWithCode, loadCatalog, dataPointIds, notifyVault, openExternal, deliverLocalBroker]
   );
 
   /** Biometric vault path: decrypt sealed identity + mint without the factor form. */
@@ -515,7 +532,7 @@ function ConsentUnlockInner(props: {
   const key1Props = secretKeyInputProps('key1', 'unlock');
   const key2Props = secretKeyInputProps('key2', 'unlock');
   const resolvedAssetBase = resolveConsentAssetBase(assetBase);
-  const logoSrc = `${resolvedAssetBase}/branding/Par-Noir-Logo-White.png`;
+  const logoSrc = logoUrl || `${resolvedAssetBase}/branding/Par-Noir-Logo-White.png`;
   const broker = layout === 'broker';
 
   let redirectHost = params.redirectUri;
@@ -532,7 +549,7 @@ function ConsentUnlockInner(props: {
   return (
     <div className={`pn-consent-page${broker ? ' pn-consent-broker' : ''}`}>
       <style>
-        {consentUnlockCss(resolvedAssetBase)}
+        {consentUnlockCss(resolvedAssetBase, backgroundUrl)}
         {broker ? consentUnlockBrokerCssExtras() : ''}
       </style>
       <div className="container">

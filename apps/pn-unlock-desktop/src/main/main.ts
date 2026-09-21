@@ -1,10 +1,13 @@
 import { app, BrowserWindow, ipcMain, shell, safeStorage, dialog, session } from 'electron';
 import path from 'path';
 import fs from 'fs';
+import http from 'http';
 
 const PROTOCOL = 'com.parnoir.unlock';
 /** Canonical unlock broker origin — file:// / localhost Electron has no CORS Origin. */
 const UNLOCK_BROKER_ORIGIN = 'https://unlock.parnoir.com';
+/** Must match @par-noir/oauth-ui UNLOCK_DESKTOP_BROKER_PORT */
+const BROKER_PORT = 47823;
 const isDev = !app.isPackaged || Boolean(process.env.VITE_DEV_SERVER_URL);
 
 /**
@@ -40,6 +43,50 @@ function registerApiOriginBridge(): void {
 
 let mainWindow: BrowserWindow | null = null;
 let pendingDeepLink: string | null = null;
+/** One-shot OAuth result for browse prefer-app poll (set via IPC only). */
+let brokerResult: Record<string, unknown> | null = null;
+let brokerServer: http.Server | null = null;
+
+function startBrokerLoopback(): void {
+  if (brokerServer) return;
+  brokerServer = http.createServer((req, res) => {
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+    if (req.method === 'OPTIONS') {
+      res.writeHead(204);
+      res.end();
+      return;
+    }
+    try {
+      const u = new URL(req.url || '/', `http://127.0.0.1:${BROKER_PORT}`);
+      if (req.method === 'GET' && u.pathname === '/oauth-broker/pending') {
+        const state = u.searchParams.get('state') || '';
+        const pending = brokerResult;
+        if (
+          pending &&
+          (!state || !pending.state || String(pending.state) === state)
+        ) {
+          brokerResult = null;
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify(pending));
+          return;
+        }
+        res.writeHead(204);
+        res.end();
+        return;
+      }
+    } catch {
+      /* fall through */
+    }
+    res.writeHead(404);
+    res.end();
+  });
+  brokerServer.on('error', (err) => {
+    console.warn('[Unlock] broker loopback failed', err instanceof Error ? err.message : err);
+  });
+  brokerServer.listen(BROKER_PORT, '127.0.0.1');
+}
 
 const vaultFilePath = () => path.join(app.getPath('userData'), 'unlock-session-vault.json');
 
@@ -138,6 +185,14 @@ function registerIpc(): void {
     await shell.openExternal(url);
   });
 
+  ipcMain.handle('unlock:broker-complete', async (_e, payload: Record<string, unknown>) => {
+    if (!payload || typeof payload !== 'object') {
+      throw new Error('Invalid broker payload');
+    }
+    brokerResult = payload;
+    return { ok: true };
+  });
+
   ipcMain.handle('unlock:get-pending-deep-link', async () => pendingDeepLink);
 
   ipcMain.handle('unlock:vault-available', async () => {
@@ -219,6 +274,7 @@ if (!gotLock) {
 
   app.whenReady().then(() => {
     registerApiOriginBridge();
+    startBrokerLoopback();
     registerIpc();
     createWindow();
     const fromArgv = extractDeepLinkFromArgv(process.argv);
