@@ -10,5 +10,9 @@ Symptom-based (not “tests pass”).
 | Messaging handoff | browser-app / messaging-app still get ML-KEM material after unlock |
 | Vault enroll | After unlock, optional “Save unlock on this computer?”; next launch confirms via dialog |
 | Negative | Authenticate body has no passcode / pn name |
+| file:// / Electron CORS | Challenge + authenticate succeed against prod API (main stamps `Origin: https://unlock.parnoir.com`) |
+| Cold-start deep link | Argv / open-url OAuth params applied even if renderer was not listening yet (`getPendingDeepLink` + keep pending) |
+
+Packaged Mac smoke (unsigned local `dist/mac-arm64`, cursor-test-pn → live API): **PASS** 2026-09-21 — challenge/authenticate 200, `openExternal` to browse callback with code.
 
 Related: [`../pn-unlock/ACCEPTANCE_MATRIX.md`](../pn-unlock/ACCEPTANCE_MATRIX.md).

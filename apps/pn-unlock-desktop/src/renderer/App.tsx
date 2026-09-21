@@ -62,7 +62,20 @@ export default function App(): React.ReactElement {
   useEffect(() => {
     const api = desktopApi();
     if (!api) return;
-    return api.onDeepLink(applyUrl);
+    let cancelled = false;
+    void (async () => {
+      try {
+        const pending = await api.getPendingDeepLink();
+        if (!cancelled && pending) applyUrl(pending);
+      } catch {
+        /* ignore */
+      }
+    })();
+    const unsub = api.onDeepLink(applyUrl);
+    return () => {
+      cancelled = true;
+      unsub();
+    };
   }, [applyUrl]);
 
   useEffect(() => {

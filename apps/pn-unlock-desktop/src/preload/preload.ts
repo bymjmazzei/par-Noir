@@ -2,6 +2,7 @@ import { contextBridge, ipcRenderer } from 'electron';
 
 export type UnlockDesktopApi = {
   openExternal: (url: string) => Promise<void>;
+  getPendingDeepLink: () => Promise<string | null>;
   onDeepLink: (handler: (url: string) => void) => () => void;
   vaultAvailable: () => Promise<boolean>;
   vaultGet: (key: string) => Promise<string | null>;
@@ -12,6 +13,7 @@ export type UnlockDesktopApi = {
 
 const api: UnlockDesktopApi = {
   openExternal: (url) => ipcRenderer.invoke('unlock:open-external', url),
+  getPendingDeepLink: () => ipcRenderer.invoke('unlock:get-pending-deep-link'),
   onDeepLink: (handler) => {
     const listener = (_event: Electron.IpcRendererEvent, url: string) => {
       if (url) handler(url);

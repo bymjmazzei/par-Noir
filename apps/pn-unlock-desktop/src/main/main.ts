@@ -1,9 +1,42 @@
-import { app, BrowserWindow, ipcMain, shell, safeStorage, dialog } from 'electron';
+import { app, BrowserWindow, ipcMain, shell, safeStorage, dialog, session } from 'electron';
 import path from 'path';
 import fs from 'fs';
 
 const PROTOCOL = 'com.parnoir.unlock';
+/** Canonical unlock broker origin — file:// / localhost Electron has no CORS Origin. */
+const UNLOCK_BROKER_ORIGIN = 'https://unlock.parnoir.com';
 const isDev = !app.isPackaged || Boolean(process.env.VITE_DEV_SERVER_URL);
+
+/**
+ * file:// and vite-dev origins omit or send a non-allowlisted Origin; production API
+ * requires Origin. Desktop Unlock is the same broker as unlock.parnoir.com — stamp that.
+ */
+function registerApiOriginBridge(): void {
+  session.defaultSession.webRequest.onBeforeSendHeaders(
+    {
+      urls: [
+        'https://api.parnoir.com/*',
+        'http://127.0.0.1:*/oauth/*',
+        'http://localhost:*/oauth/*',
+      ],
+    },
+    (details, callback) => {
+      const headers = { ...details.requestHeaders };
+      const existing = String(headers.Origin || headers.origin || '');
+      const needsStamp =
+        !existing ||
+        existing === 'null' ||
+        existing.startsWith('file:') ||
+        existing.startsWith('http://127.0.0.1') ||
+        existing.startsWith('http://localhost');
+      if (needsStamp) {
+        headers.Origin = UNLOCK_BROKER_ORIGIN;
+        delete headers.origin;
+      }
+      callback({ requestHeaders: headers });
+    }
+  );
+}
 
 let mainWindow: BrowserWindow | null = null;
 let pendingDeepLink: string | null = null;
@@ -40,12 +73,11 @@ function isAllowedExternalUrl(target: string): boolean {
 }
 
 function sendDeepLink(url: string): void {
+  pendingDeepLink = url;
   if (mainWindow && !mainWindow.isDestroyed()) {
     mainWindow.webContents.send('unlock:deep-link', url);
     if (mainWindow.isMinimized()) mainWindow.restore();
     mainWindow.focus();
-  } else {
-    pendingDeepLink = url;
   }
 }
 
@@ -91,9 +123,7 @@ function createWindow(): void {
 
   mainWindow.webContents.on('did-finish-load', () => {
     if (pendingDeepLink) {
-      const url = pendingDeepLink;
-      pendingDeepLink = null;
-      sendDeepLink(url);
+      mainWindow?.webContents.send('unlock:deep-link', pendingDeepLink);
     }
   });
 }
@@ -105,6 +135,8 @@ function registerIpc(): void {
     }
     await shell.openExternal(url);
   });
+
+  ipcMain.handle('unlock:get-pending-deep-link', async () => pendingDeepLink);
 
   ipcMain.handle('unlock:vault-available', async () => {
     return safeStorage.isEncryptionAvailable();
@@ -184,6 +216,7 @@ if (!gotLock) {
   });
 
   app.whenReady().then(() => {
+    registerApiOriginBridge();
     registerIpc();
     createWindow();
     const fromArgv = extractDeepLinkFromArgv(process.argv);
