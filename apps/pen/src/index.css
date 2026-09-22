@@ -1233,14 +1233,42 @@ input.pen-gallery-tile-title-text {
   transition: transform 0.12s ease;
 }
 
-/* Locked overview — grid (no overlap) + continuous clamp scaling */
+/* Locked overview — continuous clamp scaling (gutter, rail, type, pitch, phone) */
+.pen-library-page:has(.pen-locked-sheet) {
+  /* Left margin stack (before red rail) + rail itself scale with viewport */
+  --pen-locked-action-w: clamp(1.1rem, 0.55rem + 1.25vw, 2.5rem);
+  --pen-locked-icon-w: clamp(1.1rem, 0.55rem + 1.25vw, 2.5rem);
+  --pen-locked-rail-w: clamp(3px, 0.1rem + 0.28vw, 5px);
+  --pen-locked-rail-stroke: clamp(1px, 0.04rem + 0.1vw, 1.5px);
+  --pen-locked-rail-gap: clamp(5px, 0.15rem + 0.4vw, 10px);
+  --pen-locked-gutter: calc(
+    var(--pen-locked-action-w) + var(--pen-locked-icon-w) + var(--pen-locked-rail-w) +
+      var(--pen-locked-rail-gap)
+  );
+}
+
+.pen-library-page:has(.pen-locked-sheet) .pen-explorer-rail {
+  left: calc(var(--pen-edge-pad) + var(--pen-locked-action-w) + var(--pen-locked-icon-w));
+  width: var(--pen-locked-rail-w);
+  border-left-width: var(--pen-locked-rail-stroke);
+  border-right-width: var(--pen-locked-rail-stroke);
+}
+
+.pen-library-page:has(.pen-locked-sheet) .pen-library-heading {
+  padding-left: var(--pen-locked-gutter);
+}
+
+.pen-library-page:has(.pen-locked-sheet) .pen-library-heading h1 {
+  font-size: clamp(1.15rem, 0.85rem + 0.7vw, 1.5rem);
+  line-height: 1.2;
+}
+
+.pen-library-page:has(.pen-locked-sheet) .pen-library-heading p {
+  font-size: clamp(0.8125rem, 0.7rem + 0.35vw, 1rem);
+}
+
 .pen-locked-sheet {
   position: relative;
-  /*
-   * All three track the viewport continuously:
-   * phone grows on wide screens (kills dead whitespace),
-   * type + blue pitch shrink together on narrow.
-   */
   --pen-locked-phone-w: clamp(
     11.5rem,
     26vw,
@@ -1251,19 +1279,6 @@ input.pen-gallery-tile-title-text {
   --pen-locked-rule-pitch: clamp(1.2rem, 0.55rem + 1.35vw, 2.25rem);
   --pen-locked-copy-size: clamp(1.05rem, 0.45rem + 1.35vw, 2.15rem);
   min-height: calc(100vh - 2.5rem - 8rem);
-}
-
-.pen-library-page:has(.pen-locked-sheet) .pen-library-heading {
-  padding-left: calc(var(--pen-action-w) + var(--pen-icon-w) + 5px + var(--pen-rail-gap));
-}
-
-.pen-library-page:has(.pen-locked-sheet) .pen-library-heading h1 {
-  font-size: clamp(1.15rem, 0.85rem + 0.7vw, 1.5rem);
-  line-height: 1.2;
-}
-
-.pen-library-page:has(.pen-locked-sheet) .pen-library-heading p {
-  font-size: clamp(0.8125rem, 0.7rem + 0.35vw, 1rem);
 }
 
 .pen-locked-flow {
@@ -1293,7 +1308,7 @@ input.pen-gallery-tile-title-text {
 .pen-locked-checklist {
   list-style: none;
   margin: 0;
-  padding: 0 0 0 calc(var(--pen-action-w) + var(--pen-icon-w) + 5px + var(--pen-rail-gap));
+  padding: 0 0 0 var(--pen-locked-gutter);
   min-width: 0;
   flex: 0 1 auto;
   position: relative;
