@@ -5,23 +5,103 @@
 body {
   margin: 0;
   min-height: 100vh;
-  background: #f7f6f3;
+  background: #d4d4d4;
   color: #1c1917;
+  font-family: 'IBM Plex Sans', system-ui, sans-serif;
 }
 
 #root {
   min-height: 100vh;
 }
 
-.pen-paper {
-  background: #fff;
-  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04), 0 12px 40px rgba(15, 23, 42, 0.08);
+/* Pasteboard + letter page (Word/Quark) */
+.pen-pasteboard {
+  background:
+    linear-gradient(90deg, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+    linear-gradient(rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+  background-size: 24px 24px;
+  background-color: #c8c8c8;
 }
 
-.pen-toolbar-btn {
-  @apply inline-flex h-8 min-w-[2rem] items-center justify-center rounded px-2 text-sm text-stone-700 hover:bg-stone-100 disabled:opacity-40;
+.pen-letter-page {
+  width: 8.5in;
+  min-height: 11in;
+  max-width: calc(100vw - 2rem);
 }
 
-.pen-toolbar-btn[aria-pressed='true'] {
-  @apply bg-stone-200 text-stone-900;
+.pen-letter-margins {
+  padding: 0.85in 0.9in 1in;
+}
+
+.pen-page-prose {
+  font-family: 'Source Serif 4', Georgia, serif;
+  font-size: 12pt;
+  line-height: 1.45;
+  color: #1c1917;
+}
+
+.pen-page-prose p {
+  margin: 0 0 0.65em;
+}
+
+.pen-page-prose h1 {
+  font-size: 22pt;
+  font-weight: 650;
+  line-height: 1.2;
+  margin: 0 0 0.5em;
+}
+
+.pen-page-prose h2 {
+  font-size: 16pt;
+  font-weight: 650;
+  line-height: 1.25;
+  margin: 0.8em 0 0.4em;
+}
+
+.pen-page-prose blockquote {
+  margin: 0.75em 0;
+  padding-left: 0.85em;
+  border-left: 3px solid #a8a29e;
+  color: #44403c;
+  font-style: italic;
+}
+
+.pen-page-prose ul {
+  margin: 0.5em 0 0.75em;
+  padding-left: 1.25em;
+  list-style: disc;
+}
+
+.pen-page-prose img {
+  max-width: 100%;
+  height: auto;
+  display: block;
+  margin: 0.75em 0;
+}
+
+.pen-page-prose .is-empty::before {
+  color: #a8a29e;
+  content: attr(data-placeholder);
+  float: left;
+  height: 0;
+  pointer-events: none;
+}
+
+.ProseMirror {
+  min-height: 8.5in;
+  outline: none;
+}
+
+.ProseMirror-focused {
+  outline: none;
+}
+
+@media (max-width: 900px) {
+  .pen-letter-page {
+    width: 100%;
+    min-height: auto;
+  }
+  .pen-letter-margins {
+    padding: 1.25rem 1rem 2rem;
+  }
 }

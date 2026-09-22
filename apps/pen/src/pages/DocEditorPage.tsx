@@ -1,5 +1,6 @@
-import React, { useMemo, useState } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
+import type { Editor } from '@tiptap/react';
 import {
   compileDocumentToNote,
   hashSectionContent,
@@ -11,7 +12,7 @@ import {
   verifyChain
 } from '@par-noir/pen-protocol';
 import type { PenSession } from '../App';
-import { FlowEditor, PageGrid } from '../components/FlowEditor';
+import { FormatRibbon, PageCanvas, PageThumbGrid } from '../components/PageCanvas';
 import { loadLocalDoc, saveLocalDoc } from '../services/penLocalStore';
 import { requestNotaryStamp } from '../services/penApi';
 import { resolveSigningKeys } from '../services/penKeys';
@@ -28,28 +29,49 @@ function bytesToB64(bytes: Uint8Array): string {
   return btoa(s);
 }
 
+function previewText(blocks: { text?: string; type: string }[]): string {
+  return blocks
+    .filter((b) => b.type !== 'image')
+    .map((b) => b.text || '')
+    .join('\n')
+    .slice(0, 280);
+}
+
 export function DocEditorPage({ session, docId }: { session: PenSession; docId: string }) {
   const initial = loadLocalDoc(session.pnIdentifier, docId);
   const [bundle, setBundle] = useState(initial);
   const [activeSlug, setActiveSlug] = useState(initial?.manifest.toc[0] || 'body');
-  const [view, setView] = useState<'edit' | 'grid' | 'history'>('edit');
+  const [showPages, setShowPages] = useState(true);
+  const [showHistory, setShowHistory] = useState(false);
   const [invitePn, setInvitePn] = useState('');
   const [status, setStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [showShare, setShowShare] = useState(false);
+  const [editor, setEditor] = useState<Editor | null>(null);
 
   const section = useMemo(
     () => bundle?.sections.find((s) => s.slug === activeSlug) || bundle?.sections[0],
     [bundle, activeSlug]
   );
 
+  const onEditorReady = useCallback((ed: Editor | null) => setEditor(ed), []);
+
+  const previews = useMemo(() => {
+    const m: Record<string, string> = {};
+    for (const s of bundle?.sections || []) {
+      m[s.slug] = previewText(s.blocks);
+    }
+    return m;
+  }, [bundle?.sections]);
+
   if (!bundle || !section) {
     return (
-      <div className="mx-auto max-w-lg px-4 py-16 text-center">
-        <p className="text-mute">Document not found.</p>
-        <Link to="/" className="mt-4 inline-block text-accent underline">
-          Back to templates
-        </Link>
+      <div className="flex min-h-[60vh] items-center justify-center bg-stone-200">
+        <div className="text-center">
+          <p className="text-stone-600">Document not found.</p>
+          <Link to="/" className="mt-2 inline-block text-sm text-sky-700 underline">
+            Back
+          </Link>
+        </div>
       </div>
     );
   }
@@ -61,7 +83,7 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
 
   async function promote() {
     setError(null);
-    setStatus('Saving version…');
+    setStatus('Saving…');
     try {
       const keys = resolveSigningKeys(session);
       const now = new Date();
@@ -83,13 +105,10 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
         const notary = await requestNotaryStamp(session.accessToken, notaryHashForPromote(link));
         attachNotary(link, notary);
       } catch {
-        /* offline ok */
+        /* offline */
       }
 
-      const nextChain = {
-        ...bundle!.chain,
-        links: [...bundle!.chain.links, link]
-      };
+      const nextChain = { ...bundle!.chain, links: [...bundle!.chain.links, link] };
       const verified = verifyChain(nextChain);
       if (!verified.ok) throw new Error(verified.error);
 
@@ -141,13 +160,10 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
         ...payload
       }).catch(() => null);
 
-      setStatus(
-        peerRouteKeys.length
-          ? `Version saved · syncing to ${peerRouteKeys.length} collaborator(s)`
-          : 'Version saved'
-      );
+      setStatus('Saved');
+      window.setTimeout(() => setStatus(null), 2000);
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'promote_failed');
+      setError(e instanceof Error ? e.message : 'save_failed');
       setStatus(null);
     }
   }
@@ -156,19 +172,7 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
     const pn = invitePn.trim();
     if (!pn) return;
     addPendingInvite(docId, pn);
-    if (bundle!.manifest.groupId) {
-      sessionStorage.setItem(
-        `pen_share:${docId}:${pn}`,
-        JSON.stringify({
-          docId,
-          groupId: bundle!.manifest.groupId,
-          accessRole: 'readWrite',
-          invitedBy: session.pnIdentifier,
-          docKeyHint: !!sessionStorage.getItem(`pen_doc_key:${docId}`)
-        })
-      );
-    }
-    setStatus(`Invited collaborator (readWrite)`);
+    setStatus('Invite queued');
     setInvitePn('');
   }
 
@@ -189,7 +193,7 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
           headProof: bundle!.chain.links[bundle!.chain.links.length - 1] || bundle!.chain.genesis
         })
       );
-      setStatus('Note compiled — open Browse Pen Mini to publish to the feed');
+      setStatus('Note ready for Browse');
     } catch (e) {
       setError(e instanceof Error ? e.message : 'compile_failed');
     }
@@ -198,175 +202,117 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
   const chainStatus = verifyChain(bundle.chain);
 
   return (
-    <div className="min-h-[calc(100vh-3.5rem)] bg-paper">
-      <div className="sticky top-14 z-30 border-b border-line bg-white/90 backdrop-blur">
-        <div className="mx-auto flex max-w-5xl flex-wrap items-center gap-2 px-4 py-2">
-          <Link to="/" className="text-sm text-mute hover:text-ink">
-            ← Templates
-          </Link>
-          <span className="text-line">|</span>
-          <input
-            className="min-w-[12rem] flex-1 bg-transparent font-display text-base font-semibold outline-none"
-            value={bundle.manifest.title}
-            onChange={(e) =>
-              persist({
-                ...bundle,
-                manifest: {
-                  ...bundle.manifest,
-                  title: e.target.value,
-                  updatedAt: new Date().toISOString()
-                }
-              })
-            }
-          />
-          <div className="flex flex-wrap items-center gap-1">
-            {(
-              [
-                ['edit', 'Write'],
-                ['grid', 'Pages'],
-                ['history', 'History']
-              ] as const
-            ).map(([id, label]) => (
-              <button
-                key={id}
-                type="button"
-                onClick={() => setView(id)}
-                className={`rounded-md px-2.5 py-1.5 text-sm ${
-                  view === id ? 'bg-stone-900 text-white' : 'text-stone-600 hover:bg-stone-100'
-                }`}
-              >
-                {label}
-              </button>
-            ))}
-            <button
-              type="button"
-              className="rounded-md bg-accent px-3 py-1.5 text-sm font-medium text-white hover:bg-teal-800"
-              onClick={promote}
-            >
-              Save version
-            </button>
-            <button
-              type="button"
-              className="rounded-md px-2.5 py-1.5 text-sm text-stone-600 ring-1 ring-line hover:bg-stone-50"
-              onClick={() => setShowShare((v) => !v)}
-            >
-              Share
-            </button>
-            <button
-              type="button"
-              className="rounded-md px-2.5 py-1.5 text-sm text-stone-600 ring-1 ring-line hover:bg-stone-50"
-              onClick={publishNote}
-            >
-              Publish Note
-            </button>
-          </div>
-        </div>
+    <div className="flex h-[calc(100vh-2.5rem)] flex-col bg-stone-300">
+      {/* Thin document chrome — not CMS */}
+      <div className="flex h-9 shrink-0 items-center gap-2 border-b border-stone-400 bg-stone-100 px-2 text-[13px]">
+        <Link to="/" className="px-1 text-stone-600 hover:text-stone-900">
+          ←
+        </Link>
+        <input
+          className="min-w-0 flex-1 truncate bg-transparent font-medium text-stone-900 outline-none"
+          value={bundle.manifest.title}
+          onChange={(e) =>
+            persist({
+              ...bundle,
+              manifest: {
+                ...bundle.manifest,
+                title: e.target.value,
+                updatedAt: new Date().toISOString()
+              }
+            })
+          }
+        />
+        <button
+          type="button"
+          className={`rounded px-2 py-0.5 ${showPages ? 'bg-white shadow-sm' : 'hover:bg-stone-200'}`}
+          onClick={() => setShowPages((v) => !v)}
+          title="Page grid"
+        >
+          Pages
+        </button>
+        <button
+          type="button"
+          className={`rounded px-2 py-0.5 ${showHistory ? 'bg-white shadow-sm' : 'hover:bg-stone-200'}`}
+          onClick={() => setShowHistory((v) => !v)}
+        >
+          History
+        </button>
+        <button
+          type="button"
+          className="rounded bg-stone-800 px-2.5 py-0.5 text-white hover:bg-stone-700"
+          onClick={promote}
+        >
+          Save
+        </button>
+        <button type="button" className="rounded px-2 py-0.5 hover:bg-stone-200" onClick={publishNote}>
+          Note
+        </button>
+        {(status || error) && (
+          <span className={`ml-1 text-[12px] ${error ? 'text-red-600' : 'text-teal-800'}`}>
+            {error || status}
+          </span>
+        )}
       </div>
 
-      {(status || error) && (
-        <div className="mx-auto max-w-5xl px-4 pt-3">
-          {status && <p className="text-sm text-teal-800">{status}</p>}
-          {error && <p className="text-sm text-red-600">{error}</p>}
-        </div>
-      )}
+      <FormatRibbon editor={editor} />
 
-      {showShare && (
-        <div className="mx-auto max-w-5xl px-4 pt-3">
-          <div className="flex gap-2 rounded-lg border border-line bg-white p-3">
-            <input
-              className="flex-1 rounded-md border border-line px-3 py-2 text-sm outline-none focus:border-accent"
-              placeholder="Collaborator pn identifier"
-              value={invitePn}
-              onChange={(e) => setInvitePn(e.target.value)}
+      <div className="flex min-h-0 flex-1">
+        {showPages && bundle.manifest.toc.length > 0 && (
+          <aside className="w-[7.5rem] shrink-0 border-r border-stone-400">
+            <PageThumbGrid
+              toc={bundle.manifest.toc}
+              active={activeSlug}
+              previews={previews}
+              onSelect={setActiveSlug}
             />
-            <button
-              type="button"
-              className="rounded-md bg-ink px-3 py-2 text-sm text-white"
-              onClick={inviteCollaborator}
-            >
-              Invite
-            </button>
-          </div>
-        </div>
-      )}
-
-      <div className="mx-auto max-w-5xl px-4 py-6">
-        {view === 'grid' && (
-          <div className="pen-paper rounded-xl border border-line p-6">
-            <PageGrid toc={bundle.manifest.toc} active={activeSlug} onSelect={setActiveSlug} />
-          </div>
+          </aside>
         )}
 
-        {view === 'history' && (
-          <div className="pen-paper space-y-4 rounded-xl border border-line p-6 text-sm">
-            <p>
-              Authenticity:{' '}
-              <span className={chainStatus.ok ? 'text-teal-700' : 'text-red-600'}>
-                {chainStatus.ok
-                  ? 'verified'
-                  : `invalid (${'error' in chainStatus ? chainStatus.error : ''})`}
-              </span>
-            </p>
-            <div>
-              <div className="text-mute">Genesis</div>
-              <pre className="mt-1 overflow-auto rounded bg-stone-50 p-3 text-xs text-stone-700">
-                {JSON.stringify(bundle.chain.genesis, null, 2)}
+        <div className="relative min-w-0 flex-1">
+          {showHistory ? (
+            <div className="h-full overflow-auto bg-white p-6 text-sm">
+              <p className="mb-4">
+                Chain:{' '}
+                <span className={chainStatus.ok ? 'text-teal-700' : 'text-red-600'}>
+                  {chainStatus.ok
+                    ? 'verified'
+                    : `invalid (${'error' in chainStatus ? chainStatus.error : ''})`}
+                </span>
+              </p>
+              <pre className="overflow-auto rounded bg-stone-50 p-3 text-xs">
+                {JSON.stringify(bundle.chain, null, 2)}
               </pre>
-            </div>
-            {bundle.chain.links.map((l, i) => (
-              <div key={i}>
-                <div className="text-mute">
-                  Version {i + 1}: {l.pastName}
-                  {l.notary ? ` · notary ${l.notary.notaryTime}` : ''}
-                </div>
-                <pre className="mt-1 overflow-auto rounded bg-stone-50 p-3 text-xs text-stone-700">
-                  {JSON.stringify(l, null, 2)}
-                </pre>
+              <div className="mt-4 flex gap-2">
+                <input
+                  className="flex-1 rounded border border-stone-300 px-2 py-1 text-sm"
+                  placeholder="Invite pn…"
+                  value={invitePn}
+                  onChange={(e) => setInvitePn(e.target.value)}
+                />
+                <button
+                  type="button"
+                  className="rounded bg-stone-800 px-3 py-1 text-sm text-white"
+                  onClick={inviteCollaborator}
+                >
+                  Invite
+                </button>
               </div>
-            ))}
-          </div>
-        )}
-
-        {view === 'edit' && (
-          <div className="space-y-4">
-            {bundle.manifest.toc.length > 1 && (
-              <div className="flex gap-1 overflow-x-auto">
-                {bundle.manifest.toc.map((slug) => (
-                  <button
-                    key={slug}
-                    type="button"
-                    onClick={() => setActiveSlug(slug)}
-                    className={`rounded-full px-3 py-1 text-sm capitalize ${
-                      activeSlug === slug
-                        ? 'bg-ink text-white'
-                        : 'bg-white text-stone-600 ring-1 ring-line'
-                    }`}
-                  >
-                    {slug}
-                  </button>
-                ))}
-              </div>
-            )}
-            <div className="pen-paper min-h-[70vh] rounded-xl border border-line px-8 py-10 sm:px-14 sm:py-12">
-              <FlowEditor
-                section={section}
-                onChange={(next) => {
-                  persist({
-                    ...bundle,
-                    sections: bundle.sections.map((s) => (s.slug === next.slug ? next : s)),
-                    manifest: { ...bundle.manifest, updatedAt: new Date().toISOString() }
-                  });
-                }}
-              />
             </div>
-            <p className="text-center text-xs text-mute">
-              Template {bundle.manifest.templateId}
-              {bundle.manifest.groupId
-                ? ` · collab ${bundle.manifest.groupId.slice(0, 10)}…`
-                : ''}
-            </p>
-          </div>
-        )}
+          ) : (
+            <PageCanvas
+              key={activeSlug}
+              section={section}
+              onEditorReady={onEditorReady}
+              onChange={(next) => {
+                persist({
+                  ...bundle,
+                  sections: bundle.sections.map((s) => (s.slug === next.slug ? next : s)),
+                  manifest: { ...bundle.manifest, updatedAt: new Date().toISOString() }
+                });
+              }}
+            />
+          )}
+        </div>
       </div>
     </div>
   );

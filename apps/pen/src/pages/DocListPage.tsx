@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import {
   emptySection,
@@ -22,13 +22,7 @@ function randomDocId(): string {
   return `pen_${crypto.randomUUID().replace(/-/g, '').slice(0, 16)}`;
 }
 
-const DOC_TYPE_LABEL: Record<string, string> = {
-  note: 'Notes',
-  post: 'Posts',
-  carousel: 'Carousels',
-  self_hosted_feed: 'Feeds'
-};
-
+/** Quiet file-manager home — not a CMS dashboard. Templates open as a sheet. */
 export function DocListPage({
   session,
   docs,
@@ -42,28 +36,15 @@ export function DocListPage({
   const [templates, setTemplates] = useState(listStarterTemplates());
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [filter, setFilter] = useState<string>('all');
+  const [pickerOpen, setPickerOpen] = useState(docs.length === 0);
 
   useEffect(() => {
     fetchTemplates(session.accessToken)
       .then((t) => {
         if (t?.length) setTemplates(t as ReturnType<typeof listStarterTemplates>);
       })
-      .catch(() => {
-        /* packaged starters */
-      });
+      .catch(() => undefined);
   }, [session.accessToken]);
-
-  const grouped = useMemo(() => {
-    const map = new Map<string, typeof templates>();
-    for (const t of templates) {
-      if (filter !== 'all' && t.docType !== filter) continue;
-      const list = map.get(t.docType) || [];
-      list.push(t);
-      map.set(t.docType, list);
-    }
-    return map;
-  }, [templates, filter]);
 
   async function createDoc(templateId: string) {
     setBusy(true);
@@ -76,7 +57,6 @@ export function DocListPage({
       const commitment = hashSectionContent(
         new TextEncoder().encode(JSON.stringify(sections))
       );
-
       const keys = resolveSigningKeys(session);
 
       let genesis = signGenesis({
@@ -96,12 +76,11 @@ export function DocListPage({
         );
         attachNotary(genesis, notary);
       } catch {
-        /* optional offline */
+        /* optional */
       }
 
       const groupId = generateGroupId();
-      const docKey = generateChatKey();
-      sessionStorage.setItem(`pen_doc_key:${docId}`, docKey);
+      sessionStorage.setItem(`pen_doc_key:${docId}`, generateChatKey());
       sessionStorage.setItem(`pen_group_id:${docId}`, groupId);
 
       const manifest: PenDocManifest = {
@@ -120,6 +99,7 @@ export function DocListPage({
       const chain: PenHistoryChain = { docId, genesis, links: [] };
       saveLocalDoc(session.pnIdentifier, { manifest, sections, chain });
       onDocsChange();
+      setPickerOpen(false);
       navigate(`/d/${docId}`);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'create_failed');
@@ -128,99 +108,95 @@ export function DocListPage({
     }
   }
 
-  const filters = [
-    { id: 'all', label: 'All templates' },
-    { id: 'note', label: 'Notes' },
-    { id: 'post', label: 'Posts' },
-    { id: 'carousel', label: 'Carousels' },
-    { id: 'self_hosted_feed', label: 'Feeds' }
-  ];
-
   return (
-    <div className="mx-auto grid max-w-6xl gap-8 px-4 py-8 lg:grid-cols-[240px_1fr]">
-      <aside className="space-y-6">
-        <div>
-          <h2 className="text-xs font-semibold uppercase tracking-wider text-mute">Recent</h2>
-          {docs.length === 0 ? (
-            <p className="mt-3 text-sm text-mute">No documents yet.</p>
-          ) : (
-            <ul className="mt-3 space-y-1">
-              {docs.map((d) => (
-                <li key={d.docId}>
-                  <Link
-                    to={`/d/${d.docId}`}
-                    className="block rounded-md px-2 py-2 text-sm hover:bg-white"
-                  >
-                    <div className="truncate font-medium text-ink">{d.title}</div>
-                    <div className="truncate text-xs text-mute">
-                      {new Date(d.updatedAt).toLocaleDateString()}
-                    </div>
-                  </Link>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-      </aside>
-
-      <main className="space-y-6">
-        <div>
-          <h1 className="font-display text-3xl font-semibold tracking-tight text-ink">
-            New document
-          </h1>
-          <p className="mt-1 text-sm text-mute">
-            Choose a starter template. Structure is fixed; writing flows like a page.
-          </p>
+    <div className="min-h-[calc(100vh-2.5rem)] bg-stone-100">
+      <div className="mx-auto max-w-3xl px-4 py-10">
+        <div className="mb-6 flex items-end justify-between gap-4">
+          <div>
+            <h1 className="text-lg font-semibold text-stone-900">Documents</h1>
+            <p className="text-sm text-stone-500">Open a file or start from a template.</p>
+          </div>
+          <button
+            type="button"
+            onClick={() => setPickerOpen(true)}
+            className="rounded bg-stone-900 px-3 py-1.5 text-sm text-white hover:bg-stone-800"
+          >
+            New…
+          </button>
         </div>
 
-        <div className="flex flex-wrap gap-2">
-          {filters.map((f) => (
+        {docs.length === 0 ? (
+          <div className="rounded-lg border border-dashed border-stone-300 bg-white px-6 py-16 text-center">
+            <p className="text-stone-600">No documents yet.</p>
             <button
-              key={f.id}
               type="button"
-              onClick={() => setFilter(f.id)}
-              className={`rounded-full px-3 py-1.5 text-sm ${
-                filter === f.id
-                  ? 'bg-ink text-white'
-                  : 'bg-white text-stone-600 ring-1 ring-line hover:bg-stone-50'
-              }`}
+              className="mt-4 text-sm text-sky-700 underline"
+              onClick={() => setPickerOpen(true)}
             >
-              {f.label}
+              Choose a template
             </button>
-          ))}
-        </div>
+          </div>
+        ) : (
+          <ul className="divide-y divide-stone-200 overflow-hidden rounded-lg border border-stone-200 bg-white">
+            {docs.map((d) => (
+              <li key={d.docId}>
+                <Link
+                  to={`/d/${d.docId}`}
+                  className="flex items-center justify-between gap-4 px-4 py-3 hover:bg-stone-50"
+                >
+                  <div className="min-w-0">
+                    <div className="truncate font-medium text-stone-900">{d.title}</div>
+                    <div className="truncate text-xs text-stone-500">{d.templateId}</div>
+                  </div>
+                  <div className="shrink-0 text-xs text-stone-400">
+                    {new Date(d.updatedAt).toLocaleString()}
+                  </div>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
 
-        {error && <p className="text-sm text-red-600">{error}</p>}
-
-        <div className="space-y-8">
-          {[...grouped.entries()].map(([docType, list]) => (
-            <section key={docType}>
-              <h2 className="mb-3 text-sm font-semibold text-stone-700">
-                {DOC_TYPE_LABEL[docType] || docType}
-              </h2>
-              <div className="grid gap-3 sm:grid-cols-2">
-                {list.map((t) => (
+      {pickerOpen && (
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/30 p-4 sm:items-center">
+          <div
+            className="absolute inset-0"
+            onClick={() => docs.length > 0 && setPickerOpen(false)}
+            aria-hidden
+          />
+          <div className="relative z-10 max-h-[85vh] w-full max-w-lg overflow-auto rounded-xl bg-white shadow-xl">
+            <div className="sticky top-0 flex items-center justify-between border-b border-stone-200 bg-white px-4 py-3">
+              <h2 className="text-sm font-semibold text-stone-900">New from template</h2>
+              {docs.length > 0 && (
+                <button
+                  type="button"
+                  className="text-sm text-stone-500 hover:text-stone-800"
+                  onClick={() => setPickerOpen(false)}
+                >
+                  Cancel
+                </button>
+              )}
+            </div>
+            {error && <p className="px-4 pt-2 text-sm text-red-600">{error}</p>}
+            <ul className="divide-y divide-stone-100 p-2">
+              {templates.map((t) => (
+                <li key={t.id}>
                   <button
-                    key={t.id}
                     type="button"
                     disabled={busy}
                     onClick={() => createDoc(t.id)}
-                    className="pen-paper group rounded-xl border border-line p-5 text-left transition hover:-translate-y-0.5 hover:border-stone-300 disabled:opacity-50"
+                    className="w-full rounded-lg px-3 py-3 text-left hover:bg-stone-50 disabled:opacity-50"
                   >
-                    <div className="font-display text-lg font-semibold text-ink group-hover:text-accent">
-                      {t.title}
-                    </div>
-                    <p className="mt-2 text-sm leading-relaxed text-mute">{t.description}</p>
-                    <div className="mt-4 text-xs text-stone-400">
-                      {t.sections.map((s) => s.title).join(' · ')}
-                    </div>
+                    <div className="font-medium text-stone-900">{t.title}</div>
+                    <div className="mt-0.5 text-xs text-stone-500">{t.description}</div>
                   </button>
-                ))}
-              </div>
-            </section>
-          ))}
+                </li>
+              ))}
+            </ul>
+          </div>
         </div>
-      </main>
+      )}
     </div>
   );
 }

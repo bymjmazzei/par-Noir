@@ -122,15 +122,15 @@ function Locked() {
   }
 
   return (
-    <div className="flex min-h-screen flex-col items-center justify-center gap-6 bg-paper px-6">
-      <h1 className="font-display text-5xl font-semibold tracking-tight text-ink">Pen</h1>
-      <p className="max-w-md text-center text-mute">
-        Write Notes, posts, and feeds — template first, flow on the page.
+    <div className="flex min-h-screen flex-col items-center justify-center gap-5 bg-stone-200 px-6">
+      <h1 className="text-4xl font-semibold tracking-tight text-stone-900">Pen</h1>
+      <p className="max-w-sm text-center text-sm text-stone-600">
+        Document editor for Notes, posts, and feeds.
       </p>
       {error && <p className="max-w-md text-center text-sm text-red-600">{error}</p>}
-      {busy && <p className="text-sm text-mute">Finishing unlock…</p>}
+      {busy && <p className="text-sm text-stone-500">Finishing unlock…</p>}
       <UnlockButton
-        className="inline-flex items-center rounded-full bg-ink px-5 py-2.5 text-sm font-medium text-white hover:bg-stone-800"
+        className="inline-flex items-center rounded bg-stone-900 px-4 py-2 text-sm font-medium text-white hover:bg-stone-800"
         config={{
           clientId: PN_CLIENT_ID,
           redirectUri: `${window.location.origin}/oauth-callback.html`,
@@ -155,19 +155,19 @@ function AuthenticatedApp({ session, onLock }: { session: PenSession; onLock: ()
   }, [session.pnIdentifier]);
 
   return (
-    <div className="min-h-screen bg-paper text-ink">
-      <header className="sticky top-0 z-40 flex h-14 items-center justify-between border-b border-line bg-white/90 px-4 backdrop-blur">
-        <Link to="/" className="font-display text-xl font-semibold tracking-tight text-ink">
+    <div className="min-h-screen bg-stone-200 text-stone-900">
+      <header className="flex h-10 items-center justify-between border-b border-stone-400 bg-stone-100 px-3">
+        <Link to="/" className="text-sm font-semibold tracking-tight text-stone-900">
           Pen
         </Link>
         <button
           type="button"
           onClick={onLock}
-          className="inline-flex h-9 w-9 items-center justify-center rounded-full text-stone-600 hover:bg-stone-100"
+          className="inline-flex h-8 w-8 items-center justify-center rounded text-stone-600 hover:bg-stone-200"
           title="Lock session"
           aria-label="Lock session"
         >
-          <LockIcon className="h-5 w-5" />
+          <LockIcon className="h-4 w-4" />
         </button>
       </header>
       <Routes>
