@@ -259,16 +259,16 @@ function DocExplorerRow({
           </button>
         )}
       </td>
-      <td className="hidden px-3 py-2 text-xs text-black sm:table-cell">
+      <td className="pen-explorer-col-category px-3 py-2 text-xs text-black">
         {category?.title || '—'}
       </td>
-      <td className="hidden px-3 py-2 text-xs text-black md:table-cell">
+      <td className="pen-explorer-col-form px-3 py-2 text-xs text-black">
         {form?.title || '—'}
       </td>
-      <td className="hidden max-w-[11rem] truncate px-3 py-2 text-xs text-black lg:table-cell">
+      <td className="pen-explorer-col-status max-w-[14rem] truncate px-3 py-2 text-xs text-black">
         {status}
       </td>
-      <td className="whitespace-nowrap px-3 py-2 text-left text-xs text-black">
+      <td className="pen-explorer-col-updated whitespace-nowrap px-3 py-2 text-left text-xs text-black">
         <div className="flex items-center gap-1">
           <span>{new Date(d.updatedAt).toLocaleString()}</span>
           {!bulkMode && (
@@ -315,10 +315,10 @@ function FolderExplorerRow({
           {folder.name}
         </button>
       </td>
-      <td className="hidden px-3 py-2 text-xs text-neutral-500 sm:table-cell">Folder</td>
-      <td className="hidden px-3 py-2 text-xs text-black md:table-cell">—</td>
-      <td className="hidden px-3 py-2 text-xs text-neutral-500 lg:table-cell">—</td>
-      <td className="whitespace-nowrap px-3 py-2 text-left text-xs text-black">
+      <td className="pen-explorer-col-category px-3 py-2 text-xs text-neutral-500">Folder</td>
+      <td className="pen-explorer-col-form px-3 py-2 text-xs text-black">—</td>
+      <td className="pen-explorer-col-status px-3 py-2 text-xs text-neutral-500">—</td>
+      <td className="pen-explorer-col-updated whitespace-nowrap px-3 py-2 text-left text-xs text-black">
         <div className="flex items-center gap-1">
           <span>{new Date(folder.createdAt).toLocaleString()}</span>
           <DocItemMenu
@@ -398,80 +398,82 @@ function DocExplorerTable({
         />
       )}
       <div className="pen-explorer-sheet">
-        <table className="w-full table-fixed text-left text-sm">
-          <thead className="text-[11px] tracking-wide">
-            <tr>
-              <th className="pen-explorer-action w-10 px-2 py-1 text-center" aria-label="Select" />
-              <th className="pen-explorer-icon w-10 px-1 py-1" aria-hidden />
-              <SortHeader
-                label="Name"
-                sortKey="name"
-                sort={sort}
-                onSort={onSort}
-                className="pen-explorer-name-header"
-              />
-              <SortHeader
-                label="Category"
-                sortKey="category"
-                sort={sort}
-                onSort={onSort}
-                className="hidden w-28 sm:table-cell"
-              />
-              <SortHeader
-                label="Form"
-                sortKey="form"
-                sort={sort}
-                onSort={onSort}
-                className="hidden w-28 md:table-cell"
-              />
-              <th className="hidden w-40 px-3 py-1 text-left lg:table-cell">
-                <span className="text-[11px] font-normal uppercase tracking-wide text-neutral-600">
-                  Status
-                </span>
-              </th>
-              <SortHeader
-                label="Updated"
-                sortKey="updated"
-                sort={sort}
-                onSort={onSort}
-                align="left"
-                className="w-44"
-              />
-            </tr>
-          </thead>
-          <tbody>
-            {!bulkMode &&
-              childFolders.map((f) => (
-                <FolderExplorerRow
-                  key={f.id}
-                  folder={f}
-                  onOpen={() => onOpenFolder(f.id)}
-                  onRename={() => onRenameFolder(f)}
-                  onDelete={() => onDeleteFolder(f.id)}
+        <div className="pen-explorer-scroll">
+          <table className="text-left text-sm">
+            <thead className="text-[11px] tracking-wide">
+              <tr>
+                <th className="pen-explorer-action px-2 py-1 text-center" aria-label="Select" />
+                <th className="pen-explorer-icon px-1 py-1" aria-hidden />
+                <SortHeader
+                  label="Name"
+                  sortKey="name"
+                  sort={sort}
+                  onSort={onSort}
+                  className="pen-explorer-name-header"
+                />
+                <SortHeader
+                  label="Category"
+                  sortKey="category"
+                  sort={sort}
+                  onSort={onSort}
+                  className="pen-explorer-col-category"
+                />
+                <SortHeader
+                  label="Form"
+                  sortKey="form"
+                  sort={sort}
+                  onSort={onSort}
+                  className="pen-explorer-col-form"
+                />
+                <th className="pen-explorer-col-status px-3 py-1 text-left">
+                  <span className="text-[11px] font-normal uppercase tracking-wide text-neutral-600">
+                    Status
+                  </span>
+                </th>
+                <SortHeader
+                  label="Updated"
+                  sortKey="updated"
+                  sort={sort}
+                  onSort={onSort}
+                  align="left"
+                  className="pen-explorer-col-updated"
+                />
+              </tr>
+            </thead>
+            <tbody>
+              {!bulkMode &&
+                childFolders.map((f) => (
+                  <FolderExplorerRow
+                    key={f.id}
+                    folder={f}
+                    onOpen={() => onOpenFolder(f.id)}
+                    onRename={() => onRenameFolder(f)}
+                    onDelete={() => onDeleteFolder(f.id)}
+                  />
+                ))}
+              {docs.map((d) => (
+                <DocExplorerRow
+                  key={d.docId}
+                  d={d}
+                  pn={pn}
+                  bulkMode={bulkMode}
+                  selected={selectedIds.has(d.docId)}
+                  onToggle={onToggle}
+                  renaming={renamingId === d.docId}
+                  renameDraft={renameDraft}
+                  onRenameDraft={onRenameDraft}
+                  onStartRename={() => onStartRename(d.docId, d.title || '')}
+                  onCommitRename={onCommitRename}
+                  onCancelRename={onCancelRename}
+                  folders={moveFolders}
+                  onMove={(folderId) => onMoveDoc(d.docId, folderId)}
+                  onDelete={() => onDeleteDoc(d.docId)}
+                  onOpen={() => onOpenDoc(d.docId)}
                 />
               ))}
-            {docs.map((d) => (
-              <DocExplorerRow
-                key={d.docId}
-                d={d}
-                pn={pn}
-                bulkMode={bulkMode}
-                selected={selectedIds.has(d.docId)}
-                onToggle={onToggle}
-                renaming={renamingId === d.docId}
-                renameDraft={renameDraft}
-                onRenameDraft={onRenameDraft}
-                onStartRename={() => onStartRename(d.docId, d.title || '')}
-                onCommitRename={onCommitRename}
-                onCancelRename={onCancelRename}
-                folders={moveFolders}
-                onMove={(folderId) => onMoveDoc(d.docId, folderId)}
-                onDelete={() => onDeleteDoc(d.docId)}
-                onOpen={() => onOpenDoc(d.docId)}
-              />
-            ))}
-          </tbody>
-        </table>
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
   );
@@ -1257,12 +1259,12 @@ export function DocListPage({
 
   return (
     <div className="pen-library-page bg-white">
-      <div className="pen-library-notebook mx-auto w-full max-w-5xl flex-1 px-4">
+      <div className="pen-library-notebook flex-1">
         <div className="pen-library-notebook-inner">
           <div className="pen-explorer-rail" aria-hidden />
 
-          <div className="pen-library-heading flex flex-wrap items-start justify-between gap-4">
-            <div className="min-w-0">
+          <div className="pen-library-heading">
+            <div className="min-w-0 flex-1">
               <h1 className="text-lg font-bold text-black">My Library</h1>
               <p className="text-sm text-neutral-500">
                 {currentFolder ? (
@@ -1283,9 +1285,9 @@ export function DocListPage({
               </p>
             </div>
             {(docs.length > 0 || allFolders.length > 0) && (
-              <div className="flex shrink-0 flex-col items-end gap-1.5">
+              <div className="pen-library-heading-tools">
                 <div
-                  className="flex items-center gap-0 text-sm"
+                  className="flex items-center justify-end gap-0 text-sm whitespace-nowrap"
                   role="group"
                   aria-label="Document list view"
                 >
@@ -1321,9 +1323,9 @@ export function DocListPage({
                   ))}
                 </div>
                 {(homeView === 'all' || homeView === 'category') && (
-                  <div className="flex flex-col items-end gap-0.5">
+                  <>
                     <div
-                      className="flex items-center gap-3"
+                      className="flex w-full items-center justify-end gap-0"
                       role="group"
                       aria-label="Browse density"
                     >
@@ -1362,7 +1364,7 @@ export function DocListPage({
                       aria-label={bulkDeleteMode ? 'Cancel selection' : 'Select to delete'}
                       aria-pressed={bulkDeleteMode}
                       onClick={toggleBulkMode}
-                      className={`inline-flex h-7 w-7 items-center justify-center ${
+                      className={`inline-flex h-8 w-8 items-center justify-center self-end ${
                         bulkDeleteMode
                           ? 'font-bold text-black'
                           : 'text-neutral-600 hover:text-black'
@@ -1370,7 +1372,7 @@ export function DocListPage({
                     >
                       <MinusIcon />
                     </button>
-                  </div>
+                  </>
                 )}
               </div>
             )}

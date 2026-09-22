@@ -552,7 +552,17 @@ body {
   font-style: italic;
 }
 
-/* My Library explorer — notebook ruled page */
+/* My Library explorer — notebook ruled page (full-bleed) */
+
+:root {
+  --pen-edge-pad: 0.75rem; /* match app chrome px-3 */
+  --pen-action-w: 2.5rem;
+  --pen-icon-w: 2.5rem;
+  --pen-rail-gap: 15px; /* space after red rail before name */
+  --pen-name-inset: calc(var(--pen-action-w) + var(--pen-icon-w) + var(--pen-rail-gap));
+  --pen-rule-blue: #3b82f6;
+}
+
 .pen-library-page {
   display: flex;
   flex-direction: column;
@@ -561,25 +571,36 @@ body {
 
 .pen-library-notebook {
   width: 100%;
+  flex: 1;
 }
 
 .pen-library-notebook-inner {
   position: relative;
   min-height: 100%;
-  padding-bottom: 1.5rem;
+  padding: 0 var(--pen-edge-pad) 1.5rem;
 }
 
 .pen-library-heading {
-  /* Align title with Name column (after action + icon + red rail gap). */
-  padding: 1.25rem 0.25rem 0.15rem calc(5rem + 15px);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1.25rem 0 0.15rem var(--pen-name-inset);
+}
+
+.pen-library-heading-tools {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.375rem;
 }
 
 .pen-library-indent {
-  padding-left: calc(5rem + 15px);
+  padding-left: var(--pen-name-inset);
 }
 
 .pen-library-body {
-  /* No blue rule between heading and table */
   border-top: none;
 }
 
@@ -597,7 +618,6 @@ body {
   justify-content: center;
   border-radius: 9999px;
   background: #fff;
-  /* ~3× prior padding (0.35 / 0.95) */
   padding: 1.05rem 2.85rem;
   box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.06);
 }
@@ -612,23 +632,89 @@ body {
   padding-bottom: 2px;
 }
 
+/* App chrome column alignment */
+.pen-app-chrome {
+  display: flex;
+  height: 2.5rem;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 var(--pen-edge-pad);
+  border-bottom: 1px solid #262626;
+  background: #000;
+}
+
+.pen-app-chrome-left {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+}
+
+.pen-app-chrome-action {
+  width: var(--pen-action-w);
+  flex-shrink: 0;
+}
+
+.pen-app-chrome-icon {
+  display: inline-flex;
+  width: var(--pen-icon-w);
+  height: 2rem;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+}
+
+.pen-app-chrome-icon:hover {
+  opacity: 0.7;
+}
+
+.pen-app-chrome-brand {
+  padding-left: var(--pen-rail-gap);
+  font-size: 0.875rem;
+  font-weight: 700;
+  letter-spacing: -0.025em;
+  color: #fff;
+}
+
+.pen-app-chrome-lock {
+  display: inline-flex;
+  width: 2rem;
+  height: 2rem;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.pen-app-chrome-lock:hover {
+  color: #fff;
+}
+
 .pen-explorer {
   position: relative;
   background: #fff;
   border: none;
   box-shadow: none;
-  /* Do not clip the page-level red rail */
   overflow: visible;
+}
+
+.pen-explorer-scroll {
+  width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
 }
 
 .pen-explorer table {
   border-collapse: collapse;
+  width: max-content;
+  min-width: 100%;
+  table-layout: auto;
 }
 
 .pen-explorer thead {
   background: transparent;
   position: sticky;
-  top: 2.5rem; /* below fixed app chrome */
+  top: 2.5rem;
   z-index: 5;
 }
 
@@ -636,22 +722,38 @@ body {
   background: #fff;
 }
 
-/* Keep action/icon header cells clear so the red rail shows through the title row */
 .pen-explorer thead th.pen-explorer-action,
 .pen-explorer thead th.pen-explorer-icon {
   background: transparent;
 }
 
-.pen-explorer th,
-.pen-explorer td {
-  border-bottom: 1px solid #3b82f6;
-  border-top: none;
+/* Full-bleed blue rules (viewport width) */
+.pen-explorer tbody tr,
+.pen-explorer thead tr {
+  position: relative;
 }
 
-/* No blue rule under the last row */
-.pen-explorer tbody tr:last-child th,
-.pen-explorer tbody tr:last-child td {
+.pen-explorer tbody tr::after,
+.pen-explorer thead tr::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  bottom: 0;
+  width: 100vw;
+  margin-left: -50vw;
+  border-bottom: 1px solid var(--pen-rule-blue);
+  pointer-events: none;
+  z-index: 1;
+}
+
+.pen-explorer tbody tr:last-child::after {
+  display: none;
+}
+
+.pen-explorer th,
+.pen-explorer td {
   border-bottom: none;
+  border-top: none;
 }
 
 .pen-explorer th {
@@ -665,14 +767,36 @@ body {
 }
 
 .pen-explorer-action {
-  width: 2.5rem;
+  width: var(--pen-action-w);
+  min-width: var(--pen-action-w);
 }
 
 .pen-explorer-icon {
-  width: 2.5rem;
+  width: var(--pen-icon-w);
+  min-width: var(--pen-icon-w);
 }
 
-/* Continuous red double rule after icon col; above sticky thead paint */
+.pen-explorer-name-header,
+.pen-explorer-name-cell {
+  min-width: 12rem;
+}
+
+.pen-explorer-col-category {
+  min-width: 7rem;
+}
+
+.pen-explorer-col-form {
+  min-width: 7rem;
+}
+
+.pen-explorer-col-status {
+  min-width: 11rem;
+}
+
+.pen-explorer-col-updated {
+  min-width: 11rem;
+}
+
 .pen-explorer-rail {
   position: absolute;
   top: 0;
@@ -682,12 +806,12 @@ body {
   border-right: 1.5px solid #dc2626;
   pointer-events: none;
   z-index: 20;
-  left: 5rem;
+  left: calc(var(--pen-edge-pad) + var(--pen-action-w) + var(--pen-icon-w));
 }
 
 .pen-explorer-name-cell,
 .pen-explorer-name-header {
-  padding-left: 15px !important; /* 10px gap after 5px-wide rail */
+  padding-left: var(--pen-rail-gap) !important;
 }
 
 .pen-explorer-bulk-bar {
@@ -698,22 +822,53 @@ body {
   gap: 0.75rem;
   padding: 0.5rem 0.25rem 0.65rem;
   border-top: none;
-  border-bottom: 1px solid #3b82f6;
-  margin-left: calc(5rem + 15px);
+  margin-left: var(--pen-name-inset);
+  position: relative;
 }
 
-/* Gallery: start right of red rail; blue rules above first row and under each row */
+.pen-explorer-bulk-bar::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  bottom: 0;
+  width: 100vw;
+  margin-left: -50vw;
+  border-bottom: 1px solid var(--pen-rule-blue);
+  pointer-events: none;
+}
+
+/* Gallery: responsive tile table right of red rail; blue cell borders */
 .pen-gallery-ruled {
-  margin-left: calc(5rem + 15px);
-  border-top: 1px solid #3b82f6;
+  margin-left: var(--pen-name-inset);
+  width: calc(100% - var(--pen-name-inset));
   display: grid;
-  grid-template-columns: repeat(auto-fill, 100px);
-  column-gap: 0.75rem;
-  row-gap: 0;
+  grid-template-columns: repeat(auto-fill, minmax(7.5rem, 1fr));
+  border-top: 1px solid var(--pen-rule-blue);
+  border-left: 1px solid var(--pen-rule-blue);
+  position: relative;
+}
+
+.pen-gallery-ruled::before {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: -1px;
+  width: 100vw;
+  margin-left: -50vw;
+  border-top: 1px solid var(--pen-rule-blue);
+  pointer-events: none;
 }
 
 .pen-gallery-ruled > * {
-  border-bottom: 1px solid #3b82f6;
-  padding-top: 0.75rem;
-  padding-bottom: 0.75rem;
+  border-right: 1px solid var(--pen-rule-blue);
+  border-bottom: 1px solid var(--pen-rule-blue);
+  padding: 0.75rem;
+  min-width: 0;
+  display: flex;
+  justify-content: flex-start;
+}
+
+.pen-gallery-ruled > * > * {
+  width: 100px;
+  max-width: 100%;
 }
