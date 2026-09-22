@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 
-/** ⋯ menu for library rows / gallery tiles. */
+/** ⋮ menu for library rows / gallery tiles. */
 export function DocItemMenu({
   onRename,
   onMove,
@@ -37,7 +37,7 @@ export function DocItemMenu({
         title="More"
         aria-label="More actions"
         aria-expanded={open}
-        className="inline-flex h-7 w-7 shrink-0 items-center justify-center text-neutral-600 hover:text-black"
+        className="inline-flex h-7 w-7 shrink-0 items-center justify-center text-[15px] leading-none text-neutral-600 hover:text-black"
         onClick={(e) => {
           e.preventDefault();
           e.stopPropagation();
@@ -45,7 +45,7 @@ export function DocItemMenu({
           setMoveOpen(false);
         }}
       >
-        ⋯
+        ⋮
       </button>
       {open && (
         <div

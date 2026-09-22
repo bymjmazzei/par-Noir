@@ -537,8 +537,53 @@ function DocGalleryCard({
   const bundle = loadLocalDoc(pn, d.docId);
   const title = d.title || 'Untitled';
 
+  const titleRow = (
+    <div className="pen-gallery-tile-title">
+      {renaming ? (
+        <input
+          autoFocus
+          value={renameDraft}
+          onChange={(e) => onRenameDraft(e.target.value)}
+          onBlur={() => onCommitRename()}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              e.preventDefault();
+              onCommitRename();
+            }
+            if (e.key === 'Escape') {
+              e.preventDefault();
+              onCancelRename();
+            }
+          }}
+          onClick={(e) => e.stopPropagation()}
+          className="pen-gallery-tile-title-text"
+        />
+      ) : (
+        <div
+          className="pen-gallery-tile-title-text"
+          title={title}
+          onDoubleClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            if (!bulkMode) onStartRename();
+          }}
+        >
+          {title}
+        </div>
+      )}
+      {!bulkMode && !renaming && (
+        <DocItemMenu
+          folders={folders}
+          onRename={onStartRename}
+          onMove={onMove}
+          onDelete={onDelete}
+        />
+      )}
+    </div>
+  );
+
   const preview = (
-    <div className="relative h-[100px] w-[100px] shrink-0 overflow-hidden bg-neutral-100">
+    <div className="pen-gallery-tile-preview">
       {bulkMode && (
         <div className="absolute left-1 top-1 z-10">
           <input
@@ -552,60 +597,19 @@ function DocGalleryCard({
         </div>
       )}
       {bundle ? (
-        <div className="pointer-events-none absolute left-1/2 top-0 h-[178px] w-[100px] -translate-x-1/2 origin-top scale-[1]">
-          <TemplateLivePreview
-            manifest={bundle.manifest}
-            sections={bundle.sections}
-            compact
-          />
+        <div className="pointer-events-none absolute inset-0 overflow-hidden">
+          <div className="absolute left-1/2 top-0 h-[178px] w-[100px] -translate-x-1/2 origin-top">
+            <TemplateLivePreview
+              manifest={bundle.manifest}
+              sections={bundle.sections}
+              compact
+            />
+          </div>
         </div>
       ) : (
-        <div className="flex h-full items-center justify-center text-[10px] text-neutral-500">
+        <div className="flex h-full items-center justify-center bg-neutral-100 text-[10px] text-neutral-500">
           —
         </div>
-      )}
-    </div>
-  );
-
-  const titleBlock = renaming ? (
-    <input
-      autoFocus
-      value={renameDraft}
-      onChange={(e) => onRenameDraft(e.target.value)}
-      onBlur={() => onCommitRename()}
-      onKeyDown={(e) => {
-        if (e.key === 'Enter') {
-          e.preventDefault();
-          onCommitRename();
-        }
-        if (e.key === 'Escape') {
-          e.preventDefault();
-          onCancelRename();
-        }
-      }}
-      onClick={(e) => e.stopPropagation()}
-      className="w-[100px] border-b border-neutral-400 bg-transparent text-[11px] font-medium text-black outline-none"
-    />
-  ) : (
-    <div className="flex w-[100px] items-start gap-0.5">
-      <div
-        className="min-w-0 flex-1 truncate text-[11px] font-medium leading-tight text-black"
-        title={title}
-        onDoubleClick={(e) => {
-          e.preventDefault();
-          e.stopPropagation();
-          if (!bulkMode) onStartRename();
-        }}
-      >
-        {title}
-      </div>
-      {!bulkMode && (
-        <DocItemMenu
-          folders={folders}
-          onRename={onStartRename}
-          onMove={onMove}
-          onDelete={onDelete}
-        />
       )}
     </div>
   );
@@ -615,20 +619,18 @@ function DocGalleryCard({
       <button
         type="button"
         onClick={() => onToggle(d.docId)}
-        className={`flex w-[100px] flex-col gap-1 text-left ${
-          selected ? 'ring-2 ring-black ring-offset-1' : ''
-        }`}
+        className={`pen-gallery-tile ${selected ? 'ring-2 ring-black ring-offset-1' : ''}`}
       >
-        {titleBlock}
+        {titleRow}
         {preview}
       </button>
     );
   }
 
   return (
-    <div className="flex w-[100px] flex-col gap-1">
-      {titleBlock}
-      <Link to={`/d/${d.docId}`} className="block">
+    <div className="pen-gallery-tile">
+      {titleRow}
+      <Link to={`/d/${d.docId}`} className="pen-gallery-tile-preview-link">
         {preview}
       </Link>
     </div>
@@ -647,8 +649,8 @@ function FolderGalleryCard({
   onDelete: () => void;
 }) {
   return (
-    <div className="flex w-[100px] flex-col gap-1">
-      <div className="flex w-[100px] items-start gap-0.5">
+    <div className="pen-gallery-tile">
+      <div className="pen-gallery-tile-title">
         <button
           type="button"
           onClick={onOpen}
@@ -656,7 +658,7 @@ function FolderGalleryCard({
             e.preventDefault();
             onRename();
           }}
-          className="min-w-0 flex-1 truncate text-left text-[11px] font-medium leading-tight text-black"
+          className="pen-gallery-tile-title-text text-left"
           title={folder.name}
         >
           {folder.name}
@@ -672,7 +674,7 @@ function FolderGalleryCard({
       <button
         type="button"
         onClick={onOpen}
-        className="flex h-[100px] w-[100px] items-center justify-center bg-neutral-50 text-neutral-600 hover:bg-neutral-100"
+        className="pen-gallery-tile-preview flex items-center justify-center text-neutral-600 hover:bg-neutral-100"
       >
         <FolderGlyph />
       </button>
@@ -682,13 +684,11 @@ function FolderGalleryCard({
 
 function CreateNewGalleryTile({ onClick }: { onClick: () => void }) {
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      className="flex w-[100px] flex-col gap-1 text-left text-black hover:opacity-70"
-    >
-      <span className="truncate text-[11px] font-medium leading-tight">Create new</span>
-      <span className="flex h-[100px] w-[100px] items-center justify-center border border-dashed border-neutral-300 text-2xl font-light">
+    <button type="button" onClick={onClick} className="pen-gallery-tile">
+      <div className="pen-gallery-tile-title">
+        <span className="pen-gallery-tile-title-text">Create new</span>
+      </div>
+      <span className="pen-gallery-tile-preview flex items-center justify-center bg-white text-2xl font-light text-neutral-500">
         +
       </span>
     </button>
@@ -737,38 +737,41 @@ function DocGalleryGrid({
   onDeleteFolder: (folderId: string) => void;
 }) {
   return (
-    <div className="pen-gallery">
-      <div className="pen-gallery-tiles">
-        {!bulkMode && <CreateNewGalleryTile onClick={onCreateNew} />}
-        {!bulkMode &&
-          childFolders.map((f) => (
-            <FolderGalleryCard
-              key={f.id}
-              folder={f}
-              onOpen={() => onOpenFolder(f.id)}
-              onRename={() => onRenameFolder(f)}
-              onDelete={() => onDeleteFolder(f.id)}
+    <div className="pen-gallery-wrap">
+      <div className="pen-gallery-head" aria-hidden />
+      <div className="pen-gallery">
+        <div className="pen-gallery-tiles">
+          {!bulkMode && <CreateNewGalleryTile onClick={onCreateNew} />}
+          {!bulkMode &&
+            childFolders.map((f) => (
+              <FolderGalleryCard
+                key={f.id}
+                folder={f}
+                onOpen={() => onOpenFolder(f.id)}
+                onRename={() => onRenameFolder(f)}
+                onDelete={() => onDeleteFolder(f.id)}
+              />
+            ))}
+          {docs.map((d) => (
+            <DocGalleryCard
+              key={d.docId}
+              pn={pn}
+              d={d}
+              bulkMode={bulkMode}
+              selected={selectedIds.has(d.docId)}
+              onToggle={onToggle}
+              folders={moveFolders}
+              renaming={renamingId === d.docId}
+              renameDraft={renameDraft}
+              onRenameDraft={onRenameDraft}
+              onStartRename={() => onStartRename(d.docId, d.title || '')}
+              onCommitRename={onCommitRename}
+              onCancelRename={onCancelRename}
+              onMove={(folderId) => onMoveDoc(d.docId, folderId)}
+              onDelete={() => onDeleteDoc(d.docId)}
             />
           ))}
-        {docs.map((d) => (
-          <DocGalleryCard
-            key={d.docId}
-            pn={pn}
-            d={d}
-            bulkMode={bulkMode}
-            selected={selectedIds.has(d.docId)}
-            onToggle={onToggle}
-            folders={moveFolders}
-            renaming={renamingId === d.docId}
-            renameDraft={renameDraft}
-            onRenameDraft={onRenameDraft}
-            onStartRename={() => onStartRename(d.docId, d.title || '')}
-            onCommitRename={onCommitRename}
-            onCancelRename={onCancelRename}
-            onMove={(folderId) => onMoveDoc(d.docId, folderId)}
-            onDelete={() => onDeleteDoc(d.docId)}
-          />
-        ))}
+        </div>
       </div>
     </div>
   );
@@ -1255,10 +1258,6 @@ export function DocListPage({
               </div>
             )}
           </div>
-
-          {browseDensity === 'gallery' && (docs.length > 0 || allFolders.length > 0) && (
-            <div className="pen-library-rule" aria-hidden />
-          )}
 
           {docs.length === 0 && allFolders.length === 0 ? (
             <div className="pen-library-body px-6 py-16 text-center">

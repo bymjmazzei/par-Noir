@@ -563,6 +563,11 @@ body {
   --pen-rule-blue: #3b82f6;
   /* Match list tbody row: 0.5rem + 0.5rem pad + ~1.25rem line */
   --pen-rule-pitch: 2.25rem;
+  /* Match list thead (NAME) row — first blue line sits under this */
+  --pen-explorer-head-h: 2rem;
+  /* Gallery tile spans 4 ruled rows; 1 empty row between tile rows */
+  --pen-gallery-tile-h: calc(var(--pen-rule-pitch) * 4);
+  --pen-gallery-row-gap: var(--pen-rule-pitch);
 }
 
 .pen-library-page {
@@ -629,8 +634,11 @@ body {
 .pen-library-body {
   border-top: none;
   flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
   margin: 0;
   padding: 0;
+  min-height: 0;
 }
 
 /* Page-width notebook rule (not tile/cell attached) */
@@ -753,11 +761,13 @@ body {
 
 .pen-explorer thead th {
   background: #fff;
-  /* Single rule under column headers; no top rule (avoids double line under page header) */
+  /* Single rule under column headers; height matches gallery head spacer */
   border: none;
   border-bottom: 1px solid var(--pen-rule-blue);
-  padding-top: 0.25rem;
-  padding-bottom: 0.35rem;
+  height: var(--pen-explorer-head-h);
+  padding-top: 0;
+  padding-bottom: 0;
+  vertical-align: middle;
 }
 
 .pen-explorer thead th.pen-explorer-action,
@@ -852,17 +862,34 @@ body {
 }
 
 /*
- * Gallery: list-pitch ruled paper behind tiles (full page width).
- * Tiles sit on top; gaps show the notebook lines.
+ * Gallery: first blue line aligns with list NAME rule (via .pen-gallery-head).
+ * Ruled paper continues to the bottom of the page; tiles overlay on a 4+1 pitch grid.
  */
-.pen-gallery {
-  position: relative;
+.pen-gallery-wrap {
+  display: flex;
+  flex-direction: column;
   flex: 1 1 auto;
   min-height: 100%;
+}
+
+.pen-gallery-head {
+  flex-shrink: 0;
+  height: var(--pen-explorer-head-h);
   margin: 0 calc(-1 * var(--pen-edge-pad));
   width: calc(100% + 2 * var(--pen-edge-pad));
   box-sizing: border-box;
-  padding: 0.75rem calc(var(--pen-edge-pad) + var(--pen-name-inset)) 1.5rem var(--pen-edge-pad);
+  border-bottom: 1px solid var(--pen-rule-blue);
+  pointer-events: none;
+}
+
+.pen-gallery {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: calc(100vh - 2.5rem - 6rem);
+  margin: 0 calc(-1 * var(--pen-edge-pad));
+  width: calc(100% + 2 * var(--pen-edge-pad));
+  box-sizing: border-box;
+  padding: 0 var(--pen-edge-pad) 1.5rem;
   padding-left: calc(var(--pen-edge-pad) + var(--pen-name-inset));
   background-color: #fff;
   background-image: repeating-linear-gradient(
@@ -879,13 +906,80 @@ body {
   display: grid;
   grid-template-columns: repeat(auto-fill, 100px);
   column-gap: 0.75rem;
-  row-gap: 0.75rem;
+  row-gap: var(--pen-gallery-row-gap);
   position: relative;
   z-index: 1;
+  padding-bottom: var(--pen-rule-pitch);
 }
 
-.pen-gallery-tiles > * {
-  border: none;
+.pen-gallery-tile {
+  display: flex;
+  flex-direction: column;
+  width: 100px;
+  height: var(--pen-gallery-tile-h);
+  box-sizing: border-box;
   margin: 0;
+  padding: 0;
+  border: 1px solid #d4d4d4;
+  background: #fff;
+  overflow: hidden;
+  text-align: left;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.pen-gallery-tile:hover {
+  border-color: #a3a3a3;
+}
+
+.pen-gallery-tile-title {
+  display: flex;
+  align-items: center;
+  gap: 0.125rem;
+  flex-shrink: 0;
+  height: var(--pen-rule-pitch);
+  box-sizing: border-box;
+  padding: 0 0.2rem 0 0.35rem;
+  background: #f5f5f5;
+  border-bottom: 1px solid #e5e5e5;
+}
+
+.pen-gallery-tile-title-text {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1.2;
+  color: #000;
   background: transparent;
+  border: none;
+  padding: 0;
+}
+
+.pen-gallery-tile-title-text:focus {
+  outline: none;
+}
+
+input.pen-gallery-tile-title-text {
+  background: #fff;
+  border-bottom: 1px solid #a3a3a3;
+}
+
+.pen-gallery-tile-preview {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+  width: 100%;
+  overflow: hidden;
+  background: #f5f5f5;
+}
+
+.pen-gallery-tile-title .relative > button {
+  width: 1.25rem;
+  height: 1.25rem;
+  font-size: 14px;
 }
