@@ -204,7 +204,9 @@ function DocExplorerTable({
   bulkMode,
   selectedIds,
   onToggle,
-  onToggleBulk
+  onToggleBulk,
+  onSelectAll,
+  onDelete
 }: {
   docs: LocalDocSummary[];
   sort: ExplorerSort;
@@ -213,72 +215,92 @@ function DocExplorerTable({
   selectedIds: Set<string>;
   onToggle: (docId: string) => void;
   onToggleBulk: () => void;
+  onSelectAll: () => void;
+  onDelete: () => void;
 }) {
   return (
     <div className="pen-explorer overflow-hidden" data-bulk={bulkMode ? 'true' : 'false'}>
-      <div className="pen-explorer-rail" aria-hidden />
-      <table className="w-full table-fixed text-left text-sm">
-        <thead className="sticky top-0 text-[11px] tracking-wide">
-          <tr>
-            <th className="pen-explorer-action w-10 px-2 py-2 text-center">
-              <button
-                type="button"
-                title={bulkMode ? 'Cancel selection' : 'Select to delete'}
-                aria-label={bulkMode ? 'Cancel selection' : 'Select to delete'}
-                aria-pressed={bulkMode}
-                onClick={onToggleBulk}
-                className={`inline-flex h-7 w-7 items-center justify-center ${
-                  bulkMode ? 'font-bold text-black' : 'text-neutral-600 hover:text-black'
-                }`}
-              >
-                <MinusIcon />
-              </button>
-            </th>
-            <th className="pen-explorer-icon w-10 px-1 py-2" aria-hidden />
-            <SortHeader label="Name" sortKey="name" sort={sort} onSort={onSort} />
-            <SortHeader
-              label="Category"
-              sortKey="category"
-              sort={sort}
-              onSort={onSort}
-              className="hidden w-28 sm:table-cell"
-            />
-            <SortHeader
-              label="Form"
-              sortKey="form"
-              sort={sort}
-              onSort={onSort}
-              className="hidden w-28 md:table-cell"
-            />
-            <SortHeader
-              label="Template"
-              sortKey="template"
-              sort={sort}
-              onSort={onSort}
-              className="hidden w-40 lg:table-cell"
-            />
-            <SortHeader
-              label="Updated"
-              sortKey="updated"
-              sort={sort}
-              onSort={onSort}
-              align="right"
-              className="w-40"
-            />
-          </tr>
-        </thead>
-        <tbody>
-          {docs.map((d) => (
-            <DocExplorerRow
-              key={d.docId}
-              d={d}
-              bulkMode={bulkMode}
-              selected={selectedIds.has(d.docId)}
-              onToggle={onToggle}
-            />
-          ))}
-        </tbody>
-      </table>
+      {bulkMode && (
+        <BulkDeleteBar
+          compact
+          visibleDocs={docs}
+          selectedIds={selectedIds}
+          onSelectAll={onSelectAll}
+          onDelete={onDelete}
+          onCancel={onToggleBulk}
+        />
+      )}
+      <div className="pen-explorer-sheet">
+        <div className="pen-explorer-rail" aria-hidden />
+        <table className="w-full table-fixed text-left text-sm">
+          <thead className="sticky top-0 text-[11px] tracking-wide">
+            <tr>
+              <th className="pen-explorer-action w-10 px-2 py-2 text-center">
+                <button
+                  type="button"
+                  title={bulkMode ? 'Cancel selection' : 'Select to delete'}
+                  aria-label={bulkMode ? 'Cancel selection' : 'Select to delete'}
+                  aria-pressed={bulkMode}
+                  onClick={onToggleBulk}
+                  className={`inline-flex h-7 w-7 items-center justify-center ${
+                    bulkMode ? 'font-bold text-black' : 'text-neutral-600 hover:text-black'
+                  }`}
+                >
+                  <MinusIcon />
+                </button>
+              </th>
+              <th className="pen-explorer-icon w-10 px-1 py-2" aria-hidden />
+              <SortHeader
+                label="Name"
+                sortKey="name"
+                sort={sort}
+                onSort={onSort}
+                className="pen-explorer-name-header"
+              />
+              <SortHeader
+                label="Category"
+                sortKey="category"
+                sort={sort}
+                onSort={onSort}
+                className="hidden w-28 sm:table-cell"
+              />
+              <SortHeader
+                label="Form"
+                sortKey="form"
+                sort={sort}
+                onSort={onSort}
+                className="hidden w-28 md:table-cell"
+              />
+              <SortHeader
+                label="Template"
+                sortKey="template"
+                sort={sort}
+                onSort={onSort}
+                className="hidden w-40 lg:table-cell"
+              />
+              <SortHeader
+                label="Updated"
+                sortKey="updated"
+                sort={sort}
+                onSort={onSort}
+                align="right"
+                className="w-40"
+              />
+            </tr>
+          </thead>
+          <tbody>
+            {docs.map((d) => (
+              <DocExplorerRow
+                key={d.docId}
+                d={d}
+                bulkMode={bulkMode}
+                selected={selectedIds.has(d.docId)}
+                onToggle={onToggle}
+              />
+            ))}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }
@@ -450,18 +472,21 @@ function BulkDeleteBar({
   selectedIds,
   onSelectAll,
   onDelete,
-  onCancel
+  onCancel,
+  compact
 }: {
   visibleDocs: LocalDocSummary[];
   selectedIds: Set<string>;
   onSelectAll: () => void;
   onDelete: () => void;
   onCancel: () => void;
+  /** When true, sits above table headers (no extra bottom rule outside the explorer). */
+  compact?: boolean;
 }) {
   const selectedCount = visibleDocs.filter((d) => selectedIds.has(d.docId)).length;
   const allSelected = visibleDocs.length > 0 && selectedCount === visibleDocs.length;
   return (
-    <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-blue-500 pt-4">
+    <div className={compact ? 'pen-explorer-bulk-bar' : 'mb-3 flex flex-wrap items-center justify-between gap-3'}>
       <div className="flex items-center gap-3 text-sm">
         <button
           type="button"
@@ -470,9 +495,7 @@ function BulkDeleteBar({
         >
           {allSelected ? 'Deselect all' : 'Select all'}
         </button>
-        <span className="text-neutral-600">
-          {selectedCount} selected
-        </span>
+        <span className="text-neutral-600">{selectedCount} selected</span>
       </div>
       <div className="flex items-center gap-4 text-sm">
         <button type="button" onClick={onCancel} className="text-neutral-600 hover:text-black">
@@ -912,14 +935,25 @@ export function DocListPage({
         ) : homeView === 'all' ? (
           <>
             {browseDensity === 'gallery' ? (
-              <DocGalleryGrid
-                pn={session.pnIdentifier}
-                docs={sortedDocs}
-                bulkMode={bulkDeleteMode}
-                selectedIds={selectedIds}
-                onToggle={toggleDocSelection}
-                onCreateNew={openPicker}
-              />
+              <>
+                {bulkDeleteMode && (
+                  <BulkDeleteBar
+                    visibleDocs={sortedDocs}
+                    selectedIds={selectedIds}
+                    onSelectAll={() => selectAllVisible(sortedDocs)}
+                    onDelete={confirmBulkDelete}
+                    onCancel={toggleBulkMode}
+                  />
+                )}
+                <DocGalleryGrid
+                  pn={session.pnIdentifier}
+                  docs={sortedDocs}
+                  bulkMode={bulkDeleteMode}
+                  selectedIds={selectedIds}
+                  onToggle={toggleDocSelection}
+                  onCreateNew={openPicker}
+                />
+              </>
             ) : (
               <DocExplorerTable
                 docs={sortedDocs}
@@ -929,20 +963,24 @@ export function DocListPage({
                 selectedIds={selectedIds}
                 onToggle={toggleDocSelection}
                 onToggleBulk={toggleBulkMode}
-              />
-            )}
-            {bulkDeleteMode && (
-              <BulkDeleteBar
-                visibleDocs={sortedDocs}
-                selectedIds={selectedIds}
                 onSelectAll={() => selectAllVisible(sortedDocs)}
                 onDelete={confirmBulkDelete}
-                onCancel={toggleBulkMode}
               />
             )}
           </>
         ) : (
           <div className="space-y-1">
+            {bulkDeleteMode && browseDensity === 'gallery' && (
+              <BulkDeleteBar
+                visibleDocs={sortedDocsByCategory.flatMap((g) => g.docs)}
+                selectedIds={selectedIds}
+                onSelectAll={() =>
+                  selectAllVisible(sortedDocsByCategory.flatMap((g) => g.docs))
+                }
+                onDelete={confirmBulkDelete}
+                onCancel={toggleBulkMode}
+              />
+            )}
             {sortedDocsByCategory.map((g) => {
               const open = expandedCats.has(g.categoryId);
               return (
@@ -981,23 +1019,14 @@ export function DocListPage({
                           selectedIds={selectedIds}
                           onToggle={toggleDocSelection}
                           onToggleBulk={toggleBulkMode}
+                          onSelectAll={() => selectAllVisible(g.docs)}
+                          onDelete={confirmBulkDelete}
                         />
                       </div>
                     ))}
                 </div>
               );
             })}
-            {bulkDeleteMode && (
-              <BulkDeleteBar
-                visibleDocs={sortedDocsByCategory.flatMap((g) => g.docs)}
-                selectedIds={selectedIds}
-                onSelectAll={() =>
-                  selectAllVisible(sortedDocsByCategory.flatMap((g) => g.docs))
-                }
-                onDelete={confirmBulkDelete}
-                onCancel={toggleBulkMode}
-              />
-            )}
           </div>
         )}
       </div>
