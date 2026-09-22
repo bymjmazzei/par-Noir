@@ -482,3 +482,72 @@ body {
   margin: 0 0 0.5em 1em;
   max-width: 45%;
 }
+
+.pen-embed-card {
+  margin: 0.75rem 0;
+  border: 1px solid #d6d3d1;
+  border-radius: 8px;
+  background: #fafaf9;
+  overflow: hidden;
+}
+
+.pen-embed-card.is-selected {
+  outline: 2px solid #0d9488;
+  outline-offset: 1px;
+}
+
+.pen-embed-card.is-missing {
+  border-color: #fca5a5;
+  background: #fef2f2;
+}
+
+.pen-embed-card-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.4rem 0.65rem;
+  border-bottom: 1px solid #e7e5e4;
+  font-size: 0.75rem;
+  color: #57534e;
+}
+
+.pen-embed-card-badge {
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #0f766e;
+}
+
+.pen-embed-card-title {
+  font-weight: 600;
+  color: #1c1917;
+}
+
+.pen-embed-card-section {
+  color: #78716c;
+}
+
+.pen-embed-card-live {
+  margin-left: auto;
+  font-size: 0.65rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #0d9488;
+}
+
+.pen-embed-card-body {
+  padding: 0.65rem 0.75rem;
+  font-size: 0.9rem;
+  color: #292524;
+  max-height: 16rem;
+  overflow: auto;
+}
+
+.pen-embed-card-missing,
+.pen-embed-card-empty {
+  margin: 0;
+  color: #a8a29e;
+  font-style: italic;
+}

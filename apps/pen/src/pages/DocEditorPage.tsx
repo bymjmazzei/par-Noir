@@ -1,10 +1,8 @@
 import { useCallback, useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import type { Editor } from '@tiptap/react';
 import {
-  compileDocumentToNote,
   createImageLayer,
-  defaultPagePresentation,
   ensureDefaultTextLayer,
   getClass,
   getTemplate,
@@ -26,8 +24,17 @@ import type { PenSession } from '../App';
 import { FormatRibbon, PageCanvas } from '../components/PageCanvas';
 import { EditablePagePreview } from '../components/EditablePagePreview';
 import { LayersPanel } from '../components/LayersPanel';
-import { TemplateLivePreview } from '../components/TemplateLivePreview';
+import { BrowseFeedTilePreview } from '../components/BrowseFeedTilePreview';
+import { SectionTocMenu, type SectionTocItem } from '../components/SectionTocMenu';
+import { PublishMenu } from '../components/PublishMenu';
 import { loadLocalDoc, saveLocalDoc } from '../services/penLocalStore';
+import {
+  isProjectDoc,
+  promoteProjectToFinishedLibraryDoc,
+  saveAsPersonalTemplate,
+  saveProjectAsLibraryTemplate,
+  writeSocialPublishHandoff
+} from '../services/penPublish';
 import { requestNotaryStamp } from '../services/penApi';
 import { resolveSigningKeys } from '../services/penKeys';
 import {
@@ -76,6 +83,7 @@ async function peerRoutes(
 }
 
 export function DocEditorPage({ session, docId }: { session: PenSession; docId: string }) {
+  const navigate = useNavigate();
   const initial = loadLocalDoc(session.pnIdentifier, docId);
   // Bridge browse publish → engagement fileId when available in this origin's storage
   if (initial && !initial.manifest.publishedFileId) {
@@ -90,7 +98,6 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
   const [showPreview, setShowPreview] = useState(true);
   const [showHistory, setShowHistory] = useState(false);
   const [showComments, setShowComments] = useState(false);
-  const [showSuggestions, setShowSuggestions] = useState(false);
   const [invitePn, setInvitePn] = useState('');
   const [commentDraft, setCommentDraft] = useState('');
   const [status, setStatus] = useState<string | null>(null);
@@ -253,29 +260,46 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
     setInvitePn('');
   }
 
-  function publishNote() {
+  function publishSocial() {
     try {
-      const compiled = compileDocumentToNote({
-        templateId: bundle!.manifest.templateId,
-        title: bundle!.manifest.title,
-        sections: bundle!.sections,
-        pagePresentation: bundle!.manifest.pagePresentation || defaultPagePresentation(),
-        docId
-      });
-      sessionStorage.setItem(
-        `pen_publish_note:${docId}`,
-        JSON.stringify({
-          contentClass: 'note',
-          title: compiled.title,
-          pages: compiled.pages,
-          templateId: compiled.templateId,
-          docId,
-          headProof: bundle!.chain.links[bundle!.chain.links.length - 1] || bundle!.chain.genesis
-        })
-      );
-      setStatus('Note ready for Browse');
+      writeSocialPublishHandoff(bundle!);
+      setStatus('Ready — open Browse to finish publish');
+      window.setTimeout(() => setStatus(null), 4000);
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'compile_failed');
+      setError(e instanceof Error ? e.message : 'publish_failed');
+    }
+  }
+
+  function publishAsTemplate() {
+    try {
+      const saved = saveAsPersonalTemplate(session.pnIdentifier, bundle!);
+      setStatus(`Template saved: ${saved.title}`);
+      window.setTimeout(() => setStatus(null), 3000);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'template_save_failed');
+    }
+  }
+
+  function publishAsLibraryTemplate() {
+    try {
+      const saved = saveProjectAsLibraryTemplate(session.pnIdentifier, bundle!);
+      setStatus(`Library template saved: ${saved.title}`);
+      window.setTimeout(() => setStatus(null), 3000);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'library_template_save_failed');
+    }
+  }
+
+  async function publishFinishedWork() {
+    setError(null);
+    setStatus('Creating finished Library document…');
+    try {
+      const next = await promoteProjectToFinishedLibraryDoc({ session, bundle: bundle! });
+      setStatus('Finished Library document created');
+      navigate(`/d/${next.manifest.docId}`);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'finished_work_failed');
+      setStatus(null);
     }
   }
 
@@ -412,11 +436,19 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
   }
 
   const chainStatus = verifyChain(bundle.chain);
-  const toc = template?.sections.map((s) => s.slug) || bundle.manifest.toc;
+  const tocSections: SectionTocItem[] = (
+    template?.sections ||
+    bundle.manifest.toc.map((slug) => ({ slug, title: slug, required: true as boolean | undefined }))
+  ).map((s) => ({
+    slug: s.slug,
+    title: s.title || s.slug,
+    required: s.required
+  }));
   const sectionComments = comments.filter((c) => c.sectionSlug === activeSlug && !c.resolved);
   const pendingSuggestions = suggestions.filter((s) => s.status === 'pending');
 
-  const sidePanel = showComments || showSuggestions;
+  const sidePanel = showComments;
+  const projectEnabled = isProjectDoc(bundle.manifest);
 
   return (
     <div className="flex h-[calc(100vh-2.5rem)] flex-col bg-stone-300">
@@ -441,25 +473,6 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
         <span className="hidden max-w-[40%] truncate text-[11px] text-stone-500 sm:inline">
           {classTrail}
         </span>
-        <select
-          className="h-7 rounded border border-stone-300 bg-white px-1 text-[11px]"
-          value={pageLayout}
-          title="Page layout"
-          onChange={(e) =>
-            persist({
-              ...bundle,
-              manifest: {
-                ...bundle.manifest,
-                pageLayout: e.target.value as PenPageLayout,
-                updatedAt: new Date().toISOString()
-              }
-            })
-          }
-        >
-          <option value="flow">Flow</option>
-          <option value="letter">Letter</option>
-          <option value="a4">A4</option>
-        </select>
         <button
           type="button"
           className={`rounded px-2 py-0.5 ${showPreview ? 'bg-white shadow-sm' : 'hover:bg-stone-200'}`}
@@ -472,7 +485,6 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
           className={`rounded px-2 py-0.5 ${showComments ? 'bg-white shadow-sm' : 'hover:bg-stone-200'}`}
           onClick={() => {
             setShowComments((v) => !v);
-            setShowSuggestions(false);
             setShowHistory(false);
           }}
         >
@@ -480,22 +492,10 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
         </button>
         <button
           type="button"
-          className={`rounded px-2 py-0.5 ${showSuggestions ? 'bg-white shadow-sm' : 'hover:bg-stone-200'}`}
-          onClick={() => {
-            setShowSuggestions((v) => !v);
-            setShowComments(false);
-            setShowHistory(false);
-          }}
-        >
-          Suggest
-        </button>
-        <button
-          type="button"
           className={`rounded px-2 py-0.5 ${showHistory ? 'bg-white shadow-sm' : 'hover:bg-stone-200'}`}
           onClick={() => {
             setShowHistory((v) => !v);
             setShowComments(false);
-            setShowSuggestions(false);
           }}
         >
           History
@@ -507,9 +507,13 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
         >
           Save
         </button>
-        <button type="button" className="rounded px-2 py-0.5 hover:bg-stone-200" onClick={publishNote}>
-          Note
-        </button>
+        <PublishMenu
+          projectEnabled={projectEnabled}
+          onSocial={publishSocial}
+          onTemplate={publishAsTemplate}
+          onLibraryTemplate={publishAsLibraryTemplate}
+          onFinishedWork={() => void publishFinishedWork()}
+        />
         {(status || error) && (
           <span className={`ml-1 text-[12px] ${error ? 'text-red-600' : 'text-teal-800'}`}>
             {error || status}
@@ -517,59 +521,49 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
         )}
       </div>
 
-      <div className="flex shrink-0 items-center gap-1 border-b border-stone-300 bg-stone-50 px-2 py-1">
-        {toc.map((slug) => {
-          const label = template?.sections.find((s) => s.slug === slug)?.title || slug;
-          const active = slug === activeSlug;
-          return (
-            <button
-              key={slug}
-              type="button"
-              onClick={() => setActiveSlug(slug)}
-              className={`rounded px-2.5 py-1 text-[12px] ${
-                active
-                  ? 'bg-white font-medium text-stone-900 shadow-sm ring-1 ring-stone-300'
-                  : 'text-stone-600 hover:bg-stone-200/70'
-              }`}
-            >
-              {label}
-            </button>
-          );
-        })}
-      </div>
-
-      {!showHistory && (
-        <FormatRibbon
-          editor={editor}
-          accessToken={session.accessToken}
-          onImageInserted={(src, alt) => {
-            const prepared = ensureDefaultTextLayer(normalizeSection(section));
-            const maxZ = (prepared.layers || []).reduce((m, l) => Math.max(m, l.zIndex), 0);
-            const layer = createImageLayer(src, {
-              x: 28,
-              y: 28,
-              w: 32,
-              h: 28,
-              zIndex: maxZ + 1
-            });
-            if (alt) layer.imageSrc = src;
-            const next = upsertLayer(prepared, layer);
-            setActiveLayerId(layer.id);
-            persist({
-              ...bundle,
-              sections: bundle.sections.map((s) => (s.slug === next.slug ? next : s)),
-              manifest: { ...bundle.manifest, updatedAt: new Date().toISOString() }
-            });
-          }}
-        />
-      )}
-
       <div className="flex min-h-0 flex-1">
         <div
           className={`relative flex min-w-0 flex-col ${
             (showPreview || sidePanel) && !showHistory ? 'w-1/2 border-r border-stone-400' : 'flex-1'
           }`}
         >
+          {!showHistory && (
+            <div className="flex shrink-0 flex-col border-b border-stone-300 bg-stone-50">
+              <div className="flex items-center gap-2 px-2 py-1.5">
+                <SectionTocMenu
+                  sections={tocSections}
+                  activeSlug={activeSlug}
+                  onSelect={setActiveSlug}
+                />
+              </div>
+              <FormatRibbon
+                editor={editor}
+                accessToken={session.accessToken}
+                pnIdentifier={session.pnIdentifier}
+                excludeDocId={bundle.manifest.docId}
+                onImageInserted={(src, alt) => {
+                  const prepared = ensureDefaultTextLayer(normalizeSection(section));
+                  const maxZ = (prepared.layers || []).reduce((m, l) => Math.max(m, l.zIndex), 0);
+                  const layer = createImageLayer(src, {
+                    x: 28,
+                    y: 28,
+                    w: 32,
+                    h: 28,
+                    zIndex: maxZ + 1
+                  });
+                  if (alt) layer.imageSrc = src;
+                  const next = upsertLayer(prepared, layer);
+                  setActiveLayerId(layer.id);
+                  persist({
+                    ...bundle,
+                    sections: bundle.sections.map((s) => (s.slug === next.slug ? next : s)),
+                    manifest: { ...bundle.manifest, updatedAt: new Date().toISOString() }
+                  });
+                }}
+              />
+            </div>
+          )}
+
           {showHistory ? (
             <div className="h-full overflow-auto bg-white p-6 text-sm">
               <p className="mb-4">
@@ -598,6 +592,50 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
                   Invite
                 </button>
               </div>
+              {pendingSuggestions.length > 0 && (
+                <div className="mt-4 space-y-2">
+                <button
+                  type="button"
+                  className="rounded border border-stone-300 bg-white px-2 py-1 text-[12px] text-stone-700"
+                  onClick={() => void proposeSuggestion()}
+                >
+                  Propose current section
+                </button>
+                {pendingSuggestions.length > 0 && (
+                  <>
+                    <p className="text-xs font-semibold uppercase tracking-wide text-amber-800">
+                      Pending suggestions
+                    </p>
+                    {pendingSuggestions.map((s) => (
+                      <div
+                        key={s.id}
+                        className="rounded border border-amber-200 bg-amber-50 p-2 text-sm"
+                      >
+                        <div className="text-[10px] text-stone-500">
+                          {s.sectionSlug} · {s.summary || 'Update'}
+                        </div>
+                        <div className="mt-2 flex gap-2">
+                          <button
+                            type="button"
+                            className="rounded bg-teal-800 px-2 py-0.5 text-[12px] text-white"
+                            onClick={() => void acceptSuggestion(s)}
+                          >
+                            Accept
+                          </button>
+                          <button
+                            type="button"
+                            className="rounded px-2 py-0.5 text-[12px] text-stone-600 hover:bg-stone-200"
+                            onClick={() => rejectSuggestion(s)}
+                          >
+                            Reject
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </>
+                )}
+              </div>
+              )}
               {bundle.manifest.publishedFileId && (
                 <p className="mt-4 text-xs text-stone-500">
                   Published fileId linked for social comments:{' '}
@@ -607,10 +645,11 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
             </div>
           ) : (
             <PageCanvas
-              key={`${activeSlug}:${activeLayerId || 'primary'}`}
+              key={`${activeSlug}:${activeLayerId || 'primary'}:${session.pnIdentifier}`}
               section={canvasSection}
               sectionTitle={sectionTitle}
               pageLayout={pageLayout}
+              pnIdentifier={session.pnIdentifier}
               onEditorReady={onEditorReady}
               onChange={(next) => {
                 let updated: typeof section = { ...next, layers: section.layers };
@@ -682,58 +721,11 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
           </div>
         )}
 
-        {showSuggestions && !showHistory && (
-          <div className="flex w-1/2 flex-col bg-white">
-            <div className="flex items-center justify-between border-b border-stone-200 px-3 py-2">
-              <span className="text-[11px] font-semibold uppercase tracking-wider text-stone-500">
-                Suggestions
-              </span>
-              <button
-                type="button"
-                className="rounded bg-teal-800 px-2 py-0.5 text-[12px] text-white"
-                onClick={() => void proposeSuggestion()}
-              >
-                Propose current
-              </button>
-            </div>
-            <div className="flex-1 space-y-2 overflow-auto p-3">
-              {pendingSuggestions.length === 0 && (
-                <p className="text-sm text-stone-400">
-                  No pending suggestions. Propose the current section as a track-change.
-                </p>
-              )}
-              {pendingSuggestions.map((s) => (
-                <div key={s.id} className="rounded border border-amber-200 bg-amber-50 p-2 text-sm">
-                  <div className="text-[10px] text-stone-500">
-                    {s.sectionSlug} · {s.summary || 'Update'}
-                  </div>
-                  <div className="mt-2 flex gap-2">
-                    <button
-                      type="button"
-                      className="rounded bg-teal-800 px-2 py-0.5 text-[12px] text-white"
-                      onClick={() => void acceptSuggestion(s)}
-                    >
-                      Accept
-                    </button>
-                    <button
-                      type="button"
-                      className="rounded px-2 py-0.5 text-[12px] text-stone-600 hover:bg-stone-200"
-                      onClick={() => rejectSuggestion(s)}
-                    >
-                      Reject
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
         {showPreview && !showHistory && !sidePanel && (
           <div className="hidden min-w-0 w-1/2 sm:flex">
             {isSocialDoc ? (
               <div className="min-w-0 flex-1">
-                <TemplateLivePreview manifest={bundle.manifest} sections={bundle.sections} />
+                <BrowseFeedTilePreview manifest={bundle.manifest} sections={bundle.sections} />
               </div>
             ) : (
               <>
@@ -744,6 +736,16 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
                     activeLayerId={activeLayerId}
                     onSelectLayer={(id) => {
                       setActiveLayerId(id);
+                    }}
+                    onPageLayoutChange={(layout) => {
+                      persist({
+                        ...bundle,
+                        manifest: {
+                          ...bundle.manifest,
+                          pageLayout: layout,
+                          updatedAt: new Date().toISOString()
+                        }
+                      });
                     }}
                     onSectionChange={(next) => {
                       persist({

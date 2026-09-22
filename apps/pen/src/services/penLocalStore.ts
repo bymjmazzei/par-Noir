@@ -69,4 +69,15 @@ export function saveLocalDoc(pn: string, bundle: LocalDocBundle): void {
     updatedAt: normalized.manifest.updatedAt
   });
   saveIndex(pn, idx);
+  try {
+    window.dispatchEvent(
+      new CustomEvent('pen-doc-updated', {
+        detail: { pn, docId: normalized.manifest.docId }
+      })
+    );
+  } catch {
+    /* non-browser */
+  }
 }
+
+export const PEN_DOC_UPDATED_EVENT = 'pen-doc-updated';

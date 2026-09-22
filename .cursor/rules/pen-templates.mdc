@@ -25,18 +25,20 @@ Structured/relational personal data (sheets, standard data points) may be additi
 - **Starter pack (platform-owned, consumer):** peer categories —
   - **Social** — Notes, Posts, Collections, **Sets** (refs to other docs; compile later), Feeds (entitlement: self-hosted)
   - **Projects** — Journal, List, Letter, Note (correspondence shapes; DM delivery later)
-  - **Library** — Book, Article (durable; Project→Library publish-whole is a future lifecycle, not a subclass)
-  - **Time** — Calendar, Event, Schedule
+- **Library** — Book, Article (durable **authoring** category; Project publish may save as Library template or create finished Library doc — not a subclass of Projects)
+- **Time** — Calendar, Event, Schedule
 - **Kit-only:** **Records** — Register (`audience: 'kit'`; L5/API catalog, not end-user New…)
+- **Personal templates:** local “Yours” in New… (Publish → As template; Projects may also Publish → As Library template). Not the community marketplace.
 - **Community:** open template building **after** IR, compile contract, and permissions are stable. Do not ship a template marketplace before the spine.
 
 ## Editing UX (when implementing Pen / Pen Mini)
 
-- **Flow-first** left pane: TipTap continuous text for the **active text layer**. Image/video embeds use `wrap: none|left|right` in the flow (float beside text); do not put article embeds in `PenPageLayer`.
-- **Editable page** right pane: `LayoutSurface` for **overlay** text/image layers only (absolute % rects; move/resize)—not HTML-only preview, not dashboard tiles.
+- **Flow-first** left pane: TipTap continuous text for the **active text layer**; section switcher = current section ▾ TOC; FormatRibbon scoped over the editor only. Image/video embeds use `wrap: none|left|right` in the flow; **Attach → From Pen** inserts live by-ref `penEmbed` nodes (`docId` + optional `sectionSlug`) — not overlay layers. Do not put article embeds in `PenPageLayer`.
+- **Social live preview:** browse **feed tile** (full-bleed `pagePresentation` + right engagement rail), not a Docs card.
+- **Editable page** right pane (non-social): `LayoutSurface` for **overlay** text/image layers only (absolute % rects; move/resize)—not HTML-only preview, not dashboard tiles.
 - **Quark-like** = templates + page layer overlay surface (Product C). Home **Dashboard** is a separate packed grid (Product A: col/row swap), not `LayoutSurface`.
-- New document picker: category drill-down, optional pin/show-all, catalog search (consumer classes only).
-- Home: **All** | **By category** | **Dashboard** (default 2×2: Calendar, Schedule, To-do, Recent notes; drag swaps cells).
+- New document picker: category drill-down, optional pin/show-all, catalog search, **Yours** personal templates (consumer classes only).
+- Home: **All** | **By category** | **Dashboard** (default 2×2: Calendar, Schedule, To-do, Recent notes; drag swaps cells); list/gallery density under All/Category.
 
 ## Storage / collab invariants
 
@@ -55,7 +57,7 @@ Structured/relational personal data (sheets, standard data points) may be additi
 | Collection | Ordered slide/story form (`collection.*` templates; browse `contentClass: 'collection'`) |
 | Set | Social form that references other docs (`social.set`) |
 | Projects | Active WIP category (journal, list, letter, note) |
-| Library | Durable published works (peer category; not under Projects) |
+| Library | Durable authoring category (Book, Article); finished Project work may land here as a doc or as a Library template |
 | Time | Calendar / scheduling category |
 | Records | Kit-only structured registers |
 

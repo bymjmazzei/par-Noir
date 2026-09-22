@@ -53,13 +53,15 @@ export function EditablePagePreview({
   section,
   activeLayerId,
   onSelectLayer,
-  onSectionChange
+  onSectionChange,
+  onPageLayoutChange
 }: {
   manifest: PenDocManifest;
   section: PenSectionContent;
   activeLayerId: string | null;
   onSelectLayer: (id: string | null) => void;
   onSectionChange: (next: PenSectionContent) => void;
+  onPageLayoutChange?: (layout: PenPageLayout) => void;
 }) {
   const fileRef = useRef<HTMLInputElement>(null);
   const videoRef = useRef<HTMLInputElement>(null);
@@ -128,6 +130,18 @@ export function EditablePagePreview({
           Page
         </span>
         <div className="flex items-center gap-1">
+          {onPageLayoutChange && (
+            <select
+              className="h-6 rounded border border-stone-300 bg-white px-1 text-[11px]"
+              value={manifest.pageLayout || 'flow'}
+              title="Page layout"
+              onChange={(e) => onPageLayoutChange(e.target.value as PenPageLayout)}
+            >
+              <option value="flow">Flow</option>
+              <option value="letter">Letter</option>
+              <option value="a4">A4</option>
+            </select>
+          )}
           <button
             type="button"
             className="rounded border border-stone-300 bg-white px-2 py-0.5 text-[11px] text-stone-700 hover:bg-stone-50"

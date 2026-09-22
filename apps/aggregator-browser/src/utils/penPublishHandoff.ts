@@ -20,21 +20,36 @@ export interface PenPublishHandoff {
   headProof?: unknown;
 }
 
-const HANDOFF_PREFIX = 'pen_publish_note:';
+const HANDOFF_PREFIX = 'pen_publish:';
+const HANDOFF_PREFIX_LEGACY = 'pen_publish_note:';
 
 function readFirstHandoff(consume: boolean): PenPublishHandoff | null {
   try {
     if (typeof sessionStorage === 'undefined') return null;
+    const keys: string[] = [];
     for (let i = 0; i < sessionStorage.length; i++) {
       const key = sessionStorage.key(i);
-      if (!key?.startsWith(HANDOFF_PREFIX)) continue;
-      const raw = sessionStorage.getItem(key);
-      if (consume) sessionStorage.removeItem(key);
-      if (!raw) return null;
-      const parsed = JSON.parse(raw) as PenPublishHandoff;
-      if (parsed && typeof parsed === 'object') return parsed;
-      return null;
+      if (!key) continue;
+      if (key.startsWith(HANDOFF_PREFIX) || key.startsWith(HANDOFF_PREFIX_LEGACY)) {
+        keys.push(key);
+      }
     }
+    // Prefer new prefix
+    keys.sort((a, b) => {
+      const aNew = a.startsWith(HANDOFF_PREFIX) ? 0 : 1;
+      const bNew = b.startsWith(HANDOFF_PREFIX) ? 0 : 1;
+      return aNew - bNew;
+    });
+    const key = keys[0];
+    if (!key) return null;
+    const raw = sessionStorage.getItem(key);
+    if (consume) {
+      for (const k of keys) sessionStorage.removeItem(k);
+    }
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as PenPublishHandoff;
+    if (parsed && typeof parsed === 'object') return parsed;
+    return null;
   } catch {
     // ignore corrupt / unavailable storage
   }

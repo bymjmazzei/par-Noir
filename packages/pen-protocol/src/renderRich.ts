@@ -151,6 +151,16 @@ function renderNode(node: PenTipTapNode): string {
             : ' style="max-width:100%;height:auto"';
       return `<video${wrapAttr}${style} src="${src}" controls></video>`;
     }
+    case 'penEmbed': {
+      const docId = esc(String(node.attrs?.docId || ''));
+      const sectionSlug = esc(String(node.attrs?.sectionSlug || ''));
+      const title = esc(String(node.attrs?.title || 'Embedded document'));
+      if (!docId) return '';
+      const slugAttr = sectionSlug ? ` data-section-slug="${sectionSlug}"` : '';
+      return `<aside class="pen-embed" data-pen-embed="" data-doc-id="${docId}"${slugAttr} data-title="${title}"><strong>${title}</strong>${
+        sectionSlug ? ` <span>(${sectionSlug})</span>` : ''
+      }<em> live reference</em></aside>`;
+    }
     case 'table':
       return `<table>${(node.content || []).map(renderNode).join('')}</table>`;
     case 'tableRow':

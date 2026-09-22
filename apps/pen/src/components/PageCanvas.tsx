@@ -23,6 +23,7 @@ import { FontSize } from '../services/fontSizeExtension';
 import { TextEffects } from '../services/textEffectsExtension';
 import { PenImage, type PenImageWrap } from '../services/penImageExtension';
 import { PenVideo } from '../services/penVideoExtension';
+import { PenEmbed } from '../services/penEmbedExtension';
 import { sectionToTipTapDoc, tipTapDocToSection } from '../services/penBlocks';
 import { PEN_STICKERS } from '../services/stickerPack';
 import {
@@ -33,6 +34,7 @@ import {
   uploadDeviceImageToDrive,
   type CloudImageItem
 } from '../services/penAttach';
+import { listLocalDocs, loadLocalDoc, type LocalDocSummary } from '../services/penLocalStore';
 import {
   ColorAButton,
   RibbonIconBtn,
@@ -80,15 +82,23 @@ function AttachPaperclipIcon() {
 export function FormatRibbon({
   editor,
   accessToken,
-  onImageInserted
+  onImageInserted,
+  pnIdentifier,
+  excludeDocId
 }: {
   editor: Editor | null;
   accessToken?: string;
   onImageInserted?: (src: string, alt?: string) => void;
+  /** Required for Attach → From Pen live embeds. */
+  pnIdentifier?: string;
+  /** Current doc — excluded from embed picker (no self-embed). */
+  excludeDocId?: string;
 }) {
   const [cloudFiles, setCloudFiles] = useState<CloudImageItem[] | null>(null);
   const [cloudError, setCloudError] = useState<string | null>(null);
   const [cloudLoading, setCloudLoading] = useState(false);
+  const [penDocs, setPenDocs] = useState<LocalDocSummary[] | null>(null);
+  const [penPickDocId, setPenPickDocId] = useState<string | null>(null);
   const [, setTick] = useState(0);
 
   useEffect(() => {
@@ -515,6 +525,85 @@ export function FormatRibbon({
               URL…
             </RibbonItem>
             <div className="pen-ribbon-menu-divider" />
+            <RibbonItem
+              onClick={() => {
+                if (!pnIdentifier) return;
+                setPenPickDocId(null);
+                setPenDocs(
+                  listLocalDocs(pnIdentifier).filter((d) => d.docId !== excludeDocId)
+                );
+              }}
+            >
+              From Pen…
+            </RibbonItem>
+            {penDocs && !penPickDocId && (
+              <>
+                {penDocs.length === 0 && (
+                  <div className="pen-ribbon-menu-hint">No other documents</div>
+                )}
+                {penDocs.slice(0, 24).map((d) => (
+                  <RibbonItem
+                    key={d.docId}
+                    onClick={() => {
+                      setPenPickDocId(d.docId);
+                    }}
+                  >
+                    {d.title || 'Untitled'}
+                  </RibbonItem>
+                ))}
+              </>
+            )}
+            {penDocs && penPickDocId && pnIdentifier && (
+              <>
+                <RibbonItem
+                  onClick={() => {
+                    setPenPickDocId(null);
+                  }}
+                >
+                  ← Back
+                </RibbonItem>
+                <RibbonItem
+                  onClick={() => {
+                    const d = penDocs.find((x) => x.docId === penPickDocId);
+                    ed.chain()
+                      .focus()
+                      .insertPenEmbed({
+                        docId: penPickDocId,
+                        title: d?.title || null,
+                        sectionSlug: null
+                      })
+                      .run();
+                    setPenDocs(null);
+                    setPenPickDocId(null);
+                    close();
+                  }}
+                >
+                  Whole document
+                </RibbonItem>
+                {(loadLocalDoc(pnIdentifier, penPickDocId)?.sections || []).map((s) => (
+                  <RibbonItem
+                    key={s.slug}
+                    onClick={() => {
+                      const d = penDocs.find((x) => x.docId === penPickDocId);
+                      ed.chain()
+                        .focus()
+                        .insertPenEmbed({
+                          docId: penPickDocId,
+                          title: d?.title || null,
+                          sectionSlug: s.slug
+                        })
+                        .run();
+                      setPenDocs(null);
+                      setPenPickDocId(null);
+                      close();
+                    }}
+                  >
+                    Section: {s.slug}
+                  </RibbonItem>
+                ))}
+              </>
+            )}
+            <div className="pen-ribbon-menu-divider" />
             <div className="pen-ribbon-sticker-grid">
               {PEN_STICKERS.map((s) => (
                 <button
@@ -604,7 +693,8 @@ export function PageCanvas({
   onChange,
   readOnly,
   onEditorReady,
-  pageLayout = 'flow'
+  pageLayout = 'flow',
+  pnIdentifier = ''
 }: {
   section: PenSectionContent;
   sectionTitle?: string;
@@ -612,6 +702,8 @@ export function PageCanvas({
   readOnly?: boolean;
   onEditorReady?: (editor: Editor | null) => void;
   pageLayout?: PenPageLayout;
+  /** Unlocks live Pen embeds inside TipTap. */
+  pnIdentifier?: string;
 }) {
   const editor = useEditor({
     extensions: [
@@ -632,6 +724,7 @@ export function PageCanvas({
       TableCell,
       PenImage.configure({ inline: false, allowBase64: true }),
       PenVideo,
+      PenEmbed.configure({ pnIdentifier }),
       Placeholder.configure({
         placeholder: sectionTitle ? `Write ${sectionTitle.toLowerCase()}…` : 'Start typing…'
       }),

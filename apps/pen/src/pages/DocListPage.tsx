@@ -24,7 +24,13 @@ import {
   type PenBrowseDensity,
   type PenHomeView
 } from '../services/penClassPrefs';
-import { createDocFromTemplate } from '../services/createDocFromTemplate';
+import {
+  createDocFromPersonalOrStarter
+} from '../services/penPublish';
+import {
+  listPersonalTemplates,
+  personalTemplatesAsPenTemplates
+} from '../services/penPersonalTemplates';
 import { PenDashboard } from '../components/dashboard/PenDashboard';
 import { TemplateLivePreview } from '../components/TemplateLivePreview';
 import { loadLocalDoc } from '../services/penLocalStore';
@@ -316,17 +322,20 @@ export function DocListPage({
     setBusy(true);
     setError(null);
     try {
-      const template =
-        templates.find((t) => t.id === templateId) || requireTemplate(templateId);
-      const form = getClass(template.classId);
-      if (form?.entitlement === 'self-hosted' && !feedEntitled) {
-        throw new Error('self_hosted_plan_required');
+      const personalList = listPersonalTemplates(session.pnIdentifier);
+      const isPersonal = personalList.some((t) => t.id === templateId);
+      if (!isPersonal) {
+        const template =
+          templates.find((t) => t.id === templateId) || requireTemplate(templateId);
+        const form = getClass(template.classId);
+        if (form?.entitlement === 'self-hosted' && !feedEntitled) {
+          throw new Error('self_hosted_plan_required');
+        }
       }
 
-      const bundle = await createDocFromTemplate({
+      const bundle = await createDocFromPersonalOrStarter({
         session,
-        templateId: template.id,
-        templates
+        templateId
       });
       onDocsChange();
       setPickerOpen(false);
@@ -653,6 +662,28 @@ export function DocListPage({
                 </ul>
               ) : level === 'category' ? (
                 <ul className="divide-y divide-stone-100">
+                  {listPersonalTemplates(session.pnIdentifier).length > 0 && (
+                    <li className="bg-stone-50 px-3 py-2">
+                      <div className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-stone-500">
+                        Yours
+                      </div>
+                      <ul className="divide-y divide-stone-100 rounded-md border border-stone-200 bg-white">
+                        {personalTemplatesAsPenTemplates(session.pnIdentifier).map((t) => (
+                          <li key={t.id}>
+                            <button
+                              type="button"
+                              disabled={busy}
+                              onClick={() => createDoc(t.id)}
+                              className="w-full px-3 py-2.5 text-left hover:bg-stone-50 disabled:opacity-50"
+                            >
+                              <div className="font-medium text-stone-900">{t.title}</div>
+                              <div className="mt-0.5 text-xs text-stone-500">{t.description}</div>
+                            </button>
+                          </li>
+                        ))}
+                      </ul>
+                    </li>
+                  )}
                   {visibleCategories.map((c) => {
                     const pinned = pins.includes(c.id);
                     return (
