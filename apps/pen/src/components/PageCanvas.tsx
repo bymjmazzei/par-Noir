@@ -120,14 +120,16 @@ export function FormatRibbon({ editor }: { editor: Editor | null }) {
   );
 }
 
-/** Letter-sized page canvas with TipTap flow (Word/Quark-style). */
+/** Word-like text input for one template section. */
 export function PageCanvas({
   section,
+  sectionTitle,
   onChange,
   readOnly,
   onEditorReady
 }: {
   section: PenSectionContent;
+  sectionTitle?: string;
   onChange: (next: PenSectionContent) => void;
   readOnly?: boolean;
   onEditorReady?: (editor: Editor | null) => void;
@@ -139,14 +141,16 @@ export function PageCanvas({
       }),
       Underline,
       Image.configure({ inline: false, allowBase64: true }),
-      Placeholder.configure({ placeholder: 'Start typing…' }),
+      Placeholder.configure({
+        placeholder: sectionTitle ? `Write ${sectionTitle.toLowerCase()}…` : 'Start typing…'
+      }),
       TextAlign.configure({ types: ['heading', 'paragraph'] })
     ],
     editable: !readOnly,
     content: sectionToTipTapDoc(section),
     editorProps: {
       attributes: {
-        class: 'pen-page-prose outline-none min-h-full'
+        class: 'pen-word-prose outline-none min-h-[18rem]'
       }
     },
     onUpdate: ({ editor: ed }) => {
@@ -159,7 +163,6 @@ export function PageCanvas({
     return () => onEditorReady?.(null);
   }, [editor, onEditorReady]);
 
-  // Reload when switching sections
   useEffect(() => {
     if (!editor) return;
     const next = sectionToTipTapDoc(section);
@@ -171,13 +174,15 @@ export function PageCanvas({
   }, [section.slug, editor]);
 
   return (
-    <div className="pen-pasteboard flex flex-1 justify-center overflow-auto px-4 py-8">
-      <div className="pen-letter-page relative bg-white shadow-[0_2px_8px_rgba(0,0,0,0.12),0_0_0_1px_rgba(0,0,0,0.06)]">
-        {/* margin guides */}
-        <div className="pointer-events-none absolute inset-0 border border-transparent [border-width:0.75in] [border-color:transparent]">
-          <div className="h-full w-full border border-dashed border-sky-200/60" />
+    <div className="flex flex-1 flex-col overflow-hidden bg-[#f3f3f3]">
+      <div className="shrink-0 border-b border-stone-300 bg-white px-4 py-2">
+        <div className="text-[11px] font-semibold uppercase tracking-wider text-stone-400">
+          Writing
         </div>
-        <div className="pen-letter-margins relative">
+        <div className="text-sm font-medium text-stone-800">{sectionTitle || section.slug}</div>
+      </div>
+      <div className="flex-1 overflow-auto px-4 py-4 sm:px-6">
+        <div className="mx-auto min-h-full max-w-[40rem] rounded-sm bg-white px-10 py-8 shadow-[0_1px_3px_rgba(0,0,0,0.12),0_0_0_1px_rgba(0,0,0,0.06)]">
           <EditorContent editor={editor} />
         </div>
       </div>

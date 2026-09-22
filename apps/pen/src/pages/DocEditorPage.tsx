@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import type { Editor } from '@tiptap/react';
 import {
   compileDocumentToNote,
+  getTemplate,
   hashSectionContent,
   headHashFromChain,
   notaryHashForPromote,
@@ -12,7 +13,8 @@ import {
   verifyChain
 } from '@par-noir/pen-protocol';
 import type { PenSession } from '../App';
-import { FormatRibbon, PageCanvas, PageThumbGrid } from '../components/PageCanvas';
+import { FormatRibbon, PageCanvas } from '../components/PageCanvas';
+import { TemplateLivePreview } from '../components/TemplateLivePreview';
 import { loadLocalDoc, saveLocalDoc } from '../services/penLocalStore';
 import { requestNotaryStamp } from '../services/penApi';
 import { resolveSigningKeys } from '../services/penKeys';
@@ -29,39 +31,33 @@ function bytesToB64(bytes: Uint8Array): string {
   return btoa(s);
 }
 
-function previewText(blocks: { text?: string; type: string }[]): string {
-  return blocks
-    .filter((b) => b.type !== 'image')
-    .map((b) => b.text || '')
-    .join('\n')
-    .slice(0, 280);
-}
-
 export function DocEditorPage({ session, docId }: { session: PenSession; docId: string }) {
   const initial = loadLocalDoc(session.pnIdentifier, docId);
   const [bundle, setBundle] = useState(initial);
   const [activeSlug, setActiveSlug] = useState(initial?.manifest.toc[0] || 'body');
-  const [showPages, setShowPages] = useState(true);
+  const [showPreview, setShowPreview] = useState(true);
   const [showHistory, setShowHistory] = useState(false);
   const [invitePn, setInvitePn] = useState('');
   const [status, setStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [editor, setEditor] = useState<Editor | null>(null);
 
+  const template = useMemo(
+    () => (bundle ? getTemplate(bundle.manifest.templateId) : undefined),
+    [bundle]
+  );
+
   const section = useMemo(
     () => bundle?.sections.find((s) => s.slug === activeSlug) || bundle?.sections[0],
     [bundle, activeSlug]
   );
 
-  const onEditorReady = useCallback((ed: Editor | null) => setEditor(ed), []);
+  const sectionTitle = useMemo(() => {
+    const fromTpl = template?.sections.find((s) => s.slug === activeSlug)?.title;
+    return fromTpl || activeSlug;
+  }, [template, activeSlug]);
 
-  const previews = useMemo(() => {
-    const m: Record<string, string> = {};
-    for (const s of bundle?.sections || []) {
-      m[s.slug] = previewText(s.blocks);
-    }
-    return m;
-  }, [bundle?.sections]);
+  const onEditorReady = useCallback((ed: Editor | null) => setEditor(ed), []);
 
   if (!bundle || !section) {
     return (
@@ -200,10 +196,10 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
   }
 
   const chainStatus = verifyChain(bundle.chain);
+  const toc = template?.sections.map((s) => s.slug) || bundle.manifest.toc;
 
   return (
     <div className="flex h-[calc(100vh-2.5rem)] flex-col bg-stone-300">
-      {/* Thin document chrome — not CMS */}
       <div className="flex h-9 shrink-0 items-center gap-2 border-b border-stone-400 bg-stone-100 px-2 text-[13px]">
         <Link to="/" className="px-1 text-stone-600 hover:text-stone-900">
           ←
@@ -222,13 +218,15 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
             })
           }
         />
+        <span className="hidden text-[11px] text-stone-500 sm:inline">
+          {template?.title || bundle.manifest.templateId}
+        </span>
         <button
           type="button"
-          className={`rounded px-2 py-0.5 ${showPages ? 'bg-white shadow-sm' : 'hover:bg-stone-200'}`}
-          onClick={() => setShowPages((v) => !v)}
-          title="Page grid"
+          className={`rounded px-2 py-0.5 ${showPreview ? 'bg-white shadow-sm' : 'hover:bg-stone-200'}`}
+          onClick={() => setShowPreview((v) => !v)}
         >
-          Pages
+          Preview
         </button>
         <button
           type="button"
@@ -254,21 +252,32 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
         )}
       </div>
 
-      <FormatRibbon editor={editor} />
+      {/* Section tabs — Word-style inputs per template slot */}
+      <div className="flex shrink-0 items-center gap-1 border-b border-stone-300 bg-stone-50 px-2 py-1">
+        {toc.map((slug) => {
+          const label = template?.sections.find((s) => s.slug === slug)?.title || slug;
+          const active = slug === activeSlug;
+          return (
+            <button
+              key={slug}
+              type="button"
+              onClick={() => setActiveSlug(slug)}
+              className={`rounded px-2.5 py-1 text-[12px] ${
+                active
+                  ? 'bg-white font-medium text-stone-900 shadow-sm ring-1 ring-stone-300'
+                  : 'text-stone-600 hover:bg-stone-200/70'
+              }`}
+            >
+              {label}
+            </button>
+          );
+        })}
+      </div>
+
+      {!showHistory && <FormatRibbon editor={editor} />}
 
       <div className="flex min-h-0 flex-1">
-        {showPages && bundle.manifest.toc.length > 0 && (
-          <aside className="w-[7.5rem] shrink-0 border-r border-stone-400">
-            <PageThumbGrid
-              toc={bundle.manifest.toc}
-              active={activeSlug}
-              previews={previews}
-              onSelect={setActiveSlug}
-            />
-          </aside>
-        )}
-
-        <div className="relative min-w-0 flex-1">
+        <div className={`relative flex min-w-0 flex-col ${showPreview && !showHistory ? 'w-1/2 border-r border-stone-400' : 'flex-1'}`}>
           {showHistory ? (
             <div className="h-full overflow-auto bg-white p-6 text-sm">
               <p className="mb-4">
@@ -302,6 +311,7 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
             <PageCanvas
               key={activeSlug}
               section={section}
+              sectionTitle={sectionTitle}
               onEditorReady={onEditorReady}
               onChange={(next) => {
                 persist({
@@ -313,6 +323,12 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
             />
           )}
         </div>
+
+        {showPreview && !showHistory && (
+          <div className="hidden min-w-0 w-1/2 sm:block">
+            <TemplateLivePreview manifest={bundle.manifest} sections={bundle.sections} />
+          </div>
+        )}
       </div>
     </div>
   );

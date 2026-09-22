@@ -14,51 +14,33 @@ body {
   min-height: 100vh;
 }
 
-/* Pasteboard + letter page (Word/Quark) */
-.pen-pasteboard {
-  background:
-    linear-gradient(90deg, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
-    linear-gradient(rgba(0, 0, 0, 0.03) 1px, transparent 1px);
-  background-size: 24px 24px;
-  background-color: #c8c8c8;
-}
-
-.pen-letter-page {
-  width: 8.5in;
-  min-height: 11in;
-  max-width: calc(100vw - 2rem);
-}
-
-.pen-letter-margins {
-  padding: 0.85in 0.9in 1in;
-}
-
-.pen-page-prose {
-  font-family: 'Source Serif 4', Georgia, serif;
+/* Word-like writing surface */
+.pen-word-prose {
+  font-family: 'Source Serif 4', Cambria, Georgia, serif;
   font-size: 12pt;
-  line-height: 1.45;
+  line-height: 1.5;
   color: #1c1917;
 }
 
-.pen-page-prose p {
+.pen-word-prose p {
   margin: 0 0 0.65em;
 }
 
-.pen-page-prose h1 {
+.pen-word-prose h1 {
   font-size: 22pt;
   font-weight: 650;
   line-height: 1.2;
   margin: 0 0 0.5em;
 }
 
-.pen-page-prose h2 {
+.pen-word-prose h2 {
   font-size: 16pt;
   font-weight: 650;
   line-height: 1.25;
   margin: 0.8em 0 0.4em;
 }
 
-.pen-page-prose blockquote {
+.pen-word-prose blockquote {
   margin: 0.75em 0;
   padding-left: 0.85em;
   border-left: 3px solid #a8a29e;
@@ -66,20 +48,20 @@ body {
   font-style: italic;
 }
 
-.pen-page-prose ul {
+.pen-word-prose ul {
   margin: 0.5em 0 0.75em;
   padding-left: 1.25em;
   list-style: disc;
 }
 
-.pen-page-prose img {
+.pen-word-prose img {
   max-width: 100%;
   height: auto;
   display: block;
   margin: 0.75em 0;
 }
 
-.pen-page-prose .is-empty::before {
+.pen-word-prose .is-empty::before {
   color: #a8a29e;
   content: attr(data-placeholder);
   float: left;
@@ -88,20 +70,10 @@ body {
 }
 
 .ProseMirror {
-  min-height: 8.5in;
+  min-height: 18rem;
   outline: none;
 }
 
 .ProseMirror-focused {
   outline: none;
-}
-
-@media (max-width: 900px) {
-  .pen-letter-page {
-    width: 100%;
-    min-height: auto;
-  }
-  .pen-letter-margins {
-    padding: 1.25rem 1rem 2rem;
-  }
 }
