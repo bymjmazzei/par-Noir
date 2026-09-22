@@ -554,6 +554,7 @@ body {
 
 /* My Library explorer — notebook ruled page */
 .pen-explorer {
+  position: relative;
   background: #fff;
   border: none;
   box-shadow: none;
@@ -584,13 +585,26 @@ body {
   gap: 0.65rem;
 }
 
-.pen-explorer-margin {
-  display: inline-block;
-  width: 3px;
-  align-self: stretch;
-  min-height: 1.35rem;
-  margin: 0 0.15rem;
+/* Continuous red double rule: header → last row (not per-cell segments) */
+.pen-explorer-rail {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 5px;
   border-left: 1.5px solid #dc2626;
   border-right: 1.5px solid #dc2626;
-  flex-shrink: 0;
+  pointer-events: none;
+  z-index: 2;
+}
+
+.pen-explorer[data-bulk='false'] {
+  --pen-rail-left: 2.85rem;
+}
+
+.pen-explorer[data-bulk='true'] {
+  --pen-rail-left: 4.35rem;
+}
+
+.pen-explorer-rail {
+  left: var(--pen-rail-left);
 }

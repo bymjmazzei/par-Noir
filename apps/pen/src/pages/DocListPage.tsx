@@ -29,7 +29,8 @@ import {
   type PenHomeView
 } from '../services/penClassPrefs';
 import {
-  createDocFromPersonalOrStarter
+  createDocFromPersonalOrStarter,
+  createProjectFromLibrary
 } from '../services/penPublish';
 import {
   listPersonalTemplates,
@@ -127,7 +128,7 @@ function SortHeader({
         type="button"
         onClick={() => onSort(sortKey)}
         className={`inline-flex items-center gap-0.5 text-[11px] uppercase tracking-wide ${
-          active ? 'font-bold text-black' : 'font-normal text-neutral-400'
+          active ? 'font-bold text-black' : 'font-normal text-neutral-600'
         } ${align === 'right' ? 'ml-auto' : ''}`}
       >
         {label}
@@ -171,7 +172,6 @@ function DocExplorerRow({
             />
           )}
           <FormDocIcon classId={classId} />
-          <span className="pen-explorer-margin" aria-hidden />
           {bulkMode ? (
             <span className="truncate font-medium text-black">{d.title || 'Untitled'}</span>
           ) : (
@@ -181,14 +181,14 @@ function DocExplorerRow({
           )}
         </div>
       </td>
-      <td className="hidden px-3 py-2 text-xs text-neutral-500 sm:table-cell">
+      <td className="hidden px-3 py-2 text-xs text-black sm:table-cell">
         {category?.title || '—'}
       </td>
-      <td className="hidden px-3 py-2 text-xs text-neutral-500 md:table-cell">
+      <td className="hidden px-3 py-2 text-xs text-black md:table-cell">
         {form?.title || '—'}
       </td>
-      <td className="hidden px-3 py-2 text-xs text-neutral-400 lg:table-cell">{d.templateId}</td>
-      <td className="whitespace-nowrap px-3 py-2 text-right text-xs text-neutral-400">
+      <td className="hidden px-3 py-2 text-xs text-black lg:table-cell">{d.templateId}</td>
+      <td className="whitespace-nowrap px-3 py-2 text-right text-xs text-black">
         {new Date(d.updatedAt).toLocaleString()}
       </td>
     </tr>
@@ -211,7 +211,8 @@ function DocExplorerTable({
   onToggle: (docId: string) => void;
 }) {
   return (
-    <div className="pen-explorer overflow-hidden">
+    <div className="pen-explorer overflow-hidden" data-bulk={bulkMode ? 'true' : 'false'}>
+      <div className="pen-explorer-rail" aria-hidden />
       <table className="w-full table-fixed text-left text-sm">
         <thead className="sticky top-0 text-[11px] tracking-wide">
           <tr>
@@ -342,17 +343,16 @@ function DocGalleryCard({
             />
           </div>
         ) : (
-          <div className="flex h-full items-center justify-center text-xs text-neutral-400">
+          <div className="flex h-full items-center justify-center text-xs text-neutral-600">
             No preview
           </div>
         )}
       </div>
       <div className="flex items-center gap-2 border-t border-blue-500 px-3 py-2">
         <FormDocIcon classId={classId} />
-        <span className="pen-explorer-margin" aria-hidden />
         <div className="min-w-0 flex-1">
           <div className="truncate text-sm font-medium text-black">{d.title}</div>
-          <div className="truncate text-[11px] text-neutral-400">
+          <div className="truncate text-[11px] text-black">
             {getClass(classId || '')?.title || d.templateId}
           </div>
         </div>
@@ -381,21 +381,37 @@ function DocGalleryCard({
   );
 }
 
+function CreateNewGalleryTile({ onClick }: { onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="flex min-h-[14rem] flex-col items-center justify-center gap-3 border border-dashed border-neutral-300 text-black hover:border-black"
+    >
+      <span className="inline-flex h-10 w-10 items-center justify-center text-2xl font-light">+</span>
+      <span className="text-sm font-bold">Create new</span>
+    </button>
+  );
+}
+
 function DocGalleryGrid({
   pn,
   docs,
   bulkMode,
   selectedIds,
-  onToggle
+  onToggle,
+  onCreateNew
 }: {
   pn: string;
   docs: LocalDocSummary[];
   bulkMode: boolean;
   selectedIds: Set<string>;
   onToggle: (docId: string) => void;
+  onCreateNew: () => void;
 }) {
   return (
     <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+      {!bulkMode && <CreateNewGalleryTile onClick={onCreateNew} />}
       {docs.map((d) => (
         <DocGalleryCard
           key={d.docId}
@@ -435,12 +451,12 @@ function BulkDeleteBar({
         >
           {allSelected ? 'Deselect all' : 'Select all'}
         </button>
-        <span className="text-neutral-400">
+        <span className="text-neutral-600">
           {selectedCount} selected
         </span>
       </div>
       <div className="flex items-center gap-4 text-sm">
-        <button type="button" onClick={onCancel} className="text-neutral-400 hover:text-black">
+        <button type="button" onClick={onCancel} className="text-neutral-600 hover:text-black">
           Cancel
         </button>
         <button
@@ -491,6 +507,8 @@ export function DocListPage({
   const [explorerSort, setExplorerSort] = useState<ExplorerSort>(DEFAULT_EXPLORER_SORT);
   const [bulkDeleteMode, setBulkDeleteMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
+  const [libraryPickMode, setLibraryPickMode] = useState(false);
+  const [librarySelectedIds, setLibrarySelectedIds] = useState<Set<string>>(() => new Set());
 
   useEffect(() => {
     fetchPenCatalog(session.accessToken)
@@ -593,7 +611,42 @@ export function DocListPage({
   function openPicker() {
     setSearch('');
     resetDrill();
+    setLibraryPickMode(false);
+    setLibrarySelectedIds(new Set());
     setPickerOpen(true);
+  }
+
+  function toggleLibraryDoc(docId: string) {
+    setLibrarySelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(docId)) next.delete(docId);
+      else next.add(docId);
+      return next;
+    });
+  }
+
+  async function createFromLibrarySelection() {
+    const sources = docs
+      .filter((d) => librarySelectedIds.has(d.docId))
+      .map((d) => ({ docId: d.docId, title: d.title || 'Untitled' }));
+    if (!sources.length) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const bundle = await createProjectFromLibrary({
+        session,
+        sourceDocs: sources
+      });
+      onDocsChange();
+      setPickerOpen(false);
+      setLibraryPickMode(false);
+      setLibrarySelectedIds(new Set());
+      navigate(`/d/${bundle.manifest.docId}`);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not create project');
+    } finally {
+      setBusy(false);
+    }
   }
 
   function setView(view: PenHomeView) {
@@ -699,6 +752,7 @@ export function DocListPage({
   }
 
   function breadcrumbTitle(): string {
+    if (libraryPickMode) return 'From My Library';
     if (search.trim()) return 'Search';
     if (formId) {
       const f = getClass(formId);
@@ -756,7 +810,7 @@ export function DocListPage({
                   aria-label={bulkDeleteMode ? 'Cancel selection' : 'Select to delete'}
                   aria-pressed={bulkDeleteMode}
                   className={`inline-flex h-8 w-8 items-center justify-center hover:opacity-60 ${
-                    bulkDeleteMode ? 'font-bold text-black' : 'text-neutral-400'
+                    bulkDeleteMode ? 'font-bold text-black' : 'text-neutral-600'
                   }`}
                 >
                   <MinusIcon />
@@ -792,7 +846,7 @@ export function DocListPage({
                         className={
                           homeView === id
                             ? 'font-bold text-black'
-                            : 'font-normal text-neutral-400 hover:text-neutral-600'
+                            : 'font-normal text-neutral-600 hover:text-neutral-800'
                         }
                       >
                         {label}
@@ -811,7 +865,7 @@ export function DocListPage({
                       className={`inline-flex h-8 w-8 items-center justify-center ${
                         browseDensity === 'list'
                           ? 'font-bold text-black'
-                          : 'text-neutral-400 hover:text-neutral-600'
+                          : 'text-neutral-600 hover:text-neutral-800'
                       }`}
                     >
                       <ListIcon />
@@ -825,7 +879,7 @@ export function DocListPage({
                       className={`inline-flex h-8 w-8 items-center justify-center ${
                         browseDensity === 'gallery'
                           ? 'font-bold text-black'
-                          : 'text-neutral-400 hover:text-neutral-600'
+                          : 'text-neutral-600 hover:text-neutral-800'
                       }`}
                     >
                       <GalleryIcon />
@@ -859,6 +913,7 @@ export function DocListPage({
                 bulkMode={bulkDeleteMode}
                 selectedIds={selectedIds}
                 onToggle={toggleDocSelection}
+                onCreateNew={openPicker}
               />
             ) : (
               <DocExplorerTable
@@ -892,11 +947,11 @@ export function DocListPage({
                     onClick={() => toggleExpanded(g.categoryId)}
                     className="flex w-full items-center gap-2 py-2 text-left text-sm"
                   >
-                    <span className="w-3 shrink-0 text-neutral-400" aria-hidden>
+                    <span className="w-3 shrink-0 text-neutral-600" aria-hidden>
                       {open ? '▾' : '▸'}
                     </span>
                     <span className="font-bold text-black">{g.title}</span>
-                    <span className="text-xs text-neutral-400">{g.docs.length}</span>
+                    <span className="text-xs text-neutral-600">{g.docs.length}</span>
                   </button>
                   {open &&
                     (browseDensity === 'gallery' ? (
@@ -907,6 +962,7 @@ export function DocListPage({
                           bulkMode={bulkDeleteMode}
                           selectedIds={selectedIds}
                           onToggle={toggleDocSelection}
+                          onCreateNew={openPicker}
                         />
                       </div>
                     ) : (
@@ -950,11 +1006,16 @@ export function DocListPage({
             <div className="shrink-0 border-b border-stone-200 bg-white px-4 py-3">
               <div className="flex items-center justify-between gap-2">
                 <div className="flex min-w-0 items-center gap-2">
-                  {(categoryId || formId || search.trim()) && (
+                  {(categoryId || formId || search.trim() || libraryPickMode) && (
                     <button
                       type="button"
-                      className="shrink-0 text-sm text-stone-500 hover:text-stone-800"
+                      className="shrink-0 text-sm text-neutral-600 hover:text-black"
                       onClick={() => {
+                        if (libraryPickMode) {
+                          setLibraryPickMode(false);
+                          setLibrarySelectedIds(new Set());
+                          return;
+                        }
                         if (search.trim()) {
                           setSearch('');
                           return;
@@ -966,29 +1027,33 @@ export function DocListPage({
                       ←
                     </button>
                   )}
-                  <h2 className="truncate text-sm font-semibold text-stone-900">
-                    {breadcrumbTitle()}
-                  </h2>
+                  <h2 className="truncate text-sm font-bold text-black">{breadcrumbTitle()}</h2>
                 </div>
                 {docs.length > 0 && (
                   <button
                     type="button"
-                    className="shrink-0 text-sm text-stone-500 hover:text-stone-800"
-                    onClick={() => setPickerOpen(false)}
+                    className="shrink-0 text-sm text-neutral-600 hover:text-black"
+                    onClick={() => {
+                      setPickerOpen(false);
+                      setLibraryPickMode(false);
+                      setLibrarySelectedIds(new Set());
+                    }}
                   >
                     Cancel
                   </button>
                 )}
               </div>
-              <input
-                type="search"
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder="Search categories, forms, templates…"
-                className="mt-2 w-full rounded border border-stone-300 px-2.5 py-1.5 text-sm outline-none focus:border-stone-500"
-              />
-              {!search.trim() && level === 'category' && (
-                <label className="mt-2 flex items-center gap-2 text-xs text-stone-600">
+              {!libraryPickMode && (
+                <input
+                  type="search"
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  placeholder="Search categories, forms, templates…"
+                  className="mt-2 w-full rounded border border-stone-300 px-2.5 py-1.5 text-sm outline-none focus:border-stone-500"
+                />
+              )}
+              {!libraryPickMode && !search.trim() && level === 'category' && (
+                <label className="mt-2 flex items-center gap-2 text-xs text-neutral-600">
                   <input
                     type="checkbox"
                     checked={showAll}
@@ -996,16 +1061,65 @@ export function DocListPage({
                   />
                   Show all categories
                   {pins.length > 0 && !showAll && (
-                    <span className="text-stone-400">({pins.length} pinned)</span>
+                    <span className="text-neutral-600">({pins.length} pinned)</span>
                   )}
                 </label>
+              )}
+              {libraryPickMode && (
+                <p className="mt-2 text-xs text-neutral-600">
+                  Select documents to port into one project space.
+                </p>
               )}
             </div>
 
             {error && <p className="px-4 pt-2 text-sm text-red-600">{error}</p>}
 
             <div className="min-h-0 flex-1 overflow-auto p-2">
-              {search.trim() ? (
+              {libraryPickMode ? (
+                <>
+                  <ul className="divide-y divide-stone-100">
+                    {docs.length === 0 && (
+                      <li className="px-3 py-6 text-center text-sm text-neutral-600">
+                        No documents in My Library yet.
+                      </li>
+                    )}
+                    {docs.map((d) => (
+                      <li key={d.docId}>
+                        <label className="flex cursor-pointer items-center gap-3 px-3 py-2.5 hover:bg-neutral-50">
+                          <input
+                            type="checkbox"
+                            checked={librarySelectedIds.has(d.docId)}
+                            onChange={() => toggleLibraryDoc(d.docId)}
+                            className="h-4 w-4 accent-black"
+                          />
+                          <FormDocIcon classId={resolveDocClassId(d)} />
+                          <div className="min-w-0 flex-1">
+                            <div className="truncate font-medium text-black">
+                              {d.title || 'Untitled'}
+                            </div>
+                            <div className="truncate text-xs text-black">
+                              {getClass(resolveDocClassId(d) || '')?.title || d.templateId}
+                            </div>
+                          </div>
+                        </label>
+                      </li>
+                    ))}
+                  </ul>
+                  <div className="sticky bottom-0 flex items-center justify-between gap-3 border-t border-stone-200 bg-white px-3 py-3">
+                    <span className="text-sm text-neutral-600">
+                      {librarySelectedIds.size} selected
+                    </span>
+                    <button
+                      type="button"
+                      disabled={busy || librarySelectedIds.size === 0}
+                      onClick={() => void createFromLibrarySelection()}
+                      className="font-bold text-black hover:opacity-60 disabled:opacity-30"
+                    >
+                      Create project
+                    </button>
+                  </div>
+                </>
+              ) : search.trim() ? (
                 <ul className="divide-y divide-stone-100">
                   {searchHits.templates.map((t) => {
                     const form = getClass(t.classId);
@@ -1130,6 +1244,23 @@ export function DocListPage({
                 </ul>
               ) : level === 'form' ? (
                 <ul className="divide-y divide-stone-100">
+                  {categoryId === 'projects' && (
+                    <li>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setLibraryPickMode(true);
+                          setLibrarySelectedIds(new Set());
+                        }}
+                        className="w-full rounded-lg px-3 py-3 text-left hover:bg-stone-50"
+                      >
+                        <div className="font-medium text-black">From My Library…</div>
+                        <div className="mt-0.5 text-xs text-neutral-600">
+                          Select existing documents and port them into one project space
+                        </div>
+                      </button>
+                    </li>
+                  )}
                   {forms.map((f) => {
                     const locked = formLocked(f);
                     return (

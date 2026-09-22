@@ -226,3 +226,60 @@ export async function createDocFromPersonalOrStarter(input: {
   saveLocalDoc(input.session.pnIdentifier, next);
   return next;
 }
+
+/**
+ * Create a Projects journal that ports selected My Library docs in as live penEmbed refs.
+ */
+export async function createProjectFromLibrary(input: {
+  session: PenSession;
+  sourceDocs: Array<{ docId: string; title: string }>;
+  title?: string;
+}): Promise<LocalDocBundle> {
+  if (!input.sourceDocs.length) throw new Error('library_sources_required');
+  const bundle = await createDocFromTemplate({
+    session: input.session,
+    templateId: 'journal.basic.v1'
+  });
+  const embeds = input.sourceDocs.map((d) => ({
+    type: 'penEmbed',
+    attrs: {
+      docId: d.docId,
+      sectionSlug: null,
+      title: d.title || 'Untitled'
+    }
+  }));
+  const entriesDoc = {
+    type: 'doc',
+    content: [
+      {
+        type: 'paragraph',
+        content: [
+          {
+            type: 'text',
+            text: 'Library sources'
+          }
+        ]
+      },
+      ...embeds
+    ]
+  };
+  const sections = bundle.sections.map((s) =>
+    s.slug === 'entries' ? { ...s, doc: entriesDoc as typeof s.doc } : s
+  );
+  const title =
+    input.title?.trim() ||
+    (input.sourceDocs.length === 1
+      ? `Project · ${input.sourceDocs[0]!.title || 'Untitled'}`
+      : `Project · ${input.sourceDocs.length} sources`);
+  const next: LocalDocBundle = {
+    ...bundle,
+    sections,
+    manifest: {
+      ...bundle.manifest,
+      title,
+      updatedAt: new Date().toISOString()
+    }
+  };
+  saveLocalDoc(input.session.pnIdentifier, next);
+  return next;
+}
