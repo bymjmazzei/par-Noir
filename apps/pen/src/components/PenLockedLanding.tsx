@@ -125,11 +125,6 @@ export function PenLockedLanding({
                   <div className="pen-library-title-rule" aria-hidden />
 
                   <div className="pen-locked-flow">
-                    {/* Floated first so checklist text wraps around it */}
-                    <aside className="pen-locked-phone-float">
-                      <PhoneEmbed />
-                    </aside>
-
                     <ul className="pen-locked-checklist">
                       {CHECKLIST.map((label) => (
                         <li key={label} className="pen-locked-check-item">
@@ -163,6 +158,10 @@ export function PenLockedLanding({
                         {error && <span className="pen-locked-copy-error">{error}</span>}
                       </li>
                     </ul>
+
+                    <aside className="pen-locked-phone-slot">
+                      <PhoneEmbed />
+                    </aside>
                   </div>
                 </div>
               </div>
