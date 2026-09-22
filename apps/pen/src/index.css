@@ -565,9 +565,11 @@ body {
   --pen-rule-pitch: 2.25rem;
   /* Match list thead (NAME) row — first blue line sits under this */
   --pen-explorer-head-h: 2rem;
-  /* Gallery tile spans 4 ruled rows; 1 empty row between tile rows */
+  /* Gallery tile spans 4 ruled rows; no empty row between tile rows */
   --pen-gallery-tile-h: calc(var(--pen-rule-pitch) * 4);
-  --pen-gallery-row-gap: var(--pen-rule-pitch);
+  --pen-gallery-row-gap: 0;
+  --pen-gallery-tile-lg: 200px;
+  --pen-gallery-tile-lg-h: calc(var(--pen-rule-pitch) * 6);
 }
 
 .pen-library-page {
@@ -788,13 +790,37 @@ body {
   color: #000;
 }
 
-/* Full-bleed horizontal rules to page edges */
+/* Full-bleed rules: attach to first th (stable containing block). One above + one below header. */
 .pen-explorer thead tr,
 .pen-explorer tbody tr {
   position: relative;
 }
 
-.pen-explorer thead tr::after,
+.pen-explorer thead th:first-child {
+  position: relative;
+}
+
+.pen-explorer thead th:first-child::before,
+.pen-explorer thead th:first-child::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  width: 100vw;
+  margin-left: -50vw;
+  pointer-events: none;
+  z-index: 2;
+}
+
+.pen-explorer thead th:first-child::before {
+  top: 0;
+  border-top: 1px solid var(--pen-rule-blue);
+}
+
+.pen-explorer thead th:first-child::after {
+  bottom: 0;
+  border-bottom: 1px solid var(--pen-rule-blue);
+}
+
 .pen-explorer tbody tr::after {
   content: '';
   position: absolute;
@@ -804,7 +830,7 @@ body {
   margin-left: -50vw;
   border-bottom: 1px solid var(--pen-rule-blue);
   pointer-events: none;
-  z-index: 1;
+  z-index: 2;
 }
 
 .pen-explorer-sheet {
@@ -882,14 +908,14 @@ body {
 }
 
 /*
- * Gallery: first blue line aligns with list NAME rule (via .pen-gallery-head).
- * Each slot is 4 rule pitches; the tile (natural height) is vertically centered
- * so ruled lines show in the gaps above and below.
+ * Gallery: head strip matches list thead (line above + below at same Y).
+ * Ruled paper fills through to the footer; tiles centered in 4-pitch slots, no row gap.
  */
 .pen-gallery-wrap {
   display: flex;
   flex-direction: column;
   flex: 1 1 auto;
+  min-height: 0;
 }
 
 .pen-gallery-head {
@@ -898,17 +924,20 @@ body {
   margin: 0 calc(-1 * var(--pen-edge-pad));
   width: calc(100% + 2 * var(--pen-edge-pad));
   box-sizing: border-box;
+  border-top: 1px solid var(--pen-rule-blue);
   border-bottom: 1px solid var(--pen-rule-blue);
   pointer-events: none;
 }
 
 .pen-gallery {
   position: relative;
-  flex: 0 0 auto;
+  flex: 1 1 auto;
+  align-self: stretch;
+  min-height: calc(100vh - 2.5rem - 8rem);
   margin: 0 calc(-1 * var(--pen-edge-pad));
   width: calc(100% + 2 * var(--pen-edge-pad));
   box-sizing: border-box;
-  padding: 0 var(--pen-edge-pad) var(--pen-rule-pitch);
+  padding: 0 var(--pen-edge-pad) 0;
   padding-left: calc(var(--pen-edge-pad) + var(--pen-name-inset));
   background-color: #fff;
   background-image: repeating-linear-gradient(
@@ -930,6 +959,10 @@ body {
   z-index: 1;
 }
 
+.pen-gallery-tiles--lg {
+  grid-template-columns: repeat(auto-fill, var(--pen-gallery-tile-lg));
+}
+
 .pen-gallery-slot {
   display: flex;
   height: var(--pen-gallery-tile-h);
@@ -937,6 +970,11 @@ body {
   align-items: center;
   justify-content: center;
   box-sizing: border-box;
+}
+
+.pen-gallery-slot--lg {
+  width: var(--pen-gallery-tile-lg);
+  height: var(--pen-gallery-tile-lg-h);
 }
 
 .pen-gallery-tile {
@@ -954,6 +992,10 @@ body {
   color: inherit;
   font: inherit;
   cursor: pointer;
+}
+
+.pen-gallery-tile--lg {
+  width: var(--pen-gallery-tile-lg);
 }
 
 .pen-gallery-tile:hover {
@@ -1005,16 +1047,98 @@ input.pen-gallery-tile-title-text {
   background: #f5f5f5;
 }
 
+.pen-gallery-tile--lg .pen-gallery-tile-preview {
+  width: var(--pen-gallery-tile-lg);
+  height: var(--pen-gallery-tile-lg);
+}
+
 .pen-gallery-tile-preview-link {
   display: block;
   height: 100px;
   width: 100px;
 }
 
+.pen-gallery-tile--lg .pen-gallery-tile-preview-link {
+  height: var(--pen-gallery-tile-lg);
+  width: var(--pen-gallery-tile-lg);
+}
+
 .pen-gallery-tile-title .relative > button {
   width: 1.25rem;
   height: 1.25rem;
   font-size: 14px;
+}
+
+.pen-add-menu {
+  position: relative;
+}
+
+.pen-add-menu-panel {
+  position: absolute;
+  top: calc(100% + 0.25rem);
+  left: 0;
+  z-index: 60;
+  min-width: 12.5rem;
+  border: 1px solid #e5e5e5;
+  background: #fff;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+  padding: 0.25rem 0;
+}
+
+.pen-add-menu-panel button {
+  display: block;
+  width: 100%;
+  padding: 0.5rem 0.85rem;
+  border: none;
+  background: transparent;
+  text-align: left;
+  font-size: 0.8125rem;
+  color: #000;
+  cursor: pointer;
+}
+
+.pen-add-menu-panel button:hover {
+  background: #f5f5f5;
+}
+
+.pen-template-preview-chrome {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.65rem 0 0.65rem var(--pen-name-inset);
+  border-bottom: 1px solid var(--pen-rule-blue);
+}
+
+.pen-template-preview-chrome-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.pen-template-preview-frame {
+  flex: 1;
+  min-height: 0;
+  padding: 1rem var(--pen-edge-pad) 1.5rem var(--pen-name-inset);
+  overflow: auto;
+}
+
+.pen-template-save-ribbon {
+  display: flex;
+  align-items: center;
+  gap: 1px;
+  flex-shrink: 0;
+  margin: 0 calc(-1 * var(--pen-edge-pad));
+  padding: 0.35rem var(--pen-edge-pad) 0.35rem var(--pen-name-inset);
+  border-top: 1px solid #e5e5e5;
+  background: #fafafa;
+}
+
+.pen-template-save-ribbon .pen-ribbon-btn {
+  min-width: auto;
+  padding: 0 0.75rem;
+  font-size: 0.8125rem;
+  font-weight: 500;
 }
 
 .pen-explorer-name-indent {

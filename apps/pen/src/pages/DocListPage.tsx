@@ -22,8 +22,10 @@ import {
 import {
   createFolder,
   deleteFolder,
+  ensureMyTemplatesNotebook,
   listChildFolders,
   listFolders,
+  MY_TEMPLATES_NOTEBOOK_NAME,
   renameFolder,
   type PenFolder
 } from '../services/penFolders';
@@ -46,7 +48,12 @@ import {
 import { FormDocIcon } from '../components/FormDocIcon';
 import { TemplateLivePreview } from '../components/TemplateLivePreview';
 import { DocItemMenu } from '../components/DocItemMenu';
+import { TemplatesBrowse } from '../components/TemplatesBrowse';
 import { resolveDocLibraryStatus } from '../services/penDocStatus';
+
+export type PenAddIntent = 'notebook' | 'templates' | 'my-templates';
+
+type LibraryMode = 'library' | 'templates';
 
 type DrillLevel = 'category' | 'form' | 'template';
 
@@ -359,6 +366,8 @@ function DocExplorerTable({
   pn,
   docs,
   notebooks,
+  personalTemplatesByNotebook = {},
+  personalTemplates = [],
   moveFolders,
   sort,
   onSort,
@@ -377,11 +386,14 @@ function DocExplorerTable({
   onToggleNotebook,
   onRenameNotebook,
   onDeleteNotebook,
-  onOpenDoc
+  onOpenDoc,
+  onOpenPersonalTemplate
 }: {
   pn: string;
   docs: LocalDocSummary[];
   notebooks: PenFolder[];
+  personalTemplatesByNotebook?: Record<string, Array<{ id: string; title: string }>>;
+  personalTemplates?: Array<{ id: string; title: string }>;
   moveFolders: Array<{ id: string; name: string }>;
   sort: ExplorerSort;
   onSort: (key: ExplorerSortKey) => void;
@@ -401,8 +413,9 @@ function DocExplorerTable({
   onRenameNotebook: (notebook: PenFolder) => void;
   onDeleteNotebook: (notebookId: string) => void;
   onOpenDoc: (docId: string) => void;
+  onOpenPersonalTemplate?: (templateId: string) => void;
 }) {
-  const rootDocs = docs.filter((d) => !d.folderId);
+  const rootDocs = notebooks.length === 0 ? docs : docs.filter((d) => !d.folderId);
   const docsInNotebook = (notebookId: string) =>
     docs.filter((d) => d.folderId === notebookId);
 
@@ -488,9 +501,60 @@ function DocExplorerTable({
                     />
                     {expandedNotebookIds.has(nb.id) &&
                       sortDocs(docsInNotebook(nb.id), sort).map((d) => renderDocRow(d, true))}
+                    {expandedNotebookIds.has(nb.id) &&
+                      (personalTemplatesByNotebook[nb.id] || []).map((t) => (
+                        <tr
+                          key={t.id}
+                          className="cursor-pointer hover:bg-neutral-50"
+                          onClick={() => onOpenPersonalTemplate?.(t.id)}
+                        >
+                          <td className="pen-explorer-action px-2 py-2" />
+                          <td className="pen-explorer-icon px-1 py-2" />
+                          <td className="pen-explorer-name-cell pen-explorer-name-indent px-3 py-2 font-medium text-black">
+                            {t.title}
+                          </td>
+                          <td className="pen-explorer-col-category px-3 py-2 text-xs text-neutral-500">
+                            —
+                          </td>
+                          <td className="pen-explorer-col-form px-3 py-2 text-xs text-neutral-500">
+                            Template
+                          </td>
+                          <td className="pen-explorer-col-status px-3 py-2 text-xs text-neutral-500">
+                            Saved
+                          </td>
+                          <td className="pen-explorer-col-updated px-3 py-2 text-xs text-neutral-500">
+                            —
+                          </td>
+                        </tr>
+                      ))}
                   </Fragment>
                 ))}
               {sortDocs(rootDocs, sort).map((d) => renderDocRow(d, false))}
+              {personalTemplates.map((t) => (
+                <tr
+                  key={t.id}
+                  className="cursor-pointer hover:bg-neutral-50"
+                  onClick={() => onOpenPersonalTemplate?.(t.id)}
+                >
+                  <td className="pen-explorer-action px-2 py-2" />
+                  <td className="pen-explorer-icon px-1 py-2" />
+                  <td className="pen-explorer-name-cell px-3 py-2 font-medium text-black">
+                    {t.title}
+                  </td>
+                  <td className="pen-explorer-col-category px-3 py-2 text-xs text-neutral-500">
+                    —
+                  </td>
+                  <td className="pen-explorer-col-form px-3 py-2 text-xs text-neutral-500">
+                    Template
+                  </td>
+                  <td className="pen-explorer-col-status px-3 py-2 text-xs text-neutral-500">
+                    Saved
+                  </td>
+                  <td className="pen-explorer-col-updated px-3 py-2 text-xs text-neutral-500">
+                    —
+                  </td>
+                </tr>
+              ))}
             </tbody>
           </table>
         </div>
@@ -745,15 +809,38 @@ function CreateNewGalleryTile({ onClick }: { onClick: () => void }) {
   );
 }
 
+function PersonalTemplateGalleryCard({
+  title,
+  onOpen
+}: {
+  title: string;
+  onOpen: () => void;
+}) {
+  return (
+    <div className="pen-gallery-slot">
+      <button type="button" onClick={onOpen} className="pen-gallery-tile">
+        <div className="pen-gallery-tile-title">
+          <span className="pen-gallery-tile-title-text">{title}</span>
+        </div>
+        <span className="pen-gallery-tile-preview flex items-center justify-center bg-neutral-100 text-xs text-neutral-500">
+          Template
+        </span>
+      </button>
+    </div>
+  );
+}
+
 function DocGalleryGrid({
   pn,
   docs,
   childFolders,
+  personalTemplates = [],
   moveFolders,
   bulkMode,
   selectedIds,
   onToggle,
   onCreateNew,
+  onOpenPersonalTemplate,
   renamingId,
   renameDraft,
   onRenameDraft,
@@ -769,11 +856,13 @@ function DocGalleryGrid({
   pn: string;
   docs: LocalDocSummary[];
   childFolders: PenFolder[];
+  personalTemplates?: Array<{ id: string; title: string }>;
   moveFolders: Array<{ id: string; name: string }>;
   bulkMode: boolean;
   selectedIds: Set<string>;
   onToggle: (docId: string) => void;
   onCreateNew: () => void;
+  onOpenPersonalTemplate?: (templateId: string) => void;
   renamingId: string | null;
   renameDraft: string;
   onRenameDraft: (v: string) => void;
@@ -800,6 +889,14 @@ function DocGalleryGrid({
                 onOpen={() => onOpenFolder(f.id)}
                 onRename={() => onRenameFolder(f)}
                 onDelete={() => onDeleteFolder(f.id)}
+              />
+            ))}
+          {!bulkMode &&
+            personalTemplates.map((t) => (
+              <PersonalTemplateGalleryCard
+                key={t.id}
+                title={t.title}
+                onOpen={() => onOpenPersonalTemplate?.(t.id)}
               />
             ))}
           {docs.map((d) => (
@@ -862,21 +959,19 @@ function BulkInlineControls({
   );
 }
 
-/** Quiet file-manager home — not a CMS dashboard. Templates open as a sheet. */
+/** Quiet file-manager home — templates browse is an in-page view. */
 export function DocListPage({
   session,
   docs,
   onDocsChange,
-  newDocTick = 0,
-  onNewDocTickConsumed
+  addIntent = null,
+  onAddIntentConsumed
 }: {
   session: PenSession;
   docs: LocalDocSummary[];
   onDocsChange: () => void;
-  /** Bumped from app chrome + to open the new-doc picker. */
-  newDocTick?: number;
-  /** Clear the tick after opening so remounting home does not reopen the picker. */
-  onNewDocTickConsumed?: () => void;
+  addIntent?: PenAddIntent | null;
+  onAddIntentConsumed?: () => void;
 }) {
   const navigate = useNavigate();
   const [classes, setClasses] = useState<PenClass[]>(listConsumerClasses());
@@ -889,6 +984,7 @@ export function DocListPage({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pickerOpen, setPickerOpen] = useState(false);
+  const [libraryMode, setLibraryMode] = useState<LibraryMode>('library');
   const [search, setSearch] = useState('');
   const [pins, setPins] = useState(() => loadPinnedCategoryIds(session.pnIdentifier));
   const [showAll, setShowAll] = useState(() => loadPinnedCategoryIds(session.pnIdentifier).length === 0);
@@ -983,6 +1079,46 @@ export function DocListPage({
     return docs.filter((d) => (d.folderId || null) === currentFolderId);
   }, [docs, currentFolderId]);
 
+  const inMyTemplatesNotebook = currentFolder?.name === MY_TEMPLATES_NOTEBOOK_NAME;
+
+  const myPersonalTemplates = useMemo(() => {
+    void folderTick;
+    if (!inMyTemplatesNotebook) return [];
+    return listPersonalTemplates(session.pnIdentifier).map((t) => ({
+      id: t.id,
+      title: t.title
+    }));
+  }, [session.pnIdentifier, inMyTemplatesNotebook, folderTick]);
+
+  const personalTemplatesByNotebook = useMemo(() => {
+    void folderTick;
+    const nb = allFolders.find((f) => f.name === MY_TEMPLATES_NOTEBOOK_NAME && f.parentId === null);
+    if (!nb) return {} as Record<string, Array<{ id: string; title: string }>>;
+    return {
+      [nb.id]: listPersonalTemplates(session.pnIdentifier).map((t) => ({
+        id: t.id,
+        title: t.title
+      }))
+    };
+  }, [session.pnIdentifier, allFolders, folderTick]);
+
+  async function openPersonalTemplate(templateId: string) {
+    setBusy(true);
+    setError(null);
+    try {
+      const bundle = await createDocFromPersonalOrStarter({
+        session,
+        templateId
+      });
+      onDocsChange();
+      navigate(`/d/${bundle.manifest.docId}`);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not open template');
+    } finally {
+      setBusy(false);
+    }
+  }
+
   function toggleNotebookExpand(notebookId: string) {
     setExpandedNotebookIds((prev) => {
       const next = new Set(prev);
@@ -1000,26 +1136,38 @@ export function DocListPage({
     return form.entitlement === 'self-hosted' && !feedEntitled;
   }
 
-  function resetDrill() {
-    setCategoryId(null);
-    setFormId(null);
+  function openTemplatesView() {
+    setLibraryMode('templates');
+    setPickerOpen(false);
+    setBulkDeleteMode(false);
   }
 
-  function openPicker() {
-    setSearch('');
-    resetDrill();
-    setLibraryPickMode(false);
-    setLibrarySelectedIds(new Set());
-    setPickerOpen(true);
+  function openMyTemplatesNotebook() {
+    const nb = ensureMyTemplatesNotebook(session.pnIdentifier);
+    setFolderTick((n) => n + 1);
+    setLibraryMode('library');
+    setCurrentFolderId(nb.id);
+    setExpandedNotebookIds((prev) => new Set(prev).add(nb.id));
+    setPickerOpen(false);
+  }
+
+  function createNotebookHere() {
+    const name = window.prompt('Notebook name');
+    if (!name?.trim()) return;
+    createFolder(session.pnIdentifier, name.trim(), currentFolderId);
+    setFolderTick((n) => n + 1);
+    setLibraryMode('library');
   }
 
   useEffect(() => {
-    if (newDocTick <= 0) return;
-    openPicker();
-    onNewDocTickConsumed?.();
-    // Intentionally tick-driven only
+    if (!addIntent) return;
+    if (addIntent === 'notebook') createNotebookHere();
+    else if (addIntent === 'templates') openTemplatesView();
+    else if (addIntent === 'my-templates') openMyTemplatesNotebook();
+    onAddIntentConsumed?.();
+    // Intentionally intent-driven only
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [newDocTick]);
+  }, [addIntent]);
 
   function toggleLibraryDoc(docId: string) {
     setLibrarySelectedIds((prev) => {
@@ -1252,6 +1400,23 @@ export function DocListPage({
         <div className="pen-library-notebook-inner">
           <div className="pen-explorer-rail" aria-hidden />
 
+          {libraryMode === 'templates' ? (
+            <TemplatesBrowse
+              session={session}
+              density={browseDensity}
+              onDensity={setDensity}
+              onBack={() => setLibraryMode('library')}
+              onCreated={(docId) => {
+                onDocsChange();
+                navigate(`/d/${docId}`);
+              }}
+              onSaved={() => {
+                setFolderTick((n) => n + 1);
+                onDocsChange();
+              }}
+            />
+          ) : (
+            <>
           <div className="pen-library-heading">
             <div className="min-w-0 flex-1">
               <h1 className="text-lg font-bold text-black">My Library</h1>
@@ -1347,9 +1512,9 @@ export function DocListPage({
               <button
                 type="button"
                 className="mt-4 text-sm font-bold text-black underline"
-                onClick={openPicker}
+                onClick={openTemplatesView}
               >
-                Choose a template
+                Browse templates
               </button>
             </div>
           ) : (
@@ -1359,11 +1524,13 @@ export function DocListPage({
                   pn={session.pnIdentifier}
                   docs={sortedDocs}
                   childFolders={childFolders}
+                  personalTemplates={myPersonalTemplates}
                   moveFolders={moveFolderOptions}
                   bulkMode={bulkDeleteMode}
                   selectedIds={selectedIds}
                   onToggle={toggleDocSelection}
-                  onCreateNew={openPicker}
+                  onCreateNew={openTemplatesView}
+                  onOpenPersonalTemplate={(id) => void openPersonalTemplate(id)}
                   renamingId={renamingId}
                   renameDraft={renameDraft}
                   onRenameDraft={setRenameDraft}
@@ -1376,11 +1543,12 @@ export function DocListPage({
                   onRenameFolder={handleRenameFolder}
                   onDeleteFolder={handleDeleteFolder}
                 />
-              ) : (
+              ) : currentFolderId ? (
                 <DocExplorerTable
                   pn={session.pnIdentifier}
-                  docs={docs}
-                  notebooks={rootNotebooks}
+                  docs={folderDocs}
+                  notebooks={[]}
+                  personalTemplates={myPersonalTemplates}
                   moveFolders={moveFolderOptions}
                   sort={explorerSort}
                   onSort={cycleExplorerSort}
@@ -1400,9 +1568,39 @@ export function DocListPage({
                   onRenameNotebook={handleRenameFolder}
                   onDeleteNotebook={handleDeleteFolder}
                   onOpenDoc={(docId) => navigate(`/d/${docId}`)}
+                  onOpenPersonalTemplate={(id) => void openPersonalTemplate(id)}
+                />
+              ) : (
+                <DocExplorerTable
+                  pn={session.pnIdentifier}
+                  docs={docs}
+                  notebooks={rootNotebooks}
+                  personalTemplatesByNotebook={personalTemplatesByNotebook}
+                  moveFolders={moveFolderOptions}
+                  sort={explorerSort}
+                  onSort={cycleExplorerSort}
+                  bulkMode={bulkDeleteMode}
+                  selectedIds={selectedIds}
+                  onToggle={toggleDocSelection}
+                  renamingId={renamingId}
+                  renameDraft={renameDraft}
+                  onRenameDraft={setRenameDraft}
+                  onStartRename={startRename}
+                  onCommitRename={commitRename}
+                  onCancelRename={cancelRename}
+                  onMoveDoc={handleMoveDoc}
+                  onDeleteDoc={handleDeleteDoc}
+                  expandedNotebookIds={expandedNotebookIds}
+                  onToggleNotebook={toggleNotebookExpand}
+                  onRenameNotebook={handleRenameFolder}
+                  onDeleteNotebook={handleDeleteFolder}
+                  onOpenDoc={(docId) => navigate(`/d/${docId}`)}
+                  onOpenPersonalTemplate={(id) => void openPersonalTemplate(id)}
                 />
               )}
             </div>
+          )}
+            </>
           )}
 
           <footer className="pen-library-footer">

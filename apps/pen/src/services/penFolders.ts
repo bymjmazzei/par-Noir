@@ -54,3 +54,14 @@ export function deleteFolder(pn: string, folderId: string): void {
 export function listChildFolders(pn: string, parentId: string | null): PenFolder[] {
   return listFolders(pn).filter((f) => f.parentId === parentId);
 }
+
+export const MY_TEMPLATES_NOTEBOOK_NAME = 'My templates';
+
+/** Idempotent root notebook for saved personal templates. */
+export function ensureMyTemplatesNotebook(pn: string): PenFolder {
+  const existing = listFolders(pn).find(
+    (f) => f.parentId === null && f.name === MY_TEMPLATES_NOTEBOOK_NAME
+  );
+  if (existing) return existing;
+  return createFolder(pn, MY_TEMPLATES_NOTEBOOK_NAME, null);
+}

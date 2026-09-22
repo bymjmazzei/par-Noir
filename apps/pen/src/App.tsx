@@ -2,7 +2,7 @@
  * Pen app — flow-first document builder with collab + authenticity.
  */
 
-import React, { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, Route, Routes, useNavigate, useParams } from 'react-router-dom';
 import {
   UnlockButton,
@@ -13,7 +13,7 @@ import {
 } from '@par-noir/oauth-ui';
 import { API_ENDPOINT, PN_CLIENT_ID } from './config/api';
 import { DocEditorPage } from './pages/DocEditorPage';
-import { DocListPage } from './pages/DocListPage';
+import { DocListPage, type PenAddIntent } from './pages/DocListPage';
 import { listLocalDocs, type LocalDocSummary } from './services/penLocalStore';
 
 export interface PenSession {
@@ -135,7 +135,7 @@ function Locked() {
           clientId: PN_CLIENT_ID,
           redirectUri: `${window.location.origin}/oauth-callback.html`,
           apiEndpoint: API_ENDPOINT,
-          scopes: ['openid', 'profile', 'cloud:read', 'cloud:app']
+          scope: ['openid', 'profile', 'cloud:read', 'cloud:app']
         }}
         onBeforeNavigate={(state) => {
           sessionStorage.setItem(OAUTH_STATE_KEY, state);
@@ -148,21 +148,87 @@ function Locked() {
   );
 }
 
+function AddMenu({ onSelect }: { onSelect: (intent: PenAddIntent) => void }) {
+  const [open, setOpen] = useState(false);
+  const rootRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const onDoc = (e: MouseEvent) => {
+      if (!rootRef.current?.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener('mousedown', onDoc);
+    return () => document.removeEventListener('mousedown', onDoc);
+  }, [open]);
+
+  return (
+    <div className="pen-add-menu" ref={rootRef}>
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        title="Add"
+        aria-label="Add"
+        aria-expanded={open}
+        className="pen-app-chrome-icon"
+      >
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden>
+          <path
+            d="M12 5v14M5 12h14"
+            stroke="currentColor"
+            strokeWidth="2.2"
+            strokeLinecap="round"
+          />
+        </svg>
+      </button>
+      {open && (
+        <div className="pen-add-menu-panel" role="menu">
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => {
+              setOpen(false);
+              onSelect('notebook');
+            }}
+          >
+            New notebook
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => {
+              setOpen(false);
+              onSelect('templates');
+            }}
+          >
+            Add from template
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => {
+              setOpen(false);
+              onSelect('my-templates');
+            }}
+          >
+            My templates
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function AuthenticatedApp({ session, onLock }: { session: PenSession; onLock: () => void }) {
   const navigate = useNavigate();
   const [docs, setDocs] = useState<LocalDocSummary[]>([]);
-  const [newDocTick, setNewDocTick] = useState(0);
+  const [addIntent, setAddIntent] = useState<PenAddIntent | null>(null);
   useEffect(() => {
     setDocs(listLocalDocs(session.pnIdentifier));
   }, [session.pnIdentifier]);
 
-  function requestNewDoc() {
+  function requestAdd(intent: PenAddIntent) {
     navigate('/');
-    setNewDocTick((n) => n + 1);
-  }
-
-  function consumeNewDocTick() {
-    setNewDocTick(0);
+    setAddIntent(intent);
   }
 
   return (
@@ -170,22 +236,7 @@ function AuthenticatedApp({ session, onLock }: { session: PenSession; onLock: ()
       <header className="pen-app-chrome fixed inset-x-0 top-0 z-50">
         <div className="pen-app-chrome-left">
           <span className="pen-app-chrome-action" aria-hidden />
-          <button
-            type="button"
-            onClick={requestNewDoc}
-            title="New document"
-            aria-label="New document"
-            className="pen-app-chrome-icon"
-          >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden>
-              <path
-                d="M12 5v14M5 12h14"
-                stroke="currentColor"
-                strokeWidth="2.2"
-                strokeLinecap="round"
-              />
-            </svg>
-          </button>
+          <AddMenu onSelect={requestAdd} />
           <Link to="/" className="pen-app-chrome-brand">
             Pen
           </Link>
@@ -209,8 +260,8 @@ function AuthenticatedApp({ session, onLock }: { session: PenSession; onLock: ()
                 session={session}
                 docs={docs}
                 onDocsChange={() => setDocs(listLocalDocs(session.pnIdentifier))}
-                newDocTick={newDocTick}
-                onNewDocTickConsumed={consumeNewDocTick}
+                addIntent={addIntent}
+                onAddIntentConsumed={() => setAddIntent(null)}
               />
             }
           />
