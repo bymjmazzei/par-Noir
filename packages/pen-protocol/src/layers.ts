@@ -38,6 +38,63 @@ export function createImageLayer(
   };
 }
 
+export function createVideoLayer(
+  videoSrc: string,
+  partial?: Partial<Pick<PenPageLayer, 'x' | 'y' | 'w' | 'h' | 'zIndex'>>
+): PenPageLayer {
+  return {
+    id: newLayerId(),
+    kind: 'video',
+    x: partial?.x ?? 20,
+    y: partial?.y ?? 22,
+    w: partial?.w ?? 48,
+    h: partial?.h ?? 32,
+    zIndex: partial?.zIndex ?? 2,
+    videoSrc
+  };
+}
+
+/**
+ * Reorder stack: `orderedIdsFrontFirst[0]` is front (highest zIndex).
+ * Ids must cover every existing layer.
+ */
+export function reorderLayersStack(
+  section: PenSectionContent,
+  orderedIdsFrontFirst: string[]
+): PenSectionContent {
+  const byId = new Map((section.layers || []).map((l) => [l.id, l]));
+  if (orderedIdsFrontFirst.length !== byId.size) {
+    throw new Error('reorder_layers_mismatch');
+  }
+  const n = orderedIdsFrontFirst.length;
+  const layers = orderedIdsFrontFirst.map((id, i) => {
+    const layer = byId.get(id);
+    if (!layer) throw new Error(`unknown_layer:${id}`);
+    return { ...layer, zIndex: n - i };
+  });
+  assertUniqueLayerIds(layers);
+  return { ...section, layers };
+}
+
+export function patchLayerStyle(
+  section: PenSectionContent,
+  layerId: string,
+  patch: Partial<
+    Pick<
+      PenPageLayer,
+      | 'backgroundColor'
+      | 'backgroundImage'
+      | 'backgroundVideo'
+      | 'textShadow'
+      | 'blur'
+    >
+  >
+): PenSectionContent {
+  const existing = (section.layers || []).find((l) => l.id === layerId);
+  if (!existing) throw new Error(`unknown_layer:${layerId}`);
+  return upsertLayer(section, { ...existing, ...patch });
+}
+
 /**
  * If section has no layers, seed one text layer from section.doc (one-shot migrate).
  * Leaves existing layers untouched. Uses stable id `layer_primary` for the seed.

@@ -2,9 +2,11 @@
 
 const pinsKey = (pn: string) => `pen.categoryPins:${pn}`;
 const homeViewKey = (pn: string) => `pen.homeView:${pn}`;
+const browseDensityKey = (pn: string) => `pen.browseDensity:${pn}`;
 const dashboardKey = (pn: string) => `pen.dashboard:${pn}`;
 
 export type PenHomeView = 'all' | 'category' | 'dashboard';
+export type PenBrowseDensity = 'list' | 'gallery';
 
 export type DashboardSlotId = 'calendar' | 'schedule' | 'todo' | 'recent_notes';
 
@@ -125,6 +127,20 @@ export function loadHomeView(pn: string): PenHomeView {
 
 export function saveHomeView(pn: string, view: PenHomeView): void {
   localStorage.setItem(homeViewKey(pn), view);
+}
+
+export function loadBrowseDensity(pn: string): PenBrowseDensity {
+  try {
+    const raw = localStorage.getItem(browseDensityKey(pn));
+    if (raw === 'gallery' || raw === 'list') return raw;
+    return 'list';
+  } catch {
+    return 'list';
+  }
+}
+
+export function saveBrowseDensity(pn: string, density: PenBrowseDensity): void {
+  localStorage.setItem(browseDensityKey(pn), density);
 }
 
 export function loadDashboardPrefs(pn: string): DashboardPrefs {

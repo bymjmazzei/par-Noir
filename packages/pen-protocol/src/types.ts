@@ -36,7 +36,7 @@ export interface PenSectionContent {
   layers?: PenPageLayer[];
 }
 
-export type PenPageLayerKind = 'text' | 'image';
+export type PenPageLayerKind = 'text' | 'image' | 'video';
 
 /** Layer on a section page — rects are % of page (0–100). */
 export interface PenPageLayer {
@@ -51,6 +51,14 @@ export interface PenPageLayer {
   textDoc?: PenTipTapNode;
   /** image layers */
   imageSrc?: string;
+  /** video layers */
+  videoSrc?: string;
+  /** Fill / effects (text boxes and media frames). */
+  backgroundColor?: string;
+  backgroundImage?: string;
+  backgroundVideo?: string;
+  textShadow?: string;
+  blur?: number;
 }
 
 /** Page chrome for Note compile / Pen Mini / PNG (mirrors browse TextPostStyle). */

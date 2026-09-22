@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
-  docToPlainText,
+  docToHtml,
   getClass,
   getTemplate,
   normalizeSection
@@ -11,6 +11,7 @@ import type { PenSession } from '../../App';
 import type { LocalDocSummary } from '../../services/penLocalStore';
 import { loadLocalDoc } from '../../services/penLocalStore';
 import { createDocFromTemplate } from '../../services/createDocFromTemplate';
+import { TemplateLivePreview } from '../TemplateLivePreview';
 import {
   DASHBOARD_SLOTS,
   loadDashboardPrefs,
@@ -20,26 +21,48 @@ import {
   type DashboardSlotId
 } from '../../services/penClassPrefs';
 
+const SLOT_TINT: Record<DashboardSlotId, string> = {
+  calendar: 'from-teal-900 to-teal-800',
+  schedule: 'from-stone-800 to-stone-700',
+  todo: 'from-amber-900 to-amber-800',
+  recent_notes: 'from-sky-950 to-sky-900'
+};
+
 function resolveClassId(d: LocalDocSummary): string | undefined {
   if (d.classId) return d.classId;
   return getTemplate(d.templateId)?.classId;
 }
 
-function previewLines(pn: string, docId: string): string[] {
+function MiniDocPreview({ pn, docId }: { pn: string; docId: string }) {
   const bundle = loadLocalDoc(pn, docId);
-  if (!bundle) return [];
-  const lines: string[] = [];
-  for (const raw of bundle.sections) {
-    const sec = normalizeSection(raw);
-    const text = docToPlainText(sec.doc).trim();
-    if (text) {
-      for (const line of text.split(/\n+/)) {
-        if (line.trim()) lines.push(line.trim());
-        if (lines.length >= 8) return lines;
-      }
-    }
+  if (!bundle) {
+    return <p className="p-3 text-xs text-stone-400">Missing doc</p>;
   }
-  return lines;
+  const form = getClass(bundle.manifest.classId);
+  if (form?.parentId === 'social') {
+    return (
+      <div className="h-full overflow-hidden bg-stone-100/80 p-2">
+        <TemplateLivePreview
+          manifest={bundle.manifest}
+          sections={bundle.sections}
+          compact
+        />
+      </div>
+    );
+  }
+  const html = bundle.sections
+    .slice(0, 2)
+    .map((s) => docToHtml(normalizeSection(s).doc))
+    .filter(Boolean)
+    .join('');
+  return (
+    <div
+      className="pen-rich-html h-full overflow-hidden bg-gradient-to-b from-stone-50 to-white p-3 text-[11px] leading-snug text-stone-700"
+      dangerouslySetInnerHTML={{
+        __html: html || '<p class="text-stone-400">Empty</p>'
+      }}
+    />
+  );
 }
 
 function WidgetBody({
@@ -68,15 +91,19 @@ function WidgetBody({
         return c === 'social.note' || c === 'projects.journal';
       })
       .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())
-      .slice(0, 8);
+      .slice(0, 6);
     if (!notes.length) {
-      return <p className="p-3 text-sm text-stone-500">No notes yet. Create one from New…</p>;
+      return <p className="p-4 text-sm text-stone-500">No notes yet. Create one from New…</p>;
     }
     return (
-      <ul className="divide-y divide-stone-100 text-sm">
+      <ul className="divide-y divide-white/10 text-sm">
         {notes.map((d) => (
           <li key={d.docId}>
-            <Link to={`/d/${d.docId}`} className="block truncate px-3 py-2 hover:bg-stone-50">
+            <Link
+              to={`/d/${d.docId}`}
+              className="block truncate px-3 py-2.5 text-stone-800 hover:bg-teal-50/80"
+              onClick={(e) => e.stopPropagation()}
+            >
               {d.title}
             </Link>
           </li>
@@ -88,7 +115,7 @@ function WidgetBody({
   const boundId = prefs.binds[slot];
   if (!boundId) {
     return (
-      <div className="flex h-full flex-col items-start justify-center gap-2 p-3">
+      <div className="flex h-full flex-col items-start justify-center gap-3 bg-gradient-to-br from-stone-50 to-stone-100/80 p-4">
         <p className="text-sm text-stone-500">No {meta.title.toLowerCase()} linked.</p>
         <div className="flex flex-wrap gap-2">
           <button
@@ -98,7 +125,7 @@ function WidgetBody({
               e.stopPropagation();
               onCreate(slot);
             }}
-            className="rounded bg-stone-900 px-2 py-1 text-xs text-white disabled:opacity-50"
+            className="rounded-md bg-stone-900 px-3 py-1.5 text-xs font-medium text-white disabled:opacity-50"
           >
             Create
           </button>
@@ -109,7 +136,7 @@ function WidgetBody({
               e.stopPropagation();
               onChoose(slot);
             }}
-            className="rounded border border-stone-300 px-2 py-1 text-xs text-stone-700 disabled:opacity-50"
+            className="rounded-md border border-stone-300 bg-white/80 px-3 py-1.5 text-xs text-stone-700 disabled:opacity-50"
           >
             Choose…
           </button>
@@ -118,7 +145,6 @@ function WidgetBody({
     );
   }
 
-  const lines = previewLines(session.pnIdentifier, boundId);
   const title =
     docs.find((d) => d.docId === boundId)?.title ||
     loadLocalDoc(session.pnIdentifier, boundId)?.manifest.title ||
@@ -128,25 +154,17 @@ function WidgetBody({
     <div className="flex h-full flex-col">
       <Link
         to={`/d/${boundId}`}
-        className="shrink-0 border-b border-stone-100 px-3 py-2 text-sm font-medium text-stone-900 hover:bg-stone-50"
+        className="shrink-0 truncate border-b border-stone-200/80 bg-white/70 px-3 py-2 text-sm font-medium text-stone-900 hover:bg-white"
         onClick={(e) => e.stopPropagation()}
       >
         {title}
       </Link>
-      <ul className="min-h-0 flex-1 space-y-1 overflow-auto px-3 py-2 text-xs text-stone-600">
-        {lines.length ? (
-          lines.map((line, i) => (
-            <li key={i} className="truncate">
-              {line}
-            </li>
-          ))
-        ) : (
-          <li className="text-stone-400">Empty — open to edit</li>
-        )}
-      </ul>
+      <div className="min-h-0 flex-1 overflow-hidden">
+        <MiniDocPreview pn={session.pnIdentifier} docId={boundId} />
+      </div>
       <button
         type="button"
-        className="shrink-0 border-t border-stone-100 px-3 py-1.5 text-left text-[11px] text-stone-500 hover:bg-stone-50"
+        className="shrink-0 border-t border-stone-200/80 bg-white/60 px-3 py-1.5 text-left text-[11px] text-stone-500 hover:bg-white"
         onClick={(e) => {
           e.stopPropagation();
           onChoose(slot);
@@ -209,16 +227,15 @@ export function PenDashboard({
   }
 
   const chooserMeta = chooser ? DASHBOARD_SLOTS.find((s) => s.id === chooser) : null;
-  const chooserDocs =
-    chooserMeta?.classId
-      ? docs.filter((d) => resolveClassId(d) === chooserMeta.classId)
-      : [];
+  const chooserDocs = chooserMeta?.classId
+    ? docs.filter((d) => resolveClassId(d) === chooserMeta.classId)
+    : [];
 
   return (
     <div className="relative">
       {error && <p className="mb-2 text-sm text-red-600">{error}</p>}
       <PackedGrid
-        className="min-h-[min(70vh,36rem)] w-full rounded-lg border border-stone-200 bg-stone-100/80 p-3"
+        className="min-h-[min(70vh,36rem)] w-full gap-4 p-1"
         tiles={visibleLayout}
         onChange={(layout) => {
           const next = setDashboardLayout(session.pnIdentifier, layout);
@@ -228,15 +245,18 @@ export function PenDashboard({
           const slot = tile.id;
           const title = DASHBOARD_SLOTS.find((s) => s.id === slot)?.title || slot;
           return (
-            <div className="flex h-full min-h-[10rem] flex-col">
-              <div className="shrink-0 border-b border-stone-200 bg-stone-50 px-2 py-1 text-[11px] font-semibold uppercase tracking-wide text-stone-500">
-                {title}
-                <span className="ml-2 font-normal normal-case text-stone-400">drag to swap</span>
-              </div>
+            <div className="flex h-full min-h-[12rem] flex-col overflow-hidden rounded-xl border border-stone-800/10 bg-white shadow-[0_8px_30px_rgba(28,25,23,0.08)] ring-1 ring-stone-900/5">
               <div
-                className="min-h-0 flex-1"
-                onPointerDown={(e) => e.stopPropagation()}
+                className={`flex shrink-0 items-center justify-between bg-gradient-to-r px-3 py-2 text-white ${SLOT_TINT[slot]}`}
               >
+                <span className="text-[11px] font-semibold uppercase tracking-[0.14em]">
+                  {title}
+                </span>
+                <span className="text-[10px] opacity-60" title="Drag tile to swap">
+                  ⋮⋮
+                </span>
+              </div>
+              <div className="min-h-0 flex-1 bg-stone-50/50" onPointerDown={(e) => e.stopPropagation()}>
                 <WidgetBody
                   slot={slot}
                   prefs={prefs}

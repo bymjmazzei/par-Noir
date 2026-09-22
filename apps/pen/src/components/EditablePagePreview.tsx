@@ -1,7 +1,8 @@
-import { useMemo, useRef } from 'react';
+import { useMemo, useRef, type CSSProperties } from 'react';
 import {
   createImageLayer,
   createTextLayer,
+  createVideoLayer,
   docToHtml,
   ensureDefaultTextLayer,
   getTextLayerDoc,
@@ -32,6 +33,20 @@ function pageFrameClass(pageLayout: PenPageLayout | undefined): string {
   return 'max-w-[22rem] aspect-[3/4]';
 }
 
+function layerShellStyle(layer: PenPageLayer): CSSProperties {
+  const style: React.CSSProperties = {
+    backgroundColor: layer.backgroundColor || 'rgba(255,255,255,0.95)',
+    textShadow: layer.textShadow,
+    filter: layer.blur ? `blur(${layer.blur}px)` : undefined
+  };
+  if (layer.backgroundImage) {
+    style.backgroundImage = `url(${layer.backgroundImage})`;
+    style.backgroundSize = 'cover';
+    style.backgroundPosition = 'center';
+  }
+  return style;
+}
+
 /** Editable page surface — LayoutSurface over section layers (dual-pane right side). */
 export function EditablePagePreview({
   manifest,
@@ -47,6 +62,7 @@ export function EditablePagePreview({
   onSectionChange: (next: PenSectionContent) => void;
 }) {
   const fileRef = useRef<HTMLInputElement>(null);
+  const videoRef = useRef<HTMLInputElement>(null);
   const prepared = useMemo(() => ensureDefaultTextLayer(normalizeSection(section)), [section]);
   const layers = prepared.layers || [];
   const items = layers.map(layerToItem);
@@ -59,16 +75,19 @@ export function EditablePagePreview({
     commitSection(updateLayerLayout(prepared, nextItems));
   }
 
+  function maxZ() {
+    return layers.reduce((m, l) => Math.max(m, l.zIndex), 0);
+  }
+
   function addText() {
     const layer = createTextLayer({
       x: 12,
       y: 12 + (layers.length % 4) * 8,
       w: 50,
       h: 24,
-      zIndex: layers.reduce((m, l) => Math.max(m, l.zIndex), 0) + 1
+      zIndex: maxZ() + 1
     });
-    const next = upsertLayer(prepared, layer);
-    commitSection(next);
+    commitSection(upsertLayer(prepared, layer));
     onSelectLayer(layer.id);
   }
 
@@ -82,8 +101,20 @@ export function EditablePagePreview({
         y: 25,
         w: 35,
         h: 30,
-        zIndex: layers.reduce((m, l) => Math.max(m, l.zIndex), 0) + 1
+        zIndex: maxZ() + 1
       });
+      commitSection(upsertLayer(prepared, layer));
+      onSelectLayer(layer.id);
+    };
+    reader.readAsDataURL(file);
+  }
+
+  function addVideoFromFile(file: File) {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const src = String(reader.result || '');
+      if (!src) return;
+      const layer = createVideoLayer(src, { zIndex: maxZ() + 1 });
       commitSection(upsertLayer(prepared, layer));
       onSelectLayer(layer.id);
     };
@@ -111,6 +142,13 @@ export function EditablePagePreview({
           >
             Add image
           </button>
+          <button
+            type="button"
+            className="rounded border border-stone-300 bg-white px-2 py-0.5 text-[11px] text-stone-700 hover:bg-stone-50"
+            onClick={() => videoRef.current?.click()}
+          >
+            Add video
+          </button>
           <input
             ref={fileRef}
             type="file"
@@ -119,6 +157,17 @@ export function EditablePagePreview({
             onChange={(e) => {
               const f = e.target.files?.[0];
               if (f) addImageFromFile(f);
+              e.target.value = '';
+            }}
+          />
+          <input
+            ref={videoRef}
+            type="file"
+            accept="video/*"
+            className="hidden"
+            onChange={(e) => {
+              const f = e.target.files?.[0];
+              if (f) addVideoFromFile(f);
               e.target.value = '';
             }}
           />
@@ -139,48 +188,66 @@ export function EditablePagePreview({
             renderItem={(item) => {
               const layer = layers.find((l) => l.id === item.id);
               if (!layer) return null;
+              const shell = layerShellStyle(layer);
               if (layer.kind === 'image' && layer.imageSrc) {
                 return (
-                  <img
-                    src={layer.imageSrc}
-                    alt=""
-                    className="h-full w-full object-contain"
-                    draggable={false}
-                  />
+                  <div className="relative h-full w-full" style={shell}>
+                    {layer.backgroundVideo && (
+                      <video
+                        src={layer.backgroundVideo}
+                        className="absolute inset-0 h-full w-full object-cover opacity-40"
+                        muted
+                        loop
+                        autoPlay
+                        playsInline
+                      />
+                    )}
+                    <img
+                      src={layer.imageSrc}
+                      alt=""
+                      className="relative h-full w-full object-contain"
+                      draggable={false}
+                    />
+                  </div>
+                );
+              }
+              if (layer.kind === 'video' && layer.videoSrc) {
+                return (
+                  <div className="h-full w-full" style={shell}>
+                    <video
+                      src={layer.videoSrc}
+                      className="h-full w-full object-contain"
+                      controls
+                      playsInline
+                    />
+                  </div>
                 );
               }
               const html = docToHtml(getTextLayerDoc(layer));
               return (
-                <div
-                  className="h-full w-full overflow-auto p-2 text-sm text-stone-800"
-                  dangerouslySetInnerHTML={{ __html: html || '<p class="text-stone-400">Text</p>' }}
-                />
+                <div className="relative h-full w-full overflow-hidden" style={shell}>
+                  {layer.backgroundVideo && (
+                    <video
+                      src={layer.backgroundVideo}
+                      className="absolute inset-0 h-full w-full object-cover opacity-50"
+                      muted
+                      loop
+                      autoPlay
+                      playsInline
+                    />
+                  )}
+                  <div
+                    className="relative h-full w-full overflow-auto p-2 text-sm text-stone-800"
+                    dangerouslySetInnerHTML={{
+                      __html: html || '<p class="text-stone-400">Text</p>'
+                    }}
+                  />
+                </div>
               );
             }}
           />
         </div>
       </div>
-      {layers.length > 0 && (
-        <div className="flex shrink-0 gap-1 overflow-x-auto border-t border-stone-300 bg-stone-100 px-2 py-1">
-          {layers
-            .slice()
-            .sort((a, b) => a.zIndex - b.zIndex)
-            .map((l, i) => (
-              <button
-                key={l.id}
-                type="button"
-                onClick={() => onSelectLayer(l.id)}
-                className={`shrink-0 rounded px-2 py-0.5 text-[11px] ${
-                  activeLayerId === l.id
-                    ? 'bg-sky-100 text-sky-900'
-                    : 'bg-white text-stone-600 hover:bg-stone-50'
-                }`}
-              >
-                {l.kind === 'image' ? `Image ${i + 1}` : `Text ${i + 1}`}
-              </button>
-            ))}
-        </div>
-      )}
     </div>
   );
 }

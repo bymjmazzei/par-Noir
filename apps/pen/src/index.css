@@ -216,6 +216,7 @@ body {
 
 /* Docs-like format ribbon — continuous bar, no per-control borders */
 .pen-ribbon {
+  --pen-ribbon-h: 28px;
   display: flex;
   flex-wrap: wrap;
   align-items: center;
@@ -232,14 +233,15 @@ body {
   margin: 0 6px;
   background: #d6d3d1;
   flex-shrink: 0;
+  align-self: center;
 }
 
 .pen-ribbon-btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-width: 28px;
-  height: 28px;
+  min-width: var(--pen-ribbon-h);
+  height: var(--pen-ribbon-h);
   padding: 0 6px;
   border: none;
   border-radius: 3px;
@@ -262,19 +264,23 @@ body {
 .pen-ribbon-menu-wrap {
   position: relative;
   display: inline-flex;
+  align-items: center;
+  height: var(--pen-ribbon-h);
 }
 
 .pen-ribbon-menu-trigger {
   display: inline-flex;
   align-items: center;
-  gap: 2px;
-  height: 28px;
-  padding: 0 6px;
+  justify-content: center;
+  gap: 3px;
+  height: var(--pen-ribbon-h);
+  padding: 0 8px;
   border: none;
   border-radius: 3px;
   background: transparent;
   color: #44403c;
   font-size: 13px;
+  line-height: 1;
   cursor: pointer;
 }
 
@@ -284,9 +290,11 @@ body {
 }
 
 .pen-ribbon-menu-label {
+  display: inline-flex;
+  align-items: center;
   max-width: 7.5rem;
   overflow: hidden;
-  text-overflow: ellipsis;
+  line-height: 1;
   white-space: nowrap;
 }
 
@@ -296,20 +304,27 @@ body {
   letter-spacing: 0.02em;
   min-width: 1.25rem;
   text-align: center;
+  line-height: 1;
 }
 
 .pen-ribbon-font-label {
   display: inline-block;
-  max-width: 6.5rem;
+  max-width: 7rem;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  font-size: 13px;
+  line-height: 1;
+  vertical-align: middle;
 }
 
 .pen-ribbon-chevron {
+  display: inline-flex;
+  align-items: center;
   font-size: 9px;
   opacity: 0.55;
   margin-left: 1px;
+  line-height: 1;
 }
 
 .pen-ribbon-menu-panel {

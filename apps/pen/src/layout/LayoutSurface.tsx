@@ -5,12 +5,7 @@ import {
   type PointerEvent as ReactPointerEvent,
   type ReactNode
 } from 'react';
-import {
-  bringToFront,
-  clampLayoutItem,
-  sortByZ,
-  type LayoutItem
-} from './types';
+import { clampLayoutItem, sortByZ, type LayoutItem } from './types';
 
 type DragMode = 'move' | 'resize';
 
@@ -56,15 +51,12 @@ export function LayoutSurface({
     e.stopPropagation();
     (e.target as HTMLElement).setPointerCapture?.(e.pointerId);
     onSelect?.(item.id);
-    const raised = bringToFront(items, item.id);
-    onChange(raised);
-    const current = raised.find((i) => i.id === item.id)!;
     setDrag({
       id: item.id,
       mode: 'move',
       startX: e.clientX,
       startY: e.clientY,
-      orig: { ...current }
+      orig: { ...item }
     });
   };
 
@@ -126,7 +118,7 @@ export function LayoutSurface({
             }}
             onPointerDown={(e) => onPointerDownMove(e, item)}
           >
-            <div className="h-full w-full overflow-auto bg-white/95">{renderItem(item, selected)}</div>
+            <div className="h-full w-full overflow-auto">{renderItem(item, selected)}</div>
             {!disabled && selected && (
               <div
                 className="absolute bottom-0 right-0 h-3 w-3 cursor-se-resize bg-sky-500"
@@ -141,4 +133,4 @@ export function LayoutSurface({
 }
 
 export type { LayoutItem };
-export { clampLayoutItem, bringToFront, sortByZ };
+export { clampLayoutItem, sortByZ };

@@ -109,8 +109,8 @@ export function PackedGrid({
         return (
           <div
             key={tile.id}
-            className={`relative min-h-[10rem] overflow-hidden rounded-lg border bg-white shadow-sm ${
-              dropTarget ? 'border-sky-500 ring-2 ring-sky-400' : 'border-stone-200'
+            className={`relative min-h-[12rem] overflow-visible bg-transparent ${
+              dropTarget ? 'ring-2 ring-teal-500 ring-offset-2' : ''
             } ${dragging ? 'opacity-60' : ''}`}
             style={{
               gridColumn: `${tile.col + 1} / span ${tile.colSpan}`,

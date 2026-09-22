@@ -16,7 +16,6 @@ import {
   setTextLayerDoc,
   signPromoteLink,
   attachNotary,
-  updateLayerLayout,
   upsertLayer,
   verifyChain,
   type PenDocComment,
@@ -26,7 +25,8 @@ import {
 import type { PenSession } from '../App';
 import { FormatRibbon, PageCanvas } from '../components/PageCanvas';
 import { EditablePagePreview } from '../components/EditablePagePreview';
-import { bringToFront, sendBackward, type LayoutItem } from '../layout';
+import { LayersPanel } from '../components/LayersPanel';
+import { TemplateLivePreview } from '../components/TemplateLivePreview';
 import { loadLocalDoc, saveLocalDoc } from '../services/penLocalStore';
 import { requestNotaryStamp } from '../services/penApi';
 import { resolveSigningKeys } from '../services/penKeys';
@@ -117,6 +117,13 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
     return [category?.title, form?.title, template?.title]
       .filter(Boolean)
       .join(' · ');
+  }, [bundle, template]);
+
+  const isSocialDoc = useMemo(() => {
+    const classId = bundle?.manifest.classId || template?.classId;
+    if (!classId) return false;
+    const form = getClass(classId);
+    return form?.parentId === 'social';
   }, [bundle, template]);
 
   const section = useMemo(() => {
@@ -535,7 +542,6 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
         <FormatRibbon
           editor={editor}
           accessToken={session.accessToken}
-          canOrderLayers={!!activeLayerId}
           onImageInserted={(src, alt) => {
             const prepared = ensureDefaultTextLayer(normalizeSection(section));
             const maxZ = (prepared.layers || []).reduce((m, l) => Math.max(m, l.zIndex), 0);
@@ -549,27 +555,6 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
             if (alt) layer.imageSrc = src;
             const next = upsertLayer(prepared, layer);
             setActiveLayerId(layer.id);
-            persist({
-              ...bundle,
-              sections: bundle.sections.map((s) => (s.slug === next.slug ? next : s)),
-              manifest: { ...bundle.manifest, updatedAt: new Date().toISOString() }
-            });
-          }}
-          onLayerOrder={(dir) => {
-            if (!activeLayerId || !section.layers?.length) return;
-            const items: LayoutItem[] = section.layers.map((l) => ({
-              id: l.id,
-              x: l.x,
-              y: l.y,
-              w: l.w,
-              h: l.h,
-              zIndex: l.zIndex
-            }));
-            const ordered =
-              dir === 'forward'
-                ? bringToFront(items, activeLayerId)
-                : sendBackward(items, activeLayerId);
-            const next = updateLayerLayout(ensureDefaultTextLayer(section), ordered);
             persist({
               ...bundle,
               sections: bundle.sections.map((s) => (s.slug === next.slug ? next : s)),
@@ -745,32 +730,50 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
         )}
 
         {showPreview && !showHistory && !sidePanel && (
-          <div className="hidden min-w-0 w-1/2 sm:block">
-            <EditablePagePreview
-              manifest={bundle.manifest}
-              section={section}
-              activeLayerId={activeLayerId}
-              onSelectLayer={(id) => {
-                setActiveLayerId(id);
-                const layer = section.layers?.find((l) => l.id === id);
-                if (layer?.kind === 'text' && !activeLayerId) {
-                  /* selection drives left canvas */
-                }
-              }}
-              onSectionChange={(next) => {
-                persist({
-                  ...bundle,
-                  sections: bundle.sections.map((s) => (s.slug === next.slug ? next : s)),
-                  manifest: { ...bundle.manifest, updatedAt: new Date().toISOString() }
-                });
-                if (!activeLayerId && next.layers?.length) {
-                  const primary = next.layers
-                    .filter((l) => l.kind === 'text')
-                    .sort((a, b) => a.zIndex - b.zIndex)[0];
-                  if (primary) setActiveLayerId(primary.id);
-                }
-              }}
-            />
+          <div className="hidden min-w-0 w-1/2 sm:flex">
+            {isSocialDoc ? (
+              <div className="min-w-0 flex-1">
+                <TemplateLivePreview manifest={bundle.manifest} sections={bundle.sections} />
+              </div>
+            ) : (
+              <>
+                <div className="min-w-0 flex-1">
+                  <EditablePagePreview
+                    manifest={bundle.manifest}
+                    section={section}
+                    activeLayerId={activeLayerId}
+                    onSelectLayer={(id) => {
+                      setActiveLayerId(id);
+                    }}
+                    onSectionChange={(next) => {
+                      persist({
+                        ...bundle,
+                        sections: bundle.sections.map((s) => (s.slug === next.slug ? next : s)),
+                        manifest: { ...bundle.manifest, updatedAt: new Date().toISOString() }
+                      });
+                      if (!activeLayerId && next.layers?.length) {
+                        const primary = next.layers
+                          .filter((l) => l.kind === 'text')
+                          .sort((a, b) => a.zIndex - b.zIndex)[0];
+                        if (primary) setActiveLayerId(primary.id);
+                      }
+                    }}
+                  />
+                </div>
+                <LayersPanel
+                  section={section}
+                  activeLayerId={activeLayerId}
+                  onSelectLayer={setActiveLayerId}
+                  onSectionChange={(next) => {
+                    persist({
+                      ...bundle,
+                      sections: bundle.sections.map((s) => (s.slug === next.slug ? next : s)),
+                      manifest: { ...bundle.manifest, updatedAt: new Date().toISOString() }
+                    });
+                  }}
+                />
+              </>
+            )}
           </div>
         )}
       </div>

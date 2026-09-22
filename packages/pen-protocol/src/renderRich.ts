@@ -55,9 +55,13 @@ function styleFromMarks(marks: PenTipTapMark[] | undefined): {
         const fontFamily = m.attrs?.fontFamily ? String(m.attrs.fontFamily) : '';
         const fontSize = m.attrs?.fontSize ? String(m.attrs.fontSize) : '';
         const color = m.attrs?.color ? String(m.attrs.color) : '';
+        const textShadow = m.attrs?.textShadow ? String(m.attrs.textShadow) : '';
+        const textBlur = m.attrs?.textBlur ? String(m.attrs.textBlur) : '';
         if (fontFamily) styles.push(`font-family:${esc(fontFamily)}`);
         if (fontSize) styles.push(`font-size:${esc(fontSize)}`);
         if (color) styles.push(`color:${esc(color)}`);
+        if (textShadow) styles.push(`text-shadow:${esc(textShadow)}`);
+        if (textBlur) styles.push(`filter:blur(${esc(textBlur)})`);
         break;
       }
       case 'highlight': {

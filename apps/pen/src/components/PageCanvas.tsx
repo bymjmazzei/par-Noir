@@ -20,6 +20,7 @@ import {
   type PenSectionContent
 } from '@par-noir/pen-protocol';
 import { FontSize } from '../services/fontSizeExtension';
+import { TextEffects } from '../services/textEffectsExtension';
 import { PenImage, type PenImageWrap } from '../services/penImageExtension';
 import { PenVideo } from '../services/penVideoExtension';
 import { sectionToTipTapDoc, tipTapDocToSection } from '../services/penBlocks';
@@ -62,22 +63,44 @@ function insertImage(
   onImageInserted?.(src, alt);
 }
 
+function AttachPaperclipIcon() {
+  return (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden>
+      <path
+        d="M21.4 11.6l-8.5 8.5a5.5 5.5 0 01-7.8-7.8l9.2-9.2a3.5 3.5 0 015 5l-9.2 9.2a1.5 1.5 0 01-2.1-2.1l8.1-8.1"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
 export function FormatRibbon({
   editor,
   accessToken,
-  onImageInserted,
-  canOrderLayers,
-  onLayerOrder
+  onImageInserted
 }: {
   editor: Editor | null;
   accessToken?: string;
   onImageInserted?: (src: string, alt?: string) => void;
-  canOrderLayers?: boolean;
-  onLayerOrder?: (dir: 'forward' | 'backward') => void;
 }) {
   const [cloudFiles, setCloudFiles] = useState<CloudImageItem[] | null>(null);
   const [cloudError, setCloudError] = useState<string | null>(null);
   const [cloudLoading, setCloudLoading] = useState(false);
+  const [, setTick] = useState(0);
+
+  useEffect(() => {
+    if (!editor) return;
+    const bump = () => setTick((n) => n + 1);
+    editor.on('selectionUpdate', bump);
+    editor.on('transaction', bump);
+    return () => {
+      editor.off('selectionUpdate', bump);
+      editor.off('transaction', bump);
+    };
+  }, [editor]);
 
   if (!editor) return null;
   const ed = editor;
@@ -86,6 +109,8 @@ export function FormatRibbon({
   const fontSize = currentFontSize(ed);
   const color = String(ed.getAttributes('textStyle').color || '#1c1917');
   const highlight = String(ed.getAttributes('highlight').color || '');
+  const textShadow = String(ed.getAttributes('textStyle').textShadow || '');
+  const textBlur = String(ed.getAttributes('textStyle').textBlur || '');
   const hLabel = headingLabel(ed);
   const imageSelected = ed.isActive('image');
   const videoSelected = ed.isActive('video');
@@ -214,8 +239,8 @@ export function FormatRibbon({
 
       <RibbonMenu
         label={
-          <span className="pen-ribbon-font-label" style={{ fontFamily: fontFamily || undefined }}>
-            {fontFamily || 'Font'}
+          <span className="pen-ribbon-font-label" style={{ fontFamily: fontFamily || 'Source Serif 4' }}>
+            {fontFamily || 'Source Serif 4'}
           </span>
         }
         title="Font"
@@ -309,6 +334,60 @@ export function FormatRibbon({
         onChange={(hex) => ed.chain().focus().toggleHighlight({ color: hex }).run()}
       />
 
+      <RibbonMenu label={textShadow ? 'Sh' : 'Sh'} title="Text shadow">
+        {(close) => (
+          <>
+            <RibbonItem
+              active={!textShadow}
+              onClick={() => {
+                ed.chain().focus().unsetTextShadow().run();
+                close();
+              }}
+            >
+              None
+            </RibbonItem>
+            <RibbonItem
+              active={textShadow.includes('1px 2px')}
+              onClick={() => {
+                ed.chain().focus().setTextShadow('0 1px 2px rgba(0,0,0,0.45)').run();
+                close();
+              }}
+            >
+              Soft
+            </RibbonItem>
+            <RibbonItem
+              active={textShadow.includes('2px 4px')}
+              onClick={() => {
+                ed.chain().focus().setTextShadow('0 2px 4px rgba(0,0,0,0.55)').run();
+                close();
+              }}
+            >
+              Strong
+            </RibbonItem>
+          </>
+        )}
+      </RibbonMenu>
+
+      <RibbonMenu label={textBlur ? `Bl ${textBlur}` : 'Bl'} title="Text blur">
+        {(close) => (
+          <>
+            {(['', '0.5px', '1px', '2px', '4px'] as const).map((b) => (
+              <RibbonItem
+                key={b || 'none'}
+                active={(textBlur || '') === b}
+                onClick={() => {
+                  if (!b) ed.chain().focus().unsetTextBlur().run();
+                  else ed.chain().focus().setTextBlur(b).run();
+                  close();
+                }}
+              >
+                {b || 'None'}
+              </RibbonItem>
+            ))}
+          </>
+        )}
+      </RibbonMenu>
+
       <RibbonSep />
 
       <RibbonIconBtn
@@ -394,11 +473,7 @@ export function FormatRibbon({
         Table
       </RibbonIconBtn>
 
-      <RibbonMenu
-        label={<span title="Attach">📎</span>}
-        title="Attach"
-        wide
-      >
+      <RibbonMenu label={<AttachPaperclipIcon />} title="Attach" wide>
         {(close) => (
           <>
             <RibbonItem
@@ -506,29 +581,6 @@ export function FormatRibbon({
         )}
       </RibbonMenu>
 
-      <RibbonMenu label="Layers" title="Page layers">
-        {(close) => (
-          <>
-            <RibbonItem
-              onClick={() => {
-                if (canOrderLayers) onLayerOrder?.('forward');
-                close();
-              }}
-            >
-              Bring forward{canOrderLayers ? '' : ' (select layer)'}
-            </RibbonItem>
-            <RibbonItem
-              onClick={() => {
-                if (canOrderLayers) onLayerOrder?.('backward');
-                close();
-              }}
-            >
-              Send backward{canOrderLayers ? '' : ' (select layer)'}
-            </RibbonItem>
-          </>
-        )}
-      </RibbonMenu>
-
       <RibbonIconBtn
         title="Clear formatting"
         onClick={() => ed.chain().focus().unsetAllMarks().clearNodes().run()}
@@ -570,6 +622,7 @@ export function PageCanvas({
       TextStyle,
       FontFamily,
       FontSize,
+      TextEffects,
       Color,
       Highlight.configure({ multicolor: true }),
       Link.configure({ openOnClick: false, autolink: true }),

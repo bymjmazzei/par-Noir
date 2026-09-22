@@ -224,6 +224,27 @@ describe('page layers', () => {
     });
     expect(next.doc.content?.[0]).toBeTruthy();
   });
+
+  it('creates video layers and reorders stack front-first', async () => {
+    const {
+      emptySection,
+      ensureDefaultTextLayer,
+      createVideoLayer,
+      upsertLayer,
+      reorderLayersStack
+    } = await import('./index.js');
+    let sec = ensureDefaultTextLayer(emptySection('body'));
+    const video = createVideoLayer('https://example.com/v.mp4', { zIndex: 5 });
+    sec = upsertLayer(sec, video);
+    const idsFrontFirst = [...(sec.layers || [])]
+      .sort((a, b) => b.zIndex - a.zIndex)
+      .map((l) => l.id);
+    const flipped = [...idsFrontFirst].reverse();
+    sec = reorderLayersStack(sec, flipped);
+    const after = [...(sec.layers || [])].sort((a, b) => b.zIndex - a.zIndex).map((l) => l.id);
+    expect(after[0]).toBe(flipped[0]);
+    expect(sec.layers!.some((l) => l.kind === 'video')).toBe(true);
+  });
 });
 
 describe('chain authenticity', () => {

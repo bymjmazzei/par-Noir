@@ -15,14 +15,19 @@ import type { PenSession } from '../App';
 import type { LocalDocSummary } from '../services/penLocalStore';
 import { fetchPenCatalog, fetchStorageTier } from '../services/penApi';
 import {
+  loadBrowseDensity,
   loadHomeView,
   loadPinnedCategoryIds,
+  saveBrowseDensity,
   saveHomeView,
   togglePinnedCategory,
+  type PenBrowseDensity,
   type PenHomeView
 } from '../services/penClassPrefs';
 import { createDocFromTemplate } from '../services/createDocFromTemplate';
 import { PenDashboard } from '../components/dashboard/PenDashboard';
+import { TemplateLivePreview } from '../components/TemplateLivePreview';
+import { loadLocalDoc } from '../services/penLocalStore';
 
 type DrillLevel = 'category' | 'form' | 'template';
 
@@ -42,22 +47,112 @@ function resolveDocCategoryId(d: LocalDocSummary): string | null {
   return form?.parentId || null;
 }
 
-function DocRow({ d }: { d: LocalDocSummary }) {
+function DocExplorerIcon({ classId }: { classId?: string }) {
+  const cat = classId ? getClass(classId)?.parentId : null;
+  const label = (cat || classId || 'doc').slice(0, 1).toUpperCase();
   return (
-    <li>
-      <Link
-        to={`/d/${d.docId}`}
-        className="flex items-center justify-between gap-4 px-4 py-3 hover:bg-stone-50"
-      >
-        <div className="min-w-0">
-          <div className="truncate font-medium text-stone-900">{d.title}</div>
-          <div className="truncate text-xs text-stone-500">{d.templateId}</div>
+    <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded bg-stone-800 text-[11px] font-semibold text-white">
+      {label}
+    </span>
+  );
+}
+
+function DocExplorerRow({ d }: { d: LocalDocSummary }) {
+  const classId = resolveDocClassId(d);
+  const form = classId ? getClass(classId) : undefined;
+  const category = form?.parentId ? getClass(form.parentId) : undefined;
+  return (
+    <tr className="border-b border-stone-100 hover:bg-stone-50/80">
+      <td className="px-3 py-2">
+        <Link to={`/d/${d.docId}`} className="flex items-center gap-2.5 min-w-0">
+          <DocExplorerIcon classId={classId} />
+          <span className="truncate font-medium text-stone-900">{d.title || 'Untitled'}</span>
+        </Link>
+      </td>
+      <td className="hidden px-3 py-2 text-xs text-stone-500 sm:table-cell">
+        {category?.title || '—'}
+      </td>
+      <td className="hidden px-3 py-2 text-xs text-stone-500 md:table-cell">
+        {form?.title || '—'}
+      </td>
+      <td className="hidden px-3 py-2 text-xs text-stone-400 lg:table-cell">
+        {d.templateId}
+      </td>
+      <td className="whitespace-nowrap px-3 py-2 text-right text-xs text-stone-400">
+        {new Date(d.updatedAt).toLocaleString()}
+      </td>
+    </tr>
+  );
+}
+
+function DocExplorerTable({ docs }: { docs: LocalDocSummary[] }) {
+  return (
+    <div className="overflow-hidden rounded-lg border border-stone-300 bg-white shadow-sm">
+      <table className="w-full table-fixed text-left text-sm">
+        <thead className="sticky top-0 bg-stone-100 text-[11px] uppercase tracking-wide text-stone-500">
+          <tr>
+            <th className="px-3 py-2 font-semibold">Name</th>
+            <th className="hidden w-28 px-3 py-2 font-semibold sm:table-cell">Category</th>
+            <th className="hidden w-28 px-3 py-2 font-semibold md:table-cell">Form</th>
+            <th className="hidden w-40 px-3 py-2 font-semibold lg:table-cell">Template</th>
+            <th className="w-40 px-3 py-2 text-right font-semibold">Updated</th>
+          </tr>
+        </thead>
+        <tbody>
+          {docs.map((d) => (
+            <DocExplorerRow key={d.docId} d={d} />
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function DocGalleryCard({
+  pn,
+  d
+}: {
+  pn: string;
+  d: LocalDocSummary;
+}) {
+  const bundle = loadLocalDoc(pn, d.docId);
+  return (
+    <Link
+      to={`/d/${d.docId}`}
+      className="group flex flex-col overflow-hidden rounded-xl border border-stone-200 bg-white shadow-sm transition hover:border-stone-400 hover:shadow-md"
+    >
+      <div className="relative h-48 overflow-hidden bg-stone-100">
+        {bundle ? (
+          <div className="pointer-events-none absolute inset-0 flex justify-center overflow-hidden pt-2">
+            <TemplateLivePreview
+              manifest={bundle.manifest}
+              sections={bundle.sections}
+              compact
+            />
+          </div>
+        ) : (
+          <div className="flex h-full items-center justify-center text-xs text-stone-400">
+            No preview
+          </div>
+        )}
+      </div>
+      <div className="border-t border-stone-100 px-3 py-2">
+        <div className="truncate text-sm font-medium text-stone-900">{d.title}</div>
+        <div className="truncate text-[11px] text-stone-400">
+          {getClass(resolveDocClassId(d) || '')?.title || d.templateId}
         </div>
-        <div className="shrink-0 text-xs text-stone-400">
-          {new Date(d.updatedAt).toLocaleString()}
-        </div>
-      </Link>
-    </li>
+      </div>
+    </Link>
+  );
+}
+
+function DocGalleryGrid({ pn, docs }: { pn: string; docs: LocalDocSummary[] }) {
+  return (
+    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+      {docs.map((d) => (
+        <DocGalleryCard key={d.docId} pn={pn} d={d} />
+      ))}
+    </div>
   );
 }
 
@@ -89,6 +184,9 @@ export function DocListPage({
   const [formId, setFormId] = useState<string | null>(null);
   const [storageTier, setStorageTier] = useState<string | null>(null);
   const [homeView, setHomeView] = useState<PenHomeView>(() => loadHomeView(session.pnIdentifier));
+  const [browseDensity, setBrowseDensity] = useState<PenBrowseDensity>(() =>
+    loadBrowseDensity(session.pnIdentifier)
+  );
   const [expandedCats, setExpandedCats] = useState<Set<string>>(() => new Set());
 
   useEffect(() => {
@@ -200,6 +298,11 @@ export function DocListPage({
     saveHomeView(session.pnIdentifier, view);
   }
 
+  function setDensity(density: PenBrowseDensity) {
+    setBrowseDensity(density);
+    saveBrowseDensity(session.pnIdentifier, density);
+  }
+
   function toggleExpanded(id: string) {
     setExpandedCats((prev) => {
       const next = new Set(prev);
@@ -262,7 +365,11 @@ export function DocListPage({
 
   return (
     <div className="min-h-[calc(100vh-2.5rem)] bg-stone-100">
-      <div className="mx-auto max-w-3xl px-4 py-10">
+      <div
+        className={`mx-auto px-4 py-10 ${
+          homeView === 'dashboard' ? 'max-w-5xl' : 'max-w-5xl'
+        }`}
+      >
         <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
           <div>
             <h1 className="text-lg font-semibold text-stone-900">Documents</h1>
@@ -270,48 +377,82 @@ export function DocListPage({
           </div>
           <div className="flex flex-wrap items-center gap-2">
             {docs.length > 0 && (
-              <div
-                className="flex rounded border border-stone-300 bg-white text-sm"
-                role="group"
-                aria-label="Document list view"
-              >
-                <button
-                  type="button"
-                  aria-pressed={homeView === 'all'}
-                  onClick={() => setView('all')}
-                  className={`px-2.5 py-1.5 ${
-                    homeView === 'all'
-                      ? 'bg-stone-900 text-white'
-                      : 'text-stone-600 hover:bg-stone-50'
-                  }`}
+              <>
+                <div
+                  className="flex rounded border border-stone-300 bg-white text-sm"
+                  role="group"
+                  aria-label="Document list view"
                 >
-                  All
-                </button>
-                <button
-                  type="button"
-                  aria-pressed={homeView === 'category'}
-                  onClick={() => setView('category')}
-                  className={`border-l border-stone-300 px-2.5 py-1.5 ${
-                    homeView === 'category'
-                      ? 'bg-stone-900 text-white'
-                      : 'text-stone-600 hover:bg-stone-50'
-                  }`}
-                >
-                  By category
-                </button>
-                <button
-                  type="button"
-                  aria-pressed={homeView === 'dashboard'}
-                  onClick={() => setView('dashboard')}
-                  className={`border-l border-stone-300 px-2.5 py-1.5 ${
-                    homeView === 'dashboard'
-                      ? 'bg-stone-900 text-white'
-                      : 'text-stone-600 hover:bg-stone-50'
-                  }`}
-                >
-                  Dashboard
-                </button>
-              </div>
+                  <button
+                    type="button"
+                    aria-pressed={homeView === 'all'}
+                    onClick={() => setView('all')}
+                    className={`px-2.5 py-1.5 ${
+                      homeView === 'all'
+                        ? 'bg-stone-900 text-white'
+                        : 'text-stone-600 hover:bg-stone-50'
+                    }`}
+                  >
+                    All
+                  </button>
+                  <button
+                    type="button"
+                    aria-pressed={homeView === 'category'}
+                    onClick={() => setView('category')}
+                    className={`border-l border-stone-300 px-2.5 py-1.5 ${
+                      homeView === 'category'
+                        ? 'bg-stone-900 text-white'
+                        : 'text-stone-600 hover:bg-stone-50'
+                    }`}
+                  >
+                    By category
+                  </button>
+                  <button
+                    type="button"
+                    aria-pressed={homeView === 'dashboard'}
+                    onClick={() => setView('dashboard')}
+                    className={`border-l border-stone-300 px-2.5 py-1.5 ${
+                      homeView === 'dashboard'
+                        ? 'bg-stone-900 text-white'
+                        : 'text-stone-600 hover:bg-stone-50'
+                    }`}
+                  >
+                    Dashboard
+                  </button>
+                </div>
+                {(homeView === 'all' || homeView === 'category') && (
+                  <div
+                    className="flex rounded border border-stone-300 bg-white text-sm"
+                    role="group"
+                    aria-label="Browse density"
+                  >
+                    <button
+                      type="button"
+                      aria-pressed={browseDensity === 'list'}
+                      onClick={() => setDensity('list')}
+                      className={`px-2.5 py-1.5 ${
+                        browseDensity === 'list'
+                          ? 'bg-stone-800 text-white'
+                          : 'text-stone-600 hover:bg-stone-50'
+                      }`}
+                    >
+                      List
+                    </button>
+                    <button
+                      type="button"
+                      aria-pressed={browseDensity === 'gallery'}
+                      onClick={() => setDensity('gallery')}
+                      className={`border-l border-stone-300 px-2.5 py-1.5 ${
+                        browseDensity === 'gallery'
+                          ? 'bg-stone-800 text-white'
+                          : 'text-stone-600 hover:bg-stone-50'
+                      }`}
+                    >
+                      Gallery
+                    </button>
+                  </div>
+                )}
+              </>
             )}
             <button
               type="button"
@@ -337,11 +478,11 @@ export function DocListPage({
         ) : homeView === 'dashboard' ? (
           <PenDashboard session={session} docs={docs} onDocsChange={onDocsChange} />
         ) : homeView === 'all' ? (
-          <ul className="divide-y divide-stone-200 overflow-hidden rounded-lg border border-stone-200 bg-white">
-            {sortedDocs.map((d) => (
-              <DocRow key={d.docId} d={d} />
-            ))}
-          </ul>
+          browseDensity === 'gallery' ? (
+            <DocGalleryGrid pn={session.pnIdentifier} docs={sortedDocs} />
+          ) : (
+            <DocExplorerTable docs={sortedDocs} />
+          )
         ) : (
           <div className="space-y-2">
             {docsByCategory.map((g) => {
@@ -365,13 +506,16 @@ export function DocListPage({
                     </span>
                     <span className="text-stone-400">{open ? '▾' : '▸'}</span>
                   </button>
-                  {open && (
-                    <ul className="divide-y divide-stone-100 border-t border-stone-100">
-                      {g.docs.map((d) => (
-                        <DocRow key={d.docId} d={d} />
-                      ))}
-                    </ul>
-                  )}
+                  {open &&
+                    (browseDensity === 'gallery' ? (
+                      <div className="border-t border-stone-100 p-3">
+                        <DocGalleryGrid pn={session.pnIdentifier} docs={g.docs} />
+                      </div>
+                    ) : (
+                      <div className="border-t border-stone-100">
+                        <DocExplorerTable docs={g.docs} />
+                      </div>
+                    ))}
                 </div>
               );
             })}
