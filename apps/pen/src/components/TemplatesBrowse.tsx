@@ -288,6 +288,9 @@ export function TemplatesBrowse({
                   </tr>
                 </thead>
                 <tbody>
+                  <tr className="pen-explorer-title-rule-row" aria-hidden="true">
+                    <td colSpan={3} />
+                  </tr>
                   {catalog.map((t) => {
                     const form = getClass(t.classId);
                     const cat = form?.parentId ? getClass(form.parentId) : undefined;

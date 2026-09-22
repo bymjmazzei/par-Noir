@@ -659,20 +659,10 @@ body {
 
 /*
  * NO line under My Library header.
- * ONE line under the title row (NAME / gallery colhead), then pitch lines.
- * Under-title line uses z-index above thead white so it is not covered.
+ * Title-row underline is drawn in-flow (tbody rule row / gallery-head border-bottom)
+ * so it always sits flush under NAME — not via a guessed head-h offset.
+ * ::after = pitch lines only, starting one pitch below the title underline.
  */
-.pen-library-sheet::before {
-  content: '';
-  position: absolute;
-  left: 0;
-  right: 0;
-  top: var(--pen-explorer-head-h);
-  border-top: 1px solid var(--pen-rule-blue);
-  pointer-events: none;
-  z-index: 6;
-}
-
 .pen-library-sheet::after {
   content: '';
   position: absolute;
@@ -696,16 +686,31 @@ body {
   z-index: 1;
 }
 
-/* Title-row spacer only — underline is sheet::before */
+/* Gallery title spacer — underline under the empty head band */
 .pen-gallery-head,
 .pen-library-colhead {
   flex-shrink: 0;
   height: var(--pen-explorer-head-h);
   box-sizing: border-box;
   border: none;
+  border-bottom: 1px solid var(--pen-rule-blue);
   background: #fff;
   width: 100%;
   pointer-events: none;
+}
+
+/* List: 0-height first tbody row = line flush under thead (in-flow, always correct) */
+.pen-explorer-title-rule-row td {
+  height: 0 !important;
+  max-height: 0 !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  border: none !important;
+  border-top: 1px solid var(--pen-rule-blue) !important;
+  line-height: 0 !important;
+  font-size: 0 !important;
+  background: transparent !important;
+  vertical-align: top;
 }
 
 /* Page-width notebook rule (not tile/cell attached) */
@@ -838,8 +843,8 @@ body {
 }
 
 /*
- * List title row: spacer only. Lines are on .pen-library-sheet (::before / ::after).
- * Never put border/box-shadow on th — sticky + border-collapse doubles top / eats bottom.
+ * List title row: no borders on th. Underline is the in-flow
+ * .pen-explorer-title-rule-row under thead.
  */
 .pen-explorer thead th {
   background: #fff;

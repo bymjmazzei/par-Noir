@@ -489,6 +489,9 @@ function DocExplorerTable({
               </tr>
             </thead>
             <tbody>
+              <tr className="pen-explorer-title-rule-row" aria-hidden="true">
+                <td colSpan={7} />
+              </tr>
               {!bulkMode &&
                 notebooks.map((nb) => (
                   <Fragment key={nb.id}>
