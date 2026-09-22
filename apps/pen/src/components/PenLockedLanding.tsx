@@ -9,14 +9,13 @@ import { API_ENDPOINT, PN_CLIENT_ID } from '../config/api';
 /** Drop a recording at public/demo/pen-tour.webm when ready. */
 const DEMO_SRC = './demo/pen-tour.webm';
 
-/** One phrase per ruled row — keep each under ~one line at typical widths. */
+/** One short phrase per ruled row. */
 const COPY_LINES = [
-  'Pen is where you author Notes, posts, collections, and projects.',
-  'One notebook language for humans and collaborators.',
-  'Drafts stay unfinished suggestions until you accept them.',
-  'Publish live to your cloud replica — connect to a feed when you want reach.',
-  'Templates follow Category → Form → Template.',
-  'Unlock to open My Library, or use + to see templates.'
+  'Write Notes, posts, and projects.',
+  'Invite others to draft with you.',
+  'Publish to your own cloud.',
+  'Unlock to open My Library.',
+  'Use + to browse templates.'
 ];
 
 function PhoneEmbed() {
@@ -90,71 +89,56 @@ export function PenLockedLanding({
               <div className="pen-library-heading">
                 <div className="min-w-0 flex-1">
                   <h1 className="text-lg font-bold text-black">Pen</h1>
-                  <p className="text-sm text-neutral-500">Authored content for par Noir.</p>
+                  <p className="text-sm text-neutral-500">Your writing, on your Drive.</p>
                 </div>
               </div>
 
               <div className="pen-library-body">
-                <div className="pen-library-sheet">
-                  <div className="pen-locked-layout">
-                    <div className="pen-explorer pen-locked-explorer">
-                      <div className="pen-explorer-sticky-head">
-                        <div className="pen-explorer-scroll">
-                          <table className="pen-explorer-table text-left text-sm">
-                            <thead className="text-[11px] tracking-wide">
-                              <tr>
-                                <th className="pen-explorer-action" aria-hidden />
-                                <th className="pen-explorer-icon" aria-hidden />
-                                <th className="pen-explorer-name-header">About</th>
-                              </tr>
-                            </thead>
-                          </table>
-                        </div>
-                        <div className="pen-library-title-rule" aria-hidden />
-                      </div>
+                <div className="pen-library-sheet pen-locked-sheet">
+                  <div className="pen-explorer pen-locked-explorer">
+                    <div className="pen-gallery-head" aria-hidden />
+                    <div className="pen-library-title-rule" aria-hidden />
 
-                      <div className="pen-explorer-body">
-                        <div className="pen-explorer-scroll">
-                          <table className="pen-explorer-table text-left text-sm">
-                            <tbody>
-                              {lines.map((line, i) => {
-                                const isError = Boolean(error && line === error);
-                                const isStatus = Boolean(busy && line === 'Finishing unlock…');
-                                return (
-                                  <tr key={`${i}-${line.slice(0, 24)}`} className="pen-explorer-row">
-                                    <td className="pen-explorer-action" />
-                                    <td className="pen-explorer-icon" />
-                                    <td
-                                      className={`pen-explorer-name-cell${
-                                        isError
-                                          ? ' pen-locked-copy-error'
-                                          : isStatus
-                                            ? ' pen-locked-copy-status'
-                                            : ''
-                                      }`}
-                                    >
-                                      <span className="pen-locked-copy-text">{line}</span>
-                                    </td>
-                                  </tr>
-                                );
-                              })}
-                              {/* Fill ruled rows so blue lines continue under the phone height */}
-                              {Array.from({ length: 10 }).map((_, i) => (
-                                <tr key={`pad-${i}`} className="pen-explorer-row">
+                    <div className="pen-explorer-body">
+                      <div className="pen-explorer-scroll">
+                        <table className="pen-explorer-table text-left text-sm">
+                          <tbody>
+                            {lines.map((line, i) => {
+                              const isError = Boolean(error && line === error);
+                              const isStatus = Boolean(busy && line === 'Finishing unlock…');
+                              return (
+                                <tr key={`${i}-${line.slice(0, 24)}`} className="pen-explorer-row">
                                   <td className="pen-explorer-action" />
                                   <td className="pen-explorer-icon" />
-                                  <td className="pen-explorer-name-cell" />
+                                  <td
+                                    className={`pen-explorer-name-cell${
+                                      isError
+                                        ? ' pen-locked-copy-error'
+                                        : isStatus
+                                          ? ' pen-locked-copy-status'
+                                          : ''
+                                    }`}
+                                  >
+                                    <span className="pen-locked-copy-text">{line}</span>
+                                  </td>
                                 </tr>
-                              ))}
-                            </tbody>
-                          </table>
-                        </div>
+                              );
+                            })}
+                            {Array.from({ length: 14 }).map((_, i) => (
+                              <tr key={`pad-${i}`} className="pen-explorer-row">
+                                <td className="pen-explorer-action" />
+                                <td className="pen-explorer-icon" />
+                                <td className="pen-explorer-name-cell" />
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
                       </div>
                     </div>
+                  </div>
 
-                    <aside className="pen-locked-phone-aside">
-                      <PhoneEmbed />
-                    </aside>
+                  <div className="pen-locked-phone-overlay">
+                    <PhoneEmbed />
                   </div>
                 </div>
               </div>
