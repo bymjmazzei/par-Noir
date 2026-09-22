@@ -765,6 +765,13 @@ body {
   font-weight: 700;
   letter-spacing: -0.025em;
   color: #fff;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+}
+
+button.pen-app-chrome-brand:hover {
+  opacity: 0.85;
 }
 
 .pen-app-chrome-lock {
@@ -1226,137 +1233,115 @@ input.pen-gallery-tile-title-text {
   transition: transform 0.12s ease;
 }
 
-/* Locked overview (pen.parnoir.com before unlock) */
-.pen-locked-page {
-  min-height: 100vh;
-  background: #fff;
-  color: #000;
-  font-family: 'IBM Plex Sans', system-ui, sans-serif;
+/* Locked overview — list table (text left) + phone clip (right; under on narrow) */
+.pen-locked-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 0;
+  flex: 1 1 auto;
+  min-height: 0;
+  width: 100%;
 }
 
-.pen-locked-chrome {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 0.85rem 1.25rem;
-  border-bottom: 1px solid #e5e5e5;
+.pen-locked-explorer {
+  min-width: 0;
 }
 
-.pen-locked-brand {
-  font-size: 1.125rem;
-  font-weight: 700;
-  letter-spacing: -0.02em;
+/* Locked About column fills remaining width (list view locks Name at 28%) */
+.pen-locked-explorer .pen-explorer-name-header,
+.pen-locked-explorer .pen-explorer-name-cell {
+  width: auto;
+  min-width: 0;
 }
 
-.pen-locked-chrome-actions {
-  display: flex;
-  align-items: center;
-  gap: 1rem;
+/*
+ * Name cell starts at the rail’s left edge; pad by rail width + gap so
+ * copy sits 10px to the right of the red lines (not overlapping them).
+ */
+.pen-locked-explorer .pen-explorer-name-header,
+.pen-locked-explorer .pen-explorer-name-cell {
+  padding-left: calc(5px + var(--pen-rail-gap)) !important;
 }
 
-.pen-locked-text-btn {
-  border: none;
-  background: transparent;
+.pen-library-page:has(.pen-locked-layout) .pen-library-heading {
+  padding-left: calc(var(--pen-action-w) + var(--pen-icon-w) + 5px + var(--pen-rail-gap));
+}
+
+.pen-locked-explorer .pen-explorer-body tbody td {
+  vertical-align: bottom;
+}
+
+.pen-locked-copy-text {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   font-size: 0.875rem;
-  font-weight: 500;
-  color: #404040;
-  cursor: pointer;
-  padding: 0;
+  line-height: 1.2;
+  padding-bottom: 3px;
+  color: #171717;
 }
 
-.pen-locked-text-btn:hover {
-  color: #000;
-}
-
-.pen-locked-text-btn--strong {
-  font-weight: 700;
-  color: #000;
-}
-
-.pen-locked-main {
-  max-width: 42rem;
-  margin: 0 auto;
-  padding: 4.5rem 1.25rem 5rem;
-}
-
-.pen-locked-hero-brand {
-  font-family: 'Source Serif 4', Cambria, Georgia, serif;
-  font-size: clamp(2.75rem, 8vw, 4rem);
-  font-weight: 650;
-  letter-spacing: -0.03em;
-  line-height: 1.05;
-  margin: 0 0 1rem;
-}
-
-.pen-locked-hero-lead {
-  font-size: 1.0625rem;
-  line-height: 1.55;
-  color: #404040;
-  margin: 0 0 1.75rem;
-  max-width: 34rem;
-}
-
-.pen-locked-cta-row {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 0.75rem 1.25rem;
-}
-
-.pen-locked-cta {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-height: 2.5rem;
-  padding: 0 1.15rem;
-  border: 1.5px solid #000;
-  background: #000;
-  color: #fff;
-  font-size: 0.875rem;
-  font-weight: 700;
-  cursor: pointer;
-}
-
-.pen-locked-cta:hover {
-  opacity: 0.85;
-}
-
-.pen-locked-cta--ghost {
-  background: #fff;
-  color: #000;
-}
-
-.pen-locked-status {
-  margin-top: 1rem;
-  font-size: 0.875rem;
+.pen-locked-copy-status .pen-locked-copy-text {
   color: #737373;
 }
 
-.pen-locked-error {
-  margin-top: 1rem;
-  font-size: 0.875rem;
+.pen-locked-copy-error .pen-locked-copy-text {
   color: #dc2626;
 }
 
-.pen-locked-sections {
-  display: grid;
-  gap: 1.75rem;
-  margin-top: 4rem;
-  padding-top: 2rem;
-  border-top: 1px solid #e5e5e5;
+.pen-locked-phone-aside {
+  margin-top: calc(var(--pen-explorer-head-h) + 1px);
+  padding: 0.35rem var(--pen-edge-pad) 1.5rem 1rem;
+  justify-self: end;
 }
 
-.pen-locked-sections h2 {
-  font-size: 1rem;
-  font-weight: 700;
-  margin: 0 0 0.35rem;
+.pen-locked-phone {
+  width: 10.5rem;
+  aspect-ratio: 9 / 19.2;
+  background: #0a0a0a;
+  border: 2px solid #171717;
+  border-radius: 1.25rem;
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.16);
+  padding: 0.5rem 0.32rem 0.6rem;
+  box-sizing: border-box;
 }
 
-.pen-locked-sections p {
-  margin: 0;
-  font-size: 0.9375rem;
-  line-height: 1.5;
-  color: #525252;
+.pen-locked-phone-notch {
+  width: 36%;
+  height: 0.28rem;
+  margin: 0 auto 0.4rem;
+  border-radius: 999px;
+  background: #262626;
+}
+
+.pen-locked-phone-screen {
+  height: calc(100% - 0.75rem);
+  overflow: hidden;
+  border-radius: 0.55rem;
+  background: #f5f5f5;
+}
+
+.pen-locked-phone-video {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: top center;
+  background: #f5f5f5;
+}
+
+@media (max-width: 720px) {
+  .pen-locked-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .pen-locked-phone-aside {
+    margin-top: 0;
+    padding: 0.5rem var(--pen-edge-pad) 1.5rem var(--pen-name-inset);
+    justify-self: start;
+  }
 }
 
 .pen-template-dir-heading {

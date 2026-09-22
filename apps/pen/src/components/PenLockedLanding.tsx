@@ -1,9 +1,42 @@
 /**
- * Locked Pen marketing / overview — unlock opens My Library.
+ * Locked Pen — same chrome + notebook rules as My Library; unlock opens the library.
  */
 
+import type { ReactNode } from 'react';
 import { UnlockButton, type PnOAuthPopupResult } from '@par-noir/oauth-ui';
 import { API_ENDPOINT, PN_CLIENT_ID } from '../config/api';
+
+/** Drop a recording at public/demo/pen-tour.webm when ready. */
+const DEMO_SRC = './demo/pen-tour.webm';
+
+/** One phrase per ruled row — keep each under ~one line at typical widths. */
+const COPY_LINES = [
+  'Pen is where you author Notes, posts, collections, and projects.',
+  'One notebook language for humans and collaborators.',
+  'Drafts stay unfinished suggestions until you accept them.',
+  'Publish live to your cloud replica — connect to a feed when you want reach.',
+  'Templates follow Category → Form → Template.',
+  'Unlock to open My Library, or use + to see templates.'
+];
+
+function PhoneEmbed() {
+  return (
+    <div className="pen-locked-phone" aria-label="Pen product preview">
+      <div className="pen-locked-phone-notch" aria-hidden />
+      <div className="pen-locked-phone-screen">
+        <video
+          className="pen-locked-phone-video"
+          src={DEMO_SRC}
+          autoPlay
+          muted
+          loop
+          playsInline
+          preload="none"
+        />
+      </div>
+    </div>
+  );
+}
 
 export function PenLockedLanding({
   busy,
@@ -11,92 +44,128 @@ export function PenLockedLanding({
   onBeforeNavigate,
   onPopupResult,
   onPopupFlowFailed,
-  onSeeTemplates
+  addMenu
 }: {
   busy: boolean;
   error: string | null;
   onBeforeNavigate: (state: string) => void;
   onPopupResult: (r: PnOAuthPopupResult) => void;
   onPopupFlowFailed: (reason: string) => void;
-  onSeeTemplates: () => void;
+  addMenu: ReactNode;
 }) {
+  const lines = [...COPY_LINES];
+  if (busy) lines.push('Finishing unlock…');
+  if (error) lines.push(error);
+
   return (
-    <div className="pen-locked-page">
-      <header className="pen-locked-chrome">
-        <span className="pen-locked-brand">Pen</span>
-        <div className="pen-locked-chrome-actions">
-          <button type="button" className="pen-locked-text-btn" onClick={onSeeTemplates}>
-            See templates
-          </button>
-          <UnlockButton
-            className="pen-locked-text-btn pen-locked-text-btn--strong"
-            config={{
-              clientId: PN_CLIENT_ID,
-              redirectUri: `${window.location.origin}/oauth-callback.html`,
-              apiEndpoint: API_ENDPOINT,
-              scope: ['openid', 'profile', 'cloud:read', 'cloud:app']
-            }}
-            onBeforeNavigate={onBeforeNavigate}
-            onPopupResult={onPopupResult}
-            onPopupFlowFailed={onPopupFlowFailed}
-          />
+    <div className="min-h-screen bg-white text-black">
+      <header className="pen-app-chrome fixed inset-x-0 top-0 z-50">
+        <div className="pen-app-chrome-left">
+          <span className="pen-app-chrome-action" aria-hidden />
+          {addMenu}
+          <span className="pen-app-chrome-brand">Pen</span>
         </div>
+        <UnlockButton
+          className="pen-app-chrome-lock"
+          iconOnly
+          title="Unlock"
+          config={{
+            clientId: PN_CLIENT_ID,
+            redirectUri: `${window.location.origin}/oauth-callback.html`,
+            apiEndpoint: API_ENDPOINT,
+            scope: ['openid', 'profile', 'cloud:read', 'cloud:app']
+          }}
+          onBeforeNavigate={onBeforeNavigate}
+          onPopupResult={onPopupResult}
+          onPopupFlowFailed={onPopupFlowFailed}
+        />
       </header>
 
-      <main className="pen-locked-main">
-        <section className="pen-locked-hero">
-          <h1 className="pen-locked-hero-brand">Pen</h1>
-          <p className="pen-locked-hero-lead">
-            Author Notes, posts, collections, and projects in one place — with drafts, live publish,
-            and roles for collaborators.
-          </p>
-          <div className="pen-locked-cta-row">
-            <UnlockButton
-              className="pen-locked-cta"
-              config={{
-                clientId: PN_CLIENT_ID,
-                redirectUri: `${window.location.origin}/oauth-callback.html`,
-                apiEndpoint: API_ENDPOINT,
-                scope: ['openid', 'profile', 'cloud:read', 'cloud:app']
-              }}
-              onBeforeNavigate={onBeforeNavigate}
-              onPopupResult={onPopupResult}
-              onPopupFlowFailed={onPopupFlowFailed}
-            >
-              Unlock
-            </UnlockButton>
-            <button type="button" className="pen-locked-cta pen-locked-cta--ghost" onClick={onSeeTemplates}>
-              See templates
-            </button>
-          </div>
-          {busy && <p className="pen-locked-status">Finishing unlock…</p>}
-          {error && <p className="pen-locked-error">{error}</p>}
-        </section>
+      <div className="flex min-h-[calc(100vh-2.5rem)] flex-col pt-10">
+        <div className="pen-library-page bg-white">
+          <div className="pen-library-notebook flex-1">
+            <div className="pen-library-notebook-inner">
+              <div className="pen-explorer-rail" aria-hidden />
 
-        <section className="pen-locked-sections">
-          <article>
-            <h2>Write</h2>
-            <p>
-              Flow documents with TipTap sections, page layers, and starter templates across Social,
-              Projects, Library, and Time.
-            </p>
-          </article>
-          <article>
-            <h2>Collaborate</h2>
-            <p>
-              Invite by role — owner, collaborator, commentor, or viewer. Drafts stay unfinished
-              suggestions until accepted into the live version.
-            </p>
-          </article>
-          <article>
-            <h2>Publish</h2>
-            <p>
-              Publish live to your cloud replica, then optionally connect to your feed for public
-              visibility. Your Drive remains the source of truth.
-            </p>
-          </article>
-        </section>
-      </main>
+              <div className="pen-library-heading">
+                <div className="min-w-0 flex-1">
+                  <h1 className="text-lg font-bold text-black">Pen</h1>
+                  <p className="text-sm text-neutral-500">Authored content for par Noir.</p>
+                </div>
+              </div>
+
+              <div className="pen-library-body">
+                <div className="pen-library-sheet">
+                  <div className="pen-locked-layout">
+                    <div className="pen-explorer pen-locked-explorer">
+                      <div className="pen-explorer-sticky-head">
+                        <div className="pen-explorer-scroll">
+                          <table className="pen-explorer-table text-left text-sm">
+                            <thead className="text-[11px] tracking-wide">
+                              <tr>
+                                <th className="pen-explorer-action" aria-hidden />
+                                <th className="pen-explorer-icon" aria-hidden />
+                                <th className="pen-explorer-name-header">About</th>
+                              </tr>
+                            </thead>
+                          </table>
+                        </div>
+                        <div className="pen-library-title-rule" aria-hidden />
+                      </div>
+
+                      <div className="pen-explorer-body">
+                        <div className="pen-explorer-scroll">
+                          <table className="pen-explorer-table text-left text-sm">
+                            <tbody>
+                              {lines.map((line, i) => {
+                                const isError = Boolean(error && line === error);
+                                const isStatus = Boolean(busy && line === 'Finishing unlock…');
+                                return (
+                                  <tr key={`${i}-${line.slice(0, 24)}`} className="pen-explorer-row">
+                                    <td className="pen-explorer-action" />
+                                    <td className="pen-explorer-icon" />
+                                    <td
+                                      className={`pen-explorer-name-cell${
+                                        isError
+                                          ? ' pen-locked-copy-error'
+                                          : isStatus
+                                            ? ' pen-locked-copy-status'
+                                            : ''
+                                      }`}
+                                    >
+                                      <span className="pen-locked-copy-text">{line}</span>
+                                    </td>
+                                  </tr>
+                                );
+                              })}
+                              {/* Fill ruled rows so blue lines continue under the phone height */}
+                              {Array.from({ length: 10 }).map((_, i) => (
+                                <tr key={`pad-${i}`} className="pen-explorer-row">
+                                  <td className="pen-explorer-action" />
+                                  <td className="pen-explorer-icon" />
+                                  <td className="pen-explorer-name-cell" />
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    </div>
+
+                    <aside className="pen-locked-phone-aside">
+                      <PhoneEmbed />
+                    </aside>
+                  </div>
+                </div>
+              </div>
+
+              <footer className="pen-library-footer">
+                <p className="pen-library-footer-copy">© par Noir</p>
+              </footer>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }

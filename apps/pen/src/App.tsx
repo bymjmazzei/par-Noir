@@ -6,6 +6,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, Route, Routes, useNavigate, useParams } from 'react-router-dom';
 import {
   LockIcon,
+  UnlockButton,
   exchangePortalAuthorizationCode,
   fetchPortalUserInfo,
   type PnOAuthPopupResult
@@ -133,23 +134,61 @@ function Locked() {
     );
   }
 
+  const lockedUnlock = {
+    onBeforeNavigate: (state: string) => {
+      sessionStorage.setItem(OAUTH_STATE_KEY, state);
+      setError(null);
+    },
+    onPopupResult: onPopup,
+    onPopupFlowFailed: (reason: string) => setError(reason)
+  };
+
   if (lockedView === 'templates') {
     return (
-      <div className="pen-library-page min-h-screen bg-white">
-        <div className="pen-library-notebook flex-1">
-          <div className="pen-library-notebook-inner">
-            <div className="pen-explorer-rail" aria-hidden />
-            <TemplatesBrowse
-              session={null}
-              density={templateDensity}
-              onDensity={(d) => {
-                setTemplateDensity(d);
-                saveBrowseDensity('_locked', d);
-              }}
-              onBack={() => setLockedView('home')}
-              onCreated={(_docId) => undefined}
-              onRequestUnlock={() => setLockedView('home')}
-            />
+      <div className="min-h-screen bg-white text-black">
+        <header className="pen-app-chrome fixed inset-x-0 top-0 z-50">
+          <div className="pen-app-chrome-left">
+            <span className="pen-app-chrome-action" aria-hidden />
+            <AddMenu templatesOnly onSelect={() => setLockedView('templates')} />
+            <button
+              type="button"
+              className="pen-app-chrome-brand"
+              onClick={() => setLockedView('home')}
+            >
+              Pen
+            </button>
+          </div>
+          <UnlockButton
+            className="pen-app-chrome-lock"
+            iconOnly
+            title="Unlock"
+            config={{
+              clientId: PN_CLIENT_ID,
+              redirectUri: `${window.location.origin}/oauth-callback.html`,
+              apiEndpoint: API_ENDPOINT,
+              scope: ['openid', 'profile', 'cloud:read', 'cloud:app']
+            }}
+            {...lockedUnlock}
+          />
+        </header>
+        <div className="flex min-h-[calc(100vh-2.5rem)] flex-col pt-10">
+          <div className="pen-library-page bg-white">
+            <div className="pen-library-notebook flex-1">
+              <div className="pen-library-notebook-inner">
+                <div className="pen-explorer-rail" aria-hidden />
+                <TemplatesBrowse
+                  session={null}
+                  density={templateDensity}
+                  onDensity={(d) => {
+                    setTemplateDensity(d);
+                    saveBrowseDensity('_locked', d);
+                  }}
+                  onBack={() => setLockedView('home')}
+                  onCreated={(_docId) => undefined}
+                  onRequestUnlock={() => setLockedView('home')}
+                />
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -160,18 +199,23 @@ function Locked() {
     <PenLockedLanding
       busy={busy}
       error={error}
-      onBeforeNavigate={(state) => {
-        sessionStorage.setItem(OAUTH_STATE_KEY, state);
-        setError(null);
-      }}
-      onPopupResult={onPopup}
-      onPopupFlowFailed={(reason) => setError(reason)}
-      onSeeTemplates={() => setLockedView('templates')}
+      onBeforeNavigate={lockedUnlock.onBeforeNavigate}
+      onPopupResult={lockedUnlock.onPopupResult}
+      onPopupFlowFailed={lockedUnlock.onPopupFlowFailed}
+      addMenu={
+        <AddMenu templatesOnly onSelect={() => setLockedView('templates')} />
+      }
     />
   );
 }
 
-function AddMenu({ onSelect }: { onSelect: (intent: PenAddIntent) => void }) {
+function AddMenu({
+  onSelect,
+  templatesOnly = false
+}: {
+  onSelect: (intent: PenAddIntent) => void;
+  templatesOnly?: boolean;
+}) {
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
 
@@ -205,16 +249,18 @@ function AddMenu({ onSelect }: { onSelect: (intent: PenAddIntent) => void }) {
       </button>
       {open && (
         <div className="pen-add-menu-panel" role="menu">
-          <button
-            type="button"
-            role="menuitem"
-            onClick={() => {
-              setOpen(false);
-              onSelect('notebook');
-            }}
-          >
-            New notebook
-          </button>
+          {!templatesOnly && (
+            <button
+              type="button"
+              role="menuitem"
+              onClick={() => {
+                setOpen(false);
+                onSelect('notebook');
+              }}
+            >
+              New notebook
+            </button>
+          )}
           <button
             type="button"
             role="menuitem"
@@ -225,16 +271,18 @@ function AddMenu({ onSelect }: { onSelect: (intent: PenAddIntent) => void }) {
           >
             See templates
           </button>
-          <button
-            type="button"
-            role="menuitem"
-            onClick={() => {
-              setOpen(false);
-              onSelect('my-templates');
-            }}
-          >
-            My templates
-          </button>
+          {!templatesOnly && (
+            <button
+              type="button"
+              role="menuitem"
+              onClick={() => {
+                setOpen(false);
+                onSelect('my-templates');
+              }}
+            >
+              My templates
+            </button>
+          )}
         </div>
       )}
     </div>
