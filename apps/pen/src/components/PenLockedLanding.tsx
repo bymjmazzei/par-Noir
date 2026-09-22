@@ -100,7 +100,7 @@ export function PenLockedLanding({
                 </p>
               </div>
 
-              {/* Ruled sheet starts here and runs to the footer */}
+              {/* Ruled sheet starts here and stops where the footer begins */}
               <div className="pen-locked-paper">
                 <div className="pen-locked-copy-group">
                   <ul className="pen-locked-checklist">
@@ -135,18 +135,19 @@ export function PenLockedLanding({
                     {error && <span className="pen-locked-copy-error">{error}</span>}
                   </div>
                 </div>
-
-                <footer className="pen-locked-footer">
-                  <img
-                    className="pen-locked-logo"
-                    src={LOGO_SRC}
-                    alt="par Noir"
-                    width={160}
-                    height={48}
-                    decoding="async"
-                  />
-                </footer>
               </div>
+
+              <footer className="pen-locked-footer">
+                <img
+                  className="pen-locked-logo"
+                  src={LOGO_SRC}
+                  alt="par Noir"
+                  width={320}
+                  height={96}
+                  decoding="async"
+                />
+                <p className="pen-locked-footer-copy">© par Noir</p>
+              </footer>
             </div>
           </div>
         </div>

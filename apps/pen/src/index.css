@@ -1236,8 +1236,8 @@ input.pen-gallery-tile-title-text {
 /*
  * Locked overview:
  * 1) Title card (no rules)
- * 2) Ruled paper below — blue lines from here to footer
- * 3) Each checklist row = exactly one rule pitch (copy sits on the line)
+ * 2) Ruled paper — blue lines stop where the footer begins
+ * 3) Footer pinned to viewport bottom (logo + ©), no scroll
  */
 .pen-locked-page {
   height: 100vh;
@@ -1251,7 +1251,7 @@ input.pen-gallery-tile-title-text {
   --pen-locked-copy-size: calc(var(--pen-locked-rule-pitch) * 0.78);
   --pen-locked-title-size: clamp(1.75rem, 5.5vh, 2.75rem);
   --pen-locked-subtitle-size: clamp(0.75rem, 1.8vh, 0.95rem);
-  --pen-locked-logo-h: calc(var(--pen-locked-rule-pitch) * 1.45);
+  --pen-locked-logo-h: calc(var(--pen-locked-rule-pitch) * 2.9);
   --pen-locked-rail-gap: 10px;
   --pen-locked-gutter: calc(
     var(--pen-action-w) + var(--pen-icon-w) + 5px + var(--pen-locked-rail-gap)
@@ -1314,7 +1314,7 @@ input.pen-gallery-tile-title-text {
 }
 
 /*
- * Ruled paper: starts AFTER the title card.
+ * Ruled paper: starts AFTER the title card, stops BEFORE the footer.
  * Gradient origin is the top of this box so row N lands on line N.
  */
 .pen-locked-paper {
@@ -1325,6 +1325,7 @@ input.pen-gallery-tile-title-text {
   margin: 0 calc(-1 * var(--pen-edge-pad));
   width: calc(100% + 2 * var(--pen-edge-pad));
   box-sizing: border-box;
+  overflow: hidden;
   background-color: #fff;
   background-image: repeating-linear-gradient(
     to bottom,
@@ -1461,14 +1462,14 @@ input.pen-gallery-tile-title-text {
 }
 
 .pen-locked-footer {
-  margin-top: auto;
   flex-shrink: 0;
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
-  height: calc(var(--pen-locked-rule-pitch) * 2);
-  padding: 0 var(--pen-edge-pad);
-  background: transparent;
+  gap: 0.35rem;
+  padding: 0.65rem var(--pen-edge-pad) 0.85rem;
+  background: #fff;
   border: none;
 }
 
@@ -1476,12 +1477,21 @@ input.pen-gallery-tile-title-text {
   display: block;
   height: var(--pen-locked-logo-h);
   width: auto;
-  max-width: min(10rem, 48vw);
+  max-width: min(18rem, 72vw);
   object-fit: contain;
   object-position: center;
   clip-path: inset(12% 0 12% 0);
   transform: scale(1.12);
   transform-origin: center center;
+}
+
+.pen-locked-footer-copy {
+  margin: 0;
+  color: #000;
+  font-size: 0.75rem;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  line-height: 1.2;
 }
 
 @media (max-width: 720px) {
