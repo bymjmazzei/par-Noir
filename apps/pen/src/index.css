@@ -1233,11 +1233,14 @@ input.pen-gallery-tile-title-text {
   transition: transform 0.12s ease;
 }
 
-/* Locked overview — floated phone (text wraps); handwritten checklist */
+/* Locked overview — scale text + blue pitch on narrow; keep phone size steady */
 .pen-locked-sheet {
   position: relative;
-  /* Width-first: phone fills the right side; height follows aspect */
-  --pen-locked-phone-w: min(48vw, 26rem, calc((100vh - 7rem) * 9 / 19.2));
+  /* Prefer stable rem size; only shrink if viewport height can’t fit aspect */
+  --pen-locked-phone-w: min(16.5rem, calc((100vh - 10rem) * 9 / 19.2));
+  --pen-locked-phone-inset: max(1.25rem, 3.5vw);
+  --pen-locked-rule-pitch: 2.25rem;
+  --pen-locked-copy-size: 2.15rem;
   min-height: calc(100vh - 2.5rem - 8rem);
 }
 
@@ -1257,16 +1260,22 @@ input.pen-gallery-tile-title-text {
 .pen-locked-flow {
   position: relative;
   z-index: 1;
-  min-height: calc(var(--pen-rule-pitch) * 16);
-  padding: 0 var(--pen-edge-pad) calc(var(--pen-rule-pitch) * 2) 0;
-  /* Full-width blue rules behind floated phone + copy */
+  min-height: calc(var(--pen-locked-rule-pitch) * 16);
+  padding: 0 var(--pen-locked-phone-inset) calc(var(--pen-locked-rule-pitch) * 2) 0;
+  box-sizing: border-box;
+  overflow: visible;
   background-image: repeating-linear-gradient(
     to bottom,
     transparent 0,
-    transparent calc(var(--pen-rule-pitch) - 1px),
-    var(--pen-rule-blue) calc(var(--pen-rule-pitch) - 1px),
-    var(--pen-rule-blue) var(--pen-rule-pitch)
+    transparent calc(var(--pen-locked-rule-pitch) - 1px),
+    var(--pen-rule-blue) calc(var(--pen-locked-rule-pitch) - 1px),
+    var(--pen-rule-blue) var(--pen-locked-rule-pitch)
   );
+}
+
+/* Keep the blank head band + first underline in pitch with scaled rules */
+.pen-locked-sheet .pen-gallery-head {
+  height: var(--pen-locked-rule-pitch);
 }
 
 .pen-locked-phone-float {
@@ -1275,7 +1284,8 @@ input.pen-gallery-tile-title-text {
   position: relative;
   z-index: 10;
   width: var(--pen-locked-phone-w);
-  margin: 0 0 var(--pen-rule-pitch) 1.25rem;
+  max-width: 100%;
+  margin: 0 0 var(--pen-locked-rule-pitch) 1.75rem;
   shape-outside: margin-box;
   pointer-events: none;
 }
@@ -1329,10 +1339,10 @@ input.pen-gallery-tile-title-text {
 
 .pen-locked-check-item {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   align-items: baseline;
-  gap: 0.45rem 0.6rem;
-  min-height: var(--pen-rule-pitch);
+  gap: 0.45rem 0.55rem;
+  min-height: var(--pen-locked-rule-pitch);
   margin: 0;
   padding: 0;
 }
@@ -1340,26 +1350,26 @@ input.pen-gallery-tile-title-text {
 .pen-locked-check-item--cta {
   align-items: center;
   padding-top: 0.15rem;
+  flex-wrap: wrap;
 }
 
 .pen-locked-copy-bullet {
   flex-shrink: 0;
   font-family: 'Caveat', 'Segoe Print', cursive;
-  font-size: clamp(1.75rem, 3vw, 2.35rem);
+  font-size: var(--pen-locked-copy-size);
   font-weight: 700;
-  line-height: var(--pen-rule-pitch);
+  line-height: var(--pen-locked-rule-pitch);
   color: #171717;
 }
 
 .pen-locked-copy-text {
   flex: 0 1 auto;
-  max-width: 100%;
   font-family: 'Caveat', 'Segoe Print', cursive;
-  font-size: clamp(1.75rem, 3vw, 2.35rem);
+  font-size: var(--pen-locked-copy-size);
   font-weight: 600;
-  line-height: var(--pen-rule-pitch);
+  line-height: var(--pen-locked-rule-pitch);
   color: #171717;
-  white-space: normal;
+  white-space: nowrap;
 }
 
 .pen-locked-copy-check {
@@ -1417,29 +1427,74 @@ input.pen-gallery-tile-title-text {
   clear: both;
 }
 
-/* Narrow: shrink phone, keep float-right wrap — never stack under copy */
-@media (max-width: 900px) {
+/*
+ * Responsive: scale checklist type + blue rule pitch together.
+ * Keep phone rem-sized; only nudge inset / slight phone shrink at very narrow.
+ */
+@media (max-width: 1200px) {
   .pen-locked-sheet {
-    --pen-locked-phone-w: min(46vw, 20rem, calc((100vh - 7rem) * 9 / 19.2));
+    --pen-locked-rule-pitch: 2.05rem;
+    --pen-locked-copy-size: 1.95rem;
   }
 }
 
-@media (max-width: 640px) {
+@media (max-width: 1000px) {
   .pen-locked-sheet {
-    --pen-locked-phone-w: min(42vw, 12.5rem, calc((100vh - 8rem) * 9 / 19.2));
+    --pen-locked-rule-pitch: 1.85rem;
+    --pen-locked-copy-size: 1.7rem;
+    --pen-locked-phone-inset: max(1rem, 2.75vw);
+  }
+
+  .pen-library-page:has(.pen-locked-sheet) .pen-library-heading h1 {
+    font-size: 1.35rem;
+  }
+
+  .pen-library-page:has(.pen-locked-sheet) .pen-library-heading p {
+    font-size: 0.9375rem;
+  }
+}
+
+@media (max-width: 820px) {
+  .pen-locked-sheet {
+    --pen-locked-rule-pitch: 1.65rem;
+    --pen-locked-copy-size: 1.45rem;
+    --pen-locked-phone-w: min(15.25rem, calc((100vh - 10rem) * 9 / 19.2));
+  }
+}
+
+@media (max-width: 680px) {
+  .pen-locked-sheet {
+    --pen-locked-rule-pitch: 1.45rem;
+    --pen-locked-copy-size: 1.25rem;
+    --pen-locked-phone-w: min(14rem, calc((100vh - 10rem) * 9 / 19.2));
+    --pen-locked-phone-inset: 0.9rem;
   }
 
   .pen-locked-phone-float {
-    margin-left: 0.75rem;
-  }
-
-  .pen-locked-copy-bullet,
-  .pen-locked-copy-text {
-    font-size: clamp(1.45rem, 5.8vw, 1.85rem);
+    margin-left: 1rem;
   }
 
   .pen-library-page:has(.pen-locked-sheet) .pen-library-heading h1 {
     font-size: 1.25rem;
+  }
+
+  .pen-library-page:has(.pen-locked-sheet) .pen-library-heading p {
+    font-size: 0.875rem;
+  }
+
+  .pen-locked-unlock-cta {
+    min-height: 2rem;
+    padding: 0.3rem 0.75rem;
+    font-size: 0.8125rem;
+  }
+}
+
+@media (max-width: 520px) {
+  .pen-locked-sheet {
+    --pen-locked-rule-pitch: 1.3rem;
+    --pen-locked-copy-size: 1.1rem;
+    /* Last resort: phone can shrink a little so one-line checklist still fits */
+    --pen-locked-phone-w: min(12.5rem, 46vw, calc((100vh - 10rem) * 9 / 19.2));
   }
 }
 
