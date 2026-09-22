@@ -9,14 +9,42 @@ import { API_ENDPOINT, PN_CLIENT_ID } from '../config/api';
 /** Drop a recording at public/demo/pen-tour.webm when ready. */
 const DEMO_SRC = './demo/pen-tour.webm';
 
-/** One short phrase per ruled row. */
-const COPY_LINES = [
-  'Write Notes, posts, and projects.',
-  'Invite others to draft with you.',
-  'Publish to your own cloud.',
-  'Unlock to open My Library.',
-  'Use + to browse templates.'
-];
+const CHECKLIST = [
+  'Author anything',
+  'Collaborate encrypted',
+  'Publish to the network'
+] as const;
+
+/** Hand-drawn check — unicode ✓ ignores Caveat and looks system/printed. */
+function HandCheck() {
+  return (
+    <svg
+      className="pen-locked-copy-check"
+      viewBox="0 0 32 26"
+      width="1.2em"
+      height="1em"
+      aria-hidden
+    >
+      <path
+        d="M2.5 13.5c1.8.4 3.2 1.6 4.6 3.4 1.2 1.5 2.4 3.8 3.7 6.6 1.8-4.8 4.2-9.2 7-12.6C21.2 6.8 25.4 3.6 29.5 2.2"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2.6"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        vectorEffect="non-scaling-stroke"
+      />
+      <path
+        d="M3.2 14.1c1.6.55 2.9 1.7 4.2 3.2 1.1 1.4 2.2 3.5 3.4 6.1"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.15"
+        strokeLinecap="round"
+        opacity="0.45"
+      />
+    </svg>
+  );
+}
 
 function PhoneEmbed() {
   return (
@@ -52,9 +80,12 @@ export function PenLockedLanding({
   onPopupFlowFailed: (reason: string) => void;
   addMenu: ReactNode;
 }) {
-  const lines = [...COPY_LINES];
-  if (busy) lines.push('Finishing unlock…');
-  if (error) lines.push(error);
+  const unlockConfig = {
+    clientId: PN_CLIENT_ID,
+    redirectUri: `${window.location.origin}/oauth-callback.html`,
+    apiEndpoint: API_ENDPOINT,
+    scope: ['openid', 'profile', 'cloud:read', 'cloud:app']
+  };
 
   return (
     <div className="min-h-screen bg-white text-black">
@@ -68,12 +99,7 @@ export function PenLockedLanding({
           className="pen-app-chrome-lock"
           iconOnly
           title="Unlock"
-          config={{
-            clientId: PN_CLIENT_ID,
-            redirectUri: `${window.location.origin}/oauth-callback.html`,
-            apiEndpoint: API_ENDPOINT,
-            scope: ['openid', 'profile', 'cloud:read', 'cloud:app']
-          }}
+          config={unlockConfig}
           onBeforeNavigate={onBeforeNavigate}
           onPopupResult={onPopupResult}
           onPopupFlowFailed={onPopupFlowFailed}
@@ -89,56 +115,54 @@ export function PenLockedLanding({
               <div className="pen-library-heading">
                 <div className="min-w-0 flex-1">
                   <h1 className="text-lg font-bold text-black">Pen</h1>
-                  <p className="text-sm text-neutral-500">Your writing, on your Drive.</p>
+                  <p className="text-sm text-neutral-500">Encrypted collaboration through your cloud</p>
                 </div>
               </div>
 
               <div className="pen-library-body">
                 <div className="pen-library-sheet pen-locked-sheet">
-                  <div className="pen-explorer pen-locked-explorer">
-                    <div className="pen-gallery-head" aria-hidden />
-                    <div className="pen-library-title-rule" aria-hidden />
+                  <div className="pen-gallery-head" aria-hidden />
+                  <div className="pen-library-title-rule" aria-hidden />
 
-                    <div className="pen-explorer-body">
-                      <div className="pen-explorer-scroll">
-                        <table className="pen-explorer-table text-left text-sm">
-                          <tbody>
-                            {lines.map((line, i) => {
-                              const isError = Boolean(error && line === error);
-                              const isStatus = Boolean(busy && line === 'Finishing unlock…');
-                              return (
-                                <tr key={`${i}-${line.slice(0, 24)}`} className="pen-explorer-row">
-                                  <td className="pen-explorer-action" />
-                                  <td className="pen-explorer-icon" />
-                                  <td
-                                    className={`pen-explorer-name-cell${
-                                      isError
-                                        ? ' pen-locked-copy-error'
-                                        : isStatus
-                                          ? ' pen-locked-copy-status'
-                                          : ''
-                                    }`}
-                                  >
-                                    <span className="pen-locked-copy-text">{line}</span>
-                                  </td>
-                                </tr>
-                              );
-                            })}
-                            {Array.from({ length: 14 }).map((_, i) => (
-                              <tr key={`pad-${i}`} className="pen-explorer-row">
-                                <td className="pen-explorer-action" />
-                                <td className="pen-explorer-icon" />
-                                <td className="pen-explorer-name-cell" />
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
-                    </div>
-                  </div>
+                  <div className="pen-locked-flow">
+                    {/* Floated first so checklist text wraps around it */}
+                    <aside className="pen-locked-phone-float">
+                      <PhoneEmbed />
+                    </aside>
 
-                  <div className="pen-locked-phone-overlay">
-                    <PhoneEmbed />
+                    <ul className="pen-locked-checklist">
+                      {CHECKLIST.map((label) => (
+                        <li key={label} className="pen-locked-check-item">
+                          <span className="pen-locked-copy-bullet" aria-hidden>
+                            •
+                          </span>
+                          <span className="pen-locked-copy-text">{label}</span>
+                          <HandCheck />
+                        </li>
+                      ))}
+                      <li className="pen-locked-check-item">
+                        <span className="pen-locked-copy-bullet" aria-hidden>
+                          •
+                        </span>
+                        <span className="pen-locked-copy-text">Unlock pN to get started</span>
+                      </li>
+                      <li className="pen-locked-check-item pen-locked-check-item--cta">
+                        <UnlockButton
+                          className="pen-locked-unlock-cta"
+                          config={unlockConfig}
+                          onBeforeNavigate={onBeforeNavigate}
+                          onPopupResult={onPopupResult}
+                          onPopupFlowFailed={onPopupFlowFailed}
+                          showIcon
+                        >
+                          Unlock pN
+                        </UnlockButton>
+                        {busy && (
+                          <span className="pen-locked-copy-status">Finishing unlock…</span>
+                        )}
+                        {error && <span className="pen-locked-copy-error">{error}</span>}
+                      </li>
+                    </ul>
                   </div>
                 </div>
               </div>

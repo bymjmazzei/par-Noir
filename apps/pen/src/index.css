@@ -1233,83 +1233,82 @@ input.pen-gallery-tile-title-text {
   transition: transform 0.12s ease;
 }
 
-/* Locked overview — full-width ruled sheet; phone overlays on top */
+/* Locked overview — floated phone (text wraps); handwritten checklist */
 .pen-locked-sheet {
   position: relative;
-}
-
-.pen-locked-explorer {
-  min-width: 0;
-  width: 100%;
-}
-
-.pen-locked-explorer .pen-explorer-name-cell {
-  width: auto;
-  min-width: 0;
-  padding-left: calc(5px + var(--pen-rail-gap)) !important;
-  padding-right: var(--pen-edge-pad) !important;
+  /* Width-first: phone fills the right side; height follows aspect */
+  --pen-locked-phone-w: min(48vw, 26rem, calc((100vh - 7rem) * 9 / 19.2));
+  min-height: calc(100vh - 2.5rem - 8rem);
 }
 
 .pen-library-page:has(.pen-locked-sheet) .pen-library-heading {
   padding-left: calc(var(--pen-action-w) + var(--pen-icon-w) + 5px + var(--pen-rail-gap));
 }
 
-.pen-locked-explorer .pen-explorer-body tbody td {
-  vertical-align: bottom;
-}
-
-.pen-locked-copy-text {
-  display: block;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-size: 0.875rem;
+.pen-library-page:has(.pen-locked-sheet) .pen-library-heading h1 {
+  font-size: 1.5rem;
   line-height: 1.2;
-  padding-bottom: 3px;
-  color: #171717;
-  max-width: min(36rem, calc(100% - 12rem));
 }
 
-.pen-locked-copy-status .pen-locked-copy-text {
-  color: #737373;
+.pen-library-page:has(.pen-locked-sheet) .pen-library-heading p {
+  font-size: 1rem;
 }
 
-.pen-locked-copy-error .pen-locked-copy-text {
-  color: #dc2626;
+.pen-locked-flow {
+  position: relative;
+  z-index: 1;
+  min-height: calc(var(--pen-rule-pitch) * 16);
+  padding: 0 var(--pen-edge-pad) calc(var(--pen-rule-pitch) * 2) 0;
+  /* Full-width blue rules behind floated phone + copy */
+  background-image: repeating-linear-gradient(
+    to bottom,
+    transparent 0,
+    transparent calc(var(--pen-rule-pitch) - 1px),
+    var(--pen-rule-blue) calc(var(--pen-rule-pitch) - 1px),
+    var(--pen-rule-blue) var(--pen-rule-pitch)
+  );
 }
 
-.pen-locked-phone-overlay {
-  position: absolute;
-  top: calc(var(--pen-explorer-head-h) + 1px + var(--pen-rule-pitch));
-  right: var(--pen-edge-pad);
+.pen-locked-phone-float {
+  float: right;
+  clear: right;
+  position: relative;
   z-index: 10;
+  width: var(--pen-locked-phone-w);
+  margin: 0 0 var(--pen-rule-pitch) 1.25rem;
+  shape-outside: margin-box;
   pointer-events: none;
 }
 
 .pen-locked-phone {
-  width: 10.5rem;
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: auto;
   aspect-ratio: 9 / 19.2;
   background: #0a0a0a;
   border: 2px solid #171717;
-  border-radius: 1.25rem;
-  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.16);
-  padding: 0.5rem 0.32rem 0.6rem;
+  border-radius: clamp(1.1rem, 2.2vw, 1.85rem);
+  box-shadow: 0 16px 36px rgba(0, 0, 0, 0.2);
+  padding: 0.7rem 0.42rem 0.8rem;
   box-sizing: border-box;
   pointer-events: auto;
 }
 
 .pen-locked-phone-notch {
   width: 36%;
-  height: 0.28rem;
-  margin: 0 auto 0.4rem;
+  height: 0.32rem;
+  margin: 0 auto 0.45rem;
   border-radius: 999px;
   background: #262626;
+  flex-shrink: 0;
 }
 
 .pen-locked-phone-screen {
-  height: calc(100% - 0.75rem);
+  flex: 1 1 auto;
+  min-height: 0;
   overflow: hidden;
-  border-radius: 0.55rem;
+  border-radius: clamp(0.5rem, 1.2vw, 0.8rem);
   background: #f5f5f5;
 }
 
@@ -1322,19 +1321,125 @@ input.pen-gallery-tile-title-text {
   background: #f5f5f5;
 }
 
-@media (max-width: 720px) {
-  .pen-locked-phone-overlay {
-    top: auto;
-    bottom: 1.25rem;
-    right: var(--pen-edge-pad);
+.pen-locked-checklist {
+  list-style: none;
+  margin: 0;
+  padding: 0 0 0 calc(var(--pen-action-w) + var(--pen-icon-w) + 5px + var(--pen-rail-gap));
+}
+
+.pen-locked-check-item {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.45rem 0.6rem;
+  min-height: var(--pen-rule-pitch);
+  margin: 0;
+  padding: 0;
+}
+
+.pen-locked-check-item--cta {
+  align-items: center;
+  padding-top: 0.15rem;
+}
+
+.pen-locked-copy-bullet {
+  flex-shrink: 0;
+  font-family: 'Caveat', 'Segoe Print', cursive;
+  font-size: clamp(1.75rem, 3vw, 2.35rem);
+  font-weight: 700;
+  line-height: var(--pen-rule-pitch);
+  color: #171717;
+}
+
+.pen-locked-copy-text {
+  flex: 0 1 auto;
+  max-width: 100%;
+  font-family: 'Caveat', 'Segoe Print', cursive;
+  font-size: clamp(1.75rem, 3vw, 2.35rem);
+  font-weight: 600;
+  line-height: var(--pen-rule-pitch);
+  color: #171717;
+  white-space: normal;
+}
+
+.pen-locked-copy-check {
+  flex-shrink: 0;
+  width: 1.35em;
+  height: 1.05em;
+  color: #166534;
+  transform: rotate(-11deg) translateY(0.08em);
+  overflow: visible;
+  align-self: center;
+}
+
+.pen-locked-copy-status {
+  display: block;
+  width: 100%;
+  color: #737373;
+  font-family: 'IBM Plex Sans', system-ui, sans-serif;
+  font-size: 0.875rem;
+  font-weight: 500;
+  line-height: 1.35;
+}
+
+.pen-locked-copy-error {
+  display: block;
+  width: 100%;
+  color: #dc2626;
+  font-family: 'IBM Plex Sans', system-ui, sans-serif;
+  font-size: 0.875rem;
+  font-weight: 500;
+  line-height: 1.35;
+}
+
+.pen-locked-unlock-cta {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  min-height: 2.25rem;
+  padding: 0.35rem 0.9rem;
+  border: 1.5px solid #000;
+  background: #000;
+  color: #fff;
+  font-family: 'IBM Plex Sans', system-ui, sans-serif;
+  font-size: 0.875rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.pen-locked-unlock-cta:hover {
+  opacity: 0.88;
+}
+
+.pen-locked-flow::after {
+  content: '';
+  display: table;
+  clear: both;
+}
+
+/* Narrow: shrink phone, keep float-right wrap — never stack under copy */
+@media (max-width: 900px) {
+  .pen-locked-sheet {
+    --pen-locked-phone-w: min(46vw, 20rem, calc((100vh - 7rem) * 9 / 19.2));
+  }
+}
+
+@media (max-width: 640px) {
+  .pen-locked-sheet {
+    --pen-locked-phone-w: min(42vw, 12.5rem, calc((100vh - 8rem) * 9 / 19.2));
   }
 
-  .pen-locked-phone {
-    width: 8.5rem;
+  .pen-locked-phone-float {
+    margin-left: 0.75rem;
   }
 
+  .pen-locked-copy-bullet,
   .pen-locked-copy-text {
-    max-width: 100%;
+    font-size: clamp(1.45rem, 5.8vw, 1.85rem);
+  }
+
+  .pen-library-page:has(.pen-locked-sheet) .pen-library-heading h1 {
+    font-size: 1.25rem;
   }
 }
 
