@@ -570,14 +570,18 @@ body {
 }
 
 .pen-library-notebook {
+  display: flex;
+  flex-direction: column;
   width: 100%;
-  flex: 1;
+  flex: 1 1 auto;
+  min-height: calc(100vh - 2.5rem);
 }
 
 .pen-library-notebook-inner {
   position: relative;
   display: flex;
   flex-direction: column;
+  flex: 1 1 auto;
   min-height: calc(100vh - 2.5rem);
   padding: 0 var(--pen-edge-pad) 0;
 }
@@ -585,17 +589,19 @@ body {
 .pen-library-heading {
   display: flex;
   flex-wrap: wrap;
-  align-items: flex-start;
+  align-items: flex-end;
   justify-content: space-between;
-  gap: 1rem;
-  padding: 1.25rem 0 0.15rem var(--pen-name-inset);
+  gap: 0.5rem 1rem;
+  /* Title lines up with Name; − sits on the table’s top blue rule */
+  padding: 1.25rem 0 0 var(--pen-name-inset);
+  margin: 0;
 }
 
 .pen-library-heading-tools {
   display: flex;
   flex-direction: column;
   align-items: flex-end;
-  gap: 0.375rem;
+  gap: 0;
 }
 
 .pen-library-bulk-inline {
@@ -604,7 +610,6 @@ body {
   align-items: center;
   justify-content: flex-end;
   gap: 0.75rem;
-  /* No blue rules on bulk active controls */
   border: none;
 }
 
@@ -614,7 +619,9 @@ body {
 
 .pen-library-body {
   border-top: none;
-  flex: 1;
+  flex: 1 1 auto;
+  margin: 0;
+  padding: 0;
 }
 
 .pen-library-footer {
@@ -622,7 +629,7 @@ body {
   align-items: center;
   justify-content: center;
   margin-top: auto;
-  padding: 1.5rem var(--pen-edge-pad) 1.75rem;
+  padding: 1.5rem 0 1.75rem;
   background: transparent;
   border: none;
 }
@@ -698,6 +705,8 @@ body {
   border: none;
   box-shadow: none;
   overflow: visible;
+  margin: 0;
+  padding: 0;
 }
 
 .pen-explorer-scroll {
@@ -722,6 +731,13 @@ body {
 
 .pen-explorer thead th {
   background: #fff;
+  /* One blue rule above Name, one below — not a double under the header */
+  border-top: 1px solid var(--pen-rule-blue);
+  border-bottom: 1px solid var(--pen-rule-blue);
+  border-left: none;
+  border-right: none;
+  padding-top: 0.35rem;
+  padding-bottom: 0.35rem;
 }
 
 .pen-explorer thead th.pen-explorer-action,
@@ -729,33 +745,17 @@ body {
   background: transparent;
 }
 
-/* Full-bleed blue rules (viewport width) */
-.pen-explorer tbody tr,
-.pen-explorer thead tr {
-  position: relative;
-}
-
-.pen-explorer tbody tr::after,
-.pen-explorer thead tr::after {
-  content: '';
-  position: absolute;
-  left: 50%;
-  bottom: 0;
-  width: 100vw;
-  margin-left: -50vw;
-  border-bottom: 1px solid var(--pen-rule-blue);
-  pointer-events: none;
-  z-index: 1;
-}
-
-.pen-explorer tbody tr:last-child::after {
-  display: none;
-}
-
-.pen-explorer th,
-.pen-explorer td {
-  border-bottom: none;
+.pen-explorer tbody td {
   border-top: none;
+  border-left: none;
+  border-right: none;
+  border-bottom: 1px solid var(--pen-rule-blue);
+  padding-top: 0.5rem;
+  padding-bottom: 0.5rem;
+}
+
+.pen-explorer tbody tr:last-child td {
+  border-bottom: none;
 }
 
 .pen-explorer th {
@@ -799,6 +799,7 @@ body {
   min-width: 11rem;
 }
 
+/* Continuous red double rule through the full notebook (header → footer) */
 .pen-explorer-rail {
   position: absolute;
   top: 0;
@@ -817,41 +818,29 @@ body {
 }
 
 .pen-explorer-bulk-bar {
-  display: none; /* Bulk actions live inline next to − */
+  display: none;
 }
 
-/* Gallery: responsive tile table right of red rail; blue cell borders */
+/*
+ * Gallery: ~100px tiles, inset past red rail.
+ * Horizontal rules only (no vertical cell borders, no tile restyle).
+ */
 .pen-gallery-ruled {
   margin-left: var(--pen-name-inset);
-  width: calc(100% - var(--pen-name-inset));
+  border-top: 1px solid var(--pen-rule-blue);
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(7.5rem, 1fr));
-  border-top: 1px solid var(--pen-rule-blue);
-  border-left: 1px solid var(--pen-rule-blue);
-  position: relative;
-}
-
-.pen-gallery-ruled::before {
-  content: '';
-  position: absolute;
-  left: 50%;
-  top: -1px;
-  width: 100vw;
-  margin-left: -50vw;
-  border-top: 1px solid var(--pen-rule-blue);
-  pointer-events: none;
+  grid-template-columns: repeat(auto-fill, 100px);
+  column-gap: 0.75rem;
+  row-gap: 0;
+  width: auto;
+  max-width: none;
+  background: transparent;
 }
 
 .pen-gallery-ruled > * {
-  border-right: 1px solid var(--pen-rule-blue);
+  border: none;
   border-bottom: 1px solid var(--pen-rule-blue);
-  padding: 0.75rem;
-  min-width: 0;
-  display: flex;
-  justify-content: flex-start;
-}
-
-.pen-gallery-ruled > * > * {
-  width: 100px;
-  max-width: 100%;
+  padding: 0.75rem 0;
+  margin: 0;
+  background: transparent;
 }

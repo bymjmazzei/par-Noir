@@ -196,7 +196,7 @@ function AuthenticatedApp({ session, onLock }: { session: PenSession; onLock: ()
           <LockIcon className="h-4 w-4" />
         </button>
       </header>
-      <div className="pt-10">
+      <div className="flex min-h-[calc(100vh-2.5rem)] flex-col pt-10">
         <Routes>
           <Route
             path="/"
