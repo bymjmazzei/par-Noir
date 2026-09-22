@@ -476,7 +476,7 @@ export function DocListPage({
   );
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [pickerOpen, setPickerOpen] = useState(docs.length === 0);
+  const [pickerOpen, setPickerOpen] = useState(false);
   const [search, setSearch] = useState('');
   const [pins, setPins] = useState(() => loadPinnedCategoryIds(session.pnIdentifier));
   const [showAll, setShowAll] = useState(() => loadPinnedCategoryIds(session.pnIdentifier).length === 0);

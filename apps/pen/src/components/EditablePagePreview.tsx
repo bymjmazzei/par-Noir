@@ -1,13 +1,9 @@
-import { useMemo, useRef, type CSSProperties } from 'react';
+import { useMemo, useRef, useState, type CSSProperties } from 'react';
 import {
-  createImageLayer,
-  createTextLayer,
-  createVideoLayer,
   docToHtml,
   ensureDefaultTextLayer,
   getTextLayerDoc,
   normalizeSection,
-  upsertLayer,
   updateLayerLayout,
   type PenDocManifest,
   type PenPageLayer,
@@ -15,6 +11,7 @@ import {
   type PenSectionContent
 } from '@par-noir/pen-protocol';
 import { LayoutSurface, type LayoutItem } from '../layout';
+import { LayersPopover } from './LayersPanel';
 
 function layerToItem(layer: PenPageLayer): LayoutItem {
   return {
@@ -34,7 +31,7 @@ function pageFrameClass(pageLayout: PenPageLayout | undefined): string {
 }
 
 function layerShellStyle(layer: PenPageLayer): CSSProperties {
-  const style: React.CSSProperties = {
+  const style: CSSProperties = {
     backgroundColor: layer.backgroundColor || 'rgba(255,255,255,0.95)',
     textShadow: layer.textShadow,
     filter: layer.blur ? `blur(${layer.blur}px)` : undefined
@@ -63,76 +60,24 @@ export function EditablePagePreview({
   onSectionChange: (next: PenSectionContent) => void;
   onPageLayoutChange?: (layout: PenPageLayout) => void;
 }) {
-  const fileRef = useRef<HTMLInputElement>(null);
-  const videoRef = useRef<HTMLInputElement>(null);
+  const layersBtnRef = useRef<HTMLButtonElement>(null);
+  const [layersOpen, setLayersOpen] = useState(false);
   const prepared = useMemo(() => ensureDefaultTextLayer(normalizeSection(section)), [section]);
   const layers = prepared.layers || [];
   const items = layers.map(layerToItem);
 
-  function commitSection(next: PenSectionContent) {
-    onSectionChange(next);
-  }
-
   function onLayoutChange(nextItems: LayoutItem[]) {
-    commitSection(updateLayerLayout(prepared, nextItems));
-  }
-
-  function maxZ() {
-    return layers.reduce((m, l) => Math.max(m, l.zIndex), 0);
-  }
-
-  function addText() {
-    const layer = createTextLayer({
-      x: 12,
-      y: 12 + (layers.length % 4) * 8,
-      w: 50,
-      h: 24,
-      zIndex: maxZ() + 1
-    });
-    commitSection(upsertLayer(prepared, layer));
-    onSelectLayer(layer.id);
-  }
-
-  function addImageFromFile(file: File) {
-    const reader = new FileReader();
-    reader.onload = () => {
-      const src = String(reader.result || '');
-      if (!src) return;
-      const layer = createImageLayer(src, {
-        x: 25,
-        y: 25,
-        w: 35,
-        h: 30,
-        zIndex: maxZ() + 1
-      });
-      commitSection(upsertLayer(prepared, layer));
-      onSelectLayer(layer.id);
-    };
-    reader.readAsDataURL(file);
-  }
-
-  function addVideoFromFile(file: File) {
-    const reader = new FileReader();
-    reader.onload = () => {
-      const src = String(reader.result || '');
-      if (!src) return;
-      const layer = createVideoLayer(src, { zIndex: maxZ() + 1 });
-      commitSection(upsertLayer(prepared, layer));
-      onSelectLayer(layer.id);
-    };
-    reader.readAsDataURL(file);
+    onSectionChange(updateLayerLayout(prepared, nextItems));
   }
 
   return (
-    <div className="flex h-full flex-col bg-stone-200/90">
-      <div className="flex shrink-0 items-center justify-between gap-2 border-b border-stone-300 bg-stone-100 px-3 py-1.5">
-        <span className="text-[11px] font-semibold uppercase tracking-wider text-stone-500">
-          Page
-        </span>
-        <div className="flex items-center gap-1">
+    <div className="relative flex h-full flex-col bg-white">
+      <div className="flex shrink-0 items-center justify-between gap-2 border-b border-neutral-200 bg-white px-3 py-1.5">
+        <span className="text-[11px] font-bold uppercase tracking-wider text-neutral-400">Page</span>
+        <div className="flex items-center gap-3">
           {onPageLayoutChange && (
             <select
-              className="h-6 rounded border border-stone-300 bg-white px-1 text-[11px]"
+              className="h-6 border-0 bg-transparent text-[11px] font-bold text-black outline-none"
               value={manifest.pageLayout || 'flow'}
               title="Page layout"
               onChange={(e) => onPageLayoutChange(e.target.value as PenPageLayout)}
@@ -143,53 +88,33 @@ export function EditablePagePreview({
             </select>
           )}
           <button
+            ref={layersBtnRef}
             type="button"
-            className="rounded border border-stone-300 bg-white px-2 py-0.5 text-[11px] text-stone-700 hover:bg-stone-50"
-            onClick={addText}
+            aria-expanded={layersOpen}
+            aria-pressed={layersOpen}
+            className={`text-[11px] ${
+              layersOpen ? 'font-bold text-black' : 'font-normal text-neutral-400 hover:text-black'
+            }`}
+            onClick={() => setLayersOpen((o) => !o)}
           >
-            Add text
+            Layers
           </button>
-          <button
-            type="button"
-            className="rounded border border-stone-300 bg-white px-2 py-0.5 text-[11px] text-stone-700 hover:bg-stone-50"
-            onClick={() => fileRef.current?.click()}
-          >
-            Add image
-          </button>
-          <button
-            type="button"
-            className="rounded border border-stone-300 bg-white px-2 py-0.5 text-[11px] text-stone-700 hover:bg-stone-50"
-            onClick={() => videoRef.current?.click()}
-          >
-            Add video
-          </button>
-          <input
-            ref={fileRef}
-            type="file"
-            accept="image/*"
-            className="hidden"
-            onChange={(e) => {
-              const f = e.target.files?.[0];
-              if (f) addImageFromFile(f);
-              e.target.value = '';
-            }}
-          />
-          <input
-            ref={videoRef}
-            type="file"
-            accept="video/*"
-            className="hidden"
-            onChange={(e) => {
-              const f = e.target.files?.[0];
-              if (f) addVideoFromFile(f);
-              e.target.value = '';
-            }}
-          />
         </div>
       </div>
+
+      <LayersPopover
+        open={layersOpen}
+        onClose={() => setLayersOpen(false)}
+        anchorRef={layersBtnRef}
+        section={section}
+        activeLayerId={activeLayerId}
+        onSelectLayer={onSelectLayer}
+        onSectionChange={onSectionChange}
+      />
+
       <div className="flex flex-1 items-start justify-center overflow-auto p-6">
         <div
-          className={`relative w-full overflow-hidden rounded-sm border border-stone-300 bg-white shadow-lg ${pageFrameClass(
+          className={`relative w-full overflow-hidden border border-neutral-200 bg-white ${pageFrameClass(
             manifest.pageLayout
           )}`}
         >
@@ -206,16 +131,6 @@ export function EditablePagePreview({
               if (layer.kind === 'image' && layer.imageSrc) {
                 return (
                   <div className="relative h-full w-full" style={shell}>
-                    {layer.backgroundVideo && (
-                      <video
-                        src={layer.backgroundVideo}
-                        className="absolute inset-0 h-full w-full object-cover opacity-40"
-                        muted
-                        loop
-                        autoPlay
-                        playsInline
-                      />
-                    )}
                     <img
                       src={layer.imageSrc}
                       alt=""
@@ -240,20 +155,10 @@ export function EditablePagePreview({
               const html = docToHtml(getTextLayerDoc(layer));
               return (
                 <div className="relative h-full w-full overflow-hidden" style={shell}>
-                  {layer.backgroundVideo && (
-                    <video
-                      src={layer.backgroundVideo}
-                      className="absolute inset-0 h-full w-full object-cover opacity-50"
-                      muted
-                      loop
-                      autoPlay
-                      playsInline
-                    />
-                  )}
                   <div
-                    className="relative h-full w-full overflow-auto p-2 text-sm text-stone-800"
+                    className="relative h-full w-full overflow-auto p-2 text-sm text-black"
                     dangerouslySetInnerHTML={{
-                      __html: html || '<p class="text-stone-400">Text</p>'
+                      __html: html || '<p class="text-neutral-400">Text</p>'
                     }}
                   />
                 </div>

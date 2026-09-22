@@ -119,9 +119,9 @@ export function loadHomeView(pn: string): PenHomeView {
   try {
     const raw = localStorage.getItem(homeViewKey(pn));
     if (raw === 'all' || raw === 'category' || raw === 'dashboard') return raw;
-    return 'dashboard';
+    return 'all';
   } catch {
-    return 'dashboard';
+    return 'all';
   }
 }
 

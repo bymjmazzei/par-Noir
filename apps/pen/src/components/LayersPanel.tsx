@@ -1,8 +1,15 @@
-import { useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
 import {
-  createImageLayer,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type PointerEvent as ReactPointerEvent,
+  type RefObject
+} from 'react';
+import {
+  attachMediaToLayer,
+  clearLayerAttachment,
   createTextLayer,
-  createVideoLayer,
   docToPlainText,
   ensureDefaultTextLayer,
   getTextLayerDoc,
@@ -31,30 +38,62 @@ function readFileAsDataUrl(file: File): Promise<string> {
   });
 }
 
-/** Photoshop-style stack: top of list = front. Drag rows to reorder. */
-export function LayersPanel({
+/**
+ * Floating layers widget (not a third column).
+ * + adds a text layer; Attach on a row converts that object to image/video.
+ * Click outside closes.
+ */
+export function LayersPopover({
+  open,
+  onClose,
   section,
   activeLayerId,
   onSelectLayer,
-  onSectionChange
+  onSectionChange,
+  anchorRef
 }: {
+  open: boolean;
+  onClose: () => void;
   section: PenSectionContent;
   activeLayerId: string | null;
   onSelectLayer: (id: string | null) => void;
   onSectionChange: (next: PenSectionContent) => void;
+  anchorRef?: RefObject<HTMLElement | null>;
 }) {
+  const panelRef = useRef<HTMLDivElement>(null);
+  const attachRef = useRef<HTMLInputElement>(null);
+  const [attachKind, setAttachKind] = useState<'image' | 'video'>('image');
+  const [attachTargetId, setAttachTargetId] = useState<string | null>(null);
+  const [dragId, setDragId] = useState<string | null>(null);
+  const [hoverId, setHoverId] = useState<string | null>(null);
+
   const prepared = useMemo(() => ensureDefaultTextLayer(normalizeSection(section)), [section]);
   const layersFrontFirst = useMemo(
     () => [...(prepared.layers || [])].sort((a, b) => b.zIndex - a.zIndex),
     [prepared.layers]
   );
-  const imageRef = useRef<HTMLInputElement>(null);
-  const videoRef = useRef<HTMLInputElement>(null);
-  const [addOpen, setAddOpen] = useState(false);
-  const [dragId, setDragId] = useState<string | null>(null);
-  const [hoverId, setHoverId] = useState<string | null>(null);
-
   const active = layersFrontFirst.find((l) => l.id === activeLayerId) || null;
+
+  useEffect(() => {
+    if (!open) return;
+    function onDocDown(e: MouseEvent) {
+      const t = e.target as Node;
+      if (panelRef.current?.contains(t)) return;
+      if (anchorRef?.current?.contains(t)) return;
+      onClose();
+    }
+    function onKey(e: KeyboardEvent) {
+      if (e.key === 'Escape') onClose();
+    }
+    document.addEventListener('mousedown', onDocDown);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onDocDown);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [open, onClose, anchorRef]);
+
+  if (!open) return null;
 
   function commit(next: PenSectionContent) {
     onSectionChange(next);
@@ -64,7 +103,7 @@ export function LayersPanel({
     return layersFrontFirst.reduce((m, l) => Math.max(m, l.zIndex), 0);
   }
 
-  function addText() {
+  function addTextLayer() {
     const layer = createTextLayer({
       x: 12,
       y: 12 + (layersFrontFirst.length % 4) * 8,
@@ -74,25 +113,27 @@ export function LayersPanel({
     });
     commit(upsertLayer(prepared, layer));
     onSelectLayer(layer.id);
-    setAddOpen(false);
   }
 
-  async function addImage(file: File) {
-    const src = await readFileAsDataUrl(file);
-    if (!src) return;
-    const layer = createImageLayer(src, { zIndex: maxZ() + 1 });
-    commit(upsertLayer(prepared, layer));
-    onSelectLayer(layer.id);
-    setAddOpen(false);
+  function startAttach(layerId: string, kind: 'image' | 'video') {
+    setAttachTargetId(layerId);
+    setAttachKind(kind);
+    onSelectLayer(layerId);
+    // defer so input accepts click after state set
+    requestAnimationFrame(() => attachRef.current?.click());
   }
 
-  async function addVideo(file: File) {
+  async function onAttachFile(file: File) {
+    if (!attachTargetId) return;
     const src = await readFileAsDataUrl(file);
     if (!src) return;
-    const layer = createVideoLayer(src, { zIndex: maxZ() + 1 });
-    commit(upsertLayer(prepared, layer));
-    onSelectLayer(layer.id);
-    setAddOpen(false);
+    commit(
+      attachMediaToLayer(prepared, attachTargetId, {
+        kind: attachKind,
+        src
+      })
+    );
+    setAttachTargetId(null);
   }
 
   function onDelete(id: string) {
@@ -138,10 +179,7 @@ export function LayersPanel({
 
   function patchActive(
     patch: Partial<
-      Pick<
-        PenPageLayer,
-        'backgroundColor' | 'backgroundImage' | 'backgroundVideo' | 'textShadow' | 'blur'
-      >
+      Pick<PenPageLayer, 'backgroundColor' | 'textShadow' | 'blur'>
     >
   ) {
     if (!active) return;
@@ -149,75 +187,29 @@ export function LayersPanel({
   }
 
   return (
-    <div className="flex h-full min-h-0 w-56 shrink-0 flex-col border-l border-stone-300 bg-stone-100">
-      <div className="flex shrink-0 items-center justify-between gap-1 border-b border-stone-300 px-2 py-1.5">
-        <span className="text-[11px] font-semibold uppercase tracking-wider text-stone-500">
-          Layers
-        </span>
-        <div className="relative">
-          <button
-            type="button"
-            className="rounded border border-stone-300 bg-white px-2 py-0.5 text-[11px] text-stone-700 hover:bg-stone-50"
-            onClick={() => setAddOpen((o) => !o)}
-          >
-            Add
-          </button>
-          {addOpen && (
-            <div className="absolute right-0 top-full z-20 mt-1 min-w-[8rem] rounded border border-stone-200 bg-white py-1 shadow-lg">
-              <button
-                type="button"
-                className="block w-full px-3 py-1.5 text-left text-[12px] hover:bg-stone-50"
-                onClick={addText}
-              >
-                Text
-              </button>
-              <button
-                type="button"
-                className="block w-full px-3 py-1.5 text-left text-[12px] hover:bg-stone-50"
-                onClick={() => {
-                  imageRef.current?.click();
-                }}
-              >
-                Image…
-              </button>
-              <button
-                type="button"
-                className="block w-full px-3 py-1.5 text-left text-[12px] hover:bg-stone-50"
-                onClick={() => {
-                  videoRef.current?.click();
-                }}
-              >
-                Video…
-              </button>
-            </div>
-          )}
-        </div>
-        <input
-          ref={imageRef}
-          type="file"
-          accept="image/*"
-          className="hidden"
-          onChange={(e) => {
-            const f = e.target.files?.[0];
-            if (f) void addImage(f);
-            e.target.value = '';
-          }}
-        />
-        <input
-          ref={videoRef}
-          type="file"
-          accept="video/*"
-          className="hidden"
-          onChange={(e) => {
-            const f = e.target.files?.[0];
-            if (f) void addVideo(f);
-            e.target.value = '';
-          }}
-        />
+    <div
+      ref={panelRef}
+      className="absolute right-3 top-10 z-40 flex w-64 flex-col overflow-hidden rounded-lg border border-neutral-200 bg-white shadow-xl"
+      role="dialog"
+      aria-label="Layers"
+    >
+      <div className="flex shrink-0 items-center justify-between gap-2 border-b border-neutral-200 px-2.5 py-2">
+        <span className="text-[11px] font-bold uppercase tracking-wider text-black">Layers</span>
+        <button
+          type="button"
+          title="Add text layer"
+          aria-label="Add text layer"
+          className="inline-flex h-7 w-7 items-center justify-center text-black hover:opacity-60"
+          onClick={addTextLayer}
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden>
+            <path d="M12 5v14M5 12h14" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" />
+          </svg>
+        </button>
       </div>
 
       <ul
-        className="min-h-0 flex-1 overflow-auto py-1"
+        className="max-h-56 min-h-0 overflow-auto py-1"
         onPointerMove={onRowPointerMove}
         onPointerUp={onRowPointerUp}
         onPointerLeave={() => {
@@ -235,19 +227,19 @@ export function LayersPanel({
               key={layer.id}
               data-layer-id={layer.id}
               className={`flex cursor-grab items-center gap-1 px-2 py-1.5 text-[12px] active:cursor-grabbing ${
-                selected ? 'bg-sky-100 text-sky-950' : 'text-stone-700 hover:bg-stone-200/60'
-              } ${dropTarget ? 'ring-1 ring-inset ring-sky-400' : ''} ${
+                selected ? 'bg-neutral-100 font-bold text-black' : 'text-neutral-600 hover:bg-neutral-50'
+              } ${dropTarget ? 'ring-1 ring-inset ring-black' : ''} ${
                 dragId === layer.id ? 'opacity-50' : ''
               }`}
               onPointerDown={(e) => onRowPointerDown(e, layer.id)}
             >
-              <span className="w-4 shrink-0 text-[10px] text-stone-400">{i + 1}</span>
+              <span className="w-4 shrink-0 text-[10px] text-neutral-400">{i + 1}</span>
               <span className="min-w-0 flex-1 truncate">{layerLabel(layer, i)}</span>
-              <span className="shrink-0 text-[10px] uppercase text-stone-400">{layer.kind}</span>
+              <span className="shrink-0 text-[10px] uppercase text-neutral-400">{layer.kind}</span>
               <button
                 type="button"
                 title="Delete layer"
-                className="shrink-0 rounded px-1 text-stone-400 hover:bg-stone-300 hover:text-red-700"
+                className="shrink-0 px-1 text-neutral-400 hover:text-red-600"
                 onPointerDown={(e) => e.stopPropagation()}
                 onClick={(e) => {
                   e.stopPropagation();
@@ -262,19 +254,45 @@ export function LayersPanel({
       </ul>
 
       {active && (
-        <div className="shrink-0 space-y-2 border-t border-stone-300 p-2 text-[11px]">
-          <div className="font-semibold uppercase tracking-wide text-stone-500">Style</div>
+        <div className="shrink-0 space-y-2 border-t border-neutral-200 p-2.5 text-[11px]">
+          <div className="font-bold uppercase tracking-wide text-neutral-400">Object</div>
+          {active.kind === 'text' ? (
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                className="font-bold text-black hover:opacity-60"
+                onClick={() => startAttach(active.id, 'image')}
+              >
+                Attach image…
+              </button>
+              <button
+                type="button"
+                className="font-bold text-black hover:opacity-60"
+                onClick={() => startAttach(active.id, 'video')}
+              >
+                Attach video…
+              </button>
+            </div>
+          ) : (
+            <button
+              type="button"
+              className="font-bold text-black hover:opacity-60"
+              onClick={() => commit(clearLayerAttachment(prepared, active.id))}
+            >
+              Clear attachment (back to text)
+            </button>
+          )}
           <label className="flex items-center justify-between gap-2">
-            <span className="text-stone-600">Background</span>
+            <span className="text-neutral-500">Background</span>
             <input
               type="color"
               value={active.backgroundColor || '#ffffff'}
               onChange={(e) => patchActive({ backgroundColor: e.target.value })}
-              className="h-6 w-8 cursor-pointer rounded border border-stone-300"
+              className="h-6 w-8 cursor-pointer rounded border border-neutral-300"
             />
           </label>
           <label className="flex items-center justify-between gap-2">
-            <span className="text-stone-600">Shadow</span>
+            <span className="text-neutral-500">Shadow</span>
             <input
               type="checkbox"
               checked={Boolean(active.textShadow)}
@@ -286,7 +304,7 @@ export function LayersPanel({
             />
           </label>
           <label className="flex items-center justify-between gap-2">
-            <span className="text-stone-600">Blur</span>
+            <span className="text-neutral-500">Blur</span>
             <input
               type="range"
               min={0}
@@ -297,59 +315,20 @@ export function LayersPanel({
               className="w-20"
             />
           </label>
-          <div className="flex flex-wrap gap-1">
-            <button
-              type="button"
-              className="rounded border border-stone-300 bg-white px-1.5 py-0.5 hover:bg-stone-50"
-              onClick={() => {
-                const input = document.createElement('input');
-                input.type = 'file';
-                input.accept = 'image/*';
-                input.onchange = async () => {
-                  const f = input.files?.[0];
-                  if (!f) return;
-                  const src = await readFileAsDataUrl(f);
-                  patchActive({ backgroundImage: src, backgroundVideo: undefined });
-                };
-                input.click();
-              }}
-            >
-              BG image…
-            </button>
-            <button
-              type="button"
-              className="rounded border border-stone-300 bg-white px-1.5 py-0.5 hover:bg-stone-50"
-              onClick={() => {
-                const input = document.createElement('input');
-                input.type = 'file';
-                input.accept = 'video/*';
-                input.onchange = async () => {
-                  const f = input.files?.[0];
-                  if (!f) return;
-                  const src = await readFileAsDataUrl(f);
-                  patchActive({ backgroundVideo: src, backgroundImage: undefined });
-                };
-                input.click();
-              }}
-            >
-              BG video…
-            </button>
-            <button
-              type="button"
-              className="rounded border border-stone-300 bg-white px-1.5 py-0.5 text-stone-500 hover:bg-stone-50"
-              onClick={() =>
-                patchActive({
-                  backgroundImage: undefined,
-                  backgroundVideo: undefined,
-                  backgroundColor: undefined
-                })
-              }
-            >
-              Clear fill
-            </button>
-          </div>
         </div>
       )}
+
+      <input
+        ref={attachRef}
+        type="file"
+        accept={attachKind === 'image' ? 'image/*' : 'video/*'}
+        className="hidden"
+        onChange={(e) => {
+          const f = e.target.files?.[0];
+          if (f) void onAttachFile(f);
+          e.target.value = '';
+        }}
+      />
     </div>
   );
 }

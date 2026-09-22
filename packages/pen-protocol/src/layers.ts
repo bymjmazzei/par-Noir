@@ -95,6 +95,63 @@ export function patchLayerStyle(
   return upsertLayer(section, { ...existing, ...patch });
 }
 
+/** Keep geometry; swap layer kind to image or video (attachment on a text object). */
+export function attachMediaToLayer(
+  section: PenSectionContent,
+  layerId: string,
+  media: { kind: 'image'; src: string } | { kind: 'video'; src: string }
+): PenSectionContent {
+  const existing = (section.layers || []).find((l) => l.id === layerId);
+  if (!existing) throw new Error(`unknown_layer:${layerId}`);
+  const shared = {
+    id: existing.id,
+    x: existing.x,
+    y: existing.y,
+    w: existing.w,
+    h: existing.h,
+    zIndex: existing.zIndex,
+    backgroundColor: existing.backgroundColor,
+    backgroundImage: undefined as string | undefined,
+    backgroundVideo: undefined as string | undefined,
+    textShadow: existing.textShadow,
+    blur: existing.blur
+  };
+  if (media.kind === 'image') {
+    return upsertLayer(section, {
+      ...shared,
+      kind: 'image',
+      imageSrc: media.src
+    });
+  }
+  return upsertLayer(section, {
+    ...shared,
+    kind: 'video',
+    videoSrc: media.src
+  });
+}
+
+/** Drop media attachment; restore an empty text layer at the same rect. */
+export function clearLayerAttachment(
+  section: PenSectionContent,
+  layerId: string
+): PenSectionContent {
+  const existing = (section.layers || []).find((l) => l.id === layerId);
+  if (!existing) throw new Error(`unknown_layer:${layerId}`);
+  return upsertLayer(section, {
+    id: existing.id,
+    kind: 'text',
+    x: existing.x,
+    y: existing.y,
+    w: existing.w,
+    h: existing.h,
+    zIndex: existing.zIndex,
+    backgroundColor: existing.backgroundColor,
+    textShadow: existing.textShadow,
+    blur: existing.blur,
+    textDoc: existing.kind === 'text' ? existing.textDoc : emptyTipTapDoc()
+  });
+}
+
 /**
  * If section has no layers, seed one text layer from section.doc (one-shot migrate).
  * Leaves existing layers untouched. Uses stable id `layer_primary` for the seed.

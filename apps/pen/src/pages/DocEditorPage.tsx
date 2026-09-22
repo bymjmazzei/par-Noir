@@ -2,7 +2,6 @@ import { useCallback, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import type { Editor } from '@tiptap/react';
 import {
-  createImageLayer,
   ensureDefaultTextLayer,
   getClass,
   getTemplate,
@@ -14,7 +13,6 @@ import {
   setTextLayerDoc,
   signPromoteLink,
   attachNotary,
-  upsertLayer,
   verifyChain,
   type PenDocComment,
   type PenPageLayout,
@@ -23,7 +21,6 @@ import {
 import type { PenSession } from '../App';
 import { FormatRibbon, PageCanvas } from '../components/PageCanvas';
 import { EditablePagePreview } from '../components/EditablePagePreview';
-import { LayersPanel } from '../components/LayersPanel';
 import { BrowseFeedTilePreview } from '../components/BrowseFeedTilePreview';
 import { SectionTocMenu, type SectionTocItem } from '../components/SectionTocMenu';
 import { PublishMenu } from '../components/PublishMenu';
@@ -541,25 +538,6 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
                 accessToken={session.accessToken}
                 pnIdentifier={session.pnIdentifier}
                 excludeDocId={bundle.manifest.docId}
-                onImageInserted={(src, alt) => {
-                  const prepared = ensureDefaultTextLayer(normalizeSection(section));
-                  const maxZ = (prepared.layers || []).reduce((m, l) => Math.max(m, l.zIndex), 0);
-                  const layer = createImageLayer(src, {
-                    x: 28,
-                    y: 28,
-                    w: 32,
-                    h: 28,
-                    zIndex: maxZ + 1
-                  });
-                  if (alt) layer.imageSrc = src;
-                  const next = upsertLayer(prepared, layer);
-                  setActiveLayerId(layer.id);
-                  persist({
-                    ...bundle,
-                    sections: bundle.sections.map((s) => (s.slug === next.slug ? next : s)),
-                    manifest: { ...bundle.manifest, updatedAt: new Date().toISOString() }
-                  });
-                }}
               />
             </div>
           )}
@@ -728,53 +706,39 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
                 <BrowseFeedTilePreview manifest={bundle.manifest} sections={bundle.sections} />
               </div>
             ) : (
-              <>
-                <div className="min-w-0 flex-1">
-                  <EditablePagePreview
-                    manifest={bundle.manifest}
-                    section={section}
-                    activeLayerId={activeLayerId}
-                    onSelectLayer={(id) => {
-                      setActiveLayerId(id);
-                    }}
-                    onPageLayoutChange={(layout) => {
-                      persist({
-                        ...bundle,
-                        manifest: {
-                          ...bundle.manifest,
-                          pageLayout: layout,
-                          updatedAt: new Date().toISOString()
-                        }
-                      });
-                    }}
-                    onSectionChange={(next) => {
-                      persist({
-                        ...bundle,
-                        sections: bundle.sections.map((s) => (s.slug === next.slug ? next : s)),
-                        manifest: { ...bundle.manifest, updatedAt: new Date().toISOString() }
-                      });
-                      if (!activeLayerId && next.layers?.length) {
-                        const primary = next.layers
-                          .filter((l) => l.kind === 'text')
-                          .sort((a, b) => a.zIndex - b.zIndex)[0];
-                        if (primary) setActiveLayerId(primary.id);
-                      }
-                    }}
-                  />
-                </div>
-                <LayersPanel
+              <div className="min-w-0 flex-1">
+                <EditablePagePreview
+                  manifest={bundle.manifest}
                   section={section}
                   activeLayerId={activeLayerId}
-                  onSelectLayer={setActiveLayerId}
+                  onSelectLayer={(id) => {
+                    setActiveLayerId(id);
+                  }}
+                  onPageLayoutChange={(layout) => {
+                    persist({
+                      ...bundle,
+                      manifest: {
+                        ...bundle.manifest,
+                        pageLayout: layout,
+                        updatedAt: new Date().toISOString()
+                      }
+                    });
+                  }}
                   onSectionChange={(next) => {
                     persist({
                       ...bundle,
                       sections: bundle.sections.map((s) => (s.slug === next.slug ? next : s)),
                       manifest: { ...bundle.manifest, updatedAt: new Date().toISOString() }
                     });
+                    if (!activeLayerId && next.layers?.length) {
+                      const primary = next.layers
+                        .filter((l) => l.kind === 'text')
+                        .sort((a, b) => a.zIndex - b.zIndex)[0];
+                      if (primary) setActiveLayerId(primary.id);
+                    }
                   }}
                 />
-              </>
+              </div>
             )}
           </div>
         )}

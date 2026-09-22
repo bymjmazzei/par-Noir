@@ -65,20 +65,6 @@ function insertImage(
   onImageInserted?.(src, alt);
 }
 
-function AttachPaperclipIcon() {
-  return (
-    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden>
-      <path
-        d="M21.4 11.6l-8.5 8.5a5.5 5.5 0 01-7.8-7.8l9.2-9.2a3.5 3.5 0 015 5l-9.2 9.2a1.5 1.5 0 01-2.1-2.1l8.1-8.1"
-        stroke="currentColor"
-        strokeWidth="1.8"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
-}
-
 export function FormatRibbon({
   editor,
   accessToken,
@@ -474,18 +460,22 @@ export function FormatRibbon({
       >
         Link
       </RibbonIconBtn>
-      <RibbonIconBtn
-        title="Insert table"
-        onClick={() =>
-          ed.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run()
-        }
-      >
-        Table
-      </RibbonIconBtn>
 
-      <RibbonMenu label={<AttachPaperclipIcon />} title="Attach" wide>
+      <RibbonSep />
+
+      <RibbonMenu label="Insert" title="Insert into flow" wide>
         {(close) => (
           <>
+            <RibbonItem
+              onClick={() => {
+                ed.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run();
+                close();
+              }}
+            >
+              Table
+            </RibbonItem>
+            <div className="pen-ribbon-menu-divider" />
+            <div className="pen-ribbon-menu-hint">Image</div>
             <RibbonItem
               onClick={() => {
                 void attachDevice().then(close);
@@ -513,12 +503,27 @@ export function FormatRibbon({
                   {f.name}
                 </RibbonItem>
               ))}
-            {cloudFiles && cloudFiles.length === 0 && !cloudLoading && (
-              <div className="pen-ribbon-menu-hint">No images found</div>
-            )}
             <RibbonItem
               onClick={() => {
                 attachUrl();
+                close();
+              }}
+            >
+              URL…
+            </RibbonItem>
+            <div className="pen-ribbon-menu-divider" />
+            <div className="pen-ribbon-menu-hint">Video</div>
+            <RibbonItem
+              onClick={() => {
+                void insertVideoFromFile();
+                close();
+              }}
+            >
+              From device…
+            </RibbonItem>
+            <RibbonItem
+              onClick={() => {
+                insertVideoFromUrl();
                 close();
               }}
             >
@@ -604,6 +609,22 @@ export function FormatRibbon({
               </>
             )}
             <div className="pen-ribbon-menu-divider" />
+            <div className="pen-ribbon-menu-hint">
+              {mediaSelected ? 'Wrap' : 'Wrap (select image/video)'}
+            </div>
+            {(['none', 'left', 'right'] as PenImageWrap[]).map((w) => (
+              <RibbonItem
+                key={w}
+                active={mediaSelected && wrap === w}
+                onClick={() => {
+                  setWrap(w);
+                  close();
+                }}
+              >
+                {w === 'none' ? 'Full width' : w === 'left' ? 'Wrap left' : 'Wrap right'}
+              </RibbonItem>
+            ))}
+            <div className="pen-ribbon-menu-divider" />
             <div className="pen-ribbon-sticker-grid">
               {PEN_STICKERS.map((s) => (
                 <button
@@ -621,51 +642,6 @@ export function FormatRibbon({
                 </button>
               ))}
             </div>
-          </>
-        )}
-      </RibbonMenu>
-
-      <RibbonMenu
-        label="Wrap"
-        title={mediaSelected ? 'Wrap text' : 'Select an image or video to wrap'}
-      >
-        {(close) => (
-          <>
-            {(['none', 'left', 'right'] as PenImageWrap[]).map((w) => (
-              <RibbonItem
-                key={w}
-                active={mediaSelected && wrap === w}
-                onClick={() => {
-                  setWrap(w);
-                  close();
-                }}
-              >
-                {w === 'none' ? 'Full width' : w === 'left' ? 'Wrap left' : 'Wrap right'}
-              </RibbonItem>
-            ))}
-          </>
-        )}
-      </RibbonMenu>
-
-      <RibbonMenu label="Video" title="Insert video">
-        {(close) => (
-          <>
-            <RibbonItem
-              onClick={() => {
-                void insertVideoFromFile();
-                close();
-              }}
-            >
-              From device…
-            </RibbonItem>
-            <RibbonItem
-              onClick={() => {
-                insertVideoFromUrl();
-                close();
-              }}
-            >
-              URL…
-            </RibbonItem>
           </>
         )}
       </RibbonMenu>

@@ -33,7 +33,7 @@ Structured/relational personal data (sheets, standard data points) may be additi
 
 ## Editing UX (when implementing Pen / Pen Mini)
 
-- **Flow-first** left pane: TipTap continuous text for the **active text layer**; section switcher = current section ▾ TOC; FormatRibbon scoped over the editor only. Image/video embeds use `wrap: none|left|right` in the flow; **Attach → From Pen** inserts live by-ref `penEmbed` nodes (`docId` + optional `sectionSlug`) — not overlay layers. Do not put article embeds in `PenPageLayer`.
+- **Flow-first** left pane: TipTap continuous text for the **active text layer**; section switcher = current section ▾ TOC; FormatRibbon scoped over the editor only (text tools + single **Insert** for flow table/image/video/Pen/wrap). Overlay **Layers** is a dismissible popover on the page preview (**+** adds text; Attach on a layer converts to image/video) — not a third column. Do not put article embeds in `PenPageLayer`.
 - **Social live preview:** browse **feed tile** (full-bleed `pagePresentation` + right engagement rail), not a Docs card.
 - **Editable page** right pane (non-social): `LayoutSurface` for **overlay** text/image layers only (absolute % rects; move/resize)—not HTML-only preview, not dashboard tiles.
 - **Quark-like** = templates + page layer overlay surface (Product C). Home **Dashboard** is a separate packed grid (Product A: col/row swap), not `LayoutSurface`.
