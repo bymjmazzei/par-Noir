@@ -767,7 +767,10 @@ body {
 
 .pen-explorer thead th {
   background: #fff;
+  /* One continuous line above + below the header row (border-collapse merges cells). */
   border: none;
+  border-top: 1px solid var(--pen-rule-blue);
+  border-bottom: 1px solid var(--pen-rule-blue);
   height: var(--pen-explorer-head-h);
   padding-top: 0;
   padding-bottom: 0;
@@ -776,7 +779,7 @@ body {
 
 .pen-explorer thead th.pen-explorer-action,
 .pen-explorer thead th.pen-explorer-icon {
-  background: transparent;
+  background: #fff;
 }
 
 .pen-explorer tbody td {
@@ -790,35 +793,9 @@ body {
   color: #000;
 }
 
-/* Full-bleed rules: attach to first th (stable containing block). One above + one below header. */
-.pen-explorer thead tr,
+/* Body rows only — never put header rules on th/tr pseudos (they stack into half + full doubles). */
 .pen-explorer tbody tr {
   position: relative;
-}
-
-.pen-explorer thead th:first-child {
-  position: relative;
-}
-
-.pen-explorer thead th:first-child::before,
-.pen-explorer thead th:first-child::after {
-  content: '';
-  position: absolute;
-  left: 50%;
-  width: 100vw;
-  margin-left: -50vw;
-  pointer-events: none;
-  z-index: 2;
-}
-
-.pen-explorer thead th:first-child::before {
-  top: 0;
-  border-top: 1px solid var(--pen-rule-blue);
-}
-
-.pen-explorer thead th:first-child::after {
-  bottom: 0;
-  border-bottom: 1px solid var(--pen-rule-blue);
 }
 
 .pen-explorer tbody tr::after {
