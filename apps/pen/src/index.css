@@ -644,6 +644,56 @@ body {
   min-height: 0;
 }
 
+/* Full-bleed sheet — same geometry for list + gallery so toggle does not shift rules */
+.pen-library-sheet {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+  margin: 0 calc(-1 * var(--pen-edge-pad));
+  width: calc(100% + 2 * var(--pen-edge-pad));
+  box-sizing: border-box;
+  background-color: #fff;
+}
+
+/* Pitch lines only below the colhead — never above (avoids the extra top stroke) */
+.pen-library-sheet::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: var(--pen-explorer-head-h);
+  bottom: 0;
+  background-image: repeating-linear-gradient(
+    to bottom,
+    transparent 0,
+    transparent calc(var(--pen-rule-pitch) - 1px),
+    var(--pen-rule-blue) calc(var(--pen-rule-pitch) - 1px),
+    var(--pen-rule-blue) var(--pen-rule-pitch)
+  );
+  pointer-events: none;
+  z-index: 0;
+}
+
+.pen-library-sheet > * {
+  position: relative;
+  z-index: 1;
+}
+
+/* Empty (gallery) or label (list) band — exactly one line above + one below */
+.pen-gallery-head,
+.pen-library-colhead {
+  flex-shrink: 0;
+  height: var(--pen-explorer-head-h);
+  box-sizing: border-box;
+  border-top: 1px solid var(--pen-rule-blue);
+  border-bottom: 1px solid var(--pen-rule-blue);
+  background: #fff;
+  width: 100%;
+  pointer-events: none;
+}
+
 /* Page-width notebook rule (not tile/cell attached) */
 .pen-library-rule {
   display: block;
@@ -734,14 +784,18 @@ body {
 
 .pen-explorer {
   position: relative;
-  background: #fff;
+  background: transparent;
   border: none;
   box-shadow: none;
   overflow: visible;
-  margin: 0 calc(-1 * var(--pen-edge-pad));
-  padding: 0 var(--pen-edge-pad);
-  width: calc(100% + 2 * var(--pen-edge-pad));
+  margin: 0;
+  padding: 0;
+  width: 100%;
   box-sizing: border-box;
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
 }
 
 .pen-explorer-scroll {
@@ -759,15 +813,18 @@ body {
 }
 
 .pen-explorer thead {
-  background: transparent;
+  background: #fff;
   position: sticky;
   top: 2.5rem;
   z-index: 5;
 }
 
+.pen-explorer thead tr {
+  height: var(--pen-explorer-head-h);
+}
+
 .pen-explorer thead th {
   background: #fff;
-  /* One continuous line above + below the header row (border-collapse merges cells). */
   border: none;
   border-top: 1px solid var(--pen-rule-blue);
   border-bottom: 1px solid var(--pen-rule-blue);
@@ -775,6 +832,7 @@ body {
   padding-top: 0;
   padding-bottom: 0;
   vertical-align: middle;
+  box-sizing: border-box;
 }
 
 .pen-explorer thead th.pen-explorer-action,
@@ -784,8 +842,12 @@ body {
 
 .pen-explorer tbody td {
   border: none;
-  padding-top: 0.5rem;
-  padding-bottom: 0.5rem;
+  /* Row height = pitch so sheet lines sit under each row */
+  height: var(--pen-rule-pitch);
+  padding-top: 0;
+  padding-bottom: 0;
+  vertical-align: middle;
+  background: transparent;
 }
 
 .pen-explorer th {
@@ -793,38 +855,31 @@ body {
   color: #000;
 }
 
-/* Body rows only — never put header rules on th/tr pseudos (they stack into half + full doubles). */
-.pen-explorer tbody tr {
-  position: relative;
-}
-
-.pen-explorer tbody tr::after {
-  content: '';
-  position: absolute;
-  left: 50%;
-  bottom: 0;
-  width: 100vw;
-  margin-left: -50vw;
-  border-bottom: 1px solid var(--pen-rule-blue);
-  pointer-events: none;
-  z-index: 2;
-}
-
 .pen-explorer-sheet {
   position: relative;
   overflow: visible;
+  flex: 1 1 auto;
+  min-height: 0;
 }
 
 .pen-explorer-action {
-  width: var(--pen-action-w);
-  min-width: var(--pen-action-w);
-  max-width: var(--pen-action-w);
+  width: calc(var(--pen-action-w) + var(--pen-edge-pad));
+  min-width: calc(var(--pen-action-w) + var(--pen-edge-pad));
+  max-width: calc(var(--pen-action-w) + var(--pen-edge-pad));
+  padding-left: var(--pen-edge-pad) !important;
+  box-sizing: border-box;
 }
 
 .pen-explorer-icon {
   width: var(--pen-icon-w);
   min-width: var(--pen-icon-w);
   max-width: var(--pen-icon-w);
+}
+
+.pen-explorer-col-updated {
+  width: 22%;
+  min-width: 9rem;
+  padding-right: var(--pen-edge-pad) !important;
 }
 
 .pen-explorer-name-header,
@@ -846,11 +901,6 @@ body {
 .pen-explorer-col-status {
   width: 22%;
   min-width: 7rem;
-}
-
-.pen-explorer-col-updated {
-  width: 22%;
-  min-width: 9rem;
 }
 
 /* Continuous red double rule through the full notebook (header → footer) */
@@ -885,25 +935,15 @@ body {
 }
 
 /*
- * Gallery: head strip matches list thead (line above + below at same Y).
- * Ruled paper fills through to the footer; tiles centered in 4-pitch slots, no row gap.
+ * Gallery: colhead matches list thead (same Y, same two lines).
+ * Pitch lines come from .pen-library-sheet::after — do not redraw them here.
  */
 .pen-gallery-wrap {
   display: flex;
   flex-direction: column;
   flex: 1 1 auto;
   min-height: 0;
-}
-
-.pen-gallery-head {
-  flex-shrink: 0;
-  height: var(--pen-explorer-head-h);
-  margin: 0 calc(-1 * var(--pen-edge-pad));
-  width: calc(100% + 2 * var(--pen-edge-pad));
-  box-sizing: border-box;
-  border-top: 1px solid var(--pen-rule-blue);
-  border-bottom: 1px solid var(--pen-rule-blue);
-  pointer-events: none;
+  background: transparent;
 }
 
 .pen-gallery {
@@ -911,20 +951,12 @@ body {
   flex: 1 1 auto;
   align-self: stretch;
   min-height: calc(100vh - 2.5rem - 8rem);
-  margin: 0 calc(-1 * var(--pen-edge-pad));
-  width: calc(100% + 2 * var(--pen-edge-pad));
+  margin: 0;
+  width: 100%;
   box-sizing: border-box;
   padding: 0 var(--pen-edge-pad) 0;
   padding-left: calc(var(--pen-edge-pad) + var(--pen-name-inset));
-  background-color: #fff;
-  background-image: repeating-linear-gradient(
-    to bottom,
-    transparent 0,
-    transparent calc(var(--pen-rule-pitch) - 1px),
-    var(--pen-rule-blue) calc(var(--pen-rule-pitch) - 1px),
-    var(--pen-rule-blue) var(--pen-rule-pitch)
-  );
-  background-attachment: local;
+  background: transparent;
 }
 
 .pen-gallery-tiles {

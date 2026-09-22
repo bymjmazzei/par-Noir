@@ -1519,6 +1519,7 @@ export function DocListPage({
             </div>
           ) : (
             <div className="pen-library-body">
+              <div className="pen-library-sheet">
               {browseDensity === 'gallery' ? (
                 <DocGalleryGrid
                   pn={session.pnIdentifier}
@@ -1598,6 +1599,7 @@ export function DocListPage({
                   onOpenPersonalTemplate={(id) => void openPersonalTemplate(id)}
                 />
               )}
+              </div>
             </div>
           )}
             </>

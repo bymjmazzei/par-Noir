@@ -249,6 +249,7 @@ export function TemplatesBrowse({
       {error && <p className="px-4 pt-2 text-sm text-red-600">{error}</p>}
 
       <div className="pen-library-body">
+        <div className="pen-library-sheet">
         {catalog.length === 0 ? (
           <p className="pen-library-indent py-10 text-sm text-neutral-500">No templates available.</p>
         ) : density === 'gallery' ? (
@@ -313,6 +314,7 @@ export function TemplatesBrowse({
             </div>
           </div>
         )}
+        </div>
       </div>
     </div>
   );
