@@ -136,7 +136,7 @@ function SortHeader({
   const active = sort.key === sortKey;
   const arrow = active ? (sort.dir === 'asc' ? ' ↑' : ' ↓') : '';
   return (
-    <th className={`${className} px-3 py-2 ${align === 'right' ? 'text-right' : ''}`}>
+    <th className={`${className} px-3 py-1 ${align === 'right' ? 'text-right' : ''}`}>
       <button
         type="button"
         onClick={() => onSort(sortKey)}
@@ -386,7 +386,7 @@ function DocExplorerTable({
   onOpenDoc: (docId: string) => void;
 }) {
   return (
-    <div className="pen-explorer overflow-hidden" data-bulk={bulkMode ? 'true' : 'false'}>
+    <div className="pen-explorer" data-bulk={bulkMode ? 'true' : 'false'}>
       {bulkMode && (
         <BulkDeleteBar
           compact
@@ -401,8 +401,8 @@ function DocExplorerTable({
         <table className="w-full table-fixed text-left text-sm">
           <thead className="text-[11px] tracking-wide">
             <tr>
-              <th className="pen-explorer-action w-10 px-2 py-2 text-center" aria-label="Select" />
-              <th className="pen-explorer-icon w-10 px-1 py-2" aria-hidden />
+              <th className="pen-explorer-action w-10 px-2 py-1 text-center" aria-label="Select" />
+              <th className="pen-explorer-icon w-10 px-1 py-1" aria-hidden />
               <SortHeader
                 label="Name"
                 sortKey="name"
@@ -424,7 +424,7 @@ function DocExplorerTable({
                 onSort={onSort}
                 className="hidden w-28 md:table-cell"
               />
-              <th className="hidden w-40 px-3 py-2 text-left lg:table-cell">
+              <th className="hidden w-40 px-3 py-1 text-left lg:table-cell">
                 <span className="text-[11px] font-normal uppercase tracking-wide text-neutral-600">
                   Status
                 </span>
@@ -756,7 +756,7 @@ function DocGalleryGrid({
   onDeleteFolder: (folderId: string) => void;
 }) {
   return (
-    <div className="flex flex-wrap gap-3">
+    <div className="pen-gallery-ruled">
       {!bulkMode && <CreateNewGalleryTile onClick={onCreateNew} />}
       {!bulkMode &&
         childFolders.map((f) => (
@@ -1388,7 +1388,7 @@ export function DocListPage({
               </button>
             </div>
           ) : homeView === 'dashboard' ? (
-            <div className="pen-library-body">
+            <div className="pen-library-body pen-library-indent">
               <PenDashboard session={session} docs={docs} onDocsChange={onDocsChange} />
             </div>
           ) : homeView === 'all' ? (
@@ -1542,7 +1542,7 @@ export function DocListPage({
                     </button>
                     {open &&
                       (browseDensity === 'gallery' ? (
-                        <div className="pb-3 pl-5">
+                        <div className="pb-3">
                           <DocGalleryGrid
                             pn={session.pnIdentifier}
                             docs={g.docs}

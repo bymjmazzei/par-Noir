@@ -163,14 +163,14 @@ function AuthenticatedApp({ session, onLock }: { session: PenSession; onLock: ()
 
   return (
     <div className="min-h-screen bg-white text-black">
-      <header className="fixed inset-x-0 top-0 z-50 flex h-10 items-center justify-between border-b border-neutral-200 bg-white px-3">
+      <header className="fixed inset-x-0 top-0 z-50 flex h-10 items-center justify-between border-b border-neutral-800 bg-black px-3">
         <div className="flex items-center gap-1.5">
           <button
             type="button"
             onClick={requestNewDoc}
             title="New document"
             aria-label="New document"
-            className="inline-flex h-8 w-8 items-center justify-center text-black hover:opacity-60"
+            className="inline-flex h-8 w-8 items-center justify-center text-white hover:opacity-70"
           >
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden>
               <path
@@ -181,14 +181,14 @@ function AuthenticatedApp({ session, onLock }: { session: PenSession; onLock: ()
               />
             </svg>
           </button>
-          <Link to="/" className="text-sm font-bold tracking-tight text-black">
+          <Link to="/" className="text-sm font-bold tracking-tight text-white">
             Pen
           </Link>
         </div>
         <button
           type="button"
           onClick={onLock}
-          className="inline-flex h-8 w-8 items-center justify-center text-neutral-500 hover:text-black"
+          className="inline-flex h-8 w-8 items-center justify-center text-white/70 hover:text-white"
           title="Lock session"
           aria-label="Lock session"
         >

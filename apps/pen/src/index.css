@@ -571,7 +571,7 @@ body {
 
 .pen-library-heading {
   /* Align title with Name column (after action + icon + red rail gap). */
-  padding: 1.25rem 0.25rem 0.85rem calc(5rem + 15px);
+  padding: 1.25rem 0.25rem 0.15rem calc(5rem + 15px);
 }
 
 .pen-library-indent {
@@ -597,18 +597,19 @@ body {
   justify-content: center;
   border-radius: 9999px;
   background: #fff;
-  padding: 0.35rem 0.95rem;
+  /* ~3× prior padding (0.35 / 0.95) */
+  padding: 1.05rem 2.85rem;
   box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.06);
 }
 
 .pen-library-footer-label span {
   color: #000;
-  font-size: 12px;
+  font-size: 18px;
   font-weight: 600;
   letter-spacing: 0.02em;
   line-height: 1.2;
-  border-bottom: 1px solid #000;
-  padding-bottom: 1px;
+  border-bottom: 1.5px solid #000;
+  padding-bottom: 2px;
 }
 
 .pen-explorer {
@@ -616,6 +617,8 @@ body {
   background: #fff;
   border: none;
   box-shadow: none;
+  /* Do not clip the page-level red rail */
+  overflow: visible;
 }
 
 .pen-explorer table {
@@ -623,10 +626,20 @@ body {
 }
 
 .pen-explorer thead {
-  background: #fff;
+  background: transparent;
   position: sticky;
   top: 2.5rem; /* below fixed app chrome */
   z-index: 5;
+}
+
+.pen-explorer thead th {
+  background: #fff;
+}
+
+/* Keep action/icon header cells clear so the red rail shows through the title row */
+.pen-explorer thead th.pen-explorer-action,
+.pen-explorer thead th.pen-explorer-icon {
+  background: transparent;
 }
 
 .pen-explorer th,
@@ -648,6 +661,7 @@ body {
 
 .pen-explorer-sheet {
   position: relative;
+  overflow: visible;
 }
 
 .pen-explorer-action {
@@ -658,7 +672,7 @@ body {
   width: 2.5rem;
 }
 
-/* Continuous red double rule after icon col; extends through page notebook */
+/* Continuous red double rule after icon col; above sticky thead paint */
 .pen-explorer-rail {
   position: absolute;
   top: 0;
@@ -667,7 +681,7 @@ body {
   border-left: 1.5px solid #dc2626;
   border-right: 1.5px solid #dc2626;
   pointer-events: none;
-  z-index: 2;
+  z-index: 20;
   left: 5rem;
 }
 
@@ -683,8 +697,23 @@ body {
   justify-content: space-between;
   gap: 0.75rem;
   padding: 0.5rem 0.25rem 0.65rem;
-  /* Sit under heading; no extra top blue rule */
   border-top: none;
   border-bottom: 1px solid #3b82f6;
   margin-left: calc(5rem + 15px);
+}
+
+/* Gallery: start right of red rail; blue rules above first row and under each row */
+.pen-gallery-ruled {
+  margin-left: calc(5rem + 15px);
+  border-top: 1px solid #3b82f6;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, 100px);
+  column-gap: 0.75rem;
+  row-gap: 0;
+}
+
+.pen-gallery-ruled > * {
+  border-bottom: 1px solid #3b82f6;
+  padding-top: 0.75rem;
+  padding-bottom: 0.75rem;
 }
