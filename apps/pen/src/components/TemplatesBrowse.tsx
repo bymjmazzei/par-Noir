@@ -278,42 +278,48 @@ export function TemplatesBrowse({
           </div>
         ) : (
           <div className="pen-explorer">
-            <div className="pen-explorer-sheet">
-              <table className="w-full text-left text-sm">
-                <thead className="text-[11px] tracking-wide">
-                  <tr>
-                    <th className="pen-explorer-name-header px-3">Name</th>
-                    <th className="pen-explorer-col-category px-3">Category</th>
-                    <th className="pen-explorer-col-form px-3">Form</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr className="pen-explorer-title-rule-row" aria-hidden="true">
-                    <td colSpan={3} />
-                  </tr>
-                  {catalog.map((t) => {
-                    const form = getClass(t.classId);
-                    const cat = form?.parentId ? getClass(form.parentId) : undefined;
-                    return (
-                      <tr
-                        key={t.id}
-                        className="cursor-pointer hover:bg-neutral-50"
-                        onClick={() => setPreviewId(t.id)}
-                      >
-                        <td className="pen-explorer-name-cell px-3 py-2 font-medium text-black">
-                          {t.title}
-                        </td>
-                        <td className="pen-explorer-col-category px-3 py-2 text-xs text-black">
-                          {cat?.title || '—'}
-                        </td>
-                        <td className="pen-explorer-col-form px-3 py-2 text-xs text-black">
-                          {form?.title || '—'}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
+            <div className="pen-explorer-sticky-head">
+              <div className="pen-explorer-scroll">
+                <table className="pen-explorer-table w-full text-left text-sm">
+                  <thead className="text-[11px] tracking-wide">
+                    <tr>
+                      <th className="pen-explorer-name-header px-3">Name</th>
+                      <th className="pen-explorer-col-category px-3">Category</th>
+                      <th className="pen-explorer-col-form px-3">Form</th>
+                    </tr>
+                  </thead>
+                </table>
+              </div>
+              <div className="pen-library-title-rule" aria-hidden />
+            </div>
+            <div className="pen-explorer-body">
+              <div className="pen-explorer-scroll">
+                <table className="pen-explorer-table w-full text-left text-sm">
+                  <tbody>
+                    {catalog.map((t) => {
+                      const form = getClass(t.classId);
+                      const cat = form?.parentId ? getClass(form.parentId) : undefined;
+                      return (
+                        <tr
+                          key={t.id}
+                          className="cursor-pointer hover:bg-neutral-50"
+                          onClick={() => setPreviewId(t.id)}
+                        >
+                          <td className="pen-explorer-name-cell px-3 py-2 font-medium text-black">
+                            {t.title}
+                          </td>
+                          <td className="pen-explorer-col-category px-3 py-2 text-xs text-black">
+                            {cat?.title || '—'}
+                          </td>
+                          <td className="pen-explorer-col-form px-3 py-2 text-xs text-black">
+                            {form?.title || '—'}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
             </div>
           </div>
         )}

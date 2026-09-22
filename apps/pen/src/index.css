@@ -657,36 +657,30 @@ body {
   background-color: #fff;
 }
 
-/*
- * NO line under My Library header.
- * Title-row underline is drawn in-flow (tbody rule row / gallery-head border-bottom)
- * so it always sits flush under NAME — not via a guessed head-h offset.
- * ::after = pitch lines only, starting one pitch below the title underline.
- */
-.pen-library-sheet::after {
-  content: '';
-  position: absolute;
-  left: 0;
-  right: 0;
-  top: var(--pen-explorer-head-h);
-  bottom: 0;
-  background-image: repeating-linear-gradient(
-    to bottom,
-    transparent 0,
-    transparent calc(var(--pen-rule-pitch) - 1px),
-    var(--pen-rule-blue) calc(var(--pen-rule-pitch) - 1px),
-    var(--pen-rule-blue) var(--pen-rule-pitch)
-  );
-  pointer-events: none;
-  z-index: 0;
-}
+/* No sheet-level blue strokes — those sat under My Library / above NAME by mistake */
 
 .pen-library-sheet > * {
   position: relative;
   z-index: 1;
 }
 
-/* Gallery title spacer — underline under the empty head band */
+/*
+ * THE title-row underline: a real block sibling under the sticky head.
+ * Never a table border (sticky thead fill covers those) and never an absolute guess.
+ */
+.pen-library-title-rule {
+  display: block;
+  height: 0;
+  margin: 0;
+  padding: 0;
+  border: none;
+  border-top: 1px solid var(--pen-rule-blue);
+  width: 100%;
+  flex-shrink: 0;
+  pointer-events: none;
+}
+
+/* Gallery: empty head band + same underline */
 .pen-gallery-head,
 .pen-library-colhead {
   flex-shrink: 0;
@@ -697,20 +691,6 @@ body {
   background: #fff;
   width: 100%;
   pointer-events: none;
-}
-
-/* List: 0-height first tbody row = line flush under thead (in-flow, always correct) */
-.pen-explorer-title-rule-row td {
-  height: 0 !important;
-  max-height: 0 !important;
-  padding: 0 !important;
-  margin: 0 !important;
-  border: none !important;
-  border-top: 1px solid var(--pen-rule-blue) !important;
-  line-height: 0 !important;
-  font-size: 0 !important;
-  background: transparent !important;
-  vertical-align: top;
 }
 
 /* Page-width notebook rule (not tile/cell attached) */
@@ -817,6 +797,28 @@ body {
   min-height: 0;
 }
 
+.pen-explorer-sticky-head {
+  position: sticky;
+  top: 2.5rem;
+  z-index: 5;
+  flex-shrink: 0;
+  background: #fff;
+}
+
+.pen-explorer-body {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+  /* Pitch lines for data rows only — starts under the title-rule */
+  background-image: repeating-linear-gradient(
+    to bottom,
+    transparent 0,
+    transparent calc(var(--pen-rule-pitch) - 1px),
+    var(--pen-rule-blue) calc(var(--pen-rule-pitch) - 1px),
+    var(--pen-rule-blue) var(--pen-rule-pitch)
+  );
+}
+
 .pen-explorer-scroll {
   width: 100%;
   overflow-x: auto;
@@ -824,7 +826,7 @@ body {
   -webkit-overflow-scrolling: touch;
 }
 
-.pen-explorer table {
+.pen-explorer-table {
   border-collapse: collapse;
   width: 100%;
   min-width: 100%;
@@ -833,19 +835,12 @@ body {
 
 .pen-explorer thead {
   background: #fff;
-  position: sticky;
-  top: 2.5rem;
-  z-index: 5;
 }
 
 .pen-explorer thead tr {
   height: var(--pen-explorer-head-h);
 }
 
-/*
- * List title row: no borders on th. Underline is the in-flow
- * .pen-explorer-title-rule-row under thead.
- */
 .pen-explorer thead th {
   background: #fff;
   border: none !important;
@@ -864,7 +859,6 @@ body {
 
 .pen-explorer tbody td {
   border: none;
-  /* Row height = pitch so sheet lines sit under each row */
   height: var(--pen-rule-pitch);
   padding-top: 0;
   padding-bottom: 0;
@@ -875,13 +869,6 @@ body {
 .pen-explorer th {
   font-weight: 700;
   color: #000;
-}
-
-.pen-explorer-sheet {
-  position: relative;
-  overflow: visible;
-  flex: 1 1 auto;
-  min-height: 0;
 }
 
 .pen-explorer-action {
@@ -979,6 +966,13 @@ body {
   padding: 0 var(--pen-edge-pad) 0;
   padding-left: calc(var(--pen-edge-pad) + var(--pen-name-inset));
   background: transparent;
+  background-image: repeating-linear-gradient(
+    to bottom,
+    transparent 0,
+    transparent calc(var(--pen-rule-pitch) - 1px),
+    var(--pen-rule-blue) calc(var(--pen-rule-pitch) - 1px),
+    var(--pen-rule-blue) var(--pen-rule-pitch)
+  );
 }
 
 .pen-gallery-tiles {

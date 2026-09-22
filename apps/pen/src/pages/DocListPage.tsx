@@ -131,7 +131,7 @@ function SortHeader({
   const active = sort.key === sortKey;
   const arrow = active ? (sort.dir === 'asc' ? ' ↑' : ' ↓') : '';
   return (
-    <th className={`${className} px-3 py-1 ${align === 'right' ? 'text-right' : ''}`}>
+    <th className={`${className} px-3 ${align === 'right' ? 'text-right' : ''}`}>
       <button
         type="button"
         onClick={() => onSort(sortKey)}
@@ -445,13 +445,13 @@ function DocExplorerTable({
 
   return (
     <div className="pen-explorer" data-bulk={bulkMode ? 'true' : 'false'}>
-      <div className="pen-explorer-sheet">
+      <div className="pen-explorer-sticky-head">
         <div className="pen-explorer-scroll">
-          <table className="text-left text-sm">
+          <table className="pen-explorer-table text-left text-sm">
             <thead className="text-[11px] tracking-wide">
               <tr>
-                <th className="pen-explorer-action px-2 py-1 text-center" aria-label="Select" />
-                <th className="pen-explorer-icon px-1 py-1" aria-hidden />
+                <th className="pen-explorer-action px-2 text-center" aria-label="Select" />
+                <th className="pen-explorer-icon px-1" aria-hidden />
                 <SortHeader
                   label="Name"
                   sortKey="name"
@@ -473,7 +473,7 @@ function DocExplorerTable({
                   onSort={onSort}
                   className="pen-explorer-col-form"
                 />
-                <th className="pen-explorer-col-status px-3 py-1 text-left">
+                <th className="pen-explorer-col-status px-3 text-left">
                   <span className="text-[11px] font-normal uppercase tracking-wide text-neutral-600">
                     Status
                   </span>
@@ -488,10 +488,15 @@ function DocExplorerTable({
                 />
               </tr>
             </thead>
+          </table>
+        </div>
+        {/* Real sibling under thead — cannot be covered by sticky thead fill */}
+        <div className="pen-library-title-rule" aria-hidden />
+      </div>
+      <div className="pen-explorer-body">
+        <div className="pen-explorer-scroll">
+          <table className="pen-explorer-table text-left text-sm">
             <tbody>
-              <tr className="pen-explorer-title-rule-row" aria-hidden="true">
-                <td colSpan={7} />
-              </tr>
               {!bulkMode &&
                 notebooks.map((nb) => (
                   <Fragment key={nb.id}>
