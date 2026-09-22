@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import type { Editor } from '@tiptap/react';
 import {
   compileDocumentToNote,
+  getClass,
   getTemplate,
   hashSectionContent,
   headHashFromChain,
@@ -46,6 +47,16 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
     () => (bundle ? getTemplate(bundle.manifest.templateId) : undefined),
     [bundle]
   );
+
+  const classTrail = useMemo(() => {
+    const classId = bundle?.manifest.classId || template?.classId;
+    if (!classId) return template?.title || bundle?.manifest.templateId || '';
+    const form = getClass(classId);
+    const category = form?.parentId ? getClass(form.parentId) : undefined;
+    return [category?.title, form?.title, template?.title]
+      .filter(Boolean)
+      .join(' · ');
+  }, [bundle, template]);
 
   const section = useMemo(
     () => bundle?.sections.find((s) => s.slug === activeSlug) || bundle?.sections[0],
@@ -218,8 +229,8 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
             })
           }
         />
-        <span className="hidden text-[11px] text-stone-500 sm:inline">
-          {template?.title || bundle.manifest.templateId}
+        <span className="hidden max-w-[40%] truncate text-[11px] text-stone-500 sm:inline">
+          {classTrail}
         </span>
         <button
           type="button"

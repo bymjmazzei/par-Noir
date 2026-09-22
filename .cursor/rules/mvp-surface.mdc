@@ -14,7 +14,7 @@ Default work targets a closed/beta MVP of the core stack. Do not pull in deferre
 - Browse: public feeds, free follow, engagement
 - Messaging: E2E DMs/groups (crypto via `@par-noir/dm-crypto`)
 - OAuth unlock proofs (ML-DSA), no passcode on the wire
-- Pen authored-content IR + starter templates (Notes/posts/carousels/self-hosted feeds); see `pen-templates.mdc` — **template first**, then UI; community template marketplace is later
+- Pen authored-content IR + starter templates (Notes/posts/collections/self-hosted feeds); see `pen-templates.mdc` — **template first**, then UI; community template marketplace is later
 
 ## Out of scope unless asked
 

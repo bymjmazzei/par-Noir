@@ -11,7 +11,15 @@ import {
   signPromoteLink,
   verifyChain,
   headHashFromChain,
-  hashSectionContent
+  hashSectionContent,
+  listCategories,
+  listForms,
+  listTemplatesByClass,
+  listTemplatesGroupedByCategory,
+  requireClass,
+  getClass,
+  searchPenCatalog,
+  assertTemplateClassInvariants
 } from './index.js';
 
 function utf8ToBytes(s: string): Uint8Array {
@@ -34,14 +42,72 @@ describe('pen paths', () => {
   });
 });
 
-describe('templates + compile', () => {
-  it('lists starter pack', () => {
+describe('classes + templates', () => {
+  it('lists starter pack with collection (not carousel)', () => {
     const list = listStarterTemplates();
     expect(list.length).toBeGreaterThanOrEqual(6);
     expect(list.some((t) => t.docType === 'note')).toBe(true);
     expect(list.some((t) => t.docType === 'post')).toBe(true);
-    expect(list.some((t) => t.docType === 'carousel')).toBe(true);
+    expect(list.some((t) => t.docType === 'collection')).toBe(true);
     expect(list.some((t) => t.docType === 'self_hosted_feed')).toBe(true);
+    expect(list.some((t) => t.id.includes('carousel') || t.docType === 'carousel')).toBe(false);
+  });
+
+  it('every starter has a form classId under a category', () => {
+    assertTemplateClassInvariants(listStarterTemplates());
+    for (const t of listStarterTemplates()) {
+      const form = requireClass(t.classId);
+      expect(form.parentId).toBeTruthy();
+      expect(requireClass(form.parentId!).parentId).toBeUndefined();
+    }
+  });
+
+  it('social category has note/post/collection/feed forms', () => {
+    expect(listCategories().map((c) => c.id)).toEqual(['social']);
+    const forms = listForms('social');
+    expect(forms.map((f) => f.id).sort()).toEqual([
+      'social.collection',
+      'social.feed',
+      'social.note',
+      'social.post'
+    ]);
+    expect(getClass('social.feed')?.entitlement).toBe('self-hosted');
+  });
+
+  it('groups templates by category with no orphans', () => {
+    const grouped = listTemplatesGroupedByCategory();
+    const allIds = new Set(listStarterTemplates().map((t) => t.id));
+    const seen = new Set<string>();
+    for (const g of grouped) {
+      for (const { templates } of g.forms) {
+        for (const t of templates) seen.add(t.id);
+      }
+    }
+    expect([...allIds].sort()).toEqual([...seen].sort());
+    expect(listTemplatesByClass('social.note').length).toBe(2);
+  });
+
+  it('search finds notes and empty query returns nothing', () => {
+    expect(searchPenCatalog('').templates).toEqual([]);
+    const hit = searchPenCatalog('basic note');
+    expect(hit.templates.some((t) => t.id === 'note.basic.v1')).toBe(true);
+    expect(searchPenCatalog('social').categories.some((c) => c.id === 'social')).toBe(true);
+  });
+
+  it('invariant fails when classId points at a category', () => {
+    expect(() =>
+      assertTemplateClassInvariants([
+        {
+          id: 'bad.v1',
+          classId: 'social',
+          docType: 'note',
+          version: '1',
+          title: 'Bad',
+          description: 'x',
+          sections: [{ slug: 'body', title: 'Body', required: true }]
+        }
+      ])
+    ).toThrow(/classId_must_be_form/);
   });
 
   it('compiles note from currents', () => {

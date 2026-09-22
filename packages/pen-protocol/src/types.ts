@@ -20,6 +20,8 @@ export interface PenDocManifest {
   docId: string;
   title: string;
   docType: PenDocType;
+  /** Form class id (e.g. social.note). */
+  classId: string;
   templateId: string;
   templateVersion: string;
   groupId?: string;

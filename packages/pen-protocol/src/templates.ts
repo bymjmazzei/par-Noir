@@ -1,6 +1,6 @@
 /** Pen template registry + starter pack. */
 
-export type PenDocType = 'note' | 'post' | 'carousel' | 'self_hosted_feed' | string;
+export type PenDocType = 'note' | 'post' | 'collection' | 'self_hosted_feed' | string;
 
 export interface PenTemplateSection {
   slug: string;
@@ -10,6 +10,8 @@ export interface PenTemplateSection {
 
 export interface PenTemplate {
   id: string;
+  /** Form class id (e.g. social.note), never a category. */
+  classId: string;
   docType: PenDocType;
   version: string;
   title: string;
@@ -22,6 +24,7 @@ export interface PenTemplate {
 const STARTER: PenTemplate[] = [
   {
     id: 'note.basic.v1',
+    classId: 'social.note',
     docType: 'note',
     version: '1',
     title: 'Basic Note',
@@ -31,6 +34,7 @@ const STARTER: PenTemplate[] = [
   },
   {
     id: 'note.article.v1',
+    classId: 'social.note',
     docType: 'note',
     version: '1',
     title: 'Article Note',
@@ -43,6 +47,7 @@ const STARTER: PenTemplate[] = [
   },
   {
     id: 'post.caption.v1',
+    classId: 'social.post',
     docType: 'post',
     version: '1',
     title: 'Caption Post',
@@ -55,6 +60,7 @@ const STARTER: PenTemplate[] = [
   },
   {
     id: 'post.media.v1',
+    classId: 'social.post',
     docType: 'post',
     version: '1',
     title: 'Media-forward Post',
@@ -66,31 +72,34 @@ const STARTER: PenTemplate[] = [
     publishContentClass: 'note'
   },
   {
-    id: 'carousel.basic.v1',
-    docType: 'carousel',
+    id: 'collection.basic.v1',
+    classId: 'social.collection',
+    docType: 'collection',
     version: '1',
-    title: 'Basic Carousel',
+    title: 'Basic Collection',
     description: 'Ordered pages / slides',
     sections: [
       { slug: 'slide-1', title: 'Slide 1', required: true },
       { slug: 'slide-2', title: 'Slide 2', required: false }
     ],
-    publishContentClass: 'note'
+    publishContentClass: 'collection'
   },
   {
-    id: 'carousel.story.v1',
-    docType: 'carousel',
+    id: 'collection.story.v1',
+    classId: 'social.collection',
+    docType: 'collection',
     version: '1',
-    title: 'Story Carousel',
+    title: 'Story Collection',
     description: 'Short vertical story pages',
     sections: [
       { slug: 'cover', title: 'Cover', required: true },
       { slug: 'pages', title: 'Pages', required: true }
     ],
-    publishContentClass: 'note'
+    publishContentClass: 'collection'
   },
   {
     id: 'feed.self_hosted.v1',
+    classId: 'social.feed',
     docType: 'self_hosted_feed',
     version: '1',
     title: 'Self-hosted Feed',
@@ -103,6 +112,7 @@ const STARTER: PenTemplate[] = [
   },
   {
     id: 'feed.curated.v1',
+    classId: 'social.feed',
     docType: 'self_hosted_feed',
     version: '1',
     title: 'Curated Feed',

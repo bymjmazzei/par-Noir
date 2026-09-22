@@ -21,10 +21,11 @@ import {
 import { mlDsa65Keygen } from '@par-noir/pqc-crypto/ml-dsa';
 
 describe('Pen v1 acceptance (hermetic)', () => {
-  it('starter pack includes post, carousel, notes, self-hosted feed', () => {
+  it('starter pack includes post, collection, notes, self-hosted feed', () => {
     const ids = listStarterTemplates().map((t) => t.id);
     expect(ids.some((id) => id.includes('post'))).toBe(true);
-    expect(ids.some((id) => id.includes('carousel'))).toBe(true);
+    expect(ids.some((id) => id.includes('collection'))).toBe(true);
+    expect(ids.some((id) => id.includes('carousel'))).toBe(false);
     expect(ids.some((id) => id.includes('note'))).toBe(true);
     expect(ids.some((id) => id.includes('feed'))).toBe(true);
   });

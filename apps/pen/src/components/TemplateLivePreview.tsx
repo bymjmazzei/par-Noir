@@ -188,7 +188,7 @@ function PostPreview({
   );
 }
 
-function CarouselPreview({
+function CollectionPreview({
   title,
   sections,
   templateId
@@ -221,7 +221,7 @@ function CarouselPreview({
           </div>
           <div className="flex flex-1 flex-col justify-end p-5">
             <div className="text-[10px] uppercase tracking-wider text-white/50">
-              {cur?.title || 'Slide'} · Carousel
+              {cur?.title || 'Slide'} · Collection
             </div>
             <div className="mt-2 font-serif text-2xl font-semibold leading-tight">
               {title || 'Untitled'}
@@ -307,9 +307,9 @@ export function TemplateLivePreview({
         <PostPreview title={manifest.title} sections={sections} templateId={manifest.templateId} />
       );
     }
-    if (docType === 'carousel') {
+    if (docType === 'collection') {
       return (
-        <CarouselPreview
+        <CollectionPreview
           title={manifest.title}
           sections={sections}
           templateId={manifest.templateId}

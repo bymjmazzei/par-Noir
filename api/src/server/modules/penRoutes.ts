@@ -268,8 +268,11 @@ export function setupPenRoutes(
   app.get('/api/pen/templates', async (req: Request, res: Response) => {
     try {
       if (!requireFirstPartyOAuthClient(req, res)) return;
-      const { listStarterTemplates } = await import('@par-noir/pen-protocol');
-      return res.json({ templates: listStarterTemplates() });
+      const { listStarterTemplates, listClasses } = await import('@par-noir/pen-protocol');
+      return res.json({
+        classes: listClasses(),
+        templates: listStarterTemplates()
+      });
     } catch (e) {
       return res.status(500).json({ error: safeClientErrorMessage(e, isProduction) });
     }

@@ -5,6 +5,7 @@
 
 import {
   listStarterTemplates,
+  listClasses,
   compileDocumentToNote,
   verifyChain,
   type PenDocManifest,
@@ -42,14 +43,31 @@ export class IntegratorPenClient {
     return listStarterTemplates();
   }
 
+  listClassesLocal() {
+    return listClasses();
+  }
+
   async listTemplates(ctx: IntegratorApiContext | string) {
     const res = await fetch(`${this.apiEndpoint}/api/pen/templates`, {
       headers: integratorAuthHeaders(ctx)
     });
     // L5 may 403 if first-party only — fall back to packaged templates
-    if (!res.ok) return { templates: listStarterTemplates(), source: 'packaged' as const };
-    const data = await parseJsonResponse<{ templates: unknown[] }>(res);
-    return { templates: data.templates || listStarterTemplates(), source: 'api' as const };
+    if (!res.ok) {
+      return {
+        classes: listClasses(),
+        templates: listStarterTemplates(),
+        source: 'packaged' as const
+      };
+    }
+    const data = await parseJsonResponse<{
+      classes?: unknown[];
+      templates: unknown[];
+    }>(res);
+    return {
+      classes: data.classes?.length ? data.classes : listClasses(),
+      templates: data.templates || listStarterTemplates(),
+      source: 'api' as const
+    };
   }
 
   compileToNote(input: {
