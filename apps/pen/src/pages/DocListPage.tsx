@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import {
   getClass,
@@ -15,8 +15,18 @@ import type { PenSession } from '../App';
 import {
   deleteLocalDocs,
   loadLocalDoc,
+  moveLocalDocToFolder,
+  renameLocalDoc,
   type LocalDocSummary
 } from '../services/penLocalStore';
+import {
+  createFolder,
+  deleteFolder,
+  listChildFolders,
+  listFolders,
+  renameFolder,
+  type PenFolder
+} from '../services/penFolders';
 import { fetchPenCatalog, fetchStorageTier } from '../services/penApi';
 import {
   loadBrowseDensity,
@@ -39,6 +49,7 @@ import {
 import { PenDashboard } from '../components/dashboard/PenDashboard';
 import { FormDocIcon } from '../components/FormDocIcon';
 import { TemplateLivePreview } from '../components/TemplateLivePreview';
+import { DocItemMenu } from '../components/DocItemMenu';
 
 type DrillLevel = 'category' | 'form' | 'template';
 
@@ -142,16 +153,37 @@ function DocExplorerRow({
   d,
   bulkMode,
   selected,
-  onToggle
+  onToggle,
+  renaming,
+  renameDraft,
+  onRenameDraft,
+  onStartRename,
+  onCommitRename,
+  onCancelRename,
+  folders,
+  onMove,
+  onDelete,
+  onOpen
 }: {
   d: LocalDocSummary;
   bulkMode: boolean;
   selected: boolean;
   onToggle: (docId: string) => void;
+  renaming: boolean;
+  renameDraft: string;
+  onRenameDraft: (v: string) => void;
+  onStartRename: () => void;
+  onCommitRename: () => void;
+  onCancelRename: () => void;
+  folders: Array<{ id: string; name: string }>;
+  onMove: (folderId: string | null) => void;
+  onDelete: () => void;
+  onOpen: () => void;
 }) {
   const classId = resolveDocClassId(d);
   const form = classId ? getClass(classId) : undefined;
   const category = form?.parentId ? getClass(form.parentId) : undefined;
+  const clickTimer = useRef<number | null>(null);
   return (
     <tr
       className={`${selected ? 'bg-blue-50/40' : ''} hover:bg-neutral-50`}
@@ -177,10 +209,49 @@ function DocExplorerRow({
       <td className="pen-explorer-name-cell px-3 py-2">
         {bulkMode ? (
           <span className="truncate font-medium text-black">{d.title || 'Untitled'}</span>
+        ) : renaming ? (
+          <input
+            autoFocus
+            value={renameDraft}
+            onChange={(e) => onRenameDraft(e.target.value)}
+            onBlur={() => onCommitRename()}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault();
+                onCommitRename();
+              }
+              if (e.key === 'Escape') {
+                e.preventDefault();
+                onCancelRename();
+              }
+            }}
+            onClick={(e) => e.stopPropagation()}
+            className="w-full border-b border-neutral-400 bg-transparent font-medium text-black outline-none"
+          />
         ) : (
-          <Link to={`/d/${d.docId}`} className="truncate font-medium text-black hover:underline">
+          <button
+            type="button"
+            className="truncate text-left font-medium text-black hover:underline"
+            onClick={(e) => {
+              e.stopPropagation();
+              if (clickTimer.current != null) return;
+              clickTimer.current = window.setTimeout(() => {
+                clickTimer.current = null;
+                onOpen();
+              }, 250);
+            }}
+            onDoubleClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              if (clickTimer.current != null) {
+                window.clearTimeout(clickTimer.current);
+                clickTimer.current = null;
+              }
+              onStartRename();
+            }}
+          >
             {d.title || 'Untitled'}
-          </Link>
+          </button>
         )}
       </td>
       <td className="hidden px-3 py-2 text-xs text-black sm:table-cell">
@@ -191,7 +262,66 @@ function DocExplorerRow({
       </td>
       <td className="hidden px-3 py-2 text-xs text-black lg:table-cell">{d.templateId}</td>
       <td className="whitespace-nowrap px-3 py-2 text-right text-xs text-black">
-        {new Date(d.updatedAt).toLocaleString()}
+        <div className="flex items-center justify-end gap-1">
+          <span>{new Date(d.updatedAt).toLocaleString()}</span>
+          {!bulkMode && (
+            <DocItemMenu
+              folders={folders}
+              onRename={onStartRename}
+              onMove={onMove}
+              onDelete={onDelete}
+            />
+          )}
+        </div>
+      </td>
+    </tr>
+  );
+}
+
+function FolderExplorerRow({
+  folder,
+  onOpen,
+  onRename,
+  onDelete
+}: {
+  folder: PenFolder;
+  onOpen: () => void;
+  onRename: () => void;
+  onDelete: () => void;
+}) {
+  return (
+    <tr className="hover:bg-neutral-50">
+      <td className="pen-explorer-action w-10 px-2 py-2" />
+      <td className="pen-explorer-icon w-10 px-1 py-2">
+        <FolderGlyph />
+      </td>
+      <td className="pen-explorer-name-cell px-3 py-2">
+        <button
+          type="button"
+          onClick={onOpen}
+          onDoubleClick={(e) => {
+            e.preventDefault();
+            onRename();
+          }}
+          className="truncate font-medium text-black hover:underline"
+        >
+          {folder.name}
+        </button>
+      </td>
+      <td className="hidden px-3 py-2 text-xs text-neutral-500 sm:table-cell">Folder</td>
+      <td className="hidden px-3 py-2 text-xs text-black md:table-cell">—</td>
+      <td className="hidden px-3 py-2 text-xs text-black lg:table-cell">—</td>
+      <td className="whitespace-nowrap px-3 py-2 text-right text-xs text-black">
+        <div className="flex items-center justify-end gap-1">
+          <span>{new Date(folder.createdAt).toLocaleString()}</span>
+          <DocItemMenu
+            folders={[]}
+            showMove={false}
+            onRename={onRename}
+            onMove={() => undefined}
+            onDelete={onDelete}
+          />
+        </div>
       </td>
     </tr>
   );
@@ -199,6 +329,8 @@ function DocExplorerRow({
 
 function DocExplorerTable({
   docs,
+  childFolders,
+  moveFolders,
   sort,
   onSort,
   bulkMode,
@@ -206,9 +338,23 @@ function DocExplorerTable({
   onToggle,
   onToggleBulk,
   onSelectAll,
-  onDelete
+  onDelete,
+  renamingId,
+  renameDraft,
+  onRenameDraft,
+  onStartRename,
+  onCommitRename,
+  onCancelRename,
+  onMoveDoc,
+  onDeleteDoc,
+  onOpenFolder,
+  onRenameFolder,
+  onDeleteFolder,
+  onOpenDoc
 }: {
   docs: LocalDocSummary[];
+  childFolders: PenFolder[];
+  moveFolders: Array<{ id: string; name: string }>;
   sort: ExplorerSort;
   onSort: (key: ExplorerSortKey) => void;
   bulkMode: boolean;
@@ -217,6 +363,18 @@ function DocExplorerTable({
   onToggleBulk: () => void;
   onSelectAll: () => void;
   onDelete: () => void;
+  renamingId: string | null;
+  renameDraft: string;
+  onRenameDraft: (v: string) => void;
+  onStartRename: (docId: string, title: string) => void;
+  onCommitRename: () => void;
+  onCancelRename: () => void;
+  onMoveDoc: (docId: string, folderId: string | null) => void;
+  onDeleteDoc: (docId: string) => void;
+  onOpenFolder: (folderId: string) => void;
+  onRenameFolder: (folder: PenFolder) => void;
+  onDeleteFolder: (folderId: string) => void;
+  onOpenDoc: (docId: string) => void;
 }) {
   return (
     <div className="pen-explorer overflow-hidden" data-bulk={bulkMode ? 'true' : 'false'}>
@@ -284,11 +442,21 @@ function DocExplorerTable({
                 sort={sort}
                 onSort={onSort}
                 align="right"
-                className="w-40"
+                className="w-44"
               />
             </tr>
           </thead>
           <tbody>
+            {!bulkMode &&
+              childFolders.map((f) => (
+                <FolderExplorerRow
+                  key={f.id}
+                  folder={f}
+                  onOpen={() => onOpenFolder(f.id)}
+                  onRename={() => onRenameFolder(f)}
+                  onDelete={() => onDeleteFolder(f.id)}
+                />
+              ))}
             {docs.map((d) => (
               <DocExplorerRow
                 key={d.docId}
@@ -296,6 +464,16 @@ function DocExplorerTable({
                 bulkMode={bulkMode}
                 selected={selectedIds.has(d.docId)}
                 onToggle={onToggle}
+                renaming={renamingId === d.docId}
+                renameDraft={renameDraft}
+                onRenameDraft={onRenameDraft}
+                onStartRename={() => onStartRename(d.docId, d.title || '')}
+                onCommitRename={onCommitRename}
+                onCancelRename={onCancelRename}
+                folders={moveFolders}
+                onMove={(folderId) => onMoveDoc(d.docId, folderId)}
+                onDelete={() => onDeleteDoc(d.docId)}
+                onOpen={() => onOpenDoc(d.docId)}
               />
             ))}
           </tbody>
@@ -345,60 +523,124 @@ function MinusIcon() {
   );
 }
 
+function FolderGlyph() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden>
+      <path
+        d="M3 7.5A1.5 1.5 0 0 1 4.5 6H9l2 2h8.5A1.5 1.5 0 0 1 21 9.5v8A1.5 1.5 0 0 1 19.5 19h-15A1.5 1.5 0 0 1 3 17.5v-10Z"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
 function DocGalleryCard({
   pn,
   d,
   bulkMode,
   selected,
-  onToggle
+  onToggle,
+  folders,
+  renaming,
+  renameDraft,
+  onRenameDraft,
+  onStartRename,
+  onCommitRename,
+  onCancelRename,
+  onMove,
+  onDelete
 }: {
   pn: string;
   d: LocalDocSummary;
   bulkMode: boolean;
   selected: boolean;
   onToggle: (docId: string) => void;
+  folders: Array<{ id: string; name: string }>;
+  renaming: boolean;
+  renameDraft: string;
+  onRenameDraft: (v: string) => void;
+  onStartRename: () => void;
+  onCommitRename: () => void;
+  onCancelRename: () => void;
+  onMove: (folderId: string | null) => void;
+  onDelete: () => void;
 }) {
   const bundle = loadLocalDoc(pn, d.docId);
-  const classId = resolveDocClassId(d);
-  const body = (
-    <>
-      <div className="relative h-48 overflow-hidden bg-neutral-50">
-        {bulkMode && (
-          <div className="absolute left-2 top-2 z-10">
-            <input
-              type="checkbox"
-              checked={selected}
-              onChange={() => onToggle(d.docId)}
-              onClick={(e) => e.stopPropagation()}
-              className="h-4 w-4 accent-black"
-              aria-label={`Select ${d.title || 'document'}`}
-            />
-          </div>
-        )}
-        {bundle ? (
-          <div className="pointer-events-none absolute inset-0 flex justify-center overflow-hidden pt-2">
-            <TemplateLivePreview
-              manifest={bundle.manifest}
-              sections={bundle.sections}
-              compact
-            />
-          </div>
-        ) : (
-          <div className="flex h-full items-center justify-center text-xs text-neutral-600">
-            No preview
-          </div>
-        )}
-      </div>
-      <div className="flex items-center gap-2 border-t border-blue-500 px-3 py-2">
-        <FormDocIcon classId={classId} />
-        <div className="min-w-0 flex-1">
-          <div className="truncate text-sm font-medium text-black">{d.title}</div>
-          <div className="truncate text-[11px] text-black">
-            {getClass(classId || '')?.title || d.templateId}
-          </div>
+  const title = d.title || 'Untitled';
+
+  const preview = (
+    <div className="relative h-[100px] w-[100px] shrink-0 overflow-hidden bg-neutral-100">
+      {bulkMode && (
+        <div className="absolute left-1 top-1 z-10">
+          <input
+            type="checkbox"
+            checked={selected}
+            onChange={() => onToggle(d.docId)}
+            onClick={(e) => e.stopPropagation()}
+            className="h-3.5 w-3.5 accent-black"
+            aria-label={`Select ${title}`}
+          />
         </div>
+      )}
+      {bundle ? (
+        <div className="pointer-events-none absolute left-1/2 top-0 h-[178px] w-[100px] -translate-x-1/2 origin-top scale-[1]">
+          <TemplateLivePreview
+            manifest={bundle.manifest}
+            sections={bundle.sections}
+            compact
+          />
+        </div>
+      ) : (
+        <div className="flex h-full items-center justify-center text-[10px] text-neutral-500">
+          —
+        </div>
+      )}
+    </div>
+  );
+
+  const titleBlock = renaming ? (
+    <input
+      autoFocus
+      value={renameDraft}
+      onChange={(e) => onRenameDraft(e.target.value)}
+      onBlur={() => onCommitRename()}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          onCommitRename();
+        }
+        if (e.key === 'Escape') {
+          e.preventDefault();
+          onCancelRename();
+        }
+      }}
+      onClick={(e) => e.stopPropagation()}
+      className="w-[100px] border-b border-neutral-400 bg-transparent text-[11px] font-medium text-black outline-none"
+    />
+  ) : (
+    <div className="flex w-[100px] items-start gap-0.5">
+      <div
+        className="min-w-0 flex-1 truncate text-[11px] font-medium leading-tight text-black"
+        title={title}
+        onDoubleClick={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          if (!bulkMode) onStartRename();
+        }}
+      >
+        {title}
       </div>
-    </>
+      {!bulkMode && (
+        <DocItemMenu
+          folders={folders}
+          onRename={onStartRename}
+          onMove={onMove}
+          onDelete={onDelete}
+        />
+      )}
+    </div>
   );
 
   if (bulkMode) {
@@ -406,19 +648,68 @@ function DocGalleryCard({
       <button
         type="button"
         onClick={() => onToggle(d.docId)}
-        className={`flex flex-col overflow-hidden text-left ${
-          selected ? 'ring-2 ring-black' : ''
+        className={`flex w-[100px] flex-col gap-1 text-left ${
+          selected ? 'ring-2 ring-black ring-offset-1' : ''
         }`}
       >
-        {body}
+        {titleBlock}
+        {preview}
       </button>
     );
   }
 
   return (
-    <Link to={`/d/${d.docId}`} className="group flex flex-col overflow-hidden">
-      {body}
-    </Link>
+    <div className="flex w-[100px] flex-col gap-1">
+      {titleBlock}
+      <Link to={`/d/${d.docId}`} className="block">
+        {preview}
+      </Link>
+    </div>
+  );
+}
+
+function FolderGalleryCard({
+  folder,
+  onOpen,
+  onRename,
+  onDelete
+}: {
+  folder: PenFolder;
+  onOpen: () => void;
+  onRename: () => void;
+  onDelete: () => void;
+}) {
+  return (
+    <div className="flex w-[100px] flex-col gap-1">
+      <div className="flex w-[100px] items-start gap-0.5">
+        <button
+          type="button"
+          onClick={onOpen}
+          onDoubleClick={(e) => {
+            e.preventDefault();
+            onRename();
+          }}
+          className="min-w-0 flex-1 truncate text-left text-[11px] font-medium leading-tight text-black"
+          title={folder.name}
+        >
+          {folder.name}
+        </button>
+        <DocItemMenu
+          folders={[]}
+          showMove={false}
+          onRename={onRename}
+          onMove={() => undefined}
+          onDelete={onDelete}
+        />
+      </div>
+      <button
+        type="button"
+        onClick={onOpen}
+        className="flex h-[100px] w-[100px] items-center justify-center bg-neutral-50 text-neutral-600 hover:bg-neutral-100"
+      >
+        <FolderGlyph />
+      </button>
+    </div>
   );
 }
 
@@ -427,10 +718,12 @@ function CreateNewGalleryTile({ onClick }: { onClick: () => void }) {
     <button
       type="button"
       onClick={onClick}
-      className="flex min-h-[14rem] flex-col items-center justify-center gap-3 border border-dashed border-neutral-300 text-black hover:border-black"
+      className="flex w-[100px] flex-col gap-1 text-left text-black hover:opacity-70"
     >
-      <span className="inline-flex h-10 w-10 items-center justify-center text-2xl font-light">+</span>
-      <span className="text-sm font-bold">Create new</span>
+      <span className="truncate text-[11px] font-medium leading-tight">Create new</span>
+      <span className="flex h-[100px] w-[100px] items-center justify-center border border-dashed border-neutral-300 text-2xl font-light">
+        +
+      </span>
     </button>
   );
 }
@@ -438,21 +731,57 @@ function CreateNewGalleryTile({ onClick }: { onClick: () => void }) {
 function DocGalleryGrid({
   pn,
   docs,
+  childFolders,
+  moveFolders,
   bulkMode,
   selectedIds,
   onToggle,
-  onCreateNew
+  onCreateNew,
+  renamingId,
+  renameDraft,
+  onRenameDraft,
+  onStartRename,
+  onCommitRename,
+  onCancelRename,
+  onMoveDoc,
+  onDeleteDoc,
+  onOpenFolder,
+  onRenameFolder,
+  onDeleteFolder
 }: {
   pn: string;
   docs: LocalDocSummary[];
+  childFolders: PenFolder[];
+  moveFolders: Array<{ id: string; name: string }>;
   bulkMode: boolean;
   selectedIds: Set<string>;
   onToggle: (docId: string) => void;
   onCreateNew: () => void;
+  renamingId: string | null;
+  renameDraft: string;
+  onRenameDraft: (v: string) => void;
+  onStartRename: (docId: string, title: string) => void;
+  onCommitRename: () => void;
+  onCancelRename: () => void;
+  onMoveDoc: (docId: string, folderId: string | null) => void;
+  onDeleteDoc: (docId: string) => void;
+  onOpenFolder: (folderId: string) => void;
+  onRenameFolder: (folder: PenFolder) => void;
+  onDeleteFolder: (folderId: string) => void;
 }) {
   return (
-    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+    <div className="flex flex-wrap gap-3">
       {!bulkMode && <CreateNewGalleryTile onClick={onCreateNew} />}
+      {!bulkMode &&
+        childFolders.map((f) => (
+          <FolderGalleryCard
+            key={f.id}
+            folder={f}
+            onOpen={() => onOpenFolder(f.id)}
+            onRename={() => onRenameFolder(f)}
+            onDelete={() => onDeleteFolder(f.id)}
+          />
+        ))}
       {docs.map((d) => (
         <DocGalleryCard
           key={d.docId}
@@ -461,6 +790,15 @@ function DocGalleryGrid({
           bulkMode={bulkMode}
           selected={selectedIds.has(d.docId)}
           onToggle={onToggle}
+          folders={moveFolders}
+          renaming={renamingId === d.docId}
+          renameDraft={renameDraft}
+          onRenameDraft={onRenameDraft}
+          onStartRename={() => onStartRename(d.docId, d.title || '')}
+          onCommitRename={onCommitRename}
+          onCancelRename={onCancelRename}
+          onMove={(folderId) => onMoveDoc(d.docId, folderId)}
+          onDelete={() => onDeleteDoc(d.docId)}
         />
       ))}
     </div>
@@ -551,6 +889,10 @@ export function DocListPage({
   const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
   const [libraryPickMode, setLibraryPickMode] = useState(false);
   const [librarySelectedIds, setLibrarySelectedIds] = useState<Set<string>>(() => new Set());
+  const [folderTick, setFolderTick] = useState(0);
+  const [currentFolderId, setCurrentFolderId] = useState<string | null>(null);
+  const [renamingId, setRenamingId] = useState<string | null>(null);
+  const [renameDraft, setRenameDraft] = useState('');
 
   useEffect(() => {
     fetchPenCatalog(session.accessToken)
@@ -597,8 +939,33 @@ export function DocListPage({
     [search, classes, templates]
   );
 
+  const allFolders = useMemo(() => {
+    void folderTick;
+    return listFolders(session.pnIdentifier);
+  }, [session.pnIdentifier, folderTick]);
+
+  const childFolders = useMemo(() => {
+    void folderTick;
+    return listChildFolders(session.pnIdentifier, currentFolderId);
+  }, [session.pnIdentifier, currentFolderId, folderTick]);
+
+  const moveFolderOptions = useMemo(
+    () => allFolders.map((f) => ({ id: f.id, name: f.name })),
+    [allFolders]
+  );
+
+  const currentFolder = useMemo(
+    () => (currentFolderId ? allFolders.find((f) => f.id === currentFolderId) : null),
+    [allFolders, currentFolderId]
+  );
+
+  const folderDocs = useMemo(() => {
+    if (homeView === 'dashboard') return docs;
+    return docs.filter((d) => (d.folderId || null) === currentFolderId);
+  }, [docs, currentFolderId, homeView]);
+
   const docsByCategory = useMemo(() => {
-    const sorted = [...docs].sort(
+    const sorted = [...folderDocs].sort(
       (a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
     );
     const groups: Array<{ categoryId: string; title: string; docs: LocalDocSummary[] }> = [];
@@ -630,7 +997,7 @@ export function DocListPage({
       groups.push({ categoryId: '_other', title: 'Other', docs: other });
     }
     return groups;
-  }, [docs, categories]);
+  }, [folderDocs, categories]);
 
   useEffect(() => {
     if (homeView !== 'category') return;
@@ -755,6 +1122,67 @@ export function DocListPage({
     onDocsChange();
   }
 
+  function startRename(docId: string, title: string) {
+    setRenamingId(docId);
+    setRenameDraft(title);
+  }
+
+  function commitRename() {
+    if (!renamingId) return;
+    renameLocalDoc(session.pnIdentifier, renamingId, renameDraft);
+    setRenamingId(null);
+    setRenameDraft('');
+    onDocsChange();
+  }
+
+  function cancelRename() {
+    setRenamingId(null);
+    setRenameDraft('');
+  }
+
+  function handleMoveDoc(docId: string, folderId: string | null) {
+    moveLocalDocToFolder(session.pnIdentifier, docId, folderId);
+    onDocsChange();
+  }
+
+  function handleDeleteDoc(docId: string) {
+    const ok = window.confirm('Delete this document? This cannot be undone.');
+    if (!ok) return;
+    deleteLocalDocs(session.pnIdentifier, [docId]);
+    onDocsChange();
+  }
+
+  function handleCreateFolder() {
+    const name = window.prompt('Folder name');
+    if (!name?.trim()) return;
+    createFolder(session.pnIdentifier, name.trim(), currentFolderId);
+    setFolderTick((n) => n + 1);
+    setPickerOpen(false);
+  }
+
+  function handleRenameFolder(folder: PenFolder) {
+    const name = window.prompt('Rename folder', folder.name);
+    if (name == null) return;
+    renameFolder(session.pnIdentifier, folder.id, name);
+    setFolderTick((n) => n + 1);
+  }
+
+  function handleDeleteFolder(folderId: string) {
+    const ok = window.confirm(
+      'Delete this folder? Documents inside will move back to My Library.'
+    );
+    if (!ok) return;
+    for (const d of docs) {
+      if (d.folderId === folderId) {
+        moveLocalDocToFolder(session.pnIdentifier, d.docId, null);
+      }
+    }
+    deleteFolder(session.pnIdentifier, folderId);
+    if (currentFolderId === folderId) setCurrentFolderId(null);
+    setFolderTick((n) => n + 1);
+    onDocsChange();
+  }
+
   function toggleExpanded(id: string) {
     setExpandedCats((prev) => {
       const next = new Set(prev);
@@ -783,6 +1211,13 @@ export function DocListPage({
         session,
         templateId
       });
+      if (currentFolderId) {
+        moveLocalDocToFolder(
+          session.pnIdentifier,
+          bundle.manifest.docId,
+          currentFolderId
+        );
+      }
       onDocsChange();
       setPickerOpen(false);
       navigate(`/d/${bundle.manifest.docId}`);
@@ -812,8 +1247,8 @@ export function DocListPage({
   }
 
   const sortedDocs = useMemo(
-    () => sortDocs(docs, explorerSort),
-    [docs, explorerSort]
+    () => sortDocs(folderDocs, explorerSort),
+    [folderDocs, explorerSort]
   );
 
   const sortedDocsByCategory = useMemo(
@@ -831,7 +1266,23 @@ export function DocListPage({
         <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
           <div>
             <h1 className="text-lg font-bold text-black">My Library</h1>
-            <p className="text-sm text-neutral-500">Open a file or start from a template.</p>
+            <p className="text-sm text-neutral-500">
+              {currentFolder ? (
+                <span className="flex flex-wrap items-center gap-1">
+                  <button
+                    type="button"
+                    className="hover:underline"
+                    onClick={() => setCurrentFolderId(null)}
+                  >
+                    My Library
+                  </button>
+                  <span aria-hidden>/</span>
+                  <span className="font-medium text-black">{currentFolder.name}</span>
+                </span>
+              ) : (
+                'Open a file or start from a template.'
+              )}
+            </p>
           </div>
           <div className="flex flex-col items-end gap-1.5">
             <div className="flex items-center gap-3">
@@ -845,7 +1296,7 @@ export function DocListPage({
                 <PlusIcon />
               </button>
             </div>
-            {docs.length > 0 && (
+            {docs.length > 0 || allFolders.length > 0 ? (
               <>
                 <div
                   className="flex items-center gap-0 text-sm"
@@ -869,6 +1320,7 @@ export function DocListPage({
                           if (id === 'dashboard') {
                             setBulkDeleteMode(false);
                             setSelectedIds(new Set());
+                            setCurrentFolderId(null);
                           }
                         }}
                         className={
@@ -915,11 +1367,11 @@ export function DocListPage({
                   </div>
                 )}
               </>
-            )}
+            ) : null}
           </div>
         </div>
 
-        {docs.length === 0 ? (
+        {docs.length === 0 && allFolders.length === 0 ? (
           <div className="px-6 py-16 text-center">
             <p className="text-neutral-500">No documents yet.</p>
             <button
@@ -948,15 +1400,30 @@ export function DocListPage({
                 <DocGalleryGrid
                   pn={session.pnIdentifier}
                   docs={sortedDocs}
+                  childFolders={childFolders}
+                  moveFolders={moveFolderOptions}
                   bulkMode={bulkDeleteMode}
                   selectedIds={selectedIds}
                   onToggle={toggleDocSelection}
                   onCreateNew={openPicker}
+                  renamingId={renamingId}
+                  renameDraft={renameDraft}
+                  onRenameDraft={setRenameDraft}
+                  onStartRename={startRename}
+                  onCommitRename={commitRename}
+                  onCancelRename={cancelRename}
+                  onMoveDoc={handleMoveDoc}
+                  onDeleteDoc={handleDeleteDoc}
+                  onOpenFolder={setCurrentFolderId}
+                  onRenameFolder={handleRenameFolder}
+                  onDeleteFolder={handleDeleteFolder}
                 />
               </>
             ) : (
               <DocExplorerTable
                 docs={sortedDocs}
+                childFolders={childFolders}
+                moveFolders={moveFolderOptions}
                 sort={explorerSort}
                 onSort={cycleExplorerSort}
                 bulkMode={bulkDeleteMode}
@@ -965,6 +1432,18 @@ export function DocListPage({
                 onToggleBulk={toggleBulkMode}
                 onSelectAll={() => selectAllVisible(sortedDocs)}
                 onDelete={confirmBulkDelete}
+                renamingId={renamingId}
+                renameDraft={renameDraft}
+                onRenameDraft={setRenameDraft}
+                onStartRename={startRename}
+                onCommitRename={commitRename}
+                onCancelRename={cancelRename}
+                onMoveDoc={handleMoveDoc}
+                onDeleteDoc={handleDeleteDoc}
+                onOpenFolder={setCurrentFolderId}
+                onRenameFolder={handleRenameFolder}
+                onDeleteFolder={handleDeleteFolder}
+                onOpenDoc={(docId) => navigate(`/d/${docId}`)}
               />
             )}
           </>
@@ -981,7 +1460,62 @@ export function DocListPage({
                 onCancel={toggleBulkMode}
               />
             )}
-            {sortedDocsByCategory.map((g) => {
+            {!bulkDeleteMode && childFolders.length > 0 && browseDensity === 'gallery' && (
+              <div className="pb-3">
+                <DocGalleryGrid
+                  pn={session.pnIdentifier}
+                  docs={[]}
+                  childFolders={childFolders}
+                  moveFolders={moveFolderOptions}
+                  bulkMode={false}
+                  selectedIds={selectedIds}
+                  onToggle={toggleDocSelection}
+                  onCreateNew={openPicker}
+                  renamingId={renamingId}
+                  renameDraft={renameDraft}
+                  onRenameDraft={setRenameDraft}
+                  onStartRename={startRename}
+                  onCommitRename={commitRename}
+                  onCancelRename={cancelRename}
+                  onMoveDoc={handleMoveDoc}
+                  onDeleteDoc={handleDeleteDoc}
+                  onOpenFolder={setCurrentFolderId}
+                  onRenameFolder={handleRenameFolder}
+                  onDeleteFolder={handleDeleteFolder}
+                />
+              </div>
+            )}
+            {!bulkDeleteMode &&
+              childFolders.length > 0 &&
+              browseDensity === 'list' &&
+              sortedDocsByCategory.length === 0 && (
+                <DocExplorerTable
+                  docs={[]}
+                  childFolders={childFolders}
+                  moveFolders={moveFolderOptions}
+                  sort={explorerSort}
+                  onSort={cycleExplorerSort}
+                  bulkMode={false}
+                  selectedIds={selectedIds}
+                  onToggle={toggleDocSelection}
+                  onToggleBulk={toggleBulkMode}
+                  onSelectAll={() => selectAllVisible([])}
+                  onDelete={confirmBulkDelete}
+                  renamingId={renamingId}
+                  renameDraft={renameDraft}
+                  onRenameDraft={setRenameDraft}
+                  onStartRename={startRename}
+                  onCommitRename={commitRename}
+                  onCancelRename={cancelRename}
+                  onMoveDoc={handleMoveDoc}
+                  onDeleteDoc={handleDeleteDoc}
+                  onOpenFolder={setCurrentFolderId}
+                  onRenameFolder={handleRenameFolder}
+                  onDeleteFolder={handleDeleteFolder}
+                onOpenDoc={(docId) => navigate(`/d/${docId}`)}
+              />
+              )}
+            {sortedDocsByCategory.map((g, groupIndex) => {
               const open = expandedCats.has(g.categoryId);
               return (
                 <div key={g.categoryId}>
@@ -1003,16 +1537,31 @@ export function DocListPage({
                         <DocGalleryGrid
                           pn={session.pnIdentifier}
                           docs={g.docs}
+                          childFolders={[]}
+                          moveFolders={moveFolderOptions}
                           bulkMode={bulkDeleteMode}
                           selectedIds={selectedIds}
                           onToggle={toggleDocSelection}
                           onCreateNew={openPicker}
+                          renamingId={renamingId}
+                          renameDraft={renameDraft}
+                          onRenameDraft={setRenameDraft}
+                          onStartRename={startRename}
+                          onCommitRename={commitRename}
+                          onCancelRename={cancelRename}
+                          onMoveDoc={handleMoveDoc}
+                          onDeleteDoc={handleDeleteDoc}
+                          onOpenFolder={setCurrentFolderId}
+                          onRenameFolder={handleRenameFolder}
+                          onDeleteFolder={handleDeleteFolder}
                         />
                       </div>
                     ) : (
                       <div className="pb-3 pl-5">
                         <DocExplorerTable
                           docs={g.docs}
+                          childFolders={groupIndex === 0 ? childFolders : []}
+                          moveFolders={moveFolderOptions}
                           sort={explorerSort}
                           onSort={cycleExplorerSort}
                           bulkMode={bulkDeleteMode}
@@ -1021,7 +1570,19 @@ export function DocListPage({
                           onToggleBulk={toggleBulkMode}
                           onSelectAll={() => selectAllVisible(g.docs)}
                           onDelete={confirmBulkDelete}
-                        />
+                          renamingId={renamingId}
+                          renameDraft={renameDraft}
+                          onRenameDraft={setRenameDraft}
+                          onStartRename={startRename}
+                          onCommitRename={commitRename}
+                          onCancelRename={cancelRename}
+                          onMoveDoc={handleMoveDoc}
+                          onDeleteDoc={handleDeleteDoc}
+                          onOpenFolder={setCurrentFolderId}
+                          onRenameFolder={handleRenameFolder}
+                          onDeleteFolder={handleDeleteFolder}
+                onOpenDoc={(docId) => navigate(`/d/${docId}`)}
+              />
                       </div>
                     ))}
                 </div>
@@ -1219,6 +1780,18 @@ export function DocListPage({
                 </ul>
               ) : level === 'category' ? (
                 <ul className="divide-y divide-stone-100">
+                  <li>
+                    <button
+                      type="button"
+                      onClick={handleCreateFolder}
+                      className="w-full rounded-lg px-3 py-3 text-left hover:bg-stone-50"
+                    >
+                      <div className="font-medium text-black">New folder</div>
+                      <div className="mt-0.5 text-xs text-neutral-600">
+                        Organize documents in My Library
+                      </div>
+                    </button>
+                  </li>
                   {listPersonalTemplates(session.pnIdentifier).length > 0 && (
                     <li className="bg-stone-50 px-3 py-2">
                       <div className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-stone-500">

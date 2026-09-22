@@ -56,6 +56,10 @@ import {
   readPublishedFileId,
   upsertLocalSuggestion
 } from '../services/penAnnotations';
+import {
+  ActivityLedger,
+  type DocSnapshot
+} from '../services/penActivityLedger';
 
 function bytesToB64(bytes: Uint8Array): string {
   let s = '';
@@ -106,10 +110,17 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
     () => initial?.manifest.updatedAt || null
   );
   const [savedTick, setSavedTick] = useState(0);
+  const [historyEpoch, setHistoryEpoch] = useState(0);
+  const [historyUi, setHistoryUi] = useState({ canUndo: false, canRedo: false });
   const bundleRef = useRef(bundle);
   const dirtyRef = useRef(false);
+  const activeSlugRef = useRef(activeSlug);
+  const ledgerRef = useRef(new ActivityLedger());
+  const applyingHistoryRef = useRef(false);
+  const ledgerTimerRef = useRef<number | null>(null);
   bundleRef.current = bundle;
   dirtyRef.current = dirty;
+  activeSlugRef.current = activeSlug;
   const [error, setError] = useState<string | null>(null);
   const [editor, setEditor] = useState<Editor | null>(null);
   const [activeLayerId, setActiveLayerId] = useState<string | null>(null);
@@ -171,6 +182,113 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
 
   const pageLayout: PenPageLayout = bundle?.manifest.pageLayout || 'flow';
 
+  const bumpHistoryUi = useCallback(() => {
+    setHistoryUi({
+      canUndo: ledgerRef.current.canUndo(),
+      canRedo: ledgerRef.current.canRedo()
+    });
+  }, []);
+
+  const snapshotOf = useCallback(
+    (b: NonNullable<typeof initial>, slug: string): DocSnapshot => ({
+      title: b.manifest.title,
+      sections: b.sections,
+      activeSlug: slug
+    }),
+    []
+  );
+
+  const scheduleLedgerPush = useCallback(
+    (next: NonNullable<typeof initial>) => {
+      if (applyingHistoryRef.current) return;
+      if (ledgerTimerRef.current != null) window.clearTimeout(ledgerTimerRef.current);
+      ledgerTimerRef.current = window.setTimeout(() => {
+        ledgerTimerRef.current = null;
+        ledgerRef.current.pushEdit(snapshotOf(next, activeSlugRef.current));
+        bumpHistoryUi();
+      }, 400);
+    },
+    [bumpHistoryUi, snapshotOf]
+  );
+
+  const flushLedgerPush = useCallback(() => {
+    if (ledgerTimerRef.current != null) {
+      window.clearTimeout(ledgerTimerRef.current);
+      ledgerTimerRef.current = null;
+    }
+    const current = bundleRef.current;
+    if (!current || applyingHistoryRef.current) return;
+    ledgerRef.current.pushEdit(snapshotOf(current, activeSlugRef.current));
+    bumpHistoryUi();
+  }, [bumpHistoryUi, snapshotOf]);
+
+  const applyHistorySnapshot = useCallback(
+    (snap: DocSnapshot) => {
+      applyingHistoryRef.current = true;
+      setActiveSlug(snap.activeSlug);
+      setActiveLayerId(null);
+      setBundle((prev) => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          sections: snap.sections,
+          manifest: {
+            ...prev.manifest,
+            title: snap.title,
+            updatedAt: new Date().toISOString()
+          }
+        };
+      });
+      setDirty(true);
+      setHistoryEpoch((n) => n + 1);
+      bumpHistoryUi();
+      window.requestAnimationFrame(() => {
+        applyingHistoryRef.current = false;
+      });
+    },
+    [bumpHistoryUi]
+  );
+
+  const undoEdit = useCallback(() => {
+    flushLedgerPush();
+    const snap = ledgerRef.current.undo();
+    if (snap) applyHistorySnapshot(snap);
+    else bumpHistoryUi();
+  }, [applyHistorySnapshot, bumpHistoryUi, flushLedgerPush]);
+
+  const redoEdit = useCallback(() => {
+    flushLedgerPush();
+    const snap = ledgerRef.current.redo();
+    if (snap) applyHistorySnapshot(snap);
+    else bumpHistoryUi();
+  }, [applyHistorySnapshot, bumpHistoryUi, flushLedgerPush]);
+
+  // Seed ledger when document loads / changes.
+  useEffect(() => {
+    const loaded = loadLocalDoc(session.pnIdentifier, docId);
+    if (!loaded) return;
+    ledgerRef.current.seed(
+      snapshotOf(loaded, loaded.manifest.toc[0] || 'body')
+    );
+    bumpHistoryUi();
+  }, [docId, session.pnIdentifier, snapshotOf, bumpHistoryUi]);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (!(e.metaKey || e.ctrlKey)) return;
+      const key = e.key.toLowerCase();
+      if (key !== 'z' && key !== 'y') return;
+      const target = e.target as HTMLElement | null;
+      const tag = target?.tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA') return;
+      e.preventDefault();
+      if (key === 'y' || (key === 'z' && e.shiftKey)) redoEdit();
+      else undoEdit();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [undoEdit, redoEdit]);
+
   if (!bundle || !section || !canvasSection) {
     return (
       <div className="flex min-h-[60vh] items-center justify-center bg-white">
@@ -196,12 +314,14 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
       // Stage in memory; autosave / Save draft flushes to local store.
       setBundle({ ...stamped });
       setDirty(true);
+      scheduleLedgerPush(stamped);
       return;
     }
     saveLocalDoc(session.pnIdentifier, stamped);
     setBundle({ ...stamped });
     setDirty(false);
     setLastDraftAt(stamped.manifest.updatedAt);
+    scheduleLedgerPush(stamped);
   }
 
   function saveDraft(opts?: { silent?: boolean }) {
@@ -627,6 +747,28 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
                   activeSlug={activeSlug}
                   onSelect={setActiveSlug}
                 />
+                <div className="ml-auto flex items-center gap-1">
+                  <button
+                    type="button"
+                    title="Undo"
+                    aria-label="Undo"
+                    disabled={!historyUi.canUndo}
+                    onClick={undoEdit}
+                    className="px-2 py-0.5 text-[12px] text-neutral-600 hover:text-black disabled:opacity-30"
+                  >
+                    Undo
+                  </button>
+                  <button
+                    type="button"
+                    title="Redo"
+                    aria-label="Redo"
+                    disabled={!historyUi.canRedo}
+                    onClick={redoEdit}
+                    className="px-2 py-0.5 text-[12px] text-neutral-600 hover:text-black disabled:opacity-30"
+                  >
+                    Redo
+                  </button>
+                </div>
               </div>
               <FormatRibbon
                 editor={editor}
@@ -703,7 +845,7 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
             </div>
           ) : (
             <PageCanvas
-              key={`${activeSlug}:${activeLayerId || 'primary'}:${session.pnIdentifier}`}
+              key={`${activeSlug}:${activeLayerId || 'primary'}:${session.pnIdentifier}:${historyEpoch}`}
               section={canvasSection}
               sectionTitle={sectionTitle}
               pageLayout={pageLayout}

@@ -16,6 +16,8 @@ export interface LocalDocSummary {
   /** Form class id when known (for home category grouping). */
   classId?: string;
   updatedAt: string;
+  /** Optional My Library folder. */
+  folderId?: string | null;
 }
 
 export interface LocalDocBundle {
@@ -60,13 +62,15 @@ export function saveLocalDoc(pn: string, bundle: LocalDocBundle): void {
     `${prefix(pn)}:doc:${normalized.manifest.docId}`,
     JSON.stringify(normalized)
   );
+  const existing = listLocalDocs(pn).find((d) => d.docId === normalized.manifest.docId);
   const idx = listLocalDocs(pn).filter((d) => d.docId !== normalized.manifest.docId);
   idx.unshift({
     docId: normalized.manifest.docId,
     title: normalized.manifest.title,
     templateId: normalized.manifest.templateId,
     classId: normalized.manifest.classId,
-    updatedAt: normalized.manifest.updatedAt
+    updatedAt: normalized.manifest.updatedAt,
+    folderId: existing?.folderId ?? null
   });
   saveIndex(pn, idx);
   try {
@@ -114,6 +118,45 @@ export function deleteLocalDocs(pn: string, docIds: string[]): void {
         })
       );
     }
+  } catch {
+    /* non-browser */
+  }
+}
+
+export function renameLocalDoc(pn: string, docId: string, title: string): void {
+  const nextTitle = title.trim() || 'Untitled';
+  const bundle = loadLocalDoc(pn, docId);
+  if (bundle) {
+    saveLocalDoc(pn, {
+      ...bundle,
+      manifest: {
+        ...bundle.manifest,
+        title: nextTitle,
+        updatedAt: new Date().toISOString()
+      }
+    });
+  }
+  const idx = listLocalDocs(pn).map((d) =>
+    d.docId === docId ? { ...d, title: nextTitle, updatedAt: new Date().toISOString() } : d
+  );
+  saveIndex(pn, idx);
+}
+
+export function moveLocalDocToFolder(
+  pn: string,
+  docId: string,
+  folderId: string | null
+): void {
+  const idx = listLocalDocs(pn).map((d) =>
+    d.docId === docId ? { ...d, folderId } : d
+  );
+  saveIndex(pn, idx);
+  try {
+    window.dispatchEvent(
+      new CustomEvent('pen-doc-updated', {
+        detail: { pn, docId, folderId }
+      })
+    );
   } catch {
     /* non-browser */
   }

@@ -684,7 +684,9 @@ export function PageCanvas({
   const editor = useEditor({
     extensions: [
       StarterKit.configure({
-        heading: { levels: [1, 2, 3] }
+        heading: { levels: [1, 2, 3] },
+        // Document-level ActivityLedger owns undo (append-only / never discard).
+        history: false
       }),
       Underline,
       TextStyle,
