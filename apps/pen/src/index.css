@@ -576,8 +576,10 @@ body {
 
 .pen-library-notebook-inner {
   position: relative;
-  min-height: 100%;
-  padding: 0 var(--pen-edge-pad) 1.5rem;
+  display: flex;
+  flex-direction: column;
+  min-height: calc(100vh - 2.5rem);
+  padding: 0 var(--pen-edge-pad) 0;
 }
 
 .pen-library-heading {
@@ -596,40 +598,40 @@ body {
   gap: 0.375rem;
 }
 
+.pen-library-bulk-inline {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.75rem;
+  /* No blue rules on bulk active controls */
+  border: none;
+}
+
 .pen-library-indent {
   padding-left: var(--pen-name-inset);
 }
 
 .pen-library-body {
   border-top: none;
+  flex: 1;
 }
 
 .pen-library-footer {
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 1.75rem 1rem;
-  border-top: none;
+  margin-top: auto;
+  padding: 1.5rem var(--pen-edge-pad) 1.75rem;
+  background: transparent;
+  border: none;
 }
 
-.pen-library-footer-label {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 9999px;
-  background: #fff;
-  padding: 1.05rem 2.85rem;
-  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.06);
-}
-
-.pen-library-footer-label span {
+.pen-library-footer-copy {
   color: #000;
-  font-size: 18px;
-  font-weight: 600;
+  font-size: 12px;
+  font-weight: 500;
   letter-spacing: 0.02em;
-  line-height: 1.2;
-  border-bottom: 1.5px solid #000;
-  padding-bottom: 2px;
 }
 
 /* App chrome column alignment */
@@ -815,26 +817,7 @@ body {
 }
 
 .pen-explorer-bulk-bar {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.75rem;
-  padding: 0.5rem 0.25rem 0.65rem;
-  border-top: none;
-  margin-left: var(--pen-name-inset);
-  position: relative;
-}
-
-.pen-explorer-bulk-bar::after {
-  content: '';
-  position: absolute;
-  left: 50%;
-  bottom: 0;
-  width: 100vw;
-  margin-left: -50vw;
-  border-bottom: 1px solid var(--pen-rule-blue);
-  pointer-events: none;
+  display: none; /* Bulk actions live inline next to − */
 }
 
 /* Gallery: responsive tile table right of red rail; blue cell borders */

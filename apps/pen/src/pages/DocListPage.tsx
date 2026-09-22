@@ -50,7 +50,6 @@ import { PenDashboard } from '../components/dashboard/PenDashboard';
 import { FormDocIcon } from '../components/FormDocIcon';
 import { TemplateLivePreview } from '../components/TemplateLivePreview';
 import { DocItemMenu } from '../components/DocItemMenu';
-import libraryFooterCrackle from '../assets/library-header-crackle.jpg';
 import { resolveDocLibraryStatus } from '../services/penDocStatus';
 
 type DrillLevel = 'category' | 'form' | 'template';
@@ -71,13 +70,6 @@ function isConsumerClass(c: PenClass): boolean {
 function resolveDocClassId(d: LocalDocSummary): string | undefined {
   if (d.classId) return d.classId;
   return getTemplate(d.templateId)?.classId;
-}
-
-function resolveDocCategoryId(d: LocalDocSummary): string | null {
-  const classId = resolveDocClassId(d);
-  if (!classId) return null;
-  const form = getClass(classId);
-  return form?.parentId || null;
 }
 
 function sortDocs(docs: LocalDocSummary[], sort: ExplorerSort): LocalDocSummary[] {
@@ -344,9 +336,6 @@ function DocExplorerTable({
   bulkMode,
   selectedIds,
   onToggle,
-  onToggleBulk,
-  onSelectAll,
-  onDelete,
   renamingId,
   renameDraft,
   onRenameDraft,
@@ -369,9 +358,6 @@ function DocExplorerTable({
   bulkMode: boolean;
   selectedIds: Set<string>;
   onToggle: (docId: string) => void;
-  onToggleBulk: () => void;
-  onSelectAll: () => void;
-  onDelete: () => void;
   renamingId: string | null;
   renameDraft: string;
   onRenameDraft: (v: string) => void;
@@ -387,16 +373,6 @@ function DocExplorerTable({
 }) {
   return (
     <div className="pen-explorer" data-bulk={bulkMode ? 'true' : 'false'}>
-      {bulkMode && (
-        <BulkDeleteBar
-          compact
-          visibleDocs={docs}
-          selectedIds={selectedIds}
-          onSelectAll={onSelectAll}
-          onDelete={onDelete}
-          onCancel={onToggleBulk}
-        />
-      )}
       <div className="pen-explorer-sheet">
         <div className="pen-explorer-scroll">
           <table className="text-left text-sm">
@@ -793,49 +769,37 @@ function DocGalleryGrid({
   );
 }
 
-function BulkDeleteBar({
+function BulkInlineControls({
   visibleDocs,
   selectedIds,
   onSelectAll,
-  onDelete,
-  onCancel,
-  compact
+  onDelete
 }: {
   visibleDocs: LocalDocSummary[];
   selectedIds: Set<string>;
   onSelectAll: () => void;
   onDelete: () => void;
-  onCancel: () => void;
-  /** When true, sits above table headers (no extra bottom rule outside the explorer). */
-  compact?: boolean;
 }) {
   const selectedCount = visibleDocs.filter((d) => selectedIds.has(d.docId)).length;
   const allSelected = visibleDocs.length > 0 && selectedCount === visibleDocs.length;
   return (
-    <div className={compact ? 'pen-explorer-bulk-bar' : 'mb-3 flex flex-wrap items-center justify-between gap-3'}>
-      <div className="flex items-center gap-3 text-sm">
-        <button
-          type="button"
-          onClick={onSelectAll}
-          className="font-bold text-black hover:opacity-60"
-        >
-          {allSelected ? 'Deselect all' : 'Select all'}
-        </button>
-        <span className="text-neutral-600">{selectedCount} selected</span>
-      </div>
-      <div className="flex items-center gap-4 text-sm">
-        <button type="button" onClick={onCancel} className="text-neutral-600 hover:text-black">
-          Cancel
-        </button>
-        <button
-          type="button"
-          onClick={onDelete}
-          disabled={selectedCount === 0}
-          className="font-bold text-red-600 hover:opacity-70 disabled:opacity-30"
-        >
-          Delete ({selectedCount})
-        </button>
-      </div>
+    <div className="pen-library-bulk-inline text-sm">
+      <button
+        type="button"
+        onClick={onSelectAll}
+        className="font-bold text-black hover:opacity-60"
+      >
+        {allSelected ? 'Deselect all' : 'Select all'}
+      </button>
+      <span className="text-neutral-600">{selectedCount} selected</span>
+      <button
+        type="button"
+        onClick={onDelete}
+        disabled={selectedCount === 0}
+        className="font-bold text-red-600 hover:opacity-70 disabled:opacity-30"
+      >
+        Delete ({selectedCount})
+      </button>
     </div>
   );
 }
@@ -874,7 +838,6 @@ export function DocListPage({
   const [browseDensity, setBrowseDensity] = useState<PenBrowseDensity>(() =>
     loadBrowseDensity(session.pnIdentifier)
   );
-  const [expandedCats, setExpandedCats] = useState<Set<string>>(() => new Set());
   const [explorerSort, setExplorerSort] = useState<ExplorerSort>(DEFAULT_EXPLORER_SORT);
   const [bulkDeleteMode, setBulkDeleteMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
@@ -954,46 +917,6 @@ export function DocListPage({
     if (homeView === 'dashboard') return docs;
     return docs.filter((d) => (d.folderId || null) === currentFolderId);
   }, [docs, currentFolderId, homeView]);
-
-  const docsByCategory = useMemo(() => {
-    const sorted = [...folderDocs].sort(
-      (a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
-    );
-    const groups: Array<{ categoryId: string; title: string; docs: LocalDocSummary[] }> = [];
-    const byId = new Map<string, LocalDocSummary[]>();
-    const other: LocalDocSummary[] = [];
-
-    for (const d of sorted) {
-      const catId = resolveDocCategoryId(d);
-      if (!catId) {
-        other.push(d);
-        continue;
-      }
-      const list = byId.get(catId) || [];
-      list.push(d);
-      byId.set(catId, list);
-    }
-
-    for (const cat of categories) {
-      const list = byId.get(cat.id);
-      if (list?.length) groups.push({ categoryId: cat.id, title: cat.title, docs: list });
-    }
-    for (const [catId, list] of byId) {
-      if (categories.some((c) => c.id === catId)) continue;
-      if (!list.length) continue;
-      const title = getClass(catId)?.title || catId;
-      groups.push({ categoryId: catId, title, docs: list });
-    }
-    if (other.length) {
-      groups.push({ categoryId: '_other', title: 'Other', docs: other });
-    }
-    return groups;
-  }, [folderDocs, categories]);
-
-  useEffect(() => {
-    if (homeView !== 'category') return;
-    setExpandedCats(new Set(docsByCategory.map((g) => g.categoryId)));
-  }, [homeView, docsByCategory]);
 
   const level: DrillLevel = formId ? 'template' : categoryId ? 'form' : 'category';
 
@@ -1180,15 +1103,6 @@ export function DocListPage({
     onDocsChange();
   }
 
-  function toggleExpanded(id: string) {
-    setExpandedCats((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  }
-
   async function createDoc(templateId: string) {
     setBusy(true);
     setError(null);
@@ -1248,15 +1162,6 @@ export function DocListPage({
     [folderDocs, explorerSort]
   );
 
-  const sortedDocsByCategory = useMemo(
-    () =>
-      docsByCategory.map((g) => ({
-        ...g,
-        docs: sortDocs(g.docs, explorerSort)
-      })),
-    [docsByCategory, explorerSort]
-  );
-
   return (
     <div className="pen-library-page bg-white">
       <div className="pen-library-notebook flex-1">
@@ -1265,64 +1170,48 @@ export function DocListPage({
 
           <div className="pen-library-heading">
             <div className="min-w-0 flex-1">
-              <h1 className="text-lg font-bold text-black">My Library</h1>
-              <p className="text-sm text-neutral-500">
-                {currentFolder ? (
-                  <span className="flex flex-wrap items-center gap-1">
-                    <button
-                      type="button"
-                      className="hover:underline"
-                      onClick={() => setCurrentFolderId(null)}
-                    >
-                      My Library
-                    </button>
-                    <span aria-hidden>/</span>
-                    <span className="font-medium text-black">{currentFolder.name}</span>
-                  </span>
-                ) : (
-                  'Open a file or start from a template.'
-                )}
-              </p>
+              <h1 className="text-lg font-bold text-black">
+                {homeView === 'dashboard' ? 'Dashboard' : 'My Library'}
+              </h1>
+              {homeView !== 'dashboard' && (
+                <p className="text-sm text-neutral-500">
+                  {currentFolder ? (
+                    <span className="flex flex-wrap items-center gap-1">
+                      <button
+                        type="button"
+                        className="hover:underline"
+                        onClick={() => setCurrentFolderId(null)}
+                      >
+                        My Library
+                      </button>
+                      <span aria-hidden>/</span>
+                      <span className="font-medium text-black">{currentFolder.name}</span>
+                    </span>
+                  ) : (
+                    'Open a file or start from a template.'
+                  )}
+                </p>
+              )}
             </div>
             {(docs.length > 0 || allFolders.length > 0) && (
               <div className="pen-library-heading-tools">
-                <div
-                  className="flex items-center justify-end gap-0 text-sm whitespace-nowrap"
-                  role="group"
-                  aria-label="Document list view"
+                <button
+                  type="button"
+                  className="text-sm font-bold text-black hover:opacity-60"
+                  onClick={() => {
+                    if (homeView === 'dashboard') {
+                      setView('all');
+                    } else {
+                      setView('dashboard');
+                      setBulkDeleteMode(false);
+                      setSelectedIds(new Set());
+                      setCurrentFolderId(null);
+                    }
+                  }}
                 >
-                  {(
-                    [
-                      ['all', 'All'],
-                      ['category', 'Category'],
-                      ['dashboard', 'Dashboard']
-                    ] as const
-                  ).map(([id, label], i) => (
-                    <span key={id} className="flex items-center">
-                      {i > 0 && <span className="px-2 text-neutral-300">|</span>}
-                      <button
-                        type="button"
-                        aria-pressed={homeView === id}
-                        onClick={() => {
-                          setView(id);
-                          if (id === 'dashboard') {
-                            setBulkDeleteMode(false);
-                            setSelectedIds(new Set());
-                            setCurrentFolderId(null);
-                          }
-                        }}
-                        className={
-                          homeView === id
-                            ? 'font-bold text-black'
-                            : 'font-normal text-neutral-600 hover:text-neutral-800'
-                        }
-                      >
-                        {label}
-                      </button>
-                    </span>
-                  ))}
-                </div>
-                {(homeView === 'all' || homeView === 'category') && (
+                  {homeView === 'dashboard' ? 'My Library' : 'Dashboard'}
+                </button>
+                {homeView === 'all' && (
                   <>
                     <div
                       className="flex w-full items-center justify-end gap-0"
@@ -1358,20 +1247,30 @@ export function DocListPage({
                         <GalleryIcon />
                       </button>
                     </div>
-                    <button
-                      type="button"
-                      title={bulkDeleteMode ? 'Cancel selection' : 'Select to delete'}
-                      aria-label={bulkDeleteMode ? 'Cancel selection' : 'Select to delete'}
-                      aria-pressed={bulkDeleteMode}
-                      onClick={toggleBulkMode}
-                      className={`inline-flex h-8 w-8 items-center justify-center self-end ${
-                        bulkDeleteMode
-                          ? 'font-bold text-black'
-                          : 'text-neutral-600 hover:text-black'
-                      }`}
-                    >
-                      <MinusIcon />
-                    </button>
+                    <div className="flex w-full flex-wrap items-center justify-end gap-2">
+                      {bulkDeleteMode && (
+                        <BulkInlineControls
+                          visibleDocs={sortedDocs}
+                          selectedIds={selectedIds}
+                          onSelectAll={() => selectAllVisible(sortedDocs)}
+                          onDelete={confirmBulkDelete}
+                        />
+                      )}
+                      <button
+                        type="button"
+                        title={bulkDeleteMode ? 'Cancel selection' : 'Select to delete'}
+                        aria-label={bulkDeleteMode ? 'Cancel selection' : 'Select to delete'}
+                        aria-pressed={bulkDeleteMode}
+                        onClick={toggleBulkMode}
+                        className={`inline-flex h-8 w-8 shrink-0 items-center justify-center ${
+                          bulkDeleteMode
+                            ? 'font-bold text-black'
+                            : 'text-neutral-600 hover:text-black'
+                        }`}
+                      >
+                        <MinusIcon />
+                      </button>
+                    </div>
                   </>
                 )}
               </div>
@@ -1393,41 +1292,30 @@ export function DocListPage({
             <div className="pen-library-body pen-library-indent">
               <PenDashboard session={session} docs={docs} onDocsChange={onDocsChange} />
             </div>
-          ) : homeView === 'all' ? (
+          ) : (
             <div className="pen-library-body">
               {browseDensity === 'gallery' ? (
-                <>
-                  {bulkDeleteMode && (
-                    <BulkDeleteBar
-                      visibleDocs={sortedDocs}
-                      selectedIds={selectedIds}
-                      onSelectAll={() => selectAllVisible(sortedDocs)}
-                      onDelete={confirmBulkDelete}
-                      onCancel={toggleBulkMode}
-                    />
-                  )}
-                  <DocGalleryGrid
-                    pn={session.pnIdentifier}
-                    docs={sortedDocs}
-                    childFolders={childFolders}
-                    moveFolders={moveFolderOptions}
-                    bulkMode={bulkDeleteMode}
-                    selectedIds={selectedIds}
-                    onToggle={toggleDocSelection}
-                    onCreateNew={openPicker}
-                    renamingId={renamingId}
-                    renameDraft={renameDraft}
-                    onRenameDraft={setRenameDraft}
-                    onStartRename={startRename}
-                    onCommitRename={commitRename}
-                    onCancelRename={cancelRename}
-                    onMoveDoc={handleMoveDoc}
-                    onDeleteDoc={handleDeleteDoc}
-                    onOpenFolder={setCurrentFolderId}
-                    onRenameFolder={handleRenameFolder}
-                    onDeleteFolder={handleDeleteFolder}
-                  />
-                </>
+                <DocGalleryGrid
+                  pn={session.pnIdentifier}
+                  docs={sortedDocs}
+                  childFolders={childFolders}
+                  moveFolders={moveFolderOptions}
+                  bulkMode={bulkDeleteMode}
+                  selectedIds={selectedIds}
+                  onToggle={toggleDocSelection}
+                  onCreateNew={openPicker}
+                  renamingId={renamingId}
+                  renameDraft={renameDraft}
+                  onRenameDraft={setRenameDraft}
+                  onStartRename={startRename}
+                  onCommitRename={commitRename}
+                  onCancelRename={cancelRename}
+                  onMoveDoc={handleMoveDoc}
+                  onDeleteDoc={handleDeleteDoc}
+                  onOpenFolder={setCurrentFolderId}
+                  onRenameFolder={handleRenameFolder}
+                  onDeleteFolder={handleDeleteFolder}
+                />
               ) : (
                 <DocExplorerTable
                   pn={session.pnIdentifier}
@@ -1439,9 +1327,6 @@ export function DocListPage({
                   bulkMode={bulkDeleteMode}
                   selectedIds={selectedIds}
                   onToggle={toggleDocSelection}
-                  onToggleBulk={toggleBulkMode}
-                  onSelectAll={() => selectAllVisible(sortedDocs)}
-                  onDelete={confirmBulkDelete}
                   renamingId={renamingId}
                   renameDraft={renameDraft}
                   onRenameDraft={setRenameDraft}
@@ -1457,166 +1342,13 @@ export function DocListPage({
                 />
               )}
             </div>
-          ) : (
-            <div className="pen-library-body space-y-1">
-              {bulkDeleteMode && browseDensity === 'gallery' && (
-                <BulkDeleteBar
-                  visibleDocs={sortedDocsByCategory.flatMap((g) => g.docs)}
-                  selectedIds={selectedIds}
-                  onSelectAll={() =>
-                    selectAllVisible(sortedDocsByCategory.flatMap((g) => g.docs))
-                  }
-                  onDelete={confirmBulkDelete}
-                  onCancel={toggleBulkMode}
-                />
-              )}
-              {!bulkDeleteMode && childFolders.length > 0 && browseDensity === 'gallery' && (
-                <div className="pb-3">
-                  <DocGalleryGrid
-                    pn={session.pnIdentifier}
-                    docs={[]}
-                    childFolders={childFolders}
-                    moveFolders={moveFolderOptions}
-                    bulkMode={false}
-                    selectedIds={selectedIds}
-                    onToggle={toggleDocSelection}
-                    onCreateNew={openPicker}
-                    renamingId={renamingId}
-                    renameDraft={renameDraft}
-                    onRenameDraft={setRenameDraft}
-                    onStartRename={startRename}
-                    onCommitRename={commitRename}
-                    onCancelRename={cancelRename}
-                    onMoveDoc={handleMoveDoc}
-                    onDeleteDoc={handleDeleteDoc}
-                    onOpenFolder={setCurrentFolderId}
-                    onRenameFolder={handleRenameFolder}
-                    onDeleteFolder={handleDeleteFolder}
-                  />
-                </div>
-              )}
-              {!bulkDeleteMode &&
-                childFolders.length > 0 &&
-                browseDensity === 'list' &&
-                sortedDocsByCategory.length === 0 && (
-                  <DocExplorerTable
-                    pn={session.pnIdentifier}
-                    docs={[]}
-                    childFolders={childFolders}
-                    moveFolders={moveFolderOptions}
-                    sort={explorerSort}
-                    onSort={cycleExplorerSort}
-                    bulkMode={false}
-                    selectedIds={selectedIds}
-                    onToggle={toggleDocSelection}
-                    onToggleBulk={toggleBulkMode}
-                    onSelectAll={() => selectAllVisible([])}
-                    onDelete={confirmBulkDelete}
-                    renamingId={renamingId}
-                    renameDraft={renameDraft}
-                    onRenameDraft={setRenameDraft}
-                    onStartRename={startRename}
-                    onCommitRename={commitRename}
-                    onCancelRename={cancelRename}
-                    onMoveDoc={handleMoveDoc}
-                    onDeleteDoc={handleDeleteDoc}
-                    onOpenFolder={setCurrentFolderId}
-                    onRenameFolder={handleRenameFolder}
-                    onDeleteFolder={handleDeleteFolder}
-                    onOpenDoc={(docId) => navigate(`/d/${docId}`)}
-                  />
-                )}
-              {sortedDocsByCategory.map((g, groupIndex) => {
-                const open = expandedCats.has(g.categoryId);
-                return (
-                  <div key={g.categoryId}>
-                    <button
-                      type="button"
-                      aria-expanded={open}
-                      onClick={() => toggleExpanded(g.categoryId)}
-                      className="pen-library-indent flex w-full items-center gap-2 py-2 text-left text-sm"
-                    >
-                      <span className="w-3 shrink-0 text-neutral-600" aria-hidden>
-                        {open ? '▾' : '▸'}
-                      </span>
-                      <span className="font-bold text-black">{g.title}</span>
-                      <span className="text-xs text-neutral-600">{g.docs.length}</span>
-                    </button>
-                    {open &&
-                      (browseDensity === 'gallery' ? (
-                        <div className="pb-3">
-                          <DocGalleryGrid
-                            pn={session.pnIdentifier}
-                            docs={g.docs}
-                            childFolders={[]}
-                            moveFolders={moveFolderOptions}
-                            bulkMode={bulkDeleteMode}
-                            selectedIds={selectedIds}
-                            onToggle={toggleDocSelection}
-                            onCreateNew={openPicker}
-                            renamingId={renamingId}
-                            renameDraft={renameDraft}
-                            onRenameDraft={setRenameDraft}
-                            onStartRename={startRename}
-                            onCommitRename={commitRename}
-                            onCancelRename={cancelRename}
-                            onMoveDoc={handleMoveDoc}
-                            onDeleteDoc={handleDeleteDoc}
-                            onOpenFolder={setCurrentFolderId}
-                            onRenameFolder={handleRenameFolder}
-                            onDeleteFolder={handleDeleteFolder}
-                          />
-                        </div>
-                      ) : (
-                        <div className="pb-3">
-                          <DocExplorerTable
-                            pn={session.pnIdentifier}
-                            docs={g.docs}
-                            childFolders={groupIndex === 0 ? childFolders : []}
-                            moveFolders={moveFolderOptions}
-                            sort={explorerSort}
-                            onSort={cycleExplorerSort}
-                            bulkMode={bulkDeleteMode}
-                            selectedIds={selectedIds}
-                            onToggle={toggleDocSelection}
-                            onToggleBulk={toggleBulkMode}
-                            onSelectAll={() => selectAllVisible(g.docs)}
-                            onDelete={confirmBulkDelete}
-                            renamingId={renamingId}
-                            renameDraft={renameDraft}
-                            onRenameDraft={setRenameDraft}
-                            onStartRename={startRename}
-                            onCommitRename={commitRename}
-                            onCancelRename={cancelRename}
-                            onMoveDoc={handleMoveDoc}
-                            onDeleteDoc={handleDeleteDoc}
-                            onOpenFolder={setCurrentFolderId}
-                            onRenameFolder={handleRenameFolder}
-                            onDeleteFolder={handleDeleteFolder}
-                            onOpenDoc={(docId) => navigate(`/d/${docId}`)}
-                          />
-                        </div>
-                      ))}
-                  </div>
-                );
-              })}
-            </div>
           )}
+
+          <footer className="pen-library-footer">
+            <p className="pen-library-footer-copy">© par Noir</p>
+          </footer>
         </div>
       </div>
-
-      <footer
-        className="pen-library-footer mt-auto w-full"
-        style={{
-          backgroundImage: `url(${libraryFooterCrackle})`,
-          backgroundSize: 'cover',
-          backgroundPosition: 'center'
-        }}
-      >
-        <div className="pen-library-footer-label">
-          <span>© par Noir</span>
-        </div>
-      </footer>
 
       {pickerOpen && (
         <div className="fixed inset-0 z-[60] flex items-end justify-center bg-black/30 p-4 sm:items-center">

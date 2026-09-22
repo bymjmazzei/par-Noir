@@ -5,7 +5,7 @@ const homeViewKey = (pn: string) => `pen.homeView:${pn}`;
 const browseDensityKey = (pn: string) => `pen.browseDensity:${pn}`;
 const dashboardKey = (pn: string) => `pen.dashboard:${pn}`;
 
-export type PenHomeView = 'all' | 'category' | 'dashboard';
+export type PenHomeView = 'all' | 'dashboard';
 export type PenBrowseDensity = 'list' | 'gallery';
 
 export type DashboardSlotId = 'calendar' | 'schedule' | 'todo' | 'recent_notes';
@@ -118,7 +118,8 @@ export function togglePinnedCategory(pn: string, categoryId: string): string[] {
 export function loadHomeView(pn: string): PenHomeView {
   try {
     const raw = localStorage.getItem(homeViewKey(pn));
-    if (raw === 'all' || raw === 'category' || raw === 'dashboard') return raw;
+    if (raw === 'dashboard') return 'dashboard';
+    // Legacy 'category' collapses into all.
     return 'all';
   } catch {
     return 'all';
