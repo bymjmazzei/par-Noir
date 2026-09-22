@@ -6,62 +6,41 @@ import type { ReactNode } from 'react';
 import { UnlockButton, type PnOAuthPopupResult } from '@par-noir/oauth-ui';
 import { API_ENDPOINT, PN_CLIENT_ID } from '../config/api';
 
-/** Drop a recording at public/demo/pen-tour.webm when ready. */
-const DEMO_SRC = './demo/pen-tour.webm';
-
 const CHECKLIST = [
   'Author anything',
   'Collaborate encrypted',
   'Publish to the network'
 ] as const;
 
-/** Hand-drawn check — unicode ✓ ignores Caveat and looks system/printed. */
-function HandCheck() {
+const LOGO_SRC = './branding/Par-Noir-Logo-Black.png';
+
+/** Irregular ink outline so the CTA reads hand-drawn, not a system button. */
+function HandDrawnOutline() {
   return (
     <svg
-      className="pen-locked-copy-check"
-      viewBox="0 0 32 26"
-      width="1.2em"
-      height="1em"
+      className="pen-locked-cta-outline"
+      viewBox="0 0 320 52"
+      preserveAspectRatio="none"
       aria-hidden
     >
       <path
-        d="M2.5 13.5c1.8.4 3.2 1.6 4.6 3.4 1.2 1.5 2.4 3.8 3.7 6.6 1.8-4.8 4.2-9.2 7-12.6C21.2 6.8 25.4 3.6 29.5 2.2"
+        d="M14 12.5c22-5.5 78-9 148-8.5 52 .4 98 3.2 128 7.2 7.2 1 14.5 4.2 16.2 10.2 1.6 5.6-2.4 11.4-9.2 14.6-12.8 6-48 9.4-106 10.4-62 1-128-1.2-168-6.8C12 37.2 5.2 32.4 4.4 25.6 3.5 17.8 8.2 13.6 14 12.5Z"
         fill="none"
         stroke="currentColor"
-        strokeWidth="2.6"
+        strokeWidth="2.2"
         strokeLinecap="round"
         strokeLinejoin="round"
         vectorEffect="non-scaling-stroke"
       />
       <path
-        d="M3.2 14.1c1.6.55 2.9 1.7 4.2 3.2 1.1 1.4 2.2 3.5 3.4 6.1"
+        d="M18 13.2c28-4.8 86-7.6 150-7 48 .5 92 2.8 120 6.4"
         fill="none"
         stroke="currentColor"
-        strokeWidth="1.15"
+        strokeWidth="1"
         strokeLinecap="round"
-        opacity="0.45"
+        opacity="0.4"
       />
     </svg>
-  );
-}
-
-function PhoneEmbed() {
-  return (
-    <div className="pen-locked-phone" aria-label="Pen product preview">
-      <div className="pen-locked-phone-notch" aria-hidden />
-      <div className="pen-locked-phone-screen">
-        <video
-          className="pen-locked-phone-video"
-          src={DEMO_SRC}
-          autoPlay
-          muted
-          loop
-          playsInline
-          preload="none"
-        />
-      </div>
-    </div>
   );
 }
 
@@ -88,7 +67,7 @@ export function PenLockedLanding({
   };
 
   return (
-    <div className="min-h-screen bg-white text-black">
+    <div className="pen-locked-page bg-white text-black">
       <header className="pen-app-chrome fixed inset-x-0 top-0 z-50">
         <div className="pen-app-chrome-left">
           <span className="pen-app-chrome-action" aria-hidden />
@@ -106,16 +85,26 @@ export function PenLockedLanding({
         />
       </header>
 
-      <div className="flex min-h-[calc(100vh-2.5rem)] flex-col pt-10">
+      <div className="pen-locked-page-body flex flex-col">
         <div className="pen-library-page bg-white">
           <div className="pen-library-notebook flex-1">
             <div className="pen-library-notebook-inner">
               <div className="pen-explorer-rail" aria-hidden />
 
-              <div className="pen-library-heading">
+              <div className="pen-library-heading pen-locked-heading">
                 <div className="min-w-0 flex-1">
-                  <h1 className="text-lg font-bold text-black">Pen</h1>
-                  <p className="text-sm text-neutral-500">Encrypted collaboration through your cloud</p>
+                  <h1 className="pen-locked-title">Pen</h1>
+                  <img
+                    className="pen-locked-logo"
+                    src={LOGO_SRC}
+                    alt="par Noir"
+                    width={160}
+                    height={48}
+                    decoding="async"
+                  />
+                  <p className="pen-locked-subtitle">
+                    Encrypted collaboration published through your cloud
+                  </p>
                 </div>
               </div>
 
@@ -132,43 +121,32 @@ export function PenLockedLanding({
                             •
                           </span>
                           <span className="pen-locked-copy-text">{label}</span>
-                          <HandCheck />
                         </li>
                       ))}
-                      <li className="pen-locked-check-item">
-                        <span className="pen-locked-copy-bullet" aria-hidden>
-                          •
-                        </span>
-                        <span className="pen-locked-copy-text">Unlock pN to get started</span>
-                      </li>
                       <li className="pen-locked-check-item pen-locked-check-item--cta">
-                        <UnlockButton
-                          className="pen-locked-unlock-cta"
-                          config={unlockConfig}
-                          onBeforeNavigate={onBeforeNavigate}
-                          onPopupResult={onPopupResult}
-                          onPopupFlowFailed={onPopupFlowFailed}
-                          showIcon
-                        >
-                          Unlock pN
-                        </UnlockButton>
+                        <span className="pen-locked-cta-wrap">
+                          <HandDrawnOutline />
+                          <UnlockButton
+                            className="pen-locked-unlock-cta"
+                            config={unlockConfig}
+                            onBeforeNavigate={onBeforeNavigate}
+                            onPopupResult={onPopupResult}
+                            onPopupFlowFailed={onPopupFlowFailed}
+                            showIcon={false}
+                            title="customize your feed posts"
+                          >
+                            customize your feed posts
+                          </UnlockButton>
+                        </span>
                         {busy && (
                           <span className="pen-locked-copy-status">Finishing unlock…</span>
                         )}
                         {error && <span className="pen-locked-copy-error">{error}</span>}
                       </li>
                     </ul>
-
-                    <aside className="pen-locked-phone-slot">
-                      <PhoneEmbed />
-                    </aside>
                   </div>
                 </div>
               </div>
-
-              <footer className="pen-library-footer">
-                <p className="pen-library-footer-copy">© par Noir</p>
-              </footer>
             </div>
           </div>
         </div>

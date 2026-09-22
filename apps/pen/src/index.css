@@ -1234,71 +1234,112 @@ input.pen-gallery-tile-title-text {
 }
 
 /*
- * Locked overview — notebook chrome + phone on the right.
- * Sheet is full-bleed (cancels --pen-edge-pad); checklist padding must add it back
- * so copy / CTA sit to the right of the red rail by --pen-locked-rail-gap.
+ * Locked overview — single-column notebook copy + hand-drawn CTA.
+ * Fits one viewport (no scroll) on typical phones.
  */
+.pen-locked-page {
+  height: 100vh;
+  height: 100dvh;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  background: #fff;
+  color: #000;
+}
+
+.pen-locked-page-body {
+  flex: 1 1 auto;
+  box-sizing: border-box;
+  height: calc(100vh - 2.5rem);
+  height: calc(100dvh - 2.5rem);
+  margin-top: 2.5rem;
+  padding-top: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.pen-locked-page .pen-library-page,
+.pen-locked-page .pen-library-notebook,
+.pen-locked-page .pen-library-notebook-inner {
+  height: 100%;
+  min-height: 0 !important;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
 .pen-library-page:has(.pen-locked-sheet) {
-  --pen-locked-action-w: clamp(1.1rem, 0.55rem + 1.4vw, 2.5rem);
-  --pen-locked-icon-w: clamp(1.1rem, 0.55rem + 1.4vw, 2.5rem);
-  --pen-locked-rail-w: clamp(3px, 0.12rem + 0.3vw, 5px);
-  --pen-locked-rail-stroke: clamp(1px, 0.05rem + 0.1vw, 1.5px);
-  --pen-locked-rail-gap: 10px; /* fixed — copy sits 10px right of the red rail */
-  /* From notebook content edge (heading) to first glyph after the rail */
+  --pen-locked-rail-gap: 10px;
   --pen-locked-gutter: calc(
-    var(--pen-locked-action-w) + var(--pen-locked-icon-w) + var(--pen-locked-rail-w) +
-      var(--pen-locked-rail-gap)
+    var(--pen-action-w) + var(--pen-icon-w) + 5px + var(--pen-locked-rail-gap)
   );
-  /* From viewport / full-bleed sheet left to first glyph after the rail */
   --pen-locked-sheet-inset: calc(var(--pen-edge-pad) + var(--pen-locked-gutter));
-  --pen-locked-rule-pitch: clamp(1.15rem, 0.55rem + 1.55vw, 2.25rem);
-  --pen-locked-copy-size: clamp(1.05rem, 0.45rem + 1.55vw, 2.15rem);
-  --pen-locked-title-size: clamp(1.1rem, 0.85rem + 0.75vw, 1.5rem);
-  --pen-locked-sub-size: clamp(0.8rem, 0.68rem + 0.4vw, 1rem);
-  --pen-locked-phone-w: clamp(
-    10.75rem,
-    34vw,
-    min(20rem, calc((100vh - 8.5rem) * 9 / 19.2))
-  );
-  --pen-locked-gap: clamp(0.85rem, 2vw, 2rem);
-  --pen-locked-inset: clamp(0.65rem, 1.6vw, 1.35rem);
+  --pen-locked-rule-pitch: clamp(1.15rem, 3.2vh, 2rem);
+  --pen-locked-copy-size: clamp(1rem, 2.6vh, 1.75rem);
+  --pen-locked-title-size: clamp(2rem, 7vh, 3.25rem);
+  --pen-locked-logo-h: clamp(1.75rem, 4.5vh, 2.75rem);
 }
 
 .pen-library-page:has(.pen-locked-sheet) .pen-explorer-rail {
-  left: calc(var(--pen-edge-pad) + var(--pen-locked-action-w) + var(--pen-locked-icon-w));
-  width: var(--pen-locked-rail-w);
-  border-left-width: var(--pen-locked-rail-stroke);
-  border-right-width: var(--pen-locked-rail-stroke);
+  left: calc(var(--pen-edge-pad) + var(--pen-action-w) + var(--pen-icon-w));
+  width: 5px;
+  border-left-width: 1.5px;
+  border-right-width: 1.5px;
 }
 
-.pen-library-page:has(.pen-locked-sheet) .pen-library-heading {
+.pen-library-page:has(.pen-locked-sheet) .pen-library-heading,
+.pen-locked-heading {
+  padding-top: clamp(0.35rem, 1.2vh, 0.75rem);
   padding-left: var(--pen-locked-gutter);
-  padding-right: calc(var(--pen-locked-phone-w) + var(--pen-locked-gap) + var(--pen-locked-inset));
+  padding-right: var(--pen-edge-pad);
+  padding-bottom: 0;
+  flex-shrink: 0;
 }
 
-.pen-library-page:has(.pen-locked-sheet) .pen-library-heading h1 {
+.pen-locked-title {
+  margin: 0;
   font-size: var(--pen-locked-title-size);
-  line-height: 1.2;
+  font-weight: 700;
+  line-height: 1.05;
+  letter-spacing: -0.03em;
+  color: #000;
 }
 
-.pen-library-page:has(.pen-locked-sheet) .pen-library-heading p {
-  font-size: var(--pen-locked-sub-size);
+.pen-locked-logo {
+  display: block;
+  height: var(--pen-locked-logo-h);
+  width: auto;
+  max-width: min(11rem, 55vw);
+  margin: clamp(0.2rem, 0.8vh, 0.45rem) 0 clamp(0.15rem, 0.6vh, 0.35rem);
+  object-fit: contain;
+  object-position: left center;
+  /* PNG wordmark has vertical padding; crop like dashboard Logo */
+  clip-path: inset(12% 0 12% 0);
+  transform: scale(1.12);
+  transform-origin: left center;
+}
+
+.pen-locked-subtitle {
+  margin: 0;
+  max-width: 28rem;
+  font-size: clamp(0.75rem, 1.8vh, 0.95rem);
+  font-weight: 500;
+  line-height: 1.3;
+  color: #737373;
 }
 
 .pen-locked-sheet {
   position: relative;
-  min-height: calc(100vh - 2.5rem - 7rem);
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
 }
 
 .pen-locked-flow {
   position: relative;
   z-index: 1;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) var(--pen-locked-phone-w);
-  column-gap: var(--pen-locked-gap);
-  align-items: start;
-  min-height: max(calc(var(--pen-locked-rule-pitch) * 14), calc(var(--pen-locked-phone-w) * 19.2 / 9));
-  padding: 0 var(--pen-locked-inset) calc(var(--pen-locked-rule-pitch) * 2) 0;
+  display: block;
+  padding: 0 var(--pen-edge-pad) clamp(0.5rem, 2vh, 1.25rem) 0;
   box-sizing: border-box;
   background-image: repeating-linear-gradient(
     to bottom,
@@ -1314,65 +1355,12 @@ input.pen-gallery-tile-title-text {
 }
 
 .pen-locked-checklist {
-  grid-column: 1;
-  grid-row: 1;
   list-style: none;
   margin: 0;
   padding: 0 0 0 var(--pen-locked-sheet-inset);
   min-width: 0;
-  max-width: 100%;
   position: relative;
   z-index: 2;
-}
-
-.pen-locked-phone-slot {
-  grid-column: 2;
-  grid-row: 1;
-  width: 100%;
-  position: relative;
-  z-index: 3;
-  justify-self: stretch;
-}
-
-.pen-locked-phone {
-  display: flex;
-  flex-direction: column;
-  width: 100%;
-  height: auto;
-  aspect-ratio: 9 / 19.2;
-  background: #0a0a0a;
-  border: 2px solid #171717;
-  border-radius: clamp(0.85rem, 1.4vw, 1.65rem);
-  box-shadow: 0 14px 32px rgba(0, 0, 0, 0.2);
-  padding: clamp(0.4rem, 0.7vw, 0.65rem) clamp(0.25rem, 0.45vw, 0.4rem)
-    clamp(0.45rem, 0.8vw, 0.75rem);
-  box-sizing: border-box;
-}
-
-.pen-locked-phone-notch {
-  width: 36%;
-  height: clamp(0.22rem, 0.4vw, 0.32rem);
-  margin: 0 auto 0.4rem;
-  border-radius: 999px;
-  background: #262626;
-  flex-shrink: 0;
-}
-
-.pen-locked-phone-screen {
-  flex: 1 1 auto;
-  min-height: 0;
-  overflow: hidden;
-  border-radius: clamp(0.35rem, 0.9vw, 0.7rem);
-  background: #f5f5f5;
-}
-
-.pen-locked-phone-video {
-  display: block;
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  object-position: top center;
-  background: #f5f5f5;
 }
 
 .pen-locked-check-item {
@@ -1387,8 +1375,9 @@ input.pen-gallery-tile-title-text {
 
 .pen-locked-check-item--cta {
   align-items: center;
-  padding-top: 0.1rem;
+  padding-top: 0.15rem;
   flex-wrap: wrap;
+  gap: 0.25rem 0.5rem;
 }
 
 .pen-locked-copy-bullet {
@@ -1401,24 +1390,14 @@ input.pen-gallery-tile-title-text {
 }
 
 .pen-locked-copy-text {
-  flex: 0 1 auto;
+  flex: 1 1 auto;
   min-width: 0;
   font-family: 'Caveat', 'Segoe Print', cursive;
   font-size: var(--pen-locked-copy-size);
   font-weight: 600;
   line-height: var(--pen-locked-rule-pitch);
   color: #171717;
-  white-space: nowrap;
-}
-
-.pen-locked-copy-check {
-  flex-shrink: 0;
-  width: 1.3em;
-  height: 1em;
-  color: #166534;
-  transform: rotate(-11deg) translateY(0.06em);
-  overflow: visible;
-  align-self: center;
+  overflow-wrap: anywhere;
 }
 
 .pen-locked-copy-status {
@@ -1426,7 +1405,7 @@ input.pen-gallery-tile-title-text {
   width: 100%;
   color: #737373;
   font-family: 'IBM Plex Sans', system-ui, sans-serif;
-  font-size: 0.875rem;
+  font-size: 0.8125rem;
   font-weight: 500;
   line-height: 1.35;
 }
@@ -1436,28 +1415,78 @@ input.pen-gallery-tile-title-text {
   width: 100%;
   color: #dc2626;
   font-family: 'IBM Plex Sans', system-ui, sans-serif;
-  font-size: 0.875rem;
+  font-size: 0.8125rem;
   font-weight: 500;
   line-height: 1.35;
 }
 
-.pen-locked-unlock-cta {
+.pen-locked-cta-wrap {
+  position: relative;
   display: inline-flex;
   align-items: center;
-  gap: 0.35rem;
-  min-height: clamp(1.85rem, 4vw, 2.25rem);
-  padding: 0.3rem 0.85rem;
-  border: 1.5px solid #000;
-  background: #000;
-  color: #fff;
-  font-family: 'IBM Plex Sans', system-ui, sans-serif;
-  font-size: clamp(0.72rem, 1.5vw, 0.875rem);
-  font-weight: 700;
+  max-width: 100%;
+  color: #171717;
+}
+
+.pen-locked-cta-outline {
+  position: absolute;
+  inset: -0.15rem -0.35rem;
+  width: calc(100% + 0.7rem);
+  height: calc(100% + 0.3rem);
+  pointer-events: none;
+  overflow: visible;
+  color: #171717;
+}
+
+.pen-locked-unlock-cta {
+  position: relative;
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  max-width: 100%;
+  min-height: var(--pen-locked-rule-pitch);
+  margin: 0;
+  padding: 0.15rem 0.65rem;
+  border: none;
+  background: transparent;
+  color: #171717;
+  font-family: 'Caveat', 'Segoe Print', cursive;
+  font-size: var(--pen-locked-copy-size);
+  font-weight: 600;
+  line-height: 1.15;
+  white-space: nowrap;
   cursor: pointer;
 }
 
 .pen-locked-unlock-cta:hover {
-  opacity: 0.88;
+  opacity: 0.75;
+}
+
+@media (max-width: 720px) {
+  .pen-library-page:has(.pen-locked-sheet) {
+    --pen-locked-rule-pitch: clamp(1.1rem, 3.4vh, 1.45rem);
+    --pen-locked-copy-size: clamp(0.95rem, 2.8vh, 1.2rem);
+    --pen-locked-title-size: clamp(1.85rem, 6.5vh, 2.5rem);
+    --pen-locked-logo-h: clamp(1.5rem, 4vh, 2.15rem);
+  }
+}
+
+@media (max-height: 640px) {
+  .pen-library-page:has(.pen-locked-sheet) {
+    --pen-locked-rule-pitch: 1.1rem;
+    --pen-locked-copy-size: 0.95rem;
+    --pen-locked-title-size: 1.75rem;
+    --pen-locked-logo-h: 1.4rem;
+  }
+
+  .pen-library-page:has(.pen-locked-sheet) .pen-library-heading,
+  .pen-locked-heading {
+    padding-top: 0.2rem;
+  }
+
+  .pen-locked-subtitle {
+    font-size: 0.7rem;
+  }
 }
 
 .pen-template-dir-heading {
