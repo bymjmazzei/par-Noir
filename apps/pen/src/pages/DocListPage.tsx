@@ -50,7 +50,8 @@ import { PenDashboard } from '../components/dashboard/PenDashboard';
 import { FormDocIcon } from '../components/FormDocIcon';
 import { TemplateLivePreview } from '../components/TemplateLivePreview';
 import { DocItemMenu } from '../components/DocItemMenu';
-import libraryHeaderCrackle from '../assets/library-header-crackle.jpg';
+import libraryFooterCrackle from '../assets/library-header-crackle.jpg';
+import { resolveDocLibraryStatus } from '../services/penDocStatus';
 
 type DrillLevel = 'category' | 'form' | 'template';
 
@@ -152,6 +153,7 @@ function SortHeader({
 
 function DocExplorerRow({
   d,
+  pn,
   bulkMode,
   selected,
   onToggle,
@@ -167,6 +169,7 @@ function DocExplorerRow({
   onOpen
 }: {
   d: LocalDocSummary;
+  pn: string;
   bulkMode: boolean;
   selected: boolean;
   onToggle: (docId: string) => void;
@@ -185,6 +188,7 @@ function DocExplorerRow({
   const form = classId ? getClass(classId) : undefined;
   const category = form?.parentId ? getClass(form.parentId) : undefined;
   const clickTimer = useRef<number | null>(null);
+  const status = resolveDocLibraryStatus(pn, d.docId);
   return (
     <tr
       className={`${selected ? 'bg-blue-50/40' : ''} hover:bg-neutral-50`}
@@ -261,9 +265,11 @@ function DocExplorerRow({
       <td className="hidden px-3 py-2 text-xs text-black md:table-cell">
         {form?.title || '—'}
       </td>
-      <td className="hidden px-3 py-2 text-xs text-black lg:table-cell">{d.templateId}</td>
-      <td className="whitespace-nowrap px-3 py-2 text-right text-xs text-black">
-        <div className="flex items-center justify-end gap-1">
+      <td className="hidden max-w-[11rem] truncate px-3 py-2 text-xs text-black lg:table-cell">
+        {status}
+      </td>
+      <td className="whitespace-nowrap px-3 py-2 text-left text-xs text-black">
+        <div className="flex items-center gap-1">
           <span>{new Date(d.updatedAt).toLocaleString()}</span>
           {!bulkMode && (
             <DocItemMenu
@@ -311,9 +317,9 @@ function FolderExplorerRow({
       </td>
       <td className="hidden px-3 py-2 text-xs text-neutral-500 sm:table-cell">Folder</td>
       <td className="hidden px-3 py-2 text-xs text-black md:table-cell">—</td>
-      <td className="hidden px-3 py-2 text-xs text-black lg:table-cell">—</td>
-      <td className="whitespace-nowrap px-3 py-2 text-right text-xs text-black">
-        <div className="flex items-center justify-end gap-1">
+      <td className="hidden px-3 py-2 text-xs text-neutral-500 lg:table-cell">—</td>
+      <td className="whitespace-nowrap px-3 py-2 text-left text-xs text-black">
+        <div className="flex items-center gap-1">
           <span>{new Date(folder.createdAt).toLocaleString()}</span>
           <DocItemMenu
             folders={[]}
@@ -329,6 +335,7 @@ function FolderExplorerRow({
 }
 
 function DocExplorerTable({
+  pn,
   docs,
   childFolders,
   moveFolders,
@@ -353,6 +360,7 @@ function DocExplorerTable({
   onDeleteFolder,
   onOpenDoc
 }: {
+  pn: string;
   docs: LocalDocSummary[];
   childFolders: PenFolder[];
   moveFolders: Array<{ id: string; name: string }>;
@@ -390,7 +398,6 @@ function DocExplorerTable({
         />
       )}
       <div className="pen-explorer-sheet">
-        <div className="pen-explorer-rail" aria-hidden />
         <table className="w-full table-fixed text-left text-sm">
           <thead className="text-[11px] tracking-wide">
             <tr>
@@ -417,19 +424,17 @@ function DocExplorerTable({
                 onSort={onSort}
                 className="hidden w-28 md:table-cell"
               />
-              <SortHeader
-                label="Template"
-                sortKey="template"
-                sort={sort}
-                onSort={onSort}
-                className="hidden w-40 lg:table-cell"
-              />
+              <th className="hidden w-40 px-3 py-2 text-left lg:table-cell">
+                <span className="text-[11px] font-normal uppercase tracking-wide text-neutral-600">
+                  Status
+                </span>
+              </th>
               <SortHeader
                 label="Updated"
                 sortKey="updated"
                 sort={sort}
                 onSort={onSort}
-                align="right"
+                align="left"
                 className="w-44"
               />
             </tr>
@@ -449,6 +454,7 @@ function DocExplorerTable({
               <DocExplorerRow
                 key={d.docId}
                 d={d}
+                pn={pn}
                 bulkMode={bulkMode}
                 selected={selectedIds.has(d.docId)}
                 onToggle={onToggle}
@@ -1250,17 +1256,12 @@ export function DocListPage({
   );
 
   return (
-    <div className="min-h-[calc(100vh-2.5rem)] bg-white">
-      <div
-        className="pen-library-hero w-full"
-        style={{
-          backgroundImage: `url(${libraryHeaderCrackle})`,
-          backgroundSize: 'cover',
-          backgroundPosition: 'center'
-        }}
-      >
-        <div className="mx-auto max-w-5xl px-4 py-8 sm:py-10">
-          <div className="flex flex-wrap items-start justify-between gap-4 rounded-2xl bg-white px-4 py-3 shadow-sm sm:px-5 sm:py-4">
+    <div className="pen-library-page bg-white">
+      <div className="pen-library-notebook mx-auto w-full max-w-5xl flex-1 px-4">
+        <div className="pen-library-notebook-inner">
+          <div className="pen-explorer-rail" aria-hidden />
+
+          <div className="pen-library-heading flex flex-wrap items-start justify-between gap-4">
             <div className="min-w-0">
               <h1 className="text-lg font-bold text-black">My Library</h1>
               <p className="text-sm text-neutral-500">
@@ -1374,139 +1375,70 @@ export function DocListPage({
               </div>
             )}
           </div>
-        </div>
-      </div>
 
-      <div className="mx-auto max-w-5xl px-4 pb-10 pt-6">
-        {docs.length === 0 && allFolders.length === 0 ? (
-          <div className="px-6 py-16 text-center">
-            <p className="text-neutral-500">No documents yet.</p>
-            <button
-              type="button"
-              className="mt-4 text-sm font-bold text-black underline"
-              onClick={openPicker}
-            >
-              Choose a template
-            </button>
-          </div>
-        ) : homeView === 'dashboard' ? (
-          <PenDashboard session={session} docs={docs} onDocsChange={onDocsChange} />
-        ) : homeView === 'all' ? (
-          <>
-            {browseDensity === 'gallery' ? (
-              <>
-                {bulkDeleteMode && (
-                  <BulkDeleteBar
-                    visibleDocs={sortedDocs}
+          {docs.length === 0 && allFolders.length === 0 ? (
+            <div className="pen-library-body px-6 py-16 text-center">
+              <p className="text-neutral-500">No documents yet.</p>
+              <button
+                type="button"
+                className="mt-4 text-sm font-bold text-black underline"
+                onClick={openPicker}
+              >
+                Choose a template
+              </button>
+            </div>
+          ) : homeView === 'dashboard' ? (
+            <div className="pen-library-body">
+              <PenDashboard session={session} docs={docs} onDocsChange={onDocsChange} />
+            </div>
+          ) : homeView === 'all' ? (
+            <div className="pen-library-body">
+              {browseDensity === 'gallery' ? (
+                <>
+                  {bulkDeleteMode && (
+                    <BulkDeleteBar
+                      visibleDocs={sortedDocs}
+                      selectedIds={selectedIds}
+                      onSelectAll={() => selectAllVisible(sortedDocs)}
+                      onDelete={confirmBulkDelete}
+                      onCancel={toggleBulkMode}
+                    />
+                  )}
+                  <DocGalleryGrid
+                    pn={session.pnIdentifier}
+                    docs={sortedDocs}
+                    childFolders={childFolders}
+                    moveFolders={moveFolderOptions}
+                    bulkMode={bulkDeleteMode}
                     selectedIds={selectedIds}
-                    onSelectAll={() => selectAllVisible(sortedDocs)}
-                    onDelete={confirmBulkDelete}
-                    onCancel={toggleBulkMode}
+                    onToggle={toggleDocSelection}
+                    onCreateNew={openPicker}
+                    renamingId={renamingId}
+                    renameDraft={renameDraft}
+                    onRenameDraft={setRenameDraft}
+                    onStartRename={startRename}
+                    onCommitRename={commitRename}
+                    onCancelRename={cancelRename}
+                    onMoveDoc={handleMoveDoc}
+                    onDeleteDoc={handleDeleteDoc}
+                    onOpenFolder={setCurrentFolderId}
+                    onRenameFolder={handleRenameFolder}
+                    onDeleteFolder={handleDeleteFolder}
                   />
-                )}
-                <DocGalleryGrid
+                </>
+              ) : (
+                <DocExplorerTable
                   pn={session.pnIdentifier}
                   docs={sortedDocs}
                   childFolders={childFolders}
                   moveFolders={moveFolderOptions}
+                  sort={explorerSort}
+                  onSort={cycleExplorerSort}
                   bulkMode={bulkDeleteMode}
                   selectedIds={selectedIds}
                   onToggle={toggleDocSelection}
-                  onCreateNew={openPicker}
-                  renamingId={renamingId}
-                  renameDraft={renameDraft}
-                  onRenameDraft={setRenameDraft}
-                  onStartRename={startRename}
-                  onCommitRename={commitRename}
-                  onCancelRename={cancelRename}
-                  onMoveDoc={handleMoveDoc}
-                  onDeleteDoc={handleDeleteDoc}
-                  onOpenFolder={setCurrentFolderId}
-                  onRenameFolder={handleRenameFolder}
-                  onDeleteFolder={handleDeleteFolder}
-                />
-              </>
-            ) : (
-              <DocExplorerTable
-                docs={sortedDocs}
-                childFolders={childFolders}
-                moveFolders={moveFolderOptions}
-                sort={explorerSort}
-                onSort={cycleExplorerSort}
-                bulkMode={bulkDeleteMode}
-                selectedIds={selectedIds}
-                onToggle={toggleDocSelection}
-                onToggleBulk={toggleBulkMode}
-                onSelectAll={() => selectAllVisible(sortedDocs)}
-                onDelete={confirmBulkDelete}
-                renamingId={renamingId}
-                renameDraft={renameDraft}
-                onRenameDraft={setRenameDraft}
-                onStartRename={startRename}
-                onCommitRename={commitRename}
-                onCancelRename={cancelRename}
-                onMoveDoc={handleMoveDoc}
-                onDeleteDoc={handleDeleteDoc}
-                onOpenFolder={setCurrentFolderId}
-                onRenameFolder={handleRenameFolder}
-                onDeleteFolder={handleDeleteFolder}
-                onOpenDoc={(docId) => navigate(`/d/${docId}`)}
-              />
-            )}
-          </>
-        ) : (
-          <div className="space-y-1">
-            {bulkDeleteMode && browseDensity === 'gallery' && (
-              <BulkDeleteBar
-                visibleDocs={sortedDocsByCategory.flatMap((g) => g.docs)}
-                selectedIds={selectedIds}
-                onSelectAll={() =>
-                  selectAllVisible(sortedDocsByCategory.flatMap((g) => g.docs))
-                }
-                onDelete={confirmBulkDelete}
-                onCancel={toggleBulkMode}
-              />
-            )}
-            {!bulkDeleteMode && childFolders.length > 0 && browseDensity === 'gallery' && (
-              <div className="pb-3">
-                <DocGalleryGrid
-                  pn={session.pnIdentifier}
-                  docs={[]}
-                  childFolders={childFolders}
-                  moveFolders={moveFolderOptions}
-                  bulkMode={false}
-                  selectedIds={selectedIds}
-                  onToggle={toggleDocSelection}
-                  onCreateNew={openPicker}
-                  renamingId={renamingId}
-                  renameDraft={renameDraft}
-                  onRenameDraft={setRenameDraft}
-                  onStartRename={startRename}
-                  onCommitRename={commitRename}
-                  onCancelRename={cancelRename}
-                  onMoveDoc={handleMoveDoc}
-                  onDeleteDoc={handleDeleteDoc}
-                  onOpenFolder={setCurrentFolderId}
-                  onRenameFolder={handleRenameFolder}
-                  onDeleteFolder={handleDeleteFolder}
-                />
-              </div>
-            )}
-            {!bulkDeleteMode &&
-              childFolders.length > 0 &&
-              browseDensity === 'list' &&
-              sortedDocsByCategory.length === 0 && (
-                <DocExplorerTable
-                  docs={[]}
-                  childFolders={childFolders}
-                  moveFolders={moveFolderOptions}
-                  sort={explorerSort}
-                  onSort={cycleExplorerSort}
-                  bulkMode={false}
-                  selectedIds={selectedIds}
-                  onToggle={toggleDocSelection}
                   onToggleBulk={toggleBulkMode}
-                  onSelectAll={() => selectAllVisible([])}
+                  onSelectAll={() => selectAllVisible(sortedDocs)}
                   onDelete={confirmBulkDelete}
                   renamingId={renamingId}
                   renameDraft={renameDraft}
@@ -1519,85 +1451,170 @@ export function DocListPage({
                   onOpenFolder={setCurrentFolderId}
                   onRenameFolder={handleRenameFolder}
                   onDeleteFolder={handleDeleteFolder}
-                onOpenDoc={(docId) => navigate(`/d/${docId}`)}
-              />
+                  onOpenDoc={(docId) => navigate(`/d/${docId}`)}
+                />
               )}
-            {sortedDocsByCategory.map((g, groupIndex) => {
-              const open = expandedCats.has(g.categoryId);
-              return (
-                <div key={g.categoryId}>
-                  <button
-                    type="button"
-                    aria-expanded={open}
-                    onClick={() => toggleExpanded(g.categoryId)}
-                    className="flex w-full items-center gap-2 py-2 text-left text-sm"
-                  >
-                    <span className="w-3 shrink-0 text-neutral-600" aria-hidden>
-                      {open ? '▾' : '▸'}
-                    </span>
-                    <span className="font-bold text-black">{g.title}</span>
-                    <span className="text-xs text-neutral-600">{g.docs.length}</span>
-                  </button>
-                  {open &&
-                    (browseDensity === 'gallery' ? (
-                      <div className="pb-3 pl-5">
-                        <DocGalleryGrid
-                          pn={session.pnIdentifier}
-                          docs={g.docs}
-                          childFolders={[]}
-                          moveFolders={moveFolderOptions}
-                          bulkMode={bulkDeleteMode}
-                          selectedIds={selectedIds}
-                          onToggle={toggleDocSelection}
-                          onCreateNew={openPicker}
-                          renamingId={renamingId}
-                          renameDraft={renameDraft}
-                          onRenameDraft={setRenameDraft}
-                          onStartRename={startRename}
-                          onCommitRename={commitRename}
-                          onCancelRename={cancelRename}
-                          onMoveDoc={handleMoveDoc}
-                          onDeleteDoc={handleDeleteDoc}
-                          onOpenFolder={setCurrentFolderId}
-                          onRenameFolder={handleRenameFolder}
-                          onDeleteFolder={handleDeleteFolder}
-                        />
-                      </div>
-                    ) : (
-                      <div className="pb-3 pl-5">
-                        <DocExplorerTable
-                          docs={g.docs}
-                          childFolders={groupIndex === 0 ? childFolders : []}
-                          moveFolders={moveFolderOptions}
-                          sort={explorerSort}
-                          onSort={cycleExplorerSort}
-                          bulkMode={bulkDeleteMode}
-                          selectedIds={selectedIds}
-                          onToggle={toggleDocSelection}
-                          onToggleBulk={toggleBulkMode}
-                          onSelectAll={() => selectAllVisible(g.docs)}
-                          onDelete={confirmBulkDelete}
-                          renamingId={renamingId}
-                          renameDraft={renameDraft}
-                          onRenameDraft={setRenameDraft}
-                          onStartRename={startRename}
-                          onCommitRename={commitRename}
-                          onCancelRename={cancelRename}
-                          onMoveDoc={handleMoveDoc}
-                          onDeleteDoc={handleDeleteDoc}
-                          onOpenFolder={setCurrentFolderId}
-                          onRenameFolder={handleRenameFolder}
-                          onDeleteFolder={handleDeleteFolder}
-                onOpenDoc={(docId) => navigate(`/d/${docId}`)}
-              />
-                      </div>
-                    ))}
+            </div>
+          ) : (
+            <div className="pen-library-body space-y-1">
+              {bulkDeleteMode && browseDensity === 'gallery' && (
+                <BulkDeleteBar
+                  visibleDocs={sortedDocsByCategory.flatMap((g) => g.docs)}
+                  selectedIds={selectedIds}
+                  onSelectAll={() =>
+                    selectAllVisible(sortedDocsByCategory.flatMap((g) => g.docs))
+                  }
+                  onDelete={confirmBulkDelete}
+                  onCancel={toggleBulkMode}
+                />
+              )}
+              {!bulkDeleteMode && childFolders.length > 0 && browseDensity === 'gallery' && (
+                <div className="pb-3">
+                  <DocGalleryGrid
+                    pn={session.pnIdentifier}
+                    docs={[]}
+                    childFolders={childFolders}
+                    moveFolders={moveFolderOptions}
+                    bulkMode={false}
+                    selectedIds={selectedIds}
+                    onToggle={toggleDocSelection}
+                    onCreateNew={openPicker}
+                    renamingId={renamingId}
+                    renameDraft={renameDraft}
+                    onRenameDraft={setRenameDraft}
+                    onStartRename={startRename}
+                    onCommitRename={commitRename}
+                    onCancelRename={cancelRename}
+                    onMoveDoc={handleMoveDoc}
+                    onDeleteDoc={handleDeleteDoc}
+                    onOpenFolder={setCurrentFolderId}
+                    onRenameFolder={handleRenameFolder}
+                    onDeleteFolder={handleDeleteFolder}
+                  />
                 </div>
-              );
-            })}
-          </div>
-        )}
+              )}
+              {!bulkDeleteMode &&
+                childFolders.length > 0 &&
+                browseDensity === 'list' &&
+                sortedDocsByCategory.length === 0 && (
+                  <DocExplorerTable
+                    pn={session.pnIdentifier}
+                    docs={[]}
+                    childFolders={childFolders}
+                    moveFolders={moveFolderOptions}
+                    sort={explorerSort}
+                    onSort={cycleExplorerSort}
+                    bulkMode={false}
+                    selectedIds={selectedIds}
+                    onToggle={toggleDocSelection}
+                    onToggleBulk={toggleBulkMode}
+                    onSelectAll={() => selectAllVisible([])}
+                    onDelete={confirmBulkDelete}
+                    renamingId={renamingId}
+                    renameDraft={renameDraft}
+                    onRenameDraft={setRenameDraft}
+                    onStartRename={startRename}
+                    onCommitRename={commitRename}
+                    onCancelRename={cancelRename}
+                    onMoveDoc={handleMoveDoc}
+                    onDeleteDoc={handleDeleteDoc}
+                    onOpenFolder={setCurrentFolderId}
+                    onRenameFolder={handleRenameFolder}
+                    onDeleteFolder={handleDeleteFolder}
+                    onOpenDoc={(docId) => navigate(`/d/${docId}`)}
+                  />
+                )}
+              {sortedDocsByCategory.map((g, groupIndex) => {
+                const open = expandedCats.has(g.categoryId);
+                return (
+                  <div key={g.categoryId}>
+                    <button
+                      type="button"
+                      aria-expanded={open}
+                      onClick={() => toggleExpanded(g.categoryId)}
+                      className="pen-library-indent flex w-full items-center gap-2 py-2 text-left text-sm"
+                    >
+                      <span className="w-3 shrink-0 text-neutral-600" aria-hidden>
+                        {open ? '▾' : '▸'}
+                      </span>
+                      <span className="font-bold text-black">{g.title}</span>
+                      <span className="text-xs text-neutral-600">{g.docs.length}</span>
+                    </button>
+                    {open &&
+                      (browseDensity === 'gallery' ? (
+                        <div className="pb-3 pl-5">
+                          <DocGalleryGrid
+                            pn={session.pnIdentifier}
+                            docs={g.docs}
+                            childFolders={[]}
+                            moveFolders={moveFolderOptions}
+                            bulkMode={bulkDeleteMode}
+                            selectedIds={selectedIds}
+                            onToggle={toggleDocSelection}
+                            onCreateNew={openPicker}
+                            renamingId={renamingId}
+                            renameDraft={renameDraft}
+                            onRenameDraft={setRenameDraft}
+                            onStartRename={startRename}
+                            onCommitRename={commitRename}
+                            onCancelRename={cancelRename}
+                            onMoveDoc={handleMoveDoc}
+                            onDeleteDoc={handleDeleteDoc}
+                            onOpenFolder={setCurrentFolderId}
+                            onRenameFolder={handleRenameFolder}
+                            onDeleteFolder={handleDeleteFolder}
+                          />
+                        </div>
+                      ) : (
+                        <div className="pb-3">
+                          <DocExplorerTable
+                            pn={session.pnIdentifier}
+                            docs={g.docs}
+                            childFolders={groupIndex === 0 ? childFolders : []}
+                            moveFolders={moveFolderOptions}
+                            sort={explorerSort}
+                            onSort={cycleExplorerSort}
+                            bulkMode={bulkDeleteMode}
+                            selectedIds={selectedIds}
+                            onToggle={toggleDocSelection}
+                            onToggleBulk={toggleBulkMode}
+                            onSelectAll={() => selectAllVisible(g.docs)}
+                            onDelete={confirmBulkDelete}
+                            renamingId={renamingId}
+                            renameDraft={renameDraft}
+                            onRenameDraft={setRenameDraft}
+                            onStartRename={startRename}
+                            onCommitRename={commitRename}
+                            onCancelRename={cancelRename}
+                            onMoveDoc={handleMoveDoc}
+                            onDeleteDoc={handleDeleteDoc}
+                            onOpenFolder={setCurrentFolderId}
+                            onRenameFolder={handleRenameFolder}
+                            onDeleteFolder={handleDeleteFolder}
+                            onOpenDoc={(docId) => navigate(`/d/${docId}`)}
+                          />
+                        </div>
+                      ))}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
       </div>
+
+      <footer
+        className="pen-library-footer mt-auto w-full"
+        style={{
+          backgroundImage: `url(${libraryFooterCrackle})`,
+          backgroundSize: 'cover',
+          backgroundPosition: 'center'
+        }}
+      >
+        <div className="pen-library-footer-label">
+          <span>© par Noir</span>
+        </div>
+      </footer>
 
       {pickerOpen && (
         <div className="fixed inset-0 z-[60] flex items-end justify-center bg-black/30 p-4 sm:items-center">

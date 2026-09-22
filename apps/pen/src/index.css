@@ -553,6 +553,64 @@ body {
 }
 
 /* My Library explorer — notebook ruled page */
+.pen-library-page {
+  display: flex;
+  flex-direction: column;
+  min-height: calc(100vh - 2.5rem);
+}
+
+.pen-library-notebook {
+  width: 100%;
+}
+
+.pen-library-notebook-inner {
+  position: relative;
+  min-height: 100%;
+  padding-bottom: 1.5rem;
+}
+
+.pen-library-heading {
+  /* Align title with Name column (after action + icon + red rail gap). */
+  padding: 1.25rem 0.25rem 0.85rem calc(5rem + 15px);
+}
+
+.pen-library-indent {
+  padding-left: calc(5rem + 15px);
+}
+
+.pen-library-body {
+  /* No blue rule between heading and table */
+  border-top: none;
+}
+
+.pen-library-footer {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.75rem 1rem;
+  border-top: none;
+}
+
+.pen-library-footer-label {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 9999px;
+  background: #fff;
+  padding: 0.35rem 0.95rem;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.06);
+}
+
+.pen-library-footer-label span {
+  color: #000;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  line-height: 1.2;
+  border-bottom: 1px solid #000;
+  padding-bottom: 1px;
+}
+
 .pen-explorer {
   position: relative;
   background: #fff;
@@ -571,13 +629,10 @@ body {
   z-index: 5;
 }
 
-.pen-library-hero {
-  min-height: 8.5rem;
-}
-
 .pen-explorer th,
 .pen-explorer td {
   border-bottom: 1px solid #3b82f6;
+  border-top: none;
 }
 
 /* No blue rule under the last row */
@@ -603,7 +658,7 @@ body {
   width: 2.5rem;
 }
 
-/* Continuous red double rule after icon col; 10px gap before name */
+/* Continuous red double rule after icon col; extends through page notebook */
 .pen-explorer-rail {
   position: absolute;
   top: 0;
@@ -628,5 +683,8 @@ body {
   justify-content: space-between;
   gap: 0.75rem;
   padding: 0.5rem 0.25rem 0.65rem;
+  /* Sit under heading; no extra top blue rule */
+  border-top: none;
   border-bottom: 1px solid #3b82f6;
+  margin-left: calc(5rem + 15px);
 }
