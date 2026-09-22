@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import {
+  defaultPagePresentation,
   emptySection,
   getClass,
   getTemplate,
@@ -275,7 +276,9 @@ export function DocListPage({
         toc: template.sections.map((s) => s.slug),
         createdAt: now,
         updatedAt: now,
-        genesisProof: genesis
+        genesisProof: genesis,
+        pageLayout: 'flow',
+        pagePresentation: defaultPagePresentation()
       };
 
       const chain: PenHistoryChain = { docId, genesis, links: [] };

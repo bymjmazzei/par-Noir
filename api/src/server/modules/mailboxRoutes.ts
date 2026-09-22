@@ -49,7 +49,9 @@ const SOCIAL_JOB_TYPES: SocialMailboxJobType[] = [
   'group_message_append',
   'group_inbox_update',
   'message_request',
-  'pen.section_promote'
+  'pen.section_promote',
+  'pen.comment',
+  'pen.suggestion'
 ];
 
 const JOB_TYPES: SocialMailboxJobType[] = [...MESSAGING_JOB_TYPES, ...SOCIAL_JOB_TYPES];

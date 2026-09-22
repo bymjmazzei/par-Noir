@@ -1,105 +1,78 @@
-import React, { useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import {
+  docToHtml,
+  docToPlainText,
   getTemplate,
+  normalizeSection,
   type PenDocManifest,
-  type PenFlowBlock,
-  type PenSectionContent
+  type PenPageLayout,
+  type PenSectionContent,
+  type PenTipTapNode
 } from '@par-noir/pen-protocol';
 
-function blocksToHtmlish(blocks: PenFlowBlock[]): React.ReactNode[] {
-  return blocks.map((b, i) => {
-    if (b.type === 'image' && b.ref) {
-      const src = b.ref;
-      const looksUrl = /^https?:\/\//i.test(src) || src.startsWith('data:');
-      return (
-        <figure key={b.id || i} className="my-3">
-          {looksUrl ? (
-            <img src={src} alt={b.text || ''} className="max-h-64 w-full rounded-lg object-cover" />
-          ) : (
-            <div className="flex h-32 items-center justify-center rounded-lg bg-stone-200 text-xs text-stone-500">
-              {src || 'image'}
-            </div>
-          )}
-        </figure>
-      );
-    }
-    if (b.type === 'heading') {
-      const Tag = b.level === 2 ? 'h3' : 'h2';
-      return (
-        <Tag key={b.id || i} className={b.level === 2 ? 'mt-3 text-lg font-semibold' : 'mt-2 text-xl font-semibold'}>
-          {renderMarks(b.text || '')}
-        </Tag>
-      );
-    }
-    if (b.type === 'quote') {
-      return (
-        <blockquote key={b.id || i} className="my-2 border-l-2 border-stone-300 pl-3 italic text-stone-600">
-          {renderMarks(b.text || '')}
-        </blockquote>
-      );
-    }
-    if (b.type === 'list') {
-      const lines = (b.text || '').split('\n').filter(Boolean);
-      return (
-        <ul key={b.id || i} className="my-2 list-disc space-y-1 pl-5">
-          {lines.map((line, j) => (
-            <li key={j}>{renderMarks(line.replace(/^•\s*/, ''))}</li>
-          ))}
-        </ul>
-      );
-    }
-    const t = b.text || '';
-    if (!t.trim()) return <p key={b.id || i} className="h-4" />;
-    return (
-      <p key={b.id || i} className="my-1.5 leading-relaxed">
-        {renderMarks(t)}
-      </p>
-    );
-  });
+function RichHtml({ doc, className }: { doc?: PenTipTapNode; className?: string }) {
+  const html = docToHtml(doc);
+  if (!html.trim()) return <p className="h-4 text-stone-400"> </p>;
+  return (
+    <div
+      className={`pen-rich-html ${className || ''}`}
+      dangerouslySetInnerHTML={{ __html: html }}
+    />
+  );
 }
 
-function renderMarks(text: string): React.ReactNode {
-  const parts: React.ReactNode[] = [];
-  const re = /(\*\*[^*]+\*\*|\*[^*]+\*)/g;
-  let last = 0;
-  let m: RegExpExecArray | null;
-  let i = 0;
-  while ((m = re.exec(text))) {
-    if (m.index > last) parts.push(text.slice(last, m.index));
-    const raw = m[0]!;
-    if (raw.startsWith('**')) {
-      parts.push(<strong key={i++}>{raw.slice(2, -2)}</strong>);
-    } else {
-      parts.push(<em key={i++}>{raw.slice(1, -1)}</em>);
+function sectionBody(sec: PenSectionContent | undefined) {
+  if (!sec) return null;
+  return <RichHtml doc={normalizeSection(sec).doc} />;
+}
+
+function firstImageSrc(doc: PenTipTapNode | undefined): string | null {
+  if (!doc) return null;
+  const walk = (n: PenTipTapNode): string | null => {
+    if (n.type === 'image' && n.attrs?.src) return String(n.attrs.src);
+    for (const c of n.content || []) {
+      const hit = walk(c);
+      if (hit) return hit;
     }
-    last = m.index + raw.length;
-  }
-  if (last < text.length) parts.push(text.slice(last));
-  return parts.length ? parts : text;
+    return null;
+  };
+  return walk(doc);
 }
 
 function sectionMap(sections: PenSectionContent[]): Map<string, PenSectionContent> {
-  return new Map(sections.map((s) => [s.slug, s]));
+  return new Map(sections.map((s) => {
+    const n = normalizeSection(s);
+    return [n.slug, n];
+  }));
 }
 
 function NotePreview({
   title,
   sections,
-  templateId
+  templateId,
+  pageLayout = 'flow'
 }: {
   title: string;
   sections: PenSectionContent[];
   templateId: string;
+  pageLayout?: PenPageLayout;
 }) {
   const template = getTemplate(templateId);
   const bySlug = sectionMap(sections);
   const titleSec = bySlug.get('title');
   const bodySec = bySlug.get('body') || sections[0];
   const displayTitle =
-    (titleSec?.blocks.map((b) => b.text).join(' ') || '').trim() || title || 'Untitled';
+    (titleSec ? docToPlainText(titleSec.doc) : '').trim() || title || 'Untitled';
+
+  const layoutClass =
+    pageLayout === 'letter'
+      ? 'pen-page-letter'
+      : pageLayout === 'a4'
+        ? 'pen-page-a4'
+        : 'max-w-[22rem]';
 
   return (
-    <div className="mx-auto w-full max-w-[22rem]">
+    <div className={`mx-auto w-full ${layoutClass}`}>
       <div className="overflow-hidden rounded-2xl border border-stone-200 bg-white shadow-lg">
         <div className="border-b border-stone-100 px-4 py-3">
           <div className="text-[10px] font-semibold uppercase tracking-wider text-teal-700">Note</div>
@@ -121,10 +94,10 @@ function NotePreview({
                       {s.title}
                     </div>
                   )}
-                  {blocksToHtmlish(sec.blocks)}
+                  {sectionBody(sec)}
                 </div>
               );
-            }) || blocksToHtmlish(bodySec?.blocks || [])}
+            }) || sectionBody(bodySec)}
         </div>
       </div>
     </div>
@@ -144,44 +117,40 @@ function PostPreview({
   const mediaFirst = templateId.includes('media');
   const caption = bySlug.get('caption');
   const attachments = bySlug.get('attachments');
-  const mediaBlocks = (attachments?.blocks || []).filter((b) => b.type === 'image' || b.ref);
-  const textBlocks = (caption?.blocks || []).filter((b) => b.type !== 'image');
+  const mediaSrc = firstImageSrc(attachments?.doc);
+  const looksUrl = mediaSrc && (/^https?:\/\//i.test(mediaSrc) || mediaSrc.startsWith('data:'));
 
-  const frame = (
-    <>
-      <div className="aspect-[4/5] bg-stone-900">
-        {mediaBlocks.length ? (
-          blocksToHtmlish(mediaBlocks.slice(0, 1)).map((n, i) => (
-            <div key={i} className="flex h-full items-center justify-center [&_img]:h-full [&_img]:w-full [&_img]:object-cover [&_figure]:m-0 [&_figure]:h-full">
-              {n}
-            </div>
-          ))
-        ) : (
-          <div className="flex h-full items-center justify-center text-sm text-stone-500">
-            Add media in Attachments
-          </div>
-        )}
-      </div>
-      <div className="space-y-1 px-3 py-3 text-sm text-stone-800">
-        <div className="text-[10px] font-semibold uppercase tracking-wider text-stone-400">Post</div>
-        <div className="font-medium">{title || 'Untitled'}</div>
-        {blocksToHtmlish(textBlocks)}
-      </div>
-    </>
+  const mediaPane = (
+    <div className="aspect-[4/5] bg-stone-900">
+      {looksUrl ? (
+        <img src={mediaSrc!} alt="" className="h-full w-full object-cover" />
+      ) : (
+        <div className="flex h-full items-center justify-center text-sm text-stone-500">
+          Add media in Attachments
+        </div>
+      )}
+    </div>
+  );
+
+  const captionPane = (
+    <div className="space-y-1 px-3 py-3 text-sm text-stone-800">
+      <div className="text-[10px] font-semibold uppercase tracking-wider text-stone-400">Post</div>
+      <div className="font-medium">{title || 'Untitled'}</div>
+      {sectionBody(caption)}
+    </div>
   );
 
   return (
     <div className="mx-auto w-full max-w-[20rem] overflow-hidden rounded-2xl border border-stone-200 bg-white shadow-lg">
-      {mediaFirst ? frame : (
+      {mediaFirst ? (
         <>
-          <div className="space-y-1 px-3 py-3 text-sm">{blocksToHtmlish(textBlocks)}</div>
-          <div className="aspect-[4/5] bg-stone-100">
-            {mediaBlocks.length ? (
-              blocksToHtmlish(mediaBlocks.slice(0, 1))
-            ) : (
-              <div className="flex h-full items-center justify-center text-sm text-stone-400">Media</div>
-            )}
-          </div>
+          {mediaPane}
+          {captionPane}
+        </>
+      ) : (
+        <>
+          {captionPane}
+          {mediaPane}
         </>
       )}
     </div>
@@ -227,7 +196,7 @@ function CollectionPreview({
               {title || 'Untitled'}
             </div>
             <div className="mt-3 max-h-40 overflow-y-auto text-sm text-white/90 [&_blockquote]:border-white/40 [&_p]:text-white/90">
-              {cur?.section ? blocksToHtmlish(cur.section.blocks) : null}
+              {cur?.section ? sectionBody(cur.section) : null}
             </div>
           </div>
         </div>
@@ -279,12 +248,12 @@ function FeedPreview({
       <div className="space-y-4 px-4 py-4 text-sm text-stone-800">
         <div>
           <div className="text-[10px] uppercase tracking-wide text-stone-400">Meta</div>
-          {meta ? blocksToHtmlish(meta.blocks) : <p className="text-stone-400">—</p>}
+          {meta ? sectionBody(meta) : <p className="text-stone-400">—</p>}
         </div>
         {rules && (
           <div>
             <div className="text-[10px] uppercase tracking-wide text-stone-400">Rules / Index</div>
-            {blocksToHtmlish(rules.blocks)}
+            {sectionBody(rules)}
           </div>
         )}
       </div>
@@ -301,6 +270,7 @@ export function TemplateLivePreview({
   sections: PenSectionContent[];
 }) {
   const docType = manifest.docType;
+  const pageLayout = manifest.pageLayout || 'flow';
   const body = useMemo(() => {
     if (docType === 'post') {
       return (
@@ -320,9 +290,14 @@ export function TemplateLivePreview({
       return <FeedPreview title={manifest.title} sections={sections} />;
     }
     return (
-      <NotePreview title={manifest.title} sections={sections} templateId={manifest.templateId} />
+      <NotePreview
+        title={manifest.title}
+        sections={sections}
+        templateId={manifest.templateId}
+        pageLayout={pageLayout}
+      />
     );
-  }, [docType, manifest.title, manifest.templateId, sections]);
+  }, [docType, manifest.title, manifest.templateId, pageLayout, sections]);
 
   return (
     <div className="flex h-full flex-col bg-stone-200/90">

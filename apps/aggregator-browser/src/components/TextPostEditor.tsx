@@ -13,6 +13,7 @@ import { useHorizontalSwipe } from '../hooks/useHorizontalSwipe';
 import { EditMetadataModal, MetadataFormData } from './EditMetadataModal';
 import { Capacitor } from '@capacitor/core';
 import { pickImageFromNative } from '../hooks/useNativeFilePicker';
+import { peekPenPublishHandoff } from '../utils/penPublishHandoff';
 
 // Helper function to convert hex to RGB
 const hexToRgb = (hex: string): { r: number; g: number; b: number } => {
@@ -212,6 +213,38 @@ interface TextPostEditorProps {
   onCancel: () => void;
 }
 
+type MiniPage = {
+  content: string;
+  fontFamily: string;
+  fontSize: number;
+  textColor: string;
+  dropShadowColor: string;
+  dropShadowBlur: number;
+  dropShadowOffsetX: number;
+  dropShadowOffsetY: number;
+  backgroundColor: string;
+  backgroundImage: string | null;
+  textAlign: 'left' | 'center' | 'right' | 'justify';
+  textStyle: 'plain' | 'bold' | 'italic' | 'strikethrough';
+  padding: number;
+};
+
+const DEFAULT_MINI_PAGE: MiniPage = {
+  content: '',
+  fontFamily: 'Arial',
+  fontSize: 48,
+  textColor: '#FFFFFF',
+  dropShadowColor: '#000000',
+  dropShadowBlur: 10,
+  dropShadowOffsetX: 2,
+  dropShadowOffsetY: 2,
+  backgroundColor: '#000000',
+  backgroundImage: null,
+  textAlign: 'center',
+  textStyle: 'plain',
+  padding: 40,
+};
+
 const FONT_OPTIONS = [
   { value: 'Arial', label: 'Arial' },
   { value: 'Helvetica', label: 'Helvetica' },
@@ -230,39 +263,38 @@ const FONT_OPTIONS = [
   { value: 'Playfair Display', label: 'Playfair Display' },
 ];
 
+function pagesFromHandoff(): MiniPage[] {
+  try {
+    const handoff = peekPenPublishHandoff();
+    if (!handoff?.pages?.length) return [{ ...DEFAULT_MINI_PAGE }];
+    return handoff.pages.map((p) => {
+      const style = p.style || {};
+      return {
+        content: p.content || '',
+        fontFamily: String(style.fontFamily || DEFAULT_MINI_PAGE.fontFamily),
+        fontSize: Number(style.fontSize) || DEFAULT_MINI_PAGE.fontSize,
+        textColor: String(style.textColor || DEFAULT_MINI_PAGE.textColor),
+        dropShadowColor: String(style.dropShadowColor || DEFAULT_MINI_PAGE.dropShadowColor),
+        dropShadowBlur: Number(style.dropShadowBlur ?? DEFAULT_MINI_PAGE.dropShadowBlur),
+        dropShadowOffsetX: Number(style.dropShadowOffsetX ?? DEFAULT_MINI_PAGE.dropShadowOffsetX),
+        dropShadowOffsetY: Number(style.dropShadowOffsetY ?? DEFAULT_MINI_PAGE.dropShadowOffsetY),
+        backgroundColor: String(style.backgroundColor || DEFAULT_MINI_PAGE.backgroundColor),
+        backgroundImage: style.backgroundImage ? String(style.backgroundImage) : null,
+        textAlign: (style.textAlign as MiniPage['textAlign']) || DEFAULT_MINI_PAGE.textAlign,
+        textStyle: (style.textStyle as MiniPage['textStyle']) || DEFAULT_MINI_PAGE.textStyle,
+        padding: Number(style.padding ?? DEFAULT_MINI_PAGE.padding),
+      };
+    });
+  } catch {
+    return [{ ...DEFAULT_MINI_PAGE }];
+  }
+}
+
 export function TextPostEditor({ onSave }: TextPostEditorProps) {
   useUserState();
   
-  // Multi-page state
-  const [pages, setPages] = useState<Array<{
-    content: string;
-    fontFamily: string;
-    fontSize: number;
-    textColor: string;
-    dropShadowColor: string;
-    dropShadowBlur: number;
-    dropShadowOffsetX: number;
-    dropShadowOffsetY: number;
-    backgroundColor: string;
-    backgroundImage: string | null;
-    textAlign: 'left' | 'center' | 'right' | 'justify';
-    textStyle: 'plain' | 'bold' | 'italic' | 'strikethrough';
-    padding: number;
-  }>>([{
-    content: '',
-    fontFamily: 'Arial',
-    fontSize: 48,
-    textColor: '#FFFFFF',
-    dropShadowColor: '#000000',
-    dropShadowBlur: 10,
-    dropShadowOffsetX: 2,
-    dropShadowOffsetY: 2,
-    backgroundColor: '#000000',
-    backgroundImage: null,
-    textAlign: 'center',
-    textStyle: 'plain',
-    padding: 40,
-  }]);
+  // Multi-page state — hydrate from Pen full-app handoff when present
+  const [pages, setPages] = useState<MiniPage[]>(() => pagesFromHandoff());
   const [currentPageIndex, setCurrentPageIndex] = useState(0);
   const previewContainerRef = useRef<HTMLDivElement | null>(null);
   
@@ -809,10 +841,20 @@ export function TextPostEditor({ onSave }: TextPostEditorProps) {
       const compiled = compileDocumentToNote({
         templateId: 'note.basic.v1',
         title: metadata.name || 'Note',
-        sections: [{
-          slug: 'body',
-          blocks: [{ id: 'body-1', type: 'paragraph', text: bodyText }],
-        }],
+        sections: [
+          {
+            slug: 'body',
+            doc: {
+              type: 'doc',
+              content: [
+                {
+                  type: 'paragraph',
+                  content: bodyText ? [{ type: 'text', text: bodyText }] : []
+                }
+              ]
+            }
+          }
+        ]
       });
       templateId = compiled.templateId;
       contentClass = compiled.contentClass;
@@ -1534,6 +1576,24 @@ export function TextPostEditor({ onSave }: TextPostEditorProps) {
             {textAlign === 'center' && <AlignCenter className="h-4 w-4" />}
             {textAlign === 'right' && <AlignRight className="h-4 w-4" />}
             {textAlign === 'justify' && <AlignJustify className="h-4 w-4" />}
+          </button>
+
+          {/* Page text style (bold / italic / strike) */}
+          <button
+            ref={(el) => menuButtonRefs.current.set('textStyle', el)}
+            onClick={(e) => {
+              const button = e.currentTarget;
+              if (openMenu === 'textStyle') {
+                closeMenu();
+              } else {
+                openPopupMenu('textStyle', button);
+              }
+            }}
+            className="px-2 py-1 text-sm font-semibold transition-opacity hover:opacity-80"
+            style={{ color: 'white' }}
+            title="Text style"
+          >
+            {textStyle === 'bold' ? 'B' : textStyle === 'italic' ? 'I' : textStyle === 'strikethrough' ? 'S' : 'T'}
           </button>
 
           {/* Delete Page (only show if more than one page) */}

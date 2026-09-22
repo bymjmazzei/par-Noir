@@ -31,6 +31,8 @@ export {
   messageSendFanout,
   groupMessageSendFanout,
   penSectionPromoteFanout,
+  penCommentFanout,
+  penSuggestionFanout,
   loadLocalOutbox,
   saveLocalOutbox,
   upsertLocalOutboxRecord,

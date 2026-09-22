@@ -135,7 +135,7 @@ export function setupPenRoutes(
 
   /**
    * POST /api/pen/apply-inbound
-   * Materialize pen.section_promote into caller's Drive par-noir-pen/ tree.
+   * Materialize pen.section_promote | pen.comment | pen.suggestion into caller's Drive.
    */
   app.post('/api/pen/apply-inbound', async (req: Request, res: Response) => {
     try {
@@ -145,30 +145,22 @@ export function setupPenRoutes(
         return;
       }
 
-      const {
-        userPnIdentifier,
-        jobType,
-        docId,
-        sectionSlug,
-        pastName,
-        sectionCiphertextB64,
-        currentRelPath,
-        pastRelPath,
-        link
-      } = req.body || {};
+      const jobType = String(req.body?.jobType || '').trim();
+      const userPnIdentifier = String(req.body?.userPnIdentifier || '').trim();
+      const docId = String(req.body?.docId || '').trim();
 
-      if (!userPnIdentifier || jobType !== 'pen.section_promote' || !docId || !sectionSlug) {
+      if (
+        !userPnIdentifier ||
+        !docId ||
+        !['pen.section_promote', 'pen.comment', 'pen.suggestion'].includes(jobType)
+      ) {
         return res.status(400).json({
-          error: 'userPnIdentifier, jobType=pen.section_promote, docId, sectionSlug required'
+          error:
+            'userPnIdentifier, docId, and jobType=pen.section_promote|pen.comment|pen.suggestion required'
         });
       }
 
-      // Peers must supply a promote link; reject missing sig shape (full ML-DSA verify is client-side on history.chain)
-      if (!link?.signature || !link?.contentHash) {
-        return res.status(400).json({ error: 'promote_link_required' });
-      }
-
-      const pnIdentifier = String(userPnIdentifier);
+      const pnIdentifier = userPnIdentifier;
       const credentials = await storageCredentialsService.getCredentials(pnIdentifier);
       if (!credentials?.credentials) {
         return res.status(404).json({ error: 'User credentials not found' });
@@ -204,11 +196,97 @@ export function setupPenRoutes(
 
       const penRootId = await ensureDriveFolder(drive, 'par-noir-pen', meta.pnFolderId);
       const docFolderId = await ensureDriveFolder(drive, String(docId), penRootId);
+
+      if (jobType === 'pen.comment') {
+        const comment = req.body?.comment;
+        if (!comment?.id || !comment?.body || !comment?.sectionSlug) {
+          return res.status(400).json({ error: 'comment_required' });
+        }
+        const commentsName = 'comments.jsonl';
+        const cq = `name='${commentsName}' and '${docFolderId}' in parents and trashed=false`;
+        const cl = await drive.files.list({ q: cq, fields: 'files(id)', pageSize: 1 });
+        let body = '';
+        const existingId = cl.data.files?.[0]?.id as string | undefined;
+        if (existingId) {
+          const got = await drive.files.get(
+            { fileId: existingId, alt: 'media' },
+            { responseType: 'arraybuffer' }
+          );
+          body = Buffer.from(got.data as ArrayBuffer).toString('utf8');
+        }
+        body += `${JSON.stringify(comment)}\n`;
+        await writeDriveFile(
+          drive,
+          docFolderId,
+          commentsName,
+          Buffer.from(body, 'utf8'),
+          'application/json'
+        );
+        safeLogger.info('[pen/apply-inbound] comment ok', {
+          pn: hashIdentifier(pnIdentifier),
+          doc: hashIdentifier(docId)
+        });
+        return res.json({ ok: true });
+      }
+
+      if (jobType === 'pen.suggestion') {
+        const suggestion = req.body?.suggestion;
+        if (!suggestion?.id || !suggestion?.sectionSlug || !suggestion?.proposedDoc) {
+          return res.status(400).json({ error: 'suggestion_required' });
+        }
+        const sugFolderId = await ensureDriveFolder(drive, 'suggestions', docFolderId);
+        const fileName = `${String(suggestion.id).replace(/[^a-zA-Z0-9._-]/g, '-').slice(0, 128)}.json`;
+        await writeDriveFile(
+          drive,
+          sugFolderId,
+          fileName,
+          Buffer.from(JSON.stringify(suggestion), 'utf8'),
+          'application/json'
+        );
+
+        // Optional accept: also apply section promote if payload present
+        const acceptPromote = req.body?.acceptPromote;
+        if (acceptPromote?.sectionCiphertextB64 && acceptPromote?.link?.signature) {
+          req.body = {
+            ...req.body,
+            jobType: 'pen.section_promote',
+            sectionSlug: acceptPromote.sectionSlug || suggestion.sectionSlug,
+            pastName: acceptPromote.pastName,
+            sectionCiphertextB64: acceptPromote.sectionCiphertextB64,
+            currentRelPath: acceptPromote.currentRelPath,
+            pastRelPath: acceptPromote.pastRelPath,
+            link: acceptPromote.link,
+            contentHash: acceptPromote.contentHash
+          };
+          // fall through by recursive-style: handle promote below by jumping
+        } else {
+          safeLogger.info('[pen/apply-inbound] suggestion ok', {
+            pn: hashIdentifier(pnIdentifier),
+            doc: hashIdentifier(docId)
+          });
+          return res.json({ ok: true });
+        }
+      }
+
+      // pen.section_promote (also reached after suggestion accept)
+      const sectionSlug = String(req.body?.sectionSlug || '').trim();
+      const pastName = req.body?.pastName;
+      const sectionCiphertextB64 = req.body?.sectionCiphertextB64;
+      const currentRelPath = req.body?.currentRelPath;
+      const pastRelPath = req.body?.pastRelPath;
+      const link = req.body?.link;
+
+      if (!sectionSlug) {
+        return res.status(400).json({ error: 'sectionSlug required' });
+      }
+      if (!link?.signature || !link?.contentHash) {
+        return res.status(400).json({ error: 'promote_link_required' });
+      }
+
       const sectionsId = await ensureDriveFolder(drive, 'sections', docFolderId);
       const sectionFolderId = await ensureDriveFolder(drive, String(sectionSlug), sectionsId);
       const pastFolderId = await ensureDriveFolder(drive, 'past', sectionFolderId);
 
-      // Move/copy prior current into past if pastName provided
       if (pastName) {
         const currentName = `${sectionSlug}.pen`;
         const q = `name='${currentName.replace(/'/g, "\\'")}' and '${sectionFolderId}' in parents and trashed=false`;
@@ -231,7 +309,6 @@ export function setupPenRoutes(
       }
       await writeDriveFile(drive, sectionFolderId, `${sectionSlug}.pen`, cipherBuf);
 
-      // Append link to history.chain (JSONL)
       const chainName = 'history.chain';
       const chainQ = `name='${chainName}' and '${docFolderId}' in parents and trashed=false`;
       const chainList = await drive.files.list({ q: chainQ, fields: 'files(id)', pageSize: 1 });

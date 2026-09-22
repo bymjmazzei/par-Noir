@@ -5,3 +5,7 @@ export * from './types.js';
 export * from './chain.js';
 export * from './compile.js';
 export * from './outbox.js';
+export * from './fonts.js';
+export * from './presentation.js';
+export * from './richDoc.js';
+export * from './renderRich.js';

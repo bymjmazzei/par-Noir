@@ -50,7 +50,15 @@ describe('Pen v1 acceptance (hermetic)', () => {
     expect(verifyChain(chain).ok).toBe(true);
 
     const section = sections[0]!;
-    section.blocks.push({ id: 'b1', type: 'paragraph', text: 'hello from A' });
+    section.doc = {
+      type: 'doc',
+      content: [
+        {
+          type: 'paragraph',
+          content: [{ type: 'text', text: 'hello from A' }]
+        }
+      ]
+    };
     const now = new Date();
     const paths = promoteSectionToPast(docId, section.slug, now);
     const bytes = new TextEncoder().encode(JSON.stringify(section));

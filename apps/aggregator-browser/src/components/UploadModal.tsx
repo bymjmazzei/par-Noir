@@ -13,7 +13,7 @@ import { FeedService } from '../services/feedService';
 import { Settings, X } from 'lucide-react';
 import { uploadQueueService } from '../services/uploadQueueService';
 import { useDriveAccounts } from '../hooks/useDriveAccounts';
-import { takePenPublishHandoff } from '../utils/penPublishHandoff';
+import { rememberPublishedFileId, takePenPublishHandoff } from '../utils/penPublishHandoff';
 
 interface UploadModalProps {
   feeds?: Feed[];
@@ -80,10 +80,17 @@ export function UploadModal({ feeds: propsFeeds, onClose, onUploadComplete }: Up
         (typeof handoff?.templateId === 'string' && handoff.templateId) ||
         (typeof textPost?.metadata?.templateId === 'string' && textPost.metadata.templateId) ||
         undefined;
+      const penDocId = typeof handoff?.docId === 'string' ? handoff.docId : undefined;
       const penFields = {
         contentClass: 'note' as const,
         ...(handoff?.headProof ? { headProof: handoff.headProof } : {}),
         ...(templateId ? { templateId } : {}),
+        ...(penDocId ? { penDocId } : {}),
+      };
+
+      const linkPublishedFile = (result: { fileId?: string } | null | undefined) => {
+        const fileId = result?.fileId;
+        if (penDocId && fileId) rememberPublishedFileId(penDocId, fileId);
       };
 
       const isMultiPage = (textPost as any).isMultiPage && (textPost as any).pages && Array.isArray((textPost as any).pages) && (textPost as any).pages.length > 1;
@@ -113,6 +120,7 @@ export function UploadModal({ feeds: propsFeeds, onClose, onUploadComplete }: Up
           },
           onComplete: (result) => {
             console.log('[UploadModal] Multi-page note upload completed:', result);
+            linkPublishedFile(result);
             handleNoteUploadComplete();
           },
           onError: (error) => {
@@ -145,6 +153,7 @@ export function UploadModal({ feeds: propsFeeds, onClose, onUploadComplete }: Up
           },
           onComplete: (result) => {
             console.log('[UploadModal] Single-page note upload completed:', result);
+            linkPublishedFile(result);
             handleNoteUploadComplete();
           },
           onError: (error) => {

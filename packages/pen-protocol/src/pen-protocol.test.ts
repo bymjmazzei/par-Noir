@@ -139,7 +139,7 @@ describe('classes + templates', () => {
     ).toThrow(/classId_must_be_form/);
   });
 
-  it('compiles note from currents', () => {
+  it('compiles note from TipTap doc with filled style', () => {
     const t = requireTemplate('note.basic.v1');
     const out = compileDocumentToNote({
       templateId: t.id,
@@ -147,12 +147,39 @@ describe('classes + templates', () => {
       sections: [
         {
           slug: 'body',
-          blocks: [{ id: '1', type: 'paragraph', text: 'Hello world' }]
+          doc: {
+            type: 'doc',
+            content: [
+              {
+                type: 'paragraph',
+                content: [
+                  { type: 'text', text: 'Hello ', marks: [{ type: 'bold' }] },
+                  { type: 'text', text: 'world' }
+                ]
+              }
+            ]
+          }
         }
       ]
     });
     expect(out.contentClass).toBe('note');
-    expect(out.pages[0]?.content).toContain('Hello world');
+    expect(out.pages[0]?.content).toBe('Hello world');
+    expect(out.pages[0]?.content.includes('**')).toBe(false);
+    expect(out.pages[0]?.style.fontFamily).toBeTruthy();
+    expect(out.pages[0]?.style.backgroundColor).toBeTruthy();
+    expect(out.pages[0]?.doc?.type).toBe('doc');
+  });
+
+  it('migrates legacy blocks to TipTap and renders HTML marks', async () => {
+    const { normalizeSection, docToHtml, blocksToTipTapDoc } = await import('./index.js');
+    const doc = blocksToTipTapDoc([{ id: '1', type: 'paragraph', text: '**Hello** world' }]);
+    expect(docToHtml(doc)).toContain('<strong>Hello</strong>');
+    const sec = normalizeSection({
+      slug: 'body',
+      blocks: [{ id: '1', type: 'paragraph', text: '*italic*' }]
+    } as never);
+    expect(sec.doc.type).toBe('doc');
+    expect(docToHtml(sec.doc)).toContain('<em>italic</em>');
   });
 
   it('fails closed on unknown template', () => {

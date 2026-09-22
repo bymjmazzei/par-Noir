@@ -1,11 +1,28 @@
 import type { PenDocType } from './templates.js';
 
+/** TipTap / ProseMirror JSON node (section SoT). */
+export interface PenTipTapMark {
+  type: string;
+  attrs?: Record<string, unknown>;
+}
+
+export interface PenTipTapNode {
+  type: string;
+  attrs?: Record<string, unknown>;
+  content?: PenTipTapNode[];
+  marks?: PenTipTapMark[];
+  text?: string;
+}
+
+/**
+ * Legacy block shape — only for one-shot migrate on load.
+ * Do not write new sections in this form.
+ */
 export interface PenFlowBlock {
   id: string;
   type: 'paragraph' | 'heading' | 'image' | 'quote' | 'list' | 'attachment';
   text?: string;
   level?: number;
-  /** Attachment / image ref (opaque id or URL placeholder) */
   ref?: string;
   mimeType?: string;
   children?: PenFlowBlock[];
@@ -13,8 +30,27 @@ export interface PenFlowBlock {
 
 export interface PenSectionContent {
   slug: string;
-  blocks: PenFlowBlock[];
+  /** TipTap JSON document — sole rich-text SoT. */
+  doc: PenTipTapNode;
 }
+
+/** Page chrome for Note compile / Pen Mini / PNG (mirrors browse TextPostStyle). */
+export interface PenPagePresentation {
+  fontFamily: string;
+  fontSize: number;
+  textColor: string;
+  textStyle?: 'plain' | 'bold' | 'italic' | 'strikethrough';
+  dropShadowColor: string;
+  dropShadowBlur: number;
+  dropShadowOffsetX: number;
+  dropShadowOffsetY: number;
+  backgroundColor: string;
+  backgroundImage?: string;
+  textAlign: 'left' | 'center' | 'right' | 'justify';
+  padding: number;
+}
+
+export type PenPageLayout = 'flow' | 'letter' | 'a4';
 
 export interface PenDocManifest {
   docId: string;
@@ -30,6 +66,12 @@ export interface PenDocManifest {
   createdAt: string;
   updatedAt: string;
   genesisProof?: PenGenesisProof;
+  /** Editor / preview pagination mode. */
+  pageLayout?: PenPageLayout;
+  /** Default Note card chrome when compiling to browse. */
+  pagePresentation?: PenPagePresentation;
+  /** Aggregator fileId after publish — engagement comments key. */
+  publishedFileId?: string;
 }
 
 export interface PenNotaryToken {
@@ -82,4 +124,49 @@ export interface PenSectionPromotePayload {
   link: PenPromoteLink;
   /** Optional updated toc */
   toc?: string[];
+}
+
+/** In-doc review comment (Pen collab bus — not public engagement). */
+export interface PenDocComment {
+  id: string;
+  docId: string;
+  sectionSlug: string;
+  /** TipTap node id when available */
+  nodeId?: string;
+  from?: number;
+  to?: number;
+  authorPnHash: string;
+  body: string;
+  createdAt: string;
+  resolved?: boolean;
+}
+
+/** Outbox payload for pen.comment */
+export interface PenCommentPayload {
+  docId: string;
+  groupId: string;
+  comment: PenDocComment;
+}
+
+/** Proposed section replacement (track changes). */
+export interface PenSuggestion {
+  id: string;
+  docId: string;
+  sectionSlug: string;
+  authorPnHash: string;
+  createdAt: string;
+  /** Full proposed TipTap doc for the section */
+  proposedDoc: PenTipTapNode;
+  /** Optional human summary */
+  summary?: string;
+  status: 'pending' | 'accepted' | 'rejected';
+}
+
+/** Outbox payload for pen.suggestion */
+export interface PenSuggestionPayload {
+  docId: string;
+  groupId: string;
+  suggestion: PenSuggestion;
+  /** When accepting: include promote paths filled by client */
+  acceptPromote?: PenSectionPromotePayload;
 }

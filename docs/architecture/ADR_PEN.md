@@ -22,9 +22,10 @@ par Noir needs a universal authored-content language for humans, collaborators, 
 5. **Audience:** Every `PenClass` has `audience: 'consumer' | 'kit'`. Pen UI lists consumer only; API/SDK return the full catalog.
 6. **Browse `contentClass`** remains the publish target only. `docType` is compile/preview hint. Client may pin categories, search the catalog, and toggle home list **All** vs **By category** accordion; prefs are local.
 7. **Folder SoT:** `par-noir-pen/{docId}/` per user replica; fixed current section file; supersede → `past/{slug}-{date}`; messaging-style outbox fanout. `docKey` minted at create.
-8. **Authenticity:** ML-DSA genesis + promote chain; first-party notary stamps **hashes only** (`POST /api/pen/notary/timestamp`).
-9. **L5:** Silo CRUD + list classes/templates + publish Note. No L5 multi-writer collab / groups / messages product routes.
-10. **Primary acceptance:** User A creates doc, invites B, B edits, A sees update (and reverse).
+8. **Rich text SoT:** Section body is TipTap/ProseMirror JSON (`PenSectionContent.doc`). Legacy `{ blocks: [{ text: '**x**' }] }` migrates once on load. Full Pen = Docs-grade marks; Pen Mini stays limited to page-level `TextPostStyle`. Compile emits plain `content` + filled `style` (+ optional `doc`) for browse. In-doc `pen.comment` / `pen.suggestion` ride the Pen outbox → apply-inbound; public comments stay on `/api/engagement/:fileId/*`. Manifest `pageLayout: flow|letter|a4`. No multi-cursor CRDT.
+9. **Authenticity:** ML-DSA genesis + promote chain; first-party notary stamps **hashes only** (`POST /api/pen/notary/timestamp`).
+10. **L5:** Silo CRUD + list classes/templates + publish Note. No L5 multi-writer collab / groups / messages product routes.
+11. **Primary acceptance:** User A creates doc, invites B, B edits, A sees update (and reverse).
 
 ## Reserved (follow-ons)
 

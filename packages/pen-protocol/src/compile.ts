@@ -1,10 +1,20 @@
-import type { PenFlowBlock, PenSectionContent } from './types.js';
+import type { PenPagePresentation, PenSectionContent, PenTipTapNode } from './types.js';
 import type { PenTemplate } from './templates.js';
 import { requireTemplate } from './templates.js';
+import {
+  docToPlainText,
+  emptySection,
+  emptyTipTapDoc,
+  inferPageTextStyle,
+  normalizeSection
+} from './richDoc.js';
+import { defaultPagePresentation, mergePagePresentation } from './presentation.js';
 
 export interface CompiledNotePage {
   content: string;
-  style?: Record<string, unknown>;
+  style: PenPagePresentation;
+  /** TipTap JSON when available for richer browse later */
+  doc?: PenTipTapNode;
 }
 
 export interface CompileToNoteResult {
@@ -12,24 +22,16 @@ export interface CompileToNoteResult {
   title: string;
   pages: CompiledNotePage[];
   templateId: string;
+  docId?: string;
 }
 
-function blocksToText(blocks: PenFlowBlock[]): string {
-  const lines: string[] = [];
-  for (const b of blocks) {
-    if (b.type === 'heading') {
-      lines.push(`${'#'.repeat(b.level || 1)} ${b.text || ''}`.trim());
-    } else if (b.type === 'image' || b.type === 'attachment') {
-      lines.push(`[${b.type}:${b.ref || ''}]`);
-    } else if (b.type === 'quote') {
-      lines.push(`> ${b.text || ''}`);
-    } else if (b.type === 'list' && b.children?.length) {
-      for (const c of b.children) lines.push(`- ${c.text || ''}`);
-    } else {
-      lines.push(b.text || '');
-    }
-  }
-  return lines.join('\n\n').trim();
+function pageStyleForSection(
+  section: PenSectionContent,
+  presentation?: PenPagePresentation | null
+): PenPagePresentation {
+  const base = mergePagePresentation(presentation);
+  const textStyle = inferPageTextStyle(section.doc);
+  return { ...base, textStyle };
 }
 
 /** Compile current section map → Note pages per template order. */
@@ -38,32 +40,46 @@ export function compileDocumentToNote(input: {
   title: string;
   sections: PenSectionContent[];
   template?: PenTemplate;
+  pagePresentation?: PenPagePresentation | null;
+  docId?: string;
 }): CompileToNoteResult {
   const template = input.template ?? requireTemplate(input.templateId);
-  const bySlug = new Map(input.sections.map((s) => [s.slug, s]));
+  const bySlug = new Map(
+    input.sections.map((s) => {
+      const n = normalizeSection(s);
+      return [n.slug, n] as const;
+    })
+  );
   const pages: CompiledNotePage[] = [];
   for (const sec of template.sections) {
     const body = bySlug.get(sec.slug);
-    const text = body ? blocksToText(body.blocks) : '';
+    const normalized = body || emptySection(sec.slug);
+    const text = docToPlainText(normalized.doc);
     if (!text && sec.required) {
       throw new Error(`missing_required_section:${sec.slug}`);
     }
-    if (text) pages.push({ content: text });
+    if (text) {
+      pages.push({
+        content: text,
+        style: pageStyleForSection(normalized, input.pagePresentation),
+        doc: normalized.doc
+      });
+    }
   }
   if (pages.length === 0) {
-    pages.push({ content: '' });
+    pages.push({
+      content: '',
+      style: mergePagePresentation(input.pagePresentation),
+      doc: emptyTipTapDoc()
+    });
   }
   return {
     contentClass: 'note',
     title: input.title,
     pages,
-    templateId: template.id
+    templateId: template.id,
+    docId: input.docId
   };
 }
 
-export function emptySection(slug: string): PenSectionContent {
-  return {
-    slug,
-    blocks: [{ id: `${slug}-p1`, type: 'paragraph', text: '' }]
-  };
-}
+export { emptySection, defaultPagePresentation, mergePagePresentation };

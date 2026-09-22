@@ -19,7 +19,9 @@ export type OutboxKind =
   | 'group_message_append'
   | 'group_inbox_update'
   | 'message_request'
-  | 'pen.section_promote';
+  | 'pen.section_promote'
+  | 'pen.comment'
+  | 'pen.suggestion';
 
 export type OutboxStatus = 'pending' | 'enqueued' | 'materialized' | 'failed';
 
@@ -87,17 +89,29 @@ export function groupMessageSendFanout(routeKeys: string[]): OutboxFanoutTarget[
   return targets;
 }
 
-/** Fanout Pen section promote to each collaborator's mailbox route. */
-export function penSectionPromoteFanout(routeKeys: string[]): OutboxFanoutTarget[] {
+function penKindFanout(routeKeys: string[], jobType: OutboxKind): OutboxFanoutTarget[] {
   const seen = new Set<string>();
   const targets: OutboxFanoutTarget[] = [];
   for (const routeKey of routeKeys) {
     const rk = routeKey.trim();
     if (!/^[a-f0-9]{64}$/i.test(rk) || seen.has(rk)) continue;
     seen.add(rk);
-    targets.push({ routeKey: rk, jobType: 'pen.section_promote' });
+    targets.push({ routeKey: rk, jobType });
   }
   return targets;
+}
+
+/** Fanout Pen section promote to each collaborator's mailbox route. */
+export function penSectionPromoteFanout(routeKeys: string[]): OutboxFanoutTarget[] {
+  return penKindFanout(routeKeys, 'pen.section_promote');
+}
+
+export function penCommentFanout(routeKeys: string[]): OutboxFanoutTarget[] {
+  return penKindFanout(routeKeys, 'pen.comment');
+}
+
+export function penSuggestionFanout(routeKeys: string[]): OutboxFanoutTarget[] {
+  return penKindFanout(routeKeys, 'pen.suggestion');
 }
 
 /** Sealed bag of outbox records stored on device (browser / web dashboard). */

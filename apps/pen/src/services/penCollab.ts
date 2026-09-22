@@ -1,13 +1,19 @@
 /**
- * Pen collab: group-per-doc + invite + outbox promote fanout.
+ * Pen collab: group-per-doc + invite + outbox promote / comment / suggestion fanout.
  * Uses first-party Bearer; Drive writes go through /api/pen/apply-inbound (owner token gate).
  */
 
 import { createOutboxRecord } from '@par-noir/device-cloud-credentials';
 import {
+  PEN_COMMENT_KIND,
   PEN_SECTION_PROMOTE_KIND,
+  PEN_SUGGESTION_KIND,
+  penCommentFanout,
   penSectionPromoteFanout,
-  type PenPromoteLink
+  penSuggestionFanout,
+  type PenDocComment,
+  type PenPromoteLink,
+  type PenSuggestion
 } from '@par-noir/pen-protocol';
 import { API_ENDPOINT } from '../config/api';
 
@@ -96,6 +102,54 @@ export async function applyPenPromoteInbound(params: {
   });
 }
 
+export async function applyPenCommentInbound(params: {
+  accessToken: string;
+  userPnIdentifier: string;
+  docId: string;
+  groupId?: string;
+  comment: PenDocComment;
+}): Promise<Response> {
+  return fetch(`${API_ENDPOINT}/api/pen/apply-inbound`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${params.accessToken}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({
+      userPnIdentifier: params.userPnIdentifier,
+      jobType: PEN_COMMENT_KIND,
+      docId: params.docId,
+      groupId: params.groupId,
+      comment: params.comment
+    })
+  });
+}
+
+export async function applyPenSuggestionInbound(params: {
+  accessToken: string;
+  userPnIdentifier: string;
+  docId: string;
+  groupId?: string;
+  suggestion: PenSuggestion;
+  acceptPromote?: Record<string, unknown>;
+}): Promise<Response> {
+  return fetch(`${API_ENDPOINT}/api/pen/apply-inbound`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${params.accessToken}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({
+      userPnIdentifier: params.userPnIdentifier,
+      jobType: PEN_SUGGESTION_KIND,
+      docId: params.docId,
+      groupId: params.groupId,
+      suggestion: params.suggestion,
+      acceptPromote: params.acceptPromote
+    })
+  });
+}
+
 /** Queue local outbox record with peer route fanout (when route keys known). */
 export function queuePenSectionPromote(params: {
   outboxId: string;
@@ -109,6 +163,37 @@ export function queuePenSectionPromote(params: {
     fanout: penSectionPromoteFanout(params.peerRouteKeys)
   });
   sessionStorage.setItem(`pen_last_promote:${String(params.payload.docId || '')}`, JSON.stringify(record));
+}
+
+export function queuePenComment(params: {
+  outboxId: string;
+  payload: Record<string, unknown>;
+  peerRouteKeys: string[];
+}): void {
+  const record = createOutboxRecord({
+    outboxId: params.outboxId,
+    kind: PEN_COMMENT_KIND,
+    payload: params.payload,
+    fanout: penCommentFanout(params.peerRouteKeys)
+  });
+  sessionStorage.setItem(`pen_last_comment:${String(params.payload.docId || '')}`, JSON.stringify(record));
+}
+
+export function queuePenSuggestion(params: {
+  outboxId: string;
+  payload: Record<string, unknown>;
+  peerRouteKeys: string[];
+}): void {
+  const record = createOutboxRecord({
+    outboxId: params.outboxId,
+    kind: PEN_SUGGESTION_KIND,
+    payload: params.payload,
+    fanout: penSuggestionFanout(params.peerRouteKeys)
+  });
+  sessionStorage.setItem(
+    `pen_last_suggestion:${String(params.payload.docId || '')}`,
+    JSON.stringify(record)
+  );
 }
 
 export function listPendingInvites(docId: string): string[] {

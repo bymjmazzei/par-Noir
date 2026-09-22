@@ -27,7 +27,9 @@ export type SocialMailboxJobType =
   | 'group_message_append'
   | 'group_inbox_update'
   | 'message_request'
-  | 'pen.section_promote';
+  | 'pen.section_promote'
+  | 'pen.comment'
+  | 'pen.suggestion';
 
 export interface SocialMailboxJob {
   id: string;
@@ -309,6 +311,8 @@ export async function listPendingMailboxJobs(
          WHEN 'message_append' THEN 0
          WHEN 'group_message_append' THEN 0
          WHEN 'pen.section_promote' THEN 0
+         WHEN 'pen.comment' THEN 0
+         WHEN 'pen.suggestion' THEN 0
          WHEN 'group_inbox_update' THEN 0
          WHEN 'message_attachment' THEN 1
          WHEN 'connection_request' THEN 1

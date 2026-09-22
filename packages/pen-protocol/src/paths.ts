@@ -14,6 +14,19 @@ export function historyChainPath(docId: string): string {
   return `${docRootPath(docId)}/history.chain`;
 }
 
+/** Append-only in-doc review comments (Pen collab bus). */
+export function commentsJsonlPath(docId: string): string {
+  return `${docRootPath(docId)}/comments.jsonl`;
+}
+
+export function suggestionsDirPath(docId: string): string {
+  return `${docRootPath(docId)}/suggestions`;
+}
+
+export function suggestionPath(docId: string, suggestionId: string): string {
+  return `${suggestionsDirPath(docId)}/${sanitizeSegment(suggestionId)}.json`;
+}
+
 export function sectionDirPath(docId: string, sectionSlug: string): string {
   return `${docRootPath(docId)}/sections/${sanitizeSegment(sectionSlug)}`;
 }

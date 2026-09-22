@@ -1,6 +1,11 @@
 /** Local index of Pen docs (manifest cache). Cloud replica is SoT after promote. */
 
-import type { PenDocManifest, PenHistoryChain, PenSectionContent } from '@par-noir/pen-protocol';
+import {
+  normalizeSections,
+  type PenDocManifest,
+  type PenHistoryChain,
+  type PenSectionContent
+} from '@par-noir/pen-protocol';
 
 const prefix = (pn: string) => `pen_docs_v1:${pn}`;
 
@@ -35,21 +40,33 @@ function saveIndex(pn: string, docs: LocalDocSummary[]) {
 export function loadLocalDoc(pn: string, docId: string): LocalDocBundle | null {
   try {
     const raw = localStorage.getItem(`${prefix(pn)}:doc:${docId}`);
-    return raw ? (JSON.parse(raw) as LocalDocBundle) : null;
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as LocalDocBundle;
+    return {
+      ...parsed,
+      sections: normalizeSections(parsed.sections || [])
+    };
   } catch {
     return null;
   }
 }
 
 export function saveLocalDoc(pn: string, bundle: LocalDocBundle): void {
-  localStorage.setItem(`${prefix(pn)}:doc:${bundle.manifest.docId}`, JSON.stringify(bundle));
-  const idx = listLocalDocs(pn).filter((d) => d.docId !== bundle.manifest.docId);
+  const normalized: LocalDocBundle = {
+    ...bundle,
+    sections: normalizeSections(bundle.sections)
+  };
+  localStorage.setItem(
+    `${prefix(pn)}:doc:${normalized.manifest.docId}`,
+    JSON.stringify(normalized)
+  );
+  const idx = listLocalDocs(pn).filter((d) => d.docId !== normalized.manifest.docId);
   idx.unshift({
-    docId: bundle.manifest.docId,
-    title: bundle.manifest.title,
-    templateId: bundle.manifest.templateId,
-    classId: bundle.manifest.classId,
-    updatedAt: bundle.manifest.updatedAt
+    docId: normalized.manifest.docId,
+    title: normalized.manifest.title,
+    templateId: normalized.manifest.templateId,
+    classId: normalized.manifest.classId,
+    updatedAt: normalized.manifest.updatedAt
   });
   saveIndex(pn, idx);
 }
