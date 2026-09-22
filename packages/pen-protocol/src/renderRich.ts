@@ -123,8 +123,16 @@ function renderNode(node: PenTipTapNode): string {
     case 'image': {
       const src = esc(String(node.attrs?.src || ''));
       const alt = esc(String(node.attrs?.alt || ''));
+      const wrap = String(node.attrs?.wrap || 'none');
       if (!src) return '';
-      return `<figure><img src="${src}" alt="${alt}"/></figure>`;
+      const wrapAttr = wrap === 'left' || wrap === 'right' ? ` data-wrap="${esc(wrap)}"` : '';
+      const style =
+        wrap === 'left'
+          ? ' style="float:left;margin:0 1em 0.5em 0;max-width:45%"'
+          : wrap === 'right'
+            ? ' style="float:right;margin:0 0 0.5em 1em;max-width:45%"'
+            : '';
+      return `<figure${wrapAttr}${style}><img src="${src}" alt="${alt}"/></figure>`;
     }
     case 'table':
       return `<table>${(node.content || []).map(renderNode).join('')}</table>`;

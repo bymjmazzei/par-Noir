@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import type { Editor } from '@tiptap/react';
 import {
   compileDocumentToNote,
+  createImageLayer,
   defaultPagePresentation,
   ensureDefaultTextLayer,
   getClass,
@@ -15,6 +16,8 @@ import {
   setTextLayerDoc,
   signPromoteLink,
   attachNotary,
+  updateLayerLayout,
+  upsertLayer,
   verifyChain,
   type PenDocComment,
   type PenPageLayout,
@@ -23,6 +26,7 @@ import {
 import type { PenSession } from '../App';
 import { FormatRibbon, PageCanvas } from '../components/PageCanvas';
 import { EditablePagePreview } from '../components/EditablePagePreview';
+import { bringToFront, sendBackward, type LayoutItem } from '../layout';
 import { loadLocalDoc, saveLocalDoc } from '../services/penLocalStore';
 import { requestNotaryStamp } from '../services/penApi';
 import { resolveSigningKeys } from '../services/penKeys';
@@ -527,7 +531,53 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
         })}
       </div>
 
-      {!showHistory && <FormatRibbon editor={editor} />}
+      {!showHistory && (
+        <FormatRibbon
+          editor={editor}
+          accessToken={session.accessToken}
+          canOrderLayers={!!activeLayerId}
+          onImageInserted={(src, alt) => {
+            const prepared = ensureDefaultTextLayer(normalizeSection(section));
+            const maxZ = (prepared.layers || []).reduce((m, l) => Math.max(m, l.zIndex), 0);
+            const layer = createImageLayer(src, {
+              x: 28,
+              y: 28,
+              w: 32,
+              h: 28,
+              zIndex: maxZ + 1
+            });
+            if (alt) layer.imageSrc = src;
+            const next = upsertLayer(prepared, layer);
+            setActiveLayerId(layer.id);
+            persist({
+              ...bundle,
+              sections: bundle.sections.map((s) => (s.slug === next.slug ? next : s)),
+              manifest: { ...bundle.manifest, updatedAt: new Date().toISOString() }
+            });
+          }}
+          onLayerOrder={(dir) => {
+            if (!activeLayerId || !section.layers?.length) return;
+            const items: LayoutItem[] = section.layers.map((l) => ({
+              id: l.id,
+              x: l.x,
+              y: l.y,
+              w: l.w,
+              h: l.h,
+              zIndex: l.zIndex
+            }));
+            const ordered =
+              dir === 'forward'
+                ? bringToFront(items, activeLayerId)
+                : sendBackward(items, activeLayerId);
+            const next = updateLayerLayout(ensureDefaultTextLayer(section), ordered);
+            persist({
+              ...bundle,
+              sections: bundle.sections.map((s) => (s.slug === next.slug ? next : s)),
+              manifest: { ...bundle.manifest, updatedAt: new Date().toISOString() }
+            });
+          }}
+        />
+      )}
 
       <div className="flex min-h-0 flex-1">
         <div

@@ -1,7 +1,6 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useEditor, EditorContent, type Editor } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
-import Image from '@tiptap/extension-image';
 import Placeholder from '@tiptap/extension-placeholder';
 import TextAlign from '@tiptap/extension-text-align';
 import Underline from '@tiptap/extension-underline';
@@ -21,8 +20,17 @@ import {
   type PenSectionContent
 } from '@par-noir/pen-protocol';
 import { FontSize } from '../services/fontSizeExtension';
+import { PenImage, type PenImageWrap } from '../services/penImageExtension';
 import { sectionToTipTapDoc, tipTapDocToSection } from '../services/penBlocks';
 import { PEN_STICKERS } from '../services/stickerPack';
+import {
+  downloadCloudImageAsDataUrl,
+  fileToDataUrl,
+  listCloudImages,
+  pickDeviceImageFile,
+  uploadDeviceImageToDrive,
+  type CloudImageItem
+} from '../services/penAttach';
 import {
   ColorAButton,
   RibbonIconBtn,
@@ -43,14 +51,85 @@ function headingLabel(editor: Editor): string {
   return 'H';
 }
 
-export function FormatRibbon({ editor }: { editor: Editor | null }) {
-  if (!editor) return null;
+function insertImage(
+  editor: Editor,
+  src: string,
+  alt: string,
+  onImageInserted?: (src: string, alt?: string) => void
+) {
+  editor.chain().focus().setImage({ src, alt, title: alt }).run();
+  onImageInserted?.(src, alt);
+}
 
-  const fontFamily = String(editor.getAttributes('textStyle').fontFamily || '');
-  const fontSize = currentFontSize(editor);
-  const color = String(editor.getAttributes('textStyle').color || '#1c1917');
-  const highlight = String(editor.getAttributes('highlight').color || '');
-  const hLabel = headingLabel(editor);
+export function FormatRibbon({
+  editor,
+  accessToken,
+  onImageInserted,
+  canOrderLayers,
+  onLayerOrder
+}: {
+  editor: Editor | null;
+  accessToken?: string;
+  onImageInserted?: (src: string, alt?: string) => void;
+  canOrderLayers?: boolean;
+  onLayerOrder?: (dir: 'forward' | 'backward') => void;
+}) {
+  const [cloudFiles, setCloudFiles] = useState<CloudImageItem[] | null>(null);
+  const [cloudError, setCloudError] = useState<string | null>(null);
+  const [cloudLoading, setCloudLoading] = useState(false);
+
+  if (!editor) return null;
+  const ed = editor;
+
+  const fontFamily = String(ed.getAttributes('textStyle').fontFamily || '');
+  const fontSize = currentFontSize(ed);
+  const color = String(ed.getAttributes('textStyle').color || '#1c1917');
+  const highlight = String(ed.getAttributes('highlight').color || '');
+  const hLabel = headingLabel(ed);
+  const imageSelected = ed.isActive('image');
+  const wrap = (String(ed.getAttributes('image').wrap || 'none') as PenImageWrap) || 'none';
+
+  async function loadCloud() {
+    if (!accessToken) {
+      setCloudError('Unlock required');
+      return;
+    }
+    setCloudLoading(true);
+    setCloudError(null);
+    try {
+      setCloudFiles(await listCloudImages(accessToken));
+    } catch {
+      setCloudError('Could not list Drive images');
+      setCloudFiles([]);
+    } finally {
+      setCloudLoading(false);
+    }
+  }
+
+  async function attachDevice() {
+    const file = await pickDeviceImageFile();
+    if (!file) return;
+    const src = await fileToDataUrl(file);
+    if (!src) return;
+    insertImage(ed, src, file.name || 'image', onImageInserted);
+    if (accessToken) void uploadDeviceImageToDrive(accessToken, file);
+  }
+
+  async function attachCloud(fileId: string, name: string) {
+    if (!accessToken) return;
+    const src = await downloadCloudImageAsDataUrl(accessToken, fileId);
+    insertImage(ed, src, name, onImageInserted);
+  }
+
+  function attachUrl() {
+    const src = window.prompt('Image URL');
+    if (src?.trim()) insertImage(ed, src.trim(), 'image', onImageInserted);
+  }
+
+  function setWrap(next: PenImageWrap) {
+    if (!imageSelected) return;
+    ed.chain().focus().updateAttributes('image', { wrap: next }).run();
+  }
 
   return (
     <div className="pen-ribbon">
@@ -60,7 +139,7 @@ export function FormatRibbon({ editor }: { editor: Editor | null }) {
             <RibbonItem
               active={hLabel === 'H'}
               onClick={() => {
-                editor.chain().focus().setParagraph().run();
+                ed.chain().focus().setParagraph().run();
                 close();
               }}
             >
@@ -69,7 +148,7 @@ export function FormatRibbon({ editor }: { editor: Editor | null }) {
             <RibbonItem
               active={hLabel === 'H1'}
               onClick={() => {
-                editor.chain().focus().toggleHeading({ level: 1 }).run();
+                ed.chain().focus().toggleHeading({ level: 1 }).run();
                 close();
               }}
             >
@@ -78,7 +157,7 @@ export function FormatRibbon({ editor }: { editor: Editor | null }) {
             <RibbonItem
               active={hLabel === 'H2'}
               onClick={() => {
-                editor.chain().focus().toggleHeading({ level: 2 }).run();
+                ed.chain().focus().toggleHeading({ level: 2 }).run();
                 close();
               }}
             >
@@ -87,7 +166,7 @@ export function FormatRibbon({ editor }: { editor: Editor | null }) {
             <RibbonItem
               active={hLabel === 'H3'}
               onClick={() => {
-                editor.chain().focus().toggleHeading({ level: 3 }).run();
+                ed.chain().focus().toggleHeading({ level: 3 }).run();
                 close();
               }}
             >
@@ -111,7 +190,7 @@ export function FormatRibbon({ editor }: { editor: Editor | null }) {
             <RibbonItem
               active={!fontFamily}
               onClick={() => {
-                editor.chain().focus().unsetFontFamily().run();
+                ed.chain().focus().unsetFontFamily().run();
                 close();
               }}
             >
@@ -122,7 +201,7 @@ export function FormatRibbon({ editor }: { editor: Editor | null }) {
                 key={f}
                 active={fontFamily === f}
                 onClick={() => {
-                  editor.chain().focus().setFontFamily(f).run();
+                  ed.chain().focus().setFontFamily(f).run();
                   close();
                 }}
               >
@@ -140,7 +219,7 @@ export function FormatRibbon({ editor }: { editor: Editor | null }) {
               key={s}
               active={fontSize === String(s)}
               onClick={() => {
-                editor.chain().focus().setFontSize(`${s}pt`).run();
+                ed.chain().focus().setFontSize(`${s}pt`).run();
                 close();
               }}
             >
@@ -153,30 +232,30 @@ export function FormatRibbon({ editor }: { editor: Editor | null }) {
       <RibbonSep />
 
       <RibbonIconBtn
-        active={editor.isActive('bold')}
+        active={ed.isActive('bold')}
         title="Bold"
-        onClick={() => editor.chain().focus().toggleBold().run()}
+        onClick={() => ed.chain().focus().toggleBold().run()}
       >
         <b>B</b>
       </RibbonIconBtn>
       <RibbonIconBtn
-        active={editor.isActive('italic')}
+        active={ed.isActive('italic')}
         title="Italic"
-        onClick={() => editor.chain().focus().toggleItalic().run()}
+        onClick={() => ed.chain().focus().toggleItalic().run()}
       >
         <i>I</i>
       </RibbonIconBtn>
       <RibbonIconBtn
-        active={editor.isActive('underline')}
+        active={ed.isActive('underline')}
         title="Underline"
-        onClick={() => editor.chain().focus().toggleUnderline().run()}
+        onClick={() => ed.chain().focus().toggleUnderline().run()}
       >
         <span className="underline">U</span>
       </RibbonIconBtn>
       <RibbonIconBtn
-        active={editor.isActive('strike')}
+        active={ed.isActive('strike')}
         title="Strikethrough"
-        onClick={() => editor.chain().focus().toggleStrike().run()}
+        onClick={() => ed.chain().focus().toggleStrike().run()}
       >
         <span className="line-through">S</span>
       </RibbonIconBtn>
@@ -185,69 +264,69 @@ export function FormatRibbon({ editor }: { editor: Editor | null }) {
         mode="text"
         color={color}
         title="Text color"
-        onChange={(hex) => editor.chain().focus().setColor(hex).run()}
+        onChange={(hex) => ed.chain().focus().setColor(hex).run()}
       />
       <ColorAButton
         mode="highlight"
         color={highlight || '#fef08a'}
         title="Highlight"
-        onChange={(hex) => editor.chain().focus().toggleHighlight({ color: hex }).run()}
+        onChange={(hex) => ed.chain().focus().toggleHighlight({ color: hex }).run()}
       />
 
       <RibbonSep />
 
       <RibbonIconBtn
-        active={editor.isActive({ textAlign: 'left' })}
+        active={ed.isActive({ textAlign: 'left' })}
         title="Align left"
-        onClick={() => editor.chain().focus().setTextAlign('left').run()}
+        onClick={() => ed.chain().focus().setTextAlign('left').run()}
       >
         ☰
       </RibbonIconBtn>
       <RibbonIconBtn
-        active={editor.isActive({ textAlign: 'center' })}
+        active={ed.isActive({ textAlign: 'center' })}
         title="Align center"
-        onClick={() => editor.chain().focus().setTextAlign('center').run()}
+        onClick={() => ed.chain().focus().setTextAlign('center').run()}
       >
         ≡
       </RibbonIconBtn>
       <RibbonIconBtn
-        active={editor.isActive({ textAlign: 'right' })}
+        active={ed.isActive({ textAlign: 'right' })}
         title="Align right"
-        onClick={() => editor.chain().focus().setTextAlign('right').run()}
+        onClick={() => ed.chain().focus().setTextAlign('right').run()}
       >
         ☰
       </RibbonIconBtn>
       <RibbonIconBtn
-        active={editor.isActive({ textAlign: 'justify' })}
+        active={ed.isActive({ textAlign: 'justify' })}
         title="Justify"
-        onClick={() => editor.chain().focus().setTextAlign('justify').run()}
+        onClick={() => ed.chain().focus().setTextAlign('justify').run()}
       >
         ≣
       </RibbonIconBtn>
       <RibbonIconBtn
-        active={editor.isActive('bulletList')}
+        active={ed.isActive('bulletList')}
         title="Bullet list"
-        onClick={() => editor.chain().focus().toggleBulletList().run()}
+        onClick={() => ed.chain().focus().toggleBulletList().run()}
       >
         •
       </RibbonIconBtn>
       <RibbonIconBtn
-        active={editor.isActive('orderedList')}
+        active={ed.isActive('orderedList')}
         title="Numbered list"
-        onClick={() => editor.chain().focus().toggleOrderedList().run()}
+        onClick={() => ed.chain().focus().toggleOrderedList().run()}
       >
         1.
       </RibbonIconBtn>
       <RibbonIconBtn
-        active={editor.isActive('blockquote')}
+        active={ed.isActive('blockquote')}
         title="Quote"
-        onClick={() => editor.chain().focus().toggleBlockquote().run()}
+        onClick={() => ed.chain().focus().toggleBlockquote().run()}
       >
         “”
       </RibbonIconBtn>
       <RibbonIconBtn
         title="Horizontal rule"
-        onClick={() => editor.chain().focus().setHorizontalRule().run()}
+        onClick={() => ed.chain().focus().setHorizontalRule().run()}
       >
         —
       </RibbonIconBtn>
@@ -255,16 +334,16 @@ export function FormatRibbon({ editor }: { editor: Editor | null }) {
       <RibbonSep />
 
       <RibbonIconBtn
-        active={editor.isActive('link')}
+        active={ed.isActive('link')}
         title="Link"
         onClick={() => {
-          if (editor.isActive('link')) {
-            editor.chain().focus().unsetLink().run();
+          if (ed.isActive('link')) {
+            ed.chain().focus().unsetLink().run();
             return;
           }
           const href = window.prompt('Link URL');
           if (href?.trim()) {
-            editor.chain().focus().extendMarkRange('link').setLink({ href: href.trim() }).run();
+            ed.chain().focus().extendMarkRange('link').setLink({ href: href.trim() }).run();
           }
         }}
       >
@@ -273,48 +352,127 @@ export function FormatRibbon({ editor }: { editor: Editor | null }) {
       <RibbonIconBtn
         title="Insert table"
         onClick={() =>
-          editor.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run()
+          ed.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run()
         }
       >
         Table
       </RibbonIconBtn>
-      <RibbonIconBtn
-        title="Insert image"
-        onClick={() => {
-          const src = window.prompt('Image URL');
-          if (src?.trim()) editor.chain().focus().setImage({ src: src.trim() }).run();
-        }}
+
+      <RibbonMenu
+        label={<span title="Attach">📎</span>}
+        title="Attach"
+        wide
       >
-        Image
-      </RibbonIconBtn>
-      <RibbonMenu label="Stickers" title="Stickers" wide>
         {(close) => (
-          <div className="pen-ribbon-sticker-grid">
-            {PEN_STICKERS.map((s) => (
-              <button
-                key={s.id}
-                type="button"
-                title={s.label}
-                className="pen-ribbon-sticker"
-                onMouseDown={(e) => e.preventDefault()}
+          <>
+            <RibbonItem
+              onClick={() => {
+                void attachDevice().then(close);
+              }}
+            >
+              Device…
+            </RibbonItem>
+            <RibbonItem
+              onClick={() => {
+                void loadCloud();
+              }}
+            >
+              Cloud{accessToken ? '' : ' (unlock)'}…
+            </RibbonItem>
+            {cloudLoading && <div className="pen-ribbon-menu-hint">Loading…</div>}
+            {cloudError && <div className="pen-ribbon-menu-hint is-error">{cloudError}</div>}
+            {cloudFiles &&
+              cloudFiles.slice(0, 20).map((f) => (
+                <RibbonItem
+                  key={f.id}
+                  onClick={() => {
+                    void attachCloud(f.id, f.name).then(close);
+                  }}
+                >
+                  {f.name}
+                </RibbonItem>
+              ))}
+            {cloudFiles && cloudFiles.length === 0 && !cloudLoading && (
+              <div className="pen-ribbon-menu-hint">No images found</div>
+            )}
+            <RibbonItem
+              onClick={() => {
+                attachUrl();
+                close();
+              }}
+            >
+              URL…
+            </RibbonItem>
+            <div className="pen-ribbon-menu-divider" />
+            <div className="pen-ribbon-sticker-grid">
+              {PEN_STICKERS.map((s) => (
+                <button
+                  key={s.id}
+                  type="button"
+                  title={s.label}
+                  className="pen-ribbon-sticker"
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => {
+                    insertImage(ed, s.src, s.label, onImageInserted);
+                    close();
+                  }}
+                >
+                  <img src={s.src} alt={s.label} />
+                </button>
+              ))}
+            </div>
+          </>
+        )}
+      </RibbonMenu>
+
+      <RibbonMenu
+        label="Wrap"
+        title={imageSelected ? 'Wrap text' : 'Select an image to wrap'}
+      >
+        {(close) => (
+          <>
+            {(['none', 'left', 'right'] as PenImageWrap[]).map((w) => (
+              <RibbonItem
+                key={w}
+                active={imageSelected && wrap === w}
                 onClick={() => {
-                  editor
-                    .chain()
-                    .focus()
-                    .setImage({ src: s.src, alt: s.label, title: 'sticker' })
-                    .run();
+                  setWrap(w);
                   close();
                 }}
               >
-                <img src={s.src} alt={s.label} />
-              </button>
+                {w === 'none' ? 'Inline' : w === 'left' ? 'Wrap left' : 'Wrap right'}
+              </RibbonItem>
             ))}
-          </div>
+          </>
         )}
       </RibbonMenu>
+
+      <RibbonMenu label="Layers" title="Page layers">
+        {(close) => (
+          <>
+            <RibbonItem
+              onClick={() => {
+                if (canOrderLayers) onLayerOrder?.('forward');
+                close();
+              }}
+            >
+              Bring forward{canOrderLayers ? '' : ' (select layer)'}
+            </RibbonItem>
+            <RibbonItem
+              onClick={() => {
+                if (canOrderLayers) onLayerOrder?.('backward');
+                close();
+              }}
+            >
+              Send backward{canOrderLayers ? '' : ' (select layer)'}
+            </RibbonItem>
+          </>
+        )}
+      </RibbonMenu>
+
       <RibbonIconBtn
         title="Clear formatting"
-        onClick={() => editor.chain().focus().unsetAllMarks().clearNodes().run()}
+        onClick={() => ed.chain().focus().unsetAllMarks().clearNodes().run()}
       >
         Clear
       </RibbonIconBtn>
@@ -360,7 +518,7 @@ export function PageCanvas({
       TableRow,
       TableHeader,
       TableCell,
-      Image.configure({ inline: false, allowBase64: true }),
+      PenImage.configure({ inline: false, allowBase64: true }),
       Placeholder.configure({
         placeholder: sectionTitle ? `Write ${sectionTitle.toLowerCase()}…` : 'Start typing…'
       }),

@@ -22,6 +22,20 @@ export function bringToFront(items: LayoutItem[], id: string): LayoutItem[] {
   return items.map((i) => (i.id === id ? { ...i, zIndex: maxZ + 1 } : i));
 }
 
+/** Swap zIndex with the layer immediately below in stack order. */
+export function sendBackward(items: LayoutItem[], id: string): LayoutItem[] {
+  const sorted = sortByZ(items);
+  const idx = sorted.findIndex((i) => i.id === id);
+  if (idx <= 0) return items;
+  const below = sorted[idx - 1]!;
+  const cur = sorted[idx]!;
+  return items.map((i) => {
+    if (i.id === cur.id) return { ...i, zIndex: below.zIndex };
+    if (i.id === below.id) return { ...i, zIndex: cur.zIndex };
+    return i;
+  });
+}
+
 export function sortByZ(items: LayoutItem[]): LayoutItem[] {
   return [...items].sort((a, b) => a.zIndex - b.zIndex);
 }
