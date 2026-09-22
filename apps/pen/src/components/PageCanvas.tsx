@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import { useEffect } from 'react';
 import { useEditor, EditorContent, type Editor } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import Image from '@tiptap/extension-image';
@@ -22,32 +22,25 @@ import {
 } from '@par-noir/pen-protocol';
 import { FontSize } from '../services/fontSizeExtension';
 import { sectionToTipTapDoc, tipTapDocToSection } from '../services/penBlocks';
-
-function ribbonBtn(
-  active: boolean,
-  onClick: () => void,
-  label: React.ReactNode,
-  title: string
-) {
-  return (
-    <button
-      type="button"
-      title={title}
-      aria-pressed={active}
-      onMouseDown={(e) => e.preventDefault()}
-      onClick={onClick}
-      className={`inline-flex h-7 min-w-[1.75rem] items-center justify-center rounded px-1.5 text-[13px] ${
-        active ? 'bg-sky-100 text-sky-900' : 'text-stone-700 hover:bg-stone-200/80'
-      }`}
-    >
-      {label}
-    </button>
-  );
-}
+import { PEN_STICKERS } from '../services/stickerPack';
+import {
+  ColorAButton,
+  RibbonIconBtn,
+  RibbonItem,
+  RibbonMenu,
+  RibbonSep
+} from './ribbon/RibbonChrome';
 
 function currentFontSize(editor: Editor): string {
   const attrs = editor.getAttributes('textStyle');
   return attrs.fontSize ? String(attrs.fontSize).replace(/pt$/i, '') : '';
+}
+
+function headingLabel(editor: Editor): string {
+  if (editor.isActive('heading', { level: 1 })) return 'H1';
+  if (editor.isActive('heading', { level: 2 })) return 'H2';
+  if (editor.isActive('heading', { level: 3 })) return 'H3';
+  return 'H';
 }
 
 export function FormatRibbon({ editor }: { editor: Editor | null }) {
@@ -57,166 +50,213 @@ export function FormatRibbon({ editor }: { editor: Editor | null }) {
   const fontSize = currentFontSize(editor);
   const color = String(editor.getAttributes('textStyle').color || '#1c1917');
   const highlight = String(editor.getAttributes('highlight').color || '');
+  const hLabel = headingLabel(editor);
 
   return (
-    <div className="flex flex-wrap items-center gap-0.5 border-b border-stone-300 bg-stone-100 px-2 py-1">
-      <select
-        className="mr-1 h-7 rounded border border-stone-300 bg-white px-1.5 text-[12px] text-stone-800"
-        value={
-          editor.isActive('heading', { level: 1 })
-            ? 'h1'
-            : editor.isActive('heading', { level: 2 })
-              ? 'h2'
-              : editor.isActive('heading', { level: 3 })
-                ? 'h3'
-                : 'p'
+    <div className="pen-ribbon">
+      <RibbonMenu label={<span className="pen-ribbon-h-label">{hLabel}</span>} title="Styles">
+        {(close) => (
+          <>
+            <RibbonItem
+              active={hLabel === 'H'}
+              onClick={() => {
+                editor.chain().focus().setParagraph().run();
+                close();
+              }}
+            >
+              Body
+            </RibbonItem>
+            <RibbonItem
+              active={hLabel === 'H1'}
+              onClick={() => {
+                editor.chain().focus().toggleHeading({ level: 1 }).run();
+                close();
+              }}
+            >
+              Heading 1
+            </RibbonItem>
+            <RibbonItem
+              active={hLabel === 'H2'}
+              onClick={() => {
+                editor.chain().focus().toggleHeading({ level: 2 }).run();
+                close();
+              }}
+            >
+              Heading 2
+            </RibbonItem>
+            <RibbonItem
+              active={hLabel === 'H3'}
+              onClick={() => {
+                editor.chain().focus().toggleHeading({ level: 3 }).run();
+                close();
+              }}
+            >
+              Heading 3
+            </RibbonItem>
+          </>
+        )}
+      </RibbonMenu>
+
+      <RibbonMenu
+        label={
+          <span className="pen-ribbon-font-label" style={{ fontFamily: fontFamily || undefined }}>
+            {fontFamily || 'Font'}
+          </span>
         }
-        onChange={(e) => {
-          const v = e.target.value;
-          if (v === 'h1') editor.chain().focus().toggleHeading({ level: 1 }).run();
-          else if (v === 'h2') editor.chain().focus().toggleHeading({ level: 2 }).run();
-          else if (v === 'h3') editor.chain().focus().toggleHeading({ level: 3 }).run();
-          else editor.chain().focus().setParagraph().run();
-        }}
-      >
-        <option value="p">Body</option>
-        <option value="h1">Heading 1</option>
-        <option value="h2">Heading 2</option>
-        <option value="h3">Heading 3</option>
-      </select>
-
-      <select
-        className="h-7 max-w-[9rem] rounded border border-stone-300 bg-white px-1 text-[12px]"
-        value={fontFamily}
-        onChange={(e) => {
-          const v = e.target.value;
-          if (!v) editor.chain().focus().unsetFontFamily().run();
-          else editor.chain().focus().setFontFamily(v).run();
-        }}
         title="Font"
+        wide
       >
-        <option value="">Font</option>
-        {PEN_FONT_FAMILIES.map((f) => (
-          <option key={f} value={f} style={{ fontFamily: f }}>
-            {f}
-          </option>
-        ))}
-      </select>
+        {(close) => (
+          <>
+            <RibbonItem
+              active={!fontFamily}
+              onClick={() => {
+                editor.chain().focus().unsetFontFamily().run();
+                close();
+              }}
+            >
+              Default
+            </RibbonItem>
+            {PEN_FONT_FAMILIES.map((f) => (
+              <RibbonItem
+                key={f}
+                active={fontFamily === f}
+                onClick={() => {
+                  editor.chain().focus().setFontFamily(f).run();
+                  close();
+                }}
+              >
+                <span style={{ fontFamily: f }}>{f}</span>
+              </RibbonItem>
+            ))}
+          </>
+        )}
+      </RibbonMenu>
 
-      <select
-        className="h-7 rounded border border-stone-300 bg-white px-1 text-[12px]"
-        value={fontSize}
-        onChange={(e) => {
-          const v = e.target.value;
-          if (!v) editor.chain().focus().unsetFontSize().run();
-          else editor.chain().focus().setFontSize(`${v}pt`).run();
-        }}
-        title="Size"
+      <RibbonMenu label={fontSize || '11'} title="Size">
+        {(close) =>
+          PEN_FONT_SIZES_PT.map((s) => (
+            <RibbonItem
+              key={s}
+              active={fontSize === String(s)}
+              onClick={() => {
+                editor.chain().focus().setFontSize(`${s}pt`).run();
+                close();
+              }}
+            >
+              {s}
+            </RibbonItem>
+          ))
+        }
+      </RibbonMenu>
+
+      <RibbonSep />
+
+      <RibbonIconBtn
+        active={editor.isActive('bold')}
+        title="Bold"
+        onClick={() => editor.chain().focus().toggleBold().run()}
       >
-        <option value="">Size</option>
-        {PEN_FONT_SIZES_PT.map((s) => (
-          <option key={s} value={String(s)}>
-            {s}
-          </option>
-        ))}
-      </select>
+        <b>B</b>
+      </RibbonIconBtn>
+      <RibbonIconBtn
+        active={editor.isActive('italic')}
+        title="Italic"
+        onClick={() => editor.chain().focus().toggleItalic().run()}
+      >
+        <i>I</i>
+      </RibbonIconBtn>
+      <RibbonIconBtn
+        active={editor.isActive('underline')}
+        title="Underline"
+        onClick={() => editor.chain().focus().toggleUnderline().run()}
+      >
+        <span className="underline">U</span>
+      </RibbonIconBtn>
+      <RibbonIconBtn
+        active={editor.isActive('strike')}
+        title="Strikethrough"
+        onClick={() => editor.chain().focus().toggleStrike().run()}
+      >
+        <span className="line-through">S</span>
+      </RibbonIconBtn>
 
-      <span className="mx-1 h-5 w-px bg-stone-300" />
+      <ColorAButton
+        mode="text"
+        color={color}
+        title="Text color"
+        onChange={(hex) => editor.chain().focus().setColor(hex).run()}
+      />
+      <ColorAButton
+        mode="highlight"
+        color={highlight || '#fef08a'}
+        title="Highlight"
+        onChange={(hex) => editor.chain().focus().toggleHighlight({ color: hex }).run()}
+      />
 
-      {ribbonBtn(editor.isActive('bold'), () => editor.chain().focus().toggleBold().run(), <b>B</b>, 'Bold')}
-      {ribbonBtn(editor.isActive('italic'), () => editor.chain().focus().toggleItalic().run(), <i>I</i>, 'Italic')}
-      {ribbonBtn(
-        editor.isActive('underline'),
-        () => editor.chain().focus().toggleUnderline().run(),
-        <span className="underline">U</span>,
-        'Underline'
-      )}
-      {ribbonBtn(
-        editor.isActive('strike'),
-        () => editor.chain().focus().toggleStrike().run(),
-        <span className="line-through">S</span>,
-        'Strikethrough'
-      )}
+      <RibbonSep />
 
-      <label className="ml-1 inline-flex h-7 items-center gap-1 rounded border border-stone-300 bg-white px-1 text-[11px] text-stone-600">
-        A
-        <input
-          type="color"
-          className="h-5 w-6 cursor-pointer border-0 bg-transparent p-0"
-          value={/^#[0-9a-fA-F]{6}$/.test(color) ? color : '#1c1917'}
-          onChange={(e) => editor.chain().focus().setColor(e.target.value).run()}
-          title="Text color"
-        />
-      </label>
-      <label className="inline-flex h-7 items-center gap-1 rounded border border-stone-300 bg-white px-1 text-[11px] text-stone-600">
-        H
-        <input
-          type="color"
-          className="h-5 w-6 cursor-pointer border-0 bg-transparent p-0"
-          value={/^#[0-9a-fA-F]{6}$/.test(highlight) ? highlight : '#fef08a'}
-          onChange={(e) =>
-            editor.chain().focus().toggleHighlight({ color: e.target.value }).run()
-          }
-          title="Highlight"
-        />
-      </label>
+      <RibbonIconBtn
+        active={editor.isActive({ textAlign: 'left' })}
+        title="Align left"
+        onClick={() => editor.chain().focus().setTextAlign('left').run()}
+      >
+        ☰
+      </RibbonIconBtn>
+      <RibbonIconBtn
+        active={editor.isActive({ textAlign: 'center' })}
+        title="Align center"
+        onClick={() => editor.chain().focus().setTextAlign('center').run()}
+      >
+        ≡
+      </RibbonIconBtn>
+      <RibbonIconBtn
+        active={editor.isActive({ textAlign: 'right' })}
+        title="Align right"
+        onClick={() => editor.chain().focus().setTextAlign('right').run()}
+      >
+        ☰
+      </RibbonIconBtn>
+      <RibbonIconBtn
+        active={editor.isActive({ textAlign: 'justify' })}
+        title="Justify"
+        onClick={() => editor.chain().focus().setTextAlign('justify').run()}
+      >
+        ≣
+      </RibbonIconBtn>
+      <RibbonIconBtn
+        active={editor.isActive('bulletList')}
+        title="Bullet list"
+        onClick={() => editor.chain().focus().toggleBulletList().run()}
+      >
+        •
+      </RibbonIconBtn>
+      <RibbonIconBtn
+        active={editor.isActive('orderedList')}
+        title="Numbered list"
+        onClick={() => editor.chain().focus().toggleOrderedList().run()}
+      >
+        1.
+      </RibbonIconBtn>
+      <RibbonIconBtn
+        active={editor.isActive('blockquote')}
+        title="Quote"
+        onClick={() => editor.chain().focus().toggleBlockquote().run()}
+      >
+        “”
+      </RibbonIconBtn>
+      <RibbonIconBtn
+        title="Horizontal rule"
+        onClick={() => editor.chain().focus().setHorizontalRule().run()}
+      >
+        —
+      </RibbonIconBtn>
 
-      <span className="mx-1 h-5 w-px bg-stone-300" />
+      <RibbonSep />
 
-      {ribbonBtn(
-        editor.isActive({ textAlign: 'left' }),
-        () => editor.chain().focus().setTextAlign('left').run(),
-        '☰',
-        'Align left'
-      )}
-      {ribbonBtn(
-        editor.isActive({ textAlign: 'center' }),
-        () => editor.chain().focus().setTextAlign('center').run(),
-        '≡',
-        'Align center'
-      )}
-      {ribbonBtn(
-        editor.isActive({ textAlign: 'right' }),
-        () => editor.chain().focus().setTextAlign('right').run(),
-        '☰',
-        'Align right'
-      )}
-      {ribbonBtn(
-        editor.isActive({ textAlign: 'justify' }),
-        () => editor.chain().focus().setTextAlign('justify').run(),
-        '≣',
-        'Justify'
-      )}
-
-      <span className="mx-1 h-5 w-px bg-stone-300" />
-
-      {ribbonBtn(
-        editor.isActive('bulletList'),
-        () => editor.chain().focus().toggleBulletList().run(),
-        '•',
-        'Bullet list'
-      )}
-      {ribbonBtn(
-        editor.isActive('orderedList'),
-        () => editor.chain().focus().toggleOrderedList().run(),
-        '1.',
-        'Numbered list'
-      )}
-      {ribbonBtn(
-        editor.isActive('blockquote'),
-        () => editor.chain().focus().toggleBlockquote().run(),
-        '“”',
-        'Quote'
-      )}
-      {ribbonBtn(false, () => editor.chain().focus().setHorizontalRule().run(), '—', 'Horizontal rule')}
-
-      <span className="mx-1 h-5 w-px bg-stone-300" />
-
-      <button
-        type="button"
+      <RibbonIconBtn
+        active={editor.isActive('link')}
         title="Link"
-        className="h-7 rounded px-2 text-[12px] text-stone-700 hover:bg-stone-200/80"
-        onMouseDown={(e) => e.preventDefault()}
         onClick={() => {
           if (editor.isActive('link')) {
             editor.chain().focus().unsetLink().run();
@@ -229,39 +269,55 @@ export function FormatRibbon({ editor }: { editor: Editor | null }) {
         }}
       >
         Link
-      </button>
-      <button
-        type="button"
+      </RibbonIconBtn>
+      <RibbonIconBtn
         title="Insert table"
-        className="h-7 rounded px-2 text-[12px] text-stone-700 hover:bg-stone-200/80"
-        onMouseDown={(e) => e.preventDefault()}
         onClick={() =>
           editor.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run()
         }
       >
         Table
-      </button>
-      <button
-        type="button"
+      </RibbonIconBtn>
+      <RibbonIconBtn
         title="Insert image"
-        className="h-7 rounded px-2 text-[12px] text-stone-700 hover:bg-stone-200/80"
-        onMouseDown={(e) => e.preventDefault()}
         onClick={() => {
           const src = window.prompt('Image URL');
           if (src?.trim()) editor.chain().focus().setImage({ src: src.trim() }).run();
         }}
       >
         Image
-      </button>
-      <button
-        type="button"
+      </RibbonIconBtn>
+      <RibbonMenu label="Stickers" title="Stickers" wide>
+        {(close) => (
+          <div className="pen-ribbon-sticker-grid">
+            {PEN_STICKERS.map((s) => (
+              <button
+                key={s.id}
+                type="button"
+                title={s.label}
+                className="pen-ribbon-sticker"
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => {
+                  editor
+                    .chain()
+                    .focus()
+                    .setImage({ src: s.src, alt: s.label, title: 'sticker' })
+                    .run();
+                  close();
+                }}
+              >
+                <img src={s.src} alt={s.label} />
+              </button>
+            ))}
+          </div>
+        )}
+      </RibbonMenu>
+      <RibbonIconBtn
         title="Clear formatting"
-        className="h-7 rounded px-2 text-[12px] text-stone-700 hover:bg-stone-200/80"
-        onMouseDown={(e) => e.preventDefault()}
         onClick={() => editor.chain().focus().unsetAllMarks().clearNodes().run()}
       >
         Clear
-      </button>
+      </RibbonIconBtn>
     </div>
   );
 }

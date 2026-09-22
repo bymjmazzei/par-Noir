@@ -213,3 +213,203 @@ body {
 .ProseMirror th {
   position: relative;
 }
+
+/* Docs-like format ribbon — continuous bar, no per-control borders */
+.pen-ribbon {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 1px;
+  padding: 4px 8px;
+  border-bottom: 1px solid #d6d3d1;
+  background: #fafaf9;
+}
+
+.pen-ribbon-sep {
+  display: inline-block;
+  width: 1px;
+  height: 20px;
+  margin: 0 6px;
+  background: #d6d3d1;
+  flex-shrink: 0;
+}
+
+.pen-ribbon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 28px;
+  height: 28px;
+  padding: 0 6px;
+  border: none;
+  border-radius: 3px;
+  background: transparent;
+  color: #44403c;
+  font-size: 13px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.pen-ribbon-btn:hover {
+  background: #e7e5e4;
+}
+
+.pen-ribbon-btn.is-active {
+  background: #dbeafe;
+  color: #1e3a8a;
+}
+
+.pen-ribbon-menu-wrap {
+  position: relative;
+  display: inline-flex;
+}
+
+.pen-ribbon-menu-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  height: 28px;
+  padding: 0 6px;
+  border: none;
+  border-radius: 3px;
+  background: transparent;
+  color: #44403c;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.pen-ribbon-menu-trigger:hover,
+.pen-ribbon-menu-trigger.is-open {
+  background: #e7e5e4;
+}
+
+.pen-ribbon-menu-label {
+  max-width: 7.5rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pen-ribbon-h-label {
+  font-weight: 650;
+  font-size: 13px;
+  letter-spacing: 0.02em;
+  min-width: 1.25rem;
+  text-align: center;
+}
+
+.pen-ribbon-font-label {
+  display: inline-block;
+  max-width: 6.5rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pen-ribbon-chevron {
+  font-size: 9px;
+  opacity: 0.55;
+  margin-left: 1px;
+}
+
+.pen-ribbon-menu-panel {
+  position: absolute;
+  z-index: 40;
+  top: calc(100% + 2px);
+  left: 0;
+  min-width: 9rem;
+  max-height: 16rem;
+  overflow: auto;
+  padding: 4px;
+  border: 1px solid #e7e5e4;
+  border-radius: 6px;
+  background: #fff;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
+}
+
+.pen-ribbon-menu-panel.is-wide {
+  min-width: 12rem;
+}
+
+.pen-ribbon-menu-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 6px 10px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: #292524;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.pen-ribbon-menu-item:hover {
+  background: #f5f5f4;
+}
+
+.pen-ribbon-menu-item.is-active {
+  background: #e0f2fe;
+  color: #0c4a6e;
+}
+
+.pen-ribbon-a {
+  position: relative;
+  overflow: hidden;
+}
+
+.pen-ribbon-a-glyph {
+  font-weight: 650;
+  font-size: 14px;
+  line-height: 1;
+}
+
+.pen-ribbon-a.is-text .pen-ribbon-a-glyph {
+  border-bottom: 3px solid var(--pen-a-color, #1c1917);
+  padding-bottom: 1px;
+}
+
+.pen-ribbon-a.is-highlight .pen-ribbon-a-glyph {
+  background: var(--pen-a-bg, #fef08a);
+  padding: 0 3px;
+  border-radius: 2px;
+}
+
+.pen-ribbon-a-input {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+.pen-ribbon-sticker-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 2.5rem);
+  gap: 6px;
+  padding: 4px;
+}
+
+.pen-ribbon-sticker {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.5rem;
+  height: 2.5rem;
+  padding: 2px;
+  border: none;
+  border-radius: 6px;
+  background: #f5f5f4;
+  cursor: pointer;
+}
+
+.pen-ribbon-sticker:hover {
+  background: #e7e5e4;
+}
+
+.pen-ribbon-sticker img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
