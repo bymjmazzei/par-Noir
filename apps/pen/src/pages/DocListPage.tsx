@@ -188,7 +188,7 @@ function DocExplorerRow({
   const status = resolveDocLibraryStatus(pn, d.docId);
   return (
     <tr
-      className={`${selected ? 'bg-blue-50/40' : ''} hover:bg-neutral-50`}
+      className={`pen-explorer-row ${selected ? 'pen-explorer-row--selected' : ''}`}
       onClick={() => {
         if (bulkMode) onToggle(d.docId);
       }}
@@ -301,7 +301,7 @@ function NotebookExplorerRow({
   onDelete: () => void;
 }) {
   return (
-    <tr className="hover:bg-neutral-50">
+    <tr className="pen-explorer-row">
       <td className="pen-explorer-action px-2 py-2 text-center">
         <span className="inline-block h-4 w-4" aria-hidden />
       </td>
@@ -513,7 +513,7 @@ function DocExplorerTable({
                       (personalTemplatesByNotebook[nb.id] || []).map((t) => (
                         <tr
                           key={t.id}
-                          className="cursor-pointer hover:bg-neutral-50"
+                          className="pen-explorer-row cursor-pointer"
                           onClick={() => onOpenPersonalTemplate?.(t.id)}
                         >
                           <td className="pen-explorer-action px-2 py-2" />
@@ -541,7 +541,7 @@ function DocExplorerTable({
               {personalTemplates.map((t) => (
                 <tr
                   key={t.id}
-                  className="cursor-pointer hover:bg-neutral-50"
+                  className="pen-explorer-row cursor-pointer"
                   onClick={() => onOpenPersonalTemplate?.(t.id)}
                 >
                   <td className="pen-explorer-action px-2 py-2" />

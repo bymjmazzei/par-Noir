@@ -558,7 +558,7 @@ body {
   --pen-edge-pad: 0.75rem; /* match app chrome px-3 */
   --pen-action-w: 2.5rem;
   --pen-icon-w: 2.5rem;
-  --pen-rail-gap: 15px; /* space after red rail before name */
+  --pen-rail-gap: 10px; /* space after red rail before name */
   --pen-name-inset: calc(var(--pen-action-w) + var(--pen-icon-w) + var(--pen-rail-gap));
   --pen-rule-blue: #3b82f6;
   /* Match list tbody row: 0.5rem + 0.5rem pad + ~1.25rem line */
@@ -809,7 +809,16 @@ body {
   position: relative;
   flex: 1 1 auto;
   min-height: 0;
-  /* Pitch lines for data rows only — starts under the title-rule */
+  background: transparent;
+}
+
+/* Blue pitch lines sit above row fills so hover does not erase them */
+.pen-explorer-body::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 2;
   background-image: repeating-linear-gradient(
     to bottom,
     transparent 0,
@@ -820,10 +829,28 @@ body {
 }
 
 .pen-explorer-scroll {
+  position: relative;
+  z-index: 1;
   width: 100%;
   overflow-x: auto;
   overflow-y: visible;
   -webkit-overflow-scrolling: touch;
+}
+
+.pen-explorer-row {
+  background: transparent;
+}
+
+.pen-explorer-row:hover {
+  background: rgba(0, 0, 0, 0.035);
+}
+
+.pen-explorer-row.pen-explorer-row--selected {
+  background: rgba(59, 130, 246, 0.08);
+}
+
+.pen-explorer-row.pen-explorer-row--selected:hover {
+  background: rgba(59, 130, 246, 0.12);
 }
 
 .pen-explorer-table {
@@ -1197,4 +1224,159 @@ input.pen-gallery-tile-title-text {
 
 .pen-explorer-chevron svg {
   transition: transform 0.12s ease;
+}
+
+/* Locked overview (pen.parnoir.com before unlock) */
+.pen-locked-page {
+  min-height: 100vh;
+  background: #fff;
+  color: #000;
+  font-family: 'IBM Plex Sans', system-ui, sans-serif;
+}
+
+.pen-locked-chrome {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.85rem 1.25rem;
+  border-bottom: 1px solid #e5e5e5;
+}
+
+.pen-locked-brand {
+  font-size: 1.125rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.pen-locked-chrome-actions {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.pen-locked-text-btn {
+  border: none;
+  background: transparent;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: #404040;
+  cursor: pointer;
+  padding: 0;
+}
+
+.pen-locked-text-btn:hover {
+  color: #000;
+}
+
+.pen-locked-text-btn--strong {
+  font-weight: 700;
+  color: #000;
+}
+
+.pen-locked-main {
+  max-width: 42rem;
+  margin: 0 auto;
+  padding: 4.5rem 1.25rem 5rem;
+}
+
+.pen-locked-hero-brand {
+  font-family: 'Source Serif 4', Cambria, Georgia, serif;
+  font-size: clamp(2.75rem, 8vw, 4rem);
+  font-weight: 650;
+  letter-spacing: -0.03em;
+  line-height: 1.05;
+  margin: 0 0 1rem;
+}
+
+.pen-locked-hero-lead {
+  font-size: 1.0625rem;
+  line-height: 1.55;
+  color: #404040;
+  margin: 0 0 1.75rem;
+  max-width: 34rem;
+}
+
+.pen-locked-cta-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem 1.25rem;
+}
+
+.pen-locked-cta {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 2.5rem;
+  padding: 0 1.15rem;
+  border: 1.5px solid #000;
+  background: #000;
+  color: #fff;
+  font-size: 0.875rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.pen-locked-cta:hover {
+  opacity: 0.85;
+}
+
+.pen-locked-cta--ghost {
+  background: #fff;
+  color: #000;
+}
+
+.pen-locked-status {
+  margin-top: 1rem;
+  font-size: 0.875rem;
+  color: #737373;
+}
+
+.pen-locked-error {
+  margin-top: 1rem;
+  font-size: 0.875rem;
+  color: #dc2626;
+}
+
+.pen-locked-sections {
+  display: grid;
+  gap: 1.75rem;
+  margin-top: 4rem;
+  padding-top: 2rem;
+  border-top: 1px solid #e5e5e5;
+}
+
+.pen-locked-sections h2 {
+  font-size: 1rem;
+  font-weight: 700;
+  margin: 0 0 0.35rem;
+}
+
+.pen-locked-sections p {
+  margin: 0;
+  font-size: 0.9375rem;
+  line-height: 1.5;
+  color: #525252;
+}
+
+.pen-template-dir-heading {
+  font-size: 0.8125rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #000;
+  margin: 0.75rem 0 0.35rem;
+  padding-left: 0.15rem;
+}
+
+.pen-template-dir-subheading {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: #404040;
+  margin: 0.5rem 0 0.35rem;
+  padding-left: 0.15rem;
+}
+
+.pen-template-gallery-group + .pen-template-gallery-group {
+  margin-top: 1rem;
 }

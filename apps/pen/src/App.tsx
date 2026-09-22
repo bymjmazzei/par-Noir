@@ -5,7 +5,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, Route, Routes, useNavigate, useParams } from 'react-router-dom';
 import {
-  UnlockButton,
   LockIcon,
   exchangePortalAuthorizationCode,
   fetchPortalUserInfo,
@@ -25,6 +24,9 @@ import { flushPenSyncQueue } from './services/penSyncFlush';
 import { drainPenMailbox } from './services/penCollab';
 import { listLibraryCloud } from './services/penCloudStore';
 import { pendingSyncCount } from './services/penSyncQueue';
+import { PenLockedLanding } from './components/PenLockedLanding';
+import { TemplatesBrowse } from './components/TemplatesBrowse';
+import { loadBrowseDensity, saveBrowseDensity, type PenBrowseDensity } from './services/penClassPrefs';
 
 export type { PenSession };
 
@@ -34,12 +36,17 @@ function Locked() {
   const [session, setSession] = useState<PenSession | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [lockedView, setLockedView] = useState<'home' | 'templates'>('home');
+  const [templateDensity, setTemplateDensity] = useState<PenBrowseDensity>(() =>
+    loadBrowseDensity('_locked')
+  );
   const navigate = useNavigate();
 
   const applySession = useCallback(
     (next: PenSession) => {
       savePenSession(next);
       setSession(next);
+      setLockedView('home');
       navigate('/');
       void flushPenSyncQueue(next);
       void drainPenMailbox(next);
@@ -120,35 +127,47 @@ function Locked() {
         onLock={() => {
           clearPenSession();
           setSession(null);
+          setLockedView('home');
         }}
       />
     );
   }
 
+  if (lockedView === 'templates') {
+    return (
+      <div className="pen-library-page min-h-screen bg-white">
+        <div className="pen-library-notebook flex-1">
+          <div className="pen-library-notebook-inner">
+            <div className="pen-explorer-rail" aria-hidden />
+            <TemplatesBrowse
+              session={null}
+              density={templateDensity}
+              onDensity={(d) => {
+                setTemplateDensity(d);
+                saveBrowseDensity('_locked', d);
+              }}
+              onBack={() => setLockedView('home')}
+              onCreated={(_docId) => undefined}
+              onRequestUnlock={() => setLockedView('home')}
+            />
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div className="flex min-h-screen flex-col items-center justify-center gap-5 bg-white px-6">
-      <h1 className="text-4xl font-semibold tracking-tight text-black">Pen</h1>
-      <p className="max-w-sm text-center text-sm text-neutral-500">
-        Document editor for Notes, posts, and feeds.
-      </p>
-      {error && <p className="max-w-md text-center text-sm text-red-600">{error}</p>}
-      {busy && <p className="text-sm text-neutral-500">Finishing unlock…</p>}
-      <UnlockButton
-        className="inline-flex items-center text-sm font-bold text-black hover:opacity-70"
-        config={{
-          clientId: PN_CLIENT_ID,
-          redirectUri: `${window.location.origin}/oauth-callback.html`,
-          apiEndpoint: API_ENDPOINT,
-          scope: ['openid', 'profile', 'cloud:read', 'cloud:app']
-        }}
-        onBeforeNavigate={(state) => {
-          sessionStorage.setItem(OAUTH_STATE_KEY, state);
-          setError(null);
-        }}
-        onPopupResult={onPopup}
-        onPopupFlowFailed={(reason) => setError(reason)}
-      />
-    </div>
+    <PenLockedLanding
+      busy={busy}
+      error={error}
+      onBeforeNavigate={(state) => {
+        sessionStorage.setItem(OAUTH_STATE_KEY, state);
+        setError(null);
+      }}
+      onPopupResult={onPopup}
+      onPopupFlowFailed={(reason) => setError(reason)}
+      onSeeTemplates={() => setLockedView('templates')}
+    />
   );
 }
 
@@ -204,7 +223,7 @@ function AddMenu({ onSelect }: { onSelect: (intent: PenAddIntent) => void }) {
               onSelect('templates');
             }}
           >
-            Add from template
+            See templates
           </button>
           <button
             type="button"
