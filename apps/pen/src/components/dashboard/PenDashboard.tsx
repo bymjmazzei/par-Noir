@@ -6,7 +6,7 @@ import {
   getTemplate,
   normalizeSection
 } from '@par-noir/pen-protocol';
-import { LayoutSurface } from '../../layout';
+import { PackedGrid } from '../../layout';
 import type { PenSession } from '../../App';
 import type { LocalDocSummary } from '../../services/penLocalStore';
 import { loadLocalDoc } from '../../services/penLocalStore';
@@ -168,14 +168,13 @@ export function PenDashboard({
   onDocsChange: () => void;
 }) {
   const [prefs, setPrefs] = useState(() => loadDashboardPrefs(session.pnIdentifier));
-  const [selectedId, setSelectedId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [chooser, setChooser] = useState<DashboardSlotId | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const visibleLayout = useMemo(() => {
     const hidden = new Set(prefs.hidden || []);
-    return prefs.layout.filter((i) => !hidden.has(i.id as DashboardSlotId));
+    return prefs.layout.filter((i) => !hidden.has(i.id));
   }, [prefs]);
 
   async function handleCreate(slot: DashboardSlotId) {
@@ -218,24 +217,26 @@ export function PenDashboard({
   return (
     <div className="relative">
       {error && <p className="mb-2 text-sm text-red-600">{error}</p>}
-      <LayoutSurface
-        className="h-[min(70vh,36rem)] w-full rounded-lg border border-stone-200 bg-stone-100/80"
-        items={visibleLayout}
-        selectedId={selectedId}
-        onSelect={setSelectedId}
+      <PackedGrid
+        className="min-h-[min(70vh,36rem)] w-full rounded-lg border border-stone-200 bg-stone-100/80 p-3"
+        tiles={visibleLayout}
         onChange={(layout) => {
           const next = setDashboardLayout(session.pnIdentifier, layout);
           setPrefs(next);
         }}
-        renderItem={(item) => {
-          const slot = item.id as DashboardSlotId;
+        renderTile={(tile) => {
+          const slot = tile.id;
           const title = DASHBOARD_SLOTS.find((s) => s.id === slot)?.title || slot;
           return (
-            <div className="flex h-full flex-col">
+            <div className="flex h-full min-h-[10rem] flex-col">
               <div className="shrink-0 border-b border-stone-200 bg-stone-50 px-2 py-1 text-[11px] font-semibold uppercase tracking-wide text-stone-500">
                 {title}
+                <span className="ml-2 font-normal normal-case text-stone-400">drag to swap</span>
               </div>
-              <div className="min-h-0 flex-1">
+              <div
+                className="min-h-0 flex-1"
+                onPointerDown={(e) => e.stopPropagation()}
+              >
                 <WidgetBody
                   slot={slot}
                   prefs={prefs}

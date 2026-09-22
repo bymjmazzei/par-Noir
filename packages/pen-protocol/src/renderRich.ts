@@ -134,6 +134,19 @@ function renderNode(node: PenTipTapNode): string {
             : '';
       return `<figure${wrapAttr}${style}><img src="${src}" alt="${alt}"/></figure>`;
     }
+    case 'video': {
+      const src = esc(String(node.attrs?.src || ''));
+      const wrap = String(node.attrs?.wrap || 'none');
+      if (!src) return '';
+      const wrapAttr = wrap === 'left' || wrap === 'right' ? ` data-wrap="${esc(wrap)}"` : '';
+      const style =
+        wrap === 'left'
+          ? ' style="float:left;margin:0 1em 0.5em 0;max-width:45%"'
+          : wrap === 'right'
+            ? ' style="float:right;margin:0 0 0.5em 1em;max-width:45%"'
+            : ' style="max-width:100%;height:auto"';
+      return `<video${wrapAttr}${style} src="${src}" controls></video>`;
+    }
     case 'table':
       return `<table>${(node.content || []).map(renderNode).join('')}</table>`;
     case 'tableRow':

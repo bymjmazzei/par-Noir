@@ -1,7 +1,5 @@
 /** Dashboard prefs + home view (no secrets). */
 
-import type { LayoutItem } from '../layout/types';
-
 const pinsKey = (pn: string) => `pen.categoryPins:${pn}`;
 const homeViewKey = (pn: string) => `pen.homeView:${pn}`;
 const dashboardKey = (pn: string) => `pen.dashboard:${pn}`;
@@ -10,11 +8,22 @@ export type PenHomeView = 'all' | 'category' | 'dashboard';
 
 export type DashboardSlotId = 'calendar' | 'schedule' | 'todo' | 'recent_notes';
 
+/** Packed grid tile (not absolute % LayoutItem). */
+export interface DashboardGridTile {
+  id: DashboardSlotId;
+  col: number;
+  row: number;
+  colSpan: number;
+  rowSpan: number;
+}
+
 export interface DashboardPrefs {
   binds: Partial<Record<DashboardSlotId, string>>;
   hidden?: DashboardSlotId[];
-  layout: LayoutItem[];
+  layout: DashboardGridTile[];
 }
+
+export const DASHBOARD_COLS = 2;
 
 export const DASHBOARD_SLOTS: Array<{
   id: DashboardSlotId;
@@ -28,17 +37,58 @@ export const DASHBOARD_SLOTS: Array<{
   { id: 'recent_notes', title: 'Recent notes', classId: null, templateId: null }
 ];
 
-export function defaultDashboardLayout(): LayoutItem[] {
+export function defaultDashboardGrid(): DashboardGridTile[] {
   return [
-    { id: 'calendar', x: 2, y: 2, w: 47, h: 46, zIndex: 1 },
-    { id: 'schedule', x: 51, y: 2, w: 47, h: 46, zIndex: 2 },
-    { id: 'todo', x: 2, y: 50, w: 47, h: 48, zIndex: 3 },
-    { id: 'recent_notes', x: 51, y: 50, w: 47, h: 48, zIndex: 4 }
+    { id: 'calendar', col: 0, row: 0, colSpan: 1, rowSpan: 1 },
+    { id: 'schedule', col: 1, row: 0, colSpan: 1, rowSpan: 1 },
+    { id: 'todo', col: 0, row: 1, colSpan: 1, rowSpan: 1 },
+    { id: 'recent_notes', col: 1, row: 1, colSpan: 1, rowSpan: 1 }
   ];
 }
 
 export function defaultDashboardPrefs(): DashboardPrefs {
-  return { binds: {}, layout: defaultDashboardLayout() };
+  return { binds: {}, layout: defaultDashboardGrid() };
+}
+
+function isAbsoluteLegacyLayout(layout: unknown[]): boolean {
+  return layout.some(
+    (t) =>
+      t &&
+      typeof t === 'object' &&
+      ('x' in (t as object) || 'y' in (t as object)) &&
+      !('col' in (t as object))
+  );
+}
+
+function isValidGridLayout(layout: unknown[]): layout is DashboardGridTile[] {
+  if (!layout.length) return false;
+  return layout.every((t) => {
+    if (!t || typeof t !== 'object') return false;
+    const o = t as Record<string, unknown>;
+    return (
+      typeof o.id === 'string' &&
+      typeof o.col === 'number' &&
+      typeof o.row === 'number' &&
+      typeof o.colSpan === 'number' &&
+      typeof o.rowSpan === 'number'
+    );
+  });
+}
+
+/** Swap two tiles' grid positions (1×1). */
+export function swapDashboardTiles(
+  layout: DashboardGridTile[],
+  aId: string,
+  bId: string
+): DashboardGridTile[] {
+  const a = layout.find((t) => t.id === aId);
+  const b = layout.find((t) => t.id === bId);
+  if (!a || !b || a.id === b.id) return layout;
+  return layout.map((t) => {
+    if (t.id === a.id) return { ...t, col: b.col, row: b.row, colSpan: b.colSpan, rowSpan: b.rowSpan };
+    if (t.id === b.id) return { ...t, col: a.col, row: a.row, colSpan: a.colSpan, rowSpan: a.rowSpan };
+    return t;
+  });
 }
 
 export function loadPinnedCategoryIds(pn: string): string[] {
@@ -82,10 +132,14 @@ export function loadDashboardPrefs(pn: string): DashboardPrefs {
     const raw = localStorage.getItem(dashboardKey(pn));
     if (!raw) return defaultDashboardPrefs();
     const parsed = JSON.parse(raw) as Partial<DashboardPrefs>;
-    const layout =
-      Array.isArray(parsed.layout) && parsed.layout.length
-        ? (parsed.layout as LayoutItem[])
-        : defaultDashboardLayout();
+    let layout = defaultDashboardGrid();
+    if (Array.isArray(parsed.layout) && parsed.layout.length) {
+      if (isAbsoluteLegacyLayout(parsed.layout as unknown[])) {
+        layout = defaultDashboardGrid();
+      } else if (isValidGridLayout(parsed.layout as unknown[])) {
+        layout = parsed.layout as DashboardGridTile[];
+      }
+    }
     return {
       binds: parsed.binds && typeof parsed.binds === 'object' ? parsed.binds : {},
       hidden: Array.isArray(parsed.hidden) ? (parsed.hidden as DashboardSlotId[]) : undefined,
@@ -114,7 +168,7 @@ export function setDashboardBind(
   return next;
 }
 
-export function setDashboardLayout(pn: string, layout: LayoutItem[]): DashboardPrefs {
+export function setDashboardLayout(pn: string, layout: DashboardGridTile[]): DashboardPrefs {
   const cur = loadDashboardPrefs(pn);
   const next = { ...cur, layout };
   saveDashboardPrefs(pn, next);

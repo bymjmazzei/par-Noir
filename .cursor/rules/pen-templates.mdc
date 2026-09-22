@@ -32,11 +32,11 @@ Structured/relational personal data (sheets, standard data points) may be additi
 
 ## Editing UX (when implementing Pen / Pen Mini)
 
-- **Flow-first** left pane: TipTap continuous text for the **active text layer**.
-- **Editable page** right pane: shared `LayoutSurface` for layered text boxes and images (move/resize); not HTML-only preview.
-- **Quark-like** = templates + **page layer surface** (same engine as home Dashboard widgets).
+- **Flow-first** left pane: TipTap continuous text for the **active text layer**. Image/video embeds use `wrap: none|left|right` in the flow (float beside text); do not put article embeds in `PenPageLayer`.
+- **Editable page** right pane: `LayoutSurface` for **overlay** text/image layers only (absolute % rects; move/resize)—not HTML-only preview, not dashboard tiles.
+- **Quark-like** = templates + page layer overlay surface (Product C). Home **Dashboard** is a separate packed grid (Product A: col/row swap), not `LayoutSurface`.
 - New document picker: category drill-down, optional pin/show-all, catalog search (consumer classes only).
-- Home: **All** | **By category** | **Dashboard** (default widgets: Calendar, Schedule, To-do, Recent notes; draggable).
+- Home: **All** | **By category** | **Dashboard** (default 2×2: Calendar, Schedule, To-do, Recent notes; drag swaps cells).
 
 ## Storage / collab invariants
 

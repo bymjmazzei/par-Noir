@@ -21,6 +21,7 @@ import {
 } from '@par-noir/pen-protocol';
 import { FontSize } from '../services/fontSizeExtension';
 import { PenImage, type PenImageWrap } from '../services/penImageExtension';
+import { PenVideo } from '../services/penVideoExtension';
 import { sectionToTipTapDoc, tipTapDocToSection } from '../services/penBlocks';
 import { PEN_STICKERS } from '../services/stickerPack';
 import {
@@ -87,7 +88,11 @@ export function FormatRibbon({
   const highlight = String(ed.getAttributes('highlight').color || '');
   const hLabel = headingLabel(ed);
   const imageSelected = ed.isActive('image');
-  const wrap = (String(ed.getAttributes('image').wrap || 'none') as PenImageWrap) || 'none';
+  const videoSelected = ed.isActive('video');
+  const mediaSelected = imageSelected || videoSelected;
+  const wrap = (String(
+    (imageSelected ? ed.getAttributes('image').wrap : ed.getAttributes('video').wrap) || 'none'
+  ) as PenImageWrap) || 'none';
 
   async function loadCloud() {
     if (!accessToken) {
@@ -127,8 +132,39 @@ export function FormatRibbon({
   }
 
   function setWrap(next: PenImageWrap) {
-    if (!imageSelected) return;
-    ed.chain().focus().updateAttributes('image', { wrap: next }).run();
+    if (imageSelected) {
+      ed.chain().focus().updateAttributes('image', { wrap: next }).run();
+      return;
+    }
+    if (videoSelected) {
+      ed.chain().focus().updateAttributes('video', { wrap: next }).run();
+    }
+  }
+
+  function insertVideoFromUrl() {
+    const src = window.prompt('Video URL (mp4 / webm / https)');
+    if (!src?.trim()) return;
+    ed.chain()
+      .focus()
+      .insertContent({ type: 'video', attrs: { src: src.trim(), wrap: 'none' } })
+      .run();
+  }
+
+  async function insertVideoFromFile() {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = 'video/*';
+    input.onchange = async () => {
+      const file = input.files?.[0];
+      if (!file) return;
+      const src = await fileToDataUrl(file);
+      if (!src) return;
+      ed.chain()
+        .focus()
+        .insertContent({ type: 'video', attrs: { src, wrap: 'none' } })
+        .run();
+    };
+    input.click();
   }
 
   return (
@@ -427,22 +463,45 @@ export function FormatRibbon({
 
       <RibbonMenu
         label="Wrap"
-        title={imageSelected ? 'Wrap text' : 'Select an image to wrap'}
+        title={mediaSelected ? 'Wrap text' : 'Select an image or video to wrap'}
       >
         {(close) => (
           <>
             {(['none', 'left', 'right'] as PenImageWrap[]).map((w) => (
               <RibbonItem
                 key={w}
-                active={imageSelected && wrap === w}
+                active={mediaSelected && wrap === w}
                 onClick={() => {
                   setWrap(w);
                   close();
                 }}
               >
-                {w === 'none' ? 'Inline' : w === 'left' ? 'Wrap left' : 'Wrap right'}
+                {w === 'none' ? 'Full width' : w === 'left' ? 'Wrap left' : 'Wrap right'}
               </RibbonItem>
             ))}
+          </>
+        )}
+      </RibbonMenu>
+
+      <RibbonMenu label="Video" title="Insert video">
+        {(close) => (
+          <>
+            <RibbonItem
+              onClick={() => {
+                void insertVideoFromFile();
+                close();
+              }}
+            >
+              From device…
+            </RibbonItem>
+            <RibbonItem
+              onClick={() => {
+                insertVideoFromUrl();
+                close();
+              }}
+            >
+              URL…
+            </RibbonItem>
           </>
         )}
       </RibbonMenu>
@@ -519,6 +578,7 @@ export function PageCanvas({
       TableHeader,
       TableCell,
       PenImage.configure({ inline: false, allowBase64: true }),
+      PenVideo,
       Placeholder.configure({
         placeholder: sectionTitle ? `Write ${sectionTitle.toLowerCase()}…` : 'Start typing…'
       }),

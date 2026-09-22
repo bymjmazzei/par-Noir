@@ -22,6 +22,7 @@ import {
   searchPenCatalog,
   assertTemplateClassInvariants
 } from './index.js';
+import { docToHtml } from './renderRich.js';
 
 function utf8ToBytes(s: string): Uint8Array {
   return new TextEncoder().encode(s);
@@ -256,5 +257,33 @@ describe('chain authenticity', () => {
     const forged = { ...link, contentHash: hashSectionContent(utf8ToBytes('evil')) };
     chain.links[0] = forged;
     expect(verifyChain(chain).ok).toBe(false);
+  });
+});
+
+describe('renderRich media wrap', () => {
+  it('floats image left/right and leaves none without data-wrap', () => {
+    const left = docToHtml({
+      type: 'doc',
+      content: [{ type: 'image', attrs: { src: 'https://x/a.png', alt: 'a', wrap: 'left' } }]
+    });
+    expect(left).toContain('data-wrap="left"');
+    expect(left).toContain('float:left');
+    const none = docToHtml({
+      type: 'doc',
+      content: [{ type: 'image', attrs: { src: 'https://x/a.png', wrap: 'none' } }]
+    });
+    expect(none).not.toContain('data-wrap');
+    expect(none).toContain('<figure');
+  });
+
+  it('renders video with same wrap float styles', () => {
+    const html = docToHtml({
+      type: 'doc',
+      content: [{ type: 'video', attrs: { src: 'https://x/v.mp4', wrap: 'right' } }]
+    });
+    expect(html).toContain('<video');
+    expect(html).toContain('controls');
+    expect(html).toContain('data-wrap="right"');
+    expect(html).toContain('float:right');
   });
 });
