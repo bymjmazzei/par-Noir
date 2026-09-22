@@ -29,7 +29,7 @@ export function createFolder(
 ): PenFolder {
   const folder: PenFolder = {
     id: `fld_${crypto.randomUUID().replace(/-/g, '').slice(0, 12)}`,
-    name: name.trim() || 'Untitled folder',
+    name: name.trim() || 'Untitled notebook',
     parentId,
     createdAt: new Date().toISOString()
   };

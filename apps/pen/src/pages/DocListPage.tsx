@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import {
   getClass,
@@ -154,7 +154,8 @@ function DocExplorerRow({
   folders,
   onMove,
   onDelete,
-  onOpen
+  onOpen,
+  indented = false
 }: {
   d: LocalDocSummary;
   pn: string;
@@ -171,6 +172,7 @@ function DocExplorerRow({
   onMove: (folderId: string | null) => void;
   onDelete: () => void;
   onOpen: () => void;
+  indented?: boolean;
 }) {
   const classId = resolveDocClassId(d);
   const form = classId ? getClass(classId) : undefined;
@@ -200,7 +202,9 @@ function DocExplorerRow({
       <td className="pen-explorer-icon px-1 py-2">
         <FormDocIcon classId={classId} />
       </td>
-      <td className="pen-explorer-name-cell px-3 py-2">
+      <td
+        className={`pen-explorer-name-cell px-3 py-2 ${indented ? 'pen-explorer-name-indent' : ''}`}
+      >
         {bulkMode ? (
           <span className="truncate font-medium text-black">{d.title || 'Untitled'}</span>
         ) : renaming ? (
@@ -276,14 +280,16 @@ function DocExplorerRow({
   );
 }
 
-function FolderExplorerRow({
-  folder,
-  onOpen,
+function NotebookExplorerRow({
+  notebook,
+  expanded,
+  onToggleExpand,
   onRename,
   onDelete
 }: {
-  folder: PenFolder;
-  onOpen: () => void;
+  notebook: PenFolder;
+  expanded: boolean;
+  onToggleExpand: () => void;
   onRename: () => void;
   onDelete: () => void;
 }) {
@@ -293,27 +299,47 @@ function FolderExplorerRow({
         <span className="inline-block h-4 w-4" aria-hidden />
       </td>
       <td className="pen-explorer-icon px-1 py-2">
-        <FolderGlyph />
+        <button
+          type="button"
+          className="pen-explorer-chevron"
+          aria-expanded={expanded}
+          aria-label={expanded ? 'Collapse notebook' : 'Expand notebook'}
+          title={expanded ? 'Collapse' : 'Expand'}
+          onClick={(e) => {
+            e.stopPropagation();
+            onToggleExpand();
+          }}
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden>
+            <path
+              d="M6 9l6 6 6-6"
+              stroke="currentColor"
+              strokeWidth="2.2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          </svg>
+        </button>
       </td>
       <td className="pen-explorer-name-cell px-3 py-2">
         <button
           type="button"
-          onClick={onOpen}
+          onClick={onToggleExpand}
           onDoubleClick={(e) => {
             e.preventDefault();
             onRename();
           }}
           className="truncate font-medium text-black hover:underline"
         >
-          {folder.name}
+          {notebook.name}
         </button>
       </td>
-      <td className="pen-explorer-col-category px-3 py-2 text-xs text-neutral-500">Folder</td>
+      <td className="pen-explorer-col-category px-3 py-2 text-xs text-neutral-500">Notebook</td>
       <td className="pen-explorer-col-form px-3 py-2 text-xs text-black">—</td>
       <td className="pen-explorer-col-status px-3 py-2 text-xs text-neutral-500">—</td>
       <td className="pen-explorer-col-updated whitespace-nowrap px-3 py-2 text-left text-xs text-black">
         <div className="flex items-center gap-1">
-          <span className="min-w-0 truncate">{new Date(folder.createdAt).toLocaleString()}</span>
+          <span className="min-w-0 truncate">{new Date(notebook.createdAt).toLocaleString()}</span>
           <span className="pen-explorer-menu-slot">
             <DocItemMenu
               folders={[]}
@@ -332,7 +358,7 @@ function FolderExplorerRow({
 function DocExplorerTable({
   pn,
   docs,
-  childFolders,
+  notebooks,
   moveFolders,
   sort,
   onSort,
@@ -347,14 +373,15 @@ function DocExplorerTable({
   onCancelRename,
   onMoveDoc,
   onDeleteDoc,
-  onOpenFolder,
-  onRenameFolder,
-  onDeleteFolder,
+  expandedNotebookIds,
+  onToggleNotebook,
+  onRenameNotebook,
+  onDeleteNotebook,
   onOpenDoc
 }: {
   pn: string;
   docs: LocalDocSummary[];
-  childFolders: PenFolder[];
+  notebooks: PenFolder[];
   moveFolders: Array<{ id: string; name: string }>;
   sort: ExplorerSort;
   onSort: (key: ExplorerSortKey) => void;
@@ -369,11 +396,40 @@ function DocExplorerTable({
   onCancelRename: () => void;
   onMoveDoc: (docId: string, folderId: string | null) => void;
   onDeleteDoc: (docId: string) => void;
-  onOpenFolder: (folderId: string) => void;
-  onRenameFolder: (folder: PenFolder) => void;
-  onDeleteFolder: (folderId: string) => void;
+  expandedNotebookIds: Set<string>;
+  onToggleNotebook: (notebookId: string) => void;
+  onRenameNotebook: (notebook: PenFolder) => void;
+  onDeleteNotebook: (notebookId: string) => void;
   onOpenDoc: (docId: string) => void;
 }) {
+  const rootDocs = docs.filter((d) => !d.folderId);
+  const docsInNotebook = (notebookId: string) =>
+    docs.filter((d) => d.folderId === notebookId);
+
+  function renderDocRow(d: LocalDocSummary, indented: boolean) {
+    return (
+      <DocExplorerRow
+        key={d.docId}
+        d={d}
+        pn={pn}
+        bulkMode={bulkMode}
+        selected={selectedIds.has(d.docId)}
+        onToggle={onToggle}
+        renaming={renamingId === d.docId}
+        renameDraft={renameDraft}
+        onRenameDraft={onRenameDraft}
+        onStartRename={() => onStartRename(d.docId, d.title || '')}
+        onCommitRename={onCommitRename}
+        onCancelRename={onCancelRename}
+        folders={moveFolders}
+        onMove={(folderId) => onMoveDoc(d.docId, folderId)}
+        onDelete={() => onDeleteDoc(d.docId)}
+        onOpen={() => onOpenDoc(d.docId)}
+        indented={indented}
+      />
+    );
+  }
+
   return (
     <div className="pen-explorer" data-bulk={bulkMode ? 'true' : 'false'}>
       <div className="pen-explorer-sheet">
@@ -421,35 +477,20 @@ function DocExplorerTable({
             </thead>
             <tbody>
               {!bulkMode &&
-                childFolders.map((f) => (
-                  <FolderExplorerRow
-                    key={f.id}
-                    folder={f}
-                    onOpen={() => onOpenFolder(f.id)}
-                    onRename={() => onRenameFolder(f)}
-                    onDelete={() => onDeleteFolder(f.id)}
-                  />
+                notebooks.map((nb) => (
+                  <Fragment key={nb.id}>
+                    <NotebookExplorerRow
+                      notebook={nb}
+                      expanded={expandedNotebookIds.has(nb.id)}
+                      onToggleExpand={() => onToggleNotebook(nb.id)}
+                      onRename={() => onRenameNotebook(nb)}
+                      onDelete={() => onDeleteNotebook(nb.id)}
+                    />
+                    {expandedNotebookIds.has(nb.id) &&
+                      sortDocs(docsInNotebook(nb.id), sort).map((d) => renderDocRow(d, true))}
+                  </Fragment>
                 ))}
-              {docs.map((d) => (
-                <DocExplorerRow
-                  key={d.docId}
-                  d={d}
-                  pn={pn}
-                  bulkMode={bulkMode}
-                  selected={selectedIds.has(d.docId)}
-                  onToggle={onToggle}
-                  renaming={renamingId === d.docId}
-                  renameDraft={renameDraft}
-                  onRenameDraft={onRenameDraft}
-                  onStartRename={() => onStartRename(d.docId, d.title || '')}
-                  onCommitRename={onCommitRename}
-                  onCancelRename={onCancelRename}
-                  folders={moveFolders}
-                  onMove={(folderId) => onMoveDoc(d.docId, folderId)}
-                  onDelete={() => onDeleteDoc(d.docId)}
-                  onOpen={() => onOpenDoc(d.docId)}
-                />
-              ))}
+              {sortDocs(rootDocs, sort).map((d) => renderDocRow(d, false))}
             </tbody>
           </table>
         </div>
@@ -490,15 +531,16 @@ function MinusIcon() {
   );
 }
 
-function FolderGlyph() {
+function NotebookGlyph() {
   return (
     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden>
       <path
-        d="M3 7.5A1.5 1.5 0 0 1 4.5 6H9l2 2h8.5A1.5 1.5 0 0 1 21 9.5v8A1.5 1.5 0 0 1 19.5 19h-15A1.5 1.5 0 0 1 3 17.5v-10Z"
+        d="M5 4.5A1.5 1.5 0 0 1 6.5 3H18a1 1 0 0 1 1 1v16a1 1 0 0 1-1 1H6.5A1.5 1.5 0 0 1 5 19.5v-15Z"
         stroke="currentColor"
         strokeWidth="1.6"
         strokeLinejoin="round"
       />
+      <path d="M9 3v18" stroke="currentColor" strokeWidth="1.6" />
     </svg>
   );
 }
@@ -616,82 +658,90 @@ function DocGalleryCard({
 
   if (bulkMode) {
     return (
-      <button
-        type="button"
-        onClick={() => onToggle(d.docId)}
-        className={`pen-gallery-tile ${selected ? 'ring-2 ring-black ring-offset-1' : ''}`}
-      >
-        {titleRow}
-        {preview}
-      </button>
+      <div className="pen-gallery-slot">
+        <button
+          type="button"
+          onClick={() => onToggle(d.docId)}
+          className={`pen-gallery-tile ${selected ? 'ring-2 ring-black ring-offset-1' : ''}`}
+        >
+          {titleRow}
+          {preview}
+        </button>
+      </div>
     );
   }
 
   return (
-    <div className="pen-gallery-tile">
-      {titleRow}
-      <Link to={`/d/${d.docId}`} className="pen-gallery-tile-preview-link">
-        {preview}
-      </Link>
+    <div className="pen-gallery-slot">
+      <div className="pen-gallery-tile">
+        {titleRow}
+        <Link to={`/d/${d.docId}`} className="pen-gallery-tile-preview-link">
+          {preview}
+        </Link>
+      </div>
     </div>
   );
 }
 
-function FolderGalleryCard({
-  folder,
+function NotebookGalleryCard({
+  notebook,
   onOpen,
   onRename,
   onDelete
 }: {
-  folder: PenFolder;
+  notebook: PenFolder;
   onOpen: () => void;
   onRename: () => void;
   onDelete: () => void;
 }) {
   return (
-    <div className="pen-gallery-tile">
-      <div className="pen-gallery-tile-title">
+    <div className="pen-gallery-slot">
+      <div className="pen-gallery-tile">
+        <div className="pen-gallery-tile-title">
+          <button
+            type="button"
+            onClick={onOpen}
+            onDoubleClick={(e) => {
+              e.preventDefault();
+              onRename();
+            }}
+            className="pen-gallery-tile-title-text text-left"
+            title={notebook.name}
+          >
+            {notebook.name}
+          </button>
+          <DocItemMenu
+            folders={[]}
+            showMove={false}
+            onRename={onRename}
+            onMove={() => undefined}
+            onDelete={onDelete}
+          />
+        </div>
         <button
           type="button"
           onClick={onOpen}
-          onDoubleClick={(e) => {
-            e.preventDefault();
-            onRename();
-          }}
-          className="pen-gallery-tile-title-text text-left"
-          title={folder.name}
+          className="pen-gallery-tile-preview flex items-center justify-center bg-neutral-100 text-neutral-600 hover:bg-neutral-200"
         >
-          {folder.name}
+          <NotebookGlyph />
         </button>
-        <DocItemMenu
-          folders={[]}
-          showMove={false}
-          onRename={onRename}
-          onMove={() => undefined}
-          onDelete={onDelete}
-        />
       </div>
-      <button
-        type="button"
-        onClick={onOpen}
-        className="pen-gallery-tile-preview flex items-center justify-center text-neutral-600 hover:bg-neutral-100"
-      >
-        <FolderGlyph />
-      </button>
     </div>
   );
 }
 
 function CreateNewGalleryTile({ onClick }: { onClick: () => void }) {
   return (
-    <button type="button" onClick={onClick} className="pen-gallery-tile">
-      <div className="pen-gallery-tile-title">
-        <span className="pen-gallery-tile-title-text">Create new</span>
-      </div>
-      <span className="pen-gallery-tile-preview flex items-center justify-center bg-white text-2xl font-light text-neutral-500">
-        +
-      </span>
-    </button>
+    <div className="pen-gallery-slot">
+      <button type="button" onClick={onClick} className="pen-gallery-tile">
+        <div className="pen-gallery-tile-title">
+          <span className="pen-gallery-tile-title-text">Create new</span>
+        </div>
+        <span className="pen-gallery-tile-preview flex items-center justify-center bg-white text-2xl font-light text-neutral-500">
+          +
+        </span>
+      </button>
+    </div>
   );
 }
 
@@ -744,9 +794,9 @@ function DocGalleryGrid({
           {!bulkMode && <CreateNewGalleryTile onClick={onCreateNew} />}
           {!bulkMode &&
             childFolders.map((f) => (
-              <FolderGalleryCard
+              <NotebookGalleryCard
                 key={f.id}
-                folder={f}
+                notebook={f}
                 onOpen={() => onOpenFolder(f.id)}
                 onRename={() => onRenameFolder(f)}
                 onDelete={() => onDeleteFolder(f.id)}
@@ -855,6 +905,7 @@ export function DocListPage({
   const [librarySelectedIds, setLibrarySelectedIds] = useState<Set<string>>(() => new Set());
   const [folderTick, setFolderTick] = useState(0);
   const [currentFolderId, setCurrentFolderId] = useState<string | null>(null);
+  const [expandedNotebookIds, setExpandedNotebookIds] = useState<Set<string>>(() => new Set());
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [renameDraft, setRenameDraft] = useState('');
 
@@ -908,6 +959,11 @@ export function DocListPage({
     return listFolders(session.pnIdentifier);
   }, [session.pnIdentifier, folderTick]);
 
+  const rootNotebooks = useMemo(() => {
+    void folderTick;
+    return listChildFolders(session.pnIdentifier, null);
+  }, [session.pnIdentifier, folderTick]);
+
   const childFolders = useMemo(() => {
     void folderTick;
     return listChildFolders(session.pnIdentifier, currentFolderId);
@@ -926,6 +982,15 @@ export function DocListPage({
   const folderDocs = useMemo(() => {
     return docs.filter((d) => (d.folderId || null) === currentFolderId);
   }, [docs, currentFolderId]);
+
+  function toggleNotebookExpand(notebookId: string) {
+    setExpandedNotebookIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(notebookId)) next.delete(notebookId);
+      else next.add(notebookId);
+      return next;
+    });
+  }
 
   const level: DrillLevel = formId ? 'template' : categoryId ? 'form' : 'category';
 
@@ -1079,7 +1144,7 @@ export function DocListPage({
   }
 
   function handleCreateFolder() {
-    const name = window.prompt('Folder name');
+    const name = window.prompt('Notebook name');
     if (!name?.trim()) return;
     createFolder(session.pnIdentifier, name.trim(), currentFolderId);
     setFolderTick((n) => n + 1);
@@ -1087,7 +1152,7 @@ export function DocListPage({
   }
 
   function handleRenameFolder(folder: PenFolder) {
-    const name = window.prompt('Rename folder', folder.name);
+    const name = window.prompt('Rename notebook', folder.name);
     if (name == null) return;
     renameFolder(session.pnIdentifier, folder.id, name);
     setFolderTick((n) => n + 1);
@@ -1095,7 +1160,7 @@ export function DocListPage({
 
   function handleDeleteFolder(folderId: string) {
     const ok = window.confirm(
-      'Delete this folder? Documents inside will move back to My Library.'
+      'Delete this notebook? Documents inside will move back to My Library.'
     );
     if (!ok) return;
     for (const d of docs) {
@@ -1105,6 +1170,11 @@ export function DocListPage({
     }
     deleteFolder(session.pnIdentifier, folderId);
     if (currentFolderId === folderId) setCurrentFolderId(null);
+    setExpandedNotebookIds((prev) => {
+      const next = new Set(prev);
+      next.delete(folderId);
+      return next;
+    });
     setFolderTick((n) => n + 1);
     onDocsChange();
   }
@@ -1167,6 +1237,14 @@ export function DocListPage({
     () => sortDocs(folderDocs, explorerSort),
     [folderDocs, explorerSort]
   );
+
+  const listVisibleDocs = useMemo(() => {
+    const nested = docs.filter(
+      (d) => d.folderId && expandedNotebookIds.has(d.folderId)
+    );
+    const root = docs.filter((d) => !d.folderId);
+    return sortDocs([...nested, ...root], explorerSort);
+  }, [docs, expandedNotebookIds, explorerSort]);
 
   return (
     <div className="pen-library-page bg-white">
@@ -1234,9 +1312,13 @@ export function DocListPage({
                 <div className="flex items-center justify-end gap-2">
                   {bulkDeleteMode && (
                     <BulkInlineControls
-                      visibleDocs={sortedDocs}
+                      visibleDocs={browseDensity === 'list' ? listVisibleDocs : sortedDocs}
                       selectedIds={selectedIds}
-                      onSelectAll={() => selectAllVisible(sortedDocs)}
+                      onSelectAll={() =>
+                        selectAllVisible(
+                          browseDensity === 'list' ? listVisibleDocs : sortedDocs
+                        )
+                      }
                       onDelete={confirmBulkDelete}
                     />
                   )}
@@ -1297,8 +1379,8 @@ export function DocListPage({
               ) : (
                 <DocExplorerTable
                   pn={session.pnIdentifier}
-                  docs={sortedDocs}
-                  childFolders={childFolders}
+                  docs={docs}
+                  notebooks={rootNotebooks}
                   moveFolders={moveFolderOptions}
                   sort={explorerSort}
                   onSort={cycleExplorerSort}
@@ -1313,9 +1395,10 @@ export function DocListPage({
                   onCancelRename={cancelRename}
                   onMoveDoc={handleMoveDoc}
                   onDeleteDoc={handleDeleteDoc}
-                  onOpenFolder={setCurrentFolderId}
-                  onRenameFolder={handleRenameFolder}
-                  onDeleteFolder={handleDeleteFolder}
+                  expandedNotebookIds={expandedNotebookIds}
+                  onToggleNotebook={toggleNotebookExpand}
+                  onRenameNotebook={handleRenameFolder}
+                  onDeleteNotebook={handleDeleteFolder}
                   onOpenDoc={(docId) => navigate(`/d/${docId}`)}
                 />
               )}
@@ -1522,7 +1605,7 @@ export function DocListPage({
                       onClick={handleCreateFolder}
                       className="w-full rounded-lg px-3 py-3 text-left hover:bg-stone-50"
                     >
-                      <div className="font-medium text-black">New folder</div>
+                      <div className="font-medium text-black">New notebook</div>
                       <div className="mt-0.5 text-xs text-neutral-600">
                         Organize documents in My Library
                       </div>

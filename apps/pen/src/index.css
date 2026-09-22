@@ -574,6 +574,7 @@ body {
   display: flex;
   flex-direction: column;
   min-height: calc(100vh - 2.5rem);
+  overflow-x: hidden;
 }
 
 .pen-library-notebook {
@@ -735,13 +736,16 @@ body {
   border: none;
   box-shadow: none;
   overflow: visible;
-  margin: 0;
-  padding: 0;
+  margin: 0 calc(-1 * var(--pen-edge-pad));
+  padding: 0 var(--pen-edge-pad);
+  width: calc(100% + 2 * var(--pen-edge-pad));
+  box-sizing: border-box;
 }
 
 .pen-explorer-scroll {
   width: 100%;
   overflow-x: auto;
+  overflow-y: visible;
   -webkit-overflow-scrolling: touch;
 }
 
@@ -761,9 +765,7 @@ body {
 
 .pen-explorer thead th {
   background: #fff;
-  /* Single rule under column headers; height matches gallery head spacer */
   border: none;
-  border-bottom: 1px solid var(--pen-rule-blue);
   height: var(--pen-explorer-head-h);
   padding-top: 0;
   padding-bottom: 0;
@@ -777,7 +779,6 @@ body {
 
 .pen-explorer tbody td {
   border: none;
-  border-bottom: 1px solid var(--pen-rule-blue);
   padding-top: 0.5rem;
   padding-bottom: 0.5rem;
 }
@@ -785,6 +786,25 @@ body {
 .pen-explorer th {
   font-weight: 700;
   color: #000;
+}
+
+/* Full-bleed horizontal rules to page edges */
+.pen-explorer thead tr,
+.pen-explorer tbody tr {
+  position: relative;
+}
+
+.pen-explorer thead tr::after,
+.pen-explorer tbody tr::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  bottom: 0;
+  width: 100vw;
+  margin-left: -50vw;
+  border-bottom: 1px solid var(--pen-rule-blue);
+  pointer-events: none;
+  z-index: 1;
 }
 
 .pen-explorer-sheet {
@@ -863,13 +883,13 @@ body {
 
 /*
  * Gallery: first blue line aligns with list NAME rule (via .pen-gallery-head).
- * Ruled paper continues to the bottom of the page; tiles overlay on a 4+1 pitch grid.
+ * Each slot is 4 rule pitches; the tile (natural height) is vertically centered
+ * so ruled lines show in the gaps above and below.
  */
 .pen-gallery-wrap {
   display: flex;
   flex-direction: column;
   flex: 1 1 auto;
-  min-height: 100%;
 }
 
 .pen-gallery-head {
@@ -884,12 +904,11 @@ body {
 
 .pen-gallery {
   position: relative;
-  flex: 1 1 auto;
-  min-height: calc(100vh - 2.5rem - 6rem);
+  flex: 0 0 auto;
   margin: 0 calc(-1 * var(--pen-edge-pad));
   width: calc(100% + 2 * var(--pen-edge-pad));
   box-sizing: border-box;
-  padding: 0 var(--pen-edge-pad) 1.5rem;
+  padding: 0 var(--pen-edge-pad) var(--pen-rule-pitch);
   padding-left: calc(var(--pen-edge-pad) + var(--pen-name-inset));
   background-color: #fff;
   background-image: repeating-linear-gradient(
@@ -909,14 +928,22 @@ body {
   row-gap: var(--pen-gallery-row-gap);
   position: relative;
   z-index: 1;
-  padding-bottom: var(--pen-rule-pitch);
+}
+
+.pen-gallery-slot {
+  display: flex;
+  height: var(--pen-gallery-tile-h);
+  width: 100px;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
 }
 
 .pen-gallery-tile {
   display: flex;
   flex-direction: column;
   width: 100px;
-  height: var(--pen-gallery-tile-h);
+  height: auto;
   box-sizing: border-box;
   margin: 0;
   padding: 0;
@@ -938,9 +965,9 @@ body {
   align-items: center;
   gap: 0.125rem;
   flex-shrink: 0;
-  height: var(--pen-rule-pitch);
+  min-height: 1.5rem;
   box-sizing: border-box;
-  padding: 0 0.2rem 0 0.35rem;
+  padding: 0.2rem 0.2rem 0.2rem 0.35rem;
   background: #f5f5f5;
   border-bottom: 1px solid #e5e5e5;
 }
@@ -971,15 +998,54 @@ input.pen-gallery-tile-title-text {
 
 .pen-gallery-tile-preview {
   position: relative;
-  flex: 1 1 auto;
-  min-height: 0;
-  width: 100%;
+  flex: 0 0 auto;
+  height: 100px;
+  width: 100px;
   overflow: hidden;
   background: #f5f5f5;
+}
+
+.pen-gallery-tile-preview-link {
+  display: block;
+  height: 100px;
+  width: 100px;
 }
 
 .pen-gallery-tile-title .relative > button {
   width: 1.25rem;
   height: 1.25rem;
   font-size: 14px;
+}
+
+.pen-explorer-name-indent {
+  padding-left: calc(var(--pen-rail-gap) + 1rem) !important;
+}
+
+.pen-explorer-chevron {
+  display: inline-flex;
+  width: 1.5rem;
+  height: 1.5rem;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: transparent;
+  color: #000;
+  cursor: pointer;
+  padding: 0;
+}
+
+.pen-explorer-chevron:hover {
+  opacity: 0.65;
+}
+
+.pen-explorer-chevron[aria-expanded='true'] svg {
+  transform: rotate(0deg);
+}
+
+.pen-explorer-chevron[aria-expanded='false'] svg {
+  transform: rotate(-90deg);
+}
+
+.pen-explorer-chevron svg {
+  transition: transform 0.12s ease;
 }

@@ -81,7 +81,7 @@ export function DocItemMenu({
                       setOpen(false);
                     }}
                   >
-                    My Library (root)
+                    My Library
                   </button>
                   {folders.map((f) => (
                     <button
