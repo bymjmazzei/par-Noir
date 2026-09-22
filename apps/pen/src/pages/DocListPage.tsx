@@ -32,10 +32,20 @@ import {
   personalTemplatesAsPenTemplates
 } from '../services/penPersonalTemplates';
 import { PenDashboard } from '../components/dashboard/PenDashboard';
+import { FormDocIcon } from '../components/FormDocIcon';
 import { TemplateLivePreview } from '../components/TemplateLivePreview';
 import { loadLocalDoc } from '../services/penLocalStore';
 
 type DrillLevel = 'category' | 'form' | 'template';
+
+type ExplorerSortKey = 'name' | 'category' | 'form' | 'template' | 'updated';
+
+type ExplorerSort = {
+  key: ExplorerSortKey;
+  dir: 'asc' | 'desc';
+};
+
+const DEFAULT_EXPLORER_SORT: ExplorerSort = { key: 'updated', dir: 'desc' };
 
 function isConsumerClass(c: PenClass): boolean {
   return !c.audience || c.audience === 'consumer';
@@ -53,13 +63,74 @@ function resolveDocCategoryId(d: LocalDocSummary): string | null {
   return form?.parentId || null;
 }
 
-function DocExplorerIcon({ classId }: { classId?: string }) {
-  const cat = classId ? getClass(classId)?.parentId : null;
-  const label = (cat || classId || 'doc').slice(0, 1).toUpperCase();
+function sortDocs(docs: LocalDocSummary[], sort: ExplorerSort): LocalDocSummary[] {
+  const mul = sort.dir === 'asc' ? 1 : -1;
+  return [...docs].sort((a, b) => {
+    const classA = resolveDocClassId(a);
+    const classB = resolveDocClassId(b);
+    const formA = classA ? getClass(classA) : undefined;
+    const formB = classB ? getClass(classB) : undefined;
+    const catA = formA?.parentId ? getClass(formA.parentId) : undefined;
+    const catB = formB?.parentId ? getClass(formB.parentId) : undefined;
+
+    let cmp = 0;
+    switch (sort.key) {
+      case 'name':
+        cmp = (a.title || '').localeCompare(b.title || '', undefined, { sensitivity: 'base' });
+        break;
+      case 'category':
+        cmp = (catA?.title || '').localeCompare(catB?.title || '', undefined, {
+          sensitivity: 'base'
+        });
+        break;
+      case 'form':
+        cmp = (formA?.title || '').localeCompare(formB?.title || '', undefined, {
+          sensitivity: 'base'
+        });
+        break;
+      case 'template':
+        cmp = a.templateId.localeCompare(b.templateId);
+        break;
+      case 'updated':
+      default:
+        cmp = new Date(a.updatedAt).getTime() - new Date(b.updatedAt).getTime();
+        break;
+    }
+    if (cmp !== 0) return cmp * mul;
+    return (a.title || '').localeCompare(b.title || '', undefined, { sensitivity: 'base' });
+  });
+}
+
+function SortHeader({
+  label,
+  sortKey,
+  sort,
+  onSort,
+  align = 'left',
+  className = ''
+}: {
+  label: string;
+  sortKey: ExplorerSortKey;
+  sort: ExplorerSort;
+  onSort: (key: ExplorerSortKey) => void;
+  align?: 'left' | 'right';
+  className?: string;
+}) {
+  const active = sort.key === sortKey;
+  const arrow = active ? (sort.dir === 'asc' ? ' ↑' : ' ↓') : '';
   return (
-    <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded bg-stone-800 text-[11px] font-semibold text-white">
-      {label}
-    </span>
+    <th className={`${className} px-3 py-2 font-semibold ${align === 'right' ? 'text-right' : ''}`}>
+      <button
+        type="button"
+        onClick={() => onSort(sortKey)}
+        className={`inline-flex items-center gap-0.5 uppercase tracking-wide hover:text-stone-800 ${
+          active ? 'text-stone-800' : 'text-stone-500'
+        } ${align === 'right' ? 'ml-auto' : ''}`}
+      >
+        {label}
+        <span className="inline-block w-3 text-[10px]">{arrow.trim() || '\u00a0'}</span>
+      </button>
+    </th>
   );
 }
 
@@ -70,8 +141,8 @@ function DocExplorerRow({ d }: { d: LocalDocSummary }) {
   return (
     <tr className="border-b border-stone-100 hover:bg-stone-50/80">
       <td className="px-3 py-2">
-        <Link to={`/d/${d.docId}`} className="flex items-center gap-2.5 min-w-0">
-          <DocExplorerIcon classId={classId} />
+        <Link to={`/d/${d.docId}`} className="flex min-w-0 items-center gap-2.5">
+          <FormDocIcon classId={classId} />
           <span className="truncate font-medium text-stone-900">{d.title || 'Untitled'}</span>
         </Link>
       </td>
@@ -81,9 +152,7 @@ function DocExplorerRow({ d }: { d: LocalDocSummary }) {
       <td className="hidden px-3 py-2 text-xs text-stone-500 md:table-cell">
         {form?.title || '—'}
       </td>
-      <td className="hidden px-3 py-2 text-xs text-stone-400 lg:table-cell">
-        {d.templateId}
-      </td>
+      <td className="hidden px-3 py-2 text-xs text-stone-400 lg:table-cell">{d.templateId}</td>
       <td className="whitespace-nowrap px-3 py-2 text-right text-xs text-stone-400">
         {new Date(d.updatedAt).toLocaleString()}
       </td>
@@ -91,17 +160,50 @@ function DocExplorerRow({ d }: { d: LocalDocSummary }) {
   );
 }
 
-function DocExplorerTable({ docs }: { docs: LocalDocSummary[] }) {
+function DocExplorerTable({
+  docs,
+  sort,
+  onSort
+}: {
+  docs: LocalDocSummary[];
+  sort: ExplorerSort;
+  onSort: (key: ExplorerSortKey) => void;
+}) {
   return (
     <div className="overflow-hidden rounded-lg border border-stone-300 bg-white shadow-sm">
       <table className="w-full table-fixed text-left text-sm">
-        <thead className="sticky top-0 bg-stone-100 text-[11px] uppercase tracking-wide text-stone-500">
+        <thead className="sticky top-0 bg-stone-100 text-[11px] tracking-wide">
           <tr>
-            <th className="px-3 py-2 font-semibold">Name</th>
-            <th className="hidden w-28 px-3 py-2 font-semibold sm:table-cell">Category</th>
-            <th className="hidden w-28 px-3 py-2 font-semibold md:table-cell">Form</th>
-            <th className="hidden w-40 px-3 py-2 font-semibold lg:table-cell">Template</th>
-            <th className="w-40 px-3 py-2 text-right font-semibold">Updated</th>
+            <SortHeader label="Name" sortKey="name" sort={sort} onSort={onSort} />
+            <SortHeader
+              label="Category"
+              sortKey="category"
+              sort={sort}
+              onSort={onSort}
+              className="hidden w-28 sm:table-cell"
+            />
+            <SortHeader
+              label="Form"
+              sortKey="form"
+              sort={sort}
+              onSort={onSort}
+              className="hidden w-28 md:table-cell"
+            />
+            <SortHeader
+              label="Template"
+              sortKey="template"
+              sort={sort}
+              onSort={onSort}
+              className="hidden w-40 lg:table-cell"
+            />
+            <SortHeader
+              label="Updated"
+              sortKey="updated"
+              sort={sort}
+              onSort={onSort}
+              align="right"
+              className="w-40"
+            />
           </tr>
         </thead>
         <tbody>
@@ -114,6 +216,38 @@ function DocExplorerTable({ docs }: { docs: LocalDocSummary[] }) {
   );
 }
 
+function ListIcon() {
+  return (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden>
+      <path
+        d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
+function GalleryIcon() {
+  return (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden>
+      <rect x="3" y="3" width="7" height="7" rx="1" stroke="currentColor" strokeWidth="2" />
+      <rect x="14" y="3" width="7" height="7" rx="1" stroke="currentColor" strokeWidth="2" />
+      <rect x="3" y="14" width="7" height="7" rx="1" stroke="currentColor" strokeWidth="2" />
+      <rect x="14" y="14" width="7" height="7" rx="1" stroke="currentColor" strokeWidth="2" />
+    </svg>
+  );
+}
+
+function PlusIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden>
+      <path d="M12 5v14M5 12h14" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" />
+    </svg>
+  );
+}
+
 function DocGalleryCard({
   pn,
   d
@@ -122,6 +256,7 @@ function DocGalleryCard({
   d: LocalDocSummary;
 }) {
   const bundle = loadLocalDoc(pn, d.docId);
+  const classId = resolveDocClassId(d);
   return (
     <Link
       to={`/d/${d.docId}`}
@@ -142,10 +277,13 @@ function DocGalleryCard({
           </div>
         )}
       </div>
-      <div className="border-t border-stone-100 px-3 py-2">
-        <div className="truncate text-sm font-medium text-stone-900">{d.title}</div>
-        <div className="truncate text-[11px] text-stone-400">
-          {getClass(resolveDocClassId(d) || '')?.title || d.templateId}
+      <div className="flex items-center gap-2 border-t border-stone-100 px-3 py-2">
+        <FormDocIcon classId={classId} />
+        <div className="min-w-0 flex-1">
+          <div className="truncate text-sm font-medium text-stone-900">{d.title}</div>
+          <div className="truncate text-[11px] text-stone-400">
+            {getClass(classId || '')?.title || d.templateId}
+          </div>
         </div>
       </div>
     </Link>
@@ -194,6 +332,7 @@ export function DocListPage({
     loadBrowseDensity(session.pnIdentifier)
   );
   const [expandedCats, setExpandedCats] = useState<Set<string>>(() => new Set());
+  const [explorerSort, setExplorerSort] = useState<ExplorerSort>(DEFAULT_EXPLORER_SORT);
 
   useEffect(() => {
     fetchPenCatalog(session.accessToken)
@@ -309,6 +448,16 @@ export function DocListPage({
     saveBrowseDensity(session.pnIdentifier, density);
   }
 
+  function cycleExplorerSort(key: ExplorerSortKey) {
+    setExplorerSort((prev) => {
+      if (prev.key === key) {
+        return { key, dir: prev.dir === 'asc' ? 'desc' : 'asc' };
+      }
+      // Dates default newest-first; text columns default A→Z.
+      return { key, dir: key === 'updated' ? 'desc' : 'asc' };
+    });
+  }
+
   function toggleExpanded(id: string) {
     setExpandedCats((prev) => {
       const next = new Set(prev);
@@ -365,11 +514,17 @@ export function DocListPage({
   }
 
   const sortedDocs = useMemo(
+    () => sortDocs(docs, explorerSort),
+    [docs, explorerSort]
+  );
+
+  const sortedDocsByCategory = useMemo(
     () =>
-      [...docs].sort(
-        (a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
-      ),
-    [docs]
+      docsByCategory.map((g) => ({
+        ...g,
+        docs: sortDocs(g.docs, explorerSort)
+      })),
+    [docsByCategory, explorerSort]
   );
 
   return (
@@ -379,12 +534,21 @@ export function DocListPage({
           homeView === 'dashboard' ? 'max-w-5xl' : 'max-w-5xl'
         }`}
       >
-        <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
+        <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
           <div>
             <h1 className="text-lg font-semibold text-stone-900">Documents</h1>
             <p className="text-sm text-stone-500">Open a file or start from a template.</p>
           </div>
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="flex flex-col items-end gap-1.5">
+            <button
+              type="button"
+              onClick={openPicker}
+              title="New document"
+              aria-label="New document"
+              className="inline-flex h-8 w-8 items-center justify-center rounded bg-stone-900 text-white hover:bg-stone-800"
+            >
+              <PlusIcon />
+            </button>
             {docs.length > 0 && (
               <>
                 <div
@@ -414,7 +578,7 @@ export function DocListPage({
                         : 'text-stone-600 hover:bg-stone-50'
                     }`}
                   >
-                    By category
+                    Category
                   </button>
                   <button
                     type="button"
@@ -431,45 +595,42 @@ export function DocListPage({
                 </div>
                 {(homeView === 'all' || homeView === 'category') && (
                   <div
-                    className="flex rounded border border-stone-300 bg-white text-sm"
+                    className="flex rounded border border-stone-300 bg-white"
                     role="group"
                     aria-label="Browse density"
                   >
                     <button
                       type="button"
+                      title="List"
+                      aria-label="List view"
                       aria-pressed={browseDensity === 'list'}
                       onClick={() => setDensity('list')}
-                      className={`px-2.5 py-1.5 ${
+                      className={`inline-flex h-8 w-8 items-center justify-center ${
                         browseDensity === 'list'
                           ? 'bg-stone-800 text-white'
                           : 'text-stone-600 hover:bg-stone-50'
                       }`}
                     >
-                      List
+                      <ListIcon />
                     </button>
                     <button
                       type="button"
+                      title="Gallery"
+                      aria-label="Gallery view"
                       aria-pressed={browseDensity === 'gallery'}
                       onClick={() => setDensity('gallery')}
-                      className={`border-l border-stone-300 px-2.5 py-1.5 ${
+                      className={`inline-flex h-8 w-8 items-center justify-center border-l border-stone-300 ${
                         browseDensity === 'gallery'
                           ? 'bg-stone-800 text-white'
                           : 'text-stone-600 hover:bg-stone-50'
                       }`}
                     >
-                      Gallery
+                      <GalleryIcon />
                     </button>
                   </div>
                 )}
               </>
             )}
-            <button
-              type="button"
-              onClick={openPicker}
-              className="rounded bg-stone-900 px-3 py-1.5 text-sm text-white hover:bg-stone-800"
-            >
-              New…
-            </button>
           </div>
         </div>
 
@@ -490,39 +651,42 @@ export function DocListPage({
           browseDensity === 'gallery' ? (
             <DocGalleryGrid pn={session.pnIdentifier} docs={sortedDocs} />
           ) : (
-            <DocExplorerTable docs={sortedDocs} />
+            <DocExplorerTable
+              docs={sortedDocs}
+              sort={explorerSort}
+              onSort={cycleExplorerSort}
+            />
           )
         ) : (
-          <div className="space-y-2">
-            {docsByCategory.map((g) => {
+          <div className="space-y-1">
+            {sortedDocsByCategory.map((g) => {
               const open = expandedCats.has(g.categoryId);
               return (
-                <div
-                  key={g.categoryId}
-                  className="overflow-hidden rounded-lg border border-stone-200 bg-white"
-                >
+                <div key={g.categoryId}>
                   <button
                     type="button"
                     aria-expanded={open}
                     onClick={() => toggleExpanded(g.categoryId)}
-                    className="flex w-full items-center justify-between gap-2 px-4 py-3 text-left hover:bg-stone-50"
+                    className="flex w-full items-center gap-2 py-2 text-left text-sm hover:text-stone-900"
                   >
-                    <span className="font-medium text-stone-900">
-                      {g.title}
-                      <span className="ml-2 text-xs font-normal text-stone-400">
-                        {g.docs.length}
-                      </span>
+                    <span className="w-3 shrink-0 text-stone-400" aria-hidden>
+                      {open ? '▾' : '▸'}
                     </span>
-                    <span className="text-stone-400">{open ? '▾' : '▸'}</span>
+                    <span className="font-medium text-stone-800">{g.title}</span>
+                    <span className="text-xs text-stone-400">{g.docs.length}</span>
                   </button>
                   {open &&
                     (browseDensity === 'gallery' ? (
-                      <div className="border-t border-stone-100 p-3">
+                      <div className="pb-3 pl-5">
                         <DocGalleryGrid pn={session.pnIdentifier} docs={g.docs} />
                       </div>
                     ) : (
-                      <div className="border-t border-stone-100">
-                        <DocExplorerTable docs={g.docs} />
+                      <div className="pb-3 pl-5">
+                        <DocExplorerTable
+                          docs={g.docs}
+                          sort={explorerSort}
+                          onSort={cycleExplorerSort}
+                        />
                       </div>
                     ))}
                 </div>
