@@ -4,12 +4,15 @@ import type { Editor } from '@tiptap/react';
 import {
   compileDocumentToNote,
   defaultPagePresentation,
+  ensureDefaultTextLayer,
   getClass,
   getTemplate,
   hashSectionContent,
   headHashFromChain,
+  normalizeSection,
   notaryHashForPromote,
   promoteSectionToPast,
+  setTextLayerDoc,
   signPromoteLink,
   attachNotary,
   verifyChain,
@@ -19,7 +22,7 @@ import {
 } from '@par-noir/pen-protocol';
 import type { PenSession } from '../App';
 import { FormatRibbon, PageCanvas } from '../components/PageCanvas';
-import { TemplateLivePreview } from '../components/TemplateLivePreview';
+import { EditablePagePreview } from '../components/EditablePagePreview';
 import { loadLocalDoc, saveLocalDoc } from '../services/penLocalStore';
 import { requestNotaryStamp } from '../services/penApi';
 import { resolveSigningKeys } from '../services/penKeys';
@@ -89,6 +92,7 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
   const [status, setStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [editor, setEditor] = useState<Editor | null>(null);
+  const [activeLayerId, setActiveLayerId] = useState<string | null>(null);
   const [comments, setComments] = useState<PenDocComment[]>(() =>
     listLocalComments(session.pnIdentifier, docId)
   );
@@ -111,10 +115,25 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
       .join(' · ');
   }, [bundle, template]);
 
-  const section = useMemo(
-    () => bundle?.sections.find((s) => s.slug === activeSlug) || bundle?.sections[0],
-    [bundle, activeSlug]
-  );
+  const section = useMemo(() => {
+    const raw = bundle?.sections.find((s) => s.slug === activeSlug) || bundle?.sections[0];
+    return raw ? ensureDefaultTextLayer(normalizeSection(raw)) : undefined;
+  }, [bundle, activeSlug]);
+
+  const canvasSection = useMemo(() => {
+    if (!section) return undefined;
+    if (activeLayerId) {
+      const layer = section.layers?.find((l) => l.id === activeLayerId);
+      if (layer?.kind === 'text' && layer.textDoc) {
+        return { ...section, doc: layer.textDoc };
+      }
+    }
+    const primary = section.layers
+      ?.filter((l) => l.kind === 'text')
+      .sort((a, b) => a.zIndex - b.zIndex)[0];
+    if (primary?.textDoc) return { ...section, doc: primary.textDoc };
+    return section;
+  }, [section, activeLayerId]);
 
   const sectionTitle = useMemo(() => {
     const fromTpl = template?.sections.find((s) => s.slug === activeSlug)?.title;
@@ -125,7 +144,7 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
 
   const pageLayout: PenPageLayout = bundle?.manifest.pageLayout || 'flow';
 
-  if (!bundle || !section) {
+  if (!bundle || !section || !canvasSection) {
     return (
       <div className="flex min-h-[60vh] items-center justify-center bg-stone-200">
         <div className="text-center">
@@ -553,15 +572,34 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
             </div>
           ) : (
             <PageCanvas
-              key={activeSlug}
-              section={section}
+              key={`${activeSlug}:${activeLayerId || 'primary'}`}
+              section={canvasSection}
               sectionTitle={sectionTitle}
               pageLayout={pageLayout}
               onEditorReady={onEditorReady}
               onChange={(next) => {
+                let updated: typeof section = { ...next, layers: section.layers };
+                const layerId =
+                  activeLayerId ||
+                  section.layers?.filter((l) => l.kind === 'text').sort((a, b) => a.zIndex - b.zIndex)[0]
+                    ?.id;
+                if (layerId) {
+                  try {
+                    updated = setTextLayerDoc(
+                      ensureDefaultTextLayer(section),
+                      layerId,
+                      next.doc,
+                      { syncDoc: true }
+                    );
+                  } catch {
+                    updated = { ...next, layers: section.layers };
+                  }
+                }
                 persist({
                   ...bundle,
-                  sections: bundle.sections.map((s) => (s.slug === next.slug ? next : s)),
+                  sections: bundle.sections.map((s) =>
+                    s.slug === updated.slug ? updated : s
+                  ),
                   manifest: { ...bundle.manifest, updatedAt: new Date().toISOString() }
                 });
               }}
@@ -658,7 +696,31 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
 
         {showPreview && !showHistory && !sidePanel && (
           <div className="hidden min-w-0 w-1/2 sm:block">
-            <TemplateLivePreview manifest={bundle.manifest} sections={bundle.sections} />
+            <EditablePagePreview
+              manifest={bundle.manifest}
+              section={section}
+              activeLayerId={activeLayerId}
+              onSelectLayer={(id) => {
+                setActiveLayerId(id);
+                const layer = section.layers?.find((l) => l.id === id);
+                if (layer?.kind === 'text' && !activeLayerId) {
+                  /* selection drives left canvas */
+                }
+              }}
+              onSectionChange={(next) => {
+                persist({
+                  ...bundle,
+                  sections: bundle.sections.map((s) => (s.slug === next.slug ? next : s)),
+                  manifest: { ...bundle.manifest, updatedAt: new Date().toISOString() }
+                });
+                if (!activeLayerId && next.layers?.length) {
+                  const primary = next.layers
+                    .filter((l) => l.kind === 'text')
+                    .sort((a, b) => a.zIndex - b.zIndex)[0];
+                  if (primary) setActiveLayerId(primary.id);
+                }
+              }}
+            />
           </div>
         )}
       </div>

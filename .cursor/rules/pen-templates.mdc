@@ -32,10 +32,11 @@ Structured/relational personal data (sheets, standard data points) may be additi
 
 ## Editing UX (when implementing Pen / Pen Mini)
 
-- **Flow-first:** block document; images in text **reflow** automatically (no Quark pasteboard learning curve).
-- **Quark-like** means **templates** + optional **page grid** (see all pages) — not free-drag frames in v1.
+- **Flow-first** left pane: TipTap continuous text for the **active text layer**.
+- **Editable page** right pane: shared `LayoutSurface` for layered text boxes and images (move/resize); not HTML-only preview.
+- **Quark-like** = templates + **page layer surface** (same engine as home Dashboard widgets).
 - New document picker: category drill-down, optional pin/show-all, catalog search (consumer classes only).
-- Home doc list: **All** flat list or **By category** accordion.
+- Home: **All** | **By category** | **Dashboard** (default widgets: Calendar, Schedule, To-do, Recent notes; draggable).
 
 ## Storage / collab invariants
 

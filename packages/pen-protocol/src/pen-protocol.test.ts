@@ -187,6 +187,44 @@ describe('classes + templates', () => {
   });
 });
 
+describe('page layers', () => {
+  it('seeds default text layer from doc and supports multi-text', async () => {
+    const {
+      emptySection,
+      ensureDefaultTextLayer,
+      createTextLayer,
+      createImageLayer,
+      upsertLayer,
+      assertUniqueLayerIds,
+      setTextLayerDoc
+    } = await import('./index.js');
+    const base = emptySection('body');
+    base.doc = {
+      type: 'doc',
+      content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Hello' }] }]
+    };
+    const seeded = ensureDefaultTextLayer(base);
+    expect(seeded.layers?.length).toBe(1);
+    expect(seeded.layers![0]!.kind).toBe('text');
+    expect(ensureDefaultTextLayer(seeded).layers?.length).toBe(1);
+
+    let next = upsertLayer(seeded, createTextLayer({ x: 10, y: 50, w: 40, h: 20, zIndex: 3 }));
+    next = upsertLayer(next, createImageLayer('https://example.com/a.png'));
+    expect(next.layers!.length).toBe(3);
+    assertUniqueLayerIds(next.layers!);
+    expect(() =>
+      assertUniqueLayerIds([next.layers![0]!, { ...next.layers![0]!, id: next.layers![0]!.id }])
+    ).toThrow(/duplicate_layer_id/);
+
+    const textId = next.layers!.find((l) => l.kind === 'text')!.id;
+    next = setTextLayerDoc(next, textId, {
+      type: 'doc',
+      content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Layer' }] }]
+    });
+    expect(next.doc.content?.[0]).toBeTruthy();
+  });
+});
+
 describe('chain authenticity', () => {
   it('signs and verifies genesis + promote; rejects forged link', () => {
     const keys = mlDsa65Keygen();

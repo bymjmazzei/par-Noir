@@ -1,8 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import {
-  defaultPagePresentation,
-  emptySection,
   getClass,
   getTemplate,
   listConsumerClasses,
@@ -10,20 +8,12 @@ import {
   listTemplatesByClass,
   requireTemplate,
   searchPenCatalog,
-  signGenesis,
-  hashSectionContent,
-  notaryHashForGenesis,
-  attachNotary,
   type PenClass,
-  type PenDocManifest,
-  type PenHistoryChain,
   type PenTemplate
 } from '@par-noir/pen-protocol';
-import { generateGroupId, generateChatKey } from '@par-noir/dm-crypto';
 import type { PenSession } from '../App';
 import type { LocalDocSummary } from '../services/penLocalStore';
-import { saveLocalDoc } from '../services/penLocalStore';
-import { fetchPenCatalog, fetchStorageTier, requestNotaryStamp } from '../services/penApi';
+import { fetchPenCatalog, fetchStorageTier } from '../services/penApi';
 import {
   loadHomeView,
   loadPinnedCategoryIds,
@@ -31,11 +21,8 @@ import {
   togglePinnedCategory,
   type PenHomeView
 } from '../services/penClassPrefs';
-import { resolveSigningKeys } from '../services/penKeys';
-
-function randomDocId(): string {
-  return `pen_${crypto.randomUUID().replace(/-/g, '').slice(0, 16)}`;
-}
+import { createDocFromTemplate } from '../services/createDocFromTemplate';
+import { PenDashboard } from '../components/dashboard/PenDashboard';
 
 type DrillLevel = 'category' | 'form' | 'template';
 
@@ -233,59 +220,14 @@ export function DocListPage({
         throw new Error('self_hosted_plan_required');
       }
 
-      const docId = randomDocId();
-      const now = new Date().toISOString();
-      const sections = template.sections.map((s) => emptySection(s.slug));
-      const commitment = hashSectionContent(
-        new TextEncoder().encode(JSON.stringify(sections))
-      );
-      const keys = resolveSigningKeys(session);
-
-      let genesis = signGenesis({
-        docId,
+      const bundle = await createDocFromTemplate({
+        session,
         templateId: template.id,
-        authorPn: session.pnIdentifier,
-        clientCreatedAt: now,
-        contentCommitment: commitment,
-        secretKey: keys.secretKey,
-        publicKey: keys.publicKey
+        templates
       });
-
-      try {
-        const notary = await requestNotaryStamp(
-          session.accessToken,
-          notaryHashForGenesis(genesis)
-        );
-        attachNotary(genesis, notary);
-      } catch {
-        /* optional */
-      }
-
-      const groupId = generateGroupId();
-      sessionStorage.setItem(`pen_doc_key:${docId}`, generateChatKey());
-      sessionStorage.setItem(`pen_group_id:${docId}`, groupId);
-
-      const manifest: PenDocManifest = {
-        docId,
-        title: `Untitled ${template.title}`,
-        docType: template.docType,
-        classId: template.classId,
-        templateId: template.id,
-        templateVersion: template.version,
-        groupId,
-        toc: template.sections.map((s) => s.slug),
-        createdAt: now,
-        updatedAt: now,
-        genesisProof: genesis,
-        pageLayout: 'flow',
-        pagePresentation: defaultPagePresentation()
-      };
-
-      const chain: PenHistoryChain = { docId, genesis, links: [] };
-      saveLocalDoc(session.pnIdentifier, { manifest, sections, chain });
       onDocsChange();
       setPickerOpen(false);
-      navigate(`/d/${docId}`);
+      navigate(`/d/${bundle.manifest.docId}`);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'create_failed');
     } finally {
@@ -357,6 +299,18 @@ export function DocListPage({
                 >
                   By category
                 </button>
+                <button
+                  type="button"
+                  aria-pressed={homeView === 'dashboard'}
+                  onClick={() => setView('dashboard')}
+                  className={`border-l border-stone-300 px-2.5 py-1.5 ${
+                    homeView === 'dashboard'
+                      ? 'bg-stone-900 text-white'
+                      : 'text-stone-600 hover:bg-stone-50'
+                  }`}
+                >
+                  Dashboard
+                </button>
               </div>
             )}
             <button
@@ -380,6 +334,8 @@ export function DocListPage({
               Choose a template
             </button>
           </div>
+        ) : homeView === 'dashboard' ? (
+          <PenDashboard session={session} docs={docs} onDocsChange={onDocsChange} />
         ) : homeView === 'all' ? (
           <ul className="divide-y divide-stone-200 overflow-hidden rounded-lg border border-stone-200 bg-white">
             {sortedDocs.map((d) => (

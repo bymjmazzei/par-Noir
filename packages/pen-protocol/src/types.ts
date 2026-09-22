@@ -30,8 +30,27 @@ export interface PenFlowBlock {
 
 export interface PenSectionContent {
   slug: string;
-  /** TipTap JSON document — sole rich-text SoT. */
+  /** TipTap JSON document — sole rich-text SoT for flow / primary text. */
   doc: PenTipTapNode;
+  /** Optional page layers (text boxes, images) for editable page preview. */
+  layers?: PenPageLayer[];
+}
+
+export type PenPageLayerKind = 'text' | 'image';
+
+/** Layer on a section page — rects are % of page (0–100). */
+export interface PenPageLayer {
+  id: string;
+  kind: PenPageLayerKind;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  zIndex: number;
+  /** text layers */
+  textDoc?: PenTipTapNode;
+  /** image layers */
+  imageSrc?: string;
 }
 
 /** Page chrome for Note compile / Pen Mini / PNG (mirrors browse TextPostStyle). */
