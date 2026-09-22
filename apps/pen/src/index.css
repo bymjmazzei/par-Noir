@@ -657,7 +657,23 @@ body {
   background-color: #fff;
 }
 
-/* Pitch lines only below the colhead — never above (avoids the extra top stroke) */
+/*
+ * Title-row rules — ONE source for both views:
+ *   ::before → line above title row (y = 0)
+ *   ::after  → line under title row (y = head-h) + pitch lines below
+ * Gallery-head / thead are spacers only (no borders, no shadows).
+ */
+.pen-library-sheet::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  border-top: 1px solid var(--pen-rule-blue);
+  pointer-events: none;
+  z-index: 4;
+}
+
 .pen-library-sheet::after {
   content: '';
   position: absolute;
@@ -667,10 +683,10 @@ body {
   bottom: 0;
   background-image: repeating-linear-gradient(
     to bottom,
-    transparent 0,
-    transparent calc(var(--pen-rule-pitch) - 1px),
-    var(--pen-rule-blue) calc(var(--pen-rule-pitch) - 1px),
-    var(--pen-rule-blue) var(--pen-rule-pitch)
+    var(--pen-rule-blue) 0,
+    var(--pen-rule-blue) 1px,
+    transparent 1px,
+    transparent var(--pen-rule-pitch)
   );
   pointer-events: none;
   z-index: 0;
@@ -681,14 +697,13 @@ body {
   z-index: 1;
 }
 
-/* Empty (gallery) or label (list) band — exactly one line above + one below */
+/* Title-row spacer only — lines come from .pen-library-sheet pseudos */
 .pen-gallery-head,
 .pen-library-colhead {
   flex-shrink: 0;
   height: var(--pen-explorer-head-h);
   box-sizing: border-box;
-  border-top: 1px solid var(--pen-rule-blue);
-  border-bottom: 1px solid var(--pen-rule-blue);
+  border: none;
   background: #fff;
   width: 100%;
   pointer-events: none;
@@ -823,11 +838,14 @@ body {
   height: var(--pen-explorer-head-h);
 }
 
+/*
+ * List title row: spacer only. Lines are on .pen-library-sheet (::before / ::after).
+ * Never put border/box-shadow on th — sticky + border-collapse doubles top / eats bottom.
+ */
 .pen-explorer thead th {
   background: #fff;
-  border: none;
-  border-top: 1px solid var(--pen-rule-blue);
-  border-bottom: 1px solid var(--pen-rule-blue);
+  border: none !important;
+  box-shadow: none !important;
   height: var(--pen-explorer-head-h);
   padding-top: 0;
   padding-bottom: 0;
