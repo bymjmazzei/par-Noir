@@ -4,5 +4,24 @@
 
 body {
   margin: 0;
-  font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+  min-height: 100vh;
+  background: #f7f6f3;
+  color: #1c1917;
+}
+
+#root {
+  min-height: 100vh;
+}
+
+.pen-paper {
+  background: #fff;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04), 0 12px 40px rgba(15, 23, 42, 0.08);
+}
+
+.pen-toolbar-btn {
+  @apply inline-flex h-8 min-w-[2rem] items-center justify-center rounded px-2 text-sm text-stone-700 hover:bg-stone-100 disabled:opacity-40;
+}
+
+.pen-toolbar-btn[aria-pressed='true'] {
+  @apply bg-stone-200 text-stone-900;
 }

@@ -6,6 +6,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { Link, Route, Routes, useNavigate, useParams } from 'react-router-dom';
 import {
   UnlockButton,
+  LockIcon,
   exchangePortalAuthorizationCode,
   fetchPortalUserInfo,
   type PnOAuthPopupResult
@@ -121,14 +122,15 @@ function Locked() {
   }
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center gap-6 bg-neutral-950 text-white px-6">
-      <h1 className="text-4xl font-semibold tracking-tight">Pen</h1>
-      <p className="text-neutral-400 text-center max-w-md">
-        Authored content for par Noir — Notes, posts, feeds. Collaborate with people and agents.
+    <div className="flex min-h-screen flex-col items-center justify-center gap-6 bg-paper px-6">
+      <h1 className="font-display text-5xl font-semibold tracking-tight text-ink">Pen</h1>
+      <p className="max-w-md text-center text-mute">
+        Write Notes, posts, and feeds — template first, flow on the page.
       </p>
-      {error && <p className="text-sm text-red-400 text-center max-w-md">{error}</p>}
-      {busy && <p className="text-sm text-neutral-400">Finishing unlock…</p>}
+      {error && <p className="max-w-md text-center text-sm text-red-600">{error}</p>}
+      {busy && <p className="text-sm text-mute">Finishing unlock…</p>}
       <UnlockButton
+        className="inline-flex items-center rounded-full bg-ink px-5 py-2.5 text-sm font-medium text-white hover:bg-stone-800"
         config={{
           clientId: PN_CLIENT_ID,
           redirectUri: `${window.location.origin}/oauth-callback.html`,
@@ -153,13 +155,19 @@ function AuthenticatedApp({ session, onLock }: { session: PenSession; onLock: ()
   }, [session.pnIdentifier]);
 
   return (
-    <div className="min-h-screen bg-neutral-950 text-white">
-      <header className="border-b border-white/10 px-4 py-3 flex items-center justify-between">
-        <Link to="/" className="text-lg font-semibold tracking-tight">
+    <div className="min-h-screen bg-paper text-ink">
+      <header className="sticky top-0 z-40 flex h-14 items-center justify-between border-b border-line bg-white/90 px-4 backdrop-blur">
+        <Link to="/" className="font-display text-xl font-semibold tracking-tight text-ink">
           Pen
         </Link>
-        <button type="button" className="text-sm text-neutral-400 hover:text-white" onClick={onLock}>
-          Lock
+        <button
+          type="button"
+          onClick={onLock}
+          className="inline-flex h-9 w-9 items-center justify-center rounded-full text-stone-600 hover:bg-stone-100"
+          title="Lock session"
+          aria-label="Lock session"
+        >
+          <LockIcon className="h-5 w-5" />
         </button>
       </header>
       <Routes>
