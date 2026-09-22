@@ -17,19 +17,25 @@ When building any new pN surface for **authored or publishable content** (posts,
 
 Hierarchy: **Category → Form → Template** (e.g. Social → Notes → Basic Note). Template `classId` is always a form, never a category.
 
-Structured/relational personal data (sheets, standard data points) may be additional template families on the same spine — not a second custody story.
+Structured/relational personal data (sheets, standard data points) may be additional template families on the same spine — not a second custody story. Kit-only **Records** uses `audience: 'kit'` (hidden from Pen New…).
 
 ## First-party vs community
 
 - **First-party:** build only what scales the pN ecosystem.
-- **Starter pack (platform-owned):** Social category — Notes, Posts, **Collections** (ordered slides; not “carousel” product naming), self-hosted Feeds (entitlement: self-hosted tier).
+- **Starter pack (platform-owned, consumer):** peer categories —
+  - **Social** — Notes, Posts, Collections, **Sets** (refs to other docs; compile later), Feeds (entitlement: self-hosted)
+  - **Projects** — Journal, List, Letter, Note (correspondence shapes; DM delivery later)
+  - **Library** — Book, Article (durable; Project→Library publish-whole is a future lifecycle, not a subclass)
+  - **Time** — Calendar, Event, Schedule
+- **Kit-only:** **Records** — Register (`audience: 'kit'`; L5/API catalog, not end-user New…)
 - **Community:** open template building **after** IR, compile contract, and permissions are stable. Do not ship a template marketplace before the spine.
 
 ## Editing UX (when implementing Pen / Pen Mini)
 
 - **Flow-first:** block document; images in text **reflow** automatically (no Quark pasteboard learning curve).
 - **Quark-like** means **templates** + optional **page grid** (see all pages) — not free-drag frames in v1.
-- New document picker: category drill-down, optional pin/show-all, catalog search.
+- New document picker: category drill-down, optional pin/show-all, catalog search (consumer classes only).
+- Home doc list: **All** flat list or **By category** accordion.
 
 ## Storage / collab invariants
 
@@ -44,10 +50,15 @@ Structured/relational personal data (sheets, standard data points) may be additi
 |---|---|
 | Pen | App / builder / protocol |
 | Pen Mini | Browse miniature composer |
-| Note / Notes | Feed/social `contentClass` (replaces Thought) |
+| Note / Notes | Feed/social `contentClass` (replaces Thought); also Projects form `projects.note` for correspondence |
 | Collection | Ordered slide/story form (`collection.*` templates; browse `contentClass: 'collection'`) |
+| Set | Social form that references other docs (`social.set`) |
+| Projects | Active WIP category (journal, list, letter, note) |
+| Library | Durable published works (peer category; not under Projects) |
+| Time | Calendar / scheduling category |
+| Records | Kit-only structured registers |
 
-Do not reintroduce Thought as product vocabulary for new work. Hard-cut legacy thought paths when touching that code (dev-only; no compat shims). Do not use “carousel” as product vocabulary for new Pen work.
+Do not reintroduce Thought as product vocabulary for new work. Hard-cut legacy thought paths when touching that code (dev-only; no compat shims). Do not use “carousel” as product vocabulary for new Pen work. Do not use “bundle” for Sets.
 
 ## Package
 

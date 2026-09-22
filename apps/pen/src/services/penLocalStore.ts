@@ -8,6 +8,8 @@ export interface LocalDocSummary {
   docId: string;
   title: string;
   templateId: string;
+  /** Form class id when known (for home category grouping). */
+  classId?: string;
   updatedAt: string;
 }
 
@@ -46,6 +48,7 @@ export function saveLocalDoc(pn: string, bundle: LocalDocBundle): void {
     docId: bundle.manifest.docId,
     title: bundle.manifest.title,
     templateId: bundle.manifest.templateId,
+    classId: bundle.manifest.classId,
     updatedAt: bundle.manifest.updatedAt
   });
   saveIndex(pn, idx);

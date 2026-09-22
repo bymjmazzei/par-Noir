@@ -13,6 +13,7 @@ import {
   headHashFromChain,
   hashSectionContent,
   listCategories,
+  listConsumerCategories,
   listForms,
   listTemplatesByClass,
   listTemplatesGroupedByCategory,
@@ -50,6 +51,7 @@ describe('classes + templates', () => {
     expect(list.some((t) => t.docType === 'post')).toBe(true);
     expect(list.some((t) => t.docType === 'collection')).toBe(true);
     expect(list.some((t) => t.docType === 'self_hosted_feed')).toBe(true);
+    expect(list.some((t) => t.docType === 'set')).toBe(true);
     expect(list.some((t) => t.id.includes('carousel') || t.docType === 'carousel')).toBe(false);
   });
 
@@ -62,16 +64,33 @@ describe('classes + templates', () => {
     }
   });
 
-  it('social category has note/post/collection/feed forms', () => {
-    expect(listCategories().map((c) => c.id)).toEqual(['social']);
-    const forms = listForms('social');
-    expect(forms.map((f) => f.id).sort()).toEqual([
+  it('consumer categories are social projects library time; records is kit', () => {
+    expect(listConsumerCategories().map((c) => c.id)).toEqual([
+      'social',
+      'projects',
+      'library',
+      'time'
+    ]);
+    expect(listCategories().map((c) => c.id)).toContain('records');
+    expect(getClass('records')?.audience).toBe('kit');
+    expect(listConsumerCategories().some((c) => c.id === 'records')).toBe(false);
+  });
+
+  it('social forms include set; projects include letter/note', () => {
+    expect(listForms('social').map((f) => f.id).sort()).toEqual([
       'social.collection',
       'social.feed',
       'social.note',
-      'social.post'
+      'social.post',
+      'social.set'
     ]);
     expect(getClass('social.feed')?.entitlement).toBe('self-hosted');
+    expect(listForms('projects').map((f) => f.id).sort()).toEqual([
+      'projects.journal',
+      'projects.letter',
+      'projects.list',
+      'projects.note'
+    ]);
   });
 
   it('groups templates by category with no orphans', () => {
@@ -85,6 +104,8 @@ describe('classes + templates', () => {
     }
     expect([...allIds].sort()).toEqual([...seen].sort());
     expect(listTemplatesByClass('social.note').length).toBe(2);
+    expect(listTemplatesByClass('social.set').length).toBe(1);
+    expect(listTemplatesByClass('records.register').length).toBe(1);
   });
 
   it('search finds notes and empty query returns nothing', () => {
@@ -92,6 +113,14 @@ describe('classes + templates', () => {
     const hit = searchPenCatalog('basic note');
     expect(hit.templates.some((t) => t.id === 'note.basic.v1')).toBe(true);
     expect(searchPenCatalog('social').categories.some((c) => c.id === 'social')).toBe(true);
+  });
+
+  it('consumer search excludes records', () => {
+    const open = searchPenCatalog('register');
+    expect(open.templates.some((t) => t.id === 'register.basic.v1')).toBe(true);
+    const consumer = searchPenCatalog('register', { audience: 'consumer' });
+    expect(consumer.templates.some((t) => t.id === 'register.basic.v1')).toBe(false);
+    expect(consumer.categories.some((c) => c.id === 'records')).toBe(false);
   });
 
   it('invariant fails when classId points at a category', () => {

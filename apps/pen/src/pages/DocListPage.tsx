@@ -1,9 +1,10 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import {
   emptySection,
   getClass,
-  listClasses,
+  getTemplate,
+  listConsumerClasses,
   listStarterTemplates,
   listTemplatesByClass,
   requireTemplate,
@@ -22,7 +23,13 @@ import type { PenSession } from '../App';
 import type { LocalDocSummary } from '../services/penLocalStore';
 import { saveLocalDoc } from '../services/penLocalStore';
 import { fetchPenCatalog, fetchStorageTier, requestNotaryStamp } from '../services/penApi';
-import { loadPinnedCategoryIds, togglePinnedCategory } from '../services/penClassPrefs';
+import {
+  loadHomeView,
+  loadPinnedCategoryIds,
+  saveHomeView,
+  togglePinnedCategory,
+  type PenHomeView
+} from '../services/penClassPrefs';
 import { resolveSigningKeys } from '../services/penKeys';
 
 function randomDocId(): string {
@@ -30,6 +37,41 @@ function randomDocId(): string {
 }
 
 type DrillLevel = 'category' | 'form' | 'template';
+
+function isConsumerClass(c: PenClass): boolean {
+  return !c.audience || c.audience === 'consumer';
+}
+
+function resolveDocClassId(d: LocalDocSummary): string | undefined {
+  if (d.classId) return d.classId;
+  return getTemplate(d.templateId)?.classId;
+}
+
+function resolveDocCategoryId(d: LocalDocSummary): string | null {
+  const classId = resolveDocClassId(d);
+  if (!classId) return null;
+  const form = getClass(classId);
+  return form?.parentId || null;
+}
+
+function DocRow({ d }: { d: LocalDocSummary }) {
+  return (
+    <li>
+      <Link
+        to={`/d/${d.docId}`}
+        className="flex items-center justify-between gap-4 px-4 py-3 hover:bg-stone-50"
+      >
+        <div className="min-w-0">
+          <div className="truncate font-medium text-stone-900">{d.title}</div>
+          <div className="truncate text-xs text-stone-500">{d.templateId}</div>
+        </div>
+        <div className="shrink-0 text-xs text-stone-400">
+          {new Date(d.updatedAt).toLocaleString()}
+        </div>
+      </Link>
+    </li>
+  );
+}
 
 /** Quiet file-manager home — not a CMS dashboard. Templates open as a sheet. */
 export function DocListPage({
@@ -42,8 +84,13 @@ export function DocListPage({
   onDocsChange: () => void;
 }) {
   const navigate = useNavigate();
-  const [classes, setClasses] = useState<PenClass[]>(listClasses());
-  const [templates, setTemplates] = useState<PenTemplate[]>(listStarterTemplates());
+  const [classes, setClasses] = useState<PenClass[]>(listConsumerClasses());
+  const [templates, setTemplates] = useState<PenTemplate[]>(() =>
+    listStarterTemplates().filter((t) => {
+      const form = getClass(t.classId);
+      return !form || isConsumerClass(form);
+    })
+  );
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pickerOpen, setPickerOpen] = useState(docs.length === 0);
@@ -53,19 +100,28 @@ export function DocListPage({
   const [categoryId, setCategoryId] = useState<string | null>(null);
   const [formId, setFormId] = useState<string | null>(null);
   const [storageTier, setStorageTier] = useState<string | null>(null);
+  const [homeView, setHomeView] = useState<PenHomeView>(() => loadHomeView(session.pnIdentifier));
+  const [expandedCats, setExpandedCats] = useState<Set<string>>(() => new Set());
 
   useEffect(() => {
     fetchPenCatalog(session.accessToken)
       .then((c) => {
-        if (c.classes.length) setClasses(c.classes);
-        if (c.templates.length) setTemplates(c.templates);
+        if (c.classes.length) setClasses(c.classes.filter(isConsumerClass));
+        if (c.templates.length) {
+          setTemplates(
+            c.templates.filter((t) => {
+              const form = getClass(t.classId) || c.classes.find((cl) => cl.id === t.classId);
+              return !form || isConsumerClass(form);
+            })
+          );
+        }
       })
       .catch(() => undefined);
     fetchStorageTier(session.accessToken, session.pnIdentifier).then(setStorageTier);
   }, [session.accessToken, session.pnIdentifier]);
 
   const categories = useMemo(
-    () => classes.filter((c) => !c.parentId),
+    () => classes.filter((c) => !c.parentId && isConsumerClass(c)),
     [classes]
   );
 
@@ -75,7 +131,10 @@ export function DocListPage({
   }, [categories, pins, showAll]);
 
   const forms = useMemo(
-    () => (categoryId ? classes.filter((c) => c.parentId === categoryId) : []),
+    () =>
+      categoryId
+        ? classes.filter((c) => c.parentId === categoryId && isConsumerClass(c))
+        : [],
     [classes, categoryId]
   );
 
@@ -85,9 +144,49 @@ export function DocListPage({
   );
 
   const searchHits = useMemo(
-    () => searchPenCatalog(search, { classes, templates }),
+    () => searchPenCatalog(search, { classes, templates, audience: 'consumer' }),
     [search, classes, templates]
   );
+
+  const docsByCategory = useMemo(() => {
+    const sorted = [...docs].sort(
+      (a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
+    );
+    const groups: Array<{ categoryId: string; title: string; docs: LocalDocSummary[] }> = [];
+    const byId = new Map<string, LocalDocSummary[]>();
+    const other: LocalDocSummary[] = [];
+
+    for (const d of sorted) {
+      const catId = resolveDocCategoryId(d);
+      if (!catId) {
+        other.push(d);
+        continue;
+      }
+      const list = byId.get(catId) || [];
+      list.push(d);
+      byId.set(catId, list);
+    }
+
+    for (const cat of categories) {
+      const list = byId.get(cat.id);
+      if (list?.length) groups.push({ categoryId: cat.id, title: cat.title, docs: list });
+    }
+    for (const [catId, list] of byId) {
+      if (categories.some((c) => c.id === catId)) continue;
+      if (!list.length) continue;
+      const title = getClass(catId)?.title || catId;
+      groups.push({ categoryId: catId, title, docs: list });
+    }
+    if (other.length) {
+      groups.push({ categoryId: '_other', title: 'Other', docs: other });
+    }
+    return groups;
+  }, [docs, categories]);
+
+  useEffect(() => {
+    if (homeView !== 'category') return;
+    setExpandedCats(new Set(docsByCategory.map((g) => g.categoryId)));
+  }, [homeView, docsByCategory]);
 
   const level: DrillLevel = formId ? 'template' : categoryId ? 'form' : 'category';
 
@@ -106,6 +205,20 @@ export function DocListPage({
     setSearch('');
     resetDrill();
     setPickerOpen(true);
+  }
+
+  function setView(view: PenHomeView) {
+    setHomeView(view);
+    saveHomeView(session.pnIdentifier, view);
+  }
+
+  function toggleExpanded(id: string) {
+    setExpandedCats((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
   }
 
   async function createDoc(templateId: string) {
@@ -194,21 +307,63 @@ export function DocListPage({
     return [cat?.title, form?.title, t.title].filter(Boolean).join(' › ');
   }
 
+  const sortedDocs = useMemo(
+    () =>
+      [...docs].sort(
+        (a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
+      ),
+    [docs]
+  );
+
   return (
     <div className="min-h-[calc(100vh-2.5rem)] bg-stone-100">
       <div className="mx-auto max-w-3xl px-4 py-10">
-        <div className="mb-6 flex items-end justify-between gap-4">
+        <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
           <div>
             <h1 className="text-lg font-semibold text-stone-900">Documents</h1>
             <p className="text-sm text-stone-500">Open a file or start from a template.</p>
           </div>
-          <button
-            type="button"
-            onClick={openPicker}
-            className="rounded bg-stone-900 px-3 py-1.5 text-sm text-white hover:bg-stone-800"
-          >
-            New…
-          </button>
+          <div className="flex flex-wrap items-center gap-2">
+            {docs.length > 0 && (
+              <div
+                className="flex rounded border border-stone-300 bg-white text-sm"
+                role="group"
+                aria-label="Document list view"
+              >
+                <button
+                  type="button"
+                  aria-pressed={homeView === 'all'}
+                  onClick={() => setView('all')}
+                  className={`px-2.5 py-1.5 ${
+                    homeView === 'all'
+                      ? 'bg-stone-900 text-white'
+                      : 'text-stone-600 hover:bg-stone-50'
+                  }`}
+                >
+                  All
+                </button>
+                <button
+                  type="button"
+                  aria-pressed={homeView === 'category'}
+                  onClick={() => setView('category')}
+                  className={`border-l border-stone-300 px-2.5 py-1.5 ${
+                    homeView === 'category'
+                      ? 'bg-stone-900 text-white'
+                      : 'text-stone-600 hover:bg-stone-50'
+                  }`}
+                >
+                  By category
+                </button>
+              </div>
+            )}
+            <button
+              type="button"
+              onClick={openPicker}
+              className="rounded bg-stone-900 px-3 py-1.5 text-sm text-white hover:bg-stone-800"
+            >
+              New…
+            </button>
+          </div>
         </div>
 
         {docs.length === 0 ? (
@@ -222,25 +377,46 @@ export function DocListPage({
               Choose a template
             </button>
           </div>
-        ) : (
+        ) : homeView === 'all' ? (
           <ul className="divide-y divide-stone-200 overflow-hidden rounded-lg border border-stone-200 bg-white">
-            {docs.map((d) => (
-              <li key={d.docId}>
-                <Link
-                  to={`/d/${d.docId}`}
-                  className="flex items-center justify-between gap-4 px-4 py-3 hover:bg-stone-50"
-                >
-                  <div className="min-w-0">
-                    <div className="truncate font-medium text-stone-900">{d.title}</div>
-                    <div className="truncate text-xs text-stone-500">{d.templateId}</div>
-                  </div>
-                  <div className="shrink-0 text-xs text-stone-400">
-                    {new Date(d.updatedAt).toLocaleString()}
-                  </div>
-                </Link>
-              </li>
+            {sortedDocs.map((d) => (
+              <DocRow key={d.docId} d={d} />
             ))}
           </ul>
+        ) : (
+          <div className="space-y-2">
+            {docsByCategory.map((g) => {
+              const open = expandedCats.has(g.categoryId);
+              return (
+                <div
+                  key={g.categoryId}
+                  className="overflow-hidden rounded-lg border border-stone-200 bg-white"
+                >
+                  <button
+                    type="button"
+                    aria-expanded={open}
+                    onClick={() => toggleExpanded(g.categoryId)}
+                    className="flex w-full items-center justify-between gap-2 px-4 py-3 text-left hover:bg-stone-50"
+                  >
+                    <span className="font-medium text-stone-900">
+                      {g.title}
+                      <span className="ml-2 text-xs font-normal text-stone-400">
+                        {g.docs.length}
+                      </span>
+                    </span>
+                    <span className="text-stone-400">{open ? '▾' : '▸'}</span>
+                  </button>
+                  {open && (
+                    <ul className="divide-y divide-stone-100 border-t border-stone-100">
+                      {g.docs.map((d) => (
+                        <DocRow key={d.docId} d={d} />
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              );
+            })}
+          </div>
         )}
       </div>
 

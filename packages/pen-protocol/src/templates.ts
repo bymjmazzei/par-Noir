@@ -98,6 +98,18 @@ const STARTER: PenTemplate[] = [
     publishContentClass: 'collection'
   },
   {
+    id: 'set.basic.v1',
+    classId: 'social.set',
+    docType: 'set',
+    version: '1',
+    title: 'Basic Set',
+    description: 'Primary embed plus source references (refs later)',
+    sections: [
+      { slug: 'primary', title: 'Primary', required: true },
+      { slug: 'sources', title: 'Sources', required: false }
+    ]
+  },
+  {
     id: 'feed.self_hosted.v1',
     classId: 'social.feed',
     docType: 'self_hosted_feed',
@@ -122,6 +134,102 @@ const STARTER: PenTemplate[] = [
       { slug: 'index', title: 'Index', required: false }
     ],
     publishContentClass: 'note'
+  },
+  {
+    id: 'journal.basic.v1',
+    classId: 'projects.journal',
+    docType: 'journal',
+    version: '1',
+    title: 'Basic Journal',
+    description: 'Dated entries and logs',
+    sections: [{ slug: 'entries', title: 'Entries', required: true }]
+  },
+  {
+    id: 'list.basic.v1',
+    classId: 'projects.list',
+    docType: 'list',
+    version: '1',
+    title: 'Basic List',
+    description: 'Checklist or shopping list',
+    sections: [{ slug: 'items', title: 'Items', required: true }]
+  },
+  {
+    id: 'letter.basic.v1',
+    classId: 'projects.letter',
+    docType: 'letter',
+    version: '1',
+    title: 'Basic Letter',
+    description: 'Correspondence letter',
+    sections: [{ slug: 'body', title: 'Body', required: true }]
+  },
+  {
+    id: 'note.card.v1',
+    classId: 'projects.note',
+    docType: 'project_note',
+    version: '1',
+    title: 'Card Note',
+    description: 'Short correspondence note',
+    sections: [{ slug: 'body', title: 'Body', required: true }]
+  },
+  {
+    id: 'book.basic.v1',
+    classId: 'library.book',
+    docType: 'book',
+    version: '1',
+    title: 'Basic Book',
+    description: 'Front matter + body',
+    sections: [
+      { slug: 'front', title: 'Front', required: false },
+      { slug: 'body', title: 'Body', required: true }
+    ]
+  },
+  {
+    id: 'article.basic.v1',
+    classId: 'library.article',
+    docType: 'article',
+    version: '1',
+    title: 'Basic Article',
+    description: 'Durable article body',
+    sections: [{ slug: 'body', title: 'Body', required: true }]
+  },
+  {
+    id: 'calendar.basic.v1',
+    classId: 'time.calendar',
+    docType: 'calendar',
+    version: '1',
+    title: 'Basic Calendar',
+    description: 'Calendar meta and events',
+    sections: [
+      { slug: 'meta', title: 'Meta', required: true },
+      { slug: 'events', title: 'Events', required: false }
+    ]
+  },
+  {
+    id: 'event.basic.v1',
+    classId: 'time.event',
+    docType: 'event',
+    version: '1',
+    title: 'Basic Event',
+    description: 'Single dated event',
+    sections: [{ slug: 'details', title: 'Details', required: true }]
+  },
+  {
+    id: 'schedule.basic.v1',
+    classId: 'time.schedule',
+    docType: 'schedule',
+    version: '1',
+    title: 'Basic Schedule',
+    description: 'Ordered agenda',
+    sections: [{ slug: 'agenda', title: 'Agenda', required: true }]
+  },
+  {
+    id: 'register.basic.v1',
+    classId: 'records.register',
+    docType: 'register',
+    version: '1',
+    title: 'Basic Register',
+    description: 'Typed register rows (kit)',
+    sections: [{ slug: 'rows', title: 'Rows', required: true }]
   }
 ];
 
