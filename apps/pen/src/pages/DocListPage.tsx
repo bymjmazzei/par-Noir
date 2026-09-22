@@ -159,27 +159,29 @@ function DocExplorerRow({
         if (bulkMode) onToggle(d.docId);
       }}
     >
-      <td className="px-3 py-2">
-        <div className="pen-explorer-name">
-          {bulkMode && (
-            <input
-              type="checkbox"
-              checked={selected}
-              onChange={() => onToggle(d.docId)}
-              onClick={(e) => e.stopPropagation()}
-              className="h-4 w-4 shrink-0 accent-black"
-              aria-label={`Select ${d.title || 'document'}`}
-            />
-          )}
-          <FormDocIcon classId={classId} />
-          {bulkMode ? (
-            <span className="truncate font-medium text-black">{d.title || 'Untitled'}</span>
-          ) : (
-            <Link to={`/d/${d.docId}`} className="truncate font-medium text-black hover:underline">
-              {d.title || 'Untitled'}
-            </Link>
-          )}
-        </div>
+      <td className="pen-explorer-action w-10 px-2 py-2 text-center">
+        {bulkMode ? (
+          <input
+            type="checkbox"
+            checked={selected}
+            onChange={() => onToggle(d.docId)}
+            onClick={(e) => e.stopPropagation()}
+            className="h-4 w-4 accent-black"
+            aria-label={`Select ${d.title || 'document'}`}
+          />
+        ) : null}
+      </td>
+      <td className="pen-explorer-icon w-10 px-1 py-2">
+        <FormDocIcon classId={classId} />
+      </td>
+      <td className="pen-explorer-name-cell px-3 py-2">
+        {bulkMode ? (
+          <span className="truncate font-medium text-black">{d.title || 'Untitled'}</span>
+        ) : (
+          <Link to={`/d/${d.docId}`} className="truncate font-medium text-black hover:underline">
+            {d.title || 'Untitled'}
+          </Link>
+        )}
       </td>
       <td className="hidden px-3 py-2 text-xs text-black sm:table-cell">
         {category?.title || '—'}
@@ -201,7 +203,8 @@ function DocExplorerTable({
   onSort,
   bulkMode,
   selectedIds,
-  onToggle
+  onToggle,
+  onToggleBulk
 }: {
   docs: LocalDocSummary[];
   sort: ExplorerSort;
@@ -209,6 +212,7 @@ function DocExplorerTable({
   bulkMode: boolean;
   selectedIds: Set<string>;
   onToggle: (docId: string) => void;
+  onToggleBulk: () => void;
 }) {
   return (
     <div className="pen-explorer overflow-hidden" data-bulk={bulkMode ? 'true' : 'false'}>
@@ -216,6 +220,21 @@ function DocExplorerTable({
       <table className="w-full table-fixed text-left text-sm">
         <thead className="sticky top-0 text-[11px] tracking-wide">
           <tr>
+            <th className="pen-explorer-action w-10 px-2 py-2 text-center">
+              <button
+                type="button"
+                title={bulkMode ? 'Cancel selection' : 'Select to delete'}
+                aria-label={bulkMode ? 'Cancel selection' : 'Select to delete'}
+                aria-pressed={bulkMode}
+                onClick={onToggleBulk}
+                className={`inline-flex h-7 w-7 items-center justify-center ${
+                  bulkMode ? 'font-bold text-black' : 'text-neutral-600 hover:text-black'
+                }`}
+              >
+                <MinusIcon />
+              </button>
+            </th>
+            <th className="pen-explorer-icon w-10 px-1 py-2" aria-hidden />
             <SortHeader label="Name" sortKey="name" sort={sort} onSort={onSort} />
             <SortHeader
               label="Category"
@@ -802,20 +821,6 @@ export function DocListPage({
               >
                 <PlusIcon />
               </button>
-              {docs.length > 0 && (homeView === 'all' || homeView === 'category') && (
-                <button
-                  type="button"
-                  onClick={toggleBulkMode}
-                  title={bulkDeleteMode ? 'Cancel selection' : 'Select to delete'}
-                  aria-label={bulkDeleteMode ? 'Cancel selection' : 'Select to delete'}
-                  aria-pressed={bulkDeleteMode}
-                  className={`inline-flex h-8 w-8 items-center justify-center hover:opacity-60 ${
-                    bulkDeleteMode ? 'font-bold text-black' : 'text-neutral-600'
-                  }`}
-                >
-                  <MinusIcon />
-                </button>
-              )}
             </div>
             {docs.length > 0 && (
               <>
@@ -923,6 +928,7 @@ export function DocListPage({
                 bulkMode={bulkDeleteMode}
                 selectedIds={selectedIds}
                 onToggle={toggleDocSelection}
+                onToggleBulk={toggleBulkMode}
               />
             )}
             {bulkDeleteMode && (
@@ -974,6 +980,7 @@ export function DocListPage({
                           bulkMode={bulkDeleteMode}
                           selectedIds={selectedIds}
                           onToggle={toggleDocSelection}
+                          onToggleBulk={toggleBulkMode}
                         />
                       </div>
                     ))}

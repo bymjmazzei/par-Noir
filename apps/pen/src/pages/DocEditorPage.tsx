@@ -1,10 +1,11 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import type { Editor } from '@tiptap/react';
 import {
   ensureDefaultTextLayer,
   getClass,
   getTemplate,
+  hashPnIdentifier,
   hashSectionContent,
   headHashFromChain,
   normalizeSection,
@@ -24,6 +25,8 @@ import { EditablePagePreview } from '../components/EditablePagePreview';
 import { BrowseFeedTilePreview } from '../components/BrowseFeedTilePreview';
 import { SectionTocMenu, type SectionTocItem } from '../components/SectionTocMenu';
 import { PublishMenu } from '../components/PublishMenu';
+import { SaveMenu } from '../components/SaveMenu';
+import { ShareMenu } from '../components/ShareMenu';
 import { loadLocalDoc, saveLocalDoc } from '../services/penLocalStore';
 import {
   isProjectDoc,
@@ -98,6 +101,15 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
   const [invitePn, setInvitePn] = useState('');
   const [commentDraft, setCommentDraft] = useState('');
   const [status, setStatus] = useState<string | null>(null);
+  const [dirty, setDirty] = useState(false);
+  const [lastDraftAt, setLastDraftAt] = useState<string | null>(
+    () => initial?.manifest.updatedAt || null
+  );
+  const [savedTick, setSavedTick] = useState(0);
+  const bundleRef = useRef(bundle);
+  const dirtyRef = useRef(false);
+  bundleRef.current = bundle;
+  dirtyRef.current = dirty;
   const [error, setError] = useState<string | null>(null);
   const [editor, setEditor] = useState<Editor | null>(null);
   const [activeLayerId, setActiveLayerId] = useState<string | null>(null);
@@ -172,10 +184,77 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
     );
   }
 
-  function persist(next: NonNullable<typeof bundle>) {
+  function persist(next: NonNullable<typeof bundle>, opts?: { draft?: boolean }) {
+    const stamped = {
+      ...next,
+      manifest: {
+        ...next.manifest,
+        updatedAt: next.manifest.updatedAt || new Date().toISOString()
+      }
+    };
+    if (opts?.draft !== false) {
+      // Stage in memory; autosave / Save draft flushes to local store.
+      setBundle({ ...stamped });
+      setDirty(true);
+      return;
+    }
+    saveLocalDoc(session.pnIdentifier, stamped);
+    setBundle({ ...stamped });
+    setDirty(false);
+    setLastDraftAt(stamped.manifest.updatedAt);
+  }
+
+  function saveDraft(opts?: { silent?: boolean }) {
+    const current = bundleRef.current;
+    if (!current || !dirtyRef.current) return;
+    const now = new Date().toISOString();
+    const next = {
+      ...current,
+      manifest: { ...current.manifest, updatedAt: now }
+    };
     saveLocalDoc(session.pnIdentifier, next);
     setBundle({ ...next });
+    setDirty(false);
+    setLastDraftAt(now);
+    if (!opts?.silent) {
+      setStatus('Draft saved');
+      window.setTimeout(() => setStatus(null), 1500);
+    }
   }
+
+  // Idle draft autosave (~2s after last edit) + 30s while dirty.
+  useEffect(() => {
+    if (!dirty) return;
+    const idle = window.setTimeout(() => saveDraft({ silent: true }), 2000);
+    return () => window.clearTimeout(idle);
+  }, [dirty, bundle]);
+
+  useEffect(() => {
+    const tick = window.setInterval(() => {
+      if (dirtyRef.current) saveDraft({ silent: true });
+    }, 30_000);
+    const relabel = window.setInterval(() => setSavedTick((n) => n + 1), 15_000);
+    return () => {
+      window.clearInterval(tick);
+      window.clearInterval(relabel);
+    };
+  }, []);
+
+  useEffect(() => {
+    const flush = () => {
+      if (!dirtyRef.current || !bundleRef.current) return;
+      const now = new Date().toISOString();
+      saveLocalDoc(session.pnIdentifier, {
+        ...bundleRef.current,
+        manifest: { ...bundleRef.current.manifest, updatedAt: now }
+      });
+    };
+    window.addEventListener('beforeunload', flush);
+    return () => {
+      flush();
+      window.removeEventListener('beforeunload', flush);
+    };
+  }, [session.pnIdentifier]);
 
   async function promote() {
     setError(null);
@@ -208,11 +287,14 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
       const verified = verifyChain(nextChain);
       if (!verified.ok) throw new Error(verified.error);
 
-      persist({
-        manifest: { ...bundle!.manifest, updatedAt: now.toISOString() },
-        sections: bundle!.sections,
-        chain: nextChain
-      });
+      persist(
+        {
+          manifest: { ...bundle!.manifest, updatedAt: now.toISOString() },
+          sections: bundle!.sections,
+          chain: nextChain
+        },
+        { draft: false }
+      );
 
       const ciphertextB64 = bytesToB64(bytes);
       const payload = {
@@ -241,7 +323,7 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
         ...payload
       }).catch(() => null);
 
-      setStatus('Saved');
+      setStatus('Committed');
       window.setTimeout(() => setStatus(null), 2000);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'save_failed');
@@ -259,7 +341,8 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
 
   function publishSocial() {
     try {
-      writeSocialPublishHandoff(bundle!);
+      saveDraft({ silent: true });
+      writeSocialPublishHandoff(bundleRef.current || bundle!);
       setStatus('Ready — open Browse to finish publish');
       window.setTimeout(() => setStatus(null), 4000);
     } catch (e) {
@@ -446,6 +529,9 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
 
   const sidePanel = showComments;
   const projectEnabled = isProjectDoc(bundle.manifest);
+  const canCommit =
+    hashPnIdentifier(session.pnIdentifier) === bundle.chain.genesis.authorPnHash;
+  void savedTick;
 
   return (
     <div className="flex h-[calc(100vh-2.5rem)] flex-col bg-white">
@@ -472,14 +558,14 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
         </span>
         <button
           type="button"
-          className={`px-2 py-0.5 ${showPreview ? 'font-bold text-black' : 'text-neutral-400 hover:text-black'}`}
+          className={`px-2 py-0.5 ${showPreview ? 'font-bold text-black' : 'text-neutral-600 hover:text-black'}`}
           onClick={() => setShowPreview((v) => !v)}
         >
           Preview
         </button>
         <button
           type="button"
-          className={`px-2 py-0.5 ${showComments ? 'font-bold text-black' : 'text-neutral-400 hover:text-black'}`}
+          className={`px-2 py-0.5 ${showComments ? 'font-bold text-black' : 'text-neutral-600 hover:text-black'}`}
           onClick={() => {
             setShowComments((v) => !v);
             setShowHistory(false);
@@ -489,7 +575,7 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
         </button>
         <button
           type="button"
-          className={`px-2 py-0.5 ${showHistory ? 'font-bold text-black' : 'text-neutral-400 hover:text-black'}`}
+          className={`px-2 py-0.5 ${showHistory ? 'font-bold text-black' : 'text-neutral-600 hover:text-black'}`}
           onClick={() => {
             setShowHistory((v) => !v);
             setShowComments(false);
@@ -497,13 +583,22 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
         >
           History
         </button>
-        <button
-          type="button"
-          className="rounded bg-stone-800 px-2.5 py-0.5 text-white hover:bg-stone-700"
-          onClick={promote}
-        >
-          Save
-        </button>
+        <ShareMenu
+          docId={docId}
+          invitePn={invitePn}
+          onInvitePnChange={setInvitePn}
+          onInvite={() => {
+            inviteCollaborator();
+          }}
+        />
+        <SaveMenu
+          canCommit={canCommit}
+          dirty={dirty}
+          lastDraftAt={lastDraftAt}
+          onSaveDraft={() => saveDraft()}
+          onCommit={() => void promote()}
+          onSuggest={() => void proposeSuggestion()}
+        />
         <PublishMenu
           projectEnabled={projectEnabled}
           onSocial={publishSocial}
@@ -555,21 +650,6 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
               <pre className="overflow-auto rounded bg-stone-50 p-3 text-xs">
                 {JSON.stringify(bundle.chain, null, 2)}
               </pre>
-              <div className="mt-4 flex gap-2">
-                <input
-                  className="flex-1 rounded border border-stone-300 px-2 py-1 text-sm"
-                  placeholder="Invite pn…"
-                  value={invitePn}
-                  onChange={(e) => setInvitePn(e.target.value)}
-                />
-                <button
-                  type="button"
-                  className="rounded bg-stone-800 px-3 py-1 text-sm text-white"
-                  onClick={inviteCollaborator}
-                >
-                  Invite
-                </button>
-              </div>
               {pendingSuggestions.length > 0 && (
                 <div className="mt-4 space-y-2">
                 <button

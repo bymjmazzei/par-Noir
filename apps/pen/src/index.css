@@ -578,14 +578,19 @@ body {
   color: #000;
 }
 
-.pen-explorer-name {
-  display: flex;
-  min-width: 0;
-  align-items: center;
-  gap: 0.65rem;
+.pen-explorer-name-cell {
+  padding-left: 0.75rem;
 }
 
-/* Continuous red double rule: header → last row (not per-cell segments) */
+.pen-explorer-action {
+  width: 2.5rem;
+}
+
+.pen-explorer-icon {
+  width: 2.5rem;
+}
+
+/* Continuous red double rule: after icon col, +5px gap before name */
 .pen-explorer-rail {
   position: absolute;
   top: 0;
@@ -595,16 +600,10 @@ body {
   border-right: 1.5px solid #dc2626;
   pointer-events: none;
   z-index: 2;
+  /* action(2.5) + icon(2.5) + 5px gap ≈ 5.3rem */
+  left: 5.3rem;
 }
 
-.pen-explorer[data-bulk='false'] {
-  --pen-rail-left: 2.85rem;
-}
-
-.pen-explorer[data-bulk='true'] {
-  --pen-rail-left: 4.35rem;
-}
-
-.pen-explorer-rail {
-  left: var(--pen-rail-left);
+.pen-explorer-name-cell {
+  padding-left: calc(0.75rem + 5px);
 }
