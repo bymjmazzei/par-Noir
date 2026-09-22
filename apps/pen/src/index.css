@@ -658,20 +658,19 @@ body {
 }
 
 /*
- * Title-row rules — ONE source for both views:
- *   ::before → line above title row (y = 0)
- *   ::after  → line under title row (y = head-h) + pitch lines below
- * Gallery-head / thead are spacers only (no borders, no shadows).
+ * NO line under My Library header.
+ * ONE line under the title row (NAME / gallery colhead), then pitch lines.
+ * Under-title line uses z-index above thead white so it is not covered.
  */
 .pen-library-sheet::before {
   content: '';
   position: absolute;
   left: 0;
   right: 0;
-  top: 0;
+  top: var(--pen-explorer-head-h);
   border-top: 1px solid var(--pen-rule-blue);
   pointer-events: none;
-  z-index: 4;
+  z-index: 6;
 }
 
 .pen-library-sheet::after {
@@ -683,10 +682,10 @@ body {
   bottom: 0;
   background-image: repeating-linear-gradient(
     to bottom,
-    var(--pen-rule-blue) 0,
-    var(--pen-rule-blue) 1px,
-    transparent 1px,
-    transparent var(--pen-rule-pitch)
+    transparent 0,
+    transparent calc(var(--pen-rule-pitch) - 1px),
+    var(--pen-rule-blue) calc(var(--pen-rule-pitch) - 1px),
+    var(--pen-rule-blue) var(--pen-rule-pitch)
   );
   pointer-events: none;
   z-index: 0;
@@ -697,7 +696,7 @@ body {
   z-index: 1;
 }
 
-/* Title-row spacer only — lines come from .pen-library-sheet pseudos */
+/* Title-row spacer only — underline is sheet::before */
 .pen-gallery-head,
 .pen-library-colhead {
   flex-shrink: 0;
