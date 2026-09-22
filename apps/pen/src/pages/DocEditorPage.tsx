@@ -164,7 +164,7 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
 
   if (!bundle || !section || !canvasSection) {
     return (
-      <div className="flex min-h-[60vh] items-center justify-center bg-stone-200">
+      <div className="flex min-h-[60vh] items-center justify-center bg-white">
         <div className="text-center">
           <p className="text-stone-600">Document not found.</p>
           <Link to="/" className="mt-2 inline-block text-sm text-sky-700 underline">
@@ -451,13 +451,13 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
   const projectEnabled = isProjectDoc(bundle.manifest);
 
   return (
-    <div className="flex h-[calc(100vh-2.5rem)] flex-col bg-stone-300">
-      <div className="flex h-9 shrink-0 items-center gap-2 border-b border-stone-400 bg-stone-100 px-2 text-[13px]">
-        <Link to="/" className="px-1 text-stone-600 hover:text-stone-900">
+    <div className="flex h-[calc(100vh-2.5rem)] flex-col bg-white">
+      <div className="flex h-9 shrink-0 items-center gap-2 border-b border-neutral-200 bg-white px-2 text-[13px]">
+        <Link to="/" className="px-1 text-neutral-400 hover:text-black">
           ←
         </Link>
         <input
-          className="min-w-0 flex-1 truncate bg-transparent font-medium text-stone-900 outline-none"
+          className="min-w-0 flex-1 truncate bg-transparent font-bold text-black outline-none"
           value={bundle.manifest.title}
           onChange={(e) =>
             persist({
@@ -470,19 +470,19 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
             })
           }
         />
-        <span className="hidden max-w-[40%] truncate text-[11px] text-stone-500 sm:inline">
+        <span className="hidden max-w-[40%] truncate text-[11px] text-neutral-400 sm:inline">
           {classTrail}
         </span>
         <button
           type="button"
-          className={`rounded px-2 py-0.5 ${showPreview ? 'bg-white shadow-sm' : 'hover:bg-stone-200'}`}
+          className={`px-2 py-0.5 ${showPreview ? 'font-bold text-black' : 'text-neutral-400 hover:text-black'}`}
           onClick={() => setShowPreview((v) => !v)}
         >
           Preview
         </button>
         <button
           type="button"
-          className={`rounded px-2 py-0.5 ${showComments ? 'bg-white shadow-sm' : 'hover:bg-stone-200'}`}
+          className={`px-2 py-0.5 ${showComments ? 'font-bold text-black' : 'text-neutral-400 hover:text-black'}`}
           onClick={() => {
             setShowComments((v) => !v);
             setShowHistory(false);
@@ -492,7 +492,7 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
         </button>
         <button
           type="button"
-          className={`rounded px-2 py-0.5 ${showHistory ? 'bg-white shadow-sm' : 'hover:bg-stone-200'}`}
+          className={`px-2 py-0.5 ${showHistory ? 'font-bold text-black' : 'text-neutral-400 hover:text-black'}`}
           onClick={() => {
             setShowHistory((v) => !v);
             setShowComments(false);

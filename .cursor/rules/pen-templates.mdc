@@ -38,7 +38,7 @@ Structured/relational personal data (sheets, standard data points) may be additi
 - **Editable page** right pane (non-social): `LayoutSurface` for **overlay** text/image layers only (absolute % rects; move/resize)—not HTML-only preview, not dashboard tiles.
 - **Quark-like** = templates + page layer overlay surface (Product C). Home **Dashboard** is a separate packed grid (Product A: col/row swap), not `LayoutSurface`.
 - New document picker: category drill-down, optional pin/show-all, catalog search, **Yours** personal templates (consumer classes only).
-- Home: **All** | **Category** | **Dashboard** (default 2×2: Calendar, Schedule, To-do, Recent notes; drag swaps cells); list/gallery as icon toggle under the view selector; **+** opens New… above the view selector.
+- Home: **My Library** — **All** | **Category** | **Dashboard** (plain text; active bold); **+** / **−** (bulk select delete, same idea as dashboard storage / browse upload); list/gallery icon toggle; notebook explorer (blue row rules, red double margin).
 
 ## Storage / collab invariants
 

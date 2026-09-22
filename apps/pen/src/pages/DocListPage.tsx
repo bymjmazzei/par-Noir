@@ -12,7 +12,11 @@ import {
   type PenTemplate
 } from '@par-noir/pen-protocol';
 import type { PenSession } from '../App';
-import type { LocalDocSummary } from '../services/penLocalStore';
+import {
+  deleteLocalDocs,
+  loadLocalDoc,
+  type LocalDocSummary
+} from '../services/penLocalStore';
 import { fetchPenCatalog, fetchStorageTier } from '../services/penApi';
 import {
   loadBrowseDensity,
@@ -34,7 +38,6 @@ import {
 import { PenDashboard } from '../components/dashboard/PenDashboard';
 import { FormDocIcon } from '../components/FormDocIcon';
 import { TemplateLivePreview } from '../components/TemplateLivePreview';
-import { loadLocalDoc } from '../services/penLocalStore';
 
 type DrillLevel = 'category' | 'form' | 'template';
 
@@ -119,12 +122,12 @@ function SortHeader({
   const active = sort.key === sortKey;
   const arrow = active ? (sort.dir === 'asc' ? ' ↑' : ' ↓') : '';
   return (
-    <th className={`${className} px-3 py-2 font-semibold ${align === 'right' ? 'text-right' : ''}`}>
+    <th className={`${className} px-3 py-2 ${align === 'right' ? 'text-right' : ''}`}>
       <button
         type="button"
         onClick={() => onSort(sortKey)}
-        className={`inline-flex items-center gap-0.5 uppercase tracking-wide hover:text-stone-800 ${
-          active ? 'text-stone-800' : 'text-stone-500'
+        className={`inline-flex items-center gap-0.5 text-[11px] uppercase tracking-wide ${
+          active ? 'font-bold text-black' : 'font-normal text-neutral-400'
         } ${align === 'right' ? 'ml-auto' : ''}`}
       >
         {label}
@@ -134,26 +137,58 @@ function SortHeader({
   );
 }
 
-function DocExplorerRow({ d }: { d: LocalDocSummary }) {
+function DocExplorerRow({
+  d,
+  bulkMode,
+  selected,
+  onToggle
+}: {
+  d: LocalDocSummary;
+  bulkMode: boolean;
+  selected: boolean;
+  onToggle: (docId: string) => void;
+}) {
   const classId = resolveDocClassId(d);
   const form = classId ? getClass(classId) : undefined;
   const category = form?.parentId ? getClass(form.parentId) : undefined;
   return (
-    <tr className="border-b border-stone-100 hover:bg-stone-50/80">
+    <tr
+      className={`${selected ? 'bg-blue-50/40' : ''} hover:bg-neutral-50`}
+      onClick={() => {
+        if (bulkMode) onToggle(d.docId);
+      }}
+    >
       <td className="px-3 py-2">
-        <Link to={`/d/${d.docId}`} className="flex min-w-0 items-center gap-2.5">
+        <div className="pen-explorer-name">
+          {bulkMode && (
+            <input
+              type="checkbox"
+              checked={selected}
+              onChange={() => onToggle(d.docId)}
+              onClick={(e) => e.stopPropagation()}
+              className="h-4 w-4 shrink-0 accent-black"
+              aria-label={`Select ${d.title || 'document'}`}
+            />
+          )}
           <FormDocIcon classId={classId} />
-          <span className="truncate font-medium text-stone-900">{d.title || 'Untitled'}</span>
-        </Link>
+          <span className="pen-explorer-margin" aria-hidden />
+          {bulkMode ? (
+            <span className="truncate font-medium text-black">{d.title || 'Untitled'}</span>
+          ) : (
+            <Link to={`/d/${d.docId}`} className="truncate font-medium text-black hover:underline">
+              {d.title || 'Untitled'}
+            </Link>
+          )}
+        </div>
       </td>
-      <td className="hidden px-3 py-2 text-xs text-stone-500 sm:table-cell">
+      <td className="hidden px-3 py-2 text-xs text-neutral-500 sm:table-cell">
         {category?.title || '—'}
       </td>
-      <td className="hidden px-3 py-2 text-xs text-stone-500 md:table-cell">
+      <td className="hidden px-3 py-2 text-xs text-neutral-500 md:table-cell">
         {form?.title || '—'}
       </td>
-      <td className="hidden px-3 py-2 text-xs text-stone-400 lg:table-cell">{d.templateId}</td>
-      <td className="whitespace-nowrap px-3 py-2 text-right text-xs text-stone-400">
+      <td className="hidden px-3 py-2 text-xs text-neutral-400 lg:table-cell">{d.templateId}</td>
+      <td className="whitespace-nowrap px-3 py-2 text-right text-xs text-neutral-400">
         {new Date(d.updatedAt).toLocaleString()}
       </td>
     </tr>
@@ -163,16 +198,22 @@ function DocExplorerRow({ d }: { d: LocalDocSummary }) {
 function DocExplorerTable({
   docs,
   sort,
-  onSort
+  onSort,
+  bulkMode,
+  selectedIds,
+  onToggle
 }: {
   docs: LocalDocSummary[];
   sort: ExplorerSort;
   onSort: (key: ExplorerSortKey) => void;
+  bulkMode: boolean;
+  selectedIds: Set<string>;
+  onToggle: (docId: string) => void;
 }) {
   return (
-    <div className="overflow-hidden rounded-lg border border-stone-300 bg-white shadow-sm">
+    <div className="pen-explorer overflow-hidden">
       <table className="w-full table-fixed text-left text-sm">
-        <thead className="sticky top-0 bg-stone-100 text-[11px] tracking-wide">
+        <thead className="sticky top-0 text-[11px] tracking-wide">
           <tr>
             <SortHeader label="Name" sortKey="name" sort={sort} onSort={onSort} />
             <SortHeader
@@ -208,7 +249,13 @@ function DocExplorerTable({
         </thead>
         <tbody>
           {docs.map((d) => (
-            <DocExplorerRow key={d.docId} d={d} />
+            <DocExplorerRow
+              key={d.docId}
+              d={d}
+              bulkMode={bulkMode}
+              selected={selectedIds.has(d.docId)}
+              onToggle={onToggle}
+            />
           ))}
         </tbody>
       </table>
@@ -248,21 +295,44 @@ function PlusIcon() {
   );
 }
 
+function MinusIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden>
+      <path d="M5 12h14" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" />
+    </svg>
+  );
+}
+
 function DocGalleryCard({
   pn,
-  d
+  d,
+  bulkMode,
+  selected,
+  onToggle
 }: {
   pn: string;
   d: LocalDocSummary;
+  bulkMode: boolean;
+  selected: boolean;
+  onToggle: (docId: string) => void;
 }) {
   const bundle = loadLocalDoc(pn, d.docId);
   const classId = resolveDocClassId(d);
-  return (
-    <Link
-      to={`/d/${d.docId}`}
-      className="group flex flex-col overflow-hidden rounded-xl border border-stone-200 bg-white shadow-sm transition hover:border-stone-400 hover:shadow-md"
-    >
-      <div className="relative h-48 overflow-hidden bg-stone-100">
+  const body = (
+    <>
+      <div className="relative h-48 overflow-hidden bg-neutral-50">
+        {bulkMode && (
+          <div className="absolute left-2 top-2 z-10">
+            <input
+              type="checkbox"
+              checked={selected}
+              onChange={() => onToggle(d.docId)}
+              onClick={(e) => e.stopPropagation()}
+              className="h-4 w-4 accent-black"
+              aria-label={`Select ${d.title || 'document'}`}
+            />
+          </div>
+        )}
         {bundle ? (
           <div className="pointer-events-none absolute inset-0 flex justify-center overflow-hidden pt-2">
             <TemplateLivePreview
@@ -272,30 +342,116 @@ function DocGalleryCard({
             />
           </div>
         ) : (
-          <div className="flex h-full items-center justify-center text-xs text-stone-400">
+          <div className="flex h-full items-center justify-center text-xs text-neutral-400">
             No preview
           </div>
         )}
       </div>
-      <div className="flex items-center gap-2 border-t border-stone-100 px-3 py-2">
+      <div className="flex items-center gap-2 border-t border-blue-500 px-3 py-2">
         <FormDocIcon classId={classId} />
+        <span className="pen-explorer-margin" aria-hidden />
         <div className="min-w-0 flex-1">
-          <div className="truncate text-sm font-medium text-stone-900">{d.title}</div>
-          <div className="truncate text-[11px] text-stone-400">
+          <div className="truncate text-sm font-medium text-black">{d.title}</div>
+          <div className="truncate text-[11px] text-neutral-400">
             {getClass(classId || '')?.title || d.templateId}
           </div>
         </div>
       </div>
+    </>
+  );
+
+  if (bulkMode) {
+    return (
+      <button
+        type="button"
+        onClick={() => onToggle(d.docId)}
+        className={`flex flex-col overflow-hidden text-left ${
+          selected ? 'ring-2 ring-black' : ''
+        }`}
+      >
+        {body}
+      </button>
+    );
+  }
+
+  return (
+    <Link to={`/d/${d.docId}`} className="group flex flex-col overflow-hidden">
+      {body}
     </Link>
   );
 }
 
-function DocGalleryGrid({ pn, docs }: { pn: string; docs: LocalDocSummary[] }) {
+function DocGalleryGrid({
+  pn,
+  docs,
+  bulkMode,
+  selectedIds,
+  onToggle
+}: {
+  pn: string;
+  docs: LocalDocSummary[];
+  bulkMode: boolean;
+  selectedIds: Set<string>;
+  onToggle: (docId: string) => void;
+}) {
   return (
     <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
       {docs.map((d) => (
-        <DocGalleryCard key={d.docId} pn={pn} d={d} />
+        <DocGalleryCard
+          key={d.docId}
+          pn={pn}
+          d={d}
+          bulkMode={bulkMode}
+          selected={selectedIds.has(d.docId)}
+          onToggle={onToggle}
+        />
       ))}
+    </div>
+  );
+}
+
+function BulkDeleteBar({
+  visibleDocs,
+  selectedIds,
+  onSelectAll,
+  onDelete,
+  onCancel
+}: {
+  visibleDocs: LocalDocSummary[];
+  selectedIds: Set<string>;
+  onSelectAll: () => void;
+  onDelete: () => void;
+  onCancel: () => void;
+}) {
+  const selectedCount = visibleDocs.filter((d) => selectedIds.has(d.docId)).length;
+  const allSelected = visibleDocs.length > 0 && selectedCount === visibleDocs.length;
+  return (
+    <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-blue-500 pt-4">
+      <div className="flex items-center gap-3 text-sm">
+        <button
+          type="button"
+          onClick={onSelectAll}
+          className="font-bold text-black hover:opacity-60"
+        >
+          {allSelected ? 'Deselect all' : 'Select all'}
+        </button>
+        <span className="text-neutral-400">
+          {selectedCount} selected
+        </span>
+      </div>
+      <div className="flex items-center gap-4 text-sm">
+        <button type="button" onClick={onCancel} className="text-neutral-400 hover:text-black">
+          Cancel
+        </button>
+        <button
+          type="button"
+          onClick={onDelete}
+          disabled={selectedCount === 0}
+          className="font-bold text-red-600 hover:opacity-70 disabled:opacity-30"
+        >
+          Delete ({selectedCount})
+        </button>
+      </div>
     </div>
   );
 }
@@ -333,6 +489,8 @@ export function DocListPage({
   );
   const [expandedCats, setExpandedCats] = useState<Set<string>>(() => new Set());
   const [explorerSort, setExplorerSort] = useState<ExplorerSort>(DEFAULT_EXPLORER_SORT);
+  const [bulkDeleteMode, setBulkDeleteMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
 
   useEffect(() => {
     fetchPenCatalog(session.accessToken)
@@ -458,6 +616,50 @@ export function DocListPage({
     });
   }
 
+  function toggleBulkMode() {
+    setBulkDeleteMode((prev) => {
+      if (prev) setSelectedIds(new Set());
+      return !prev;
+    });
+  }
+
+  function toggleDocSelection(docId: string) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(docId)) next.delete(docId);
+      else next.add(docId);
+      return next;
+    });
+  }
+
+  function selectAllVisible(visible: LocalDocSummary[]) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      const allSelected = visible.every((d) => next.has(d.docId));
+      if (allSelected) {
+        visible.forEach((d) => next.delete(d.docId));
+      } else {
+        visible.forEach((d) => next.add(d.docId));
+      }
+      return next;
+    });
+  }
+
+  function confirmBulkDelete() {
+    const ids = Array.from(selectedIds);
+    if (!ids.length) return;
+    const ok = window.confirm(
+      ids.length === 1
+        ? 'Delete this document? This cannot be undone.'
+        : `Delete ${ids.length} documents? This cannot be undone.`
+    );
+    if (!ok) return;
+    deleteLocalDocs(session.pnIdentifier, ids);
+    setSelectedIds(new Set());
+    setBulkDeleteMode(false);
+    onDocsChange();
+  }
+
   function toggleExpanded(id: string) {
     setExpandedCats((prev) => {
       const next = new Set(prev);
@@ -528,77 +730,78 @@ export function DocListPage({
   );
 
   return (
-    <div className="min-h-[calc(100vh-2.5rem)] bg-stone-100">
-      <div
-        className={`mx-auto px-4 py-10 ${
-          homeView === 'dashboard' ? 'max-w-5xl' : 'max-w-5xl'
-        }`}
-      >
+    <div className="min-h-[calc(100vh-2.5rem)] bg-white">
+      <div className="mx-auto max-w-5xl px-4 py-10">
         <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
           <div>
-            <h1 className="text-lg font-semibold text-stone-900">Documents</h1>
-            <p className="text-sm text-stone-500">Open a file or start from a template.</p>
+            <h1 className="text-lg font-bold text-black">My Library</h1>
+            <p className="text-sm text-neutral-500">Open a file or start from a template.</p>
           </div>
           <div className="flex flex-col items-end gap-1.5">
-            <button
-              type="button"
-              onClick={openPicker}
-              title="New document"
-              aria-label="New document"
-              className="inline-flex h-8 w-8 items-center justify-center rounded bg-stone-900 text-white hover:bg-stone-800"
-            >
-              <PlusIcon />
-            </button>
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                onClick={openPicker}
+                title="New document"
+                aria-label="New document"
+                className="inline-flex h-8 w-8 items-center justify-center text-black hover:opacity-60"
+              >
+                <PlusIcon />
+              </button>
+              {docs.length > 0 && (homeView === 'all' || homeView === 'category') && (
+                <button
+                  type="button"
+                  onClick={toggleBulkMode}
+                  title={bulkDeleteMode ? 'Cancel selection' : 'Select to delete'}
+                  aria-label={bulkDeleteMode ? 'Cancel selection' : 'Select to delete'}
+                  aria-pressed={bulkDeleteMode}
+                  className={`inline-flex h-8 w-8 items-center justify-center hover:opacity-60 ${
+                    bulkDeleteMode ? 'font-bold text-black' : 'text-neutral-400'
+                  }`}
+                >
+                  <MinusIcon />
+                </button>
+              )}
+            </div>
             {docs.length > 0 && (
               <>
                 <div
-                  className="flex rounded border border-stone-300 bg-white text-sm"
+                  className="flex items-center gap-0 text-sm"
                   role="group"
                   aria-label="Document list view"
                 >
-                  <button
-                    type="button"
-                    aria-pressed={homeView === 'all'}
-                    onClick={() => setView('all')}
-                    className={`px-2.5 py-1.5 ${
-                      homeView === 'all'
-                        ? 'bg-stone-900 text-white'
-                        : 'text-stone-600 hover:bg-stone-50'
-                    }`}
-                  >
-                    All
-                  </button>
-                  <button
-                    type="button"
-                    aria-pressed={homeView === 'category'}
-                    onClick={() => setView('category')}
-                    className={`border-l border-stone-300 px-2.5 py-1.5 ${
-                      homeView === 'category'
-                        ? 'bg-stone-900 text-white'
-                        : 'text-stone-600 hover:bg-stone-50'
-                    }`}
-                  >
-                    Category
-                  </button>
-                  <button
-                    type="button"
-                    aria-pressed={homeView === 'dashboard'}
-                    onClick={() => setView('dashboard')}
-                    className={`border-l border-stone-300 px-2.5 py-1.5 ${
-                      homeView === 'dashboard'
-                        ? 'bg-stone-900 text-white'
-                        : 'text-stone-600 hover:bg-stone-50'
-                    }`}
-                  >
-                    Dashboard
-                  </button>
+                  {(
+                    [
+                      ['all', 'All'],
+                      ['category', 'Category'],
+                      ['dashboard', 'Dashboard']
+                    ] as const
+                  ).map(([id, label], i) => (
+                    <span key={id} className="flex items-center">
+                      {i > 0 && <span className="px-2 text-neutral-300">|</span>}
+                      <button
+                        type="button"
+                        aria-pressed={homeView === id}
+                        onClick={() => {
+                          setView(id);
+                          if (id === 'dashboard') {
+                            setBulkDeleteMode(false);
+                            setSelectedIds(new Set());
+                          }
+                        }}
+                        className={
+                          homeView === id
+                            ? 'font-bold text-black'
+                            : 'font-normal text-neutral-400 hover:text-neutral-600'
+                        }
+                      >
+                        {label}
+                      </button>
+                    </span>
+                  ))}
                 </div>
                 {(homeView === 'all' || homeView === 'category') && (
-                  <div
-                    className="flex rounded border border-stone-300 bg-white"
-                    role="group"
-                    aria-label="Browse density"
-                  >
+                  <div className="flex items-center gap-3" role="group" aria-label="Browse density">
                     <button
                       type="button"
                       title="List"
@@ -607,8 +810,8 @@ export function DocListPage({
                       onClick={() => setDensity('list')}
                       className={`inline-flex h-8 w-8 items-center justify-center ${
                         browseDensity === 'list'
-                          ? 'bg-stone-800 text-white'
-                          : 'text-stone-600 hover:bg-stone-50'
+                          ? 'font-bold text-black'
+                          : 'text-neutral-400 hover:text-neutral-600'
                       }`}
                     >
                       <ListIcon />
@@ -619,10 +822,10 @@ export function DocListPage({
                       aria-label="Gallery view"
                       aria-pressed={browseDensity === 'gallery'}
                       onClick={() => setDensity('gallery')}
-                      className={`inline-flex h-8 w-8 items-center justify-center border-l border-stone-300 ${
+                      className={`inline-flex h-8 w-8 items-center justify-center ${
                         browseDensity === 'gallery'
-                          ? 'bg-stone-800 text-white'
-                          : 'text-stone-600 hover:bg-stone-50'
+                          ? 'font-bold text-black'
+                          : 'text-neutral-400 hover:text-neutral-600'
                       }`}
                     >
                       <GalleryIcon />
@@ -635,11 +838,11 @@ export function DocListPage({
         </div>
 
         {docs.length === 0 ? (
-          <div className="rounded-lg border border-dashed border-stone-300 bg-white px-6 py-16 text-center">
-            <p className="text-stone-600">No documents yet.</p>
+          <div className="px-6 py-16 text-center">
+            <p className="text-neutral-500">No documents yet.</p>
             <button
               type="button"
-              className="mt-4 text-sm text-sky-700 underline"
+              className="mt-4 text-sm font-bold text-black underline"
               onClick={openPicker}
             >
               Choose a template
@@ -648,15 +851,35 @@ export function DocListPage({
         ) : homeView === 'dashboard' ? (
           <PenDashboard session={session} docs={docs} onDocsChange={onDocsChange} />
         ) : homeView === 'all' ? (
-          browseDensity === 'gallery' ? (
-            <DocGalleryGrid pn={session.pnIdentifier} docs={sortedDocs} />
-          ) : (
-            <DocExplorerTable
-              docs={sortedDocs}
-              sort={explorerSort}
-              onSort={cycleExplorerSort}
-            />
-          )
+          <>
+            {browseDensity === 'gallery' ? (
+              <DocGalleryGrid
+                pn={session.pnIdentifier}
+                docs={sortedDocs}
+                bulkMode={bulkDeleteMode}
+                selectedIds={selectedIds}
+                onToggle={toggleDocSelection}
+              />
+            ) : (
+              <DocExplorerTable
+                docs={sortedDocs}
+                sort={explorerSort}
+                onSort={cycleExplorerSort}
+                bulkMode={bulkDeleteMode}
+                selectedIds={selectedIds}
+                onToggle={toggleDocSelection}
+              />
+            )}
+            {bulkDeleteMode && (
+              <BulkDeleteBar
+                visibleDocs={sortedDocs}
+                selectedIds={selectedIds}
+                onSelectAll={() => selectAllVisible(sortedDocs)}
+                onDelete={confirmBulkDelete}
+                onCancel={toggleBulkMode}
+              />
+            )}
+          </>
         ) : (
           <div className="space-y-1">
             {sortedDocsByCategory.map((g) => {
@@ -667,18 +890,24 @@ export function DocListPage({
                     type="button"
                     aria-expanded={open}
                     onClick={() => toggleExpanded(g.categoryId)}
-                    className="flex w-full items-center gap-2 py-2 text-left text-sm hover:text-stone-900"
+                    className="flex w-full items-center gap-2 py-2 text-left text-sm"
                   >
-                    <span className="w-3 shrink-0 text-stone-400" aria-hidden>
+                    <span className="w-3 shrink-0 text-neutral-400" aria-hidden>
                       {open ? '▾' : '▸'}
                     </span>
-                    <span className="font-medium text-stone-800">{g.title}</span>
-                    <span className="text-xs text-stone-400">{g.docs.length}</span>
+                    <span className="font-bold text-black">{g.title}</span>
+                    <span className="text-xs text-neutral-400">{g.docs.length}</span>
                   </button>
                   {open &&
                     (browseDensity === 'gallery' ? (
                       <div className="pb-3 pl-5">
-                        <DocGalleryGrid pn={session.pnIdentifier} docs={g.docs} />
+                        <DocGalleryGrid
+                          pn={session.pnIdentifier}
+                          docs={g.docs}
+                          bulkMode={bulkDeleteMode}
+                          selectedIds={selectedIds}
+                          onToggle={toggleDocSelection}
+                        />
                       </div>
                     ) : (
                       <div className="pb-3 pl-5">
@@ -686,12 +915,26 @@ export function DocListPage({
                           docs={g.docs}
                           sort={explorerSort}
                           onSort={cycleExplorerSort}
+                          bulkMode={bulkDeleteMode}
+                          selectedIds={selectedIds}
+                          onToggle={toggleDocSelection}
                         />
                       </div>
                     ))}
                 </div>
               );
             })}
+            {bulkDeleteMode && (
+              <BulkDeleteBar
+                visibleDocs={sortedDocsByCategory.flatMap((g) => g.docs)}
+                selectedIds={selectedIds}
+                onSelectAll={() =>
+                  selectAllVisible(sortedDocsByCategory.flatMap((g) => g.docs))
+                }
+                onDelete={confirmBulkDelete}
+                onCancel={toggleBulkMode}
+              />
+            )}
           </div>
         )}
       </div>

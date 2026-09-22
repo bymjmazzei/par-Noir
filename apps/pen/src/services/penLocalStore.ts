@@ -80,4 +80,43 @@ export function saveLocalDoc(pn: string, bundle: LocalDocBundle): void {
   }
 }
 
+export function deleteLocalDoc(pn: string, docId: string): void {
+  localStorage.removeItem(`${prefix(pn)}:doc:${docId}`);
+  saveIndex(
+    pn,
+    listLocalDocs(pn).filter((d) => d.docId !== docId)
+  );
+  try {
+    window.dispatchEvent(
+      new CustomEvent('pen-doc-updated', {
+        detail: { pn, docId, deleted: true }
+      })
+    );
+  } catch {
+    /* non-browser */
+  }
+}
+
+export function deleteLocalDocs(pn: string, docIds: string[]): void {
+  const remove = new Set(docIds);
+  for (const id of remove) {
+    localStorage.removeItem(`${prefix(pn)}:doc:${id}`);
+  }
+  saveIndex(
+    pn,
+    listLocalDocs(pn).filter((d) => !remove.has(d.docId))
+  );
+  try {
+    for (const id of remove) {
+      window.dispatchEvent(
+        new CustomEvent('pen-doc-updated', {
+          detail: { pn, docId: id, deleted: true }
+        })
+      );
+    }
+  } catch {
+    /* non-browser */
+  }
+}
+
 export const PEN_DOC_UPDATED_EVENT = 'pen-doc-updated';

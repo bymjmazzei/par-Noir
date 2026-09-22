@@ -790,7 +790,7 @@ export function PageThumbGrid({
   onSelect: (slug: string) => void;
 }) {
   return (
-    <div className="flex h-full flex-col gap-2 overflow-y-auto bg-stone-200/80 p-2">
+    <div className="flex h-full flex-col gap-2 overflow-y-auto bg-white p-2">
       <div className="px-1 text-[10px] font-semibold uppercase tracking-wider text-stone-500">
         Pages
       </div>
