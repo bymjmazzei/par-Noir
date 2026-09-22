@@ -1,5 +1,5 @@
 /**
- * Locked Pen — same chrome + notebook rules as My Library; unlock opens the library.
+ * Locked Pen — title card, then ruled notebook sheet with in-line copy.
  */
 
 import type { ReactNode } from 'react';
@@ -8,37 +8,38 @@ import { API_ENDPOINT, PN_CLIENT_ID } from '../config/api';
 
 const CHECKLIST = [
   'Author anything',
-  'Collaborate encrypted',
-  'Publish to the network'
+  'encrypted collaboration',
+  'customize your feed posts',
+  'publish to your networks'
 ] as const;
 
 const LOGO_SRC = './branding/Par-Noir-Logo-Black.png';
 
-/** Irregular ink outline so the CTA reads hand-drawn, not a system button. */
+/** Rectangular hand-ink outline for the unlock CTA. */
 function HandDrawnOutline() {
   return (
     <svg
       className="pen-locked-cta-outline"
-      viewBox="0 0 320 52"
+      viewBox="0 0 140 44"
       preserveAspectRatio="none"
       aria-hidden
     >
       <path
-        d="M14 12.5c22-5.5 78-9 148-8.5 52 .4 98 3.2 128 7.2 7.2 1 14.5 4.2 16.2 10.2 1.6 5.6-2.4 11.4-9.2 14.6-12.8 6-48 9.4-106 10.4-62 1-128-1.2-168-6.8C12 37.2 5.2 32.4 4.4 25.6 3.5 17.8 8.2 13.6 14 12.5Z"
+        d="M6.5 5.5h126.5c1.4.2 2.6 1.1 3.1 2.4.4 1.1.2 2.4-.6 3.3v24.2c.2 1.6-.6 3.1-2 3.8-1 .5-2.2.6-3.3.5H8.2c-1.8-.1-3.4-1.2-4-2.9-.3-1-.2-2.1.2-3V10.1C4 7.8 5.1 6 6.5 5.5Z"
         fill="none"
         stroke="currentColor"
-        strokeWidth="2.2"
+        strokeWidth="2.15"
         strokeLinecap="round"
         strokeLinejoin="round"
         vectorEffect="non-scaling-stroke"
       />
       <path
-        d="M18 13.2c28-4.8 86-7.6 150-7 48 .5 92 2.8 120 6.4"
+        d="M8 6.2h121.5M7.2 37.4h122.8"
         fill="none"
         stroke="currentColor"
-        strokeWidth="1"
+        strokeWidth="0.95"
         strokeLinecap="round"
-        opacity="0.4"
+        opacity="0.35"
       />
     </svg>
   );
@@ -85,15 +86,57 @@ export function PenLockedLanding({
         />
       </header>
 
-      <div className="pen-locked-page-body flex flex-col">
-        <div className="pen-library-page bg-white">
+      <div className="pen-locked-page-body">
+        <div className="pen-library-page pen-locked-library bg-white">
           <div className="pen-library-notebook flex-1">
             <div className="pen-library-notebook-inner">
               <div className="pen-explorer-rail" aria-hidden />
 
-              <div className="pen-library-heading pen-locked-heading">
-                <div className="min-w-0 flex-1">
-                  <h1 className="pen-locked-title">Pen</h1>
+              {/* Title card — no notebook rules */}
+              <div className="pen-locked-heading">
+                <h1 className="pen-locked-title">Pen</h1>
+                <p className="pen-locked-subtitle">
+                  Encrypted collaboration published through your cloud
+                </p>
+              </div>
+
+              {/* Ruled sheet starts here and runs to the footer */}
+              <div className="pen-locked-paper">
+                <div className="pen-locked-copy-group">
+                  <ul className="pen-locked-checklist">
+                    {CHECKLIST.map((label) => (
+                      <li key={label} className="pen-locked-check-item">
+                        <span className="pen-locked-copy-bullet" aria-hidden>
+                          •
+                        </span>
+                        <span className="pen-locked-copy-text">{label}</span>
+                      </li>
+                    ))}
+                  </ul>
+
+                  <div className="pen-locked-cta-row">
+                    <span className="pen-locked-cta-wrap">
+                      <HandDrawnOutline />
+                      <UnlockButton
+                        className="pen-locked-unlock-cta"
+                        config={unlockConfig}
+                        onBeforeNavigate={onBeforeNavigate}
+                        onPopupResult={onPopupResult}
+                        onPopupFlowFailed={onPopupFlowFailed}
+                        showIcon={false}
+                        title="Unlock pN"
+                      >
+                        unlock pN
+                      </UnlockButton>
+                    </span>
+                    {busy && (
+                      <span className="pen-locked-copy-status">Finishing unlock…</span>
+                    )}
+                    {error && <span className="pen-locked-copy-error">{error}</span>}
+                  </div>
+                </div>
+
+                <footer className="pen-locked-footer">
                   <img
                     className="pen-locked-logo"
                     src={LOGO_SRC}
@@ -102,50 +145,7 @@ export function PenLockedLanding({
                     height={48}
                     decoding="async"
                   />
-                  <p className="pen-locked-subtitle">
-                    Encrypted collaboration published through your cloud
-                  </p>
-                </div>
-              </div>
-
-              <div className="pen-library-body">
-                <div className="pen-library-sheet pen-locked-sheet">
-                  <div className="pen-gallery-head" aria-hidden />
-                  <div className="pen-library-title-rule" aria-hidden />
-
-                  <div className="pen-locked-flow">
-                    <ul className="pen-locked-checklist">
-                      {CHECKLIST.map((label) => (
-                        <li key={label} className="pen-locked-check-item">
-                          <span className="pen-locked-copy-bullet" aria-hidden>
-                            •
-                          </span>
-                          <span className="pen-locked-copy-text">{label}</span>
-                        </li>
-                      ))}
-                      <li className="pen-locked-check-item pen-locked-check-item--cta">
-                        <span className="pen-locked-cta-wrap">
-                          <HandDrawnOutline />
-                          <UnlockButton
-                            className="pen-locked-unlock-cta"
-                            config={unlockConfig}
-                            onBeforeNavigate={onBeforeNavigate}
-                            onPopupResult={onPopupResult}
-                            onPopupFlowFailed={onPopupFlowFailed}
-                            showIcon={false}
-                            title="customize your feed posts"
-                          >
-                            customize your feed posts
-                          </UnlockButton>
-                        </span>
-                        {busy && (
-                          <span className="pen-locked-copy-status">Finishing unlock…</span>
-                        )}
-                        {error && <span className="pen-locked-copy-error">{error}</span>}
-                      </li>
-                    </ul>
-                  </div>
-                </div>
+                </footer>
               </div>
             </div>
           </div>
