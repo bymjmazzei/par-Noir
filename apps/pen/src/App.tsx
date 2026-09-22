@@ -161,6 +161,10 @@ function AuthenticatedApp({ session, onLock }: { session: PenSession; onLock: ()
     setNewDocTick((n) => n + 1);
   }
 
+  function consumeNewDocTick() {
+    setNewDocTick(0);
+  }
+
   return (
     <div className="min-h-screen bg-white text-black">
       <header className="pen-app-chrome fixed inset-x-0 top-0 z-50">
@@ -206,6 +210,7 @@ function AuthenticatedApp({ session, onLock }: { session: PenSession; onLock: ()
                 docs={docs}
                 onDocsChange={() => setDocs(listLocalDocs(session.pnIdentifier))}
                 newDocTick={newDocTick}
+                onNewDocTickConsumed={consumeNewDocTick}
               />
             }
           />

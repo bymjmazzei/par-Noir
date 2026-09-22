@@ -1,4 +1,4 @@
-/** Shared Pen doc create (New… sheet + dashboard widgets). */
+/** Shared Pen doc create (New… sheet). */
 
 import {
   emptySection,

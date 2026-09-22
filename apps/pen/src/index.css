@@ -561,6 +561,8 @@ body {
   --pen-rail-gap: 15px; /* space after red rail before name */
   --pen-name-inset: calc(var(--pen-action-w) + var(--pen-icon-w) + var(--pen-rail-gap));
   --pen-rule-blue: #3b82f6;
+  /* Match list tbody row: 0.5rem + 0.5rem pad + ~1.25rem line */
+  --pen-rule-pitch: 2.25rem;
 }
 
 .pen-library-page {
@@ -603,32 +605,12 @@ body {
   align-items: flex-end;
   flex-shrink: 0;
   gap: 0;
-  /* Right edge matches chrome lock / viewer icon column */
   margin-right: 0;
   text-align: right;
 }
 
 .pen-library-heading-tools > * {
   max-width: 100%;
-}
-
-.pen-library-switcher {
-  display: inline-flex;
-  align-items: center;
-  justify-content: flex-end;
-  min-height: 2rem;
-  padding: 0;
-  border: none;
-  background: transparent;
-  font-size: 0.875rem;
-  font-weight: 400;
-  line-height: 1.25rem;
-  color: #000;
-  cursor: pointer;
-}
-
-.pen-library-switcher:hover {
-  opacity: 0.6;
 }
 
 .pen-library-bulk-inline {
@@ -870,41 +852,40 @@ body {
 }
 
 /*
- * Gallery: tiles inset past red rail; page-width rules are siblings (.pen-library-rule),
- * not borders on tiles — so lines stay full page width as the window resizes.
+ * Gallery: list-pitch ruled paper behind tiles (full page width).
+ * Tiles sit on top; gaps show the notebook lines.
  */
 .pen-gallery {
-  margin: 0;
-  padding: 0;
-}
-
-.pen-gallery-row {
-  display: flex;
-  flex-wrap: nowrap;
-  align-items: flex-start;
-  gap: 0.75rem;
-  margin-left: var(--pen-name-inset);
-  padding: 0.75rem 0;
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 100%;
+  margin: 0 calc(-1 * var(--pen-edge-pad));
+  width: calc(100% + 2 * var(--pen-edge-pad));
   box-sizing: border-box;
+  padding: 0.75rem calc(var(--pen-edge-pad) + var(--pen-name-inset)) 1.5rem var(--pen-edge-pad);
+  padding-left: calc(var(--pen-edge-pad) + var(--pen-name-inset));
+  background-color: #fff;
+  background-image: repeating-linear-gradient(
+    to bottom,
+    transparent 0,
+    transparent calc(var(--pen-rule-pitch) - 1px),
+    var(--pen-rule-blue) calc(var(--pen-rule-pitch) - 1px),
+    var(--pen-rule-blue) var(--pen-rule-pitch)
+  );
+  background-attachment: local;
 }
 
-.pen-gallery-track-measure {
-  height: 0 !important;
-  padding-top: 0 !important;
-  padding-bottom: 0 !important;
-  margin-top: 0 !important;
-  margin-bottom: 0 !important;
-  overflow: hidden;
-  visibility: hidden;
-  pointer-events: none;
+.pen-gallery-tiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, 100px);
+  column-gap: 0.75rem;
+  row-gap: 0.75rem;
+  position: relative;
+  z-index: 1;
 }
 
-.pen-gallery-row > * {
-  flex: 0 0 100px;
-  width: 100px;
-  max-width: 100px;
+.pen-gallery-tiles > * {
   border: none;
   margin: 0;
-  padding: 0;
   background: transparent;
 }

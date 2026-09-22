@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import {
   getClass,
@@ -30,13 +30,10 @@ import {
 import { fetchPenCatalog, fetchStorageTier } from '../services/penApi';
 import {
   loadBrowseDensity,
-  loadHomeView,
   loadPinnedCategoryIds,
   saveBrowseDensity,
-  saveHomeView,
   togglePinnedCategory,
-  type PenBrowseDensity,
-  type PenHomeView
+  type PenBrowseDensity
 } from '../services/penClassPrefs';
 import {
   createDocFromPersonalOrStarter,
@@ -46,7 +43,6 @@ import {
   listPersonalTemplates,
   personalTemplatesAsPenTemplates
 } from '../services/penPersonalTemplates';
-import { PenDashboard } from '../components/dashboard/PenDashboard';
 import { FormDocIcon } from '../components/FormDocIcon';
 import { TemplateLivePreview } from '../components/TemplateLivePreview';
 import { DocItemMenu } from '../components/DocItemMenu';
@@ -740,79 +736,40 @@ function DocGalleryGrid({
   onRenameFolder: (folder: PenFolder) => void;
   onDeleteFolder: (folderId: string) => void;
 }) {
-  const trackRef = useRef<HTMLDivElement>(null);
-  const [cols, setCols] = useState(1);
-
-  useEffect(() => {
-    const track = trackRef.current;
-    if (!track) return;
-    const tile = 100;
-    const gap = 12; /* 0.75rem */
-    const measure = () => {
-      const w = track.clientWidth;
-      setCols(Math.max(1, Math.floor((w + gap) / (tile + gap))));
-    };
-    measure();
-    const ro = new ResizeObserver(measure);
-    ro.observe(track);
-    return () => ro.disconnect();
-  }, []);
-
-  const tiles: ReactNode[] = [];
-  if (!bulkMode) {
-    tiles.push(<CreateNewGalleryTile key="__create" onClick={onCreateNew} />);
-    for (const f of childFolders) {
-      tiles.push(
-        <FolderGalleryCard
-          key={`folder:${f.id}`}
-          folder={f}
-          onOpen={() => onOpenFolder(f.id)}
-          onRename={() => onRenameFolder(f)}
-          onDelete={() => onDeleteFolder(f.id)}
-        />
-      );
-    }
-  }
-  for (const d of docs) {
-    tiles.push(
-      <DocGalleryCard
-        key={d.docId}
-        pn={pn}
-        d={d}
-        bulkMode={bulkMode}
-        selected={selectedIds.has(d.docId)}
-        onToggle={onToggle}
-        folders={moveFolders}
-        renaming={renamingId === d.docId}
-        renameDraft={renameDraft}
-        onRenameDraft={onRenameDraft}
-        onStartRename={() => onStartRename(d.docId, d.title || '')}
-        onCommitRename={onCommitRename}
-        onCancelRename={onCancelRename}
-        onMove={(folderId) => onMoveDoc(d.docId, folderId)}
-        onDelete={() => onDeleteDoc(d.docId)}
-      />
-    );
-  }
-
-  const rows: ReactNode[][] = [];
-  for (let i = 0; i < tiles.length; i += cols) {
-    rows.push(tiles.slice(i, i + cols));
-  }
-
   return (
     <div className="pen-gallery">
-      <div
-        ref={trackRef}
-        className="pen-gallery-row pen-gallery-track-measure"
-        aria-hidden
-      />
-      {rows.map((row, rowIndex) => (
-        <div key={`gallery-row-${rowIndex}`}>
-          <div className="pen-gallery-row">{row}</div>
-          <div className="pen-library-rule" aria-hidden />
-        </div>
-      ))}
+      <div className="pen-gallery-tiles">
+        {!bulkMode && <CreateNewGalleryTile onClick={onCreateNew} />}
+        {!bulkMode &&
+          childFolders.map((f) => (
+            <FolderGalleryCard
+              key={f.id}
+              folder={f}
+              onOpen={() => onOpenFolder(f.id)}
+              onRename={() => onRenameFolder(f)}
+              onDelete={() => onDeleteFolder(f.id)}
+            />
+          ))}
+        {docs.map((d) => (
+          <DocGalleryCard
+            key={d.docId}
+            pn={pn}
+            d={d}
+            bulkMode={bulkMode}
+            selected={selectedIds.has(d.docId)}
+            onToggle={onToggle}
+            folders={moveFolders}
+            renaming={renamingId === d.docId}
+            renameDraft={renameDraft}
+            onRenameDraft={onRenameDraft}
+            onStartRename={() => onStartRename(d.docId, d.title || '')}
+            onCommitRename={onCommitRename}
+            onCancelRename={onCancelRename}
+            onMove={(folderId) => onMoveDoc(d.docId, folderId)}
+            onDelete={() => onDeleteDoc(d.docId)}
+          />
+        ))}
+      </div>
     </div>
   );
 }
@@ -857,13 +814,16 @@ export function DocListPage({
   session,
   docs,
   onDocsChange,
-  newDocTick = 0
+  newDocTick = 0,
+  onNewDocTickConsumed
 }: {
   session: PenSession;
   docs: LocalDocSummary[];
   onDocsChange: () => void;
   /** Bumped from app chrome + to open the new-doc picker. */
   newDocTick?: number;
+  /** Clear the tick after opening so remounting home does not reopen the picker. */
+  onNewDocTickConsumed?: () => void;
 }) {
   const navigate = useNavigate();
   const [classes, setClasses] = useState<PenClass[]>(listConsumerClasses());
@@ -882,7 +842,6 @@ export function DocListPage({
   const [categoryId, setCategoryId] = useState<string | null>(null);
   const [formId, setFormId] = useState<string | null>(null);
   const [storageTier, setStorageTier] = useState<string | null>(null);
-  const [homeView, setHomeView] = useState<PenHomeView>(() => loadHomeView(session.pnIdentifier));
   const [browseDensity, setBrowseDensity] = useState<PenBrowseDensity>(() =>
     loadBrowseDensity(session.pnIdentifier)
   );
@@ -962,9 +921,8 @@ export function DocListPage({
   );
 
   const folderDocs = useMemo(() => {
-    if (homeView === 'dashboard') return docs;
     return docs.filter((d) => (d.folderId || null) === currentFolderId);
-  }, [docs, currentFolderId, homeView]);
+  }, [docs, currentFolderId]);
 
   const level: DrillLevel = formId ? 'template' : categoryId ? 'form' : 'category';
 
@@ -988,8 +946,10 @@ export function DocListPage({
   }
 
   useEffect(() => {
-    if (newDocTick > 0) openPicker();
-    // openPicker is stable enough for this signal; intentionally only tick-driven
+    if (newDocTick <= 0) return;
+    openPicker();
+    onNewDocTickConsumed?.();
+    // Intentionally tick-driven only
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [newDocTick]);
 
@@ -1024,11 +984,6 @@ export function DocListPage({
     } finally {
       setBusy(false);
     }
-  }
-
-  function setView(view: PenHomeView) {
-    setHomeView(view);
-    saveHomeView(session.pnIdentifier, view);
   }
 
   function setDensity(density: PenBrowseDensity) {
@@ -1218,118 +1173,92 @@ export function DocListPage({
 
           <div className="pen-library-heading">
             <div className="min-w-0 flex-1">
-              <h1 className="text-lg font-bold text-black">
-                {homeView === 'dashboard' ? 'Dashboard' : 'My Library'}
-              </h1>
-              {homeView !== 'dashboard' && (
-                <p className="text-sm text-neutral-500">
-                  {currentFolder ? (
-                    <span className="flex flex-wrap items-center gap-1">
-                      <button
-                        type="button"
-                        className="hover:underline"
-                        onClick={() => setCurrentFolderId(null)}
-                      >
-                        My Library
-                      </button>
-                      <span aria-hidden>/</span>
-                      <span className="font-medium text-black">{currentFolder.name}</span>
-                    </span>
-                  ) : (
-                    'Open a file or start from a template.'
-                  )}
-                </p>
-              )}
+              <h1 className="text-lg font-bold text-black">My Library</h1>
+              <p className="text-sm text-neutral-500">
+                {currentFolder ? (
+                  <span className="flex flex-wrap items-center gap-1">
+                    <button
+                      type="button"
+                      className="hover:underline"
+                      onClick={() => setCurrentFolderId(null)}
+                    >
+                      My Library
+                    </button>
+                    <span aria-hidden>/</span>
+                    <span className="font-medium text-black">{currentFolder.name}</span>
+                  </span>
+                ) : (
+                  'Open a file or start from a template.'
+                )}
+              </p>
             </div>
             {(docs.length > 0 || allFolders.length > 0) && (
               <div className="pen-library-heading-tools">
-                <button
-                  type="button"
-                  className="pen-library-switcher"
-                  onClick={() => {
-                    if (homeView === 'dashboard') {
-                      setView('all');
-                    } else {
-                      setView('dashboard');
-                      setBulkDeleteMode(false);
-                      setSelectedIds(new Set());
-                      setCurrentFolderId(null);
-                    }
-                  }}
+                <div
+                  className="flex items-center justify-end gap-0"
+                  role="group"
+                  aria-label="Browse density"
                 >
-                  {homeView === 'dashboard' ? 'My Library' : 'Dashboard'}
-                </button>
-                {homeView === 'all' && (
-                  <>
-                    <div
-                      className="flex items-center justify-end gap-0"
-                      role="group"
-                      aria-label="Browse density"
-                    >
-                      <button
-                        type="button"
-                        title="List"
-                        aria-label="List view"
-                        aria-pressed={browseDensity === 'list'}
-                        onClick={() => setDensity('list')}
-                        className={`inline-flex h-8 w-8 items-center justify-center ${
-                          browseDensity === 'list'
-                            ? 'text-black'
-                            : 'text-neutral-600 hover:text-neutral-800'
-                        }`}
-                      >
-                        <ListIcon />
-                      </button>
-                      <button
-                        type="button"
-                        title="Gallery"
-                        aria-label="Gallery view"
-                        aria-pressed={browseDensity === 'gallery'}
-                        onClick={() => setDensity('gallery')}
-                        className={`inline-flex h-8 w-8 items-center justify-center ${
-                          browseDensity === 'gallery'
-                            ? 'text-black'
-                            : 'text-neutral-600 hover:text-neutral-800'
-                        }`}
-                      >
-                        <GalleryIcon />
-                      </button>
-                    </div>
-                    <div className="flex items-center justify-end gap-2">
-                      {bulkDeleteMode && (
-                        <BulkInlineControls
-                          visibleDocs={sortedDocs}
-                          selectedIds={selectedIds}
-                          onSelectAll={() => selectAllVisible(sortedDocs)}
-                          onDelete={confirmBulkDelete}
-                        />
-                      )}
-                      <button
-                        type="button"
-                        title={bulkDeleteMode ? 'Cancel selection' : 'Select to delete'}
-                        aria-label={bulkDeleteMode ? 'Cancel selection' : 'Select to delete'}
-                        aria-pressed={bulkDeleteMode}
-                        onClick={toggleBulkMode}
-                        className={`inline-flex h-8 w-8 shrink-0 items-center justify-center border-0 bg-transparent outline-none ${
-                          bulkDeleteMode
-                            ? 'text-black'
-                            : 'text-neutral-600 hover:text-black'
-                        }`}
-                      >
-                        <MinusIcon />
-                      </button>
-                    </div>
-                  </>
-                )}
+                  <button
+                    type="button"
+                    title="List"
+                    aria-label="List view"
+                    aria-pressed={browseDensity === 'list'}
+                    onClick={() => setDensity('list')}
+                    className={`inline-flex h-8 w-8 items-center justify-center ${
+                      browseDensity === 'list'
+                        ? 'text-black'
+                        : 'text-neutral-600 hover:text-neutral-800'
+                    }`}
+                  >
+                    <ListIcon />
+                  </button>
+                  <button
+                    type="button"
+                    title="Gallery"
+                    aria-label="Gallery view"
+                    aria-pressed={browseDensity === 'gallery'}
+                    onClick={() => setDensity('gallery')}
+                    className={`inline-flex h-8 w-8 items-center justify-center ${
+                      browseDensity === 'gallery'
+                        ? 'text-black'
+                        : 'text-neutral-600 hover:text-neutral-800'
+                    }`}
+                  >
+                    <GalleryIcon />
+                  </button>
+                </div>
+                <div className="flex items-center justify-end gap-2">
+                  {bulkDeleteMode && (
+                    <BulkInlineControls
+                      visibleDocs={sortedDocs}
+                      selectedIds={selectedIds}
+                      onSelectAll={() => selectAllVisible(sortedDocs)}
+                      onDelete={confirmBulkDelete}
+                    />
+                  )}
+                  <button
+                    type="button"
+                    title={bulkDeleteMode ? 'Cancel selection' : 'Select to delete'}
+                    aria-label={bulkDeleteMode ? 'Cancel selection' : 'Select to delete'}
+                    aria-pressed={bulkDeleteMode}
+                    onClick={toggleBulkMode}
+                    className={`inline-flex h-8 w-8 shrink-0 items-center justify-center border-0 bg-transparent outline-none ${
+                      bulkDeleteMode
+                        ? 'text-black'
+                        : 'text-neutral-600 hover:text-black'
+                    }`}
+                  >
+                    <MinusIcon />
+                  </button>
+                </div>
               </div>
             )}
           </div>
 
-          {homeView === 'all' &&
-            browseDensity === 'gallery' &&
-            (docs.length > 0 || allFolders.length > 0) && (
-              <div className="pen-library-rule" aria-hidden />
-            )}
+          {browseDensity === 'gallery' && (docs.length > 0 || allFolders.length > 0) && (
+            <div className="pen-library-rule" aria-hidden />
+          )}
 
           {docs.length === 0 && allFolders.length === 0 ? (
             <div className="pen-library-body px-6 py-16 text-center">
@@ -1341,10 +1270,6 @@ export function DocListPage({
               >
                 Choose a template
               </button>
-            </div>
-          ) : homeView === 'dashboard' ? (
-            <div className="pen-library-body pen-library-indent">
-              <PenDashboard session={session} docs={docs} onDocsChange={onDocsChange} />
             </div>
           ) : (
             <div className="pen-library-body">
