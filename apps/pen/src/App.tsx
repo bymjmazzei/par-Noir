@@ -149,17 +149,42 @@ function Locked() {
 }
 
 function AuthenticatedApp({ session, onLock }: { session: PenSession; onLock: () => void }) {
+  const navigate = useNavigate();
   const [docs, setDocs] = useState<LocalDocSummary[]>([]);
+  const [newDocTick, setNewDocTick] = useState(0);
   useEffect(() => {
     setDocs(listLocalDocs(session.pnIdentifier));
   }, [session.pnIdentifier]);
 
+  function requestNewDoc() {
+    navigate('/');
+    setNewDocTick((n) => n + 1);
+  }
+
   return (
     <div className="min-h-screen bg-white text-black">
-      <header className="flex h-10 items-center justify-between border-b border-neutral-200 bg-white px-3">
-        <Link to="/" className="text-sm font-bold tracking-tight text-black">
-          Pen
-        </Link>
+      <header className="fixed inset-x-0 top-0 z-50 flex h-10 items-center justify-between border-b border-neutral-200 bg-white px-3">
+        <div className="flex items-center gap-1.5">
+          <button
+            type="button"
+            onClick={requestNewDoc}
+            title="New document"
+            aria-label="New document"
+            className="inline-flex h-8 w-8 items-center justify-center text-black hover:opacity-60"
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden>
+              <path
+                d="M12 5v14M5 12h14"
+                stroke="currentColor"
+                strokeWidth="2.2"
+                strokeLinecap="round"
+              />
+            </svg>
+          </button>
+          <Link to="/" className="text-sm font-bold tracking-tight text-black">
+            Pen
+          </Link>
+        </div>
         <button
           type="button"
           onClick={onLock}
@@ -170,19 +195,22 @@ function AuthenticatedApp({ session, onLock }: { session: PenSession; onLock: ()
           <LockIcon className="h-4 w-4" />
         </button>
       </header>
-      <Routes>
-        <Route
-          path="/"
-          element={
-            <DocListPage
-              session={session}
-              docs={docs}
-              onDocsChange={() => setDocs(listLocalDocs(session.pnIdentifier))}
-            />
-          }
-        />
-        <Route path="/d/:docId" element={<DocEditorRoute session={session} />} />
-      </Routes>
+      <div className="pt-10">
+        <Routes>
+          <Route
+            path="/"
+            element={
+              <DocListPage
+                session={session}
+                docs={docs}
+                onDocsChange={() => setDocs(listLocalDocs(session.pnIdentifier))}
+                newDocTick={newDocTick}
+              />
+            }
+          />
+          <Route path="/d/:docId" element={<DocEditorRoute session={session} />} />
+        </Routes>
+      </div>
     </div>
   );
 }

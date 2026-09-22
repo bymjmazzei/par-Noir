@@ -50,6 +50,7 @@ import { PenDashboard } from '../components/dashboard/PenDashboard';
 import { FormDocIcon } from '../components/FormDocIcon';
 import { TemplateLivePreview } from '../components/TemplateLivePreview';
 import { DocItemMenu } from '../components/DocItemMenu';
+import libraryHeaderCrackle from '../assets/library-header-crackle.jpg';
 
 type DrillLevel = 'category' | 'form' | 'template';
 
@@ -391,22 +392,9 @@ function DocExplorerTable({
       <div className="pen-explorer-sheet">
         <div className="pen-explorer-rail" aria-hidden />
         <table className="w-full table-fixed text-left text-sm">
-          <thead className="sticky top-0 text-[11px] tracking-wide">
+          <thead className="text-[11px] tracking-wide">
             <tr>
-              <th className="pen-explorer-action w-10 px-2 py-2 text-center">
-                <button
-                  type="button"
-                  title={bulkMode ? 'Cancel selection' : 'Select to delete'}
-                  aria-label={bulkMode ? 'Cancel selection' : 'Select to delete'}
-                  aria-pressed={bulkMode}
-                  onClick={onToggleBulk}
-                  className={`inline-flex h-7 w-7 items-center justify-center ${
-                    bulkMode ? 'font-bold text-black' : 'text-neutral-600 hover:text-black'
-                  }`}
-                >
-                  <MinusIcon />
-                </button>
-              </th>
+              <th className="pen-explorer-action w-10 px-2 py-2 text-center" aria-label="Select" />
               <th className="pen-explorer-icon w-10 px-1 py-2" aria-hidden />
               <SortHeader
                 label="Name"
@@ -503,14 +491,6 @@ function GalleryIcon() {
       <rect x="14" y="3" width="7" height="7" rx="1" stroke="currentColor" strokeWidth="2" />
       <rect x="3" y="14" width="7" height="7" rx="1" stroke="currentColor" strokeWidth="2" />
       <rect x="14" y="14" width="7" height="7" rx="1" stroke="currentColor" strokeWidth="2" />
-    </svg>
-  );
-}
-
-function PlusIcon() {
-  return (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden>
-      <path d="M12 5v14M5 12h14" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" />
     </svg>
   );
 }
@@ -856,11 +836,14 @@ function BulkDeleteBar({
 export function DocListPage({
   session,
   docs,
-  onDocsChange
+  onDocsChange,
+  newDocTick = 0
 }: {
   session: PenSession;
   docs: LocalDocSummary[];
   onDocsChange: () => void;
+  /** Bumped from app chrome + to open the new-doc picker. */
+  newDocTick?: number;
 }) {
   const navigate = useNavigate();
   const [classes, setClasses] = useState<PenClass[]>(listConsumerClasses());
@@ -1024,6 +1007,12 @@ export function DocListPage({
     setLibrarySelectedIds(new Set());
     setPickerOpen(true);
   }
+
+  useEffect(() => {
+    if (newDocTick > 0) openPicker();
+    // openPicker is stable enough for this signal; intentionally only tick-driven
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [newDocTick]);
 
   function toggleLibraryDoc(docId: string) {
     setLibrarySelectedIds((prev) => {
@@ -1262,42 +1251,38 @@ export function DocListPage({
 
   return (
     <div className="min-h-[calc(100vh-2.5rem)] bg-white">
-      <div className="mx-auto max-w-5xl px-4 py-10">
-        <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
-          <div>
-            <h1 className="text-lg font-bold text-black">My Library</h1>
-            <p className="text-sm text-neutral-500">
-              {currentFolder ? (
-                <span className="flex flex-wrap items-center gap-1">
-                  <button
-                    type="button"
-                    className="hover:underline"
-                    onClick={() => setCurrentFolderId(null)}
-                  >
-                    My Library
-                  </button>
-                  <span aria-hidden>/</span>
-                  <span className="font-medium text-black">{currentFolder.name}</span>
-                </span>
-              ) : (
-                'Open a file or start from a template.'
-              )}
-            </p>
-          </div>
-          <div className="flex flex-col items-end gap-1.5">
-            <div className="flex items-center gap-3">
-              <button
-                type="button"
-                onClick={openPicker}
-                title="New document"
-                aria-label="New document"
-                className="inline-flex h-8 w-8 items-center justify-center text-black hover:opacity-60"
-              >
-                <PlusIcon />
-              </button>
+      <div
+        className="pen-library-hero w-full"
+        style={{
+          backgroundImage: `url(${libraryHeaderCrackle})`,
+          backgroundSize: 'cover',
+          backgroundPosition: 'center'
+        }}
+      >
+        <div className="mx-auto max-w-5xl px-4 py-8 sm:py-10">
+          <div className="flex flex-wrap items-start justify-between gap-4 rounded-2xl bg-white px-4 py-3 shadow-sm sm:px-5 sm:py-4">
+            <div className="min-w-0">
+              <h1 className="text-lg font-bold text-black">My Library</h1>
+              <p className="text-sm text-neutral-500">
+                {currentFolder ? (
+                  <span className="flex flex-wrap items-center gap-1">
+                    <button
+                      type="button"
+                      className="hover:underline"
+                      onClick={() => setCurrentFolderId(null)}
+                    >
+                      My Library
+                    </button>
+                    <span aria-hidden>/</span>
+                    <span className="font-medium text-black">{currentFolder.name}</span>
+                  </span>
+                ) : (
+                  'Open a file or start from a template.'
+                )}
+              </p>
             </div>
-            {docs.length > 0 || allFolders.length > 0 ? (
-              <>
+            {(docs.length > 0 || allFolders.length > 0) && (
+              <div className="flex shrink-0 flex-col items-end gap-1.5">
                 <div
                   className="flex items-center gap-0 text-sm"
                   role="group"
@@ -1335,42 +1320,64 @@ export function DocListPage({
                   ))}
                 </div>
                 {(homeView === 'all' || homeView === 'category') && (
-                  <div className="flex items-center gap-3" role="group" aria-label="Browse density">
+                  <div className="flex flex-col items-end gap-0.5">
+                    <div
+                      className="flex items-center gap-3"
+                      role="group"
+                      aria-label="Browse density"
+                    >
+                      <button
+                        type="button"
+                        title="List"
+                        aria-label="List view"
+                        aria-pressed={browseDensity === 'list'}
+                        onClick={() => setDensity('list')}
+                        className={`inline-flex h-8 w-8 items-center justify-center ${
+                          browseDensity === 'list'
+                            ? 'font-bold text-black'
+                            : 'text-neutral-600 hover:text-neutral-800'
+                        }`}
+                      >
+                        <ListIcon />
+                      </button>
+                      <button
+                        type="button"
+                        title="Gallery"
+                        aria-label="Gallery view"
+                        aria-pressed={browseDensity === 'gallery'}
+                        onClick={() => setDensity('gallery')}
+                        className={`inline-flex h-8 w-8 items-center justify-center ${
+                          browseDensity === 'gallery'
+                            ? 'font-bold text-black'
+                            : 'text-neutral-600 hover:text-neutral-800'
+                        }`}
+                      >
+                        <GalleryIcon />
+                      </button>
+                    </div>
                     <button
                       type="button"
-                      title="List"
-                      aria-label="List view"
-                      aria-pressed={browseDensity === 'list'}
-                      onClick={() => setDensity('list')}
-                      className={`inline-flex h-8 w-8 items-center justify-center ${
-                        browseDensity === 'list'
+                      title={bulkDeleteMode ? 'Cancel selection' : 'Select to delete'}
+                      aria-label={bulkDeleteMode ? 'Cancel selection' : 'Select to delete'}
+                      aria-pressed={bulkDeleteMode}
+                      onClick={toggleBulkMode}
+                      className={`inline-flex h-7 w-7 items-center justify-center ${
+                        bulkDeleteMode
                           ? 'font-bold text-black'
-                          : 'text-neutral-600 hover:text-neutral-800'
+                          : 'text-neutral-600 hover:text-black'
                       }`}
                     >
-                      <ListIcon />
-                    </button>
-                    <button
-                      type="button"
-                      title="Gallery"
-                      aria-label="Gallery view"
-                      aria-pressed={browseDensity === 'gallery'}
-                      onClick={() => setDensity('gallery')}
-                      className={`inline-flex h-8 w-8 items-center justify-center ${
-                        browseDensity === 'gallery'
-                          ? 'font-bold text-black'
-                          : 'text-neutral-600 hover:text-neutral-800'
-                      }`}
-                    >
-                      <GalleryIcon />
+                      <MinusIcon />
                     </button>
                   </div>
                 )}
-              </>
-            ) : null}
+              </div>
+            )}
           </div>
         </div>
+      </div>
 
+      <div className="mx-auto max-w-5xl px-4 pb-10 pt-6">
         {docs.length === 0 && allFolders.length === 0 ? (
           <div className="px-6 py-16 text-center">
             <p className="text-neutral-500">No documents yet.</p>
@@ -1593,7 +1600,7 @@ export function DocListPage({
       </div>
 
       {pickerOpen && (
-        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/30 p-4 sm:items-center">
+        <div className="fixed inset-0 z-[60] flex items-end justify-center bg-black/30 p-4 sm:items-center">
           <div
             className="absolute inset-0"
             onClick={() => docs.length > 0 && setPickerOpen(false)}

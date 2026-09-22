@@ -566,6 +566,13 @@ body {
 
 .pen-explorer thead {
   background: #fff;
+  position: sticky;
+  top: 2.5rem; /* below fixed app chrome */
+  z-index: 5;
+}
+
+.pen-library-hero {
+  min-height: 8.5rem;
 }
 
 .pen-explorer th,
