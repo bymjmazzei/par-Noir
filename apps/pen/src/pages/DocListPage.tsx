@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import {
   getClass,
@@ -188,19 +188,20 @@ function DocExplorerRow({
         if (bulkMode) onToggle(d.docId);
       }}
     >
-      <td className="pen-explorer-action w-10 px-2 py-2 text-center">
-        {bulkMode ? (
-          <input
-            type="checkbox"
-            checked={selected}
-            onChange={() => onToggle(d.docId)}
-            onClick={(e) => e.stopPropagation()}
-            className="h-4 w-4 accent-black"
-            aria-label={`Select ${d.title || 'document'}`}
-          />
-        ) : null}
+      <td className="pen-explorer-action px-2 py-2 text-center">
+        <input
+          type="checkbox"
+          checked={selected}
+          disabled={!bulkMode}
+          onChange={() => onToggle(d.docId)}
+          onClick={(e) => e.stopPropagation()}
+          className={`h-4 w-4 accent-black ${bulkMode ? '' : 'invisible'}`}
+          tabIndex={bulkMode ? 0 : -1}
+          aria-hidden={!bulkMode}
+          aria-label={`Select ${d.title || 'document'}`}
+        />
       </td>
-      <td className="pen-explorer-icon w-10 px-1 py-2">
+      <td className="pen-explorer-icon px-1 py-2">
         <FormDocIcon classId={classId} />
       </td>
       <td className="pen-explorer-name-cell px-3 py-2">
@@ -262,15 +263,17 @@ function DocExplorerRow({
       </td>
       <td className="pen-explorer-col-updated whitespace-nowrap px-3 py-2 text-left text-xs text-black">
         <div className="flex items-center gap-1">
-          <span>{new Date(d.updatedAt).toLocaleString()}</span>
-          {!bulkMode && (
-            <DocItemMenu
-              folders={folders}
-              onRename={onStartRename}
-              onMove={onMove}
-              onDelete={onDelete}
-            />
-          )}
+          <span className="min-w-0 truncate">{new Date(d.updatedAt).toLocaleString()}</span>
+          <span className="pen-explorer-menu-slot">
+            {!bulkMode ? (
+              <DocItemMenu
+                folders={folders}
+                onRename={onStartRename}
+                onMove={onMove}
+                onDelete={onDelete}
+              />
+            ) : null}
+          </span>
         </div>
       </td>
     </tr>
@@ -290,8 +293,10 @@ function FolderExplorerRow({
 }) {
   return (
     <tr className="hover:bg-neutral-50">
-      <td className="pen-explorer-action w-10 px-2 py-2" />
-      <td className="pen-explorer-icon w-10 px-1 py-2">
+      <td className="pen-explorer-action px-2 py-2 text-center">
+        <span className="inline-block h-4 w-4" aria-hidden />
+      </td>
+      <td className="pen-explorer-icon px-1 py-2">
         <FolderGlyph />
       </td>
       <td className="pen-explorer-name-cell px-3 py-2">
@@ -312,14 +317,16 @@ function FolderExplorerRow({
       <td className="pen-explorer-col-status px-3 py-2 text-xs text-neutral-500">—</td>
       <td className="pen-explorer-col-updated whitespace-nowrap px-3 py-2 text-left text-xs text-black">
         <div className="flex items-center gap-1">
-          <span>{new Date(folder.createdAt).toLocaleString()}</span>
-          <DocItemMenu
-            folders={[]}
-            showMove={false}
-            onRename={onRename}
-            onMove={() => undefined}
-            onDelete={onDelete}
-          />
+          <span className="min-w-0 truncate">{new Date(folder.createdAt).toLocaleString()}</span>
+          <span className="pen-explorer-menu-slot">
+            <DocItemMenu
+              folders={[]}
+              showMove={false}
+              onRename={onRename}
+              onMove={() => undefined}
+              onDelete={onDelete}
+            />
+          </span>
         </div>
       </td>
     </tr>
@@ -733,37 +740,78 @@ function DocGalleryGrid({
   onRenameFolder: (folder: PenFolder) => void;
   onDeleteFolder: (folderId: string) => void;
 }) {
-  return (
-    <div className="pen-gallery-ruled">
-      {!bulkMode && <CreateNewGalleryTile onClick={onCreateNew} />}
-      {!bulkMode &&
-        childFolders.map((f) => (
-          <FolderGalleryCard
-            key={f.id}
-            folder={f}
-            onOpen={() => onOpenFolder(f.id)}
-            onRename={() => onRenameFolder(f)}
-            onDelete={() => onDeleteFolder(f.id)}
-          />
-        ))}
-      {docs.map((d) => (
-        <DocGalleryCard
-          key={d.docId}
-          pn={pn}
-          d={d}
-          bulkMode={bulkMode}
-          selected={selectedIds.has(d.docId)}
-          onToggle={onToggle}
-          folders={moveFolders}
-          renaming={renamingId === d.docId}
-          renameDraft={renameDraft}
-          onRenameDraft={onRenameDraft}
-          onStartRename={() => onStartRename(d.docId, d.title || '')}
-          onCommitRename={onCommitRename}
-          onCancelRename={onCancelRename}
-          onMove={(folderId) => onMoveDoc(d.docId, folderId)}
-          onDelete={() => onDeleteDoc(d.docId)}
+  const trackRef = useRef<HTMLDivElement>(null);
+  const [cols, setCols] = useState(1);
+
+  useEffect(() => {
+    const track = trackRef.current;
+    if (!track) return;
+    const tile = 100;
+    const gap = 12; /* 0.75rem */
+    const measure = () => {
+      const w = track.clientWidth;
+      setCols(Math.max(1, Math.floor((w + gap) / (tile + gap))));
+    };
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(track);
+    return () => ro.disconnect();
+  }, []);
+
+  const tiles: ReactNode[] = [];
+  if (!bulkMode) {
+    tiles.push(<CreateNewGalleryTile key="__create" onClick={onCreateNew} />);
+    for (const f of childFolders) {
+      tiles.push(
+        <FolderGalleryCard
+          key={`folder:${f.id}`}
+          folder={f}
+          onOpen={() => onOpenFolder(f.id)}
+          onRename={() => onRenameFolder(f)}
+          onDelete={() => onDeleteFolder(f.id)}
         />
+      );
+    }
+  }
+  for (const d of docs) {
+    tiles.push(
+      <DocGalleryCard
+        key={d.docId}
+        pn={pn}
+        d={d}
+        bulkMode={bulkMode}
+        selected={selectedIds.has(d.docId)}
+        onToggle={onToggle}
+        folders={moveFolders}
+        renaming={renamingId === d.docId}
+        renameDraft={renameDraft}
+        onRenameDraft={onRenameDraft}
+        onStartRename={() => onStartRename(d.docId, d.title || '')}
+        onCommitRename={onCommitRename}
+        onCancelRename={onCancelRename}
+        onMove={(folderId) => onMoveDoc(d.docId, folderId)}
+        onDelete={() => onDeleteDoc(d.docId)}
+      />
+    );
+  }
+
+  const rows: ReactNode[][] = [];
+  for (let i = 0; i < tiles.length; i += cols) {
+    rows.push(tiles.slice(i, i + cols));
+  }
+
+  return (
+    <div className="pen-gallery">
+      <div
+        ref={trackRef}
+        className="pen-gallery-row pen-gallery-track-measure"
+        aria-hidden
+      />
+      {rows.map((row, rowIndex) => (
+        <div key={`gallery-row-${rowIndex}`}>
+          <div className="pen-gallery-row">{row}</div>
+          <div className="pen-library-rule" aria-hidden />
+        </div>
       ))}
     </div>
   );
@@ -1197,7 +1245,7 @@ export function DocListPage({
               <div className="pen-library-heading-tools">
                 <button
                   type="button"
-                  className="text-sm font-bold text-black hover:opacity-60"
+                  className="pen-library-switcher"
                   onClick={() => {
                     if (homeView === 'dashboard') {
                       setView('all');
@@ -1214,7 +1262,7 @@ export function DocListPage({
                 {homeView === 'all' && (
                   <>
                     <div
-                      className="flex w-full items-center justify-end gap-0"
+                      className="flex items-center justify-end gap-0"
                       role="group"
                       aria-label="Browse density"
                     >
@@ -1226,7 +1274,7 @@ export function DocListPage({
                         onClick={() => setDensity('list')}
                         className={`inline-flex h-8 w-8 items-center justify-center ${
                           browseDensity === 'list'
-                            ? 'font-bold text-black'
+                            ? 'text-black'
                             : 'text-neutral-600 hover:text-neutral-800'
                         }`}
                       >
@@ -1240,14 +1288,14 @@ export function DocListPage({
                         onClick={() => setDensity('gallery')}
                         className={`inline-flex h-8 w-8 items-center justify-center ${
                           browseDensity === 'gallery'
-                            ? 'font-bold text-black'
+                            ? 'text-black'
                             : 'text-neutral-600 hover:text-neutral-800'
                         }`}
                       >
                         <GalleryIcon />
                       </button>
                     </div>
-                    <div className="flex w-full flex-wrap items-center justify-end gap-2">
+                    <div className="flex items-center justify-end gap-2">
                       {bulkDeleteMode && (
                         <BulkInlineControls
                           visibleDocs={sortedDocs}
@@ -1262,9 +1310,9 @@ export function DocListPage({
                         aria-label={bulkDeleteMode ? 'Cancel selection' : 'Select to delete'}
                         aria-pressed={bulkDeleteMode}
                         onClick={toggleBulkMode}
-                        className={`inline-flex h-8 w-8 shrink-0 items-center justify-center ${
+                        className={`inline-flex h-8 w-8 shrink-0 items-center justify-center border-0 bg-transparent outline-none ${
                           bulkDeleteMode
-                            ? 'font-bold text-black'
+                            ? 'text-black'
                             : 'text-neutral-600 hover:text-black'
                         }`}
                       >
@@ -1276,6 +1324,12 @@ export function DocListPage({
               </div>
             )}
           </div>
+
+          {homeView === 'all' &&
+            browseDensity === 'gallery' &&
+            (docs.length > 0 || allFolders.length > 0) && (
+              <div className="pen-library-rule" aria-hidden />
+            )}
 
           {docs.length === 0 && allFolders.length === 0 ? (
             <div className="pen-library-body px-6 py-16 text-center">

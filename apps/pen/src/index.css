@@ -589,11 +589,11 @@ body {
 .pen-library-heading {
   display: flex;
   flex-wrap: wrap;
-  align-items: flex-end;
+  align-items: flex-start;
   justify-content: space-between;
-  gap: 0.5rem 1rem;
-  /* Title lines up with Name; − sits on the table’s top blue rule */
-  padding: 1.25rem 0 0 var(--pen-name-inset);
+  gap: 0.25rem 1rem;
+  /* Tight to the table / gallery rule below */
+  padding: 1rem 0 0 var(--pen-name-inset);
   margin: 0;
 }
 
@@ -601,7 +601,34 @@ body {
   display: flex;
   flex-direction: column;
   align-items: flex-end;
+  flex-shrink: 0;
   gap: 0;
+  /* Right edge matches chrome lock / viewer icon column */
+  margin-right: 0;
+  text-align: right;
+}
+
+.pen-library-heading-tools > * {
+  max-width: 100%;
+}
+
+.pen-library-switcher {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  min-height: 2rem;
+  padding: 0;
+  border: none;
+  background: transparent;
+  font-size: 0.875rem;
+  font-weight: 400;
+  line-height: 1.25rem;
+  color: #000;
+  cursor: pointer;
+}
+
+.pen-library-switcher:hover {
+  opacity: 0.6;
 }
 
 .pen-library-bulk-inline {
@@ -622,6 +649,19 @@ body {
   flex: 1 1 auto;
   margin: 0;
   padding: 0;
+}
+
+/* Page-width notebook rule (not tile/cell attached) */
+.pen-library-rule {
+  display: block;
+  height: 0;
+  margin: 0 calc(-1 * var(--pen-edge-pad));
+  padding: 0;
+  border: none;
+  border-top: 1px solid var(--pen-rule-blue);
+  width: calc(100% + 2 * var(--pen-edge-pad));
+  box-sizing: border-box;
+  pointer-events: none;
 }
 
 .pen-library-footer {
@@ -717,9 +757,9 @@ body {
 
 .pen-explorer table {
   border-collapse: collapse;
-  width: max-content;
+  width: 100%;
   min-width: 100%;
-  table-layout: auto;
+  table-layout: fixed;
 }
 
 .pen-explorer thead {
@@ -731,12 +771,10 @@ body {
 
 .pen-explorer thead th {
   background: #fff;
-  /* One blue rule above Name, one below — not a double under the header */
-  border-top: 1px solid var(--pen-rule-blue);
+  /* Single rule under column headers; no top rule (avoids double line under page header) */
+  border: none;
   border-bottom: 1px solid var(--pen-rule-blue);
-  border-left: none;
-  border-right: none;
-  padding-top: 0.35rem;
+  padding-top: 0.25rem;
   padding-bottom: 0.35rem;
 }
 
@@ -746,16 +784,10 @@ body {
 }
 
 .pen-explorer tbody td {
-  border-top: none;
-  border-left: none;
-  border-right: none;
+  border: none;
   border-bottom: 1px solid var(--pen-rule-blue);
   padding-top: 0.5rem;
   padding-bottom: 0.5rem;
-}
-
-.pen-explorer tbody tr:last-child td {
-  border-bottom: none;
 }
 
 .pen-explorer th {
@@ -771,32 +803,39 @@ body {
 .pen-explorer-action {
   width: var(--pen-action-w);
   min-width: var(--pen-action-w);
+  max-width: var(--pen-action-w);
 }
 
 .pen-explorer-icon {
   width: var(--pen-icon-w);
   min-width: var(--pen-icon-w);
+  max-width: var(--pen-icon-w);
 }
 
 .pen-explorer-name-header,
 .pen-explorer-name-cell {
-  min-width: 12rem;
+  width: 28%;
+  min-width: 8rem;
 }
 
 .pen-explorer-col-category {
-  min-width: 7rem;
+  width: 14%;
+  min-width: 5rem;
 }
 
 .pen-explorer-col-form {
-  min-width: 7rem;
+  width: 14%;
+  min-width: 5rem;
 }
 
 .pen-explorer-col-status {
-  min-width: 11rem;
+  width: 22%;
+  min-width: 7rem;
 }
 
 .pen-explorer-col-updated {
-  min-width: 11rem;
+  width: 22%;
+  min-width: 9rem;
 }
 
 /* Continuous red double rule through the full notebook (header → footer) */
@@ -821,26 +860,51 @@ body {
   display: none;
 }
 
-/*
- * Gallery: ~100px tiles, inset past red rail.
- * Horizontal rules only (no vertical cell borders, no tile restyle).
- */
-.pen-gallery-ruled {
-  margin-left: var(--pen-name-inset);
-  border-top: 1px solid var(--pen-rule-blue);
-  display: grid;
-  grid-template-columns: repeat(auto-fill, 100px);
-  column-gap: 0.75rem;
-  row-gap: 0;
-  width: auto;
-  max-width: none;
-  background: transparent;
+.pen-explorer-menu-slot {
+  display: inline-flex;
+  width: 1.75rem;
+  height: 1.75rem;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
 }
 
-.pen-gallery-ruled > * {
-  border: none;
-  border-bottom: 1px solid var(--pen-rule-blue);
-  padding: 0.75rem 0;
+/*
+ * Gallery: tiles inset past red rail; page-width rules are siblings (.pen-library-rule),
+ * not borders on tiles — so lines stay full page width as the window resizes.
+ */
+.pen-gallery {
   margin: 0;
+  padding: 0;
+}
+
+.pen-gallery-row {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: flex-start;
+  gap: 0.75rem;
+  margin-left: var(--pen-name-inset);
+  padding: 0.75rem 0;
+  box-sizing: border-box;
+}
+
+.pen-gallery-track-measure {
+  height: 0 !important;
+  padding-top: 0 !important;
+  padding-bottom: 0 !important;
+  margin-top: 0 !important;
+  margin-bottom: 0 !important;
+  overflow: hidden;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.pen-gallery-row > * {
+  flex: 0 0 100px;
+  width: 100px;
+  max-width: 100px;
+  border: none;
+  margin: 0;
+  padding: 0;
   background: transparent;
 }
