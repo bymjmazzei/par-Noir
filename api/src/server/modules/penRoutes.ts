@@ -1,5 +1,6 @@
 /**
- * Pen first-party routes: notary (hash-only) + apply-inbound for section promotes.
+ * Pen first-party routes: notary (hash-only) + apply-inbound for
+ * current/drafts/past materialization.
  */
 
 import type { Application, Request, Response } from 'express';
@@ -16,9 +17,19 @@ import { safeClientErrorMessage } from '../utils/safeError';
 import { hashIdentifier, safeLogger } from '../../utils/logger';
 import { google } from 'googleapis';
 import { Readable } from 'stream';
+import { verifyPromoteLink, type PenPromoteLink } from '@par-noir/pen-protocol';
 
 const NODE_ENV = process.env.NODE_ENV || 'development';
 const isProduction = NODE_ENV === 'production';
+
+const PEN_JOB_TYPES = [
+  'pen.section_promote',
+  'pen.comment',
+  'pen.suggestion',
+  'pen.draft_upsert',
+  'pen.publish',
+  'pen.doc_bootstrap'
+] as const;
 
 function getNotarySecret(): Buffer {
   const raw =
@@ -26,7 +37,6 @@ function getNotarySecret(): Buffer {
     process.env.PN_OAUTH_JWT_SECRET ||
     '';
   if (!raw || raw.length < 16) {
-    // Dev fallback — production must set PEN_NOTARY_HMAC_SECRET
     return createHash('sha256').update('pen-notary-dev-only').digest();
   }
   return createHash('sha256').update(raw).digest();
@@ -91,6 +101,78 @@ async function writeDriveFile(
   return created.data.id as string;
 }
 
+async function readDriveText(
+  drive: any,
+  parentId: string,
+  name: string
+): Promise<{ id?: string; text: string }> {
+  const q = `name='${name.replace(/'/g, "\\'")}' and '${parentId}' in parents and trashed=false`;
+  const list = await drive.files.list({ q, fields: 'files(id)', pageSize: 1 });
+  const id = list.data.files?.[0]?.id as string | undefined;
+  if (!id) return { text: '' };
+  const got = await drive.files.get({ fileId: id, alt: 'media' }, { responseType: 'arraybuffer' });
+  return { id, text: Buffer.from(got.data as ArrayBuffer).toString('utf8') };
+}
+
+async function listChildFolders(drive: any, parentId: string): Promise<Array<{ id: string; name: string }>> {
+  const q = `'${parentId}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`;
+  const list = await drive.files.list({ q, fields: 'files(id,name)', pageSize: 100 });
+  return (list.data.files || [])
+    .filter((f: { id?: string; name?: string }) => f.id && f.name)
+    .map((f: { id: string; name: string }) => ({ id: f.id, name: f.name }));
+}
+
+async function moveFolderContents(
+  drive: any,
+  fromFolderId: string,
+  toFolderId: string
+): Promise<void> {
+  const q = `'${fromFolderId}' in parents and trashed=false`;
+  const list = await drive.files.list({ q, fields: 'files(id)', pageSize: 200 });
+  for (const f of list.data.files || []) {
+    if (!f.id) continue;
+    await drive.files.update({
+      fileId: f.id,
+      addParents: toFolderId,
+      removeParents: fromFolderId,
+      fields: 'id'
+    });
+  }
+}
+
+async function upsertLibraryIndex(
+  drive: any,
+  penRootId: string,
+  summary: Record<string, unknown>
+): Promise<void> {
+  const { text } = await readDriveText(drive, penRootId, 'library.index.json');
+  let rows: Record<string, unknown>[] = [];
+  try {
+    rows = text ? (JSON.parse(text) as Record<string, unknown>[]) : [];
+    if (!Array.isArray(rows)) rows = [];
+  } catch {
+    rows = [];
+  }
+  const docId = String(summary.docId || '');
+  rows = rows.filter((r) => String(r.docId || '') !== docId);
+  rows.unshift(summary);
+  await writeDriveFile(
+    drive,
+    penRootId,
+    'library.index.json',
+    Buffer.from(JSON.stringify(rows), 'utf8'),
+    'application/json'
+  );
+}
+
+function sanitizeName(s: string): string {
+  return String(s || '')
+    .trim()
+    .replace(/[^a-zA-Z0-9._-]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 128) || 'x';
+}
+
 type OwnerTokenShape = {
   access_token: string;
   refresh_token?: string;
@@ -109,15 +191,9 @@ export function setupPenRoutes(
     ) => Promise<{ metadataFolderId?: string; pnFolderId?: string } | null>;
   }
 ): void {
-  /**
-   * POST /api/pen/notary/timestamp
-   * Body: { hash: string } — never plaintext. First-party only.
-   */
   app.post('/api/pen/notary/timestamp', async (req: Request, res: Response) => {
     try {
       if (!requireFirstPartyOAuthClient(req, res)) return;
-      // Hash-only notary — no Drive I/O; first-party Bearer is enough.
-
       const hash = String(req.body?.hash || '').trim().toLowerCase();
       if (!/^[a-f0-9]{32,128}$/.test(hash)) {
         return res.status(400).json({ error: 'hash_required' });
@@ -135,7 +211,7 @@ export function setupPenRoutes(
 
   /**
    * POST /api/pen/apply-inbound
-   * Materialize pen.section_promote | pen.comment | pen.suggestion into caller's Drive.
+   * Materialize pen.* jobs into caller's Drive under current/drafts/past.
    */
   app.post('/api/pen/apply-inbound', async (req: Request, res: Response) => {
     try {
@@ -149,14 +225,10 @@ export function setupPenRoutes(
       const userPnIdentifier = String(req.body?.userPnIdentifier || '').trim();
       const docId = String(req.body?.docId || '').trim();
 
-      if (
-        !userPnIdentifier ||
-        !docId ||
-        !['pen.section_promote', 'pen.comment', 'pen.suggestion'].includes(jobType)
-      ) {
+      if (!userPnIdentifier || !docId || !(PEN_JOB_TYPES as readonly string[]).includes(jobType)) {
         return res.status(400).json({
           error:
-            'userPnIdentifier, docId, and jobType=pen.section_promote|pen.comment|pen.suggestion required'
+            'userPnIdentifier, docId, and jobType=pen.doc_bootstrap|pen.draft_upsert|pen.publish|pen.comment|pen.suggestion|pen.section_promote required'
         });
       }
 
@@ -196,30 +268,227 @@ export function setupPenRoutes(
 
       const penRootId = await ensureDriveFolder(drive, 'par-noir-pen', meta.pnFolderId);
       const docFolderId = await ensureDriveFolder(drive, String(docId), penRootId);
+      const currentId = await ensureDriveFolder(drive, 'current', docFolderId);
+      const draftsId = await ensureDriveFolder(drive, 'drafts', docFolderId);
+      const pastRootId = await ensureDriveFolder(drive, 'past', docFolderId);
+
+      if (jobType === 'pen.doc_bootstrap') {
+        const manifest = req.body?.manifest;
+        const draft = req.body?.draft;
+        const sectionCiphertextsB64 = (req.body?.sectionCiphertextsB64 || {}) as Record<
+          string,
+          string
+        >;
+        if (!manifest?.docId || !draft?.draftId) {
+          return res.status(400).json({ error: 'manifest_and_draft_required' });
+        }
+        await writeDriveFile(
+          drive,
+          docFolderId,
+          'doc.json',
+          Buffer.from(JSON.stringify(manifest), 'utf8'),
+          'application/json'
+        );
+        const draftFolderId = await ensureDriveFolder(
+          drive,
+          sanitizeName(String(draft.draftId)),
+          draftsId
+        );
+        await writeDriveFile(
+          drive,
+          draftFolderId,
+          'draft.json',
+          Buffer.from(JSON.stringify(draft), 'utf8'),
+          'application/json'
+        );
+        for (const [slug, b64] of Object.entries(sectionCiphertextsB64)) {
+          const buf = Buffer.from(String(b64 || ''), 'base64');
+          if (!buf.length) continue;
+          await writeDriveFile(drive, draftFolderId, `${sanitizeName(slug)}.pen`, buf);
+        }
+        if (req.body?.chain) {
+          await writeDriveFile(
+            drive,
+            docFolderId,
+            'history.chain',
+            Buffer.from(JSON.stringify(req.body.chain), 'utf8'),
+            'application/json'
+          );
+        }
+        await upsertLibraryIndex(drive, penRootId, {
+          docId: manifest.docId,
+          title: manifest.title,
+          templateId: manifest.templateId,
+          classId: manifest.classId,
+          updatedAt: manifest.updatedAt,
+          folderId: manifest.folderId ?? null,
+          lifecycle: manifest.lifecycle || 'draft'
+        });
+        safeLogger.info('[pen/apply-inbound] bootstrap ok', {
+          pn: hashIdentifier(pnIdentifier),
+          doc: hashIdentifier(docId)
+        });
+        return res.json({ ok: true });
+      }
+
+      if (jobType === 'pen.draft_upsert') {
+        const draft = req.body?.draft;
+        const sectionCiphertextsB64 = (req.body?.sectionCiphertextsB64 || {}) as Record<
+          string,
+          string
+        >;
+        if (!draft?.draftId) {
+          return res.status(400).json({ error: 'draft_required' });
+        }
+        const draftFolderId = await ensureDriveFolder(
+          drive,
+          sanitizeName(String(draft.draftId)),
+          draftsId
+        );
+        await writeDriveFile(
+          drive,
+          draftFolderId,
+          'draft.json',
+          Buffer.from(JSON.stringify(draft), 'utf8'),
+          'application/json'
+        );
+        for (const [slug, b64] of Object.entries(sectionCiphertextsB64)) {
+          const buf = Buffer.from(String(b64 || ''), 'base64');
+          if (!buf.length) continue;
+          await writeDriveFile(drive, draftFolderId, `${sanitizeName(slug)}.pen`, buf);
+        }
+        if (req.body?.manifest) {
+          await writeDriveFile(
+            drive,
+            docFolderId,
+            'doc.json',
+            Buffer.from(JSON.stringify(req.body.manifest), 'utf8'),
+            'application/json'
+          );
+        }
+        safeLogger.info('[pen/apply-inbound] draft_upsert ok', {
+          pn: hashIdentifier(pnIdentifier),
+          doc: hashIdentifier(docId)
+        });
+        return res.json({ ok: true });
+      }
+
+      if (jobType === 'pen.publish') {
+        const versionId = sanitizeName(String(req.body?.versionId || `v-${Date.now()}`));
+        const sectionCiphertextsB64 = (req.body?.sectionCiphertextsB64 || {}) as Record<
+          string,
+          string
+        >;
+        const link = req.body?.link as PenPromoteLink | undefined;
+        if (link?.signature) {
+          if (!verifyPromoteLink(link)) {
+            return res.status(400).json({ error: 'promote_sig_invalid' });
+          }
+        }
+
+        const existingCurrent = await listChildFolders(drive, currentId).catch(() => []);
+        void existingCurrent;
+        // Move current files into past/{versionId}
+        const pastVersionId = await ensureDriveFolder(drive, versionId, pastRootId);
+        await moveFolderContents(drive, currentId, pastVersionId);
+
+        for (const [slug, b64] of Object.entries(sectionCiphertextsB64)) {
+          const buf = Buffer.from(String(b64 || ''), 'base64');
+          if (!buf.length) continue;
+          await writeDriveFile(drive, currentId, `${sanitizeName(slug)}.pen`, buf);
+        }
+
+        if (req.body?.manifest) {
+          const manifest = {
+            ...req.body.manifest,
+            lifecycle: 'published',
+            updatedAt: new Date().toISOString()
+          };
+          await writeDriveFile(
+            drive,
+            docFolderId,
+            'doc.json',
+            Buffer.from(JSON.stringify(manifest), 'utf8'),
+            'application/json'
+          );
+          await upsertLibraryIndex(drive, penRootId, {
+            docId: manifest.docId,
+            title: manifest.title,
+            templateId: manifest.templateId,
+            classId: manifest.classId,
+            updatedAt: manifest.updatedAt,
+            folderId: manifest.folderId ?? null,
+            lifecycle: 'published'
+          });
+        }
+
+        if (link) {
+          const { text: chainBody } = await readDriveText(drive, docFolderId, 'history.chain');
+          let next = chainBody;
+          try {
+            const parsed = chainBody ? JSON.parse(chainBody) : null;
+            if (parsed && typeof parsed === 'object' && Array.isArray(parsed.links)) {
+              parsed.links.push(link);
+              next = JSON.stringify(parsed);
+            } else {
+              next = `${chainBody}${chainBody && !chainBody.endsWith('\n') ? '\n' : ''}${JSON.stringify(link)}\n`;
+            }
+          } catch {
+            next = `${chainBody}${JSON.stringify(link)}\n`;
+          }
+          await writeDriveFile(
+            drive,
+            docFolderId,
+            'history.chain',
+            Buffer.from(next, 'utf8'),
+            'application/json'
+          );
+        }
+
+        if (req.body?.sourceDraftId) {
+          const draftFolderId = await ensureDriveFolder(
+            drive,
+            sanitizeName(String(req.body.sourceDraftId)),
+            draftsId
+          );
+          const { text: draftText } = await readDriveText(drive, draftFolderId, 'draft.json');
+          if (draftText) {
+            try {
+              const draft = JSON.parse(draftText) as Record<string, unknown>;
+              draft.status = 'accepted';
+              await writeDriveFile(
+                drive,
+                draftFolderId,
+                'draft.json',
+                Buffer.from(JSON.stringify(draft), 'utf8'),
+                'application/json'
+              );
+            } catch {
+              /* ignore */
+            }
+          }
+        }
+
+        safeLogger.info('[pen/apply-inbound] publish ok', {
+          pn: hashIdentifier(pnIdentifier),
+          doc: hashIdentifier(docId),
+          version: versionId.slice(0, 32)
+        });
+        return res.json({ ok: true });
+      }
 
       if (jobType === 'pen.comment') {
         const comment = req.body?.comment;
         if (!comment?.id || !comment?.body || !comment?.sectionSlug) {
           return res.status(400).json({ error: 'comment_required' });
         }
-        const commentsName = 'comments.jsonl';
-        const cq = `name='${commentsName}' and '${docFolderId}' in parents and trashed=false`;
-        const cl = await drive.files.list({ q: cq, fields: 'files(id)', pageSize: 1 });
-        let body = '';
-        const existingId = cl.data.files?.[0]?.id as string | undefined;
-        if (existingId) {
-          const got = await drive.files.get(
-            { fileId: existingId, alt: 'media' },
-            { responseType: 'arraybuffer' }
-          );
-          body = Buffer.from(got.data as ArrayBuffer).toString('utf8');
-        }
-        body += `${JSON.stringify(comment)}\n`;
+        const { text: body } = await readDriveText(drive, docFolderId, 'comments.jsonl');
+        const next = `${body}${JSON.stringify(comment)}\n`;
         await writeDriveFile(
           drive,
           docFolderId,
-          commentsName,
-          Buffer.from(body, 'utf8'),
+          'comments.jsonl',
+          Buffer.from(next, 'utf8'),
           'application/json'
         );
         safeLogger.info('[pen/apply-inbound] comment ok', {
@@ -234,31 +503,64 @@ export function setupPenRoutes(
         if (!suggestion?.id || !suggestion?.sectionSlug || !suggestion?.proposedDoc) {
           return res.status(400).json({ error: 'suggestion_required' });
         }
-        const sugFolderId = await ensureDriveFolder(drive, 'suggestions', docFolderId);
-        const fileName = `${String(suggestion.id).replace(/[^a-zA-Z0-9._-]/g, '-').slice(0, 128)}.json`;
+        // Suggestions are drafts submitted for review — store under drafts/{id} with status submitted
+        const draftFolderId = await ensureDriveFolder(
+          drive,
+          sanitizeName(String(suggestion.id)),
+          draftsId
+        );
+        const draftManifest = {
+          draftId: suggestion.id,
+          docId,
+          authorPnHash: suggestion.authorPnHash,
+          createdAt: suggestion.createdAt,
+          updatedAt: suggestion.createdAt,
+          status: suggestion.status === 'pending' ? 'submitted' : suggestion.status,
+          toc: [suggestion.sectionSlug],
+          summary: suggestion.summary
+        };
         await writeDriveFile(
           drive,
-          sugFolderId,
-          fileName,
-          Buffer.from(JSON.stringify(suggestion), 'utf8'),
+          draftFolderId,
+          'draft.json',
+          Buffer.from(JSON.stringify(draftManifest), 'utf8'),
           'application/json'
         );
+        const sectionBody = Buffer.from(
+          JSON.stringify({
+            slug: suggestion.sectionSlug,
+            doc: suggestion.proposedDoc
+          }),
+          'utf8'
+        );
+        await writeDriveFile(
+          drive,
+          draftFolderId,
+          `${sanitizeName(String(suggestion.sectionSlug))}.pen`,
+          sectionBody
+        );
 
-        // Optional accept: also apply section promote if payload present
         const acceptPromote = req.body?.acceptPromote;
-        if (acceptPromote?.sectionCiphertextB64 && acceptPromote?.link?.signature) {
+        if (acceptPromote?.sectionCiphertextsB64 || acceptPromote?.sectionCiphertextB64) {
+          // Fall through by rewriting body for publish
           req.body = {
             ...req.body,
-            jobType: 'pen.section_promote',
-            sectionSlug: acceptPromote.sectionSlug || suggestion.sectionSlug,
-            pastName: acceptPromote.pastName,
-            sectionCiphertextB64: acceptPromote.sectionCiphertextB64,
-            currentRelPath: acceptPromote.currentRelPath,
-            pastRelPath: acceptPromote.pastRelPath,
+            jobType: 'pen.publish',
+            versionId: acceptPromote.versionId || `accept-${Date.now()}`,
+            sectionCiphertextsB64:
+              acceptPromote.sectionCiphertextsB64 ||
+              (acceptPromote.sectionCiphertextB64
+                ? {
+                    [String(acceptPromote.sectionSlug || suggestion.sectionSlug)]:
+                      acceptPromote.sectionCiphertextB64
+                  }
+                : {}),
             link: acceptPromote.link,
-            contentHash: acceptPromote.contentHash
+            sourceDraftId: suggestion.id,
+            manifest: acceptPromote.manifest || req.body.manifest
           };
-          // fall through by recursive-style: handle promote below by jumping
+          // Recursive handle via inline publish logic would duplicate — re-post style:
+          // jump by setting jobType and continuing is messy; call publish path via goto
         } else {
           safeLogger.info('[pen/apply-inbound] suggestion ok', {
             pn: hashIdentifier(pnIdentifier),
@@ -266,15 +568,51 @@ export function setupPenRoutes(
           });
           return res.json({ ok: true });
         }
+
+        // Accept-as-publish
+        if (req.body.jobType === 'pen.publish') {
+          const versionId = sanitizeName(String(req.body?.versionId || `v-${Date.now()}`));
+          const sectionCiphertextsB64 = (req.body?.sectionCiphertextsB64 || {}) as Record<
+            string,
+            string
+          >;
+          const link = req.body?.link as PenPromoteLink | undefined;
+          if (link?.signature && !verifyPromoteLink(link)) {
+            return res.status(400).json({ error: 'promote_sig_invalid' });
+          }
+          const pastVersionFolder = await ensureDriveFolder(drive, versionId, pastRootId);
+          await moveFolderContents(drive, currentId, pastVersionFolder);
+          for (const [slug, b64] of Object.entries(sectionCiphertextsB64)) {
+            const buf = Buffer.from(String(b64 || ''), 'base64');
+            if (!buf.length) continue;
+            await writeDriveFile(drive, currentId, `${sanitizeName(slug)}.pen`, buf);
+          }
+          if (req.body?.manifest) {
+            const manifest = {
+              ...req.body.manifest,
+              lifecycle: 'published',
+              updatedAt: new Date().toISOString()
+            };
+            await writeDriveFile(
+              drive,
+              docFolderId,
+              'doc.json',
+              Buffer.from(JSON.stringify(manifest), 'utf8'),
+              'application/json'
+            );
+          }
+          safeLogger.info('[pen/apply-inbound] suggestion accept→publish ok', {
+            pn: hashIdentifier(pnIdentifier),
+            doc: hashIdentifier(docId)
+          });
+          return res.json({ ok: true });
+        }
       }
 
-      // pen.section_promote (also reached after suggestion accept)
+      // pen.section_promote — write into current/ (legacy + accept path)
       const sectionSlug = String(req.body?.sectionSlug || '').trim();
-      const pastName = req.body?.pastName;
       const sectionCiphertextB64 = req.body?.sectionCiphertextB64;
-      const currentRelPath = req.body?.currentRelPath;
-      const pastRelPath = req.body?.pastRelPath;
-      const link = req.body?.link;
+      const link = req.body?.link as PenPromoteLink | undefined;
 
       if (!sectionSlug) {
         return res.status(400).json({ error: 'sectionSlug required' });
@@ -282,22 +620,27 @@ export function setupPenRoutes(
       if (!link?.signature || !link?.contentHash) {
         return res.status(400).json({ error: 'promote_link_required' });
       }
+      if (!verifyPromoteLink(link)) {
+        return res.status(400).json({ error: 'promote_sig_invalid' });
+      }
 
-      const sectionsId = await ensureDriveFolder(drive, 'sections', docFolderId);
-      const sectionFolderId = await ensureDriveFolder(drive, String(sectionSlug), sectionsId);
-      const pastFolderId = await ensureDriveFolder(drive, 'past', sectionFolderId);
-
+      const pastName = String(req.body?.pastName || link.pastName || '').trim();
       if (pastName) {
-        const currentName = `${sectionSlug}.pen`;
-        const q = `name='${currentName.replace(/'/g, "\\'")}' and '${sectionFolderId}' in parents and trashed=false`;
+        const pastVersionFolder = await ensureDriveFolder(
+          drive,
+          sanitizeName(pastName.replace(/\.pen$/i, '')),
+          pastRootId
+        );
+        const currentName = `${sanitizeName(sectionSlug)}.pen`;
+        const q = `name='${currentName.replace(/'/g, "\\'")}' and '${currentId}' in parents and trashed=false`;
         const cur = await drive.files.list({ q, fields: 'files(id,name)', pageSize: 1 });
-        const curId = cur.data.files?.[0]?.id;
-        if (curId) {
+        const curFileId = cur.data.files?.[0]?.id;
+        if (curFileId) {
           await drive.files.update({
-            fileId: curId,
-            addParents: pastFolderId,
-            removeParents: sectionFolderId,
-            requestBody: { name: String(pastName) },
+            fileId: curFileId,
+            addParents: pastVersionFolder,
+            removeParents: currentId,
+            requestBody: { name: currentName },
             fields: 'id'
           });
         }
@@ -307,29 +650,33 @@ export function setupPenRoutes(
       if (!cipherBuf.length) {
         return res.status(400).json({ error: 'section_ciphertext_required' });
       }
-      await writeDriveFile(drive, sectionFolderId, `${sectionSlug}.pen`, cipherBuf);
+      await writeDriveFile(drive, currentId, `${sanitizeName(sectionSlug)}.pen`, cipherBuf);
 
-      const chainName = 'history.chain';
-      const chainQ = `name='${chainName}' and '${docFolderId}' in parents and trashed=false`;
-      const chainList = await drive.files.list({ q: chainQ, fields: 'files(id)', pageSize: 1 });
-      let chainBody = '';
-      const chainId = chainList.data.files?.[0]?.id as string | undefined;
-      if (chainId) {
-        const got = await drive.files.get(
-          { fileId: chainId, alt: 'media' },
-          { responseType: 'arraybuffer' }
-        );
-        chainBody = Buffer.from(got.data as ArrayBuffer).toString('utf8');
+      const { text: chainBody } = await readDriveText(drive, docFolderId, 'history.chain');
+      let nextChain = chainBody;
+      try {
+        const parsed = chainBody ? JSON.parse(chainBody) : null;
+        if (parsed && typeof parsed === 'object' && Array.isArray(parsed.links)) {
+          parsed.links.push(link);
+          nextChain = JSON.stringify(parsed);
+        } else {
+          nextChain = `${chainBody}${chainBody && !chainBody.endsWith('\n') ? '\n' : ''}${JSON.stringify(link)}\n`;
+        }
+      } catch {
+        nextChain = `${chainBody}${JSON.stringify(link)}\n`;
       }
-      chainBody += `${JSON.stringify(link)}\n`;
-      await writeDriveFile(drive, docFolderId, chainName, Buffer.from(chainBody, 'utf8'), 'application/json');
+      await writeDriveFile(
+        drive,
+        docFolderId,
+        'history.chain',
+        Buffer.from(nextChain, 'utf8'),
+        'application/json'
+      );
 
-      safeLogger.info('[pen/apply-inbound] ok', {
+      safeLogger.info('[pen/apply-inbound] section_promote ok', {
         pn: hashIdentifier(pnIdentifier),
         doc: hashIdentifier(String(docId)),
-        section: String(sectionSlug).slice(0, 32),
-        currentRelPath: currentRelPath ? String(currentRelPath).slice(0, 80) : undefined,
-        pastRelPath: pastRelPath ? String(pastRelPath).slice(0, 80) : undefined
+        section: String(sectionSlug).slice(0, 32)
       });
 
       return res.json({ ok: true });
@@ -341,7 +688,183 @@ export function setupPenRoutes(
     }
   });
 
-  /** List starter templates (first-party). */
+  /** Load one doc tree (manifest + current sections + drafts metadata). */
+  app.get('/api/pen/docs/:docId', async (req: Request, res: Response) => {
+    try {
+      if (!requireFirstPartyOAuthClient(req, res)) return;
+      const userPnIdentifier = String(req.query.userPnIdentifier || '').trim();
+      const docId = String(req.params.docId || '').trim();
+      if (!userPnIdentifier || !docId) {
+        return res.status(400).json({ error: 'userPnIdentifier and docId required' });
+      }
+      if (
+        !(await gateFirstPartyOwnerRoute(req, res, DEVICE_CAPABILITIES.driveUpload, userPnIdentifier))
+      ) {
+        return;
+      }
+      const credentials = await storageCredentialsService.getCredentials(userPnIdentifier);
+      if (!credentials?.credentials) {
+        return res.status(404).json({ error: 'User credentials not found' });
+      }
+      const accounts =
+        credentials.credentials.googleDriveAccounts ||
+        (credentials.credentials.googleDrive ? [credentials.credentials.googleDrive] : []);
+      const account = accounts.length > 0 ? accounts[0] : null;
+      let accountId = account ? deps.extractAccountId(account) : undefined;
+      let driveToken: GoogleDriveToken;
+      try {
+        const resolved = await resolveOwnerDriveToken(req, userPnIdentifier, { account, accountId });
+        driveToken = resolved.token;
+        accountId = resolved.accountId ?? accountId;
+      } catch (e) {
+        if (respondDriveTokenError(res, e)) return;
+        throw e;
+      }
+      const accessToken = String(driveToken.access_token || '').trim();
+      if (!accessToken) {
+        return res.status(409).json({ error: 'cloud_token_required' });
+      }
+      const meta = await deps.getMetadataFolder(driveToken, userPnIdentifier, accountId);
+      if (!meta?.pnFolderId) {
+        return res.status(404).json({ error: 'pn_folder_not_found' });
+      }
+      const auth = new google.auth.OAuth2();
+      auth.setCredentials({ access_token: accessToken });
+      const drive = google.drive({ version: 'v3', auth });
+      const penRootId = await ensureDriveFolder(drive, 'par-noir-pen', meta.pnFolderId);
+      const qDoc = `name='${docId.replace(/'/g, "\\'")}' and '${penRootId}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`;
+      const docList = await drive.files.list({ q: qDoc, fields: 'files(id)', pageSize: 1 });
+      const docFolderId = docList.data.files?.[0]?.id as string | undefined;
+      if (!docFolderId) {
+        return res.status(404).json({ error: 'doc_not_found' });
+      }
+      const { text: manifestText } = await readDriveText(drive, docFolderId, 'doc.json');
+      if (!manifestText) {
+        return res.status(404).json({ error: 'manifest_not_found' });
+      }
+      const manifest = JSON.parse(manifestText);
+      const { text: chainText } = await readDriveText(drive, docFolderId, 'history.chain');
+      let chain = null;
+      try {
+        chain = chainText ? JSON.parse(chainText) : null;
+      } catch {
+        chain = { docId, genesis: manifest.genesisProof, links: [] };
+      }
+      const currentId = await ensureDriveFolder(drive, 'current', docFolderId);
+      const curFiles = await drive.files.list({
+        q: `'${currentId}' in parents and trashed=false`,
+        fields: 'files(id,name)',
+        pageSize: 100
+      });
+      const currentSections: unknown[] = [];
+      for (const f of curFiles.data.files || []) {
+        if (!f.id || !f.name?.endsWith('.pen')) continue;
+        const got = await drive.files.get(
+          { fileId: f.id, alt: 'media' },
+          { responseType: 'arraybuffer' }
+        );
+        const raw = Buffer.from(got.data as ArrayBuffer).toString('utf8');
+        try {
+          currentSections.push(JSON.parse(raw));
+        } catch {
+          /* skip */
+        }
+      }
+      const draftsId = await ensureDriveFolder(drive, 'drafts', docFolderId);
+      const draftFolders = await listChildFolders(drive, draftsId);
+      const drafts: unknown[] = [];
+      for (const df of draftFolders) {
+        const { text: dtext } = await readDriveText(drive, df.id, 'draft.json');
+        if (!dtext) continue;
+        try {
+          const draft = JSON.parse(dtext);
+          const secFiles = await drive.files.list({
+            q: `'${df.id}' in parents and trashed=false`,
+            fields: 'files(id,name)',
+            pageSize: 50
+          });
+          const sections: unknown[] = [];
+          for (const sf of secFiles.data.files || []) {
+            if (!sf.id || !sf.name?.endsWith('.pen')) continue;
+            const got = await drive.files.get(
+              { fileId: sf.id, alt: 'media' },
+              { responseType: 'arraybuffer' }
+            );
+            try {
+              sections.push(JSON.parse(Buffer.from(got.data as ArrayBuffer).toString('utf8')));
+            } catch {
+              /* skip */
+            }
+          }
+          drafts.push({ draft, sections });
+        } catch {
+          /* skip */
+        }
+      }
+      return res.json({ manifest, chain, currentSections, drafts });
+    } catch (e) {
+      return res.status(500).json({ error: safeClientErrorMessage(e, isProduction) });
+    }
+  });
+
+  /** List docs from library.index.json (first-party + Drive). */
+  app.get('/api/pen/library', async (req: Request, res: Response) => {
+    try {
+      if (!requireFirstPartyOAuthClient(req, res)) return;
+      const userPnIdentifier = String(req.query.userPnIdentifier || '').trim();
+      if (!userPnIdentifier) {
+        return res.status(400).json({ error: 'userPnIdentifier required' });
+      }
+      if (
+        !(await gateFirstPartyOwnerRoute(req, res, DEVICE_CAPABILITIES.driveUpload, userPnIdentifier))
+      ) {
+        return;
+      }
+
+      const credentials = await storageCredentialsService.getCredentials(userPnIdentifier);
+      if (!credentials?.credentials) {
+        return res.status(404).json({ error: 'User credentials not found' });
+      }
+      const accounts =
+        credentials.credentials.googleDriveAccounts ||
+        (credentials.credentials.googleDrive ? [credentials.credentials.googleDrive] : []);
+      const account = accounts.length > 0 ? accounts[0] : null;
+      let accountId = account ? deps.extractAccountId(account) : undefined;
+      let driveToken: GoogleDriveToken;
+      try {
+        const resolved = await resolveOwnerDriveToken(req, userPnIdentifier, { account, accountId });
+        driveToken = resolved.token;
+        accountId = resolved.accountId ?? accountId;
+      } catch (e) {
+        if (respondDriveTokenError(res, e)) return;
+        throw e;
+      }
+      const accessToken = String(driveToken.access_token || '').trim();
+      if (!accessToken) {
+        return res.status(409).json({ error: 'cloud_token_required' });
+      }
+      const meta = await deps.getMetadataFolder(driveToken, userPnIdentifier, accountId);
+      if (!meta?.pnFolderId) {
+        return res.json({ docs: [] });
+      }
+      const auth = new google.auth.OAuth2();
+      auth.setCredentials({ access_token: accessToken });
+      const drive = google.drive({ version: 'v3', auth });
+      const penRootId = await ensureDriveFolder(drive, 'par-noir-pen', meta.pnFolderId);
+      const { text } = await readDriveText(drive, penRootId, 'library.index.json');
+      let docs: unknown[] = [];
+      try {
+        docs = text ? JSON.parse(text) : [];
+        if (!Array.isArray(docs)) docs = [];
+      } catch {
+        docs = [];
+      }
+      return res.json({ docs });
+    } catch (e) {
+      return res.status(500).json({ error: safeClientErrorMessage(e, isProduction) });
+    }
+  });
+
   app.get('/api/pen/templates', async (req: Request, res: Response) => {
     try {
       if (!requireFirstPartyOAuthClient(req, res)) return;

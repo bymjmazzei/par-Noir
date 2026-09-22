@@ -1,24 +1,56 @@
 /**
- * Pen collab: group-per-doc + invite + outbox promote / comment / suggestion fanout.
- * Uses first-party Bearer; Drive writes go through /api/pen/apply-inbound (owner token gate).
+ * Pen collab: group-per-doc + browse-style group create + durable outbox fanout.
  */
 
-import { createOutboxRecord } from '@par-noir/device-cloud-credentials';
+import {
+  createOutboxRecord,
+  promoteLocalOutbox,
+  upsertLocalOutboxRecord,
+  penCommentFanout,
+  penSectionPromoteFanout,
+  penSuggestionFanout,
+  penDraftUpsertFanout,
+  penPublishFanout,
+  penDocBootstrapFanout,
+  createApiSocialApplier,
+  type OutboxKind,
+  type SealSession
+} from '@par-noir/device-cloud-credentials';
 import {
   PEN_COMMENT_KIND,
   PEN_SECTION_PROMOTE_KIND,
   PEN_SUGGESTION_KIND,
-  penCommentFanout,
-  penSectionPromoteFanout,
-  penSuggestionFanout,
+  PEN_DRAFT_UPSERT_KIND,
+  PEN_PUBLISH_KIND,
+  PEN_DOC_BOOTSTRAP_KIND,
   type PenDocComment,
   type PenPromoteLink,
-  type PenSuggestion
+  type PenSuggestion,
+  type PenRole,
+  canPenRole,
+  resolvePenRole,
+  hashPnIdentifier
 } from '@par-noir/pen-protocol';
+import {
+  generateChatKey,
+  wrapChatKeyForOwner,
+  sealSocialEnvelope
+} from '@par-noir/dm-crypto';
 import { API_ENDPOINT } from '../config/api';
+import { ownerFetch, ownerGet } from './penOwnerFetch';
+import type { PenSession } from './penSession';
+
+function sealSessionFromPen(session: PenSession): SealSession | null {
+  if (!session.mlKemSecretKey) return null;
+  // Same convention as aggregator-browser outbox seal (pn + ML-KEM secret).
+  return {
+    sessionId: session.pnIdentifier,
+    pnName: session.pnIdentifier,
+    passcode: session.mlKemSecretKey
+  };
+}
 
 export async function createPenGroup(params: {
-  accessToken: string;
   ownerPnIdentifier: string;
   groupId: string;
   title: string;
@@ -28,34 +60,101 @@ export async function createPenGroup(params: {
     accessRole: 'readWrite' | 'readOnly';
   }>;
 }): Promise<void> {
-  const res = await fetch(`${API_ENDPOINT}/api/groups`, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${params.accessToken}`,
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify({
+  const res = await ownerFetch(
+    'POST',
+    '/api/groups',
+    {
       ownerPnIdentifier: params.ownerPnIdentifier,
       title: params.title,
       groupId: params.groupId,
       members: params.members
-    })
-  });
+    },
+    { pnIdentifier: params.ownerPnIdentifier }
+  );
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
     throw new Error((err as { error?: string }).error || 'group_create_failed');
   }
 }
 
+/** Invite peer via browse-style POST /api/groups + role on doc. */
+export async function invitePenCollaborator(params: {
+  session: PenSession;
+  docId: string;
+  groupId: string;
+  title: string;
+  peerPnIdentifier: string;
+  role: PenRole;
+  peerMlKemPublicKey: string;
+}): Promise<void> {
+  if (!params.session.mlKemSecretKey) {
+    throw new Error('messaging_keys_required');
+  }
+  if (params.role === 'owner') {
+    throw new Error('cannot_invite_as_owner');
+  }
+
+  let docKey = sessionStorage.getItem(`pen_doc_key:${params.docId}`);
+  if (!docKey) {
+    docKey = generateChatKey();
+    sessionStorage.setItem(`pen_doc_key:${params.docId}`, docKey);
+  }
+
+  const ownerWrapped = await wrapChatKeyForOwner(
+    docKey,
+    params.session.mlKemSecretKey,
+    params.groupId
+  );
+  const peerEnv = await sealSocialEnvelope(params.peerMlKemPublicKey, params.groupId, {
+    docKey,
+    docId: params.docId,
+    role: params.role
+  });
+  const peerWrapped = JSON.stringify(peerEnv);
+
+  const accessRole =
+    params.role === 'viewer' || params.role === 'commentor' ? 'readOnly' : 'readWrite';
+
+  await createPenGroup({
+    ownerPnIdentifier: params.session.pnIdentifier,
+    groupId: params.groupId,
+    title: params.title,
+    members: [
+      {
+        memberPnIdentifier: params.session.pnIdentifier,
+        wrappedChatKey: ownerWrapped,
+        accessRole: 'readWrite'
+      },
+      {
+        memberPnIdentifier: params.peerPnIdentifier,
+        wrappedChatKey: peerWrapped,
+        accessRole
+      }
+    ]
+  });
+
+  const prev = listPendingInvites(params.docId);
+  if (!prev.includes(params.peerPnIdentifier)) {
+    prev.push(params.peerPnIdentifier);
+    sessionStorage.setItem(`pen_invites:${params.docId}`, JSON.stringify(prev));
+  }
+  sessionStorage.setItem(
+    `pen_share:${params.docId}:${params.peerPnIdentifier}`,
+    JSON.stringify({ docId: params.docId, role: params.role, accessRole })
+  );
+}
+
 export async function fetchGroupRoster(params: {
-  accessToken: string;
   groupId: string;
   ownerPnIdentifier: string;
 }): Promise<Array<{ memberPnIdentifier: string; routeKey?: string }>> {
-  const q = new URLSearchParams({ ownerPnIdentifier: params.ownerPnIdentifier });
-  const res = await fetch(
-    `${API_ENDPOINT}/api/groups/${encodeURIComponent(params.groupId)}/roster?${q}`,
-    { headers: { Authorization: `Bearer ${params.accessToken}` } }
+  const q = new URLSearchParams({
+    ownerPnIdentifier: params.ownerPnIdentifier,
+    userPnIdentifier: params.ownerPnIdentifier
+  });
+  const res = await ownerGet(
+    `/api/groups/${encodeURIComponent(params.groupId)}/roster?${q}`,
+    { pnIdentifier: params.ownerPnIdentifier }
   );
   if (!res.ok) return [];
   const data = await res.json().catch(() => ({}));
@@ -66,7 +165,6 @@ export async function fetchGroupRoster(params: {
 }
 
 export async function applyPenPromoteInbound(params: {
-  accessToken: string;
   userPnIdentifier: string;
   docId: string;
   groupId?: string;
@@ -79,13 +177,10 @@ export async function applyPenPromoteInbound(params: {
   link: PenPromoteLink;
   role?: 'sender' | 'peer';
 }): Promise<Response> {
-  return fetch(`${API_ENDPOINT}/api/pen/apply-inbound`, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${params.accessToken}`,
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify({
+  return ownerFetch(
+    'POST',
+    '/api/pen/apply-inbound',
+    {
       userPnIdentifier: params.userPnIdentifier,
       jobType: PEN_SECTION_PROMOTE_KIND,
       role: params.role || 'sender',
@@ -98,102 +193,198 @@ export async function applyPenPromoteInbound(params: {
       sectionCiphertextB64: params.sectionCiphertextB64,
       contentHash: params.contentHash,
       link: params.link
-    })
-  });
+    },
+    { pnIdentifier: params.userPnIdentifier }
+  );
 }
 
 export async function applyPenCommentInbound(params: {
-  accessToken: string;
   userPnIdentifier: string;
   docId: string;
   groupId?: string;
   comment: PenDocComment;
 }): Promise<Response> {
-  return fetch(`${API_ENDPOINT}/api/pen/apply-inbound`, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${params.accessToken}`,
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify({
+  return ownerFetch(
+    'POST',
+    '/api/pen/apply-inbound',
+    {
       userPnIdentifier: params.userPnIdentifier,
       jobType: PEN_COMMENT_KIND,
       docId: params.docId,
       groupId: params.groupId,
       comment: params.comment
-    })
-  });
+    },
+    { pnIdentifier: params.userPnIdentifier }
+  );
 }
 
 export async function applyPenSuggestionInbound(params: {
-  accessToken: string;
   userPnIdentifier: string;
   docId: string;
   groupId?: string;
   suggestion: PenSuggestion;
   acceptPromote?: Record<string, unknown>;
 }): Promise<Response> {
-  return fetch(`${API_ENDPOINT}/api/pen/apply-inbound`, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${params.accessToken}`,
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify({
+  return ownerFetch(
+    'POST',
+    '/api/pen/apply-inbound',
+    {
       userPnIdentifier: params.userPnIdentifier,
       jobType: PEN_SUGGESTION_KIND,
       docId: params.docId,
       groupId: params.groupId,
       suggestion: params.suggestion,
       acceptPromote: params.acceptPromote
-    })
-  });
+    },
+    { pnIdentifier: params.userPnIdentifier }
+  );
 }
 
-/** Queue local outbox record with peer route fanout (when route keys known). */
+function fanoutFor(kind: OutboxKind, peerRouteKeys: string[]) {
+  if (kind === PEN_SECTION_PROMOTE_KIND) return penSectionPromoteFanout(peerRouteKeys);
+  if (kind === PEN_COMMENT_KIND) return penCommentFanout(peerRouteKeys);
+  if (kind === PEN_SUGGESTION_KIND) return penSuggestionFanout(peerRouteKeys);
+  if (kind === PEN_DRAFT_UPSERT_KIND) return penDraftUpsertFanout(peerRouteKeys);
+  if (kind === PEN_PUBLISH_KIND) return penPublishFanout(peerRouteKeys);
+  if (kind === PEN_DOC_BOOTSTRAP_KIND) return penDocBootstrapFanout(peerRouteKeys);
+  return [];
+}
+
+export async function queuePenOutbox(params: {
+  session: PenSession;
+  kind: OutboxKind;
+  outboxId: string;
+  payload: Record<string, unknown>;
+  peerRouteKeys: string[];
+}): Promise<void> {
+  const seal = sealSessionFromPen(params.session);
+  const record = createOutboxRecord({
+    outboxId: params.outboxId,
+    kind: params.kind,
+    payload: params.payload,
+    fanout: fanoutFor(params.kind, params.peerRouteKeys)
+  });
+  if (seal) {
+    await upsertLocalOutboxRecord(params.session.pnIdentifier, seal, record);
+    return;
+  }
+  const key = `pn_sender_outbox_plain_v1:${params.session.pnIdentifier}`;
+  const raw = localStorage.getItem(key);
+  const bag = raw ? (JSON.parse(raw) as { records: typeof record[] }) : { records: [] };
+  bag.records = bag.records.filter((r) => r.outboxId !== params.outboxId);
+  bag.records.push(record);
+  localStorage.setItem(key, JSON.stringify(bag));
+}
+
 export function queuePenSectionPromote(params: {
+  session: PenSession;
   outboxId: string;
   payload: Record<string, unknown>;
   peerRouteKeys: string[];
 }): void {
-  const record = createOutboxRecord({
-    outboxId: params.outboxId,
-    kind: PEN_SECTION_PROMOTE_KIND,
-    payload: params.payload,
-    fanout: penSectionPromoteFanout(params.peerRouteKeys)
-  });
-  sessionStorage.setItem(`pen_last_promote:${String(params.payload.docId || '')}`, JSON.stringify(record));
+  void queuePenOutbox({ ...params, kind: PEN_SECTION_PROMOTE_KIND });
 }
 
 export function queuePenComment(params: {
+  session: PenSession;
   outboxId: string;
   payload: Record<string, unknown>;
   peerRouteKeys: string[];
 }): void {
-  const record = createOutboxRecord({
-    outboxId: params.outboxId,
-    kind: PEN_COMMENT_KIND,
-    payload: params.payload,
-    fanout: penCommentFanout(params.peerRouteKeys)
-  });
-  sessionStorage.setItem(`pen_last_comment:${String(params.payload.docId || '')}`, JSON.stringify(record));
+  void queuePenOutbox({ ...params, kind: PEN_COMMENT_KIND });
 }
 
 export function queuePenSuggestion(params: {
+  session: PenSession;
   outboxId: string;
   payload: Record<string, unknown>;
   peerRouteKeys: string[];
 }): void {
-  const record = createOutboxRecord({
-    outboxId: params.outboxId,
-    kind: PEN_SUGGESTION_KIND,
-    payload: params.payload,
-    fanout: penSuggestionFanout(params.peerRouteKeys)
+  void queuePenOutbox({ ...params, kind: PEN_SUGGESTION_KIND });
+}
+
+export async function promotePenOutboxAndFanout(session: PenSession): Promise<void> {
+  const seal = sealSessionFromPen(session);
+  if (!seal) return;
+  await promoteLocalOutbox({
+    apiBaseUrl: API_ENDPOINT,
+    authToken: session.accessToken,
+    identityId: session.pnIdentifier,
+    session: seal
   });
-  sessionStorage.setItem(
-    `pen_last_suggestion:${String(params.payload.docId || '')}`,
-    JSON.stringify(record)
-  );
+}
+
+/** Drain mailbox and apply pen.* jobs into this user's Drive. */
+export async function drainPenMailbox(session: PenSession): Promise<number> {
+  const apply = createApiSocialApplier({
+    apiBaseUrl: API_ENDPOINT,
+    authToken: session.accessToken,
+    identityId: session.pnIdentifier
+  });
+
+  const mint = await ownerFetch(
+    'POST',
+    '/api/mailbox/route-key',
+    { userPnIdentifier: session.pnIdentifier },
+    { pnIdentifier: session.pnIdentifier }
+  ).catch(() => null);
+  let routeKey: string | undefined;
+  if (mint?.ok) {
+    const data = (await mint.json().catch(() => ({}))) as { routeKey?: string };
+    routeKey = data.routeKey;
+  }
+  if (!routeKey) {
+    const get = await ownerGet('/api/mailbox/route-key', {
+      pnIdentifier: session.pnIdentifier
+    }).catch(() => null);
+    if (get?.ok) {
+      const data = (await get.json().catch(() => ({}))) as { routeKey?: string };
+      routeKey = data.routeKey;
+    }
+  }
+  if (!routeKey) return 0;
+
+  const drain = await ownerGet(
+    `/api/mailbox?routeKey=${encodeURIComponent(routeKey)}&limit=20`,
+    { pnIdentifier: session.pnIdentifier }
+  ).catch(() => null);
+  if (!drain?.ok) return 0;
+  const data = (await drain.json().catch(() => ({}))) as {
+    jobs?: Array<{ id: string; jobType: string; payload: Record<string, unknown> }>;
+  };
+  let applied = 0;
+  for (const job of data.jobs || []) {
+    if (!String(job.jobType || '').startsWith('pen.')) continue;
+    const ok = await apply({
+      id: job.id,
+      jobType: job.jobType,
+      payload: { ...job.payload, userPnIdentifier: session.pnIdentifier, docId: job.payload.docId },
+      routeKey,
+      createdAt: new Date().toISOString(),
+      expiresAt: new Date(Date.now() + 86400000).toISOString()
+    });
+    if (ok) {
+      applied += 1;
+      await ownerFetch(
+        'POST',
+        '/api/mailbox/ack',
+        { routeKey, jobIds: [job.id] },
+        { pnIdentifier: session.pnIdentifier }
+      ).catch(() => null);
+    }
+  }
+  return applied;
+}
+
+export function actorCan(
+  manifestRoles: { pnHash: string; role: PenRole }[] | undefined,
+  ownerPnHash: string | undefined,
+  actorPn: string,
+  action: Parameters<typeof canPenRole>[1]
+): boolean {
+  const role = resolvePenRole(manifestRoles, hashPnIdentifier(actorPn), ownerPnHash);
+  if (!role) return false;
+  return canPenRole(role, action);
 }
 
 export function listPendingInvites(docId: string): string[] {
@@ -208,8 +399,4 @@ export function addPendingInvite(docId: string, peerPn: string): void {
   const prev = listPendingInvites(docId);
   if (!prev.includes(peerPn)) prev.push(peerPn);
   sessionStorage.setItem(`pen_invites:${docId}`, JSON.stringify(prev));
-  sessionStorage.setItem(
-    `pen_share:${docId}:${peerPn}`,
-    JSON.stringify({ docId, accessRole: 'readWrite' })
-  );
 }

@@ -3,7 +3,7 @@
  * Inserts use data URLs so TipTap/img works without auth on src.
  */
 
-import { API_ENDPOINT } from '../config/api';
+import { ownerFetch, ownerGet } from './penOwnerFetch';
 
 export function pickDeviceImageFile(): Promise<File | null> {
   return new Promise((resolve) => {
@@ -34,11 +34,12 @@ export interface CloudImageItem {
 }
 
 /** List image files from the user's Drive via first-party API. */
-export async function listCloudImages(accessToken: string): Promise<CloudImageItem[]> {
+export async function listCloudImages(
+  _accessToken: string,
+  pnIdentifier?: string
+): Promise<CloudImageItem[]> {
   const q = encodeURIComponent("mimeType contains 'image/' and trashed=false");
-  const res = await fetch(`${API_ENDPOINT}/api/drive/files?q=${q}&pageSize=40`, {
-    headers: { Authorization: `Bearer ${accessToken}` }
-  });
+  const res = await ownerGet(`/api/drive/files?q=${q}&pageSize=40`, { pnIdentifier });
   if (!res.ok) throw new Error('cloud_list_failed');
   const data = (await res.json()) as {
     files?: Array<{ id?: string; name?: string; mimeType?: string }>;
@@ -54,12 +55,13 @@ export async function listCloudImages(accessToken: string): Promise<CloudImageIt
 
 /** Download Drive file bytes and return a data URL for editor insert. */
 export async function downloadCloudImageAsDataUrl(
-  accessToken: string,
-  fileId: string
+  _accessToken: string,
+  fileId: string,
+  pnIdentifier?: string
 ): Promise<string> {
-  const res = await fetch(
-    `${API_ENDPOINT}/api/drive/files/${encodeURIComponent(fileId)}?download=true`,
-    { headers: { Authorization: `Bearer ${accessToken}` } }
+  const res = await ownerGet(
+    `/api/drive/files/${encodeURIComponent(fileId)}?download=true`,
+    { pnIdentifier }
   );
   if (!res.ok) throw new Error('cloud_download_failed');
   const blob = await res.blob();
@@ -68,25 +70,24 @@ export async function downloadCloudImageAsDataUrl(
 
 /** Optional custody upload (unencrypted image); returns Drive fileId when ok. */
 export async function uploadDeviceImageToDrive(
-  accessToken: string,
-  file: File
+  _accessToken: string,
+  file: File,
+  pnIdentifier?: string
 ): Promise<string | null> {
   try {
     const dataUrl = await fileToDataUrl(file);
     const base64 = dataUrl.includes(',') ? dataUrl.split(',')[1]! : dataUrl;
-    const res = await fetch(`${API_ENDPOINT}/api/drive/files`, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
+    const res = await ownerFetch(
+      'POST',
+      '/api/drive/files',
+      {
         fileData: base64,
         fileName: file.name || 'pen-image.png',
         mimeType: file.type || 'image/png',
         encrypt: false
-      })
-    });
+      },
+      { pnIdentifier }
+    );
     if (!res.ok) return null;
     const data = (await res.json()) as { id?: string; file?: { id?: string } };
     return data.id || data.file?.id || null;

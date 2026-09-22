@@ -15,17 +15,19 @@ import { API_ENDPOINT, PN_CLIENT_ID } from './config/api';
 import { DocEditorPage } from './pages/DocEditorPage';
 import { DocListPage, type PenAddIntent } from './pages/DocListPage';
 import { listLocalDocs, type LocalDocSummary } from './services/penLocalStore';
+import {
+  clearPenSession,
+  loadPenSession,
+  savePenSession,
+  type PenSession
+} from './services/penSession';
+import { flushPenSyncQueue } from './services/penSyncFlush';
+import { drainPenMailbox } from './services/penCollab';
+import { listLibraryCloud } from './services/penCloudStore';
+import { pendingSyncCount } from './services/penSyncQueue';
 
-export interface PenSession {
-  accessToken: string;
-  refreshToken?: string;
-  pnIdentifier: string;
-  mlDsaPublicKey?: string;
-  mlDsaSecretKey?: string;
-  mlKemSecretKey?: string;
-}
+export type { PenSession };
 
-const SESSION_KEY = 'pen_session';
 const OAUTH_STATE_KEY = 'pen_oauth_state';
 
 function Locked() {
@@ -36,9 +38,11 @@ function Locked() {
 
   const applySession = useCallback(
     (next: PenSession) => {
-      sessionStorage.setItem(SESSION_KEY, JSON.stringify(next));
+      savePenSession(next);
       setSession(next);
       navigate('/');
+      void flushPenSyncQueue(next);
+      void drainPenMailbox(next);
     },
     [navigate]
   );
@@ -101,11 +105,11 @@ function Locked() {
   );
 
   useEffect(() => {
-    try {
-      const raw = sessionStorage.getItem(SESSION_KEY);
-      if (raw) setSession(JSON.parse(raw) as PenSession);
-    } catch {
-      /* ignore */
+    const existing = loadPenSession();
+    if (existing) {
+      setSession(existing);
+      void flushPenSyncQueue(existing);
+      void drainPenMailbox(existing);
     }
   }, []);
 
@@ -114,7 +118,7 @@ function Locked() {
       <AuthenticatedApp
         session={session}
         onLock={() => {
-          sessionStorage.removeItem(SESSION_KEY);
+          clearPenSession();
           setSession(null);
         }}
       />
@@ -222,9 +226,43 @@ function AuthenticatedApp({ session, onLock }: { session: PenSession; onLock: ()
   const navigate = useNavigate();
   const [docs, setDocs] = useState<LocalDocSummary[]>([]);
   const [addIntent, setAddIntent] = useState<PenAddIntent | null>(null);
-  useEffect(() => {
-    setDocs(listLocalDocs(session.pnIdentifier));
+  const [syncPending, setSyncPending] = useState(0);
+
+  const refreshDocs = useCallback(async () => {
+    const local = listLocalDocs(session.pnIdentifier);
+    setDocs(local);
+    setSyncPending(pendingSyncCount(session.pnIdentifier));
+    try {
+      const cloud = await listLibraryCloud(session.pnIdentifier);
+      const byId = new Map<string, LocalDocSummary>();
+      for (const d of cloud) byId.set(d.docId, d);
+      for (const d of local) {
+        const prev = byId.get(d.docId);
+        if (!prev || (d.updatedAt || '') > (prev.updatedAt || '')) byId.set(d.docId, d);
+      }
+      setDocs([...byId.values()].sort((a, b) => (b.updatedAt || '').localeCompare(a.updatedAt || '')));
+    } catch {
+      /* offline — keep local buffer */
+    }
   }, [session.pnIdentifier]);
+
+  useEffect(() => {
+    void refreshDocs();
+    const onOnline = () => {
+      void flushPenSyncQueue(session).then(() => refreshDocs());
+      void drainPenMailbox(session);
+    };
+    window.addEventListener('online', onOnline);
+    const t = window.setInterval(() => {
+      void flushPenSyncQueue(session);
+      void drainPenMailbox(session);
+      setSyncPending(pendingSyncCount(session.pnIdentifier));
+    }, 60_000);
+    return () => {
+      window.removeEventListener('online', onOnline);
+      window.clearInterval(t);
+    };
+  }, [session, refreshDocs]);
 
   function requestAdd(intent: PenAddIntent) {
     navigate('/');
@@ -240,6 +278,11 @@ function AuthenticatedApp({ session, onLock }: { session: PenSession; onLock: ()
           <Link to="/" className="pen-app-chrome-brand">
             Pen
           </Link>
+          {syncPending > 0 && (
+            <span className="ml-2 text-[11px] text-amber-800" title="Pending cloud sync">
+              {syncPending} pending sync
+            </span>
+          )}
         </div>
         <button
           type="button"
@@ -259,7 +302,7 @@ function AuthenticatedApp({ session, onLock }: { session: PenSession; onLock: ()
               <DocListPage
                 session={session}
                 docs={docs}
-                onDocsChange={() => setDocs(listLocalDocs(session.pnIdentifier))}
+                onDocsChange={() => void refreshDocs()}
                 addIntent={addIntent}
                 onAddIntentConsumed={() => setAddIntent(null)}
               />

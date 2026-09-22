@@ -1,4 +1,5 @@
 import type { PenDocType } from './templates.js';
+import type { PenRoleAssignment } from './roles.js';
 
 /** TipTap / ProseMirror JSON node (section SoT). */
 export interface PenTipTapMark {
@@ -79,6 +80,8 @@ export interface PenPagePresentation {
 
 export type PenPageLayout = 'flow' | 'letter' | 'a4';
 
+export type PenDocLifecycle = 'draft' | 'published';
+
 export interface PenDocManifest {
   docId: string;
   title: string;
@@ -97,8 +100,33 @@ export interface PenDocManifest {
   pageLayout?: PenPageLayout;
   /** Default Note card chrome when compiling to browse. */
   pagePresentation?: PenPagePresentation;
-  /** Aggregator fileId after publish — engagement comments key. */
+  /** Aggregator fileId after Connect to feed — engagement comments key. */
   publishedFileId?: string;
+  /** Owner pn hash — unrevokable. */
+  ownerPnHash?: string;
+  /** Access control list (includes owner). */
+  roles?: PenRoleAssignment[];
+  /** Whether current/ has been published at least once. */
+  lifecycle?: PenDocLifecycle;
+  /** Optional My Library notebook id (Pen UI view metadata). */
+  folderId?: string | null;
+  /** Active working draft id under drafts/. */
+  activeDraftId?: string;
+}
+
+/** Draft under drafts/{draftId}/ — unfinished suggestion until submitted. */
+export type PenDraftStatus = 'unfinished' | 'submitted' | 'accepted' | 'rejected';
+
+export interface PenDraftManifest {
+  draftId: string;
+  docId: string;
+  authorPnHash: string;
+  createdAt: string;
+  updatedAt: string;
+  status: PenDraftStatus;
+  /** Ordered section slugs in this draft */
+  toc: string[];
+  summary?: string;
 }
 
 export interface PenNotaryToken {
@@ -136,7 +164,7 @@ export interface PenHistoryChain {
   links: PenPromoteLink[];
 }
 
-/** Outbox payload for pen.section_promote */
+/** Outbox payload for pen.section_promote (legacy accept path) */
 export interface PenSectionPromotePayload {
   docId: string;
   groupId: string;
@@ -151,6 +179,29 @@ export interface PenSectionPromotePayload {
   link: PenPromoteLink;
   /** Optional updated toc */
   toc?: string[];
+}
+
+/** Upsert a working draft under drafts/{draftId}/ */
+export interface PenDraftUpsertPayload {
+  docId: string;
+  groupId?: string;
+  draft: PenDraftManifest;
+  /** Map of sectionSlug → base64 body */
+  sectionCiphertextsB64: Record<string, string>;
+}
+
+/** Publish: move current → past/{versionId}, write new current from accepted content */
+export interface PenPublishPayload {
+  docId: string;
+  groupId?: string;
+  versionId: string;
+  /** Map of sectionSlug → base64 body for new current */
+  sectionCiphertextsB64: Record<string, string>;
+  toc: string[];
+  link?: PenPromoteLink;
+  contentHash?: string;
+  /** Optional draft that was accepted into this publish */
+  sourceDraftId?: string;
 }
 
 /** In-doc review comment (Pen collab bus — not public engagement). */

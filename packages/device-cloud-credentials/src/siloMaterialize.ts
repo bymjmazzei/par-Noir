@@ -517,7 +517,13 @@ export const SOCIAL_JOB_TYPES_APPLIED_VIA_API: ReadonlySet<string> = new Set([
   'group_inbox_update',
   'message_request',
   /** DM chat SoT is Sheets via apply-inbound — never JSONL. */
-  'message_append'
+  'message_append',
+  'pen.section_promote',
+  'pen.comment',
+  'pen.suggestion',
+  'pen.draft_upsert',
+  'pen.publish',
+  'pen.doc_bootstrap'
 ]);
 
 /**

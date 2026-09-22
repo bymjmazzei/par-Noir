@@ -11,15 +11,18 @@ import {
   normalizeSection,
   notaryHashForPromote,
   promoteSectionToPast,
+  publishCurrentToPast,
   setTextLayerDoc,
   signPromoteLink,
   attachNotary,
   verifyChain,
+  ensureOwnerAssignment,
   type PenDocComment,
   type PenPageLayout,
+  type PenRole,
   type PenSuggestion
 } from '@par-noir/pen-protocol';
-import type { PenSession } from '../App';
+import type { PenSession } from '../services/penSession';
 import { FormatRibbon, PageCanvas } from '../components/PageCanvas';
 import { EditablePagePreview } from '../components/EditablePagePreview';
 import { BrowseFeedTilePreview } from '../components/BrowseFeedTilePreview';
@@ -38,7 +41,8 @@ import {
 import { requestNotaryStamp } from '../services/penApi';
 import { resolveSigningKeys } from '../services/penKeys';
 import {
-  addPendingInvite,
+  actorCan,
+  invitePenCollaborator,
   applyPenCommentInbound,
   applyPenPromoteInbound,
   applyPenSuggestionInbound,
@@ -47,6 +51,9 @@ import {
   queuePenSectionPromote,
   queuePenSuggestion
 } from '../services/penCollab';
+import { publishDocCloud, upsertDraftCloud } from '../services/penCloudStore';
+import { enqueueSyncJob } from '../services/penSyncQueue';
+import { ownerGet } from '../services/penOwnerFetch';
 import {
   appendLocalComment,
   listLocalComments,
@@ -74,7 +81,6 @@ async function peerRoutes(
   if (!groupId) return [];
   try {
     const roster = await fetchGroupRoster({
-      accessToken: session.accessToken,
       groupId,
       ownerPnIdentifier: session.pnIdentifier
     });
@@ -103,6 +109,7 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
   const [showHistory, setShowHistory] = useState(false);
   const [showComments, setShowComments] = useState(false);
   const [invitePn, setInvitePn] = useState('');
+  const [inviteRole, setInviteRole] = useState<PenRole>('collaborator');
   const [commentDraft, setCommentDraft] = useState('');
   const [status, setStatus] = useState<string | null>(null);
   const [dirty, setDirty] = useState(false);
@@ -328,21 +335,95 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
     const current = bundleRef.current;
     if (!current || !dirtyRef.current) return;
     const now = new Date().toISOString();
+    const draftId =
+      current.manifest.activeDraftId ||
+      sessionStorage.getItem(`pen_active_draft:${docId}`) ||
+      `draft_${crypto.randomUUID().replace(/-/g, '').slice(0, 12)}`;
     const next = {
       ...current,
-      manifest: { ...current.manifest, updatedAt: now }
+      manifest: { ...current.manifest, updatedAt: now, activeDraftId: draftId, lifecycle: current.manifest.lifecycle || ('draft' as const) }
     };
     saveLocalDoc(session.pnIdentifier, next);
     setBundle({ ...next });
     setDirty(false);
     setLastDraftAt(now);
+
+    const draftMeta = {
+      draftId,
+      docId,
+      authorPnHash: hashPnIdentifier(session.pnIdentifier),
+      createdAt: now,
+      updatedAt: now,
+      status: 'unfinished' as const,
+      toc: next.manifest.toc
+    };
+    sessionStorage.setItem(`pen_draft_meta:${docId}:${draftId}`, JSON.stringify(draftMeta));
+
+    void upsertDraftCloud({
+      userPnIdentifier: session.pnIdentifier,
+      manifest: next.manifest,
+      draft: draftMeta,
+      sections: next.sections
+    }).catch((e) => {
+      enqueueSyncJob(session.pnIdentifier, {
+        kind: 'draft_upsert',
+        docId,
+        payload: { manifest: next.manifest, draft: draftMeta, sections: next.sections }
+      });
+      void e;
+    });
+
     if (!opts?.silent) {
       setStatus('Draft saved');
       window.setTimeout(() => setStatus(null), 1500);
     }
   }
 
-  // Idle draft autosave (~2s after last edit) + 30s while dirty.
+  // Hydrate from cloud when offline buffer is missing.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      if (bundle) return;
+      try {
+        const res = await ownerGet(
+          `/api/pen/docs/${encodeURIComponent(docId)}?userPnIdentifier=${encodeURIComponent(session.pnIdentifier)}`,
+          { pnIdentifier: session.pnIdentifier }
+        );
+        if (!res.ok || cancelled) return;
+        const data = (await res.json()) as {
+          manifest?: import('@par-noir/pen-protocol').PenDocManifest;
+          chain?: import('@par-noir/pen-protocol').PenHistoryChain;
+          currentSections?: import('@par-noir/pen-protocol').PenSectionContent[];
+          drafts?: Array<{
+            draft: { draftId: string };
+            sections: import('@par-noir/pen-protocol').PenSectionContent[];
+          }>;
+        };
+        if (!data.manifest || !data.chain) return;
+        const active = data.drafts?.find((d) => d.draft.draftId === data.manifest?.activeDraftId);
+        const sections =
+          active?.sections?.length
+            ? active.sections
+            : data.currentSections?.length
+              ? data.currentSections
+              : data.drafts?.[0]?.sections || [];
+        const next = {
+          manifest: data.manifest,
+          chain: data.chain,
+          sections: sections.map((s) => normalizeSection(s))
+        };
+        saveLocalDoc(session.pnIdentifier, next);
+        if (!cancelled) setBundle(next);
+      } catch {
+        /* offline */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [bundle, docId, session.pnIdentifier]);
+
+  // Idle draft autosave (~2s after last edit).
   useEffect(() => {
     if (!dirty) return;
     const idle = window.setTimeout(() => saveDraft({ silent: true }), 2000);
@@ -378,11 +459,12 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
 
   async function promote() {
     setError(null);
-    setStatus('Saving…');
+    setStatus('Publishing live…');
     try {
       const keys = resolveSigningKeys(session);
       const now = new Date();
       const paths = promoteSectionToPast(docId, section!.slug, now);
+      const pub = publishCurrentToPast(docId, now, { forceTime: true });
       const bytes = new TextEncoder().encode(JSON.stringify(section));
       const contentHash = hashSectionContent(bytes);
       const prevHeadHash = headHashFromChain(bundle!.chain);
@@ -400,16 +482,27 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
         const notary = await requestNotaryStamp(session.accessToken, notaryHashForPromote(link));
         attachNotary(link, notary);
       } catch {
-        /* offline */
+        /* offline notary optional */
       }
 
       const nextChain = { ...bundle!.chain, links: [...bundle!.chain.links, link] };
       const verified = verifyChain(nextChain);
       if (!verified.ok) throw new Error(verified.error);
 
+      const nextManifest = {
+        ...bundle!.manifest,
+        updatedAt: now.toISOString(),
+        lifecycle: 'published' as const,
+        ownerPnHash:
+          bundle!.manifest.ownerPnHash || hashPnIdentifier(session.pnIdentifier),
+        roles:
+          bundle!.manifest.roles ||
+          ensureOwnerAssignment([], hashPnIdentifier(session.pnIdentifier))
+      };
+
       persist(
         {
-          manifest: { ...bundle!.manifest, updatedAt: now.toISOString() },
+          manifest: nextManifest,
           sections: bundle!.sections,
           chain: nextChain
         },
@@ -431,43 +524,142 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
 
       const peerRouteKeys = await peerRoutes(session, bundle!.manifest.groupId);
       queuePenSectionPromote({
+        session,
         outboxId: `pen_${crypto.randomUUID()}`,
         payload,
         peerRouteKeys
       });
 
+      try {
+        await publishDocCloud({
+          userPnIdentifier: session.pnIdentifier,
+          manifest: nextManifest,
+          sections: bundle!.sections,
+          link,
+          sourceDraftId: bundle!.manifest.activeDraftId,
+          at: now
+        });
+      } catch (e) {
+        enqueueSyncJob(session.pnIdentifier, {
+          kind: 'publish',
+          docId,
+          payload: {
+            manifest: nextManifest,
+            sections: bundle!.sections,
+            link,
+            sourceDraftId: bundle!.manifest.activeDraftId
+          }
+        });
+        if (!(e instanceof Error && /cloud_token|Failed to fetch|NetworkError/i.test(e.message))) {
+          throw e;
+        }
+        setStatus('Queued offline — will publish when online');
+        window.setTimeout(() => setStatus(null), 3000);
+        return;
+      }
+
+      void pub;
       await applyPenPromoteInbound({
-        accessToken: session.accessToken,
         userPnIdentifier: session.pnIdentifier,
         role: 'sender',
         ...payload
       }).catch(() => null);
 
-      setStatus('Committed');
+      setStatus('Published live');
       window.setTimeout(() => setStatus(null), 2000);
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'save_failed');
+      setError(e instanceof Error ? e.message : 'publish_failed');
       setStatus(null);
     }
   }
 
-  function inviteCollaborator() {
+  async function inviteCollaborator() {
     const pn = invitePn.trim();
-    if (!pn) return;
-    addPendingInvite(docId, pn);
-    setStatus('Invite queued');
-    setInvitePn('');
+    if (!pn || !bundle) return;
+    if (
+      !actorCan(
+        bundle.manifest.roles,
+        bundle.manifest.ownerPnHash,
+        session.pnIdentifier,
+        'invite'
+      )
+    ) {
+      setError('no_invite_permission');
+      return;
+    }
+    setStatus('Inviting…');
+    try {
+      const groupId = bundle.manifest.groupId || sessionStorage.getItem(`pen_group_id:${docId}`) || '';
+      // Peer ML-KEM public key: look up via userinfo-style endpoint if available; else require paste
+      let peerPk = sessionStorage.getItem(`pen_peer_kem:${pn}`) || '';
+      if (!peerPk) {
+        const lookup = await ownerGet(
+          `/api/users/${encodeURIComponent(pn)}/messaging-keys`,
+          { pnIdentifier: session.pnIdentifier }
+        ).catch(() => null);
+        if (lookup?.ok) {
+          const data = (await lookup.json().catch(() => ({}))) as { mlKemPublicKey?: string };
+          peerPk = data.mlKemPublicKey || '';
+        }
+      }
+      if (!peerPk) {
+        // Browse-style invite needs peer key; queue pending and persist role intent.
+        const { addPendingInvite } = await import('../services/penCollab');
+        addPendingInvite(docId, pn);
+        const peerHash = hashPnIdentifier(pn);
+        const roles = [
+          ...(bundle.manifest.roles ||
+            ensureOwnerAssignment([], hashPnIdentifier(session.pnIdentifier))),
+          { pnHash: peerHash, role: inviteRole }
+        ];
+        persist({
+          ...bundle,
+          manifest: { ...bundle.manifest, roles, updatedAt: new Date().toISOString() }
+        });
+        setStatus('Invite pending — peer messaging key required to wrap doc key');
+        setInvitePn('');
+        return;
+      }
+      await invitePenCollaborator({
+        session,
+        docId,
+        groupId,
+        title: bundle.manifest.title,
+        peerPnIdentifier: pn,
+        role: inviteRole,
+        peerMlKemPublicKey: peerPk
+      });
+      const peerHash = hashPnIdentifier(pn);
+      const roles = [
+        ...(bundle.manifest.roles ||
+          ensureOwnerAssignment([], hashPnIdentifier(session.pnIdentifier))),
+        { pnHash: peerHash, role: inviteRole }
+      ];
+      persist({
+        ...bundle,
+        manifest: { ...bundle.manifest, roles, updatedAt: new Date().toISOString() }
+      });
+      setStatus('Invited');
+      setInvitePn('');
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'invite_failed');
+      setStatus(null);
+    }
   }
 
   function publishSocial() {
     try {
       saveDraft({ silent: true });
       writeSocialPublishHandoff(bundleRef.current || bundle!);
-      setStatus('Ready — open Browse to finish publish');
+      setStatus('Connect to feed — open Browse to finish');
       window.setTimeout(() => setStatus(null), 4000);
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'publish_failed');
+      setError(e instanceof Error ? e.message : 'feed_connect_failed');
     }
+  }
+
+  async function publishLive() {
+    await promote();
   }
 
   function publishAsTemplate() {
@@ -520,9 +712,13 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
     setCommentDraft('');
     const peerRouteKeys = await peerRoutes(session, bundle.manifest.groupId);
     const payload = { docId, groupId: bundle.manifest.groupId, comment };
-    queuePenComment({ outboxId: `pen_c_${crypto.randomUUID()}`, payload, peerRouteKeys });
+    queuePenComment({
+      session,
+      outboxId: `pen_c_${crypto.randomUUID()}`,
+      payload,
+      peerRouteKeys
+    });
     await applyPenCommentInbound({
-      accessToken: session.accessToken,
       userPnIdentifier: session.pnIdentifier,
       docId,
       groupId: bundle.manifest.groupId,
@@ -544,9 +740,13 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
     setSuggestions(listLocalSuggestions(session.pnIdentifier, docId));
     const peerRouteKeys = await peerRoutes(session, bundle.manifest.groupId);
     const payload = { docId, groupId: bundle.manifest.groupId, suggestion };
-    queuePenSuggestion({ outboxId: `pen_s_${crypto.randomUUID()}`, payload, peerRouteKeys });
+    queuePenSuggestion({
+      session,
+      outboxId: `pen_s_${crypto.randomUUID()}`,
+      payload,
+      peerRouteKeys
+    });
     await applyPenSuggestionInbound({
-      accessToken: session.accessToken,
       userPnIdentifier: session.pnIdentifier,
       docId,
       groupId: bundle.manifest.groupId,
@@ -609,12 +809,12 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
       };
       const peerRouteKeys = await peerRoutes(session, bundle.manifest.groupId);
       queuePenSuggestion({
+        session,
         outboxId: `pen_s_${crypto.randomUUID()}`,
         payload: { docId, suggestion: accepted, acceptPromote },
         peerRouteKeys
       });
       await applyPenSuggestionInbound({
-        accessToken: session.accessToken,
         userPnIdentifier: session.pnIdentifier,
         docId,
         groupId: bundle.manifest.groupId,
@@ -649,9 +849,26 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
 
   const sidePanel = showComments;
   const projectEnabled = isProjectDoc(bundle.manifest);
-  const canCommit =
-    hashPnIdentifier(session.pnIdentifier) === bundle.chain.genesis.authorPnHash;
+  const canCommit = actorCan(
+    bundle.manifest.roles,
+    bundle.manifest.ownerPnHash || bundle.chain.genesis.authorPnHash,
+    session.pnIdentifier,
+    'publish'
+  );
+  const canInvite = actorCan(
+    bundle.manifest.roles,
+    bundle.manifest.ownerPnHash || bundle.chain.genesis.authorPnHash,
+    session.pnIdentifier,
+    'invite'
+  );
+  const canAccept = actorCan(
+    bundle.manifest.roles,
+    bundle.manifest.ownerPnHash || bundle.chain.genesis.authorPnHash,
+    session.pnIdentifier,
+    'accept_suggestion'
+  );
   void savedTick;
+  void canAccept;
 
   return (
     <div className="flex h-[calc(100vh-2.5rem)] flex-col bg-white">
@@ -708,8 +925,11 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
           invitePn={invitePn}
           onInvitePnChange={setInvitePn}
           onInvite={() => {
-            inviteCollaborator();
+            void inviteCollaborator();
           }}
+          inviteRole={inviteRole}
+          onInviteRoleChange={setInviteRole}
+          canInvite={canInvite}
         />
         <SaveMenu
           canCommit={canCommit}
@@ -721,7 +941,8 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
         />
         <PublishMenu
           projectEnabled={projectEnabled}
-          onSocial={publishSocial}
+          onPublishLive={() => void publishLive()}
+          onConnectFeed={publishSocial}
           onTemplate={publishAsTemplate}
           onLibraryTemplate={publishAsLibraryTemplate}
           onFinishedWork={() => void publishFinishedWork()}

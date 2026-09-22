@@ -40,7 +40,10 @@ const SHEET_KINDS = new Set<OutboxKind>([
   'group_message_append',
   'pen.section_promote',
   'pen.comment',
-  'pen.suggestion'
+  'pen.suggestion',
+  'pen.draft_upsert',
+  'pen.publish',
+  'pen.doc_bootstrap'
 ]);
 
 function applyPathFor(kind: OutboxKind): string | null {
@@ -49,7 +52,10 @@ function applyPathFor(kind: OutboxKind): string | null {
   if (
     kind === 'pen.section_promote' ||
     kind === 'pen.comment' ||
-    kind === 'pen.suggestion'
+    kind === 'pen.suggestion' ||
+    kind === 'pen.draft_upsert' ||
+    kind === 'pen.publish' ||
+    kind === 'pen.doc_bootstrap'
   ) {
     return '/api/pen/apply-inbound';
   }

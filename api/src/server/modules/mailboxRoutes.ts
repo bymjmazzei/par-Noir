@@ -51,7 +51,10 @@ const SOCIAL_JOB_TYPES: SocialMailboxJobType[] = [
   'message_request',
   'pen.section_promote',
   'pen.comment',
-  'pen.suggestion'
+  'pen.suggestion',
+  'pen.draft_upsert',
+  'pen.publish',
+  'pen.doc_bootstrap'
 ];
 
 const JOB_TYPES: SocialMailboxJobType[] = [...MESSAGING_JOB_TYPES, ...SOCIAL_JOB_TYPES];

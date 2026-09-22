@@ -1,16 +1,20 @@
 import { useEffect, useRef, useState } from 'react';
 
-/** Publish destinations. Library is a template/doc category — not a publish channel. */
+/**
+ * Publish = update live current/ in Pen.
+ * Connect to feed = separate social visibility step.
+ */
 export function PublishMenu({
   projectEnabled,
-  onSocial,
+  onPublishLive,
+  onConnectFeed,
   onTemplate,
   onLibraryTemplate,
   onFinishedWork
 }: {
-  /** Project docs unlock Library-template + finished-work outcomes. */
   projectEnabled: boolean;
-  onSocial: () => void;
+  onPublishLive: () => void;
+  onConnectFeed: () => void;
   onTemplate: () => void;
   onLibraryTemplate: () => void;
   onFinishedWork: () => void;
@@ -38,17 +42,30 @@ export function PublishMenu({
         Publish ▾
       </button>
       {open && (
-        <div className="absolute right-0 top-full z-40 mt-1 min-w-[13rem] overflow-hidden rounded-md border border-stone-200 bg-white py-1 shadow-lg">
+        <div className="absolute right-0 top-full z-40 mt-1 min-w-[14rem] overflow-hidden rounded-md border border-stone-200 bg-white py-1 shadow-lg">
           <button
             type="button"
+            title="Update the live current/ version for collaborators"
             className="block w-full px-3 py-1.5 text-left text-[12px] text-stone-800 hover:bg-stone-50"
             onClick={() => {
-              onSocial();
+              onPublishLive();
               setOpen(false);
             }}
           >
-            Social
+            Publish live
           </button>
+          <button
+            type="button"
+            title="Make the live version visible on your social feed (separate from Publish live)"
+            className="block w-full px-3 py-1.5 text-left text-[12px] text-stone-800 hover:bg-stone-50"
+            onClick={() => {
+              onConnectFeed();
+              setOpen(false);
+            }}
+          >
+            Connect to feed
+          </button>
+          <div className="my-1 border-t border-stone-100" />
           <button
             type="button"
             className="block w-full px-3 py-1.5 text-left text-[12px] text-stone-800 hover:bg-stone-50"

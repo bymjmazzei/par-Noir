@@ -52,6 +52,16 @@ function endpointFor(jobType: string): string | null {
   if (CONNECTION_JOBS.has(jobType)) return '/api/connections/apply-inbound';
   if (GROUP_JOBS.has(jobType)) return '/api/groups/apply-inbound';
   if (jobType === 'message_append') return '/api/messages/apply-inbound';
+  if (
+    jobType === 'pen.section_promote' ||
+    jobType === 'pen.comment' ||
+    jobType === 'pen.suggestion' ||
+    jobType === 'pen.draft_upsert' ||
+    jobType === 'pen.publish' ||
+    jobType === 'pen.doc_bootstrap'
+  ) {
+    return '/api/pen/apply-inbound';
+  }
   return null;
 }
 

@@ -4,6 +4,17 @@ import {
   pastFileName,
   promoteSectionToPast,
   sectionCurrentPath,
+  currentSectionPath,
+  currentDirPath,
+  draftDirPath,
+  draftSectionPath,
+  pastVersionDirPath,
+  publishCurrentToPast,
+  pastVersionId,
+  canPenRole,
+  resolvePenRole,
+  applyRoleChange,
+  ensureOwnerAssignment,
   listStarterTemplates,
   requireTemplate,
   compileDocumentToNote,
@@ -29,18 +40,47 @@ function utf8ToBytes(s: string): Uint8Array {
 }
 
 describe('pen paths', () => {
-  it('uses fixed current and dated past', () => {
-    expect(sectionCurrentPath('doc1', 'body')).toBe('par-noir-pen/doc1/sections/body/body.pen');
+  it('uses current / drafts / past per doc', () => {
+    expect(currentDirPath('doc1')).toBe('par-noir-pen/doc1/current');
+    expect(currentSectionPath('doc1', 'body')).toBe('par-noir-pen/doc1/current/body.pen');
+    expect(sectionCurrentPath('doc1', 'body')).toBe('par-noir-pen/doc1/current/body.pen');
+    expect(draftDirPath('doc1', 'd1')).toBe('par-noir-pen/doc1/drafts/d1');
+    expect(draftSectionPath('doc1', 'd1', 'body')).toBe('par-noir-pen/doc1/drafts/d1/body.pen');
     const at = new Date('2026-09-20T12:00:00Z');
-    expect(pastFileName('body', at)).toBe('body-2026-09-20.pen');
-    const p = promoteSectionToPast('doc1', 'body', at);
-    expect(p.pastName).toBe('body-2026-09-20.pen');
-    expect(p.pastPath).toContain('/past/body-2026-09-20.pen');
+    expect(pastVersionId(at)).toBe('v-2026-09-20');
+    const pub = publishCurrentToPast('doc1', at);
+    expect(pub.versionId).toBe('v-2026-09-20');
+    expect(pub.pastDir).toBe('par-noir-pen/doc1/past/v-2026-09-20');
+    expect(pastVersionDirPath('doc1', pub.versionId)).toBe(pub.pastDir);
   });
 
   it('same-day collision uses timestamp suffix', () => {
     const at = new Date('2026-09-20T15:04:05Z');
+    expect(pastVersionId(at, { forceTime: true })).toBe('v-2026-09-20T150405Z');
     expect(pastFileName('body', at, { forceTime: true })).toBe('body-2026-09-20T150405Z.pen');
+    const p = promoteSectionToPast('doc1', 'body', at, { forceTime: true });
+    expect(p.pastPath).toContain('/past/v-2026-09-20T150405Z/body.pen');
+  });
+});
+
+describe('pen roles', () => {
+  it('enforces ACL matrix', () => {
+    expect(canPenRole('owner', 'revoke')).toBe(true);
+    expect(canPenRole('collaborator', 'invite')).toBe(true);
+    expect(canPenRole('collaborator', 'accept_suggestion')).toBe(true);
+    expect(canPenRole('commentor', 'submit_suggestion')).toBe(true);
+    expect(canPenRole('commentor', 'invite')).toBe(false);
+    expect(canPenRole('viewer', 'comment')).toBe(false);
+  });
+
+  it('owner is unrevokable', () => {
+    const owner = 'ownerhash';
+    const roles = ensureOwnerAssignment([], owner);
+    expect(resolvePenRole(roles, owner, owner)).toBe('owner');
+    expect(applyRoleChange(roles, owner, owner, null, 'owner')).toBeNull();
+    expect(applyRoleChange(roles, owner, owner, 'viewer', 'owner')).toBeNull();
+    const next = applyRoleChange(roles, owner, 'peer', 'commentor', 'collaborator');
+    expect(next?.some((r) => r.pnHash === 'peer' && r.role === 'commentor')).toBe(true);
   });
 });
 

@@ -1,4 +1,4 @@
-import { API_ENDPOINT } from '../config/api';
+import { apiFetch, apiGet } from './penOwnerFetch';
 import type { PenClass, PenNotaryToken, PenTemplate } from '@par-noir/pen-protocol';
 import { listClasses, listStarterTemplates } from '@par-noir/pen-protocol';
 
@@ -6,14 +6,12 @@ export async function requestNotaryStamp(
   accessToken: string,
   hash: string
 ): Promise<PenNotaryToken> {
-  const res = await fetch(`${API_ENDPOINT}/api/pen/notary/timestamp`, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${accessToken}`,
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify({ hash })
-  });
+  const res = await apiFetch(
+    'POST',
+    '/api/pen/notary/timestamp',
+    { hash },
+    { authToken: accessToken }
+  );
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
     throw new Error((err as { error?: string }).error || 'notary_failed');
@@ -27,9 +25,7 @@ export interface PenCatalogPayload {
 }
 
 export async function fetchPenCatalog(accessToken: string): Promise<PenCatalogPayload> {
-  const res = await fetch(`${API_ENDPOINT}/api/pen/templates`, {
-    headers: { Authorization: `Bearer ${accessToken}` }
-  });
+  const res = await apiGet('/api/pen/templates', { authToken: accessToken });
   if (!res.ok) throw new Error('templates_failed');
   const data = (await res.json()) as {
     classes?: PenClass[];
@@ -55,10 +51,10 @@ export async function fetchStorageTier(
   pnIdentifier: string
 ): Promise<StorageTierName | null> {
   try {
-    const res = await fetch(
-      `${API_ENDPOINT}/api/users/${encodeURIComponent(pnIdentifier)}/storage-tier`,
-      { headers: { Authorization: `Bearer ${accessToken}` } }
-    );
+    const res = await apiGet(`/api/users/${encodeURIComponent(pnIdentifier)}/storage-tier`, {
+      authToken: accessToken,
+      pnIdentifier
+    });
     if (!res.ok) return null;
     const data = (await res.json()) as { tier?: string };
     return data.tier || null;

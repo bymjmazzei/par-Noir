@@ -21,7 +21,10 @@ export type OutboxKind =
   | 'message_request'
   | 'pen.section_promote'
   | 'pen.comment'
-  | 'pen.suggestion';
+  | 'pen.suggestion'
+  | 'pen.draft_upsert'
+  | 'pen.publish'
+  | 'pen.doc_bootstrap';
 
 export type OutboxStatus = 'pending' | 'enqueued' | 'materialized' | 'failed';
 
@@ -112,6 +115,18 @@ export function penCommentFanout(routeKeys: string[]): OutboxFanoutTarget[] {
 
 export function penSuggestionFanout(routeKeys: string[]): OutboxFanoutTarget[] {
   return penKindFanout(routeKeys, 'pen.suggestion');
+}
+
+export function penDraftUpsertFanout(routeKeys: string[]): OutboxFanoutTarget[] {
+  return penKindFanout(routeKeys, 'pen.draft_upsert');
+}
+
+export function penPublishFanout(routeKeys: string[]): OutboxFanoutTarget[] {
+  return penKindFanout(routeKeys, 'pen.publish');
+}
+
+export function penDocBootstrapFanout(routeKeys: string[]): OutboxFanoutTarget[] {
+  return penKindFanout(routeKeys, 'pen.doc_bootstrap');
 }
 
 /** Sealed bag of outbox records stored on device (browser / web dashboard). */
