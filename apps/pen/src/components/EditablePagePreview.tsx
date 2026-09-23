@@ -85,8 +85,9 @@ function opaqueWrapShell(layer: PenPageLayer): CSSProperties {
 type LiveGeom = { x: number; y: number; w: number; h: number };
 
 /**
- * Real float in Body flow — text wraps around it. Height is px (%% height
- * collapses on floats). Drag updates local geometry; commit on pointer up.
+ * Real float in Body flow — text wraps around it.
+ * X and Y both map to margins so diagonal drag moves freely within the float side.
+ * Height is px (%% height collapses on floats). Commit on pointer up.
  */
 function BodyWrapObject({
   layer,
@@ -119,17 +120,31 @@ function BodyWrapObject({
     startX: number;
     startY: number;
     orig: LiveGeom;
+    /** Locked for the gesture so side does not flip mid-drag. */
+    side: 'left' | 'right';
   } | null>(null);
+  const [dragSide, setDragSide] = useState<'left' | 'right' | null>(null);
 
   useEffect(() => {
     setLive({ x: layer.x, y: layer.y, w: layer.w, h: layer.h });
   }, [layer.x, layer.y, layer.w, layer.h, layer.id]);
 
-  const side = resolveBodyWrap({ ...layer, ...live, bodyWrap: layer.bodyWrap });
+  const side =
+    dragSide ||
+    resolveBodyWrap({ ...layer, ...live, bodyWrap: layer.bodyWrap });
   const pageH = pageEl?.clientHeight || 400;
+  const pageW = pageEl?.clientWidth || 320;
   const wPct = Math.max(12, Math.min(70, live.w));
   const hPx = Math.max(48, Math.round((Math.max(10, Math.min(70, live.h)) / 100) * pageH));
   const yPx = Math.max(0, Math.round((Math.max(0, Math.min(80, live.y)) / 100) * pageH));
+  // Continuous horizontal inset — both axes update together on diagonal drag
+  const maxInsetPct = Math.max(0, 100 - wPct - 2);
+  const leftInsetPx = Math.round(
+    (Math.max(0, Math.min(maxInsetPct, live.x)) / 100) * pageW
+  );
+  const rightInsetPx = Math.round(
+    (Math.max(0, Math.min(maxInsetPct, 100 - live.x - live.w)) / 100) * pageW
+  );
 
   const style: CSSProperties = {
     ...opaqueWrapShell(layer),
@@ -138,8 +153,8 @@ function BodyWrapObject({
     height: `${hPx}px`,
     marginTop: `${yPx}px`,
     marginBottom: '0.5em',
-    marginLeft: side === 'right' ? '0.75em' : undefined,
-    marginRight: side === 'left' ? '0.75em' : undefined,
+    marginLeft: side === 'left' ? `${leftInsetPx}px` : '0.75em',
+    marginRight: side === 'right' ? `${rightInsetPx}px` : '0.75em',
     shapeOutside: 'margin-box',
     position: 'relative',
     zIndex: 2,
@@ -153,11 +168,18 @@ function BodyWrapObject({
     onSelect();
     if (locked) return;
     (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+    const startSide = resolveBodyWrap({
+      ...layer,
+      ...liveRef.current,
+      bodyWrap: layer.bodyWrap
+    });
+    setDragSide(startSide);
     dragRef.current = {
       mode: 'move',
       startX: e.clientX,
       startY: e.clientY,
-      orig: { ...liveRef.current }
+      orig: { ...liveRef.current },
+      side: startSide
     };
   }
 
@@ -167,11 +189,18 @@ function BodyWrapObject({
     onSelect();
     if (locked) return;
     (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+    const startSide = resolveBodyWrap({
+      ...layer,
+      ...liveRef.current,
+      bodyWrap: layer.bodyWrap
+    });
+    setDragSide(startSide);
     dragRef.current = {
       mode: 'resize',
       startX: e.clientX,
       startY: e.clientY,
-      orig: { ...liveRef.current }
+      orig: { ...liveRef.current },
+      side: startSide
     };
   }
 
@@ -201,9 +230,13 @@ function BodyWrapObject({
 
   function onPointerUp() {
     if (!dragRef.current) return;
+    const lockedSide = dragRef.current.side;
     dragRef.current = null;
+    setDragSide(null);
     const g = liveRef.current;
-    const nextSide: 'left' | 'right' = g.x + g.w / 2 < 50 ? 'left' : 'right';
+    // Keep side from gesture unless the object clearly crossed the midline
+    const nextSide: 'left' | 'right' =
+      g.x + g.w / 2 < 45 ? 'left' : g.x + g.w / 2 > 55 ? 'right' : lockedSide;
     onCommit({ ...g, bodyWrap: nextSide });
   }
 
