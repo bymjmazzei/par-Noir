@@ -9,6 +9,28 @@
 
 import type { FeedCategory } from './feedCategories';
 
+/** Publish-time licensing snapshot (aligned with pen-protocol PenLicensingRoot). */
+export type PenLicenseFamilySnapshot =
+  | 'implied'
+  | 'unconditionalFree'
+  | 'unconditionalPaid';
+
+export interface PenLicensingSnapshot {
+  family: PenLicenseFamilySnapshot;
+  workLicense?: string;
+  contracts?: Array<{
+    party: 'content_rights' | 'music';
+    claimBps: number;
+    splits: Array<{ holderPnHash: string; role: string; shareBps: number }>;
+    grantProofRef?: string;
+  }>;
+  offers?: Array<{
+    scope: 'personal' | 'commercial';
+    priceCents: number;
+    currency: 'usd';
+  }>;
+}
+
 // ============================================================================
 // Storage Backend Types
 // ============================================================================
@@ -346,10 +368,14 @@ export interface PublicMetadata {
   basedOnTemplateId?: string;
   /** Public Pen IR blob ref for Use template. */
   penIrRef?: { backend?: string; objectId?: string; publicUrl?: string };
-  /** Snapshot of Pen licensing root at publish. */
-  licensing?: import('@par-noir/pen-protocol').PenLicensingRoot;
+  /**
+   * Snapshot of Pen `manifest.licensing` at publish.
+   * Structural mirror of `@par-noir/pen-protocol` PenLicensingRoot — do not import
+   * pen-protocol here (api build-deps builds aggregator-domain before pen-protocol).
+   */
+  licensing?: PenLicensingSnapshot;
   musicPenDocId?: string;
-  musicLicensing?: import('@par-noir/pen-protocol').PenLicensingRoot;
+  musicLicensing?: PenLicensingSnapshot;
 
   publicToken?: any;
   /**
