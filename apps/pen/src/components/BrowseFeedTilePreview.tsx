@@ -204,12 +204,19 @@ function TileSurface({
 export function BrowseFeedTilePreview({
   manifest,
   sections,
-  compact
+  compact,
+  bare
 }: {
   manifest: PenDocManifest;
   sections: PenSectionContent[];
   compact?: boolean;
+  /** Screen-only (no chrome) — for phone bezel / modal. */
+  bare?: boolean;
 }) {
+  if (bare) {
+    return <TileSurface manifest={manifest} sections={sections} compact={compact} />;
+  }
+
   if (compact) {
     return (
       <div className="overflow-hidden rounded-lg bg-neutral-950">

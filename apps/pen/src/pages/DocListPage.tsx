@@ -994,6 +994,7 @@ export function DocListPage({
   const deleteInFlight = useRef(false);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [libraryMode, setLibraryMode] = useState<LibraryMode>('library');
+  const [templatePreviewId, setTemplatePreviewId] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [pins, setPins] = useState(() => loadPinnedCategoryIds(session.pnIdentifier));
   const [showAll, setShowAll] = useState(() => loadPinnedCategoryIds(session.pnIdentifier).length === 0);
@@ -1030,6 +1031,13 @@ export function DocListPage({
       .catch(() => undefined);
     fetchStorageTier(session.accessToken, session.pnIdentifier).then(setStorageTier);
   }, [session.accessToken, session.pnIdentifier]);
+
+  useEffect(() => {
+    const id = new URLSearchParams(window.location.search).get('template');
+    if (!id) return;
+    setLibraryMode('templates');
+    setTemplatePreviewId(id);
+  }, []);
 
   useEffect(() => {
     const onPrefs = () => {
@@ -1466,7 +1474,11 @@ export function DocListPage({
               session={session}
               density={browseDensity}
               onDensity={setDensity}
-              onBack={() => setLibraryMode('library')}
+              initialPreviewId={templatePreviewId}
+              onBack={() => {
+                setTemplatePreviewId(null);
+                setLibraryMode('library');
+              }}
               onCreated={(docId) => {
                 onDocsChange();
                 navigate(`/d/${docId}`);

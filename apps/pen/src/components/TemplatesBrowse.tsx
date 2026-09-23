@@ -1,7 +1,8 @@
 /** Templates catalog as taxonomy directory (Category → Form → Template). */
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
+  categoryIdForClass,
   emptySection,
   getClass,
   getTemplate,
@@ -9,9 +10,11 @@ import {
   listStarterTemplates,
   listTemplatesGroupedByCategory,
   requireTemplate,
+  templateAuthorLabel,
   type PenTemplate
 } from '@par-noir/pen-protocol';
 import type { PenSession } from '../App';
+import { BrowseFeedTilePreview } from './BrowseFeedTilePreview';
 import { DocGalleryPreview } from './DocGalleryPreview';
 import {
   isPersonalTemplateId,
@@ -47,6 +50,47 @@ function GalleryIcon() {
   );
 }
 
+function CloseIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden>
+      <path d="M6 6l12 12M18 6L6 18" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function StarIcon({ filled }: { filled?: boolean }) {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill={filled ? 'currentColor' : 'none'} aria-hidden>
+      <path
+        d="M12 3.5l2.6 5.3 5.8.8-4.2 4.1 1 5.8L12 16.8 6.8 19.5l1-5.8L3.6 9.6l5.8-.8L12 3.5z"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function SendIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden>
+      <path
+        d="M4 11.5L20 4l-5.5 16-2.8-6.2L4 11.5z"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function templateShareUrl(templateId: string): string {
+  const url = new URL(window.location.href);
+  url.searchParams.set('template', templateId);
+  url.hash = '';
+  return url.toString();
+}
+
 function Chevron({ expanded }: { expanded: boolean }) {
   return (
     <span className="pen-explorer-chevron" aria-expanded={expanded} aria-hidden>
@@ -71,6 +115,7 @@ function templatePreviewBundle(pn: string | undefined, templateId: string) {
     return {
       title: personal.title,
       description: based?.description || 'Personal template',
+      authorDisplayName: 'You',
       manifest: {
         docId: 'preview',
         title: personal.title,
@@ -92,6 +137,7 @@ function templatePreviewBundle(pn: string | undefined, templateId: string) {
   return {
     title: t.title,
     description: t.description || '',
+    authorDisplayName: templateAuthorLabel(t),
     manifest: {
       docId: 'preview',
       title: t.title,
@@ -115,7 +161,8 @@ export function TemplatesBrowse({
   onBack,
   onCreated,
   onSaved,
-  onRequestUnlock
+  onRequestUnlock,
+  initialPreviewId
 }: {
   session: PenSession | null;
   density: PenBrowseDensity;
@@ -125,15 +172,22 @@ export function TemplatesBrowse({
   onSaved?: () => void;
   /** When locked, creating requires unlock. */
   onRequestUnlock?: () => void;
+  /** Open a template preview on mount (e.g. ?template=). */
+  initialPreviewId?: string | null;
 }) {
-  const [previewId, setPreviewId] = useState<string | null>(null);
+  const [previewId, setPreviewId] = useState<string | null>(() => initialPreviewId || null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [savedHint, setSavedHint] = useState(false);
+  const [shareHint, setShareHint] = useState(false);
   const [expandedCategories, setExpandedCategories] = useState<Set<string>>(() =>
     new Set(listConsumerCategories().map((c) => c.id))
   );
   const [expandedForms, setExpandedForms] = useState<Set<string>>(() => new Set());
+
+  useEffect(() => {
+    if (initialPreviewId) setPreviewId(initialPreviewId);
+  }, [initialPreviewId]);
 
   const catalog: PenTemplate[] = useMemo(
     () =>
@@ -214,6 +268,21 @@ export function TemplatesBrowse({
       setError(e instanceof Error ? e.message : 'Could not save template');
     }
   }
+
+  async function copyTemplateLink(templateId: string) {
+    const link = templateShareUrl(templateId);
+    try {
+      await navigator.clipboard.writeText(link);
+      setShareHint(true);
+      window.setTimeout(() => setShareHint(false), 1600);
+    } catch {
+      setError('Could not copy link');
+    }
+  }
+
+  const previewIsSocial =
+    preview?.manifest?.classId != null &&
+    categoryIdForClass(String(preview.manifest.classId)) === 'social';
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -366,42 +435,79 @@ export function TemplatesBrowse({
             onClick={(e) => e.stopPropagation()}
           >
             <div className="pen-template-preview-modal-bar">
-              <div className="min-w-0">
+              <div className="min-w-0 flex-1">
                 <h2 className="truncate text-base font-bold text-black">{preview.title}</h2>
+                <p className="truncate text-xs text-neutral-500">
+                  authored by {preview.authorDisplayName}
+                </p>
                 {preview.description ? (
-                  <p className="truncate text-xs text-neutral-500">{preview.description}</p>
+                  <p className="mt-1 line-clamp-2 text-xs text-neutral-500">{preview.description}</p>
                 ) : null}
               </div>
+              <button
+                type="button"
+                className="pen-template-icon-btn"
+                aria-label="Close preview"
+                title="Close"
+                onClick={() => setPreviewId(null)}
+              >
+                <CloseIcon />
+              </button>
+            </div>
+            <div className="pen-template-preview-modal-body">
+              {previewIsSocial ? (
+                <div className="pen-gallery-phone pen-gallery-phone--lg">
+                  <div className="pen-gallery-phone-bezel">
+                    <div className="pen-gallery-phone-screen">
+                      <BrowseFeedTilePreview
+                        manifest={preview.manifest as never}
+                        sections={preview.sections}
+                        bare
+                        compact
+                      />
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <DocGalleryPreview
+                  manifest={preview.manifest as never}
+                  sections={preview.sections}
+                  large
+                />
+              )}
+            </div>
+            <div className="pen-template-preview-modal-actions">
               <button
                 type="button"
                 disabled={busy}
                 title={session ? 'Use template' : 'Unlock to use'}
                 aria-label="Use template"
-                className="pen-template-use-btn"
+                className="pen-template-use-btn pen-template-use-btn--lg"
                 onClick={() => void useTemplate(previewId)}
               >
                 +
               </button>
-            </div>
-            <div className="pen-template-preview-modal-body">
-              <DocGalleryPreview
-                manifest={preview.manifest as never}
-                sections={preview.sections}
-                large
-              />
-            </div>
-            <div className="pen-template-preview-modal-foot">
-              <button
-                type="button"
-                disabled={busy}
-                className="pen-ribbon-btn"
-                onClick={() => saveToMyTemplates(previewId)}
-              >
-                {savedHint ? 'Saved' : 'Save to My templates'}
-              </button>
-              <button type="button" className="pen-ribbon-btn" onClick={() => setPreviewId(null)}>
-                Close
-              </button>
+              <div className="pen-template-preview-modal-icons">
+                <button
+                  type="button"
+                  disabled={busy}
+                  className={`pen-template-icon-btn ${savedHint ? 'is-active' : ''}`}
+                  title={savedHint ? 'Saved' : 'Save to My templates'}
+                  aria-label={savedHint ? 'Saved to My templates' : 'Save to My templates'}
+                  onClick={() => saveToMyTemplates(previewId)}
+                >
+                  <StarIcon filled={savedHint} />
+                </button>
+                <button
+                  type="button"
+                  className={`pen-template-icon-btn ${shareHint ? 'is-active' : ''}`}
+                  title={shareHint ? 'Link copied' : 'Copy share link'}
+                  aria-label={shareHint ? 'Link copied' : 'Copy share link'}
+                  onClick={() => void copyTemplateLink(previewId)}
+                >
+                  <SendIcon />
+                </button>
+              </div>
             </div>
           </div>
         </div>

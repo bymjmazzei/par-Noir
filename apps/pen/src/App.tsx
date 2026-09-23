@@ -100,7 +100,9 @@ function Locked() {
   const [session, setSession] = useState<PenSession | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [lockedView, setLockedView] = useState<'home' | 'templates'>('home');
+  const [lockedView, setLockedView] = useState<'home' | 'templates'>(() =>
+    new URLSearchParams(window.location.search).has('template') ? 'templates' : 'home'
+  );
   const [templateDensity, setTemplateDensity] = useState<PenBrowseDensity>(() =>
     loadBrowseDensity('_locked')
   );
@@ -242,6 +244,9 @@ function Locked() {
                     setTemplateDensity(d);
                     saveBrowseDensity('_locked', d);
                   }}
+                  initialPreviewId={
+                    new URLSearchParams(window.location.search).get('template') || null
+                  }
                   onBack={() => setLockedView('home')}
                   onCreated={(_docId) => undefined}
                   onRequestUnlock={() => setLockedView('home')}

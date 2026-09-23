@@ -30,12 +30,27 @@ export interface PenTemplate {
   /** Social compile target */
   publishContentClass?: 'note' | 'media' | 'collection';
   /**
+   * Public display name for “authored by …”.
+   * Platform starters omit this and resolve to {@link PLATFORM_TEMPLATE_AUTHOR}.
+   */
+  authorDisplayName?: string;
+  /**
    * Agent starter brief. Placeholders: {{user_input}}, {{template_id}}, {{section_list}}.
    * External agents compose this with the user ask — no per-model plugins.
    */
   agentStarter: string;
   /** Present on register templates — agents emit `rows` matching these columns. */
   registerColumns?: PenRegisterColumn[];
+}
+
+/** Default author label for first-party / starter templates. */
+export const PLATFORM_TEMPLATE_AUTHOR = 'par noir';
+
+export function templateAuthorLabel(
+  template: Pick<PenTemplate, 'authorDisplayName'> | null | undefined
+): string {
+  const name = template?.authorDisplayName?.trim();
+  return name || PLATFORM_TEMPLATE_AUTHOR;
 }
 
 /** Build a short imperative agentStarter for a prose/flow template. */
