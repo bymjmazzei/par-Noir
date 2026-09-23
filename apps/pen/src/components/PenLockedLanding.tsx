@@ -5,6 +5,7 @@
 import { useEffect, useRef, type ReactNode } from 'react';
 import { UnlockButton, type PnOAuthPopupResult } from '@par-noir/oauth-ui';
 import { API_ENDPOINT, PN_CLIENT_ID } from '../config/api';
+import { handoffHasSigningKeys } from '../services/penKeys';
 
 const CHECKLIST = [
   'encrypted cloud docs',
@@ -156,16 +157,17 @@ export function PenLockedLanding({
           {addMenu}
           <span className="pen-app-chrome-brand">Pen</span>
         </div>
-        <UnlockButton
-          className="pen-app-chrome-lock"
-          iconOnly
-          title="Unlock"
-          requireMessagingHandoff
-          config={unlockConfig}
-          onBeforeNavigate={onBeforeNavigate}
-          onPopupResult={onPopupResult}
-          onPopupFlowFailed={onPopupFlowFailed}
-        />
+          <UnlockButton
+            className="pen-app-chrome-lock"
+            iconOnly
+            title="Unlock"
+            requireMessagingHandoff
+            isMessagingReady={(pending) => handoffHasSigningKeys(pending?.messagingHandoff)}
+            config={unlockConfig}
+            onBeforeNavigate={onBeforeNavigate}
+            onPopupResult={onPopupResult}
+            onPopupFlowFailed={onPopupFlowFailed}
+          />
       </header>
 
       <div ref={bodyRef} className="pen-locked-page-body">
@@ -203,6 +205,7 @@ export function PenLockedLanding({
                         <UnlockButton
                           className="pen-locked-unlock-cta"
                           requireMessagingHandoff
+                          isMessagingReady={(pending) => handoffHasSigningKeys(pending?.messagingHandoff)}
                           config={unlockConfig}
                           onBeforeNavigate={onBeforeNavigate}
                           onPopupResult={onPopupResult}

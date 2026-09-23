@@ -29,7 +29,7 @@ import {
   savePenSession,
   type PenSession
 } from './services/penSession';
-import { enrichSessionSigningKeys } from './services/penKeys';
+import { enrichSessionSigningKeys, handoffHasSigningKeys } from './services/penKeys';
 import { flushPenSyncQueue } from './services/penSyncFlush';
 import { drainPenMailbox, clearPenMailboxSessionCache } from './services/penCollab';
 import { listLibraryCloud } from './services/penCloudStore';
@@ -148,8 +148,19 @@ function Locked() {
         });
 
         const fields = handoffSessionFields(r.messagingHandoff);
-        // Prefer signing keys when present; do not block unlock — cloud/ML-KEM
-        // handoff is enough to enter the app. Create/promote still fail closed.
+        if (!fields.mlDsaPublicKey || !fields.mlDsaSecretKey) {
+          // Brief wait — stash/BroadcastChannel may land just after the code.
+          await new Promise((resolve) => setTimeout(resolve, 250));
+        }
+        const mergedFields = handoffSessionFields(r.messagingHandoff);
+        if (!mergedFields.mlDsaPublicKey || !mergedFields.mlDsaSecretKey) {
+          if (!handoffHasSigningKeys(r.messagingHandoff)) {
+            setError(
+              'Unlock did not include signing keys. Unlock again so ML-DSA keys are in the messaging handoff.'
+            );
+            return;
+          }
+        }
 
         const pn =
           String(
@@ -158,14 +169,19 @@ function Locked() {
               ''
           ).trim() || 'unknown';
 
-        applySession(
-          enrichSessionSigningKeys({
-            accessToken: tokens.access_token,
-            refreshToken: tokens.refresh_token,
-            pnIdentifier: pn,
-            ...fields
-          })
-        );
+        const next = enrichSessionSigningKeys({
+          accessToken: tokens.access_token,
+          refreshToken: tokens.refresh_token,
+          pnIdentifier: pn,
+          ...mergedFields
+        });
+        if (!next.mlDsaPublicKey || !next.mlDsaSecretKey) {
+          setError(
+            'Unlock did not include signing keys. Unlock again so ML-DSA keys are in the messaging handoff.'
+          );
+          return;
+        }
+        applySession(next);
       } catch (e) {
         setError(e instanceof Error ? e.message : 'Unlock failed');
       } finally {
@@ -206,7 +222,8 @@ function Locked() {
       setError(null);
     },
     onPopupResult: onPopup,
-    onPopupFlowFailed: (reason: string) => setError(reason)
+    onPopupFlowFailed: (reason: string) => setError(reason),
+    isMessagingReady: (pending) => handoffHasSigningKeys(pending?.messagingHandoff)
   };
 
   if (lockedView === 'templates') {

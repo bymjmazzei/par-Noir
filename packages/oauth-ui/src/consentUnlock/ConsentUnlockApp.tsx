@@ -25,6 +25,7 @@ import {
   physicalResultToBundle,
   type NfcIdentityPayload,
 } from './physicalUnlockLoader';
+import { shouldUseCrossProcessBrokerHandoff } from './constants';
 import { denyOAuthConsent, redirectWithAuthCode } from './redirectWithAuthCode';
 import { consentUnlockCss, consentUnlockBrokerCssExtras, resolveConsentAssetBase } from './consentUnlockStyles';
 import { toUnlockVaultEnrollMaterial } from './vaultEnroll';
@@ -313,6 +314,11 @@ function ConsentUnlockInner(props: {
       consentShown: boolean,
       unlocked: UnlockedIdentityBundle
     ) => {
+      const useBroker = shouldUseCrossProcessBrokerHandoff({
+        popup: params.popup,
+        deliverLocalBroker,
+        openExternal,
+      });
       await redirectWithAuthCode({
         code,
         redirectUri: params.redirectUri,
@@ -321,9 +327,16 @@ function ConsentUnlockInner(props: {
         clientId: params.clientId,
         grantedDataPoints: granted,
         consentShown,
-        encryptedIdentity: unlocked.encryptedIdentity,
+        // Always attach shell DSA publicKey — vault JSON / older seals may omit it
+        // on the encrypted row even when UnlockedIdentityBundle.publicKey is set.
+        encryptedIdentity: {
+          ...unlocked.encryptedIdentity,
+          publicKey: unlocked.publicKey || unlocked.encryptedIdentity.publicKey,
+        },
         decryptedIdentity: unlocked.decryptedIdentity,
-        openExternal,
+        // Cap-only openExternal. deliverLocalBroker: sole transport when !popup;
+        // supplemental for web popup (session survives COOP / window.name wipe).
+        openExternal: useBroker ? openExternal : undefined,
         deliverLocalBroker,
       });
     },
@@ -399,10 +412,16 @@ function ConsentUnlockInner(props: {
       setAuthCode(mint.code);
       setPnIdentifier(mint.pnIdentifier);
 
-      // Cross-process broker (Electron/Cap): hand off immediately. Prefer API
-      // broker when available; otherwise openExternal. Skip in-app consent —
-      // grant lookup has no cloud AT here; browse checks after hydrate.
-      if (openExternal || deliverLocalBroker) {
+      // Cap / prefer-app (`popup=false`): hand off via API broker / openExternal.
+      // Same-browser web popup (`popup=true`): fall through to redirect + postMessage
+      // even when Unlock host always wires deliverLocalBroker props.
+      if (
+        shouldUseCrossProcessBrokerHandoff({
+          popup: params.popup,
+          deliverLocalBroker,
+          openExternal,
+        })
+      ) {
         await finishWithCode(
           mint.code,
           mint.existingGrant?.dataPoints || [],
@@ -902,16 +921,21 @@ function ConsentUnlockInner(props: {
                 type="button"
                 className="btn-cancel"
                 disabled={busy}
-                onClick={() =>
+                onClick={() => {
+                  const useBroker = shouldUseCrossProcessBrokerHandoff({
+                    popup: params.popup,
+                    deliverLocalBroker,
+                    openExternal,
+                  });
                   denyOAuthConsent({
                     redirectUri: params.redirectUri,
                     state: params.state,
                     popupFlow: params.popup,
                     clientId: params.clientId,
-                    openExternal,
-                    deliverLocalBroker,
-                  })
-                }
+                    openExternal: useBroker ? openExternal : undefined,
+                    deliverLocalBroker: useBroker ? deliverLocalBroker : undefined,
+                  });
+                }}
               >
                 Deny
               </button>

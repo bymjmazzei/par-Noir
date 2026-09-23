@@ -1,6 +1,7 @@
 export {
   MESSAGING_HANDOFF_CLIENT_IDS,
   isMessagingHandoffClient,
+  shouldUseCrossProcessBrokerHandoff,
   DEFAULT_UNLOCK_ORIGIN,
   UNLOCK_APP_ID,
   UNLOCK_CUSTOM_SCHEME,

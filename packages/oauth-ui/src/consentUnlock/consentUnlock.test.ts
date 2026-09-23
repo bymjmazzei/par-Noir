@@ -1,7 +1,7 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { authenticateWithUnlockProofDetailed } from './mintConsentCode';
 import { parseConsentUnlockParams, resolveUnlockOrigin } from './parseConsentParams';
-import { DEFAULT_UNLOCK_ORIGIN } from './constants';
+import { DEFAULT_UNLOCK_ORIGIN, shouldUseCrossProcessBrokerHandoff } from './constants';
 import { extractMlDsaSecretKeyB64 } from './extractMlDsa';
 import { toUnlockVaultEnrollMaterial, assertNoVaultSecretsOnWire } from './vaultEnroll';
 
@@ -55,6 +55,37 @@ describe('consentUnlock mint', () => {
     expect(result.code).toBe('authcode');
     expect(result.pnIdentifier).toBe('pn_test_id');
     expect(fetchMock).toHaveBeenCalled();
+  });
+});
+
+describe('shouldUseCrossProcessBrokerHandoff', () => {
+  it('is false for web popup even when deliverLocalBroker is wired', () => {
+    expect(
+      shouldUseCrossProcessBrokerHandoff({
+        popup: true,
+        deliverLocalBroker: async () => {},
+        openExternal: async () => {},
+      })
+    ).toBe(false);
+  });
+
+  it('is true for prefer-app / Cap when broker props exist and popup=false', () => {
+    expect(
+      shouldUseCrossProcessBrokerHandoff({
+        popup: false,
+        deliverLocalBroker: async () => {},
+      })
+    ).toBe(true);
+    expect(
+      shouldUseCrossProcessBrokerHandoff({
+        popup: false,
+        openExternal: async () => {},
+      })
+    ).toBe(true);
+  });
+
+  it('is false when neither broker prop is set', () => {
+    expect(shouldUseCrossProcessBrokerHandoff({ popup: false })).toBe(false);
   });
 });
 

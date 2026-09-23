@@ -52,6 +52,12 @@ export interface UnlockButtonProps {
    * Pen / messaging apps need this so durable keys land before the SPA applies the session.
    */
   requireMessagingHandoff?: boolean;
+  /**
+   * Optional extra readiness check while waiting for messaging handoff.
+   * Receives the in-flight OAuth result (may include messagingHandoff).
+   * Pen uses this to require ML-DSA signing keys, not only ML-KEM.
+   */
+  isMessagingReady?: (pending?: PnOAuthPopupResult) => boolean;
   children?: ReactNode;
   className?: string;
   /** Override click; if provided, default unlock behavior is skipped */
@@ -80,6 +86,7 @@ export function UnlockButton({
   forceRedirect = false,
   completeViaParentNavigation = false,
   requireMessagingHandoff = false,
+  isMessagingReady,
   children = 'Unlock pN',
   className = '',
   onClick,
@@ -117,7 +124,8 @@ export function UnlockButton({
             // Parent navigation drops messagingHandoff from the resume URL.
             completeViaParentNavigation: false,
             requireMessagingHandoff,
-            messagingHandoffTimeoutMs: requireMessagingHandoff ? 12_000 : 8_000,
+            isMessagingReady,
+            messagingHandoffTimeoutMs: requireMessagingHandoff ? 45_000 : 8_000,
           });
           await onPopupResult?.(result);
         } catch (e) {
@@ -130,6 +138,12 @@ export function UnlockButton({
             onPopupFlowFailed?.('Sign-in was cancelled or the window closed.');
           } else if (msg === 'OAUTH_STATE_MISMATCH' || msg === 'OAUTH_STATE_MISSING') {
             onPopupFlowFailed?.('Sign-in could not be verified. Close other tabs and try again.');
+          } else if (msg === 'MESSAGING_HANDOFF_INCOMPLETE') {
+            onPopupFlowFailed?.(
+              isMessagingReady
+                ? 'Unlock did not include signing keys. Update Unlock (desktop/app), then unlock again so ML-DSA is in the messaging handoff.'
+                : 'Unlock did not include messaging keys. Unlock again so keys are in the messaging handoff.'
+            );
           } else {
             onPopupFlowFailed?.(msg);
           }
@@ -145,7 +159,9 @@ export function UnlockButton({
           expectedState: state,
           completeViaParentNavigation,
           requireMessagingHandoff,
-          messagingHandoffTimeoutMs: requireMessagingHandoff ? 12_000 : 8_000,
+          isMessagingReady,
+          // Prefer-app + vault can exceed 12s before broker posts DSA.
+          messagingHandoffTimeoutMs: requireMessagingHandoff ? 45_000 : 8_000,
         });
         await onPopupResult?.(result);
       } catch (e) {
@@ -158,6 +174,12 @@ export function UnlockButton({
           onPopupFlowFailed?.('Sign-in was cancelled or the window closed.');
         } else if (msg === 'OAUTH_STATE_MISMATCH' || msg === 'OAUTH_STATE_MISSING') {
           onPopupFlowFailed?.('Sign-in could not be verified. Close other tabs and try again.');
+        } else if (msg === 'MESSAGING_HANDOFF_INCOMPLETE') {
+          onPopupFlowFailed?.(
+            isMessagingReady
+              ? 'Unlock did not include signing keys. Update Unlock (desktop/app), then unlock again so ML-DSA is in the messaging handoff.'
+              : 'Unlock did not include messaging keys. Unlock again so keys are in the messaging handoff.'
+          );
         } else {
           onPopupFlowFailed?.(msg);
         }

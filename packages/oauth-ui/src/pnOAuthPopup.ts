@@ -189,8 +189,11 @@ export interface StartPnOAuthPopupOptions {
   preferApp?: boolean;
   /** When true, do not resolve until messagingHandoff is valid or isMessagingReady() returns true. */
   requireMessagingHandoff?: boolean;
-  /** Check whether messaging keys landed (e.g. after handoff applied from storage). */
-  isMessagingReady?: () => boolean;
+  /**
+   * Extra readiness (e.g. Pen ML-DSA). Receives the in-flight OAuth payload so callers
+   * can inspect messagingHandoff without waiting for localStorage.
+   */
+  isMessagingReady?: (pending?: PnOAuthPopupResult) => boolean;
   /** Max wait for messaging handoff when requireMessagingHandoff (default 8000). */
   messagingHandoffTimeoutMs?: number;
 }
@@ -354,7 +357,6 @@ function startPnOAuthPopupAfterLaunch(
     url,
     expectedState,
     origin = typeof window !== 'undefined' ? window.location.origin : '',
-    allowedMessageOrigins = [],
     timeoutMs = 300_000,
     popupName = defaultPopupName(),
     popupFeatures = DEFAULT_POPUP_FEATURES,
@@ -364,17 +366,45 @@ function startPnOAuthPopupAfterLaunch(
     messagingHandoffTimeoutMs = 8_000,
   } = options;
 
+  // Unlock posts oauth_callback from unlock.parnoir.com before redirecting to
+  // same-origin oauth-callback.html. Accept that broker origin or messages are dropped.
+  const allowedMessageOrigins = (() => {
+    const set = new Set(options.allowedMessageOrigins || []);
+    try {
+      set.add(new URL(url).origin);
+    } catch {
+      /* ignore */
+    }
+    try {
+      set.add(resolveUnlockOrigin(undefined));
+    } catch {
+      /* ignore */
+    }
+    return [...set];
+  })();
+
   const isAllowedOrigin = (eventOrigin: string) =>
     eventOrigin === origin || allowedMessageOrigins.some((a) => a === eventOrigin);
 
   const messagingHandoffSatisfied = (parsed: PnOAuthPopupResult): boolean => {
     if (!requireMessagingHandoff || parsed.error) return true;
     try {
-      if (isMessagingReady?.()) return true;
+      if (isMessagingReady?.(parsed)) return true;
     } catch {
       /* ignore */
     }
-    return handoffProvidesMessagingSession(parsed.messagingHandoff);
+    // Without a custom checker, Kem-only session is enough (browse/messaging).
+    if (!isMessagingReady) {
+      return handoffProvidesMessagingSession(parsed.messagingHandoff);
+    }
+    // Custom checker present (e.g. Pen DSA) — also try storage via zero-arg semantics
+    // by re-invoking without payload after stash may have landed.
+    try {
+      if (isMessagingReady()) return true;
+    } catch {
+      /* ignore */
+    }
+    return false;
   };
 
   return new Promise((resolve, reject) => {
@@ -661,8 +691,10 @@ function startPnOAuthPopupAfterLaunch(
       }
     };
 
+    const pollApiBroker = usedApp || requireMessagingHandoff;
+
     const pollDesktopBrokerOnce = () => {
-      if (settled || !usedApp || brokerPollInFlight) return;
+      if (settled || !pollApiBroker || brokerPollInFlight) return;
       const ctx = brokerPollContextFromConsentUrl(url);
       if (!ctx) return;
       brokerPollInFlight = true;
@@ -685,9 +717,12 @@ function startPnOAuthPopupAfterLaunch(
       pollMessagingHandoffReady();
     }, 50);
 
-    // Prefer-app API poll: ~1/s is enough; 50ms flooded the console (~300 GETs per unlock).
-    if (usedApp) {
-      stashPreferAppBrokerWaitFromConsentUrl(url);
+    // API broker poll: Cap prefer-app always; web popup when messaging/signing keys
+    // are required (COOP + cross-site nav drop window.name / opener postMessage).
+    if (pollApiBroker) {
+      if (usedApp) {
+        stashPreferAppBrokerWaitFromConsentUrl(url);
+      }
       const BROKER_POLL_MS = 1000;
       brokerPollStartTimeout = setTimeout(() => {
         brokerPollStartTimeout = undefined;
@@ -698,17 +733,19 @@ function startPnOAuthPopupAfterLaunch(
       // Cap/iOS suspends timers while Messages is backgrounded — flush on return.
       // Custom-scheme resume often skips document.visibilitychange; Cap dispatches
       // PN_PREFER_APP_RESUME_WAKE_EVENT from preferAppBrokerResume.
-      onBrokerVisible = () => {
-        if (settled) return;
-        pollDesktopBrokerOnce();
-      };
-      onBrokerVisibilityChange = () => {
-        if (document.hidden) return;
-        onBrokerVisible?.();
-      };
-      document.addEventListener('visibilitychange', onBrokerVisibilityChange);
-      window.addEventListener('focus', onBrokerVisible);
-      window.addEventListener(PN_PREFER_APP_RESUME_WAKE_EVENT, onBrokerVisible);
+      if (usedApp) {
+        onBrokerVisible = () => {
+          if (settled) return;
+          pollDesktopBrokerOnce();
+        };
+        onBrokerVisibilityChange = () => {
+          if (document.hidden) return;
+          onBrokerVisible?.();
+        };
+        document.addEventListener('visibilitychange', onBrokerVisibilityChange);
+        window.addEventListener('focus', onBrokerVisible);
+        window.addEventListener(PN_PREFER_APP_RESUME_WAKE_EVENT, onBrokerVisible);
+      }
     }
 
     const POPUP_CLOSED_GRACE_MS = 25_000;

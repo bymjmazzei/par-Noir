@@ -46,4 +46,103 @@ describe('redirectWithAuthCode cross-process', () => {
     expect(handoff?.session?.mlKemSecretKey).toBe('sk');
     expect(handoff?.identity).toBeUndefined();
   });
+
+  it('popupFlow=true: supplemental broker + redirect (session survives cross-site name wipe)', async () => {
+    const brokerCalls: unknown[] = [];
+    const hrefs: string[] = [];
+    const original = window.location;
+    Object.defineProperty(window, 'location', {
+      configurable: true,
+      value: {
+        ...original,
+        get href() {
+          return original.href;
+        },
+        set href(v: string) {
+          hrefs.push(v);
+        },
+      },
+    });
+    try {
+      await redirectWithAuthCode({
+        code: 'auth-code',
+        redirectUri: 'https://pen.parnoir.com/oauth-callback.html',
+        state: 'st',
+        popupFlow: true,
+        clientId: 'pen-app',
+        grantedDataPoints: [],
+        consentShown: false,
+        encryptedIdentity: {
+          encryptedData: 'ed',
+          iv: 'iv',
+          salt: 'salt',
+          publicKey: 'pk',
+        },
+        decryptedIdentity: {
+          pqcSecrets: {
+            mlKemSecretKey: 'kem-sk',
+            mlKemPublicKey: 'kem-pk',
+            mlDsaSecretKey: 'dsa-sk',
+          },
+        },
+        deliverLocalBroker: async (payload) => {
+          brokerCalls.push(payload);
+        },
+      });
+      expect(brokerCalls).toHaveLength(1);
+      const handoff = (brokerCalls[0] as { messagingHandoff?: { session?: { mlDsaSecretKey?: string } } })
+        ?.messagingHandoff;
+      expect(handoff?.session?.mlDsaSecretKey).toBe('dsa-sk');
+      expect(hrefs.some((h) => h.includes('oauth-callback.html') && h.includes('code=auth-code'))).toBe(
+        true
+      );
+    } finally {
+      Object.defineProperty(window, 'location', { configurable: true, value: original });
+    }
+  });
+
+  it('popupFlow=false + deliverLocalBroker: broker only (no redirect)', async () => {
+    const brokerCalls: unknown[] = [];
+    const hrefs: string[] = [];
+    const original = window.location;
+    Object.defineProperty(window, 'location', {
+      configurable: true,
+      value: {
+        ...original,
+        get href() {
+          return original.href;
+        },
+        set href(v: string) {
+          hrefs.push(v);
+        },
+      },
+    });
+    try {
+      await redirectWithAuthCode({
+        code: 'auth-code',
+        redirectUri: 'https://browse.parnoir.com/oauth-callback.html',
+        state: 'st',
+        popupFlow: false,
+        clientId: 'browser-app',
+        grantedDataPoints: [],
+        consentShown: false,
+        encryptedIdentity: {
+          encryptedData: 'ed',
+          iv: 'iv',
+          salt: 'salt',
+          publicKey: 'pk',
+        },
+        decryptedIdentity: {
+          pqcSecrets: { mlKemSecretKey: 'kem-sk', mlKemPublicKey: 'kem-pk' },
+        },
+        deliverLocalBroker: async (payload) => {
+          brokerCalls.push(payload);
+        },
+      });
+      expect(brokerCalls).toHaveLength(1);
+      expect(hrefs).toHaveLength(0);
+    } finally {
+      Object.defineProperty(window, 'location', { configurable: true, value: original });
+    }
+  });
 });

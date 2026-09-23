@@ -38,4 +38,22 @@ describe('firebase.json hosting headers', () => {
       expect(map['Content-Security-Policy']).not.toMatch(/script-src/);
     }
   });
+
+  it('unlock uses COOP unsafe-none so web OAuth popups keep window.opener', () => {
+    // Callers use COOP same-origin-allow-popups specifically so they can open an
+    // Unlock popup without COOP and retain postMessage. Matching COOP on Unlock
+    // severs opener and drops the ML-DSA messaging handoff.
+    const raw = readFileSync(FIREBASE, 'utf8');
+    const config = JSON.parse(raw) as {
+      hosting: Array<{
+        target?: string;
+        headers?: Array<{ source: string; headers: Array<{ key: string; value: string }> }>;
+      }>;
+    };
+    const unlock = (config.hosting || []).find((h) => h.target === 'unlock');
+    expect(unlock).toBeTruthy();
+    const global = (unlock!.headers || []).find((h) => h.source === '**');
+    const map = Object.fromEntries((global!.headers || []).map((h) => [h.key, h.value]));
+    expect(map['Cross-Origin-Opener-Policy']).toBe('unsafe-none');
+  });
 });

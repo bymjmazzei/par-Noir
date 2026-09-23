@@ -198,10 +198,11 @@
 
       function mergeMessagingHandoffParts(windowPart, identity) {
         if (!windowPart && !identity) return null;
+        var session = windowPart && windowPart.session ? windowPart.session : undefined;
         return {
           v: 1,
           timestamp: (windowPart && windowPart.timestamp) || Date.now(),
-          session: windowPart && windowPart.session,
+          session: session,
           identity: identity || (windowPart && windowPart.identity)
         };
       }
@@ -233,39 +234,75 @@
         }
       }
 
+      function mergeMessagingSessionParts(primary, fromStorage) {
+        if (!primary && !fromStorage) return null;
+        var base = primary || fromStorage;
+        var mlDsaSecretKey =
+          (primary && primary.mlDsaSecretKey) || (fromStorage && fromStorage.mlDsaSecretKey);
+        var mlDsaPublicKey =
+          (primary && primary.mlDsaPublicKey) || (fromStorage && fromStorage.mlDsaPublicKey);
+        var out = {
+          mlKemSecretKey: base.mlKemSecretKey,
+          mlKemPublicKey:
+            (primary && primary.mlKemPublicKey) || (fromStorage && fromStorage.mlKemPublicKey)
+        };
+        if (mlDsaSecretKey && mlDsaPublicKey) {
+          out.mlDsaSecretKey = mlDsaSecretKey;
+          out.mlDsaPublicKey = mlDsaPublicKey;
+        }
+        return out;
+      }
+
+      function mergeHandoffPayloads(a, b) {
+        if (!a && !b) return null;
+        if (!a) return b;
+        if (!b) return a;
+        var session = mergeMessagingSessionParts(a.session, b.session);
+        return {
+          v: 1,
+          timestamp: a.timestamp || b.timestamp || Date.now(),
+          session: session || a.session || b.session,
+          identity: a.identity || b.identity
+        };
+      }
+
+      function sessionHasDsa(session) {
+        return !!(
+          session &&
+          typeof session.mlDsaSecretKey === 'string' &&
+          session.mlDsaSecretKey &&
+          typeof session.mlDsaPublicKey === 'string' &&
+          session.mlDsaPublicKey
+        );
+      }
+
       function collectMessagingHandoffPayload(clearSources) {
         var fromStorage = null;
         try {
           fromStorage = parseMessagingHandoffFromStorage(localStorage.getItem(MESSAGING_HANDOFF_STORAGE));
         } catch (e) {}
 
-        if (fromStorage && (fromStorage.session || fromStorage.identity)) {
-          return fromStorage;
-        }
-
         var fromHashFull = parseMessagingHandoffFromHash(window.location.hash);
-        if (fromHashFull && (fromHashFull.session || fromHashFull.identity)) {
-          if (clearSources) {
-            try {
-              history.replaceState(null, '', window.location.pathname + window.location.search);
-            } catch (e) {}
-          }
-          return fromHashFull;
-        }
-
         var windowPart = parseMessagingHandoffFromWindowName(window.name);
         var identityFromHash = parseMessagingIdentityFromHash(window.location.hash);
-        var payload = mergeMessagingHandoffParts(windowPart, identityFromHash);
-        if (!payload && windowPart && windowPart.session) {
-          payload = windowPart;
+        var fromWindow = mergeMessagingHandoffParts(windowPart, identityFromHash);
+        if (!fromWindow && windowPart && windowPart.session) {
+          fromWindow = windowPart;
         }
+
+        // Prefer live window/hash over stale storage; merge so DSA survives Kem-only stash or stripped hash.
+        var payload = null;
+        if (fromWindow) payload = mergeHandoffPayloads(fromWindow, fromStorage);
+        else if (fromHashFull) payload = mergeHandoffPayloads(fromHashFull, fromStorage);
+        else if (fromStorage) payload = fromStorage;
+
         if (!payload || (!payload.identity && !payload.session)) return null;
 
         if (clearSources) {
           if (window.name.indexOf(MESSAGING_HANDOFF_PREFIX) === 0) {
             window.name = '';
           }
-          if (identityFromHash) {
+          if (identityFromHash || fromHashFull) {
             try {
               history.replaceState(null, '', window.location.pathname + window.location.search);
             } catch (e) {}
@@ -276,16 +313,20 @@
 
       function enrichHandoffPayload(payload) {
         if (!payload) return null;
-        if (payload.session) return payload;
         try {
           var storedRaw = localStorage.getItem(MESSAGING_HANDOFF_STORAGE);
           if (!storedRaw) return payload;
           var stored = JSON.parse(storedRaw);
-          if (stored && stored.session) {
-            return mergeMessagingHandoffParts(
-              { v: 1, timestamp: stored.timestamp || Date.now(), session: stored.session },
-              payload.identity || stored.identity || null
-            );
+          if (!stored || stored.v !== 1) return payload;
+          // Merge DSA from storage when live session is Kem-only (or vice versa).
+          if (payload.session || stored.session) {
+            var mergedSession = mergeMessagingSessionParts(payload.session, stored.session);
+            return {
+              v: 1,
+              timestamp: payload.timestamp || stored.timestamp || Date.now(),
+              session: mergedSession || payload.session || stored.session,
+              identity: payload.identity || stored.identity
+            };
           }
         } catch (e) {}
         return payload;
@@ -296,7 +337,8 @@
       oauthDbg('messaging_handoff_collect', {
         hasPayload: !!messagingHandoffPayload,
         hasIdentity: !!(messagingHandoffPayload && messagingHandoffPayload.identity),
-        hasSession: !!(messagingHandoffPayload && messagingHandoffPayload.session)
+        hasSession: !!(messagingHandoffPayload && messagingHandoffPayload.session),
+        hasDsa: !!(messagingHandoffPayload && sessionHasDsa(messagingHandoffPayload.session))
       });
 
       (function deliverMessagingHandoff() {

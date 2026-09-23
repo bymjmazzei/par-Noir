@@ -7,6 +7,22 @@ export function isMessagingHandoffClient(clientId: string): boolean {
   return (MESSAGING_HANDOFF_CLIENT_IDS as readonly string[]).includes(clientId);
 }
 
+/**
+ * Cap / prefer-app (`popup=false`) may finish solely via API broker or openExternal
+ * (handoffDone UI; caller polls broker-pending).
+ * Web popup (`popup=true`) must still redirect to oauth-callback for the auth code
+ * — return false so ConsentUnlock does not take the broker-only early path.
+ * Supplemental broker POST for popup session keys is handled inside redirectWithAuthCode.
+ */
+export function shouldUseCrossProcessBrokerHandoff(args: {
+  popup: boolean;
+  deliverLocalBroker?: unknown;
+  openExternal?: unknown;
+}): boolean {
+  if (args.popup) return false;
+  return Boolean(args.deliverLocalBroker || args.openExternal);
+}
+
 /** Production hosted unlock broker (web + Universal/App Links). */
 export const DEFAULT_UNLOCK_ORIGIN = 'https://unlock.parnoir.com';
 

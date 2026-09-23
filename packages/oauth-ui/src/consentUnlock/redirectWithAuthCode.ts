@@ -104,9 +104,15 @@ export async function redirectWithAuthCode(args: RedirectWithAuthCodeArgs): Prom
     consentShown,
     encryptedIdentity,
     decryptedIdentity,
-    openExternal,
-    deliverLocalBroker,
+    openExternal: openExternalArg,
+    deliverLocalBroker: deliverLocalBrokerArg,
   } = args;
+  // Cap / prefer-app (!popup): broker (or openExternal) is the sole transport.
+  // Web popup: still redirect to oauth-callback for the auth code. Chrome clears
+  // window.name on cross-site navigations and COOP severs opener postMessage, so
+  // ML-KEM/ML-DSA session must also ride the API broker when Unlock wires it.
+  const openExternal = popupFlow ? undefined : openExternalArg;
+  const brokerOnly = !popupFlow && Boolean(deliverLocalBrokerArg);
 
   let messagingHandoff: MessagingOAuthHandoffPayload | null = null;
   let hashPayload: string | undefined;
@@ -122,9 +128,9 @@ export async function redirectWithAuthCode(args: RedirectWithAuthCodeArgs): Prom
     // hash is session-only so OS URL limits are not blown.
     const crossProcess =
       Boolean(openExternal) ||
-      Boolean(deliverLocalBroker) ||
+      brokerOnly ||
       (!popupFlow && !resolveOpener());
-    if (deliverLocalBroker) {
+    if (brokerOnly) {
       // Full handoff goes in the broker payload below — no hash needed.
     } else if (crossProcess && openExternal) {
       if (!messagingHandoff.session) {
@@ -198,14 +204,21 @@ export async function redirectWithAuthCode(args: RedirectWithAuthCodeArgs): Prom
     callbackPayload.messagingHandoff = messagingHandoff;
   }
 
+  // Broker before postMessage: Pen may exchange the code as soon as the first
+  // opener message arrives; storeBrokerPending requires a still-live code.
+  if (deliverLocalBrokerArg) {
+    try {
+      await deliverLocalBrokerArg(callbackPayload);
+    } catch {
+      if (brokerOnly) throw new Error('Broker handoff failed');
+      // Popup supplemental: still redirect / postMessage so web unlock completes.
+    }
+    if (brokerOnly) return;
+  }
+
   const burst = () => postOAuthCallback(appOrigin, callbackPayload);
   burst();
   [50, 150, 300].forEach((ms) => setTimeout(burst, ms));
-
-  if (deliverLocalBroker) {
-    await deliverLocalBroker(callbackPayload);
-    return;
-  }
 
   const targetUrl = buildCallbackUrl(
     redirectUri,
@@ -223,13 +236,8 @@ export async function redirectWithAuthCode(args: RedirectWithAuthCodeArgs): Prom
   }
 
   if (popupFlow && resolveOpener()) {
-    setTimeout(() => {
-      try {
-        window.close();
-      } catch {
-        window.location.href = targetUrl;
-      }
-    }, 400);
+    // Do not window.close() here — that races oauth-callback.html load/stash/postMessage
+    // (historically closed at 400ms and dropped ML-DSA handoff). Callback closes itself.
     window.location.href = targetUrl;
     return;
   }
@@ -245,7 +253,9 @@ export function denyOAuthConsent(args: {
   openExternal?: (url: string) => void | Promise<void>;
   deliverLocalBroker?: (payload: Record<string, unknown>) => void | Promise<void>;
 }): void {
-  const { redirectUri, state, popupFlow, clientId, openExternal, deliverLocalBroker } = args;
+  const { redirectUri, state, popupFlow, clientId } = args;
+  const deliverLocalBroker = popupFlow ? undefined : args.deliverLocalBroker;
+  const openExternal = popupFlow ? undefined : args.openExternal;
   const denyPayload: Record<string, unknown> = {
     type: PN_OAUTH_MESSAGE_TYPE,
     error: 'access_denied',
