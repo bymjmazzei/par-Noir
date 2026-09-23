@@ -570,11 +570,11 @@ body {
   --pen-rule-pitch: 2.25rem;
   /* Match list thead (NAME) row — first blue line sits under this */
   --pen-explorer-head-h: 2rem;
-  /* Gallery tile spans 4 ruled rows; no empty row between tile rows */
+  /* Gallery tile spans 4 ruled rows; title = 1 pitch, preview = 3 */
   --pen-gallery-tile-h: calc(var(--pen-rule-pitch) * 4);
   --pen-gallery-row-gap: 0;
-  --pen-gallery-tile-lg: 200px;
-  --pen-gallery-tile-lg-h: calc(var(--pen-rule-pitch) * 6);
+  --pen-gallery-tile-w: 100px;
+  --pen-gallery-preview-h: calc(var(--pen-rule-pitch) * 3);
 }
 
 .pen-library-page {
@@ -1018,36 +1018,27 @@ button.pen-app-chrome-brand:hover {
 
 .pen-gallery-tiles {
   display: grid;
-  grid-template-columns: repeat(auto-fill, 100px);
+  grid-template-columns: repeat(auto-fill, var(--pen-gallery-tile-w));
   column-gap: 0.75rem;
   row-gap: var(--pen-gallery-row-gap);
   position: relative;
   z-index: 1;
 }
 
-.pen-gallery-tiles--lg {
-  grid-template-columns: repeat(auto-fill, var(--pen-gallery-tile-lg));
-}
-
 .pen-gallery-slot {
   display: flex;
   height: var(--pen-gallery-tile-h);
-  width: 100px;
-  align-items: center;
+  width: var(--pen-gallery-tile-w);
+  align-items: stretch;
   justify-content: center;
   box-sizing: border-box;
-}
-
-.pen-gallery-slot--lg {
-  width: var(--pen-gallery-tile-lg);
-  height: var(--pen-gallery-tile-lg-h);
 }
 
 .pen-gallery-tile {
   display: flex;
   flex-direction: column;
-  width: 100px;
-  height: auto;
+  width: var(--pen-gallery-tile-w);
+  height: 100%;
   box-sizing: border-box;
   margin: 0;
   padding: 0;
@@ -1060,10 +1051,6 @@ button.pen-app-chrome-brand:hover {
   cursor: pointer;
 }
 
-.pen-gallery-tile--lg {
-  width: var(--pen-gallery-tile-lg);
-}
-
 .pen-gallery-tile:hover {
   border-color: #a3a3a3;
 }
@@ -1073,9 +1060,11 @@ button.pen-app-chrome-brand:hover {
   align-items: center;
   gap: 0.125rem;
   flex-shrink: 0;
-  min-height: 1.5rem;
+  height: var(--pen-rule-pitch);
+  min-height: var(--pen-rule-pitch);
+  max-height: var(--pen-rule-pitch);
   box-sizing: border-box;
-  padding: 0.2rem 0.2rem 0.2rem 0.35rem;
+  padding: 0 0.2rem 0 0.35rem;
   background: #f5f5f5;
   border-bottom: 1px solid #e5e5e5;
 }
@@ -1088,7 +1077,7 @@ button.pen-app-chrome-brand:hover {
   white-space: nowrap;
   font-size: 11px;
   font-weight: 500;
-  line-height: 1.2;
+  line-height: 1;
   color: #000;
   background: transparent;
   border: none;
@@ -1106,19 +1095,15 @@ input.pen-gallery-tile-title-text {
 
 .pen-gallery-tile-preview {
   position: relative;
-  flex: 0 0 auto;
+  flex: 1 1 auto;
   display: flex;
   align-items: center;
   justify-content: center;
-  height: 100px;
-  width: 100px;
+  height: var(--pen-gallery-preview-h);
+  min-height: var(--pen-gallery-preview-h);
+  width: 100%;
   overflow: hidden;
   background: #e5e5e5;
-}
-
-.pen-gallery-tile--lg .pen-gallery-tile-preview {
-  width: var(--pen-gallery-tile-lg);
-  height: var(--pen-gallery-tile-lg);
 }
 
 /* Doc page: width = tile; height from content/aspect; centered; clipped by preview */
@@ -1179,13 +1164,10 @@ input.pen-gallery-tile-title-text {
 
 .pen-gallery-tile-preview-link {
   display: block;
-  height: 100px;
-  width: 100px;
-}
-
-.pen-gallery-tile--lg .pen-gallery-tile-preview-link {
-  height: var(--pen-gallery-tile-lg);
-  width: var(--pen-gallery-tile-lg);
+  flex: 1 1 auto;
+  height: var(--pen-gallery-preview-h);
+  width: 100%;
+  min-height: 0;
 }
 
 .pen-gallery-tile-title .relative > button {
@@ -1647,24 +1629,37 @@ input.pen-gallery-tile-title-text {
   line-height: 1.2;
 }
 
+.pen-template-dir-heading,
+.pen-template-dir-subheading {
+  box-sizing: border-box;
+  height: var(--pen-rule-pitch);
+  margin: 0;
+  padding: 0 0.15rem;
+  display: flex;
+  align-items: center;
+  background: #fff;
+  position: relative;
+  z-index: 1;
+}
+
 .pen-template-dir-heading {
   font-size: 0.8125rem;
   font-weight: 700;
   letter-spacing: 0.04em;
   text-transform: uppercase;
   color: #000;
-  margin: 0.75rem 0 0.35rem;
-  padding-left: 0.15rem;
 }
 
 .pen-template-dir-subheading {
   font-size: 0.8125rem;
   font-weight: 600;
   color: #404040;
-  margin: 0.5rem 0 0.35rem;
-  padding-left: 0.15rem;
 }
 
 .pen-template-gallery-group + .pen-template-gallery-group {
-  margin-top: 1rem;
+  margin-top: var(--pen-rule-pitch);
+}
+
+.pen-template-gallery-form + .pen-template-gallery-form {
+  margin-top: 0;
 }

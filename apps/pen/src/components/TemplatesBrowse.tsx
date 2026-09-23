@@ -330,18 +330,18 @@ export function TemplatesBrowse({
                       templates.length === 0 ? null : (
                         <div key={form.id} className="pen-template-gallery-form">
                           <h3 className="pen-template-dir-subheading">{form.title}</h3>
-                          <div className="pen-gallery-tiles pen-gallery-tiles--lg">
+                          <div className="pen-gallery-tiles">
                             {templates.map((t) => (
-                              <div key={t.id} className="pen-gallery-slot pen-gallery-slot--lg">
+                              <div key={t.id} className="pen-gallery-slot">
                                 <button
                                   type="button"
-                                  className="pen-gallery-tile pen-gallery-tile--lg"
+                                  className="pen-gallery-tile"
                                   onClick={() => setPreviewId(t.id)}
                                 >
                                   <div className="pen-gallery-tile-title">
                                     <span className="pen-gallery-tile-title-text">{t.title}</span>
                                   </div>
-                                  <span className="pen-gallery-tile-preview relative bg-neutral-100">
+                                  <span className="pen-gallery-tile-preview">
                                     <TemplateThumb
                                       pn={session?.pnIdentifier}
                                       templateId={t.id}
