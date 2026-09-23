@@ -30,15 +30,138 @@ export function createTextLayer(
   };
 }
 
-/** Display name: explicit name, else "Layer N" by back-to-front index (1 = back). */
+/** Display name: explicit name, else "Layer N" / "Group N" by back-to-front index. */
 export function defaultLayerName(
   layer: PenPageLayer,
   allLayers: PenPageLayer[]
 ): string {
   if (layer.name?.trim()) return layer.name.trim();
-  const ordered = [...allLayers].sort((a, b) => a.zIndex - b.zIndex);
+  if (layer.kind === 'group') {
+    const groups = allLayers.filter((l) => l.kind === 'group').sort((a, b) => a.zIndex - b.zIndex);
+    const idx = groups.findIndex((l) => l.id === layer.id);
+    return `Group ${idx >= 0 ? idx + 1 : 1}`;
+  }
+  const ordered = allLayers
+    .filter((l) => l.kind !== 'group')
+    .sort((a, b) => a.zIndex - b.zIndex);
   const idx = ordered.findIndex((l) => l.id === layer.id);
   return `Layer ${idx >= 0 ? idx + 1 : 1}`;
+}
+
+export function createGroupLayer(
+  partial?: Partial<Pick<PenPageLayer, 'x' | 'y' | 'w' | 'h' | 'zIndex' | 'name'>>
+): PenPageLayer {
+  return {
+    id: newLayerId(),
+    kind: 'group',
+    x: partial?.x ?? 10,
+    y: partial?.y ?? 10,
+    w: partial?.w ?? 40,
+    h: partial?.h ?? 40,
+    zIndex: partial?.zIndex ?? 1,
+    name: partial?.name,
+    backgroundColor: 'transparent'
+  };
+}
+
+export function groupMembers(section: PenSectionContent, groupId: string): PenPageLayer[] {
+  return (section.layers || []).filter((l) => l.parentGroupId === groupId);
+}
+
+export function recomputeGroupBounds(
+  section: PenSectionContent,
+  groupId: string
+): PenSectionContent {
+  const members = groupMembers(section, groupId);
+  const group = (section.layers || []).find((l) => l.id === groupId && l.kind === 'group');
+  if (!group) return section;
+  if (!members.length) {
+    return upsertLayer(section, { ...group, w: Math.max(group.w, 8), h: Math.max(group.h, 8) });
+  }
+  const minX = Math.min(...members.map((m) => m.x));
+  const minY = Math.min(...members.map((m) => m.y));
+  const maxR = Math.max(...members.map((m) => m.x + m.w));
+  const maxB = Math.max(...members.map((m) => m.y + m.h));
+  return upsertLayer(section, {
+    ...group,
+    x: minX,
+    y: minY,
+    w: Math.max(4, maxR - minX),
+    h: Math.max(4, maxB - minY)
+  });
+}
+
+/** Create an empty group folder (or wrap selected object ids). */
+export function createGroupFromSelection(
+  section: PenSectionContent,
+  ids: string[] = []
+): { section: PenSectionContent; groupId: string } {
+  const set = new Set(ids);
+  const members = (section.layers || []).filter(
+    (l) => set.has(l.id) && l.kind !== 'group'
+  );
+  const groupCount = (section.layers || []).filter((l) => l.kind === 'group').length;
+  let minX = 10;
+  let minY = 10;
+  let maxR = 50;
+  let maxB = 50;
+  if (members.length) {
+    minX = Math.min(...members.map((m) => m.x));
+    minY = Math.min(...members.map((m) => m.y));
+    maxR = Math.max(...members.map((m) => m.x + m.w));
+    maxB = Math.max(...members.map((m) => m.y + m.h));
+  }
+  const maxZ = (section.layers || []).reduce((m, l) => Math.max(m, l.zIndex), 0);
+  const group = createGroupLayer({
+    x: minX,
+    y: minY,
+    w: Math.max(8, maxR - minX),
+    h: Math.max(8, maxB - minY),
+    zIndex: maxZ + 1,
+    name: `Group ${groupCount + 1}`
+  });
+  let next = upsertLayer(section, group);
+  const prevGroups = new Set(
+    members.map((m) => m.parentGroupId).filter((g): g is string => Boolean(g))
+  );
+  for (const m of members) {
+    next = upsertLayer(next, { ...m, parentGroupId: group.id });
+  }
+  for (const prev of prevGroups) {
+    next = recomputeGroupBounds(next, prev);
+  }
+  return { section: recomputeGroupBounds(next, group.id), groupId: group.id };
+}
+
+export function setLayerParentGroup(
+  section: PenSectionContent,
+  layerId: string,
+  parentGroupId: string | null
+): PenSectionContent {
+  const layer = (section.layers || []).find((l) => l.id === layerId);
+  if (!layer || layer.kind === 'group') return section;
+  if (parentGroupId === layerId) return section;
+  const prev = layer.parentGroupId || null;
+  let next = upsertLayer(section, { ...layer, parentGroupId: parentGroupId || undefined });
+  if (prev) next = recomputeGroupBounds(next, prev);
+  if (parentGroupId) next = recomputeGroupBounds(next, parentGroupId);
+  return next;
+}
+
+/** Move a group root and all members by the same delta. */
+export function moveGroupByDelta(
+  section: PenSectionContent,
+  groupId: string,
+  dx: number,
+  dy: number
+): PenSectionContent {
+  const layers = (section.layers || []).map((l) => {
+    if (l.id === groupId || l.parentGroupId === groupId) {
+      return { ...l, x: l.x + dx, y: l.y + dy };
+    }
+    return l;
+  });
+  return recomputeGroupBounds({ ...section, layers }, groupId);
 }
 
 export type LayerAlignMode =
@@ -224,12 +347,43 @@ export function patchLayerStyle(
       | 'blendAmount'
       | 'visible'
       | 'positionLocked'
+      | 'strokeColor'
+      | 'strokeWidth'
+      | 'strokeStyle'
+      | 'strokeAlign'
+      | 'name'
+      | 'parentGroupId'
     >
   >
 ): PenSectionContent {
   const existing = (section.layers || []).find((l) => l.id === layerId);
   if (!existing) throw new Error(`unknown_layer:${layerId}`);
   return upsertLayer(section, { ...existing, ...patch });
+}
+
+/** CSS stroke for preview — inside = border, outside = outline, center = half each. */
+export function layerStrokeStyle(layer: PenPageLayer): {
+  border?: string;
+  outline?: string;
+  outlineOffset?: number;
+  boxShadow?: string;
+} {
+  const w = layer.strokeWidth ?? 0;
+  if (!w || !layer.strokeColor) return {};
+  const color = layer.strokeColor;
+  const style = layer.strokeStyle || 'solid';
+  const align = layer.strokeAlign || 'center';
+  if (align === 'inside') {
+    return { border: `${w}px ${style} ${color}` };
+  }
+  if (align === 'outside') {
+    return { outline: `${w}px ${style} ${color}`, outlineOffset: 0 };
+  }
+  const half = Math.max(0.5, w / 2);
+  return {
+    border: `${half}px ${style} ${color}`,
+    boxShadow: `0 0 0 ${half}px ${color}`
+  };
 }
 
 /** Keep geometry; swap layer kind to image or video (attachment on a text object). */
@@ -357,10 +511,16 @@ export function upsertLayer(
 }
 
 export function removeLayer(section: PenSectionContent, layerId: string): PenSectionContent {
-  return {
-    ...section,
-    layers: (section.layers || []).filter((l) => l.id !== layerId)
-  };
+  const target = (section.layers || []).find((l) => l.id === layerId);
+  const parentId = target?.parentGroupId || null;
+  let layers = (section.layers || [])
+    .map((l) =>
+      l.parentGroupId === layerId ? { ...l, parentGroupId: undefined } : l
+    )
+    .filter((l) => l.id !== layerId);
+  let next: PenSectionContent = { ...section, layers };
+  if (parentId) next = recomputeGroupBounds(next, parentId);
+  return next;
 }
 
 export function reorderLayer(

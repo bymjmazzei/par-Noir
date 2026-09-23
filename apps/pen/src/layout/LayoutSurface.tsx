@@ -16,6 +16,8 @@ interface DragState {
   startX: number;
   startY: number;
   orig: LayoutItem;
+  /** Snapshot of linked items at drag start (group members). */
+  linkedOrig: Record<string, LayoutItem>;
 }
 
 export function LayoutSurface({
@@ -26,7 +28,9 @@ export function LayoutSurface({
   className,
   renderItem,
   disabled,
-  snapToPageCenter
+  snapToPageCenter,
+  getLinkedIds,
+  resizeDisabledIds
 }: {
   items: LayoutItem[];
   onChange: (next: LayoutItem[]) => void;
@@ -36,10 +40,22 @@ export function LayoutSurface({
   renderItem: (item: LayoutItem, selected: boolean) => ReactNode;
   disabled?: boolean;
   snapToPageCenter?: boolean;
+  /** When moving `id`, also move these ids by the same delta. */
+  getLinkedIds?: (id: string) => string[];
+  /** Hide resize handle for these ids (e.g. group roots). */
+  resizeDisabledIds?: Set<string> | string[];
 }) {
   const surfaceRef = useRef<HTMLDivElement>(null);
   const [drag, setDrag] = useState<DragState | null>(null);
   const [guides, setGuides] = useState<{ v: boolean; h: boolean }>({ v: false, h: false });
+  const noResize = useCallback(
+    (id: string) => {
+      if (!resizeDisabledIds) return false;
+      if (Array.isArray(resizeDisabledIds)) return resizeDisabledIds.includes(id);
+      return resizeDisabledIds.has(id);
+    },
+    [resizeDisabledIds]
+  );
 
   const updateItem = useCallback(
     (id: string, patch: Partial<LayoutItem>) => {
@@ -55,17 +71,24 @@ export function LayoutSurface({
     onSelect?.(item.id);
     if (disabled || item.positionLocked) return;
     (e.target as HTMLElement).setPointerCapture?.(e.pointerId);
+    const linked = getLinkedIds?.(item.id) || [];
+    const linkedOrig: Record<string, LayoutItem> = {};
+    for (const lid of linked) {
+      const hit = items.find((i) => i.id === lid);
+      if (hit) linkedOrig[lid] = { ...hit };
+    }
     setDrag({
       id: item.id,
       mode: 'move',
       startX: e.clientX,
       startY: e.clientY,
-      orig: { ...item }
+      orig: { ...item },
+      linkedOrig
     });
   };
 
   const onPointerDownResize = (e: ReactPointerEvent, item: LayoutItem) => {
-    if (disabled || item.positionLocked) return;
+    if (disabled || item.positionLocked || noResize(item.id)) return;
     e.stopPropagation();
     (e.target as HTMLElement).setPointerCapture?.(e.pointerId);
     onSelect?.(item.id);
@@ -74,7 +97,8 @@ export function LayoutSurface({
       mode: 'resize',
       startX: e.clientX,
       startY: e.clientY,
-      orig: { ...item }
+      orig: { ...item },
+      linkedOrig: {}
     });
   };
 
@@ -88,9 +112,22 @@ export function LayoutSurface({
     if (drag.mode === 'move') {
       let next = { x: drag.orig.x + dx, y: drag.orig.y + dy, w: drag.orig.w, h: drag.orig.h };
       const snapped = snapLayoutToPageCenter(next, { enabled: snapToPageCenter });
-      next = { ...next, x: snapped.x, y: snapped.y };
+      const appliedDx = snapped.x - drag.orig.x;
+      const appliedDy = snapped.y - drag.orig.y;
       setGuides({ v: snapped.snappedX, h: snapped.snappedY });
-      updateItem(drag.id, { x: next.x, y: next.y });
+      const linkedIds = new Set(Object.keys(drag.linkedOrig));
+      onChange(
+        items.map((i) => {
+          if (i.id === drag.id) {
+            return clampLayoutItem({ ...i, x: snapped.x, y: snapped.y });
+          }
+          if (linkedIds.has(i.id)) {
+            const orig = drag.linkedOrig[i.id]!;
+            return clampLayoutItem({ ...i, x: orig.x + appliedDx, y: orig.y + appliedDy });
+          }
+          return i;
+        })
+      );
     } else {
       setGuides({ v: false, h: false });
       updateItem(drag.id, { w: drag.orig.w + dx, h: drag.orig.h + dy });
@@ -137,7 +174,7 @@ export function LayoutSurface({
             onPointerDown={(e) => onPointerDownMove(e, item)}
           >
             <div className="h-full w-full overflow-auto">{renderItem(item, selected)}</div>
-            {!disabled && !item.positionLocked && selected && (
+            {!disabled && !item.positionLocked && selected && !noResize(item.id) && (
               <div
                 className="absolute bottom-0 right-0 h-3 w-3 cursor-se-resize bg-sky-500"
                 onPointerDown={(e) => onPointerDownResize(e, item)}

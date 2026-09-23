@@ -482,6 +482,38 @@ describe('template seeds + Mini featured + layer locks', () => {
     expect(blank.layers).toEqual([]);
   });
 
+  it('createGroupFromSelection nests members and moveGroupByDelta moves as a unit', async () => {
+    const {
+      emptySection,
+      createTextLayer,
+      upsertLayer,
+      createGroupFromSelection,
+      moveGroupByDelta,
+      setLayerParentGroup,
+      layerStrokeStyle
+    } = await import('./index.js');
+    let sec = emptySection('body');
+    const a = createTextLayer({ x: 10, y: 10, w: 20, h: 10, zIndex: 1 });
+    const b = createTextLayer({ x: 40, y: 20, w: 20, h: 10, zIndex: 2 });
+    sec = upsertLayer(upsertLayer(sec, a), b);
+    const { section: grouped, groupId } = createGroupFromSelection(sec, [a.id, b.id]);
+    const group = grouped.layers!.find((l) => l.id === groupId);
+    expect(group?.kind).toBe('group');
+    expect(grouped.layers!.filter((l) => l.parentGroupId === groupId)).toHaveLength(2);
+    const moved = moveGroupByDelta(grouped, groupId, 5, -3);
+    expect(moved.layers!.find((l) => l.id === a.id)?.x).toBe(15);
+    expect(moved.layers!.find((l) => l.id === b.id)?.y).toBe(17);
+    const ungrouped = setLayerParentGroup(moved, a.id, null);
+    expect(ungrouped.layers!.find((l) => l.id === a.id)?.parentGroupId).toBeFalsy();
+    const stroked = {
+      ...a,
+      strokeColor: '#ff0000',
+      strokeWidth: 2,
+      strokeAlign: 'inside' as const
+    };
+    expect(layerStrokeStyle(stroked).border).toContain('2px');
+  });
+
   it('layerLockFingerprint ignores body text and tracks visibility/position lock', () => {
     const base: PenSectionContent = {
       slug: 'body',

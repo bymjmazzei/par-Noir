@@ -1,7 +1,7 @@
 /**
  * Floating layers list (not a third column).
  * Page frame is always row 0; + adds overlay text objects.
- * Multi-select (≥2) shows align/distribute in the header.
+ * Create group = folder; drag layers onto a group to nest; multi-select ≥2 shows align.
  */
 import {
   useEffect,
@@ -13,6 +13,7 @@ import {
 } from 'react';
 import {
   alignLayers,
+  createGroupFromSelection,
   createTextLayer,
   defaultLayerName,
   distributeLayers,
@@ -21,6 +22,7 @@ import {
   patchLayerStyle,
   removeLayer,
   reorderLayersStack,
+  setLayerParentGroup,
   upsertLayer,
   type LayerAlignMode,
   type PenPageLayer,
@@ -61,6 +63,23 @@ function AlignBtn({
   );
 }
 
+function FolderIcon() {
+  return (
+    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" aria-hidden>
+      <path
+        d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V7z"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+type ListRow =
+  | { kind: 'page' }
+  | { kind: 'layer'; layer: PenPageLayer; depth: number };
+
 export function LayersPopover({
   open,
   onClose,
@@ -89,13 +108,29 @@ export function LayersPopover({
   const [hoverId, setHoverId] = useState<string | null>(null);
 
   const prepared = useMemo(() => normalizeSection(section), [section]);
-  const layersFrontFirst = useMemo(
-    () => [...(prepared.layers || [])].sort((a, b) => b.zIndex - a.zIndex),
-    [prepared.layers]
-  );
   const allLayers = prepared.layers || [];
-  const pageSelected =
-    !activeLayerId || activeLayerId === PAGE_LAYER_ID;
+  const layersFrontFirst = useMemo(
+    () => [...allLayers].sort((a, b) => b.zIndex - a.zIndex),
+    [allLayers]
+  );
+
+  /** Nested list: top-level (no parent) front-first; children under their group. */
+  const listRows: ListRow[] = useMemo(() => {
+    const rows: ListRow[] = [{ kind: 'page' }];
+    const top = layersFrontFirst.filter((l) => !l.parentGroupId);
+    for (const layer of top) {
+      rows.push({ kind: 'layer', layer, depth: 0 });
+      if (layer.kind === 'group') {
+        const kids = layersFrontFirst.filter((l) => l.parentGroupId === layer.id);
+        for (const kid of kids) {
+          rows.push({ kind: 'layer', layer: kid, depth: 1 });
+        }
+      }
+    }
+    return rows;
+  }, [layersFrontFirst]);
+
+  const pageSelected = !activeLayerId || activeLayerId === PAGE_LAYER_ID;
   const multiObjectIds = selectedIds.filter((id) => id !== PAGE_LAYER_ID);
   const showAlign = multiObjectIds.length >= 2;
 
@@ -129,7 +164,7 @@ export function LayersPopover({
   }
 
   function addTextLayer() {
-    const n = (prepared.layers || []).length + 1;
+    const n = allLayers.filter((l) => l.kind !== 'group').length + 1;
     const layer = createTextLayer({
       x: 12,
       y: 12 + (layersFrontFirst.length % 4) * 8,
@@ -141,6 +176,17 @@ export function LayersPopover({
     commit(upsertLayer(prepared, layer));
     onSelectLayer(layer.id);
     onSelectedIdsChange([layer.id]);
+  }
+
+  function onCreateGroup() {
+    const wrapIds = multiObjectIds.filter((id) => {
+      const l = allLayers.find((x) => x.id === id);
+      return l && l.kind !== 'group';
+    });
+    const { section: next, groupId } = createGroupFromSelection(prepared, wrapIds);
+    commit(next);
+    onSelectLayer(groupId);
+    onSelectedIdsChange([groupId]);
   }
 
   function onDelete(id: string) {
@@ -190,12 +236,27 @@ export function LayersPopover({
     const el = document.elementFromPoint(e.clientX, e.clientY);
     const row = el?.closest('[data-layer-id]') as HTMLElement | null;
     const hid = row?.dataset.layerId;
-    if (hid && hid !== PAGE_LAYER_ID) setHoverId(hid);
+    if (hid) setHoverId(hid);
   }
 
   function onRowPointerUp() {
-    if (dragId && hoverId && dragId !== hoverId && hoverId !== PAGE_LAYER_ID) {
-      applyReorder(dragId, hoverId);
+    if (dragId && hoverId && dragId !== hoverId) {
+      const dragLayer = allLayers.find((l) => l.id === dragId);
+      const hoverLayer = allLayers.find((l) => l.id === hoverId);
+      // Drop onto page → ungroup
+      if (hoverId === PAGE_LAYER_ID && dragLayer && dragLayer.kind !== 'group') {
+        commit(setLayerParentGroup(prepared, dragId, null));
+      } else if (
+        hoverLayer?.kind === 'group' &&
+        dragLayer &&
+        dragLayer.kind !== 'group' &&
+        dragId !== hoverId
+      ) {
+        // Drop onto group folder → nest
+        commit(setLayerParentGroup(prepared, dragId, hoverId));
+      } else if (hoverId !== PAGE_LAYER_ID) {
+        applyReorder(dragId, hoverId);
+      }
     }
     setDragId(null);
     setHoverId(null);
@@ -216,6 +277,8 @@ export function LayersPopover({
     commit(distributeLayers(prepared, multiObjectIds, axis));
   }
 
+  let objectIndex = 0;
+
   return (
     <div
       ref={panelRef}
@@ -223,7 +286,7 @@ export function LayersPopover({
       role="dialog"
       aria-label="Layers"
     >
-      <div className="flex shrink-0 items-center gap-0.5 border-b border-neutral-200 px-1.5 py-1.5">
+      <div className="flex shrink-0 flex-wrap items-center gap-0.5 border-b border-neutral-200 px-1.5 py-1.5">
         <span className="mr-auto px-1 text-[11px] font-bold uppercase tracking-wider text-black">
           Layers
         </span>
@@ -277,6 +340,16 @@ export function LayersPopover({
         )}
         <button
           type="button"
+          title="Create group"
+          aria-label="Create group"
+          className="inline-flex h-7 items-center gap-1 rounded px-1.5 text-[10px] font-bold uppercase tracking-wide text-neutral-600 hover:text-black"
+          onClick={onCreateGroup}
+        >
+          <FolderIcon />
+          Group
+        </button>
+        <button
+          type="button"
           title="Add text layer"
           aria-label="Add text layer"
           className="inline-flex h-7 w-7 items-center justify-center text-black hover:opacity-60"
@@ -299,27 +372,38 @@ export function LayersPopover({
           }
         }}
       >
-        <li
-          data-layer-id={PAGE_LAYER_ID}
-          className={`flex cursor-pointer items-center gap-1 px-2 py-1.5 text-[12px] ${
-            pageSelected && selectedIds.length <= 1
-              ? 'bg-neutral-100 font-bold text-black'
-              : 'text-neutral-600 hover:bg-neutral-50'
-          }`}
-          onClick={() => {
-            onSelectedIdsChange([PAGE_LAYER_ID]);
-            onSelectLayer(PAGE_LAYER_ID);
-          }}
-        >
-          <span className="w-4 shrink-0 text-[10px] text-neutral-400">0</span>
-          <span className="min-w-0 flex-1 truncate">{pageLayerLabel(pageLayout)}</span>
-        </li>
+        {listRows.map((row) => {
+          if (row.kind === 'page') {
+            const dropTarget = Boolean(dragId && hoverId === PAGE_LAYER_ID && dragId !== PAGE_LAYER_ID);
+            return (
+              <li
+                key={PAGE_LAYER_ID}
+                data-layer-id={PAGE_LAYER_ID}
+                className={`flex cursor-pointer items-center gap-1 px-2 py-1.5 text-[12px] ${
+                  pageSelected && selectedIds.length <= 1
+                    ? 'bg-neutral-100 font-bold text-black'
+                    : 'text-neutral-600 hover:bg-neutral-50'
+                } ${dropTarget ? 'ring-1 ring-inset ring-black' : ''}`}
+                onClick={() => {
+                  onSelectedIdsChange([PAGE_LAYER_ID]);
+                  onSelectLayer(PAGE_LAYER_ID);
+                }}
+              >
+                <span className="w-4 shrink-0 text-[10px] text-neutral-400">0</span>
+                <span className="min-w-0 flex-1 truncate">{pageLayerLabel(pageLayout)}</span>
+              </li>
+            );
+          }
 
-        {layersFrontFirst.map((layer, i) => {
+          const { layer, depth } = row;
           const selected = selectedIds.includes(layer.id);
           const dropTarget = Boolean(dragId && hoverId === layer.id && dragId !== layer.id);
           const isVisible = layer.visible !== false;
           const isLocked = Boolean(layer.positionLocked);
+          const isGroup = layer.kind === 'group';
+          if (!isGroup) objectIndex += 1;
+          const indexLabel = isGroup ? 'G' : String(objectIndex);
+
           return (
             <li
               key={layer.id}
@@ -329,9 +413,15 @@ export function LayersPopover({
               } ${dropTarget ? 'ring-1 ring-inset ring-black' : ''} ${
                 dragId === layer.id ? 'opacity-50' : ''
               } ${!isVisible ? 'opacity-60' : ''}`}
+              style={{ paddingLeft: `${8 + depth * 14}px` }}
               onPointerDown={(e) => onRowPointerDown(e, layer.id)}
             >
-              <span className="w-4 shrink-0 text-[10px] text-neutral-400">{i + 1}</span>
+              <span className="w-4 shrink-0 text-[10px] text-neutral-400">{indexLabel}</span>
+              {isGroup && (
+                <span className="shrink-0 text-neutral-500">
+                  <FolderIcon />
+                </span>
+              )}
               <span className="min-w-0 flex-1 truncate">
                 {layerDisplayLabel(layer, allLayers)}
               </span>
@@ -363,8 +453,8 @@ export function LayersPopover({
               </button>
               <button
                 type="button"
-                title="Delete layer"
-                aria-label="Delete layer"
+                title={isGroup ? 'Delete group' : 'Delete layer'}
+                aria-label={isGroup ? 'Delete group' : 'Delete layer'}
                 className="shrink-0 p-0.5 text-neutral-400 hover:text-red-600"
                 onPointerDown={(e) => e.stopPropagation()}
                 onClick={(e) => {

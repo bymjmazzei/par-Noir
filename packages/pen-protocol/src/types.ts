@@ -37,7 +37,10 @@ export interface PenSectionContent {
   layers?: PenPageLayer[];
 }
 
-export type PenPageLayerKind = 'text' | 'image' | 'video';
+export type PenPageLayerKind = 'text' | 'image' | 'video' | 'group';
+
+export type PenStrokeStyle = 'solid' | 'dashed' | 'dotted';
+export type PenStrokeAlign = 'inside' | 'outside' | 'center';
 
 /** Layer on a section page — rects are % of page (0–100). */
 export interface PenPageLayer {
@@ -48,8 +51,10 @@ export interface PenPageLayer {
   w: number;
   h: number;
   zIndex: number;
-  /** Optional display name; UI defaults to "Layer N" when unset. */
+  /** Optional display name; UI defaults to "Layer N" / "Group N" when unset. */
   name?: string;
+  /** When set, this layer lives inside a group folder. */
+  parentGroupId?: string | null;
   /** text layers */
   textDoc?: PenTipTapNode;
   /** image layers */
@@ -69,6 +74,11 @@ export interface PenPageLayer {
   shadowOffsetX?: number;
   shadowOffsetY?: number;
   blur?: number;
+  /** Stroke */
+  strokeColor?: string;
+  strokeWidth?: number;
+  strokeStyle?: PenStrokeStyle;
+  strokeAlign?: PenStrokeAlign;
   /** 0–100; default 100. */
   opacity?: number;
   /** CSS mix-blend-mode. */

@@ -7,6 +7,7 @@ import {
   mergePagePresentation,
   normalizeSection,
   PAGE_LAYER_ID,
+  recomputeGroupBounds,
   updateLayerLayout,
   type PenDocManifest,
   type PenPageLayer,
@@ -71,6 +72,10 @@ export function EditablePagePreview({
   const layers = prepared.layers || [];
   const visibleLayers = layers.filter((l) => l.visible !== false);
   const items = visibleLayers.map(layerToItem);
+  const groupIds = useMemo(
+    () => new Set(layers.filter((l) => l.kind === 'group').map((l) => l.id)),
+    [layers]
+  );
   const presentation = mergePagePresentation(
     defaultEditorPagePresentation(),
     (() => {
@@ -92,20 +97,38 @@ export function EditablePagePreview({
 
   const activeObject = layers.find((l) => l.id === activeLayerId) || null;
   const pageActive = isPageLayerId(activeLayerId);
-  const layersButtonTitle = pageActive
-    ? pageLayerLabel(manifest.pageLayout)
-    : activeObject
-      ? layerDisplayLabel(activeObject, layers)
-      : 'Layers';
+  const multiSelected = selectedIds.filter((id) => id !== PAGE_LAYER_ID).length >= 2;
+  const layersButtonTitle = multiSelected
+    ? 'Multiple'
+    : pageActive
+      ? pageLayerLabel(manifest.pageLayout)
+      : activeObject
+        ? layerDisplayLabel(activeObject, layers)
+        : 'Layers';
 
   function onLayoutChange(nextItems: LayoutItem[]) {
-    onSectionChange(updateLayerLayout(prepared, nextItems));
+    let next = updateLayerLayout(prepared, nextItems);
+    // Keep group bounds in sync when a member moved independently
+    const groups = new Set(
+      (next.layers || [])
+        .filter((l) => l.parentGroupId)
+        .map((l) => l.parentGroupId!)
+    );
+    for (const gid of groups) {
+      next = recomputeGroupBounds(next, gid);
+    }
+    onSectionChange(next);
   }
 
   function selectLayer(id: string | null) {
     const next = id || PAGE_LAYER_ID;
     onSelectLayer(next);
     setSelectedIds([next]);
+  }
+
+  function getLinkedIds(id: string): string[] {
+    if (!groupIds.has(id)) return [];
+    return layers.filter((l) => l.parentGroupId === id).map((l) => l.id);
   }
 
   const frameStyle: CSSProperties = pageFrameStyle(presentation);
@@ -166,16 +189,13 @@ export function EditablePagePreview({
             aria-pressed={layersOpen}
             aria-label={layersButtonTitle}
             title={layersButtonTitle}
-            className={`inline-flex max-w-[9rem] items-center gap-1 truncate px-1 text-[11px] font-bold ${
+            className={`inline-flex max-w-[10rem] items-center gap-1 truncate px-1 text-[11px] font-bold ${
               layersOpen ? 'text-black' : 'text-neutral-500 hover:text-black'
             }`}
             onClick={() => setLayersOpen((o) => !o)}
           >
-            {activeObject || pageActive ? (
-              <span className="truncate">{layersButtonTitle}</span>
-            ) : (
-              <IconLayers />
-            )}
+            <IconLayers className="shrink-0" />
+            <span className="truncate">{layersButtonTitle}</span>
           </button>
         </div>
       </div>
@@ -216,12 +236,23 @@ export function EditablePagePreview({
             items={items}
             selectedId={pageActive ? null : activeLayerId}
             snapToPageCenter={snapEnabled}
+            getLinkedIds={getLinkedIds}
+            resizeDisabledIds={groupIds}
             onSelect={(id) => selectLayer(id || PAGE_LAYER_ID)}
             onChange={onLayoutChange}
             renderItem={(item) => {
               const layer = layers.find((l) => l.id === item.id);
               if (!layer) return null;
               const shell = layerPreviewStyle(layer);
+              if (layer.kind === 'group') {
+                return (
+                  <div
+                    className="h-full w-full"
+                    style={shell}
+                    title={layerDisplayLabel(layer, layers)}
+                  />
+                );
+              }
               if (layer.kind === 'image' && layer.imageSrc) {
                 return (
                   <div className="relative h-full w-full" style={shell}>

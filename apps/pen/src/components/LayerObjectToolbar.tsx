@@ -1,14 +1,18 @@
 /**
  * Object adjustment icons on the page preview bar — apply only to the active layer
  * (page frame = layer 0, or an overlay object).
+ * Page (layer 0): background only. Overlay objects: BG + shadow + blur + blend + opacity + stroke.
  */
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import {
   layerShadowCss,
+  layerStrokeStyle,
   patchLayerStyle,
   type PenPageLayer,
   type PenPagePresentation,
-  type PenSectionContent
+  type PenSectionContent,
+  type PenStrokeAlign,
+  type PenStrokeStyle
 } from '@par-noir/pen-protocol';
 import { CloudFeedMediaPicker } from './CloudFeedMediaPicker';
 import type { PenSession } from '../services/penSession';
@@ -18,6 +22,7 @@ export type ObjectToolTarget =
   | { kind: 'layer'; layer: PenPageLayer };
 
 type BgMode = 'color' | 'gradient' | 'image' | 'video';
+type OpenTool = 'bg' | 'shadow' | 'blur' | 'blend' | 'opacity' | 'stroke' | null;
 
 const BLEND_MODES = [
   'normal',
@@ -133,12 +138,13 @@ export function LayerObjectToolbar({
   onPresentationChange?: (next: Partial<PenPagePresentation>) => void;
   onSectionChange: (next: PenSectionContent) => void;
 }) {
-  const [open, setOpen] = useState<'bg' | 'shadow' | 'blur' | 'blend' | 'opacity' | null>(null);
+  const [open, setOpen] = useState<OpenTool>(null);
   const [cloudOpen, setCloudOpen] = useState(false);
   const [fileKind, setFileKind] = useState<'image' | 'video'>('image');
 
   const isPage = target.kind === 'page';
   const layer = target.kind === 'layer' ? target.layer : null;
+  const isGroup = layer?.kind === 'group';
   const fill = isPage ? pageFill(presentation) : layerFill(layer!);
 
   function patchLayer(patch: Parameters<typeof patchLayerStyle>[2]) {
@@ -150,7 +156,6 @@ export function LayerObjectToolbar({
     onPresentationChange?.(partial);
   }
 
-  // media applied via CloudFeedMediaPicker
   async function applyMediaDataUrl(src: string) {
     if (fileKind === 'image') {
       if (isPage) {
@@ -185,64 +190,69 @@ export function LayerObjectToolbar({
     }
   }
 
-  const shadowBlur = isPage
-    ? presentation.dropShadowBlur
-    : layer?.shadowBlur ?? (layerShadowCss(layer!) ? 3 : 0);
-  const shadowX = isPage ? presentation.dropShadowOffsetX : layer?.shadowOffsetX ?? 0;
-  const shadowY = isPage ? presentation.dropShadowOffsetY : layer?.shadowOffsetY ?? 0;
-  const shadowColor = isPage
-    ? presentation.dropShadowColor
-    : layer?.shadowColor || '#000000';
-  const blurVal = isPage ? 0 : layer?.blur || 0;
-  const opacity = isPage ? 100 : layer?.opacity ?? 100;
-  const blendMode = isPage ? 'normal' : layer?.mixBlendMode || 'normal';
-  const blendAmount = isPage ? 100 : layer?.blendAmount ?? 100;
+  const shadowBlur = layer?.shadowBlur ?? (layer && layerShadowCss(layer) ? 3 : 0);
+  const shadowX = layer?.shadowOffsetX ?? 0;
+  const shadowY = layer?.shadowOffsetY ?? 0;
+  const shadowColor = layer?.shadowColor || '#000000';
+  const blurVal = layer?.blur || 0;
+  const opacity = layer?.opacity ?? 100;
+  const blendMode = layer?.mixBlendMode || 'normal';
+  const blendAmount = layer?.blendAmount ?? 100;
+  const strokeColor = layer?.strokeColor || '#000000';
+  const strokeWidth = layer?.strokeWidth ?? 0;
+  const strokeStyle = (layer?.strokeStyle || 'solid') as PenStrokeStyle;
+  const strokeAlign = (layer?.strokeAlign || 'center') as PenStrokeAlign;
+
+  function toggle(tool: Exclude<OpenTool, null>) {
+    setOpen(open === tool ? null : tool);
+  }
 
   return (
     <div className="relative flex items-center gap-0.5">
-      <ToolButton title="Background" active={open === 'bg'} onClick={() => setOpen(open === 'bg' ? null : 'bg')}>
+      <ToolButton title="Background" active={open === 'bg'} onClick={() => toggle('bg')}>
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden>
           <rect x="3" y="3" width="18" height="18" rx="2" stroke="currentColor" strokeWidth="2" />
           <path d="M3 15l5-5 4 4 3-3 6 6" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" />
         </svg>
       </ToolButton>
-      <ToolButton
-        title="Shadow"
-        active={open === 'shadow'}
-        onClick={() => setOpen(open === 'shadow' ? null : 'shadow')}
-      >
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden>
-          <rect x="5" y="5" width="10" height="10" rx="1" stroke="currentColor" strokeWidth="2" />
-          <path d="M9 15h8v8H9z" fill="currentColor" opacity="0.25" />
-        </svg>
-      </ToolButton>
-      {!isPage && (
-        <ToolButton title="Blur" active={open === 'blur'} onClick={() => setOpen(open === 'blur' ? null : 'blur')}>
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden>
-            <circle cx="12" cy="12" r="7" stroke="currentColor" strokeWidth="2" strokeDasharray="2 2" />
-          </svg>
-        </ToolButton>
-      )}
-      {!isPage && (
-        <ToolButton
-          title="Blend"
-          active={open === 'blend'}
-          onClick={() => setOpen(open === 'blend' ? null : 'blend')}
-        >
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden>
-            <circle cx="9" cy="12" r="5" stroke="currentColor" strokeWidth="2" />
-            <circle cx="15" cy="12" r="5" stroke="currentColor" strokeWidth="2" />
-          </svg>
-        </ToolButton>
-      )}
-      {!isPage && (
-        <ToolButton
-          title="Opacity"
-          active={open === 'opacity'}
-          onClick={() => setOpen(open === 'opacity' ? null : 'opacity')}
-        >
-          <span className="text-[10px] font-bold">{Math.round(opacity)}</span>
-        </ToolButton>
+      {!isPage && !isGroup && (
+        <>
+          <ToolButton title="Shadow" active={open === 'shadow'} onClick={() => toggle('shadow')}>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden>
+              <rect x="5" y="5" width="10" height="10" rx="1" stroke="currentColor" strokeWidth="2" />
+              <path d="M9 15h8v8H9z" fill="currentColor" opacity="0.25" />
+            </svg>
+          </ToolButton>
+          <ToolButton title="Blur" active={open === 'blur'} onClick={() => toggle('blur')}>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden>
+              <circle cx="12" cy="12" r="7" stroke="currentColor" strokeWidth="2" strokeDasharray="2 2" />
+            </svg>
+          </ToolButton>
+          <ToolButton title="Blend" active={open === 'blend'} onClick={() => toggle('blend')}>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden>
+              <circle cx="9" cy="12" r="5" stroke="currentColor" strokeWidth="2" />
+              <circle cx="15" cy="12" r="5" stroke="currentColor" strokeWidth="2" />
+            </svg>
+          </ToolButton>
+          <ToolButton title="Opacity" active={open === 'opacity'} onClick={() => toggle('opacity')}>
+            <span className="text-[10px] font-bold">{Math.round(opacity)}</span>
+          </ToolButton>
+          <ToolButton title="Stroke" active={open === 'stroke'} onClick={() => toggle('stroke')}>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden>
+              <rect
+                x="4"
+                y="4"
+                width="16"
+                height="16"
+                rx="1"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeDasharray="3 2"
+                fill="none"
+              />
+            </svg>
+          </ToolButton>
+        </>
       )}
 
       <Popover open={open === 'bg'} onClose={() => setOpen(null)}>
@@ -371,10 +381,7 @@ export function LayerObjectToolbar({
             <input
               type="color"
               value={/^#/.test(shadowColor) ? shadowColor.slice(0, 7) : '#000000'}
-              onChange={(e) => {
-                if (isPage) patchPage({ dropShadowColor: e.target.value });
-                else patchLayer({ shadowColor: e.target.value, textShadow: undefined });
-              }}
+              onChange={(e) => patchLayer({ shadowColor: e.target.value, textShadow: undefined })}
               className="h-7 w-10 cursor-pointer rounded border border-neutral-300"
             />
           </label>
@@ -388,11 +395,9 @@ export function LayerObjectToolbar({
               min={0}
               max={40}
               value={shadowBlur}
-              onChange={(e) => {
-                const v = Number(e.target.value);
-                if (isPage) patchPage({ dropShadowBlur: v });
-                else patchLayer({ shadowBlur: v, textShadow: undefined });
-              }}
+              onChange={(e) =>
+                patchLayer({ shadowBlur: Number(e.target.value), textShadow: undefined })
+              }
               className="w-full"
             />
           </label>
@@ -406,11 +411,9 @@ export function LayerObjectToolbar({
               min={-30}
               max={30}
               value={shadowX}
-              onChange={(e) => {
-                const v = Number(e.target.value);
-                if (isPage) patchPage({ dropShadowOffsetX: v });
-                else patchLayer({ shadowOffsetX: v, textShadow: undefined });
-              }}
+              onChange={(e) =>
+                patchLayer({ shadowOffsetX: Number(e.target.value), textShadow: undefined })
+              }
               className="w-full"
             />
           </label>
@@ -424,11 +427,9 @@ export function LayerObjectToolbar({
               min={-30}
               max={30}
               value={shadowY}
-              onChange={(e) => {
-                const v = Number(e.target.value);
-                if (isPage) patchPage({ dropShadowBlur: presentation.dropShadowBlur, dropShadowOffsetY: v });
-                else patchLayer({ shadowOffsetY: v, textShadow: undefined });
-              }}
+              onChange={(e) =>
+                patchLayer({ shadowOffsetY: Number(e.target.value), textShadow: undefined })
+              }
               className="w-full"
             />
           </label>
@@ -506,6 +507,87 @@ export function LayerObjectToolbar({
         </div>
       </Popover>
 
+      <Popover open={open === 'stroke'} onClose={() => setOpen(null)}>
+        <div className="space-y-2 text-[11px]">
+          <div className="font-bold uppercase tracking-wide text-neutral-400">Stroke</div>
+          <label className="flex items-center justify-between gap-2">
+            <span className="text-neutral-500">Color</span>
+            <input
+              type="color"
+              value={/^#/.test(strokeColor) ? strokeColor.slice(0, 7) : '#000000'}
+              onChange={(e) =>
+                patchLayer({
+                  strokeColor: e.target.value,
+                  strokeWidth: strokeWidth || 1
+                })
+              }
+              className="h-7 w-10 cursor-pointer rounded border border-neutral-300"
+            />
+          </label>
+          <label className="block space-y-1">
+            <span className="text-neutral-500">Style</span>
+            <select
+              className="w-full rounded border border-neutral-200 px-2 py-1"
+              value={strokeStyle}
+              onChange={(e) =>
+                patchLayer({
+                  strokeStyle: e.target.value as PenStrokeStyle,
+                  strokeWidth: strokeWidth || 1,
+                  strokeColor: strokeColor || '#000000'
+                })
+              }
+            >
+              <option value="solid">Solid</option>
+              <option value="dashed">Dashed</option>
+              <option value="dotted">Dotted</option>
+            </select>
+          </label>
+          <label className="block">
+            <div className="mb-0.5 flex justify-between text-neutral-500">
+              <span>Width</span>
+              <span>{strokeWidth}px</span>
+            </div>
+            <input
+              type="range"
+              min={0}
+              max={24}
+              value={strokeWidth}
+              onChange={(e) => {
+                const v = Number(e.target.value);
+                patchLayer({
+                  strokeWidth: v || undefined,
+                  strokeColor: v ? strokeColor || '#000000' : undefined
+                });
+              }}
+              className="w-full"
+            />
+          </label>
+          <label className="block space-y-1">
+            <span className="text-neutral-500">Align</span>
+            <div className="flex gap-1">
+              {(['inside', 'center', 'outside'] as PenStrokeAlign[]).map((a) => (
+                <button
+                  key={a}
+                  type="button"
+                  className={`flex-1 rounded px-1 py-1 capitalize ${
+                    strokeAlign === a ? 'bg-black text-white' : 'bg-neutral-100 text-neutral-700'
+                  }`}
+                  onClick={() =>
+                    patchLayer({
+                      strokeAlign: a,
+                      strokeWidth: strokeWidth || 1,
+                      strokeColor: strokeColor || '#000000'
+                    })
+                  }
+                >
+                  {a}
+                </button>
+              ))}
+            </div>
+          </label>
+        </div>
+      </Popover>
+
       <CloudFeedMediaPicker
         open={cloudOpen}
         onClose={() => setCloudOpen(false)}
@@ -521,15 +603,24 @@ export function LayerObjectToolbar({
 /** Apply layer visual styles for preview render. */
 export function layerPreviewStyle(layer: PenPageLayer): CSSProperties {
   const shadow = layerShadowCss(layer);
+  const stroke = layerStrokeStyle(layer);
   const opacityPct = layer.opacity ?? 100;
   const blendAmt = (layer.blendAmount ?? 100) / 100;
   const style: CSSProperties = {
     opacity: (opacityPct / 100) * (layer.mixBlendMode && layer.mixBlendMode !== 'normal' ? blendAmt : 1),
     mixBlendMode: (layer.mixBlendMode as CSSProperties['mixBlendMode']) || undefined,
     filter: layer.blur ? `blur(${layer.blur}px)` : undefined,
-    boxShadow: shadow,
-    textShadow: shadow
+    boxShadow: stroke.boxShadow || shadow,
+    textShadow: shadow,
+    border: stroke.border,
+    outline: stroke.outline,
+    outlineOffset: stroke.outlineOffset
   };
+  if (layer.kind === 'group') {
+    style.backgroundColor = 'transparent';
+    style.border = style.border || '1px dashed rgba(0,0,0,0.25)';
+    return style;
+  }
   if (layer.backgroundGradient) {
     style.backgroundImage = layer.backgroundGradient;
   } else if (layer.backgroundImage) {
@@ -540,6 +631,11 @@ export function layerPreviewStyle(layer: PenPageLayer): CSSProperties {
     style.backgroundColor = layer.backgroundColor;
   } else {
     style.backgroundColor = 'rgba(255,255,255,0.95)';
+  }
+  // When both stroke center boxShadow and drop shadow exist, prefer stroke on the box;
+  // drop shadow still applies via textShadow for text layers.
+  if (stroke.boxShadow && shadow) {
+    style.boxShadow = `${stroke.boxShadow}, ${shadow}`;
   }
   return style;
 }
@@ -566,14 +662,6 @@ export function pageFrameStyle(presentation: PenPagePresentation): CSSProperties
     style.backgroundSize = 'cover';
     style.backgroundPosition = 'center';
   }
-  if (
-    presentation.dropShadowBlur ||
-    presentation.dropShadowOffsetX ||
-    presentation.dropShadowOffsetY
-  ) {
-    style.boxShadow = `${presentation.dropShadowOffsetX || 0}px ${
-      presentation.dropShadowOffsetY || 0
-    }px ${presentation.dropShadowBlur || 0}px ${presentation.dropShadowColor || '#000'}`;
-  }
+  // Page (layer 0) has no shadow — fill/background only.
   return style;
 }
