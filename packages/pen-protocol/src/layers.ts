@@ -1,6 +1,10 @@
 /** Page layer helpers — multi text/image objects on a section. */
 
 import { emptyTipTapDoc } from './richDoc.js';
+import {
+  snapLayoutToContentCenter,
+  type LayerRect
+} from './pageGeometry.js';
 import type { PenPageLayer, PenSectionContent, PenTipTapNode } from './types.js';
 
 /** Synthetic id for the page frame (flow/letter/a4) — layer 0 in the Layers list. */
@@ -20,10 +24,10 @@ export function createTextLayer(
   return {
     id: newLayerId(),
     kind: 'text',
-    x: partial?.x ?? 8,
-    y: partial?.y ?? 8,
-    w: partial?.w ?? 84,
-    h: partial?.h ?? 40,
+    x: partial?.x ?? 24,
+    y: partial?.y ?? 24,
+    w: partial?.w ?? 280,
+    h: partial?.h ?? 120,
     zIndex: partial?.zIndex ?? 1,
     name: partial?.name,
     textDoc: partial?.textDoc ?? emptyTipTapDoc()
@@ -54,10 +58,10 @@ export function createGroupLayer(
   return {
     id: newLayerId(),
     kind: 'group',
-    x: partial?.x ?? 10,
-    y: partial?.y ?? 10,
-    w: partial?.w ?? 40,
-    h: partial?.h ?? 40,
+    x: partial?.x ?? 24,
+    y: partial?.y ?? 24,
+    w: partial?.w ?? 200,
+    h: partial?.h ?? 160,
     zIndex: partial?.zIndex ?? 1,
     name: partial?.name,
     backgroundColor: 'transparent'
@@ -76,7 +80,11 @@ export function recomputeGroupBounds(
   const group = (section.layers || []).find((l) => l.id === groupId && l.kind === 'group');
   if (!group) return section;
   if (!members.length) {
-    return upsertLayer(section, { ...group, w: Math.max(group.w, 8), h: Math.max(group.h, 8) });
+    return upsertLayer(section, {
+      ...group,
+      w: Math.max(group.w, 48),
+      h: Math.max(group.h, 48)
+    });
   }
   const minX = Math.min(...members.map((m) => m.x));
   const minY = Math.min(...members.map((m) => m.y));
@@ -86,8 +94,8 @@ export function recomputeGroupBounds(
     ...group,
     x: minX,
     y: minY,
-    w: Math.max(4, maxR - minX),
-    h: Math.max(4, maxB - minY)
+    w: Math.max(24, maxR - minX),
+    h: Math.max(24, maxB - minY)
   });
 }
 
@@ -101,10 +109,10 @@ export function createGroupFromSelection(
     (l) => set.has(l.id) && l.kind !== 'group'
   );
   const groupCount = (section.layers || []).filter((l) => l.kind === 'group').length;
-  let minX = 10;
-  let minY = 10;
-  let maxR = 50;
-  let maxB = 50;
+  let minX = 24;
+  let minY = 24;
+  let maxR = 224;
+  let maxB = 184;
   if (members.length) {
     minX = Math.min(...members.map((m) => m.x));
     minY = Math.min(...members.map((m) => m.y));
@@ -115,8 +123,8 @@ export function createGroupFromSelection(
   const group = createGroupLayer({
     x: minX,
     y: minY,
-    w: Math.max(8, maxR - minX),
-    h: Math.max(8, maxB - minY),
+    w: Math.max(48, maxR - minX),
+    h: Math.max(48, maxB - minY),
     zIndex: maxZ + 1,
     name: `Group ${groupCount + 1}`
   });
@@ -245,30 +253,26 @@ export function distributeLayers(
   };
 }
 
-/** Snap layer center to page center when within threshold (%). */
+/**
+ * Snap layer center to content-box midlines (CSS px).
+ * Pass contentW/contentH; falls back to Letter content box when omitted.
+ */
 export function snapLayoutToPageCenter(
-  item: { x: number; y: number; w: number; h: number },
-  opts?: { threshold?: number; enabled?: boolean }
+  item: LayerRect,
+  opts?: {
+    threshold?: number;
+    thresholdPx?: number;
+    enabled?: boolean;
+    contentW?: number;
+    contentH?: number;
+  }
 ): { x: number; y: number; snappedX: boolean; snappedY: boolean } {
-  if (opts?.enabled === false) {
-    return { x: item.x, y: item.y, snappedX: false, snappedY: false };
-  }
-  const thr = opts?.threshold ?? 2.5;
-  const cx = item.x + item.w / 2;
-  const cy = item.y + item.h / 2;
-  let x = item.x;
-  let y = item.y;
-  let snappedX = false;
-  let snappedY = false;
-  if (Math.abs(cx - 50) <= thr) {
-    x = 50 - item.w / 2;
-    snappedX = true;
-  }
-  if (Math.abs(cy - 50) <= thr) {
-    y = 50 - item.h / 2;
-    snappedY = true;
-  }
-  return { x, y, snappedX, snappedY };
+  const contentW = opts?.contentW ?? 736;
+  const contentH = opts?.contentH ?? 976;
+  return snapLayoutToContentCenter(item, contentW, contentH, {
+    enabled: opts?.enabled,
+    thresholdPx: opts?.thresholdPx ?? opts?.threshold ?? 12
+  });
 }
 
 
@@ -279,10 +283,10 @@ export function createImageLayer(
   return {
     id: newLayerId(),
     kind: 'image',
-    x: partial?.x ?? 20,
-    y: partial?.y ?? 20,
-    w: partial?.w ?? 40,
-    h: partial?.h ?? 30,
+    x: partial?.x ?? 48,
+    y: partial?.y ?? 48,
+    w: partial?.w ?? 200,
+    h: partial?.h ?? 160,
     zIndex: partial?.zIndex ?? 2,
     imageSrc
   };
@@ -295,10 +299,10 @@ export function createVideoLayer(
   return {
     id: newLayerId(),
     kind: 'video',
-    x: partial?.x ?? 20,
-    y: partial?.y ?? 22,
-    w: partial?.w ?? 48,
-    h: partial?.h ?? 32,
+    x: partial?.x ?? 48,
+    y: partial?.y ?? 56,
+    w: partial?.w ?? 240,
+    h: partial?.h ?? 160,
     zIndex: partial?.zIndex ?? 2,
     videoSrc
   };

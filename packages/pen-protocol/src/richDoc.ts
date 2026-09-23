@@ -116,17 +116,17 @@ type LegacySection = {
 
 /** Normalize any stored section to TipTap-doc SoT. */
 export function normalizeSection(raw: LegacySection | PenSectionContent): PenSectionContent {
-  const layers = Array.isArray((raw as PenSectionContent).layers)
-    ? (raw as PenSectionContent).layers
-    : undefined;
-  if (raw && isTipTapDoc((raw as PenSectionContent).doc)) {
-    return { slug: raw.slug, doc: (raw as PenSectionContent).doc, layers };
+  const sec = raw as PenSectionContent;
+  const layers = Array.isArray(sec.layers) ? sec.layers : undefined;
+  const layerGeom = sec.layerGeom === 'px' ? 'px' : undefined;
+  if (raw && isTipTapDoc(sec.doc)) {
+    return { slug: raw.slug, doc: sec.doc, layers, layerGeom };
   }
   const legacy = raw as LegacySection;
   if (Array.isArray(legacy.blocks)) {
-    return { slug: legacy.slug, doc: blocksToTipTapDoc(legacy.blocks), layers };
+    return { slug: legacy.slug, doc: blocksToTipTapDoc(legacy.blocks), layers, layerGeom };
   }
-  return { ...emptySection(raw?.slug || 'body'), layers };
+  return { ...emptySection(raw?.slug || 'body'), layers, layerGeom };
 }
 
 export function normalizeSections(

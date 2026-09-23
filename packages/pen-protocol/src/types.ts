@@ -36,6 +36,11 @@ export interface PenSectionContent {
   doc: PenTipTapNode;
   /** Optional page layers (text boxes, images) for editable page preview. */
   layers?: PenPageLayer[];
+  /**
+   * Layer rect unit. `px` = content-box CSS pixels (canonical).
+   * Missing + legacy %-looking rects are migrated once on load.
+   */
+  layerGeom?: 'px';
 }
 
 export type PenPageLayerKind = 'text' | 'image' | 'video' | 'group';
@@ -43,7 +48,7 @@ export type PenPageLayerKind = 'text' | 'image' | 'video' | 'group';
 export type PenStrokeStyle = 'solid' | 'dashed' | 'dotted';
 export type PenStrokeAlign = 'inside' | 'outside' | 'center';
 
-/** Layer on a section page — rects are % of page (0–100). */
+/** Layer on a section page — rects are CSS px in the Body content box. */
 export interface PenPageLayer {
   id: string;
   kind: PenPageLayerKind;
@@ -135,6 +140,8 @@ export interface PenDocManifest {
   genesisProof?: PenGenesisProof;
   /** Editor / preview pagination mode. */
   pageLayout?: PenPageLayout;
+  /** Flow workspace column width in CSS px (ignored for letter/a4). */
+  flowWorkspaceWidthPx?: number;
   /** Default Note card chrome when compiling to browse. */
   pagePresentation?: PenPagePresentation;
   /** Aggregator fileId after Connect to feed — engagement comments key. */

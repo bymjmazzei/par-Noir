@@ -2,11 +2,12 @@ import {
   useCallback,
   useRef,
   useState,
+  type CSSProperties,
   type PointerEvent as ReactPointerEvent,
   type ReactNode
 } from 'react';
 import { snapLayoutToPageCenter } from '@par-noir/pen-protocol';
-import { clampLayoutItem, sortByZ, type LayoutItem } from './types';
+import { clampLayoutItem, sortByZ, type LayoutBounds, type LayoutItem } from './types';
 
 type DragMode = 'move' | 'resize';
 
@@ -26,17 +27,20 @@ export function LayoutSurface({
   selectedId,
   onSelect,
   className,
+  style,
   renderItem,
   disabled,
   snapToPageCenter,
   getLinkedIds,
-  resizeDisabledIds
+  resizeDisabledIds,
+  bounds
 }: {
   items: LayoutItem[];
   onChange: (next: LayoutItem[]) => void;
   selectedId?: string | null;
   onSelect?: (id: string | null) => void;
   className?: string;
+  style?: CSSProperties;
   renderItem: (item: LayoutItem, selected: boolean) => ReactNode;
   disabled?: boolean;
   snapToPageCenter?: boolean;
@@ -44,12 +48,16 @@ export function LayoutSurface({
   getLinkedIds?: (id: string) => string[];
   /** Hide resize handle for these ids (e.g. group roots). */
   resizeDisabledIds?: Set<string> | string[];
+  /** Content-box size in CSS px (clamp + snap). */
+  bounds?: LayoutBounds;
 }) {
   const surfaceRef = useRef<HTMLDivElement>(null);
   const itemsRef = useRef(items);
   itemsRef.current = items;
+  const boundsRef = useRef(bounds);
+  boundsRef.current = bounds;
   const [drag, setDrag] = useState<DragState | null>(null);
-  /** Live geometry while dragging — commit to parent only on pointer up (avoids Body reflow jank). */
+  /** Live geometry while dragging — commit to parent only on pointer up. */
   const [preview, setPreview] = useState<Record<string, LayoutItem> | null>(null);
   const [guides, setGuides] = useState<{ v: boolean; h: boolean }>({ v: false, h: false });
   const noResize = useCallback(
@@ -60,6 +68,14 @@ export function LayoutSurface({
     },
     [resizeDisabledIds]
   );
+
+  function activeBounds(): LayoutBounds {
+    const el = surfaceRef.current;
+    return {
+      width: boundsRef.current?.width || el?.clientWidth || 736,
+      height: boundsRef.current?.height || el?.clientHeight || 976
+    };
+  }
 
   const onPointerDownMove = (e: ReactPointerEvent, item: LayoutItem) => {
     e.stopPropagation();
@@ -101,38 +117,45 @@ export function LayoutSurface({
 
   const onPointerMove = (e: ReactPointerEvent) => {
     if (!drag || disabled) return;
-    const el = surfaceRef.current;
-    if (!el) return;
-    const r = el.getBoundingClientRect();
-    if (!r.width || !r.height) return;
-    const dx = ((e.clientX - drag.startX) / r.width) * 100;
-    const dy = ((e.clientY - drag.startY) / r.height) * 100;
+    const b = activeBounds();
+    const dx = e.clientX - drag.startX;
+    const dy = e.clientY - drag.startY;
     if (drag.mode === 'move') {
       const next = { x: drag.orig.x + dx, y: drag.orig.y + dy, w: drag.orig.w, h: drag.orig.h };
-      const snapped = snapLayoutToPageCenter(next, { enabled: snapToPageCenter });
+      const snapped = snapLayoutToPageCenter(next, {
+        enabled: snapToPageCenter,
+        contentW: b.width,
+        contentH: b.height
+      });
       const appliedDx = snapped.x - drag.orig.x;
       const appliedDy = snapped.y - drag.orig.y;
       setGuides({ v: snapped.snappedX, h: snapped.snappedY });
       const nextPreview: Record<string, LayoutItem> = {
-        [drag.id]: clampLayoutItem({ ...drag.orig, x: snapped.x, y: snapped.y })
+        [drag.id]: clampLayoutItem({ ...drag.orig, x: snapped.x, y: snapped.y }, b)
       };
       for (const lid of Object.keys(drag.linkedOrig)) {
         const orig = drag.linkedOrig[lid]!;
-        nextPreview[lid] = clampLayoutItem({
-          ...orig,
-          x: orig.x + appliedDx,
-          y: orig.y + appliedDy
-        });
+        nextPreview[lid] = clampLayoutItem(
+          {
+            ...orig,
+            x: orig.x + appliedDx,
+            y: orig.y + appliedDy
+          },
+          b
+        );
       }
       setPreview(nextPreview);
     } else {
       setGuides({ v: false, h: false });
       setPreview({
-        [drag.id]: clampLayoutItem({
-          ...drag.orig,
-          w: drag.orig.w + dx,
-          h: drag.orig.h + dy
-        })
+        [drag.id]: clampLayoutItem(
+          {
+            ...drag.orig,
+            w: drag.orig.w + dx,
+            h: drag.orig.h + dy
+          },
+          b
+        )
       });
     }
   };
@@ -151,23 +174,33 @@ export function LayoutSurface({
     ? items.map((i) => (preview[i.id] ? { ...i, ...preview[i.id] } : i))
     : items;
 
+  const b = activeBounds();
+  const guideX = b.width / 2;
+  const guideY = b.height / 2;
+
   return (
     <div
       ref={surfaceRef}
       // Callers pass positioning (e.g. absolute inset-0). Do not also set
-      // `relative` here — Tailwind position utilities conflict, and `relative`
-      // wins in the stylesheet, which drops overlays under Body in the preview.
+      // `relative` here — Tailwind position utilities conflict.
       className={`touch-none ${className || 'relative'}`}
+      style={style}
       onPointerMove={onPointerMove}
       onPointerUp={onPointerUp}
       onPointerLeave={onPointerUp}
       onPointerDown={() => onSelect?.(null)}
     >
       {guides.v && (
-        <div className="pointer-events-none absolute inset-y-0 left-1/2 z-30 w-px -translate-x-1/2 bg-sky-400/80" />
+        <div
+          className="pointer-events-none absolute top-0 z-30 w-px -translate-x-1/2 bg-sky-400/80"
+          style={{ left: guideX, height: '100%' }}
+        />
       )}
       {guides.h && (
-        <div className="pointer-events-none absolute inset-x-0 top-1/2 z-30 h-px -translate-y-1/2 bg-sky-400/80" />
+        <div
+          className="pointer-events-none absolute left-0 z-30 h-px -translate-y-1/2 bg-sky-400/80"
+          style={{ top: guideY, width: '100%' }}
+        />
       )}
       {sortByZ(displayItems).map((item) => {
         const selected = selectedId === item.id;
@@ -180,15 +213,14 @@ export function LayoutSurface({
               selected ? 'ring-2 ring-sky-500' : 'ring-1 ring-stone-300/80'
             } ${disabled || item.positionLocked ? '' : 'cursor-grab active:cursor-grabbing'}`}
             style={{
-              left: `${item.x}%`,
-              top: `${item.y}%`,
-              width: `${item.w}%`,
-              height: `${item.h}%`,
+              left: item.x,
+              top: item.y,
+              width: item.w,
+              height: item.h,
               zIndex: item.zIndex
             }}
             onPointerDown={(e) => onPointerDownMove(e, item)}
             onClick={(e) => {
-              // Prevent page-frame click from re-selecting Body after overlay select.
               e.stopPropagation();
             }}
           >
@@ -206,5 +238,5 @@ export function LayoutSurface({
   );
 }
 
-export type { LayoutItem };
+export type { LayoutItem, LayoutBounds };
 export { clampLayoutItem, sortByZ };

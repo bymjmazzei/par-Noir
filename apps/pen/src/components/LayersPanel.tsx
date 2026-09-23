@@ -24,6 +24,7 @@ import {
   reorderLayersStack,
   setLayerParentGroup,
   upsertLayer,
+  wrapSideFromGeom,
   type LayerAlignMode,
   type PenPageLayer,
   type PenPageLayout,
@@ -90,7 +91,8 @@ export function LayersPopover({
   anchorRef,
   pageLayout,
   selectedIds,
-  onSelectedIdsChange
+  onSelectedIdsChange,
+  contentWidthPx = 736
 }: {
   open: boolean;
   onClose: () => void;
@@ -102,6 +104,7 @@ export function LayersPopover({
   pageLayout?: PenPageLayout;
   selectedIds: string[];
   onSelectedIdsChange: (ids: string[]) => void;
+  contentWidthPx?: number;
 }) {
   const panelRef = useRef<HTMLDivElement>(null);
   const [dragId, setDragId] = useState<string | null>(null);
@@ -241,8 +244,7 @@ export function LayersPopover({
       const hoverLayer = allLayers.find((l) => l.id === hoverId);
       // Drop onto Body → wrap with Body (side from horizontal position)
       if (hoverId === PAGE_LAYER_ID && dragLayer && dragLayer.kind !== 'group') {
-        const side =
-          dragLayer.x + dragLayer.w / 2 < 50 ? ('left' as const) : ('right' as const);
+        const side = wrapSideFromGeom(dragLayer.x, dragLayer.w, contentWidthPx);
         let next = setLayerParentGroup(prepared, dragId, null);
         next = patchLayerStyle(next, dragId, { bodyWrap: side });
         commit(next);

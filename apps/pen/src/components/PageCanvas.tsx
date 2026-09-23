@@ -14,6 +14,7 @@ import TableRow from '@tiptap/extension-table-row';
 import TableCell from '@tiptap/extension-table-cell';
 import TableHeader from '@tiptap/extension-table-header';
 import {
+  DEFAULT_FLOW_WORKSPACE_WIDTH_PX,
   PEN_SYSTEM_FONTS,
   PEN_GOOGLE_FONTS_FEATURED,
   PEN_GOOGLE_FONTS_ALL,
@@ -23,6 +24,7 @@ import {
   type PenPageLayout,
   type PenSectionContent
 } from '@par-noir/pen-protocol';
+import { PageSheetColumn } from './PageSheetColumn';
 import { FontSize } from '../services/fontSizeExtension';
 import { TextEffects } from '../services/textEffectsExtension';
 import { PenImage, type PenImageWrap } from '../services/penImageExtension';
@@ -944,12 +946,6 @@ export function FormatRibbon({
   );
 }
 
-const PAGE_LAYOUT_CLASS: Record<PenPageLayout, string> = {
-  flow: 'max-w-[40rem]',
-  letter: 'pen-page-letter',
-  a4: 'pen-page-a4'
-};
-
 /** Word-like text input for one template section. */
 export function PageCanvas({
   section,
@@ -958,6 +954,7 @@ export function PageCanvas({
   readOnly,
   onEditorReady,
   pageLayout = 'flow',
+  flowWorkspaceWidthPx,
   pnIdentifier = ''
 }: {
   section: PenSectionContent;
@@ -967,6 +964,7 @@ export function PageCanvas({
   readOnly?: boolean;
   onEditorReady?: (editor: Editor | null) => void;
   pageLayout?: PenPageLayout;
+  flowWorkspaceWidthPx?: number;
   /** Unlocks live Pen embeds inside TipTap. */
   pnIdentifier?: string;
 }) {
@@ -1024,7 +1022,7 @@ export function PageCanvas({
     }
   }, [section.slug, section.doc, editor]);
 
-  const sheetClass = PAGE_LAYOUT_CLASS[pageLayout] || PAGE_LAYOUT_CLASS.flow;
+  const flowW = flowWorkspaceWidthPx || DEFAULT_FLOW_WORKSPACE_WIDTH_PX;
 
   return (
     <div className="flex flex-1 flex-col overflow-hidden bg-[#f3f3f3]">
@@ -1034,12 +1032,17 @@ export function PageCanvas({
         </div>
         <div className="text-sm font-medium text-stone-800">{sectionTitle || section.slug}</div>
       </div>
-      <div className="flex-1 overflow-auto px-4 py-4 sm:px-6">
-        <div
-          className={`mx-auto min-h-full rounded-sm bg-white px-10 py-8 shadow-[0_1px_3px_rgba(0,0,0,0.12),0_0_0_1px_rgba(0,0,0,0.06)] ${sheetClass}`}
+      <div className="flex flex-1 justify-center overflow-auto px-4 py-4 sm:px-6">
+        <PageSheetColumn
+          pageLayout={pageLayout}
+          flowWorkspaceWidthPx={flowW}
+          contentOuterHeightPx={480}
+          className="min-h-full"
         >
-          <EditorContent editor={editor} />
-        </div>
+          <div className="px-10 py-8">
+            <EditorContent editor={editor} />
+          </div>
+        </PageSheetColumn>
       </div>
     </div>
   );

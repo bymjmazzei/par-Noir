@@ -8,6 +8,7 @@ import {
   layerShadowCss,
   layerStrokeStyle,
   patchLayerStyle,
+  wrapSideFromGeom,
   type PenPageLayer,
   type PenPagePresentation,
   type PenSectionContent,
@@ -127,6 +128,7 @@ export function LayerObjectToolbar({
   section,
   session,
   docId,
+  contentWidthPx = 736,
   onPresentationChange,
   onSectionChange
 }: {
@@ -135,6 +137,8 @@ export function LayerObjectToolbar({
   section: PenSectionContent;
   session?: PenSession | null;
   docId?: string;
+  /** Content-box width for Wrap side (left/right from object center). */
+  contentWidthPx?: number;
   onPresentationChange?: (next: Partial<PenPagePresentation>) => void;
   onSectionChange: (next: PenSectionContent) => void;
 }) {
@@ -263,11 +267,11 @@ export function LayerObjectToolbar({
                 : 'font-medium text-neutral-400 hover:text-neutral-600'
             }`}
             onClick={() => {
-              if (layer?.bodyWrap) {
+              if (!layer) return;
+              if (layer.bodyWrap) {
                 patchLayer({ bodyWrap: undefined });
               } else {
-                const side =
-                  layer.x + layer.w / 2 < 50 ? ('left' as const) : ('right' as const);
+                const side = wrapSideFromGeom(layer.x, layer.w, contentWidthPx);
                 patchLayer({ bodyWrap: side });
               }
             }}

@@ -1,4 +1,4 @@
-/** Shared layout item — rects are % of surface (0–100). */
+/** Shared layout item — rects are CSS px in the content box. */
 
 export interface LayoutItem {
   id: string;
@@ -10,11 +10,20 @@ export interface LayoutItem {
   positionLocked?: boolean;
 }
 
-export function clampLayoutItem(item: LayoutItem): LayoutItem {
-  const w = Math.min(100, Math.max(4, item.w));
-  const h = Math.min(100, Math.max(4, item.h));
-  const x = Math.min(100 - w, Math.max(0, item.x));
-  const y = Math.min(100 - h, Math.max(0, item.y));
+export type LayoutBounds = { width: number; height: number };
+
+const MIN = 24;
+
+export function clampLayoutItem(
+  item: LayoutItem,
+  bounds?: LayoutBounds
+): LayoutItem {
+  const contentW = Math.max(MIN, bounds?.width ?? 736);
+  const contentH = Math.max(MIN, bounds?.height ?? 976);
+  const w = Math.min(contentW, Math.max(MIN, item.w));
+  const h = Math.min(contentH, Math.max(MIN, item.h));
+  const x = Math.min(Math.max(0, contentW - w), Math.max(0, item.x));
+  const y = Math.min(Math.max(0, contentH - h), Math.max(0, item.y));
   return { ...item, x, y, w, h };
 }
 

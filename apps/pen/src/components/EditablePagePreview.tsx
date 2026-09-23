@@ -8,18 +8,26 @@ import {
   type ReactNode
 } from 'react';
 import {
+  clampLayerRect,
   collectFontFamiliesFromDoc,
+  contentBoxSize,
   defaultEditorPagePresentation,
+  DEFAULT_FLOW_WORKSPACE_WIDTH_PX,
   docToHtml,
   getTextLayerDoc,
   isGooglePenFont,
   isPageLayerId,
   mergePagePresentation,
+  migrateSectionLayerGeomToPx,
   normalizeSection,
   PAGE_LAYER_ID,
+  pageSheetDims,
   patchLayerStyle,
   recomputeGroupBounds,
+  resolvePagePaddingPx,
+  sectionNeedsLegacyGeomMigrate,
   updateLayerLayout,
+  wrapSideFromGeom,
   type PenDocManifest,
   type PenPageLayer,
   type PenPageLayout,
@@ -34,6 +42,7 @@ import {
   layerPreviewStyle,
   pageFrameStyle
 } from './LayerObjectToolbar';
+import { PageSheetColumn } from './PageSheetColumn';
 import { ensureGoogleFontsLoaded } from '../services/penGoogleFonts';
 import type { PenSession } from '../services/penSession';
 
@@ -49,14 +58,8 @@ function layerToItem(layer: PenPageLayer): LayoutItem {
   };
 }
 
-function pageFrameClass(pageLayout: PenPageLayout | undefined): string {
-  if (pageLayout === 'letter') return 'pen-page-letter';
-  if (pageLayout === 'a4') return 'pen-page-a4';
-  return 'max-w-[22rem] aspect-[3/4]';
-}
-
 function bodyMarginStyle(presentation: PenPagePresentation): CSSProperties {
-  const pad = Math.max(8, Math.min(72, Number(presentation.padding) || 40));
+  const pad = resolvePagePaddingPx(presentation.padding);
   return {
     padding: `${pad}px`,
     fontFamily: presentation.fontFamily || 'Georgia',
@@ -64,10 +67,6 @@ function bodyMarginStyle(presentation: PenPagePresentation): CSSProperties {
     color: presentation.textColor || '#111111',
     textAlign: presentation.textAlign || 'left'
   };
-}
-
-function sideFromGeom(x: number, w: number): 'left' | 'right' {
-  return x + w / 2 < 50 ? 'left' : 'right';
 }
 
 function opaqueWrapShell(layer: PenPageLayer): CSSProperties {
@@ -83,16 +82,15 @@ function opaqueWrapShell(layer: PenPageLayer): CSSProperties {
 type LiveGeom = { x: number; y: number; w: number; h: number };
 
 /**
- * Body wrap: zero-width "pusher" float sets vertical offset without shoving
- * copy down; the object floats below it with clear so text stays full-width
- * above and wraps beside the object. Free X/Y via insets + pusher height.
+ * Body wrap in content-box CSS px: zero-width pusher for Y, float + insets for X.
  */
 function BodyWrapObject({
   layer,
   allLayers,
   presentation,
   selected,
-  pageEl,
+  contentW,
+  contentH,
   onSelect,
   onCommit
 }: {
@@ -100,7 +98,8 @@ function BodyWrapObject({
   allLayers: PenPageLayer[];
   presentation: PenPagePresentation;
   selected: boolean;
-  pageEl: HTMLElement | null;
+  contentW: number;
+  contentH: number;
   onSelect: () => void;
   onCommit: (geom: LiveGeom & { bodyWrap: 'left' | 'right' }) => void;
 }) {
@@ -113,6 +112,8 @@ function BodyWrapObject({
   });
   const liveRef = useRef(live);
   liveRef.current = live;
+  const boundsRef = useRef({ contentW, contentH });
+  boundsRef.current = { contentW, contentH };
   const dragRef = useRef<{
     mode: 'move' | 'resize';
     startX: number;
@@ -124,19 +125,12 @@ function BodyWrapObject({
     setLive({ x: layer.x, y: layer.y, w: layer.w, h: layer.h });
   }, [layer.x, layer.y, layer.w, layer.h, layer.id]);
 
-  const side = sideFromGeom(live.x, live.w);
-  const pageH = pageEl?.clientHeight || 400;
-  const pageW = pageEl?.clientWidth || 320;
-  const wPct = Math.max(12, Math.min(70, live.w));
-  const hPx = Math.max(48, Math.round((Math.max(10, Math.min(70, live.h)) / 100) * pageH));
-  const yPx = Math.max(0, Math.round((Math.max(0, Math.min(80, live.y)) / 100) * pageH));
-  const maxInsetPct = Math.max(0, 100 - wPct - 2);
-  const leftInsetPx = Math.round(
-    (Math.max(0, Math.min(maxInsetPct, live.x)) / 100) * pageW
-  );
-  const rightInsetPx = Math.round(
-    (Math.max(0, Math.min(maxInsetPct, 100 - live.x - live.w)) / 100) * pageW
-  );
+  const side = wrapSideFromGeom(live.x, live.w, contentW);
+  const wPx = Math.max(24, Math.min(contentW, live.w));
+  const hPx = Math.max(24, Math.min(contentH, live.h));
+  const yPx = Math.max(0, Math.min(contentH - hPx, live.y));
+  const leftInsetPx = Math.max(0, live.x);
+  const rightInsetPx = Math.max(0, contentW - live.x - wPx);
 
   const pusherStyle: CSSProperties = {
     float: side,
@@ -152,7 +146,7 @@ function BodyWrapObject({
     ...opaqueWrapShell(layer),
     float: side,
     clear: side,
-    width: `${wPct}%`,
+    width: `${wPx}px`,
     height: `${hPx}px`,
     marginTop: 0,
     marginBottom: '0.5em',
@@ -195,25 +189,36 @@ function BodyWrapObject({
 
   function onPointerMove(e: ReactPointerEvent) {
     const drag = dragRef.current;
-    if (!drag || !pageEl) return;
-    const r = pageEl.getBoundingClientRect();
-    if (!r.width || !r.height) return;
-    const dx = ((e.clientX - drag.startX) / r.width) * 100;
-    const dy = ((e.clientY - drag.startY) / r.height) * 100;
+    if (!drag) return;
+    const { contentW: cw, contentH: ch } = boundsRef.current;
+    const dx = e.clientX - drag.startX;
+    const dy = e.clientY - drag.startY;
     if (drag.mode === 'move') {
-      setLive({
-        x: Math.max(0, Math.min(88, drag.orig.x + dx)),
-        y: Math.max(0, Math.min(80, drag.orig.y + dy)),
-        w: drag.orig.w,
-        h: drag.orig.h
-      });
+      setLive(
+        clampLayerRect(
+          {
+            x: drag.orig.x + dx,
+            y: drag.orig.y + dy,
+            w: drag.orig.w,
+            h: drag.orig.h
+          },
+          cw,
+          ch
+        )
+      );
     } else {
-      setLive({
-        x: drag.orig.x,
-        y: drag.orig.y,
-        w: Math.max(12, Math.min(70, drag.orig.w + dx)),
-        h: Math.max(10, Math.min(70, drag.orig.h + dy))
-      });
+      setLive(
+        clampLayerRect(
+          {
+            x: drag.orig.x,
+            y: drag.orig.y,
+            w: drag.orig.w + dx,
+            h: drag.orig.h + dy
+          },
+          cw,
+          ch
+        )
+      );
     }
   }
 
@@ -221,7 +226,8 @@ function BodyWrapObject({
     if (!dragRef.current) return;
     dragRef.current = null;
     const g = liveRef.current;
-    onCommit({ ...g, bodyWrap: sideFromGeom(g.x, g.w) });
+    const { contentW: cw } = boundsRef.current;
+    onCommit({ ...g, bodyWrap: wrapSideFromGeom(g.x, g.w, cw) });
   }
 
   let inner: ReactNode = null;
@@ -300,6 +306,7 @@ export function EditablePagePreview({
   onSelectLayer,
   onSectionChange,
   onPageLayoutChange,
+  onFlowWidthChange,
   onPresentationChange,
   onSnapChange,
   session
@@ -310,22 +317,50 @@ export function EditablePagePreview({
   onSelectLayer: (id: string | null) => void;
   onSectionChange: (next: PenSectionContent) => void;
   onPageLayoutChange?: (layout: PenPageLayout) => void;
+  onFlowWidthChange?: (widthPx: number) => void;
   onPresentationChange?: (next: Partial<PenPagePresentation>) => void;
   onSnapChange?: (enabled: boolean) => void;
   session?: PenSession | null;
 }) {
   const layersBtnRef = useRef<HTMLButtonElement>(null);
-  const pageFrameRef = useRef<HTMLDivElement>(null);
+  const bodyRef = useRef<HTMLDivElement>(null);
   const [layersOpen, setLayersOpen] = useState(false);
   const [selectedIds, setSelectedIds] = useState<string[]>([PAGE_LAYER_ID]);
   const [fontsReady, setFontsReady] = useState(true);
-  const prepared = useMemo(() => normalizeSection(section), [section]);
+  const [contentOuterH, setContentOuterH] = useState(400);
+
+  const pad = resolvePagePaddingPx(
+    mergePagePresentation(defaultEditorPagePresentation(), manifest.pagePresentation).padding
+  );
+
+  // One-shot legacy % → px migrate
+  useEffect(() => {
+    if (!sectionNeedsLegacyGeomMigrate(section) && section.layerGeom === 'px') return;
+    if (!sectionNeedsLegacyGeomMigrate(section) && (section.layers || []).length === 0) {
+      if (section.layerGeom !== 'px') {
+        onSectionChange({ ...normalizeSection(section), layerGeom: 'px' });
+      }
+      return;
+    }
+    if (!sectionNeedsLegacyGeomMigrate(section)) {
+      if (section.layerGeom !== 'px') {
+        onSectionChange({ ...normalizeSection(section), layerGeom: 'px' });
+      }
+      return;
+    }
+    onSectionChange(migrateSectionLayerGeomToPx(normalizeSection(section), pad));
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- one-shot when legacy geom detected
+  }, [section.slug, section.layerGeom, pad]);
+
+  const prepared = useMemo(
+    () => migrateSectionLayerGeomToPx(normalizeSection(section), pad),
+    [section, pad]
+  );
   const layers = prepared.layers || [];
   const wrapLayers = useMemo(
     () => layers.filter((l) => l.visible !== false && Boolean(l.bodyWrap)),
     [layers]
   );
-  /** Absolute stack only — wrap objects live in Body float flow. */
   const absoluteLayers = useMemo(
     () => layers.filter((l) => l.visible !== false && !l.bodyWrap),
     [layers]
@@ -352,6 +387,11 @@ export function EditablePagePreview({
     })()
   );
   const snapEnabled = Boolean(manifest.snapToPageGuides);
+  const flowWidth =
+    manifest.flowWorkspaceWidthPx || DEFAULT_FLOW_WORKSPACE_WIDTH_PX;
+  const sheet = pageSheetDims(manifest.pageLayout, flowWidth);
+  const contentHInner = Math.max(0, contentOuterH - 2 * pad);
+  const box = contentBoxSize(sheet, pad, contentHInner);
 
   const activeObject = layers.find((l) => l.id === activeLayerId) || null;
   const pageActive = isPageLayerId(activeLayerId);
@@ -384,8 +424,22 @@ export function EditablePagePreview({
     }
   }, [prepared, presentation.fontFamily]);
 
+  useEffect(() => {
+    const el = bodyRef.current;
+    if (!el) return;
+    const measure = () => {
+      const h = Math.max(el.scrollHeight, el.clientHeight, sheet.pageHeightPx || 320);
+      setContentOuterH(h);
+    };
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [prepared.doc, wrapLayers.length, sheet.pageHeightPx, flowWidth, manifest.pageLayout]);
+
   function onLayoutChange(nextItems: LayoutItem[]) {
     let next = updateLayerLayout(prepared, nextItems);
+    next = { ...next, layerGeom: 'px' };
     const groups = new Set(
       (next.layers || [])
         .filter((l) => l.parentGroupId)
@@ -414,6 +468,7 @@ export function EditablePagePreview({
       }
     ]);
     next = patchLayerStyle(next, layerId, { bodyWrap: patch.bodyWrap });
+    next = { ...next, layerGeom: 'px' };
     onSectionChange(next);
   }
 
@@ -431,6 +486,7 @@ export function EditablePagePreview({
   const frameStyle: CSSProperties = pageFrameStyle(presentation);
   const bodyHtml = docToHtml(prepared.doc);
   const bodyStyle = bodyMarginStyle(presentation);
+  const isFlow = (manifest.pageLayout || 'flow') === 'flow';
 
   return (
     <div className="relative flex h-full flex-col bg-white">
@@ -452,6 +508,23 @@ export function EditablePagePreview({
             <option value="letter">Letter</option>
             <option value="a4">A4</option>
           </select>
+        )}
+        {isFlow && onFlowWidthChange && (
+          <label className="flex shrink-0 items-center gap-1 text-[10px] text-neutral-500">
+            Width
+            <input
+              type="number"
+              min={320}
+              max={1200}
+              step={16}
+              className="h-6 w-14 rounded border border-neutral-200 px-1 text-[11px] font-bold text-black"
+              value={flowWidth}
+              onChange={(e) => {
+                const n = Math.round(Number(e.target.value));
+                if (Number.isFinite(n)) onFlowWidthChange(n);
+              }}
+            />
+          </label>
         )}
         {onSnapChange && (
           <button
@@ -478,6 +551,7 @@ export function EditablePagePreview({
             section={prepared}
             session={session}
             docId={manifest.docId}
+            contentWidthPx={box.width}
             onPresentationChange={onPresentationChange}
             onSectionChange={onSectionChange}
           />
@@ -503,30 +577,28 @@ export function EditablePagePreview({
         open={layersOpen}
         onClose={() => setLayersOpen(false)}
         anchorRef={layersBtnRef}
-        section={section}
+        section={prepared}
         activeLayerId={activeLayerId || PAGE_LAYER_ID}
         onSelectLayer={onSelectLayer}
         onSectionChange={onSectionChange}
         pageLayout={manifest.pageLayout}
         selectedIds={selectedIds}
         onSelectedIdsChange={setSelectedIds}
+        contentWidthPx={box.width}
       />
 
       <div className="flex flex-1 items-start justify-center overflow-auto bg-neutral-100 p-6">
-        <div
-          ref={pageFrameRef}
-          className={`relative w-full overflow-hidden border border-neutral-200 bg-white ${pageFrameClass(
-            manifest.pageLayout
-          )}`}
+        <PageSheetColumn
+          pageLayout={manifest.pageLayout}
+          flowWorkspaceWidthPx={flowWidth}
+          contentOuterHeightPx={contentOuterH}
           style={frameStyle}
-          onClick={(e) => {
-            if (e.target === e.currentTarget) selectLayer(PAGE_LAYER_ID);
-          }}
+          onClick={() => selectLayer(PAGE_LAYER_ID)}
         >
           {presentation.backgroundVideo && (
             <video
               src={presentation.backgroundVideo}
-              className="pointer-events-none absolute inset-0 h-full w-full object-cover"
+              className="pointer-events-none absolute inset-0 z-0 h-full w-full object-cover"
               autoPlay
               muted
               loop
@@ -534,12 +606,14 @@ export function EditablePagePreview({
             />
           )}
 
-          {/* Body — wrap objects are real floats here so text flows around them */}
+          {/* Body — padded content box; wrap floats + prose */}
           <div
-            className={`pen-rich-html absolute inset-0 z-0 overflow-auto ${
-              fontsReady ? '' : 'opacity-90'
-            }`}
-            style={bodyStyle}
+            ref={bodyRef}
+            className={`pen-rich-html relative z-0 ${fontsReady ? '' : 'opacity-90'}`}
+            style={{
+              ...bodyStyle,
+              minHeight: sheet.pageHeightPx || box.height + 2 * pad
+            }}
             onClick={(e) => {
               e.stopPropagation();
               selectLayer(PAGE_LAYER_ID);
@@ -552,78 +626,104 @@ export function EditablePagePreview({
                 allLayers={layers}
                 presentation={presentation}
                 selected={activeLayerId === layer.id}
-                pageEl={pageFrameRef.current}
+                contentW={box.width}
+                contentH={box.height}
                 onSelect={() => selectLayer(layer.id)}
                 onCommit={(patch) => onWrapCommit(layer.id, patch)}
               />
             ))}
-            {/* display:contents so Body prose shares the float formatting context */}
             <div
               style={{ display: 'contents' }}
               dangerouslySetInnerHTML={{
                 __html: bodyHtml || '<p class="text-neutral-400">Start writing…</p>'
               }}
             />
-          </div>
 
-          {/* Absolute overlays only (not wrap) */}
-          <LayoutSurface
-            className="pointer-events-none absolute inset-0 z-[1] h-full w-full"
-            items={items}
-            selectedId={pageActive ? null : activeLayerId}
-            snapToPageCenter={snapEnabled}
-            getLinkedIds={getLinkedIds}
-            resizeDisabledIds={groupIds}
-            onSelect={(id) => selectLayer(id || PAGE_LAYER_ID)}
-            onChange={onLayoutChange}
-            renderItem={(item) => {
-              const layer = layers.find((l) => l.id === item.id);
-              if (!layer || layer.bodyWrap) return null;
-              const shell = layerPreviewStyle(layer);
-              if (layer.kind === 'group') {
-                return (
-                  <div
-                    className="h-full w-full"
-                    style={shell}
-                    title={layerDisplayLabel(layer, layers)}
-                  />
-                );
+            {/* Absolute overlays — same content box as Body padding inset */}
+            <LayoutSurface
+              className="pointer-events-none absolute z-[1]"
+              style={
+                {
+                  top: pad,
+                  left: pad,
+                  width: box.width,
+                  height: box.height
+                } as CSSProperties
               }
-              if (layer.kind === 'image' && layer.imageSrc) {
-                return (
-                  <div className="relative h-full w-full" style={shell}>
-                    <img
-                      src={layer.imageSrc}
-                      alt=""
-                      className="relative h-full w-full object-contain"
-                      draggable={false}
+              items={items}
+              bounds={{ width: box.width, height: box.height }}
+              selectedId={pageActive ? null : activeLayerId}
+              snapToPageCenter={snapEnabled}
+              getLinkedIds={getLinkedIds}
+              resizeDisabledIds={groupIds}
+              onSelect={(id) => selectLayer(id || PAGE_LAYER_ID)}
+              onChange={onLayoutChange}
+              renderItem={(item) => {
+                const layer = layers.find((l) => l.id === item.id);
+                if (!layer || layer.bodyWrap) return null;
+                const shell = layerPreviewStyle(layer);
+                if (layer.kind === 'group') {
+                  return (
+                    <div
+                      className="h-full w-full"
+                      style={shell}
+                      title={layerDisplayLabel(layer, layers)}
                     />
-                  </div>
-                );
-              }
-              if (layer.kind === 'video' && layer.videoSrc) {
-                return (
-                  <div className="h-full w-full" style={shell}>
-                    <video
-                      src={layer.videoSrc}
-                      className="h-full w-full object-contain"
-                      controls
-                      playsInline
-                    />
-                  </div>
-                );
-              }
-              if (layer.backgroundVideo) {
+                  );
+                }
+                if (layer.kind === 'image' && layer.imageSrc) {
+                  return (
+                    <div className="relative h-full w-full" style={shell}>
+                      <img
+                        src={layer.imageSrc}
+                        alt=""
+                        className="relative h-full w-full object-contain"
+                        draggable={false}
+                      />
+                    </div>
+                  );
+                }
+                if (layer.kind === 'video' && layer.videoSrc) {
+                  return (
+                    <div className="h-full w-full" style={shell}>
+                      <video
+                        src={layer.videoSrc}
+                        className="h-full w-full object-contain"
+                        controls
+                        playsInline
+                      />
+                    </div>
+                  );
+                }
+                if (layer.backgroundVideo) {
+                  return (
+                    <div className="relative h-full w-full overflow-hidden" style={shell}>
+                      <video
+                        src={layer.backgroundVideo}
+                        className="absolute inset-0 h-full w-full object-cover"
+                        autoPlay
+                        muted
+                        loop
+                        playsInline
+                      />
+                      <div
+                        className="pen-rich-html relative h-full w-full overflow-auto p-2 text-sm"
+                        style={{
+                          fontFamily: presentation.fontFamily || undefined,
+                          color: presentation.textColor || '#111'
+                        }}
+                        dangerouslySetInnerHTML={{
+                          __html:
+                            docToHtml(getTextLayerDoc(layer)) ||
+                            '<p class="text-neutral-400">Text</p>'
+                        }}
+                      />
+                    </div>
+                  );
+                }
+                const html = docToHtml(getTextLayerDoc(layer));
                 return (
                   <div className="relative h-full w-full overflow-hidden" style={shell}>
-                    <video
-                      src={layer.backgroundVideo}
-                      className="absolute inset-0 h-full w-full object-cover"
-                      autoPlay
-                      muted
-                      loop
-                      playsInline
-                    />
                     <div
                       className="pen-rich-html relative h-full w-full overflow-auto p-2 text-sm"
                       style={{
@@ -631,32 +731,15 @@ export function EditablePagePreview({
                         color: presentation.textColor || '#111'
                       }}
                       dangerouslySetInnerHTML={{
-                        __html:
-                          docToHtml(getTextLayerDoc(layer)) ||
-                          '<p class="text-neutral-400">Text</p>'
+                        __html: html || '<p class="text-neutral-400">Text</p>'
                       }}
                     />
                   </div>
                 );
-              }
-              const html = docToHtml(getTextLayerDoc(layer));
-              return (
-                <div className="relative h-full w-full overflow-hidden" style={shell}>
-                  <div
-                    className="pen-rich-html relative h-full w-full overflow-auto p-2 text-sm"
-                    style={{
-                      fontFamily: presentation.fontFamily || undefined,
-                      color: presentation.textColor || '#111'
-                    }}
-                    dangerouslySetInnerHTML={{
-                      __html: html || '<p class="text-neutral-400">Text</p>'
-                    }}
-                  />
-                </div>
-              );
-            }}
-          />
-        </div>
+              }}
+            />
+          </div>
+        </PageSheetColumn>
       </div>
     </div>
   );

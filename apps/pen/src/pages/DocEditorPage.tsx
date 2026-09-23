@@ -1287,6 +1287,7 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
               section={canvasSection}
               sectionTitle={writingLabel}
               pageLayout={pageLayout}
+              flowWorkspaceWidthPx={bundle.manifest.flowWorkspaceWidthPx}
               pnIdentifier={session.pnIdentifier}
               onEditorReady={onEditorReady}
               onChange={(next) => {
@@ -1486,6 +1487,16 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
                       manifest: {
                         ...bundle.manifest,
                         pageLayout: layout,
+                        updatedAt: new Date().toISOString()
+                      }
+                    });
+                  }}
+                  onFlowWidthChange={(widthPx) => {
+                    persist({
+                      ...bundle,
+                      manifest: {
+                        ...bundle.manifest,
+                        flowWorkspaceWidthPx: Math.max(320, Math.min(1200, widthPx)),
                         updatedAt: new Date().toISOString()
                       }
                     });

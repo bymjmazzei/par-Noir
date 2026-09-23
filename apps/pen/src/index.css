@@ -131,6 +131,13 @@ body {
   min-height: 297mm;
 }
 
+/* Flow workspace — continuous column; width set inline via flowWorkspaceWidthPx */
+.pen-page-flow {
+  width: 100%;
+  max-width: 100%;
+  min-height: 20rem;
+}
+
 /* Preview / compiled HTML — same break policy as the writing surface */
 .pen-rich-html {
   hyphens: auto;

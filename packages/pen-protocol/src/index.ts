@@ -12,6 +12,7 @@ export * from './presentation.js';
 export * from './richDoc.js';
 export * from './renderRich.js';
 export * from './layers.js';
+export * from './pageGeometry.js';
 export * from './layerParts.js';
 export * from './agent.js';
 export * from './licensing.js';
