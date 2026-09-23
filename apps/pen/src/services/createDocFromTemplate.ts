@@ -12,6 +12,8 @@ import {
   signGenesis,
   hashPnIdentifier,
   ensureOwnerAssignment,
+  normalizeLicensingRoot,
+  defaultLicensingRoot,
   type PenDocManifest,
   type PenDraftManifest,
   type PenHistoryChain,
@@ -109,7 +111,8 @@ export async function createDocFromTemplate(input: {
     ownerPnHash,
     roles: ensureOwnerAssignment([], ownerPnHash),
     lifecycle: 'draft',
-    activeDraftId: draftId
+    activeDraftId: draftId,
+    licensing: normalizeLicensingRoot(template.licensing, ownerPnHash)
   };
 
   const chain: PenHistoryChain = { docId, genesis, links: [] };

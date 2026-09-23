@@ -1,5 +1,6 @@
 import type { PenDocType } from './templates.js';
 import type { PenRoleAssignment } from './roles.js';
+import type { PenLicensingRoot } from './licensing.js';
 
 /** TipTap / ProseMirror JSON node (section SoT). */
 export interface PenTipTapMark {
@@ -149,6 +150,8 @@ export interface PenDocManifest {
   basedOnTemplateId?: string;
   /** Parent public IndexedFile when remixing from a feed template. */
   basedOnFileId?: string;
+  /** Work license + open creator contracts (normalized on create/load). */
+  licensing?: PenLicensingRoot;
 }
 
 /** Draft under drafts/{draftId}/ — unfinished suggestion until submitted. */

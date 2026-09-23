@@ -14,3 +14,13 @@ export {
 } from './verify';
 export { STARK_FIELD_MODULUS } from './constants';
 export { bindingDigest384, digestToStarkLimbs, computeStarkFinalR0 } from './binding';
+export {
+  OPEN_CREATOR_CONTRACT_CONTEXT_V1,
+  buildOpenContractPublicInputs,
+  commitSplits,
+  isOpenContractPublicInputsV1,
+  openContractPublicInputsFromEnvelope,
+  type OpenContractPublicInputsV1,
+  type OpenContractRoyaltyParty,
+  type OpenContractSplitShare
+} from './openCreatorContract';

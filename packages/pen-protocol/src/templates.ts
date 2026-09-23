@@ -1,6 +1,7 @@
 /** Pen template registry + starter pack. */
 
 import type { PenSectionContent } from './types.js';
+import type { PenLicensingRoot } from './licensing.js';
 import { emptySection } from './richDoc.js';
 
 export type PenDocType = 'note' | 'post' | 'collection' | 'self_hosted_feed' | string;
@@ -50,6 +51,8 @@ export interface PenTemplate {
   browseFeatured?: boolean;
   /** Optional CDN-backed public template preview. */
   previewFileId?: string;
+  /** Work license + open creator contracts (optional on platform starters). */
+  licensing?: PenLicensingRoot;
 }
 
 /** Default author label for first-party / starter templates. */

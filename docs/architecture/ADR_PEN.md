@@ -33,10 +33,11 @@ par Noir needs a universal authored-content language for humans, collaborators, 
 10. **L5:** Silo CRUD + list classes/templates + publish Note. No L5 multi-writer collab / groups / messages product routes.
 11. **Primary acceptance:** User A creates doc, invites B, B edits, A sees update (and reverse). Manual dual-pN checklist: [`PEN_DUAL_PN_CHECKLIST.md`](../developer/PEN_DUAL_PN_CHECKLIST.md).
 12. **External agents (v0):** Starter templates ship `agentStarter` prompts (`{{user_input}}`, `{{template_id}}`, `{{section_list}}`). Agents emit **`PenAgentBuild`**; protocol validates (`validatePenAgentBuild`) and materializes IR (`materializePenAgentBuild`). Teaching data lives in **`@par-noir/pen-curriculum`** (handbook, snapshots, fixtures, eval) — model-agnostic data, not per-model plugins/MCP. Cloud write reuses first-party `apply-inbound` / `createDocFromAgentBuild` when a Pen session exists. No custom code per model.
+13. **Licensing + open creator contracts (root):** Every template/doc carries a `licensing` root (`workLicense` + open contracts). Platform sets royalty **bucket** maxes; creators set **`claimBps`** of their bucket (unclaimed → publisher). ZKP context `parnoir.open_creator_contract.v1` binds contract terms — see [`ADR_OPEN_CREATOR_CONTRACTS.md`](./ADR_OPEN_CREATOR_CONTRACTS.md). Fund period-close payout wiring is deferred.
 
 ## Reserved (follow-ons)
 
-Time calendar widgets; Records register UI / query engine; site/spaces categories; MCP tool servers.
+Time calendar widgets; Records register UI / query engine; site/spaces categories; MCP tool servers; **My fonts / cloud font grants**; open-contract editor UI; engager weight table; fund close → `allocatePostBounty`.
 
 ## Consequences
 

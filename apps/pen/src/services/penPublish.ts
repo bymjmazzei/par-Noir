@@ -14,6 +14,7 @@ import {
   notaryHashForGenesis,
   requireTemplate,
   snapshotPenEmbeds,
+  normalizeLicensingRoot,
   type PenDocManifest,
   type PenEmbedResolveResult,
   type PenSectionContent,
@@ -261,7 +262,11 @@ export async function promoteProjectToFinishedLibraryDoc(input: {
       pageLayout: bundle.manifest.pageLayout || 'letter',
       pagePresentation: bundle.manifest.pagePresentation || defaultPagePresentation(),
       lifecycle: 'published',
-      ownerPnHash: hashPnIdentifier(session.pnIdentifier)
+      ownerPnHash: hashPnIdentifier(session.pnIdentifier),
+      licensing: normalizeLicensingRoot(
+        bundle.manifest.licensing || libraryTemplate.licensing,
+        hashPnIdentifier(session.pnIdentifier)
+      )
     },
     sections: mapped.sections,
     chain: { docId, genesis, links: [] }

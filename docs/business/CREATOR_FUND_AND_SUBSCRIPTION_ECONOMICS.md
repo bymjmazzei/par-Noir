@@ -129,9 +129,51 @@ Then:
 
 ---
 
+## Micro allocation (per post bounty)
+
+**Status:** Policy locked for IR / open contracts ([`ADR_OPEN_CREATOR_CONTRACTS.md`](../architecture/ADR_OPEN_CREATOR_CONTRACTS.md)). Pure math lives in `@par-noir/pen-protocol` (`allocatePostBounty`). **Period-close payout wiring is deferred** (same as monetization go-live).
+
+Macro waterfall (`G → E → R → 25% platform / 75% fund`) is unchanged. **Micro** splits **one post’s** share of the fund bounty (normalize to **10000 bps**).
+
+### Platform buckets (defaults)
+
+| Bucket | Default bps | Role |
+|--------|-------------|------|
+| **Engager pool** | **1500** | Value from the comment graph (see below) |
+| **Content-rights** | **1500** | Template use / remix parents (open contract `party: content_rights`) |
+| **Music** | **1000** | Licensed library / track attach (open contract `party: music`) |
+| **Publisher residual** | remainder (**≥ 6000** under defaults) | Remixer / content publisher — majority of value |
+
+**Royalty cap:** content-rights + music ≤ **2500** bps.
+
+### Open creator contract (`claimBps`)
+
+Rights holders set an **open contract** on the Pen template/doc (or track) root:
+
+- **`claimBps`** ∈ `[0, 10000]` = fraction of **that party’s platform bucket** claimed.
+- **100%** means “claim the platform max for this party,” **not** 100% of the post.
+- Unclaimed remainder of the bucket → **publisher**.
+- Collaborator **`splits[]`** divide only the **claimed** amount (`shareBps` sum to 10000).
+
+Example: content-rights bucket = 1500; creator claims **7500** (75%) → content payees get **1125** bps of post bounty; publisher receives the other **375** from that bucket (plus residual).
+
+### Engager pool
+
+**In pool (earn weight):** root comments on the post; replies in that thread; comments that appear because of a **repost** (attributed to the original post’s bounty pie unless product later splits original/reposter).
+
+**Out of pool or tiny weight (policy later):** bare likes/views; bare repost with no comment.
+
+**Eligibility to receive** engager payouts (when wired): same fund-monetizable rules as other fund disbursements. Unverified actors may still contribute weight into the **10%** unverified bounty dollar pool per existing 90/10 rules.
+
+### Relationship to legacy “75/25 music”
+
+Historical table language (**75% creator / 25% music** of the creator-side reward) is **reframed**: under micro defaults, music is the **1000 bps music bucket** under the **2500** royalty cap; content-rights is a sibling bucket; engager pool is separate; publisher keeps the residual. Orphan creator leg and on-content proof (`post → track`) still apply when music is attached. Allocator implementation remains a follow-on.
+
+---
+
 ## Music
 
-**v1:** Ship **with** an authoritative **track registry** (phases **A–D** in [Track registry and licensing portal (build plan)](#track-registry-and-licensing-portal-build-plan)); economics and **75/25** enforcement **depend** on it.
+**v1:** Ship **with** an authoritative **track registry** (phases **A–D** in [Track registry and licensing portal (build plan)](#track-registry-and-licensing-portal-build-plan)); economics and music-bucket / legacy **75/25** enforcement **depend** on it.
 
 ### What is the track registry
 

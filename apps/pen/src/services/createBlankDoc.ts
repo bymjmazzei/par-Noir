@@ -11,6 +11,7 @@ import {
   signGenesis,
   hashPnIdentifier,
   ensureOwnerAssignment,
+  defaultLicensingRoot,
   type PenDocManifest,
   type PenDraftManifest,
   type PenHistoryChain,
@@ -140,7 +141,8 @@ export async function createBlankDoc(input: {
     ownerPnHash,
     roles: ensureOwnerAssignment([], ownerPnHash),
     lifecycle: 'draft',
-    activeDraftId: draftId
+    activeDraftId: draftId,
+    licensing: defaultLicensingRoot(ownerPnHash)
   };
 
   const chain: PenHistoryChain = { docId, genesis, links: [] };

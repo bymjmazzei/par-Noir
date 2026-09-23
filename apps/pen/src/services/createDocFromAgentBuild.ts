@@ -13,6 +13,7 @@ import {
   ensureOwnerAssignment,
   validatePenAgentBuild,
   materializePenAgentBuild,
+  defaultLicensingRoot,
   type PenAgentBuild,
   type PenDocManifest,
   type PenDraftManifest,
@@ -100,7 +101,8 @@ export async function createDocFromAgentBuild(input: {
     ownerPnHash,
     roles: ensureOwnerAssignment([], ownerPnHash),
     lifecycle: 'draft',
-    activeDraftId: draftId
+    activeDraftId: draftId,
+    licensing: defaultLicensingRoot(ownerPnHash)
   };
 
   const chain: PenHistoryChain = { docId, genesis, links: [] };
