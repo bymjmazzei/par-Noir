@@ -239,16 +239,10 @@ export function LayersPopover({
     if (dragId && hoverId && dragId !== hoverId) {
       const dragLayer = allLayers.find((l) => l.id === dragId);
       const hoverLayer = allLayers.find((l) => l.id === hoverId);
-      // Drop onto Body → group with layer 0 (Body text wraps around object)
+      // Drop onto Body → wrap with Body (float right)
       if (hoverId === PAGE_LAYER_ID && dragLayer && dragLayer.kind !== 'group') {
-        const side =
-          dragLayer.bodyWrap === 'left' || dragLayer.bodyWrap === 'right'
-            ? dragLayer.bodyWrap
-            : dragLayer.x + dragLayer.w / 2 < 50
-              ? 'left'
-              : 'right';
         let next = setLayerParentGroup(prepared, dragId, null);
-        next = patchLayerStyle(next, dragId, { bodyWrap: side });
+        next = patchLayerStyle(next, dragId, { bodyWrap: 'right' });
         commit(next);
       } else if (
         hoverLayer?.kind === 'group' &&
@@ -455,9 +449,9 @@ export function LayersPopover({
               {isWrapped && (
                 <span
                   className="shrink-0 text-[9px] font-bold uppercase tracking-wide text-sky-700"
-                  title={`Wrap ${layer.bodyWrap} with Body`}
+                  title="Wrapped with Body"
                 >
-                  {layer.bodyWrap === 'right' ? 'R' : 'L'}
+                  Wrap
                 </span>
               )}
               <button

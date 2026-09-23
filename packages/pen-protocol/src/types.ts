@@ -91,10 +91,10 @@ export interface PenPageLayer {
   /** When true, cannot move/resize on the page surface. */
   positionLocked?: boolean;
   /**
-   * When set, object participates in Body (layer 0) flow wrap instead of the absolute overlay stack.
-   * Left/right float inside the body margins container.
+   * When set, object participates in Body (layer 0) flow wrap (float right).
+   * Off / undefined keeps it as an absolute overlay.
    */
-  bodyWrap?: 'left' | 'right';
+  bodyWrap?: 'right';
 }
 
 /** Page chrome for Note compile / Pen Mini / PNG (mirrors browse TextPostStyle). */

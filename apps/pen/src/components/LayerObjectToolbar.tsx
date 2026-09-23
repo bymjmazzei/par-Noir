@@ -22,7 +22,7 @@ export type ObjectToolTarget =
   | { kind: 'layer'; layer: PenPageLayer };
 
 type BgMode = 'color' | 'gradient' | 'image' | 'video';
-type OpenTool = 'bg' | 'shadow' | 'blur' | 'blend' | 'opacity' | 'stroke' | 'wrap' | null;
+type OpenTool = 'bg' | 'shadow' | 'blur' | 'blend' | 'opacity' | 'stroke' | null;
 
 const BLEND_MODES = [
   'normal',
@@ -254,17 +254,21 @@ export function LayerObjectToolbar({
           </ToolButton>
           <button
             type="button"
-            title="Wrap with Body — Body text flows around this object (or drag layer onto Body in Layers)"
+            title="Wrap with Body — Body text flows around this object"
             aria-label="Wrap with Body"
-            aria-pressed={open === 'wrap' || Boolean(layer?.bodyWrap)}
-            className={`inline-flex h-7 items-center justify-center rounded px-1.5 text-[9px] font-bold ${
-              open === 'wrap' || layer?.bodyWrap
-                ? 'bg-neutral-100 text-black'
-                : 'text-neutral-500 hover:text-black'
+            aria-pressed={Boolean(layer?.bodyWrap)}
+            className={`inline-flex h-7 items-center justify-center rounded px-1.5 text-[11px] ${
+              layer?.bodyWrap
+                ? 'font-bold text-black'
+                : 'font-medium text-neutral-400 hover:text-neutral-600'
             }`}
-            onClick={() => toggle('wrap')}
+            onClick={() =>
+              patchLayer({
+                bodyWrap: layer?.bodyWrap ? undefined : 'right'
+              })
+            }
           >
-            {layer?.bodyWrap === 'left' ? 'Wrap L' : layer?.bodyWrap === 'right' ? 'Wrap R' : 'Wrap'}
+            Wrap
           </button>
         </>
       )}
@@ -599,43 +603,6 @@ export function LayerObjectToolbar({
               ))}
             </div>
           </label>
-        </div>
-      </Popover>
-
-      <Popover open={open === 'wrap'} onClose={() => setOpen(null)}>
-        <div className="space-y-2 text-[11px]">
-          <div className="font-bold uppercase tracking-wide text-neutral-400">Wrap with Body</div>
-          <p className="text-neutral-500">
-            Same layer as Body — text wraps around this object. Off keeps it as an absolute overlay.
-          </p>
-          <div className="flex gap-1">
-            {(
-              [
-                { id: 'off', label: 'Off' },
-                { id: 'left', label: 'Left' },
-                { id: 'right', label: 'Right' }
-              ] as const
-            ).map((opt) => {
-              const active =
-                opt.id === 'off' ? !layer?.bodyWrap : layer?.bodyWrap === opt.id;
-              return (
-                <button
-                  key={opt.id}
-                  type="button"
-                  className={`flex-1 rounded px-2 py-1 ${
-                    active ? 'bg-black text-white' : 'bg-neutral-100 text-neutral-700'
-                  }`}
-                  onClick={() =>
-                    patchLayer({
-                      bodyWrap: opt.id === 'off' ? undefined : opt.id
-                    })
-                  }
-                >
-                  {opt.label}
-                </button>
-              );
-            })}
-          </div>
         </div>
       </Popover>
 
