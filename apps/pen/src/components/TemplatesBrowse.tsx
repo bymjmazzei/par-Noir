@@ -49,8 +49,8 @@ function GalleryIcon() {
 
 function Chevron({ expanded }: { expanded: boolean }) {
   return (
-    <button type="button" className="pen-explorer-chevron" aria-expanded={expanded} tabIndex={-1}>
-      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" aria-hidden>
+    <span className="pen-explorer-chevron" aria-expanded={expanded} aria-hidden>
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none">
         <path
           d="M6 9l6 6 6-6"
           stroke="currentColor"
@@ -59,7 +59,7 @@ function Chevron({ expanded }: { expanded: boolean }) {
           strokeLinejoin="round"
         />
       </svg>
-    </button>
+    </span>
   );
 }
 
@@ -365,7 +365,6 @@ export function TemplatesBrowse({
                     <thead className="text-[11px] tracking-wide">
                       <tr>
                         <th className="pen-explorer-action" aria-hidden />
-                        <th className="pen-explorer-icon" aria-hidden />
                         <th className="pen-explorer-name-header px-3">Name</th>
                         <th className="pen-explorer-col-category px-3">Kind</th>
                         <th className="pen-explorer-col-form px-3">Form</th>
@@ -438,11 +437,9 @@ function CategoryDirBlock({
         <td className="pen-explorer-action px-2 py-2 text-center">
           <span className="inline-block h-4 w-4" aria-hidden />
         </td>
-        <td className="pen-explorer-icon px-0 py-2">
-          <Chevron expanded={expanded} />
-        </td>
         <td className="pen-explorer-name-cell px-3 py-2">
           <span className="pen-explorer-name-label text-black">
+            <Chevron expanded={expanded} />
             <ExplorerFolderGlyph open={expanded} />
             <span className="min-w-0 truncate font-bold">{categoryTitle}</span>
           </span>
@@ -497,11 +494,9 @@ function FormDirBlock({
         <td className="pen-explorer-action px-2 py-2 text-center">
           <span className="inline-block h-4 w-4" aria-hidden />
         </td>
-        <td className="pen-explorer-icon px-0 py-2">
-          <Chevron expanded={expanded} />
-        </td>
         <td className="pen-explorer-name-cell pen-explorer-name-indent px-3 py-2">
           <span className="pen-explorer-name-label text-black">
+            <Chevron expanded={expanded} />
             <ExplorerFolderGlyph open={expanded} />
             <span className="min-w-0 truncate font-medium">{formTitle}</span>
           </span>
@@ -519,11 +514,11 @@ function FormDirBlock({
             <td className="pen-explorer-action px-2 py-2 text-center">
               <span className="inline-block h-4 w-4" aria-hidden />
             </td>
-            <td className="pen-explorer-icon px-0 py-2">
-              <span className="inline-block h-4 w-4" aria-hidden />
-            </td>
             <td className="pen-explorer-name-cell pen-explorer-name-indent-2 px-3 py-2 font-medium text-black">
-              {t.title}
+              <span className="pen-explorer-name-label">
+                <span className="pen-explorer-twisty-spacer" aria-hidden />
+                <span className="min-w-0 truncate">{t.title}</span>
+              </span>
             </td>
             <td className="pen-explorer-col-category px-3 py-2 text-xs text-neutral-500">Template</td>
             <td className="pen-explorer-col-form px-3 py-2 text-xs text-black">{formTitle}</td>

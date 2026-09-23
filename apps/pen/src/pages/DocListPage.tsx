@@ -210,12 +210,12 @@ function DocExplorerRow({
           aria-label={`Select ${d.title || 'document'}`}
         />
       </td>
-      <td className="pen-explorer-icon px-0 py-2" aria-hidden />
       <td
         className={`pen-explorer-name-cell px-3 py-2 ${indented ? 'pen-explorer-name-indent' : ''}`}
       >
         {bulkMode ? (
           <span className="pen-explorer-name-label truncate font-medium text-black">
+            <span className="pen-explorer-twisty-spacer" aria-hidden />
             <FormDocIcon classId={classId} compact />
             <span className="min-w-0 truncate">{d.title || 'Untitled'}</span>
           </span>
@@ -260,6 +260,7 @@ function DocExplorerRow({
               onStartRename();
             }}
           >
+            <span className="pen-explorer-twisty-spacer" aria-hidden />
             <FormDocIcon classId={classId} compact />
             <span className="min-w-0 truncate">{d.title || 'Untitled'}</span>
           </button>
@@ -315,29 +316,6 @@ function NotebookExplorerRow({
       <td className="pen-explorer-action px-2 py-2 text-center">
         <span className="inline-block h-4 w-4" aria-hidden />
       </td>
-      <td className="pen-explorer-icon px-0 py-2">
-        <button
-          type="button"
-          className="pen-explorer-chevron"
-          aria-expanded={expanded}
-          aria-label={expanded ? 'Collapse notebook' : 'Expand notebook'}
-          title={expanded ? 'Collapse' : 'Expand'}
-          onClick={(e) => {
-            e.stopPropagation();
-            onToggleExpand();
-          }}
-        >
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" aria-hidden>
-            <path
-              d="M6 9l6 6 6-6"
-              stroke="currentColor"
-              strokeWidth="2.2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-          </svg>
-        </button>
-      </td>
       <td className="pen-explorer-name-cell px-3 py-2">
         <button
           type="button"
@@ -347,7 +325,20 @@ function NotebookExplorerRow({
             onRename();
           }}
           className="pen-explorer-name-label truncate text-black hover:underline"
+          aria-expanded={expanded}
+          aria-label={expanded ? `Collapse ${notebook.name}` : `Expand ${notebook.name}`}
         >
+          <span className="pen-explorer-chevron" aria-hidden>
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none">
+              <path
+                d="M6 9l6 6 6-6"
+                stroke="currentColor"
+                strokeWidth="2.2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
+          </span>
           <ExplorerFolderGlyph open={expanded} />
           <span className="min-w-0 truncate">{notebook.name}</span>
         </button>
@@ -462,7 +453,6 @@ function DocExplorerTable({
             <thead className="text-[11px] tracking-wide">
               <tr>
                 <th className="pen-explorer-action px-2 text-center" aria-label="Select" />
-                <th className="pen-explorer-icon px-1" aria-hidden />
                 <SortHeader
                   label="Name"
                   sortKey="name"
@@ -528,9 +518,11 @@ function DocExplorerTable({
                           onClick={() => onOpenPersonalTemplate?.(t.id)}
                         >
                           <td className="pen-explorer-action px-2 py-2" />
-                          <td className="pen-explorer-icon px-0 py-2" />
                           <td className="pen-explorer-name-cell pen-explorer-name-indent px-3 py-2 font-medium text-black">
-                            {t.title}
+                            <span className="pen-explorer-name-label">
+                              <span className="pen-explorer-twisty-spacer" aria-hidden />
+                              <span className="min-w-0 truncate">{t.title}</span>
+                            </span>
                           </td>
                           <td className="pen-explorer-col-category px-3 py-2 text-xs text-neutral-500">
                             —
@@ -556,9 +548,11 @@ function DocExplorerTable({
                   onClick={() => onOpenPersonalTemplate?.(t.id)}
                 >
                   <td className="pen-explorer-action px-2 py-2" />
-                  <td className="pen-explorer-icon px-1 py-2" />
                   <td className="pen-explorer-name-cell px-3 py-2 font-medium text-black">
-                    {t.title}
+                    <span className="pen-explorer-name-label">
+                      <span className="pen-explorer-twisty-spacer" aria-hidden />
+                      <span className="min-w-0 truncate">{t.title}</span>
+                    </span>
                   </td>
                   <td className="pen-explorer-col-category px-3 py-2 text-xs text-neutral-500">
                     —
