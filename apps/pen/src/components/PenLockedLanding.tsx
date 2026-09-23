@@ -20,8 +20,10 @@ const FOOTER_BG_SRC = './branding/Par-Noir-Background-Dark.png';
  * One scale drives the whole locked sheet (rail, gutters, type, logo) —
  * not just the copy to the right of the red lines.
  *
- * Reference vmin ≈ 430px → scale 1. Also shrink if 9 rule slots would
- * overrun the paper (keep ~2 empty lines above the footer).
+ * Reference vmin ≈ 430px → scale 1. Also shrink so heading + 9 rule
+ * slots + footer fit the page body. Fit math must use body height (and
+ * heading/footer measured at the current scale), never paper height —
+ * paper is flex:1 and shrinks when scale grows, which would feedback.
  */
 const LOCKED_PAPER_SLOTS = 9;
 const LOCKED_REF_VMIN_PX = 430;
@@ -75,26 +77,37 @@ export function PenLockedLanding({
   addMenu: ReactNode;
 }) {
   const pageRef = useRef<HTMLDivElement>(null);
-  const paperRef = useRef<HTMLDivElement>(null);
+  const bodyRef = useRef<HTMLDivElement>(null);
+  const headingRef = useRef<HTMLDivElement>(null);
+  const footerRef = useRef<HTMLElement>(null);
+  const logoRef = useRef<HTMLImageElement>(null);
 
   useEffect(() => {
     const page = pageRef.current;
-    const paper = paperRef.current;
-    if (!page || !paper) return;
+    const body = bodyRef.current;
+    const heading = headingRef.current;
+    const footer = footerRef.current;
+    if (!page || !body || !heading || !footer) return;
 
     let raf = 0;
-    let lastScale = 0;
+    const cssScale = Number.parseFloat(
+      getComputedStyle(page).getPropertyValue('--pen-locked-scale').trim()
+    );
+    let lastScale = Number.isFinite(cssScale) && cssScale > 0 ? cssScale : 1;
 
     const apply = () => {
       raf = 0;
       const vmin = Math.min(window.innerWidth, window.innerHeight);
       let scale = vmin / LOCKED_REF_VMIN_PX;
 
-      const paperH = paper.clientHeight;
-      if (paperH > 0) {
-        const maxScaleForPaper =
-          paperH / (LOCKED_BASE_PITCH_PX * LOCKED_PAPER_SLOTS);
-        scale = Math.min(scale, maxScaleForPaper);
+      const bodyH = body.clientHeight;
+      const cur = lastScale > 0 ? lastScale : 1;
+      const headingBase = heading.clientHeight / cur;
+      const footerBase = footer.clientHeight / cur;
+      const neededAt1 =
+        headingBase + footerBase + LOCKED_BASE_PITCH_PX * LOCKED_PAPER_SLOTS;
+      if (bodyH > 0 && neededAt1 > 0) {
+        scale = Math.min(scale, bodyH / neededAt1);
       }
 
       scale = Math.min(LOCKED_SCALE_MAX, Math.max(LOCKED_SCALE_MIN, scale));
@@ -108,14 +121,22 @@ export function PenLockedLanding({
       raf = requestAnimationFrame(apply);
     };
 
+    // Observe only the page body — its height is viewport/chrome-driven
+    // and does not change when --pen-locked-scale updates.
     const ro = new ResizeObserver(schedule);
-    ro.observe(paper);
+    ro.observe(body);
     window.addEventListener('resize', schedule);
+    const logo = logoRef.current;
+    if (logo && !logo.complete) {
+      logo.addEventListener('load', schedule);
+    }
+    void document.fonts?.ready?.then(schedule);
     schedule();
 
     return () => {
       ro.disconnect();
       window.removeEventListener('resize', schedule);
+      logo?.removeEventListener('load', schedule);
       if (raf) cancelAnimationFrame(raf);
     };
   }, []);
@@ -146,7 +167,7 @@ export function PenLockedLanding({
         />
       </header>
 
-      <div className="pen-locked-page-body">
+      <div ref={bodyRef} className="pen-locked-page-body">
         <div className="pen-library-page pen-locked-library bg-white">
           <div className="pen-library-notebook flex-1">
             <div className="pen-library-notebook-inner">
@@ -154,7 +175,7 @@ export function PenLockedLanding({
                 <div className="pen-explorer-rail" aria-hidden />
 
                 {/* Title card — no notebook rules */}
-                <div className="pen-locked-heading">
+                <div ref={headingRef} className="pen-locked-heading">
                   <h1 className="pen-locked-title">Pen</h1>
                   <p className="pen-locked-subtitle">
                     Encrypted collaboration published through your cloud
@@ -162,7 +183,7 @@ export function PenLockedLanding({
                 </div>
 
                 {/* Ruled sheet — blue + red stop where the footer begins */}
-                <div ref={paperRef} className="pen-locked-paper">
+                <div className="pen-locked-paper">
                   <div className="pen-locked-copy-group">
                     <ul className="pen-locked-checklist">
                       {CHECKLIST.map((label) => (
@@ -200,10 +221,12 @@ export function PenLockedLanding({
               </div>
 
               <footer
+                ref={footerRef}
                 className="pen-locked-footer"
                 style={{ backgroundImage: `url(${FOOTER_BG_SRC})` }}
               >
                 <img
+                  ref={logoRef}
                   className="pen-locked-logo"
                   src={LOGO_SRC}
                   alt="par Noir"
