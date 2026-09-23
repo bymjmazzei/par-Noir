@@ -142,7 +142,10 @@ export function LayoutSurface({
   return (
     <div
       ref={surfaceRef}
-      className={`relative touch-none ${className || ''}`}
+      // Callers pass positioning (e.g. absolute inset-0). Do not also set
+      // `relative` here — Tailwind position utilities conflict, and `relative`
+      // wins in the stylesheet, which drops overlays under Body in the preview.
+      className={`touch-none ${className || 'relative'}`}
       onPointerMove={onPointerMove}
       onPointerUp={onPointerUp}
       onPointerLeave={onPointerUp}

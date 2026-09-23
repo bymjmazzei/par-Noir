@@ -114,9 +114,12 @@ export function LayersPopover({
     [allLayers]
   );
 
-  /** Nested list: top-level (no parent) front-first; children under their group. */
+  /**
+   * Nested list: overlays front-first (top of list = front), Body (layer 0) last.
+   * Matches canvas stack: Body is backmost.
+   */
   const listRows: ListRow[] = useMemo(() => {
-    const rows: ListRow[] = [{ kind: 'page' }];
+    const rows: ListRow[] = [];
     const top = layersFrontFirst.filter((l) => !l.parentGroupId);
     for (const layer of top) {
       rows.push({ kind: 'layer', layer, depth: 0 });
@@ -127,6 +130,7 @@ export function LayersPopover({
         }
       }
     }
+    rows.push({ kind: 'page' });
     return rows;
   }, [layersFrontFirst]);
 

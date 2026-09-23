@@ -342,9 +342,9 @@ export function EditablePagePreview({
             />
           )}
 
-          {/* Body — layer 0 flow with margins */}
+          {/* Body — layer 0 (back): flow text with margins, under overlays */}
           <div
-            className={`pen-rich-html relative z-0 min-h-[28rem] w-full ${
+            className={`pen-rich-html absolute inset-0 z-0 overflow-auto ${
               fontsReady ? '' : 'opacity-90'
             }`}
             style={bodyStyle}
@@ -375,9 +375,9 @@ export function EditablePagePreview({
             />
           </div>
 
-          {/* Absolute overlays above body */}
+          {/* Absolute overlays above Body (z > 0) */}
           <LayoutSurface
-            className="pointer-events-none absolute inset-0 z-[1] h-full min-h-[28rem] w-full"
+            className="pointer-events-none absolute inset-0 z-[1] h-full w-full"
             items={items}
             selectedId={pageActive ? null : activeLayerId}
             snapToPageCenter={snapEnabled}
