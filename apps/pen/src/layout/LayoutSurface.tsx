@@ -175,6 +175,10 @@ export function LayoutSurface({
               zIndex: item.zIndex
             }}
             onPointerDown={(e) => onPointerDownMove(e, item)}
+            onClick={(e) => {
+              // Prevent page-frame click from re-selecting Body after overlay select.
+              e.stopPropagation();
+            }}
           >
             <div className="h-full w-full overflow-auto">{renderItem(item, selected)}</div>
             {!disabled && !item.positionLocked && selected && !noResize(item.id) && (

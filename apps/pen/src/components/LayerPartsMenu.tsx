@@ -1,9 +1,10 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
 import type { Editor } from '@tiptap/react';
 import {
   insertLayerPart,
   listLayerParts,
   partIdAtContentIndex,
+  reorderLayerParts,
   type InsertLayerPartKind,
   type LayerPart,
   type PenTipTapNode
@@ -16,8 +17,8 @@ export interface DocSectionTocItem {
 }
 
 /**
- * Writing ▾ — parts outline of the active object (Body or text layer).
- * When the document has multiple IR sections, a Document group sits above Parts.
+ * Writing ▾ — parts outline of the active object (mini compiler order).
+ * Drag rows to rearrange top-level blocks; + inserts a part.
  */
 export function LayerPartsMenu({
   doc,
@@ -37,9 +38,12 @@ export function LayerPartsMenu({
   onSelectDocumentSection?: (slug: string) => void;
 }) {
   const [open, setOpen] = useState(false);
-  const [activePartId, setActivePartId] = useState('body');
+  const [activePartId, setActivePartId] = useState('block:0');
   const [addOpen, setAddOpen] = useState(false);
+  const [dragId, setDragId] = useState<string | null>(null);
+  const [hoverId, setHoverId] = useState<string | null>(null);
   const rootRef = useRef<HTMLDivElement>(null);
+  const dragMoved = useRef(false);
 
   const parts = useMemo(() => listLayerParts(doc), [doc]);
   const activePart: LayerPart = parts.find((p) => p.id === activePartId) || parts[0]!;
@@ -47,14 +51,14 @@ export function LayerPartsMenu({
 
   useEffect(() => {
     if (!open) return;
-    const onDoc = (e: MouseEvent) => {
+    const onDocDown = (e: MouseEvent) => {
       if (!rootRef.current?.contains(e.target as Node)) {
         setOpen(false);
         setAddOpen(false);
       }
     };
-    document.addEventListener('mousedown', onDoc);
-    return () => document.removeEventListener('mousedown', onDoc);
+    document.addEventListener('mousedown', onDocDown);
+    return () => document.removeEventListener('mousedown', onDocDown);
   }, [open]);
 
   useEffect(() => {
@@ -94,6 +98,42 @@ export function LayerPartsMenu({
     onDocChange(next);
     setAddOpen(false);
     setOpen(false);
+  }
+
+  function onRowPointerDown(e: ReactPointerEvent, part: LayerPart) {
+    if (!writingEnabled) return;
+    e.preventDefault();
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+    dragMoved.current = false;
+    setDragId(part.id);
+    setHoverId(part.id);
+  }
+
+  function onRowPointerMove(e: ReactPointerEvent) {
+    if (!dragId) return;
+    dragMoved.current = true;
+    const el = document.elementFromPoint(e.clientX, e.clientY);
+    const row = el?.closest('[data-part-id]') as HTMLElement | null;
+    const hid = row?.dataset.partId;
+    if (hid) setHoverId(hid);
+  }
+
+  function onRowPointerUp() {
+    if (dragId && hoverId && dragId !== hoverId && dragMoved.current) {
+      const from = parts.find((p) => p.id === dragId);
+      const to = parts.find((p) => p.id === hoverId);
+      if (from && to) {
+        const next = reorderLayerParts(doc, from.index, to.index);
+        onDocChange(next);
+        setActivePartId(`block:${to.index}`);
+      }
+    } else if (dragId && !dragMoved.current) {
+      const part = parts.find((p) => p.id === dragId);
+      if (part) jumpToPart(part);
+    }
+    setDragId(null);
+    setHoverId(null);
+    dragMoved.current = false;
   }
 
   return (
@@ -151,7 +191,7 @@ export function LayerPartsMenu({
         </div>
       )}
       {open && (
-        <div className="absolute left-0 top-full z-30 mt-1 min-w-[12rem] max-w-[18rem] overflow-hidden rounded-md border border-stone-200 bg-white py-1 shadow-lg">
+        <div className="absolute left-0 top-full z-30 mt-1 min-w-[14rem] max-w-[20rem] overflow-hidden rounded-md border border-stone-200 bg-white py-1 shadow-lg">
           {showDocument && documentSections && (
             <>
               <div className="px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wider text-stone-400">
@@ -184,27 +224,52 @@ export function LayerPartsMenu({
               Select Body or a text layer to write.
             </p>
           )}
-          {writingEnabled &&
-            parts.map((p) => (
-              <button
-                key={p.id}
-                type="button"
-                className={`flex w-full items-center justify-between gap-2 px-2.5 py-1.5 text-left text-[12px] ${
-                  p.id === activePart.id
-                    ? 'bg-sky-50 font-medium text-sky-950'
-                    : 'text-stone-700 hover:bg-stone-50'
-                }`}
-                onClick={() => jumpToPart(p)}
-              >
-                <span className="truncate">{p.label}</span>
-                {p.kind === 'heading' && (
-                  <span className="shrink-0 text-[10px] text-stone-400">H{p.level || 1}</span>
-                )}
-                {p.kind === 'blockquote' && (
-                  <span className="shrink-0 text-[10px] text-stone-400">Quote</span>
-                )}
-              </button>
-            ))}
+          {writingEnabled && (
+            <ul
+              className="max-h-56 overflow-auto"
+              onPointerMove={onRowPointerMove}
+              onPointerUp={onRowPointerUp}
+              onPointerLeave={() => {
+                if (dragId) {
+                  setDragId(null);
+                  setHoverId(null);
+                  dragMoved.current = false;
+                }
+              }}
+            >
+              {parts.map((p) => {
+                const dropTarget = Boolean(dragId && hoverId === p.id && dragId !== p.id);
+                return (
+                  <li
+                    key={p.id}
+                    data-part-id={p.id}
+                    className={`flex cursor-grab items-center gap-1.5 px-2.5 py-1.5 text-[12px] active:cursor-grabbing ${
+                      p.id === activePart.id
+                        ? 'bg-sky-50 font-medium text-sky-950'
+                        : 'text-stone-700 hover:bg-stone-50'
+                    } ${dropTarget ? 'ring-1 ring-inset ring-black' : ''} ${
+                      dragId === p.id ? 'opacity-50' : ''
+                    }`}
+                    onPointerDown={(e) => onRowPointerDown(e, p)}
+                  >
+                    <span className="shrink-0 text-[10px] text-stone-400" aria-hidden>
+                      ⋮⋮
+                    </span>
+                    <span className="min-w-0 flex-1 truncate">{p.label}</span>
+                    {p.kind === 'heading' && (
+                      <span className="shrink-0 text-[10px] text-stone-400">H{p.level || 1}</span>
+                    )}
+                    {p.kind === 'blockquote' && (
+                      <span className="shrink-0 text-[10px] text-stone-400">Quote</span>
+                    )}
+                    {p.kind === 'body' && (
+                      <span className="shrink-0 text-[10px] text-stone-400">Body</span>
+                    )}
+                  </li>
+                );
+              })}
+            </ul>
+          )}
         </div>
       )}
     </div>

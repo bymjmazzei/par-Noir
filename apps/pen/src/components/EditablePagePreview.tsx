@@ -329,7 +329,10 @@ export function EditablePagePreview({
             manifest.pageLayout
           )}`}
           style={frameStyle}
-          onClick={() => selectLayer(PAGE_LAYER_ID)}
+          onClick={(e) => {
+            // Only empty page chrome selects Body — overlays stopPropagation.
+            if (e.target === e.currentTarget) selectLayer(PAGE_LAYER_ID);
+          }}
         >
           {presentation.backgroundVideo && (
             <video
