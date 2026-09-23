@@ -72,9 +72,7 @@ export function TemplateGalleryThumb({
   const preview = templatePreviewBundle(pn, templateId);
   if (!preview) {
     return (
-      <span className="flex h-full w-full items-center justify-center text-[10px] text-neutral-500">
-        —
-      </span>
+      <span className="pen-gallery-tile-glyph text-[10px] text-neutral-500">—</span>
     );
   }
   return (
@@ -85,31 +83,32 @@ export function TemplateGalleryThumb({
   );
 }
 
-/** Blank paper tile used for Create new. */
+/** Create new — white frame with centered +. */
 export function CreateNewGalleryThumb() {
   return (
-    <div className="pen-gallery-doc-page pen-gallery-doc-page--paper pen-gallery-tile-blank">
-      <span className="pen-gallery-tile-blank-plus" aria-hidden>
-        +
-      </span>
-    </div>
+    <span className="pen-gallery-tile-glyph" aria-hidden>
+      <span className="pen-gallery-tile-glyph-plus">+</span>
+    </span>
   );
 }
 
-/** Notebook / folder tile (same chrome as doc/template thumbs). */
-export function NotebookGalleryThumb({ label }: { label?: string }) {
+/** Notebook / folder — white frame with centered notebook icon. */
+export function NotebookGalleryThumb() {
   return (
-    <div className="pen-gallery-doc-page pen-gallery-doc-page--paper pen-gallery-tile-notebook">
-      <div className="pen-gallery-tile-notebook-spine" aria-hidden />
-      <div className="pen-gallery-tile-notebook-body">
-        <div className="pen-gallery-doc-paper-title">{label || 'Notebook'}</div>
-        <div className="pen-gallery-tile-notebook-lines" aria-hidden>
-          <span />
-          <span />
-          <span />
-          <span />
-        </div>
-      </div>
-    </div>
+    <span className="pen-gallery-tile-glyph" aria-hidden>
+      <svg
+        className="pen-gallery-tile-glyph-icon"
+        viewBox="0 0 24 24"
+        fill="none"
+      >
+        <path
+          d="M5 4.5A1.5 1.5 0 0 1 6.5 3H18a1 1 0 0 1 1 1v16a1 1 0 0 1-1 1H6.5A1.5 1.5 0 0 1 5 19.5v-15Z"
+          stroke="currentColor"
+          strokeWidth="1.6"
+          strokeLinejoin="round"
+        />
+        <path d="M9 3v18" stroke="currentColor" strokeWidth="1.6" />
+      </svg>
+    </span>
   );
 }

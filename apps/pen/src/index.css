@@ -574,7 +574,12 @@ body {
   --pen-gallery-tile-h: calc(var(--pen-rule-pitch) * 4);
   --pen-gallery-row-gap: 0;
   --pen-gallery-tile-w: 100px;
-  --pen-gallery-band-pad: 0.28rem;
+  /* Room for raised-card shadow inside the 4-line slot */
+  --pen-gallery-band-pad: 0.35rem;
+  --pen-gallery-title-h: 1.05rem;
+  --pen-gallery-preview-h: calc(
+    var(--pen-gallery-tile-h) - var(--pen-gallery-band-pad) * 2 - var(--pen-gallery-title-h)
+  );
 }
 
 .pen-library-page {
@@ -1031,8 +1036,7 @@ button.pen-app-chrome-brand:hover {
   flex-direction: column;
   align-items: stretch;
   width: var(--pen-gallery-tile-w);
-  max-height: 100%;
-  height: auto;
+  height: 100%;
   box-sizing: border-box;
   margin: 0;
   padding: 0;
@@ -1057,11 +1061,9 @@ button.pen-app-chrome-brand:hover {
   align-items: center;
   gap: 0.125rem;
   flex-shrink: 0;
-  height: auto;
-  min-height: 0;
-  max-height: none;
+  height: var(--pen-gallery-title-h);
   box-sizing: border-box;
-  padding: 0 0.1rem 0.2rem;
+  padding: 0 0.1rem 0.15rem;
   background: transparent;
   border: none;
 }
@@ -1090,30 +1092,108 @@ input.pen-gallery-tile-title-text {
   border-bottom: 1px solid #a3a3a3;
 }
 
+/*
+ * Uniform raised preview frame — same size for create / notebook / doc / template.
+ * Shadow stays inside the 4-line slot (band-pad absorbs blur + offset).
+ */
 .pen-gallery-tile-preview {
   position: relative;
   z-index: 1;
-  flex: 0 1 auto;
+  flex: 1 1 auto;
   display: flex;
   align-items: center;
   justify-content: center;
   width: 100%;
-  min-height: 0;
-  max-height: calc(
-    var(--pen-gallery-tile-h) - var(--pen-gallery-band-pad) * 2 - 1.05rem
-  );
+  height: var(--pen-gallery-preview-h);
+  min-height: var(--pen-gallery-preview-h);
+  max-height: var(--pen-gallery-preview-h);
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
   overflow: hidden;
-  background: transparent;
+  background: #fff;
+  border: 1px solid #d4d4d4;
+  border-radius: 2px;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.14);
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
 }
 
 .pen-gallery-tile-preview-link {
   display: flex;
-  flex: 0 1 auto;
+  flex: 1 1 auto;
+  align-items: stretch;
+  justify-content: stretch;
+  width: 100%;
+  height: var(--pen-gallery-preview-h);
+  min-height: var(--pen-gallery-preview-h);
+  max-height: var(--pen-gallery-preview-h);
+  text-decoration: none;
+  color: inherit;
+}
+
+.pen-gallery-tile-preview-link .pen-gallery-tile-preview {
+  flex: 1 1 auto;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  max-height: none;
+  cursor: inherit;
+}
+
+/* Glyph tiles (create +, notebook icon) fill the frame */
+.pen-gallery-tile-glyph {
+  display: flex;
   align-items: center;
   justify-content: center;
   width: 100%;
-  min-height: 0;
-  max-height: inherit;
+  height: 100%;
+  color: #525252;
+  pointer-events: none;
+}
+
+.pen-gallery-tile-glyph-plus {
+  font-size: 1.75rem;
+  font-weight: 300;
+  line-height: 1;
+  color: #737373;
+}
+
+.pen-gallery-tile-glyph-icon {
+  width: 1.75rem;
+  height: 1.75rem;
+}
+
+/* Doc / template content scales into the fixed frame */
+.pen-gallery-tile-preview > .pen-gallery-doc-page,
+.pen-gallery-tile-preview > .pen-gallery-phone {
+  max-width: 100%;
+  max-height: 100%;
+}
+
+.pen-gallery-tile-preview .pen-gallery-doc-page {
+  width: 100%;
+  height: 100%;
+  max-height: 100%;
+  aspect-ratio: auto;
+  border: none;
+  box-shadow: none;
+  border-radius: 0;
+}
+
+.pen-gallery-tile-preview .pen-gallery-doc-page--media {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center;
+}
+
+.pen-gallery-tile-preview .pen-gallery-phone {
+  height: 100%;
+  width: auto;
+  max-width: 100%;
+  aspect-ratio: 9 / 16;
 }
 
 /* Phone bezel — clear edge for dark social screens on ruled paper */
@@ -1229,64 +1309,6 @@ input.pen-gallery-tile-title-text {
   width: 1.25rem;
   height: 1.25rem;
   font-size: 14px;
-}
-
-/* Create new / notebook gallery thumbs — same paper chrome as templates */
-.pen-gallery-tile-blank {
-  position: relative;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  aspect-ratio: 3 / 4;
-  min-height: 100%;
-}
-
-.pen-gallery-tile-blank-plus {
-  font-size: 1.75rem;
-  font-weight: 300;
-  line-height: 1;
-  color: #737373;
-}
-
-.pen-gallery-tile-notebook {
-  position: relative;
-  display: flex;
-  flex-direction: row;
-  align-items: stretch;
-  aspect-ratio: 3 / 4;
-  min-height: 100%;
-  padding: 0;
-  overflow: hidden;
-}
-
-.pen-gallery-tile-notebook-spine {
-  width: 10px;
-  flex-shrink: 0;
-  background: linear-gradient(90deg, #d4d4d4 0%, #f5f5f5 55%, #e5e5e5 100%);
-  border-right: 1px solid #a3a3a3;
-}
-
-.pen-gallery-tile-notebook-body {
-  flex: 1;
-  min-width: 0;
-  padding: 8px 6px 6px;
-  display: flex;
-  flex-direction: column;
-}
-
-.pen-gallery-tile-notebook-lines {
-  display: flex;
-  flex-direction: column;
-  gap: 5px;
-  margin-top: 6px;
-  flex: 1;
-}
-
-.pen-gallery-tile-notebook-lines > span {
-  display: block;
-  height: 1px;
-  background: #e5e5e5;
-  width: 100%;
 }
 
 .pen-doc-item-menu-panel {

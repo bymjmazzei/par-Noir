@@ -779,7 +779,7 @@ function NotebookGalleryCard({
           />
         </div>
         <button type="button" onClick={onOpen} className="pen-gallery-tile-preview">
-          <NotebookGalleryThumb label={notebook.name} />
+          <NotebookGalleryThumb />
         </button>
       </div>
     </div>

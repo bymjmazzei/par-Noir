@@ -149,9 +149,14 @@ export function DocGalleryPreview({
         className="pen-gallery-doc-page pen-gallery-doc-page--surface"
         style={{
           ...presentationSurface(pres, large ? 18 : 11),
-          aspectRatio: social ? '9 / 16' : pageAspect(manifest),
-          height: social ? '100%' : undefined,
-          width: '100%'
+          /* Tile frame owns size; modal large keeps intrinsic page shape */
+          ...(large
+            ? {
+                aspectRatio: social ? '9 / 16' : pageAspect(manifest),
+                height: social ? '100%' : undefined,
+                width: '100%'
+              }
+            : { width: '100%', height: '100%' })
         }}
       >
         <div className="line-clamp-[10] break-words leading-snug">{title}</div>
@@ -167,7 +172,11 @@ export function DocGalleryPreview({
     surface = (
       <div
         className="pen-gallery-doc-page pen-gallery-doc-page--paper"
-        style={{ aspectRatio: pageAspect(manifest) }}
+        style={
+          large
+            ? { aspectRatio: pageAspect(manifest) }
+            : { width: '100%', height: '100%' }
+        }
       >
         <div className="pen-gallery-doc-paper-title">{title}</div>
         {bodyHtml ? (
