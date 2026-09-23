@@ -556,10 +556,15 @@ body {
 
 :root {
   --pen-edge-pad: 0.75rem; /* match app chrome px-3 */
-  --pen-action-w: 2.5rem;
-  --pen-icon-w: 2.5rem;
+  /* Checkbox / bulk select — compact; chevron is narrower still */
+  --pen-action-w: 1.5rem;
+  /* Twisty / chevron — narrowest fixed column */
+  --pen-icon-w: 1.125rem;
   --pen-rail-gap: 10px; /* space after red rail before name */
   --pen-name-inset: calc(var(--pen-action-w) + var(--pen-icon-w) + var(--pen-rail-gap));
+  /* Nest depth: folder children / form under category / template under form */
+  --pen-nest-1: 1.75rem;
+  --pen-nest-2: 3.5rem;
   --pen-rule-blue: #3b82f6;
   /* Match list tbody row: 0.5rem + 0.5rem pad + ~1.25rem line */
   --pen-rule-pitch: 2.25rem;
@@ -910,6 +915,7 @@ button.pen-app-chrome-brand:hover {
   min-width: calc(var(--pen-action-w) + var(--pen-edge-pad));
   max-width: calc(var(--pen-action-w) + var(--pen-edge-pad));
   padding-left: var(--pen-edge-pad) !important;
+  padding-right: 0 !important;
   box-sizing: border-box;
 }
 
@@ -917,6 +923,9 @@ button.pen-app-chrome-brand:hover {
   width: var(--pen-icon-w);
   min-width: var(--pen-icon-w);
   max-width: var(--pen-icon-w);
+  padding-left: 0 !important;
+  padding-right: 0 !important;
+  text-align: center;
 }
 
 .pen-explorer-col-updated {
@@ -1201,18 +1210,65 @@ input.pen-gallery-tile-title-text {
 }
 
 .pen-explorer-name-indent {
-  padding-left: calc(var(--pen-rail-gap) + 1rem) !important;
+  padding-left: calc(var(--pen-rail-gap) + var(--pen-nest-1)) !important;
+}
+
+.pen-explorer-name-indent-2 {
+  padding-left: calc(var(--pen-rail-gap) + var(--pen-nest-2)) !important;
+}
+
+/* Folder / notebook / category / form directory rows */
+.pen-explorer-name-label {
+  display: inline-flex;
+  max-width: 100%;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.pen-explorer-row--folder .pen-explorer-name-label {
+  font-weight: 600;
+}
+
+.pen-explorer-row--folder-open {
+  background: rgba(0, 0, 0, 0.03);
+}
+
+.pen-explorer-row--folder-open:hover {
+  background: rgba(0, 0, 0, 0.055);
+}
+
+/* Children of an expanded folder — nested cue + soft rail */
+.pen-explorer-row--child td.pen-explorer-name-cell {
+  box-shadow: inset 2px 0 0 #a3a3a3;
+}
+
+.pen-explorer-row--child-depth-2 td.pen-explorer-name-cell {
+  box-shadow: inset 2px 0 0 #d4d4d4;
+}
+
+.pen-explorer-folder-glyph {
+  display: inline-flex;
+  width: 1rem;
+  height: 1rem;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  color: #525252;
+}
+
+.pen-explorer-row--folder-open .pen-explorer-folder-glyph {
+  color: #171717;
 }
 
 .pen-explorer-chevron {
   display: inline-flex;
-  width: 1.5rem;
-  height: 1.5rem;
+  width: 1rem;
+  height: 1rem;
   align-items: center;
   justify-content: center;
   border: none;
   background: transparent;
-  color: #000;
+  color: #404040;
   cursor: pointer;
   padding: 0;
 }

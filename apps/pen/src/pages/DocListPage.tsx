@@ -47,6 +47,7 @@ import {
   personalTemplatesAsPenTemplates
 } from '../services/penPersonalTemplates';
 import { FormDocIcon } from '../components/FormDocIcon';
+import { ExplorerFolderGlyph } from '../components/ExplorerFolderGlyph';
 import { TemplateLivePreview } from '../components/TemplateLivePreview';
 import { DocItemMenu } from '../components/DocItemMenu';
 import { TemplatesBrowse } from '../components/TemplatesBrowse';
@@ -189,7 +190,9 @@ function DocExplorerRow({
   const status = resolveDocLibraryStatus(pn, d.docId);
   return (
     <tr
-      className={`pen-explorer-row ${selected ? 'pen-explorer-row--selected' : ''}`}
+      className={`pen-explorer-row ${selected ? 'pen-explorer-row--selected' : ''} ${
+        indented ? 'pen-explorer-row--child' : ''
+      }`}
       onClick={() => {
         if (bulkMode) onToggle(d.docId);
       }}
@@ -207,14 +210,15 @@ function DocExplorerRow({
           aria-label={`Select ${d.title || 'document'}`}
         />
       </td>
-      <td className="pen-explorer-icon px-1 py-2">
-        <FormDocIcon classId={classId} />
-      </td>
+      <td className="pen-explorer-icon px-0 py-2" aria-hidden />
       <td
         className={`pen-explorer-name-cell px-3 py-2 ${indented ? 'pen-explorer-name-indent' : ''}`}
       >
         {bulkMode ? (
-          <span className="truncate font-medium text-black">{d.title || 'Untitled'}</span>
+          <span className="pen-explorer-name-label truncate font-medium text-black">
+            <FormDocIcon classId={classId} compact />
+            <span className="min-w-0 truncate">{d.title || 'Untitled'}</span>
+          </span>
         ) : renaming ? (
           <input
             autoFocus
@@ -237,7 +241,7 @@ function DocExplorerRow({
         ) : (
           <button
             type="button"
-            className="truncate text-left font-medium text-black hover:underline"
+            className="pen-explorer-name-label truncate text-left font-medium text-black hover:underline"
             onClick={(e) => {
               e.stopPropagation();
               if (clickTimer.current != null) return;
@@ -256,7 +260,8 @@ function DocExplorerRow({
               onStartRename();
             }}
           >
-            {d.title || 'Untitled'}
+            <FormDocIcon classId={classId} compact />
+            <span className="min-w-0 truncate">{d.title || 'Untitled'}</span>
           </button>
         )}
       </td>
@@ -302,11 +307,15 @@ function NotebookExplorerRow({
   onDelete: () => void;
 }) {
   return (
-    <tr className="pen-explorer-row">
+    <tr
+      className={`pen-explorer-row pen-explorer-row--folder ${
+        expanded ? 'pen-explorer-row--folder-open' : ''
+      }`}
+    >
       <td className="pen-explorer-action px-2 py-2 text-center">
         <span className="inline-block h-4 w-4" aria-hidden />
       </td>
-      <td className="pen-explorer-icon px-1 py-2">
+      <td className="pen-explorer-icon px-0 py-2">
         <button
           type="button"
           className="pen-explorer-chevron"
@@ -318,7 +327,7 @@ function NotebookExplorerRow({
             onToggleExpand();
           }}
         >
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden>
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" aria-hidden>
             <path
               d="M6 9l6 6 6-6"
               stroke="currentColor"
@@ -337,9 +346,10 @@ function NotebookExplorerRow({
             e.preventDefault();
             onRename();
           }}
-          className="truncate font-medium text-black hover:underline"
+          className="pen-explorer-name-label truncate text-black hover:underline"
         >
-          {notebook.name}
+          <ExplorerFolderGlyph open={expanded} />
+          <span className="min-w-0 truncate">{notebook.name}</span>
         </button>
       </td>
       <td className="pen-explorer-col-category px-3 py-2 text-xs text-neutral-500">Notebook</td>
@@ -514,11 +524,11 @@ function DocExplorerTable({
                       (personalTemplatesByNotebook[nb.id] || []).map((t) => (
                         <tr
                           key={t.id}
-                          className="pen-explorer-row cursor-pointer"
+                          className="pen-explorer-row pen-explorer-row--child cursor-pointer"
                           onClick={() => onOpenPersonalTemplate?.(t.id)}
                         >
                           <td className="pen-explorer-action px-2 py-2" />
-                          <td className="pen-explorer-icon px-1 py-2" />
+                          <td className="pen-explorer-icon px-0 py-2" />
                           <td className="pen-explorer-name-cell pen-explorer-name-indent px-3 py-2 font-medium text-black">
                             {t.title}
                           </td>

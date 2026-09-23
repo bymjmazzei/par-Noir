@@ -21,6 +21,7 @@ import {
 import { createDocFromPersonalOrStarter } from '../services/penPublish';
 import { ensureMyTemplatesNotebook } from '../services/penFolders';
 import type { PenBrowseDensity } from '../services/penClassPrefs';
+import { ExplorerFolderGlyph } from './ExplorerFolderGlyph';
 
 function ListIcon() {
   return (
@@ -49,7 +50,7 @@ function GalleryIcon() {
 function Chevron({ expanded }: { expanded: boolean }) {
   return (
     <button type="button" className="pen-explorer-chevron" aria-expanded={expanded} tabIndex={-1}>
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden>
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" aria-hidden>
         <path
           d="M6 9l6 6 6-6"
           stroke="currentColor"
@@ -428,14 +429,24 @@ function CategoryDirBlock({
   void categoryId;
   return (
     <>
-      <tr className="pen-explorer-row cursor-pointer" onClick={onToggle}>
+      <tr
+        className={`pen-explorer-row pen-explorer-row--folder cursor-pointer ${
+          expanded ? 'pen-explorer-row--folder-open' : ''
+        }`}
+        onClick={onToggle}
+      >
         <td className="pen-explorer-action px-2 py-2 text-center">
           <span className="inline-block h-4 w-4" aria-hidden />
         </td>
-        <td className="pen-explorer-icon px-1 py-2">
+        <td className="pen-explorer-icon px-0 py-2">
           <Chevron expanded={expanded} />
         </td>
-        <td className="pen-explorer-name-cell px-3 py-2 font-bold text-black">{categoryTitle}</td>
+        <td className="pen-explorer-name-cell px-3 py-2">
+          <span className="pen-explorer-name-label text-black">
+            <ExplorerFolderGlyph open={expanded} />
+            <span className="min-w-0 truncate font-bold">{categoryTitle}</span>
+          </span>
+        </td>
         <td className="pen-explorer-col-category px-3 py-2 text-xs text-neutral-500">Category</td>
         <td className="pen-explorer-col-form px-3 py-2 text-xs text-black">—</td>
       </tr>
@@ -477,15 +488,23 @@ function FormDirBlock({
   void formId;
   return (
     <>
-      <tr className="pen-explorer-row cursor-pointer" onClick={onToggle}>
+      <tr
+        className={`pen-explorer-row pen-explorer-row--folder pen-explorer-row--child cursor-pointer ${
+          expanded ? 'pen-explorer-row--folder-open' : ''
+        }`}
+        onClick={onToggle}
+      >
         <td className="pen-explorer-action px-2 py-2 text-center">
           <span className="inline-block h-4 w-4" aria-hidden />
         </td>
-        <td className="pen-explorer-icon px-1 py-2">
+        <td className="pen-explorer-icon px-0 py-2">
           <Chevron expanded={expanded} />
         </td>
-        <td className="pen-explorer-name-cell pen-explorer-name-indent px-3 py-2 font-medium text-black">
-          {formTitle}
+        <td className="pen-explorer-name-cell pen-explorer-name-indent px-3 py-2">
+          <span className="pen-explorer-name-label text-black">
+            <ExplorerFolderGlyph open={expanded} />
+            <span className="min-w-0 truncate font-medium">{formTitle}</span>
+          </span>
         </td>
         <td className="pen-explorer-col-category px-3 py-2 text-xs text-neutral-500">Form</td>
         <td className="pen-explorer-col-form px-3 py-2 text-xs text-black">{formTitle}</td>
@@ -494,16 +513,16 @@ function FormDirBlock({
         templates.map((t) => (
           <tr
             key={t.id}
-            className="pen-explorer-row cursor-pointer"
+            className="pen-explorer-row pen-explorer-row--child pen-explorer-row--child-depth-2 cursor-pointer"
             onClick={() => onOpenTemplate(t.id)}
           >
             <td className="pen-explorer-action px-2 py-2 text-center">
               <span className="inline-block h-4 w-4" aria-hidden />
             </td>
-            <td className="pen-explorer-icon px-1 py-2">
+            <td className="pen-explorer-icon px-0 py-2">
               <span className="inline-block h-4 w-4" aria-hidden />
             </td>
-            <td className="pen-explorer-name-cell px-3 py-2 font-medium text-black" style={{ paddingLeft: 'calc(var(--pen-rail-gap) + 1.75rem)' }}>
+            <td className="pen-explorer-name-cell pen-explorer-name-indent-2 px-3 py-2 font-medium text-black">
               {t.title}
             </td>
             <td className="pen-explorer-col-category px-3 py-2 text-xs text-neutral-500">Template</td>

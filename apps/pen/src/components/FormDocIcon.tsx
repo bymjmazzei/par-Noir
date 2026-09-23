@@ -2,17 +2,29 @@
 
 export function FormDocIcon({
   classId,
-  className = ''
+  className = '',
+  compact = false
 }: {
   classId?: string;
   className?: string;
+  /** Inline in explorer name cells — tighter than the default tile glyph. */
+  compact?: boolean;
 }) {
   const id = classId || '';
-  const common = `h-5 w-5 shrink-0 text-stone-700 ${className}`;
+  const common = compact
+    ? `h-3.5 w-3.5 shrink-0 text-stone-700 ${className}`
+    : `h-5 w-5 shrink-0 text-stone-700 ${className}`;
   const title = formTitle(id);
 
   return (
-    <span className="inline-flex h-7 w-7 shrink-0 items-center justify-center" title={title}>
+    <span
+      className={
+        compact
+          ? 'inline-flex h-4 w-4 shrink-0 items-center justify-center'
+          : 'inline-flex h-7 w-7 shrink-0 items-center justify-center'
+      }
+      title={title}
+    >
       {iconFor(id, common)}
     </span>
   );
