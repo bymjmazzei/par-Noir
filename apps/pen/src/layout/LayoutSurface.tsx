@@ -46,7 +46,11 @@ export function LayoutSurface({
   resizeDisabledIds?: Set<string> | string[];
 }) {
   const surfaceRef = useRef<HTMLDivElement>(null);
+  const itemsRef = useRef(items);
+  itemsRef.current = items;
   const [drag, setDrag] = useState<DragState | null>(null);
+  /** Live geometry while dragging — commit to parent only on pointer up (avoids Body reflow jank). */
+  const [preview, setPreview] = useState<Record<string, LayoutItem> | null>(null);
   const [guides, setGuides] = useState<{ v: boolean; h: boolean }>({ v: false, h: false });
   const noResize = useCallback(
     (id: string) => {
@@ -55,15 +59,6 @@ export function LayoutSurface({
       return resizeDisabledIds.has(id);
     },
     [resizeDisabledIds]
-  );
-
-  const updateItem = useCallback(
-    (id: string, patch: Partial<LayoutItem>) => {
-      onChange(
-        items.map((i) => (i.id === id ? clampLayoutItem({ ...i, ...patch }) : i))
-      );
-    },
-    [items, onChange]
   );
 
   const onPointerDownMove = (e: ReactPointerEvent, item: LayoutItem) => {
@@ -85,6 +80,7 @@ export function LayoutSurface({
       orig: { ...item },
       linkedOrig
     });
+    setPreview({ [item.id]: { ...item } });
   };
 
   const onPointerDownResize = (e: ReactPointerEvent, item: LayoutItem) => {
@@ -100,6 +96,7 @@ export function LayoutSurface({
       orig: { ...item },
       linkedOrig: {}
     });
+    setPreview({ [item.id]: { ...item } });
   };
 
   const onPointerMove = (e: ReactPointerEvent) => {
@@ -107,37 +104,52 @@ export function LayoutSurface({
     const el = surfaceRef.current;
     if (!el) return;
     const r = el.getBoundingClientRect();
+    if (!r.width || !r.height) return;
     const dx = ((e.clientX - drag.startX) / r.width) * 100;
     const dy = ((e.clientY - drag.startY) / r.height) * 100;
     if (drag.mode === 'move') {
-      let next = { x: drag.orig.x + dx, y: drag.orig.y + dy, w: drag.orig.w, h: drag.orig.h };
+      const next = { x: drag.orig.x + dx, y: drag.orig.y + dy, w: drag.orig.w, h: drag.orig.h };
       const snapped = snapLayoutToPageCenter(next, { enabled: snapToPageCenter });
       const appliedDx = snapped.x - drag.orig.x;
       const appliedDy = snapped.y - drag.orig.y;
       setGuides({ v: snapped.snappedX, h: snapped.snappedY });
-      const linkedIds = new Set(Object.keys(drag.linkedOrig));
-      onChange(
-        items.map((i) => {
-          if (i.id === drag.id) {
-            return clampLayoutItem({ ...i, x: snapped.x, y: snapped.y });
-          }
-          if (linkedIds.has(i.id)) {
-            const orig = drag.linkedOrig[i.id]!;
-            return clampLayoutItem({ ...i, x: orig.x + appliedDx, y: orig.y + appliedDy });
-          }
-          return i;
-        })
-      );
+      const nextPreview: Record<string, LayoutItem> = {
+        [drag.id]: clampLayoutItem({ ...drag.orig, x: snapped.x, y: snapped.y })
+      };
+      for (const lid of Object.keys(drag.linkedOrig)) {
+        const orig = drag.linkedOrig[lid]!;
+        nextPreview[lid] = clampLayoutItem({
+          ...orig,
+          x: orig.x + appliedDx,
+          y: orig.y + appliedDy
+        });
+      }
+      setPreview(nextPreview);
     } else {
       setGuides({ v: false, h: false });
-      updateItem(drag.id, { w: drag.orig.w + dx, h: drag.orig.h + dy });
+      setPreview({
+        [drag.id]: clampLayoutItem({
+          ...drag.orig,
+          w: drag.orig.w + dx,
+          h: drag.orig.h + dy
+        })
+      });
     }
   };
 
   const onPointerUp = () => {
+    if (drag && preview) {
+      const base = itemsRef.current;
+      onChange(base.map((i) => (preview[i.id] ? { ...i, ...preview[i.id] } : i)));
+    }
     setDrag(null);
+    setPreview(null);
     setGuides({ v: false, h: false });
   };
+
+  const displayItems = preview
+    ? items.map((i) => (preview[i.id] ? { ...i, ...preview[i.id] } : i))
+    : items;
 
   return (
     <div
@@ -157,7 +169,7 @@ export function LayoutSurface({
       {guides.h && (
         <div className="pointer-events-none absolute inset-x-0 top-1/2 z-30 h-px -translate-y-1/2 bg-sky-400/80" />
       )}
-      {sortByZ(items).map((item) => {
+      {sortByZ(displayItems).map((item) => {
         const selected = selectedId === item.id;
         return (
           <div

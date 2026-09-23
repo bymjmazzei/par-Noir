@@ -64,31 +64,29 @@ function resolveBodyWrap(layer: PenPageLayer): 'left' | 'right' {
 }
 
 /**
- * Invisible float that reserves space in Body flow so text wraps around a
- * freely positioned absolute object (painted on LayoutSurface).
+ * Invisible float that only reserves L/R wrap space in Body.
+ * Does not track X/Y — free absolute placement stays on LayoutSurface so
+ * drag never fights float layout.
  */
 function BodyWrapSpacer({ layer }: { layer: PenPageLayer }) {
   const side = resolveBodyWrap(layer);
-  const w = Math.max(8, Math.min(92, layer.w));
-  const h = Math.max(8, Math.min(92, layer.h));
-  const style: CSSProperties = {
-    float: side,
-    width: `${w}%`,
-    height: `${h}%`,
-    marginTop: `${Math.max(0, Math.min(90, layer.y))}%`,
-    marginBottom: '0.35em',
-    shapeOutside: 'margin-box',
-    visibility: 'hidden',
-    pointerEvents: 'none'
-  };
-  if (side === 'left') {
-    style.marginLeft = `${Math.max(0, Math.min(90, layer.x))}%`;
-    style.marginRight = '0.75em';
-  } else {
-    style.marginRight = `${Math.max(0, Math.min(90, 100 - layer.x - layer.w))}%`;
-    style.marginLeft = '0.75em';
-  }
-  return <div aria-hidden data-wrap={side} style={style} />;
+  const w = Math.max(8, Math.min(70, layer.w));
+  const h = Math.max(8, Math.min(70, layer.h));
+  return (
+    <div
+      aria-hidden
+      data-wrap={side}
+      className="pointer-events-none"
+      style={{
+        float: side,
+        width: `${w}%`,
+        height: `${h}%`,
+        margin: side === 'left' ? '0 0.75em 0.5em 0' : '0 0 0.5em 0.75em',
+        shapeOutside: 'margin-box',
+        visibility: 'hidden'
+      }}
+    />
+  );
 }
 
 /** Editable page surface — Body (section.doc) under optional overlay layers. */
