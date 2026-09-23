@@ -1,18 +1,27 @@
 import { useMemo, useRef, useState, type CSSProperties } from 'react';
 import {
+  defaultPagePresentation,
   docToHtml,
-  ensureDefaultTextLayer,
   getTextLayerDoc,
+  isPageLayerId,
+  mergePagePresentation,
   normalizeSection,
+  PAGE_LAYER_ID,
   updateLayerLayout,
   type PenDocManifest,
   type PenPageLayer,
   type PenPageLayout,
+  type PenPagePresentation,
   type PenSectionContent
 } from '@par-noir/pen-protocol';
 import { LayoutSurface, type LayoutItem } from '../layout';
-import { LayersPopover } from './LayersPanel';
+import { LayersPopover, layerDisplayLabel, pageLayerLabel } from './LayersPanel';
 import { IconLayers } from './icons/PenIcons';
+import {
+  LayerObjectToolbar,
+  layerPreviewStyle,
+  pageFrameStyle
+} from './LayerObjectToolbar';
 
 function layerToItem(layer: PenPageLayer): LayoutItem {
   return {
@@ -32,20 +41,6 @@ function pageFrameClass(pageLayout: PenPageLayout | undefined): string {
   return 'max-w-[22rem] aspect-[3/4]';
 }
 
-function layerShellStyle(layer: PenPageLayer): CSSProperties {
-  const style: CSSProperties = {
-    backgroundColor: layer.backgroundColor || 'rgba(255,255,255,0.95)',
-    textShadow: layer.textShadow,
-    filter: layer.blur ? `blur(${layer.blur}px)` : undefined
-  };
-  if (layer.backgroundImage) {
-    style.backgroundImage = `url(${layer.backgroundImage})`;
-    style.backgroundSize = 'cover';
-    style.backgroundPosition = 'center';
-  }
-  return style;
-}
-
 /** Editable page surface — LayoutSurface over section layers (dual-pane right side). */
 export function EditablePagePreview({
   manifest,
@@ -53,7 +48,8 @@ export function EditablePagePreview({
   activeLayerId,
   onSelectLayer,
   onSectionChange,
-  onPageLayoutChange
+  onPageLayoutChange,
+  onPresentationChange
 }: {
   manifest: PenDocManifest;
   section: PenSectionContent;
@@ -61,48 +57,87 @@ export function EditablePagePreview({
   onSelectLayer: (id: string | null) => void;
   onSectionChange: (next: PenSectionContent) => void;
   onPageLayoutChange?: (layout: PenPageLayout) => void;
+  onPresentationChange?: (next: Partial<PenPagePresentation>) => void;
 }) {
   const layersBtnRef = useRef<HTMLButtonElement>(null);
   const [layersOpen, setLayersOpen] = useState(false);
-  const prepared = useMemo(() => ensureDefaultTextLayer(normalizeSection(section)), [section]);
+  const prepared = useMemo(() => normalizeSection(section), [section]);
   const layers = prepared.layers || [];
   const visibleLayers = layers.filter((l) => l.visible !== false);
   const items = visibleLayers.map(layerToItem);
+  const presentation = mergePagePresentation(
+    defaultPagePresentation(),
+    manifest.pagePresentation || undefined
+  );
+
+  const activeObject = layers.find((l) => l.id === activeLayerId) || null;
+  const pageActive = isPageLayerId(activeLayerId);
+  const layersButtonTitle = pageActive
+    ? pageLayerLabel(manifest.pageLayout)
+    : activeObject
+      ? layerDisplayLabel(
+          activeObject,
+          [...layers].sort((a, b) => b.zIndex - a.zIndex).findIndex((l) => l.id === activeObject.id)
+        )
+      : 'Layers';
 
   function onLayoutChange(nextItems: LayoutItem[]) {
     onSectionChange(updateLayerLayout(prepared, nextItems));
   }
 
+  const frameStyle: CSSProperties = pageFrameStyle(presentation);
+
   return (
     <div className="relative flex h-full flex-col bg-white">
-      <div className="flex shrink-0 items-center justify-between gap-2 border-b border-neutral-200 bg-white px-3 py-1.5">
-        <span className="text-[11px] font-bold uppercase tracking-wider text-neutral-400">Page</span>
-        <div className="flex items-center gap-3">
-          {onPageLayoutChange && (
-            <select
-              className="h-6 border-0 bg-transparent text-[11px] font-bold text-black outline-none"
-              value={manifest.pageLayout || 'flow'}
-              title="Page layout"
-              onChange={(e) => onPageLayoutChange(e.target.value as PenPageLayout)}
-            >
-              <option value="flow">Flow</option>
-              <option value="letter">Letter</option>
-              <option value="a4">A4</option>
-            </select>
-          )}
+      <div className="flex shrink-0 items-center gap-2 border-b border-neutral-200 bg-white px-2 py-1.5">
+        <span className="shrink-0 text-[11px] font-bold uppercase tracking-wider text-neutral-400">
+          Page
+        </span>
+        {onPageLayoutChange && (
+          <select
+            className="h-6 shrink-0 border-0 bg-transparent text-[11px] font-bold text-black outline-none"
+            value={manifest.pageLayout || 'flow'}
+            title="Page layout"
+            onChange={(e) => {
+              onPageLayoutChange(e.target.value as PenPageLayout);
+              onSelectLayer(PAGE_LAYER_ID);
+            }}
+          >
+            <option value="flow">Flow</option>
+            <option value="letter">Letter</option>
+            <option value="a4">A4</option>
+          </select>
+        )}
+
+        <div className="ml-auto flex min-w-0 items-center gap-1">
+          <LayerObjectToolbar
+            target={
+              pageActive || !activeObject
+                ? { kind: 'page' }
+                : { kind: 'layer', layer: activeObject }
+            }
+            presentation={presentation}
+            section={prepared}
+            onPresentationChange={onPresentationChange}
+            onSectionChange={onSectionChange}
+          />
           <button
             ref={layersBtnRef}
             type="button"
             aria-expanded={layersOpen}
             aria-pressed={layersOpen}
-            aria-label="Layers"
-            title="Layers"
-            className={`inline-flex items-center ${
-              layersOpen ? 'text-black' : 'text-neutral-400 hover:text-black'
+            aria-label={layersButtonTitle}
+            title={layersButtonTitle}
+            className={`inline-flex max-w-[9rem] items-center gap-1 truncate px-1 text-[11px] font-bold ${
+              layersOpen ? 'text-black' : 'text-neutral-500 hover:text-black'
             }`}
             onClick={() => setLayersOpen((o) => !o)}
           >
-            <IconLayers />
+            {activeObject || pageActive ? (
+              <span className="truncate">{layersButtonTitle}</span>
+            ) : (
+              <IconLayers />
+            )}
           </button>
         </div>
       </div>
@@ -112,27 +147,40 @@ export function EditablePagePreview({
         onClose={() => setLayersOpen(false)}
         anchorRef={layersBtnRef}
         section={section}
-        activeLayerId={activeLayerId}
+        activeLayerId={activeLayerId || PAGE_LAYER_ID}
         onSelectLayer={onSelectLayer}
         onSectionChange={onSectionChange}
+        pageLayout={manifest.pageLayout}
       />
 
       <div className="flex flex-1 items-start justify-center overflow-auto p-6">
         <div
-          className={`relative w-full overflow-hidden border border-neutral-200 bg-white ${pageFrameClass(
+          className={`relative w-full overflow-hidden border border-neutral-200 ${pageFrameClass(
             manifest.pageLayout
           )}`}
+          style={frameStyle}
+          onClick={() => onSelectLayer(PAGE_LAYER_ID)}
         >
+          {presentation.backgroundVideo && (
+            <video
+              src={presentation.backgroundVideo}
+              className="pointer-events-none absolute inset-0 h-full w-full object-cover"
+              autoPlay
+              muted
+              loop
+              playsInline
+            />
+          )}
           <LayoutSurface
-            className="h-full min-h-[28rem] w-full"
+            className="relative z-[1] h-full min-h-[28rem] w-full"
             items={items}
-            selectedId={activeLayerId}
-            onSelect={onSelectLayer}
+            selectedId={pageActive ? null : activeLayerId}
+            onSelect={(id) => onSelectLayer(id || PAGE_LAYER_ID)}
             onChange={onLayoutChange}
             renderItem={(item) => {
               const layer = layers.find((l) => l.id === item.id);
               if (!layer) return null;
-              const shell = layerShellStyle(layer);
+              const shell = layerPreviewStyle(layer);
               if (layer.kind === 'image' && layer.imageSrc) {
                 return (
                   <div className="relative h-full w-full" style={shell}>
@@ -153,6 +201,28 @@ export function EditablePagePreview({
                       className="h-full w-full object-contain"
                       controls
                       playsInline
+                    />
+                  </div>
+                );
+              }
+              if (layer.backgroundVideo) {
+                return (
+                  <div className="relative h-full w-full overflow-hidden" style={shell}>
+                    <video
+                      src={layer.backgroundVideo}
+                      className="absolute inset-0 h-full w-full object-cover"
+                      autoPlay
+                      muted
+                      loop
+                      playsInline
+                    />
+                    <div
+                      className="relative h-full w-full overflow-auto p-2 text-sm text-black"
+                      dangerouslySetInnerHTML={{
+                        __html:
+                          docToHtml(getTextLayerDoc(layer)) ||
+                          '<p class="text-neutral-400">Text</p>'
+                      }}
                     />
                   </div>
                 );

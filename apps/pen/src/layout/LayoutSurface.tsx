@@ -47,10 +47,10 @@ export function LayoutSurface({
   );
 
   const onPointerDownMove = (e: ReactPointerEvent, item: LayoutItem) => {
-    if (disabled || item.positionLocked) return;
     e.stopPropagation();
-    (e.target as HTMLElement).setPointerCapture?.(e.pointerId);
     onSelect?.(item.id);
+    if (disabled || item.positionLocked) return;
+    (e.target as HTMLElement).setPointerCapture?.(e.pointerId);
     setDrag({
       id: item.id,
       mode: 'move',

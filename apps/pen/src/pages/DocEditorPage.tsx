@@ -2,14 +2,18 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import type { Editor } from '@tiptap/react';
 import {
+  defaultPagePresentation,
   ensureDefaultTextLayer,
   getClass,
   getTemplate,
   hashPnIdentifier,
   hashSectionContent,
   headHashFromChain,
+  isPageLayerId,
+  mergePagePresentation,
   normalizeSection,
   notaryHashForPromote,
+  PAGE_LAYER_ID,
   promoteSectionToPast,
   publishCurrentToPast,
   setTextLayerDoc,
@@ -39,10 +43,6 @@ import {
 } from '../components/icons/PenIcons';
 import { isVerifiedAuthor } from '../services/penVerified';
 import { starTemplateToCloud } from '../services/penCloudTemplates';
-import {
-  defaultPagePresentation,
-  mergePagePresentation
-} from '@par-noir/pen-protocol';
 import { loadLocalDoc, saveLocalDoc } from '../services/penLocalStore';
 import {
   isProjectDoc,
@@ -148,7 +148,7 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
   activeSlugRef.current = activeSlug;
   const [error, setError] = useState<string | null>(null);
   const [editor, setEditor] = useState<Editor | null>(null);
-  const [activeLayerId, setActiveLayerId] = useState<string | null>(null);
+  const [activeLayerId, setActiveLayerId] = useState<string | null>(PAGE_LAYER_ID);
   const [comments, setComments] = useState<PenDocComment[]>(() =>
     listLocalComments(session.pnIdentifier, docId)
   );
@@ -185,16 +185,13 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
 
   const canvasSection = useMemo(() => {
     if (!section) return undefined;
-    if (activeLayerId) {
+    if (!isPageLayerId(activeLayerId)) {
       const layer = section.layers?.find((l) => l.id === activeLayerId);
       if (layer?.kind === 'text' && layer.textDoc) {
         return { ...section, doc: layer.textDoc };
       }
     }
-    const primary = section.layers
-      ?.filter((l) => l.kind === 'text')
-      .sort((a, b) => a.zIndex - b.zIndex)[0];
-    if (primary?.textDoc) return { ...section, doc: primary.textDoc };
+    // Page / blank: edit section.doc flow — no forced overlay object
     return section;
   }, [section, activeLayerId]);
 
@@ -1143,7 +1140,7 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
             </div>
           ) : (
             <PageCanvas
-              key={`${activeSlug}:${activeLayerId || 'primary'}:${session.pnIdentifier}:${historyEpoch}`}
+              key={`${activeSlug}:${activeLayerId || PAGE_LAYER_ID}:${session.pnIdentifier}:${historyEpoch}`}
               section={canvasSection}
               sectionTitle={sectionTitle}
               pageLayout={pageLayout}
@@ -1151,20 +1148,16 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
               onEditorReady={onEditorReady}
               onChange={(next) => {
                 let updated: typeof section = { ...next, layers: section.layers };
-                const layerId =
-                  activeLayerId ||
-                  section.layers?.filter((l) => l.kind === 'text').sort((a, b) => a.zIndex - b.zIndex)[0]
-                    ?.id;
-                if (layerId) {
-                  try {
-                    updated = setTextLayerDoc(
-                      ensureDefaultTextLayer(section),
-                      layerId,
-                      next.doc,
-                      { syncDoc: true }
-                    );
-                  } catch {
-                    updated = { ...next, layers: section.layers };
+                if (!isPageLayerId(activeLayerId)) {
+                  const layerId = activeLayerId;
+                  if (layerId) {
+                    try {
+                      updated = setTextLayerDoc(normalizeSection(section), layerId, next.doc, {
+                        syncDoc: true
+                      });
+                    } catch {
+                      updated = { ...next, layers: section.layers };
+                    }
                   }
                 }
                 persist({
@@ -1354,7 +1347,7 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
                   section={section}
                   activeLayerId={activeLayerId}
                   onSelectLayer={(id) => {
-                    setActiveLayerId(id);
+                    setActiveLayerId(id || PAGE_LAYER_ID);
                   }}
                   onPageLayoutChange={(layout) => {
                     persist({
@@ -1366,18 +1359,29 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
                       }
                     });
                   }}
+                  onPresentationChange={(partial) => {
+                    const next = mergePagePresentation(
+                      defaultPagePresentation(),
+                      {
+                        ...(bundle.manifest.pagePresentation || {}),
+                        ...partial
+                      }
+                    );
+                    persist({
+                      ...bundle,
+                      manifest: {
+                        ...bundle.manifest,
+                        pagePresentation: next,
+                        updatedAt: new Date().toISOString()
+                      }
+                    });
+                  }}
                   onSectionChange={(next) => {
                     persist({
                       ...bundle,
                       sections: bundle.sections.map((s) => (s.slug === next.slug ? next : s)),
                       manifest: { ...bundle.manifest, updatedAt: new Date().toISOString() }
                     });
-                    if (!activeLayerId && next.layers?.length) {
-                      const primary = next.layers
-                        .filter((l) => l.kind === 'text')
-                        .sort((a, b) => a.zIndex - b.zIndex)[0];
-                      if (primary) setActiveLayerId(primary.id);
-                    }
                   }}
                 />
               </div>

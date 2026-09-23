@@ -58,8 +58,21 @@ export interface PenPageLayer {
   backgroundColor?: string;
   backgroundImage?: string;
   backgroundVideo?: string;
+  /** CSS gradient string (e.g. linear-gradient(...)). */
+  backgroundGradient?: string;
+  /** Legacy single-string shadow; prefer shadow* fields. */
   textShadow?: string;
+  shadowColor?: string;
+  shadowBlur?: number;
+  shadowOffsetX?: number;
+  shadowOffsetY?: number;
   blur?: number;
+  /** 0–100; default 100. */
+  opacity?: number;
+  /** CSS mix-blend-mode. */
+  mixBlendMode?: string;
+  /** Blend strength 0–100 (applied with mixBlendMode). */
+  blendAmount?: number;
   /** When false, omitted from preview/compile; still listed in Layers. Default true. */
   visible?: boolean;
   /** When true, cannot move/resize on the page surface. */
@@ -78,6 +91,8 @@ export interface PenPagePresentation {
   dropShadowOffsetY: number;
   backgroundColor: string;
   backgroundImage?: string;
+  backgroundGradient?: string;
+  backgroundVideo?: string;
   textAlign: 'left' | 'center' | 'right' | 'justify';
   padding: number;
 }

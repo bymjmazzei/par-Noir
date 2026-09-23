@@ -1,6 +1,7 @@
 /** Pen template registry + starter pack. */
 
 import type { PenSectionContent } from './types.js';
+import { emptySection } from './richDoc.js';
 
 export type PenDocType = 'note' | 'post' | 'collection' | 'self_hosted_feed' | string;
 
@@ -461,7 +462,7 @@ export function blankTemplateForClass(classId: string): PenTemplate | null {
       `Blank`,
     description: 'Empty document for this form',
     browseFeatured: false,
-    seedSections: sample.sections.map((s) => seedPlain(s.slug, '')),
+    seedSections: sample.sections.map((s) => emptySection(s.slug)),
     agentStarter: proseStarter({
       title: 'Blank',
       focus: 'Start from an empty document for this form.'

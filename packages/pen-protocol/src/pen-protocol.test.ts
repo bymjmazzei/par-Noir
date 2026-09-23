@@ -465,14 +465,21 @@ describe('template seeds + Mini featured + layer locks', () => {
     expect(featured.every((t) => t.classId === 'social.note' && t.browseFeatured)).toBe(true);
   });
 
-  it('blankTemplateForClass yields empty seeds for a form', () => {
+  it('blankTemplateForClass yields empty seeds with no object layers', () => {
     const blank = blankTemplateForClass('social.note');
     expect(blank?.id).toBe('blank.social.note');
     expect(blank?.seedSections?.[0]?.doc).toBeTruthy();
+    expect(blank?.seedSections?.[0]?.layers?.length ?? 0).toBe(0);
     expect(templatesRootPath()).toBe('par-noir-pen/templates');
     expect(templateManifestPath('personal_abc')).toBe(
       'par-noir-pen/templates/personal_abc/template.json'
     );
+  });
+
+  it('ensureDefaultTextLayer leaves truly blank sections without object layers', async () => {
+    const { emptySection, ensureDefaultTextLayer } = await import('./index.js');
+    const blank = ensureDefaultTextLayer(emptySection('body'));
+    expect(blank.layers).toEqual([]);
   });
 
   it('layerLockFingerprint ignores body text and tracks visibility/position lock', () => {

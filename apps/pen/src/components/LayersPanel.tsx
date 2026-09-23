@@ -1,3 +1,8 @@
+/**
+ * Floating layers list (not a third column).
+ * Page frame is always row 0; + adds overlay text objects.
+ * Object fill/FX live on the preview bar (LayerObjectToolbar), not here.
+ */
 import {
   useEffect,
   useMemo,
@@ -7,43 +12,37 @@ import {
   type RefObject
 } from 'react';
 import {
-  attachMediaToLayer,
-  clearLayerAttachment,
   createTextLayer,
   docToPlainText,
-  ensureDefaultTextLayer,
   getTextLayerDoc,
   normalizeSection,
+  PAGE_LAYER_ID,
   patchLayerStyle,
   removeLayer,
   reorderLayersStack,
   upsertLayer,
   type PenPageLayer,
+  type PenPageLayout,
   type PenSectionContent
 } from '@par-noir/pen-protocol';
 import { IconEye, IconEyeOff, IconLock, IconUnlock } from './icons/PenIcons';
 
-function layerLabel(layer: PenPageLayer, indexFromFront: number): string {
+export function layerDisplayLabel(
+  layer: PenPageLayer,
+  indexFromFront: number
+): string {
   if (layer.kind === 'image') return `Image ${indexFromFront + 1}`;
   if (layer.kind === 'video') return `Video ${indexFromFront + 1}`;
   const plain = docToPlainText(getTextLayerDoc(layer)).trim().slice(0, 28);
   return plain || `Text ${indexFromFront + 1}`;
 }
 
-function readFileAsDataUrl(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(String(reader.result || ''));
-    reader.onerror = () => reject(reader.error);
-    reader.readAsDataURL(file);
-  });
+export function pageLayerLabel(pageLayout: PenPageLayout | undefined): string {
+  if (pageLayout === 'letter') return 'Page · Letter';
+  if (pageLayout === 'a4') return 'Page · A4';
+  return 'Page · Flow';
 }
 
-/**
- * Floating layers widget (not a third column).
- * + adds a text layer; Attach on a row converts that object to image/video.
- * Click outside closes.
- */
 export function LayersPopover({
   open,
   onClose,
@@ -51,7 +50,8 @@ export function LayersPopover({
   activeLayerId,
   onSelectLayer,
   onSectionChange,
-  anchorRef
+  anchorRef,
+  pageLayout
 }: {
   open: boolean;
   onClose: () => void;
@@ -60,20 +60,19 @@ export function LayersPopover({
   onSelectLayer: (id: string | null) => void;
   onSectionChange: (next: PenSectionContent) => void;
   anchorRef?: RefObject<HTMLElement | null>;
+  pageLayout?: PenPageLayout;
 }) {
   const panelRef = useRef<HTMLDivElement>(null);
-  const attachRef = useRef<HTMLInputElement>(null);
-  const [attachKind, setAttachKind] = useState<'image' | 'video'>('image');
-  const [attachTargetId, setAttachTargetId] = useState<string | null>(null);
   const [dragId, setDragId] = useState<string | null>(null);
   const [hoverId, setHoverId] = useState<string | null>(null);
 
-  const prepared = useMemo(() => ensureDefaultTextLayer(normalizeSection(section)), [section]);
+  const prepared = useMemo(() => normalizeSection(section), [section]);
   const layersFrontFirst = useMemo(
     () => [...(prepared.layers || [])].sort((a, b) => b.zIndex - a.zIndex),
     [prepared.layers]
   );
-  const active = layersFrontFirst.find((l) => l.id === activeLayerId) || null;
+  const pageSelected =
+    !activeLayerId || activeLayerId === PAGE_LAYER_ID;
 
   useEffect(() => {
     if (!open) return;
@@ -116,31 +115,10 @@ export function LayersPopover({
     onSelectLayer(layer.id);
   }
 
-  function startAttach(layerId: string, kind: 'image' | 'video') {
-    setAttachTargetId(layerId);
-    setAttachKind(kind);
-    onSelectLayer(layerId);
-    // defer so input accepts click after state set
-    requestAnimationFrame(() => attachRef.current?.click());
-  }
-
-  async function onAttachFile(file: File) {
-    if (!attachTargetId) return;
-    const src = await readFileAsDataUrl(file);
-    if (!src) return;
-    commit(
-      attachMediaToLayer(prepared, attachTargetId, {
-        kind: attachKind,
-        src
-      })
-    );
-    setAttachTargetId(null);
-  }
-
   function onDelete(id: string) {
     const next = removeLayer(prepared, id);
     commit(next);
-    if (activeLayerId === id) onSelectLayer(null);
+    if (activeLayerId === id) onSelectLayer(PAGE_LAYER_ID);
   }
 
   function applyReorder(fromId: string, toId: string) {
@@ -176,15 +154,6 @@ export function LayersPopover({
     }
     setDragId(null);
     setHoverId(null);
-  }
-
-  function patchActive(
-    patch: Partial<
-      Pick<PenPageLayer, 'backgroundColor' | 'textShadow' | 'blur' | 'visible' | 'positionLocked'>
-    >
-  ) {
-    if (!active) return;
-    commit(patchLayerStyle(prepared, active.id, patch));
   }
 
   function patchLayer(
@@ -227,6 +196,19 @@ export function LayersPopover({
           }
         }}
       >
+        <li
+          data-layer-id={PAGE_LAYER_ID}
+          className={`flex cursor-pointer items-center gap-1 px-2 py-1.5 text-[12px] ${
+            pageSelected
+              ? 'bg-neutral-100 font-bold text-black'
+              : 'text-neutral-600 hover:bg-neutral-50'
+          }`}
+          onClick={() => onSelectLayer(PAGE_LAYER_ID)}
+        >
+          <span className="w-4 shrink-0 text-[10px] text-neutral-400">0</span>
+          <span className="min-w-0 flex-1 truncate">{pageLayerLabel(pageLayout)}</span>
+        </li>
+
         {layersFrontFirst.map((layer, i) => {
           const selected = activeLayerId === layer.id;
           const dropTarget = Boolean(dragId && hoverId === layer.id && dragId !== layer.id);
@@ -244,7 +226,9 @@ export function LayersPopover({
               onPointerDown={(e) => onRowPointerDown(e, layer.id)}
             >
               <span className="w-4 shrink-0 text-[10px] text-neutral-400">{i + 1}</span>
-              <span className="min-w-0 flex-1 truncate">{layerLabel(layer, i)}</span>
+              <span className="min-w-0 flex-1 truncate">
+                {layerDisplayLabel(layer, i)}
+              </span>
               <button
                 type="button"
                 title={isVisible ? 'Hide layer' : 'Show layer'}
@@ -287,83 +271,6 @@ export function LayersPopover({
           );
         })}
       </ul>
-
-      {active && (
-        <div className="shrink-0 space-y-2 border-t border-neutral-200 p-2.5 text-[11px]">
-          <div className="font-bold uppercase tracking-wide text-neutral-400">Object</div>
-          {active.kind === 'text' ? (
-            <div className="flex flex-wrap gap-2">
-              <button
-                type="button"
-                className="font-bold text-black hover:opacity-60"
-                onClick={() => startAttach(active.id, 'image')}
-              >
-                Attach image…
-              </button>
-              <button
-                type="button"
-                className="font-bold text-black hover:opacity-60"
-                onClick={() => startAttach(active.id, 'video')}
-              >
-                Attach video…
-              </button>
-            </div>
-          ) : (
-            <button
-              type="button"
-              className="font-bold text-black hover:opacity-60"
-              onClick={() => commit(clearLayerAttachment(prepared, active.id))}
-            >
-              Clear attachment (back to text)
-            </button>
-          )}
-          <label className="flex items-center justify-between gap-2">
-            <span className="text-neutral-500">Background</span>
-            <input
-              type="color"
-              value={active.backgroundColor || '#ffffff'}
-              onChange={(e) => patchActive({ backgroundColor: e.target.value })}
-              className="h-6 w-8 cursor-pointer rounded border border-neutral-300"
-            />
-          </label>
-          <label className="flex items-center justify-between gap-2">
-            <span className="text-neutral-500">Shadow</span>
-            <input
-              type="checkbox"
-              checked={Boolean(active.textShadow)}
-              onChange={(e) =>
-                patchActive({
-                  textShadow: e.target.checked ? '0 1px 3px rgba(0,0,0,0.45)' : undefined
-                })
-              }
-            />
-          </label>
-          <label className="flex items-center justify-between gap-2">
-            <span className="text-neutral-500">Blur</span>
-            <input
-              type="range"
-              min={0}
-              max={12}
-              step={1}
-              value={active.blur || 0}
-              onChange={(e) => patchActive({ blur: Number(e.target.value) || undefined })}
-              className="w-20"
-            />
-          </label>
-        </div>
-      )}
-
-      <input
-        ref={attachRef}
-        type="file"
-        accept={attachKind === 'image' ? 'image/*' : 'video/*'}
-        className="hidden"
-        onChange={(e) => {
-          const f = e.target.files?.[0];
-          if (f) void onAttachFile(f);
-          e.target.value = '';
-        }}
-      />
     </div>
   );
 }

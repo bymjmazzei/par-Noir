@@ -1,7 +1,14 @@
 /** Page layer helpers — multi text/image objects on a section. */
 
-import { emptyTipTapDoc } from './richDoc.js';
+import { emptyTipTapDoc, docToPlainText } from './richDoc.js';
 import type { PenPageLayer, PenSectionContent, PenTipTapNode } from './types.js';
+
+/** Synthetic id for the page frame (flow/letter/a4) — layer 0 in the Layers list. */
+export const PAGE_LAYER_ID = '__page__';
+
+export function isPageLayerId(id: string | null | undefined): boolean {
+  return !id || id === PAGE_LAYER_ID;
+}
 
 function newLayerId(): string {
   return `layer_${Math.random().toString(36).slice(2, 10)}`;
@@ -85,8 +92,16 @@ export function patchLayerStyle(
       | 'backgroundColor'
       | 'backgroundImage'
       | 'backgroundVideo'
+      | 'backgroundGradient'
       | 'textShadow'
+      | 'shadowColor'
+      | 'shadowBlur'
+      | 'shadowOffsetX'
+      | 'shadowOffsetY'
       | 'blur'
+      | 'opacity'
+      | 'mixBlendMode'
+      | 'blendAmount'
       | 'visible'
       | 'positionLocked'
     >
@@ -115,8 +130,18 @@ export function attachMediaToLayer(
     backgroundColor: existing.backgroundColor,
     backgroundImage: undefined as string | undefined,
     backgroundVideo: undefined as string | undefined,
+    backgroundGradient: existing.backgroundGradient,
     textShadow: existing.textShadow,
-    blur: existing.blur
+    shadowColor: existing.shadowColor,
+    shadowBlur: existing.shadowBlur,
+    shadowOffsetX: existing.shadowOffsetX,
+    shadowOffsetY: existing.shadowOffsetY,
+    blur: existing.blur,
+    opacity: existing.opacity,
+    mixBlendMode: existing.mixBlendMode,
+    blendAmount: existing.blendAmount,
+    visible: existing.visible,
+    positionLocked: existing.positionLocked
   };
   if (media.kind === 'image') {
     return upsertLayer(section, {
@@ -155,11 +180,15 @@ export function clearLayerAttachment(
 }
 
 /**
- * If section has no layers, seed one text layer from section.doc (one-shot migrate).
- * Leaves existing layers untouched. Uses stable id `layer_primary` for the seed.
+ * If section has no layers and has non-empty prose, seed one text layer from section.doc
+ * (legacy migrate). Blank docs stay with zero object layers — the page frame is layer 0 in UI.
  */
 export function ensureDefaultTextLayer(section: PenSectionContent): PenSectionContent {
   if (section.layers && section.layers.length > 0) return section;
+  const plain = docToPlainText(section.doc || emptyTipTapDoc()).trim();
+  if (!plain) {
+    return { ...section, layers: section.layers ?? [] };
+  }
   const layer: PenPageLayer = {
     id: 'layer_primary',
     kind: 'text',
@@ -171,6 +200,27 @@ export function ensureDefaultTextLayer(section: PenSectionContent): PenSectionCo
     textDoc: section.doc || emptyTipTapDoc()
   };
   return { ...section, layers: [layer] };
+}
+
+/** Box/text shadow CSS from structured shadow fields (or legacy textShadow). */
+export function layerShadowCss(layer: Pick<
+  PenPageLayer,
+  'textShadow' | 'shadowColor' | 'shadowBlur' | 'shadowOffsetX' | 'shadowOffsetY'
+>): string | undefined {
+  if (
+    layer.shadowBlur != null ||
+    layer.shadowOffsetX != null ||
+    layer.shadowOffsetY != null ||
+    layer.shadowColor
+  ) {
+    const x = layer.shadowOffsetX ?? 0;
+    const y = layer.shadowOffsetY ?? 0;
+    const b = layer.shadowBlur ?? 0;
+    const c = layer.shadowColor || 'rgba(0,0,0,0.45)';
+    if (!b && !x && !y) return undefined;
+    return `${x}px ${y}px ${b}px ${c}`;
+  }
+  return layer.textShadow || undefined;
 }
 
 export function upsertLayer(
