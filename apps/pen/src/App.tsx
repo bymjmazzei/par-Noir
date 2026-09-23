@@ -30,7 +30,7 @@ import {
   type PenSession
 } from './services/penSession';
 import { flushPenSyncQueue } from './services/penSyncFlush';
-import { drainPenMailbox } from './services/penCollab';
+import { drainPenMailbox, clearPenMailboxSessionCache } from './services/penCollab';
 import { listLibraryCloud } from './services/penCloudStore';
 import { pendingSyncCount } from './services/penSyncQueue';
 import { PenLockedLanding } from './components/PenLockedLanding';
@@ -184,6 +184,7 @@ function Locked() {
           await wipeThirdPartyCloudOnLock(session.pnIdentifier);
           clearDocKeysForSession();
           clearLocalDocsForPn(session.pnIdentifier);
+          clearPenMailboxSessionCache(session.pnIdentifier);
           clearPenSession();
           setSession(null);
           setLockedView('home');
@@ -395,34 +396,50 @@ function AuthenticatedApp({
     };
   }, [session.pnIdentifier, mlKemSecretKey]);
 
-  const refreshDocs = useCallback(async () => {
+  const refreshDocsInFlight = useRef<Promise<void> | null>(null);
+
+  const refreshDocs = useCallback(async (opts?: { forceCloud?: boolean }) => {
     const local = listLocalDocs(session.pnIdentifier);
     setDocs(local);
     setSyncPending(pendingSyncCount(session.pnIdentifier));
-    if (!hasCloudCredentialsReady(session.pnIdentifier)) return;
-    try {
-      const cloud = await listLibraryCloud(session.pnIdentifier);
-      const byId = new Map<string, LocalDocSummary>();
-      for (const d of cloud) byId.set(d.docId, d);
-      for (const d of local) {
-        const prev = byId.get(d.docId);
-        if (!prev || (d.updatedAt || '') > (prev.updatedAt || '')) byId.set(d.docId, d);
+    if (!hasCloudCredentialsReady(session.pnIdentifier) && !opts?.forceCloud) return;
+    if (refreshDocsInFlight.current) return refreshDocsInFlight.current;
+    const run = (async () => {
+      try {
+        const cloud = await listLibraryCloud(session.pnIdentifier);
+        const byId = new Map<string, LocalDocSummary>();
+        for (const d of cloud) byId.set(d.docId, d);
+        for (const d of local) {
+          const prev = byId.get(d.docId);
+          if (!prev || (d.updatedAt || '') > (prev.updatedAt || '')) byId.set(d.docId, d);
+        }
+        setDocs([...byId.values()].sort((a, b) => (b.updatedAt || '').localeCompare(a.updatedAt || '')));
+      } catch {
+        /* offline — keep local buffer */
+      } finally {
+        refreshDocsInFlight.current = null;
       }
-      setDocs([...byId.values()].sort((a, b) => (b.updatedAt || '').localeCompare(a.updatedAt || '')));
-    } catch {
-      /* offline — keep local buffer */
-    }
+    })();
+    refreshDocsInFlight.current = run;
+    return run;
+  }, [session.pnIdentifier]);
+
+  const removeDocsFromList = useCallback((docIds: string[]) => {
+    const remove = new Set(docIds);
+    setDocs((prev) => prev.filter((d) => !remove.has(d.docId)));
+    setSyncPending(pendingSyncCount(session.pnIdentifier));
   }, [session.pnIdentifier]);
 
   useEffect(() => {
+    // Local index immediately; cloud library only after vault/credentials are ready.
     void refreshDocs();
     const onOnline = () => {
       if (!hasCloudCredentialsReady(session.pnIdentifier)) return;
-      void flushPenSyncQueue(session).then(() => refreshDocs());
+      void flushPenSyncQueue(session).then(() => refreshDocs({ forceCloud: true }));
       void drainPenMailbox(session);
     };
     const onCloudReady = () => {
-      void flushPenSyncQueue(session).then(() => refreshDocs());
+      void flushPenSyncQueue(session).then(() => refreshDocs({ forceCloud: true }));
       void drainPenMailbox(session);
     };
     window.addEventListener('online', onOnline);
@@ -488,7 +505,8 @@ function AuthenticatedApp({
               <DocListPage
                 session={session}
                 docs={docs}
-                onDocsChange={() => void refreshDocs()}
+                onDocsChange={() => void refreshDocs({ forceCloud: true })}
+                onDocsRemoved={removeDocsFromList}
                 addIntent={addIntent}
                 onAddIntentConsumed={() => setAddIntent(null)}
               />

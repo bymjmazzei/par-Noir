@@ -316,61 +316,94 @@ export async function promotePenOutboxAndFanout(session: PenSession): Promise<vo
 }
 
 /** Drain mailbox and apply pen.* jobs into this user's Drive. */
+const mailboxRouteByPn = new Map<string, string>();
+const drainInFlight = new Map<string, Promise<number>>();
+
 export async function drainPenMailbox(session: PenSession): Promise<number> {
-  const seal = sealSessionFromPen(session);
-  if (!seal) return 0;
+  const existing = drainInFlight.get(session.pnIdentifier);
+  if (existing) return existing;
 
-  const apply = createApiSocialApplier({
-    apiBaseUrl: API_ENDPOINT,
-    authToken: session.accessToken,
-    identityId: session.pnIdentifier
-  });
+  const run = (async () => {
+    const seal = sealSessionFromPen(session);
+    if (!seal) return 0;
 
-  let routeKey: string;
-  try {
-    routeKey = await ensureMailboxRouteKey(session.pnIdentifier, seal, {
+    const apply = createApiSocialApplier({
       apiBaseUrl: API_ENDPOINT,
       authToken: session.accessToken,
-      pnIdentifier: session.pnIdentifier
+      identityId: session.pnIdentifier
     });
-  } catch {
-    return 0;
-  }
 
-  const pendingQs = new URLSearchParams({
-    pnIdentifier: session.pnIdentifier,
-    routeKey,
-    limit: '20'
-  });
-  const drain = await ownerGet(`/api/mailbox/pending?${pendingQs}`, {
-    pnIdentifier: session.pnIdentifier
-  }).catch(() => null);
-  if (!drain?.ok) return 0;
-  const data = (await drain.json().catch(() => ({}))) as {
-    jobs?: Array<{ id: string; jobType: string; payload: Record<string, unknown> }>;
-  };
-  let applied = 0;
-  for (const job of data.jobs || []) {
-    if (!String(job.jobType || '').startsWith('pen.')) continue;
-    const ok = await apply({
-      id: job.id,
-      jobType: job.jobType,
-      payload: { ...job.payload, userPnIdentifier: session.pnIdentifier, docId: job.payload.docId },
-      routeKey,
-      createdAt: new Date().toISOString(),
-      expiresAt: new Date(Date.now() + 86400000).toISOString()
-    });
-    if (ok) {
-      applied += 1;
-      await ownerFetch(
-        'POST',
-        '/api/mailbox/ack',
-        { pnIdentifier: session.pnIdentifier, routeKey, jobIds: [job.id] },
-        { pnIdentifier: session.pnIdentifier }
-      ).catch(() => null);
+    let routeKey = mailboxRouteByPn.get(session.pnIdentifier);
+    if (!routeKey) {
+      try {
+        routeKey = await ensureMailboxRouteKey(session.pnIdentifier, seal, {
+          apiBaseUrl: API_ENDPOINT,
+          authToken: session.accessToken,
+          pnIdentifier: session.pnIdentifier
+        });
+        mailboxRouteByPn.set(session.pnIdentifier, routeKey);
+      } catch {
+        return 0;
+      }
     }
+
+    const pendingQs = new URLSearchParams({
+      pnIdentifier: session.pnIdentifier,
+      routeKey,
+      limit: '20'
+    });
+    const drain = await ownerGet(`/api/mailbox/pending?${pendingQs}`, {
+      pnIdentifier: session.pnIdentifier
+    }).catch(() => null);
+    if (!drain?.ok) return 0;
+    const data = (await drain.json().catch(() => ({}))) as {
+      jobs?: Array<{ id: string; jobType: string; payload: Record<string, unknown> }>;
+    };
+    let applied = 0;
+    for (const job of data.jobs || []) {
+      if (!String(job.jobType || '').startsWith('pen.')) continue;
+      const ok = await apply({
+        id: job.id,
+        jobType: job.jobType,
+        payload: {
+          ...job.payload,
+          userPnIdentifier: session.pnIdentifier,
+          docId: job.payload.docId
+        },
+        routeKey,
+        createdAt: new Date().toISOString(),
+        expiresAt: new Date(Date.now() + 86400000).toISOString()
+      });
+      if (ok) {
+        applied += 1;
+        await ownerFetch(
+          'POST',
+          '/api/mailbox/ack',
+          { pnIdentifier: session.pnIdentifier, routeKey, jobIds: [job.id] },
+          { pnIdentifier: session.pnIdentifier }
+        ).catch(() => null);
+      }
+    }
+    return applied;
+  })();
+
+  drainInFlight.set(session.pnIdentifier, run);
+  try {
+    return await run;
+  } finally {
+    drainInFlight.delete(session.pnIdentifier);
   }
-  return applied;
+}
+
+/** Drop session mailbox route cache (call on lock). */
+export function clearPenMailboxSessionCache(pnIdentifier?: string): void {
+  if (pnIdentifier) {
+    mailboxRouteByPn.delete(pnIdentifier);
+    drainInFlight.delete(pnIdentifier);
+    return;
+  }
+  mailboxRouteByPn.clear();
+  drainInFlight.clear();
 }
 
 export function actorCan(

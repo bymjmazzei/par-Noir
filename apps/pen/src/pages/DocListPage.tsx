@@ -973,12 +973,15 @@ export function DocListPage({
   session,
   docs,
   onDocsChange,
+  onDocsRemoved,
   addIntent = null,
   onAddIntentConsumed
 }: {
   session: PenSession;
   docs: LocalDocSummary[];
   onDocsChange: () => void;
+  /** Prefer after cloud delete — updates UI without another library GET. */
+  onDocsRemoved?: (docIds: string[]) => void;
   addIntent?: PenAddIntent | null;
   onAddIntentConsumed?: () => void;
 }) {
@@ -992,6 +995,7 @@ export function DocListPage({
   );
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const deleteInFlight = useRef(false);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [libraryMode, setLibraryMode] = useState<LibraryMode>('library');
   const [search, setSearch] = useState('');
@@ -1266,7 +1270,7 @@ export function DocListPage({
 
   function confirmBulkDelete() {
     const ids = Array.from(selectedIds);
-    if (!ids.length) return;
+    if (!ids.length || deleteInFlight.current) return;
     const ok = window.confirm(
       ids.length === 1
         ? 'Delete this document? This cannot be undone.'
@@ -1274,6 +1278,7 @@ export function DocListPage({
     );
     if (!ok) return;
     void (async () => {
+      deleteInFlight.current = true;
       setError(null);
       try {
         for (const docId of ids) {
@@ -1282,9 +1287,12 @@ export function DocListPage({
         deleteLocalDocs(session.pnIdentifier, ids);
         setSelectedIds(new Set());
         setBulkDeleteMode(false);
-        onDocsChange();
+        if (onDocsRemoved) onDocsRemoved(ids);
+        else onDocsChange();
       } catch (e) {
         setError(e instanceof Error ? e.message : 'Could not delete document(s)');
+      } finally {
+        deleteInFlight.current = false;
       }
     })();
   }
@@ -1329,16 +1337,21 @@ export function DocListPage({
   }
 
   function handleDeleteDoc(docId: string) {
+    if (deleteInFlight.current) return;
     const ok = window.confirm('Delete this document? This cannot be undone.');
     if (!ok) return;
     void (async () => {
+      deleteInFlight.current = true;
       setError(null);
       try {
         await deleteDocCloud({ userPnIdentifier: session.pnIdentifier, docId });
         deleteLocalDocs(session.pnIdentifier, [docId]);
-        onDocsChange();
+        if (onDocsRemoved) onDocsRemoved([docId]);
+        else onDocsChange();
       } catch (e) {
         setError(e instanceof Error ? e.message : 'Could not delete document');
+      } finally {
+        deleteInFlight.current = false;
       }
     })();
   }
