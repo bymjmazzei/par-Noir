@@ -262,11 +262,15 @@ export function LayerObjectToolbar({
                 ? 'font-bold text-black'
                 : 'font-medium text-neutral-400 hover:text-neutral-600'
             }`}
-            onClick={() =>
-              patchLayer({
-                bodyWrap: layer?.bodyWrap ? undefined : 'right'
-              })
-            }
+            onClick={() => {
+              if (layer?.bodyWrap) {
+                patchLayer({ bodyWrap: undefined });
+              } else {
+                const side =
+                  layer.x + layer.w / 2 < 50 ? ('left' as const) : ('right' as const);
+                patchLayer({ bodyWrap: side });
+              }
+            }}
           >
             Wrap
           </button>

@@ -239,10 +239,12 @@ export function LayersPopover({
     if (dragId && hoverId && dragId !== hoverId) {
       const dragLayer = allLayers.find((l) => l.id === dragId);
       const hoverLayer = allLayers.find((l) => l.id === hoverId);
-      // Drop onto Body → wrap with Body (float right)
+      // Drop onto Body → wrap with Body (side from horizontal position)
       if (hoverId === PAGE_LAYER_ID && dragLayer && dragLayer.kind !== 'group') {
+        const side =
+          dragLayer.x + dragLayer.w / 2 < 50 ? ('left' as const) : ('right' as const);
         let next = setLayerParentGroup(prepared, dragId, null);
-        next = patchLayerStyle(next, dragId, { bodyWrap: 'right' });
+        next = patchLayerStyle(next, dragId, { bodyWrap: side });
         commit(next);
       } else if (
         hoverLayer?.kind === 'group' &&

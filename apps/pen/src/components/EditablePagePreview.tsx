@@ -66,9 +66,12 @@ function bodyMarginStyle(presentation: PenPagePresentation): CSSProperties {
   };
 }
 
+function sideFromGeom(x: number, w: number): 'left' | 'right' {
+  return x + w / 2 < 50 ? 'left' : 'right';
+}
+
 function opaqueWrapShell(layer: PenPageLayer): CSSProperties {
   const shell = { ...layerPreviewStyle(layer) };
-  // Body text must not show through — wrap objects are in-flow floats, not overlays.
   const bg = shell.backgroundColor;
   if (!bg || bg === 'transparent' || String(bg).startsWith('rgba(')) {
     shell.backgroundColor = '#ffffff';
@@ -80,8 +83,9 @@ function opaqueWrapShell(layer: PenPageLayer): CSSProperties {
 type LiveGeom = { x: number; y: number; w: number; h: number };
 
 /**
- * Real float (right) in Body flow — text wraps around it.
- * X → margin-right inset, Y → margin-top. Commit on pointer up.
+ * Body wrap: zero-width "pusher" float sets vertical offset without shoving
+ * copy down; the object floats below it with clear so text stays full-width
+ * above and wraps beside the object. Free X/Y via insets + pusher height.
  */
 function BodyWrapObject({
   layer,
@@ -98,7 +102,7 @@ function BodyWrapObject({
   selected: boolean;
   pageEl: HTMLElement | null;
   onSelect: () => void;
-  onCommit: (geom: LiveGeom & { bodyWrap: 'right' }) => void;
+  onCommit: (geom: LiveGeom & { bodyWrap: 'left' | 'right' }) => void;
 }) {
   const locked = Boolean(layer.positionLocked);
   const [live, setLive] = useState<LiveGeom>({
@@ -120,25 +124,40 @@ function BodyWrapObject({
     setLive({ x: layer.x, y: layer.y, w: layer.w, h: layer.h });
   }, [layer.x, layer.y, layer.w, layer.h, layer.id]);
 
+  const side = sideFromGeom(live.x, live.w);
   const pageH = pageEl?.clientHeight || 400;
   const pageW = pageEl?.clientWidth || 320;
   const wPct = Math.max(12, Math.min(70, live.w));
   const hPx = Math.max(48, Math.round((Math.max(10, Math.min(70, live.h)) / 100) * pageH));
   const yPx = Math.max(0, Math.round((Math.max(0, Math.min(80, live.y)) / 100) * pageH));
   const maxInsetPct = Math.max(0, 100 - wPct - 2);
+  const leftInsetPx = Math.round(
+    (Math.max(0, Math.min(maxInsetPct, live.x)) / 100) * pageW
+  );
   const rightInsetPx = Math.round(
     (Math.max(0, Math.min(maxInsetPct, 100 - live.x - live.w)) / 100) * pageW
   );
 
-  const style: CSSProperties = {
+  const pusherStyle: CSSProperties = {
+    float: side,
+    width: 0,
+    height: `${yPx}px`,
+    margin: 0,
+    padding: 0,
+    border: 0,
+    pointerEvents: 'none'
+  };
+
+  const boxStyle: CSSProperties = {
     ...opaqueWrapShell(layer),
-    float: 'right',
+    float: side,
+    clear: side,
     width: `${wPct}%`,
     height: `${hPx}px`,
-    marginTop: `${yPx}px`,
+    marginTop: 0,
     marginBottom: '0.5em',
-    marginLeft: '0.75em',
-    marginRight: `${rightInsetPx}px`,
+    marginLeft: side === 'left' ? `${leftInsetPx}px` : '0.75em',
+    marginRight: side === 'right' ? `${rightInsetPx}px` : '0.75em',
     shapeOutside: 'margin-box',
     position: 'relative',
     zIndex: 2,
@@ -201,7 +220,8 @@ function BodyWrapObject({
   function onPointerUp() {
     if (!dragRef.current) return;
     dragRef.current = null;
-    onCommit({ ...liveRef.current, bodyWrap: 'right' });
+    const g = liveRef.current;
+    onCommit({ ...g, bodyWrap: sideFromGeom(g.x, g.w) });
   }
 
   let inner: ReactNode = null;
@@ -242,30 +262,33 @@ function BodyWrapObject({
   if (!inner) return null;
 
   return (
-    <div
-      data-wrap="right"
-      role="button"
-      tabIndex={0}
-      className={`overflow-hidden ${
-        selected ? 'ring-2 ring-sky-500' : 'ring-1 ring-stone-300'
-      }`}
-      style={style}
-      onPointerDown={onPointerDownMove}
-      onPointerMove={onPointerMove}
-      onPointerUp={onPointerUp}
-      onClick={(e) => {
-        e.stopPropagation();
-        onSelect();
-      }}
-    >
-      {inner}
-      {selected && !locked && (
-        <div
-          className="absolute bottom-0 right-0 h-3 w-3 cursor-se-resize bg-sky-500"
-          onPointerDown={onPointerDownResize}
-        />
-      )}
-    </div>
+    <>
+      <div aria-hidden data-wrap-pusher={side} style={pusherStyle} />
+      <div
+        data-wrap={side}
+        role="button"
+        tabIndex={0}
+        className={`overflow-hidden ${
+          selected ? 'ring-2 ring-sky-500' : 'ring-1 ring-stone-300'
+        }`}
+        style={boxStyle}
+        onPointerDown={onPointerDownMove}
+        onPointerMove={onPointerMove}
+        onPointerUp={onPointerUp}
+        onClick={(e) => {
+          e.stopPropagation();
+          onSelect();
+        }}
+      >
+        {inner}
+        {selected && !locked && (
+          <div
+            className="absolute bottom-0 right-0 h-3 w-3 cursor-se-resize bg-sky-500"
+            onPointerDown={onPointerDownResize}
+          />
+        )}
+      </div>
+    </>
   );
 }
 
@@ -376,7 +399,7 @@ export function EditablePagePreview({
 
   function onWrapCommit(
     layerId: string,
-    patch: LiveGeom & { bodyWrap: 'right' }
+    patch: LiveGeom & { bodyWrap: 'left' | 'right' }
   ) {
     const layer = prepared.layers?.find((l) => l.id === layerId);
     if (!layer) return;
