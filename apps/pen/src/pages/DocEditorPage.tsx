@@ -67,12 +67,13 @@ import {
   ActivityLedger,
   type DocSnapshot
 } from '../services/penActivityLedger';
-
-function bytesToB64(bytes: Uint8Array): string {
-  let s = '';
-  for (let i = 0; i < bytes.length; i++) s += String.fromCharCode(bytes[i]!);
-  return btoa(s);
-}
+import { encryptSectionJson, envelopeToWireB64, mintDocKey } from '../services/penDocCrypto';
+import { openBrowseWithPenHandoff } from '../services/penBrowseHandoff';
+import {
+  bodyFromSections,
+  openMessagingWithCorrespondence
+} from '../services/penCorrespondenceHandoff';
+import { hydrateDocFromCloud } from '../services/penHydrate';
 
 async function peerRoutes(
   session: PenSession,
@@ -104,6 +105,7 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
     }
   }
   const [bundle, setBundle] = useState(initial);
+  const [hydrating, setHydrating] = useState(true);
   const [activeSlug, setActiveSlug] = useState(initial?.manifest.toc[0] || 'body');
   const [showPreview, setShowPreview] = useState(true);
   const [showHistory, setShowHistory] = useState(false);
@@ -296,18 +298,30 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
     return () => window.removeEventListener('keydown', onKey);
   }, [undoEdit, redoEdit]);
 
-  if (!bundle || !section || !canvasSection) {
-    return (
-      <div className="flex min-h-[60vh] items-center justify-center bg-white">
-        <div className="text-center">
-          <p className="text-stone-600">Document not found.</p>
-          <Link to="/" className="mt-2 inline-block text-sm text-sky-700 underline">
-            Back
-          </Link>
-        </div>
-      </div>
-    );
-  }
+  // Cloud SoT hydrate on mount (and when docId changes). Local buffer is offline-only.
+  useEffect(() => {
+    let cancelled = false;
+    setHydrating(true);
+    void hydrateDocFromCloud({ session, docId })
+      .then((fromCloud) => {
+        if (cancelled) return;
+        if (fromCloud) {
+          setBundle(fromCloud);
+          setActiveSlug(fromCloud.manifest.toc[0] || 'body');
+          setLastDraftAt(fromCloud.manifest.updatedAt || null);
+          setDirty(false);
+        }
+      })
+      .catch(() => {
+        /* offline — keep local buffer if any */
+      })
+      .finally(() => {
+        if (!cancelled) setHydrating(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [docId, session]);
 
   function persist(next: NonNullable<typeof bundle>, opts?: { draft?: boolean }) {
     const stamped = {
@@ -378,50 +392,6 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
       window.setTimeout(() => setStatus(null), 1500);
     }
   }
-
-  // Hydrate from cloud when offline buffer is missing.
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      if (bundle) return;
-      try {
-        const res = await ownerGet(
-          `/api/pen/docs/${encodeURIComponent(docId)}?userPnIdentifier=${encodeURIComponent(session.pnIdentifier)}`,
-          { pnIdentifier: session.pnIdentifier }
-        );
-        if (!res.ok || cancelled) return;
-        const data = (await res.json()) as {
-          manifest?: import('@par-noir/pen-protocol').PenDocManifest;
-          chain?: import('@par-noir/pen-protocol').PenHistoryChain;
-          currentSections?: import('@par-noir/pen-protocol').PenSectionContent[];
-          drafts?: Array<{
-            draft: { draftId: string };
-            sections: import('@par-noir/pen-protocol').PenSectionContent[];
-          }>;
-        };
-        if (!data.manifest || !data.chain) return;
-        const active = data.drafts?.find((d) => d.draft.draftId === data.manifest?.activeDraftId);
-        const sections =
-          active?.sections?.length
-            ? active.sections
-            : data.currentSections?.length
-              ? data.currentSections
-              : data.drafts?.[0]?.sections || [];
-        const next = {
-          manifest: data.manifest,
-          chain: data.chain,
-          sections: sections.map((s) => normalizeSection(s))
-        };
-        saveLocalDoc(session.pnIdentifier, next);
-        if (!cancelled) setBundle(next);
-      } catch {
-        /* offline */
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [bundle, docId, session.pnIdentifier]);
 
   // Idle draft autosave (~2s after last edit).
   useEffect(() => {
@@ -509,7 +479,9 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
         { draft: false }
       );
 
-      const ciphertextB64 = bytesToB64(bytes);
+      const ciphertextB64 = envelopeToWireB64(
+        await encryptSectionJson(section!, mintDocKey(docId))
+      );
       const payload = {
         docId,
         groupId: bundle!.manifest.groupId,
@@ -588,38 +560,35 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
       return;
     }
     setStatus('Inviting…');
+    setError(null);
     try {
       const groupId = bundle.manifest.groupId || sessionStorage.getItem(`pen_group_id:${docId}`) || '';
-      // Peer ML-KEM public key: look up via userinfo-style endpoint if available; else require paste
+      if (!groupId) throw new Error('group_id_required');
+
       let peerPk = sessionStorage.getItem(`pen_peer_kem:${pn}`) || '';
       if (!peerPk) {
-        const lookup = await ownerGet(
-          `/api/users/${encodeURIComponent(pn)}/messaging-keys`,
-          { pnIdentifier: session.pnIdentifier }
-        ).catch(() => null);
-        if (lookup?.ok) {
-          const data = (await lookup.json().catch(() => ({}))) as { mlKemPublicKey?: string };
-          peerPk = data.mlKemPublicKey || '';
+        const lookup = await ownerGet(`/api/profile/${encodeURIComponent(pn)}`, {
+          pnIdentifier: session.pnIdentifier
+        });
+        if (!lookup.ok) {
+          throw new Error(
+            lookup.status === 404
+              ? 'peer_profile_not_found'
+              : `peer_profile_lookup_failed_${lookup.status}`
+          );
         }
+        const data = (await lookup.json().catch(() => ({}))) as {
+          mlKemPublicKey?: string | null;
+        };
+        peerPk = (data.mlKemPublicKey || '').trim();
       }
       if (!peerPk) {
-        // Browse-style invite needs peer key; queue pending and persist role intent.
-        const { addPendingInvite } = await import('../services/penCollab');
-        addPendingInvite(docId, pn);
-        const peerHash = hashPnIdentifier(pn);
-        const roles = [
-          ...(bundle.manifest.roles ||
-            ensureOwnerAssignment([], hashPnIdentifier(session.pnIdentifier))),
-          { pnHash: peerHash, role: inviteRole }
-        ];
-        persist({
-          ...bundle,
-          manifest: { ...bundle.manifest, roles, updatedAt: new Date().toISOString() }
-        });
-        setStatus('Invite pending — peer messaging key required to wrap doc key');
-        setInvitePn('');
-        return;
+        throw new Error(
+          'peer_messaging_key_unpublished — ask them to unlock browse or messaging once so their ML-KEM public key is on their profile'
+        );
       }
+      sessionStorage.setItem(`pen_peer_kem:${pn}`, peerPk);
+
       await invitePenCollaborator({
         session,
         docId,
@@ -648,13 +617,36 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
   }
 
   function publishSocial() {
+    void (async () => {
+      try {
+        saveDraft({ silent: true });
+        const b = bundleRef.current || bundle!;
+        const payload = await writeSocialPublishHandoff(b, {
+          pnIdentifier: session.pnIdentifier
+        });
+        openBrowseWithPenHandoff(payload);
+        setStatus('Opened Browse — finish publish there');
+        window.setTimeout(() => setStatus(null), 4000);
+      } catch (e) {
+        setError(e instanceof Error ? e.message : 'feed_connect_failed');
+      }
+    })();
+  }
+
+  function sendCorrespondence() {
     try {
       saveDraft({ silent: true });
-      writeSocialPublishHandoff(bundleRef.current || bundle!);
-      setStatus('Connect to feed — open Browse to finish');
-      window.setTimeout(() => setStatus(null), 4000);
+      const b = bundleRef.current || bundle!;
+      openMessagingWithCorrespondence({
+        title: b.manifest.title || 'Untitled',
+        body: bodyFromSections(b.sections),
+        classId: b.manifest.classId,
+        docId: b.manifest.docId
+      });
+      setStatus('Opened Messaging');
+      window.setTimeout(() => setStatus(null), 3000);
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'feed_connect_failed');
+      setError(e instanceof Error ? e.message : 'send_failed');
     }
   }
 
@@ -803,7 +795,9 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
         pastName: paths.pastName,
         currentRelPath: paths.currentPath,
         pastRelPath: paths.pastPath,
-        sectionCiphertextB64: bytesToB64(bytes),
+        sectionCiphertextB64: envelopeToWireB64(
+          await encryptSectionJson(nextSection, mintDocKey(docId))
+        ),
         contentHash,
         link
       };
@@ -835,6 +829,27 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
     setStatus('Suggestion rejected');
   }
 
+  if (hydrating) {
+    return (
+      <div className="flex min-h-[60vh] items-center justify-center bg-white">
+        <p className="text-stone-600">Loading document…</p>
+      </div>
+    );
+  }
+
+  if (!bundle || !section || !canvasSection) {
+    return (
+      <div className="flex min-h-[60vh] items-center justify-center bg-white">
+        <div className="text-center">
+          <p className="text-stone-600">Document not found.</p>
+          <Link to="/" className="mt-2 inline-block text-sm text-sky-700 underline">
+            Back
+          </Link>
+        </div>
+      </div>
+    );
+  }
+
   const chainStatus = verifyChain(bundle.chain);
   const tocSections: SectionTocItem[] = (
     template?.sections ||
@@ -849,6 +864,8 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
 
   const sidePanel = showComments;
   const projectEnabled = isProjectDoc(bundle.manifest);
+  const correspondenceEnabled =
+    bundle.manifest.classId === 'projects.letter' || bundle.manifest.classId === 'projects.note';
   const canCommit = actorCan(
     bundle.manifest.roles,
     bundle.manifest.ownerPnHash || bundle.chain.genesis.authorPnHash,
@@ -941,8 +958,10 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
         />
         <PublishMenu
           projectEnabled={projectEnabled}
+          correspondenceEnabled={correspondenceEnabled}
           onPublishLive={() => void publishLive()}
           onConnectFeed={publishSocial}
+          onSendCorrespondence={sendCorrespondence}
           onTemplate={publishAsTemplate}
           onLibraryTemplate={publishAsLibraryTemplate}
           onFinishedWork={() => void publishFinishedWork()}

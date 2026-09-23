@@ -32,7 +32,9 @@ export type SocialMailboxJobType =
   | 'pen.suggestion'
   | 'pen.draft_upsert'
   | 'pen.publish'
-  | 'pen.doc_bootstrap';
+  | 'pen.doc_bootstrap'
+  | 'pen.doc_delete'
+  | 'pen.doc_meta';
 
 export interface SocialMailboxJob {
   id: string;
@@ -319,6 +321,7 @@ export async function listPendingMailboxJobs(
          WHEN 'pen.draft_upsert' THEN 0
          WHEN 'pen.publish' THEN 0
          WHEN 'pen.doc_bootstrap' THEN 0
+         WHEN 'pen.doc_delete' THEN 0
          WHEN 'group_inbox_update' THEN 0
          WHEN 'message_attachment' THEN 1
          WHEN 'connection_request' THEN 1

@@ -2,7 +2,7 @@
 
 **Status:** Accepted  
 **Date:** 2026-09-21  
-**Related:** [`pen-templates.mdc`](../../.cursor/rules/pen-templates.mdc), device-cloud custody, messaging outbox, L5 one-kit
+**Related:** [`pen-templates.mdc`](../../.cursor/rules/pen-templates.mdc), device-cloud custody, messaging outbox, L5 one-kit, [`@par-noir/pen-curriculum`](../../packages/pen-curriculum), [`PEN_DUAL_PN_CHECKLIST.md`](../developer/PEN_DUAL_PN_CHECKLIST.md)
 
 ## Context
 
@@ -10,28 +10,30 @@ par Noir needs a universal authored-content language for humans, collaborators, 
 
 ## Decisions
 
-1. **Naming:** Pen (app/protocol), Pen Mini (browse composer), Note (`contentClass: 'note'`). Hard-cut Thought. **Collections** are the product name for ordered slide/story templates (former “carousel” ids hard-cut to `collection.*`). **Sets** (`social.set`) are Social feed items that reference other docs (primary + sources). **Live Pen embeds** (`penEmbed` TipTap node: `{ docId, sectionSlug? }`) are by-reference in the editor (Attach → From Pen); publish-time snapshot for public feed compile remains a follow-on.
+1. **Naming:** Pen (app/protocol), Pen Mini (browse composer), Note (`contentClass: 'note'`). Hard-cut Thought. **Collections** are the product name for ordered slide/story templates (former “carousel” ids hard-cut to `collection.*`). **Sets** (`social.set`) are Social feed items that reference other docs (primary + sources); compile via `compileSetToNote`. **Live Pen embeds** (`penEmbed` TipTap node: `{ docId, sectionSlug? }`) are by-reference in the editor (Attach → From Pen); **publish-time snapshot** via `snapshotPenEmbeds` before Connect-to-feed / public compile.
 2. **Template-first:** Register **class** (form) then template before UI. Hierarchy: **Category → Form → Template** (e.g. Social → Notes → Basic Note). Template `classId` is always a **form** (has `parentId`). Manifest stores `classId` at create.
 3. **Taxonomy (peer categories):**
    - **Social** (consumer) — Notes, Posts, Collections, Sets, Feeds (`entitlement: self-hosted` on Feeds). Browse/feed purpose.
-   - **Projects** (consumer) — Journal, List, Letter, Note. Active WIP; letter/note are correspondence shapes (DM delivery later), not a separate category.
+   - **Projects** (consumer) — Journal, List, Letter, Note. Active WIP; letter/note are correspondence shapes (**Send** opens Messaging with `#pen_correspondence_handoff_v1:`).
    - **Library** (consumer) — Book, Article. Durable works. Peer to Projects (not a subclass).
    - **Time** (consumer) — Calendar, Event, Schedule (calendar/scheduling).
-   - **Records** (kit only, `audience: 'kit'`) — Register. Hidden from Pen New…; included in `GET /api/pen/templates` for L5.
-4. **Lifecycle:** Library is a **template / form category** (Book, Article)—peer to Social/Projects/Time, not a publish channel. Publishing a **Project** may (a) save as a **Library template** under Yours, or (b) create a **finished Library document** (durable long-form, not a social feed tile). Cloud share/API for finished work is still reserved.
+   - **Records** (kit only, `audience: 'kit'`) — Register. Hidden from Pen New…; included in `GET /api/pen/templates` for L5. Register templates may declare `registerColumns` (typed row schema stub — not a query engine).
+4. **Lifecycle:** Library is a **template / form category** (Book, Article)—peer to Social/Projects/Time, not a publish channel. Publishing a **Project** may (a) save as a **Library template** under Yours, or (b) create a **finished Library document** (durable long-form, not a social feed tile) and write it to the owner’s cloud replica (`bootstrapDocCloud` / `publishDocCloud`).
 5. **Audience:** Every `PenClass` has `audience: 'consumer' | 'kit'`. Pen UI lists consumer only; API/SDK return the full catalog.
-6. **Browse `contentClass`** remains the social visibility target. Pen **Publish** updates the doc’s live `current/` only. **Connect to feed** (separate step) hands off / publishes a Note (or equivalent) for public / third-party visibility. As template (personal Yours) and Projects → Library template / finished work remain Pen actions. Dashboard = packed CSS grid.
-7. **Folder SoT:** `par-noir-pen/{docId}/` per user replica with `doc.json`, `current/` (live published), `drafts/{draftId}/` (WIP shown as unfinished suggestions), `past/{versionId}/` (superseded current snapshots). Messaging-style outbox fanout. `docKey` minted at create. Local/browser storage is an offline sync buffer only — never durable SoT.
-7a. **Roles:** `owner` (unrevokable) | `collaborator` (invite + accept + publish) | `commentor` (draft + suggest + comment) | `viewer` (read). Invites reuse browse group invite. Drafts are visible unfinished suggestions until submitted for review; owner or collaborator accepts into `current/`.
-8. **Rich text SoT:** Section body is TipTap/ProseMirror JSON (`PenSectionContent.doc`). Dual-pane editor: left flow TipTap + section TOC dropdown + FormatRibbon scoped to the editor column; right pane is either **browse feed-tile preview** (Social: full-bleed `pagePresentation` + right engagement rail) or **EditablePagePreview** + LayersPanel (non-social). Overlay layers = Product C only. Prose image/video use `wrap: none|left|right`. Attach → From Pen inserts live `penEmbed` refs (resolve from local store on save events).
+6. **Browse `contentClass`** remains the social visibility target. Pen **Publish** updates the doc’s live `current/` only. **Connect to feed** is a separate deep-link handoff (`openBrowseWithPenHandoff` / `pen_publish_handoff_v1`) that opens Browse to finish public / third-party visibility. As template (personal Yours) and Projects → Library template / finished work remain Pen actions. Dashboard = packed CSS grid.
+7. **Folder SoT:** `par-noir-pen/{docId}/` per user replica with `doc.json`, `current/` (live published), `drafts/{draftId}/` (WIP shown as unfinished suggestions), `past/{versionId}/` (superseded current snapshots). Messaging-style outbox fanout. `docKey` minted at create. **Section bodies and attached media** are AES-GCM DM envelopes under `docKey` via `encryptMediaBytes` (not plaintext TipTap JSON / JPEG on Drive). Local/browser storage is an offline sync buffer only — never durable SoT; **local docs + docKeys are wiped on lock**. Rename/move patch `library.index.json` via `pen.doc_meta`.
+7a. **Roles:** `owner` (unrevokable) | `collaborator` (invite + accept + publish) | `commentor` (draft + suggest + comment) | `viewer` (read). **Invite:** resolve peer ML-KEM via `GET /api/profile/{pn}`, seal `docKey` with `sealSocialEnvelope`, create group membership. Drafts are visible unfinished suggestions until submitted for review; owner or collaborator accepts into `current/`. **Suggest** UI (propose / accept / reject) ships in the editor with outbox fanout.
+7b. **Personal templates + category pins:** Yours store + pins sync to an encrypted Drive prefs blob (`par-noir-pen-prefs.enc`) under the owner’s ML-KEM-derived key; localStorage remains a buffer.
+8. **Rich text SoT:** Section body is TipTap/ProseMirror JSON (`PenSectionContent.doc`). Dual-pane editor: left flow TipTap + section TOC dropdown + FormatRibbon scoped to the editor column; right pane is either **browse feed-tile preview** (Social: full-bleed `pagePresentation` + right engagement rail labeled Preview — not live stats) or **EditablePagePreview** + LayersPanel (non-social). Overlay layers = Product C only. Prose image/video use `wrap: none|left|right`. Attach → From Pen inserts live `penEmbed` refs (resolve from local/cloud on save events). Cold-open editor **hydrates from cloud** (`hydrateDocFromCloud`) before showing not-found.
 8a. **Three layout products (do not conflate):** (A) Dashboard = packed grid; (B) Document embeds = TipTap flow + wrap attrs; (C) Overlay design = absolute `LayoutSurface` / `section.layers`. Social live preview mirrors browse feed tile — not a letter card.
-9. **Authenticity:** ML-DSA genesis + promote chain; first-party notary stamps **hashes only** (`POST /api/pen/notary/timestamp`).
+9. **Authenticity:** ML-DSA genesis + promote chain (durable keys from messaging handoff; size-aware URL hash strips DSA when over budget and merges from storage/window.name; no ephemeral fallback); first-party notary stamps **hashes only** (`POST /api/pen/notary/timestamp`).
 10. **L5:** Silo CRUD + list classes/templates + publish Note. No L5 multi-writer collab / groups / messages product routes.
-11. **Primary acceptance:** User A creates doc, invites B, B edits, A sees update (and reverse).
+11. **Primary acceptance:** User A creates doc, invites B, B edits, A sees update (and reverse). Manual dual-pN checklist: [`PEN_DUAL_PN_CHECKLIST.md`](../developer/PEN_DUAL_PN_CHECKLIST.md).
+12. **External agents (v0):** Starter templates ship `agentStarter` prompts (`{{user_input}}`, `{{template_id}}`, `{{section_list}}`). Agents emit **`PenAgentBuild`**; protocol validates (`validatePenAgentBuild`) and materializes IR (`materializePenAgentBuild`). Teaching data lives in **`@par-noir/pen-curriculum`** (handbook, snapshots, fixtures, eval) — model-agnostic data, not per-model plugins/MCP. Cloud write reuses first-party `apply-inbound` / `createDocFromAgentBuild` when a Pen session exists. No custom code per model.
 
 ## Reserved (follow-ons)
 
-Set primary + multi-source engagement compile; publish-time snapshot of `penEmbed` for public feeds; finished Library work **cloud** share/API; Time calendar widgets; Correspondence DM handoff; Records register UI; site/spaces categories; collab Suggest UI.
+Time calendar widgets; Records register UI / query engine; site/spaces categories; MCP tool servers.
 
 ## Consequences
 
@@ -42,7 +44,8 @@ Set primary + multi-source engagement compile; publish-time snapshot of `penEmbe
 | L5 can author Notes without inbox access | Collab stays first-party only |
 | Scalable New… (pins, search, categories) | Feed entitlement depends on storage tier |
 | Clear consumer vs kit taxonomy | Kit classes must stay out of Pen New… |
+| Any external agent can learn Pen from curriculum + starters | Curriculum must stay pinned to protocol version |
 
 ## Non-goals (v1)
 
-Community template marketplace, RFC 3161 external TSA, L5 multi-writer, site builder, image/video editors, Stripe/checkout for tiers, syncing category pins to cloud.
+Community template marketplace, RFC 3161 external TSA, L5 multi-writer, site builder, image/video editors, Stripe/checkout for tiers, per-model agent plugins.

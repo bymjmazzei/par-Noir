@@ -1,6 +1,5 @@
 /**
- * Optional Pen app → browse handoff via sessionStorage (`pen_publish_note:*`).
- * Hydrates Pen Mini pages + TextPostStyle; attaches headProof / templateId / docId on publish.
+ * Pen → Browse handoff via URL hash (cross-origin) or sessionStorage (same-origin).
  */
 
 import type { PenPagePresentation, PenTipTapNode } from '@par-noir/pen-protocol';
@@ -22,8 +21,41 @@ export interface PenPublishHandoff {
 
 const HANDOFF_PREFIX = 'pen_publish:';
 const HANDOFF_PREFIX_LEGACY = 'pen_publish_note:';
+export const PEN_PUBLISH_HASH_PREFIX = 'pen_publish_handoff_v1:' as const;
+
+function parsePayload(raw: string): PenPublishHandoff | null {
+  try {
+    const parsed = JSON.parse(raw) as PenPublishHandoff;
+    if (parsed && typeof parsed === 'object') return parsed;
+  } catch {
+    /* ignore */
+  }
+  return null;
+}
+
+function takeFromHash(consume: boolean): PenPublishHandoff | null {
+  try {
+    if (typeof window === 'undefined') return null;
+    const rawHash = window.location.hash || '';
+    const hash = rawHash.startsWith('#') ? rawHash.slice(1) : rawHash;
+    if (!hash.startsWith(PEN_PUBLISH_HASH_PREFIX)) return null;
+    const encoded = hash.slice(PEN_PUBLISH_HASH_PREFIX.length);
+    const parsed = parsePayload(decodeURIComponent(encoded));
+    if (consume && parsed) {
+      const url = new URL(window.location.href);
+      url.hash = '';
+      window.history.replaceState(null, '', url.toString());
+    }
+    return parsed;
+  } catch {
+    return null;
+  }
+}
 
 function readFirstHandoff(consume: boolean): PenPublishHandoff | null {
+  const fromHash = takeFromHash(consume);
+  if (fromHash) return fromHash;
+
   try {
     if (typeof sessionStorage === 'undefined') return null;
     const keys: string[] = [];
@@ -34,7 +66,6 @@ function readFirstHandoff(consume: boolean): PenPublishHandoff | null {
         keys.push(key);
       }
     }
-    // Prefer new prefix
     keys.sort((a, b) => {
       const aNew = a.startsWith(HANDOFF_PREFIX) ? 0 : 1;
       const bNew = b.startsWith(HANDOFF_PREFIX) ? 0 : 1;
@@ -47,9 +78,7 @@ function readFirstHandoff(consume: boolean): PenPublishHandoff | null {
       for (const k of keys) sessionStorage.removeItem(k);
     }
     if (!raw) return null;
-    const parsed = JSON.parse(raw) as PenPublishHandoff;
-    if (parsed && typeof parsed === 'object') return parsed;
-    return null;
+    return parsePayload(raw);
   } catch {
     // ignore corrupt / unavailable storage
   }
@@ -61,7 +90,7 @@ export function peekPenPublishHandoff(): PenPublishHandoff | null {
   return readFirstHandoff(false);
 }
 
-/** Peek + consume the first `pen_publish_note:*` payload, if any. */
+/** Peek + consume the first Pen publish handoff, if any. */
 export function takePenPublishHandoff(): PenPublishHandoff | null {
   return readFirstHandoff(true);
 }

@@ -12,10 +12,13 @@ import {
   handoffProvidesMessagingSession,
   normalizeMessagingHandoffPayload,
   mergeMessagingHandoffParts,
+  mergeMessagingSessionParts,
   parseMessagingHandoffFromHash,
   parseMessagingHandoffFromStorage,
   parseMessagingHandoffFromWindowName,
   parseMessagingIdentityFromHash,
+  sessionForUrlHash,
+  MESSAGING_HASH_SESSION_BUDGET,
   PN_MESSAGING_HANDOFF_HASH_PREFIX,
   PN_MESSAGING_OAUTH_HANDOFF_STORAGE,
   PN_MESSAGING_HANDOFF_WINDOW_PREFIX,
@@ -206,5 +209,38 @@ describe('messagingOAuthHandoff', () => {
         configurable: true,
       });
     }
+  });
+
+  it('sessionForUrlHash strips DSA when over budget', () => {
+    const oversized = {
+      mlKemSecretKey: 'kem-sk',
+      mlKemPublicKey: 'kem-pk',
+      mlDsaSecretKey: 'd'.repeat(1200),
+      mlDsaPublicKey: 'p'.repeat(1200),
+    };
+    expect(JSON.stringify(oversized).length).toBeGreaterThan(MESSAGING_HASH_SESSION_BUDGET);
+    const stripped = sessionForUrlHash(oversized);
+    expect(stripped.mlKemSecretKey).toBe('kem-sk');
+    expect(stripped.mlKemPublicKey).toBe('kem-pk');
+    expect(stripped.mlDsaSecretKey).toBeUndefined();
+    expect(stripped.mlDsaPublicKey).toBeUndefined();
+    expect(JSON.stringify(stripped).length).toBeLessThanOrEqual(MESSAGING_HASH_SESSION_BUDGET);
+  });
+
+  it('mergeMessagingSessionParts restores DSA from storage after hash strip', () => {
+    const hashSession = {
+      mlKemSecretKey: 'kem-sk',
+      mlKemPublicKey: 'kem-pk',
+    };
+    const stored = {
+      mlKemSecretKey: 'kem-sk',
+      mlKemPublicKey: 'kem-pk',
+      mlDsaSecretKey: 'dsa-sk',
+      mlDsaPublicKey: 'dsa-pk',
+    };
+    const merged = mergeMessagingSessionParts(hashSession, stored);
+    expect(merged?.mlKemSecretKey).toBe('kem-sk');
+    expect(merged?.mlDsaSecretKey).toBe('dsa-sk');
+    expect(merged?.mlDsaPublicKey).toBe('dsa-pk');
   });
 });

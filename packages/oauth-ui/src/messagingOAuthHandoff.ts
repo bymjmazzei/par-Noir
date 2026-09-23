@@ -34,6 +34,9 @@ export interface MessagingHandoffIdentity {
 export interface MessagingHandoffSession {
   mlKemSecretKey: string;
   mlKemPublicKey?: string;
+  /** Durable authenticity keys — required for Pen promote/genesis (size-aware delivery). */
+  mlDsaSecretKey?: string;
+  mlDsaPublicKey?: string;
 }
 
 export interface MessagingOAuthHandoffPayload {
@@ -58,7 +61,15 @@ function isMessagingHandoffIdentity(v: unknown): v is MessagingHandoffIdentity {
 
 function isMessagingHandoffSession(v: unknown): v is MessagingHandoffSession {
   if (!isRecord(v)) return false;
-  return typeof v.mlKemSecretKey === 'string' && v.mlKemSecretKey.length > 0;
+  if (typeof v.mlKemSecretKey !== 'string' || v.mlKemSecretKey.length === 0) return false;
+  // Optional DSA fields — when present must be non-empty strings
+  if (v.mlDsaSecretKey != null && (typeof v.mlDsaSecretKey !== 'string' || !v.mlDsaSecretKey)) {
+    return false;
+  }
+  if (v.mlDsaPublicKey != null && (typeof v.mlDsaPublicKey !== 'string' || !v.mlDsaPublicKey)) {
+    return false;
+  }
+  return true;
 }
 
 /**
@@ -104,13 +115,54 @@ export function buildMessagingIdentityHash(
   return `${PN_MESSAGING_IDENTITY_HASH_PREFIX}${encodeURIComponent(JSON.stringify(payload))}`;
 }
 
+/**
+ * URL-hash budget for openExternal (OS / browser limits). Full ML-DSA keys
+ * usually exceed this — put them in window.name / localStorage instead.
+ */
+export const MESSAGING_HASH_SESSION_BUDGET = 1800;
+
+/** Prefer full session; strip ML-DSA when the JSON would blow the hash budget. */
+export function sessionForUrlHash(session: MessagingHandoffSession): MessagingHandoffSession {
+  const full = JSON.stringify(session);
+  if (full.length <= MESSAGING_HASH_SESSION_BUDGET) return session;
+  return {
+    mlKemSecretKey: session.mlKemSecretKey,
+    mlKemPublicKey: session.mlKemPublicKey
+  };
+}
+
 /** Full payload in hash — required when leaving the unlock process via openExternal. */
 export function buildMessagingHandoffHash(payload: MessagingOAuthHandoffPayload): string {
   const normalized = normalizeMessagingHandoffPayload(payload);
   if (!normalized) {
     throw new Error('Invalid messaging handoff payload for hash');
   }
-  return `${PN_MESSAGING_HANDOFF_HASH_PREFIX}${encodeURIComponent(JSON.stringify(normalized))}`;
+  const forHash: MessagingOAuthHandoffPayload = normalized.session
+    ? { ...normalized, session: sessionForUrlHash(normalized.session) }
+    : normalized;
+  return `${PN_MESSAGING_HANDOFF_HASH_PREFIX}${encodeURIComponent(JSON.stringify(forHash))}`;
+}
+
+/**
+ * Merge hash/window session with durable storage so ML-DSA survives size-stripped hashes.
+ */
+export function mergeMessagingSessionParts(
+  primary: MessagingHandoffSession | null | undefined,
+  fromStorage: MessagingHandoffSession | null | undefined
+): MessagingHandoffSession | null {
+  if (!primary && !fromStorage) return null;
+  const base = primary || fromStorage!;
+  const mlDsaSecretKey = primary?.mlDsaSecretKey || fromStorage?.mlDsaSecretKey;
+  const mlDsaPublicKey = primary?.mlDsaPublicKey || fromStorage?.mlDsaPublicKey;
+  const out: MessagingHandoffSession = {
+    mlKemSecretKey: base.mlKemSecretKey,
+    mlKemPublicKey: primary?.mlKemPublicKey || fromStorage?.mlKemPublicKey
+  };
+  if (mlDsaSecretKey && mlDsaPublicKey) {
+    out.mlDsaSecretKey = mlDsaSecretKey;
+    out.mlDsaPublicKey = mlDsaPublicKey;
+  }
+  return out;
 }
 
 export function parseMessagingIdentityFromHash(
@@ -207,7 +259,7 @@ export function parseMessagingHandoffFromStorage(
   }
 }
 
-/** Extract ML-KEM session from decrypted identity (matches oauth-consent / oauth-authorize). */
+/** Extract ML-KEM (+ optional ML-DSA) session from decrypted identity. */
 export function extractMessagingSessionFromDecrypted(
   decrypted: unknown
 ): MessagingHandoffSession | null {
@@ -220,7 +272,19 @@ export function extractMessagingSessionFromDecrypted(
   const mlKemPublicKey =
     (pqc && typeof pqc.mlKemPublicKey === 'string' ? pqc.mlKemPublicKey : undefined) ||
     (typeof decrypted.mlKemPublicKey === 'string' ? decrypted.mlKemPublicKey : undefined);
-  return { mlKemSecretKey, mlKemPublicKey };
+  const mlDsaSecretKey =
+    (pqc && typeof pqc.mlDsaSecretKey === 'string' ? pqc.mlDsaSecretKey : undefined) ||
+    (typeof decrypted.privateKey === 'string' ? decrypted.privateKey : undefined);
+  const mlDsaPublicKey =
+    typeof decrypted.publicKey === 'string' && decrypted.publicKey.length > 0
+      ? decrypted.publicKey
+      : undefined;
+  const session: MessagingHandoffSession = { mlKemSecretKey, mlKemPublicKey };
+  if (mlDsaSecretKey && mlDsaPublicKey) {
+    session.mlDsaSecretKey = mlDsaSecretKey;
+    session.mlDsaPublicKey = mlDsaPublicKey;
+  }
+  return session;
 }
 
 /** Build encrypted identity handoff payload from unlock material. */

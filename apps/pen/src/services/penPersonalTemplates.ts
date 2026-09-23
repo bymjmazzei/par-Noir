@@ -89,6 +89,11 @@ export function savePersonalTemplateFromDoc(
   const list = listPersonalTemplates(pn).filter((t) => t.id !== id);
   list.unshift(tpl);
   saveAll(pn, list);
+  try {
+    void import('./penPrefsCloud').then((m) => m.schedulePrefsCloudPush(pn));
+  } catch {
+    /* ignore */
+  }
   return tpl;
 }
 
@@ -105,7 +110,9 @@ export function personalTemplatesAsPenTemplates(pn: string): PenTemplate[] {
       slug: s.slug,
       title: s.title,
       required: s.required !== false
-    }))
+    })),
+    agentStarter:
+      'Continue from the saved seed sections for {{template_id}}. Sections: {{section_list}}. {{user_input}}'
   }));
 }
 
@@ -154,6 +161,11 @@ export function savePersonalTemplateFromCatalog(
   const list = listPersonalTemplates(pn);
   list.unshift(tpl);
   saveAll(pn, list);
+  try {
+    void import('./penPrefsCloud').then((m) => m.schedulePrefsCloudPush(pn));
+  } catch {
+    /* ignore */
+  }
   return tpl;
 }
 

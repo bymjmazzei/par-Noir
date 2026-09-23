@@ -13,6 +13,7 @@ import {
   fetchPortalUserInfo,
   normalizeMessagingHandoffPayload,
   parseMessagingHandoffFromStorage,
+  mergeMessagingSessionParts,
   PN_MESSAGING_OAUTH_HANDOFF_STORAGE,
   PN_CLOUD_CREDENTIALS_READY_EVENT,
   hasCloudCredentialsReady,
@@ -21,7 +22,7 @@ import {
 import { API_ENDPOINT, PN_CLIENT_ID } from './config/api';
 import { DocEditorPage } from './pages/DocEditorPage';
 import { DocListPage, type PenAddIntent } from './pages/DocListPage';
-import { listLocalDocs, type LocalDocSummary } from './services/penLocalStore';
+import { listLocalDocs, type LocalDocSummary, clearLocalDocsForPn } from './services/penLocalStore';
 import {
   clearPenSession,
   loadPenSession,
@@ -35,6 +36,12 @@ import { pendingSyncCount } from './services/penSyncQueue';
 import { PenLockedLanding } from './components/PenLockedLanding';
 import { TemplatesBrowse } from './components/TemplatesBrowse';
 import { loadBrowseDensity, saveBrowseDensity, type PenBrowseDensity } from './services/penClassPrefs';
+import { clearDocKeysForSession } from './services/penDocCrypto';
+import {
+  bindPrefsCloudSession,
+  pullAndMergePrefsCloud,
+  unbindPrefsCloudSession
+} from './services/penPrefsCloud';
 
 export type { PenSession };
 
@@ -57,11 +64,36 @@ function peekMlKemSecretKey(messagingHandoff?: unknown): string | undefined {
 
 function handoffSessionFields(messagingHandoff?: unknown): {
   mlKemSecretKey?: string;
+  mlDsaPublicKey?: string;
+  mlDsaSecretKey?: string;
 } {
-  const mlKemSecretKey =
-    normalizeMessagingHandoffPayload(messagingHandoff)?.session?.mlKemSecretKey ||
-    peekMlKemSecretKey(messagingHandoff);
-  return mlKemSecretKey ? { mlKemSecretKey } : {};
+  const fromResult = normalizeMessagingHandoffPayload(messagingHandoff)?.session;
+  let fromStorage:
+    | { mlKemSecretKey: string; mlKemPublicKey?: string; mlDsaSecretKey?: string; mlDsaPublicKey?: string }
+    | undefined;
+  try {
+    fromStorage = parseMessagingHandoffFromStorage(
+      localStorage.getItem(PN_MESSAGING_OAUTH_HANDOFF_STORAGE)
+    )?.session;
+  } catch {
+    fromStorage = undefined;
+  }
+  const merged = mergeMessagingSessionParts(fromResult, fromStorage);
+  if (!merged?.mlKemSecretKey) {
+    const peeked = peekMlKemSecretKey(messagingHandoff);
+    if (!peeked) return {};
+    return { mlKemSecretKey: peeked };
+  }
+  const out: {
+    mlKemSecretKey: string;
+    mlDsaPublicKey?: string;
+    mlDsaSecretKey?: string;
+  } = { mlKemSecretKey: merged.mlKemSecretKey };
+  if (merged.mlDsaPublicKey && merged.mlDsaSecretKey) {
+    out.mlDsaPublicKey = merged.mlDsaPublicKey;
+    out.mlDsaSecretKey = merged.mlDsaSecretKey;
+  }
+  return out;
 }
 
 function Locked() {
@@ -150,6 +182,8 @@ function Locked() {
         session={session}
         onLock={async () => {
           await wipeThirdPartyCloudOnLock(session.pnIdentifier);
+          clearDocKeysForSession();
+          clearLocalDocsForPn(session.pnIdentifier);
           clearPenSession();
           setSession(null);
           setLockedView('home');
@@ -333,6 +367,33 @@ function AuthenticatedApp({
     const peeked = session.mlKemSecretKey || peekMlKemSecretKey();
     if (peeked) setMlKemSecretKey(peeked);
   }, [session.mlKemSecretKey, mlKemSecretKey]);
+
+  useEffect(() => {
+    if (!mlKemSecretKey) {
+      unbindPrefsCloudSession();
+      return;
+    }
+    bindPrefsCloudSession({
+      pnIdentifier: session.pnIdentifier,
+      mlKemSecretKey
+    });
+    const pull = () => {
+      if (!hasCloudCredentialsReady(session.pnIdentifier)) return;
+      void pullAndMergePrefsCloud({
+        pnIdentifier: session.pnIdentifier,
+        mlKemSecretKey
+      }).catch(() => {
+        /* offline / missing file */
+      });
+    };
+    pull();
+    const onCloudReady = () => pull();
+    window.addEventListener(PN_CLOUD_CREDENTIALS_READY_EVENT, onCloudReady);
+    return () => {
+      window.removeEventListener(PN_CLOUD_CREDENTIALS_READY_EVENT, onCloudReady);
+      unbindPrefsCloudSession();
+    };
+  }, [session.pnIdentifier, mlKemSecretKey]);
 
   const refreshDocs = useCallback(async () => {
     const local = listLocalDocs(session.pnIdentifier);

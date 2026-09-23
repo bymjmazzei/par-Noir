@@ -523,7 +523,9 @@ export const SOCIAL_JOB_TYPES_APPLIED_VIA_API: ReadonlySet<string> = new Set([
   'pen.suggestion',
   'pen.draft_upsert',
   'pen.publish',
-  'pen.doc_bootstrap'
+  'pen.doc_bootstrap',
+  'pen.doc_delete',
+  'pen.doc_meta'
 ]);
 
 /**

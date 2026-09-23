@@ -36,6 +36,7 @@ export {
   penDraftUpsertFanout,
   penPublishFanout,
   penDocBootstrapFanout,
+  penDocDeleteFanout,
   loadLocalOutbox,
   saveLocalOutbox,
   upsertLocalOutboxRecord,

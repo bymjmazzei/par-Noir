@@ -28,7 +28,9 @@ const PEN_JOB_TYPES = [
   'pen.suggestion',
   'pen.draft_upsert',
   'pen.publish',
-  'pen.doc_bootstrap'
+  'pen.doc_bootstrap',
+  'pen.doc_delete',
+  'pen.doc_meta'
 ] as const;
 
 function getNotarySecret(): Buffer {
@@ -165,6 +167,42 @@ async function upsertLibraryIndex(
   );
 }
 
+async function removeFromLibraryIndex(
+  drive: any,
+  penRootId: string,
+  docId: string
+): Promise<void> {
+  const { text } = await readDriveText(drive, penRootId, 'library.index.json');
+  let rows: Record<string, unknown>[] = [];
+  try {
+    rows = text ? (JSON.parse(text) as Record<string, unknown>[]) : [];
+    if (!Array.isArray(rows)) rows = [];
+  } catch {
+    rows = [];
+  }
+  const next = rows.filter((r) => String(r.docId || '') !== docId);
+  if (next.length === rows.length) {
+    // Still rewrite when missing so a partial index stays consistent after trash.
+  }
+  await writeDriveFile(
+    drive,
+    penRootId,
+    'library.index.json',
+    Buffer.from(JSON.stringify(next), 'utf8'),
+    'application/json'
+  );
+}
+
+async function findChildFolderId(
+  drive: any,
+  parentId: string,
+  name: string
+): Promise<string | null> {
+  const q = `name='${name.replace(/'/g, "\\'")}' and '${parentId}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`;
+  const list = await drive.files.list({ q, fields: 'files(id)', pageSize: 1 });
+  return (list.data.files?.[0]?.id as string | undefined) || null;
+}
+
 function sanitizeName(s: string): string {
   return String(s || '')
     .trim()
@@ -228,7 +266,7 @@ export function setupPenRoutes(
       if (!userPnIdentifier || !docId || !(PEN_JOB_TYPES as readonly string[]).includes(jobType)) {
         return res.status(400).json({
           error:
-            'userPnIdentifier, docId, and jobType=pen.doc_bootstrap|pen.draft_upsert|pen.publish|pen.comment|pen.suggestion|pen.section_promote required'
+            'userPnIdentifier, docId, and jobType=pen.doc_bootstrap|pen.draft_upsert|pen.publish|pen.comment|pen.suggestion|pen.section_promote|pen.doc_delete|pen.doc_meta required'
         });
       }
 
@@ -267,6 +305,91 @@ export function setupPenRoutes(
       const drive = google.drive({ version: 'v3', auth });
 
       const penRootId = await ensureDriveFolder(drive, 'par-noir-pen', meta.pnFolderId);
+
+      if (jobType === 'pen.doc_delete') {
+        await removeFromLibraryIndex(drive, penRootId, docId);
+        const existingDocFolderId = await findChildFolderId(drive, penRootId, String(docId));
+        if (existingDocFolderId) {
+          await drive.files.update({
+            fileId: existingDocFolderId,
+            requestBody: { trashed: true }
+          });
+        }
+        safeLogger.info('[pen/apply-inbound] doc_delete ok', {
+          pn: hashIdentifier(pnIdentifier),
+          doc: hashIdentifier(docId)
+        });
+        return res.json({ ok: true });
+      }
+
+      if (jobType === 'pen.doc_meta') {
+        const title =
+          req.body?.title != null ? String(req.body.title).trim() : undefined;
+        const folderId =
+          req.body?.folderId === null
+            ? null
+            : req.body?.folderId != null
+              ? String(req.body.folderId)
+              : undefined;
+        const { text } = await readDriveText(drive, penRootId, 'library.index.json');
+        let rows: Record<string, unknown>[] = [];
+        try {
+          rows = text ? (JSON.parse(text) as Record<string, unknown>[]) : [];
+          if (!Array.isArray(rows)) rows = [];
+        } catch {
+          rows = [];
+        }
+        const idx = rows.findIndex((r) => String(r.docId || '') === docId);
+        if (idx < 0) {
+          return res.status(404).json({ error: 'doc_not_in_library_index' });
+        }
+        const next = { ...rows[idx] } as Record<string, unknown>;
+        if (title !== undefined) next.title = title || 'Untitled';
+        if (folderId !== undefined) next.folderId = folderId;
+        next.updatedAt = new Date().toISOString();
+        rows[idx] = next;
+        await writeDriveFile(
+          drive,
+          penRootId,
+          'library.index.json',
+          Buffer.from(JSON.stringify(rows), 'utf8'),
+          'application/json'
+        );
+        // Also patch doc.json title when provided
+        if (title !== undefined) {
+          const existingDocFolderId = await findChildFolderId(drive, penRootId, String(docId));
+          if (existingDocFolderId) {
+            const { text: manifestText } = await readDriveText(
+              drive,
+              existingDocFolderId,
+              'doc.json'
+            );
+            if (manifestText) {
+              try {
+                const manifest = JSON.parse(manifestText) as Record<string, unknown>;
+                manifest.title = title || 'Untitled';
+                manifest.updatedAt = next.updatedAt;
+                if (folderId !== undefined) manifest.folderId = folderId;
+                await writeDriveFile(
+                  drive,
+                  existingDocFolderId,
+                  'doc.json',
+                  Buffer.from(JSON.stringify(manifest), 'utf8'),
+                  'application/json'
+                );
+              } catch {
+                /* ignore corrupt manifest */
+              }
+            }
+          }
+        }
+        safeLogger.info('[pen/apply-inbound] doc_meta ok', {
+          pn: hashIdentifier(pnIdentifier),
+          doc: hashIdentifier(docId)
+        });
+        return res.json({ ok: true });
+      }
+
       const docFolderId = await ensureDriveFolder(drive, String(docId), penRootId);
       const currentId = await ensureDriveFolder(drive, 'current', docFolderId);
       const draftsId = await ensureDriveFolder(drive, 'drafts', docFolderId);
@@ -756,7 +879,8 @@ export function setupPenRoutes(
         fields: 'files(id,name)',
         pageSize: 100
       });
-      const currentSections: unknown[] = [];
+      // Opaque .pen bodies — client decrypts with docKey (or legacy JSON parse).
+      const currentSections: Array<{ slug: string; ciphertext: string }> = [];
       for (const f of curFiles.data.files || []) {
         if (!f.id || !f.name?.endsWith('.pen')) continue;
         const got = await drive.files.get(
@@ -764,11 +888,8 @@ export function setupPenRoutes(
           { responseType: 'arraybuffer' }
         );
         const raw = Buffer.from(got.data as ArrayBuffer).toString('utf8');
-        try {
-          currentSections.push(JSON.parse(raw));
-        } catch {
-          /* skip */
-        }
+        const slug = String(f.name).replace(/\.pen$/i, '');
+        currentSections.push({ slug, ciphertext: raw });
       }
       const draftsId = await ensureDriveFolder(drive, 'drafts', docFolderId);
       const draftFolders = await listChildFolders(drive, draftsId);
@@ -783,18 +904,16 @@ export function setupPenRoutes(
             fields: 'files(id,name)',
             pageSize: 50
           });
-          const sections: unknown[] = [];
+          const sections: Array<{ slug: string; ciphertext: string }> = [];
           for (const sf of secFiles.data.files || []) {
             if (!sf.id || !sf.name?.endsWith('.pen')) continue;
             const got = await drive.files.get(
               { fileId: sf.id, alt: 'media' },
               { responseType: 'arraybuffer' }
             );
-            try {
-              sections.push(JSON.parse(Buffer.from(got.data as ArrayBuffer).toString('utf8')));
-            } catch {
-              /* skip */
-            }
+            const raw = Buffer.from(got.data as ArrayBuffer).toString('utf8');
+            const slug = String(sf.name).replace(/\.pen$/i, '');
+            sections.push({ slug, ciphertext: raw });
           }
           drafts.push({ draft, sections });
         } catch {

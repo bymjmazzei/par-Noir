@@ -58,7 +58,9 @@ function endpointFor(jobType: string): string | null {
     jobType === 'pen.suggestion' ||
     jobType === 'pen.draft_upsert' ||
     jobType === 'pen.publish' ||
-    jobType === 'pen.doc_bootstrap'
+    jobType === 'pen.doc_bootstrap' ||
+    jobType === 'pen.doc_delete' ||
+    jobType === 'pen.doc_meta'
   ) {
     return '/api/pen/apply-inbound';
   }

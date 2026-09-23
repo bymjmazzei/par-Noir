@@ -1,0 +1,10 @@
+{
+  "templateId": "note.basic.v1",
+  "title": "Autumn rain",
+  "sections": [
+    {
+      "slug": "body",
+      "plainText": "Soft rain slides down the glass. The streetlights blur into gold."
+    }
+  ]
+}

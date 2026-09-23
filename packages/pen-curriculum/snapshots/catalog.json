@@ -1,0 +1,546 @@
+{
+  "penProtocolVersion": "0.1.0",
+  "exportedAt": "2026-09-23T01:09:49.102Z",
+  "classes": [
+    {
+      "id": "social",
+      "title": "Social",
+      "description": "Notes, posts, collections, sets, and feeds for browse",
+      "kind": "authored",
+      "audience": "consumer"
+    },
+    {
+      "id": "social.note",
+      "title": "Notes",
+      "description": "Flow Notes for browse",
+      "kind": "authored",
+      "audience": "consumer",
+      "parentId": "social"
+    },
+    {
+      "id": "social.post",
+      "title": "Posts",
+      "description": "Caption and media posts",
+      "kind": "authored",
+      "audience": "consumer",
+      "parentId": "social"
+    },
+    {
+      "id": "social.collection",
+      "title": "Collections",
+      "description": "Ordered slides / story collections",
+      "kind": "authored",
+      "audience": "consumer",
+      "parentId": "social"
+    },
+    {
+      "id": "social.set",
+      "title": "Sets",
+      "description": "Feed items that reference other docs (primary + sources)",
+      "kind": "authored",
+      "audience": "consumer",
+      "parentId": "social"
+    },
+    {
+      "id": "social.feed",
+      "title": "Feeds",
+      "description": "Self-hosted and curated feed configs",
+      "kind": "authored",
+      "audience": "consumer",
+      "parentId": "social",
+      "entitlement": "self-hosted"
+    },
+    {
+      "id": "projects",
+      "title": "Projects",
+      "description": "Active work — journals, lists, letters, notes",
+      "kind": "authored",
+      "audience": "consumer"
+    },
+    {
+      "id": "projects.journal",
+      "title": "Journal",
+      "description": "Dated entries and logs",
+      "kind": "authored",
+      "audience": "consumer",
+      "parentId": "projects"
+    },
+    {
+      "id": "projects.list",
+      "title": "List",
+      "description": "Checklists, shopping, running lists",
+      "kind": "authored",
+      "audience": "consumer",
+      "parentId": "projects"
+    },
+    {
+      "id": "projects.letter",
+      "title": "Letter",
+      "description": "Correspondence letter (DM delivery later)",
+      "kind": "authored",
+      "audience": "consumer",
+      "parentId": "projects"
+    },
+    {
+      "id": "projects.note",
+      "title": "Note",
+      "description": "Short correspondence note (DM delivery later)",
+      "kind": "authored",
+      "audience": "consumer",
+      "parentId": "projects"
+    },
+    {
+      "id": "library",
+      "title": "Library",
+      "description": "Durable published works (books, articles)",
+      "kind": "authored",
+      "audience": "consumer"
+    },
+    {
+      "id": "library.book",
+      "title": "Book",
+      "description": "Multi-section longform",
+      "kind": "authored",
+      "audience": "consumer",
+      "parentId": "library"
+    },
+    {
+      "id": "library.article",
+      "title": "Article",
+      "description": "Shorter durable article",
+      "kind": "authored",
+      "audience": "consumer",
+      "parentId": "library"
+    },
+    {
+      "id": "time",
+      "title": "Time",
+      "description": "Calendars, events, and schedules",
+      "kind": "authored",
+      "audience": "consumer"
+    },
+    {
+      "id": "time.calendar",
+      "title": "Calendar",
+      "description": "Ongoing calendar",
+      "kind": "authored",
+      "audience": "consumer",
+      "parentId": "time"
+    },
+    {
+      "id": "time.event",
+      "title": "Event",
+      "description": "Single dated occurrence",
+      "kind": "authored",
+      "audience": "consumer",
+      "parentId": "time"
+    },
+    {
+      "id": "time.schedule",
+      "title": "Schedule",
+      "description": "Ordered agenda or run-of-show",
+      "kind": "authored",
+      "audience": "consumer",
+      "parentId": "time"
+    },
+    {
+      "id": "records",
+      "title": "Records",
+      "description": "Typed structured data for kit / agents",
+      "kind": "register",
+      "audience": "kit"
+    },
+    {
+      "id": "records.register",
+      "title": "Register",
+      "description": "Tabular register rows",
+      "kind": "register",
+      "audience": "kit",
+      "parentId": "records"
+    }
+  ],
+  "templates": [
+    {
+      "id": "note.basic.v1",
+      "classId": "social.note",
+      "docType": "note",
+      "version": "1",
+      "title": "Basic Note",
+      "description": "Single-body flow Note for browse",
+      "sections": [
+        {
+          "slug": "body",
+          "title": "Body",
+          "required": true
+        }
+      ],
+      "publishContentClass": "note",
+      "agentStarter": "You are authoring a Pen document with template {{template_id}} (\"Basic Note\").\nFill the required body with clear prose suitable for a browse Note.\nSections for this template: {{section_list}}.\nEmit ONLY a PenAgentBuild JSON object: { \"templateId\", \"title\", \"sections\": [{ \"slug\", \"plainText\" }] }.\nUse only the section slugs listed. Do not invent folder paths, file layouts, or parallel formats.\nNever include secrets, pn name, passcodes, tokens, or raw account identifiers.\nUser request:\n{{user_input}}"
+    },
+    {
+      "id": "note.article.v1",
+      "classId": "social.note",
+      "docType": "note",
+      "version": "1",
+      "title": "Article Note",
+      "description": "Title + body Note",
+      "sections": [
+        {
+          "slug": "title",
+          "title": "Title",
+          "required": true
+        },
+        {
+          "slug": "body",
+          "title": "Body",
+          "required": true
+        }
+      ],
+      "publishContentClass": "note",
+      "agentStarter": "You are authoring a Pen document with template {{template_id}} (\"Article Note\").\nProvide a short title section and a full body. Title section is display title text, not only the JSON title field.\nSections for this template: {{section_list}}.\nEmit ONLY a PenAgentBuild JSON object: { \"templateId\", \"title\", \"sections\": [{ \"slug\", \"plainText\" }] }.\nUse only the section slugs listed. Do not invent folder paths, file layouts, or parallel formats.\nNever include secrets, pn name, passcodes, tokens, or raw account identifiers.\nUser request:\n{{user_input}}"
+    },
+    {
+      "id": "post.caption.v1",
+      "classId": "social.post",
+      "docType": "post",
+      "version": "1",
+      "title": "Caption Post",
+      "description": "Caption/body with media attachments",
+      "sections": [
+        {
+          "slug": "caption",
+          "title": "Caption",
+          "required": true
+        },
+        {
+          "slug": "attachments",
+          "title": "Attachments",
+          "required": false
+        }
+      ],
+      "publishContentClass": "note",
+      "agentStarter": "You are authoring a Pen document with template {{template_id}} (\"Caption Post\").\nWrite the caption. Mention attachment refs in attachments only if the user provided media identifiers; otherwise omit attachments.\nSections for this template: {{section_list}}.\nEmit ONLY a PenAgentBuild JSON object: { \"templateId\", \"title\", \"sections\": [{ \"slug\", \"plainText\" }] }.\nUse only the section slugs listed. Do not invent folder paths, file layouts, or parallel formats.\nNever include secrets, pn name, passcodes, tokens, or raw account identifiers.\nUser request:\n{{user_input}}"
+    },
+    {
+      "id": "post.media.v1",
+      "classId": "social.post",
+      "docType": "post",
+      "version": "1",
+      "title": "Media-forward Post",
+      "description": "Media first with optional caption",
+      "sections": [
+        {
+          "slug": "attachments",
+          "title": "Media",
+          "required": true
+        },
+        {
+          "slug": "caption",
+          "title": "Caption",
+          "required": false
+        }
+      ],
+      "publishContentClass": "note",
+      "agentStarter": "You are authoring a Pen document with template {{template_id}} (\"Media-forward Post\").\nDescribe media attachments the user named; add an optional short caption.\nSections for this template: {{section_list}}.\nEmit ONLY a PenAgentBuild JSON object: { \"templateId\", \"title\", \"sections\": [{ \"slug\", \"plainText\" }] }.\nUse only the section slugs listed. Do not invent folder paths, file layouts, or parallel formats.\nNever include secrets, pn name, passcodes, tokens, or raw account identifiers.\nUser request:\n{{user_input}}"
+    },
+    {
+      "id": "collection.basic.v1",
+      "classId": "social.collection",
+      "docType": "collection",
+      "version": "1",
+      "title": "Basic Collection",
+      "description": "Ordered pages / slides",
+      "sections": [
+        {
+          "slug": "slide-1",
+          "title": "Slide 1",
+          "required": true
+        },
+        {
+          "slug": "slide-2",
+          "title": "Slide 2",
+          "required": false
+        }
+      ],
+      "publishContentClass": "collection",
+      "agentStarter": "You are authoring a Pen document with template {{template_id}} (\"Basic Collection\").\nWrite slide-1 content; add slide-2 only if the user needs a second page.\nSections for this template: {{section_list}}.\nEmit ONLY a PenAgentBuild JSON object: { \"templateId\", \"title\", \"sections\": [{ \"slug\", \"plainText\" }] }.\nUse only the section slugs listed. Do not invent folder paths, file layouts, or parallel formats.\nNever include secrets, pn name, passcodes, tokens, or raw account identifiers.\nUser request:\n{{user_input}}"
+    },
+    {
+      "id": "collection.story.v1",
+      "classId": "social.collection",
+      "docType": "collection",
+      "version": "1",
+      "title": "Story Collection",
+      "description": "Short vertical story pages",
+      "sections": [
+        {
+          "slug": "cover",
+          "title": "Cover",
+          "required": true
+        },
+        {
+          "slug": "pages",
+          "title": "Pages",
+          "required": true
+        }
+      ],
+      "publishContentClass": "collection",
+      "agentStarter": "You are authoring a Pen document with template {{template_id}} (\"Story Collection\").\nWrite a cover line and story pages body.\nSections for this template: {{section_list}}.\nEmit ONLY a PenAgentBuild JSON object: { \"templateId\", \"title\", \"sections\": [{ \"slug\", \"plainText\" }] }.\nUse only the section slugs listed. Do not invent folder paths, file layouts, or parallel formats.\nNever include secrets, pn name, passcodes, tokens, or raw account identifiers.\nUser request:\n{{user_input}}"
+    },
+    {
+      "id": "set.basic.v1",
+      "classId": "social.set",
+      "docType": "set",
+      "version": "1",
+      "title": "Basic Set",
+      "description": "Primary embed plus source references (refs later)",
+      "sections": [
+        {
+          "slug": "primary",
+          "title": "Primary",
+          "required": true
+        },
+        {
+          "slug": "sources",
+          "title": "Sources",
+          "required": false
+        }
+      ],
+      "agentStarter": "You are authoring a Pen document with template {{template_id}} (\"Basic Set\").\nDescribe the primary item; list source refs in sources when provided.\nSections for this template: {{section_list}}.\nEmit ONLY a PenAgentBuild JSON object: { \"templateId\", \"title\", \"sections\": [{ \"slug\", \"plainText\" }] }.\nUse only the section slugs listed. Do not invent folder paths, file layouts, or parallel formats.\nNever include secrets, pn name, passcodes, tokens, or raw account identifiers.\nUser request:\n{{user_input}}"
+    },
+    {
+      "id": "feed.self_hosted.v1",
+      "classId": "social.feed",
+      "docType": "self_hosted_feed",
+      "version": "1",
+      "title": "Self-hosted Feed",
+      "description": "Feed config + membership rules",
+      "sections": [
+        {
+          "slug": "meta",
+          "title": "Feed meta",
+          "required": true
+        },
+        {
+          "slug": "rules",
+          "title": "Rules",
+          "required": false
+        }
+      ],
+      "publishContentClass": "note",
+      "agentStarter": "You are authoring a Pen document with template {{template_id}} (\"Self-hosted Feed\").\nFill feed meta (name/purpose). Add membership rules only if the user specified them.\nSections for this template: {{section_list}}.\nEmit ONLY a PenAgentBuild JSON object: { \"templateId\", \"title\", \"sections\": [{ \"slug\", \"plainText\" }] }.\nUse only the section slugs listed. Do not invent folder paths, file layouts, or parallel formats.\nNever include secrets, pn name, passcodes, tokens, or raw account identifiers.\nUser request:\n{{user_input}}"
+    },
+    {
+      "id": "feed.curated.v1",
+      "classId": "social.feed",
+      "docType": "self_hosted_feed",
+      "version": "1",
+      "title": "Curated Feed",
+      "description": "Curated index description",
+      "sections": [
+        {
+          "slug": "meta",
+          "title": "Feed meta",
+          "required": true
+        },
+        {
+          "slug": "index",
+          "title": "Index",
+          "required": false
+        }
+      ],
+      "publishContentClass": "note",
+      "agentStarter": "You are authoring a Pen document with template {{template_id}} (\"Curated Feed\").\nFill feed meta; optionally describe the curated index.\nSections for this template: {{section_list}}.\nEmit ONLY a PenAgentBuild JSON object: { \"templateId\", \"title\", \"sections\": [{ \"slug\", \"plainText\" }] }.\nUse only the section slugs listed. Do not invent folder paths, file layouts, or parallel formats.\nNever include secrets, pn name, passcodes, tokens, or raw account identifiers.\nUser request:\n{{user_input}}"
+    },
+    {
+      "id": "journal.basic.v1",
+      "classId": "projects.journal",
+      "docType": "journal",
+      "version": "1",
+      "title": "Basic Journal",
+      "description": "Dated entries and logs",
+      "sections": [
+        {
+          "slug": "entries",
+          "title": "Entries",
+          "required": true
+        }
+      ],
+      "agentStarter": "You are authoring a Pen document with template {{template_id}} (\"Basic Journal\").\nWrite dated journal entries in the entries section.\nSections for this template: {{section_list}}.\nEmit ONLY a PenAgentBuild JSON object: { \"templateId\", \"title\", \"sections\": [{ \"slug\", \"plainText\" }] }.\nUse only the section slugs listed. Do not invent folder paths, file layouts, or parallel formats.\nNever include secrets, pn name, passcodes, tokens, or raw account identifiers.\nUser request:\n{{user_input}}"
+    },
+    {
+      "id": "list.basic.v1",
+      "classId": "projects.list",
+      "docType": "list",
+      "version": "1",
+      "title": "Basic List",
+      "description": "Checklist or shopping list",
+      "sections": [
+        {
+          "slug": "items",
+          "title": "Items",
+          "required": true
+        }
+      ],
+      "agentStarter": "You are authoring a Pen document with template {{template_id}} (\"Basic List\").\nWrite checklist or shopping items, one per line when possible.\nSections for this template: {{section_list}}.\nEmit ONLY a PenAgentBuild JSON object: { \"templateId\", \"title\", \"sections\": [{ \"slug\", \"plainText\" }] }.\nUse only the section slugs listed. Do not invent folder paths, file layouts, or parallel formats.\nNever include secrets, pn name, passcodes, tokens, or raw account identifiers.\nUser request:\n{{user_input}}"
+    },
+    {
+      "id": "letter.basic.v1",
+      "classId": "projects.letter",
+      "docType": "letter",
+      "version": "1",
+      "title": "Basic Letter",
+      "description": "Correspondence letter",
+      "sections": [
+        {
+          "slug": "body",
+          "title": "Body",
+          "required": true
+        }
+      ],
+      "agentStarter": "You are authoring a Pen document with template {{template_id}} (\"Basic Letter\").\nWrite the letter body (greeting, content, closing) in body.\nSections for this template: {{section_list}}.\nEmit ONLY a PenAgentBuild JSON object: { \"templateId\", \"title\", \"sections\": [{ \"slug\", \"plainText\" }] }.\nUse only the section slugs listed. Do not invent folder paths, file layouts, or parallel formats.\nNever include secrets, pn name, passcodes, tokens, or raw account identifiers.\nUser request:\n{{user_input}}"
+    },
+    {
+      "id": "note.card.v1",
+      "classId": "projects.note",
+      "docType": "project_note",
+      "version": "1",
+      "title": "Card Note",
+      "description": "Short correspondence note",
+      "sections": [
+        {
+          "slug": "body",
+          "title": "Body",
+          "required": true
+        }
+      ],
+      "agentStarter": "You are authoring a Pen document with template {{template_id}} (\"Card Note\").\nWrite a short correspondence note in body.\nSections for this template: {{section_list}}.\nEmit ONLY a PenAgentBuild JSON object: { \"templateId\", \"title\", \"sections\": [{ \"slug\", \"plainText\" }] }.\nUse only the section slugs listed. Do not invent folder paths, file layouts, or parallel formats.\nNever include secrets, pn name, passcodes, tokens, or raw account identifiers.\nUser request:\n{{user_input}}"
+    },
+    {
+      "id": "book.basic.v1",
+      "classId": "library.book",
+      "docType": "book",
+      "version": "1",
+      "title": "Basic Book",
+      "description": "Front matter + body",
+      "sections": [
+        {
+          "slug": "front",
+          "title": "Front",
+          "required": false
+        },
+        {
+          "slug": "body",
+          "title": "Body",
+          "required": true
+        }
+      ],
+      "agentStarter": "You are authoring a Pen document with template {{template_id}} (\"Basic Book\").\nWrite the book body; optional front matter (title page / preface).\nSections for this template: {{section_list}}.\nEmit ONLY a PenAgentBuild JSON object: { \"templateId\", \"title\", \"sections\": [{ \"slug\", \"plainText\" }] }.\nUse only the section slugs listed. Do not invent folder paths, file layouts, or parallel formats.\nNever include secrets, pn name, passcodes, tokens, or raw account identifiers.\nUser request:\n{{user_input}}"
+    },
+    {
+      "id": "article.basic.v1",
+      "classId": "library.article",
+      "docType": "article",
+      "version": "1",
+      "title": "Basic Article",
+      "description": "Durable article body",
+      "sections": [
+        {
+          "slug": "body",
+          "title": "Body",
+          "required": true
+        }
+      ],
+      "agentStarter": "You are authoring a Pen document with template {{template_id}} (\"Basic Article\").\nWrite a durable article body.\nSections for this template: {{section_list}}.\nEmit ONLY a PenAgentBuild JSON object: { \"templateId\", \"title\", \"sections\": [{ \"slug\", \"plainText\" }] }.\nUse only the section slugs listed. Do not invent folder paths, file layouts, or parallel formats.\nNever include secrets, pn name, passcodes, tokens, or raw account identifiers.\nUser request:\n{{user_input}}"
+    },
+    {
+      "id": "calendar.basic.v1",
+      "classId": "time.calendar",
+      "docType": "calendar",
+      "version": "1",
+      "title": "Basic Calendar",
+      "description": "Calendar meta and events",
+      "sections": [
+        {
+          "slug": "meta",
+          "title": "Meta",
+          "required": true
+        },
+        {
+          "slug": "events",
+          "title": "Events",
+          "required": false
+        }
+      ],
+      "agentStarter": "You are authoring a Pen document with template {{template_id}} (\"Basic Calendar\").\nFill calendar meta; list events when provided.\nSections for this template: {{section_list}}.\nEmit ONLY a PenAgentBuild JSON object: { \"templateId\", \"title\", \"sections\": [{ \"slug\", \"plainText\" }] }.\nUse only the section slugs listed. Do not invent folder paths, file layouts, or parallel formats.\nNever include secrets, pn name, passcodes, tokens, or raw account identifiers.\nUser request:\n{{user_input}}"
+    },
+    {
+      "id": "event.basic.v1",
+      "classId": "time.event",
+      "docType": "event",
+      "version": "1",
+      "title": "Basic Event",
+      "description": "Single dated event",
+      "sections": [
+        {
+          "slug": "details",
+          "title": "Details",
+          "required": true
+        }
+      ],
+      "agentStarter": "You are authoring a Pen document with template {{template_id}} (\"Basic Event\").\nWrite event details including when/where if the user gave them.\nSections for this template: {{section_list}}.\nEmit ONLY a PenAgentBuild JSON object: { \"templateId\", \"title\", \"sections\": [{ \"slug\", \"plainText\" }] }.\nUse only the section slugs listed. Do not invent folder paths, file layouts, or parallel formats.\nNever include secrets, pn name, passcodes, tokens, or raw account identifiers.\nUser request:\n{{user_input}}"
+    },
+    {
+      "id": "schedule.basic.v1",
+      "classId": "time.schedule",
+      "docType": "schedule",
+      "version": "1",
+      "title": "Basic Schedule",
+      "description": "Ordered agenda",
+      "sections": [
+        {
+          "slug": "agenda",
+          "title": "Agenda",
+          "required": true
+        }
+      ],
+      "agentStarter": "You are authoring a Pen document with template {{template_id}} (\"Basic Schedule\").\nWrite an ordered agenda in agenda.\nSections for this template: {{section_list}}.\nEmit ONLY a PenAgentBuild JSON object: { \"templateId\", \"title\", \"sections\": [{ \"slug\", \"plainText\" }] }.\nUse only the section slugs listed. Do not invent folder paths, file layouts, or parallel formats.\nNever include secrets, pn name, passcodes, tokens, or raw account identifiers.\nUser request:\n{{user_input}}"
+    },
+    {
+      "id": "register.basic.v1",
+      "classId": "records.register",
+      "docType": "register",
+      "version": "1",
+      "title": "Basic Register",
+      "description": "Typed register rows (kit)",
+      "sections": [
+        {
+          "slug": "rows",
+          "title": "Rows",
+          "required": true
+        }
+      ],
+      "agentStarter": "You are authoring a Pen Register with template {{template_id}} (\"Basic Register\").\nColumns ( *=required ): id:string*, label:string*, notes:string.\nEmit ONLY a PenAgentBuild JSON object: { \"templateId\", \"title\", \"rows\": [ { columnId: value, ... } ] }.\nDo not use freeform TipTap sections for row data. Do not invent folder paths or extra columns.\nNever include secrets, pn name, passcodes, tokens, or raw account identifiers.\nUser request:\n{{user_input}}",
+      "registerColumns": [
+        {
+          "id": "id",
+          "title": "Id",
+          "type": "string",
+          "required": true
+        },
+        {
+          "id": "label",
+          "title": "Label",
+          "type": "string",
+          "required": true
+        },
+        {
+          "id": "notes",
+          "title": "Notes",
+          "type": "string",
+          "required": false
+        }
+      ]
+    }
+  ]
+}

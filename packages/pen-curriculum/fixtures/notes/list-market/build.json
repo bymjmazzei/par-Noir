@@ -1,0 +1,10 @@
+{
+  "templateId": "list.basic.v1",
+  "title": "Weekend market",
+  "sections": [
+    {
+      "slug": "items",
+      "plainText": "- Tomatoes\n- Bread\n- Olive oil\n- Lemons"
+    }
+  ]
+}

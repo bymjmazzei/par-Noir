@@ -1,0 +1,10 @@
+{
+  "templateId": "note.basic.v1",
+  "title": "Harbor light",
+  "sections": [
+    {
+      "slug": "body",
+      "plainText": "The ferry horn carries across the harbor."
+    }
+  ]
+}

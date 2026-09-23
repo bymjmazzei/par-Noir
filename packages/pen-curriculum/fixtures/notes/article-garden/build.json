@@ -1,0 +1,14 @@
+{
+  "templateId": "note.article.v1",
+  "title": "Balcony garden",
+  "sections": [
+    {
+      "slug": "title",
+      "plainText": "Starting a balcony garden"
+    },
+    {
+      "slug": "body",
+      "plainText": "Begin with two pots, potting mix, and herbs that forgive missed waterings. Basil and mint earn their keep."
+    }
+  ]
+}

@@ -48,6 +48,7 @@ import { useDriveAccounts } from '../hooks/useDriveAccounts';
 import { useRealtimeSync } from '../hooks/useRealtimeSync';
 import { requestHotDrain } from '../services/socialMailboxConsumer';
 import { isMessagingKeysError, requestMessagingReconnect } from '../services/messagingReconnect';
+import { takeCorrespondenceDraftBody } from '../utils/penCorrespondenceHandoff';
 import { BOTTOM_NAV_PADDING } from '../constants/layout';
 import { getCachedPeerMailboxRouteKey } from '../services/peerMailboxRouteCache';
 
@@ -93,7 +94,7 @@ export function MessageThread({
   const [hasMore, setHasMore] = useState(true);
   const [, setTotalMessages] = useState(0);
   const [sending, setSending] = useState(false);
-  const [newMessage, setNewMessage] = useState('');
+  const [newMessage, setNewMessage] = useState(() => takeCorrespondenceDraftBody() || '');
   const [showMenu, setShowMenu] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [deleting, setDeleting] = useState(false);

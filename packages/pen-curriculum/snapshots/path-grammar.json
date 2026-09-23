@@ -1,0 +1,18 @@
+{
+  "penProtocolVersion": "0.1.0",
+  "root": "par-noir-pen",
+  "examples": {
+    "docRoot": "par-noir-pen/{docId}",
+    "manifest": "par-noir-pen/docId/doc.json",
+    "history": "par-noir-pen/docId/history.chain",
+    "currentDir": "par-noir-pen/docId/current",
+    "draftsDir": "par-noir-pen/docId/drafts",
+    "draftDir": "par-noir-pen/docId/drafts/{draftId}",
+    "pastDir": "par-noir-pen/docId/past"
+  },
+  "rules": [
+    "Never invent paths outside par-noir-pen/{docId}/",
+    "Use materializePenAgentBuild for file layouts",
+    "drafts/ for WIP; current/ for published live; past/ for superseded"
+  ]
+}

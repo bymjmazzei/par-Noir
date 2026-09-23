@@ -6,6 +6,8 @@ export const PEN_SUGGESTION_KIND = 'pen.suggestion' as const;
 export const PEN_DRAFT_UPSERT_KIND = 'pen.draft_upsert' as const;
 export const PEN_PUBLISH_KIND = 'pen.publish' as const;
 export const PEN_DOC_BOOTSTRAP_KIND = 'pen.doc_bootstrap' as const;
+export const PEN_DOC_DELETE_KIND = 'pen.doc_delete' as const;
+export const PEN_DOC_META_KIND = 'pen.doc_meta' as const;
 
 export type PenOutboxKind =
   | typeof PEN_SECTION_PROMOTE_KIND
@@ -13,7 +15,9 @@ export type PenOutboxKind =
   | typeof PEN_SUGGESTION_KIND
   | typeof PEN_DRAFT_UPSERT_KIND
   | typeof PEN_PUBLISH_KIND
-  | typeof PEN_DOC_BOOTSTRAP_KIND;
+  | typeof PEN_DOC_BOOTSTRAP_KIND
+  | typeof PEN_DOC_DELETE_KIND
+  | typeof PEN_DOC_META_KIND;
 
 function fanout(
   routeKeys: string[],
@@ -81,5 +85,14 @@ export function penDocBootstrapFanout(
   return fanout(routeKeys, PEN_DOC_BOOTSTRAP_KIND) as Array<{
     routeKey: string;
     jobType: typeof PEN_DOC_BOOTSTRAP_KIND;
+  }>;
+}
+
+export function penDocDeleteFanout(
+  routeKeys: string[]
+): Array<{ routeKey: string; jobType: typeof PEN_DOC_DELETE_KIND }> {
+  return fanout(routeKeys, PEN_DOC_DELETE_KIND) as Array<{
+    routeKey: string;
+    jobType: typeof PEN_DOC_DELETE_KIND;
   }>;
 }

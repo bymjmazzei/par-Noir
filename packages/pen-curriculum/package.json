@@ -1,0 +1,32 @@
+{
+  "name": "@par-noir/pen-curriculum",
+  "version": "0.1.0",
+  "description": "Pen agent curriculum: handbook, catalog snapshots, golden fixtures, eval (pinned to pen-protocol)",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": ["dist", "HANDBOOK.md", "snapshots", "fixtures"],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "export:snapshots": "vitest run src/export.snapshots.test.ts"
+  },
+  "dependencies": {
+    "@par-noir/pen-protocol": "file:../pen-protocol"
+  },
+  "devDependencies": {
+    "typescript": "^5.0.0",
+    "vitest": "^3.2.4"
+  },
+  "license": "UNLICENSED",
+  "private": true,
+  "penProtocolVersion": "0.1.0"
+}

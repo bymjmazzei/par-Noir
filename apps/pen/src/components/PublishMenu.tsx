@@ -3,18 +3,23 @@ import { useEffect, useRef, useState } from 'react';
 /**
  * Publish = update live current/ in Pen.
  * Connect to feed = separate social visibility step.
+ * Send = correspondence DM handoff (letter / note).
  */
 export function PublishMenu({
   projectEnabled,
+  correspondenceEnabled,
   onPublishLive,
   onConnectFeed,
+  onSendCorrespondence,
   onTemplate,
   onLibraryTemplate,
   onFinishedWork
 }: {
   projectEnabled: boolean;
+  correspondenceEnabled?: boolean;
   onPublishLive: () => void;
   onConnectFeed: () => void;
+  onSendCorrespondence?: () => void;
   onTemplate: () => void;
   onLibraryTemplate: () => void;
   onFinishedWork: () => void;
@@ -65,6 +70,19 @@ export function PublishMenu({
           >
             Connect to feed
           </button>
+          {correspondenceEnabled && onSendCorrespondence && (
+            <button
+              type="button"
+              title="Open Messaging with this letter/note as a draft"
+              className="block w-full px-3 py-1.5 text-left text-[12px] text-stone-800 hover:bg-stone-50"
+              onClick={() => {
+                onSendCorrespondence();
+                setOpen(false);
+              }}
+            >
+              Send
+            </button>
+          )}
           <div className="my-1 border-t border-stone-100" />
           <button
             type="button"

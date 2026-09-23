@@ -1,0 +1,10 @@
+{
+  "templateId": "journal.basic.v1",
+  "title": "March walk",
+  "sections": [
+    {
+      "slug": "entries",
+      "plainText": "2026-03-12 — Cold air, early green tips on the hedge. Coffee steam in the wind."
+    }
+  ]
+}

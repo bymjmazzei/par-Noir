@@ -1,0 +1,50 @@
+{
+  "$id": "https://parnoir.com/schemas/pen-agent-build.v0.json",
+  "title": "PenAgentBuild",
+  "type": "object",
+  "required": [
+    "templateId",
+    "title"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "templateId": {
+      "type": "string",
+      "description": "Starter template id, e.g. note.basic.v1"
+    },
+    "title": {
+      "type": "string",
+      "minLength": 1
+    },
+    "sections": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "slug"
+        ],
+        "properties": {
+          "slug": {
+            "type": "string"
+          },
+          "plainText": {
+            "type": "string"
+          },
+          "doc": {
+            "type": "object",
+            "description": "TipTap JSON doc"
+          }
+        }
+      }
+    },
+    "rows": {
+      "type": "array",
+      "description": "Register rows when template has registerColumns",
+      "items": {
+        "type": "object",
+        "additionalProperties": true
+      }
+    }
+  },
+  "penProtocolVersion": "0.1.0"
+}

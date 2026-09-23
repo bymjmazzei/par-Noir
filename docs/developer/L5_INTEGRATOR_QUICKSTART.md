@@ -220,6 +220,8 @@ Browse users set Never / 24h / 48h / 7d / custom datetime in upload and share se
 
 First-party Pen (`pen.parnoir.com`) owns multi-writer collab. L5 gets **silo CRUD + templates + compile/publish Note** via `pn.pen` — not groups/outbox/docKey.
 
+**External agents (Cursor, Astra, …):** use `@par-noir/pen-curriculum` (handbook + snapshots + fixtures) and `@par-noir/pen-protocol` (`composeAgentPrompt`, `PenAgentBuild`, `validatePenAgentBuild`, `materializePenAgentBuild`). Do not invent folder layouts. L5 silo write paths remain separate from first-party collab; agents targeting the user’s Pen library use first-party session flows (`createDocFromAgentBuild`), not integrator silo uploads.
+
 ```typescript
 const templates = pn.pen.listTemplatesLocal();
 const compiled = pn.pen.compileToNote({
@@ -246,7 +248,7 @@ const ok = pn.pen.verifyHistory(chain);
 
 Do **not** call `/api/groups`, `/api/messages`, or `/api/mailbox` from L5 — they return `403 first_party_required`. Deep-link or iframe Pen for collab.
 
-See [ADR_PEN.md](../architecture/ADR_PEN.md).
+See [ADR_PEN.md](../architecture/ADR_PEN.md) and [`packages/pen-curriculum/HANDBOOK.md`](../../packages/pen-curriculum/HANDBOOK.md).
 
 ---
 

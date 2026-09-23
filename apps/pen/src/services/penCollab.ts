@@ -13,6 +13,7 @@ import {
   penPublishFanout,
   penDocBootstrapFanout,
   createApiSocialApplier,
+  ensureMailboxRouteKey,
   type OutboxKind,
   type SealSession
 } from '@par-noir/device-cloud-credentials';
@@ -316,38 +317,34 @@ export async function promotePenOutboxAndFanout(session: PenSession): Promise<vo
 
 /** Drain mailbox and apply pen.* jobs into this user's Drive. */
 export async function drainPenMailbox(session: PenSession): Promise<number> {
+  const seal = sealSessionFromPen(session);
+  if (!seal) return 0;
+
   const apply = createApiSocialApplier({
     apiBaseUrl: API_ENDPOINT,
     authToken: session.accessToken,
     identityId: session.pnIdentifier
   });
 
-  const mint = await ownerFetch(
-    'POST',
-    '/api/mailbox/route-key',
-    { userPnIdentifier: session.pnIdentifier },
-    { pnIdentifier: session.pnIdentifier }
-  ).catch(() => null);
-  let routeKey: string | undefined;
-  if (mint?.ok) {
-    const data = (await mint.json().catch(() => ({}))) as { routeKey?: string };
-    routeKey = data.routeKey;
-  }
-  if (!routeKey) {
-    const get = await ownerGet('/api/mailbox/route-key', {
+  let routeKey: string;
+  try {
+    routeKey = await ensureMailboxRouteKey(session.pnIdentifier, seal, {
+      apiBaseUrl: API_ENDPOINT,
+      authToken: session.accessToken,
       pnIdentifier: session.pnIdentifier
-    }).catch(() => null);
-    if (get?.ok) {
-      const data = (await get.json().catch(() => ({}))) as { routeKey?: string };
-      routeKey = data.routeKey;
-    }
+    });
+  } catch {
+    return 0;
   }
-  if (!routeKey) return 0;
 
-  const drain = await ownerGet(
-    `/api/mailbox?routeKey=${encodeURIComponent(routeKey)}&limit=20`,
-    { pnIdentifier: session.pnIdentifier }
-  ).catch(() => null);
+  const pendingQs = new URLSearchParams({
+    pnIdentifier: session.pnIdentifier,
+    routeKey,
+    limit: '20'
+  });
+  const drain = await ownerGet(`/api/mailbox/pending?${pendingQs}`, {
+    pnIdentifier: session.pnIdentifier
+  }).catch(() => null);
   if (!drain?.ok) return 0;
   const data = (await drain.json().catch(() => ({}))) as {
     jobs?: Array<{ id: string; jobType: string; payload: Record<string, unknown> }>;
@@ -368,7 +365,7 @@ export async function drainPenMailbox(session: PenSession): Promise<number> {
       await ownerFetch(
         'POST',
         '/api/mailbox/ack',
-        { routeKey, jobIds: [job.id] },
+        { pnIdentifier: session.pnIdentifier, routeKey, jobIds: [job.id] },
         { pnIdentifier: session.pnIdentifier }
       ).catch(() => null);
     }

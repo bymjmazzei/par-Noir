@@ -15,13 +15,14 @@ import {
   type PenHistoryChain,
   type PenTemplate
 } from '@par-noir/pen-protocol';
-import { generateGroupId, generateChatKey } from '@par-noir/dm-crypto';
+import { generateGroupId } from '@par-noir/dm-crypto';
 import type { PenSession } from './penSession';
 import { saveLocalDoc, type LocalDocBundle } from './penLocalStore';
 import { requestNotaryStamp } from './penApi';
 import { resolveSigningKeys } from './penKeys';
 import { bootstrapDocCloud } from './penCloudStore';
 import { enqueueSyncJob } from './penSyncQueue';
+import { mintDocKey } from './penDocCrypto';
 
 function randomDocId(): string {
   return `pen_${crypto.randomUUID().replace(/-/g, '').slice(0, 16)}`;
@@ -71,7 +72,7 @@ export async function createDocFromTemplate(input: {
   }
 
   const groupId = generateGroupId();
-  sessionStorage.setItem(`pen_doc_key:${docId}`, generateChatKey());
+  mintDocKey(docId);
   sessionStorage.setItem(`pen_group_id:${docId}`, groupId);
 
   const draft: PenDraftManifest = {

@@ -58,11 +58,11 @@ function EngagementRail() {
     label: string;
     children: ReactNode;
   }) => (
-    <div className="flex flex-col items-center gap-0.5 text-white drop-shadow-md" title={label}>
+    <div className="flex flex-col items-center gap-0.5 text-white drop-shadow-md" title={`${label} (preview)`}>
       <div className="flex h-10 w-10 items-center justify-center rounded-full bg-black/35 backdrop-blur-sm">
         {children}
       </div>
-      <span className="text-[11px] font-medium tabular-nums">0</span>
+      <span className="text-[10px] font-medium uppercase tracking-wide text-white/80">Preview</span>
     </div>
   );
 

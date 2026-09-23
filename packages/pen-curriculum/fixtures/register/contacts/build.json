@@ -1,0 +1,16 @@
+{
+  "templateId": "register.basic.v1",
+  "title": "Contacts",
+  "rows": [
+    {
+      "id": "c1",
+      "label": "Ada Lovelace",
+      "notes": "Analytical engine"
+    },
+    {
+      "id": "c2",
+      "label": "Grace Hopper",
+      "notes": "Compiler pioneer"
+    }
+  ]
+}

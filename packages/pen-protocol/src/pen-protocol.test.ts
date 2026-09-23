@@ -18,6 +18,8 @@ import {
   listStarterTemplates,
   requireTemplate,
   compileDocumentToNote,
+  compileSetToNote,
+  snapshotPenEmbeds,
   signGenesis,
   signPromoteLink,
   verifyChain,
@@ -225,6 +227,103 @@ describe('classes + templates', () => {
 
   it('fails closed on unknown template', () => {
     expect(() => requireTemplate('nope')).toThrow(/unknown_pen_template/);
+  });
+
+  it('snapshots penEmbed nodes into inline TipTap content', async () => {
+    const sections = await snapshotPenEmbeds(
+      [
+        {
+          slug: 'body',
+          doc: {
+            type: 'doc',
+            content: [
+              { type: 'paragraph', content: [{ type: 'text', text: 'Before' }] },
+              {
+                type: 'penEmbed',
+                attrs: { docId: 'doc_src', sectionSlug: 'body', title: 'Source' }
+              },
+              { type: 'paragraph', content: [{ type: 'text', text: 'After' }] }
+            ]
+          }
+        }
+      ],
+      async (ref) => {
+        expect(ref.docId).toBe('doc_src');
+        return {
+          title: 'Source note',
+          doc: {
+            type: 'doc',
+            content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Snapshotted body' }] }]
+          }
+        };
+      }
+    );
+    const html = docToHtml(sections[0]!.doc);
+    expect(html).toContain('Before');
+    expect(html).toContain('Source note');
+    expect(html).toContain('Snapshotted body');
+    expect(html).toContain('After');
+    expect(html).not.toContain('live reference');
+  });
+
+  it('compiles set.basic.v1 embeds into note pages', async () => {
+    const out = await compileSetToNote({
+      title: 'My Set',
+      sections: [
+        {
+          slug: 'primary',
+          doc: {
+            type: 'doc',
+            content: [
+              {
+                type: 'penEmbed',
+                attrs: { docId: 'doc_a', sectionSlug: null, title: 'Primary' }
+              }
+            ]
+          }
+        },
+        {
+          slug: 'sources',
+          doc: {
+            type: 'doc',
+            content: [
+              {
+                type: 'penEmbed',
+                attrs: { docId: 'doc_b', sectionSlug: 'body', title: 'Source B' }
+              }
+            ]
+          }
+        }
+      ],
+      resolveDoc: async (ref) => {
+        if (ref.docId === 'doc_a') {
+          return {
+            title: 'Alpha',
+            sections: [
+              {
+                slug: 'body',
+                doc: {
+                  type: 'doc',
+                  content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Alpha body' }] }]
+                }
+              }
+            ]
+          };
+        }
+        return {
+          title: 'Beta',
+          doc: {
+            type: 'doc',
+            content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Beta body' }] }]
+          }
+        };
+      }
+    });
+    expect(out.contentClass).toBe('note');
+    expect(out.templateId).toBe('set.basic.v1');
+    expect(out.pages.length).toBe(2);
+    expect(out.pages[0]?.content).toContain('Alpha body');
+    expect(out.pages[1]?.content).toContain('Beta body');
   });
 });
 

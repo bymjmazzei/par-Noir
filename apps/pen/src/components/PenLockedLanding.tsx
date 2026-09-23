@@ -7,10 +7,10 @@ import { UnlockButton, type PnOAuthPopupResult } from '@par-noir/oauth-ui';
 import { API_ENDPOINT, PN_CLIENT_ID } from '../config/api';
 
 const CHECKLIST = [
-  'Author anything',
-  'encrypted collaboration',
-  'customize your feed posts',
-  'publish to your networks'
+  'encrypted cloud docs',
+  'collaborate by invite',
+  'customize feed post layouts',
+  'connect published Notes to Browse'
 ] as const;
 
 const LOGO_SRC = './branding/Par-Noir-Logo-White.png';
@@ -178,7 +178,7 @@ export function PenLockedLanding({
                 <div ref={headingRef} className="pen-locked-heading">
                   <h1 className="pen-locked-title">Pen</h1>
                   <p className="pen-locked-subtitle">
-                    Encrypted collaboration published through your cloud
+                    Encrypted docs in your cloud — invite peers, publish when ready
                   </p>
                 </div>
 

@@ -123,6 +123,15 @@ export function deleteLocalDocs(pn: string, docIds: string[]): void {
   }
 }
 
+/** Wipe offline buffer for this identity (cloud is SoT). */
+export function clearLocalDocsForPn(pn: string): void {
+  const docs = listLocalDocs(pn);
+  for (const d of docs) {
+    localStorage.removeItem(`${prefix(pn)}:doc:${d.docId}`);
+  }
+  localStorage.removeItem(`${prefix(pn)}:index`);
+}
+
 export function renameLocalDoc(pn: string, docId: string, title: string): void {
   const nextTitle = title.trim() || 'Untitled';
   const bundle = loadLocalDoc(pn, docId);

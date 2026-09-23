@@ -1,0 +1,16 @@
+{
+  "templateId": "register.basic.v1",
+  "title": "Projects",
+  "rows": [
+    {
+      "id": "p1",
+      "label": "Pen curriculum",
+      "notes": "Agent teaching data"
+    },
+    {
+      "id": "p2",
+      "label": "Feed reconcile",
+      "notes": "Cache alignment"
+    }
+  ]
+}

@@ -16,8 +16,14 @@ export function loadPinnedCategoryIds(pn: string): string[] {
   }
 }
 
-export function savePinnedCategoryIds(pn: string, ids: string[]): void {
+export function savePinnedCategoryIds(pn: string, ids: string[], opts?: { silent?: boolean }): void {
   localStorage.setItem(pinsKey(pn), JSON.stringify([...new Set(ids)]));
+  if (opts?.silent) return;
+  try {
+    void import('./penPrefsCloud').then((m) => m.schedulePrefsCloudPush(pn));
+  } catch {
+    /* ignore */
+  }
 }
 
 export function togglePinnedCategory(pn: string, categoryId: string): string[] {

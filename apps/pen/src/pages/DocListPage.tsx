@@ -19,6 +19,7 @@ import {
   renameLocalDoc,
   type LocalDocSummary
 } from '../services/penLocalStore';
+import { deleteDocCloud, updateDocMetaCloud } from '../services/penCloudStore';
 import {
   createFolder,
   deleteFolder,
@@ -1030,6 +1031,15 @@ export function DocListPage({
     fetchStorageTier(session.accessToken, session.pnIdentifier).then(setStorageTier);
   }, [session.accessToken, session.pnIdentifier]);
 
+  useEffect(() => {
+    const onPrefs = () => {
+      setPins(loadPinnedCategoryIds(session.pnIdentifier));
+      setFolderTick((n) => n + 1);
+    };
+    window.addEventListener('pen-prefs-merged', onPrefs);
+    return () => window.removeEventListener('pen-prefs-merged', onPrefs);
+  }, [session.pnIdentifier]);
+
   const categories = useMemo(
     () => classes.filter((c) => !c.parentId && isConsumerClass(c)),
     [classes]
@@ -1263,10 +1273,20 @@ export function DocListPage({
         : `Delete ${ids.length} documents? This cannot be undone.`
     );
     if (!ok) return;
-    deleteLocalDocs(session.pnIdentifier, ids);
-    setSelectedIds(new Set());
-    setBulkDeleteMode(false);
-    onDocsChange();
+    void (async () => {
+      setError(null);
+      try {
+        for (const docId of ids) {
+          await deleteDocCloud({ userPnIdentifier: session.pnIdentifier, docId });
+        }
+        deleteLocalDocs(session.pnIdentifier, ids);
+        setSelectedIds(new Set());
+        setBulkDeleteMode(false);
+        onDocsChange();
+      } catch (e) {
+        setError(e instanceof Error ? e.message : 'Could not delete document(s)');
+      }
+    })();
   }
 
   function startRename(docId: string, title: string) {
@@ -1276,10 +1296,19 @@ export function DocListPage({
 
   function commitRename() {
     if (!renamingId) return;
-    renameLocalDoc(session.pnIdentifier, renamingId, renameDraft);
+    const title = renameDraft;
+    const docId = renamingId;
+    renameLocalDoc(session.pnIdentifier, docId, title);
     setRenamingId(null);
     setRenameDraft('');
     onDocsChange();
+    void updateDocMetaCloud({
+      userPnIdentifier: session.pnIdentifier,
+      docId,
+      title
+    }).catch(() => {
+      /* offline — local wins until sync */
+    });
   }
 
   function cancelRename() {
@@ -1290,13 +1319,28 @@ export function DocListPage({
   function handleMoveDoc(docId: string, folderId: string | null) {
     moveLocalDocToFolder(session.pnIdentifier, docId, folderId);
     onDocsChange();
+    void updateDocMetaCloud({
+      userPnIdentifier: session.pnIdentifier,
+      docId,
+      folderId
+    }).catch(() => {
+      /* offline */
+    });
   }
 
   function handleDeleteDoc(docId: string) {
     const ok = window.confirm('Delete this document? This cannot be undone.');
     if (!ok) return;
-    deleteLocalDocs(session.pnIdentifier, [docId]);
-    onDocsChange();
+    void (async () => {
+      setError(null);
+      try {
+        await deleteDocCloud({ userPnIdentifier: session.pnIdentifier, docId });
+        deleteLocalDocs(session.pnIdentifier, [docId]);
+        onDocsChange();
+      } catch (e) {
+        setError(e instanceof Error ? e.message : 'Could not delete document');
+      }
+    })();
   }
 
   function handleCreateFolder() {

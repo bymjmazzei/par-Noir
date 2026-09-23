@@ -1,0 +1,10 @@
+{
+  "templateId": "letter.basic.v1",
+  "title": "Thank you",
+  "sections": [
+    {
+      "slug": "body",
+      "plainText": "Dear friend,\n\nThank you for the quiet evening and the good bread. I made it home safely.\n\nWarmly"
+    }
+  ]
+}

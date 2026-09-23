@@ -2,21 +2,27 @@
 
 import {
   compileDocumentToNote,
+  compileSetToNote,
   defaultPagePresentation,
   emptySection,
   getClass,
+  getTemplate,
+  hashPnIdentifier,
   hashSectionContent,
   signGenesis,
   attachNotary,
   notaryHashForGenesis,
   requireTemplate,
+  snapshotPenEmbeds,
   type PenDocManifest,
-  type PenSectionContent
+  type PenEmbedResolveResult,
+  type PenSectionContent,
+  type ResolvePenEmbed
 } from '@par-noir/pen-protocol';
 import type { PenSession } from '../App';
 import { createDocFromTemplate } from './createDocFromTemplate';
 import type { LocalDocBundle } from './penLocalStore';
-import { saveLocalDoc } from './penLocalStore';
+import { loadLocalDoc, saveLocalDoc } from './penLocalStore';
 import {
   loadPersonalTemplate,
   isPersonalTemplateId,
@@ -25,6 +31,7 @@ import {
 import { resolveSigningKeys } from './penKeys';
 import { requestNotaryStamp } from './penApi';
 import { generateChatKey, generateGroupId } from '@par-noir/dm-crypto';
+import { schedulePrefsCloudPush } from './penPrefsCloud';
 
 export const PEN_PUBLISH_PREFIX = 'pen_publish:';
 /** Legacy browse handoff key — still written alongside for one release. */
@@ -61,14 +68,55 @@ function mapProjectSectionsToLibrary(
   return { sections, toc: libraryTemplate.sections.map((s) => s.slug) };
 }
 
-export function writeSocialPublishHandoff(bundle: LocalDocBundle): void {
-  const compiled = compileDocumentToNote({
-    templateId: bundle.manifest.templateId,
-    title: bundle.manifest.title,
-    sections: bundle.sections,
-    pagePresentation: bundle.manifest.pagePresentation || defaultPagePresentation(),
-    docId: bundle.manifest.docId
-  });
+/** Resolve a penEmbed against the local doc store for the given pn. */
+export function resolvePenEmbedFromLocal(pn: string): ResolvePenEmbed {
+  return (ref): PenEmbedResolveResult | null => {
+    const src = loadLocalDoc(pn, ref.docId);
+    if (!src) return null;
+    if (ref.sectionSlug) {
+      const sec = src.sections.find((s) => s.slug === ref.sectionSlug);
+      if (!sec) return { title: src.manifest.title, sections: [] };
+      return { title: src.manifest.title, doc: sec.doc, sections: [sec] };
+    }
+    return { title: src.manifest.title, sections: src.sections };
+  };
+}
+
+export async function writeSocialPublishHandoff(
+  bundle: LocalDocBundle,
+  opts?: { pnIdentifier?: string; resolveDoc?: ResolvePenEmbed }
+): Promise<{
+  contentClass: 'note';
+  title: string;
+  pages: ReturnType<typeof compileDocumentToNote>['pages'];
+  templateId: string;
+  docId: string;
+  headProof: unknown;
+}> {
+  const resolveDoc =
+    opts?.resolveDoc ||
+    (opts?.pnIdentifier ? resolvePenEmbedFromLocal(opts.pnIdentifier) : async () => null);
+  const presentation = bundle.manifest.pagePresentation || defaultPagePresentation();
+  const tpl = getTemplate(bundle.manifest.templateId);
+  const isSet = tpl?.id === 'set.basic.v1' || tpl?.docType === 'set' || bundle.manifest.docType === 'set';
+
+  const compiled = isSet
+    ? await compileSetToNote({
+        title: bundle.manifest.title,
+        sections: bundle.sections,
+        pagePresentation: presentation,
+        docId: bundle.manifest.docId,
+        resolveDoc,
+        templateId: bundle.manifest.templateId
+      })
+    : compileDocumentToNote({
+        templateId: bundle.manifest.templateId,
+        title: bundle.manifest.title,
+        sections: await snapshotPenEmbeds(bundle.sections, resolveDoc),
+        pagePresentation: presentation,
+        docId: bundle.manifest.docId
+      });
+
   const payload = {
     contentClass: 'note' as const,
     title: compiled.title,
@@ -81,6 +129,7 @@ export function writeSocialPublishHandoff(bundle: LocalDocBundle): void {
   const json = JSON.stringify(payload);
   sessionStorage.setItem(`${PEN_PUBLISH_PREFIX}${bundle.manifest.docId}`, json);
   sessionStorage.setItem(`${PEN_PUBLISH_NOTE_PREFIX}${bundle.manifest.docId}`, json);
+  return payload;
 }
 
 export function saveAsPersonalTemplate(
@@ -89,6 +138,7 @@ export function saveAsPersonalTemplate(
   title?: string
 ): { templateId: string; title: string } {
   const tpl = savePersonalTemplateFromDoc(pn, bundle, { title });
+  schedulePrefsCloudPush(pn);
   return { templateId: tpl.id, title: tpl.title };
 }
 
@@ -118,6 +168,7 @@ export function saveProjectAsLibraryTemplate(
     })),
     seedSections: mapped.sections
   });
+  schedulePrefsCloudPush(pn);
   return { templateId: tpl.id, title: tpl.title };
 }
 
@@ -180,13 +231,47 @@ export async function promoteProjectToFinishedLibraryDoc(input: {
       updatedAt: now,
       genesisProof: genesis,
       pageLayout: bundle.manifest.pageLayout || 'letter',
-      pagePresentation: bundle.manifest.pagePresentation || defaultPagePresentation()
+      pagePresentation: bundle.manifest.pagePresentation || defaultPagePresentation(),
+      lifecycle: 'published',
+      ownerPnHash: hashPnIdentifier(session.pnIdentifier)
     },
     sections: mapped.sections,
     chain: { docId, genesis, links: [] }
   };
   saveLocalDoc(session.pnIdentifier, next);
+  try {
+    const { bootstrapDocCloud } = await import('./penCloudStore');
+    const draftId = `draft_${crypto.randomUUID().replace(/-/g, '').slice(0, 12)}`;
+    await bootstrapDocCloud({
+      userPnIdentifier: session.pnIdentifier,
+      bundle: next,
+      draft: {
+        draftId,
+        docId,
+        authorPnHash: hashPnIdentifier(session.pnIdentifier),
+        createdAt: now,
+        updatedAt: now,
+        status: 'unfinished',
+        toc: mapped.toc
+      }
+    });
+    await publishDocCloudFinished(session.pnIdentifier, next);
+  } catch {
+    /* offline — local buffer; sync queue later */
+  }
   return next;
+}
+
+async function publishDocCloudFinished(
+  userPnIdentifier: string,
+  bundle: LocalDocBundle
+): Promise<void> {
+  const { publishDocCloud } = await import('./penCloudStore');
+  await publishDocCloud({
+    userPnIdentifier,
+    manifest: bundle.manifest,
+    sections: bundle.sections
+  });
 }
 
 /** Create a doc from a personal template id (used by New… picker). */

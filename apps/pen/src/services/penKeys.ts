@@ -1,8 +1,7 @@
 import { base64ToBytes } from '@par-noir/pqc-crypto/encoding';
-import { mlDsa65Keygen } from '@par-noir/pqc-crypto/ml-dsa';
-import type { PenSession } from '../App';
+import type { PenSession } from './penSession';
 
-/** Prefer session ML-DSA keys from messaging handoff; ephemeral only as last resort. */
+/** Prefer session ML-DSA keys from messaging handoff. No ephemeral fallback. */
 export function resolveSigningKeys(session: PenSession): {
   publicKey: Uint8Array;
   secretKey: Uint8Array;
@@ -16,9 +15,10 @@ export function resolveSigningKeys(session: PenSession): {
         ephemeral: false
       };
     } catch {
-      /* fall through */
+      throw new Error('signing_keys_invalid');
     }
   }
-  const keys = mlDsa65Keygen();
-  return { ...keys, ephemeral: true };
+  throw new Error(
+    'signing_keys_required — unlock again so ML-DSA keys are included in the messaging handoff'
+  );
 }

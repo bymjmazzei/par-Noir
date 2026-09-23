@@ -132,6 +132,16 @@ export async function redirectWithAuthCode(args: RedirectWithAuthCodeArgs): Prom
           'This pN identity does not include messaging encryption keys. Create or update your identity at pn.parnoir.com, then try again.'
         );
       }
+      // Size-aware: hash may strip ML-DSA; window.name still carries the full session
+      // when the broker can set it. postMessage below always includes the full handoff.
+      try {
+        window.name = buildMessagingSessionWindowName(
+          messagingHandoff.session,
+          messagingHandoff.timestamp
+        );
+      } catch {
+        /* ignore */
+      }
       hashPayload = buildMessagingHandoffHash({
         v: 1,
         timestamp: messagingHandoff.timestamp,

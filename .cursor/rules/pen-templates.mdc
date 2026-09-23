@@ -67,3 +67,5 @@ Do not reintroduce Thought as product vocabulary for new work. Hard-cut legacy t
 ## Package
 
 Shared logic lives in `@par-noir/pen-protocol` (when the package exists). Apps only wire unlock, Drive I/O via `ownerFetch`, and UI.
+
+**External agents:** templates ship `agentStarter`; teaching data is `@par-noir/pen-curriculum`. See ADR_PEN decision 12.

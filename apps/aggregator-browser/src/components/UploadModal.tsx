@@ -13,7 +13,7 @@ import { FeedService } from '../services/feedService';
 import { Settings, X } from 'lucide-react';
 import { uploadQueueService } from '../services/uploadQueueService';
 import { useDriveAccounts } from '../hooks/useDriveAccounts';
-import { rememberPublishedFileId, takePenPublishHandoff } from '../utils/penPublishHandoff';
+import { rememberPublishedFileId, takePenPublishHandoff, peekPenPublishHandoff } from '../utils/penPublishHandoff';
 
 interface UploadModalProps {
   feeds?: Feed[];
@@ -23,7 +23,7 @@ interface UploadModalProps {
 
 export function UploadModal({ feeds: propsFeeds, onClose, onUploadComplete }: UploadModalProps) {
   const { userState } = useUserState();
-  const [showTextEditor, setShowTextEditor] = useState(false);
+  const [showTextEditor, setShowTextEditor] = useState(() => Boolean(peekPenPublishHandoff()?.pages?.length));
   const [showSettings, setShowSettings] = useState(false);
   const [editorAccountId, setEditorAccountId] = useState<string | null>(null);
   const [, setFeeds] = useState<Feed[]>(propsFeeds || []);
