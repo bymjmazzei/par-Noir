@@ -3,6 +3,8 @@
 import {
   emptySection,
   defaultPagePresentation,
+  defaultEditorPagePresentation,
+  getClass,
   hashSectionContent,
   notaryHashForGenesis,
   attachNotary,
@@ -99,8 +101,11 @@ export async function createDocFromTemplate(input: {
     createdAt: now,
     updatedAt: now,
     genesisProof: genesis,
-    pageLayout: 'flow',
-    pagePresentation: defaultPagePresentation(),
+    pageLayout: getClass(template.classId)?.parentId === 'social' ? 'flow' : 'letter',
+    pagePresentation:
+      getClass(template.classId)?.parentId === 'social'
+        ? defaultPagePresentation()
+        : defaultEditorPagePresentation(),
     ownerPnHash,
     roles: ensureOwnerAssignment([], ownerPnHash),
     lifecycle: 'draft',

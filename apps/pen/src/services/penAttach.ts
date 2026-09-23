@@ -70,13 +70,17 @@ export interface CloudImageItem {
   mimeType?: string;
 }
 
-/** List image files from the user's Drive via first-party API. */
-export async function listCloudImages(
+export async function listCloudMedia(
   _accessToken: string,
-  pnIdentifier?: string
+  pnIdentifier?: string,
+  kind: 'image' | 'video' | 'any' = 'any'
 ): Promise<CloudImageItem[]> {
-  const q = encodeURIComponent("mimeType contains 'image/' and trashed=false");
-  const res = await ownerGet(`/api/drive/files?q=${q}&pageSize=40`, { pnIdentifier });
+  const clauses: string[] = ['trashed=false'];
+  if (kind === 'image') clauses.unshift("mimeType contains 'image/'");
+  else if (kind === 'video') clauses.unshift("mimeType contains 'video/'");
+  else clauses.unshift("(mimeType contains 'image/' or mimeType contains 'video/')");
+  const q = encodeURIComponent(clauses.join(' and '));
+  const res = await ownerGet(`/api/drive/files?q=${q}&pageSize=60`, { pnIdentifier });
   if (!res.ok) throw new Error('cloud_list_failed');
   const data = (await res.json()) as {
     files?: Array<{ id?: string; name?: string; mimeType?: string }>;
@@ -88,6 +92,14 @@ export async function listCloudImages(
       name: String(f.name),
       mimeType: f.mimeType
     }));
+}
+
+/** @deprecated Prefer listCloudMedia */
+export async function listCloudImages(
+  accessToken: string,
+  pnIdentifier?: string
+): Promise<CloudImageItem[]> {
+  return listCloudMedia(accessToken, pnIdentifier, 'image');
 }
 
 /**

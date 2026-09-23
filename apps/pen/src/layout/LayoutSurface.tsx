@@ -5,6 +5,7 @@ import {
   type PointerEvent as ReactPointerEvent,
   type ReactNode
 } from 'react';
+import { snapLayoutToPageCenter } from '@par-noir/pen-protocol';
 import { clampLayoutItem, sortByZ, type LayoutItem } from './types';
 
 type DragMode = 'move' | 'resize';
@@ -24,7 +25,8 @@ export function LayoutSurface({
   onSelect,
   className,
   renderItem,
-  disabled
+  disabled,
+  snapToPageCenter
 }: {
   items: LayoutItem[];
   onChange: (next: LayoutItem[]) => void;
@@ -33,9 +35,11 @@ export function LayoutSurface({
   className?: string;
   renderItem: (item: LayoutItem, selected: boolean) => ReactNode;
   disabled?: boolean;
+  snapToPageCenter?: boolean;
 }) {
   const surfaceRef = useRef<HTMLDivElement>(null);
   const [drag, setDrag] = useState<DragState | null>(null);
+  const [guides, setGuides] = useState<{ v: boolean; h: boolean }>({ v: false, h: false });
 
   const updateItem = useCallback(
     (id: string, patch: Partial<LayoutItem>) => {
@@ -82,13 +86,21 @@ export function LayoutSurface({
     const dx = ((e.clientX - drag.startX) / r.width) * 100;
     const dy = ((e.clientY - drag.startY) / r.height) * 100;
     if (drag.mode === 'move') {
-      updateItem(drag.id, { x: drag.orig.x + dx, y: drag.orig.y + dy });
+      let next = { x: drag.orig.x + dx, y: drag.orig.y + dy, w: drag.orig.w, h: drag.orig.h };
+      const snapped = snapLayoutToPageCenter(next, { enabled: snapToPageCenter });
+      next = { ...next, x: snapped.x, y: snapped.y };
+      setGuides({ v: snapped.snappedX, h: snapped.snappedY });
+      updateItem(drag.id, { x: next.x, y: next.y });
     } else {
+      setGuides({ v: false, h: false });
       updateItem(drag.id, { w: drag.orig.w + dx, h: drag.orig.h + dy });
     }
   };
 
-  const onPointerUp = () => setDrag(null);
+  const onPointerUp = () => {
+    setDrag(null);
+    setGuides({ v: false, h: false });
+  };
 
   return (
     <div
@@ -99,6 +111,12 @@ export function LayoutSurface({
       onPointerLeave={onPointerUp}
       onPointerDown={() => onSelect?.(null)}
     >
+      {guides.v && (
+        <div className="pointer-events-none absolute inset-y-0 left-1/2 z-30 w-px -translate-x-1/2 bg-sky-400/80" />
+      )}
+      {guides.h && (
+        <div className="pointer-events-none absolute inset-x-0 top-1/2 z-30 h-px -translate-y-1/2 bg-sky-400/80" />
+      )}
       {sortByZ(items).map((item) => {
         const selected = selectedId === item.id;
         return (

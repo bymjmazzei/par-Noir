@@ -24,6 +24,7 @@ import {
   Send,
   Share2,
   Table,
+  Trash2,
   Undo2,
   Unlock,
   Upload,
@@ -112,6 +113,9 @@ export function IconLock(p: SVGProps<SVGSVGElement>) {
 }
 export function IconUnlock(p: SVGProps<SVGSVGElement>) {
   return <Unlock {...sz} {...p} />;
+}
+export function IconTrash(p: SVGProps<SVGSVGElement>) {
+  return <Trash2 {...sz} {...p} />;
 }
 export function IconSend(p: SVGProps<SVGSVGElement>) {
   return <Send {...sz} {...p} />;

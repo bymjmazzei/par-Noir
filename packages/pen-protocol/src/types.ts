@@ -48,6 +48,8 @@ export interface PenPageLayer {
   w: number;
   h: number;
   zIndex: number;
+  /** Optional display name; UI defaults to "Layer N" when unset. */
+  name?: string;
   /** text layers */
   textDoc?: PenTipTapNode;
   /** image layers */
@@ -121,6 +123,8 @@ export interface PenDocManifest {
   pagePresentation?: PenPagePresentation;
   /** Aggregator fileId after Connect to feed — engagement comments key. */
   publishedFileId?: string;
+  /** When true, overlay objects snap to page center/middle while dragging. */
+  snapToPageGuides?: boolean;
   /** Owner pn hash — unrevokable. */
   ownerPnHash?: string;
   /** Access control list (includes owner). */

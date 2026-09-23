@@ -1,6 +1,6 @@
 import { useMemo, useRef, useState, type CSSProperties } from 'react';
 import {
-  defaultPagePresentation,
+  defaultEditorPagePresentation,
   docToHtml,
   getTextLayerDoc,
   isPageLayerId,
@@ -22,6 +22,7 @@ import {
   layerPreviewStyle,
   pageFrameStyle
 } from './LayerObjectToolbar';
+import type { PenSession } from '../services/penSession';
 
 function layerToItem(layer: PenPageLayer): LayoutItem {
   return {
@@ -49,7 +50,9 @@ export function EditablePagePreview({
   onSelectLayer,
   onSectionChange,
   onPageLayoutChange,
-  onPresentationChange
+  onPresentationChange,
+  onSnapChange,
+  session
 }: {
   manifest: PenDocManifest;
   section: PenSectionContent;
@@ -58,31 +61,51 @@ export function EditablePagePreview({
   onSectionChange: (next: PenSectionContent) => void;
   onPageLayoutChange?: (layout: PenPageLayout) => void;
   onPresentationChange?: (next: Partial<PenPagePresentation>) => void;
+  onSnapChange?: (enabled: boolean) => void;
+  session?: PenSession | null;
 }) {
   const layersBtnRef = useRef<HTMLButtonElement>(null);
   const [layersOpen, setLayersOpen] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<string[]>([PAGE_LAYER_ID]);
   const prepared = useMemo(() => normalizeSection(section), [section]);
   const layers = prepared.layers || [];
   const visibleLayers = layers.filter((l) => l.visible !== false);
   const items = visibleLayers.map(layerToItem);
   const presentation = mergePagePresentation(
-    defaultPagePresentation(),
-    manifest.pagePresentation || undefined
+    defaultEditorPagePresentation(),
+    (() => {
+      const raw = manifest.pagePresentation;
+      if (!raw) return undefined;
+      // Editor page: inherited social black fill → transparent (user sets color explicitly)
+      if (
+        raw.backgroundColor === '#000000' &&
+        !raw.backgroundImage &&
+        !raw.backgroundGradient &&
+        !raw.backgroundVideo
+      ) {
+        return { ...raw, backgroundColor: 'transparent' };
+      }
+      return raw;
+    })()
   );
+  const snapEnabled = Boolean(manifest.snapToPageGuides);
 
   const activeObject = layers.find((l) => l.id === activeLayerId) || null;
   const pageActive = isPageLayerId(activeLayerId);
   const layersButtonTitle = pageActive
     ? pageLayerLabel(manifest.pageLayout)
     : activeObject
-      ? layerDisplayLabel(
-          activeObject,
-          [...layers].sort((a, b) => b.zIndex - a.zIndex).findIndex((l) => l.id === activeObject.id)
-        )
+      ? layerDisplayLabel(activeObject, layers)
       : 'Layers';
 
   function onLayoutChange(nextItems: LayoutItem[]) {
     onSectionChange(updateLayerLayout(prepared, nextItems));
+  }
+
+  function selectLayer(id: string | null) {
+    const next = id || PAGE_LAYER_ID;
+    onSelectLayer(next);
+    setSelectedIds([next]);
   }
 
   const frameStyle: CSSProperties = pageFrameStyle(presentation);
@@ -100,13 +123,26 @@ export function EditablePagePreview({
             title="Page layout"
             onChange={(e) => {
               onPageLayoutChange(e.target.value as PenPageLayout);
-              onSelectLayer(PAGE_LAYER_ID);
+              selectLayer(PAGE_LAYER_ID);
             }}
           >
             <option value="flow">Flow</option>
             <option value="letter">Letter</option>
             <option value="a4">A4</option>
           </select>
+        )}
+        {onSnapChange && (
+          <button
+            type="button"
+            title={snapEnabled ? 'Snap to page center on' : 'Snap to page center off'}
+            aria-pressed={snapEnabled}
+            className={`shrink-0 rounded px-1.5 text-[10px] font-bold uppercase tracking-wide ${
+              snapEnabled ? 'bg-neutral-900 text-white' : 'text-neutral-400 hover:text-black'
+            }`}
+            onClick={() => onSnapChange(!snapEnabled)}
+          >
+            Snap
+          </button>
         )}
 
         <div className="ml-auto flex min-w-0 items-center gap-1">
@@ -118,6 +154,8 @@ export function EditablePagePreview({
             }
             presentation={presentation}
             section={prepared}
+            session={session}
+            docId={manifest.docId}
             onPresentationChange={onPresentationChange}
             onSectionChange={onSectionChange}
           />
@@ -151,15 +189,17 @@ export function EditablePagePreview({
         onSelectLayer={onSelectLayer}
         onSectionChange={onSectionChange}
         pageLayout={manifest.pageLayout}
+        selectedIds={selectedIds}
+        onSelectedIdsChange={setSelectedIds}
       />
 
-      <div className="flex flex-1 items-start justify-center overflow-auto p-6">
+      <div className="flex flex-1 items-start justify-center overflow-auto bg-neutral-100 p-6">
         <div
-          className={`relative w-full overflow-hidden border border-neutral-200 ${pageFrameClass(
+          className={`relative w-full overflow-hidden border border-neutral-200 bg-white ${pageFrameClass(
             manifest.pageLayout
           )}`}
           style={frameStyle}
-          onClick={() => onSelectLayer(PAGE_LAYER_ID)}
+          onClick={() => selectLayer(PAGE_LAYER_ID)}
         >
           {presentation.backgroundVideo && (
             <video
@@ -175,7 +215,8 @@ export function EditablePagePreview({
             className="relative z-[1] h-full min-h-[28rem] w-full"
             items={items}
             selectedId={pageActive ? null : activeLayerId}
-            onSelect={(id) => onSelectLayer(id || PAGE_LAYER_ID)}
+            snapToPageCenter={snapEnabled}
+            onSelect={(id) => selectLayer(id || PAGE_LAYER_ID)}
             onChange={onLayoutChange}
             renderItem={(item) => {
               const layer = layers.find((l) => l.id === item.id);

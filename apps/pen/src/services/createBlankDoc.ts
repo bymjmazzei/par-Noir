@@ -3,6 +3,7 @@
 import {
   emptySection,
   defaultPagePresentation,
+  defaultEditorPagePresentation,
   getClass,
   hashSectionContent,
   notaryHashForGenesis,
@@ -132,7 +133,10 @@ export async function createBlankDoc(input: {
     updatedAt: now,
     genesisProof: genesis,
     pageLayout,
-    pagePresentation: defaultPagePresentation(),
+    pagePresentation:
+      getClass(shape.classId)?.parentId === 'social'
+        ? defaultPagePresentation()
+        : defaultEditorPagePresentation(),
     ownerPnHash,
     roles: ensureOwnerAssignment([], ownerPnHash),
     lifecycle: 'draft',

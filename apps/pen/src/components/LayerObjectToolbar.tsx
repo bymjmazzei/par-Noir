@@ -10,6 +10,8 @@ import {
   type PenPagePresentation,
   type PenSectionContent
 } from '@par-noir/pen-protocol';
+import { CloudFeedMediaPicker } from './CloudFeedMediaPicker';
+import type { PenSession } from '../services/penSession';
 
 export type ObjectToolTarget =
   | { kind: 'page' }
@@ -87,17 +89,8 @@ function Popover({
   );
 }
 
-function readFileAsDataUrl(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(String(reader.result || ''));
-    reader.onerror = () => reject(reader.error);
-    reader.readAsDataURL(file);
-  });
-}
-
 function pageFill(p: PenPagePresentation): {
-  mode: BgMode;
+  mode: BgMode | 'none';
   color: string;
   gradient: string;
 } {
@@ -105,7 +98,10 @@ function pageFill(p: PenPagePresentation): {
   if (p.backgroundImage) return { mode: 'image', color: p.backgroundColor || '#ffffff', gradient: '' };
   if (p.backgroundGradient)
     return { mode: 'gradient', color: p.backgroundColor || '#ffffff', gradient: p.backgroundGradient };
-  return { mode: 'color', color: p.backgroundColor || '#ffffff', gradient: '' };
+  if (!p.backgroundColor || p.backgroundColor === 'transparent') {
+    return { mode: 'none', color: '#ffffff', gradient: '' };
+  }
+  return { mode: 'color', color: p.backgroundColor, gradient: '' };
 }
 
 function layerFill(l: PenPageLayer): {
@@ -124,17 +120,21 @@ export function LayerObjectToolbar({
   target,
   presentation,
   section,
+  session,
+  docId,
   onPresentationChange,
   onSectionChange
 }: {
   target: ObjectToolTarget;
   presentation: PenPagePresentation;
   section: PenSectionContent;
+  session?: PenSession | null;
+  docId?: string;
   onPresentationChange?: (next: Partial<PenPagePresentation>) => void;
   onSectionChange: (next: PenSectionContent) => void;
 }) {
   const [open, setOpen] = useState<'bg' | 'shadow' | 'blur' | 'blend' | 'opacity' | null>(null);
-  const fileRef = useRef<HTMLInputElement>(null);
+  const [cloudOpen, setCloudOpen] = useState(false);
   const [fileKind, setFileKind] = useState<'image' | 'video'>('image');
 
   const isPage = target.kind === 'page';
@@ -150,39 +150,38 @@ export function LayerObjectToolbar({
     onPresentationChange?.(partial);
   }
 
-  async function onFile(file: File) {
-    const src = await readFileAsDataUrl(file);
-    if (!src) return;
-    if (isPage) {
-      if (fileKind === 'image') {
+  // media applied via CloudFeedMediaPicker
+  async function applyMediaDataUrl(src: string) {
+    if (fileKind === 'image') {
+      if (isPage) {
         patchPage({
           backgroundImage: src,
           backgroundVideo: undefined,
-          backgroundGradient: undefined
+          backgroundGradient: undefined,
+          backgroundColor: 'transparent'
         });
       } else {
-        patchPage({
-          backgroundVideo: src,
-          backgroundImage: undefined,
-          backgroundGradient: undefined
+        patchLayer({
+          backgroundImage: src,
+          backgroundVideo: undefined,
+          backgroundGradient: undefined,
+          backgroundColor: undefined
         });
       }
+    } else if (isPage) {
+      patchPage({
+        backgroundVideo: src,
+        backgroundImage: undefined,
+        backgroundGradient: undefined,
+        backgroundColor: 'transparent'
+      });
     } else {
-      if (fileKind === 'image') {
-        patchLayer({
-          backgroundImage: src,
-          backgroundVideo: undefined,
-          backgroundGradient: undefined,
-          backgroundColor: undefined
-        });
-      } else {
-        patchLayer({
-          backgroundVideo: src,
-          backgroundImage: undefined,
-          backgroundGradient: undefined,
-          backgroundColor: undefined
-        });
-      }
+      patchLayer({
+        backgroundVideo: src,
+        backgroundImage: undefined,
+        backgroundGradient: undefined,
+        backgroundColor: undefined
+      });
     }
   }
 
@@ -250,6 +249,24 @@ export function LayerObjectToolbar({
         <div className="space-y-2 text-[11px]">
           <div className="font-bold uppercase tracking-wide text-neutral-400">Background</div>
           <div className="flex flex-wrap gap-1">
+            {isPage && (
+              <button
+                type="button"
+                className={`rounded px-2 py-1 ${
+                  fill.mode === 'none' ? 'bg-black text-white' : 'bg-neutral-100 text-neutral-700'
+                }`}
+                onClick={() =>
+                  patchPage({
+                    backgroundColor: 'transparent',
+                    backgroundGradient: undefined,
+                    backgroundImage: undefined,
+                    backgroundVideo: undefined
+                  })
+                }
+              >
+                None
+              </button>
+            )}
             {(['color', 'gradient', 'image', 'video'] as BgMode[]).map((m) => (
               <button
                 key={m}
@@ -261,6 +278,7 @@ export function LayerObjectToolbar({
                   if (m === 'color') {
                     if (isPage) {
                       patchPage({
+                        backgroundColor: '#ffffff',
                         backgroundGradient: undefined,
                         backgroundImage: undefined,
                         backgroundVideo: undefined
@@ -279,7 +297,8 @@ export function LayerObjectToolbar({
                       patchPage({
                         backgroundGradient: g,
                         backgroundImage: undefined,
-                        backgroundVideo: undefined
+                        backgroundVideo: undefined,
+                        backgroundColor: 'transparent'
                       });
                     } else {
                       patchLayer({
@@ -291,7 +310,8 @@ export function LayerObjectToolbar({
                     }
                   } else {
                     setFileKind(m);
-                    fileRef.current?.click();
+                    setCloudOpen(true);
+                    setOpen(null);
                   }
                 }}
               >
@@ -333,7 +353,8 @@ export function LayerObjectToolbar({
               className="font-bold text-black hover:opacity-60"
               onClick={() => {
                 setFileKind(fill.mode === 'video' ? 'video' : 'image');
-                fileRef.current?.click();
+                setCloudOpen(true);
+                setOpen(null);
               }}
             >
               Replace {fill.mode}…
@@ -485,16 +506,13 @@ export function LayerObjectToolbar({
         </div>
       </Popover>
 
-      <input
-        ref={fileRef}
-        type="file"
-        accept={fileKind === 'image' ? 'image/*' : 'video/*'}
-        className="hidden"
-        onChange={(e) => {
-          const f = e.target.files?.[0];
-          if (f) void onFile(f);
-          e.target.value = '';
-        }}
+      <CloudFeedMediaPicker
+        open={cloudOpen}
+        onClose={() => setCloudOpen(false)}
+        session={session || null}
+        kind={fileKind}
+        docId={docId}
+        onPickDataUrl={(url) => void applyMediaDataUrl(url)}
       />
     </div>
   );
@@ -527,9 +545,20 @@ export function layerPreviewStyle(layer: PenPageLayer): CSSProperties {
 }
 
 export function pageFrameStyle(presentation: PenPagePresentation): CSSProperties {
-  const style: CSSProperties = {
-    backgroundColor: presentation.backgroundColor || '#ffffff'
-  };
+  const style: CSSProperties = {};
+  const hasMedia =
+    Boolean(presentation.backgroundGradient) ||
+    Boolean(presentation.backgroundImage) ||
+    Boolean(presentation.backgroundVideo);
+  if (
+    presentation.backgroundColor &&
+    presentation.backgroundColor !== 'transparent' &&
+    !hasMedia
+  ) {
+    style.backgroundColor = presentation.backgroundColor;
+  } else {
+    style.backgroundColor = 'transparent';
+  }
   if (presentation.backgroundGradient) {
     style.backgroundImage = presentation.backgroundGradient;
   } else if (presentation.backgroundImage) {

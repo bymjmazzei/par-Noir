@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import type { Editor } from '@tiptap/react';
 import {
+  defaultEditorPagePresentation,
   defaultPagePresentation,
   ensureDefaultTextLayer,
   getClass,
@@ -1346,6 +1347,7 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
                   manifest={bundle.manifest}
                   section={section}
                   activeLayerId={activeLayerId}
+                  session={session}
                   onSelectLayer={(id) => {
                     setActiveLayerId(id || PAGE_LAYER_ID);
                   }}
@@ -1359,9 +1361,19 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
                       }
                     });
                   }}
+                  onSnapChange={(enabled) => {
+                    persist({
+                      ...bundle,
+                      manifest: {
+                        ...bundle.manifest,
+                        snapToPageGuides: enabled,
+                        updatedAt: new Date().toISOString()
+                      }
+                    });
+                  }}
                   onPresentationChange={(partial) => {
                     const next = mergePagePresentation(
-                      defaultPagePresentation(),
+                      defaultEditorPagePresentation(),
                       {
                         ...(bundle.manifest.pagePresentation || {}),
                         ...partial

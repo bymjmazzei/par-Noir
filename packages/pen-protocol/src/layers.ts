@@ -15,7 +15,7 @@ function newLayerId(): string {
 }
 
 export function createTextLayer(
-  partial?: Partial<Pick<PenPageLayer, 'x' | 'y' | 'w' | 'h' | 'zIndex' | 'textDoc'>>
+  partial?: Partial<Pick<PenPageLayer, 'x' | 'y' | 'w' | 'h' | 'zIndex' | 'textDoc' | 'name'>>
 ): PenPageLayer {
   return {
     id: newLayerId(),
@@ -25,9 +25,129 @@ export function createTextLayer(
     w: partial?.w ?? 84,
     h: partial?.h ?? 40,
     zIndex: partial?.zIndex ?? 1,
+    name: partial?.name,
     textDoc: partial?.textDoc ?? emptyTipTapDoc()
   };
 }
+
+/** Display name: explicit name, else "Layer N" by back-to-front index (1 = back). */
+export function defaultLayerName(
+  layer: PenPageLayer,
+  allLayers: PenPageLayer[]
+): string {
+  if (layer.name?.trim()) return layer.name.trim();
+  const ordered = [...allLayers].sort((a, b) => a.zIndex - b.zIndex);
+  const idx = ordered.findIndex((l) => l.id === layer.id);
+  return `Layer ${idx >= 0 ? idx + 1 : 1}`;
+}
+
+export type LayerAlignMode =
+  | 'left'
+  | 'centerH'
+  | 'right'
+  | 'top'
+  | 'middleV'
+  | 'bottom';
+
+export function alignLayers(
+  section: PenSectionContent,
+  ids: string[],
+  mode: LayerAlignMode
+): PenSectionContent {
+  const set = new Set(ids);
+  const targets = (section.layers || []).filter((l) => set.has(l.id));
+  if (targets.length < 2) return section;
+  const minX = Math.min(...targets.map((l) => l.x));
+  const maxR = Math.max(...targets.map((l) => l.x + l.w));
+  const minY = Math.min(...targets.map((l) => l.y));
+  const maxB = Math.max(...targets.map((l) => l.y + l.h));
+  const midX = (minX + maxR) / 2;
+  const midY = (minY + maxB) / 2;
+  const layers = (section.layers || []).map((l) => {
+    if (!set.has(l.id)) return l;
+    if (mode === 'left') return { ...l, x: minX };
+    if (mode === 'right') return { ...l, x: maxR - l.w };
+    if (mode === 'centerH') return { ...l, x: midX - l.w / 2 };
+    if (mode === 'top') return { ...l, y: minY };
+    if (mode === 'bottom') return { ...l, y: maxB - l.h };
+    if (mode === 'middleV') return { ...l, y: midY - l.h / 2 };
+    return l;
+  });
+  return { ...section, layers };
+}
+
+export function distributeLayers(
+  section: PenSectionContent,
+  ids: string[],
+  axis: 'h' | 'v'
+): PenSectionContent {
+  const set = new Set(ids);
+  const targets = (section.layers || [])
+    .filter((l) => set.has(l.id))
+    .sort((a, b) => (axis === 'h' ? a.x - b.x : a.y - b.y));
+  if (targets.length < 3) return section;
+  const first = targets[0]!;
+  const last = targets[targets.length - 1]!;
+  if (axis === 'h') {
+    const span = last.x + last.w - first.x;
+    const totalW = targets.reduce((s, l) => s + l.w, 0);
+    const gap = (span - totalW) / (targets.length - 1);
+    let cursor = first.x;
+    const pos = new Map<string, number>();
+    for (const t of targets) {
+      pos.set(t.id, cursor);
+      cursor += t.w + gap;
+    }
+    return {
+      ...section,
+      layers: (section.layers || []).map((l) =>
+        pos.has(l.id) ? { ...l, x: pos.get(l.id)! } : l
+      )
+    };
+  }
+  const span = last.y + last.h - first.y;
+  const totalH = targets.reduce((s, l) => s + l.h, 0);
+  const gap = (span - totalH) / (targets.length - 1);
+  let cursor = first.y;
+  const pos = new Map<string, number>();
+  for (const t of targets) {
+    pos.set(t.id, cursor);
+    cursor += t.h + gap;
+  }
+  return {
+    ...section,
+    layers: (section.layers || []).map((l) =>
+      pos.has(l.id) ? { ...l, y: pos.get(l.id)! } : l
+    )
+  };
+}
+
+/** Snap layer center to page center when within threshold (%). */
+export function snapLayoutToPageCenter(
+  item: { x: number; y: number; w: number; h: number },
+  opts?: { threshold?: number; enabled?: boolean }
+): { x: number; y: number; snappedX: boolean; snappedY: boolean } {
+  if (opts?.enabled === false) {
+    return { x: item.x, y: item.y, snappedX: false, snappedY: false };
+  }
+  const thr = opts?.threshold ?? 2.5;
+  const cx = item.x + item.w / 2;
+  const cy = item.y + item.h / 2;
+  let x = item.x;
+  let y = item.y;
+  let snappedX = false;
+  let snappedY = false;
+  if (Math.abs(cx - 50) <= thr) {
+    x = 50 - item.w / 2;
+    snappedX = true;
+  }
+  if (Math.abs(cy - 50) <= thr) {
+    y = 50 - item.h / 2;
+    snappedY = true;
+  }
+  return { x, y, snappedX, snappedY };
+}
+
 
 export function createImageLayer(
   imageSrc: string,
@@ -192,6 +312,7 @@ export function ensureDefaultTextLayer(section: PenSectionContent): PenSectionCo
   const layer: PenPageLayer = {
     id: 'layer_primary',
     kind: 'text',
+    name: 'Layer 1',
     x: 8,
     y: 8,
     w: 84,
