@@ -20,9 +20,11 @@ body {
   font-size: 12pt;
   line-height: 1.5;
   color: #1c1917;
-  /* Prefer breaks at spaces; only split a token if it cannot fit the line. */
-  hyphens: none;
-  -webkit-hyphens: none;
+  /* Prefer breaks at spaces; mid-word only when needed, with a visible '-' . */
+  hyphens: auto;
+  -webkit-hyphens: auto;
+  -ms-hyphens: auto;
+  hyphenate-character: '-';
   overflow-wrap: break-word;
   word-break: normal;
 }
@@ -131,8 +133,10 @@ body {
 
 /* Preview / compiled HTML — same break policy as the writing surface */
 .pen-rich-html {
-  hyphens: none;
-  -webkit-hyphens: none;
+  hyphens: auto;
+  -webkit-hyphens: auto;
+  -ms-hyphens: auto;
+  hyphenate-character: '-';
   overflow-wrap: break-word;
   word-break: normal;
 }
