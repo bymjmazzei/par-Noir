@@ -816,6 +816,7 @@ button.pen-app-chrome-brand:hover {
 
 /*
  * One scrollport for header + rows so columns stay aligned when the window shrinks.
+ * Ruled lines fill the whole scrollport (including empty space above the footer).
  */
 .pen-explorer-scroll {
   position: relative;
@@ -825,6 +826,16 @@ button.pen-app-chrome-brand:hover {
   width: 100%;
   overflow: auto;
   -webkit-overflow-scrolling: touch;
+  background-color: #fff;
+  background-image: repeating-linear-gradient(
+    to bottom,
+    transparent 0,
+    transparent calc(var(--pen-rule-pitch) - 1px),
+    var(--pen-rule-blue) calc(var(--pen-rule-pitch) - 1px),
+    var(--pen-rule-blue) var(--pen-rule-pitch)
+  );
+  background-position: 0 var(--pen-explorer-head-h);
+  background-repeat: repeat-y;
 }
 
 .pen-explorer-row {
@@ -876,17 +887,6 @@ button.pen-app-chrome-brand:hover {
 
 .pen-explorer thead th.pen-explorer-action {
   background: #fff;
-}
-
-.pen-explorer tbody {
-  /* Ruled lines travel with rows (same pitch as row height) */
-  background-image: repeating-linear-gradient(
-    to bottom,
-    transparent 0,
-    transparent calc(var(--pen-rule-pitch) - 1px),
-    var(--pen-rule-blue) calc(var(--pen-rule-pitch) - 1px),
-    var(--pen-rule-blue) var(--pen-rule-pitch)
-  );
 }
 
 .pen-explorer tbody td {
@@ -1040,10 +1040,12 @@ button.pen-app-chrome-brand:hover {
   box-sizing: border-box;
   margin: 0;
   padding: 0;
-  border: none;
-  background: transparent;
-  /* Preview clips; title + ⋮ menu must paint above adjacent tiles */
-  overflow: visible;
+  /* Whole tile (title + preview) is the raised object */
+  background: #fff;
+  border: 1px solid #d4d4d4;
+  border-radius: 2px;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.14);
+  overflow: hidden;
   text-align: left;
   color: inherit;
   font: inherit;
@@ -1063,8 +1065,8 @@ button.pen-app-chrome-brand:hover {
   flex-shrink: 0;
   height: var(--pen-gallery-title-h);
   box-sizing: border-box;
-  padding: 0 0.1rem 0.15rem;
-  background: transparent;
+  padding: 0.15rem 0.3rem 0.1rem;
+  background: #fff;
   border: none;
 }
 
@@ -1093,7 +1095,7 @@ input.pen-gallery-tile-title-text {
 }
 
 /*
- * Uniform raised preview frame — same size for create / notebook / doc / template.
+ * Preview pane inside the raised tile — no second border/shadow.
  * Shadow stays inside the 4-line slot (band-pad absorbs blur + offset).
  */
 .pen-gallery-tile-preview {
@@ -1112,9 +1114,9 @@ input.pen-gallery-tile-title-text {
   padding: 0;
   overflow: hidden;
   background: #fff;
-  border: 1px solid #d4d4d4;
-  border-radius: 2px;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.14);
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
   color: inherit;
   font: inherit;
   cursor: pointer;
