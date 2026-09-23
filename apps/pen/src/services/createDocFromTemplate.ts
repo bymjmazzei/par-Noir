@@ -44,7 +44,10 @@ export async function createDocFromTemplate(input: {
   const docId = randomDocId();
   const draftId = randomDraftId();
   const now = new Date().toISOString();
-  const sections = template.sections.map((s) => emptySection(s.slug));
+  const sections = (template.seedSections?.length
+    ? template.seedSections
+    : template.sections.map((s) => emptySection(s.slug))
+  ).map((s) => ({ ...s }));
   const commitment = hashSectionContent(
     new TextEncoder().encode(JSON.stringify(sections))
   );

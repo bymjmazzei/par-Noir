@@ -111,6 +111,7 @@ export function personalTemplatesAsPenTemplates(pn: string): PenTemplate[] {
       title: s.title,
       required: s.required !== false
     })),
+    seedSections: t.seedSections?.length ? t.seedSections.map((s) => ({ ...s })) : undefined,
     agentStarter:
       'Continue from the saved seed sections for {{template_id}}. Sections: {{section_list}}. {{user_input}}'
   }));
@@ -142,7 +143,10 @@ export function savePersonalTemplateFromCatalog(
   }
   const id = `personal_${crypto.randomUUID().replace(/-/g, '').slice(0, 12)}`;
   const now = new Date().toISOString();
-  const seedSections = based.sections.map((s) => emptySection(s.slug));
+  const seedSections =
+    based.seedSections?.length
+      ? based.seedSections.map((s) => ({ ...s }))
+      : based.sections.map((s) => emptySection(s.slug));
   const tpl: PersonalTemplate = {
     id,
     title: title?.trim() || based.title,

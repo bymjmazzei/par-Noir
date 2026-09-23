@@ -84,7 +84,11 @@ export function resolvePenEmbedFromLocal(pn: string): ResolvePenEmbed {
 
 export async function writeSocialPublishHandoff(
   bundle: LocalDocBundle,
-  opts?: { pnIdentifier?: string; resolveDoc?: ResolvePenEmbed }
+  opts?: {
+    pnIdentifier?: string;
+    resolveDoc?: ResolvePenEmbed;
+    aggregatorTargets?: string[];
+  }
 ): Promise<{
   contentClass: 'note';
   title: string;
@@ -92,6 +96,12 @@ export async function writeSocialPublishHandoff(
   templateId: string;
   docId: string;
   headProof: unknown;
+  aggregatorTargets: string[];
+  penClassId?: string;
+  penCategoryId?: string;
+  penTemplateKind?: 'template' | 'remix';
+  basedOnTemplateId?: string;
+  penIrRef?: { objectId?: string; publicUrl?: string };
 }> {
   const resolveDoc =
     opts?.resolveDoc ||
@@ -99,6 +109,11 @@ export async function writeSocialPublishHandoff(
   const presentation = bundle.manifest.pagePresentation || defaultPagePresentation();
   const tpl = getTemplate(bundle.manifest.templateId);
   const isSet = tpl?.id === 'set.basic.v1' || tpl?.docType === 'set' || bundle.manifest.docType === 'set';
+  const targets = opts?.aggregatorTargets?.length ? opts.aggregatorTargets : ['browse'];
+  const asTemplate = targets.includes('pen-templates');
+  const form = getClass(bundle.manifest.classId);
+  const lineageId =
+    bundle.manifest.basedOnTemplateId || bundle.manifest.templateId;
 
   const compiled = isSet
     ? await compileSetToNote({
@@ -124,7 +139,20 @@ export async function writeSocialPublishHandoff(
     templateId: compiled.templateId,
     docId: bundle.manifest.docId,
     headProof:
-      bundle.chain.links[bundle.chain.links.length - 1] || bundle.chain.genesis
+      bundle.chain.links[bundle.chain.links.length - 1] || bundle.chain.genesis,
+    aggregatorTargets: targets,
+    penClassId: bundle.manifest.classId,
+    penCategoryId: form?.parentId,
+    /** IR fetch pointer for Use template (doc id until public IR object lands). */
+    penIrRef: { objectId: bundle.manifest.docId },
+    ...(asTemplate
+      ? {
+          penTemplateKind: (bundle.manifest.basedOnTemplateId
+            ? 'remix'
+            : 'template') as 'template' | 'remix',
+          basedOnTemplateId: lineageId
+        }
+      : {})
   };
   const json = JSON.stringify(payload);
   sessionStorage.setItem(`${PEN_PUBLISH_PREFIX}${bundle.manifest.docId}`, json);
@@ -304,6 +332,7 @@ export async function createDocFromPersonalOrStarter(input: {
       title: personal.title.replace(/\s*template$/i, '').trim() || bundle.manifest.title,
       classId: personal.classId,
       docType: personal.docType,
+      basedOnTemplateId: personal.basedOnTemplateId || personal.id,
       toc: sections.map((s) => s.slug),
       updatedAt: new Date().toISOString()
     }

@@ -12,6 +12,7 @@ import {
 } from '@par-noir/pen-protocol';
 import { LayoutSurface, type LayoutItem } from '../layout';
 import { LayersPopover } from './LayersPanel';
+import { IconLayers } from './icons/PenIcons';
 
 function layerToItem(layer: PenPageLayer): LayoutItem {
   return {
@@ -20,7 +21,8 @@ function layerToItem(layer: PenPageLayer): LayoutItem {
     y: layer.y,
     w: layer.w,
     h: layer.h,
-    zIndex: layer.zIndex
+    zIndex: layer.zIndex,
+    positionLocked: layer.positionLocked
   };
 }
 
@@ -64,7 +66,8 @@ export function EditablePagePreview({
   const [layersOpen, setLayersOpen] = useState(false);
   const prepared = useMemo(() => ensureDefaultTextLayer(normalizeSection(section)), [section]);
   const layers = prepared.layers || [];
-  const items = layers.map(layerToItem);
+  const visibleLayers = layers.filter((l) => l.visible !== false);
+  const items = visibleLayers.map(layerToItem);
 
   function onLayoutChange(nextItems: LayoutItem[]) {
     onSectionChange(updateLayerLayout(prepared, nextItems));
@@ -92,12 +95,14 @@ export function EditablePagePreview({
             type="button"
             aria-expanded={layersOpen}
             aria-pressed={layersOpen}
-            className={`text-[11px] ${
-              layersOpen ? 'font-bold text-black' : 'font-normal text-neutral-400 hover:text-black'
+            aria-label="Layers"
+            title="Layers"
+            className={`inline-flex items-center ${
+              layersOpen ? 'text-black' : 'text-neutral-400 hover:text-black'
             }`}
             onClick={() => setLayersOpen((o) => !o)}
           >
-            Layers
+            <IconLayers />
           </button>
         </div>
       </div>

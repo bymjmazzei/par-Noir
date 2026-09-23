@@ -1,0 +1,13 @@
+{
+  "name": "@par-noir/feed-tile",
+  "version": "0.1.0",
+  "description": "Presentational feed tile + engagement rail for Pen and browse",
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "private": true,
+  "peerDependencies": {
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0"
+  }
+}

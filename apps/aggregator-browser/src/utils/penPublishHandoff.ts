@@ -17,6 +17,12 @@ export interface PenPublishHandoff {
   templateId?: string;
   docId?: string;
   headProof?: unknown;
+  aggregatorTargets?: string[];
+  penClassId?: string;
+  penCategoryId?: string;
+  penTemplateKind?: 'template' | 'remix';
+  basedOnTemplateId?: string;
+  penIrRef?: { backend?: string; objectId?: string; publicUrl?: string };
 }
 
 const HANDOFF_PREFIX = 'pen_publish:';

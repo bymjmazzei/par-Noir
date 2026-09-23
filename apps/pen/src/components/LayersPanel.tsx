@@ -21,6 +21,7 @@ import {
   type PenPageLayer,
   type PenSectionContent
 } from '@par-noir/pen-protocol';
+import { IconEye, IconEyeOff, IconLock, IconUnlock } from './icons/PenIcons';
 
 function layerLabel(layer: PenPageLayer, indexFromFront: number): string {
   if (layer.kind === 'image') return `Image ${indexFromFront + 1}`;
@@ -179,11 +180,18 @@ export function LayersPopover({
 
   function patchActive(
     patch: Partial<
-      Pick<PenPageLayer, 'backgroundColor' | 'textShadow' | 'blur'>
+      Pick<PenPageLayer, 'backgroundColor' | 'textShadow' | 'blur' | 'visible' | 'positionLocked'>
     >
   ) {
     if (!active) return;
     commit(patchLayerStyle(prepared, active.id, patch));
+  }
+
+  function patchLayer(
+    layerId: string,
+    patch: Partial<Pick<PenPageLayer, 'visible' | 'positionLocked'>>
+  ) {
+    commit(patchLayerStyle(prepared, layerId, patch));
   }
 
   return (
@@ -222,6 +230,8 @@ export function LayersPopover({
         {layersFrontFirst.map((layer, i) => {
           const selected = activeLayerId === layer.id;
           const dropTarget = Boolean(dragId && hoverId === layer.id && dragId !== layer.id);
+          const isVisible = layer.visible !== false;
+          const isLocked = Boolean(layer.positionLocked);
           return (
             <li
               key={layer.id}
@@ -230,12 +240,37 @@ export function LayersPopover({
                 selected ? 'bg-neutral-100 font-bold text-black' : 'text-neutral-600 hover:bg-neutral-50'
               } ${dropTarget ? 'ring-1 ring-inset ring-black' : ''} ${
                 dragId === layer.id ? 'opacity-50' : ''
-              }`}
+              } ${!isVisible ? 'opacity-60' : ''}`}
               onPointerDown={(e) => onRowPointerDown(e, layer.id)}
             >
               <span className="w-4 shrink-0 text-[10px] text-neutral-400">{i + 1}</span>
               <span className="min-w-0 flex-1 truncate">{layerLabel(layer, i)}</span>
-              <span className="shrink-0 text-[10px] uppercase text-neutral-400">{layer.kind}</span>
+              <button
+                type="button"
+                title={isVisible ? 'Hide layer' : 'Show layer'}
+                aria-label={isVisible ? 'Hide layer' : 'Show layer'}
+                className="shrink-0 p-0.5 text-neutral-500 hover:text-black"
+                onPointerDown={(e) => e.stopPropagation()}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  patchLayer(layer.id, { visible: !isVisible });
+                }}
+              >
+                {isVisible ? <IconEye /> : <IconEyeOff />}
+              </button>
+              <button
+                type="button"
+                title={isLocked ? 'Unlock position' : 'Lock position'}
+                aria-label={isLocked ? 'Unlock position' : 'Lock position'}
+                className="shrink-0 p-0.5 text-neutral-500 hover:text-black"
+                onPointerDown={(e) => e.stopPropagation()}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  patchLayer(layer.id, { positionLocked: !isLocked });
+                }}
+              >
+                {isLocked ? <IconLock /> : <IconUnlock />}
+              </button>
               <button
                 type="button"
                 title="Delete layer"

@@ -11,6 +11,7 @@ export default defineConfig(({ mode }) => ({
       '@par-noir/device-auth': path.resolve(__dirname, '../../packages/device-auth/src/index.ts'),
       '@par-noir/device-client': path.resolve(__dirname, '../../packages/device-client/src/index.ts'),
       '@par-noir/pen-protocol': path.resolve(__dirname, '../../packages/pen-protocol/src/index.ts'),
+      '@par-noir/feed-tile': path.resolve(__dirname, '../../packages/feed-tile/src/index.ts'),
       // pqc-crypto dist is CJS; Vite/Rollup cannot resolve named exports from workspace CJS builds
       '@par-noir/pqc-crypto/oauth-unlock-proof': path.resolve(__dirname, '../../packages/pqc-crypto/src/oauthUnlockProof.ts'),
       '@par-noir/pqc-crypto/encoding': path.resolve(__dirname, '../../packages/pqc-crypto/src/encoding.ts'),

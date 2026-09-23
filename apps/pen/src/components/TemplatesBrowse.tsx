@@ -19,6 +19,7 @@ import { DocGalleryPreview } from './DocGalleryPreview';
 import {
   isPersonalTemplateId,
   loadPersonalTemplate,
+  personalTemplatesAsPenTemplates,
   savePersonalTemplateFromCatalog
 } from '../services/penPersonalTemplates';
 import { createDocFromPersonalOrStarter } from '../services/penPublish';
@@ -150,7 +151,9 @@ function templatePreviewBundle(pn: string | undefined, templateId: string) {
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString()
     },
-    sections: t.sections.map((s) => emptySection(s.slug))
+    sections: t.seedSections?.length
+      ? t.seedSections
+      : t.sections.map((s) => emptySection(s.slug))
   };
 }
 
@@ -189,14 +192,17 @@ export function TemplatesBrowse({
     if (initialPreviewId) setPreviewId(initialPreviewId);
   }, [initialPreviewId]);
 
-  const catalog: PenTemplate[] = useMemo(
-    () =>
-      listStarterTemplates().filter((t) => {
-        const form = getClass(t.classId);
-        return !form || form.audience !== 'kit';
-      }),
-    []
-  );
+  const catalog: PenTemplate[] = useMemo(() => {
+    const starters = listStarterTemplates().filter((t) => {
+      const form = getClass(t.classId);
+      return !form || form.audience !== 'kit';
+    });
+    const yours = session?.pnIdentifier
+      ? personalTemplatesAsPenTemplates(session.pnIdentifier)
+      : [];
+    // Yours (cloud templates folder buffer) first, then platform IR starters
+    return [...yours, ...starters];
+  }, [session?.pnIdentifier]);
 
   const grouped = useMemo(
     () => listTemplatesGroupedByCategory(catalog, listConsumerCategories()),

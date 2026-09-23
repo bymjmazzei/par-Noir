@@ -33,7 +33,13 @@ import {
   requireClass,
   getClass,
   searchPenCatalog,
-  assertTemplateClassInvariants
+  assertTemplateClassInvariants,
+  listBrowseFeaturedTemplates,
+  blankTemplateForClass,
+  templatesRootPath,
+  templateManifestPath,
+  layerLockFingerprint,
+  type PenSectionContent
 } from './index.js';
 import { docToHtml } from './renderRich.js';
 
@@ -446,5 +452,56 @@ describe('renderRich media wrap', () => {
     expect(html).toContain('controls');
     expect(html).toContain('data-wrap="right"');
     expect(html).toContain('float:right');
+  });
+});
+
+describe('template seeds + Mini featured + layer locks', () => {
+  it('starters expose seedSections and browseFeatured for social notes', () => {
+    const note = requireTemplate('note.basic.v1');
+    expect(note.seedSections?.length).toBeGreaterThan(0);
+    expect(note.browseFeatured).toBe(true);
+    const featured = listBrowseFeaturedTemplates('social.note');
+    expect(featured.length).toBeGreaterThan(0);
+    expect(featured.every((t) => t.classId === 'social.note' && t.browseFeatured)).toBe(true);
+  });
+
+  it('blankTemplateForClass yields empty seeds for a form', () => {
+    const blank = blankTemplateForClass('social.note');
+    expect(blank?.id).toBe('blank.social.note');
+    expect(blank?.seedSections?.[0]?.doc).toBeTruthy();
+    expect(templatesRootPath()).toBe('par-noir-pen/templates');
+    expect(templateManifestPath('personal_abc')).toBe(
+      'par-noir-pen/templates/personal_abc/template.json'
+    );
+  });
+
+  it('layerLockFingerprint ignores body text and tracks visibility/position lock', () => {
+    const base: PenSectionContent = {
+      slug: 'body',
+      doc: { type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'a' }] }] },
+      layers: [
+        {
+          id: 'l1',
+          kind: 'text',
+          x: 10,
+          y: 10,
+          w: 80,
+          h: 40,
+          zIndex: 1,
+          visible: true,
+          positionLocked: false
+        }
+      ]
+    };
+    const editedText: PenSectionContent = {
+      ...base,
+      doc: { type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'CHANGED' }] }] }
+    };
+    expect(layerLockFingerprint([base])).toBe(layerLockFingerprint([editedText]));
+    const locked: PenSectionContent = {
+      ...base,
+      layers: [{ ...base.layers![0], positionLocked: true, visible: false }]
+    };
+    expect(layerLockFingerprint([base])).not.toBe(layerLockFingerprint([locked]));
   });
 });

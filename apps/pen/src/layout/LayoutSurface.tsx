@@ -47,7 +47,7 @@ export function LayoutSurface({
   );
 
   const onPointerDownMove = (e: ReactPointerEvent, item: LayoutItem) => {
-    if (disabled) return;
+    if (disabled || item.positionLocked) return;
     e.stopPropagation();
     (e.target as HTMLElement).setPointerCapture?.(e.pointerId);
     onSelect?.(item.id);
@@ -61,7 +61,7 @@ export function LayoutSurface({
   };
 
   const onPointerDownResize = (e: ReactPointerEvent, item: LayoutItem) => {
-    if (disabled) return;
+    if (disabled || item.positionLocked) return;
     e.stopPropagation();
     (e.target as HTMLElement).setPointerCapture?.(e.pointerId);
     onSelect?.(item.id);
@@ -108,7 +108,7 @@ export function LayoutSurface({
             tabIndex={0}
             className={`absolute box-border overflow-hidden ${
               selected ? 'ring-2 ring-sky-500' : 'ring-1 ring-stone-300/80'
-            } ${disabled ? '' : 'cursor-grab active:cursor-grabbing'}`}
+            } ${disabled || item.positionLocked ? '' : 'cursor-grab active:cursor-grabbing'}`}
             style={{
               left: `${item.x}%`,
               top: `${item.y}%`,
@@ -119,7 +119,7 @@ export function LayoutSurface({
             onPointerDown={(e) => onPointerDownMove(e, item)}
           >
             <div className="h-full w-full overflow-auto">{renderItem(item, selected)}</div>
-            {!disabled && selected && (
+            {!disabled && !item.positionLocked && selected && (
               <div
                 className="absolute bottom-0 right-0 h-3 w-3 cursor-se-resize bg-sky-500"
                 onPointerDown={(e) => onPointerDownResize(e, item)}

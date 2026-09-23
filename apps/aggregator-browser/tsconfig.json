@@ -18,7 +18,8 @@
     "baseUrl": ".",
     "paths": {
       "@/*": ["./src/*"],
-      "@par-noir/pen-protocol": ["../../packages/pen-protocol/src/index.ts"]
+      "@par-noir/pen-protocol": ["../../packages/pen-protocol/src/index.ts"],
+      "@par-noir/feed-tile": ["../../packages/feed-tile/src/index.ts"]
     }
   },
   "include": ["src"],

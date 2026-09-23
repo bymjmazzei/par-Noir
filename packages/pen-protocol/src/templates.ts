@@ -1,5 +1,7 @@
 /** Pen template registry + starter pack. */
 
+import type { PenSectionContent } from './types.js';
+
 export type PenDocType = 'note' | 'post' | 'collection' | 'self_hosted_feed' | string;
 
 export interface PenTemplateSection {
@@ -41,10 +43,31 @@ export interface PenTemplate {
   agentStarter: string;
   /** Present on register templates — agents emit `rows` matching these columns. */
   registerColumns?: PenRegisterColumn[];
+  /** Demo TipTap sections for preview / create-from-template. */
+  seedSections?: PenSectionContent[];
+  /** Featured in Pen Mini (~3 per form). */
+  browseFeatured?: boolean;
+  /** Optional CDN-backed public template preview. */
+  previewFileId?: string;
 }
 
 /** Default author label for first-party / starter templates. */
 export const PLATFORM_TEMPLATE_AUTHOR = 'par noir';
+
+function seedPlain(slug: string, text: string): PenSectionContent {
+  return {
+    slug,
+    doc: {
+      type: 'doc',
+      content: [
+        {
+          type: 'paragraph',
+          content: text ? [{ type: 'text', text }] : []
+        }
+      ]
+    }
+  };
+}
 
 export function templateAuthorLabel(
   template: Pick<PenTemplate, 'authorDisplayName'> | null | undefined
@@ -104,6 +127,8 @@ const STARTER: PenTemplate[] = [
     description: 'Single-body flow Note for browse',
     sections: [{ slug: 'body', title: 'Body', required: true }],
     publishContentClass: 'note',
+    browseFeatured: true,
+    seedSections: [seedPlain('body', 'Your note goes here — short and clear for browse.')],
     agentStarter: proseStarter({
       title: 'Basic Note',
       focus: 'Fill the required body with clear prose suitable for a browse Note.',
@@ -121,6 +146,11 @@ const STARTER: PenTemplate[] = [
       { slug: 'body', title: 'Body', required: true }
     ],
     publishContentClass: 'note',
+    browseFeatured: true,
+    seedSections: [
+      seedPlain('title', 'Article title'),
+      seedPlain('body', 'Lead with the point. Keep paragraphs short.')
+    ],
     agentStarter: proseStarter({
       title: 'Article Note',
       focus: 'Provide a short title section and a full body. Title section is display title text, not only the JSON title field.',
@@ -138,6 +168,8 @@ const STARTER: PenTemplate[] = [
       { slug: 'attachments', title: 'Attachments', required: false }
     ],
     publishContentClass: 'note',
+    browseFeatured: true,
+    seedSections: [seedPlain('caption', 'A short caption for your post.')],
     agentStarter: proseStarter({
       title: 'Caption Post',
       focus: 'Write the caption. Mention attachment refs in attachments only if the user provided media identifiers; otherwise omit attachments.',
@@ -155,6 +187,8 @@ const STARTER: PenTemplate[] = [
       { slug: 'caption', title: 'Caption', required: false }
     ],
     publishContentClass: 'note',
+    browseFeatured: true,
+    seedSections: [seedPlain('caption', 'Optional caption under media.')],
     agentStarter: proseStarter({
       title: 'Media-forward Post',
       focus: 'Describe media attachments the user named; add an optional short caption.',
@@ -172,6 +206,11 @@ const STARTER: PenTemplate[] = [
       { slug: 'slide-2', title: 'Slide 2', required: false }
     ],
     publishContentClass: 'collection',
+    browseFeatured: true,
+    seedSections: [
+      seedPlain('slide-1', 'First page'),
+      seedPlain('slide-2', 'Second page — swipe to see')
+    ],
     agentStarter: proseStarter({
       title: 'Basic Collection',
       focus: 'Write slide-1 content; add slide-2 only if the user needs a second page.',
@@ -189,6 +228,11 @@ const STARTER: PenTemplate[] = [
       { slug: 'pages', title: 'Pages', required: true }
     ],
     publishContentClass: 'collection',
+    browseFeatured: true,
+    seedSections: [
+      seedPlain('cover', 'Cover line'),
+      seedPlain('pages', 'Story continues…')
+    ],
     agentStarter: proseStarter({
       title: 'Story Collection',
       focus: 'Write a cover line and story pages body.',
@@ -397,4 +441,30 @@ export function requireTemplate(templateId: string): PenTemplate {
   const t = getTemplate(templateId);
   if (!t) throw new Error(`unknown_pen_template:${templateId}`);
   return t;
+}
+
+/** Pen Mini: featured platform templates for a form (cap applied by caller). */
+export function listBrowseFeaturedTemplates(classId?: string): PenTemplate[] {
+  return listStarterTemplates().filter(
+    (t) => t.browseFeatured && (!classId || t.classId === classId)
+  );
+}
+
+/** Synthetic blank template for a form (empty sections matching a starter of that class). */
+export function blankTemplateForClass(classId: string): PenTemplate | null {
+  const sample = listStarterTemplates().find((t) => t.classId === classId);
+  if (!sample) return null;
+  return {
+    ...sample,
+    id: `blank.${classId}`,
+    title: `Blank ${sample.title.replace(/^(Basic|Article|Caption|Media-forward|Story)\s+/i, '')}`.trim() ||
+      `Blank`,
+    description: 'Empty document for this form',
+    browseFeatured: false,
+    seedSections: sample.sections.map((s) => seedPlain(s.slug, '')),
+    agentStarter: proseStarter({
+      title: 'Blank',
+      focus: 'Start from an empty document for this form.'
+    })
+  };
 }

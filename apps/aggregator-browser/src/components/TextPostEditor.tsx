@@ -14,6 +14,7 @@ import { EditMetadataModal, MetadataFormData } from './EditMetadataModal';
 import { Capacitor } from '@capacitor/core';
 import { pickImageFromNative } from '../hooks/useNativeFilePicker';
 import { peekPenPublishHandoff } from '../utils/penPublishHandoff';
+import { MiniTemplatePicker, type MiniPickerChoice } from './MiniTemplatePicker';
 
 // Helper function to convert hex to RGB
 const hexToRgb = (hex: string): { r: number; g: number; b: number } => {
@@ -296,6 +297,7 @@ export function TextPostEditor({ onSave }: TextPostEditorProps) {
   // Multi-page state — hydrate from Pen full-app handoff when present
   const [pages, setPages] = useState<MiniPage[]>(() => pagesFromHandoff());
   const [currentPageIndex, setCurrentPageIndex] = useState(0);
+  const [miniTemplateId, setMiniTemplateId] = useState('blank.social.note');
   const previewContainerRef = useRef<HTMLDivElement | null>(null);
   
   // Get current page data
@@ -831,7 +833,11 @@ export function TextPostEditor({ onSave }: TextPostEditorProps) {
     const tags = metadata.tags.split(',').map(t => t.trim()).filter(Boolean);
     const genre = metadata.genre.split(',').map(g => g.trim()).filter(Boolean);
 
-    let templateId = 'note.basic.v1';
+    let templateId = miniTemplateId.startsWith('blank.')
+      ? 'note.basic.v1'
+      : miniTemplateId.startsWith('personal_')
+        ? 'note.basic.v1'
+        : miniTemplateId || 'note.basic.v1';
     let contentClass: 'note' = 'note';
     try {
       const bodyText = pages
@@ -839,7 +845,7 @@ export function TextPostEditor({ onSave }: TextPostEditorProps) {
         .map(page => page.content.trim())
         .join('\n\n');
       const compiled = compileDocumentToNote({
-        templateId: 'note.basic.v1',
+        templateId: templateId.includes('.') ? templateId : 'note.basic.v1',
         title: metadata.name || 'Note',
         sections: [
           {
@@ -1342,6 +1348,22 @@ export function TextPostEditor({ onSave }: TextPostEditorProps) {
           top: '0',
         }}
       >
+        <MiniTemplatePicker
+          selectedId={miniTemplateId}
+          onSelect={(choice: MiniPickerChoice) => {
+            setMiniTemplateId(choice.id);
+            if (choice.seedText) {
+              setPages((prev) => {
+                const next = [...prev];
+                const i = currentPageIndex;
+                if (next[i]) {
+                  next[i] = { ...next[i], content: choice.seedText };
+                }
+                return next;
+              });
+            }
+          }}
+        />
         <div 
           ref={(el) => {
             previewContainerRef.current = el;

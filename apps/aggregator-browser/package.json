@@ -39,6 +39,7 @@
     "@par-noir/device-cloud-credentials": "file:../../packages/device-cloud-credentials",
     "@par-noir/device-session-vault": "file:../../packages/device-session-vault",
     "@par-noir/dm-crypto": "file:../../packages/dm-crypto",
+    "@par-noir/feed-tile": "file:../../packages/feed-tile",
     "@par-noir/identity-crypto": "file:../../packages/identity-crypto",
     "@par-noir/identity-migration": "file:../../packages/identity-migration",
     "@par-noir/messaging-ui": "file:../../packages/messaging-ui",

@@ -13,6 +13,7 @@ import { FeedRail } from '../components/FeedRail';
 import { FullScreenFeed } from '../components/FullScreenFeed';
 import { FeedEngagementSidebar } from '../components/FeedEngagementSidebar';
 import { DiscoveryPage } from '../components/DiscoveryPage';
+import { PenTemplatesFeedPage } from '../components/PenTemplatesFeedPage';
 import { LoadingSkeleton } from '../components/LoadingSkeleton';
 import { EmptyState } from '../components/EmptyState';
 import { ContentRatingBadge } from '../components/ContentRatingBadge';
@@ -320,6 +321,22 @@ export function HomePage() {
             }}
             onFeedClick={(feed) => setViewingBrandedFeed(feed)}
             onCreatorClick={(creatorId) => { setViewingCreatorId(creatorId); setViewMode('feed'); setMePageTab('all'); }}
+          />
+        </div>
+      ) : viewMode === 'feed' && activeFeedId === 'pen-templates' ? (
+        <div
+          className="flex-1 h-full pb-20"
+          style={{ paddingTop: 'calc(5rem + env(safe-area-inset-top, 0px))' }}
+        >
+          <PenTemplatesFeedPage
+            files={indexedFiles}
+            onOpenFile={(file) => {
+              const i = indexedFiles.findIndex((f) => f.metadata.fileId === file.metadata.fileId);
+              if (i !== -1) {
+                setActiveFeedId('pen-templates');
+                setCurrentFeedIndex(i);
+              }
+            }}
           />
         </div>
       ) : viewMode === 'feed' ? (

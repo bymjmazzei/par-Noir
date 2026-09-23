@@ -2,6 +2,19 @@
 
 export const PEN_ROOT = 'par-noir-pen';
 
+/** Owner cloud folder for starred / created templates (SoT). */
+export function templatesRootPath(): string {
+  return `${PEN_ROOT}/templates`;
+}
+
+export function templateRootPath(templateId: string): string {
+  return `${templatesRootPath()}/${sanitizeSegment(templateId)}`;
+}
+
+export function templateManifestPath(templateId: string): string {
+  return `${templateRootPath(templateId)}/template.json`;
+}
+
 export function sanitizeSegment(s: string): string {
   return (
     String(s || '')

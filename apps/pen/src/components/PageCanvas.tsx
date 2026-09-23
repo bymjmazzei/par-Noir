@@ -42,6 +42,21 @@ import {
   RibbonMenu,
   RibbonSep
 } from './ribbon/RibbonChrome';
+import {
+  IconAlignCenter,
+  IconAlignJustify,
+  IconAlignLeft,
+  IconAlignRight,
+  IconBulletList,
+  IconClear,
+  IconIndent,
+  IconInsert,
+  IconLink,
+  IconOrderedList,
+  IconOutdent,
+  IconSearch,
+  IconTable
+} from './icons/PenIcons';
 
 function currentFontSize(editor: Editor): string {
   const attrs = editor.getAttributes('textStyle');
@@ -85,6 +100,9 @@ export function FormatRibbon({
   const [cloudLoading, setCloudLoading] = useState(false);
   const [penDocs, setPenDocs] = useState<LocalDocSummary[] | null>(null);
   const [penPickDocId, setPenPickDocId] = useState<string | null>(null);
+  const [findOpen, setFindOpen] = useState(false);
+  const [findQuery, setFindQuery] = useState('');
+  const [replaceQuery, setReplaceQuery] = useState('');
   const [, setTick] = useState(0);
 
   useEffect(() => {
@@ -98,6 +116,21 @@ export function FormatRibbon({
     };
   }, [editor]);
 
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'f') {
+        e.preventDefault();
+        setFindOpen(true);
+      }
+      if ((e.metaKey || e.ctrlKey) && e.shiftKey && (e.key === 'h' || e.key === 'H')) {
+        e.preventDefault();
+        setFindOpen(true);
+      }
+    }
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
+
   if (!editor) return null;
   const ed = editor;
 
@@ -105,15 +138,68 @@ export function FormatRibbon({
   const fontSize = currentFontSize(ed);
   const color = String(ed.getAttributes('textStyle').color || '#1c1917');
   const highlight = String(ed.getAttributes('highlight').color || '');
-  const textShadow = String(ed.getAttributes('textStyle').textShadow || '');
-  const textBlur = String(ed.getAttributes('textStyle').textBlur || '');
   const hLabel = headingLabel(ed);
   const imageSelected = ed.isActive('image');
   const videoSelected = ed.isActive('video');
   const mediaSelected = imageSelected || videoSelected;
+  const inTable = ed.isActive('table');
   const wrap = (String(
     (imageSelected ? ed.getAttributes('image').wrap : ed.getAttributes('video').wrap) || 'none'
   ) as PenImageWrap) || 'none';
+
+  function findNext() {
+    if (!findQuery.trim()) return;
+    const { doc } = ed.state;
+    const q = findQuery.toLowerCase();
+    let found = false;
+    doc.descendants((node, pos) => {
+      if (found || !node.isText || !node.text) return;
+      const idx = node.text.toLowerCase().indexOf(q);
+      if (idx >= 0) {
+        ed.chain()
+          .focus()
+          .setTextSelection({ from: pos + idx, to: pos + idx + findQuery.length })
+          .run();
+        found = true;
+      }
+    });
+  }
+
+  function replaceOne() {
+    if (!findQuery.trim()) return;
+    const { from, to } = ed.state.selection;
+    const selected = ed.state.doc.textBetween(from, to, '');
+    if (selected.toLowerCase() === findQuery.toLowerCase()) {
+      ed.chain().focus().insertContent(replaceQuery).run();
+    }
+    findNext();
+  }
+
+  function replaceAll() {
+    if (!findQuery.trim()) return;
+    const { doc } = ed.state;
+    const q = findQuery.toLowerCase();
+    const matches: Array<{ from: number; to: number }> = [];
+    doc.descendants((node, pos) => {
+      if (!node.isText || !node.text) return;
+      let start = 0;
+      const lower = node.text.toLowerCase();
+      while (true) {
+        const idx = lower.indexOf(q, start);
+        if (idx < 0) break;
+        matches.push({ from: pos + idx, to: pos + idx + findQuery.length });
+        start = idx + findQuery.length;
+      }
+    });
+    for (let i = matches.length - 1; i >= 0; i--) {
+      const m = matches[i];
+      ed.chain()
+        .focus()
+        .deleteRange({ from: m.from, to: m.to })
+        .insertContentAt(m.from, replaceQuery)
+        .run();
+    }
+  }
 
   async function loadCloud() {
     if (!accessToken) {
@@ -330,60 +416,6 @@ export function FormatRibbon({
         onChange={(hex) => ed.chain().focus().toggleHighlight({ color: hex }).run()}
       />
 
-      <RibbonMenu label={textShadow ? 'Sh' : 'Sh'} title="Text shadow">
-        {(close) => (
-          <>
-            <RibbonItem
-              active={!textShadow}
-              onClick={() => {
-                ed.chain().focus().unsetTextShadow().run();
-                close();
-              }}
-            >
-              None
-            </RibbonItem>
-            <RibbonItem
-              active={textShadow.includes('1px 2px')}
-              onClick={() => {
-                ed.chain().focus().setTextShadow('0 1px 2px rgba(0,0,0,0.45)').run();
-                close();
-              }}
-            >
-              Soft
-            </RibbonItem>
-            <RibbonItem
-              active={textShadow.includes('2px 4px')}
-              onClick={() => {
-                ed.chain().focus().setTextShadow('0 2px 4px rgba(0,0,0,0.55)').run();
-                close();
-              }}
-            >
-              Strong
-            </RibbonItem>
-          </>
-        )}
-      </RibbonMenu>
-
-      <RibbonMenu label={textBlur ? `Bl ${textBlur}` : 'Bl'} title="Text blur">
-        {(close) => (
-          <>
-            {(['', '0.5px', '1px', '2px', '4px'] as const).map((b) => (
-              <RibbonItem
-                key={b || 'none'}
-                active={(textBlur || '') === b}
-                onClick={() => {
-                  if (!b) ed.chain().focus().unsetTextBlur().run();
-                  else ed.chain().focus().setTextBlur(b).run();
-                  close();
-                }}
-              >
-                {b || 'None'}
-              </RibbonItem>
-            ))}
-          </>
-        )}
-      </RibbonMenu>
-
       <RibbonSep />
 
       <RibbonIconBtn
@@ -391,42 +423,54 @@ export function FormatRibbon({
         title="Align left"
         onClick={() => ed.chain().focus().setTextAlign('left').run()}
       >
-        ☰
+        <IconAlignLeft />
       </RibbonIconBtn>
       <RibbonIconBtn
         active={ed.isActive({ textAlign: 'center' })}
         title="Align center"
         onClick={() => ed.chain().focus().setTextAlign('center').run()}
       >
-        ≡
+        <IconAlignCenter />
       </RibbonIconBtn>
       <RibbonIconBtn
         active={ed.isActive({ textAlign: 'right' })}
         title="Align right"
         onClick={() => ed.chain().focus().setTextAlign('right').run()}
       >
-        ☰
+        <IconAlignRight />
       </RibbonIconBtn>
       <RibbonIconBtn
         active={ed.isActive({ textAlign: 'justify' })}
         title="Justify"
         onClick={() => ed.chain().focus().setTextAlign('justify').run()}
       >
-        ≣
+        <IconAlignJustify />
       </RibbonIconBtn>
       <RibbonIconBtn
         active={ed.isActive('bulletList')}
         title="Bullet list"
         onClick={() => ed.chain().focus().toggleBulletList().run()}
       >
-        •
+        <IconBulletList />
       </RibbonIconBtn>
       <RibbonIconBtn
         active={ed.isActive('orderedList')}
         title="Numbered list"
         onClick={() => ed.chain().focus().toggleOrderedList().run()}
       >
-        1.
+        <IconOrderedList />
+      </RibbonIconBtn>
+      <RibbonIconBtn
+        title="Indent"
+        onClick={() => ed.chain().focus().sinkListItem('listItem').run()}
+      >
+        <IconIndent />
+      </RibbonIconBtn>
+      <RibbonIconBtn
+        title="Outdent"
+        onClick={() => ed.chain().focus().liftListItem('listItem').run()}
+      >
+        <IconOutdent />
       </RibbonIconBtn>
       <RibbonIconBtn
         active={ed.isActive('blockquote')}
@@ -458,12 +502,114 @@ export function FormatRibbon({
           }
         }}
       >
-        Link
+        <IconLink />
       </RibbonIconBtn>
+
+      <RibbonIconBtn title="Find and replace" onClick={() => setFindOpen((v) => !v)}>
+        <IconSearch />
+      </RibbonIconBtn>
+
+      {mediaSelected && (
+        <>
+          <RibbonSep />
+          <RibbonMenu label={`Wrap · ${wrap === 'none' ? 'Full' : wrap}`} title="Image wrap">
+            {(close) =>
+              (['none', 'left', 'right'] as PenImageWrap[]).map((w) => (
+                <RibbonItem
+                  key={w}
+                  active={wrap === w}
+                  onClick={() => {
+                    setWrap(w);
+                    close();
+                  }}
+                >
+                  {w === 'none' ? 'Full width' : w === 'left' ? 'Wrap left' : 'Wrap right'}
+                </RibbonItem>
+              ))
+            }
+          </RibbonMenu>
+        </>
+      )}
+
+      {inTable && (
+        <>
+          <RibbonSep />
+          <RibbonMenu label={<IconTable />} title="Table">
+            {(close) => (
+              <>
+                <RibbonItem
+                  onClick={() => {
+                    ed.chain().focus().addRowBefore().run();
+                    close();
+                  }}
+                >
+                  Add row above
+                </RibbonItem>
+                <RibbonItem
+                  onClick={() => {
+                    ed.chain().focus().addRowAfter().run();
+                    close();
+                  }}
+                >
+                  Add row below
+                </RibbonItem>
+                <RibbonItem
+                  onClick={() => {
+                    ed.chain().focus().deleteRow().run();
+                    close();
+                  }}
+                >
+                  Delete row
+                </RibbonItem>
+                <RibbonItem
+                  onClick={() => {
+                    ed.chain().focus().addColumnBefore().run();
+                    close();
+                  }}
+                >
+                  Add column before
+                </RibbonItem>
+                <RibbonItem
+                  onClick={() => {
+                    ed.chain().focus().addColumnAfter().run();
+                    close();
+                  }}
+                >
+                  Add column after
+                </RibbonItem>
+                <RibbonItem
+                  onClick={() => {
+                    ed.chain().focus().deleteColumn().run();
+                    close();
+                  }}
+                >
+                  Delete column
+                </RibbonItem>
+                <RibbonItem
+                  onClick={() => {
+                    ed.chain().focus().toggleHeaderRow().run();
+                    close();
+                  }}
+                >
+                  Toggle header row
+                </RibbonItem>
+                <RibbonItem
+                  onClick={() => {
+                    ed.chain().focus().deleteTable().run();
+                    close();
+                  }}
+                >
+                  Delete table
+                </RibbonItem>
+              </>
+            )}
+          </RibbonMenu>
+        </>
+      )}
 
       <RibbonSep />
 
-      <RibbonMenu label="Insert" title="Insert into flow" wide>
+      <RibbonMenu label={<IconInsert />} title="Insert into flow" wide>
         {(close) => (
           <>
             <RibbonItem
@@ -609,22 +755,6 @@ export function FormatRibbon({
               </>
             )}
             <div className="pen-ribbon-menu-divider" />
-            <div className="pen-ribbon-menu-hint">
-              {mediaSelected ? 'Wrap' : 'Wrap (select image/video)'}
-            </div>
-            {(['none', 'left', 'right'] as PenImageWrap[]).map((w) => (
-              <RibbonItem
-                key={w}
-                active={mediaSelected && wrap === w}
-                onClick={() => {
-                  setWrap(w);
-                  close();
-                }}
-              >
-                {w === 'none' ? 'Full width' : w === 'left' ? 'Wrap left' : 'Wrap right'}
-              </RibbonItem>
-            ))}
-            <div className="pen-ribbon-menu-divider" />
             <div className="pen-ribbon-sticker-grid">
               {PEN_STICKERS.map((s) => (
                 <button
@@ -650,8 +780,50 @@ export function FormatRibbon({
         title="Clear formatting"
         onClick={() => ed.chain().focus().unsetAllMarks().clearNodes().run()}
       >
-        Clear
+        <IconClear />
       </RibbonIconBtn>
+
+      {findOpen && (
+        <div className="pen-ribbon-find-bar">
+          <input
+            className="pen-ribbon-find-input"
+            placeholder="Find"
+            value={findQuery}
+            onChange={(e) => setFindQuery(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') findNext();
+              if (e.key === 'Escape') setFindOpen(false);
+            }}
+          />
+          <input
+            className="pen-ribbon-find-input"
+            placeholder="Replace"
+            value={replaceQuery}
+            onChange={(e) => setReplaceQuery(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') replaceOne();
+              if (e.key === 'Escape') setFindOpen(false);
+            }}
+          />
+          <button type="button" className="pen-ribbon-find-btn" onClick={findNext}>
+            Find
+          </button>
+          <button type="button" className="pen-ribbon-find-btn" onClick={replaceOne}>
+            Replace
+          </button>
+          <button type="button" className="pen-ribbon-find-btn" onClick={replaceAll}>
+            All
+          </button>
+          <button
+            type="button"
+            className="pen-ribbon-find-btn"
+            onClick={() => setFindOpen(false)}
+            aria-label="Close find"
+          >
+            ×
+          </button>
+        </div>
+      )}
     </div>
   );
 }

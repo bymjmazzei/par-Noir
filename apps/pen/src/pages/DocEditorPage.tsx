@@ -27,14 +27,26 @@ import { FormatRibbon, PageCanvas } from '../components/PageCanvas';
 import { EditablePagePreview } from '../components/EditablePagePreview';
 import { BrowseFeedTilePreview } from '../components/BrowseFeedTilePreview';
 import { SectionTocMenu, type SectionTocItem } from '../components/SectionTocMenu';
-import { PublishMenu } from '../components/PublishMenu';
+import { PublishMenu, type PenAggregatorTarget } from '../components/PublishMenu';
 import { SaveMenu } from '../components/SaveMenu';
 import { ShareMenu } from '../components/ShareMenu';
+import {
+  IconComments,
+  IconHistory,
+  IconPreview,
+  IconRedo,
+  IconUndo
+} from '../components/icons/PenIcons';
+import { isVerifiedAuthor } from '../services/penVerified';
+import { starTemplateToCloud } from '../services/penCloudTemplates';
+import {
+  defaultPagePresentation,
+  mergePagePresentation
+} from '@par-noir/pen-protocol';
 import { loadLocalDoc, saveLocalDoc } from '../services/penLocalStore';
 import {
   isProjectDoc,
   promoteProjectToFinishedLibraryDoc,
-  saveAsPersonalTemplate,
   saveProjectAsLibraryTemplate,
   writeSocialPublishHandoff
 } from '../services/penPublish';
@@ -616,16 +628,21 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
     }
   }
 
-  function publishSocial() {
+  function publishSocial(targets: PenAggregatorTarget[] = ['browse']) {
     void (async () => {
       try {
         saveDraft({ silent: true });
         const b = bundleRef.current || bundle!;
         const payload = await writeSocialPublishHandoff(b, {
-          pnIdentifier: session.pnIdentifier
+          pnIdentifier: session.pnIdentifier,
+          aggregatorTargets: targets
         });
         openBrowseWithPenHandoff(payload);
-        setStatus('Opened Browse — finish publish there');
+        setStatus(
+          targets.includes('pen-templates')
+            ? 'Opened Browse — finish template share there'
+            : 'Opened Browse — finish publish there'
+        );
         window.setTimeout(() => setStatus(null), 4000);
       } catch (e) {
         setError(e instanceof Error ? e.message : 'feed_connect_failed');
@@ -655,13 +672,15 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
   }
 
   function publishAsTemplate() {
-    try {
-      const saved = saveAsPersonalTemplate(session.pnIdentifier, bundle!);
-      setStatus(`Template saved: ${saved.title}`);
-      window.setTimeout(() => setStatus(null), 3000);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'template_save_failed');
-    }
+    void (async () => {
+      try {
+        const saved = await starTemplateToCloud(session, bundle!);
+        setStatus(`Template saved: ${saved.title}`);
+        window.setTimeout(() => setStatus(null), 3000);
+      } catch (e) {
+        setError(e instanceof Error ? e.message : 'template_save_failed');
+      }
+    })();
   }
 
   function publishAsLibraryTemplate() {
@@ -912,30 +931,39 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
         </span>
         <button
           type="button"
-          className={`px-2 py-0.5 ${showPreview ? 'font-bold text-black' : 'text-neutral-600 hover:text-black'}`}
+          className={`inline-flex items-center px-2 py-0.5 ${showPreview ? 'text-black' : 'text-neutral-600 hover:text-black'}`}
+          title="Preview"
+          aria-label="Preview"
+          aria-pressed={showPreview}
           onClick={() => setShowPreview((v) => !v)}
         >
-          Preview
+          <IconPreview />
         </button>
         <button
           type="button"
-          className={`px-2 py-0.5 ${showComments ? 'font-bold text-black' : 'text-neutral-600 hover:text-black'}`}
+          className={`inline-flex items-center px-2 py-0.5 ${showComments ? 'text-black' : 'text-neutral-600 hover:text-black'}`}
+          title="Comments"
+          aria-label="Comments"
+          aria-pressed={showComments}
           onClick={() => {
             setShowComments((v) => !v);
             setShowHistory(false);
           }}
         >
-          Comments
+          <IconComments />
         </button>
         <button
           type="button"
-          className={`px-2 py-0.5 ${showHistory ? 'font-bold text-black' : 'text-neutral-600 hover:text-black'}`}
+          className={`inline-flex items-center px-2 py-0.5 ${showHistory ? 'text-black' : 'text-neutral-600 hover:text-black'}`}
+          title="History"
+          aria-label="History"
+          aria-pressed={showHistory}
           onClick={() => {
             setShowHistory((v) => !v);
             setShowComments(false);
           }}
         >
-          History
+          <IconHistory />
         </button>
         <ShareMenu
           docId={docId}
@@ -959,10 +987,11 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
         <PublishMenu
           projectEnabled={projectEnabled}
           correspondenceEnabled={correspondenceEnabled}
+          canSharePublic={isVerifiedAuthor(session)}
           onPublishLive={() => void publishLive()}
-          onConnectFeed={publishSocial}
+          onShareToAggregators={(targets) => publishSocial(targets)}
           onSendCorrespondence={sendCorrespondence}
-          onTemplate={publishAsTemplate}
+          onTemplatePrivate={publishAsTemplate}
           onLibraryTemplate={publishAsLibraryTemplate}
           onFinishedWork={() => void publishFinishedWork()}
         />
@@ -994,9 +1023,9 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
                     aria-label="Undo"
                     disabled={!historyUi.canUndo}
                     onClick={undoEdit}
-                    className="px-2 py-0.5 text-[12px] text-neutral-600 hover:text-black disabled:opacity-30"
+                    className="inline-flex items-center px-2 py-0.5 text-neutral-600 hover:text-black disabled:opacity-30"
                   >
-                    Undo
+                    <IconUndo />
                   </button>
                   <button
                     type="button"
@@ -1004,9 +1033,9 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
                     aria-label="Redo"
                     disabled={!historyUi.canRedo}
                     onClick={redoEdit}
-                    className="px-2 py-0.5 text-[12px] text-neutral-600 hover:text-black disabled:opacity-30"
+                    className="inline-flex items-center px-2 py-0.5 text-neutral-600 hover:text-black disabled:opacity-30"
                   >
-                    Redo
+                    <IconRedo />
                   </button>
                 </div>
               </div>
@@ -1162,13 +1191,135 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
         )}
 
         {showPreview && !showHistory && !sidePanel && (
-          <div className="hidden min-w-0 w-1/2 sm:flex">
+          <div className="hidden min-w-0 w-1/2 flex-col sm:flex">
             {isSocialDoc ? (
-              <div className="min-w-0 flex-1">
-                <BrowseFeedTilePreview manifest={bundle.manifest} sections={bundle.sections} />
-              </div>
+              <>
+                <div className="pen-social-pres-strip">
+                  <label>
+                    Bg
+                    <input
+                      type="color"
+                      value={
+                        mergePagePresentation(
+                          defaultPagePresentation(),
+                          bundle.manifest.pagePresentation
+                        ).backgroundColor
+                      }
+                      onChange={(e) => {
+                        const next = mergePagePresentation(
+                          defaultPagePresentation(),
+                          bundle.manifest.pagePresentation
+                        );
+                        persist({
+                          ...bundle,
+                          manifest: {
+                            ...bundle.manifest,
+                            pagePresentation: { ...next, backgroundColor: e.target.value },
+                            updatedAt: new Date().toISOString()
+                          }
+                        });
+                      }}
+                    />
+                  </label>
+                  <label>
+                    Text
+                    <input
+                      type="color"
+                      value={
+                        mergePagePresentation(
+                          defaultPagePresentation(),
+                          bundle.manifest.pagePresentation
+                        ).textColor
+                      }
+                      onChange={(e) => {
+                        const next = mergePagePresentation(
+                          defaultPagePresentation(),
+                          bundle.manifest.pagePresentation
+                        );
+                        persist({
+                          ...bundle,
+                          manifest: {
+                            ...bundle.manifest,
+                            pagePresentation: { ...next, textColor: e.target.value },
+                            updatedAt: new Date().toISOString()
+                          }
+                        });
+                      }}
+                    />
+                  </label>
+                  <label>
+                    Pad
+                    <input
+                      type="number"
+                      min={8}
+                      max={80}
+                      className="w-14 border border-neutral-300 px-1"
+                      value={
+                        mergePagePresentation(
+                          defaultPagePresentation(),
+                          bundle.manifest.pagePresentation
+                        ).padding
+                      }
+                      onChange={(e) => {
+                        const next = mergePagePresentation(
+                          defaultPagePresentation(),
+                          bundle.manifest.pagePresentation
+                        );
+                        persist({
+                          ...bundle,
+                          manifest: {
+                            ...bundle.manifest,
+                            pagePresentation: {
+                              ...next,
+                              padding: Number(e.target.value) || 40
+                            },
+                            updatedAt: new Date().toISOString()
+                          }
+                        });
+                      }}
+                    />
+                  </label>
+                  <label>
+                    Align
+                    <select
+                      className="border border-neutral-300 px-1"
+                      value={
+                        mergePagePresentation(
+                          defaultPagePresentation(),
+                          bundle.manifest.pagePresentation
+                        ).textAlign
+                      }
+                      onChange={(e) => {
+                        const next = mergePagePresentation(
+                          defaultPagePresentation(),
+                          bundle.manifest.pagePresentation
+                        );
+                        persist({
+                          ...bundle,
+                          manifest: {
+                            ...bundle.manifest,
+                            pagePresentation: {
+                              ...next,
+                              textAlign: e.target.value as typeof next.textAlign
+                            },
+                            updatedAt: new Date().toISOString()
+                          }
+                        });
+                      }}
+                    >
+                      <option value="left">Left</option>
+                      <option value="center">Center</option>
+                      <option value="right">Right</option>
+                      <option value="justify">Justify</option>
+                    </select>
+                  </label>
+                </div>
+                <div className="min-h-0 flex-1">
+                  <BrowseFeedTilePreview manifest={bundle.manifest} sections={bundle.sections} />
+                </div>
+              </>
             ) : (
-              <div className="min-w-0 flex-1">
+              <div className="min-h-0 min-w-0 flex-1">
                 <EditablePagePreview
                   manifest={bundle.manifest}
                   section={section}

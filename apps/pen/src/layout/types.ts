@@ -7,6 +7,7 @@ export interface LayoutItem {
   w: number;
   h: number;
   zIndex: number;
+  positionLocked?: boolean;
 }
 
 export function clampLayoutItem(item: LayoutItem): LayoutItem {

@@ -87,6 +87,8 @@ export function patchLayerStyle(
       | 'backgroundVideo'
       | 'textShadow'
       | 'blur'
+      | 'visible'
+      | 'positionLocked'
     >
   >
 ): PenSectionContent {
@@ -252,3 +254,22 @@ export function assertUniqueLayerIds(layers: PenPageLayer[]): void {
     seen.add(l.id);
   }
 }
+
+/**
+ * Stable fingerprint of layer visibility + position locks (remix structural signal).
+ * Body text alone does not change this fingerprint.
+ */
+export function layerLockFingerprint(sections: PenSectionContent[]): string {
+  const parts: string[] = [];
+  for (const s of sections) {
+    const layers = [...(s.layers || [])].sort((a, b) => a.id.localeCompare(b.id));
+    for (const l of layers) {
+      parts.push(
+        `${s.slug}:${l.id}:v=${l.visible === false ? 0 : 1}:p=${l.positionLocked ? 1 : 0}:` +
+          `${Math.round(l.x)}/${Math.round(l.y)}/${Math.round(l.w)}/${Math.round(l.h)}`
+      );
+    }
+  }
+  return parts.join('|');
+}
+

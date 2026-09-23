@@ -1409,22 +1409,97 @@ input.pen-gallery-tile-title-text {
 
 /* Modal phone: fit available body height; scroll inside screen for multi-page */
 .pen-template-preview-modal-body .pen-gallery-phone--lg {
-  width: auto;
-  height: 100%;
+  width: min(100%, 17rem);
+  height: auto;
   max-height: 100%;
   max-width: min(100%, 17rem);
   aspect-ratio: 9 / 16;
   margin: 0 auto;
+  pointer-events: auto;
 }
 
 .pen-template-preview-modal-body .pen-gallery-phone-screen {
   overflow-x: hidden;
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
+  pointer-events: auto;
 }
 
 .pen-template-preview-modal-body .pen-gallery-phone-screen > * {
   min-height: 100%;
+}
+
+.pen-ribbon-find-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem;
+  width: 100%;
+  flex-basis: 100%;
+  padding: 0.35rem 0.5rem;
+  border-top: 1px solid #e5e5e5;
+  background: #fafafa;
+}
+
+.pen-ribbon-find-input {
+  min-width: 6rem;
+  flex: 1 1 6rem;
+  height: 1.5rem;
+  padding: 0 0.4rem;
+  border: 1px solid #d4d4d4;
+  font-size: 12px;
+  outline: none;
+}
+
+.pen-ribbon-find-input:focus {
+  border-color: #000;
+}
+
+.pen-ribbon-find-btn {
+  height: 1.5rem;
+  padding: 0 0.5rem;
+  font-size: 11px;
+  font-weight: 600;
+  color: #171717;
+}
+
+.pen-ribbon-find-btn:hover {
+  opacity: 0.65;
+}
+
+.pen-social-pres-strip {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.35rem 0.75rem;
+  border-bottom: 1px solid #e5e5e5;
+  background: #fafafa;
+  font-size: 11px;
+}
+
+.pen-social-pres-strip label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  color: #525252;
+}
+
+.pen-feed-carousel {
+  display: flex;
+  height: 100%;
+  width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scroll-snap-type: x mandatory;
+  -webkit-overflow-scrolling: touch;
+}
+
+.pen-feed-carousel-page {
+  flex: 0 0 100%;
+  height: 100%;
+  scroll-snap-align: start;
+  scroll-snap-stop: always;
 }
 
 .pen-template-save-ribbon {

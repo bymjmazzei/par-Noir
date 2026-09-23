@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { listPendingInvites } from '../services/penCollab';
 import type { PenRole } from '@par-noir/pen-protocol';
+import { IconShare } from './icons/PenIcons';
 
 /** Invite collaborators by pn with role — browse-style group invite under the hood. */
 export function ShareMenu({
@@ -37,13 +38,15 @@ export function ShareMenu({
     <div className="relative" ref={rootRef}>
       <button
         type="button"
-        className={`px-2 py-0.5 text-[13px] ${
-          open ? 'font-bold text-black' : 'text-neutral-600 hover:text-black'
+        className={`inline-flex items-center px-2 py-0.5 ${
+          open ? 'text-black' : 'text-neutral-600 hover:text-black'
         }`}
         aria-expanded={open}
+        aria-label="Share"
+        title="Share"
         onClick={() => setOpen((v) => !v)}
       >
-        Share
+        <IconShare />
       </button>
       {open && (
         <div className="absolute right-0 top-full z-40 mt-1 w-80 overflow-hidden rounded-md border border-neutral-200 bg-white p-3 shadow-lg">

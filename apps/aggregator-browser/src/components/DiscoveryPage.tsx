@@ -14,6 +14,7 @@ import { isNSFWContent } from '../constants/contentRatings';
 import { hasFeedPreviewPlayback, resolvePublicMediaObjectUrl } from '../services/feedPreviewPlayback';
 import { sortIndexedFilesForDiscovery } from '../utils/discoverySort';
 import { OverscrollRefreshHost } from './OverscrollRefreshHost';
+import { excludePenTemplates, onlyPenTemplates } from '../utils/penTemplateFeed';
 
 interface DiscoveryPageProps {
   files: IndexedFile[];
@@ -290,8 +291,8 @@ export function DiscoveryPage({
   // Example: "Classics" + "All" → shows all classics (filtered by NSFW and sorted)
   // Example: "Sports & Fitness" + "Classics" → shows only sports & fitness classics (filtered by NSFW and sorted)
   const filteredFiles = useMemo(() => {
-    // Step 1: Apply NSFW filtering first
-    let filtered = files.filter(file => shouldShowFile(file));
+    // Step 1: Apply NSFW filtering; never mix templates into Discover relevance grid
+    let filtered = excludePenTemplates(files.filter((file) => shouldShowFile(file)));
     
     // Step 2: Filter by niche if selected (null means "All" niches)
     if (selectedNiche) {
@@ -341,6 +342,10 @@ export function DiscoveryPage({
     
     return filtered;
   }, [files, feeds, selectedNiche, activeTopFeed, userState.isUnlocked, userState.preferences.showNSFW, userState.preferences.hasAgeZKP, userState.preferences.isOver18, userState.preferences.subscribedSubjects, userState.preferences.blockedSubjects, userState.preferences.subscribedFeedIds]);
+
+  const templateFiles = useMemo(() => {
+    return onlyPenTemplates(files.filter((file) => shouldShowFile(file))).slice(0, 24);
+  }, [files, userState.isUnlocked, userState.preferences.showNSFW, userState.preferences.hasAgeZKP, userState.preferences.isOver18]);
 
   // Helper to check if file is a collection
   const isCollection = (file: IndexedFile): boolean => {
@@ -797,6 +802,40 @@ export function DiscoveryPage({
             })}
         </div>
       </div>
+
+      {templateFiles.length > 0 && (
+        <div className="border-b border-neutral-800 px-4 py-4">
+          <h2 className="mb-3 text-sm font-bold uppercase tracking-wider text-neutral-400">
+            Templates
+          </h2>
+          <div className="flex gap-3 overflow-x-auto pb-1 scrollbar-hide">
+            {templateFiles.map((file) => {
+              const thumb = getThumbnail(file);
+              const title =
+                file.metadata.title || file.metadata.name || 'Template';
+              return (
+                <button
+                  key={`tpl-${file.metadata.fileId}`}
+                  type="button"
+                  className="w-36 shrink-0 text-left"
+                  onClick={() => onFileClick(file)}
+                >
+                  <div className="aspect-[9/16] overflow-hidden rounded-lg bg-neutral-800">
+                    {thumb ? (
+                      <img src={thumb} alt="" className="h-full w-full object-cover" />
+                    ) : (
+                      <div className="flex h-full items-center justify-center p-2 text-center text-xs text-neutral-500">
+                        {title}
+                      </div>
+                    )}
+                  </div>
+                  <p className="mt-1 truncate text-xs text-white">{title}</p>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {/* Grid Layout */}
       <div className="p-4">

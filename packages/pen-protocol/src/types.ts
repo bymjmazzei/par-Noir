@@ -60,6 +60,10 @@ export interface PenPageLayer {
   backgroundVideo?: string;
   textShadow?: string;
   blur?: number;
+  /** When false, omitted from preview/compile; still listed in Layers. Default true. */
+  visible?: boolean;
+  /** When true, cannot move/resize on the page surface. */
+  positionLocked?: boolean;
 }
 
 /** Page chrome for Note compile / Pen Mini / PNG (mirrors browse TextPostStyle). */
@@ -112,6 +116,10 @@ export interface PenDocManifest {
   folderId?: string | null;
   /** Active working draft id under drafts/. */
   activeDraftId?: string;
+  /** Parent template when remixing / using a personal or public template. */
+  basedOnTemplateId?: string;
+  /** Parent public IndexedFile when remixing from a feed template. */
+  basedOnFileId?: string;
 }
 
 /** Draft under drafts/{draftId}/ — unfinished suggestion until submitted. */

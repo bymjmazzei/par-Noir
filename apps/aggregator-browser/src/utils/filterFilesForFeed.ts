@@ -7,6 +7,7 @@ import { isNSFWContent } from '../constants/contentRatings';
 import { getCreatorIdentifier, normalizeId } from '../utils/contentClass';
 import { sortIndexedFilesForDiscovery } from '../utils/discoverySort';
 import { COMMUNITY_FEED_PREFIX } from '../utils/communityFeed';
+import { excludePenTemplates, onlyPenTemplates } from './penTemplateFeed';
 
 export type FeedFilterUserState = {
   isUnlocked: boolean;
@@ -124,13 +125,23 @@ export function filterFilesForFeed(params: FilterFilesForFeedParams): IndexedFil
     );
   };
 
-  const filteredMedia = mediaFiles.filter((f) => shouldShowFile(f) && !shouldExcludeNotePage(f));
-  const filteredNotes = notesFiles.filter(
+  const filteredMedia = excludePenTemplates(
+    mediaFiles.filter((f) => shouldShowFile(f) && !shouldExcludeNotePage(f))
+  );
+  const filteredNotes = excludePenTemplates(
+    notesFiles.filter((f) => shouldShowFile(f) && !shouldExcludeNotePage(f))
+  );
+  const filteredCollections = excludePenTemplates(
+    collectionsFiles.filter((f) => shouldShowFile(f) && !shouldExcludeNotePage(f))
+  );
+
+  const allRaw = [...mediaFiles, ...notesFiles, ...collectionsFiles].filter(
     (f) => shouldShowFile(f) && !shouldExcludeNotePage(f)
   );
-  const filteredCollections = collectionsFiles.filter(
-    (f) => shouldShowFile(f) && !shouldExcludeNotePage(f)
-  );
+
+  if (feedId === 'pen-templates') {
+    return sortByScore(onlyPenTemplates(allRaw), userState.isUnlocked);
+  }
 
   const curatedFeedPreferences = userState.isUnlocked
     ? userState.preferences.curatedFeedPreferences || {

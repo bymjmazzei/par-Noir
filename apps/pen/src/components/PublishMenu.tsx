@@ -1,53 +1,84 @@
 import { useEffect, useRef, useState } from 'react';
+import { IconChevron, IconPublish } from './icons/PenIcons';
+
+export type PenAggregatorTarget = 'browse' | 'pen-templates' | string;
 
 /**
- * Publish = update live current/ in Pen.
- * Connect to feed = separate social visibility step.
- * Send = correspondence DM handoff (letter / note).
+ * Publish live / share to aggregators / private template / project library paths.
+ * Public aggregator share is gated by verified (fail closed until Veriff).
  */
 export function PublishMenu({
   projectEnabled,
   correspondenceEnabled,
+  canSharePublic,
   onPublishLive,
-  onConnectFeed,
+  onShareToAggregators,
   onSendCorrespondence,
-  onTemplate,
+  onTemplatePrivate,
   onLibraryTemplate,
   onFinishedWork
 }: {
   projectEnabled: boolean;
   correspondenceEnabled?: boolean;
+  /** Verified author — public browse / pen-templates share. */
+  canSharePublic?: boolean;
   onPublishLive: () => void;
-  onConnectFeed: () => void;
+  onShareToAggregators: (targets: PenAggregatorTarget[]) => void;
   onSendCorrespondence?: () => void;
-  onTemplate: () => void;
+  onTemplatePrivate: () => void;
   onLibraryTemplate: () => void;
   onFinishedWork: () => void;
 }) {
   const [open, setOpen] = useState(false);
+  const [shareOpen, setShareOpen] = useState(false);
+  const [targets, setTargets] = useState<Record<string, boolean>>({
+    browse: true,
+    'pen-templates': false
+  });
   const rootRef = useRef<HTMLDivElement>(null);
+  const publicOk = canSharePublic === true;
 
   useEffect(() => {
     if (!open) return;
     const onDoc = (e: MouseEvent) => {
-      if (!rootRef.current?.contains(e.target as Node)) setOpen(false);
+      if (!rootRef.current?.contains(e.target as Node)) {
+        setOpen(false);
+        setShareOpen(false);
+      }
     };
     document.addEventListener('mousedown', onDoc);
     return () => document.removeEventListener('mousedown', onDoc);
   }, [open]);
 
+  function toggleTarget(id: string) {
+    setTargets((t) => ({ ...t, [id]: !t[id] }));
+  }
+
+  function submitShare() {
+    const selected = Object.entries(targets)
+      .filter(([, on]) => on)
+      .map(([id]) => id);
+    if (!selected.length) return;
+    onShareToAggregators(selected);
+    setShareOpen(false);
+    setOpen(false);
+  }
+
   return (
     <div className="relative" ref={rootRef}>
       <button
         type="button"
-        className="rounded px-2 py-0.5 hover:bg-stone-200"
+        className="inline-flex items-center gap-0.5 rounded px-2 py-0.5 text-neutral-600 hover:bg-stone-200 hover:text-black"
         aria-expanded={open}
+        aria-label="Publish"
+        title="Publish"
         onClick={() => setOpen((v) => !v)}
       >
-        Publish ▾
+        <IconPublish />
+        <IconChevron />
       </button>
       {open && (
-        <div className="absolute right-0 top-full z-40 mt-1 min-w-[14rem] overflow-hidden rounded-md border border-stone-200 bg-white py-1 shadow-lg">
+        <div className="absolute right-0 top-full z-40 mt-1 min-w-[15rem] overflow-hidden rounded-md border border-stone-200 bg-white py-1 shadow-lg">
           <button
             type="button"
             title="Update the live current/ version for collaborators"
@@ -61,15 +92,56 @@ export function PublishMenu({
           </button>
           <button
             type="button"
-            title="Make the live version visible on your social feed (separate from Publish live)"
-            className="block w-full px-3 py-1.5 text-left text-[12px] text-stone-800 hover:bg-stone-50"
-            onClick={() => {
-              onConnectFeed();
-              setOpen(false);
-            }}
+            title={
+              publicOk
+                ? 'Share to aggregators (browse, pen templates, …)'
+                : 'Verification required to share publicly'
+            }
+            disabled={!publicOk}
+            className="block w-full px-3 py-1.5 text-left text-[12px] text-stone-800 hover:bg-stone-50 disabled:cursor-not-allowed disabled:opacity-40"
+            onClick={() => setShareOpen((v) => !v)}
           >
-            Connect to feed
+            Connect to feed…
           </button>
+          {shareOpen && publicOk && (
+            <div className="border-t border-stone-100 bg-stone-50 px-3 py-2">
+              <label className="flex items-center gap-2 text-[11px] text-stone-700">
+                <input
+                  type="checkbox"
+                  checked={!!targets.browse}
+                  onChange={() => toggleTarget('browse')}
+                />
+                Browse (social posts)
+              </label>
+              <label className="mt-1 flex items-center gap-2 text-[11px] text-stone-700">
+                <input
+                  type="checkbox"
+                  checked={!!targets['pen-templates']}
+                  onChange={() => toggleTarget('pen-templates')}
+                />
+                Pen templates
+              </label>
+              <label className="mt-1 flex items-center gap-2 text-[11px] text-stone-500">
+                <input type="checkbox" disabled checked={false} readOnly />
+                Third party (soon)
+              </label>
+              <p className="mt-1 text-[10px] text-stone-500">
+                Templates never appear in user feeds — only the templates feed / Discover Templates.
+              </p>
+              <button
+                type="button"
+                className="mt-2 text-[11px] font-bold text-black hover:opacity-60"
+                onClick={submitShare}
+              >
+                Share
+              </button>
+            </div>
+          )}
+          {!publicOk && (
+            <p className="px-3 py-1 text-[10px] text-stone-500">
+              Public share requires a verified identity (coming soon).
+            </p>
+          )}
           {correspondenceEnabled && onSendCorrespondence && (
             <button
               type="button"
@@ -88,11 +160,11 @@ export function PublishMenu({
             type="button"
             className="block w-full px-3 py-1.5 text-left text-[12px] text-stone-800 hover:bg-stone-50"
             onClick={() => {
-              onTemplate();
+              onTemplatePrivate();
               setOpen(false);
             }}
           >
-            As template
+            Save as private template
           </button>
           {projectEnabled && (
             <>

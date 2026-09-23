@@ -19,6 +19,27 @@ Hierarchy: **Category → Form → Template** (e.g. Social → Notes → Basic N
 
 Structured/relational personal data (sheets, standard data points) may be additional template families on the same spine — not a second custody story. Kit-only **Records** uses `audience: 'kit'` (hidden from Pen New…).
 
+## Dual artifact + aggregators
+
+A **public template** is both:
+
+1. **Full Pen IR** — sections, layers, schema, presentation (`visible` / `positionLocked` on layers). What “Use template” materializes.
+2. **A published feed post** — CDN / `IndexedFile` / engagement, when shared to aggregators.
+
+**Connect to feed** = choose aggregator targets (`browse`, `pen-templates`, third-party stubs). Pen-templates sets `penTemplateKind` (+ `penClassId` / `penIrRef`). Template-flagged items appear **only** on the browse pN templates feed and Discover **Templates** section — **never** user feeds, other feeds, or Discover relevance.
+
+| Surface | Contents |
+|---|---|
+| **Pen Mini** | Curated: blank + ~3 `browseFeatured` per social form + starred/created from `par-noir-pen/templates/` |
+| **pN templates feed** | Public social templates only |
+| **Discover Templates** | Template-flagged only |
+| **User / other feeds / Discover relevance** | Social posts only (exclude `penTemplateKind`) |
+| **Pen TemplatesBrowse** | Platform IR + owner templates folder + public pen-templates cache; group by taxonomy |
+
+**Star / save** copies IR into owner Drive `par-noir-pen/templates/` (prefs blob is sync buffer). **Verified** (`isVerifiedAuthor`, fail-closed until Veriff) required for public aggregator share; private Yours/cloud and Use public templates are open to all.
+
+Layers: **eye** = visibility (omit from preview/compile); **lock** = position lock (no move/resize on Use/remix). Overlay FX beyond Object shadow/blur is out of scope for MVP.
+
 ## First-party vs community
 
 - **First-party:** build only what scales the pN ecosystem.
@@ -44,6 +65,7 @@ Structured/relational personal data (sheets, standard data points) may be additi
 ## Storage / collab invariants
 
 - Per-user cloud replica under `par-noir-pen/{docId}/` (same idea as group messaging materialization).
+- Starred / created templates under `par-noir-pen/templates/{templateId}/` (IR SoT for Yours / Mini).
 - Section versioning = fixed current filename; supersede moves to `past/` with **date in the title**.
 - Updates use messaging-style **outbox** fanout — do not invent a second sync bus.
 - No shared single Drive folder as multi-writer SoT.
@@ -66,6 +88,6 @@ Do not reintroduce Thought as product vocabulary for new work. Hard-cut legacy t
 
 ## Package
 
-Shared logic lives in `@par-noir/pen-protocol` (when the package exists). Apps only wire unlock, Drive I/O via `ownerFetch`, and UI.
+Shared logic lives in `@par-noir/pen-protocol`. Feed-shaped previews share `@par-noir/feed-tile`. Apps only wire unlock, Drive I/O via `ownerFetch`, and UI.
 
 **External agents:** templates ship `agentStarter`; teaching data is `@par-noir/pen-curriculum`. See ADR_PEN decision 12.

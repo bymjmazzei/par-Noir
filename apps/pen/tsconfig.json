@@ -15,7 +15,7 @@
     "noUnusedLocals": true,
     "noUnusedParameters": true,
     "baseUrl": ".",
-    "paths": { "@/*": ["src/*"] }
+    "paths": { "@/*": ["src/*"], "@par-noir/feed-tile": ["../../packages/feed-tile/src/index.ts"] }
   },
   "include": ["src"]
 }

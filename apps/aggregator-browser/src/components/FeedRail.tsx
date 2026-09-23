@@ -369,6 +369,11 @@ export function buildFeedRailItems(
       feedId: 'collections',
       name: 'COLLECTIONS',
       isActive: activeFeedId === 'collections'
+    },
+    {
+      feedId: 'pen-templates',
+      name: 'TEMPLATES',
+      isActive: activeFeedId === 'pen-templates'
     }
   );
 

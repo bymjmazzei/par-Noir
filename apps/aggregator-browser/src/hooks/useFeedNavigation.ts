@@ -65,6 +65,14 @@ export function useFeedNavigation(
         index: 3
       });
 
+      // 4b. Pen templates feed (dedicated surface)
+      hierarchy.push({
+        feedId: 'pen-templates',
+        name: 'Templates',
+        type: 'public',
+        index: 4
+      });
+
       // 5. Subscribed Niche Category Feeds (virtual feeds based on categories)
       if (subscribedFeedIds.length > 0) {
         // Get unique categories from subscribed feeds
@@ -150,6 +158,13 @@ export function useFeedNavigation(
         name: 'Collections',
         type: 'public',
         index: 3
+      });
+
+      hierarchy.push({
+        feedId: 'pen-templates',
+        name: 'Templates',
+        type: 'public',
+        index: 4
       });
 
       // 5. Niche Feeds (up to 20)

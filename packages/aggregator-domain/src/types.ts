@@ -338,6 +338,15 @@ export interface PublicMetadata {
   /** Server discovery score (API); see docs/business/DISCOVERY_RANKING.md */
   publicRankScore?: number;
 
+  /** Pen taxonomy — set when shared to pen-templates aggregator. */
+  penClassId?: string;
+  penCategoryId?: string;
+  penTemplateKind?: 'template' | 'remix';
+  basedOnFileId?: string;
+  basedOnTemplateId?: string;
+  /** Public Pen IR blob ref for Use template. */
+  penIrRef?: { backend?: string; objectId?: string; publicUrl?: string };
+
   publicToken?: any;
   /**
    * Pointer to anonymously readable share-ciphertext on the owner's cloud.

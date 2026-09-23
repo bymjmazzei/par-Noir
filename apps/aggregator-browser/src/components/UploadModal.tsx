@@ -86,6 +86,13 @@ export function UploadModal({ feeds: propsFeeds, onClose, onUploadComplete }: Up
         ...(handoff?.headProof ? { headProof: handoff.headProof } : {}),
         ...(templateId ? { templateId } : {}),
         ...(penDocId ? { penDocId } : {}),
+        ...(handoff?.penClassId ? { penClassId: handoff.penClassId } : {}),
+        ...(handoff?.penCategoryId ? { penCategoryId: handoff.penCategoryId } : {}),
+        ...(handoff?.penTemplateKind ? { penTemplateKind: handoff.penTemplateKind } : {}),
+        ...(handoff?.basedOnTemplateId
+          ? { basedOnTemplateId: handoff.basedOnTemplateId }
+          : {}),
+        ...(handoff?.penIrRef ? { penIrRef: handoff.penIrRef } : {}),
       };
 
       const linkPublishedFile = (result: { fileId?: string } | null | undefined) => {

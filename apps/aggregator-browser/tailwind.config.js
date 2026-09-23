@@ -3,6 +3,8 @@ export default {
   content: [
     "./index.html",
     "./src/**/*.{js,ts,jsx,tsx}",
+    "../../packages/feed-tile/src/**/*.{js,ts,jsx,tsx}",
+    "../../packages/messaging-ui/src/**/*.{js,ts,jsx,tsx}",
   ],
   theme: {
     extend: {

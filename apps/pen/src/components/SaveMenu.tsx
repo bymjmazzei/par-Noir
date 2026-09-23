@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { IconChevron, IconSave } from './icons/PenIcons';
 
 /** Save draft (default) with dropdown: Commit version or Suggest. */
 export function SaveMenu({
@@ -42,21 +43,22 @@ export function SaveMenu({
         <button
           type="button"
           disabled={busy}
-          className="px-2 py-0.5 text-[13px] font-bold text-black hover:opacity-60 disabled:opacity-40"
+          className="inline-flex items-center gap-1 px-2 py-0.5 text-[13px] font-bold text-black hover:opacity-60 disabled:opacity-40"
           onClick={onSaveDraft}
           title="Save draft"
+          aria-label="Save draft"
         >
-          Save draft
+          <IconSave />
         </button>
         <button
           type="button"
           disabled={busy}
-          className="px-1.5 py-0.5 text-[13px] text-neutral-600 hover:text-black disabled:opacity-40"
+          className="px-1 py-0.5 text-neutral-600 hover:text-black disabled:opacity-40"
           aria-expanded={open}
           aria-label="More save options"
           onClick={() => setOpen((v) => !v)}
         >
-          ▾
+          <IconChevron />
         </button>
       </div>
       {open && (
