@@ -20,6 +20,11 @@ body {
   font-size: 12pt;
   line-height: 1.5;
   color: #1c1917;
+  /* Prefer breaks at spaces; only split a token if it cannot fit the line. */
+  hyphens: none;
+  -webkit-hyphens: none;
+  overflow-wrap: break-word;
+  word-break: normal;
 }
 
 .pen-word-prose p {
@@ -122,6 +127,14 @@ body {
   width: 210mm;
   max-width: 100%;
   min-height: 297mm;
+}
+
+/* Preview / compiled HTML — same break policy as the writing surface */
+.pen-rich-html {
+  hyphens: none;
+  -webkit-hyphens: none;
+  overflow-wrap: break-word;
+  word-break: normal;
 }
 
 .pen-rich-html p {
