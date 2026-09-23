@@ -46,7 +46,8 @@ import {
   ensureOwnerFontFace,
   getBoundFontsSession
 } from '../services/penFontsCloud';
-import { ensureGoogleFontLoaded } from '../services/penGoogleFonts';
+import { ensureGoogleFontLoaded, ensureGoogleFontsLoaded } from '../services/penGoogleFonts';
+import { GoogleFontPreviewLabel } from './GoogleFontPreviewLabel';
 import {
   ColorAButton,
   RibbonIconBtn,
@@ -446,11 +447,18 @@ export function FormatRibbon({
                   active={fontFamily === f}
                   onClick={() => applyFamily(f)}
                 >
-                  <span style={{ fontFamily: f }}>{f}</span>
+                  <GoogleFontPreviewLabel family={f} />
                 </RibbonItem>
               ))}
               {!showAllGoogle ? (
-                <RibbonItem active={false} onClick={() => setShowAllGoogle(true)}>
+                <RibbonItem
+                  active={false}
+                  onClick={() => {
+                    // Warm featured + first screen of the full list when expanding.
+                    ensureGoogleFontsLoaded([...PEN_GOOGLE_FONTS_FEATURED]);
+                    setShowAllGoogle(true);
+                  }}
+                >
                   Show all Google fonts…
                 </RibbonItem>
               ) : (

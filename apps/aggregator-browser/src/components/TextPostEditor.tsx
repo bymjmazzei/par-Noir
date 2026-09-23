@@ -26,7 +26,8 @@ import {
   uploadPersonalFont,
   tryGetMlKemSecretKey
 } from '../services/penFontsCloud';
-import { ensureGoogleFontLoaded } from '../services/penGoogleFonts';
+import { ensureGoogleFontLoaded, ensureGoogleFontsLoaded } from '../services/penGoogleFonts';
+import { GoogleFontPreviewLabel } from './GoogleFontPreviewLabel';
 
 // Helper function to convert hex to RGB
 const hexToRgb = (hex: string): { r: number; g: number; b: number } => {
@@ -1176,7 +1177,7 @@ export function TextPostEditor({ onSave }: TextPostEditorProps) {
       switch (openMenu) {
         case 'font':
           return (
-            <div className="max-h-64 overflow-y-auto">
+            <div className="max-h-64 overflow-y-auto" data-pen-font-scroll>
               <div className="px-4 pt-2 pb-1 text-[10px] font-semibold uppercase tracking-wide text-neutral-500">
                 My Fonts
               </div>
@@ -1237,14 +1238,18 @@ export function TextPostEditor({ onSave }: TextPostEditorProps) {
                     closeMenu();
                   }}
                   className="w-full px-4 py-2 text-left text-white hover:bg-neutral-700 flex items-center justify-between"
-                  style={{ fontFamily: f }}
                 >
-                  <span>{f}</span>
+                  <GoogleFontPreviewLabel family={f} />
                   {fontFamily === f && <Check className="h-4 w-4 text-blue-500" />}
                 </button>
               ))}
               <button
-                onClick={() => setShowAllGoogleFonts((v) => !v)}
+                onClick={() => {
+                  if (!showAllGoogleFonts) {
+                    ensureGoogleFontsLoaded([...PEN_GOOGLE_FONTS_FEATURED]);
+                  }
+                  setShowAllGoogleFonts((v) => !v);
+                }}
                 className="w-full px-4 py-2 text-left text-neutral-300 hover:bg-neutral-700"
               >
                 {showAllGoogleFonts ? 'Show fewer Google fonts' : 'Show all Google fonts…'}
@@ -1825,13 +1830,18 @@ export function TextPostEditor({ onSave }: TextPostEditorProps) {
               onClick={() => setFontFamily(font.value)}
                 className="px-3 py-1 transition-opacity hover:opacity-80 relative flex-shrink-0"
               style={{ 
-                fontFamily: font.value, 
                 color: 'white',
                 textDecoration: fontFamily === font.value ? 'underline' : 'none',
                 textUnderlineOffset: '4px'
               }}
             >
-              <span className="text-sm whitespace-nowrap">{font.label}</span>
+              {SYSTEM_FONT_OPTIONS.some((s) => s.value === font.value) ? (
+                <span className="text-sm whitespace-nowrap" style={{ fontFamily: font.value }}>
+                  {font.label}
+                </span>
+              ) : (
+                <GoogleFontPreviewLabel family={font.value} className="text-sm whitespace-nowrap" />
+              )}
             </button>
           ))}
           </div>
