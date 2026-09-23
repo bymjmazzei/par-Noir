@@ -15,6 +15,36 @@ export function templateManifestPath(templateId: string): string {
   return `${templateRootPath(templateId)}/template.json`;
 }
 
+/** Owner My Fonts library (personal — not shared via collab fanout). */
+export function fontsRootPath(): string {
+  return `${PEN_ROOT}/fonts`;
+}
+
+export function fontsIndexPath(): string {
+  return `${PEN_ROOT}/fonts.index.json`;
+}
+
+export function fontRootPath(fontId: string): string {
+  return `${fontsRootPath()}/${sanitizeSegment(fontId)}`;
+}
+
+export function fontManifestPath(fontId: string): string {
+  return `${fontRootPath(fontId)}/font.json`;
+}
+
+export function fontBinaryPath(fontId: string, fileName: string): string {
+  return `${fontRootPath(fontId)}/${sanitizeSegment(fileName)}`;
+}
+
+/** Doc-scoped opaque font envelopes (docKey AES-GCM). Usable only for that doc. */
+export function docFontsDirPath(docId: string): string {
+  return `${docRootPath(docId)}/fonts`;
+}
+
+export function docFontPath(docId: string, fontId: string): string {
+  return `${docFontsDirPath(docId)}/${sanitizeSegment(fontId)}.penfont`;
+}
+
 export function sanitizeSegment(s: string): string {
   return (
     String(s || '')

@@ -1,6 +1,6 @@
 {
   "penProtocolVersion": "0.1.0",
-  "exportedAt": "2026-09-23T01:09:49.102Z",
+  "exportedAt": "2026-09-23T18:28:28.904Z",
   "classes": [
     {
       "id": "social",
@@ -142,6 +142,21 @@
       "kind": "authored",
       "audience": "consumer",
       "parentId": "time"
+    },
+    {
+      "id": "custom",
+      "title": "Custom",
+      "description": "Freeform authored pages",
+      "kind": "authored",
+      "audience": "consumer"
+    },
+    {
+      "id": "custom.doc",
+      "title": "Document",
+      "description": "Blank freeform page",
+      "kind": "authored",
+      "audience": "consumer",
+      "parentId": "custom"
     },
     {
       "id": "records",

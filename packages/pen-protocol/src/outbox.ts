@@ -8,6 +8,8 @@ export const PEN_PUBLISH_KIND = 'pen.publish' as const;
 export const PEN_DOC_BOOTSTRAP_KIND = 'pen.doc_bootstrap' as const;
 export const PEN_DOC_DELETE_KIND = 'pen.doc_delete' as const;
 export const PEN_DOC_META_KIND = 'pen.doc_meta' as const;
+/** Upsert doc-scoped opaque .penfont under par-noir-pen/{docId}/fonts/ */
+export const PEN_FONT_UPSERT_KIND = 'pen.font_upsert' as const;
 
 export type PenOutboxKind =
   | typeof PEN_SECTION_PROMOTE_KIND
@@ -17,7 +19,8 @@ export type PenOutboxKind =
   | typeof PEN_PUBLISH_KIND
   | typeof PEN_DOC_BOOTSTRAP_KIND
   | typeof PEN_DOC_DELETE_KIND
-  | typeof PEN_DOC_META_KIND;
+  | typeof PEN_DOC_META_KIND
+  | typeof PEN_FONT_UPSERT_KIND;
 
 function fanout(
   routeKeys: string[],
@@ -94,5 +97,14 @@ export function penDocDeleteFanout(
   return fanout(routeKeys, PEN_DOC_DELETE_KIND) as Array<{
     routeKey: string;
     jobType: typeof PEN_DOC_DELETE_KIND;
+  }>;
+}
+
+export function penFontUpsertFanout(
+  routeKeys: string[]
+): Array<{ routeKey: string; jobType: typeof PEN_FONT_UPSERT_KIND }> {
+  return fanout(routeKeys, PEN_FONT_UPSERT_KIND) as Array<{
+    routeKey: string;
+    jobType: typeof PEN_FONT_UPSERT_KIND;
   }>;
 }

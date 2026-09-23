@@ -6,7 +6,7 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { X, Check, Image as ImageIcon, AlignLeft, AlignCenter, AlignRight, AlignJustify, Minus, Plus as PlusIcon, Send, ChevronLeft, ChevronRight } from 'lucide-react';
-import { compileDocumentToNote } from '@par-noir/pen-protocol';
+import { compileDocumentToNote, PEN_SYSTEM_FONTS, PEN_GOOGLE_FONTS_FEATURED, PEN_GOOGLE_FONTS_ALL, isGooglePenFont, type PenFontIndexEntry } from '@par-noir/pen-protocol';
 import { TextPostData } from '../types/aggregator';
 import { useUserState } from '../contexts/UserStateContext';
 import { useHorizontalSwipe } from '../hooks/useHorizontalSwipe';
@@ -15,6 +15,18 @@ import { Capacitor } from '@capacitor/core';
 import { pickImageFromNative } from '../hooks/useNativeFilePicker';
 import { peekPenPublishHandoff } from '../utils/penPublishHandoff';
 import { MiniTemplatePicker, type MiniPickerChoice } from './MiniTemplatePicker';
+import {
+  buildMiniBodySections,
+  signPenMiniNoteGenesis,
+} from '../services/penMiniGenesis';
+import { hasSigningKeys } from '../services/dmIdentitySession';
+import {
+  listPersonalFonts,
+  pickFontFile,
+  uploadPersonalFont,
+  tryGetMlKemSecretKey
+} from '../services/penFontsCloud';
+import { ensureGoogleFontLoaded } from '../services/penGoogleFonts';
 
 // Helper function to convert hex to RGB
 const hexToRgb = (hex: string): { r: number; g: number; b: number } => {
@@ -246,23 +258,11 @@ const DEFAULT_MINI_PAGE: MiniPage = {
   padding: 40,
 };
 
-const FONT_OPTIONS = [
-  { value: 'Arial', label: 'Arial' },
-  { value: 'Helvetica', label: 'Helvetica' },
-  { value: 'Georgia', label: 'Georgia' },
-  { value: 'Times New Roman', label: 'Times New Roman' },
-  { value: 'Courier New', label: 'Courier New' },
-  { value: 'Verdana', label: 'Verdana' },
-  { value: 'Impact', label: 'Impact' },
-  { value: 'Comic Sans MS', label: 'Comic Sans MS' },
-  { value: 'Trebuchet MS', label: 'Trebuchet MS' },
-  { value: 'Roboto', label: 'Roboto' },
-  { value: 'Open Sans', label: 'Open Sans' },
-  { value: 'Lato', label: 'Lato' },
-  { value: 'Montserrat', label: 'Montserrat' },
-  { value: 'Poppins', label: 'Poppins' },
-  { value: 'Playfair Display', label: 'Playfair Display' },
-];
+const SYSTEM_FONT_OPTIONS = PEN_SYSTEM_FONTS.map((f) => ({ value: f, label: f }));
+const FEATURED_GOOGLE_OPTIONS = PEN_GOOGLE_FONTS_FEATURED.map((f) => ({
+  value: f,
+  label: f
+}));
 
 function pagesFromHandoff(): MiniPage[] {
   try {
@@ -292,7 +292,7 @@ function pagesFromHandoff(): MiniPage[] {
 }
 
 export function TextPostEditor({ onSave }: TextPostEditorProps) {
-  useUserState();
+  const { userState } = useUserState();
   
   // Multi-page state — hydrate from Pen full-app handoff when present
   const [pages, setPages] = useState<MiniPage[]>(() => pagesFromHandoff());
@@ -325,7 +325,54 @@ export function TextPostEditor({ onSave }: TextPostEditorProps) {
   
   // Setters that update current page
   const setContent = (value: string) => updateCurrentPage({ content: value });
-  const setFontFamily = (value: string) => updateCurrentPage({ fontFamily: value });
+  const setFontFamily = (value: string) => {
+    if (isGooglePenFont(value)) ensureGoogleFontLoaded(value);
+    updateCurrentPage({ fontFamily: value });
+  };
+
+  const [myFonts, setMyFonts] = useState<PenFontIndexEntry[]>(() =>
+    userState.pnIdentifier ? listPersonalFonts(userState.pnIdentifier) : []
+  );
+  const [showAllGoogleFonts, setShowAllGoogleFonts] = useState(false);
+  const [fontUploadBusy, setFontUploadBusy] = useState(false);
+
+  useEffect(() => {
+    const pn = userState.pnIdentifier;
+    if (!pn) {
+      setMyFonts([]);
+      return;
+    }
+    const refresh = () => setMyFonts(listPersonalFonts(pn));
+    refresh();
+    window.addEventListener('pen-fonts-changed', refresh);
+    window.addEventListener('pen-fonts-merged', refresh);
+    return () => {
+      window.removeEventListener('pen-fonts-changed', refresh);
+      window.removeEventListener('pen-fonts-merged', refresh);
+    };
+  }, [userState.pnIdentifier]);
+
+  const handleAddFont = async () => {
+    const pn = userState.pnIdentifier;
+    const mlKem = tryGetMlKemSecretKey();
+    if (!pn || !mlKem || fontUploadBusy) return;
+    const file = await pickFontFile();
+    if (!file) return;
+    setFontUploadBusy(true);
+    try {
+      const entry = await uploadPersonalFont({
+        pnIdentifier: pn,
+        mlKemSecretKey: mlKem,
+        file
+      });
+      setMyFonts(listPersonalFonts(pn));
+      setFontFamily(entry.family);
+    } catch {
+      /* offline */
+    } finally {
+      setFontUploadBusy(false);
+    }
+  };
   const setFontSize = (value: number) => updateCurrentPage({ fontSize: value });
   const setTextColor = (value: string) => updateCurrentPage({ textColor: value });
   const setDropShadowColor = (value: string) => updateCurrentPage({ dropShadowColor: value });
@@ -839,33 +886,75 @@ export function TextPostEditor({ onSave }: TextPostEditorProps) {
         ? 'note.basic.v1'
         : miniTemplateId || 'note.basic.v1';
     let contentClass: 'note' = 'note';
+    const bodyText = pages
+      .filter(page => page.content.trim())
+      .map(page => page.content.trim())
+      .join('\n\n');
+    const sections = buildMiniBodySections(bodyText);
     try {
-      const bodyText = pages
-        .filter(page => page.content.trim())
-        .map(page => page.content.trim())
-        .join('\n\n');
       const compiled = compileDocumentToNote({
         templateId: templateId.includes('.') ? templateId : 'note.basic.v1',
         title: metadata.name || 'Note',
-        sections: [
-          {
-            slug: 'body',
-            doc: {
-              type: 'doc',
-              content: [
-                {
-                  type: 'paragraph',
-                  content: bodyText ? [{ type: 'text', text: bodyText }] : []
-                }
-              ]
-            }
-          }
-        ]
+        sections
       });
       templateId = compiled.templateId;
       contentClass = compiled.contentClass;
     } catch {
       // Styled Pen Mini still publishes as Note even if compile fails
+    }
+
+    const handoff = peekPenPublishHandoff();
+    let penPublish: {
+      headProof: unknown;
+      penDocId: string;
+      templateId: string;
+      penClassId?: string;
+      penIrRef?: { objectId: string };
+    } | null = null;
+
+    if (handoff?.headProof && typeof handoff.docId === 'string' && handoff.docId) {
+      penPublish = {
+        headProof: handoff.headProof,
+        penDocId: handoff.docId,
+        templateId: (typeof handoff.templateId === 'string' && handoff.templateId) || templateId,
+        penClassId: handoff.penClassId,
+        penIrRef: handoff.penIrRef?.objectId
+          ? { objectId: handoff.penIrRef.objectId }
+          : { objectId: handoff.docId },
+      };
+    } else {
+      const authorPn = userState.pnIdentifier;
+      if (!authorPn || !hasSigningKeys()) {
+        alert(
+          'Unlock did not include signing keys. Unlock again so ML-DSA keys are in the messaging handoff.'
+        );
+        return;
+      }
+      try {
+        const signed = signPenMiniNoteGenesis({
+          authorPn,
+          templateId,
+          sections,
+        });
+        penPublish = {
+          headProof: signed.headProof,
+          penDocId: signed.docId,
+          templateId: signed.templateId,
+          penClassId: signed.penClassId,
+          penIrRef: signed.penIrRef,
+        };
+        templateId = signed.templateId;
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        if (/signing_keys/i.test(msg)) {
+          alert(
+            'Unlock did not include signing keys. Unlock again so ML-DSA keys are in the messaging handoff.'
+          );
+        } else {
+          alert(`Could not sign note: ${msg}`);
+        }
+        return;
+      }
     }
     
     // Convert all pages to TextPostData format
@@ -898,7 +987,11 @@ export function TextPostEditor({ onSave }: TextPostEditorProps) {
           feedCategories: metadata.categories && metadata.categories.length > 0 ? metadata.categories : undefined,
           category: metadata.categories && metadata.categories.length > 0 ? metadata.categories[0] : undefined,
           contentClass,
-          templateId,
+          templateId: penPublish.templateId,
+          headProof: penPublish.headProof,
+          penDocId: penPublish.penDocId,
+          penClassId: penPublish.penClassId,
+          penIrRef: penPublish.penIrRef,
           locationCreated: (metadata.locationName || metadata.locationAddress) ? {
             '@type': 'Place',
             ...(metadata.locationName && { name: metadata.locationName }),
@@ -919,19 +1012,20 @@ export function TextPostEditor({ onSave }: TextPostEditorProps) {
     // If multiple pages, we'll need to handle this differently
     // For now, save the first page (or all pages as a collection)
     if (textPosts.length === 1) {
-      onSave(textPosts[0]);
+      onSave({ ...textPosts[0], penPublish } as TextPostData);
     } else {
       // Multiple pages - save first page with metadata indicating it's part of a multi-page note
       // Create a clean copy of the first post without circular references
       const firstPost = {
         ...textPosts[0],
         isMultiPage: true,
+        penPublish,
         pages: textPosts.map(post => ({
           content: post.content,
           style: post.style
         }))
       };
-      onSave(firstPost);
+      onSave(firstPost as TextPostData);
     }
   };
 
@@ -1083,7 +1177,37 @@ export function TextPostEditor({ onSave }: TextPostEditorProps) {
         case 'font':
           return (
             <div className="max-h-64 overflow-y-auto">
-              {FONT_OPTIONS.map(font => (
+              <div className="px-4 pt-2 pb-1 text-[10px] font-semibold uppercase tracking-wide text-neutral-500">
+                My Fonts
+              </div>
+              {myFonts.map((entry) => (
+                <button
+                  key={entry.fontId}
+                  onClick={() => {
+                    setFontFamily(entry.family);
+                    closeMenu();
+                  }}
+                  className="w-full px-4 py-2 text-left text-white hover:bg-neutral-700 flex items-center justify-between"
+                  style={{ fontFamily: entry.family }}
+                >
+                  <span>{entry.family}</span>
+                  {fontFamily === entry.family && (
+                    <Check className="h-4 w-4 text-blue-500" />
+                  )}
+                </button>
+              ))}
+              <button
+                onClick={() => {
+                  void handleAddFont().then(() => closeMenu());
+                }}
+                className="w-full px-4 py-2 text-left text-white hover:bg-neutral-700"
+              >
+                {fontUploadBusy ? 'Uploading…' : 'Add font…'}
+              </button>
+              <div className="px-4 pt-2 pb-1 text-[10px] font-semibold uppercase tracking-wide text-neutral-500">
+                System
+              </div>
+              {SYSTEM_FONT_OPTIONS.map((font) => (
                 <button
                   key={font.value}
                   onClick={() => {
@@ -1099,6 +1223,32 @@ export function TextPostEditor({ onSave }: TextPostEditorProps) {
                   )}
                 </button>
               ))}
+              <div className="px-4 pt-2 pb-1 text-[10px] font-semibold uppercase tracking-wide text-neutral-500">
+                Google
+              </div>
+              {(showAllGoogleFonts
+                ? (PEN_GOOGLE_FONTS_ALL as readonly string[])
+                : PEN_GOOGLE_FONTS_FEATURED
+              ).map((f) => (
+                <button
+                  key={f}
+                  onClick={() => {
+                    setFontFamily(f);
+                    closeMenu();
+                  }}
+                  className="w-full px-4 py-2 text-left text-white hover:bg-neutral-700 flex items-center justify-between"
+                  style={{ fontFamily: f }}
+                >
+                  <span>{f}</span>
+                  {fontFamily === f && <Check className="h-4 w-4 text-blue-500" />}
+                </button>
+              ))}
+              <button
+                onClick={() => setShowAllGoogleFonts((v) => !v)}
+                className="w-full px-4 py-2 text-left text-neutral-300 hover:bg-neutral-700"
+              >
+                {showAllGoogleFonts ? 'Show fewer Google fonts' : 'Show all Google fonts…'}
+              </button>
             </div>
           );
         case 'shadow':
@@ -1645,7 +1795,30 @@ export function TextPostEditor({ onSave }: TextPostEditorProps) {
           }}
         >
           <div className="flex items-center gap-4 min-w-max">
-          {FONT_OPTIONS.map((font) => (
+          {myFonts.map((entry) => (
+            <button
+              key={entry.fontId}
+              ref={fontFamily === entry.family ? activeFontButtonRef : null}
+              onClick={() => setFontFamily(entry.family)}
+              className="px-3 py-1 transition-opacity hover:opacity-80 relative flex-shrink-0"
+              style={{
+                fontFamily: entry.family,
+                color: 'white',
+                textDecoration: fontFamily === entry.family ? 'underline' : 'none',
+                textUnderlineOffset: '4px'
+              }}
+            >
+              <span className="text-sm whitespace-nowrap">{entry.family}</span>
+            </button>
+          ))}
+          <button
+            type="button"
+            onClick={() => void handleAddFont()}
+            className="px-3 py-1 transition-opacity hover:opacity-80 relative flex-shrink-0 text-sm text-white/80"
+          >
+            {fontUploadBusy ? '…' : '+ Font'}
+          </button>
+          {[...SYSTEM_FONT_OPTIONS, ...FEATURED_GOOGLE_OPTIONS].map((font) => (
             <button
               key={font.value}
               ref={fontFamily === font.value ? activeFontButtonRef : null}

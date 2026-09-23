@@ -12,6 +12,7 @@ import {
   penDraftUpsertFanout,
   penPublishFanout,
   penDocBootstrapFanout,
+  penFontUpsertFanout,
   createApiSocialApplier,
   ensureMailboxRouteKey,
   type OutboxKind,
@@ -24,6 +25,7 @@ import {
   PEN_DRAFT_UPSERT_KIND,
   PEN_PUBLISH_KIND,
   PEN_DOC_BOOTSTRAP_KIND,
+  PEN_FONT_UPSERT_KIND,
   type PenDocComment,
   type PenPromoteLink,
   type PenSuggestion,
@@ -278,6 +280,7 @@ function fanoutFor(kind: OutboxKind, peerRouteKeys: string[]) {
   if (kind === PEN_DRAFT_UPSERT_KIND) return penDraftUpsertFanout(peerRouteKeys);
   if (kind === PEN_PUBLISH_KIND) return penPublishFanout(peerRouteKeys);
   if (kind === PEN_DOC_BOOTSTRAP_KIND) return penDocBootstrapFanout(peerRouteKeys);
+  if (kind === PEN_FONT_UPSERT_KIND) return penFontUpsertFanout(peerRouteKeys);
   return [];
 }
 

@@ -30,7 +30,8 @@ const PEN_JOB_TYPES = [
   'pen.publish',
   'pen.doc_bootstrap',
   'pen.doc_delete',
-  'pen.doc_meta'
+  'pen.doc_meta',
+  'pen.font_upsert'
 ] as const;
 
 function getNotarySecret(): Buffer {
@@ -266,7 +267,7 @@ export function setupPenRoutes(
       if (!userPnIdentifier || !docId || !(PEN_JOB_TYPES as readonly string[]).includes(jobType)) {
         return res.status(400).json({
           error:
-            'userPnIdentifier, docId, and jobType=pen.doc_bootstrap|pen.draft_upsert|pen.publish|pen.comment|pen.suggestion|pen.section_promote|pen.doc_delete|pen.doc_meta required'
+            'userPnIdentifier, docId, and jobType=pen.doc_bootstrap|pen.draft_upsert|pen.publish|pen.comment|pen.suggestion|pen.section_promote|pen.doc_delete|pen.doc_meta|pen.font_upsert required'
         });
       }
 
@@ -394,6 +395,33 @@ export function setupPenRoutes(
       const currentId = await ensureDriveFolder(drive, 'current', docFolderId);
       const draftsId = await ensureDriveFolder(drive, 'drafts', docFolderId);
       const pastRootId = await ensureDriveFolder(drive, 'past', docFolderId);
+
+      if (jobType === 'pen.font_upsert') {
+        const fontId = String(req.body?.fontId || '').trim();
+        const fontCiphertextB64 = String(req.body?.fontCiphertextB64 || '');
+        if (!fontId || !fontCiphertextB64) {
+          return res.status(400).json({ error: 'fontId_and_fontCiphertextB64_required' });
+        }
+        const fontsDirId = await ensureDriveFolder(drive, 'fonts', docFolderId);
+        const buf = Buffer.from(fontCiphertextB64, 'base64');
+        if (!buf.length) {
+          return res.status(400).json({ error: 'font_ciphertext_empty' });
+        }
+        // Opaque only — never write plain TTF/OTF MIME or extension.
+        await writeDriveFile(
+          drive,
+          fontsDirId,
+          `${sanitizeName(fontId)}.penfont`,
+          buf,
+          'application/octet-stream'
+        );
+        safeLogger.info('[pen/apply-inbound] font_upsert ok', {
+          pn: hashIdentifier(pnIdentifier),
+          doc: hashIdentifier(docId),
+          font: hashIdentifier(fontId)
+        });
+        return res.json({ ok: true });
+      }
 
       if (jobType === 'pen.doc_bootstrap') {
         const manifest = req.body?.manifest;

@@ -14,8 +14,12 @@ import TableRow from '@tiptap/extension-table-row';
 import TableCell from '@tiptap/extension-table-cell';
 import TableHeader from '@tiptap/extension-table-header';
 import {
-  PEN_FONT_FAMILIES,
+  PEN_SYSTEM_FONTS,
+  PEN_GOOGLE_FONTS_FEATURED,
+  PEN_GOOGLE_FONTS_ALL,
   PEN_FONT_SIZES_PT,
+  isGooglePenFont,
+  type PenFontIndexEntry,
   type PenPageLayout,
   type PenSectionContent
 } from '@par-noir/pen-protocol';
@@ -35,6 +39,14 @@ import {
   type CloudImageItem
 } from '../services/penAttach';
 import { listLocalDocs, loadLocalDoc, type LocalDocSummary } from '../services/penLocalStore';
+import {
+  listPersonalFonts,
+  pickFontFile,
+  uploadPersonalFont,
+  ensureOwnerFontFace,
+  getBoundFontsSession
+} from '../services/penFontsCloud';
+import { ensureGoogleFontLoaded } from '../services/penGoogleFonts';
 import {
   ColorAButton,
   RibbonIconBtn,
@@ -104,6 +116,26 @@ export function FormatRibbon({
   const [findQuery, setFindQuery] = useState('');
   const [replaceQuery, setReplaceQuery] = useState('');
   const [, setTick] = useState(0);
+  const [myFonts, setMyFonts] = useState<PenFontIndexEntry[]>(() =>
+    pnIdentifier ? listPersonalFonts(pnIdentifier) : []
+  );
+  const [showAllGoogle, setShowAllGoogle] = useState(false);
+  const [fontUploadBusy, setFontUploadBusy] = useState(false);
+
+  useEffect(() => {
+    if (!pnIdentifier) {
+      setMyFonts([]);
+      return;
+    }
+    const refresh = () => setMyFonts(listPersonalFonts(pnIdentifier));
+    refresh();
+    window.addEventListener('pen-fonts-changed', refresh);
+    window.addEventListener('pen-fonts-merged', refresh);
+    return () => {
+      window.removeEventListener('pen-fonts-changed', refresh);
+      window.removeEventListener('pen-fonts-merged', refresh);
+    };
+  }, [pnIdentifier]);
 
   useEffect(() => {
     if (!editor) return;
@@ -328,31 +360,107 @@ export function FormatRibbon({
         title="Font"
         wide
       >
-        {(close) => (
-          <>
-            <RibbonItem
-              active={!fontFamily}
-              onClick={() => {
-                ed.chain().focus().unsetFontFamily().run();
-                close();
-              }}
-            >
-              Default
-            </RibbonItem>
-            {PEN_FONT_FAMILIES.map((f) => (
+        {(close) => {
+          const applyFamily = (f: string | null) => {
+            if (!f) {
+              ed.chain().focus().unsetFontFamily().run();
+            } else {
+              if (isGooglePenFont(f)) ensureGoogleFontLoaded(f);
+              ed.chain().focus().setFontFamily(f).run();
+            }
+            close();
+          };
+          const googleList = showAllGoogle
+            ? (PEN_GOOGLE_FONTS_ALL as readonly string[])
+            : (PEN_GOOGLE_FONTS_FEATURED as readonly string[]);
+          return (
+            <>
+              <div className="pen-ribbon-font-section">My Fonts</div>
+              {myFonts.map((entry) => (
+                <RibbonItem
+                  key={entry.fontId}
+                  active={fontFamily === entry.family}
+                  onClick={() => {
+                    const bound = getBoundFontsSession();
+                    if (bound) {
+                      void ensureOwnerFontFace({
+                        pnIdentifier: bound.pnIdentifier,
+                        mlKemSecretKey: bound.mlKemSecretKey,
+                        entry
+                      }).catch(() => undefined);
+                    }
+                    applyFamily(entry.family);
+                  }}
+                >
+                  <span style={{ fontFamily: entry.family }}>{entry.family}</span>
+                </RibbonItem>
+              ))}
               <RibbonItem
-                key={f}
-                active={fontFamily === f}
+                active={false}
                 onClick={() => {
-                  ed.chain().focus().setFontFamily(f).run();
-                  close();
+                  if (fontUploadBusy) return;
+                  void (async () => {
+                    const bound = getBoundFontsSession();
+                    if (!bound) return;
+                    const file = await pickFontFile();
+                    if (!file) return;
+                    setFontUploadBusy(true);
+                    try {
+                      const entry = await uploadPersonalFont({
+                        pnIdentifier: bound.pnIdentifier,
+                        mlKemSecretKey: bound.mlKemSecretKey,
+                        file
+                      });
+                      setMyFonts(listPersonalFonts(bound.pnIdentifier));
+                      await ensureOwnerFontFace({
+                        pnIdentifier: bound.pnIdentifier,
+                        mlKemSecretKey: bound.mlKemSecretKey,
+                        entry
+                      });
+                      applyFamily(entry.family);
+                    } catch {
+                      /* offline */
+                    } finally {
+                      setFontUploadBusy(false);
+                    }
+                  })();
                 }}
               >
-                <span style={{ fontFamily: f }}>{f}</span>
+                {fontUploadBusy ? 'Uploading…' : 'Add font…'}
               </RibbonItem>
-            ))}
-          </>
-        )}
+
+              <div className="pen-ribbon-font-section">System</div>
+              <RibbonItem active={!fontFamily} onClick={() => applyFamily(null)}>
+                Default
+              </RibbonItem>
+              {PEN_SYSTEM_FONTS.map((f) => (
+                <RibbonItem key={f} active={fontFamily === f} onClick={() => applyFamily(f)}>
+                  <span style={{ fontFamily: f }}>{f}</span>
+                </RibbonItem>
+              ))}
+
+              <div className="pen-ribbon-font-section">Google</div>
+              {googleList.map((f) => (
+                <RibbonItem
+                  key={f}
+                  active={fontFamily === f}
+                  onClick={() => applyFamily(f)}
+                >
+                  <span style={{ fontFamily: f }}>{f}</span>
+                </RibbonItem>
+              ))}
+              {!showAllGoogle ? (
+                <RibbonItem active={false} onClick={() => setShowAllGoogle(true)}>
+                  Show all Google fonts…
+                </RibbonItem>
+              ) : (
+                <RibbonItem active={false} onClick={() => setShowAllGoogle(false)}>
+                  Show fewer Google fonts
+                </RibbonItem>
+              )}
+            </>
+          );
+        }}
       </RibbonMenu>
 
       <RibbonMenu label={fontSize || '11'} title="Size">

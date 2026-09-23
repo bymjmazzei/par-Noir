@@ -43,6 +43,11 @@ import {
   pullAndMergePrefsCloud,
   unbindPrefsCloudSession
 } from './services/penPrefsCloud';
+import {
+  bindFontsCloudSession,
+  pullAndMergeFontsCloud,
+  unbindFontsCloudSession
+} from './services/penFontsCloud';
 
 export type { PenSession };
 
@@ -414,15 +419,26 @@ function AuthenticatedApp({
   useEffect(() => {
     if (!mlKemSecretKey) {
       unbindPrefsCloudSession();
+      unbindFontsCloudSession();
       return;
     }
     bindPrefsCloudSession({
       pnIdentifier: session.pnIdentifier,
       mlKemSecretKey
     });
+    bindFontsCloudSession({
+      pnIdentifier: session.pnIdentifier,
+      mlKemSecretKey
+    });
     const pull = () => {
       if (!hasCloudCredentialsReady(session.pnIdentifier)) return;
       void pullAndMergePrefsCloud({
+        pnIdentifier: session.pnIdentifier,
+        mlKemSecretKey
+      }).catch(() => {
+        /* offline / missing file */
+      });
+      void pullAndMergeFontsCloud({
         pnIdentifier: session.pnIdentifier,
         mlKemSecretKey
       }).catch(() => {
@@ -435,6 +451,7 @@ function AuthenticatedApp({
     return () => {
       window.removeEventListener(PN_CLOUD_CREDENTIALS_READY_EVENT, onCloudReady);
       unbindPrefsCloudSession();
+      unbindFontsCloudSession();
     };
   }, [session.pnIdentifier, mlKemSecretKey]);
 

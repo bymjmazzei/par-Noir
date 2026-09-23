@@ -22,6 +22,8 @@ import {
   attachNotary,
   verifyChain,
   ensureOwnerAssignment,
+  collectFontFamiliesFromDoc,
+  isGooglePenFont,
   type PenDocComment,
   type PenPageLayout,
   type PenRole,
@@ -67,6 +69,12 @@ import {
 import { publishDocCloud, upsertDraftCloud } from '../services/penCloudStore';
 import { enqueueSyncJob } from '../services/penSyncQueue';
 import { ownerGet } from '../services/penOwnerFetch';
+import {
+  syncUsedCustomFontsOnManifest,
+  ensureDocScopedFonts,
+  loadDocScopedFontsForEditor
+} from '../services/penDocFonts';
+import { ensureGoogleFontsLoaded } from '../services/penGoogleFonts';
 import {
   appendLocalComment,
   listLocalComments,
@@ -345,6 +353,24 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
     };
   }, [docId, session]);
 
+  // Load Google + doc-scoped custom fonts for the open doc (editor WYSIWYG only).
+  useEffect(() => {
+    if (!bundle) return;
+    const families = collectFontFamiliesFromDoc({
+      sections: bundle.sections,
+      pagePresentationFontFamily: bundle.manifest.pagePresentation?.fontFamily
+    });
+    ensureGoogleFontsLoaded(families.filter((f) => isGooglePenFont(f)));
+    const used = bundle.manifest.usedCustomFonts || [];
+    if (used.length) {
+      void loadDocScopedFontsForEditor({
+        pnIdentifier: session.pnIdentifier,
+        docId,
+        used
+      }).catch(() => undefined);
+    }
+  }, [bundle, docId, session.pnIdentifier]);
+
   // Backfill owner-wrapped docKey for docs created before bootstrap registered the group.
   useEffect(() => {
     const docKey = loadDocKey(docId);
@@ -392,9 +418,20 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
       current.manifest.activeDraftId ||
       sessionStorage.getItem(`pen_active_draft:${docId}`) ||
       `draft_${crypto.randomUUID().replace(/-/g, '').slice(0, 12)}`;
+    const used = syncUsedCustomFontsOnManifest({
+      manifest: current.manifest,
+      sections: current.sections,
+      pnIdentifier: session.pnIdentifier
+    });
     const next = {
       ...current,
-      manifest: { ...current.manifest, updatedAt: now, activeDraftId: draftId, lifecycle: current.manifest.lifecycle || ('draft' as const) }
+      manifest: {
+        ...current.manifest,
+        updatedAt: now,
+        activeDraftId: draftId,
+        lifecycle: current.manifest.lifecycle || ('draft' as const),
+        usedCustomFonts: used
+      }
     };
     saveLocalDoc(session.pnIdentifier, next);
     setBundle({ ...next });
@@ -425,6 +462,17 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
       });
       void e;
     });
+
+    if (used.length && session.mlKemSecretKey) {
+      void ensureDocScopedFonts({
+        session,
+        docId,
+        groupId: next.manifest.groupId,
+        used
+      }).catch(() => {
+        /* offline */
+      });
+    }
 
     if (!opts?.silent) {
       setStatus('Draft saved');

@@ -344,6 +344,17 @@ body {
 
 .pen-ribbon-menu-panel.is-wide {
   min-width: 12rem;
+  max-height: 22rem;
+}
+
+.pen-ribbon-font-section {
+  padding: 8px 10px 2px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #a8a29e;
+  user-select: none;
 }
 
 .pen-ribbon-menu-item {

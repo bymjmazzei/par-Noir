@@ -12,7 +12,12 @@ import {
   currentDirPath,
   draftsDirPath,
   pastDirPath,
-  historyChainPath
+  historyChainPath,
+  fontsRootPath,
+  fontsIndexPath,
+  docFontsDirPath,
+  docFontPath,
+  templatesRootPath
 } from '@par-noir/pen-protocol';
 
 export const CURRICULUM_PEN_PROTOCOL_VERSION = '0.1.0';
@@ -41,6 +46,7 @@ export function buildCatalogSnapshot() {
 export function buildPathGrammarSnapshot() {
   const docId = '{docId}';
   const draftId = '{draftId}';
+  const fontId = '{fontId}';
   return {
     penProtocolVersion: CURRICULUM_PEN_PROTOCOL_VERSION,
     root: PEN_ROOT,
@@ -51,10 +57,17 @@ export function buildPathGrammarSnapshot() {
       currentDir: currentDirPath(docId),
       draftsDir: draftsDirPath(docId),
       draftDir: `${draftsDirPath(docId)}/${draftId}`,
-      pastDir: pastDirPath(docId)
+      pastDir: pastDirPath(docId),
+      templatesRoot: templatesRootPath(),
+      fontsRoot: fontsRootPath(),
+      fontsIndex: fontsIndexPath(),
+      docFontsDir: docFontsDirPath(docId),
+      docFont: docFontPath(docId, fontId)
     },
     rules: [
-      'Never invent paths outside par-noir-pen/{docId}/',
+      'Owner My Fonts live under par-noir-pen/fonts/ + fonts.index.json (personal library)',
+      'Doc-scoped fonts live under par-noir-pen/{docId}/fonts/{fontId}.penfont (docKey envelopes only)',
+      'Never write plain TTF/OTF into peer replicas or peer My Fonts from collab fanout',
       'Use materializePenAgentBuild for file layouts',
       'drafts/ for WIP; current/ for published live; past/ for superseded'
     ]

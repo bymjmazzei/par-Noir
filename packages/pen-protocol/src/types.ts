@@ -152,6 +152,11 @@ export interface PenDocManifest {
   basedOnFileId?: string;
   /** Work license + open creator contracts (normalized on create/load). */
   licensing?: PenLicensingRoot;
+  /**
+   * Custom fonts actively used in this doc.
+   * Bytes live under par-noir-pen/{docId}/fonts/{fontId}.penfont (docKey envelopes).
+   */
+  usedCustomFonts?: Array<{ fontId: string; family: string }>;
 }
 
 /** Draft under drafts/{draftId}/ — unfinished suggestion until submitted. */
@@ -287,4 +292,17 @@ export interface PenSuggestionPayload {
   suggestion: PenSuggestion;
   /** When accepting: include promote paths filled by client */
   acceptPromote?: PenSectionPromotePayload;
+}
+
+/**
+ * Outbox payload for pen.font_upsert.
+ * Cipher bytes are already docKey envelopes — never plain TTF/OTF on the wire or Drive.
+ */
+export interface PenFontUpsertPayload {
+  docId: string;
+  groupId?: string;
+  fontId: string;
+  family: string;
+  /** Base64 of opaque .penfont envelope (AES-GCM under docKey). */
+  fontCiphertextB64: string;
 }

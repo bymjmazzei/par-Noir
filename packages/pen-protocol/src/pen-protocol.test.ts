@@ -38,6 +38,14 @@ import {
   blankTemplateForClass,
   templatesRootPath,
   templateManifestPath,
+  fontsRootPath,
+  fontsIndexPath,
+  docFontsDirPath,
+  docFontPath,
+  collectUsedCustomFonts,
+  isCustomPenFont,
+  PEN_SYSTEM_FONTS,
+  PEN_GOOGLE_FONTS_FEATURED,
   layerLockFingerprint,
   type PenSectionContent
 } from './index.js';
@@ -62,6 +70,57 @@ describe('pen paths', () => {
     expect(pastVersionDirPath('doc1', pub.versionId)).toBe(pub.pastDir);
   });
 
+  it('owner fonts and doc-scoped font paths', () => {
+    expect(fontsRootPath()).toBe('par-noir-pen/fonts');
+    expect(fontsIndexPath()).toBe('par-noir-pen/fonts.index.json');
+    expect(docFontsDirPath('doc1')).toBe('par-noir-pen/doc1/fonts');
+    expect(docFontPath('doc1', 'f1')).toBe('par-noir-pen/doc1/fonts/f1.penfont');
+  });
+});
+
+describe('pen fonts helpers', () => {
+  it('classifies platform vs custom fonts', () => {
+    expect(isCustomPenFont('Arial')).toBe(false);
+    expect(isCustomPenFont(PEN_SYSTEM_FONTS[0])).toBe(false);
+    expect(isCustomPenFont(PEN_GOOGLE_FONTS_FEATURED[0])).toBe(false);
+    expect(isCustomPenFont('My Weird Display')).toBe(true);
+  });
+
+  it('collects usedCustomFonts from marks + index', () => {
+    const sections: PenSectionContent[] = [
+      {
+        slug: 'body',
+        doc: {
+          type: 'doc',
+          content: [
+            {
+              type: 'paragraph',
+              content: [
+                {
+                  type: 'text',
+                  text: 'Hi',
+                  marks: [
+                    {
+                      type: 'textStyle',
+                      attrs: { fontFamily: 'My Weird Display' }
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      }
+    ];
+    const used = collectUsedCustomFonts({
+      sections,
+      customIndex: [{ fontId: 'font-1', family: 'My Weird Display' }]
+    });
+    expect(used).toEqual([{ fontId: 'font-1', family: 'My Weird Display' }]);
+  });
+});
+
+describe('pen paths legacy', () => {
   it('same-day collision uses timestamp suffix', () => {
     const at = new Date('2026-09-20T15:04:05Z');
     expect(pastVersionId(at, { forceTime: true })).toBe('v-2026-09-20T150405Z');

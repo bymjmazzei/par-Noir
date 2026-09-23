@@ -45,7 +45,8 @@ const SHEET_KINDS = new Set<OutboxKind>([
   'pen.publish',
   'pen.doc_bootstrap',
   'pen.doc_delete',
-  'pen.doc_meta'
+  'pen.doc_meta',
+  'pen.font_upsert'
 ]);
 
 function applyPathFor(kind: OutboxKind): string | null {
@@ -59,7 +60,8 @@ function applyPathFor(kind: OutboxKind): string | null {
     kind === 'pen.publish' ||
     kind === 'pen.doc_bootstrap' ||
     kind === 'pen.doc_delete' ||
-    kind === 'pen.doc_meta'
+    kind === 'pen.doc_meta' ||
+    kind === 'pen.font_upsert'
   ) {
     return '/api/pen/apply-inbound';
   }

@@ -8,10 +8,17 @@
     "currentDir": "par-noir-pen/docId/current",
     "draftsDir": "par-noir-pen/docId/drafts",
     "draftDir": "par-noir-pen/docId/drafts/{draftId}",
-    "pastDir": "par-noir-pen/docId/past"
+    "pastDir": "par-noir-pen/docId/past",
+    "templatesRoot": "par-noir-pen/templates",
+    "fontsRoot": "par-noir-pen/fonts",
+    "fontsIndex": "par-noir-pen/fonts.index.json",
+    "docFontsDir": "par-noir-pen/docId/fonts",
+    "docFont": "par-noir-pen/docId/fonts/fontId.penfont"
   },
   "rules": [
-    "Never invent paths outside par-noir-pen/{docId}/",
+    "Owner My Fonts live under par-noir-pen/fonts/ + fonts.index.json (personal library)",
+    "Doc-scoped fonts live under par-noir-pen/{docId}/fonts/{fontId}.penfont (docKey envelopes only)",
+    "Never write plain TTF/OTF into peer replicas or peer My Fonts from collab fanout",
     "Use materializePenAgentBuild for file layouts",
     "drafts/ for WIP; current/ for published live; past/ for superseded"
   ]
