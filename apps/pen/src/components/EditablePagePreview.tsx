@@ -1,8 +1,10 @@
-import { useMemo, useRef, useState, type CSSProperties } from 'react';
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import {
+  collectFontFamiliesFromDoc,
   defaultEditorPagePresentation,
   docToHtml,
   getTextLayerDoc,
+  isGooglePenFont,
   isPageLayerId,
   mergePagePresentation,
   normalizeSection,
@@ -23,6 +25,7 @@ import {
   layerPreviewStyle,
   pageFrameStyle
 } from './LayerObjectToolbar';
+import { ensureGoogleFontsLoaded } from '../services/penGoogleFonts';
 import type { PenSession } from '../services/penSession';
 
 function layerToItem(layer: PenPageLayer): LayoutItem {
@@ -43,7 +46,86 @@ function pageFrameClass(pageLayout: PenPageLayout | undefined): string {
   return 'max-w-[22rem] aspect-[3/4]';
 }
 
-/** Editable page surface — LayoutSurface over section layers (dual-pane right side). */
+function bodyMarginStyle(presentation: PenPagePresentation): CSSProperties {
+  const pad = Math.max(8, Math.min(72, Number(presentation.padding) || 40));
+  return {
+    padding: `${pad}px`,
+    fontFamily: presentation.fontFamily || 'Georgia',
+    fontSize: `${presentation.fontSize || 16}px`,
+    color: presentation.textColor || '#111111',
+    textAlign: presentation.textAlign || 'left'
+  };
+}
+
+function resolveBodyWrap(layer: PenPageLayer): 'left' | 'right' {
+  if (layer.bodyWrap === 'left' || layer.bodyWrap === 'right') return layer.bodyWrap;
+  return layer.x + layer.w / 2 < 50 ? 'left' : 'right';
+}
+
+function BodyWrapObject({
+  layer,
+  allLayers,
+  presentation
+}: {
+  layer: PenPageLayer;
+  allLayers: PenPageLayer[];
+  presentation: PenPagePresentation;
+}) {
+  const side = resolveBodyWrap(layer);
+  const floatStyle: CSSProperties = {
+    float: side,
+    margin: side === 'left' ? '0 1em 0.5em 0' : '0 0 0.5em 1em',
+    maxWidth: '45%',
+    width: `${Math.max(12, Math.min(45, layer.w))}%`
+  };
+
+  if (layer.kind === 'image' && layer.imageSrc) {
+    return (
+      <img
+        src={layer.imageSrc}
+        alt=""
+        data-wrap={side}
+        style={floatStyle}
+        className="object-contain"
+        draggable={false}
+      />
+    );
+  }
+  if (layer.kind === 'video' && layer.videoSrc) {
+    return (
+      <video
+        src={layer.videoSrc}
+        data-wrap={side}
+        style={floatStyle}
+        className="object-contain"
+        controls
+        playsInline
+      />
+    );
+  }
+  if (layer.kind === 'text') {
+    const html = docToHtml(getTextLayerDoc(layer));
+    return (
+      <div
+        data-wrap={side}
+        style={{
+          ...floatStyle,
+          ...layerPreviewStyle(layer),
+          fontFamily: presentation.fontFamily || undefined,
+          color: presentation.textColor || '#111'
+        }}
+        className="pen-rich-html overflow-hidden p-2 text-sm"
+        title={layerDisplayLabel(layer, allLayers)}
+        dangerouslySetInnerHTML={{
+          __html: html || '<p class="text-neutral-400">Text</p>'
+        }}
+      />
+    );
+  }
+  return null;
+}
+
+/** Editable page surface — Body (section.doc) under optional overlay layers. */
 export function EditablePagePreview({
   manifest,
   section,
@@ -68,10 +150,18 @@ export function EditablePagePreview({
   const layersBtnRef = useRef<HTMLButtonElement>(null);
   const [layersOpen, setLayersOpen] = useState(false);
   const [selectedIds, setSelectedIds] = useState<string[]>([PAGE_LAYER_ID]);
+  const [fontsReady, setFontsReady] = useState(true);
   const prepared = useMemo(() => normalizeSection(section), [section]);
   const layers = prepared.layers || [];
-  const visibleLayers = layers.filter((l) => l.visible !== false);
-  const items = visibleLayers.map(layerToItem);
+  const wrapLayers = useMemo(
+    () => layers.filter((l) => l.visible !== false && Boolean(l.bodyWrap)),
+    [layers]
+  );
+  const absoluteLayers = useMemo(
+    () => layers.filter((l) => l.visible !== false && !l.bodyWrap),
+    [layers]
+  );
+  const items = absoluteLayers.map(layerToItem);
   const groupIds = useMemo(
     () => new Set(layers.filter((l) => l.kind === 'group').map((l) => l.id)),
     [layers]
@@ -81,7 +171,6 @@ export function EditablePagePreview({
     (() => {
       const raw = manifest.pagePresentation;
       if (!raw) return undefined;
-      // Editor page: inherited social black fill → transparent (user sets color explicitly)
       if (
         raw.backgroundColor === '#000000' &&
         !raw.backgroundImage &&
@@ -106,9 +195,28 @@ export function EditablePagePreview({
         ? layerDisplayLabel(activeObject, layers)
         : 'Layers';
 
+  useEffect(() => {
+    const families = collectFontFamiliesFromDoc({
+      sections: [prepared],
+      pagePresentationFontFamily: presentation.fontFamily
+    });
+    const google = families.filter((f) => isGooglePenFont(f));
+    if (google.length) {
+      setFontsReady(false);
+      ensureGoogleFontsLoaded(google);
+      const done = () => setFontsReady(true);
+      if (typeof document !== 'undefined' && document.fonts?.ready) {
+        void document.fonts.ready.then(done).catch(done);
+      } else {
+        done();
+      }
+    } else {
+      setFontsReady(true);
+    }
+  }, [prepared, presentation.fontFamily]);
+
   function onLayoutChange(nextItems: LayoutItem[]) {
     let next = updateLayerLayout(prepared, nextItems);
-    // Keep group bounds in sync when a member moved independently
     const groups = new Set(
       (next.layers || [])
         .filter((l) => l.parentGroupId)
@@ -132,6 +240,8 @@ export function EditablePagePreview({
   }
 
   const frameStyle: CSSProperties = pageFrameStyle(presentation);
+  const bodyHtml = docToHtml(prepared.doc);
+  const bodyStyle = bodyMarginStyle(presentation);
 
   return (
     <div className="relative flex h-full flex-col bg-white">
@@ -231,8 +341,43 @@ export function EditablePagePreview({
               playsInline
             />
           )}
+
+          {/* Body — layer 0 flow with margins */}
+          <div
+            className={`pen-rich-html relative z-0 min-h-[28rem] w-full ${
+              fontsReady ? '' : 'opacity-90'
+            }`}
+            style={bodyStyle}
+            onClick={(e) => {
+              e.stopPropagation();
+              selectLayer(PAGE_LAYER_ID);
+            }}
+          >
+            {wrapLayers.map((layer) => (
+              <div
+                key={layer.id}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  selectLayer(layer.id);
+                }}
+              >
+                <BodyWrapObject
+                  layer={layer}
+                  allLayers={layers}
+                  presentation={presentation}
+                />
+              </div>
+            ))}
+            <div
+              dangerouslySetInnerHTML={{
+                __html: bodyHtml || '<p class="text-neutral-400">Start writing…</p>'
+              }}
+            />
+          </div>
+
+          {/* Absolute overlays above body */}
           <LayoutSurface
-            className="relative z-[1] h-full min-h-[28rem] w-full"
+            className="pointer-events-none absolute inset-0 z-[1] h-full min-h-[28rem] w-full"
             items={items}
             selectedId={pageActive ? null : activeLayerId}
             snapToPageCenter={snapEnabled}
@@ -242,7 +387,7 @@ export function EditablePagePreview({
             onChange={onLayoutChange}
             renderItem={(item) => {
               const layer = layers.find((l) => l.id === item.id);
-              if (!layer) return null;
+              if (!layer || layer.bodyWrap) return null;
               const shell = layerPreviewStyle(layer);
               if (layer.kind === 'group') {
                 return (
@@ -289,7 +434,11 @@ export function EditablePagePreview({
                       playsInline
                     />
                     <div
-                      className="relative h-full w-full overflow-auto p-2 text-sm text-black"
+                      className="pen-rich-html relative h-full w-full overflow-auto p-2 text-sm"
+                      style={{
+                        fontFamily: presentation.fontFamily || undefined,
+                        color: presentation.textColor || '#111'
+                      }}
                       dangerouslySetInnerHTML={{
                         __html:
                           docToHtml(getTextLayerDoc(layer)) ||
@@ -303,7 +452,11 @@ export function EditablePagePreview({
               return (
                 <div className="relative h-full w-full overflow-hidden" style={shell}>
                   <div
-                    className="relative h-full w-full overflow-auto p-2 text-sm text-black"
+                    className="pen-rich-html relative h-full w-full overflow-auto p-2 text-sm"
+                    style={{
+                      fontFamily: presentation.fontFamily || undefined,
+                      color: presentation.textColor || '#111'
+                    }}
                     dangerouslySetInnerHTML={{
                       __html: html || '<p class="text-neutral-400">Text</p>'
                     }}

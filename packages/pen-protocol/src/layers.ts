@@ -1,6 +1,6 @@
 /** Page layer helpers — multi text/image objects on a section. */
 
-import { emptyTipTapDoc, docToPlainText } from './richDoc.js';
+import { emptyTipTapDoc } from './richDoc.js';
 import type { PenPageLayer, PenSectionContent, PenTipTapNode } from './types.js';
 
 /** Synthetic id for the page frame (flow/letter/a4) — layer 0 in the Layers list. */
@@ -353,6 +353,7 @@ export function patchLayerStyle(
       | 'strokeAlign'
       | 'name'
       | 'parentGroupId'
+      | 'bodyWrap'
     >
   >
 ): PenSectionContent {
@@ -454,27 +455,25 @@ export function clearLayerAttachment(
 }
 
 /**
- * If section has no layers and has non-empty prose, seed one text layer from section.doc
- * (legacy migrate). Blank docs stay with zero object layers — the page frame is layer 0 in UI.
+ * Normalize layers for the editor. Body prose lives in section.doc (layer 0);
+ * do not auto-seed overlay text boxes from prose.
  */
 export function ensureDefaultTextLayer(section: PenSectionContent): PenSectionContent {
-  if (section.layers && section.layers.length > 0) return section;
-  const plain = docToPlainText(section.doc || emptyTipTapDoc()).trim();
-  if (!plain) {
-    return { ...section, layers: section.layers ?? [] };
-  }
-  const layer: PenPageLayer = {
-    id: 'layer_primary',
-    kind: 'text',
-    name: 'Layer 1',
-    x: 8,
-    y: 8,
-    w: 84,
-    h: 70,
-    zIndex: 1,
-    textDoc: section.doc || emptyTipTapDoc()
-  };
-  return { ...section, layers: [layer] };
+  return { ...section, layers: section.layers ?? [] };
+}
+
+/**
+ * Collapse legacy migrate that copied section.doc into a lone layer_primary overlay box.
+ * Keeps section.doc; drops that overlay so Body paints full-page.
+ */
+export function collapseLegacyPrimaryTextLayer(
+  section: PenSectionContent
+): PenSectionContent {
+  const layers = section.layers || [];
+  if (layers.length !== 1) return section;
+  const only = layers[0]!;
+  if (only.id !== 'layer_primary' || only.kind !== 'text') return section;
+  return { ...section, layers: [] };
 }
 
 /** Box/text shadow CSS from structured shadow fields (or legacy textShadow). */

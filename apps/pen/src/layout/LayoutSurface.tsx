@@ -161,7 +161,7 @@ export function LayoutSurface({
             key={item.id}
             role="button"
             tabIndex={0}
-            className={`absolute box-border overflow-hidden ${
+            className={`absolute box-border overflow-hidden pointer-events-auto ${
               selected ? 'ring-2 ring-sky-500' : 'ring-1 ring-stone-300/80'
             } ${disabled || item.positionLocked ? '' : 'cursor-grab active:cursor-grabbing'}`}
             style={{

@@ -394,7 +394,7 @@ describe('classes + templates', () => {
 });
 
 describe('page layers', () => {
-  it('seeds default text layer from doc and supports multi-text', async () => {
+  it('does not seed overlay layers from body prose', async () => {
     const {
       emptySection,
       ensureDefaultTextLayer,
@@ -402,7 +402,8 @@ describe('page layers', () => {
       createImageLayer,
       upsertLayer,
       assertUniqueLayerIds,
-      setTextLayerDoc
+      setTextLayerDoc,
+      collapseLegacyPrimaryTextLayer
     } = await import('./index.js');
     const base = emptySection('body');
     base.doc = {
@@ -410,13 +411,11 @@ describe('page layers', () => {
       content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Hello' }] }]
     };
     const seeded = ensureDefaultTextLayer(base);
-    expect(seeded.layers?.length).toBe(1);
-    expect(seeded.layers![0]!.kind).toBe('text');
-    expect(ensureDefaultTextLayer(seeded).layers?.length).toBe(1);
+    expect(seeded.layers).toEqual([]);
 
     let next = upsertLayer(seeded, createTextLayer({ x: 10, y: 50, w: 40, h: 20, zIndex: 3 }));
     next = upsertLayer(next, createImageLayer('https://example.com/a.png'));
-    expect(next.layers!.length).toBe(3);
+    expect(next.layers!.length).toBe(2);
     assertUniqueLayerIds(next.layers!);
     expect(() =>
       assertUniqueLayerIds([next.layers![0]!, { ...next.layers![0]!, id: next.layers![0]!.id }])
@@ -428,6 +427,25 @@ describe('page layers', () => {
       content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Layer' }] }]
     });
     expect(next.doc.content?.[0]).toBeTruthy();
+
+    const legacy: typeof base = {
+      ...base,
+      layers: [
+        {
+          id: 'layer_primary',
+          kind: 'text',
+          x: 8,
+          y: 8,
+          w: 84,
+          h: 70,
+          zIndex: 1,
+          textDoc: base.doc
+        }
+      ]
+    };
+    const collapsed = collapseLegacyPrimaryTextLayer(legacy);
+    expect(collapsed.layers).toEqual([]);
+    expect(collapsed.doc).toEqual(base.doc);
   });
 
   it('creates video layers and reorders stack front-first', async () => {

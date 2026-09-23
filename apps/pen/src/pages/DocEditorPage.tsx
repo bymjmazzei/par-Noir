@@ -5,6 +5,8 @@ import {
   defaultEditorPagePresentation,
   defaultPagePresentation,
   ensureDefaultTextLayer,
+  collapseLegacyPrimaryTextLayer,
+  defaultLayerName,
   getClass,
   getTemplate,
   hashPnIdentifier,
@@ -189,8 +191,28 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
 
   const section = useMemo(() => {
     const raw = bundle?.sections.find((s) => s.slug === activeSlug) || bundle?.sections[0];
-    return raw ? ensureDefaultTextLayer(normalizeSection(raw)) : undefined;
+    if (!raw) return undefined;
+    return collapseLegacyPrimaryTextLayer(ensureDefaultTextLayer(normalizeSection(raw)));
   }, [bundle, activeSlug]);
+
+  // One-shot: persist collapse of legacy layer_primary seed into local buffer.
+  useEffect(() => {
+    if (!bundle) return;
+    let changed = false;
+    const sections = bundle.sections.map((s) => {
+      const next = collapseLegacyPrimaryTextLayer(ensureDefaultTextLayer(normalizeSection(s)));
+      if ((next.layers?.length ?? 0) !== (s.layers?.length ?? 0)) changed = true;
+      return next;
+    });
+    if (!changed) return;
+    const nextBundle = {
+      ...bundle,
+      sections,
+      manifest: { ...bundle.manifest, updatedAt: new Date().toISOString() }
+    };
+    saveLocalDoc(session.pnIdentifier, nextBundle);
+    setBundle(nextBundle);
+  }, [docId, session.pnIdentifier]); // eslint-disable-line react-hooks/exhaustive-deps -- once per doc open
 
   const canvasSection = useMemo(() => {
     if (!section) return undefined;
@@ -200,7 +222,7 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
         return { ...section, doc: layer.textDoc };
       }
     }
-    // Page / blank: edit section.doc flow — no forced overlay object
+    // Page / Body: edit section.doc flow — no forced overlay object
     return section;
   }, [section, activeLayerId]);
 
@@ -208,6 +230,15 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
     const fromTpl = template?.sections.find((s) => s.slug === activeSlug)?.title;
     return fromTpl || activeSlug;
   }, [template, activeSlug]);
+
+  const writingLabel = useMemo(() => {
+    if (!section || isPageLayerId(activeLayerId)) {
+      return sectionTitle === 'body' || activeSlug === 'body' ? 'Body' : sectionTitle;
+    }
+    const layer = section.layers?.find((l) => l.id === activeLayerId);
+    if (layer) return defaultLayerName(layer, section.layers || []);
+    return sectionTitle;
+  }, [section, activeLayerId, sectionTitle, activeSlug]);
 
   const onEditorReady = useCallback((ed: Editor | null) => setEditor(ed), []);
 
@@ -1191,7 +1222,7 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
             <PageCanvas
               key={`${activeSlug}:${activeLayerId || PAGE_LAYER_ID}:${session.pnIdentifier}:${historyEpoch}`}
               section={canvasSection}
-              sectionTitle={sectionTitle}
+              sectionTitle={writingLabel}
               pageLayout={pageLayout}
               pnIdentifier={session.pnIdentifier}
               onEditorReady={onEditorReady}
@@ -1389,7 +1420,7 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
                   <BrowseFeedTilePreview manifest={bundle.manifest} sections={bundle.sections} />
                 </div>
               </>
-            ) : (
+            ) : section ? (
               <div className="min-h-0 min-w-0 flex-1">
                 <EditablePagePreview
                   manifest={bundle.manifest}
@@ -1445,7 +1476,7 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
                   }}
                 />
               </div>
-            )}
+            ) : null}
           </div>
         )}
       </div>

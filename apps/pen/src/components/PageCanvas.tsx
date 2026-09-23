@@ -961,6 +961,7 @@ export function PageCanvas({
   pnIdentifier = ''
 }: {
   section: PenSectionContent;
+  /** Writing tree label — Body section title or selected overlay object name. */
   sectionTitle?: string;
   onChange: (next: PenSectionContent) => void;
   readOnly?: boolean;

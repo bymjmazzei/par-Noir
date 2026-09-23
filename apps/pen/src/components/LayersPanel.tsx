@@ -36,9 +36,9 @@ export function layerDisplayLabel(layer: PenPageLayer, all: PenPageLayer[]): str
 }
 
 export function pageLayerLabel(pageLayout: PenPageLayout | undefined): string {
-  if (pageLayout === 'letter') return 'Page · Letter';
-  if (pageLayout === 'a4') return 'Page · A4';
-  return 'Page · Flow';
+  if (pageLayout === 'letter') return 'Body · Letter';
+  if (pageLayout === 'a4') return 'Body · A4';
+  return 'Body';
 }
 
 function AlignBtn({
@@ -243,9 +243,11 @@ export function LayersPopover({
     if (dragId && hoverId && dragId !== hoverId) {
       const dragLayer = allLayers.find((l) => l.id === dragId);
       const hoverLayer = allLayers.find((l) => l.id === hoverId);
-      // Drop onto page → ungroup
+      // Drop onto Body → absolute on page (clear nest + body wrap)
       if (hoverId === PAGE_LAYER_ID && dragLayer && dragLayer.kind !== 'group') {
-        commit(setLayerParentGroup(prepared, dragId, null));
+        let next = setLayerParentGroup(prepared, dragId, null);
+        next = patchLayerStyle(next, dragId, { bodyWrap: undefined });
+        commit(next);
       } else if (
         hoverLayer?.kind === 'group' &&
         dragLayer &&
