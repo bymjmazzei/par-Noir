@@ -49,10 +49,6 @@ function resumeUrlFromSearch(search: string): string | null {
   }
 }
 
-/**
- * Cap `@capacitor/app` has no `openUrl` on iOS. Prefer-app opened Unlock via custom
- * scheme; return with native UIApplication.open (+ `<a>` fallback).
- */
 function openCallerViaCustomScheme(resumeUrl: string): void {
   void OpenExternalApp.open({ url: resumeUrl }).catch(() => {
     try {
@@ -95,11 +91,28 @@ export default function App(): React.ReactElement {
   const [vaultFactors, setVaultFactors] = useState<ConsentVaultFactors | null>(null);
   const [pendingEnroll, setPendingEnroll] = useState<ConsentVaultEnrollMaterial | null>(null);
   const enrollWaiters = useRef<Array<() => void>>([]);
+  const autoTouchIdForOffer = useRef(0);
+  const vaultOfferGen = useRef(0);
 
   const resolveEnrollWaiters = useCallback(() => {
     const waiters = enrollWaiters.current;
     enrollWaiters.current = [];
     for (const w of waiters) w();
+  }, []);
+
+  const offerVaultUnlockIfNeeded = useCallback(async () => {
+    if (!Capacitor.isNativePlatform()) return false;
+    const available = await isUnlockSessionVaultAvailable();
+    const has = available && (await hasUnlockSessionVault());
+    if (!has) return false;
+    vaultOfferGen.current += 1;
+    setVaultFactors(null);
+    setShowPicker(false);
+    setPendingEntries([]);
+    setPickerOptions([]);
+    setVaultError(null);
+    setShowVaultUnlock(true);
+    return true;
   }, []);
 
   useEffect(() => {
@@ -113,9 +126,10 @@ export default function App(): React.ReactElement {
         } catch {
           /* ignore */
         }
+        void offerVaultUnlockIfNeeded();
       }
     });
-  }, []);
+  }, [offerVaultUnlockIfNeeded]);
 
   useEffect(() => {
     let cancelled = false;
@@ -124,15 +138,13 @@ export default function App(): React.ReactElement {
         setVaultChecked(true);
         return;
       }
-      const available = await isUnlockSessionVaultAvailable();
-      const has = available && (await hasUnlockSessionVault());
-      if (!cancelled && has) setShowVaultUnlock(true);
+      await offerVaultUnlockIfNeeded();
       if (!cancelled) setVaultChecked(true);
     })();
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [offerVaultUnlockIfNeeded]);
 
   const deliverLocalBroker = async (payload: Record<string, unknown>) => {
     let apiBase = API_DEFAULT.replace(/\/$/, '');
@@ -181,7 +193,7 @@ export default function App(): React.ReactElement {
     setVaultError(null);
   }, []);
 
-  const onVaultUnlock = async () => {
+  const onVaultUnlock = useCallback(async () => {
     setVaultError(null);
     setVaultBusy(true);
     try {
@@ -208,7 +220,15 @@ export default function App(): React.ReactElement {
     } finally {
       setVaultBusy(false);
     }
-  };
+  }, [applyEntry]);
+
+  useEffect(() => {
+    if (!showVaultUnlock || vaultFactors || showPicker || vaultBusy) return;
+    const offer = vaultOfferGen.current;
+    if (autoTouchIdForOffer.current === offer) return;
+    autoTouchIdForOffer.current = offer;
+    void onVaultUnlock();
+  }, [showVaultUnlock, vaultFactors, showPicker, vaultBusy, onVaultUnlock]);
 
   const onPickIdentity = (identityId: string) => {
     const entry = pendingEntries.find((e) => e.identityId === identityId);
@@ -297,7 +317,7 @@ export default function App(): React.ReactElement {
       <SessionVaultUnlockOverlay
         open={showVaultUnlock && !vaultFactors && !showPicker}
         title="Unlock pN"
-        body="Use biometrics, then choose which saved pN to continue with."
+        body="Confirm with biometrics to continue with a saved pN."
         error={vaultError}
         busy={vaultBusy}
         onUnlock={() => void onVaultUnlock()}

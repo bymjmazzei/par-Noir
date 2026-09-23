@@ -9,7 +9,7 @@ Symptom-based (not “tests pass”).
 | Unlock completes | Caller receives code via oauth-callback bridges (storage/BroadcastChannel) or redirect |
 | Messaging handoff | browser-app / messaging-app still get ML-KEM material after unlock |
 | Vault enroll (Mac + Touch ID) | After unlock, save prompt → Touch ID; entry merges into multi-pN vault (all three factors per identity) |
-| Vault re-open (Mac) | Touch ID → if one pN auto-continues; if several, **Choose a pN** picker (labels never Key 1) → unlock |
+| Vault re-open (Mac) | Prefer-app / reopen **auto-prompts Touch ID** (even if Unlock was already running); multi-pN shows picker after success |
 | Vault cancel (Mac) | Cancel Touch ID or picker → full unlock form; enrolled set kept |
 | Vault unavailable (Mac, no Touch ID) | Enroll prompt does not appear (`vault-available` false); full unlock still works |
 | Vault enroll (Windows) | Confirmation dialog; same multi-pN sealed payload |

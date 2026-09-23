@@ -28,15 +28,18 @@ function desktopKv(api: UnlockDesktopApi): NativeKv {
   };
 }
 
-let vaultSingleton: DeviceSessionVault | UnsupportedSessionVault | null = null;
+/** Only cache a real vault — never poison with Unsupported when preload/api is briefly missing. */
+let vaultSingleton: DeviceSessionVault | null = null;
 
 async function getVault(): Promise<DeviceSessionVault | UnsupportedSessionVault> {
-  if (vaultSingleton) return vaultSingleton;
   const api = desktopApi();
-  if (!api || !(await api.vaultAvailable())) {
-    vaultSingleton = new UnsupportedSessionVault();
-    return vaultSingleton;
+  if (!api) {
+    return new UnsupportedSessionVault();
   }
+  if (!(await api.vaultAvailable())) {
+    return new UnsupportedSessionVault();
+  }
+  if (vaultSingleton) return vaultSingleton;
   vaultSingleton = createDeviceSessionVault({
     kv: desktopKv(api),
     verifyBiometric: async (reason) => api.confirmBiometric(reason),

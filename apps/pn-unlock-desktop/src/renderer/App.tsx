@@ -64,24 +64,46 @@ export default function App(): React.ReactElement {
   const [vaultFactors, setVaultFactors] = useState<ConsentVaultFactors | null>(null);
   const [pendingEnroll, setPendingEnroll] = useState<ConsentVaultEnrollMaterial | null>(null);
   const enrollWaiters = useRef<Array<() => void>>([]);
-
-  const applyUrl = useCallback((url: string) => {
-    const s = searchFromUnlockUrl(url);
-    if (s == null) return;
-    const q = s.startsWith('?') ? s : `?${s.replace(/^\?/, '')}`;
-    setSearch(q);
-    try {
-      window.history.replaceState({}, '', `/oauth/consent${q}`);
-    } catch {
-      /* ignore */
-    }
-  }, []);
+  /** Prevent double Touch ID prompts for the same overlay offer. */
+  const autoTouchIdForOffer = useRef(0);
+  const vaultOfferGen = useRef(0);
 
   const resolveEnrollWaiters = useCallback(() => {
     const waiters = enrollWaiters.current;
     enrollWaiters.current = [];
     for (const w of waiters) w();
   }, []);
+
+  const offerVaultUnlockIfNeeded = useCallback(async () => {
+    const available = await isUnlockSessionVaultAvailable();
+    const has = available && (await hasUnlockSessionVault());
+    if (!has) return false;
+    vaultOfferGen.current += 1;
+    setVaultFactors(null);
+    setShowPicker(false);
+    setPendingEntries([]);
+    setPickerOptions([]);
+    setVaultError(null);
+    setShowVaultUnlock(true);
+    return true;
+  }, []);
+
+  const applyUrl = useCallback(
+    (url: string) => {
+      const s = searchFromUnlockUrl(url);
+      if (s == null) return;
+      const q = s.startsWith('?') ? s : `?${s.replace(/^\?/, '')}`;
+      setSearch(q);
+      try {
+        window.history.replaceState({}, '', `/oauth/consent${q}`);
+      } catch {
+        /* ignore */
+      }
+      // Prefer-app reuses a running Unlock window — re-offer Touch ID vault each OAuth.
+      void offerVaultUnlockIfNeeded();
+    },
+    [offerVaultUnlockIfNeeded]
+  );
 
   useEffect(() => {
     const api = desktopApi();
@@ -105,15 +127,19 @@ export default function App(): React.ReactElement {
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      const available = await isUnlockSessionVaultAvailable();
-      const has = available && (await hasUnlockSessionVault());
-      if (!cancelled && has) setShowVaultUnlock(true);
+      // Brief retry: preload may not expose pnUnlockDesktop on the first tick.
+      for (let i = 0; i < 8 && !cancelled; i++) {
+        if (desktopApi()) break;
+        await new Promise((r) => setTimeout(r, 50));
+      }
+      if (cancelled) return;
+      await offerVaultUnlockIfNeeded();
       if (!cancelled) setVaultChecked(true);
     })();
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [offerVaultUnlockIfNeeded]);
 
   const deliverLocalBroker = async (payload: Record<string, unknown>) => {
     let apiBase = API_DEFAULT.replace(/\/$/, '');
@@ -151,7 +177,7 @@ export default function App(): React.ReactElement {
     setVaultError(null);
   }, []);
 
-  const onVaultUnlock = async () => {
+  const onVaultUnlock = useCallback(async () => {
     setVaultError(null);
     setVaultBusy(true);
     try {
@@ -178,7 +204,16 @@ export default function App(): React.ReactElement {
     } finally {
       setVaultBusy(false);
     }
-  };
+  }, [applyEntry]);
+
+  // Auto-prompt Touch ID when the vault overlay is offered (cold start or prefer-app).
+  useEffect(() => {
+    if (!showVaultUnlock || vaultFactors || showPicker || vaultBusy) return;
+    const offer = vaultOfferGen.current;
+    if (autoTouchIdForOffer.current === offer) return;
+    autoTouchIdForOffer.current = offer;
+    void onVaultUnlock();
+  }, [showVaultUnlock, vaultFactors, showPicker, vaultBusy, onVaultUnlock]);
 
   const onPickIdentity = (identityId: string) => {
     const entry = pendingEntries.find((e) => e.identityId === identityId);
@@ -264,7 +299,7 @@ export default function App(): React.ReactElement {
       <SessionVaultUnlockOverlay
         open={showVaultUnlock && !vaultFactors && !showPicker}
         title="Unlock pN"
-        body="Use Touch ID, then choose which saved pN to continue with."
+        body="Confirm with Touch ID to continue with a saved pN."
         unlockLabel="Unlock with Touch ID"
         error={vaultError}
         busy={vaultBusy}
