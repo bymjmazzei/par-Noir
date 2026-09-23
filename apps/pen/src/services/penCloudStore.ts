@@ -23,11 +23,15 @@ import {
   sectionsToWireCipherMap,
   decryptSectionPayload,
 } from './penDocCrypto';
+import { ensureOwnerDocGroup } from './penCollab';
+import type { PenSession } from './penSession';
 
 export async function bootstrapDocCloud(params: {
   userPnIdentifier: string;
   bundle: LocalDocBundle;
   draft: PenDraftManifest;
+  /** When set, registers owner-wrapped docKey so cold open can decrypt after lock. */
+  session?: Pick<PenSession, 'pnIdentifier' | 'mlKemSecretKey'>;
 }): Promise<void> {
   const docId = params.bundle.manifest.docId;
   const docKey = mintDocKey(docId);
@@ -50,6 +54,21 @@ export async function bootstrapDocCloud(params: {
   if (!res.ok) {
     const err = (await res.json().catch(() => ({}))) as { error?: string };
     throw new Error(err.error || `bootstrap_failed_${res.status}`);
+  }
+  const groupId = params.bundle.manifest.groupId;
+  const mlKem = params.session?.mlKemSecretKey;
+  if (groupId && mlKem) {
+    try {
+      await ensureOwnerDocGroup({
+        ownerPnIdentifier: params.userPnIdentifier,
+        groupId,
+        title: params.bundle.manifest.title || 'Untitled',
+        docKey,
+        mlKemSecretKey: mlKem
+      });
+    } catch {
+      /* Drive SoT already written — key custody is best-effort for cold open */
+    }
   }
 }
 
@@ -183,15 +202,39 @@ export async function updateDocMetaCloud(params: {
 
 export type CloudSectionPayload = { slug: string; ciphertext: string };
 
-export async function loadDocFromDrive(params: {
-  userPnIdentifier: string;
-  docId: string;
-}): Promise<{
+export type CloudDocRaw = {
   manifest: PenDocManifest | null;
   chain: PenHistoryChain | null;
-  currentSections: PenSectionContent[];
-  drafts: Array<{ draft: PenDraftManifest; sections: PenSectionContent[] }>;
-}> {
+  currentSections: CloudSectionPayload[] | PenSectionContent[];
+  drafts: Array<{
+    draft: PenDraftManifest;
+    sections: CloudSectionPayload[] | PenSectionContent[];
+  }>;
+};
+
+async function decodeCloudSections(
+  list: CloudSectionPayload[] | PenSectionContent[] | undefined,
+  docKey: string | null
+): Promise<PenSectionContent[]> {
+  if (!list?.length) return [];
+  const out: PenSectionContent[] = [];
+  for (const item of list) {
+    if (item && typeof item === 'object' && 'ciphertext' in item && 'slug' in item) {
+      const payload = String((item as CloudSectionPayload).ciphertext || '');
+      out.push(await decryptSectionPayload(payload, docKey));
+    } else if (item && typeof item === 'object' && 'slug' in item) {
+      // Legacy API returned parsed JSON sections
+      out.push(item as PenSectionContent);
+    }
+  }
+  return out;
+}
+
+/** Fetch opaque cloud replica (ciphertexts). Caller recovers docKey then decrypts. */
+export async function fetchDocFromDrive(params: {
+  userPnIdentifier: string;
+  docId: string;
+}): Promise<CloudDocRaw> {
   const res = await ownerGet(
     `/api/pen/docs/${encodeURIComponent(params.docId)}?userPnIdentifier=${encodeURIComponent(params.userPnIdentifier)}`,
     { pnIdentifier: params.userPnIdentifier }
@@ -211,38 +254,56 @@ export async function loadDocFromDrive(params: {
   if (!data.manifest || !data.chain) {
     return { manifest: null, chain: null, currentSections: [], drafts: [] };
   }
-
-  const docKey = loadDocKey(params.docId);
-  const decodeList = async (
-    list: CloudSectionPayload[] | PenSectionContent[] | undefined
-  ): Promise<PenSectionContent[]> => {
-    if (!list?.length) return [];
-    const out: PenSectionContent[] = [];
-    for (const item of list) {
-      if (item && typeof item === 'object' && 'ciphertext' in item && 'slug' in item) {
-        const payload = String((item as CloudSectionPayload).ciphertext || '');
-        out.push(await decryptSectionPayload(payload, docKey));
-      } else if (item && typeof item === 'object' && 'slug' in item) {
-        // Legacy API returned parsed JSON sections
-        out.push(item as PenSectionContent);
-      }
-    }
-    return out;
-  };
-
-  const currentSections = await decodeList(data.currentSections);
-  const drafts: Array<{ draft: PenDraftManifest; sections: PenSectionContent[] }> = [];
-  for (const d of data.drafts || []) {
-    drafts.push({
-      draft: d.draft,
-      sections: await decodeList(d.sections)
-    });
-  }
-
   return {
     manifest: data.manifest,
     chain: data.chain,
+    currentSections: data.currentSections || [],
+    drafts: data.drafts || []
+  };
+}
+
+export async function decryptCloudDoc(params: {
+  raw: CloudDocRaw;
+  docKey: string | null;
+}): Promise<{
+  manifest: PenDocManifest | null;
+  chain: PenHistoryChain | null;
+  currentSections: PenSectionContent[];
+  drafts: Array<{ draft: PenDraftManifest; sections: PenSectionContent[] }>;
+}> {
+  const { raw, docKey } = params;
+  if (!raw.manifest || !raw.chain) {
+    return { manifest: null, chain: null, currentSections: [], drafts: [] };
+  }
+  const currentSections = await decodeCloudSections(raw.currentSections, docKey);
+  const drafts: Array<{ draft: PenDraftManifest; sections: PenSectionContent[] }> = [];
+  for (const d of raw.drafts || []) {
+    drafts.push({
+      draft: d.draft,
+      sections: await decodeCloudSections(d.sections, docKey)
+    });
+  }
+  return {
+    manifest: raw.manifest,
+    chain: raw.chain,
     currentSections,
     drafts
   };
+}
+
+export async function loadDocFromDrive(params: {
+  userPnIdentifier: string;
+  docId: string;
+  /** Prefer caller-supplied key (after group unwrap); falls back to sessionStorage. */
+  docKey?: string | null;
+}): Promise<{
+  manifest: PenDocManifest | null;
+  chain: PenHistoryChain | null;
+  currentSections: PenSectionContent[];
+  drafts: Array<{ draft: PenDraftManifest; sections: PenSectionContent[] }>;
+}> {
+  const raw = await fetchDocFromDrive(params);
+  const docKey =
+    params.docKey !== undefined ? params.docKey : loadDocKey(params.docId);
+  return decryptCloudDoc({ raw, docKey });
 }

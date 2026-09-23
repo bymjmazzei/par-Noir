@@ -8,10 +8,10 @@ import { API_ENDPOINT, PN_CLIENT_ID } from '../config/api';
 import { handoffHasSigningKeys } from '../services/penKeys';
 
 const CHECKLIST = [
-  'encrypted cloud docs',
-  'collaborate by invite',
-  'customize feed post layouts',
-  'connect published Notes to Browse'
+  'Author anything',
+  'encrypted collaboration',
+  'customize your feed posts',
+  'publish to your networks'
 ] as const;
 
 const LOGO_SRC = './branding/Par-Noir-Logo-White.png';
@@ -181,7 +181,7 @@ export function PenLockedLanding({
                 <div ref={headingRef} className="pen-locked-heading">
                   <h1 className="pen-locked-title">Pen</h1>
                   <p className="pen-locked-subtitle">
-                    Encrypted docs in your cloud — invite peers, publish when ready
+                    Encrypted collaboration published through your cloud
                   </p>
                 </div>
 

@@ -72,3 +72,8 @@ export function markSyncJobFailed(pn: string, id: string, error: string): void {
 export function pendingSyncCount(pn: string): number {
   return listSyncJobs(pn).length;
 }
+
+/** True while local-first create has not finished apply-inbound bootstrap. */
+export function isDocBootstrapPending(pn: string, docId: string): boolean {
+  return listSyncJobs(pn).some((j) => j.kind === 'bootstrap' && j.docId === docId);
+}

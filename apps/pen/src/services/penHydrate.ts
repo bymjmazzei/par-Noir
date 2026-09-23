@@ -4,7 +4,7 @@
 
 import type { PenSession } from './penSession';
 import { loadLocalDoc, saveLocalDoc, type LocalDocBundle } from './penLocalStore';
-import { loadDocFromDrive } from './penCloudStore';
+import { decryptCloudDoc, fetchDocFromDrive } from './penCloudStore';
 import { loadDocKey, saveDocKey } from './penDocCrypto';
 import {
   isSocialEnvelope,
@@ -79,19 +79,32 @@ export async function hydrateDocFromCloud(params: {
   docId: string;
 }): Promise<LocalDocBundle | null> {
   const local = loadLocalDoc(params.session.pnIdentifier, params.docId);
-  const cloud = await loadDocFromDrive({
+
+  // Fetch opaque replica first so we can recover docKey before decrypt.
+  const raw = await fetchDocFromDrive({
     userPnIdentifier: params.session.pnIdentifier,
     docId: params.docId
   });
-  if (!cloud.manifest || !cloud.chain) return local;
+  if (!raw.manifest || !raw.chain) return local;
 
-  if (cloud.manifest.groupId) {
-    await ensureDocKeyFromGroup({
+  let docKey = loadDocKey(params.docId);
+  if (!docKey && raw.manifest.groupId) {
+    docKey = await ensureDocKeyFromGroup({
       session: params.session,
       docId: params.docId,
-      groupId: cloud.manifest.groupId
+      groupId: raw.manifest.groupId
     });
   }
+
+  let cloud: Awaited<ReturnType<typeof decryptCloudDoc>>;
+  try {
+    cloud = await decryptCloudDoc({ raw, docKey });
+  } catch {
+    // Missing/wrong docKey — keep local buffer rather than wipe the editor.
+    return local;
+  }
+
+  if (!cloud.manifest || !cloud.chain) return local;
 
   // Prefer draft sections when present (WIP); else current published.
   const draft = cloud.drafts[0];

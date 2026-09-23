@@ -78,6 +78,36 @@ export async function createPenGroup(params: {
   }
 }
 
+/**
+ * Solo-doc custody: register the doc group with an owner-wrapped docKey so
+ * hydrate can recover the key after sessionStorage wipe (lock / new tab).
+ */
+export async function ensureOwnerDocGroup(params: {
+  ownerPnIdentifier: string;
+  groupId: string;
+  title: string;
+  docKey: string;
+  mlKemSecretKey: string;
+}): Promise<void> {
+  const ownerWrapped = await wrapChatKeyForOwner(
+    params.docKey,
+    params.mlKemSecretKey,
+    params.groupId
+  );
+  await createPenGroup({
+    ownerPnIdentifier: params.ownerPnIdentifier,
+    groupId: params.groupId,
+    title: params.title,
+    members: [
+      {
+        memberPnIdentifier: params.ownerPnIdentifier,
+        wrappedChatKey: ownerWrapped,
+        accessRole: 'readWrite'
+      }
+    ]
+  });
+}
+
 /** Invite peer via browse-style POST /api/groups + role on doc. */
 export async function invitePenCollaborator(params: {
   session: PenSession;

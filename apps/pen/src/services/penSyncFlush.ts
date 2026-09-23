@@ -79,7 +79,12 @@ async function applySyncJob(session: PenSession, job: PenSyncJob): Promise<void>
   if (job.kind === 'bootstrap') {
     const bundle = job.payload.bundle as LocalDocBundle;
     const draft = job.payload.draft as PenDraftManifest;
-    await bootstrapDocCloud({ userPnIdentifier: pn, bundle, draft });
+    await bootstrapDocCloud({
+      userPnIdentifier: pn,
+      bundle,
+      draft,
+      session
+    });
     return;
   }
   if (job.kind === 'draft_upsert') {

@@ -22,7 +22,7 @@ import {
 import { API_ENDPOINT, PN_CLIENT_ID } from './config/api';
 import { DocEditorPage } from './pages/DocEditorPage';
 import { DocListPage, type PenAddIntent } from './pages/DocListPage';
-import { listLocalDocs, type LocalDocSummary, clearLocalDocsForPn } from './services/penLocalStore';
+import { listLocalDocs, type LocalDocSummary } from './services/penLocalStore';
 import {
   clearPenSession,
   loadPenSession,
@@ -206,7 +206,9 @@ function Locked() {
         onLock={async () => {
           await wipeThirdPartyCloudOnLock(session.pnIdentifier);
           clearDocKeysForSession();
-          clearLocalDocsForPn(session.pnIdentifier);
+          // Keep local doc buffers across lock — cloud decrypt needs an owner-wrapped
+          // docKey (registered at bootstrap); wiping local made listed docs open as
+          // "Document not found" after re-unlock.
           clearPenMailboxSessionCache(session.pnIdentifier);
           clearPenSession();
           setSession(null);
@@ -562,7 +564,7 @@ function AuthenticatedApp({
 function DocEditorRoute({ session }: { session: PenSession }) {
   const { docId } = useParams();
   if (!docId) return null;
-  return <DocEditorPage session={session} docId={docId} />;
+  return <DocEditorPage key={docId} session={session} docId={docId} />;
 }
 
 export default function App() {

@@ -86,6 +86,9 @@ import {
   openMessagingWithCorrespondence
 } from '../services/penCorrespondenceHandoff';
 import { hydrateDocFromCloud } from '../services/penHydrate';
+import { isDocBootstrapPending } from '../services/penSyncQueue';
+import { ensureOwnerDocGroup } from '../services/penCollab';
+import { loadDocKey } from '../services/penDocCrypto';
 
 async function peerRoutes(
   session: PenSession,
@@ -311,11 +314,17 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
     return () => window.removeEventListener('keydown', onKey);
   }, [undoEdit, redoEdit]);
 
-  // Cloud hydrate on mount. When a local buffer already exists (local-first create),
-  // do not block the editor; only apply cloud if the user has not started editing.
+  // Cloud hydrate on mount. Skip GET while local-first bootstrap is still queued
+  // (avoids console 404). When a local buffer exists, do not block the editor;
+  // only apply cloud if the user has not started editing.
   useEffect(() => {
     let cancelled = false;
-    const hadLocal = Boolean(loadLocalDoc(session.pnIdentifier, docId));
+    const pn = session.pnIdentifier;
+    if (isDocBootstrapPending(pn, docId)) {
+      setHydrating(false);
+      return;
+    }
+    const hadLocal = Boolean(loadLocalDoc(pn, docId));
     if (!hadLocal) setHydrating(true);
     void hydrateDocFromCloud({ session, docId })
       .then((fromCloud) => {
@@ -336,6 +345,23 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
     return () => {
       cancelled = true;
     };
+  }, [docId, session]);
+
+  // Backfill owner-wrapped docKey for docs created before bootstrap registered the group.
+  useEffect(() => {
+    const docKey = loadDocKey(docId);
+    const local = loadLocalDoc(session.pnIdentifier, docId);
+    const groupId = local?.manifest.groupId;
+    if (!docKey || !groupId || !session.mlKemSecretKey) return;
+    void ensureOwnerDocGroup({
+      ownerPnIdentifier: session.pnIdentifier,
+      groupId,
+      title: local.manifest.title || 'Untitled',
+      docKey,
+      mlKemSecretKey: session.mlKemSecretKey
+    }).catch(() => {
+      /* already registered or offline */
+    });
   }, [docId, session]);
 
   function persist(next: NonNullable<typeof bundle>, opts?: { draft?: boolean }) {
