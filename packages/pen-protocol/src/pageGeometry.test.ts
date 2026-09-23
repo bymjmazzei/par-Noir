@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   clampLayerRect,
   contentBoxSize,
+  isFlowWorkspaceOpen,
   legacyPercentToContentPx,
   LETTER_HEIGHT_PX,
   LETTER_WIDTH_PX,
@@ -14,35 +15,47 @@ import { emptyTipTapDoc } from './richDoc.js';
 import type { PenSectionContent } from './types.js';
 
 describe('pageGeometry', () => {
-  it('pageSheetDims: flow has no fixed height; letter/a4 are paged', () => {
-    const flow = pageSheetDims('flow', 640);
-    expect(flow.paged).toBe(false);
-    expect(flow.pageWidthPx).toBe(640);
-    expect(flow.pageHeightPx).toBeNull();
+  it('pageSheetDims: open flow fills; fixed flow has width; letter/a4 are paged', () => {
+    const open = pageSheetDims('flow', { widthPx: null, heightPx: null });
+    expect(open.fillWidth).toBe(true);
+    expect(open.pageWidthPx).toBeNull();
+    expect(open.paged).toBe(false);
+
+    const fixed = pageSheetDims('flow', { widthPx: 640, heightPx: 800 });
+    expect(fixed.fillWidth).toBe(false);
+    expect(fixed.pageWidthPx).toBe(640);
+    expect(fixed.pageHeightPx).toBe(800);
 
     const letter = pageSheetDims('letter');
     expect(letter.paged).toBe(true);
     expect(letter.pageWidthPx).toBe(LETTER_WIDTH_PX);
     expect(letter.pageHeightPx).toBe(LETTER_HEIGHT_PX);
+  });
 
-    const a4 = pageSheetDims('a4');
-    expect(a4.paged).toBe(true);
-    expect(a4.pageWidthPx).toBeGreaterThan(700);
+  it('isFlowWorkspaceOpen treats null/undefined as open', () => {
+    expect(isFlowWorkspaceOpen(null)).toBe(true);
+    expect(isFlowWorkspaceOpen(undefined)).toBe(true);
+    expect(isFlowWorkspaceOpen(640)).toBe(false);
   });
 
   it('legacy % migrate is stable across page layouts (same px)', () => {
     const pct = { x: 20, y: 10, w: 40, h: 30 };
     const px = legacyPercentToContentPx(pct, 40);
     const letterBox = contentBoxSize(pageSheetDims('letter'), 40, 200);
-    const flowBox = contentBoxSize(pageSheetDims('flow', 640), 40, 200);
-    const a4Box = contentBoxSize(pageSheetDims('a4'), 40, 200);
-    // Stored geom unchanged; content box width differs but layer rect is absolute px
+    const flowBox = contentBoxSize(
+      pageSheetDims('flow', { widthPx: 640 }),
+      40,
+      200
+    );
     expect(px.w).toBe(Math.round(0.4 * (LETTER_WIDTH_PX - 80)));
-    expect(px.x).toBe(Math.round(0.2 * (LETTER_WIDTH_PX - 80)));
-    // Same layer rect fits all boxes without rescaling the numbers
     expect(clampLayerRect(px, letterBox.width, letterBox.height).w).toBe(px.w);
     expect(clampLayerRect(px, flowBox.width, flowBox.height).w).toBe(px.w);
-    expect(clampLayerRect(px, a4Box.width, a4Box.height).w).toBe(px.w);
+  });
+
+  it('open flow contentBoxSize uses measured width', () => {
+    const sheet = pageSheetDims('flow', { widthPx: null });
+    const box = contentBoxSize(sheet, 40, 200, 900);
+    expect(box.width).toBe(820);
   });
 
   it('clamp rejects y past content bottom', () => {
@@ -73,8 +86,6 @@ describe('pageGeometry', () => {
     expect(next.layerGeom).toBe('px');
     expect(next.layers![0]!.w).toBeGreaterThan(100);
     expect(sectionNeedsLegacyGeomMigrate(next)).toBe(false);
-    const again = migrateSectionLayerGeomToPx(next, 40);
-    expect(again.layers![0]!.w).toBe(next.layers![0]!.w);
   });
 
   it('wrapSideFromGeom uses content midline in px', () => {

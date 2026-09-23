@@ -14,7 +14,6 @@ import TableRow from '@tiptap/extension-table-row';
 import TableCell from '@tiptap/extension-table-cell';
 import TableHeader from '@tiptap/extension-table-header';
 import {
-  DEFAULT_FLOW_WORKSPACE_WIDTH_PX,
   PEN_SYSTEM_FONTS,
   PEN_GOOGLE_FONTS_FEATURED,
   PEN_GOOGLE_FONTS_ALL,
@@ -955,6 +954,7 @@ export function PageCanvas({
   onEditorReady,
   pageLayout = 'flow',
   flowWorkspaceWidthPx,
+  flowWorkspaceHeightPx,
   pnIdentifier = ''
 }: {
   section: PenSectionContent;
@@ -964,7 +964,8 @@ export function PageCanvas({
   readOnly?: boolean;
   onEditorReady?: (editor: Editor | null) => void;
   pageLayout?: PenPageLayout;
-  flowWorkspaceWidthPx?: number;
+  flowWorkspaceWidthPx?: number | null;
+  flowWorkspaceHeightPx?: number | null;
   /** Unlocks live Pen embeds inside TipTap. */
   pnIdentifier?: string;
 }) {
@@ -1022,7 +1023,9 @@ export function PageCanvas({
     }
   }, [section.slug, section.doc, editor]);
 
-  const flowW = flowWorkspaceWidthPx || DEFAULT_FLOW_WORKSPACE_WIDTH_PX;
+  const flowW = flowWorkspaceWidthPx;
+  const flowH = flowWorkspaceHeightPx;
+  const open = flowW == null;
 
   return (
     <div className="flex flex-1 flex-col overflow-hidden bg-[#f3f3f3]">
@@ -1032,12 +1035,17 @@ export function PageCanvas({
         </div>
         <div className="text-sm font-medium text-stone-800">{sectionTitle || section.slug}</div>
       </div>
-      <div className="flex flex-1 justify-center overflow-auto px-4 py-4 sm:px-6">
+      <div
+        className={`flex flex-1 overflow-auto ${
+          open ? 'items-stretch p-0' : 'justify-center px-4 py-4 sm:px-6'
+        }`}
+      >
         <PageSheetColumn
           pageLayout={pageLayout}
           flowWorkspaceWidthPx={flowW}
+          flowWorkspaceHeightPx={flowH}
           contentOuterHeightPx={480}
-          className="min-h-full"
+          className={open ? 'min-h-full shadow-none' : 'min-h-full'}
         >
           <div className="px-10 py-8">
             <EditorContent editor={editor} />

@@ -6,13 +6,13 @@ import {
 } from '@par-noir/pen-protocol';
 
 /**
- * Shared sheet chrome: Flow = continuous white column; Letter/A4 = stacked
- * fixed-size page bands with hairline breaks. Content flows continuously;
- * pageLayout does not rescale layer geometry (layers use content-box px).
+ * Shared sheet chrome: Flow = continuous white panel (open fill or fixed W×H);
+ * Letter/A4 = stacked fixed-size page bands with hairline breaks.
  */
 export function PageSheetColumn({
   pageLayout,
   flowWorkspaceWidthPx,
+  flowWorkspaceHeightPx,
   contentOuterHeightPx,
   className,
   style,
@@ -22,6 +22,7 @@ export function PageSheetColumn({
 }: {
   pageLayout: PenPageLayout | undefined;
   flowWorkspaceWidthPx?: number | null;
+  flowWorkspaceHeightPx?: number | null;
   /** Measured outer content height (including padding); drives page count. */
   contentOuterHeightPx: number;
   className?: string;
@@ -30,25 +31,36 @@ export function PageSheetColumn({
   sheetRef?: Ref<HTMLDivElement>;
   onClick?: () => void;
 }) {
-  const dims = pageSheetDims(pageLayout, flowWorkspaceWidthPx);
-  const pageH = dims.pageHeightPx;
+  const dims = pageSheetDims(pageLayout, {
+    widthPx: flowWorkspaceWidthPx,
+    heightPx: flowWorkspaceHeightPx
+  });
+  const pageH = dims.paged ? dims.pageHeightPx : null;
   const pages =
     dims.paged && pageH
       ? printPageCount(Math.max(contentOuterHeightPx, pageH), pageH)
       : 1;
+  const flowMinH = !dims.paged
+    ? Math.max(
+        contentOuterHeightPx,
+        dims.pageHeightPx || 0,
+        dims.fillWidth ? 0 : 320
+      )
+    : 0;
   const stackHeight =
-    dims.paged && pageH ? pages * pageH : Math.max(contentOuterHeightPx, 320);
+    dims.paged && pageH ? pages * pageH : Math.max(flowMinH, 240);
 
   return (
     <div
       ref={sheetRef}
       className={`relative bg-white shadow-[0_1px_3px_rgba(0,0,0,0.12),0_0_0_1px_rgba(0,0,0,0.06)] ${
-        className || ''
-      }`}
+        dims.fillWidth ? 'w-full' : ''
+      } ${className || ''}`}
       style={{
-        width: dims.pageWidthPx,
+        width: dims.fillWidth ? '100%' : dims.pageWidthPx ?? undefined,
         maxWidth: '100%',
-        minHeight: stackHeight,
+        minHeight: dims.fillWidth ? `max(100%, ${stackHeight}px)` : stackHeight,
+        height: dims.fillWidth && !dims.pageHeightPx ? '100%' : undefined,
         ...style
       }}
       onClick={onClick}

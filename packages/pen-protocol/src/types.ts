@@ -140,8 +140,16 @@ export interface PenDocManifest {
   genesisProof?: PenGenesisProof;
   /** Editor / preview pagination mode. */
   pageLayout?: PenPageLayout;
-  /** Flow workspace column width in CSS px (ignored for letter/a4). */
-  flowWorkspaceWidthPx?: number;
+  /**
+   * Flow workspace width in CSS px. `null` = open (fill available panel).
+   * Omit or null for an unconstrained Flow surface; set a number to lock width.
+   */
+  flowWorkspaceWidthPx?: number | null;
+  /**
+   * Flow workspace min height in CSS px. `null`/omit = grow with content
+   * (and fill the panel when width is also open).
+   */
+  flowWorkspaceHeightPx?: number | null;
   /** Default Note card chrome when compiling to browse. */
   pagePresentation?: PenPagePresentation;
   /** Aggregator fileId after Connect to feed — engagement comments key. */

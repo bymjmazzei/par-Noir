@@ -15,13 +15,18 @@ export const A4_WIDTH_PX = Math.round((210 / 25.4) * CSS_PX_PER_IN); // ~794
 export const A4_HEIGHT_PX = Math.round((297 / 25.4) * CSS_PX_PER_IN); // ~1123
 
 export const DEFAULT_FLOW_WORKSPACE_WIDTH_PX = 640;
+export const DEFAULT_FLOW_WORKSPACE_HEIGHT_PX = 720;
 export const DEFAULT_PAGE_PADDING_PX = 40;
 export const MIN_LAYER_SIZE_PX = 24;
 export const PAGE_GUTTER_PX = 16;
 
 export type PageSheetDims = {
-  pageWidthPx: number;
+  /** Fixed column width, or null when Flow fills the container. */
+  pageWidthPx: number | null;
+  /** Print page height, or Flow min-height when set; null = content-driven. */
   pageHeightPx: number | null;
+  /** Flow open width — sheet is 100% of parent. */
+  fillWidth: boolean;
   /** true when Letter/A4 — show page bands / breaks */
   paged: boolean;
 };
@@ -30,33 +35,66 @@ export function resolvePagePaddingPx(padding?: number | null): number {
   return Math.max(8, Math.min(72, Number(padding) || DEFAULT_PAGE_PADDING_PX));
 }
 
+export function isFlowWorkspaceOpen(widthPx?: number | null): boolean {
+  return widthPx == null;
+}
+
 export function pageSheetDims(
   layout: PenPageLayout | undefined,
-  flowWorkspaceWidthPx?: number | null
+  flow?: { widthPx?: number | null; heightPx?: number | null }
 ): PageSheetDims {
   if (layout === 'letter') {
-    return { pageWidthPx: LETTER_WIDTH_PX, pageHeightPx: LETTER_HEIGHT_PX, paged: true };
+    return {
+      pageWidthPx: LETTER_WIDTH_PX,
+      pageHeightPx: LETTER_HEIGHT_PX,
+      fillWidth: false,
+      paged: true
+    };
   }
   if (layout === 'a4') {
-    return { pageWidthPx: A4_WIDTH_PX, pageHeightPx: A4_HEIGHT_PX, paged: true };
+    return {
+      pageWidthPx: A4_WIDTH_PX,
+      pageHeightPx: A4_HEIGHT_PX,
+      fillWidth: false,
+      paged: true
+    };
+  }
+  const open = isFlowWorkspaceOpen(flow?.widthPx);
+  if (open) {
+    const h =
+      flow?.heightPx == null
+        ? null
+        : Math.max(240, Math.min(4000, Math.round(Number(flow.heightPx))));
+    return { pageWidthPx: null, pageHeightPx: h, fillWidth: true, paged: false };
   }
   const w = Math.max(
     320,
-    Math.min(1200, Math.round(Number(flowWorkspaceWidthPx) || DEFAULT_FLOW_WORKSPACE_WIDTH_PX))
+    Math.min(1600, Math.round(Number(flow?.widthPx) || DEFAULT_FLOW_WORKSPACE_WIDTH_PX))
   );
-  return { pageWidthPx: w, pageHeightPx: null, paged: false };
+  const h =
+    flow?.heightPx == null
+      ? null
+      : Math.max(240, Math.min(4000, Math.round(Number(flow.heightPx))));
+  return { pageWidthPx: w, pageHeightPx: h, fillWidth: false, paged: false };
 }
 
 /** Content box inside Body padding (layer coordinate space). */
 export function contentBoxSize(
   sheet: PageSheetDims,
   paddingPx: number,
-  contentHeightPx: number
+  contentHeightPx: number,
+  /** Required when sheet.fill width (open Flow). */
+  measuredWidthPx?: number
 ): { width: number; height: number } {
-  const width = Math.max(MIN_LAYER_SIZE_PX, sheet.pageWidthPx - 2 * paddingPx);
-  const minH = sheet.pageHeightPx
+  const outerW =
+    sheet.pageWidthPx ??
+    Math.max(320, Math.round(measuredWidthPx || DEFAULT_FLOW_WORKSPACE_WIDTH_PX));
+  const width = Math.max(MIN_LAYER_SIZE_PX, outerW - 2 * paddingPx);
+  const minH = sheet.paged && sheet.pageHeightPx
     ? Math.max(MIN_LAYER_SIZE_PX, sheet.pageHeightPx - 2 * paddingPx)
-    : Math.max(240, contentHeightPx);
+    : sheet.pageHeightPx
+      ? Math.max(MIN_LAYER_SIZE_PX, sheet.pageHeightPx - 2 * paddingPx)
+      : Math.max(240, contentHeightPx);
   const height = Math.max(minH, contentHeightPx);
   return { width, height };
 }
