@@ -1,4 +1,12 @@
-import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+  type PointerEvent as ReactPointerEvent,
+  type ReactNode
+} from 'react';
 import {
   collectFontFamiliesFromDoc,
   defaultEditorPagePresentation,
@@ -58,34 +66,209 @@ function bodyMarginStyle(presentation: PenPagePresentation): CSSProperties {
   };
 }
 
-function resolveBodyWrap(layer: PenPageLayer): 'left' | 'right' {
+function resolveBodyWrap(layer: Pick<PenPageLayer, 'bodyWrap' | 'x' | 'w'>): 'left' | 'right' {
   if (layer.bodyWrap === 'left' || layer.bodyWrap === 'right') return layer.bodyWrap;
   return layer.x + layer.w / 2 < 50 ? 'left' : 'right';
 }
 
+function opaqueWrapShell(layer: PenPageLayer): CSSProperties {
+  const shell = { ...layerPreviewStyle(layer) };
+  // Body text must not show through — wrap objects are in-flow floats, not overlays.
+  const bg = shell.backgroundColor;
+  if (!bg || bg === 'transparent' || String(bg).startsWith('rgba(')) {
+    shell.backgroundColor = '#ffffff';
+  }
+  shell.opacity = 1;
+  return shell;
+}
+
+type LiveGeom = { x: number; y: number; w: number; h: number };
+
 /**
- * Invisible float that only reserves L/R wrap space in Body.
- * Does not track X/Y — free absolute placement stays on LayoutSurface so
- * drag never fights float layout.
+ * Real float in Body flow — text wraps around it. Height is px (%% height
+ * collapses on floats). Drag updates local geometry; commit on pointer up.
  */
-function BodyWrapSpacer({ layer }: { layer: PenPageLayer }) {
-  const side = resolveBodyWrap(layer);
-  const w = Math.max(8, Math.min(70, layer.w));
-  const h = Math.max(8, Math.min(70, layer.h));
+function BodyWrapObject({
+  layer,
+  allLayers,
+  presentation,
+  selected,
+  pageEl,
+  onSelect,
+  onCommit
+}: {
+  layer: PenPageLayer;
+  allLayers: PenPageLayer[];
+  presentation: PenPagePresentation;
+  selected: boolean;
+  pageEl: HTMLElement | null;
+  onSelect: () => void;
+  onCommit: (geom: LiveGeom & { bodyWrap: 'left' | 'right' }) => void;
+}) {
+  const locked = Boolean(layer.positionLocked);
+  const [live, setLive] = useState<LiveGeom>({
+    x: layer.x,
+    y: layer.y,
+    w: layer.w,
+    h: layer.h
+  });
+  const liveRef = useRef(live);
+  liveRef.current = live;
+  const dragRef = useRef<{
+    mode: 'move' | 'resize';
+    startX: number;
+    startY: number;
+    orig: LiveGeom;
+  } | null>(null);
+
+  useEffect(() => {
+    setLive({ x: layer.x, y: layer.y, w: layer.w, h: layer.h });
+  }, [layer.x, layer.y, layer.w, layer.h, layer.id]);
+
+  const side = resolveBodyWrap({ ...layer, ...live, bodyWrap: layer.bodyWrap });
+  const pageH = pageEl?.clientHeight || 400;
+  const wPct = Math.max(12, Math.min(70, live.w));
+  const hPx = Math.max(48, Math.round((Math.max(10, Math.min(70, live.h)) / 100) * pageH));
+  const yPx = Math.max(0, Math.round((Math.max(0, Math.min(80, live.y)) / 100) * pageH));
+
+  const style: CSSProperties = {
+    ...opaqueWrapShell(layer),
+    float: side,
+    width: `${wPct}%`,
+    height: `${hPx}px`,
+    marginTop: `${yPx}px`,
+    marginBottom: '0.5em',
+    marginLeft: side === 'right' ? '0.75em' : undefined,
+    marginRight: side === 'left' ? '0.75em' : undefined,
+    shapeOutside: 'margin-box',
+    position: 'relative',
+    zIndex: 2,
+    cursor: locked ? 'default' : 'grab',
+    boxSizing: 'border-box'
+  };
+
+  function onPointerDownMove(e: ReactPointerEvent) {
+    e.stopPropagation();
+    e.preventDefault();
+    onSelect();
+    if (locked) return;
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+    dragRef.current = {
+      mode: 'move',
+      startX: e.clientX,
+      startY: e.clientY,
+      orig: { ...liveRef.current }
+    };
+  }
+
+  function onPointerDownResize(e: ReactPointerEvent) {
+    e.stopPropagation();
+    e.preventDefault();
+    onSelect();
+    if (locked) return;
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+    dragRef.current = {
+      mode: 'resize',
+      startX: e.clientX,
+      startY: e.clientY,
+      orig: { ...liveRef.current }
+    };
+  }
+
+  function onPointerMove(e: ReactPointerEvent) {
+    const drag = dragRef.current;
+    if (!drag || !pageEl) return;
+    const r = pageEl.getBoundingClientRect();
+    if (!r.width || !r.height) return;
+    const dx = ((e.clientX - drag.startX) / r.width) * 100;
+    const dy = ((e.clientY - drag.startY) / r.height) * 100;
+    if (drag.mode === 'move') {
+      setLive({
+        x: Math.max(0, Math.min(88, drag.orig.x + dx)),
+        y: Math.max(0, Math.min(80, drag.orig.y + dy)),
+        w: drag.orig.w,
+        h: drag.orig.h
+      });
+    } else {
+      setLive({
+        x: drag.orig.x,
+        y: drag.orig.y,
+        w: Math.max(12, Math.min(70, drag.orig.w + dx)),
+        h: Math.max(10, Math.min(70, drag.orig.h + dy))
+      });
+    }
+  }
+
+  function onPointerUp() {
+    if (!dragRef.current) return;
+    dragRef.current = null;
+    const g = liveRef.current;
+    const nextSide: 'left' | 'right' = g.x + g.w / 2 < 50 ? 'left' : 'right';
+    onCommit({ ...g, bodyWrap: nextSide });
+  }
+
+  let inner: ReactNode = null;
+  if (layer.kind === 'image' && layer.imageSrc) {
+    inner = (
+      <img
+        src={layer.imageSrc}
+        alt=""
+        className="h-full w-full object-contain"
+        draggable={false}
+      />
+    );
+  } else if (layer.kind === 'video' && layer.videoSrc) {
+    inner = (
+      <video
+        src={layer.videoSrc}
+        className="h-full w-full object-contain"
+        controls
+        playsInline
+      />
+    );
+  } else if (layer.kind === 'text') {
+    const html = docToHtml(getTextLayerDoc(layer));
+    inner = (
+      <div
+        className="pen-rich-html h-full w-full overflow-hidden p-2 text-sm"
+        style={{
+          fontFamily: presentation.fontFamily || undefined,
+          color: presentation.textColor || '#111'
+        }}
+        title={layerDisplayLabel(layer, allLayers)}
+        dangerouslySetInnerHTML={{
+          __html: html || '<p class="text-neutral-400">Text</p>'
+        }}
+      />
+    );
+  }
+  if (!inner) return null;
+
   return (
     <div
-      aria-hidden
       data-wrap={side}
-      className="pointer-events-none"
-      style={{
-        float: side,
-        width: `${w}%`,
-        height: `${h}%`,
-        margin: side === 'left' ? '0 0.75em 0.5em 0' : '0 0 0.5em 0.75em',
-        shapeOutside: 'margin-box',
-        visibility: 'hidden'
+      role="button"
+      tabIndex={0}
+      className={`overflow-hidden ${
+        selected ? 'ring-2 ring-sky-500' : 'ring-1 ring-stone-300'
+      }`}
+      style={style}
+      onPointerDown={onPointerDownMove}
+      onPointerMove={onPointerMove}
+      onPointerUp={onPointerUp}
+      onClick={(e) => {
+        e.stopPropagation();
+        onSelect();
       }}
-    />
+    >
+      {inner}
+      {selected && !locked && (
+        <div
+          className="absolute bottom-0 right-0 h-3 w-3 cursor-se-resize bg-sky-500"
+          onPointerDown={onPointerDownResize}
+        />
+      )}
+    </div>
   );
 }
 
@@ -112,18 +295,19 @@ export function EditablePagePreview({
   session?: PenSession | null;
 }) {
   const layersBtnRef = useRef<HTMLButtonElement>(null);
+  const pageFrameRef = useRef<HTMLDivElement>(null);
   const [layersOpen, setLayersOpen] = useState(false);
   const [selectedIds, setSelectedIds] = useState<string[]>([PAGE_LAYER_ID]);
   const [fontsReady, setFontsReady] = useState(true);
   const prepared = useMemo(() => normalizeSection(section), [section]);
   const layers = prepared.layers || [];
-  /** Wrap objects stay on LayoutSurface (free move); spacers only drive text wrap. */
   const wrapLayers = useMemo(
     () => layers.filter((l) => l.visible !== false && Boolean(l.bodyWrap)),
     [layers]
   );
+  /** Absolute stack only — wrap objects live in Body float flow. */
   const absoluteLayers = useMemo(
-    () => layers.filter((l) => l.visible !== false),
+    () => layers.filter((l) => l.visible !== false && !l.bodyWrap),
     [layers]
   );
   const items = absoluteLayers.map(layerToItem);
@@ -182,15 +366,6 @@ export function EditablePagePreview({
 
   function onLayoutChange(nextItems: LayoutItem[]) {
     let next = updateLayerLayout(prepared, nextItems);
-    // Keep wrap side in sync with horizontal position while still wrapped
-    for (const item of nextItems) {
-      const layer = next.layers?.find((l) => l.id === item.id);
-      if (!layer?.bodyWrap) continue;
-      const side: 'left' | 'right' = item.x + item.w / 2 < 50 ? 'left' : 'right';
-      if (layer.bodyWrap !== side) {
-        next = patchLayerStyle(next, item.id, { bodyWrap: side });
-      }
-    }
     const groups = new Set(
       (next.layers || [])
         .filter((l) => l.parentGroupId)
@@ -199,6 +374,26 @@ export function EditablePagePreview({
     for (const gid of groups) {
       next = recomputeGroupBounds(next, gid);
     }
+    onSectionChange(next);
+  }
+
+  function onWrapCommit(
+    layerId: string,
+    patch: LiveGeom & { bodyWrap: 'left' | 'right' }
+  ) {
+    const layer = prepared.layers?.find((l) => l.id === layerId);
+    if (!layer) return;
+    let next = updateLayerLayout(prepared, [
+      {
+        id: layerId,
+        x: patch.x,
+        y: patch.y,
+        w: patch.w,
+        h: patch.h,
+        zIndex: layer.zIndex
+      }
+    ]);
+    next = patchLayerStyle(next, layerId, { bodyWrap: patch.bodyWrap });
     onSectionChange(next);
   }
 
@@ -299,6 +494,7 @@ export function EditablePagePreview({
 
       <div className="flex flex-1 items-start justify-center overflow-auto bg-neutral-100 p-6">
         <div
+          ref={pageFrameRef}
           className={`relative w-full overflow-hidden border border-neutral-200 bg-white ${pageFrameClass(
             manifest.pageLayout
           )}`}
@@ -318,7 +514,7 @@ export function EditablePagePreview({
             />
           )}
 
-          {/* Body — flow text; invisible wrap spacers reserve float space */}
+          {/* Body — wrap objects are real floats here so text flows around them */}
           <div
             className={`pen-rich-html absolute inset-0 z-0 overflow-auto ${
               fontsReady ? '' : 'opacity-90'
@@ -330,16 +526,27 @@ export function EditablePagePreview({
             }}
           >
             {wrapLayers.map((layer) => (
-              <BodyWrapSpacer key={layer.id} layer={layer} />
+              <BodyWrapObject
+                key={layer.id}
+                layer={layer}
+                allLayers={layers}
+                presentation={presentation}
+                selected={activeLayerId === layer.id}
+                pageEl={pageFrameRef.current}
+                onSelect={() => selectLayer(layer.id)}
+                onCommit={(patch) => onWrapCommit(layer.id, patch)}
+              />
             ))}
+            {/* display:contents so Body prose shares the float formatting context */}
             <div
+              style={{ display: 'contents' }}
               dangerouslySetInnerHTML={{
                 __html: bodyHtml || '<p class="text-neutral-400">Start writing…</p>'
               }}
             />
           </div>
 
-          {/* All objects (including wrap) — free absolute move/resize */}
+          {/* Absolute overlays only (not wrap) */}
           <LayoutSurface
             className="pointer-events-none absolute inset-0 z-[1] h-full w-full"
             items={items}
@@ -351,7 +558,7 @@ export function EditablePagePreview({
             onChange={onLayoutChange}
             renderItem={(item) => {
               const layer = layers.find((l) => l.id === item.id);
-              if (!layer) return null;
+              if (!layer || layer.bodyWrap) return null;
               const shell = layerPreviewStyle(layer);
               if (layer.kind === 'group') {
                 return (
