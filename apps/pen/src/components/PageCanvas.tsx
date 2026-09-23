@@ -1022,7 +1022,7 @@ export function PageCanvas({
     if (cur !== incoming) {
       editor.commands.setContent(next, false);
     }
-  }, [section.slug, editor]);
+  }, [section.slug, section.doc, editor]);
 
   const sheetClass = PAGE_LAYOUT_CLASS[pageLayout] || PAGE_LAYOUT_CLASS.flow;
 

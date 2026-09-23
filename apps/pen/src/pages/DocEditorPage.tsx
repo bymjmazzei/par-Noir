@@ -10,6 +10,7 @@ import {
   defaultLayerName,
   getClass,
   getTemplate,
+  getTextLayerDoc,
   hashPnIdentifier,
   hashSectionContent,
   headHashFromChain,
@@ -30,13 +31,14 @@ import {
   type PenDocComment,
   type PenPageLayout,
   type PenRole,
-  type PenSuggestion
+  type PenSuggestion,
+  type PenTipTapNode
 } from '@par-noir/pen-protocol';
 import type { PenSession } from '../services/penSession';
 import { FormatRibbon, PageCanvas } from '../components/PageCanvas';
 import { EditablePagePreview } from '../components/EditablePagePreview';
 import { BrowseFeedTilePreview } from '../components/BrowseFeedTilePreview';
-import { SectionTocMenu, type SectionTocItem } from '../components/SectionTocMenu';
+import { LayerPartsMenu } from '../components/LayerPartsMenu';
 import { PublishMenu, type PenAggregatorTarget } from '../components/PublishMenu';
 import { SaveMenu } from '../components/SaveMenu';
 import { ShareMenu } from '../components/ShareMenu';
@@ -219,12 +221,30 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
     if (!section) return undefined;
     if (!isPageLayerId(activeLayerId)) {
       const layer = section.layers?.find((l) => l.id === activeLayerId);
-      if (layer?.kind === 'text' && layer.textDoc) {
-        return { ...section, doc: layer.textDoc };
+      if (layer?.kind === 'text') {
+        return { ...section, doc: getTextLayerDoc(layer) };
       }
+      // Non-text object: do not bind TipTap to Body under that object's name
+      return undefined;
     }
-    // Page / Body: edit section.doc flow — no forced overlay object
     return section;
+  }, [section, activeLayerId]);
+
+  const writingEnabled = useMemo(() => {
+    if (!section) return false;
+    if (isPageLayerId(activeLayerId)) return true;
+    const layer = section.layers?.find((l) => l.id === activeLayerId);
+    return layer?.kind === 'text';
+  }, [section, activeLayerId]);
+
+  const activeWritingDoc = useMemo((): PenTipTapNode | undefined => {
+    if (!section) return undefined;
+    if (!isPageLayerId(activeLayerId)) {
+      const layer = section.layers?.find((l) => l.id === activeLayerId);
+      if (layer?.kind === 'text') return getTextLayerDoc(layer);
+      return undefined;
+    }
+    return section.doc;
   }, [section, activeLayerId]);
 
   const sectionTitle = useMemo(() => {
@@ -240,6 +260,27 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
     if (layer) return defaultLayerName(layer, section.layers || []);
     return sectionTitle;
   }, [section, activeLayerId, sectionTitle, activeSlug]);
+
+  function persistWritingDoc(nextDoc: PenTipTapNode) {
+    if (!section || !bundle) return;
+    let updated = section;
+    if (isPageLayerId(activeLayerId)) {
+      updated = { ...section, doc: nextDoc };
+    } else if (activeLayerId) {
+      try {
+        updated = setTextLayerDoc(normalizeSection(section), activeLayerId, nextDoc, {
+          syncDoc: false
+        });
+      } catch {
+        return;
+      }
+    }
+    persist({
+      ...bundle,
+      sections: bundle.sections.map((s) => (s.slug === updated.slug ? updated : s)),
+      manifest: { ...bundle.manifest, updatedAt: new Date().toISOString() }
+    });
+  }
 
   const onEditorReady = useCallback((ed: Editor | null) => setEditor(ed), []);
 
@@ -963,7 +1004,7 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
     );
   }
 
-  if (!bundle || !section || !canvasSection) {
+  if (!bundle || !section) {
     return (
       <div className="flex min-h-[60vh] items-center justify-center bg-white">
         <div className="text-center">
@@ -977,7 +1018,7 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
   }
 
   const chainStatus = verifyChain(bundle.chain);
-  const tocSections: SectionTocItem[] = (
+  const tocSections = (
     template?.sections ||
     bundle.manifest.toc.map((slug) => ({ slug, title: slug, required: true as boolean | undefined }))
   ).map((s) => ({
@@ -1135,10 +1176,14 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
           {!showHistory && (
             <div className="flex shrink-0 flex-col border-b border-stone-300 bg-stone-50">
               <div className="flex items-center gap-2 px-2 py-1.5">
-                <SectionTocMenu
-                  sections={tocSections}
+                <LayerPartsMenu
+                  doc={activeWritingDoc}
+                  editor={editor}
+                  writingEnabled={writingEnabled}
+                  onDocChange={persistWritingDoc}
+                  documentSections={tocSections}
                   activeSlug={activeSlug}
-                  onSelect={setActiveSlug}
+                  onSelectDocumentSection={setActiveSlug}
                 />
                 <div className="ml-auto flex items-center gap-1">
                   <button
@@ -1236,7 +1281,7 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
                 </p>
               )}
             </div>
-          ) : (
+          ) : writingEnabled && canvasSection ? (
             <PageCanvas
               key={`${activeSlug}:${activeLayerId || PAGE_LAYER_ID}:${session.pnIdentifier}:${historyEpoch}`}
               section={canvasSection}
@@ -1245,28 +1290,15 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
               pnIdentifier={session.pnIdentifier}
               onEditorReady={onEditorReady}
               onChange={(next) => {
-                let updated: typeof section = { ...next, layers: section.layers };
-                if (!isPageLayerId(activeLayerId)) {
-                  const layerId = activeLayerId;
-                  if (layerId) {
-                    try {
-                      updated = setTextLayerDoc(normalizeSection(section), layerId, next.doc, {
-                        syncDoc: true
-                      });
-                    } catch {
-                      updated = { ...next, layers: section.layers };
-                    }
-                  }
-                }
-                persist({
-                  ...bundle,
-                  sections: bundle.sections.map((s) =>
-                    s.slug === updated.slug ? updated : s
-                  ),
-                  manifest: { ...bundle.manifest, updatedAt: new Date().toISOString() }
-                });
+                persistWritingDoc(next.doc);
               }}
             />
+          ) : (
+            <div className="flex flex-1 flex-col items-center justify-center bg-[#f3f3f3] px-6 text-center">
+              <p className="text-sm text-stone-500">
+                Select Body or a text layer to write.
+              </p>
+            </div>
           )}
         </div>
 

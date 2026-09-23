@@ -559,6 +559,22 @@ describe('template seeds + Mini featured + layer locks', () => {
     expect(blank.layers).toEqual([]);
   });
 
+  it('listLayerParts includes Body plus headings and blockquotes', async () => {
+    const { listLayerParts, insertLayerPart, partIdAtContentIndex } = await import('./index.js');
+    const empty = listLayerParts(undefined);
+    expect(empty).toEqual([{ id: 'body', kind: 'body', label: 'Body', index: 0 }]);
+
+    let doc = insertLayerPart(undefined, 'heading');
+    doc = insertLayerPart(doc, 'blockquote');
+    const parts = listLayerParts(doc);
+    expect(parts[0]?.kind).toBe('body');
+    expect(parts.some((p) => p.kind === 'heading')).toBe(true);
+    expect(parts.some((p) => p.kind === 'blockquote')).toBe(true);
+    const heading = parts.find((p) => p.kind === 'heading')!;
+    expect(partIdAtContentIndex(doc, heading.index)).toBe(heading.id);
+    expect(partIdAtContentIndex(doc, 0)).toBe('body');
+  });
+
   it('createGroupFromSelection nests members and moveGroupByDelta moves as a unit', async () => {
     const {
       emptySection,
