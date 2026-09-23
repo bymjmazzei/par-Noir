@@ -252,15 +252,20 @@ export function LayerObjectToolbar({
               />
             </svg>
           </ToolButton>
-          <ToolButton
-            title="Wrap with Body"
-            active={open === 'wrap' || Boolean(layer?.bodyWrap)}
+          <button
+            type="button"
+            title="Wrap with Body — Body text flows around this object (or drag layer onto Body in Layers)"
+            aria-label="Wrap with Body"
+            aria-pressed={open === 'wrap' || Boolean(layer?.bodyWrap)}
+            className={`inline-flex h-7 items-center justify-center rounded px-1.5 text-[9px] font-bold ${
+              open === 'wrap' || layer?.bodyWrap
+                ? 'bg-neutral-100 text-black'
+                : 'text-neutral-500 hover:text-black'
+            }`}
             onClick={() => toggle('wrap')}
           >
-            <span className="text-[9px] font-bold leading-none">
-              {layer?.bodyWrap === 'left' ? 'L' : layer?.bodyWrap === 'right' ? 'R' : 'W'}
-            </span>
-          </ToolButton>
+            {layer?.bodyWrap === 'left' ? 'Wrap L' : layer?.bodyWrap === 'right' ? 'Wrap R' : 'Wrap'}
+          </button>
         </>
       )}
 

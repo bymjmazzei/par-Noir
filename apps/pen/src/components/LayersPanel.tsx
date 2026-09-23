@@ -115,12 +115,12 @@ export function LayersPopover({
   );
 
   /**
-   * Nested list: overlays front-first (top of list = front), Body (layer 0) last.
-   * Matches canvas stack: Body is backmost.
+   * Nested list: absolute overlays front-first (top = front), then Body (layer 0),
+   * with body-wrap objects nested under Body (same-layer wrap).
    */
   const listRows: ListRow[] = useMemo(() => {
     const rows: ListRow[] = [];
-    const top = layersFrontFirst.filter((l) => !l.parentGroupId);
+    const top = layersFrontFirst.filter((l) => !l.parentGroupId && !l.bodyWrap);
     for (const layer of top) {
       rows.push({ kind: 'layer', layer, depth: 0 });
       if (layer.kind === 'group') {
@@ -131,6 +131,10 @@ export function LayersPopover({
       }
     }
     rows.push({ kind: 'page' });
+    const wrapped = layersFrontFirst.filter((l) => Boolean(l.bodyWrap) && !l.parentGroupId);
+    for (const layer of wrapped) {
+      rows.push({ kind: 'layer', layer, depth: 1 });
+    }
     return rows;
   }, [layersFrontFirst]);
 
@@ -200,18 +204,6 @@ export function LayersPopover({
     if (activeLayerId === id) onSelectLayer(PAGE_LAYER_ID);
   }
 
-  function applyReorder(fromId: string, toId: string) {
-    if (fromId === toId) return;
-    const ids = layersFrontFirst.map((l) => l.id);
-    const from = ids.indexOf(fromId);
-    const to = ids.indexOf(toId);
-    if (from < 0 || to < 0) return;
-    const next = [...ids];
-    next.splice(from, 1);
-    next.splice(to, 0, fromId);
-    commit(reorderLayersStack(prepared, next));
-  }
-
   function selectObject(id: string, e: { metaKey: boolean; ctrlKey: boolean; shiftKey: boolean }) {
     const multi = e.metaKey || e.ctrlKey || e.shiftKey;
     if (multi) {
@@ -247,10 +239,16 @@ export function LayersPopover({
     if (dragId && hoverId && dragId !== hoverId) {
       const dragLayer = allLayers.find((l) => l.id === dragId);
       const hoverLayer = allLayers.find((l) => l.id === hoverId);
-      // Drop onto Body → absolute on page (clear nest + body wrap)
+      // Drop onto Body → group with layer 0 (Body text wraps around object)
       if (hoverId === PAGE_LAYER_ID && dragLayer && dragLayer.kind !== 'group') {
+        const side =
+          dragLayer.bodyWrap === 'left' || dragLayer.bodyWrap === 'right'
+            ? dragLayer.bodyWrap
+            : dragLayer.x + dragLayer.w / 2 < 50
+              ? 'left'
+              : 'right';
         let next = setLayerParentGroup(prepared, dragId, null);
-        next = patchLayerStyle(next, dragId, { bodyWrap: undefined });
+        next = patchLayerStyle(next, dragId, { bodyWrap: side });
         commit(next);
       } else if (
         hoverLayer?.kind === 'group' &&
@@ -258,10 +256,26 @@ export function LayersPopover({
         dragLayer.kind !== 'group' &&
         dragId !== hoverId
       ) {
-        // Drop onto group folder → nest
-        commit(setLayerParentGroup(prepared, dragId, hoverId));
+        let next = patchLayerStyle(prepared, dragId, { bodyWrap: undefined });
+        next = setLayerParentGroup(next, dragId, hoverId);
+        commit(next);
       } else if (hoverId !== PAGE_LAYER_ID) {
-        applyReorder(dragId, hoverId);
+        // Reorder in absolute stack; leaving Body wrap clears wrap
+        let next = prepared;
+        if (dragLayer?.bodyWrap) {
+          next = patchLayerStyle(next, dragId, { bodyWrap: undefined });
+        }
+        const ids = layersFrontFirst.map((l) => l.id);
+        const from = ids.indexOf(dragId);
+        const to = ids.indexOf(hoverId);
+        if (from >= 0 && to >= 0) {
+          const order = [...ids];
+          order.splice(from, 1);
+          order.splice(to, 0, dragId);
+          commit(reorderLayersStack(next, order));
+        } else if (dragLayer?.bodyWrap) {
+          commit(next);
+        }
       }
     }
     setDragId(null);
@@ -385,11 +399,12 @@ export function LayersPopover({
               <li
                 key={PAGE_LAYER_ID}
                 data-layer-id={PAGE_LAYER_ID}
+                title="Drop an object here to wrap Body text around it"
                 className={`flex cursor-pointer items-center gap-1 px-2 py-1.5 text-[12px] ${
                   pageSelected && selectedIds.length <= 1
                     ? 'bg-neutral-100 font-bold text-black'
                     : 'text-neutral-600 hover:bg-neutral-50'
-                } ${dropTarget ? 'ring-1 ring-inset ring-black' : ''}`}
+                } ${dropTarget ? 'ring-1 ring-inset ring-black bg-sky-50' : ''}`}
                 onClick={() => {
                   onSelectedIdsChange([PAGE_LAYER_ID]);
                   onSelectLayer(PAGE_LAYER_ID);
@@ -397,6 +412,11 @@ export function LayersPopover({
               >
                 <span className="w-4 shrink-0 text-[10px] text-neutral-400">0</span>
                 <span className="min-w-0 flex-1 truncate">{pageLayerLabel(pageLayout)}</span>
+                {dropTarget && (
+                  <span className="shrink-0 text-[10px] font-bold uppercase tracking-wide text-sky-700">
+                    Wrap
+                  </span>
+                )}
               </li>
             );
           }
@@ -407,6 +427,7 @@ export function LayersPopover({
           const isVisible = layer.visible !== false;
           const isLocked = Boolean(layer.positionLocked);
           const isGroup = layer.kind === 'group';
+          const isWrapped = Boolean(layer.bodyWrap);
           if (!isGroup) objectIndex += 1;
           const indexLabel = isGroup ? 'G' : String(objectIndex);
 
@@ -431,6 +452,14 @@ export function LayersPopover({
               <span className="min-w-0 flex-1 truncate">
                 {layerDisplayLabel(layer, allLayers)}
               </span>
+              {isWrapped && (
+                <span
+                  className="shrink-0 text-[9px] font-bold uppercase tracking-wide text-sky-700"
+                  title={`Wrap ${layer.bodyWrap} with Body`}
+                >
+                  {layer.bodyWrap === 'right' ? 'R' : 'L'}
+                </span>
+              )}
               <button
                 type="button"
                 title={isVisible ? 'Hide layer' : 'Show layer'}
