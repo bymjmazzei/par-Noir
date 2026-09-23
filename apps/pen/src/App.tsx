@@ -29,6 +29,7 @@ import {
   savePenSession,
   type PenSession
 } from './services/penSession';
+import { enrichSessionSigningKeys, handoffHasSigningKeys } from './services/penKeys';
 import { flushPenSyncQueue } from './services/penSyncFlush';
 import { drainPenMailbox, clearPenMailboxSessionCache } from './services/penCollab';
 import { listLibraryCloud } from './services/penCloudStore';
@@ -147,6 +148,19 @@ function Locked() {
         });
 
         const handoffFields = handoffSessionFields(r.messagingHandoff);
+        if (!handoffFields.mlDsaPublicKey || !handoffFields.mlDsaSecretKey) {
+          // Brief wait — stash/BroadcastChannel may land just after the code.
+          await new Promise((resolve) => setTimeout(resolve, 250));
+        }
+        const fields = handoffSessionFields(r.messagingHandoff);
+        if (!fields.mlDsaPublicKey || !fields.mlDsaSecretKey) {
+          if (!handoffHasSigningKeys(r.messagingHandoff)) {
+            setError(
+              'Unlock did not include signing keys. Unlock again so ML-DSA keys are in the messaging handoff.'
+            );
+            return;
+          }
+        }
 
         const pn =
           String(
@@ -155,12 +169,14 @@ function Locked() {
               ''
           ).trim() || 'unknown';
 
-        applySession({
-          accessToken: tokens.access_token,
-          refreshToken: tokens.refresh_token,
-          pnIdentifier: pn,
-          ...handoffFields
-        });
+        applySession(
+          enrichSessionSigningKeys({
+            accessToken: tokens.access_token,
+            refreshToken: tokens.refresh_token,
+            pnIdentifier: pn,
+            ...fields
+          })
+        );
       } catch (e) {
         setError(e instanceof Error ? e.message : 'Unlock failed');
       } finally {
@@ -174,7 +190,7 @@ function Locked() {
   useEffect(() => {
     const existing = loadPenSession();
     if (existing) {
-      setSession(existing);
+      setSession(enrichSessionSigningKeys(existing));
     }
   }, []);
 
@@ -223,6 +239,7 @@ function Locked() {
             className="pen-app-chrome-lock"
             iconOnly
             title="Unlock"
+            requireMessagingHandoff
             config={{
               clientId: PN_CLIENT_ID,
               redirectUri: `${window.location.origin}/oauth-callback.html`,
@@ -313,6 +330,18 @@ function AddMenu({
       </button>
       {open && (
         <div className="pen-add-menu-panel" role="menu">
+          {!templatesOnly && (
+            <button
+              type="button"
+              role="menuitem"
+              onClick={() => {
+                setOpen(false);
+                onSelect('blank');
+              }}
+            >
+              Blank document
+            </button>
+          )}
           {!templatesOnly && (
             <button
               type="button"

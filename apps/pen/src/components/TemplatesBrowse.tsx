@@ -487,27 +487,25 @@ export function TemplatesBrowse({
               >
                 +
               </button>
-              <div className="pen-template-preview-modal-icons">
-                <button
-                  type="button"
-                  disabled={busy}
-                  className={`pen-template-icon-btn ${savedHint ? 'is-active' : ''}`}
-                  title={savedHint ? 'Saved' : 'Save to My templates'}
-                  aria-label={savedHint ? 'Saved to My templates' : 'Save to My templates'}
-                  onClick={() => saveToMyTemplates(previewId)}
-                >
-                  <StarIcon filled={savedHint} />
-                </button>
-                <button
-                  type="button"
-                  className={`pen-template-icon-btn ${shareHint ? 'is-active' : ''}`}
-                  title={shareHint ? 'Link copied' : 'Copy share link'}
-                  aria-label={shareHint ? 'Link copied' : 'Copy share link'}
-                  onClick={() => void copyTemplateLink(previewId)}
-                >
-                  <SendIcon />
-                </button>
-              </div>
+              <button
+                type="button"
+                disabled={busy}
+                className={`pen-template-icon-btn ${savedHint ? 'is-active' : ''}`}
+                title={savedHint ? 'Saved' : 'Save to My templates'}
+                aria-label={savedHint ? 'Saved to My templates' : 'Save to My templates'}
+                onClick={() => saveToMyTemplates(previewId)}
+              >
+                <StarIcon filled={savedHint} />
+              </button>
+              <button
+                type="button"
+                className={`pen-template-icon-btn ${shareHint ? 'is-active' : ''}`}
+                title={shareHint ? 'Link copied' : 'Copy share link'}
+                aria-label={shareHint ? 'Link copied' : 'Copy share link'}
+                onClick={() => void copyTemplateLink(previewId)}
+              >
+                <SendIcon />
+              </button>
             </div>
           </div>
         </div>

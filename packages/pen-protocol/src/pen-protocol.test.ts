@@ -107,12 +107,13 @@ describe('classes + templates', () => {
     }
   });
 
-  it('consumer categories are social projects library time; records is kit', () => {
+  it('consumer categories are social projects library time custom; records is kit', () => {
     expect(listConsumerCategories().map((c) => c.id)).toEqual([
       'social',
       'projects',
       'library',
-      'time'
+      'time',
+      'custom'
     ]);
     expect(listCategories().map((c) => c.id)).toContain('records');
     expect(getClass('records')?.audience).toBe('kit');

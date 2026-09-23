@@ -160,6 +160,7 @@ export function PenLockedLanding({
           className="pen-app-chrome-lock"
           iconOnly
           title="Unlock"
+          requireMessagingHandoff
           config={unlockConfig}
           onBeforeNavigate={onBeforeNavigate}
           onPopupResult={onPopupResult}
@@ -201,6 +202,7 @@ export function PenLockedLanding({
                         <HandDrawnOutline />
                         <UnlockButton
                           className="pen-locked-unlock-cta"
+                          requireMessagingHandoff
                           config={unlockConfig}
                           onBeforeNavigate={onBeforeNavigate}
                           onPopupResult={onPopupResult}

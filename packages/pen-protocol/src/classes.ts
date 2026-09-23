@@ -165,6 +165,21 @@ const CLASSES: PenClass[] = [
     parentId: 'time'
   },
   {
+    id: 'custom',
+    title: 'Custom',
+    description: 'Freeform authored pages',
+    kind: 'authored',
+    audience: 'consumer'
+  },
+  {
+    id: 'custom.doc',
+    title: 'Document',
+    description: 'Blank freeform page',
+    kind: 'authored',
+    audience: 'consumer',
+    parentId: 'custom'
+  },
+  {
     id: 'records',
     title: 'Records',
     description: 'Typed structured data for kit / agents',

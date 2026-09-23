@@ -47,6 +47,11 @@ export interface UnlockButtonProps {
    * Use for first-party apps (e.g. Prism) when postMessage/storage bridging is unreliable.
    */
   completeViaParentNavigation?: boolean;
+  /**
+   * Wait for a valid messaging handoff (ML-KEM session) before resolving the popup.
+   * Pen / messaging apps need this so durable keys land before the SPA applies the session.
+   */
+  requireMessagingHandoff?: boolean;
   children?: ReactNode;
   className?: string;
   /** Override click; if provided, default unlock behavior is skipped */
@@ -74,6 +79,7 @@ export function UnlockButton({
   onPopupFlowFailed,
   forceRedirect = false,
   completeViaParentNavigation = false,
+  requireMessagingHandoff = false,
   children = 'Unlock pN',
   className = '',
   onClick,
@@ -110,6 +116,8 @@ export function UnlockButton({
             // Prefer-app finishes in the same Cap document via broker-pending.
             // Parent navigation drops messagingHandoff from the resume URL.
             completeViaParentNavigation: false,
+            requireMessagingHandoff,
+            messagingHandoffTimeoutMs: requireMessagingHandoff ? 12_000 : 8_000,
           });
           await onPopupResult?.(result);
         } catch (e) {
@@ -136,6 +144,8 @@ export function UnlockButton({
           url,
           expectedState: state,
           completeViaParentNavigation,
+          requireMessagingHandoff,
+          messagingHandoffTimeoutMs: requireMessagingHandoff ? 12_000 : 8_000,
         });
         await onPopupResult?.(result);
       } catch (e) {

@@ -51,9 +51,11 @@ import { ExplorerFolderGlyph } from '../components/ExplorerFolderGlyph';
 import { DocGalleryPreview } from '../components/DocGalleryPreview';
 import { DocItemMenu } from '../components/DocItemMenu';
 import { TemplatesBrowse } from '../components/TemplatesBrowse';
+import { BlankDocWizard } from '../components/BlankDocWizard';
+import { createBlankDoc } from '../services/createBlankDoc';
 import { resolveDocLibraryStatus } from '../services/penDocStatus';
 
-export type PenAddIntent = 'notebook' | 'templates' | 'my-templates';
+export type PenAddIntent = 'notebook' | 'templates' | 'my-templates' | 'blank';
 
 type LibraryMode = 'library' | 'templates';
 
@@ -995,6 +997,7 @@ export function DocListPage({
   const [pickerOpen, setPickerOpen] = useState(false);
   const [libraryMode, setLibraryMode] = useState<LibraryMode>('library');
   const [templatePreviewId, setTemplatePreviewId] = useState<string | null>(null);
+  const [blankWizardOpen, setBlankWizardOpen] = useState(false);
   const [search, setSearch] = useState('');
   const [pins, setPins] = useState(() => loadPinnedCategoryIds(session.pnIdentifier));
   const [showAll, setShowAll] = useState(() => loadPinnedCategoryIds(session.pnIdentifier).length === 0);
@@ -1190,6 +1193,10 @@ export function DocListPage({
     if (addIntent === 'notebook') createNotebookHere();
     else if (addIntent === 'templates') openTemplatesView();
     else if (addIntent === 'my-templates') openMyTemplatesNotebook();
+    else if (addIntent === 'blank') {
+      setLibraryMode('library');
+      setBlankWizardOpen(true);
+    }
     onAddIntentConsumed?.();
     // Intentionally intent-driven only
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -2007,6 +2014,31 @@ export function DocListPage({
           </div>
         </div>
       )}
+
+      {blankWizardOpen ? (
+        <BlankDocWizard
+          busy={busy}
+          error={error}
+          onCancel={() => {
+            setBlankWizardOpen(false);
+            setError(null);
+          }}
+          onCreate={async (choice, pageLayout) => {
+            setBusy(true);
+            setError(null);
+            try {
+              const bundle = await createBlankDoc({ session, choice, pageLayout });
+              setBlankWizardOpen(false);
+              onDocsChange();
+              navigate(`/d/${bundle.manifest.docId}`);
+            } catch (e) {
+              setError(e instanceof Error ? e.message : 'Could not create document');
+            } finally {
+              setBusy(false);
+            }
+          }}
+        />
+      ) : null}
     </div>
   );
 }
