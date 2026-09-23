@@ -11,7 +11,8 @@ export interface PenPublishHandoffPage {
 }
 
 export interface PenPublishHandoff {
-  contentClass?: 'note';
+  contentClass?: 'note' | 'media';
+  fileType?: 'video' | 'image' | 'audio' | string;
   title?: string;
   pages?: PenPublishHandoffPage[];
   templateId?: string;
@@ -28,7 +29,16 @@ export interface PenPublishHandoff {
   /** Attached Pen music doc id when post uses library.music. */
   musicPenDocId?: string;
   musicLicensing?: import('@par-noir/pen-protocol').PenLicensingRoot;
+  /** Pen composed-video export: await blobs from opener postMessage. */
+  awaitingComposedBlobs?: boolean;
+  videoContentType?: string;
+  durationMs?: number;
+  width?: number;
+  height?: number;
 }
+
+export const PEN_COMPOSED_MEDIA_READY = 'pen_composed_media_ready' as const;
+export const PEN_COMPOSED_MEDIA_BLOBS = 'pen_composed_media_blobs' as const;
 
 const HANDOFF_PREFIX = 'pen_publish:';
 const HANDOFF_PREFIX_LEGACY = 'pen_publish_note:';
@@ -121,4 +131,31 @@ export function readPublishedFileId(docId: string): string | null {
   } catch {
     return null;
   }
+}
+
+/** Tell Pen opener we are ready to receive composed video blobs. */
+export function signalComposedMediaReady(penOrigin?: string): void {
+  try {
+    if (typeof window === 'undefined' || !window.opener) return;
+    const target = penOrigin || '*';
+    window.opener.postMessage({ type: PEN_COMPOSED_MEDIA_READY }, target);
+  } catch {
+    /* ignore */
+  }
+}
+
+export type ComposedMediaBlobsMessage = {
+  type: typeof PEN_COMPOSED_MEDIA_BLOBS;
+  meta?: PenPublishHandoff;
+  videoFile?: File;
+  posterFile?: File;
+};
+
+export function isComposedMediaBlobsMessage(data: unknown): data is ComposedMediaBlobsMessage {
+  return Boolean(
+    data &&
+      typeof data === 'object' &&
+      (data as ComposedMediaBlobsMessage).type === PEN_COMPOSED_MEDIA_BLOBS &&
+      (data as ComposedMediaBlobsMessage).videoFile instanceof File
+  );
 }

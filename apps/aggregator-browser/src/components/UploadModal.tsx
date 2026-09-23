@@ -3,7 +3,7 @@
  * Uses the dashboard's FileStorageAggregator component directly
  */
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { FileStorageAggregator } from './FileStorageAggregator';
 import { PenMiniComposer } from './PenMiniComposer';
 import { ContentPreferencesPanel } from './ContentPreferencesPanel';
@@ -13,7 +13,14 @@ import { FeedService } from '../services/feedService';
 import { Settings, X } from 'lucide-react';
 import { uploadQueueService } from '../services/uploadQueueService';
 import { useDriveAccounts } from '../hooks/useDriveAccounts';
-import { rememberPublishedFileId, takePenPublishHandoff, peekPenPublishHandoff } from '../utils/penPublishHandoff';
+import {
+  rememberPublishedFileId,
+  takePenPublishHandoff,
+  peekPenPublishHandoff,
+  signalComposedMediaReady,
+  isComposedMediaBlobsMessage,
+  type PenPublishHandoff
+} from '../utils/penPublishHandoff';
 
 interface UploadModalProps {
   feeds?: Feed[];
@@ -21,12 +28,48 @@ interface UploadModalProps {
   onUploadComplete?: (contentClass?: 'media' | 'note' | 'collection') => void;
 }
 
+function penOriginFromEnv(): string {
+  const raw =
+    typeof import.meta !== 'undefined'
+      ? (import.meta as ImportMeta & { env?: { VITE_PEN_URL?: string } }).env?.VITE_PEN_URL
+      : undefined;
+  if (raw && String(raw).trim()) return String(raw).replace(/\/$/, '');
+  if (typeof window !== 'undefined' && /localhost|127\.0\.0\.1/.test(window.location.hostname)) {
+    return 'http://127.0.0.1:5175';
+  }
+  return 'https://pen.parnoir.com';
+}
+
+function isAllowedPenOrigin(origin: string): boolean {
+  if (origin === penOriginFromEnv()) return true;
+  if (/localhost|127\.0\.0\.1/.test(origin)) return true;
+  try {
+    const host = new URL(origin).hostname;
+    return (
+      host === 'pen.parnoir.com' ||
+      host === 'pen-parnoir.web.app' ||
+      host.endsWith('.pen.parnoir.com')
+    );
+  } catch {
+    return false;
+  }
+}
+
 export function UploadModal({ feeds: propsFeeds, onClose, onUploadComplete }: UploadModalProps) {
   const { userState } = useUserState();
-  const [showTextEditor, setShowTextEditor] = useState(() => Boolean(peekPenPublishHandoff()?.pages?.length));
+  const initialHandoff = peekPenPublishHandoff();
+  const [showTextEditor, setShowTextEditor] = useState(() =>
+    Boolean(initialHandoff?.pages?.length && initialHandoff.contentClass !== 'media')
+  );
   const [showSettings, setShowSettings] = useState(false);
   const [editorAccountId, setEditorAccountId] = useState<string | null>(null);
   const [, setFeeds] = useState<Feed[]>(propsFeeds || []);
+  const [composedStatus, setComposedStatus] = useState<string | null>(
+    initialHandoff?.contentClass === 'media' && initialHandoff.awaitingComposedBlobs
+      ? 'Waiting for composed video from Pen…'
+      : null
+  );
+  const composedQueued = useRef(false);
 
   const authenticatedUser = userState.isUnlocked && userState.pnIdentifier ? {
     id: userState.pnIdentifier
@@ -58,6 +101,78 @@ export function UploadModal({ feeds: propsFeeds, onClose, onUploadComplete }: Up
     };
     loadFeeds();
   }, [propsFeeds]);
+
+  // Pen composed-video handoff: signal opener and queue media upload when blobs arrive
+  useEffect(() => {
+    const handoff = peekPenPublishHandoff();
+    if (handoff?.contentClass !== 'media' || !handoff.awaitingComposedBlobs) return;
+
+    const penOrigin = penOriginFromEnv();
+    signalComposedMediaReady(penOrigin);
+
+    const onMessage = (e: MessageEvent) => {
+      if (!isAllowedPenOrigin(e.origin)) return;
+      if (!isComposedMediaBlobsMessage(e.data)) return;
+      if (composedQueued.current) return;
+      if (!accountId || !authenticatedUser?.id) {
+        setComposedStatus('Unlock your pN to finish composed video upload');
+        return;
+      }
+      composedQueued.current = true;
+      const meta = (e.data.meta || handoff) as PenPublishHandoff;
+      const videoFile = e.data.videoFile!;
+      const posterFile = e.data.posterFile;
+      takePenPublishHandoff();
+      setComposedStatus('Uploading composed video…');
+
+      uploadQueueService.addTask({
+        type: 'file',
+        file: videoFile,
+        accountId,
+        metadata: {
+          title: meta.title || 'Pen composed video',
+          isPublic: true,
+          contentClass: 'media',
+          fileType: 'video',
+          feedPosterFile: posterFile,
+          headProof: meta.headProof,
+          penDocId: meta.docId,
+          templateId: meta.templateId,
+          penClassId: meta.penClassId,
+          penCategoryId: meta.penCategoryId,
+          penTemplateKind: meta.penTemplateKind,
+          basedOnTemplateId: meta.basedOnTemplateId,
+          penIrRef: meta.penIrRef,
+          licensing: meta.licensing,
+          durationMs: meta.durationMs,
+          width: meta.width,
+          height: meta.height
+        },
+        onComplete: (result) => {
+          if (meta.docId && result?.fileId) {
+            rememberPublishedFileId(meta.docId, result.fileId);
+          }
+          setComposedStatus(null);
+          onUploadComplete?.('media');
+        },
+        onError: (error) => {
+          composedQueued.current = false;
+          setComposedStatus(null);
+          alert(`Composed video upload failed: ${error.message}`);
+        }
+      });
+    };
+
+    window.addEventListener('message', onMessage);
+    // Re-signal a few times in case Pen listened late
+    const t1 = window.setTimeout(() => signalComposedMediaReady(penOrigin), 500);
+    const t2 = window.setTimeout(() => signalComposedMediaReady(penOrigin), 1500);
+    return () => {
+      window.removeEventListener('message', onMessage);
+      window.clearTimeout(t1);
+      window.clearTimeout(t2);
+    };
+  }, [accountId, authenticatedUser?.id, onUploadComplete]);
 
   const handleNoteUploadComplete = () => {
     onUploadComplete?.('note');
@@ -254,9 +369,22 @@ export function UploadModal({ feeds: propsFeeds, onClose, onUploadComplete }: Up
         </button>
       </div>
 
+      {composedStatus && (
+        <div
+          className="px-4 py-2 text-center text-sm text-sky-300"
+          style={{ marginTop: 'calc(48px + env(safe-area-inset-top, 0px))' }}
+        >
+          {composedStatus}
+        </div>
+      )}
+
       <div
         className="flex-1 overflow-y-auto p-6"
-        style={{ marginTop: 'calc(48px + env(safe-area-inset-top, 0px))' }}
+        style={{
+          marginTop: composedStatus
+            ? '0px'
+            : 'calc(48px + env(safe-area-inset-top, 0px))'
+        }}
       >
         <FileStorageAggregator
           authenticatedUser={authenticatedUser}

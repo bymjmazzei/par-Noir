@@ -13,7 +13,10 @@ function shouldOpenUploadFromDeepLink(): boolean {
     if (typeof window === 'undefined') return false;
     const view = new URLSearchParams(window.location.search).get('view');
     if (view === 'upload') return true;
-    return Boolean(peekPenPublishHandoff()?.pages?.length);
+    const handoff = peekPenPublishHandoff();
+    if (handoff?.pages?.length) return true;
+    if (handoff?.contentClass === 'media' && handoff.awaitingComposedBlobs) return true;
+    return false;
   } catch {
     return false;
   }

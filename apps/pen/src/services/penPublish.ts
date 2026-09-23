@@ -15,6 +15,7 @@ import {
   requireTemplate,
   snapshotPenEmbeds,
   normalizeLicensingRoot,
+  docRequiresComposedVideoExport,
   type PenDocManifest,
   type PenEmbedResolveResult,
   type PenSectionContent,
@@ -33,6 +34,11 @@ import { resolveSigningKeys } from './penKeys';
 import { requestNotaryStamp } from './penApi';
 import { generateChatKey, generateGroupId } from '@par-noir/dm-crypto';
 import { schedulePrefsCloudPush } from './penPrefsCloud';
+import { composePageToVideo } from './composePageVideoEncode';
+import {
+  openBrowseWithComposedMediaHandoff,
+  type PenComposedMediaHandoffMeta
+} from './penBrowseHandoff';
 
 export const PEN_PUBLISH_PREFIX = 'pen_publish:';
 /** Legacy browse handoff key — still written alongside for one release. */
@@ -104,6 +110,9 @@ export async function writeSocialPublishHandoff(
   basedOnTemplateId?: string;
   penIrRef?: { objectId?: string; publicUrl?: string };
 }> {
+  if (docRequiresComposedVideoExport(bundle.sections)) {
+    throw new Error('use_write_composed_video_handoff');
+  }
   const resolveDoc =
     opts?.resolveDoc ||
     (opts?.pnIdentifier ? resolvePenEmbedFromLocal(opts.pnIdentifier) : async () => null);
@@ -160,6 +169,75 @@ export async function writeSocialPublishHandoff(
   sessionStorage.setItem(`${PEN_PUBLISH_PREFIX}${bundle.manifest.docId}`, json);
   sessionStorage.setItem(`${PEN_PUBLISH_NOTE_PREFIX}${bundle.manifest.docId}`, json);
   return payload;
+}
+
+/**
+ * Encode the live page surface and open Browse as a media/video handoff.
+ * Requires `[data-pen-compose-export-root]` in the DOM (EditablePagePreview sheet).
+ */
+export async function writeComposedVideoPublishHandoff(
+  bundle: LocalDocBundle,
+  opts?: {
+    aggregatorTargets?: string[];
+    exportRoot?: HTMLElement | null;
+    onProgress?: (pct: number) => void;
+  }
+): Promise<PenComposedMediaHandoffMeta> {
+  if (!docRequiresComposedVideoExport(bundle.sections)) {
+    throw new Error('no_visible_video_layer');
+  }
+  const root =
+    opts?.exportRoot ||
+    (typeof document !== 'undefined'
+      ? (document.querySelector('[data-pen-compose-export-root]') as HTMLElement | null)
+      : null);
+  if (!root) {
+    throw new Error('compose_export_root_missing');
+  }
+
+  const encoded = await composePageToVideo(root, { onProgress: opts?.onProgress });
+  const targets = opts?.aggregatorTargets?.length ? opts.aggregatorTargets : ['browse'];
+  const asTemplate = targets.includes('pen-templates');
+  const form = getClass(bundle.manifest.classId);
+  const lineageId =
+    bundle.manifest.basedOnTemplateId || bundle.manifest.templateId;
+
+  const meta: PenComposedMediaHandoffMeta = {
+    contentClass: 'media',
+    fileType: 'video',
+    title: bundle.manifest.title || 'Untitled',
+    docId: bundle.manifest.docId,
+    templateId: bundle.manifest.templateId,
+    headProof:
+      bundle.chain.links[bundle.chain.links.length - 1] || bundle.chain.genesis,
+    aggregatorTargets: targets,
+    penClassId: bundle.manifest.classId,
+    penCategoryId: form?.parentId,
+    penIrRef: { objectId: bundle.manifest.docId },
+    licensing: bundle.manifest.licensing,
+    awaitingComposedBlobs: true,
+    videoContentType: encoded.videoContentType,
+    durationMs: encoded.durationMs,
+    width: encoded.width,
+    height: encoded.height,
+    ...(asTemplate
+      ? {
+          penTemplateKind: (bundle.manifest.basedOnTemplateId
+            ? 'remix'
+            : 'template') as 'template' | 'remix',
+          basedOnTemplateId: lineageId
+        }
+      : {})
+  };
+
+  const json = JSON.stringify(meta);
+  sessionStorage.setItem(`${PEN_PUBLISH_PREFIX}${bundle.manifest.docId}`, json);
+
+  openBrowseWithComposedMediaHandoff(meta, {
+    videoBlob: encoded.videoBlob,
+    posterBlob: encoded.posterBlob
+  });
+  return meta;
 }
 
 export function saveAsPersonalTemplate(

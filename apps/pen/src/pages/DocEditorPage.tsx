@@ -27,6 +27,7 @@ import {
   verifyChain,
   ensureOwnerAssignment,
   collectFontFamiliesFromDoc,
+  docRequiresComposedVideoExport,
   isGooglePenFont,
   type PenDocComment,
   type PenPageLayout,
@@ -56,7 +57,8 @@ import {
   isProjectDoc,
   promoteProjectToFinishedLibraryDoc,
   saveProjectAsLibraryTemplate,
-  writeSocialPublishHandoff
+  writeSocialPublishHandoff,
+  writeComposedVideoPublishHandoff
 } from '../services/penPublish';
 import { requestNotaryStamp } from '../services/penApi';
 import { resolveSigningKeys } from '../services/penKeys';
@@ -781,19 +783,35 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
       try {
         saveDraft({ silent: true });
         const b = bundleRef.current || bundle!;
-        const payload = await writeSocialPublishHandoff(b, {
-          pnIdentifier: session.pnIdentifier,
-          aggregatorTargets: targets
-        });
-        openBrowseWithPenHandoff(payload);
-        setStatus(
-          targets.includes('pen-templates')
-            ? 'Opened Browse — finish template share there'
-            : 'Opened Browse — finish publish there'
-        );
+        if (docRequiresComposedVideoExport(b.sections)) {
+          setStatus('Encoding composed video…');
+          await writeComposedVideoPublishHandoff(b, {
+            aggregatorTargets: targets,
+            onProgress: (pct) => {
+              setStatus(`Encoding composed video… ${Math.round(pct)}%`);
+            }
+          });
+          setStatus(
+            targets.includes('pen-templates')
+              ? 'Opened Browse — finish template video share there'
+              : 'Opened Browse — finish video publish there'
+          );
+        } else {
+          const payload = await writeSocialPublishHandoff(b, {
+            pnIdentifier: session.pnIdentifier,
+            aggregatorTargets: targets
+          });
+          openBrowseWithPenHandoff(payload);
+          setStatus(
+            targets.includes('pen-templates')
+              ? 'Opened Browse — finish template share there'
+              : 'Opened Browse — finish publish there'
+          );
+        }
         window.setTimeout(() => setStatus(null), 4000);
       } catch (e) {
         setError(e instanceof Error ? e.message : 'feed_connect_failed');
+        setStatus(null);
       }
     })();
   }

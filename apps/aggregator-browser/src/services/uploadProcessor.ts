@@ -286,6 +286,19 @@ async function processFileUpload(
     : file.type.startsWith('audio/') ? 'audio'
     : 'document';
 
+  const penProvenance: Record<string, unknown> = {};
+  if (task.metadata?.penDocId) penProvenance.penDocId = task.metadata.penDocId;
+  if (task.metadata?.headProof) penProvenance.headProof = task.metadata.headProof;
+  if (task.metadata?.templateId) penProvenance.templateId = task.metadata.templateId;
+  if (task.metadata?.penClassId) penProvenance.penClassId = task.metadata.penClassId;
+  if (task.metadata?.penCategoryId) penProvenance.penCategoryId = task.metadata.penCategoryId;
+  if (task.metadata?.penTemplateKind) penProvenance.penTemplateKind = task.metadata.penTemplateKind;
+  if (task.metadata?.basedOnTemplateId) {
+    penProvenance.basedOnTemplateId = task.metadata.basedOnTemplateId;
+  }
+  if (task.metadata?.penIrRef) penProvenance.penIrRef = task.metadata.penIrRef;
+  if (task.metadata?.licensing) penProvenance.licensing = task.metadata.licensing;
+
   // Only create thumbnail metadata if we have a thumbnail
   if (thumbnailFileId) {
     const isPublic = task.metadata?.isPublic || false;
@@ -334,6 +347,7 @@ async function processFileUpload(
         isPublic: isPublic,
         ...shareFields,
         ...feedPreviewFields,
+        ...penProvenance,
         uploadDate: new Date().toISOString(),
         isNSFW: task.metadata?.isNSFW || false,
         mainFileId: fileId,
@@ -377,6 +391,7 @@ async function processFileUpload(
       isPublic,
       ...shareFields,
       ...feedPreviewFields,
+      ...penProvenance,
       isEncrypted: mainFileIsEncrypted,
       uploadDate: new Date().toISOString(),
       isNSFW: task.metadata?.isNSFW || false,

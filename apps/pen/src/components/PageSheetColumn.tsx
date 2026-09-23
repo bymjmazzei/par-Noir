@@ -53,6 +53,7 @@ export function PageSheetColumn({
   return (
     <div
       ref={sheetRef}
+      data-pen-compose-export-root
       className={`relative bg-white shadow-[0_1px_3px_rgba(0,0,0,0.12),0_0_0_1px_rgba(0,0,0,0.06)] ${
         dims.fillWidth ? 'w-full' : ''
       } ${className || ''}`}
