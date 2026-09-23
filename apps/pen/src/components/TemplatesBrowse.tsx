@@ -12,6 +12,7 @@ import {
   type PenTemplate
 } from '@par-noir/pen-protocol';
 import type { PenSession } from '../App';
+import { DocGalleryPreview } from './DocGalleryPreview';
 import { TemplateLivePreview } from './TemplateLivePreview';
 import {
   isPersonalTemplateId,
@@ -532,20 +533,15 @@ function TemplateThumb({ pn, templateId }: { pn?: string; templateId: string }) 
   const preview = templatePreviewBundle(pn, templateId);
   if (!preview) {
     return (
-      <span className="flex h-full items-center justify-center text-[10px] text-neutral-500">—</span>
+      <span className="flex h-full w-full items-center justify-center text-[10px] text-neutral-500">
+        —
+      </span>
     );
   }
   return (
-    <div className="pointer-events-none absolute inset-0 overflow-hidden">
-      <div className="absolute left-1/2 top-0 origin-top -translate-x-1/2 scale-[0.5]">
-        <div className="h-[360px] w-[200px]">
-          <TemplateLivePreview
-            manifest={preview.manifest as never}
-            sections={preview.sections}
-            compact
-          />
-        </div>
-      </div>
-    </div>
+    <DocGalleryPreview
+      manifest={preview.manifest as never}
+      sections={preview.sections}
+    />
   );
 }

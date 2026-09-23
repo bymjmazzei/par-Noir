@@ -48,7 +48,7 @@ import {
 } from '../services/penPersonalTemplates';
 import { FormDocIcon } from '../components/FormDocIcon';
 import { ExplorerFolderGlyph } from '../components/ExplorerFolderGlyph';
-import { TemplateLivePreview } from '../components/TemplateLivePreview';
+import { DocGalleryPreview } from '../components/DocGalleryPreview';
 import { DocItemMenu } from '../components/DocItemMenu';
 import { TemplatesBrowse } from '../components/TemplatesBrowse';
 import { resolveDocLibraryStatus } from '../services/penDocStatus';
@@ -716,17 +716,9 @@ function DocGalleryCard({
         </div>
       )}
       {bundle ? (
-        <div className="pointer-events-none absolute inset-0 overflow-hidden">
-          <div className="absolute left-1/2 top-0 h-[178px] w-[100px] -translate-x-1/2 origin-top">
-            <TemplateLivePreview
-              manifest={bundle.manifest}
-              sections={bundle.sections}
-              compact
-            />
-          </div>
-        </div>
+        <DocGalleryPreview manifest={bundle.manifest} sections={bundle.sections} />
       ) : (
-        <div className="flex h-full items-center justify-center bg-neutral-100 text-[10px] text-neutral-500">
+        <div className="flex h-full w-full items-center justify-center bg-neutral-100 text-[10px] text-neutral-500">
           —
         </div>
       )}
