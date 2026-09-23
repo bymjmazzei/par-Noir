@@ -184,10 +184,13 @@ export type {
 export {
   SessionVaultEnrollPrompt,
   SessionVaultUnlockOverlay,
+  SessionVaultIdentityPicker,
 } from './sessionVaultUi';
 export type {
   SessionVaultEnrollPromptProps,
   SessionVaultUnlockOverlayProps,
+  SessionVaultIdentityPickerProps,
+  SessionVaultPickerOption,
 } from './sessionVaultUi';
 export {
   ConsentUnlockApp,

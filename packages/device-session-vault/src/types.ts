@@ -25,10 +25,30 @@ export type UnlockKeysPayload = {
   kind: 'unlock_keys';
   identityId: string;
   publicKey: string;
+  /** Knowledge key 1 (pn name). */
   pnName: string;
+  /** Knowledge key 2 (passcode). */
   passcode: string;
-  /** Opaque encrypted identity JSON for re-mint without re-upload (optional). */
-  encryptedIdentityJson?: string;
+  /** Opaque encrypted identity JSON (.pn file contents) for re-mint without re-upload. */
+  encryptedIdentityJson: string;
+  /** Optional display nickname (never Key 1). */
+  nickname?: string;
+};
+
+/**
+ * Multi-pN unlock vault: one biometric gate, then pick among entries.
+ * Stored under app id `unlock` (replaces a lone `unlock_keys` seal).
+ */
+export type UnlockMultiPayload = {
+  kind: 'unlock_multi';
+  entries: UnlockKeysPayload[];
+};
+
+/** Non-secret listing for enroll checks / picker labels (no Key 1 / Key 2 / file). */
+export type UnlockIdentityListing = {
+  identityId: string;
+  publicKey: string;
+  nickname?: string;
 };
 
 export type BrowseOauthPayload = {
@@ -52,6 +72,7 @@ export type PrismSessionPayload = {
 export type SessionVaultPayload =
   | DashboardKeysPayload
   | UnlockKeysPayload
+  | UnlockMultiPayload
   | BrowseOauthPayload
   | MessagingSessionPayload
   | PrismSessionPayload;
@@ -74,3 +95,13 @@ export type SealedVaultRecord = {
   enrolledAt: string;
   failureCount: number;
 };
+
+/** Safe picker label — never Key 1 / passcode. */
+export function unlockIdentityLabel(id: UnlockIdentityListing): string {
+  const nick = id.nickname?.trim();
+  if (nick) return nick;
+  const pk = (id.publicKey || id.identityId || '').trim();
+  if (!pk) return 'Saved pN';
+  if (pk.length <= 12) return pk;
+  return `${pk.slice(0, 8)}…${pk.slice(-4)}`;
+}

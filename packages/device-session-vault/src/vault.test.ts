@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { createDeviceSessionVault, memoryKv } from './adapters.js';
-import type { DashboardKeysPayload } from './types.js';
+import type { DashboardKeysPayload, UnlockKeysPayload } from './types.js';
 
 describe('DeviceSessionVault', () => {
   const payload: DashboardKeysPayload = {
@@ -136,5 +136,89 @@ describe('DeviceSessionVault', () => {
     const m = await vault.unlockWithBiometric('messaging');
     expect(b?.kind).toBe('browse_oauth');
     expect(m?.kind).toBe('messaging_session');
+  });
+
+  it('unlock app merges multiple pNs behind one biometric', async () => {
+    const verify = vi.fn().mockResolvedValue(true);
+    const vault = createDeviceSessionVault({
+      kv: memoryKv(),
+      verifyBiometric: verify,
+      isBiometricAvailable: async () => true,
+    });
+    const a: UnlockKeysPayload = {
+      kind: 'unlock_keys',
+      identityId: 'did:a',
+      publicKey: 'pk-aaaaaaaabbbb',
+      pnName: 'KeyOneA!',
+      passcode: 'KeyTwoA!',
+      encryptedIdentityJson: '{"encryptedData":"a"}',
+      nickname: 'Alpha',
+    };
+    const b: UnlockKeysPayload = {
+      kind: 'unlock_keys',
+      identityId: 'did:b',
+      publicKey: 'pk-cccccccddddd',
+      pnName: 'KeyOneB!',
+      passcode: 'KeyTwoB!',
+      encryptedIdentityJson: '{"encryptedData":"b"}',
+    };
+    await vault.enrollAfterUnlock('unlock', a);
+    expect(await vault.hasUnlockIdentity('did:a')).toBe(true);
+    expect(await vault.hasUnlockIdentity('did:b')).toBe(false);
+    await vault.enrollAfterUnlock('unlock', b);
+    const index = await vault.listUnlockIndex();
+    expect(index).toHaveLength(2);
+    expect(index.map((i) => i.identityId).sort()).toEqual(['did:a', 'did:b']);
+
+    const unlocked = await vault.unlockWithBiometric('unlock');
+    expect(unlocked?.kind).toBe('unlock_multi');
+    if (unlocked?.kind === 'unlock_multi') {
+      expect(unlocked.entries).toHaveLength(2);
+      expect(unlocked.entries.find((e) => e.identityId === 'did:a')?.pnName).toBe('KeyOneA!');
+      expect(unlocked.entries.find((e) => e.identityId === 'did:b')?.encryptedIdentityJson).toContain(
+        '"b"'
+      );
+    }
+  });
+
+  it('unlock migrates legacy single unlock_keys to unlock_multi', async () => {
+    const kv = memoryKv();
+    const vault = createDeviceSessionVault({
+      kv,
+      verifyBiometric: async () => true,
+      isBiometricAvailable: async () => true,
+    });
+    // Simulate legacy by writing via enroll then manually... enroll already writes multi.
+    // Write a single unlock_keys seal using update path: enroll unlock_keys always merges to multi.
+    // Direct seal of unlock_keys for migration test:
+    const { sealPayload } = await import('./seal.js');
+    const { vaultStorageKey } = await import('./vault.js');
+    const legacy: UnlockKeysPayload = {
+      kind: 'unlock_keys',
+      identityId: 'did:legacy',
+      publicKey: 'pk-legacyxxxx',
+      pnName: 'LegacyKey1!',
+      passcode: 'LegacyKey2!',
+      encryptedIdentityJson: '{"encryptedData":"leg"}',
+    };
+    const sealed = await sealPayload(legacy);
+    await kv.set(
+      vaultStorageKey('unlock'),
+      JSON.stringify({
+        v: 1,
+        ciphertext: sealed.ciphertext,
+        iv: sealed.iv,
+        key: sealed.key,
+        enrolledAt: new Date().toISOString(),
+        failureCount: 0,
+      })
+    );
+    const unlocked = await vault.unlockWithBiometric('unlock');
+    expect(unlocked?.kind).toBe('unlock_multi');
+    if (unlocked?.kind === 'unlock_multi') {
+      expect(unlocked.entries).toHaveLength(1);
+      expect(unlocked.entries[0].identityId).toBe('did:legacy');
+    }
+    expect(await vault.hasUnlockIdentity('did:legacy')).toBe(true);
   });
 });

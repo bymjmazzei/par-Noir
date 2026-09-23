@@ -3,19 +3,22 @@ import {
   ConsentUnlockApp,
   SessionVaultEnrollPrompt,
   SessionVaultUnlockOverlay,
+  SessionVaultIdentityPicker,
   searchFromUnlockUrl,
   postOAuthBrokerComplete,
   type ConsentVaultEnrollMaterial,
   type ConsentVaultFactors,
+  type SessionVaultPickerOption,
 } from '@par-noir/oauth-ui';
 import type { UnlockKeysPayload } from '@par-noir/device-session-vault';
 import type { UnlockDesktopApi } from '../preload/preload';
 import {
-  clearUnlockSessionVault,
   enrollUnlockSessionVault,
   hasUnlockSessionVault,
+  hasUnlockVaultIdentity,
   isUnlockSessionVaultAvailable,
-  unlockSessionVault,
+  unlockIdentityLabel,
+  unlockSessionVaultEntries,
 } from './sessionVaultDesktop';
 
 /** Bundled branding — never load from the network (Electron file:// + CDN CORP blocks HTTPS). */
@@ -27,10 +30,23 @@ const API_DEFAULT =
     (import.meta as ImportMeta & { env?: { VITE_API_ENDPOINT?: string } }).env?.VITE_API_ENDPOINT) ||
   'https://api.parnoir.com';
 
-const DECLINED_KEY = 'pn_vault_enroll_declined_unlock';
+function declinedKey(identityId: string): string {
+  return `pn_vault_enroll_declined_unlock:${identityId}`;
+}
 
 function desktopApi(): UnlockDesktopApi | null {
   return (window as Window & { pnUnlockDesktop?: UnlockDesktopApi }).pnUnlockDesktop ?? null;
+}
+
+function factorsFromEntry(entry: UnlockKeysPayload): ConsentVaultFactors | null {
+  if (!entry.encryptedIdentityJson?.trim() || !entry.pnName?.trim() || !entry.passcode?.trim()) {
+    return null;
+  }
+  return {
+    pnName: entry.pnName,
+    passcode: entry.passcode,
+    encryptedIdentityJson: entry.encryptedIdentityJson,
+  };
 }
 
 export default function App(): React.ReactElement {
@@ -39,6 +55,9 @@ export default function App(): React.ReactElement {
   );
   const [vaultChecked, setVaultChecked] = useState(false);
   const [showVaultUnlock, setShowVaultUnlock] = useState(false);
+  const [showPicker, setShowPicker] = useState(false);
+  const [pickerOptions, setPickerOptions] = useState<SessionVaultPickerOption[]>([]);
+  const [pendingEntries, setPendingEntries] = useState<UnlockKeysPayload[]>([]);
   const [showEnroll, setShowEnroll] = useState(false);
   const [vaultBusy, setVaultBusy] = useState(false);
   const [vaultError, setVaultError] = useState<string | null>(null);
@@ -111,33 +130,49 @@ export default function App(): React.ReactElement {
   const onBrokerHandoffComplete = useCallback(() => {
     const api = desktopApi();
     if (!api) return;
-    // Brief pause so "Signed in" paints before we hide Unlock.
     window.setTimeout(() => {
       void api.yieldToBrowser();
     }, 350);
+  }, []);
+
+  const applyEntry = useCallback((entry: UnlockKeysPayload) => {
+    const factors = factorsFromEntry(entry);
+    if (!factors) {
+      setVaultError('Saved unlock is incomplete — use full unlock once');
+      setShowPicker(false);
+      setShowVaultUnlock(false);
+      setPendingEntries([]);
+      return;
+    }
+    setVaultFactors(factors);
+    setShowPicker(false);
+    setShowVaultUnlock(false);
+    setPendingEntries([]);
+    setVaultError(null);
   }, []);
 
   const onVaultUnlock = async () => {
     setVaultError(null);
     setVaultBusy(true);
     try {
-      const payload = await unlockSessionVault();
-      if (!payload || payload.kind !== 'unlock_keys') {
+      const entries = await unlockSessionVaultEntries();
+      if (entries.length === 0) {
         setVaultError('No sealed unlock session');
         return;
       }
-      if (!payload.encryptedIdentityJson) {
-        setVaultError('Saved unlock is incomplete — use full unlock once');
-        await clearUnlockSessionVault();
-        setShowVaultUnlock(false);
+      if (entries.length === 1) {
+        applyEntry(entries[0]);
         return;
       }
-      setVaultFactors({
-        pnName: payload.pnName,
-        passcode: payload.passcode,
-        encryptedIdentityJson: payload.encryptedIdentityJson,
-      });
+      setPendingEntries(entries);
+      setPickerOptions(
+        entries.map((e) => ({
+          identityId: e.identityId,
+          label: unlockIdentityLabel(e),
+        }))
+      );
       setShowVaultUnlock(false);
+      setShowPicker(true);
     } catch (e) {
       setVaultError(e instanceof Error ? e.message : 'Device unlock failed');
     } finally {
@@ -145,10 +180,22 @@ export default function App(): React.ReactElement {
     }
   };
 
+  const onPickIdentity = (identityId: string) => {
+    const entry = pendingEntries.find((e) => e.identityId === identityId);
+    if (!entry) {
+      setVaultError('Selected identity not found');
+      return;
+    }
+    applyEntry(entry);
+  };
+
   const onUnlockedForVault = useCallback(async (material: ConsentVaultEnrollMaterial) => {
     if (!(await isUnlockSessionVaultAvailable())) return;
-    if (await hasUnlockSessionVault()) return;
-    if (typeof localStorage !== 'undefined' && localStorage.getItem(DECLINED_KEY) === '1') {
+    if (await hasUnlockVaultIdentity(material.identityId)) return;
+    if (
+      typeof localStorage !== 'undefined' &&
+      localStorage.getItem(declinedKey(material.identityId)) === '1'
+    ) {
       return;
     }
     setPendingEnroll(material);
@@ -167,16 +214,23 @@ export default function App(): React.ReactElement {
     setVaultBusy(true);
     setVaultError(null);
     try {
+      const pnName = pendingEnroll.pnName?.trim() ?? '';
+      const passcode = pendingEnroll.passcode?.trim() ?? '';
+      const encryptedIdentityJson = pendingEnroll.encryptedIdentityJson?.trim() ?? '';
+      if (!pnName || !passcode || !encryptedIdentityJson) {
+        setVaultError('Vault enroll requires identity file, Key 1, and Key 2');
+        return;
+      }
       const payload: UnlockKeysPayload = {
         kind: 'unlock_keys',
         identityId: pendingEnroll.identityId,
         publicKey: pendingEnroll.publicKey,
-        pnName: pendingEnroll.pnName,
-        passcode: pendingEnroll.passcode,
-        encryptedIdentityJson: pendingEnroll.encryptedIdentityJson,
+        pnName,
+        passcode,
+        encryptedIdentityJson,
       };
       await enrollUnlockSessionVault(payload);
-      localStorage.removeItem(DECLINED_KEY);
+      localStorage.removeItem(declinedKey(pendingEnroll.identityId));
       setPendingEnroll(null);
       setShowEnroll(false);
       resolveEnrollWaiters();
@@ -188,7 +242,9 @@ export default function App(): React.ReactElement {
   };
 
   const handleEnrollDecline = () => {
-    localStorage.setItem(DECLINED_KEY, '1');
+    if (pendingEnroll) {
+      localStorage.setItem(declinedKey(pendingEnroll.identityId), '1');
+    }
     setPendingEnroll(null);
     setShowEnroll(false);
     setVaultError(null);
@@ -206,23 +262,36 @@ export default function App(): React.ReactElement {
   return (
     <>
       <SessionVaultUnlockOverlay
-        open={showVaultUnlock && !vaultFactors}
+        open={showVaultUnlock && !vaultFactors && !showPicker}
         title="Unlock pN"
-        body="Confirm with this device to continue without re-entering your keys."
-        unlockLabel="Unlock on this device"
+        body="Use Touch ID, then choose which saved pN to continue with."
+        unlockLabel="Unlock with Touch ID"
         error={vaultError}
         busy={vaultBusy}
         onUnlock={() => void onVaultUnlock()}
         onUseFullUnlock={() => {
-          void clearUnlockSessionVault();
           setShowVaultUnlock(false);
+          setVaultError(null);
+        }}
+      />
+      <SessionVaultIdentityPicker
+        open={showPicker && !vaultFactors}
+        options={pickerOptions}
+        busy={vaultBusy}
+        error={vaultError}
+        onSelect={onPickIdentity}
+        onCancel={() => {
+          setShowPicker(false);
+          setPendingEntries([]);
+          setPickerOptions([]);
           setVaultError(null);
         }}
       />
       <SessionVaultEnrollPrompt
         open={showEnroll}
         title="Save unlock on this computer?"
-        body="Next time you can unlock without re-entering Key 1, Key 2, and your identity file. Only on this personal device."
+        body="Next time use Touch ID, then pick this pN — without re-entering Key 1, Key 2, and your identity file. Only on this personal Mac."
+        confirmLabel="Enable with Touch ID"
         busy={vaultBusy}
         error={vaultError}
         onConfirm={() => void handleEnrollConfirm()}

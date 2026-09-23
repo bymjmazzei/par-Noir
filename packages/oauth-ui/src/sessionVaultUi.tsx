@@ -178,3 +178,101 @@ export function SessionVaultUnlockOverlay({
     </div>
   );
 }
+
+export type SessionVaultPickerOption = {
+  identityId: string;
+  /** Safe display label (never Key 1 / passcode). */
+  label: string;
+};
+
+export interface SessionVaultIdentityPickerProps {
+  open: boolean;
+  title?: string;
+  body?: string;
+  options: SessionVaultPickerOption[];
+  busy?: boolean;
+  error?: string | null;
+  onSelect: (identityId: string) => void | Promise<void>;
+  onCancel: () => void;
+  cancelLabel?: string;
+}
+
+/**
+ * After biometric: pick which enrolled pN to continue with.
+ */
+export function SessionVaultIdentityPicker({
+  open,
+  title = 'Choose a pN',
+  body = 'Select which saved identity to unlock.',
+  options,
+  busy = false,
+  error = null,
+  onSelect,
+  onCancel,
+  cancelLabel = 'Cancel',
+}: SessionVaultIdentityPickerProps) {
+  if (!open) return null;
+  return (
+    <div style={overlayStyle} role="dialog" aria-modal="true" aria-labelledby="pn-vault-pick-title">
+      <div style={cardStyle}>
+        <h2 id="pn-vault-pick-title" style={{ margin: '0 0 12px', fontSize: 18, fontWeight: 600 }}>
+          {title}
+        </h2>
+        <p style={{ margin: '0 0 16px', fontSize: 14, lineHeight: 1.45, color: '#c4c4c4' }}>{body}</p>
+        {error ? (
+          <p style={{ margin: '0 0 12px', fontSize: 13, color: '#f87171' }}>{error}</p>
+        ) : null}
+        <ul
+          style={{
+            listStyle: 'none',
+            margin: '0 0 16px',
+            padding: 0,
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 8,
+          }}
+        >
+          {options.map((opt) => (
+            <li key={opt.identityId}>
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => void onSelect(opt.identityId)}
+                style={{
+                  width: '100%',
+                  textAlign: 'left',
+                  padding: '10px 14px',
+                  borderRadius: 8,
+                  border: '1px solid #444',
+                  background: '#222',
+                  color: '#f5f5f5',
+                  cursor: 'pointer',
+                  fontWeight: 500,
+                  opacity: busy ? 0.6 : 1,
+                }}
+              >
+                {opt.label}
+              </button>
+            </li>
+          ))}
+        </ul>
+        <button
+          type="button"
+          onClick={onCancel}
+          disabled={busy}
+          style={{
+            width: '100%',
+            padding: '8px 14px',
+            borderRadius: 8,
+            border: '1px solid #444',
+            background: 'transparent',
+            color: '#ddd',
+            cursor: 'pointer',
+          }}
+        >
+          {cancelLabel}
+        </button>
+      </div>
+    </div>
+  );
+}

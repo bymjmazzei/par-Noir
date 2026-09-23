@@ -1,4 +1,13 @@
-import { app, BrowserWindow, ipcMain, shell, safeStorage, dialog, session } from 'electron';
+import {
+  app,
+  BrowserWindow,
+  ipcMain,
+  shell,
+  safeStorage,
+  dialog,
+  session,
+  systemPreferences,
+} from 'electron';
 import path from 'path';
 import fs from 'fs';
 
@@ -6,6 +15,37 @@ const PROTOCOL = 'com.parnoir.unlock';
 /** Canonical unlock broker origin — file:// / localhost Electron has no CORS Origin. */
 const UNLOCK_BROKER_ORIGIN = 'https://unlock.parnoir.com';
 const isDev = !app.isPackaged || Boolean(process.env.VITE_DEV_SERVER_URL);
+
+function isVaultBiometricAvailable(): boolean {
+  if (!safeStorage.isEncryptionAvailable()) return false;
+  // Mac: require Touch ID capability (matches Cap NativeBiometric.isAvailable).
+  if (process.platform === 'darwin') {
+    return systemPreferences.canPromptTouchID();
+  }
+  return true;
+}
+
+async function confirmVaultBiometric(reason: string): Promise<boolean> {
+  const message = reason || 'Unlock your saved pN session on this device?';
+  if (process.platform === 'darwin') {
+    try {
+      await systemPreferences.promptTouchID(message);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+  if (!mainWindow) return false;
+  const result = await dialog.showMessageBox(mainWindow, {
+    type: 'question',
+    buttons: ['Unlock', 'Cancel'],
+    defaultId: 0,
+    cancelId: 1,
+    title: 'par Noir Unlock',
+    message,
+  });
+  return result.response === 0;
+}
 
 /**
  * file:// and vite-dev origins omit or send a non-allowlisted Origin; production API
@@ -156,7 +196,7 @@ function registerIpc(): void {
   ipcMain.handle('unlock:get-pending-deep-link', async () => pendingDeepLink);
 
   ipcMain.handle('unlock:vault-available', async () => {
-    return safeStorage.isEncryptionAvailable();
+    return isVaultBiometricAvailable();
   });
 
   ipcMain.handle('unlock:vault-get', async (_e, key: string) => {
@@ -193,16 +233,7 @@ function registerIpc(): void {
   });
 
   ipcMain.handle('unlock:confirm-biometric', async (_e, reason: string) => {
-    if (!mainWindow) return false;
-    const result = await dialog.showMessageBox(mainWindow, {
-      type: 'question',
-      buttons: ['Unlock', 'Cancel'],
-      defaultId: 0,
-      cancelId: 1,
-      title: 'par Noir Unlock',
-      message: reason || 'Unlock your saved pN session on this device?',
-    });
-    return result.response === 0;
+    return confirmVaultBiometric(typeof reason === 'string' ? reason : '');
   });
 }
 

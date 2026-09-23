@@ -30,7 +30,7 @@ Symptom-based checks (not “tests pass”). Record outcomes below.
 | Cap prefer-app uses API broker-complete | PASS | `deliverLocalBroker` in Cap App |
 | Cap Unlock yields to caller Cap app after broker | PASS (code) | `App.openUrl(com.parnoir.messaging://oauth/resume)`; vault enroll no longer blocks yield |
 | App Links open native app on device | PENDING | needs physical device + (iOS) Team ID |
-| Vault enroll + biometric re-mint | PENDING | code wired; needs Cap device QA |
+| Vault enroll + biometric re-mint (multi-pN) | PASS (code) | biometric → picker when >1; needs Cap device QA |
 | Messaging handoff after native unlock | PENDING | sim rebuild installed; needs headed re-unlock |
 
 ## Prefer-app launch (web callers)
@@ -54,7 +54,7 @@ See [`../pn-unlock-desktop/ACCEPTANCE.md`](../pn-unlock-desktop/ACCEPTANCE.md) a
 | Electron shell + protocol registration | PASS | `apps/pn-unlock-desktop` |
 | Deep link → ConsentUnlock search | PASS | shared `searchFromUnlockUrl` |
 | Return via shell.openExternal(redirect_uri) | PASS | wired; bridges via oauth-callback |
-| safeStorage vault | PASS | code wired |
+| safeStorage vault + Mac Touch ID | PASS (code) | `promptTouchID`; needs headed Touch ID enroll QA |
 
 ## Native (app not installed)
 

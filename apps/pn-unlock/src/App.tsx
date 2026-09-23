@@ -5,20 +5,23 @@ import {
   ConsentUnlockApp,
   SessionVaultEnrollPrompt,
   SessionVaultUnlockOverlay,
+  SessionVaultIdentityPicker,
   callerCapAppResumeUrl,
   postOAuthBrokerComplete,
   type ConsentVaultEnrollMaterial,
   type ConsentVaultFactors,
+  type SessionVaultPickerOption,
 } from '@par-noir/oauth-ui';
 import type { UnlockKeysPayload } from '@par-noir/device-session-vault';
 import { searchFromUnlockUrl, subscribeUnlockDeepLinks } from './deepLinks';
 import { OpenExternalApp } from './openExternalApp';
 import {
-  clearUnlockSessionVault,
   enrollUnlockSessionVault,
   hasUnlockSessionVault,
+  hasUnlockVaultIdentity,
   isUnlockSessionVaultAvailable,
-  unlockSessionVault,
+  unlockIdentityLabel,
+  unlockSessionVaultEntries,
 } from './sessionVaultNative';
 
 /** Bundled branding — same assets as desktop; avoids CDN CORP in the Cap WebView. */
@@ -30,7 +33,9 @@ const API_DEFAULT =
     (import.meta as ImportMeta & { env?: { VITE_API_ENDPOINT?: string } }).env?.VITE_API_ENDPOINT) ||
   'https://api.parnoir.com';
 
-const DECLINED_KEY = 'pn_vault_enroll_declined_unlock';
+function declinedKey(identityId: string): string {
+  return `pn_vault_enroll_declined_unlock:${identityId}`;
+}
 
 function resumeUrlFromSearch(search: string): string | null {
   try {
@@ -64,12 +69,26 @@ function openCallerViaCustomScheme(resumeUrl: string): void {
   });
 }
 
+function factorsFromEntry(entry: UnlockKeysPayload): ConsentVaultFactors | null {
+  if (!entry.encryptedIdentityJson?.trim() || !entry.pnName?.trim() || !entry.passcode?.trim()) {
+    return null;
+  }
+  return {
+    pnName: entry.pnName,
+    passcode: entry.passcode,
+    encryptedIdentityJson: entry.encryptedIdentityJson,
+  };
+}
+
 export default function App(): React.ReactElement {
   const [search, setSearch] = useState(() =>
     typeof window !== 'undefined' ? window.location.search : ''
   );
   const [vaultChecked, setVaultChecked] = useState(false);
   const [showVaultUnlock, setShowVaultUnlock] = useState(false);
+  const [showPicker, setShowPicker] = useState(false);
+  const [pickerOptions, setPickerOptions] = useState<SessionVaultPickerOption[]>([]);
+  const [pendingEntries, setPendingEntries] = useState<UnlockKeysPayload[]>([]);
   const [showEnroll, setShowEnroll] = useState(false);
   const [vaultBusy, setVaultBusy] = useState(false);
   const [vaultError, setVaultError] = useState<string | null>(null);
@@ -115,11 +134,6 @@ export default function App(): React.ReactElement {
     };
   }, []);
 
-  /**
-   * Prefer-app handoff for Cap / native: same API broker as desktop.
-   * Do not Browser.open(oauth-callback) — that is a separate SFSafariViewController
-   * and never reaches the Safari/Chrome tab that is polling broker-pending.
-   */
   const deliverLocalBroker = async (payload: Record<string, unknown>) => {
     let apiBase = API_DEFAULT.replace(/\/$/, '');
     try {
@@ -133,9 +147,6 @@ export default function App(): React.ReactElement {
   };
 
   const onBrokerHandoffComplete = useCallback(() => {
-    // Prefer-app opens Unlock via custom scheme — Cap Browser was never opened, so
-    // Browser.close is a no-op. Cap App also has no openUrl on iOS — navigate via
-    // the caller's custom scheme so OS brings Messages/Browse forward to poll.
     void Browser.close().catch(() => {
       /* none open */
     });
@@ -146,9 +157,6 @@ export default function App(): React.ReactElement {
     }, 200);
   }, [search]);
 
-  /**
-   * Deny / non-broker fallback only — success path uses deliverLocalBroker.
-   */
   const openExternal = async (url: string) => {
     if (Capacitor.isNativePlatform()) {
       await Browser.open({ url });
@@ -157,27 +165,44 @@ export default function App(): React.ReactElement {
     window.location.href = url;
   };
 
+  const applyEntry = useCallback((entry: UnlockKeysPayload) => {
+    const factors = factorsFromEntry(entry);
+    if (!factors) {
+      setVaultError('Saved unlock is incomplete — use full unlock once');
+      setShowPicker(false);
+      setShowVaultUnlock(false);
+      setPendingEntries([]);
+      return;
+    }
+    setVaultFactors(factors);
+    setShowPicker(false);
+    setShowVaultUnlock(false);
+    setPendingEntries([]);
+    setVaultError(null);
+  }, []);
+
   const onVaultUnlock = async () => {
     setVaultError(null);
     setVaultBusy(true);
     try {
-      const payload = await unlockSessionVault();
-      if (!payload || payload.kind !== 'unlock_keys') {
+      const entries = await unlockSessionVaultEntries();
+      if (entries.length === 0) {
         setVaultError('No sealed unlock session');
         return;
       }
-      if (!payload.encryptedIdentityJson) {
-        setVaultError('Saved unlock is incomplete — use full unlock once');
-        await clearUnlockSessionVault();
-        setShowVaultUnlock(false);
+      if (entries.length === 1) {
+        applyEntry(entries[0]);
         return;
       }
-      setVaultFactors({
-        pnName: payload.pnName,
-        passcode: payload.passcode,
-        encryptedIdentityJson: payload.encryptedIdentityJson,
-      });
+      setPendingEntries(entries);
+      setPickerOptions(
+        entries.map((e) => ({
+          identityId: e.identityId,
+          label: unlockIdentityLabel(e),
+        }))
+      );
       setShowVaultUnlock(false);
+      setShowPicker(true);
     } catch (e) {
       setVaultError(e instanceof Error ? e.message : 'Biometric unlock failed');
     } finally {
@@ -185,22 +210,31 @@ export default function App(): React.ReactElement {
     }
   };
 
-  const onUnlockedForVault = useCallback(
-    async (material: ConsentVaultEnrollMaterial) => {
-      if (!Capacitor.isNativePlatform()) return;
-      if (!(await isUnlockSessionVaultAvailable())) return;
-      if (await hasUnlockSessionVault()) return;
-      if (typeof localStorage !== 'undefined' && localStorage.getItem(DECLINED_KEY) === '1') {
-        return;
-      }
-      setPendingEnroll(material);
-      setShowEnroll(true);
-      await new Promise<void>((resolve) => {
-        enrollWaiters.current.push(resolve);
-      });
-    },
-    []
-  );
+  const onPickIdentity = (identityId: string) => {
+    const entry = pendingEntries.find((e) => e.identityId === identityId);
+    if (!entry) {
+      setVaultError('Selected identity not found');
+      return;
+    }
+    applyEntry(entry);
+  };
+
+  const onUnlockedForVault = useCallback(async (material: ConsentVaultEnrollMaterial) => {
+    if (!Capacitor.isNativePlatform()) return;
+    if (!(await isUnlockSessionVaultAvailable())) return;
+    if (await hasUnlockVaultIdentity(material.identityId)) return;
+    if (
+      typeof localStorage !== 'undefined' &&
+      localStorage.getItem(declinedKey(material.identityId)) === '1'
+    ) {
+      return;
+    }
+    setPendingEnroll(material);
+    setShowEnroll(true);
+    await new Promise<void>((resolve) => {
+      enrollWaiters.current.push(resolve);
+    });
+  }, []);
 
   const handleEnrollConfirm = async () => {
     if (!pendingEnroll) {
@@ -211,16 +245,25 @@ export default function App(): React.ReactElement {
     setVaultBusy(true);
     setVaultError(null);
     try {
+      const pnName = pendingEnroll.pnName?.trim() ?? '';
+      const passcode = pendingEnroll.passcode?.trim() ?? '';
+      const encryptedIdentityJson = pendingEnroll.encryptedIdentityJson?.trim() ?? '';
+      if (!pnName || !passcode || !encryptedIdentityJson) {
+        setVaultError('Vault enroll requires identity file, Key 1, and Key 2');
+        return;
+      }
       const payload: UnlockKeysPayload = {
         kind: 'unlock_keys',
         identityId: pendingEnroll.identityId,
         publicKey: pendingEnroll.publicKey,
-        pnName: pendingEnroll.pnName,
-        passcode: pendingEnroll.passcode,
-        encryptedIdentityJson: pendingEnroll.encryptedIdentityJson,
+        pnName,
+        passcode,
+        encryptedIdentityJson,
       };
       await enrollUnlockSessionVault(payload);
-      if (typeof localStorage !== 'undefined') localStorage.removeItem(DECLINED_KEY);
+      if (typeof localStorage !== 'undefined') {
+        localStorage.removeItem(declinedKey(pendingEnroll.identityId));
+      }
       setPendingEnroll(null);
       setShowEnroll(false);
       resolveEnrollWaiters();
@@ -232,7 +275,9 @@ export default function App(): React.ReactElement {
   };
 
   const handleEnrollDecline = () => {
-    if (typeof localStorage !== 'undefined') localStorage.setItem(DECLINED_KEY, '1');
+    if (pendingEnroll && typeof localStorage !== 'undefined') {
+      localStorage.setItem(declinedKey(pendingEnroll.identityId), '1');
+    }
     setPendingEnroll(null);
     setShowEnroll(false);
     setVaultError(null);
@@ -250,21 +295,34 @@ export default function App(): React.ReactElement {
   return (
     <>
       <SessionVaultUnlockOverlay
-        open={showVaultUnlock && !vaultFactors}
+        open={showVaultUnlock && !vaultFactors && !showPicker}
         title="Unlock pN"
+        body="Use biometrics, then choose which saved pN to continue with."
         error={vaultError}
         busy={vaultBusy}
         onUnlock={() => void onVaultUnlock()}
         onUseFullUnlock={() => {
-          void clearUnlockSessionVault();
           setShowVaultUnlock(false);
+          setVaultError(null);
+        }}
+      />
+      <SessionVaultIdentityPicker
+        open={showPicker && !vaultFactors}
+        options={pickerOptions}
+        busy={vaultBusy}
+        error={vaultError}
+        onSelect={onPickIdentity}
+        onCancel={() => {
+          setShowPicker(false);
+          setPendingEntries([]);
+          setPickerOptions([]);
           setVaultError(null);
         }}
       />
       <SessionVaultEnrollPrompt
         open={showEnroll}
         title="Save unlock on this device?"
-        body="Next time you can unlock with biometrics instead of re-entering Key 1, Key 2, and your identity file. Only on this personal device."
+        body="Next time use biometrics, then pick this pN — without re-entering Key 1, Key 2, and your identity file. Only on this personal device."
         busy={vaultBusy}
         error={vaultError}
         onConfirm={() => void handleEnrollConfirm()}
