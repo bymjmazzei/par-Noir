@@ -5,10 +5,17 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, Route, Routes, useNavigate, useParams } from 'react-router-dom';
 import {
-  LockIcon,
+  LockButton,
   UnlockButton,
+  ThirdPartyCloudReconnectHost,
+  wipeThirdPartyCloudOnLock,
   exchangePortalAuthorizationCode,
   fetchPortalUserInfo,
+  normalizeMessagingHandoffPayload,
+  parseMessagingHandoffFromStorage,
+  PN_MESSAGING_OAUTH_HANDOFF_STORAGE,
+  PN_CLOUD_CREDENTIALS_READY_EVENT,
+  hasCloudCredentialsReady,
   type PnOAuthPopupResult
 } from '@par-noir/oauth-ui';
 import { API_ENDPOINT, PN_CLIENT_ID } from './config/api';
@@ -33,6 +40,30 @@ export type { PenSession };
 
 const OAUTH_STATE_KEY = 'pen_oauth_state';
 
+/** ML-KEM from OAuth messaging handoff — required to unseal the cloud vault. */
+function peekMlKemSecretKey(messagingHandoff?: unknown): string | undefined {
+  const fromResult = normalizeMessagingHandoffPayload(messagingHandoff);
+  if (fromResult?.session?.mlKemSecretKey) return fromResult.session.mlKemSecretKey;
+  try {
+    return (
+      parseMessagingHandoffFromStorage(
+        localStorage.getItem(PN_MESSAGING_OAUTH_HANDOFF_STORAGE)
+      )?.session?.mlKemSecretKey ?? undefined
+    );
+  } catch {
+    return undefined;
+  }
+}
+
+function handoffSessionFields(messagingHandoff?: unknown): {
+  mlKemSecretKey?: string;
+} {
+  const mlKemSecretKey =
+    normalizeMessagingHandoffPayload(messagingHandoff)?.session?.mlKemSecretKey ||
+    peekMlKemSecretKey(messagingHandoff);
+  return mlKemSecretKey ? { mlKemSecretKey } : {};
+}
+
 function Locked() {
   const [session, setSession] = useState<PenSession | null>(null);
   const [busy, setBusy] = useState(false);
@@ -49,8 +80,7 @@ function Locked() {
       setSession(next);
       setLockedView('home');
       navigate('/');
-      void flushPenSyncQueue(next);
-      void drainPenMailbox(next);
+      // Drive sync waits for ThirdPartyCloudReconnectHost → cloud credentials ready
     },
     [navigate]
   );
@@ -82,15 +112,12 @@ function Locked() {
           accessToken: tokens.access_token
         });
 
-        const handoff =
-          (r.messagingHandoff as { session?: Record<string, unknown> } | undefined)?.session ||
-          (r.messagingHandoff as Record<string, unknown> | undefined);
+        const handoffFields = handoffSessionFields(r.messagingHandoff);
 
         const pn =
           String(
             user.pn_identifier ||
               user.sub ||
-              (handoff as { pnIdentifier?: string } | undefined)?.pnIdentifier ||
               ''
           ).trim() || 'unknown';
 
@@ -98,9 +125,7 @@ function Locked() {
           accessToken: tokens.access_token,
           refreshToken: tokens.refresh_token,
           pnIdentifier: pn,
-          mlDsaPublicKey: (handoff as { mlDsaPublicKey?: string } | undefined)?.mlDsaPublicKey,
-          mlDsaSecretKey: (handoff as { mlDsaSecretKey?: string } | undefined)?.mlDsaSecretKey,
-          mlKemSecretKey: (handoff as { mlKemSecretKey?: string } | undefined)?.mlKemSecretKey
+          ...handoffFields
         });
       } catch (e) {
         setError(e instanceof Error ? e.message : 'Unlock failed');
@@ -116,8 +141,6 @@ function Locked() {
     const existing = loadPenSession();
     if (existing) {
       setSession(existing);
-      void flushPenSyncQueue(existing);
-      void drainPenMailbox(existing);
     }
   }, []);
 
@@ -125,7 +148,8 @@ function Locked() {
     return (
       <AuthenticatedApp
         session={session}
-        onLock={() => {
+        onLock={async () => {
+          await wipeThirdPartyCloudOnLock(session.pnIdentifier);
           clearPenSession();
           setSession(null);
           setLockedView('home');
@@ -289,16 +313,32 @@ function AddMenu({
   );
 }
 
-function AuthenticatedApp({ session, onLock }: { session: PenSession; onLock: () => void }) {
+function AuthenticatedApp({
+  session,
+  onLock
+}: {
+  session: PenSession;
+  onLock: () => void | Promise<void>;
+}) {
   const navigate = useNavigate();
   const [docs, setDocs] = useState<LocalDocSummary[]>([]);
   const [addIntent, setAddIntent] = useState<PenAddIntent | null>(null);
   const [syncPending, setSyncPending] = useState(0);
+  const [mlKemSecretKey, setMlKemSecretKey] = useState<string | null>(
+    () => session.mlKemSecretKey || peekMlKemSecretKey() || null
+  );
+
+  useEffect(() => {
+    if (mlKemSecretKey) return;
+    const peeked = session.mlKemSecretKey || peekMlKemSecretKey();
+    if (peeked) setMlKemSecretKey(peeked);
+  }, [session.mlKemSecretKey, mlKemSecretKey]);
 
   const refreshDocs = useCallback(async () => {
     const local = listLocalDocs(session.pnIdentifier);
     setDocs(local);
     setSyncPending(pendingSyncCount(session.pnIdentifier));
+    if (!hasCloudCredentialsReady(session.pnIdentifier)) return;
     try {
       const cloud = await listLibraryCloud(session.pnIdentifier);
       const byId = new Map<string, LocalDocSummary>();
@@ -316,17 +356,28 @@ function AuthenticatedApp({ session, onLock }: { session: PenSession; onLock: ()
   useEffect(() => {
     void refreshDocs();
     const onOnline = () => {
+      if (!hasCloudCredentialsReady(session.pnIdentifier)) return;
+      void flushPenSyncQueue(session).then(() => refreshDocs());
+      void drainPenMailbox(session);
+    };
+    const onCloudReady = () => {
       void flushPenSyncQueue(session).then(() => refreshDocs());
       void drainPenMailbox(session);
     };
     window.addEventListener('online', onOnline);
+    window.addEventListener(PN_CLOUD_CREDENTIALS_READY_EVENT, onCloudReady);
     const t = window.setInterval(() => {
+      if (!hasCloudCredentialsReady(session.pnIdentifier)) {
+        setSyncPending(pendingSyncCount(session.pnIdentifier));
+        return;
+      }
       void flushPenSyncQueue(session);
       void drainPenMailbox(session);
       setSyncPending(pendingSyncCount(session.pnIdentifier));
     }, 60_000);
     return () => {
       window.removeEventListener('online', onOnline);
+      window.removeEventListener(PN_CLOUD_CREDENTIALS_READY_EVENT, onCloudReady);
       window.clearInterval(t);
     };
   }, [session, refreshDocs]);
@@ -338,6 +389,12 @@ function AuthenticatedApp({ session, onLock }: { session: PenSession; onLock: ()
 
   return (
     <div className="min-h-screen bg-white text-black">
+      <ThirdPartyCloudReconnectHost
+        apiEndpoint={API_ENDPOINT}
+        authToken={session.accessToken}
+        pnIdentifier={session.pnIdentifier}
+        mlKemSecretKey={mlKemSecretKey}
+      />
       <header className="pen-app-chrome fixed inset-x-0 top-0 z-50">
         <div className="pen-app-chrome-left">
           <span className="pen-app-chrome-action" aria-hidden />
@@ -351,15 +408,16 @@ function AuthenticatedApp({ session, onLock }: { session: PenSession; onLock: ()
             </span>
           )}
         </div>
-        <button
-          type="button"
-          onClick={onLock}
+        <LockButton
           className="pen-app-chrome-lock"
+          onLock={onLock}
+          refreshToken={session.refreshToken}
+          apiEndpoint={API_ENDPOINT}
           title="Lock session"
-          aria-label="Lock session"
+          showIcon
         >
-          <LockIcon className="h-4 w-4" />
-        </button>
+          {false}
+        </LockButton>
       </header>
       <div className="flex min-h-[calc(100vh-2.5rem)] flex-col pt-10">
         <Routes>
