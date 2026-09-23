@@ -29,7 +29,7 @@ import {
   savePenSession,
   type PenSession
 } from './services/penSession';
-import { enrichSessionSigningKeys, handoffHasSigningKeys } from './services/penKeys';
+import { enrichSessionSigningKeys } from './services/penKeys';
 import { flushPenSyncQueue } from './services/penSyncFlush';
 import { drainPenMailbox, clearPenMailboxSessionCache } from './services/penCollab';
 import { listLibraryCloud } from './services/penCloudStore';
@@ -147,20 +147,9 @@ function Locked() {
           accessToken: tokens.access_token
         });
 
-        const handoffFields = handoffSessionFields(r.messagingHandoff);
-        if (!handoffFields.mlDsaPublicKey || !handoffFields.mlDsaSecretKey) {
-          // Brief wait — stash/BroadcastChannel may land just after the code.
-          await new Promise((resolve) => setTimeout(resolve, 250));
-        }
         const fields = handoffSessionFields(r.messagingHandoff);
-        if (!fields.mlDsaPublicKey || !fields.mlDsaSecretKey) {
-          if (!handoffHasSigningKeys(r.messagingHandoff)) {
-            setError(
-              'Unlock did not include signing keys. Unlock again so ML-DSA keys are in the messaging handoff.'
-            );
-            return;
-          }
-        }
+        // Prefer signing keys when present; do not block unlock — cloud/ML-KEM
+        // handoff is enough to enter the app. Create/promote still fail closed.
 
         const pn =
           String(

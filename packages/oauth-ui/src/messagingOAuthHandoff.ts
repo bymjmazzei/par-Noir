@@ -261,24 +261,33 @@ export function parseMessagingHandoffFromStorage(
 
 /** Extract ML-KEM (+ optional ML-DSA) session from decrypted identity. */
 export function extractMessagingSessionFromDecrypted(
-  decrypted: unknown
+  decrypted: unknown,
+  encryptedIdentity?: unknown
 ): MessagingHandoffSession | null {
   if (!isRecord(decrypted)) return null;
   const pqc = isRecord(decrypted.pqcSecrets) ? decrypted.pqcSecrets : null;
+  const enc = isRecord(encryptedIdentity) ? encryptedIdentity : null;
   const mlKemSecretKey =
     (pqc && typeof pqc.mlKemSecretKey === 'string' ? pqc.mlKemSecretKey : undefined) ||
     (typeof decrypted.mlKemSecretKey === 'string' ? decrypted.mlKemSecretKey : undefined);
   if (!mlKemSecretKey) return null;
   const mlKemPublicKey =
     (pqc && typeof pqc.mlKemPublicKey === 'string' ? pqc.mlKemPublicKey : undefined) ||
-    (typeof decrypted.mlKemPublicKey === 'string' ? decrypted.mlKemPublicKey : undefined);
+    (typeof decrypted.mlKemPublicKey === 'string' ? decrypted.mlKemPublicKey : undefined) ||
+    (enc && typeof enc.mlKemPublicKey === 'string' ? enc.mlKemPublicKey : undefined);
   const mlDsaSecretKey =
     (pqc && typeof pqc.mlDsaSecretKey === 'string' ? pqc.mlDsaSecretKey : undefined) ||
     (typeof decrypted.privateKey === 'string' ? decrypted.privateKey : undefined);
+  // DSA public key is stored on the encrypted identity shell at create time — not
+  // inside the decrypted JSON blob (which only carries pqcSecrets.mlDsaSecretKey).
   const mlDsaPublicKey =
-    typeof decrypted.publicKey === 'string' && decrypted.publicKey.length > 0
+    (typeof decrypted.publicKey === 'string' && decrypted.publicKey.length > 0
       ? decrypted.publicKey
-      : undefined;
+      : undefined) ||
+    (pqc && typeof pqc.mlDsaPublicKey === 'string' ? pqc.mlDsaPublicKey : undefined) ||
+    (enc && typeof enc.publicKey === 'string' && enc.publicKey.length > 0
+      ? enc.publicKey
+      : undefined);
   const session: MessagingHandoffSession = { mlKemSecretKey, mlKemPublicKey };
   if (mlDsaSecretKey && mlDsaPublicKey) {
     session.mlDsaSecretKey = mlDsaSecretKey;
@@ -327,7 +336,7 @@ export function buildMessagingHandoffFromUnlock(
   decrypted: unknown,
   timestamp = Date.now()
 ): MessagingOAuthHandoffPayload | null {
-  const session = extractMessagingSessionFromDecrypted(decrypted);
+  const session = extractMessagingSessionFromDecrypted(decrypted, encryptedIdentity);
   const identity = buildMessagingIdentityPayload(encryptedIdentity, decrypted);
   if (!session && !identity) return null;
   return {

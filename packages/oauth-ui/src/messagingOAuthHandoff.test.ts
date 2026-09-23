@@ -132,13 +132,35 @@ describe('messagingOAuthHandoff', () => {
     expect(session).toEqual({ mlKemSecretKey: 'sk', mlKemPublicKey: 'pk' });
   });
 
+  it('pairs DSA secret from decrypted blob with public key on encrypted shell', () => {
+    // Create stores DSA pubkey on the shell only — not inside decrypted JSON.
+    const withoutShell = extractMessagingSessionFromDecrypted({
+      pqcSecrets: { mlKemSecretKey: 'kem-sk', mlDsaSecretKey: 'dsa-sk' },
+    });
+    expect(withoutShell?.mlDsaSecretKey).toBeUndefined();
+    expect(withoutShell?.mlDsaPublicKey).toBeUndefined();
+
+    const withShell = extractMessagingSessionFromDecrypted(
+      { pqcSecrets: { mlKemSecretKey: 'kem-sk', mlDsaSecretKey: 'dsa-sk' } },
+      { publicKey: 'dsa-pk', mlKemPublicKey: 'kem-pk', encryptedData: 'e', iv: 'i', salt: 's' }
+    );
+    expect(withShell).toEqual({
+      mlKemSecretKey: 'kem-sk',
+      mlKemPublicKey: 'kem-pk',
+      mlDsaSecretKey: 'dsa-sk',
+      mlDsaPublicKey: 'dsa-pk',
+    });
+  });
+
   it('buildMessagingHandoffFromUnlock combines identity and session', () => {
     const decrypted = {
-      pqcSecrets: { mlKemSecretKey: 'sk', mlKemPublicKey: 'pk' },
+      pqcSecrets: { mlKemSecretKey: 'sk', mlKemPublicKey: 'pk', mlDsaSecretKey: 'dsa-sk' },
     };
     const encrypted = samplePayload.identity!;
     const handoff = buildMessagingHandoffFromUnlock(encrypted, decrypted, 42);
     expect(handoff?.session?.mlKemSecretKey).toBe('sk');
+    expect(handoff?.session?.mlDsaSecretKey).toBe('dsa-sk');
+    expect(handoff?.session?.mlDsaPublicKey).toBe('pk'); // shell publicKey
     expect(handoff?.identity?.encryptedData).toBe('enc');
     expect(handoff?.timestamp).toBe(42);
   });
