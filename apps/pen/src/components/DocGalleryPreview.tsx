@@ -1,5 +1,6 @@
-import { type CSSProperties } from 'react';
+import { type CSSProperties, type ReactNode } from 'react';
 import {
+  categoryIdForClass,
   defaultPagePresentation,
   docToHtml,
   docToPlainText,
@@ -87,16 +88,35 @@ function pageAspect(manifest: PenDocManifest): string | undefined {
   return '3 / 4';
 }
 
+function PhoneShell({
+  children,
+  large
+}: {
+  children: ReactNode;
+  large?: boolean;
+}) {
+  return (
+    <div className={`pen-gallery-phone${large ? ' pen-gallery-phone--lg' : ''}`}>
+      <div className="pen-gallery-phone-bezel">
+        <div className="pen-gallery-phone-screen">{children}</div>
+      </div>
+    </div>
+  );
+}
+
 /**
  * Library / template gallery thumb: doc page scaled to tile width, centered,
- * overflow clipped (widescreen fits; tall portrait crops top/bottom). No social rail.
+ * overflow clipped. Social templates sit in a phone bezel so dark screens stay edged.
  */
 export function DocGalleryPreview({
   manifest,
-  sections
+  sections,
+  large
 }: {
   manifest: PenDocManifest;
   sections: PenSectionContent[];
+  /** Larger phone for overlay modal. */
+  large?: boolean;
 }) {
   const media = resolveMedia(sections);
   const title = resolveTitle(manifest, sections);
@@ -105,9 +125,11 @@ export function DocGalleryPreview({
     defaultPagePresentation(),
     manifest.pagePresentation || undefined
   );
+  const social = categoryIdForClass(manifest.classId) === 'social';
 
+  let surface: ReactNode;
   if (media) {
-    return (
+    surface = (
       <img
         src={media}
         alt=""
@@ -115,21 +137,21 @@ export function DocGalleryPreview({
         draggable={false}
       />
     );
-  }
-
-  const isDarkCard =
+  } else if (
+    social ||
     manifest.docType === 'note' ||
     manifest.docType === 'post' ||
     manifest.docType === 'collection' ||
-    Boolean(manifest.pagePresentation);
-
-  if (isDarkCard) {
-    return (
+    Boolean(manifest.pagePresentation)
+  ) {
+    surface = (
       <div
         className="pen-gallery-doc-page pen-gallery-doc-page--surface"
         style={{
-          ...presentationSurface(pres, 11),
-          aspectRatio: pageAspect(manifest)
+          ...presentationSurface(pres, large ? 18 : 11),
+          aspectRatio: social ? '9 / 16' : pageAspect(manifest),
+          height: social ? '100%' : undefined,
+          width: '100%'
         }}
       >
         <div className="line-clamp-[10] break-words leading-snug">{title}</div>
@@ -141,20 +163,30 @@ export function DocGalleryPreview({
         ) : null}
       </div>
     );
+  } else {
+    surface = (
+      <div
+        className="pen-gallery-doc-page pen-gallery-doc-page--paper"
+        style={{ aspectRatio: pageAspect(manifest) }}
+      >
+        <div className="pen-gallery-doc-paper-title">{title}</div>
+        {bodyHtml ? (
+          <div
+            className="pen-rich-html pen-gallery-doc-paper-body"
+            dangerouslySetInnerHTML={{ __html: bodyHtml }}
+          />
+        ) : null}
+      </div>
+    );
   }
 
-  return (
-    <div
-      className="pen-gallery-doc-page pen-gallery-doc-page--paper"
-      style={{ aspectRatio: pageAspect(manifest) }}
-    >
-      <div className="pen-gallery-doc-paper-title">{title}</div>
-      {bodyHtml ? (
-        <div
-          className="pen-rich-html pen-gallery-doc-paper-body"
-          dangerouslySetInnerHTML={{ __html: bodyHtml }}
-        />
-      ) : null}
-    </div>
-  );
+  if (social) {
+    return (
+      <PhoneShell large={large}>
+        {surface}
+      </PhoneShell>
+    );
+  }
+
+  return surface;
 }

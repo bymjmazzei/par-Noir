@@ -806,7 +806,7 @@ function CreateNewGalleryTile({ onClick }: { onClick: () => void }) {
         <div className="pen-gallery-tile-title">
           <span className="pen-gallery-tile-title-text">Create new</span>
         </div>
-        <span className="pen-gallery-tile-preview flex items-center justify-center bg-white text-2xl font-light text-neutral-500">
+        <span className="pen-gallery-tile-preview flex items-center justify-center text-2xl font-light text-neutral-500">
           +
         </span>
       </button>

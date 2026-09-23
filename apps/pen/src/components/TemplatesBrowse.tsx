@@ -13,7 +13,6 @@ import {
 } from '@par-noir/pen-protocol';
 import type { PenSession } from '../App';
 import { DocGalleryPreview } from './DocGalleryPreview';
-import { TemplateLivePreview } from './TemplateLivePreview';
 import {
   isPersonalTemplateId,
   loadPersonalTemplate,
@@ -216,57 +215,6 @@ export function TemplatesBrowse({
     }
   }
 
-  if (preview && previewId) {
-    return (
-      <div className="pen-library-body flex min-h-0 flex-1 flex-col">
-        <div className="pen-template-preview-chrome">
-          <div className="min-w-0">
-            <button
-              type="button"
-              className="text-sm text-neutral-600 hover:text-black"
-              onClick={() => setPreviewId(null)}
-            >
-              ← Back
-            </button>
-            <h2 className="truncate text-base font-bold text-black">{preview.title}</h2>
-            {preview.description && (
-              <p className="truncate text-xs text-neutral-500">{preview.description}</p>
-            )}
-          </div>
-          <button
-            type="button"
-            disabled={busy}
-            title={session ? 'Use template' : 'Unlock to use'}
-            aria-label="Use template"
-            className="inline-flex h-9 w-9 shrink-0 items-center justify-center border border-neutral-300 bg-white text-xl font-light text-black hover:bg-neutral-50 disabled:opacity-30"
-            onClick={() => void useTemplate(previewId)}
-          >
-            +
-          </button>
-        </div>
-        {error && <p className="px-4 pt-2 text-sm text-red-600">{error}</p>}
-        <div className="pen-template-preview-frame">
-          <div className="mx-auto max-w-lg overflow-hidden rounded-lg border border-neutral-200 bg-neutral-950 shadow-sm">
-            <TemplateLivePreview
-              manifest={preview.manifest as never}
-              sections={preview.sections}
-            />
-          </div>
-        </div>
-        <div className="pen-template-save-ribbon" role="toolbar" aria-label="Template actions">
-          <button
-            type="button"
-            disabled={busy}
-            className="pen-ribbon-btn"
-            onClick={() => saveToMyTemplates(previewId)}
-          >
-            {savedHint ? 'Saved' : 'Save to My templates'}
-          </button>
-        </div>
-      </div>
-    );
-  }
-
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="pen-library-heading">
@@ -403,6 +351,61 @@ export function TemplatesBrowse({
           )}
         </div>
       </div>
+
+      {preview && previewId ? (
+        <div
+          className="pen-template-preview-overlay"
+          role="presentation"
+          onClick={() => setPreviewId(null)}
+        >
+          <div
+            className="pen-template-preview-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-label={preview.title}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="pen-template-preview-modal-bar">
+              <div className="min-w-0">
+                <h2 className="truncate text-base font-bold text-black">{preview.title}</h2>
+                {preview.description ? (
+                  <p className="truncate text-xs text-neutral-500">{preview.description}</p>
+                ) : null}
+              </div>
+              <button
+                type="button"
+                disabled={busy}
+                title={session ? 'Use template' : 'Unlock to use'}
+                aria-label="Use template"
+                className="pen-template-use-btn"
+                onClick={() => void useTemplate(previewId)}
+              >
+                +
+              </button>
+            </div>
+            <div className="pen-template-preview-modal-body">
+              <DocGalleryPreview
+                manifest={preview.manifest as never}
+                sections={preview.sections}
+                large
+              />
+            </div>
+            <div className="pen-template-preview-modal-foot">
+              <button
+                type="button"
+                disabled={busy}
+                className="pen-ribbon-btn"
+                onClick={() => saveToMyTemplates(previewId)}
+              >
+                {savedHint ? 'Saved' : 'Save to My templates'}
+              </button>
+              <button type="button" className="pen-ribbon-btn" onClick={() => setPreviewId(null)}>
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }
