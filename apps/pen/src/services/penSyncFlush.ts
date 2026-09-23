@@ -13,6 +13,7 @@ import {
   promotePenOutboxAndFanout
 } from './penCollab';
 import {
+  enqueueSyncJob,
   listSyncJobs,
   markSyncJobFailed,
   removeSyncJob,
@@ -21,6 +22,24 @@ import {
 import type { PenSession } from './penSession';
 import type { LocalDocBundle } from './penLocalStore';
 import type { PenDraftManifest, PenDocComment, PenSuggestion } from '@par-noir/pen-protocol';
+
+/**
+ * Local-first create: enqueue cloud bootstrap and flush in the background.
+ * Callers return immediately after saveLocalDoc so the editor can open.
+ */
+export function scheduleDocCloudBootstrap(params: {
+  session: PenSession;
+  bundle: LocalDocBundle;
+  draft: PenDraftManifest;
+}): void {
+  const docId = params.bundle.manifest.docId;
+  enqueueSyncJob(params.session.pnIdentifier, {
+    kind: 'bootstrap',
+    docId,
+    payload: { bundle: params.bundle, draft: params.draft }
+  });
+  void flushPenSyncQueue(params.session);
+}
 
 export async function flushPenSyncQueue(session: PenSession): Promise<{
   flushed: number;

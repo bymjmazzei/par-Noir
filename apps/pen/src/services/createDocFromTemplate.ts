@@ -20,8 +20,7 @@ import type { PenSession } from './penSession';
 import { saveLocalDoc, type LocalDocBundle } from './penLocalStore';
 import { requestNotaryStamp } from './penApi';
 import { resolveSigningKeys } from './penKeys';
-import { bootstrapDocCloud } from './penCloudStore';
-import { enqueueSyncJob } from './penSyncQueue';
+import { scheduleDocCloudBootstrap } from './penSyncFlush';
 import { mintDocKey } from './penDocCrypto';
 
 function randomDocId(): string {
@@ -114,24 +113,11 @@ export async function createDocFromTemplate(input: {
   sessionStorage.setItem(`pen_active_draft:${docId}`, draftId);
   sessionStorage.setItem(`pen_draft_meta:${docId}:${draftId}`, JSON.stringify(draft));
 
-  try {
-    await bootstrapDocCloud({
-      userPnIdentifier: input.session.pnIdentifier,
-      bundle,
-      draft
-    });
-  } catch (e) {
-    enqueueSyncJob(input.session.pnIdentifier, {
-      kind: 'bootstrap',
-      docId,
-      payload: { bundle, draft }
-    });
-    if (e instanceof Error && e.message === 'cloud_token_required') {
-      // Offline / no custody — buffer only; user can keep editing
-      return bundle;
-    }
-    // Other errors: still return local buffer, queued for flush
-  }
+  scheduleDocCloudBootstrap({
+    session: input.session,
+    bundle,
+    draft
+  });
 
   return bundle;
 }

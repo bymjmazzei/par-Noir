@@ -23,8 +23,7 @@ import type { PenSession } from './penSession';
 import { saveLocalDoc, type LocalDocBundle } from './penLocalStore';
 import { requestNotaryStamp } from './penApi';
 import { resolveSigningKeys } from './penKeys';
-import { bootstrapDocCloud } from './penCloudStore';
-import { enqueueSyncJob } from './penSyncQueue';
+import { scheduleDocCloudBootstrap } from './penSyncFlush';
 
 /**
  * Create a Pen doc from an external-agent PenAgentBuild (Cursor/Astra/…).
@@ -110,22 +109,11 @@ export async function createDocFromAgentBuild(input: {
   sessionStorage.setItem(`pen_active_draft:${docId}`, draftId);
   sessionStorage.setItem(`pen_draft_meta:${docId}:${draftId}`, JSON.stringify(draft));
 
-  try {
-    await bootstrapDocCloud({
-      userPnIdentifier: input.session.pnIdentifier,
-      bundle,
-      draft
-    });
-  } catch (e) {
-    enqueueSyncJob(input.session.pnIdentifier, {
-      kind: 'bootstrap',
-      docId,
-      payload: { bundle, draft }
-    });
-    if (e instanceof Error && e.message === 'cloud_token_required') {
-      return bundle;
-    }
-  }
+  scheduleDocCloudBootstrap({
+    session: input.session,
+    bundle,
+    draft
+  });
 
   return bundle;
 }

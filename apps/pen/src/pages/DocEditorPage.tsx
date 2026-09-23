@@ -117,7 +117,8 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
     }
   }
   const [bundle, setBundle] = useState(initial);
-  const [hydrating, setHydrating] = useState(true);
+  // Local buffer present (e.g. just created) → show editor immediately; hydrate in background.
+  const [hydrating, setHydrating] = useState(!initial);
   const [activeSlug, setActiveSlug] = useState(initial?.manifest.toc[0] || 'body');
   const [showPreview, setShowPreview] = useState(true);
   const [showHistory, setShowHistory] = useState(false);
@@ -310,19 +311,21 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
     return () => window.removeEventListener('keydown', onKey);
   }, [undoEdit, redoEdit]);
 
-  // Cloud SoT hydrate on mount (and when docId changes). Local buffer is offline-only.
+  // Cloud hydrate on mount. When a local buffer already exists (local-first create),
+  // do not block the editor; only apply cloud if the user has not started editing.
   useEffect(() => {
     let cancelled = false;
-    setHydrating(true);
+    const hadLocal = Boolean(loadLocalDoc(session.pnIdentifier, docId));
+    if (!hadLocal) setHydrating(true);
     void hydrateDocFromCloud({ session, docId })
       .then((fromCloud) => {
         if (cancelled) return;
-        if (fromCloud) {
-          setBundle(fromCloud);
-          setActiveSlug(fromCloud.manifest.toc[0] || 'body');
-          setLastDraftAt(fromCloud.manifest.updatedAt || null);
-          setDirty(false);
-        }
+        if (!fromCloud) return;
+        if (dirtyRef.current) return;
+        setBundle(fromCloud);
+        setActiveSlug(fromCloud.manifest.toc[0] || 'body');
+        setLastDraftAt(fromCloud.manifest.updatedAt || null);
+        setDirty(false);
       })
       .catch(() => {
         /* offline — keep local buffer if any */

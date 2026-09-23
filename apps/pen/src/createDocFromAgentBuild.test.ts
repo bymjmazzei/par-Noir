@@ -10,11 +10,21 @@ vi.mock('./services/penCloudStore', () => ({
 vi.mock('./services/penApi', () => ({
   requestNotaryStamp: vi.fn().mockRejectedValue(new Error('skip_notary'))
 }));
-vi.mock('./services/penSyncQueue', () => ({
-  enqueueSyncJob: vi.fn()
+vi.mock('./services/penSyncFlush', () => ({
+  scheduleDocCloudBootstrap: vi.fn()
 }));
 
+import { mlDsa65Keygen } from '@par-noir/pqc-crypto';
 import { createDocFromAgentBuild } from './services/createDocFromAgentBuild';
+import { scheduleDocCloudBootstrap } from './services/penSyncFlush';
+import * as penKeys from './services/penKeys';
+
+const testKeys = mlDsa65Keygen();
+vi.spyOn(penKeys, 'resolveSigningKeys').mockReturnValue({
+  publicKey: testKeys.publicKey,
+  secretKey: testKeys.secretKey,
+  ephemeral: false
+});
 
 function memoryStorage(): Storage {
   const map = new Map<string, string>();
@@ -63,6 +73,14 @@ describe('createDocFromAgentBuild', () => {
     expect(bundle.manifest.templateId).toBe('note.basic.v1');
     expect(bundle.sections.some((s) => s.slug === 'body')).toBe(true);
     expect(bundle.manifest.genesisProof).toBeTruthy();
+    expect(scheduleDocCloudBootstrap).toHaveBeenCalledWith(
+      expect.objectContaining({
+        session: expect.objectContaining({ pnIdentifier: 'pn-agent-test' }),
+        bundle: expect.objectContaining({
+          manifest: expect.objectContaining({ docId: bundle.manifest.docId })
+        })
+      })
+    );
   });
 
   it('rejects invalid agent builds', async () => {
