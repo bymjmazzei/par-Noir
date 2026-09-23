@@ -50,6 +50,11 @@ import { FormDocIcon } from '../components/FormDocIcon';
 import { ExplorerFolderGlyph } from '../components/ExplorerFolderGlyph';
 import { DocGalleryPreview } from '../components/DocGalleryPreview';
 import { DocItemMenu } from '../components/DocItemMenu';
+import {
+  CreateNewGalleryThumb,
+  NotebookGalleryThumb,
+  TemplateGalleryThumb
+} from '../components/TemplateGalleryThumb';
 import { TemplatesBrowse } from '../components/TemplatesBrowse';
 import { BlankDocWizard } from '../components/BlankDocWizard';
 import { createBlankDoc } from '../services/createBlankDoc';
@@ -449,130 +454,120 @@ function DocExplorerTable({
 
   return (
     <div className="pen-explorer" data-bulk={bulkMode ? 'true' : 'false'}>
-      <div className="pen-explorer-sticky-head">
-        <div className="pen-explorer-scroll">
-          <table className="pen-explorer-table text-left text-sm">
-            <thead className="text-[11px] tracking-wide">
-              <tr>
-                <th className="pen-explorer-action px-2 text-center" aria-label="Select" />
-                <SortHeader
-                  label="Name"
-                  sortKey="name"
-                  sort={sort}
-                  onSort={onSort}
-                  className="pen-explorer-name-header"
-                />
-                <SortHeader
-                  label="Category"
-                  sortKey="category"
-                  sort={sort}
-                  onSort={onSort}
-                  className="pen-explorer-col-category"
-                />
-                <SortHeader
-                  label="Form"
-                  sortKey="form"
-                  sort={sort}
-                  onSort={onSort}
-                  className="pen-explorer-col-form"
-                />
-                <th className="pen-explorer-col-status px-3 text-left">
-                  <span className="text-[11px] font-normal uppercase tracking-wide text-neutral-600">
-                    Status
-                  </span>
-                </th>
-                <SortHeader
-                  label="Updated"
-                  sortKey="updated"
-                  sort={sort}
-                  onSort={onSort}
-                  align="left"
-                  className="pen-explorer-col-updated"
-                />
-              </tr>
-            </thead>
-          </table>
-        </div>
-        {/* Real sibling under thead — cannot be covered by sticky thead fill */}
-        <div className="pen-library-title-rule" aria-hidden />
-      </div>
-      <div className="pen-explorer-body">
-        <div className="pen-explorer-scroll">
-          <table className="pen-explorer-table text-left text-sm">
-            <tbody>
-              {!bulkMode &&
-                notebooks.map((nb) => (
-                  <Fragment key={nb.id}>
-                    <NotebookExplorerRow
-                      notebook={nb}
-                      expanded={expandedNotebookIds.has(nb.id)}
-                      onToggleExpand={() => onToggleNotebook(nb.id)}
-                      onRename={() => onRenameNotebook(nb)}
-                      onDelete={() => onDeleteNotebook(nb.id)}
-                    />
-                    {expandedNotebookIds.has(nb.id) &&
-                      sortDocs(docsInNotebook(nb.id), sort).map((d) => renderDocRow(d, true))}
-                    {expandedNotebookIds.has(nb.id) &&
-                      (personalTemplatesByNotebook[nb.id] || []).map((t) => (
-                        <tr
-                          key={t.id}
-                          className="pen-explorer-row pen-explorer-row--child cursor-pointer"
-                          onClick={() => onOpenPersonalTemplate?.(t.id)}
-                        >
-                          <td className="pen-explorer-action px-2 py-2" />
-                          <td className="pen-explorer-name-cell pen-explorer-name-indent px-3 py-2 font-medium text-black">
-                            <span className="pen-explorer-name-label">
-                              <span className="pen-explorer-twisty-spacer" aria-hidden />
-                              <span className="min-w-0 truncate">{t.title}</span>
-                            </span>
-                          </td>
-                          <td className="pen-explorer-col-category px-3 py-2 text-xs text-neutral-500">
-                            —
-                          </td>
-                          <td className="pen-explorer-col-form px-3 py-2 text-xs text-neutral-500">
-                            Template
-                          </td>
-                          <td className="pen-explorer-col-status px-3 py-2 text-xs text-neutral-500">
-                            Saved
-                          </td>
-                          <td className="pen-explorer-col-updated px-3 py-2 text-xs text-neutral-500">
-                            —
-                          </td>
-                        </tr>
-                      ))}
-                  </Fragment>
-                ))}
-              {sortDocs(rootDocs, sort).map((d) => renderDocRow(d, false))}
-              {personalTemplates.map((t) => (
-                <tr
-                  key={t.id}
-                  className="pen-explorer-row cursor-pointer"
-                  onClick={() => onOpenPersonalTemplate?.(t.id)}
-                >
-                  <td className="pen-explorer-action px-2 py-2" />
-                  <td className="pen-explorer-name-cell px-3 py-2 font-medium text-black">
-                    <span className="pen-explorer-name-label">
-                      <span className="pen-explorer-twisty-spacer" aria-hidden />
-                      <span className="min-w-0 truncate">{t.title}</span>
-                    </span>
-                  </td>
-                  <td className="pen-explorer-col-category px-3 py-2 text-xs text-neutral-500">
-                    —
-                  </td>
-                  <td className="pen-explorer-col-form px-3 py-2 text-xs text-neutral-500">
-                    Template
-                  </td>
-                  <td className="pen-explorer-col-status px-3 py-2 text-xs text-neutral-500">
-                    Saved
-                  </td>
-                  <td className="pen-explorer-col-updated px-3 py-2 text-xs text-neutral-500">
-                    —
-                  </td>
-                </tr>
+      <div className="pen-explorer-scroll">
+        <table className="pen-explorer-table text-left text-sm">
+          <thead className="text-[11px] tracking-wide">
+            <tr>
+              <th className="pen-explorer-action px-2 text-center" aria-label="Select" />
+              <SortHeader
+                label="Name"
+                sortKey="name"
+                sort={sort}
+                onSort={onSort}
+                className="pen-explorer-name-header"
+              />
+              <SortHeader
+                label="Category"
+                sortKey="category"
+                sort={sort}
+                onSort={onSort}
+                className="pen-explorer-col-category"
+              />
+              <SortHeader
+                label="Form"
+                sortKey="form"
+                sort={sort}
+                onSort={onSort}
+                className="pen-explorer-col-form"
+              />
+              <th className="pen-explorer-col-status px-3 text-left">
+                <span className="text-[11px] font-normal uppercase tracking-wide text-neutral-600">
+                  Status
+                </span>
+              </th>
+              <SortHeader
+                label="Updated"
+                sortKey="updated"
+                sort={sort}
+                onSort={onSort}
+                align="left"
+                className="pen-explorer-col-updated"
+              />
+            </tr>
+          </thead>
+          <tbody>
+            {!bulkMode &&
+              notebooks.map((nb) => (
+                <Fragment key={nb.id}>
+                  <NotebookExplorerRow
+                    notebook={nb}
+                    expanded={expandedNotebookIds.has(nb.id)}
+                    onToggleExpand={() => onToggleNotebook(nb.id)}
+                    onRename={() => onRenameNotebook(nb)}
+                    onDelete={() => onDeleteNotebook(nb.id)}
+                  />
+                  {expandedNotebookIds.has(nb.id) &&
+                    sortDocs(docsInNotebook(nb.id), sort).map((d) => renderDocRow(d, true))}
+                  {expandedNotebookIds.has(nb.id) &&
+                    (personalTemplatesByNotebook[nb.id] || []).map((t) => (
+                      <tr
+                        key={t.id}
+                        className="pen-explorer-row pen-explorer-row--child cursor-pointer"
+                        onClick={() => onOpenPersonalTemplate?.(t.id)}
+                      >
+                        <td className="pen-explorer-action px-2 py-2" />
+                        <td className="pen-explorer-name-cell pen-explorer-name-indent px-3 py-2 font-medium text-black">
+                          <span className="pen-explorer-name-label">
+                            <span className="pen-explorer-twisty-spacer" aria-hidden />
+                            <span className="min-w-0 truncate">{t.title}</span>
+                          </span>
+                        </td>
+                        <td className="pen-explorer-col-category px-3 py-2 text-xs text-neutral-500">
+                          —
+                        </td>
+                        <td className="pen-explorer-col-form px-3 py-2 text-xs text-neutral-500">
+                          Template
+                        </td>
+                        <td className="pen-explorer-col-status px-3 py-2 text-xs text-neutral-500">
+                          Saved
+                        </td>
+                        <td className="pen-explorer-col-updated px-3 py-2 text-xs text-neutral-500">
+                          —
+                        </td>
+                      </tr>
+                    ))}
+                </Fragment>
               ))}
-            </tbody>
-          </table>
-        </div>
+            {sortDocs(rootDocs, sort).map((d) => renderDocRow(d, false))}
+            {personalTemplates.map((t) => (
+              <tr
+                key={t.id}
+                className="pen-explorer-row cursor-pointer"
+                onClick={() => onOpenPersonalTemplate?.(t.id)}
+              >
+                <td className="pen-explorer-action px-2 py-2" />
+                <td className="pen-explorer-name-cell px-3 py-2 font-medium text-black">
+                  <span className="pen-explorer-name-label">
+                    <span className="pen-explorer-twisty-spacer" aria-hidden />
+                    <span className="min-w-0 truncate">{t.title}</span>
+                  </span>
+                </td>
+                <td className="pen-explorer-col-category px-3 py-2 text-xs text-neutral-500">
+                  —
+                </td>
+                <td className="pen-explorer-col-form px-3 py-2 text-xs text-neutral-500">
+                  Template
+                </td>
+                <td className="pen-explorer-col-status px-3 py-2 text-xs text-neutral-500">
+                  Saved
+                </td>
+                <td className="pen-explorer-col-updated px-3 py-2 text-xs text-neutral-500">
+                  —
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
       </div>
     </div>
   );
@@ -612,20 +607,6 @@ function MinusIcon() {
         strokeLinecap="round"
         strokeLinejoin="round"
       />
-    </svg>
-  );
-}
-
-function NotebookGlyph() {
-  return (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden>
-      <path
-        d="M5 4.5A1.5 1.5 0 0 1 6.5 3H18a1 1 0 0 1 1 1v16a1 1 0 0 1-1 1H6.5A1.5 1.5 0 0 1 5 19.5v-15Z"
-        stroke="currentColor"
-        strokeWidth="1.6"
-        strokeLinejoin="round"
-      />
-      <path d="M9 3v18" stroke="currentColor" strokeWidth="1.6" />
     </svg>
   );
 }
@@ -701,6 +682,7 @@ function DocGalleryCard({
       {!bulkMode && !renaming && (
         <DocItemMenu
           folders={folders}
+          preferAbove
           onRename={onStartRename}
           onMove={onMove}
           onDelete={onDelete}
@@ -726,8 +708,8 @@ function DocGalleryCard({
       {bundle ? (
         <DocGalleryPreview manifest={bundle.manifest} sections={bundle.sections} />
       ) : (
-        <div className="flex h-full w-full items-center justify-center bg-neutral-100 text-[10px] text-neutral-500">
-          —
+        <div className="pen-gallery-doc-page pen-gallery-doc-page--paper">
+          <div className="pen-gallery-doc-paper-title">{title}</div>
         </div>
       )}
     </div>
@@ -790,17 +772,14 @@ function NotebookGalleryCard({
           <DocItemMenu
             folders={[]}
             showMove={false}
+            preferAbove
             onRename={onRename}
             onMove={() => undefined}
             onDelete={onDelete}
           />
         </div>
-        <button
-          type="button"
-          onClick={onOpen}
-          className="pen-gallery-tile-preview flex items-center justify-center bg-neutral-100 text-neutral-600 hover:bg-neutral-200"
-        >
-          <NotebookGlyph />
+        <button type="button" onClick={onOpen} className="pen-gallery-tile-preview">
+          <NotebookGalleryThumb label={notebook.name} />
         </button>
       </div>
     </div>
@@ -814,8 +793,8 @@ function CreateNewGalleryTile({ onClick }: { onClick: () => void }) {
         <div className="pen-gallery-tile-title">
           <span className="pen-gallery-tile-title-text">Create new</span>
         </div>
-        <span className="pen-gallery-tile-preview flex items-center justify-center text-2xl font-light text-neutral-500">
-          +
+        <span className="pen-gallery-tile-preview">
+          <CreateNewGalleryThumb />
         </span>
       </button>
     </div>
@@ -823,9 +802,13 @@ function CreateNewGalleryTile({ onClick }: { onClick: () => void }) {
 }
 
 function PersonalTemplateGalleryCard({
+  pn,
+  templateId,
   title,
   onOpen
 }: {
+  pn: string;
+  templateId: string;
   title: string;
   onOpen: () => void;
 }) {
@@ -835,8 +818,8 @@ function PersonalTemplateGalleryCard({
         <div className="pen-gallery-tile-title">
           <span className="pen-gallery-tile-title-text">{title}</span>
         </div>
-        <span className="pen-gallery-tile-preview flex items-center justify-center bg-neutral-100 text-xs text-neutral-500">
-          Template
+        <span className="pen-gallery-tile-preview">
+          <TemplateGalleryThumb pn={pn} templateId={templateId} />
         </span>
       </button>
     </div>
@@ -908,6 +891,8 @@ function DocGalleryGrid({
             personalTemplates.map((t) => (
               <PersonalTemplateGalleryCard
                 key={t.id}
+                pn={pn}
+                templateId={t.id}
                 title={t.title}
                 onOpen={() => onOpenPersonalTemplate?.(t.id)}
               />

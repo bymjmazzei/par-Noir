@@ -3,22 +3,20 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
   categoryIdForClass,
-  emptySection,
   getClass,
-  getTemplate,
   listConsumerCategories,
   listStarterTemplates,
   listTemplatesGroupedByCategory,
-  requireTemplate,
-  templateAuthorLabel,
   type PenTemplate
 } from '@par-noir/pen-protocol';
 import type { PenSession } from '../App';
 import { BrowseFeedTilePreview } from './BrowseFeedTilePreview';
 import { DocGalleryPreview } from './DocGalleryPreview';
 import {
-  isPersonalTemplateId,
-  loadPersonalTemplate,
+  TemplateGalleryThumb,
+  templatePreviewBundle
+} from './TemplateGalleryThumb';
+import {
   personalTemplatesAsPenTemplates,
   savePersonalTemplateFromCatalog
 } from '../services/penPersonalTemplates';
@@ -106,55 +104,6 @@ function Chevron({ expanded }: { expanded: boolean }) {
       </svg>
     </span>
   );
-}
-
-function templatePreviewBundle(pn: string | undefined, templateId: string) {
-  if (pn && isPersonalTemplateId(templateId)) {
-    const personal = loadPersonalTemplate(pn, templateId);
-    if (!personal) return null;
-    const based = getTemplate(personal.basedOnTemplateId);
-    return {
-      title: personal.title,
-      description: based?.description || 'Personal template',
-      authorDisplayName: 'You',
-      manifest: {
-        docId: 'preview',
-        title: personal.title,
-        docType: personal.docType,
-        classId: personal.classId,
-        templateId: personal.id,
-        templateVersion: personal.version,
-        groupId: 'preview',
-        toc: personal.sections.map((s) => s.slug),
-        createdAt: personal.createdAt,
-        updatedAt: personal.createdAt
-      },
-      sections: personal.seedSections.length
-        ? personal.seedSections
-        : personal.sections.map((s) => emptySection(s.slug))
-    };
-  }
-  const t = getTemplate(templateId) || requireTemplate(templateId);
-  return {
-    title: t.title,
-    description: t.description || '',
-    authorDisplayName: templateAuthorLabel(t),
-    manifest: {
-      docId: 'preview',
-      title: t.title,
-      docType: t.docType,
-      classId: t.classId,
-      templateId: t.id,
-      templateVersion: t.version,
-      groupId: 'preview',
-      toc: t.sections.map((s) => s.slug),
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString()
-    },
-    sections: t.seedSections?.length
-      ? t.seedSections
-      : t.sections.map((s) => emptySection(s.slug))
-  };
 }
 
 export function TemplatesBrowse({
@@ -365,7 +314,7 @@ export function TemplatesBrowse({
                                     <span className="pen-gallery-tile-title-text">{t.title}</span>
                                   </div>
                                   <span className="pen-gallery-tile-preview">
-                                    <TemplateThumb
+                                    <TemplateGalleryThumb
                                       pn={session?.pnIdentifier}
                                       templateId={t.id}
                                     />
@@ -383,44 +332,35 @@ export function TemplatesBrowse({
             </div>
           ) : (
             <div className="pen-explorer">
-              <div className="pen-explorer-sticky-head">
-                <div className="pen-explorer-scroll">
-                  <table className="pen-explorer-table w-full text-left text-sm">
-                    <thead className="text-[11px] tracking-wide">
-                      <tr>
-                        <th className="pen-explorer-action" aria-hidden />
-                        <th className="pen-explorer-name-header px-3">Name</th>
-                        <th className="pen-explorer-col-category px-3">Kind</th>
-                        <th className="pen-explorer-col-form px-3">Form</th>
-                      </tr>
-                    </thead>
-                  </table>
-                </div>
-                <div className="pen-library-title-rule" aria-hidden />
-              </div>
-              <div className="pen-explorer-body">
-                <div className="pen-explorer-scroll">
-                  <table className="pen-explorer-table w-full text-left text-sm">
-                    <tbody>
-                      {grouped.map((g) => {
-                        const catOpen = expandedCategories.has(g.category.id);
-                        return (
-                          <CategoryDirBlock
-                            key={g.category.id}
-                            categoryTitle={g.category.title}
-                            categoryId={g.category.id}
-                            expanded={catOpen}
-                            onToggle={() => toggleCategory(g.category.id)}
-                            forms={g.forms}
-                            expandedForms={expandedForms}
-                            onToggleForm={toggleForm}
-                            onOpenTemplate={setPreviewId}
-                          />
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
+              <div className="pen-explorer-scroll">
+                <table className="pen-explorer-table w-full text-left text-sm">
+                  <thead className="text-[11px] tracking-wide">
+                    <tr>
+                      <th className="pen-explorer-action" aria-hidden />
+                      <th className="pen-explorer-name-header px-3">Name</th>
+                      <th className="pen-explorer-col-category px-3">Kind</th>
+                      <th className="pen-explorer-col-form px-3">Form</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {grouped.map((g) => {
+                      const catOpen = expandedCategories.has(g.category.id);
+                      return (
+                        <CategoryDirBlock
+                          key={g.category.id}
+                          categoryTitle={g.category.title}
+                          categoryId={g.category.id}
+                          expanded={catOpen}
+                          onToggle={() => toggleCategory(g.category.id)}
+                          forms={g.forms}
+                          expandedForms={expandedForms}
+                          onToggleForm={toggleForm}
+                          onOpenTemplate={setPreviewId}
+                        />
+                      );
+                    })}
+                  </tbody>
+                </table>
               </div>
             </div>
           )}
@@ -639,22 +579,5 @@ function FormDirBlock({
           </tr>
         ))}
     </>
-  );
-}
-
-function TemplateThumb({ pn, templateId }: { pn?: string; templateId: string }) {
-  const preview = templatePreviewBundle(pn, templateId);
-  if (!preview) {
-    return (
-      <span className="flex h-full w-full items-center justify-center text-[10px] text-neutral-500">
-        —
-      </span>
-    );
-  }
-  return (
-    <DocGalleryPreview
-      manifest={preview.manifest as never}
-      sections={preview.sections}
-    />
   );
 }

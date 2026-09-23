@@ -809,43 +809,16 @@ button.pen-app-chrome-brand:hover {
   min-height: 0;
 }
 
-.pen-explorer-sticky-head {
-  position: sticky;
-  top: 2.5rem;
-  z-index: 5;
-  flex-shrink: 0;
-  background: #fff;
-}
-
-.pen-explorer-body {
-  position: relative;
-  flex: 1 1 auto;
-  min-height: 0;
-  background: transparent;
-}
-
-/* Blue pitch lines sit above row fills so hover does not erase them */
-.pen-explorer-body::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  z-index: 2;
-  background-image: repeating-linear-gradient(
-    to bottom,
-    transparent 0,
-    transparent calc(var(--pen-rule-pitch) - 1px),
-    var(--pen-rule-blue) calc(var(--pen-rule-pitch) - 1px),
-    var(--pen-rule-blue) var(--pen-rule-pitch)
-  );
-}
-
+/*
+ * One scrollport for header + rows so columns stay aligned when the window shrinks.
+ */
 .pen-explorer-scroll {
   position: relative;
   z-index: 1;
+  flex: 1 1 auto;
+  min-height: 0;
   width: 100%;
-  overflow-x: auto;
-  overflow-y: visible;
+  overflow: auto;
   -webkit-overflow-scrolling: touch;
 }
 
@@ -867,8 +840,9 @@ button.pen-app-chrome-brand:hover {
 
 .pen-explorer-table {
   border-collapse: collapse;
-  width: 100%;
-  min-width: 100%;
+  /* Rem sum of column floors — horizontal scroll before Name/Category collide */
+  width: max(100%, 36.5rem);
+  min-width: 36.5rem;
   table-layout: fixed;
 }
 
@@ -881,8 +855,12 @@ button.pen-app-chrome-brand:hover {
 }
 
 .pen-explorer thead th {
+  position: sticky;
+  top: 0;
+  z-index: 4;
   background: #fff;
   border: none !important;
+  border-bottom: 1px solid var(--pen-rule-blue) !important;
   box-shadow: none !important;
   height: var(--pen-explorer-head-h);
   padding-top: 0;
@@ -893,6 +871,17 @@ button.pen-app-chrome-brand:hover {
 
 .pen-explorer thead th.pen-explorer-action {
   background: #fff;
+}
+
+.pen-explorer tbody {
+  /* Ruled lines travel with rows (same pitch as row height) */
+  background-image: repeating-linear-gradient(
+    to bottom,
+    transparent 0,
+    transparent calc(var(--pen-rule-pitch) - 1px),
+    var(--pen-rule-blue) calc(var(--pen-rule-pitch) - 1px),
+    var(--pen-rule-blue) var(--pen-rule-pitch)
+  );
 }
 
 .pen-explorer tbody td {
@@ -926,12 +915,12 @@ button.pen-app-chrome-brand:hover {
 }
 
 /*
- * Name takes all leftover width under table-layout:fixed.
+ * Name takes leftover width under table-layout:fixed.
  * Meta cols use rem — never % — so slack cannot dump into a twisty/action column.
  */
 .pen-explorer-name-header,
 .pen-explorer-name-cell {
-  width: 100%;
+  width: auto;
   min-width: 8rem;
 }
 
@@ -1023,6 +1012,7 @@ button.pen-app-chrome-brand:hover {
   row-gap: var(--pen-gallery-row-gap);
   position: relative;
   z-index: 1;
+  overflow: visible;
 }
 
 .pen-gallery-slot {
@@ -1033,6 +1023,7 @@ button.pen-app-chrome-brand:hover {
   justify-content: center;
   box-sizing: border-box;
   padding-block: var(--pen-gallery-band-pad);
+  overflow: visible;
 }
 
 .pen-gallery-tile {
@@ -1047,7 +1038,8 @@ button.pen-app-chrome-brand:hover {
   padding: 0;
   border: none;
   background: transparent;
-  overflow: hidden;
+  /* Preview clips; title + ⋮ menu must paint above adjacent tiles */
+  overflow: visible;
   text-align: left;
   color: inherit;
   font: inherit;
@@ -1059,6 +1051,8 @@ button.pen-app-chrome-brand:hover {
 }
 
 .pen-gallery-tile-title {
+  position: relative;
+  z-index: 2;
   display: flex;
   align-items: center;
   gap: 0.125rem;
@@ -1098,6 +1092,7 @@ input.pen-gallery-tile-title-text {
 
 .pen-gallery-tile-preview {
   position: relative;
+  z-index: 1;
   flex: 0 1 auto;
   display: flex;
   align-items: center;
@@ -1234,6 +1229,73 @@ input.pen-gallery-tile-title-text {
   width: 1.25rem;
   height: 1.25rem;
   font-size: 14px;
+}
+
+/* Create new / notebook gallery thumbs — same paper chrome as templates */
+.pen-gallery-tile-blank {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  aspect-ratio: 3 / 4;
+  min-height: 100%;
+}
+
+.pen-gallery-tile-blank-plus {
+  font-size: 1.75rem;
+  font-weight: 300;
+  line-height: 1;
+  color: #737373;
+}
+
+.pen-gallery-tile-notebook {
+  position: relative;
+  display: flex;
+  flex-direction: row;
+  align-items: stretch;
+  aspect-ratio: 3 / 4;
+  min-height: 100%;
+  padding: 0;
+  overflow: hidden;
+}
+
+.pen-gallery-tile-notebook-spine {
+  width: 10px;
+  flex-shrink: 0;
+  background: linear-gradient(90deg, #d4d4d4 0%, #f5f5f5 55%, #e5e5e5 100%);
+  border-right: 1px solid #a3a3a3;
+}
+
+.pen-gallery-tile-notebook-body {
+  flex: 1;
+  min-width: 0;
+  padding: 8px 6px 6px;
+  display: flex;
+  flex-direction: column;
+}
+
+.pen-gallery-tile-notebook-lines {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  margin-top: 6px;
+  flex: 1;
+}
+
+.pen-gallery-tile-notebook-lines > span {
+  display: block;
+  height: 1px;
+  background: #e5e5e5;
+  width: 100%;
+}
+
+.pen-doc-item-menu-panel {
+  min-width: 10rem;
+  border-radius: 0.375rem;
+  border: 1px solid #e5e5e5;
+  background: #fff;
+  padding: 0.25rem 0;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
 }
 
 .pen-add-menu {
