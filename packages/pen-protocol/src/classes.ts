@@ -113,7 +113,7 @@ const CLASSES: PenClass[] = [
   {
     id: 'library',
     title: 'Library',
-    description: 'Durable published works (books, articles)',
+    description: 'Durable published works (books, articles, music)',
     kind: 'authored',
     audience: 'consumer'
   },
@@ -129,6 +129,14 @@ const CLASSES: PenClass[] = [
     id: 'library.article',
     title: 'Article',
     description: 'Shorter durable article',
+    kind: 'authored',
+    audience: 'consumer',
+    parentId: 'library'
+  },
+  {
+    id: 'library.music',
+    title: 'Music',
+    description: 'Track / audio asset with licensing',
     kind: 'authored',
     audience: 'consumer',
     parentId: 'library'
@@ -191,6 +199,14 @@ const CLASSES: PenClass[] = [
     title: 'Register',
     description: 'Tabular register rows',
     kind: 'register',
+    audience: 'kit',
+    parentId: 'records'
+  },
+  {
+    id: 'records.asset_key',
+    title: 'Asset key',
+    description: 'License-key receipt after paid unconditional purchase',
+    kind: 'dossier',
     audience: 'kit',
     parentId: 'records'
   }

@@ -374,6 +374,22 @@ const STARTER: PenTemplate[] = [
     })
   },
   {
+    id: 'music.basic.v1',
+    classId: 'library.music',
+    docType: 'music',
+    version: '1',
+    title: 'Basic Music',
+    description: 'Track title, artist, and audio',
+    sections: [
+      { slug: 'meta', title: 'Meta', required: true },
+      { slug: 'audio', title: 'Audio', required: true }
+    ],
+    agentStarter: proseStarter({
+      title: 'Basic Music',
+      focus: 'Fill track meta (title, artist) and attach audio in audio.',
+    })
+  },
+  {
     id: 'calendar.basic.v1',
     classId: 'time.calendar',
     docType: 'calendar',
@@ -427,6 +443,22 @@ const STARTER: PenTemplate[] = [
     agentStarter: registerStarter({
       title: 'Basic Register',
       columns: DEFAULT_REGISTER_COLUMNS
+    })
+  },
+  {
+    id: 'asset_key.basic.v1',
+    classId: 'records.asset_key',
+    docType: 'asset_key',
+    version: '1',
+    title: 'Asset Key',
+    description: 'Paid license receipt (kit) — asset ref, scope, price, ZKP',
+    sections: [
+      { slug: 'grant', title: 'Grant', required: true },
+      { slug: 'proof', title: 'Proof', required: true }
+    ],
+    agentStarter: proseStarter({
+      title: 'Asset Key',
+      focus: 'Record asset id, scope, price, and license-key proof after purchase.',
     })
   }
 ];

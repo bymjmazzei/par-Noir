@@ -4,6 +4,7 @@ import {
   assertLicensingRoot,
   assertPlatformRoyaltyConfig,
   BPS_DENOM,
+  claimsForPostWithMusic,
   defaultLicensingRoot,
   defaultPlatformRoyaltyConfig,
   normalizeLicensingRoot,
@@ -20,17 +21,30 @@ describe('platform royalty config', () => {
 });
 
 describe('licensing root', () => {
-  it('defaults ARR with full content_rights claim to owner', () => {
+  it('non-membership defaults to unconditionalFree', () => {
     const root = defaultLicensingRoot('pn_hash_a');
-    expect(root.workLicense).toBe('all-rights-reserved');
+    expect(root.family).toBe('unconditionalFree');
+    expect(root.contracts).toEqual([]);
+    expect(assertLicensingRoot(root)).toBeNull();
+  });
+
+  it('membership defaults to implied with full content_rights claim', () => {
+    const root = defaultLicensingRoot('pn_hash_a', { membership: true });
+    expect(root.family).toBe('implied');
     expect(assertLicensingRoot(root)).toBeNull();
     expect(root.contracts[0]?.claimBps).toBe(BPS_DENOM);
     expect(root.contracts[0]?.splits[0]?.holderPnHash).toBe('pn_hash_a');
   });
 
+  it('musicAsset default uses music party', () => {
+    const root = defaultLicensingRoot('artist', { membership: true, musicAsset: true });
+    expect(root.contracts[0]?.party).toBe('music');
+  });
+
   it('rejects duplicate party and bad splits', () => {
     expect(
       assertLicensingRoot({
+        family: 'implied',
         workLicense: 'cc-by',
         contracts: [
           { party: 'content_rights', claimBps: 5000, splits: [] },
@@ -41,6 +55,7 @@ describe('licensing root', () => {
 
     expect(
       assertLicensingRoot({
+        family: 'implied',
         workLicense: 'cc-by',
         contracts: [
           {
@@ -56,9 +71,45 @@ describe('licensing root', () => {
     ).toBe('splits_sum');
   });
 
+  it('paid offers require priceCents > 0', () => {
+    expect(
+      assertLicensingRoot({
+        family: 'unconditionalPaid',
+        contracts: [],
+        offers: [{ scope: 'personal', priceCents: 0, currency: 'usd' }]
+      })
+    ).toBe('paid_offer_price');
+
+    expect(
+      assertLicensingRoot({
+        family: 'unconditionalPaid',
+        contracts: [],
+        offers: [{ scope: 'commercial', priceCents: 999, currency: 'usd' }]
+      })
+    ).toBeNull();
+  });
+
+  it('normalize coerces implied to free when membership false', () => {
+    const n = normalizeLicensingRoot(
+      {
+        family: 'implied',
+        contracts: [
+          {
+            party: 'content_rights',
+            claimBps: 10000,
+            splits: [{ holderPnHash: 'o', role: 'author', shareBps: 10000 }]
+          }
+        ]
+      },
+      'owner',
+      { membership: false }
+    );
+    expect(n.family).toBe('unconditionalFree');
+  });
+
   it('normalizeLicensingRoot recovers from garbage', () => {
     const n = normalizeLicensingRoot({ workLicense: 'nope', contracts: 'x' }, 'owner');
-    expect(n.workLicense).toBe('all-rights-reserved');
+    expect(n.family).toBe('unconditionalFree');
     expect(assertLicensingRoot(n)).toBeNull();
   });
 });
@@ -89,7 +140,6 @@ describe('allocatePostBounty', () => {
       contentSplits: ownerSplit,
       musicAttached: false
     });
-    // 1500 * 0.75 = 1125 claimed; music 0; engager 1500; publisher = 10000 - 1500 - 1125 = 7375
     expect(a.contentRightsClaimedBps).toBe(1125);
     expect(a.musicClaimedBps).toBe(0);
     expect(a.engagerPoolBps).toBe(1500);
@@ -97,27 +147,33 @@ describe('allocatePostBounty', () => {
     expect(a.contentPayees[0]?.bps).toBe(1125);
   });
 
-  it('claimsFromLicensingRoot feeds allocatePostBounty', () => {
-    const root = normalizeLicensingRoot(
-      {
-        workLicense: 'cc-by',
-        contracts: [
-          {
-            party: 'content_rights',
-            claimBps: 10000,
-            splits: ownerSplit
-          },
-          {
-            party: 'music',
-            claimBps: 10000,
-            splits: artistSplit
-          }
-        ]
-      },
-      'owner'
-    );
-    const claims = claimsFromLicensingRoot(root);
-    const a = allocatePostBounty({ ...claims });
-    expect(a.publisherBps).toBe(6000);
+  it('claimsFromLicensingRoot zero for free family', () => {
+    const free = defaultLicensingRoot('o');
+    const c = claimsFromLicensingRoot(free);
+    expect(c.contentClaimBps).toBe(0);
+    expect(c.musicAttached).toBe(false);
+  });
+
+  it('claimsFromLicensingRoot feeds allocatePostBounty for implied', () => {
+    const root = defaultLicensingRoot('owner', { membership: true });
+    const c = claimsFromLicensingRoot(root);
+    const a = allocatePostBounty({
+      ...c,
+      musicAttached: false
+    });
+    expect(a.contentRightsClaimedBps).toBe(1500);
+    expect(a.publisherBps).toBe(7000);
+  });
+
+  it('claimsForPostWithMusic zeros music when music doc is free', () => {
+    const post = defaultLicensingRoot('pub', { membership: true });
+    const music = defaultLicensingRoot('artist');
+    const c = claimsForPostWithMusic({
+      postLicensing: post,
+      musicLicensing: music,
+      musicAttached: true
+    });
+    expect(c.musicAttached).toBe(true);
+    expect(c.musicClaimBps).toBe(0);
   });
 });

@@ -1,8 +1,14 @@
 /**
- * Messaging crypto unlock — ML-KEM secret in memory only.
+ * Messaging + authorship crypto unlock — ML-KEM (+ optional ML-DSA) in memory only.
  */
 
 import { unlockIdentityMlKemSecret, deriveMlKemPublicKeyFromSecretKey, type EncryptedIdentityPayload } from '@par-noir/dm-crypto';
+import { base64ToBytes } from '@par-noir/pqc-crypto/encoding';
+import {
+  mergeMessagingSessionParts,
+  parseMessagingHandoffFromStorage,
+  PN_MESSAGING_OAUTH_HANDOFF_STORAGE,
+} from '@par-noir/oauth-ui';
 import { clearDmSessionCache } from './dmSessionCache';
 import { PNOAuthService } from './pnOAuthService';
 
@@ -12,6 +18,9 @@ const DM_SESSION_STORAGE_KEY = 'pn_dm_session_v1';
 export interface DmIdentityState {
   mlKemSecretKey: string;
   mlKemPublicKey?: string;
+  /** Durable ML-DSA from OAuth messaging handoff — Pen Mini / Note authorship. */
+  mlDsaPublicKey?: string;
+  mlDsaSecretKey?: string;
   pnName: string;
   /** In-memory only for client seals (e.g. device privateDisplay); never persisted. */
   passcode: string;
@@ -20,6 +29,8 @@ export interface DmIdentityState {
 export interface DmSessionHandoff {
   mlKemSecretKey: string;
   mlKemPublicKey?: string;
+  mlDsaPublicKey?: string;
+  mlDsaSecretKey?: string;
 }
 
 let state: DmIdentityState | null = null;
@@ -35,6 +46,19 @@ function notifyDmIdentityChange(): void {
 }
 export function isDmIdentityReady(): boolean {
   return state !== null;
+}
+
+/** True when in-memory session has a durable ML-DSA pair (Pen authorship). */
+export function hasSigningKeys(): boolean {
+  return Boolean(state?.mlDsaPublicKey && state?.mlDsaSecretKey);
+}
+
+/**
+ * OAuth unlock success for browse: messaging KEM + authorship DSA.
+ * Passcode re-derive may restore KEM only; full unlock needed for DSA.
+ */
+export function isBrowseUnlockCryptoReady(): boolean {
+  return isDmIdentityReady() && hasSigningKeys();
 }
 
 export function hasStoredEncryptedIdentity(): boolean {
@@ -69,7 +93,74 @@ function syncDmIdentityPublicKey(): void {
   persistDmSessionToStorage({
     mlKemSecretKey: state.mlKemSecretKey,
     mlKemPublicKey: derived,
+    mlDsaPublicKey: state.mlDsaPublicKey,
+    mlDsaSecretKey: state.mlDsaSecretKey,
   });
+}
+
+/** Merge DSA (and missing KEM fields) from short-lived OAuth handoff stash. */
+export function enrichDmSessionFromHandoffStash(): void {
+  if (!state?.mlKemSecretKey) return;
+  if (state.mlDsaPublicKey && state.mlDsaSecretKey) return;
+  let fromStorage:
+    | {
+        mlKemSecretKey: string;
+        mlKemPublicKey?: string;
+        mlDsaSecretKey?: string;
+        mlDsaPublicKey?: string;
+      }
+    | undefined;
+  try {
+    fromStorage = parseMessagingHandoffFromStorage(
+      localStorage.getItem(PN_MESSAGING_OAUTH_HANDOFF_STORAGE)
+    )?.session;
+  } catch {
+    fromStorage = undefined;
+  }
+  const merged = mergeMessagingSessionParts(
+    {
+      mlKemSecretKey: state.mlKemSecretKey,
+      mlKemPublicKey: state.mlKemPublicKey,
+      mlDsaPublicKey: state.mlDsaPublicKey,
+      mlDsaSecretKey: state.mlDsaSecretKey,
+    },
+    fromStorage
+  );
+  if (!merged?.mlDsaPublicKey || !merged?.mlDsaSecretKey) return;
+  state = {
+    ...state,
+    mlKemSecretKey: merged.mlKemSecretKey || state.mlKemSecretKey,
+    mlKemPublicKey: state.mlKemPublicKey,
+    mlDsaPublicKey: merged.mlDsaPublicKey,
+    mlDsaSecretKey: merged.mlDsaSecretKey,
+  };
+  notifyDmIdentityChange();
+}
+
+/**
+ * Durable ML-DSA for Pen Mini / Note authorship. No ephemeral fallback.
+ * Merges from handoff stash when in-memory DSA was stripped from URL hash.
+ */
+export function resolveBrowseSigningKeys(): {
+  publicKey: Uint8Array;
+  secretKey: Uint8Array;
+  ephemeral: boolean;
+} {
+  enrichDmSessionFromHandoffStash();
+  if (state?.mlDsaSecretKey && state?.mlDsaPublicKey) {
+    try {
+      return {
+        publicKey: base64ToBytes(state.mlDsaPublicKey),
+        secretKey: base64ToBytes(state.mlDsaSecretKey),
+        ephemeral: false,
+      };
+    } catch {
+      throw new Error('signing_keys_invalid');
+    }
+  }
+  throw new Error(
+    'signing_keys_required — unlock again so ML-DSA keys are included in the messaging handoff'
+  );
 }
 
 /** ML-KEM public key for connection send — always derived from the unlocked secret key. */
@@ -101,13 +192,37 @@ export function restoreDmSessionFromStorage(): boolean {
   return state !== null;
 }
 
-/** Apply ML-KEM keys handed off from OAuth consent (postMessage). */
+/** Apply ML-KEM (+ ML-DSA when present) handed off from OAuth consent (postMessage). */
 export function applyDmSessionHandoff(session: DmSessionHandoff): void {
   if (!session.mlKemSecretKey) return;
+
+  const incomingDsaPk =
+    typeof session.mlDsaPublicKey === 'string' && session.mlDsaPublicKey
+      ? session.mlDsaPublicKey
+      : undefined;
+  const incomingDsaSk =
+    typeof session.mlDsaSecretKey === 'string' && session.mlDsaSecretKey
+      ? session.mlDsaSecretKey
+      : undefined;
+
   if (state?.mlKemSecretKey === session.mlKemSecretKey) {
     syncDmIdentityPublicKey();
+    // Same KEM: still merge DSA if handoff (or later stash enrich) provides it.
+    if (
+      (incomingDsaPk && incomingDsaSk) &&
+      (state.mlDsaPublicKey !== incomingDsaPk || state.mlDsaSecretKey !== incomingDsaSk)
+    ) {
+      state = {
+        ...state,
+        mlDsaPublicKey: incomingDsaPk,
+        mlDsaSecretKey: incomingDsaSk,
+      };
+      notifyDmIdentityChange();
+    }
+    enrichDmSessionFromHandoffStash();
     return;
   }
+
   const mlKemPublicKey = resolveMlKemPublicKey(
     session.mlKemSecretKey,
     session.mlKemPublicKey
@@ -115,10 +230,18 @@ export function applyDmSessionHandoff(session: DmSessionHandoff): void {
   state = {
     mlKemSecretKey: session.mlKemSecretKey,
     mlKemPublicKey,
+    mlDsaPublicKey: incomingDsaPk,
+    mlDsaSecretKey: incomingDsaSk,
     pnName: state?.pnName || '',
     passcode: state?.passcode || '',
   };
-  persistDmSessionToStorage({ mlKemSecretKey: session.mlKemSecretKey, mlKemPublicKey });
+  persistDmSessionToStorage({
+    mlKemSecretKey: session.mlKemSecretKey,
+    mlKemPublicKey,
+    mlDsaPublicKey: incomingDsaPk,
+    mlDsaSecretKey: incomingDsaSk,
+  });
+  enrichDmSessionFromHandoffStash();
   void publishMlKemPublicKey(mlKemPublicKey).catch(() => {});
   notifyDmIdentityChange();
 }

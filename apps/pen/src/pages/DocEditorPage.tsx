@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import type { Editor } from '@tiptap/react';
 import {
   defaultEditorPagePresentation,
+  defaultLicensingRoot,
   defaultPagePresentation,
   ensureDefaultTextLayer,
   collapseLegacyPrimaryTextLayer,
@@ -1100,6 +1101,23 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
           onTemplatePrivate={publishAsTemplate}
           onLibraryTemplate={publishAsLibraryTemplate}
           onFinishedWork={() => void publishFinishedWork()}
+          licensing={
+            bundle?.manifest.licensing ||
+            defaultLicensingRoot(bundle?.manifest.ownerPnHash, {
+              membership: isVerifiedAuthor(session)
+            })
+          }
+          ownerPnHash={bundle?.manifest.ownerPnHash}
+          membership={isVerifiedAuthor(session)}
+          connectReady={isVerifiedAuthor(session)}
+          musicAsset={bundle?.manifest.classId === 'library.music'}
+          onLicensingChange={(next) => {
+            if (!bundle) return;
+            persist({
+              ...bundle,
+              manifest: { ...bundle.manifest, licensing: next }
+            });
+          }}
         />
         {(status || error) && (
           <span className={`ml-1 text-[12px] ${error ? 'text-red-600' : 'text-teal-800'}`}>

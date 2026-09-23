@@ -1,51 +1,42 @@
 # ADR: Open creator contracts + licensing ZKP
 
-**Status:** Accepted (groundwork)  
+**Status:** Accepted (wired)  
 **Date:** 2026-09-23  
 **Related:** [`ADR_PEN.md`](./ADR_PEN.md), [`CREATOR_FUND_AND_SUBSCRIPTION_ECONOMICS.md`](../business/CREATOR_FUND_AND_SUBSCRIPTION_ECONOMICS.md), [`@par-noir/pen-protocol`](../../packages/pen-protocol), [`@par-noir/zk-protocol-v2`](../../packages/zk-protocol-v2), aggregator `LICENSE_TYPES`
 
 ## Context
 
-Pen templates and docs need a **root** place for (1) work license, (2) open creator contracts that claim a fraction of platform-defined royalty buckets, and (3) a ZKP-shaped commitment so grants can later be proven without redistributing protected asset bytes (fonts, stems, etc.). Monetization go-live (Stripe / fund period close) remains deferred; this ADR fixes the IR and policy spine first.
+Pen templates and docs need a **root** place for (1) license **family**, (2) open creator contracts / paid offers, and (3) ZKP commitments for grants without redistributing protected asset bytes.
 
 ## Decisions
 
-1. **Root fields:** Every `PenTemplate` may declare `licensing`; every `PenDocManifest` normalizes to a `licensing` root (`workLicense` + `contracts[]`). Share/IndexedFile metadata must eventually mirror `workLicense`; it is not the SoT.
+1. **Root fields:** Every `PenTemplate` / `PenDocManifest` normalizes to `licensing` with `family` + `contracts` / `offers`. IndexedFile metadata snapshots `licensing` at publish (not SoT).
 
-2. **Work license vs asset/grant policy:**  
-   - **Work license** — how others may use *this* work (aligned with aggregator `LICENSE_TYPES`: ARR, CC-*, etc.).  
-   - **Open creator contract** — economic claim on a **platform royalty bucket** (`content_rights` | `music`), not a substitute for the work license.  
-   - **Asset grants** (fonts/stems) — follow-on; ZKP binds terms + holder, never requires shipping the file to aggregators.
+2. **Three families:**
+   - **`unconditionalFree`** — default for non-membership; Use/remix without fund claims or Checkout.
+   - **`implied`** — membership only; open contracts + `allocatePostBounty` fund path.
+   - **`unconditionalPaid`** — membership + Connect; upfront price; seller-MoR Stripe direct charge; `parnoir.license_key.v1`; buyer `records.asset_key` receipt.
 
-3. **Platform buckets (defaults, bps of post bounty = 10000):**  
-   - Engager pool: **1500**  
-   - Content-rights bucket: **1500** (template use + remix parents)  
-   - Music bucket: **1000**  
-   - Royalty cap: content-rights + music ≤ **2500**  
-   - Publisher residual: remainder (≥ **6000** under defaults)
+3. **Verified membership** = identity verification current + monetization maintenance. Monetization SKUs (implied, paid, Connect sell, fund receive) ⊆ membership. Fail closed without it.
 
-4. **Open contract `claimBps`:** 0–10000 = fraction of **that party’s bucket** claimed by the rights holder. Unclaimed remainder of the bucket → **publisher**. UI “100%” means “claim the platform max for this party,” not 100% of the post.
+4. **Payment rails:** Platform Stripe is MoR only for maintenance / fund G. Unconditional paid uses **seller Connect direct charge** (Shopify-style). No raw `sk_` paste; no platform MoR for asset sales.
 
-5. **Collaborator `splits[]`:** Divide only the **claimed** amount for that contract; `shareBps` must sum to 10000. At most one contract per `party` on a given asset root.
+5. **Music** = Pen form `library.music`. **Asset key** = kit `records.asset_key`. Licensing portal is thin UX over Pen music docs.
 
-6. **Lineage:** Use vs remix edges remain `basedOnTemplateId` / `basedOnFileId` + remix signals (`penTemplateKind`, layer lock fingerprint). Allocation math may later weight use vs remix inside the content-rights bucket; groundwork stores contracts on the asset that earns.
+6. **Platform buckets / claimBps / splits** — unchanged defaults (engager 1500, content 1500, music 1000, cap 2500).
 
-7. **ZKP:** Context `parnoir.open_creator_contract.v1` on zk-protocol-v2 envelopes. Public inputs bind `asset_id`, `party`, `claim_bps`, `splits_commitment`, `work_license`, `holder_pn_hash`, timestamps. Full selective-disclosure circuits and mint UX are follow-ons.
+7. **ZKP:** `parnoir.open_creator_contract.v1` (implied contracts); `parnoir.license_key.v1` (paid grants).
 
-8. **Pure math first:** `allocatePostBounty` lives in `@par-noir/pen-protocol` and is unit-tested. Creator fund period close must not call it until a dedicated follow-on wires payouts.
-
-## Non-goals (this phase)
-
-Period-close allocator changes; Stripe; Pen contract editor UI; licensing portal / music registry schema; My fonts / Drive fonts folder; publish rasterization.
+8. **Period close** calls `allocatePostBounty` for micro weights; non-implied roots contribute **0** claim.
 
 ## Consequences
 
 | Gain | Cost |
 |------|------|
-| One licensing/economics root for templates, docs, later music | Manifest migration / normalize on load |
-| Creators can leave unclaimed bucket share to remixers | Product copy must explain claim ≠ post % |
-| ZKP-ready grant commitments | Envelope context must stay stable |
+| Clear membership vs free path | Veriff go-live still gates membership in prod |
+| Seller MoR for asset sales | Connect required before paid offers |
+| Pen template-first music + keys | Legacy registry is attach/index only |
 
 ## Follow-ons
 
-Fund close reads `allocatePostBounty`; Pen open-contract editor; music `splits_metadata` = same shape; asset grant ZKPs for fonts/stems; engager weight table (comment / reply / repost-originated).
+My fonts; deeper selective-disclosure circuits; engager weight refinements (repost-originated); Veriff product UX.

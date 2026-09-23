@@ -346,6 +346,10 @@ export interface PublicMetadata {
   basedOnTemplateId?: string;
   /** Public Pen IR blob ref for Use template. */
   penIrRef?: { backend?: string; objectId?: string; publicUrl?: string };
+  /** Snapshot of Pen licensing root at publish. */
+  licensing?: import('@par-noir/pen-protocol').PenLicensingRoot;
+  musicPenDocId?: string;
+  musicLicensing?: import('@par-noir/pen-protocol').PenLicensingRoot;
 
   publicToken?: any;
   /**

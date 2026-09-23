@@ -83,22 +83,27 @@ export class MonetizationService {
     return data.url;
   }
 
-  static async renewFromBalance(accessToken: string): Promise<{
+  static async renewFromBalance(
+    accessToken: string,
+    returnBaseUrl?: string
+  ): Promise<{
     renewed: boolean;
     balanceAfter: number;
     needsPayment: boolean;
     shortfallCents?: number;
+    checkoutUrl?: string;
   }> {
     const res = await fetch(`${API_ENDPOINT}/api/monetization/renew-from-balance`, {
       method: 'POST',
       headers: authHeaders(accessToken),
-      body: JSON.stringify({})
+      body: JSON.stringify(returnBaseUrl ? { return_url: returnBaseUrl } : {})
     });
     const data = (await res.json().catch(() => ({}))) as {
       renewed?: boolean;
       balanceAfter?: number;
       needsPayment?: boolean;
       shortfallCents?: number;
+      checkoutUrl?: string;
       error_description?: string;
     };
     if (!res.ok) {
@@ -108,7 +113,8 @@ export class MonetizationService {
       renewed: Boolean(data.renewed),
       balanceAfter: Number(data.balanceAfter ?? 0),
       needsPayment: Boolean(data.needsPayment),
-      shortfallCents: data.shortfallCents
+      shortfallCents: data.shortfallCents,
+      checkoutUrl: data.checkoutUrl
     };
   }
 

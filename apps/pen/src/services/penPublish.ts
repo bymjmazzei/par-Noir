@@ -146,6 +146,7 @@ export async function writeSocialPublishHandoff(
     penCategoryId: form?.parentId,
     /** IR fetch pointer for Use template (doc id until public IR object lands). */
     penIrRef: { objectId: bundle.manifest.docId },
+    licensing: bundle.manifest.licensing,
     ...(asTemplate
       ? {
           penTemplateKind: (bundle.manifest.basedOnTemplateId

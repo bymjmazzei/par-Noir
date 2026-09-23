@@ -16,6 +16,9 @@ export const PN_MESSAGING_SESSION_MESSAGE = 'pn_messaging_session' as const;
 export interface DmSessionHandoff {
   mlKemSecretKey: string;
   mlKemPublicKey?: string;
+  /** Durable ML-DSA from unlock handoff — Pen Mini / Note authorship. */
+  mlDsaPublicKey?: string;
+  mlDsaSecretKey?: string;
 }
 
 export type InboxThreadType = 'dm' | 'group';

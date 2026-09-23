@@ -76,23 +76,63 @@ export function UploadModal({ feeds: propsFeeds, onClose, onUploadComplete }: Up
 
     try {
       const handoff = takePenPublishHandoff();
+      const fromPost = (textPost?.penPublish || textPost?.metadata || {}) as Record<string, unknown>;
       const templateId =
         (typeof handoff?.templateId === 'string' && handoff.templateId) ||
+        (typeof fromPost.templateId === 'string' && fromPost.templateId) ||
         (typeof textPost?.metadata?.templateId === 'string' && textPost.metadata.templateId) ||
         undefined;
-      const penDocId = typeof handoff?.docId === 'string' ? handoff.docId : undefined;
+      const penDocId =
+        (typeof handoff?.docId === 'string' && handoff.docId) ||
+        (typeof fromPost.penDocId === 'string' && fromPost.penDocId) ||
+        (typeof fromPost.docId === 'string' && fromPost.docId) ||
+        undefined;
+      const headProof = handoff?.headProof ?? fromPost.headProof;
+      const penClassId =
+        (typeof handoff?.penClassId === 'string' && handoff.penClassId) ||
+        (typeof fromPost.penClassId === 'string' && fromPost.penClassId) ||
+        undefined;
+      const penCategoryId =
+        (typeof handoff?.penCategoryId === 'string' && handoff.penCategoryId) ||
+        (typeof fromPost.penCategoryId === 'string' && fromPost.penCategoryId) ||
+        undefined;
+      const penTemplateKind =
+        handoff?.penTemplateKind ||
+        (fromPost.penTemplateKind === 'template' || fromPost.penTemplateKind === 'remix'
+          ? fromPost.penTemplateKind
+          : undefined);
+      const basedOnTemplateId =
+        (typeof handoff?.basedOnTemplateId === 'string' && handoff.basedOnTemplateId) ||
+        (typeof fromPost.basedOnTemplateId === 'string' && fromPost.basedOnTemplateId) ||
+        undefined;
+      const penIrRef = handoff?.penIrRef ?? fromPost.penIrRef;
+      const licensing = handoff?.licensing ?? fromPost.licensing;
+      const musicPenDocId =
+        (typeof handoff?.musicPenDocId === 'string' && handoff.musicPenDocId) ||
+        (typeof fromPost.musicPenDocId === 'string' && fromPost.musicPenDocId) ||
+        undefined;
+      const musicLicensing = handoff?.musicLicensing ?? fromPost.musicLicensing;
+
+      if (!headProof || !penDocId) {
+        alert(
+          'Unlock did not include signing keys. Unlock again so ML-DSA keys are in the messaging handoff.'
+        );
+        return;
+      }
+
       const penFields = {
         contentClass: 'note' as const,
-        ...(handoff?.headProof ? { headProof: handoff.headProof } : {}),
+        headProof,
         ...(templateId ? { templateId } : {}),
-        ...(penDocId ? { penDocId } : {}),
-        ...(handoff?.penClassId ? { penClassId: handoff.penClassId } : {}),
-        ...(handoff?.penCategoryId ? { penCategoryId: handoff.penCategoryId } : {}),
-        ...(handoff?.penTemplateKind ? { penTemplateKind: handoff.penTemplateKind } : {}),
-        ...(handoff?.basedOnTemplateId
-          ? { basedOnTemplateId: handoff.basedOnTemplateId }
-          : {}),
-        ...(handoff?.penIrRef ? { penIrRef: handoff.penIrRef } : {}),
+        penDocId,
+        ...(penClassId ? { penClassId } : {}),
+        ...(penCategoryId ? { penCategoryId } : {}),
+        ...(penTemplateKind ? { penTemplateKind } : {}),
+        ...(basedOnTemplateId ? { basedOnTemplateId } : {}),
+        ...(penIrRef ? { penIrRef } : {}),
+        ...(licensing ? { licensing } : {}),
+        ...(musicPenDocId ? { musicPenDocId } : {}),
+        ...(musicLicensing ? { musicLicensing } : {}),
       };
 
       const linkPublishedFile = (result: { fileId?: string } | null | undefined) => {

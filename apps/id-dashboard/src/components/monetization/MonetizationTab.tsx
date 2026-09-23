@@ -74,10 +74,12 @@ export function MonetizationTab({ accessToken, showErrorMessage, showSuccessMess
     if (!accessToken) return;
     setBusy(true);
     try {
-      const r = await MonetizationService.renewFromBalance(accessToken);
+      const r = await MonetizationService.renewFromBalance(accessToken, returnBase);
       if (r.renewed) {
         showSuccessMessage('Maintenance renewed from your creator-fund balance.');
         await load({ force: true });
+      } else if (r.needsPayment && r.checkoutUrl) {
+        window.location.href = r.checkoutUrl;
       } else if (r.needsPayment) {
         showErrorMessage(
           `Insufficient balance for renewal${r.shortfallCents != null ? ` (shortfall ${(r.shortfallCents / 100).toFixed(2)} USD)` : ''}. Use Subscribe with card.`

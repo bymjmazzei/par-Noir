@@ -284,13 +284,17 @@ export class MonetizationService {
   }
 
   /**
-   * Balance-first maintenance renewal (ledger debit only; counts toward G per policy).
+   * Balance-first maintenance renewal (ledger debit; shortfall via one-time Checkout on platform Stripe).
    */
-  static async renewFromBalance(pnIdentifier: string): Promise<{
+  static async renewFromBalance(
+    pnIdentifier: string,
+    returnBaseUrl?: string
+  ): Promise<{
     renewed: boolean;
     balanceAfter: number;
     needsPayment: boolean;
     shortfallCents?: number;
+    checkoutUrl?: string;
   }> {
     const stripe = getStripe();
     if (!stripe) throw new Error('stripe_not_configured');
@@ -314,60 +318,151 @@ export class MonetizationService {
         [pn]
       );
       const balance = balRow.rows[0] ? Number(balRow.rows[0].balance_cents) || 0 : 0;
-      if (balance < renewalCents) {
+
+      if (balance <= 0) {
         await client.query('ROLLBACK');
         return {
           renewed: false,
-          balanceAfter: balance,
+          balanceAfter: 0,
           needsPayment: true,
-          shortfallCents: renewalCents - balance
+          shortfallCents: renewalCents
         };
       }
-      const newBalance = balance - renewalCents;
+
+      if (balance >= renewalCents) {
+        const newBalance = balance - renewalCents;
+        await client.query(
+          `INSERT INTO creator_fund_balances (pn_identifier, balance_cents, updated_at)
+           VALUES ($1, $2, NOW())
+           ON CONFLICT (pn_identifier) DO UPDATE SET balance_cents = $2, updated_at = NOW()`,
+          [pn, newBalance]
+        );
+
+        const sub = await client.query(
+          `SELECT current_period_end FROM monetization_subscriptions WHERE pn_identifier = $1 FOR UPDATE`,
+          [pn]
+        );
+        const prevEnd = sub.rows[0]?.current_period_end
+          ? new Date(sub.rows[0].current_period_end as string)
+          : new Date();
+        const base = Math.max(Date.now(), prevEnd.getTime());
+        const nextEnd = new Date(base);
+        nextEnd.setUTCMonth(nextEnd.getUTCMonth() + 1);
+
+        await client.query(
+          `INSERT INTO monetization_subscriptions (pn_identifier, status, current_period_end, updated_at)
+           VALUES ($1, 'active', $2, NOW())
+           ON CONFLICT (pn_identifier) DO UPDATE SET
+             status = 'active',
+             current_period_end = EXCLUDED.current_period_end,
+             updated_at = NOW()`,
+          [pn, nextEnd.toISOString()]
+        );
+
+        await client.query(
+          `INSERT INTO creator_fund_ledger_entries (pn_identifier, delta_cents, balance_after_cents, reason, ref_type)
+           VALUES ($1, $2, $3, 'maintenance_renewal_balance', 'maintenance')`,
+          [pn, -renewalCents, newBalance]
+        );
+
+        await client.query(
+          `INSERT INTO creator_fund_revenue_events (pn_identifier, source, event_type, amount_cents, currency, metadata)
+           VALUES ($1, 'ledger_balance', 'maintenance_renewal', $2, 'USD', $3::jsonb)`,
+          [pn, renewalCents, JSON.stringify({ channel: 'balance_first' })]
+        );
+
+        await client.query('COMMIT');
+        return { renewed: true, balanceAfter: newBalance, needsPayment: false };
+      }
+
+      // Partial balance: debit all, create shortfall Checkout
+      const shortfallCents = renewalCents - balance;
+      const newBalance = 0;
       await client.query(
         `INSERT INTO creator_fund_balances (pn_identifier, balance_cents, updated_at)
          VALUES ($1, $2, NOW())
          ON CONFLICT (pn_identifier) DO UPDATE SET balance_cents = $2, updated_at = NOW()`,
         [pn, newBalance]
       );
-
-      const sub = await client.query(
-        `SELECT current_period_end FROM monetization_subscriptions WHERE pn_identifier = $1 FOR UPDATE`,
-        [pn]
-      );
-      const prevEnd = sub.rows[0]?.current_period_end
-        ? new Date(sub.rows[0].current_period_end as string)
-        : new Date();
-      const base = Math.max(Date.now(), prevEnd.getTime());
-      const nextEnd = new Date(base);
-      nextEnd.setUTCMonth(nextEnd.getUTCMonth() + 1);
-
-      await client.query(
-        `INSERT INTO monetization_subscriptions (pn_identifier, status, current_period_end, updated_at)
-         VALUES ($1, 'active', $2, NOW())
-         ON CONFLICT (pn_identifier) DO UPDATE SET
-           status = 'active',
-           current_period_end = EXCLUDED.current_period_end,
-           updated_at = NOW()`,
-        [pn, nextEnd.toISOString()]
-      );
-
       await client.query(
         `INSERT INTO creator_fund_ledger_entries (pn_identifier, delta_cents, balance_after_cents, reason, ref_type)
-         VALUES ($1, $2, $3, 'maintenance_renewal_balance', 'maintenance')`,
-        [pn, -renewalCents, newBalance]
+         VALUES ($1, $2, $3, 'maintenance_renewal_balance_partial', 'maintenance')`,
+        [pn, -balance, newBalance]
       );
-
       await client.query(
         `INSERT INTO creator_fund_revenue_events (pn_identifier, source, event_type, amount_cents, currency, metadata)
-         VALUES ($1, 'ledger_balance', 'maintenance_renewal', $2, 'USD', $3::jsonb)`,
-        [pn, renewalCents, JSON.stringify({ channel: 'balance_first' })]
+         VALUES ($1, 'ledger_balance', 'maintenance_renewal_partial', $2, 'USD', $3::jsonb)`,
+        [pn, balance, JSON.stringify({ channel: 'balance_first_partial', shortfallCents })]
       );
-
       await client.query('COMMIT');
-      return { renewed: true, balanceAfter: newBalance, needsPayment: false };
+
+      const baseUrl = (returnBaseUrl || '').replace(/\/$/, '');
+      if (!baseUrl) {
+        return {
+          renewed: false,
+          balanceAfter: newBalance,
+          needsPayment: true,
+          shortfallCents
+        };
+      }
+
+      let customerId: string | undefined;
+      const existing = await pool.query(
+        `SELECT stripe_customer_id FROM monetization_subscriptions WHERE pn_identifier = $1`,
+        [pn]
+      );
+      if (existing.rows[0]?.stripe_customer_id) {
+        customerId = existing.rows[0].stripe_customer_id as string;
+      } else {
+        const customer = await stripe.customers.create({ metadata: { pn_identifier: pn } });
+        customerId = customer.id;
+        await pool.query(
+          `INSERT INTO monetization_subscriptions (pn_identifier, stripe_customer_id, status, updated_at)
+           VALUES ($1, $2, 'incomplete', NOW())
+           ON CONFLICT (pn_identifier) DO UPDATE SET
+             stripe_customer_id = COALESCE(monetization_subscriptions.stripe_customer_id, EXCLUDED.stripe_customer_id),
+             updated_at = NOW()`,
+          [pn, customerId]
+        );
+      }
+
+      const session = await stripe.checkout.sessions.create({
+        mode: 'payment',
+        customer: customerId,
+        line_items: [
+          {
+            quantity: 1,
+            price_data: {
+              currency: 'usd',
+              unit_amount: shortfallCents,
+              product_data: {
+                name: 'Monetization maintenance (shortfall)'
+              }
+            }
+          }
+        ],
+        success_url: `${baseUrl}/?monetization=shortfall_success`,
+        cancel_url: `${baseUrl}/?monetization=shortfall_cancel`,
+        metadata: {
+          pn_identifier: pn,
+          kind: 'maintenance_shortfall',
+          shortfall_cents: String(shortfallCents)
+        }
+      });
+
+      return {
+        renewed: false,
+        balanceAfter: newBalance,
+        needsPayment: true,
+        shortfallCents,
+        checkoutUrl: session.url || undefined
+      };
     } catch (e) {
-      await client.query('ROLLBACK');
+      try {
+        await client.query('ROLLBACK');
+      } catch {
+        /* ignore */
+      }
       throw e;
     } finally {
       client.release();
@@ -516,6 +611,70 @@ export class MonetizationService {
     }
   }
 
+  /**
+   * Unconditional paid license — direct charge on seller's Connect account (seller MoR).
+   */
+  static async createLicenseCheckoutSession(input: {
+    sellerPn: string;
+    buyerPn: string;
+    assetId: string;
+    scope: 'personal' | 'commercial';
+    priceCents: number;
+    returnBaseUrl: string;
+  }): Promise<{ url: string }> {
+    const stripe = getStripe();
+    if (!stripe) throw new Error('stripe_not_configured');
+    const seller = input.sellerPn.trim();
+    const buyer = input.buyerPn.trim();
+    const assetId = input.assetId.trim();
+    const priceCents = Math.floor(Number(input.priceCents));
+    if (!seller || !buyer || !assetId || priceCents <= 0) {
+      throw new Error('license_checkout_invalid');
+    }
+    await this.syncConnectStatus(seller);
+    const pool = getDatabasePool();
+    const conn = await pool.query(
+      `SELECT stripe_account_id, payouts_enabled FROM creator_fund_connect_accounts WHERE pn_identifier = $1`,
+      [seller]
+    );
+    if (!conn.rows[0]?.stripe_account_id || !conn.rows[0]?.payouts_enabled) {
+      throw new Error('connect_payouts_not_ready');
+    }
+    const stripeAccount = conn.rows[0].stripe_account_id as string;
+    const base = input.returnBaseUrl.replace(/\/$/, '');
+    const session = await stripe.checkout.sessions.create(
+      {
+        mode: 'payment',
+        line_items: [
+          {
+            quantity: 1,
+            price_data: {
+              currency: 'usd',
+              unit_amount: priceCents,
+              product_data: {
+                name: `License (${input.scope})`,
+                metadata: { asset_id: assetId }
+              }
+            }
+          }
+        ],
+        success_url: `${base}/?license=success&asset=${encodeURIComponent(assetId)}`,
+        cancel_url: `${base}/?license=cancel`,
+        metadata: {
+          kind: 'license_purchase',
+          asset_id: assetId,
+          scope: input.scope,
+          seller_pn: seller,
+          buyer_pn: buyer,
+          pn_identifier: buyer
+        }
+      },
+      { stripeAccount }
+    );
+    if (!session.url) throw new Error('checkout_no_url');
+    return { url: session.url };
+  }
+
   static constructWebhookEvent(rawBody: Buffer, signature: string | undefined): Stripe.Event {
     const stripe = getStripe();
     const wh = process.env.STRIPE_WEBHOOK_SECRET?.trim();
@@ -537,6 +696,72 @@ export class MonetizationService {
       case 'checkout.session.completed': {
         const session = event.data.object as Stripe.Checkout.Session;
         const pn = (session.metadata?.pn_identifier || '').trim();
+        const kind = (session.metadata?.kind || '').trim();
+
+        if (session.mode === 'payment' && kind === 'maintenance_shortfall' && pn) {
+          const shortfall = Math.floor(Number(session.metadata?.shortfall_cents || session.amount_total || 0));
+          if (shortfall > 0) {
+            await pool.query(
+              `INSERT INTO creator_fund_revenue_events (pn_identifier, source, event_type, amount_cents, currency, stripe_event_id, metadata)
+               VALUES ($1, 'stripe', 'maintenance_shortfall', $2, 'USD', $3, $4::jsonb)
+               ON CONFLICT (stripe_event_id) DO NOTHING`,
+              [
+                pn,
+                shortfall,
+                event.id,
+                JSON.stringify({ checkout_session_id: session.id, channel: 'shortfall' })
+              ]
+            );
+            const sub = await pool.query(
+              `SELECT current_period_end FROM monetization_subscriptions WHERE pn_identifier = $1`,
+              [pn]
+            );
+            const prevEnd = sub.rows[0]?.current_period_end
+              ? new Date(sub.rows[0].current_period_end as string)
+              : new Date();
+            const base = Math.max(Date.now(), prevEnd.getTime());
+            const nextEnd = new Date(base);
+            nextEnd.setUTCMonth(nextEnd.getUTCMonth() + 1);
+            await pool.query(
+              `INSERT INTO monetization_subscriptions (pn_identifier, status, current_period_end, updated_at)
+               VALUES ($1, 'active', $2, NOW())
+               ON CONFLICT (pn_identifier) DO UPDATE SET
+                 status = 'active',
+                 current_period_end = EXCLUDED.current_period_end,
+                 updated_at = NOW()`,
+              [pn, nextEnd.toISOString()]
+            );
+          }
+          break;
+        }
+
+        if (session.mode === 'payment' && kind === 'license_purchase') {
+          // Seller-MoR direct charge: record grant stub for buyer (ZKP mint is client/server follow-on).
+          const buyer = (session.metadata?.buyer_pn || pn || '').trim();
+          const assetId = (session.metadata?.asset_id || '').trim();
+          const scope = (session.metadata?.scope || 'personal').trim();
+          if (buyer && assetId) {
+            await pool.query(
+              `INSERT INTO creator_fund_revenue_events (pn_identifier, source, event_type, amount_cents, currency, stripe_event_id, metadata)
+               VALUES ($1, 'stripe_connect_direct', 'license_purchase', $2, 'USD', $3, $4::jsonb)
+               ON CONFLICT (stripe_event_id) DO NOTHING`,
+              [
+                buyer,
+                Math.floor(Number(session.amount_total || 0)),
+                event.id,
+                JSON.stringify({
+                  asset_id: assetId,
+                  scope,
+                  seller_pn: session.metadata?.seller_pn || '',
+                  checkout_session_id: session.id,
+                  note: 'seller_mor_direct_charge'
+                })
+              ]
+            );
+          }
+          break;
+        }
+
         if (!pn || session.mode !== 'subscription') break;
         const subId = typeof session.subscription === 'string' ? session.subscription : session.subscription?.id;
         const custId = typeof session.customer === 'string' ? session.customer : session.customer?.id;

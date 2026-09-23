@@ -9,7 +9,10 @@ const {
   OPEN_CREATOR_CONTRACT_CONTEXT_V1,
   buildOpenContractPublicInputs,
   commitSplits,
-  isOpenContractPublicInputsV1
+  isOpenContractPublicInputsV1,
+  LICENSE_KEY_CONTEXT_V1,
+  buildLicenseKeyPublicInputs,
+  isLicenseKeyPublicInputsV1
 } = require('../dist/index.js');
 const { mlDsa65Keygen } = require('@par-noir/pqc-crypto/ml-dsa');
 
@@ -94,4 +97,33 @@ test('open creator contract public_inputs round-trip in v2 envelope', () => {
   assert.strictEqual(env.public_inputs.asset_id, 'tpl_social.note.basic');
   assert.strictEqual(env.public_inputs.claim_bps, 10000);
   assert.strictEqual(env.public_inputs.splits_commitment, commitment);
+});
+
+test('license_key public_inputs round-trip in v2 envelope', () => {
+  const kp = mlDsa65Keygen();
+  const public_inputs = buildLicenseKeyPublicInputs({
+    assetId: 'pen_music_doc_1',
+    sellerPnHash: 'seller_h',
+    buyerPnHash: 'buyer_h',
+    scope: 'commercial',
+    priceCents: 1500,
+    stripePaymentRef: 'pi_test_abc',
+    expiresAtMs: Date.now() + 86400_000 * 365
+  });
+  assert.strictEqual(isLicenseKeyPublicInputsV1(public_inputs), true);
+  assert.strictEqual(public_inputs.price_cents, 1500);
+
+  const proof = generateZkProofEnvelopeV2({
+    mlDsaSecretKey: kp.secretKey,
+    mlDsaPublicKey: kp.publicKey,
+    context: LICENSE_KEY_CONTEXT_V1,
+    public_inputs,
+    expiresAtMs: public_inputs.expires_at_ms
+  });
+  const r = verifyZkProofEnvelopeV2(proof);
+  assert.strictEqual(r.ok, true);
+  const env = decodeEnvelopeFromProofString(proof);
+  assert.strictEqual(env.context, LICENSE_KEY_CONTEXT_V1);
+  assert.strictEqual(env.public_inputs.buyer_pn_hash, 'buyer_h');
+  assert.strictEqual(env.public_inputs.stripe_payment_ref, 'pi_test_abc');
 });

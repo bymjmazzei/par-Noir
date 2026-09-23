@@ -1142,6 +1142,23 @@ export async function initializeDatabase(): Promise<void> {
     try {
       const fs = await import('fs');
       const path = await import('path');
+      const microPath = path.join(
+        __dirname,
+        '../../migrations/add_creator_fund_micro_buckets_music_pen_attach.sql'
+      );
+      const microSql = fs.readFileSync(microPath, 'utf-8');
+      await db.query(microSql);
+      console.log('✅ creator_fund_micro_buckets_music_pen_attach migration executed');
+    } catch (migrationError: unknown) {
+      console.debug(
+        'ℹ️ creator_fund_micro_buckets_music_pen_attach migration error (may already be applied):',
+        migrationError instanceof Error ? migrationError.message : migrationError
+      );
+    }
+
+    try {
+      const fs = await import('fs');
+      const path = await import('path');
       const periodTzPath = path.join(__dirname, '../../migrations/add_creator_fund_period_tz_column.sql');
       const periodTzSql = fs.readFileSync(periodTzPath, 'utf-8');
       await db.query(periodTzSql);

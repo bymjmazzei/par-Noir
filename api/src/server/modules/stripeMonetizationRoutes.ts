@@ -134,7 +134,11 @@ export function registerStripeMonetizationRoutes(app: Application): void {
           error_description: 'Monetization billing is not configured on this server.'
         });
       }
-      const result = await MonetizationService.renewFromBalance(pn);
+      const returnBase =
+        typeof (req.body as { return_url?: string })?.return_url === 'string'
+          ? String((req.body as { return_url: string }).return_url)
+          : '';
+      const result = await MonetizationService.renewFromBalance(pn, returnBase || undefined);
       return res.json(result);
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : '';
@@ -192,6 +196,60 @@ export function registerStripeMonetizationRoutes(app: Application): void {
         });
       }
       console.error('[monetization] request-payout:', e);
+      return res.status(500).json({
+        error: 'server_error',
+        error_description: safeClientErrorMessage(e, NODE_ENV === 'production')
+      });
+    }
+  });
+
+  app.post('/api/monetization/create-license-checkout', ...auth, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const buyer = pnFromReq(req);
+      if (!buyer) {
+        return res.status(400).json({
+          error: 'invalid_request',
+          error_description: 'Missing pn identifier on token'
+        });
+      }
+      if (!isStripeMonetizationConfigured()) {
+        return res.status(503).json({
+          error: 'service_unavailable',
+          error_description: 'Monetization billing is not configured on this server.'
+        });
+      }
+      const body = req.body as {
+        seller_pn?: string;
+        asset_id?: string;
+        scope?: string;
+        price_cents?: number;
+        return_url?: string;
+      };
+      const scope = body.scope === 'commercial' ? 'commercial' : 'personal';
+      const out = await MonetizationService.createLicenseCheckoutSession({
+        sellerPn: String(body.seller_pn || ''),
+        buyerPn: buyer,
+        assetId: String(body.asset_id || ''),
+        scope,
+        priceCents: Number(body.price_cents),
+        returnBaseUrl: String(body.return_url || '')
+      });
+      return res.json(out);
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : '';
+      if (msg === 'connect_payouts_not_ready') {
+        return res.status(400).json({
+          error: 'invalid_request',
+          error_description: 'Seller must complete Stripe Connect with payouts enabled.'
+        });
+      }
+      if (msg === 'license_checkout_invalid') {
+        return res.status(400).json({
+          error: 'invalid_request',
+          error_description: 'Invalid license checkout parameters.'
+        });
+      }
+      console.error('[monetization] create-license-checkout:', e);
       return res.status(500).json({
         error: 'server_error',
         error_description: safeClientErrorMessage(e, NODE_ENV === 'production')

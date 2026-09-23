@@ -402,12 +402,32 @@ async function processFileUpload(
   });
 }
 
-/** Note publish fields: always contentClass note; optional Pen handoff proofs. */
+/** Note publish fields: always contentClass note; optional Pen authenticity / taxonomy. */
 function notePublishMetaFields(task: UploadTask): Record<string, unknown> {
   const fields: Record<string, unknown> = { contentClass: 'note' };
-  if (task.metadata?.headProof != null) fields.headProof = task.metadata.headProof;
-  if (typeof task.metadata?.templateId === 'string' && task.metadata.templateId) {
-    fields.templateId = task.metadata.templateId;
+  const meta = task.metadata;
+  if (!meta) return fields;
+  if (meta.headProof != null) fields.headProof = meta.headProof;
+  if (typeof meta.templateId === 'string' && meta.templateId) {
+    fields.templateId = meta.templateId;
+  }
+  if (typeof meta.penDocId === 'string' && meta.penDocId) {
+    fields.penDocId = meta.penDocId;
+  }
+  if (typeof meta.penClassId === 'string' && meta.penClassId) {
+    fields.penClassId = meta.penClassId;
+  }
+  if (typeof meta.penCategoryId === 'string' && meta.penCategoryId) {
+    fields.penCategoryId = meta.penCategoryId;
+  }
+  if (meta.penTemplateKind === 'template' || meta.penTemplateKind === 'remix') {
+    fields.penTemplateKind = meta.penTemplateKind;
+  }
+  if (typeof meta.basedOnTemplateId === 'string' && meta.basedOnTemplateId) {
+    fields.basedOnTemplateId = meta.basedOnTemplateId;
+  }
+  if (meta.penIrRef != null && typeof meta.penIrRef === 'object') {
+    fields.penIrRef = meta.penIrRef;
   }
   return fields;
 }

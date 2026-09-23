@@ -187,15 +187,17 @@ export function TrackLibraryPanel() {
       <div>
         <h2 className="text-2xl font-semibold mb-2">Track library</h2>
         <p className="text-neutral-400 text-sm">
-          Registered tracks power the licensed library and creator-fund music pool. Rows are scoped to your
-          signed-in par Noir identity.
+          Prefer authoring music in <strong className="text-neutral-200">Pen → Library → Music</strong>{' '}
+          (<code className="text-neutral-300">library.music</code>). That Pen doc is the licensing SoT.
+          This panel remains a thin registry index for legacy attaches — splits should match Pen open
+          contracts (claim % of the music bucket), not a parallel economics schema.
         </p>
         <p className="text-neutral-500 text-xs mt-2 max-w-2xl">
-          Optional multiparty splits: use the table editor below or PATCH{' '}
+          Optional multiparty splits (legacy): table editor or PATCH{' '}
           <code className="text-neutral-300">splitsMetadata</code> with{' '}
           <code className="text-neutral-300">payees</code> — each{' '}
-          <code className="text-neutral-300">&#123; pn_identifier, basis_points &#125;</code>, summing to 10_000 (100%).
-          Cleared list → 100% to the track owner for the music-pool share.
+          <code className="text-neutral-300">&#123; pn_identifier, basis_points &#125;</code>, summing to 10_000.
+          Cleared list → 100% to the track owner. New work should use Pen music docs.
         </p>
       </div>
 

@@ -6,17 +6,34 @@ import {
   PN_MESSAGING_OAUTH_BROADCAST,
   PN_MESSAGING_OAUTH_HANDOFF_STORAGE,
   clearMessagingHandoffFromStorage,
+  mergeMessagingSessionParts,
   normalizeMessagingHandoffPayload,
   parseMessagingHandoffFromStorage,
   type MessagingOAuthHandoffPayload,
 } from '@par-noir/oauth-ui';
 import {
   applyDmSessionHandoff,
+  hasSigningKeys,
   hasStoredEncryptedIdentity,
+  isBrowseUnlockCryptoReady,
   isDmIdentityReady,
   restoreDmSessionFromStorage,
 } from './dmIdentitySession';
 import { persistMessagingIdentityFromOAuth } from './oauthMessagingIdentityBridge';
+
+function sessionWithStashMerge(
+  session: NonNullable<MessagingOAuthHandoffPayload['session']>
+): NonNullable<MessagingOAuthHandoffPayload['session']> {
+  let fromStorage: MessagingOAuthHandoffPayload['session'] | undefined;
+  try {
+    fromStorage = parseMessagingHandoffFromStorage(
+      localStorage.getItem(PN_MESSAGING_OAUTH_HANDOFF_STORAGE)
+    )?.session;
+  } catch {
+    fromStorage = undefined;
+  }
+  return mergeMessagingSessionParts(session, fromStorage) ?? session;
+}
 
 export function applyMessagingOAuthHandoff(payload: MessagingOAuthHandoffPayload): boolean {
   let applied = false;
@@ -25,7 +42,7 @@ export function applyMessagingOAuthHandoff(payload: MessagingOAuthHandoffPayload
     applied = true;
   }
   if (payload.session) {
-    applyDmSessionHandoff(payload.session);
+    applyDmSessionHandoff(sessionWithStashMerge(payload.session));
     applied = true;
   }
   return applied;
@@ -54,11 +71,11 @@ export function applyPendingMessagingOAuthHandoffFromStorage(): boolean {
     const payload = parseMessagingHandoffFromStorage(raw);
     if (!payload) return false;
     applyMessagingOAuthHandoff(payload);
-    // Keep stashed payload until ML-KEM session is in memory (identity-only is not enough).
-    if (isDmIdentityReady()) {
+    // Keep stash until KEM + DSA are in memory (identity-only / KEM-only is not enough).
+    if (isBrowseUnlockCryptoReady()) {
       clearMessagingHandoffFromStorage();
     }
-    return isDmIdentityReady();
+    return isBrowseUnlockCryptoReady();
   } catch {
     return false;
   }
@@ -90,7 +107,7 @@ export async function waitForAndApplyMessagingHandoff(maxMs = 8_000): Promise<bo
   const deadline = Date.now() + maxMs;
   if (applyPendingMessagingOAuthHandoffFromStorage()) {
     restoreDmSessionFromStorage();
-    if (isDmIdentityReady()) return true;
+    if (isBrowseUnlockCryptoReady()) return true;
   }
 
   return new Promise((resolve) => {
@@ -112,7 +129,7 @@ export async function waitForAndApplyMessagingHandoff(maxMs = 8_000): Promise<bo
     const tryApply = (): boolean => {
       applyPendingMessagingOAuthHandoffFromStorage();
       restoreDmSessionFromStorage();
-      return isDmIdentityReady();
+      return isBrowseUnlockCryptoReady();
     };
 
     const onStorage = (event: StorageEvent) => {
@@ -131,7 +148,7 @@ export async function waitForAndApplyMessagingHandoff(maxMs = 8_000): Promise<bo
       bc.onmessage = (event: MessageEvent) => {
         if (applyMessagingHandoffFromUnknown(event.data)) {
           restoreDmSessionFromStorage();
-          if (isDmIdentityReady()) {
+          if (isBrowseUnlockCryptoReady()) {
             clearMessagingHandoffFromStorage();
           }
         }
@@ -147,7 +164,7 @@ export async function waitForAndApplyMessagingHandoff(maxMs = 8_000): Promise<bo
         return;
       }
       if (Date.now() >= deadline) {
-        finish(isDmIdentityReady());
+        finish(isBrowseUnlockCryptoReady());
         return;
       }
       setTimeout(poll, 80);
@@ -160,5 +177,8 @@ export async function waitForAndApplyMessagingHandoff(maxMs = 8_000): Promise<bo
 export const MESSAGING_HANDOFF_INCOMPLETE = 'MESSAGING_HANDOFF_INCOMPLETE';
 
 export function messagingHandoffIncompleteMessage(): string {
+  if (isDmIdentityReady() && !hasSigningKeys()) {
+    return 'Unlock did not include signing keys. Unlock again so ML-DSA keys are in the messaging handoff.';
+  }
   return 'Unlock did not load messaging keys. Lock your pN and unlock again with your identity file.';
 }

@@ -120,20 +120,40 @@ export function registerMusicTrackRegistryRoutes(app: Application): void {
       const body = req.body || {};
       const postFileId = body.post_file_id != null ? String(body.post_file_id) : '';
       const trackId = body.registry_track_id != null ? String(body.registry_track_id) : '';
-      if (!postFileId.trim() || !trackId.trim()) {
+      const musicPenDocId = body.music_pen_doc_id != null ? String(body.music_pen_doc_id) : '';
+      if (!postFileId.trim()) {
         return res.status(400).json({
           error: 'invalid_request',
-          error_description: 'post_file_id and registry_track_id are required'
+          error_description: 'post_file_id is required'
+        });
+      }
+      if (musicPenDocId.trim()) {
+        const out = await MusicTrackRegistryService.attachPostToPenMusic(pn, postFileId, musicPenDocId);
+        return res.status(201).json(out);
+      }
+      if (!trackId.trim()) {
+        return res.status(400).json({
+          error: 'invalid_request',
+          error_description: 'registry_track_id or music_pen_doc_id is required'
         });
       }
       const out = await MusicTrackRegistryService.attachPublicPostToTrack(pn, postFileId, trackId);
       return res.status(201).json(out);
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : '';
-      if (msg === 'post_file_id_required' || msg === 'track_not_found_or_inactive') {
+      if (
+        msg === 'post_file_id_required' ||
+        msg === 'track_not_found_or_inactive' ||
+        msg === 'music_pen_doc_id_required'
+      ) {
         return res.status(400).json({
           error: 'invalid_request',
-          error_description: msg === 'track_not_found_or_inactive' ? 'Track not found or not active' : 'post_file_id required'
+          error_description:
+            msg === 'track_not_found_or_inactive'
+              ? 'Track not found or not active'
+              : msg === 'music_pen_doc_id_required'
+                ? 'music_pen_doc_id required'
+                : 'post_file_id required'
         });
       }
       if (msg === 'not_post_owner') {

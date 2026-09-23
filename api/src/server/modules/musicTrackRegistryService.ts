@@ -267,6 +267,35 @@ export class MusicTrackRegistryService {
     return { postFileId: fileId, registryTrackId };
   }
 
+  /** Attach a Pen library.music doc to a post (preferred SoT over registry UUID). */
+  static async attachPostToPenMusic(
+    claimantPn: string,
+    postFileId: string,
+    musicPenDocId: string
+  ): Promise<{ postFileId: string; musicPenDocId: string }> {
+    const fileId = postFileId.trim();
+    const docId = musicPenDocId.trim();
+    if (!fileId) throw new Error('post_file_id_required');
+    if (!docId) throw new Error('music_pen_doc_id_required');
+    const { AggregatorMetadataServiceDB } = await import('./aggregatorMetadataServiceDB');
+    const agg = AggregatorMetadataServiceDB.getInstance();
+    const meta = await agg.getFileMetadata(fileId);
+    const owner = meta?.pnIdentifier?.trim();
+    if (!owner || owner !== claimantPn.trim()) {
+      throw new Error('not_post_owner');
+    }
+    await this.pool().query(
+      `INSERT INTO music_registry_post_uses (post_file_id, registry_track_id, music_pen_doc_id, claimant_pn_identifier, updated_at)
+       VALUES ($1, NULL, $2, $3, NOW())
+       ON CONFLICT (post_file_id) DO UPDATE SET
+         music_pen_doc_id = EXCLUDED.music_pen_doc_id,
+         claimant_pn_identifier = EXCLUDED.claimant_pn_identifier,
+         updated_at = NOW()`,
+      [fileId, docId, claimantPn.trim()]
+    );
+    return { postFileId: fileId, musicPenDocId: docId };
+  }
+
   static async getPostUseForOwner(
     claimantPn: string,
     postFileId: string

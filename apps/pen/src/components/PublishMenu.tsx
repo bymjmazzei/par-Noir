@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
+import type { PenLicensingRoot } from '@par-noir/pen-protocol';
 import { IconChevron, IconPublish } from './icons/PenIcons';
+import { LicensingSettingsPanel } from './LicensingSettingsPanel';
 
 export type PenAggregatorTarget = 'browse' | 'pen-templates' | string;
 
@@ -16,7 +18,13 @@ export function PublishMenu({
   onSendCorrespondence,
   onTemplatePrivate,
   onLibraryTemplate,
-  onFinishedWork
+  onFinishedWork,
+  licensing,
+  ownerPnHash,
+  membership,
+  connectReady,
+  musicAsset,
+  onLicensingChange
 }: {
   projectEnabled: boolean;
   correspondenceEnabled?: boolean;
@@ -28,6 +36,12 @@ export function PublishMenu({
   onTemplatePrivate: () => void;
   onLibraryTemplate: () => void;
   onFinishedWork: () => void;
+  licensing?: PenLicensingRoot;
+  ownerPnHash?: string | null;
+  membership?: boolean;
+  connectReady?: boolean;
+  musicAsset?: boolean;
+  onLicensingChange?: (next: PenLicensingRoot) => void;
 }) {
   const [open, setOpen] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
@@ -105,6 +119,18 @@ export function PublishMenu({
           </button>
           {shareOpen && publicOk && (
             <div className="border-t border-stone-100 bg-stone-50 px-3 py-2">
+              {licensing && onLicensingChange && (
+                <div className="mb-2 border-b border-stone-200 pb-2">
+                  <LicensingSettingsPanel
+                    value={licensing}
+                    ownerPnHash={ownerPnHash}
+                    membership={membership === true}
+                    connectReady={connectReady === true}
+                    musicAsset={musicAsset}
+                    onChange={onLicensingChange}
+                  />
+                </div>
+              )}
               <label className="flex items-center gap-2 text-[11px] text-stone-700">
                 <input
                   type="checkbox"

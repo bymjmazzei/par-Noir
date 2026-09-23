@@ -24,6 +24,7 @@ import { installOAuthMessagingIdentityListener } from '../services/oauthMessagin
 import { installPreferAppBrokerResume } from '../services/preferAppBrokerResume';
 import {
   clearDmIdentity,
+  isBrowseUnlockCryptoReady,
   isDmIdentityReady,
   hasStoredEncryptedIdentity,
 } from '../services/dmIdentitySession';
@@ -240,7 +241,7 @@ export function useAuthAndSession({
           session &&
           PNOAuthService.isSessionValid(session) &&
           session.did &&
-          isDmIdentityReady()
+          isBrowseUnlockCryptoReady()
         ) {
           const pnId = session.pnIdentifier || session.did;
           setUnlocked(pnId);
@@ -260,7 +261,7 @@ export function useAuthAndSession({
 
       await runExclusiveOAuthCallback(authCode, async () => {
         applyAllMessagingHandoffSources(data.messagingHandoff);
-        if (!isDmIdentityReady() && data.messagingHandoff) {
+        if (!isBrowseUnlockCryptoReady() && data.messagingHandoff) {
           await waitForAndApplyMessagingHandoff(3_000);
           applyAllMessagingHandoffSources(data.messagingHandoff);
         }
@@ -271,7 +272,7 @@ export function useAuthAndSession({
             : undefined;
         pushPnOAuthDebug('run_oauth_callback_exchange', {
           redirectUriLen: exchangeRedirectUri.length,
-          messagingReadyBeforeExchange: isDmIdentityReady(),
+          messagingReadyBeforeExchange: isBrowseUnlockCryptoReady(),
           hasMessagingHandoffPayload: Boolean(data.messagingHandoff),
         });
 
@@ -288,16 +289,17 @@ export function useAuthAndSession({
           setPendingGrant(PN_CLIENT_ID, grantedDataPoints ?? []);
         }
 
-        if (!isDmIdentityReady()) {
+        if (!isBrowseUnlockCryptoReady()) {
           await waitForAndApplyMessagingHandoff(3_000);
           applyAllMessagingHandoffSources(data.messagingHandoff);
         }
 
         pushPnOAuthDebug('run_oauth_callback_messaging_gate', {
-          messagingReady: isDmIdentityReady(),
+          messagingReady: isBrowseUnlockCryptoReady(),
+          kemReady: isDmIdentityReady(),
         });
 
-        if (!isDmIdentityReady()) {
+        if (!isBrowseUnlockCryptoReady()) {
           setLocked();
           clearDmIdentity();
           PNOAuthService.clearSession();
@@ -690,7 +692,7 @@ export function useAuthAndSession({
     const sessionValid = session && PNOAuthService.isSessionValid(session);
     if (sessionValid) {
       restoreMessagingAfterOAuth();
-      if (!isDmIdentityReady()) {
+      if (!isBrowseUnlockCryptoReady()) {
         setLocked();
         clearDmIdentity();
         PNOAuthService.clearSession();
@@ -712,7 +714,7 @@ export function useAuthAndSession({
         loadUserDisplayName(userState.pnIdentifier);
       }
     } else if (sessionValid && session.did) {
-      if (!isDmIdentityReady()) {
+      if (!isBrowseUnlockCryptoReady()) {
         setLocked();
         clearDmIdentity();
         PNOAuthService.clearSession();
@@ -787,8 +789,8 @@ export function useAuthAndSession({
           timeoutMs: 120_000,
           preferApp: true,
           completeViaParentNavigation: false,
-          requireMessagingHandoff: false,
-          isMessagingReady: () => isDmIdentityReady(),
+          requireMessagingHandoff: true,
+          isMessagingReady: () => isBrowseUnlockCryptoReady(),
           messagingHandoffTimeoutMs: 15_000,
           allowedMessageOrigins: (() => {
             try {
@@ -949,7 +951,7 @@ export function useAuthAndSession({
           if (recovered) {
             pushPnOAuthDebug('popup_closed_recovered', {});
             const session = PNOAuthService.loadSession()!;
-            if (!isDmIdentityReady()) {
+            if (!isBrowseUnlockCryptoReady()) {
               setLocked();
               clearDmIdentity();
               PNOAuthService.clearSession();

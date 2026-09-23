@@ -15,9 +15,9 @@ par Noir needs a universal authored-content language for humans, collaborators, 
 3. **Taxonomy (peer categories):**
    - **Social** (consumer) — Notes, Posts, Collections, Sets, Feeds (`entitlement: self-hosted` on Feeds). Browse/feed purpose.
    - **Projects** (consumer) — Journal, List, Letter, Note. Active WIP; letter/note are correspondence shapes (**Send** opens Messaging with `#pen_correspondence_handoff_v1:`).
-   - **Library** (consumer) — Book, Article. Durable works. Peer to Projects (not a subclass).
+   - **Library** (consumer) — Book, Article, **Music** (`library.music`). Durable works + audio assets.
    - **Time** (consumer) — Calendar, Event, Schedule (calendar/scheduling).
-   - **Records** (kit only, `audience: 'kit'`) — Register. Hidden from Pen New…; included in `GET /api/pen/templates` for L5. Register templates may declare `registerColumns` (typed row schema stub — not a query engine).
+   - **Records** (kit only, `audience: 'kit'`) — Register, **Asset key** (`records.asset_key` license receipt). Hidden from Pen New…; included in `GET /api/pen/templates` for L5.
 4. **Lifecycle:** Library is a **template / form category** (Book, Article)—peer to Social/Projects/Time, not a publish channel. Publishing a **Project** may (a) save as a **Library template** under Yours, or (b) create a **finished Library document** (durable long-form, not a social feed tile) and write it to the owner’s cloud replica (`bootstrapDocCloud` / `publishDocCloud`).
 5. **Audience:** Every `PenClass` has `audience: 'consumer' | 'kit'`. Pen UI lists consumer only; API/SDK return the full catalog.
 6. **Browse `contentClass`** remains the social visibility target. Pen **Publish** updates the doc’s live `current/` only. **Connect to feed** chooses **aggregator targets** (browse, pen-templates, third-party stubs) via `openBrowseWithPenHandoff` / `pen_publish_handoff_v1` — not a separate publish type. Share to **browse** → normal social post (user feeds / Discover relevance). Share to **pen-templates** → sets `penTemplateKind` (+ taxonomy / `penIrRef`); surfaces **only** on the pN templates feed page and Discover **Templates** section — never user feeds, other feeds, or Discover relevance. As template (private Yours / `par-noir-pen/templates/`) and Projects → Library template / finished work remain Pen actions. Dashboard = packed CSS grid.
@@ -33,11 +33,11 @@ par Noir needs a universal authored-content language for humans, collaborators, 
 10. **L5:** Silo CRUD + list classes/templates + publish Note. No L5 multi-writer collab / groups / messages product routes.
 11. **Primary acceptance:** User A creates doc, invites B, B edits, A sees update (and reverse). Manual dual-pN checklist: [`PEN_DUAL_PN_CHECKLIST.md`](../developer/PEN_DUAL_PN_CHECKLIST.md).
 12. **External agents (v0):** Starter templates ship `agentStarter` prompts (`{{user_input}}`, `{{template_id}}`, `{{section_list}}`). Agents emit **`PenAgentBuild`**; protocol validates (`validatePenAgentBuild`) and materializes IR (`materializePenAgentBuild`). Teaching data lives in **`@par-noir/pen-curriculum`** (handbook, snapshots, fixtures, eval) — model-agnostic data, not per-model plugins/MCP. Cloud write reuses first-party `apply-inbound` / `createDocFromAgentBuild` when a Pen session exists. No custom code per model.
-13. **Licensing + open creator contracts (root):** Every template/doc carries a `licensing` root (`workLicense` + open contracts). Platform sets royalty **bucket** maxes; creators set **`claimBps`** of their bucket (unclaimed → publisher). ZKP context `parnoir.open_creator_contract.v1` binds contract terms — see [`ADR_OPEN_CREATOR_CONTRACTS.md`](./ADR_OPEN_CREATOR_CONTRACTS.md). Fund period-close payout wiring is deferred.
+13. **Licensing + open creator contracts (root):** Every template/doc carries a `licensing` root with **family** (`implied` | `unconditionalFree` | `unconditionalPaid`). Monetization ⊆ verified membership. Music is Pen `library.music`; paid grants mint `parnoir.license_key.v1` and buyer `records.asset_key`. Period close uses `allocatePostBounty` — see [`ADR_OPEN_CREATOR_CONTRACTS.md`](./ADR_OPEN_CREATOR_CONTRACTS.md).
 
 ## Reserved (follow-ons)
 
-Time calendar widgets; Records register UI / query engine; site/spaces categories; MCP tool servers; **My fonts / cloud font grants**; open-contract editor UI; engager weight table; fund close → `allocatePostBounty`.
+Time calendar widgets; Records register UI / query engine; site/spaces categories; MCP tool servers; **My fonts / cloud font grants**; engager weight refinements (repost-originated); Veriff product UX.
 
 ## Consequences
 

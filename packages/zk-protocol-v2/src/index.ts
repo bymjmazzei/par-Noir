@@ -24,3 +24,12 @@ export {
   type OpenContractRoyaltyParty,
   type OpenContractSplitShare
 } from './openCreatorContract';
+export {
+  LICENSE_KEY_CONTEXT_V1,
+  buildLicenseKeyPublicInputs,
+  isLicenseKeyPublicInputsV1,
+  licenseKeyPublicInputsFromEnvelope,
+  canonicalLicenseKeyInputs,
+  type LicenseKeyPublicInputsV1,
+  type LicenseKeyScope
+} from './licenseKey';

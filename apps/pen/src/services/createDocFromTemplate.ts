@@ -13,7 +13,6 @@ import {
   hashPnIdentifier,
   ensureOwnerAssignment,
   normalizeLicensingRoot,
-  defaultLicensingRoot,
   type PenDocManifest,
   type PenDraftManifest,
   type PenHistoryChain,

@@ -142,7 +142,10 @@ export async function createBlankDoc(input: {
     roles: ensureOwnerAssignment([], ownerPnHash),
     lifecycle: 'draft',
     activeDraftId: draftId,
-    licensing: defaultLicensingRoot(ownerPnHash)
+    licensing: defaultLicensingRoot(ownerPnHash, {
+      membership: false,
+      musicAsset: shape.classId === 'library.music'
+    })
   };
 
   const chain: PenHistoryChain = { docId, genesis, links: [] };

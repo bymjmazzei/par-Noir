@@ -23,6 +23,11 @@ export interface PenPublishHandoff {
   penTemplateKind?: 'template' | 'remix';
   basedOnTemplateId?: string;
   penIrRef?: { backend?: string; objectId?: string; publicUrl?: string };
+  /** Snapshot of Pen manifest.licensing at publish. */
+  licensing?: import('@par-noir/pen-protocol').PenLicensingRoot;
+  /** Attached Pen music doc id when post uses library.music. */
+  musicPenDocId?: string;
+  musicLicensing?: import('@par-noir/pen-protocol').PenLicensingRoot;
 }
 
 const HANDOFF_PREFIX = 'pen_publish:';

@@ -131,7 +131,7 @@ Then:
 
 ## Micro allocation (per post bounty)
 
-**Status:** Policy locked for IR / open contracts ([`ADR_OPEN_CREATOR_CONTRACTS.md`](../architecture/ADR_OPEN_CREATOR_CONTRACTS.md)). Pure math lives in `@par-noir/pen-protocol` (`allocatePostBounty`). **Period-close payout wiring is deferred** (same as monetization go-live).
+**Status:** Wired — period close uses `@par-noir/pen-protocol` `allocatePostBounty` (engager / content_rights / music / publisher). Only **`family: implied`** roots contribute claims; unconditional free/paid → 0 claim from that root. Monetization SKUs require **verified membership** (verification + maintenance).
 
 Macro waterfall (`G → E → R → 25% platform / 75% fund`) is unchanged. **Micro** splits **one post’s** share of the fund bounty (normalize to **10000 bps**).
 
@@ -167,7 +167,15 @@ Example: content-rights bucket = 1500; creator claims **7500** (75%) → content
 
 ### Relationship to legacy “75/25 music”
 
-Historical table language (**75% creator / 25% music** of the creator-side reward) is **reframed**: under micro defaults, music is the **1000 bps music bucket** under the **2500** royalty cap; content-rights is a sibling bucket; engager pool is separate; publisher keeps the residual. Orphan creator leg and on-content proof (`post → track`) still apply when music is attached. Allocator implementation remains a follow-on.
+Historical table language (**75% creator / 25% music** of the creator-side reward) is **reframed**: under micro defaults, music is the **1000 bps music bucket** under the **2500** royalty cap; content-rights is a sibling bucket; engager pool is separate; publisher keeps the residual. Orphan creator leg and on-content proof (`post → music Pen doc` / legacy track) still apply when music is attached. Period close implements this via `allocatePostBounty`.
+
+### License families + membership
+
+| Family | Who | Fund claims |
+|--------|-----|-------------|
+| `unconditionalFree` | Anyone (default unverified) | 0 |
+| `implied` | Verified membership | Open contracts |
+| `unconditionalPaid` | Membership + seller Connect | 0 (upfront seller-MoR Checkout + license_key ZKP) |
 
 ---
 
