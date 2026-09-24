@@ -218,7 +218,7 @@ export function PenMediaPlayer({
     document.addEventListener('pointercancel', onUp, true);
   };
 
-  const showBar = hover || seeking;
+  const showControls = hover || seeking;
   const objectFit =
     (videoStyle?.objectFit as CSSProperties['objectFit'] | undefined) || 'contain';
 
@@ -252,7 +252,9 @@ export function PenMediaPlayer({
         type="button"
         aria-label={muted ? 'Unmute' : 'Mute'}
         title={muted ? 'Unmute' : 'Mute'}
-        className="absolute right-2 top-2 z-20 flex h-8 w-8 items-center justify-center text-white [filter:drop-shadow(0_1px_2px_rgba(0,0,0,0.85))] hover:opacity-90"
+        className={`absolute right-2 top-2 z-20 flex h-8 w-8 items-center justify-center text-white transition-opacity [filter:drop-shadow(0_1px_2px_rgba(0,0,0,0.85))] hover:opacity-90 ${
+          showControls ? 'pointer-events-auto opacity-100' : 'pointer-events-none opacity-0'
+        }`}
         onPointerDown={(e) => {
           e.stopPropagation();
         }}
@@ -264,7 +266,9 @@ export function PenMediaPlayer({
         <button
           type="button"
           aria-label="Play"
-          className="pointer-events-none absolute inset-0 flex items-center justify-center"
+          className={`pointer-events-none absolute inset-0 flex items-center justify-center transition-opacity ${
+            showControls ? 'opacity-100' : 'opacity-0'
+          }`}
           tabIndex={-1}
         >
           <span className="flex h-10 w-10 items-center justify-center rounded-full bg-black/50 text-white">
@@ -278,7 +282,7 @@ export function PenMediaPlayer({
         ref={barRef}
         data-pen-scrub="1"
         className={`absolute bottom-3 left-0 right-3 z-10 px-2 transition-opacity ${
-          showBar ? 'pointer-events-auto opacity-100' : 'pointer-events-none opacity-0'
+          showControls ? 'pointer-events-auto opacity-100' : 'pointer-events-none opacity-0'
         }`}
         onPointerDown={onScrubDown}
         onPointerMove={onScrubMove}
