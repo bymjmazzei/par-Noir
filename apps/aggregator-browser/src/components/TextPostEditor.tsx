@@ -269,24 +269,32 @@ function pagesFromHandoff(): MiniPage[] {
   try {
     const handoff = peekPenPublishHandoff();
     if (!handoff?.pages?.length) return [{ ...DEFAULT_MINI_PAGE }];
-    return handoff.pages.map((p) => {
-      const style = p.style || {};
-      return {
-        content: p.content || '',
-        fontFamily: String(style.fontFamily || DEFAULT_MINI_PAGE.fontFamily),
-        fontSize: Number(style.fontSize) || DEFAULT_MINI_PAGE.fontSize,
-        textColor: String(style.textColor || DEFAULT_MINI_PAGE.textColor),
-        dropShadowColor: String(style.dropShadowColor || DEFAULT_MINI_PAGE.dropShadowColor),
-        dropShadowBlur: Number(style.dropShadowBlur ?? DEFAULT_MINI_PAGE.dropShadowBlur),
-        dropShadowOffsetX: Number(style.dropShadowOffsetX ?? DEFAULT_MINI_PAGE.dropShadowOffsetX),
-        dropShadowOffsetY: Number(style.dropShadowOffsetY ?? DEFAULT_MINI_PAGE.dropShadowOffsetY),
-        backgroundColor: String(style.backgroundColor || DEFAULT_MINI_PAGE.backgroundColor),
-        backgroundImage: style.backgroundImage ? String(style.backgroundImage) : null,
-        textAlign: (style.textAlign as MiniPage['textAlign']) || DEFAULT_MINI_PAGE.textAlign,
-        textStyle: (style.textStyle as MiniPage['textStyle']) || DEFAULT_MINI_PAGE.textStyle,
-        padding: Number(style.padding ?? DEFAULT_MINI_PAGE.padding),
+    const notePages = handoff.pages.flatMap((p) => {
+      const raw = p as unknown as {
+        kind?: string;
+        content?: string;
+        style?: Record<string, unknown>;
       };
+      if (raw.kind === 'video') return [];
+      if (typeof raw.content !== 'string') return [];
+      return [{ content: raw.content || '', style: raw.style || {} }];
     });
+    if (!notePages.length) return [{ ...DEFAULT_MINI_PAGE }];
+    return notePages.map(({ content, style }) => ({
+      content: content || '',
+      fontFamily: String(style.fontFamily || DEFAULT_MINI_PAGE.fontFamily),
+      fontSize: Number(style.fontSize) || DEFAULT_MINI_PAGE.fontSize,
+      textColor: String(style.textColor || DEFAULT_MINI_PAGE.textColor),
+      dropShadowColor: String(style.dropShadowColor || DEFAULT_MINI_PAGE.dropShadowColor),
+      dropShadowBlur: Number(style.dropShadowBlur ?? DEFAULT_MINI_PAGE.dropShadowBlur),
+      dropShadowOffsetX: Number(style.dropShadowOffsetX ?? DEFAULT_MINI_PAGE.dropShadowOffsetX),
+      dropShadowOffsetY: Number(style.dropShadowOffsetY ?? DEFAULT_MINI_PAGE.dropShadowOffsetY),
+      backgroundColor: String(style.backgroundColor || DEFAULT_MINI_PAGE.backgroundColor),
+      backgroundImage: style.backgroundImage ? String(style.backgroundImage) : null,
+      textAlign: (style.textAlign as MiniPage['textAlign']) || DEFAULT_MINI_PAGE.textAlign,
+      textStyle: (style.textStyle as MiniPage['textStyle']) || DEFAULT_MINI_PAGE.textStyle,
+      padding: Number(style.padding ?? DEFAULT_MINI_PAGE.padding),
+    }));
   } catch {
     return [{ ...DEFAULT_MINI_PAGE }];
   }
