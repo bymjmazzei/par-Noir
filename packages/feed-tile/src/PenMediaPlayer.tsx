@@ -252,7 +252,7 @@ export function PenMediaPlayer({
         type="button"
         aria-label={muted ? 'Unmute' : 'Mute'}
         title={muted ? 'Unmute' : 'Mute'}
-        className="absolute right-2 top-2 z-20 flex h-8 w-8 items-center justify-center rounded-full bg-black/55 text-white shadow-sm backdrop-blur-[2px] hover:bg-black/70"
+        className="absolute right-2 top-2 z-20 flex h-8 w-8 items-center justify-center text-white [filter:drop-shadow(0_1px_2px_rgba(0,0,0,0.85))] hover:opacity-90"
         onPointerDown={(e) => {
           e.stopPropagation();
         }}
