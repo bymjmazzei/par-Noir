@@ -40,6 +40,7 @@ import type { PenSession } from '../services/penSession';
 import { FormatRibbon, PageCanvas } from '../components/PageCanvas';
 import { EditablePagePreview } from '../components/EditablePagePreview';
 import { BrowseFeedTilePreview } from '../components/BrowseFeedTilePreview';
+import { MediaEditorPanel } from '../components/MediaEditorPanel';
 import { LayerPartsMenu } from '../components/LayerPartsMenu';
 import { PublishMenu, type PenAggregatorTarget } from '../components/PublishMenu';
 import { SaveMenu } from '../components/SaveMenu';
@@ -238,7 +239,24 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
     if (!section) return false;
     if (isPageLayerId(activeLayerId)) return true;
     const layer = section.layers?.find((l) => l.id === activeLayerId);
-    return layer?.kind === 'text';
+    if (!layer || layer.kind !== 'text') return false;
+    // Media fills on a text object use the media panel, not TipTap.
+    if (layer.imageSrc || layer.videoSrc || layer.backgroundImage || layer.backgroundVideo) {
+      return false;
+    }
+    return true;
+  }, [section, activeLayerId]);
+
+  const activeMediaLayer = useMemo(() => {
+    if (!section || isPageLayerId(activeLayerId)) return null;
+    const layer = section.layers?.find((l) => l.id === activeLayerId);
+    if (!layer) return null;
+    if (layer.kind === 'image' || layer.kind === 'video') return layer;
+    // Legacy fill-on-text attachments still open the media panel.
+    if (layer.imageSrc || layer.videoSrc || layer.backgroundImage || layer.backgroundVideo) {
+      return layer;
+    }
+    return null;
   }, [section, activeLayerId]);
 
   const activeWritingDoc = useMemo((): PenTipTapNode | undefined => {
@@ -1251,12 +1269,14 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
                   </button>
                 </div>
               </div>
-              <FormatRibbon
-                editor={editor}
-                accessToken={session.accessToken}
-                pnIdentifier={session.pnIdentifier}
-                excludeDocId={bundle.manifest.docId}
-              />
+              {writingEnabled && !activeMediaLayer ? (
+                <FormatRibbon
+                  editor={editor}
+                  accessToken={session.accessToken}
+                  pnIdentifier={session.pnIdentifier}
+                  excludeDocId={bundle.manifest.docId}
+                />
+              ) : null}
             </div>
           )}
 
@@ -1323,6 +1343,23 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
                   <code>{bundle.manifest.publishedFileId}</code>
                 </p>
               )}
+            </div>
+          ) : activeMediaLayer && section ? (
+            <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+              <MediaEditorPanel
+                key={activeMediaLayer.id}
+                layer={activeMediaLayer}
+                section={section}
+                session={session}
+                docId={bundle.manifest.docId}
+                onSectionChange={(next) => {
+                  persist({
+                    ...bundle,
+                    sections: bundle.sections.map((s) => (s.slug === next.slug ? next : s)),
+                    manifest: { ...bundle.manifest, updatedAt: new Date().toISOString() }
+                  });
+                }}
+              />
             </div>
           ) : writingEnabled && canvasSection ? (
             <PageCanvas

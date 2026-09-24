@@ -100,7 +100,33 @@ export interface PenPageLayer {
    * Side follows horizontal position; off keeps an absolute overlay.
    */
   bodyWrap?: 'left' | 'right';
+  /** CSS color grade for image/video layers (percent / degrees). */
+  mediaFilter?: PenMediaFilter;
+  /** Normalized crop of the source (0–1). */
+  mediaCrop?: PenMediaCrop;
+  /** Clip mask for image/video layers. */
+  mediaMask?: PenMediaMask;
+  /** Raster brush overlay (data URL) composited above the media. */
+  paintOverlaySrc?: string;
 }
+
+/** Image/video color grade — maps to CSS filter. Defaults: 100/100/100/0. */
+export interface PenMediaFilter {
+  brightness?: number;
+  contrast?: number;
+  saturation?: number;
+  hueRotate?: number;
+}
+
+/** Crop rectangle as fractions of the source media (0–1). */
+export interface PenMediaCrop {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
+export type PenMediaMask = 'none' | 'circle' | 'rounded';
 
 /** Page chrome for Note compile / Pen Mini / PNG (mirrors browse TextPostStyle). */
 export interface PenPagePresentation {

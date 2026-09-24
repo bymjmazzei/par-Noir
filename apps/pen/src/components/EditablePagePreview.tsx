@@ -15,6 +15,7 @@ import {
   DEFAULT_FLOW_WORKSPACE_HEIGHT_PX,
   DEFAULT_FLOW_WORKSPACE_WIDTH_PX,
   docToHtml,
+  fitAspectInBox,
   getTextLayerDoc,
   isFlowWorkspaceOpen,
   isGooglePenFont,
@@ -27,6 +28,7 @@ import {
   patchLayerStyle,
   recomputeGroupBounds,
   resolvePagePaddingPx,
+  resizeSeKeepAspect,
   sectionNeedsLegacyGeomMigrate,
   updateLayerLayout,
   wrapSideFromGeom,
@@ -45,6 +47,8 @@ import {
   pageFrameStyle
 } from './LayerObjectToolbar';
 import { PageSheetColumn } from './PageSheetColumn';
+import { LayerMediaContent } from './LayerMediaContent';
+import { PenMediaPlayer } from '@par-noir/feed-tile';
 import { ensureGoogleFontsLoaded } from '../services/penGoogleFonts';
 import type { PenSession } from '../services/penSession';
 
@@ -73,6 +77,11 @@ function bodyMarginStyle(presentation: PenPagePresentation): CSSProperties {
 
 function opaqueWrapShell(layer: PenPageLayer): CSSProperties {
   const shell = { ...layerPreviewStyle(layer) };
+  if (layer.kind === 'image' || layer.kind === 'video') {
+    shell.backgroundColor = layer.backgroundColor || 'transparent';
+    shell.opacity = 1;
+    return shell;
+  }
   const bg = shell.backgroundColor;
   if (!bg || bg === 'transparent' || String(bg).startsWith('rgba(')) {
     shell.backgroundColor = '#ffffff';
@@ -209,18 +218,31 @@ function BodyWrapObject({
         )
       );
     } else {
-      setLive(
-        clampLayerRect(
-          {
-            x: drag.orig.x,
-            y: drag.orig.y,
-            w: drag.orig.w + dx,
-            h: drag.orig.h + dy
-          },
-          cw,
-          ch
-        )
-      );
+      if (layer.kind === 'image' || layer.kind === 'video') {
+        const sized = resizeSeKeepAspect(drag.orig, dx, dy);
+        const aspect = drag.orig.w / Math.max(1, drag.orig.h);
+        const maxW = Math.max(24, cw - drag.orig.x);
+        const maxH = Math.max(24, ch - drag.orig.y);
+        const fitted = fitAspectInBox(
+          aspect,
+          Math.min(sized.w, maxW),
+          Math.min(sized.h, maxH)
+        );
+        setLive(clampLayerRect({ ...drag.orig, w: fitted.w, h: fitted.h }, cw, ch));
+      } else {
+        setLive(
+          clampLayerRect(
+            {
+              x: drag.orig.x,
+              y: drag.orig.y,
+              w: drag.orig.w + dx,
+              h: drag.orig.h + dy
+            },
+            cw,
+            ch
+          )
+        );
+      }
     }
   }
 
@@ -233,23 +255,9 @@ function BodyWrapObject({
   }
 
   let inner: ReactNode = null;
-  if (layer.kind === 'image' && layer.imageSrc) {
+  if (layer.kind === 'image' || layer.kind === 'video') {
     inner = (
-      <img
-        src={layer.imageSrc}
-        alt=""
-        className="h-full w-full object-contain"
-        draggable={false}
-      />
-    );
-  } else if (layer.kind === 'video' && layer.videoSrc) {
-    inner = (
-      <video
-        src={layer.videoSrc}
-        className="h-full w-full object-contain"
-        controls
-        playsInline
-      />
+      <LayerMediaContent layer={layer} onActivate={onSelect} />
     );
   } else if (layer.kind === 'text') {
     const html = docToHtml(getTextLayerDoc(layer));
@@ -376,6 +384,15 @@ export function EditablePagePreview({
   const items = absoluteLayers.map(layerToItem);
   const groupIds = useMemo(
     () => new Set(layers.filter((l) => l.kind === 'group').map((l) => l.id)),
+    [layers]
+  );
+  const mediaAspectLockIds = useMemo(
+    () =>
+      new Set(
+        layers
+          .filter((l) => l.kind === 'image' || l.kind === 'video')
+          .map((l) => l.id)
+      ),
     [layers]
   );
   const presentation = mergePagePresentation(
@@ -639,6 +656,7 @@ export function EditablePagePreview({
             session={session}
             docId={manifest.docId}
             contentWidthPx={box.width}
+            contentHeightPx={box.height}
             onPresentationChange={onPresentationChange}
             onSectionChange={onSectionChange}
           />
@@ -691,14 +709,13 @@ export function EditablePagePreview({
           onClick={() => selectLayer(PAGE_LAYER_ID)}
         >
           {presentation.backgroundVideo && (
-            <video
-              src={presentation.backgroundVideo}
-              className="pointer-events-none absolute inset-0 z-0 h-full w-full object-cover"
-              autoPlay
-              muted
-              loop
-              playsInline
-            />
+            <div className="pointer-events-none absolute inset-0 z-0">
+              <PenMediaPlayer
+                src={presentation.backgroundVideo}
+                className="h-full w-full"
+                videoStyle={{ objectFit: 'cover' }}
+              />
+            </div>
           )}
 
           {/* Body — padded content box; wrap floats + prose */}
@@ -751,6 +768,7 @@ export function EditablePagePreview({
               snapToPageCenter={snapEnabled}
               getLinkedIds={getLinkedIds}
               resizeDisabledIds={groupIds}
+              lockAspectRatioIds={mediaAspectLockIds}
               onSelect={(id) => selectLayer(id || PAGE_LAYER_ID)}
               onChange={onLayoutChange}
               renderItem={(item) => {
@@ -766,26 +784,16 @@ export function EditablePagePreview({
                     />
                   );
                 }
-                if (layer.kind === 'image' && layer.imageSrc) {
+                if (layer.kind === 'image' || layer.kind === 'video') {
+                  // Blur is applied on the media element via mediaFilterCss — drop shell filter.
+                  const { filter: _f, ...shellRest } = shell as CSSProperties & {
+                    filter?: string;
+                  };
                   return (
-                    <div className="relative h-full w-full" style={shell}>
-                      <img
-                        src={layer.imageSrc}
-                        alt=""
-                        className="relative h-full w-full object-contain"
-                        draggable={false}
-                      />
-                    </div>
-                  );
-                }
-                if (layer.kind === 'video' && layer.videoSrc) {
-                  return (
-                    <div className="h-full w-full" style={shell}>
-                      <video
-                        src={layer.videoSrc}
-                        className="h-full w-full object-contain"
-                        controls
-                        playsInline
+                    <div className="relative h-full w-full" style={shellRest}>
+                      <LayerMediaContent
+                        layer={layer}
+                        onActivate={() => selectLayer(layer.id)}
                       />
                     </div>
                   );
@@ -793,14 +801,12 @@ export function EditablePagePreview({
                 if (layer.backgroundVideo) {
                   return (
                     <div className="relative h-full w-full overflow-hidden" style={shell}>
-                      <video
-                        src={layer.backgroundVideo}
-                        className="absolute inset-0 h-full w-full object-cover"
-                        autoPlay
-                        muted
-                        loop
-                        playsInline
-                      />
+                      <div className="absolute inset-0">
+                        <PenMediaPlayer
+                          src={layer.backgroundVideo}
+                          videoStyle={{ objectFit: 'cover' }}
+                        />
+                      </div>
                       <div
                         className="pen-rich-html relative h-full w-full overflow-auto p-2 text-sm"
                         style={{

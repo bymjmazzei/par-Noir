@@ -2,17 +2,21 @@ import { describe, expect, it } from 'vitest';
 import {
   clampLayerRect,
   contentBoxSize,
+  fitAspectInBox,
+  fitMediaLayerIntoContainer,
   isFlowWorkspaceOpen,
   legacyPercentToContentPx,
   LETTER_HEIGHT_PX,
   LETTER_WIDTH_PX,
   migrateSectionLayerGeomToPx,
   pageSheetDims,
+  resizeSeKeepAspect,
   sectionNeedsLegacyGeomMigrate,
   wrapSideFromGeom
 } from './pageGeometry.js';
 import { emptyTipTapDoc } from './richDoc.js';
 import type { PenSectionContent } from './types.js';
+import { attachMediaToLayer, createTextLayer, upsertLayer } from './layers.js';
 
 describe('pageGeometry', () => {
   it('pageSheetDims: open flow fills; fixed flow has width; letter/a4 are paged', () => {
@@ -91,5 +95,48 @@ describe('pageGeometry', () => {
   it('wrapSideFromGeom uses content midline in px', () => {
     expect(wrapSideFromGeom(10, 80, 700)).toBe('left');
     expect(wrapSideFromGeom(400, 80, 700)).toBe('right');
+  });
+
+  it('fitAspectInBox contains 16:9 inside a tall skewed box', () => {
+    const fitted = fitAspectInBox(16 / 9, 100, 400);
+    expect(fitted.w).toBe(100);
+    expect(fitted.h).toBeCloseTo(100 / (16 / 9), 5);
+  });
+
+  it('fitMediaLayerIntoContainer keeps aspect and stays on page', () => {
+    const next = fitMediaLayerIntoContainer(
+      { x: 10, y: 10, w: 80, h: 300 },
+      16 / 9,
+      500,
+      400
+    );
+    expect(next.w / next.h).toBeCloseTo(16 / 9, 5);
+    expect(next.x + next.w).toBeLessThanOrEqual(500);
+    expect(next.y + next.h).toBeLessThanOrEqual(400);
+  });
+
+  it('resizeSeKeepAspect locks proportions', () => {
+    const sized = resizeSeKeepAspect({ x: 0, y: 0, w: 160, h: 90 }, 40, 0);
+    expect(sized.w / sized.h).toBeCloseTo(160 / 90, 5);
+  });
+
+  it('attachMediaToLayer reshapes text object to media aspect', () => {
+    let section: PenSectionContent = {
+      slug: 'body',
+      doc: emptyTipTapDoc(),
+      layers: [],
+      layerGeom: 'px'
+    };
+    const text = createTextLayer({ x: 20, y: 20, w: 100, h: 300 });
+    section = upsertLayer(section, text);
+    section = attachMediaToLayer(
+      section,
+      text.id,
+      { kind: 'video', src: 'https://example.com/v.mp4' },
+      { aspectRatio: 16 / 9, pageWidth: 500, pageHeight: 400 }
+    );
+    const layer = section.layers!.find((l) => l.id === text.id)!;
+    expect(layer.kind).toBe('video');
+    expect(layer.w / layer.h).toBeCloseTo(16 / 9, 5);
   });
 });

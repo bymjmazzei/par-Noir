@@ -6,7 +6,7 @@ import {
   type PointerEvent as ReactPointerEvent,
   type ReactNode
 } from 'react';
-import { snapLayoutToPageCenter } from '@par-noir/pen-protocol';
+import { snapLayoutToPageCenter, resizeSeKeepAspect, fitAspectInBox } from '@par-noir/pen-protocol';
 import { clampLayoutItem, sortByZ, type LayoutBounds, type LayoutItem } from './types';
 
 type DragMode = 'move' | 'resize';
@@ -33,6 +33,7 @@ export function LayoutSurface({
   snapToPageCenter,
   getLinkedIds,
   resizeDisabledIds,
+  lockAspectRatioIds,
   bounds
 }: {
   items: LayoutItem[];
@@ -48,6 +49,8 @@ export function LayoutSurface({
   getLinkedIds?: (id: string) => string[];
   /** Hide resize handle for these ids (e.g. group roots). */
   resizeDisabledIds?: Set<string> | string[];
+  /** Keep w/h ratio while resizing (image / video layers). */
+  lockAspectRatioIds?: Set<string> | string[];
   /** Content-box size in CSS px (clamp + snap). */
   bounds?: LayoutBounds;
 }) {
@@ -67,6 +70,14 @@ export function LayoutSurface({
       return resizeDisabledIds.has(id);
     },
     [resizeDisabledIds]
+  );
+  const lockAspect = useCallback(
+    (id: string) => {
+      if (!lockAspectRatioIds) return false;
+      if (Array.isArray(lockAspectRatioIds)) return lockAspectRatioIds.includes(id);
+      return lockAspectRatioIds.has(id);
+    },
+    [lockAspectRatioIds]
   );
 
   function activeBounds(): LayoutBounds {
@@ -147,16 +158,29 @@ export function LayoutSurface({
       setPreview(nextPreview);
     } else {
       setGuides({ v: false, h: false });
-      setPreview({
-        [drag.id]: clampLayoutItem(
+      let next: LayoutItem;
+      if (lockAspect(drag.id)) {
+        const sized = resizeSeKeepAspect(drag.orig, dx, dy);
+        const aspect = drag.orig.w / Math.max(1, drag.orig.h);
+        const maxW = Math.max(24, b.width - drag.orig.x);
+        const maxH = Math.max(24, b.height - drag.orig.y);
+        const fitted = fitAspectInBox(
+          aspect,
+          Math.min(sized.w, maxW),
+          Math.min(sized.h, maxH)
+        );
+        next = clampLayoutItem({ ...drag.orig, w: fitted.w, h: fitted.h }, b);
+      } else {
+        next = clampLayoutItem(
           {
             ...drag.orig,
             w: drag.orig.w + dx,
             h: drag.orig.h + dy
           },
           b
-        )
-      });
+        );
+      }
+      setPreview({ [drag.id]: next });
     }
   };
 
@@ -224,7 +248,7 @@ export function LayoutSurface({
               e.stopPropagation();
             }}
           >
-            <div className="h-full w-full overflow-auto">{renderItem(item, selected)}</div>
+            <div className="h-full w-full overflow-hidden">{renderItem(item, selected)}</div>
             {!disabled && !item.positionLocked && selected && !noResize(item.id) && (
               <div
                 className="absolute bottom-0 right-0 h-3 w-3 cursor-se-resize bg-sky-500"

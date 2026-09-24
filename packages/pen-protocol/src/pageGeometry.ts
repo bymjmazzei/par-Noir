@@ -18,6 +18,12 @@ export const DEFAULT_FLOW_WORKSPACE_WIDTH_PX = 640;
 export const DEFAULT_FLOW_WORKSPACE_HEIGHT_PX = 720;
 export const DEFAULT_PAGE_PADDING_PX = 40;
 export const MIN_LAYER_SIZE_PX = 24;
+
+/** Default video frame aspect (width / height). */
+export const DEFAULT_VIDEO_ASPECT = 16 / 9;
+/** Fallback image aspect when natural size is unknown. */
+export const DEFAULT_IMAGE_ASPECT = 1;
+
 export const PAGE_GUTTER_PX = 16;
 
 export type PageSheetDims = {
@@ -100,6 +106,68 @@ export function contentBoxSize(
 }
 
 export type LayerRect = { x: number; y: number; w: number; h: number };
+
+/**
+ * Fit a rectangle of the given aspect (width/height) inside maxW×maxH (contain).
+ * Never returns below MIN_LAYER_SIZE_PX on either side when the box allows it.
+ */
+export function fitAspectInBox(
+  aspect: number,
+  maxW: number,
+  maxH: number
+): { w: number; h: number } {
+  const a = aspect > 0 && Number.isFinite(aspect) ? aspect : 1;
+  const boxW = Math.max(MIN_LAYER_SIZE_PX, maxW);
+  const boxH = Math.max(MIN_LAYER_SIZE_PX, maxH);
+  const hFromW = boxW / a;
+  if (hFromW <= boxH + 1e-6) {
+    return { w: boxW, h: Math.max(MIN_LAYER_SIZE_PX, hFromW) };
+  }
+  return { w: Math.max(MIN_LAYER_SIZE_PX, boxH * a), h: boxH };
+}
+
+/**
+ * Place media inside an object-layer container with locked aspect, then keep it
+ * on the template page. Centers within the prior container when it shrinks.
+ */
+export function fitMediaLayerIntoContainer(
+  container: LayerRect,
+  aspect: number,
+  pageW: number,
+  pageH: number
+): LayerRect {
+  const a = aspect > 0 && Number.isFinite(aspect) ? aspect : 1;
+  let { w, h } = fitAspectInBox(a, container.w, container.h);
+  // Also fit to the full page (scale down if the container itself is oversized).
+  const pageFit = fitAspectInBox(a, pageW, pageH);
+  if (w > pageFit.w || h > pageFit.h) {
+    w = pageFit.w;
+    h = pageFit.h;
+  }
+  const x = container.x + (container.w - w) / 2;
+  const y = container.y + (container.h - h) / 2;
+  return clampLayerRect({ x, y, w, h }, pageW, pageH);
+}
+
+/**
+ * SE-corner resize that keeps aspect = orig.w / orig.h.
+ * Uses the dominant drag axis so proportions stay locked while resizing.
+ */
+export function resizeSeKeepAspect(
+  orig: LayerRect,
+  dx: number,
+  dy: number
+): { w: number; h: number } {
+  const scaleW = (orig.w + dx) / Math.max(1, orig.w);
+  const scaleH = (orig.h + dy) / Math.max(1, orig.h);
+  const scale = Math.abs(dx) >= Math.abs(dy) ? scaleW : scaleH;
+  const minScale = MIN_LAYER_SIZE_PX / Math.max(orig.w, orig.h, 1);
+  const s = Math.max(minScale, scale);
+  return {
+    w: Math.max(MIN_LAYER_SIZE_PX, orig.w * s),
+    h: Math.max(MIN_LAYER_SIZE_PX, orig.h * s)
+  };
+}
 
 export function clampLayerRect(
   item: LayerRect,

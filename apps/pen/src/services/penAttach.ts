@@ -42,6 +42,36 @@ export function fileToDataUrl(file: File): Promise<string> {
   });
 }
 
+/** Natural width/height ratio for a data URL or remote media src. */
+export function probeMediaAspect(
+  src: string,
+  kind: 'image' | 'video'
+): Promise<number> {
+  if (kind === 'image') {
+    return new Promise((resolve) => {
+      const img = new Image();
+      img.onload = () => {
+        const w = img.naturalWidth || 0;
+        const h = img.naturalHeight || 0;
+        resolve(w > 0 && h > 0 ? w / h : 1);
+      };
+      img.onerror = () => resolve(1);
+      img.src = src;
+    });
+  }
+  return new Promise((resolve) => {
+    const video = document.createElement('video');
+    video.preload = 'metadata';
+    video.onloadedmetadata = () => {
+      const w = video.videoWidth || 0;
+      const h = video.videoHeight || 0;
+      resolve(w > 0 && h > 0 ? w / h : 16 / 9);
+    };
+    video.onerror = () => resolve(16 / 9);
+    video.src = src;
+  });
+}
+
 function bytesToB64(bytes: Uint8Array): string {
   let s = '';
   for (let i = 0; i < bytes.length; i++) s += String.fromCharCode(bytes[i]!);

@@ -1,9 +1,12 @@
 import type { CSSProperties, ReactNode } from 'react';
+import { PenMediaPlayer } from './PenMediaPlayer.js';
 
 export type FeedTilePage = {
   title?: string;
   bodyHtml?: string;
   mediaSrc?: string;
+  /** When mediaSrc is a video URL. */
+  mediaKind?: 'image' | 'video';
   backgroundColor?: string;
   textColor?: string;
 };
@@ -66,10 +69,17 @@ function PageSurface({ page, titleFallback }: { page: FeedTilePage; titleFallbac
     backgroundColor: page.backgroundColor || '#000000',
     color: page.textColor || '#FFFFFF'
   };
+  const isVideo = page.mediaKind === 'video' && Boolean(page.mediaSrc);
   return (
     <div className="relative h-full w-full overflow-hidden" style={surface}>
       {page.mediaSrc ? (
-        <img src={page.mediaSrc} alt="" className="absolute inset-0 h-full w-full object-cover" />
+        isVideo ? (
+          <div className="absolute inset-0">
+            <PenMediaPlayer src={page.mediaSrc} className="h-full w-full [&_video]:object-cover" />
+          </div>
+        ) : (
+          <img src={page.mediaSrc} alt="" className="absolute inset-0 h-full w-full object-cover" />
+        )
       ) : (
         <div className="relative flex h-full flex-col justify-center px-6 text-center">
           <div className="line-clamp-[8] break-words text-lg font-semibold leading-snug">
@@ -84,7 +94,7 @@ function PageSurface({ page, titleFallback }: { page: FeedTilePage; titleFallbac
         </div>
       )}
       {page.mediaSrc ? (
-        <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-black/20" />
+        <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-black/20" />
       ) : null}
     </div>
   );
@@ -129,7 +139,8 @@ export function FeedTileSurface({
         <PageSurface
           page={{
             ...pages[0],
-            mediaSrc: pages[0]?.mediaSrc || model.posterUrl
+            mediaSrc: pages[0]?.mediaSrc || model.posterUrl,
+            mediaKind: pages[0]?.mediaKind
           }}
           titleFallback={model.title}
         />

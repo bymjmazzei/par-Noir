@@ -8,9 +8,18 @@ import {
   mergePagePresentation,
   normalizeSection,
   type PenDocManifest,
+  type PenPageLayer,
   type PenSectionContent
 } from '@par-noir/pen-protocol';
 import type { FeedTilePage, FeedTileViewModel } from '@par-noir/feed-tile';
+
+function primaryMediaLayer(layers: PenPageLayer[] | undefined): PenPageLayer | null {
+  const visible = (layers || []).filter((l) => l.visible !== false);
+  const video = visible.find((l) => l.kind === 'video' && l.videoSrc);
+  if (video) return video;
+  const image = visible.find((l) => l.kind === 'image' && l.imageSrc);
+  return image || null;
+}
 
 export function sectionsToFeedPages(
   sections: PenSectionContent[],
@@ -21,12 +30,27 @@ export function sectionsToFeedPages(
   return sections.map((raw) => {
     const s = normalizeSection(raw);
     const plain = docToPlainText(s.doc).trim();
-    return {
+    const media = primaryMediaLayer(s.layers);
+    const page: FeedTilePage = {
       title: plain.slice(0, 80) || titleFallback,
       bodyHtml: docToHtml(s.doc),
       backgroundColor: pres.backgroundColor,
       textColor: pres.textColor
     };
+    if (media?.kind === 'video' && media.videoSrc) {
+      page.mediaSrc = media.videoSrc;
+      page.mediaKind = 'video';
+    } else if (media?.kind === 'image' && media.imageSrc) {
+      page.mediaSrc = media.imageSrc;
+      page.mediaKind = 'image';
+    } else if (pres.backgroundVideo) {
+      page.mediaSrc = pres.backgroundVideo;
+      page.mediaKind = 'video';
+    } else if (pres.backgroundImage) {
+      page.mediaSrc = pres.backgroundImage;
+      page.mediaKind = 'image';
+    }
+    return page;
   });
 }
 
@@ -40,8 +64,8 @@ export function bundleToFeedTileModel(input: {
   caption?: string;
 }): FeedTileViewModel {
   const pages = sectionsToFeedPages(input.sections, input.title, input.pagePresentation);
-  if (input.posterUrl && pages[0]) {
-    pages[0] = { ...pages[0], mediaSrc: input.posterUrl };
+  if (input.posterUrl && pages[0] && !pages[0].mediaSrc) {
+    pages[0] = { ...pages[0], mediaSrc: input.posterUrl, mediaKind: 'image' };
   }
   return {
     title: input.title,

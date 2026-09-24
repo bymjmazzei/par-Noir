@@ -2,6 +2,9 @@
 
 import { emptyTipTapDoc } from './richDoc.js';
 import {
+  DEFAULT_IMAGE_ASPECT,
+  DEFAULT_VIDEO_ASPECT,
+  fitMediaLayerIntoContainer,
   snapLayoutToContentCenter,
   type LayerRect
 } from './pageGeometry.js';
@@ -296,13 +299,15 @@ export function createVideoLayer(
   videoSrc: string,
   partial?: Partial<Pick<PenPageLayer, 'x' | 'y' | 'w' | 'h' | 'zIndex'>>
 ): PenPageLayer {
+  const defaultW = 240;
+  const defaultH = Math.round(defaultW / DEFAULT_VIDEO_ASPECT);
   return {
     id: newLayerId(),
     kind: 'video',
     x: partial?.x ?? 48,
     y: partial?.y ?? 56,
-    w: partial?.w ?? 240,
-    h: partial?.h ?? 160,
+    w: partial?.w ?? defaultW,
+    h: partial?.h ?? defaultH,
     zIndex: partial?.zIndex ?? 2,
     videoSrc
   };
@@ -358,6 +363,12 @@ export function patchLayerStyle(
       | 'name'
       | 'parentGroupId'
       | 'bodyWrap'
+      | 'mediaFilter'
+      | 'mediaCrop'
+      | 'mediaMask'
+      | 'paintOverlaySrc'
+      | 'imageSrc'
+      | 'videoSrc'
     >
   >
 ): PenSectionContent {
@@ -391,25 +402,50 @@ export function layerStrokeStyle(layer: PenPageLayer): {
   };
 }
 
-/** Keep geometry; swap layer kind to image or video (attachment on a text object). */
+/**
+ * Convert a text (or other) object layer to image/video.
+ * Resizes the frame to the media aspect (contain in the prior box, then the page).
+ */
 export function attachMediaToLayer(
   section: PenSectionContent,
   layerId: string,
-  media: { kind: 'image'; src: string } | { kind: 'video'; src: string }
+  media: { kind: 'image'; src: string } | { kind: 'video'; src: string },
+  opts?: {
+    /** width / height; defaults 16:9 video, 1:1 image */
+    aspectRatio?: number;
+    pageWidth?: number;
+    pageHeight?: number;
+  }
 ): PenSectionContent {
   const existing = (section.layers || []).find((l) => l.id === layerId);
   if (!existing) throw new Error(`unknown_layer:${layerId}`);
+  const aspect =
+    opts?.aspectRatio && opts.aspectRatio > 0
+      ? opts.aspectRatio
+      : media.kind === 'video'
+        ? DEFAULT_VIDEO_ASPECT
+        : DEFAULT_IMAGE_ASPECT;
+  const pageW = opts?.pageWidth ?? Math.max(existing.x + existing.w, 736);
+  const pageH = opts?.pageHeight ?? Math.max(existing.y + existing.h, 976);
+  const fitted = fitMediaLayerIntoContainer(
+    { x: existing.x, y: existing.y, w: existing.w, h: existing.h },
+    aspect,
+    pageW,
+    pageH
+  );
   const shared = {
     id: existing.id,
-    x: existing.x,
-    y: existing.y,
-    w: existing.w,
-    h: existing.h,
+    x: fitted.x,
+    y: fitted.y,
+    w: fitted.w,
+    h: fitted.h,
     zIndex: existing.zIndex,
-    backgroundColor: existing.backgroundColor,
+    name: existing.name,
+    parentGroupId: existing.parentGroupId,
+    backgroundColor: undefined as string | undefined,
     backgroundImage: undefined as string | undefined,
     backgroundVideo: undefined as string | undefined,
-    backgroundGradient: existing.backgroundGradient,
+    backgroundGradient: undefined as string | undefined,
     textShadow: existing.textShadow,
     shadowColor: existing.shadowColor,
     shadowBlur: existing.shadowBlur,
@@ -420,7 +456,12 @@ export function attachMediaToLayer(
     mixBlendMode: existing.mixBlendMode,
     blendAmount: existing.blendAmount,
     visible: existing.visible,
-    positionLocked: existing.positionLocked
+    positionLocked: existing.positionLocked,
+    bodyWrap: existing.bodyWrap,
+    strokeColor: existing.strokeColor,
+    strokeWidth: existing.strokeWidth,
+    strokeStyle: existing.strokeStyle,
+    strokeAlign: existing.strokeAlign
   };
   if (media.kind === 'image') {
     return upsertLayer(section, {

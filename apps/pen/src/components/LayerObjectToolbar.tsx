@@ -5,6 +5,7 @@
  */
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import {
+  attachMediaToLayer,
   layerShadowCss,
   layerStrokeStyle,
   patchLayerStyle,
@@ -16,6 +17,7 @@ import {
   type PenStrokeStyle
 } from '@par-noir/pen-protocol';
 import { CloudFeedMediaPicker } from './CloudFeedMediaPicker';
+import { probeMediaAspect } from '../services/penAttach';
 import type { PenSession } from '../services/penSession';
 
 export type ObjectToolTarget =
@@ -115,6 +117,10 @@ function layerFill(l: PenPageLayer): {
   color: string;
   gradient: string;
 } {
+  if (l.kind === 'video' && l.videoSrc)
+    return { mode: 'video', color: l.backgroundColor || '#ffffff', gradient: '' };
+  if (l.kind === 'image' && l.imageSrc)
+    return { mode: 'image', color: l.backgroundColor || '#ffffff', gradient: '' };
   if (l.backgroundVideo) return { mode: 'video', color: l.backgroundColor || '#ffffff', gradient: '' };
   if (l.backgroundImage) return { mode: 'image', color: l.backgroundColor || '#ffffff', gradient: '' };
   if (l.backgroundGradient)
@@ -129,6 +135,7 @@ export function LayerObjectToolbar({
   session,
   docId,
   contentWidthPx = 736,
+  contentHeightPx = 976,
   onPresentationChange,
   onSectionChange
 }: {
@@ -139,6 +146,8 @@ export function LayerObjectToolbar({
   docId?: string;
   /** Content-box width for Wrap side (left/right from object center). */
   contentWidthPx?: number;
+  /** Content-box height — used when fitting attached media to the page. */
+  contentHeightPx?: number;
   onPresentationChange?: (next: Partial<PenPagePresentation>) => void;
   onSectionChange: (next: PenSectionContent) => void;
 }) {
@@ -161,6 +170,23 @@ export function LayerObjectToolbar({
   }
 
   async function applyMediaDataUrl(src: string) {
+    if (!isPage && layer && !isGroup) {
+      // Object layers: convert to image/video and fit aspect into the frame / page.
+      const aspect = await probeMediaAspect(src, fileKind);
+      onSectionChange(
+        attachMediaToLayer(
+          section,
+          layer.id,
+          fileKind === 'image' ? { kind: 'image', src } : { kind: 'video', src },
+          {
+            aspectRatio: aspect,
+            pageWidth: contentWidthPx,
+            pageHeight: contentHeightPx
+          }
+        )
+      );
+      return;
+    }
     if (fileKind === 'image') {
       if (isPage) {
         patchPage({
@@ -645,6 +671,11 @@ export function layerPreviewStyle(layer: PenPageLayer): CSSProperties {
   if (layer.kind === 'group') {
     style.backgroundColor = 'transparent';
     style.border = style.border || '1px dashed rgba(0,0,0,0.25)';
+    return style;
+  }
+  // Image/video frames are media-first — never default to an opaque white card.
+  if (layer.kind === 'image' || layer.kind === 'video') {
+    style.backgroundColor = layer.backgroundColor || 'transparent';
     return style;
   }
   if (layer.backgroundGradient) {
