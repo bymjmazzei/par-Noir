@@ -15,12 +15,11 @@ import {
   templatePreviewBundle
 } from './TemplateGalleryThumb';
 import {
-  personalTemplatesAsPenTemplates,
-  savePersonalTemplateFromCatalog
+  personalTemplatesAsPenTemplates
 } from '../services/penPersonalTemplates';
 import { createDocFromPersonalOrStarter } from '../services/penPublish';
-import { ensureMyTemplatesNotebook } from '../services/penFolders';
 import type { PenBrowseDensity } from '../services/penClassPrefs';
+import { incrementTemplateUseCount } from '../services/penClassPrefs';
 import {
   buildSocialTemplateRailItems,
   isSocialTemplateRailClass,
@@ -28,6 +27,8 @@ import {
 } from '../services/classFeedRailItems';
 import { ClassFeedRail } from './ClassFeedRail';
 import { TemplatesFeedScroller } from './TemplatesFeedScroller';
+import { TemplateEngagementRail } from './TemplateEngagementRail';
+import { SocialPhoneFrame } from './SocialPhoneFrame';
 
 function ListIcon() {
   return (
@@ -71,39 +72,6 @@ function CloseIcon() {
   );
 }
 
-function StarIcon({ filled }: { filled?: boolean }) {
-  return (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill={filled ? 'currentColor' : 'none'} aria-hidden>
-      <path
-        d="M12 3.5l2.6 5.3 5.8.8-4.2 4.1 1 5.8L12 16.8 6.8 19.5l1-5.8L3.6 9.6l5.8-.8L12 3.5z"
-        stroke="currentColor"
-        strokeWidth="1.8"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
-}
-
-function SendIcon() {
-  return (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden>
-      <path
-        d="M4 11.5L20 4l-5.5 16-2.8-6.2L4 11.5z"
-        stroke="currentColor"
-        strokeWidth="1.8"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
-}
-
-function templateShareUrl(templateId: string): string {
-  const url = new URL(window.location.href);
-  url.searchParams.set('template', templateId);
-  url.hash = '';
-  return url.toString();
-}
-
 function formTitleFor(classId: string): string {
   return getClass(classId)?.title || classId;
 }
@@ -129,11 +97,10 @@ export function TemplatesBrowse({
   /** Open a template preview on mount (e.g. ?template=). */
   initialPreviewId?: string | null;
 }) {
+  void onSaved;
   const [previewId, setPreviewId] = useState<string | null>(() => initialPreviewId || null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [savedHint, setSavedHint] = useState(false);
-  const [shareHint, setShareHint] = useState(false);
   const [activeClassId, setActiveClassId] = useState('all');
 
   const railItems = useMemo(() => buildSocialTemplateRailItems(), []);
@@ -177,40 +144,12 @@ export function TemplatesBrowse({
         session,
         templateId
       });
+      incrementTemplateUseCount(session.pnIdentifier, templateId);
       onCreated(bundle.manifest.docId);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Could not create document');
     } finally {
       setBusy(false);
-    }
-  }
-
-  function saveToMyTemplates(templateId: string) {
-    if (!session) {
-      onRequestUnlock?.();
-      setError('Unlock to save templates.');
-      return;
-    }
-    setError(null);
-    try {
-      ensureMyTemplatesNotebook(session.pnIdentifier);
-      savePersonalTemplateFromCatalog(session.pnIdentifier, templateId);
-      setSavedHint(true);
-      window.setTimeout(() => setSavedHint(false), 1600);
-      onSaved?.();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Could not save template');
-    }
-  }
-
-  function copyTemplateLink(templateId: string) {
-    const link = templateShareUrl(templateId);
-    try {
-      void navigator.clipboard.writeText(link);
-      setShareHint(true);
-      window.setTimeout(() => setShareHint(false), 1600);
-    } catch {
-      setError('Could not copy link');
     }
   }
 
@@ -305,7 +244,7 @@ export function TemplatesBrowse({
                   No templates in this class.
                 </p>
               ) : density === 'gallery' ? (
-                <div className="pen-gallery-wrap">
+                <div className="pen-gallery-wrap pen-templates-gallery">
                   <div className="pen-gallery">
                     <div className="pen-gallery-tiles">
                       {filtered.map((t) => (
@@ -405,61 +344,49 @@ export function TemplatesBrowse({
                 <CloseIcon />
               </button>
             </div>
-            <div className="pen-template-preview-modal-body">
-              {previewIsSocial ? (
-                <div className="pen-gallery-phone pen-gallery-phone--lg">
-                  <div className="pen-gallery-phone-bezel">
-                    <div className="pen-gallery-phone-screen">
-                      <BrowseFeedTilePreview
-                        manifest={preview.manifest as never}
-                        sections={preview.sections}
-                        bare
-                        compact
-                        session={session}
-                        hideEngagementRail
-                      />
-                    </div>
-                  </div>
-                </div>
-              ) : (
-                <DocGalleryPreview
-                  manifest={preview.manifest as never}
-                  sections={preview.sections}
-                  large
-                  session={session}
-                />
-              )}
-            </div>
-            <div className="pen-template-preview-modal-actions">
-              <button
-                type="button"
-                disabled={busy}
-                title={session ? 'Use template' : 'Unlock to use'}
-                aria-label="Use template"
-                className="pen-template-use-btn pen-template-use-btn--lg"
-                onClick={() => void useTemplate(previewId)}
-              >
-                +
-              </button>
-              <button
-                type="button"
-                disabled={busy}
-                className={`pen-template-icon-btn ${savedHint ? 'is-active' : ''}`}
-                title={savedHint ? 'Saved' : 'Save to My templates'}
-                aria-label={savedHint ? 'Saved to My templates' : 'Save to My templates'}
-                onClick={() => saveToMyTemplates(previewId)}
-              >
-                <StarIcon filled={savedHint} />
-              </button>
-              <button
-                type="button"
-                className={`pen-template-icon-btn ${shareHint ? 'is-active' : ''}`}
-                title={shareHint ? 'Link copied' : 'Copy share link'}
-                aria-label={shareHint ? 'Link copied' : 'Copy share link'}
-                onClick={() => void copyTemplateLink(previewId)}
-              >
-                <SendIcon />
-              </button>
+            <div className="pen-template-preview-modal-body pen-template-preview-modal-body--with-rail">
+              <div className="pen-template-preview-modal-stage">
+                {previewIsSocial ? (
+                  <SocialPhoneFrame large>
+                    <BrowseFeedTilePreview
+                      manifest={preview.manifest as never}
+                      sections={preview.sections}
+                      bare
+                      compact
+                      session={session}
+                      hideEngagementRail
+                    />
+                  </SocialPhoneFrame>
+                ) : (
+                  <DocGalleryPreview
+                    manifest={preview.manifest as never}
+                    sections={preview.sections}
+                    large
+                    session={session}
+                  />
+                )}
+              </div>
+              <TemplateEngagementRail
+                templateId={previewId}
+                fileId={null}
+                authorLabel={preview.authorDisplayName}
+                userPnIdentifier={session?.pnIdentifier}
+                unlocked={Boolean(session?.pnIdentifier)}
+                readOnly
+                placement="aside"
+                buildSlot={
+                  <button
+                    type="button"
+                    className="pen-templates-feed-build"
+                    disabled={busy}
+                    title={session ? 'Build from template' : 'Unlock to build'}
+                    aria-label="Build"
+                    onClick={() => void useTemplate(previewId)}
+                  >
+                    Build
+                  </button>
+                }
+              />
             </div>
           </div>
         </div>

@@ -2,7 +2,7 @@
  * Presentational browse feed-shaped preview — delegates to @par-noir/feed-tile.
  * Resolves penlocal:/penmedia: media refs to blob URLs before building the tile.
  */
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { FeedTileSurface, type FeedTileViewModel } from '@par-noir/feed-tile';
 import type { PenDocManifest, PenSectionContent } from '@par-noir/pen-protocol';
 import { bundleToFeedTileModel } from '../services/feedTileFromPen';
@@ -81,15 +81,18 @@ export function BrowseFeedTilePreview({
   compact,
   bare,
   session,
-  hideEngagementRail = false
+  hideEngagementRail = false,
+  engagementOverlay
 }: {
   manifest: PenDocManifest;
   sections: PenSectionContent[];
   compact?: boolean;
   bare?: boolean;
   session?: PenSession | null;
-  /** Hide in-tile engagement (Templates feed puts chrome outside). */
+  /** Hide decorative in-tile engagement (Templates feed puts chrome outside). */
   hideEngagementRail?: boolean;
+  /** Browse-shaped preview-only overlay (editor live preview). */
+  engagementOverlay?: ReactNode;
 }) {
   const base = bundleToFeedTileModel({
     title: manifest.title || 'Untitled',
@@ -131,6 +134,7 @@ export function BrowseFeedTilePreview({
       mode="preview"
       compact={compact || bare}
       hideEngagementRail={hideEngagementRail}
+      engagementOverlay={engagementOverlay}
     />
   );
 

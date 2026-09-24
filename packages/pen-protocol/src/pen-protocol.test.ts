@@ -238,9 +238,15 @@ describe('classes + templates', () => {
 
   it('search finds notes and empty query returns nothing', () => {
     expect(searchPenCatalog('').templates).toEqual([]);
-    const hit = searchPenCatalog('basic note');
+    const hit = searchPenCatalog('note (portrait)');
     expect(hit.templates.some((t) => t.id === 'note.basic.portrait.v1')).toBe(true);
     expect(searchPenCatalog('social').categories.some((c) => c.id === 'social')).toBe(true);
+  });
+
+  it('starter titles never lead with Basic', () => {
+    for (const t of listStarterTemplates()) {
+      expect(t.title.startsWith('Basic ')).toBe(false);
+    }
   });
 
   it('consumer search excludes records', () => {

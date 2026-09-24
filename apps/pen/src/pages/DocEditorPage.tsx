@@ -28,6 +28,7 @@ import {
   verifyChain,
   ensureOwnerAssignment,
   collectFontFamiliesFromDoc,
+  templateAuthorLabel,
   shouldPublishAsSingleComposedVideo,
   shouldPublishAsMixedPages,
   isGooglePenFont,
@@ -45,6 +46,8 @@ import type { PenSession } from '../services/penSession';
 import { FormatRibbon, PageCanvas } from '../components/PageCanvas';
 import { EditablePagePreview } from '../components/EditablePagePreview';
 import { BrowseFeedTilePreview } from '../components/BrowseFeedTilePreview';
+import { SocialPhoneFrame } from '../components/SocialPhoneFrame';
+import { TemplateEngagementRail } from '../components/TemplateEngagementRail';
 import { MediaEditorPanel } from '../components/MediaEditorPanel';
 import { LayerPartsMenu } from '../components/LayerPartsMenu';
 import { PublishMenu, type PenAggregatorTarget } from '../components/PublishMenu';
@@ -1766,12 +1769,37 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
                     </select>
                   </label>
                 </div>
-                <div className="min-h-0 flex-1">
-                  <BrowseFeedTilePreview
-                    manifest={bundle.manifest}
-                    sections={bundle.sections}
-                    session={session}
-                  />
+                <div className="pen-social-live-preview min-h-0 flex-1">
+                  <div className="pen-social-live-preview-stage">
+                    <SocialPhoneFrame large>
+                      <BrowseFeedTilePreview
+                        manifest={bundle.manifest}
+                        sections={bundle.sections}
+                        session={session}
+                        bare
+                        compact
+                        engagementOverlay={
+                          <TemplateEngagementRail
+                            templateId={
+                              bundle.manifest.templateId ||
+                              bundle.manifest.basedOnTemplateId ||
+                              bundle.manifest.docId
+                            }
+                            fileId={null}
+                            authorLabel={(() => {
+                              const tid = bundle.manifest.templateId;
+                              const t = tid ? getTemplate(tid) : undefined;
+                              return t ? templateAuthorLabel(t) : 'You';
+                            })()}
+                            userPnIdentifier={session.pnIdentifier}
+                            unlocked
+                            readOnly
+                            placement="overlay"
+                          />
+                        }
+                      />
+                    </SocialPhoneFrame>
+                  </div>
                 </div>
               </>
             ) : section ? (

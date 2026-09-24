@@ -176,14 +176,14 @@ const STARTER: PenTemplate[] = [
       classId: 'social.note',
       docType: 'note',
       version: '1',
-      title: 'Basic Note (Portrait)',
+      title: 'Note (Portrait)',
       description: 'Text-first portrait Note for browse',
       sections: [{ slug: 'body', title: 'Body', required: true }],
       publishContentClass: 'note',
       browseFeatured: true,
       seedGalleryAspect: '9/16',
       agentStarter: proseStarter({
-        title: 'Basic Note (Portrait)',
+        title: 'Note (Portrait)',
         focus: 'Fill the required body with clear prose suitable for a browse Note. Text must dominate.'
       })
     },
@@ -233,14 +233,14 @@ const STARTER: PenTemplate[] = [
       classId: 'social.note',
       docType: 'note',
       version: '1',
-      title: 'Basic Note (Landscape)',
+      title: 'Note (Landscape)',
       description: 'Text-first landscape Note',
       sections: [{ slug: 'body', title: 'Body', required: true }],
       publishContentClass: 'note',
       browseFeatured: true,
       seedGalleryAspect: '16/9',
       agentStarter: proseStarter({
-        title: 'Basic Note (Landscape)',
+        title: 'Note (Landscape)',
         focus: 'Write a headline and short sub-message. Text must dominate.'
       })
     },
@@ -464,7 +464,7 @@ withSeed(
       classId: 'social.collection',
       docType: 'collection',
       version: '1',
-      title: 'Basic Collection',
+      title: 'Collection',
       description: 'Ordered pages with distinct stills',
       sections: [
         { slug: 'slide-1', title: 'Slide 1', required: true },
@@ -474,7 +474,7 @@ withSeed(
       browseFeatured: true,
       seedPageSwipeAxis: 'x',
       agentStarter: proseStarter({
-        title: 'Basic Collection',
+        title: 'Collection',
         focus: 'Write slide-1 content; add slide-2 only if the user needs a second page. Same asset class per page.'
       })
     },
@@ -508,7 +508,7 @@ withSeed(
       classId: 'social.set',
       docType: 'set',
       version: '1',
-      title: 'Basic Set',
+      title: 'Set',
       description:
         'Multi-media refs — mix different templates/posts (not same-type multipage)',
       sections: [
@@ -517,7 +517,7 @@ withSeed(
       ],
       publishContentClass: 'note',
       agentStarter: proseStarter({
-        title: 'Basic Set',
+        title: 'Set',
         focus:
           'Describe the primary item; list penEmbed source refs in sources when provided. Mix media types.'
       })
@@ -570,7 +570,7 @@ withSeed(
       classId: 'community.landing',
       docType: 'landing',
       version: '1',
-      title: 'Basic Landing',
+      title: 'Landing',
       description: 'L5 page chrome — hero/value/CTA + community.feed_embed slot',
       sections: [
         { slug: 'hero', title: 'Hero', required: true },
@@ -579,7 +579,7 @@ withSeed(
         { slug: 'cta', title: 'CTA', required: true }
       ],
       agentStarter: proseStarter({
-        title: 'Basic Landing',
+        title: 'Landing',
         focus:
           'Write hero headline, value/proof bullets, optional feed_embed slot note, and a clear CTA. Feed embed is a live stream slot — not longform.'
       })
@@ -592,7 +592,7 @@ withSeed(
       classId: 'community.home',
       docType: 'community_home',
       version: '1',
-      title: 'Basic Community Home',
+      title: 'Community Home',
       description: 'Banner, nav, feed_embed iframe slot, announcements',
       sections: [
         { slug: 'banner', title: 'Banner', required: true },
@@ -601,7 +601,7 @@ withSeed(
         { slug: 'announcements', title: 'Announcements', required: false }
       ],
       agentStarter: proseStarter({
-        title: 'Basic Community Home',
+        title: 'Community Home',
         focus:
           'Fill banner identity, feed_embed slot (live stream), and optional nav/announcements.'
       })
@@ -614,11 +614,11 @@ withSeed(
       classId: 'community.site',
       docType: 'site',
       version: '1',
-      title: 'Basic Site',
+      title: 'Site',
       description: 'Ordered multipage feed of page refs',
       sections: [{ slug: 'pages', title: 'Pages', required: true }],
       agentStarter: proseStarter({
-        title: 'Basic Site',
+        title: 'Site',
         focus: 'List ordered page refs for the multipage feed (landing, home, social pages).'
       })
     },
@@ -630,12 +630,12 @@ withSeed(
       classId: 'projects.journal',
       docType: 'journal',
       version: '1',
-      title: 'Basic Journal',
+      title: 'Journal',
       description:
         'Example Project starter — users publish their own Projects as templates for depth',
       sections: [{ slug: 'entries', title: 'Entries', required: true }],
       agentStarter: proseStarter({
-        title: 'Basic Journal',
+        title: 'Journal',
         focus:
           'Write dated journal entries. Prefer composing from Social/Time atoms rather than inventing Project-only forms.'
       })
@@ -648,11 +648,11 @@ withSeed(
       classId: 'projects.letter',
       docType: 'letter',
       version: '1',
-      title: 'Basic Letter',
+      title: 'Letter',
       description: 'Example correspondence Project — Send opens Messaging',
       sections: [{ slug: 'body', title: 'Body', required: true }],
       agentStarter: proseStarter({
-        title: 'Basic Letter',
+        title: 'Letter',
         focus: 'Write the letter body (greeting, content, closing) in body.'
       })
     },
@@ -664,7 +664,7 @@ withSeed(
       classId: 'library.book',
       docType: 'book',
       version: '1',
-      title: 'Basic Book',
+      title: 'Book',
       description: 'Longform compile target — atom sequence (vertical within unit)',
       sections: [
         { slug: 'front', title: 'Front', required: false },
@@ -672,7 +672,7 @@ withSeed(
       ],
       seedPageSwipeAxis: 'y',
       agentStarter: proseStarter({
-        title: 'Basic Book',
+        title: 'Book',
         focus:
           'Longform: body is a unit sequence. Vertical within unit; horizontal between units. Optional front matter.'
       })
@@ -685,12 +685,12 @@ withSeed(
       classId: 'library.article',
       docType: 'article',
       version: '1',
-      title: 'Basic Article',
+      title: 'Article',
       description: 'Longform compile target — durable article as atom sequence',
       sections: [{ slug: 'body', title: 'Body', required: true }],
       seedPageSwipeAxis: 'y',
       agentStarter: proseStarter({
-        title: 'Basic Article',
+        title: 'Article',
         focus: 'Write a durable article body as a longform atom sequence.'
       })
     },
@@ -702,14 +702,14 @@ withSeed(
       classId: 'library.music',
       docType: 'music',
       version: '1',
-      title: 'Basic Music',
+      title: 'Music',
       description: 'Cover art + track meta and audio',
       sections: [
         { slug: 'meta', title: 'Meta', required: true },
         { slug: 'audio', title: 'Audio', required: true }
       ],
       agentStarter: proseStarter({
-        title: 'Basic Music',
+        title: 'Music',
         focus: 'Fill track meta (title, artist) and attach audio in audio.'
       })
     },
@@ -721,14 +721,14 @@ withSeed(
       classId: 'time.calendar',
       docType: 'calendar',
       version: '1',
-      title: 'Basic Calendar',
+      title: 'Calendar',
       description: 'Calendar shell — lists/embeds Event atoms (grid later)',
       sections: [
         { slug: 'meta', title: 'Meta', required: true },
         { slug: 'events', title: 'Events', required: false }
       ],
       agentStarter: proseStarter({
-        title: 'Basic Calendar',
+        title: 'Calendar',
         focus: 'Fill calendar meta; list eventRef lines for time.event atoms when provided.'
       })
     },
@@ -740,11 +740,11 @@ withSeed(
       classId: 'time.event',
       docType: 'event',
       version: '1',
-      title: 'Basic Event',
+      title: 'Event',
       description: 'Structured when/where (tz + placeLabel + optional geoProofRef)',
       sections: [{ slug: 'details', title: 'Details', required: true }],
       agentStarter: proseStarter({
-        title: 'Basic Event',
+        title: 'Event',
         focus:
           'Emit title/startAt/endAt/timeZone/placeLabel/details key lines. Never raw lat/lng — use geoProofRef for place proofs.'
       })
@@ -757,11 +757,11 @@ withSeed(
       classId: 'time.schedule',
       docType: 'schedule',
       version: '1',
-      title: 'Basic Schedule',
+      title: 'Schedule',
       description: 'Ordered agenda rows for humans and agents',
       sections: [{ slug: 'agenda', title: 'Agenda', required: true }],
       agentStarter: proseStarter({
-        title: 'Basic Schedule',
+        title: 'Schedule',
         focus: 'Write ordered agenda rows as “HH:MM — Title (Nm)” lines.'
       })
     },
@@ -992,12 +992,12 @@ withSeed(
       classId: 'records.register',
       docType: 'register',
       version: '1',
-      title: 'Basic Register',
+      title: 'Register',
       description: 'Typed register rows (kit)',
       sections: [{ slug: 'rows', title: 'Rows', required: true }],
       registerColumns: DEFAULT_REGISTER_COLUMNS,
       agentStarter: registerStarter({
-        title: 'Basic Register',
+        title: 'Register',
         columns: DEFAULT_REGISTER_COLUMNS
       })
     },

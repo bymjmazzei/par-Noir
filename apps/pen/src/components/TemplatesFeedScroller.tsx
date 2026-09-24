@@ -30,6 +30,7 @@ export function TemplatesFeedScroller({
     <SnapFeedShell
       rail={rail}
       count={templates.length}
+      slideKeys={templates.map((t) => t.id)}
       empty={
         <div className="pen-doc-feed-empty">
           <p className="text-sm text-neutral-500">No templates in this class.</p>
@@ -93,20 +94,26 @@ function TemplateFeedSlide({
       </div>
       <div className="pen-templates-feed-aside">
         <TemplateEngagementRail
+          templateId={templateId}
           fileId={null}
+          authorLabel={preview.authorDisplayName}
+          userPnIdentifier={session?.pnIdentifier}
           unlocked={Boolean(session?.pnIdentifier)}
           readOnly
+          placement="aside"
+          buildSlot={
+            <button
+              type="button"
+              className="pen-templates-feed-build"
+              disabled={busy}
+              title={session ? 'Build from template' : 'Unlock to build'}
+              aria-label="Build"
+              onClick={onBuild}
+            >
+              Build
+            </button>
+          }
         />
-        <button
-          type="button"
-          className="pen-templates-feed-build"
-          disabled={busy}
-          title={session ? 'Build from template' : 'Unlock to build'}
-          aria-label="Build"
-          onClick={onBuild}
-        >
-          Build
-        </button>
       </div>
     </div>
   );

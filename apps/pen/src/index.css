@@ -861,6 +861,7 @@ body {
   width: 100%;
   height: 100%;
   min-height: 100%;
+  max-height: 100%;
   scroll-snap-align: start;
   scroll-snap-stop: always;
   box-sizing: border-box;
@@ -893,6 +894,8 @@ body {
 
 .pen-templates-feed-stage {
   gap: 1.25rem;
+  max-height: 100%;
+  overflow: hidden;
 }
 
 .pen-templates-feed-preview {
@@ -902,6 +905,8 @@ body {
   flex: 1 1 auto;
   min-width: 0;
   height: 100%;
+  max-height: 100%;
+  overflow: hidden;
 }
 
 .pen-templates-feed-aside {
@@ -991,7 +996,7 @@ body {
   width: 100%;
 }
 
-/* Outside the template tile — public templates only */
+/* Outside the template tile — catalog feed/modal; overlay variant for editor preview */
 .pen-template-engagement-rail {
   position: relative;
   right: auto;
@@ -1001,21 +1006,57 @@ body {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 1rem;
-  pointer-events: auto;
+  gap: 0.85rem;
+  pointer-events: none;
   padding: 0.25rem 0.35rem;
+  color: #171717;
+}
+
+.pen-template-engagement-rail--overlay {
+  position: absolute;
+  right: 0.55rem;
+  bottom: 5.5rem;
+  z-index: 30;
+  color: #fff;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.55));
 }
 
 .pen-template-engagement-rail--readonly {
   pointer-events: none;
-  color: #a3a3a3;
+}
+
+.pen-template-engagement-creator {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.pen-template-engagement-avatar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.25rem;
+  height: 2.25rem;
+  border-radius: 999px;
+  background: #171717;
+  color: #f5f5f5;
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.pen-template-engagement-rail--overlay .pen-template-engagement-avatar {
+  background: rgba(255, 255, 255, 0.22);
+  color: #fff;
+  backdrop-filter: blur(4px);
 }
 
 .pen-template-engagement-stat {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 0.15rem;
+  gap: 0.1rem;
+  position: relative;
 }
 
 .pen-template-engagement-hint {
@@ -1057,6 +1098,29 @@ body {
   font-weight: 600;
   letter-spacing: 0.02em;
   color: inherit;
+}
+
+.pen-template-engagement-uses {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.1rem;
+  margin-top: 0.15rem;
+  width: 1.75rem;
+}
+
+.pen-template-engagement-uses-label {
+  font-size: 0.5rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  line-height: 1;
+}
+
+.pen-template-engagement-build-slot {
+  margin-top: 0.35rem;
+  pointer-events: auto;
 }
 
 .pen-doc-feed-empty {
@@ -1877,6 +1941,21 @@ input.pen-gallery-tile-title-text {
   background: #f5f5f5;
 }
 
+.pen-template-preview-modal-body--with-rail {
+  align-items: center;
+  justify-content: center;
+  gap: 1.25rem;
+  padding-bottom: 1rem;
+}
+
+.pen-template-preview-modal-stage {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
+  max-height: 100%;
+}
+
 .pen-template-preview-modal-actions {
   display: flex;
   flex-direction: row;
@@ -1968,6 +2047,50 @@ input.pen-gallery-tile-title-text {
   align-items: center;
   gap: 0.25rem;
   color: #525252;
+}
+
+/* Editor social live preview — white workspace + centered phone */
+.pen-social-live-preview {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #ffffff;
+  min-height: 0;
+  overflow: hidden;
+  padding: 1rem;
+}
+
+.pen-social-live-preview-stage {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  max-height: 100%;
+  min-height: 0;
+}
+
+.pen-social-live-preview-stage .pen-feed-phone {
+  height: min(100%, calc(100dvh - 12rem));
+  max-width: min(100%, 26rem);
+}
+
+/* Templates gallery — square tiles + inset preview for widescreen social */
+.pen-templates-gallery {
+  --pen-gallery-tile-w: calc(var(--pen-rule-pitch) * 4);
+  --pen-gallery-tile-h: calc(var(--pen-rule-pitch) * 4);
+  --pen-gallery-preview-h: calc(
+    var(--pen-gallery-tile-h) - var(--pen-gallery-band-pad) * 2 - var(--pen-gallery-title-h)
+  );
+}
+
+.pen-templates-gallery .pen-gallery-tile-preview {
+  padding: 0.4rem;
+  box-sizing: border-box;
+}
+
+.pen-templates-gallery .pen-gallery-tile-preview > * {
+  max-width: 100%;
+  max-height: 100%;
 }
 
 .pen-feed-carousel {

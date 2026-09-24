@@ -46,3 +46,42 @@ export function loadBrowseDensity(pn: string): PenBrowseDensity {
 export function saveBrowseDensity(pn: string, density: PenBrowseDensity): void {
   localStorage.setItem(browseDensityKey(pn), density);
 }
+
+const templateUsesKey = (pn: string) => `pen.templateUses:${pn || '_anon'}`;
+
+/** Device-local “times used” count (Build / useTemplate). */
+export function getTemplateUseCount(pn: string | null | undefined, templateId: string): number {
+  try {
+    const raw = localStorage.getItem(templateUsesKey(pn || '_anon'));
+    if (!raw) return 0;
+    const parsed = JSON.parse(raw) as Record<string, unknown>;
+    const n = Number(parsed[templateId] ?? 0);
+    return Number.isFinite(n) && n > 0 ? Math.floor(n) : 0;
+  } catch {
+    return 0;
+  }
+}
+
+export function incrementTemplateUseCount(
+  pn: string | null | undefined,
+  templateId: string
+): number {
+  const key = templateUsesKey(pn || '_anon');
+  let map: Record<string, number> = {};
+  try {
+    const raw = localStorage.getItem(key);
+    if (raw) {
+      const parsed = JSON.parse(raw) as Record<string, unknown>;
+      for (const [id, v] of Object.entries(parsed)) {
+        const n = Number(v);
+        if (Number.isFinite(n) && n > 0) map[id] = Math.floor(n);
+      }
+    }
+  } catch {
+    map = {};
+  }
+  const next = (map[templateId] || 0) + 1;
+  map[templateId] = next;
+  localStorage.setItem(key, JSON.stringify(map));
+  return next;
+}

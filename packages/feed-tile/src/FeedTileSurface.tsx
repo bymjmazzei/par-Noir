@@ -107,13 +107,19 @@ export function FeedTileSurface({
   model,
   mode = 'preview',
   compact,
-  hideEngagementRail = false
+  hideEngagementRail = false,
+  engagementOverlay
 }: {
   model: FeedTileViewModel;
   mode?: 'preview' | 'live';
   compact?: boolean;
-  /** When true, omit decorative rail (caller renders live engagement outside). */
+  /** When true, omit decorative rail (caller renders live engagement outside or via overlay). */
   hideEngagementRail?: boolean;
+  /**
+   * Replaces decorative EngagementRail when set (e.g. browse-shaped live-preview chrome).
+   * Preview-only — callers must not bake this into composed publish output.
+   */
+  engagementOverlay?: ReactNode;
 }) {
   const pages =
     model.pages.length > 0
@@ -126,6 +132,13 @@ export function FeedTileSurface({
         ];
   const multi = pages.length > 1;
   const axis = model.pageSwipeAxis === 'y' ? 'y' : 'x';
+
+  const engagement =
+    engagementOverlay != null
+      ? engagementOverlay
+      : !hideEngagementRail
+        ? <EngagementRail mode={mode} />
+        : null;
 
   return (
     <div
@@ -167,7 +180,7 @@ export function FeedTileSurface({
         />
       )}
 
-      {!hideEngagementRail ? <EngagementRail mode={mode} /> : null}
+      {engagement}
 
       <div className="pointer-events-none absolute bottom-4 left-3 right-16 z-20 text-white drop-shadow-md">
         <div className="flex items-center gap-2">
