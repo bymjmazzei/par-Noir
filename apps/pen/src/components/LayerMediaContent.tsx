@@ -109,6 +109,7 @@ export function LayerMediaContent({
       {isVideo ? (
         <PenMediaPlayer
           src={resolved}
+          syncKey={`pen-layer:${layer.id}`}
           className="absolute inset-0 bg-transparent"
           videoStyle={innerStyle}
           tapToToggle={selected}
