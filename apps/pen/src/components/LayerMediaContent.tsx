@@ -24,8 +24,8 @@ export function LayerMediaContent({
   docId,
   session,
   onNaturalAspect,
-  /** When true, always show the scrub timeline (media editor panel). */
-  forceControls
+  /** @deprecated scrubber is hover-only; kept for call-site compat. */
+  forceControls: _forceControls
 }: {
   layer: PenPageLayer;
   className?: string;
@@ -111,7 +111,6 @@ export function LayerMediaContent({
           src={resolved}
           className="absolute inset-0 bg-transparent"
           videoStyle={innerStyle}
-          alwaysShowControls={forceControls}
         />
       ) : (
         <img

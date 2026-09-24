@@ -1,5 +1,5 @@
 /**
- * Muted autoplay/loop video with tap-to-pause and drag scrub timeline.
+ * Muted autoplay/loop video with tap-to-pause and hover scrub timeline.
  * Shared by Pen canvas, media editor, and feed-tile live preview.
  */
 
@@ -12,21 +12,20 @@ import {
   type PointerEvent as ReactPointerEvent
 } from 'react';
 
+const TAP_SLOP_PX = 6;
+
 export function PenMediaPlayer({
   src,
   className,
   style,
   videoStyle,
-  poster,
-  /** Keep the scrub bar visible (media editor panel). */
-  alwaysShowControls = false
+  poster
 }: {
   src: string;
   className?: string;
   style?: CSSProperties;
   videoStyle?: CSSProperties;
   poster?: string;
-  alwaysShowControls?: boolean;
 }) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const barRef = useRef<HTMLDivElement>(null);
@@ -35,6 +34,7 @@ export function PenMediaPlayer({
   const [progress, setProgress] = useState(0);
   const [seeking, setSeeking] = useState(false);
   const scrubbing = useRef(false);
+  const tapOrigin = useRef<{ x: number; y: number } | null>(null);
 
   useEffect(() => {
     const v = videoRef.current;
@@ -64,9 +64,7 @@ export function PenMediaPlayer({
     };
   }, [src]);
 
-  const togglePlay = useCallback((e: React.MouseEvent | React.PointerEvent) => {
-    e.stopPropagation();
-    e.preventDefault();
+  const togglePlay = useCallback(() => {
     const v = videoRef.current;
     if (!v) return;
     if (v.paused) {
@@ -91,6 +89,7 @@ export function PenMediaPlayer({
     e.stopPropagation();
     e.preventDefault();
     scrubbing.current = true;
+    tapOrigin.current = null;
     setSeeking(true);
     (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
     seekFromClientX(e.clientX);
@@ -109,7 +108,24 @@ export function PenMediaPlayer({
     setSeeking(false);
   };
 
-  const showBar = alwaysShowControls || hover || seeking || paused;
+  const onVideoPointerDown = (e: ReactPointerEvent) => {
+    if (e.button !== 0) return;
+    tapOrigin.current = { x: e.clientX, y: e.clientY };
+  };
+
+  const onVideoPointerUp = (e: ReactPointerEvent) => {
+    const origin = tapOrigin.current;
+    tapOrigin.current = null;
+    if (!origin || scrubbing.current) return;
+    const dist = Math.hypot(e.clientX - origin.x, e.clientY - origin.y);
+    if (dist > TAP_SLOP_PX) return;
+    // Don't stopPropagation — LayoutSurface needs pointerup to clear pending drag.
+    void e;
+    togglePlay();
+  };
+
+  // Scrubber only while hovering the media (or actively scrubbing).
+  const showBar = hover || seeking;
   const objectFit =
     (videoStyle?.objectFit as CSSProperties['objectFit'] | undefined) || 'contain';
 
@@ -139,7 +155,11 @@ export function PenMediaPlayer({
         playsInline
         preload="metadata"
         draggable={false}
-        onClick={togglePlay}
+        onPointerDown={onVideoPointerDown}
+        onPointerUp={onVideoPointerUp}
+        onPointerCancel={() => {
+          tapOrigin.current = null;
+        }}
       />
       {paused && (
         <button
@@ -157,7 +177,7 @@ export function PenMediaPlayer({
       )}
       <div
         ref={barRef}
-        // Sit above the SE resize handle (12px) so scale stays clickable.
+        // Sit above the SE resize handle so scale stays clickable.
         className={`absolute bottom-3 left-0 right-3 z-10 px-2 transition-opacity ${
           showBar ? 'pointer-events-auto opacity-100' : 'pointer-events-none opacity-0'
         }`}
