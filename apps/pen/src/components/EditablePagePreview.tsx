@@ -302,6 +302,7 @@ function BodyWrapObject({
         docId={docId}
         session={session}
         onNaturalAspect={onNaturalAspect}
+        selected={selected}
       />
     );
   } else if (layer.kind === 'text') {
@@ -934,6 +935,7 @@ export function EditablePagePreview({
                         docId={manifest.docId}
                         session={session}
                         onNaturalAspect={(aspect) => reshapeLayerToAspect(layer.id, aspect)}
+                        selected={activeLayerId === layer.id}
                       />
                     </div>
                   );

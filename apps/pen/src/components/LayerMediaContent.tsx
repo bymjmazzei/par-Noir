@@ -24,8 +24,8 @@ export function LayerMediaContent({
   docId,
   session,
   onNaturalAspect,
-  /** @deprecated scrubber is hover-only; kept for call-site compat. */
-  forceControls: _forceControls
+  /** When true (selected layer / media panel), tap toggles play/pause. */
+  selected = true
 }: {
   layer: PenPageLayer;
   className?: string;
@@ -33,7 +33,7 @@ export function LayerMediaContent({
   docId?: string;
   session?: PenSession | null;
   onNaturalAspect?: (aspect: number) => void;
-  forceControls?: boolean;
+  selected?: boolean;
 }): ReactNode {
   const src =
     layer.kind === 'video'
@@ -111,6 +111,7 @@ export function LayerMediaContent({
           src={resolved}
           className="absolute inset-0 bg-transparent"
           videoStyle={innerStyle}
+          tapToToggle={selected}
         />
       ) : (
         <img

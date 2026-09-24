@@ -19,13 +19,19 @@ export function PenMediaPlayer({
   className,
   style,
   videoStyle,
-  poster
+  poster,
+  /**
+   * When false, tap does not toggle play (e.g. live preview until the layer is
+   * selected). Scrub still works on hover once shown.
+   */
+  tapToToggle = true
 }: {
   src: string;
   className?: string;
   style?: CSSProperties;
   videoStyle?: CSSProperties;
   poster?: string;
+  tapToToggle?: boolean;
 }) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const barRef = useRef<HTMLDivElement>(null);
@@ -116,6 +122,7 @@ export function PenMediaPlayer({
   const onVideoPointerUp = (e: ReactPointerEvent) => {
     const origin = tapOrigin.current;
     tapOrigin.current = null;
+    if (!tapToToggle) return;
     if (!origin || scrubbing.current) return;
     const dist = Math.hypot(e.clientX - origin.x, e.clientY - origin.y);
     if (dist > TAP_SLOP_PX) return;
@@ -143,7 +150,7 @@ export function PenMediaPlayer({
         key={src}
         src={src}
         poster={poster}
-        className="absolute inset-0 h-full w-full cursor-pointer"
+        className={`absolute inset-0 h-full w-full ${tapToToggle ? 'cursor-pointer' : ''}`}
         style={{
           objectFit,
           ...videoStyle,
