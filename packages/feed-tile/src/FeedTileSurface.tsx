@@ -18,6 +18,8 @@ export type FeedTileViewModel = {
   fileId?: string;
   posterUrl?: string;
   contentClass?: string;
+  /** Multipage swipe axis — collections default x; longform units y. */
+  pageSwipeAxis?: 'x' | 'y';
 };
 
 function EngagementRail({ mode }: { mode: 'preview' | 'live' }) {
@@ -123,6 +125,7 @@ export function FeedTileSurface({
           }
         ];
   const multi = pages.length > 1;
+  const axis = model.pageSwipeAxis === 'y' ? 'y' : 'x';
 
   return (
     <div
@@ -132,9 +135,23 @@ export function FeedTileSurface({
       }`}
     >
       {multi ? (
-        <div className="pen-feed-carousel flex h-full w-full overflow-x-auto overflow-y-hidden">
+        <div
+          className={
+            axis === 'y'
+              ? 'pen-feed-carousel flex h-full w-full flex-col overflow-x-hidden overflow-y-auto'
+              : 'pen-feed-carousel flex h-full w-full overflow-x-auto overflow-y-hidden'
+          }
+          data-page-swipe-axis={axis}
+        >
           {pages.map((page, i) => (
-            <div key={i} className="pen-feed-carousel-page relative h-full w-full shrink-0 grow-0 basis-full">
+            <div
+              key={i}
+              className={
+                axis === 'y'
+                  ? 'pen-feed-carousel-page relative h-full w-full shrink-0 grow-0 basis-full'
+                  : 'pen-feed-carousel-page relative h-full w-full shrink-0 grow-0 basis-full'
+              }
+            >
               <PageSurface page={page} titleFallback={model.title} />
             </div>
           ))}

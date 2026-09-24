@@ -49,7 +49,7 @@ const CLASSES: PenClass[] = [
   {
     id: 'social.collection',
     title: 'Collections',
-    description: 'Ordered slides / story collections',
+    description: 'Same-type multipage workspace (swipe between pages)',
     kind: 'authored',
     audience: 'consumer',
     parentId: 'social'
@@ -57,7 +57,8 @@ const CLASSES: PenClass[] = [
   {
     id: 'social.set',
     title: 'Sets',
-    description: 'Feed items that reference other docs (primary + sources)',
+    description:
+      'Multi-media assembly — refs to different templates/posts (not same-type multipage)',
     kind: 'authored',
     audience: 'consumer',
     parentId: 'social'
@@ -105,7 +106,7 @@ const CLASSES: PenClass[] = [
   {
     id: 'social.profile',
     title: 'Profile',
-    description: 'Member / contributor badge',
+    description: 'Member badge card (profile landing uses isTopPost, not this form)',
     kind: 'authored',
     audience: 'consumer',
     parentId: 'social'
@@ -161,7 +162,7 @@ const CLASSES: PenClass[] = [
   {
     id: 'community.home',
     title: 'Community home',
-    description: 'Hub — banner, nav, featured stream, announcements',
+    description: 'Hub — banner, nav, feed_embed slot, announcements',
     kind: 'authored',
     audience: 'consumer',
     parentId: 'community'
@@ -243,6 +244,21 @@ const CLASSES: PenClass[] = [
     kind: 'authored',
     audience: 'consumer',
     parentId: 'library'
+  },
+  {
+    id: 'knowledge',
+    title: 'Knowledge',
+    description: 'Claims bound to standard data points + ZKP refs (never raw PII)',
+    kind: 'authored',
+    audience: 'consumer'
+  },
+  {
+    id: 'knowledge.claim',
+    title: 'Claim',
+    description: 'Structured claim atom with optional geo proof attachments',
+    kind: 'authored',
+    audience: 'consumer',
+    parentId: 'knowledge'
   },
   {
     id: 'time',

@@ -62,6 +62,7 @@ export function bundleToFeedTileModel(input: {
   fileId?: string;
   contentClass?: string;
   caption?: string;
+  pageSwipeAxis?: PenDocManifest['pageSwipeAxis'];
   /** Prefer committed composed gallery preview when set. */
   galleryPreviewRef?: string;
   galleryPreviewKind?: 'image' | 'video';
@@ -83,7 +84,8 @@ export function bundleToFeedTileModel(input: {
     pages,
     posterUrl: input.galleryPreviewPosterRef || input.posterUrl,
     fileId: input.fileId,
-    contentClass: input.contentClass
+    contentClass: input.contentClass,
+    pageSwipeAxis: input.pageSwipeAxis
   };
 }
 

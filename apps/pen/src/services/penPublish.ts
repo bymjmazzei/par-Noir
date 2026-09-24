@@ -113,7 +113,7 @@ export async function writeSocialPublishHandoff(
     connectReady?: boolean;
   }
 ): Promise<{
-  contentClass: 'note';
+  contentClass: 'note' | 'media' | 'collection';
   title: string;
   pages: ReturnType<typeof compileDocumentToNote>['pages'];
   templateId: string;
@@ -126,6 +126,7 @@ export async function writeSocialPublishHandoff(
   basedOnTemplateId?: string;
   penIrRef?: { objectId?: string; publicUrl?: string };
   licensing?: ReturnType<typeof licensingForPublish>;
+  musicPenDocId?: string;
 }> {
   const resolveDoc =
     opts?.resolveDoc ||
@@ -170,7 +171,7 @@ export async function writeSocialPublishHandoff(
       });
 
   const payload = {
-    contentClass: 'note' as const,
+    contentClass: (compiled.contentClass || 'note') as 'note' | 'media' | 'collection',
     title: compiled.title,
     pages: compiled.pages,
     templateId: compiled.templateId,
@@ -183,6 +184,9 @@ export async function writeSocialPublishHandoff(
     /** IR fetch pointer for Use template (doc id until public IR object lands). */
     penIrRef: { objectId: bundle.manifest.docId },
     licensing,
+    ...(bundle.manifest.audioSotDocId
+      ? { musicPenDocId: bundle.manifest.audioSotDocId }
+      : {}),
     ...(asTemplate
       ? {
           penTemplateKind: (bundle.manifest.basedOnTemplateId

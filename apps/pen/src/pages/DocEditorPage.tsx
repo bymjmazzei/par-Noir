@@ -31,6 +31,9 @@ import {
   shouldPublishAsSingleComposedVideo,
   shouldPublishAsMixedPages,
   isGooglePenFont,
+  emptySection,
+  remapSectionsForAspect,
+  normalizeGalleryAspect,
   type PenDocComment,
   type PenPageLayout,
   type PenDocManifest,
@@ -1389,8 +1392,79 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
                   documentSections={tocSections}
                   activeSlug={activeSlug}
                   onSelectDocumentSection={setActiveSlug}
+                  allowAddPage={
+                    bundle.manifest.classId === 'social.collection' ||
+                    bundle.manifest.docType === 'collection' ||
+                    template?.publishContentClass === 'collection' ||
+                    getClass(bundle.manifest.classId)?.parentId === 'library'
+                  }
+                  onAddPage={() => {
+                    if (!bundle) return;
+                    const n = bundle.sections.length + 1;
+                    const slug = `page-${n}`;
+                    const nextSec = emptySection(slug);
+                    const nextSections = [...bundle.sections, nextSec];
+                    const nextToc = [...bundle.manifest.toc, slug];
+                    persist({
+                      ...bundle,
+                      sections: nextSections,
+                      manifest: {
+                        ...bundle.manifest,
+                        toc: nextToc,
+                        pageSwipeAxis: bundle.manifest.pageSwipeAxis || 'x',
+                        updatedAt: new Date().toISOString()
+                      }
+                    });
+                    setActiveSlug(slug);
+                  }}
                 />
                 <div className="ml-auto flex items-center gap-1">
+                  {(getClass(bundle.manifest.classId)?.parentId === 'social' ||
+                    bundle.manifest.galleryAspect) && (
+                    <select
+                      className="rounded border border-neutral-300 bg-white px-1 py-0.5 text-[11px] text-neutral-700"
+                      title="Aspect"
+                      aria-label="Gallery aspect"
+                      value={normalizeGalleryAspect(bundle.manifest.galleryAspect)}
+                      onChange={(e) => {
+                        const next = normalizeGalleryAspect(e.target.value);
+                        const from = normalizeGalleryAspect(bundle.manifest.galleryAspect);
+                        const remapped = remapSectionsForAspect(bundle.sections, from, next);
+                        persist({
+                          ...bundle,
+                          sections: remapped,
+                          manifest: {
+                            ...bundle.manifest,
+                            galleryAspect: next,
+                            updatedAt: new Date().toISOString()
+                          }
+                        });
+                      }}
+                    >
+                      <option value="9/16">9:16</option>
+                      <option value="16/9">16:9</option>
+                      <option value="1/1">1:1</option>
+                    </select>
+                  )}
+                  {bundle.manifest.classId === 'social.audio' && (
+                    <input
+                      className="max-w-[7rem] truncate rounded border border-neutral-300 bg-white px-1 py-0.5 text-[11px] text-neutral-700"
+                      placeholder="audio SoT id"
+                      title="Published music/audio doc id (SoT)"
+                      aria-label="Audio source of truth doc id"
+                      value={bundle.manifest.audioSotDocId || ''}
+                      onChange={(e) => {
+                        persist({
+                          ...bundle,
+                          manifest: {
+                            ...bundle.manifest,
+                            audioSotDocId: e.target.value.trim() || null,
+                            updatedAt: new Date().toISOString()
+                          }
+                        });
+                      }}
+                    />
+                  )}
                   <button
                     type="button"
                     title="Undo"

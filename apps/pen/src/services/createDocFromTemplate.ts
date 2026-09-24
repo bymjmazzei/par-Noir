@@ -111,6 +111,9 @@ async function persistBundle(input: {
     pageLayout,
     pagePresentation,
     galleryAspect: input.template.seedGalleryAspect,
+    pageSwipeAxis:
+      input.template.seedPageSwipeAxis ||
+      (input.template.publishContentClass === 'collection' ? 'x' : undefined),
     ownerPnHash,
     roles: ensureOwnerAssignment([], ownerPnHash),
     lifecycle: 'draft',

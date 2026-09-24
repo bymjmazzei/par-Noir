@@ -52,14 +52,14 @@ export const GOLDEN_FIXTURES: PenCurriculumFixture[] = [
     id: 'note-list-market',
     dir: 'notes/list-market',
     intent: 'Make a shopping list for weekend market.',
-    expectedTemplateId: 'list.basic.v1',
+    expectedTemplateId: 'note.text_tile.light.v1',
     build: {
-      templateId: 'list.basic.v1',
+      templateId: 'note.text_tile.light.v1',
       title: 'Weekend market',
       sections: [
         {
-          slug: 'items',
-          plainText: '- Tomatoes\n- Bread\n- Olive oil\n- Lemons'
+          slug: 'body',
+          plainText: 'Tomatoes\nBread\nOlive oil\nLemons'
         }
       ]
     }

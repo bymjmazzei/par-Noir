@@ -19,6 +19,22 @@ const BROWSE_URL = (process.env.BROWSE_URL || 'https://browse.parnoir.com').repl
 const HEADLESS = process.env.HEADLESS === '1';
 const MAX_TEMPLATES = Math.max(1, Number(process.env.MAX_TEMPLATES || 3));
 
+/**
+ * Phase 1 atom pack — platform starter ids that must land on pen-templates.
+ * Headed flow still crafts via blank + layers; titles track the atom pack.
+ */
+export const ATOM_PACK_TEMPLATE_IDS = [
+  'note.basic.portrait.v1',
+  'note.text_tile.light.v1',
+  'note.text_tile.dark.v1',
+  'note.media.portrait.v1',
+  'metric.basic.v1',
+  'post.image.portrait.v1',
+  'post.video.portrait.v1',
+  'post.caption.v1',
+  'audio.basic.v1'
+];
+
 /** Story-safe layouts on ~360×640 social canvas (px). Top/bottom chrome reserved. */
 const SPECS = [
   {

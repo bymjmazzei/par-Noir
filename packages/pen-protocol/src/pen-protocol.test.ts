@@ -172,12 +172,13 @@ describe('classes + templates', () => {
     }
   });
 
-  it('consumer categories are social projects library time custom; records is kit', () => {
+  it('consumer categories are social community projects library knowledge time custom; records is kit', () => {
     expect(listConsumerCategories().map((c) => c.id)).toEqual([
       'social',
       'community',
       'projects',
       'library',
+      'knowledge',
       'time',
       'custom'
     ]);
@@ -571,15 +572,22 @@ describe('template seeds + Mini featured + layer locks', () => {
     }
     const note = requireTemplate('note.basic.portrait.v1');
     expect((note.seedSections?.[0]?.layers || []).every((l) => l.kind === 'text')).toBe(true);
-    const list = requireTemplate('list.basic.v1');
-    expect(JSON.stringify(list.seedSections)).toMatch(/bulletList|listItem|\[ \]/);
+    const tile = requireTemplate('note.text_tile.light.v1');
+    expect(tile.classId).toBe('social.note');
+    expect(tile.browseFeatured).toBe(true);
     const journal = requireTemplate('journal.basic.v1');
     expect(JSON.stringify(journal.seedSections)).toMatch(/2026-09/);
+    expect(() => requireTemplate('list.basic.v1')).toThrow(/unknown_pen_template/);
     const set = requireTemplate('set.basic.v1');
     expect(set.seedSections?.some((s) => s.slug === 'sources')).toBe(true);
     const landing = requireTemplate('landing.basic.v1');
     expect(landing.classId).toBe('community.landing');
-    expect(landing.sections.map((s) => s.slug)).toEqual(['hero', 'value', 'cta']);
+    expect(landing.sections.map((s) => s.slug)).toEqual(['hero', 'value', 'feed_embed', 'cta']);
+    const knowledge = requireTemplate('knowledge.claim.v1');
+    expect(knowledge.classId).toBe('knowledge.claim');
+    const collection = requireTemplate('collection.basic.v1');
+    expect(collection.publishContentClass).toBe('collection');
+    expect(collection.seedPageSwipeAxis).toBe('x');
     const feed = requireTemplate('feed.self_hosted.v1');
     expect(feed.classId).toBe('community.feed');
     expect(

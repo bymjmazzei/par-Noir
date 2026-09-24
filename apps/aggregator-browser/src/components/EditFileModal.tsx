@@ -328,8 +328,8 @@ export function EditFileModal({ file, onClose, onSave }: EditFileModalProps) {
                 <div className="text-white font-medium">Set as Top Post</div>
                 <div className="text-xs text-neutral-400">
                   {isTopPost 
-                    ? 'This post will appear at the top of your profile and be used as your profile icon'
-                    : 'Pin this post to the top of your profile feeds'}
+                    ? 'Pinned mixed top post — profile landing and Discover/profile icon use this asset'
+                    : 'Pin a Set or Post as your profile landing (isTopPost) — not a separate Profile atom'}
                 </div>
               </div>
             </button>

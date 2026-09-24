@@ -93,6 +93,7 @@ export function BrowseFeedTilePreview({
     sections,
     pagePresentation: manifest.pagePresentation,
     contentClass: manifest.docType,
+    pageSwipeAxis: manifest.pageSwipeAxis,
     galleryPreviewRef: manifest.galleryPreviewRef,
     galleryPreviewKind: manifest.galleryPreviewKind,
     galleryPreviewPosterRef: manifest.galleryPreviewPosterRef
@@ -107,6 +108,7 @@ export function BrowseFeedTilePreview({
       sections,
       pagePresentation: manifest.pagePresentation,
       contentClass: manifest.docType,
+      pageSwipeAxis: manifest.pageSwipeAxis,
       galleryPreviewRef: manifest.galleryPreviewRef,
       galleryPreviewKind: manifest.galleryPreviewKind,
       galleryPreviewPosterRef: manifest.galleryPreviewPosterRef

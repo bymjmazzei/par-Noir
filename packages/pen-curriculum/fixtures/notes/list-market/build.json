@@ -1,10 +1,10 @@
 {
-  "templateId": "list.basic.v1",
+  "templateId": "note.text_tile.light.v1",
   "title": "Weekend market",
   "sections": [
     {
-      "slug": "items",
-      "plainText": "- Tomatoes\n- Bread\n- Olive oil\n- Lemons"
+      "slug": "body",
+      "plainText": "Tomatoes\nBread\nOlive oil\nLemons"
     }
   ]
 }

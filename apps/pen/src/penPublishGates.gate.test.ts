@@ -12,6 +12,7 @@ import {
   assertAggregatorTargetsAllowed,
   sanitizeAggregatorTargets,
   licensingForPublish,
+  requireLicensingOnHandoff,
   PUBLIC_TEMPLATE_REQUIRES_VERIFICATION
 } from './services/penPublishGates';
 import { canPublishPublicTemplate, isVerifiedAuthor } from './services/penVerified';
@@ -67,6 +68,11 @@ describe('Pen publish verification gates', () => {
     expect(implied.family).toBe('implied');
     const free = licensingForPublish(implied, 'ownerhash', { membership: false });
     expect(free.family).toBe('unconditionalFree');
+  });
+
+  it('publish handoff rejects missing licensing', () => {
+    expect(() => requireLicensingOnHandoff(undefined)).toThrow(/licensing_required/);
+    expect(requireLicensingOnHandoff(defaultLicensingRoot('ownerhash')).family).toBeTruthy();
   });
 
   it('verified social licensing keeps claimBps adjustable', () => {

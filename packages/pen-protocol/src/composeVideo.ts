@@ -6,6 +6,7 @@
 
 import { docToPlainText, normalizeSection } from './richDoc.js';
 import type { PenPageLayer, PenSectionContent } from './types.js';
+import { sectionWithoutActionLayers } from './actionPartition.js';
 
 /** Overlay video layer that participates in compose-video export. */
 export function isVisibleVideoLayer(layer: PenPageLayer | null | undefined): boolean {
@@ -19,7 +20,8 @@ export function isVisibleVideoLayer(layer: PenPageLayer | null | undefined): boo
 export function sectionHasVisibleVideoLayer(
   section: PenSectionContent | null | undefined
 ): boolean {
-  const layers = section?.layers || [];
+  if (!section) return false;
+  const layers = sectionWithoutActionLayers(normalizeSection(section)).layers || [];
   return layers.some(isVisibleVideoLayer);
 }
 
@@ -49,7 +51,7 @@ export function partitionSectionsForPublish(
   const videoSections: PenSectionContent[] = [];
   const noteSections: PenSectionContent[] = [];
   for (const raw of sections || []) {
-    const sec = normalizeSection(raw);
+    const sec = sectionWithoutActionLayers(normalizeSection(raw));
     if (sectionHasVisibleVideoLayer(sec)) {
       videoSections.push(sec);
     } else if (sectionHasNoteContent(sec)) {

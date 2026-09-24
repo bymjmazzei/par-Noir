@@ -39,7 +39,7 @@ describe('rich template preview + create chrome', () => {
   it('community landing and site appear in preview catalog', () => {
     const landing = templatePreviewBundle(undefined, 'landing.basic.v1');
     expect(landing?.manifest.classId).toBe('community.landing');
-    expect(landing?.sections.map((s) => s.slug)).toEqual(['hero', 'value', 'cta']);
+    expect(landing?.sections.map((s) => s.slug)).toEqual(['hero', 'value', 'feed_embed', 'cta']);
     const site = templatePreviewBundle(undefined, 'site.basic.v1');
     expect(site?.manifest.classId).toBe('community.site');
     const feed = templatePreviewBundle(undefined, 'feed.self_hosted.v1');

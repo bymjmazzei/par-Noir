@@ -9,7 +9,6 @@ import {
   seedAudio,
   seedBook,
   seedCalendar,
-  seedCardNote,
   seedCode,
   seedCollectionBasic,
   seedCollectionStory,
@@ -21,10 +20,10 @@ import {
   seedFeedSelfHosted,
   seedFrame,
   seedJournal,
+  seedKnowledgeClaim,
   seedLanding,
   seedLetter,
   seedLink,
-  seedList,
   seedMetric,
   seedMusic,
   seedNoteArticle,
@@ -32,6 +31,8 @@ import {
   seedNoteBasicPortrait,
   seedNoteMediaLandscape,
   seedNoteMediaPortrait,
+  seedNoteTextTileDark,
+  seedNoteTextTileLight,
   seedPoll,
   seedPostCaption,
   seedPostImageAspect,
@@ -95,6 +96,8 @@ export interface PenTemplate {
   seedPageLayout?: PenPageLayout;
   /** Gallery thumb aspect (Social orientations). */
   seedGalleryAspect?: '9/16' | '16/9' | '1/1';
+  /** Default multipage swipe axis (collections → x). */
+  seedPageSwipeAxis?: 'x' | 'y';
   /** Featured in Pen Mini (~3 per form). */
   browseFeatured?: boolean;
   /** Optional CDN-backed public template preview. */
@@ -185,6 +188,44 @@ const STARTER: PenTemplate[] = [
       })
     },
     seedNoteBasicPortrait()
+  ),
+  withSeed(
+    {
+      id: 'note.text_tile.light.v1',
+      classId: 'social.note',
+      docType: 'note',
+      version: '1',
+      title: 'Text Tile (Light)',
+      description: 'Twitter-style status card on a light ground',
+      sections: [{ slug: 'body', title: 'Body', required: true }],
+      publishContentClass: 'note',
+      browseFeatured: true,
+      seedGalleryAspect: '9/16',
+      agentStarter: proseStarter({
+        title: 'Text Tile (Light)',
+        focus: 'Write one clear status thought inside the light card. Text must dominate.'
+      })
+    },
+    seedNoteTextTileLight()
+  ),
+  withSeed(
+    {
+      id: 'note.text_tile.dark.v1',
+      classId: 'social.note',
+      docType: 'note',
+      version: '1',
+      title: 'Text Tile (Dark)',
+      description: 'Twitter-style status card on a dark ground',
+      sections: [{ slug: 'body', title: 'Body', required: true }],
+      publishContentClass: 'note',
+      browseFeatured: true,
+      seedGalleryAspect: '9/16',
+      agentStarter: proseStarter({
+        title: 'Text Tile (Dark)',
+        focus: 'Write one clear status thought inside the dark card. Text must dominate.'
+      })
+    },
+    seedNoteTextTileDark()
   ),
   withSeed(
     {
@@ -431,9 +472,10 @@ withSeed(
       ],
       publishContentClass: 'collection',
       browseFeatured: true,
+      seedPageSwipeAxis: 'x',
       agentStarter: proseStarter({
         title: 'Basic Collection',
-        focus: 'Write slide-1 content; add slide-2 only if the user needs a second page.'
+        focus: 'Write slide-1 content; add slide-2 only if the user needs a second page. Same asset class per page.'
       })
     },
     seedCollectionBasic()
@@ -445,13 +487,14 @@ withSeed(
       docType: 'collection',
       version: '1',
       title: 'Story Collection',
-      description: 'Vertical story cover + pages',
+      description: 'Vertical story cover + pages (same-type multipage)',
       sections: [
         { slug: 'cover', title: 'Cover', required: true },
         { slug: 'pages', title: 'Pages', required: true }
       ],
       publishContentClass: 'collection',
       browseFeatured: true,
+      seedPageSwipeAxis: 'x',
       agentStarter: proseStarter({
         title: 'Story Collection',
         focus: 'Write a cover line and story pages body.'
@@ -466,14 +509,17 @@ withSeed(
       docType: 'set',
       version: '1',
       title: 'Basic Set',
-      description: 'Primary visual plus source references',
+      description:
+        'Multi-media refs — mix different templates/posts (not same-type multipage)',
       sections: [
         { slug: 'primary', title: 'Primary', required: true },
         { slug: 'sources', title: 'Sources', required: false }
       ],
+      publishContentClass: 'note',
       agentStarter: proseStarter({
         title: 'Basic Set',
-        focus: 'Describe the primary item; list source refs in sources when provided.'
+        focus:
+          'Describe the primary item; list penEmbed source refs in sources when provided. Mix media types.'
       })
     },
     seedSetBasic()
@@ -525,15 +571,17 @@ withSeed(
       docType: 'landing',
       version: '1',
       title: 'Basic Landing',
-      description: 'Hero, value, and CTA arrival page',
+      description: 'L5 page chrome — hero/value/CTA + community.feed_embed slot',
       sections: [
         { slug: 'hero', title: 'Hero', required: true },
         { slug: 'value', title: 'Value', required: true },
+        { slug: 'feed_embed', title: 'Feed embed', required: false },
         { slug: 'cta', title: 'CTA', required: true }
       ],
       agentStarter: proseStarter({
         title: 'Basic Landing',
-        focus: 'Write hero headline, value/proof bullets, and a clear CTA.'
+        focus:
+          'Write hero headline, value/proof bullets, optional feed_embed slot note, and a clear CTA. Feed embed is a live stream slot — not longform.'
       })
     },
     seedLanding()
@@ -545,16 +593,17 @@ withSeed(
       docType: 'community_home',
       version: '1',
       title: 'Basic Community Home',
-      description: 'Banner, nav, featured stream, announcements',
+      description: 'Banner, nav, feed_embed iframe slot, announcements',
       sections: [
         { slug: 'banner', title: 'Banner', required: true },
         { slug: 'nav', title: 'Nav', required: false },
-        { slug: 'featured', title: 'Featured', required: true },
+        { slug: 'feed_embed', title: 'Feed embed', required: true },
         { slug: 'announcements', title: 'Announcements', required: false }
       ],
       agentStarter: proseStarter({
         title: 'Basic Community Home',
-        focus: 'Fill banner identity, featured stream note, and optional nav/announcements.'
+        focus:
+          'Fill banner identity, feed_embed slot (live stream), and optional nav/announcements.'
       })
     },
     seedCommunityHome()
@@ -582,30 +631,16 @@ withSeed(
       docType: 'journal',
       version: '1',
       title: 'Basic Journal',
-      description: 'Dated entries and logs',
+      description:
+        'Example Project starter — users publish their own Projects as templates for depth',
       sections: [{ slug: 'entries', title: 'Entries', required: true }],
       agentStarter: proseStarter({
         title: 'Basic Journal',
-        focus: 'Write dated journal entries in the entries section.'
+        focus:
+          'Write dated journal entries. Prefer composing from Social/Time atoms rather than inventing Project-only forms.'
       })
     },
     seedJournal()
-  ),
-  withSeed(
-    {
-      id: 'list.basic.v1',
-      classId: 'projects.list',
-      docType: 'list',
-      version: '1',
-      title: 'Basic List',
-      description: 'Checklist with visual header',
-      sections: [{ slug: 'items', title: 'Items', required: true }],
-      agentStarter: proseStarter({
-        title: 'Basic List',
-        focus: 'Write checklist or shopping items, one per line when possible.'
-      })
-    },
-    seedList()
   ),
   withSeed(
     {
@@ -614,7 +649,7 @@ withSeed(
       docType: 'letter',
       version: '1',
       title: 'Basic Letter',
-      description: 'Correspondence with letterhead',
+      description: 'Example correspondence Project — Send opens Messaging',
       sections: [{ slug: 'body', title: 'Body', required: true }],
       agentStarter: proseStarter({
         title: 'Basic Letter',
@@ -625,35 +660,21 @@ withSeed(
   ),
   withSeed(
     {
-      id: 'note.card.v1',
-      classId: 'projects.note',
-      docType: 'project_note',
-      version: '1',
-      title: 'Card Note',
-      description: 'Short card with accent still',
-      sections: [{ slug: 'body', title: 'Body', required: true }],
-      agentStarter: proseStarter({
-        title: 'Card Note',
-        focus: 'Write a short correspondence note in body.'
-      })
-    },
-    seedCardNote()
-  ),
-  withSeed(
-    {
       id: 'book.basic.v1',
       classId: 'library.book',
       docType: 'book',
       version: '1',
       title: 'Basic Book',
-      description: 'Cover + chapter start',
+      description: 'Longform compile target — atom sequence (vertical within unit)',
       sections: [
         { slug: 'front', title: 'Front', required: false },
         { slug: 'body', title: 'Body', required: true }
       ],
+      seedPageSwipeAxis: 'y',
       agentStarter: proseStarter({
         title: 'Basic Book',
-        focus: 'Write the book body; optional front matter (title page / preface).'
+        focus:
+          'Longform: body is a unit sequence. Vertical within unit; horizontal between units. Optional front matter.'
       })
     },
     seedBook()
@@ -665,11 +686,12 @@ withSeed(
       docType: 'article',
       version: '1',
       title: 'Basic Article',
-      description: 'Long-form article with hero still',
+      description: 'Longform compile target — durable article as atom sequence',
       sections: [{ slug: 'body', title: 'Body', required: true }],
+      seedPageSwipeAxis: 'y',
       agentStarter: proseStarter({
         title: 'Basic Article',
-        focus: 'Write a durable article body.'
+        focus: 'Write a durable article body as a longform atom sequence.'
       })
     },
     seedArticle()
@@ -700,14 +722,14 @@ withSeed(
       docType: 'calendar',
       version: '1',
       title: 'Basic Calendar',
-      description: 'Calendar meta and events',
+      description: 'Calendar shell — lists/embeds Event atoms (grid later)',
       sections: [
         { slug: 'meta', title: 'Meta', required: true },
         { slug: 'events', title: 'Events', required: false }
       ],
       agentStarter: proseStarter({
         title: 'Basic Calendar',
-        focus: 'Fill calendar meta; list events when provided.'
+        focus: 'Fill calendar meta; list eventRef lines for time.event atoms when provided.'
       })
     },
     seedCalendar()
@@ -719,11 +741,12 @@ withSeed(
       docType: 'event',
       version: '1',
       title: 'Basic Event',
-      description: 'Single dated event with hero',
+      description: 'Structured when/where (tz + placeLabel + optional geoProofRef)',
       sections: [{ slug: 'details', title: 'Details', required: true }],
       agentStarter: proseStarter({
         title: 'Basic Event',
-        focus: 'Write event details including when/where if the user gave them.'
+        focus:
+          'Emit title/startAt/endAt/timeZone/placeLabel/details key lines. Never raw lat/lng — use geoProofRef for place proofs.'
       })
     },
     seedEvent()
@@ -735,14 +758,32 @@ withSeed(
       docType: 'schedule',
       version: '1',
       title: 'Basic Schedule',
-      description: 'Ordered agenda with header',
+      description: 'Ordered agenda rows for humans and agents',
       sections: [{ slug: 'agenda', title: 'Agenda', required: true }],
       agentStarter: proseStarter({
         title: 'Basic Schedule',
-        focus: 'Write an ordered agenda in agenda.'
+        focus: 'Write ordered agenda rows as “HH:MM — Title (Nm)” lines.'
       })
     },
     seedSchedule()
+  ),
+  withSeed(
+    {
+      id: 'knowledge.claim.v1',
+      classId: 'knowledge.claim',
+      docType: 'knowledge',
+      version: '1',
+      title: 'Knowledge Claim',
+      description: 'Claims bound to standard-data-points + ZKP — never raw PII',
+      sections: [{ slug: 'claims', title: 'Claims', required: true }],
+      publishContentClass: 'note',
+      agentStarter: proseStarter({
+        title: 'Knowledge Claim',
+        focus:
+          'Bind dataPointId catalog ids and opaque proofRef slots only. Never emit age, email, name, passcode, or coordinates.'
+      })
+    },
+    seedKnowledgeClaim()
   ),
   
   withSeed(
@@ -878,12 +919,15 @@ withSeed(
       docType: 'audio',
       version: '1',
       title: 'Audio Snippet',
-      description: 'Voice note / audiogram chrome',
+      description: 'Audio-first shell — bind audioSotDocId to published music/audio SoT',
       sections: [{ slug: 'body', title: 'Audio', required: true }],
       publishContentClass: 'note',
+      browseFeatured: true,
+      seedGalleryAspect: '9/16',
       agentStarter: proseStarter({
         title: 'Audio Snippet',
-        focus: 'Name the speaker and provide a transcript excerpt.'
+        focus:
+          'Name the track; audio-only is valid. Companion visuals remix via audioSotDocId — do not re-upload bytes.'
       })
     },
     seedAudio()
@@ -912,15 +956,16 @@ withSeed(
       docType: 'feed_embed',
       version: '1',
       title: 'Feed Embed',
-      description: 'Framed configurable stream chrome',
+      description: 'L5 iframe / framed stream slot (not longform chapters)',
       sections: [
         { slug: 'header', title: 'Header', required: true },
         { slug: 'stream', title: 'Stream', required: true },
-        { slug: 'composer', title: 'Composer', required: false }
+        { slug: 'footer', title: 'Footer', required: false }
       ],
       agentStarter: proseStarter({
         title: 'Feed Embed',
-        focus: 'Fill feed scope header and stream empty-state; keep embed chrome compact.'
+        focus:
+          'Fill header chrome and stream iframe empty-state. This is a live aggregator slot inside page chrome — not longform.'
       })
     },
     seedFeedEmbed()

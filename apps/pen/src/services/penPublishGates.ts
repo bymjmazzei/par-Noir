@@ -33,6 +33,16 @@ export function sanitizeAggregatorTargets(
   return targets.filter((t) => t && t !== 'pen-templates');
 }
 
+/** Every Connect-to-feed / publish handoff must carry a normalized licensing root. */
+export function requireLicensingOnHandoff(
+  licensing: PenLicensingRoot | null | undefined
+): PenLicensingRoot {
+  if (!licensing || typeof licensing !== 'object') {
+    throw new Error('licensing_required_on_publish');
+  }
+  return licensing;
+}
+
 export function licensingForPublish(
   raw: PenLicensingRoot | undefined,
   ownerPnHash: string | null | undefined,
@@ -42,9 +52,11 @@ export function licensingForPublish(
     musicAsset?: boolean;
   }
 ): PenLicensingRoot {
-  return normalizeLicensingRoot(raw, ownerPnHash, {
-    membership: opts.membership,
-    connectReady: opts.connectReady,
-    musicAsset: opts.musicAsset
-  });
+  return requireLicensingOnHandoff(
+    normalizeLicensingRoot(raw, ownerPnHash, {
+      membership: opts.membership,
+      connectReady: opts.connectReady,
+      musicAsset: opts.musicAsset
+    })
+  );
 }

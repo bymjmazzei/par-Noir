@@ -27,7 +27,9 @@ export function LayerPartsMenu({
   writingEnabled,
   documentSections,
   activeSlug,
-  onSelectDocumentSection
+  onSelectDocumentSection,
+  allowAddPage,
+  onAddPage
 }: {
   doc: PenTipTapNode | undefined;
   editor: Editor | null;
@@ -36,6 +38,9 @@ export function LayerPartsMenu({
   documentSections?: DocSectionTocItem[];
   activeSlug?: string;
   onSelectDocumentSection?: (slug: string) => void;
+  /** Collections / multipage — append a page. */
+  allowAddPage?: boolean;
+  onAddPage?: () => void;
 }) {
   const [open, setOpen] = useState(false);
   const [activePartId, setActivePartId] = useState('block:0');
@@ -47,7 +52,9 @@ export function LayerPartsMenu({
 
   const parts = useMemo(() => listLayerParts(doc), [doc]);
   const activePart: LayerPart = parts.find((p) => p.id === activePartId) || parts[0]!;
-  const showDocument = Boolean(documentSections && documentSections.length > 1);
+  const showDocument = Boolean(
+    (documentSections && documentSections.length > 1) || allowAddPage
+  );
 
   useEffect(() => {
     if (!open) return;
@@ -192,12 +199,12 @@ export function LayerPartsMenu({
       )}
       {open && (
         <div className="absolute left-0 top-full z-30 mt-1 min-w-[14rem] max-w-[20rem] overflow-hidden rounded-md border border-stone-200 bg-white py-1 shadow-lg">
-          {showDocument && documentSections && (
+          {showDocument && (
             <>
               <div className="px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wider text-stone-400">
                 Document
               </div>
-              {documentSections.map((s) => (
+              {documentSections?.map((s) => (
                 <button
                   key={s.slug}
                   type="button"
@@ -214,6 +221,18 @@ export function LayerPartsMenu({
                   <span className="truncate">{s.title}</span>
                 </button>
               ))}
+              {allowAddPage && (
+                <button
+                  type="button"
+                  className="flex w-full px-2.5 py-1.5 text-left text-[12px] font-medium text-sky-800 hover:bg-sky-50"
+                  onClick={() => {
+                    onAddPage?.();
+                    setOpen(false);
+                  }}
+                >
+                  + Add page
+                </button>
+              )}
             </>
           )}
           <div className="px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wider text-stone-400">

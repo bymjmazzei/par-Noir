@@ -18,7 +18,7 @@ export interface CompiledNotePage {
 }
 
 export interface CompileToNoteResult {
-  contentClass: 'note';
+  contentClass: 'note' | 'media' | 'collection';
   title: string;
   pages: CompiledNotePage[];
   templateId: string;
@@ -118,6 +118,25 @@ export function collectPenEmbedRefs(
     for (const c of node.content || []) walk(c);
   };
   walk(doc);
+  return out;
+}
+
+/** Overlay embed layers (kind: embed) — multi-media set refs. */
+export function collectLayerEmbedRefs(
+  section: PenSectionContent | null | undefined
+): Array<{ docId: string; sectionSlug: string | null; title: string | null }> {
+  const out: Array<{ docId: string; sectionSlug: string | null; title: string | null }> = [];
+  for (const layer of section?.layers || []) {
+    if (layer.kind !== 'embed') continue;
+    if (layer.visible === false) continue;
+    const docId = String(layer.refDocId || '').trim();
+    if (!docId) continue;
+    out.push({
+      docId,
+      sectionSlug: layer.refSectionSlug ? String(layer.refSectionSlug) : null,
+      title: layer.name || layer.label || null
+    });
+  }
   return out;
 }
 
@@ -238,8 +257,9 @@ export function compileDocumentToNote(input: {
       doc: emptyTipTapDoc()
     });
   }
+  const publishClass = template.publishContentClass || 'note';
   return {
-    contentClass: 'note',
+    contentClass: publishClass,
     title: input.title,
     pages,
     templateId: template.id,
@@ -315,7 +335,10 @@ export async function compileSetToNote(input: {
 
   for (const slug of ['primary', 'sources'] as const) {
     const sec = bySlug.get(slug) || emptySection(slug);
-    const embeds = collectPenEmbedRefs(sec.doc);
+    const embeds = [
+      ...collectPenEmbedRefs(sec.doc),
+      ...collectLayerEmbedRefs(sec)
+    ];
 
     // Non-embed prose in this section becomes its own page (before embeds).
     const proseDoc = stripPenEmbeds(sec.doc);

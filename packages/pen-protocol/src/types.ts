@@ -197,6 +197,24 @@ export interface PenDocManifest {
   pagePresentation?: PenPagePresentation;
   /** Gallery / thumb aspect for Social orientations. */
   galleryAspect?: '9/16' | '16/9' | '1/1';
+  /**
+   * Multipage workspace swipe axis in editor / live preview.
+   * `x` = horizontal between pages (collections default);
+   * `y` = vertical within a longform unit (chapter).
+   */
+  pageSwipeAxis?: 'x' | 'y';
+  /**
+   * Published music/audio asset used as SoT for social.audio (and companion visuals).
+   * Remixes reuse this id instead of re-uploading audio bytes.
+   */
+  audioSotDocId?: string | null;
+  /**
+   * Knowledge claims + geo/place proofs on this asset (never raw PII / coords).
+   * Place is an attestation extension — not a Place template.
+   */
+  attestations?: import('./knowledge.js').AssetAttestation;
+  /** Structured Knowledge body when classId is knowledge.claim. */
+  knowledge?: import('./knowledge.js').KnowledgePayload;
   /** Aggregator fileId after Connect to feed — engagement comments key. */
   publishedFileId?: string;
   /**
