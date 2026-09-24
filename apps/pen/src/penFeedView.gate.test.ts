@@ -26,17 +26,17 @@ describe('buildSocialTemplateRailItems', () => {
     expect(items.map((i) => i.label)).toEqual([
       'ALL',
       'note',
-      'metric',
       'audio',
-      'post',
+      'media',
       'collection',
       'set',
       'projects'
     ]);
   });
 
-  it('isSocialTemplateRailClass matches Social six + Projects forms', () => {
+  it('isSocialTemplateRailClass matches Social atoms + Projects forms (not metric)', () => {
     expect(isSocialTemplateRailClass('social.note')).toBe(true);
+    expect(isSocialTemplateRailClass('social.metric')).toBe(false);
     expect(isSocialTemplateRailClass('projects.journal')).toBe(true);
     expect(isProjectsRailClass('projects.letter')).toBe(true);
     expect(isSocialTemplateRailClass('social.quote')).toBe(false);

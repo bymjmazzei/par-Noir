@@ -239,8 +239,8 @@ export function TemplatesBrowse({
           </button>
           <h1 className="text-lg font-bold text-black">Templates</h1>
           <p className="text-sm text-neutral-500">
-            Building blocks — note, metric, audio, post, collection, set, projects. Feed is a view
-            of this catalog.
+            Building blocks — note, audio, media, collection, set, projects. Feed is a view of this
+            catalog.
           </p>
         </div>
         <div className="pen-library-heading-tools">

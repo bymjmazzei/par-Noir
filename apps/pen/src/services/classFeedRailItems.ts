@@ -6,10 +6,10 @@ import type { ClassFeedRailItem } from '../components/ClassFeedRail';
 /**
  * Social building-block forms for the Templates surface (all densities).
  * Fixed order — not derived from dataset presence.
+ * Metric / action stay editor/backend surfaces, not rail chips.
  */
 export const SOCIAL_TEMPLATE_RAIL_FORMS = [
   'social.note',
-  'social.metric',
   'social.audio',
   'social.post',
   'social.collection',
@@ -25,9 +25,8 @@ export type TemplateRailCategoryId = (typeof TEMPLATE_RAIL_CATEGORIES)[number];
 
 const SOCIAL_TEMPLATE_RAIL_LABELS: Record<SocialTemplateRailFormId, string> = {
   'social.note': 'note',
-  'social.metric': 'metric',
   'social.audio': 'audio',
-  'social.post': 'post',
+  'social.post': 'media',
   'social.collection': 'collection',
   'social.set': 'set'
 };
