@@ -63,6 +63,17 @@ export function LayoutSurface({
   /** Live geometry while dragging — commit to parent only on pointer up. */
   const [preview, setPreview] = useState<Record<string, LayoutItem> | null>(null);
   const [guides, setGuides] = useState<{ v: boolean; h: boolean }>({ v: false, h: false });
+  /** Pending move — only becomes a drag after a small pointer travel (tap vs drag). */
+  const pendingMove = useRef<{
+    id: string;
+    startX: number;
+    startY: number;
+    pointerId: number;
+    orig: LayoutItem;
+    linkedOrig: Record<string, LayoutItem>;
+    target: HTMLElement;
+  } | null>(null);
+  const MOVE_THRESHOLD_PX = 6;
   const noResize = useCallback(
     (id: string) => {
       if (!resizeDisabledIds) return false;
@@ -92,27 +103,28 @@ export function LayoutSurface({
     e.stopPropagation();
     onSelect?.(item.id);
     if (disabled || item.positionLocked) return;
-    (e.target as HTMLElement).setPointerCapture?.(e.pointerId);
+    // Don't capture / drag yet — let taps reach video play/pause & scrubbers.
     const linked = getLinkedIds?.(item.id) || [];
     const linkedOrig: Record<string, LayoutItem> = {};
     for (const lid of linked) {
       const hit = items.find((i) => i.id === lid);
       if (hit) linkedOrig[lid] = { ...hit };
     }
-    setDrag({
+    pendingMove.current = {
       id: item.id,
-      mode: 'move',
       startX: e.clientX,
       startY: e.clientY,
+      pointerId: e.pointerId,
       orig: { ...item },
-      linkedOrig
-    });
-    setPreview({ [item.id]: { ...item } });
+      linkedOrig,
+      target: e.currentTarget as HTMLElement
+    };
   };
 
   const onPointerDownResize = (e: ReactPointerEvent, item: LayoutItem) => {
     if (disabled || item.positionLocked || noResize(item.id)) return;
     e.stopPropagation();
+    pendingMove.current = null;
     (e.target as HTMLElement).setPointerCapture?.(e.pointerId);
     onSelect?.(item.id);
     setDrag({
@@ -127,7 +139,27 @@ export function LayoutSurface({
   };
 
   const onPointerMove = (e: ReactPointerEvent) => {
-    if (!drag || disabled) return;
+    if (disabled) return;
+
+    if (!drag && pendingMove.current) {
+      const p = pendingMove.current;
+      const dist = Math.hypot(e.clientX - p.startX, e.clientY - p.startY);
+      if (dist < MOVE_THRESHOLD_PX) return;
+      p.target.setPointerCapture?.(p.pointerId);
+      setDrag({
+        id: p.id,
+        mode: 'move',
+        startX: p.startX,
+        startY: p.startY,
+        orig: p.orig,
+        linkedOrig: p.linkedOrig
+      });
+      setPreview({ [p.id]: { ...p.orig } });
+      pendingMove.current = null;
+      return;
+    }
+
+    if (!drag) return;
     const b = activeBounds();
     const dx = e.clientX - drag.startX;
     const dy = e.clientY - drag.startY;
@@ -185,6 +217,7 @@ export function LayoutSurface({
   };
 
   const onPointerUp = () => {
+    pendingMove.current = null;
     if (drag && preview) {
       const base = itemsRef.current;
       onChange(base.map((i) => (preview[i.id] ? { ...i, ...preview[i.id] } : i)));

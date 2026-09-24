@@ -1,9 +1,9 @@
 /**
  * Renders an image or video layer with crop / mask / filter / paint overlay.
- * Reports display (orientation-aware) media aspect so the frame hugs the video.
+ * One-shot aspect report (cached) — never re-probes on every resize.
  */
 
-import { useCallback, useEffect, useRef, type CSSProperties, type ReactNode } from 'react';
+import { useEffect, useRef, type CSSProperties, type ReactNode } from 'react';
 import {
   mediaCropClipCss,
   mediaFilterCss,
@@ -12,10 +12,10 @@ import {
 } from '@par-noir/pen-protocol';
 import { PenMediaPlayer } from '@par-noir/feed-tile';
 import { useResolvedMediaSrc } from '../hooks/useResolvedMediaSrc';
-import { readOrientedAspect } from '../services/penAttach';
+import { cachedMediaAspect, probeMediaAspect } from '../services/penMediaAspect';
 import type { PenSession } from '../services/penSession';
 
-const ASPECT_SLACK = 0.02;
+const ASPECT_SLACK = 0.03;
 
 export function LayerMediaContent({
   layer,
@@ -23,19 +23,17 @@ export function LayerMediaContent({
   onActivate: _onActivate,
   docId,
   session,
-  onNaturalAspect
+  onNaturalAspect,
+  /** When true, always show the scrub timeline (media editor panel). */
+  forceControls
 }: {
   layer: PenPageLayer;
   className?: string;
-  /** Select this layer without starting a drag (video/image pointer down). */
   onActivate?: () => void;
   docId?: string;
   session?: PenSession | null;
-  /**
-   * Fired when display aspect is known and differs from the layer frame —
-   * editor should reshape the layer so the selection ring hugs the media.
-   */
   onNaturalAspect?: (aspect: number) => void;
+  forceControls?: boolean;
 }): ReactNode {
   const src =
     layer.kind === 'video'
@@ -48,84 +46,41 @@ export function LayerMediaContent({
     docId,
     session
   });
-  const lastReport = useRef<{ key: string; aspect: number } | null>(null);
-  const layerRef = useRef(layer);
-  layerRef.current = layer;
+  /** One report per media src — reshape must not re-trigger probing. */
+  const reportedSrc = useRef<string | null>(null);
   const onNaturalAspectRef = useRef(onNaturalAspect);
   onNaturalAspectRef.current = onNaturalAspect;
+  const layerRef = useRef(layer);
+  layerRef.current = layer;
 
   const isVideo =
     layer.kind === 'video' ||
     Boolean(layer.videoSrc) ||
     (Boolean(layer.backgroundVideo) && layer.kind !== 'image');
 
-  const reportAspect = useCallback((aspect: number, key: string) => {
-    if (!(aspect > 0) || !onNaturalAspectRef.current) return;
-    const l = layerRef.current;
-    const layerAspect = l.w / Math.max(1, l.h);
-    if (Math.abs(layerAspect - aspect) / aspect <= ASPECT_SLACK) {
-      lastReport.current = { key, aspect };
-      return;
-    }
-    const prev = lastReport.current;
-    if (
-      prev &&
-      prev.key === key &&
-      Math.abs(prev.aspect - aspect) / aspect <= ASPECT_SLACK
-    ) {
-      return;
-    }
-    lastReport.current = { key, aspect };
-    onNaturalAspectRef.current(aspect);
-  }, []);
-
-  const onDisplayAspect = useCallback(
-    (aspect: number) => {
-      if (!resolved) return;
-      reportAspect(aspect, `${layer.id}:${resolved}`);
-    },
-    [layer.id, resolved, reportAspect]
-  );
-
   useEffect(() => {
-    if (!resolved || !onNaturalAspect) return;
-    const key = `${layer.id}:${resolved}`;
+    if (!resolved || !onNaturalAspectRef.current) return;
+    if (reportedSrc.current === resolved) return;
+
     let cancelled = false;
+    const kind = isVideo ? 'video' : 'image';
 
-    if (isVideo) {
-      const video = document.createElement('video');
-      video.preload = 'auto';
-      video.muted = true;
-      video.playsInline = true;
-      const run = async () => {
-        await new Promise<void>((done) => {
-          video.addEventListener('loadeddata', () => done(), { once: true });
-          video.addEventListener('error', () => done(), { once: true });
-          video.src = resolved;
-          void video.load();
-          window.setTimeout(() => done(), 800);
-        });
-        if (cancelled) return;
-        const aspect = await readOrientedAspect(video);
-        if (!cancelled && aspect) reportAspect(aspect, key);
-      };
-      void run();
-      return () => {
-        cancelled = true;
-      };
-    }
+    void (async () => {
+      const cached = cachedMediaAspect(resolved);
+      const aspect = cached ?? (await probeMediaAspect(resolved, kind));
+      if (cancelled || !(aspect > 0)) return;
+      reportedSrc.current = resolved;
+      const l = layerRef.current;
+      const layerAspect = l.w / Math.max(1, l.h);
+      if (Math.abs(layerAspect - aspect) / aspect <= ASPECT_SLACK) return;
+      onNaturalAspectRef.current?.(aspect);
+    })();
 
-    const img = new Image();
-    img.onload = () => {
-      const w = img.naturalWidth || 0;
-      const h = img.naturalHeight || 0;
-      if (w > 0 && h > 0) reportAspect(w / h, key);
-    };
-    img.src = resolved;
     return () => {
       cancelled = true;
     };
-  }, [resolved, isVideo, layer.id, layer.w, layer.h, onNaturalAspect, reportAspect]);
+    // Intentionally omit layer.w/h — reshape must not re-enter this effect.
+  }, [resolved, isVideo]);
 
   if (!src || !resolved) return null;
 
@@ -148,7 +103,7 @@ export function LayerMediaContent({
 
   return (
     <div
-      className={`pointer-events-none relative h-full w-full min-h-0 min-w-0 ${className || ''}`}
+      className={`relative h-full w-full min-h-0 min-w-0 ${className || ''}`}
       style={outerStyle}
     >
       {isVideo ? (
@@ -156,14 +111,13 @@ export function LayerMediaContent({
           src={resolved}
           className="absolute inset-0 bg-transparent"
           videoStyle={innerStyle}
-          allowDragThrough
-          onDisplayAspect={onDisplayAspect}
+          alwaysShowControls={forceControls}
         />
       ) : (
         <img
           src={resolved}
           alt=""
-          className="pointer-events-none absolute inset-0"
+          className="absolute inset-0"
           style={innerStyle}
           draggable={false}
         />

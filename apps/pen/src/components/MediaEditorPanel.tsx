@@ -128,7 +128,7 @@ export function MediaEditorPanel({
       <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-auto p-3">
         <div className="relative mx-auto aspect-video w-full max-w-md overflow-hidden rounded border border-stone-300 bg-black">
           {src ? (
-            <LayerMediaContent layer={layer} docId={docId} session={session} />
+            <LayerMediaContent layer={layer} docId={docId} session={session} forceControls />
           ) : (
             <p className="flex h-full items-center justify-center text-sm text-stone-400">No media</p>
           )}

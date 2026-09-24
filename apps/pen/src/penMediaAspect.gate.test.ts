@@ -3,7 +3,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { readMp4RotationDegrees } from './services/penAttach';
+import { readMp4RotationDegrees } from './services/penMediaAspect';
 
 /** Build a minimal buffer containing a version-0 tkhd with a 90° CW matrix. */
 function tkhdWithRotation(rot: 0 | 90 | 180 | 270): Uint8Array {

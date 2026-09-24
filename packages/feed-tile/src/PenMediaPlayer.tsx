@@ -1,6 +1,6 @@
 /**
- * Muted autoplay/loop video with tap-to-pause and hover scrub.
- * Shared by Pen canvas and feed-tile live preview.
+ * Muted autoplay/loop video with tap-to-pause and drag scrub timeline.
+ * Shared by Pen canvas, media editor, and feed-tile live preview.
  */
 
 import {
@@ -18,19 +18,15 @@ export function PenMediaPlayer({
   style,
   videoStyle,
   poster,
-  /** When true, pointer events pass through the video so a parent can drag/resize. */
-  allowDragThrough = false,
-  /** Display aspect after orientation (phone rotation). */
-  onDisplayAspect
+  /** Keep the scrub bar visible (media editor panel). */
+  alwaysShowControls = false
 }: {
   src: string;
   className?: string;
   style?: CSSProperties;
-  /** Applied to the `<video>` element (e.g. filter, objectFit). */
   videoStyle?: CSSProperties;
   poster?: string;
-  allowDragThrough?: boolean;
-  onDisplayAspect?: (aspect: number) => void;
+  alwaysShowControls?: boolean;
 }) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const barRef = useRef<HTMLDivElement>(null);
@@ -39,7 +35,6 @@ export function PenMediaPlayer({
   const [progress, setProgress] = useState(0);
   const [seeking, setSeeking] = useState(false);
   const scrubbing = useRef(false);
-  const aspectSent = useRef<string | null>(null);
 
   useEffect(() => {
     const v = videoRef.current;
@@ -69,64 +64,9 @@ export function PenMediaPlayer({
     };
   }, [src]);
 
-  useEffect(() => {
-    if (!onDisplayAspect) return;
-    const v = videoRef.current;
-    if (!v) return;
-    aspectSent.current = null;
-    let cancelled = false;
-
-    const emit = async () => {
-      if (cancelled || aspectSent.current === src) return;
-      const codedW = v.videoWidth || 0;
-      const codedH = v.videoHeight || 0;
-      if (!(codedW > 0 && codedH > 0)) return;
-
-      let aspect: number | null = null;
-
-      // VideoFrame.displayWidth/Height — accounts for rotation when the UA supports it.
-      try {
-        const VF = (globalThis as unknown as { VideoFrame?: typeof VideoFrame }).VideoFrame;
-        if (VF) {
-          const frame = new VF(v);
-          const w = frame.displayWidth || frame.codedWidth;
-          const h = frame.displayHeight || frame.codedHeight;
-          frame.close();
-          if (w > 0 && h > 0) aspect = w / h;
-        }
-      } catch {
-        /* ignore */
-      }
-
-      if (aspect == null) {
-        try {
-          if (typeof createImageBitmap === 'function') {
-            const bmp = await createImageBitmap(v);
-            if (bmp.width > 0 && bmp.height > 0) aspect = bmp.width / bmp.height;
-            bmp.close();
-          }
-        } catch {
-          /* ignore */
-        }
-      }
-      if (aspect == null) aspect = codedW / codedH;
-      if (cancelled || !(aspect > 0)) return;
-      aspectSent.current = src;
-      onDisplayAspect(aspect);
-    };
-
-    const onReady = () => {
-      void emit();
-    };
-    v.addEventListener('loadeddata', onReady);
-    if (v.readyState >= 2) onReady();
-    return () => {
-      cancelled = true;
-      v.removeEventListener('loadeddata', onReady);
-    };
-  }, [src, onDisplayAspect]);
   const togglePlay = useCallback((e: React.MouseEvent | React.PointerEvent) => {
     e.stopPropagation();
+    e.preventDefault();
     const v = videoRef.current;
     if (!v) return;
     if (v.paused) {
@@ -169,7 +109,7 @@ export function PenMediaPlayer({
     setSeeking(false);
   };
 
-  const showBar = hover || seeking;
+  const showBar = alwaysShowControls || hover || seeking || paused;
   const objectFit =
     (videoStyle?.objectFit as CSSProperties['objectFit'] | undefined) || 'contain';
 
@@ -187,27 +127,19 @@ export function PenMediaPlayer({
         key={src}
         src={src}
         poster={poster}
-        className="absolute inset-0 h-full w-full"
+        className="absolute inset-0 h-full w-full cursor-pointer"
         style={{
           objectFit,
-          pointerEvents: allowDragThrough ? 'none' : 'auto',
           ...videoStyle,
-          ...(allowDragThrough ? { pointerEvents: 'none' } : {})
+          pointerEvents: 'auto'
         }}
         autoPlay
         muted
         loop
         playsInline
-        preload="auto"
+        preload="metadata"
         draggable={false}
-        onClick={allowDragThrough ? undefined : togglePlay}
-        onPointerDown={
-          allowDragThrough
-            ? undefined
-            : (e) => {
-                e.stopPropagation();
-              }
-        }
+        onClick={togglePlay}
       />
       {paused && (
         <button
@@ -226,19 +158,21 @@ export function PenMediaPlayer({
       <div
         ref={barRef}
         className={`absolute bottom-0 left-0 right-0 z-10 px-2 pb-2 transition-opacity ${
-          showBar ? 'opacity-100' : 'pointer-events-none opacity-0'
-        } ${allowDragThrough && showBar ? 'pointer-events-auto' : ''}`}
+          showBar ? 'pointer-events-auto opacity-100' : 'pointer-events-none opacity-0'
+        }`}
         onPointerDown={onScrubDown}
         onPointerMove={onScrubMove}
         onPointerUp={onScrubUp}
         onPointerCancel={onScrubUp}
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="h-1.5 cursor-pointer rounded-full bg-white/30">
+        <div className="h-2 cursor-pointer rounded-full bg-white/35 shadow-sm">
           <div
-            className="h-full rounded-full bg-white"
+            className="relative h-full rounded-full bg-white"
             style={{ width: `${Math.round(progress * 1000) / 10}%` }}
-          />
+          >
+            <span className="absolute -right-1.5 top-1/2 h-3 w-3 -translate-y-1/2 rounded-full bg-white shadow" />
+          </div>
         </div>
       </div>
     </div>
