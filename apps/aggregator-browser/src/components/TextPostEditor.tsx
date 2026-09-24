@@ -894,7 +894,7 @@ export function TextPostEditor({ onSave }: TextPostEditorProps) {
       : miniTemplateId.startsWith('personal_')
         ? 'note.basic.portrait.v1'
         : miniTemplateId || 'note.basic.portrait.v1';
-    let contentClass: 'note' = 'note';
+    let contentClass: 'note' | 'media' | 'collection' = 'note';
     const bodyText = pages
       .filter(page => page.content.trim())
       .map(page => page.content.trim())
