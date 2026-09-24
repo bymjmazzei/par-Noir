@@ -1,24 +1,28 @@
 /**
  * Gate: class feed rail builders + pen-template filter.
- * Falsifies: missing ALL, raw classId without form, non-templates in onlyPenTemplates,
- * Social templates rail not fixed to six atoms.
+ * Falsifies: missing ALL, Social rail without projects chip, non-templates in onlyPenTemplates.
  */
 import { describe, expect, it } from 'vitest';
 import {
   buildClassFeedRailItems,
   buildSocialTemplateRailItems,
   contentClassFallbackLabel,
+  isProjectsRailClass,
   isSocialTemplateRailClass,
-  SOCIAL_TEMPLATE_RAIL_FORMS
+  SOCIAL_TEMPLATE_RAIL_FORMS,
+  templateMatchesRailSelection
 } from './services/classFeedRailItems';
 import { onlyPenTemplates } from './services/penTemplateFeed';
 import { isAllowedFeedMediaSignedUrl } from './services/penPublicFeedMedia';
 
 describe('buildSocialTemplateRailItems', () => {
-  it('always leads with ALL then fixed Social atoms in order', () => {
+  it('always leads with ALL then Social atoms then projects', () => {
     const items = buildSocialTemplateRailItems();
     expect(items[0]).toEqual({ id: 'all', label: 'ALL' });
-    expect(items.slice(1).map((i) => i.id)).toEqual([...SOCIAL_TEMPLATE_RAIL_FORMS]);
+    expect(items.slice(1).map((i) => i.id)).toEqual([
+      ...SOCIAL_TEMPLATE_RAIL_FORMS,
+      'projects'
+    ]);
     expect(items.map((i) => i.label)).toEqual([
       'ALL',
       'note',
@@ -26,14 +30,24 @@ describe('buildSocialTemplateRailItems', () => {
       'audio',
       'post',
       'collection',
-      'set'
+      'set',
+      'projects'
     ]);
   });
 
-  it('isSocialTemplateRailClass matches only the six forms', () => {
+  it('isSocialTemplateRailClass matches Social six + Projects forms', () => {
     expect(isSocialTemplateRailClass('social.note')).toBe(true);
+    expect(isSocialTemplateRailClass('projects.journal')).toBe(true);
+    expect(isProjectsRailClass('projects.letter')).toBe(true);
     expect(isSocialTemplateRailClass('social.quote')).toBe(false);
     expect(isSocialTemplateRailClass('community.feed')).toBe(false);
+  });
+
+  it('templateMatchesRailSelection filters projects category vs form chips', () => {
+    expect(templateMatchesRailSelection('projects.journal', 'projects')).toBe(true);
+    expect(templateMatchesRailSelection('social.note', 'projects')).toBe(false);
+    expect(templateMatchesRailSelection('social.post', 'social.post')).toBe(true);
+    expect(templateMatchesRailSelection('projects.letter', 'all')).toBe(true);
   });
 });
 

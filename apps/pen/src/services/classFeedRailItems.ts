@@ -18,6 +18,11 @@ export const SOCIAL_TEMPLATE_RAIL_FORMS = [
 
 export type SocialTemplateRailFormId = (typeof SOCIAL_TEMPLATE_RAIL_FORMS)[number];
 
+/** Category-level chips after Social atoms (Projects = journal / list / letter / note). */
+export const TEMPLATE_RAIL_CATEGORIES = ['projects'] as const;
+
+export type TemplateRailCategoryId = (typeof TEMPLATE_RAIL_CATEGORIES)[number];
+
 const SOCIAL_TEMPLATE_RAIL_LABELS: Record<SocialTemplateRailFormId, string> = {
   'social.note': 'note',
   'social.metric': 'metric',
@@ -27,19 +32,47 @@ const SOCIAL_TEMPLATE_RAIL_LABELS: Record<SocialTemplateRailFormId, string> = {
   'social.set': 'set'
 };
 
+const TEMPLATE_RAIL_CATEGORY_LABELS: Record<TemplateRailCategoryId, string> = {
+  projects: 'projects'
+};
+
 const SOCIAL_TEMPLATE_RAIL_SET = new Set<string>(SOCIAL_TEMPLATE_RAIL_FORMS);
 
-export function isSocialTemplateRailClass(classId: string | undefined): boolean {
-  return Boolean(classId && SOCIAL_TEMPLATE_RAIL_SET.has(classId));
+export function isProjectsRailClass(classId: string | undefined): boolean {
+  if (!classId) return false;
+  if (classId === 'projects' || classId.startsWith('projects.')) return true;
+  return getClass(classId)?.parentId === 'projects';
 }
 
-/** ALL + fixed Social atom chips (Templates list / gallery / feed). */
+/** Templates surface allowlist: Social atoms + Projects forms. */
+export function isSocialTemplateRailClass(classId: string | undefined): boolean {
+  if (!classId) return false;
+  if (SOCIAL_TEMPLATE_RAIL_SET.has(classId)) return true;
+  return isProjectsRailClass(classId);
+}
+
+/** Whether a template belongs under the active rail chip. */
+export function templateMatchesRailSelection(
+  classId: string | undefined,
+  activeId: string
+): boolean {
+  if (!classId || !isSocialTemplateRailClass(classId)) return false;
+  if (activeId === 'all') return true;
+  if (activeId === 'projects') return isProjectsRailClass(classId);
+  return classId === activeId;
+}
+
+/** ALL + Social atoms + category chips (Templates list / gallery / feed). */
 export function buildSocialTemplateRailItems(): ClassFeedRailItem[] {
   return [
     { id: 'all', label: 'ALL' },
     ...SOCIAL_TEMPLATE_RAIL_FORMS.map((id) => ({
       id,
       label: SOCIAL_TEMPLATE_RAIL_LABELS[id]
+    })),
+    ...TEMPLATE_RAIL_CATEGORIES.map((id) => ({
+      id,
+      label: TEMPLATE_RAIL_CATEGORY_LABELS[id]
     }))
   ];
 }

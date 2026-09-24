@@ -23,7 +23,8 @@ import { ensureMyTemplatesNotebook } from '../services/penFolders';
 import type { PenBrowseDensity } from '../services/penClassPrefs';
 import {
   buildSocialTemplateRailItems,
-  isSocialTemplateRailClass
+  isSocialTemplateRailClass,
+  templateMatchesRailSelection
 } from '../services/classFeedRailItems';
 import { ClassFeedRail } from './ClassFeedRail';
 import { TemplatesFeedScroller } from './TemplatesFeedScroller';
@@ -156,8 +157,7 @@ export function TemplatesBrowse({
   }, [session?.pnIdentifier]);
 
   const filtered = useMemo(() => {
-    if (activeClassId === 'all') return catalog;
-    return catalog.filter((t) => t.classId === activeClassId);
+    return catalog.filter((t) => templateMatchesRailSelection(t.classId, activeClassId));
   }, [catalog, activeClassId]);
 
   const preview = previewId
@@ -239,8 +239,8 @@ export function TemplatesBrowse({
           </button>
           <h1 className="text-lg font-bold text-black">Templates</h1>
           <p className="text-sm text-neutral-500">
-            Social building blocks — note, metric, audio, post, collection, set. Feed is a view of
-            this catalog.
+            Building blocks — note, metric, audio, post, collection, set, projects. Feed is a view
+            of this catalog.
           </p>
         </div>
         <div className="pen-library-heading-tools">
