@@ -426,13 +426,120 @@ async function buildLayers(page, spec) {
           layer.w = L.w;
           layer.h = L.h;
           layer.name = L.name;
+          const paras = String(L.text).split('\n');
+          layer.textDoc = {
+            type: 'doc',
+            content: paras.map((text) => ({
+              type: 'paragraph',
+              content: text ? [{ type: 'text', text }] : []
+            }))
+          };
+        });
+      } else {
+        // UI add failed — materialize layers for preview + coords
+        section.layers = payload.layers.map((L, i) => {
+          const paras = String(L.text).split('\n');
+          return {
+            id: `headed_${payload.id}_${i}`,
+            kind: 'text',
+            name: L.name,
+            zIndex: i + 1,
+            x: L.x,
+            y: L.y,
+            w: L.w,
+            h: L.h,
+            textDoc: {
+              type: 'doc',
+              content: paras.map((text) => ({
+                type: 'paragraph',
+                content: text ? [{ type: 'text', text }] : []
+              }))
+            }
+          };
         });
       }
+      // Connect → compileDocumentToNote requires plain text on section.doc (required body).
+      // Overlay layers alone are not enough for Note compile.
+      const bodyParas = payload.layers.flatMap((L) =>
+        String(L.text)
+          .split('\n')
+          .map((text) => ({
+            type: 'paragraph',
+            content: text ? [{ type: 'text', text }] : []
+          }))
+      );
+      section.doc = {
+        type: 'doc',
+        content: bodyParas.length
+          ? bodyParas
+          : [{ type: 'paragraph', content: [{ type: 'text', text: payload.title }] }]
+      };
       section.pagePresentation = {
         ...(section.pagePresentation || {}),
         backgroundColor: payload.bg
       };
       bundle.manifest.title = payload.title;
+      bundle.manifest.updatedAt = new Date().toISOString();
+      localStorage.setItem(key, JSON.stringify(bundle));
+    } catch {
+      /* ignore */
+    }
+  }, spec);
+
+  // Connect compile reads section.doc (TipTap body), not overlay layers alone.
+  // Select Page in Layers and put the story copy into the flow editor so React SoT has text.
+  const bodyText = spec.layers.map((L) => L.text).join('\n\n');
+  const pageRow = page
+    .locator('[role="dialog"][aria-label="Layers"] button, [role="dialog"][aria-label="Layers"] [role="option"]')
+    .filter({ hasText: /^(Page|Body|Canvas)/i })
+    .first();
+  if (await pageRow.isVisible({ timeout: 2_000 }).catch(() => false)) {
+    await pageRow.click();
+    await page.waitForTimeout(300);
+  } else {
+    // Toggle layers open if closed, click first row
+    await page.locator('button[aria-label="Layers"], button[title="Layers"]').first().click().catch(() => {});
+    await page.waitForTimeout(300);
+    await page
+      .locator('[role="dialog"][aria-label="Layers"]')
+      .locator('button, [role="option"], li')
+      .first()
+      .click()
+      .catch(() => {});
+    await page.waitForTimeout(300);
+  }
+  const flowEditor = page.locator('.ProseMirror').first();
+  if (await flowEditor.isVisible({ timeout: 3_000 }).catch(() => false)) {
+    await flowEditor.click({ force: true });
+    await page.keyboard.press('Meta+A').catch(() => {});
+    await page.keyboard.type(bodyText.slice(0, 500), { delay: 3 });
+    await page.waitForTimeout(500);
+  }
+  // Keep storage mirror in sync for remount safety
+  await page.evaluate((payload) => {
+    try {
+      const session = JSON.parse(sessionStorage.getItem('pen_session') || 'null');
+      const pn = session?.pnIdentifier;
+      const docId = location.pathname.match(/\/d\/([^/]+)/)?.[1];
+      if (!pn || !docId) return;
+      const key = `pen_docs_v1:${pn}:doc:${docId}`;
+      const bundle = JSON.parse(localStorage.getItem(key) || 'null');
+      if (!bundle?.sections?.[0]) return;
+      const section = bundle.sections[0];
+      const bodyParas = payload.layers.flatMap((L) =>
+        String(L.text)
+          .split('\n')
+          .map((text) => ({
+            type: 'paragraph',
+            content: text ? [{ type: 'text', text }] : []
+          }))
+      );
+      section.doc = {
+        type: 'doc',
+        content: bodyParas.length
+          ? bodyParas
+          : [{ type: 'paragraph', content: [{ type: 'text', text: payload.title }] }]
+      };
       localStorage.setItem(key, JSON.stringify(bundle));
     } catch {
       /* ignore */

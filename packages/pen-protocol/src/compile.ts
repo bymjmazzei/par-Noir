@@ -219,7 +219,7 @@ export function compileDocumentToNote(input: {
   for (const sec of template.sections) {
     const body = bySlug.get(sec.slug);
     const normalized = body || emptySection(sec.slug);
-    const text = docToPlainText(normalized.doc);
+    const text = sectionPlainTextForCompile(normalized);
     if (!text && sec.required) {
       throw new Error(`missing_required_section:${sec.slug}`);
     }
@@ -227,7 +227,7 @@ export function compileDocumentToNote(input: {
       pages.push({
         content: text,
         style: pageStyleForSection(normalized, input.pagePresentation),
-        doc: normalized.doc
+        doc: normalized.doc?.content?.length ? normalized.doc : tipTapFromPlain(text)
       });
     }
   }
@@ -244,6 +244,31 @@ export function compileDocumentToNote(input: {
     pages,
     templateId: template.id,
     docId: input.docId
+  };
+}
+
+/** Flow body first; fall back to visible overlay text layers (social page canvas). */
+function sectionPlainTextForCompile(section: PenSectionContent): string {
+  const fromDoc = docToPlainText(normalizeSection(section).doc);
+  if (fromDoc) return fromDoc;
+  const parts: string[] = [];
+  for (const layer of section.layers || []) {
+    if (layer.kind !== 'text') continue;
+    if (layer.visible === false) continue;
+    const t = docToPlainText(layer.textDoc);
+    if (t) parts.push(t);
+  }
+  return parts.join('\n\n').trim();
+}
+
+function tipTapFromPlain(text: string): PenTipTapNode {
+  const paras = String(text).split('\n');
+  return {
+    type: 'doc',
+    content: paras.map((line) => ({
+      type: 'paragraph',
+      content: line ? [{ type: 'text', text: line }] : []
+    }))
   };
 }
 
