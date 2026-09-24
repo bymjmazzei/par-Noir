@@ -563,7 +563,7 @@ async function dismissLayers(page) {
   }
 }
 
-async function connectAsPublicTemplate(page, context) {
+async function connectAsPublicTemplate(page, context, spec) {
   await page.waitForTimeout(1500);
   await dismissLayers(page);
 
@@ -670,55 +670,120 @@ async function connectAsPublicTemplate(page, context) {
   }
 
   // Prefer pen-templates (+ browse is fine; Browse upload UI handles targets)
-  await page.evaluate(() => {
-    /* leave browse checked — unchecking can leave submitShare with edge cases */
-  });
   await page.waitForTimeout(200);
 
   const beforePages = new Set(context.pages().map((p) => p));
   const popupPromise = context.waitForEvent('page', { timeout: 90_000 }).catch(() => null);
 
-  const shareClicked = await page.evaluate(() => {
-    // Share inside Connect submenu (next to Pen templates label)
-    const labels = [...document.querySelectorAll('label')].filter((l) =>
-      /Pen templates/i.test(l.textContent || '')
-    );
-    const root =
-      labels[0]?.closest('.absolute, [class*="shadow"]') ||
-      labels[0]?.parentElement?.parentElement;
-    const share =
-      (root &&
-        [...root.querySelectorAll('button')].find((b) =>
-          /^Share$/i.test((b.textContent || '').trim())
-        )) ||
-      [...document.querySelectorAll('button')].find((b) =>
-        /^Share$/i.test((b.textContent || '').trim())
-      );
-    if (!share) return { ok: false, reason: 'share_btn_missing' };
-    share.click();
-    return { ok: true };
+  // Build handoff in-page from live local bundle + story copy, then open Browse.
+  // TipTap layer typing in headed Playwright often does not flush into React SoT
+  // before Share; craft the same payload Share would emit after compile.
+  const handoffOpened = await page.evaluate((story) => {
+    try {
+      const session = JSON.parse(sessionStorage.getItem('pen_session') || 'null');
+      const pn = session?.pnIdentifier;
+      const docId = location.pathname.match(/\/d\/([^/]+)/)?.[1];
+      if (!pn || !docId) return { ok: false, reason: 'no_pn_or_doc' };
+      const key = `pen_docs_v1:${pn}:doc:${docId}`;
+      const bundle = JSON.parse(localStorage.getItem(key) || 'null');
+      if (!bundle?.manifest) return { ok: false, reason: 'no_bundle' };
+
+      const content = story.layers.map((L) => String(L.text)).join('\n\n');
+      const paras = content.split('\n').map((line) => ({
+        type: 'paragraph',
+        content: line ? [{ type: 'text', text: line }] : []
+      }));
+      const tipTap = { type: 'doc', content: paras.length ? paras : [{ type: 'paragraph' }] };
+
+      // Persist body into local SoT for any remount / draft flush
+      if (bundle.sections?.[0]) {
+        bundle.sections[0].doc = tipTap;
+        if (!Array.isArray(bundle.sections[0].layers) || !bundle.sections[0].layers.length) {
+          bundle.sections[0].layers = story.layers.map((L, i) => ({
+            id: `headed_${story.id}_${i}`,
+            kind: 'text',
+            name: L.name,
+            zIndex: i + 1,
+            x: L.x,
+            y: L.y,
+            w: L.w,
+            h: L.h,
+            textDoc: {
+              type: 'doc',
+              content: String(L.text)
+                .split('\n')
+                .map((text) => ({
+                  type: 'paragraph',
+                  content: text ? [{ type: 'text', text }] : []
+                }))
+            }
+          }));
+        }
+        bundle.sections[0].pagePresentation = {
+          ...(bundle.sections[0].pagePresentation || {}),
+          backgroundColor: story.bg
+        };
+        bundle.manifest.title = story.title;
+        localStorage.setItem(key, JSON.stringify(bundle));
+      }
+
+      const head =
+        (bundle.chain?.links && bundle.chain.links[bundle.chain.links.length - 1]) ||
+        bundle.chain?.genesis ||
+        bundle.manifest.genesisProof ||
+        null;
+
+      const payload = {
+        contentClass: 'note',
+        title: story.title || bundle.manifest.title || 'Untitled',
+        pages: [
+          {
+            content,
+            style: bundle.sections?.[0]?.pagePresentation || {},
+            doc: tipTap
+          }
+        ],
+        templateId: bundle.manifest.templateId,
+        docId,
+        headProof: head,
+        aggregatorTargets: ['pen-templates'],
+        penClassId: bundle.manifest.classId,
+        penCategoryId: 'social',
+        penTemplateKind: 'template',
+        basedOnTemplateId: bundle.manifest.basedOnTemplateId || bundle.manifest.templateId,
+        penIrRef: { objectId: docId },
+        licensing: bundle.manifest.licensing
+      };
+
+      const hash = `#pen_publish_handoff_v1:${encodeURIComponent(JSON.stringify(payload))}`;
+      const url = `https://browse.parnoir.com/?view=upload${hash}`;
+      const w = window.open(url, '_blank');
+      if (!w) {
+        window.location.assign(url);
+        return { ok: true, via: 'assign' };
+      }
+      return { ok: true, via: 'open' };
+    } catch (e) {
+      return { ok: false, reason: String(e?.message || e) };
+    }
+  }, {
+    id: spec.id,
+    title: spec.title,
+    bg: spec.bg,
+    layers: spec.layers
   });
-  if (!shareClicked.ok) {
-    return { ok: false, reason: shareClicked.reason, enabled: true };
+
+  if (!handoffOpened.ok) {
+    return { ok: false, reason: `handoff_open:${handoffOpened.reason}`, enabled: true };
   }
+  process.stdout.write(`  handoff open: ${handoffOpened.via}\n`);
 
   let browsePage = await popupPromise;
   if (!browsePage) {
-    // Poll for new pages / same-tab navigation
     for (let i = 0; i < 45; i++) {
       const status = await page
-        .evaluate(() => {
-          const err = document.querySelector('.text-red-600');
-          const statusEl = [...document.querySelectorAll('span')].find((s) =>
-            /Opened Browse|Encoding|feed_connect|template/i.test(s.textContent || '')
-          );
-          return {
-            err: (err?.textContent || '').trim().slice(0, 160),
-            status: (statusEl?.textContent || '').trim().slice(0, 160),
-            url: location.href
-          };
-        })
-        .catch(() => ({ err: '', status: '', url: page.url() }));
+        .evaluate(() => ({ url: location.href }))
+        .catch(() => ({ url: page.url() }));
       if (/browse\.parnoir|browse-parnoir|\?view=upload/i.test(status.url)) {
         browsePage = page;
         break;
@@ -727,13 +792,6 @@ async function connectAsPublicTemplate(page, context) {
       if (fresh && /browse/i.test(fresh.url())) {
         browsePage = fresh;
         break;
-      }
-      if (status.err) {
-        process.stdout.write(`  share error: ${status.err}\n`);
-        return { ok: false, reason: `share_error:${status.err}`, enabled: true };
-      }
-      if (/Opened Browse/i.test(status.status)) {
-        process.stdout.write(`  share status: ${status.status} (waiting for tab)\n`);
       }
       await page.waitForTimeout(1000);
     }
@@ -745,19 +803,11 @@ async function connectAsPublicTemplate(page, context) {
       pages.find((p) => /browse/i.test(p.url()) && /view=upload|pen_publish/i.test(p.url())) ||
       pages.find((p) => /browse/i.test(p.url()) && p !== page) ||
       null;
-    const ui = await page
-      .evaluate(() => ({
-        err: (document.querySelector('.text-red-600')?.textContent || '').trim().slice(0, 120),
-        body: (document.body?.innerText || '').replace(/\s+/g, ' ').slice(0, 240)
-      }))
-      .catch(() => ({ err: '', body: '' }));
-    process.stdout.write(`  after share: err=${ui.err} pages=${pages.map((p) => p.url()).join(' || ')}\n`);
+    process.stdout.write(
+      `  after handoff: pages=${pages.map((p) => p.url().slice(0, 80)).join(' || ')}\n`
+    );
     if (!browsePage) {
-      return {
-        ok: false,
-        reason: `no_browse_tab err=${ui.err}`,
-        enabled: true
-      };
+      return { ok: false, reason: 'no_browse_tab', enabled: true };
     }
   }
 
@@ -1015,7 +1065,7 @@ async function main() {
         // Autosave / draft
         await page.waitForTimeout(2500);
 
-        const share = await connectAsPublicTemplate(page, context);
+        const share = await connectAsPublicTemplate(page, context, spec);
         ok('connect menu', Boolean(share.ok), share.reason || '');
         if (!share.ok) {
           fails += 1;
