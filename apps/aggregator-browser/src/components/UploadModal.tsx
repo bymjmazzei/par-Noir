@@ -19,7 +19,10 @@ import {
   peekPenPublishHandoff,
   signalComposedMediaReady,
   isComposedMediaBlobsMessage,
-  type PenPublishHandoff
+  isMixedPagesBlobsMessage,
+  isMixedPagesHandoff,
+  type PenPublishHandoff,
+  type PenMixedHandoffPage
 } from '../utils/penPublishHandoff';
 
 interface UploadModalProps {
@@ -59,16 +62,24 @@ export function UploadModal({ feeds: propsFeeds, onClose, onUploadComplete }: Up
   const { userState } = useUserState();
   const initialHandoff = peekPenPublishHandoff();
   const [showTextEditor, setShowTextEditor] = useState(() =>
-    Boolean(initialHandoff?.pages?.length && initialHandoff.contentClass !== 'media')
+    Boolean(
+      initialHandoff?.pages?.length &&
+        initialHandoff.contentClass !== 'media' &&
+        !isMixedPagesHandoff(initialHandoff)
+    )
   );
   const [showSettings, setShowSettings] = useState(false);
   const [editorAccountId, setEditorAccountId] = useState<string | null>(null);
   const [, setFeeds] = useState<Feed[]>(propsFeeds || []);
-  const [composedStatus, setComposedStatus] = useState<string | null>(
-    initialHandoff?.contentClass === 'media' && initialHandoff.awaitingComposedBlobs
-      ? 'Waiting for composed video from Pen…'
-      : null
-  );
+  const [composedStatus, setComposedStatus] = useState<string | null>(() => {
+    if (initialHandoff?.contentClass === 'media' && initialHandoff.awaitingComposedBlobs) {
+      return 'Waiting for composed video from Pen…';
+    }
+    if (isMixedPagesHandoff(initialHandoff)) {
+      return 'Waiting for video pages from Pen…';
+    }
+    return null;
+  });
   const composedQueued = useRef(false);
 
   const authenticatedUser = userState.isUnlocked && userState.pnIdentifier ? {
@@ -165,6 +176,153 @@ export function UploadModal({ feeds: propsFeeds, onClose, onUploadComplete }: Up
 
     window.addEventListener('message', onMessage);
     // Re-signal a few times in case Pen listened late
+    const t1 = window.setTimeout(() => signalComposedMediaReady(penOrigin), 500);
+    const t2 = window.setTimeout(() => signalComposedMediaReady(penOrigin), 1500);
+    return () => {
+      window.removeEventListener('message', onMessage);
+      window.clearTimeout(t1);
+      window.clearTimeout(t2);
+    };
+  }, [accountId, authenticatedUser?.id, onUploadComplete]);
+
+  // Pen mixed Note + video pages → ordered collection
+  useEffect(() => {
+    const handoff = peekPenPublishHandoff();
+    if (!isMixedPagesHandoff(handoff)) return;
+
+    const penOrigin = penOriginFromEnv();
+    signalComposedMediaReady(penOrigin);
+
+    const queueUpload = <T,>(
+      task: Parameters<typeof uploadQueueService.addTask>[0]
+    ): Promise<T> =>
+      new Promise((resolve, reject) => {
+        uploadQueueService.addTask({
+          ...task,
+          onComplete: (result) => resolve(result as T),
+          onError: (error) => reject(error)
+        });
+      });
+
+    const onMessage = (e: MessageEvent) => {
+      if (!isAllowedPenOrigin(e.origin)) return;
+      if (!isMixedPagesBlobsMessage(e.data)) return;
+      if (composedQueued.current) return;
+      if (!accountId || !authenticatedUser?.id) {
+        setComposedStatus('Unlock your pN to finish collection upload');
+        return;
+      }
+      composedQueued.current = true;
+      const meta = (e.data.meta || handoff) as PenPublishHandoff;
+      const videoFiles = e.data.videoFiles || [];
+      const posterFiles = e.data.posterFiles || [];
+      const pages = (meta.pages || []) as PenMixedHandoffPage[];
+      takePenPublishHandoff();
+
+      void (async () => {
+        try {
+          const fileIds: string[] = [];
+          const penChildMeta = {
+            isPublic: true,
+            headProof: meta.headProof,
+            penDocId: meta.docId,
+            templateId: meta.templateId,
+            penClassId: meta.penClassId,
+            penCategoryId: meta.penCategoryId,
+            penTemplateKind: meta.penTemplateKind,
+            basedOnTemplateId: meta.basedOnTemplateId,
+            penIrRef: meta.penIrRef,
+            licensing: meta.licensing
+          };
+
+          for (let i = 0; i < pages.length; i++) {
+            const page = pages[i]!;
+            setComposedStatus(`Uploading page ${i + 1} of ${pages.length}…`);
+
+            if (page.kind === 'video') {
+              const videoFile = videoFiles[page.videoIndex];
+              if (!videoFile) throw new Error(`missing_video_blob_${page.videoIndex}`);
+              const posterFile = posterFiles[page.videoIndex];
+              const result = await queueUpload<{ fileId?: string }>({
+                type: 'file',
+                file: videoFile,
+                accountId,
+                metadata: {
+                  ...penChildMeta,
+                  title: `${meta.title || 'Pen'} — ${page.slug}`,
+                  contentClass: 'media',
+                  fileType: 'video',
+                  feedPosterFile: posterFile
+                }
+              });
+              if (!result?.fileId) throw new Error('video_page_upload_missing_file_id');
+              fileIds.push(result.fileId);
+            } else {
+              const textPost = {
+                content: page.content,
+                style: (page.style || {}) as TextPostData['style'],
+                doc: page.doc
+              };
+              const result = await queueUpload<{ fileId?: string }>({
+                type: 'textPost',
+                textPost,
+                accountId,
+                metadata: {
+                  ...penChildMeta,
+                  title: `${meta.title || 'Pen'} — ${page.slug}`,
+                  contentClass: 'note',
+                  isPublic: true
+                }
+              });
+              if (!result?.fileId) throw new Error('note_page_upload_missing_file_id');
+              fileIds.push(result.fileId);
+            }
+          }
+
+          setComposedStatus('Creating collection…');
+          const collectionResult = await queueUpload<{ fileId?: string }>({
+            type: 'createCollection',
+            accountId,
+            metadata: {
+              collectionData: {
+                collectionFileIds: fileIds,
+                title: meta.title || 'Pen collection'
+              },
+              accountId,
+              metadata: {
+                name: meta.title || 'Pen collection',
+                description: '',
+                tags: '',
+                isPublic: true,
+                contentClass: 'collection',
+                headProof: meta.headProof,
+                penDocId: meta.docId,
+                templateId: meta.templateId,
+                penClassId: meta.penClassId,
+                penCategoryId: meta.penCategoryId,
+                penTemplateKind: meta.penTemplateKind,
+                basedOnTemplateId: meta.basedOnTemplateId,
+                penIrRef: meta.penIrRef,
+                licensing: meta.licensing
+              }
+            }
+          });
+
+          if (meta.docId && collectionResult?.fileId) {
+            rememberPublishedFileId(meta.docId, collectionResult.fileId);
+          }
+          setComposedStatus(null);
+          onUploadComplete?.('collection');
+        } catch (err) {
+          composedQueued.current = false;
+          setComposedStatus(null);
+          const msg = err instanceof Error ? err.message : 'Unknown error';
+          alert(`Mixed pages upload failed: ${msg}`);
+        }
+      })();
+    };
+
+    window.addEventListener('message', onMessage);
     const t1 = window.setTimeout(() => signalComposedMediaReady(penOrigin), 500);
     const t2 = window.setTimeout(() => signalComposedMediaReady(penOrigin), 1500);
     return () => {

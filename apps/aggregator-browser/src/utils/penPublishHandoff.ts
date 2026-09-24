@@ -10,11 +10,16 @@ export interface PenPublishHandoffPage {
   doc?: PenTipTapNode;
 }
 
+/** Mixed Note + video collection handoff page slots (video filled from postMessage). */
+export type PenMixedHandoffPage =
+  | { kind: 'note'; slug: string; content: string; style?: PenPagePresentation; doc?: PenTipTapNode }
+  | { kind: 'video'; slug: string; videoIndex: number };
+
 export interface PenPublishHandoff {
-  contentClass?: 'note' | 'media';
+  contentClass?: 'note' | 'media' | 'collection';
   fileType?: 'video' | 'image' | 'audio' | string;
   title?: string;
-  pages?: PenPublishHandoffPage[];
+  pages?: PenPublishHandoffPage[] | PenMixedHandoffPage[];
   templateId?: string;
   docId?: string;
   headProof?: unknown;
@@ -29,16 +34,18 @@ export interface PenPublishHandoff {
   /** Attached Pen music doc id when post uses library.music. */
   musicPenDocId?: string;
   musicLicensing?: import('@par-noir/pen-protocol').PenLicensingRoot;
-  /** Pen composed-video export: await blobs from opener postMessage. */
+  /** Pen composed-video / mixed-pages export: await blobs from opener postMessage. */
   awaitingComposedBlobs?: boolean;
   videoContentType?: string;
   durationMs?: number;
   width?: number;
   height?: number;
+  videoCount?: number;
 }
 
 export const PEN_COMPOSED_MEDIA_READY = 'pen_composed_media_ready' as const;
 export const PEN_COMPOSED_MEDIA_BLOBS = 'pen_composed_media_blobs' as const;
+export const PEN_MIXED_PAGES_BLOBS = 'pen_mixed_pages_blobs' as const;
 
 const HANDOFF_PREFIX = 'pen_publish:';
 const HANDOFF_PREFIX_LEGACY = 'pen_publish_note:';
@@ -158,4 +165,28 @@ export function isComposedMediaBlobsMessage(data: unknown): data is ComposedMedi
       (data as ComposedMediaBlobsMessage).type === PEN_COMPOSED_MEDIA_BLOBS &&
       (data as ComposedMediaBlobsMessage).videoFile instanceof File
   );
+}
+
+export type MixedPagesBlobsMessage = {
+  type: typeof PEN_MIXED_PAGES_BLOBS;
+  meta?: PenPublishHandoff;
+  videoFiles?: File[];
+  posterFiles?: File[];
+};
+
+export function isMixedPagesBlobsMessage(data: unknown): data is MixedPagesBlobsMessage {
+  return Boolean(
+    data &&
+      typeof data === 'object' &&
+      (data as MixedPagesBlobsMessage).type === PEN_MIXED_PAGES_BLOBS &&
+      Array.isArray((data as MixedPagesBlobsMessage).videoFiles) &&
+      ((data as MixedPagesBlobsMessage).videoFiles?.length ?? 0) > 0
+  );
+}
+
+export function isMixedPagesHandoff(h: PenPublishHandoff | null | undefined): boolean {
+  if (!h || h.contentClass !== 'collection' || !h.awaitingComposedBlobs) return false;
+  const pages = h.pages;
+  if (!Array.isArray(pages) || pages.length === 0) return false;
+  return pages.some((p) => p && typeof p === 'object' && 'kind' in p);
 }

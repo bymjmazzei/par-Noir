@@ -24,6 +24,16 @@ export async function createCollection(
     isNSFW?: boolean;
     isNoteCollection?: boolean; // Flag to distinguish note collections from regular collections
     expiresAt?: string | null;
+    contentClass?: 'collection';
+    headProof?: unknown;
+    penDocId?: string;
+    templateId?: string;
+    penClassId?: string;
+    penCategoryId?: string;
+    penTemplateKind?: 'template' | 'remix';
+    basedOnTemplateId?: string;
+    penIrRef?: unknown;
+    licensing?: unknown;
   }
 ): Promise<{ fileId: string; success: boolean; error?: string }> {
   try {
@@ -194,12 +204,26 @@ export async function createCollection(
     }
 
     // Create metadata entry
+    const penProvenance: Record<string, unknown> = {};
+    if (metadata?.headProof != null) penProvenance.headProof = metadata.headProof;
+    if (metadata?.penDocId) penProvenance.penDocId = metadata.penDocId;
+    if (metadata?.templateId) penProvenance.templateId = metadata.templateId;
+    if (metadata?.penClassId) penProvenance.penClassId = metadata.penClassId;
+    if (metadata?.penCategoryId) penProvenance.penCategoryId = metadata.penCategoryId;
+    if (metadata?.penTemplateKind) penProvenance.penTemplateKind = metadata.penTemplateKind;
+    if (metadata?.basedOnTemplateId) {
+      penProvenance.basedOnTemplateId = metadata.basedOnTemplateId;
+    }
+    if (metadata?.penIrRef) penProvenance.penIrRef = metadata.penIrRef;
+    if (metadata?.licensing) penProvenance.licensing = metadata.licensing;
+
     const metadataResponse = await ownerFetch('PUT', `/api/aggregator/metadata-index/${fileId}`, {
       name: metadata?.title || collectionData.title || 'Collection',
       description: metadata?.description || collectionData.description || '',
       keywords: metadata?.keywords || [],
       tags: metadata?.tags || [],
       fileType: 'collection',
+      contentClass: 'collection',
       isPublic,
       publicToken,
       publicContentRef,
@@ -213,6 +237,7 @@ export async function createCollection(
         ? { expiresAt: metadata?.expiresAt ?? null, persistOnDiscover: false }
         : {}),
       ...feedPreviewFields,
+      ...penProvenance,
     });
 
     if (!metadataResponse.ok) {

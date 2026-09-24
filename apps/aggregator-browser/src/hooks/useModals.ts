@@ -16,6 +16,7 @@ function shouldOpenUploadFromDeepLink(): boolean {
     const handoff = peekPenPublishHandoff();
     if (handoff?.pages?.length) return true;
     if (handoff?.contentClass === 'media' && handoff.awaitingComposedBlobs) return true;
+    if (handoff?.contentClass === 'collection' && handoff.awaitingComposedBlobs) return true;
     return false;
   } catch {
     return false;

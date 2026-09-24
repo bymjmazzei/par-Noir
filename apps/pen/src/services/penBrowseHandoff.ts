@@ -44,6 +44,31 @@ export type PenComposedMediaHandoffMeta = {
   height?: number;
 };
 
+/** Ordered pages for mixed Note + per-page composed video → collection. */
+export type PenMixedPageHandoffMeta = {
+  contentClass: 'collection';
+  title: string;
+  docId: string;
+  templateId?: string;
+  headProof?: unknown;
+  aggregatorTargets?: string[];
+  penClassId?: string;
+  penCategoryId?: string;
+  penTemplateKind?: 'template' | 'remix';
+  basedOnTemplateId?: string;
+  penIrRef?: { objectId?: string; publicUrl?: string };
+  licensing?: unknown;
+  awaitingComposedBlobs: true;
+  /** Page order: note pages inline; video slots filled from postMessage files by videoIndex. */
+  pages: Array<
+    | { kind: 'note'; slug: string; content: string; style?: unknown; doc?: unknown }
+    | { kind: 'video'; slug: string; videoIndex: number }
+  >;
+  videoCount: number;
+};
+
+export const PEN_MIXED_PAGES_BLOBS = 'pen_mixed_pages_blobs' as const;
+
 const envBrowse =
   typeof import.meta !== 'undefined'
     ? (import.meta as ImportMeta & { env?: { VITE_BROWSE_URL?: string } }).env?.VITE_BROWSE_URL
@@ -62,7 +87,7 @@ export function browseOrigin(): string {
 }
 
 export function buildPenPublishHandoffHash(
-  payload: PenSocialHandoffPayload | PenComposedMediaHandoffMeta
+  payload: PenSocialHandoffPayload | PenComposedMediaHandoffMeta | PenMixedPageHandoffMeta
 ): string {
   return `#${PEN_PUBLISH_HASH_PREFIX}${encodeURIComponent(JSON.stringify(payload))}`;
 }
@@ -118,6 +143,89 @@ export function openBrowseWithComposedMediaHandoff(
             meta,
             videoFile,
             posterFile
+          },
+          target
+        );
+      } catch {
+        /* ignore */
+      }
+    }
+  };
+
+  const onMsg = (e: MessageEvent) => {
+    const allowed =
+      e.origin === origin ||
+      e.origin === 'https://browse.parnoir.com' ||
+      e.origin === 'https://browse-parnoir.web.app' ||
+      /localhost|127\.0\.0\.1/.test(e.origin);
+    if (!allowed) return;
+    if (e.data?.type === PEN_COMPOSED_MEDIA_READY) {
+      deliver();
+      window.removeEventListener('message', onMsg);
+    }
+  };
+  window.addEventListener('message', onMsg);
+
+  let attempts = 0;
+  const tick = window.setInterval(() => {
+    attempts += 1;
+    if (delivered || w.closed || attempts > 40) {
+      window.clearInterval(tick);
+      if (!delivered) window.removeEventListener('message', onMsg);
+      return;
+    }
+    try {
+      w.postMessage({ type: 'pen_composed_media_ping' }, origin);
+    } catch {
+      /* ignore */
+    }
+  }, 400);
+}
+
+/**
+ * Mixed Note + video pages: open Browse as a collection; deliver video files via postMessage.
+ */
+export function openBrowseWithMixedPagesHandoff(
+  meta: PenMixedPageHandoffMeta,
+  videos: Array<{ videoBlob: Blob; posterBlob: Blob; contentType: string }>
+): void {
+  const origin = browseOrigin();
+  const url = `${origin}/?view=upload${buildPenPublishHandoffHash(meta)}`;
+  const w = window.open(url, '_blank');
+  if (!w) {
+    throw new Error('popup_blocked_mixed_pages');
+  }
+
+  const videoFiles = videos.map(
+    (v, i) =>
+      new File(
+        [v.videoBlob],
+        v.contentType.includes('mp4') ? `pen-page-${i}.mp4` : `pen-page-${i}.webm`,
+        { type: v.videoBlob.type || v.contentType }
+      )
+  );
+  const posterFiles = videos.map(
+    (v, i) =>
+      new File([v.posterBlob], `pen-page-${i}-poster.jpg`, { type: 'image/jpeg' })
+  );
+
+  let delivered = false;
+  const deliver = () => {
+    if (delivered || w.closed) return;
+    delivered = true;
+    const targets = [
+      origin,
+      'https://browse.parnoir.com',
+      'https://browse-parnoir.web.app'
+    ];
+    for (const target of [...new Set(targets)]) {
+      try {
+        w.postMessage(
+          {
+            type: PEN_MIXED_PAGES_BLOBS,
+            meta,
+            videoFiles,
+            posterFiles
           },
           target
         );

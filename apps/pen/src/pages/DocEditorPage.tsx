@@ -27,7 +27,8 @@ import {
   verifyChain,
   ensureOwnerAssignment,
   collectFontFamiliesFromDoc,
-  docRequiresComposedVideoExport,
+  shouldPublishAsSingleComposedVideo,
+  shouldPublishAsMixedPages,
   isGooglePenFont,
   type PenDocComment,
   type PenPageLayout,
@@ -58,7 +59,8 @@ import {
   promoteProjectToFinishedLibraryDoc,
   saveProjectAsLibraryTemplate,
   writeSocialPublishHandoff,
-  writeComposedVideoPublishHandoff
+  writeComposedVideoPublishHandoff,
+  writeMixedPagesPublishHandoff
 } from '../services/penPublish';
 import { requestNotaryStamp } from '../services/penApi';
 import { resolveSigningKeys } from '../services/penKeys';
@@ -783,18 +785,41 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
       try {
         saveDraft({ silent: true });
         const b = bundleRef.current || bundle!;
-        if (docRequiresComposedVideoExport(b.sections)) {
+        if (shouldPublishAsSingleComposedVideo(b.sections)) {
           setStatus('Encoding composed video…');
+          const prevSlug = activeSlugRef.current;
           await writeComposedVideoPublishHandoff(b, {
             aggregatorTargets: targets,
+            activateSection: (slug) => {
+              setActiveSlug(slug);
+            },
             onProgress: (pct) => {
               setStatus(`Encoding composed video… ${Math.round(pct)}%`);
             }
           });
+          setActiveSlug(prevSlug);
           setStatus(
             targets.includes('pen-templates')
               ? 'Opened Browse — finish template video share there'
               : 'Opened Browse — finish video publish there'
+          );
+        } else if (shouldPublishAsMixedPages(b.sections)) {
+          setStatus('Encoding video pages…');
+          const prevSlug = activeSlugRef.current;
+          await writeMixedPagesPublishHandoff(b, {
+            aggregatorTargets: targets,
+            activateSection: (slug) => {
+              setActiveSlug(slug);
+            },
+            onProgress: (pct) => {
+              setStatus(`Encoding video pages… ${Math.round(pct)}%`);
+            }
+          });
+          setActiveSlug(prevSlug);
+          setStatus(
+            targets.includes('pen-templates')
+              ? 'Opened Browse — finish mixed template share there'
+              : 'Opened Browse — finish collection publish there'
           );
         } else {
           const payload = await writeSocialPublishHandoff(b, {

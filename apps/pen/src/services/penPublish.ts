@@ -15,7 +15,13 @@ import {
   requireTemplate,
   snapshotPenEmbeds,
   normalizeLicensingRoot,
-  docRequiresComposedVideoExport,
+  shouldPublishAsSingleComposedVideo,
+  shouldPublishAsMixedPages,
+  partitionSectionsForPublish,
+  mergePagePresentation,
+  docToPlainText,
+  inferPageTextStyle,
+  normalizeSection,
   type PenDocManifest,
   type PenEmbedResolveResult,
   type PenSectionContent,
@@ -37,7 +43,9 @@ import { schedulePrefsCloudPush } from './penPrefsCloud';
 import { composePageToVideo } from './composePageVideoEncode';
 import {
   openBrowseWithComposedMediaHandoff,
-  type PenComposedMediaHandoffMeta
+  openBrowseWithMixedPagesHandoff,
+  type PenComposedMediaHandoffMeta,
+  type PenMixedPageHandoffMeta
 } from './penBrowseHandoff';
 
 export const PEN_PUBLISH_PREFIX = 'pen_publish:';
@@ -110,9 +118,6 @@ export async function writeSocialPublishHandoff(
   basedOnTemplateId?: string;
   penIrRef?: { objectId?: string; publicUrl?: string };
 }> {
-  if (docRequiresComposedVideoExport(bundle.sections)) {
-    throw new Error('use_write_composed_video_handoff');
-  }
   const resolveDoc =
     opts?.resolveDoc ||
     (opts?.pnIdentifier ? resolvePenEmbedFromLocal(opts.pnIdentifier) : async () => null);
@@ -180,11 +185,19 @@ export async function writeComposedVideoPublishHandoff(
   opts?: {
     aggregatorTargets?: string[];
     exportRoot?: HTMLElement | null;
+    activateSection?: (slug: string) => void | Promise<void>;
     onProgress?: (pct: number) => void;
   }
 ): Promise<PenComposedMediaHandoffMeta> {
-  if (!docRequiresComposedVideoExport(bundle.sections)) {
-    throw new Error('no_visible_video_layer');
+  if (!shouldPublishAsSingleComposedVideo(bundle.sections)) {
+    throw new Error('not_single_composed_video_doc');
+  }
+  const { videoSections } = partitionSectionsForPublish(bundle.sections);
+  const videoSlug = videoSections[0]?.slug;
+  if (videoSlug && opts?.activateSection) {
+    await opts.activateSection(videoSlug);
+    await waitTwoFrames();
+    await new Promise((r) => setTimeout(r, 200));
   }
   const root =
     opts?.exportRoot ||
@@ -237,6 +250,130 @@ export async function writeComposedVideoPublishHandoff(
     videoBlob: encoded.videoBlob,
     posterBlob: encoded.posterBlob
   });
+  return meta;
+}
+
+function waitTwoFrames(): Promise<void> {
+  return new Promise((resolve) => {
+    requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+  });
+}
+
+/**
+ * Mixed / multi-video: encode each video section (activate in the editor), keep
+ * other sections as Note pages, hand off as a collection in page order.
+ */
+export async function writeMixedPagesPublishHandoff(
+  bundle: LocalDocBundle,
+  opts: {
+    aggregatorTargets?: string[];
+    activateSection: (slug: string) => void | Promise<void>;
+    onProgress?: (pct: number) => void;
+  }
+): Promise<PenMixedPageHandoffMeta> {
+  if (!shouldPublishAsMixedPages(bundle.sections)) {
+    throw new Error('not_mixed_pages_doc');
+  }
+  const { videoSections } = partitionSectionsForPublish(bundle.sections);
+  const presentation = bundle.manifest.pagePresentation || defaultPagePresentation();
+  const videos: Array<{
+    slug: string;
+    videoBlob: Blob;
+    posterBlob: Blob;
+    contentType: string;
+  }> = [];
+
+  for (let i = 0; i < videoSections.length; i++) {
+    const sec = videoSections[i]!;
+    opts.onProgress?.(Math.round((i / Math.max(videoSections.length, 1)) * 80));
+    await opts.activateSection(sec.slug);
+    await waitTwoFrames();
+    // Allow video elements to attach
+    await new Promise((r) => setTimeout(r, 200));
+    const root =
+      typeof document !== 'undefined'
+        ? (document.querySelector('[data-pen-compose-export-root]') as HTMLElement | null)
+        : null;
+    if (!root) throw new Error('compose_export_root_missing');
+    const encoded = await composePageToVideo(root, {
+      onProgress: (p) => {
+        const base = (i / videoSections.length) * 80;
+        opts.onProgress?.(Math.round(base + (p / 100) * (80 / videoSections.length)));
+      }
+    });
+    videos.push({
+      slug: sec.slug,
+      videoBlob: encoded.videoBlob,
+      posterBlob: encoded.posterBlob,
+      contentType: encoded.videoContentType
+    });
+  }
+
+  const videoIndexBySlug = new Map(videos.map((v, i) => [v.slug, i]));
+  const pages: PenMixedPageHandoffMeta['pages'] = [];
+  for (const raw of bundle.sections) {
+    const slug = raw.slug;
+    if (videoIndexBySlug.has(slug)) {
+      pages.push({ kind: 'video', slug, videoIndex: videoIndexBySlug.get(slug)! });
+      continue;
+    }
+    const text = docToPlainText(raw.doc).trim();
+    if (!text) continue;
+    const sec = normalizeSection(raw);
+    const base = mergePagePresentation(presentation);
+    pages.push({
+      kind: 'note',
+      slug,
+      content: text,
+      style: { ...base, textStyle: inferPageTextStyle(sec.doc) },
+      doc: raw.doc
+    });
+  }
+
+  const targets = opts.aggregatorTargets?.length ? opts.aggregatorTargets : ['browse'];
+  const asTemplate = targets.includes('pen-templates');
+  const form = getClass(bundle.manifest.classId);
+  const lineageId =
+    bundle.manifest.basedOnTemplateId || bundle.manifest.templateId;
+
+  const meta: PenMixedPageHandoffMeta = {
+    contentClass: 'collection',
+    title: bundle.manifest.title || 'Untitled',
+    docId: bundle.manifest.docId,
+    templateId: bundle.manifest.templateId,
+    headProof:
+      bundle.chain.links[bundle.chain.links.length - 1] || bundle.chain.genesis,
+    aggregatorTargets: targets,
+    penClassId: bundle.manifest.classId,
+    penCategoryId: form?.parentId,
+    penIrRef: { objectId: bundle.manifest.docId },
+    licensing: bundle.manifest.licensing,
+    awaitingComposedBlobs: true,
+    pages,
+    videoCount: videos.length,
+    ...(asTemplate
+      ? {
+          penTemplateKind: (bundle.manifest.basedOnTemplateId
+            ? 'remix'
+            : 'template') as 'template' | 'remix',
+          basedOnTemplateId: lineageId
+        }
+      : {})
+  };
+
+  sessionStorage.setItem(
+    `${PEN_PUBLISH_PREFIX}${bundle.manifest.docId}`,
+    JSON.stringify(meta)
+  );
+  opts.onProgress?.(100);
+  openBrowseWithMixedPagesHandoff(
+    meta,
+    videos.map((v) => ({
+      videoBlob: v.videoBlob,
+      posterBlob: v.posterBlob,
+      contentType: v.contentType
+    }))
+  );
   return meta;
 }
 

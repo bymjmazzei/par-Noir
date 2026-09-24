@@ -579,7 +579,17 @@ async function processCollectionCreation(
       keywords: tags,
       tags: tags,
       isPublic: true, // Collections default to public
-      isNSFW: false
+      isNSFW: false,
+      contentClass: 'collection',
+      ...(formData?.headProof != null ? { headProof: formData.headProof } : {}),
+      ...(formData?.penDocId ? { penDocId: formData.penDocId } : {}),
+      ...(formData?.templateId ? { templateId: formData.templateId } : {}),
+      ...(formData?.penClassId ? { penClassId: formData.penClassId } : {}),
+      ...(formData?.penCategoryId ? { penCategoryId: formData.penCategoryId } : {}),
+      ...(formData?.penTemplateKind ? { penTemplateKind: formData.penTemplateKind } : {}),
+      ...(formData?.basedOnTemplateId ? { basedOnTemplateId: formData.basedOnTemplateId } : {}),
+      ...(formData?.penIrRef ? { penIrRef: formData.penIrRef } : {}),
+      ...(formData?.licensing ? { licensing: formData.licensing } : {})
     }
   );
 
