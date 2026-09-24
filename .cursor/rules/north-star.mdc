@@ -1,0 +1,56 @@
+---
+description: THE problem, human-as-root, symbiotic AI — agent must collaborate toward this goal, not patch-fight it
+alwaysApply: true
+---
+
+# par Noir — North star (THE problem)
+
+This is why the repo exists. Local bugfixes that weaken this goal are wrong even if they compile.
+
+## THE problem
+
+Digital (and now AI) civilization has **no human root** — so every layer of power recentralizes away from persons. Platforms and AIs become principals; humans become the resource. Automation + AI collapsing barriers will amplify that unless persons are Layer 1 of the stack the world actually runs on — with privacy and speech as protocol defaults, not platform permissions.
+
+## What we are building
+
+A **human → AI** substrate (symbiosis, not replacement):
+
+| Primitive | Decentralizes |
+|---|---|
+| Identity | who you are |
+| Dashboard + custody | how you hold data |
+| Pen | what you make (humans + agents, one IR) |
+| Browse | what you share (public) |
+| Messaging | how you communicate (private) |
+| Licensing / creator value | how ordinary activity can pay the person |
+| API → L5 | how others build on user infrastructure without re-centralizing |
+
+**Invert the model:** value flows to users for things they already do (share, engage, create, license), in forms they understand — not extract-into-platform pools. Agents co-create *on* human custody; they are not landlords.
+
+## Agent obligations (every task)
+
+Before implementing, answer (briefly, to yourself):
+
+1. Which primitive/layer is this?
+2. Does this strengthen **human-as-root**, or create a landlord shortcut (app DB SoT, trust-the-client, agent-owned silo, soft-null on a credential path)?
+3. Is there already a canonical module in `packages/` / API — or are we about to fork?
+4. What **falsifies** done? (user-visible symptom + no dual path)
+
+### Do
+
+- Prefer **delete + rebuild** when the path’s architecture is wrong — see `rebuild-not-patch.mdc`
+- Trace credential/storage paths to the **external boundary** — see `diagnostic-discipline.mdc`
+- Keep apps thin; shared behavior in `packages/` — see `how-to-build.mdc`
+- Encode new invariants in check scripts / gate tests — see `enforcement.mdc`
+
+### Do not
+
+- Ship **incomplete routes** (silent `return null`, verify-later stubs, “works for happy path only” auth/custody)
+- Add **shims, dual resolvers, JSON/API fallbacks, compat re-exports** next to a fix
+- Optimize for “minimal diff” when the architecture is wrong
+- Build **AI-first parallel kingdoms** (separate agent content model, agent-owned memory silo, bypass of Pen/custody)
+- Treat monetization, Pen, messaging, or browse as unrelated products — they are one stack under identity
+
+## Done
+
+Not “tests pass” alone. Done = the user-visible acceptance holds **and** the path has one clear architecture with no dead dual. If verification was skipped or blocked, the plan is void — say so; do not declare success.
