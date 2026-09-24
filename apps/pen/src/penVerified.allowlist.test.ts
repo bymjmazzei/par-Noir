@@ -17,7 +17,7 @@ describe('penVerified allowlist', () => {
     ).toBe(false);
   });
 
-  it('allows listed pnIdentifier only', async () => {
+  it('allows listed pnIdentifier across pn- / did:key aliases', async () => {
     vi.stubEnv(
       'VITE_PEN_PUBLIC_TEMPLATE_ALLOWLIST',
       'did:key:system-a, did:key:system-b'
@@ -27,6 +27,9 @@ describe('penVerified allowlist', () => {
     );
     expect(
       canPublishPublicTemplate({ accessToken: 't', pnIdentifier: 'did:key:system-a' })
+    ).toBe(true);
+    expect(
+      canPublishPublicTemplate({ accessToken: 't', pnIdentifier: 'pn-system-a' })
     ).toBe(true);
     expect(isVerifiedAuthor({ accessToken: 't', pnIdentifier: 'did:key:system-b' })).toBe(
       true
