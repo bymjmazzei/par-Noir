@@ -1,19 +1,19 @@
 /**
  * My Library feed — personal docs only (galleryPreviewRef via cloud/local).
- * Never uses CDN / public-media.
+ * Never uses CDN / public-media / live engagement.
  */
 
 import { useEffect, useMemo, useState } from 'react';
+import { categoryIdForClass } from '@par-noir/pen-protocol';
 import type { PenSession } from '../services/penSession';
-import {
-  loadLocalDoc,
-  type LocalDocSummary
-} from '../services/penLocalStore';
+import { loadLocalDoc, type LocalDocSummary } from '../services/penLocalStore';
 import {
   buildClassFeedRailItems,
   resolveSummaryClassId
 } from '../services/classFeedRailItems';
 import { ClassFeedRail } from './ClassFeedRail';
+import { SnapFeedShell } from './SnapFeedShell';
+import { SocialPhoneFrame } from './SocialPhoneFrame';
 import { BrowseFeedTilePreview } from './BrowseFeedTilePreview';
 
 export function DocFeedScroller({
@@ -51,43 +51,47 @@ export function DocFeedScroller({
   }, [railItems, activeClassId, onActiveClassId]);
 
   return (
-    <div className="pen-doc-feed">
-      <div className="pen-doc-feed-rail-sticky">
+    <SnapFeedShell
+      rail={
         <ClassFeedRail
           items={railItems}
           activeId={activeClassId}
           onSelect={onActiveClassId}
         />
-      </div>
-      <div className="pen-doc-feed-scroll">
-        {filtered.length === 0 ? (
-          <div className="pen-doc-feed-empty">
-            <p className="text-sm text-neutral-500">No documents in this class.</p>
-          </div>
-        ) : (
-          filtered.map((d) => (
-            <DocFeedSlide
-              key={d.docId}
-              pn={pn}
-              docId={d.docId}
-              session={session}
-              onOpen={() => onOpenDoc(d.docId)}
-            />
-          ))
-        )}
-      </div>
-    </div>
+      }
+      count={filtered.length}
+      empty={
+        <div className="pen-doc-feed-empty">
+          <p className="text-sm text-neutral-500">No documents in this class.</p>
+        </div>
+      }
+      renderSlide={(index) => {
+        const d = filtered[index];
+        if (!d) return null;
+        return (
+          <DocFeedSlide
+            pn={pn}
+            docId={d.docId}
+            classId={resolveSummaryClassId(d)}
+            session={session}
+            onOpen={() => onOpenDoc(d.docId)}
+          />
+        );
+      }}
+    />
   );
 }
 
 function DocFeedSlide({
   pn,
   docId,
+  classId,
   session,
   onOpen
 }: {
   pn: string;
   docId: string;
+  classId?: string;
   session: PenSession;
   onOpen: () => void;
 }) {
@@ -99,22 +103,28 @@ function DocFeedSlide({
 
   if (!bundle) {
     return (
-      <div className="pen-doc-feed-slide">
-        <div className="pen-doc-feed-empty">
-          <p className="text-sm text-neutral-500">Document unavailable.</p>
-        </div>
+      <div className="pen-doc-feed-empty">
+        <p className="text-sm text-neutral-500">Document unavailable.</p>
       </div>
     );
   }
 
+  const social = categoryIdForClass(classId || bundle.manifest.classId || '') === 'social';
+  const tile = (
+    <BrowseFeedTilePreview
+      manifest={bundle.manifest}
+      sections={bundle.sections}
+      bare
+      compact
+      session={session}
+    />
+  );
+
   return (
-    <button type="button" className="pen-doc-feed-slide" onClick={onOpen}>
-      <BrowseFeedTilePreview
-        manifest={bundle.manifest}
-        sections={bundle.sections}
-        bare
-        session={session}
-      />
+    <button type="button" className="pen-doc-feed-slide-hit" onClick={onOpen}>
+      <div className={`pen-doc-feed-slide-stage${social ? ' is-social' : ''}`}>
+        {social ? <SocialPhoneFrame large>{tile}</SocialPhoneFrame> : tile}
+      </div>
     </button>
   );
 }

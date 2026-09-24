@@ -104,11 +104,14 @@ function PageSurface({ page, titleFallback }: { page: FeedTilePage; titleFallbac
 export function FeedTileSurface({
   model,
   mode = 'preview',
-  compact
+  compact,
+  hideEngagementRail = false
 }: {
   model: FeedTileViewModel;
   mode?: 'preview' | 'live';
   compact?: boolean;
+  /** When true, omit decorative rail (caller renders live engagement outside). */
+  hideEngagementRail?: boolean;
 }) {
   const pages =
     model.pages.length > 0
@@ -147,7 +150,7 @@ export function FeedTileSurface({
         />
       )}
 
-      <EngagementRail mode={mode} />
+      {!hideEngagementRail ? <EngagementRail mode={mode} /> : null}
 
       <div className="pointer-events-none absolute bottom-4 left-3 right-16 z-20 text-white drop-shadow-md">
         <div className="flex items-center gap-2">

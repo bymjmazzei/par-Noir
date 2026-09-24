@@ -1,11 +1,12 @@
 /**
  * Templates feed — public pen-templates from central index, CDN media only.
+ * Live engagement only for social public IndexedFile entries.
  */
 
 import { useEffect, useMemo, useState } from 'react';
 import type { CentralIndexEntry } from '@par-noir/aggregator-domain';
 import { FeedTileSurface, type FeedTileViewModel } from '@par-noir/feed-tile';
-import { getClass } from '@par-noir/pen-protocol';
+import { categoryIdForClass, getClass } from '@par-noir/pen-protocol';
 import type { PenSession } from '../services/penSession';
 import { fetchPublicPenTemplates } from '../services/penCentralIndex';
 import { resolvePublicMediaSignedUrl } from '../services/penPublicFeedMedia';
@@ -14,6 +15,9 @@ import {
   contentClassFallbackLabel
 } from '../services/classFeedRailItems';
 import { ClassFeedRail } from './ClassFeedRail';
+import { SnapFeedShell } from './SnapFeedShell';
+import { SocialPhoneFrame } from './SocialPhoneFrame';
+import { TemplateEngagementRail } from './TemplateEngagementRail';
 
 function entryClassId(entry: CentralIndexEntry): string {
   const meta = entry.metadata as {
@@ -23,7 +27,6 @@ function entryClassId(entry: CentralIndexEntry): string {
   if (meta.penClassId && getClass(meta.penClassId)?.parentId) {
     return meta.penClassId;
   }
-  // Synthetic bucket when penClassId missing — use contentClass as rail id.
   return `cc:${meta.contentClass || 'other'}`;
 }
 
@@ -33,6 +36,17 @@ function entryRailLabel(classKey: string): string {
   }
   const form = getClass(classKey);
   return (form?.title || classKey).toUpperCase();
+}
+
+function entryIsSocial(entry: CentralIndexEntry): boolean {
+  const meta = entry.metadata as { penClassId?: string; contentClass?: string };
+  if (meta.penClassId && categoryIdForClass(meta.penClassId) === 'social') return true;
+  // Aggregator contentClass note/media/collection are social browse atoms.
+  return (
+    meta.contentClass === 'note' ||
+    meta.contentClass === 'media' ||
+    meta.contentClass === 'collection'
+  );
 }
 
 export function TemplatesCdnFeedScroller({
@@ -84,7 +98,6 @@ export function TemplatesCdnFeedScroller({
     const extras = [...fallbackKeys]
       .map((id) => ({ id, label: entryRailLabel(id) }))
       .sort((a, b) => a.label.localeCompare(b.label));
-    // buildClassFeedRailItems already has ALL; append contentClass buckets.
     return [...fromForms, ...extras];
   }, [entries]);
 
@@ -101,49 +114,55 @@ export function TemplatesCdnFeedScroller({
   }, [railItems, activeClassId, onActiveClassId]);
 
   return (
-    <div className="pen-doc-feed">
-      <div className="pen-doc-feed-rail-sticky">
+    <SnapFeedShell
+      rail={
         <ClassFeedRail
           items={railItems}
           activeId={activeClassId}
           onSelect={onActiveClassId}
         />
-      </div>
-      <div className="pen-doc-feed-scroll">
-        {loading ? (
+      }
+      count={loading || error ? 0 : filtered.length}
+      loading={
+        loading ? (
           <div className="pen-doc-feed-empty">
             <p className="text-sm text-neutral-500">Loading public templates…</p>
           </div>
-        ) : error ? (
+        ) : undefined
+      }
+      empty={
+        error ? (
           <div className="pen-doc-feed-empty">
             <p className="text-sm text-red-600">{error}</p>
           </div>
-        ) : filtered.length === 0 ? (
+        ) : (
           <div className="pen-doc-feed-empty">
             <p className="text-sm text-neutral-500">No public templates in this class.</p>
           </div>
-        ) : (
-          filtered.map((entry) => (
-            <CdnTemplateSlide
-              key={entry.fileId}
-              entry={entry}
-              accessToken={session?.accessToken}
-              onOpen={() => onSelectEntry(entry)}
-            />
-          ))
-        )}
-      </div>
-    </div>
+        )
+      }
+      renderSlide={(index) => {
+        const entry = filtered[index];
+        if (!entry) return null;
+        return (
+          <CdnTemplateSlide
+            entry={entry}
+            session={session}
+            onOpen={() => onSelectEntry(entry)}
+          />
+        );
+      }}
+    />
   );
 }
 
 function CdnTemplateSlide({
   entry,
-  accessToken,
+  session,
   onOpen
 }: {
   entry: CentralIndexEntry;
-  accessToken?: string | null;
+  session: PenSession | null;
   onOpen: () => void;
 }) {
   const meta = entry.metadata as {
@@ -152,8 +171,10 @@ function CdnTemplateSlide({
     description?: string;
     contentClass?: string;
     fileType?: string;
+    penClassId?: string;
   };
   const title = meta.title || meta.name || 'Template';
+  const social = entryIsSocial(entry);
   const [model, setModel] = useState<FeedTileViewModel>(() => ({
     title,
     caption: meta.description || title,
@@ -178,7 +199,7 @@ function CdnTemplateSlide({
         const poster = await resolvePublicMediaSignedUrl(
           entry.fileId,
           'poster',
-          accessToken
+          session?.accessToken
         ).catch(() => null);
         let mediaSrc = poster || undefined;
         let mediaKind: 'image' | 'video' = 'image';
@@ -186,7 +207,7 @@ function CdnTemplateSlide({
           const sd = await resolvePublicMediaSignedUrl(
             entry.fileId,
             'sd',
-            accessToken
+            session?.accessToken
           ).catch(() => null);
           if (sd) {
             mediaSrc = sd;
@@ -217,11 +238,40 @@ function CdnTemplateSlide({
     return () => {
       cancelled = true;
     };
-  }, [entry.fileId, accessToken, title, meta.contentClass, meta.description, meta.fileType]);
+  }, [
+    entry.fileId,
+    session?.accessToken,
+    title,
+    meta.contentClass,
+    meta.description,
+    meta.fileType
+  ]);
+
+  const tile = (
+    <FeedTileSurface
+      model={model}
+      mode="preview"
+      compact
+      hideEngagementRail={social}
+    />
+  );
 
   return (
-    <button type="button" className="pen-doc-feed-slide" onClick={onOpen}>
-      <FeedTileSurface model={model} mode="preview" compact />
+    <button type="button" className="pen-doc-feed-slide-hit" onClick={onOpen}>
+      <div className={`pen-doc-feed-slide-stage${social ? ' is-social' : ''}`}>
+        {social ? (
+          <>
+            <SocialPhoneFrame large>{tile}</SocialPhoneFrame>
+            <TemplateEngagementRail
+              fileId={entry.fileId}
+              userPnIdentifier={session?.pnIdentifier}
+              unlocked={Boolean(session?.pnIdentifier)}
+            />
+          </>
+        ) : (
+          tile
+        )}
+      </div>
     </button>
   );
 }

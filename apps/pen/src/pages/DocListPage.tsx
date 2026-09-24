@@ -1494,7 +1494,7 @@ export function DocListPage({
   }, [docs, expandedNotebookIds, explorerSort]);
 
   return (
-    <div className="pen-library-page bg-white">
+    <div className={`pen-library-page bg-white${browseDensity === 'feed' ? ' pen-feed-mode' : ''}`}>
       <div className="pen-library-notebook flex-1">
         <div className="pen-library-notebook-inner">
           <div className="pen-explorer-rail" aria-hidden />

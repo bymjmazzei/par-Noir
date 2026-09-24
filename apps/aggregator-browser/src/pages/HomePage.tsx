@@ -3,7 +3,7 @@
  * Uses HomePageContext for state and handlers from App.
  */
 
-import React, { useContext, useEffect, useState, useCallback } from 'react';
+import React, { useContext, useEffect, useState, useCallback, useRef } from 'react';
 import { useStorageConnected } from '../hooks/useStorageConnected';
 import { Search, Filter, User, RefreshCw, Image as ImageIcon } from 'lucide-react';
 import { calculateMediaScaling } from '../utils/mediaScaling';
@@ -13,7 +13,6 @@ import { FeedRail } from '../components/FeedRail';
 import { FullScreenFeed } from '../components/FullScreenFeed';
 import { FeedEngagementSidebar } from '../components/FeedEngagementSidebar';
 import { DiscoveryPage } from '../components/DiscoveryPage';
-import { PenTemplatesFeedPage } from '../components/PenTemplatesFeedPage';
 import { LoadingSkeleton } from '../components/LoadingSkeleton';
 import { EmptyState } from '../components/EmptyState';
 import { ContentRatingBadge } from '../components/ContentRatingBadge';
@@ -43,6 +42,19 @@ export function HomePage() {
     await ctx.discoverFiles(undefined, true, 0, false);
   }, [ctx]);
   useRegisterSoftRefresh(ctx ? softRefreshHome : null);
+
+  const pendingDiscoverFileIdRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    const id = pendingDiscoverFileIdRef.current;
+    if (!id || !ctx) return;
+    if (ctx.activeFeedId !== 'pen-templates' && ctx.activeFeedId !== 'public') return;
+    const i = ctx.filteredFilesByFeed.findIndex((f) => f.metadata.fileId === id);
+    if (i !== -1) {
+      ctx.setCurrentFeedIndex(i);
+      pendingDiscoverFileIdRef.current = null;
+    }
+  }, [ctx, ctx?.filteredFilesByFeed, ctx?.activeFeedId]);
 
   if (!ctx) return null;
 
@@ -316,27 +328,15 @@ export function HomePage() {
             feeds={feeds}
             thumbnails={thumbnails}
             onFileClick={(file) => {
-              const i = indexedFiles.findIndex(f => f.metadata.fileId === file.metadata.fileId);
-              if (i !== -1) { setActiveFeedId('public'); setCurrentFeedIndex(i); }
+              const isTemplate = Boolean(
+                (file.metadata as { penTemplateKind?: string | null })?.penTemplateKind
+              );
+              pendingDiscoverFileIdRef.current = file.metadata.fileId;
+              setActiveFeedId(isTemplate ? 'pen-templates' : 'public');
+              isManualFeedChangeRef.current = true;
             }}
             onFeedClick={(feed) => setViewingBrandedFeed(feed)}
             onCreatorClick={(creatorId) => { setViewingCreatorId(creatorId); setViewMode('feed'); setMePageTab('all'); }}
-          />
-        </div>
-      ) : viewMode === 'feed' && activeFeedId === 'pen-templates' ? (
-        <div
-          className="flex-1 h-full pb-20"
-          style={{ paddingTop: 'calc(5rem + env(safe-area-inset-top, 0px))' }}
-        >
-          <PenTemplatesFeedPage
-            files={indexedFiles}
-            onOpenFile={(file) => {
-              const i = indexedFiles.findIndex((f) => f.metadata.fileId === file.metadata.fileId);
-              if (i !== -1) {
-                setActiveFeedId('pen-templates');
-                setCurrentFeedIndex(i);
-              }
-            }}
           />
         </div>
       ) : viewMode === 'feed' ? (

@@ -273,7 +273,7 @@ export function TemplatesBrowse({
     categoryIdForClass(String(preview.manifest.classId)) === 'social';
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
+    <div className={`flex min-h-0 flex-1 flex-col${density === 'feed' ? ' pen-templates-feed-mode' : ''}`}>
       <div className="pen-library-heading">
         <div className="min-w-0 flex-1">
           <button
