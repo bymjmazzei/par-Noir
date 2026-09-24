@@ -54,6 +54,27 @@ export async function fetchTemplates(accessToken: string) {
 
 export type StorageTierName = 'free' | 'feed' | 'self-hosted' | string;
 
+/**
+ * Stripe Connect payouts enabled — gates Conditional (unconditionalPaid) licensing.
+ * Fail closed: false when lookup fails.
+ */
+export async function fetchMonetizationConnectReady(
+  accessToken: string,
+  pnIdentifier?: string
+): Promise<boolean> {
+  try {
+    const res = await apiGet('/api/monetization/status', {
+      authToken: accessToken,
+      pnIdentifier
+    });
+    if (!res.ok) return false;
+    const data = (await res.json()) as { connectOnboarded?: boolean };
+    return data.connectOnboarded === true;
+  } catch {
+    return false;
+  }
+}
+
 /** Fail closed: returns null when lookup fails (treat as not entitled). */
 export async function fetchStorageTier(
   accessToken: string,

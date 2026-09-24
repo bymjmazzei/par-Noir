@@ -37,7 +37,7 @@ A **public template** is both:
 | **User / other feeds / Discover relevance** | Social posts only (exclude `penTemplateKind`) |
 | **Pen TemplatesBrowse** | Platform IR + owner templates folder + public pen-templates cache; group by taxonomy |
 
-**Star / save** copies IR into owner Drive `par-noir-pen/templates/` (prefs blob is sync buffer). **Verified** (`isVerifiedAuthor`, fail-closed until Veriff) required for public aggregator share; private Yours/cloud and Use public templates are open to all.
+**Star / save** copies IR into owner Drive `par-noir-pen/templates/` (prefs blob is sync buffer). **Verified** (`isVerifiedAuthor`, fail-closed until Veriff) required to publish a **public template** (`pen-templates`); browse / networks are open to all unlocked users. Private Yours/cloud and Use public templates are open to all.
 
 Layers: **eye** = visibility (omit from preview/compile); **lock** = position lock (no move/resize on Use/remix). Overlay FX beyond Object shadow/blur is out of scope for MVP.
 

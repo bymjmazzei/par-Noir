@@ -52,7 +52,7 @@ import {
   IconRedo,
   IconUndo
 } from '../components/icons/PenIcons';
-import { isVerifiedAuthor } from '../services/penVerified';
+import { canPublishPublicTemplate } from '../services/penVerified';
 import { starTemplateToCloud } from '../services/penCloudTemplates';
 import {
   loadLocalDoc,
@@ -68,7 +68,7 @@ import {
   writeComposedVideoPublishHandoff,
   writeMixedPagesPublishHandoff
 } from '../services/penPublish';
-import { requestNotaryStamp } from '../services/penApi';
+import { requestNotaryStamp, fetchMonetizationConnectReady } from '../services/penApi';
 import { resolveSigningKeys } from '../services/penKeys';
 import {
   actorCan,
@@ -180,6 +180,22 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
   const [suggestions, setSuggestions] = useState<PenSuggestion[]>(() =>
     listLocalSuggestions(session.pnIdentifier, docId)
   );
+  const [connectReady, setConnectReady] = useState(false);
+  const verifiedAuthor = canPublishPublicTemplate(session);
+
+  useEffect(() => {
+    let cancelled = false;
+    void fetchMonetizationConnectReady(session.accessToken, session.pnIdentifier)
+      .then((ready) => {
+        if (!cancelled) setConnectReady(ready);
+      })
+      .catch(() => {
+        if (!cancelled) setConnectReady(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [session.accessToken, session.pnIdentifier]);
 
   const template = useMemo(
     () => (bundle ? getTemplate(bundle.manifest.templateId) : undefined),
@@ -870,11 +886,16 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
       try {
         saveDraft({ silent: true });
         const b = bundleRef.current || bundle!;
+        const publishOpts = {
+          aggregatorTargets: targets,
+          canPublishPublicTemplate: verifiedAuthor,
+          connectReady
+        };
         if (shouldPublishAsSingleComposedVideo(b.sections)) {
           setStatus('Encoding composed video…');
           const prevSlug = activeSlugRef.current;
           await writeComposedVideoPublishHandoff(b, {
-            aggregatorTargets: targets,
+            ...publishOpts,
             activateSection: (slug) => {
               setActiveSlug(slug);
             },
@@ -892,7 +913,7 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
           setStatus('Encoding video pages…');
           const prevSlug = activeSlugRef.current;
           await writeMixedPagesPublishHandoff(b, {
-            aggregatorTargets: targets,
+            ...publishOpts,
             activateSection: (slug) => {
               setActiveSlug(slug);
             },
@@ -909,7 +930,7 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
         } else {
           const payload = await writeSocialPublishHandoff(b, {
             pnIdentifier: session.pnIdentifier,
-            aggregatorTargets: targets
+            ...publishOpts
           });
           openBrowseWithPenHandoff(payload);
           setStatus(
@@ -1263,7 +1284,7 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
         <PublishMenu
           projectEnabled={projectEnabled}
           correspondenceEnabled={correspondenceEnabled}
-          canSharePublic={isVerifiedAuthor(session)}
+          canPublishPublicTemplate={verifiedAuthor}
           onPublishLive={() => void publishLive()}
           onShareToAggregators={(targets) => publishSocial(targets)}
           onSendCorrespondence={sendCorrespondence}
@@ -1273,12 +1294,12 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
           licensing={
             bundle?.manifest.licensing ||
             defaultLicensingRoot(bundle?.manifest.ownerPnHash, {
-              membership: isVerifiedAuthor(session)
+              membership: verifiedAuthor
             })
           }
           ownerPnHash={bundle?.manifest.ownerPnHash}
-          membership={isVerifiedAuthor(session)}
-          connectReady={isVerifiedAuthor(session)}
+          membership={verifiedAuthor}
+          connectReady={connectReady}
           musicAsset={bundle?.manifest.classId === 'library.music'}
           onLicensingChange={(next) => {
             if (!bundle) return;

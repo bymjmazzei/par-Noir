@@ -1,5 +1,6 @@
 /**
  * Membership-aware licensing editor for Pen doc/template root.
+ * Product labels: Free / Social / Conditional (protocol: unconditionalFree / implied / unconditionalPaid).
  */
 
 import {
@@ -71,14 +72,17 @@ export function LicensingSettingsPanel({
   const content = value.contracts.find((c) => c.party === 'content_rights');
   const music = value.contracts.find((c) => c.party === 'music');
   const claimContract = musicAsset ? music || content : content;
+  const claimLabel = musicAsset
+    ? 'Your claim of the music fund'
+    : 'Your claim of the content fund';
 
   return (
     <div className="pen-licensing-settings" style={{ display: 'grid', gap: 8, fontSize: 13 }}>
       <label style={{ fontWeight: 600 }}>License</label>
       {!membership && (
         <p style={{ margin: 0, opacity: 0.8 }}>
-          Unverified accounts publish as unconditional free. Verify identity and keep monetization
-          maintenance active to unlock implied royalties or paid licenses.
+          Unverified accounts publish as free. Verify identity to unlock Social (platform fund) or
+          Conditional (your Stripe) licenses.
         </p>
       )}
       <select
@@ -87,17 +91,20 @@ export function LicensingSettingsPanel({
         onChange={(e) => setFamily(e.target.value as PenLicenseFamily)}
         aria-label="License family"
       >
-        <option value="unconditionalFree">Unconditional free</option>
+        <option value="unconditionalFree">Free</option>
         <option value="implied" disabled={!membership}>
-          Implied (creator fund)
+          Social (platform fund)
         </option>
         <option value="unconditionalPaid" disabled={!membership || !connectReady}>
-          Unconditional paid (your Stripe)
+          Conditional (your Stripe)
         </option>
       </select>
       {family === 'implied' && claimContract && (
         <label style={{ display: 'grid', gap: 4 }}>
-          Claim % of platform bucket
+          {claimLabel}
+          <span style={{ opacity: 0.75, fontSize: 11 }}>
+            Platform fund rates are fixed. Adjust what percentage you take of your party’s bucket.
+          </span>
           <input
             type="range"
             min={0}
@@ -139,6 +146,11 @@ export function LicensingSettingsPanel({
       {membership && family === 'unconditionalPaid' && !connectReady && (
         <p style={{ margin: 0, color: '#b45309' }}>
           Connect Stripe payouts in the dashboard Monetization tab before selling licenses.
+        </p>
+      )}
+      {membership && !connectReady && family !== 'unconditionalPaid' && (
+        <p style={{ margin: 0, opacity: 0.75, fontSize: 11 }}>
+          Connect Stripe payouts in the dashboard Monetization tab to enable Conditional licenses.
         </p>
       )}
     </div>

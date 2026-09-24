@@ -2,17 +2,18 @@ import { useEffect, useRef, useState } from 'react';
 import type { PenLicensingRoot } from '@par-noir/pen-protocol';
 import { IconChevron, IconPublish } from './icons/PenIcons';
 import { LicensingSettingsPanel } from './LicensingSettingsPanel';
+import { sanitizeAggregatorTargets } from '../services/penPublishGates';
 
 export type PenAggregatorTarget = 'browse' | 'pen-templates' | string;
 
 /**
  * Publish live / share to aggregators / private template / project library paths.
- * Public aggregator share is gated by verified (fail closed until Veriff).
+ * Browse/networks: all unlocked users. Public templates + licensing: verified only.
  */
 export function PublishMenu({
   projectEnabled,
   correspondenceEnabled,
-  canSharePublic,
+  canPublishPublicTemplate,
   onPublishLive,
   onShareToAggregators,
   onSendCorrespondence,
@@ -28,8 +29,8 @@ export function PublishMenu({
 }: {
   projectEnabled: boolean;
   correspondenceEnabled?: boolean;
-  /** Verified author — public browse / pen-templates share. */
-  canSharePublic?: boolean;
+  /** Verified author — public pen-templates share + licensing panel. */
+  canPublishPublicTemplate?: boolean;
   onPublishLive: () => void;
   onShareToAggregators: (targets: PenAggregatorTarget[]) => void;
   onSendCorrespondence?: () => void;
@@ -50,7 +51,8 @@ export function PublishMenu({
     'pen-templates': false
   });
   const rootRef = useRef<HTMLDivElement>(null);
-  const publicOk = canSharePublic === true;
+  const templateOk = canPublishPublicTemplate === true;
+  const showLicensing = membership === true;
 
   useEffect(() => {
     if (!open) return;
@@ -64,14 +66,23 @@ export function PublishMenu({
     return () => document.removeEventListener('mousedown', onDoc);
   }, [open]);
 
+  useEffect(() => {
+    if (templateOk) return;
+    setTargets((t) => (t['pen-templates'] ? { ...t, 'pen-templates': false } : t));
+  }, [templateOk]);
+
   function toggleTarget(id: string) {
+    if (id === 'pen-templates' && !templateOk) return;
     setTargets((t) => ({ ...t, [id]: !t[id] }));
   }
 
   function submitShare() {
-    const selected = Object.entries(targets)
-      .filter(([, on]) => on)
-      .map(([id]) => id);
+    const selected = sanitizeAggregatorTargets(
+      Object.entries(targets)
+        .filter(([, on]) => on)
+        .map(([id]) => id),
+      templateOk
+    );
     if (!selected.length) return;
     onShareToAggregators(selected);
     setShareOpen(false);
@@ -106,20 +117,15 @@ export function PublishMenu({
           </button>
           <button
             type="button"
-            title={
-              publicOk
-                ? 'Share to aggregators (browse, pen templates, …)'
-                : 'Verification required to share publicly'
-            }
-            disabled={!publicOk}
-            className="block w-full px-3 py-1.5 text-left text-[12px] text-stone-800 hover:bg-stone-50 disabled:cursor-not-allowed disabled:opacity-40"
+            title="Share to aggregators (browse, pen templates, …)"
+            className="block w-full px-3 py-1.5 text-left text-[12px] text-stone-800 hover:bg-stone-50"
             onClick={() => setShareOpen((v) => !v)}
           >
             Connect to feed…
           </button>
-          {shareOpen && publicOk && (
+          {shareOpen && (
             <div className="border-t border-stone-100 bg-stone-50 px-3 py-2">
-              {licensing && onLicensingChange && (
+              {showLicensing && licensing && onLicensingChange && (
                 <div className="mb-2 border-b border-stone-200 pb-2">
                   <LicensingSettingsPanel
                     value={licensing}
@@ -137,22 +143,38 @@ export function PublishMenu({
                   checked={!!targets.browse}
                   onChange={() => toggleTarget('browse')}
                 />
-                Browse (social posts)
+                Browse (your networks)
               </label>
-              <label className="mt-1 flex items-center gap-2 text-[11px] text-stone-700">
+              <label
+                className={`mt-1 flex items-center gap-2 text-[11px] ${
+                  templateOk ? 'text-stone-700' : 'text-stone-500'
+                }`}
+                title={
+                  templateOk
+                    ? undefined
+                    : 'Verification required to publish a public template'
+                }
+              >
                 <input
                   type="checkbox"
                   checked={!!targets['pen-templates']}
+                  disabled={!templateOk}
                   onChange={() => toggleTarget('pen-templates')}
                 />
                 Pen templates
               </label>
+              {!templateOk && (
+                <p className="mt-1 text-[10px] text-stone-500">
+                  Verification required to publish a public template.
+                </p>
+              )}
               <label className="mt-1 flex items-center gap-2 text-[11px] text-stone-500">
                 <input type="checkbox" disabled checked={false} readOnly />
                 Third party (soon)
               </label>
               <p className="mt-1 text-[10px] text-stone-500">
-                Templates never appear in user feeds — only the templates feed / Discover Templates.
+                Templates never appear in user feeds — only the templates feed / Discover
+                Templates.
               </p>
               <button
                 type="button"
@@ -162,11 +184,6 @@ export function PublishMenu({
                 Share
               </button>
             </div>
-          )}
-          {!publicOk && (
-            <p className="px-3 py-1 text-[10px] text-stone-500">
-              Public share requires a verified identity (coming soon).
-            </p>
           )}
           {correspondenceEnabled && onSendCorrespondence && (
             <button

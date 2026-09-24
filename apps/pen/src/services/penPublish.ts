@@ -47,6 +47,10 @@ import {
   type PenComposedMediaHandoffMeta,
   type PenMixedPageHandoffMeta
 } from './penBrowseHandoff';
+import {
+  assertAggregatorTargetsAllowed,
+  licensingForPublish
+} from './penPublishGates';
 
 export const PEN_PUBLISH_PREFIX = 'pen_publish:';
 /** Legacy browse handoff key — still written alongside for one release. */
@@ -103,6 +107,9 @@ export async function writeSocialPublishHandoff(
     pnIdentifier?: string;
     resolveDoc?: ResolvePenEmbed;
     aggregatorTargets?: string[];
+    /** Verified author — required for pen-templates; coerces licensing when false. */
+    canPublishPublicTemplate?: boolean;
+    connectReady?: boolean;
   }
 ): Promise<{
   contentClass: 'note';
@@ -117,6 +124,7 @@ export async function writeSocialPublishHandoff(
   penTemplateKind?: 'template' | 'remix';
   basedOnTemplateId?: string;
   penIrRef?: { objectId?: string; publicUrl?: string };
+  licensing?: ReturnType<typeof licensingForPublish>;
 }> {
   const resolveDoc =
     opts?.resolveDoc ||
@@ -124,11 +132,24 @@ export async function writeSocialPublishHandoff(
   const presentation = bundle.manifest.pagePresentation || defaultPagePresentation();
   const tpl = getTemplate(bundle.manifest.templateId);
   const isSet = tpl?.id === 'set.basic.v1' || tpl?.docType === 'set' || bundle.manifest.docType === 'set';
-  const targets = opts?.aggregatorTargets?.length ? opts.aggregatorTargets : ['browse'];
+  const canTemplate = opts?.canPublishPublicTemplate === true;
+  const targets = assertAggregatorTargetsAllowed(
+    opts?.aggregatorTargets?.length ? opts.aggregatorTargets : ['browse'],
+    canTemplate
+  );
   const asTemplate = targets.includes('pen-templates');
   const form = getClass(bundle.manifest.classId);
   const lineageId =
     bundle.manifest.basedOnTemplateId || bundle.manifest.templateId;
+  const licensing = licensingForPublish(
+    bundle.manifest.licensing,
+    bundle.manifest.ownerPnHash,
+    {
+      membership: canTemplate,
+      connectReady: opts?.connectReady,
+      musicAsset: bundle.manifest.classId === 'library.music'
+    }
+  );
 
   const compiled = isSet
     ? await compileSetToNote({
@@ -160,7 +181,7 @@ export async function writeSocialPublishHandoff(
     penCategoryId: form?.parentId,
     /** IR fetch pointer for Use template (doc id until public IR object lands). */
     penIrRef: { objectId: bundle.manifest.docId },
-    licensing: bundle.manifest.licensing,
+    licensing,
     ...(asTemplate
       ? {
           penTemplateKind: (bundle.manifest.basedOnTemplateId
@@ -187,6 +208,8 @@ export async function writeComposedVideoPublishHandoff(
     exportRoot?: HTMLElement | null;
     activateSection?: (slug: string) => void | Promise<void>;
     onProgress?: (pct: number) => void;
+    canPublishPublicTemplate?: boolean;
+    connectReady?: boolean;
   }
 ): Promise<PenComposedMediaHandoffMeta> {
   if (!shouldPublishAsSingleComposedVideo(bundle.sections)) {
@@ -209,11 +232,24 @@ export async function writeComposedVideoPublishHandoff(
   }
 
   const encoded = await composePageToVideo(root, { onProgress: opts?.onProgress });
-  const targets = opts?.aggregatorTargets?.length ? opts.aggregatorTargets : ['browse'];
+  const canTemplate = opts?.canPublishPublicTemplate === true;
+  const targets = assertAggregatorTargetsAllowed(
+    opts?.aggregatorTargets?.length ? opts.aggregatorTargets : ['browse'],
+    canTemplate
+  );
   const asTemplate = targets.includes('pen-templates');
   const form = getClass(bundle.manifest.classId);
   const lineageId =
     bundle.manifest.basedOnTemplateId || bundle.manifest.templateId;
+  const licensing = licensingForPublish(
+    bundle.manifest.licensing,
+    bundle.manifest.ownerPnHash,
+    {
+      membership: canTemplate,
+      connectReady: opts?.connectReady,
+      musicAsset: bundle.manifest.classId === 'library.music'
+    }
+  );
 
   const meta: PenComposedMediaHandoffMeta = {
     contentClass: 'media',
@@ -227,7 +263,7 @@ export async function writeComposedVideoPublishHandoff(
     penClassId: bundle.manifest.classId,
     penCategoryId: form?.parentId,
     penIrRef: { objectId: bundle.manifest.docId },
-    licensing: bundle.manifest.licensing,
+    licensing,
     awaitingComposedBlobs: true,
     videoContentType: encoded.videoContentType,
     durationMs: encoded.durationMs,
@@ -269,6 +305,8 @@ export async function writeMixedPagesPublishHandoff(
     aggregatorTargets?: string[];
     activateSection: (slug: string) => void | Promise<void>;
     onProgress?: (pct: number) => void;
+    canPublishPublicTemplate?: boolean;
+    connectReady?: boolean;
   }
 ): Promise<PenMixedPageHandoffMeta> {
   if (!shouldPublishAsMixedPages(bundle.sections)) {
@@ -330,11 +368,24 @@ export async function writeMixedPagesPublishHandoff(
     });
   }
 
-  const targets = opts.aggregatorTargets?.length ? opts.aggregatorTargets : ['browse'];
+  const canTemplate = opts.canPublishPublicTemplate === true;
+  const targets = assertAggregatorTargetsAllowed(
+    opts.aggregatorTargets?.length ? opts.aggregatorTargets : ['browse'],
+    canTemplate
+  );
   const asTemplate = targets.includes('pen-templates');
   const form = getClass(bundle.manifest.classId);
   const lineageId =
     bundle.manifest.basedOnTemplateId || bundle.manifest.templateId;
+  const licensing = licensingForPublish(
+    bundle.manifest.licensing,
+    bundle.manifest.ownerPnHash,
+    {
+      membership: canTemplate,
+      connectReady: opts.connectReady,
+      musicAsset: bundle.manifest.classId === 'library.music'
+    }
+  );
 
   const meta: PenMixedPageHandoffMeta = {
     contentClass: 'collection',
@@ -347,7 +398,7 @@ export async function writeMixedPagesPublishHandoff(
     penClassId: bundle.manifest.classId,
     penCategoryId: form?.parentId,
     penIrRef: { objectId: bundle.manifest.docId },
-    licensing: bundle.manifest.licensing,
+    licensing,
     awaitingComposedBlobs: true,
     pages,
     videoCount: videos.length,
