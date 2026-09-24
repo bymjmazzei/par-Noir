@@ -1,15 +1,19 @@
 /**
- * Cloud media picker — default to Drive feed/library media; optional device upload.
+ * Cloud media picker — stores penlocal:/penmedia: refs (never giant data URLs).
  */
 import { useEffect, useState } from 'react';
 import {
-  downloadCloudImageAsDataUrl,
-  fileToDataUrl,
+  downloadCloudMediaBlob,
   listCloudMedia,
   pickDeviceImageFile,
   pickDeviceVideoFile,
   type CloudImageItem
 } from '../services/penAttach';
+import {
+  penMediaRef,
+  putLocalMedia,
+  putLocalMediaForDriveFile
+} from '../services/penLocalMedia';
 import type { PenSession } from '../services/penSession';
 
 export function CloudFeedMediaPicker({
@@ -18,14 +22,15 @@ export function CloudFeedMediaPicker({
   session,
   kind,
   docId,
-  onPickDataUrl
+  onPickMediaSrc
 }: {
   open: boolean;
   onClose: () => void;
   session: PenSession | null;
   kind: 'image' | 'video';
   docId?: string;
-  onPickDataUrl: (dataUrl: string) => void;
+  /** Tiny ref: penlocal:{id} or penmedia:{fileId} */
+  onPickMediaSrc: (src: string) => void;
 }) {
   const [items, setItems] = useState<CloudImageItem[]>([]);
   const [busy, setBusy] = useState(false);
@@ -55,17 +60,20 @@ export function CloudFeedMediaPicker({
   if (!open) return null;
 
   async function pickCloud(item: CloudImageItem) {
-    if (!session) return;
+    if (!session || !docId) {
+      setError('Document required to attach media');
+      return;
+    }
     setLoadingId(item.id);
     setError(null);
     try {
-      const url = await downloadCloudImageAsDataUrl(
-        session.accessToken,
+      const { blob } = await downloadCloudMediaBlob(
         item.id,
         session.pnIdentifier,
         docId
       );
-      onPickDataUrl(url);
+      await putLocalMediaForDriveFile({ docId, fileId: item.id, blob });
+      onPickMediaSrc(penMediaRef(item.id));
       onClose();
     } catch {
       setError('Could not open that file');
@@ -75,12 +83,21 @@ export function CloudFeedMediaPicker({
   }
 
   async function uploadDevice() {
+    if (!docId) {
+      setError('Document required to attach media');
+      return;
+    }
     const file =
       kind === 'image' ? await pickDeviceImageFile() : await pickDeviceVideoFile();
     if (!file) return;
-    const url = await fileToDataUrl(file);
-    onPickDataUrl(url);
-    onClose();
+    setError(null);
+    try {
+      const put = await putLocalMedia({ docId, blob: file });
+      onPickMediaSrc(put.ref);
+      onClose();
+    } catch {
+      setError('Could not store media locally');
+    }
   }
 
   return (

@@ -54,7 +54,12 @@ import {
 } from '../components/icons/PenIcons';
 import { isVerifiedAuthor } from '../services/penVerified';
 import { starTemplateToCloud } from '../services/penCloudTemplates';
-import { loadLocalDoc, saveLocalDoc } from '../services/penLocalStore';
+import {
+  loadLocalDoc,
+  saveLocalDoc,
+  saveLocalDocAsync
+} from '../services/penLocalStore';
+import { PenLocalStoreQuotaError } from '../services/penLocalStoreSanitize';
 import {
   isProjectDoc,
   promoteProjectToFinishedLibraryDoc,
@@ -84,6 +89,7 @@ import {
   ensureDocScopedFonts,
   loadDocScopedFontsForEditor
 } from '../services/penDocFonts';
+import { ensureDocScopedMedia } from '../services/penDocMedia';
 import { ensureGoogleFontsLoaded } from '../services/penGoogleFonts';
 import {
   appendLocalComment,
@@ -498,11 +504,22 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
       scheduleLedgerPush(stamped);
       return;
     }
-    saveLocalDoc(session.pnIdentifier, stamped);
-    setBundle({ ...stamped });
-    setDirty(false);
-    setLastDraftAt(stamped.manifest.updatedAt);
-    scheduleLedgerPush(stamped);
+    void saveLocalDocAsync(session.pnIdentifier, stamped)
+      .then((saved) => {
+        setBundle({ ...saved });
+        setDirty(false);
+        setLastDraftAt(saved.manifest.updatedAt);
+        scheduleLedgerPush(saved);
+      })
+      .catch((e) => {
+        setError(
+          e instanceof PenLocalStoreQuotaError
+            ? e.message
+            : e instanceof Error
+              ? e.message
+              : 'save_failed'
+        );
+      });
   }
 
   function saveDraft(opts?: { silent?: boolean }) {
@@ -528,51 +545,101 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
         usedCustomFonts: used
       }
     };
-    saveLocalDoc(session.pnIdentifier, next);
+    // Optimistic UI; async sanitize+IDB migrate then persist.
     setBundle({ ...next });
     setDirty(false);
     setLastDraftAt(now);
 
-    const draftMeta = {
-      draftId,
-      docId,
-      authorPnHash: hashPnIdentifier(session.pnIdentifier),
-      createdAt: now,
-      updatedAt: now,
-      status: 'unfinished' as const,
-      toc: next.manifest.toc
-    };
-    sessionStorage.setItem(`pen_draft_meta:${docId}:${draftId}`, JSON.stringify(draftMeta));
+    void (async () => {
+      try {
+        const saved = await saveLocalDocAsync(session.pnIdentifier, next);
+        setBundle({ ...saved });
+        bundleRef.current = saved;
 
-    void upsertDraftCloud({
-      userPnIdentifier: session.pnIdentifier,
-      manifest: next.manifest,
-      draft: draftMeta,
-      sections: next.sections
-    }).catch((e) => {
-      enqueueSyncJob(session.pnIdentifier, {
-        kind: 'draft_upsert',
-        docId,
-        payload: { manifest: next.manifest, draft: draftMeta, sections: next.sections }
-      });
-      void e;
-    });
+        const draftMeta = {
+          draftId,
+          docId,
+          authorPnHash: hashPnIdentifier(session.pnIdentifier),
+          createdAt: now,
+          updatedAt: now,
+          status: 'unfinished' as const,
+          toc: saved.manifest.toc
+        };
+        sessionStorage.setItem(
+          `pen_draft_meta:${docId}:${draftId}`,
+          JSON.stringify(draftMeta)
+        );
 
-    if (used.length && session.mlKemSecretKey) {
-      void ensureDocScopedFonts({
-        session,
-        docId,
-        groupId: next.manifest.groupId,
-        used
-      }).catch(() => {
-        /* offline */
-      });
-    }
+        void upsertDraftCloud({
+          userPnIdentifier: session.pnIdentifier,
+          manifest: saved.manifest,
+          draft: draftMeta,
+          sections: saved.sections
+        }).catch((e) => {
+          enqueueSyncJob(session.pnIdentifier, {
+            kind: 'draft_upsert',
+            docId,
+            payload: {
+              manifest: saved.manifest,
+              draft: draftMeta,
+              sections: saved.sections
+            }
+          });
+          void e;
+        });
 
-    if (!opts?.silent) {
-      setStatus('Draft saved');
-      window.setTimeout(() => setStatus(null), 1500);
-    }
+        if (used.length && session.mlKemSecretKey) {
+          void ensureDocScopedFonts({
+            session,
+            docId,
+            groupId: saved.manifest.groupId,
+            used
+          }).catch(() => {
+            /* offline */
+          });
+        }
+
+        void ensureDocScopedMedia({
+          session,
+          docId,
+          sections: saved.sections,
+          pagePresentation: saved.manifest.pagePresentation,
+          onSectionsRewritten: (sections, pagePresentation) => {
+            const cur = bundleRef.current;
+            if (!cur) return;
+            const rewritten = {
+              ...cur,
+              sections,
+              manifest: {
+                ...cur.manifest,
+                ...(pagePresentation ? { pagePresentation } : {})
+              }
+            };
+            bundleRef.current = rewritten;
+            setBundle({ ...rewritten });
+            void saveLocalDocAsync(session.pnIdentifier, rewritten).catch(() => {
+              /* offline / quota */
+            });
+          }
+        }).catch(() => {
+          /* offline */
+        });
+
+        if (!opts?.silent) {
+          setStatus('Draft saved');
+          window.setTimeout(() => setStatus(null), 1500);
+        }
+      } catch (e) {
+        setDirty(true);
+        setError(
+          e instanceof PenLocalStoreQuotaError
+            ? e.message
+            : e instanceof Error
+              ? e.message
+              : 'draft_save_failed'
+        );
+      }
+    })();
   }
 
   // Idle draft autosave (~2s after last edit).
@@ -1549,7 +1616,11 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
                   </label>
                 </div>
                 <div className="min-h-0 flex-1">
-                  <BrowseFeedTilePreview manifest={bundle.manifest} sections={bundle.sections} />
+                  <BrowseFeedTilePreview
+                    manifest={bundle.manifest}
+                    sections={bundle.sections}
+                    session={session}
+                  />
                 </div>
               </>
             ) : section ? (

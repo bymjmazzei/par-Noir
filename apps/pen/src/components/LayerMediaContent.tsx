@@ -10,16 +10,22 @@ import {
   type PenPageLayer
 } from '@par-noir/pen-protocol';
 import { PenMediaPlayer } from '@par-noir/feed-tile';
+import { useResolvedMediaSrc } from '../hooks/useResolvedMediaSrc';
+import type { PenSession } from '../services/penSession';
 
 export function LayerMediaContent({
   layer,
   className,
-  onActivate
+  onActivate,
+  docId,
+  session
 }: {
   layer: PenPageLayer;
   className?: string;
   /** Select this layer without starting a drag (video/image pointer down). */
   onActivate?: () => void;
+  docId?: string;
+  session?: PenSession | null;
 }): ReactNode {
   const src =
     layer.kind === 'video'
@@ -27,7 +33,12 @@ export function LayerMediaContent({
       : layer.kind === 'image'
         ? layer.imageSrc || layer.backgroundImage
         : layer.backgroundVideo || layer.backgroundImage;
-  if (!src) return null;
+  const { resolved } = useResolvedMediaSrc(src, { docId, session });
+  const { resolved: overlayResolved } = useResolvedMediaSrc(layer.paintOverlaySrc, {
+    docId,
+    session
+  });
+  if (!src || !resolved) return null;
 
   const isVideo =
     layer.kind === 'video' ||
@@ -62,13 +73,19 @@ export function LayerMediaContent({
       }}
     >
       {isVideo ? (
-        <PenMediaPlayer src={src} className="absolute inset-0" videoStyle={innerStyle} />
+        <PenMediaPlayer src={resolved} className="absolute inset-0" videoStyle={innerStyle} />
       ) : (
-        <img src={src} alt="" className="absolute inset-0" style={innerStyle} draggable={false} />
-      )}
-      {layer.paintOverlaySrc ? (
         <img
-          src={layer.paintOverlaySrc}
+          src={resolved}
+          alt=""
+          className="absolute inset-0"
+          style={innerStyle}
+          draggable={false}
+        />
+      )}
+      {overlayResolved ? (
+        <img
+          src={overlayResolved}
           alt=""
           className="pointer-events-none absolute inset-0 h-full w-full object-contain"
           style={cropClip ? { clipPath: cropClip } : undefined}

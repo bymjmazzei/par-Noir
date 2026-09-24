@@ -1,27 +1,64 @@
 /**
  * Presentational browse feed-shaped preview — delegates to @par-noir/feed-tile.
+ * Resolves penlocal:/penmedia: media refs to blob URLs before building the tile.
  */
-import { FeedTileSurface } from '@par-noir/feed-tile';
+import { useEffect, useState } from 'react';
+import { FeedTileSurface, type FeedTileViewModel } from '@par-noir/feed-tile';
 import type { PenDocManifest, PenSectionContent } from '@par-noir/pen-protocol';
 import { bundleToFeedTileModel } from '../services/feedTileFromPen';
+import { resolvePenMediaSrc } from '../services/penLocalMedia';
+import type { PenSession } from '../services/penSession';
+
+async function resolveTileMedia(
+  model: FeedTileViewModel,
+  docId?: string
+): Promise<FeedTileViewModel> {
+  const pages = await Promise.all(
+    (model.pages || []).map(async (page) => {
+      if (!page.mediaSrc) return page;
+      const resolved = await resolvePenMediaSrc(page.mediaSrc, docId);
+      return resolved ? { ...page, mediaSrc: resolved } : { ...page, mediaSrc: undefined };
+    })
+  );
+  return { ...model, pages };
+}
 
 export function BrowseFeedTilePreview({
   manifest,
   sections,
   compact,
-  bare
+  bare,
+  session
 }: {
   manifest: PenDocManifest;
   sections: PenSectionContent[];
   compact?: boolean;
   bare?: boolean;
+  session?: PenSession | null;
 }) {
-  const model = bundleToFeedTileModel({
+  const base = bundleToFeedTileModel({
     title: manifest.title || 'Untitled',
     sections,
     pagePresentation: manifest.pagePresentation,
     contentClass: manifest.docType
   });
+  const [model, setModel] = useState(base);
+
+  useEffect(() => {
+    let cancelled = false;
+    const next = bundleToFeedTileModel({
+      title: manifest.title || 'Untitled',
+      sections,
+      pagePresentation: manifest.pagePresentation,
+      contentClass: manifest.docType
+    });
+    void resolveTileMedia(next, manifest.docId).then((resolved) => {
+      if (!cancelled) setModel(resolved);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [manifest, sections, session?.pnIdentifier]);
 
   const tile = (
     <FeedTileSurface model={model} mode="preview" compact={compact || bare} />

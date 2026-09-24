@@ -49,9 +49,41 @@ import {
 import { PageSheetColumn } from './PageSheetColumn';
 import { LayerMediaContent } from './LayerMediaContent';
 import { PenMediaPlayer } from '@par-noir/feed-tile';
+import { useResolvedMediaSrc } from '../hooks/useResolvedMediaSrc';
 import { ensureGoogleFontsLoaded } from '../services/penGoogleFonts';
 import type { PenSession } from '../services/penSession';
 
+function ResolvedPageBackground({
+  src,
+  kind,
+  docId,
+  session
+}: {
+  src: string;
+  kind: 'image' | 'video';
+  docId?: string;
+  session?: PenSession | null;
+}) {
+  const { resolved } = useResolvedMediaSrc(src, { docId, session });
+  if (!resolved) return null;
+  if (kind === 'video') {
+    return (
+      <div className="pointer-events-none absolute inset-0 z-0">
+        <PenMediaPlayer
+          src={resolved}
+          className="h-full w-full"
+          videoStyle={{ objectFit: 'cover' }}
+        />
+      </div>
+    );
+  }
+  return (
+    <div
+      className="pointer-events-none absolute inset-0 z-0 bg-cover bg-center"
+      style={{ backgroundImage: `url(${resolved})` }}
+    />
+  );
+}
 function layerToItem(layer: PenPageLayer): LayoutItem {
   return {
     id: layer.id,
@@ -103,7 +135,9 @@ function BodyWrapObject({
   contentW,
   contentH,
   onSelect,
-  onCommit
+  onCommit,
+  docId,
+  session
 }: {
   layer: PenPageLayer;
   allLayers: PenPageLayer[];
@@ -113,6 +147,8 @@ function BodyWrapObject({
   contentH: number;
   onSelect: () => void;
   onCommit: (geom: LiveGeom & { bodyWrap: 'left' | 'right' }) => void;
+  docId?: string;
+  session?: PenSession | null;
 }) {
   const locked = Boolean(layer.positionLocked);
   const [live, setLive] = useState<LiveGeom>({
@@ -257,7 +293,12 @@ function BodyWrapObject({
   let inner: ReactNode = null;
   if (layer.kind === 'image' || layer.kind === 'video') {
     inner = (
-      <LayerMediaContent layer={layer} onActivate={onSelect} />
+      <LayerMediaContent
+        layer={layer}
+        onActivate={onSelect}
+        docId={docId}
+        session={session}
+      />
     );
   } else if (layer.kind === 'text') {
     const html = docToHtml(getTextLayerDoc(layer));
@@ -709,13 +750,20 @@ export function EditablePagePreview({
           onClick={() => selectLayer(PAGE_LAYER_ID)}
         >
           {presentation.backgroundVideo && (
-            <div className="pointer-events-none absolute inset-0 z-0">
-              <PenMediaPlayer
-                src={presentation.backgroundVideo}
-                className="h-full w-full"
-                videoStyle={{ objectFit: 'cover' }}
-              />
-            </div>
+            <ResolvedPageBackground
+              src={presentation.backgroundVideo}
+              kind="video"
+              docId={manifest.docId}
+              session={session}
+            />
+          )}
+          {!presentation.backgroundVideo && presentation.backgroundImage && (
+            <ResolvedPageBackground
+              src={presentation.backgroundImage}
+              kind="image"
+              docId={manifest.docId}
+              session={session}
+            />
           )}
 
           {/* Body — padded content box; wrap floats + prose */}
@@ -742,6 +790,8 @@ export function EditablePagePreview({
                 contentH={box.height}
                 onSelect={() => selectLayer(layer.id)}
                 onCommit={(patch) => onWrapCommit(layer.id, patch)}
+                docId={manifest.docId}
+                session={session}
               />
             ))}
             <div
@@ -794,6 +844,8 @@ export function EditablePagePreview({
                       <LayerMediaContent
                         layer={layer}
                         onActivate={() => selectLayer(layer.id)}
+                        docId={manifest.docId}
+                        session={session}
                       />
                     </div>
                   );
@@ -802,9 +854,11 @@ export function EditablePagePreview({
                   return (
                     <div className="relative h-full w-full overflow-hidden" style={shell}>
                       <div className="absolute inset-0">
-                        <PenMediaPlayer
+                        <ResolvedPageBackground
                           src={layer.backgroundVideo}
-                          videoStyle={{ objectFit: 'cover' }}
+                          kind="video"
+                          docId={manifest.docId}
+                          session={session}
                         />
                       </div>
                       <div

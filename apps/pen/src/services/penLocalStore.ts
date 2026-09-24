@@ -53,36 +53,71 @@ export function loadLocalDoc(pn: string, docId: string): LocalDocBundle | null {
   }
 }
 
-export function saveLocalDoc(pn: string, bundle: LocalDocBundle): void {
+import {
+  sanitizeBundleMedia,
+  stripInlineMediaFromBundle,
+  throwIfQuota
+} from './penLocalStoreSanitize';
+
+function writeLocalDoc(pn: string, bundle: LocalDocBundle): void {
   const normalized: LocalDocBundle = {
     ...bundle,
     sections: normalizeSections(bundle.sections)
   };
-  localStorage.setItem(
-    `${prefix(pn)}:doc:${normalized.manifest.docId}`,
-    JSON.stringify(normalized)
-  );
-  const existing = listLocalDocs(pn).find((d) => d.docId === normalized.manifest.docId);
-  const idx = listLocalDocs(pn).filter((d) => d.docId !== normalized.manifest.docId);
+  // Fail closed: never persist inline data:/blob: into localStorage.
+  const safe = stripInlineMediaFromBundle(normalized);
+  try {
+    localStorage.setItem(
+      `${prefix(pn)}:doc:${safe.manifest.docId}`,
+      JSON.stringify(safe)
+    );
+  } catch (e) {
+    throwIfQuota(e);
+  }
+  const existing = listLocalDocs(pn).find((d) => d.docId === safe.manifest.docId);
+  const idx = listLocalDocs(pn).filter((d) => d.docId !== safe.manifest.docId);
   idx.unshift({
-    docId: normalized.manifest.docId,
-    title: normalized.manifest.title,
-    templateId: normalized.manifest.templateId,
-    classId: normalized.manifest.classId,
-    updatedAt: normalized.manifest.updatedAt,
+    docId: safe.manifest.docId,
+    title: safe.manifest.title,
+    templateId: safe.manifest.templateId,
+    classId: safe.manifest.classId,
+    updatedAt: safe.manifest.updatedAt,
     folderId: existing?.folderId ?? null
   });
-  saveIndex(pn, idx);
+  try {
+    saveIndex(pn, idx);
+  } catch (e) {
+    throwIfQuota(e);
+  }
   try {
     window.dispatchEvent(
       new CustomEvent('pen-doc-updated', {
-        detail: { pn, docId: normalized.manifest.docId }
+        detail: { pn, docId: safe.manifest.docId }
       })
     );
   } catch {
     /* non-browser */
   }
 }
+
+/**
+ * Sync save — strips inline media. Prefer {@link saveLocalDocAsync} so data: migrates to IDB.
+ */
+export function saveLocalDoc(pn: string, bundle: LocalDocBundle): void {
+  writeLocalDoc(pn, bundle);
+}
+
+/** Migrate data:/blob: → penlocal: then write. Returns the sanitized bundle. */
+export async function saveLocalDocAsync(
+  pn: string,
+  bundle: LocalDocBundle
+): Promise<LocalDocBundle> {
+  const sanitized = await sanitizeBundleMedia(bundle);
+  writeLocalDoc(pn, sanitized);
+  return sanitized;
+}
+
+export { PenLocalStoreQuotaError } from './penLocalStoreSanitize';
 
 export function deleteLocalDoc(pn: string, docId: string): void {
   localStorage.removeItem(`${prefix(pn)}:doc:${docId}`);

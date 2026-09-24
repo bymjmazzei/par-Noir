@@ -18,6 +18,7 @@ import {
 } from '@par-noir/pen-protocol';
 import { CloudFeedMediaPicker } from './CloudFeedMediaPicker';
 import { probeMediaAspect } from '../services/penAttach';
+import { isPenMediaSrcRef, resolvePenMediaSrc } from '../services/penLocalMedia';
 import type { PenSession } from '../services/penSession';
 
 export type ObjectToolTarget =
@@ -169,10 +170,12 @@ export function LayerObjectToolbar({
     onPresentationChange?.(partial);
   }
 
-  async function applyMediaDataUrl(src: string) {
+  async function applyMediaSrc(src: string) {
+    // Probe aspect against a playable URL (blob:), store the tiny ref on the layer.
+    const playable = (await resolvePenMediaSrc(src, docId)) || src;
     if (!isPage && layer && !isGroup) {
       // Object layers: convert to image/video and fit aspect into the frame / page.
-      const aspect = await probeMediaAspect(src, fileKind);
+      const aspect = await probeMediaAspect(playable, fileKind);
       onSectionChange(
         attachMediaToLayer(
           section,
@@ -646,7 +649,7 @@ export function LayerObjectToolbar({
         session={session || null}
         kind={fileKind}
         docId={docId}
-        onPickDataUrl={(url) => void applyMediaDataUrl(url)}
+        onPickMediaSrc={(url) => void applyMediaSrc(url)}
       />
     </div>
   );
@@ -680,7 +683,7 @@ export function layerPreviewStyle(layer: PenPageLayer): CSSProperties {
   }
   if (layer.backgroundGradient) {
     style.backgroundImage = layer.backgroundGradient;
-  } else if (layer.backgroundImage) {
+  } else if (layer.backgroundImage && !isPenMediaSrcRef(layer.backgroundImage)) {
     style.backgroundImage = `url(${layer.backgroundImage})`;
     style.backgroundSize = 'cover';
     style.backgroundPosition = 'center';
@@ -714,11 +717,7 @@ export function pageFrameStyle(presentation: PenPagePresentation): CSSProperties
   }
   if (presentation.backgroundGradient) {
     style.backgroundImage = presentation.backgroundGradient;
-  } else if (presentation.backgroundImage) {
-    style.backgroundImage = `url(${presentation.backgroundImage})`;
-    style.backgroundSize = 'cover';
-    style.backgroundPosition = 'center';
   }
-  // Page (layer 0) has no shadow — fill/background only.
+  // Image/video backgrounds render via ResolvedPageBackground (supports penlocal/penmedia).
   return style;
 }

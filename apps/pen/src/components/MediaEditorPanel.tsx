@@ -19,6 +19,8 @@ import {
 import { CloudFeedMediaPicker } from './CloudFeedMediaPicker';
 import { LayerMediaContent } from './LayerMediaContent';
 import { probeMediaAspect } from '../services/penAttach';
+import { resolvePenMediaSrc, ingestInlineMediaSrc } from '../services/penLocalMedia';
+import { useResolvedMediaSrc } from '../hooks/useResolvedMediaSrc';
 import type { PenSession } from '../services/penSession';
 
 type ToolTab = 'color' | 'filters' | 'crop' | 'mask' | 'brush';
@@ -59,7 +61,8 @@ export function MediaEditorPanel({
 
   async function onReplace(src: string) {
     const kind = fileKind;
-    const aspect = await probeMediaAspect(src, kind);
+    const playable = (await resolvePenMediaSrc(src, docId)) || src;
+    const aspect = await probeMediaAspect(playable, kind);
     onSectionChange(
       attachMediaToLayer(
         section,
@@ -75,6 +78,11 @@ export function MediaEditorPanel({
   }
 
   const src = layer.kind === 'video' ? layer.videoSrc : layer.imageSrc;
+  const { resolved: brushSrc } = useResolvedMediaSrc(src, { docId, session });
+  const { resolved: brushOverlay } = useResolvedMediaSrc(layer.paintOverlaySrc, {
+    docId,
+    session
+  });
 
   return (
     <div className="flex min-h-0 flex-1 flex-col bg-[#f3f3f3]">
@@ -118,7 +126,9 @@ export function MediaEditorPanel({
 
       <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-auto p-3">
         <div className="relative mx-auto aspect-video w-full max-w-md overflow-hidden rounded border border-stone-300 bg-black">
-          {src ? <LayerMediaContent layer={layer} /> : (
+          {src ? (
+            <LayerMediaContent layer={layer} docId={docId} session={session} />
+          ) : (
             <p className="flex h-full items-center justify-center text-sm text-stone-400">No media</p>
           )}
         </div>
@@ -222,12 +232,20 @@ export function MediaEditorPanel({
           </div>
         )}
 
-        {tab === 'brush' && src && (
+        {tab === 'brush' && brushSrc && (
           <BrushEditor
-            src={src}
+            src={brushSrc}
             kind={layer.kind === 'video' ? 'video' : 'image'}
-            overlaySrc={layer.paintOverlaySrc}
-            onCommit={(dataUrl) => patch({ paintOverlaySrc: dataUrl })}
+            overlaySrc={brushOverlay || undefined}
+            onCommit={(dataUrl) => {
+              if (!docId) {
+                patch({ paintOverlaySrc: dataUrl });
+                return;
+              }
+              void ingestInlineMediaSrc({ docId, src: dataUrl }).then((ref) => {
+                patch({ paintOverlaySrc: ref || undefined });
+              });
+            }}
             onClear={() => patch({ paintOverlaySrc: undefined })}
           />
         )}
@@ -239,7 +257,7 @@ export function MediaEditorPanel({
         session={session || null}
         kind={fileKind}
         docId={docId}
-        onPickDataUrl={(url) => void onReplace(url)}
+        onPickMediaSrc={(url) => void onReplace(url)}
       />
     </div>
   );
