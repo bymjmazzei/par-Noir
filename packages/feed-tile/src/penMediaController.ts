@@ -31,6 +31,9 @@ export class PenMediaController {
     this.src = src;
     const v = document.createElement('video') as CaptureVideo;
     v.src = src;
+    if (src.startsWith('http://') || src.startsWith('https://')) {
+      v.crossOrigin = 'anonymous';
+    }
     v.muted = true;
     v.defaultMuted = true;
     v.loop = true;
@@ -38,6 +41,8 @@ export class PenMediaController {
     v.preload = 'auto';
     v.setAttribute('playsinline', '');
     v.setAttribute('webkit-playsinline', '');
+    v.dataset.penMediaDrawable = '1';
+    v.dataset.penMediaKey = key;
     // Keep in DOM so the decoder/audio graph stay alive; not shown.
     v.style.cssText =
       'position:fixed;left:0;top:0;width:1px;height:1px;opacity:0;pointer-events:none;z-index:-1';

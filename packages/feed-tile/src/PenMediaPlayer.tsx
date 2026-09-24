@@ -233,6 +233,7 @@ export function PenMediaPlayer({
     >
       <video
         ref={videoRef}
+        data-pen-media-key={sessionKey}
         poster={poster}
         className={`absolute inset-0 h-full w-full ${tapToToggle ? 'cursor-pointer' : ''}`}
         style={{
