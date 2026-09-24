@@ -3,6 +3,47 @@
 import { getClass, getTemplate } from '@par-noir/pen-protocol';
 import type { ClassFeedRailItem } from '../components/ClassFeedRail';
 
+/**
+ * Social building-block forms for the Templates surface (all densities).
+ * Fixed order — not derived from dataset presence.
+ */
+export const SOCIAL_TEMPLATE_RAIL_FORMS = [
+  'social.note',
+  'social.metric',
+  'social.audio',
+  'social.post',
+  'social.collection',
+  'social.set'
+] as const;
+
+export type SocialTemplateRailFormId = (typeof SOCIAL_TEMPLATE_RAIL_FORMS)[number];
+
+const SOCIAL_TEMPLATE_RAIL_LABELS: Record<SocialTemplateRailFormId, string> = {
+  'social.note': 'note',
+  'social.metric': 'metric',
+  'social.audio': 'audio',
+  'social.post': 'post',
+  'social.collection': 'collection',
+  'social.set': 'set'
+};
+
+const SOCIAL_TEMPLATE_RAIL_SET = new Set<string>(SOCIAL_TEMPLATE_RAIL_FORMS);
+
+export function isSocialTemplateRailClass(classId: string | undefined): boolean {
+  return Boolean(classId && SOCIAL_TEMPLATE_RAIL_SET.has(classId));
+}
+
+/** ALL + fixed Social atom chips (Templates list / gallery / feed). */
+export function buildSocialTemplateRailItems(): ClassFeedRailItem[] {
+  return [
+    { id: 'all', label: 'ALL' },
+    ...SOCIAL_TEMPLATE_RAIL_FORMS.map((id) => ({
+      id,
+      label: SOCIAL_TEMPLATE_RAIL_LABELS[id]
+    }))
+  ];
+}
+
 export function resolveSummaryClassId(d: {
   classId?: string;
   templateId?: string;

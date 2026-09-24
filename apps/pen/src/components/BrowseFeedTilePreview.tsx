@@ -80,13 +80,16 @@ export function BrowseFeedTilePreview({
   sections,
   compact,
   bare,
-  session
+  session,
+  hideEngagementRail = false
 }: {
   manifest: PenDocManifest;
   sections: PenSectionContent[];
   compact?: boolean;
   bare?: boolean;
   session?: PenSession | null;
+  /** Hide in-tile engagement (Templates feed puts chrome outside). */
+  hideEngagementRail?: boolean;
 }) {
   const base = bundleToFeedTileModel({
     title: manifest.title || 'Untitled',
@@ -123,7 +126,12 @@ export function BrowseFeedTilePreview({
   }, [manifest, sections, session?.pnIdentifier]);
 
   const tile = (
-    <FeedTileSurface model={model} mode="preview" compact={compact || bare} />
+    <FeedTileSurface
+      model={model}
+      mode="preview"
+      compact={compact || bare}
+      hideEngagementRail={hideEngagementRail}
+    />
   );
 
   if (bare) return tile;

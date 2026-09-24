@@ -76,6 +76,9 @@ type ExplorerSort = {
 
 const DEFAULT_EXPLORER_SORT: ExplorerSort = { key: 'updated', dir: 'desc' };
 
+/** Same crackle sheet as locked Pen branding (`Par-Noir-Pen.png`). */
+const LIBRARY_FOOTER_BG_SRC = './branding/Par-Noir-Pen.png';
+
 function isConsumerClass(c: PenClass): boolean {
   return !c.audience || c.audience === 'consumer';
 }
@@ -1734,7 +1737,10 @@ export function DocListPage({
             </>
           )}
 
-          <footer className="pen-library-footer">
+          <footer
+            className="pen-library-footer"
+            style={{ backgroundImage: `url(${LIBRARY_FOOTER_BG_SRC})` }}
+          >
             <p className="pen-library-footer-copy">© par Noir</p>
           </footer>
         </div>

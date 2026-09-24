@@ -1,13 +1,10 @@
-/** Templates catalog as taxonomy directory (Category → Form → Template). */
+/** Templates catalog — Social atom rail across list / gallery / feed. */
 
-import { useEffect, useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import {
   categoryIdForClass,
   getClass,
-  listConsumerCategories,
   listStarterTemplates,
-  listTemplatesGroupedByCategory,
   type PenTemplate
 } from '@par-noir/pen-protocol';
 import type { PenSession } from '../App';
@@ -24,7 +21,12 @@ import {
 import { createDocFromPersonalOrStarter } from '../services/penPublish';
 import { ensureMyTemplatesNotebook } from '../services/penFolders';
 import type { PenBrowseDensity } from '../services/penClassPrefs';
-import { ExplorerFolderGlyph } from './ExplorerFolderGlyph';
+import {
+  buildSocialTemplateRailItems,
+  isSocialTemplateRailClass
+} from '../services/classFeedRailItems';
+import { ClassFeedRail } from './ClassFeedRail';
+import { TemplatesFeedScroller } from './TemplatesFeedScroller';
 
 function ListIcon() {
   return (
@@ -101,20 +103,8 @@ function templateShareUrl(templateId: string): string {
   return url.toString();
 }
 
-function Chevron({ expanded }: { expanded: boolean }) {
-  return (
-    <span className="pen-explorer-chevron" aria-expanded={expanded} aria-hidden>
-      <svg width="12" height="12" viewBox="0 0 24 24" fill="none">
-        <path
-          d="M6 9l6 6 6-6"
-          stroke="currentColor"
-          strokeWidth="2.2"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        />
-      </svg>
-    </span>
-  );
+function formTitleFor(classId: string): string {
+  return getClass(classId)?.title || classId;
 }
 
 export function TemplatesBrowse({
@@ -138,19 +128,14 @@ export function TemplatesBrowse({
   /** Open a template preview on mount (e.g. ?template=). */
   initialPreviewId?: string | null;
 }) {
-  const navigate = useNavigate();
   const [previewId, setPreviewId] = useState<string | null>(() => initialPreviewId || null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [savedHint, setSavedHint] = useState(false);
   const [shareHint, setShareHint] = useState(false);
-  const [expandedCategories, setExpandedCategories] = useState<Set<string>>(() =>
-    new Set(listConsumerCategories().map((c) => c.id))
-  );
-  const [expandedForms, setExpandedForms] = useState<Set<string>>(() => new Set());
+  const [activeClassId, setActiveClassId] = useState('all');
 
-  const catalogDensity: Exclude<PenBrowseDensity, 'feed'> =
-    density === 'feed' ? 'gallery' : density;
+  const railItems = useMemo(() => buildSocialTemplateRailItems(), []);
 
   useEffect(() => {
     if (initialPreviewId) setPreviewId(initialPreviewId);
@@ -159,46 +144,25 @@ export function TemplatesBrowse({
   const catalog: PenTemplate[] = useMemo(() => {
     const starters = listStarterTemplates().filter((t) => {
       const form = getClass(t.classId);
-      return !form || form.audience !== 'kit';
+      if (form?.audience === 'kit') return false;
+      return isSocialTemplateRailClass(t.classId);
     });
     const yours = session?.pnIdentifier
-      ? personalTemplatesAsPenTemplates(session.pnIdentifier)
+      ? personalTemplatesAsPenTemplates(session.pnIdentifier).filter((t) =>
+          isSocialTemplateRailClass(t.classId)
+        )
       : [];
-    // Yours (cloud templates folder buffer) first, then platform IR starters
     return [...yours, ...starters];
   }, [session?.pnIdentifier]);
 
-  const grouped = useMemo(
-    () => listTemplatesGroupedByCategory(catalog, listConsumerCategories()),
-    [catalog]
-  );
-
-  const flatForGallery = useMemo(
-    () => grouped.flatMap((g) => g.forms.flatMap((f) => f.templates)),
-    [grouped]
-  );
+  const filtered = useMemo(() => {
+    if (activeClassId === 'all') return catalog;
+    return catalog.filter((t) => t.classId === activeClassId);
+  }, [catalog, activeClassId]);
 
   const preview = previewId
     ? templatePreviewBundle(session?.pnIdentifier, previewId)
     : null;
-
-  function toggleCategory(id: string) {
-    setExpandedCategories((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  }
-
-  function toggleForm(id: string) {
-    setExpandedForms((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  }
 
   async function useTemplate(templateId: string) {
     if (!session) {
@@ -254,6 +218,14 @@ export function TemplatesBrowse({
     preview?.manifest?.classId != null &&
     categoryIdForClass(String(preview.manifest.classId)) === 'social';
 
+  const rail: ReactNode = (
+    <ClassFeedRail
+      items={railItems}
+      activeId={activeClassId}
+      onSelect={setActiveClassId}
+    />
+  );
+
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="pen-library-heading">
@@ -267,8 +239,8 @@ export function TemplatesBrowse({
           </button>
           <h1 className="text-lg font-bold text-black">Templates</h1>
           <p className="text-sm text-neutral-500">
-            Browse by category and form. Open a template to preview. Feed opens the public network
-            at /templates.
+            Social building blocks — note, metric, audio, post, collection, set. Feed is a view of
+            this catalog.
           </p>
         </div>
         <div className="pen-library-heading-tools">
@@ -277,10 +249,10 @@ export function TemplatesBrowse({
               type="button"
               title="List"
               aria-label="List view"
-              aria-pressed={catalogDensity === 'list'}
+              aria-pressed={density === 'list'}
               onClick={() => onDensity('list')}
               className={`inline-flex h-8 w-8 items-center justify-center ${
-                catalogDensity === 'list' ? 'text-black' : 'text-neutral-600 hover:text-neutral-800'
+                density === 'list' ? 'text-black' : 'text-neutral-600 hover:text-neutral-800'
               }`}
             >
               <ListIcon />
@@ -289,20 +261,23 @@ export function TemplatesBrowse({
               type="button"
               title="Gallery"
               aria-label="Gallery view"
-              aria-pressed={catalogDensity === 'gallery'}
+              aria-pressed={density === 'gallery'}
               onClick={() => onDensity('gallery')}
               className={`inline-flex h-8 w-8 items-center justify-center ${
-                catalogDensity === 'gallery' ? 'text-black' : 'text-neutral-600 hover:text-neutral-800'
+                density === 'gallery' ? 'text-black' : 'text-neutral-600 hover:text-neutral-800'
               }`}
             >
               <GalleryIcon />
             </button>
             <button
               type="button"
-              title="Public templates feed"
-              aria-label="Public templates feed"
-              onClick={() => navigate('/templates')}
-              className="inline-flex h-8 w-8 items-center justify-center text-neutral-600 hover:text-neutral-800"
+              title="Feed"
+              aria-label="Feed view"
+              aria-pressed={density === 'feed'}
+              onClick={() => onDensity('feed')}
+              className={`inline-flex h-8 w-8 items-center justify-center ${
+                density === 'feed' ? 'text-black' : 'text-neutral-600 hover:text-neutral-800'
+              }`}
             >
               <FeedIcon />
             </button>
@@ -314,81 +289,85 @@ export function TemplatesBrowse({
 
       <div className="pen-library-body">
         <div className="pen-library-sheet">
-          {flatForGallery.length === 0 ? (
-            <p className="pen-library-indent py-10 text-sm text-neutral-500">No templates available.</p>
-          ) : catalogDensity === 'gallery' ? (
-            <div className="pen-gallery-wrap">
-              <div className="pen-gallery-head" aria-hidden />
-              <div className="pen-gallery">
-                {grouped.map((g) => (
-                  <div key={g.category.id} className="pen-template-gallery-group">
-                    <h2 className="pen-template-dir-heading">{g.category.title}</h2>
-                    {g.forms.map(({ form, templates }) =>
-                      templates.length === 0 ? null : (
-                        <div key={form.id} className="pen-template-gallery-form">
-                          <h3 className="pen-template-dir-subheading">{form.title}</h3>
-                          <div className="pen-gallery-tiles">
-                            {templates.map((t) => (
-                              <div key={t.id} className="pen-gallery-slot">
-                                <button
-                                  type="button"
-                                  className="pen-gallery-tile"
-                                  onClick={() => setPreviewId(t.id)}
-                                >
-                                  <div className="pen-gallery-tile-title">
-                                    <span className="pen-gallery-tile-title-text">{t.title}</span>
-                                  </div>
-                                  <span className="pen-gallery-tile-preview">
-                                    <TemplateGalleryThumb
-                                      pn={session?.pnIdentifier}
-                                      templateId={t.id}
-                                      session={session}
-                                    />
-                                  </span>
-                                </button>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      )
-                    )}
-                  </div>
-                ))}
-              </div>
-            </div>
+          {density === 'feed' ? (
+            <TemplatesFeedScroller
+              rail={rail}
+              templates={filtered}
+              session={session}
+              busy={busy}
+              onBuild={(id) => void useTemplate(id)}
+            />
           ) : (
-            <div className="pen-explorer">
-              <div className="pen-explorer-scroll">
-                <table className="pen-explorer-table w-full text-left text-sm">
-                  <thead className="text-[11px] tracking-wide">
-                    <tr>
-                      <th className="pen-explorer-action" aria-hidden />
-                      <th className="pen-explorer-name-header px-3">Name</th>
-                      <th className="pen-explorer-col-category px-3">Kind</th>
-                      <th className="pen-explorer-col-form px-3">Form</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {grouped.map((g) => {
-                      const catOpen = expandedCategories.has(g.category.id);
-                      return (
-                        <CategoryDirBlock
-                          key={g.category.id}
-                          categoryTitle={g.category.title}
-                          categoryId={g.category.id}
-                          expanded={catOpen}
-                          onToggle={() => toggleCategory(g.category.id)}
-                          forms={g.forms}
-                          expandedForms={expandedForms}
-                          onToggleForm={toggleForm}
-                          onOpenTemplate={setPreviewId}
-                        />
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            </div>
+            <>
+              <div className="pen-doc-feed-rail">{rail}</div>
+              {filtered.length === 0 ? (
+                <p className="pen-library-indent py-10 text-sm text-neutral-500">
+                  No templates in this class.
+                </p>
+              ) : density === 'gallery' ? (
+                <div className="pen-gallery-wrap">
+                  <div className="pen-gallery">
+                    <div className="pen-gallery-tiles">
+                      {filtered.map((t) => (
+                        <div key={t.id} className="pen-gallery-slot">
+                          <button
+                            type="button"
+                            className="pen-gallery-tile"
+                            onClick={() => setPreviewId(t.id)}
+                          >
+                            <div className="pen-gallery-tile-title">
+                              <span className="pen-gallery-tile-title-text">{t.title}</span>
+                            </div>
+                            <span className="pen-gallery-tile-preview">
+                              <TemplateGalleryThumb
+                                pn={session?.pnIdentifier}
+                                templateId={t.id}
+                                session={session}
+                              />
+                            </span>
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div className="pen-explorer">
+                  <div className="pen-explorer-scroll">
+                    <table className="pen-explorer-table w-full text-left text-sm">
+                      <thead className="text-[11px] tracking-wide">
+                        <tr>
+                          <th className="pen-explorer-action" aria-hidden />
+                          <th className="pen-explorer-name-header px-3">Name</th>
+                          <th className="pen-explorer-col-form px-3">Form</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {filtered.map((t) => (
+                          <tr
+                            key={t.id}
+                            className="pen-explorer-row cursor-pointer"
+                            onClick={() => setPreviewId(t.id)}
+                          >
+                            <td className="pen-explorer-action px-2 py-2 text-center">
+                              <span className="inline-block h-4 w-4" aria-hidden />
+                            </td>
+                            <td className="pen-explorer-name-cell px-3 py-2 font-medium text-black">
+                              <span className="pen-explorer-name-label">
+                                <span className="min-w-0 truncate">{t.title}</span>
+                              </span>
+                            </td>
+                            <td className="pen-explorer-col-form px-3 py-2 text-xs text-black">
+                              {formTitleFor(t.classId)}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+            </>
           )}
         </div>
       </div>
@@ -437,6 +416,7 @@ export function TemplatesBrowse({
                         bare
                         compact
                         session={session}
+                        hideEngagementRail
                       />
                     </div>
                   </div>
@@ -485,127 +465,5 @@ export function TemplatesBrowse({
         </div>
       ) : null}
     </div>
-  );
-}
-
-function CategoryDirBlock({
-  categoryTitle,
-  categoryId,
-  expanded,
-  onToggle,
-  forms,
-  expandedForms,
-  onToggleForm,
-  onOpenTemplate
-}: {
-  categoryTitle: string;
-  categoryId: string;
-  expanded: boolean;
-  onToggle: () => void;
-  forms: Array<{ form: { id: string; title: string }; templates: PenTemplate[] }>;
-  expandedForms: Set<string>;
-  onToggleForm: (id: string) => void;
-  onOpenTemplate: (id: string) => void;
-}) {
-  void categoryId;
-  return (
-    <>
-      <tr
-        className={`pen-explorer-row pen-explorer-row--folder cursor-pointer ${
-          expanded ? 'pen-explorer-row--folder-open' : ''
-        }`}
-        onClick={onToggle}
-      >
-        <td className="pen-explorer-action px-2 py-2 text-center">
-          <span className="inline-block h-4 w-4" aria-hidden />
-        </td>
-        <td className="pen-explorer-name-cell px-3 py-2">
-          <span className="pen-explorer-name-label text-black">
-            <Chevron expanded={expanded} />
-            <ExplorerFolderGlyph open={expanded} />
-            <span className="min-w-0 truncate font-bold">{categoryTitle}</span>
-          </span>
-        </td>
-        <td className="pen-explorer-col-category px-3 py-2 text-xs text-neutral-500">Category</td>
-        <td className="pen-explorer-col-form px-3 py-2 text-xs text-black">—</td>
-      </tr>
-      {expanded &&
-        forms.map(({ form, templates }) => {
-          if (templates.length === 0) return null;
-          const formOpen = expandedForms.has(form.id);
-          return (
-            <FormDirBlock
-              key={form.id}
-              formTitle={form.title}
-              formId={form.id}
-              expanded={formOpen}
-              onToggle={() => onToggleForm(form.id)}
-              templates={templates}
-              onOpenTemplate={onOpenTemplate}
-            />
-          );
-        })}
-    </>
-  );
-}
-
-function FormDirBlock({
-  formTitle,
-  formId,
-  expanded,
-  onToggle,
-  templates,
-  onOpenTemplate
-}: {
-  formTitle: string;
-  formId: string;
-  expanded: boolean;
-  onToggle: () => void;
-  templates: PenTemplate[];
-  onOpenTemplate: (id: string) => void;
-}) {
-  void formId;
-  return (
-    <>
-      <tr
-        className={`pen-explorer-row pen-explorer-row--folder pen-explorer-row--child cursor-pointer ${
-          expanded ? 'pen-explorer-row--folder-open' : ''
-        }`}
-        onClick={onToggle}
-      >
-        <td className="pen-explorer-action px-2 py-2 text-center">
-          <span className="inline-block h-4 w-4" aria-hidden />
-        </td>
-        <td className="pen-explorer-name-cell pen-explorer-name-indent px-3 py-2">
-          <span className="pen-explorer-name-label text-black">
-            <Chevron expanded={expanded} />
-            <ExplorerFolderGlyph open={expanded} />
-            <span className="min-w-0 truncate font-medium">{formTitle}</span>
-          </span>
-        </td>
-        <td className="pen-explorer-col-category px-3 py-2 text-xs text-neutral-500">Form</td>
-        <td className="pen-explorer-col-form px-3 py-2 text-xs text-black">{formTitle}</td>
-      </tr>
-      {expanded &&
-        templates.map((t) => (
-          <tr
-            key={t.id}
-            className="pen-explorer-row pen-explorer-row--child pen-explorer-row--child-depth-2 cursor-pointer"
-            onClick={() => onOpenTemplate(t.id)}
-          >
-            <td className="pen-explorer-action px-2 py-2 text-center">
-              <span className="inline-block h-4 w-4" aria-hidden />
-            </td>
-            <td className="pen-explorer-name-cell pen-explorer-name-indent-2 px-3 py-2 font-medium text-black">
-              <span className="pen-explorer-name-label">
-                <span className="pen-explorer-twisty-spacer" aria-hidden />
-                <span className="min-w-0 truncate">{t.title}</span>
-              </span>
-            </td>
-            <td className="pen-explorer-col-category px-3 py-2 text-xs text-neutral-500">Template</td>
-            <td className="pen-explorer-col-form px-3 py-2 text-xs text-black">{formTitle}</td>
-          </tr>
-        ))}
-    </>
   );
 }

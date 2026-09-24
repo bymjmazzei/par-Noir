@@ -1,14 +1,41 @@
 /**
  * Gate: class feed rail builders + pen-template filter.
- * Falsifies: missing ALL, raw classId without form, non-templates in onlyPenTemplates.
+ * Falsifies: missing ALL, raw classId without form, non-templates in onlyPenTemplates,
+ * Social templates rail not fixed to six atoms.
  */
 import { describe, expect, it } from 'vitest';
 import {
   buildClassFeedRailItems,
-  contentClassFallbackLabel
+  buildSocialTemplateRailItems,
+  contentClassFallbackLabel,
+  isSocialTemplateRailClass,
+  SOCIAL_TEMPLATE_RAIL_FORMS
 } from './services/classFeedRailItems';
 import { onlyPenTemplates } from './services/penTemplateFeed';
 import { isAllowedFeedMediaSignedUrl } from './services/penPublicFeedMedia';
+
+describe('buildSocialTemplateRailItems', () => {
+  it('always leads with ALL then fixed Social atoms in order', () => {
+    const items = buildSocialTemplateRailItems();
+    expect(items[0]).toEqual({ id: 'all', label: 'ALL' });
+    expect(items.slice(1).map((i) => i.id)).toEqual([...SOCIAL_TEMPLATE_RAIL_FORMS]);
+    expect(items.map((i) => i.label)).toEqual([
+      'ALL',
+      'note',
+      'metric',
+      'audio',
+      'post',
+      'collection',
+      'set'
+    ]);
+  });
+
+  it('isSocialTemplateRailClass matches only the six forms', () => {
+    expect(isSocialTemplateRailClass('social.note')).toBe(true);
+    expect(isSocialTemplateRailClass('social.quote')).toBe(false);
+    expect(isSocialTemplateRailClass('community.feed')).toBe(false);
+  });
+});
 
 describe('buildClassFeedRailItems', () => {
   it('always leads with ALL', () => {

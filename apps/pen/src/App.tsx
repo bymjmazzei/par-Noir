@@ -22,7 +22,6 @@ import {
 import { API_ENDPOINT, PN_CLIENT_ID } from './config/api';
 import { DocEditorPage } from './pages/DocEditorPage';
 import { DocListPage, type PenAddIntent } from './pages/DocListPage';
-import { PublicTemplatesFeedPage } from './pages/PublicTemplatesFeedPage';
 import { listLocalDocs, type LocalDocSummary } from './services/penLocalStore';
 import {
   clearPenSession,
@@ -208,6 +207,13 @@ function Locked() {
     }
   }, []);
 
+  useEffect(() => {
+    if (location.pathname !== '/templates') return;
+    setLockedView('templates');
+    setTemplateDensity('feed');
+    saveBrowseDensity('_locked', 'feed');
+  }, [location.pathname]);
+
   if (session?.accessToken) {
     return (
       <AuthenticatedApp
@@ -237,7 +243,10 @@ function Locked() {
     isMessagingReady: (pending) => handoffHasSigningKeys(pending?.messagingHandoff)
   };
 
-  if (location.pathname === '/templates') {
+  const lockedTemplates =
+    location.pathname === '/templates' || lockedView === 'templates';
+
+  if (lockedTemplates) {
     return (
       <div className="min-h-screen bg-white text-black">
         <header className="pen-app-chrome fixed inset-x-0 top-0 z-50">
@@ -270,49 +279,11 @@ function Locked() {
           />
         </header>
         <div className="flex min-h-[calc(100vh-2.5rem)] flex-col pt-10">
-          <PublicTemplatesFeedPage
-            session={null}
-            onBack={() => {
-              setLockedView('templates');
-              navigate('/');
-            }}
-          />
-        </div>
-      </div>
-    );
-  }
-
-  if (lockedView === 'templates') {
-    return (
-      <div className="min-h-screen bg-white text-black">
-        <header className="pen-app-chrome fixed inset-x-0 top-0 z-50">
-          <div className="pen-app-chrome-left">
-            <span className="pen-app-chrome-action" aria-hidden />
-            <AddMenu templatesOnly onSelect={() => setLockedView('templates')} />
-            <button
-              type="button"
-              className="pen-app-chrome-brand"
-              onClick={() => setLockedView('home')}
-            >
-              Pen
-            </button>
-          </div>
-          <UnlockButton
-            className="pen-app-chrome-lock"
-            iconOnly
-            title="Unlock"
-            requireMessagingHandoff
-            config={{
-              clientId: PN_CLIENT_ID,
-              redirectUri: `${window.location.origin}/oauth-callback.html`,
-              apiEndpoint: API_ENDPOINT,
-              scope: ['openid', 'profile', 'cloud:read', 'cloud:app']
-            }}
-            {...lockedUnlock}
-          />
-        </header>
-        <div className="flex min-h-[calc(100vh-2.5rem)] flex-col pt-10">
-          <div className="pen-library-page bg-white">
+          <div
+            className={`pen-library-page bg-white${
+              templateDensity === 'feed' ? ' pen-feed-mode' : ''
+            }`}
+          >
             <div className="pen-library-notebook flex-1">
               <div className="pen-library-notebook-inner">
                 <div className="pen-explorer-rail" aria-hidden />
@@ -326,7 +297,10 @@ function Locked() {
                   initialPreviewId={
                     new URLSearchParams(window.location.search).get('template') || null
                   }
-                  onBack={() => setLockedView('home')}
+                  onBack={() => {
+                    setLockedView('home');
+                    navigate('/');
+                  }}
                   onCreated={(_docId) => undefined}
                   onRequestUnlock={() => setLockedView('home')}
                 />
@@ -452,12 +426,22 @@ function AuthenticatedApp({
   onLock: () => void | Promise<void>;
 }) {
   const navigate = useNavigate();
+  const location = useLocation();
   const [docs, setDocs] = useState<LocalDocSummary[]>([]);
   const [addIntent, setAddIntent] = useState<PenAddIntent | null>(null);
   const [syncPending, setSyncPending] = useState(0);
+  const [templateDensity, setTemplateDensity] = useState<PenBrowseDensity>(() =>
+    location.pathname === '/templates' ? 'feed' : loadBrowseDensity(session.pnIdentifier)
+  );
   const [mlKemSecretKey, setMlKemSecretKey] = useState<string | null>(
     () => session.mlKemSecretKey || peekMlKemSecretKey() || null
   );
+
+  useEffect(() => {
+    if (location.pathname !== '/templates') return;
+    setTemplateDensity('feed');
+    saveBrowseDensity(session.pnIdentifier, 'feed');
+  }, [location.pathname, session.pnIdentifier]);
 
   useEffect(() => {
     if (mlKemSecretKey) return;
@@ -629,7 +613,39 @@ function AuthenticatedApp({
               />
             }
           />
-          <Route path="/templates" element={<PublicTemplatesFeedPage session={session} />} />
+          <Route
+            path="/templates"
+            element={
+              <div
+                className={`pen-library-page bg-white${
+                  templateDensity === 'feed' ? ' pen-feed-mode' : ''
+                }`}
+              >
+                <div className="pen-library-notebook flex-1">
+                  <div className="pen-library-notebook-inner">
+                    <div className="pen-explorer-rail" aria-hidden />
+                    <TemplatesBrowse
+                      session={session}
+                      density={templateDensity}
+                      onDensity={(d) => {
+                        setTemplateDensity(d);
+                        saveBrowseDensity(session.pnIdentifier, d);
+                      }}
+                      initialPreviewId={
+                        new URLSearchParams(window.location.search).get('template') || null
+                      }
+                      onBack={() => navigate('/')}
+                      onCreated={(docId) => {
+                        void refreshDocs({ forceCloud: true });
+                        navigate(`/d/${docId}`);
+                      }}
+                      onSaved={() => void refreshDocs({ forceCloud: true })}
+                    />
+                  </div>
+                </div>
+              </div>
+            }
+          />
           <Route path="/d/:docId" element={<DocEditorRoute session={session} />} />
         </Routes>
       </div>

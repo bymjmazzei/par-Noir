@@ -1,7 +1,7 @@
 /**
- * Gate: Pen feed notebook-aligned rail + public-only engagement client.
+ * Gate: Pen feed notebook-aligned rail + templates feed as catalog density.
  * Falsifies: fixed dark overlay rail; engagement used for library docs;
- * public CDN feed missing reachable /templates route.
+ * /templates not routing to TemplatesBrowse; live CDN engagement on Pen templates feed.
  */
 import { readFileSync } from 'fs';
 import { resolve } from 'path';
@@ -27,24 +27,31 @@ describe('pen feed UX chrome', () => {
     expect(src).toMatch(/SnapFeedShell/);
   });
 
-  it('TemplatesCdnFeedScroller wires live engagement for CDN rows only', () => {
-    const src = readFileSync(resolve(root, 'components/TemplatesCdnFeedScroller.tsx'), 'utf8');
+  it('TemplatesFeedScroller is view-only IR feed with Build', () => {
+    const src = readFileSync(resolve(root, 'components/TemplatesFeedScroller.tsx'), 'utf8');
     expect(src).toMatch(/TemplateEngagementRail/);
-    expect(src).toMatch(/entry\.fileId/);
+    expect(src).toMatch(/readOnly/);
     expect(src).toMatch(/hideEngagementRail/);
-    expect(src).toMatch(/pen-doc-feed-slide-stage/);
-    expect(src).toMatch(/listConsumerStarterTemplates/);
-    expect(src).toMatch(/kind: 'platform'/);
+    expect(src).toMatch(/pen-templates-feed-build/);
+    expect(src).toMatch(/Build/);
+    expect(src).not.toMatch(/fetchPublicPenTemplates|toggleLikePublic/);
   });
 
-  it('public templates feed is routed at /templates', () => {
+  it('TemplatesBrowse shares Social atom rail across densities in-place', () => {
+    const src = readFileSync(resolve(root, 'components/TemplatesBrowse.tsx'), 'utf8');
+    expect(src).toMatch(/buildSocialTemplateRailItems/);
+    expect(src).toMatch(/TemplatesFeedScroller/);
+    expect(src).toMatch(/onDensity\('feed'\)/);
+    expect(src).not.toMatch(/navigate\(['"]\/templates['"]\)/);
+  });
+
+  it('public templates feed is routed at /templates via TemplatesBrowse', () => {
     const app = readFileSync(resolve(root, 'App.tsx'), 'utf8');
-    const page = readFileSync(resolve(root, 'pages/PublicTemplatesFeedPage.tsx'), 'utf8');
     const verified = readFileSync(resolve(root, 'services/penVerified.ts'), 'utf8');
     expect(app).toMatch(/path="\/templates"/);
-    expect(app).toMatch(/PublicTemplatesFeedPage/);
+    expect(app).toMatch(/TemplatesBrowse/);
+    expect(app).not.toMatch(/PublicTemplatesFeedPage/);
     expect(app).toMatch(/ensurePlatformTemplateRoots/);
-    expect(page).toMatch(/TemplatesCdnFeedScroller/);
     expect(verified).toMatch(/VITE_PEN_PUBLIC_TEMPLATE_ALLOWLIST/);
   });
 });

@@ -1,5 +1,6 @@
 /**
- * Live engagement rail for public pen-templates (IndexedFile fileId only).
+ * Engagement rail for public pen-templates.
+ * Interactive (like/share) only when readOnly is false; Templates feed uses view-only.
  */
 
 import { useEffect, useState } from 'react';
@@ -20,11 +21,15 @@ function formatCount(n: number): string {
 export function TemplateEngagementRail({
   fileId,
   userPnIdentifier,
-  unlocked
+  unlocked,
+  readOnly = false
 }: {
-  fileId: string;
+  /** When omitted, shows muted zeros (platform IR without IndexedFile). */
+  fileId?: string | null;
   userPnIdentifier?: string | null;
   unlocked: boolean;
+  /** View-only chrome — no like/share/comment handlers. */
+  readOnly?: boolean;
 }) {
   const [stats, setStats] = useState<PenEngagementStats>({ likes: 0, comments: 0, shares: 0 });
   const [liked, setLiked] = useState(false);
@@ -32,13 +37,18 @@ export function TemplateEngagementRail({
   const [hint, setHint] = useState<string | null>(null);
 
   useEffect(() => {
+    if (!fileId) {
+      setStats({ likes: 0, comments: 0, shares: 0 });
+      setLiked(false);
+      return;
+    }
     let cancelled = false;
     void fetchEngagementStats(fileId)
       .then((s) => {
         if (!cancelled) setStats(s);
       })
       .catch(() => undefined);
-    if (unlocked && userPnIdentifier) {
+    if (!readOnly && unlocked && userPnIdentifier) {
       void fetchViewerLiked(fileId, userPnIdentifier)
         .then((v) => {
           if (!cancelled) setLiked(v);
@@ -50,11 +60,12 @@ export function TemplateEngagementRail({
     return () => {
       cancelled = true;
     };
-  }, [fileId, unlocked, userPnIdentifier]);
+  }, [fileId, unlocked, userPnIdentifier, readOnly]);
 
   async function onLike(e: React.MouseEvent) {
     e.stopPropagation();
     e.preventDefault();
+    if (readOnly || !fileId) return;
     if (!unlocked || !userPnIdentifier) {
       setHint('Unlock to like');
       window.setTimeout(() => setHint(null), 1600);
@@ -80,6 +91,7 @@ export function TemplateEngagementRail({
   async function onShare(e: React.MouseEvent) {
     e.stopPropagation();
     e.preventDefault();
+    if (readOnly || !fileId) return;
     if (!unlocked || !userPnIdentifier) {
       setHint('Unlock to share');
       window.setTimeout(() => setHint(null), 1600);
@@ -103,8 +115,37 @@ export function TemplateEngagementRail({
   function onComment(e: React.MouseEvent) {
     e.stopPropagation();
     e.preventDefault();
+    if (readOnly) return;
     setHint(unlocked ? 'Comments open in browse TEMPLATES' : 'Unlock to comment');
     window.setTimeout(() => setHint(null), 2000);
+  }
+
+  if (readOnly) {
+    return (
+      <div className="pen-template-engagement-rail pen-template-engagement-rail--readonly" aria-hidden>
+        <div className="pen-template-engagement-stat">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.6l-1-1a5.5 5.5 0 0 0-7.8 7.8l1 1L12 21l7.8-7.6 1-1a5.5 5.5 0 0 0 0-7.8z" />
+          </svg>
+          <span className="pen-template-engagement-count">{formatCount(stats.likes)}</span>
+        </div>
+        <div className="pen-template-engagement-stat">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <path d="M21 15a4 4 0 0 1-4 4H8l-5 3V7a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4z" />
+          </svg>
+          <span className="pen-template-engagement-count">{formatCount(stats.comments)}</span>
+        </div>
+        <div className="pen-template-engagement-stat">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <circle cx="18" cy="5" r="3" />
+            <circle cx="6" cy="12" r="3" />
+            <circle cx="18" cy="19" r="3" />
+            <path d="M8.6 13.5l6.8 4M15.4 6.5l-6.8 4" />
+          </svg>
+          <span className="pen-template-engagement-count">{formatCount(stats.shares)}</span>
+        </div>
+      </div>
+    );
   }
 
   return (
@@ -115,7 +156,7 @@ export function TemplateEngagementRail({
         className={`pen-template-engagement-btn${liked ? ' is-liked' : ''}`}
         aria-label="Like"
         aria-pressed={liked}
-        disabled={busy}
+        disabled={busy || !fileId}
         onClick={(e) => void onLike(e)}
       >
         <svg width="22" height="22" viewBox="0 0 24 24" fill={liked ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="2" aria-hidden>
@@ -138,7 +179,7 @@ export function TemplateEngagementRail({
         type="button"
         className="pen-template-engagement-btn"
         aria-label="Share"
-        disabled={busy}
+        disabled={busy || !fileId}
         onClick={(e) => void onShare(e)}
       >
         <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
