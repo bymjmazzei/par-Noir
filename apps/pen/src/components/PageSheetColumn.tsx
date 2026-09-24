@@ -18,7 +18,9 @@ export function PageSheetColumn({
   style,
   children,
   sheetRef,
-  onClick
+  onClick,
+  /** When true, marks this sheet as the compose/encode export root. */
+  composeExportRoot = false
 }: {
   pageLayout: PenPageLayout | undefined;
   flowWorkspaceWidthPx?: number | null;
@@ -30,6 +32,7 @@ export function PageSheetColumn({
   children: ReactNode;
   sheetRef?: Ref<HTMLDivElement>;
   onClick?: () => void;
+  composeExportRoot?: boolean;
 }) {
   const dims = pageSheetDims(pageLayout, {
     widthPx: flowWorkspaceWidthPx,
@@ -53,7 +56,9 @@ export function PageSheetColumn({
   return (
     <div
       ref={sheetRef}
-      data-pen-compose-export-root
+      {...(composeExportRoot
+        ? { 'data-pen-compose-export-root': 'page' }
+        : {})}
       className={`relative bg-white shadow-[0_1px_3px_rgba(0,0,0,0.12),0_0_0_1px_rgba(0,0,0,0.06)] ${
         dims.fillWidth ? 'w-full' : ''
       } ${className || ''}`}

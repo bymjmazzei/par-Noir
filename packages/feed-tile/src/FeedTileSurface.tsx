@@ -123,6 +123,7 @@ export function FeedTileSurface({
 
   return (
     <div
+      data-pen-compose-export-root="feed"
       className={`relative overflow-hidden bg-black ${
         compact ? 'aspect-[9/16] w-full' : 'aspect-[9/16] h-full max-h-full w-full max-w-[22rem]'
       }`}

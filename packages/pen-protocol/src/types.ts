@@ -180,6 +180,17 @@ export interface PenDocManifest {
   pagePresentation?: PenPagePresentation;
   /** Aggregator fileId after Connect to feed — engagement comments key. */
   publishedFileId?: string;
+  /**
+   * Composed gallery thumb after Commit — `penmedia:{fileId}` (or transient `penlocal:`).
+   * Not an aggregator CDN URL; collaborators hydrate via Drive → IndexedDB.
+   */
+  galleryPreviewRef?: string;
+  /** Whether galleryPreviewRef is a still or composed video. */
+  galleryPreviewKind?: 'image' | 'video';
+  /** JPEG poster when galleryPreviewKind is video. */
+  galleryPreviewPosterRef?: string;
+  /** Head hash / commit id the gallery preview was built from. */
+  galleryPreviewCommitHash?: string;
   /** When true, overlay objects snap to page center/middle while dragging. */
   snapToPageGuides?: boolean;
   /** Owner pn hash — unrevokable. */

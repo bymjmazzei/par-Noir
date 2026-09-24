@@ -9,14 +9,12 @@ import {
   normalizeSection,
   type PenDocManifest,
   type PenPagePresentation,
-  type PenSectionContent,
-  type PenTipTapNode
+  type PenSectionContent
 } from '@par-noir/pen-protocol';
 import { useResolvedMediaSrc } from '../hooks/useResolvedMediaSrc';
 import { isPenMediaSrcRef } from '../services/penLocalMedia';
+import { resolveGalleryMedia } from '../services/penGalleryPreview';
 import type { PenSession } from '../services/penSession';
-
-type GalleryMedia = { src: string; kind: 'image' | 'video' };
 
 function sectionMap(sections: PenSectionContent[]): Map<string, PenSectionContent> {
   return new Map(
@@ -25,63 +23,6 @@ function sectionMap(sections: PenSectionContent[]): Map<string, PenSectionConten
       return [n.slug, n];
     })
   );
-}
-
-function firstImageSrc(doc: PenTipTapNode | undefined): string | null {
-  if (!doc) return null;
-  const walk = (n: PenTipTapNode): string | null => {
-    if (n.type === 'image' && n.attrs?.src) return String(n.attrs.src);
-    for (const c of n.content || []) {
-      const hit = walk(c);
-      if (hit) return hit;
-    }
-    return null;
-  };
-  return walk(doc);
-}
-
-function firstLayerMedia(sections: PenSectionContent[]): GalleryMedia | null {
-  for (const raw of sections) {
-    const sec = normalizeSection(raw);
-    const visible = (sec.layers || []).filter((l) => l.visible !== false);
-    const video = visible.find((l) => l.kind === 'video' && l.videoSrc);
-    if (video?.videoSrc) return { src: video.videoSrc, kind: 'video' };
-    const image = visible.find((l) => l.kind === 'image' && l.imageSrc);
-    if (image?.imageSrc) return { src: image.imageSrc, kind: 'image' };
-    const bgVideo = visible.find((l) => l.backgroundVideo);
-    if (bgVideo?.backgroundVideo) {
-      return { src: bgVideo.backgroundVideo, kind: 'video' };
-    }
-    const bgImage = visible.find((l) => l.backgroundImage);
-    if (bgImage?.backgroundImage) {
-      return { src: bgImage.backgroundImage, kind: 'image' };
-    }
-  }
-  return null;
-}
-
-function resolveMedia(
-  sections: PenSectionContent[],
-  pagePresentation?: PenPagePresentation | null
-): GalleryMedia | null {
-  const fromLayers = firstLayerMedia(sections);
-  if (fromLayers) return fromLayers;
-  if (pagePresentation?.backgroundVideo) {
-    return { src: pagePresentation.backgroundVideo, kind: 'video' };
-  }
-  if (pagePresentation?.backgroundImage) {
-    return { src: pagePresentation.backgroundImage, kind: 'image' };
-  }
-  const bySlug = sectionMap(sections);
-  for (const slug of ['attachments', 'media', 'cover', 'body', 'pages', 'front']) {
-    const src = firstImageSrc(bySlug.get(slug)?.doc);
-    if (src) return { src, kind: 'image' };
-  }
-  for (const sec of sections) {
-    const src = firstImageSrc(normalizeSection(sec).doc);
-    if (src) return { src, kind: 'image' };
-  }
-  return null;
 }
 
 function resolveTitle(manifest: PenDocManifest, sections: PenSectionContent[]): string {
@@ -162,7 +103,7 @@ export function DocGalleryPreview({
   large?: boolean;
   session?: PenSession | null;
 }) {
-  const media = resolveMedia(sections, manifest.pagePresentation);
+  const media = resolveGalleryMedia(manifest, sections);
   const { resolved } = useResolvedMediaSrc(media?.src, {
     docId: manifest.docId,
     session
@@ -187,7 +128,7 @@ export function DocGalleryPreview({
 
   let surface: ReactNode;
   if (media) {
-    // Media-forward: still/video fills the tile; caption overlays for social value.
+    // Prefer committed composed galleryPreviewRef; else live layer media.
     // Never put unresolved penmedia:/penlocal: into <img>/<video> src.
     surface = (
       <div

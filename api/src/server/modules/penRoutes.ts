@@ -332,6 +332,27 @@ export function setupPenRoutes(
             : req.body?.folderId != null
               ? String(req.body.folderId)
               : undefined;
+        const galleryPreviewRef =
+          req.body?.galleryPreviewRef != null
+            ? String(req.body.galleryPreviewRef)
+            : undefined;
+        const galleryPreviewKind =
+          req.body?.galleryPreviewKind === 'image' || req.body?.galleryPreviewKind === 'video'
+            ? (req.body.galleryPreviewKind as 'image' | 'video')
+            : undefined;
+        const galleryPreviewPosterRef =
+          req.body?.galleryPreviewPosterRef != null
+            ? String(req.body.galleryPreviewPosterRef)
+            : undefined;
+        const galleryPreviewCommitHash =
+          req.body?.galleryPreviewCommitHash != null
+            ? String(req.body.galleryPreviewCommitHash)
+            : undefined;
+        const patchGallery =
+          galleryPreviewRef !== undefined ||
+          galleryPreviewKind !== undefined ||
+          galleryPreviewPosterRef !== undefined ||
+          galleryPreviewCommitHash !== undefined;
         const { text } = await readDriveText(drive, penRootId, 'library.index.json');
         let rows: Record<string, unknown>[] = [];
         try {
@@ -356,8 +377,8 @@ export function setupPenRoutes(
           Buffer.from(JSON.stringify(rows), 'utf8'),
           'application/json'
         );
-        // Also patch doc.json title when provided
-        if (title !== undefined) {
+        // Patch doc.json title / gallery preview when provided
+        if (title !== undefined || patchGallery || folderId !== undefined) {
           const existingDocFolderId = await findChildFolderId(drive, penRootId, String(docId));
           if (existingDocFolderId) {
             const { text: manifestText } = await readDriveText(
@@ -368,9 +389,19 @@ export function setupPenRoutes(
             if (manifestText) {
               try {
                 const manifest = JSON.parse(manifestText) as Record<string, unknown>;
-                manifest.title = title || 'Untitled';
-                manifest.updatedAt = next.updatedAt;
+                if (title !== undefined) manifest.title = title || 'Untitled';
                 if (folderId !== undefined) manifest.folderId = folderId;
+                if (galleryPreviewRef !== undefined) manifest.galleryPreviewRef = galleryPreviewRef;
+                if (galleryPreviewKind !== undefined) {
+                  manifest.galleryPreviewKind = galleryPreviewKind;
+                }
+                if (galleryPreviewPosterRef !== undefined) {
+                  manifest.galleryPreviewPosterRef = galleryPreviewPosterRef;
+                }
+                if (galleryPreviewCommitHash !== undefined) {
+                  manifest.galleryPreviewCommitHash = galleryPreviewCommitHash;
+                }
+                manifest.updatedAt = next.updatedAt;
                 await writeDriveFile(
                   drive,
                   existingDocFolderId,

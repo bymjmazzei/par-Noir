@@ -839,6 +839,7 @@ export function EditablePagePreview({
           style={frameStyle}
           className={flowOpen ? 'min-h-full shadow-none' : undefined}
           onClick={() => selectLayer(PAGE_LAYER_ID)}
+          composeExportRoot
         >
           {presentation.backgroundVideo && (
             <ResolvedPageBackground

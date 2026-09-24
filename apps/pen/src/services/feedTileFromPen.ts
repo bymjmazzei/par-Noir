@@ -62,16 +62,26 @@ export function bundleToFeedTileModel(input: {
   fileId?: string;
   contentClass?: string;
   caption?: string;
+  /** Prefer committed composed gallery preview when set. */
+  galleryPreviewRef?: string;
+  galleryPreviewKind?: 'image' | 'video';
+  galleryPreviewPosterRef?: string;
 }): FeedTileViewModel {
   const pages = sectionsToFeedPages(input.sections, input.title, input.pagePresentation);
-  if (input.posterUrl && pages[0] && !pages[0].mediaSrc) {
+  if (input.galleryPreviewRef && pages[0]) {
+    pages[0] = {
+      ...pages[0],
+      mediaSrc: input.galleryPreviewRef,
+      mediaKind: input.galleryPreviewKind === 'video' ? 'video' : 'image'
+    };
+  } else if (input.posterUrl && pages[0] && !pages[0].mediaSrc) {
     pages[0] = { ...pages[0], mediaSrc: input.posterUrl, mediaKind: 'image' };
   }
   return {
     title: input.title,
     caption: input.caption || input.title,
     pages,
-    posterUrl: input.posterUrl,
+    posterUrl: input.galleryPreviewPosterRef || input.posterUrl,
     fileId: input.fileId,
     contentClass: input.contentClass
   };

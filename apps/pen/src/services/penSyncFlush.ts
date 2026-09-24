@@ -5,6 +5,7 @@
 import {
   bootstrapDocCloud,
   publishDocCloud,
+  updateDocMetaCloud,
   upsertDraftCloud
 } from './penCloudStore';
 import {
@@ -21,7 +22,9 @@ import {
 } from './penSyncQueue';
 import type { PenSession } from './penSession';
 import type { LocalDocBundle } from './penLocalStore';
+import { loadLocalDoc, saveLocalDoc } from './penLocalStore';
 import type { PenDraftManifest, PenDocComment, PenSuggestion } from '@par-noir/pen-protocol';
+import { uploadLocalGalleryBlob, withGalleryPreview } from './penGalleryPreview';
 
 /**
  * Local-first create: enqueue cloud bootstrap and flush in the background.
@@ -104,6 +107,51 @@ async function applySyncJob(session: PenSession, job: PenSyncJob): Promise<void>
       link: job.payload.link as never,
       sourceDraftId: job.payload.sourceDraftId as string | undefined
     });
+    return;
+  }
+  if (job.kind === 'gallery_preview') {
+    const localMediaId = String(job.payload.localMediaId || '');
+    const posterLocalMediaId = job.payload.posterLocalMediaId
+      ? String(job.payload.posterLocalMediaId)
+      : undefined;
+    const kind = job.payload.kind === 'video' ? 'video' : 'image';
+    const commitHash = String(job.payload.commitHash || '');
+    if (!localMediaId) throw new Error('gallery_preview_media_missing');
+    const previewRef = await uploadLocalGalleryBlob({
+      session,
+      docId: job.docId,
+      mediaId: localMediaId,
+      fileName: 'gallery-preview.penmedia'
+    });
+    if (!previewRef) throw new Error('gallery_preview_upload_failed');
+    let posterRef: string | undefined;
+    if (posterLocalMediaId) {
+      posterRef =
+        (await uploadLocalGalleryBlob({
+          session,
+          docId: job.docId,
+          mediaId: posterLocalMediaId,
+          fileName: 'gallery-preview-poster.penmedia'
+        })) || undefined;
+    }
+    const bundle = loadLocalDoc(pn, job.docId);
+    if (bundle) {
+      const nextManifest = withGalleryPreview(bundle.manifest, {
+        galleryPreviewRef: previewRef,
+        galleryPreviewKind: kind,
+        galleryPreviewPosterRef: posterRef,
+        galleryPreviewCommitHash: commitHash || bundle.manifest.galleryPreviewCommitHash || ''
+      });
+      saveLocalDoc(pn, { ...bundle, manifest: nextManifest });
+      await updateDocMetaCloud({
+        userPnIdentifier: pn,
+        docId: job.docId,
+        galleryPreviewRef: nextManifest.galleryPreviewRef,
+        galleryPreviewKind: nextManifest.galleryPreviewKind,
+        galleryPreviewPosterRef: nextManifest.galleryPreviewPosterRef,
+        galleryPreviewCommitHash: nextManifest.galleryPreviewCommitHash
+      });
+    }
     return;
   }
   if (job.kind === 'comment') {

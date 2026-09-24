@@ -27,6 +27,8 @@ import {
   type PenSectionContent,
   type ResolvePenEmbed
 } from '@par-noir/pen-protocol';
+import { composePageToVideo } from './composePageVideoEncode';
+import { findComposeExportRoot } from './penGalleryPreview';
 import type { PenSession } from '../App';
 import { createDocFromTemplate } from './createDocFromTemplate';
 import type { LocalDocBundle } from './penLocalStore';
@@ -40,7 +42,6 @@ import { resolveSigningKeys } from './penKeys';
 import { requestNotaryStamp } from './penApi';
 import { generateChatKey, generateGroupId } from '@par-noir/dm-crypto';
 import { schedulePrefsCloudPush } from './penPrefsCloud';
-import { composePageToVideo } from './composePageVideoEncode';
 import {
   openBrowseWithComposedMediaHandoff,
   openBrowseWithMixedPagesHandoff,
@@ -224,9 +225,7 @@ export async function writeComposedVideoPublishHandoff(
   }
   const root =
     opts?.exportRoot ||
-    (typeof document !== 'undefined'
-      ? (document.querySelector('[data-pen-compose-export-root]') as HTMLElement | null)
-      : null);
+    findComposeExportRoot();
   if (!root) {
     throw new Error('compose_export_root_missing');
   }
@@ -328,10 +327,7 @@ export async function writeMixedPagesPublishHandoff(
     await waitTwoFrames();
     // Allow video elements to attach
     await new Promise((r) => setTimeout(r, 200));
-    const root =
-      typeof document !== 'undefined'
-        ? (document.querySelector('[data-pen-compose-export-root]') as HTMLElement | null)
-        : null;
+    const root = findComposeExportRoot();
     if (!root) throw new Error('compose_export_root_missing');
     const encoded = await composePageToVideo(root, {
       onProgress: (p) => {

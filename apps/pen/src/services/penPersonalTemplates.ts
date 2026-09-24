@@ -25,6 +25,12 @@ export interface PersonalTemplate {
   /** Starter section bodies copied from the source doc. */
   seedSections: PenSectionContent[];
   createdAt: string;
+  /** Copied from committed source doc when present. */
+  galleryPreviewRef?: string;
+  galleryPreviewKind?: 'image' | 'video';
+  galleryPreviewPosterRef?: string;
+  /** Source docId for Drive hydrate of gallery penmedia (docKey). */
+  galleryPreviewDocId?: string;
 }
 
 export function listPersonalTemplates(pn: string): PersonalTemplate[] {
@@ -84,7 +90,15 @@ export function savePersonalTemplateFromDoc(
     version: '1',
     sections,
     seedSections,
-    createdAt: now
+    createdAt: now,
+    ...(bundle.manifest.galleryPreviewRef
+      ? {
+          galleryPreviewRef: bundle.manifest.galleryPreviewRef,
+          galleryPreviewKind: bundle.manifest.galleryPreviewKind,
+          galleryPreviewPosterRef: bundle.manifest.galleryPreviewPosterRef,
+          galleryPreviewDocId: bundle.manifest.docId
+        }
+      : {})
   };
   const list = listPersonalTemplates(pn).filter((t) => t.id !== id);
   list.unshift(tpl);

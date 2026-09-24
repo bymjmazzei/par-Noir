@@ -175,25 +175,35 @@ export async function deleteDocCloud(params: {
   }
 }
 
-/** Patch library index title / folderId without rewriting section bodies. */
+/** Patch library index title / folderId / gallery preview refs without rewriting section bodies. */
 export async function updateDocMetaCloud(params: {
   userPnIdentifier: string;
   docId: string;
   title?: string;
   folderId?: string | null;
+  galleryPreviewRef?: string;
+  galleryPreviewKind?: 'image' | 'video';
+  galleryPreviewPosterRef?: string;
+  galleryPreviewCommitHash?: string;
 }): Promise<void> {
-  const res = await ownerFetch(
-    'POST',
-    '/api/pen/apply-inbound',
-    {
-      userPnIdentifier: params.userPnIdentifier,
-      jobType: 'pen.doc_meta',
-      docId: params.docId,
-      title: params.title,
-      folderId: params.folderId
-    },
-    { pnIdentifier: params.userPnIdentifier }
-  );
+  const body: Record<string, unknown> = {
+    userPnIdentifier: params.userPnIdentifier,
+    jobType: 'pen.doc_meta',
+    docId: params.docId
+  };
+  if (params.title !== undefined) body.title = params.title;
+  if (params.folderId !== undefined) body.folderId = params.folderId;
+  if (params.galleryPreviewRef !== undefined) body.galleryPreviewRef = params.galleryPreviewRef;
+  if (params.galleryPreviewKind !== undefined) body.galleryPreviewKind = params.galleryPreviewKind;
+  if (params.galleryPreviewPosterRef !== undefined) {
+    body.galleryPreviewPosterRef = params.galleryPreviewPosterRef;
+  }
+  if (params.galleryPreviewCommitHash !== undefined) {
+    body.galleryPreviewCommitHash = params.galleryPreviewCommitHash;
+  }
+  const res = await ownerFetch('POST', '/api/pen/apply-inbound', body, {
+    pnIdentifier: params.userPnIdentifier
+  });
   if (!res.ok) {
     const err = (await res.json().catch(() => ({}))) as { error?: string };
     throw new Error(err.error || `doc_meta_failed_${res.status}`);

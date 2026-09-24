@@ -8,6 +8,7 @@ export type PenSyncJobKind =
   | 'bootstrap'
   | 'draft_upsert'
   | 'publish'
+  | 'gallery_preview'
   | 'comment'
   | 'suggestion';
 

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { flushSync } from 'react-dom';
 import { Link, useNavigate } from 'react-router-dom';
 import type { Editor } from '@tiptap/react';
 import {
@@ -83,6 +84,10 @@ import {
 } from '../services/penCollab';
 import { publishDocCloud, upsertDraftCloud } from '../services/penCloudStore';
 import { enqueueSyncJob } from '../services/penSyncQueue';
+import {
+  buildAndStoreGalleryPreview,
+  withGalleryPreview
+} from '../services/penGalleryPreview';
 import { ownerGet } from '../services/penOwnerFetch';
 import {
   syncUsedCustomFontsOnManifest,
@@ -149,6 +154,7 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
   const [hydrating, setHydrating] = useState(!initial);
   const [activeSlug, setActiveSlug] = useState(initial?.manifest.toc[0] || 'body');
   const [showPreview, setShowPreview] = useState(true);
+  const [galleryComposeCapture, setGalleryComposeCapture] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
   const [showComments, setShowComments] = useState(false);
   const [invitePn, setInvitePn] = useState('');
@@ -724,7 +730,7 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
       const verified = verifyChain(nextChain);
       if (!verified.ok) throw new Error(verified.error);
 
-      const nextManifest = {
+      let nextManifest = {
         ...bundle!.manifest,
         updatedAt: now.toISOString(),
         lifecycle: 'published' as const,
@@ -735,6 +741,40 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
           ensureOwnerAssignment([], hashPnIdentifier(session.pnIdentifier))
       };
 
+      // Composed gallery preview (local + Drive penmedia). Never fail Commit on encode.
+      try {
+        setStatus('Building gallery preview…');
+        // Social live preview is feed-tile only — mount page layers offscreen so
+        // compose can flatten video + overlays (same surface as non-social preview).
+        flushSync(() => setGalleryComposeCapture(true));
+        await new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r())));
+        await new Promise((r) => setTimeout(r, 450));
+        const preview = await buildAndStoreGalleryPreview({
+          session,
+          docId,
+          commitHash: headHashFromChain(nextChain)
+        });
+        nextManifest = withGalleryPreview(nextManifest, preview);
+        if (!preview.uploaded) {
+          enqueueSyncJob(session.pnIdentifier, {
+            kind: 'gallery_preview',
+            docId,
+            payload: {
+              localMediaId: preview.localMediaId,
+              posterLocalMediaId: preview.posterLocalMediaId,
+              kind: preview.galleryPreviewKind,
+              commitHash: preview.galleryPreviewCommitHash
+            }
+          });
+        }
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : 'gallery_preview_failed';
+        setStatus(`Committed — gallery preview skipped (${msg})`);
+        window.setTimeout(() => setStatus(null), 4000);
+      } finally {
+        setGalleryComposeCapture(false);
+      }
+
       persist(
         {
           manifest: nextManifest,
@@ -743,6 +783,8 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
         },
         { draft: false }
       );
+
+      setStatus((s) => (s && s.startsWith('Committed —') ? s : 'Publishing live…'));
 
       const ciphertextB64 = envelopeToWireB64(
         await encryptSectionJson(section!, mintDocKey(docId))
@@ -1714,6 +1756,22 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
             ) : null}
           </div>
         )}
+
+        {galleryComposeCapture && section && bundle ? (
+          <div
+            aria-hidden
+            className="pointer-events-none fixed left-[-12000px] top-0 z-[-1] h-[720px] w-[405px] overflow-hidden opacity-0"
+          >
+            <EditablePagePreview
+              manifest={bundle.manifest}
+              section={section}
+              activeLayerId={PAGE_LAYER_ID}
+              session={session}
+              onSelectLayer={() => undefined}
+              onSectionChange={() => undefined}
+            />
+          </div>
+        ) : null}
       </div>
     </div>
   );

@@ -23,7 +23,7 @@ export function templatePreviewBundle(pn: string | undefined, templateId: string
       description: based?.description || 'Personal template',
       authorDisplayName: 'You',
       manifest: {
-        docId: 'preview',
+        docId: personal.galleryPreviewDocId || 'preview',
         title: personal.title,
         docType: personal.docType,
         classId: personal.classId,
@@ -32,7 +32,14 @@ export function templatePreviewBundle(pn: string | undefined, templateId: string
         groupId: 'preview',
         toc: personal.sections.map((s) => s.slug),
         createdAt: personal.createdAt,
-        updatedAt: personal.createdAt
+        updatedAt: personal.createdAt,
+        ...(personal.galleryPreviewRef
+          ? {
+              galleryPreviewRef: personal.galleryPreviewRef,
+              galleryPreviewKind: personal.galleryPreviewKind,
+              galleryPreviewPosterRef: personal.galleryPreviewPosterRef
+            }
+          : {})
       },
       sections: personal.seedSections.length
         ? personal.seedSections

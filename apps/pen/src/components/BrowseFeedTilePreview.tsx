@@ -92,7 +92,10 @@ export function BrowseFeedTilePreview({
     title: manifest.title || 'Untitled',
     sections,
     pagePresentation: manifest.pagePresentation,
-    contentClass: manifest.docType
+    contentClass: manifest.docType,
+    galleryPreviewRef: manifest.galleryPreviewRef,
+    galleryPreviewKind: manifest.galleryPreviewKind,
+    galleryPreviewPosterRef: manifest.galleryPreviewPosterRef
   });
   // Never paint unresolved penmedia:/penlocal: on first render.
   const [model, setModel] = useState(() => scrubUnresolvedMedia(base));
@@ -103,7 +106,10 @@ export function BrowseFeedTilePreview({
       title: manifest.title || 'Untitled',
       sections,
       pagePresentation: manifest.pagePresentation,
-      contentClass: manifest.docType
+      contentClass: manifest.docType,
+      galleryPreviewRef: manifest.galleryPreviewRef,
+      galleryPreviewKind: manifest.galleryPreviewKind,
+      galleryPreviewPosterRef: manifest.galleryPreviewPosterRef
     });
     setModel(scrubUnresolvedMedia(next));
     void resolveTileMedia(next, manifest.docId, session).then((resolved) => {
