@@ -40,8 +40,14 @@ function formTitle(classId: string): string {
       return 'Collection';
     case 'social.set':
       return 'Set';
-    case 'social.feed':
+    case 'community.feed':
       return 'Feed';
+    case 'community.landing':
+      return 'Landing';
+    case 'community.home':
+      return 'Community home';
+    case 'community.site':
+      return 'Site';
     case 'projects.journal':
       return 'Journal';
     case 'projects.list':
@@ -114,13 +120,35 @@ function iconFor(classId: string, className: string) {
           <path d="M10.5 10.5l3 3" />
         </svg>
       );
-    case 'social.feed':
+    case 'community.feed':
       return (
         <svg {...props}>
           <path d="M5 18a1 1 0 110-2" />
           <path d="M5 14a5 5 0 015 5" />
           <path d="M5 10a9 9 0 019 9" />
           <path d="M5 6a13 13 0 0113 13" />
+        </svg>
+      );
+    case 'community.landing':
+      return (
+        <svg {...props}>
+          <rect x="4" y="4" width="16" height="16" rx="1.5" />
+          <path d="M8 10h8M8 14h5" />
+        </svg>
+      );
+    case 'community.home':
+      return (
+        <svg {...props}>
+          <path d="M4 11l8-7 8 7" />
+          <path d="M6 10v9h12v-9" />
+        </svg>
+      );
+    case 'community.site':
+      return (
+        <svg {...props}>
+          <rect x="3" y="5" width="7" height="14" rx="1" />
+          <rect x="14" y="5" width="7" height="14" rx="1" />
+          <path d="M5 9h3M5 12h3M16 9h3M16 12h3" />
         </svg>
       );
     case 'projects.journal':

@@ -19,7 +19,6 @@ par Noir needs a universal authored-content language for humans, collaborators, 
    - **Library** (consumer) — Book, Article, **Music** (`library.music`). Durable works + audio assets.
    - **Time** (consumer) — Calendar, Event, Schedule (calendar/scheduling).
    - **Records** (kit only, `audience: 'kit'`) — Register, **Asset key** (`records.asset_key` license receipt). Hidden from Pen New…; included in `GET /api/pen/templates` for L5.
-   - **Registry note:** Living code may still expose `social.feed` until the hard-cut implement PR (`social.feed` → `community.feed`). Design SoT is this ADR + the format survey migration appendix.
 4. **Lifecycle:** Library is a **template / form category** (Book, Article)—peer to Social/Projects/Time/Community, not a publish channel. Publishing a **Project** may (a) save as a **Library template** under Yours, or (b) create a **finished Library document** (durable long-form, not a social feed tile) and write it to the owner’s cloud replica (`bootstrapDocCloud` / `publishDocCloud`). **Community Site** publishes/consumes as a multipage feed of page refs under the same custody spine—not a separate site host product.
 5. **Audience:** Every `PenClass` has `audience: 'consumer' | 'kit'`. Pen UI lists consumer only; API/SDK return the full catalog.
 6. **Browse `contentClass`** remains the social visibility target. Pen **Publish** updates the doc’s live `current/` only. **Connect to feed** chooses **aggregator targets** (browse, pen-templates, third-party stubs) via `openBrowseWithPenHandoff` / `pen_publish_handoff_v1` — not a separate publish type. Share to **browse** → normal social post (user feeds / Discover relevance). Share to **pen-templates** → sets `penTemplateKind` (+ taxonomy / `penIrRef`); surfaces **only** on the pN templates feed page and Discover **Templates** section — never user feeds, other feeds, or Discover relevance. As template (private Yours / `par-noir-pen/templates/`) and Projects → Library template / finished work remain Pen actions. Dashboard = packed CSS grid.
@@ -39,7 +38,7 @@ par Noir needs a universal authored-content language for humans, collaborators, 
 
 ## Reserved (follow-ons)
 
-Time calendar widgets; Records register UI / query engine; **Community registry hard-cut + format-first seeds** (see [`PEN_FORM_FORMAT_SURVEY.md`](./PEN_FORM_FORMAT_SURVEY.md) migration appendix); MCP tool servers; **My fonts / cloud font grants**; engager weight refinements (repost-originated); Veriff product UX.
+Time calendar widgets; Records register UI / query engine; MCP tool servers; **My fonts / cloud font grants**; engager weight refinements (repost-originated); Veriff product UX.
 
 ## Consequences
 

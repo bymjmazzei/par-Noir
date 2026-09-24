@@ -235,7 +235,7 @@ Peer categories after Community hard-cut (registry implement deferred):
 
 ---
 
-## Migration appendix (registry hard-cut — deferred implement)
+## Migration appendix (registry hard-cut — implemented)
 
 ### Class id rename / add map
 
@@ -262,17 +262,17 @@ Docs already using “self-hosted community” for L5 feeds remain valid; Pen **
 
 ### Next implement checklist
 
-- [ ] Registry: Community category + Feed move + Landing / Home / Site forms  
-- [ ] Format-first seed rebuild per tables above (delete stock-as-format anti-patterns)  
-- [ ] Gallery/preview: Feed preview = feed chrome; Site preview = multipage feed; Landing/Home = page  
-- [ ] Curriculum + acceptance tests for classId invariants  
-- [ ] No Elementor widget runtime; Site remains aggregator/compiler  
+- [x] Registry: Community category + Feed move + Landing / Home / Site forms  
+- [x] Format-first seed rebuild per tables above (delete stock-as-format anti-patterns)  
+- [x] Gallery/preview: text-first Notes; Feed config chrome; Landing/Home/Site section roles  
+- [x] Curriculum + acceptance tests for classId invariants  
+- [x] No Elementor widget runtime; Site remains aggregator/compiler  
 
+*(Implemented in format-first Community registry pass.)*
 ---
 
 ## Non-goals (this document)
 
-- Shipping registry/UI/seeds  
 - Community **template marketplace**  
 - Elementor/Framer widget runtimes  
 - Copying third-party template files or assets

@@ -1,4 +1,4 @@
-/** Rich seed IR builders for platform starters (Pexels media via STARTER_ASSETS). */
+/** Format-first seed IR for platform starters (see PEN_FORM_FORMAT_SURVEY.md). */
 
 import type {
   PenPageLayer,
@@ -21,14 +21,9 @@ export function tipTapParagraphs(...paras: string[]): PenTipTapNode {
 
 export function tipTapHeading(text: string, level = 1): PenTipTapNode {
   return {
-    type: 'doc',
-    content: [
-      {
-        type: 'heading',
-        attrs: { level },
-        content: text ? [{ type: 'text', text }] : []
-      }
-    ]
+    type: 'heading',
+    attrs: { level },
+    content: text ? [{ type: 'text', text }] : []
   };
 }
 
@@ -36,6 +31,21 @@ export function tipTapDoc(...nodes: PenTipTapNode[]): PenTipTapNode {
   return {
     type: 'doc',
     content: nodes.flatMap((n) => (n.type === 'doc' ? n.content || [] : [n]))
+  };
+}
+
+function bulletList(...items: string[]): PenTipTapNode {
+  return {
+    type: 'bulletList',
+    content: items.map((text) => ({
+      type: 'listItem',
+      content: [
+        {
+          type: 'paragraph',
+          content: text ? [{ type: 'text', text }] : []
+        }
+      ]
+    }))
   };
 }
 
@@ -50,7 +60,7 @@ function textLayer(
     kind: 'text',
     ...geom,
     name: id,
-    positionLocked: extra?.positionLocked ?? false,
+    positionLocked: extra?.positionLocked ?? true,
     textDoc: tipTapParagraphs(text),
     ...extra
   };
@@ -89,7 +99,7 @@ function videoLayer(
 }
 
 export function socialPresentation(
-  partial: Partial<PenPagePresentation> & { backgroundImage?: string }
+  partial: Partial<PenPagePresentation> = {}
 ): PenPagePresentation {
   return {
     fontFamily: partial.fontFamily || 'Georgia',
@@ -133,40 +143,24 @@ export type SeedBundle = {
   seedPageLayout?: PenPageLayout;
 };
 
+/** Note — text-first; no obligatory hero media. */
 export function seedNoteBasic(): SeedBundle {
   return {
     seedPageLayout: 'flow',
     seedPagePresentation: socialPresentation({
-      backgroundImage: STARTER_ASSETS.noteHero,
-      backgroundColor: '#0a0a0a',
-      fontSize: 44,
-      textAlign: 'center'
+      backgroundColor: '#0c0c0c',
+      fontSize: 40,
+      textAlign: 'left',
+      padding: 40
     }),
     seedSections: [
       {
         slug: 'body',
         doc: tipTapParagraphs(
           'A short line that lands.',
-          'Replace this copy — keep it clear for browse.'
+          'Keep going — this form is text-first. Add media only if it serves the words.'
         ),
-        layers: [
-          imageLayer('layer_media', STARTER_ASSETS.noteHero, {
-            x: 0,
-            y: 0,
-            w: 360,
-            h: 480,
-            zIndex: 1
-          }),
-          textLayer(
-            'layer_caption',
-            'A short line that lands.',
-            { x: 24, y: 360, w: 312, h: 96, zIndex: 2 },
-            {
-              positionLocked: true,
-              backgroundColor: 'rgba(0,0,0,0.35)'
-            }
-          )
-        ]
+        layers: []
       }
     ]
   };
@@ -176,38 +170,22 @@ export function seedNoteArticle(): SeedBundle {
   return {
     seedPageLayout: 'flow',
     seedPagePresentation: socialPresentation({
-      backgroundImage: STARTER_ASSETS.articleHero,
-      backgroundColor: '#101820',
-      fontFamily: 'Georgia',
+      backgroundColor: '#121212',
       fontSize: 36,
       textAlign: 'left',
-      padding: 28
+      padding: 32
     }),
     seedSections: [
       {
         slug: 'title',
         doc: tipTapParagraphs('The point, in one line'),
-        layers: [
-          imageLayer('layer_hero', STARTER_ASSETS.articleHero, {
-            x: 0,
-            y: 0,
-            w: 360,
-            h: 200,
-            zIndex: 1
-          }),
-          textLayer(
-            'layer_title',
-            'The point, in one line',
-            { x: 20, y: 140, w: 320, h: 56, zIndex: 2 },
-            { positionLocked: true, backgroundColor: 'rgba(0,0,0,0.45)' }
-          )
-        ]
+        layers: []
       },
       {
         slug: 'body',
         doc: tipTapParagraphs(
           'Lead with the claim. Keep paragraphs short.',
-          'Add the detail that earns the scroll.'
+          'Detail that earns the scroll comes second.'
         ),
         layers: []
       }
@@ -219,9 +197,9 @@ export function seedPostCaption(): SeedBundle {
   return {
     seedPageLayout: 'flow',
     seedPagePresentation: socialPresentation({
+      backgroundColor: '#1a1a1a',
       backgroundImage: STARTER_ASSETS.captionBg,
-      backgroundColor: '#1c1410',
-      fontSize: 32,
+      fontSize: 28,
       textAlign: 'center'
     }),
     seedSections: [
@@ -233,35 +211,32 @@ export function seedPostCaption(): SeedBundle {
             x: 0,
             y: 0,
             w: 360,
-            h: 420,
+            h: 360,
             zIndex: 1
           }),
-          textLayer(
-            'layer_caption',
-            'Say it in one breath.',
-            { x: 28, y: 300, w: 304, h: 80, zIndex: 2 },
-            { positionLocked: true }
-          )
+          textLayer('layer_caption', 'Say it in one breath.', {
+            x: 24,
+            y: 300,
+            w: 312,
+            h: 56,
+            zIndex: 2
+          })
         ]
       },
-      {
-        slug: 'attachments',
-        doc: tipTapParagraphs(''),
-        layers: []
-      }
+      { slug: 'attachments', doc: tipTapParagraphs(''), layers: [] }
     ]
   };
 }
 
+/** Post — media-primary; stock only fills the required media slot. */
 export function seedPostImage(): SeedBundle {
   return {
     seedPageLayout: 'flow',
     seedPagePresentation: socialPresentation({
       backgroundColor: '#000000',
-      backgroundImage: STARTER_ASSETS.imagePost,
-      fontSize: 28,
+      fontSize: 24,
       textAlign: 'left',
-      padding: 24
+      padding: 20
     }),
     seedSections: [
       {
@@ -281,12 +256,13 @@ export function seedPostImage(): SeedBundle {
         slug: 'caption',
         doc: tipTapParagraphs('Optional caption under the frame.'),
         layers: [
-          textLayer(
-            'layer_caption',
-            'Optional caption under the frame.',
-            { x: 20, y: 460, w: 320, h: 64, zIndex: 2 },
-            { positionLocked: true }
-          )
+          textLayer('layer_caption', 'Optional caption under the frame.', {
+            x: 16,
+            y: 460,
+            w: 328,
+            h: 48,
+            zIndex: 2
+          })
         ]
       }
     ]
@@ -298,8 +274,7 @@ export function seedPostVideo(): SeedBundle {
     seedPageLayout: 'flow',
     seedPagePresentation: socialPresentation({
       backgroundColor: '#050505',
-      backgroundImage: STARTER_ASSETS.videoPoster,
-      fontSize: 28,
+      fontSize: 24,
       textAlign: 'center'
     }),
     seedSections: [
@@ -318,50 +293,45 @@ export function seedPostVideo(): SeedBundle {
       },
       {
         slug: 'caption',
-        doc: tipTapParagraphs('Tap play — then swap in your clip.'),
+        doc: tipTapParagraphs('Swap in your clip.'),
         layers: [
-          textLayer(
-            'layer_caption',
-            'Tap play — then swap in your clip.',
-            { x: 24, y: 560, w: 312, h: 64, zIndex: 2 },
-            { positionLocked: true, backgroundColor: 'rgba(0,0,0,0.4)' }
-          )
+          textLayer('layer_caption', 'Swap in your clip.', {
+            x: 24,
+            y: 560,
+            w: 312,
+            h: 48,
+            zIndex: 2
+          })
         ]
       }
     ]
   };
 }
 
+/** Collection — typed page roles: text page + media page. */
 export function seedCollectionBasic(): SeedBundle {
   return {
     seedPageLayout: 'flow',
     seedPagePresentation: socialPresentation({
-      backgroundImage: STARTER_ASSETS.collection1,
-      backgroundColor: '#0d1b2a'
+      backgroundColor: '#0d1b2a',
+      textAlign: 'left',
+      fontSize: 32
     }),
     seedSections: [
       {
         slug: 'slide-1',
-        doc: tipTapParagraphs('First page'),
-        layers: [
-          imageLayer('layer_media', STARTER_ASSETS.collection1, {
-            x: 0,
-            y: 0,
-            w: 360,
-            h: 480,
-            zIndex: 1
-          }),
-          textLayer(
-            'layer_title',
-            'First page',
-            { x: 24, y: 400, w: 312, h: 56, zIndex: 2 },
-            { positionLocked: true }
+        doc: tipTapDoc(
+          tipTapHeading('Text page', 2),
+          tipTapParagraphs(
+            'This page is note-like: words first.',
+            'Swipe for a media page.'
           )
-        ]
+        ),
+        layers: []
       },
       {
         slug: 'slide-2',
-        doc: tipTapParagraphs('Second page — swipe to see'),
+        doc: tipTapParagraphs('Media page'),
         layers: [
           imageLayer('layer_media', STARTER_ASSETS.collection2, {
             x: 0,
@@ -370,12 +340,13 @@ export function seedCollectionBasic(): SeedBundle {
             h: 480,
             zIndex: 1
           }),
-          textLayer(
-            'layer_title',
-            'Second page — swipe to see',
-            { x: 24, y: 400, w: 312, h: 56, zIndex: 2 },
-            { positionLocked: true }
-          )
+          textLayer('layer_caption', 'Media page — post-like', {
+            x: 20,
+            y: 400,
+            w: 320,
+            h: 48,
+            zIndex: 2
+          })
         ]
       }
     ]
@@ -386,9 +357,8 @@ export function seedCollectionStory(): SeedBundle {
   return {
     seedPageLayout: 'flow',
     seedPagePresentation: socialPresentation({
-      backgroundImage: STARTER_ASSETS.storyCover,
       backgroundColor: '#120a1a',
-      fontSize: 40
+      fontSize: 36
     }),
     seedSections: [
       {
@@ -402,106 +372,96 @@ export function seedCollectionStory(): SeedBundle {
             h: 640,
             zIndex: 1
           }),
-          textLayer(
-            'layer_title',
-            'Tonight’s story',
-            { x: 28, y: 500, w: 304, h: 72, zIndex: 2 },
-            { positionLocked: true }
-          )
+          textLayer('layer_title', 'Tonight’s story', {
+            x: 28,
+            y: 500,
+            w: 304,
+            h: 64,
+            zIndex: 2
+          })
         ]
       },
       {
         slug: 'pages',
-        doc: tipTapParagraphs('The beat continues…'),
-        layers: [
-          imageLayer('layer_media', STARTER_ASSETS.storyPage, {
-            x: 0,
-            y: 0,
-            w: 360,
-            h: 640,
-            zIndex: 1
-          }),
-          textLayer(
-            'layer_caption',
-            'The beat continues…',
-            { x: 28, y: 520, w: 304, h: 64, zIndex: 2 },
-            { positionLocked: true }
-          )
-        ]
-      }
-    ]
-  };
-}
-
-export function seedSetBasic(): SeedBundle {
-  return {
-    seedPageLayout: 'flow',
-    seedPagePresentation: socialPresentation({
-      backgroundImage: STARTER_ASSETS.setPrimary,
-      backgroundColor: '#1a1a1a',
-      textAlign: 'left'
-    }),
-    seedSections: [
-      {
-        slug: 'primary',
-        doc: tipTapParagraphs('Primary piece'),
-        layers: [
-          imageLayer('layer_media', STARTER_ASSETS.setPrimary, {
-            x: 0,
-            y: 0,
-            w: 360,
-            h: 280,
-            zIndex: 1
-          }),
-          textLayer(
-            'layer_title',
-            'Primary piece',
-            { x: 20, y: 220, w: 320, h: 48, zIndex: 2 },
-            { positionLocked: true }
-          )
-        ]
-      },
-      {
-        slug: 'sources',
-        doc: tipTapParagraphs('Source A', 'Source B'),
+        doc: tipTapParagraphs(
+          'Beat two — still vertical.',
+          'Keep each beat short.'
+        ),
         layers: []
       }
     ]
   };
 }
 
-export function seedFeedSelfHosted(): SeedBundle {
+/** Set — primary + source refs (not a collage). */
+export function seedSetBasic(): SeedBundle {
   return {
     seedPageLayout: 'flow',
     seedPagePresentation: socialPresentation({
-      backgroundImage: STARTER_ASSETS.feedHero,
-      backgroundColor: '#111827',
+      backgroundColor: '#1a1a1a',
       textAlign: 'left',
-      fontSize: 34
+      fontSize: 28,
+      padding: 28
+    }),
+    seedSections: [
+      {
+        slug: 'primary',
+        doc: tipTapDoc(
+          tipTapHeading('Primary', 2),
+          tipTapParagraphs(
+            'Attach → From Pen to embed the main doc.',
+            'penEmbed: (choose primary doc)'
+          )
+        ),
+        layers: []
+      },
+      {
+        slug: 'sources',
+        doc: tipTapDoc(
+          tipTapHeading('Sources', 3),
+          bulletList(
+            'ref: (source doc A)',
+            'ref: (source doc B)',
+            'Add more refs as needed'
+          )
+        ),
+        layers: []
+      }
+    ]
+  };
+}
+
+/** Feed — config surface, not a mood board. */
+export function seedFeedSelfHosted(): SeedBundle {
+  return {
+    seedPageLayout: 'letter',
+    seedPagePresentation: paperPresentation({
+      backgroundColor: '#ffffff',
+      fontFamily: 'ui-sans-serif, system-ui, sans-serif',
+      fontSize: 16
     }),
     seedSections: [
       {
         slug: 'meta',
-        doc: tipTapParagraphs('My feed', 'What this space is for.'),
-        layers: [
-          imageLayer('layer_hero', STARTER_ASSETS.feedHero, {
-            x: 0,
-            y: 0,
-            w: 360,
-            h: 220,
-            zIndex: 1
-          }),
-          textLayer(
-            'layer_title',
-            'My feed',
-            { x: 20, y: 160, w: 320, h: 48, zIndex: 2 },
-            { positionLocked: true }
+        doc: tipTapDoc(
+          tipTapHeading('Feed name', 1),
+          tipTapParagraphs(
+            'Purpose: what this stream is for.',
+            'Visibility: members of this community.'
           )
-        ]
+        ),
+        layers: []
       },
       {
         slug: 'rules',
-        doc: tipTapParagraphs('Who can post', 'What belongs here'),
+        doc: tipTapDoc(
+          tipTapHeading('Membership rules', 2),
+          bulletList(
+            'Who can post',
+            'What belongs here',
+            'What gets removed'
+          )
+        ),
         layers: []
       }
     ]
@@ -510,35 +470,139 @@ export function seedFeedSelfHosted(): SeedBundle {
 
 export function seedFeedCurated(): SeedBundle {
   return {
-    seedPageLayout: 'flow',
-    seedPagePresentation: socialPresentation({
-      backgroundImage: STARTER_ASSETS.feedCurated,
-      backgroundColor: '#0f172a',
-      textAlign: 'left'
+    seedPageLayout: 'letter',
+    seedPagePresentation: paperPresentation({
+      backgroundColor: '#fafafa',
+      fontFamily: 'ui-sans-serif, system-ui, sans-serif',
+      fontSize: 16
     }),
     seedSections: [
       {
         slug: 'meta',
-        doc: tipTapParagraphs('Curated picks', 'Hand-chosen for this week.'),
-        layers: [
-          imageLayer('layer_hero', STARTER_ASSETS.feedCurated, {
-            x: 0,
-            y: 0,
-            w: 360,
-            h: 220,
-            zIndex: 1
-          }),
-          textLayer(
-            'layer_title',
-            'Curated picks',
-            { x: 20, y: 160, w: 320, h: 48, zIndex: 2 },
-            { positionLocked: true }
-          )
-        ]
+        doc: tipTapDoc(
+          tipTapHeading('Curated feed', 1),
+          tipTapParagraphs('Hand-chosen index for this week.')
+        ),
+        layers: []
       },
       {
         slug: 'index',
-        doc: tipTapParagraphs('1. Opening', '2. Feature', '3. Close'),
+        doc: tipTapDoc(
+          tipTapHeading('Index', 2),
+          bulletList('1. Opening pick', '2. Feature', '3. Close')
+        ),
+        layers: []
+      }
+    ]
+  };
+}
+
+export function seedLanding(): SeedBundle {
+  return {
+    seedPageLayout: 'letter',
+    seedPagePresentation: paperPresentation({
+      backgroundColor: '#0f172a',
+      textColor: '#f8fafc',
+      textAlign: 'center',
+      fontSize: 20,
+      padding: 56
+    }),
+    seedSections: [
+      {
+        slug: 'hero',
+        doc: tipTapDoc(
+          tipTapHeading('Your headline', 1),
+          tipTapParagraphs('One supporting line for arrivals.')
+        ),
+        layers: []
+      },
+      {
+        slug: 'value',
+        doc: tipTapDoc(
+          tipTapHeading('Why it matters', 2),
+          bulletList('Benefit one', 'Benefit two', 'Proof or social signal')
+        ),
+        layers: []
+      },
+      {
+        slug: 'cta',
+        doc: tipTapParagraphs('Primary action → (link or join)'),
+        layers: []
+      }
+    ]
+  };
+}
+
+export function seedCommunityHome(): SeedBundle {
+  return {
+    seedPageLayout: 'letter',
+    seedPagePresentation: paperPresentation({
+      backgroundColor: '#111827',
+      textColor: '#f9fafb',
+      fontSize: 17,
+      padding: 40
+    }),
+    seedSections: [
+      {
+        slug: 'banner',
+        doc: tipTapDoc(
+          tipTapHeading('Community name', 1),
+          tipTapParagraphs('Short about line.')
+        ),
+        layers: []
+      },
+      {
+        slug: 'nav',
+        doc: tipTapDoc(
+          tipTapHeading('Nav', 3),
+          bulletList('Home', 'Feed', 'About')
+        ),
+        layers: []
+      },
+      {
+        slug: 'featured',
+        doc: tipTapDoc(
+          tipTapHeading('Featured stream', 2),
+          tipTapParagraphs('Embed or link your community.feed here.')
+        ),
+        layers: []
+      },
+      {
+        slug: 'announcements',
+        doc: tipTapDoc(
+          tipTapHeading('Announcements', 2),
+          tipTapParagraphs('Pinned update for members.')
+        ),
+        layers: []
+      }
+    ]
+  };
+}
+
+/** Site — ordered multipage feed toc (aggregator), not a widget builder. */
+export function seedSite(): SeedBundle {
+  return {
+    seedPageLayout: 'letter',
+    seedPagePresentation: paperPresentation({
+      backgroundColor: '#ffffff',
+      fontFamily: 'ui-sans-serif, system-ui, sans-serif',
+      fontSize: 16
+    }),
+    seedSections: [
+      {
+        slug: 'pages',
+        doc: tipTapDoc(
+          tipTapHeading('Site pages', 1),
+          tipTapParagraphs(
+            'Ordered multipage feed — like browse home.',
+            'Replace each ref with a Landing, Community home, or Social page.'
+          ),
+          bulletList(
+            '1. page: Landing (arrival)',
+            '2. page: Community home',
+            '3. page: (add Note / Post / …)'
+          )
+        ),
         layers: []
       }
     ]
@@ -549,36 +613,19 @@ export function seedJournal(): SeedBundle {
   return {
     seedPageLayout: 'letter',
     seedPagePresentation: paperPresentation({
-      backgroundImage: STARTER_ASSETS.journal,
       backgroundColor: '#f4efe6',
-      fontFamily: 'Georgia',
       fontSize: 17
     }),
     seedSections: [
       {
         slug: 'entries',
         doc: tipTapDoc(
-          tipTapHeading('Thursday', 2),
-          tipTapParagraphs(
-            'Morning — what stuck.',
-            'Evening — what I want to keep.'
-          )
+          tipTapHeading('2026-09-24', 2),
+          tipTapParagraphs('Morning — what stuck.', 'Evening — what to keep.'),
+          tipTapHeading('2026-09-23', 2),
+          tipTapParagraphs('Yesterday’s note.')
         ),
-        layers: [
-          imageLayer('layer_header', STARTER_ASSETS.journal, {
-            x: 48,
-            y: 40,
-            w: 640,
-            h: 160,
-            zIndex: 1
-          }),
-          textLayer(
-            'layer_date',
-            'Thursday',
-            { x: 64, y: 140, w: 280, h: 40, zIndex: 2 },
-            { positionLocked: true, backgroundColor: 'rgba(255,255,255,0.7)' }
-          )
-        ]
+        layers: []
       }
     ]
   };
@@ -589,29 +636,21 @@ export function seedList(): SeedBundle {
     seedPageLayout: 'letter',
     seedPagePresentation: paperPresentation({
       backgroundColor: '#ffffff',
-      backgroundImage: STARTER_ASSETS.listHeader,
-      fontFamily: 'Helvetica Neue',
+      fontFamily: 'ui-sans-serif, system-ui, sans-serif',
       fontSize: 16
     }),
     seedSections: [
       {
         slug: 'items',
-        doc: tipTapParagraphs('☐ First thing', '☐ Second thing', '☐ Third thing'),
-        layers: [
-          imageLayer('layer_header', STARTER_ASSETS.listHeader, {
-            x: 48,
-            y: 32,
-            w: 640,
-            h: 120,
-            zIndex: 1
-          }),
-          textLayer(
-            'layer_title',
-            'Today',
-            { x: 64, y: 100, w: 200, h: 36, zIndex: 2 },
-            { positionLocked: true }
+        doc: tipTapDoc(
+          tipTapHeading('Today', 2),
+          bulletList(
+            '[ ] First item',
+            '[ ] Second item',
+            '[x] Done example'
           )
-        ]
+        ),
+        layers: []
       }
     ]
   };
@@ -622,23 +661,31 @@ export function seedLetter(): SeedBundle {
     seedPageLayout: 'letter',
     seedPagePresentation: paperPresentation({
       backgroundColor: '#fffdf8',
-      fontFamily: 'Georgia',
       fontSize: 17
     }),
     seedSections: [
       {
         slug: 'body',
-        doc: tipTapParagraphs(
-          'Dear friend,',
-          'I hope this finds you well.',
-          'With care,'
+        doc: tipTapDoc(
+          tipTapParagraphs('Dear friend,'),
+          tipTapParagraphs(
+            'Body of the letter — replace with your message.',
+            'Keep the regions: salutation, body, closing.'
+          ),
+          tipTapParagraphs('With care,', 'Your name')
         ),
         layers: [
-          imageLayer(
-            'layer_letterhead',
-            STARTER_ASSETS.letter,
-            { x: 48, y: 36, w: 200, h: 80, zIndex: 1 },
-            true
+          textLayer(
+            'layer_salutation',
+            'Dear friend,',
+            { x: 48, y: 80, w: 400, h: 36, zIndex: 1 },
+            { positionLocked: true }
+          ),
+          textLayer(
+            'layer_closing',
+            'With care,',
+            { x: 48, y: 720, w: 280, h: 36, zIndex: 2 },
+            { positionLocked: true }
           )
         ]
       }
@@ -652,29 +699,14 @@ export function seedCardNote(): SeedBundle {
     seedPagePresentation: paperPresentation({
       backgroundColor: '#1f2937',
       textColor: '#f9fafb',
-      backgroundImage: STARTER_ASSETS.cardNote,
       textAlign: 'center',
-      fontSize: 20
+      fontSize: 22
     }),
     seedSections: [
       {
         slug: 'body',
         doc: tipTapParagraphs('Thinking of you.'),
-        layers: [
-          imageLayer('layer_media', STARTER_ASSETS.cardNote, {
-            x: 80,
-            y: 120,
-            w: 576,
-            h: 360,
-            zIndex: 1
-          }),
-          textLayer(
-            'layer_message',
-            'Thinking of you.',
-            { x: 120, y: 420, w: 496, h: 56, zIndex: 2 },
-            { positionLocked: true, backgroundColor: 'rgba(0,0,0,0.35)' }
-          )
-        ]
+        layers: []
       }
     ]
   };
@@ -686,32 +718,17 @@ export function seedBook(): SeedBundle {
     seedPagePresentation: paperPresentation({
       backgroundColor: '#1a1520',
       textColor: '#f5f0e8',
-      backgroundImage: STARTER_ASSETS.bookCover,
       textAlign: 'center',
-      fontSize: 28
+      fontSize: 24
     }),
     seedSections: [
       {
         slug: 'front',
         doc: tipTapDoc(
           tipTapHeading('Untitled Volume', 1),
-          tipTapParagraphs('A working title')
+          tipTapParagraphs('A working title', 'Author')
         ),
-        layers: [
-          imageLayer('layer_cover', STARTER_ASSETS.bookCover, {
-            x: 120,
-            y: 80,
-            w: 496,
-            h: 640,
-            zIndex: 1
-          }),
-          textLayer(
-            'layer_title',
-            'Untitled Volume',
-            { x: 140, y: 520, w: 456, h: 64, zIndex: 2 },
-            { positionLocked: true, backgroundColor: 'rgba(0,0,0,0.45)' }
-          )
-        ]
+        layers: []
       },
       {
         slug: 'body',
@@ -730,7 +747,6 @@ export function seedArticle(): SeedBundle {
     seedPageLayout: 'letter',
     seedPagePresentation: paperPresentation({
       backgroundColor: '#ffffff',
-      backgroundImage: STARTER_ASSETS.articleHero,
       fontSize: 17
     }),
     seedSections: [
@@ -739,19 +755,11 @@ export function seedArticle(): SeedBundle {
         doc: tipTapDoc(
           tipTapHeading('Essay title', 1),
           tipTapParagraphs(
-            'Open with the stake.',
-            'Develop the argument in short blocks.'
+            'Open with the stake — text is primary.',
+            'Optional hero media is secondary to the article.'
           )
         ),
-        layers: [
-          imageLayer('layer_hero', STARTER_ASSETS.articleHero, {
-            x: 48,
-            y: 40,
-            w: 640,
-            h: 220,
-            zIndex: 1
-          })
-        ]
+        layers: []
       }
     ]
   };
@@ -763,33 +771,29 @@ export function seedMusic(): SeedBundle {
     seedPagePresentation: paperPresentation({
       backgroundColor: '#0b0b0b',
       textColor: '#fafafa',
-      backgroundImage: STARTER_ASSETS.musicCover,
       textAlign: 'center',
-      fontSize: 22
+      fontSize: 20
     }),
     seedSections: [
       {
         slug: 'meta',
-        doc: tipTapParagraphs('Track title', 'Artist name'),
+        doc: tipTapDoc(
+          tipTapHeading('Track title', 1),
+          tipTapParagraphs('Artist name')
+        ),
         layers: [
           imageLayer('layer_cover', STARTER_ASSETS.musicCover, {
             x: 168,
-            y: 80,
+            y: 120,
             w: 400,
             h: 400,
             zIndex: 1
-          }),
-          textLayer(
-            'layer_title',
-            'Track title',
-            { x: 120, y: 500, w: 496, h: 40, zIndex: 2 },
-            { positionLocked: true }
-          )
+          })
         ]
       },
       {
         slug: 'audio',
-        doc: tipTapParagraphs('Attach your audio here.'),
+        doc: tipTapParagraphs('Attach your audio file here.'),
         layers: []
       }
     ]
@@ -801,26 +805,24 @@ export function seedCalendar(): SeedBundle {
     seedPageLayout: 'letter',
     seedPagePresentation: paperPresentation({
       backgroundColor: '#f8fafc',
-      backgroundImage: STARTER_ASSETS.calendar,
+      fontFamily: 'ui-sans-serif, system-ui, sans-serif',
       fontSize: 16
     }),
     seedSections: [
       {
         slug: 'meta',
-        doc: tipTapParagraphs('September calendar', 'Personal + work'),
-        layers: [
-          imageLayer('layer_hero', STARTER_ASSETS.calendar, {
-            x: 48,
-            y: 36,
-            w: 640,
-            h: 180,
-            zIndex: 1
-          })
-        ]
+        doc: tipTapDoc(
+          tipTapHeading('September', 1),
+          tipTapParagraphs('Personal + work')
+        ),
+        layers: []
       },
       {
         slug: 'events',
-        doc: tipTapParagraphs('Mon — Kickoff', 'Wed — Draft due', 'Fri — Ship'),
+        doc: tipTapDoc(
+          tipTapHeading('Events', 2),
+          bulletList('Mon — Kickoff', 'Wed — Draft due', 'Fri — Ship')
+        ),
         layers: []
       }
     ]
@@ -833,33 +835,17 @@ export function seedEvent(): SeedBundle {
     seedPagePresentation: paperPresentation({
       backgroundColor: '#111827',
       textColor: '#f9fafb',
-      backgroundImage: STARTER_ASSETS.event,
       textAlign: 'center',
-      fontSize: 22
+      fontSize: 20
     }),
     seedSections: [
       {
         slug: 'details',
-        doc: tipTapParagraphs(
-          'Event name',
-          'Saturday · 7pm',
-          'Venue / link'
+        doc: tipTapDoc(
+          tipTapHeading('Event name', 1),
+          tipTapParagraphs('Saturday · 7:00pm', 'Venue / link', 'Details…')
         ),
-        layers: [
-          imageLayer('layer_hero', STARTER_ASSETS.event, {
-            x: 48,
-            y: 48,
-            w: 640,
-            h: 280,
-            zIndex: 1
-          }),
-          textLayer(
-            'layer_title',
-            'Event name',
-            { x: 80, y: 280, w: 576, h: 48, zIndex: 2 },
-            { positionLocked: true, backgroundColor: 'rgba(0,0,0,0.5)' }
-          )
-        ]
+        layers: []
       }
     ]
   };
@@ -870,39 +856,27 @@ export function seedSchedule(): SeedBundle {
     seedPageLayout: 'letter',
     seedPagePresentation: paperPresentation({
       backgroundColor: '#ffffff',
-      backgroundImage: STARTER_ASSETS.schedule,
+      fontFamily: 'ui-sans-serif, system-ui, sans-serif',
       fontSize: 16
     }),
     seedSections: [
       {
         slug: 'agenda',
-        doc: tipTapParagraphs(
-          '09:00 — Open',
-          '11:00 — Deep work',
-          '15:00 — Review',
-          '17:00 — Close'
-        ),
-        layers: [
-          imageLayer('layer_header', STARTER_ASSETS.schedule, {
-            x: 48,
-            y: 32,
-            w: 640,
-            h: 140,
-            zIndex: 1
-          }),
-          textLayer(
-            'layer_title',
-            'Today’s agenda',
-            { x: 64, y: 120, w: 280, h: 36, zIndex: 2 },
-            { positionLocked: true }
+        doc: tipTapDoc(
+          tipTapHeading('Today’s agenda', 2),
+          bulletList(
+            '09:00 — Open',
+            '11:00 — Deep work',
+            '15:00 — Review',
+            '17:00 — Close'
           )
-        ]
+        ),
+        layers: []
       }
     ]
   };
 }
 
-/** Kit register — structural polish only (no stock hero). */
 export function seedRegister(): SeedBundle {
   return {
     seedPageLayout: 'letter',
@@ -919,19 +893,19 @@ export function seedRegister(): SeedBundle {
           'row-1 | Example | Optional note'
         ),
         layers: [
-          textLayer(
-            'layer_header',
-            'Register',
-            { x: 48, y: 40, w: 240, h: 36, zIndex: 1 },
-            { positionLocked: true }
-          )
+          textLayer('layer_header', 'Register', {
+            x: 48,
+            y: 40,
+            w: 240,
+            h: 36,
+            zIndex: 1
+          })
         ]
       }
     ]
   };
 }
 
-/** Kit asset key — structural polish only. */
 export function seedAssetKey(): SeedBundle {
   return {
     seedPageLayout: 'letter',
@@ -950,12 +924,13 @@ export function seedAssetKey(): SeedBundle {
           'price: —'
         ),
         layers: [
-          textLayer(
-            'layer_header',
-            'Asset key',
-            { x: 48, y: 40, w: 280, h: 36, zIndex: 1 },
-            { positionLocked: true }
-          )
+          textLayer('layer_header', 'Asset key', {
+            x: 48,
+            y: 40,
+            w: 280,
+            h: 36,
+            zIndex: 1
+          })
         ]
       },
       {

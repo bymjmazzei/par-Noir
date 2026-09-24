@@ -11,10 +11,12 @@ import {
   seedCardNote,
   seedCollectionBasic,
   seedCollectionStory,
+  seedCommunityHome,
   seedEvent,
   seedFeedCurated,
   seedFeedSelfHosted,
   seedJournal,
+  seedLanding,
   seedLetter,
   seedList,
   seedMusic,
@@ -26,6 +28,7 @@ import {
   seedRegister,
   seedSchedule,
   seedSetBasic,
+  seedSite,
   type SeedBundle
 } from './starterSeeds.js';
 
@@ -316,11 +319,11 @@ const STARTER: PenTemplate[] = [
   withSeed(
     {
       id: 'feed.self_hosted.v1',
-      classId: 'social.feed',
+      classId: 'community.feed',
       docType: 'self_hosted_feed',
       version: '1',
       title: 'Self-hosted Feed',
-      description: 'Feed meta chrome + membership rules',
+      description: 'Feed meta + membership rules (config)',
       sections: [
         { slug: 'meta', title: 'Feed meta', required: true },
         { slug: 'rules', title: 'Rules', required: false }
@@ -336,11 +339,11 @@ const STARTER: PenTemplate[] = [
   withSeed(
     {
       id: 'feed.curated.v1',
-      classId: 'social.feed',
+      classId: 'community.feed',
       docType: 'self_hosted_feed',
       version: '1',
       title: 'Curated Feed',
-      description: 'Curated index with hero still',
+      description: 'Curated index (config)',
       sections: [
         { slug: 'meta', title: 'Feed meta', required: true },
         { slug: 'index', title: 'Index', required: false }
@@ -355,12 +358,69 @@ const STARTER: PenTemplate[] = [
   ),
   withSeed(
     {
+      id: 'landing.basic.v1',
+      classId: 'community.landing',
+      docType: 'landing',
+      version: '1',
+      title: 'Basic Landing',
+      description: 'Hero, value, and CTA arrival page',
+      sections: [
+        { slug: 'hero', title: 'Hero', required: true },
+        { slug: 'value', title: 'Value', required: true },
+        { slug: 'cta', title: 'CTA', required: true }
+      ],
+      agentStarter: proseStarter({
+        title: 'Basic Landing',
+        focus: 'Write hero headline, value/proof bullets, and a clear CTA.'
+      })
+    },
+    seedLanding()
+  ),
+  withSeed(
+    {
+      id: 'home.basic.v1',
+      classId: 'community.home',
+      docType: 'community_home',
+      version: '1',
+      title: 'Basic Community Home',
+      description: 'Banner, nav, featured stream, announcements',
+      sections: [
+        { slug: 'banner', title: 'Banner', required: true },
+        { slug: 'nav', title: 'Nav', required: false },
+        { slug: 'featured', title: 'Featured', required: true },
+        { slug: 'announcements', title: 'Announcements', required: false }
+      ],
+      agentStarter: proseStarter({
+        title: 'Basic Community Home',
+        focus: 'Fill banner identity, featured stream note, and optional nav/announcements.'
+      })
+    },
+    seedCommunityHome()
+  ),
+  withSeed(
+    {
+      id: 'site.basic.v1',
+      classId: 'community.site',
+      docType: 'site',
+      version: '1',
+      title: 'Basic Site',
+      description: 'Ordered multipage feed of page refs',
+      sections: [{ slug: 'pages', title: 'Pages', required: true }],
+      agentStarter: proseStarter({
+        title: 'Basic Site',
+        focus: 'List ordered page refs for the multipage feed (landing, home, social pages).'
+      })
+    },
+    seedSite()
+  ),
+  withSeed(
+    {
       id: 'journal.basic.v1',
       classId: 'projects.journal',
       docType: 'journal',
       version: '1',
       title: 'Basic Journal',
-      description: 'Dated entries with calm paper chrome',
+      description: 'Dated entries and logs',
       sections: [{ slug: 'entries', title: 'Entries', required: true }],
       agentStarter: proseStarter({
         title: 'Basic Journal',

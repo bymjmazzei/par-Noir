@@ -26,7 +26,7 @@ const CLASSES: PenClass[] = [
   {
     id: 'social',
     title: 'Social',
-    description: 'Notes, posts, collections, sets, and feeds for browse',
+    description: 'Notes, posts, collections, and sets for browse',
     kind: 'authored',
     audience: 'consumer'
   },
@@ -63,13 +63,44 @@ const CLASSES: PenClass[] = [
     parentId: 'social'
   },
   {
-    id: 'social.feed',
+    id: 'community',
+    title: 'Community',
+    description: 'Feeds, landing pages, community homes, and multipage sites',
+    kind: 'authored',
+    audience: 'consumer'
+  },
+  {
+    id: 'community.feed',
     title: 'Feeds',
     description: 'Self-hosted and curated feed configs',
     kind: 'authored',
     audience: 'consumer',
-    parentId: 'social',
+    parentId: 'community',
     entitlement: 'self-hosted'
+  },
+  {
+    id: 'community.landing',
+    title: 'Landing',
+    description: 'Arrival page — hero, value, CTA',
+    kind: 'authored',
+    audience: 'consumer',
+    parentId: 'community'
+  },
+  {
+    id: 'community.home',
+    title: 'Community home',
+    description: 'Hub — banner, nav, featured stream, announcements',
+    kind: 'authored',
+    audience: 'consumer',
+    parentId: 'community'
+  },
+  {
+    id: 'community.site',
+    title: 'Site',
+    description: 'Multipage feed of pages (aggregator/compiler)',
+    kind: 'authored',
+    audience: 'consumer',
+    parentId: 'community'
   },
   {
     id: 'projects',

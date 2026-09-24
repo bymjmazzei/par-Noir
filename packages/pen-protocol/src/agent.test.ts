@@ -113,8 +113,9 @@ describe('materializePenAgentBuild', () => {
     ).toBe(true);
     const body = out.sections.find((s) => s.slug === 'body');
     expect(body?.doc.type).toBe('doc');
-    expect(body?.layers?.length).toBeGreaterThan(0);
-    expect(out.manifest.pagePresentation?.backgroundImage).toBeTruthy();
+    expect(body?.layers?.length ?? 0).toBe(0);
+    expect(out.manifest.pagePresentation).toBeTruthy();
+    expect(out.manifest.pageLayout).toBe('flow');
   });
 
   it('writes current/ when asCurrent', () => {

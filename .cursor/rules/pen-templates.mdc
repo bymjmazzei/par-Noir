@@ -46,7 +46,7 @@ Layers: **eye** = visibility (omit from preview/compile); **lock** = position lo
 - **First-party:** build only what scales the pN ecosystem.
 - **Starter pack (platform-owned, consumer):** peer categories —
   - **Social** — Notes, Posts, Collections, **Sets** (refs to other docs). Atom browse content. (Feeds **moved** to Community.)
-  - **Community** — Feeds (`community.feed`, entitlement: self-hosted), Landing, Community home, **Site** (multipage feed aggregator/compiler like browse home—**not** an Elementor-class widget builder). Format contracts in `PEN_FORM_FORMAT_SURVEY.md`. Living code may still use `social.feed` until the registry hard-cut.
+  - **Community** — Feeds (`community.feed`, entitlement: self-hosted), Landing, Community home, **Site** (multipage feed aggregator/compiler like browse home—**not** an Elementor-class widget builder). Format contracts in `PEN_FORM_FORMAT_SURVEY.md`.
   - **Projects** — Journal, List, Letter, Note (correspondence shapes; DM delivery later)
   - **Library** — Book, Article, Music (durable **authoring** category; Project publish may save as Library template or create finished Library doc — not a subclass of Projects)
   - **Time** — Calendar, Event, Schedule

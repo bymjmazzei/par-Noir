@@ -175,6 +175,7 @@ describe('classes + templates', () => {
   it('consumer categories are social projects library time custom; records is kit', () => {
     expect(listConsumerCategories().map((c) => c.id)).toEqual([
       'social',
+      'community',
       'projects',
       'library',
       'time',
@@ -185,15 +186,21 @@ describe('classes + templates', () => {
     expect(listConsumerCategories().some((c) => c.id === 'records')).toBe(false);
   });
 
-  it('social forms include set; projects include letter/note', () => {
+  it('social forms exclude feed; community owns feed + landing/home/site', () => {
     expect(listForms('social').map((f) => f.id).sort()).toEqual([
       'social.collection',
-      'social.feed',
       'social.note',
       'social.post',
       'social.set'
     ]);
-    expect(getClass('social.feed')?.entitlement).toBe('self-hosted');
+    expect(listForms('community').map((f) => f.id).sort()).toEqual([
+      'community.feed',
+      'community.home',
+      'community.landing',
+      'community.site'
+    ]);
+    expect(getClass('community.feed')?.entitlement).toBe('self-hosted');
+    expect(getClass('social.feed')).toBeUndefined();
     expect(listForms('projects').map((f) => f.id).sort()).toEqual([
       'projects.journal',
       'projects.letter',
@@ -542,7 +549,7 @@ describe('template seeds + Mini featured + layer locks', () => {
     expect(featured.every((t) => t.classId === 'social.note' && t.browseFeatured)).toBe(true);
   });
 
-  it('consumer starters ship rich seeds with presentation and layers', () => {
+  it('consumer starters ship format-first seeds with presentation', () => {
     const consumer = listStarterTemplates().filter(
       (t) => !t.classId.startsWith('records.')
     );
@@ -550,22 +557,27 @@ describe('template seeds + Mini featured + layer locks', () => {
     for (const t of consumer) {
       expect(t.seedPagePresentation, t.id).toBeTruthy();
       expect(t.seedSections?.length, t.id).toBeGreaterThan(0);
-      const hasLayerMedia = (t.seedSections || []).some((s) =>
-        (s.layers || []).some(
-          (l) =>
-            (l.kind === 'image' && l.imageSrc) ||
-            (l.kind === 'video' && l.videoSrc) ||
-            Boolean(l.backgroundImage)
-        )
-      );
-      const hasPresMedia = Boolean(
-        t.seedPagePresentation?.backgroundImage || t.seedPagePresentation?.backgroundVideo
-      );
-      expect(hasLayerMedia || hasPresMedia, `${t.id} should have media`).toBe(true);
     }
+    const note = requireTemplate('note.basic.v1');
+    expect(note.seedSections?.[0]?.layers?.length ?? 0).toBe(0);
+    const list = requireTemplate('list.basic.v1');
+    expect(JSON.stringify(list.seedSections)).toMatch(/bulletList|listItem|\[ \]/);
+    const journal = requireTemplate('journal.basic.v1');
+    expect(JSON.stringify(journal.seedSections)).toMatch(/2026-09/);
+    const set = requireTemplate('set.basic.v1');
+    expect(set.seedSections?.some((s) => s.slug === 'sources')).toBe(true);
+    const landing = requireTemplate('landing.basic.v1');
+    expect(landing.classId).toBe('community.landing');
+    expect(landing.sections.map((s) => s.slug)).toEqual(['hero', 'value', 'cta']);
+    const feed = requireTemplate('feed.self_hosted.v1');
+    expect(feed.classId).toBe('community.feed');
+    expect(
+      feed.seedSections?.some((s) =>
+        (s.layers || []).some((l) => l.kind === 'image' && l.imageSrc)
+      )
+    ).toBe(false);
     const video = requireTemplate('post.video.v1');
     expect(video.title).toBe('Video Post');
-    expect(video.browseFeatured).toBe(true);
     expect(
       video.seedSections?.some((s) =>
         (s.layers || []).some((l) => l.kind === 'video' && l.videoSrc)

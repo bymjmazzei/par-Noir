@@ -1,11 +1,11 @@
 {
   "penProtocolVersion": "0.1.0",
-  "exportedAt": "2026-09-24T12:47:14.937Z",
+  "exportedAt": "2026-09-24T14:30:49.480Z",
   "classes": [
     {
       "id": "social",
       "title": "Social",
-      "description": "Notes, posts, collections, sets, and feeds for browse",
+      "description": "Notes, posts, collections, and sets for browse",
       "kind": "authored",
       "audience": "consumer"
     },
@@ -42,13 +42,44 @@
       "parentId": "social"
     },
     {
-      "id": "social.feed",
+      "id": "community",
+      "title": "Community",
+      "description": "Feeds, landing pages, community homes, and multipage sites",
+      "kind": "authored",
+      "audience": "consumer"
+    },
+    {
+      "id": "community.feed",
       "title": "Feeds",
       "description": "Self-hosted and curated feed configs",
       "kind": "authored",
       "audience": "consumer",
-      "parentId": "social",
+      "parentId": "community",
       "entitlement": "self-hosted"
+    },
+    {
+      "id": "community.landing",
+      "title": "Landing",
+      "description": "Arrival page — hero, value, CTA",
+      "kind": "authored",
+      "audience": "consumer",
+      "parentId": "community"
+    },
+    {
+      "id": "community.home",
+      "title": "Community home",
+      "description": "Hub — banner, nav, featured stream, announcements",
+      "kind": "authored",
+      "audience": "consumer",
+      "parentId": "community"
+    },
+    {
+      "id": "community.site",
+      "title": "Site",
+      "description": "Multipage feed of pages (aggregator/compiler)",
+      "kind": "authored",
+      "audience": "consumer",
+      "parentId": "community"
     },
     {
       "id": "projects",
@@ -363,11 +394,11 @@
     },
     {
       "id": "feed.self_hosted.v1",
-      "classId": "social.feed",
+      "classId": "community.feed",
       "docType": "self_hosted_feed",
       "version": "1",
       "title": "Self-hosted Feed",
-      "description": "Feed meta chrome + membership rules",
+      "description": "Feed meta + membership rules (config)",
       "sections": [
         {
           "slug": "meta",
@@ -385,11 +416,11 @@
     },
     {
       "id": "feed.curated.v1",
-      "classId": "social.feed",
+      "classId": "community.feed",
       "docType": "self_hosted_feed",
       "version": "1",
       "title": "Curated Feed",
-      "description": "Curated index with hero still",
+      "description": "Curated index (config)",
       "sections": [
         {
           "slug": "meta",
@@ -406,12 +437,85 @@
       "agentStarter": "You are authoring a Pen document with template {{template_id}} (\"Curated Feed\").\nFill feed meta; optionally describe the curated index.\nSections for this template: {{section_list}}.\nEmit ONLY a PenAgentBuild JSON object: { \"templateId\", \"title\", \"sections\": [{ \"slug\", \"plainText\" }] }.\nUse only the section slugs listed. Do not invent folder paths, file layouts, or parallel formats.\nNever include secrets, pn name, passcodes, tokens, or raw account identifiers.\nUser request:\n{{user_input}}"
     },
     {
+      "id": "landing.basic.v1",
+      "classId": "community.landing",
+      "docType": "landing",
+      "version": "1",
+      "title": "Basic Landing",
+      "description": "Hero, value, and CTA arrival page",
+      "sections": [
+        {
+          "slug": "hero",
+          "title": "Hero",
+          "required": true
+        },
+        {
+          "slug": "value",
+          "title": "Value",
+          "required": true
+        },
+        {
+          "slug": "cta",
+          "title": "CTA",
+          "required": true
+        }
+      ],
+      "agentStarter": "You are authoring a Pen document with template {{template_id}} (\"Basic Landing\").\nWrite hero headline, value/proof bullets, and a clear CTA.\nSections for this template: {{section_list}}.\nEmit ONLY a PenAgentBuild JSON object: { \"templateId\", \"title\", \"sections\": [{ \"slug\", \"plainText\" }] }.\nUse only the section slugs listed. Do not invent folder paths, file layouts, or parallel formats.\nNever include secrets, pn name, passcodes, tokens, or raw account identifiers.\nUser request:\n{{user_input}}"
+    },
+    {
+      "id": "home.basic.v1",
+      "classId": "community.home",
+      "docType": "community_home",
+      "version": "1",
+      "title": "Basic Community Home",
+      "description": "Banner, nav, featured stream, announcements",
+      "sections": [
+        {
+          "slug": "banner",
+          "title": "Banner",
+          "required": true
+        },
+        {
+          "slug": "nav",
+          "title": "Nav",
+          "required": false
+        },
+        {
+          "slug": "featured",
+          "title": "Featured",
+          "required": true
+        },
+        {
+          "slug": "announcements",
+          "title": "Announcements",
+          "required": false
+        }
+      ],
+      "agentStarter": "You are authoring a Pen document with template {{template_id}} (\"Basic Community Home\").\nFill banner identity, featured stream note, and optional nav/announcements.\nSections for this template: {{section_list}}.\nEmit ONLY a PenAgentBuild JSON object: { \"templateId\", \"title\", \"sections\": [{ \"slug\", \"plainText\" }] }.\nUse only the section slugs listed. Do not invent folder paths, file layouts, or parallel formats.\nNever include secrets, pn name, passcodes, tokens, or raw account identifiers.\nUser request:\n{{user_input}}"
+    },
+    {
+      "id": "site.basic.v1",
+      "classId": "community.site",
+      "docType": "site",
+      "version": "1",
+      "title": "Basic Site",
+      "description": "Ordered multipage feed of page refs",
+      "sections": [
+        {
+          "slug": "pages",
+          "title": "Pages",
+          "required": true
+        }
+      ],
+      "agentStarter": "You are authoring a Pen document with template {{template_id}} (\"Basic Site\").\nList ordered page refs for the multipage feed (landing, home, social pages).\nSections for this template: {{section_list}}.\nEmit ONLY a PenAgentBuild JSON object: { \"templateId\", \"title\", \"sections\": [{ \"slug\", \"plainText\" }] }.\nUse only the section slugs listed. Do not invent folder paths, file layouts, or parallel formats.\nNever include secrets, pn name, passcodes, tokens, or raw account identifiers.\nUser request:\n{{user_input}}"
+    },
+    {
       "id": "journal.basic.v1",
       "classId": "projects.journal",
       "docType": "journal",
       "version": "1",
       "title": "Basic Journal",
-      "description": "Dated entries with calm paper chrome",
+      "description": "Dated entries and logs",
       "sections": [
         {
           "slug": "entries",
