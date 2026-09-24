@@ -16,7 +16,7 @@ import { fileURLToPath, pathToFileURL } from 'url';
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const PEN_URL = (process.env.PEN_URL || 'https://pen.parnoir.com').replace(/\/$/, '');
 const BROWSE_URL = (process.env.BROWSE_URL || 'https://browse.parnoir.com').replace(/\/$/, '');
-const HEADLESS = process.env.HEADLESS !== '0';
+const HEADLESS = process.env.HEADLESS === '1';
 const MAX_TEMPLATES = Math.max(1, Number(process.env.MAX_TEMPLATES || 3));
 
 /** Story-safe layouts on ~360×640 social canvas (px). Top/bottom chrome reserved. */
@@ -442,14 +442,28 @@ async function buildLayers(page, spec) {
   return { ok: added > 0, layerCount: added, via: 'ui' };
 }
 
+async function dismissLayers(page) {
+  // Layers popover is role=dialog aria-label="Layers"; chrome button label varies.
+  const dialog = page.locator('[role="dialog"][aria-label="Layers"]').first();
+  if (await dialog.isVisible({ timeout: 500 }).catch(() => false)) {
+    await page.keyboard.press('Escape').catch(() => {});
+    await page.waitForTimeout(250);
+    if (await dialog.isVisible().catch(() => false)) {
+      // Click page background to fire LayersPopover outside-mousedown close
+      await page.locator('body').click({ position: { x: 8, y: 8 }, force: true }).catch(() => {});
+      await page.waitForTimeout(250);
+    }
+  }
+}
+
 async function connectAsPublicTemplate(page, context) {
-  // Wait for editor chrome after layer reload
   await page.waitForTimeout(1500);
+  await dismissLayers(page);
+
   const publish = page
     .locator('button[aria-label="Publish"], button[title="Publish"]')
     .first();
   if (!(await publish.isVisible({ timeout: 15_000 }).catch(() => false))) {
-    // Dump available toolbar labels for diagnosis
     const labels = await page.evaluate(() =>
       [...document.querySelectorAll('button[aria-label], button[title]')]
         .slice(0, 40)
@@ -457,62 +471,340 @@ async function connectAsPublicTemplate(page, context) {
     );
     return { ok: false, reason: `publish_missing labels=${labels.join('|')}` };
   }
-  await publish.click();
+
+  // DOM click — Playwright pointer events can lose the target when Layers remounts.
+  const opened = await page.evaluate(() => {
+    const pub = document.querySelector('button[aria-label="Publish"], button[title="Publish"]');
+    if (!pub) return { ok: false, reason: 'no_publish_el' };
+    // Ensure open: if menu already visible from dismissLayers, skip re-toggle
+    const already = [...document.querySelectorAll('button')].some((b) =>
+      /Connect to feed/i.test(b.textContent || '')
+    );
+    if (!already) pub.click();
+    return { ok: true, already };
+  });
   await page.waitForTimeout(500);
 
-  const connect = page.getByRole('button', { name: /Connect to feed/i }).first();
-  if (!(await connect.isVisible({ timeout: 5_000 }).catch(() => false))) {
-    return { ok: false, reason: 'connect_missing' };
+  const menuButtons = await page.evaluate(() =>
+    [...document.querySelectorAll('button')]
+      .map((b) => (b.textContent || '').trim())
+      .filter((t) => /Publish|Connect|template|Share|Send|Library|As /i.test(t))
+      .slice(0, 20)
+  );
+  process.stdout.write(`  publish menu: ${menuButtons.join(' | ')}\n`);
+
+  const connectClicked = await page.evaluate(() => {
+    const btn = [...document.querySelectorAll('button')].find((b) =>
+      /Connect to feed/i.test(b.textContent || '')
+    );
+    if (!btn) return false;
+    btn.click();
+    return true;
+  });
+  if (!connectClicked) {
+    // Retry: open publish then connect
+    await page.evaluate(() => {
+      document.querySelector('button[aria-label="Publish"]')?.click();
+    });
+    await page.waitForTimeout(400);
+    const retry = await page.evaluate(() => {
+      const btn = [...document.querySelectorAll('button')].find((b) =>
+        /Connect to feed/i.test(b.textContent || '')
+      );
+      if (!btn) return false;
+      btn.click();
+      return true;
+    });
+    if (!retry) {
+      const again = await page.evaluate(() =>
+        [...document.querySelectorAll('button')]
+          .map((b) => (b.textContent || '').trim())
+          .filter((t) => /Publish|Connect|template|Share|Send|Library|As /i.test(t))
+          .slice(0, 20)
+      );
+      return { ok: false, reason: `connect_missing menu=${again.join(',')}` };
+    }
   }
-  await connect.click();
-  await page.waitForTimeout(400);
+  await page.waitForTimeout(500);
 
   const templateLabel = page.locator('label', { hasText: /Pen templates/i }).first();
-  const templateCb = templateLabel.locator('input[type="checkbox"]');
-  const enabled = await templateCb.isEnabled().catch(() => false);
-  if (!enabled) {
-    return { ok: false, reason: 'pen_templates_disabled_allowlist?', enabled: false };
+  await templateLabel.waitFor({ state: 'visible', timeout: 8_000 });
+  const templateState = await page.evaluate(() => {
+    const label = [...document.querySelectorAll('label')].find((l) =>
+      /Pen templates/i.test(l.textContent || '')
+    );
+    const input = label?.querySelector('input[type="checkbox"]');
+    if (!input) return { ok: false, reason: 'no_checkbox' };
+    if (input.disabled) return { ok: false, reason: 'disabled', enabled: false };
+    if (!input.checked) {
+      input.click();
+    }
+    return { ok: true, enabled: true, checked: input.checked };
+  });
+  if (!templateState.ok) {
+    return {
+      ok: false,
+      reason:
+        templateState.reason === 'disabled'
+          ? 'pen_templates_disabled_allowlist?'
+          : `pen_templates_${templateState.reason}`,
+      enabled: false
+    };
   }
-  if (!(await templateCb.isChecked())) {
-    await templateCb.check({ force: true });
+  // Confirm checked after React re-render
+  await page.waitForTimeout(200);
+  const confirmed = await templateLabel.locator('input[type="checkbox"]').isChecked().catch(() => false);
+  if (!confirmed) {
+    await templateLabel.click({ force: true });
+    await page.waitForTimeout(200);
   }
-  const browseCb = page.locator('label', { hasText: /Browse \(your networks\)/i }).locator('input[type="checkbox"]');
-  if (await browseCb.isChecked().catch(() => false)) {
-    await browseCb.uncheck({ force: true }).catch(() => {});
+  if (!(await templateLabel.locator('input[type="checkbox"]').isChecked().catch(() => false))) {
+    return { ok: false, reason: 'pen_templates_check_failed', enabled: true };
   }
 
+  // Prefer pen-templates (+ browse is fine; Browse upload UI handles targets)
+  await page.evaluate(() => {
+    /* leave browse checked — unchecking can leave submitShare with edge cases */
+  });
+  await page.waitForTimeout(200);
+
+  const beforePages = new Set(context.pages().map((p) => p));
   const popupPromise = context.waitForEvent('page', { timeout: 90_000 }).catch(() => null);
-  const navPromise = page
-    .waitForURL(/browse\.parnoir|browse-parnoir|\?view=upload/, { timeout: 90_000 })
-    .then(() => page)
-    .catch(() => null);
-  const shareBtn = page.getByRole('button', { name: /^Share$/i }).first();
-  await shareBtn.click();
-  const browsePage = (await popupPromise) || (await navPromise);
-  return { ok: true, browsePage, enabled: true };
+
+  const shareClicked = await page.evaluate(() => {
+    // Share inside Connect submenu (next to Pen templates label)
+    const labels = [...document.querySelectorAll('label')].filter((l) =>
+      /Pen templates/i.test(l.textContent || '')
+    );
+    const root =
+      labels[0]?.closest('.absolute, [class*="shadow"]') ||
+      labels[0]?.parentElement?.parentElement;
+    const share =
+      (root &&
+        [...root.querySelectorAll('button')].find((b) =>
+          /^Share$/i.test((b.textContent || '').trim())
+        )) ||
+      [...document.querySelectorAll('button')].find((b) =>
+        /^Share$/i.test((b.textContent || '').trim())
+      );
+    if (!share) return { ok: false, reason: 'share_btn_missing' };
+    share.click();
+    return { ok: true };
+  });
+  if (!shareClicked.ok) {
+    return { ok: false, reason: shareClicked.reason, enabled: true };
+  }
+
+  let browsePage = await popupPromise;
+  if (!browsePage) {
+    // Poll for new pages / same-tab navigation
+    for (let i = 0; i < 45; i++) {
+      const status = await page
+        .evaluate(() => {
+          const err = document.querySelector('.text-red-600');
+          const statusEl = [...document.querySelectorAll('span')].find((s) =>
+            /Opened Browse|Encoding|feed_connect|template/i.test(s.textContent || '')
+          );
+          return {
+            err: (err?.textContent || '').trim().slice(0, 160),
+            status: (statusEl?.textContent || '').trim().slice(0, 160),
+            url: location.href
+          };
+        })
+        .catch(() => ({ err: '', status: '', url: page.url() }));
+      if (/browse\.parnoir|browse-parnoir|\?view=upload/i.test(status.url)) {
+        browsePage = page;
+        break;
+      }
+      const fresh = context.pages().find((p) => !beforePages.has(p) || /browse/i.test(p.url()));
+      if (fresh && /browse/i.test(fresh.url())) {
+        browsePage = fresh;
+        break;
+      }
+      if (status.err) {
+        process.stdout.write(`  share error: ${status.err}\n`);
+        return { ok: false, reason: `share_error:${status.err}`, enabled: true };
+      }
+      if (/Opened Browse/i.test(status.status)) {
+        process.stdout.write(`  share status: ${status.status} (waiting for tab)\n`);
+      }
+      await page.waitForTimeout(1000);
+    }
+  }
+
+  if (!browsePage) {
+    const pages = context.pages();
+    browsePage =
+      pages.find((p) => /browse/i.test(p.url()) && /view=upload|pen_publish/i.test(p.url())) ||
+      pages.find((p) => /browse/i.test(p.url()) && p !== page) ||
+      null;
+    const ui = await page
+      .evaluate(() => ({
+        err: (document.querySelector('.text-red-600')?.textContent || '').trim().slice(0, 120),
+        body: (document.body?.innerText || '').replace(/\s+/g, ' ').slice(0, 240)
+      }))
+      .catch(() => ({ err: '', body: '' }));
+    process.stdout.write(`  after share: err=${ui.err} pages=${pages.map((p) => p.url()).join(' || ')}\n`);
+    if (!browsePage) {
+      return {
+        ok: false,
+        reason: `no_browse_tab err=${ui.err}`,
+        enabled: true
+      };
+    }
+  }
+
+  return { ok: Boolean(browsePage), browsePage, enabled: true, reason: browsePage ? '' : 'no_browse_tab' };
 }
 
-async function finishBrowseUpload(browsePage) {
+async function fillConsentAndUnlockDom(popupOrPage, { identityPath, PN_NAME, PASSCODE, expectClose = true }) {
+  // Prefer domcontentloaded — unlock broker SPA often never fires full "load".
+  await popupOrPage
+    .waitForURL(/oauth\/consent|authorize|unlock/, {
+      timeout: 60_000,
+      waitUntil: 'domcontentloaded'
+    })
+    .catch(() => {});
+  const fileInput = popupOrPage.locator('#identityFile, input[type="file"]').first();
+  await fileInput.waitFor({ state: 'attached', timeout: 45_000 });
+  await fileInput.setInputFiles(identityPath);
+  await popupOrPage.getByPlaceholder('Enter Key 1').fill(PN_NAME);
+  await popupOrPage.getByPlaceholder('Enter Key 2').fill(PASSCODE);
+  await popupOrPage.getByRole('button', { name: 'Unlock pN' }).click();
+  const approve = popupOrPage.getByRole('button', { name: 'Approve' });
+  try {
+    await approve.waitFor({ state: 'visible', timeout: 90_000 });
+    await approve.click();
+  } catch {
+    /* existing grant / handoff-done UI */
+  }
+  if (expectClose) {
+    await popupOrPage.waitForEvent('close', { timeout: 30_000 }).catch(() => {});
+  } else {
+    await popupOrPage.waitForTimeout(3_000);
+  }
+}
+
+async function unlockBrowseIfNeeded(browsePage, creds, context) {
+  // Live chrome title is "Unlock pN" / "Lock pN" (LockButtonWithContext).
+  const unlockBtn = browsePage
+    .getByTitle('Unlock pN')
+    .or(browsePage.locator('button[title="Unlock pN"]'))
+    .or(browsePage.getByRole('button', { name: /Unlock pN/i }))
+    .first();
+
+  if (!(await unlockBtn.isVisible({ timeout: 8_000 }).catch(() => false))) {
+    const locked = await browsePage.getByTitle('Lock pN').isVisible().catch(() => false);
+    return { ok: true, skipped: true, reason: locked ? 'already_unlocked' : 'no_unlock_btn' };
+  }
+
+  try {
+    // Prefer-app waits ~1.4s then window.open — listen on context + page.
+    const popupPromise = browsePage.waitForEvent('popup', { timeout: 60_000 }).catch(() => null);
+    const pagePromise = context
+      .waitForEvent('page', { timeout: 60_000 })
+      .catch(() => null);
+    await unlockBtn.click({ force: true });
+    let popup = (await popupPromise) || (await pagePromise);
+    // Prefer-app false positive (headed blur) skips window.open — retry click once.
+    if (!popup) {
+      await browsePage.waitForTimeout(2000);
+      process.stdout.write(
+        `  browse unlock: no popup yet url=${browsePage.url()} — retry click\n`
+      );
+      const retryPopup = browsePage.waitForEvent('popup', { timeout: 45_000 }).catch(() => null);
+      const retryPage = context.waitForEvent('page', { timeout: 45_000 }).catch(() => null);
+      await unlockBtn.click({ force: true });
+      popup = (await retryPopup) || (await retryPage);
+    }
+    process.stdout.write(
+      `  browse unlock popup: ${popup ? popup.url() : 'none'} page=${browsePage.url()}\n`
+    );
+    if (!popup) {
+      await browsePage.waitForTimeout(1500);
+      const fileOnPage = await browsePage
+        .locator('#identityFile, input[type="file"]')
+        .first()
+        .isVisible()
+        .catch(() => false);
+      if (!fileOnPage) {
+        return { ok: false, skipped: false, reason: 'no_consent_ui_after_unlock_click' };
+      }
+      popup = browsePage;
+    } else {
+      await popup.waitForLoadState('domcontentloaded', { timeout: 60_000 }).catch(() => {});
+      process.stdout.write(`  browse unlock popup loaded: ${popup.url()}\n`);
+    }
+    await fillConsentAndUnlockDom(popup, {
+      ...creds,
+      expectClose: popup !== browsePage
+    });
+    // Wait until Lock pN appears (session applied)
+    for (let i = 0; i < 40; i++) {
+      if (await browsePage.getByTitle('Lock pN').isVisible().catch(() => false)) break;
+      await browsePage.waitForTimeout(500);
+    }
+    const unlocked = await browsePage.getByTitle('Lock pN').isVisible().catch(() => false);
+    return { ok: unlocked, skipped: false, reason: unlocked ? '' : 'session_not_applied' };
+  } catch (e) {
+    return {
+      ok: false,
+      skipped: false,
+      reason: e instanceof Error ? e.message : String(e)
+    };
+  }
+}
+
+async function finishBrowseUpload(browsePage, creds, context) {
   if (!browsePage) return { ok: false, reason: 'no_browse_tab' };
   await browsePage.waitForLoadState('domcontentloaded', { timeout: 60_000 }).catch(() => {});
+  await browsePage.bringToFront().catch(() => {});
+  await browsePage.waitForTimeout(1500);
+
+  process.stdout.write(`  browse url: ${browsePage.url()}\n`);
+
+  const unlocked = await unlockBrowseIfNeeded(browsePage, creds, context);
+  process.stdout.write(
+    `  browse unlock: ${unlocked.skipped ? 'already/skip' : unlocked.ok ? 'ok' : 'fail'}\n`
+  );
+
+  // Handoff may reopen upload after unlock — wait for modal / composer
   await browsePage.waitForTimeout(2000);
 
-  // Upload modal may auto-open from handoff
-  const publishBtn = browsePage
-    .getByRole('button', { name: /Publish|Upload|Share|Post/i })
-    .first();
-  if (await publishBtn.isVisible({ timeout: 15_000 }).catch(() => false)) {
-    await publishBtn.click();
-    await browsePage.waitForTimeout(5000);
-    return { ok: true };
+  // Common upload / publish controls
+  const candidates = [
+    browsePage.getByRole('button', { name: /^Publish$/i }),
+    browsePage.getByRole('button', { name: /^Post$/i }),
+    browsePage.getByRole('button', { name: /Upload/i }),
+    browsePage.getByRole('button', { name: /^Share$/i }),
+    browsePage.getByRole('button', { name: /Submit/i }),
+    browsePage.locator('button').filter({ hasText: /^Publish$/i })
+  ];
+
+  for (const loc of candidates) {
+    if (await loc.first().isVisible({ timeout: 3_000 }).catch(() => false)) {
+      await loc.first().click();
+      await browsePage.waitForTimeout(8000);
+      const hint = await browsePage.evaluate(() =>
+        (document.body?.innerText || '').replace(/\s+/g, ' ').slice(0, 200)
+      );
+      process.stdout.write(`  after publish click: ${hint}\n`);
+      return { ok: true, hint };
+    }
   }
 
-  // Try unlock if browse locked
-  const unlock = browsePage.getByRole('button', { name: /Unlock/i }).first();
-  if (await unlock.isVisible({ timeout: 3_000 }).catch(() => false)) {
-    return { ok: false, reason: 'browse_locked' };
-  }
-  return { ok: false, reason: 'upload_ui_not_found', url: browsePage.url() };
+  // Dump labels for diagnosis
+  const labels = await browsePage.evaluate(() =>
+    [...document.querySelectorAll('button')]
+      .map((b) => (b.textContent || b.getAttribute('aria-label') || '').trim())
+      .filter(Boolean)
+      .slice(0, 30)
+  );
+  return {
+    ok: false,
+    reason: `upload_ui_not_found buttons=${labels.join('|')}`,
+    url: browsePage.url()
+  };
 }
 
 async function main() {
@@ -525,16 +817,55 @@ async function main() {
   const { chromium } = await import('playwright');
   const browser = await chromium.launch({
     headless: HEADLESS,
-    slowMo: HEADLESS ? 0 : 50
+    slowMo: HEADLESS ? 0 : 40
   });
   const context = await browser.newContext({
-    viewport: { width: 1280, height: 900 }
+    viewport: { width: 1400, height: 900 },
+    // Keep popups (Browse handoff uses window.open)
+    javaScriptEnabled: true
+  });
+  // Headed Chromium often blurs during Unlock; prefer-app then skips window.open.
+  // Force the HTTPS popup path so Playwright can fill consent.
+  await context.addInitScript(() => {
+    try {
+      Object.defineProperty(document, 'hidden', {
+        configurable: true,
+        get() {
+          return false;
+        }
+      });
+    } catch {
+      /* ignore */
+    }
+    window.addEventListener(
+      'blur',
+      (e) => {
+        e.stopImmediatePropagation();
+      },
+      true
+    );
+    // Prefer-app fires a hidden <a href="com.parnoir.unlock://…"> click.
+    // Swallow it so launchUnlockBroker falls through to window.open.
+    const origClick = HTMLAnchorElement.prototype.click;
+    HTMLAnchorElement.prototype.click = function (...args) {
+      try {
+        const href = String(this.getAttribute('href') || this.href || '');
+        if (/^com\.parnoir\.unlock:/i.test(href) || href.includes('://oauth/consent')) {
+          if (href.startsWith('com.parnoir.unlock:') || href.startsWith('parnoir-unlock:')) {
+            return;
+          }
+        }
+      } catch {
+        /* ignore */
+      }
+      return origClick.apply(this, args);
+    };
   });
   const page = await context.newPage();
 
   let fails = 0;
   try {
-    console.log('\n=== Unlock ===');
+    console.log('\n=== Unlock Pen ===');
     const session = await unlockPen(page, creds);
     ok('session token', session.hasAccessToken);
     ok('signing keys', session.hasMlDsa);
@@ -544,9 +875,21 @@ async function main() {
       Boolean(pn),
       pn ? `${pn.slice(0, 16)}… (len=${pn.length})` : ''
     );
-    if (pn && !pn.startsWith('pn-') && !pn.startsWith('did:key:')) {
-      console.log('  WARN  pnIdentifier format unexpected — check allowlist aliases');
+
+    // Pre-warm Browse unlock in this browser context (headed)
+    console.log('\n=== Unlock Browse (pre-warm) ===');
+    const browseWarm = await context.newPage();
+    try {
+      await browseWarm.goto(`${BROWSE_URL}/`, {
+        waitUntil: 'domcontentloaded',
+        timeout: 90_000
+      });
+      const warm = await unlockBrowseIfNeeded(browseWarm, creds, context);
+      ok('browse pre-warm unlock', warm.ok !== false, warm.reason || (warm.skipped ? 'skipped' : ''));
+    } catch (e) {
+      ok('browse pre-warm unlock', false, e instanceof Error ? e.message : String(e));
     }
+    await browseWarm.close().catch(() => {});
 
     const specs = SPECS.slice(0, MAX_TEMPLATES);
     for (const spec of specs) {
@@ -573,24 +916,9 @@ async function main() {
         }
         ok('pen-templates enabled', share.enabled === true);
 
-        const upload = await finishBrowseUpload(share.browsePage);
+        const upload = await finishBrowseUpload(share.browsePage, creds, context);
         ok('browse upload', upload.ok, upload.reason || upload.url || '');
-        if (!upload.ok) {
-          // Still count private template save as partial success for IR roots
-          const priv = page.getByRole('button', { name: /Save as private template/i });
-          if (await page.getByRole('button', { name: /^Publish$/i }).or(page.locator('button[aria-label="Publish"]')).first().isVisible().catch(() => false)) {
-            await page.locator('button[aria-label="Publish"]').first().click().catch(() => {});
-            await page.waitForTimeout(300);
-            if (await priv.isVisible({ timeout: 2_000 }).catch(() => false)) {
-              await priv.click();
-              ok('private template fallback', true);
-            } else {
-              fails += 1;
-            }
-          } else {
-            fails += 1;
-          }
-        }
+        if (!upload.ok) fails += 1;
 
         if (share.browsePage && share.browsePage !== page && !share.browsePage.isClosed()) {
           await share.browsePage.close().catch(() => {});

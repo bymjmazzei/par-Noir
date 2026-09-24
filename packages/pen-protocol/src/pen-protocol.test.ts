@@ -607,6 +607,14 @@ describe('template seeds + Mini featured + layer locks', () => {
     );
   });
 
+  it('getTemplate resolves blank.* and legacy blank.*.v1 ids', async () => {
+    const { getTemplate, requireTemplate } = await import('./templates.js');
+    expect(getTemplate('blank.social.note')?.classId).toBe('social.note');
+    expect(requireTemplate('blank.social.note.v1').id).toBe('blank.social.note');
+    expect(requireTemplate('blank.custom.v1').classId).toBe('custom.doc');
+    expect(() => requireTemplate('blank.nope.form')).toThrow(/unknown_pen_template/);
+  });
+
   it('ensureDefaultTextLayer leaves truly blank sections without object layers', async () => {
     const { emptySection, ensureDefaultTextLayer } = await import('./index.js');
     const blank = ensureDefaultTextLayer(emptySection('body'));

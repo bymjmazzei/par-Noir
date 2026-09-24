@@ -5,6 +5,7 @@ import {
   defaultPagePresentation,
   defaultEditorPagePresentation,
   getClass,
+  blankTemplateForClass,
   hashSectionContent,
   notaryHashForGenesis,
   attachNotary,
@@ -49,7 +50,7 @@ function resolveBlankShape(choice: BlankDocChoice): {
     return {
       classId: 'custom.doc',
       docType: 'custom',
-      templateId: 'blank.custom.v1',
+      templateId: 'blank.custom',
       title: 'Untitled',
       toc: ['body'],
       pageLayout: 'flow'
@@ -59,13 +60,14 @@ function resolveBlankShape(choice: BlankDocChoice): {
   if (!form?.parentId) {
     throw new Error('Pick a form (not a category)');
   }
+  const blank = blankTemplateForClass(form.id);
   const leaf = form.id.includes('.') ? form.id.slice(form.id.lastIndexOf('.') + 1) : form.id;
   return {
     classId: form.id,
     docType: leaf,
-    templateId: `blank.${form.id}.v1`,
+    templateId: blank?.id || `blank.${form.id}`,
     title: `Untitled ${form.title}`,
-    toc: ['body'],
+    toc: blank?.seedSections?.map((s) => s.slug) || ['body'],
     pageLayout: form.parentId === 'social' ? 'flow' : 'letter'
   };
 }

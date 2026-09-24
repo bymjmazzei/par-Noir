@@ -986,7 +986,9 @@ export function listStarterTemplates(): PenTemplate[] {
 }
 
 export function getTemplate(templateId: string): PenTemplate | undefined {
-  return byId.get(templateId);
+  const direct = byId.get(templateId);
+  if (direct) return direct;
+  return resolveBlankTemplateId(templateId) || undefined;
 }
 
 export function requireTemplate(templateId: string): PenTemplate {
@@ -1002,7 +1004,10 @@ export function listBrowseFeaturedTemplates(classId?: string): PenTemplate[] {
   );
 }
 
-/** Synthetic blank template for a form (empty sections matching a starter of that class). */
+/**
+ * Synthetic blank template for a form (empty sections matching a starter of that class).
+ * Id is `blank.${classId}` (also accepts legacy `blank.${classId}.v1` via getTemplate).
+ */
 export function blankTemplateForClass(classId: string): PenTemplate | null {
   const sample = listStarterTemplates().find((t) => t.classId === classId);
   if (!sample) return null;
@@ -1021,4 +1026,37 @@ export function blankTemplateForClass(classId: string): PenTemplate | null {
       focus: 'Fill the sections listed for this blank form.'
     })
   };
+}
+
+/** Custom blank (no class starter) — used by Pen New → Blank → Custom. */
+function blankCustomTemplate(): PenTemplate {
+  return {
+    id: 'blank.custom',
+    classId: 'custom.doc',
+    docType: 'custom',
+    version: '1',
+    title: 'Blank',
+    description: 'Empty custom document',
+    sections: [{ slug: 'body', title: 'Body', required: true }],
+    browseFeatured: false,
+    seedSections: [emptySection('body')],
+    agentStarter: proseStarter({
+      title: 'Blank',
+      focus: 'Freeform custom document.'
+    })
+  };
+}
+
+/**
+ * Resolve `blank.${classId}` / `blank.${classId}.v1` / `blank.custom(.v1)`.
+ * CreateBlank historically appended `.v1`; catalog id does not.
+ */
+function resolveBlankTemplateId(templateId: string): PenTemplate | null {
+  const id = String(templateId || '').trim();
+  if (!id.startsWith('blank.')) return null;
+  const body = id.endsWith('.v1') ? id.slice(0, -3) : id;
+  if (body === 'blank.custom') return blankCustomTemplate();
+  const classId = body.slice('blank.'.length);
+  if (!classId || classId.includes('..')) return null;
+  return blankTemplateForClass(classId);
 }
