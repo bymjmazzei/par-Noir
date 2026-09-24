@@ -17,7 +17,9 @@ export function PenMediaPlayer({
   className,
   style,
   videoStyle,
-  poster
+  poster,
+  /** When true, pointer events pass through the video so a parent can drag/resize. */
+  allowDragThrough = false
 }: {
   src: string;
   className?: string;
@@ -25,6 +27,7 @@ export function PenMediaPlayer({
   /** Applied to the `<video>` element (e.g. filter, objectFit). */
   videoStyle?: CSSProperties;
   poster?: string;
+  allowDragThrough?: boolean;
 }) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const barRef = useRef<HTMLDivElement>(null);
@@ -107,11 +110,13 @@ export function PenMediaPlayer({
   };
 
   const showBar = hover || seeking;
+  const objectFit =
+    (videoStyle?.objectFit as CSSProperties['objectFit'] | undefined) || 'contain';
 
   return (
     <div
-      className={`relative h-full w-full min-h-0 min-w-0 overflow-hidden bg-black ${className || ''}`}
-      style={style}
+      className={`relative h-full w-full min-h-0 min-w-0 overflow-hidden ${className || ''}`}
+      style={{ backgroundColor: 'transparent', ...style }}
       onPointerEnter={() => setHover(true)}
       onPointerLeave={() => {
         if (!scrubbing.current) setHover(false);
@@ -122,16 +127,27 @@ export function PenMediaPlayer({
         key={src}
         src={src}
         poster={poster}
-        className="absolute inset-0 h-full w-full object-contain"
-        style={{ pointerEvents: 'auto', ...videoStyle }}
+        className="absolute inset-0 h-full w-full"
+        style={{
+          objectFit,
+          pointerEvents: allowDragThrough ? 'none' : 'auto',
+          ...videoStyle,
+          ...(allowDragThrough ? { pointerEvents: 'none' } : {})
+        }}
         autoPlay
         muted
         loop
         playsInline
         preload="auto"
         draggable={false}
-        onClick={togglePlay}
-        onPointerDown={(e) => e.stopPropagation()}
+        onClick={allowDragThrough ? undefined : togglePlay}
+        onPointerDown={
+          allowDragThrough
+            ? undefined
+            : (e) => {
+                e.stopPropagation();
+              }
+        }
       />
       {paused && (
         <button
@@ -151,7 +167,7 @@ export function PenMediaPlayer({
         ref={barRef}
         className={`absolute bottom-0 left-0 right-0 z-10 px-2 pb-2 transition-opacity ${
           showBar ? 'opacity-100' : 'pointer-events-none opacity-0'
-        }`}
+        } ${allowDragThrough && showBar ? 'pointer-events-auto' : ''}`}
         onPointerDown={onScrubDown}
         onPointerMove={onScrubMove}
         onPointerUp={onScrubUp}

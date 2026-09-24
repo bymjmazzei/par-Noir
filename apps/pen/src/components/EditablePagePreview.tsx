@@ -16,6 +16,7 @@ import {
   DEFAULT_FLOW_WORKSPACE_WIDTH_PX,
   docToHtml,
   fitAspectInBox,
+  sizeMediaLayerForAttach,
   getTextLayerDoc,
   isFlowWorkspaceOpen,
   isGooglePenFont,
@@ -137,7 +138,8 @@ function BodyWrapObject({
   onSelect,
   onCommit,
   docId,
-  session
+  session,
+  onNaturalAspect
 }: {
   layer: PenPageLayer;
   allLayers: PenPageLayer[];
@@ -149,6 +151,7 @@ function BodyWrapObject({
   onCommit: (geom: LiveGeom & { bodyWrap: 'left' | 'right' }) => void;
   docId?: string;
   session?: PenSession | null;
+  onNaturalAspect?: (aspect: number) => void;
 }) {
   const locked = Boolean(layer.positionLocked);
   const [live, setLive] = useState<LiveGeom>({
@@ -298,6 +301,7 @@ function BodyWrapObject({
         onActivate={onSelect}
         docId={docId}
         session={session}
+        onNaturalAspect={onNaturalAspect}
       />
     );
   } else if (layer.kind === 'text') {
@@ -563,6 +567,42 @@ export function EditablePagePreview({
     setSelectedIds([next]);
   }
 
+  function reshapeLayerToAspect(layerId: string, aspect: number) {
+    const layer = prepared.layers?.find((l) => l.id === layerId);
+    if (!layer || layer.positionLocked) return;
+    const fitted = sizeMediaLayerForAttach(
+      { x: layer.x, y: layer.y, w: layer.w, h: layer.h },
+      aspect,
+      box.width,
+      box.height
+    );
+    const layerAspect = layer.w / Math.max(1, layer.h);
+    if (
+      Math.abs(layerAspect - aspect) / aspect <= 0.02 &&
+      Math.min(layer.w, layer.h) >= 120
+    ) {
+      return;
+    }
+    if (
+      Math.abs(fitted.w - layer.w) < 0.5 &&
+      Math.abs(fitted.h - layer.h) < 0.5
+    ) {
+      return;
+    }
+    onSectionChange(
+      updateLayerLayout(prepared, [
+        {
+          id: layer.id,
+          x: fitted.x,
+          y: fitted.y,
+          w: fitted.w,
+          h: fitted.h,
+          zIndex: layer.zIndex
+        }
+      ])
+    );
+  }
+
   function getLinkedIds(id: string): string[] {
     if (!groupIds.has(id)) return [];
     return layers.filter((l) => l.parentGroupId === id).map((l) => l.id);
@@ -792,6 +832,7 @@ export function EditablePagePreview({
                 onCommit={(patch) => onWrapCommit(layer.id, patch)}
                 docId={manifest.docId}
                 session={session}
+                onNaturalAspect={(aspect) => reshapeLayerToAspect(layer.id, aspect)}
               />
             ))}
             <div
@@ -846,6 +887,7 @@ export function EditablePagePreview({
                         onActivate={() => selectLayer(layer.id)}
                         docId={manifest.docId}
                         session={session}
+                        onNaturalAspect={(aspect) => reshapeLayerToAspect(layer.id, aspect)}
                       />
                     </div>
                   );

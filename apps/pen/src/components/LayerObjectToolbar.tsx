@@ -170,9 +170,10 @@ export function LayerObjectToolbar({
     onPresentationChange?.(partial);
   }
 
-  async function applyMediaSrc(src: string) {
+  async function applyMediaSrc(src: string, meta?: { blobUrl?: string }) {
     // Probe aspect against a playable URL (blob:), store the tiny ref on the layer.
-    const playable = (await resolvePenMediaSrc(src, docId)) || src;
+    const playable =
+      meta?.blobUrl || (await resolvePenMediaSrc(src, docId)) || src;
     if (!isPage && layer && !isGroup) {
       // Object layers: convert to image/video and fit aspect into the frame / page.
       const aspect = await probeMediaAspect(playable, fileKind);
@@ -649,7 +650,7 @@ export function LayerObjectToolbar({
         session={session || null}
         kind={fileKind}
         docId={docId}
-        onPickMediaSrc={(url) => void applyMediaSrc(url)}
+        onPickMediaSrc={(url, meta) => void applyMediaSrc(url, meta)}
       />
     </div>
   );

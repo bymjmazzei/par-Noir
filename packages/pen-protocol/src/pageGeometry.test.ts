@@ -8,10 +8,12 @@ import {
   legacyPercentToContentPx,
   LETTER_HEIGHT_PX,
   LETTER_WIDTH_PX,
+  MEDIA_ATTACH_MIN_SIDE_PX,
   migrateSectionLayerGeomToPx,
   pageSheetDims,
   resizeSeKeepAspect,
   sectionNeedsLegacyGeomMigrate,
+  sizeMediaLayerForAttach,
   wrapSideFromGeom
 } from './pageGeometry.js';
 import { emptyTipTapDoc } from './richDoc.js';
@@ -115,6 +117,19 @@ describe('pageGeometry', () => {
     expect(next.y + next.h).toBeLessThanOrEqual(400);
   });
 
+  it('sizeMediaLayerForAttach grows a 50×24 stub to a usable portrait frame', () => {
+    const next = sizeMediaLayerForAttach(
+      { x: 12, y: 12, w: 50, h: 24 },
+      9 / 16,
+      500,
+      700
+    );
+    expect(Math.min(next.w, next.h)).toBeGreaterThanOrEqual(MEDIA_ATTACH_MIN_SIDE_PX);
+    expect(next.w / next.h).toBeCloseTo(9 / 16, 5);
+    expect(next.w).toBeGreaterThan(50);
+    expect(next.h).toBeGreaterThan(24);
+  });
+
   it('resizeSeKeepAspect locks proportions', () => {
     const sized = resizeSeKeepAspect({ x: 0, y: 0, w: 160, h: 90 }, 40, 0);
     expect(sized.w / sized.h).toBeCloseTo(160 / 90, 5);
@@ -138,5 +153,26 @@ describe('pageGeometry', () => {
     const layer = section.layers!.find((l) => l.id === text.id)!;
     expect(layer.kind).toBe('video');
     expect(layer.w / layer.h).toBeCloseTo(16 / 9, 5);
+  });
+
+  it('attachMediaToLayer grows a tiny text stub instead of staying line-height', () => {
+    let section: PenSectionContent = {
+      slug: 'body',
+      doc: emptyTipTapDoc(),
+      layers: [],
+      layerGeom: 'px'
+    };
+    const text = createTextLayer({ x: 12, y: 12, w: 50, h: 24 });
+    section = upsertLayer(section, text);
+    section = attachMediaToLayer(
+      section,
+      text.id,
+      { kind: 'video', src: 'https://example.com/v.mp4' },
+      { aspectRatio: 9 / 16, pageWidth: 500, pageHeight: 700 }
+    );
+    const layer = section.layers!.find((l) => l.id === text.id)!;
+    expect(layer.kind).toBe('video');
+    expect(Math.min(layer.w, layer.h)).toBeGreaterThanOrEqual(MEDIA_ATTACH_MIN_SIDE_PX);
+    expect(layer.w / layer.h).toBeCloseTo(9 / 16, 5);
   });
 });

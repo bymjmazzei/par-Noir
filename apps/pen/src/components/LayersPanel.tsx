@@ -179,8 +179,6 @@ export function LayersPopover({
     const layer = createTextLayer({
       x: 12,
       y: 12 + (layersFrontFirst.length % 4) * 8,
-      w: 50,
-      h: 24,
       zIndex: maxZ() + 1,
       name: `Layer ${n}`
     });

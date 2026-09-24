@@ -4,7 +4,7 @@ import { emptyTipTapDoc } from './richDoc.js';
 import {
   DEFAULT_IMAGE_ASPECT,
   DEFAULT_VIDEO_ASPECT,
-  fitMediaLayerIntoContainer,
+  sizeMediaLayerForAttach,
   snapLayoutToContentCenter,
   type LayerRect
 } from './pageGeometry.js';
@@ -427,7 +427,7 @@ export function attachMediaToLayer(
         : DEFAULT_IMAGE_ASPECT;
   const pageW = opts?.pageWidth ?? Math.max(existing.x + existing.w, 736);
   const pageH = opts?.pageHeight ?? Math.max(existing.y + existing.h, 976);
-  const fitted = fitMediaLayerIntoContainer(
+  const fitted = sizeMediaLayerForAttach(
     { x: existing.x, y: existing.y, w: existing.w, h: existing.h },
     aspect,
     pageW,

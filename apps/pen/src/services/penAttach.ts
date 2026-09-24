@@ -42,7 +42,7 @@ export function fileToDataUrl(file: File): Promise<string> {
   });
 }
 
-/** Natural width/height ratio for a data URL or remote media src. */
+/** Natural width/height ratio for a playable media src (blob:/http:/data:). */
 export function probeMediaAspect(
   src: string,
   kind: 'image' | 'video'
@@ -59,16 +59,68 @@ export function probeMediaAspect(
       img.src = src;
     });
   }
+  return probeVideoAspect(src);
+}
+
+/**
+ * Wait until the video reports non-zero intrinsic size.
+ * Many phone videos report 0×0 on `loadedmetadata` alone — need `loadeddata`.
+ */
+function probeVideoAspect(src: string): Promise<number> {
   return new Promise((resolve) => {
     const video = document.createElement('video');
-    video.preload = 'metadata';
-    video.onloadedmetadata = () => {
+    video.preload = 'auto';
+    video.muted = true;
+    video.playsInline = true;
+    video.setAttribute('playsinline', '');
+    let settled = false;
+    const finish = (aspect: number) => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      resolve(aspect);
+    };
+    const tryRead = (): boolean => {
       const w = video.videoWidth || 0;
       const h = video.videoHeight || 0;
-      resolve(w > 0 && h > 0 ? w / h : 16 / 9);
+      if (w > 0 && h > 0) {
+        finish(w / h);
+        return true;
+      }
+      return false;
     };
-    video.onerror = () => resolve(16 / 9);
+    const onMeta = () => {
+      if (tryRead()) return;
+      // Retry shortly — some engines fill dimensions after the first frame.
+      window.setTimeout(() => {
+        if (tryRead()) return;
+      }, 50);
+      window.setTimeout(() => {
+        if (tryRead()) return;
+        finish(16 / 9);
+      }, 400);
+    };
+    const cleanup = () => {
+      video.removeEventListener('loadedmetadata', onMeta);
+      video.removeEventListener('loadeddata', onMeta);
+      video.removeEventListener('error', onErr);
+      try {
+        video.removeAttribute('src');
+        video.load();
+      } catch {
+        /* ignore */
+      }
+    };
+    const onErr = () => finish(16 / 9);
+    video.addEventListener('loadedmetadata', onMeta);
+    video.addEventListener('loadeddata', onMeta);
+    video.addEventListener('error', onErr);
     video.src = src;
+    try {
+      void video.load();
+    } catch {
+      /* ignore */
+    }
   });
 }
 

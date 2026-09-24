@@ -19,6 +19,9 @@ export const DEFAULT_FLOW_WORKSPACE_HEIGHT_PX = 720;
 export const DEFAULT_PAGE_PADDING_PX = 40;
 export const MIN_LAYER_SIZE_PX = 24;
 
+/** Below this short-side, Attach treats the prior frame as a stub and grows to a usable media size. */
+export const MEDIA_ATTACH_MIN_SIDE_PX = 120;
+
 /** Default video frame aspect (width / height). */
 export const DEFAULT_VIDEO_ASPECT = 16 / 9;
 /** Fallback image aspect when natural size is unknown. */
@@ -147,6 +150,34 @@ export function fitMediaLayerIntoContainer(
   const x = container.x + (container.w - w) / 2;
   const y = container.y + (container.h - h) / 2;
   return clampLayerRect({ x, y, w, h }, pageW, pageH);
+}
+
+/**
+ * Size a media frame on Attach / natural-aspect reshape.
+ * Tiny text stubs (Layers +) must grow to a usable size — never stay ~line-height.
+ */
+export function sizeMediaLayerForAttach(
+  container: LayerRect,
+  aspect: number,
+  pageW: number,
+  pageH: number
+): LayerRect {
+  const a = aspect > 0 && Number.isFinite(aspect) ? aspect : 1;
+  const shortSide = Math.min(container.w, container.h);
+  if (shortSide >= MEDIA_ATTACH_MIN_SIDE_PX) {
+    return fitMediaLayerIntoContainer(container, a, pageW, pageH);
+  }
+  // Preferred box on the page (~half content), then contain aspect inside it.
+  const preferW = Math.min(pageW * 0.5, a >= 1 ? 280 : 200);
+  const preferH = Math.min(pageH * 0.5, a >= 1 ? 200 : 360);
+  const { w, h } = fitAspectInBox(a, preferW, preferH);
+  const cx = container.x + container.w / 2;
+  const cy = container.y + container.h / 2;
+  return clampLayerRect(
+    { x: cx - w / 2, y: cy - h / 2, w, h },
+    pageW,
+    pageH
+  );
 }
 
 /**

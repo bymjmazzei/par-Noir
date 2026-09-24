@@ -30,7 +30,7 @@ export function CloudFeedMediaPicker({
   kind: 'image' | 'video';
   docId?: string;
   /** Tiny ref: penlocal:{id} or penmedia:{fileId} */
-  onPickMediaSrc: (src: string) => void;
+  onPickMediaSrc: (src: string, meta?: { blobUrl?: string }) => void;
 }) {
   const [items, setItems] = useState<CloudImageItem[]>([]);
   const [busy, setBusy] = useState(false);
@@ -72,8 +72,8 @@ export function CloudFeedMediaPicker({
         session.pnIdentifier,
         docId
       );
-      await putLocalMediaForDriveFile({ docId, fileId: item.id, blob });
-      onPickMediaSrc(penMediaRef(item.id));
+      const put = await putLocalMediaForDriveFile({ docId, fileId: item.id, blob });
+      onPickMediaSrc(penMediaRef(item.id), { blobUrl: put.blobUrl });
       onClose();
     } catch {
       setError('Could not open that file');
@@ -93,7 +93,7 @@ export function CloudFeedMediaPicker({
     setError(null);
     try {
       const put = await putLocalMedia({ docId, blob: file });
-      onPickMediaSrc(put.ref);
+      onPickMediaSrc(put.ref, { blobUrl: put.blobUrl });
       onClose();
     } catch {
       setError('Could not store media locally');

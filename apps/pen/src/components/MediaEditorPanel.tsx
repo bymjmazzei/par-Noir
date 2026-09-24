@@ -59,9 +59,10 @@ export function MediaEditorPanel({
     patch({ mediaFilter: { ...filter, ...next } });
   }
 
-  async function onReplace(src: string) {
+  async function onReplace(src: string, meta?: { blobUrl?: string }) {
     const kind = fileKind;
-    const playable = (await resolvePenMediaSrc(src, docId)) || src;
+    const playable =
+      meta?.blobUrl || (await resolvePenMediaSrc(src, docId)) || src;
     const aspect = await probeMediaAspect(playable, kind);
     onSectionChange(
       attachMediaToLayer(
@@ -257,7 +258,7 @@ export function MediaEditorPanel({
         session={session || null}
         kind={fileKind}
         docId={docId}
-        onPickMediaSrc={(url) => void onReplace(url)}
+        onPickMediaSrc={(url, meta) => void onReplace(url, meta)}
       />
     </div>
   );
