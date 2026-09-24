@@ -19,22 +19,22 @@ export function publicTemplateAllowlist(): string[] {
     .filter(Boolean);
 }
 
-/** Expand an id into comparable forms (pn- / did:key: / bare). */
-export function pnIdAliases(pnIdentifier: string): string[] {
+function pnIdAliases(pnIdentifier: string): string[] {
   const t = String(pnIdentifier || '').trim();
   if (!t) return [];
   const out = new Set<string>([t]);
-  if (t.startsWith('did:key:')) {
-    const rest = t.slice('did:key:'.length);
-    out.add(rest);
-    out.add(`pn-${rest}`);
-  } else if (t.startsWith('pn-')) {
-    const rest = t.slice(3);
-    out.add(rest);
-    out.add(`did:key:${rest}`);
-  } else {
-    out.add(`pn-${t}`);
-    out.add(`did:key:${t}`);
+  let rest = t;
+  if (t.startsWith('did:key:')) rest = t.slice('did:key:'.length);
+  else if (t.startsWith('pn-')) rest = t.slice(3);
+  out.add(rest);
+  out.add(`pn-${rest}`);
+  out.add(`did:key:${rest}`);
+  // OAuth may truncate the key suffix (e.g. pn- + 12 hex); also match shared prefixes ≥12.
+  if (rest.length >= 12) {
+    const short = rest.slice(0, 12);
+    out.add(short);
+    out.add(`pn-${short}`);
+    out.add(`did:key:${short}`);
   }
   return [...out];
 }
@@ -42,11 +42,18 @@ export function pnIdAliases(pnIdentifier: string): string[] {
 function pnOnAllowlist(pnIdentifier: string | null | undefined): boolean {
   const list = publicTemplateAllowlist();
   if (!list.length) return false;
-  const aliases = new Set(pnIdAliases(pnIdentifier || ''));
-  if (!aliases.size) return false;
+  const aliases = pnIdAliases(pnIdentifier || '');
+  if (!aliases.length) return false;
   for (const entry of list) {
-    for (const a of pnIdAliases(entry)) {
-      if (aliases.has(a)) return true;
+    const entryAliases = pnIdAliases(entry);
+    for (const a of aliases) {
+      for (const e of entryAliases) {
+        if (a === e) return true;
+        // Prefix match when one side is a truncated OAuth id
+        if (a.length >= 12 && e.length >= 12 && (a.startsWith(e) || e.startsWith(a))) {
+          return true;
+        }
+      }
     }
   }
   return false;

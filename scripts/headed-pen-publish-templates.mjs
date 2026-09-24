@@ -193,18 +193,50 @@ async function readPenSession(page) {
 
 async function createBlankSocial(page, spec) {
   await page.goto(`${PEN_URL}/`, { waitUntil: 'domcontentloaded', timeout: 60_000 });
-  await page.waitForTimeout(1200);
+  await page.waitForTimeout(2000);
 
-  const addBtn = page.getByRole('button', { name: 'Add' }).or(page.getByTitle('Add')).first();
-  await addBtn.click();
-  await page.waitForTimeout(400);
-  const blankItem = page
-    .getByRole('menuitem', { name: /Blank document/i })
-    .or(page.locator('.pen-add-menu-panel button', { hasText: /Blank document/i }))
-    .first();
-  await blankItem.waitFor({ state: 'visible', timeout: 10_000 });
-  await blankItem.click();
-  await page.waitForTimeout(500);
+  // Ensure library chrome (not locked landing)
+  const library = page.locator('.pen-library-page, .pen-library-heading').first();
+  if (!(await library.isVisible({ timeout: 15_000 }).catch(() => false))) {
+    throw new Error('library_chrome_missing_after_unlock');
+  }
+
+  const opened = await page.evaluate(async () => {
+    const btn =
+      document.querySelector('button[aria-label="Add"]') ||
+      document.querySelector('button[title="Add"]');
+    if (!btn) return { ok: false, reason: 'add_btn_missing', items: [] };
+    btn.click();
+    await new Promise((r) => setTimeout(r, 80));
+    const panel = document.querySelector('.pen-add-menu-panel');
+    const items = panel
+      ? [...panel.querySelectorAll('button')].map((b) => (b.textContent || '').trim())
+      : [];
+    return { ok: Boolean(panel), items, reason: panel ? '' : 'panel_not_open' };
+  });
+  if (!opened.ok) {
+    // Playwright click fallback
+    await page.getByRole('button', { name: 'Add' }).first().click({ force: true });
+    await page.waitForTimeout(400);
+    const items = await page.locator('.pen-add-menu-panel button').allTextContents().catch(() => []);
+    if (!items.length) throw new Error(`add_menu:${opened.reason}`);
+  }
+
+  const blankClicked = await page.evaluate(() => {
+    const panel = document.querySelector('.pen-add-menu-panel');
+    const btn = panel
+      ? [...panel.querySelectorAll('button')].find((b) =>
+          /Blank document/i.test(b.textContent || '')
+        )
+      : null;
+    if (!btn) return false;
+    btn.click();
+    return true;
+  });
+  if (!blankClicked) {
+    throw new Error(`blank_item_missing items=${JSON.stringify(opened.items)}`);
+  }
+  await page.waitForTimeout(600);
 
   // Category headers are text; click form option by title
   const formOpt = page
