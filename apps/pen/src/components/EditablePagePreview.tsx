@@ -41,7 +41,7 @@ import {
 } from '@par-noir/pen-protocol';
 import { LayoutSurface, type LayoutItem } from '../layout';
 import { LayersPopover, layerDisplayLabel, pageLayerLabel } from './LayersPanel';
-import { IconLayers } from './icons/PenIcons';
+import { IconLayers, IconTapeMeasure } from './icons/PenIcons';
 import {
   LayerObjectToolbar,
   layerPreviewStyle,
@@ -386,10 +386,22 @@ export function EditablePagePreview({
   const scrollerRef = useRef<HTMLDivElement>(null);
   const sheetMeasureRef = useRef<HTMLDivElement>(null);
   const [layersOpen, setLayersOpen] = useState(false);
+  const [flowDimsOpen, setFlowDimsOpen] = useState(false);
+  const flowDimsRef = useRef<HTMLDivElement>(null);
   const [selectedIds, setSelectedIds] = useState<string[]>([PAGE_LAYER_ID]);
   const [fontsReady, setFontsReady] = useState(true);
   const [contentOuterH, setContentOuterH] = useState(400);
   const [measuredSheetW, setMeasuredSheetW] = useState(640);
+
+  useEffect(() => {
+    if (!flowDimsOpen) return;
+    function onDoc(e: MouseEvent) {
+      if (flowDimsRef.current?.contains(e.target as Node)) return;
+      setFlowDimsOpen(false);
+    }
+    document.addEventListener('mousedown', onDoc);
+    return () => document.removeEventListener('mousedown', onDoc);
+  }, [flowDimsOpen]);
 
   const pad = resolvePagePaddingPx(
     mergePagePresentation(defaultEditorPagePresentation(), manifest.pagePresentation).padding
@@ -636,79 +648,113 @@ export function EditablePagePreview({
           </select>
         )}
         {isFlow && onFlowWorkspaceChange && (
-          <div className="flex shrink-0 items-center gap-1.5">
+          <div className="relative shrink-0" ref={flowDimsRef}>
             <button
               type="button"
-              title="Open workspace — fill the panel with no fixed width"
-              aria-pressed={flowOpen}
-              className={`rounded px-1.5 text-[10px] font-bold uppercase tracking-wide ${
-                flowOpen ? 'bg-neutral-900 text-white' : 'text-neutral-400 hover:text-black'
+              title="Workspace dimensions"
+              aria-label="Workspace dimensions"
+              aria-expanded={flowDimsOpen}
+              aria-pressed={!flowOpen || flowDimsOpen}
+              className={`flex h-6 w-6 items-center justify-center rounded ${
+                flowDimsOpen || !flowOpen
+                  ? 'bg-neutral-900 text-white'
+                  : 'text-neutral-400 hover:text-black'
               }`}
-              onClick={() =>
-                onFlowWorkspaceChange({
-                  widthPx: null,
-                  heightPx: null
-                })
-              }
+              onClick={() => setFlowDimsOpen((o) => !o)}
             >
-              Open
+              <IconTapeMeasure width={14} height={14} />
             </button>
-            {!flowOpen && (
-              <>
-                <label className="flex items-center gap-1 text-[10px] text-neutral-500">
-                  W
-                  <input
-                    type="number"
-                    min={320}
-                    max={1600}
-                    step={16}
-                    className="h-6 w-14 rounded border border-neutral-200 px-1 text-[11px] font-bold text-black"
-                    value={flowWidth ?? DEFAULT_FLOW_WORKSPACE_WIDTH_PX}
-                    onChange={(e) => {
-                      const n = Math.round(Number(e.target.value));
-                      if (!Number.isFinite(n)) return;
+            {flowDimsOpen && (
+              <div className="absolute left-0 top-full z-50 mt-1 w-52 rounded-md border border-neutral-200 bg-white p-3 shadow-lg">
+                <div className="mb-2 text-[10px] font-bold uppercase tracking-wide text-neutral-400">
+                  Flow size
+                </div>
+                <div className="mb-2 flex gap-1">
+                  <button
+                    type="button"
+                    title="Fill the panel — no fixed width"
+                    aria-pressed={flowOpen}
+                    className={`flex-1 rounded px-1.5 py-1 text-[10px] font-bold uppercase tracking-wide ${
+                      flowOpen
+                        ? 'bg-neutral-900 text-white'
+                        : 'bg-neutral-100 text-neutral-500 hover:text-black'
+                    }`}
+                    onClick={() =>
                       onFlowWorkspaceChange({
-                        widthPx: Math.max(320, Math.min(1600, n)),
-                        heightPx: flowHeight
-                      });
-                    }}
-                  />
-                </label>
-                <label className="flex items-center gap-1 text-[10px] text-neutral-500">
-                  H
-                  <input
-                    type="number"
-                    min={240}
-                    max={4000}
-                    step={16}
-                    className="h-6 w-14 rounded border border-neutral-200 px-1 text-[11px] font-bold text-black"
-                    value={flowHeight ?? DEFAULT_FLOW_WORKSPACE_HEIGHT_PX}
-                    onChange={(e) => {
-                      const n = Math.round(Number(e.target.value));
-                      if (!Number.isFinite(n)) return;
+                        widthPx: null,
+                        heightPx: null
+                      })
+                    }
+                  >
+                    Open
+                  </button>
+                  <button
+                    type="button"
+                    title="Lock to typed width and height"
+                    aria-pressed={!flowOpen}
+                    className={`flex-1 rounded px-1.5 py-1 text-[10px] font-bold uppercase tracking-wide ${
+                      !flowOpen
+                        ? 'bg-neutral-900 text-white'
+                        : 'bg-neutral-100 text-neutral-500 hover:text-black'
+                    }`}
+                    onClick={() =>
                       onFlowWorkspaceChange({
                         widthPx: flowWidth ?? DEFAULT_FLOW_WORKSPACE_WIDTH_PX,
-                        heightPx: Math.max(240, Math.min(4000, n))
-                      });
-                    }}
-                  />
-                </label>
-              </>
-            )}
-            {flowOpen && (
-              <button
-                type="button"
-                title="Lock workspace to a fixed width and height"
-                className="rounded px-1.5 text-[10px] font-bold uppercase tracking-wide text-neutral-400 hover:text-black"
-                onClick={() =>
-                  onFlowWorkspaceChange({
-                    widthPx: DEFAULT_FLOW_WORKSPACE_WIDTH_PX,
-                    heightPx: DEFAULT_FLOW_WORKSPACE_HEIGHT_PX
-                  })
-                }
-              >
-                Fixed
-              </button>
+                        heightPx: flowHeight ?? DEFAULT_FLOW_WORKSPACE_HEIGHT_PX
+                      })
+                    }
+                  >
+                    Fixed
+                  </button>
+                </div>
+                {!flowOpen && (
+                  <div className="flex flex-col gap-2">
+                    <label className="flex items-center justify-between gap-2 text-[11px] text-neutral-500">
+                      Width
+                      <input
+                        type="number"
+                        min={320}
+                        max={1600}
+                        step={16}
+                        className="h-7 w-20 rounded border border-neutral-200 px-1.5 text-[12px] font-bold text-black"
+                        value={flowWidth ?? DEFAULT_FLOW_WORKSPACE_WIDTH_PX}
+                        onChange={(e) => {
+                          const n = Math.round(Number(e.target.value));
+                          if (!Number.isFinite(n)) return;
+                          onFlowWorkspaceChange({
+                            widthPx: Math.max(320, Math.min(1600, n)),
+                            heightPx: flowHeight
+                          });
+                        }}
+                      />
+                    </label>
+                    <label className="flex items-center justify-between gap-2 text-[11px] text-neutral-500">
+                      Height
+                      <input
+                        type="number"
+                        min={240}
+                        max={4000}
+                        step={16}
+                        className="h-7 w-20 rounded border border-neutral-200 px-1.5 text-[12px] font-bold text-black"
+                        value={flowHeight ?? DEFAULT_FLOW_WORKSPACE_HEIGHT_PX}
+                        onChange={(e) => {
+                          const n = Math.round(Number(e.target.value));
+                          if (!Number.isFinite(n)) return;
+                          onFlowWorkspaceChange({
+                            widthPx: flowWidth ?? DEFAULT_FLOW_WORKSPACE_WIDTH_PX,
+                            heightPx: Math.max(240, Math.min(4000, n))
+                          });
+                        }}
+                      />
+                    </label>
+                  </div>
+                )}
+                {flowOpen && (
+                  <p className="text-[10px] leading-snug text-neutral-400">
+                    Workspace fills the panel. Choose Fixed to type width and height.
+                  </p>
+                )}
+              </div>
             )}
           </div>
         )}

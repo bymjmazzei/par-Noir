@@ -19,6 +19,7 @@ import {
   Outdent,
   Plus,
   Redo2,
+  Ruler,
   Save,
   Search,
   Send,
@@ -101,6 +102,9 @@ export function IconTable(p: SVGProps<SVGSVGElement>) {
 }
 export function IconLayers(p: SVGProps<SVGSVGElement>) {
   return <Layers {...sz} {...p} />;
+}
+export function IconTapeMeasure(p: SVGProps<SVGSVGElement>) {
+  return <Ruler {...sz} {...p} />;
 }
 export function IconEye(p: SVGProps<SVGSVGElement>) {
   return <Eye {...sz} {...p} />;
