@@ -189,11 +189,12 @@ export async function promoteLocalOutbox(
         await opts.writeOutboxCloudBackup(record);
       }
 
-      if (SHEET_KINDS.has(record.kind)) {
+      if (SHEET_KINDS.has(record.kind) && !record.ownCloudApplied) {
         await postOwnSheetApply(opts, record);
       }
 
-      // Fanout is rebuildable throughway — own sheet write is the materialize gate.
+      // Fanout is rebuildable throughway — own sheet write is the materialize gate
+      // (or ownCloudApplied when Commit already wrote via pen.publish).
       try {
         await ensureFanout(opts, record);
       } catch (fanoutErr) {
@@ -234,7 +235,7 @@ export async function promoteOutboxRecord(
   if (opts.writeOutboxCloudBackup) {
     await opts.writeOutboxCloudBackup(record);
   }
-  if (SHEET_KINDS.has(record.kind)) {
+  if (SHEET_KINDS.has(record.kind) && !record.ownCloudApplied) {
     await postOwnSheetApply(opts, record);
   }
   try {

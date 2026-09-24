@@ -34,6 +34,31 @@ const PEN_JOB_TYPES = [
   'pen.font_upsert'
 ] as const;
 
+/** Append promote link once; same signature → no-op (guards dual client paths). */
+function appendPromoteLinkIdempotent(
+  chainBody: string,
+  link: PenPromoteLink
+): { next: string; appended: boolean } {
+  const sig = typeof link.signature === 'string' ? link.signature : '';
+  try {
+    const parsed = chainBody ? JSON.parse(chainBody) : null;
+    if (parsed && typeof parsed === 'object' && Array.isArray(parsed.links)) {
+      if (sig && parsed.links.some((l: { signature?: string }) => l?.signature === sig)) {
+        return { next: JSON.stringify(parsed), appended: false };
+      }
+      parsed.links.push(link);
+      return { next: JSON.stringify(parsed), appended: true };
+    }
+  } catch {
+    /* fall through to jsonl-ish append */
+  }
+  if (sig && chainBody.includes(`"signature":"${sig}"`)) {
+    return { next: chainBody, appended: false };
+  }
+  const next = `${chainBody}${chainBody && !chainBody.endsWith('\n') ? '\n' : ''}${JSON.stringify(link)}\n`;
+  return { next, appended: true };
+}
+
 function getNotarySecret(): Buffer {
   const raw =
     process.env.PEN_NOTARY_HMAC_SECRET ||
@@ -606,25 +631,16 @@ export function setupPenRoutes(
 
         if (link) {
           const { text: chainBody } = await readDriveText(drive, docFolderId, 'history.chain');
-          let next = chainBody;
-          try {
-            const parsed = chainBody ? JSON.parse(chainBody) : null;
-            if (parsed && typeof parsed === 'object' && Array.isArray(parsed.links)) {
-              parsed.links.push(link);
-              next = JSON.stringify(parsed);
-            } else {
-              next = `${chainBody}${chainBody && !chainBody.endsWith('\n') ? '\n' : ''}${JSON.stringify(link)}\n`;
-            }
-          } catch {
-            next = `${chainBody}${JSON.stringify(link)}\n`;
+          const { next, appended } = appendPromoteLinkIdempotent(chainBody || '', link);
+          if (appended || next !== chainBody) {
+            await writeDriveFile(
+              drive,
+              docFolderId,
+              'history.chain',
+              Buffer.from(next, 'utf8'),
+              'application/json'
+            );
           }
-          await writeDriveFile(
-            drive,
-            docFolderId,
-            'history.chain',
-            Buffer.from(next, 'utf8'),
-            'application/json'
-          );
         }
 
         if (req.body?.sourceDraftId) {
@@ -835,25 +851,16 @@ export function setupPenRoutes(
       await writeDriveFile(drive, currentId, `${sanitizeName(sectionSlug)}.pen`, cipherBuf);
 
       const { text: chainBody } = await readDriveText(drive, docFolderId, 'history.chain');
-      let nextChain = chainBody;
-      try {
-        const parsed = chainBody ? JSON.parse(chainBody) : null;
-        if (parsed && typeof parsed === 'object' && Array.isArray(parsed.links)) {
-          parsed.links.push(link);
-          nextChain = JSON.stringify(parsed);
-        } else {
-          nextChain = `${chainBody}${chainBody && !chainBody.endsWith('\n') ? '\n' : ''}${JSON.stringify(link)}\n`;
-        }
-      } catch {
-        nextChain = `${chainBody}${JSON.stringify(link)}\n`;
+      const { next: nextChain, appended } = appendPromoteLinkIdempotent(chainBody || '', link);
+      if (appended || nextChain !== chainBody) {
+        await writeDriveFile(
+          drive,
+          docFolderId,
+          'history.chain',
+          Buffer.from(nextChain, 'utf8'),
+          'application/json'
+        );
       }
-      await writeDriveFile(
-        drive,
-        docFolderId,
-        'history.chain',
-        Buffer.from(nextChain, 'utf8'),
-        'application/json'
-      );
 
       safeLogger.info('[pen/apply-inbound] section_promote ok', {
         pn: hashIdentifier(pnIdentifier),

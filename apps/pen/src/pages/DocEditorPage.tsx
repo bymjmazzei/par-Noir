@@ -75,12 +75,12 @@ import {
   actorCan,
   invitePenCollaborator,
   applyPenCommentInbound,
-  applyPenPromoteInbound,
   applyPenSuggestionInbound,
   fetchGroupRoster,
   queuePenComment,
   queuePenSectionPromote,
-  queuePenSuggestion
+  queuePenSuggestion,
+  promotePenOutboxAndFanout
 } from '../services/penCollab';
 import { publishDocCloud, upsertDraftCloud } from '../services/penCloudStore';
 import { enqueueSyncJob } from '../services/penSyncQueue';
@@ -789,25 +789,8 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
       const ciphertextB64 = envelopeToWireB64(
         await encryptSectionJson(section!, mintDocKey(docId))
       );
-      const payload = {
-        docId,
-        groupId: bundle!.manifest.groupId,
-        sectionSlug: section!.slug,
-        pastName: paths.pastName,
-        currentRelPath: paths.currentPath,
-        pastRelPath: paths.pastPath,
-        sectionCiphertextB64: ciphertextB64,
-        contentHash,
-        link
-      };
 
       const peerRouteKeys = await peerRoutes(session, bundle!.manifest.groupId);
-      queuePenSectionPromote({
-        session,
-        outboxId: `pen_${crypto.randomUUID()}`,
-        payload,
-        peerRouteKeys
-      });
 
       try {
         await publishDocCloud({
@@ -837,13 +820,30 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
         return;
       }
 
-      void pub;
-      await applyPenPromoteInbound({
-        userPnIdentifier: session.pnIdentifier,
-        role: 'sender',
-        ...payload
-      }).catch(() => null);
+      // Owner chain append is solely via pen.publish above. Peer replicas get
+      // section_promote throughway only — ownCloudApplied skips a second Drive append.
+      if (peerRouteKeys.length > 0) {
+        queuePenSectionPromote({
+          session,
+          outboxId: `pen_${crypto.randomUUID()}`,
+          payload: {
+            docId,
+            groupId: bundle!.manifest.groupId,
+            sectionSlug: section!.slug,
+            pastName: paths.pastName,
+            currentRelPath: paths.currentPath,
+            pastRelPath: paths.pastPath,
+            sectionCiphertextB64: ciphertextB64,
+            contentHash,
+            link
+          },
+          peerRouteKeys,
+          ownCloudApplied: true
+        });
+        void promotePenOutboxAndFanout(session);
+      }
 
+      void pub;
       setStatus('Published live');
       window.setTimeout(() => setStatus(null), 2000);
     } catch (e) {

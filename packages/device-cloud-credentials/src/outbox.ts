@@ -45,6 +45,11 @@ export interface OutboxRecord {
   updatedAt: string;
   payload: Record<string, unknown>;
   fanout: OutboxFanoutTarget[];
+  /**
+   * Owner Drive already written (e.g. Commit via pen.publish).
+   * promoteLocalOutbox skips own apply-inbound and only rebuilds peer fanout.
+   */
+  ownCloudApplied?: boolean;
 }
 
 const LOCAL_KEY_PREFIX = 'pn_sender_outbox_v1:';
@@ -59,6 +64,7 @@ export function createOutboxRecord(input: {
   payload: Record<string, unknown>;
   fanout: OutboxFanoutTarget[];
   status?: OutboxStatus;
+  ownCloudApplied?: boolean;
 }): OutboxRecord {
   const now = new Date().toISOString();
   return {
@@ -68,7 +74,8 @@ export function createOutboxRecord(input: {
     createdAt: now,
     updatedAt: now,
     payload: input.payload,
-    fanout: input.fanout
+    fanout: input.fanout,
+    ...(input.ownCloudApplied ? { ownCloudApplied: true } : {})
   };
 }
 

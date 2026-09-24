@@ -290,13 +290,16 @@ export async function queuePenOutbox(params: {
   outboxId: string;
   payload: Record<string, unknown>;
   peerRouteKeys: string[];
+  /** Owner already wrote Drive (e.g. pen.publish); promote only fanouts peers. */
+  ownCloudApplied?: boolean;
 }): Promise<void> {
   const seal = sealSessionFromPen(params.session);
   const record = createOutboxRecord({
     outboxId: params.outboxId,
     kind: params.kind,
     payload: params.payload,
-    fanout: fanoutFor(params.kind, params.peerRouteKeys)
+    fanout: fanoutFor(params.kind, params.peerRouteKeys),
+    ownCloudApplied: params.ownCloudApplied
   });
   if (seal) {
     await upsertLocalOutboxRecord(params.session.pnIdentifier, seal, record);
@@ -315,6 +318,7 @@ export function queuePenSectionPromote(params: {
   outboxId: string;
   payload: Record<string, unknown>;
   peerRouteKeys: string[];
+  ownCloudApplied?: boolean;
 }): void {
   void queuePenOutbox({ ...params, kind: PEN_SECTION_PROMOTE_KIND });
 }

@@ -139,4 +139,57 @@ describe('promoteOutboxRecord (Sheets SoT)', () => {
     expect(materialized).toBe(false);
     upsertSpy.mockRestore();
   });
+
+  it('skips own apply-inbound when ownCloudApplied (peer fanout only)', async () => {
+    const fetchMock = vi.fn(async (url: string) => {
+      if (String(url).includes('/api/pen/apply-inbound')) {
+        return new Response(JSON.stringify({ ok: true }), { status: 200 });
+      }
+      if (String(url).includes('/api/mailbox/lookup')) {
+        return new Response(JSON.stringify({ found: false, pending: false }), { status: 200 });
+      }
+      if (String(url).includes('/api/mailbox/enqueue')) {
+        return new Response(JSON.stringify({ created: true }), { status: 200 });
+      }
+      return new Response('unexpected', { status: 500 });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const upsertSpy = vi
+      .spyOn(await import('./outbox.js'), 'upsertLocalOutboxRecord')
+      .mockImplementation(async (_id, _s, r) => [r]);
+
+    const record: OutboxRecord = {
+      outboxId: 'pen_fanout_only',
+      kind: 'pen.section_promote',
+      status: 'pending',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      ownCloudApplied: true,
+      payload: {
+        docId: 'pen_x',
+        sectionSlug: 'body',
+        link: { signature: 'sig' }
+      },
+      fanout: [{ routeKey: 'a'.repeat(64), jobType: 'pen.section_promote' }]
+    };
+
+    await promoteOutboxRecord(
+      {
+        apiBaseUrl: 'https://api.example.test',
+        authToken: 'oauth',
+        identityId: 'pn-sender',
+        session
+      },
+      record
+    );
+
+    const penApply = fetchMock.mock.calls.filter((c) =>
+      String(c[0]).includes('/api/pen/apply-inbound')
+    );
+    expect(penApply.length).toBe(0);
+    const lastUpsert = upsertSpy.mock.calls.at(-1)?.[2] as OutboxRecord;
+    expect(lastUpsert.status).toBe('materialized');
+    upsertSpy.mockRestore();
+  });
 });
