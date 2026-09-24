@@ -223,7 +223,9 @@ fi
 # Build Pen (pen.parnoir.com)
 echo "📦 Building pen..."
 cd ../pen
-VITE_PN_CLIENT_ID="${VITE_PN_CLIENT_ID:-pen-app}" npm run build
+VITE_PN_CLIENT_ID="${VITE_PN_CLIENT_ID:-pen-app}" \
+VITE_PEN_PUBLIC_TEMPLATE_ALLOWLIST="${VITE_PEN_PUBLIC_TEMPLATE_ALLOWLIST:-}" \
+npm run build
 if [ $? -ne 0 ]; then
     echo "❌ pen build failed"
     exit 1

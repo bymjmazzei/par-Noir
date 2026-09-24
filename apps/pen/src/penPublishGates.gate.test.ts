@@ -17,9 +17,15 @@ import {
 import { canPublishPublicTemplate, isVerifiedAuthor } from './services/penVerified';
 
 describe('Pen publish verification gates', () => {
-  it('isVerifiedAuthor fails closed until Veriff', () => {
+  it('isVerifiedAuthor fails closed when allowlist unset', () => {
     expect(isVerifiedAuthor(null)).toBe(false);
     expect(canPublishPublicTemplate(null)).toBe(false);
+    expect(
+      canPublishPublicTemplate({
+        accessToken: 't',
+        pnIdentifier: 'did:key:not-on-list'
+      })
+    ).toBe(false);
   });
 
   it('unverified may target browse only; pen-templates rejected', () => {

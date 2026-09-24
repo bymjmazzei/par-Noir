@@ -38,6 +38,8 @@ import { pendingSyncCount } from './services/penSyncQueue';
 import { PenLockedLanding } from './components/PenLockedLanding';
 import { TemplatesBrowse } from './components/TemplatesBrowse';
 import { loadBrowseDensity, saveBrowseDensity, type PenBrowseDensity } from './services/penClassPrefs';
+import { canPublishPublicTemplate } from './services/penVerified';
+import { ensurePlatformTemplateRoots } from './services/penPlatformTemplates';
 import { clearDocKeysForSession } from './services/penDocCrypto';
 import {
   bindPrefsCloudSession,
@@ -462,6 +464,15 @@ function AuthenticatedApp({
     const peeked = session.mlKemSecretKey || peekMlKemSecretKey();
     if (peeked) setMlKemSecretKey(peeked);
   }, [session.mlKemSecretKey, mlKemSecretKey]);
+
+  useEffect(() => {
+    if (!canPublishPublicTemplate(session)) return;
+    try {
+      ensurePlatformTemplateRoots(session.pnIdentifier);
+    } catch {
+      /* ignore — catalog still works from listStarterTemplates */
+    }
+  }, [session.pnIdentifier, session]);
 
   useEffect(() => {
     if (!mlKemSecretKey) {

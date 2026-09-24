@@ -1,13 +1,15 @@
 /**
- * Public pen-templates feed at /templates — CDN + live engagement only.
+ * Public pen-templates feed at /templates — platform starters + CDN published rows.
  */
 
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import type { CentralIndexEntry } from '@par-noir/aggregator-domain';
-import { getTemplate, listStarterTemplates } from '@par-noir/pen-protocol';
+import { getTemplate } from '@par-noir/pen-protocol';
 import type { PenSession } from '../services/penSession';
-import { TemplatesCdnFeedScroller } from '../components/TemplatesCdnFeedScroller';
+import {
+  TemplatesCdnFeedScroller,
+  type PublicTemplateFeedSelect
+} from '../components/TemplatesCdnFeedScroller';
 
 export function PublicTemplatesFeedPage({
   session,
@@ -21,19 +23,23 @@ export function PublicTemplatesFeedPage({
   const [activeClassId, setActiveClassId] = useState('all');
   const [hint, setHint] = useState<string | null>(null);
 
-  function onSelectEntry(entry: CentralIndexEntry) {
-    const meta = entry.metadata as {
+  function onSelect(sel: PublicTemplateFeedSelect) {
+    if (sel.kind === 'platform') {
+      navigate(`/?template=${encodeURIComponent(sel.templateId)}`);
+      return;
+    }
+    const meta = sel.entry.metadata as {
       basedOnTemplateId?: string;
       title?: string;
       name?: string;
     };
     const starterId = meta.basedOnTemplateId;
-    if (starterId && (getTemplate(starterId) || listStarterTemplates().some((t) => t.id === starterId))) {
+    if (starterId && getTemplate(starterId)) {
       navigate(`/?template=${encodeURIComponent(starterId)}`);
       return;
     }
     setHint(
-      `Public template “${meta.title || meta.name || entry.fileId}” — Use-from-CDN IR coming soon.`
+      `Public template “${meta.title || meta.name || sel.entry.fileId}” — Use-from-CDN IR coming soon.`
     );
     window.setTimeout(() => setHint(null), 4000);
   }
@@ -60,8 +66,8 @@ export function PublicTemplatesFeedPage({
               )}
               <h1 className="text-lg font-bold text-black">Templates</h1>
               <p className="text-sm text-neutral-500">
-                Public network templates. Engagement is for the published template, not the preview
-                chrome inside the tile.
+                Platform starters plus published network templates. Engagement appears only on
+                published IndexedFile rows.
               </p>
               {hint ? <p className="mt-1 text-sm text-neutral-600">{hint}</p> : null}
             </div>
@@ -72,7 +78,7 @@ export function PublicTemplatesFeedPage({
                 session={session}
                 activeClassId={activeClassId}
                 onActiveClassId={setActiveClassId}
-                onSelectEntry={onSelectEntry}
+                onSelect={onSelect}
               />
             </div>
           </div>

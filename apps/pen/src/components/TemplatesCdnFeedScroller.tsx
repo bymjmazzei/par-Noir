@@ -1,6 +1,6 @@
 /**
- * Templates feed — public pen-templates from central index, CDN media only.
- * Live engagement only for social public IndexedFile entries.
+ * Templates feed — public pen-templates from central index (CDN + engagement)
+ * plus platform starters not yet published (IR preview, no engagement).
  */
 
 import { useEffect, useMemo, useState } from 'react';
@@ -14,10 +14,21 @@ import {
   buildClassFeedRailItems,
   contentClassFallbackLabel
 } from '../services/classFeedRailItems';
+import { listConsumerStarterTemplates } from '../services/penPlatformTemplates';
 import { ClassFeedRail } from './ClassFeedRail';
 import { SnapFeedShell } from './SnapFeedShell';
 import { SocialPhoneFrame } from './SocialPhoneFrame';
 import { TemplateEngagementRail } from './TemplateEngagementRail';
+import { BrowseFeedTilePreview } from './BrowseFeedTilePreview';
+import { templatePreviewBundle } from './TemplateGalleryThumb';
+
+export type PublicTemplateFeedSelect =
+  | { kind: 'cdn'; entry: CentralIndexEntry }
+  | { kind: 'platform'; templateId: string };
+
+type FeedItem =
+  | { kind: 'cdn'; entry: CentralIndexEntry; classId: string }
+  | { kind: 'platform'; templateId: string; classId: string };
 
 function entryClassId(entry: CentralIndexEntry): string {
   const meta = entry.metadata as {
@@ -41,7 +52,6 @@ function entryRailLabel(classKey: string): string {
 function entryIsSocial(entry: CentralIndexEntry): boolean {
   const meta = entry.metadata as { penClassId?: string; contentClass?: string };
   if (meta.penClassId && categoryIdForClass(meta.penClassId) === 'social') return true;
-  // Aggregator contentClass note/media/collection are social browse atoms.
   return (
     meta.contentClass === 'note' ||
     meta.contentClass === 'media' ||
@@ -49,16 +59,33 @@ function entryIsSocial(entry: CentralIndexEntry): boolean {
   );
 }
 
+function mergeFeedItems(entries: CentralIndexEntry[]): FeedItem[] {
+  const covered = new Set<string>();
+  for (const e of entries) {
+    const based = (e.metadata as { basedOnTemplateId?: string } | undefined)?.basedOnTemplateId;
+    if (based) covered.add(based);
+  }
+  const cdn: FeedItem[] = entries.map((entry) => ({
+    kind: 'cdn',
+    entry,
+    classId: entryClassId(entry)
+  }));
+  const platform: FeedItem[] = listConsumerStarterTemplates()
+    .filter((t) => !covered.has(t.id))
+    .map((t) => ({ kind: 'platform', templateId: t.id, classId: t.classId }));
+  return [...platform, ...cdn];
+}
+
 export function TemplatesCdnFeedScroller({
   session,
   activeClassId,
   onActiveClassId,
-  onSelectEntry
+  onSelect
 }: {
   session: PenSession | null;
   activeClassId: string;
   onActiveClassId: (id: string) => void;
-  onSelectEntry: (entry: CentralIndexEntry) => void;
+  onSelect: (sel: PublicTemplateFeedSelect) => void;
 }) {
   const [entries, setEntries] = useState<CentralIndexEntry[]>([]);
   const [loading, setLoading] = useState(true);
@@ -86,11 +113,13 @@ export function TemplatesCdnFeedScroller({
     };
   }, []);
 
+  const items = useMemo(() => mergeFeedItems(entries), [entries]);
+
   const railItems = useMemo(() => {
     const formIds = new Set<string>();
     const fallbackKeys = new Set<string>();
-    for (const e of entries) {
-      const key = entryClassId(e);
+    for (const item of items) {
+      const key = item.classId;
       if (key.startsWith('cc:')) fallbackKeys.add(key);
       else formIds.add(key);
     }
@@ -99,12 +128,12 @@ export function TemplatesCdnFeedScroller({
       .map((id) => ({ id, label: entryRailLabel(id) }))
       .sort((a, b) => a.label.localeCompare(b.label));
     return [...fromForms, ...extras];
-  }, [entries]);
+  }, [items]);
 
   const filtered = useMemo(() => {
-    if (activeClassId === 'all') return entries;
-    return entries.filter((e) => entryClassId(e) === activeClassId);
-  }, [entries, activeClassId]);
+    if (activeClassId === 'all') return items;
+    return items.filter((i) => i.classId === activeClassId);
+  }, [items, activeClassId]);
 
   useEffect(() => {
     if (activeClassId === 'all') return;
@@ -122,7 +151,7 @@ export function TemplatesCdnFeedScroller({
           onSelect={onActiveClassId}
         />
       }
-      count={loading || error ? 0 : filtered.length}
+      count={loading ? 0 : filtered.length}
       loading={
         loading ? (
           <div className="pen-doc-feed-empty">
@@ -131,7 +160,7 @@ export function TemplatesCdnFeedScroller({
         ) : undefined
       }
       empty={
-        error ? (
+        error && filtered.length === 0 ? (
           <div className="pen-doc-feed-empty">
             <p className="text-sm text-red-600">{error}</p>
           </div>
@@ -142,17 +171,67 @@ export function TemplatesCdnFeedScroller({
         )
       }
       renderSlide={(index) => {
-        const entry = filtered[index];
-        if (!entry) return null;
+        const item = filtered[index];
+        if (!item) return null;
+        if (item.kind === 'platform') {
+          return (
+            <PlatformTemplateSlide
+              templateId={item.templateId}
+              session={session}
+              onOpen={() => onSelect({ kind: 'platform', templateId: item.templateId })}
+            />
+          );
+        }
         return (
           <CdnTemplateSlide
-            entry={entry}
+            entry={item.entry}
             session={session}
-            onOpen={() => onSelectEntry(entry)}
+            onOpen={() => onSelect({ kind: 'cdn', entry: item.entry })}
           />
         );
       }}
     />
+  );
+}
+
+function PlatformTemplateSlide({
+  templateId,
+  session,
+  onOpen
+}: {
+  templateId: string;
+  session: PenSession | null;
+  onOpen: () => void;
+}) {
+  const preview = templatePreviewBundle(undefined, templateId);
+  if (!preview) {
+    return (
+      <div className="pen-doc-feed-empty">
+        <p className="text-sm text-neutral-500">Template unavailable.</p>
+      </div>
+    );
+  }
+  const social = categoryIdForClass(preview.manifest.classId || '') === 'social';
+  const tile = (
+    <BrowseFeedTilePreview
+      manifest={preview.manifest}
+      sections={preview.sections}
+      bare
+      compact
+      session={session}
+    />
+  );
+  return (
+    <div className="pen-doc-feed-slide-stage">
+      <button type="button" className="pen-doc-feed-slide-hit" onClick={onOpen}>
+        {social ? (
+          <SocialPhoneFrame large>{tile}</SocialPhoneFrame>
+        ) : (
+          <div className="pen-feed-tile-slot">{tile}</div>
+        )}
+      </button>
+      {/* No engagement — platform IR has no IndexedFile fileId until published */}
+    </div>
   );
 }
 
@@ -265,7 +344,6 @@ function CdnTemplateSlide({
           <div className="pen-feed-tile-slot">{tile}</div>
         )}
       </button>
-      {/* Outside the template tile — public IndexedFile engagement only */}
       <TemplateEngagementRail
         fileId={entry.fileId}
         userPnIdentifier={session?.pnIdentifier}
