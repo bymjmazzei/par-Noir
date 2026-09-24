@@ -10,7 +10,7 @@
   "properties": {
     "templateId": {
       "type": "string",
-      "description": "Starter template id, e.g. note.basic.v1"
+      "description": "Starter template id, e.g. note.basic.portrait.v1"
     },
     "title": {
       "type": "string",

@@ -4,18 +4,23 @@ import {
   emptySection,
   defaultPagePresentation,
   defaultEditorPagePresentation,
+  emptyPollTable,
   getClass,
   hashSectionContent,
   notaryHashForGenesis,
   attachNotary,
   requireTemplate,
+  rewriteSeedTablePlaceholders,
+  sectionNeedsSeedTable,
   signGenesis,
   hashPnIdentifier,
   ensureOwnerAssignment,
   normalizeLicensingRoot,
+  tableSectionFromPayload,
   type PenDocManifest,
   type PenDraftManifest,
   type PenHistoryChain,
+  type PenSectionContent,
   type PenTemplate
 } from '@par-noir/pen-protocol';
 import { generateGroupId } from '@par-noir/dm-crypto';
@@ -34,22 +39,16 @@ function randomDraftId(): string {
   return `draft_${crypto.randomUUID().replace(/-/g, '').slice(0, 12)}`;
 }
 
-export async function createDocFromTemplate(input: {
+async function persistBundle(input: {
   session: PenSession;
-  templateId: string;
-  templates?: PenTemplate[];
+  template: PenTemplate;
+  docId: string;
+  sections: PenSectionContent[];
+  title?: string;
 }): Promise<LocalDocBundle> {
-  const template =
-    input.templates?.find((t) => t.id === input.templateId) ||
-    requireTemplate(input.templateId);
-
-  const docId = randomDocId();
   const draftId = randomDraftId();
   const now = new Date().toISOString();
-  const sections = (template.seedSections?.length
-    ? template.seedSections
-    : template.sections.map((s) => emptySection(s.slug))
-  ).map((s) => ({ ...s }));
+  const sections = input.sections.map((s) => ({ ...s }));
   const commitment = hashSectionContent(
     new TextEncoder().encode(JSON.stringify(sections))
   );
@@ -57,8 +56,8 @@ export async function createDocFromTemplate(input: {
   const ownerPnHash = hashPnIdentifier(input.session.pnIdentifier);
 
   let genesis = signGenesis({
-    docId,
-    templateId: template.id,
+    docId: input.docId,
+    templateId: input.template.id,
     authorPn: input.session.pnIdentifier,
     clientCreatedAt: now,
     contentCommitment: commitment,
@@ -77,53 +76,56 @@ export async function createDocFromTemplate(input: {
   }
 
   const groupId = generateGroupId();
-  mintDocKey(docId);
-  sessionStorage.setItem(`pen_group_id:${docId}`, groupId);
+  mintDocKey(input.docId);
+  sessionStorage.setItem(`pen_group_id:${input.docId}`, groupId);
 
   const draft: PenDraftManifest = {
     draftId,
-    docId,
+    docId: input.docId,
     authorPnHash: ownerPnHash,
     createdAt: now,
     updatedAt: now,
     status: 'unfinished',
-    toc: template.sections.map((s) => s.slug)
+    toc: input.template.sections.map((s) => s.slug)
   };
 
-  const social = getClass(template.classId)?.parentId === 'social';
+  const social = getClass(input.template.classId)?.parentId === 'social';
   const pageLayout =
-    template.seedPageLayout ||
-    (social ? 'flow' : 'letter');
+    input.template.seedPageLayout || (social ? 'flow' : 'letter');
   const pagePresentation =
-    template.seedPagePresentation ||
+    input.template.seedPagePresentation ||
     (social ? defaultPagePresentation() : defaultEditorPagePresentation());
 
   const manifest: PenDocManifest = {
-    docId,
-    title: `Untitled ${template.title}`,
-    docType: template.docType,
-    classId: template.classId,
-    templateId: template.id,
-    templateVersion: template.version,
+    docId: input.docId,
+    title: input.title || `Untitled ${input.template.title}`,
+    docType: input.template.docType,
+    classId: input.template.classId,
+    templateId: input.template.id,
+    templateVersion: input.template.version,
     groupId,
-    toc: template.sections.map((s) => s.slug),
+    toc: input.template.sections.map((s) => s.slug),
     createdAt: now,
     updatedAt: now,
     genesisProof: genesis,
     pageLayout,
     pagePresentation,
+    galleryAspect: input.template.seedGalleryAspect,
     ownerPnHash,
     roles: ensureOwnerAssignment([], ownerPnHash),
     lifecycle: 'draft',
     activeDraftId: draftId,
-    licensing: normalizeLicensingRoot(template.licensing, ownerPnHash)
+    licensing: normalizeLicensingRoot(input.template.licensing, ownerPnHash)
   };
 
-  const chain: PenHistoryChain = { docId, genesis, links: [] };
+  const chain: PenHistoryChain = { docId: input.docId, genesis, links: [] };
   const bundle = { manifest, sections, chain };
   saveLocalDoc(input.session.pnIdentifier, bundle);
-  sessionStorage.setItem(`pen_active_draft:${docId}`, draftId);
-  sessionStorage.setItem(`pen_draft_meta:${docId}:${draftId}`, JSON.stringify(draft));
+  sessionStorage.setItem(`pen_active_draft:${input.docId}`, draftId);
+  sessionStorage.setItem(
+    `pen_draft_meta:${input.docId}:${draftId}`,
+    JSON.stringify(draft)
+  );
 
   scheduleDocCloudBootstrap({
     session: input.session,
@@ -132,4 +134,55 @@ export async function createDocFromTemplate(input: {
   });
 
   return bundle;
+}
+
+/** Mint a kit cloud table primitive (hidden from New…). */
+export async function createTablePrimitiveDoc(input: {
+  session: PenSession;
+  title?: string;
+}): Promise<LocalDocBundle> {
+  const template = requireTemplate('table.basic.v1');
+  const docId = randomDocId();
+  const sections =
+    template.seedSections?.length
+      ? template.seedSections.map((s) => ({ ...s }))
+      : [tableSectionFromPayload('grid', emptyPollTable())];
+  return persistBundle({
+    session: input.session,
+    template,
+    docId,
+    sections,
+    title: input.title || 'Untitled Table'
+  });
+}
+
+export async function createDocFromTemplate(input: {
+  session: PenSession;
+  templateId: string;
+  templates?: PenTemplate[];
+}): Promise<LocalDocBundle> {
+  const template =
+    input.templates?.find((t) => t.id === input.templateId) ||
+    requireTemplate(input.templateId);
+
+  const docId = randomDocId();
+  let sections = (template.seedSections?.length
+    ? template.seedSections
+    : template.sections.map((s) => emptySection(s.slug))
+  ).map((s) => ({ ...s }));
+
+  if (sectionNeedsSeedTable(sections)) {
+    const table = await createTablePrimitiveDoc({
+      session: input.session,
+      title: `Table for ${template.title}`
+    });
+    sections = rewriteSeedTablePlaceholders(sections, table.manifest.docId);
+  }
+
+  return persistBundle({
+    session: input.session,
+    template,
+    docId,
+    sections
+  });
 }

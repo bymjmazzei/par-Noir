@@ -43,7 +43,10 @@ export interface PenSectionContent {
   layerGeom?: 'px';
 }
 
-export type PenPageLayerKind = 'text' | 'image' | 'video' | 'group';
+export type PenPageLayerKind = 'text' | 'image' | 'video' | 'group' | 'embed' | 'interactive';
+
+/** Interactive sticker behavior (handlers stub until engagement write path). */
+export type PenInteractiveBehavior = 'poll.vote' | 'cta.open';
 
 export type PenStrokeStyle = 'solid' | 'dashed' | 'dotted';
 export type PenStrokeAlign = 'inside' | 'outside' | 'center';
@@ -67,6 +70,20 @@ export interface PenPageLayer {
   imageSrc?: string;
   /** video layers */
   videoSrc?: string;
+  /**
+   * embed layers — frame hosting a cloud primitive / Pen doc by ref.
+   * Live by-ref in editor; publish may snapshot display (tallies live later).
+   */
+  refDocId?: string;
+  refSectionSlug?: string;
+  /** interactive sticker layers */
+  behavior?: PenInteractiveBehavior;
+  /** Bound cloud primitive / table doc id. */
+  bindDocId?: string;
+  /** Optional row id within a table primitive (e.g. poll option). */
+  bindRowId?: string;
+  /** Button / sticker label. */
+  label?: string;
   /** Fill / effects (text boxes and media frames). */
   backgroundColor?: string;
   backgroundImage?: string;
@@ -178,6 +195,8 @@ export interface PenDocManifest {
   flowWorkspaceHeightPx?: number | null;
   /** Default Note card chrome when compiling to browse. */
   pagePresentation?: PenPagePresentation;
+  /** Gallery / thumb aspect for Social orientations. */
+  galleryAspect?: '9/16' | '16/9' | '1/1';
   /** Aggregator fileId after Connect to feed — engagement comments key. */
   publishedFileId?: string;
   /**

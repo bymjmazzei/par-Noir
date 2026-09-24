@@ -19,3 +19,5 @@ export * from './layerParts.js';
 export * from './agent.js';
 export * from './licensing.js';
 export * from './starterAssets.js';
+export * from './table.js';
+export * from './seedRefs.js';

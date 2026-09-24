@@ -28,7 +28,7 @@ describe('pen curriculum eval', () => {
       expect(out.files.length).toBeGreaterThan(1);
       if (fix.asCurrent) {
         expect(out.files.some((f) => f.path.includes('/current/'))).toBe(true);
-        if (fix.build.templateId === 'note.basic.v1') {
+        if (fix.build.templateId === 'note.basic.portrait.v1') {
           expect(
             out.files.some((f) => f.path === currentSectionPath(out.docId, 'body'))
           ).toBe(true);
@@ -48,7 +48,7 @@ describe('pen curriculum eval', () => {
     const fix = GOLDEN_FIXTURES.find((f) => f.id === 'note-autumn-rain')!;
     const prompt = composeAgentPrompt(fix.expectedTemplateId, fix.intent);
     expect(prompt).toContain(fix.intent);
-    expect(prompt).toContain('note.basic.v1');
+    expect(prompt).toContain('note.basic.portrait.v1');
   });
 
   it('rejects synthetic bad builds', () => {

@@ -56,7 +56,7 @@ export function signPenMiniNoteGenesis(input: {
   if (!input.authorPn) {
     throw new Error('author_pn_required');
   }
-  const templateId = input.templateId.includes('.') ? input.templateId : 'note.basic.v1';
+  const templateId = input.templateId.includes('.') ? input.templateId : 'note.basic.portrait.v1';
   const template = requireTemplate(templateId);
   const keys = resolveBrowseSigningKeys();
   const docId = mintPenDocId();

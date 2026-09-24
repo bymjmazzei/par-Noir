@@ -14,11 +14,14 @@ When building any new pN surface for **authored or publishable content** (posts,
 1. **Assign a Pen class (form)** under a category (`classId` in `@par-noir/pen-protocol`), then **define and register the template**.
 2. **Then** build UI (Pen, Pen Mini, browse, L5) as a thin renderer/compiler of that template.
 3. Do **not** invent a parallel content model, storage layout, or one-off “special case” blob format beside Pen.
-4. **Format-first:** seeds encode the form’s job (see [`docs/architecture/PEN_FORM_FORMAT_SURVEY.md`](../../docs/architecture/PEN_FORM_FORMAT_SURVEY.md)). Stock media may illustrate a format; it must not *be* the format.
+4. **Format-first:** seeds encode the form’s job (see [`docs/architecture/PEN_FORM_FORMAT_SURVEY.md`](../../docs/architecture/PEN_FORM_FORMAT_SURVEY.md) and [`docs/architecture/PEN_TEMPLATE_SPEC_V0.md`](../../docs/architecture/PEN_TEMPLATE_SPEC_V0.md)). Stock media may illustrate a format; it must not *be* the format.
+5. **Dominance:** Note templates only when text is dominant; corner caption on media = Post (crop test).
+6. **Orientation:** Portrait / landscape / square are separate Social template ids.
+7. **Cloud primitives:** Kit `primitives.table` is a custody reference object. Templates embed by `docId`; interactive sticker layers bind; votes log into table rows (runtime follow-on). TipTap tables = static prose only. Overlay kinds: `embed`, `interactive`.
 
 Hierarchy: **Category → Form → Template** (e.g. Social → Notes → Basic Note). Template `classId` is always a form, never a category.
 
-Structured/relational personal data (sheets, standard data points) may be additional template families on the same spine — not a second custody story. Kit-only **Records** uses `audience: 'kit'` (hidden from Pen New…).
+Structured/relational personal data (sheets, standard data points) may be additional template families on the same spine — not a second custody story. Kit-only **Records** and **Primitives** use `audience: 'kit'` (hidden from Pen New…).
 
 ## Dual artifact + aggregators
 
@@ -45,12 +48,12 @@ Layers: **eye** = visibility (omit from preview/compile); **lock** = position lo
 
 - **First-party:** build only what scales the pN ecosystem.
 - **Starter pack (platform-owned, consumer):** peer categories —
-  - **Social** — Notes, Posts, Collections, **Sets** (refs to other docs). Atom browse content. (Feeds **moved** to Community.)
-  - **Community** — Feeds (`community.feed`, entitlement: self-hosted), Landing, Community home, **Site** (multipage feed aggregator/compiler like browse home—**not** an Elementor-class widget builder). Format contracts in `PEN_FORM_FORMAT_SURVEY.md`.
+  - **Social** — Notes, Posts, Collections, Sets, Quote, Link, Poll, Metric, Code, Profile, Audio, Frame. Atom browse content. (Feeds **moved** to Community.)
+  - **Community** — Feeds (`community.feed`, entitlement: self-hosted), Feed embed (`community.feed_embed`), Landing, Community home, **Site** (multipage feed aggregator/compiler like browse home—**not** an Elementor-class widget builder). Format contracts in `PEN_FORM_FORMAT_SURVEY.md` / `PEN_TEMPLATE_SPEC_V0.md`.
   - **Projects** — Journal, List, Letter, Note (correspondence shapes; DM delivery later)
   - **Library** — Book, Article, Music (durable **authoring** category; Project publish may save as Library template or create finished Library doc — not a subclass of Projects)
   - **Time** — Calendar, Event, Schedule
-  - **Kit-only:** **Records** — Register (`audience: 'kit'`; L5/API catalog, not end-user New…)
+  - **Kit-only:** **Records** (Register, Asset key) and **Primitives** (Table) — L5/API catalog, not end-user New…
 - **Personal templates:** local “Yours” in New… (Publish → As template; Projects may also Publish → As Library template). Not the public marketplace.
 - **Marketplace (deferred):** open third-party template building **after** IR, compile contract, and permissions are stable. Do not ship a template marketplace before the spine. Do not confuse the **Community category** (first-party forms) with the **marketplace**.
 
@@ -81,8 +84,11 @@ Layers: **eye** = visibility (omit from preview/compile); **lock** = position lo
 | Note / Notes | Feed/social `contentClass` (replaces Thought); also Projects form `projects.note` for correspondence |
 | Collection | Ordered slide/story form (`collection.*` templates; browse `contentClass: 'collection'`) |
 | Set | Social form that references other docs (`social.set`) |
-| Community | Peer **category** for Feeds, Landing, Community home, Site |
-| Feed | Community form (`community.feed`); self-hosted stream config — not a Social atom |
+| Community | Peer **category** for Feeds, Feed embed, Landing, Community home, Site |
+| Feed | Community form (`community.feed`); self-hosted stream **config** — not a Social atom |
+| Feed embed | Community form (`community.feed_embed`); framed configurable stream chrome |
+| Frame | Social form (`social.frame`); hosts embed layer + interactive stickers (no third-party webview runtime) |
+| Table primitive | Kit cloud reference grid (`primitives.table`); polls/templates embed; stickers bind |
 | Landing | Community arrival page (hero / value / CTA) |
 | Community home | Community hub (banner / nav / featured / announcements) |
 | Site | Community multipage feed of pages (aggregator/compiler like browse home)—not a widget site builder |

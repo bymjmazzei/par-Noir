@@ -324,6 +324,33 @@ function BodyWrapObject({
         }}
       />
     );
+  } else if (layer.kind === 'embed') {
+    inner = (
+      <div
+        className="flex h-full w-full flex-col justify-center gap-1 overflow-hidden p-2 text-left text-xs text-stone-200"
+        title={layerDisplayLabel(layer, allLayers)}
+      >
+        <div className="font-medium text-stone-100">Embed</div>
+        <div className="truncate font-mono text-[10px] text-stone-400">
+          {layer.refDocId || '(no ref)'}
+        </div>
+      </div>
+    );
+  } else if (layer.kind === 'interactive') {
+    inner = (
+      <button
+        type="button"
+        className="flex h-full w-full items-center justify-center px-3 text-sm font-medium text-white"
+        title={`${layer.behavior || 'interactive'} → ${layer.bindDocId || ''}`}
+        onClick={(e) => {
+          e.stopPropagation();
+          /* Vote / CTA runtime deferred — sticker chrome only. */
+          onSelect();
+        }}
+      >
+        {layer.label || 'Action'}
+      </button>
+    );
   }
   if (!inner) return null;
 
@@ -942,6 +969,31 @@ export function EditablePagePreview({
                         onNaturalAspect={(aspect) => reshapeLayerToAspect(layer.id, aspect)}
                         selected={activeLayerId === layer.id}
                       />
+                    </div>
+                  );
+                }
+                if (layer.kind === 'embed') {
+                  return (
+                    <div
+                      className="flex h-full w-full flex-col justify-center gap-1 overflow-hidden p-2 text-left text-xs text-stone-200"
+                      style={shell}
+                      title={layerDisplayLabel(layer, layers)}
+                    >
+                      <div className="font-medium text-stone-100">Embed</div>
+                      <div className="truncate font-mono text-[10px] text-stone-400">
+                        {layer.refDocId || '(no ref)'}
+                      </div>
+                    </div>
+                  );
+                }
+                if (layer.kind === 'interactive') {
+                  return (
+                    <div
+                      className="flex h-full w-full items-center justify-center px-3 text-sm font-medium text-white"
+                      style={shell}
+                      title={`${layer.behavior || 'interactive'} → ${layer.bindDocId || ''}`}
+                    >
+                      {layer.label || 'Action'}
                     </div>
                   );
                 }

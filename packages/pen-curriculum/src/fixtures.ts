@@ -18,9 +18,9 @@ export const GOLDEN_FIXTURES: PenCurriculumFixture[] = [
     id: 'note-autumn-rain',
     dir: 'notes/autumn-rain',
     intent: 'Write a short browse Note about autumn rain on the city.',
-    expectedTemplateId: 'note.basic.v1',
+    expectedTemplateId: 'note.basic.portrait.v1',
     build: {
-      templateId: 'note.basic.v1',
+      templateId: 'note.basic.portrait.v1',
       title: 'Autumn rain',
       sections: [
         {
@@ -101,9 +101,9 @@ export const GOLDEN_FIXTURES: PenCurriculumFixture[] = [
     id: 'publish-note-before',
     dir: 'publish/note-draft',
     intent: 'Draft a Note that will later be published (before).',
-    expectedTemplateId: 'note.basic.v1',
+    expectedTemplateId: 'note.basic.portrait.v1',
     build: {
-      templateId: 'note.basic.v1',
+      templateId: 'note.basic.portrait.v1',
       title: 'Harbor light',
       sections: [{ slug: 'body', plainText: 'The ferry horn carries across the harbor.' }]
     }
@@ -112,10 +112,10 @@ export const GOLDEN_FIXTURES: PenCurriculumFixture[] = [
     id: 'publish-note-after',
     dir: 'publish/note-current',
     intent: 'Same Note after publish (current tree).',
-    expectedTemplateId: 'note.basic.v1',
+    expectedTemplateId: 'note.basic.portrait.v1',
     asCurrent: true,
     build: {
-      templateId: 'note.basic.v1',
+      templateId: 'note.basic.portrait.v1',
       title: 'Harbor light',
       sections: [{ slug: 'body', plainText: 'The ferry horn carries across the harbor.' }]
     }
@@ -159,13 +159,13 @@ export const BAD_FIXTURES: Array<{ id: string; build: unknown; expectCode: strin
   },
   {
     id: 'bad-missing-section',
-    build: { templateId: 'note.basic.v1', title: 'Empty', sections: [] },
+    build: { templateId: 'note.basic.portrait.v1', title: 'Empty', sections: [] },
     expectCode: 'missing_required_section'
   },
   {
     id: 'bad-unknown-slug',
     build: {
-      templateId: 'note.basic.v1',
+      templateId: 'note.basic.portrait.v1',
       title: 'Extra',
       sections: [
         { slug: 'body', plainText: 'ok' },

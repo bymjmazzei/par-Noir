@@ -64,13 +64,13 @@ describe('createDocFromAgentBuild', () => {
         pnIdentifier: 'pn-agent-test'
       },
       build: {
-        templateId: 'note.basic.v1',
+        templateId: 'note.basic.portrait.v1',
         title: 'From agent',
         sections: [{ slug: 'body', plainText: 'Built by an external agent.' }]
       }
     });
     expect(bundle.manifest.title).toBe('From agent');
-    expect(bundle.manifest.templateId).toBe('note.basic.v1');
+    expect(bundle.manifest.templateId).toBe('note.basic.portrait.v1');
     expect(bundle.sections.some((s) => s.slug === 'body')).toBe(true);
     expect(bundle.manifest.genesisProof).toBeTruthy();
     expect(scheduleDocCloudBootstrap).toHaveBeenCalledWith(
@@ -87,7 +87,7 @@ describe('createDocFromAgentBuild', () => {
     await expect(
       createDocFromAgentBuild({
         session: { accessToken: 't', pnIdentifier: 'pn-x' },
-        build: { templateId: 'note.basic.v1', title: '', sections: [] }
+        build: { templateId: 'note.basic.portrait.v1', title: '', sections: [] }
       })
     ).rejects.toThrow(/pen_agent_build_invalid/);
   });

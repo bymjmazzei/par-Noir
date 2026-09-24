@@ -13,7 +13,9 @@ import {
 } from 'react';
 import {
   alignLayers,
+  createEmbedLayer,
   createGroupFromSelection,
+  createInteractiveLayer,
   createTextLayer,
   defaultLayerName,
   distributeLayers,
@@ -182,6 +184,37 @@ export function LayersPopover({
       zIndex: maxZ() + 1,
       name: `Layer ${n}`
     });
+    commit(upsertLayer(prepared, layer));
+    onSelectLayer(layer.id);
+    onSelectedIdsChange([layer.id]);
+  }
+
+  function addEmbedLayer() {
+    const layer = createEmbedLayer('', {
+      x: 24,
+      y: 80 + (layersFrontFirst.length % 3) * 12,
+      zIndex: maxZ() + 1,
+      name: 'Embed'
+    });
+    commit(upsertLayer(prepared, layer));
+    onSelectLayer(layer.id);
+    onSelectedIdsChange([layer.id]);
+  }
+
+  function addInteractiveSticker() {
+    const layer = createInteractiveLayer(
+      {
+        behavior: 'poll.vote',
+        bindDocId: '',
+        label: 'Vote'
+      },
+      {
+        x: 24,
+        y: 160 + (layersFrontFirst.length % 3) * 12,
+        zIndex: maxZ() + 1,
+        name: 'Sticker'
+      }
+    );
     commit(upsertLayer(prepared, layer));
     onSelectLayer(layer.id);
     onSelectedIdsChange([layer.id]);
@@ -374,6 +407,24 @@ export function LayersPopover({
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden>
             <path d="M12 5v14M5 12h14" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" />
           </svg>
+        </button>
+        <button
+          type="button"
+          title="Add embed frame"
+          aria-label="Add embed frame"
+          className="inline-flex h-7 items-center rounded px-1.5 text-[10px] font-bold uppercase tracking-wide text-neutral-600 hover:text-black"
+          onClick={addEmbedLayer}
+        >
+          Embed
+        </button>
+        <button
+          type="button"
+          title="Add interactive sticker"
+          aria-label="Add interactive sticker"
+          className="inline-flex h-7 items-center rounded px-1.5 text-[10px] font-bold uppercase tracking-wide text-neutral-600 hover:text-black"
+          onClick={addInteractiveSticker}
+        >
+          Sticker
         </button>
       </div>
 

@@ -6,29 +6,43 @@ import { emptySection } from './richDoc.js';
 import {
   seedArticle,
   seedAssetKey,
+  seedAudio,
   seedBook,
   seedCalendar,
   seedCardNote,
+  seedCode,
   seedCollectionBasic,
   seedCollectionStory,
   seedCommunityHome,
+  seedComparison,
   seedEvent,
   seedFeedCurated,
+  seedFeedEmbed,
   seedFeedSelfHosted,
+  seedFrame,
   seedJournal,
   seedLanding,
   seedLetter,
+  seedLink,
   seedList,
+  seedMetric,
   seedMusic,
   seedNoteArticle,
-  seedNoteBasic,
+  seedNoteBasicLandscape,
+  seedNoteBasicPortrait,
+  seedNoteMediaLandscape,
+  seedNoteMediaPortrait,
+  seedPoll,
   seedPostCaption,
-  seedPostImage,
-  seedPostVideo,
+  seedPostImageAspect,
+  seedPostVideoAspect,
+  seedProfile,
+  seedQuote,
   seedRegister,
   seedSchedule,
   seedSetBasic,
   seedSite,
+  seedTablePrimitive,
   type SeedBundle
 } from './starterSeeds.js';
 
@@ -79,6 +93,8 @@ export interface PenTemplate {
   seedPagePresentation?: PenPagePresentation;
   /** Default page layout when creating / previewing from this template. */
   seedPageLayout?: PenPageLayout;
+  /** Gallery thumb aspect (Social orientations). */
+  seedGalleryAspect?: '9/16' | '16/9' | '1/1';
   /** Featured in Pen Mini (~3 per form). */
   browseFeatured?: boolean;
   /** Optional CDN-backed public template preview. */
@@ -153,21 +169,78 @@ const DEFAULT_REGISTER_COLUMNS: PenRegisterColumn[] = [
 const STARTER: PenTemplate[] = [
   withSeed(
     {
-      id: 'note.basic.v1',
+      id: 'note.basic.portrait.v1',
       classId: 'social.note',
       docType: 'note',
       version: '1',
-      title: 'Basic Note',
-      description: 'Full-bleed social Note for browse',
+      title: 'Basic Note (Portrait)',
+      description: 'Text-first portrait Note for browse',
       sections: [{ slug: 'body', title: 'Body', required: true }],
       publishContentClass: 'note',
       browseFeatured: true,
+      seedGalleryAspect: '9/16',
       agentStarter: proseStarter({
-        title: 'Basic Note',
-        focus: 'Fill the required body with clear prose suitable for a browse Note.'
+        title: 'Basic Note (Portrait)',
+        focus: 'Fill the required body with clear prose suitable for a browse Note. Text must dominate.'
       })
     },
-    seedNoteBasic()
+    seedNoteBasicPortrait()
+  ),
+  withSeed(
+    {
+      id: 'note.basic.landscape.v1',
+      classId: 'social.note',
+      docType: 'note',
+      version: '1',
+      title: 'Basic Note (Landscape)',
+      description: 'Text-first landscape Note',
+      sections: [{ slug: 'body', title: 'Body', required: true }],
+      publishContentClass: 'note',
+      browseFeatured: true,
+      seedGalleryAspect: '16/9',
+      agentStarter: proseStarter({
+        title: 'Basic Note (Landscape)',
+        focus: 'Write a headline and short sub-message. Text must dominate.'
+      })
+    },
+    seedNoteBasicLandscape()
+  ),
+  withSeed(
+    {
+      id: 'note.media.portrait.v1',
+      classId: 'social.note',
+      docType: 'note',
+      version: '1',
+      title: 'Note on Media (Portrait)',
+      description: 'Text card/scrim over quiet media — text still dominates',
+      sections: [{ slug: 'body', title: 'Body', required: true }],
+      publishContentClass: 'note',
+      browseFeatured: true,
+      seedGalleryAspect: '9/16',
+      agentStarter: proseStarter({
+        title: 'Note on Media (Portrait)',
+        focus: 'Write protected overlay text. Media is backdrop only.'
+      })
+    },
+    seedNoteMediaPortrait()
+  ),
+  withSeed(
+    {
+      id: 'note.media.landscape.v1',
+      classId: 'social.note',
+      docType: 'note',
+      version: '1',
+      title: 'Note on Media (Landscape)',
+      description: 'Split media + dominant text card',
+      sections: [{ slug: 'body', title: 'Body', required: true }],
+      publishContentClass: 'note',
+      seedGalleryAspect: '16/9',
+      agentStarter: proseStarter({
+        title: 'Note on Media (Landscape)',
+        focus: 'Write the text card; media is secondary.'
+      })
+    },
+    seedNoteMediaLandscape()
   ),
   withSeed(
     {
@@ -176,7 +249,7 @@ const STARTER: PenTemplate[] = [
       docType: 'note',
       version: '1',
       title: 'Article Note',
-      description: 'Title + body Note over an editorial still',
+      description: 'Title + body Note',
       sections: [
         { slug: 'title', title: 'Title', required: true },
         { slug: 'body', title: 'Body', required: true }
@@ -205,6 +278,7 @@ const STARTER: PenTemplate[] = [
       ],
       publishContentClass: 'note',
       browseFeatured: true,
+      seedGalleryAspect: '9/16',
       agentStarter: proseStarter({
         title: 'Caption Post',
         focus:
@@ -215,47 +289,135 @@ const STARTER: PenTemplate[] = [
   ),
   withSeed(
     {
-      id: 'post.media.v1',
+      id: 'post.image.portrait.v1',
       classId: 'social.post',
       docType: 'post',
       version: '1',
-      title: 'Image Post',
-      description: 'Locked image frame with optional caption',
+      title: 'Image Post (Portrait)',
+      description: 'Locked portrait image frame with optional caption',
       sections: [
         { slug: 'attachments', title: 'Media', required: true },
         { slug: 'caption', title: 'Caption', required: false }
       ],
       publishContentClass: 'note',
       browseFeatured: true,
+      seedGalleryAspect: '9/16',
       agentStarter: proseStarter({
-        title: 'Image Post',
+        title: 'Image Post (Portrait)',
         focus: 'Describe media attachments the user named; add an optional short caption.'
       })
     },
-    seedPostImage()
+    seedPostImageAspect('portrait')
   ),
   withSeed(
     {
-      id: 'post.video.v1',
+      id: 'post.image.landscape.v1',
       classId: 'social.post',
       docType: 'post',
       version: '1',
-      title: 'Video Post',
-      description: 'Locked vertical video frame with caption',
+      title: 'Image Post (Landscape)',
+      description: 'Locked landscape image frame',
       sections: [
         { slug: 'attachments', title: 'Media', required: true },
         { slug: 'caption', title: 'Caption', required: false }
       ],
       publishContentClass: 'note',
       browseFeatured: true,
+      seedGalleryAspect: '16/9',
       agentStarter: proseStarter({
-        title: 'Video Post',
+        title: 'Image Post (Landscape)',
+        focus: 'Describe landscape media; optional caption.'
+      })
+    },
+    seedPostImageAspect('landscape')
+  ),
+  withSeed(
+    {
+      id: 'post.image.square.v1',
+      classId: 'social.post',
+      docType: 'post',
+      version: '1',
+      title: 'Image Post (Square)',
+      description: '1:1 image frame',
+      sections: [
+        { slug: 'attachments', title: 'Media', required: true },
+        { slug: 'caption', title: 'Caption', required: false }
+      ],
+      publishContentClass: 'note',
+      browseFeatured: true,
+      seedGalleryAspect: '1/1',
+      agentStarter: proseStarter({
+        title: 'Image Post (Square)',
+        focus: 'Describe square media; optional caption.'
+      })
+    },
+    seedPostImageAspect('square')
+  ),
+  withSeed(
+    {
+      id: 'post.video.portrait.v1',
+      classId: 'social.post',
+      docType: 'post',
+      version: '1',
+      title: 'Video Post (Portrait)',
+      description: 'Locked 9:16 video frame',
+      sections: [
+        { slug: 'attachments', title: 'Media', required: true },
+        { slug: 'caption', title: 'Caption', required: false }
+      ],
+      publishContentClass: 'note',
+      browseFeatured: true,
+      seedGalleryAspect: '9/16',
+      agentStarter: proseStarter({
+        title: 'Video Post (Portrait)',
         focus: 'Describe the video the user named; add an optional short caption.'
       })
     },
-    seedPostVideo()
+    seedPostVideoAspect('portrait')
   ),
   withSeed(
+    {
+      id: 'post.video.landscape.v1',
+      classId: 'social.post',
+      docType: 'post',
+      version: '1',
+      title: 'Video Post (Landscape)',
+      description: 'Locked 16:9 video frame',
+      sections: [
+        { slug: 'attachments', title: 'Media', required: true },
+        { slug: 'caption', title: 'Caption', required: false }
+      ],
+      publishContentClass: 'note',
+      seedGalleryAspect: '16/9',
+      agentStarter: proseStarter({
+        title: 'Video Post (Landscape)',
+        focus: 'Describe landscape video; optional caption.'
+      })
+    },
+    seedPostVideoAspect('landscape')
+  ),
+  withSeed(
+    {
+      id: 'post.video.square.v1',
+      classId: 'social.post',
+      docType: 'post',
+      version: '1',
+      title: 'Video Post (Square)',
+      description: 'Locked 1:1 video frame',
+      sections: [
+        { slug: 'attachments', title: 'Media', required: true },
+        { slug: 'caption', title: 'Caption', required: false }
+      ],
+      publishContentClass: 'note',
+      seedGalleryAspect: '1/1',
+      agentStarter: proseStarter({
+        title: 'Video Post (Square)',
+        focus: 'Describe square video; optional caption.'
+      })
+    },
+    seedPostVideoAspect('square')
+  ),
+withSeed(
     {
       id: 'collection.basic.v1',
       classId: 'social.collection',
@@ -582,7 +744,204 @@ const STARTER: PenTemplate[] = [
     },
     seedSchedule()
   ),
+  
   withSeed(
+    {
+      id: 'quote.basic.v1',
+      classId: 'social.quote',
+      docType: 'quote',
+      version: '1',
+      title: 'Quote Card',
+      description: 'Highlight / soundbite',
+      sections: [{ slug: 'body', title: 'Quote', required: true }],
+      publishContentClass: 'note',
+      browseFeatured: true,
+      seedGalleryAspect: '9/16',
+      agentStarter: proseStarter({
+        title: 'Quote Card',
+        focus: 'Write a short quotable line and optional byline. Keep under ~40 words.'
+      })
+    },
+    seedQuote()
+  ),
+  withSeed(
+    {
+      id: 'link.basic.v1',
+      classId: 'social.link',
+      docType: 'link',
+      version: '1',
+      title: 'Link Card',
+      description: 'Bookmark / OG summary',
+      sections: [{ slug: 'body', title: 'Link', required: true }],
+      publishContentClass: 'note',
+      browseFeatured: true,
+      agentStarter: proseStarter({
+        title: 'Link Card',
+        focus: 'Provide domain, title, and a short snippet — not a raw URL dump.'
+      })
+    },
+    seedLink()
+  ),
+  withSeed(
+    {
+      id: 'poll.basic.v1',
+      classId: 'social.poll',
+      docType: 'poll',
+      version: '1',
+      title: 'Poll',
+      description: 'Survey widget — embeds cloud table + vote stickers',
+      sections: [{ slug: 'prompt', title: 'Prompt', required: true }],
+      publishContentClass: 'note',
+      browseFeatured: true,
+      seedGalleryAspect: '9/16',
+      agentStarter: proseStarter({
+        title: 'Poll',
+        focus: 'Write the poll question. Options live in the bound table primitive.'
+      })
+    },
+    seedPoll()
+  ),
+  withSeed(
+    {
+      id: 'comparison.basic.v1',
+      classId: 'social.frame',
+      docType: 'comparison',
+      version: '1',
+      title: 'Comparison Matrix',
+      description: 'Embeds a cloud table as comparison chrome',
+      sections: [{ slug: 'body', title: 'Body', required: true }],
+      publishContentClass: 'note',
+      browseFeatured: true,
+      agentStarter: proseStarter({
+        title: 'Comparison Matrix',
+        focus: 'Describe comparison axes; cell data lives in the bound table primitive.'
+      })
+    },
+    seedComparison()
+  ),
+  withSeed(
+    {
+      id: 'metric.basic.v1',
+      classId: 'social.metric',
+      docType: 'metric',
+      version: '1',
+      title: 'Metric / KPI',
+      description: 'Big-number callout',
+      sections: [{ slug: 'body', title: 'Metric', required: true }],
+      publishContentClass: 'note',
+      browseFeatured: true,
+      agentStarter: proseStarter({
+        title: 'Metric / KPI',
+        focus: 'Provide value, delta with timeframe, and metric label.'
+      })
+    },
+    seedMetric()
+  ),
+  withSeed(
+    {
+      id: 'code.basic.v1',
+      classId: 'social.code',
+      docType: 'code',
+      version: '1',
+      title: 'Code Snippet',
+      description: 'Syntax card',
+      sections: [{ slug: 'body', title: 'Code', required: true }],
+      publishContentClass: 'note',
+      agentStarter: proseStarter({
+        title: 'Code Snippet',
+        focus: 'Provide language badge and a short code body.'
+      })
+    },
+    seedCode()
+  ),
+  withSeed(
+    {
+      id: 'profile.basic.v1',
+      classId: 'social.profile',
+      docType: 'profile',
+      version: '1',
+      title: 'Profile Card',
+      description: 'Member / contributor badge',
+      sections: [{ slug: 'body', title: 'Profile', required: true }],
+      publishContentClass: 'note',
+      agentStarter: proseStarter({
+        title: 'Profile Card',
+        focus: 'Fill display name, role, and short bio.'
+      })
+    },
+    seedProfile()
+  ),
+  withSeed(
+    {
+      id: 'audio.basic.v1',
+      classId: 'social.audio',
+      docType: 'audio',
+      version: '1',
+      title: 'Audio Snippet',
+      description: 'Voice note / audiogram chrome',
+      sections: [{ slug: 'body', title: 'Audio', required: true }],
+      publishContentClass: 'note',
+      agentStarter: proseStarter({
+        title: 'Audio Snippet',
+        focus: 'Name the speaker and provide a transcript excerpt.'
+      })
+    },
+    seedAudio()
+  ),
+  withSeed(
+    {
+      id: 'frame.basic.v1',
+      classId: 'social.frame',
+      docType: 'frame',
+      version: '1',
+      title: 'Interactive Frame',
+      description: 'Embed stage + stickers (no third-party webview)',
+      sections: [{ slug: 'body', title: 'Frame', required: true }],
+      publishContentClass: 'note',
+      agentStarter: proseStarter({
+        title: 'Interactive Frame',
+        focus: 'Describe the framed content; interactions bind to a cloud primitive.'
+      })
+    },
+    seedFrame()
+  ),
+  withSeed(
+    {
+      id: 'feed.embed.v1',
+      classId: 'community.feed_embed',
+      docType: 'feed_embed',
+      version: '1',
+      title: 'Feed Embed',
+      description: 'Framed configurable stream chrome',
+      sections: [
+        { slug: 'header', title: 'Header', required: true },
+        { slug: 'stream', title: 'Stream', required: true },
+        { slug: 'composer', title: 'Composer', required: false }
+      ],
+      agentStarter: proseStarter({
+        title: 'Feed Embed',
+        focus: 'Fill feed scope header and stream empty-state; keep embed chrome compact.'
+      })
+    },
+    seedFeedEmbed()
+  ),
+  withSeed(
+    {
+      id: 'table.basic.v1',
+      classId: 'primitives.table',
+      docType: 'table',
+      version: '1',
+      title: 'Cloud Table',
+      description: 'Kit cloud grid reference object',
+      sections: [{ slug: 'grid', title: 'Grid', required: true }],
+      agentStarter: proseStarter({
+        title: 'Cloud Table',
+        focus: 'Do not invent TipTap tables for tallies — structured table.v1 rows only via tooling.'
+      })
+    },
+    seedTablePrimitive()
+  ),
+withSeed(
     {
       id: 'register.basic.v1',
       classId: 'records.register',

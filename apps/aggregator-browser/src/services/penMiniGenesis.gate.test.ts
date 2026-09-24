@@ -49,7 +49,7 @@ describe('penMiniGenesis gate', () => {
     expect(() =>
       signPenMiniNoteGenesis({
         authorPn: 'pn_author',
-        templateId: 'note.basic.v1',
+        templateId: 'note.basic.portrait.v1',
         sections: buildMiniBodySections('hello'),
       })
     ).toThrow(/signing_keys_required/);
@@ -60,11 +60,11 @@ describe('penMiniGenesis gate', () => {
     const sections = buildMiniBodySections('Pen Mini note body');
     const signed = signPenMiniNoteGenesis({
       authorPn: 'pn_author',
-      templateId: 'note.basic.v1',
+      templateId: 'note.basic.portrait.v1',
       sections,
     });
     expect(signed.docId.startsWith('pen_')).toBe(true);
-    expect(signed.templateId).toBe('note.basic.v1');
+    expect(signed.templateId).toBe('note.basic.portrait.v1');
     expect(signed.penClassId).toBe('social.note');
     expect(signed.penIrRef.objectId).toBe(signed.docId);
     expect(signed.headProof).toBe(signed.genesis);
@@ -76,7 +76,7 @@ describe('penMiniGenesis gate', () => {
     unlockWithDsa();
     const signed = signPenMiniNoteGenesis({
       authorPn: 'pn_author',
-      templateId: 'note.basic.v1',
+      templateId: 'note.basic.portrait.v1',
       sections: buildMiniBodySections('body'),
     });
     const forged = {

@@ -66,6 +66,9 @@ function presentationSurface(pres: PenPagePresentation, fontSize: number): CSSPr
 }
 
 function pageAspect(manifest: PenDocManifest): string | undefined {
+  if (manifest.galleryAspect === '9/16') return '9 / 16';
+  if (manifest.galleryAspect === '16/9') return '16 / 9';
+  if (manifest.galleryAspect === '1/1') return '1 / 1';
   if (manifest.pageLayout === 'letter') return '8.5 / 11';
   if (manifest.pageLayout === 'a4') return '210 / 297';
   return '3 / 4';
@@ -119,8 +122,8 @@ export function DocGalleryPreview({
   const mediaFrameStyle =
     large
       ? {
-          aspectRatio: social ? '9 / 16' : pageAspect(manifest),
-          height: social ? '100%' : undefined,
+          aspectRatio: pageAspect(manifest) || (social ? '9 / 16' : undefined),
+          height: social && !manifest.galleryAspect ? '100%' : undefined,
           width: '100%',
           position: 'relative' as const
         }
@@ -190,8 +193,8 @@ export function DocGalleryPreview({
           /* Tile frame owns size; modal large keeps intrinsic page shape */
           ...(large
             ? {
-                aspectRatio: social ? '9 / 16' : pageAspect(manifest),
-                height: social ? '100%' : undefined,
+                aspectRatio: pageAspect(manifest) || (social ? '9 / 16' : undefined),
+                height: social && !manifest.galleryAspect ? '100%' : undefined,
                 width: '100%'
               }
             : { width: '100%', height: '100%' })

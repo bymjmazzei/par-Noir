@@ -63,6 +63,70 @@ const CLASSES: PenClass[] = [
     parentId: 'social'
   },
   {
+    id: 'social.quote',
+    title: 'Quote',
+    description: 'Highlight / soundbite card',
+    kind: 'authored',
+    audience: 'consumer',
+    parentId: 'social'
+  },
+  {
+    id: 'social.link',
+    title: 'Link',
+    description: 'Bookmark / OpenGraph summary card',
+    kind: 'authored',
+    audience: 'consumer',
+    parentId: 'social'
+  },
+  {
+    id: 'social.poll',
+    title: 'Poll',
+    description: 'Survey widget embedding a cloud table + vote stickers',
+    kind: 'authored',
+    audience: 'consumer',
+    parentId: 'social'
+  },
+  {
+    id: 'social.metric',
+    title: 'Metric',
+    description: 'KPI / big-number callout',
+    kind: 'authored',
+    audience: 'consumer',
+    parentId: 'social'
+  },
+  {
+    id: 'social.code',
+    title: 'Code',
+    description: 'Syntax snippet card',
+    kind: 'authored',
+    audience: 'consumer',
+    parentId: 'social'
+  },
+  {
+    id: 'social.profile',
+    title: 'Profile',
+    description: 'Member / contributor badge',
+    kind: 'authored',
+    audience: 'consumer',
+    parentId: 'social'
+  },
+  {
+    id: 'social.audio',
+    title: 'Audio',
+    description: 'Voice note / audiogram card',
+    kind: 'authored',
+    audience: 'consumer',
+    parentId: 'social'
+  },
+  {
+    id: 'social.frame',
+    title: 'Frame',
+    description: 'Interactive frame hosting embed + stickers',
+    kind: 'authored',
+    audience: 'consumer',
+    parentId: 'social'
+  },
+  {
     id: 'community',
     title: 'Community',
     description: 'Feeds, landing pages, community homes, and multipage sites',
@@ -77,6 +141,14 @@ const CLASSES: PenClass[] = [
     audience: 'consumer',
     parentId: 'community',
     entitlement: 'self-hosted'
+  },
+  {
+    id: 'community.feed_embed',
+    title: 'Feed embed',
+    description: 'Framed configurable stream chrome',
+    kind: 'authored',
+    audience: 'consumer',
+    parentId: 'community'
   },
   {
     id: 'community.landing',
@@ -240,6 +312,21 @@ const CLASSES: PenClass[] = [
     kind: 'dossier',
     audience: 'kit',
     parentId: 'records'
+  },
+  {
+    id: 'primitives',
+    title: 'Primitives',
+    description: 'Cloud reference objects (tables, …) for templates to embed',
+    kind: 'register',
+    audience: 'kit'
+  },
+  {
+    id: 'primitives.table',
+    title: 'Table',
+    description: 'Structured cloud grid — poll tallies, comparison matrices',
+    kind: 'register',
+    audience: 'kit',
+    parentId: 'primitives'
   }
 ];
 

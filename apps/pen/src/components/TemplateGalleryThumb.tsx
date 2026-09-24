@@ -63,7 +63,8 @@ export function templatePreviewBundle(pn: string | undefined, templateId: string
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
       pageLayout: t.seedPageLayout,
-      pagePresentation: t.seedPagePresentation
+      pagePresentation: t.seedPagePresentation,
+      galleryAspect: t.seedGalleryAspect
     },
     sections: t.seedSections?.length
       ? t.seedSections

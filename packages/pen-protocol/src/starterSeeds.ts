@@ -8,6 +8,8 @@ import type {
   PenTipTapNode
 } from './types.js';
 import { STARTER_ASSETS } from './starterAssets.js';
+import { emptyPollTable, tableSectionFromPayload } from './table.js';
+import { SEED_TABLE_DOC_PLACEHOLDER } from './seedRefs.js';
 
 export function tipTapParagraphs(...paras: string[]): PenTipTapNode {
   return {
@@ -939,5 +941,735 @@ export function seedAssetKey(): SeedBundle {
         layers: []
       }
     ]
+  };
+}
+
+/** Placeholder docId rewritten to a minted table primitive on create — see seedRefs. */
+export { SEED_TABLE_DOC_PLACEHOLDER } from './seedRefs.js';
+
+export type SeedAspect = 'portrait' | 'landscape' | 'square';
+
+function socialGeom(aspect: SeedAspect): { w: number; h: number } {
+  if (aspect === 'landscape') return { w: 640, h: 360 };
+  if (aspect === 'square') return { w: 360, h: 360 };
+  return { w: 360, h: 640 };
+}
+
+export function seedNoteBasicPortrait(): SeedBundle {
+  return {
+    seedPageLayout: 'flow',
+    seedPagePresentation: socialPresentation({
+      backgroundColor: '#0c0c0c',
+      fontSize: 42,
+      textAlign: 'left',
+      padding: 40
+    }),
+    seedSections: [
+      {
+        slug: 'body',
+        doc: tipTapParagraphs(
+          'A short line that lands.',
+          'Portrait Note — text is the asset.'
+        ),
+        layers: [
+          textLayer('layer_top', 'Note', {
+            x: 24,
+            y: 24,
+            w: 312,
+            h: 28,
+            zIndex: 1
+          }, { backgroundColor: 'transparent' }),
+          textLayer('layer_body', 'A short line that lands.', {
+            x: 24,
+            y: 200,
+            w: 312,
+            h: 160,
+            zIndex: 2
+          })
+        ]
+      }
+    ]
+  };
+}
+
+export function seedNoteBasicLandscape(): SeedBundle {
+  const g = socialGeom('landscape');
+  return {
+    seedPageLayout: 'flow',
+    seedPagePresentation: socialPresentation({
+      backgroundColor: '#101010',
+      fontSize: 36,
+      textAlign: 'left',
+      padding: 32
+    }),
+    seedSections: [
+      {
+        slug: 'body',
+        doc: tipTapParagraphs('Landscape Note — headline and sub, editorial balance.'),
+        layers: [
+          textLayer('layer_headline', 'Headline that carries the frame.', {
+            x: 40,
+            y: 100,
+            w: g.w - 80,
+            h: 80,
+            zIndex: 2
+          }),
+          textLayer('layer_sub', 'Sub-message sits beside, not over a photo.', {
+            x: 40,
+            y: 200,
+            w: g.w - 80,
+            h: 48,
+            zIndex: 2
+          })
+        ]
+      }
+    ]
+  };
+}
+
+/** Text-dominant on quiet media (scrim). Fails if gallery reads as Post. */
+export function seedNoteMediaPortrait(): SeedBundle {
+  return {
+    seedPageLayout: 'flow',
+    seedPagePresentation: socialPresentation({
+      backgroundColor: '#111',
+      backgroundImage: STARTER_ASSETS.captionBg,
+      fontSize: 36,
+      textAlign: 'left'
+    }),
+    seedSections: [
+      {
+        slug: 'body',
+        doc: tipTapParagraphs('The words are the post. Media is atmosphere.'),
+        layers: [
+          imageLayer('layer_backdrop', STARTER_ASSETS.captionBg, {
+            x: 0,
+            y: 0,
+            w: 360,
+            h: 640,
+            zIndex: 1
+          }),
+          textLayer('layer_card', 'The words are the post. Media is atmosphere.', {
+            x: 28,
+            y: 220,
+            w: 304,
+            h: 200,
+            zIndex: 3
+          }, {
+            backgroundColor: 'rgba(0,0,0,0.72)',
+            positionLocked: true
+          })
+        ]
+      }
+    ]
+  };
+}
+
+export function seedNoteMediaLandscape(): SeedBundle {
+  const g = socialGeom('landscape');
+  return {
+    seedPageLayout: 'flow',
+    seedPagePresentation: socialPresentation({
+      backgroundColor: '#0a0a0a',
+      fontSize: 32,
+      textAlign: 'left'
+    }),
+    seedSections: [
+      {
+        slug: 'body',
+        doc: tipTapParagraphs('Split: media left, text card right — text still wins.'),
+        layers: [
+          imageLayer('layer_media', STARTER_ASSETS.imagePost, {
+            x: 0,
+            y: 0,
+            w: Math.round(g.w * 0.48),
+            h: g.h,
+            zIndex: 1
+          }),
+          textLayer('layer_card', 'Readable text block — not a corner caption.', {
+            x: Math.round(g.w * 0.5),
+            y: 80,
+            w: Math.round(g.w * 0.45),
+            h: 200,
+            zIndex: 2
+          }, { backgroundColor: 'rgba(12,12,12,0.92)' })
+        ]
+      }
+    ]
+  };
+}
+
+export function seedPostImageAspect(aspect: SeedAspect): SeedBundle {
+  const g = socialGeom(aspect);
+  const src = STARTER_ASSETS.imagePost;
+  return {
+    seedPageLayout: 'flow',
+    seedPagePresentation: socialPresentation({
+      backgroundColor: '#000',
+      fontSize: 22,
+      textAlign: 'left',
+      padding: 16
+    }),
+    seedSections: [
+      {
+        slug: 'attachments',
+        doc: tipTapParagraphs(''),
+        layers: [
+          imageLayer('layer_media', src, {
+            x: 0,
+            y: 0,
+            w: g.w,
+            h: g.h,
+            zIndex: 1
+          })
+        ]
+      },
+      {
+        slug: 'caption',
+        doc: tipTapParagraphs('Optional caption.'),
+        layers: [
+          textLayer('layer_caption', 'Optional caption.', {
+            x: 16,
+            y: g.h + 8,
+            w: g.w - 32,
+            h: 40,
+            zIndex: 2
+          })
+        ]
+      }
+    ]
+  };
+}
+
+export function seedPostVideoAspect(aspect: SeedAspect): SeedBundle {
+  const g = socialGeom(aspect);
+  return {
+    seedPageLayout: 'flow',
+    seedPagePresentation: socialPresentation({
+      backgroundColor: '#050505',
+      fontSize: 22,
+      textAlign: 'center'
+    }),
+    seedSections: [
+      {
+        slug: 'attachments',
+        doc: tipTapParagraphs(''),
+        layers: [
+          videoLayer('layer_media', STARTER_ASSETS.videoPost, {
+            x: 0,
+            y: 0,
+            w: g.w,
+            h: g.h,
+            zIndex: 1
+          })
+        ]
+      },
+      {
+        slug: 'caption',
+        doc: tipTapParagraphs('Swap in your clip.'),
+        layers: [
+          textLayer('layer_caption', 'Swap in your clip.', {
+            x: 24,
+            y: Math.max(24, g.h - 72),
+            w: g.w - 48,
+            h: 40,
+            zIndex: 2
+          })
+        ]
+      }
+    ]
+  };
+}
+
+export function seedQuote(): SeedBundle {
+  return {
+    seedPageLayout: 'flow',
+    seedPagePresentation: socialPresentation({
+      backgroundColor: '#1c1917',
+      fontSize: 36,
+      textAlign: 'center',
+      fontFamily: 'Georgia, serif'
+    }),
+    seedSections: [
+      {
+        slug: 'body',
+        doc: tipTapParagraphs('"A line worth keeping."', '— Speaker'),
+        layers: [
+          textLayer('layer_quote', '"A line worth keeping."', {
+            x: 32,
+            y: 200,
+            w: 296,
+            h: 160,
+            zIndex: 2
+          }),
+          textLayer('layer_byline', '— Speaker', {
+            x: 32,
+            y: 400,
+            w: 296,
+            h: 40,
+            zIndex: 2
+          })
+        ]
+      }
+    ]
+  };
+}
+
+export function seedLink(): SeedBundle {
+  return {
+    seedPageLayout: 'flow',
+    seedPagePresentation: socialPresentation({
+      backgroundColor: '#fafaf9',
+      textColor: '#1c1917',
+      fontSize: 20,
+      textAlign: 'left',
+      dropShadowBlur: 0
+    }),
+    seedSections: [
+      {
+        slug: 'body',
+        doc: tipTapParagraphs('example.com', 'Page title', 'Two-line snippet of the linked page.'),
+        layers: [
+          textLayer('layer_domain', 'example.com', {
+            x: 24,
+            y: 24,
+            w: 312,
+            h: 28,
+            zIndex: 1
+          }, { backgroundColor: '#e7e5e4' }),
+          textLayer('layer_title', 'Page title', {
+            x: 24,
+            y: 72,
+            w: 312,
+            h: 48,
+            zIndex: 1
+          }),
+          textLayer('layer_snippet', 'Two-line snippet of the linked page.', {
+            x: 24,
+            y: 132,
+            w: 312,
+            h: 64,
+            zIndex: 1
+          })
+        ]
+      }
+    ]
+  };
+}
+
+/** Poll compound — embeds seed table placeholder + vote stickers (handlers stub). */
+export function seedPoll(): SeedBundle {
+  const tableId = SEED_TABLE_DOC_PLACEHOLDER;
+  return {
+    seedPageLayout: 'flow',
+    seedPagePresentation: socialPresentation({
+      backgroundColor: '#0f172a',
+      fontSize: 28,
+      textAlign: 'left'
+    }),
+    seedSections: [
+      {
+        slug: 'prompt',
+        doc: tipTapParagraphs('Which should we ship next?'),
+        layers: [
+          textLayer('layer_prompt', 'Which should we ship next?', {
+            x: 24,
+            y: 32,
+            w: 312,
+            h: 64,
+            zIndex: 1
+          }),
+          {
+            id: 'layer_table_embed',
+            kind: 'embed',
+            name: 'Results',
+            x: 24,
+            y: 120,
+            w: 312,
+            h: 160,
+            zIndex: 2,
+            refDocId: tableId,
+            refSectionSlug: 'grid',
+            positionLocked: true,
+            backgroundColor: '#1e293b',
+            strokeColor: '#334155',
+            strokeWidth: 1
+          },
+          {
+            id: 'sticker_opt_a',
+            kind: 'interactive',
+            name: 'Vote A',
+            x: 24,
+            y: 300,
+            w: 312,
+            h: 44,
+            zIndex: 5,
+            behavior: 'poll.vote',
+            bindDocId: tableId,
+            bindRowId: 'opt_a',
+            label: 'Option A',
+            positionLocked: true,
+            backgroundColor: '#2563eb'
+          },
+          {
+            id: 'sticker_opt_b',
+            kind: 'interactive',
+            name: 'Vote B',
+            x: 24,
+            y: 356,
+            w: 312,
+            h: 44,
+            zIndex: 5,
+            behavior: 'poll.vote',
+            bindDocId: tableId,
+            bindRowId: 'opt_b',
+            label: 'Option B',
+            positionLocked: true,
+            backgroundColor: '#2563eb'
+          },
+          textLayer('layer_status', 'Votes log into the bound table (runtime later).', {
+            x: 24,
+            y: 420,
+            w: 312,
+            h: 40,
+            zIndex: 1
+          })
+        ]
+      }
+    ]
+  };
+}
+
+export function seedComparison(): SeedBundle {
+  const tableId = SEED_TABLE_DOC_PLACEHOLDER;
+  return {
+    seedPageLayout: 'flow',
+    seedPagePresentation: socialPresentation({
+      backgroundColor: '#111827',
+      fontSize: 22,
+      textAlign: 'left'
+    }),
+    seedSections: [
+      {
+        slug: 'body',
+        doc: tipTapParagraphs('Comparison matrix — data from cloud table.'),
+        layers: [
+          textLayer('layer_header', 'Compare', {
+            x: 24,
+            y: 24,
+            w: 312,
+            h: 36,
+            zIndex: 1
+          }),
+          {
+            id: 'layer_matrix',
+            kind: 'embed',
+            name: 'Matrix',
+            x: 16,
+            y: 80,
+            w: 328,
+            h: 280,
+            zIndex: 2,
+            refDocId: tableId,
+            refSectionSlug: 'grid',
+            positionLocked: true,
+            backgroundColor: '#1f2937',
+            strokeColor: '#4b5563',
+            strokeWidth: 1
+          },
+          textLayer('layer_summary', 'Summary from table tallies / cells.', {
+            x: 24,
+            y: 380,
+            w: 312,
+            h: 48,
+            zIndex: 1
+          })
+        ]
+      }
+    ]
+  };
+}
+
+export function seedMetric(): SeedBundle {
+  return {
+    seedPageLayout: 'flow',
+    seedPagePresentation: socialPresentation({
+      backgroundColor: '#fff',
+      textColor: '#0a0a0a',
+      fontSize: 64,
+      textAlign: 'center',
+      dropShadowBlur: 0
+    }),
+    seedSections: [
+      {
+        slug: 'body',
+        doc: tipTapParagraphs('128%', '+12% vs last period', 'Activation rate'),
+        layers: [
+          textLayer('layer_value', '128%', {
+            x: 40,
+            y: 180,
+            w: 280,
+            h: 100,
+            zIndex: 2
+          }),
+          textLayer('layer_delta', '+12% vs last period', {
+            x: 40,
+            y: 290,
+            w: 280,
+            h: 40,
+            zIndex: 2
+          }),
+          textLayer('layer_label', 'Activation rate', {
+            x: 40,
+            y: 340,
+            w: 280,
+            h: 36,
+            zIndex: 2
+          })
+        ]
+      }
+    ]
+  };
+}
+
+export function seedCode(): SeedBundle {
+  return {
+    seedPageLayout: 'flow',
+    seedPagePresentation: socialPresentation({
+      backgroundColor: '#0d1117',
+      textColor: '#e6edf3',
+      fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
+      fontSize: 16,
+      textAlign: 'left',
+      dropShadowBlur: 0
+    }),
+    seedSections: [
+      {
+        slug: 'body',
+        doc: tipTapParagraphs('typescript', 'const x = 1;'),
+        layers: [
+          textLayer('layer_chrome', 'ts  ·  Copy', {
+            x: 16,
+            y: 16,
+            w: 328,
+            h: 32,
+            zIndex: 1
+          }, { backgroundColor: '#161b22' }),
+          textLayer('layer_code', 'const x = 1;', {
+            x: 16,
+            y: 56,
+            w: 328,
+            h: 200,
+            zIndex: 1
+          }, { backgroundColor: '#0d1117' })
+        ]
+      }
+    ]
+  };
+}
+
+export function seedProfile(): SeedBundle {
+  return {
+    seedPageLayout: 'flow',
+    seedPagePresentation: socialPresentation({
+      backgroundColor: '#fafaf9',
+      textColor: '#1c1917',
+      fontSize: 22,
+      textAlign: 'left',
+      dropShadowBlur: 0
+    }),
+    seedSections: [
+      {
+        slug: 'body',
+        doc: tipTapParagraphs('Display Name', 'Role', 'Short bio.'),
+        layers: [
+          textLayer('layer_name', 'Display Name', {
+            x: 100,
+            y: 40,
+            w: 220,
+            h: 36,
+            zIndex: 1
+          }),
+          textLayer('layer_role', 'Role · verified', {
+            x: 100,
+            y: 80,
+            w: 220,
+            h: 28,
+            zIndex: 1
+          }),
+          textLayer('layer_bio', 'Short bio for the contributor spotlight.', {
+            x: 24,
+            y: 140,
+            w: 312,
+            h: 80,
+            zIndex: 1
+          })
+        ]
+      }
+    ]
+  };
+}
+
+export function seedAudio(): SeedBundle {
+  return {
+    seedPageLayout: 'flow',
+    seedPagePresentation: socialPresentation({
+      backgroundColor: '#1a1625',
+      fontSize: 20,
+      textAlign: 'left'
+    }),
+    seedSections: [
+      {
+        slug: 'body',
+        doc: tipTapParagraphs('Speaker', 'Transcript excerpt…'),
+        layers: [
+          textLayer('layer_speaker', 'Speaker · Voice note', {
+            x: 24,
+            y: 40,
+            w: 312,
+            h: 40,
+            zIndex: 1
+          }),
+          textLayer('layer_player', '▶  ————○————  0:42', {
+            x: 24,
+            y: 120,
+            w: 312,
+            h: 56,
+            zIndex: 1
+          }, { backgroundColor: '#2a2438' }),
+          textLayer('layer_transcript', 'Transcript excerpt for accessibility.', {
+            x: 24,
+            y: 200,
+            w: 312,
+            h: 80,
+            zIndex: 1
+          })
+        ]
+      }
+    ]
+  };
+}
+
+export function seedFrame(): SeedBundle {
+  const tableId = SEED_TABLE_DOC_PLACEHOLDER;
+  return {
+    seedPageLayout: 'flow',
+    seedPagePresentation: socialPresentation({
+      backgroundColor: '#18181b',
+      fontSize: 20,
+      textAlign: 'left'
+    }),
+    seedSections: [
+      {
+        slug: 'body',
+        doc: tipTapParagraphs('Interactive frame — embed + stickers.'),
+        layers: [
+          {
+            id: 'layer_embed',
+            kind: 'embed',
+            name: 'Stage',
+            x: 20,
+            y: 48,
+            w: 320,
+            h: 280,
+            zIndex: 1,
+            refDocId: tableId,
+            refSectionSlug: 'grid',
+            positionLocked: true,
+            backgroundColor: '#27272a',
+            strokeColor: '#52525b',
+            strokeWidth: 1
+          },
+          {
+            id: 'sticker_cta',
+            kind: 'interactive',
+            name: 'CTA',
+            x: 20,
+            y: 350,
+            w: 320,
+            h: 44,
+            zIndex: 5,
+            behavior: 'cta.open',
+            bindDocId: tableId,
+            label: 'Open',
+            positionLocked: true,
+            backgroundColor: '#a1a1aa'
+          }
+        ]
+      }
+    ]
+  };
+}
+
+export function seedFeedEmbed(): SeedBundle {
+  return {
+    seedPageLayout: 'flow',
+    seedPagePresentation: socialPresentation({
+      backgroundColor: '#f4f4f5',
+      textColor: '#18181b',
+      fontSize: 16,
+      textAlign: 'left',
+      dropShadowBlur: 0
+    }),
+    seedSections: [
+      {
+        slug: 'header',
+        doc: tipTapParagraphs('Feed scope · Filters'),
+        layers: [
+          textLayer('layer_header', 'Feed · Latest', {
+            x: 12,
+            y: 8,
+            w: 336,
+            h: 32,
+            zIndex: 1
+          }, { backgroundColor: '#e4e4e7' })
+        ]
+      },
+      {
+        slug: 'stream',
+        doc: tipTapParagraphs('Card 1', 'Card 2', 'Card 3'),
+        layers: [
+          textLayer('layer_card1', 'Stream card', {
+            x: 12,
+            y: 48,
+            w: 336,
+            h: 72,
+            zIndex: 1
+          }, { backgroundColor: '#fff', strokeColor: '#d4d4d8', strokeWidth: 1 }),
+          textLayer('layer_card2', 'Stream card', {
+            x: 12,
+            y: 132,
+            w: 336,
+            h: 72,
+            zIndex: 1
+          }, { backgroundColor: '#fff', strokeColor: '#d4d4d8', strokeWidth: 1 })
+        ]
+      },
+      {
+        slug: 'composer',
+        doc: tipTapParagraphs('Write a reply…'),
+        layers: [
+          textLayer('layer_composer', 'Write a reply…', {
+            x: 12,
+            y: 280,
+            w: 336,
+            h: 40,
+            zIndex: 1
+          }, { backgroundColor: '#fff', strokeColor: '#a1a1aa', strokeWidth: 1 })
+        ]
+      }
+    ]
+  };
+}
+
+export function seedTablePrimitive(): SeedBundle {
+  return {
+    seedPageLayout: 'letter',
+    seedPagePresentation: paperPresentation({
+      backgroundColor: '#fff',
+      fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
+      fontSize: 14
+    }),
+    seedSections: [tableSectionFromPayload('grid', emptyPollTable())]
   };
 }

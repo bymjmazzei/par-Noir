@@ -313,6 +313,72 @@ export function createVideoLayer(
   };
 }
 
+/** Frame hosting a cloud primitive / Pen doc by refDocId. */
+export function createEmbedLayer(
+  refDocId: string,
+  partial?: Partial<
+    Pick<PenPageLayer, 'x' | 'y' | 'w' | 'h' | 'zIndex' | 'name' | 'refSectionSlug' | 'positionLocked'>
+  >
+): PenPageLayer {
+  return {
+    id: newLayerId(),
+    kind: 'embed',
+    x: partial?.x ?? 24,
+    y: partial?.y ?? 80,
+    w: partial?.w ?? 320,
+    h: partial?.h ?? 200,
+    zIndex: partial?.zIndex ?? 2,
+    name: partial?.name ?? 'Embed',
+    refDocId,
+    refSectionSlug: partial?.refSectionSlug,
+    positionLocked: partial?.positionLocked ?? false,
+    backgroundColor: '#1a1a1a',
+    strokeColor: '#444444',
+    strokeWidth: 1
+  };
+}
+
+/** Interactive sticker (poll vote / CTA). Click handler is stub until engagement write path. */
+export function createInteractiveLayer(
+  input: {
+    behavior: NonNullable<PenPageLayer['behavior']>;
+    bindDocId: string;
+    bindRowId?: string;
+    label?: string;
+  },
+  partial?: Partial<Pick<PenPageLayer, 'x' | 'y' | 'w' | 'h' | 'zIndex' | 'name' | 'positionLocked'>>
+): PenPageLayer {
+  return {
+    id: newLayerId(),
+    kind: 'interactive',
+    x: partial?.x ?? 40,
+    y: partial?.y ?? 120,
+    w: partial?.w ?? 280,
+    h: partial?.h ?? 44,
+    zIndex: partial?.zIndex ?? 5,
+    name: partial?.name ?? input.label ?? 'Sticker',
+    behavior: input.behavior,
+    bindDocId: input.bindDocId,
+    bindRowId: input.bindRowId,
+    label: input.label ?? 'Vote',
+    positionLocked: partial?.positionLocked ?? true,
+    backgroundColor: '#2563eb',
+    strokeColor: '#1d4ed8',
+    strokeWidth: 1
+  };
+}
+
+export function assertEmbedLayer(layer: PenPageLayer): void {
+  if (layer.kind !== 'embed') throw new Error('not_embed_layer');
+  if (!layer.refDocId?.trim()) throw new Error('embed_missing_refDocId');
+}
+
+export function assertInteractiveLayer(layer: PenPageLayer): void {
+  if (layer.kind !== 'interactive') throw new Error('not_interactive_layer');
+  if (!layer.bindDocId?.trim()) throw new Error('interactive_missing_bindDocId');
+  if (!layer.behavior) throw new Error('interactive_missing_behavior');
+}
+
 /**
  * Reorder stack: `orderedIdsFrontFirst[0]` is front (highest zIndex).
  * Ids must cover every existing layer.

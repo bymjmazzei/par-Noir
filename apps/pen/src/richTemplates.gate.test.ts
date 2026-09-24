@@ -14,10 +14,11 @@ describe('rich template preview + create chrome', () => {
   });
 
   it('templatePreviewBundle carries seed presentation for image post', () => {
-    const image = requireTemplate('post.media.v1');
-    expect(image.title).toBe('Image Post');
-    const preview = templatePreviewBundle(undefined, 'post.media.v1');
+    const image = requireTemplate('post.image.portrait.v1');
+    expect(image.title).toContain('Image Post');
+    const preview = templatePreviewBundle(undefined, 'post.image.portrait.v1');
     expect(preview?.manifest.pagePresentation).toBeTruthy();
+    expect(preview?.manifest.galleryAspect).toBe('9/16');
     expect(
       preview?.sections.some((s) =>
         (s.layers || []).some((l) => l.kind === 'image' && l.imageSrc)
@@ -26,8 +27,8 @@ describe('rich template preview + create chrome', () => {
   });
 
   it('video starter preview exposes video layer src', () => {
-    const preview = templatePreviewBundle(undefined, 'post.video.v1');
-    expect(preview?.title).toBe('Video Post');
+    const preview = templatePreviewBundle(undefined, 'post.video.portrait.v1');
+    expect(preview?.title).toContain('Video Post');
     expect(
       preview?.sections.some((s) =>
         (s.layers || []).some((l) => l.kind === 'video' && l.videoSrc)
@@ -43,11 +44,23 @@ describe('rich template preview + create chrome', () => {
     expect(site?.manifest.classId).toBe('community.site');
     const feed = templatePreviewBundle(undefined, 'feed.self_hosted.v1');
     expect(feed?.manifest.classId).toBe('community.feed');
+    const embed = templatePreviewBundle(undefined, 'feed.embed.v1');
+    expect(embed?.manifest.classId).toBe('community.feed_embed');
   });
 
-  it('basic note is text-first without obligatory media layers', () => {
-    const preview = templatePreviewBundle(undefined, 'note.basic.v1');
-    expect(preview?.sections[0]?.layers?.length ?? 0).toBe(0);
+  it('basic note is text-first (optional chrome layers, no media-as-format)', () => {
+    const preview = templatePreviewBundle(undefined, 'note.basic.portrait.v1');
+    const layers = preview?.sections[0]?.layers || [];
+    expect(layers.every((l) => l.kind === 'text')).toBe(true);
     expect(preview?.manifest.pagePresentation?.backgroundColor).toBeTruthy();
+  });
+
+  it('poll preview binds embed + interactive stickers to seed table placeholder', () => {
+    const preview = templatePreviewBundle(undefined, 'poll.basic.v1');
+    const layers = preview?.sections[0]?.layers || [];
+    expect(layers.some((l) => l.kind === 'embed')).toBe(true);
+    expect(layers.some((l) => l.kind === 'interactive' && l.behavior === 'poll.vote')).toBe(
+      true
+    );
   });
 });

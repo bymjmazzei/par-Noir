@@ -40,6 +40,8 @@ import {
   type CloudImageItem
 } from '../services/penAttach';
 import { listLocalDocs, loadLocalDoc, type LocalDocSummary } from '../services/penLocalStore';
+import { createTablePrimitiveDoc } from '../services/createDocFromTemplate';
+import { loadPenSession } from '../services/penSession';
 import {
   listPersonalFonts,
   pickFontFile,
@@ -803,6 +805,24 @@ export function FormatRibbon({
               }}
             >
               From Pen…
+            </RibbonItem>
+            <RibbonItem
+              onClick={() => {
+                const session = loadPenSession();
+                if (!session || !pnIdentifier) return;
+                void createTablePrimitiveDoc({ session }).then((bundle) => {
+                  ed.chain()
+                    .focus()
+                    .insertPenEmbed({
+                      docId: bundle.manifest.docId,
+                      title: bundle.manifest.title || 'Table'
+                    })
+                    .run();
+                  close();
+                });
+              }}
+            >
+              New cloud table…
             </RibbonItem>
             {penDocs && !penPickDocId && (
               <>

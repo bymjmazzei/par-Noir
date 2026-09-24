@@ -40,14 +40,34 @@ function formTitle(classId: string): string {
       return 'Collection';
     case 'social.set':
       return 'Set';
+    case 'social.quote':
+      return 'Quote';
+    case 'social.link':
+      return 'Link';
+    case 'social.poll':
+      return 'Poll';
+    case 'social.metric':
+      return 'Metric';
+    case 'social.code':
+      return 'Code';
+    case 'social.profile':
+      return 'Profile';
+    case 'social.audio':
+      return 'Audio';
+    case 'social.frame':
+      return 'Frame';
     case 'community.feed':
       return 'Feed';
+    case 'community.feed_embed':
+      return 'Feed embed';
     case 'community.landing':
       return 'Landing';
     case 'community.home':
       return 'Community home';
     case 'community.site':
       return 'Site';
+    case 'primitives.table':
+      return 'Table';
     case 'projects.journal':
       return 'Journal';
     case 'projects.list':
@@ -120,6 +140,58 @@ function iconFor(classId: string, className: string) {
           <path d="M10.5 10.5l3 3" />
         </svg>
       );
+    case 'social.quote':
+      return (
+        <svg {...props}>
+          <path d="M7 11h4v6H5v-4a4 4 0 014-4" />
+          <path d="M17 11h4v6h-6v-4a4 4 0 014-4" />
+        </svg>
+      );
+    case 'social.link':
+      return (
+        <svg {...props}>
+          <path d="M10 13a5 5 0 007.07 0l2.12-2.12a5 5 0 00-7.07-7.07L11 5" />
+          <path d="M14 11a5 5 0 00-7.07 0L4.81 13.12a5 5 0 007.07 7.07L13 19" />
+        </svg>
+      );
+    case 'social.poll':
+      return (
+        <svg {...props}>
+          <path d="M5 19V9M12 19V5M19 19v-7" />
+        </svg>
+      );
+    case 'social.metric':
+      return (
+        <svg {...props}>
+          <path d="M4 19V5h4v14H4zM10 19v-8h4v8h-4zM16 19v-12h4v12h-4z" />
+        </svg>
+      );
+    case 'social.code':
+      return (
+        <svg {...props}>
+          <path d="M8 8l-4 4 4 4M16 8l4 4-4 4M13 6l-2 12" />
+        </svg>
+      );
+    case 'social.profile':
+      return (
+        <svg {...props}>
+          <circle cx="12" cy="8" r="3.5" />
+          <path d="M5 19a7 7 0 0114 0" />
+        </svg>
+      );
+    case 'social.audio':
+      return (
+        <svg {...props}>
+          <path d="M4 10v4M8 7v10M12 4v16M16 7v10M20 10v4" />
+        </svg>
+      );
+    case 'social.frame':
+      return (
+        <svg {...props}>
+          <rect x="4" y="5" width="16" height="14" rx="1.5" />
+          <path d="M8 15h8" />
+        </svg>
+      );
     case 'community.feed':
       return (
         <svg {...props}>
@@ -127,6 +199,20 @@ function iconFor(classId: string, className: string) {
           <path d="M5 14a5 5 0 015 5" />
           <path d="M5 10a9 9 0 019 9" />
           <path d="M5 6a13 13 0 0113 13" />
+        </svg>
+      );
+    case 'community.feed_embed':
+      return (
+        <svg {...props}>
+          <rect x="3" y="4" width="18" height="16" rx="1.5" />
+          <path d="M7 8h10M7 12h10M7 16h6" />
+        </svg>
+      );
+    case 'primitives.table':
+      return (
+        <svg {...props}>
+          <rect x="3" y="5" width="18" height="14" rx="1" />
+          <path d="M3 10h18M3 15h18M9 5v14M15 5v14" />
         </svg>
       );
     case 'community.landing':

@@ -25,12 +25,13 @@ Peer categories after Community hard-cut (registry implement deferred):
 
 | Category | Forms | Job |
 |---|---|---|
-| **Social** | Notes, Posts, Collections, Sets | Atom content for browse tiles |
-| **Community** | Feeds, Landing, Community home, Site | Spaces people gather / arrive / browse as a multipage feed |
+| **Social** | Notes, Posts, Collections, Sets, Quote, Link, Poll, Metric, Code, Profile, Audio, Frame | Atom content for browse tiles (dominance + orientation — see [`PEN_TEMPLATE_SPEC_V0.md`](./PEN_TEMPLATE_SPEC_V0.md)) |
+| **Community** | Feeds (config), Feed embed, Landing, Community home, Site | Spaces people gather / arrive / browse as a multipage feed |
 | **Projects** | Journal, List, Letter, Note | Active WIP + correspondence |
 | **Library** | Book, Article, Music | Durable works |
 | **Time** | Calendar, Event, Schedule | Scheduling |
 | **Records** (kit) | Register, Asset key | Structured kit data |
+| **Primitives** (kit) | Table | Cloud reference grids; templates embed; stickers bind |
 
 **Site ≠ site builder.** A Site is a **multipage feed**: ordered pages aggregated/compiled the way browse home surfaces content—not an Elementor-class widget IDE.
 
@@ -94,7 +95,7 @@ Peer categories after Community hard-cut (registry implement deferred):
 
 ## Community
 
-### Feed (`community.feed` — today `social.feed`)
+### Feed (`community.feed`)
 
 | | |
 |---|---|
@@ -106,6 +107,17 @@ Peer categories after Community hard-cut (registry implement deferred):
 | **References** | pN browse home / subscribed feeds, Discord channel lists (as *stream*), Substack publication home |
 | **Anti-pattern** | Hero still + “My feed” caption with no feed semantics |
 | **Entitlement** | Keep `self-hosted` |
+
+### Feed embed (`community.feed_embed`)
+
+| | |
+|---|---|
+| **Purpose** | **Framed configurable stream** embeddable in portals/workspaces — not full Home/Landing/Site |
+| **Primary surface** | Compact chronological cards + filter header + micro-composer |
+| **Section roles** | `header` (scope/filters), `stream` (cards), `composer` (sticky footer) |
+| **Compile / preview** | Framed embed chrome; not a full community hub page |
+| **Empty state** | Empty stream inside frame; “Choose feed scope” |
+| **Anti-pattern** | Loading full page layouts inside the embed frame; fixed heights that break scroll |
 
 ### Landing (`community.landing`)
 
@@ -232,6 +244,22 @@ Peer categories after Community hard-cut (registry implement deferred):
 2. **Stock is optional illustration** of a format — never the format.
 3. **Community pages** use section contracts above; Site consumes them as a multipage feed.
 4. **Social Mini** stays curated for Social forms; Community forms appear in Pen New… / TemplatesBrowse under Community.
+5. **Dominance** — Note = text-dominant; Post = media-dominant (see [`PEN_TEMPLATE_SPEC_V0.md`](./PEN_TEMPLATE_SPEC_V0.md)).
+6. **Cloud table primitives** — kit `primitives.table` is SoT for poll tallies / comparison grids; templates embed; stickers bind; TipTap tables are not SoT.
+
+---
+
+## Primitives (kit)
+
+### Table (`primitives.table`)
+
+| | |
+|---|---|
+| **Purpose** | Cloud **reference grid** (columns + rows) — poll options/tallies, comparison matrices |
+| **Primary surface** | Structured `table.v1` JSON in section SoT (not freeform TipTap) |
+| **Discovery** | Hidden from Pen New…; Insert / mint-on-template-use; L5 catalog |
+| **Host binding** | Overlay `embed` layer (`refDocId`) and/or flow `penEmbed`; stickers `interactive` with `bindDocId` |
+| **Anti-pattern** | `social.table` TipTap-only form pretending to be vote/results SoT |
 
 ---
 

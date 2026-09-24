@@ -12,10 +12,10 @@ import {
 } from './index.js';
 
 describe('composeAgentPrompt', () => {
-  it('fills user_input and section_list for note.basic.v1', () => {
-    const prompt = composeAgentPrompt('note.basic.v1', 'Write about autumn rain');
+  it('fills user_input and section_list for note.basic.portrait.v1', () => {
+    const prompt = composeAgentPrompt('note.basic.portrait.v1', 'Write about autumn rain');
     expect(prompt).toContain('Write about autumn rain');
-    expect(prompt).toContain('note.basic.v1');
+    expect(prompt).toContain('note.basic.portrait.v1');
     expect(prompt).toContain('body (required)');
     expect(prompt).not.toContain('{{user_input}}');
   });
@@ -28,7 +28,7 @@ describe('composeAgentPrompt', () => {
 describe('validatePenAgentBuild', () => {
   it('accepts a valid basic note', () => {
     const build: PenAgentBuild = {
-      templateId: 'note.basic.v1',
+      templateId: 'note.basic.portrait.v1',
       title: 'Autumn',
       sections: [{ slug: 'body', plainText: 'Soft rain on the window.' }]
     };
@@ -45,7 +45,7 @@ describe('validatePenAgentBuild', () => {
 
   it('rejects missing required section', () => {
     const r = validatePenAgentBuild({
-      templateId: 'note.basic.v1',
+      templateId: 'note.basic.portrait.v1',
       title: 'T',
       sections: []
     });
@@ -55,7 +55,7 @@ describe('validatePenAgentBuild', () => {
 
   it('rejects empty required section', () => {
     const r = validatePenAgentBuild({
-      templateId: 'note.basic.v1',
+      templateId: 'note.basic.portrait.v1',
       title: 'T',
       sections: [{ slug: 'body', plainText: '   ' }]
     });
@@ -65,7 +65,7 @@ describe('validatePenAgentBuild', () => {
 
   it('rejects unknown section slug', () => {
     const r = validatePenAgentBuild({
-      templateId: 'note.basic.v1',
+      templateId: 'note.basic.portrait.v1',
       title: 'T',
       sections: [
         { slug: 'body', plainText: 'ok' },
@@ -97,7 +97,7 @@ describe('validatePenAgentBuild', () => {
 describe('materializePenAgentBuild', () => {
   it('writes draft tree paths for a note', () => {
     const build: PenAgentBuild = {
-      templateId: 'note.basic.v1',
+      templateId: 'note.basic.portrait.v1',
       title: 'Rain',
       sections: [{ slug: 'body', plainText: 'It rains.' }]
     };
@@ -106,14 +106,14 @@ describe('materializePenAgentBuild', () => {
       draftId: 'draft_test',
       now: '2026-09-22T12:00:00.000Z'
     });
-    expect(out.manifest.templateId).toBe('note.basic.v1');
+    expect(out.manifest.templateId).toBe('note.basic.portrait.v1');
     expect(out.files.some((f) => f.path === docManifestPath('pen_testdoc'))).toBe(true);
     expect(
       out.files.some((f) => f.path === draftSectionPath('pen_testdoc', 'draft_test', 'body'))
     ).toBe(true);
     const body = out.sections.find((s) => s.slug === 'body');
     expect(body?.doc.type).toBe('doc');
-    expect(body?.layers?.length ?? 0).toBe(0);
+    expect((body?.layers || []).every((l) => l.kind === 'text')).toBe(true);
     expect(out.manifest.pagePresentation).toBeTruthy();
     expect(out.manifest.pageLayout).toBe('flow');
   });
@@ -121,7 +121,7 @@ describe('materializePenAgentBuild', () => {
   it('writes current/ when asCurrent', () => {
     const out = materializePenAgentBuild(
       {
-        templateId: 'note.basic.v1',
+        templateId: 'note.basic.portrait.v1',
         title: 'Pub',
         sections: [{ slug: 'body', plainText: 'Live.' }]
       },
@@ -133,7 +133,7 @@ describe('materializePenAgentBuild', () => {
 
   it('throws on invalid build', () => {
     expect(() =>
-      materializePenAgentBuild({ templateId: 'note.basic.v1', title: '', sections: [] })
+      materializePenAgentBuild({ templateId: 'note.basic.portrait.v1', title: '', sections: [] })
     ).toThrow(/pen_agent_build_invalid/);
   });
 });

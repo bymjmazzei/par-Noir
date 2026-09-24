@@ -890,10 +890,10 @@ export function TextPostEditor({ onSave }: TextPostEditorProps) {
     const genre = metadata.genre.split(',').map(g => g.trim()).filter(Boolean);
 
     let templateId = miniTemplateId.startsWith('blank.')
-      ? 'note.basic.v1'
+      ? 'note.basic.portrait.v1'
       : miniTemplateId.startsWith('personal_')
-        ? 'note.basic.v1'
-        : miniTemplateId || 'note.basic.v1';
+        ? 'note.basic.portrait.v1'
+        : miniTemplateId || 'note.basic.portrait.v1';
     let contentClass: 'note' = 'note';
     const bodyText = pages
       .filter(page => page.content.trim())
@@ -902,7 +902,7 @@ export function TextPostEditor({ onSave }: TextPostEditorProps) {
     const sections = buildMiniBodySections(bodyText);
     try {
       const compiled = compileDocumentToNote({
-        templateId: templateId.includes('.') ? templateId : 'note.basic.v1',
+        templateId: templateId.includes('.') ? templateId : 'note.basic.portrait.v1',
         title: metadata.name || 'Note',
         sections
       });

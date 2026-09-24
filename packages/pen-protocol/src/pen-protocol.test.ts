@@ -188,19 +188,29 @@ describe('classes + templates', () => {
 
   it('social forms exclude feed; community owns feed + landing/home/site', () => {
     expect(listForms('social').map((f) => f.id).sort()).toEqual([
+      'social.audio',
+      'social.code',
       'social.collection',
+      'social.frame',
+      'social.link',
+      'social.metric',
       'social.note',
+      'social.poll',
       'social.post',
+      'social.profile',
+      'social.quote',
       'social.set'
     ]);
     expect(listForms('community').map((f) => f.id).sort()).toEqual([
       'community.feed',
+      'community.feed_embed',
       'community.home',
       'community.landing',
       'community.site'
     ]);
     expect(getClass('community.feed')?.entitlement).toBe('self-hosted');
     expect(getClass('social.feed')).toBeUndefined();
+    expect(listForms('primitives').map((f) => f.id)).toEqual(['primitives.table']);
     expect(listForms('projects').map((f) => f.id).sort()).toEqual([
       'projects.journal',
       'projects.letter',
@@ -219,15 +229,16 @@ describe('classes + templates', () => {
       }
     }
     expect([...allIds].sort()).toEqual([...seen].sort());
-    expect(listTemplatesByClass('social.note').length).toBe(2);
+    expect(listTemplatesByClass('social.note').length).toBeGreaterThanOrEqual(4);
     expect(listTemplatesByClass('social.set').length).toBe(1);
     expect(listTemplatesByClass('records.register').length).toBe(1);
+    expect(listTemplatesByClass('primitives.table').length).toBe(1);
   });
 
   it('search finds notes and empty query returns nothing', () => {
     expect(searchPenCatalog('').templates).toEqual([]);
     const hit = searchPenCatalog('basic note');
-    expect(hit.templates.some((t) => t.id === 'note.basic.v1')).toBe(true);
+    expect(hit.templates.some((t) => t.id === 'note.basic.portrait.v1')).toBe(true);
     expect(searchPenCatalog('social').categories.some((c) => c.id === 'social')).toBe(true);
   });
 
@@ -256,7 +267,7 @@ describe('classes + templates', () => {
   });
 
   it('compiles note from TipTap doc with filled style', () => {
-    const t = requireTemplate('note.basic.v1');
+    const t = requireTemplate('note.basic.portrait.v1');
     const out = compileDocumentToNote({
       templateId: t.id,
       title: 'Hello',
@@ -482,7 +493,7 @@ describe('chain authenticity', () => {
     const keys = mlDsa65Keygen();
     const genesis = signGenesis({
       docId: 'd1',
-      templateId: 'note.basic.v1',
+      templateId: 'note.basic.portrait.v1',
       authorPn: 'pn_a',
       clientCreatedAt: '2026-09-20T00:00:00Z',
       contentCommitment: hashSectionContent(utf8ToBytes('init')),
@@ -541,7 +552,7 @@ describe('renderRich media wrap', () => {
 
 describe('template seeds + Mini featured + layer locks', () => {
   it('starters expose seedSections and browseFeatured for social notes', () => {
-    const note = requireTemplate('note.basic.v1');
+    const note = requireTemplate('note.basic.portrait.v1');
     expect(note.seedSections?.length).toBeGreaterThan(0);
     expect(note.browseFeatured).toBe(true);
     const featured = listBrowseFeaturedTemplates('social.note');
@@ -551,15 +562,15 @@ describe('template seeds + Mini featured + layer locks', () => {
 
   it('consumer starters ship format-first seeds with presentation', () => {
     const consumer = listStarterTemplates().filter(
-      (t) => !t.classId.startsWith('records.')
+      (t) => !t.classId.startsWith('records.') && !t.classId.startsWith('primitives.')
     );
     expect(consumer.length).toBeGreaterThan(10);
     for (const t of consumer) {
       expect(t.seedPagePresentation, t.id).toBeTruthy();
       expect(t.seedSections?.length, t.id).toBeGreaterThan(0);
     }
-    const note = requireTemplate('note.basic.v1');
-    expect(note.seedSections?.[0]?.layers?.length ?? 0).toBe(0);
+    const note = requireTemplate('note.basic.portrait.v1');
+    expect((note.seedSections?.[0]?.layers || []).every((l) => l.kind === 'text')).toBe(true);
     const list = requireTemplate('list.basic.v1');
     expect(JSON.stringify(list.seedSections)).toMatch(/bulletList|listItem|\[ \]/);
     const journal = requireTemplate('journal.basic.v1');
@@ -576,8 +587,8 @@ describe('template seeds + Mini featured + layer locks', () => {
         (s.layers || []).some((l) => l.kind === 'image' && l.imageSrc)
       )
     ).toBe(false);
-    const video = requireTemplate('post.video.v1');
-    expect(video.title).toBe('Video Post');
+    const video = requireTemplate('post.video.portrait.v1');
+    expect(video.title).toContain('Video Post');
     expect(
       video.seedSections?.some((s) =>
         (s.layers || []).some((l) => l.kind === 'video' && l.videoSrc)
