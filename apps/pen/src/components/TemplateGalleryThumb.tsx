@@ -10,6 +10,7 @@ import {
   isPersonalTemplateId,
   loadPersonalTemplate
 } from '../services/penPersonalTemplates';
+import type { PenSession } from '../services/penSession';
 import { DocGalleryPreview } from './DocGalleryPreview';
 
 export function templatePreviewBundle(pn: string | undefined, templateId: string) {
@@ -66,10 +67,12 @@ export function templatePreviewBundle(pn: string | undefined, templateId: string
 /** Thumb for a starter or personal template id. */
 export function TemplateGalleryThumb({
   pn,
-  templateId
+  templateId,
+  session
 }: {
   pn?: string;
   templateId: string;
+  session?: PenSession | null;
 }) {
   const preview = templatePreviewBundle(pn, templateId);
   if (!preview) {
@@ -81,6 +84,7 @@ export function TemplateGalleryThumb({
     <DocGalleryPreview
       manifest={preview.manifest as never}
       sections={preview.sections}
+      session={session}
     />
   );
 }

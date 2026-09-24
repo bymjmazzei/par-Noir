@@ -317,6 +317,7 @@ export function TemplatesBrowse({
                                     <TemplateGalleryThumb
                                       pn={session?.pnIdentifier}
                                       templateId={t.id}
+                                      session={session}
                                     />
                                   </span>
                                 </button>
@@ -410,6 +411,7 @@ export function TemplatesBrowse({
                         sections={preview.sections}
                         bare
                         compact
+                        session={session}
                       />
                     </div>
                   </div>
@@ -419,6 +421,7 @@ export function TemplatesBrowse({
                   manifest={preview.manifest as never}
                   sections={preview.sections}
                   large
+                  session={session}
                 />
               )}
             </div>

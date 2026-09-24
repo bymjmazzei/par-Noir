@@ -1,4 +1,5 @@
 import { type CSSProperties, type ReactNode } from 'react';
+import { PenMediaPlayer } from '@par-noir/feed-tile';
 import {
   categoryIdForClass,
   defaultPagePresentation,
@@ -11,6 +12,11 @@ import {
   type PenSectionContent,
   type PenTipTapNode
 } from '@par-noir/pen-protocol';
+import { useResolvedMediaSrc } from '../hooks/useResolvedMediaSrc';
+import { isPenMediaSrcRef } from '../services/penLocalMedia';
+import type { PenSession } from '../services/penSession';
+
+type GalleryMedia = { src: string; kind: 'image' | 'video' };
 
 function sectionMap(sections: PenSectionContent[]): Map<string, PenSectionContent> {
   return new Map(
@@ -34,15 +40,21 @@ function firstImageSrc(doc: PenTipTapNode | undefined): string | null {
   return walk(doc);
 }
 
-function firstLayerMedia(sections: PenSectionContent[]): string | null {
+function firstLayerMedia(sections: PenSectionContent[]): GalleryMedia | null {
   for (const raw of sections) {
     const sec = normalizeSection(raw);
-    for (const layer of sec.layers || []) {
-      if (layer.visible === false) continue;
-      if (layer.kind === 'image' && layer.imageSrc) return layer.imageSrc;
-      if (layer.kind === 'video' && layer.videoSrc) return layer.videoSrc;
-      // Poster fallback for video frames that only set backgroundImage on the layer
-      if (layer.backgroundImage) return layer.backgroundImage;
+    const visible = (sec.layers || []).filter((l) => l.visible !== false);
+    const video = visible.find((l) => l.kind === 'video' && l.videoSrc);
+    if (video?.videoSrc) return { src: video.videoSrc, kind: 'video' };
+    const image = visible.find((l) => l.kind === 'image' && l.imageSrc);
+    if (image?.imageSrc) return { src: image.imageSrc, kind: 'image' };
+    const bgVideo = visible.find((l) => l.backgroundVideo);
+    if (bgVideo?.backgroundVideo) {
+      return { src: bgVideo.backgroundVideo, kind: 'video' };
+    }
+    const bgImage = visible.find((l) => l.backgroundImage);
+    if (bgImage?.backgroundImage) {
+      return { src: bgImage.backgroundImage, kind: 'image' };
     }
   }
   return null;
@@ -51,19 +63,23 @@ function firstLayerMedia(sections: PenSectionContent[]): string | null {
 function resolveMedia(
   sections: PenSectionContent[],
   pagePresentation?: PenPagePresentation | null
-): string | null {
+): GalleryMedia | null {
   const fromLayers = firstLayerMedia(sections);
   if (fromLayers) return fromLayers;
-  if (pagePresentation?.backgroundImage) return pagePresentation.backgroundImage;
-  if (pagePresentation?.backgroundVideo) return pagePresentation.backgroundVideo;
+  if (pagePresentation?.backgroundVideo) {
+    return { src: pagePresentation.backgroundVideo, kind: 'video' };
+  }
+  if (pagePresentation?.backgroundImage) {
+    return { src: pagePresentation.backgroundImage, kind: 'image' };
+  }
   const bySlug = sectionMap(sections);
   for (const slug of ['attachments', 'media', 'cover', 'body', 'pages', 'front']) {
     const src = firstImageSrc(bySlug.get(slug)?.doc);
-    if (src) return src;
+    if (src) return { src, kind: 'image' };
   }
   for (const sec of sections) {
     const src = firstImageSrc(normalizeSection(sec).doc);
-    if (src) return src;
+    if (src) return { src, kind: 'image' };
   }
   return null;
 }
@@ -85,9 +101,14 @@ function resolveBodyHtml(sections: PenSectionContent[], title: string): string {
 }
 
 function presentationSurface(pres: PenPagePresentation, fontSize: number): CSSProperties {
+  // Never put penmedia:/penlocal: into CSS url(...) — browser cannot fetch those schemes.
+  const bg =
+    pres.backgroundImage && !isPenMediaSrcRef(pres.backgroundImage)
+      ? `url(${pres.backgroundImage})`
+      : undefined;
   return {
     backgroundColor: pres.backgroundColor,
-    backgroundImage: pres.backgroundImage ? `url(${pres.backgroundImage})` : undefined,
+    backgroundImage: bg,
     backgroundSize: 'cover',
     backgroundPosition: 'center',
     color: pres.textColor,
@@ -132,14 +153,20 @@ function PhoneShell({
 export function DocGalleryPreview({
   manifest,
   sections,
-  large
+  large,
+  session
 }: {
   manifest: PenDocManifest;
   sections: PenSectionContent[];
   /** Larger phone for overlay modal. */
   large?: boolean;
+  session?: PenSession | null;
 }) {
   const media = resolveMedia(sections, manifest.pagePresentation);
+  const { resolved } = useResolvedMediaSrc(media?.src, {
+    docId: manifest.docId,
+    session
+  });
   const title = resolveTitle(manifest, sections);
   const bodyHtml = resolveBodyHtml(sections, title);
   const pres = mergePagePresentation(
@@ -148,30 +175,52 @@ export function DocGalleryPreview({
   );
   const social = categoryIdForClass(manifest.classId) === 'social';
 
+  const mediaFrameStyle =
+    large
+      ? {
+          aspectRatio: social ? '9 / 16' : pageAspect(manifest),
+          height: social ? '100%' : undefined,
+          width: '100%',
+          position: 'relative' as const
+        }
+      : { width: '100%', height: '100%', position: 'relative' as const };
+
   let surface: ReactNode;
   if (media) {
-    // Media-forward: still/video poster fills the tile; caption overlays for social value.
+    // Media-forward: still/video fills the tile; caption overlays for social value.
+    // Never put unresolved penmedia:/penlocal: into <img>/<video> src.
     surface = (
       <div
         className="pen-gallery-doc-page pen-gallery-doc-page--media-stack"
-        style={
-          large
-            ? {
-                aspectRatio: social ? '9 / 16' : pageAspect(manifest),
-                height: social ? '100%' : undefined,
-                width: '100%',
-                position: 'relative'
-              }
-            : { width: '100%', height: '100%', position: 'relative' }
-        }
+        style={mediaFrameStyle}
       >
-        <img
-          src={media}
-          alt=""
-          className="pen-gallery-doc-page pen-gallery-doc-page--media"
-          style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-          draggable={false}
-        />
+        {resolved ? (
+          media.kind === 'video' ? (
+            <div
+              className="pen-gallery-doc-page pen-gallery-doc-page--media"
+              style={{ width: '100%', height: '100%' }}
+            >
+              <PenMediaPlayer
+                src={resolved}
+                className="h-full w-full [&_video]:object-cover"
+              />
+            </div>
+          ) : (
+            <img
+              src={resolved}
+              alt=""
+              className="pen-gallery-doc-page pen-gallery-doc-page--media"
+              style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+              draggable={false}
+            />
+          )
+        ) : (
+          <div
+            className="pen-gallery-doc-page pen-gallery-doc-page--media"
+            style={{ width: '100%', height: '100%', background: '#e5e5e5' }}
+            aria-hidden
+          />
+        )}
         {title && title !== 'Untitled' ? (
           <div
             className="absolute inset-x-0 bottom-0 line-clamp-3 px-1.5 py-1 text-[10px] leading-snug text-white"

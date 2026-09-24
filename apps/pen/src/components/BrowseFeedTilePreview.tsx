@@ -6,21 +6,73 @@ import { useEffect, useState } from 'react';
 import { FeedTileSurface, type FeedTileViewModel } from '@par-noir/feed-tile';
 import type { PenDocManifest, PenSectionContent } from '@par-noir/pen-protocol';
 import { bundleToFeedTileModel } from '../services/feedTileFromPen';
-import { resolvePenMediaSrc } from '../services/penLocalMedia';
+import { downloadCloudMediaBlob } from '../services/penAttach';
+import {
+  isPenMediaRef,
+  isPenMediaSrcRef,
+  parsePenMediaFileId,
+  putLocalMediaForDriveFile,
+  resolvePenMediaSrc
+} from '../services/penLocalMedia';
 import type { PenSession } from '../services/penSession';
+
+/** Strip custom-scheme mediaSrc so first paint never hits ERR_UNKNOWN_URL_SCHEME. */
+function scrubUnresolvedMedia(model: FeedTileViewModel): FeedTileViewModel {
+  return {
+    ...model,
+    pages: (model.pages || []).map((page) => {
+      if (!page.mediaSrc || !isPenMediaSrcRef(page.mediaSrc)) return page;
+      return { ...page, mediaSrc: undefined };
+    }),
+    posterUrl:
+      model.posterUrl && isPenMediaSrcRef(model.posterUrl) ? undefined : model.posterUrl
+  };
+}
+
+async function resolveOneMediaSrc(
+  src: string,
+  docId: string | undefined,
+  session: PenSession | null | undefined
+): Promise<string | null> {
+  let url = await resolvePenMediaSrc(src, docId);
+  if (!url && isPenMediaRef(src) && docId && session) {
+    const fileId = parsePenMediaFileId(src);
+    if (fileId) {
+      const { blob } = await downloadCloudMediaBlob(fileId, session.pnIdentifier, docId);
+      const put = await putLocalMediaForDriveFile({ docId, fileId, blob });
+      url = put.blobUrl;
+    }
+  }
+  return url;
+}
 
 async function resolveTileMedia(
   model: FeedTileViewModel,
-  docId?: string
+  docId: string | undefined,
+  session: PenSession | null | undefined
 ): Promise<FeedTileViewModel> {
   const pages = await Promise.all(
     (model.pages || []).map(async (page) => {
       if (!page.mediaSrc) return page;
-      const resolved = await resolvePenMediaSrc(page.mediaSrc, docId);
-      return resolved ? { ...page, mediaSrc: resolved } : { ...page, mediaSrc: undefined };
+      if (!isPenMediaSrcRef(page.mediaSrc)) return page;
+      try {
+        const resolved = await resolveOneMediaSrc(page.mediaSrc, docId, session);
+        // Keep mediaKind so PenMediaPlayer still runs after hydrate.
+        return resolved ? { ...page, mediaSrc: resolved } : { ...page, mediaSrc: undefined };
+      } catch {
+        return { ...page, mediaSrc: undefined };
+      }
     })
   );
-  return { ...model, pages };
+  let posterUrl = model.posterUrl;
+  if (posterUrl && isPenMediaSrcRef(posterUrl)) {
+    try {
+      posterUrl = (await resolveOneMediaSrc(posterUrl, docId, session)) || undefined;
+    } catch {
+      posterUrl = undefined;
+    }
+  }
+  return { ...model, pages, posterUrl };
 }
 
 export function BrowseFeedTilePreview({
@@ -42,7 +94,8 @@ export function BrowseFeedTilePreview({
     pagePresentation: manifest.pagePresentation,
     contentClass: manifest.docType
   });
-  const [model, setModel] = useState(base);
+  // Never paint unresolved penmedia:/penlocal: on first render.
+  const [model, setModel] = useState(() => scrubUnresolvedMedia(base));
 
   useEffect(() => {
     let cancelled = false;
@@ -52,7 +105,8 @@ export function BrowseFeedTilePreview({
       pagePresentation: manifest.pagePresentation,
       contentClass: manifest.docType
     });
-    void resolveTileMedia(next, manifest.docId).then((resolved) => {
+    setModel(scrubUnresolvedMedia(next));
+    void resolveTileMedia(next, manifest.docId, session).then((resolved) => {
       if (!cancelled) setModel(resolved);
     });
     return () => {

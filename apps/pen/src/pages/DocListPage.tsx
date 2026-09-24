@@ -625,7 +625,8 @@ function DocGalleryCard({
   onCommitRename,
   onCancelRename,
   onMove,
-  onDelete
+  onDelete,
+  session
 }: {
   pn: string;
   d: LocalDocSummary;
@@ -641,6 +642,7 @@ function DocGalleryCard({
   onCancelRename: () => void;
   onMove: (folderId: string | null) => void;
   onDelete: () => void;
+  session?: PenSession | null;
 }) {
   const bundle = loadLocalDoc(pn, d.docId);
   const title = d.title || 'Untitled';
@@ -706,7 +708,11 @@ function DocGalleryCard({
         </div>
       )}
       {bundle ? (
-        <DocGalleryPreview manifest={bundle.manifest} sections={bundle.sections} />
+        <DocGalleryPreview
+          manifest={bundle.manifest}
+          sections={bundle.sections}
+          session={session}
+        />
       ) : (
         <div className="pen-gallery-doc-page pen-gallery-doc-page--paper">
           <div className="pen-gallery-doc-paper-title">{title}</div>
@@ -805,12 +811,14 @@ function PersonalTemplateGalleryCard({
   pn,
   templateId,
   title,
-  onOpen
+  onOpen,
+  session
 }: {
   pn: string;
   templateId: string;
   title: string;
   onOpen: () => void;
+  session?: PenSession | null;
 }) {
   return (
     <div className="pen-gallery-slot">
@@ -819,7 +827,7 @@ function PersonalTemplateGalleryCard({
           <span className="pen-gallery-tile-title-text">{title}</span>
         </div>
         <span className="pen-gallery-tile-preview">
-          <TemplateGalleryThumb pn={pn} templateId={templateId} />
+          <TemplateGalleryThumb pn={pn} templateId={templateId} session={session} />
         </span>
       </button>
     </div>
@@ -847,7 +855,8 @@ function DocGalleryGrid({
   onDeleteDoc,
   onOpenFolder,
   onRenameFolder,
-  onDeleteFolder
+  onDeleteFolder,
+  session
 }: {
   pn: string;
   docs: LocalDocSummary[];
@@ -870,6 +879,7 @@ function DocGalleryGrid({
   onOpenFolder: (folderId: string) => void;
   onRenameFolder: (folder: PenFolder) => void;
   onDeleteFolder: (folderId: string) => void;
+  session?: PenSession | null;
 }) {
   return (
     <div className="pen-gallery-wrap">
@@ -895,6 +905,7 @@ function DocGalleryGrid({
                 templateId={t.id}
                 title={t.title}
                 onOpen={() => onOpenPersonalTemplate?.(t.id)}
+                session={session}
               />
             ))}
           {docs.map((d) => (
@@ -914,6 +925,7 @@ function DocGalleryGrid({
               onCancelRename={onCancelRename}
               onMove={(folderId) => onMoveDoc(d.docId, folderId)}
               onDelete={() => onDeleteDoc(d.docId)}
+              session={session}
             />
           ))}
         </div>
@@ -1614,6 +1626,7 @@ export function DocListPage({
                   onOpenFolder={setCurrentFolderId}
                   onRenameFolder={handleRenameFolder}
                   onDeleteFolder={handleDeleteFolder}
+                  session={session}
                 />
               ) : currentFolderId ? (
                 <DocExplorerTable
