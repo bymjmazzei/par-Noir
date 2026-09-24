@@ -18,3 +18,4 @@ export * from './mediaStyle.js';
 export * from './layerParts.js';
 export * from './agent.js';
 export * from './licensing.js';
+export * from './starterAssets.js';

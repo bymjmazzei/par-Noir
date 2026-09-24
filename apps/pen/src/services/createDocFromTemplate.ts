@@ -90,6 +90,14 @@ export async function createDocFromTemplate(input: {
     toc: template.sections.map((s) => s.slug)
   };
 
+  const social = getClass(template.classId)?.parentId === 'social';
+  const pageLayout =
+    template.seedPageLayout ||
+    (social ? 'flow' : 'letter');
+  const pagePresentation =
+    template.seedPagePresentation ||
+    (social ? defaultPagePresentation() : defaultEditorPagePresentation());
+
   const manifest: PenDocManifest = {
     docId,
     title: `Untitled ${template.title}`,
@@ -102,11 +110,8 @@ export async function createDocFromTemplate(input: {
     createdAt: now,
     updatedAt: now,
     genesisProof: genesis,
-    pageLayout: getClass(template.classId)?.parentId === 'social' ? 'flow' : 'letter',
-    pagePresentation:
-      getClass(template.classId)?.parentId === 'social'
-        ? defaultPagePresentation()
-        : defaultEditorPagePresentation(),
+    pageLayout,
+    pagePresentation,
     ownerPnHash,
     roles: ensureOwnerAssignment([], ownerPnHash),
     lifecycle: 'draft',

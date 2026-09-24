@@ -34,9 +34,30 @@ function firstImageSrc(doc: PenTipTapNode | undefined): string | null {
   return walk(doc);
 }
 
-function resolveMedia(sections: PenSectionContent[]): string | null {
+function firstLayerMedia(sections: PenSectionContent[]): string | null {
+  for (const raw of sections) {
+    const sec = normalizeSection(raw);
+    for (const layer of sec.layers || []) {
+      if (layer.visible === false) continue;
+      if (layer.kind === 'image' && layer.imageSrc) return layer.imageSrc;
+      if (layer.kind === 'video' && layer.videoSrc) return layer.videoSrc;
+      // Poster fallback for video frames that only set backgroundImage on the layer
+      if (layer.backgroundImage) return layer.backgroundImage;
+    }
+  }
+  return null;
+}
+
+function resolveMedia(
+  sections: PenSectionContent[],
+  pagePresentation?: PenPagePresentation | null
+): string | null {
+  const fromLayers = firstLayerMedia(sections);
+  if (fromLayers) return fromLayers;
+  if (pagePresentation?.backgroundImage) return pagePresentation.backgroundImage;
+  if (pagePresentation?.backgroundVideo) return pagePresentation.backgroundVideo;
   const bySlug = sectionMap(sections);
-  for (const slug of ['attachments', 'media', 'cover', 'body', 'pages']) {
+  for (const slug of ['attachments', 'media', 'cover', 'body', 'pages', 'front']) {
     const src = firstImageSrc(bySlug.get(slug)?.doc);
     if (src) return src;
   }
@@ -118,7 +139,7 @@ export function DocGalleryPreview({
   /** Larger phone for overlay modal. */
   large?: boolean;
 }) {
-  const media = resolveMedia(sections);
+  const media = resolveMedia(sections, manifest.pagePresentation);
   const title = resolveTitle(manifest, sections);
   const bodyHtml = resolveBodyHtml(sections, title);
   const pres = mergePagePresentation(
@@ -129,13 +150,40 @@ export function DocGalleryPreview({
 
   let surface: ReactNode;
   if (media) {
+    // Media-forward: still/video poster fills the tile; caption overlays for social value.
     surface = (
-      <img
-        src={media}
-        alt=""
-        className="pen-gallery-doc-page pen-gallery-doc-page--media"
-        draggable={false}
-      />
+      <div
+        className="pen-gallery-doc-page pen-gallery-doc-page--media-stack"
+        style={
+          large
+            ? {
+                aspectRatio: social ? '9 / 16' : pageAspect(manifest),
+                height: social ? '100%' : undefined,
+                width: '100%',
+                position: 'relative'
+              }
+            : { width: '100%', height: '100%', position: 'relative' }
+        }
+      >
+        <img
+          src={media}
+          alt=""
+          className="pen-gallery-doc-page pen-gallery-doc-page--media"
+          style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+          draggable={false}
+        />
+        {title && title !== 'Untitled' ? (
+          <div
+            className="absolute inset-x-0 bottom-0 line-clamp-3 px-1.5 py-1 text-[10px] leading-snug text-white"
+            style={{
+              background: 'linear-gradient(transparent, rgba(0,0,0,0.65))',
+              fontFamily: pres.fontFamily
+            }}
+          >
+            {title}
+          </div>
+        ) : null}
+      </div>
     );
   } else if (
     social ||

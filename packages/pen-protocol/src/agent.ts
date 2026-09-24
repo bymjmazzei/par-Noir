@@ -277,6 +277,15 @@ function rowsToSection(rows: PenAgentRegisterRow[]): PenSectionContent {
   };
 }
 
+function seedLayersForSlug(
+  template: PenTemplate,
+  slug: string
+): PenSectionContent['layers'] | undefined {
+  const seed = template.seedSections?.find((s) => s.slug === slug);
+  if (!seed?.layers?.length) return undefined;
+  return seed.layers.map((l) => ({ ...l }));
+}
+
 function buildSectionsFromAgent(
   template: PenTemplate,
   build: PenAgentBuild
@@ -291,8 +300,17 @@ function buildSectionsFromAgent(
       return rowsToSection(build.rows);
     }
     const provided = bySlug.get(sec.slug);
-    if (!provided) return emptySection(sec.slug);
-    return { slug: sec.slug, doc: resolveSectionDoc(provided) };
+    const layers = seedLayersForSlug(template, sec.slug);
+    if (!provided) {
+      const empty = emptySection(sec.slug);
+      return layers?.length ? { ...empty, layers } : empty;
+    }
+    const out: PenSectionContent = {
+      slug: sec.slug,
+      doc: resolveSectionDoc(provided)
+    };
+    if (layers?.length) out.layers = layers;
+    return out;
   });
 }
 
@@ -342,7 +360,8 @@ export function materializePenAgentBuild(
     toc,
     createdAt: now,
     updatedAt: now,
-    pageLayout: 'flow',
+    pageLayout: template.seedPageLayout || 'flow',
+    pagePresentation: template.seedPagePresentation,
     lifecycle: opts.asCurrent ? 'published' : 'draft',
     activeDraftId: opts.asCurrent ? undefined : draftId
   };

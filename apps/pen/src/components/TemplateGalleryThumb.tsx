@@ -53,7 +53,9 @@ export function templatePreviewBundle(pn: string | undefined, templateId: string
       groupId: 'preview',
       toc: t.sections.map((s) => s.slug),
       createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString()
+      updatedAt: new Date().toISOString(),
+      pageLayout: t.seedPageLayout,
+      pagePresentation: t.seedPagePresentation
     },
     sections: t.seedSections?.length
       ? t.seedSections

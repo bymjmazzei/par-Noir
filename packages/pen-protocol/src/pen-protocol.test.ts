@@ -542,6 +542,37 @@ describe('template seeds + Mini featured + layer locks', () => {
     expect(featured.every((t) => t.classId === 'social.note' && t.browseFeatured)).toBe(true);
   });
 
+  it('consumer starters ship rich seeds with presentation and layers', () => {
+    const consumer = listStarterTemplates().filter(
+      (t) => !t.classId.startsWith('records.')
+    );
+    expect(consumer.length).toBeGreaterThan(10);
+    for (const t of consumer) {
+      expect(t.seedPagePresentation, t.id).toBeTruthy();
+      expect(t.seedSections?.length, t.id).toBeGreaterThan(0);
+      const hasLayerMedia = (t.seedSections || []).some((s) =>
+        (s.layers || []).some(
+          (l) =>
+            (l.kind === 'image' && l.imageSrc) ||
+            (l.kind === 'video' && l.videoSrc) ||
+            Boolean(l.backgroundImage)
+        )
+      );
+      const hasPresMedia = Boolean(
+        t.seedPagePresentation?.backgroundImage || t.seedPagePresentation?.backgroundVideo
+      );
+      expect(hasLayerMedia || hasPresMedia, `${t.id} should have media`).toBe(true);
+    }
+    const video = requireTemplate('post.video.v1');
+    expect(video.title).toBe('Video Post');
+    expect(video.browseFeatured).toBe(true);
+    expect(
+      video.seedSections?.some((s) =>
+        (s.layers || []).some((l) => l.kind === 'video' && l.videoSrc)
+      )
+    ).toBe(true);
+  });
+
   it('blankTemplateForClass yields empty seeds with no object layers', () => {
     const blank = blankTemplateForClass('social.note');
     expect(blank?.id).toBe('blank.social.note');

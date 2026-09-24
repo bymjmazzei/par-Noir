@@ -12,9 +12,9 @@
       "default": "./dist/index.js"
     }
   },
-  "files": ["dist"],
+  "files": ["dist", "src/starter-assets"],
   "scripts": {
-    "build": "tsc -p tsconfig.json",
+    "build": "tsc -p tsconfig.json && mkdir -p dist/starter-assets && cp -R src/starter-assets/. dist/starter-assets/",
     "test": "vitest run",
     "test:watch": "vitest"
   },
