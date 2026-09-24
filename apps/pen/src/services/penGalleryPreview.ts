@@ -1,12 +1,25 @@
 /**
  * Composed gallery preview on Commit — local IndexedDB + Drive penmedia.
  * Prefer these refs in library thumbs; CDN only on aggregator publish.
+ *
+ * Docs with a visible video layer MUST encode composed video — no soft skip.
  */
 
 import type { PenDocManifest, PenPagePresentation, PenSectionContent, PenTipTapNode } from '@par-noir/pen-protocol';
-import { normalizeSection } from '@par-noir/pen-protocol';
-import { composePageToVideo } from './composePageVideoEncode';
-import { rasterizeElementToPosterBlob } from './rasterizePagePoster';
+import {
+  normalizeSection,
+  sectionHasVisibleVideoLayer,
+  type PenPageLayer
+} from '@par-noir/pen-protocol';
+import {
+  composePageToVideo,
+  collectUntaintedVideoSlots,
+  rootHasUntaintedPlayableVideo
+} from './composePageVideoEncode';
+import {
+  rasterizeElementToPosterBlob,
+  rasterizeElementSafeStill
+} from './rasterizePagePoster';
 import { uploadBytesAsPenMedia } from './penAttach';
 import {
   getLocalMedia,
@@ -50,6 +63,27 @@ function firstImageSrc(doc: PenTipTapNode | undefined): string | null {
     return null;
   };
   return walk(doc);
+}
+
+function layerHasBackgroundVideo(layer: PenPageLayer): boolean {
+  return Boolean(layer.visible !== false && layer.backgroundVideo?.trim());
+}
+
+/**
+ * True when Commit must produce a composed gallery *video* (IR has video layer
+ * or page/layer background video). Pure — safe for gate tests.
+ */
+export function docRequiresGalleryVideoCompose(
+  sections: PenSectionContent[] | null | undefined,
+  pagePresentation?: Pick<PenPagePresentation, 'backgroundVideo'> | null
+): boolean {
+  if (pagePresentation?.backgroundVideo?.trim()) return true;
+  for (const raw of sections || []) {
+    const sec = normalizeSection(raw);
+    if (sectionHasVisibleVideoLayer(sec)) return true;
+    if ((sec.layers || []).some(layerHasBackgroundVideo)) return true;
+  }
+  return false;
 }
 
 function firstLayerMedia(sections: PenSectionContent[]): GalleryMedia | null {
@@ -119,19 +153,9 @@ export function resolveGalleryMedia(
   return resolveLayerMedia(sections, manifest.pagePresentation);
 }
 
-function rootHasPlayableVideo(root: HTMLElement): boolean {
-  const videos = Array.from(root.querySelectorAll('video')) as HTMLVideoElement[];
-  return videos.some((el) => {
-    const src = el.currentSrc || el.src || '';
-    if (!src) return false;
-    const r = el.getBoundingClientRect();
-    return r.width >= 2 && r.height >= 2;
-  });
-}
-
 /**
  * Prefer page-layer compose root (flattened layers) over feed tile; among
- * those, prefer a root that already has playable video.
+ * those, prefer a root that already has untainted playable video.
  */
 export function findComposeExportRoot(): HTMLElement | null {
   if (typeof document === 'undefined') return null;
@@ -141,7 +165,7 @@ export function findComposeExportRoot(): HTMLElement | null {
   if (!roots.length) return null;
   const pageRoots = roots.filter((r) => r.getAttribute('data-pen-compose-export-root') === 'page');
   const pool = pageRoots.length ? pageRoots : roots;
-  const withVideo = pool.find((r) => rootHasPlayableVideo(r));
+  const withVideo = pool.find((r) => rootHasUntaintedPlayableVideo(r));
   return withVideo || pool[0] || roots[0] || null;
 }
 
@@ -177,31 +201,48 @@ async function uploadOrLocal(params: {
   return { ref: put.ref, mediaId: put.mediaId, uploaded: false };
 }
 
+const VIDEO_HYDRATE_TIMEOUT_MS = 20_000;
+const VIDEO_HYDRATE_POLL_MS = 200;
+
+export async function waitForUntaintedComposeVideos(
+  initialRoot: HTMLElement,
+  timeoutMs = VIDEO_HYDRATE_TIMEOUT_MS
+): Promise<HTMLElement> {
+  const deadline = Date.now() + timeoutMs;
+  let root = initialRoot;
+  while (Date.now() < deadline) {
+    root = findComposeRoot() || root;
+    if (collectUntaintedVideoSlots(root).length > 0) return root;
+    await new Promise((r) => setTimeout(r, VIDEO_HYDRATE_POLL_MS));
+  }
+  throw new Error('gallery_video_not_ready');
+}
+
 /**
- * Compose page → local cache → Drive penmedia. Does not fail the Commit on error —
- * caller should catch and fall back.
+ * Compose page → local cache → Drive penmedia.
+ * When `sections` include a video layer, encode composed video or throw
+ * (Commit must not soft-skip video gallery).
  */
 export async function buildAndStoreGalleryPreview(params: {
   session: PenSession;
   docId: string;
   commitHash: string;
+  sections: PenSectionContent[];
+  pagePresentation?: Pick<PenPagePresentation, 'backgroundVideo'> | null;
 }): Promise<GalleryPreviewResult> {
+  const needsVideo = docRequiresGalleryVideoCompose(
+    params.sections,
+    params.pagePresentation
+  );
+
   let root = findComposeRoot();
   if (!root) throw new Error('compose_export_root_missing');
-
-  // Wait briefly for penmedia → blob hydrate on <video> layers.
-  if (!rootHasPlayableVideo(root)) {
-    for (let i = 0; i < 10; i++) {
-      await new Promise((r) => setTimeout(r, 100));
-      root = findComposeRoot() || root;
-      if (rootHasPlayableVideo(root)) break;
-    }
-  }
 
   const pn = params.session.pnIdentifier;
   const docId = params.docId;
 
-  if (rootHasPlayableVideo(root)) {
+  if (needsVideo) {
+    root = await waitForUntaintedComposeVideos(root);
     const encoded = await composePageToVideo(root);
     const video = await uploadOrLocal({
       blob: encoded.videoBlob,
@@ -226,7 +267,13 @@ export async function buildAndStoreGalleryPreview(params: {
     };
   }
 
-  const posterBlob = await rasterizeElementToPosterBlob(root);
+  // Still path — prefer foreignObject rasterize; fall back to safe still (no taint).
+  let posterBlob: Blob;
+  try {
+    posterBlob = await rasterizeElementToPosterBlob(root);
+  } catch {
+    posterBlob = await rasterizeElementSafeStill(root);
+  }
   const image = await uploadOrLocal({
     blob: posterBlob,
     fileName: 'gallery-preview.penmedia',

@@ -28,7 +28,7 @@ import {
   type ResolvePenEmbed
 } from '@par-noir/pen-protocol';
 import { composePageToVideo } from './composePageVideoEncode';
-import { findComposeExportRoot } from './penGalleryPreview';
+import { findComposeExportRoot, waitForUntaintedComposeVideos } from './penGalleryPreview';
 import type { PenSession } from '../App';
 import { createDocFromTemplate } from './createDocFromTemplate';
 import type { LocalDocBundle } from './penLocalStore';
@@ -223,12 +223,13 @@ export async function writeComposedVideoPublishHandoff(
     await waitTwoFrames();
     await new Promise((r) => setTimeout(r, 200));
   }
-  const root =
+  const root0 =
     opts?.exportRoot ||
     findComposeExportRoot();
-  if (!root) {
+  if (!root0) {
     throw new Error('compose_export_root_missing');
   }
+  const root = await waitForUntaintedComposeVideos(root0);
 
   const encoded = await composePageToVideo(root, { onProgress: opts?.onProgress });
   const canTemplate = opts?.canPublishPublicTemplate === true;
@@ -327,8 +328,9 @@ export async function writeMixedPagesPublishHandoff(
     await waitTwoFrames();
     // Allow video elements to attach
     await new Promise((r) => setTimeout(r, 200));
-    const root = findComposeExportRoot();
-    if (!root) throw new Error('compose_export_root_missing');
+    const root0 = findComposeExportRoot();
+    if (!root0) throw new Error('compose_export_root_missing');
+    const root = await waitForUntaintedComposeVideos(root0);
     const encoded = await composePageToVideo(root, {
       onProgress: (p) => {
         const base = (i / videoSections.length) * 80;

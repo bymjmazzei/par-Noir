@@ -1,9 +1,12 @@
 /**
  * On-device compose encode: record the Pen page surface (static backdrop +
  * live video layers) to a video blob + JPEG poster. No server ffmpeg.
+ *
+ * Only blob:/data: video masters are drawn — MediaStream mirrors and
+ * cross-origin http frames taint canvas.toBlob / captureStream exports.
  */
 
-import { rasterizeElementToPosterBlob } from './rasterizePagePoster';
+import { rasterizeElementSafeStill } from './rasterizePagePoster';
 
 export const COMPOSE_VIDEO_MAX_DURATION_SEC = 60;
 export const COMPOSE_VIDEO_MAX_EDGE = 1080;
@@ -16,6 +19,10 @@ export type ComposePageVideoResult = {
   height: number;
   durationMs: number;
 };
+
+export function isUntaintedMediaUrl(src: string): boolean {
+  return src.startsWith('blob:') || src.startsWith('data:');
+}
 
 function pickRecorderMime(): { mimeType: string; contentType: string } {
   const candidates = [
@@ -34,12 +41,16 @@ function pickRecorderMime(): { mimeType: string; contentType: string } {
   return { mimeType: '', contentType: 'video/webm' };
 }
 
-function waitVideoReady(video: HTMLVideoElement): Promise<void> {
+function waitVideoReady(video: HTMLVideoElement, timeoutMs = 15_000): Promise<void> {
   return new Promise((resolve, reject) => {
-    if (video.readyState >= 2) {
+    if (video.readyState >= 2 && (video.videoWidth > 0 || video.duration > 0)) {
       resolve();
       return;
     }
+    const timer = window.setTimeout(() => {
+      cleanup();
+      reject(new Error('compose_video_load_timeout'));
+    }, timeoutMs);
     const onOk = () => {
       cleanup();
       resolve();
@@ -49,15 +60,18 @@ function waitVideoReady(video: HTMLVideoElement): Promise<void> {
       reject(new Error('compose_video_load_failed'));
     };
     const cleanup = () => {
+      window.clearTimeout(timer);
       video.removeEventListener('loadeddata', onOk);
+      video.removeEventListener('canplay', onOk);
       video.removeEventListener('error', onErr);
     };
     video.addEventListener('loadeddata', onOk);
+    video.addEventListener('canplay', onOk);
     video.addEventListener('error', onErr);
   });
 }
 
-type VideoSlot = {
+export type VideoSlot = {
   el: HTMLVideoElement;
   x: number;
   y: number;
@@ -65,16 +79,37 @@ type VideoSlot = {
   h: number;
 };
 
-function collectVideoSlots(root: HTMLElement): VideoSlot[] {
+/**
+ * Prefer the blob-backed master video over a captureStream mirror viewer.
+ * Returns null when no untainted drawable exists (caller must not draw).
+ */
+export function resolveUntaintedDrawableVideo(
+  viewer: HTMLVideoElement
+): HTMLVideoElement | null {
+  const key = viewer.dataset.penMediaKey;
+  if (key) {
+    const master = document.querySelector(
+      `video[data-pen-media-drawable="1"][data-pen-media-key="${CSS.escape(key)}"]`
+    );
+    if (master instanceof HTMLVideoElement) {
+      const src = master.currentSrc || master.src || '';
+      if (isUntaintedMediaUrl(src)) return master;
+    }
+  }
+  const own = viewer.currentSrc || viewer.src || '';
+  if (isUntaintedMediaUrl(own) && !viewer.srcObject) return viewer;
+  return null;
+}
+
+/** Visible on-page video slots backed by blob:/data: masters only. */
+export function collectUntaintedVideoSlots(root: HTMLElement): VideoSlot[] {
   const rootRect = root.getBoundingClientRect();
   const videos = Array.from(root.querySelectorAll('video')) as HTMLVideoElement[];
   const slots: VideoSlot[] = [];
   for (const el of videos) {
-    // Skip hidden PenMediaController masters (1×1 fixed); only on-page viewers.
     if (el.dataset.penMediaDrawable === '1') continue;
-    const drawable = resolveDrawableVideo(el);
-    const src = drawable.currentSrc || drawable.src || '';
-    if (!src && !drawable.srcObject) continue;
+    const drawable = resolveUntaintedDrawableVideo(el);
+    if (!drawable) continue;
     const r = el.getBoundingClientRect();
     if (r.width < 2 || r.height < 2) continue;
     slots.push({
@@ -88,28 +123,11 @@ function collectVideoSlots(root: HTMLElement): VideoSlot[] {
   return slots;
 }
 
-/**
- * Prefer the blob-backed master video over a captureStream mirror viewer —
- * drawing MediaStream / cross-origin frames onto canvas taints toBlob.
- */
-function resolveDrawableVideo(viewer: HTMLVideoElement): HTMLVideoElement {
-  const key = viewer.dataset.penMediaKey;
-  if (key) {
-    const master = document.querySelector(
-      `video[data-pen-media-drawable="1"][data-pen-media-key="${CSS.escape(key)}"]`
-    );
-    if (master instanceof HTMLVideoElement) {
-      const src = master.currentSrc || master.src || '';
-      if (src.startsWith('blob:') || src.startsWith('data:') || src.startsWith('http')) {
-        return master;
-      }
-    }
-  }
-  const own = viewer.currentSrc || viewer.src || '';
-  if (own.startsWith('blob:') || own.startsWith('data:')) return viewer;
-  return viewer;
+export function rootHasUntaintedPlayableVideo(root: HTMLElement): boolean {
+  return collectUntaintedVideoSlots(root).length > 0;
 }
 
+/** Solid fill + safe still images — never foreignObject (taint risk). */
 async function buildStaticBackdrop(
   root: HTMLElement,
   width: number,
@@ -121,49 +139,41 @@ async function buildStaticBackdrop(
   const ctx = canvas.getContext('2d');
   if (!ctx) throw new Error('canvas_unavailable');
 
-  const fill =
-    getComputedStyle(root).backgroundColor ||
-    getComputedStyle(root).getPropertyValue('background-color') ||
-    '#ffffff';
-  ctx.fillStyle = fill && fill !== 'rgba(0, 0, 0, 0)' && fill !== 'transparent' ? fill : '#ffffff';
-  ctx.fillRect(0, 0, width, height);
-
   try {
-    const clone = root.cloneNode(true) as HTMLElement;
-    clone.querySelectorAll('video').forEach((v) => {
-      const ph = document.createElement('div');
-      ph.style.width = '100%';
-      ph.style.height = '100%';
-      ph.style.background = 'transparent';
-      v.replaceWith(ph);
-    });
-    const host = document.createElement('div');
-    host.style.cssText = `position:fixed;left:-10000px;top:0;width:${root.offsetWidth}px;height:${root.offsetHeight}px;overflow:hidden;pointer-events:none;opacity:0;`;
-    host.appendChild(clone);
-    document.body.appendChild(host);
+    const jpeg = await rasterizeElementSafeStill(root, { maxEdge: COMPOSE_VIDEO_MAX_EDGE });
+    const url = URL.createObjectURL(jpeg);
     try {
-      const jpeg = await rasterizeElementToPosterBlob(clone, {
-        maxEdge: COMPOSE_VIDEO_MAX_EDGE
+      const img = await new Promise<HTMLImageElement>((resolve, reject) => {
+        const i = new Image();
+        i.onload = () => resolve(i);
+        i.onerror = () => reject(new Error('compose_backdrop_load_failed'));
+        i.src = url;
       });
-      const url = URL.createObjectURL(jpeg);
-      try {
-        const img = await new Promise<HTMLImageElement>((resolve, reject) => {
-          const i = new Image();
-          i.onload = () => resolve(i);
-          i.onerror = () => reject(new Error('compose_backdrop_load_failed'));
-          i.src = url;
-        });
-        ctx.drawImage(img, 0, 0, width, height);
-      } finally {
-        URL.revokeObjectURL(url);
-      }
+      ctx.drawImage(img, 0, 0, width, height);
     } finally {
-      host.remove();
+      URL.revokeObjectURL(url);
     }
   } catch {
-    /* Keep solid fill — never fail compose on backdrop taint. */
+    const fill = getComputedStyle(root).backgroundColor;
+    ctx.fillStyle =
+      fill && fill !== 'rgba(0, 0, 0, 0)' && fill !== 'transparent' ? fill : '#111111';
+    ctx.fillRect(0, 0, width, height);
   }
   return canvas;
+}
+
+function canvasToJpegBlob(canvas: HTMLCanvasElement, quality = 0.85): Promise<Blob> {
+  return new Promise((resolve, reject) => {
+    try {
+      canvas.toBlob(
+        (b) => (b ? resolve(b) : reject(new Error('poster_encode_failed'))),
+        'image/jpeg',
+        quality
+      );
+    } catch (e) {
+      reject(e instanceof Error ? e : new Error('poster_canvas_tainted'));
+    }
+  });
 }
 
 /**
@@ -187,15 +197,19 @@ export async function composePageToVideo(
   const sx = w / srcW;
   const sy = h / srcH;
 
-  const slots = collectVideoSlots(root);
+  const slots = collectUntaintedVideoSlots(root);
   if (!slots.length) {
-    throw new Error('compose_no_video_elements');
+    throw new Error('compose_no_untainted_video');
   }
 
   for (const slot of slots) {
     slot.el.muted = true;
     slot.el.playsInline = true;
-    slot.el.currentTime = 0;
+    try {
+      slot.el.currentTime = 0;
+    } catch {
+      /* ignore */
+    }
     await waitVideoReady(slot.el);
   }
 
@@ -213,10 +227,10 @@ export async function composePageToVideo(
   const canvas = document.createElement('canvas');
   canvas.width = w;
   canvas.height = h;
-  const ctx = canvas.getContext('2d');
+  const ctx = canvas.getContext('2d', { willReadFrequently: false });
   if (!ctx) throw new Error('canvas_unavailable');
 
-  // Poster at ~0.5s or first frame
+  // Poster at ~0.5s or first frame — only untainted draws
   const seekPoster = Math.min(0.5, durationSec * 0.1);
   for (const slot of slots) {
     try {
@@ -235,52 +249,16 @@ export async function composePageToVideo(
   }
   ctx.drawImage(backdrop, 0, 0);
   for (const slot of slots) {
-    try {
-      ctx.drawImage(slot.el, slot.x * sx, slot.y * sy, slot.w * sx, slot.h * sy);
-    } catch {
-      /* skip tainted frame */
-    }
+    ctx.drawImage(slot.el, slot.x * sx, slot.y * sy, slot.w * sx, slot.h * sy);
   }
-  let posterBlob: Blob;
-  try {
-    posterBlob = await new Promise<Blob>((resolve, reject) => {
-      try {
-        canvas.toBlob(
-          (b) => (b ? resolve(b) : reject(new Error('poster_encode_failed'))),
-          'image/jpeg',
-          0.85
-        );
-      } catch (e) {
-        reject(e instanceof Error ? e : new Error('poster_canvas_tainted'));
-      }
-    });
-  } catch {
-    // Untainted fallback: solid + first drawable frame via createImageBitmap when possible
-    const safe = document.createElement('canvas');
-    safe.width = w;
-    safe.height = h;
-    const sctx = safe.getContext('2d');
-    if (!sctx) throw new Error('canvas_unavailable');
-    sctx.fillStyle = '#111111';
-    sctx.fillRect(0, 0, w, h);
-    for (const slot of slots) {
-      try {
-        sctx.drawImage(slot.el, slot.x * sx, slot.y * sy, slot.w * sx, slot.h * sy);
-      } catch {
-        /* ignore */
-      }
-    }
-    posterBlob = await new Promise<Blob>((resolve, reject) => {
-      safe.toBlob(
-        (b) => (b ? resolve(b) : reject(new Error('poster_encode_failed'))),
-        'image/jpeg',
-        0.85
-      );
-    });
-  }
+  const posterBlob = await canvasToJpegBlob(canvas);
 
   for (const slot of slots) {
-    slot.el.currentTime = 0;
+    try {
+      slot.el.currentTime = 0;
+    } catch {
+      /* ignore */
+    }
   }
 
   const { mimeType, contentType } = pickRecorderMime();
@@ -305,15 +283,13 @@ export async function composePageToVideo(
 
   const started = performance.now();
   let raf = 0;
+  let framesDrawn = 0;
   const draw = () => {
     ctx.drawImage(backdrop, 0, 0);
     for (const slot of slots) {
       if (slot.el.readyState >= 2) {
-        try {
-          ctx.drawImage(slot.el, slot.x * sx, slot.y * sy, slot.w * sx, slot.h * sy);
-        } catch {
-          /* skip frame */
-        }
+        ctx.drawImage(slot.el, slot.x * sx, slot.y * sy, slot.w * sx, slot.h * sy);
+        framesDrawn += 1;
       }
     }
     const elapsed = (performance.now() - started) / 1000;
@@ -343,6 +319,7 @@ export async function composePageToVideo(
   stream.getTracks().forEach((t) => t.stop());
   const videoBlob = await stopped;
   if (!videoBlob.size) throw new Error('compose_empty_video');
+  if (framesDrawn < 1) throw new Error('compose_no_video_frames');
   opts?.onProgress?.(100);
 
   return {

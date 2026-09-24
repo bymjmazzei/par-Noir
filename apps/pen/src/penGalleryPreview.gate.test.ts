@@ -1,11 +1,15 @@
 /**
  * Gate: resolveGalleryMedia prefers committed galleryPreviewRef over layer media.
- * Falsifies: layer videoSrc wins when galleryPreviewRef is set.
+ * Video-layer docs require gallery video compose (IR), not soft-skip.
  */
 
 import { describe, expect, it } from 'vitest';
 import type { PenDocManifest, PenSectionContent } from '@par-noir/pen-protocol';
-import { resolveGalleryMedia } from './services/penGalleryPreview';
+import {
+  docRequiresGalleryVideoCompose,
+  resolveGalleryMedia
+} from './services/penGalleryPreview';
+import { isUntaintedMediaUrl } from './services/composePageVideoEncode';
 
 function baseManifest(over: Partial<PenDocManifest> = {}): PenDocManifest {
   return {
@@ -41,6 +45,14 @@ const sectionsWithVideo: PenSectionContent[] = [
   }
 ];
 
+const sectionsTextOnly: PenSectionContent[] = [
+  {
+    slug: 'body',
+    doc: { type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'hi' }] }] },
+    layers: []
+  }
+];
+
 describe('resolveGalleryMedia', () => {
   it('prefers galleryPreviewRef over layer videoSrc', () => {
     const media = resolveGalleryMedia(
@@ -67,5 +79,32 @@ describe('resolveGalleryMedia', () => {
       sectionsWithVideo
     );
     expect(media).toEqual({ src: 'penmedia:posterOnly', kind: 'image' });
+  });
+});
+
+describe('docRequiresGalleryVideoCompose', () => {
+  it('true when section has visible video layer', () => {
+    expect(docRequiresGalleryVideoCompose(sectionsWithVideo)).toBe(true);
+  });
+
+  it('false for text-only sections', () => {
+    expect(docRequiresGalleryVideoCompose(sectionsTextOnly)).toBe(false);
+  });
+
+  it('true for pagePresentation.backgroundVideo', () => {
+    expect(
+      docRequiresGalleryVideoCompose(sectionsTextOnly, {
+        backgroundVideo: 'penmedia:bg'
+      })
+    ).toBe(true);
+  });
+});
+
+describe('untainted media URLs', () => {
+  it('only blob and data are safe to draw', () => {
+    expect(isUntaintedMediaUrl('blob:https://x/1')).toBe(true);
+    expect(isUntaintedMediaUrl('data:video/mp4;base64,aa')).toBe(true);
+    expect(isUntaintedMediaUrl('https://cdn.example/v.mp4')).toBe(false);
+    expect(isUntaintedMediaUrl('penmedia:abc')).toBe(false);
   });
 });

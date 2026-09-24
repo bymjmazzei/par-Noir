@@ -33,6 +33,7 @@ import {
   isGooglePenFont,
   type PenDocComment,
   type PenPageLayout,
+  type PenDocManifest,
   type PenRole,
   type PenSuggestion,
   type PenTipTapNode
@@ -86,6 +87,7 @@ import { publishDocCloud, upsertDraftCloud } from '../services/penCloudStore';
 import { enqueueSyncJob } from '../services/penSyncQueue';
 import {
   buildAndStoreGalleryPreview,
+  docRequiresGalleryVideoCompose,
   withGalleryPreview
 } from '../services/penGalleryPreview';
 import { ownerGet } from '../services/penOwnerFetch';
@@ -730,10 +732,10 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
       const verified = verifyChain(nextChain);
       if (!verified.ok) throw new Error(verified.error);
 
-      let nextManifest = {
+      let nextManifest: PenDocManifest = {
         ...bundle!.manifest,
         updatedAt: now.toISOString(),
-        lifecycle: 'published' as const,
+        lifecycle: 'published',
         ownerPnHash:
           bundle!.manifest.ownerPnHash || hashPnIdentifier(session.pnIdentifier),
         roles:
@@ -741,7 +743,12 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
           ensureOwnerAssignment([], hashPnIdentifier(session.pnIdentifier))
       };
 
-      // Composed gallery preview (local + Drive penmedia). Never fail Commit on encode.
+      // Composed gallery preview (local + Drive penmedia).
+      // Video-layer docs: encode must succeed — do not soft-skip.
+      const needsVideoGallery = docRequiresGalleryVideoCompose(
+        bundle!.sections,
+        bundle!.manifest.pagePresentation
+      );
       try {
         setStatus('Building gallery preview…');
         // Social live preview is feed-tile only — mount page layers offscreen so
@@ -752,7 +759,9 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
         const preview = await buildAndStoreGalleryPreview({
           session,
           docId,
-          commitHash: headHashFromChain(nextChain)
+          commitHash: headHashFromChain(nextChain),
+          sections: bundle!.sections,
+          pagePresentation: bundle!.manifest.pagePresentation
         });
         nextManifest = withGalleryPreview(nextManifest, preview);
         if (!preview.uploaded) {
@@ -768,6 +777,11 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
           });
         }
       } catch (e) {
+        if (needsVideoGallery) {
+          throw e instanceof Error
+            ? e
+            : new Error('gallery_video_compose_failed');
+        }
         const msg = e instanceof Error ? e.message : 'gallery_preview_failed';
         setStatus(`Committed — gallery preview skipped (${msg})`);
         window.setTimeout(() => setStatus(null), 4000);
