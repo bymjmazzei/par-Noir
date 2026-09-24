@@ -56,6 +56,7 @@ import {
   TemplateGalleryThumb
 } from '../components/TemplateGalleryThumb';
 import { TemplatesBrowse } from '../components/TemplatesBrowse';
+import { DocFeedScroller } from '../components/DocFeedScroller';
 import { BlankDocWizard } from '../components/BlankDocWizard';
 import { createBlankDoc } from '../services/createBlankDoc';
 import { resolveDocLibraryStatus } from '../services/penDocStatus';
@@ -597,6 +598,16 @@ function GalleryIcon() {
   );
 }
 
+function FeedIcon() {
+  return (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden>
+      <rect x="4" y="3" width="16" height="5" rx="1" stroke="currentColor" strokeWidth="2" />
+      <rect x="4" y="10" width="16" height="5" rx="1" stroke="currentColor" strokeWidth="2" />
+      <rect x="4" y="17" width="16" height="4" rx="1" stroke="currentColor" strokeWidth="2" />
+    </svg>
+  );
+}
+
 function MinusIcon() {
   return (
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden>
@@ -1010,6 +1021,7 @@ export function DocListPage({
   const [browseDensity, setBrowseDensity] = useState<PenBrowseDensity>(() =>
     loadBrowseDensity(session.pnIdentifier)
   );
+  const [activeFeedClassId, setActiveFeedClassId] = useState('all');
   const [explorerSort, setExplorerSort] = useState<ExplorerSort>(DEFAULT_EXPLORER_SORT);
   const [bulkDeleteMode, setBulkDeleteMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
@@ -1241,7 +1253,15 @@ export function DocListPage({
   function setDensity(density: PenBrowseDensity) {
     setBrowseDensity(density);
     saveBrowseDensity(session.pnIdentifier, density);
+    if (density === 'feed') {
+      setBulkDeleteMode(false);
+      setSelectedIds(new Set());
+    }
   }
+
+  useEffect(() => {
+    setActiveFeedClassId('all');
+  }, [currentFolderId]);
 
   function cycleExplorerSort(key: ExplorerSortKey) {
     setExplorerSort((prev) => {
@@ -1556,7 +1576,22 @@ export function DocListPage({
                   >
                     <GalleryIcon />
                   </button>
+                  <button
+                    type="button"
+                    title="Feed"
+                    aria-label="Feed view"
+                    aria-pressed={browseDensity === 'feed'}
+                    onClick={() => setDensity('feed')}
+                    className={`inline-flex h-8 w-8 items-center justify-center ${
+                      browseDensity === 'feed'
+                        ? 'text-black'
+                        : 'text-neutral-600 hover:text-neutral-800'
+                    }`}
+                  >
+                    <FeedIcon />
+                  </button>
                 </div>
+                {browseDensity !== 'feed' && (
                 <div className="flex items-center justify-end gap-2">
                   {bulkDeleteMode && (
                     <BulkInlineControls
@@ -1585,6 +1620,7 @@ export function DocListPage({
                     <MinusIcon />
                   </button>
                 </div>
+                )}
               </div>
             )}
           </div>
@@ -1603,7 +1639,16 @@ export function DocListPage({
           ) : (
             <div className="pen-library-body">
               <div className="pen-library-sheet">
-              {browseDensity === 'gallery' ? (
+              {browseDensity === 'feed' ? (
+                <DocFeedScroller
+                  pn={session.pnIdentifier}
+                  docs={sortedDocs}
+                  session={session}
+                  activeClassId={activeFeedClassId}
+                  onActiveClassId={setActiveFeedClassId}
+                  onOpenDoc={(docId) => navigate(`/d/${docId}`)}
+                />
+              ) : browseDensity === 'gallery' ? (
                 <DocGalleryGrid
                   pn={session.pnIdentifier}
                   docs={sortedDocs}

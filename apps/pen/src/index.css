@@ -709,6 +709,104 @@ body {
   z-index: 1;
 }
 
+/* Feed density — full-page class rail + snap scroller */
+.pen-doc-feed {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+  background: #0a0a0a;
+}
+
+.pen-doc-feed-rail-sticky {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  flex-shrink: 0;
+  background: rgba(10, 10, 10, 0.92);
+  backdrop-filter: blur(8px);
+  border-bottom: 1px solid #262626;
+}
+
+.pen-class-feed-rail {
+  width: 100%;
+}
+
+.pen-class-feed-rail-scroll {
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.pen-class-feed-rail-scroll::-webkit-scrollbar {
+  display: none;
+}
+
+.pen-class-feed-rail-inner {
+  display: flex;
+  align-items: center;
+  gap: 1.25rem;
+  padding: 0.75rem max(1rem, calc(50vw - 3rem));
+  width: max-content;
+  min-width: 100%;
+  box-sizing: border-box;
+}
+
+.pen-class-feed-rail-tab {
+  flex-shrink: 0;
+  border: none;
+  background: transparent;
+  padding: 0.25rem 0;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #737373;
+  cursor: pointer;
+}
+
+.pen-class-feed-rail-tab.is-active {
+  color: #fff;
+}
+
+.pen-doc-feed-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  scroll-snap-type: y mandatory;
+  -webkit-overflow-scrolling: touch;
+}
+
+.pen-doc-feed-slide {
+  display: block;
+  width: 100%;
+  min-height: calc(100vh - 8rem);
+  height: calc(100vh - 8rem);
+  scroll-snap-align: start;
+  scroll-snap-stop: always;
+  border: none;
+  padding: 0;
+  margin: 0;
+  background: #0a0a0a;
+  cursor: pointer;
+  overflow: hidden;
+}
+
+.pen-doc-feed-slide > * {
+  height: 100%;
+  width: 100%;
+}
+
+.pen-doc-feed-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 12rem;
+  padding: 2rem;
+  text-align: center;
+}
+
 /*
  * THE title-row underline: a real block sibling under the sticky head.
  * Never a table border (sticky thead fill covers those) and never an absolute guess.

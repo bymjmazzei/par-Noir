@@ -4,6 +4,7 @@ import path from 'path';
 
 const pqcSrc = path.resolve(__dirname, '../../packages/pqc-crypto/src');
 const penSrc = path.resolve(__dirname, '../../packages/pen-protocol/src');
+const aggregatorDomainSrc = path.resolve(__dirname, '../../packages/aggregator-domain/src');
 
 export default defineConfig({
   base: './',
@@ -19,6 +20,7 @@ export default defineConfig({
       '@par-noir/pqc-crypto': path.resolve(pqcSrc, 'index.ts'),
       '@par-noir/pen-protocol': path.resolve(penSrc, 'index.ts'),
       '@par-noir/feed-tile': path.resolve(__dirname, '../../packages/feed-tile/src/index.ts'),
+      '@par-noir/aggregator-domain': path.resolve(aggregatorDomainSrc, 'index.ts'),
     },
   },
   build: { outDir: 'dist', sourcemap: false },

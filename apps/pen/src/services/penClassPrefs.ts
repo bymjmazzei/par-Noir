@@ -3,7 +3,7 @@
 const pinsKey = (pn: string) => `pen.categoryPins:${pn}`;
 const browseDensityKey = (pn: string) => `pen.browseDensity:${pn}`;
 
-export type PenBrowseDensity = 'list' | 'gallery';
+export type PenBrowseDensity = 'list' | 'gallery' | 'feed';
 
 export function loadPinnedCategoryIds(pn: string): string[] {
   try {
@@ -36,7 +36,7 @@ export function togglePinnedCategory(pn: string, categoryId: string): string[] {
 export function loadBrowseDensity(pn: string): PenBrowseDensity {
   try {
     const raw = localStorage.getItem(browseDensityKey(pn));
-    if (raw === 'gallery' || raw === 'list') return raw;
+    if (raw === 'gallery' || raw === 'list' || raw === 'feed') return raw;
     return 'list';
   } catch {
     return 'list';

@@ -9,6 +9,7 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@par-noir/aggregator-domain": "file:../../packages/aggregator-domain",
     "@par-noir/device-cloud-credentials": "file:../../packages/device-cloud-credentials",
     "@par-noir/dm-crypto": "file:../../packages/dm-crypto",
     "@par-noir/feed-tile": "file:../../packages/feed-tile",

@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import {
   categoryIdForClass,
   getClass,
+  getTemplate,
   listConsumerCategories,
   listStarterTemplates,
   listTemplatesGroupedByCategory,
@@ -24,6 +25,8 @@ import { createDocFromPersonalOrStarter } from '../services/penPublish';
 import { ensureMyTemplatesNotebook } from '../services/penFolders';
 import type { PenBrowseDensity } from '../services/penClassPrefs';
 import { ExplorerFolderGlyph } from './ExplorerFolderGlyph';
+import { TemplatesCdnFeedScroller } from './TemplatesCdnFeedScroller';
+import type { CentralIndexEntry } from '@par-noir/aggregator-domain';
 
 function ListIcon() {
   return (
@@ -45,6 +48,16 @@ function GalleryIcon() {
       <rect x="14" y="3" width="7" height="7" rx="1" stroke="currentColor" strokeWidth="2" />
       <rect x="3" y="14" width="7" height="7" rx="1" stroke="currentColor" strokeWidth="2" />
       <rect x="14" y="14" width="7" height="7" rx="1" stroke="currentColor" strokeWidth="2" />
+    </svg>
+  );
+}
+
+function FeedIcon() {
+  return (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden>
+      <rect x="4" y="3" width="16" height="5" rx="1" stroke="currentColor" strokeWidth="2" />
+      <rect x="4" y="10" width="16" height="5" rx="1" stroke="currentColor" strokeWidth="2" />
+      <rect x="4" y="17" width="16" height="4" rx="1" stroke="currentColor" strokeWidth="2" />
     </svg>
   );
 }
@@ -136,6 +149,8 @@ export function TemplatesBrowse({
     new Set(listConsumerCategories().map((c) => c.id))
   );
   const [expandedForms, setExpandedForms] = useState<Set<string>>(() => new Set());
+  const [activeFeedClassId, setActiveFeedClassId] = useState('all');
+  const [cdnHint, setCdnHint] = useState<string | null>(null);
 
   useEffect(() => {
     if (initialPreviewId) setPreviewId(initialPreviewId);
@@ -235,6 +250,24 @@ export function TemplatesBrowse({
     }
   }
 
+  function onPublicTemplateSelect(entry: CentralIndexEntry) {
+    const meta = entry.metadata as {
+      basedOnTemplateId?: string;
+      title?: string;
+      name?: string;
+    };
+    const starterId = meta.basedOnTemplateId;
+    if (starterId && (getTemplate(starterId) || listStarterTemplates().some((t) => t.id === starterId))) {
+      setPreviewId(starterId);
+      return;
+    }
+    // CDN-only public template without local IR id — surface title until Use-from-IR lands.
+    setCdnHint(
+      `Public template “${meta.title || meta.name || entry.fileId}” — open in browse or star after Use template is wired for CDN IR.`
+    );
+    window.setTimeout(() => setCdnHint(null), 4000);
+  }
+
   const previewIsSocial =
     preview?.manifest?.classId != null &&
     categoryIdForClass(String(preview.manifest.classId)) === 'social';
@@ -252,7 +285,9 @@ export function TemplatesBrowse({
           </button>
           <h1 className="text-lg font-bold text-black">Templates</h1>
           <p className="text-sm text-neutral-500">
-            Browse by category and form. Open a template to preview.
+            {density === 'feed'
+              ? 'Public network templates. Scroll by content class.'
+              : 'Browse by category and form. Open a template to preview.'}
           </p>
         </div>
         <div className="pen-library-heading-tools">
@@ -281,15 +316,35 @@ export function TemplatesBrowse({
             >
               <GalleryIcon />
             </button>
+            <button
+              type="button"
+              title="Feed"
+              aria-label="Feed view"
+              aria-pressed={density === 'feed'}
+              onClick={() => onDensity('feed')}
+              className={`inline-flex h-8 w-8 items-center justify-center ${
+                density === 'feed' ? 'text-black' : 'text-neutral-600 hover:text-neutral-800'
+              }`}
+            >
+              <FeedIcon />
+            </button>
           </div>
         </div>
       </div>
 
       {error && <p className="px-4 pt-2 text-sm text-red-600">{error}</p>}
+      {cdnHint && <p className="px-4 pt-2 text-sm text-neutral-600">{cdnHint}</p>}
 
       <div className="pen-library-body">
         <div className="pen-library-sheet">
-          {flatForGallery.length === 0 ? (
+          {density === 'feed' ? (
+            <TemplatesCdnFeedScroller
+              session={session}
+              activeClassId={activeFeedClassId}
+              onActiveClassId={setActiveFeedClassId}
+              onSelectEntry={onPublicTemplateSelect}
+            />
+          ) : flatForGallery.length === 0 ? (
             <p className="pen-library-indent py-10 text-sm text-neutral-500">No templates available.</p>
           ) : density === 'gallery' ? (
             <div className="pen-gallery-wrap">
