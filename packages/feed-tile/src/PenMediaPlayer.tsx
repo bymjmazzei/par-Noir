@@ -157,7 +157,8 @@ export function PenMediaPlayer({
       )}
       <div
         ref={barRef}
-        className={`absolute bottom-0 left-0 right-0 z-10 px-2 pb-2 transition-opacity ${
+        // Sit above the SE resize handle (12px) so scale stays clickable.
+        className={`absolute bottom-3 left-0 right-3 z-10 px-2 transition-opacity ${
           showBar ? 'pointer-events-auto opacity-100' : 'pointer-events-none opacity-0'
         }`}
         onPointerDown={onScrubDown}

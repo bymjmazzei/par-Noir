@@ -345,7 +345,7 @@ function BodyWrapObject({
         {inner}
         {selected && !locked && (
           <div
-            className="absolute bottom-0 right-0 h-3 w-3 cursor-se-resize bg-sky-500"
+            className="absolute bottom-0 right-0 z-20 h-3.5 w-3.5 cursor-se-resize bg-sky-500"
             onPointerDown={onPointerDownResize}
           />
         )}
