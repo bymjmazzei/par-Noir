@@ -252,26 +252,25 @@ function CdnTemplateSlide({
       model={model}
       mode="preview"
       compact
-      hideEngagementRail={social}
+      hideEngagementRail
     />
   );
 
   return (
-    <button type="button" className="pen-doc-feed-slide-hit" onClick={onOpen}>
-      <div className={`pen-doc-feed-slide-stage${social ? ' is-social' : ''}`}>
+    <div className="pen-doc-feed-slide-stage">
+      <button type="button" className="pen-doc-feed-slide-hit" onClick={onOpen}>
         {social ? (
-          <>
-            <SocialPhoneFrame large>{tile}</SocialPhoneFrame>
-            <TemplateEngagementRail
-              fileId={entry.fileId}
-              userPnIdentifier={session?.pnIdentifier}
-              unlocked={Boolean(session?.pnIdentifier)}
-            />
-          </>
+          <SocialPhoneFrame large>{tile}</SocialPhoneFrame>
         ) : (
-          tile
+          <div className="pen-feed-tile-slot">{tile}</div>
         )}
-      </div>
-    </button>
+      </button>
+      {/* Outside the template tile — public IndexedFile engagement only */}
+      <TemplateEngagementRail
+        fileId={entry.fileId}
+        userPnIdentifier={session?.pnIdentifier}
+        unlocked={Boolean(session?.pnIdentifier)}
+      />
+    </div>
   );
 }

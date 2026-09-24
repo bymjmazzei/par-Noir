@@ -3,7 +3,7 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Link, Route, Routes, useNavigate, useParams } from 'react-router-dom';
+import { Link, Route, Routes, useLocation, useNavigate, useParams } from 'react-router-dom';
 import {
   LockButton,
   UnlockButton,
@@ -22,6 +22,7 @@ import {
 import { API_ENDPOINT, PN_CLIENT_ID } from './config/api';
 import { DocEditorPage } from './pages/DocEditorPage';
 import { DocListPage, type PenAddIntent } from './pages/DocListPage';
+import { PublicTemplatesFeedPage } from './pages/PublicTemplatesFeedPage';
 import { listLocalDocs, type LocalDocSummary } from './services/penLocalStore';
 import {
   clearPenSession,
@@ -113,6 +114,7 @@ function Locked() {
     loadBrowseDensity('_locked')
   );
   const navigate = useNavigate();
+  const location = useLocation();
 
   const applySession = useCallback(
     (next: PenSession) => {
@@ -232,6 +234,51 @@ function Locked() {
     onPopupFlowFailed: (reason: string) => setError(reason),
     isMessagingReady: (pending) => handoffHasSigningKeys(pending?.messagingHandoff)
   };
+
+  if (location.pathname === '/templates') {
+    return (
+      <div className="min-h-screen bg-white text-black">
+        <header className="pen-app-chrome fixed inset-x-0 top-0 z-50">
+          <div className="pen-app-chrome-left">
+            <span className="pen-app-chrome-action" aria-hidden />
+            <AddMenu templatesOnly onSelect={() => setLockedView('templates')} />
+            <button
+              type="button"
+              className="pen-app-chrome-brand"
+              onClick={() => {
+                setLockedView('home');
+                navigate('/');
+              }}
+            >
+              Pen
+            </button>
+          </div>
+          <UnlockButton
+            className="pen-app-chrome-lock"
+            iconOnly
+            title="Unlock"
+            requireMessagingHandoff
+            config={{
+              clientId: PN_CLIENT_ID,
+              redirectUri: `${window.location.origin}/oauth-callback.html`,
+              apiEndpoint: API_ENDPOINT,
+              scope: ['openid', 'profile', 'cloud:read', 'cloud:app']
+            }}
+            {...lockedUnlock}
+          />
+        </header>
+        <div className="flex min-h-[calc(100vh-2.5rem)] flex-col pt-10">
+          <PublicTemplatesFeedPage
+            session={null}
+            onBack={() => {
+              setLockedView('templates');
+              navigate('/');
+            }}
+          />
+        </div>
+      </div>
+    );
+  }
 
   if (lockedView === 'templates') {
     return (
@@ -571,6 +618,7 @@ function AuthenticatedApp({
               />
             }
           />
+          <Route path="/templates" element={<PublicTemplatesFeedPage session={session} />} />
           <Route path="/d/:docId" element={<DocEditorRoute session={session} />} />
         </Routes>
       </div>

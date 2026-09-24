@@ -1,6 +1,5 @@
 /**
- * Viewport-tall vertical snap shell with a fixed top rail slot.
- * Browse FullScreenFeed contract (snap-y, full-height slides) without importing aggregator-browser.
+ * Viewport snap shell aligned to notebook paper (rail on first blue line, body under it).
  */
 
 import {
@@ -47,37 +46,38 @@ export function SnapFeedShell({
     scrollRef.current?.scrollTo({ top: 0 });
   }, [count]);
 
-  // Window: hydrate neighbors; still mount spacers for snap height.
   const windowStart = Math.max(0, activeIndex - 1);
   const windowEnd = Math.min(count, activeIndex + 3);
 
   return (
     <div className="pen-doc-feed">
-      <div className="pen-doc-feed-rail-fixed">{rail}</div>
-      <div ref={scrollRef} className="pen-doc-feed-scroll" data-pen-snap-feed>
-        {loading ? (
-          loading
-        ) : count === 0 ? (
-          empty || (
-            <div className="pen-doc-feed-empty">
-              <p className="text-sm text-neutral-500">Nothing here.</p>
-            </div>
-          )
-        ) : (
-          Array.from({ length: count }, (_, i) => {
-            const inWindow = i >= windowStart && i < windowEnd;
-            return (
-              <div
-                key={i}
-                className="pen-doc-feed-slide"
-                data-snap-index={i}
-                data-active={i === activeIndex ? 'true' : undefined}
-              >
-                {inWindow ? renderSlide(i, i === activeIndex) : null}
+      <div className="pen-doc-feed-rail">{rail}</div>
+      <div className="pen-doc-feed-viewport">
+        <div ref={scrollRef} className="pen-doc-feed-scroll" data-pen-snap-feed>
+          {loading ? (
+            loading
+          ) : count === 0 ? (
+            empty || (
+              <div className="pen-doc-feed-empty">
+                <p className="text-sm text-neutral-500">Nothing here.</p>
               </div>
-            );
-          })
-        )}
+            )
+          ) : (
+            Array.from({ length: count }, (_, i) => {
+              const inWindow = i >= windowStart && i < windowEnd;
+              return (
+                <div
+                  key={i}
+                  className="pen-doc-feed-slide"
+                  data-snap-index={i}
+                  data-active={i === activeIndex ? 'true' : undefined}
+                >
+                  {inWindow ? renderSlide(i, i === activeIndex) : null}
+                </div>
+              );
+            })
+          )}
+        </div>
       </div>
     </div>
   );

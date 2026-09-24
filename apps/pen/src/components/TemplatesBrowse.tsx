@@ -1,10 +1,10 @@
 /** Templates catalog as taxonomy directory (Category → Form → Template). */
 
 import { useEffect, useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   categoryIdForClass,
   getClass,
-  getTemplate,
   listConsumerCategories,
   listStarterTemplates,
   listTemplatesGroupedByCategory,
@@ -25,8 +25,6 @@ import { createDocFromPersonalOrStarter } from '../services/penPublish';
 import { ensureMyTemplatesNotebook } from '../services/penFolders';
 import type { PenBrowseDensity } from '../services/penClassPrefs';
 import { ExplorerFolderGlyph } from './ExplorerFolderGlyph';
-import { TemplatesCdnFeedScroller } from './TemplatesCdnFeedScroller';
-import type { CentralIndexEntry } from '@par-noir/aggregator-domain';
 
 function ListIcon() {
   return (
@@ -140,6 +138,7 @@ export function TemplatesBrowse({
   /** Open a template preview on mount (e.g. ?template=). */
   initialPreviewId?: string | null;
 }) {
+  const navigate = useNavigate();
   const [previewId, setPreviewId] = useState<string | null>(() => initialPreviewId || null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -149,8 +148,9 @@ export function TemplatesBrowse({
     new Set(listConsumerCategories().map((c) => c.id))
   );
   const [expandedForms, setExpandedForms] = useState<Set<string>>(() => new Set());
-  const [activeFeedClassId, setActiveFeedClassId] = useState('all');
-  const [cdnHint, setCdnHint] = useState<string | null>(null);
+
+  const catalogDensity: Exclude<PenBrowseDensity, 'feed'> =
+    density === 'feed' ? 'gallery' : density;
 
   useEffect(() => {
     if (initialPreviewId) setPreviewId(initialPreviewId);
@@ -239,10 +239,10 @@ export function TemplatesBrowse({
     }
   }
 
-  async function copyTemplateLink(templateId: string) {
+  function copyTemplateLink(templateId: string) {
     const link = templateShareUrl(templateId);
     try {
-      await navigator.clipboard.writeText(link);
+      void navigator.clipboard.writeText(link);
       setShareHint(true);
       window.setTimeout(() => setShareHint(false), 1600);
     } catch {
@@ -250,30 +250,12 @@ export function TemplatesBrowse({
     }
   }
 
-  function onPublicTemplateSelect(entry: CentralIndexEntry) {
-    const meta = entry.metadata as {
-      basedOnTemplateId?: string;
-      title?: string;
-      name?: string;
-    };
-    const starterId = meta.basedOnTemplateId;
-    if (starterId && (getTemplate(starterId) || listStarterTemplates().some((t) => t.id === starterId))) {
-      setPreviewId(starterId);
-      return;
-    }
-    // CDN-only public template without local IR id — surface title until Use-from-IR lands.
-    setCdnHint(
-      `Public template “${meta.title || meta.name || entry.fileId}” — open in browse or star after Use template is wired for CDN IR.`
-    );
-    window.setTimeout(() => setCdnHint(null), 4000);
-  }
-
   const previewIsSocial =
     preview?.manifest?.classId != null &&
     categoryIdForClass(String(preview.manifest.classId)) === 'social';
 
   return (
-    <div className={`flex min-h-0 flex-1 flex-col${density === 'feed' ? ' pen-templates-feed-mode' : ''}`}>
+    <div className="flex min-h-0 flex-1 flex-col">
       <div className="pen-library-heading">
         <div className="min-w-0 flex-1">
           <button
@@ -285,9 +267,8 @@ export function TemplatesBrowse({
           </button>
           <h1 className="text-lg font-bold text-black">Templates</h1>
           <p className="text-sm text-neutral-500">
-            {density === 'feed'
-              ? 'Public network templates. Scroll by content class.'
-              : 'Browse by category and form. Open a template to preview.'}
+            Browse by category and form. Open a template to preview. Feed opens the public network
+            at /templates.
           </p>
         </div>
         <div className="pen-library-heading-tools">
@@ -296,10 +277,10 @@ export function TemplatesBrowse({
               type="button"
               title="List"
               aria-label="List view"
-              aria-pressed={density === 'list'}
+              aria-pressed={catalogDensity === 'list'}
               onClick={() => onDensity('list')}
               className={`inline-flex h-8 w-8 items-center justify-center ${
-                density === 'list' ? 'text-black' : 'text-neutral-600 hover:text-neutral-800'
+                catalogDensity === 'list' ? 'text-black' : 'text-neutral-600 hover:text-neutral-800'
               }`}
             >
               <ListIcon />
@@ -308,23 +289,20 @@ export function TemplatesBrowse({
               type="button"
               title="Gallery"
               aria-label="Gallery view"
-              aria-pressed={density === 'gallery'}
+              aria-pressed={catalogDensity === 'gallery'}
               onClick={() => onDensity('gallery')}
               className={`inline-flex h-8 w-8 items-center justify-center ${
-                density === 'gallery' ? 'text-black' : 'text-neutral-600 hover:text-neutral-800'
+                catalogDensity === 'gallery' ? 'text-black' : 'text-neutral-600 hover:text-neutral-800'
               }`}
             >
               <GalleryIcon />
             </button>
             <button
               type="button"
-              title="Feed"
-              aria-label="Feed view"
-              aria-pressed={density === 'feed'}
-              onClick={() => onDensity('feed')}
-              className={`inline-flex h-8 w-8 items-center justify-center ${
-                density === 'feed' ? 'text-black' : 'text-neutral-600 hover:text-neutral-800'
-              }`}
+              title="Public templates feed"
+              aria-label="Public templates feed"
+              onClick={() => navigate('/templates')}
+              className="inline-flex h-8 w-8 items-center justify-center text-neutral-600 hover:text-neutral-800"
             >
               <FeedIcon />
             </button>
@@ -333,20 +311,12 @@ export function TemplatesBrowse({
       </div>
 
       {error && <p className="px-4 pt-2 text-sm text-red-600">{error}</p>}
-      {cdnHint && <p className="px-4 pt-2 text-sm text-neutral-600">{cdnHint}</p>}
 
       <div className="pen-library-body">
         <div className="pen-library-sheet">
-          {density === 'feed' ? (
-            <TemplatesCdnFeedScroller
-              session={session}
-              activeClassId={activeFeedClassId}
-              onActiveClassId={setActiveFeedClassId}
-              onSelectEntry={onPublicTemplateSelect}
-            />
-          ) : flatForGallery.length === 0 ? (
+          {flatForGallery.length === 0 ? (
             <p className="pen-library-indent py-10 text-sm text-neutral-500">No templates available.</p>
-          ) : density === 'gallery' ? (
+          ) : catalogDensity === 'gallery' ? (
             <div className="pen-gallery-wrap">
               <div className="pen-gallery-head" aria-hidden />
               <div className="pen-gallery">

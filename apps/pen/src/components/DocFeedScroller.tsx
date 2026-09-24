@@ -121,10 +121,14 @@ function DocFeedSlide({
   );
 
   return (
-    <button type="button" className="pen-doc-feed-slide-hit" onClick={onOpen}>
-      <div className={`pen-doc-feed-slide-stage${social ? ' is-social' : ''}`}>
-        {social ? <SocialPhoneFrame large>{tile}</SocialPhoneFrame> : tile}
-      </div>
-    </button>
+    <div className="pen-doc-feed-slide-stage">
+      <button type="button" className="pen-doc-feed-slide-hit" onClick={onOpen}>
+        {social ? (
+          <SocialPhoneFrame large>{tile}</SocialPhoneFrame>
+        ) : (
+          <div className="pen-feed-tile-slot">{tile}</div>
+        )}
+      </button>
+    </div>
   );
 }
