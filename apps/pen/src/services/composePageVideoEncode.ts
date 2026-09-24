@@ -6,7 +6,7 @@
  * cross-origin http frames taint canvas.toBlob / captureStream exports.
  */
 
-import { rasterizeElementSafeStill } from './rasterizePagePoster';
+import { rasterizeElementToPosterBlob, rasterizeElementSafeStill } from './rasterizePagePoster';
 
 export const COMPOSE_VIDEO_MAX_DURATION_SEC = 60;
 export const COMPOSE_VIDEO_MAX_EDGE = 1080;
@@ -127,7 +127,11 @@ export function rootHasUntaintedPlayableVideo(root: HTMLElement): boolean {
   return collectUntaintedVideoSlots(root).length > 0;
 }
 
-/** Solid fill + safe still images — never foreignObject (taint risk). */
+/**
+ * Flatten page chrome + TipTap text with transparent video holes, then encode
+ * live video frames on top. Must include prose — safe-still-images-only left
+ * gallery tiles white beside the video.
+ */
 async function buildStaticBackdrop(
   root: HTMLElement,
   width: number,
@@ -139,8 +143,7 @@ async function buildStaticBackdrop(
   const ctx = canvas.getContext('2d');
   if (!ctx) throw new Error('canvas_unavailable');
 
-  try {
-    const jpeg = await rasterizeElementSafeStill(root, { maxEdge: COMPOSE_VIDEO_MAX_EDGE });
+  const paintJpeg = async (jpeg: Blob) => {
     const url = URL.createObjectURL(jpeg);
     try {
       const img = await new Promise<HTMLImageElement>((resolve, reject) => {
@@ -153,11 +156,24 @@ async function buildStaticBackdrop(
     } finally {
       URL.revokeObjectURL(url);
     }
+  };
+
+  try {
+    const jpeg = await rasterizeElementToPosterBlob(root, {
+      maxEdge: COMPOSE_VIDEO_MAX_EDGE,
+      punchVideos: true
+    });
+    await paintJpeg(jpeg);
   } catch {
-    const fill = getComputedStyle(root).backgroundColor;
-    ctx.fillStyle =
-      fill && fill !== 'rgba(0, 0, 0, 0)' && fill !== 'transparent' ? fill : '#111111';
-    ctx.fillRect(0, 0, width, height);
+    try {
+      const jpeg = await rasterizeElementSafeStill(root, { maxEdge: COMPOSE_VIDEO_MAX_EDGE });
+      await paintJpeg(jpeg);
+    } catch {
+      const fill = getComputedStyle(root).backgroundColor;
+      ctx.fillStyle =
+        fill && fill !== 'rgba(0, 0, 0, 0)' && fill !== 'transparent' ? fill : '#ffffff';
+      ctx.fillRect(0, 0, width, height);
+    }
   }
   return canvas;
 }
