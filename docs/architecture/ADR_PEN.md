@@ -2,7 +2,7 @@
 
 **Status:** Accepted  
 **Date:** 2026-09-21  
-**Related:** [`pen-templates.mdc`](../../.cursor/rules/pen-templates.mdc), device-cloud custody, messaging outbox, L5 one-kit, [`@par-noir/pen-curriculum`](../../packages/pen-curriculum), [`PEN_DUAL_PN_CHECKLIST.md`](../developer/PEN_DUAL_PN_CHECKLIST.md)
+**Related:** [`pen-templates.mdc`](../../.cursor/rules/pen-templates.mdc), [`PEN_FORM_FORMAT_SURVEY.md`](./PEN_FORM_FORMAT_SURVEY.md), device-cloud custody, messaging outbox, L5 one-kit, [`@par-noir/pen-curriculum`](../../packages/pen-curriculum), [`PEN_DUAL_PN_CHECKLIST.md`](../developer/PEN_DUAL_PN_CHECKLIST.md)
 
 ## Context
 
@@ -13,12 +13,14 @@ par Noir needs a universal authored-content language for humans, collaborators, 
 1. **Naming:** Pen (app/protocol), Pen Mini (browse composer), Note (`contentClass: 'note'`). Hard-cut Thought. **Collections** are the product name for ordered slide/story templates (former “carousel” ids hard-cut to `collection.*`). **Sets** (`social.set`) are Social feed items that reference other docs (primary + sources); compile via `compileSetToNote`. **Live Pen embeds** (`penEmbed` TipTap node: `{ docId, sectionSlug? }`) are by-reference in the editor (Attach → From Pen); **publish-time snapshot** via `snapshotPenEmbeds` before Connect-to-feed / public compile.
 2. **Template-first:** Register **class** (form) then template before UI. Hierarchy: **Category → Form → Template** (e.g. Social → Notes → Basic Note). Template `classId` is always a **form** (has `parentId`). Manifest stores `classId` at create.
 3. **Taxonomy (peer categories):**
-   - **Social** (consumer) — Notes, Posts, Collections, Sets, Feeds (`entitlement: self-hosted` on Feeds). Browse/feed purpose.
+   - **Social** (consumer) — Notes, Posts, Collections, Sets. Atom content for browse tiles.
+   - **Community** (consumer) — **Feeds** (`community.feed`, `entitlement: self-hosted`; moved from Social), **Landing** (`community.landing`), **Community home** (`community.home`), **Site** (`community.site`). Spaces people gather / arrive / browse. **Site is a multipage feed** (ordered pages aggregated/compiled like browse home)—**not** an Elementor-class widget site builder. Format contracts: [`PEN_FORM_FORMAT_SURVEY.md`](./PEN_FORM_FORMAT_SURVEY.md).
    - **Projects** (consumer) — Journal, List, Letter, Note. Active WIP; letter/note are correspondence shapes (**Send** opens Messaging with `#pen_correspondence_handoff_v1:`).
    - **Library** (consumer) — Book, Article, **Music** (`library.music`). Durable works + audio assets.
    - **Time** (consumer) — Calendar, Event, Schedule (calendar/scheduling).
    - **Records** (kit only, `audience: 'kit'`) — Register, **Asset key** (`records.asset_key` license receipt). Hidden from Pen New…; included in `GET /api/pen/templates` for L5.
-4. **Lifecycle:** Library is a **template / form category** (Book, Article)—peer to Social/Projects/Time, not a publish channel. Publishing a **Project** may (a) save as a **Library template** under Yours, or (b) create a **finished Library document** (durable long-form, not a social feed tile) and write it to the owner’s cloud replica (`bootstrapDocCloud` / `publishDocCloud`).
+   - **Registry note:** Living code may still expose `social.feed` until the hard-cut implement PR (`social.feed` → `community.feed`). Design SoT is this ADR + the format survey migration appendix.
+4. **Lifecycle:** Library is a **template / form category** (Book, Article)—peer to Social/Projects/Time/Community, not a publish channel. Publishing a **Project** may (a) save as a **Library template** under Yours, or (b) create a **finished Library document** (durable long-form, not a social feed tile) and write it to the owner’s cloud replica (`bootstrapDocCloud` / `publishDocCloud`). **Community Site** publishes/consumes as a multipage feed of page refs under the same custody spine—not a separate site host product.
 5. **Audience:** Every `PenClass` has `audience: 'consumer' | 'kit'`. Pen UI lists consumer only; API/SDK return the full catalog.
 6. **Browse `contentClass`** remains the social visibility target. Pen **Publish** updates the doc’s live `current/` only. **Connect to feed** chooses **aggregator targets** (browse, pen-templates, third-party stubs) via `openBrowseWithPenHandoff` / `pen_publish_handoff_v1` — not a separate publish type. Share to **browse** → normal social post (user feeds / Discover relevance). Share to **pen-templates** → sets `penTemplateKind` (+ taxonomy / `penIrRef`); surfaces **only** on the pN templates feed page and Discover **Templates** section — never user feeds, other feeds, or Discover relevance. As template (private Yours / `par-noir-pen/templates/`) and Projects → Library template / finished work remain Pen actions. Dashboard = packed CSS grid.
 7. **Folder SoT:** `par-noir-pen/{docId}/` per user replica with `doc.json`, `current/` (live published), `drafts/{draftId}/` (WIP shown as unfinished suggestions), `past/{versionId}/` (superseded current snapshots). Messaging-style outbox fanout. `docKey` minted at create. **Section bodies and attached media** are AES-GCM DM envelopes under `docKey` via `encryptMediaBytes` (not plaintext TipTap JSON / JPEG on Drive). Local/browser storage is an offline sync buffer only — never durable SoT; **local docs + docKeys are wiped on lock**. Rename/move patch `library.index.json` via `pen.doc_meta`. Starred / created templates live under `par-noir-pen/templates/{templateId}/` (IR SoT; prefs blob remains sync buffer until dedicated Drive apply lands).
@@ -37,7 +39,7 @@ par Noir needs a universal authored-content language for humans, collaborators, 
 
 ## Reserved (follow-ons)
 
-Time calendar widgets; Records register UI / query engine; site/spaces categories; MCP tool servers; **My fonts / cloud font grants**; engager weight refinements (repost-originated); Veriff product UX.
+Time calendar widgets; Records register UI / query engine; **Community registry hard-cut + format-first seeds** (see [`PEN_FORM_FORMAT_SURVEY.md`](./PEN_FORM_FORMAT_SURVEY.md) migration appendix); MCP tool servers; **My fonts / cloud font grants**; engager weight refinements (repost-originated); Veriff product UX.
 
 ## Consequences
 
@@ -48,8 +50,9 @@ Time calendar widgets; Records register UI / query engine; site/spaces categorie
 | L5 can author Notes without inbox access | Collab stays first-party only |
 | Scalable New… (pins, search, categories) | Feed entitlement depends on storage tier |
 | Clear consumer vs kit taxonomy | Kit classes must stay out of Pen New… |
+| Community as peer category (feeds + landing/home/site-as-multipage-feed) | Registry rename `social.feed` → `community.feed`; format-first seed rebuild |
 | Any external agent can learn Pen from curriculum + starters | Curriculum must stay pinned to protocol version |
 
 ## Non-goals (v1)
 
-Community template marketplace, RFC 3161 external TSA, L5 multi-writer, site builder, image/video editors, Stripe/checkout for tiers, per-model agent plugins.
+Community **template marketplace**, RFC 3161 external TSA, L5 multi-writer, **Elementor-class widget site builder** (Site = multipage feed aggregator/compiler only), image/video editors, Stripe/checkout for tiers, per-model agent plugins.

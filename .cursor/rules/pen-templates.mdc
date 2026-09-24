@@ -9,11 +9,12 @@ Pen is the universal **authored-content** language for par Noir (humans, collabo
 
 ## Template-first (hard process rule)
 
-When building any new pN surface for **authored or publishable content** (posts, notes, collections, feeds, later sites/communities):
+When building any new pN surface for **authored or publishable content** (posts, notes, collections, community pages, feeds, sites-as-multipage-feeds):
 
 1. **Assign a Pen class (form)** under a category (`classId` in `@par-noir/pen-protocol`), then **define and register the template**.
 2. **Then** build UI (Pen, Pen Mini, browse, L5) as a thin renderer/compiler of that template.
 3. Do **not** invent a parallel content model, storage layout, or one-off “special case” blob format beside Pen.
+4. **Format-first:** seeds encode the form’s job (see [`docs/architecture/PEN_FORM_FORMAT_SURVEY.md`](../../docs/architecture/PEN_FORM_FORMAT_SURVEY.md)). Stock media may illustrate a format; it must not *be* the format.
 
 Hierarchy: **Category → Form → Template** (e.g. Social → Notes → Basic Note). Template `classId` is always a form, never a category.
 
@@ -40,17 +41,18 @@ A **public template** is both:
 
 Layers: **eye** = visibility (omit from preview/compile); **lock** = position lock (no move/resize on Use/remix). Overlay FX beyond Object shadow/blur is out of scope for MVP.
 
-## First-party vs community
+## First-party vs marketplace
 
 - **First-party:** build only what scales the pN ecosystem.
 - **Starter pack (platform-owned, consumer):** peer categories —
-  - **Social** — Notes, Posts, Collections, **Sets** (refs to other docs; compile later), Feeds (entitlement: self-hosted)
+  - **Social** — Notes, Posts, Collections, **Sets** (refs to other docs). Atom browse content. (Feeds **moved** to Community.)
+  - **Community** — Feeds (`community.feed`, entitlement: self-hosted), Landing, Community home, **Site** (multipage feed aggregator/compiler like browse home—**not** an Elementor-class widget builder). Format contracts in `PEN_FORM_FORMAT_SURVEY.md`. Living code may still use `social.feed` until the registry hard-cut.
   - **Projects** — Journal, List, Letter, Note (correspondence shapes; DM delivery later)
-- **Library** — Book, Article (durable **authoring** category; Project publish may save as Library template or create finished Library doc — not a subclass of Projects)
-- **Time** — Calendar, Event, Schedule
-- **Kit-only:** **Records** — Register (`audience: 'kit'`; L5/API catalog, not end-user New…)
-- **Personal templates:** local “Yours” in New… (Publish → As template; Projects may also Publish → As Library template). Not the community marketplace.
-- **Community:** open template building **after** IR, compile contract, and permissions are stable. Do not ship a template marketplace before the spine.
+  - **Library** — Book, Article, Music (durable **authoring** category; Project publish may save as Library template or create finished Library doc — not a subclass of Projects)
+  - **Time** — Calendar, Event, Schedule
+  - **Kit-only:** **Records** — Register (`audience: 'kit'`; L5/API catalog, not end-user New…)
+- **Personal templates:** local “Yours” in New… (Publish → As template; Projects may also Publish → As Library template). Not the public marketplace.
+- **Marketplace (deferred):** open third-party template building **after** IR, compile contract, and permissions are stable. Do not ship a template marketplace before the spine. Do not confuse the **Community category** (first-party forms) with the **marketplace**.
 
 ## Editing UX (when implementing Pen / Pen Mini)
 
@@ -79,12 +81,18 @@ Layers: **eye** = visibility (omit from preview/compile); **lock** = position lo
 | Note / Notes | Feed/social `contentClass` (replaces Thought); also Projects form `projects.note` for correspondence |
 | Collection | Ordered slide/story form (`collection.*` templates; browse `contentClass: 'collection'`) |
 | Set | Social form that references other docs (`social.set`) |
+| Community | Peer **category** for Feeds, Landing, Community home, Site |
+| Feed | Community form (`community.feed`); self-hosted stream config — not a Social atom |
+| Landing | Community arrival page (hero / value / CTA) |
+| Community home | Community hub (banner / nav / featured / announcements) |
+| Site | Community multipage feed of pages (aggregator/compiler like browse home)—not a widget site builder |
 | Projects | Active WIP category (journal, list, letter, note) |
 | Library | Durable authoring category (Book, Article); finished Project work may land here as a doc or as a Library template |
 | Time | Calendar / scheduling category |
 | Records | Kit-only structured registers |
+| Marketplace | Deferred third-party template pool — not the Community category |
 
-Do not reintroduce Thought as product vocabulary for new work. Hard-cut legacy thought paths when touching that code (dev-only; no compat shims). Do not use “carousel” as product vocabulary for new Pen work. Do not use “bundle” for Sets.
+Do not reintroduce Thought as product vocabulary for new work. Hard-cut legacy thought paths when touching that code (dev-only; no compat shims). Do not use “carousel” as product vocabulary for new Pen work. Do not use “bundle” for Sets. Do not use “site builder” for `community.site`.
 
 ## Package
 
