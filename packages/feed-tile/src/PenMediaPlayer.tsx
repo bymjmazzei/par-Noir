@@ -12,7 +12,7 @@ import {
   type PointerEvent as ReactPointerEvent
 } from 'react';
 
-const TAP_SLOP_PX = 6;
+const TAP_SLOP_PX = 8;
 
 export function PenMediaPlayer({
   src,
@@ -21,8 +21,8 @@ export function PenMediaPlayer({
   videoStyle,
   poster,
   /**
-   * When false, tap does not toggle play (e.g. live preview until the layer is
-   * selected). Scrub still works on hover once shown.
+   * When false, tap does not toggle play (live preview until the layer is
+   * selected). Scrub still works on hover.
    */
   tapToToggle = true
 }: {
@@ -40,7 +40,8 @@ export function PenMediaPlayer({
   const [progress, setProgress] = useState(0);
   const [seeking, setSeeking] = useState(false);
   const scrubbing = useRef(false);
-  const tapOrigin = useRef<{ x: number; y: number } | null>(null);
+  const tapToToggleRef = useRef(tapToToggle);
+  tapToToggleRef.current = tapToToggle;
 
   useEffect(() => {
     const v = videoRef.current;
@@ -95,7 +96,6 @@ export function PenMediaPlayer({
     e.stopPropagation();
     e.preventDefault();
     scrubbing.current = true;
-    tapOrigin.current = null;
     setSeeking(true);
     (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
     seekFromClientX(e.clientX);
@@ -114,21 +114,36 @@ export function PenMediaPlayer({
     setSeeking(false);
   };
 
+  /**
+   * Arm tap-to-toggle on document capture so we still see pointerup after
+   * LayoutSurface setPointerCapture on the layer frame (which steals video events).
+   */
   const onVideoPointerDown = (e: ReactPointerEvent) => {
     if (e.button !== 0) return;
-    tapOrigin.current = { x: e.clientX, y: e.clientY };
-  };
+    if (!tapToToggleRef.current) return;
+    if (scrubbing.current) return;
 
-  const onVideoPointerUp = (e: ReactPointerEvent) => {
-    const origin = tapOrigin.current;
-    tapOrigin.current = null;
-    if (!tapToToggle) return;
-    if (!origin || scrubbing.current) return;
-    const dist = Math.hypot(e.clientX - origin.x, e.clientY - origin.y);
-    if (dist > TAP_SLOP_PX) return;
-    // Don't stopPropagation — LayoutSurface needs pointerup to clear pending drag.
-    void e;
-    togglePlay();
+    const originX = e.clientX;
+    const originY = e.clientY;
+    let moved = false;
+
+    const onMove = (ev: PointerEvent) => {
+      if (Math.hypot(ev.clientX - originX, ev.clientY - originY) > TAP_SLOP_PX) {
+        moved = true;
+      }
+    };
+    const onUp = () => {
+      document.removeEventListener('pointermove', onMove, true);
+      document.removeEventListener('pointerup', onUp, true);
+      document.removeEventListener('pointercancel', onUp, true);
+      if (moved || scrubbing.current) return;
+      if (!tapToToggleRef.current) return;
+      togglePlay();
+    };
+
+    document.addEventListener('pointermove', onMove, true);
+    document.addEventListener('pointerup', onUp, true);
+    document.addEventListener('pointercancel', onUp, true);
   };
 
   // Scrubber only while hovering the media (or actively scrubbing).
@@ -163,10 +178,6 @@ export function PenMediaPlayer({
         preload="metadata"
         draggable={false}
         onPointerDown={onVideoPointerDown}
-        onPointerUp={onVideoPointerUp}
-        onPointerCancel={() => {
-          tapOrigin.current = null;
-        }}
       />
       {paused && (
         <button
@@ -184,6 +195,7 @@ export function PenMediaPlayer({
       )}
       <div
         ref={barRef}
+        data-pen-scrub="1"
         // Sit above the SE resize handle so scale stays clickable.
         className={`absolute bottom-3 left-0 right-3 z-10 px-2 transition-opacity ${
           showBar ? 'pointer-events-auto opacity-100' : 'pointer-events-none opacity-0'

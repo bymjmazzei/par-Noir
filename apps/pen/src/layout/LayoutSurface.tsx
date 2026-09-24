@@ -74,6 +74,7 @@ export function LayoutSurface({
     target: HTMLElement;
   } | null>(null);
   const MOVE_THRESHOLD_PX = 6;
+  const MOVE_THRESHOLD_SELECTED_PX = 14;
   const noResize = useCallback(
     (id: string) => {
       if (!resizeDisabledIds) return false;
@@ -143,8 +144,10 @@ export function LayoutSurface({
 
     if (!drag && pendingMove.current) {
       const p = pendingMove.current;
+      const threshold =
+        selectedId === p.id ? MOVE_THRESHOLD_SELECTED_PX : MOVE_THRESHOLD_PX;
       const dist = Math.hypot(e.clientX - p.startX, e.clientY - p.startY);
-      if (dist < MOVE_THRESHOLD_PX) return;
+      if (dist < threshold) return;
       p.target.setPointerCapture?.(p.pointerId);
       setDrag({
         id: p.id,
