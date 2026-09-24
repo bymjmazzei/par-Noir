@@ -92,12 +92,24 @@ export function contentBoxSize(
   sheet: PageSheetDims,
   paddingPx: number,
   contentHeightPx: number,
-  /** Required when sheet.fill width (open Flow). */
+  /**
+   * Used width of the sheet element (clientWidth). Required for open Flow;
+   * also required for Letter/A4 when CSS `max-width:100%` shrinks the page
+   * below the nominal print width — float insets must match the used box.
+   */
   measuredWidthPx?: number
 ): { width: number; height: number } {
-  const outerW =
-    sheet.pageWidthPx ??
-    Math.max(320, Math.round(measuredWidthPx || DEFAULT_FLOW_WORKSPACE_WIDTH_PX));
+  const nominalOuter = sheet.pageWidthPx;
+  const measured =
+    measuredWidthPx != null && measuredWidthPx > 0
+      ? Math.round(measuredWidthPx)
+      : undefined;
+  const outerW = Math.max(
+    320,
+    measured != null && nominalOuter != null
+      ? Math.min(nominalOuter, measured)
+      : (nominalOuter ?? measured ?? DEFAULT_FLOW_WORKSPACE_WIDTH_PX)
+  );
   const width = Math.max(MIN_LAYER_SIZE_PX, outerW - 2 * paddingPx);
   const minH = sheet.paged && sheet.pageHeightPx
     ? Math.max(MIN_LAYER_SIZE_PX, sheet.pageHeightPx - 2 * paddingPx)
@@ -310,11 +322,19 @@ export function printPageCount(contentOuterHeightPx: number, pageHeightPx: numbe
   return Math.max(1, Math.ceil(contentOuterHeightPx / pageHeightPx));
 }
 
+/**
+ * Pick the CSS float side so body text uses the wider gutter.
+ * Float toward the tighter edge (object hugs that side); prose fills the larger gap.
+ * Equivalent to comparing the object center to the content midline — callers must
+ * pass the *used* content width (see contentBoxSize + measured sheet width).
+ */
 export function wrapSideFromGeom(
   x: number,
   w: number,
   contentW: number
 ): 'left' | 'right' {
-  const mid = Math.max(1, contentW) / 2;
-  return x + w / 2 < mid ? 'left' : 'right';
+  const cw = Math.max(1, contentW);
+  const leftGap = Math.max(0, x);
+  const rightGap = Math.max(0, cw - x - Math.max(0, w));
+  return leftGap <= rightGap ? 'left' : 'right';
 }

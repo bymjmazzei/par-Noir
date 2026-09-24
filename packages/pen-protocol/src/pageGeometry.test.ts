@@ -64,6 +64,24 @@ describe('pageGeometry', () => {
     expect(box.width).toBe(820);
   });
 
+  it('letter contentBoxSize follows measured width when CSS constrains the sheet', () => {
+    const sheet = pageSheetDims('letter');
+    const full = contentBoxSize(sheet, 40, 200);
+    expect(full.width).toBe(LETTER_WIDTH_PX - 80);
+    const constrained = contentBoxSize(sheet, 40, 200, 600);
+    expect(constrained.width).toBe(520);
+    // Measured wider than nominal must not inflate past print width.
+    const wide = contentBoxSize(sheet, 40, 200, 1200);
+    expect(wide.width).toBe(LETTER_WIDTH_PX - 80);
+  });
+
+  it('wrapSideFromGeom floats toward the tighter edge so prose gets the wider gutter', () => {
+    expect(wrapSideFromGeom(10, 80, 700)).toBe('left');
+    expect(wrapSideFromGeom(400, 80, 700)).toBe('right');
+    expect(wrapSideFromGeom(280, 200, 700)).toBe('right');
+    expect(wrapSideFromGeom(220, 200, 700)).toBe('left');
+  });
+
   it('clamp rejects y past content bottom', () => {
     const clamped = clampLayerRect({ x: 0, y: 900, w: 100, h: 100 }, 500, 400);
     expect(clamped.y).toBe(300);
@@ -92,11 +110,6 @@ describe('pageGeometry', () => {
     expect(next.layerGeom).toBe('px');
     expect(next.layers![0]!.w).toBeGreaterThan(100);
     expect(sectionNeedsLegacyGeomMigrate(next)).toBe(false);
-  });
-
-  it('wrapSideFromGeom uses content midline in px', () => {
-    expect(wrapSideFromGeom(10, 80, 700)).toBe('left');
-    expect(wrapSideFromGeom(400, 80, 700)).toBe('right');
   });
 
   it('fitAspectInBox contains 16:9 inside a tall skewed box', () => {

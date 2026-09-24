@@ -175,12 +175,15 @@ function BodyWrapObject({
     setLive({ x: layer.x, y: layer.y, w: layer.w, h: layer.h });
   }, [layer.x, layer.y, layer.w, layer.h, layer.id]);
 
-  const side = wrapSideFromGeom(live.x, live.w, contentW);
   const wPx = Math.max(24, Math.min(contentW, live.w));
   const hPx = Math.max(24, Math.min(contentH, live.h));
   const yPx = Math.max(0, Math.min(contentH - hPx, live.y));
-  const leftInsetPx = Math.max(0, live.x);
-  const rightInsetPx = Math.max(0, contentW - live.x - wPx);
+  // Clamp X into the *used* content box so a stale wide-page x cannot leave a
+  // float:left + huge marginLeft that crushes text into a 1-char column.
+  const xPx = Math.max(0, Math.min(contentW - wPx, live.x));
+  const leftInsetPx = xPx;
+  const rightInsetPx = Math.max(0, contentW - xPx - wPx);
+  const side = wrapSideFromGeom(xPx, wPx, contentW);
 
   const pusherStyle: CSSProperties = {
     float: side,
@@ -289,8 +292,9 @@ function BodyWrapObject({
     if (!dragRef.current) return;
     dragRef.current = null;
     const g = liveRef.current;
-    const { contentW: cw } = boundsRef.current;
-    onCommit({ ...g, bodyWrap: wrapSideFromGeom(g.x, g.w, cw) });
+    const { contentW: cw, contentH: ch } = boundsRef.current;
+    const clamped = clampLayerRect(g, cw, ch);
+    onCommit({ ...clamped, bodyWrap: wrapSideFromGeom(clamped.x, clamped.w, cw) });
   }
 
   let inner: ReactNode = null;
