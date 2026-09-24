@@ -19,7 +19,9 @@ export function PenMediaPlayer({
   videoStyle,
   poster,
   /** When true, pointer events pass through the video so a parent can drag/resize. */
-  allowDragThrough = false
+  allowDragThrough = false,
+  /** Display aspect after orientation (phone rotation). */
+  onDisplayAspect
 }: {
   src: string;
   className?: string;
@@ -28,6 +30,7 @@ export function PenMediaPlayer({
   videoStyle?: CSSProperties;
   poster?: string;
   allowDragThrough?: boolean;
+  onDisplayAspect?: (aspect: number) => void;
 }) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const barRef = useRef<HTMLDivElement>(null);
@@ -36,6 +39,7 @@ export function PenMediaPlayer({
   const [progress, setProgress] = useState(0);
   const [seeking, setSeeking] = useState(false);
   const scrubbing = useRef(false);
+  const aspectSent = useRef<string | null>(null);
 
   useEffect(() => {
     const v = videoRef.current;
@@ -65,6 +69,62 @@ export function PenMediaPlayer({
     };
   }, [src]);
 
+  useEffect(() => {
+    if (!onDisplayAspect) return;
+    const v = videoRef.current;
+    if (!v) return;
+    aspectSent.current = null;
+    let cancelled = false;
+
+    const emit = async () => {
+      if (cancelled || aspectSent.current === src) return;
+      const codedW = v.videoWidth || 0;
+      const codedH = v.videoHeight || 0;
+      if (!(codedW > 0 && codedH > 0)) return;
+
+      let aspect: number | null = null;
+
+      // VideoFrame.displayWidth/Height — accounts for rotation when the UA supports it.
+      try {
+        const VF = (globalThis as unknown as { VideoFrame?: typeof VideoFrame }).VideoFrame;
+        if (VF) {
+          const frame = new VF(v);
+          const w = frame.displayWidth || frame.codedWidth;
+          const h = frame.displayHeight || frame.codedHeight;
+          frame.close();
+          if (w > 0 && h > 0) aspect = w / h;
+        }
+      } catch {
+        /* ignore */
+      }
+
+      if (aspect == null) {
+        try {
+          if (typeof createImageBitmap === 'function') {
+            const bmp = await createImageBitmap(v);
+            if (bmp.width > 0 && bmp.height > 0) aspect = bmp.width / bmp.height;
+            bmp.close();
+          }
+        } catch {
+          /* ignore */
+        }
+      }
+      if (aspect == null) aspect = codedW / codedH;
+      if (cancelled || !(aspect > 0)) return;
+      aspectSent.current = src;
+      onDisplayAspect(aspect);
+    };
+
+    const onReady = () => {
+      void emit();
+    };
+    v.addEventListener('loadeddata', onReady);
+    if (v.readyState >= 2) onReady();
+    return () => {
+      cancelled = true;
+      v.removeEventListener('loadeddata', onReady);
+    };
+  }, [src, onDisplayAspect]);
   const togglePlay = useCallback((e: React.MouseEvent | React.PointerEvent) => {
     e.stopPropagation();
     const v = videoRef.current;

@@ -1,9 +1,9 @@
 /**
  * Renders an image or video layer with crop / mask / filter / paint overlay.
- * Reports natural media aspect so the frame can match the video exactly.
+ * Reports display (orientation-aware) media aspect so the frame hugs the video.
  */
 
-import { useEffect, useRef, type CSSProperties, type ReactNode } from 'react';
+import { useCallback, useEffect, useRef, type CSSProperties, type ReactNode } from 'react';
 import {
   mediaCropClipCss,
   mediaFilterCss,
@@ -12,6 +12,7 @@ import {
 } from '@par-noir/pen-protocol';
 import { PenMediaPlayer } from '@par-noir/feed-tile';
 import { useResolvedMediaSrc } from '../hooks/useResolvedMediaSrc';
+import { readOrientedAspect } from '../services/penAttach';
 import type { PenSession } from '../services/penSession';
 
 const ASPECT_SLACK = 0.02;
@@ -31,8 +32,8 @@ export function LayerMediaContent({
   docId?: string;
   session?: PenSession | null;
   /**
-   * Fired once when intrinsic media aspect is known and differs from the layer
-   * frame — editor should reshape the layer to match.
+   * Fired when display aspect is known and differs from the layer frame —
+   * editor should reshape the layer so the selection ring hugs the media.
    */
   onNaturalAspect?: (aspect: number) => void;
 }): ReactNode {
@@ -47,48 +48,70 @@ export function LayerMediaContent({
     docId,
     session
   });
-  const reportedFor = useRef<string | null>(null);
+  const lastReport = useRef<{ key: string; aspect: number } | null>(null);
+  const layerRef = useRef(layer);
+  layerRef.current = layer;
+  const onNaturalAspectRef = useRef(onNaturalAspect);
+  onNaturalAspectRef.current = onNaturalAspect;
 
   const isVideo =
     layer.kind === 'video' ||
     Boolean(layer.videoSrc) ||
     (Boolean(layer.backgroundVideo) && layer.kind !== 'image');
 
+  const reportAspect = useCallback((aspect: number, key: string) => {
+    if (!(aspect > 0) || !onNaturalAspectRef.current) return;
+    const l = layerRef.current;
+    const layerAspect = l.w / Math.max(1, l.h);
+    if (Math.abs(layerAspect - aspect) / aspect <= ASPECT_SLACK) {
+      lastReport.current = { key, aspect };
+      return;
+    }
+    const prev = lastReport.current;
+    if (
+      prev &&
+      prev.key === key &&
+      Math.abs(prev.aspect - aspect) / aspect <= ASPECT_SLACK
+    ) {
+      return;
+    }
+    lastReport.current = { key, aspect };
+    onNaturalAspectRef.current(aspect);
+  }, []);
+
+  const onDisplayAspect = useCallback(
+    (aspect: number) => {
+      if (!resolved) return;
+      reportAspect(aspect, `${layer.id}:${resolved}`);
+    },
+    [layer.id, resolved, reportAspect]
+  );
+
   useEffect(() => {
     if (!resolved || !onNaturalAspect) return;
     const key = `${layer.id}:${resolved}`;
-    if (reportedFor.current === key) return;
-
     let cancelled = false;
-    const report = (aspect: number) => {
-      if (cancelled || !(aspect > 0)) return;
-      const layerAspect = layer.w / Math.max(1, layer.h);
-      if (Math.abs(layerAspect - aspect) / aspect <= ASPECT_SLACK) {
-        reportedFor.current = key;
-        return;
-      }
-      reportedFor.current = key;
-      onNaturalAspect(aspect);
-    };
 
     if (isVideo) {
       const video = document.createElement('video');
       video.preload = 'auto';
       video.muted = true;
       video.playsInline = true;
-      const read = () => {
-        const w = video.videoWidth || 0;
-        const h = video.videoHeight || 0;
-        if (w > 0 && h > 0) report(w / h);
+      const run = async () => {
+        await new Promise<void>((done) => {
+          video.addEventListener('loadeddata', () => done(), { once: true });
+          video.addEventListener('error', () => done(), { once: true });
+          video.src = resolved;
+          void video.load();
+          window.setTimeout(() => done(), 800);
+        });
+        if (cancelled) return;
+        const aspect = await readOrientedAspect(video);
+        if (!cancelled && aspect) reportAspect(aspect, key);
       };
-      video.addEventListener('loadedmetadata', read);
-      video.addEventListener('loadeddata', read);
-      video.src = resolved;
-      void video.load();
+      void run();
       return () => {
         cancelled = true;
-        video.removeEventListener('loadedmetadata', read);
-        video.removeEventListener('loadeddata', read);
       };
     }
 
@@ -96,13 +119,13 @@ export function LayerMediaContent({
     img.onload = () => {
       const w = img.naturalWidth || 0;
       const h = img.naturalHeight || 0;
-      if (w > 0 && h > 0) report(w / h);
+      if (w > 0 && h > 0) reportAspect(w / h, key);
     };
     img.src = resolved;
     return () => {
       cancelled = true;
     };
-  }, [resolved, isVideo, layer.id, layer.w, layer.h, onNaturalAspect]);
+  }, [resolved, isVideo, layer.id, layer.w, layer.h, onNaturalAspect, reportAspect]);
 
   if (!src || !resolved) return null;
 
@@ -120,7 +143,6 @@ export function LayerMediaContent({
     ...(cropClip ? { clipPath: cropClip } : {}),
     width: '100%',
     height: '100%',
-    // Frame is sized to media aspect — contain fills without cropping or letterbox.
     objectFit: 'contain'
   };
 
@@ -135,6 +157,7 @@ export function LayerMediaContent({
           className="absolute inset-0 bg-transparent"
           videoStyle={innerStyle}
           allowDragThrough
+          onDisplayAspect={onDisplayAspect}
         />
       ) : (
         <img
