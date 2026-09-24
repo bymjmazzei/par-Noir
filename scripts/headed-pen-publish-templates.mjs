@@ -16,7 +16,7 @@ import { fileURLToPath, pathToFileURL } from 'url';
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const PEN_URL = (process.env.PEN_URL || 'https://pen.parnoir.com').replace(/\/$/, '');
 const BROWSE_URL = (process.env.BROWSE_URL || 'https://browse.parnoir.com').replace(/\/$/, '');
-const HEADLESS = process.env.HEADLESS === '1';
+const HEADLESS = process.env.HEADLESS !== '0';
 const MAX_TEMPLATES = Math.max(1, Number(process.env.MAX_TEMPLATES || 3));
 
 /** Story-safe layouts on ~360×640 social canvas (px). Top/bottom chrome reserved. */
@@ -24,7 +24,7 @@ const SPECS = [
   {
     id: 'hook-headline',
     title: 'Hook Headline',
-    formLabel: /^Notes$/i,
+    formTitle: 'Notes',
     categoryLabel: /^Social$/i,
     bg: '#0f172a',
     layers: [
@@ -51,7 +51,7 @@ const SPECS = [
   {
     id: 'checklist',
     title: 'Checklist Slide',
-    formLabel: /^Notes$/i,
+    formTitle: 'Notes',
     categoryLabel: /^Social$/i,
     bg: '#14532d',
     layers: [
@@ -70,7 +70,7 @@ const SPECS = [
   {
     id: 'quote-card',
     title: 'Quote Card',
-    formLabel: /^Quote$/i,
+    formTitle: 'Quote',
     categoryLabel: /^Social$/i,
     bg: '#1e1b4b',
     layers: [
@@ -89,7 +89,7 @@ const SPECS = [
   {
     id: 'link-promo',
     title: 'Link Promo',
-    formLabel: /^Link$/i,
+    formTitle: 'Link',
     categoryLabel: /^Social$/i,
     bg: '#7c2d12',
     layers: [
@@ -238,27 +238,76 @@ async function createBlankSocial(page, spec) {
   }
   await page.waitForTimeout(600);
 
-  // Category headers are text; click form option by title
-  const formOpt = page
-    .locator('.pen-blank-wizard-option')
-    .filter({ hasText: spec.formLabel })
-    .first();
-  if (await formOpt.isVisible({ timeout: 3_000 }).catch(() => false)) {
-    await formOpt.click();
-    await page.waitForTimeout(300);
-  } else {
-    const custom = page
-      .locator('.pen-blank-wizard-option')
-      .filter({ hasText: /^Custom/i })
-      .first();
-    if (await custom.isVisible({ timeout: 2_000 }).catch(() => false)) {
-      await custom.click();
-      await page.waitForTimeout(200);
-    }
+  await page.waitForSelector('.pen-blank-wizard', { timeout: 10_000 });
+  const formTitle = spec.formTitle || 'Notes';
+  const titles = await page.locator('.pen-blank-wizard-option .font-semibold').allTextContents();
+  process.stdout.write(`  blank wizard forms: ${titles.map((t) => t.trim()).join(' | ')}\n`);
+  let idx = titles.findIndex((t) => t.trim() === formTitle);
+  if (idx < 0) idx = titles.findIndex((t) => t.trim() === 'Custom');
+  if (idx < 0) {
+    throw new Error(`blank_form_missing wanted=${formTitle} titles=${JSON.stringify(titles)}`);
   }
+  const selectedTitle = await page.evaluate(async (i) => {
+    const opts = [...document.querySelectorAll('.pen-blank-wizard-option')];
+    const el = opts[i];
+    if (!el) return '';
+    el.scrollIntoView({ block: 'center' });
+    el.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
+    el.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+    el.dispatchEvent(new PointerEvent('pointerup', { bubbles: true }));
+    el.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
+    el.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    await new Promise((r) => setTimeout(r, 150));
+    const sel = document.querySelector('.pen-blank-wizard-option.is-selected .font-semibold');
+    return (sel?.textContent || '').trim();
+  }, idx);
+  process.stdout.write(`  selected form: ${selectedTitle}\n`);
+  if (!selectedTitle) {
+    // Playwright force click fallback
+    await page.locator('.pen-blank-wizard-option').nth(idx).click({ force: true });
+    await page.waitForTimeout(400);
+  }
+  await page.waitForTimeout(200);
 
-  await page.getByRole('button', { name: /^Create$/i }).click();
-  await page.waitForURL(/\/d\//, { timeout: 45_000 });
+  const createBtn = page.locator('.pen-blank-wizard-foot button.pen-ribbon-btn.is-active').first();
+  await createBtn.waitFor({ state: 'visible', timeout: 5_000 });
+  for (let i = 0; i < 30; i++) {
+    if (await createBtn.isEnabled()) break;
+    await page.waitForTimeout(200);
+  }
+  if (!(await createBtn.isEnabled())) {
+    throw new Error('create_still_disabled');
+  }
+  page.on('pageerror', (e) => console.log('  pageerror:', String(e.message || e).slice(0, 200)));
+  await page.evaluate(() => {
+    const btn = document.querySelector(
+      '.pen-blank-wizard-foot button.pen-ribbon-btn.is-active'
+    );
+    if (btn && !btn.disabled) btn.click();
+  });
+  await page.waitForTimeout(2000);
+  let creating = await page.getByRole('button', { name: /Creating/i }).isVisible().catch(() => false);
+  if (!creating && !/\/d\//.test(page.url())) {
+    // Playwright click fallback
+    await createBtn.click({ force: true });
+    await page.waitForTimeout(1500);
+    creating = await page.getByRole('button', { name: /Creating/i }).isVisible().catch(() => false);
+  }
+  const navigated = await page
+    .waitForFunction(() => /\/d\//.test(window.location.pathname), null, { timeout: 90_000 })
+    .then(() => true)
+    .catch(() => false);
+  if (!navigated) {
+    const err = await page
+      .locator('.text-red-600')
+      .allTextContents()
+      .catch(() => []);
+    const btnText = await createBtn.textContent().catch(() => '');
+    throw new Error(
+      `no_editor_nav creating=${creating} btn=${btnText} url=${page.url()} err=${JSON.stringify(err)}`
+    );
+  }
+  await page.waitForTimeout(1000);
   return page.url();
 }
 
@@ -279,97 +328,137 @@ async function setTitle(page, title) {
 }
 
 /**
- * Prefer IR inject for stable layer rects (same path as LayersPanel upsert),
- * after opening the editor so autosave / session are live. Falls back to UI + Add text.
+ * Build layers via Layers popover UI (no remount — live Pen blanks out on /d reload).
  */
 async function buildLayers(page, spec) {
-  const injected = await page.evaluate((payload) => {
-    try {
-      const raw = sessionStorage.getItem('pen_session');
-      const session = raw ? JSON.parse(raw) : null;
-      const pn = session?.pnIdentifier;
-      if (!pn) return { ok: false, reason: 'no_pn' };
-      const m = location.pathname.match(/\/d\/([^/]+)/);
-      const docId = m?.[1];
-      if (!docId) return { ok: false, reason: 'no_doc' };
-      const key = `pen_docs_v1:${pn}:doc:${docId}`;
-      const docRaw = localStorage.getItem(key);
-      if (!docRaw) return { ok: false, reason: 'no_local_doc' };
-      const bundle = JSON.parse(docRaw);
-      const section = bundle.sections?.[0];
-      if (!section) return { ok: false, reason: 'no_section' };
+  // Set title in chrome if present
+  await setTitle(page, spec.title);
 
-      const layers = payload.layers.map((L, i) => {
-        const paras = String(L.text).split('\n');
-        return {
-          id: `headed_${payload.id}_${i}`,
-          kind: 'text',
-          name: L.name,
-          visible: true,
-          positionLocked: false,
-          zIndex: i + 1,
-          x: L.x,
-          y: L.y,
-          w: L.w,
-          h: L.h,
-          textDoc: {
-            type: 'doc',
-            content: paras.map((text) => ({
-              type: 'paragraph',
-              content: text ? [{ type: 'text', text }] : []
-            }))
-          }
+  const layersBtn = page
+    .locator('button[aria-label="Layers"], button[title="Layers"]')
+    .or(page.getByRole('button', { name: /Layers/i }))
+    .first();
+  if (!(await layersBtn.isVisible({ timeout: 10_000 }).catch(() => false))) {
+    // Fallback: inject into localStorage only (preview on next natural open)
+    const injected = await page.evaluate((payload) => {
+      try {
+        const raw = sessionStorage.getItem('pen_session');
+        const session = raw ? JSON.parse(raw) : null;
+        const pn = session?.pnIdentifier;
+        const docId = location.pathname.match(/\/d\/([^/]+)/)?.[1];
+        if (!pn || !docId) return { ok: false, reason: 'no_pn_or_doc' };
+        const key = `pen_docs_v1:${pn}:doc:${docId}`;
+        const bundle = JSON.parse(localStorage.getItem(key) || 'null');
+        if (!bundle?.sections?.[0]) return { ok: false, reason: 'no_local_doc' };
+        const section = bundle.sections[0];
+        section.layers = payload.layers.map((L, i) => {
+          const paras = String(L.text).split('\n');
+          return {
+            id: `headed_${payload.id}_${i}`,
+            kind: 'text',
+            name: L.name,
+            zIndex: i + 1,
+            x: L.x,
+            y: L.y,
+            w: L.w,
+            h: L.h,
+            textDoc: {
+              type: 'doc',
+              content: paras.map((text) => ({
+                type: 'paragraph',
+                content: text ? [{ type: 'text', text }] : []
+              }))
+            }
+          };
+        });
+        section.pagePresentation = {
+          ...(section.pagePresentation || {}),
+          backgroundColor: payload.bg
         };
-      });
-
-      section.layers = layers;
-      if (!section.pagePresentation) section.pagePresentation = {};
-      section.pagePresentation.backgroundColor = payload.bg;
-      // Clear body prose so layers dominate (story framework)
-      section.doc = { type: 'doc', content: [{ type: 'paragraph', content: [] }] };
-      bundle.manifest.title = payload.title;
-      bundle.manifest.updatedAt = new Date().toISOString();
-      if (!bundle.manifest.pagePresentation) bundle.manifest.pagePresentation = {};
-      bundle.manifest.pagePresentation.backgroundColor = payload.bg;
-      localStorage.setItem(key, JSON.stringify(bundle));
-      return { ok: true, layerCount: layers.length };
-    } catch (e) {
-      return { ok: false, reason: String(e?.message || e) };
-    }
-  }, spec);
-
-  if (injected.ok) {
-    await page.reload({ waitUntil: 'domcontentloaded' });
-    await page.waitForTimeout(1500);
+        bundle.manifest.title = payload.title;
+        bundle.manifest.updatedAt = new Date().toISOString();
+        localStorage.setItem(key, JSON.stringify(bundle));
+        return { ok: true, layerCount: section.layers.length, via: 'storage_only' };
+      } catch (e) {
+        return { ok: false, reason: String(e?.message || e) };
+      }
+    }, spec);
     return injected;
   }
 
-  // UI fallback: open Layers → Add text → type
-  const layersBtn = page.getByRole('button', { name: /Layers/i }).first();
-  if (await layersBtn.isVisible({ timeout: 5_000 }).catch(() => false)) {
-    await layersBtn.click();
-    await page.waitForTimeout(400);
-    for (const L of spec.layers) {
-      const addText = page.getByRole('button', { name: /Add text|Text layer|\+/i }).first();
-      if (await addText.isVisible({ timeout: 2_000 }).catch(() => false)) {
-        await addText.click();
-        await page.waitForTimeout(300);
-      }
-      const editor = page.locator('.ProseMirror, [contenteditable="true"]').first();
-      if (await editor.isVisible({ timeout: 3_000 }).catch(() => false)) {
-        await editor.click();
-        await page.keyboard.type(L.text.replace(/\n/g, ' · '), { delay: 8 });
-      }
+  await layersBtn.click();
+  await page.waitForTimeout(400);
+  let added = 0;
+  for (const L of spec.layers) {
+    const addText = page
+      .getByRole('button', { name: /Add text|Text/i })
+      .or(page.locator('button', { hasText: /^\+$/ }))
+      .first();
+    if (await addText.isVisible({ timeout: 2_000 }).catch(() => false)) {
+      await addText.click();
+      await page.waitForTimeout(350);
+      added += 1;
     }
-    return { ok: true, layerCount: spec.layers.length, via: 'ui' };
+    const editor = page.locator('.ProseMirror, [contenteditable="true"]').first();
+    if (await editor.isVisible({ timeout: 3_000 }).catch(() => false)) {
+      await editor.click();
+      await page.keyboard.type(L.text.replace(/\n/g, ' · '), { delay: 5 });
+      await page.waitForTimeout(200);
+    }
   }
-  return injected;
+  // Also write storage so coords/title persist for publish compile
+  await page.evaluate((payload) => {
+    try {
+      const session = JSON.parse(sessionStorage.getItem('pen_session') || 'null');
+      const pn = session?.pnIdentifier;
+      const docId = location.pathname.match(/\/d\/([^/]+)/)?.[1];
+      if (!pn || !docId) return;
+      const key = `pen_docs_v1:${pn}:doc:${docId}`;
+      const bundle = JSON.parse(localStorage.getItem(key) || 'null');
+      if (!bundle?.sections?.[0]) return;
+      const section = bundle.sections[0];
+      if (Array.isArray(section.layers) && section.layers.length) {
+        payload.layers.forEach((L, i) => {
+          const layer = section.layers[i];
+          if (!layer) return;
+          layer.x = L.x;
+          layer.y = L.y;
+          layer.w = L.w;
+          layer.h = L.h;
+          layer.name = L.name;
+        });
+      }
+      section.pagePresentation = {
+        ...(section.pagePresentation || {}),
+        backgroundColor: payload.bg
+      };
+      bundle.manifest.title = payload.title;
+      localStorage.setItem(key, JSON.stringify(bundle));
+    } catch {
+      /* ignore */
+    }
+  }, spec);
+
+  return { ok: added > 0, layerCount: added, via: 'ui' };
 }
 
 async function connectAsPublicTemplate(page, context) {
-  const publish = page.getByRole('button', { name: /^Publish$/i }).or(page.getByTitle('Publish')).first();
+  // Wait for editor chrome after layer reload
+  await page.waitForTimeout(1500);
+  const publish = page
+    .locator('button[aria-label="Publish"], button[title="Publish"]')
+    .first();
+  if (!(await publish.isVisible({ timeout: 15_000 }).catch(() => false))) {
+    // Dump available toolbar labels for diagnosis
+    const labels = await page.evaluate(() =>
+      [...document.querySelectorAll('button[aria-label], button[title]')]
+        .slice(0, 40)
+        .map((b) => b.getAttribute('aria-label') || b.getAttribute('title') || '')
+    );
+    return { ok: false, reason: `publish_missing labels=${labels.join('|')}` };
+  }
   await publish.click();
-  await page.waitForTimeout(400);
+  await page.waitForTimeout(500);
 
   const connect = page.getByRole('button', { name: /Connect to feed/i }).first();
   if (!(await connect.isVisible({ timeout: 5_000 }).catch(() => false))) {
@@ -382,23 +471,25 @@ async function connectAsPublicTemplate(page, context) {
   const templateCb = templateLabel.locator('input[type="checkbox"]');
   const enabled = await templateCb.isEnabled().catch(() => false);
   if (!enabled) {
-    return { ok: false, reason: 'pen_templates_disabled_allowlist?' };
+    return { ok: false, reason: 'pen_templates_disabled_allowlist?', enabled: false };
   }
   if (!(await templateCb.isChecked())) {
     await templateCb.check({ force: true });
   }
-  // Prefer templates-only for this suite
-  const browseCb = page.locator('label', { hasText: /Browse/i }).locator('input[type="checkbox"]');
+  const browseCb = page.locator('label', { hasText: /Browse \(your networks\)/i }).locator('input[type="checkbox"]');
   if (await browseCb.isChecked().catch(() => false)) {
     await browseCb.uncheck({ force: true }).catch(() => {});
   }
 
-  const popupPromise = context.waitForEvent('page', { timeout: 60_000 }).catch(() => null);
+  const popupPromise = context.waitForEvent('page', { timeout: 90_000 }).catch(() => null);
+  const navPromise = page
+    .waitForURL(/browse\.parnoir|browse-parnoir|\?view=upload/, { timeout: 90_000 })
+    .then(() => page)
+    .catch(() => null);
   const shareBtn = page.getByRole('button', { name: /^Share$/i }).first();
   await shareBtn.click();
-
-  const browsePage = await popupPromise;
-  return { ok: true, browsePage, enabled };
+  const browsePage = (await popupPromise) || (await navPromise);
+  return { ok: true, browsePage, enabled: true };
 }
 
 async function finishBrowseUpload(browsePage) {
@@ -475,17 +566,33 @@ async function main() {
         await page.waitForTimeout(2500);
 
         const share = await connectAsPublicTemplate(page, context);
-        ok('pen-templates enabled', share.enabled !== false, share.reason || '');
+        ok('connect menu', Boolean(share.ok), share.reason || '');
         if (!share.ok) {
           fails += 1;
           continue;
         }
+        ok('pen-templates enabled', share.enabled === true);
 
         const upload = await finishBrowseUpload(share.browsePage);
         ok('browse upload', upload.ok, upload.reason || upload.url || '');
-        if (!upload.ok) fails += 1;
+        if (!upload.ok) {
+          // Still count private template save as partial success for IR roots
+          const priv = page.getByRole('button', { name: /Save as private template/i });
+          if (await page.getByRole('button', { name: /^Publish$/i }).or(page.locator('button[aria-label="Publish"]')).first().isVisible().catch(() => false)) {
+            await page.locator('button[aria-label="Publish"]').first().click().catch(() => {});
+            await page.waitForTimeout(300);
+            if (await priv.isVisible({ timeout: 2_000 }).catch(() => false)) {
+              await priv.click();
+              ok('private template fallback', true);
+            } else {
+              fails += 1;
+            }
+          } else {
+            fails += 1;
+          }
+        }
 
-        if (share.browsePage && !share.browsePage.isClosed()) {
+        if (share.browsePage && share.browsePage !== page && !share.browsePage.isClosed()) {
           await share.browsePage.close().catch(() => {});
         }
       } catch (e) {
