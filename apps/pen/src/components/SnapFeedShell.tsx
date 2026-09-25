@@ -1,15 +1,22 @@
 /**
  * Viewport snap shell aligned to notebook paper (rail on first blue line, body under it).
- * Active slide via IntersectionObserver — avoids scrollTop/clientHeight desync when content overflows.
+ * Slide height is pinned to measured scrollport px so snap distances stay fixed.
+ * All slides stay mounted — active index is for data-active / media only.
  */
 
 import {
   useCallback,
   useEffect,
+  useMemo,
   useRef,
   useState,
   type ReactNode
 } from 'react';
+
+function slideKeysSignature(keys: string[] | undefined, count: number): string {
+  if (keys && keys.length === count) return keys.join('\0');
+  return `count:${count}`;
+}
 
 export function SnapFeedShell({
   rail,
@@ -27,19 +34,40 @@ export function SnapFeedShell({
   empty?: ReactNode;
   loading?: ReactNode;
 }) {
+  const viewportRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
-  const [activeIndex, setActiveIndex] = useState(0);
   const slideElsRef = useRef<(HTMLDivElement | null)[]>([]);
+  const [activeIndex, setActiveIndex] = useState(0);
+  const [slidePx, setSlidePx] = useState(0);
+
+  const keysSig = useMemo(
+    () => slideKeysSignature(slideKeys, count),
+    [slideKeys, count]
+  );
 
   useEffect(() => {
     setActiveIndex(0);
     scrollRef.current?.scrollTo({ top: 0 });
     slideElsRef.current = slideElsRef.current.slice(0, count);
-  }, [count]);
+  }, [keysSig, count]);
+
+  useEffect(() => {
+    const viewport = viewportRef.current;
+    if (!viewport) return;
+
+    const measure = () => {
+      const h = Math.round(viewport.getBoundingClientRect().height);
+      if (h > 0) setSlidePx(h);
+    };
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(viewport);
+    return () => ro.disconnect();
+  }, []);
 
   useEffect(() => {
     const root = scrollRef.current;
-    if (!root || count === 0) return;
+    if (!root || count === 0 || slidePx <= 0) return;
 
     const ratios = new Map<number, number>();
     const observer = new IntersectionObserver(
@@ -58,7 +86,10 @@ export function SnapFeedShell({
           }
         }
         if (bestRatio >= 0.35) {
-          setActiveIndex(Math.max(0, Math.min(count - 1, bestIdx)));
+          setActiveIndex((prev) => {
+            const next = Math.max(0, Math.min(count - 1, bestIdx));
+            return next === prev ? prev : next;
+          });
         }
       },
       { root, threshold: [0.35, 0.5, 0.6, 0.75, 1] }
@@ -69,19 +100,26 @@ export function SnapFeedShell({
       if (el) observer.observe(el);
     }
     return () => observer.disconnect();
-  }, [count, slideKeys]);
+  }, [count, keysSig, slidePx]);
 
   const setSlideRef = useCallback((index: number, el: HTMLDivElement | null) => {
     slideElsRef.current[index] = el;
   }, []);
 
-  const windowStart = Math.max(0, activeIndex - 1);
-  const windowEnd = Math.min(count, activeIndex + 3);
+  const slideStyle =
+    slidePx > 0
+      ? ({
+          height: `${slidePx}px`,
+          minHeight: `${slidePx}px`,
+          maxHeight: `${slidePx}px`,
+          flex: `0 0 ${slidePx}px`
+        } as const)
+      : undefined;
 
   return (
     <div className="pen-doc-feed">
       <div className="pen-doc-feed-rail">{rail}</div>
-      <div className="pen-doc-feed-viewport">
+      <div ref={viewportRef} className="pen-doc-feed-viewport">
         <div ref={scrollRef} className="pen-doc-feed-scroll" data-pen-snap-feed>
           {loading ? (
             loading
@@ -93,7 +131,6 @@ export function SnapFeedShell({
             )
           ) : (
             Array.from({ length: count }, (_, i) => {
-              const inWindow = i >= windowStart && i < windowEnd;
               const key = slideKeys?.[i] ?? String(i);
               return (
                 <div
@@ -102,8 +139,9 @@ export function SnapFeedShell({
                   className="pen-doc-feed-slide"
                   data-snap-index={i}
                   data-active={i === activeIndex ? 'true' : undefined}
+                  style={slideStyle}
                 >
-                  {inWindow ? renderSlide(i, i === activeIndex) : null}
+                  {renderSlide(i, i === activeIndex)}
                 </div>
               );
             })

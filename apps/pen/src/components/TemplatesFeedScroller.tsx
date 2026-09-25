@@ -1,30 +1,30 @@
 /**
  * Templates feed density — catalog IR previews (Social atoms).
- * View-only engagement outside the phone; Build opens the editor.
+ * Display-only engagement overlay on phone; live aside when fileId known.
  */
 
 import type { ReactNode } from 'react';
 import type { PenTemplate } from '@par-noir/pen-protocol';
-import { categoryIdForClass } from '@par-noir/pen-protocol';
 import type { PenSession } from '../services/penSession';
 import { SnapFeedShell } from './SnapFeedShell';
-import { SocialPhoneFrame } from './SocialPhoneFrame';
-import { TemplateEngagementRail } from './TemplateEngagementRail';
-import { BrowseFeedTilePreview } from './BrowseFeedTilePreview';
+import { PenFeedSlideStage } from './PenFeedSlideStage';
 import { templatePreviewBundle } from './TemplateGalleryThumb';
+import { resolveTemplateEngagementFileId } from '../services/templateEngagementFileId';
 
 export function TemplatesFeedScroller({
   rail,
   templates,
   session,
   busy,
-  onBuild
+  onBuild,
+  fileIdByTemplateId
 }: {
   rail: ReactNode;
   templates: PenTemplate[];
   session: PenSession | null;
   busy?: boolean;
   onBuild: (templateId: string) => void;
+  fileIdByTemplateId?: Map<string, string>;
 }) {
   return (
     <SnapFeedShell
@@ -39,82 +39,39 @@ export function TemplatesFeedScroller({
       renderSlide={(index) => {
         const t = templates[index];
         if (!t) return null;
+        const preview = templatePreviewBundle(session?.pnIdentifier, t.id);
+        if (!preview) {
+          return (
+            <div className="pen-doc-feed-empty">
+              <p className="text-sm text-neutral-500">Template unavailable.</p>
+            </div>
+          );
+        }
+        const fileId = resolveTemplateEngagementFileId(t.id, fileIdByTemplateId);
         return (
-          <TemplateFeedSlide
-            templateId={t.id}
+          <PenFeedSlideStage
+            classId={preview.manifest.classId || t.classId}
+            manifest={preview.manifest as never}
+            sections={preview.sections}
             session={session}
-            busy={busy}
-            onBuild={() => onBuild(t.id)}
+            templateId={t.id}
+            fileId={fileId}
+            authorLabel={preview.authorDisplayName}
+            buildSlot={
+              <button
+                type="button"
+                className="pen-templates-feed-build"
+                disabled={busy}
+                title={session ? 'Build from template' : 'Unlock to build'}
+                aria-label="Build"
+                onClick={() => onBuild(t.id)}
+              >
+                Build
+              </button>
+            }
           />
         );
       }}
     />
-  );
-}
-
-function TemplateFeedSlide({
-  templateId,
-  session,
-  busy,
-  onBuild
-}: {
-  templateId: string;
-  session: PenSession | null;
-  busy?: boolean;
-  onBuild: () => void;
-}) {
-  const preview = templatePreviewBundle(session?.pnIdentifier, templateId);
-  if (!preview) {
-    return (
-      <div className="pen-doc-feed-empty">
-        <p className="text-sm text-neutral-500">Template unavailable.</p>
-      </div>
-    );
-  }
-  const social = categoryIdForClass(preview.manifest.classId || '') === 'social';
-  const tile = (
-    <BrowseFeedTilePreview
-      manifest={preview.manifest}
-      sections={preview.sections}
-      bare
-      compact
-      session={session}
-      hideEngagementRail
-    />
-  );
-
-  return (
-    <div className="pen-doc-feed-slide-stage pen-templates-feed-stage">
-      <div className="pen-templates-feed-preview">
-        {social ? (
-          <SocialPhoneFrame large>{tile}</SocialPhoneFrame>
-        ) : (
-          <div className="pen-feed-tile-slot">{tile}</div>
-        )}
-      </div>
-      <div className="pen-templates-feed-aside">
-        <TemplateEngagementRail
-          templateId={templateId}
-          fileId={null}
-          authorLabel={preview.authorDisplayName}
-          userPnIdentifier={session?.pnIdentifier}
-          unlocked={Boolean(session?.pnIdentifier)}
-          readOnly
-          placement="aside"
-          buildSlot={
-            <button
-              type="button"
-              className="pen-templates-feed-build"
-              disabled={busy}
-              title={session ? 'Build from template' : 'Unlock to build'}
-              aria-label="Build"
-              onClick={onBuild}
-            >
-              Build
-            </button>
-          }
-        />
-      </div>
-    </div>
   );
 }

@@ -9,6 +9,7 @@ import {
   contentClassFallbackLabel,
   isProjectsRailClass,
   isSocialTemplateRailClass,
+  libraryDocMatchesRailSelection,
   SOCIAL_TEMPLATE_RAIL_FORMS,
   templateMatchesRailSelection
 } from './services/classFeedRailItems';
@@ -48,6 +49,12 @@ describe('buildSocialTemplateRailItems', () => {
     expect(templateMatchesRailSelection('social.note', 'projects')).toBe(false);
     expect(templateMatchesRailSelection('social.post', 'social.post')).toBe(true);
     expect(templateMatchesRailSelection('projects.letter', 'all')).toBe(true);
+  });
+
+  it('libraryDocMatchesRailSelection ALL includes non-social docs', () => {
+    expect(libraryDocMatchesRailSelection(undefined, 'all')).toBe(true);
+    expect(libraryDocMatchesRailSelection('time.event', 'all')).toBe(true);
+    expect(libraryDocMatchesRailSelection('time.event', 'social.note')).toBe(false);
   });
 });
 

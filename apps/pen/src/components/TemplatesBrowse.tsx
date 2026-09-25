@@ -29,6 +29,11 @@ import { ClassFeedRail } from './ClassFeedRail';
 import { TemplatesFeedScroller } from './TemplatesFeedScroller';
 import { TemplateEngagementRail } from './TemplateEngagementRail';
 import { SocialPhoneFrame } from './SocialPhoneFrame';
+import { fetchPublicPenTemplates } from '../services/penCentralIndex';
+import {
+  buildTemplateFileIdMap,
+  resolveTemplateEngagementFileId
+} from '../services/templateEngagementFileId';
 
 function CloseIcon() {
   return (
@@ -64,12 +69,30 @@ export function TemplatesBrowse({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [activeClassId, setActiveClassId] = useState('all');
+  const [fileIdByTemplateId, setFileIdByTemplateId] = useState<Map<string, string>>(
+    () => new Map()
+  );
 
   const railItems = useMemo(() => buildSocialTemplateRailItems(), []);
 
   useEffect(() => {
     if (initialPreviewId) setPreviewId(initialPreviewId);
   }, [initialPreviewId]);
+
+  useEffect(() => {
+    let cancelled = false;
+    void fetchPublicPenTemplates({ limit: 200 })
+      .then((entries) => {
+        if (cancelled) return;
+        setFileIdByTemplateId(buildTemplateFileIdMap(entries));
+      })
+      .catch(() => {
+        if (!cancelled) setFileIdByTemplateId(new Map());
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const catalog: PenTemplate[] = useMemo(() => {
     const starters = listStarterTemplates().filter((t) => {
@@ -92,6 +115,11 @@ export function TemplatesBrowse({
   const preview = previewId
     ? templatePreviewBundle(session?.pnIdentifier, previewId)
     : null;
+
+  const previewFileId = previewId
+    ? resolveTemplateEngagementFileId(previewId, fileIdByTemplateId)
+    : null;
+  const previewLive = Boolean(previewFileId) && Boolean(session?.pnIdentifier);
 
   async function useTemplate(templateId: string) {
     if (!session) {
@@ -138,6 +166,7 @@ export function TemplatesBrowse({
           session={session}
           busy={busy}
           onBuild={(id) => void useTemplate(id)}
+          fileIdByTemplateId={fileIdByTemplateId}
         />
       ) : (
         <>
@@ -256,6 +285,17 @@ export function TemplatesBrowse({
                       compact
                       session={session}
                       hideEngagementRail
+                      engagementOverlay={
+                        <TemplateEngagementRail
+                          templateId={previewId}
+                          fileId={null}
+                          authorLabel={preview.authorDisplayName}
+                          userPnIdentifier={session?.pnIdentifier}
+                          unlocked={Boolean(session?.pnIdentifier)}
+                          readOnly
+                          placement="overlay"
+                        />
+                      }
                     />
                   </SocialPhoneFrame>
                 ) : (
@@ -269,11 +309,11 @@ export function TemplatesBrowse({
               </div>
               <TemplateEngagementRail
                 templateId={previewId}
-                fileId={null}
+                fileId={previewFileId}
                 authorLabel={preview.authorDisplayName}
                 userPnIdentifier={session?.pnIdentifier}
                 unlocked={Boolean(session?.pnIdentifier)}
-                readOnly
+                readOnly={!previewLive}
                 placement="aside"
                 buildSlot={
                   <button

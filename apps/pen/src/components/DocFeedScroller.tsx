@@ -1,20 +1,19 @@
 /**
- * My Library feed — personal docs only (galleryPreviewRef via cloud/local).
- * Never uses CDN / public-media / live engagement.
+ * My Library feed — personal docs with the same Social rail + slide chrome as Templates.
+ * Live engagement when manifest.publishedFileId is set; otherwise aside is display-only.
  */
 
 import { useEffect, useMemo, useState } from 'react';
-import { categoryIdForClass } from '@par-noir/pen-protocol';
 import type { PenSession } from '../services/penSession';
 import { loadLocalDoc, type LocalDocSummary } from '../services/penLocalStore';
 import {
-  buildClassFeedRailItems,
+  buildSocialTemplateRailItems,
+  libraryDocMatchesRailSelection,
   resolveSummaryClassId
 } from '../services/classFeedRailItems';
 import { ClassFeedRail } from './ClassFeedRail';
 import { SnapFeedShell } from './SnapFeedShell';
-import { SocialPhoneFrame } from './SocialPhoneFrame';
-import { BrowseFeedTilePreview } from './BrowseFeedTilePreview';
+import { PenFeedSlideStage } from './PenFeedSlideStage';
 
 export function DocFeedScroller({
   pn,
@@ -31,16 +30,12 @@ export function DocFeedScroller({
   activeClassId: string;
   onActiveClassId: (id: string) => void;
 }) {
-  const railItems = useMemo(() => {
-    const ids = docs
-      .map((d) => resolveSummaryClassId(d))
-      .filter((id): id is string => Boolean(id));
-    return buildClassFeedRailItems(ids);
-  }, [docs]);
+  const railItems = useMemo(() => buildSocialTemplateRailItems(), []);
 
   const filtered = useMemo(() => {
-    if (activeClassId === 'all') return docs;
-    return docs.filter((d) => resolveSummaryClassId(d) === activeClassId);
+    return docs.filter((d) =>
+      libraryDocMatchesRailSelection(resolveSummaryClassId(d), activeClassId)
+    );
   }, [docs, activeClassId]);
 
   useEffect(() => {
@@ -60,6 +55,7 @@ export function DocFeedScroller({
         />
       }
       count={filtered.length}
+      slideKeys={filtered.map((d) => d.docId)}
       empty={
         <div className="pen-doc-feed-empty">
           <p className="text-sm text-neutral-500">No documents in this class.</p>
@@ -109,26 +105,20 @@ function DocFeedSlide({
     );
   }
 
-  const social = categoryIdForClass(classId || bundle.manifest.classId || '') === 'social';
-  const tile = (
-    <BrowseFeedTilePreview
+  return (
+    <PenFeedSlideStage
+      classId={classId || bundle.manifest.classId}
       manifest={bundle.manifest}
       sections={bundle.sections}
-      bare
-      compact
       session={session}
+      templateId={
+        bundle.manifest.templateId ||
+        bundle.manifest.basedOnTemplateId ||
+        bundle.manifest.docId
+      }
+      fileId={bundle.manifest.publishedFileId || null}
+      authorLabel="You"
+      onOpen={onOpen}
     />
-  );
-
-  return (
-    <div className="pen-doc-feed-slide-stage">
-      <button type="button" className="pen-doc-feed-slide-hit" onClick={onOpen}>
-        {social ? (
-          <SocialPhoneFrame large>{tile}</SocialPhoneFrame>
-        ) : (
-          <div className="pen-feed-tile-slot">{tile}</div>
-        )}
-      </button>
-    </div>
   );
 }

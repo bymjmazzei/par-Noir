@@ -59,7 +59,8 @@ import { PenNotebookPage } from '../components/PenNotebookPage';
 import { DocFeedScroller } from '../components/DocFeedScroller';
 import { ClassFeedRail } from '../components/ClassFeedRail';
 import {
-  buildClassFeedRailItems,
+  buildSocialTemplateRailItems,
+  libraryDocMatchesRailSelection,
   resolveSummaryClassId
 } from '../services/classFeedRailItems';
 import { BlankDocWizard } from '../components/BlankDocWizard';
@@ -863,7 +864,6 @@ function DocGalleryGrid({
 }) {
   return (
     <div className="pen-gallery-wrap">
-      <div className="pen-gallery-head" aria-hidden />
       <div className="pen-gallery">
         <div className="pen-gallery-tiles">
           {!bulkMode && <CreateNewGalleryTile onClick={onCreateNew} />}
@@ -1460,12 +1460,31 @@ export function DocListPage({
     return sortDocs([...nested, ...root], explorerSort);
   }, [docs, expandedNotebookIds, explorerSort]);
 
-  const libraryRailItems = useMemo(() => {
-    const ids = sortedDocs
-      .map((d) => resolveSummaryClassId(d))
-      .filter((id): id is string => Boolean(id));
-    return buildClassFeedRailItems(ids);
-  }, [sortedDocs]);
+  const libraryRailItems = useMemo(() => buildSocialTemplateRailItems(), []);
+
+  const docsForActiveRail = useMemo(
+    () =>
+      sortedDocs.filter((d) =>
+        libraryDocMatchesRailSelection(resolveSummaryClassId(d), activeFeedClassId)
+      ),
+    [sortedDocs, activeFeedClassId]
+  );
+
+  const allDocsForActiveRail = useMemo(
+    () =>
+      docs.filter((d) =>
+        libraryDocMatchesRailSelection(resolveSummaryClassId(d), activeFeedClassId)
+      ),
+    [docs, activeFeedClassId]
+  );
+
+  const folderDocsForActiveRail = useMemo(
+    () =>
+      folderDocs.filter((d) =>
+        libraryDocMatchesRailSelection(resolveSummaryClassId(d), activeFeedClassId)
+      ),
+    [folderDocs, activeFeedClassId]
+  );
 
   const librarySubtitle = currentFolder ? (
     <span className="flex flex-wrap items-center gap-1">
@@ -1553,11 +1572,7 @@ export function DocListPage({
           {browseDensity === 'gallery' ? (
             <DocGalleryGrid
               pn={session.pnIdentifier}
-              docs={sortedDocs.filter(
-                (d) =>
-                  activeFeedClassId === 'all' ||
-                  resolveSummaryClassId(d) === activeFeedClassId
-              )}
+              docs={docsForActiveRail}
               childFolders={childFolders}
               personalTemplates={myPersonalTemplates}
               moveFolders={moveFolderOptions}
@@ -1582,11 +1597,7 @@ export function DocListPage({
           ) : currentFolderId ? (
             <DocExplorerTable
               pn={session.pnIdentifier}
-              docs={folderDocs.filter(
-                (d) =>
-                  activeFeedClassId === 'all' ||
-                  resolveSummaryClassId(d) === activeFeedClassId
-              )}
+              docs={folderDocsForActiveRail}
               notebooks={[]}
               personalTemplates={myPersonalTemplates}
               moveFolders={moveFolderOptions}
@@ -1613,11 +1624,7 @@ export function DocListPage({
           ) : (
             <DocExplorerTable
               pn={session.pnIdentifier}
-              docs={docs.filter(
-                (d) =>
-                  activeFeedClassId === 'all' ||
-                  resolveSummaryClassId(d) === activeFeedClassId
-              )}
+              docs={allDocsForActiveRail}
               notebooks={rootNotebooks}
               personalTemplatesByNotebook={personalTemplatesByNotebook}
               moveFolders={moveFolderOptions}

@@ -61,6 +61,17 @@ export function templateMatchesRailSelection(
   return classId === activeId;
 }
 
+/** Whether a library doc belongs under the active rail chip.
+ * ALL = every doc; chips use the Social/Projects template rail filter.
+ */
+export function libraryDocMatchesRailSelection(
+  classId: string | undefined,
+  activeId: string
+): boolean {
+  if (activeId === 'all') return true;
+  return templateMatchesRailSelection(classId, activeId);
+}
+
 /** ALL + Social atoms + category chips (Templates list / gallery / feed). */
 export function buildSocialTemplateRailItems(): ClassFeedRailItem[] {
   return [

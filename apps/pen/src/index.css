@@ -620,8 +620,10 @@ body {
 .pen-library-page {
   display: flex;
   flex-direction: column;
-  min-height: calc(100vh - 2.5rem);
-  overflow-x: hidden;
+  height: calc(100dvh - 2.5rem);
+  min-height: calc(100dvh - 2.5rem);
+  max-height: calc(100dvh - 2.5rem);
+  overflow: hidden;
 }
 
 .pen-library-notebook {
@@ -629,7 +631,8 @@ body {
   flex-direction: column;
   width: 100%;
   flex: 1 1 auto;
-  min-height: calc(100vh - 2.5rem);
+  min-height: 0;
+  height: 100%;
 }
 
 .pen-library-notebook-inner {
@@ -637,7 +640,8 @@ body {
   display: flex;
   flex-direction: column;
   flex: 1 1 auto;
-  min-height: calc(100vh - 2.5rem);
+  min-height: 0;
+  height: 100%;
   padding: 0 var(--pen-edge-pad) 0;
 }
 
@@ -647,6 +651,7 @@ body {
   align-items: flex-start;
   justify-content: space-between;
   gap: 0.25rem 1rem;
+  flex-shrink: 0;
   /* Tight to the table / gallery rule below */
   padding: 1rem 0 0 var(--pen-name-inset);
   margin: 0;
@@ -710,17 +715,6 @@ body {
 }
 
 /* Feed density — notebook-aligned: rail on first blue line (right of red), viewport under it */
-.pen-library-page.pen-feed-mode {
-  min-height: calc(100vh - 2.5rem);
-}
-
-.pen-library-page.pen-feed-mode .pen-library-notebook,
-.pen-library-page.pen-feed-mode .pen-library-notebook-inner {
-  min-height: calc(100vh - 2.5rem);
-  height: auto;
-  overflow: visible;
-}
-
 .pen-library-page.pen-feed-mode .pen-library-heading {
   position: static;
   background: transparent;
@@ -746,11 +740,11 @@ body {
   background: transparent;
 }
 
-/* Feed ruled paper: full sheet width + height down to the footer (same as gallery) */
+/* Feed ruled paper: full-bleed sheet width (rules meet the window) */
 .pen-library-page.pen-feed-mode .pen-doc-feed {
   align-self: stretch;
   width: 100%;
-  min-height: calc(100vh - 2.5rem - 8rem);
+  min-height: 0;
   background-color: #fff;
   background-image: repeating-linear-gradient(
     to bottom,
@@ -761,16 +755,17 @@ body {
   );
   background-position: 0 var(--pen-explorer-head-h);
   background-repeat: repeat-y;
+  background-size: 100% var(--pen-rule-pitch);
 }
 
-/* Class rail sits on the gallery/list head band (first blue underline), right of red rail */
+/* Class rail: solid white head band + single underline (no mid-tab blue stroke) */
 .pen-doc-feed-rail {
   flex-shrink: 0;
   height: var(--pen-explorer-head-h);
   box-sizing: border-box;
   border: none;
   border-bottom: 1px solid var(--pen-rule-blue);
-  background: transparent;
+  background: #fff;
   width: 100%;
   padding-left: calc(var(--pen-edge-pad) + var(--pen-name-inset));
   padding-right: var(--pen-edge-pad);
@@ -827,28 +822,28 @@ body {
   color: #404040;
 }
 
-/* Feed viewport: same origin as first gallery tile row — under head, right of red */
+/* Feed viewport: fills remaining sheet under rail; height measured in px by SnapFeedShell */
 .pen-doc-feed-viewport {
   position: relative;
   flex: 1 1 auto;
-  min-height: min(70vh, 36rem);
+  min-height: 0;
   margin: 0;
   padding: 0;
   padding-left: calc(var(--pen-edge-pad) + var(--pen-name-inset));
   padding-right: var(--pen-edge-pad);
   box-sizing: border-box;
   background: transparent;
+  overflow: hidden;
 }
 
 .pen-doc-feed-scroll {
   position: relative;
   height: 100%;
-  min-height: inherit;
-  max-height: calc(100dvh - 2.5rem - 10rem);
+  width: 100%;
   overflow-x: hidden;
   overflow-y: scroll;
   scroll-snap-type: y mandatory;
-  scroll-behavior: smooth;
+  /* Mandatory snap owns settling — do not set smooth scroll behavior here */
   -webkit-overflow-scrolling: touch;
   scrollbar-width: none;
   -ms-overflow-style: none;
@@ -872,9 +867,7 @@ body {
   align-items: stretch;
   justify-content: flex-start;
   width: 100%;
-  height: 100%;
-  min-height: 100%;
-  max-height: 100%;
+  /* Height pinned inline by SnapFeedShell (measured scrollport px) */
   scroll-snap-align: start;
   scroll-snap-stop: always;
   box-sizing: border-box;
@@ -891,8 +884,8 @@ body {
   display: flex;
   flex-direction: row;
   align-items: center;
-  justify-content: flex-start;
-  gap: 1rem;
+  justify-content: center;
+  gap: 1.25rem;
   width: 100%;
   height: 100%;
   max-height: 100%;
@@ -909,7 +902,7 @@ body {
 .pen-templates-feed-preview {
   display: flex;
   align-items: center;
-  justify-content: flex-start;
+  justify-content: center;
   flex: 1 1 auto;
   min-width: 0;
   height: 100%;
@@ -971,10 +964,12 @@ body {
 }
 
 .pen-feed-tile-slot {
-  height: min(100%, calc(100dvh - 10rem));
+  height: 100%;
   width: auto;
   max-width: min(100%, 28rem);
+  max-height: 100%;
   aspect-ratio: 9 / 16;
+  margin-inline: auto;
 }
 
 .pen-feed-tile-slot > * {
@@ -984,14 +979,16 @@ body {
 
 .pen-feed-phone {
   pointer-events: auto;
-  height: min(100%, calc(100dvh - 10rem));
+  height: 100%;
   width: auto;
   max-width: min(100%, 28rem);
+  max-height: 100%;
 }
 
 .pen-library-page.pen-feed-mode .pen-feed-phone,
 .pen-library-page.pen-feed-mode .pen-feed-tile-slot {
-  height: min(100%, calc(100dvh - 9rem));
+  height: 100%;
+  max-height: 100%;
   max-width: min(100%, 30rem);
 }
 
@@ -1065,6 +1062,28 @@ body {
   align-items: center;
   gap: 0.1rem;
   position: relative;
+}
+
+button.pen-template-engagement-stat {
+  border: none;
+  background: transparent;
+  padding: 0;
+  color: inherit;
+  cursor: pointer;
+}
+
+button.pen-template-engagement-stat:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+button.pen-template-engagement-stat.is-liked {
+  color: #ef4444;
+}
+
+.pen-template-engagement-rail:not(.pen-template-engagement-rail--readonly)
+  button.pen-template-engagement-stat:hover:not(:disabled) {
+  opacity: 0.85;
 }
 
 .pen-template-engagement-hint {
@@ -1190,6 +1209,7 @@ body {
   align-items: center;
   justify-content: center;
   gap: 0.35rem;
+  flex-shrink: 0;
   margin-top: auto;
   /* Full window width — cancel notebook edge pad */
   margin-left: calc(-1 * var(--pen-edge-pad));
@@ -1203,7 +1223,8 @@ body {
   background-repeat: no-repeat;
   border: none;
   position: relative;
-  z-index: 20;
+  /* Above red margin rail so branding is never crossed */
+  z-index: 50;
   align-self: stretch;
 }
 
@@ -1442,8 +1463,8 @@ button.pen-app-chrome-brand:hover {
   max-width: 11rem;
 }
 
-/* Continuous red double rule through the full notebook (header → footer).
- * Above sheet / feed paper (z-index 1) and footer (20) so the rail cannot be covered. */
+/* Continuous red double rule through the notebook sheet (stops under footer).
+ * Above sheet / feed paper (z-index 1); footer (50) covers the rail at the bottom. */
 .pen-explorer-rail {
   position: absolute;
   top: 0;
