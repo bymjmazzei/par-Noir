@@ -55,16 +55,18 @@ import {
   NotebookGalleryThumb,
   TemplateGalleryThumb
 } from '../components/TemplateGalleryThumb';
-import { TemplatesBrowse } from '../components/TemplatesBrowse';
-import { PenBrandingFooter } from '../components/PenBrandingFooter';
+import { PenNotebookPage } from '../components/PenNotebookPage';
 import { DocFeedScroller } from '../components/DocFeedScroller';
+import { ClassFeedRail } from '../components/ClassFeedRail';
+import {
+  buildClassFeedRailItems,
+  resolveSummaryClassId
+} from '../services/classFeedRailItems';
 import { BlankDocWizard } from '../components/BlankDocWizard';
 import { createBlankDoc } from '../services/createBlankDoc';
 import { resolveDocLibraryStatus } from '../services/penDocStatus';
 
 export type PenAddIntent = 'notebook' | 'templates' | 'my-templates' | 'blank';
-
-type LibraryMode = 'library' | 'templates';
 
 type DrillLevel = 'category' | 'form' | 'template';
 
@@ -575,40 +577,6 @@ function DocExplorerTable({
   );
 }
 
-function ListIcon() {
-  return (
-    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden>
-      <path
-        d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"
-        stroke="currentColor"
-        strokeWidth="2"
-        strokeLinecap="round"
-      />
-    </svg>
-  );
-}
-
-function GalleryIcon() {
-  return (
-    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden>
-      <rect x="3" y="3" width="7" height="7" rx="1" stroke="currentColor" strokeWidth="2" />
-      <rect x="14" y="3" width="7" height="7" rx="1" stroke="currentColor" strokeWidth="2" />
-      <rect x="3" y="14" width="7" height="7" rx="1" stroke="currentColor" strokeWidth="2" />
-      <rect x="14" y="14" width="7" height="7" rx="1" stroke="currentColor" strokeWidth="2" />
-    </svg>
-  );
-}
-
-function FeedIcon() {
-  return (
-    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden>
-      <rect x="4" y="3" width="16" height="5" rx="1" stroke="currentColor" strokeWidth="2" />
-      <rect x="4" y="10" width="16" height="5" rx="1" stroke="currentColor" strokeWidth="2" />
-      <rect x="4" y="17" width="16" height="4" rx="1" stroke="currentColor" strokeWidth="2" />
-    </svg>
-  );
-}
-
 function MinusIcon() {
   return (
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden>
@@ -1010,8 +978,6 @@ export function DocListPage({
   const [error, setError] = useState<string | null>(null);
   const deleteInFlight = useRef(false);
   const [pickerOpen, setPickerOpen] = useState(false);
-  const [libraryMode, setLibraryMode] = useState<LibraryMode>('library');
-  const [templatePreviewId, setTemplatePreviewId] = useState<string | null>(null);
   const [blankWizardOpen, setBlankWizardOpen] = useState(false);
   const [search, setSearch] = useState('');
   const [pins, setPins] = useState(() => loadPinnedCategoryIds(session.pnIdentifier));
@@ -1054,9 +1020,8 @@ export function DocListPage({
   useEffect(() => {
     const id = new URLSearchParams(window.location.search).get('template');
     if (!id) return;
-    setLibraryMode('templates');
-    setTemplatePreviewId(id);
-  }, []);
+    navigate(`/templates?template=${encodeURIComponent(id)}`);
+  }, [navigate]);
 
   useEffect(() => {
     const onPrefs = () => {
@@ -1182,15 +1147,14 @@ export function DocListPage({
   }
 
   function openTemplatesView() {
-    setLibraryMode('templates');
     setPickerOpen(false);
     setBulkDeleteMode(false);
+    navigate('/templates');
   }
 
   function openMyTemplatesNotebook() {
     const nb = ensureMyTemplatesNotebook(session.pnIdentifier);
     setFolderTick((n) => n + 1);
-    setLibraryMode('library');
     setCurrentFolderId(nb.id);
     setExpandedNotebookIds((prev) => new Set(prev).add(nb.id));
     setPickerOpen(false);
@@ -1201,7 +1165,6 @@ export function DocListPage({
     if (!name?.trim()) return;
     createFolder(session.pnIdentifier, name.trim(), currentFolderId);
     setFolderTick((n) => n + 1);
-    setLibraryMode('library');
   }
 
   useEffect(() => {
@@ -1210,7 +1173,6 @@ export function DocListPage({
     else if (addIntent === 'templates') openTemplatesView();
     else if (addIntent === 'my-templates') openMyTemplatesNotebook();
     else if (addIntent === 'blank') {
-      setLibraryMode('library');
       setBlankWizardOpen(true);
     }
     onAddIntentConsumed?.();
@@ -1498,248 +1460,191 @@ export function DocListPage({
     return sortDocs([...nested, ...root], explorerSort);
   }, [docs, expandedNotebookIds, explorerSort]);
 
-  return (
-    <div className={`pen-library-page bg-white${browseDensity === 'feed' ? ' pen-feed-mode' : ''}`}>
-      <div className="pen-library-notebook flex-1">
-        <div className="pen-library-notebook-inner">
-          <div className="pen-explorer-rail" aria-hidden />
+  const libraryRailItems = useMemo(() => {
+    const ids = sortedDocs
+      .map((d) => resolveSummaryClassId(d))
+      .filter((id): id is string => Boolean(id));
+    return buildClassFeedRailItems(ids);
+  }, [sortedDocs]);
 
-          {libraryMode === 'templates' ? (
-            <TemplatesBrowse
+  const librarySubtitle = currentFolder ? (
+    <span className="flex flex-wrap items-center gap-1">
+      <button
+        type="button"
+        className="hover:underline"
+        onClick={() => setCurrentFolderId(null)}
+      >
+        My Library
+      </button>
+      <span aria-hidden>/</span>
+      <span className="font-medium text-black">{currentFolder.name}</span>
+    </span>
+  ) : (
+    'Open a file or start from a template.'
+  );
+
+  const trashTools =
+    docs.length > 0 || allFolders.length > 0 ? (
+      <div className="flex items-center justify-end gap-2">
+        {bulkDeleteMode && browseDensity !== 'feed' && (
+          <BulkInlineControls
+            visibleDocs={browseDensity === 'list' ? listVisibleDocs : sortedDocs}
+            selectedIds={selectedIds}
+            onSelectAll={() =>
+              selectAllVisible(browseDensity === 'list' ? listVisibleDocs : sortedDocs)
+            }
+            onDelete={confirmBulkDelete}
+          />
+        )}
+        <button
+          type="button"
+          title={bulkDeleteMode ? 'Cancel selection' : 'Select to delete'}
+          aria-label={bulkDeleteMode ? 'Cancel selection' : 'Select to delete'}
+          aria-pressed={bulkDeleteMode}
+          onClick={toggleBulkMode}
+          className={`inline-flex h-8 w-8 shrink-0 items-center justify-center border-0 bg-transparent outline-none ${
+            bulkDeleteMode ? 'text-black' : 'text-neutral-600 hover:text-black'
+          }`}
+        >
+          <MinusIcon />
+        </button>
+      </div>
+    ) : null;
+
+  return (
+    <>
+    <PenNotebookPage
+      density={browseDensity}
+      onDensity={setDensity}
+      title="My Library"
+      subtitle={librarySubtitle}
+      showDensityTools={docs.length > 0 || allFolders.length > 0}
+      toolsExtra={trashTools}
+    >
+      {docs.length === 0 && allFolders.length === 0 ? (
+        <div className="px-6 py-16 text-center">
+          <p className="text-neutral-500">No documents yet.</p>
+          <button
+            type="button"
+            className="mt-4 text-sm font-bold text-black underline"
+            onClick={openTemplatesView}
+          >
+            Browse templates
+          </button>
+        </div>
+      ) : browseDensity === 'feed' ? (
+        <DocFeedScroller
+          pn={session.pnIdentifier}
+          docs={sortedDocs}
+          session={session}
+          activeClassId={activeFeedClassId}
+          onActiveClassId={setActiveFeedClassId}
+          onOpenDoc={(docId) => navigate(`/d/${docId}`)}
+        />
+      ) : (
+        <>
+          <div className="pen-doc-feed-rail">
+            <ClassFeedRail
+              items={libraryRailItems}
+              activeId={activeFeedClassId}
+              onSelect={setActiveFeedClassId}
+            />
+          </div>
+          {browseDensity === 'gallery' ? (
+            <DocGalleryGrid
+              pn={session.pnIdentifier}
+              docs={sortedDocs.filter(
+                (d) =>
+                  activeFeedClassId === 'all' ||
+                  resolveSummaryClassId(d) === activeFeedClassId
+              )}
+              childFolders={childFolders}
+              personalTemplates={myPersonalTemplates}
+              moveFolders={moveFolderOptions}
+              bulkMode={bulkDeleteMode}
+              selectedIds={selectedIds}
+              onToggle={toggleDocSelection}
+              onCreateNew={openTemplatesView}
+              onOpenPersonalTemplate={(id) => void openPersonalTemplate(id)}
+              renamingId={renamingId}
+              renameDraft={renameDraft}
+              onRenameDraft={setRenameDraft}
+              onStartRename={startRename}
+              onCommitRename={commitRename}
+              onCancelRename={cancelRename}
+              onMoveDoc={handleMoveDoc}
+              onDeleteDoc={handleDeleteDoc}
+              onOpenFolder={setCurrentFolderId}
+              onRenameFolder={handleRenameFolder}
+              onDeleteFolder={handleDeleteFolder}
               session={session}
-              density={browseDensity}
-              onDensity={setDensity}
-              initialPreviewId={templatePreviewId}
-              onBack={() => {
-                setTemplatePreviewId(null);
-                setLibraryMode('library');
-              }}
-              onCreated={(docId) => {
-                onDocsChange();
-                navigate(`/d/${docId}`);
-              }}
-              onSaved={() => {
-                setFolderTick((n) => n + 1);
-                onDocsChange();
-              }}
+            />
+          ) : currentFolderId ? (
+            <DocExplorerTable
+              pn={session.pnIdentifier}
+              docs={folderDocs.filter(
+                (d) =>
+                  activeFeedClassId === 'all' ||
+                  resolveSummaryClassId(d) === activeFeedClassId
+              )}
+              notebooks={[]}
+              personalTemplates={myPersonalTemplates}
+              moveFolders={moveFolderOptions}
+              sort={explorerSort}
+              onSort={cycleExplorerSort}
+              bulkMode={bulkDeleteMode}
+              selectedIds={selectedIds}
+              onToggle={toggleDocSelection}
+              renamingId={renamingId}
+              renameDraft={renameDraft}
+              onRenameDraft={setRenameDraft}
+              onStartRename={startRename}
+              onCommitRename={commitRename}
+              onCancelRename={cancelRename}
+              onMoveDoc={handleMoveDoc}
+              onDeleteDoc={handleDeleteDoc}
+              expandedNotebookIds={expandedNotebookIds}
+              onToggleNotebook={toggleNotebookExpand}
+              onRenameNotebook={handleRenameFolder}
+              onDeleteNotebook={handleDeleteFolder}
+              onOpenDoc={(docId) => navigate(`/d/${docId}`)}
+              onOpenPersonalTemplate={(id) => void openPersonalTemplate(id)}
             />
           ) : (
-            <>
-          <div className="pen-library-heading">
-            <div className="min-w-0 flex-1">
-              <h1 className="text-lg font-bold text-black">My Library</h1>
-              <p className="text-sm text-neutral-500">
-                {currentFolder ? (
-                  <span className="flex flex-wrap items-center gap-1">
-                    <button
-                      type="button"
-                      className="hover:underline"
-                      onClick={() => setCurrentFolderId(null)}
-                    >
-                      My Library
-                    </button>
-                    <span aria-hidden>/</span>
-                    <span className="font-medium text-black">{currentFolder.name}</span>
-                  </span>
-                ) : (
-                  'Open a file or start from a template.'
-                )}
-              </p>
-            </div>
-            {(docs.length > 0 || allFolders.length > 0) && (
-              <div className="pen-library-heading-tools">
-                <div
-                  className="flex items-center justify-end gap-0"
-                  role="group"
-                  aria-label="Browse density"
-                >
-                  <button
-                    type="button"
-                    title="List"
-                    aria-label="List view"
-                    aria-pressed={browseDensity === 'list'}
-                    onClick={() => setDensity('list')}
-                    className={`inline-flex h-8 w-8 items-center justify-center ${
-                      browseDensity === 'list'
-                        ? 'text-black'
-                        : 'text-neutral-600 hover:text-neutral-800'
-                    }`}
-                  >
-                    <ListIcon />
-                  </button>
-                  <button
-                    type="button"
-                    title="Gallery"
-                    aria-label="Gallery view"
-                    aria-pressed={browseDensity === 'gallery'}
-                    onClick={() => setDensity('gallery')}
-                    className={`inline-flex h-8 w-8 items-center justify-center ${
-                      browseDensity === 'gallery'
-                        ? 'text-black'
-                        : 'text-neutral-600 hover:text-neutral-800'
-                    }`}
-                  >
-                    <GalleryIcon />
-                  </button>
-                  <button
-                    type="button"
-                    title="Feed"
-                    aria-label="Feed view"
-                    aria-pressed={browseDensity === 'feed'}
-                    onClick={() => setDensity('feed')}
-                    className={`inline-flex h-8 w-8 items-center justify-center ${
-                      browseDensity === 'feed'
-                        ? 'text-black'
-                        : 'text-neutral-600 hover:text-neutral-800'
-                    }`}
-                  >
-                    <FeedIcon />
-                  </button>
-                </div>
-                <div className="flex items-center justify-end gap-2">
-                  {bulkDeleteMode && browseDensity !== 'feed' && (
-                    <BulkInlineControls
-                      visibleDocs={browseDensity === 'list' ? listVisibleDocs : sortedDocs}
-                      selectedIds={selectedIds}
-                      onSelectAll={() =>
-                        selectAllVisible(
-                          browseDensity === 'list' ? listVisibleDocs : sortedDocs
-                        )
-                      }
-                      onDelete={confirmBulkDelete}
-                    />
-                  )}
-                  <button
-                    type="button"
-                    title={bulkDeleteMode ? 'Cancel selection' : 'Select to delete'}
-                    aria-label={bulkDeleteMode ? 'Cancel selection' : 'Select to delete'}
-                    aria-pressed={bulkDeleteMode}
-                    onClick={toggleBulkMode}
-                    className={`inline-flex h-8 w-8 shrink-0 items-center justify-center border-0 bg-transparent outline-none ${
-                      bulkDeleteMode
-                        ? 'text-black'
-                        : 'text-neutral-600 hover:text-black'
-                    }`}
-                  >
-                    <MinusIcon />
-                  </button>
-                </div>
-              </div>
-            )}
-          </div>
-
-          {docs.length === 0 && allFolders.length === 0 ? (
-            <div className="pen-library-body px-6 py-16 text-center">
-              <p className="text-neutral-500">No documents yet.</p>
-              <button
-                type="button"
-                className="mt-4 text-sm font-bold text-black underline"
-                onClick={openTemplatesView}
-              >
-                Browse templates
-              </button>
-            </div>
-          ) : (
-            <div className="pen-library-body">
-              <div className="pen-library-sheet">
-              {browseDensity === 'feed' ? (
-                <DocFeedScroller
-                  pn={session.pnIdentifier}
-                  docs={sortedDocs}
-                  session={session}
-                  activeClassId={activeFeedClassId}
-                  onActiveClassId={setActiveFeedClassId}
-                  onOpenDoc={(docId) => navigate(`/d/${docId}`)}
-                />
-              ) : browseDensity === 'gallery' ? (
-                <DocGalleryGrid
-                  pn={session.pnIdentifier}
-                  docs={sortedDocs}
-                  childFolders={childFolders}
-                  personalTemplates={myPersonalTemplates}
-                  moveFolders={moveFolderOptions}
-                  bulkMode={bulkDeleteMode}
-                  selectedIds={selectedIds}
-                  onToggle={toggleDocSelection}
-                  onCreateNew={openTemplatesView}
-                  onOpenPersonalTemplate={(id) => void openPersonalTemplate(id)}
-                  renamingId={renamingId}
-                  renameDraft={renameDraft}
-                  onRenameDraft={setRenameDraft}
-                  onStartRename={startRename}
-                  onCommitRename={commitRename}
-                  onCancelRename={cancelRename}
-                  onMoveDoc={handleMoveDoc}
-                  onDeleteDoc={handleDeleteDoc}
-                  onOpenFolder={setCurrentFolderId}
-                  onRenameFolder={handleRenameFolder}
-                  onDeleteFolder={handleDeleteFolder}
-                  session={session}
-                />
-              ) : currentFolderId ? (
-                <DocExplorerTable
-                  pn={session.pnIdentifier}
-                  docs={folderDocs}
-                  notebooks={[]}
-                  personalTemplates={myPersonalTemplates}
-                  moveFolders={moveFolderOptions}
-                  sort={explorerSort}
-                  onSort={cycleExplorerSort}
-                  bulkMode={bulkDeleteMode}
-                  selectedIds={selectedIds}
-                  onToggle={toggleDocSelection}
-                  renamingId={renamingId}
-                  renameDraft={renameDraft}
-                  onRenameDraft={setRenameDraft}
-                  onStartRename={startRename}
-                  onCommitRename={commitRename}
-                  onCancelRename={cancelRename}
-                  onMoveDoc={handleMoveDoc}
-                  onDeleteDoc={handleDeleteDoc}
-                  expandedNotebookIds={expandedNotebookIds}
-                  onToggleNotebook={toggleNotebookExpand}
-                  onRenameNotebook={handleRenameFolder}
-                  onDeleteNotebook={handleDeleteFolder}
-                  onOpenDoc={(docId) => navigate(`/d/${docId}`)}
-                  onOpenPersonalTemplate={(id) => void openPersonalTemplate(id)}
-                />
-              ) : (
-                <DocExplorerTable
-                  pn={session.pnIdentifier}
-                  docs={docs}
-                  notebooks={rootNotebooks}
-                  personalTemplatesByNotebook={personalTemplatesByNotebook}
-                  moveFolders={moveFolderOptions}
-                  sort={explorerSort}
-                  onSort={cycleExplorerSort}
-                  bulkMode={bulkDeleteMode}
-                  selectedIds={selectedIds}
-                  onToggle={toggleDocSelection}
-                  renamingId={renamingId}
-                  renameDraft={renameDraft}
-                  onRenameDraft={setRenameDraft}
-                  onStartRename={startRename}
-                  onCommitRename={commitRename}
-                  onCancelRename={cancelRename}
-                  onMoveDoc={handleMoveDoc}
-                  onDeleteDoc={handleDeleteDoc}
-                  expandedNotebookIds={expandedNotebookIds}
-                  onToggleNotebook={toggleNotebookExpand}
-                  onRenameNotebook={handleRenameFolder}
-                  onDeleteNotebook={handleDeleteFolder}
-                  onOpenDoc={(docId) => navigate(`/d/${docId}`)}
-                  onOpenPersonalTemplate={(id) => void openPersonalTemplate(id)}
-                />
+            <DocExplorerTable
+              pn={session.pnIdentifier}
+              docs={docs.filter(
+                (d) =>
+                  activeFeedClassId === 'all' ||
+                  resolveSummaryClassId(d) === activeFeedClassId
               )}
-              </div>
-            </div>
+              notebooks={rootNotebooks}
+              personalTemplatesByNotebook={personalTemplatesByNotebook}
+              moveFolders={moveFolderOptions}
+              sort={explorerSort}
+              onSort={cycleExplorerSort}
+              bulkMode={bulkDeleteMode}
+              selectedIds={selectedIds}
+              onToggle={toggleDocSelection}
+              renamingId={renamingId}
+              renameDraft={renameDraft}
+              onRenameDraft={setRenameDraft}
+              onStartRename={startRename}
+              onCommitRename={commitRename}
+              onCancelRename={cancelRename}
+              onMoveDoc={handleMoveDoc}
+              onDeleteDoc={handleDeleteDoc}
+              expandedNotebookIds={expandedNotebookIds}
+              onToggleNotebook={toggleNotebookExpand}
+              onRenameNotebook={handleRenameFolder}
+              onDeleteNotebook={handleDeleteFolder}
+              onOpenDoc={(docId) => navigate(`/d/${docId}`)}
+              onOpenPersonalTemplate={(id) => void openPersonalTemplate(id)}
+            />
           )}
-            </>
-          )}
-
-          <PenBrandingFooter />
-        </div>
-      </div>
+        </>
+      )}
+    </PenNotebookPage>
 
       {pickerOpen && (
         <div className="fixed inset-0 z-[60] flex items-end justify-center bg-black/30 p-4 sm:items-center">
@@ -2089,6 +1994,6 @@ export function DocListPage({
           }}
         />
       ) : null}
-    </div>
+    </>
   );
 }

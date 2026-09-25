@@ -1442,7 +1442,8 @@ button.pen-app-chrome-brand:hover {
   max-width: 11rem;
 }
 
-/* Continuous red double rule through the full notebook (header → footer) */
+/* Continuous red double rule through the full notebook (header → footer).
+ * Above sheet / feed paper (z-index 1) and footer (20) so the rail cannot be covered. */
 .pen-explorer-rail {
   position: absolute;
   top: 0;
@@ -1451,7 +1452,7 @@ button.pen-app-chrome-brand:hover {
   border-left: 1.5px solid #dc2626;
   border-right: 1.5px solid #dc2626;
   pointer-events: none;
-  z-index: 20;
+  z-index: 40;
   left: calc(var(--pen-edge-pad) + var(--pen-action-w));
 }
 

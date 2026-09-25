@@ -35,7 +35,7 @@ import { drainPenMailbox, clearPenMailboxSessionCache } from './services/penColl
 import { listLibraryCloud } from './services/penCloudStore';
 import { pendingSyncCount } from './services/penSyncQueue';
 import { PenLockedLanding } from './components/PenLockedLanding';
-import { PenBrandingFooter } from './components/PenBrandingFooter';
+import { PenNotebookPage } from './components/PenNotebookPage';
 import { TemplatesBrowse } from './components/TemplatesBrowse';
 import { loadBrowseDensity, saveBrowseDensity, type PenBrowseDensity } from './services/penClassPrefs';
 import { canPublishPublicTemplate } from './services/penVerified';
@@ -280,35 +280,30 @@ function Locked() {
           />
         </header>
         <div className="flex min-h-[calc(100vh-2.5rem)] flex-col pt-10">
-          <div
-            className={`pen-library-page bg-white${
-              templateDensity === 'feed' ? ' pen-feed-mode' : ''
-            }`}
+          <PenNotebookPage
+            density={templateDensity}
+            onDensity={(d) => {
+              setTemplateDensity(d);
+              saveBrowseDensity('_locked', d);
+            }}
+            title="Templates"
+            subtitle="Building blocks — note, audio, media, collection, set, projects. Feed is a view of this catalog."
+            onBack={() => {
+              setLockedView('home');
+              navigate('/');
+            }}
+            backLabel="Pen"
           >
-            <div className="pen-library-notebook flex-1">
-              <div className="pen-library-notebook-inner">
-                <div className="pen-explorer-rail" aria-hidden />
-                <TemplatesBrowse
-                  session={null}
-                  density={templateDensity}
-                  onDensity={(d) => {
-                    setTemplateDensity(d);
-                    saveBrowseDensity('_locked', d);
-                  }}
-                  initialPreviewId={
-                    new URLSearchParams(window.location.search).get('template') || null
-                  }
-                  onBack={() => {
-                    setLockedView('home');
-                    navigate('/');
-                  }}
-                  onCreated={(_docId) => undefined}
-                  onRequestUnlock={() => setLockedView('home')}
-                />
-                <PenBrandingFooter />
-              </div>
-            </div>
-          </div>
+            <TemplatesBrowse
+              session={null}
+              density={templateDensity}
+              initialPreviewId={
+                new URLSearchParams(window.location.search).get('template') || null
+              }
+              onCreated={(_docId) => undefined}
+              onRequestUnlock={() => setLockedView('home')}
+            />
+          </PenNotebookPage>
         </div>
       </div>
     );
@@ -618,35 +613,30 @@ function AuthenticatedApp({
           <Route
             path="/templates"
             element={
-              <div
-                className={`pen-library-page bg-white${
-                  templateDensity === 'feed' ? ' pen-feed-mode' : ''
-                }`}
+              <PenNotebookPage
+                density={templateDensity}
+                onDensity={(d) => {
+                  setTemplateDensity(d);
+                  saveBrowseDensity(session.pnIdentifier, d);
+                }}
+                title="Templates"
+                subtitle="Building blocks — note, audio, media, collection, set, projects. Feed is a view of this catalog."
+                onBack={() => navigate('/')}
+                backLabel="My Library"
               >
-                <div className="pen-library-notebook flex-1">
-                  <div className="pen-library-notebook-inner">
-                    <div className="pen-explorer-rail" aria-hidden />
-                    <TemplatesBrowse
-                      session={session}
-                      density={templateDensity}
-                      onDensity={(d) => {
-                        setTemplateDensity(d);
-                        saveBrowseDensity(session.pnIdentifier, d);
-                      }}
-                      initialPreviewId={
-                        new URLSearchParams(window.location.search).get('template') || null
-                      }
-                      onBack={() => navigate('/')}
-                      onCreated={(docId) => {
-                        void refreshDocs({ forceCloud: true });
-                        navigate(`/d/${docId}`);
-                      }}
-                      onSaved={() => void refreshDocs({ forceCloud: true })}
-                    />
-                    <PenBrandingFooter />
-                  </div>
-                </div>
-              </div>
+                <TemplatesBrowse
+                  session={session}
+                  density={templateDensity}
+                  initialPreviewId={
+                    new URLSearchParams(window.location.search).get('template') || null
+                  }
+                  onCreated={(docId) => {
+                    void refreshDocs({ forceCloud: true });
+                    navigate(`/d/${docId}`);
+                  }}
+                  onSaved={() => void refreshDocs({ forceCloud: true })}
+                />
+              </PenNotebookPage>
             }
           />
           <Route path="/d/:docId" element={<DocEditorRoute session={session} />} />

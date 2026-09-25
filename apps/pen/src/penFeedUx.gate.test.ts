@@ -1,7 +1,7 @@
 /**
- * Gate: Pen feed notebook-aligned rail + templates feed as catalog density.
- * Falsifies: fixed dark overlay rail; engagement used for library docs;
- * /templates not routing to TemplatesBrowse; missing USES / creator / Build.
+ * Gate: shared PenNotebookPage chrome for Library + Templates.
+ * Falsifies: dual page chrome; TemplatesBrowse owning density/footer;
+ * red rail under feed paper; /templates not using shared notebook.
  */
 import { readFileSync } from 'fs';
 import { resolve } from 'path';
@@ -21,30 +21,49 @@ describe('pen feed UX chrome', () => {
     expect(css).not.toMatch(
       /\.pen-library-page\.pen-feed-mode\s+\.pen-library-footer\s*\{[^}]*display:\s*none/
     );
-    // Feed rules paint on the feed shell (full width / to footer), not inset slides
     expect(css).toMatch(
       /\.pen-library-page\.pen-feed-mode\s+\.pen-doc-feed\s*\{[\s\S]*?repeating-linear-gradient/
     );
+    // Red margin rail must paint above sheet / feed paper
+    expect(css).toMatch(/\.pen-explorer-rail\s*\{[^}]*z-index:\s*40/);
+  });
+
+  it('PenNotebookPage is the single unlocked notebook chrome', () => {
+    const notebook = readFileSync(resolve(root, 'components/PenNotebookPage.tsx'), 'utf8');
+    const list = readFileSync(resolve(root, 'pages/DocListPage.tsx'), 'utf8');
+    const app = readFileSync(resolve(root, 'App.tsx'), 'utf8');
+    const templates = readFileSync(resolve(root, 'components/TemplatesBrowse.tsx'), 'utf8');
+    expect(notebook).toMatch(/pen-library-page/);
+    expect(notebook).toMatch(/pen-explorer-rail/);
+    expect(notebook).toMatch(/PenBrandingFooter/);
+    expect(notebook).toMatch(/Browse density/);
+    expect(list).toMatch(/PenNotebookPage/);
+    expect(app).toMatch(/PenNotebookPage/);
+    expect(app).toMatch(/path="\/templates"/);
+    expect(list).toMatch(/navigate\(['"]\/templates['"]\)/);
+    // Templates body must not own a second page chrome
+    expect(templates).not.toMatch(/pen-library-page/);
+    expect(templates).not.toMatch(/PenBrandingFooter/);
+    expect(templates).not.toMatch(/PenNotebookPage/);
+    expect(templates).not.toMatch(/aria-label="Browse density"/);
+    expect(templates).not.toMatch(/onDensity/);
   });
 
   it('shared branding footer is used outside the editor', () => {
     const footer = readFileSync(resolve(root, 'components/PenBrandingFooter.tsx'), 'utf8');
     const locked = readFileSync(resolve(root, 'components/PenLockedLanding.tsx'), 'utf8');
-    const list = readFileSync(resolve(root, 'pages/DocListPage.tsx'), 'utf8');
-    const app = readFileSync(resolve(root, 'App.tsx'), 'utf8');
+    const notebook = readFileSync(resolve(root, 'components/PenNotebookPage.tsx'), 'utf8');
     expect(footer).toMatch(/Par-Noir-Pen\.png/);
     expect(footer).toMatch(/pen-library-footer-logo/);
     expect(locked).toMatch(/PenBrandingFooter/);
-    expect(list).toMatch(/PenBrandingFooter/);
-    expect(app).toMatch(/PenBrandingFooter/);
-    expect(list).toMatch(/MinusIcon/);
-    expect(list).toMatch(/toggleBulkMode/);
-    // Trash/minus stays visible in feed (heading parity); bulk controls still list/gallery only
-    expect(list).not.toMatch(/\{browseDensity !== 'feed' && \(/);
+    expect(notebook).toMatch(/PenBrandingFooter/);
   });
 
-  it('DocFeedScroller never imports engagement client', () => {
+  it('DocListPage keeps trash; DocFeedScroller never imports engagement', () => {
+    const list = readFileSync(resolve(root, 'pages/DocListPage.tsx'), 'utf8');
     const src = readFileSync(resolve(root, 'components/DocFeedScroller.tsx'), 'utf8');
+    expect(list).toMatch(/MinusIcon/);
+    expect(list).toMatch(/toggleBulkMode/);
     expect(src).not.toMatch(/penEngagementClient|TemplateEngagementRail/);
     expect(src).toMatch(/SocialPhoneFrame/);
     expect(src).toMatch(/SnapFeedShell/);
@@ -68,11 +87,10 @@ describe('pen feed UX chrome', () => {
     expect(src).toMatch(/getTemplateUseCount/);
   });
 
-  it('TemplatesBrowse shares Social atom rail and modal Build', () => {
+  it('TemplatesBrowse is catalog body with Social rail and modal Build', () => {
     const src = readFileSync(resolve(root, 'components/TemplatesBrowse.tsx'), 'utf8');
     expect(src).toMatch(/buildSocialTemplateRailItems/);
     expect(src).toMatch(/TemplatesFeedScroller/);
-    expect(src).toMatch(/onDensity\('feed'\)/);
     expect(src).toMatch(/TemplateEngagementRail/);
     expect(src).toMatch(/pen-templates-gallery/);
     expect(src).not.toMatch(/navigate\(['"]\/templates['"]\)/);
