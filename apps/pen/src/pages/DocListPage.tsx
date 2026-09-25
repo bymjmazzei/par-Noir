@@ -78,6 +78,7 @@ const DEFAULT_EXPLORER_SORT: ExplorerSort = { key: 'updated', dir: 'desc' };
 
 /** Same crackle sheet as locked Pen branding (`Par-Noir-Pen.png`). */
 const LIBRARY_FOOTER_BG_SRC = './branding/Par-Noir-Pen.png';
+const LIBRARY_FOOTER_LOGO_SRC = './branding/Par-Noir-Logo-White.png';
 
 function isConsumerClass(c: PenClass): boolean {
   return !c.audience || c.audience === 'consumer';
@@ -1741,6 +1742,14 @@ export function DocListPage({
             className="pen-library-footer"
             style={{ backgroundImage: `url(${LIBRARY_FOOTER_BG_SRC})` }}
           >
+            <img
+              className="pen-library-footer-logo"
+              src={LIBRARY_FOOTER_LOGO_SRC}
+              alt="par Noir"
+              width={320}
+              height={96}
+              decoding="async"
+            />
             <p className="pen-library-footer-copy">© par Noir</p>
           </footer>
         </div>
