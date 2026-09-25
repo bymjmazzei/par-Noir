@@ -56,6 +56,7 @@ import {
   TemplateGalleryThumb
 } from '../components/TemplateGalleryThumb';
 import { TemplatesBrowse } from '../components/TemplatesBrowse';
+import { PenBrandingFooter } from '../components/PenBrandingFooter';
 import { DocFeedScroller } from '../components/DocFeedScroller';
 import { BlankDocWizard } from '../components/BlankDocWizard';
 import { createBlankDoc } from '../services/createBlankDoc';
@@ -75,10 +76,6 @@ type ExplorerSort = {
 };
 
 const DEFAULT_EXPLORER_SORT: ExplorerSort = { key: 'updated', dir: 'desc' };
-
-/** Same crackle sheet as locked Pen branding (`Par-Noir-Pen.png`). */
-const LIBRARY_FOOTER_BG_SRC = './branding/Par-Noir-Pen.png';
-const LIBRARY_FOOTER_LOGO_SRC = './branding/Par-Noir-Logo-White.png';
 
 function isConsumerClass(c: PenClass): boolean {
   return !c.audience || c.audience === 'consumer';
@@ -1278,6 +1275,10 @@ export function DocListPage({
   }
 
   function toggleBulkMode() {
+    if (browseDensity === 'feed') {
+      setBrowseDensity('list');
+      saveBrowseDensity(session.pnIdentifier, 'list');
+    }
     setBulkDeleteMode((prev) => {
       if (prev) setSelectedIds(new Set());
       return !prev;
@@ -1595,9 +1596,8 @@ export function DocListPage({
                     <FeedIcon />
                   </button>
                 </div>
-                {browseDensity !== 'feed' && (
                 <div className="flex items-center justify-end gap-2">
-                  {bulkDeleteMode && (
+                  {bulkDeleteMode && browseDensity !== 'feed' && (
                     <BulkInlineControls
                       visibleDocs={browseDensity === 'list' ? listVisibleDocs : sortedDocs}
                       selectedIds={selectedIds}
@@ -1624,7 +1624,6 @@ export function DocListPage({
                     <MinusIcon />
                   </button>
                 </div>
-                )}
               </div>
             )}
           </div>
@@ -1738,20 +1737,7 @@ export function DocListPage({
             </>
           )}
 
-          <footer
-            className="pen-library-footer"
-            style={{ backgroundImage: `url(${LIBRARY_FOOTER_BG_SRC})` }}
-          >
-            <img
-              className="pen-library-footer-logo"
-              src={LIBRARY_FOOTER_LOGO_SRC}
-              alt="par Noir"
-              width={320}
-              height={96}
-              decoding="async"
-            />
-            <p className="pen-library-footer-copy">© par Noir</p>
-          </footer>
+          <PenBrandingFooter />
         </div>
       </div>
 

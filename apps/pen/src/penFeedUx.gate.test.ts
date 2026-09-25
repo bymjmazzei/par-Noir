@@ -21,6 +21,26 @@ describe('pen feed UX chrome', () => {
     expect(css).not.toMatch(
       /\.pen-library-page\.pen-feed-mode\s+\.pen-library-footer\s*\{[^}]*display:\s*none/
     );
+    // Feed rules paint on the feed shell (full width / to footer), not inset slides
+    expect(css).toMatch(
+      /\.pen-library-page\.pen-feed-mode\s+\.pen-doc-feed\s*\{[\s\S]*?repeating-linear-gradient/
+    );
+  });
+
+  it('shared branding footer is used outside the editor', () => {
+    const footer = readFileSync(resolve(root, 'components/PenBrandingFooter.tsx'), 'utf8');
+    const locked = readFileSync(resolve(root, 'components/PenLockedLanding.tsx'), 'utf8');
+    const list = readFileSync(resolve(root, 'pages/DocListPage.tsx'), 'utf8');
+    const app = readFileSync(resolve(root, 'App.tsx'), 'utf8');
+    expect(footer).toMatch(/Par-Noir-Pen\.png/);
+    expect(footer).toMatch(/pen-library-footer-logo/);
+    expect(locked).toMatch(/PenBrandingFooter/);
+    expect(list).toMatch(/PenBrandingFooter/);
+    expect(app).toMatch(/PenBrandingFooter/);
+    expect(list).toMatch(/MinusIcon/);
+    expect(list).toMatch(/toggleBulkMode/);
+    // Trash/minus stays visible in feed (heading parity); bulk controls still list/gallery only
+    expect(list).not.toMatch(/\{browseDensity !== 'feed' && \(/);
   });
 
   it('DocFeedScroller never imports engagement client', () => {

@@ -6,6 +6,7 @@ import { useEffect, useRef, type ReactNode } from 'react';
 import { UnlockButton, type PnOAuthPopupResult } from '@par-noir/oauth-ui';
 import { API_ENDPOINT, PN_CLIENT_ID } from '../config/api';
 import { handoffHasSigningKeys } from '../services/penKeys';
+import { PenBrandingFooter } from './PenBrandingFooter';
 
 const CHECKLIST = [
   'Author anything',
@@ -14,13 +15,10 @@ const CHECKLIST = [
   'publish to your networks'
 ] as const;
 
-const LOGO_SRC = './branding/Par-Noir-Logo-White.png';
-/** Same crackle sheet as unlocked library footer. */
-const FOOTER_BG_SRC = './branding/Par-Noir-Pen.png';
-
 /**
- * One scale drives the whole locked sheet (rail, gutters, type, logo) —
- * not just the copy to the right of the red lines.
+ * One scale drives the locked sheet (rail, gutters, type) —
+ * not just the copy to the right of the red lines. Footer logo
+ * matches unlocked via shared PenBrandingFooter.
  *
  * Reference vmin ≈ 430px → scale 1. Also shrink so heading + 9 rule
  * slots + footer fit the page body. Fit math must use body height (and
@@ -226,22 +224,7 @@ export function PenLockedLanding({
                 </div>
               </div>
 
-              <footer
-                ref={footerRef}
-                className="pen-locked-footer"
-                style={{ backgroundImage: `url(${FOOTER_BG_SRC})` }}
-              >
-                <img
-                  ref={logoRef}
-                  className="pen-locked-logo"
-                  src={LOGO_SRC}
-                  alt="par Noir"
-                  width={320}
-                  height={96}
-                  decoding="async"
-                />
-                <p className="pen-locked-footer-copy">© par Noir</p>
-              </footer>
+              <PenBrandingFooter footerRef={footerRef} logoRef={logoRef} />
             </div>
           </div>
         </div>

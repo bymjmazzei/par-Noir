@@ -35,6 +35,7 @@ import { drainPenMailbox, clearPenMailboxSessionCache } from './services/penColl
 import { listLibraryCloud } from './services/penCloudStore';
 import { pendingSyncCount } from './services/penSyncQueue';
 import { PenLockedLanding } from './components/PenLockedLanding';
+import { PenBrandingFooter } from './components/PenBrandingFooter';
 import { TemplatesBrowse } from './components/TemplatesBrowse';
 import { loadBrowseDensity, saveBrowseDensity, type PenBrowseDensity } from './services/penClassPrefs';
 import { canPublishPublicTemplate } from './services/penVerified';
@@ -304,6 +305,7 @@ function Locked() {
                   onCreated={(_docId) => undefined}
                   onRequestUnlock={() => setLockedView('home')}
                 />
+                <PenBrandingFooter />
               </div>
             </div>
           </div>
@@ -641,6 +643,7 @@ function AuthenticatedApp({
                       }}
                       onSaved={() => void refreshDocs({ forceCloud: true })}
                     />
+                    <PenBrandingFooter />
                   </div>
                 </div>
               </div>

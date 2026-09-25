@@ -746,6 +746,23 @@ body {
   background: transparent;
 }
 
+/* Feed ruled paper: full sheet width + height down to the footer (same as gallery) */
+.pen-library-page.pen-feed-mode .pen-doc-feed {
+  align-self: stretch;
+  width: 100%;
+  min-height: calc(100vh - 2.5rem - 8rem);
+  background-color: #fff;
+  background-image: repeating-linear-gradient(
+    to bottom,
+    transparent 0,
+    transparent calc(var(--pen-rule-pitch) - 1px),
+    var(--pen-rule-blue) calc(var(--pen-rule-pitch) - 1px),
+    var(--pen-rule-blue) var(--pen-rule-pitch)
+  );
+  background-position: 0 var(--pen-explorer-head-h);
+  background-repeat: repeat-y;
+}
+
 /* Class rail sits on the gallery/list head band (first blue underline), right of red rail */
 .pen-doc-feed-rail {
   flex-shrink: 0;
@@ -866,13 +883,8 @@ body {
 }
 
 .pen-library-page.pen-feed-mode .pen-doc-feed-slide {
-  background-image: repeating-linear-gradient(
-    to bottom,
-    transparent 0,
-    transparent calc(var(--pen-rule-pitch) - 1px),
-    var(--pen-rule-blue) calc(var(--pen-rule-pitch) - 1px),
-    var(--pen-rule-blue) var(--pen-rule-pitch)
-  );
+  /* Rules live on .pen-doc-feed so they span the window and reach the footer */
+  background-image: none;
 }
 
 .pen-doc-feed-slide-stage {
@@ -2366,7 +2378,6 @@ input.pen-gallery-tile-title-text {
   --pen-locked-copy-size: calc(var(--pen-locked-rule-pitch) * 0.78);
   --pen-locked-title-size: calc(2rem * var(--pen-locked-scale));
   --pen-locked-subtitle-size: calc(0.875rem * var(--pen-locked-scale));
-  --pen-locked-logo-h: calc(6.7rem * var(--pen-locked-scale));
   /* Copy/title start after the rail (+ gap); sheet is full-bleed so no edge-pad in inset */
   --pen-locked-title-inset: calc(
     var(--pen-locked-rail-left) + var(--pen-locked-rail-w) + var(--pen-locked-rail-gap)
@@ -2583,47 +2594,11 @@ input.pen-gallery-tile-title-text {
   opacity: 0.75;
 }
 
-.pen-locked-footer {
-  flex-shrink: 0;
-  align-self: stretch;
+/* Locked home uses shared .pen-library-footer — cancel edge-pad bleed (locked has no pad) */
+.pen-locked-page .pen-library-footer {
+  margin-left: 0;
+  margin-right: 0;
   width: 100%;
-  box-sizing: border-box;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: calc(0.35rem * var(--pen-locked-scale));
-  padding: calc(1.1rem * var(--pen-locked-scale)) var(--pen-edge-pad)
-    calc(1.25rem * var(--pen-locked-scale));
-  margin: 0;
-  background-color: #0a0a0a;
-  background-size: 100% 100%;
-  background-position: center;
-  background-repeat: no-repeat;
-  border: none;
-  position: relative;
-  z-index: 30;
-}
-
-.pen-locked-logo {
-  display: block;
-  height: var(--pen-locked-logo-h);
-  width: auto;
-  max-width: min(calc(36rem * var(--pen-locked-scale)), 88vw);
-  object-fit: contain;
-  object-position: center;
-  clip-path: inset(12% 0 12% 0);
-  transform: scale(1.12);
-  transform-origin: center center;
-}
-
-.pen-locked-footer-copy {
-  margin: 0;
-  color: #f5f5f5;
-  font-size: calc(0.75rem * var(--pen-locked-scale));
-  font-weight: 500;
-  letter-spacing: 0.02em;
-  line-height: 1.2;
 }
 
 .pen-template-dir-heading,
