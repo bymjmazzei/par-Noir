@@ -1729,24 +1729,27 @@ button.pen-app-chrome-brand:hover {
 /*
  * Gallery: colhead matches list thead (same Y, same two lines).
  * Pitch lines come from .pen-library-sheet::after — do not redraw them here.
+ * Scrollport lives on the wrap (list uses .pen-explorer-scroll).
  */
 .pen-gallery-wrap {
   display: flex;
   flex-direction: column;
   flex: 1 1 auto;
   min-height: 0;
+  overflow: auto;
+  -webkit-overflow-scrolling: touch;
   background: transparent;
 }
 
 .pen-gallery {
   position: relative;
-  flex: 1 1 auto;
+  flex: 0 0 auto;
   align-self: stretch;
-  min-height: calc(100vh - 2.5rem - 8rem);
+  min-height: 100%;
   margin: 0;
   width: 100%;
   box-sizing: border-box;
-  padding: 0 var(--pen-edge-pad) 0;
+  padding: 0 var(--pen-edge-pad) 1.5rem;
   padding-left: calc(var(--pen-edge-pad) + var(--pen-name-inset));
   background: transparent;
   background-image: repeating-linear-gradient(
@@ -1943,7 +1946,24 @@ input.pen-gallery-tile-title-text {
   height: 100%;
   width: auto;
   max-width: 100%;
-  aspect-ratio: 9 / 16;
+  aspect-ratio: var(--pen-feed-aspect, 9 / 16);
+}
+
+/* Gallery thumbs: feed phone is height-driven inside fixed preview slot */
+.pen-gallery-tile-preview .pen-feed-phone.pen-gallery-phone {
+  height: 100%;
+  width: auto;
+  max-height: 100%;
+  max-width: 100%;
+  margin: 0 auto;
+}
+
+.pen-gallery-tile-preview .pen-feed-phone-poster > .pen-gallery-doc-page {
+  width: 100%;
+  height: auto;
+  max-height: 100%;
+  margin: auto;
+  flex-shrink: 0;
 }
 
 /* Phone bezel — gallery thumbs keep width-based sizing; feed phones override below */
@@ -2409,7 +2429,7 @@ input.pen-gallery-tile-title-text {
   max-width: min(100%, 26rem);
 }
 
-/* Templates gallery — square tiles + inset preview for widescreen social */
+/* Templates gallery — square tile slots; phone preview is 9:16 inside */
 .pen-templates-gallery {
   --pen-gallery-tile-w: calc(var(--pen-rule-pitch) * 4);
   --pen-gallery-tile-h: calc(var(--pen-rule-pitch) * 4);
@@ -2419,8 +2439,12 @@ input.pen-gallery-tile-title-text {
 }
 
 .pen-templates-gallery .pen-gallery-tile-preview {
-  padding: 0.4rem;
+  padding: 0.35rem;
   box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #f5f5f5;
 }
 
 .pen-templates-gallery .pen-gallery-tile-preview > * {

@@ -159,6 +159,16 @@ describe('pen feed UX chrome', () => {
     expect(stage).toMatch(/phoneActiveFeedId/);
   });
 
+  it('gallery wrap is the scrollport; thumbs use SocialPhoneFrame bevel', () => {
+    const css = readFileSync(resolve(root, 'index.css'), 'utf8');
+    const preview = readFileSync(resolve(root, 'components/DocGalleryPreview.tsx'), 'utf8');
+    expect(css).toMatch(
+      /\.pen-gallery-wrap\s*\{[\s\S]*?overflow:\s*auto/
+    );
+    expect(preview).toMatch(/SocialPhoneFrame/);
+    expect(preview).toMatch(/resolvePhoneFrameAspect/);
+  });
+
   it('modal phone is width-driven; list/gallery preview has prev/next', () => {
     const css = readFileSync(resolve(root, 'index.css'), 'utf8');
     const browse = readFileSync(resolve(root, 'components/TemplatesBrowse.tsx'), 'utf8');

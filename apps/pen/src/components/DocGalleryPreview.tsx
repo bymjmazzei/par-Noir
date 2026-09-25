@@ -15,6 +15,7 @@ import { useResolvedMediaSrc } from '../hooks/useResolvedMediaSrc';
 import { isPenMediaSrcRef } from '../services/penLocalMedia';
 import { resolveGalleryMedia } from '../services/penGalleryPreview';
 import type { PenSession } from '../services/penSession';
+import { SocialPhoneFrame } from './SocialPhoneFrame';
 
 function sectionMap(sections: PenSectionContent[]): Map<string, PenSectionContent> {
   return new Map(
@@ -109,23 +110,24 @@ export function resolveFeedTileAspect(
 
 function PhoneShell({
   children,
-  large
+  large,
+  aspectRatio = '9 / 16'
 }: {
   children: ReactNode;
   large?: boolean;
+  aspectRatio?: string;
 }) {
   return (
-    <div className={`pen-gallery-phone${large ? ' pen-gallery-phone--lg' : ''}`}>
-      <div className="pen-gallery-phone-bezel">
-        <div className="pen-gallery-phone-screen">{children}</div>
-      </div>
-    </div>
+    <SocialPhoneFrame large={large} aspectRatio={aspectRatio}>
+      {children}
+    </SocialPhoneFrame>
   );
 }
 
 /**
  * Library / template gallery thumb: doc page scaled to tile width, centered,
- * overflow clipped. Social templates sit in a phone bezel so dark screens stay edged.
+ * overflow clipped. Social templates sit in SocialPhoneFrame (same bevel as feed)
+ * with content letterboxed when square/landscape.
  */
 export function DocGalleryPreview({
   manifest,
@@ -151,12 +153,39 @@ export function DocGalleryPreview({
     manifest.pagePresentation || undefined
   );
   const social = categoryIdForClass(manifest.classId) === 'social';
+  // Content aspect may be 1/1 or 16/9; phone frame is separate.
+  const contentAspectCss = pageAspect(manifest) || (social ? '9 / 16' : undefined);
+  const phoneAspectCss = social
+    ? large
+      ? resolvePhoneFrameAspect(manifest)
+      : '9 / 16' /* gallery thumbs always portrait phone */
+    : '9 / 16';
 
-  const mediaFrameStyle =
-    large
+  /** Inside phone: letterbox by content aspect; outside: fill tile. */
+  const socialContentStyle: CSSProperties = social
+    ? {
+        width: '100%',
+        height: 'auto',
+        maxHeight: '100%',
+        aspectRatio: contentAspectCss || '9 / 16',
+        margin: 'auto',
+        position: 'relative'
+      }
+    : large
       ? {
-          aspectRatio: pageAspect(manifest) || (social ? '9 / 16' : undefined),
-          height: social && !manifest.galleryAspect ? '100%' : undefined,
+          aspectRatio: contentAspectCss,
+          height: undefined,
+          width: '100%',
+          position: 'relative'
+        }
+      : { width: '100%', height: '100%', position: 'relative' };
+
+  const mediaFrameStyle = social
+    ? socialContentStyle
+    : large
+      ? {
+          aspectRatio: contentAspectCss,
+          height: undefined,
           width: '100%',
           position: 'relative' as const
         }
@@ -223,14 +252,15 @@ export function DocGalleryPreview({
         className="pen-gallery-doc-page pen-gallery-doc-page--surface"
         style={{
           ...presentationSurface(pres, large ? 18 : 11),
-          /* Tile frame owns size; modal large keeps intrinsic page shape */
-          ...(large
-            ? {
-                aspectRatio: pageAspect(manifest) || (social ? '9 / 16' : undefined),
-                height: social && !manifest.galleryAspect ? '100%' : undefined,
-                width: '100%'
-              }
-            : { width: '100%', height: '100%' })
+          ...(social
+            ? socialContentStyle
+            : large
+              ? {
+                  aspectRatio: contentAspectCss,
+                  height: undefined,
+                  width: '100%'
+                }
+              : { width: '100%', height: '100%' })
         }}
       >
         <div className="line-clamp-[10] break-words leading-snug">{title}</div>
@@ -265,7 +295,7 @@ export function DocGalleryPreview({
 
   if (social) {
     return (
-      <PhoneShell large={large}>
+      <PhoneShell large={large} aspectRatio={phoneAspectCss}>
         {surface}
       </PhoneShell>
     );
