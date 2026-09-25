@@ -1,6 +1,6 @@
 /**
  * Browse-shaped engagement rail for Pen templates (catalog feed/modal) and overlay preview.
- * Aside/modal: live when fileId + unlocked; overlay: display-only chrome inside the phone.
+ * Aside/modal: live when fileId + unlocked; overlay: display-only chrome on the phone screen.
  * Count badges sit on the icon corner (FeedEngagementSidebar layout).
  */
 
@@ -89,7 +89,7 @@ export function TemplateEngagementRail({
   userPnIdentifier?: string | null;
   unlocked: boolean;
   readOnly?: boolean;
-  /** aside = outside phone (feed/modal); overlay = inside feed-tile preview. */
+  /** aside = outside phone (feed/modal); overlay = inside phone chrome. */
   placement?: 'aside' | 'overlay';
   buildSlot?: ReactNode;
 }) {
@@ -102,7 +102,7 @@ export function TemplateEngagementRail({
   });
   const [liked, setLiked] = useState(false);
   const [busy, setBusy] = useState(false);
-  const uses = getTemplateUseCount(userPnIdentifier, templateId);
+  const builds = getTemplateUseCount(userPnIdentifier, templateId);
 
   useEffect(() => {
     if (!fileId || placement === 'overlay') {
@@ -169,6 +169,7 @@ export function TemplateEngagementRail({
 
   return (
     <div className={rootClass} aria-hidden={placement === 'overlay' || !live ? true : undefined}>
+      {buildSlot ? <div className="pen-template-engagement-build-slot">{buildSlot}</div> : null}
       <div className="pen-template-engagement-creator" title={authorLabel}>
         <span className="pen-template-engagement-avatar">{creatorInitials(authorLabel)}</span>
       </div>
@@ -205,11 +206,10 @@ export function TemplateEngagementRail({
           <path d="M0,90.56c2.45-9.18,8.97-10.47,16.68-13.68C82.51,49.42,150.89,27.58,216.79.2c3.35-.69,7.2.32,7.08,4.26l-69.12,188.52c-4.53,6.91-14.09,7.87-21.04,4.25-20.64-14.84-41-30.05-61.77-44.72-.7-.5-1.69.21-1.23-1.72L207.08,15.94,52.13,137.23,4.07,102.91l-4.07-7.38v-4.98Z" />
         </svg>
       </StatIcon>
-      <div className="pen-template-engagement-uses">
-        <span className="pen-template-engagement-count">{formatCount(uses)}</span>
-        <span className="pen-template-engagement-uses-label">USES</span>
+      <div className="pen-template-engagement-builds">
+        <span className="pen-template-engagement-count">{formatCount(builds)}</span>
+        <span className="pen-template-engagement-builds-label">BUILDS</span>
       </div>
-      {buildSlot ? <div className="pen-template-engagement-build-slot">{buildSlot}</div> : null}
     </div>
   );
 }

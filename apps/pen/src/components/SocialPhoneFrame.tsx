@@ -4,10 +4,13 @@ import type { CSSProperties, ReactNode } from 'react';
 
 export function SocialPhoneFrame({
   children,
+  chrome,
   large,
   aspectRatio = '9 / 16'
 }: {
   children: ReactNode;
+  /** Browse chrome (rail / engagement / bottom nav) as sibling over the poster. */
+  chrome?: ReactNode;
   large?: boolean;
   /** CSS aspect-ratio value, e.g. "9 / 16" or "16 / 9". */
   aspectRatio?: string;
@@ -25,7 +28,10 @@ export function SocialPhoneFrame({
       style={style}
     >
       <div className="pen-gallery-phone-bezel">
-        <div className="pen-gallery-phone-screen pen-feed-phone-screen">{children}</div>
+        <div className="pen-gallery-phone-screen pen-feed-phone-screen">
+          <div className="pen-feed-phone-poster">{children}</div>
+          {chrome ? <div className="pen-feed-phone-chrome">{chrome}</div> : null}
+        </div>
       </div>
     </div>
   );

@@ -53,13 +53,19 @@ describe('pen feed UX chrome', () => {
     expect(css).toMatch(
       /\.pen-template-engagement-count\s*\{[\s\S]*?position:\s*absolute[\s\S]*?bottom:\s*-0\.25rem/
     );
-    // Overlay fills ~60% of phone height (not full-size scaled stack)
-    expect(css).toMatch(
+    // Overlay is phone-chrome sibling with browse metrics (not 60% tile-relative)
+    expect(css).not.toMatch(
       /\.pen-template-engagement-rail--overlay\s*\{[\s\S]*?(?:max-)?height:\s*60%/
     );
-    expect(css).not.toMatch(
-      /\.pen-template-engagement-rail--overlay\s*\{[^}]*transform:\s*scale\(0\.82\)/
+    expect(css).toMatch(
+      /\.pen-template-engagement-rail--overlay\s*\{[\s\S]*?right:\s*0\.5rem[\s\S]*?gap:\s*16px/
     );
+    expect(css).toMatch(
+      /\.pen-template-engagement-rail--overlay\s*\{[\s\S]*?bottom:\s*calc\(4rem \+ 40px/
+    );
+    expect(css).toMatch(/\.pen-feed-phone-chrome\s*\{/);
+    expect(css).toMatch(/\.pen-phone-feed-rail\s*\{[\s\S]*?height:\s*3rem/);
+    expect(css).toMatch(/\.pen-phone-bottom-nav\s*\{[\s\S]*?height:\s*4rem/);
     // Feed phones are height-driven (true 9:16)
     expect(css).toMatch(
       /\.pen-feed-phone\.pen-gallery-phone\s*\{[\s\S]*?height:\s*100%[\s\S]*?width:\s*auto/
@@ -112,10 +118,12 @@ describe('pen feed UX chrome', () => {
     expect(feed).toMatch(/publishedFileId/);
   });
 
-  it('Templates feed merges public fileIds; slide stage has live aside + overlay split', () => {
+  it('Templates feed merges public fileIds; slide stage has live aside + phone chrome overlay', () => {
     const scroller = readFileSync(resolve(root, 'components/TemplatesFeedScroller.tsx'), 'utf8');
     const browse = readFileSync(resolve(root, 'components/TemplatesBrowse.tsx'), 'utf8');
     const stage = readFileSync(resolve(root, 'components/PenFeedSlideStage.tsx'), 'utf8');
+    const phone = readFileSync(resolve(root, 'components/SocialPhoneFrame.tsx'), 'utf8');
+    const chrome = readFileSync(resolve(root, 'components/PenPhoneBrowseChrome.tsx'), 'utf8');
     expect(browse).toMatch(/fetchPublicPenTemplates/);
     expect(browse).toMatch(/buildTemplateFileIdMap/);
     expect(scroller).toMatch(/PenFeedSlideStage/);
@@ -126,22 +134,33 @@ describe('pen feed UX chrome', () => {
     expect(stage).toMatch(/placement="overlay"/);
     expect(stage).toMatch(/placement="aside"/);
     expect(stage).toMatch(/hideEngagementRail/);
-    expect(stage).toMatch(/engagementOverlay/);
+    expect(stage).not.toMatch(/engagementOverlay/);
+    expect(stage).toMatch(/PenPhoneBrowseChrome/);
+    expect(stage).toMatch(/chrome=/);
     expect(stage).toMatch(/DocGalleryPreview/);
     expect(stage).toMatch(/resolvePageAspect|resolveFeedTileAspect/);
     expect(stage).toMatch(/aspectRatio=/);
     expect(stage).toMatch(/pen-feed-page-slot/);
+    expect(phone).toMatch(/pen-feed-phone-chrome/);
+    expect(phone).toMatch(/pen-feed-phone-poster/);
+    expect(chrome).toMatch(/pen-phone-feed-rail/);
+    expect(chrome).toMatch(/pen-phone-bottom-nav/);
   });
 
   it('TemplateEngagementRail wires live mutations on aside when fileId present', () => {
     const src = readFileSync(resolve(root, 'components/TemplateEngagementRail.tsx'), 'utf8');
     expect(src).toMatch(/pen-template-engagement-creator|pen-template-engagement-avatar/);
-    expect(src).toMatch(/USES/);
+    expect(src).toMatch(/BUILDS/);
+    expect(src).not.toMatch(/USES/);
     expect(src).toMatch(/getTemplateUseCount/);
     expect(src).toMatch(/toggleLikePublic/);
     expect(src).toMatch(/recordSharePublic/);
     expect(src).toMatch(/placement === 'overlay'/);
     expect(src).toMatch(/pen-template-engagement-icon-wrap/);
+    // Build slot above engagement stack
+    expect(src).toMatch(
+      /buildSlot[\s\S]*?pen-template-engagement-build-slot[\s\S]*?pen-template-engagement-creator/
+    );
   });
 
   it('TemplatesBrowse is catalog body with Social rail and modal Build', () => {
@@ -149,9 +168,11 @@ describe('pen feed UX chrome', () => {
     expect(src).toMatch(/buildSocialTemplateRailItems/);
     expect(src).toMatch(/TemplatesFeedScroller/);
     expect(src).toMatch(/TemplateEngagementRail/);
+    expect(src).toMatch(/PenPhoneBrowseChrome/);
     expect(src).toMatch(/pen-templates-gallery/);
     expect(src).not.toMatch(/navigate\(['"]\/templates['"]\)/);
     expect(src).not.toMatch(/pen-template-use-btn/);
+    expect(src).not.toMatch(/engagementOverlay/);
   });
 
   it('SnapFeedShell always renders slides and pins height from ResizeObserver', () => {
@@ -165,12 +186,25 @@ describe('pen feed UX chrome', () => {
     expect(src).toMatch(/renderSlide\(i,\s*i === activeIndex\)/);
   });
 
-  it('DocEditorPage social live preview uses phone + in-preview engagement overlay', () => {
+  it('DocEditorPage social live preview uses phone chrome sibling overlay', () => {
     const src = readFileSync(resolve(root, 'pages/DocEditorPage.tsx'), 'utf8');
     expect(src).toMatch(/pen-social-live-preview/);
     expect(src).toMatch(/SocialPhoneFrame/);
-    expect(src).toMatch(/engagementOverlay/);
+    expect(src).toMatch(/PenPhoneBrowseChrome/);
     expect(src).toMatch(/placement="overlay"/);
+    expect(src).not.toMatch(/engagementOverlay/);
+  });
+
+  it('FeedTileSurface caption is browse title+caption without You avatar', () => {
+    const tile = readFileSync(
+      resolve(root, '../../../packages/feed-tile/src/FeedTileSurface.tsx'),
+      'utf8'
+    );
+    expect(tile).toMatch(/pen-feed-tile-caption/);
+    expect(tile).toMatch(/model\.title/);
+    expect(tile).toMatch(/model\.caption/);
+    expect(tile).not.toMatch(/>You</);
+    expect(tile).toMatch(/right-20/);
   });
 
   it('public templates feed is routed at /templates via TemplatesBrowse', () => {

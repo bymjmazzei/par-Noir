@@ -1,6 +1,6 @@
 /**
  * Shared Library / Templates feed slide chrome:
- * social → phone + display-only in-device overlay + live aside;
+ * social → phone + display-only in-device chrome (rail/engagement/nav) + live aside;
  * non-social → centered page preview at true format + live aside.
  */
 
@@ -8,12 +8,15 @@ import type { ReactNode } from 'react';
 import { categoryIdForClass } from '@par-noir/pen-protocol';
 import { SocialPhoneFrame } from './SocialPhoneFrame';
 import { TemplateEngagementRail } from './TemplateEngagementRail';
+import { PenPhoneBrowseChrome } from './PenPhoneBrowseChrome';
 import { BrowseFeedTilePreview } from './BrowseFeedTilePreview';
+import type { ClassFeedRailItem } from './ClassFeedRail';
 import {
   DocGalleryPreview,
   resolveFeedTileAspect,
   resolvePageAspect
 } from './DocGalleryPreview';
+import { buildSocialTemplateRailItems } from '../services/classFeedRailItems';
 import type { PenSession } from '../services/penSession';
 import type { PenDocManifest, PenSectionContent } from '@par-noir/pen-protocol';
 
@@ -26,7 +29,9 @@ export function PenFeedSlideStage({
   fileId,
   authorLabel,
   buildSlot,
-  onOpen
+  onOpen,
+  railItems,
+  activeRailId
 }: {
   classId?: string;
   manifest: PenDocManifest;
@@ -38,6 +43,9 @@ export function PenFeedSlideStage({
   buildSlot?: ReactNode;
   /** Library: open doc on preview click. Templates omit and use Build. */
   onOpen?: () => void;
+  /** In-phone display rail (defaults to Social template rail). */
+  railItems?: ClassFeedRailItem[];
+  activeRailId?: string;
 }) {
   const social = categoryIdForClass(classId || manifest.classId || '') === 'social';
   const unlocked = Boolean(session?.pnIdentifier);
@@ -45,6 +53,8 @@ export function PenFeedSlideStage({
   // One aspect SoT for phone frame + feed tile (must not diverge).
   const pageAspectCss = resolvePageAspect(manifest);
   const feedAspect = resolveFeedTileAspect(manifest);
+  const phoneRailItems = railItems ?? buildSocialTemplateRailItems();
+  const phoneActiveRailId = activeRailId ?? 'all';
 
   const overlay = (
     <TemplateEngagementRail
@@ -59,7 +69,17 @@ export function PenFeedSlideStage({
   );
 
   const preview = social ? (
-    <SocialPhoneFrame large aspectRatio={pageAspectCss}>
+    <SocialPhoneFrame
+      large
+      aspectRatio={pageAspectCss}
+      chrome={
+        <PenPhoneBrowseChrome
+          railItems={phoneRailItems}
+          activeRailId={phoneActiveRailId}
+          engagement={overlay}
+        />
+      }
+    >
       <BrowseFeedTilePreview
         manifest={manifest}
         sections={sections}
@@ -67,7 +87,6 @@ export function PenFeedSlideStage({
         compact
         session={session}
         hideEngagementRail
-        engagementOverlay={overlay}
         aspectRatio={feedAspect}
       />
     </SocialPhoneFrame>

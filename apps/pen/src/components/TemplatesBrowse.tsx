@@ -29,6 +29,7 @@ import { ClassFeedRail } from './ClassFeedRail';
 import { TemplatesFeedScroller } from './TemplatesFeedScroller';
 import { TemplateEngagementRail } from './TemplateEngagementRail';
 import { SocialPhoneFrame } from './SocialPhoneFrame';
+import { PenPhoneBrowseChrome } from './PenPhoneBrowseChrome';
 import { resolveFeedTileAspect, resolvePageAspect } from './DocGalleryPreview';
 import { fetchPublicPenTemplates } from '../services/penCentralIndex';
 import {
@@ -168,6 +169,8 @@ export function TemplatesBrowse({
           busy={busy}
           onBuild={(id) => void useTemplate(id)}
           fileIdByTemplateId={fileIdByTemplateId}
+          railItems={railItems}
+          activeRailId={activeClassId}
         />
       ) : (
         <>
@@ -281,6 +284,23 @@ export function TemplatesBrowse({
                   <SocialPhoneFrame
                     large
                     aspectRatio={resolvePageAspect(preview.manifest as never)}
+                    chrome={
+                      <PenPhoneBrowseChrome
+                        railItems={railItems}
+                        activeRailId={activeClassId}
+                        engagement={
+                          <TemplateEngagementRail
+                            templateId={previewId}
+                            fileId={null}
+                            authorLabel={preview.authorDisplayName}
+                            userPnIdentifier={session?.pnIdentifier}
+                            unlocked={Boolean(session?.pnIdentifier)}
+                            readOnly
+                            placement="overlay"
+                          />
+                        }
+                      />
+                    }
                   >
                     <BrowseFeedTilePreview
                       manifest={preview.manifest as never}
@@ -290,17 +310,6 @@ export function TemplatesBrowse({
                       session={session}
                       hideEngagementRail
                       aspectRatio={resolveFeedTileAspect(preview.manifest as never)}
-                      engagementOverlay={
-                        <TemplateEngagementRail
-                          templateId={previewId}
-                          fileId={null}
-                          authorLabel={preview.authorDisplayName}
-                          userPnIdentifier={session?.pnIdentifier}
-                          unlocked={Boolean(session?.pnIdentifier)}
-                          readOnly
-                          placement="overlay"
-                        />
-                      }
                     />
                   </SocialPhoneFrame>
                 ) : (

@@ -48,6 +48,8 @@ import { EditablePagePreview } from '../components/EditablePagePreview';
 import { BrowseFeedTilePreview } from '../components/BrowseFeedTilePreview';
 import { SocialPhoneFrame } from '../components/SocialPhoneFrame';
 import { TemplateEngagementRail } from '../components/TemplateEngagementRail';
+import { PenPhoneBrowseChrome } from '../components/PenPhoneBrowseChrome';
+import { buildSocialTemplateRailItems } from '../services/classFeedRailItems';
 import { MediaEditorPanel } from '../components/MediaEditorPanel';
 import { LayerPartsMenu } from '../components/LayerPartsMenu';
 import { PublishMenu, type PenAggregatorTarget } from '../components/PublishMenu';
@@ -1780,6 +1782,31 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
                             ? '1 / 1'
                             : '9 / 16'
                       }
+                      chrome={
+                        <PenPhoneBrowseChrome
+                          railItems={buildSocialTemplateRailItems()}
+                          activeRailId={bundle.manifest.classId || 'all'}
+                          engagement={
+                            <TemplateEngagementRail
+                              templateId={
+                                bundle.manifest.templateId ||
+                                bundle.manifest.basedOnTemplateId ||
+                                bundle.manifest.docId
+                              }
+                              fileId={null}
+                              authorLabel={(() => {
+                                const tid = bundle.manifest.templateId;
+                                const t = tid ? getTemplate(tid) : undefined;
+                                return t ? templateAuthorLabel(t) : 'You';
+                              })()}
+                              userPnIdentifier={session.pnIdentifier}
+                              unlocked
+                              readOnly
+                              placement="overlay"
+                            />
+                          }
+                        />
+                      }
                     >
                       <BrowseFeedTilePreview
                         manifest={bundle.manifest}
@@ -1787,31 +1814,13 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
                         session={session}
                         bare
                         compact
+                        hideEngagementRail
                         aspectRatio={
                           bundle.manifest.galleryAspect === '16/9'
                             ? '16/9'
                             : bundle.manifest.galleryAspect === '1/1'
                               ? '1/1'
                               : '9/16'
-                        }
-                        engagementOverlay={
-                          <TemplateEngagementRail
-                            templateId={
-                              bundle.manifest.templateId ||
-                              bundle.manifest.basedOnTemplateId ||
-                              bundle.manifest.docId
-                            }
-                            fileId={null}
-                            authorLabel={(() => {
-                              const tid = bundle.manifest.templateId;
-                              const t = tid ? getTemplate(tid) : undefined;
-                              return t ? templateAuthorLabel(t) : 'You';
-                            })()}
-                            userPnIdentifier={session.pnIdentifier}
-                            unlocked
-                            readOnly
-                            placement="overlay"
-                          />
                         }
                       />
                     </SocialPhoneFrame>

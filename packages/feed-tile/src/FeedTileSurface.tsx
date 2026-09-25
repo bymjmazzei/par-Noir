@@ -194,16 +194,12 @@ export function FeedTileSurface({
 
       {engagement}
 
-      <div className="pointer-events-none absolute bottom-4 left-3 right-16 z-20 text-white drop-shadow-md">
-        <div className="flex items-center gap-2">
-          <div className="flex h-8 w-8 items-center justify-center rounded-full bg-white/20 text-[11px] font-semibold backdrop-blur-sm">
-            You
-          </div>
-          <div className="min-w-0 text-[13px] font-semibold">You</div>
-        </div>
-        <p className="mt-2 line-clamp-3 text-[13px] leading-snug text-white/95">
-          {model.caption || model.title}
-        </p>
+      {/* Browse-shaped caption: title + caption only (no profile avatar row). */}
+      <div className="pen-feed-tile-caption pointer-events-none absolute bottom-4 left-0 right-20 z-20 p-4 text-white drop-shadow-md">
+        <h3 className="mb-1 line-clamp-1 text-base font-semibold">{model.title}</h3>
+        {model.caption ? (
+          <p className="line-clamp-2 text-sm leading-snug text-white/95">{model.caption}</p>
+        ) : null}
       </div>
     </div>
   );
