@@ -13,7 +13,7 @@ import { BrowseFeedTilePreview } from './BrowseFeedTilePreview';
 import {
   DocGalleryPreview,
   resolveFeedTileAspect,
-  resolvePageAspect
+  resolvePhoneFrameAspect
 } from './DocGalleryPreview';
 import type { PenSession } from '../services/penSession';
 import type { PenDocManifest, PenSectionContent } from '@par-noir/pen-protocol';
@@ -46,8 +46,8 @@ export function PenFeedSlideStage({
   const social = categoryIdForClass(classId || manifest.classId || '') === 'social';
   const unlocked = Boolean(session?.pnIdentifier);
   const live = Boolean(fileId) && unlocked;
-  // One aspect SoT for phone frame + feed tile (must not diverge).
-  const pageAspectCss = resolvePageAspect(manifest);
+  // Phone frame never 1:1; tile content may still be square (letterboxed).
+  const phoneAspectCss = resolvePhoneFrameAspect(manifest);
   const feedAspect = resolveFeedTileAspect(manifest);
 
   const overlay = (
@@ -65,7 +65,7 @@ export function PenFeedSlideStage({
   const preview = social ? (
     <SocialPhoneFrame
       large
-      aspectRatio={pageAspectCss}
+      aspectRatio={phoneAspectCss}
       chrome={
         <PenPhoneBrowseChrome activeFeedId={phoneActiveFeedId} engagement={overlay} />
       }

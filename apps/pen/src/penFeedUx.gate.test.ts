@@ -10,7 +10,8 @@ import { buildTemplateFileIdMap } from './services/templateEngagementFileId';
 import { libraryDocMatchesRailSelection } from './services/classFeedRailItems';
 import {
   resolveFeedTileAspect,
-  resolvePageAspect
+  resolvePageAspect,
+  resolvePhoneFrameAspect
 } from './components/DocGalleryPreview';
 import type { PenDocManifest } from '@par-noir/pen-protocol';
 
@@ -140,7 +141,8 @@ describe('pen feed UX chrome', () => {
     expect(stage).toMatch(/PenPhoneBrowseChrome/);
     expect(stage).toMatch(/chrome=/);
     expect(stage).toMatch(/DocGalleryPreview/);
-    expect(stage).toMatch(/resolvePageAspect|resolveFeedTileAspect/);
+    expect(stage).toMatch(/resolvePhoneFrameAspect/);
+    expect(stage).toMatch(/resolveFeedTileAspect/);
     expect(stage).toMatch(/aspectRatio=/);
     expect(stage).toMatch(/pen-feed-page-slot/);
     expect(phone).toMatch(/pen-feed-phone-chrome/);
@@ -155,6 +157,22 @@ describe('pen feed UX chrome', () => {
     expect(chrome).not.toMatch(/ClassFeedRailItem|railItems/);
     expect(scroller).toMatch(/phoneActiveFeedId="pen-templates"/);
     expect(stage).toMatch(/phoneActiveFeedId/);
+  });
+
+  it('modal phone is width-driven; list/gallery preview has prev/next', () => {
+    const css = readFileSync(resolve(root, 'index.css'), 'utf8');
+    const browse = readFileSync(resolve(root, 'components/TemplatesBrowse.tsx'), 'utf8');
+    expect(css).toMatch(
+      /\.pen-template-preview-modal-body\s+\.pen-feed-phone\.pen-gallery-phone--lg\s*\{[\s\S]*?max-height:\s*min\(70vh/
+    );
+    expect(css).toMatch(/\.pen-template-preview-nav--prev/);
+    expect(css).toMatch(/\.pen-template-preview-nav--next/);
+    expect(browse).toMatch(/goPreviewRelative/);
+    expect(browse).toMatch(/ArrowLeft/);
+    expect(browse).toMatch(/ArrowRight/);
+    expect(browse).toMatch(/resolvePhoneFrameAspect/);
+    expect(browse).toMatch(/Previous template/);
+    expect(browse).toMatch(/Next template/);
   });
 
   it('TemplateEngagementRail wires live mutations on aside when fileId present', () => {
@@ -301,11 +319,16 @@ describe('resolvePageAspect social SoT', () => {
     expect(resolveFeedTileAspect({ ...base, classId: 'social.note' })).toBe('9/16');
   });
 
-  it('honors galleryAspect and keeps phone/tile in sync', () => {
+  it('honors galleryAspect for tile content; phone frame never 1/1', () => {
     expect(resolvePageAspect({ ...base, galleryAspect: '16/9' })).toBe('16 / 9');
     expect(resolveFeedTileAspect({ ...base, galleryAspect: '16/9' })).toBe('16/9');
     expect(resolvePageAspect({ ...base, galleryAspect: '1/1' })).toBe('1 / 1');
     expect(resolveFeedTileAspect({ ...base, galleryAspect: '1/1' })).toBe('1/1');
+    // Phone device stays portrait when content is square
+    expect(resolvePhoneFrameAspect({ ...base, galleryAspect: '1/1' })).toBe('9 / 16');
+    expect(resolvePhoneFrameAspect({ ...base, galleryAspect: '9/16' })).toBe('9 / 16');
+    expect(resolvePhoneFrameAspect({ ...base, galleryAspect: '16/9' })).toBe('16 / 9');
+    expect(resolvePhoneFrameAspect({ ...base, classId: 'social.note' })).toBe('9 / 16');
   });
 
   it('non-social without layout stays 3/4', () => {

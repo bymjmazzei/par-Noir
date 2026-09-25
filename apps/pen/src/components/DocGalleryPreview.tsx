@@ -81,6 +81,19 @@ export function resolvePageAspect(manifest: PenDocManifest): string {
   return pageAspect(manifest) || '3 / 4';
 }
 
+/**
+ * Phone *device* aspect for SocialPhoneFrame — never 1:1 (no square phones).
+ * Landscape social → 16/9; all other social (incl. square content) → 9/16.
+ * Non-social falls through to resolvePageAspect for page previews.
+ */
+export function resolvePhoneFrameAspect(manifest: PenDocManifest): string {
+  if (categoryIdForClass(manifest.classId || '') === 'social') {
+    if (manifest.galleryAspect === '16/9') return '16 / 9';
+    return '9 / 16';
+  }
+  return resolvePageAspect(manifest);
+}
+
 /** Same SoT as resolvePageAspect, mapped for FeedTileSurface tokens. */
 export function resolveFeedTileAspect(
   manifest: PenDocManifest

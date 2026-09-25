@@ -49,6 +49,10 @@ import { BrowseFeedTilePreview } from '../components/BrowseFeedTilePreview';
 import { SocialPhoneFrame } from '../components/SocialPhoneFrame';
 import { TemplateEngagementRail } from '../components/TemplateEngagementRail';
 import { PenPhoneBrowseChrome } from '../components/PenPhoneBrowseChrome';
+import {
+  resolveFeedTileAspect,
+  resolvePhoneFrameAspect
+} from '../components/DocGalleryPreview';
 import { MediaEditorPanel } from '../components/MediaEditorPanel';
 import { LayerPartsMenu } from '../components/LayerPartsMenu';
 import { PublishMenu, type PenAggregatorTarget } from '../components/PublishMenu';
@@ -1774,13 +1778,7 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
                   <div className="pen-social-live-preview-stage">
                     <SocialPhoneFrame
                       large
-                      aspectRatio={
-                        bundle.manifest.galleryAspect === '16/9'
-                          ? '16 / 9'
-                          : bundle.manifest.galleryAspect === '1/1'
-                            ? '1 / 1'
-                            : '9 / 16'
-                      }
+                      aspectRatio={resolvePhoneFrameAspect(bundle.manifest)}
                       chrome={
                         <PenPhoneBrowseChrome
                           activeFeedId="public"
@@ -1813,13 +1811,7 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
                         bare
                         compact
                         hideEngagementRail
-                        aspectRatio={
-                          bundle.manifest.galleryAspect === '16/9'
-                            ? '16/9'
-                            : bundle.manifest.galleryAspect === '1/1'
-                              ? '1/1'
-                              : '9/16'
-                        }
+                        aspectRatio={resolveFeedTileAspect(bundle.manifest)}
                       />
                     </SocialPhoneFrame>
                   </div>

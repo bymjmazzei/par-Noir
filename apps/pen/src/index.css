@@ -1030,12 +1030,26 @@ body {
   height: 100%;
   width: 100%;
   max-height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #000;
 }
 
 .pen-feed-phone-poster > * {
   height: 100%;
   width: 100%;
   max-height: 100%;
+}
+
+/* Square tile content letterboxed inside 9:16 phone */
+.pen-feed-phone-poster > .aspect-square,
+.pen-feed-phone-poster [class*='aspect-square'] {
+  width: 100%;
+  height: auto;
+  max-height: 100%;
+  margin: auto;
+  align-self: center;
 }
 
 /* Single text poster: keep body out of caption + bottom-nav band */
@@ -2181,10 +2195,40 @@ input.pen-gallery-tile-title-text {
   background: rgba(0, 0, 0, 0.45);
 }
 
+.pen-template-preview-nav {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 81;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.75rem;
+  height: 2.75rem;
+  border: 1px solid #d4d4d4;
+  border-radius: 999px;
+  background: #fff;
+  color: #171717;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.18);
+  cursor: pointer;
+}
+
+.pen-template-preview-nav:hover {
+  background: #f5f5f5;
+}
+
+.pen-template-preview-nav--prev {
+  left: max(0.75rem, calc(50% - 20rem));
+}
+
+.pen-template-preview-nav--next {
+  right: max(0.75rem, calc(50% - 20rem));
+}
+
 .pen-template-preview-modal {
   display: flex;
   flex-direction: column;
-  width: min(100%, 26rem);
+  width: min(100%, 34rem);
   max-height: min(92vh, 42rem);
   background: #fff;
   border: 1px solid #d4d4d4;
@@ -2224,7 +2268,10 @@ input.pen-gallery-tile-title-text {
   display: flex;
   align-items: center;
   justify-content: center;
+  flex: 1 1 auto;
   min-width: 0;
+  min-height: 0;
+  height: 100%;
   max-height: 100%;
 }
 
@@ -2243,7 +2290,7 @@ input.pen-gallery-tile-title-text {
   display: contents;
 }
 
-/* Modal phone: fit available body height; scroll inside screen for multi-page */
+/* Modal phone: width-driven with definite max-height (beats feed height:100% collapse) */
 .pen-template-preview-modal-body .pen-gallery-phone--lg {
   width: min(100%, 17rem);
   height: auto;
@@ -2254,9 +2301,20 @@ input.pen-gallery-tile-title-text {
   pointer-events: auto;
 }
 
-.pen-template-preview-modal-body .pen-gallery-phone--lg.pen-feed-phone--landscape {
+.pen-template-preview-modal-body .pen-feed-phone.pen-gallery-phone--lg {
+  width: min(100%, 17rem);
+  height: auto;
+  max-height: min(70vh, 32rem);
+  max-width: min(100%, 17rem);
+  aspect-ratio: var(--pen-feed-aspect, 9 / 16);
+  margin: 0 auto;
+}
+
+.pen-template-preview-modal-body .pen-gallery-phone--lg.pen-feed-phone--landscape,
+.pen-template-preview-modal-body .pen-feed-phone.pen-gallery-phone--lg.pen-feed-phone--landscape {
   width: min(100%, 28rem);
   max-width: min(100%, 28rem);
+  max-height: min(50vh, 22rem);
 }
 
 .pen-template-preview-modal-body .pen-gallery-phone-screen {

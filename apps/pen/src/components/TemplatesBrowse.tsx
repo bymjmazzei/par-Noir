@@ -2,7 +2,7 @@
  * Page chrome (heading, density tools, red rail, footer) is owned by the notebook shell.
  */
 
-import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import {
   categoryIdForClass,
   getClass,
@@ -30,7 +30,10 @@ import { TemplatesFeedScroller } from './TemplatesFeedScroller';
 import { TemplateEngagementRail } from './TemplateEngagementRail';
 import { SocialPhoneFrame } from './SocialPhoneFrame';
 import { PenPhoneBrowseChrome } from './PenPhoneBrowseChrome';
-import { resolveFeedTileAspect, resolvePageAspect } from './DocGalleryPreview';
+import {
+  resolveFeedTileAspect,
+  resolvePhoneFrameAspect
+} from './DocGalleryPreview';
 import { fetchPublicPenTemplates } from '../services/penCentralIndex';
 import {
   buildTemplateFileIdMap,
@@ -41,6 +44,20 @@ function CloseIcon() {
   return (
     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden>
       <path d="M6 6l12 12M18 6L6 18" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function ChevronIcon({ dir }: { dir: 'left' | 'right' }) {
+  return (
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden>
+      <path
+        d={dir === 'left' ? 'M15 6l-6 6 6 6' : 'M9 6l6 6-6 6'}
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
     </svg>
   );
 }
@@ -122,6 +139,38 @@ export function TemplatesBrowse({
     ? resolveTemplateEngagementFileId(previewId, fileIdByTemplateId)
     : null;
   const previewLive = Boolean(previewFileId) && Boolean(session?.pnIdentifier);
+
+  const previewIndex = useMemo(() => {
+    if (!previewId) return -1;
+    return filtered.findIndex((t) => t.id === previewId);
+  }, [filtered, previewId]);
+
+  const goPreviewRelative = useCallback(
+    (delta: number) => {
+      if (previewIndex < 0 || filtered.length === 0) return;
+      const next = previewIndex + delta;
+      if (next < 0 || next >= filtered.length) return;
+      setPreviewId(filtered[next]!.id);
+    },
+    [filtered, previewIndex]
+  );
+
+  useEffect(() => {
+    if (!previewId || density === 'feed') return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'ArrowLeft') {
+        e.preventDefault();
+        goPreviewRelative(-1);
+      } else if (e.key === 'ArrowRight') {
+        e.preventDefault();
+        goPreviewRelative(1);
+      } else if (e.key === 'Escape') {
+        setPreviewId(null);
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [previewId, density, goPreviewRelative]);
 
   async function useTemplate(templateId: string) {
     if (!session) {
@@ -249,6 +298,36 @@ export function TemplatesBrowse({
           role="presentation"
           onClick={() => setPreviewId(null)}
         >
+          {density !== 'feed' && previewIndex > 0 ? (
+            <button
+              type="button"
+              className="pen-template-preview-nav pen-template-preview-nav--prev"
+              aria-label="Previous template"
+              title="Previous"
+              onClick={(e) => {
+                e.stopPropagation();
+                goPreviewRelative(-1);
+              }}
+            >
+              <ChevronIcon dir="left" />
+            </button>
+          ) : null}
+          {density !== 'feed' &&
+          previewIndex >= 0 &&
+          previewIndex < filtered.length - 1 ? (
+            <button
+              type="button"
+              className="pen-template-preview-nav pen-template-preview-nav--next"
+              aria-label="Next template"
+              title="Next"
+              onClick={(e) => {
+                e.stopPropagation();
+                goPreviewRelative(1);
+              }}
+            >
+              <ChevronIcon dir="right" />
+            </button>
+          ) : null}
           <div
             className="pen-template-preview-modal"
             role="dialog"
@@ -281,7 +360,7 @@ export function TemplatesBrowse({
                 {previewIsSocial ? (
                   <SocialPhoneFrame
                     large
-                    aspectRatio={resolvePageAspect(preview.manifest as never)}
+                    aspectRatio={resolvePhoneFrameAspect(preview.manifest as never)}
                     chrome={
                       <PenPhoneBrowseChrome
                         activeFeedId="pen-templates"
