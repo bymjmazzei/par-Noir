@@ -15,7 +15,8 @@ const CHECKLIST = [
 ] as const;
 
 const LOGO_SRC = './branding/Par-Noir-Logo-White.png';
-const FOOTER_BG_SRC = './branding/Par-Noir-Background-Dark.png';
+/** Same crackle sheet as unlocked library footer. */
+const FOOTER_BG_SRC = './branding/Par-Noir-Pen.png';
 
 /**
  * One scale drives the whole locked sheet (rail, gutters, type, logo) —

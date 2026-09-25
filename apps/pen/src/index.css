@@ -641,6 +641,16 @@ body {
   padding: 0 var(--pen-edge-pad) 0;
 }
 
+/* Ruled paper + red rail — stops where the footer begins */
+.pen-library-main {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
 .pen-library-heading {
   display: flex;
   flex-wrap: wrap;
@@ -700,9 +710,17 @@ body {
   width: calc(100% + 2 * var(--pen-edge-pad));
   box-sizing: border-box;
   background-color: #fff;
+  /* Blue rules run the full paper height down to the footer */
+  background-image: repeating-linear-gradient(
+    to bottom,
+    transparent 0,
+    transparent calc(var(--pen-rule-pitch) - 1px),
+    var(--pen-rule-blue) calc(var(--pen-rule-pitch) - 1px),
+    var(--pen-rule-blue) var(--pen-rule-pitch)
+  );
+  background-position: 0 var(--pen-explorer-head-h);
+  background-repeat: repeat-y;
 }
-
-/* No sheet-level blue strokes — those sat under My Library / above NAME by mistake */
 
 .pen-library-sheet > * {
   position: relative;
@@ -736,10 +754,6 @@ body {
   overflow: hidden;
   display: flex;
   flex-direction: column;
-}
-
-.pen-library-page.pen-feed-mode .pen-library-footer {
-  display: none;
 }
 
 .pen-doc-feed {
@@ -818,7 +832,7 @@ body {
 .pen-doc-feed-viewport {
   position: relative;
   flex: 1 1 auto;
-  min-height: min(70vh, 36rem);
+  min-height: 0;
   margin: 0;
   padding: 0;
   padding-left: calc(var(--pen-edge-pad) + var(--pen-name-inset));
@@ -830,8 +844,8 @@ body {
 .pen-doc-feed-scroll {
   position: relative;
   height: 100%;
-  min-height: inherit;
-  max-height: calc(100dvh - 2.5rem - 10rem);
+  min-height: 0;
+  max-height: none;
   overflow-x: hidden;
   overflow-y: scroll;
   scroll-snap-type: y mandatory;
@@ -870,13 +884,8 @@ body {
 }
 
 .pen-library-page.pen-feed-mode .pen-doc-feed-slide {
-  background-image: repeating-linear-gradient(
-    to bottom,
-    transparent 0,
-    transparent calc(var(--pen-rule-pitch) - 1px),
-    var(--pen-rule-blue) calc(var(--pen-rule-pitch) - 1px),
-    var(--pen-rule-blue) var(--pen-rule-pitch)
-  );
+  /* Ruled paper comes from .pen-library-sheet so lines run to the footer */
+  background-image: none;
 }
 
 .pen-doc-feed-slide-stage {
@@ -1182,13 +1191,14 @@ body {
   align-items: center;
   justify-content: center;
   gap: 0.35rem;
-  margin-top: auto;
+  flex-shrink: 0;
+  margin-top: 0;
   /* Full window width — cancel notebook edge pad */
   margin-left: calc(-1 * var(--pen-edge-pad));
   margin-right: calc(-1 * var(--pen-edge-pad));
   width: calc(100% + 2 * var(--pen-edge-pad));
   box-sizing: border-box;
-  padding: 0.85rem var(--pen-edge-pad) 1rem;
+  padding: 1.1rem var(--pen-edge-pad) 1.25rem;
   background-color: #0a0a0a;
   background-size: 100% 100%;
   background-position: center;
@@ -1201,9 +1211,9 @@ body {
 
 .pen-library-footer-logo {
   display: block;
-  height: 2.75rem;
+  height: 5.5rem;
   width: auto;
-  max-width: min(18rem, 72vw);
+  max-width: min(36rem, 88vw);
   object-fit: contain;
   object-position: center;
   clip-path: inset(12% 0 12% 0);
@@ -1481,20 +1491,14 @@ button.pen-app-chrome-brand:hover {
   position: relative;
   flex: 1 1 auto;
   align-self: stretch;
-  min-height: calc(100vh - 2.5rem - 8rem);
+  min-height: 0;
   margin: 0;
   width: 100%;
   box-sizing: border-box;
   padding: 0 var(--pen-edge-pad) 0;
   padding-left: calc(var(--pen-edge-pad) + var(--pen-name-inset));
+  /* Sheet paints the ruled paper through to the footer */
   background: transparent;
-  background-image: repeating-linear-gradient(
-    to bottom,
-    transparent 0,
-    transparent calc(var(--pen-rule-pitch) - 1px),
-    var(--pen-rule-blue) calc(var(--pen-rule-pitch) - 1px),
-    var(--pen-rule-blue) var(--pen-rule-pitch)
-  );
 }
 
 .pen-gallery-tiles {
@@ -2370,7 +2374,7 @@ input.pen-gallery-tile-title-text {
   --pen-locked-copy-size: calc(var(--pen-locked-rule-pitch) * 0.78);
   --pen-locked-title-size: calc(2rem * var(--pen-locked-scale));
   --pen-locked-subtitle-size: calc(0.875rem * var(--pen-locked-scale));
-  --pen-locked-logo-h: calc(3.35rem * var(--pen-locked-scale));
+  --pen-locked-logo-h: calc(6.7rem * var(--pen-locked-scale));
   /* Copy/title start after the rail (+ gap); sheet is full-bleed so no edge-pad in inset */
   --pen-locked-title-inset: calc(
     var(--pen-locked-rail-left) + var(--pen-locked-rail-w) + var(--pen-locked-rail-gap)
@@ -2597,11 +2601,11 @@ input.pen-gallery-tile-title-text {
   align-items: center;
   justify-content: center;
   gap: calc(0.35rem * var(--pen-locked-scale));
-  padding: calc(0.85rem * var(--pen-locked-scale)) var(--pen-edge-pad)
-    calc(1rem * var(--pen-locked-scale));
+  padding: calc(1.1rem * var(--pen-locked-scale)) var(--pen-edge-pad)
+    calc(1.25rem * var(--pen-locked-scale));
   margin: 0;
   background-color: #0a0a0a;
-  background-size: cover;
+  background-size: 100% 100%;
   background-position: center;
   background-repeat: no-repeat;
   border: none;
@@ -2613,7 +2617,7 @@ input.pen-gallery-tile-title-text {
   display: block;
   height: var(--pen-locked-logo-h);
   width: auto;
-  max-width: min(calc(18rem * var(--pen-locked-scale)), 72vw);
+  max-width: min(calc(36rem * var(--pen-locked-scale)), 88vw);
   object-fit: contain;
   object-position: center;
   clip-path: inset(12% 0 12% 0);
