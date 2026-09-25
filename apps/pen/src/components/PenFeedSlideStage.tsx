@@ -1,20 +1,14 @@
 /**
  * Shared Library / Templates feed slide chrome:
- * social → phone + display-only in-device chrome (rail/engagement/nav) + live aside;
+ * social → same phone stack as gallery thumbs (bevel + browse chrome + tile) + live aside;
  * non-social → centered page preview at true format + live aside.
  */
 
 import type { ReactNode } from 'react';
 import { categoryIdForClass } from '@par-noir/pen-protocol';
-import { SocialPhoneFrame } from './SocialPhoneFrame';
 import { TemplateEngagementRail } from './TemplateEngagementRail';
-import { PenPhoneBrowseChrome } from './PenPhoneBrowseChrome';
-import { BrowseFeedTilePreview } from './BrowseFeedTilePreview';
-import {
-  DocGalleryPreview,
-  resolveFeedTileAspect,
-  resolvePhoneFrameAspect
-} from './DocGalleryPreview';
+import { SocialFeedPhonePreview } from './SocialFeedPhonePreview';
+import { DocGalleryPreview } from './DocGalleryPreview';
 import type { PenSession } from '../services/penSession';
 import type { PenDocManifest, PenSectionContent } from '@par-noir/pen-protocol';
 
@@ -46,40 +40,17 @@ export function PenFeedSlideStage({
   const social = categoryIdForClass(classId || manifest.classId || '') === 'social';
   const unlocked = Boolean(session?.pnIdentifier);
   const live = Boolean(fileId) && unlocked;
-  // Phone frame never 1:1; tile content may still be square (letterboxed).
-  const phoneAspectCss = resolvePhoneFrameAspect(manifest);
-  const feedAspect = resolveFeedTileAspect(manifest);
-
-  const overlay = (
-    <TemplateEngagementRail
-      templateId={templateId}
-      fileId={null}
-      authorLabel={authorLabel}
-      userPnIdentifier={session?.pnIdentifier}
-      unlocked={unlocked}
-      readOnly
-      placement="overlay"
-    />
-  );
 
   const preview = social ? (
-    <SocialPhoneFrame
+    <SocialFeedPhonePreview
       large
-      aspectRatio={phoneAspectCss}
-      chrome={
-        <PenPhoneBrowseChrome activeFeedId={phoneActiveFeedId} engagement={overlay} />
-      }
-    >
-      <BrowseFeedTilePreview
-        manifest={manifest}
-        sections={sections}
-        bare
-        compact
-        session={session}
-        hideEngagementRail
-        aspectRatio={feedAspect}
-      />
-    </SocialPhoneFrame>
+      manifest={manifest}
+      sections={sections}
+      session={session}
+      templateId={templateId}
+      authorLabel={authorLabel}
+      phoneActiveFeedId={phoneActiveFeedId}
+    />
   ) : (
     <div className="pen-feed-page-slot">
       <DocGalleryPreview

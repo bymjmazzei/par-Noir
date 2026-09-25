@@ -1,4 +1,4 @@
-import { type CSSProperties, type ReactNode } from 'react';
+import { type CSSProperties } from 'react';
 import { PenMediaPlayer } from '@par-noir/feed-tile';
 import {
   categoryIdForClass,
@@ -15,7 +15,6 @@ import { useResolvedMediaSrc } from '../hooks/useResolvedMediaSrc';
 import { isPenMediaSrcRef } from '../services/penLocalMedia';
 import { resolveGalleryMedia } from '../services/penGalleryPreview';
 import type { PenSession } from '../services/penSession';
-import { SocialPhoneFrame } from './SocialPhoneFrame';
 
 function sectionMap(sections: PenSectionContent[]): Map<string, PenSectionContent> {
   return new Map(
@@ -108,26 +107,9 @@ export function resolveFeedTileAspect(
   return '9/16';
 }
 
-function PhoneShell({
-  children,
-  large,
-  aspectRatio = '9 / 16'
-}: {
-  children: ReactNode;
-  large?: boolean;
-  aspectRatio?: string;
-}) {
-  return (
-    <SocialPhoneFrame large={large} aspectRatio={aspectRatio}>
-      {children}
-    </SocialPhoneFrame>
-  );
-}
-
 /**
- * Library / template gallery thumb: doc page scaled to tile width, centered,
- * overflow clipped. Social templates sit in SocialPhoneFrame (same bevel as feed)
- * with content letterboxed when square/landscape.
+ * Non-social gallery / modal page preview (paper, media, presentation).
+ * Social uses SocialFeedPhonePreview (same stack as feed).
  */
 export function DocGalleryPreview({
   manifest,
@@ -137,7 +119,7 @@ export function DocGalleryPreview({
 }: {
   manifest: PenDocManifest;
   sections: PenSectionContent[];
-  /** Larger phone for overlay modal. */
+  /** Larger page for overlay modal / feed slide. */
   large?: boolean;
   session?: PenSession | null;
 }) {
@@ -152,53 +134,21 @@ export function DocGalleryPreview({
     defaultPagePresentation(),
     manifest.pagePresentation || undefined
   );
-  const social = categoryIdForClass(manifest.classId) === 'social';
-  // Content aspect may be 1/1 or 16/9; phone frame is separate.
-  const contentAspectCss = pageAspect(manifest) || (social ? '9 / 16' : undefined);
-  const phoneAspectCss = social
-    ? large
-      ? resolvePhoneFrameAspect(manifest)
-      : '9 / 16' /* gallery thumbs always portrait phone */
-    : '9 / 16';
+  const aspectCss = pageAspect(manifest);
 
-  /** Inside phone: letterbox by content aspect; outside: fill tile. */
-  const socialContentStyle: CSSProperties = social
+  const frameStyle: CSSProperties = large
     ? {
+        aspectRatio: aspectCss,
         width: '100%',
-        height: 'auto',
-        maxHeight: '100%',
-        aspectRatio: contentAspectCss || '9 / 16',
-        margin: 'auto',
         position: 'relative'
       }
-    : large
-      ? {
-          aspectRatio: contentAspectCss,
-          height: undefined,
-          width: '100%',
-          position: 'relative'
-        }
-      : { width: '100%', height: '100%', position: 'relative' };
+    : { width: '100%', height: '100%', position: 'relative' };
 
-  const mediaFrameStyle = social
-    ? socialContentStyle
-    : large
-      ? {
-          aspectRatio: contentAspectCss,
-          height: undefined,
-          width: '100%',
-          position: 'relative' as const
-        }
-      : { width: '100%', height: '100%', position: 'relative' as const };
-
-  let surface: ReactNode;
   if (media) {
-    // Prefer committed composed galleryPreviewRef; else live layer media.
-    // Never put unresolved penmedia:/penlocal: into <img>/<video> src.
-    surface = (
+    return (
       <div
         className="pen-gallery-doc-page pen-gallery-doc-page--media-stack"
-        style={mediaFrameStyle}
+        style={frameStyle}
       >
         {resolved ? (
           media.kind === 'video' ? (
@@ -240,27 +190,22 @@ export function DocGalleryPreview({
         ) : null}
       </div>
     );
-  } else if (
-    social ||
+  }
+
+  if (
     manifest.docType === 'note' ||
     manifest.docType === 'post' ||
     manifest.docType === 'collection' ||
     Boolean(manifest.pagePresentation)
   ) {
-    surface = (
+    return (
       <div
         className="pen-gallery-doc-page pen-gallery-doc-page--surface"
         style={{
           ...presentationSurface(pres, large ? 18 : 11),
-          ...(social
-            ? socialContentStyle
-            : large
-              ? {
-                  aspectRatio: contentAspectCss,
-                  height: undefined,
-                  width: '100%'
-                }
-              : { width: '100%', height: '100%' })
+          ...(large
+            ? { aspectRatio: aspectCss, width: '100%' }
+            : { width: '100%', height: '100%' })
         }}
       >
         <div className="line-clamp-[10] break-words leading-snug">{title}</div>
@@ -272,34 +217,24 @@ export function DocGalleryPreview({
         ) : null}
       </div>
     );
-  } else {
-    surface = (
-      <div
-        className="pen-gallery-doc-page pen-gallery-doc-page--paper"
-        style={
-          large
-            ? { aspectRatio: pageAspect(manifest) }
-            : { width: '100%', height: '100%' }
-        }
-      >
-        <div className="pen-gallery-doc-paper-title">{title}</div>
-        {bodyHtml ? (
-          <div
-            className="pen-rich-html pen-gallery-doc-paper-body"
-            dangerouslySetInnerHTML={{ __html: bodyHtml }}
-          />
-        ) : null}
-      </div>
-    );
   }
 
-  if (social) {
-    return (
-      <PhoneShell large={large} aspectRatio={phoneAspectCss}>
-        {surface}
-      </PhoneShell>
-    );
-  }
-
-  return surface;
+  return (
+    <div
+      className="pen-gallery-doc-page pen-gallery-doc-page--paper"
+      style={
+        large
+          ? { aspectRatio: pageAspect(manifest) }
+          : { width: '100%', height: '100%' }
+      }
+    >
+      <div className="pen-gallery-doc-paper-title">{title}</div>
+      {bodyHtml ? (
+        <div
+          className="pen-rich-html pen-gallery-doc-paper-body"
+          dangerouslySetInnerHTML={{ __html: bodyHtml }}
+        />
+      ) : null}
+    </div>
+  );
 }

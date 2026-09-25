@@ -1,6 +1,7 @@
 /** Shared gallery preview for catalog / personal templates. */
 
 import {
+  categoryIdForClass,
   emptySection,
   getTemplate,
   requireTemplate,
@@ -12,6 +13,7 @@ import {
 } from '../services/penPersonalTemplates';
 import type { PenSession } from '../services/penSession';
 import { DocGalleryPreview } from './DocGalleryPreview';
+import { SocialFeedPhonePreview } from './SocialFeedPhonePreview';
 
 export function templatePreviewBundle(pn: string | undefined, templateId: string) {
   if (pn && isPersonalTemplateId(templateId)) {
@@ -72,15 +74,17 @@ export function templatePreviewBundle(pn: string | undefined, templateId: string
   };
 }
 
-/** Thumb for a starter or personal template id. */
+/** Thumb for a starter or personal template id — same phone stack as feed, scaled down. */
 export function TemplateGalleryThumb({
   pn,
   templateId,
-  session
+  session,
+  phoneActiveFeedId = 'pen-templates'
 }: {
   pn?: string;
   templateId: string;
   session?: PenSession | null;
+  phoneActiveFeedId?: 'discovery' | 'public' | 'media' | 'notes' | 'collections' | 'pen-templates';
 }) {
   const preview = templatePreviewBundle(pn, templateId);
   if (!preview) {
@@ -88,6 +92,21 @@ export function TemplateGalleryThumb({
       <span className="pen-gallery-tile-glyph text-[10px] text-neutral-500">—</span>
     );
   }
+
+  const social = categoryIdForClass(String(preview.manifest.classId || '')) === 'social';
+  if (social) {
+    return (
+      <SocialFeedPhonePreview
+        manifest={preview.manifest as never}
+        sections={preview.sections}
+        session={session}
+        templateId={templateId}
+        authorLabel={preview.authorDisplayName}
+        phoneActiveFeedId={phoneActiveFeedId}
+      />
+    );
+  }
+
   return (
     <DocGalleryPreview
       manifest={preview.manifest as never}

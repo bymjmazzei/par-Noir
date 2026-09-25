@@ -45,14 +45,7 @@ import {
 import type { PenSession } from '../services/penSession';
 import { FormatRibbon, PageCanvas } from '../components/PageCanvas';
 import { EditablePagePreview } from '../components/EditablePagePreview';
-import { BrowseFeedTilePreview } from '../components/BrowseFeedTilePreview';
-import { SocialPhoneFrame } from '../components/SocialPhoneFrame';
-import { TemplateEngagementRail } from '../components/TemplateEngagementRail';
-import { PenPhoneBrowseChrome } from '../components/PenPhoneBrowseChrome';
-import {
-  resolveFeedTileAspect,
-  resolvePhoneFrameAspect
-} from '../components/DocGalleryPreview';
+import { SocialFeedPhonePreview } from '../components/SocialFeedPhonePreview';
 import { MediaEditorPanel } from '../components/MediaEditorPanel';
 import { LayerPartsMenu } from '../components/LayerPartsMenu';
 import { PublishMenu, type PenAggregatorTarget } from '../components/PublishMenu';
@@ -1776,44 +1769,23 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
                 </div>
                 <div className="pen-social-live-preview min-h-0 flex-1">
                   <div className="pen-social-live-preview-stage">
-                    <SocialPhoneFrame
+                    <SocialFeedPhonePreview
                       large
-                      aspectRatio={resolvePhoneFrameAspect(bundle.manifest)}
-                      chrome={
-                        <PenPhoneBrowseChrome
-                          activeFeedId="public"
-                          engagement={
-                            <TemplateEngagementRail
-                              templateId={
-                                bundle.manifest.templateId ||
-                                bundle.manifest.basedOnTemplateId ||
-                                bundle.manifest.docId
-                              }
-                              fileId={null}
-                              authorLabel={(() => {
-                                const tid = bundle.manifest.templateId;
-                                const t = tid ? getTemplate(tid) : undefined;
-                                return t ? templateAuthorLabel(t) : 'You';
-                              })()}
-                              userPnIdentifier={session.pnIdentifier}
-                              unlocked
-                              readOnly
-                              placement="overlay"
-                            />
-                          }
-                        />
+                      manifest={bundle.manifest}
+                      sections={bundle.sections}
+                      session={session}
+                      templateId={
+                        bundle.manifest.templateId ||
+                        bundle.manifest.basedOnTemplateId ||
+                        bundle.manifest.docId
                       }
-                    >
-                      <BrowseFeedTilePreview
-                        manifest={bundle.manifest}
-                        sections={bundle.sections}
-                        session={session}
-                        bare
-                        compact
-                        hideEngagementRail
-                        aspectRatio={resolveFeedTileAspect(bundle.manifest)}
-                      />
-                    </SocialPhoneFrame>
+                      authorLabel={(() => {
+                        const tid = bundle.manifest.templateId;
+                        const t = tid ? getTemplate(tid) : undefined;
+                        return t ? templateAuthorLabel(t) : 'You';
+                      })()}
+                      phoneActiveFeedId="public"
+                    />
                   </div>
                 </div>
               </>

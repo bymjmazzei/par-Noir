@@ -10,7 +10,6 @@ import {
   type PenTemplate
 } from '@par-noir/pen-protocol';
 import type { PenSession } from '../App';
-import { BrowseFeedTilePreview } from './BrowseFeedTilePreview';
 import { DocGalleryPreview } from './DocGalleryPreview';
 import {
   TemplateGalleryThumb,
@@ -28,12 +27,7 @@ import {
 import { ClassFeedRail } from './ClassFeedRail';
 import { TemplatesFeedScroller } from './TemplatesFeedScroller';
 import { TemplateEngagementRail } from './TemplateEngagementRail';
-import { SocialPhoneFrame } from './SocialPhoneFrame';
-import { PenPhoneBrowseChrome } from './PenPhoneBrowseChrome';
-import {
-  resolveFeedTileAspect,
-  resolvePhoneFrameAspect
-} from './DocGalleryPreview';
+import { SocialFeedPhonePreview } from './SocialFeedPhonePreview';
 import { fetchPublicPenTemplates } from '../services/penCentralIndex';
 import {
   buildTemplateFileIdMap,
@@ -358,36 +352,15 @@ export function TemplatesBrowse({
             <div className="pen-template-preview-modal-body pen-template-preview-modal-body--with-rail">
               <div className="pen-template-preview-modal-stage">
                 {previewIsSocial ? (
-                  <SocialPhoneFrame
+                  <SocialFeedPhonePreview
                     large
-                    aspectRatio={resolvePhoneFrameAspect(preview.manifest as never)}
-                    chrome={
-                      <PenPhoneBrowseChrome
-                        activeFeedId="pen-templates"
-                        engagement={
-                          <TemplateEngagementRail
-                            templateId={previewId}
-                            fileId={null}
-                            authorLabel={preview.authorDisplayName}
-                            userPnIdentifier={session?.pnIdentifier}
-                            unlocked={Boolean(session?.pnIdentifier)}
-                            readOnly
-                            placement="overlay"
-                          />
-                        }
-                      />
-                    }
-                  >
-                    <BrowseFeedTilePreview
-                      manifest={preview.manifest as never}
-                      sections={preview.sections}
-                      bare
-                      compact
-                      session={session}
-                      hideEngagementRail
-                      aspectRatio={resolveFeedTileAspect(preview.manifest as never)}
-                    />
-                  </SocialPhoneFrame>
+                    manifest={preview.manifest as never}
+                    sections={preview.sections}
+                    session={session}
+                    templateId={previewId}
+                    authorLabel={preview.authorDisplayName}
+                    phoneActiveFeedId="pen-templates"
+                  />
                 ) : (
                   <DocGalleryPreview
                     manifest={preview.manifest as never}

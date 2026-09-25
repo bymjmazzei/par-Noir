@@ -1949,21 +1949,29 @@ input.pen-gallery-tile-title-text {
   aspect-ratio: var(--pen-feed-aspect, 9 / 16);
 }
 
-/* Gallery thumbs: feed phone is height-driven inside fixed preview slot */
+/* Gallery thumbs: same feed phone stack, height-driven inside fixed preview slot */
 .pen-gallery-tile-preview .pen-feed-phone.pen-gallery-phone {
   height: 100%;
   width: auto;
   max-height: 100%;
   max-width: 100%;
   margin: 0 auto;
+  pointer-events: none;
 }
 
-.pen-gallery-tile-preview .pen-feed-phone-poster > .pen-gallery-doc-page {
-  width: 100%;
+/* Landscape templates get a landscape bevel that fits the preview width */
+.pen-gallery-tile-preview .pen-feed-phone--landscape.pen-gallery-phone {
   height: auto;
+  width: 100%;
+  max-width: 100%;
   max-height: 100%;
-  margin: auto;
-  flex-shrink: 0;
+  aspect-ratio: 16 / 9;
+}
+
+.pen-gallery-tile-preview .pen-feed-phone-poster > .pen-gallery-doc-page,
+.pen-gallery-tile-preview .pen-feed-phone-poster > * {
+  max-width: 100%;
+  max-height: 100%;
 }
 
 /* Phone bezel — gallery thumbs keep width-based sizing; feed phones override below */

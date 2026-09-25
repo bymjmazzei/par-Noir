@@ -121,10 +121,11 @@ describe('pen feed UX chrome', () => {
     expect(feed).toMatch(/publishedFileId/);
   });
 
-  it('Templates feed merges public fileIds; slide stage has live aside + phone chrome overlay', () => {
+  it('Templates feed merges public fileIds; slide stage has live aside + shared phone preview', () => {
     const scroller = readFileSync(resolve(root, 'components/TemplatesFeedScroller.tsx'), 'utf8');
     const browse = readFileSync(resolve(root, 'components/TemplatesBrowse.tsx'), 'utf8');
     const stage = readFileSync(resolve(root, 'components/PenFeedSlideStage.tsx'), 'utf8');
+    const shared = readFileSync(resolve(root, 'components/SocialFeedPhonePreview.tsx'), 'utf8');
     const phone = readFileSync(resolve(root, 'components/SocialPhoneFrame.tsx'), 'utf8');
     const chrome = readFileSync(resolve(root, 'components/PenPhoneBrowseChrome.tsx'), 'utf8');
     expect(browse).toMatch(/fetchPublicPenTemplates/);
@@ -134,17 +135,18 @@ describe('pen feed UX chrome', () => {
     expect(scroller).toMatch(/pen-templates-feed-build/);
     expect(scroller).toMatch(/Build/);
     expect(scroller).toMatch(/slideKeys/);
-    expect(stage).toMatch(/placement="overlay"/);
+    expect(stage).toMatch(/SocialFeedPhonePreview/);
     expect(stage).toMatch(/placement="aside"/);
-    expect(stage).toMatch(/hideEngagementRail/);
     expect(stage).not.toMatch(/engagementOverlay/);
-    expect(stage).toMatch(/PenPhoneBrowseChrome/);
-    expect(stage).toMatch(/chrome=/);
     expect(stage).toMatch(/DocGalleryPreview/);
-    expect(stage).toMatch(/resolvePhoneFrameAspect/);
-    expect(stage).toMatch(/resolveFeedTileAspect/);
-    expect(stage).toMatch(/aspectRatio=/);
     expect(stage).toMatch(/pen-feed-page-slot/);
+    expect(shared).toMatch(/SocialPhoneFrame/);
+    expect(shared).toMatch(/PenPhoneBrowseChrome/);
+    expect(shared).toMatch(/BrowseFeedTilePreview/);
+    expect(shared).toMatch(/resolvePhoneFrameAspect/);
+    expect(shared).toMatch(/resolveFeedTileAspect/);
+    expect(shared).toMatch(/placement="overlay"/);
+    expect(shared).toMatch(/hideEngagementRail/);
     expect(phone).toMatch(/pen-feed-phone-chrome/);
     expect(phone).toMatch(/pen-feed-phone-poster/);
     expect(chrome).toMatch(/pen-phone-feed-rail/);
@@ -159,14 +161,18 @@ describe('pen feed UX chrome', () => {
     expect(stage).toMatch(/phoneActiveFeedId/);
   });
 
-  it('gallery wrap is the scrollport; thumbs use SocialPhoneFrame bevel', () => {
+  it('gallery wrap scrolls; thumbs reuse SocialFeedPhonePreview including landscape bevel', () => {
     const css = readFileSync(resolve(root, 'index.css'), 'utf8');
-    const preview = readFileSync(resolve(root, 'components/DocGalleryPreview.tsx'), 'utf8');
+    const thumb = readFileSync(resolve(root, 'components/TemplateGalleryThumb.tsx'), 'utf8');
+    const shared = readFileSync(resolve(root, 'components/SocialFeedPhonePreview.tsx'), 'utf8');
     expect(css).toMatch(
       /\.pen-gallery-wrap\s*\{[\s\S]*?overflow:\s*auto/
     );
-    expect(preview).toMatch(/SocialPhoneFrame/);
-    expect(preview).toMatch(/resolvePhoneFrameAspect/);
+    expect(css).toMatch(
+      /\.pen-gallery-tile-preview\s+\.pen-feed-phone--landscape\.pen-gallery-phone/
+    );
+    expect(thumb).toMatch(/SocialFeedPhonePreview/);
+    expect(shared).toMatch(/resolvePhoneFrameAspect/);
   });
 
   it('modal phone is width-driven; list/gallery preview has prev/next', () => {
@@ -180,7 +186,7 @@ describe('pen feed UX chrome', () => {
     expect(browse).toMatch(/goPreviewRelative/);
     expect(browse).toMatch(/ArrowLeft/);
     expect(browse).toMatch(/ArrowRight/);
-    expect(browse).toMatch(/resolvePhoneFrameAspect/);
+    expect(browse).toMatch(/SocialFeedPhonePreview/);
     expect(browse).toMatch(/Previous template/);
     expect(browse).toMatch(/Next template/);
   });
@@ -206,7 +212,7 @@ describe('pen feed UX chrome', () => {
     expect(src).toMatch(/buildSocialTemplateRailItems/);
     expect(src).toMatch(/TemplatesFeedScroller/);
     expect(src).toMatch(/TemplateEngagementRail/);
-    expect(src).toMatch(/PenPhoneBrowseChrome/);
+    expect(src).toMatch(/SocialFeedPhonePreview/);
     expect(src).toMatch(/pen-templates-gallery/);
     expect(src).not.toMatch(/navigate\(['"]\/templates['"]\)/);
     expect(src).not.toMatch(/pen-template-use-btn/);
@@ -224,12 +230,10 @@ describe('pen feed UX chrome', () => {
     expect(src).toMatch(/renderSlide\(i,\s*i === activeIndex\)/);
   });
 
-  it('DocEditorPage social live preview uses phone chrome sibling overlay', () => {
+  it('DocEditorPage social live preview uses shared SocialFeedPhonePreview', () => {
     const src = readFileSync(resolve(root, 'pages/DocEditorPage.tsx'), 'utf8');
     expect(src).toMatch(/pen-social-live-preview/);
-    expect(src).toMatch(/SocialPhoneFrame/);
-    expect(src).toMatch(/PenPhoneBrowseChrome/);
-    expect(src).toMatch(/placement="overlay"/);
+    expect(src).toMatch(/SocialFeedPhonePreview/);
     expect(src).not.toMatch(/engagementOverlay/);
   });
 

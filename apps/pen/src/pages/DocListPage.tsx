@@ -49,6 +49,7 @@ import {
 import { FormDocIcon } from '../components/FormDocIcon';
 import { ExplorerFolderGlyph } from '../components/ExplorerFolderGlyph';
 import { DocGalleryPreview } from '../components/DocGalleryPreview';
+import { SocialFeedPhonePreview } from '../components/SocialFeedPhonePreview';
 import { DocItemMenu } from '../components/DocItemMenu';
 import {
   CreateNewGalleryThumb,
@@ -66,6 +67,7 @@ import {
 import { BlankDocWizard } from '../components/BlankDocWizard';
 import { createBlankDoc } from '../services/createBlankDoc';
 import { resolveDocLibraryStatus } from '../services/penDocStatus';
+import { categoryIdForClass } from '@par-noir/pen-protocol';
 
 export type PenAddIntent = 'notebook' | 'templates' | 'my-templates' | 'blank';
 
@@ -689,11 +691,25 @@ function DocGalleryCard({
         </div>
       )}
       {bundle ? (
-        <DocGalleryPreview
-          manifest={bundle.manifest}
-          sections={bundle.sections}
-          session={session}
-        />
+        categoryIdForClass(bundle.manifest.classId || '') === 'social' ? (
+          <SocialFeedPhonePreview
+            manifest={bundle.manifest}
+            sections={bundle.sections}
+            session={session}
+            templateId={
+              bundle.manifest.templateId ||
+              bundle.manifest.basedOnTemplateId ||
+              bundle.manifest.docId
+            }
+            phoneActiveFeedId="public"
+          />
+        ) : (
+          <DocGalleryPreview
+            manifest={bundle.manifest}
+            sections={bundle.sections}
+            session={session}
+          />
+        )
       ) : (
         <div className="pen-gallery-doc-page pen-gallery-doc-page--paper">
           <div className="pen-gallery-doc-paper-title">{title}</div>
