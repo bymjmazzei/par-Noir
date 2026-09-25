@@ -641,16 +641,6 @@ body {
   padding: 0 var(--pen-edge-pad) 0;
 }
 
-/* Ruled paper + red rail — stops where the footer begins */
-.pen-library-main {
-  position: relative;
-  flex: 1 1 auto;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-}
-
 .pen-library-heading {
   display: flex;
   flex-wrap: wrap;
@@ -710,17 +700,9 @@ body {
   width: calc(100% + 2 * var(--pen-edge-pad));
   box-sizing: border-box;
   background-color: #fff;
-  /* Blue rules run the full paper height down to the footer */
-  background-image: repeating-linear-gradient(
-    to bottom,
-    transparent 0,
-    transparent calc(var(--pen-rule-pitch) - 1px),
-    var(--pen-rule-blue) calc(var(--pen-rule-pitch) - 1px),
-    var(--pen-rule-blue) var(--pen-rule-pitch)
-  );
-  background-position: 0 var(--pen-explorer-head-h);
-  background-repeat: repeat-y;
 }
+
+/* No sheet-level blue strokes — those sat under My Library / above NAME by mistake */
 
 .pen-library-sheet > * {
   position: relative;
@@ -832,7 +814,7 @@ body {
 .pen-doc-feed-viewport {
   position: relative;
   flex: 1 1 auto;
-  min-height: 0;
+  min-height: min(70vh, 36rem);
   margin: 0;
   padding: 0;
   padding-left: calc(var(--pen-edge-pad) + var(--pen-name-inset));
@@ -844,8 +826,8 @@ body {
 .pen-doc-feed-scroll {
   position: relative;
   height: 100%;
-  min-height: 0;
-  max-height: none;
+  min-height: inherit;
+  max-height: calc(100dvh - 2.5rem - 10rem);
   overflow-x: hidden;
   overflow-y: scroll;
   scroll-snap-type: y mandatory;
@@ -884,8 +866,13 @@ body {
 }
 
 .pen-library-page.pen-feed-mode .pen-doc-feed-slide {
-  /* Ruled paper comes from .pen-library-sheet so lines run to the footer */
-  background-image: none;
+  background-image: repeating-linear-gradient(
+    to bottom,
+    transparent 0,
+    transparent calc(var(--pen-rule-pitch) - 1px),
+    var(--pen-rule-blue) calc(var(--pen-rule-pitch) - 1px),
+    var(--pen-rule-blue) var(--pen-rule-pitch)
+  );
 }
 
 .pen-doc-feed-slide-stage {
@@ -1191,8 +1178,7 @@ body {
   align-items: center;
   justify-content: center;
   gap: 0.35rem;
-  flex-shrink: 0;
-  margin-top: 0;
+  margin-top: auto;
   /* Full window width — cancel notebook edge pad */
   margin-left: calc(-1 * var(--pen-edge-pad));
   margin-right: calc(-1 * var(--pen-edge-pad));
@@ -1491,14 +1477,20 @@ button.pen-app-chrome-brand:hover {
   position: relative;
   flex: 1 1 auto;
   align-self: stretch;
-  min-height: 0;
+  min-height: calc(100vh - 2.5rem - 8rem);
   margin: 0;
   width: 100%;
   box-sizing: border-box;
   padding: 0 var(--pen-edge-pad) 0;
   padding-left: calc(var(--pen-edge-pad) + var(--pen-name-inset));
-  /* Sheet paints the ruled paper through to the footer */
   background: transparent;
+  background-image: repeating-linear-gradient(
+    to bottom,
+    transparent 0,
+    transparent calc(var(--pen-rule-pitch) - 1px),
+    var(--pen-rule-blue) calc(var(--pen-rule-pitch) - 1px),
+    var(--pen-rule-blue) var(--pen-rule-pitch)
+  );
 }
 
 .pen-gallery-tiles {

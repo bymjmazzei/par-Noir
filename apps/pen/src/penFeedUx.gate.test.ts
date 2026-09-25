@@ -18,11 +18,9 @@ describe('pen feed UX chrome', () => {
     expect(css).toMatch(/scroll-snap-type:\s*y mandatory/);
     expect(css).toMatch(/\.pen-class-feed-rail-tab\.is-active[\s\S]*?color:\s*#000/);
     expect(css).toMatch(/\.pen-class-feed-rail-tab\s*\{[\s\S]*?color:\s*#a3a3a3/);
-    // Feed keeps the library footer; rules run on the sheet to its edge
     expect(css).not.toMatch(
       /\.pen-library-page\.pen-feed-mode\s+\.pen-library-footer\s*\{[^}]*display:\s*none/
     );
-    expect(css).toMatch(/\.pen-library-main\b/);
   });
 
   it('DocFeedScroller never imports engagement client', () => {
