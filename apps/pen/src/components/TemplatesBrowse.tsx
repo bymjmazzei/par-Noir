@@ -169,8 +169,6 @@ export function TemplatesBrowse({
           busy={busy}
           onBuild={(id) => void useTemplate(id)}
           fileIdByTemplateId={fileIdByTemplateId}
-          railItems={railItems}
-          activeRailId={activeClassId}
         />
       ) : (
         <>
@@ -286,8 +284,7 @@ export function TemplatesBrowse({
                     aspectRatio={resolvePageAspect(preview.manifest as never)}
                     chrome={
                       <PenPhoneBrowseChrome
-                        railItems={railItems}
-                        activeRailId={activeClassId}
+                        activeFeedId="pen-templates"
                         engagement={
                           <TemplateEngagementRail
                             templateId={previewId}

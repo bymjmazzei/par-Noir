@@ -10,13 +10,11 @@ import { SocialPhoneFrame } from './SocialPhoneFrame';
 import { TemplateEngagementRail } from './TemplateEngagementRail';
 import { PenPhoneBrowseChrome } from './PenPhoneBrowseChrome';
 import { BrowseFeedTilePreview } from './BrowseFeedTilePreview';
-import type { ClassFeedRailItem } from './ClassFeedRail';
 import {
   DocGalleryPreview,
   resolveFeedTileAspect,
   resolvePageAspect
 } from './DocGalleryPreview';
-import { buildSocialTemplateRailItems } from '../services/classFeedRailItems';
 import type { PenSession } from '../services/penSession';
 import type { PenDocManifest, PenSectionContent } from '@par-noir/pen-protocol';
 
@@ -30,8 +28,8 @@ export function PenFeedSlideStage({
   authorLabel,
   buildSlot,
   onOpen,
-  railItems,
-  activeRailId
+  /** Browse feed highlight inside phone — Templates use pen-templates; Library uses pN. */
+  phoneActiveFeedId = 'public'
 }: {
   classId?: string;
   manifest: PenDocManifest;
@@ -43,9 +41,7 @@ export function PenFeedSlideStage({
   buildSlot?: ReactNode;
   /** Library: open doc on preview click. Templates omit and use Build. */
   onOpen?: () => void;
-  /** In-phone display rail (defaults to Social template rail). */
-  railItems?: ClassFeedRailItem[];
-  activeRailId?: string;
+  phoneActiveFeedId?: 'discovery' | 'public' | 'media' | 'notes' | 'collections' | 'pen-templates';
 }) {
   const social = categoryIdForClass(classId || manifest.classId || '') === 'social';
   const unlocked = Boolean(session?.pnIdentifier);
@@ -53,8 +49,6 @@ export function PenFeedSlideStage({
   // One aspect SoT for phone frame + feed tile (must not diverge).
   const pageAspectCss = resolvePageAspect(manifest);
   const feedAspect = resolveFeedTileAspect(manifest);
-  const phoneRailItems = railItems ?? buildSocialTemplateRailItems();
-  const phoneActiveRailId = activeRailId ?? 'all';
 
   const overlay = (
     <TemplateEngagementRail
@@ -73,11 +67,7 @@ export function PenFeedSlideStage({
       large
       aspectRatio={pageAspectCss}
       chrome={
-        <PenPhoneBrowseChrome
-          railItems={phoneRailItems}
-          activeRailId={phoneActiveRailId}
-          engagement={overlay}
-        />
+        <PenPhoneBrowseChrome activeFeedId={phoneActiveFeedId} engagement={overlay} />
       }
     >
       <BrowseFeedTilePreview

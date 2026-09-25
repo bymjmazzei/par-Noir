@@ -17,9 +17,7 @@ export function TemplatesFeedScroller({
   session,
   busy,
   onBuild,
-  fileIdByTemplateId,
-  railItems,
-  activeRailId
+  fileIdByTemplateId
 }: {
   rail: ReactNode;
   templates: PenTemplate[];
@@ -27,8 +25,6 @@ export function TemplatesFeedScroller({
   busy?: boolean;
   onBuild: (templateId: string) => void;
   fileIdByTemplateId?: Map<string, string>;
-  railItems?: { id: string; label: string }[];
-  activeRailId?: string;
 }) {
   return (
     <SnapFeedShell
@@ -61,8 +57,7 @@ export function TemplatesFeedScroller({
             templateId={t.id}
             fileId={fileId}
             authorLabel={preview.authorDisplayName}
-            railItems={railItems}
-            activeRailId={activeRailId}
+            phoneActiveFeedId="pen-templates"
             buildSlot={
               <button
                 type="button"

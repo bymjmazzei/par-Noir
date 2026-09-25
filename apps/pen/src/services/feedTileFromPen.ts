@@ -33,6 +33,7 @@ export function sectionsToFeedPages(
     const media = primaryMediaLayer(s.layers);
     const page: FeedTilePage = {
       title: plain.slice(0, 80) || titleFallback,
+      bodyText: plain || titleFallback,
       bodyHtml: docToHtml(s.doc),
       backgroundColor: pres.backgroundColor,
       textColor: pres.textColor

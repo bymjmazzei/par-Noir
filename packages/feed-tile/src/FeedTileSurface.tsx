@@ -4,6 +4,8 @@ import { PenMediaPlayer } from './PenMediaPlayer.js';
 export type FeedTilePage = {
   title?: string;
   bodyHtml?: string;
+  /** Plain body for single-block text posters (preferred over stacking title+html). */
+  bodyText?: string;
   mediaSrc?: string;
   /** When mediaSrc is a video URL. */
   mediaKind?: 'image' | 'video';
@@ -66,12 +68,30 @@ function EngagementRail({ mode }: { mode: 'preview' | 'live' }) {
   );
 }
 
+/** Strip tags for a single plain-text poster block (no title+html double paint). */
+function plainFromHtml(html: string | undefined): string {
+  if (!html) return '';
+  return html
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<\/p>/gi, '\n')
+    .replace(/<[^>]+>/g, '')
+    .replace(/\u00a0/g, ' ')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
 function PageSurface({ page, titleFallback }: { page: FeedTilePage; titleFallback: string }) {
   const surface: CSSProperties = {
     backgroundColor: page.backgroundColor || '#000000',
     color: page.textColor || '#FFFFFF'
   };
   const isVideo = page.mediaKind === 'video' && Boolean(page.mediaSrc);
+  const bodyText =
+    (page.bodyText && page.bodyText.trim()) ||
+    plainFromHtml(page.bodyHtml) ||
+    page.title ||
+    titleFallback;
+
   return (
     <div className="relative h-full w-full overflow-hidden" style={surface}>
       {page.mediaSrc ? (
@@ -83,16 +103,10 @@ function PageSurface({ page, titleFallback }: { page: FeedTilePage; titleFallbac
           <img src={page.mediaSrc} alt="" className="absolute inset-0 h-full w-full object-cover" />
         )
       ) : (
-        <div className="relative flex h-full flex-col justify-center px-6 text-center">
-          <div className="line-clamp-[8] break-words text-lg font-semibold leading-snug">
-            {page.title || titleFallback}
+        <div className="pen-feed-tile-body-safe relative flex h-full flex-col justify-center px-6 text-center">
+          <div className="line-clamp-[10] whitespace-pre-wrap break-words text-lg font-semibold leading-snug">
+            {bodyText}
           </div>
-          {page.bodyHtml ? (
-            <div
-              className="mt-3 line-clamp-6 text-sm opacity-90 [&_*]:text-inherit"
-              dangerouslySetInnerHTML={{ __html: page.bodyHtml }}
-            />
-          ) : null}
         </div>
       )}
       {page.mediaSrc ? (
@@ -150,6 +164,11 @@ export function FeedTileSurface({
         ? 'aspect-square'
         : 'aspect-[9/16]';
 
+  const captionText = model.caption?.trim();
+  const titleText = model.title?.trim() || '';
+  const showCaption =
+    Boolean(captionText) && captionText!.toLowerCase() !== titleText.toLowerCase();
+
   return (
     <div
       data-pen-compose-export-root="feed"
@@ -194,11 +213,13 @@ export function FeedTileSurface({
 
       {engagement}
 
-      {/* Browse-shaped caption: title + caption only (no profile avatar row). */}
+      {/* Browse-shaped caption: title + caption only (no profile avatar; dedupe equal caption). */}
       <div className="pen-feed-tile-caption pointer-events-none absolute bottom-4 left-0 right-20 z-20 p-4 text-white drop-shadow-md">
-        <h3 className="mb-1 line-clamp-1 text-base font-semibold">{model.title}</h3>
-        {model.caption ? (
-          <p className="line-clamp-2 text-sm leading-snug text-white/95">{model.caption}</p>
+        {titleText ? (
+          <h3 className="mb-1 line-clamp-1 text-base font-semibold">{titleText}</h3>
+        ) : null}
+        {showCaption ? (
+          <p className="line-clamp-2 text-sm leading-snug text-white/95">{captionText}</p>
         ) : null}
       </div>
     </div>

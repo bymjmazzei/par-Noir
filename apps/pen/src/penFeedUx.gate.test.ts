@@ -53,19 +53,21 @@ describe('pen feed UX chrome', () => {
     expect(css).toMatch(
       /\.pen-template-engagement-count\s*\{[\s\S]*?position:\s*absolute[\s\S]*?bottom:\s*-0\.25rem/
     );
-    // Overlay is phone-chrome sibling with browse metrics (not 60% tile-relative)
+    // Overlay is phone-chrome sibling scaled with cqh (not 60% / fixed rem)
     expect(css).not.toMatch(
       /\.pen-template-engagement-rail--overlay\s*\{[\s\S]*?(?:max-)?height:\s*60%/
     );
+    expect(css).toMatch(/\.pen-feed-phone-screen\s*\{[\s\S]*?container-type:\s*size/);
     expect(css).toMatch(
-      /\.pen-template-engagement-rail--overlay\s*\{[\s\S]*?right:\s*0\.5rem[\s\S]*?gap:\s*16px/
+      /\.pen-template-engagement-rail--overlay\s*\{[\s\S]*?right:\s*2cqw[\s\S]*?gap:\s*2cqh/
     );
     expect(css).toMatch(
-      /\.pen-template-engagement-rail--overlay\s*\{[\s\S]*?bottom:\s*calc\(4rem \+ 40px/
+      /\.pen-template-engagement-rail--overlay\s*\{[\s\S]*?bottom:\s*calc\(8cqh \+ 5cqh\)/
     );
     expect(css).toMatch(/\.pen-feed-phone-chrome\s*\{/);
-    expect(css).toMatch(/\.pen-phone-feed-rail\s*\{[\s\S]*?height:\s*3rem/);
-    expect(css).toMatch(/\.pen-phone-bottom-nav\s*\{[\s\S]*?height:\s*4rem/);
+    expect(css).toMatch(/\.pen-phone-feed-rail\s*\{[\s\S]*?height:\s*6cqh/);
+    expect(css).toMatch(/\.pen-phone-bottom-nav\s*\{[\s\S]*?height:\s*8cqh/);
+    expect(css).toMatch(/\.pen-feed-tile-body-safe/);
     // Feed phones are height-driven (true 9:16)
     expect(css).toMatch(
       /\.pen-feed-phone\.pen-gallery-phone\s*\{[\s\S]*?height:\s*100%[\s\S]*?width:\s*auto/
@@ -145,6 +147,14 @@ describe('pen feed UX chrome', () => {
     expect(phone).toMatch(/pen-feed-phone-poster/);
     expect(chrome).toMatch(/pen-phone-feed-rail/);
     expect(chrome).toMatch(/pen-phone-bottom-nav/);
+    // In-phone rail is browse vocabulary, not ClassFeedRail ALL/NOTE
+    expect(chrome).toMatch(/DISCOVER/);
+    expect(chrome).toMatch(/MEDIA/);
+    expect(chrome).toMatch(/TEMPLATES/);
+    expect(chrome).toMatch(/PnLogoMark|pen-phone-feed-rail-pn/);
+    expect(chrome).not.toMatch(/ClassFeedRailItem|railItems/);
+    expect(scroller).toMatch(/phoneActiveFeedId="pen-templates"/);
+    expect(stage).toMatch(/phoneActiveFeedId/);
   });
 
   it('TemplateEngagementRail wires live mutations on aside when fileId present', () => {
@@ -205,6 +215,13 @@ describe('pen feed UX chrome', () => {
     expect(tile).toMatch(/model\.caption/);
     expect(tile).not.toMatch(/>You</);
     expect(tile).toMatch(/right-20/);
+    // Single text poster — no title + bodyHtml stack
+    expect(tile).toMatch(/pen-feed-tile-body-safe/);
+    expect(tile).toMatch(/plainFromHtml|bodyText/);
+    expect(tile).not.toMatch(/dangerouslySetInnerHTML/);
+    // Dedupe caption when equal to title
+    expect(tile).toMatch(/showCaption/);
+    expect(tile).toMatch(/toLowerCase\(\) !== titleText\.toLowerCase/);
   });
 
   it('public templates feed is routed at /templates via TemplatesBrowse', () => {

@@ -49,7 +49,6 @@ import { BrowseFeedTilePreview } from '../components/BrowseFeedTilePreview';
 import { SocialPhoneFrame } from '../components/SocialPhoneFrame';
 import { TemplateEngagementRail } from '../components/TemplateEngagementRail';
 import { PenPhoneBrowseChrome } from '../components/PenPhoneBrowseChrome';
-import { buildSocialTemplateRailItems } from '../services/classFeedRailItems';
 import { MediaEditorPanel } from '../components/MediaEditorPanel';
 import { LayerPartsMenu } from '../components/LayerPartsMenu';
 import { PublishMenu, type PenAggregatorTarget } from '../components/PublishMenu';
@@ -1784,8 +1783,7 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
                       }
                       chrome={
                         <PenPhoneBrowseChrome
-                          railItems={buildSocialTemplateRailItems()}
-                          activeRailId={bundle.manifest.classId || 'all'}
+                          activeFeedId="public"
                           engagement={
                             <TemplateEngagementRail
                               templateId={

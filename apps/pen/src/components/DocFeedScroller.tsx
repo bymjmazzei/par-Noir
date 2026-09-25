@@ -71,8 +71,6 @@ export function DocFeedScroller({
             classId={resolveSummaryClassId(d)}
             session={session}
             onOpen={() => onOpenDoc(d.docId)}
-            railItems={railItems}
-            activeRailId={activeClassId}
           />
         );
       }}
@@ -85,17 +83,13 @@ function DocFeedSlide({
   docId,
   classId,
   session,
-  onOpen,
-  railItems,
-  activeRailId
+  onOpen
 }: {
   pn: string;
   docId: string;
   classId?: string;
   session: PenSession;
   onOpen: () => void;
-  railItems: { id: string; label: string }[];
-  activeRailId: string;
 }) {
   const [bundle, setBundle] = useState(() => loadLocalDoc(pn, docId));
 
@@ -125,8 +119,7 @@ function DocFeedSlide({
       fileId={bundle.manifest.publishedFileId || null}
       authorLabel="You"
       onOpen={onOpen}
-      railItems={railItems}
-      activeRailId={activeRailId}
+      phoneActiveFeedId="public"
     />
   );
 }

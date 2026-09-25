@@ -1022,6 +1022,8 @@ body {
   position: relative;
   overflow: hidden;
   pointer-events: auto;
+  container-type: size;
+  container-name: pen-phone;
 }
 
 .pen-feed-phone-poster {
@@ -1036,10 +1038,18 @@ body {
   max-height: 100%;
 }
 
-/* Lift browse caption above in-phone bottom nav (4rem). */
+/* Single text poster: keep body out of caption + bottom-nav band */
+.pen-feed-phone-poster .pen-feed-tile-body-safe {
+  box-sizing: border-box;
+  padding-top: 8cqh;
+  padding-bottom: 28cqh;
+}
+
+/* Lift browse caption above in-phone bottom nav; soft separation from body */
 .pen-feed-phone-poster .pen-feed-tile-caption {
-  bottom: 4.5rem;
-  padding-bottom: 0.5rem;
+  bottom: 8cqh;
+  padding-bottom: 1cqh;
+  background: linear-gradient(to top, rgba(0, 0, 0, 0.55) 0%, rgba(0, 0, 0, 0) 100%);
 }
 
 .pen-feed-phone-chrome {
@@ -1049,13 +1059,13 @@ body {
   pointer-events: none;
 }
 
-/* In-phone top FeedRail — browse h-12 over media */
+/* In-phone top FeedRail — ~browse h-12 as fraction of phone */
 .pen-phone-feed-rail {
   position: absolute;
   top: 0;
   left: 0;
   right: 0;
-  height: 3rem;
+  height: 6cqh;
   z-index: 25;
   display: flex;
   align-items: center;
@@ -1077,22 +1087,26 @@ body {
 .pen-phone-feed-rail-inner {
   display: flex;
   align-items: center;
-  gap: 2rem;
-  padding: 0.5rem 0.75rem;
+  gap: 4cqw;
+  padding: 0 3cqw;
   width: max-content;
   min-width: 100%;
   box-sizing: border-box;
+  height: 100%;
 }
 
 .pen-phone-feed-rail-tab {
   position: relative;
   flex-shrink: 0;
-  font-size: 1rem;
+  font-size: 2.2cqh;
   font-weight: 500;
   letter-spacing: 0.05em;
   text-transform: uppercase;
   color: rgba(255, 255, 255, 0.65);
   white-space: nowrap;
+  display: flex;
+  align-items: center;
+  height: 100%;
 }
 
 .pen-phone-feed-rail-tab.is-active {
@@ -1104,18 +1118,24 @@ body {
   position: absolute;
   left: 0;
   right: 0;
-  bottom: -2px;
-  height: 2px;
+  bottom: 0.6cqh;
+  height: 0.35cqh;
   background: #fff;
 }
 
-/* In-phone bottom nav — browse 4rem bar */
+.pen-phone-feed-rail-pn {
+  width: 3.2cqh;
+  height: 2.6cqh;
+  color: inherit;
+}
+
+/* In-phone bottom nav — ~browse 4rem as fraction of phone */
 .pen-phone-bottom-nav {
   position: absolute;
   bottom: 0;
   left: 0;
   right: 0;
-  height: 4rem;
+  height: 8cqh;
   z-index: 25;
   display: flex;
   align-items: center;
@@ -1138,8 +1158,8 @@ body {
 }
 
 .pen-phone-bottom-nav-icon {
-  width: 1.5rem;
-  height: 1.5rem;
+  width: 3.2cqh;
+  height: 3.2cqh;
 }
 
 /* Outside the template tile — catalog feed/modal; overlay on phone chrome */
@@ -1164,14 +1184,14 @@ body {
 
 .pen-template-engagement-rail--overlay {
   position: absolute;
-  right: 0.5rem;
-  /* 4rem bottom nav + browse 40px offset above content bottom */
-  bottom: calc(4rem + 40px + env(safe-area-inset-bottom, 0px));
+  right: 2cqw;
+  /* above bottom nav (8cqh) + browse-like offset */
+  bottom: calc(8cqh + 5cqh);
   top: auto;
   z-index: 30;
   color: #fff;
   filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.55));
-  gap: 16px;
+  gap: 2cqh;
   padding: 0;
   box-sizing: border-box;
 }
@@ -1201,10 +1221,13 @@ body {
 }
 
 .pen-template-engagement-rail--overlay .pen-template-engagement-avatar {
+  width: 6cqh;
+  height: 6cqh;
+  font-size: 1.6cqh;
   background: rgba(255, 255, 255, 0.22);
   color: #fff;
   backdrop-filter: blur(4px);
-  border: 2px solid rgba(255, 255, 255, 0.2);
+  border: 0.25cqh solid rgba(255, 255, 255, 0.2);
 }
 
 .pen-template-engagement-stat {
@@ -1231,6 +1254,16 @@ body {
   width: 1.5rem;
   height: 1.5rem;
   display: block;
+}
+
+.pen-template-engagement-rail--overlay .pen-template-engagement-icon-wrap {
+  width: 3.5cqh;
+  height: 3.5cqh;
+}
+
+.pen-template-engagement-rail--overlay .pen-template-engagement-icon-wrap svg {
+  width: 3.5cqh;
+  height: 3.5cqh;
 }
 
 button.pen-template-engagement-stat {
@@ -1267,6 +1300,9 @@ button.pen-template-engagement-stat.is-liked {
 .pen-template-engagement-rail--overlay .pen-template-engagement-count {
   color: #fff;
   filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.5));
+  font-size: 1.6cqh;
+  bottom: -0.8cqh;
+  left: -0.6cqh;
 }
 
 .pen-template-engagement-builds {
@@ -1278,6 +1314,11 @@ button.pen-template-engagement-stat.is-liked {
   width: 1.75rem;
 }
 
+.pen-template-engagement-rail--overlay .pen-template-engagement-builds {
+  width: 4cqh;
+  gap: 0.4cqh;
+}
+
 .pen-template-engagement-builds .pen-template-engagement-count {
   position: static;
   left: auto;
@@ -1287,12 +1328,21 @@ button.pen-template-engagement-stat.is-liked {
   filter: none;
 }
 
+.pen-template-engagement-rail--overlay .pen-template-engagement-builds .pen-template-engagement-count {
+  font-size: 1.6cqh;
+  filter: none;
+}
+
 .pen-template-engagement-builds-label {
   font-size: 0.5rem;
   font-weight: 600;
   letter-spacing: 0.06em;
   text-transform: uppercase;
   line-height: 1;
+}
+
+.pen-template-engagement-rail--overlay .pen-template-engagement-builds-label {
+  font-size: 1.2cqh;
 }
 
 .pen-template-engagement-build-slot {
