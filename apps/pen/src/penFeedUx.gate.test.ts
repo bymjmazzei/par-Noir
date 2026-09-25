@@ -8,6 +8,11 @@ import { resolve } from 'path';
 import { describe, expect, it } from 'vitest';
 import { buildTemplateFileIdMap } from './services/templateEngagementFileId';
 import { libraryDocMatchesRailSelection } from './services/classFeedRailItems';
+import {
+  resolveFeedTileAspect,
+  resolvePageAspect
+} from './components/DocGalleryPreview';
+import type { PenDocManifest } from '@par-noir/pen-protocol';
 
 const root = resolve(__dirname);
 
@@ -48,8 +53,16 @@ describe('pen feed UX chrome', () => {
     expect(css).toMatch(
       /\.pen-template-engagement-count\s*\{[\s\S]*?position:\s*absolute[\s\S]*?bottom:\s*-0\.25rem/
     );
+    // Overlay fills ~60% of phone height (not full-size scaled stack)
     expect(css).toMatch(
-      /\.pen-template-engagement-rail--overlay\s*\{[\s\S]*?transform:\s*scale\(0\.82\)/
+      /\.pen-template-engagement-rail--overlay\s*\{[\s\S]*?(?:max-)?height:\s*60%/
+    );
+    expect(css).not.toMatch(
+      /\.pen-template-engagement-rail--overlay\s*\{[^}]*transform:\s*scale\(0\.82\)/
+    );
+    // Feed phones are height-driven (true 9:16)
+    expect(css).toMatch(
+      /\.pen-feed-phone\.pen-gallery-phone\s*\{[\s\S]*?height:\s*100%[\s\S]*?width:\s*auto/
     );
   });
 
@@ -215,5 +228,36 @@ describe('libraryDocMatchesRailSelection', () => {
     expect(libraryDocMatchesRailSelection('social.note', 'social.note')).toBe(true);
     expect(libraryDocMatchesRailSelection('library.book', 'social.note')).toBe(false);
     expect(libraryDocMatchesRailSelection('projects.journal', 'projects')).toBe(true);
+  });
+});
+
+describe('resolvePageAspect social SoT', () => {
+  const base = {
+    docId: 'x',
+    title: 't',
+    docType: 'note' as const,
+    classId: 'social.note',
+    templateId: 'note.basic.portrait.v1',
+    templateVersion: '1',
+    groupId: 'g',
+    toc: [] as string[],
+    createdAt: '',
+    updatedAt: ''
+  } satisfies Partial<PenDocManifest> as PenDocManifest;
+
+  it('social without galleryAspect defaults to 9/16 (not 3/4)', () => {
+    expect(resolvePageAspect({ ...base, classId: 'social.note' })).toBe('9 / 16');
+    expect(resolveFeedTileAspect({ ...base, classId: 'social.note' })).toBe('9/16');
+  });
+
+  it('honors galleryAspect and keeps phone/tile in sync', () => {
+    expect(resolvePageAspect({ ...base, galleryAspect: '16/9' })).toBe('16 / 9');
+    expect(resolveFeedTileAspect({ ...base, galleryAspect: '16/9' })).toBe('16/9');
+    expect(resolvePageAspect({ ...base, galleryAspect: '1/1' })).toBe('1 / 1');
+    expect(resolveFeedTileAspect({ ...base, galleryAspect: '1/1' })).toBe('1/1');
+  });
+
+  it('non-social without layout stays 3/4', () => {
+    expect(resolvePageAspect({ ...base, classId: 'projects.journal' })).toBe('3 / 4');
   });
 });

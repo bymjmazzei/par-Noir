@@ -42,6 +42,7 @@ export function PenFeedSlideStage({
   const social = categoryIdForClass(classId || manifest.classId || '') === 'social';
   const unlocked = Boolean(session?.pnIdentifier);
   const live = Boolean(fileId) && unlocked;
+  // One aspect SoT for phone frame + feed tile (must not diverge).
   const pageAspectCss = resolvePageAspect(manifest);
   const feedAspect = resolveFeedTileAspect(manifest);
 

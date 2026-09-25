@@ -968,12 +968,13 @@ body {
 .pen-doc-feed-slide-stage .pen-feed-tile-slot {
   flex: 0 1 auto;
   min-width: 0;
+  align-self: center;
 }
 
 .pen-feed-tile-slot {
-  height: auto;
+  height: 100%;
   width: auto;
-  max-width: min(100%, 28rem);
+  max-width: 100%;
   max-height: 100%;
   aspect-ratio: var(--pen-feed-aspect, 9 / 16);
   margin-inline: auto;
@@ -984,24 +985,37 @@ body {
   width: 100%;
 }
 
-.pen-feed-phone {
+/* Feed phones: height-driven so 9:16 stays true inside the snap slide */
+.pen-feed-phone.pen-gallery-phone {
   pointer-events: auto;
-  height: auto;
+  height: 100%;
   width: auto;
-  max-width: min(100%, 28rem);
   max-height: 100%;
+  max-width: 100%;
   aspect-ratio: var(--pen-feed-aspect, 9 / 16);
+  margin: 0 auto;
 }
 
-.pen-library-page.pen-feed-mode .pen-feed-phone,
-.pen-library-page.pen-feed-mode .pen-feed-tile-slot {
+.pen-feed-phone.pen-gallery-phone--lg {
+  /* Override gallery --lg width/max-height traps that squash aspect */
+  width: auto;
+  max-width: 100%;
+  max-height: 100%;
+  height: 100%;
+}
+
+.pen-library-page.pen-feed-mode .pen-feed-phone {
   max-height: 100%;
   max-width: min(100%, 30rem);
 }
 
-.pen-feed-phone--landscape {
-  max-width: min(100%, 36rem);
+.pen-feed-phone--landscape.pen-gallery-phone,
+.pen-feed-phone--landscape.pen-gallery-phone--lg {
+  height: auto;
   width: min(100%, 36rem);
+  max-width: min(100%, 36rem);
+  max-height: 100%;
+  aspect-ratio: 16 / 9;
 }
 
 .pen-feed-phone-screen {
@@ -1038,11 +1052,16 @@ body {
   position: absolute;
   right: 0.5rem;
   bottom: calc(32px + env(safe-area-inset-bottom, 0px) + 8px);
+  top: auto;
+  height: 60%;
+  max-height: 60%;
   z-index: 30;
   color: #fff;
   filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.55));
-  transform: scale(0.82);
-  transform-origin: bottom right;
+  gap: 0;
+  justify-content: space-between;
+  padding: 0;
+  box-sizing: border-box;
 }
 
 .pen-template-engagement-rail--readonly {
@@ -1070,6 +1089,9 @@ body {
 }
 
 .pen-template-engagement-rail--overlay .pen-template-engagement-avatar {
+  width: 2rem;
+  height: 2rem;
+  font-size: 0.55rem;
   background: rgba(255, 255, 255, 0.22);
   color: #fff;
   backdrop-filter: blur(4px);
@@ -1099,6 +1121,16 @@ body {
   width: 1.75rem;
   height: 1.75rem;
   display: block;
+}
+
+.pen-template-engagement-rail--overlay .pen-template-engagement-icon-wrap {
+  width: 1.25rem;
+  height: 1.25rem;
+}
+
+.pen-template-engagement-rail--overlay .pen-template-engagement-icon-wrap svg {
+  width: 1.25rem;
+  height: 1.25rem;
 }
 
 button.pen-template-engagement-stat {
@@ -1135,6 +1167,21 @@ button.pen-template-engagement-stat.is-liked {
 .pen-template-engagement-rail--overlay .pen-template-engagement-count {
   color: #fff;
   filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.5));
+  font-size: 0.6rem;
+  bottom: -0.15rem;
+  left: -0.15rem;
+}
+
+.pen-template-engagement-rail--overlay .pen-template-engagement-uses {
+  width: 1.25rem;
+}
+
+.pen-template-engagement-rail--overlay .pen-template-engagement-uses .pen-template-engagement-count {
+  font-size: 0.55rem;
+}
+
+.pen-template-engagement-rail--overlay .pen-template-engagement-uses-label {
+  font-size: 0.4rem;
 }
 
 .pen-template-engagement-uses {
@@ -1750,7 +1797,7 @@ input.pen-gallery-tile-title-text {
   aspect-ratio: 9 / 16;
 }
 
-/* Phone bezel — clear edge for dark social screens on ruled paper */
+/* Phone bezel — gallery thumbs keep width-based sizing; feed phones override below */
 .pen-gallery-phone {
   width: 100%;
   max-height: 100%;
@@ -1780,15 +1827,11 @@ input.pen-gallery-tile-title-text {
   background: #0a0a0a;
 }
 
-.pen-gallery-phone--lg {
+/* Gallery / modal --lg only (feed phones use .pen-feed-phone height-driven rules) */
+.pen-gallery-phone--lg:not(.pen-feed-phone) {
   width: min(100%, 18rem);
   max-height: min(70vh, 32rem);
   margin: 0 auto;
-}
-
-.pen-gallery-phone--lg.pen-feed-phone--landscape {
-  width: min(100%, 36rem);
-  max-height: min(50vh, 22rem);
 }
 
 .pen-gallery-phone--lg .pen-gallery-phone-bezel {

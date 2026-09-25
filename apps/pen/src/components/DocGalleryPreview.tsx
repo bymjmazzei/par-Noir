@@ -71,20 +71,26 @@ function pageAspect(manifest: PenDocManifest): string | undefined {
   if (manifest.galleryAspect === '1/1') return '1 / 1';
   if (manifest.pageLayout === 'letter') return '8.5 / 11';
   if (manifest.pageLayout === 'a4') return '210 / 297';
+  // Social without galleryAspect → true phone portrait (never 3/4 squat).
+  if (categoryIdForClass(manifest.classId || '') === 'social') return '9 / 16';
   return '3 / 4';
 }
 
-/** CSS aspect-ratio string from galleryAspect / pageLayout (letter, A4, …). */
+/** CSS aspect-ratio string from galleryAspect / pageLayout / social default. */
 export function resolvePageAspect(manifest: PenDocManifest): string {
   return pageAspect(manifest) || '3 / 4';
 }
 
-/** Feed-tile friendly aspect token (9/16 | 16/9 | 1/1). */
+/** Same SoT as resolvePageAspect, mapped for FeedTileSurface tokens. */
 export function resolveFeedTileAspect(
   manifest: PenDocManifest
 ): '9/16' | '16/9' | '1/1' {
-  if (manifest.galleryAspect === '16/9') return '16/9';
-  if (manifest.galleryAspect === '1/1') return '1/1';
+  const css = resolvePageAspect(manifest);
+  if (css === '16 / 9') return '16/9';
+  if (css === '1 / 1') return '1/1';
+  // Social / portrait / letter-like → portrait tile (9/16 is correct for social).
+  if (css === '9 / 16') return '9/16';
+  // Non-social letter/A4/3:4 still use feed-tile only when forced; default portrait.
   return '9/16';
 }
 
