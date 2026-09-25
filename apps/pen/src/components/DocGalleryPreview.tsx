@@ -74,6 +74,20 @@ function pageAspect(manifest: PenDocManifest): string | undefined {
   return '3 / 4';
 }
 
+/** CSS aspect-ratio string from galleryAspect / pageLayout (letter, A4, …). */
+export function resolvePageAspect(manifest: PenDocManifest): string {
+  return pageAspect(manifest) || '3 / 4';
+}
+
+/** Feed-tile friendly aspect token (9/16 | 16/9 | 1/1). */
+export function resolveFeedTileAspect(
+  manifest: PenDocManifest
+): '9/16' | '16/9' | '1/1' {
+  if (manifest.galleryAspect === '16/9') return '16/9';
+  if (manifest.galleryAspect === '1/1') return '1/1';
+  return '9/16';
+}
+
 function PhoneShell({
   children,
   large

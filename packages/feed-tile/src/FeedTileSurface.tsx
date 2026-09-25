@@ -102,13 +102,14 @@ function PageSurface({ page, titleFallback }: { page: FeedTilePage; titleFallbac
   );
 }
 
-/** Full-bleed 9:16 tile; multi-page uses horizontal scroll-snap. */
+/** Full-bleed feed tile; multi-page uses horizontal scroll-snap. Aspect defaults to 9:16. */
 export function FeedTileSurface({
   model,
   mode = 'preview',
   compact,
   hideEngagementRail = false,
-  engagementOverlay
+  engagementOverlay,
+  aspectRatio = '9/16'
 }: {
   model: FeedTileViewModel;
   mode?: 'preview' | 'live';
@@ -120,6 +121,8 @@ export function FeedTileSurface({
    * Preview-only — callers must not bake this into composed publish output.
    */
   engagementOverlay?: ReactNode;
+  /** Tile aspect: 9/16 portrait, 16/9 landscape, 1/1 square. */
+  aspectRatio?: '9/16' | '16/9' | '1/1';
 }) {
   const pages =
     model.pages.length > 0
@@ -140,11 +143,20 @@ export function FeedTileSurface({
         ? <EngagementRail mode={mode} />
         : null;
 
+  const aspectClass =
+    aspectRatio === '16/9'
+      ? 'aspect-[16/9]'
+      : aspectRatio === '1/1'
+        ? 'aspect-square'
+        : 'aspect-[9/16]';
+
   return (
     <div
       data-pen-compose-export-root="feed"
       className={`relative overflow-hidden bg-black ${
-        compact ? 'aspect-[9/16] w-full' : 'aspect-[9/16] h-full max-h-full w-full max-w-[22rem]'
+        compact
+          ? `${aspectClass} w-full`
+          : `${aspectClass} h-full max-h-full w-full max-w-[22rem]`
       }`}
     >
       {multi ? (

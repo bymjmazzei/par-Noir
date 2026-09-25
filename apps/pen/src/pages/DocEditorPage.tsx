@@ -1771,13 +1771,29 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
                 </div>
                 <div className="pen-social-live-preview min-h-0 flex-1">
                   <div className="pen-social-live-preview-stage">
-                    <SocialPhoneFrame large>
+                    <SocialPhoneFrame
+                      large
+                      aspectRatio={
+                        bundle.manifest.galleryAspect === '16/9'
+                          ? '16 / 9'
+                          : bundle.manifest.galleryAspect === '1/1'
+                            ? '1 / 1'
+                            : '9 / 16'
+                      }
+                    >
                       <BrowseFeedTilePreview
                         manifest={bundle.manifest}
                         sections={bundle.sections}
                         session={session}
                         bare
                         compact
+                        aspectRatio={
+                          bundle.manifest.galleryAspect === '16/9'
+                            ? '16/9'
+                            : bundle.manifest.galleryAspect === '1/1'
+                              ? '1/1'
+                              : '9/16'
+                        }
                         engagementOverlay={
                           <TemplateEngagementRail
                             templateId={

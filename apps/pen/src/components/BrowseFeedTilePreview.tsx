@@ -82,7 +82,8 @@ export function BrowseFeedTilePreview({
   bare,
   session,
   hideEngagementRail = false,
-  engagementOverlay
+  engagementOverlay,
+  aspectRatio
 }: {
   manifest: PenDocManifest;
   sections: PenSectionContent[];
@@ -93,6 +94,7 @@ export function BrowseFeedTilePreview({
   hideEngagementRail?: boolean;
   /** Browse-shaped preview-only overlay (editor live preview). */
   engagementOverlay?: ReactNode;
+  aspectRatio?: '9/16' | '16/9' | '1/1';
 }) {
   const base = bundleToFeedTileModel({
     title: manifest.title || 'Untitled',
@@ -128,6 +130,14 @@ export function BrowseFeedTilePreview({
     };
   }, [manifest, sections, session?.pnIdentifier]);
 
+  const resolvedAspect =
+    aspectRatio ||
+    (manifest.galleryAspect === '16/9'
+      ? '16/9'
+      : manifest.galleryAspect === '1/1'
+        ? '1/1'
+        : '9/16');
+
   const tile = (
     <FeedTileSurface
       model={model}
@@ -135,6 +145,7 @@ export function BrowseFeedTilePreview({
       compact={compact || bare}
       hideEngagementRail={hideEngagementRail}
       engagementOverlay={engagementOverlay}
+      aspectRatio={resolvedAspect}
     />
   );
 

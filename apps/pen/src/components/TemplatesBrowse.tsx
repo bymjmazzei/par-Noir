@@ -29,6 +29,7 @@ import { ClassFeedRail } from './ClassFeedRail';
 import { TemplatesFeedScroller } from './TemplatesFeedScroller';
 import { TemplateEngagementRail } from './TemplateEngagementRail';
 import { SocialPhoneFrame } from './SocialPhoneFrame';
+import { resolveFeedTileAspect, resolvePageAspect } from './DocGalleryPreview';
 import { fetchPublicPenTemplates } from '../services/penCentralIndex';
 import {
   buildTemplateFileIdMap,
@@ -277,7 +278,10 @@ export function TemplatesBrowse({
             <div className="pen-template-preview-modal-body pen-template-preview-modal-body--with-rail">
               <div className="pen-template-preview-modal-stage">
                 {previewIsSocial ? (
-                  <SocialPhoneFrame large>
+                  <SocialPhoneFrame
+                    large
+                    aspectRatio={resolvePageAspect(preview.manifest as never)}
+                  >
                     <BrowseFeedTilePreview
                       manifest={preview.manifest as never}
                       sections={preview.sections}
@@ -285,6 +289,7 @@ export function TemplatesBrowse({
                       compact
                       session={session}
                       hideEngagementRail
+                      aspectRatio={resolveFeedTileAspect(preview.manifest as never)}
                       engagementOverlay={
                         <TemplateEngagementRail
                           templateId={previewId}

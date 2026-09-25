@@ -32,6 +32,25 @@ describe('pen feed UX chrome', () => {
     expect(css).toMatch(/\.pen-explorer-rail\s*\{[^}]*z-index:\s*40/);
     expect(css).toMatch(/\.pen-library-footer\s*\{[\s\S]*?z-index:\s*50/);
     expect(css).toMatch(/\.pen-library-page\s*\{[\s\S]*?height:\s*calc\(100dvh - 2\.5rem\)/);
+    // Empty feed must not paint opaque panel over rules
+    expect(css).toMatch(/\.pen-doc-feed-empty\s*\{[\s\S]*?background:\s*transparent/);
+    expect(css).not.toMatch(/\.pen-doc-feed-empty\s*\{[^}]*background:\s*#fafafa/);
+    // Feed body must not clip sheet bleed; sheet may overflow:hidden
+    expect(css).not.toMatch(
+      /\.pen-library-page\.pen-feed-mode\s+\.pen-library-body\s*,\s*\.pen-library-page\.pen-feed-mode\s+\.pen-library-sheet/
+    );
+    expect(css).toMatch(
+      /\.pen-library-page\.pen-feed-mode\s+\.pen-library-sheet\s*\{[\s\S]*?overflow:\s*hidden/
+    );
+    expect(css).toMatch(/\.pen-library-footer-logo\s*\{[\s\S]*?height:\s*4\.125rem/);
+    // Browse-shaped engagement: 16px gap + corner count
+    expect(css).toMatch(/\.pen-template-engagement-rail\s*\{[\s\S]*?gap:\s*16px/);
+    expect(css).toMatch(
+      /\.pen-template-engagement-count\s*\{[\s\S]*?position:\s*absolute[\s\S]*?bottom:\s*-0\.25rem/
+    );
+    expect(css).toMatch(
+      /\.pen-template-engagement-rail--overlay\s*\{[\s\S]*?transform:\s*scale\(0\.82\)/
+    );
   });
 
   it('PenNotebookPage is the single unlocked notebook chrome', () => {
@@ -95,6 +114,10 @@ describe('pen feed UX chrome', () => {
     expect(stage).toMatch(/placement="aside"/);
     expect(stage).toMatch(/hideEngagementRail/);
     expect(stage).toMatch(/engagementOverlay/);
+    expect(stage).toMatch(/DocGalleryPreview/);
+    expect(stage).toMatch(/resolvePageAspect|resolveFeedTileAspect/);
+    expect(stage).toMatch(/aspectRatio=/);
+    expect(stage).toMatch(/pen-feed-page-slot/);
   });
 
   it('TemplateEngagementRail wires live mutations on aside when fileId present', () => {
@@ -105,6 +128,7 @@ describe('pen feed UX chrome', () => {
     expect(src).toMatch(/toggleLikePublic/);
     expect(src).toMatch(/recordSharePublic/);
     expect(src).toMatch(/placement === 'overlay'/);
+    expect(src).toMatch(/pen-template-engagement-icon-wrap/);
   });
 
   it('TemplatesBrowse is catalog body with Social rail and modal Build', () => {

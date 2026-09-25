@@ -1,7 +1,7 @@
 /**
  * Shared Library / Templates feed slide chrome:
  * social → phone + display-only in-device overlay + live aside;
- * non-social → centered fit slot + live aside.
+ * non-social → centered page preview at true format + live aside.
  */
 
 import type { ReactNode } from 'react';
@@ -9,6 +9,11 @@ import { categoryIdForClass } from '@par-noir/pen-protocol';
 import { SocialPhoneFrame } from './SocialPhoneFrame';
 import { TemplateEngagementRail } from './TemplateEngagementRail';
 import { BrowseFeedTilePreview } from './BrowseFeedTilePreview';
+import {
+  DocGalleryPreview,
+  resolveFeedTileAspect,
+  resolvePageAspect
+} from './DocGalleryPreview';
 import type { PenSession } from '../services/penSession';
 import type { PenDocManifest, PenSectionContent } from '@par-noir/pen-protocol';
 
@@ -37,6 +42,8 @@ export function PenFeedSlideStage({
   const social = categoryIdForClass(classId || manifest.classId || '') === 'social';
   const unlocked = Boolean(session?.pnIdentifier);
   const live = Boolean(fileId) && unlocked;
+  const pageAspectCss = resolvePageAspect(manifest);
+  const feedAspect = resolveFeedTileAspect(manifest);
 
   const overlay = (
     <TemplateEngagementRail
@@ -50,22 +57,28 @@ export function PenFeedSlideStage({
     />
   );
 
-  const tile = (
-    <BrowseFeedTilePreview
-      manifest={manifest}
-      sections={sections}
-      bare
-      compact
-      session={session}
-      hideEngagementRail
-      engagementOverlay={social ? overlay : undefined}
-    />
-  );
-
   const preview = social ? (
-    <SocialPhoneFrame large>{tile}</SocialPhoneFrame>
+    <SocialPhoneFrame large aspectRatio={pageAspectCss}>
+      <BrowseFeedTilePreview
+        manifest={manifest}
+        sections={sections}
+        bare
+        compact
+        session={session}
+        hideEngagementRail
+        engagementOverlay={overlay}
+        aspectRatio={feedAspect}
+      />
+    </SocialPhoneFrame>
   ) : (
-    <div className="pen-feed-tile-slot">{tile}</div>
+    <div className="pen-feed-page-slot">
+      <DocGalleryPreview
+        manifest={manifest}
+        sections={sections}
+        large
+        session={session}
+      />
+    </div>
   );
 
   const previewBlock = onOpen ? (
