@@ -1,6 +1,6 @@
 {
   "penProtocolVersion": "0.1.0",
-  "exportedAt": "2026-09-24T23:49:05.472Z",
+  "exportedAt": "2026-09-26T14:17:27.065Z",
   "classes": [
     {
       "id": "social",
@@ -110,14 +110,14 @@
       "title": "Community",
       "description": "Feeds, landing pages, community homes, and multipage sites",
       "kind": "authored",
-      "audience": "consumer"
+      "audience": "kit"
     },
     {
       "id": "community.feed",
       "title": "Feeds",
       "description": "Self-hosted and curated feed configs",
       "kind": "authored",
-      "audience": "consumer",
+      "audience": "kit",
       "parentId": "community",
       "entitlement": "self-hosted"
     },
@@ -126,7 +126,7 @@
       "title": "Feed embed",
       "description": "Framed configurable stream chrome",
       "kind": "authored",
-      "audience": "consumer",
+      "audience": "kit",
       "parentId": "community"
     },
     {
@@ -134,7 +134,7 @@
       "title": "Landing",
       "description": "Arrival page — hero, value, CTA",
       "kind": "authored",
-      "audience": "consumer",
+      "audience": "kit",
       "parentId": "community"
     },
     {
@@ -142,7 +142,7 @@
       "title": "Community home",
       "description": "Hub — banner, nav, feed_embed slot, announcements",
       "kind": "authored",
-      "audience": "consumer",
+      "audience": "kit",
       "parentId": "community"
     },
     {
@@ -150,7 +150,7 @@
       "title": "Site",
       "description": "Multipage feed of pages (aggregator/compiler)",
       "kind": "authored",
-      "audience": "consumer",
+      "audience": "kit",
       "parentId": "community"
     },
     {
@@ -158,14 +158,14 @@
       "title": "Projects",
       "description": "Active work — journals, lists, letters, notes",
       "kind": "authored",
-      "audience": "consumer"
+      "audience": "kit"
     },
     {
       "id": "projects.journal",
       "title": "Journal",
       "description": "Dated entries and logs",
       "kind": "authored",
-      "audience": "consumer",
+      "audience": "kit",
       "parentId": "projects"
     },
     {
@@ -173,7 +173,7 @@
       "title": "List",
       "description": "Checklists, shopping, running lists",
       "kind": "authored",
-      "audience": "consumer",
+      "audience": "kit",
       "parentId": "projects"
     },
     {
@@ -181,7 +181,7 @@
       "title": "Letter",
       "description": "Correspondence letter (DM delivery later)",
       "kind": "authored",
-      "audience": "consumer",
+      "audience": "kit",
       "parentId": "projects"
     },
     {
@@ -189,7 +189,7 @@
       "title": "Note",
       "description": "Short correspondence note (DM delivery later)",
       "kind": "authored",
-      "audience": "consumer",
+      "audience": "kit",
       "parentId": "projects"
     },
     {
@@ -197,14 +197,14 @@
       "title": "Library",
       "description": "Durable published works (books, articles, music)",
       "kind": "authored",
-      "audience": "consumer"
+      "audience": "kit"
     },
     {
       "id": "library.book",
       "title": "Book",
       "description": "Multi-section longform",
       "kind": "authored",
-      "audience": "consumer",
+      "audience": "kit",
       "parentId": "library"
     },
     {
@@ -212,7 +212,7 @@
       "title": "Article",
       "description": "Shorter durable article",
       "kind": "authored",
-      "audience": "consumer",
+      "audience": "kit",
       "parentId": "library"
     },
     {
@@ -220,7 +220,7 @@
       "title": "Music",
       "description": "Track / audio asset with licensing",
       "kind": "authored",
-      "audience": "consumer",
+      "audience": "kit",
       "parentId": "library"
     },
     {
@@ -228,14 +228,14 @@
       "title": "Knowledge",
       "description": "Claims bound to standard data points + ZKP refs (never raw PII)",
       "kind": "authored",
-      "audience": "consumer"
+      "audience": "kit"
     },
     {
       "id": "knowledge.claim",
       "title": "Claim",
       "description": "Structured claim atom with optional geo proof attachments",
       "kind": "authored",
-      "audience": "consumer",
+      "audience": "kit",
       "parentId": "knowledge"
     },
     {
@@ -243,14 +243,14 @@
       "title": "Time",
       "description": "Calendars, events, and schedules",
       "kind": "authored",
-      "audience": "consumer"
+      "audience": "kit"
     },
     {
       "id": "time.calendar",
       "title": "Calendar",
       "description": "Ongoing calendar",
       "kind": "authored",
-      "audience": "consumer",
+      "audience": "kit",
       "parentId": "time"
     },
     {
@@ -258,7 +258,7 @@
       "title": "Event",
       "description": "Single dated occurrence",
       "kind": "authored",
-      "audience": "consumer",
+      "audience": "kit",
       "parentId": "time"
     },
     {
@@ -266,7 +266,7 @@
       "title": "Schedule",
       "description": "Ordered agenda or run-of-show",
       "kind": "authored",
-      "audience": "consumer",
+      "audience": "kit",
       "parentId": "time"
     },
     {
@@ -347,7 +347,7 @@
       "docType": "note",
       "version": "1",
       "title": "Text Tile (Light)",
-      "description": "Twitter-style status card on a light ground",
+      "description": "Status card on a light ground",
       "sections": [
         {
           "slug": "body",
@@ -364,7 +364,7 @@
       "docType": "note",
       "version": "1",
       "title": "Text Tile (Dark)",
-      "description": "Twitter-style status card on a dark ground",
+      "description": "Status card on a dark ground",
       "sections": [
         {
           "slug": "body",
@@ -669,288 +669,6 @@
       "agentStarter": "You are authoring a Pen document with template {{template_id}} (\"Set\").\nDescribe the primary item; list penEmbed source refs in sources when provided. Mix media types.\nSections for this template: {{section_list}}.\nEmit ONLY a PenAgentBuild JSON object: { \"templateId\", \"title\", \"sections\": [{ \"slug\", \"plainText\" }] }.\nUse only the section slugs listed. Do not invent folder paths, file layouts, or parallel formats.\nNever include secrets, pn name, passcodes, tokens, or raw account identifiers.\nUser request:\n{{user_input}}"
     },
     {
-      "id": "feed.self_hosted.v1",
-      "classId": "community.feed",
-      "docType": "self_hosted_feed",
-      "version": "1",
-      "title": "Self-hosted Feed",
-      "description": "Feed meta + membership rules (config)",
-      "sections": [
-        {
-          "slug": "meta",
-          "title": "Feed meta",
-          "required": true
-        },
-        {
-          "slug": "rules",
-          "title": "Rules",
-          "required": false
-        }
-      ],
-      "publishContentClass": "note",
-      "agentStarter": "You are authoring a Pen document with template {{template_id}} (\"Self-hosted Feed\").\nFill feed meta (name/purpose). Add membership rules only if the user specified them.\nSections for this template: {{section_list}}.\nEmit ONLY a PenAgentBuild JSON object: { \"templateId\", \"title\", \"sections\": [{ \"slug\", \"plainText\" }] }.\nUse only the section slugs listed. Do not invent folder paths, file layouts, or parallel formats.\nNever include secrets, pn name, passcodes, tokens, or raw account identifiers.\nUser request:\n{{user_input}}"
-    },
-    {
-      "id": "feed.curated.v1",
-      "classId": "community.feed",
-      "docType": "self_hosted_feed",
-      "version": "1",
-      "title": "Curated Feed",
-      "description": "Curated index (config)",
-      "sections": [
-        {
-          "slug": "meta",
-          "title": "Feed meta",
-          "required": true
-        },
-        {
-          "slug": "index",
-          "title": "Index",
-          "required": false
-        }
-      ],
-      "publishContentClass": "note",
-      "agentStarter": "You are authoring a Pen document with template {{template_id}} (\"Curated Feed\").\nFill feed meta; optionally describe the curated index.\nSections for this template: {{section_list}}.\nEmit ONLY a PenAgentBuild JSON object: { \"templateId\", \"title\", \"sections\": [{ \"slug\", \"plainText\" }] }.\nUse only the section slugs listed. Do not invent folder paths, file layouts, or parallel formats.\nNever include secrets, pn name, passcodes, tokens, or raw account identifiers.\nUser request:\n{{user_input}}"
-    },
-    {
-      "id": "landing.basic.v1",
-      "classId": "community.landing",
-      "docType": "landing",
-      "version": "1",
-      "title": "Landing",
-      "description": "L5 page chrome — hero/value/CTA + community.feed_embed slot",
-      "sections": [
-        {
-          "slug": "hero",
-          "title": "Hero",
-          "required": true
-        },
-        {
-          "slug": "value",
-          "title": "Value",
-          "required": true
-        },
-        {
-          "slug": "feed_embed",
-          "title": "Feed embed",
-          "required": false
-        },
-        {
-          "slug": "cta",
-          "title": "CTA",
-          "required": true
-        }
-      ],
-      "agentStarter": "You are authoring a Pen document with template {{template_id}} (\"Landing\").\nWrite hero headline, value/proof bullets, optional feed_embed slot note, and a clear CTA. Feed embed is a live stream slot — not longform.\nSections for this template: {{section_list}}.\nEmit ONLY a PenAgentBuild JSON object: { \"templateId\", \"title\", \"sections\": [{ \"slug\", \"plainText\" }] }.\nUse only the section slugs listed. Do not invent folder paths, file layouts, or parallel formats.\nNever include secrets, pn name, passcodes, tokens, or raw account identifiers.\nUser request:\n{{user_input}}"
-    },
-    {
-      "id": "home.basic.v1",
-      "classId": "community.home",
-      "docType": "community_home",
-      "version": "1",
-      "title": "Community Home",
-      "description": "Banner, nav, feed_embed iframe slot, announcements",
-      "sections": [
-        {
-          "slug": "banner",
-          "title": "Banner",
-          "required": true
-        },
-        {
-          "slug": "nav",
-          "title": "Nav",
-          "required": false
-        },
-        {
-          "slug": "feed_embed",
-          "title": "Feed embed",
-          "required": true
-        },
-        {
-          "slug": "announcements",
-          "title": "Announcements",
-          "required": false
-        }
-      ],
-      "agentStarter": "You are authoring a Pen document with template {{template_id}} (\"Community Home\").\nFill banner identity, feed_embed slot (live stream), and optional nav/announcements.\nSections for this template: {{section_list}}.\nEmit ONLY a PenAgentBuild JSON object: { \"templateId\", \"title\", \"sections\": [{ \"slug\", \"plainText\" }] }.\nUse only the section slugs listed. Do not invent folder paths, file layouts, or parallel formats.\nNever include secrets, pn name, passcodes, tokens, or raw account identifiers.\nUser request:\n{{user_input}}"
-    },
-    {
-      "id": "site.basic.v1",
-      "classId": "community.site",
-      "docType": "site",
-      "version": "1",
-      "title": "Site",
-      "description": "Ordered multipage feed of page refs",
-      "sections": [
-        {
-          "slug": "pages",
-          "title": "Pages",
-          "required": true
-        }
-      ],
-      "agentStarter": "You are authoring a Pen document with template {{template_id}} (\"Site\").\nList ordered page refs for the multipage feed (landing, home, social pages).\nSections for this template: {{section_list}}.\nEmit ONLY a PenAgentBuild JSON object: { \"templateId\", \"title\", \"sections\": [{ \"slug\", \"plainText\" }] }.\nUse only the section slugs listed. Do not invent folder paths, file layouts, or parallel formats.\nNever include secrets, pn name, passcodes, tokens, or raw account identifiers.\nUser request:\n{{user_input}}"
-    },
-    {
-      "id": "journal.basic.v1",
-      "classId": "projects.journal",
-      "docType": "journal",
-      "version": "1",
-      "title": "Journal",
-      "description": "Example Project starter — users publish their own Projects as templates for depth",
-      "sections": [
-        {
-          "slug": "entries",
-          "title": "Entries",
-          "required": true
-        }
-      ],
-      "agentStarter": "You are authoring a Pen document with template {{template_id}} (\"Journal\").\nWrite dated journal entries. Prefer composing from Social/Time atoms rather than inventing Project-only forms.\nSections for this template: {{section_list}}.\nEmit ONLY a PenAgentBuild JSON object: { \"templateId\", \"title\", \"sections\": [{ \"slug\", \"plainText\" }] }.\nUse only the section slugs listed. Do not invent folder paths, file layouts, or parallel formats.\nNever include secrets, pn name, passcodes, tokens, or raw account identifiers.\nUser request:\n{{user_input}}"
-    },
-    {
-      "id": "letter.basic.v1",
-      "classId": "projects.letter",
-      "docType": "letter",
-      "version": "1",
-      "title": "Letter",
-      "description": "Example correspondence Project — Send opens Messaging",
-      "sections": [
-        {
-          "slug": "body",
-          "title": "Body",
-          "required": true
-        }
-      ],
-      "agentStarter": "You are authoring a Pen document with template {{template_id}} (\"Letter\").\nWrite the letter body (greeting, content, closing) in body.\nSections for this template: {{section_list}}.\nEmit ONLY a PenAgentBuild JSON object: { \"templateId\", \"title\", \"sections\": [{ \"slug\", \"plainText\" }] }.\nUse only the section slugs listed. Do not invent folder paths, file layouts, or parallel formats.\nNever include secrets, pn name, passcodes, tokens, or raw account identifiers.\nUser request:\n{{user_input}}"
-    },
-    {
-      "id": "book.basic.v1",
-      "classId": "library.book",
-      "docType": "book",
-      "version": "1",
-      "title": "Book",
-      "description": "Longform compile target — atom sequence (vertical within unit)",
-      "sections": [
-        {
-          "slug": "front",
-          "title": "Front",
-          "required": false
-        },
-        {
-          "slug": "body",
-          "title": "Body",
-          "required": true
-        }
-      ],
-      "agentStarter": "You are authoring a Pen document with template {{template_id}} (\"Book\").\nLongform: body is a unit sequence. Vertical within unit; horizontal between units. Optional front matter.\nSections for this template: {{section_list}}.\nEmit ONLY a PenAgentBuild JSON object: { \"templateId\", \"title\", \"sections\": [{ \"slug\", \"plainText\" }] }.\nUse only the section slugs listed. Do not invent folder paths, file layouts, or parallel formats.\nNever include secrets, pn name, passcodes, tokens, or raw account identifiers.\nUser request:\n{{user_input}}"
-    },
-    {
-      "id": "article.basic.v1",
-      "classId": "library.article",
-      "docType": "article",
-      "version": "1",
-      "title": "Article",
-      "description": "Longform compile target — durable article as atom sequence",
-      "sections": [
-        {
-          "slug": "body",
-          "title": "Body",
-          "required": true
-        }
-      ],
-      "agentStarter": "You are authoring a Pen document with template {{template_id}} (\"Article\").\nWrite a durable article body as a longform atom sequence.\nSections for this template: {{section_list}}.\nEmit ONLY a PenAgentBuild JSON object: { \"templateId\", \"title\", \"sections\": [{ \"slug\", \"plainText\" }] }.\nUse only the section slugs listed. Do not invent folder paths, file layouts, or parallel formats.\nNever include secrets, pn name, passcodes, tokens, or raw account identifiers.\nUser request:\n{{user_input}}"
-    },
-    {
-      "id": "music.basic.v1",
-      "classId": "library.music",
-      "docType": "music",
-      "version": "1",
-      "title": "Music",
-      "description": "Cover art + track meta and audio",
-      "sections": [
-        {
-          "slug": "meta",
-          "title": "Meta",
-          "required": true
-        },
-        {
-          "slug": "audio",
-          "title": "Audio",
-          "required": true
-        }
-      ],
-      "agentStarter": "You are authoring a Pen document with template {{template_id}} (\"Music\").\nFill track meta (title, artist) and attach audio in audio.\nSections for this template: {{section_list}}.\nEmit ONLY a PenAgentBuild JSON object: { \"templateId\", \"title\", \"sections\": [{ \"slug\", \"plainText\" }] }.\nUse only the section slugs listed. Do not invent folder paths, file layouts, or parallel formats.\nNever include secrets, pn name, passcodes, tokens, or raw account identifiers.\nUser request:\n{{user_input}}"
-    },
-    {
-      "id": "calendar.basic.v1",
-      "classId": "time.calendar",
-      "docType": "calendar",
-      "version": "1",
-      "title": "Calendar",
-      "description": "Calendar shell — lists/embeds Event atoms (grid later)",
-      "sections": [
-        {
-          "slug": "meta",
-          "title": "Meta",
-          "required": true
-        },
-        {
-          "slug": "events",
-          "title": "Events",
-          "required": false
-        }
-      ],
-      "agentStarter": "You are authoring a Pen document with template {{template_id}} (\"Calendar\").\nFill calendar meta; list eventRef lines for time.event atoms when provided.\nSections for this template: {{section_list}}.\nEmit ONLY a PenAgentBuild JSON object: { \"templateId\", \"title\", \"sections\": [{ \"slug\", \"plainText\" }] }.\nUse only the section slugs listed. Do not invent folder paths, file layouts, or parallel formats.\nNever include secrets, pn name, passcodes, tokens, or raw account identifiers.\nUser request:\n{{user_input}}"
-    },
-    {
-      "id": "event.basic.v1",
-      "classId": "time.event",
-      "docType": "event",
-      "version": "1",
-      "title": "Event",
-      "description": "Structured when/where (tz + placeLabel + optional geoProofRef)",
-      "sections": [
-        {
-          "slug": "details",
-          "title": "Details",
-          "required": true
-        }
-      ],
-      "agentStarter": "You are authoring a Pen document with template {{template_id}} (\"Event\").\nEmit title/startAt/endAt/timeZone/placeLabel/details key lines. Never raw lat/lng — use geoProofRef for place proofs.\nSections for this template: {{section_list}}.\nEmit ONLY a PenAgentBuild JSON object: { \"templateId\", \"title\", \"sections\": [{ \"slug\", \"plainText\" }] }.\nUse only the section slugs listed. Do not invent folder paths, file layouts, or parallel formats.\nNever include secrets, pn name, passcodes, tokens, or raw account identifiers.\nUser request:\n{{user_input}}"
-    },
-    {
-      "id": "schedule.basic.v1",
-      "classId": "time.schedule",
-      "docType": "schedule",
-      "version": "1",
-      "title": "Schedule",
-      "description": "Ordered agenda rows for humans and agents",
-      "sections": [
-        {
-          "slug": "agenda",
-          "title": "Agenda",
-          "required": true
-        }
-      ],
-      "agentStarter": "You are authoring a Pen document with template {{template_id}} (\"Schedule\").\nWrite ordered agenda rows as “HH:MM — Title (Nm)” lines.\nSections for this template: {{section_list}}.\nEmit ONLY a PenAgentBuild JSON object: { \"templateId\", \"title\", \"sections\": [{ \"slug\", \"plainText\" }] }.\nUse only the section slugs listed. Do not invent folder paths, file layouts, or parallel formats.\nNever include secrets, pn name, passcodes, tokens, or raw account identifiers.\nUser request:\n{{user_input}}"
-    },
-    {
-      "id": "knowledge.claim.v1",
-      "classId": "knowledge.claim",
-      "docType": "knowledge",
-      "version": "1",
-      "title": "Knowledge Claim",
-      "description": "Claims bound to standard-data-points + ZKP — never raw PII",
-      "sections": [
-        {
-          "slug": "claims",
-          "title": "Claims",
-          "required": true
-        }
-      ],
-      "publishContentClass": "note",
-      "agentStarter": "You are authoring a Pen document with template {{template_id}} (\"Knowledge Claim\").\nBind dataPointId catalog ids and opaque proofRef slots only. Never emit age, email, name, passcode, or coordinates.\nSections for this template: {{section_list}}.\nEmit ONLY a PenAgentBuild JSON object: { \"templateId\", \"title\", \"sections\": [{ \"slug\", \"plainText\" }] }.\nUse only the section slugs listed. Do not invent folder paths, file layouts, or parallel formats.\nNever include secrets, pn name, passcodes, tokens, or raw account identifiers.\nUser request:\n{{user_input}}"
-    },
-    {
       "id": "quote.basic.v1",
       "classId": "social.quote",
       "docType": "quote",
@@ -1102,32 +820,6 @@
       ],
       "publishContentClass": "note",
       "agentStarter": "You are authoring a Pen document with template {{template_id}} (\"Interactive Frame\").\nDescribe the framed content; interactions bind to a cloud primitive.\nSections for this template: {{section_list}}.\nEmit ONLY a PenAgentBuild JSON object: { \"templateId\", \"title\", \"sections\": [{ \"slug\", \"plainText\" }] }.\nUse only the section slugs listed. Do not invent folder paths, file layouts, or parallel formats.\nNever include secrets, pn name, passcodes, tokens, or raw account identifiers.\nUser request:\n{{user_input}}"
-    },
-    {
-      "id": "feed.embed.v1",
-      "classId": "community.feed_embed",
-      "docType": "feed_embed",
-      "version": "1",
-      "title": "Feed Embed",
-      "description": "L5 iframe / framed stream slot (not longform chapters)",
-      "sections": [
-        {
-          "slug": "header",
-          "title": "Header",
-          "required": true
-        },
-        {
-          "slug": "stream",
-          "title": "Stream",
-          "required": true
-        },
-        {
-          "slug": "footer",
-          "title": "Footer",
-          "required": false
-        }
-      ],
-      "agentStarter": "You are authoring a Pen document with template {{template_id}} (\"Feed Embed\").\nFill header chrome and stream iframe empty-state. This is a live aggregator slot inside page chrome — not longform.\nSections for this template: {{section_list}}.\nEmit ONLY a PenAgentBuild JSON object: { \"templateId\", \"title\", \"sections\": [{ \"slug\", \"plainText\" }] }.\nUse only the section slugs listed. Do not invent folder paths, file layouts, or parallel formats.\nNever include secrets, pn name, passcodes, tokens, or raw account identifiers.\nUser request:\n{{user_input}}"
     },
     {
       "id": "table.basic.v1",

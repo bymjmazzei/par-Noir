@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="360" height="640" viewBox="0 0 360 640">
+<defs><filter id="sh0" x="-20%" y="-20%" width="140%" height="140%"><feDropShadow dx="0" dy="8" stdDeviation="6.666666666666667" flood-color="rgba(20,20,20,0.1)" flood-opacity="0.45"/></filter></defs>
+<defs><linearGradient id="pg" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#f4f1ec"/><stop offset="100%" stop-color="#1a1a1a"/></linearGradient></defs><rect width="100%" height="100%" fill="url(#pg)"/>
+<rect x="20" y="120" width="320" height="280" rx="6" fill="#ffffff" stroke="#d4cfc7" stroke-width="1" filter="url(#sh0)"/>
+<rect x="40" y="148" width="280" height="28" rx="6" fill="#ebe7e1"/>
+<text x="52" y="157.8" fill="#0f766e" font-family="Montserrat, Helvetica, sans-serif" font-size="12" xml:space="preserve">parnoir.com</text>
+<text x="52" y="225.2" fill="#141414" font-family="Source Serif 4, Georgia, serif" font-size="22" xml:space="preserve">Identity without a landlord</text>
+<text x="52" y="312" fill="#6b6560" font-family="Montserrat, Helvetica, sans-serif" font-size="14" xml:space="preserve">How Layer 1 keeps persons at the root of…</text>
+</svg>

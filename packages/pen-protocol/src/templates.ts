@@ -1,31 +1,18 @@
-/** Pen template registry + starter pack. */
+/** Pen template registry + Social starter pack (+ kit primitives/records). */
 
 import type { PenPageLayout, PenPagePresentation, PenSectionContent } from './types.js';
 import type { PenLicensingRoot } from './licensing.js';
 import { emptySection } from './richDoc.js';
 import {
-  seedArticle,
   seedAssetKey,
   seedAudio,
-  seedBook,
-  seedCalendar,
   seedCode,
   seedCollectionBasic,
   seedCollectionStory,
-  seedCommunityHome,
   seedComparison,
-  seedEvent,
-  seedFeedCurated,
-  seedFeedEmbed,
-  seedFeedSelfHosted,
   seedFrame,
-  seedJournal,
-  seedKnowledgeClaim,
-  seedLanding,
-  seedLetter,
   seedLink,
   seedMetric,
-  seedMusic,
   seedNoteArticle,
   seedNoteBasicLandscape,
   seedNoteBasicPortrait,
@@ -40,9 +27,7 @@ import {
   seedProfile,
   seedQuote,
   seedRegister,
-  seedSchedule,
   seedSetBasic,
-  seedSite,
   seedTablePrimitive,
   type SeedBundle
 } from './starterSeeds.js';
@@ -102,6 +87,13 @@ export interface PenTemplate {
   browseFeatured?: boolean;
   /** Optional CDN-backed public template preview. */
   previewFileId?: string;
+  /**
+   * Pre-baked flattened gallery preview (inert layers only).
+   * Wired into templatePreviewBundle as galleryPreviewRef.
+   */
+  seedGalleryPreviewSrc?: string;
+  seedGalleryPreviewKind?: 'image' | 'video';
+  seedGalleryPreviewPosterSrc?: string;
   /** Work license + open creator contracts (optional on platform starters). */
   licensing?: PenLicensingRoot;
 }
@@ -109,8 +101,24 @@ export interface PenTemplate {
 /** Default author label for first-party / starter templates. */
 export const PLATFORM_TEMPLATE_AUTHOR = 'par noir';
 
+function previewAsset(name: string): string {
+  return new URL(`./starter-assets/previews/${name}`, import.meta.url).href;
+}
+
 function withSeed(
-  base: Omit<PenTemplate, 'seedSections' | 'seedPagePresentation' | 'seedPageLayout'>,
+  base: Omit<
+    PenTemplate,
+    | 'seedSections'
+    | 'seedPagePresentation'
+    | 'seedPageLayout'
+    | 'seedGalleryPreviewSrc'
+    | 'seedGalleryPreviewKind'
+    | 'seedGalleryPreviewPosterSrc'
+  > & {
+    seedGalleryPreviewSrc?: string;
+    seedGalleryPreviewKind?: 'image' | 'video';
+    seedGalleryPreviewPosterSrc?: string;
+  },
   seed: SeedBundle
 ): PenTemplate {
   return {
@@ -118,6 +126,23 @@ function withSeed(
     seedSections: seed.seedSections,
     seedPagePresentation: seed.seedPagePresentation,
     seedPageLayout: seed.seedPageLayout
+  };
+}
+
+/** Attach pre-baked flatten for Social consumer starters. */
+function withPreview(
+  template: PenTemplate,
+  previewFile: string,
+  kind: 'image' | 'video' = 'image',
+  posterFile?: string
+): PenTemplate {
+  return {
+    ...template,
+    seedGalleryPreviewSrc: previewAsset(previewFile),
+    seedGalleryPreviewKind: kind,
+    ...(posterFile
+      ? { seedGalleryPreviewPosterSrc: previewAsset(posterFile) }
+      : {})
   };
 }
 
@@ -170,805 +195,614 @@ const DEFAULT_REGISTER_COLUMNS: PenRegisterColumn[] = [
 ];
 
 const STARTER: PenTemplate[] = [
-  withSeed(
-    {
-      id: 'note.basic.portrait.v1',
-      classId: 'social.note',
-      docType: 'note',
-      version: '1',
-      title: 'Note (Portrait)',
-      description: 'Text-first portrait Note for browse',
-      sections: [{ slug: 'body', title: 'Body', required: true }],
-      publishContentClass: 'note',
-      browseFeatured: true,
-      seedGalleryAspect: '9/16',
-      agentStarter: proseStarter({
+  withPreview(
+    withSeed(
+      {
+        id: 'note.basic.portrait.v1',
+        classId: 'social.note',
+        docType: 'note',
+        version: '1',
         title: 'Note (Portrait)',
-        focus: 'Fill the required body with clear prose suitable for a browse Note. Text must dominate.'
-      })
-    },
-    seedNoteBasicPortrait()
+        description: 'Text-first portrait Note for browse',
+        sections: [{ slug: 'body', title: 'Body', required: true }],
+        publishContentClass: 'note',
+        browseFeatured: true,
+        seedGalleryAspect: '9/16',
+        agentStarter: proseStarter({
+          title: 'Note (Portrait)',
+          focus:
+            'Fill the required body with clear prose suitable for a browse Note. Text must dominate.'
+        })
+      },
+      seedNoteBasicPortrait()
+    ),
+    'note.basic.portrait.v1.svg'
   ),
-  withSeed(
-    {
-      id: 'note.text_tile.light.v1',
-      classId: 'social.note',
-      docType: 'note',
-      version: '1',
-      title: 'Text Tile (Light)',
-      description: 'Twitter-style status card on a light ground',
-      sections: [{ slug: 'body', title: 'Body', required: true }],
-      publishContentClass: 'note',
-      browseFeatured: true,
-      seedGalleryAspect: '9/16',
-      agentStarter: proseStarter({
+  withPreview(
+    withSeed(
+      {
+        id: 'note.text_tile.light.v1',
+        classId: 'social.note',
+        docType: 'note',
+        version: '1',
         title: 'Text Tile (Light)',
-        focus: 'Write one clear status thought inside the light card. Text must dominate.'
-      })
-    },
-    seedNoteTextTileLight()
+        description: 'Status card on a light ground',
+        sections: [{ slug: 'body', title: 'Body', required: true }],
+        publishContentClass: 'note',
+        browseFeatured: true,
+        seedGalleryAspect: '9/16',
+        agentStarter: proseStarter({
+          title: 'Text Tile (Light)',
+          focus: 'Write one clear status thought inside the light card. Text must dominate.'
+        })
+      },
+      seedNoteTextTileLight()
+    ),
+    'note.text_tile.light.v1.svg'
   ),
-  withSeed(
-    {
-      id: 'note.text_tile.dark.v1',
-      classId: 'social.note',
-      docType: 'note',
-      version: '1',
-      title: 'Text Tile (Dark)',
-      description: 'Twitter-style status card on a dark ground',
-      sections: [{ slug: 'body', title: 'Body', required: true }],
-      publishContentClass: 'note',
-      browseFeatured: true,
-      seedGalleryAspect: '9/16',
-      agentStarter: proseStarter({
+  withPreview(
+    withSeed(
+      {
+        id: 'note.text_tile.dark.v1',
+        classId: 'social.note',
+        docType: 'note',
+        version: '1',
         title: 'Text Tile (Dark)',
-        focus: 'Write one clear status thought inside the dark card. Text must dominate.'
-      })
-    },
-    seedNoteTextTileDark()
+        description: 'Status card on a dark ground',
+        sections: [{ slug: 'body', title: 'Body', required: true }],
+        publishContentClass: 'note',
+        browseFeatured: true,
+        seedGalleryAspect: '9/16',
+        agentStarter: proseStarter({
+          title: 'Text Tile (Dark)',
+          focus: 'Write one clear status thought inside the dark card. Text must dominate.'
+        })
+      },
+      seedNoteTextTileDark()
+    ),
+    'note.text_tile.dark.v1.svg'
   ),
-  withSeed(
-    {
-      id: 'note.basic.landscape.v1',
-      classId: 'social.note',
-      docType: 'note',
-      version: '1',
-      title: 'Note (Landscape)',
-      description: 'Text-first landscape Note',
-      sections: [{ slug: 'body', title: 'Body', required: true }],
-      publishContentClass: 'note',
-      browseFeatured: true,
-      seedGalleryAspect: '16/9',
-      agentStarter: proseStarter({
+  withPreview(
+    withSeed(
+      {
+        id: 'note.basic.landscape.v1',
+        classId: 'social.note',
+        docType: 'note',
+        version: '1',
         title: 'Note (Landscape)',
-        focus: 'Write a headline and short sub-message. Text must dominate.'
-      })
-    },
-    seedNoteBasicLandscape()
+        description: 'Text-first landscape Note',
+        sections: [{ slug: 'body', title: 'Body', required: true }],
+        publishContentClass: 'note',
+        browseFeatured: true,
+        seedGalleryAspect: '16/9',
+        agentStarter: proseStarter({
+          title: 'Note (Landscape)',
+          focus: 'Write a headline and short sub-message. Text must dominate.'
+        })
+      },
+      seedNoteBasicLandscape()
+    ),
+    'note.basic.landscape.v1.svg'
   ),
-  withSeed(
-    {
-      id: 'note.media.portrait.v1',
-      classId: 'social.note',
-      docType: 'note',
-      version: '1',
-      title: 'Note on Media (Portrait)',
-      description: 'Text card/scrim over quiet media — text still dominates',
-      sections: [{ slug: 'body', title: 'Body', required: true }],
-      publishContentClass: 'note',
-      browseFeatured: true,
-      seedGalleryAspect: '9/16',
-      agentStarter: proseStarter({
+  withPreview(
+    withSeed(
+      {
+        id: 'note.media.portrait.v1',
+        classId: 'social.note',
+        docType: 'note',
+        version: '1',
         title: 'Note on Media (Portrait)',
-        focus: 'Write protected overlay text. Media is backdrop only.'
-      })
-    },
-    seedNoteMediaPortrait()
+        description: 'Text card/scrim over quiet media — text still dominates',
+        sections: [{ slug: 'body', title: 'Body', required: true }],
+        publishContentClass: 'note',
+        browseFeatured: true,
+        seedGalleryAspect: '9/16',
+        agentStarter: proseStarter({
+          title: 'Note on Media (Portrait)',
+          focus: 'Write protected overlay text. Media is backdrop only.'
+        })
+      },
+      seedNoteMediaPortrait()
+    ),
+    'note.media.portrait.v1.svg'
   ),
-  withSeed(
-    {
-      id: 'note.media.landscape.v1',
-      classId: 'social.note',
-      docType: 'note',
-      version: '1',
-      title: 'Note on Media (Landscape)',
-      description: 'Split media + dominant text card',
-      sections: [{ slug: 'body', title: 'Body', required: true }],
-      publishContentClass: 'note',
-      seedGalleryAspect: '16/9',
-      agentStarter: proseStarter({
+  withPreview(
+    withSeed(
+      {
+        id: 'note.media.landscape.v1',
+        classId: 'social.note',
+        docType: 'note',
+        version: '1',
         title: 'Note on Media (Landscape)',
-        focus: 'Write the text card; media is secondary.'
-      })
-    },
-    seedNoteMediaLandscape()
+        description: 'Split media + dominant text card',
+        sections: [{ slug: 'body', title: 'Body', required: true }],
+        publishContentClass: 'note',
+        seedGalleryAspect: '16/9',
+        agentStarter: proseStarter({
+          title: 'Note on Media (Landscape)',
+          focus: 'Write the text card; media is secondary.'
+        })
+      },
+      seedNoteMediaLandscape()
+    ),
+    'note.media.landscape.v1.svg'
   ),
-  withSeed(
-    {
-      id: 'note.article.v1',
-      classId: 'social.note',
-      docType: 'note',
-      version: '1',
-      title: 'Article Note',
-      description: 'Title + body Note',
-      sections: [
-        { slug: 'title', title: 'Title', required: true },
-        { slug: 'body', title: 'Body', required: true }
-      ],
-      publishContentClass: 'note',
-      browseFeatured: true,
-      agentStarter: proseStarter({
+  withPreview(
+    withSeed(
+      {
+        id: 'note.article.v1',
+        classId: 'social.note',
+        docType: 'note',
+        version: '1',
         title: 'Article Note',
-        focus:
-          'Provide a short title section and a full body. Title section is display title text, not only the JSON title field.'
-      })
-    },
-    seedNoteArticle()
+        description: 'Title + body Note',
+        sections: [
+          { slug: 'title', title: 'Title', required: true },
+          { slug: 'body', title: 'Body', required: true }
+        ],
+        publishContentClass: 'note',
+        browseFeatured: true,
+        seedGalleryAspect: '9/16',
+        agentStarter: proseStarter({
+          title: 'Article Note',
+          focus:
+            'Provide a short title section and a full body. Title section is display title text, not only the JSON title field.'
+        })
+      },
+      seedNoteArticle()
+    ),
+    'note.article.v1.svg'
   ),
-  withSeed(
-    {
-      id: 'post.caption.v1',
-      classId: 'social.post',
-      docType: 'post',
-      version: '1',
-      title: 'Caption Post',
-      description: 'Caption-forward post over a still',
-      sections: [
-        { slug: 'caption', title: 'Caption', required: true },
-        { slug: 'attachments', title: 'Attachments', required: false }
-      ],
-      publishContentClass: 'note',
-      browseFeatured: true,
-      seedGalleryAspect: '9/16',
-      agentStarter: proseStarter({
+  withPreview(
+    withSeed(
+      {
+        id: 'post.caption.v1',
+        classId: 'social.post',
+        docType: 'post',
+        version: '1',
         title: 'Caption Post',
-        focus:
-          'Write the caption. Mention attachment refs in attachments only if the user provided media identifiers; otherwise omit attachments.'
-      })
-    },
-    seedPostCaption()
+        description: 'Caption-forward post over a still',
+        sections: [
+          { slug: 'caption', title: 'Caption', required: true },
+          { slug: 'attachments', title: 'Attachments', required: false }
+        ],
+        publishContentClass: 'note',
+        browseFeatured: true,
+        seedGalleryAspect: '9/16',
+        agentStarter: proseStarter({
+          title: 'Caption Post',
+          focus:
+            'Write the caption. Mention attachment refs in attachments only if the user provided media identifiers; otherwise omit attachments.'
+        })
+      },
+      seedPostCaption()
+    ),
+    'post.caption.v1.svg'
   ),
-  withSeed(
-    {
-      id: 'post.image.portrait.v1',
-      classId: 'social.post',
-      docType: 'post',
-      version: '1',
-      title: 'Image Post (Portrait)',
-      description: 'Locked portrait image frame with optional caption',
-      sections: [
-        { slug: 'attachments', title: 'Media', required: true },
-        { slug: 'caption', title: 'Caption', required: false }
-      ],
-      publishContentClass: 'note',
-      browseFeatured: true,
-      seedGalleryAspect: '9/16',
-      agentStarter: proseStarter({
+  withPreview(
+    withSeed(
+      {
+        id: 'post.image.portrait.v1',
+        classId: 'social.post',
+        docType: 'post',
+        version: '1',
         title: 'Image Post (Portrait)',
-        focus: 'Describe media attachments the user named; add an optional short caption.'
-      })
-    },
-    seedPostImageAspect('portrait')
+        description: 'Locked portrait image frame with optional caption',
+        sections: [
+          { slug: 'attachments', title: 'Media', required: true },
+          { slug: 'caption', title: 'Caption', required: false }
+        ],
+        publishContentClass: 'note',
+        browseFeatured: true,
+        seedGalleryAspect: '9/16',
+        agentStarter: proseStarter({
+          title: 'Image Post (Portrait)',
+          focus: 'Describe media attachments the user named; add an optional short caption.'
+        })
+      },
+      seedPostImageAspect('portrait')
+    ),
+    'post.image.portrait.v1.svg'
   ),
-  withSeed(
-    {
-      id: 'post.image.landscape.v1',
-      classId: 'social.post',
-      docType: 'post',
-      version: '1',
-      title: 'Image Post (Landscape)',
-      description: 'Locked landscape image frame',
-      sections: [
-        { slug: 'attachments', title: 'Media', required: true },
-        { slug: 'caption', title: 'Caption', required: false }
-      ],
-      publishContentClass: 'note',
-      browseFeatured: true,
-      seedGalleryAspect: '16/9',
-      agentStarter: proseStarter({
+  withPreview(
+    withSeed(
+      {
+        id: 'post.image.landscape.v1',
+        classId: 'social.post',
+        docType: 'post',
+        version: '1',
         title: 'Image Post (Landscape)',
-        focus: 'Describe landscape media; optional caption.'
-      })
-    },
-    seedPostImageAspect('landscape')
+        description: 'Locked landscape image frame',
+        sections: [
+          { slug: 'attachments', title: 'Media', required: true },
+          { slug: 'caption', title: 'Caption', required: false }
+        ],
+        publishContentClass: 'note',
+        browseFeatured: true,
+        seedGalleryAspect: '16/9',
+        agentStarter: proseStarter({
+          title: 'Image Post (Landscape)',
+          focus: 'Describe landscape media; optional caption.'
+        })
+      },
+      seedPostImageAspect('landscape')
+    ),
+    'post.image.landscape.v1.svg'
   ),
-  withSeed(
-    {
-      id: 'post.image.square.v1',
-      classId: 'social.post',
-      docType: 'post',
-      version: '1',
-      title: 'Image Post (Square)',
-      description: '1:1 image frame',
-      sections: [
-        { slug: 'attachments', title: 'Media', required: true },
-        { slug: 'caption', title: 'Caption', required: false }
-      ],
-      publishContentClass: 'note',
-      browseFeatured: true,
-      seedGalleryAspect: '1/1',
-      agentStarter: proseStarter({
+  withPreview(
+    withSeed(
+      {
+        id: 'post.image.square.v1',
+        classId: 'social.post',
+        docType: 'post',
+        version: '1',
         title: 'Image Post (Square)',
-        focus: 'Describe square media; optional caption.'
-      })
-    },
-    seedPostImageAspect('square')
+        description: '1:1 image frame',
+        sections: [
+          { slug: 'attachments', title: 'Media', required: true },
+          { slug: 'caption', title: 'Caption', required: false }
+        ],
+        publishContentClass: 'note',
+        browseFeatured: true,
+        seedGalleryAspect: '1/1',
+        agentStarter: proseStarter({
+          title: 'Image Post (Square)',
+          focus: 'Describe square media; optional caption.'
+        })
+      },
+      seedPostImageAspect('square')
+    ),
+    'post.image.square.v1.svg'
   ),
-  withSeed(
-    {
-      id: 'post.video.portrait.v1',
-      classId: 'social.post',
-      docType: 'post',
-      version: '1',
-      title: 'Video Post (Portrait)',
-      description: 'Locked 9:16 video frame',
-      sections: [
-        { slug: 'attachments', title: 'Media', required: true },
-        { slug: 'caption', title: 'Caption', required: false }
-      ],
-      publishContentClass: 'note',
-      browseFeatured: true,
-      seedGalleryAspect: '9/16',
-      agentStarter: proseStarter({
+  withPreview(
+    withSeed(
+      {
+        id: 'post.video.portrait.v1',
+        classId: 'social.post',
+        docType: 'post',
+        version: '1',
         title: 'Video Post (Portrait)',
-        focus: 'Describe the video the user named; add an optional short caption.'
-      })
-    },
-    seedPostVideoAspect('portrait')
+        description: 'Locked 9:16 video frame',
+        sections: [
+          { slug: 'attachments', title: 'Media', required: true },
+          { slug: 'caption', title: 'Caption', required: false }
+        ],
+        publishContentClass: 'note',
+        browseFeatured: true,
+        seedGalleryAspect: '9/16',
+        agentStarter: proseStarter({
+          title: 'Video Post (Portrait)',
+          focus: 'Describe the video the user named; add an optional short caption.'
+        })
+      },
+      seedPostVideoAspect('portrait')
+    ),
+    'post.video.portrait.v1.svg',
+    'image',
+    'post.video.portrait.v1.svg'
   ),
-  withSeed(
-    {
-      id: 'post.video.landscape.v1',
-      classId: 'social.post',
-      docType: 'post',
-      version: '1',
-      title: 'Video Post (Landscape)',
-      description: 'Locked 16:9 video frame',
-      sections: [
-        { slug: 'attachments', title: 'Media', required: true },
-        { slug: 'caption', title: 'Caption', required: false }
-      ],
-      publishContentClass: 'note',
-      seedGalleryAspect: '16/9',
-      agentStarter: proseStarter({
+  withPreview(
+    withSeed(
+      {
+        id: 'post.video.landscape.v1',
+        classId: 'social.post',
+        docType: 'post',
+        version: '1',
         title: 'Video Post (Landscape)',
-        focus: 'Describe landscape video; optional caption.'
-      })
-    },
-    seedPostVideoAspect('landscape')
+        description: 'Locked 16:9 video frame',
+        sections: [
+          { slug: 'attachments', title: 'Media', required: true },
+          { slug: 'caption', title: 'Caption', required: false }
+        ],
+        publishContentClass: 'note',
+        seedGalleryAspect: '16/9',
+        agentStarter: proseStarter({
+          title: 'Video Post (Landscape)',
+          focus: 'Describe landscape video; optional caption.'
+        })
+      },
+      seedPostVideoAspect('landscape')
+    ),
+    'post.video.landscape.v1.svg'
   ),
-  withSeed(
-    {
-      id: 'post.video.square.v1',
-      classId: 'social.post',
-      docType: 'post',
-      version: '1',
-      title: 'Video Post (Square)',
-      description: 'Locked 1:1 video frame',
-      sections: [
-        { slug: 'attachments', title: 'Media', required: true },
-        { slug: 'caption', title: 'Caption', required: false }
-      ],
-      publishContentClass: 'note',
-      seedGalleryAspect: '1/1',
-      agentStarter: proseStarter({
+  withPreview(
+    withSeed(
+      {
+        id: 'post.video.square.v1',
+        classId: 'social.post',
+        docType: 'post',
+        version: '1',
         title: 'Video Post (Square)',
-        focus: 'Describe square video; optional caption.'
-      })
-    },
-    seedPostVideoAspect('square')
+        description: 'Locked 1:1 video frame',
+        sections: [
+          { slug: 'attachments', title: 'Media', required: true },
+          { slug: 'caption', title: 'Caption', required: false }
+        ],
+        publishContentClass: 'note',
+        seedGalleryAspect: '1/1',
+        agentStarter: proseStarter({
+          title: 'Video Post (Square)',
+          focus: 'Describe square video; optional caption.'
+        })
+      },
+      seedPostVideoAspect('square')
+    ),
+    'post.video.square.v1.svg'
   ),
-withSeed(
-    {
-      id: 'collection.basic.v1',
-      classId: 'social.collection',
-      docType: 'collection',
-      version: '1',
-      title: 'Collection',
-      description: 'Ordered pages with distinct stills',
-      sections: [
-        { slug: 'slide-1', title: 'Slide 1', required: true },
-        { slug: 'slide-2', title: 'Slide 2', required: false }
-      ],
-      publishContentClass: 'collection',
-      browseFeatured: true,
-      seedPageSwipeAxis: 'x',
-      agentStarter: proseStarter({
+  withPreview(
+    withSeed(
+      {
+        id: 'collection.basic.v1',
+        classId: 'social.collection',
+        docType: 'collection',
+        version: '1',
         title: 'Collection',
-        focus: 'Write slide-1 content; add slide-2 only if the user needs a second page. Same asset class per page.'
-      })
-    },
-    seedCollectionBasic()
+        description: 'Ordered pages with distinct stills',
+        sections: [
+          { slug: 'slide-1', title: 'Slide 1', required: true },
+          { slug: 'slide-2', title: 'Slide 2', required: false }
+        ],
+        publishContentClass: 'collection',
+        browseFeatured: true,
+        seedPageSwipeAxis: 'x',
+        seedGalleryAspect: '9/16',
+        agentStarter: proseStarter({
+          title: 'Collection',
+          focus:
+            'Write slide-1 content; add slide-2 only if the user needs a second page. Same asset class per page.'
+        })
+      },
+      seedCollectionBasic()
+    ),
+    'collection.basic.v1.svg'
   ),
-  withSeed(
-    {
-      id: 'collection.story.v1',
-      classId: 'social.collection',
-      docType: 'collection',
-      version: '1',
-      title: 'Story Collection',
-      description: 'Vertical story cover + pages (same-type multipage)',
-      sections: [
-        { slug: 'cover', title: 'Cover', required: true },
-        { slug: 'pages', title: 'Pages', required: true }
-      ],
-      publishContentClass: 'collection',
-      browseFeatured: true,
-      seedPageSwipeAxis: 'x',
-      agentStarter: proseStarter({
+  withPreview(
+    withSeed(
+      {
+        id: 'collection.story.v1',
+        classId: 'social.collection',
+        docType: 'collection',
+        version: '1',
         title: 'Story Collection',
-        focus: 'Write a cover line and story pages body.'
-      })
-    },
-    seedCollectionStory()
+        description: 'Vertical story cover + pages (same-type multipage)',
+        sections: [
+          { slug: 'cover', title: 'Cover', required: true },
+          { slug: 'pages', title: 'Pages', required: true }
+        ],
+        publishContentClass: 'collection',
+        browseFeatured: true,
+        seedPageSwipeAxis: 'x',
+        seedGalleryAspect: '9/16',
+        agentStarter: proseStarter({
+          title: 'Story Collection',
+          focus: 'Write a cover line and story pages body.'
+        })
+      },
+      seedCollectionStory()
+    ),
+    'collection.story.v1.svg'
   ),
-  withSeed(
-    {
-      id: 'set.basic.v1',
-      classId: 'social.set',
-      docType: 'set',
-      version: '1',
-      title: 'Set',
-      description:
-        'Multi-media refs — mix different templates/posts (not same-type multipage)',
-      sections: [
-        { slug: 'primary', title: 'Primary', required: true },
-        { slug: 'sources', title: 'Sources', required: false }
-      ],
-      publishContentClass: 'note',
-      agentStarter: proseStarter({
+  withPreview(
+    withSeed(
+      {
+        id: 'set.basic.v1',
+        classId: 'social.set',
+        docType: 'set',
+        version: '1',
         title: 'Set',
-        focus:
-          'Describe the primary item; list penEmbed source refs in sources when provided. Mix media types.'
-      })
-    },
-    seedSetBasic()
+        description:
+          'Multi-media refs — mix different templates/posts (not same-type multipage)',
+        sections: [
+          { slug: 'primary', title: 'Primary', required: true },
+          { slug: 'sources', title: 'Sources', required: false }
+        ],
+        publishContentClass: 'note',
+        seedGalleryAspect: '9/16',
+        agentStarter: proseStarter({
+          title: 'Set',
+          focus:
+            'Describe the primary item; list penEmbed source refs in sources when provided. Mix media types.'
+        })
+      },
+      seedSetBasic()
+    ),
+    'set.basic.v1.svg'
   ),
-  withSeed(
-    {
-      id: 'feed.self_hosted.v1',
-      classId: 'community.feed',
-      docType: 'self_hosted_feed',
-      version: '1',
-      title: 'Self-hosted Feed',
-      description: 'Feed meta + membership rules (config)',
-      sections: [
-        { slug: 'meta', title: 'Feed meta', required: true },
-        { slug: 'rules', title: 'Rules', required: false }
-      ],
-      publishContentClass: 'note',
-      agentStarter: proseStarter({
-        title: 'Self-hosted Feed',
-        focus: 'Fill feed meta (name/purpose). Add membership rules only if the user specified them.'
-      })
-    },
-    seedFeedSelfHosted()
-  ),
-  withSeed(
-    {
-      id: 'feed.curated.v1',
-      classId: 'community.feed',
-      docType: 'self_hosted_feed',
-      version: '1',
-      title: 'Curated Feed',
-      description: 'Curated index (config)',
-      sections: [
-        { slug: 'meta', title: 'Feed meta', required: true },
-        { slug: 'index', title: 'Index', required: false }
-      ],
-      publishContentClass: 'note',
-      agentStarter: proseStarter({
-        title: 'Curated Feed',
-        focus: 'Fill feed meta; optionally describe the curated index.'
-      })
-    },
-    seedFeedCurated()
-  ),
-  withSeed(
-    {
-      id: 'landing.basic.v1',
-      classId: 'community.landing',
-      docType: 'landing',
-      version: '1',
-      title: 'Landing',
-      description: 'L5 page chrome — hero/value/CTA + community.feed_embed slot',
-      sections: [
-        { slug: 'hero', title: 'Hero', required: true },
-        { slug: 'value', title: 'Value', required: true },
-        { slug: 'feed_embed', title: 'Feed embed', required: false },
-        { slug: 'cta', title: 'CTA', required: true }
-      ],
-      agentStarter: proseStarter({
-        title: 'Landing',
-        focus:
-          'Write hero headline, value/proof bullets, optional feed_embed slot note, and a clear CTA. Feed embed is a live stream slot — not longform.'
-      })
-    },
-    seedLanding()
-  ),
-  withSeed(
-    {
-      id: 'home.basic.v1',
-      classId: 'community.home',
-      docType: 'community_home',
-      version: '1',
-      title: 'Community Home',
-      description: 'Banner, nav, feed_embed iframe slot, announcements',
-      sections: [
-        { slug: 'banner', title: 'Banner', required: true },
-        { slug: 'nav', title: 'Nav', required: false },
-        { slug: 'feed_embed', title: 'Feed embed', required: true },
-        { slug: 'announcements', title: 'Announcements', required: false }
-      ],
-      agentStarter: proseStarter({
-        title: 'Community Home',
-        focus:
-          'Fill banner identity, feed_embed slot (live stream), and optional nav/announcements.'
-      })
-    },
-    seedCommunityHome()
-  ),
-  withSeed(
-    {
-      id: 'site.basic.v1',
-      classId: 'community.site',
-      docType: 'site',
-      version: '1',
-      title: 'Site',
-      description: 'Ordered multipage feed of page refs',
-      sections: [{ slug: 'pages', title: 'Pages', required: true }],
-      agentStarter: proseStarter({
-        title: 'Site',
-        focus: 'List ordered page refs for the multipage feed (landing, home, social pages).'
-      })
-    },
-    seedSite()
-  ),
-  withSeed(
-    {
-      id: 'journal.basic.v1',
-      classId: 'projects.journal',
-      docType: 'journal',
-      version: '1',
-      title: 'Journal',
-      description:
-        'Example Project starter — users publish their own Projects as templates for depth',
-      sections: [{ slug: 'entries', title: 'Entries', required: true }],
-      agentStarter: proseStarter({
-        title: 'Journal',
-        focus:
-          'Write dated journal entries. Prefer composing from Social/Time atoms rather than inventing Project-only forms.'
-      })
-    },
-    seedJournal()
-  ),
-  withSeed(
-    {
-      id: 'letter.basic.v1',
-      classId: 'projects.letter',
-      docType: 'letter',
-      version: '1',
-      title: 'Letter',
-      description: 'Example correspondence Project — Send opens Messaging',
-      sections: [{ slug: 'body', title: 'Body', required: true }],
-      agentStarter: proseStarter({
-        title: 'Letter',
-        focus: 'Write the letter body (greeting, content, closing) in body.'
-      })
-    },
-    seedLetter()
-  ),
-  withSeed(
-    {
-      id: 'book.basic.v1',
-      classId: 'library.book',
-      docType: 'book',
-      version: '1',
-      title: 'Book',
-      description: 'Longform compile target — atom sequence (vertical within unit)',
-      sections: [
-        { slug: 'front', title: 'Front', required: false },
-        { slug: 'body', title: 'Body', required: true }
-      ],
-      seedPageSwipeAxis: 'y',
-      agentStarter: proseStarter({
-        title: 'Book',
-        focus:
-          'Longform: body is a unit sequence. Vertical within unit; horizontal between units. Optional front matter.'
-      })
-    },
-    seedBook()
-  ),
-  withSeed(
-    {
-      id: 'article.basic.v1',
-      classId: 'library.article',
-      docType: 'article',
-      version: '1',
-      title: 'Article',
-      description: 'Longform compile target — durable article as atom sequence',
-      sections: [{ slug: 'body', title: 'Body', required: true }],
-      seedPageSwipeAxis: 'y',
-      agentStarter: proseStarter({
-        title: 'Article',
-        focus: 'Write a durable article body as a longform atom sequence.'
-      })
-    },
-    seedArticle()
-  ),
-  withSeed(
-    {
-      id: 'music.basic.v1',
-      classId: 'library.music',
-      docType: 'music',
-      version: '1',
-      title: 'Music',
-      description: 'Cover art + track meta and audio',
-      sections: [
-        { slug: 'meta', title: 'Meta', required: true },
-        { slug: 'audio', title: 'Audio', required: true }
-      ],
-      agentStarter: proseStarter({
-        title: 'Music',
-        focus: 'Fill track meta (title, artist) and attach audio in audio.'
-      })
-    },
-    seedMusic()
-  ),
-  withSeed(
-    {
-      id: 'calendar.basic.v1',
-      classId: 'time.calendar',
-      docType: 'calendar',
-      version: '1',
-      title: 'Calendar',
-      description: 'Calendar shell — lists/embeds Event atoms (grid later)',
-      sections: [
-        { slug: 'meta', title: 'Meta', required: true },
-        { slug: 'events', title: 'Events', required: false }
-      ],
-      agentStarter: proseStarter({
-        title: 'Calendar',
-        focus: 'Fill calendar meta; list eventRef lines for time.event atoms when provided.'
-      })
-    },
-    seedCalendar()
-  ),
-  withSeed(
-    {
-      id: 'event.basic.v1',
-      classId: 'time.event',
-      docType: 'event',
-      version: '1',
-      title: 'Event',
-      description: 'Structured when/where (tz + placeLabel + optional geoProofRef)',
-      sections: [{ slug: 'details', title: 'Details', required: true }],
-      agentStarter: proseStarter({
-        title: 'Event',
-        focus:
-          'Emit title/startAt/endAt/timeZone/placeLabel/details key lines. Never raw lat/lng — use geoProofRef for place proofs.'
-      })
-    },
-    seedEvent()
-  ),
-  withSeed(
-    {
-      id: 'schedule.basic.v1',
-      classId: 'time.schedule',
-      docType: 'schedule',
-      version: '1',
-      title: 'Schedule',
-      description: 'Ordered agenda rows for humans and agents',
-      sections: [{ slug: 'agenda', title: 'Agenda', required: true }],
-      agentStarter: proseStarter({
-        title: 'Schedule',
-        focus: 'Write ordered agenda rows as “HH:MM — Title (Nm)” lines.'
-      })
-    },
-    seedSchedule()
-  ),
-  withSeed(
-    {
-      id: 'knowledge.claim.v1',
-      classId: 'knowledge.claim',
-      docType: 'knowledge',
-      version: '1',
-      title: 'Knowledge Claim',
-      description: 'Claims bound to standard-data-points + ZKP — never raw PII',
-      sections: [{ slug: 'claims', title: 'Claims', required: true }],
-      publishContentClass: 'note',
-      agentStarter: proseStarter({
-        title: 'Knowledge Claim',
-        focus:
-          'Bind dataPointId catalog ids and opaque proofRef slots only. Never emit age, email, name, passcode, or coordinates.'
-      })
-    },
-    seedKnowledgeClaim()
-  ),
-  
-  withSeed(
-    {
-      id: 'quote.basic.v1',
-      classId: 'social.quote',
-      docType: 'quote',
-      version: '1',
-      title: 'Quote Card',
-      description: 'Highlight / soundbite',
-      sections: [{ slug: 'body', title: 'Quote', required: true }],
-      publishContentClass: 'note',
-      browseFeatured: true,
-      seedGalleryAspect: '9/16',
-      agentStarter: proseStarter({
+  withPreview(
+    withSeed(
+      {
+        id: 'quote.basic.v1',
+        classId: 'social.quote',
+        docType: 'quote',
+        version: '1',
         title: 'Quote Card',
-        focus: 'Write a short quotable line and optional byline. Keep under ~40 words.'
-      })
-    },
-    seedQuote()
+        description: 'Highlight / soundbite',
+        sections: [{ slug: 'body', title: 'Quote', required: true }],
+        publishContentClass: 'note',
+        browseFeatured: true,
+        seedGalleryAspect: '9/16',
+        agentStarter: proseStarter({
+          title: 'Quote Card',
+          focus: 'Write a short quotable line and optional byline. Keep under ~40 words.'
+        })
+      },
+      seedQuote()
+    ),
+    'quote.basic.v1.svg'
   ),
-  withSeed(
-    {
-      id: 'link.basic.v1',
-      classId: 'social.link',
-      docType: 'link',
-      version: '1',
-      title: 'Link Card',
-      description: 'Bookmark / OG summary',
-      sections: [{ slug: 'body', title: 'Link', required: true }],
-      publishContentClass: 'note',
-      browseFeatured: true,
-      agentStarter: proseStarter({
+  withPreview(
+    withSeed(
+      {
+        id: 'link.basic.v1',
+        classId: 'social.link',
+        docType: 'link',
+        version: '1',
         title: 'Link Card',
-        focus: 'Provide domain, title, and a short snippet — not a raw URL dump.'
-      })
-    },
-    seedLink()
+        description: 'Bookmark / OG summary',
+        sections: [{ slug: 'body', title: 'Link', required: true }],
+        publishContentClass: 'note',
+        browseFeatured: true,
+        seedGalleryAspect: '9/16',
+        agentStarter: proseStarter({
+          title: 'Link Card',
+          focus: 'Provide domain, title, and a short snippet — not a raw URL dump.'
+        })
+      },
+      seedLink()
+    ),
+    'link.basic.v1.svg'
   ),
-  withSeed(
-    {
-      id: 'poll.basic.v1',
-      classId: 'social.poll',
-      docType: 'poll',
-      version: '1',
-      title: 'Poll',
-      description: 'Survey widget — embeds cloud table + vote stickers',
-      sections: [{ slug: 'prompt', title: 'Prompt', required: true }],
-      publishContentClass: 'note',
-      browseFeatured: true,
-      seedGalleryAspect: '9/16',
-      agentStarter: proseStarter({
+  withPreview(
+    withSeed(
+      {
+        id: 'poll.basic.v1',
+        classId: 'social.poll',
+        docType: 'poll',
+        version: '1',
         title: 'Poll',
-        focus: 'Write the poll question. Options live in the bound table primitive.'
-      })
-    },
-    seedPoll()
+        description: 'Survey widget — embeds cloud table + vote stickers',
+        sections: [{ slug: 'prompt', title: 'Prompt', required: true }],
+        publishContentClass: 'note',
+        browseFeatured: true,
+        seedGalleryAspect: '9/16',
+        agentStarter: proseStarter({
+          title: 'Poll',
+          focus: 'Write the poll question. Options live in the bound table primitive.'
+        })
+      },
+      seedPoll()
+    ),
+    'poll.basic.v1.svg'
   ),
-  withSeed(
-    {
-      id: 'comparison.basic.v1',
-      classId: 'social.frame',
-      docType: 'comparison',
-      version: '1',
-      title: 'Comparison Matrix',
-      description: 'Embeds a cloud table as comparison chrome',
-      sections: [{ slug: 'body', title: 'Body', required: true }],
-      publishContentClass: 'note',
-      browseFeatured: true,
-      agentStarter: proseStarter({
+  withPreview(
+    withSeed(
+      {
+        id: 'comparison.basic.v1',
+        classId: 'social.frame',
+        docType: 'comparison',
+        version: '1',
         title: 'Comparison Matrix',
-        focus: 'Describe comparison axes; cell data lives in the bound table primitive.'
-      })
-    },
-    seedComparison()
+        description: 'Embeds a cloud table as comparison chrome',
+        sections: [{ slug: 'body', title: 'Body', required: true }],
+        publishContentClass: 'note',
+        browseFeatured: true,
+        seedGalleryAspect: '9/16',
+        agentStarter: proseStarter({
+          title: 'Comparison Matrix',
+          focus: 'Describe comparison axes; cell data lives in the bound table primitive.'
+        })
+      },
+      seedComparison()
+    ),
+    'comparison.basic.v1.svg'
   ),
-  withSeed(
-    {
-      id: 'metric.basic.v1',
-      classId: 'social.metric',
-      docType: 'metric',
-      version: '1',
-      title: 'Metric / KPI',
-      description: 'Big-number callout',
-      sections: [{ slug: 'body', title: 'Metric', required: true }],
-      publishContentClass: 'note',
-      browseFeatured: true,
-      agentStarter: proseStarter({
+  withPreview(
+    withSeed(
+      {
+        id: 'metric.basic.v1',
+        classId: 'social.metric',
+        docType: 'metric',
+        version: '1',
         title: 'Metric / KPI',
-        focus: 'Provide value, delta with timeframe, and metric label.'
-      })
-    },
-    seedMetric()
+        description: 'Big-number callout',
+        sections: [{ slug: 'body', title: 'Metric', required: true }],
+        publishContentClass: 'note',
+        browseFeatured: true,
+        seedGalleryAspect: '9/16',
+        agentStarter: proseStarter({
+          title: 'Metric / KPI',
+          focus: 'Provide value, delta with timeframe, and metric label.'
+        })
+      },
+      seedMetric()
+    ),
+    'metric.basic.v1.svg'
   ),
-  withSeed(
-    {
-      id: 'code.basic.v1',
-      classId: 'social.code',
-      docType: 'code',
-      version: '1',
-      title: 'Code Snippet',
-      description: 'Syntax card',
-      sections: [{ slug: 'body', title: 'Code', required: true }],
-      publishContentClass: 'note',
-      agentStarter: proseStarter({
+  withPreview(
+    withSeed(
+      {
+        id: 'code.basic.v1',
+        classId: 'social.code',
+        docType: 'code',
+        version: '1',
         title: 'Code Snippet',
-        focus: 'Provide language badge and a short code body.'
-      })
-    },
-    seedCode()
+        description: 'Syntax card',
+        sections: [{ slug: 'body', title: 'Code', required: true }],
+        publishContentClass: 'note',
+        seedGalleryAspect: '9/16',
+        agentStarter: proseStarter({
+          title: 'Code Snippet',
+          focus: 'Provide language badge and a short code body.'
+        })
+      },
+      seedCode()
+    ),
+    'code.basic.v1.svg'
   ),
-  withSeed(
-    {
-      id: 'profile.basic.v1',
-      classId: 'social.profile',
-      docType: 'profile',
-      version: '1',
-      title: 'Profile Card',
-      description: 'Member / contributor badge',
-      sections: [{ slug: 'body', title: 'Profile', required: true }],
-      publishContentClass: 'note',
-      agentStarter: proseStarter({
+  withPreview(
+    withSeed(
+      {
+        id: 'profile.basic.v1',
+        classId: 'social.profile',
+        docType: 'profile',
+        version: '1',
         title: 'Profile Card',
-        focus: 'Fill display name, role, and short bio.'
-      })
-    },
-    seedProfile()
+        description: 'Member / contributor badge',
+        sections: [{ slug: 'body', title: 'Profile', required: true }],
+        publishContentClass: 'note',
+        seedGalleryAspect: '9/16',
+        agentStarter: proseStarter({
+          title: 'Profile Card',
+          focus: 'Fill display name, role, and short bio.'
+        })
+      },
+      seedProfile()
+    ),
+    'profile.basic.v1.svg'
   ),
-  withSeed(
-    {
-      id: 'audio.basic.v1',
-      classId: 'social.audio',
-      docType: 'audio',
-      version: '1',
-      title: 'Audio Snippet',
-      description: 'Audio-first shell — bind audioSotDocId to published music/audio SoT',
-      sections: [{ slug: 'body', title: 'Audio', required: true }],
-      publishContentClass: 'note',
-      browseFeatured: true,
-      seedGalleryAspect: '9/16',
-      agentStarter: proseStarter({
+  withPreview(
+    withSeed(
+      {
+        id: 'audio.basic.v1',
+        classId: 'social.audio',
+        docType: 'audio',
+        version: '1',
         title: 'Audio Snippet',
-        focus:
-          'Name the track; audio-only is valid. Companion visuals remix via audioSotDocId — do not re-upload bytes.'
-      })
-    },
-    seedAudio()
+        description: 'Audio-first shell — bind audioSotDocId to published music/audio SoT',
+        sections: [{ slug: 'body', title: 'Audio', required: true }],
+        publishContentClass: 'note',
+        browseFeatured: true,
+        seedGalleryAspect: '9/16',
+        agentStarter: proseStarter({
+          title: 'Audio Snippet',
+          focus:
+            'Name the track; audio-only is valid. Companion visuals remix via audioSotDocId — do not re-upload bytes.'
+        })
+      },
+      seedAudio()
+    ),
+    'audio.basic.v1.svg'
   ),
-  withSeed(
-    {
-      id: 'frame.basic.v1',
-      classId: 'social.frame',
-      docType: 'frame',
-      version: '1',
-      title: 'Interactive Frame',
-      description: 'Embed stage + stickers (no third-party webview)',
-      sections: [{ slug: 'body', title: 'Frame', required: true }],
-      publishContentClass: 'note',
-      agentStarter: proseStarter({
+  withPreview(
+    withSeed(
+      {
+        id: 'frame.basic.v1',
+        classId: 'social.frame',
+        docType: 'frame',
+        version: '1',
         title: 'Interactive Frame',
-        focus: 'Describe the framed content; interactions bind to a cloud primitive.'
-      })
-    },
-    seedFrame()
-  ),
-  withSeed(
-    {
-      id: 'feed.embed.v1',
-      classId: 'community.feed_embed',
-      docType: 'feed_embed',
-      version: '1',
-      title: 'Feed Embed',
-      description: 'L5 iframe / framed stream slot (not longform chapters)',
-      sections: [
-        { slug: 'header', title: 'Header', required: true },
-        { slug: 'stream', title: 'Stream', required: true },
-        { slug: 'footer', title: 'Footer', required: false }
-      ],
-      agentStarter: proseStarter({
-        title: 'Feed Embed',
-        focus:
-          'Fill header chrome and stream iframe empty-state. This is a live aggregator slot inside page chrome — not longform.'
-      })
-    },
-    seedFeedEmbed()
+        description: 'Embed stage + stickers (no third-party webview)',
+        sections: [{ slug: 'body', title: 'Frame', required: true }],
+        publishContentClass: 'note',
+        seedGalleryAspect: '9/16',
+        agentStarter: proseStarter({
+          title: 'Interactive Frame',
+          focus: 'Describe the framed content; interactions bind to a cloud primitive.'
+        })
+      },
+      seedFrame()
+    ),
+    'frame.basic.v1.svg'
   ),
   withSeed(
     {
@@ -986,7 +820,7 @@ withSeed(
     },
     seedTablePrimitive()
   ),
-withSeed(
+  withSeed(
     {
       id: 'register.basic.v1',
       classId: 'records.register',

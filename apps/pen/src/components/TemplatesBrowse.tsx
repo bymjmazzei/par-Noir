@@ -21,7 +21,7 @@ import type { PenBrowseDensity } from '../services/penClassPrefs';
 import { incrementTemplateUseCount } from '../services/penClassPrefs';
 import {
   buildSocialTemplateRailItems,
-  isSocialTemplateRailClass,
+  isSocialCategoryClass,
   templateMatchesRailSelection
 } from '../services/classFeedRailItems';
 import { ClassFeedRail } from './ClassFeedRail';
@@ -111,11 +111,11 @@ export function TemplatesBrowse({
     const starters = listStarterTemplates().filter((t) => {
       const form = getClass(t.classId);
       if (form?.audience === 'kit') return false;
-      return isSocialTemplateRailClass(t.classId);
+      return isSocialCategoryClass(t.classId);
     });
     const yours = session?.pnIdentifier
       ? personalTemplatesAsPenTemplates(session.pnIdentifier).filter((t) =>
-          isSocialTemplateRailClass(t.classId)
+          isSocialCategoryClass(t.classId)
         )
       : [];
     return [...yours, ...starters];

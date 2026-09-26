@@ -132,14 +132,14 @@ const CLASSES: PenClass[] = [
     title: 'Community',
     description: 'Feeds, landing pages, community homes, and multipage sites',
     kind: 'authored',
-    audience: 'consumer'
+    audience: 'kit'
   },
   {
     id: 'community.feed',
     title: 'Feeds',
     description: 'Self-hosted and curated feed configs',
     kind: 'authored',
-    audience: 'consumer',
+    audience: 'kit',
     parentId: 'community',
     entitlement: 'self-hosted'
   },
@@ -148,7 +148,7 @@ const CLASSES: PenClass[] = [
     title: 'Feed embed',
     description: 'Framed configurable stream chrome',
     kind: 'authored',
-    audience: 'consumer',
+    audience: 'kit',
     parentId: 'community'
   },
   {
@@ -156,7 +156,7 @@ const CLASSES: PenClass[] = [
     title: 'Landing',
     description: 'Arrival page — hero, value, CTA',
     kind: 'authored',
-    audience: 'consumer',
+    audience: 'kit',
     parentId: 'community'
   },
   {
@@ -164,7 +164,7 @@ const CLASSES: PenClass[] = [
     title: 'Community home',
     description: 'Hub — banner, nav, feed_embed slot, announcements',
     kind: 'authored',
-    audience: 'consumer',
+    audience: 'kit',
     parentId: 'community'
   },
   {
@@ -172,7 +172,7 @@ const CLASSES: PenClass[] = [
     title: 'Site',
     description: 'Multipage feed of pages (aggregator/compiler)',
     kind: 'authored',
-    audience: 'consumer',
+    audience: 'kit',
     parentId: 'community'
   },
   {
@@ -180,14 +180,14 @@ const CLASSES: PenClass[] = [
     title: 'Projects',
     description: 'Active work — journals, lists, letters, notes',
     kind: 'authored',
-    audience: 'consumer'
+    audience: 'kit'
   },
   {
     id: 'projects.journal',
     title: 'Journal',
     description: 'Dated entries and logs',
     kind: 'authored',
-    audience: 'consumer',
+    audience: 'kit',
     parentId: 'projects'
   },
   {
@@ -195,7 +195,7 @@ const CLASSES: PenClass[] = [
     title: 'List',
     description: 'Checklists, shopping, running lists',
     kind: 'authored',
-    audience: 'consumer',
+    audience: 'kit',
     parentId: 'projects'
   },
   {
@@ -203,7 +203,7 @@ const CLASSES: PenClass[] = [
     title: 'Letter',
     description: 'Correspondence letter (DM delivery later)',
     kind: 'authored',
-    audience: 'consumer',
+    audience: 'kit',
     parentId: 'projects'
   },
   {
@@ -211,7 +211,7 @@ const CLASSES: PenClass[] = [
     title: 'Note',
     description: 'Short correspondence note (DM delivery later)',
     kind: 'authored',
-    audience: 'consumer',
+    audience: 'kit',
     parentId: 'projects'
   },
   {
@@ -219,14 +219,14 @@ const CLASSES: PenClass[] = [
     title: 'Library',
     description: 'Durable published works (books, articles, music)',
     kind: 'authored',
-    audience: 'consumer'
+    audience: 'kit'
   },
   {
     id: 'library.book',
     title: 'Book',
     description: 'Multi-section longform',
     kind: 'authored',
-    audience: 'consumer',
+    audience: 'kit',
     parentId: 'library'
   },
   {
@@ -234,7 +234,7 @@ const CLASSES: PenClass[] = [
     title: 'Article',
     description: 'Shorter durable article',
     kind: 'authored',
-    audience: 'consumer',
+    audience: 'kit',
     parentId: 'library'
   },
   {
@@ -242,7 +242,7 @@ const CLASSES: PenClass[] = [
     title: 'Music',
     description: 'Track / audio asset with licensing',
     kind: 'authored',
-    audience: 'consumer',
+    audience: 'kit',
     parentId: 'library'
   },
   {
@@ -250,14 +250,14 @@ const CLASSES: PenClass[] = [
     title: 'Knowledge',
     description: 'Claims bound to standard data points + ZKP refs (never raw PII)',
     kind: 'authored',
-    audience: 'consumer'
+    audience: 'kit'
   },
   {
     id: 'knowledge.claim',
     title: 'Claim',
     description: 'Structured claim atom with optional geo proof attachments',
     kind: 'authored',
-    audience: 'consumer',
+    audience: 'kit',
     parentId: 'knowledge'
   },
   {
@@ -265,14 +265,14 @@ const CLASSES: PenClass[] = [
     title: 'Time',
     description: 'Calendars, events, and schedules',
     kind: 'authored',
-    audience: 'consumer'
+    audience: 'kit'
   },
   {
     id: 'time.calendar',
     title: 'Calendar',
     description: 'Ongoing calendar',
     kind: 'authored',
-    audience: 'consumer',
+    audience: 'kit',
     parentId: 'time'
   },
   {
@@ -280,7 +280,7 @@ const CLASSES: PenClass[] = [
     title: 'Event',
     description: 'Single dated occurrence',
     kind: 'authored',
-    audience: 'consumer',
+    audience: 'kit',
     parentId: 'time'
   },
   {
@@ -288,7 +288,7 @@ const CLASSES: PenClass[] = [
     title: 'Schedule',
     description: 'Ordered agenda or run-of-show',
     kind: 'authored',
-    audience: 'consumer',
+    audience: 'kit',
     parentId: 'time'
   },
   {

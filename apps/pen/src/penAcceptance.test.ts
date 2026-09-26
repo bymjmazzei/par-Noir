@@ -21,14 +21,17 @@ import {
 import { mlDsa65Keygen } from '@par-noir/pqc-crypto/ml-dsa';
 
 describe('Pen v1 acceptance (hermetic)', () => {
-  it('starter pack includes post, collection, notes, set, self-hosted feed', () => {
+  it('starter pack is Social (+ kit) — post, collection, notes, set; no community feed', () => {
     const ids = listStarterTemplates().map((t) => t.id);
     expect(ids.some((id) => id.includes('post'))).toBe(true);
     expect(ids.some((id) => id.includes('collection'))).toBe(true);
     expect(ids.some((id) => id.includes('carousel'))).toBe(false);
     expect(ids.some((id) => id.includes('note'))).toBe(true);
     expect(ids.some((id) => id.includes('set'))).toBe(true);
-    expect(ids.some((id) => id.includes('feed'))).toBe(true);
+    expect(ids.some((id) => id.includes('feed'))).toBe(false);
+    expect(ids.every((id) => !id.startsWith('landing.') && !id.startsWith('journal.'))).toBe(
+      true
+    );
   });
 
   it('A creates doc with genesis; promote verifies; forge fails', () => {

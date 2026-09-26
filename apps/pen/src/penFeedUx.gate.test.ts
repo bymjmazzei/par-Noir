@@ -48,7 +48,7 @@ describe('pen feed UX chrome', () => {
     expect(css).toMatch(
       /\.pen-library-page\.pen-feed-mode\s+\.pen-library-sheet\s*\{[\s\S]*?overflow:\s*hidden/
     );
-    expect(css).toMatch(/\.pen-library-footer-logo\s*\{[\s\S]*?height:\s*4\.125rem/);
+    expect(css).toMatch(/\.pen-library-footer-logo\s*\{[\s\S]*?height:\s*2\.0625rem/);
     // Browse-shaped engagement: 16px gap + corner count
     expect(css).toMatch(/\.pen-template-engagement-rail\s*\{[\s\S]*?gap:\s*16px/);
     expect(css).toMatch(
@@ -317,12 +317,12 @@ describe('template engagement fileId map', () => {
 });
 
 describe('libraryDocMatchesRailSelection', () => {
-  it('ALL shows every doc; chips filter Social/Projects', () => {
+  it('ALL shows every doc; chips filter Social rail forms only', () => {
     expect(libraryDocMatchesRailSelection('library.book', 'all')).toBe(true);
     expect(libraryDocMatchesRailSelection('social.note', 'all')).toBe(true);
     expect(libraryDocMatchesRailSelection('social.note', 'social.note')).toBe(true);
     expect(libraryDocMatchesRailSelection('library.book', 'social.note')).toBe(false);
-    expect(libraryDocMatchesRailSelection('projects.journal', 'projects')).toBe(true);
+    expect(libraryDocMatchesRailSelection('projects.journal', 'projects')).toBe(false);
   });
 });
 

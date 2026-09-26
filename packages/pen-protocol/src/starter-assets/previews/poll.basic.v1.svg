@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="360" height="640" viewBox="0 0 360 640">
+<defs></defs>
+<defs><linearGradient id="pg" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#0c0c0c"/><stop offset="100%" stop-color="#1a1a1a"/></linearGradient></defs><rect width="100%" height="100%" fill="url(#pg)"/>
+<text x="36" y="36.4" fill="#b8956c" font-family="Montserrat, Helvetica, sans-serif" font-size="11" xml:space="preserve">POLL</text>
+<text x="36" y="79.6" fill="#f4f1ec" font-family="Source Serif 4, Georgia, serif" font-size="24" xml:space="preserve">Which should we ship next?</text>
+<text x="36" y="423.2" fill="#6b6560" font-family="Montserrat, Helvetica, sans-serif" font-size="12" xml:space="preserve">Votes write into the bound table.</text>
+<rect x="24" y="136" width="312" height="120" rx="8" fill="#171717" stroke="#2a2824" stroke-width="1"/>
+<text x="40" y="164" fill="#94a3b8" font-family="Montserrat, Helvetica, sans-serif" font-size="12">Results</text>
+<rect x="24" y="280" width="312" height="48" rx="6" fill="#1a2422" stroke="#0f766e" stroke-width="1"/>
+<text x="36" y="296.8" fill="#f4f1ec" font-family="Montserrat, Helvetica, sans-serif" font-size="15" xml:space="preserve">Messaging polish</text>
+<rect x="24" y="340" width="312" height="48" rx="6" fill="#1a2422" stroke="#2a2824" stroke-width="1"/>
+<text x="36" y="356.8" fill="#f4f1ec" font-family="Montserrat, Helvetica, sans-serif" font-size="15" xml:space="preserve">Pen Mini templates</text>
+</svg>

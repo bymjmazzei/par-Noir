@@ -64,11 +64,12 @@ describe('template dominance + orientations', () => {
     expect(listConsumerClasses().some((c) => c.id === 'primitives.table')).toBe(false);
   });
 
-  it('ships feed embed + poll + frame forms', () => {
-    expect(requireTemplate('feed.embed.v1').classId).toBe('community.feed_embed');
+  it('ships poll + frame forms; community feed embed starter retired', () => {
+    expect(() => requireTemplate('feed.embed.v1')).toThrow(/unknown_pen_template/);
     expect(requireTemplate('poll.basic.v1').classId).toBe('social.poll');
     expect(requireTemplate('frame.basic.v1').classId).toBe('social.frame');
     expect(requireTemplate('table.basic.v1').classId).toBe('primitives.table');
+    expect(getClass('community.feed_embed')?.audience).toBe('kit');
   });
 });
 

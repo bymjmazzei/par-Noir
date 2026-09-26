@@ -67,14 +67,14 @@ export const GOLDEN_FIXTURES: PenCurriculumFixture[] = [
   {
     id: 'note-journal-march',
     dir: 'notes/journal-march',
-    intent: 'Start a journal entry for a March morning walk.',
-    expectedTemplateId: 'journal.basic.v1',
+    intent: 'Start a journal-style Note for a March morning walk.',
+    expectedTemplateId: 'note.basic.portrait.v1',
     build: {
-      templateId: 'journal.basic.v1',
+      templateId: 'note.basic.portrait.v1',
       title: 'March walk',
       sections: [
         {
-          slug: 'entries',
+          slug: 'body',
           plainText: '2026-03-12 — Cold air, early green tips on the hedge. Coffee steam in the wind.'
         }
       ]
@@ -83,10 +83,10 @@ export const GOLDEN_FIXTURES: PenCurriculumFixture[] = [
   {
     id: 'note-letter-thanks',
     dir: 'notes/letter-thanks',
-    intent: 'Draft a short thank-you letter after a visit.',
-    expectedTemplateId: 'letter.basic.v1',
+    intent: 'Draft a short thank-you Note after a visit.',
+    expectedTemplateId: 'note.text_tile.light.v1',
     build: {
-      templateId: 'letter.basic.v1',
+      templateId: 'note.text_tile.light.v1',
       title: 'Thank you',
       sections: [
         {

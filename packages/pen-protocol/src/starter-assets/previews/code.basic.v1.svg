@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="360" height="640" viewBox="0 0 360 640">
+<defs><filter id="sh0" x="-20%" y="-20%" width="140%" height="140%"><feDropShadow dx="0" dy="8" stdDeviation="6.666666666666667" flood-color="rgba(0,0,0,0.4)" flood-opacity="0.45"/></filter></defs>
+<defs><linearGradient id="pg" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#0c0c0c"/><stop offset="100%" stop-color="#1a1a1a"/></linearGradient></defs><rect width="100%" height="100%" fill="url(#pg)"/>
+<rect x="16" y="80" width="328" height="360" rx="6" fill="#121614" stroke="#2a322e" stroke-width="1" filter="url(#sh0)"/>
+<rect x="16" y="80" width="328" height="36" rx="6" fill="#1a221e"/>
+<text x="28" y="92.6" fill="#b8956c" font-family="Montserrat, Helvetica, sans-serif" font-size="12" xml:space="preserve">ts  ·  unlock.ts</text>
+<text x="40" y="162" fill="#d4ebe4" font-family="Courier New, monospace" font-size="14" xml:space="preserve">const unlock = await prove({</text>
+<text x="40" y="179.5" fill="#d4ebe4" font-family="Courier New, monospace" font-size="14" xml:space="preserve">  file, name, pass</text>
+<text x="40" y="197" fill="#d4ebe4" font-family="Courier New, monospace" font-size="14" xml:space="preserve">});</text>
+<rect x="16" y="80" width="4" height="360" rx="6" fill="#0f766e"/>
+</svg>

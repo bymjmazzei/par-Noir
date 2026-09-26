@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="360" height="640" viewBox="0 0 360 640">
+<defs></defs>
+<defs><linearGradient id="pg" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#0c0c0c"/><stop offset="100%" stop-color="#1a1a1a"/></linearGradient></defs><rect width="100%" height="100%" fill="url(#pg)"/>
+<rect x="0" y="0" width="8" height="640" rx="6" fill="#0f766e"/>
+<text x="48" y="81.8" fill="#b8956c" font-family="Montserrat, Helvetica, sans-serif" font-size="11" xml:space="preserve">STATUS</text>
+<rect x="36" y="440" width="72" height="3" rx="6" fill="#b8956c"/>
+<text x="48" y="469.8" fill="#6b6560" font-family="Montserrat, Helvetica, sans-serif" font-size="12" xml:space="preserve">Tue · evening</text>
+<text x="48" y="220" fill="#f4f1ec" font-family="Source Serif 4, Georgia, serif" font-size="32" xml:space="preserve">Still thinking about that quiet hallway.</text>
+<text x="48" y="345" fill="#c8c2ba" font-family="Montserrat, Helvetica, sans-serif" font-size="17" xml:space="preserve">Three people walked past and none of the…</text>
+</svg>

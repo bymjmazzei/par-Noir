@@ -1,1 +1,1 @@
-Draft a short thank-you letter after a visit.
+Draft a short thank-you Note after a visit.

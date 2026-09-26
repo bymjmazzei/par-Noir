@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="360" height="640" viewBox="0 0 360 640">
+<defs></defs>
+<defs><linearGradient id="pg" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#f4f1ec"/><stop offset="100%" stop-color="#1a1a1a"/></linearGradient></defs><rect width="100%" height="100%" fill="url(#pg)"/>
+<rect x="28" y="180" width="304" height="1" rx="6" fill="#d4cfc7"/>
+<rect x="28" y="80" width="72" height="72" rx="6" fill="#0f766e"/>
+<text x="40" y="105.2" fill="#f4f1ec" font-family="Montserrat, Helvetica, sans-serif" font-size="22" xml:space="preserve">MC</text>
+<text x="128" y="100.6" fill="#141414" font-family="Source Serif 4, Georgia, serif" font-size="22" xml:space="preserve">Mira Chen</text>
+<text x="128" y="137.8" fill="#0f766e" font-family="Montserrat, Helvetica, sans-serif" font-size="13" xml:space="preserve">Product design · verified</text>
+<text x="40" y="231" fill="#3a3530" font-family="Montserrat, Helvetica, sans-serif" font-size="15" xml:space="preserve">Builds quiet interfaces for loud problem…</text>
+</svg>

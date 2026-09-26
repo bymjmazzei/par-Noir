@@ -12,7 +12,6 @@ import {
   signGenesis,
   attachNotary,
   notaryHashForGenesis,
-  requireTemplate,
   snapshotPenEmbeds,
   normalizeLicensingRoot,
   shouldPublishAsSingleComposedVideo,
@@ -62,17 +61,41 @@ export function isProjectDoc(manifest: PenDocManifest): boolean {
   return form?.parentId === 'projects';
 }
 
-function libraryStarterForProject(classId: string): 'book.basic.v1' | 'article.basic.v1' {
-  return classId === 'projects.journal' ? 'book.basic.v1' : 'article.basic.v1';
+/** Library section shapes without platform starters (Projects/Library deferred). */
+const LIBRARY_BOOK_SECTIONS = [
+  { slug: 'front', title: 'Front', required: false },
+  { slug: 'body', title: 'Body', required: true }
+] as const;
+
+const LIBRARY_ARTICLE_SECTIONS = [
+  { slug: 'body', title: 'Body', required: true }
+] as const;
+
+function libraryShapeForProject(classId: string): {
+  classId: 'library.book' | 'library.article';
+  docType: string;
+  sections: ReadonlyArray<{ slug: string; title: string; required?: boolean }>;
+} {
+  if (classId === 'projects.journal') {
+    return {
+      classId: 'library.book',
+      docType: 'book',
+      sections: LIBRARY_BOOK_SECTIONS
+    };
+  }
+  return {
+    classId: 'library.article',
+    docType: 'article',
+    sections: LIBRARY_ARTICLE_SECTIONS
+  };
 }
 
 function mapProjectSectionsToLibrary(
   bundle: LocalDocBundle,
-  libraryTemplateId: string
+  librarySections: ReadonlyArray<{ slug: string; title: string; required?: boolean }>
 ): { sections: PenSectionContent[]; toc: string[] } {
-  const libraryTemplate = requireTemplate(libraryTemplateId);
   const seedByIndex = bundle.sections;
-  const sections = libraryTemplate.sections.map((s, i) => {
+  const sections = librarySections.map((s, i) => {
     const src = seedByIndex[i];
     if (src) return { ...src, slug: s.slug };
     return emptySection(s.slug);
@@ -85,7 +108,7 @@ function mapProjectSectionsToLibrary(
   if (srcBody && bodyIdx >= 0) {
     sections[bodyIdx] = { ...srcBody, slug: 'body' };
   }
-  return { sections, toc: libraryTemplate.sections.map((s) => s.slug) };
+  return { sections, toc: librarySections.map((s) => s.slug) };
 }
 
 /** Resolve a penEmbed against the local doc store for the given pn. */
@@ -451,15 +474,14 @@ export function saveProjectAsLibraryTemplate(
   if (!isProjectDoc(bundle.manifest)) {
     throw new Error('only_projects_can_save_library_template');
   }
-  const libraryTemplateId = libraryStarterForProject(bundle.manifest.classId);
-  const libraryTemplate = requireTemplate(libraryTemplateId);
-  const mapped = mapProjectSectionsToLibrary(bundle, libraryTemplateId);
+  const shape = libraryShapeForProject(bundle.manifest.classId);
+  const mapped = mapProjectSectionsToLibrary(bundle, shape.sections);
   const tpl = savePersonalTemplateFromDoc(pn, bundle, {
     title: `${bundle.manifest.title || 'Untitled'} (Library)`,
-    classId: libraryTemplate.classId,
-    docType: libraryTemplate.docType,
-    basedOnTemplateId: libraryTemplate.id,
-    sections: libraryTemplate.sections.map((s) => ({
+    classId: shape.classId,
+    docType: shape.docType,
+    basedOnTemplateId: bundle.manifest.templateId,
+    sections: shape.sections.map((s) => ({
       slug: s.slug,
       title: s.title,
       required: s.required !== false
@@ -485,11 +507,10 @@ export async function promoteProjectToFinishedLibraryDoc(input: {
   if (!isProjectDoc(bundle.manifest)) {
     throw new Error('only_projects_can_publish_finished_library_work');
   }
-  const libraryTemplateId = libraryStarterForProject(bundle.manifest.classId);
-  const libraryTemplate = requireTemplate(libraryTemplateId);
+  const shape = libraryShapeForProject(bundle.manifest.classId);
   const docId = randomDocId();
   const now = new Date().toISOString();
-  const mapped = mapProjectSectionsToLibrary(bundle, libraryTemplateId);
+  const mapped = mapProjectSectionsToLibrary(bundle, shape.sections);
 
   const commitment = hashSectionContent(
     new TextEncoder().encode(JSON.stringify(mapped.sections))
@@ -497,7 +518,7 @@ export async function promoteProjectToFinishedLibraryDoc(input: {
   const keys = resolveSigningKeys(session);
   let genesis = signGenesis({
     docId,
-    templateId: libraryTemplate.id,
+    templateId: `blank.${shape.classId}`,
     authorPn: session.pnIdentifier,
     clientCreatedAt: now,
     contentCommitment: commitment,
@@ -518,11 +539,11 @@ export async function promoteProjectToFinishedLibraryDoc(input: {
   const next: LocalDocBundle = {
     manifest: {
       docId,
-      title: bundle.manifest.title || `Untitled ${libraryTemplate.title}`,
-      docType: libraryTemplate.docType,
-      classId: libraryTemplate.classId,
-      templateId: libraryTemplate.id,
-      templateVersion: libraryTemplate.version,
+      title: bundle.manifest.title || `Untitled ${shape.classId}`,
+      docType: shape.docType,
+      classId: shape.classId,
+      templateId: `blank.${shape.classId}`,
+      templateVersion: '1',
       groupId,
       toc: mapped.toc,
       createdAt: now,
@@ -533,7 +554,7 @@ export async function promoteProjectToFinishedLibraryDoc(input: {
       lifecycle: 'published',
       ownerPnHash: hashPnIdentifier(session.pnIdentifier),
       licensing: normalizeLicensingRoot(
-        bundle.manifest.licensing || libraryTemplate.licensing,
+        bundle.manifest.licensing,
         hashPnIdentifier(session.pnIdentifier)
       )
     },
@@ -616,7 +637,8 @@ export async function createDocFromPersonalOrStarter(input: {
 }
 
 /**
- * Create a Projects journal that ports selected My Library docs in as live penEmbed refs.
+ * Create a Social Set that ports selected My Library docs in as live penEmbed refs.
+ * (Projects journal starters retired — Set is the Social multi-ref container.)
  */
 export async function createProjectFromLibrary(input: {
   session: PenSession;
@@ -626,7 +648,7 @@ export async function createProjectFromLibrary(input: {
   if (!input.sourceDocs.length) throw new Error('library_sources_required');
   const bundle = await createDocFromTemplate({
     session: input.session,
-    templateId: 'journal.basic.v1'
+    templateId: 'set.basic.v1'
   });
   const embeds = input.sourceDocs.map((d) => ({
     type: 'penEmbed',
@@ -636,7 +658,7 @@ export async function createProjectFromLibrary(input: {
       title: d.title || 'Untitled'
     }
   }));
-  const entriesDoc = {
+  const sourcesDoc = {
     type: 'doc',
     content: [
       {
@@ -652,13 +674,13 @@ export async function createProjectFromLibrary(input: {
     ]
   };
   const sections = bundle.sections.map((s) =>
-    s.slug === 'entries' ? { ...s, doc: entriesDoc as typeof s.doc } : s
+    s.slug === 'sources' ? { ...s, doc: sourcesDoc as typeof s.doc } : s
   );
   const title =
     input.title?.trim() ||
     (input.sourceDocs.length === 1
-      ? `Project · ${input.sourceDocs[0]!.title || 'Untitled'}`
-      : `Project · ${input.sourceDocs.length} sources`);
+      ? `Set · ${input.sourceDocs[0]!.title || 'Untitled'}`
+      : `Set · ${input.sourceDocs.length} sources`);
   const next: LocalDocBundle = {
     ...bundle,
     sections,

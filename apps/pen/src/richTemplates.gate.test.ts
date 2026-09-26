@@ -36,16 +36,17 @@ describe('rich template preview + create chrome', () => {
     ).toBe(true);
   });
 
-  it('community landing and site appear in preview catalog', () => {
-    const landing = templatePreviewBundle(undefined, 'landing.basic.v1');
-    expect(landing?.manifest.classId).toBe('community.landing');
-    expect(landing?.sections.map((s) => s.slug)).toEqual(['hero', 'value', 'feed_embed', 'cta']);
-    const site = templatePreviewBundle(undefined, 'site.basic.v1');
-    expect(site?.manifest.classId).toBe('community.site');
-    const feed = templatePreviewBundle(undefined, 'feed.self_hosted.v1');
-    expect(feed?.manifest.classId).toBe('community.feed');
-    const embed = templatePreviewBundle(undefined, 'feed.embed.v1');
-    expect(embed?.manifest.classId).toBe('community.feed_embed');
+  it('community landing and site starters are retired from platform pack', () => {
+    expect(() => requireTemplate('landing.basic.v1')).toThrow();
+    expect(() => requireTemplate('site.basic.v1')).toThrow();
+    expect(() => requireTemplate('feed.self_hosted.v1')).toThrow();
+    expect(() => requireTemplate('feed.embed.v1')).toThrow();
+  });
+
+  it('social starters expose pre-baked gallery preview refs', () => {
+    const preview = templatePreviewBundle(undefined, 'note.basic.portrait.v1');
+    expect(preview?.manifest.galleryPreviewRef).toBeTruthy();
+    expect(preview?.manifest.galleryPreviewKind).toBe('image');
   });
 
   it('basic note is text-first (optional chrome layers, no media-as-format)', () => {
