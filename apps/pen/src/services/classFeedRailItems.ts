@@ -23,7 +23,7 @@ export const TEMPLATE_RAIL_CATEGORIES = ['projects'] as const;
 
 export type TemplateRailCategoryId = (typeof TEMPLATE_RAIL_CATEGORIES)[number];
 
-const SOCIAL_TEMPLATE_RAIL_LABELS: Record<SocialTemplateRailFormId, string> = {
+export const SOCIAL_TEMPLATE_RAIL_LABELS: Record<SocialTemplateRailFormId, string> = {
   'social.note': 'note',
   'social.audio': 'audio',
   'social.post': 'media',

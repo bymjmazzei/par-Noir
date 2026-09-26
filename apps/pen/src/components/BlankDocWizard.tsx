@@ -1,12 +1,11 @@
-/** Blank document setup — pick a form (or Custom), then create. */
+/** Blank document setup — pick Blank or a Social rail form; click opens the editor. */
 
-import { useMemo, useState } from 'react';
-import {
-  listConsumerCategories,
-  listForms,
-  type PenPageLayout
-} from '@par-noir/pen-protocol';
 import type { BlankDocChoice } from '../services/createBlankDoc';
+import {
+  SOCIAL_TEMPLATE_RAIL_FORMS,
+  SOCIAL_TEMPLATE_RAIL_LABELS
+} from '../services/classFeedRailItems';
+import { FormDocIcon } from './FormDocIcon';
 
 export function BlankDocWizard({
   busy,
@@ -17,14 +16,12 @@ export function BlankDocWizard({
   busy?: boolean;
   error?: string | null;
   onCancel: () => void;
-  onCreate: (choice: BlankDocChoice, pageLayout: PenPageLayout) => void | Promise<void>;
+  onCreate: (choice: BlankDocChoice) => void | Promise<void>;
 }) {
-  const categories = useMemo(() => listConsumerCategories(), []);
-  const [choice, setChoice] = useState<BlankDocChoice | null>(null);
-  const [pageLayout, setPageLayout] = useState<PenPageLayout>('flow');
-
-  const selectedIsSocial =
-    choice?.kind === 'form' && choice.classId.startsWith('social.');
+  function pick(choice: BlankDocChoice) {
+    if (busy) return;
+    void onCreate(choice);
+  }
 
   return (
     <div
@@ -43,7 +40,7 @@ export function BlankDocWizard({
           <div className="min-w-0 flex-1">
             <h2 className="text-base font-bold text-black">Blank document</h2>
             <p className="text-xs text-neutral-500">
-              Pick a form for defaults, or Custom for a freeform page.
+              Choose a form to open in the editor.
             </p>
           </div>
           <button
@@ -52,6 +49,7 @@ export function BlankDocWizard({
             aria-label="Close"
             title="Close"
             onClick={onCancel}
+            disabled={busy}
           >
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden>
               <path
@@ -65,87 +63,35 @@ export function BlankDocWizard({
         </div>
 
         <div className="pen-blank-wizard-body">
-          <button
-            type="button"
-            className={`pen-blank-wizard-option ${
-              choice?.kind === 'custom' ? 'is-selected' : ''
-            }`}
-            onClick={() => {
-              setChoice({ kind: 'custom' });
-              setPageLayout('flow');
-            }}
-          >
-            <span className="font-semibold text-black">Custom</span>
-            <span className="text-xs text-neutral-500">Freeform page — no form defaults</span>
-          </button>
+          <div className="pen-blank-wizard-options">
+            <button
+              type="button"
+              className="pen-blank-wizard-option"
+              disabled={busy}
+              onClick={() => pick({ kind: 'custom' })}
+            >
+              <FormDocIcon classId="custom.doc" />
+              <span className="font-semibold capitalize text-black">Blank</span>
+            </button>
 
-          {categories
-            .filter((cat) => cat.id !== 'custom')
-            .map((cat) => {
-            const forms = listForms(cat.id).filter((f) => f.audience === 'consumer');
-            if (!forms.length) return null;
-            return (
-              <div key={cat.id} className="pen-blank-wizard-group">
-                <h3 className="pen-blank-wizard-group-title">{cat.title}</h3>
-                <div className="pen-blank-wizard-options">
-                  {forms.map((form) => (
-                    <button
-                      key={form.id}
-                      type="button"
-                      className={`pen-blank-wizard-option ${
-                        choice?.kind === 'form' && choice.classId === form.id
-                          ? 'is-selected'
-                          : ''
-                      }`}
-                      onClick={() => {
-                        setChoice({ kind: 'form', classId: form.id });
-                        setPageLayout(form.parentId === 'social' ? 'flow' : 'letter');
-                      }}
-                    >
-                      <span className="font-semibold text-black">{form.title}</span>
-                      <span className="text-xs text-neutral-500">{form.description}</span>
-                    </button>
-                  ))}
-                </div>
-              </div>
-            );
-          })}
-
-          {choice && !selectedIsSocial ? (
-            <label className="pen-blank-wizard-layout">
-              <span className="text-xs font-semibold uppercase tracking-wide text-neutral-500">
-                Page layout
-              </span>
-              <select
-                value={pageLayout}
-                onChange={(e) => setPageLayout(e.target.value as PenPageLayout)}
-                className="mt-1 w-full border border-neutral-300 bg-white px-2 py-1.5 text-sm"
+            {SOCIAL_TEMPLATE_RAIL_FORMS.map((classId) => (
+              <button
+                key={classId}
+                type="button"
+                className="pen-blank-wizard-option"
+                disabled={busy}
+                onClick={() => pick({ kind: 'form', classId })}
               >
-                <option value="flow">Flow</option>
-                <option value="letter">Letter</option>
-                <option value="a4">A4</option>
-              </select>
-            </label>
-          ) : null}
+                <FormDocIcon classId={classId} />
+                <span className="font-semibold capitalize text-black">
+                  {SOCIAL_TEMPLATE_RAIL_LABELS[classId]}
+                </span>
+              </button>
+            ))}
+          </div>
 
           {error ? <p className="text-sm text-red-600">{error}</p> : null}
-        </div>
-
-        <div className="pen-blank-wizard-foot">
-          <button type="button" className="pen-ribbon-btn" onClick={onCancel} disabled={busy}>
-            Cancel
-          </button>
-          <button
-            type="button"
-            className="pen-ribbon-btn is-active"
-            disabled={!choice || busy}
-            onClick={() => {
-              if (!choice) return;
-              void onCreate(choice, pageLayout);
-            }}
-          >
-            {busy ? 'Creating…' : 'Create'}
-          </button>
+          {busy ? <p className="text-xs text-neutral-500">Creating…</p> : null}
         </div>
       </div>
     </div>

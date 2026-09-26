@@ -2002,11 +2002,11 @@ export function DocListPage({
             setBlankWizardOpen(false);
             setError(null);
           }}
-          onCreate={async (choice, pageLayout) => {
+          onCreate={async (choice) => {
             setBusy(true);
             setError(null);
             try {
-              const bundle = await createBlankDoc({ session, choice, pageLayout });
+              const bundle = await createBlankDoc({ session, choice });
               setBlankWizardOpen(false);
               onDocsChange();
               navigate(`/d/${bundle.manifest.docId}`);
