@@ -372,7 +372,7 @@ function AddMenu({
                 onSelect('blank');
               }}
             >
-              Blank document
+              New document
             </button>
           )}
           {!templatesOnly && (
@@ -387,16 +387,6 @@ function AddMenu({
               New notebook
             </button>
           )}
-          <button
-            type="button"
-            role="menuitem"
-            onClick={() => {
-              setOpen(false);
-              onSelect('templates');
-            }}
-          >
-            See templates
-          </button>
           {!templatesOnly && (
             <button
               type="button"
@@ -409,6 +399,16 @@ function AddMenu({
               My templates
             </button>
           )}
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => {
+              setOpen(false);
+              onSelect('templates');
+            }}
+          >
+            All templates
+          </button>
         </div>
       )}
     </div>
