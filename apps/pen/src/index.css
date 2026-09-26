@@ -1600,6 +1600,8 @@ button.pen-app-chrome-brand:hover {
   );
   background-position: 0 var(--pen-explorer-head-h);
   background-repeat: repeat-y;
+  /* Scroll with rows — default attachment leaves rules fixed on the scrollport. */
+  background-attachment: local;
 }
 
 .pen-explorer-row {
