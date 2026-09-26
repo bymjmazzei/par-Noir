@@ -27,8 +27,10 @@ describe('buildSocialTemplateRailItems', () => {
       'audio',
       'media',
       'collection',
-      'set'
+      'set',
+      'widget'
     ]);
+    expect(items.some((i) => i.id === 'widgets.widget')).toBe(true);
   });
 
   it('isSocialTemplateRailClass matches Social rail atoms only (not metric / projects)', () => {
@@ -46,6 +48,9 @@ describe('buildSocialTemplateRailItems', () => {
     expect(templateMatchesRailSelection('social.note', 'social.note')).toBe(true);
     expect(templateMatchesRailSelection('social.quote', 'social.note')).toBe(false);
     expect(templateMatchesRailSelection('projects.journal', 'all')).toBe(false);
+    expect(templateMatchesRailSelection('widgets.widget', 'all')).toBe(true);
+    expect(templateMatchesRailSelection('widgets.widget', 'widgets.widget')).toBe(true);
+    expect(templateMatchesRailSelection('social.note', 'widgets.widget')).toBe(false);
   });
 
   it('libraryDocMatchesRailSelection ALL includes non-social docs', () => {

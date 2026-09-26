@@ -865,6 +865,12 @@ export function EditablePagePreview({
           flowWorkspaceHeightPx={manifest.flowWorkspaceHeightPx}
           contentOuterHeightPx={contentOuterH}
           style={frameStyle}
+          bare={
+            presentation.backgroundColor === 'transparent' &&
+            !presentation.backgroundGradient &&
+            !presentation.backgroundImage &&
+            !presentation.backgroundVideo
+          }
           className={flowOpen ? 'min-h-full shadow-none' : undefined}
           onClick={() => selectLayer(PAGE_LAYER_ID)}
           composeExportRoot

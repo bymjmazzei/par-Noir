@@ -6,6 +6,7 @@ import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react
 import {
   categoryIdForClass,
   getClass,
+  getTemplate,
   listStarterTemplates,
   type PenTemplate
 } from '@par-noir/pen-protocol';
@@ -13,15 +14,17 @@ import type { PenSession } from '../App';
 import { DocGalleryPreview } from './DocGalleryPreview';
 import {
   TemplateGalleryThumb,
-  templatePreviewBundle
+  previewBundleFromTemplate
 } from './TemplateGalleryThumb';
 import { personalTemplatesAsPenTemplates } from '../services/penPersonalTemplates';
+import { createDocFromTemplate } from '../services/createDocFromTemplate';
 import { createDocFromPersonalOrStarter } from '../services/penPublish';
+import { publicWidgetCatalog } from '../services/widgetCatalog';
 import type { PenBrowseDensity } from '../services/penClassPrefs';
 import { incrementTemplateUseCount } from '../services/penClassPrefs';
 import {
   buildSocialTemplateRailItems,
-  isSocialCategoryClass,
+  isTemplatesCatalogClass,
   templateMatchesRailSelection
 } from '../services/classFeedRailItems';
 import { ClassFeedRail } from './ClassFeedRail';
@@ -85,6 +88,10 @@ export function TemplatesBrowse({
   const [fileIdByTemplateId, setFileIdByTemplateId] = useState<Map<string, string>>(
     () => new Map()
   );
+  const [publicWidgets, setPublicWidgets] = useState<PenTemplate[]>([]);
+  const [publicWidgetSources, setPublicWidgetSources] = useState<Map<string, string>>(
+    () => new Map()
+  );
 
   const railItems = useMemo(() => buildSocialTemplateRailItems(), []);
 
@@ -98,9 +105,16 @@ export function TemplatesBrowse({
       .then((entries) => {
         if (cancelled) return;
         setFileIdByTemplateId(buildTemplateFileIdMap(entries));
+        const published = publicWidgetCatalog(entries);
+        setPublicWidgets(published.templates);
+        setPublicWidgetSources(published.sources);
       })
       .catch(() => {
-        if (!cancelled) setFileIdByTemplateId(new Map());
+        if (!cancelled) {
+          setFileIdByTemplateId(new Map());
+          setPublicWidgets([]);
+          setPublicWidgetSources(new Map());
+        }
       });
     return () => {
       cancelled = true;
@@ -111,23 +125,26 @@ export function TemplatesBrowse({
     const starters = listStarterTemplates().filter((t) => {
       const form = getClass(t.classId);
       if (form?.audience === 'kit') return false;
-      return isSocialCategoryClass(t.classId);
+      return isTemplatesCatalogClass(t.classId);
     });
     const yours = session?.pnIdentifier
       ? personalTemplatesAsPenTemplates(session.pnIdentifier).filter((t) =>
-          isSocialCategoryClass(t.classId)
+          isTemplatesCatalogClass(t.classId)
         )
       : [];
-    return [...yours, ...starters];
-  }, [session?.pnIdentifier]);
+    return [...yours, ...starters, ...publicWidgets];
+  }, [session?.pnIdentifier, publicWidgets]);
 
   const filtered = useMemo(() => {
     return catalog.filter((t) => templateMatchesRailSelection(t.classId, activeClassId));
   }, [catalog, activeClassId]);
 
-  const preview = previewId
-    ? templatePreviewBundle(session?.pnIdentifier, previewId)
-    : null;
+  const preview = useMemo(() => {
+    if (!previewId) return null;
+    const row = catalog.find((t) => t.id === previewId);
+    if (!row) return null;
+    return previewBundleFromTemplate(session?.pnIdentifier, row);
+  }, [catalog, previewId, session?.pnIdentifier]);
 
   const previewFileId = previewId
     ? resolveTemplateEngagementFileId(previewId, fileIdByTemplateId)
@@ -175,10 +192,23 @@ export function TemplatesBrowse({
     setBusy(true);
     setError(null);
     try {
-      const bundle = await createDocFromPersonalOrStarter({
-        session,
-        templateId
-      });
+      let bundle;
+      if (templateId.startsWith('pubwidget_')) {
+        const sourceId = publicWidgetSources.get(templateId);
+        if (!sourceId || !getTemplate(sourceId)) {
+          throw new Error('This published widget has no local copy to open');
+        }
+        bundle = await createDocFromTemplate({
+          session,
+          templateId: sourceId,
+          title: publicWidgets.find((t) => t.id === templateId)?.title
+        });
+      } else {
+        bundle = await createDocFromPersonalOrStarter({
+          session,
+          templateId
+        });
+      }
       incrementTemplateUseCount(session.pnIdentifier, templateId);
       onCreated(bundle.manifest.docId);
     } catch (e) {
@@ -238,6 +268,7 @@ export function TemplatesBrowse({
                           <TemplateGalleryThumb
                             pn={session?.pnIdentifier}
                             templateId={t.id}
+                            template={t}
                             session={session}
                           />
                         </span>

@@ -13,8 +13,6 @@ import {
 } from 'react';
 import {
   alignLayers,
-  createBoundEmbedLayer,
-  createBoundInteractiveLayer,
   createGroupFromSelection,
   createTextLayer,
   defaultLayerName,
@@ -33,7 +31,7 @@ import {
   type PenSectionContent
 } from '@par-noir/pen-protocol';
 import type { PenSession } from '../services/penSession';
-import { ActionLayerMenu, type ActionLayerSpec } from './ActionLayerMenu';
+import { ActionLayerMenu } from './ActionLayerMenu';
 import { IconEye, IconEyeOff, IconLock, IconTrash, IconUnlock } from './icons/PenIcons';
 
 export function layerDisplayLabel(layer: PenPageLayer, all: PenPageLayer[]): string {
@@ -115,6 +113,7 @@ export function LayersPopover({
   const panelRef = useRef<HTMLDivElement>(null);
   const [dragId, setDragId] = useState<string | null>(null);
   const [hoverId, setHoverId] = useState<string | null>(null);
+  const [addOpen, setAddOpen] = useState(false);
   const [actionOpen, setActionOpen] = useState(false);
 
   const prepared = useMemo(() => normalizeSection(section), [section]);
@@ -153,7 +152,10 @@ export function LayersPopover({
   const showAlign = multiObjectIds.length >= 2;
 
   useEffect(() => {
-    if (!open) setActionOpen(false);
+    if (!open) {
+      setActionOpen(false);
+      setAddOpen(false);
+    }
   }, [open]);
 
   useEffect(() => {
@@ -198,44 +200,10 @@ export function LayersPopover({
     onSelectedIdsChange([layer.id]);
   }
 
-  function addBoundAction(spec: ActionLayerSpec) {
-    const zIndex = maxZ() + 1;
-    const y = 80 + (layersFrontFirst.length % 3) * 12;
-    let layer: PenPageLayer;
-    try {
-      if (spec.kind === 'embed') {
-        layer = createBoundEmbedLayer(spec.docId, {
-          x: 24,
-          y,
-          zIndex,
-          name: 'Embed'
-        });
-      } else if (spec.kind === 'open') {
-        layer = createBoundInteractiveLayer(
-          {
-            behavior: 'cta.open',
-            bindDocId: spec.docId,
-            label: spec.label
-          },
-          { x: 24, y: y + 80, zIndex, name: spec.label || 'Open' }
-        );
-      } else {
-        layer = createBoundInteractiveLayer(
-          {
-            behavior: 'poll.vote',
-            bindDocId: spec.docId,
-            bindRowId: spec.rowId,
-            label: spec.label
-          },
-          { x: 24, y: y + 80, zIndex, name: spec.label || 'Vote' }
-        );
-      }
-    } catch {
-      return;
-    }
-    commit(upsertLayer(prepared, layer));
-    onSelectLayer(layer.id);
-    onSelectedIdsChange([layer.id]);
+  function insertWidget(next: PenSectionContent, groupId: string) {
+    commit(next);
+    onSelectLayer(groupId);
+    onSelectedIdsChange([groupId]);
     setActionOpen(false);
   }
 
@@ -354,7 +322,7 @@ export function LayersPopover({
       role="dialog"
       aria-label="Layers"
     >
-      <div className="flex shrink-0 flex-wrap items-center gap-0.5 border-b border-neutral-200 px-1.5 py-1.5">
+      <div className="relative z-20 flex shrink-0 flex-wrap items-center gap-0.5 border-b border-neutral-200 px-1.5 py-1.5">
         <span className="mr-auto px-1 text-[11px] font-bold uppercase tracking-wider text-black">
           Layers
         </span>
@@ -406,44 +374,66 @@ export function LayersPopover({
             )}
           </>
         )}
-        <button
-          type="button"
-          title="Create group"
-          aria-label="Create group"
-          className="inline-flex h-7 items-center gap-1 rounded px-1.5 text-[10px] font-bold uppercase tracking-wide text-neutral-600 hover:text-black"
-          onClick={onCreateGroup}
-        >
-          <FolderIcon />
-          Group
-        </button>
-        <button
-          type="button"
-          title="Add text layer"
-          aria-label="Add text layer"
-          className="inline-flex h-7 w-7 items-center justify-center text-black hover:opacity-60"
-          onClick={addTextLayer}
-        >
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden>
-            <path d="M12 5v14M5 12h14" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" />
-          </svg>
-        </button>
-        <button
-          type="button"
-          title="Add action layer"
-          aria-label="Add action layer"
-          aria-expanded={actionOpen}
-          className={`inline-flex h-7 items-center rounded px-1.5 text-[10px] font-bold uppercase tracking-wide hover:text-black ${
-            actionOpen ? 'text-black' : 'text-neutral-600'
-          }`}
-          onClick={() => setActionOpen((open) => !open)}
-        >
-          Action
-        </button>
+        <div className="relative">
+          <button
+            type="button"
+            title="Add"
+            aria-label="Add"
+            aria-expanded={addOpen}
+            className="inline-flex h-7 w-7 items-center justify-center text-black hover:opacity-60"
+            onClick={() => setAddOpen((open) => !open)}
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden>
+              <path d="M12 5v14M5 12h14" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" />
+            </svg>
+          </button>
+          {addOpen && (
+            <div
+              role="menu"
+              className="absolute right-0 top-8 z-10 w-36 rounded border border-neutral-200 bg-white py-1 shadow-lg"
+            >
+              <button
+                type="button"
+                role="menuitem"
+                className="block w-full px-3 py-1.5 text-left text-[11px] hover:bg-neutral-50"
+                onClick={() => {
+                  addTextLayer();
+                  setAddOpen(false);
+                }}
+              >
+                New layer
+              </button>
+              <button
+                type="button"
+                role="menuitem"
+                className="block w-full px-3 py-1.5 text-left text-[11px] hover:bg-neutral-50"
+                onClick={() => {
+                  onCreateGroup();
+                  setAddOpen(false);
+                }}
+              >
+                New group
+              </button>
+              <button
+                type="button"
+                role="menuitem"
+                className="block w-full px-3 py-1.5 text-left text-[11px] hover:bg-neutral-50"
+                onClick={() => {
+                  setAddOpen(false);
+                  setActionOpen(true);
+                }}
+              >
+                New widget
+              </button>
+            </div>
+          )}
+        </div>
       </div>
       {actionOpen && (
         <ActionLayerMenu
           session={session}
-          onCommit={addBoundAction}
+          section={prepared}
+          onInserted={insertWidget}
           onCancel={() => setActionOpen(false)}
         />
       )}

@@ -1020,14 +1020,29 @@ export function DocListPage({
   useEffect(() => {
     fetchPenCatalog(session.accessToken)
       .then((c) => {
-        if (c.classes.length) setClasses(c.classes.filter(isConsumerClass));
+        if (c.classes.length) {
+          const remoteClasses = c.classes.filter(isConsumerClass);
+          const classIds = new Set(remoteClasses.map((cl) => cl.id));
+          setClasses([
+            ...remoteClasses,
+            ...listConsumerClasses().filter(
+              (cl) =>
+                (cl.id === 'widgets' || cl.parentId === 'widgets') && !classIds.has(cl.id)
+            )
+          ]);
+        }
         if (c.templates.length) {
-          setTemplates(
-            c.templates.filter((t) => {
-              const form = getClass(t.classId) || c.classes.find((cl) => cl.id === t.classId);
-              return !form || isConsumerClass(form);
-            })
-          );
+          const remoteTemplates = c.templates.filter((t) => {
+            const form = getClass(t.classId) || c.classes.find((cl) => cl.id === t.classId);
+            return !form || isConsumerClass(form);
+          });
+          const templateIds = new Set(remoteTemplates.map((t) => t.id));
+          setTemplates([
+            ...remoteTemplates,
+            ...listStarterTemplates().filter(
+              (t) => t.classId === 'widgets.widget' && !templateIds.has(t.id)
+            )
+          ]);
         }
       })
       .catch(() => undefined);

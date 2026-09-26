@@ -17,6 +17,8 @@ import {
   ensureOwnerAssignment,
   listStarterTemplates,
   requireTemplate,
+  copyWidgetLayersIntoSection,
+  emptySection,
   compileDocumentToNote,
   compileSetToNote,
   snapshotPenEmbeds,
@@ -160,7 +162,15 @@ describe('classes + templates', () => {
     expect(list.some((t) => t.docType === 'collection')).toBe(true);
     expect(list.some((t) => t.docType === 'set')).toBe(true);
     expect(list.some((t) => t.id.includes('carousel') || t.docType === 'carousel')).toBe(false);
-    expect(list.every((t) => t.classId.startsWith('social.') || t.classId.startsWith('records.') || t.classId.startsWith('primitives.'))).toBe(true);
+    expect(
+      list.every(
+        (t) =>
+          t.classId.startsWith('social.') ||
+          t.classId.startsWith('records.') ||
+          t.classId.startsWith('primitives.') ||
+          t.classId.startsWith('widgets.')
+      )
+    ).toBe(true);
   });
 
   it('every starter has a form classId under a category', () => {
@@ -172,13 +182,60 @@ describe('classes + templates', () => {
     }
   });
 
-  it('consumer categories are social + custom; deferred categories are kit', () => {
-    expect(listConsumerCategories().map((c) => c.id)).toEqual(['social', 'custom']);
+  it('consumer categories are social, custom, and widgets; deferred categories are kit', () => {
+    expect(listConsumerCategories().map((c) => c.id)).toEqual(['social', 'custom', 'widgets']);
     expect(listCategories().map((c) => c.id)).toContain('records');
     expect(getClass('records')?.audience).toBe('kit');
     expect(getClass('community')?.audience).toBe('kit');
     expect(getClass('projects')?.audience).toBe('kit');
     expect(listConsumerCategories().some((c) => c.id === 'records')).toBe(false);
+  });
+
+  it('widget.poll.v1 is a transparent flow card with more than one option row', () => {
+    const poll = requireTemplate('widget.poll.v1');
+    expect(poll.classId).toBe('widgets.widget');
+    expect(poll.seedPageLayout).toBe('flow');
+    expect(poll.seedPagePresentation?.backgroundColor).toBe('transparent');
+    const layers = poll.seedSections?.[0]?.layers || [];
+    expect(layers.filter((l) => l.kind === 'interactive').length).toBeGreaterThan(1);
+    const time = requireTemplate('widget.time.v1');
+    const timeText = JSON.stringify(time.seedSections);
+    expect(timeText).toContain('startAt:');
+    expect(timeText).toContain('placeLabel:');
+    const place = requireTemplate('widget.place.v1');
+    const placeText = JSON.stringify(place.seedSections);
+    expect(placeText).toContain('placeLabel:');
+    expect(placeText).toContain('geoProofRef:');
+    expect(placeText).not.toMatch(/latitude|longitude|\blat\b|\blng\b/);
+  });
+
+  it('copyWidgetLayersIntoSection parents fresh unlocked layers under one group', () => {
+    const poll = requireTemplate('widget.poll.v1');
+    const source = poll.seedSections?.[0]?.layers || [];
+    const host = emptySection('body');
+    host.layers = [
+      {
+        id: 'existing',
+        kind: 'text',
+        x: 0,
+        y: 0,
+        w: 40,
+        h: 20,
+        zIndex: 1
+      }
+    ];
+    const { section, groupId } = copyWidgetLayersIntoSection(host, source, 'Poll');
+    const kids = (section.layers || []).filter((l) => l.parentGroupId === groupId);
+    const sourceIds = new Set(source.map((l) => l.id));
+    expect(kids.length).toBe(source.filter((l) => l.kind !== 'group').length);
+    expect(kids.length).toBeGreaterThan(1);
+    expect(new Set(kids.map((l) => l.id)).size).toBe(kids.length);
+    expect(kids.every((l) => !sourceIds.has(l.id))).toBe(true);
+    expect(kids.every((l) => l.positionLocked === false)).toBe(true);
+    expect((section.layers || []).some((l) => l.id === 'existing')).toBe(true);
+    expect((section.layers || []).some((l) => l.id === groupId && l.kind === 'group')).toBe(true);
+    const again = copyWidgetLayersIntoSection(section, source, 'Poll');
+    expect(again.groupId).not.toBe(groupId);
   });
 
   it('social forms exclude feed; community owns feed + landing/home/site', () => {

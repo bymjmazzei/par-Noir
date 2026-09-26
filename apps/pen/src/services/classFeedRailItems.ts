@@ -4,16 +4,17 @@ import { getClass, getTemplate } from '@par-noir/pen-protocol';
 import type { ClassFeedRailItem } from '../components/ClassFeedRail';
 
 /**
- * Social building-block forms for the Templates surface (all densities).
+ * Templates rail forms (all densities).
  * Fixed order — not derived from dataset presence.
- * Metric / action stay editor/backend surfaces, not rail chips.
+ * Metric stays an editor surface. Widget is its own chip.
  */
 export const SOCIAL_TEMPLATE_RAIL_FORMS = [
   'social.note',
   'social.audio',
   'social.post',
   'social.collection',
-  'social.set'
+  'social.set',
+  'widgets.widget'
 ] as const;
 
 export type SocialTemplateRailFormId = (typeof SOCIAL_TEMPLATE_RAIL_FORMS)[number];
@@ -23,7 +24,8 @@ export const SOCIAL_TEMPLATE_RAIL_LABELS: Record<SocialTemplateRailFormId, strin
   'social.audio': 'audio',
   'social.post': 'media',
   'social.collection': 'collection',
-  'social.set': 'set'
+  'social.set': 'set',
+  'widgets.widget': 'widget'
 };
 
 const SOCIAL_TEMPLATE_RAIL_SET = new Set<string>(SOCIAL_TEMPLATE_RAIL_FORMS);
@@ -48,12 +50,22 @@ export function isSocialTemplateRailClass(classId: string | undefined): boolean 
   return SOCIAL_TEMPLATE_RAIL_SET.has(classId);
 }
 
+/** Social forms plus the Widgets form (Templates catalog / ALL chip). */
+export function isTemplatesCatalogClass(classId: string | undefined): boolean {
+  if (!classId) return false;
+  if (isSocialCategoryClass(classId)) return true;
+  if (classId === 'widgets' || classId === 'widgets.widget' || classId.startsWith('widgets.')) {
+    return true;
+  }
+  return getClass(classId)?.parentId === 'widgets';
+}
+
 /** Whether a template belongs under the active rail chip. */
 export function templateMatchesRailSelection(
   classId: string | undefined,
   activeId: string
 ): boolean {
-  if (!classId || !isSocialCategoryClass(classId)) return false;
+  if (!classId || !isTemplatesCatalogClass(classId)) return false;
   if (activeId === 'all') return true;
   return classId === activeId;
 }
@@ -69,7 +81,7 @@ export function libraryDocMatchesRailSelection(
   return templateMatchesRailSelection(classId, activeId);
 }
 
-/** ALL + Social atoms (Templates list / gallery / feed). */
+/** ALL + Templates rail chips (list / gallery / feed). */
 export function buildSocialTemplateRailItems(): ClassFeedRailItem[] {
   return [
     { id: 'all', label: 'ALL' },

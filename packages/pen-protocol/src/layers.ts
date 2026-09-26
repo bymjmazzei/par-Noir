@@ -145,6 +145,51 @@ export function createGroupFromSelection(
   return { section: recomputeGroupBounds(next, group.id), groupId: group.id };
 }
 
+/**
+ * Copy a widget's layers into the host section as one group.
+ * New layer ids. Children are not position-locked. The source template is not mutated.
+ */
+export function copyWidgetLayersIntoSection(
+  host: PenSectionContent,
+  sourceLayers: PenPageLayer[],
+  name: string
+): { section: PenSectionContent; groupId: string } {
+  const src = sourceLayers.filter((l) => l.kind !== 'group');
+  if (!src.length) throw new Error('widget_has_no_layers');
+  const minX = Math.min(...src.map((l) => l.x));
+  const minY = Math.min(...src.map((l) => l.y));
+  const maxR = Math.max(...src.map((l) => l.x + l.w));
+  const maxB = Math.max(...src.map((l) => l.y + l.h));
+  const stack = (host.layers || []).filter((l) => !l.parentGroupId).length;
+  const originX = 16;
+  const originY = 16 + stack * 12;
+  const dx = originX - minX;
+  const dy = originY - minY;
+  const maxZ = (host.layers || []).reduce((m, l) => Math.max(m, l.zIndex), 0);
+  const group = createGroupLayer({
+    x: originX,
+    y: originY,
+    w: Math.max(48, maxR - minX),
+    h: Math.max(48, maxB - minY),
+    zIndex: maxZ + src.length + 1,
+    name: name.trim() || 'Widget'
+  });
+  let next = upsertLayer(host, group);
+  src.forEach((layer, i) => {
+    const { id: _dropId, parentGroupId: _dropParent, ...rest } = layer;
+    next = upsertLayer(next, {
+      ...rest,
+      id: newLayerId(),
+      parentGroupId: group.id,
+      positionLocked: false,
+      x: layer.x + dx,
+      y: layer.y + dy,
+      zIndex: maxZ + 1 + i
+    });
+  });
+  return { section: recomputeGroupBounds(next, group.id), groupId: group.id };
+}
+
 export function setLayerParentGroup(
   section: PenSectionContent,
   layerId: string,

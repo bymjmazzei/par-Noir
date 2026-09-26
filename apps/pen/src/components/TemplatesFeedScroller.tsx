@@ -8,7 +8,7 @@ import type { PenTemplate } from '@par-noir/pen-protocol';
 import type { PenSession } from '../services/penSession';
 import { SnapFeedShell } from './SnapFeedShell';
 import { PenFeedSlideStage } from './PenFeedSlideStage';
-import { templatePreviewBundle } from './TemplateGalleryThumb';
+import { previewBundleFromTemplate } from './TemplateGalleryThumb';
 import { resolveTemplateEngagementFileId } from '../services/templateEngagementFileId';
 
 export function TemplatesFeedScroller({
@@ -39,7 +39,7 @@ export function TemplatesFeedScroller({
       renderSlide={(index) => {
         const t = templates[index];
         if (!t) return null;
-        const preview = templatePreviewBundle(session?.pnIdentifier, t.id);
+        const preview = previewBundleFromTemplate(session?.pnIdentifier, t);
         if (!preview) {
           return (
             <div className="pen-doc-feed-empty">

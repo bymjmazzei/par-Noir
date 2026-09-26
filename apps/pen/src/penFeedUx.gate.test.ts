@@ -249,6 +249,22 @@ describe('pen feed UX chrome', () => {
     expect(src).not.toMatch(/engagementOverlay/);
   });
 
+  it('layers add menu is New layer, New group, and New widget', () => {
+    const panel = readFileSync(resolve(root, 'components/LayersPanel.tsx'), 'utf8');
+    const menu = readFileSync(resolve(root, 'components/ActionLayerMenu.tsx'), 'utf8');
+    const rail = readFileSync(resolve(root, 'services/classFeedRailItems.ts'), 'utf8');
+    expect(panel).toMatch(/New layer/);
+    expect(panel).toMatch(/New group/);
+    expect(panel).toMatch(/New widget/);
+    expect(panel).toMatch(/aria-label="Add"/);
+    expect(panel).not.toMatch(/aria-label="Create group"/);
+    expect(panel).not.toMatch(/aria-label="Add action layer"/);
+    expect(panel).not.toMatch(/aria-label="Add text layer"/);
+    expect(menu).not.toMatch(/Vote sticker|Embed table|Open sticker/);
+    expect(menu).toMatch(/insertWidgetCopy/);
+    expect(rail).toMatch(/widgets\.widget/);
+  });
+
   it('DocEditorPage social live preview mounts LayersPopover for action layers', () => {
     const src = readFileSync(resolve(root, 'pages/DocEditorPage.tsx'), 'utf8');
     const social = src.slice(src.indexOf('isSocialDoc ?'));

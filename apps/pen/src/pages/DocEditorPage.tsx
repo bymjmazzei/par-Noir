@@ -238,6 +238,12 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
     return form?.parentId === 'social';
   }, [bundle, template]);
 
+  const isWidgetDoc = useMemo(() => {
+    const classId = bundle?.manifest.classId || template?.classId;
+    if (!classId) return false;
+    return getClass(classId)?.parentId === 'widgets';
+  }, [bundle, template]);
+
   const section = useMemo(() => {
     const raw = bundle?.sections.find((s) => s.slug === activeSlug) || bundle?.sections[0];
     if (!raw) return undefined;
@@ -572,6 +578,32 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
       manifest: { ...bundle.manifest, updatedAt: new Date().toISOString() }
     });
   }
+
+  useEffect(() => {
+    if (!bundle || !isWidgetDoc) return;
+    const pres = bundle.manifest.pagePresentation;
+    const bare =
+      bundle.manifest.pageLayout === 'flow' &&
+      pres?.backgroundColor === 'transparent' &&
+      !pres.backgroundGradient &&
+      !pres.backgroundImage &&
+      !pres.backgroundVideo;
+    if (bare) return;
+    persist({
+      ...bundle,
+      manifest: {
+        ...bundle.manifest,
+        pageLayout: 'flow',
+        pagePresentation: {
+          ...(pres || defaultEditorPagePresentation()),
+          backgroundColor: 'transparent',
+          backgroundGradient: undefined,
+          backgroundImage: undefined,
+          backgroundVideo: undefined
+        }
+      }
+    });
+  }, [bundle, isWidgetDoc]);
 
   function saveDraft(opts?: { silent?: boolean }) {
     const current = bundleRef.current;

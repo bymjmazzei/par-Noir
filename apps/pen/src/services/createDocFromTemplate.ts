@@ -89,12 +89,18 @@ async function persistBundle(input: {
     toc: input.template.sections.map((s) => s.slug)
   };
 
-  const social = getClass(input.template.classId)?.parentId === 'social';
+  const parentId = getClass(input.template.classId)?.parentId;
+  const social = parentId === 'social';
+  const widget = parentId === 'widgets';
   const pageLayout =
-    input.template.seedPageLayout || (social ? 'flow' : 'letter');
+    input.template.seedPageLayout || (social || widget ? 'flow' : 'letter');
   const pagePresentation =
     input.template.seedPagePresentation ||
-    (social ? defaultPagePresentation() : defaultEditorPagePresentation());
+    (widget
+      ? { ...defaultEditorPagePresentation(), backgroundColor: 'transparent' }
+      : social
+        ? defaultPagePresentation()
+        : defaultEditorPagePresentation());
 
   const manifest: PenDocManifest = {
     docId: input.docId,
@@ -163,6 +169,7 @@ export async function createDocFromTemplate(input: {
   session: PenSession;
   templateId: string;
   templates?: PenTemplate[];
+  title?: string;
 }): Promise<LocalDocBundle> {
   const template =
     input.templates?.find((t) => t.id === input.templateId) ||
@@ -186,6 +193,7 @@ export async function createDocFromTemplate(input: {
     session: input.session,
     template,
     docId,
-    sections
+    sections,
+    title: input.title
   });
 }

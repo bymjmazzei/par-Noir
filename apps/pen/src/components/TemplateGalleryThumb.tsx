@@ -4,8 +4,8 @@ import {
   categoryIdForClass,
   emptySection,
   getTemplate,
-  requireTemplate,
-  templateAuthorLabel
+  templateAuthorLabel,
+  type PenTemplate
 } from '@par-noir/pen-protocol';
 import {
   isPersonalTemplateId,
@@ -48,7 +48,8 @@ export function templatePreviewBundle(pn: string | undefined, templateId: string
         : personal.sections.map((s) => emptySection(s.slug))
     };
   }
-  const t = getTemplate(templateId) || requireTemplate(templateId);
+  const t = getTemplate(templateId);
+  if (!t) return null;
   return {
     title: t.title,
     description: t.description || '',
@@ -74,19 +75,53 @@ export function templatePreviewBundle(pn: string | undefined, templateId: string
   };
 }
 
+/** Preview a catalog row, including a public widget whose id is not in the starter registry. */
+export function previewBundleFromTemplate(pn: string | undefined, template: PenTemplate) {
+  const known = templatePreviewBundle(pn, template.id);
+  if (known) return known;
+  if (!template.seedSections?.length && !template.seedPagePresentation) return null;
+  return {
+    title: template.title,
+    description: template.description || '',
+    authorDisplayName: templateAuthorLabel(template),
+    manifest: {
+      docId: 'preview',
+      title: template.title,
+      docType: template.docType,
+      classId: template.classId,
+      templateId: template.id,
+      templateVersion: template.version,
+      groupId: 'preview',
+      toc: template.sections.map((s) => s.slug),
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      pageLayout: template.seedPageLayout,
+      pagePresentation: template.seedPagePresentation,
+      galleryAspect: template.seedGalleryAspect
+    },
+    sections: template.seedSections?.length
+      ? template.seedSections
+      : template.sections.map((s) => emptySection(s.slug))
+  };
+}
+
 /** Thumb for a starter or personal template id — same phone stack as feed, scaled down. */
 export function TemplateGalleryThumb({
   pn,
   templateId,
+  template,
   session,
   phoneActiveFeedId = 'pen-templates'
 }: {
   pn?: string;
   templateId: string;
+  template?: PenTemplate;
   session?: PenSession | null;
   phoneActiveFeedId?: 'discovery' | 'public' | 'media' | 'notes' | 'collections' | 'pen-templates';
 }) {
-  const preview = templatePreviewBundle(pn, templateId);
+  const preview = template
+    ? previewBundleFromTemplate(pn, template)
+    : templatePreviewBundle(pn, templateId);
   if (!preview) {
     return (
       <span className="pen-gallery-tile-glyph text-[10px] text-neutral-500">—</span>

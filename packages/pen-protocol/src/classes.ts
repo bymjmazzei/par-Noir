@@ -307,6 +307,21 @@ const CLASSES: PenClass[] = [
     parentId: 'custom'
   },
   {
+    id: 'widgets',
+    title: 'Widgets',
+    description: 'Card-sized authored widgets that copy into a host document',
+    kind: 'authored',
+    audience: 'consumer'
+  },
+  {
+    id: 'widgets.widget',
+    title: 'Widget',
+    description: 'One editable card — layers copy into the host as a group',
+    kind: 'authored',
+    audience: 'consumer',
+    parentId: 'widgets'
+  },
+  {
     id: 'records',
     title: 'Records',
     description: 'Typed structured data for kit / agents',

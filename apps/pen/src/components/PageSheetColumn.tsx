@@ -20,7 +20,9 @@ export function PageSheetColumn({
   sheetRef,
   onClick,
   /** When true, marks this sheet as the compose/encode export root. */
-  composeExportRoot = false
+  composeExportRoot = false,
+  /** Transparent flow surface: no page fill or sheet shadow. */
+  bare = false
 }: {
   pageLayout: PenPageLayout | undefined;
   flowWorkspaceWidthPx?: number | null;
@@ -33,6 +35,7 @@ export function PageSheetColumn({
   sheetRef?: Ref<HTMLDivElement>;
   onClick?: () => void;
   composeExportRoot?: boolean;
+  bare?: boolean;
 }) {
   const dims = pageSheetDims(pageLayout, {
     widthPx: flowWorkspaceWidthPx,
@@ -59,9 +62,11 @@ export function PageSheetColumn({
       {...(composeExportRoot
         ? { 'data-pen-compose-export-root': 'page' }
         : {})}
-      className={`relative bg-white shadow-[0_1px_3px_rgba(0,0,0,0.12),0_0_0_1px_rgba(0,0,0,0.06)] ${
-        dims.fillWidth ? 'w-full' : ''
-      } ${className || ''}`}
+      className={`relative ${
+        bare
+          ? 'bg-transparent shadow-none'
+          : 'bg-white shadow-[0_1px_3px_rgba(0,0,0,0.12),0_0_0_1px_rgba(0,0,0,0.06)]'
+      } ${dims.fillWidth ? 'w-full' : ''} ${className || ''}`}
       style={{
         width: dims.fillWidth ? '100%' : dims.pageWidthPx ?? undefined,
         maxWidth: '100%',
