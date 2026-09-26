@@ -1478,9 +1478,9 @@ button.pen-template-engagement-stat.is-liked {
 
 .pen-library-footer-logo {
   display: block;
-  height: 4.125rem;
+  height: 2.0625rem;
   width: auto;
-  max-width: min(36rem, 88vw);
+  max-width: min(18rem, 44vw);
   object-fit: contain;
   object-position: center;
   clip-path: inset(12% 0 12% 0);

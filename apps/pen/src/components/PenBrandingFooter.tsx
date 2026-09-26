@@ -26,8 +26,8 @@ export function PenBrandingFooter({
         className="pen-library-footer-logo"
         src={FOOTER_LOGO_SRC}
         alt="par Noir"
-        width={320}
-        height={96}
+        width={160}
+        height={48}
         decoding="async"
       />
       <p className="pen-library-footer-copy">© par Noir</p>
