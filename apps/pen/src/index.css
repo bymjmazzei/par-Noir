@@ -1967,43 +1967,53 @@ input.pen-gallery-tile-title-text {
 }
 
 /*
- * Gallery social thumbs: layout phone at feed reference size, then ResizeObserver
- * transform-scale to fit — whole phone+poster scales as one unit (no text reflow).
+ * Gallery social thumbs: feed-size phone in a slot sized to the scaled footprint.
+ * transform-origin top-left; slot width/height = ref * scale so overflow doesn't clip blank.
  */
 .pen-gallery-feed-thumb {
   width: 100%;
   height: 100%;
-  display: grid;
-  place-items: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   overflow: hidden;
   pointer-events: none;
 }
 
-.pen-gallery-feed-thumb-inner {
-  --pen-gallery-thumb-ref: 18rem;
-  width: var(--pen-gallery-thumb-ref);
-  aspect-ratio: var(--pen-feed-aspect, 9 / 16);
+.pen-gallery-feed-thumb-slot {
+  position: relative;
   flex-shrink: 0;
-  transform-origin: center center;
+  overflow: hidden;
+}
+
+.pen-gallery-feed-thumb-inner {
+  position: absolute;
+  top: 0;
+  left: 0;
+  flex-shrink: 0;
   will-change: transform;
 }
 
-.pen-gallery-feed-thumb-inner .pen-feed-phone.pen-gallery-phone,
-.pen-gallery-feed-thumb-inner .pen-feed-phone.pen-gallery-phone--lg {
+.pen-gallery-tile-preview .pen-gallery-feed-thumb-inner .pen-feed-phone.pen-gallery-phone,
+.pen-gallery-tile-preview .pen-gallery-feed-thumb-inner .pen-feed-phone.pen-gallery-phone--lg {
   width: 100%;
   height: 100%;
-  max-width: 100%;
-  max-height: 100%;
+  max-width: none;
+  max-height: none;
   margin: 0;
   aspect-ratio: var(--pen-feed-aspect, 9 / 16);
 }
 
-.pen-gallery-feed-thumb-inner .pen-feed-phone--landscape.pen-gallery-phone,
-.pen-gallery-feed-thumb-inner .pen-feed-phone--landscape.pen-gallery-phone--lg {
+.pen-gallery-tile-preview
+  .pen-gallery-feed-thumb-inner
+  .pen-feed-phone--landscape.pen-gallery-phone,
+.pen-gallery-tile-preview
+  .pen-gallery-feed-thumb-inner
+  .pen-feed-phone--landscape.pen-gallery-phone--lg {
   width: 100%;
   height: 100%;
-  max-width: 100%;
-  max-height: 100%;
+  max-width: none;
+  max-height: none;
   aspect-ratio: 16 / 9;
 }
 
@@ -2489,6 +2499,13 @@ input.pen-gallery-tile-title-text {
 }
 
 .pen-templates-gallery .pen-gallery-tile-preview > * {
+  max-width: 100%;
+  max-height: 100%;
+}
+
+.pen-templates-gallery .pen-gallery-tile-preview > .pen-gallery-feed-thumb {
+  width: 100%;
+  height: 100%;
   max-width: 100%;
   max-height: 100%;
 }

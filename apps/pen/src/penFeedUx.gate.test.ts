@@ -173,14 +173,15 @@ describe('pen feed UX chrome', () => {
       /\.pen-gallery-wrap\s*\{[\s\S]*?overflow:\s*auto/
     );
     expect(css).toMatch(/\.pen-gallery-feed-thumb\s*\{/);
+    expect(css).toMatch(/\.pen-gallery-feed-thumb-slot/);
     expect(css).toMatch(/\.pen-gallery-feed-thumb-inner/);
     expect(css).toMatch(/\.pen-feed-tile-body-text/);
     expect(css).toMatch(/font-size:\s*3\.2cqh/);
     expect(shared).toMatch(/density\?: 'feed' \| 'thumb'/);
-    expect(shared).toMatch(/GalleryFeedPhoneThumb|density !== 'thumb'/);
+    expect(shared).toMatch(/GalleryFeedPhoneThumb/);
     expect(shared).toMatch(/ResizeObserver/);
-    expect(shared).toMatch(/transform:\s*`scale/);
-    expect(shared).toMatch(/pen-gallery-feed-thumb/);
+    expect(shared).toMatch(/transformOrigin:\s*'top left'/);
+    expect(shared).toMatch(/pen-gallery-feed-thumb-slot/);
     expect(thumb).toMatch(/density="thumb"/);
     expect(tile).toMatch(/pen-feed-tile-body-text/);
     expect(tile).not.toMatch(/text-lg/);

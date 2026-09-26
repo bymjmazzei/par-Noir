@@ -1,7 +1,8 @@
 /**
  * Same phone stack as Templates/Library feed: bevel + browse chrome + feed tile.
- * Gallery thumbs use density="thumb" — layout at feed size, then transform-scale to fit
- * so poster proportions match feed (not HTML reflow into a tiny bevel).
+ * Gallery thumbs use density="thumb" — layout at feed size, then scale the whole
+ * phone into a slot sized to the scaled footprint (transform alone leaves an
+ * 18rem box that overflow:hidden clips to blank / a corner speck).
  */
 
 import {
@@ -22,7 +23,8 @@ import {
 } from './DocGalleryPreview';
 import type { PenSession } from '../services/penSession';
 
-const THUMB_REF_PX = 288; /* 18rem at 16px root */
+/** Feed-size reference width (px). Height follows phone aspect. */
+const THUMB_REF_W = 288;
 
 function GalleryFeedPhoneThumb({
   aspectCss,
@@ -34,29 +36,26 @@ function GalleryFeedPhoneThumb({
   children: ReactNode;
 }) {
   const outerRef = useRef<HTMLDivElement>(null);
-  const innerRef = useRef<HTMLDivElement>(null);
-  const [scale, setScale] = useState(1);
+  const [scale, setScale] = useState(0);
+  const refH = landscape ? (THUMB_REF_W * 9) / 16 : (THUMB_REF_W * 16) / 9;
 
   useLayoutEffect(() => {
     const outer = outerRef.current;
-    const inner = innerRef.current;
-    if (!outer || !inner) return;
+    if (!outer) return;
 
     const measure = () => {
       const ow = outer.clientWidth;
       const oh = outer.clientHeight;
-      const iw = inner.offsetWidth || THUMB_REF_PX;
-      const ih = inner.offsetHeight || (landscape ? (iw * 9) / 16 : (iw * 16) / 9);
-      if (ow <= 0 || oh <= 0 || iw <= 0 || ih <= 0) return;
-      setScale(Math.min(ow / iw, oh / ih, 1));
+      if (ow <= 0 || oh <= 0) return;
+      const next = Math.min(ow / THUMB_REF_W, oh / refH, 1);
+      setScale(next > 0 && Number.isFinite(next) ? next : 0);
     };
 
     measure();
     const ro = new ResizeObserver(measure);
     ro.observe(outer);
-    ro.observe(inner);
     return () => ro.disconnect();
-  }, [aspectCss, landscape]);
+  }, [aspectCss, landscape, refH]);
 
   const style = {
     ['--pen-feed-aspect' as string]: aspectCss
@@ -64,13 +63,26 @@ function GalleryFeedPhoneThumb({
 
   return (
     <div ref={outerRef} className="pen-gallery-feed-thumb" style={style}>
-      <div
-        ref={innerRef}
-        className={`pen-gallery-feed-thumb-inner${landscape ? ' is-landscape' : ''}`}
-        style={{ transform: `scale(${scale})` }}
-      >
-        {children}
-      </div>
+      {scale > 0 ? (
+        <div
+          className="pen-gallery-feed-thumb-slot"
+          style={{ width: THUMB_REF_W * scale, height: refH * scale }}
+        >
+          <div
+            className={`pen-gallery-feed-thumb-inner${
+              landscape ? ' is-landscape' : ''
+            }`}
+            style={{
+              width: THUMB_REF_W,
+              height: refH,
+              transform: `scale(${scale})`,
+              transformOrigin: 'top left'
+            }}
+          >
+            {children}
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }
