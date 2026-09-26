@@ -97,6 +97,7 @@ export function TemplateGalleryThumb({
   if (social) {
     return (
       <SocialFeedPhonePreview
+        density="thumb"
         manifest={preview.manifest as never}
         sections={preview.sections}
         session={session}

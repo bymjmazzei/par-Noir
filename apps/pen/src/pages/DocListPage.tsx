@@ -693,6 +693,7 @@ function DocGalleryCard({
       {bundle ? (
         categoryIdForClass(bundle.manifest.classId || '') === 'social' ? (
           <SocialFeedPhonePreview
+            density="thumb"
             manifest={bundle.manifest}
             sections={bundle.sections}
             session={session}

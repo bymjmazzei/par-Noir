@@ -103,8 +103,8 @@ function PageSurface({ page, titleFallback }: { page: FeedTilePage; titleFallbac
           <img src={page.mediaSrc} alt="" className="absolute inset-0 h-full w-full object-cover" />
         )
       ) : (
-        <div className="pen-feed-tile-body-safe relative flex h-full flex-col justify-center px-6 text-center">
-          <div className="line-clamp-[10] whitespace-pre-wrap break-words text-lg font-semibold leading-snug">
+        <div className="pen-feed-tile-body-safe relative flex h-full flex-col justify-center text-center">
+          <div className="pen-feed-tile-body-text line-clamp-[10] whitespace-pre-wrap break-words font-semibold">
             {bodyText}
           </div>
         </div>
@@ -214,12 +214,14 @@ export function FeedTileSurface({
       {engagement}
 
       {/* Browse-shaped caption: title + caption only (no profile avatar; dedupe equal caption). */}
-      <div className="pen-feed-tile-caption pointer-events-none absolute bottom-4 left-0 right-20 z-20 p-4 text-white drop-shadow-md">
+      <div className="pen-feed-tile-caption pointer-events-none absolute bottom-4 left-0 right-20 z-20 text-white drop-shadow-md">
         {titleText ? (
-          <h3 className="mb-1 line-clamp-1 text-base font-semibold">{titleText}</h3>
+          <h3 className="pen-feed-tile-caption-title mb-1 line-clamp-1 font-semibold">{titleText}</h3>
         ) : null}
         {showCaption ? (
-          <p className="line-clamp-2 text-sm leading-snug text-white/95">{captionText}</p>
+          <p className="pen-feed-tile-caption-body line-clamp-2 leading-snug text-white/95">
+            {captionText}
+          </p>
         ) : null}
       </div>
     </div>

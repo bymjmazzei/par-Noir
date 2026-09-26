@@ -1052,18 +1052,35 @@ body {
   align-self: center;
 }
 
-/* Single text poster: keep body out of caption + bottom-nav band */
+/* Single text poster: keep body out of caption + bottom-nav band; phone-relative type */
 .pen-feed-phone-poster .pen-feed-tile-body-safe {
   box-sizing: border-box;
   padding-top: 8cqh;
   padding-bottom: 28cqh;
+  padding-inline: 6cqw;
+}
+
+.pen-feed-phone-poster .pen-feed-tile-body-text {
+  font-size: 3.2cqh;
+  line-height: 1.25;
 }
 
 /* Lift browse caption above in-phone bottom nav; soft separation from body */
 .pen-feed-phone-poster .pen-feed-tile-caption {
   bottom: 8cqh;
-  padding-bottom: 1cqh;
+  padding: 2cqh 4cqw 1cqh;
+  right: 18cqw;
   background: linear-gradient(to top, rgba(0, 0, 0, 0.55) 0%, rgba(0, 0, 0, 0) 100%);
+}
+
+.pen-feed-phone-poster .pen-feed-tile-caption-title {
+  font-size: 2.4cqh;
+  line-height: 1.2;
+}
+
+.pen-feed-phone-poster .pen-feed-tile-caption-body {
+  font-size: 2cqh;
+  line-height: 1.25;
 }
 
 .pen-feed-phone-chrome {
@@ -1949,29 +1966,45 @@ input.pen-gallery-tile-title-text {
   aspect-ratio: var(--pen-feed-aspect, 9 / 16);
 }
 
-/* Gallery thumbs: same feed phone stack, height-driven inside fixed preview slot */
-.pen-gallery-tile-preview .pen-feed-phone.pen-gallery-phone {
+/*
+ * Gallery social thumbs: layout phone at feed reference size, then ResizeObserver
+ * transform-scale to fit — whole phone+poster scales as one unit (no text reflow).
+ */
+.pen-gallery-feed-thumb {
+  width: 100%;
   height: 100%;
-  width: auto;
-  max-height: 100%;
-  max-width: 100%;
-  margin: 0 auto;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
   pointer-events: none;
 }
 
-/* Landscape templates get a landscape bevel that fits the preview width */
-.pen-gallery-tile-preview .pen-feed-phone--landscape.pen-gallery-phone {
-  height: auto;
+.pen-gallery-feed-thumb-inner {
+  --pen-gallery-thumb-ref: 18rem;
+  width: var(--pen-gallery-thumb-ref);
+  aspect-ratio: var(--pen-feed-aspect, 9 / 16);
+  flex-shrink: 0;
+  transform-origin: center center;
+  will-change: transform;
+}
+
+.pen-gallery-feed-thumb-inner .pen-feed-phone.pen-gallery-phone,
+.pen-gallery-feed-thumb-inner .pen-feed-phone.pen-gallery-phone--lg {
   width: 100%;
+  height: 100%;
+  max-width: 100%;
+  max-height: 100%;
+  margin: 0;
+  aspect-ratio: var(--pen-feed-aspect, 9 / 16);
+}
+
+.pen-gallery-feed-thumb-inner .pen-feed-phone--landscape.pen-gallery-phone,
+.pen-gallery-feed-thumb-inner .pen-feed-phone--landscape.pen-gallery-phone--lg {
+  width: 100%;
+  height: 100%;
   max-width: 100%;
   max-height: 100%;
   aspect-ratio: 16 / 9;
-}
-
-.pen-gallery-tile-preview .pen-feed-phone-poster > .pen-gallery-doc-page,
-.pen-gallery-tile-preview .pen-feed-phone-poster > * {
-  max-width: 100%;
-  max-height: 100%;
 }
 
 /* Phone bezel — gallery thumbs keep width-based sizing; feed phones override below */
