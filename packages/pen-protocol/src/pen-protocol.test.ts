@@ -569,7 +569,7 @@ describe('template seeds + Mini featured + layer locks', () => {
     for (const t of consumer) {
       expect(t.seedPagePresentation, t.id).toBeTruthy();
       expect(t.seedSections?.length, t.id).toBeGreaterThan(0);
-      expect(t.seedGalleryPreviewSrc, t.id).toBeTruthy();
+      expect(t.seedGalleryPreviewSrc, t.id).toBeUndefined();
     }
     const note = requireTemplate('note.basic.portrait.v1');
     expect((note.seedSections?.[0]?.layers || []).every((l) => l.kind === 'text')).toBe(true);

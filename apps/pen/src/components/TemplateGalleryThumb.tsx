@@ -66,16 +66,7 @@ export function templatePreviewBundle(pn: string | undefined, templateId: string
       updatedAt: new Date().toISOString(),
       pageLayout: t.seedPageLayout,
       pagePresentation: t.seedPagePresentation,
-      galleryAspect: t.seedGalleryAspect,
-      ...(t.seedGalleryPreviewSrc
-        ? {
-            galleryPreviewRef: t.seedGalleryPreviewSrc,
-            galleryPreviewKind: t.seedGalleryPreviewKind || 'image',
-            ...(t.seedGalleryPreviewPosterSrc
-              ? { galleryPreviewPosterRef: t.seedGalleryPreviewPosterSrc }
-              : {})
-          }
-        : {})
+      galleryAspect: t.seedGalleryAspect
     },
     sections: t.seedSections?.length
       ? t.seedSections

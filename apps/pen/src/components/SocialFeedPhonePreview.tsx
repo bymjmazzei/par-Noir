@@ -95,7 +95,8 @@ export function SocialFeedPhonePreview({
   authorLabel,
   phoneActiveFeedId = 'public',
   large,
-  density = 'feed'
+  density = 'feed',
+  actionOverlay
 }: {
   manifest: PenDocManifest;
   sections: PenSectionContent[];
@@ -106,6 +107,8 @@ export function SocialFeedPhonePreview({
   large?: boolean;
   /** thumb = gallery: layout at feed size then scale to fit the tile. */
   density?: 'feed' | 'thumb';
+  /** Editor-only layer chrome. Omitted for gallery thumbs and browse. */
+  actionOverlay?: ReactNode;
 }) {
   const phoneAspectCss = resolvePhoneFrameAspect(manifest);
   const feedAspect = resolveFeedTileAspect(manifest);
@@ -114,6 +117,19 @@ export function SocialFeedPhonePreview({
     phoneAspectCss.includes('16 / 9') || phoneAspectCss.startsWith('16/');
   // Thumb always uses large bezel chrome so scale matches feed proportions.
   const useLarge = density === 'thumb' ? true : Boolean(large);
+
+  const tile = (
+    <BrowseFeedTilePreview
+      manifest={manifest}
+      sections={sections}
+      bare
+      compact
+      session={session}
+      hideEngagementRail
+      aspectRatio={feedAspect}
+    />
+  );
+  const showActions = Boolean(actionOverlay) && density !== 'thumb';
 
   const phone = (
     <SocialPhoneFrame
@@ -136,15 +152,16 @@ export function SocialFeedPhonePreview({
         />
       }
     >
-      <BrowseFeedTilePreview
-        manifest={manifest}
-        sections={sections}
-        bare
-        compact
-        session={session}
-        hideEngagementRail
-        aspectRatio={feedAspect}
-      />
+      {showActions ? (
+        <div className="relative flex h-full w-full items-center justify-center">
+          <div className="relative w-full max-h-full">
+            {tile}
+            {actionOverlay}
+          </div>
+        </div>
+      ) : (
+        tile
+      )}
     </SocialPhoneFrame>
   );
 

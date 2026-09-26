@@ -8,6 +8,7 @@ import {
   snapLayoutToContentCenter,
   type LayerRect
 } from './pageGeometry.js';
+import { SEED_TABLE_DOC_PLACEHOLDER } from './seedRefs.js';
 import type { PenPageLayer, PenSectionContent, PenTipTapNode } from './types.js';
 
 /** Synthetic id for the page frame (flow/letter/a4) — layer 0 in the Layers list. */
@@ -368,6 +369,48 @@ export function createInteractiveLayer(
   };
 }
 
+function requireRealDocId(id: string, error: string): string {
+  const trimmed = (id || '').trim();
+  if (!trimmed || trimmed === SEED_TABLE_DOC_PLACEHOLDER) throw new Error(error);
+  return trimmed;
+}
+
+/** Embed bound to a real doc id. Empty and seed placeholders are refused. */
+export function createBoundEmbedLayer(
+  refDocId: string,
+  partial?: Partial<
+    Pick<PenPageLayer, 'x' | 'y' | 'w' | 'h' | 'zIndex' | 'name' | 'refSectionSlug' | 'positionLocked'>
+  >
+): PenPageLayer {
+  const layer = createEmbedLayer(requireRealDocId(refDocId, 'embed_missing_refDocId'), partial);
+  assertEmbedLayer(layer);
+  return layer;
+}
+
+/**
+ * Interactive sticker bound to a real doc id.
+ * New stickers are movable unless `positionLocked` is set.
+ */
+export function createBoundInteractiveLayer(
+  input: {
+    behavior: NonNullable<PenPageLayer['behavior']>;
+    bindDocId: string;
+    bindRowId?: string;
+    label?: string;
+  },
+  partial?: Partial<Pick<PenPageLayer, 'x' | 'y' | 'w' | 'h' | 'zIndex' | 'name' | 'positionLocked'>>
+): PenPageLayer {
+  const layer = createInteractiveLayer(
+    {
+      ...input,
+      bindDocId: requireRealDocId(input.bindDocId, 'interactive_missing_bindDocId')
+    },
+    { positionLocked: false, ...partial }
+  );
+  assertInteractiveLayer(layer);
+  return layer;
+}
+
 export function assertEmbedLayer(layer: PenPageLayer): void {
   if (layer.kind !== 'embed') throw new Error('not_embed_layer');
   if (!layer.refDocId?.trim()) throw new Error('embed_missing_refDocId');
@@ -435,6 +478,12 @@ export function patchLayerStyle(
       | 'paintOverlaySrc'
       | 'imageSrc'
       | 'videoSrc'
+      | 'refDocId'
+      | 'refSectionSlug'
+      | 'behavior'
+      | 'bindDocId'
+      | 'bindRowId'
+      | 'label'
     >
   >
 ): PenSectionContent {

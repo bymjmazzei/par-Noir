@@ -87,13 +87,6 @@ export interface PenTemplate {
   browseFeatured?: boolean;
   /** Optional CDN-backed public template preview. */
   previewFileId?: string;
-  /**
-   * Pre-baked flattened gallery preview (inert layers only).
-   * Wired into templatePreviewBundle as galleryPreviewRef.
-   */
-  seedGalleryPreviewSrc?: string;
-  seedGalleryPreviewKind?: 'image' | 'video';
-  seedGalleryPreviewPosterSrc?: string;
   /** Work license + open creator contracts (optional on platform starters). */
   licensing?: PenLicensingRoot;
 }
@@ -101,24 +94,9 @@ export interface PenTemplate {
 /** Default author label for first-party / starter templates. */
 export const PLATFORM_TEMPLATE_AUTHOR = 'par noir';
 
-function previewAsset(name: string): string {
-  return new URL(`./starter-assets/previews/${name}`, import.meta.url).href;
-}
 
 function withSeed(
-  base: Omit<
-    PenTemplate,
-    | 'seedSections'
-    | 'seedPagePresentation'
-    | 'seedPageLayout'
-    | 'seedGalleryPreviewSrc'
-    | 'seedGalleryPreviewKind'
-    | 'seedGalleryPreviewPosterSrc'
-  > & {
-    seedGalleryPreviewSrc?: string;
-    seedGalleryPreviewKind?: 'image' | 'video';
-    seedGalleryPreviewPosterSrc?: string;
-  },
+  base: Omit<PenTemplate, 'seedSections' | 'seedPagePresentation' | 'seedPageLayout'>,
   seed: SeedBundle
 ): PenTemplate {
   return {
@@ -126,23 +104,6 @@ function withSeed(
     seedSections: seed.seedSections,
     seedPagePresentation: seed.seedPagePresentation,
     seedPageLayout: seed.seedPageLayout
-  };
-}
-
-/** Attach pre-baked flatten for Social consumer starters. */
-function withPreview(
-  template: PenTemplate,
-  previewFile: string,
-  kind: 'image' | 'video' = 'image',
-  posterFile?: string
-): PenTemplate {
-  return {
-    ...template,
-    seedGalleryPreviewSrc: previewAsset(previewFile),
-    seedGalleryPreviewKind: kind,
-    ...(posterFile
-      ? { seedGalleryPreviewPosterSrc: previewAsset(posterFile) }
-      : {})
   };
 }
 
@@ -195,8 +156,7 @@ const DEFAULT_REGISTER_COLUMNS: PenRegisterColumn[] = [
 ];
 
 const STARTER: PenTemplate[] = [
-  withPreview(
-    withSeed(
+  withSeed(
       {
         id: 'note.basic.portrait.v1',
         classId: 'social.note',
@@ -216,10 +176,7 @@ const STARTER: PenTemplate[] = [
       },
       seedNoteBasicPortrait()
     ),
-    'note.basic.portrait.v1.svg'
-  ),
-  withPreview(
-    withSeed(
+  withSeed(
       {
         id: 'note.text_tile.light.v1',
         classId: 'social.note',
@@ -238,10 +195,7 @@ const STARTER: PenTemplate[] = [
       },
       seedNoteTextTileLight()
     ),
-    'note.text_tile.light.v1.svg'
-  ),
-  withPreview(
-    withSeed(
+  withSeed(
       {
         id: 'note.text_tile.dark.v1',
         classId: 'social.note',
@@ -260,10 +214,7 @@ const STARTER: PenTemplate[] = [
       },
       seedNoteTextTileDark()
     ),
-    'note.text_tile.dark.v1.svg'
-  ),
-  withPreview(
-    withSeed(
+  withSeed(
       {
         id: 'note.basic.landscape.v1',
         classId: 'social.note',
@@ -282,10 +233,7 @@ const STARTER: PenTemplate[] = [
       },
       seedNoteBasicLandscape()
     ),
-    'note.basic.landscape.v1.svg'
-  ),
-  withPreview(
-    withSeed(
+  withSeed(
       {
         id: 'note.media.portrait.v1',
         classId: 'social.note',
@@ -304,10 +252,7 @@ const STARTER: PenTemplate[] = [
       },
       seedNoteMediaPortrait()
     ),
-    'note.media.portrait.v1.svg'
-  ),
-  withPreview(
-    withSeed(
+  withSeed(
       {
         id: 'note.media.landscape.v1',
         classId: 'social.note',
@@ -325,10 +270,7 @@ const STARTER: PenTemplate[] = [
       },
       seedNoteMediaLandscape()
     ),
-    'note.media.landscape.v1.svg'
-  ),
-  withPreview(
-    withSeed(
+  withSeed(
       {
         id: 'note.article.v1',
         classId: 'social.note',
@@ -351,10 +293,7 @@ const STARTER: PenTemplate[] = [
       },
       seedNoteArticle()
     ),
-    'note.article.v1.svg'
-  ),
-  withPreview(
-    withSeed(
+  withSeed(
       {
         id: 'post.caption.v1',
         classId: 'social.post',
@@ -377,10 +316,7 @@ const STARTER: PenTemplate[] = [
       },
       seedPostCaption()
     ),
-    'post.caption.v1.svg'
-  ),
-  withPreview(
-    withSeed(
+  withSeed(
       {
         id: 'post.image.portrait.v1',
         classId: 'social.post',
@@ -402,10 +338,7 @@ const STARTER: PenTemplate[] = [
       },
       seedPostImageAspect('portrait')
     ),
-    'post.image.portrait.v1.svg'
-  ),
-  withPreview(
-    withSeed(
+  withSeed(
       {
         id: 'post.image.landscape.v1',
         classId: 'social.post',
@@ -427,10 +360,7 @@ const STARTER: PenTemplate[] = [
       },
       seedPostImageAspect('landscape')
     ),
-    'post.image.landscape.v1.svg'
-  ),
-  withPreview(
-    withSeed(
+  withSeed(
       {
         id: 'post.image.square.v1',
         classId: 'social.post',
@@ -452,10 +382,7 @@ const STARTER: PenTemplate[] = [
       },
       seedPostImageAspect('square')
     ),
-    'post.image.square.v1.svg'
-  ),
-  withPreview(
-    withSeed(
+  withSeed(
       {
         id: 'post.video.portrait.v1',
         classId: 'social.post',
@@ -477,12 +404,7 @@ const STARTER: PenTemplate[] = [
       },
       seedPostVideoAspect('portrait')
     ),
-    'post.video.portrait.v1.svg',
-    'image',
-    'post.video.portrait.v1.svg'
-  ),
-  withPreview(
-    withSeed(
+  withSeed(
       {
         id: 'post.video.landscape.v1',
         classId: 'social.post',
@@ -503,10 +425,7 @@ const STARTER: PenTemplate[] = [
       },
       seedPostVideoAspect('landscape')
     ),
-    'post.video.landscape.v1.svg'
-  ),
-  withPreview(
-    withSeed(
+  withSeed(
       {
         id: 'post.video.square.v1',
         classId: 'social.post',
@@ -527,10 +446,7 @@ const STARTER: PenTemplate[] = [
       },
       seedPostVideoAspect('square')
     ),
-    'post.video.square.v1.svg'
-  ),
-  withPreview(
-    withSeed(
+  withSeed(
       {
         id: 'collection.basic.v1',
         classId: 'social.collection',
@@ -554,10 +470,7 @@ const STARTER: PenTemplate[] = [
       },
       seedCollectionBasic()
     ),
-    'collection.basic.v1.svg'
-  ),
-  withPreview(
-    withSeed(
+  withSeed(
       {
         id: 'collection.story.v1',
         classId: 'social.collection',
@@ -580,10 +493,7 @@ const STARTER: PenTemplate[] = [
       },
       seedCollectionStory()
     ),
-    'collection.story.v1.svg'
-  ),
-  withPreview(
-    withSeed(
+  withSeed(
       {
         id: 'set.basic.v1',
         classId: 'social.set',
@@ -606,10 +516,7 @@ const STARTER: PenTemplate[] = [
       },
       seedSetBasic()
     ),
-    'set.basic.v1.svg'
-  ),
-  withPreview(
-    withSeed(
+  withSeed(
       {
         id: 'quote.basic.v1',
         classId: 'social.quote',
@@ -628,10 +535,7 @@ const STARTER: PenTemplate[] = [
       },
       seedQuote()
     ),
-    'quote.basic.v1.svg'
-  ),
-  withPreview(
-    withSeed(
+  withSeed(
       {
         id: 'link.basic.v1',
         classId: 'social.link',
@@ -650,10 +554,7 @@ const STARTER: PenTemplate[] = [
       },
       seedLink()
     ),
-    'link.basic.v1.svg'
-  ),
-  withPreview(
-    withSeed(
+  withSeed(
       {
         id: 'poll.basic.v1',
         classId: 'social.poll',
@@ -672,10 +573,7 @@ const STARTER: PenTemplate[] = [
       },
       seedPoll()
     ),
-    'poll.basic.v1.svg'
-  ),
-  withPreview(
-    withSeed(
+  withSeed(
       {
         id: 'comparison.basic.v1',
         classId: 'social.frame',
@@ -694,10 +592,7 @@ const STARTER: PenTemplate[] = [
       },
       seedComparison()
     ),
-    'comparison.basic.v1.svg'
-  ),
-  withPreview(
-    withSeed(
+  withSeed(
       {
         id: 'metric.basic.v1',
         classId: 'social.metric',
@@ -716,10 +611,7 @@ const STARTER: PenTemplate[] = [
       },
       seedMetric()
     ),
-    'metric.basic.v1.svg'
-  ),
-  withPreview(
-    withSeed(
+  withSeed(
       {
         id: 'code.basic.v1',
         classId: 'social.code',
@@ -737,10 +629,7 @@ const STARTER: PenTemplate[] = [
       },
       seedCode()
     ),
-    'code.basic.v1.svg'
-  ),
-  withPreview(
-    withSeed(
+  withSeed(
       {
         id: 'profile.basic.v1',
         classId: 'social.profile',
@@ -758,10 +647,7 @@ const STARTER: PenTemplate[] = [
       },
       seedProfile()
     ),
-    'profile.basic.v1.svg'
-  ),
-  withPreview(
-    withSeed(
+  withSeed(
       {
         id: 'audio.basic.v1',
         classId: 'social.audio',
@@ -781,10 +667,7 @@ const STARTER: PenTemplate[] = [
       },
       seedAudio()
     ),
-    'audio.basic.v1.svg'
-  ),
-  withPreview(
-    withSeed(
+  withSeed(
       {
         id: 'frame.basic.v1',
         classId: 'social.frame',
@@ -802,8 +685,6 @@ const STARTER: PenTemplate[] = [
       },
       seedFrame()
     ),
-    'frame.basic.v1.svg'
-  ),
   withSeed(
     {
       id: 'table.basic.v1',

@@ -43,10 +43,19 @@ describe('rich template preview + create chrome', () => {
     expect(() => requireTemplate('feed.embed.v1')).toThrow();
   });
 
-  it('social starters expose pre-baked gallery preview refs', () => {
+  it('platform starters do not inject galleryPreviewRef (live IR only)', () => {
     const preview = templatePreviewBundle(undefined, 'note.basic.portrait.v1');
-    expect(preview?.manifest.galleryPreviewRef).toBeTruthy();
-    expect(preview?.manifest.galleryPreviewKind).toBe('image');
+    expect(preview?.manifest.galleryPreviewRef).toBeUndefined();
+    expect(preview?.sections[0]?.layers?.length).toBeGreaterThan(0);
+  });
+
+  it('image post starter exposes live image layer src for thumbs', () => {
+    const preview = templatePreviewBundle(undefined, 'post.image.portrait.v1');
+    expect(
+      preview?.sections.some((s) =>
+        (s.layers || []).some((l) => l.kind === 'image' && Boolean(l.imageSrc))
+      )
+    ).toBe(true);
   });
 
   it('basic note is text-first (optional chrome layers, no media-as-format)', () => {

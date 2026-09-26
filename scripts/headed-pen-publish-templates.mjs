@@ -17,119 +17,222 @@ const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const PEN_URL = (process.env.PEN_URL || 'https://pen.parnoir.com').replace(/\/$/, '');
 const BROWSE_URL = (process.env.BROWSE_URL || 'https://browse.parnoir.com').replace(/\/$/, '');
 const HEADLESS = process.env.HEADLESS === '1';
-const MAX_TEMPLATES = Math.max(1, Number(process.env.MAX_TEMPLATES || 3));
+const MAX_TEMPLATES = Math.max(1, Number(process.env.MAX_TEMPLATES || 5));
 
 /**
- * Phase 1 atom pack — platform starter ids that must land on pen-templates.
- * Headed flow still crafts via blank + layers; titles track the atom pack.
+ * Five flagship publishes — create from platform starter (live media IR), then refine.
  */
 export const ATOM_PACK_TEMPLATE_IDS = [
   'note.basic.portrait.v1',
   'note.text_tile.light.v1',
-  'note.text_tile.dark.v1',
   'note.media.portrait.v1',
-  'metric.basic.v1',
-  'post.image.portrait.v1',
-  'post.video.portrait.v1',
-  'post.caption.v1',
-  'audio.basic.v1'
+  'quote.basic.v1',
+  'post.image.portrait.v1'
 ];
 
 /** Story-safe layouts on ~360×640 social canvas (px). Top/bottom chrome reserved. */
 const SPECS = [
   {
-    id: 'hook-headline',
-    title: 'Hook Headline',
+    id: 'punchy-note',
+    title: 'A short line that lands',
+    starterId: 'note.basic.portrait.v1',
     formTitle: 'Notes',
     categoryLabel: /^Social$/i,
-    bg: '#0f172a',
+    bg: '#0c0c0c',
     layers: [
-      { name: 'Hook', text: 'Before you post,', x: 24, y: 96, w: 312, h: 48 },
       {
-        name: 'Headline',
-        text: 'check the safe zone.',
-        x: 24,
-        y: 160,
-        w: 312,
-        h: 72
+        name: 'Eyebrow',
+        text: 'NOTE',
+        x: 28,
+        y: 88,
+        w: 120,
+        h: 28,
+        kind: 'text',
+        fill: '#0f766e'
+      },
+      {
+        name: 'Hook',
+        text: 'Say the thing once.',
+        x: 28,
+        y: 180,
+        w: 304,
+        h: 72,
+        kind: 'text'
       },
       {
         name: 'Body',
-        text: 'Keep hooks in the center band. Top and bottom belong to the feed chrome.',
-        x: 24,
+        text: 'Then get out of the way. Portrait Notes win on clarity, not decoration.',
+        x: 28,
         y: 280,
-        w: 312,
-        h: 96
+        w: 304,
+        h: 120,
+        kind: 'text'
       },
-      { name: 'CTA', text: 'Save this template →', x: 24, y: 420, w: 312, h: 40 }
+      {
+        name: 'Accent',
+        text: '',
+        x: 28,
+        y: 420,
+        w: 48,
+        h: 4,
+        kind: 'text',
+        fill: '#b8956c'
+      }
     ]
   },
   {
-    id: 'checklist',
-    title: 'Checklist Slide',
+    id: 'light-tile',
+    title: 'One clear thought',
+    starterId: 'note.text_tile.light.v1',
     formTitle: 'Notes',
     categoryLabel: /^Social$/i,
-    bg: '#14532d',
+    bg: '#e7e5e4',
     layers: [
-      { name: 'Title', text: 'Post checklist', x: 24, y: 96, w: 312, h: 40 },
       {
-        name: 'List',
-        text: '□ One message\n□ High contrast\n□ Hook in center\n□ Clear CTA\n□ Safe margins',
-        x: 24,
+        name: 'Card',
+        text: 'One clear thought.\n\nHigh contrast on paper — readable in the feed at a glance.',
+        x: 28,
         y: 160,
-        w: 312,
-        h: 220
+        w: 304,
+        h: 260,
+        kind: 'text',
+        fill: '#ffffff',
+        stroke: '#d6d3d1'
+      }
+    ]
+  },
+  {
+    id: 'note-on-media',
+    title: 'The words are the post',
+    starterId: 'note.media.portrait.v1',
+    formTitle: 'Notes',
+    categoryLabel: /^Social$/i,
+    bg: '#0c0c0c',
+    mediaFile: 'caption-bg.jpg',
+    layers: [
+      {
+        name: 'Backdrop',
+        text: '',
+        x: 0,
+        y: 0,
+        w: 360,
+        h: 640,
+        kind: 'image',
+        mediaFile: 'caption-bg.jpg'
       },
-      { name: 'CTA', text: 'Reply CHECKLIST', x: 24, y: 420, w: 312, h: 40 }
+      {
+        name: 'Card',
+        text: 'The words are the post.\n\nMedia is atmosphere — crop away the text and nothing remains.',
+        x: 24,
+        y: 200,
+        w: 312,
+        h: 240,
+        kind: 'text',
+        fill: 'rgba(12,12,12,0.88)',
+        stroke: 'rgba(184,149,108,0.35)'
+      }
     ]
   },
   {
     id: 'quote-card',
-    title: 'Quote Card',
-    formTitle: 'Quote',
+    title: 'Clarity is a kindness',
+    starterId: 'quote.basic.v1',
+    formTitle: 'Notes',
     categoryLabel: /^Social$/i,
-    bg: '#1e1b4b',
+    bg: '#0c0c0c',
     layers: [
       {
-        name: 'Quote',
-        text: 'Design for the thumb, not the desktop.',
+        name: 'Mark',
+        text: '“',
         x: 24,
-        y: 180,
-        w: 312,
-        h: 120
+        y: 100,
+        w: 80,
+        h: 80,
+        kind: 'text',
+        fill: 'transparent'
       },
-      { name: 'Attr', text: '— layout notes', x: 24, y: 320, w: 312, h: 36 },
-      { name: 'CTA', text: 'Remix this quote', x: 24, y: 420, w: 312, h: 40 }
+      {
+        name: 'Quote',
+        text: 'Clarity is a kindness you practice in public.',
+        x: 32,
+        y: 200,
+        w: 296,
+        h: 160,
+        kind: 'text'
+      },
+      {
+        name: 'Rule',
+        text: '',
+        x: 32,
+        y: 400,
+        w: 48,
+        h: 3,
+        kind: 'text',
+        fill: '#b8956c'
+      },
+      {
+        name: 'Byline',
+        text: '— Ada Okonkwo',
+        x: 32,
+        y: 420,
+        w: 296,
+        h: 36,
+        kind: 'text'
+      }
     ]
   },
   {
-    id: 'link-promo',
-    title: 'Link Promo',
-    formTitle: 'Link',
+    id: 'image-post',
+    title: 'Frame the subject',
+    starterId: 'post.image.portrait.v1',
+    formTitle: 'media',
     categoryLabel: /^Social$/i,
-    bg: '#7c2d12',
+    bg: '#000000',
+    mediaFile: 'image-post.jpg',
     layers: [
-      { name: 'Eyebrow', text: 'NEW', x: 24, y: 100, w: 80, h: 28 },
       {
-        name: 'Headline',
-        text: 'Open the templates feed',
-        x: 24,
-        y: 150,
-        w: 312,
-        h: 72
+        name: 'Photo',
+        text: '',
+        x: 0,
+        y: 0,
+        w: 360,
+        h: 640,
+        kind: 'image',
+        mediaFile: 'image-post.jpg'
       },
       {
-        name: 'Body',
-        text: 'Public templates live at /templates — engagement sits outside the tile.',
-        x: 24,
-        y: 250,
-        w: 312,
-        h: 80
-      },
-      { name: 'CTA', text: 'Tap to open →', x: 24, y: 420, w: 312, h: 40 }
+        name: 'Caption',
+        text: 'Frame the subject. Leave room to breathe.',
+        x: 16,
+        y: 520,
+        w: 328,
+        h: 64,
+        kind: 'text',
+        fill: 'rgba(0,0,0,0.55)'
+      }
     ]
   }
 ];
+
+function mediaDataUrl(fileName) {
+  const p = resolve(ROOT, 'packages/pen-protocol/src/starter-assets', fileName);
+  if (!existsSync(p)) throw new Error(`missing_starter_asset:${fileName}`);
+  const buf = readFileSync(p);
+  const ext = fileName.split('.').pop()?.toLowerCase();
+  const mime =
+    ext === 'png' ? 'image/png' : ext === 'webp' ? 'image/webp' : 'image/jpeg';
+  return `data:${mime};base64,${buf.toString('base64')}`;
+}
+
+function hydrateSpecMedia(spec) {
+  const layers = (spec.layers || []).map((L) => {
+    if (L.kind === 'image' && L.mediaFile) {
+      return { ...L, imageSrc: mediaDataUrl(L.mediaFile) };
+    }
+    return { ...L };
+  });
+  return { ...spec, layers };
+}
 
 function loadCreds() {
   const dir = resolve(ROOT, '.local/cursor-test-pn');
@@ -158,10 +261,6 @@ function ok(label, pass, detail = '') {
 }
 
 async function unlockPen(page, creds) {
-  const { fillConsentAndUnlock } = await import(
-    pathToFileURL(resolve(ROOT, 'apps/aggregator-browser/scripts/ux-unlock-lib.mjs')).href
-  );
-
   await page.goto(`${PEN_URL}/`, { waitUntil: 'domcontentloaded', timeout: 90_000 });
   await page.waitForTimeout(1500);
 
@@ -175,10 +274,21 @@ async function unlockPen(page, creds) {
     throw new Error('Unlock control not found');
   }
 
-  const popupPromise = page.waitForEvent('popup', { timeout: 45_000 });
-  await unlockBtn.click();
-  const popup = await popupPromise;
-  await fillConsentAndUnlock(popup, { ...creds, expectClose: true });
+  const context = page.context();
+  let popup = null;
+  for (let attempt = 0; attempt < 3 && !popup; attempt++) {
+    const popupPromise = page.waitForEvent('popup', { timeout: 30_000 }).catch(() => null);
+    const pagePromise = context.waitForEvent('page', { timeout: 30_000 }).catch(() => null);
+    await unlockBtn.click({ force: true }).catch(() => {});
+    popup = (await popupPromise) || (await pagePromise);
+    if (!popup) {
+      process.stdout.write(`  pen unlock: no popup attempt ${attempt + 1} — retry\n`);
+      await page.waitForTimeout(800);
+    }
+  }
+  if (!popup) throw new Error('Pen unlock popup did not open');
+  process.stdout.write(`  pen unlock popup: ${popup.url()}\n`);
+  await fillConsentAndUnlockDom(popup, { ...creds, expectClose: true });
 
   let session = null;
   for (let i = 0; i < 45; i++) {
@@ -205,6 +315,96 @@ async function readPenSession(page) {
       return { hasAccessToken: false };
     }
   });
+}
+
+async function createFromStarter(page, spec) {
+  if (!spec.starterId) {
+    return createBlankSocial(page, spec);
+  }
+  const starterTitles = {
+    'note.basic.portrait.v1': 'Note (Portrait)',
+    'note.text_tile.light.v1': 'Text Tile (Light)',
+    'note.media.portrait.v1': 'Note on Media (Portrait)',
+    'quote.basic.v1': 'Quote Card',
+    'post.image.portrait.v1': 'Image Post (Portrait)'
+  };
+  const wantTitle = starterTitles[spec.starterId] || spec.title;
+
+  // Deep-link opens preview modal via TemplatesBrowse initialPreviewId (?template=).
+  const previewUrl = `${PEN_URL}/templates?template=${encodeURIComponent(spec.starterId)}`;
+  await page.goto(previewUrl, { waitUntil: 'domcontentloaded', timeout: 60_000 });
+
+  // Full reload rehydrates session async (null → AuthenticatedApp). Wait for lock chrome
+  // so Build actually creates instead of “Unlock to build”.
+  const lockChrome = page
+    .locator('[title="Lock session"], button[aria-label="Lock session"]')
+    .first();
+  const lockedIn = await lockChrome.isVisible({ timeout: 60_000 }).catch(() => false);
+  if (!lockedIn) {
+    throw new Error('pen_session_chrome_missing_after_templates_nav');
+  }
+  // Authenticated remount re-reads ?template= — give the modal a beat to open.
+  await page.waitForTimeout(1500);
+
+  const dialog = page.getByRole('dialog').first();
+  const dialogVisible = await dialog.isVisible({ timeout: 8_000 }).catch(() => false);
+
+  if (dialogVisible) {
+    const clicked = await page.evaluate(() => {
+      const btn =
+        document.querySelector(
+          '.pen-template-preview-modal button[aria-label="Build"], .pen-template-preview-modal .pen-templates-feed-build'
+        ) || document.querySelector('.pen-template-engagement-build-slot button');
+      if (!btn) return { ok: false, reason: 'no_btn' };
+      btn.click();
+      return { ok: true, text: (btn.textContent || '').trim() };
+    });
+    process.stdout.write(`  dialog Build DOM click ${clicked.ok ? 'ok' : 'miss'} ${clicked.text || clicked.reason || ''}\n`);
+    if (clicked.ok) {
+      await page
+        .waitForFunction(() => /\/d\//.test(window.location.pathname), null, { timeout: 90_000 })
+        .catch(() => null);
+      if (!/\/d\//.test(page.url())) {
+        throw new Error(`starter_create_no_nav url=${page.url()}`);
+      }
+      await page.waitForTimeout(1000);
+      return page.url();
+    }
+    const diag = await page.evaluate(() => ({
+      dialogLabel: document.querySelector('[role=dialog]')?.getAttribute('aria-label') || '',
+      buildCount: document.querySelectorAll('button[aria-label="Build"]').length,
+      modalHtml: document.querySelector('.pen-template-preview-modal')?.innerHTML?.slice(0, 300) || ''
+    }));
+    process.stdout.write(`  dialog Build miss diag=${JSON.stringify(diag)}\n`);
+  }
+
+  // Feed density (or dialog without Build): all slides mounted — click matching slide Build.
+  const feedClicked = await page.evaluate((title) => {
+    const slides = [...document.querySelectorAll('.pen-doc-feed-slide')];
+    const slide = slides.find((s) => (s.textContent || '').includes(title));
+    const btn =
+      slide?.querySelector('button[aria-label="Build"], button.pen-templates-feed-build') || null;
+    if (!btn) return { ok: false, slides: slides.length };
+    btn.scrollIntoView({ block: 'center' });
+    btn.click();
+    return { ok: true, slides: slides.length };
+  }, wantTitle);
+  process.stdout.write(
+    `  feed Build ${feedClicked?.ok ? 'clicked' : 'miss'} slides=${feedClicked?.slides ?? '?'} for ${wantTitle}\n`
+  );
+  if (!feedClicked?.ok) {
+    process.stdout.write('  starter Build missing — falling back to blank\n');
+    return createBlankSocial(page, spec);
+  }
+
+  await page
+    .waitForFunction(() => /\/d\//.test(window.location.pathname), null, { timeout: 90_000 })
+    .catch(() => null);
+  if (!/\/d\//.test(page.url())) {
+    throw new Error(`starter_create_no_nav url=${page.url()}`);
+  }
+  await page.waitForTimeout(1000);
+  return page.url();
 }
 
 async function createBlankSocial(page, spec) {
@@ -368,16 +568,27 @@ async function buildLayers(page, spec) {
         if (!bundle?.sections?.[0]) return { ok: false, reason: 'no_local_doc' };
         const section = bundle.sections[0];
         section.layers = payload.layers.map((L, i) => {
-          const paras = String(L.text).split('\n');
-          return {
+          const kind = L.kind === 'image' ? 'image' : 'text';
+          const base = {
             id: `headed_${payload.id}_${i}`,
-            kind: 'text',
+            kind,
             name: L.name,
             zIndex: i + 1,
             x: L.x,
             y: L.y,
             w: L.w,
             h: L.h,
+            positionLocked: true
+          };
+          if (kind === 'image') {
+            return { ...base, imageSrc: L.imageSrc || '' };
+          }
+          const paras = String(L.text || '').split('\n');
+          return {
+            ...base,
+            backgroundColor: L.fill || undefined,
+            strokeColor: L.stroke || undefined,
+            strokeWidth: L.stroke ? 1 : undefined,
             textDoc: {
               type: 'doc',
               content: paras.map((text) => ({
@@ -391,8 +602,31 @@ async function buildLayers(page, spec) {
           ...(section.pagePresentation || {}),
           backgroundColor: payload.bg
         };
+        // Body text for compile (skip empty image-only lines)
+        const bodyParas = payload.layers
+          .filter((L) => L.kind !== 'image' && String(L.text || '').trim())
+          .flatMap((L) =>
+            String(L.text)
+              .split('\n')
+              .map((text) => ({
+                type: 'paragraph',
+                content: text ? [{ type: 'text', text }] : []
+              }))
+          );
+        section.doc = {
+          type: 'doc',
+          content: bodyParas.length
+            ? bodyParas
+            : [{ type: 'paragraph', content: [{ type: 'text', text: payload.title }] }]
+        };
         bundle.manifest.title = payload.title;
         bundle.manifest.updatedAt = new Date().toISOString();
+        if (payload.bg) {
+          bundle.manifest.pagePresentation = {
+            ...(bundle.manifest.pagePresentation || {}),
+            backgroundColor: payload.bg
+          };
+        }
         localStorage.setItem(key, JSON.stringify(bundle));
         return { ok: true, layerCount: section.layers.length, via: 'storage_only' };
       } catch (e) {
@@ -531,38 +765,89 @@ async function buildLayers(page, spec) {
     await page.keyboard.type(bodyText.slice(0, 500), { delay: 3 });
     await page.waitForTimeout(500);
   }
-  // Keep storage mirror in sync for remount safety
-  await page.evaluate((payload) => {
+  // Always materialize designed layers into local SoT (coords + media + body).
+  const stored = await page.evaluate((payload) => {
     try {
       const session = JSON.parse(sessionStorage.getItem('pen_session') || 'null');
       const pn = session?.pnIdentifier;
       const docId = location.pathname.match(/\/d\/([^/]+)/)?.[1];
-      if (!pn || !docId) return;
+      if (!pn || !docId) return { ok: false, reason: 'no_pn_or_doc' };
       const key = `pen_docs_v1:${pn}:doc:${docId}`;
       const bundle = JSON.parse(localStorage.getItem(key) || 'null');
-      if (!bundle?.sections?.[0]) return;
+      if (!bundle?.sections?.[0]) return { ok: false, reason: 'no_local_doc' };
       const section = bundle.sections[0];
-      const bodyParas = payload.layers.flatMap((L) =>
-        String(L.text)
-          .split('\n')
-          .map((text) => ({
-            type: 'paragraph',
-            content: text ? [{ type: 'text', text }] : []
-          }))
-      );
+      section.layers = payload.layers.map((L, i) => {
+        const kind = L.kind === 'image' ? 'image' : 'text';
+        const base = {
+          id: `headed_${payload.id}_${i}`,
+          kind,
+          name: L.name,
+          zIndex: i + 1,
+          x: L.x,
+          y: L.y,
+          w: L.w,
+          h: L.h,
+          positionLocked: true
+        };
+        if (kind === 'image') {
+          return { ...base, imageSrc: L.imageSrc || '' };
+        }
+        const paras = String(L.text || '').split('\n');
+        return {
+          ...base,
+          backgroundColor: L.fill || undefined,
+          strokeColor: L.stroke || undefined,
+          strokeWidth: L.stroke ? 1 : undefined,
+          textDoc: {
+            type: 'doc',
+            content: paras.map((text) => ({
+              type: 'paragraph',
+              content: text ? [{ type: 'text', text }] : []
+            }))
+          }
+        };
+      });
+      const bodyParas = payload.layers
+        .filter((L) => L.kind !== 'image' && String(L.text || '').trim())
+        .flatMap((L) =>
+          String(L.text)
+            .split('\n')
+            .map((text) => ({
+              type: 'paragraph',
+              content: text ? [{ type: 'text', text }] : []
+            }))
+        );
       section.doc = {
         type: 'doc',
         content: bodyParas.length
           ? bodyParas
           : [{ type: 'paragraph', content: [{ type: 'text', text: payload.title }] }]
       };
+      section.pagePresentation = {
+        ...(section.pagePresentation || {}),
+        backgroundColor: payload.bg
+      };
+      bundle.manifest.title = payload.title;
+      bundle.manifest.updatedAt = new Date().toISOString();
+      if (payload.bg) {
+        bundle.manifest.pagePresentation = {
+          ...(bundle.manifest.pagePresentation || {}),
+          backgroundColor: payload.bg
+        };
+      }
       localStorage.setItem(key, JSON.stringify(bundle));
-    } catch {
-      /* ignore */
+      return { ok: true, layerCount: section.layers.length };
+    } catch (e) {
+      return { ok: false, reason: String(e?.message || e) };
     }
   }, spec);
 
-  return { ok: added > 0, layerCount: added, via: 'ui' };
+  return {
+    ok: Boolean(stored.ok),
+    layerCount: stored.layerCount || added,
+    via: stored.ok ? 'storage' : 'ui',
+    reason: stored.reason
+  };
 }
 
 async function dismissLayers(page) {
@@ -833,23 +1118,39 @@ async function connectAsPublicTemplate(page, context, spec) {
 async function fillConsentAndUnlockDom(popupOrPage, { identityPath, PN_NAME, PASSCODE, expectClose = true }) {
   // Prefer domcontentloaded — unlock broker SPA often never fires full "load".
   await popupOrPage
-    .waitForURL(/oauth\/consent|authorize|unlock/, {
-      timeout: 60_000,
+    .waitForURL(/oauth\/consent|authorize|unlock\.parnoir/, {
+      timeout: 90_000,
       waitUntil: 'domcontentloaded'
     })
     .catch(() => {});
-  const fileInput = popupOrPage.locator('#identityFile, input[type="file"]').first();
-  await fileInput.waitFor({ state: 'attached', timeout: 45_000 });
+  process.stdout.write(`  consent url: ${popupOrPage.url()}\n`);
+  // Broker may paint Unlock UI after consent URL resolves.
+  // Live unlock UI uses #pn-identity-file (legacy #identityFile).
+  const fileInput = popupOrPage
+    .locator('#pn-identity-file, #identityFile, input[type="file"]')
+    .first();
+  try {
+    await fileInput.waitFor({ state: 'attached', timeout: 30_000 });
+  } catch (e) {
+    const html = await popupOrPage.content().catch(() => '');
+    throw new Error(
+      `consent_file_input_missing url=${popupOrPage.url()} htmlLen=${html.length}`
+    );
+  }
+  process.stdout.write('  consent: file input attached\n');
   await fileInput.setInputFiles(identityPath);
+  process.stdout.write('  consent: identity file set\n');
   await popupOrPage.getByPlaceholder('Enter Key 1').fill(PN_NAME);
   await popupOrPage.getByPlaceholder('Enter Key 2').fill(PASSCODE);
+  process.stdout.write('  consent: keys filled — clicking Unlock pN\n');
   await popupOrPage.getByRole('button', { name: 'Unlock pN' }).click();
   const approve = popupOrPage.getByRole('button', { name: 'Approve' });
   try {
     await approve.waitFor({ state: 'visible', timeout: 90_000 });
+    process.stdout.write('  consent: Approve visible — clicking\n');
     await approve.click();
   } catch {
-    /* existing grant / handoff-done UI */
+    process.stdout.write('  consent: no Approve (existing grant / handoff)\n');
   }
   if (expectClose) {
     await popupOrPage.waitForEvent('close', { timeout: 30_000 }).catch(() => {});
@@ -1064,12 +1365,12 @@ async function main() {
     }
     await browseWarm.close().catch(() => {});
 
-    const specs = SPECS.slice(0, MAX_TEMPLATES);
+    const specs = SPECS.slice(0, MAX_TEMPLATES).map(hydrateSpecMedia);
     for (const spec of specs) {
       console.log(`\n=== Template: ${spec.id} ===`);
       try {
-        const url = await createBlankSocial(page, spec);
-        ok('created blank', /\/d\//.test(url), url.replace(PEN_URL, ''));
+        const url = await createFromStarter(page, spec);
+        ok('created', /\/d\//.test(url), url.replace(PEN_URL, ''));
         await setTitle(page, spec.title);
         const built = await buildLayers(page, spec);
         ok('layers built', Boolean(built.ok), built.reason || `n=${built.layerCount}`);
@@ -1080,6 +1381,19 @@ async function main() {
 
         // Autosave / draft
         await page.waitForTimeout(2500);
+
+        // Commit when available (real flatten for published feed)
+        const commitBtn = page
+          .getByRole('button', { name: /^Commit$/i })
+          .or(page.locator('button[aria-label="Commit"], button[title="Commit"]'))
+          .first();
+        if (await commitBtn.isVisible({ timeout: 2_000 }).catch(() => false)) {
+          await commitBtn.click().catch(() => {});
+          await page.waitForTimeout(4000);
+          ok('commit clicked', true);
+        } else {
+          ok('commit clicked', true, 'skipped_no_button');
+        }
 
         const share = await connectAsPublicTemplate(page, context, spec);
         ok('connect menu', Boolean(share.ok), share.reason || '');

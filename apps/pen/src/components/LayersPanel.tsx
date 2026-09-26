@@ -13,9 +13,9 @@ import {
 } from 'react';
 import {
   alignLayers,
-  createEmbedLayer,
+  createBoundEmbedLayer,
+  createBoundInteractiveLayer,
   createGroupFromSelection,
-  createInteractiveLayer,
   createTextLayer,
   defaultLayerName,
   distributeLayers,
@@ -32,6 +32,8 @@ import {
   type PenPageLayout,
   type PenSectionContent
 } from '@par-noir/pen-protocol';
+import type { PenSession } from '../services/penSession';
+import { ActionLayerMenu, type ActionLayerSpec } from './ActionLayerMenu';
 import { IconEye, IconEyeOff, IconLock, IconTrash, IconUnlock } from './icons/PenIcons';
 
 export function layerDisplayLabel(layer: PenPageLayer, all: PenPageLayer[]): string {
@@ -94,7 +96,8 @@ export function LayersPopover({
   pageLayout,
   selectedIds,
   onSelectedIdsChange,
-  contentWidthPx = 736
+  contentWidthPx = 736,
+  session
 }: {
   open: boolean;
   onClose: () => void;
@@ -107,10 +110,12 @@ export function LayersPopover({
   selectedIds: string[];
   onSelectedIdsChange: (ids: string[]) => void;
   contentWidthPx?: number;
+  session?: PenSession | null;
 }) {
   const panelRef = useRef<HTMLDivElement>(null);
   const [dragId, setDragId] = useState<string | null>(null);
   const [hoverId, setHoverId] = useState<string | null>(null);
+  const [actionOpen, setActionOpen] = useState(false);
 
   const prepared = useMemo(() => normalizeSection(section), [section]);
   const allLayers = prepared.layers || [];
@@ -146,6 +151,10 @@ export function LayersPopover({
   const pageSelected = !activeLayerId || activeLayerId === PAGE_LAYER_ID;
   const multiObjectIds = selectedIds.filter((id) => id !== PAGE_LAYER_ID);
   const showAlign = multiObjectIds.length >= 2;
+
+  useEffect(() => {
+    if (!open) setActionOpen(false);
+  }, [open]);
 
   useEffect(() => {
     if (!open) return;
@@ -189,35 +198,45 @@ export function LayersPopover({
     onSelectedIdsChange([layer.id]);
   }
 
-  function addEmbedLayer() {
-    const layer = createEmbedLayer('', {
-      x: 24,
-      y: 80 + (layersFrontFirst.length % 3) * 12,
-      zIndex: maxZ() + 1,
-      name: 'Embed'
-    });
-    commit(upsertLayer(prepared, layer));
-    onSelectLayer(layer.id);
-    onSelectedIdsChange([layer.id]);
-  }
-
-  function addInteractiveSticker() {
-    const layer = createInteractiveLayer(
-      {
-        behavior: 'poll.vote',
-        bindDocId: '',
-        label: 'Vote'
-      },
-      {
-        x: 24,
-        y: 160 + (layersFrontFirst.length % 3) * 12,
-        zIndex: maxZ() + 1,
-        name: 'Sticker'
+  function addBoundAction(spec: ActionLayerSpec) {
+    const zIndex = maxZ() + 1;
+    const y = 80 + (layersFrontFirst.length % 3) * 12;
+    let layer: PenPageLayer;
+    try {
+      if (spec.kind === 'embed') {
+        layer = createBoundEmbedLayer(spec.docId, {
+          x: 24,
+          y,
+          zIndex,
+          name: 'Embed'
+        });
+      } else if (spec.kind === 'open') {
+        layer = createBoundInteractiveLayer(
+          {
+            behavior: 'cta.open',
+            bindDocId: spec.docId,
+            label: spec.label
+          },
+          { x: 24, y: y + 80, zIndex, name: spec.label || 'Open' }
+        );
+      } else {
+        layer = createBoundInteractiveLayer(
+          {
+            behavior: 'poll.vote',
+            bindDocId: spec.docId,
+            bindRowId: spec.rowId,
+            label: spec.label
+          },
+          { x: 24, y: y + 80, zIndex, name: spec.label || 'Vote' }
+        );
       }
-    );
+    } catch {
+      return;
+    }
     commit(upsertLayer(prepared, layer));
     onSelectLayer(layer.id);
     onSelectedIdsChange([layer.id]);
+    setActionOpen(false);
   }
 
   function onCreateGroup() {
@@ -410,23 +429,24 @@ export function LayersPopover({
         </button>
         <button
           type="button"
-          title="Add embed frame"
-          aria-label="Add embed frame"
-          className="inline-flex h-7 items-center rounded px-1.5 text-[10px] font-bold uppercase tracking-wide text-neutral-600 hover:text-black"
-          onClick={addEmbedLayer}
+          title="Add action layer"
+          aria-label="Add action layer"
+          aria-expanded={actionOpen}
+          className={`inline-flex h-7 items-center rounded px-1.5 text-[10px] font-bold uppercase tracking-wide hover:text-black ${
+            actionOpen ? 'text-black' : 'text-neutral-600'
+          }`}
+          onClick={() => setActionOpen((open) => !open)}
         >
-          Embed
-        </button>
-        <button
-          type="button"
-          title="Add interactive sticker"
-          aria-label="Add interactive sticker"
-          className="inline-flex h-7 items-center rounded px-1.5 text-[10px] font-bold uppercase tracking-wide text-neutral-600 hover:text-black"
-          onClick={addInteractiveSticker}
-        >
-          Sticker
+          Action
         </button>
       </div>
+      {actionOpen && (
+        <ActionLayerMenu
+          session={session}
+          onCommit={addBoundAction}
+          onCancel={() => setActionOpen(false)}
+        />
+      )}
 
       <ul
         className="max-h-56 min-h-0 overflow-auto py-1"

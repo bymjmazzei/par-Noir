@@ -5,6 +5,8 @@ import {
   assertInteractiveLayer,
   assertEmbedLayer,
   assertTemplateClassInvariants,
+  createBoundEmbedLayer,
+  createBoundInteractiveLayer,
   createEmbedLayer,
   createInteractiveLayer,
   emptyPollTable,
@@ -115,5 +117,28 @@ describe('cloud table primitive IR', () => {
     expect(() =>
       assertInteractiveLayer({ ...sticker, bindDocId: '' })
     ).toThrow(/interactive_missing/);
+  });
+
+  it('refuses action layers with an empty or placeholder bind id', () => {
+    expect(() =>
+      createBoundInteractiveLayer({
+        behavior: 'poll.vote',
+        bindDocId: '  ',
+        label: 'Vote'
+      })
+    ).toThrow(/interactive_missing_bindDocId/);
+    expect(() => createBoundEmbedLayer('')).toThrow(/embed_missing_refDocId/);
+    expect(() => createBoundEmbedLayer(SEED_TABLE_DOC_PLACEHOLDER)).toThrow(
+      /embed_missing_refDocId/
+    );
+    const bound = createBoundInteractiveLayer({
+      behavior: 'poll.vote',
+      bindDocId: 'pen_table',
+      bindRowId: 'opt_a',
+      label: 'A'
+    });
+    expect(bound.bindDocId).toBe('pen_table');
+    expect(bound.positionLocked).toBe(false);
+    assertInteractiveLayer(bound);
   });
 });

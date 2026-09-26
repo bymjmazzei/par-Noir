@@ -46,6 +46,10 @@ import type { PenSession } from '../services/penSession';
 import { FormatRibbon, PageCanvas } from '../components/PageCanvas';
 import { EditablePagePreview } from '../components/EditablePagePreview';
 import { SocialFeedPhonePreview } from '../components/SocialFeedPhonePreview';
+import { LayersPopover } from '../components/LayersPanel';
+import { ActionLayerPhoneOverlay } from '../components/ActionLayerPhoneOverlay';
+import { ActionBindStrip } from '../components/ActionBindStrip';
+import { IconLayers } from '../components/icons/PenIcons';
 import { MediaEditorPanel } from '../components/MediaEditorPanel';
 import { LayerPartsMenu } from '../components/LayerPartsMenu';
 import { PublishMenu, type PenAggregatorTarget } from '../components/PublishMenu';
@@ -186,6 +190,9 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
   const [error, setError] = useState<string | null>(null);
   const [editor, setEditor] = useState<Editor | null>(null);
   const [activeLayerId, setActiveLayerId] = useState<string | null>(PAGE_LAYER_ID);
+  const [socialLayersOpen, setSocialLayersOpen] = useState(false);
+  const [socialSelectedIds, setSocialSelectedIds] = useState<string[]>([PAGE_LAYER_ID]);
+  const socialLayersBtnRef = useRef<HTMLButtonElement>(null);
   const [comments, setComments] = useState<PenDocComment[]>(() =>
     listLocalComments(session.pnIdentifier, docId)
   );
@@ -236,6 +243,13 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
     if (!raw) return undefined;
     return collapseLegacyPrimaryTextLayer(ensureDefaultTextLayer(normalizeSection(raw)));
   }, [bundle, activeSlug]);
+
+  const socialActionLayer = useMemo(() => {
+    if (!section || isPageLayerId(activeLayerId)) return null;
+    const layer = section.layers?.find((l) => l.id === activeLayerId);
+    if (!layer || (layer.kind !== 'embed' && layer.kind !== 'interactive')) return null;
+    return layer;
+  }, [section, activeLayerId]);
 
   // One-shot: persist collapse of legacy layer_primary seed into local buffer.
   useEffect(() => {
@@ -548,6 +562,15 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
               : 'save_failed'
         );
       });
+  }
+
+  function persistSection(next: NonNullable<typeof section>) {
+    if (!bundle) return;
+    persist({
+      ...bundle,
+      sections: bundle.sections.map((s) => (s.slug === next.slug ? next : s)),
+      manifest: { ...bundle.manifest, updatedAt: new Date().toISOString() }
+    });
   }
 
   function saveDraft(opts?: { silent?: boolean }) {
@@ -1646,7 +1669,7 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
         {showPreview && !showHistory && !sidePanel && (
           <div className="hidden min-w-0 w-1/2 flex-col sm:flex">
             {isSocialDoc ? (
-              <>
+              <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">
                 <div className="pen-social-pres-strip">
                   <label>
                     Bg
@@ -1766,7 +1789,32 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
                       <option value="justify">Justify</option>
                     </select>
                   </label>
+                  <button
+                    ref={socialLayersBtnRef}
+                    type="button"
+                    className={`ml-auto inline-flex items-center gap-1 font-bold ${
+                      socialLayersOpen ? 'text-black' : 'text-neutral-500 hover:text-black'
+                    }`}
+                    aria-expanded={socialLayersOpen}
+                    aria-pressed={socialLayersOpen}
+                    aria-label="Layers"
+                    title="Layers"
+                    onClick={() => setSocialLayersOpen((open) => !open)}
+                  >
+                    <IconLayers className="shrink-0" />
+                    Layers
+                  </button>
                 </div>
+                {socialActionLayer && section && (
+                  <div className="border-b border-neutral-200 bg-neutral-50 px-2 py-1">
+                    <ActionBindStrip
+                      layer={socialActionLayer}
+                      section={section}
+                      session={session}
+                      onSectionChange={persistSection}
+                    />
+                  </div>
+                )}
                 <div className="pen-social-live-preview min-h-0 flex-1">
                   <div className="pen-social-live-preview-stage">
                     <SocialFeedPhonePreview
@@ -1785,10 +1833,37 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
                         return t ? templateAuthorLabel(t) : 'You';
                       })()}
                       phoneActiveFeedId="public"
+                      actionOverlay={
+                        <ActionLayerPhoneOverlay
+                          sections={bundle.sections}
+                          galleryAspect={bundle.manifest.galleryAspect}
+                          activeLayerId={activeLayerId}
+                          session={session}
+                          onSelectLayer={(id) => {
+                            setActiveLayerId(id);
+                            setSocialSelectedIds([id]);
+                          }}
+                        />
+                      }
                     />
                   </div>
                 </div>
-              </>
+                {section && (
+                  <LayersPopover
+                    open={socialLayersOpen}
+                    onClose={() => setSocialLayersOpen(false)}
+                    anchorRef={socialLayersBtnRef}
+                    section={section}
+                    activeLayerId={activeLayerId || PAGE_LAYER_ID}
+                    onSelectLayer={(id) => setActiveLayerId(id || PAGE_LAYER_ID)}
+                    onSectionChange={persistSection}
+                    pageLayout={bundle.manifest.pageLayout}
+                    selectedIds={socialSelectedIds}
+                    onSelectedIdsChange={setSocialSelectedIds}
+                    session={session}
+                  />
+                )}
+              </div>
             ) : section ? (
               <div className="min-h-0 min-w-0 flex-1">
                 <EditablePagePreview

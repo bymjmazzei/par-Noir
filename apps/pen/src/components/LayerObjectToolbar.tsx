@@ -16,6 +16,7 @@ import {
   type PenStrokeAlign,
   type PenStrokeStyle
 } from '@par-noir/pen-protocol';
+import { ActionBindStrip } from './ActionBindStrip';
 import { CloudFeedMediaPicker } from './CloudFeedMediaPicker';
 import { probeMediaAspect } from '../services/penAttach';
 import { isPenMediaSrcRef, resolvePenMediaSrc } from '../services/penLocalMedia';
@@ -241,8 +242,18 @@ export function LayerObjectToolbar({
     setOpen(open === tool ? null : tool);
   }
 
+  const isAction = layer?.kind === 'embed' || layer?.kind === 'interactive';
+
   return (
-    <div className="relative flex items-center gap-0.5">
+    <div className="relative flex min-w-0 items-center gap-0.5">
+      {isAction && layer && (
+        <ActionBindStrip
+          layer={layer}
+          section={section}
+          session={session}
+          onSectionChange={onSectionChange}
+        />
+      )}
       <ToolButton title="Background" active={open === 'bg'} onClick={() => toggle('bg')}>
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden>
           <rect x="3" y="3" width="18" height="18" rx="2" stroke="currentColor" strokeWidth="2" />

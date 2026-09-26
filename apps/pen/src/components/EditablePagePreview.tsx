@@ -849,6 +849,7 @@ export function EditablePagePreview({
         selectedIds={selectedIds}
         onSelectedIdsChange={setSelectedIds}
         contentWidthPx={box.width}
+        session={session}
       />
 
       <div

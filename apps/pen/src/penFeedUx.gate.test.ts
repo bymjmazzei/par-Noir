@@ -249,6 +249,15 @@ describe('pen feed UX chrome', () => {
     expect(src).not.toMatch(/engagementOverlay/);
   });
 
+  it('DocEditorPage social live preview mounts LayersPopover for action layers', () => {
+    const src = readFileSync(resolve(root, 'pages/DocEditorPage.tsx'), 'utf8');
+    const social = src.slice(src.indexOf('isSocialDoc ?'));
+    expect(social).toMatch(/<LayersPopover/);
+    expect(social).toMatch(/ActionLayerPhoneOverlay/);
+    expect(social).toMatch(/ActionBindStrip/);
+    expect(social).toMatch(/aria-label="Layers"/);
+  });
+
   it('FeedTileSurface caption is browse title+caption without You avatar', () => {
     const tile = readFileSync(
       resolve(root, '../../../packages/feed-tile/src/FeedTileSurface.tsx'),
