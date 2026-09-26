@@ -2,10 +2,17 @@
 
 import type { BlankDocChoice } from '../services/createBlankDoc';
 import {
-  SOCIAL_TEMPLATE_RAIL_FORMS,
-  SOCIAL_TEMPLATE_RAIL_LABELS
+  SOCIAL_TEMPLATE_RAIL_LABELS,
+  type SocialTemplateRailFormId
 } from '../services/classFeedRailItems';
 import { FormDocIcon } from './FormDocIcon';
+
+/** Blank popup forms — Social atoms only; collection/set stay on Templates rail. */
+const BLANK_WIZARD_FORMS: SocialTemplateRailFormId[] = [
+  'social.note',
+  'social.audio',
+  'social.post'
+];
 
 export function BlankDocWizard({
   busy,
@@ -74,7 +81,7 @@ export function BlankDocWizard({
               <span className="font-semibold capitalize text-black">Blank</span>
             </button>
 
-            {SOCIAL_TEMPLATE_RAIL_FORMS.map((classId) => (
+            {BLANK_WIZARD_FORMS.map((classId) => (
               <button
                 key={classId}
                 type="button"
