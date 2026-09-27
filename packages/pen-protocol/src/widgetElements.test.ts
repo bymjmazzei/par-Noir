@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { copyWidgetLayersIntoSection, upsertLayer } from './layers.js';
+import { copyWidgetLayersIntoSection, setTextLayerDoc, upsertLayer } from './layers.js';
 import { partitionLayersForCompose } from './actionPartition.js';
 import { emptySection } from './richDoc.js';
 import { PEN_POLL_VOTE_KIND } from './outbox.js';
@@ -299,6 +299,19 @@ describe('widget placement and triggers', () => {
     expect(clean).not.toContain('script');
     expect(clean).not.toContain('onload');
     expect(clean).toContain('<rect');
+  });
+
+  it('saving a button doc keeps the doc and updates the label', () => {
+    const placed = placeWidgetLayer(emptySection('card'), null, 'button');
+    const doc = {
+      type: 'doc',
+      content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Yes' }] }]
+    };
+    const next = setTextLayerDoc(placed.section, placed.layerId, doc, { syncDoc: false });
+    const button = next.layers?.find((layer) => layer.id === placed.layerId);
+    expect(button?.textDoc).toEqual(doc);
+    expect(button?.label).toBe('Yes');
+    expect(next.doc).toEqual(emptySection('card').doc);
   });
 
   it('an empty widget copy is a group with no poll buttons', () => {

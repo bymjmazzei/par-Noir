@@ -1,6 +1,6 @@
 /** Page layer helpers — multi text/image objects on a section. */
 
-import { emptyTipTapDoc } from './richDoc.js';
+import { docToPlainText, emptyTipTapDoc } from './richDoc.js';
 import {
   DEFAULT_IMAGE_ASPECT,
   DEFAULT_VIDEO_ASPECT,
@@ -798,7 +798,7 @@ export function syncDocFromPrimaryTextLayer(section: PenSectionContent): PenSect
   return { ...section, doc: getTextLayerDoc(texts[0]!) };
 }
 
-/** Sync a specific text layer's textDoc; also write section.doc when syncDoc is true. */
+/** Sync a text layer or button face. A button also keeps `label` as the plain text. */
 export function setTextLayerDoc(
   section: PenSectionContent,
   layerId: string,
@@ -806,11 +806,17 @@ export function setTextLayerDoc(
   opts?: { syncDoc?: boolean }
 ): PenSectionContent {
   const existing = (section.layers || []).find((l) => l.id === layerId);
-  if (!existing || existing.kind !== 'text') {
+  if (!existing || (existing.kind !== 'text' && existing.kind !== 'interactive')) {
     throw new Error(`unknown_text_layer:${layerId}`);
   }
-  const next = upsertLayer(section, { ...existing, textDoc });
-  if (opts?.syncDoc !== false) {
+  const nextLayer: PenPageLayer = { ...existing, textDoc };
+  if (existing.kind === 'interactive') {
+    const plain = docToPlainText(textDoc);
+    nextLayer.label = plain;
+    if (plain) nextLayer.name = plain;
+  }
+  const next = upsertLayer(section, nextLayer);
+  if (existing.kind === 'text' && opts?.syncDoc !== false) {
     return { ...next, doc: textDoc };
   }
   return next;

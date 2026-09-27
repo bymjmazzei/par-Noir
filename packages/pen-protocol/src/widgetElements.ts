@@ -127,6 +127,7 @@ export function placeWidgetLayer(
       widgetElement: 'button',
       name: 'Button',
       label: 'Button',
+      textDoc: plainDoc('Button'),
       w: 120,
       h: 40,
       backgroundColor: 'rgba(15,118,110,0.85)',

@@ -1,9 +1,11 @@
 /** Side pane for a widget, same slot as the text and media editors. Dragging stays on the preview. */
 
-import { useRef } from 'react';
+import { useRef, useState } from 'react';
+import type { Editor } from '@tiptap/react';
 import {
   allocateTotal,
   duplicateButton,
+  getTextLayerDoc,
   patchLayerStyle,
   placeWidgetLayer,
   pollLayers,
@@ -12,15 +14,18 @@ import {
   setOpenUrl,
   setRevealTarget,
   setSubmitTo,
+  setTextLayerDoc,
   setVoteCorrect,
   setWidgetClosesAt,
   setWidgetHtml,
   setWidgetSvgOnLayer,
   type PenInteractiveBehavior,
   type PenPageLayer,
+  type PenPageLayout,
   type PenSectionContent,
   type PenWidgetElement
 } from '@par-noir/pen-protocol';
+import { FormatRibbon, PageCanvas } from './PageCanvas';
 
 const ADD: Array<{ element: PenWidgetElement | 'image'; label: string }> = [
   { element: 'text', label: 'Text' },
@@ -33,6 +38,76 @@ const ADD: Array<{ element: PenWidgetElement | 'image'; label: string }> = [
 
 function hexColor(value: string | undefined, fallback: string): string {
   return value && /^#[0-9a-fA-F]{6}$/.test(value) ? value : fallback;
+}
+
+function showsDisplayedText(layer: PenPageLayer | null): boolean {
+  if (!layer) return false;
+  if (
+    layer.widgetElement === 'html' ||
+    layer.widgetElement === 'svg' ||
+    layer.widgetElement === 'time'
+  ) {
+    return false;
+  }
+  if (layer.kind === 'image' || layer.kind === 'video' || layer.kind === 'group') return false;
+  return layer.kind === 'interactive' || layer.kind === 'text';
+}
+
+function WidgetTextEditor({
+  layer,
+  section,
+  onSectionChange,
+  accessToken,
+  pnIdentifier,
+  excludeDocId,
+  pageLayout
+}: {
+  layer: PenPageLayer;
+  section: PenSectionContent;
+  onSectionChange: (next: PenSectionContent) => void;
+  accessToken?: string;
+  pnIdentifier?: string;
+  excludeDocId?: string;
+  pageLayout?: PenPageLayout;
+}) {
+  const [editor, setEditor] = useState<Editor | null>(null);
+  if (typeof document === 'undefined') {
+    return (
+      <div data-widget-text-editor className="flex gap-1 border-b border-stone-200 px-2 py-1">
+        <button type="button" title="Font">
+          Font
+        </button>
+        <button type="button" title="Size">
+          Size
+        </button>
+        <button type="button" title="Bold">
+          <b>B</b>
+        </button>
+      </div>
+    );
+  }
+  return (
+    <div data-widget-text-editor className="flex min-h-64 flex-col border-b border-stone-200">
+      <FormatRibbon
+        editor={editor}
+        accessToken={accessToken}
+        pnIdentifier={pnIdentifier}
+        excludeDocId={excludeDocId}
+      />
+      <div className="min-h-48 flex-1">
+        <PageCanvas
+          section={{ ...section, doc: getTextLayerDoc(layer) }}
+          sectionTitle={layer.label || layer.name || 'Text'}
+          pageLayout={pageLayout || 'flow'}
+          pnIdentifier={pnIdentifier || ''}
+          onEditorReady={setEditor}
+          onChange={(next) => {
+            onSectionChange(setTextLayerDoc(section, layer.id, next.doc, { syncDoc: false }));
+          }}
+        />
+      </div>
+    </div>
+  );
 }
 
 const TRIGGERS: Array<{ id: PenInteractiveBehavior; label: string }> = [
@@ -50,12 +125,20 @@ export function WidgetEditorPanel({
   layer,
   section,
   onSectionChange,
-  onPlaced
+  onPlaced,
+  accessToken,
+  pnIdentifier,
+  excludeDocId,
+  pageLayout
 }: {
   layer: PenPageLayer | null;
   section: PenSectionContent;
   onSectionChange: (next: PenSectionContent) => void;
   onPlaced?: (layerId: string) => void;
+  accessToken?: string;
+  pnIdentifier?: string;
+  excludeDocId?: string;
+  pageLayout?: PenPageLayout;
 }) {
   const fileRef = useRef<HTMLInputElement>(null);
 
@@ -84,6 +167,17 @@ export function WidgetEditorPanel({
           </button>
         ))}
       </div>
+      {showsDisplayedText(layer) && layer && (
+        <WidgetTextEditor
+          layer={layer}
+          section={section}
+          onSectionChange={onSectionChange}
+          accessToken={accessToken}
+          pnIdentifier={pnIdentifier}
+          excludeDocId={excludeDocId}
+          pageLayout={pageLayout}
+        />
+      )}
       {layer && (
         <div className="flex flex-col gap-3 border-b border-stone-200 px-3 py-3 text-sm">
           <label className="flex items-center justify-between gap-2">
@@ -160,22 +254,6 @@ export function WidgetEditorPanel({
       )}
       {layer?.kind === 'interactive' && (
         <div className="flex flex-col gap-3 border-b border-stone-200 px-3 py-3 text-sm">
-          <label className="flex flex-col gap-1">
-            <span className="text-[11px] font-semibold uppercase tracking-wide text-stone-500">Label</span>
-            <input
-              aria-label="Button label"
-              className="border border-stone-300 px-2 py-1"
-              value={layer.label || ''}
-              onChange={(event) =>
-                onSectionChange(
-                  patchLayerStyle(section, layer.id, {
-                    label: event.target.value,
-                    name: event.target.value || layer.name
-                  })
-                )
-              }
-            />
-          </label>
           <span className="text-[11px] font-semibold uppercase tracking-wide text-stone-500">
             Button trigger
           </span>

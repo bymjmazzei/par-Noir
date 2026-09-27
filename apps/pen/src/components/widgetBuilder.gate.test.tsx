@@ -4,8 +4,9 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { emptySection, placeWidgetLayer, setButtonTrigger } from '@par-noir/pen-protocol';
+import { defaultPagePresentation, emptySection, placeWidgetLayer, setButtonTrigger } from '@par-noir/pen-protocol';
 import { WidgetEditorPanel } from './WidgetEditorPanel';
+import { LayerObjectToolbar } from './LayerObjectToolbar';
 
 const root = resolve(__dirname);
 
@@ -32,6 +33,33 @@ describe('widget preview builder', () => {
     expect(html).toContain('Text');
     expect(page).toMatch(/hideActionBind=\{isWidgetDoc\}/);
     expect(page).toMatch(/hideObjectTools=\{isWidgetDoc\}/);
+    const toolbar = readFileSync(resolve(root, 'LayerObjectToolbar.tsx'), 'utf8');
+    expect(toolbar).toMatch(/title="Blend"/);
+    expect(toolbar).toMatch(/hideObjectTools/);
+    const blend = renderToStaticMarkup(
+      <LayerObjectToolbar
+        hideObjectTools
+        target={{
+          kind: 'layer',
+          layer: {
+            id: 'b',
+            kind: 'interactive',
+            x: 0,
+            y: 0,
+            w: 40,
+            h: 20,
+            zIndex: 1,
+            label: 'Go'
+          }
+        }}
+        presentation={defaultPagePresentation()}
+        section={emptySection('card')}
+        onSectionChange={() => undefined}
+      />
+    );
+    expect(blend).toContain('title="Blend"');
+    expect(blend).not.toContain('title="Shadow"');
+    expect(blend).not.toContain('title="Opacity"');
     const collab = readFileSync(resolve(root, '../services/penCollab.ts'), 'utf8');
     expect(collab).toMatch(/openEnvelope/);
   });

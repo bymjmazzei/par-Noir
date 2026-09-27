@@ -15,6 +15,7 @@ import {
   DEFAULT_FLOW_WORKSPACE_HEIGHT_PX,
   DEFAULT_FLOW_WORKSPACE_WIDTH_PX,
   docToHtml,
+  docToPlainText,
   fitAspectInBox,
   sizeMediaLayerForAttach,
   getTextLayerDoc,
@@ -1056,7 +1057,7 @@ export function EditablePagePreview({
                   const groupKey = layer.parentGroupId || 'doc';
                   const counts =
                     layers.find((item) => item.id === layer.parentGroupId)?.widgetCounts || null;
-                  const caption =
+                  const runtime =
                     layer.behavior === 'poll.vote'
                       ? voteFaceForLayer(
                           prepared,
@@ -1064,7 +1065,9 @@ export function EditablePagePreview({
                           votedOptionByGroup?.[groupKey] || null,
                           counts
                         ).text
-                      : buttonCaptionById?.[layer.id] || layer.label || 'Button';
+                      : buttonCaptionById?.[layer.id];
+                  const face = layer.textDoc ? docToPlainText(layer.textDoc) : '';
+                  const rich = face ? docToHtml(layer.textDoc) : '';
                   return (
                     <button
                       type="button"
@@ -1080,7 +1083,16 @@ export function EditablePagePreview({
                         selectLayer(layer.id);
                       }}
                     >
-                      {caption}
+                      {runtime ? (
+                        runtime
+                      ) : rich ? (
+                        <span
+                          className="pen-rich-html"
+                          dangerouslySetInnerHTML={{ __html: rich }}
+                        />
+                      ) : (
+                        layer.label || 'Button'
+                      )}
                     </button>
                   );
                 }

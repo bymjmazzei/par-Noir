@@ -1859,7 +1859,7 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
                   </button>
                 </div>
               </div>
-              {writingEnabled && !activeMediaLayer ? (
+              {writingEnabled && !activeMediaLayer && !isWidgetDoc ? (
                 <FormatRibbon
                   editor={editor}
                   accessToken={session.accessToken}
@@ -1956,6 +1956,10 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
               key={widgetStripLayer?.id || 'widget'}
               layer={widgetStripLayer}
               section={section}
+              accessToken={session.accessToken}
+              pnIdentifier={session.pnIdentifier}
+              excludeDocId={bundle.manifest.docId}
+              pageLayout={pageLayout}
               onSectionChange={commitWidgetSection}
               onPlaced={(id) => {
                 setActiveLayerId(id);
