@@ -330,7 +330,7 @@ export function LayersPopover({
   return (
     <div
       ref={panelRef}
-      className="absolute right-3 top-10 z-40 flex w-72 flex-col overflow-hidden rounded-lg border border-neutral-200 bg-white shadow-xl"
+      className="absolute right-3 top-10 z-40 flex w-72 flex-col overflow-visible rounded-lg border border-neutral-200 bg-white shadow-xl"
       role="dialog"
       aria-label="Layers"
     >
@@ -402,7 +402,7 @@ export function LayersPopover({
           {addOpen && (
             <div
               role="menu"
-              className="absolute right-0 top-8 z-10 w-36 rounded border border-neutral-200 bg-white py-1 shadow-lg"
+              className="absolute right-0 top-8 z-50 max-h-64 w-40 overflow-auto rounded border border-neutral-200 bg-white py-1 shadow-lg"
             >
               <button
                 type="button"
