@@ -28,11 +28,13 @@ function sourceLayers(
 
 export function ActionLayerMenu({
   session,
+  docId,
   section,
   onInserted,
   onCancel
 }: {
   session?: PenSession | null;
+  docId: string;
   section: PenSectionContent;
   onInserted: (section: PenSectionContent, groupId: string) => void;
   onCancel: () => void;
@@ -82,9 +84,11 @@ export function ActionLayerMenu({
     try {
       const next = await insertWidgetCopy({
         session,
+        docId,
         host: section,
         layers,
-        name: template.title
+        name: template.title,
+        templateId: template.id
       });
       onInserted(next.section, next.groupId);
     } catch {

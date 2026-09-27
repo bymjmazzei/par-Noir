@@ -19,6 +19,12 @@ import {
   requireTemplate,
   copyWidgetLayersIntoSection,
   emptySection,
+  pollIsClosed,
+  sheetRowsToStructure,
+  structureFromLayers,
+  structureToSheetRows,
+  stripPollSpreadsheet,
+  syncPollLayers,
   compileDocumentToNote,
   compileSetToNote,
   snapshotPenEmbeds,
@@ -198,6 +204,8 @@ describe('classes + templates', () => {
     expect(poll.seedPagePresentation?.backgroundColor).toBe('transparent');
     const layers = poll.seedSections?.[0]?.layers || [];
     expect(layers.filter((l) => l.kind === 'interactive').length).toBeGreaterThan(1);
+    expect(JSON.stringify(layers)).not.toContain('__pen_seed_table__');
+    expect(layers.some((l) => l.name === 'Results' && l.kind === 'text')).toBe(true);
     const time = requireTemplate('widget.time.v1');
     const timeText = JSON.stringify(time.seedSections);
     expect(timeText).toContain('startAt:');
@@ -224,7 +232,18 @@ describe('classes + templates', () => {
         zIndex: 1
       }
     ];
-    const { section, groupId } = copyWidgetLayersIntoSection(host, source, 'Poll');
+    const stamped = source.map((layer) =>
+      layer.kind === 'group' ? layer : { ...layer, spreadsheetId: 'sheet_author' }
+    );
+    const { section, groupId } = copyWidgetLayersIntoSection(
+      host,
+      stamped,
+      'Poll',
+      'widget.poll.v1'
+    );
+    const group = (section.layers || []).find((l) => l.id === groupId);
+    expect(group?.widgetTemplateId).toBe('widget.poll.v1');
+    expect(JSON.stringify(section)).not.toContain('sheet_author');
     const kids = (section.layers || []).filter((l) => l.parentGroupId === groupId);
     const sourceIds = new Set(source.map((l) => l.id));
     expect(kids.length).toBe(source.filter((l) => l.kind !== 'group').length);
@@ -238,6 +257,27 @@ describe('classes + templates', () => {
     expect(again.groupId).not.toBe(groupId);
   });
 
+  it('poll sheet rows round-trip and a closed poll refuses', () => {
+    const poll = requireTemplate('widget.poll.v1');
+    const section = poll.seedSections?.[0];
+    expect(section).toBeTruthy();
+    const structure = structureFromLayers(section!);
+    expect(structure.options.map((option) => option.id)).toEqual(['opt_a', 'opt_b']);
+    const rows = structureToSheetRows({ ...structure, closesAt: '2026-01-01T00:00:00.000Z' });
+    const back = sheetRowsToStructure(rows);
+    expect(back.question).toBe(structure.question);
+    expect(back.options).toEqual(structure.options);
+    expect(back.closesAt).toBe('2026-01-01T00:00:00.000Z');
+    expect(pollIsClosed(back.closesAt, Date.parse('2026-01-02T00:00:00.000Z'))).toBe(true);
+    expect(pollIsClosed(null)).toBe(false);
+    const synced = syncPollLayers(section!, null, {
+      ...structure,
+      question: 'Ship the sheet?'
+    });
+    expect(structureFromLayers(synced).question).toBe('Ship the sheet?');
+    expect(stripPollSpreadsheet({ pollSpreadsheetId: 'abc', title: 'Poll' }).pollSpreadsheetId).toBeUndefined();
+  });
+
   it('social forms exclude feed; community owns feed + landing/home/site', () => {
     expect(listForms('social').map((f) => f.id).sort()).toEqual([
       'social.audio',
@@ -247,7 +287,6 @@ describe('classes + templates', () => {
       'social.link',
       'social.metric',
       'social.note',
-      'social.poll',
       'social.post',
       'social.profile',
       'social.quote',

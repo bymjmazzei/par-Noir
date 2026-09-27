@@ -66,9 +66,11 @@ describe('template dominance + orientations', () => {
     expect(listConsumerClasses().some((c) => c.id === 'primitives.table')).toBe(false);
   });
 
-  it('ships poll + frame forms; community feed embed starter retired', () => {
+  it('ships frame form; the poll is a widget; community feed embed starter retired', () => {
     expect(() => requireTemplate('feed.embed.v1')).toThrow(/unknown_pen_template/);
-    expect(requireTemplate('poll.basic.v1').classId).toBe('social.poll');
+    expect(() => requireTemplate('poll.basic.v1')).toThrow(/unknown_pen_template/);
+    expect(requireTemplate('widget.poll.v1').classId).toBe('widgets.widget');
+    expect(getClass('social.poll')).toBeUndefined();
     expect(requireTemplate('frame.basic.v1').classId).toBe('social.frame');
     expect(requireTemplate('table.basic.v1').classId).toBe('primitives.table');
     expect(getClass('community.feed_embed')?.audience).toBe('kit');
@@ -89,8 +91,8 @@ describe('cloud table primitive IR', () => {
   });
 
   it('rewrites seed table placeholders on embed + sticker binds', () => {
-    const poll = requireTemplate('poll.basic.v1');
-    const sections = poll.seedSections || [];
+    const frame = requireTemplate('frame.basic.v1');
+    const sections = frame.seedSections || [];
     expect(sectionNeedsSeedTable(sections)).toBe(true);
     const rewritten = rewriteSeedTablePlaceholders(sections, 'pen_table_abc');
     expect(sectionNeedsSeedTable(rewritten)).toBe(false);
@@ -99,7 +101,7 @@ describe('cloud table primitive IR', () => {
     const sticker = layers.find((l) => l.kind === 'interactive');
     expect(embed?.refDocId).toBe('pen_table_abc');
     expect(sticker?.bindDocId).toBe('pen_table_abc');
-    expect(sticker?.behavior).toBe('poll.vote');
+    expect(sticker?.behavior).toBe('cta.open');
     expect(layers.every((l) => l.refDocId !== SEED_TABLE_DOC_PLACEHOLDER)).toBe(true);
   });
 

@@ -19,6 +19,8 @@ import {
   partitionSectionsForPublish,
   mergePagePresentation,
   docToPlainText,
+  stripPollSpreadsheet,
+  stripPollSpreadsheetFromSection,
   inferPageTextStyle,
   normalizeSection,
   type PenDocManifest,
@@ -574,8 +576,8 @@ export async function publishTemplateToOwnerCloud(params: {
   const page = compiled.pages[0];
   const textPost = { content: page?.content || compiled.title, style: page?.style || {} };
   const ir = {
-    manifest: params.bundle.manifest,
-    sections: params.bundle.sections,
+    manifest: stripPollSpreadsheet(params.bundle.manifest),
+    sections: params.bundle.sections.map(stripPollSpreadsheetFromSection),
     licensing
   };
   const poster = await renderNotePoster(compiled.title, textPost.content);

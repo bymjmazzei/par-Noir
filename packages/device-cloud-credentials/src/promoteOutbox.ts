@@ -125,6 +125,12 @@ async function ensureFanout(opts: PromoteOutboxOptions, record: OutboxRecord): P
   for (const target of record.fanout) {
     const routeKey = target.routeKey;
     if (!routeKey || !/^[a-f0-9]{64}$/i.test(routeKey)) continue;
+    const requestId =
+      typeof record.payload.requestId === 'string'
+        ? record.payload.requestId
+        : typeof record.payload.voteId === 'string'
+          ? record.payload.voteId
+          : undefined;
     const messageId =
       typeof record.payload.messageId === 'string' ? record.payload.messageId : undefined;
     const commentId =
@@ -139,7 +145,8 @@ async function ensureFanout(opts: PromoteOutboxOptions, record: OutboxRecord): P
       jobType: target.jobType,
       messageId,
       commentId,
-      fileId
+      fileId,
+      requestId
     }).catch(() => ({ found: false, pending: false }));
     if (lookup.pending) continue;
 

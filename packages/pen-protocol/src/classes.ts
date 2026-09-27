@@ -80,14 +80,6 @@ const CLASSES: PenClass[] = [
     parentId: 'social'
   },
   {
-    id: 'social.poll',
-    title: 'Poll',
-    description: 'Survey widget embedding a cloud table + vote stickers',
-    kind: 'authored',
-    audience: 'consumer',
-    parentId: 'social'
-  },
-  {
     id: 'social.metric',
     title: 'Metric',
     description: 'KPI / big-number callout',

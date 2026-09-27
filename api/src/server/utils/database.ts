@@ -589,6 +589,31 @@ export async function initializeDatabase(): Promise<void> {
     `);
 
     await db.query(`
+      CREATE TABLE IF NOT EXISTS poll_structure_cache (
+        poll_id TEXT PRIMARY KEY,
+        doc_id TEXT NOT NULL,
+        question TEXT NOT NULL DEFAULT '',
+        options_json TEXT NOT NULL DEFAULT '[]',
+        closes_at TEXT,
+        updated_at TIMESTAMPTZ DEFAULT NOW()
+      )
+    `);
+
+    await db.query(`
+      CREATE TABLE IF NOT EXISTS poll_vote_cache (
+        vote_id TEXT PRIMARY KEY,
+        poll_id TEXT NOT NULL,
+        option_id TEXT NOT NULL,
+        created_at TIMESTAMPTZ DEFAULT NOW()
+      )
+    `);
+
+    await db.query(`
+      CREATE INDEX IF NOT EXISTS idx_poll_vote_cache_poll
+      ON poll_vote_cache(poll_id)
+    `);
+
+    await db.query(`
       CREATE INDEX IF NOT EXISTS idx_engagement_type
       ON engagement(type)
     `);

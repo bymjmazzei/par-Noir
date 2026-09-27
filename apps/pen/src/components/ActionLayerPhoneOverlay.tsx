@@ -30,13 +30,15 @@ export function ActionLayerPhoneOverlay({
   galleryAspect,
   activeLayerId,
   session,
-  onSelectLayer
+  onSelectLayer,
+  onPollVote
 }: {
   sections: PenSectionContent[];
   galleryAspect?: PenDocManifest['galleryAspect'];
   activeLayerId: string | null;
   session?: PenSession | null;
   onSelectLayer: (id: string) => void;
+  onPollVote?: (layer: PenPageLayer) => void;
 }) {
   const box = canvasSizeForAspect(normalizeGalleryAspect(galleryAspect));
   const pn = session?.pnIdentifier || '';
@@ -69,6 +71,7 @@ export function ActionLayerPhoneOverlay({
             title={label || layer.name || 'Layer'}
             onClick={(e) => {
               e.stopPropagation();
+              if (layer.behavior === 'poll.vote') onPollVote?.(layer);
               onSelectLayer(layer.id);
             }}
           >

@@ -1338,147 +1338,6 @@ export function seedLink(): SeedBundle {
   };
 }
 
-export function seedPoll(): SeedBundle {
-  const tableId = SEED_TABLE_DOC_PLACEHOLDER;
-  return {
-    seedPageLayout: 'flow',
-    seedPagePresentation: socialPresentation({
-      backgroundColor: CHARCOAL,
-      backgroundGradient: `linear-gradient(180deg, ${CHARCOAL} 0%, #101816 100%)`,
-      fontSize: 24,
-      textAlign: 'left',
-      textColor: PAPER,
-      dropShadowBlur: 0
-    }),
-    seedSections: [
-      {
-        slug: 'prompt',
-        doc: tipTapParagraphs('Which should we ship next?'),
-        layers: [
-          textLayer(
-            'layer_kicker',
-            'POLL',
-            { x: 24, y: 28, w: 100, h: 24, zIndex: 1 },
-            {
-              textDoc: tipTapStyled('POLL', {
-                fontSize: 11,
-                fontFamily: SANS,
-                color: GOLD,
-                bold: true
-              })
-            }
-          ),
-          textLayer(
-            'layer_prompt',
-            'Which should we ship next?',
-            { x: 24, y: 60, w: 312, h: 56, zIndex: 1 },
-            {
-              textDoc: tipTapStyled('Which should we ship next?', {
-                fontSize: 24,
-                fontFamily: SERIF,
-                color: PAPER,
-                bold: true
-              })
-            }
-          ),
-          {
-            id: 'layer_table_embed',
-            kind: 'embed',
-            name: 'Results',
-            x: 24,
-            y: 136,
-            w: 312,
-            h: 120,
-            zIndex: 2,
-            refDocId: tableId,
-            refSectionSlug: 'grid',
-            positionLocked: true,
-            backgroundColor: CARD,
-            strokeColor: '#2a2824',
-            strokeWidth: 1
-          },
-          textLayer(
-            'layer_opt_a_chrome',
-            'Messaging polish',
-            { x: 24, y: 280, w: 312, h: 48, zIndex: 3 },
-            {
-              backgroundColor: '#1a2422',
-              strokeColor: TEAL,
-              strokeWidth: 1,
-              textDoc: tipTapStyled('Messaging polish', {
-                fontSize: 15,
-                fontFamily: SANS,
-                color: PAPER,
-                bold: true
-              })
-            }
-          ),
-          textLayer(
-            'layer_opt_b_chrome',
-            'Pen Mini templates',
-            { x: 24, y: 340, w: 312, h: 48, zIndex: 3 },
-            {
-              backgroundColor: '#1a2422',
-              strokeColor: '#2a2824',
-              strokeWidth: 1,
-              textDoc: tipTapStyled('Pen Mini templates', {
-                fontSize: 15,
-                fontFamily: SANS,
-                color: PAPER,
-                bold: true
-              })
-            }
-          ),
-          {
-            id: 'sticker_opt_a',
-            kind: 'interactive',
-            name: 'Vote A',
-            x: 24,
-            y: 280,
-            w: 312,
-            h: 48,
-            zIndex: 5,
-            behavior: 'poll.vote',
-            bindDocId: tableId,
-            bindRowId: 'opt_a',
-            label: 'Messaging polish',
-            positionLocked: true,
-            backgroundColor: 'rgba(15,118,110,0.55)'
-          },
-          {
-            id: 'sticker_opt_b',
-            kind: 'interactive',
-            name: 'Vote B',
-            x: 24,
-            y: 340,
-            w: 312,
-            h: 48,
-            zIndex: 5,
-            behavior: 'poll.vote',
-            bindDocId: tableId,
-            bindRowId: 'opt_b',
-            label: 'Pen Mini templates',
-            positionLocked: true,
-            backgroundColor: 'rgba(184,149,108,0.35)'
-          },
-          textLayer(
-            'layer_status',
-            'Votes write into the bound table.',
-            { x: 24, y: 412, w: 312, h: 32, zIndex: 1 },
-            {
-              textDoc: tipTapStyled('Votes write into the bound table.', {
-                fontSize: 12,
-                fontFamily: SANS,
-                color: MUTED
-              })
-            }
-          )
-        ]
-      }
-    ]
-  };
-}
-
 export function seedComparison(): SeedBundle {
   const tableId = SEED_TABLE_DOC_PLACEHOLDER;
   return {
@@ -2157,9 +2016,8 @@ function widgetPlate(id: string, h: number, fill = PAPER_CARD): PenPageLayer {
   });
 }
 
-/** Card-sized widget seeds. Not the full-page social posts. */
+/** Card-sized poll. Options are vote buttons. The spreadsheet is created on insert, not in the seed. */
 export function seedWidgetPoll(): SeedBundle {
-  const tableId = SEED_TABLE_DOC_PLACEHOLDER;
   return widgetBundle([
     widgetPlate('layer_plate', 248, '#141816'),
     widgetText(
@@ -2176,22 +2034,14 @@ export function seedWidgetPoll(): SeedBundle {
         })
       }
     ),
-    {
-      id: 'layer_results',
-      kind: 'embed',
+    widgetText('layer_results', 'No votes yet', { x: 28, y: 84, w: 256, h: 48, zIndex: 2 }, {
       name: 'Results',
-      x: 28,
-      y: 84,
-      w: 256,
-      h: 56,
-      zIndex: 2,
-      refDocId: tableId,
-      refSectionSlug: 'grid',
-      positionLocked: false,
-      backgroundColor: CARD,
-      strokeColor: '#2a2824',
-      strokeWidth: 1
-    },
+      textDoc: tipTapStyled('No votes yet', {
+        fontSize: 13,
+        fontFamily: SANS,
+        color: GOLD
+      })
+    }),
     {
       id: 'sticker_opt_a',
       kind: 'interactive',
@@ -2202,7 +2052,6 @@ export function seedWidgetPoll(): SeedBundle {
       h: 40,
       zIndex: 3,
       behavior: 'poll.vote',
-      bindDocId: tableId,
       bindRowId: 'opt_a',
       label: 'Messaging polish',
       positionLocked: false,
@@ -2218,7 +2067,6 @@ export function seedWidgetPoll(): SeedBundle {
       h: 40,
       zIndex: 3,
       behavior: 'poll.vote',
-      bindDocId: tableId,
       bindRowId: 'opt_b',
       label: 'Pen Mini templates',
       positionLocked: false,

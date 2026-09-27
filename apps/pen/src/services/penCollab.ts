@@ -13,6 +13,7 @@ import {
   penPublishFanout,
   penDocBootstrapFanout,
   penFontUpsertFanout,
+  penPollVoteFanout,
   createApiSocialApplier,
   ensureMailboxRouteKey,
   type OutboxKind,
@@ -26,6 +27,7 @@ import {
   PEN_PUBLISH_KIND,
   PEN_DOC_BOOTSTRAP_KIND,
   PEN_FONT_UPSERT_KIND,
+  PEN_POLL_VOTE_KIND,
   type PenDocComment,
   type PenPromoteLink,
   type PenSuggestion,
@@ -43,7 +45,7 @@ import { API_ENDPOINT } from '../config/api';
 import { ownerFetch, ownerGet } from './penOwnerFetch';
 import type { PenSession } from './penSession';
 
-function sealSessionFromPen(session: PenSession): SealSession | null {
+export function sealSessionFromPen(session: PenSession): SealSession | null {
   if (!session.mlKemSecretKey) return null;
   // Same convention as aggregator-browser outbox seal (pn + ML-KEM secret).
   return {
@@ -281,6 +283,7 @@ function fanoutFor(kind: OutboxKind, peerRouteKeys: string[]) {
   if (kind === PEN_PUBLISH_KIND) return penPublishFanout(peerRouteKeys);
   if (kind === PEN_DOC_BOOTSTRAP_KIND) return penDocBootstrapFanout(peerRouteKeys);
   if (kind === PEN_FONT_UPSERT_KIND) return penFontUpsertFanout(peerRouteKeys);
+  if (kind === PEN_POLL_VOTE_KIND) return penPollVoteFanout(peerRouteKeys);
   return [];
 }
 

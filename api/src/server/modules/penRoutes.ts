@@ -17,7 +17,10 @@ import { safeClientErrorMessage } from '../utils/safeError';
 import { hashIdentifier, safeLogger } from '../../utils/logger';
 import { google } from 'googleapis';
 import { Readable } from 'stream';
-import { verifyPromoteLink, type PenPromoteLink } from '@par-noir/pen-protocol';
+import { verifyPromoteLink, type PenPromoteLink, type PollStructure } from '@par-noir/pen-protocol';
+import { appendPollVote, createPollSpreadsheet, writePollStructure } from './pollSheetDrive';
+import { upsertPollStructureCache } from './pollVoteCache';
+import { setupPollVoteRoutes } from './pollVoteRoutes';
 
 const NODE_ENV = process.env.NODE_ENV || 'development';
 const isProduction = NODE_ENV === 'production';
@@ -31,7 +34,10 @@ const PEN_JOB_TYPES = [
   'pen.doc_bootstrap',
   'pen.doc_delete',
   'pen.doc_meta',
-  'pen.font_upsert'
+  'pen.font_upsert',
+  'pen.poll_create',
+  'pen.poll_structure_put',
+  'pen.poll_vote'
 ] as const;
 
 /** Append promote link once; same signature → no-op (guards dual client paths). */
@@ -244,6 +250,20 @@ type OwnerTokenShape = {
   expires_in?: number;
 };
 
+function readPollStructureBody(body: { structure?: PollStructure } | undefined): PollStructure | null {
+  const raw = body?.structure;
+  if (!raw || typeof raw.question !== 'string' || !Array.isArray(raw.options)) return null;
+  const options = raw.options
+    .filter((option) => option && typeof option.id === 'string' && option.id.trim())
+    .map((option) => ({ id: option.id.trim(), label: String(option.label || '') }));
+  if (!options.length) return null;
+  return {
+    question: raw.question,
+    options,
+    closesAt: raw.closesAt ? String(raw.closesAt) : null
+  };
+}
+
 export function setupPenRoutes(
   app: Application,
   deps: {
@@ -255,6 +275,7 @@ export function setupPenRoutes(
     ) => Promise<{ metadataFolderId?: string; pnFolderId?: string } | null>;
   }
 ): void {
+  setupPollVoteRoutes(app);
   app.post('/api/pen/notary/timestamp', async (req: Request, res: Response) => {
     try {
       if (!requireFirstPartyOAuthClient(req, res)) return;
@@ -292,7 +313,7 @@ export function setupPenRoutes(
       if (!userPnIdentifier || !docId || !(PEN_JOB_TYPES as readonly string[]).includes(jobType)) {
         return res.status(400).json({
           error:
-            'userPnIdentifier, docId, and jobType=pen.doc_bootstrap|pen.draft_upsert|pen.publish|pen.comment|pen.suggestion|pen.section_promote|pen.doc_delete|pen.doc_meta|pen.font_upsert required'
+            'userPnIdentifier, docId, and jobType=pen.doc_bootstrap|pen.draft_upsert|pen.publish|pen.comment|pen.suggestion|pen.section_promote|pen.doc_delete|pen.doc_meta|pen.font_upsert|pen.poll_create|pen.poll_structure_put|pen.poll_vote required'
         });
       }
 
@@ -448,6 +469,60 @@ export function setupPenRoutes(
       }
 
       const docFolderId = await ensureDriveFolder(drive, String(docId), penRootId);
+
+      if (
+        jobType === 'pen.poll_create' ||
+        jobType === 'pen.poll_structure_put' ||
+        jobType === 'pen.poll_vote'
+      ) {
+        if (jobType === 'pen.poll_create') {
+          const structure = readPollStructureBody(req.body);
+          const groupId = String(req.body?.groupId || docId).trim();
+          if (!structure) return res.status(400).json({ error: 'structure_required' });
+          const spreadsheetId = await createPollSpreadsheet({
+            auth,
+            parentFolderId: docFolderId,
+            title: `poll-${sanitizeName(groupId)}`,
+            structure
+          });
+          await upsertPollStructureCache({ pollId: spreadsheetId, docId, structure });
+          safeLogger.info('[pen/apply-inbound] poll_create ok', {
+            pn: hashIdentifier(pnIdentifier),
+            doc: hashIdentifier(docId)
+          });
+          return res.json({ ok: true, spreadsheetId });
+        }
+        if (jobType === 'pen.poll_structure_put') {
+          const spreadsheetId = String(req.body?.spreadsheetId || '').trim();
+          const structure = readPollStructureBody(req.body);
+          if (!spreadsheetId || !structure) {
+            return res.status(400).json({ error: 'structure_required' });
+          }
+          await writePollStructure(auth, spreadsheetId, structure);
+          await upsertPollStructureCache({ pollId: spreadsheetId, docId, structure });
+          safeLogger.info('[pen/apply-inbound] poll_structure ok', {
+            pn: hashIdentifier(pnIdentifier),
+            doc: hashIdentifier(docId)
+          });
+          return res.json({ ok: true });
+        }
+        const spreadsheetId = String(req.body?.spreadsheetId || '').trim();
+        const voteId = String(req.body?.voteId || '').trim();
+        const optionId = String(req.body?.optionId || '').trim();
+        const createdAt = String(req.body?.createdAt || new Date().toISOString());
+        if (!spreadsheetId || !voteId || !optionId) {
+          return res.status(400).json({ error: 'vote_fields_required' });
+        }
+        const appended = await appendPollVote(auth, spreadsheetId, { voteId, optionId, createdAt });
+        if (appended.closed) return res.status(409).json({ error: 'poll_closed' });
+        safeLogger.info('[pen/apply-inbound] poll_vote ok', {
+          pn: hashIdentifier(pnIdentifier),
+          doc: hashIdentifier(docId),
+          vote: hashIdentifier(voteId)
+        });
+        return res.json({ ok: true, appended: appended.appended });
+      }
+
       const currentId = await ensureDriveFolder(drive, 'current', docFolderId);
       const draftsId = await ensureDriveFolder(drive, 'drafts', docFolderId);
       const pastRootId = await ensureDriveFolder(drive, 'past', docFolderId);

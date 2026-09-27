@@ -95,7 +95,8 @@ export function LayersPopover({
   selectedIds,
   onSelectedIdsChange,
   contentWidthPx = 736,
-  session
+  session,
+  docId
 }: {
   open: boolean;
   onClose: () => void;
@@ -109,6 +110,7 @@ export function LayersPopover({
   onSelectedIdsChange: (ids: string[]) => void;
   contentWidthPx?: number;
   session?: PenSession | null;
+  docId: string;
 }) {
   const panelRef = useRef<HTMLDivElement>(null);
   const [dragId, setDragId] = useState<string | null>(null);
@@ -432,6 +434,7 @@ export function LayersPopover({
       {actionOpen && (
         <ActionLayerMenu
           session={session}
+          docId={docId}
           section={prepared}
           onInserted={insertWidget}
           onCancel={() => setActionOpen(false)}

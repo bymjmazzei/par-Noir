@@ -10,6 +10,12 @@ export const PEN_DOC_DELETE_KIND = 'pen.doc_delete' as const;
 export const PEN_DOC_META_KIND = 'pen.doc_meta' as const;
 /** Upsert doc-scoped opaque .penfont under par-noir-pen/{docId}/fonts/ */
 export const PEN_FONT_UPSERT_KIND = 'pen.font_upsert' as const;
+/** Owner unlock appends one poll vote row to sheet 1. */
+export const PEN_POLL_VOTE_KIND = 'pen.poll_vote' as const;
+/** Owner-present: create the poll spreadsheet. */
+export const PEN_POLL_CREATE_KIND = 'pen.poll_create' as const;
+/** Owner-present: rewrite sheet 2. */
+export const PEN_POLL_STRUCTURE_KIND = 'pen.poll_structure_put' as const;
 
 export type PenOutboxKind =
   | typeof PEN_SECTION_PROMOTE_KIND
@@ -20,7 +26,10 @@ export type PenOutboxKind =
   | typeof PEN_DOC_BOOTSTRAP_KIND
   | typeof PEN_DOC_DELETE_KIND
   | typeof PEN_DOC_META_KIND
-  | typeof PEN_FONT_UPSERT_KIND;
+  | typeof PEN_FONT_UPSERT_KIND
+  | typeof PEN_POLL_VOTE_KIND
+  | typeof PEN_POLL_CREATE_KIND
+  | typeof PEN_POLL_STRUCTURE_KIND;
 
 function fanout(
   routeKeys: string[],
@@ -106,5 +115,14 @@ export function penFontUpsertFanout(
   return fanout(routeKeys, PEN_FONT_UPSERT_KIND) as Array<{
     routeKey: string;
     jobType: typeof PEN_FONT_UPSERT_KIND;
+  }>;
+}
+
+export function penPollVoteFanout(
+  routeKeys: string[]
+): Array<{ routeKey: string; jobType: typeof PEN_POLL_VOTE_KIND }> {
+  return fanout(routeKeys, PEN_POLL_VOTE_KIND) as Array<{
+    routeKey: string;
+    jobType: typeof PEN_POLL_VOTE_KIND;
   }>;
 }

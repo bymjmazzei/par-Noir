@@ -17,6 +17,8 @@ import {
   ensureOwnerAssignment,
   normalizeLicensingRoot,
   tableSectionFromPayload,
+  POLL_WIDGET_TEMPLATE_ID,
+  structureFromLayers,
   type PenDocManifest,
   type PenDraftManifest,
   type PenHistoryChain,
@@ -29,6 +31,7 @@ import { saveLocalDoc, type LocalDocBundle } from './penLocalStore';
 import { requestNotaryStamp } from './penApi';
 import { resolveSigningKeys } from './penKeys';
 import { scheduleDocCloudBootstrap } from './penSyncFlush';
+import { createPollSheet } from './pollCloud';
 import { mintDocKey } from './penDocCrypto';
 
 function randomDocId(): string {
@@ -189,11 +192,26 @@ export async function createDocFromTemplate(input: {
     sections = rewriteSeedTablePlaceholders(sections, table.manifest.docId);
   }
 
-  return persistBundle({
+  let bundle = await persistBundle({
     session: input.session,
     template,
     docId,
     sections,
     title: input.title
   });
+  if (template.id === POLL_WIDGET_TEMPLATE_ID && bundle.sections[0]) {
+    const structure = structureFromLayers(bundle.sections[0]);
+    const spreadsheetId = await createPollSheet({
+      session: input.session,
+      docId,
+      groupId: docId,
+      structure
+    });
+    bundle = {
+      ...bundle,
+      manifest: { ...bundle.manifest, pollSpreadsheetId: spreadsheetId }
+    };
+    saveLocalDoc(input.session.pnIdentifier, bundle);
+  }
+  return bundle;
 }

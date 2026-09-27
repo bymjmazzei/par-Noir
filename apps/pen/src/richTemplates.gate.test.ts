@@ -65,12 +65,10 @@ describe('rich template preview + create chrome', () => {
     expect(preview?.manifest.pagePresentation?.backgroundColor).toBeTruthy();
   });
 
-  it('poll preview binds embed + interactive stickers to seed table placeholder', () => {
-    const preview = templatePreviewBundle(undefined, 'poll.basic.v1');
+  it('poll widget preview is option buttons, not a seed table', () => {
+    const preview = templatePreviewBundle(undefined, 'widget.poll.v1');
     const layers = preview?.sections[0]?.layers || [];
-    expect(layers.some((l) => l.kind === 'embed')).toBe(true);
-    expect(layers.some((l) => l.kind === 'interactive' && l.behavior === 'poll.vote')).toBe(
-      true
-    );
+    expect(layers.some((l) => l.kind === 'interactive' && l.behavior === 'poll.vote')).toBe(true);
+    expect(JSON.stringify(layers)).not.toContain('__pen_seed_table__');
   });
 });

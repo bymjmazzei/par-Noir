@@ -139,7 +139,8 @@ function BodyWrapObject({
   onCommit,
   docId,
   session,
-  onNaturalAspect
+  onNaturalAspect,
+  onPollVote
 }: {
   layer: PenPageLayer;
   allLayers: PenPageLayer[];
@@ -149,6 +150,7 @@ function BodyWrapObject({
   contentH: number;
   onSelect: () => void;
   onCommit: (geom: LiveGeom & { bodyWrap: 'left' | 'right' }) => void;
+  onPollVote?: (layer: PenPageLayer) => void;
   docId?: string;
   session?: PenSession | null;
   onNaturalAspect?: (aspect: number) => void;
@@ -344,7 +346,7 @@ function BodyWrapObject({
         title={`${layer.behavior || 'interactive'} → ${layer.bindDocId || ''}`}
         onClick={(e) => {
           e.stopPropagation();
-          /* Vote / CTA runtime deferred — sticker chrome only. */
+          if (layer.behavior === 'poll.vote') onPollVote?.(layer);
           onSelect();
         }}
       >
@@ -396,13 +398,15 @@ export function EditablePagePreview({
   onFlowWorkspaceChange,
   onPresentationChange,
   onSnapChange,
-  session
+  session,
+  onPollVote
 }: {
   manifest: PenDocManifest;
   section: PenSectionContent;
   activeLayerId: string | null;
   onSelectLayer: (id: string | null) => void;
   onSectionChange: (next: PenSectionContent) => void;
+  onPollVote?: (layer: PenPageLayer) => void;
   onPageLayoutChange?: (layout: PenPageLayout) => void;
   onFlowWorkspaceChange?: (next: {
     widthPx: number | null;
@@ -850,6 +854,7 @@ export function EditablePagePreview({
         onSelectedIdsChange={setSelectedIds}
         contentWidthPx={box.width}
         session={session}
+        docId={manifest.docId}
       />
 
       <div
@@ -915,6 +920,7 @@ export function EditablePagePreview({
                 contentW={box.width}
                 contentH={box.height}
                 onSelect={() => selectLayer(layer.id)}
+                onPollVote={onPollVote}
                 onCommit={(patch) => onWrapCommit(layer.id, patch)}
                 docId={manifest.docId}
                 session={session}
@@ -995,13 +1001,19 @@ export function EditablePagePreview({
                 }
                 if (layer.kind === 'interactive') {
                   return (
-                    <div
+                    <button
+                      type="button"
                       className="flex h-full w-full items-center justify-center px-3 text-sm font-medium text-white"
                       style={shell}
-                      title={`${layer.behavior || 'interactive'} → ${layer.bindDocId || ''}`}
+                      title={`${layer.behavior || 'interactive'} → ${layer.bindRowId || layer.bindDocId || ''}`}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (layer.behavior === 'poll.vote') onPollVote?.(layer);
+                        selectLayer(layer.id);
+                      }}
                     >
                       {layer.label || 'Action'}
-                    </div>
+                    </button>
                   );
                 }
                 if (layer.backgroundVideo) {

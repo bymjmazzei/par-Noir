@@ -56,8 +56,8 @@ Normalized from the Template Specifications sheet. **Component Level** is produc
 | Image/Video posts | `social.post` — orientation-split ids |
 | Collections / Set | `social.collection` / `social.set` |
 | Quote, Link, Metric, Code, Profile, Audio | `social.quote`, `social.link`, `social.metric`, `social.code`, `social.profile`, `social.audio` |
-| Poll | `social.poll` — embeds `primitives.table` + interactive stickers |
-| Comparison matrix | Consumer compound under `social.poll` or dedicated comparison starter embedding table — **not** TipTap-as-SoT `social.table` |
+| Poll | `widget.poll.v1` only. A page holds it by placing that widget on a Note or Post. |
+| Comparison matrix | Dedicated comparison starter embedding a table — **not** TipTap-as-SoT `social.table` |
 | Interactive frame | `social.frame` — embed layer + stickers; no third-party webview runtime |
 | Feed embed | `community.feed_embed` |
 | Feed config / Landing / Home / Site | existing Community forms |

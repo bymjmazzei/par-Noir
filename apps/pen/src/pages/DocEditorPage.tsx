@@ -35,13 +35,16 @@ import {
   emptySection,
   remapSectionsForAspect,
   normalizeGalleryAspect,
+  structureFromLayers,
+  syncPollLayers,
   type PenDocComment,
   type PenPageLayout,
   type PenDocManifest,
   type PenRole,
   type PenSuggestion,
   type PenTipTapNode,
-  type PenLicensingRoot
+  type PenLicensingRoot,
+  type PenPageLayer
 } from '@par-noir/pen-protocol';
 import type { PenSession } from '../services/penSession';
 import { FormatRibbon, PageCanvas } from '../components/PageCanvas';
@@ -52,6 +55,7 @@ import { ActionLayerPhoneOverlay } from '../components/ActionLayerPhoneOverlay';
 import { ActionBindStrip } from '../components/ActionBindStrip';
 import { IconLayers } from '../components/icons/PenIcons';
 import { MediaEditorPanel } from '../components/MediaEditorPanel';
+import { WidgetEditorPanel } from '../components/WidgetEditorPanel';
 import { LayerPartsMenu } from '../components/LayerPartsMenu';
 import { PublishMenu } from '../components/PublishMenu';
 import { SaveMenu } from '../components/SaveMenu';
@@ -81,6 +85,7 @@ import {
   writeMixedPagesPublishHandoff
 } from '../services/penPublish';
 import { requestNotaryStamp, fetchMonetizationConnectReady } from '../services/penApi';
+import { castPollVote } from '../services/pollCloud';
 import { resolveSigningKeys } from '../services/penKeys';
 import {
   actorCan,
@@ -314,6 +319,28 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
     return null;
   }, [section, activeLayerId]);
 
+  const activeWidget = useMemo(() => {
+    if (!section || !bundle) return null;
+    const layer = isPageLayerId(activeLayerId)
+      ? null
+      : section.layers?.find((item) => item.id === activeLayerId);
+    if (layer?.kind === 'group' && layer.widgetTemplateId) {
+      return {
+        groupId: layer.id,
+        widgetTemplateId: layer.widgetTemplateId,
+        spreadsheetId: layer.spreadsheetId || null
+      };
+    }
+    if (isWidgetDoc && isPageLayerId(activeLayerId)) {
+      return {
+        groupId: null as string | null,
+        widgetTemplateId: bundle.manifest.templateId,
+        spreadsheetId: bundle.manifest.pollSpreadsheetId || null
+      };
+    }
+    return null;
+  }, [section, activeLayerId, bundle, isWidgetDoc]);
+
   const activeWritingDoc = useMemo((): PenTipTapNode | undefined => {
     if (!section) return undefined;
     if (!isPageLayerId(activeLayerId)) {
@@ -537,6 +564,39 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
       /* already registered or offline */
     });
   }, [docId, session]);
+
+  async function voteOnPoll(layer: PenPageLayer) {
+    if (!bundle || !section || layer.behavior !== 'poll.vote' || !layer.bindRowId) return;
+    const group = layer.parentGroupId
+      ? section.layers?.find((item) => item.id === layer.parentGroupId)
+      : undefined;
+    const spreadsheetId = group?.spreadsheetId || bundle.manifest.pollSpreadsheetId;
+    if (!spreadsheetId) {
+      setError('Save the poll before voting.');
+      return;
+    }
+    try {
+      const result = await castPollVote({
+        session,
+        ownerPnIdentifier: session.pnIdentifier,
+        docId: bundle.manifest.docId,
+        spreadsheetId,
+        optionId: layer.bindRowId
+      });
+      const structure = structureFromLayers(section, group?.id || null);
+      const next = syncPollLayers(section, group?.id || null, structure, result.counts);
+      persist({
+        ...bundle,
+        sections: bundle.sections.map((s) => (s.slug === next.slug ? next : s)),
+        manifest: { ...bundle.manifest, updatedAt: new Date().toISOString() }
+      });
+      if (!result.enqueued) {
+        setError('Vote counted. It will reach the sheet after the owner unlocks.');
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'vote_failed');
+    }
+  }
 
   function persist(next: NonNullable<typeof bundle>, opts?: { draft?: boolean }) {
     const stamped = {
@@ -1604,7 +1664,7 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
                   </button>
                 </div>
               </div>
-              {writingEnabled && !activeMediaLayer ? (
+              {writingEnabled && !activeMediaLayer && !activeWidget ? (
                 <FormatRibbon
                   editor={editor}
                   accessToken={session.accessToken}
@@ -1678,6 +1738,50 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
                   <code>{bundle.manifest.publishedFileId}</code>
                 </p>
               )}
+            </div>
+          ) : activeWidget && section && bundle ? (
+            <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+              <WidgetEditorPanel
+                key={`${activeWidget.groupId || 'doc'}:${activeWidget.spreadsheetId || ''}`}
+                section={section}
+                groupId={activeWidget.groupId}
+                widgetTemplateId={activeWidget.widgetTemplateId}
+                spreadsheetId={activeWidget.spreadsheetId}
+                docId={bundle.manifest.docId}
+                session={session}
+                onError={(message) => setError(message)}
+                onSpreadsheetId={(id) => {
+                  if (activeWidget.groupId) {
+                    const next = {
+                      ...section,
+                      layers: (section.layers || []).map((layer) =>
+                        layer.id === activeWidget.groupId ? { ...layer, spreadsheetId: id } : layer
+                      )
+                    };
+                    persist({
+                      ...bundle,
+                      sections: bundle.sections.map((s) => (s.slug === next.slug ? next : s)),
+                      manifest: { ...bundle.manifest, updatedAt: new Date().toISOString() }
+                    });
+                    return;
+                  }
+                  persist({
+                    ...bundle,
+                    manifest: {
+                      ...bundle.manifest,
+                      pollSpreadsheetId: id,
+                      updatedAt: new Date().toISOString()
+                    }
+                  });
+                }}
+                onSectionChange={(next) => {
+                  persist({
+                    ...bundle,
+                    sections: bundle.sections.map((s) => (s.slug === next.slug ? next : s)),
+                    manifest: { ...bundle.manifest, updatedAt: new Date().toISOString() }
+                  });
+                }}
+              />
             </div>
           ) : activeMediaLayer && section ? (
             <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
@@ -1932,6 +2036,7 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
                           galleryAspect={bundle.manifest.galleryAspect}
                           activeLayerId={activeLayerId}
                           session={session}
+                          onPollVote={(layer) => void voteOnPoll(layer)}
                           onSelectLayer={(id) => {
                             setActiveLayerId(id);
                             setSocialSelectedIds([id]);
@@ -1954,6 +2059,7 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
                     selectedIds={socialSelectedIds}
                     onSelectedIdsChange={setSocialSelectedIds}
                     session={session}
+                    docId={bundle.manifest.docId}
                   />
                 )}
               </div>
@@ -2022,6 +2128,7 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
                       manifest: { ...bundle.manifest, updatedAt: new Date().toISOString() }
                     });
                   }}
+                  onPollVote={(layer) => void voteOnPoll(layer)}
                 />
               </div>
             ) : null}

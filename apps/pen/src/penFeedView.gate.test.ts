@@ -44,7 +44,7 @@ describe('buildSocialTemplateRailItems', () => {
 
   it('templateMatchesRailSelection ALL includes every Social form', () => {
     expect(templateMatchesRailSelection('social.quote', 'all')).toBe(true);
-    expect(templateMatchesRailSelection('social.poll', 'all')).toBe(true);
+    expect(templateMatchesRailSelection('widgets.widget', 'all')).toBe(true);
     expect(templateMatchesRailSelection('social.note', 'social.note')).toBe(true);
     expect(templateMatchesRailSelection('social.quote', 'social.note')).toBe(false);
     expect(templateMatchesRailSelection('projects.journal', 'all')).toBe(false);

@@ -152,7 +152,8 @@ export function createGroupFromSelection(
 export function copyWidgetLayersIntoSection(
   host: PenSectionContent,
   sourceLayers: PenPageLayer[],
-  name: string
+  name: string,
+  widgetTemplateId?: string
 ): { section: PenSectionContent; groupId: string } {
   const src = sourceLayers.filter((l) => l.kind !== 'group');
   if (!src.length) throw new Error('widget_has_no_layers');
@@ -174,9 +175,10 @@ export function copyWidgetLayersIntoSection(
     zIndex: maxZ + src.length + 1,
     name: name.trim() || 'Widget'
   });
+  if (widgetTemplateId) group.widgetTemplateId = widgetTemplateId;
   let next = upsertLayer(host, group);
   src.forEach((layer, i) => {
-    const { id: _dropId, parentGroupId: _dropParent, ...rest } = layer;
+    const { id: _dropId, parentGroupId: _dropParent, spreadsheetId: _dropSheet, ...rest } = layer;
     next = upsertLayer(next, {
       ...rest,
       id: newLayerId(),
@@ -529,6 +531,8 @@ export function patchLayerStyle(
       | 'bindDocId'
       | 'bindRowId'
       | 'label'
+      | 'widgetTemplateId'
+      | 'spreadsheetId'
     >
   >
 ): PenSectionContent {

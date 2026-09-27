@@ -44,8 +44,6 @@ function formTitle(classId: string): string {
       return 'Quote';
     case 'social.link':
       return 'Link';
-    case 'social.poll':
-      return 'Poll';
     case 'social.metric':
       return 'Metric';
     case 'social.code':
@@ -152,12 +150,6 @@ function iconFor(classId: string, className: string) {
         <svg {...props}>
           <path d="M10 13a5 5 0 007.07 0l2.12-2.12a5 5 0 00-7.07-7.07L11 5" />
           <path d="M14 11a5 5 0 00-7.07 0L4.81 13.12a5 5 0 007.07 7.07L13 19" />
-        </svg>
-      );
-    case 'social.poll':
-      return (
-        <svg {...props}>
-          <path d="M5 19V9M12 19V5M19 19v-7" />
         </svg>
       );
     case 'social.metric':

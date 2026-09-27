@@ -84,6 +84,10 @@ export interface PenPageLayer {
   bindRowId?: string;
   /** Button / sticker label. */
   label?: string;
+  /** Widget template this group was copied from (e.g. widget.poll.v1). */
+  widgetTemplateId?: string;
+  /** Owner spreadsheet for this poll group. Not copied onto a reusable template. */
+  spreadsheetId?: string;
   /** Fill / effects (text boxes and media frames). */
   backgroundColor?: string;
   backgroundImage?: string;
@@ -215,6 +219,11 @@ export interface PenDocManifest {
   attestations?: import('./knowledge.js').AssetAttestation;
   /** Structured Knowledge body when classId is knowledge.claim. */
   knowledge?: import('./knowledge.js').KnowledgePayload;
+  /**
+   * Owner spreadsheet for a poll widget doc (sheet 1 votes, sheet 2 structure).
+   * Omitted from a reusable template publish so Use mints a new sheet.
+   */
+  pollSpreadsheetId?: string;
   /** Aggregator fileId after the post is published — engagement comments key. */
   publishedFileId?: string;
   /** Second public row: reusable template, after the post exists. */

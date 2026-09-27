@@ -25,7 +25,7 @@ Peer categories after Community hard-cut (registry implement deferred):
 
 | Category | Forms | Job |
 |---|---|---|
-| **Social** | Notes, Posts, Collections, Sets, Quote, Link, Poll, Metric, Code, Profile, Audio, Frame | Atom content for browse tiles (dominance + orientation — see [`PEN_TEMPLATE_SPEC_V0.md`](./PEN_TEMPLATE_SPEC_V0.md)) |
+| **Social** | Notes, Posts, Collections, Sets, Quote, Link, Metric, Code, Profile, Audio, Frame | Atom content for browse tiles (dominance + orientation — see [`PEN_TEMPLATE_SPEC_V0.md`](./PEN_TEMPLATE_SPEC_V0.md)). A poll is `widget.poll.v1` on a Note or Post. |
 | **Community** | Feeds (config), Feed embed, Landing, Community home, Site | Spaces people gather / arrive / browse as a multipage feed |
 | **Projects** | Journal, List, Letter, Note | Active WIP + correspondence |
 | **Library** | Book, Article, Music | Durable works |

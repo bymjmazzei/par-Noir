@@ -1,22 +1,44 @@
-/** Copy a widget's layers into the current section, minting a private table when the seed needs one. */
+/** Copy a widget's layers into the current section. A poll mints its own spreadsheet. */
 
 import {
   copyWidgetLayersIntoSection,
+  patchLayerStyle,
+  POLL_WIDGET_TEMPLATE_ID,
   rewriteSeedTablePlaceholders,
   sectionNeedsSeedTable,
+  structureFromLayers,
   type PenPageLayer,
   type PenSectionContent
 } from '@par-noir/pen-protocol';
 import { createTablePrimitiveDoc } from './createDocFromTemplate';
+import { createPollSheet } from './pollCloud';
 import type { PenSession } from './penSession';
 
 export async function insertWidgetCopy(input: {
   session: PenSession;
+  docId: string;
   host: PenSectionContent;
   layers: PenPageLayer[];
   name: string;
+  templateId?: string;
 }): Promise<{ section: PenSectionContent; groupId: string }> {
-  const copied = copyWidgetLayersIntoSection(input.host, input.layers, input.name);
+  const copied = copyWidgetLayersIntoSection(
+    input.host,
+    input.layers,
+    input.name,
+    input.templateId
+  );
+  if (input.templateId === POLL_WIDGET_TEMPLATE_ID) {
+    const structure = structureFromLayers(copied.section, copied.groupId);
+    const spreadsheetId = await createPollSheet({
+      session: input.session,
+      docId: input.docId,
+      groupId: copied.groupId,
+      structure
+    });
+    const section = patchLayerStyle(copied.section, copied.groupId, { spreadsheetId });
+    return { section, groupId: copied.groupId };
+  }
   if (!sectionNeedsSeedTable([copied.section])) return copied;
   const table = await createTablePrimitiveDoc({
     session: input.session,

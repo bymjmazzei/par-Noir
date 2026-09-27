@@ -30,7 +30,6 @@ import {
   seedNoteMediaPortrait,
   seedNoteTextTileDark,
   seedNoteTextTileLight,
-  seedPoll,
   seedPostCaption,
   seedPostImageAspect,
   seedPostVideoAspect,
@@ -661,25 +660,6 @@ const STARTER: PenTemplate[] = [
         })
       },
       seedLink()
-    ),
-  withSeed(
-      {
-        id: 'poll.basic.v1',
-        classId: 'social.poll',
-        docType: 'poll',
-        version: '1',
-        title: 'Poll',
-        description: 'Survey widget — embeds cloud table + vote stickers',
-        sections: [{ slug: 'prompt', title: 'Prompt', required: true }],
-        publishContentClass: 'note',
-        browseFeatured: true,
-        seedGalleryAspect: '9/16',
-        agentStarter: proseStarter({
-          title: 'Poll',
-          focus: 'Write the poll question. Options live in the bound table primitive.'
-        })
-      },
-      seedPoll()
     ),
   withSeed(
       {
