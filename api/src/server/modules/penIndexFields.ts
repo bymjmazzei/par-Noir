@@ -17,7 +17,8 @@ const PEN_INDEX_KEYS = [
   'musicLicensing',
   'headProof',
   'templateId',
-  'contentClass'
+  'contentClass',
+  'actionOverlays'
 ] as const;
 
 export function penIndexFields(body: unknown): Record<string, unknown> {

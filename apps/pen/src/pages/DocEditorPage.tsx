@@ -98,6 +98,7 @@ import {
 } from '../services/penPublish';
 import { requestNotaryStamp, fetchMonetizationConnectReady } from '../services/penApi';
 import { castPollVote, createPollSheet, putPollStructure } from '../services/pollCloud';
+import { ensureBundleTrackingSheets } from '../services/widgetTracking';
 import { queueWidgetAction } from '../services/widgetAction';
 import { resolveSigningKeys } from '../services/penKeys';
 import {
@@ -1257,7 +1258,13 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
     void (async () => {
       try {
         saveDraft({ silent: true });
-        const b = bundleRef.current || bundle!;
+        const ready = await ensureBundleTrackingSheets({
+          session,
+          bundle: bundleRef.current || bundle!
+        });
+        bundleRef.current = ready;
+        persist(ready);
+        const b = ready;
         const publishOpts = {
           canPublishPublicTemplate: verifiedAuthor,
           connectReady

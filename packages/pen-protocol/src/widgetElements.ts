@@ -487,6 +487,16 @@ export function isSheetTrigger(behavior: string | undefined): behavior is Widget
   return SHEET_TRIGGERS.includes(behavior as WidgetSheetTrigger);
 }
 
+/** Vote, Toggle, Stamp, Rank, and Allocate need a tracking sheet. Open, Submit, and Reveal do not. */
+export function groupNeedsTrackingSheet(
+  section: PenSectionContent,
+  groupId?: string | null
+): boolean {
+  return pollLayers(section, groupId).some(
+    (layer) => layer.behavior === 'poll.vote' || isSheetTrigger(layer.behavior)
+  );
+}
+
 export function submitFields(
   section: PenSectionContent,
   groupId: string | null

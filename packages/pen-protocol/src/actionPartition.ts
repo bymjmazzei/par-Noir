@@ -1,6 +1,7 @@
 /**
  * Partition Pen layers into inert (compose/flatten) vs action (HTML overlay).
- * Votes/CTA write path binds after the feed overlay contract ships.
+ * The overlay stays clickable on the compiled image or video. spreadsheetId
+ * is the tracking sheet in the poster's cloud.
  */
 
 import type { PenPageLayer, PenSectionContent } from './types.js';
@@ -14,6 +15,8 @@ export type ActionOverlaySpec = {
   bindDocId?: string;
   bindRowId?: string;
   label?: string;
+  /** Owner spreadsheet this press writes. Absent on a reusable template. */
+  spreadsheetId?: string;
 };
 
 export type LayerActionPartition = {
@@ -24,6 +27,18 @@ export type LayerActionPartition = {
   /** Feed-tile overlay contract (same rects as IR). */
   overlays: ActionOverlaySpec[];
 };
+
+function trackingSpreadsheetId(
+  layers: PenPageLayer[],
+  layer: PenPageLayer
+): string | undefined {
+  const own = layer.spreadsheetId?.trim();
+  if (own) return own;
+  if (!layer.parentGroupId) return undefined;
+  const group = layers.find((item) => item.id === layer.parentGroupId);
+  const id = group?.spreadsheetId?.trim();
+  return id || undefined;
+}
 
 function isActionLayer(layer: PenPageLayer): boolean {
   if (layer.visible === false) return false;
@@ -43,6 +58,7 @@ export function partitionLayersForCompose(
     if (isActionLayer(layer)) {
       action.push(layer);
       if (layer.kind === 'interactive' && layer.behavior) {
+        const spreadsheetId = trackingSpreadsheetId(layers || [], layer);
         overlays.push({
           layerId: layer.id,
           kind: 'interactive',
@@ -50,7 +66,8 @@ export function partitionLayersForCompose(
           rect: { x: layer.x, y: layer.y, w: layer.w, h: layer.h },
           bindDocId: layer.bindDocId,
           bindRowId: layer.bindRowId,
-          label: layer.label
+          label: layer.label,
+          ...(spreadsheetId ? { spreadsheetId } : {})
         });
       }
     } else {

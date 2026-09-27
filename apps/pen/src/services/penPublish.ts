@@ -19,6 +19,7 @@ import {
   partitionSectionsForPublish,
   mergePagePresentation,
   docToPlainText,
+  collectActionOverlays,
   stripPollSpreadsheet,
   stripPollSpreadsheetFromSection,
   inferPageTextStyle,
@@ -423,6 +424,13 @@ function provenanceFor(
   };
 }
 
+/** Clickable overlay specs for a post. Includes the tracking spreadsheet when the group has one. */
+export function actionOverlaysForPost(
+  sections: LocalDocBundle['sections']
+): ReturnType<typeof collectActionOverlays> {
+  return collectActionOverlays(sections);
+}
+
 /** Publish the compiled post to the owner cloud. No template flag. */
 export async function publishPostToOwnerCloud(params: {
   bundle: LocalDocBundle;
@@ -441,6 +449,8 @@ export async function publishPostToOwnerCloud(params: {
     musicAsset: params.bundle.manifest.classId === 'library.music'
   });
   const base = provenanceFor(params.bundle, licensing, params.feedIds);
+  const actionOverlays = actionOverlaysForPost(params.bundle.sections);
+  const overlayMeta = actionOverlays.length ? { actionOverlays } : {};
 
   if (params.video) {
     const bytes = new Uint8Array(await params.video.videoBlob.arrayBuffer());
@@ -454,6 +464,7 @@ export async function publishPostToOwnerCloud(params: {
       videoContentType: params.video.videoContentType,
       metadata: {
         ...base,
+        ...overlayMeta,
         fileType: 'video',
         contentClass: 'media',
         description: params.video.title
@@ -512,6 +523,7 @@ export async function publishPostToOwnerCloud(params: {
       poster,
       metadata: {
         ...base,
+        ...overlayMeta,
         fileType: 'collection',
         contentClass: 'collection',
         collection: { collectionFileIds: childIds, title: params.mixed.title }
@@ -540,6 +552,7 @@ export async function publishPostToOwnerCloud(params: {
     poster,
     metadata: {
       ...base,
+      ...overlayMeta,
       fileType: compiled.contentClass === 'collection' ? 'collection' : 'note',
       contentClass: compiled.contentClass,
       textPost,

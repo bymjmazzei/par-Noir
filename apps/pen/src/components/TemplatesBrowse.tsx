@@ -6,7 +6,6 @@ import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react
 import {
   categoryIdForClass,
   getClass,
-  getTemplate,
   listStarterTemplates,
   type PenTemplate
 } from '@par-noir/pen-protocol';
@@ -17,8 +16,9 @@ import {
   previewBundleFromTemplate
 } from './TemplateGalleryThumb';
 import { personalTemplatesAsPenTemplates } from '../services/penPersonalTemplates';
-import { createDocFromTemplate } from '../services/createDocFromTemplate';
 import { createDocFromPersonalOrStarter } from '../services/penPublish';
+import { clonePublishedWidget } from '../services/widgetClone';
+import { loadPublishedWidgetSections } from '../services/publishedWidgetIr';
 import { publicWidgetCatalog } from '../services/widgetCatalog';
 import type { PenBrowseDensity } from '../services/penClassPrefs';
 import { incrementTemplateUseCount } from '../services/penClassPrefs';
@@ -89,9 +89,6 @@ export function TemplatesBrowse({
     () => new Map()
   );
   const [publicWidgets, setPublicWidgets] = useState<PenTemplate[]>([]);
-  const [publicWidgetSources, setPublicWidgetSources] = useState<Map<string, string>>(
-    () => new Map()
-  );
 
   const railItems = useMemo(() => buildSocialTemplateRailItems(), []);
 
@@ -102,18 +99,17 @@ export function TemplatesBrowse({
   useEffect(() => {
     let cancelled = false;
     void fetchPublicPenTemplates({ limit: 200 })
-      .then((entries) => {
+      .then(async (entries) => {
+        const sections = await loadPublishedWidgetSections(entries);
         if (cancelled) return;
         setFileIdByTemplateId(buildTemplateFileIdMap(entries));
-        const published = publicWidgetCatalog(entries);
+        const published = publicWidgetCatalog(entries, sections);
         setPublicWidgets(published.templates);
-        setPublicWidgetSources(published.sources);
       })
       .catch(() => {
         if (!cancelled) {
           setFileIdByTemplateId(new Map());
           setPublicWidgets([]);
-          setPublicWidgetSources(new Map());
         }
       });
     return () => {
@@ -194,15 +190,18 @@ export function TemplatesBrowse({
     try {
       let bundle;
       if (templateId.startsWith('pubwidget_')) {
-        const sourceId = publicWidgetSources.get(templateId);
-        if (!sourceId || !getTemplate(sourceId)) {
-          throw new Error('This published widget has no local copy to open');
+        const template = publicWidgets.find((t) => t.id === templateId);
+        const sections = template?.seedSections;
+        if (!template || !sections?.length) {
+          throw new Error('This published widget has no layers to copy');
         }
-        bundle = await createDocFromTemplate({
+        const cloned = await clonePublishedWidget({
           session,
-          templateId: sourceId,
-          title: publicWidgets.find((t) => t.id === templateId)?.title
+          fileId: templateId.slice('pubwidget_'.length),
+          title: template.title,
+          sections
         });
+        bundle = cloned.bundle;
       } else {
         bundle = await createDocFromPersonalOrStarter({
           session,

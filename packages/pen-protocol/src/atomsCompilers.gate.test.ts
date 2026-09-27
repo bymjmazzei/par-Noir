@@ -44,6 +44,31 @@ describe('actionPartition', () => {
     expect(part.inert).toHaveLength(1);
     expect(part.action).toHaveLength(1);
     expect(part.overlays[0]?.behavior).toBe('poll.vote');
+    const linked = partitionLayersForCompose([
+      {
+        id: 'g1',
+        kind: 'group',
+        x: 0,
+        y: 0,
+        w: 120,
+        h: 80,
+        zIndex: 1,
+        spreadsheetId: 'sheet-user'
+      },
+      {
+        id: 'tgl',
+        kind: 'interactive',
+        parentGroupId: 'g1',
+        x: 8,
+        y: 8,
+        w: 64,
+        h: 28,
+        zIndex: 2,
+        behavior: 'widget.toggle',
+        label: 'On'
+      }
+    ]);
+    expect(linked.overlays[0]?.spreadsheetId).toBe('sheet-user');
     expect(collectActionOverlays([{ slug: 'body', doc: { type: 'doc', content: [] }, layers: part.action }])).toHaveLength(
       1
     );

@@ -370,6 +370,14 @@ export interface PublicMetadata {
   basedOnTemplateId?: string;
   /** Public Pen IR blob ref for Use template. */
   penIrRef?: { backend?: string; objectId?: string; publicUrl?: string };
+  /** Clickable widget overlay on a compiled image or video post. */
+  actionOverlays?: Array<{
+    layerId: string;
+    behavior: string;
+    spreadsheetId?: string;
+    rect: { x: number; y: number; w: number; h: number };
+    label?: string;
+  }>;
   /**
    * Snapshot of Pen `manifest.licensing` at publish.
    * Structural mirror of `@par-noir/pen-protocol` PenLicensingRoot — do not import

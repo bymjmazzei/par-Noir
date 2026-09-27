@@ -210,6 +210,19 @@ export function stripPollSpreadsheet<T extends { spreadsheetId?: string; pollSpr
   return next;
 }
 
+/** Layers from a published template file. The author's spreadsheet id is dropped. */
+export function sectionsFromPublishedTemplate(value: unknown): PenSectionContent[] {
+  if (!value || typeof value !== 'object') return [];
+  const sections = (value as { sections?: unknown }).sections;
+  if (!Array.isArray(sections)) return [];
+  return sections
+    .filter((section): section is PenSectionContent => {
+      if (!section || typeof section !== 'object') return false;
+      return typeof (section as PenSectionContent).slug === 'string';
+    })
+    .map((section) => stripPollSpreadsheetFromSection(section));
+}
+
 export function stripPollSpreadsheetFromSection(section: PenSectionContent): PenSectionContent {
   return {
     ...section,

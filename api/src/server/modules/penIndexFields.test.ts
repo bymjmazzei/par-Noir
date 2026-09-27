@@ -11,6 +11,12 @@ describe('penIndexFields', () => {
     expect(fields.feedIds).toEqual(['notes']);
     expect(fields.penDocId).toBe('doc-1');
     expect(fields.penTemplateKind).toBe('template');
+    const overlays = penIndexFields({
+      actionOverlays: [{ layerId: 'b', behavior: 'widget.toggle', spreadsheetId: 'sheet-user' }]
+    });
+    expect(overlays.actionOverlays).toEqual([
+      { layerId: 'b', behavior: 'widget.toggle', spreadsheetId: 'sheet-user' }
+    ]);
   });
 
   it('drops a template kind that is not template or remix', () => {
