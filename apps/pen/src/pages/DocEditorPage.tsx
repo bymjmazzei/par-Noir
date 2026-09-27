@@ -1650,7 +1650,6 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
       </div>
 
       <div className="flex min-h-0 flex-1">
-        {!(isWidgetDoc && section && !showHistory) && (
         <div
           className={`relative flex min-w-0 flex-col ${
             (showPreview || sidePanel) && !showHistory ? 'w-1/2 border-r border-stone-400' : 'flex-1'
@@ -1854,6 +1853,17 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
                 }}
               />
             </div>
+          ) : isWidgetDoc && section ? (
+            <WidgetEditorPanel
+              key={widgetStripLayer?.id || 'widget'}
+              layer={widgetStripLayer}
+              section={section}
+              onSectionChange={commitWidgetSection}
+              onPlaced={(id) => {
+                setActiveLayerId(id);
+                setSocialSelectedIds([id]);
+              }}
+            />
           ) : writingEnabled && canvasSection ? (
             <PageCanvas
               key={`${activeSlug}:${activeLayerId || PAGE_LAYER_ID}:${session.pnIdentifier}:${historyEpoch}`}
@@ -1876,7 +1886,6 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
             </div>
           )}
         </div>
-        )}
 
         {showComments && !showHistory && (
           <div className="flex w-1/2 flex-col bg-white">
@@ -1918,47 +1927,8 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
           </div>
         )}
 
-        {((isWidgetDoc && section) || (showPreview && !sidePanel)) && !showHistory && (
-          <div
-            data-widget-editor={isWidgetDoc ? 'preview' : undefined}
-            className={
-              isWidgetDoc && section
-                ? 'flex min-h-0 min-w-0 flex-1 flex-col'
-                : 'hidden min-w-0 w-1/2 flex-col sm:flex'
-            }
-          >
-            {isWidgetDoc && section && (
-              <div className="flex shrink-0 items-center justify-end gap-1 border-b border-stone-300 bg-stone-50 px-2 py-1">
-                <button
-                  type="button"
-                  title="Undo"
-                  aria-label="Undo"
-                  disabled={!historyUi.canUndo}
-                  onClick={undoEdit}
-                  className="inline-flex items-center px-2 py-0.5 text-neutral-600 hover:text-black disabled:opacity-30"
-                >
-                  <IconUndo />
-                </button>
-                <button
-                  type="button"
-                  title="Redo"
-                  aria-label="Redo"
-                  disabled={!historyUi.canRedo}
-                  onClick={redoEdit}
-                  className="inline-flex items-center px-2 py-0.5 text-neutral-600 hover:text-black disabled:opacity-30"
-                >
-                  <IconRedo />
-                </button>
-              </div>
-            )}
-            {widgetStripLayer && section && (
-              <WidgetEditorPanel
-                key={widgetStripLayer.id}
-                layer={widgetStripLayer}
-                section={section}
-                onSectionChange={commitWidgetSection}
-              />
-            )}
+        {showPreview && !showHistory && !sidePanel && (
+          <div className="hidden min-w-0 w-1/2 flex-col sm:flex">
             {isSocialDoc ? (
               <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">
                 <div className="pen-social-pres-strip">

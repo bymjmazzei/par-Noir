@@ -1,4 +1,4 @@
-/** A widget opens on the preview, and Button is in the toolbar add menu. */
+/** A widget's editor is the side pane. The preview stays the other half. */
 
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
@@ -6,17 +6,31 @@ import { describe, expect, it } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { emptySection, placeWidgetLayer, setButtonTrigger } from '@par-noir/pen-protocol';
 import { PreviewAddMenu } from './PreviewAddMenu';
+import { WidgetEditorPanel } from './WidgetEditorPanel';
 
 const root = resolve(__dirname);
 
 describe('widget preview builder', () => {
-  it('opens a widget on the preview, not the prose canvas', () => {
+  it('puts the widget editor in the side pane beside the preview', () => {
     const page = readFileSync(resolve(root, '../pages/DocEditorPage.tsx'), 'utf8');
-    expect(page).toMatch(/!\(isWidgetDoc && section && !showHistory\)/);
-    expect(page).toMatch(/data-widget-editor=\{isWidgetDoc \? 'preview'/);
-    const editor = page.slice(page.indexOf('data-widget-editor'));
-    expect(editor).toMatch(/<EditablePagePreview/);
-    expect(editor).not.toMatch(/<PageCanvas/);
+    const side = page.slice(page.indexOf('activeMediaLayer && section'));
+    const widget = side.indexOf('<WidgetEditorPanel');
+    const prose = side.indexOf('<PageCanvas');
+    expect(widget).toBeGreaterThan(-1);
+    expect(widget).toBeLessThan(prose);
+    expect(page).toMatch(/showPreview && !showHistory && !sidePanel/);
+    expect(page).not.toMatch(/data-widget-editor=\{isWidgetDoc \? 'preview'/);
+    const html = renderToStaticMarkup(
+      <WidgetEditorPanel
+        layer={null}
+        section={{ ...emptySection('card'), layers: [] }}
+        onSectionChange={() => undefined}
+      />
+    );
+    expect(html).toContain('data-widget-editor="panel"');
+    expect(html).toContain('flex min-h-0 flex-1 flex-col');
+    expect(html).toContain('Button');
+    expect(html).toContain('Text');
   });
 
   it('puts Button in the preview add menu, outside the Layers dialog', () => {
