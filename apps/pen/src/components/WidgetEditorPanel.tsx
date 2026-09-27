@@ -2,9 +2,16 @@
 
 import { useRef } from 'react';
 import {
+  allocateTotal,
   duplicateButton,
+  patchLayerStyle,
   placeWidgetLayer,
+  pollLayers,
+  setAllocateTotal,
   setButtonTrigger,
+  setOpenUrl,
+  setRevealTarget,
+  setSubmitTo,
   setVoteCorrect,
   setWidgetClosesAt,
   setWidgetHtml,
@@ -23,6 +30,10 @@ const ADD: Array<{ element: PenWidgetElement | 'image'; label: string }> = [
   { element: 'html', label: 'HTML snippet' },
   { element: 'svg', label: 'SVG' }
 ];
+
+function hexColor(value: string | undefined, fallback: string): string {
+  return value && /^#[0-9a-fA-F]{6}$/.test(value) ? value : fallback;
+}
 
 const TRIGGERS: Array<{ id: PenInteractiveBehavior; label: string }> = [
   { id: 'poll.vote', label: 'Vote' },
@@ -73,8 +84,98 @@ export function WidgetEditorPanel({
           </button>
         ))}
       </div>
+      {layer && (
+        <div className="flex flex-col gap-3 border-b border-stone-200 px-3 py-3 text-sm">
+          <label className="flex items-center justify-between gap-2">
+            <span className="text-[11px] font-semibold uppercase tracking-wide text-stone-500">Fill</span>
+            <input
+              aria-label="Fill color"
+              type="color"
+              className="h-7 w-10 border border-stone-300"
+              value={hexColor(layer.backgroundColor, '#0f766e')}
+              onChange={(event) =>
+                onSectionChange(patchLayerStyle(section, layer.id, { backgroundColor: event.target.value }))
+              }
+            />
+          </label>
+          <label className="flex items-center justify-between gap-2">
+            <span className="text-[11px] font-semibold uppercase tracking-wide text-stone-500">Text</span>
+            <input
+              aria-label="Text color"
+              type="color"
+              className="h-7 w-10 border border-stone-300"
+              value={hexColor(layer.textColor, '#ffffff')}
+              onChange={(event) =>
+                onSectionChange(patchLayerStyle(section, layer.id, { textColor: event.target.value }))
+              }
+            />
+          </label>
+          <label className="flex flex-col gap-1">
+            <span className="text-[11px] font-semibold uppercase tracking-wide text-stone-500">
+              Opacity {layer.opacity ?? 100}
+            </span>
+            <input
+              aria-label="Opacity"
+              type="range"
+              min={0}
+              max={100}
+              value={layer.opacity ?? 100}
+              onChange={(event) =>
+                onSectionChange(
+                  patchLayerStyle(section, layer.id, { opacity: Number(event.target.value) })
+                )
+              }
+            />
+          </label>
+          <label className="flex items-center justify-between gap-2">
+            <span className="text-[11px] font-semibold uppercase tracking-wide text-stone-500">Stroke</span>
+            <input
+              aria-label="Stroke color"
+              type="color"
+              className="h-7 w-10 border border-stone-300"
+              value={hexColor(layer.strokeColor, '#000000')}
+              onChange={(event) =>
+                onSectionChange(
+                  patchLayerStyle(section, layer.id, {
+                    strokeColor: event.target.value,
+                    strokeWidth: layer.strokeWidth || 1
+                  })
+                )
+              }
+            />
+          </label>
+          <input
+            aria-label="Stroke width"
+            type="range"
+            min={0}
+            max={24}
+            value={layer.strokeWidth ?? 0}
+            onChange={(event) =>
+              onSectionChange(
+                patchLayerStyle(section, layer.id, { strokeWidth: Number(event.target.value) || undefined })
+              )
+            }
+          />
+        </div>
+      )}
       {layer?.kind === 'interactive' && (
         <div className="flex flex-col gap-3 border-b border-stone-200 px-3 py-3 text-sm">
+          <label className="flex flex-col gap-1">
+            <span className="text-[11px] font-semibold uppercase tracking-wide text-stone-500">Label</span>
+            <input
+              aria-label="Button label"
+              className="border border-stone-300 px-2 py-1"
+              value={layer.label || ''}
+              onChange={(event) =>
+                onSectionChange(
+                  patchLayerStyle(section, layer.id, {
+                    label: event.target.value,
+                    name: event.target.value || layer.name
+                  })
+                )
+              }
+            />
+          </label>
           <span className="text-[11px] font-semibold uppercase tracking-wide text-stone-500">
             Button trigger
           </span>
@@ -107,6 +208,75 @@ export function WidgetEditorPanel({
                 }
               />
               Correct answer
+            </label>
+          )}
+          {layer.behavior === 'cta.open' && (
+            <label className="flex flex-col gap-1">
+              <span className="text-[11px] font-semibold uppercase tracking-wide text-stone-500">Link</span>
+              <input
+                aria-label="Link"
+                className="border border-stone-300 px-2 py-1"
+                value={layer.openUrl || ''}
+                placeholder="https://"
+                onChange={(event) => onSectionChange(setOpenUrl(section, layer.id, event.target.value))}
+              />
+            </label>
+          )}
+          {layer.behavior === 'widget.submit' && (
+            <label className="flex flex-col gap-1">
+              <span className="text-[11px] font-semibold uppercase tracking-wide text-stone-500">
+                Send to
+              </span>
+              <input
+                aria-label="Submit destination"
+                className="border border-stone-300 px-2 py-1"
+                value={layer.submitTo || ''}
+                placeholder="email or pn"
+                onChange={(event) => onSectionChange(setSubmitTo(section, layer.id, event.target.value))}
+              />
+            </label>
+          )}
+          {layer.behavior === 'widget.allocate' && (
+            <label className="flex flex-col gap-1">
+              <span className="text-[11px] font-semibold uppercase tracking-wide text-stone-500">
+                Allocate amount
+              </span>
+              <input
+                aria-label="Allocate amount"
+                type="number"
+                min={1}
+                className="border border-stone-300 px-2 py-1"
+                value={allocateTotal(section, layer.parentGroupId || null)}
+                onChange={(event) =>
+                  onSectionChange(
+                    setAllocateTotal(section, layer.parentGroupId || null, Number(event.target.value) || 100)
+                  )
+                }
+              />
+            </label>
+          )}
+          {layer.behavior === 'widget.reveal' && (
+            <label className="flex flex-col gap-1">
+              <span className="text-[11px] font-semibold uppercase tracking-wide text-stone-500">
+                Reveal target
+              </span>
+              <select
+                aria-label="Reveal target"
+                className="border border-stone-300 bg-white px-2 py-1"
+                value={layer.revealLayerId || ''}
+                onChange={(event) =>
+                  onSectionChange(setRevealTarget(section, layer.id, event.target.value || null))
+                }
+              >
+                <option value="">Choose a layer</option>
+                {pollLayers(section, layer.parentGroupId || null)
+                  .filter((item) => item.id !== layer.id)
+                  .map((item) => (
+                    <option key={item.id} value={item.id}>
+                      {item.label || item.name || item.id}
+                    </option>
+                  ))}
+              </select>
             </label>
           )}
           <button

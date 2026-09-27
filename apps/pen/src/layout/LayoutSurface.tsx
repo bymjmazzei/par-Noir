@@ -6,10 +6,10 @@ import {
   type PointerEvent as ReactPointerEvent,
   type ReactNode
 } from 'react';
-import { snapLayoutToPageCenter, resizeSeKeepAspect, fitAspectInBox } from '@par-noir/pen-protocol';
+import { snapLayoutToPageCenter, resizeSeKeepAspect, fitAspectInBox, cornerRadiusFromPull } from '@par-noir/pen-protocol';
 import { clampLayoutItem, sortByZ, type LayoutBounds, type LayoutItem } from './types';
 
-type DragMode = 'move' | 'resize';
+type DragMode = 'move' | 'resize' | 'round';
 
 interface DragState {
   id: string;
@@ -191,6 +191,16 @@ export function LayoutSurface({
         );
       }
       setPreview(nextPreview);
+    } else if (drag.mode === 'round') {
+      setGuides({ v: false, h: false });
+      const cornerRadius = cornerRadiusFromPull(
+        drag.orig.cornerRadius || 0,
+        dx,
+        dy,
+        drag.orig.w,
+        drag.orig.h
+      );
+      setPreview({ [drag.id]: { ...drag.orig, cornerRadius } });
     } else {
       setGuides({ v: false, h: false });
       let next: LayoutItem;
@@ -277,7 +287,8 @@ export function LayoutSurface({
               top: item.y,
               width: item.w,
               height: item.h,
-              zIndex: item.zIndex
+              zIndex: item.zIndex,
+              borderRadius: item.cornerRadius ? `${item.cornerRadius}px` : undefined
             }}
             onPointerDown={(e) => onPointerDownMove(e, item)}
             onClick={(e) => {
@@ -289,6 +300,32 @@ export function LayoutSurface({
               <div
                 className="absolute bottom-0 right-0 z-20 h-3.5 w-3.5 cursor-se-resize bg-sky-500"
                 onPointerDown={(e) => onPointerDownResize(e, item)}
+              />
+            )}
+            {!disabled && !item.positionLocked && selected && item.roundable && (
+              <div
+                aria-label="Round corners"
+                className="absolute z-20 h-2.5 w-2.5 cursor-nwse-resize rounded-full bg-sky-500"
+                style={{
+                  left: Math.min(item.cornerRadius || 0, item.w / 2),
+                  top: Math.min(item.cornerRadius || 0, item.h / 2)
+                }}
+                onPointerDown={(e) => {
+                  if (disabled || item.positionLocked) return;
+                  e.stopPropagation();
+                  pendingMove.current = null;
+                  (e.target as HTMLElement).setPointerCapture?.(e.pointerId);
+                  onSelect?.(item.id);
+                  setDrag({
+                    id: item.id,
+                    mode: 'round',
+                    startX: e.clientX,
+                    startY: e.clientY,
+                    orig: { ...item },
+                    linkedOrig: {}
+                  });
+                  setPreview({ [item.id]: { ...item } });
+                }}
               />
             )}
           </div>

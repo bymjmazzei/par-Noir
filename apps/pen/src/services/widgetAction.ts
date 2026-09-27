@@ -10,6 +10,7 @@ import type { PenSession } from './penSession';
 export async function queueWidgetAction(input: {
   session: PenSession;
   docId: string;
+  spreadsheetId: string;
   row: WidgetActionRow;
 }): Promise<void> {
   const seal = sealSessionFromPen(input.session);
@@ -47,9 +48,12 @@ export async function queueWidgetAction(input: {
       trigger: input.row.trigger,
       actionId: input.row.actionId,
       actorId: input.row.actorId,
+      spreadsheetId: input.spreadsheetId,
       createdAt: input.row.createdAt,
       fields: input.row.fields,
       present: input.row.present,
+      headers: input.row.headers,
+      cells: input.row.cells,
       order: input.row.order,
       split: input.row.split
     },

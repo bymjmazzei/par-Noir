@@ -97,7 +97,9 @@ function layerToItem(layer: PenPageLayer): LayoutItem {
     w: layer.w,
     h: layer.h,
     zIndex: layer.zIndex,
-    positionLocked: layer.positionLocked
+    positionLocked: layer.positionLocked,
+    cornerRadius: layer.cornerRadius,
+    roundable: layer.kind === 'interactive'
   };
 }
 
@@ -348,7 +350,8 @@ function BodyWrapObject({
     inner = (
       <button
         type="button"
-        className="flex h-full w-full items-center justify-center px-3 text-sm font-medium text-white"
+        className="flex h-full w-full items-center justify-center px-3 text-sm font-medium"
+        style={{ color: layer.textColor || '#ffffff' }}
         title={`${layer.behavior || 'interactive'} → ${layer.bindDocId || ''}`}
         onClick={(e) => {
           e.stopPropagation();
@@ -409,7 +412,9 @@ export function EditablePagePreview({
   onPollVote,
   onWidgetAction,
   votedOptionByGroup,
-  hideActionBind
+  hideActionBind,
+  hideObjectTools,
+  buttonCaptionById
 }: {
   manifest: PenDocManifest;
   section: PenSectionContent;
@@ -421,6 +426,8 @@ export function EditablePagePreview({
   votedOptionByGroup?: Record<string, string>;
   /** Widget trigger lives in the side pane. Do not repeat it on this toolbar. */
   hideActionBind?: boolean;
+  hideObjectTools?: boolean;
+  buttonCaptionById?: Record<string, string>;
   onPageLayoutChange?: (layout: PenPageLayout) => void;
   onFlowWorkspaceChange?: (next: {
     widthPx: number | null;
@@ -837,6 +844,7 @@ export function EditablePagePreview({
             onPresentationChange={onPresentationChange}
             onSectionChange={onSectionChange}
             hideActionBind={hideActionBind}
+            hideObjectTools={hideObjectTools}
           />
           <button
             ref={layersBtnRef}
@@ -1056,12 +1064,12 @@ export function EditablePagePreview({
                           votedOptionByGroup?.[groupKey] || null,
                           counts
                         ).text
-                      : layer.label || 'Button';
+                      : buttonCaptionById?.[layer.id] || layer.label || 'Button';
                   return (
                     <button
                       type="button"
-                      className="pointer-events-auto flex h-full w-full items-center justify-center px-3 text-sm font-medium text-white"
-                      style={shell}
+                      className="pointer-events-auto flex h-full w-full items-center justify-center px-3 text-sm font-medium"
+                      style={{ ...shell, color: layer.textColor || '#ffffff' }}
                       title={layer.behavior || 'button'}
                       onClick={(e) => {
                         e.stopPropagation();

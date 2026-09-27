@@ -18,7 +18,7 @@ import { hashIdentifier, safeLogger } from '../../utils/logger';
 import { google } from 'googleapis';
 import { Readable } from 'stream';
 import { verifyPromoteLink, type PenPromoteLink, type PollStructure } from '@par-noir/pen-protocol';
-import { appendPollVote, createPollSpreadsheet, writePollStructure } from './pollSheetDrive';
+import { appendPollVote, createPollSpreadsheet, writePollStructure, writeWidgetActionTab } from './pollSheetDrive';
 import { upsertPollStructureCache } from './pollVoteCache';
 import { setupPollVoteRoutes } from './pollVoteRoutes';
 
@@ -475,10 +475,23 @@ export function setupPenRoutes(
       if (jobType === 'pen.widget_action') {
         const trigger = String(req.body?.trigger || '');
         const actionId = String(req.body?.actionId || '').trim();
-        const allowed = ['widget.submit', 'widget.toggle', 'widget.stamp', 'widget.rank', 'widget.allocate'];
-        if (!allowed.includes(trigger) || !actionId) {
+        const spreadsheetId = String(req.body?.spreadsheetId || '').trim();
+        const allowed = ['widget.toggle', 'widget.stamp', 'widget.rank', 'widget.allocate'];
+        if (!allowed.includes(trigger) || !actionId || !spreadsheetId) {
           return res.status(400).json({ error: 'widget_action_required' });
         }
+        const headers = Array.isArray(req.body?.headers) ? req.body.headers.map((cell: unknown) => String(cell ?? '')) : [];
+        const cells = Array.isArray(req.body?.cells) ? req.body.cells.map((cell: unknown) => String(cell ?? '')) : [];
+        await writeWidgetActionTab({
+          auth,
+          spreadsheetId,
+          trigger: trigger as 'widget.toggle' | 'widget.stamp' | 'widget.rank' | 'widget.allocate',
+          user: String(req.body?.actorId || pnIdentifier),
+          createdAt: String(req.body?.createdAt || new Date().toISOString()),
+          present: req.body?.present !== false,
+          headers,
+          cells
+        });
         safeLogger.info('[pen/apply-inbound] widget_action ok', {
           pn: hashIdentifier(pnIdentifier),
           doc: hashIdentifier(docId)
@@ -525,11 +538,10 @@ export function setupPenRoutes(
         const spreadsheetId = String(req.body?.spreadsheetId || '').trim();
         const voteId = String(req.body?.voteId || '').trim();
         const optionId = String(req.body?.optionId || '').trim();
-        const createdAt = String(req.body?.createdAt || new Date().toISOString());
         if (!spreadsheetId || !voteId || !optionId) {
           return res.status(400).json({ error: 'vote_fields_required' });
         }
-        const appended = await appendPollVote(auth, spreadsheetId, { voteId, optionId, createdAt });
+        const appended = await appendPollVote(auth, spreadsheetId, { user: pnIdentifier, optionId });
         if (appended.closed) return res.status(409).json({ error: 'poll_closed' });
         safeLogger.info('[pen/apply-inbound] poll_vote ok', {
           pn: hashIdentifier(pnIdentifier),

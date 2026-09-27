@@ -53,5 +53,41 @@ describe('widget trigger panel', () => {
       <WidgetEditorPanel layer={vote} section={section} onSectionChange={() => undefined} />
     );
     expect(html).toContain('Correct answer');
+    expect(html).toContain('Fill color');
+  });
+
+  it('shows the fields each trigger needs', () => {
+    const link = renderToStaticMarkup(
+      <WidgetEditorPanel
+        layer={{ ...button, behavior: 'cta.open', openUrl: 'https://example.com' }}
+        section={section}
+        onSectionChange={() => undefined}
+      />
+    );
+    expect(link).toContain('Link');
+    const send = renderToStaticMarkup(
+      <WidgetEditorPanel
+        layer={{ ...button, behavior: 'widget.submit', submitTo: 'a@b.co' }}
+        section={section}
+        onSectionChange={() => undefined}
+      />
+    );
+    expect(send).toContain('Submit destination');
+    const piles = renderToStaticMarkup(
+      <WidgetEditorPanel
+        layer={{ ...button, behavior: 'widget.allocate' }}
+        section={section}
+        onSectionChange={() => undefined}
+      />
+    );
+    expect(piles).toContain('Allocate amount');
+    const reveal = renderToStaticMarkup(
+      <WidgetEditorPanel
+        layer={{ ...button, behavior: 'widget.reveal' }}
+        section={section}
+        onSectionChange={() => undefined}
+      />
+    );
+    expect(reveal).toContain('Reveal target');
   });
 });

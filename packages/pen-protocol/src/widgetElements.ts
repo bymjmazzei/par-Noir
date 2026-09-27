@@ -11,6 +11,7 @@ import {
   pollIsClosed,
   pollLayers,
   structureFromLayers,
+  upsertUserRow,
   type PollCounts
 } from './pollSheet.js';
 import { socialPresentation, type SeedBundle } from './starterSeeds.js';
@@ -26,15 +27,16 @@ export const WIDGET_TEMPLATE_ID = 'widget.v1';
 
 export const DEFAULT_WIDGET_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 80" preserveAspectRatio="none"><rect width="120" height="80" rx="8" fill="#101418"/></svg>`;
 
-const SHEET_TRIGGERS = [
-  'widget.submit',
-  'widget.toggle',
-  'widget.stamp',
-  'widget.rank',
-  'widget.allocate'
-] as const;
+const SHEET_TRIGGERS = ['widget.toggle', 'widget.stamp', 'widget.rank', 'widget.allocate'] as const;
 
 export type WidgetSheetTrigger = (typeof SHEET_TRIGGERS)[number];
+
+export const WIDGET_TAB: Record<WidgetSheetTrigger, 'Toggle' | 'Stamp' | 'Rank' | 'Allocate'> = {
+  'widget.toggle': 'Toggle',
+  'widget.stamp': 'Stamp',
+  'widget.rank': 'Rank',
+  'widget.allocate': 'Allocate'
+};
 
 export type WidgetActionRow = {
   actionId: string;
@@ -43,6 +45,10 @@ export type WidgetActionRow = {
   createdAt: string;
   fields?: Record<string, string>;
   present?: boolean;
+  /** Column labels after `user`. */
+  headers?: string[];
+  /** Cells aligned with headers. */
+  cells?: string[];
   order?: string[];
   split?: Record<string, number>;
 };
@@ -123,7 +129,8 @@ export function placeWidgetLayer(
       label: 'Button',
       w: 120,
       h: 40,
-      backgroundColor: 'rgba(15,118,110,0.85)'
+      backgroundColor: 'rgba(15,118,110,0.85)',
+      textColor: '#ffffff'
     };
   } else if (element === 'text') {
     layer = {
@@ -203,11 +210,35 @@ export function setButtonTrigger(
   next.behavior = behavior;
   if (behavior === 'poll.vote') {
     next.bindRowId = layer.bindRowId || layer.id;
+    delete next.openUrl;
+    delete next.submitTo;
+    delete next.revealLayerId;
   } else {
     delete next.bindRowId;
     delete next.correct;
+    if (behavior !== 'cta.open') delete next.openUrl;
+    if (behavior !== 'widget.submit') delete next.submitTo;
+    if (behavior !== 'widget.reveal') delete next.revealLayerId;
   }
   return upsertLayer(section, next);
+}
+
+export function setOpenUrl(section: PenSectionContent, layerId: string, url: string): PenSectionContent {
+  return patchButton(section, layerId, { openUrl: url });
+}
+
+export function setSubmitTo(section: PenSectionContent, layerId: string, to: string): PenSectionContent {
+  return patchButton(section, layerId, { submitTo: to });
+}
+
+function patchButton(
+  section: PenSectionContent,
+  layerId: string,
+  patch: Partial<PenPageLayer>
+): PenSectionContent {
+  const layer = (section.layers || []).find((item) => item.id === layerId);
+  if (!layer || layer.kind !== 'interactive') return section;
+  return upsertLayer(section, { ...layer, ...patch });
 }
 
 /** One correct option in the group. Clearing it returns the result to a tally. */
@@ -308,17 +339,148 @@ export function voteFaceForLayer(
   });
 }
 
+export function setRevealTarget(
+  section: PenSectionContent,
+  buttonId: string,
+  targetId: string | null
+): PenSectionContent {
+  const button = (section.layers || []).find((item) => item.id === buttonId);
+  if (!button) return section;
+  let next = upsertLayer(section, {
+    ...button,
+    revealLayerId: targetId || undefined
+  });
+  if (!targetId) return next;
+  const target = (next.layers || []).find((item) => item.id === targetId);
+  if (!target) return next;
+  return upsertLayer(next, { ...target, visible: false });
+}
+
+/** Show the layer the author picked. A press does not write a sheet row. */
 export function revealSibling(section: PenSectionContent, layerId: string): PenSectionContent {
   const layer = (section.layers || []).find((item) => item.id === layerId);
-  if (!layer) return section;
-  const hidden = (section.layers || []).find(
-    (item) =>
-      item.id !== layer.id &&
-      item.visible === false &&
-      (item.parentGroupId || null) === (layer.parentGroupId || null)
+  const targetId = layer?.revealLayerId;
+  if (!targetId) return section;
+  const target = (section.layers || []).find((item) => item.id === targetId);
+  if (!target) return section;
+  return upsertLayer(section, { ...target, visible: true });
+}
+
+export function cornerRadiusFromPull(
+  current: number,
+  dx: number,
+  dy: number,
+  w: number,
+  h: number
+): number {
+  const max = Math.floor(Math.min(Math.max(0, w), Math.max(0, h)) / 2);
+  const pull = Math.max(dx, dy);
+  return Math.max(0, Math.min(max, Math.round((current || 0) + pull)));
+}
+
+function buttonsWith(
+  section: PenSectionContent,
+  groupId: string | null,
+  behavior: PenInteractiveBehavior
+): PenPageLayer[] {
+  return pollLayers(section, groupId).filter((layer) => layer.behavior === behavior);
+}
+
+export function setAllocateTotal(
+  section: PenSectionContent,
+  groupId: string | null,
+  amount: number
+): PenSectionContent {
+  const total = Math.max(1, Math.round(amount));
+  let next = section;
+  for (const layer of buttonsWith(section, groupId, 'widget.allocate')) {
+    next = upsertLayer(next, { ...layer, allocateTotal: total });
+  }
+  return next;
+}
+
+export function allocateTotal(section: PenSectionContent, groupId: string | null): number {
+  const button = buttonsWith(section, groupId, 'widget.allocate').find(
+    (layer) => typeof layer.allocateTotal === 'number'
   );
-  if (!hidden) return section;
-  return upsertLayer(section, { ...hidden, visible: true });
+  return button?.allocateTotal || 100;
+}
+
+/** First press is rank 1. Pressing a ranked button starts that person's order over. */
+export function nextRankPress(ranks: Record<string, number>, buttonId: string): Record<string, number> {
+  if (ranks[buttonId]) return { [buttonId]: 1 };
+  const next = Object.keys(ranks).length + 1;
+  return { ...ranks, [buttonId]: next };
+}
+
+export function nextAllocatePress(
+  amounts: Record<string, number>,
+  buttonId: string,
+  total: number
+): { amounts: Record<string, number>; remaining: number; complete: boolean } {
+  const spent = Object.values(amounts).reduce((sum, value) => sum + value, 0);
+  if (spent >= total) return { amounts, remaining: 0, complete: true };
+  const next = { ...amounts, [buttonId]: (amounts[buttonId] || 0) + 1 };
+  const remaining = total - spent - 1;
+  return { amounts: next, remaining, complete: remaining <= 0 };
+}
+
+export function rankColumnKeys(section: PenSectionContent, groupId: string | null): string[] {
+  return buttonsWith(section, groupId, 'widget.rank').map((layer) => layer.label || layer.name || layer.id);
+}
+
+export function allocateColumnKeys(section: PenSectionContent, groupId: string | null): string[] {
+  return buttonsWith(section, groupId, 'widget.allocate').map(
+    (layer) => layer.label || layer.name || layer.id
+  );
+}
+
+export function cellsForRanks(
+  section: PenSectionContent,
+  groupId: string | null,
+  ranks: Record<string, number>
+): string[] {
+  return buttonsWith(section, groupId, 'widget.rank').map((layer) =>
+    ranks[layer.id] ? String(ranks[layer.id]) : ''
+  );
+}
+
+export function cellsForAmounts(
+  section: PenSectionContent,
+  groupId: string | null,
+  amounts: Record<string, number>
+): string[] {
+  return buttonsWith(section, groupId, 'widget.allocate').map((layer) =>
+    String(amounts[layer.id] || 0)
+  );
+}
+
+export function applyWidgetSheetRows(input: {
+  trigger: WidgetSheetTrigger;
+  user: string;
+  createdAt: string;
+  present?: boolean;
+  headers: string[];
+  cells?: string[];
+  existing: string[][];
+}): { tab: 'Toggle' | 'Stamp' | 'Rank' | 'Allocate'; headers: string[]; rows: string[][] } {
+  const tab = WIDGET_TAB[input.trigger];
+  if (input.trigger === 'widget.toggle') {
+    const headers = ['user', 'on'];
+    const kept = input.existing.filter((row) => String(row[0] ?? '') !== input.user);
+    const rows = input.present === false ? kept : [...kept, [input.user, '1']];
+    return { tab, headers, rows };
+  }
+  if (input.trigger === 'widget.stamp') {
+    return {
+      tab,
+      headers: ['user', 'stamped_at'],
+      rows: [...input.existing, [input.user, input.createdAt]]
+    };
+  }
+  const headers = ['user', ...input.headers];
+  const row = [input.user, ...(input.cells || [])];
+  return { tab, headers, rows: upsertUserRow(input.existing, row) };
 }
 
 export function isSheetTrigger(behavior: string | undefined): behavior is WidgetSheetTrigger {
@@ -345,6 +507,8 @@ export function buildWidgetActionRow(input: {
   createdAt?: string;
   fields?: Record<string, string>;
   present?: boolean;
+  headers?: string[];
+  cells?: string[];
   order?: string[];
   split?: Record<string, number>;
 }): { kind: typeof PEN_WIDGET_ACTION_KIND; row: WidgetActionRow } {
@@ -356,6 +520,8 @@ export function buildWidgetActionRow(input: {
   };
   if (input.fields) row.fields = input.fields;
   if (input.present != null) row.present = input.present;
+  if (input.headers) row.headers = input.headers;
+  if (input.cells) row.cells = input.cells;
   if (input.order) row.order = input.order;
   if (input.split) row.split = input.split;
   return { kind: PEN_WIDGET_ACTION_KIND, row };
@@ -386,26 +552,3 @@ export function applyToggle(
   ];
 }
 
-export function rankOrder(section: PenSectionContent, groupId: string | null): string[] {
-  return pollLayers(section, groupId)
-    .filter((layer) => layer.behavior === 'widget.rank')
-    .slice()
-    .sort((a, b) => a.y - b.y || a.x - b.x)
-    .map((layer) => layer.id);
-}
-
-export function allocateSplit(
-  section: PenSectionContent,
-  groupId: string | null,
-  amount = 100
-): Record<string, number> {
-  const buttons = pollLayers(section, groupId).filter((layer) => layer.behavior === 'widget.allocate');
-  if (!buttons.length) return {};
-  const each = Math.floor(amount / buttons.length);
-  const split: Record<string, number> = {};
-  buttons.forEach((layer, index) => {
-    const remainder = index === buttons.length - 1 ? amount - each * (buttons.length - 1) : each;
-    split[layer.id] = remainder;
-  });
-  return split;
-}

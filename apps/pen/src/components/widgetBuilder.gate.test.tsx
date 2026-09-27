@@ -31,6 +31,9 @@ describe('widget preview builder', () => {
     expect(html).toContain('Button');
     expect(html).toContain('Text');
     expect(page).toMatch(/hideActionBind=\{isWidgetDoc\}/);
+    expect(page).toMatch(/hideObjectTools=\{isWidgetDoc\}/);
+    const collab = readFileSync(resolve(root, '../services/penCollab.ts'), 'utf8');
+    expect(collab).toMatch(/openEnvelope/);
   });
 
   it('keeps widget add and trigger controls off the preview toolbar', () => {

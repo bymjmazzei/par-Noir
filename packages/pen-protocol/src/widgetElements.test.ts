@@ -5,17 +5,26 @@ import { emptySection } from './richDoc.js';
 import { PEN_POLL_VOTE_KIND } from './outbox.js';
 import { requireTemplate } from './templates.js';
 import { structureFromLayers } from './pollSheet.js';
+import { upsertUserRow, voteDataHeaders, voteMatrixRow } from './pollSheet.js';
 import {
-  allocateSplit,
-  applyToggle,
+  allocateTotal,
+  applyWidgetSheetRows,
   buildWidgetActionRow,
+  cellsForAmounts,
+  cellsForRanks,
+  cornerRadiusFromPull,
   duplicateButton,
+  nextAllocatePress,
+  nextRankPress,
   placeWidgetLayer,
-  rankOrder,
   revealSibling,
   sanitizeWidgetMarkup,
   seedWidget,
+  setAllocateTotal,
   setButtonTrigger,
+  setOpenUrl,
+  setRevealTarget,
+  setSubmitTo,
   setVoteCorrect,
   setWidgetClosesAt,
   voteFace
@@ -150,61 +159,138 @@ describe('widget placement and triggers', () => {
     expect(tally).toEqual({ kind: 'tally', text: 'Yes 2' });
   });
 
-  it('submit, toggle, and stamp are widget actions, and rank and allocate store their row', () => {
-    const submit = buildWidgetActionRow({
-      trigger: 'widget.submit',
-      actorId: 'pn_a',
-      actionId: 'a1',
-      fields: { Text: 'hello' }
+  it('each trigger writes its own sheet shape', () => {
+    const headers = voteDataHeaders([{ label: 'Yes' }, { label: 'No' }]);
+    expect(headers).toEqual(['user', 'Yes', 'No']);
+    const row = voteMatrixRow({
+      user: 'pn_a',
+      options: [
+        { id: 'yes', label: 'Yes' },
+        { id: 'no', label: 'No' }
+      ],
+      optionId: 'yes'
     });
-    const stamp = buildWidgetActionRow({
-      trigger: 'widget.stamp',
-      actorId: 'pn_a',
-      actionId: 'a2',
-      createdAt: '2026-01-01T00:00:00.000Z'
+    const again = voteMatrixRow({
+      user: 'pn_a',
+      options: [
+        { id: 'yes', label: 'Yes' },
+        { id: 'no', label: 'No' }
+      ],
+      optionId: 'no'
     });
-    expect(submit.kind).toBe('pen.widget_action');
-    expect(stamp.kind).toBe('pen.widget_action');
-    expect(submit.kind).not.toBe(PEN_POLL_VOTE_KIND);
-    expect(stamp.row.trigger).toBe('widget.stamp');
-    expect(stamp.row.actorId).toBe('pn_a');
-
-    const once = applyToggle([], 'pn_a', 't1', '2026-01-01T00:00:00.000Z');
-    expect(once).toHaveLength(1);
-    expect(once[0]?.present).toBe(true);
-    expect(applyToggle(once, 'pn_a', 't2', '2026-01-01T00:01:00.000Z')).toEqual([]);
+    expect(upsertUserRow([row], again)).toEqual([again]);
 
     let section = emptySection('card');
-    const low = button({ id: 'b', x: 10, y: 40, behavior: 'widget.rank' });
-    const high = button({ id: 'a', x: 10, y: 8, behavior: 'widget.rank' });
-    section = { ...section, layers: [low, high] };
-    const order = rankOrder(section, null);
-    const ranked = buildWidgetActionRow({
-      trigger: 'widget.rank',
-      actorId: 'pn_a',
-      actionId: 'r1',
-      order
-    });
-    expect(ranked.row.order).toEqual(['a', 'b']);
+    const open = placeWidgetLayer(section, null, 'button');
+    section = setButtonTrigger(open.section, open.layerId, 'cta.open');
+    section = setOpenUrl(section, open.layerId, 'https://example.com');
+    expect(section.layers?.find((layer) => layer.id === open.layerId)?.openUrl).toBe('https://example.com');
 
-    const left = button({ id: 'l', x: 0, y: 0, behavior: 'widget.allocate' });
-    const right = button({ id: 'r', x: 40, y: 0, behavior: 'widget.allocate' });
-    const split = allocateSplit({ ...emptySection('card'), layers: [left, right] }, null, 100);
-    const allocated = buildWidgetActionRow({
-      trigger: 'widget.allocate',
-      actorId: 'pn_a',
-      actionId: 's1',
-      split
+    const submit = placeWidgetLayer(section, null, 'button');
+    section = setButtonTrigger(submit.section, submit.layerId, 'widget.submit');
+    section = setSubmitTo(section, submit.layerId, 'a@b.co');
+    expect(section.layers?.find((layer) => layer.id === submit.layerId)?.submitTo).toBe('a@b.co');
+
+    const toggled = applyWidgetSheetRows({
+      trigger: 'widget.toggle',
+      user: 'pn_a',
+      createdAt: '2026-01-01T00:00:00.000Z',
+      present: true,
+      headers: [],
+      existing: []
     });
-    expect(allocated.row.split).toEqual({ l: 50, r: 50 });
-    expect(allocated.kind).not.toBe(PEN_POLL_VOTE_KIND);
+    expect(toggled.tab).toBe('Toggle');
+    expect(toggled.rows).toEqual([['pn_a', '1']]);
+    expect(
+      applyWidgetSheetRows({
+        trigger: 'widget.toggle',
+        user: 'pn_a',
+        createdAt: '2026-01-01T00:00:00.000Z',
+        present: false,
+        headers: [],
+        existing: toggled.rows
+      }).rows
+    ).toEqual([]);
+
+    const stamped = applyWidgetSheetRows({
+      trigger: 'widget.stamp',
+      user: 'pn_a',
+      createdAt: '2026-01-01T00:00:00.000Z',
+      headers: [],
+      existing: []
+    });
+    expect(stamped.headers).toEqual(['user', 'stamped_at']);
+    expect(stamped.rows).toHaveLength(1);
+    expect(
+      applyWidgetSheetRows({
+        trigger: 'widget.stamp',
+        user: 'pn_a',
+        createdAt: '2026-01-02T00:00:00.000Z',
+        headers: [],
+        existing: stamped.rows
+      }).rows
+    ).toHaveLength(2);
+
+    const low = button({ id: 'b', x: 10, y: 40, behavior: 'widget.rank', label: 'B' });
+    const high = button({ id: 'a', x: 10, y: 8, behavior: 'widget.rank', label: 'A' });
+    section = { ...emptySection('card'), layers: [low, high] };
+    const ranks = nextRankPress(nextRankPress({}, 'b'), 'a');
+    expect(ranks).toEqual({ b: 1, a: 2 });
+    expect(nextRankPress(ranks, 'b')).toEqual({ b: 1 });
+    const ranked = applyWidgetSheetRows({
+      trigger: 'widget.rank',
+      user: 'pn_a',
+      createdAt: '2026-01-01T00:00:00.000Z',
+      headers: ['B', 'A'],
+      cells: cellsForRanks(section, null, ranks),
+      existing: []
+    });
+    expect(ranked.headers).toEqual(['user', 'B', 'A']);
+    expect(ranked.rows).toEqual([['pn_a', '1', '2']]);
+
+    const left = button({ id: 'l', x: 0, y: 0, behavior: 'widget.allocate', label: 'Left' });
+    const right = button({ id: 'r', x: 40, y: 0, behavior: 'widget.allocate', label: 'Right' });
+    section = setAllocateTotal({ ...emptySection('card'), layers: [left, right] }, null, 3);
+    expect(allocateTotal(section, null)).toBe(3);
+    let amounts: Record<string, number> = {};
+    let remaining = 3;
+    let complete = false;
+    for (const id of ['l', 'l', 'r']) {
+      const step = nextAllocatePress(amounts, id, 3);
+      amounts = step.amounts;
+      remaining = step.remaining;
+      complete = step.complete;
+    }
+    expect(remaining).toBe(0);
+    expect(complete).toBe(true);
+    expect(amounts).toEqual({ l: 2, r: 1 });
+    const allocated = applyWidgetSheetRows({
+      trigger: 'widget.allocate',
+      user: 'pn_a',
+      createdAt: '2026-01-01T00:00:00.000Z',
+      headers: ['Left', 'Right'],
+      cells: cellsForAmounts(section, null, amounts),
+      existing: []
+    });
+    expect(allocated.tab).toBe('Allocate');
+    expect(allocated.rows).toEqual([['pn_a', '2', '1']]);
+    expect(buildWidgetActionRow({
+      trigger: 'widget.stamp',
+      actorId: 'pn_a',
+      actionId: 'a2'
+    }).kind).not.toBe(PEN_POLL_VOTE_KIND);
+    expect(cornerRadiusFromPull(0, 12, 4, 120, 40)).toBe(12);
+    expect(cornerRadiusFromPull(12, -20, -20, 120, 40)).toBe(0);
+    expect(cornerRadiusFromPull(0, 80, 80, 120, 40)).toBe(20);
   });
 
-  it('reveal shows a hidden sibling and does not write a poll vote', () => {
+  it('reveal shows the layer the author picked', () => {
     const host = emptySection('card');
     const shown = button({ id: 'go', x: 0, y: 0, behavior: 'widget.reveal' });
-    const hidden = button({ id: 'secret', x: 0, y: 40, visible: false });
-    const next = revealSibling({ ...host, layers: [shown, hidden] }, 'go');
+    const hidden = button({ id: 'secret', x: 0, y: 40, visible: true });
+    const picked = setRevealTarget({ ...host, layers: [shown, hidden] }, 'go', 'secret');
+    expect(picked.layers?.find((layer) => layer.id === 'secret')?.visible).toBe(false);
+    const next = revealSibling(picked, 'go');
     expect(next.layers?.find((layer) => layer.id === 'secret')?.visible).toBe(true);
   });
 

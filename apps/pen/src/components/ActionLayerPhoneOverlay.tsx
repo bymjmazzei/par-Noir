@@ -73,7 +73,8 @@ export function ActionLayerPhoneOverlay({
               height: `${(layer.h / box.h) * 100}%`,
               zIndex: layer.zIndex,
               backgroundColor: layer.backgroundColor || (text ? 'transparent' : 'rgba(37,99,235,0.85)'),
-              color: text ? '#141414' : '#fff'
+              color: layer.textColor || (text ? '#141414' : '#fff'),
+              borderRadius: layer.cornerRadius ? `${layer.cornerRadius}px` : undefined
             }}
             title={label || layer.name || 'Layer'}
             onClick={(e) => {

@@ -10,7 +10,60 @@ import type { PenPageLayer, PenSectionContent, PenTipTapNode } from './types.js'
 export const POLL_WIDGET_TEMPLATE_ID = 'widget.v1';
 export const POLL_DATA_SHEET = 'Data';
 export const POLL_STRUCTURE_SHEET = 'Structure';
-export const POLL_DATA_HEADERS = ['vote_id', 'option_id', 'created_at'] as const;
+export const POLL_DATA_HEADERS = ['user'] as const;
+
+/** Data columns: the person, then one column per option label. */
+export function voteDataHeaders(options: Array<{ label: string }>): string[] {
+  return ['user', ...options.map((option) => option.label || 'Option')];
+}
+
+export function voteMatrixRow(input: {
+  user: string;
+  options: Array<{ id: string; label: string }>;
+  optionId: string;
+}): string[] {
+  return [
+    input.user,
+    ...input.options.map((option) => (option.id === input.optionId ? '1' : ''))
+  ];
+}
+
+/** One row per person. A second vote from the same person replaces their row. */
+export function upsertUserRow(rows: string[][], row: string[]): string[][] {
+  const user = row[0] || '';
+  const index = rows.findIndex((existing) => String(existing[0] ?? '') === user);
+  if (index < 0) return [...rows, row];
+  const next = rows.slice();
+  next[index] = row;
+  return next;
+}
+
+export function remapVoteRows(oldHeaders: string[], rows: string[][], newHeaders: string[]): string[][] {
+  return rows.map((row) =>
+    newHeaders.map((header) => {
+      const index = oldHeaders.indexOf(header);
+      return index >= 0 ? String(row[index] ?? '') : '';
+    })
+  );
+}
+
+export function countsFromVoteMatrix(
+  options: Array<{ id: string; label: string }>,
+  rows: Array<Array<string | number | boolean | null>>
+): PollCounts {
+  const byOption: Record<string, number> = {};
+  let total = 0;
+  for (const row of rows) {
+    let voted = false;
+    options.forEach((option, index) => {
+      if (String(row[index + 1] ?? '').trim() !== '1') return;
+      byOption[option.id] = (byOption[option.id] || 0) + 1;
+      voted = true;
+    });
+    if (voted) total += 1;
+  }
+  return { total, byOption };
+}
 export const POLL_STRUCTURE_HEADERS = ['field', 'id', 'value'] as const;
 
 export interface PollOption {

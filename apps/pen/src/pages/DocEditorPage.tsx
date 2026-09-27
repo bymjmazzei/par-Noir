@@ -35,10 +35,16 @@ import {
   emptySection,
   remapSectionsForAspect,
   normalizeGalleryAspect,
-  allocateSplit,
+  allocateColumnKeys,
+  allocateTotal,
   buildWidgetActionRow,
+  cellsForAmounts,
+  cellsForRanks,
   isSheetTrigger,
-  rankOrder,
+  nextAllocatePress,
+  nextRankPress,
+  rankColumnKeys,
+  revealSibling,
   sectionHasVoteButton,
   structureFromLayers,
   submitFields,
@@ -203,6 +209,9 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
   const [error, setError] = useState<string | null>(null);
   const [votedOptionByGroup, setVotedOptionByGroup] = useState<Record<string, string>>({});
   const [toggledKeys, setToggledKeys] = useState<Set<string>>(() => new Set());
+  const [stampAt, setStampAt] = useState<Record<string, string>>({});
+  const [rankByGroup, setRankByGroup] = useState<Record<string, Record<string, number>>>({});
+  const [amountByGroup, setAmountByGroup] = useState<Record<string, Record<string, number>>>({});
   const widgetSheetTimer = useRef<number | null>(null);
   const [editor, setEditor] = useState<Editor | null>(null);
   const [activeLayerId, setActiveLayerId] = useState<string | null>(PAGE_LAYER_ID);
@@ -329,15 +338,33 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
     return null;
   }, [section, activeLayerId]);
 
+  const buttonCaptionById = useMemo(() => {
+    const map: Record<string, string> = {};
+    if (!section) return map;
+    for (const layer of section.layers || []) {
+      const groupKey = layer.parentGroupId || 'doc';
+      if (layer.behavior === 'widget.toggle') {
+        const key = `${groupKey}:${session.pnIdentifier}`;
+        if (toggledKeys.has(key)) map[layer.id] = `${layer.label || 'Button'} On`;
+      } else if (layer.behavior === 'widget.stamp' && stampAt[layer.id]) {
+        map[layer.id] = new Date(stampAt[layer.id]).toLocaleString();
+      } else if (layer.behavior === 'widget.rank') {
+        const rank = rankByGroup[groupKey]?.[layer.id];
+        if (rank) map[layer.id] = String(rank);
+      } else if (layer.behavior === 'widget.allocate') {
+        const amounts = amountByGroup[groupKey] || {};
+        const spent = Object.values(amounts).reduce((sum, value) => sum + value, 0);
+        const left = Math.max(0, allocateTotal(section, layer.parentGroupId || null) - spent);
+        const amount = amounts[layer.id] || 0;
+        if (amount || spent) map[layer.id] = `${amount} · ${left} left`;
+      }
+    }
+    return map;
+  }, [section, session.pnIdentifier, toggledKeys, stampAt, rankByGroup, amountByGroup]);
+
   const widgetStripLayer = useMemo(() => {
     if (!section || isPageLayerId(activeLayerId)) return null;
-    const layer = section.layers?.find((item) => item.id === activeLayerId);
-    if (!layer) return null;
-    if (layer.kind === 'interactive') return layer;
-    if (layer.widgetElement === 'time' || layer.widgetElement === 'html' || layer.widgetElement === 'svg') {
-      return layer;
-    }
-    return null;
+    return section.layers?.find((item) => item.id === activeLayerId) || null;
   }, [section, activeLayerId]);
 
   const activeWritingDoc = useMemo((): PenTipTapNode | undefined => {
@@ -650,17 +677,47 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
   }
 
   async function runWidgetAction(layer: PenPageLayer) {
-    if (!bundle || !section || !layer.behavior || !isSheetTrigger(layer.behavior)) return;
+    if (!bundle || !section || !layer.behavior) return;
     const groupId = layer.parentGroupId || null;
+    const groupKey = groupId || 'doc';
+    if (layer.behavior === 'cta.open') {
+      const url = (layer.openUrl || '').trim();
+      if (url) window.open(url, '_blank', 'noopener,noreferrer');
+      return;
+    }
+    if (layer.behavior === 'widget.reveal') {
+      persistSection(revealSibling(section, layer.id));
+      return;
+    }
+    if (layer.behavior === 'widget.submit') {
+      const fields = submitFields(section, groupId);
+      const body = Object.entries(fields)
+        .map(([key, value]) => `${key}: ${value}`)
+        .join('\n');
+      const to = (layer.submitTo || '').trim();
+      if (to.includes('@')) {
+        window.location.assign(
+          `mailto:${encodeURIComponent(to)}?subject=${encodeURIComponent(layer.label || 'Widget')}&body=${encodeURIComponent(body)}`
+        );
+      } else {
+        openMessagingWithCorrespondence({
+          title: layer.label || 'Widget',
+          body,
+          docId: bundle.manifest.docId
+        });
+      }
+      return;
+    }
+    if (!isSheetTrigger(layer.behavior)) return;
     const actorId = session.pnIdentifier;
     const actionId = crypto.randomUUID();
     const trigger = layer.behavior;
-    const fields = trigger === 'widget.submit' ? submitFields(section, groupId) : undefined;
-    const order = trigger === 'widget.rank' ? rankOrder(section, groupId) : undefined;
-    const split = trigger === 'widget.allocate' ? allocateSplit(section, groupId) : undefined;
     let present: boolean | undefined;
+    let headers: string[] | undefined;
+    let cells: string[] | undefined;
+    let createdAt: string | undefined;
     if (trigger === 'widget.toggle') {
-      const key = `${groupId || 'doc'}:${actorId}`;
+      const key = `${groupKey}:${actorId}`;
       present = !toggledKeys.has(key);
       setToggledKeys((prev) => {
         const next = new Set(prev);
@@ -668,25 +725,86 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
         else next.delete(key);
         return next;
       });
+    } else if (trigger === 'widget.stamp') {
+      createdAt = new Date().toISOString();
+      setStampAt((prev) => ({ ...prev, [layer.id]: createdAt! }));
+    } else if (trigger === 'widget.rank') {
+      const next = nextRankPress(rankByGroup[groupKey] || {}, layer.id);
+      setRankByGroup((prev) => ({ ...prev, [groupKey]: next }));
+      headers = rankColumnKeys(section, groupId);
+      cells = cellsForRanks(section, groupId, next);
+    } else if (trigger === 'widget.allocate') {
+      const step = nextAllocatePress(amountByGroup[groupKey] || {}, layer.id, allocateTotal(section, groupId));
+      setAmountByGroup((prev) => ({ ...prev, [groupKey]: step.amounts }));
+      if (!step.complete) return;
+      headers = allocateColumnKeys(section, groupId);
+      cells = cellsForAmounts(section, groupId, step.amounts);
     }
     const built = buildWidgetActionRow({
       trigger,
       actorId,
       actionId,
-      fields,
-      order,
-      split,
-      present
+      createdAt,
+      present,
+      headers,
+      cells
     });
     try {
-      await queueWidgetAction({ session, docId: bundle.manifest.docId, row: built.row });
+      const spreadsheetId = await ensureWidgetSpreadsheet(section, groupId);
+      await queueWidgetAction({
+        session,
+        docId: bundle.manifest.docId,
+        spreadsheetId,
+        row: built.row
+      });
     } catch (e) {
       setError(e instanceof Error ? e.message : 'widget_action_failed');
     }
   }
 
+  function sectionNeedsSheet(next: NonNullable<typeof section>): boolean {
+    return (next.layers || []).some(
+      (layer) => layer.behavior === 'poll.vote' || isSheetTrigger(layer.behavior)
+    );
+  }
+
+  async function ensureWidgetSpreadsheet(
+    source: NonNullable<typeof section>,
+    groupId: string | null
+  ): Promise<string> {
+    if (!bundle) throw new Error('poll_save_failed');
+    const group = groupId ? (source.layers || []).find((layer) => layer.id === groupId) : null;
+    const existing = (group?.spreadsheetId || (!groupId ? bundle.manifest.pollSpreadsheetId : '') || '').trim();
+    if (existing) return existing;
+    const created = await createPollSheet({
+      session,
+      docId: bundle.manifest.docId,
+      groupId: groupId || bundle.manifest.docId,
+      structure: structureFromLayers(source, groupId)
+    });
+    if (groupId) {
+      persistSection({
+        ...source,
+        layers: (source.layers || []).map((layer) =>
+          layer.id === groupId ? { ...layer, spreadsheetId: created } : layer
+        )
+      });
+    } else {
+      persist({
+        ...bundle,
+        sections: bundle.sections.map((item) => (item.slug === source.slug ? source : item)),
+        manifest: {
+          ...bundle.manifest,
+          pollSpreadsheetId: created,
+          updatedAt: new Date().toISOString()
+        }
+      });
+    }
+    return created;
+  }
+
   async function pushWidgetSheet(next: NonNullable<typeof section>) {
-    if (!bundle || !sectionHasVoteButton(next)) return;
+    if (!bundle || !sectionNeedsSheet(next)) return;
     const docId = bundle.manifest.docId;
     let section = next;
     const groups = (section.layers || []).filter(
@@ -700,39 +818,12 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
       const structure = structureFromLayers(section, target.groupId);
       if (!structure.options.length) continue;
       try {
-        let spreadsheetId = target.spreadsheetId || '';
-        if (!spreadsheetId) {
-          const created = await createPollSheet({
-            session,
-            docId,
-            groupId: target.groupId || docId,
-            structure
-          });
-          spreadsheetId = created;
-          if (target.groupId) {
-            const groupId = target.groupId;
-            section = {
-              ...section,
-              layers: (section.layers || []).map((layer) =>
-                layer.id === groupId ? { ...layer, spreadsheetId: created } : layer
-              )
-            };
-            persistSection(section);
-          } else {
-            persist({
-              ...bundle,
-              sections: bundle.sections.map((item) => (item.slug === section.slug ? section : item)),
-              manifest: {
-                ...bundle.manifest,
-                pollSpreadsheetId: created,
-                updatedAt: new Date().toISOString()
-              }
-            });
-          }
+        const spreadsheetId = target.spreadsheetId || (await ensureWidgetSpreadsheet(section, target.groupId));
+        if (structure.options.length) {
+          await putPollStructure({ session, docId, spreadsheetId, structure });
         }
-        await putPollStructure({ session, docId, spreadsheetId, structure });
-      } catch (e) {
-        setError(e instanceof Error ? e.message : 'poll_save_failed');
+      } catch {
+        setError('poll_save_failed');
       }
     }
   }
@@ -2137,6 +2228,8 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
                   section={section}
                   activeLayerId={activeLayerId}
                   hideActionBind={isWidgetDoc}
+                  hideObjectTools={isWidgetDoc}
+                  buttonCaptionById={buttonCaptionById}
                   session={session}
                   onSelectLayer={(id) => {
                     setActiveLayerId(id || PAGE_LAYER_ID);

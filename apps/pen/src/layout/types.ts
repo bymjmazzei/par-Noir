@@ -8,6 +8,10 @@ export interface LayoutItem {
   h: number;
   zIndex: number;
   positionLocked?: boolean;
+  /** CSS px. Set by the top-left corner dot on a button. */
+  cornerRadius?: number;
+  /** Button layers show the corner-radius dot. */
+  roundable?: boolean;
 }
 
 export type LayoutBounds = { width: number; height: number };

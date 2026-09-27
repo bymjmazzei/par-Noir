@@ -100,6 +100,18 @@ export interface PenPageLayer {
   label?: string;
   /** Vote option marked correct. Pass/fail is vote plus this flag. */
   correct?: boolean;
+  /** Open trigger destination. */
+  openUrl?: string;
+  /** Submit trigger destination: an email address or a pn. */
+  submitTo?: string;
+  /** Layer id shown by a Reveal button. */
+  revealLayerId?: string;
+  /** Fixed amount shared by Allocate buttons in the group. Default 100. */
+  allocateTotal?: number;
+  /** Corner radius in CSS px. A button drag from the top-left sets this. */
+  cornerRadius?: number;
+  /** Label color. Fill stays backgroundColor. */
+  textColor?: string;
   /** Widget template this group was copied from (e.g. widget.v1). */
   widgetTemplateId?: string;
   /** Role of a placed layer. SVG is one layer, not the box around the group. */

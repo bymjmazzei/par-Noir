@@ -96,9 +96,7 @@ export function createApiSocialApplier(opts: ApiSocialApplierOptions) {
       | undefined;
     if (envelope && typeof envelope === 'object' && envelope.kemCiphertext) {
       if (!opts.openEnvelope) {
-        throw new Error(
-          `cannot open sealed ${job.jobType}: no ML-KEM secret available in this session`
-        );
+        return false;
       }
       // The sealer picks the context and sends it alongside; requestId is a
       // fallback for jobs whose id the client can reproduce.

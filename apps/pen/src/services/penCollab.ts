@@ -41,6 +41,7 @@ import {
 import {
   generateChatKey,
   wrapChatKeyForOwner,
+  openSocialEnvelope,
   sealSocialEnvelope
 } from '@par-noir/dm-crypto';
 import { API_ENDPOINT } from '../config/api';
@@ -373,7 +374,9 @@ export async function drainPenMailbox(session: PenSession): Promise<number> {
     const apply = createApiSocialApplier({
       apiBaseUrl: API_ENDPOINT,
       authToken: session.accessToken,
-      identityId: session.pnIdentifier
+      identityId: session.pnIdentifier,
+      openEnvelope: async (envelope, contextId) =>
+        openSocialEnvelope<Record<string, unknown>>(envelope, session.mlKemSecretKey!, contextId)
     });
 
     let routeKey = mailboxRouteByPn.get(session.pnIdentifier);
@@ -405,18 +408,23 @@ export async function drainPenMailbox(session: PenSession): Promise<number> {
     let applied = 0;
     for (const job of data.jobs || []) {
       if (!String(job.jobType || '').startsWith('pen.')) continue;
-      const ok = await apply({
-        id: job.id,
-        jobType: job.jobType,
-        payload: {
-          ...job.payload,
-          userPnIdentifier: session.pnIdentifier,
-          docId: job.payload.docId
-        },
-        routeKey,
-        createdAt: new Date().toISOString(),
-        expiresAt: new Date(Date.now() + 86400000).toISOString()
-      });
+      let ok = false;
+      try {
+        ok = await apply({
+          id: job.id,
+          jobType: job.jobType,
+          payload: {
+            ...job.payload,
+            userPnIdentifier: session.pnIdentifier,
+            docId: job.payload.docId
+          },
+          routeKey,
+          createdAt: new Date().toISOString(),
+          expiresAt: new Date(Date.now() + 86400000).toISOString()
+        });
+      } catch {
+        ok = false;
+      }
       if (ok) {
         applied += 1;
         await ownerFetch(

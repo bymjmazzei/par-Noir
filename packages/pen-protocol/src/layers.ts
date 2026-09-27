@@ -545,6 +545,12 @@ export function patchLayerStyle(
       | 'bindRowId'
       | 'label'
       | 'correct'
+      | 'openUrl'
+      | 'submitTo'
+      | 'revealLayerId'
+      | 'allocateTotal'
+      | 'cornerRadius'
+      | 'textColor'
       | 'widgetTemplateId'
       | 'spreadsheetId'
     >
@@ -758,13 +764,23 @@ export function reorderLayer(
 
 export function updateLayerLayout(
   section: PenSectionContent,
-  layouts: Array<{ id: string; x: number; y: number; w: number; h: number; zIndex: number }>
+  layouts: Array<{
+    id: string;
+    x: number;
+    y: number;
+    w: number;
+    h: number;
+    zIndex: number;
+    cornerRadius?: number;
+  }>
 ): PenSectionContent {
   const byId = new Map(layouts.map((l) => [l.id, l]));
   const layers = (section.layers || []).map((layer) => {
     const hit = byId.get(layer.id);
     if (!hit) return layer;
-    return { ...layer, x: hit.x, y: hit.y, w: hit.w, h: hit.h, zIndex: hit.zIndex };
+    const next = { ...layer, x: hit.x, y: hit.y, w: hit.w, h: hit.h, zIndex: hit.zIndex };
+    if (hit.cornerRadius != null) next.cornerRadius = hit.cornerRadius;
+    return next;
   });
   return { ...section, layers };
 }

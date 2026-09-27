@@ -45,4 +45,42 @@ describe('createApiSocialApplier message_append', () => {
 
     vi.unstubAllGlobals();
   });
+
+  it('opens a sealed pen.poll_vote and leaves it when no opener is available', async () => {
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({ ok: true }), { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+    const job: MailboxJob = {
+      id: 'job-vote',
+      routeKey: 'a'.repeat(64),
+      jobType: 'pen.poll_vote',
+      createdAt: new Date().toISOString(),
+      expiresAt: new Date(Date.now() + 86_400_000).toISOString(),
+      payload: {
+        envelope: { kemCiphertext: 'kem', ciphertext: 'ct' },
+        envelopeContext: 'vote-1'
+      }
+    };
+    const sealed = createApiSocialApplier({
+      apiBaseUrl: 'https://api.example.test',
+      authToken: 'oauth-at',
+      identityId: 'pn-owner',
+      getCloudAccessToken: async () => 'cloud-at'
+    });
+    await expect(sealed(job)).resolves.toBe(false);
+    expect(fetchMock).not.toHaveBeenCalled();
+
+    const opened = createApiSocialApplier({
+      apiBaseUrl: 'https://api.example.test',
+      authToken: 'oauth-at',
+      identityId: 'pn-owner',
+      getCloudAccessToken: async () => 'cloud-at',
+      openEnvelope: async () => ({ optionId: 'yes', spreadsheetId: 'sheet-1', voteId: 'v1' })
+    });
+    await expect(opened(job)).resolves.toBe(true);
+    const body = JSON.parse(String((fetchMock.mock.calls[0]![1] as RequestInit).body));
+    expect(body.jobType).toBe('pen.poll_vote');
+    expect(body.optionId).toBe('yes');
+    expect(body.spreadsheetId).toBe('sheet-1');
+    vi.unstubAllGlobals();
+  });
 });

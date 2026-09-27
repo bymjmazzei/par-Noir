@@ -140,7 +140,8 @@ export function LayerObjectToolbar({
   contentHeightPx = 976,
   onPresentationChange,
   onSectionChange,
-  hideActionBind
+  hideActionBind,
+  hideObjectTools
 }: {
   target: ObjectToolTarget;
   presentation: PenPagePresentation;
@@ -154,6 +155,8 @@ export function LayerObjectToolbar({
   onPresentationChange?: (next: Partial<PenPagePresentation>) => void;
   onSectionChange: (next: PenSectionContent) => void;
   hideActionBind?: boolean;
+  /** Widget color and stroke live in the side pane. */
+  hideObjectTools?: boolean;
 }) {
   const [open, setOpen] = useState<OpenTool>(null);
   const [cloudOpen, setCloudOpen] = useState(false);
@@ -256,6 +259,8 @@ export function LayerObjectToolbar({
           onSectionChange={onSectionChange}
         />
       )}
+      {!hideObjectTools && (
+        <>
       <ToolButton title="Background" active={open === 'bg'} onClick={() => toggle('bg')}>
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden>
           <rect x="3" y="3" width="18" height="18" rx="2" stroke="currentColor" strokeWidth="2" />
@@ -299,6 +304,11 @@ export function LayerObjectToolbar({
               />
             </svg>
           </ToolButton>
+        </>
+      )}
+        </>
+      )}
+      {!isPage && !isGroup && (
           <button
             type="button"
             title="Wrap with Body — Body text flows around this object"
@@ -321,7 +331,6 @@ export function LayerObjectToolbar({
           >
             Wrap
           </button>
-        </>
       )}
 
       <Popover open={open === 'bg'} onClose={() => setOpen(null)}>
@@ -695,6 +704,8 @@ export function layerPreviewStyle(layer: PenPageLayer): CSSProperties {
     style.backgroundColor = layer.backgroundColor || 'transparent';
     return style;
   }
+  if (layer.cornerRadius) style.borderRadius = `${layer.cornerRadius}px`;
+  if (layer.textColor) style.color = layer.textColor;
   if (layer.backgroundGradient) {
     style.backgroundImage = layer.backgroundGradient;
   } else if (layer.backgroundImage && !isPenMediaSrcRef(layer.backgroundImage)) {
