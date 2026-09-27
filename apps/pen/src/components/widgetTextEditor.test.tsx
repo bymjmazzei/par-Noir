@@ -27,6 +27,8 @@ describe('widget text editor', () => {
     const html = panel('button');
     expect(html.indexOf('>Label<')).toBeGreaterThan(-1);
     expect(html.indexOf('data-widget-text-editor')).toBeLessThan(html.indexOf('Button trigger'));
+    const beforeEditor = html.slice(0, html.indexOf('data-widget-text-editor'));
+    expect(beforeEditor).not.toContain('<label');
   });
 
   it('leaves an HTML snippet as code', () => {

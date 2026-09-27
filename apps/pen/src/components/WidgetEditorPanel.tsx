@@ -159,7 +159,7 @@ export function WidgetEditorPanel({
       </div>
       {layer?.kind === 'interactive' && (
         <div className="flex flex-col gap-3 border-b border-stone-200 px-3 py-3 text-sm">
-          <label className="flex flex-col gap-1">
+          <div className="flex flex-col gap-1">
             <span className="text-[11px] font-semibold uppercase tracking-wide text-stone-500">Label</span>
             <WidgetTextEditor
               layer={layer}
@@ -170,7 +170,7 @@ export function WidgetEditorPanel({
               excludeDocId={excludeDocId}
               pageLayout={pageLayout}
             />
-          </label>
+          </div>
           <span className="text-[11px] font-semibold uppercase tracking-wide text-stone-500">
             Button trigger
           </span>
