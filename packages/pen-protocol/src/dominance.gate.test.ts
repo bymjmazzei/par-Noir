@@ -69,7 +69,7 @@ describe('template dominance + orientations', () => {
   it('ships frame form; the poll is a widget; community feed embed starter retired', () => {
     expect(() => requireTemplate('feed.embed.v1')).toThrow(/unknown_pen_template/);
     expect(() => requireTemplate('poll.basic.v1')).toThrow(/unknown_pen_template/);
-    expect(requireTemplate('widget.poll.v1').classId).toBe('widgets.widget');
+    expect(requireTemplate('widget.v1').classId).toBe('widgets.widget');
     expect(getClass('social.poll')).toBeUndefined();
     expect(requireTemplate('frame.basic.v1').classId).toBe('social.frame');
     expect(requireTemplate('table.basic.v1').classId).toBe('primitives.table');

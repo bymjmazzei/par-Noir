@@ -127,6 +127,7 @@ export function SocialFeedPhonePreview({
       session={session}
       hideEngagementRail
       aspectRatio={feedAspect}
+      showWidgets={!actionOverlay}
     />
   );
   const showActions = Boolean(actionOverlay) && density !== 'thumb';

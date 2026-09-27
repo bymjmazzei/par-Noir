@@ -197,28 +197,22 @@ describe('classes + templates', () => {
     expect(listConsumerCategories().some((c) => c.id === 'records')).toBe(false);
   });
 
-  it('widget.poll.v1 is a transparent flow card with more than one option row', () => {
-    const poll = requireTemplate('widget.poll.v1');
-    expect(poll.classId).toBe('widgets.widget');
-    expect(poll.seedPageLayout).toBe('flow');
-    expect(poll.seedPagePresentation?.backgroundColor).toBe('transparent');
-    const layers = poll.seedSections?.[0]?.layers || [];
-    expect(layers.filter((l) => l.kind === 'interactive').length).toBeGreaterThan(1);
+  it('widget.v1 is one SVG box, a question line, and one answer button', () => {
+    const widget = requireTemplate('widget.v1');
+    expect(widget.classId).toBe('widgets.widget');
+    expect(widget.seedPageLayout).toBe('flow');
+    expect(widget.seedPagePresentation?.backgroundColor).toBe('transparent');
+    const layers = widget.seedSections?.[0]?.layers || [];
+    expect(layers.some((l) => l.widgetElement === 'svg' && l.svgSrc)).toBe(true);
+    expect(layers.filter((l) => l.widgetElement === 'button').length).toBe(1);
+    expect(layers.some((l) => l.widgetElement === 'text')).toBe(true);
     expect(JSON.stringify(layers)).not.toContain('__pen_seed_table__');
-    expect(layers.some((l) => l.name === 'Results' && l.kind === 'text')).toBe(true);
-    const time = requireTemplate('widget.time.v1');
-    const timeText = JSON.stringify(time.seedSections);
-    expect(timeText).toContain('startAt:');
-    expect(timeText).toContain('placeLabel:');
-    const place = requireTemplate('widget.place.v1');
-    const placeText = JSON.stringify(place.seedSections);
-    expect(placeText).toContain('placeLabel:');
-    expect(placeText).toContain('geoProofRef:');
-    expect(placeText).not.toMatch(/latitude|longitude|\blat\b|\blng\b/);
+    expect(() => requireTemplate('widget.poll.v1')).toThrow(/unknown_pen_template/);
+    expect(() => requireTemplate('widget.quote.v1')).toThrow(/unknown_pen_template/);
   });
 
   it('copyWidgetLayersIntoSection parents fresh unlocked layers under one group', () => {
-    const poll = requireTemplate('widget.poll.v1');
+    const poll = requireTemplate('widget.v1');
     const source = poll.seedSections?.[0]?.layers || [];
     const host = emptySection('body');
     host.layers = [
@@ -239,10 +233,10 @@ describe('classes + templates', () => {
       host,
       stamped,
       'Poll',
-      'widget.poll.v1'
+      'widget.v1'
     );
     const group = (section.layers || []).find((l) => l.id === groupId);
-    expect(group?.widgetTemplateId).toBe('widget.poll.v1');
+    expect(group?.widgetTemplateId).toBe('widget.v1');
     expect(JSON.stringify(section)).not.toContain('sheet_author');
     const kids = (section.layers || []).filter((l) => l.parentGroupId === groupId);
     const sourceIds = new Set(source.map((l) => l.id));
@@ -258,11 +252,11 @@ describe('classes + templates', () => {
   });
 
   it('poll sheet rows round-trip and a closed poll refuses', () => {
-    const poll = requireTemplate('widget.poll.v1');
+    const poll = requireTemplate('widget.v1');
     const section = poll.seedSections?.[0];
     expect(section).toBeTruthy();
     const structure = structureFromLayers(section!);
-    expect(structure.options.map((option) => option.id)).toEqual(['opt_a', 'opt_b']);
+    expect(structure.options.map((option) => option.id)).toEqual(['opt_yes']);
     const rows = structureToSheetRows({ ...structure, closesAt: '2026-01-01T00:00:00.000Z' });
     const back = sheetRowsToStructure(rows);
     expect(back.question).toBe(structure.question);

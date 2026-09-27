@@ -1,19 +1,21 @@
-/** Editor-only overlay of a copied widget group on the social phone. */
+/** Editor overlay: one HTML widget frame per placed group, plus non-widget action layers. */
 
 import {
   canvasSizeForAspect,
   docToPlainText,
   getTextLayerDoc,
   normalizeGalleryAspect,
+  widgetHosts,
   type PenDocManifest,
   type PenPageLayer,
   type PenSectionContent
 } from '@par-noir/pen-protocol';
 import type { PenSession } from '../services/penSession';
 import { tableDocTitle } from '../services/tableDocs';
+import { WidgetFrameHost } from './WidgetFrameHost';
 
 function paintsOnPhone(layer: PenPageLayer): boolean {
-  if (layer.visible === false || layer.kind === 'group') return false;
+  if (layer.visible === false || layer.kind === 'group' || layer.widgetElement) return false;
   if (layer.parentGroupId) {
     return (
       layer.kind === 'text' ||
@@ -31,7 +33,9 @@ export function ActionLayerPhoneOverlay({
   activeLayerId,
   session,
   onSelectLayer,
-  onPollVote
+  onPollVote,
+  onSectionChange,
+  votedGroupIds
 }: {
   sections: PenSectionContent[];
   galleryAspect?: PenDocManifest['galleryAspect'];
@@ -39,16 +43,52 @@ export function ActionLayerPhoneOverlay({
   session?: PenSession | null;
   onSelectLayer: (id: string) => void;
   onPollVote?: (layer: PenPageLayer) => void;
+  onSectionChange?: (section: PenSectionContent) => void;
+  votedGroupIds?: ReadonlySet<string>;
 }) {
   const box = canvasSizeForAspect(normalizeGalleryAspect(galleryAspect));
   const pn = session?.pnIdentifier || '';
-  const layers = sections.flatMap((section) =>
-    (section.layers || []).filter(paintsOnPhone)
+  const hosts = sections.flatMap((section) =>
+    widgetHosts(section).map((host) => ({ section, host }))
   );
-  if (layers.length === 0) return null;
+  const layers = sections.flatMap((section) => (section.layers || []).filter(paintsOnPhone));
+  if (layers.length === 0 && hosts.length === 0) return null;
 
   return (
     <div className="pointer-events-none absolute inset-0 z-20" aria-hidden={false}>
+      {hosts.map(({ section, host }) => {
+        const authoring =
+          activeLayerId === host.groupId ||
+          (section.layers || []).some(
+            (layer) => layer.id === activeLayerId && layer.parentGroupId === host.groupId
+          );
+        return (
+          <div
+            key={`${section.slug}:${host.groupId || 'loose'}`}
+            className="pointer-events-auto absolute"
+            style={{
+              left: `${(host.rect.x / box.w) * 100}%`,
+              top: `${(host.rect.y / box.h) * 100}%`,
+              width: `${(host.rect.w / box.w) * 100}%`,
+              height: `${(host.rect.h / box.h) * 100}%`,
+              zIndex: 5
+            }}
+            onClick={(event) => {
+              event.stopPropagation();
+              if (host.groupId) onSelectLayer(host.groupId);
+            }}
+          >
+            <WidgetFrameHost
+              section={section}
+              groupId={host.groupId}
+              mode={authoring ? 'author' : 'voter'}
+              voted={host.groupId ? votedGroupIds?.has(host.groupId) : false}
+              onSectionChange={(next) => onSectionChange?.(next)}
+              onVote={onPollVote}
+            />
+          </div>
+        );
+      })}
       {layers.map((layer) => {
         const label = overlayTitle(layer, pn);
         const text = layer.kind === 'text';
@@ -71,7 +111,7 @@ export function ActionLayerPhoneOverlay({
             title={label || layer.name || 'Layer'}
             onClick={(e) => {
               e.stopPropagation();
-              if (layer.behavior === 'poll.vote') onPollVote?.(layer);
+              if (layer.behavior === 'poll.vote' && !layer.widgetElement) onPollVote?.(layer);
               onSelectLayer(layer.id);
             }}
           >

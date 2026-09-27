@@ -32,6 +32,7 @@ import {
   resizeSeKeepAspect,
   sectionNeedsLegacyGeomMigrate,
   updateLayerLayout,
+  widgetHosts,
   wrapSideFromGeom,
   type PenDocManifest,
   type PenPageLayer,
@@ -48,6 +49,7 @@ import {
   pageFrameStyle
 } from './LayerObjectToolbar';
 import { PageSheetColumn } from './PageSheetColumn';
+import { WidgetFrameHost } from './WidgetFrameHost';
 import { LayerMediaContent } from './LayerMediaContent';
 import { PenMediaPlayer } from '@par-noir/feed-tile';
 import { useResolvedMediaSrc } from '../hooks/useResolvedMediaSrc';
@@ -471,9 +473,10 @@ export function EditablePagePreview({
     [layers]
   );
   const absoluteLayers = useMemo(
-    () => layers.filter((l) => l.visible !== false && !l.bodyWrap),
+    () => layers.filter((l) => l.visible !== false && !l.bodyWrap && !l.widgetElement),
     [layers]
   );
+  const hosts = useMemo(() => widgetHosts(prepared), [prepared]);
   const items = absoluteLayers.map(layerToItem);
   const groupIds = useMemo(
     () => new Set(layers.filter((l) => l.kind === 'group').map((l) => l.id)),
@@ -959,6 +962,19 @@ export function EditablePagePreview({
                 if (!layer || layer.bodyWrap) return null;
                 const shell = layerPreviewStyle(layer);
                 if (layer.kind === 'group') {
+                  if (layer.widgetTemplateId) {
+                    return (
+                      <div className="pointer-events-auto h-full w-full" style={shell}>
+                        <WidgetFrameHost
+                          section={prepared}
+                          groupId={layer.id}
+                          mode="author"
+                          onSectionChange={onSectionChange}
+                          onVote={onPollVote}
+                        />
+                      </div>
+                    );
+                  }
                   return (
                     <div
                       className="h-full w-full"
@@ -999,7 +1015,7 @@ export function EditablePagePreview({
                     </div>
                   );
                 }
-                if (layer.kind === 'interactive') {
+                if (layer.kind === 'interactive' && !layer.widgetElement) {
                   return (
                     <button
                       type="button"
@@ -1059,6 +1075,28 @@ export function EditablePagePreview({
                 );
               }}
             />
+            {hosts
+              .filter((host) => host.groupId == null)
+              .map((host) => (
+                <div
+                  key="widget-loose"
+                  className="pointer-events-auto absolute z-[2]"
+                  style={{
+                    left: pad + host.rect.x,
+                    top: pad + host.rect.y,
+                    width: host.rect.w,
+                    height: host.rect.h
+                  }}
+                >
+                  <WidgetFrameHost
+                    section={prepared}
+                    groupId={null}
+                    mode="author"
+                    onSectionChange={onSectionChange}
+                    onVote={onPollVote}
+                  />
+                </div>
+              ))}
           </div>
         </PageSheetColumn>
       </div>

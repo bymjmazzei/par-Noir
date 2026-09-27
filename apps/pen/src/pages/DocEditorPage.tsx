@@ -85,7 +85,7 @@ import {
   writeMixedPagesPublishHandoff
 } from '../services/penPublish';
 import { requestNotaryStamp, fetchMonetizationConnectReady } from '../services/penApi';
-import { castPollVote } from '../services/pollCloud';
+import { castPollVote, putPollStructure } from '../services/pollCloud';
 import { resolveSigningKeys } from '../services/penKeys';
 import {
   actorCan,
@@ -194,6 +194,8 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
   dirtyRef.current = dirty;
   activeSlugRef.current = activeSlug;
   const [error, setError] = useState<string | null>(null);
+  const [votedGroupIds, setVotedGroupIds] = useState<Set<string>>(() => new Set());
+  const widgetSheetTimer = useRef<number | null>(null);
   const [editor, setEditor] = useState<Editor | null>(null);
   const [activeLayerId, setActiveLayerId] = useState<string | null>(PAGE_LAYER_ID);
   const [socialLayersOpen, setSocialLayersOpen] = useState(false);
@@ -593,6 +595,11 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
       if (!result.enqueued) {
         setError('Vote counted. It will reach the sheet after the owner unlocks.');
       }
+      setVotedGroupIds((prev) => {
+        const next = new Set(prev);
+        next.add(group?.id || 'doc');
+        return next;
+      });
     } catch (e) {
       setError(e instanceof Error ? e.message : 'vote_failed');
     }
@@ -638,6 +645,37 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
       sections: bundle.sections.map((s) => (s.slug === next.slug ? next : s)),
       manifest: { ...bundle.manifest, updatedAt: new Date().toISOString() }
     });
+  }
+
+  function commitWidgetSection(next: NonNullable<typeof section>) {
+    persistSection(next);
+    if (widgetSheetTimer.current) window.clearTimeout(widgetSheetTimer.current);
+    widgetSheetTimer.current = window.setTimeout(() => {
+      void pushWidgetSheet(next);
+    }, 500);
+  }
+
+  async function pushWidgetSheet(next: NonNullable<typeof section>) {
+    if (!bundle) return;
+    const groups = (next.layers || []).filter((layer) => layer.kind === 'group' && layer.widgetTemplateId);
+    const targets = groups.length
+      ? groups.map((group) => ({ groupId: group.id, spreadsheetId: group.spreadsheetId || null }))
+      : [{ groupId: null as string | null, spreadsheetId: bundle.manifest.pollSpreadsheetId || null }];
+    for (const target of targets) {
+      if (!target.spreadsheetId) continue;
+      const structure = structureFromLayers(next, target.groupId);
+      if (!structure.options.length) continue;
+      try {
+        await putPollStructure({
+          session,
+          docId: bundle.manifest.docId,
+          spreadsheetId: target.spreadsheetId,
+          structure
+        });
+      } catch (e) {
+        setError(e instanceof Error ? e.message : 'poll_save_failed');
+      }
+    }
   }
 
   useEffect(() => {
@@ -1745,42 +1783,7 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
                 key={`${activeWidget.groupId || 'doc'}:${activeWidget.spreadsheetId || ''}`}
                 section={section}
                 groupId={activeWidget.groupId}
-                widgetTemplateId={activeWidget.widgetTemplateId}
-                spreadsheetId={activeWidget.spreadsheetId}
-                docId={bundle.manifest.docId}
-                session={session}
-                onError={(message) => setError(message)}
-                onSpreadsheetId={(id) => {
-                  if (activeWidget.groupId) {
-                    const next = {
-                      ...section,
-                      layers: (section.layers || []).map((layer) =>
-                        layer.id === activeWidget.groupId ? { ...layer, spreadsheetId: id } : layer
-                      )
-                    };
-                    persist({
-                      ...bundle,
-                      sections: bundle.sections.map((s) => (s.slug === next.slug ? next : s)),
-                      manifest: { ...bundle.manifest, updatedAt: new Date().toISOString() }
-                    });
-                    return;
-                  }
-                  persist({
-                    ...bundle,
-                    manifest: {
-                      ...bundle.manifest,
-                      pollSpreadsheetId: id,
-                      updatedAt: new Date().toISOString()
-                    }
-                  });
-                }}
-                onSectionChange={(next) => {
-                  persist({
-                    ...bundle,
-                    sections: bundle.sections.map((s) => (s.slug === next.slug ? next : s)),
-                    manifest: { ...bundle.manifest, updatedAt: new Date().toISOString() }
-                  });
-                }}
+                onSectionChange={commitWidgetSection}
               />
             </div>
           ) : activeMediaLayer && section ? (
@@ -2036,7 +2039,9 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
                           galleryAspect={bundle.manifest.galleryAspect}
                           activeLayerId={activeLayerId}
                           session={session}
+                          votedGroupIds={votedGroupIds}
                           onPollVote={(layer) => void voteOnPoll(layer)}
+                          onSectionChange={commitWidgetSection}
                           onSelectLayer={(id) => {
                             setActiveLayerId(id);
                             setSocialSelectedIds([id]);
@@ -2122,6 +2127,10 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
                     });
                   }}
                   onSectionChange={(next) => {
+                    if ((next.layers || []).some((layer) => layer.widgetElement || layer.widgetTemplateId)) {
+                      commitWidgetSection(next);
+                      return;
+                    }
                     persist({
                       ...bundle,
                       sections: bundle.sections.map((s) => (s.slug === next.slug ? next : s)),

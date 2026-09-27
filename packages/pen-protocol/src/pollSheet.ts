@@ -7,7 +7,7 @@ import { docToPlainText } from './richDoc.js';
 import { getTextLayerDoc, setTextLayerDoc, upsertLayer } from './layers.js';
 import type { PenPageLayer, PenSectionContent, PenTipTapNode } from './types.js';
 
-export const POLL_WIDGET_TEMPLATE_ID = 'widget.poll.v1';
+export const POLL_WIDGET_TEMPLATE_ID = 'widget.v1';
 export const POLL_DATA_SHEET = 'Data';
 export const POLL_STRUCTURE_SHEET = 'Structure';
 export const POLL_DATA_HEADERS = ['vote_id', 'option_id', 'created_at'] as const;
@@ -101,17 +101,23 @@ export function pollLayers(section: PenSectionContent, groupId?: string | null):
   return layers.filter((layer) => layer.id === groupId || layer.parentGroupId === groupId);
 }
 
+export function isAnswerButton(layer: PenPageLayer): boolean {
+  if (layer.widgetElement === 'button') return true;
+  return layer.kind === 'interactive' && layer.behavior === 'poll.vote' && !layer.widgetElement;
+}
+
 export function structureFromLayers(section: PenSectionContent, groupId?: string | null): PollStructure {
   const scoped = pollLayers(section, groupId);
-  const questionLayer = scoped.find((layer) => layer.kind === 'text' && layer.name === 'Question');
+  const questionLayer =
+    scoped.find((layer) => layer.widgetElement === 'text') ||
+    scoped.find((layer) => layer.kind === 'text' && layer.name === 'Question');
   const question = questionLayer ? docToPlainText(getTextLayerDoc(questionLayer)).trim() : '';
-  const options = scoped
-    .filter((layer) => layer.kind === 'interactive' && layer.behavior === 'poll.vote')
-    .map((layer) => ({
-      id: layer.bindRowId || layer.id,
-      label: layer.label || layer.name || 'Option'
-    }));
-  return { question, options, closesAt: null };
+  const options = scoped.filter(isAnswerButton).map((layer) => ({
+    id: layer.bindRowId || layer.id,
+    label: layer.label || layer.name || 'Option'
+  }));
+  const time = scoped.find((layer) => layer.widgetElement === 'time');
+  return { question, options, closesAt: time?.closesAt ?? null };
 }
 
 export function pollSpreadsheetOnGroup(
@@ -154,9 +160,19 @@ export function syncPollLayers(
 ): PenSectionContent {
   let next = section;
   const scoped = () => pollLayers(next, groupId);
-  const question = scoped().find((layer) => layer.kind === 'text' && layer.name === 'Question');
+  const question =
+    scoped().find((layer) => layer.widgetElement === 'text') ||
+    scoped().find((layer) => layer.kind === 'text' && layer.name === 'Question');
   if (question) {
     next = setTextLayerDoc(next, question.id, plainDoc(structure.question), { syncDoc: false });
+  }
+  const time = scoped().find((layer) => layer.widgetElement === 'time');
+  if (time) {
+    next = upsertLayer(next, { ...time, closesAt: structure.closesAt });
+  }
+  if (counts && groupId) {
+    const group = (next.layers || []).find((layer) => layer.id === groupId);
+    if (group) next = upsertLayer(next, { ...group, widgetCounts: counts });
   }
   const results = scoped().find((layer) => layer.kind === 'text' && layer.name === 'Results');
   if (results && counts) {
@@ -165,9 +181,7 @@ export function syncPollLayers(
     });
   }
 
-  const existing = scoped().filter(
-    (layer) => layer.kind === 'interactive' && layer.behavior === 'poll.vote'
-  );
+  const existing = scoped().filter(isAnswerButton);
   const keep = new Set(structure.options.map((option) => option.id));
   const drop = new Set(
     existing.filter((layer) => !keep.has(layer.bindRowId || layer.id)).map((layer) => layer.id)
@@ -180,18 +194,13 @@ export function syncPollLayers(
   }
   for (const option of structure.options) {
     const layer = pollLayers(next, groupId).find(
-      (item) =>
-        item.kind === 'interactive' &&
-        item.behavior === 'poll.vote' &&
-        (item.bindRowId || item.id) === option.id
+      (item) => isAnswerButton(item) && (item.bindRowId || item.id) === option.id
     );
     if (layer) {
       next = upsertLayer(next, { ...layer, label: option.label, name: option.label, bindRowId: option.id });
       continue;
     }
-    const peers = pollLayers(next, groupId).filter(
-      (item) => item.kind === 'interactive' && item.behavior === 'poll.vote'
-    );
+    const peers = pollLayers(next, groupId).filter(isAnswerButton);
     const last = peers[peers.length - 1];
     const y = last ? last.y + last.h + 8 : 152;
     next = upsertLayer(next, {
@@ -204,6 +213,7 @@ export function syncPollLayers(
       h: last?.h ?? 40,
       zIndex: (last?.zIndex ?? 3) + 1,
       behavior: 'poll.vote',
+      widgetElement: 'button',
       bindRowId: option.id,
       label: option.label,
       parentGroupId: groupId || undefined,

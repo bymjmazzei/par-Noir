@@ -26,8 +26,10 @@ export type LayerActionPartition = {
 };
 
 function isActionLayer(layer: PenPageLayer): boolean {
-  if (layer.kind !== 'interactive') return false;
   if (layer.visible === false) return false;
+  if (layer.widgetElement) return true;
+  if (layer.kind === 'group' && layer.widgetTemplateId) return true;
+  if (layer.kind !== 'interactive') return false;
   return Boolean(layer.behavior);
 }
 
@@ -41,15 +43,25 @@ export function partitionLayersForCompose(
   for (const layer of layers || []) {
     if (isActionLayer(layer)) {
       action.push(layer);
-      overlays.push({
-        layerId: layer.id,
-        kind: 'interactive',
-        behavior: layer.behavior!,
-        rect: { x: layer.x, y: layer.y, w: layer.w, h: layer.h },
-        bindDocId: layer.bindDocId,
-        bindRowId: layer.bindRowId,
-        label: layer.label
-      });
+      if (layer.kind === 'group' && layer.widgetTemplateId) {
+        overlays.push({
+          layerId: layer.id,
+          kind: 'interactive',
+          behavior: 'poll.vote',
+          rect: { x: layer.x, y: layer.y, w: layer.w, h: layer.h },
+          label: layer.name
+        });
+      } else if (layer.kind === 'interactive' && layer.behavior && !layer.widgetElement) {
+        overlays.push({
+          layerId: layer.id,
+          kind: 'interactive',
+          behavior: layer.behavior,
+          rect: { x: layer.x, y: layer.y, w: layer.w, h: layer.h },
+          bindDocId: layer.bindDocId,
+          bindRowId: layer.bindRowId,
+          label: layer.label
+        });
+      }
     } else {
       inert.push(layer);
     }

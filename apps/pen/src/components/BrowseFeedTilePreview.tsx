@@ -4,7 +4,14 @@
  */
 import { useEffect, useState, type ReactNode } from 'react';
 import { FeedTileSurface, type FeedTileViewModel } from '@par-noir/feed-tile';
-import type { PenDocManifest, PenSectionContent } from '@par-noir/pen-protocol';
+import {
+  canvasSizeForAspect,
+  normalizeGalleryAspect,
+  widgetHosts,
+  type PenDocManifest,
+  type PenSectionContent
+} from '@par-noir/pen-protocol';
+import { WidgetFrameHost } from './WidgetFrameHost';
 import { bundleToFeedTileModel } from '../services/feedTileFromPen';
 import { downloadCloudMediaBlob } from '../services/penAttach';
 import {
@@ -83,7 +90,8 @@ export function BrowseFeedTilePreview({
   session,
   hideEngagementRail = false,
   engagementOverlay,
-  aspectRatio
+  aspectRatio,
+  showWidgets = true
 }: {
   manifest: PenDocManifest;
   sections: PenSectionContent[];
@@ -95,6 +103,8 @@ export function BrowseFeedTilePreview({
   /** Browse-shaped preview-only overlay (editor live preview). */
   engagementOverlay?: ReactNode;
   aspectRatio?: '9/16' | '16/9' | '1/1';
+  /** Voter HTML for placed widgets. The editor overlay paints the author frame instead. */
+  showWidgets?: boolean;
 }) {
   const base = bundleToFeedTileModel({
     title: manifest.title || 'Untitled',
@@ -138,6 +148,33 @@ export function BrowseFeedTilePreview({
         ? '1/1'
         : '9/16');
 
+  const canvas = canvasSizeForAspect(normalizeGalleryAspect(manifest.galleryAspect));
+  const widgetOverlay = showWidgets ? (
+    <div className="pointer-events-none absolute inset-0 z-10">
+      {sections.flatMap((section) =>
+        widgetHosts(section).map((host) => (
+          <div
+            key={`${section.slug}:${host.groupId || 'loose'}`}
+            className="pointer-events-auto absolute"
+            style={{
+              left: `${(host.rect.x / canvas.w) * 100}%`,
+              top: `${(host.rect.y / canvas.h) * 100}%`,
+              width: `${(host.rect.w / canvas.w) * 100}%`,
+              height: `${(host.rect.h / canvas.h) * 100}%`
+            }}
+          >
+            <WidgetFrameHost
+              section={section}
+              groupId={host.groupId}
+              mode="voter"
+              onSectionChange={() => undefined}
+            />
+          </div>
+        ))
+      )}
+    </div>
+  ) : null;
+
   const tile = (
     <FeedTileSurface
       model={model}
@@ -145,6 +182,7 @@ export function BrowseFeedTilePreview({
       compact={compact || bare}
       hideEngagementRail={hideEngagementRail}
       engagementOverlay={engagementOverlay}
+      widgetOverlay={widgetOverlay}
       aspectRatio={resolvedAspect}
     />
   );

@@ -48,6 +48,9 @@ export type PenPageLayerKind = 'text' | 'image' | 'video' | 'group' | 'embed' | 
 /** Interactive sticker behavior (handlers stub until engagement write path). */
 export type PenInteractiveBehavior = 'poll.vote' | 'cta.open';
 
+/** Element inside a widget group. The group renders as one HTML frame. */
+export type PenWidgetElement = 'svg' | 'text' | 'button' | 'time' | 'html';
+
 export type PenStrokeStyle = 'solid' | 'dashed' | 'dotted';
 export type PenStrokeAlign = 'inside' | 'outside' | 'center';
 
@@ -84,8 +87,18 @@ export interface PenPageLayer {
   bindRowId?: string;
   /** Button / sticker label. */
   label?: string;
-  /** Widget template this group was copied from (e.g. widget.poll.v1). */
+  /** Widget template this group was copied from (e.g. widget.v1). */
   widgetTemplateId?: string;
+  /** Role of this layer inside a widget group. */
+  widgetElement?: PenWidgetElement;
+  /** SVG markup for the widget box. The frame stretches it to the form. */
+  svgSrc?: string;
+  /** HTML snippet source. Rendered in a sandboxed frame. */
+  htmlSource?: string;
+  /** Time element expiry. */
+  closesAt?: string | null;
+  /** Last tally written onto the widget group after a vote. */
+  widgetCounts?: { total: number; byOption: Record<string, number> };
   /** Owner spreadsheet for this poll group. Not copied onto a reusable template. */
   spreadsheetId?: string;
   /** Fill / effects (text boxes and media frames). */

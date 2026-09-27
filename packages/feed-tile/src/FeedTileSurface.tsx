@@ -123,6 +123,7 @@ export function FeedTileSurface({
   compact,
   hideEngagementRail = false,
   engagementOverlay,
+  widgetOverlay,
   aspectRatio = '9/16'
 }: {
   model: FeedTileViewModel;
@@ -135,6 +136,8 @@ export function FeedTileSurface({
    * Preview-only — callers must not bake this into composed publish output.
    */
   engagementOverlay?: ReactNode;
+  /** Live widget HTML placed over the tile. Omitted from flatten. */
+  widgetOverlay?: ReactNode;
   /** Tile aspect: 9/16 portrait, 16/9 landscape, 1/1 square. */
   aspectRatio?: '9/16' | '16/9' | '1/1';
 }) {
@@ -211,6 +214,7 @@ export function FeedTileSurface({
         />
       )}
 
+      {widgetOverlay}
       {engagement}
 
       {/* Browse-shaped caption: title + caption only (no profile avatar; dedupe equal caption). */}

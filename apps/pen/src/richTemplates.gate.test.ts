@@ -65,10 +65,11 @@ describe('rich template preview + create chrome', () => {
     expect(preview?.manifest.pagePresentation?.backgroundColor).toBeTruthy();
   });
 
-  it('poll widget preview is option buttons, not a seed table', () => {
-    const preview = templatePreviewBundle(undefined, 'widget.poll.v1');
+  it('widget preview is an SVG box and an answer button, not a seed table', () => {
+    const preview = templatePreviewBundle(undefined, 'widget.v1');
     const layers = preview?.sections[0]?.layers || [];
-    expect(layers.some((l) => l.kind === 'interactive' && l.behavior === 'poll.vote')).toBe(true);
+    expect(layers.some((l) => l.widgetElement === 'svg')).toBe(true);
+    expect(layers.some((l) => l.widgetElement === 'button' && l.behavior === 'poll.vote')).toBe(true);
     expect(JSON.stringify(layers)).not.toContain('__pen_seed_table__');
   });
 });

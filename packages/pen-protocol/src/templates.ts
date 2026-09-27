@@ -3,19 +3,10 @@
 import type { PenPageLayout, PenPagePresentation, PenSectionContent } from './types.js';
 import type { PenLicensingRoot } from './licensing.js';
 import { emptySection } from './richDoc.js';
+import { seedWidget } from './widgetElements.js';
 import {
   seedAssetKey,
   seedAudio,
-  seedWidgetAudio,
-  seedWidgetCode,
-  seedWidgetLink,
-  seedWidgetMetric,
-  seedWidgetPlace,
-  seedWidgetPoll,
-  seedWidgetProfile,
-  seedWidgetQuote,
-  seedWidgetSchedule,
-  seedWidgetTime,
   seedCode,
   seedCollectionBasic,
   seedCollectionStory,
@@ -190,74 +181,11 @@ function widgetStarter(
 function widgetStarters(): PenTemplate[] {
   return [
     widgetStarter(
-      'widget.poll.v1',
-      'Poll',
-      'Question, results, and option rows',
-      'A card poll: question, results frame, and two option rows bound to a new table.',
-      seedWidgetPoll()
-    ),
-    widgetStarter(
-      'widget.quote.v1',
-      'Quote',
-      'Quote card',
-      'A short quote card with attribution.',
-      seedWidgetQuote()
-    ),
-    widgetStarter(
-      'widget.link.v1',
-      'Link',
-      'Link card',
-      'A link card with title, address, and blurb.',
-      seedWidgetLink()
-    ),
-    widgetStarter(
-      'widget.metric.v1',
-      'Metric',
-      'Metric card',
-      'A single metric and its label.',
-      seedWidgetMetric()
-    ),
-    widgetStarter(
-      'widget.code.v1',
-      'Code',
-      'Code card',
-      'A short code card. Do not invent a runtime.',
-      seedWidgetCode()
-    ),
-    widgetStarter(
-      'widget.profile.v1',
-      'Profile',
-      'Profile card',
-      'A name and role card. No account identifiers.',
-      seedWidgetProfile()
-    ),
-    widgetStarter(
-      'widget.audio.v1',
-      'Audio',
-      'Audio card',
-      'A compact audio card, not a full post.',
-      seedWidgetAudio()
-    ),
-    widgetStarter(
-      'widget.time.v1',
-      'Time',
-      'Event card with countdown',
-      'Event fields startAt, endAt, timeZone, placeLabel, plus a countdown label whose fill can change.',
-      seedWidgetTime()
-    ),
-    widgetStarter(
-      'widget.schedule.v1',
-      'Schedule',
-      'Schedule rows',
-      'Ordered schedule rows with when, title, and optional placeLabel.',
-      seedWidgetSchedule()
-    ),
-    widgetStarter(
-      'widget.place.v1',
-      'Place',
-      'Place card',
-      'placeLabel and optional geoProofRef. Never raw coordinates.',
-      seedWidgetPlace()
+      'widget.v1',
+      'Widget',
+      'SVG box with text, a repeating answer button, optional expiry, and an HTML snippet',
+      'Compose the widget from elements. Do not paint answer rows as static text.',
+      seedWidget()
     )
   ];
 }
