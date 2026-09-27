@@ -1,6 +1,7 @@
 /** Shared Pen doc create (New… sheet) — cloud bootstrap + offline buffer. */
 
 import {
+  defaultPageView,
   emptySection,
   defaultPagePresentation,
   defaultEditorPagePresentation,
@@ -118,6 +119,7 @@ async function persistBundle(input: {
     updatedAt: now,
     genesisProof: genesis,
     pageLayout,
+    pageView: defaultPageView(pageLayout),
     pagePresentation,
     galleryAspect: input.template.seedGalleryAspect,
     pageSwipeAxis:

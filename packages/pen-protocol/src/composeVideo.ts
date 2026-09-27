@@ -7,6 +7,7 @@
 import { docToPlainText, normalizeSection } from './richDoc.js';
 import type { PenPageLayer, PenSectionContent } from './types.js';
 import { sectionWithoutActionLayers } from './actionPartition.js';
+import { getClass } from './classes.js';
 
 /** Overlay video layer that participates in compose-video export. */
 export function isVisibleVideoLayer(layer: PenPageLayer | null | undefined): boolean {
@@ -80,6 +81,58 @@ export function docRequiresComposedVideoExport(
   sections: PenSectionContent[] | null | undefined
 ): boolean {
   return partitionSectionsForPublish(sections).videoSections.length > 0;
+}
+
+/** A section the feed can show as its own collection page. */
+export function sectionIsFeedPage(section: PenSectionContent | null | undefined): boolean {
+  if (!section) return false;
+  const sec = normalizeSection(section);
+  if (sectionHasVisibleVideoLayer(sec)) return true;
+  if (sectionHasNoteContent(sec)) return true;
+  for (const layer of sec.layers || []) {
+    if (layer.visible === false) continue;
+    if (layer.kind === 'image' && String(layer.imageSrc || '').trim()) return true;
+    if (layer.kind === 'text' && docToPlainText(layer.textDoc).trim()) return true;
+  }
+  return false;
+}
+
+/** Plain text for a collection page: body first, then text layers. */
+export function feedPagePlainText(section: PenSectionContent): string {
+  const sec = normalizeSection(section);
+  const fromDoc = docToPlainText(sec.doc).trim();
+  if (fromDoc) return fromDoc;
+  const bits: string[] = [];
+  for (const layer of sec.layers || []) {
+    if (layer.visible === false || layer.kind !== 'text') continue;
+    const text = docToPlainText(layer.textDoc).trim();
+    if (text) bits.push(text);
+  }
+  return bits.join('\n\n').trim();
+}
+
+/**
+ * Social posts with more than one feed page publish as a collection.
+ * A note template stays a note until the author adds a page that is not
+ * one of that template's own sections. Collection templates always do.
+ * One composed video stays a single media post.
+ */
+export function shouldPublishSocialAsCollection(input: {
+  classId?: string;
+  publishContentClass?: 'note' | 'media' | 'collection';
+  templateSectionSlugs?: string[];
+  sections: PenSectionContent[] | null | undefined;
+}): boolean {
+  if (getClass(input.classId || '')?.parentId !== 'social') return false;
+  const sections = input.sections || [];
+  if (shouldPublishAsSingleComposedVideo(sections)) return false;
+  const pages = sections.filter(sectionIsFeedPage);
+  if (pages.length < 2) return false;
+  if (shouldPublishAsMixedPages(sections)) return true;
+  if (input.publishContentClass === 'collection') return true;
+  const known = new Set(input.templateSectionSlugs || []);
+  if (known.size === 0) return true;
+  return pages.some((page) => !known.has(page.slug));
 }
 
 /** True when the post mixes Note pages and video pages (or multiple videos). */

@@ -416,7 +416,9 @@ export function EditablePagePreview({
   votedOptionByGroup,
   hideActionBind,
   hideObjectTools,
-  buttonCaptionById
+  buttonCaptionById,
+  showToolbar = true,
+  clearChrome = false
 }: {
   manifest: PenDocManifest;
   section: PenSectionContent;
@@ -430,6 +432,10 @@ export function EditablePagePreview({
   hideActionBind?: boolean;
   hideObjectTools?: boolean;
   buttonCaptionById?: Record<string, string>;
+  /** Inactive pages in a multi-page strip hide the object toolbar. */
+  showToolbar?: boolean;
+  /** Screen strip paints the background once; this canvas stays clear. */
+  clearChrome?: boolean;
   onPageLayoutChange?: (layout: PenPageLayout) => void;
   onFlowWorkspaceChange?: (next: {
     widthPx: number | null;
@@ -700,7 +706,8 @@ export function EditablePagePreview({
   const isFlow = (manifest.pageLayout || 'flow') === 'flow';
 
   return (
-    <div className="relative flex h-full flex-col bg-white">
+    <div className={`relative flex h-full flex-col ${clearChrome ? 'bg-transparent' : 'bg-white'}`}>
+      {showToolbar && (
       <div className="relative z-20 flex shrink-0 items-center gap-2 border-b border-neutral-200 bg-white px-2 py-1.5">
         <span className="shrink-0 text-[11px] font-bold uppercase tracking-wider text-neutral-400">
           Page
@@ -880,6 +887,7 @@ export function EditablePagePreview({
           </button>
         </div>
       </div>
+      )}
 
       <LayersPopover
         open={layersOpen}
@@ -899,7 +907,7 @@ export function EditablePagePreview({
 
       <div
         ref={scrollerRef}
-        className={`flex flex-1 overflow-auto bg-neutral-100 ${
+        className={`flex flex-1 overflow-auto ${clearChrome ? 'bg-transparent' : 'bg-neutral-100'} ${
           flowOpen ? 'items-stretch p-0' : 'items-start justify-center p-6'
         }`}
       >

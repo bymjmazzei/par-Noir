@@ -16,6 +16,9 @@ import {
   normalizeLicensingRoot,
   shouldPublishAsSingleComposedVideo,
   shouldPublishAsMixedPages,
+  shouldPublishSocialAsCollection,
+  sectionIsFeedPage,
+  feedPagePlainText,
   partitionSectionsForPublish,
   mergePagePresentation,
   docToPlainText,
@@ -402,6 +405,84 @@ export async function writeMixedPagesPublishHandoff(
     licensing,
     pages,
     videos
+  };
+}
+
+function sectionsInTocOrder(bundle: LocalDocBundle): PenSectionContent[] {
+  const bySlug = new Map(bundle.sections.map((section) => [section.slug, section]));
+  const toc = bundle.manifest.toc || [];
+  const ordered: PenSectionContent[] = [];
+  for (const slug of toc) {
+    const section = bySlug.get(slug);
+    if (section) ordered.push(section);
+  }
+  for (const section of bundle.sections) {
+    if (!toc.includes(section.slug)) ordered.push(section);
+  }
+  return ordered;
+}
+
+/**
+ * Text and still pages of a multipage social post, in toc order.
+ * The cloud writer uploads each page, then a parent with collectionFileIds.
+ */
+export function writeTextCollectionHandoff(
+  bundle: LocalDocBundle,
+  opts: {
+    canPublishPublicTemplate?: boolean;
+    connectReady?: boolean;
+  }
+): MixedPagesPublish {
+  const template = getTemplate(bundle.manifest.templateId);
+  if (
+    !shouldPublishSocialAsCollection({
+      classId: bundle.manifest.classId,
+      publishContentClass: template?.publishContentClass,
+      templateSectionSlugs: template?.sections.map((section) => section.slug),
+      sections: bundle.sections
+    }) ||
+    shouldPublishAsMixedPages(bundle.sections)
+  ) {
+    throw new Error('not_text_collection');
+  }
+  const presentation = bundle.manifest.pagePresentation || defaultPagePresentation();
+  const pages: MixedPublishPage[] = [];
+  for (const raw of sectionsInTocOrder(bundle)) {
+    if (!sectionIsFeedPage(raw)) continue;
+    const sec = normalizeSection(raw);
+    const base = mergePagePresentation(presentation);
+    pages.push({
+      kind: 'note',
+      slug: raw.slug,
+      content: feedPagePlainText(sec),
+      style: { ...base, textStyle: inferPageTextStyle(sec.doc) },
+      doc: raw.doc
+    });
+  }
+  if (pages.length < 2) throw new Error('not_text_collection');
+  const form = getClass(bundle.manifest.classId);
+  const licensing = licensingForPublish(
+    bundle.manifest.licensing,
+    bundle.manifest.ownerPnHash,
+    {
+      membership: opts.canPublishPublicTemplate === true,
+      connectReady: opts.connectReady,
+      musicAsset: bundle.manifest.classId === 'library.music'
+    }
+  );
+  return {
+    contentClass: 'collection',
+    title: bundle.manifest.title || 'Untitled',
+    docId: bundle.manifest.docId,
+    templateId: bundle.manifest.templateId,
+    headProof: bundle.chain.links[bundle.chain.links.length - 1] || bundle.chain.genesis,
+    penClassId: bundle.manifest.classId,
+    penCategoryId: form?.parentId,
+    penDocId: bundle.manifest.docId,
+    penIrRef: { objectId: bundle.manifest.docId },
+    licensing,
+    pages,
+    videos: []
   };
 }
 

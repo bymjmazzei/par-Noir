@@ -25,14 +25,18 @@ import {
   setTextLayerDoc,
   signPromoteLink,
   attachNotary,
+  appendDocPage,
+  pageSwipeAxisForView,
+  resolvePageView,
+  SCREEN_PAGE_WIDTH_PX,
   verifyChain,
   ensureOwnerAssignment,
   collectFontFamiliesFromDoc,
   templateAuthorLabel,
   shouldPublishAsSingleComposedVideo,
   shouldPublishAsMixedPages,
+  shouldPublishSocialAsCollection,
   isGooglePenFont,
-  emptySection,
   remapSectionsForAspect,
   normalizeGalleryAspect,
   allocateColumnKeys,
@@ -61,6 +65,8 @@ import {
 import type { PenSession } from '../services/penSession';
 import { FormatRibbon, PageCanvas } from '../components/PageCanvas';
 import { EditablePagePreview } from '../components/EditablePagePreview';
+import { PreviewPageBar, PreviewPageStrip } from '../components/PreviewPageBar';
+import { pageFrameStyle } from '../components/LayerObjectToolbar';
 import { SocialFeedPhonePreview } from '../components/SocialFeedPhonePreview';
 import { LayersPopover } from '../components/LayersPanel';
 import { ActionLayerPhoneOverlay } from '../components/ActionLayerPhoneOverlay';
@@ -94,7 +100,8 @@ import {
   publishPostToOwnerCloud,
   publishTemplateToOwnerCloud,
   writeComposedVideoPublishHandoff,
-  writeMixedPagesPublishHandoff
+  writeMixedPagesPublishHandoff,
+  writeTextCollectionHandoff
 } from '../services/penPublish';
 import { requestNotaryStamp, fetchMonetizationConnectReady } from '../services/penApi';
 import { castPollVote, createPollSheet, putPollStructure } from '../services/pollCloud';
@@ -1320,13 +1327,23 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
             })
           ).fileId;
         } else {
+          const template = getTemplate(b.manifest.templateId);
+          const asCollection = shouldPublishSocialAsCollection({
+            classId: b.manifest.classId,
+            publishContentClass: template?.publishContentClass,
+            templateSectionSlugs: template?.sections.map((section) => section.slug),
+            sections: b.sections
+          });
           fileId = (
             await publishPostToOwnerCloud({
               bundle: b,
               feedIds,
               pnIdentifier: session.pnIdentifier,
               membership: verifiedAuthor,
-              connectReady
+              connectReady,
+              ...(asCollection
+                ? { mixed: writeTextCollectionHandoff(b, publishOpts) }
+                : {})
             })
           ).fileId;
         }
@@ -1603,6 +1620,48 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
     title: s.title || s.slug,
     required: s.required
   }));
+  const pageView = resolvePageView(bundle.manifest.pageView, bundle.manifest.pageLayout);
+  const previewPages = bundle.manifest.toc.map((slug, index) => {
+    const fromTemplate = template?.sections.find((item) => item.slug === slug);
+    return {
+      slug,
+      title: fromTemplate?.title || `Page ${index + 1}`,
+      section: bundle.sections.find((item) => item.slug === slug)
+    };
+  });
+  const pagePresentation = mergePagePresentation(
+    defaultEditorPagePresentation(),
+    bundle.manifest.pagePresentation
+  );
+
+  const addPreviewPage = () => {
+    const added = appendDocPage(bundle.sections, bundle.manifest.toc);
+    persist({
+      ...bundle,
+      sections: added.sections,
+      manifest: {
+        ...bundle.manifest,
+        toc: added.toc,
+        pageView,
+        pageSwipeAxis: bundle.manifest.pageSwipeAxis || pageSwipeAxisForView(pageView),
+        updatedAt: new Date().toISOString()
+      }
+    });
+    setActiveSlug(added.slug);
+  };
+
+  const setPreviewPageView = (next: typeof pageView) => {
+    persist({
+      ...bundle,
+      manifest: {
+        ...bundle.manifest,
+        pageView: next,
+        pageSwipeAxis: pageSwipeAxisForView(next),
+        updatedAt: new Date().toISOString()
+      }
+    });
+  };
+
   const sectionComments = comments.filter((c) => c.sectionSlug === activeSlug && !c.resolved);
   const pendingSuggestions = suggestions.filter((s) => s.status === 'pending');
 
@@ -1770,25 +1829,7 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
                     template?.publishContentClass === 'collection' ||
                     getClass(bundle.manifest.classId)?.parentId === 'library'
                   }
-                  onAddPage={() => {
-                    if (!bundle) return;
-                    const n = bundle.sections.length + 1;
-                    const slug = `page-${n}`;
-                    const nextSec = emptySection(slug);
-                    const nextSections = [...bundle.sections, nextSec];
-                    const nextToc = [...bundle.manifest.toc, slug];
-                    persist({
-                      ...bundle,
-                      sections: nextSections,
-                      manifest: {
-                        ...bundle.manifest,
-                        toc: nextToc,
-                        pageSwipeAxis: bundle.manifest.pageSwipeAxis || 'x',
-                        updatedAt: new Date().toISOString()
-                      }
-                    });
-                    setActiveSlug(slug);
-                  }}
+                  onAddPage={addPreviewPage}
                 />
                 <div className="ml-auto flex items-center gap-1">
                   {(getClass(bundle.manifest.classId)?.parentId === 'social' ||
@@ -2030,7 +2071,7 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
         )}
 
         {showPreview && !showHistory && !sidePanel && (
-          <div className="hidden min-w-0 w-1/2 flex-col sm:flex">
+          <div className="hidden min-h-0 min-w-0 w-1/2 flex-col sm:flex">
             {isSocialDoc ? (
               <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">
                 <div className="pen-social-pres-strip">
@@ -2233,83 +2274,144 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
                 )}
               </div>
             ) : section ? (
-              <div className="min-h-0 min-w-0 flex-1">
-                <EditablePagePreview
-                  manifest={bundle.manifest}
-                  section={section}
-                  activeLayerId={activeLayerId}
-                  hideActionBind={isWidgetDoc}
-                  hideObjectTools={isWidgetDoc}
-                  buttonCaptionById={buttonCaptionById}
-                  session={session}
-                  onSelectLayer={(id) => {
-                    setActiveLayerId(id || PAGE_LAYER_ID);
-                  }}
-                  onPageLayoutChange={(layout) => {
-                    persist({
-                      ...bundle,
-                      manifest: {
-                        ...bundle.manifest,
-                        pageLayout: layout,
-                        updatedAt: new Date().toISOString()
-                      }
-                    });
-                  }}
-                  onFlowWorkspaceChange={({ widthPx, heightPx }) => {
-                    persist({
-                      ...bundle,
-                      manifest: {
-                        ...bundle.manifest,
-                        flowWorkspaceWidthPx: widthPx,
-                        flowWorkspaceHeightPx: heightPx,
-                        updatedAt: new Date().toISOString()
-                      }
-                    });
-                  }}
-                  onSnapChange={(enabled) => {
-                    persist({
-                      ...bundle,
-                      manifest: {
-                        ...bundle.manifest,
-                        snapToPageGuides: enabled,
-                        updatedAt: new Date().toISOString()
-                      }
-                    });
-                  }}
-                  onPresentationChange={(partial) => {
-                    const next = mergePagePresentation(
-                      defaultEditorPagePresentation(),
-                      {
-                        ...(bundle.manifest.pagePresentation || {}),
-                        ...partial
-                      }
+              <div className="min-h-0 min-w-0 flex-1 overflow-auto">
+                <PreviewPageStrip
+                  pageView={pageView}
+                  pageCount={previewPages.length}
+                  pageWidthPx={SCREEN_PAGE_WIDTH_PX}
+                  background={pageView === 'screen' ? pageFrameStyle(pagePresentation) : undefined}
+                >
+                  {previewPages.map((page) => {
+                    const pageSection = page.section;
+                    if (!pageSection) return null;
+                    const active = page.slug === activeSlug;
+                    const pageManifest =
+                      pageView === 'screen'
+                        ? {
+                            ...bundle.manifest,
+                            pagePresentation: {
+                              ...pagePresentation,
+                              backgroundColor: 'transparent',
+                              backgroundGradient: undefined,
+                              backgroundImage: undefined,
+                              backgroundVideo: undefined
+                            }
+                          }
+                        : bundle.manifest;
+                    return (
+                      <div
+                        key={page.slug}
+                        className={
+                          pageView === 'vertical'
+                            ? 'min-h-full shrink-0'
+                            : 'h-full shrink-0'
+                        }
+                        style={
+                          pageView === 'vertical'
+                            ? undefined
+                            : { width: SCREEN_PAGE_WIDTH_PX }
+                        }
+                        onClick={() => {
+                          if (!active) setActiveSlug(page.slug);
+                        }}
+                      >
+                        <div className={active ? 'h-full' : 'pointer-events-none h-full'}>
+                          <EditablePagePreview
+                            manifest={pageManifest}
+                            section={pageSection}
+                            activeLayerId={active ? activeLayerId : PAGE_LAYER_ID}
+                            hideActionBind={isWidgetDoc}
+                            hideObjectTools={isWidgetDoc}
+                            showToolbar={active}
+                            clearChrome={pageView === 'screen'}
+                            buttonCaptionById={buttonCaptionById}
+                            session={session}
+                            onSelectLayer={(id) => {
+                              setActiveSlug(page.slug);
+                              setActiveLayerId(id || PAGE_LAYER_ID);
+                            }}
+                            onPageLayoutChange={(layout) => {
+                              persist({
+                                ...bundle,
+                                manifest: {
+                                  ...bundle.manifest,
+                                  pageLayout: layout,
+                                  pageView: resolvePageView(bundle.manifest.pageView, layout),
+                                  updatedAt: new Date().toISOString()
+                                }
+                              });
+                            }}
+                            onFlowWorkspaceChange={({ widthPx, heightPx }) => {
+                              persist({
+                                ...bundle,
+                                manifest: {
+                                  ...bundle.manifest,
+                                  flowWorkspaceWidthPx: widthPx,
+                                  flowWorkspaceHeightPx: heightPx,
+                                  updatedAt: new Date().toISOString()
+                                }
+                              });
+                            }}
+                            onSnapChange={(enabled) => {
+                              persist({
+                                ...bundle,
+                                manifest: {
+                                  ...bundle.manifest,
+                                  snapToPageGuides: enabled,
+                                  updatedAt: new Date().toISOString()
+                                }
+                              });
+                            }}
+                            onPresentationChange={(partial) => {
+                              const next = mergePagePresentation(
+                                defaultEditorPagePresentation(),
+                                {
+                                  ...(bundle.manifest.pagePresentation || {}),
+                                  ...partial
+                                }
+                              );
+                              persist({
+                                ...bundle,
+                                manifest: {
+                                  ...bundle.manifest,
+                                  pagePresentation: next,
+                                  updatedAt: new Date().toISOString()
+                                }
+                              });
+                            }}
+                            onPollVote={(layer) => void voteOnPoll(layer)}
+                            onWidgetAction={(layer) => void runWidgetAction(layer)}
+                            votedOptionByGroup={votedOptionByGroup}
+                            onSectionChange={(next) => {
+                              if (sectionHasVoteButton(next)) {
+                                commitWidgetSection(next);
+                                return;
+                              }
+                              persist({
+                                ...bundle,
+                                sections: bundle.sections.map((s) =>
+                                  s.slug === next.slug ? next : s
+                                ),
+                                manifest: { ...bundle.manifest, updatedAt: new Date().toISOString() }
+                              });
+                            }}
+                          />
+                        </div>
+                      </div>
                     );
-                    persist({
-                      ...bundle,
-                      manifest: {
-                        ...bundle.manifest,
-                        pagePresentation: next,
-                        updatedAt: new Date().toISOString()
-                      }
-                    });
-                  }}
-                  onPollVote={(layer) => void voteOnPoll(layer)}
-                  onWidgetAction={(layer) => void runWidgetAction(layer)}
-                  votedOptionByGroup={votedOptionByGroup}
-                  onSectionChange={(next) => {
-                    if (sectionHasVoteButton(next)) {
-                      commitWidgetSection(next);
-                      return;
-                    }
-                    persist({
-                      ...bundle,
-                      sections: bundle.sections.map((s) => (s.slug === next.slug ? next : s)),
-                      manifest: { ...bundle.manifest, updatedAt: new Date().toISOString() }
-                    });
-                  }}
-                />
+                  })}
+                </PreviewPageStrip>
               </div>
             ) : null}
+            <PreviewPageBar
+              pages={previewPages}
+              activeSlug={activeSlug}
+              pageView={pageView}
+              presentation={pagePresentation}
+              onSelect={setActiveSlug}
+              onAddPage={addPreviewPage}
+              onPageView={setPreviewPageView}
+            />
           </div>
         )}
 

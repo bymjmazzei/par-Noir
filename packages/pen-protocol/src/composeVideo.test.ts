@@ -1,9 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import {
+  feedPagePlainText,
   partitionSectionsForPublish,
   sectionHasVisibleVideoLayer,
+  sectionIsFeedPage,
   shouldPublishAsMixedPages,
-  shouldPublishAsSingleComposedVideo
+  shouldPublishAsSingleComposedVideo,
+  shouldPublishSocialAsCollection
 } from './composeVideo.js';
 import { emptyTipTapDoc } from './richDoc.js';
 import type { PenPageLayer, PenSectionContent } from './types.js';
@@ -89,5 +92,78 @@ describe('composeVideo per-page', () => {
     };
     expect(shouldPublishAsSingleComposedVideo([a, b])).toBe(false);
     expect(shouldPublishAsMixedPages([a, b])).toBe(true);
+  });
+
+  it('a text layer without body prose is still a feed page', () => {
+    const page: PenSectionContent = {
+      slug: 'page-2',
+      doc: emptyTipTapDoc(),
+      layers: [
+        {
+          id: 't1',
+          kind: 'text',
+          x: 0,
+          y: 0,
+          w: 80,
+          h: 24,
+          zIndex: 1,
+          textDoc: proseDoc('On the layer')
+        }
+      ]
+    };
+    expect(sectionIsFeedPage(page)).toBe(true);
+    expect(feedPagePlainText(page)).toBe('On the layer');
+    expect(sectionIsFeedPage({ slug: 'empty', doc: emptyTipTapDoc(), layers: [] })).toBe(false);
+  });
+
+  it('multipage social posts publish as collections; a note template stays a note', () => {
+    const body: PenSectionContent = { slug: 'body', doc: proseDoc('One'), layers: [] };
+    const added: PenSectionContent = { slug: 'page-2', doc: proseDoc('Two'), layers: [] };
+    expect(
+      shouldPublishSocialAsCollection({
+        classId: 'social.note',
+        publishContentClass: 'note',
+        templateSectionSlugs: ['body'],
+        sections: [body]
+      })
+    ).toBe(false);
+    expect(
+      shouldPublishSocialAsCollection({
+        classId: 'social.note',
+        publishContentClass: 'note',
+        templateSectionSlugs: ['body'],
+        sections: [body, added]
+      })
+    ).toBe(true);
+    expect(
+      shouldPublishSocialAsCollection({
+        classId: 'social.note',
+        publishContentClass: 'note',
+        templateSectionSlugs: ['title', 'body'],
+        sections: [
+          { slug: 'title', doc: proseDoc('Title'), layers: [] },
+          { slug: 'body', doc: proseDoc('Body'), layers: [] }
+        ]
+      })
+    ).toBe(false);
+    expect(
+      shouldPublishSocialAsCollection({
+        classId: 'social.collection',
+        publishContentClass: 'collection',
+        templateSectionSlugs: ['slide-1', 'slide-2'],
+        sections: [
+          { slug: 'slide-1', doc: proseDoc('A'), layers: [] },
+          { slug: 'slide-2', doc: proseDoc('B'), layers: [] }
+        ]
+      })
+    ).toBe(true);
+    expect(
+      shouldPublishSocialAsCollection({
+        classId: 'library.doc',
+        publishContentClass: 'note',
+        templateSectionSlugs: ['body'],
+        sections: [body, added]
+      })
+    ).toBe(false);
   });
 });

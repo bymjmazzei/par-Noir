@@ -207,6 +207,9 @@ export interface PenPagePresentation {
 
 export type PenPageLayout = 'flow' | 'letter' | 'a4';
 
+/** How the live preview arranges document pages. */
+export type PenPageView = 'vertical' | 'horizontal' | 'screen';
+
 export type PenDocLifecycle = 'draft' | 'published';
 
 export interface PenDocManifest {
@@ -239,6 +242,12 @@ export interface PenDocManifest {
   pagePresentation?: PenPagePresentation;
   /** Gallery / thumb aspect for Social orientations. */
   galleryAspect?: '9/16' | '16/9' | '1/1';
+  /**
+   * Live preview page arrangement.
+   * Vertical stacks pages (letter and A4). Horizontal is separate pages
+   * (social and other flow docs). Screen is one continuous strip.
+   */
+  pageView?: PenPageView;
   /**
    * Multipage workspace swipe axis in editor / live preview.
    * `x` = horizontal between pages (collections default);

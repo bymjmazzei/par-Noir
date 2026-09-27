@@ -13,6 +13,7 @@ export * from './richDoc.js';
 export * from './renderRich.js';
 export * from './layers.js';
 export * from './pageGeometry.js';
+export * from './pageView.js';
 export * from './composeVideo.js';
 export * from './mediaStyle.js';
 export * from './layerParts.js';

@@ -22,6 +22,8 @@ export type FeedTileViewModel = {
   contentClass?: string;
   /** Multipage swipe axis — collections default x; longform units y. */
   pageSwipeAxis?: 'x' | 'y';
+  /** Screen paints one background across the pages instead of swiping. */
+  pageView?: 'vertical' | 'horizontal' | 'screen';
 };
 
 function EngagementRail({ mode }: { mode: 'preview' | 'live' }) {
@@ -151,7 +153,13 @@ export function FeedTileSurface({
           }
         ];
   const multi = pages.length > 1;
+  const screen = model.pageView === 'screen';
   const axis = model.pageSwipeAxis === 'y' ? 'y' : 'x';
+  const stripColor = pages[0]?.backgroundColor || '#000000';
+  const sharedMedia =
+    screen && pages.length > 0 && pages.every((page) => page.mediaSrc === pages[0]?.mediaSrc)
+      ? pages[0]?.mediaSrc
+      : undefined;
 
   const engagement =
     engagementOverlay != null
@@ -181,7 +189,36 @@ export function FeedTileSurface({
           : `${aspectClass} h-full max-h-full w-full max-w-[22rem]`
       }`}
     >
-      {multi ? (
+      {screen ? (
+        <div
+          className="relative flex h-full w-full"
+          data-page-view="screen"
+          data-screen-background={stripColor}
+          style={{ backgroundColor: stripColor }}
+        >
+          {sharedMedia ? (
+            pages[0]?.mediaKind === 'video' ? (
+              <div className="pointer-events-none absolute inset-0">
+                <PenMediaPlayer src={sharedMedia} className="h-full w-full [&_video]:object-cover" />
+              </div>
+            ) : (
+              <img src={sharedMedia} alt="" className="pointer-events-none absolute inset-0 h-full w-full object-cover" />
+            )
+          ) : null}
+          {pages.map((page, i) => (
+            <div key={i} className="relative h-full min-w-0 flex-1">
+              <PageSurface
+                page={{
+                  ...page,
+                  backgroundColor: 'transparent',
+                  mediaSrc: sharedMedia ? undefined : page.mediaSrc
+                }}
+                titleFallback={model.title}
+              />
+            </div>
+          ))}
+        </div>
+      ) : multi ? (
         <div
           className={
             axis === 'y'

@@ -1,6 +1,7 @@
 /** Blank Pen doc create — form (or custom) without a starter template body. */
 
 import {
+  defaultPageView,
   emptySection,
   defaultPagePresentation,
   defaultEditorPagePresentation,
@@ -136,6 +137,7 @@ export async function createBlankDoc(input: {
     updatedAt: now,
     genesisProof: genesis,
     pageLayout,
+    pageView: defaultPageView(pageLayout),
     pagePresentation:
       getClass(shape.classId)?.parentId === 'social'
         ? defaultPagePresentation()
