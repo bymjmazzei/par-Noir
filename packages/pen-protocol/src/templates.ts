@@ -183,8 +183,8 @@ function widgetStarters(): PenTemplate[] {
     widgetStarter(
       'widget.v1',
       'Widget',
-      'SVG box with text, a repeating answer button, optional expiry, and an HTML snippet',
-      'Compose the widget from elements. Do not paint answer rows as static text.',
+      'Empty template. Place layers on the preview and set a trigger on a button.',
+      'Arrange layers by dragging them. A button does nothing until its trigger is set.',
       seedWidget()
     )
   ];

@@ -31,8 +31,11 @@ import {
   resolvePagePaddingPx,
   resizeSeKeepAspect,
   sectionNeedsLegacyGeomMigrate,
+  formatCountdown,
+  revealSibling,
+  sanitizeWidgetMarkup,
   updateLayerLayout,
-  widgetHosts,
+  voteFaceForLayer,
   wrapSideFromGeom,
   type PenDocManifest,
   type PenPageLayer,
@@ -49,7 +52,6 @@ import {
   pageFrameStyle
 } from './LayerObjectToolbar';
 import { PageSheetColumn } from './PageSheetColumn';
-import { WidgetFrameHost } from './WidgetFrameHost';
 import { LayerMediaContent } from './LayerMediaContent';
 import { PenMediaPlayer } from '@par-noir/feed-tile';
 import { useResolvedMediaSrc } from '../hooks/useResolvedMediaSrc';
@@ -142,7 +144,8 @@ function BodyWrapObject({
   docId,
   session,
   onNaturalAspect,
-  onPollVote
+  onPollVote,
+  onWidgetAction
 }: {
   layer: PenPageLayer;
   allLayers: PenPageLayer[];
@@ -153,6 +156,7 @@ function BodyWrapObject({
   onSelect: () => void;
   onCommit: (geom: LiveGeom & { bodyWrap: 'left' | 'right' }) => void;
   onPollVote?: (layer: PenPageLayer) => void;
+  onWidgetAction?: (layer: PenPageLayer) => void;
   docId?: string;
   session?: PenSession | null;
   onNaturalAspect?: (aspect: number) => void;
@@ -349,6 +353,7 @@ function BodyWrapObject({
         onClick={(e) => {
           e.stopPropagation();
           if (layer.behavior === 'poll.vote') onPollVote?.(layer);
+          else if (layer.behavior) onWidgetAction?.(layer);
           onSelect();
         }}
       >
@@ -401,7 +406,9 @@ export function EditablePagePreview({
   onPresentationChange,
   onSnapChange,
   session,
-  onPollVote
+  onPollVote,
+  onWidgetAction,
+  votedOptionByGroup
 }: {
   manifest: PenDocManifest;
   section: PenSectionContent;
@@ -409,6 +416,8 @@ export function EditablePagePreview({
   onSelectLayer: (id: string | null) => void;
   onSectionChange: (next: PenSectionContent) => void;
   onPollVote?: (layer: PenPageLayer) => void;
+  onWidgetAction?: (layer: PenPageLayer) => void;
+  votedOptionByGroup?: Record<string, string>;
   onPageLayoutChange?: (layout: PenPageLayout) => void;
   onFlowWorkspaceChange?: (next: {
     widthPx: number | null;
@@ -473,10 +482,9 @@ export function EditablePagePreview({
     [layers]
   );
   const absoluteLayers = useMemo(
-    () => layers.filter((l) => l.visible !== false && !l.bodyWrap && !l.widgetElement),
+    () => layers.filter((l) => l.visible !== false && !l.bodyWrap),
     [layers]
   );
-  const hosts = useMemo(() => widgetHosts(prepared), [prepared]);
   const items = absoluteLayers.map(layerToItem);
   const groupIds = useMemo(
     () => new Set(layers.filter((l) => l.kind === 'group').map((l) => l.id)),
@@ -924,6 +932,7 @@ export function EditablePagePreview({
                 contentH={box.height}
                 onSelect={() => selectLayer(layer.id)}
                 onPollVote={onPollVote}
+                onWidgetAction={onWidgetAction}
                 onCommit={(patch) => onWrapCommit(layer.id, patch)}
                 docId={manifest.docId}
                 session={session}
@@ -962,19 +971,6 @@ export function EditablePagePreview({
                 if (!layer || layer.bodyWrap) return null;
                 const shell = layerPreviewStyle(layer);
                 if (layer.kind === 'group') {
-                  if (layer.widgetTemplateId) {
-                    return (
-                      <div className="pointer-events-auto h-full w-full" style={shell}>
-                        <WidgetFrameHost
-                          section={prepared}
-                          groupId={layer.id}
-                          mode="author"
-                          onSectionChange={onSectionChange}
-                          onVote={onPollVote}
-                        />
-                      </div>
-                    );
-                  }
                   return (
                     <div
                       className="h-full w-full"
@@ -1015,20 +1011,64 @@ export function EditablePagePreview({
                     </div>
                   );
                 }
-                if (layer.kind === 'interactive' && !layer.widgetElement) {
+                if (layer.widgetElement === 'svg' && layer.svgSrc) {
+                  return (
+                    <div
+                      className="h-full w-full overflow-hidden"
+                      style={shell}
+                      dangerouslySetInnerHTML={{ __html: sanitizeWidgetMarkup(layer.svgSrc) }}
+                    />
+                  );
+                }
+                if (layer.widgetElement === 'html') {
+                  return (
+                    <iframe
+                      title={layer.name || 'Snippet'}
+                      sandbox=""
+                      className="pointer-events-auto h-full w-full border-0 bg-white"
+                      srcDoc={layer.htmlSource || ''}
+                    />
+                  );
+                }
+                if (layer.widgetElement === 'time') {
+                  return (
+                    <div
+                      className="flex h-full w-full items-center justify-center text-xs"
+                      style={shell}
+                    >
+                      {layer.closesAt ? formatCountdown(layer.closesAt) : 'Time'}
+                    </div>
+                  );
+                }
+                if (layer.kind === 'interactive') {
+                  const groupKey = layer.parentGroupId || 'doc';
+                  const counts =
+                    layers.find((item) => item.id === layer.parentGroupId)?.widgetCounts || null;
+                  const caption =
+                    layer.behavior === 'poll.vote'
+                      ? voteFaceForLayer(
+                          prepared,
+                          layer,
+                          votedOptionByGroup?.[groupKey] || null,
+                          counts
+                        ).text
+                      : layer.label || 'Button';
                   return (
                     <button
                       type="button"
-                      className="flex h-full w-full items-center justify-center px-3 text-sm font-medium text-white"
+                      className="pointer-events-auto flex h-full w-full items-center justify-center px-3 text-sm font-medium text-white"
                       style={shell}
-                      title={`${layer.behavior || 'interactive'} → ${layer.bindRowId || layer.bindDocId || ''}`}
+                      title={layer.behavior || 'button'}
                       onClick={(e) => {
                         e.stopPropagation();
                         if (layer.behavior === 'poll.vote') onPollVote?.(layer);
+                        else if (layer.behavior === 'widget.reveal') {
+                          onSectionChange(revealSibling(prepared, layer.id));
+                        } else if (layer.behavior) onWidgetAction?.(layer);
                         selectLayer(layer.id);
                       }}
                     >
-                      {layer.label || 'Action'}
+                      {caption}
                     </button>
                   );
                 }
@@ -1075,28 +1115,6 @@ export function EditablePagePreview({
                 );
               }}
             />
-            {hosts
-              .filter((host) => host.groupId == null)
-              .map((host) => (
-                <div
-                  key="widget-loose"
-                  className="pointer-events-auto absolute z-[2]"
-                  style={{
-                    left: pad + host.rect.x,
-                    top: pad + host.rect.y,
-                    width: host.rect.w,
-                    height: host.rect.h
-                  }}
-                >
-                  <WidgetFrameHost
-                    section={prepared}
-                    groupId={null}
-                    mode="author"
-                    onSectionChange={onSectionChange}
-                    onVote={onPollVote}
-                  />
-                </div>
-              ))}
           </div>
         </PageSheetColumn>
       </div>

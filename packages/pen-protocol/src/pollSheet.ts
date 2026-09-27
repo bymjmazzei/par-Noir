@@ -22,6 +22,8 @@ export interface PollStructure {
   question: string;
   options: PollOption[];
   closesAt: string | null;
+  /** Vote option that is the right answer. Absent means the result is a tally. */
+  correctOptionId?: string | null;
 }
 
 export interface PollCounts {
@@ -42,6 +44,7 @@ export function structureToSheetRows(structure: PollStructure): string[][] {
     rows.push(['option', option.id, option.label]);
   }
   rows.push(['closes_at', '', structure.closesAt || '']);
+  if (structure.correctOptionId) rows.push(['correct', structure.correctOptionId, '']);
   return rows;
 }
 
@@ -49,6 +52,7 @@ export function sheetRowsToStructure(rows: Array<Array<string | number | boolean
   let question = '';
   const options: PollOption[] = [];
   let closesAt: string | null = null;
+  let correctOptionId: string | null = null;
   for (const row of rows) {
     const field = String(row[0] ?? '');
     const id = String(row[1] ?? '');
@@ -56,8 +60,9 @@ export function sheetRowsToStructure(rows: Array<Array<string | number | boolean
     if (field === 'question') question = value;
     else if (field === 'option' && id) options.push({ id, label: value });
     else if (field === 'closes_at') closesAt = value.trim() || null;
+    else if (field === 'correct' && id) correctOptionId = id;
   }
-  return { question, options, closesAt };
+  return { question, options, closesAt, correctOptionId };
 }
 
 export function emptyPollCounts(): PollCounts {
@@ -102,22 +107,34 @@ export function pollLayers(section: PenSectionContent, groupId?: string | null):
 }
 
 export function isAnswerButton(layer: PenPageLayer): boolean {
-  if (layer.widgetElement === 'button') return true;
-  return layer.kind === 'interactive' && layer.behavior === 'poll.vote' && !layer.widgetElement;
+  return layer.kind === 'interactive' && layer.behavior === 'poll.vote';
+}
+
+export function sectionHasVoteButton(
+  section: PenSectionContent,
+  groupId?: string | null
+): boolean {
+  return pollLayers(section, groupId).some(isAnswerButton);
 }
 
 export function structureFromLayers(section: PenSectionContent, groupId?: string | null): PollStructure {
   const scoped = pollLayers(section, groupId);
-  const questionLayer =
-    scoped.find((layer) => layer.widgetElement === 'text') ||
-    scoped.find((layer) => layer.kind === 'text' && layer.name === 'Question');
+  const questionLayer = scoped.find(
+    (layer) => layer.kind === 'text' && layer.widgetElement !== 'time' && layer.name !== 'Results'
+  );
   const question = questionLayer ? docToPlainText(getTextLayerDoc(questionLayer)).trim() : '';
   const options = scoped.filter(isAnswerButton).map((layer) => ({
     id: layer.bindRowId || layer.id,
     label: layer.label || layer.name || 'Option'
   }));
+  const correct = scoped.find((layer) => isAnswerButton(layer) && layer.correct);
   const time = scoped.find((layer) => layer.widgetElement === 'time');
-  return { question, options, closesAt: time?.closesAt ?? null };
+  return {
+    question,
+    options,
+    closesAt: time?.closesAt ?? null,
+    correctOptionId: correct ? correct.bindRowId || correct.id : null
+  };
 }
 
 export function pollSpreadsheetOnGroup(
@@ -160,9 +177,9 @@ export function syncPollLayers(
 ): PenSectionContent {
   let next = section;
   const scoped = () => pollLayers(next, groupId);
-  const question =
-    scoped().find((layer) => layer.widgetElement === 'text') ||
-    scoped().find((layer) => layer.kind === 'text' && layer.name === 'Question');
+  const question = scoped().find(
+    (layer) => layer.kind === 'text' && layer.widgetElement !== 'time' && layer.name !== 'Results'
+  );
   if (question) {
     next = setTextLayerDoc(next, question.id, plainDoc(structure.question), { syncDoc: false });
   }

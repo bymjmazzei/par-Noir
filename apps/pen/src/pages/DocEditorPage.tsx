@@ -35,7 +35,13 @@ import {
   emptySection,
   remapSectionsForAspect,
   normalizeGalleryAspect,
+  allocateSplit,
+  buildWidgetActionRow,
+  isSheetTrigger,
+  rankOrder,
+  sectionHasVoteButton,
   structureFromLayers,
+  submitFields,
   syncPollLayers,
   type PenDocComment,
   type PenPageLayout,
@@ -85,7 +91,8 @@ import {
   writeMixedPagesPublishHandoff
 } from '../services/penPublish';
 import { requestNotaryStamp, fetchMonetizationConnectReady } from '../services/penApi';
-import { castPollVote, putPollStructure } from '../services/pollCloud';
+import { castPollVote, createPollSheet, putPollStructure } from '../services/pollCloud';
+import { queueWidgetAction } from '../services/widgetAction';
 import { resolveSigningKeys } from '../services/penKeys';
 import {
   actorCan,
@@ -194,7 +201,8 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
   dirtyRef.current = dirty;
   activeSlugRef.current = activeSlug;
   const [error, setError] = useState<string | null>(null);
-  const [votedGroupIds, setVotedGroupIds] = useState<Set<string>>(() => new Set());
+  const [votedOptionByGroup, setVotedOptionByGroup] = useState<Record<string, string>>({});
+  const [toggledKeys, setToggledKeys] = useState<Set<string>>(() => new Set());
   const widgetSheetTimer = useRef<number | null>(null);
   const [editor, setEditor] = useState<Editor | null>(null);
   const [activeLayerId, setActiveLayerId] = useState<string | null>(PAGE_LAYER_ID);
@@ -321,27 +329,16 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
     return null;
   }, [section, activeLayerId]);
 
-  const activeWidget = useMemo(() => {
-    if (!section || !bundle) return null;
-    const layer = isPageLayerId(activeLayerId)
-      ? null
-      : section.layers?.find((item) => item.id === activeLayerId);
-    if (layer?.kind === 'group' && layer.widgetTemplateId) {
-      return {
-        groupId: layer.id,
-        widgetTemplateId: layer.widgetTemplateId,
-        spreadsheetId: layer.spreadsheetId || null
-      };
-    }
-    if (isWidgetDoc && isPageLayerId(activeLayerId)) {
-      return {
-        groupId: null as string | null,
-        widgetTemplateId: bundle.manifest.templateId,
-        spreadsheetId: bundle.manifest.pollSpreadsheetId || null
-      };
+  const widgetStripLayer = useMemo(() => {
+    if (!section || isPageLayerId(activeLayerId)) return null;
+    const layer = section.layers?.find((item) => item.id === activeLayerId);
+    if (!layer) return null;
+    if (layer.kind === 'interactive') return layer;
+    if (layer.widgetElement === 'time' || layer.widgetElement === 'html' || layer.widgetElement === 'svg') {
+      return layer;
     }
     return null;
-  }, [section, activeLayerId, bundle, isWidgetDoc]);
+  }, [section, activeLayerId]);
 
   const activeWritingDoc = useMemo((): PenTipTapNode | undefined => {
     if (!section) return undefined;
@@ -595,11 +592,8 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
       if (!result.enqueued) {
         setError('Vote counted. It will reach the sheet after the owner unlocks.');
       }
-      setVotedGroupIds((prev) => {
-        const next = new Set(prev);
-        next.add(group?.id || 'doc');
-        return next;
-      });
+      const optionId = layer.bindRowId || layer.id;
+      setVotedOptionByGroup((prev) => ({ ...prev, [group?.id || 'doc']: optionId }));
     } catch (e) {
       setError(e instanceof Error ? e.message : 'vote_failed');
     }
@@ -655,23 +649,88 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
     }, 500);
   }
 
+  async function runWidgetAction(layer: PenPageLayer) {
+    if (!bundle || !section || !layer.behavior || !isSheetTrigger(layer.behavior)) return;
+    const groupId = layer.parentGroupId || null;
+    const actorId = session.pnIdentifier;
+    const actionId = crypto.randomUUID();
+    const trigger = layer.behavior;
+    const fields = trigger === 'widget.submit' ? submitFields(section, groupId) : undefined;
+    const order = trigger === 'widget.rank' ? rankOrder(section, groupId) : undefined;
+    const split = trigger === 'widget.allocate' ? allocateSplit(section, groupId) : undefined;
+    let present: boolean | undefined;
+    if (trigger === 'widget.toggle') {
+      const key = `${groupId || 'doc'}:${actorId}`;
+      present = !toggledKeys.has(key);
+      setToggledKeys((prev) => {
+        const next = new Set(prev);
+        if (present) next.add(key);
+        else next.delete(key);
+        return next;
+      });
+    }
+    const built = buildWidgetActionRow({
+      trigger,
+      actorId,
+      actionId,
+      fields,
+      order,
+      split,
+      present
+    });
+    try {
+      await queueWidgetAction({ session, docId: bundle.manifest.docId, row: built.row });
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'widget_action_failed');
+    }
+  }
+
   async function pushWidgetSheet(next: NonNullable<typeof section>) {
-    if (!bundle) return;
-    const groups = (next.layers || []).filter((layer) => layer.kind === 'group' && layer.widgetTemplateId);
+    if (!bundle || !sectionHasVoteButton(next)) return;
+    const docId = bundle.manifest.docId;
+    let section = next;
+    const groups = (section.layers || []).filter(
+      (layer) => layer.kind === 'group' && sectionHasVoteButton(section, layer.id)
+    );
     const targets = groups.length
-      ? groups.map((group) => ({ groupId: group.id, spreadsheetId: group.spreadsheetId || null }))
+      ? groups.map((group) => ({ groupId: group.id as string | null, spreadsheetId: group.spreadsheetId || null }))
       : [{ groupId: null as string | null, spreadsheetId: bundle.manifest.pollSpreadsheetId || null }];
     for (const target of targets) {
-      if (!target.spreadsheetId) continue;
-      const structure = structureFromLayers(next, target.groupId);
+      if (!sectionHasVoteButton(section, target.groupId)) continue;
+      const structure = structureFromLayers(section, target.groupId);
       if (!structure.options.length) continue;
       try {
-        await putPollStructure({
-          session,
-          docId: bundle.manifest.docId,
-          spreadsheetId: target.spreadsheetId,
-          structure
-        });
+        let spreadsheetId = target.spreadsheetId || '';
+        if (!spreadsheetId) {
+          const created = await createPollSheet({
+            session,
+            docId,
+            groupId: target.groupId || docId,
+            structure
+          });
+          spreadsheetId = created;
+          if (target.groupId) {
+            const groupId = target.groupId;
+            section = {
+              ...section,
+              layers: (section.layers || []).map((layer) =>
+                layer.id === groupId ? { ...layer, spreadsheetId: created } : layer
+              )
+            };
+            persistSection(section);
+          } else {
+            persist({
+              ...bundle,
+              sections: bundle.sections.map((item) => (item.slug === section.slug ? section : item)),
+              manifest: {
+                ...bundle.manifest,
+                pollSpreadsheetId: created,
+                updatedAt: new Date().toISOString()
+              }
+            });
+          }
+        }
+        await putPollStructure({ session, docId, spreadsheetId, structure });
       } catch (e) {
         setError(e instanceof Error ? e.message : 'poll_save_failed');
       }
@@ -1702,7 +1761,7 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
                   </button>
                 </div>
               </div>
-              {writingEnabled && !activeMediaLayer && !activeWidget ? (
+              {writingEnabled && !activeMediaLayer ? (
                 <FormatRibbon
                   editor={editor}
                   accessToken={session.accessToken}
@@ -1776,15 +1835,6 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
                   <code>{bundle.manifest.publishedFileId}</code>
                 </p>
               )}
-            </div>
-          ) : activeWidget && section && bundle ? (
-            <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-              <WidgetEditorPanel
-                key={`${activeWidget.groupId || 'doc'}:${activeWidget.spreadsheetId || ''}`}
-                section={section}
-                groupId={activeWidget.groupId}
-                onSectionChange={commitWidgetSection}
-              />
             </div>
           ) : activeMediaLayer && section ? (
             <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
@@ -1868,6 +1918,14 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
 
         {showPreview && !showHistory && !sidePanel && (
           <div className="hidden min-w-0 w-1/2 flex-col sm:flex">
+            {widgetStripLayer && section && (
+              <WidgetEditorPanel
+                key={widgetStripLayer.id}
+                layer={widgetStripLayer}
+                section={section}
+                onSectionChange={commitWidgetSection}
+              />
+            )}
             {isSocialDoc ? (
               <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">
                 <div className="pen-social-pres-strip">
@@ -2011,7 +2069,7 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
                       layer={socialActionLayer}
                       section={section}
                       session={session}
-                      onSectionChange={persistSection}
+                      onSectionChange={commitWidgetSection}
                     />
                   </div>
                 )}
@@ -2039,8 +2097,9 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
                           galleryAspect={bundle.manifest.galleryAspect}
                           activeLayerId={activeLayerId}
                           session={session}
-                          votedGroupIds={votedGroupIds}
+                          votedOptionByGroup={votedOptionByGroup}
                           onPollVote={(layer) => void voteOnPoll(layer)}
+                          onWidgetAction={(layer) => void runWidgetAction(layer)}
                           onSectionChange={commitWidgetSection}
                           onSelectLayer={(id) => {
                             setActiveLayerId(id);
@@ -2059,7 +2118,7 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
                     section={section}
                     activeLayerId={activeLayerId || PAGE_LAYER_ID}
                     onSelectLayer={(id) => setActiveLayerId(id || PAGE_LAYER_ID)}
-                    onSectionChange={persistSection}
+                    onSectionChange={commitWidgetSection}
                     pageLayout={bundle.manifest.pageLayout}
                     selectedIds={socialSelectedIds}
                     onSelectedIdsChange={setSocialSelectedIds}
@@ -2126,8 +2185,11 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
                       }
                     });
                   }}
+                  onPollVote={(layer) => void voteOnPoll(layer)}
+                  onWidgetAction={(layer) => void runWidgetAction(layer)}
+                  votedOptionByGroup={votedOptionByGroup}
                   onSectionChange={(next) => {
-                    if ((next.layers || []).some((layer) => layer.widgetElement || layer.widgetTemplateId)) {
+                    if (sectionHasVoteButton(next)) {
                       commitWidgetSection(next);
                       return;
                     }
@@ -2137,7 +2199,6 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
                       manifest: { ...bundle.manifest, updatedAt: new Date().toISOString() }
                     });
                   }}
-                  onPollVote={(layer) => void voteOnPoll(layer)}
                 />
               </div>
             ) : null}

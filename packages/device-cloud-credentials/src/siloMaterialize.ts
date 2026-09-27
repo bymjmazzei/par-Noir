@@ -527,7 +527,8 @@ export const SOCIAL_JOB_TYPES_APPLIED_VIA_API: ReadonlySet<string> = new Set([
   'pen.doc_delete',
   'pen.doc_meta',
   'pen.font_upsert',
-  'pen.poll_vote'
+  'pen.poll_vote',
+  'pen.widget_action'
 ]);
 
 /**

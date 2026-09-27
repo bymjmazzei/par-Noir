@@ -7,11 +7,9 @@ import { FeedTileSurface, type FeedTileViewModel } from '@par-noir/feed-tile';
 import {
   canvasSizeForAspect,
   normalizeGalleryAspect,
-  widgetHosts,
   type PenDocManifest,
   type PenSectionContent
 } from '@par-noir/pen-protocol';
-import { WidgetFrameHost } from './WidgetFrameHost';
 import { bundleToFeedTileModel } from '../services/feedTileFromPen';
 import { downloadCloudMediaBlob } from '../services/penAttach';
 import {
@@ -152,25 +150,23 @@ export function BrowseFeedTilePreview({
   const widgetOverlay = showWidgets ? (
     <div className="pointer-events-none absolute inset-0 z-10">
       {sections.flatMap((section) =>
-        widgetHosts(section).map((host) => (
-          <div
-            key={`${section.slug}:${host.groupId || 'loose'}`}
-            className="pointer-events-auto absolute"
-            style={{
-              left: `${(host.rect.x / canvas.w) * 100}%`,
-              top: `${(host.rect.y / canvas.h) * 100}%`,
-              width: `${(host.rect.w / canvas.w) * 100}%`,
-              height: `${(host.rect.h / canvas.h) * 100}%`
-            }}
-          >
-            <WidgetFrameHost
-              section={section}
-              groupId={host.groupId}
-              mode="voter"
-              onSectionChange={() => undefined}
-            />
-          </div>
-        ))
+        (section.layers || [])
+          .filter((layer) => layer.visible !== false && layer.kind === 'interactive')
+          .map((layer) => (
+            <div
+              key={layer.id}
+              className="pointer-events-auto absolute flex items-center justify-center text-[11px] font-medium text-white"
+              style={{
+                left: `${(layer.x / canvas.w) * 100}%`,
+                top: `${(layer.y / canvas.h) * 100}%`,
+                width: `${(layer.w / canvas.w) * 100}%`,
+                height: `${(layer.h / canvas.h) * 100}%`,
+                backgroundColor: layer.backgroundColor || 'rgba(15,118,110,0.85)'
+              }}
+            >
+              {layer.label || 'Button'}
+            </div>
+          ))
       )}
     </div>
   ) : null;

@@ -17,7 +17,7 @@ import {
   ensureOwnerAssignment,
   normalizeLicensingRoot,
   tableSectionFromPayload,
-  POLL_WIDGET_TEMPLATE_ID,
+  sectionHasVoteButton,
   structureFromLayers,
   type PenDocManifest,
   type PenDraftManifest,
@@ -199,7 +199,7 @@ export async function createDocFromTemplate(input: {
     sections,
     title: input.title
   });
-  if (template.id === POLL_WIDGET_TEMPLATE_ID && bundle.sections[0]) {
+  if (bundle.sections[0] && sectionHasVoteButton(bundle.sections[0])) {
     const structure = structureFromLayers(bundle.sections[0]);
     const spreadsheetId = await createPollSheet({
       session: input.session,

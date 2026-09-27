@@ -39,6 +39,7 @@ export {
   penDocDeleteFanout,
   penFontUpsertFanout,
   penPollVoteFanout,
+  penWidgetActionFanout,
   loadLocalOutbox,
   saveLocalOutbox,
   upsertLocalOutboxRecord,

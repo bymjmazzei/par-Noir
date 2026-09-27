@@ -1,18 +1,51 @@
 /**
- * Widget elements compose inside one group and render as HTML.
- * An SVG is the box. Text, repeating answer buttons, a time element,
- * and an HTML snippet sit in that box and the box scales with the form.
+ * A widget is a template. Layers sit where the user dragged them.
+ * A button has no trigger until one is set. Vote is the only trigger
+ * that writes the poll sheet.
  */
 
+import { PEN_WIDGET_ACTION_KIND } from './outbox.js';
 import { docToPlainText } from './richDoc.js';
 import { upsertLayer } from './layers.js';
-import { pollIsClosed, type PollCounts } from './pollSheet.js';
+import {
+  pollIsClosed,
+  pollLayers,
+  structureFromLayers,
+  type PollCounts
+} from './pollSheet.js';
 import { socialPresentation, type SeedBundle } from './starterSeeds.js';
-import type { PenPageLayer, PenSectionContent, PenTipTapNode, PenWidgetElement } from './types.js';
+import type {
+  PenInteractiveBehavior,
+  PenPageLayer,
+  PenSectionContent,
+  PenTipTapNode,
+  PenWidgetElement
+} from './types.js';
 
 export const WIDGET_TEMPLATE_ID = 'widget.v1';
 
-export const DEFAULT_WIDGET_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 360" preserveAspectRatio="none"><rect width="320" height="360" rx="28" fill="#101418"/></svg>`;
+export const DEFAULT_WIDGET_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 80" preserveAspectRatio="none"><rect width="120" height="80" rx="8" fill="#101418"/></svg>`;
+
+const SHEET_TRIGGERS = [
+  'widget.submit',
+  'widget.toggle',
+  'widget.stamp',
+  'widget.rank',
+  'widget.allocate'
+] as const;
+
+export type WidgetSheetTrigger = (typeof SHEET_TRIGGERS)[number];
+
+export type WidgetActionRow = {
+  actionId: string;
+  trigger: WidgetSheetTrigger;
+  actorId: string;
+  createdAt: string;
+  fields?: Record<string, string>;
+  present?: boolean;
+  order?: string[];
+  split?: Record<string, number>;
+};
 
 function elementId(): string {
   return `el_${Math.random().toString(36).slice(2, 10)}`;
@@ -32,50 +65,6 @@ export function sanitizeWidgetMarkup(source: string): string {
     .replace(/\son\w+\s*=\s*'[^']*'/gi, '');
 }
 
-export function widgetElementLayers(
-  section: PenSectionContent,
-  groupId?: string | null
-): PenPageLayer[] {
-  const layers = section.layers || [];
-  if (groupId) return layers.filter((layer) => layer.parentGroupId === groupId && layer.widgetElement);
-  return layers.filter((layer) => layer.widgetElement && !layer.parentGroupId);
-}
-
-export type WidgetHost = {
-  groupId: string | null;
-  rect: { x: number; y: number; w: number; h: number };
-};
-
-export function widgetHosts(section: PenSectionContent): WidgetHost[] {
-  const layers = section.layers || [];
-  const groups = layers.filter((layer) => layer.kind === 'group' && layer.widgetTemplateId);
-  if (groups.length) {
-    return groups.map((group) => ({
-      groupId: group.id,
-      rect: { x: group.x, y: group.y, w: group.w, h: group.h }
-    }));
-  }
-  const loose = layers.filter((layer) => layer.widgetElement);
-  if (!loose.length) return [];
-  const x = Math.min(...loose.map((layer) => layer.x));
-  const y = Math.min(...loose.map((layer) => layer.y));
-  const r = Math.max(...loose.map((layer) => layer.x + layer.w));
-  const b = Math.max(...loose.map((layer) => layer.y + layer.h));
-  return [{ groupId: null, rect: { x, y, w: Math.max(48, r - x), h: Math.max(48, b - y) } }];
-}
-
-export function widgetCountsOn(
-  section: PenSectionContent,
-  groupId?: string | null
-): PollCounts | null {
-  if (groupId) {
-    const group = (section.layers || []).find((layer) => layer.id === groupId);
-    return group?.widgetCounts || null;
-  }
-  const host = widgetElementLayers(section, null).find((layer) => layer.widgetCounts);
-  return host?.widgetCounts || null;
-}
-
 export function formatCountdown(closesAt: string, now = Date.now()): string {
   if (pollIsClosed(closesAt, now)) return '00:00:00';
   const remain = Math.max(0, Date.parse(closesAt) - now);
@@ -86,58 +75,8 @@ export function formatCountdown(closesAt: string, now = Date.now()): string {
   return `${hours}h ${String(minutes).padStart(2, '0')}m ${String(seconds).padStart(2, '0')}s`;
 }
 
-function baseElement(
-  element: PenWidgetElement,
-  partial: Partial<PenPageLayer> & Pick<PenPageLayer, 'id'>
-): PenPageLayer {
-  return {
-    kind: element === 'button' ? 'interactive' : 'text',
-    x: 28,
-    y: 28,
-    w: 256,
-    h: element === 'svg' ? 320 : 40,
-    zIndex: 1,
-    positionLocked: false,
-    widgetElement: element,
-    ...partial
-  };
-}
-
+/** Empty template. Nothing is pre-arranged and no button is a vote. */
 export function seedWidget(): SeedBundle {
-  const layers: PenPageLayer[] = [
-    baseElement('svg', {
-      id: 'layer_svg',
-      name: 'Box',
-      x: 16,
-      y: 16,
-      w: 288,
-      h: 328,
-      zIndex: 0,
-      svgSrc: DEFAULT_WIDGET_SVG
-    }),
-    baseElement('text', {
-      id: 'layer_question',
-      name: 'Question',
-      x: 28,
-      y: 36,
-      w: 256,
-      h: 48,
-      zIndex: 1,
-      textDoc: plainDoc('')
-    }),
-    baseElement('button', {
-      id: 'layer_answer',
-      name: 'Yes',
-      x: 28,
-      y: 100,
-      w: 256,
-      h: 44,
-      zIndex: 2,
-      behavior: 'poll.vote',
-      bindRowId: 'opt_yes',
-      label: 'Yes'
-    })
-  ];
   return {
     seedPageLayout: 'flow',
     seedPagePresentation: socialPresentation({
@@ -152,101 +91,141 @@ export function seedWidget(): SeedBundle {
       dropShadowOffsetX: 0,
       dropShadowOffsetY: 0
     }),
-    seedSections: [{ slug: 'card', doc: plainDoc(''), layers }]
+    seedSections: [{ slug: 'card', doc: plainDoc(''), layers: [] }]
   };
 }
 
-function stretchBox(section: PenSectionContent, groupId: string | null, dy: number): PenSectionContent {
-  let next = section;
-  const svg = widgetElementLayers(next, groupId).find((layer) => layer.widgetElement === 'svg');
-  if (svg) next = upsertLayer(next, { ...svg, h: svg.h + dy });
-  if (groupId) {
-    const group = (next.layers || []).find((layer) => layer.id === groupId);
-    if (group) next = upsertLayer(next, { ...group, h: group.h + dy });
-  }
-  return next;
-}
-
-export function addWidgetElement(
+export function placeWidgetLayer(
   section: PenSectionContent,
   groupId: string | null,
-  element: PenWidgetElement
-): PenSectionContent {
-  const peers = widgetElementLayers(section, groupId);
-  if (element === 'svg' && peers.some((layer) => layer.widgetElement === 'svg')) return section;
-  if (element === 'time' && peers.some((layer) => layer.widgetElement === 'time')) return section;
-  const last = peers[peers.length - 1];
+  element: PenWidgetElement | 'image'
+): { section: PenSectionContent; layerId: string } {
+  const peers = section.layers || [];
+  const n = peers.length;
   const id = elementId();
-  let layer = baseElement(element, {
+  const shared = {
     id,
-    name: element === 'button' ? 'Answer' : element,
+    x: 24 + (n % 4) * 20,
+    y: 24 + (n % 6) * 12,
+    zIndex: peers.reduce((m, layer) => Math.max(m, layer.zIndex), 0) + 1,
     parentGroupId: groupId || undefined,
-    y: last ? last.y + last.h + 8 : 28,
-    zIndex: (last?.zIndex ?? 0) + 1
-  });
-  if (element === 'svg') layer = { ...layer, name: 'Box', svgSrc: DEFAULT_WIDGET_SVG, h: 120 };
-  if (element === 'text') layer = { ...layer, name: 'Question', textDoc: plainDoc('') };
-  if (element === 'button') {
+    positionLocked: false
+  };
+  let layer: PenPageLayer;
+  if (element === 'image') {
+    layer = { ...shared, kind: 'image', name: 'Image', w: 160, h: 120 };
+  } else if (element === 'button') {
     layer = {
-      ...layer,
-      name: 'Answer',
-      label: 'Answer',
-      behavior: 'poll.vote',
-      bindRowId: `opt_${id.slice(3)}`
+      ...shared,
+      kind: 'interactive',
+      widgetElement: 'button',
+      name: 'Button',
+      label: 'Button',
+      w: 120,
+      h: 40,
+      backgroundColor: 'rgba(15,118,110,0.85)'
+    };
+  } else if (element === 'text') {
+    layer = {
+      ...shared,
+      kind: 'text',
+      widgetElement: 'text',
+      name: 'Text',
+      w: 200,
+      h: 40,
+      textDoc: plainDoc('')
+    };
+  } else if (element === 'time') {
+    layer = {
+      ...shared,
+      kind: 'text',
+      widgetElement: 'time',
+      name: 'Time',
+      w: 160,
+      h: 32,
+      closesAt: null
+    };
+  } else if (element === 'html') {
+    layer = {
+      ...shared,
+      kind: 'text',
+      widgetElement: 'html',
+      name: 'Snippet',
+      w: 200,
+      h: 80,
+      htmlSource: ''
+    };
+  } else {
+    layer = {
+      ...shared,
+      kind: 'text',
+      widgetElement: 'svg',
+      name: 'SVG',
+      w: 120,
+      h: 80,
+      svgSrc: DEFAULT_WIDGET_SVG
     };
   }
-  if (element === 'time') layer = { ...layer, name: 'Expiry', closesAt: null };
-  if (element === 'html') layer = { ...layer, name: 'Snippet', htmlSource: '' };
-  const next = upsertLayer(section, layer);
-  return element === 'svg' ? next : stretchBox(next, groupId, layer.h + 8);
+  return { section: upsertLayer(section, layer), layerId: id };
 }
 
-export function duplicateAnswerButton(
-  section: PenSectionContent,
-  buttonId: string
-): PenSectionContent {
-  const button = (section.layers || []).find((layer) => layer.id === buttonId && layer.widgetElement === 'button');
+export function duplicateButton(section: PenSectionContent, buttonId: string): PenSectionContent {
+  const button = (section.layers || []).find(
+    (layer) => layer.id === buttonId && layer.kind === 'interactive'
+  );
   if (!button) return section;
   const id = elementId();
   const clone: PenPageLayer = {
     ...button,
     id,
-    bindRowId: `opt_${id.slice(3)}`,
-    label: 'New option',
-    name: 'New option',
     y: button.y + button.h + 8,
-    zIndex: button.zIndex + 1
+    zIndex: button.zIndex + 1,
+    correct: undefined
   };
-  return stretchBox(upsertLayer(section, clone), button.parentGroupId || null, button.h + 8);
+  if (button.behavior === 'poll.vote') clone.bindRowId = id;
+  return upsertLayer(section, clone);
 }
 
-export function setWidgetText(
+export function setButtonTrigger(
   section: PenSectionContent,
   layerId: string,
-  text: string
+  behavior: PenInteractiveBehavior | null
 ): PenSectionContent {
   const layer = (section.layers || []).find((item) => item.id === layerId);
-  if (!layer) return section;
-  if (layer.widgetElement === 'button') {
-    return upsertLayer(section, { ...layer, label: text, name: text });
+  if (!layer || layer.kind !== 'interactive') return section;
+  const next: PenPageLayer = { ...layer, widgetElement: 'button' };
+  if (!behavior) {
+    delete next.behavior;
+    delete next.bindRowId;
+    delete next.correct;
+    return upsertLayer(section, next);
   }
-  return upsertLayer(section, { ...layer, textDoc: plainDoc(text), name: layer.name || 'Question' });
+  next.behavior = behavior;
+  if (behavior === 'poll.vote') {
+    next.bindRowId = layer.bindRowId || layer.id;
+  } else {
+    delete next.bindRowId;
+    delete next.correct;
+  }
+  return upsertLayer(section, next);
 }
 
-export function setWidgetSvg(
+/** One correct option in the group. Clearing it returns the result to a tally. */
+export function setVoteCorrect(
   section: PenSectionContent,
-  groupId: string | null,
-  svg: string
+  layerId: string,
+  correct: boolean
 ): PenSectionContent {
-  const clean = sanitizeWidgetMarkup(svg);
-  const existing = widgetElementLayers(section, groupId).find((layer) => layer.widgetElement === 'svg');
-  if (!existing) {
-    const added = addWidgetElement(section, groupId, 'svg');
-    const created = widgetElementLayers(added, groupId).find((layer) => layer.widgetElement === 'svg');
-    if (!created) return added;
-    return upsertLayer(added, { ...created, svgSrc: clean });
+  const layer = (section.layers || []).find((item) => item.id === layerId);
+  if (!layer || layer.behavior !== 'poll.vote') return section;
+  const groupId = layer.parentGroupId || null;
+  let next = section;
+  for (const peer of pollLayers(section, groupId)) {
+    if (peer.behavior !== 'poll.vote') continue;
+    const on = correct && peer.id === layerId;
+    next = upsertLayer(next, { ...peer, correct: on || undefined });
   }
-  return upsertLayer(section, { ...existing, svgSrc: clean });
+  return next;
 }
 
 export function setWidgetHtml(
@@ -259,6 +238,16 @@ export function setWidgetHtml(
   return upsertLayer(section, { ...layer, htmlSource: html });
 }
 
+export function setWidgetSvgOnLayer(
+  section: PenSectionContent,
+  layerId: string,
+  svg: string
+): PenSectionContent {
+  const layer = (section.layers || []).find((item) => item.id === layerId);
+  if (!layer) return section;
+  return upsertLayer(section, { ...layer, svgSrc: sanitizeWidgetMarkup(svg) });
+}
+
 export function setWidgetClosesAt(
   section: PenSectionContent,
   layerId: string,
@@ -269,6 +258,154 @@ export function setWidgetClosesAt(
   return upsertLayer(section, { ...layer, closesAt });
 }
 
-export function widgetQuestionText(layer: PenPageLayer): string {
-  return docToPlainText(layer.textDoc || { type: 'doc', content: [] }).trim();
+export type VoteFace =
+  | { kind: 'countdown'; text: string }
+  | { kind: 'passfail'; text: 'Correct' | 'Incorrect' }
+  | { kind: 'tally'; text: string }
+  | { kind: 'label'; text: string };
+
+/** Countdown hides every result. A correct mark is pass/fail. Otherwise the tally. */
+export function voteFace(input: {
+  optionId: string;
+  label: string;
+  counts: PollCounts | null;
+  correctOptionId: string | null;
+  closesAt: string | null;
+  votedOptionId: string | null;
+  now?: number;
+}): VoteFace {
+  if (input.closesAt && !pollIsClosed(input.closesAt, input.now)) {
+    return { kind: 'countdown', text: formatCountdown(input.closesAt, input.now) };
+  }
+  if (!input.votedOptionId) return { kind: 'label', text: input.label };
+  if (input.correctOptionId) {
+    if (input.optionId !== input.votedOptionId) return { kind: 'label', text: input.label };
+    return {
+      kind: 'passfail',
+      text: input.votedOptionId === input.correctOptionId ? 'Correct' : 'Incorrect'
+    };
+  }
+  const n = input.counts?.byOption[input.optionId] || 0;
+  return { kind: 'tally', text: `${input.label} ${n}` };
+}
+
+export function voteFaceForLayer(
+  section: PenSectionContent,
+  layer: PenPageLayer,
+  votedOptionId: string | null,
+  counts: PollCounts | null,
+  now?: number
+): VoteFace {
+  const structure = structureFromLayers(section, layer.parentGroupId || null);
+  return voteFace({
+    optionId: layer.bindRowId || layer.id,
+    label: layer.label || 'Button',
+    counts,
+    correctOptionId: structure.correctOptionId || null,
+    closesAt: structure.closesAt,
+    votedOptionId,
+    now
+  });
+}
+
+export function revealSibling(section: PenSectionContent, layerId: string): PenSectionContent {
+  const layer = (section.layers || []).find((item) => item.id === layerId);
+  if (!layer) return section;
+  const hidden = (section.layers || []).find(
+    (item) =>
+      item.id !== layer.id &&
+      item.visible === false &&
+      (item.parentGroupId || null) === (layer.parentGroupId || null)
+  );
+  if (!hidden) return section;
+  return upsertLayer(section, { ...hidden, visible: true });
+}
+
+export function isSheetTrigger(behavior: string | undefined): behavior is WidgetSheetTrigger {
+  return SHEET_TRIGGERS.includes(behavior as WidgetSheetTrigger);
+}
+
+export function submitFields(
+  section: PenSectionContent,
+  groupId: string | null
+): Record<string, string> {
+  const fields: Record<string, string> = {};
+  for (const layer of pollLayers(section, groupId)) {
+    if (layer.kind !== 'text' || layer.widgetElement === 'time') continue;
+    const key = layer.name || layer.id;
+    fields[key] = docToPlainText(layer.textDoc || { type: 'doc', content: [] }).trim();
+  }
+  return fields;
+}
+
+export function buildWidgetActionRow(input: {
+  trigger: WidgetSheetTrigger;
+  actorId: string;
+  actionId: string;
+  createdAt?: string;
+  fields?: Record<string, string>;
+  present?: boolean;
+  order?: string[];
+  split?: Record<string, number>;
+}): { kind: typeof PEN_WIDGET_ACTION_KIND; row: WidgetActionRow } {
+  const row: WidgetActionRow = {
+    actionId: input.actionId,
+    trigger: input.trigger,
+    actorId: input.actorId,
+    createdAt: input.createdAt || new Date().toISOString()
+  };
+  if (input.fields) row.fields = input.fields;
+  if (input.present != null) row.present = input.present;
+  if (input.order) row.order = input.order;
+  if (input.split) row.split = input.split;
+  return { kind: PEN_WIDGET_ACTION_KIND, row };
+}
+
+/** Second press drops this person. The result is who is currently on. */
+export function applyToggle(
+  rows: WidgetActionRow[],
+  actorId: string,
+  actionId: string,
+  createdAt: string
+): WidgetActionRow[] {
+  const on = rows.some(
+    (row) => row.trigger === 'widget.toggle' && row.actorId === actorId && row.present !== false
+  );
+  if (on) {
+    return rows.filter((row) => !(row.trigger === 'widget.toggle' && row.actorId === actorId));
+  }
+  return [
+    ...rows,
+    buildWidgetActionRow({
+      trigger: 'widget.toggle',
+      actorId,
+      actionId,
+      createdAt,
+      present: true
+    }).row
+  ];
+}
+
+export function rankOrder(section: PenSectionContent, groupId: string | null): string[] {
+  return pollLayers(section, groupId)
+    .filter((layer) => layer.behavior === 'widget.rank')
+    .slice()
+    .sort((a, b) => a.y - b.y || a.x - b.x)
+    .map((layer) => layer.id);
+}
+
+export function allocateSplit(
+  section: PenSectionContent,
+  groupId: string | null,
+  amount = 100
+): Record<string, number> {
+  const buttons = pollLayers(section, groupId).filter((layer) => layer.behavior === 'widget.allocate');
+  if (!buttons.length) return {};
+  const each = Math.floor(amount / buttons.length);
+  const split: Record<string, number> = {};
+  buttons.forEach((layer, index) => {
+    const remainder = index === buttons.length - 1 ? amount - each * (buttons.length - 1) : each;
+    split[layer.id] = remainder;
+  });
+  return split;
 }

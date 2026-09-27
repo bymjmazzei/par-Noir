@@ -16,6 +16,8 @@ export const PEN_POLL_VOTE_KIND = 'pen.poll_vote' as const;
 export const PEN_POLL_CREATE_KIND = 'pen.poll_create' as const;
 /** Owner-present: rewrite sheet 2. */
 export const PEN_POLL_STRUCTURE_KIND = 'pen.poll_structure_put' as const;
+/** Non-vote widget triggers. The trigger name is on the row. Not a poll vote. */
+export const PEN_WIDGET_ACTION_KIND = 'pen.widget_action' as const;
 
 export type PenOutboxKind =
   | typeof PEN_SECTION_PROMOTE_KIND
@@ -29,7 +31,8 @@ export type PenOutboxKind =
   | typeof PEN_FONT_UPSERT_KIND
   | typeof PEN_POLL_VOTE_KIND
   | typeof PEN_POLL_CREATE_KIND
-  | typeof PEN_POLL_STRUCTURE_KIND;
+  | typeof PEN_POLL_STRUCTURE_KIND
+  | typeof PEN_WIDGET_ACTION_KIND;
 
 function fanout(
   routeKeys: string[],
@@ -124,5 +127,14 @@ export function penPollVoteFanout(
   return fanout(routeKeys, PEN_POLL_VOTE_KIND) as Array<{
     routeKey: string;
     jobType: typeof PEN_POLL_VOTE_KIND;
+  }>;
+}
+
+export function penWidgetActionFanout(
+  routeKeys: string[]
+): Array<{ routeKey: string; jobType: typeof PEN_WIDGET_ACTION_KIND }> {
+  return fanout(routeKeys, PEN_WIDGET_ACTION_KIND) as Array<{
+    routeKey: string;
+    jobType: typeof PEN_WIDGET_ACTION_KIND;
   }>;
 }

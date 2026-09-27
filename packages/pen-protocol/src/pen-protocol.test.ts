@@ -197,23 +197,40 @@ describe('classes + templates', () => {
     expect(listConsumerCategories().some((c) => c.id === 'records')).toBe(false);
   });
 
-  it('widget.v1 is one SVG box, a question line, and one answer button', () => {
+  it('widget.v1 is an empty template with no preset vote', () => {
     const widget = requireTemplate('widget.v1');
     expect(widget.classId).toBe('widgets.widget');
     expect(widget.seedPageLayout).toBe('flow');
     expect(widget.seedPagePresentation?.backgroundColor).toBe('transparent');
     const layers = widget.seedSections?.[0]?.layers || [];
-    expect(layers.some((l) => l.widgetElement === 'svg' && l.svgSrc)).toBe(true);
-    expect(layers.filter((l) => l.widgetElement === 'button').length).toBe(1);
-    expect(layers.some((l) => l.widgetElement === 'text')).toBe(true);
-    expect(JSON.stringify(layers)).not.toContain('__pen_seed_table__');
+    expect(layers).toEqual([]);
+    expect(JSON.stringify(layers)).not.toContain('poll.vote');
     expect(() => requireTemplate('widget.poll.v1')).toThrow(/unknown_pen_template/);
     expect(() => requireTemplate('widget.quote.v1')).toThrow(/unknown_pen_template/);
   });
 
   it('copyWidgetLayersIntoSection parents fresh unlocked layers under one group', () => {
-    const poll = requireTemplate('widget.v1');
-    const source = poll.seedSections?.[0]?.layers || [];
+    const source = [
+      {
+        id: 'q',
+        kind: 'text' as const,
+        x: 20,
+        y: 20,
+        w: 120,
+        h: 32,
+        zIndex: 1
+      },
+      {
+        id: 'b',
+        kind: 'interactive' as const,
+        x: 20,
+        y: 60,
+        w: 80,
+        h: 32,
+        zIndex: 2,
+        label: 'Go'
+      }
+    ];
     const host = emptySection('body');
     host.layers = [
       {
@@ -252,10 +269,33 @@ describe('classes + templates', () => {
   });
 
   it('poll sheet rows round-trip and a closed poll refuses', () => {
-    const poll = requireTemplate('widget.v1');
-    const section = poll.seedSections?.[0];
-    expect(section).toBeTruthy();
-    const structure = structureFromLayers(section!);
+    const section = emptySection('card');
+    section.layers = [
+      {
+        id: 'q',
+        kind: 'text',
+        name: 'Question',
+        x: 0,
+        y: 0,
+        w: 100,
+        h: 24,
+        zIndex: 1,
+        textDoc: { type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Ship?' }] }] }
+      },
+      {
+        id: 'opt_yes',
+        kind: 'interactive',
+        x: 0,
+        y: 40,
+        w: 80,
+        h: 32,
+        zIndex: 2,
+        behavior: 'poll.vote',
+        bindRowId: 'opt_yes',
+        label: 'Yes'
+      }
+    ];
+    const structure = structureFromLayers(section);
     expect(structure.options.map((option) => option.id)).toEqual(['opt_yes']);
     const rows = structureToSheetRows({ ...structure, closesAt: '2026-01-01T00:00:00.000Z' });
     const back = sheetRowsToStructure(rows);

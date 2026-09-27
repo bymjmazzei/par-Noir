@@ -37,7 +37,8 @@ const PEN_JOB_TYPES = [
   'pen.font_upsert',
   'pen.poll_create',
   'pen.poll_structure_put',
-  'pen.poll_vote'
+  'pen.poll_vote',
+  'pen.widget_action'
 ] as const;
 
 /** Append promote link once; same signature → no-op (guards dual client paths). */
@@ -260,7 +261,8 @@ function readPollStructureBody(body: { structure?: PollStructure } | undefined):
   return {
     question: raw.question,
     options,
-    closesAt: raw.closesAt ? String(raw.closesAt) : null
+    closesAt: raw.closesAt ? String(raw.closesAt) : null,
+    correctOptionId: raw.correctOptionId ? String(raw.correctOptionId) : null
   };
 }
 
@@ -313,7 +315,7 @@ export function setupPenRoutes(
       if (!userPnIdentifier || !docId || !(PEN_JOB_TYPES as readonly string[]).includes(jobType)) {
         return res.status(400).json({
           error:
-            'userPnIdentifier, docId, and jobType=pen.doc_bootstrap|pen.draft_upsert|pen.publish|pen.comment|pen.suggestion|pen.section_promote|pen.doc_delete|pen.doc_meta|pen.font_upsert|pen.poll_create|pen.poll_structure_put|pen.poll_vote required'
+            'userPnIdentifier, docId, and jobType=pen.doc_bootstrap|pen.draft_upsert|pen.publish|pen.comment|pen.suggestion|pen.section_promote|pen.doc_delete|pen.doc_meta|pen.font_upsert|pen.poll_create|pen.poll_structure_put|pen.poll_vote|pen.widget_action required'
         });
       }
 
@@ -469,6 +471,20 @@ export function setupPenRoutes(
       }
 
       const docFolderId = await ensureDriveFolder(drive, String(docId), penRootId);
+
+      if (jobType === 'pen.widget_action') {
+        const trigger = String(req.body?.trigger || '');
+        const actionId = String(req.body?.actionId || '').trim();
+        const allowed = ['widget.submit', 'widget.toggle', 'widget.stamp', 'widget.rank', 'widget.allocate'];
+        if (!allowed.includes(trigger) || !actionId) {
+          return res.status(400).json({ error: 'widget_action_required' });
+        }
+        safeLogger.info('[pen/apply-inbound] widget_action ok', {
+          pn: hashIdentifier(pnIdentifier),
+          doc: hashIdentifier(docId)
+        });
+        return res.json({ ok: true, trigger });
+      }
 
       if (
         jobType === 'pen.poll_create' ||

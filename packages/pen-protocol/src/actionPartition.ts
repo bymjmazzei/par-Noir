@@ -27,10 +27,9 @@ export type LayerActionPartition = {
 
 function isActionLayer(layer: PenPageLayer): boolean {
   if (layer.visible === false) return false;
-  if (layer.widgetElement) return true;
-  if (layer.kind === 'group' && layer.widgetTemplateId) return true;
+  if (layer.widgetElement === 'html' || layer.widgetElement === 'time') return true;
   if (layer.kind !== 'interactive') return false;
-  return Boolean(layer.behavior);
+  return true;
 }
 
 /** Split one section's layers for compose vs feed HTML overlay. */
@@ -43,15 +42,7 @@ export function partitionLayersForCompose(
   for (const layer of layers || []) {
     if (isActionLayer(layer)) {
       action.push(layer);
-      if (layer.kind === 'group' && layer.widgetTemplateId) {
-        overlays.push({
-          layerId: layer.id,
-          kind: 'interactive',
-          behavior: 'poll.vote',
-          rect: { x: layer.x, y: layer.y, w: layer.w, h: layer.h },
-          label: layer.name
-        });
-      } else if (layer.kind === 'interactive' && layer.behavior && !layer.widgetElement) {
+      if (layer.kind === 'interactive' && layer.behavior) {
         overlays.push({
           layerId: layer.id,
           kind: 'interactive',

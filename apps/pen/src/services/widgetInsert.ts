@@ -3,8 +3,8 @@
 import {
   copyWidgetLayersIntoSection,
   patchLayerStyle,
-  POLL_WIDGET_TEMPLATE_ID,
   rewriteSeedTablePlaceholders,
+  sectionHasVoteButton,
   sectionNeedsSeedTable,
   structureFromLayers,
   type PenPageLayer,
@@ -28,7 +28,7 @@ export async function insertWidgetCopy(input: {
     input.name,
     input.templateId
   );
-  if (input.templateId === POLL_WIDGET_TEMPLATE_ID) {
+  if (sectionHasVoteButton(copied.section, copied.groupId)) {
     const structure = structureFromLayers(copied.section, copied.groupId);
     const spreadsheetId = await createPollSheet({
       session: input.session,

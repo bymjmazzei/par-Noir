@@ -45,10 +45,21 @@ export interface PenSectionContent {
 
 export type PenPageLayerKind = 'text' | 'image' | 'video' | 'group' | 'embed' | 'interactive';
 
-/** Interactive sticker behavior (handlers stub until engagement write path). */
-export type PenInteractiveBehavior = 'poll.vote' | 'cta.open';
+/**
+ * Preset button trigger. The backend runs the named write.
+ * Pass/fail is poll.vote plus `correct` on the option, not its own trigger.
+ */
+export type PenInteractiveBehavior =
+  | 'poll.vote'
+  | 'cta.open'
+  | 'widget.submit'
+  | 'widget.toggle'
+  | 'widget.stamp'
+  | 'widget.rank'
+  | 'widget.allocate'
+  | 'widget.reveal';
 
-/** Element inside a widget group. The group renders as one HTML frame. */
+/** Optional role of a layer the user placed. It does not wrap the group. */
 export type PenWidgetElement = 'svg' | 'text' | 'button' | 'time' | 'html';
 
 export type PenStrokeStyle = 'solid' | 'dashed' | 'dotted';
@@ -87,11 +98,13 @@ export interface PenPageLayer {
   bindRowId?: string;
   /** Button / sticker label. */
   label?: string;
+  /** Vote option marked correct. Pass/fail is vote plus this flag. */
+  correct?: boolean;
   /** Widget template this group was copied from (e.g. widget.v1). */
   widgetTemplateId?: string;
-  /** Role of this layer inside a widget group. */
+  /** Role of a placed layer. SVG is one layer, not the box around the group. */
   widgetElement?: PenWidgetElement;
-  /** SVG markup for the widget box. The frame stretches it to the form. */
+  /** SVG markup for an SVG layer. */
   svgSrc?: string;
   /** HTML snippet source. Rendered in a sandboxed frame. */
   htmlSource?: string;

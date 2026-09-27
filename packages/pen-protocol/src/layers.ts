@@ -156,7 +156,20 @@ export function copyWidgetLayersIntoSection(
   widgetTemplateId?: string
 ): { section: PenSectionContent; groupId: string } {
   const src = sourceLayers.filter((l) => l.kind !== 'group');
-  if (!src.length) throw new Error('widget_has_no_layers');
+  if (!src.length) {
+    const stack = (host.layers || []).filter((l) => !l.parentGroupId).length;
+    const maxZ = (host.layers || []).reduce((m, l) => Math.max(m, l.zIndex), 0);
+    const group = createGroupLayer({
+      x: 16,
+      y: 16 + stack * 12,
+      w: 240,
+      h: 180,
+      zIndex: maxZ + 1,
+      name: name.trim() || 'Widget'
+    });
+    if (widgetTemplateId) group.widgetTemplateId = widgetTemplateId;
+    return { section: upsertLayer(host, group), groupId: group.id };
+  }
   const minX = Math.min(...src.map((l) => l.x));
   const minY = Math.min(...src.map((l) => l.y));
   const maxR = Math.max(...src.map((l) => l.x + l.w));
@@ -531,6 +544,7 @@ export function patchLayerStyle(
       | 'bindDocId'
       | 'bindRowId'
       | 'label'
+      | 'correct'
       | 'widgetTemplateId'
       | 'spreadsheetId'
     >

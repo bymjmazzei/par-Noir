@@ -75,10 +75,6 @@ export function ActionLayerMenu({
       return;
     }
     const layers = sourceLayers(template, sources);
-    if (!layers.length) {
-      setError('This widget has no layers to copy');
-      return;
-    }
     setBusy(true);
     setError(null);
     try {

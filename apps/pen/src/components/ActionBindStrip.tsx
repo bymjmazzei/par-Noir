@@ -49,19 +49,41 @@ export function ActionBindStrip({
           <select
             aria-label="Action behavior"
             className="border border-neutral-300 bg-white px-1 py-0.5"
-            value={layer.behavior || 'poll.vote'}
+            value={layer.behavior || ''}
             onChange={(e) => {
-              const behavior = e.target.value as NonNullable<PenPageLayer['behavior']>;
+              const behavior = e.target.value as NonNullable<PenPageLayer['behavior']> | '';
+              if (!behavior) {
+                patch({ behavior: undefined, bindRowId: undefined, correct: undefined });
+                return;
+              }
               patch(
-                behavior === 'cta.open'
-                  ? { behavior, bindRowId: undefined }
-                  : { behavior }
+                behavior === 'poll.vote'
+                  ? { behavior, bindRowId: layer.bindRowId || layer.id }
+                  : { behavior, bindRowId: undefined, correct: undefined }
               );
             }}
           >
+            <option value="">None</option>
             <option value="poll.vote">Vote</option>
             <option value="cta.open">Open</option>
+            <option value="widget.submit">Submit</option>
+            <option value="widget.toggle">Toggle</option>
+            <option value="widget.stamp">Stamp</option>
+            <option value="widget.rank">Rank</option>
+            <option value="widget.allocate">Allocate</option>
+            <option value="widget.reveal">Reveal</option>
           </select>
+          {layer.behavior === 'poll.vote' && (
+            <label className="flex items-center gap-1">
+              <input
+                type="checkbox"
+                aria-label="Correct answer"
+                checked={Boolean(layer.correct)}
+                onChange={(e) => patch({ correct: e.target.checked || undefined })}
+              />
+              Correct
+            </label>
+          )}
         </>
       )}
       <select

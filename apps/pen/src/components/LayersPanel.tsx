@@ -15,6 +15,7 @@ import {
   alignLayers,
   createGroupFromSelection,
   createTextLayer,
+  placeWidgetLayer,
   defaultLayerName,
   distributeLayers,
   normalizeSection,
@@ -200,6 +201,15 @@ export function LayersPopover({
     commit(upsertLayer(prepared, layer));
     onSelectLayer(layer.id);
     onSelectedIdsChange([layer.id]);
+  }
+
+  function addPlaced(element: 'image' | 'button' | 'time' | 'html' | 'svg') {
+    const active = allLayers.find((layer) => layer.id === activeLayerId);
+    const groupId = active?.kind === 'group' ? active.id : active?.parentGroupId || null;
+    const placed = placeWidgetLayer(prepared, groupId, element);
+    commit(placed.section);
+    onSelectLayer(placed.layerId);
+    onSelectedIdsChange([placed.layerId]);
   }
 
   function insertWidget(next: PenSectionContent, groupId: string) {
@@ -405,6 +415,28 @@ export function LayersPopover({
               >
                 New layer
               </button>
+              {(
+                [
+                  ['image', 'Image'],
+                  ['button', 'Button'],
+                  ['time', 'Time'],
+                  ['html', 'HTML snippet'],
+                  ['svg', 'SVG']
+                ] as const
+              ).map(([element, label]) => (
+                <button
+                  key={element}
+                  type="button"
+                  role="menuitem"
+                  className="block w-full px-3 py-1.5 text-left text-[11px] hover:bg-neutral-50"
+                  onClick={() => {
+                    addPlaced(element);
+                    setAddOpen(false);
+                  }}
+                >
+                  {label}
+                </button>
+              ))}
               <button
                 type="button"
                 role="menuitem"

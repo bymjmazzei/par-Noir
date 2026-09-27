@@ -62,7 +62,8 @@ function endpointFor(jobType: string): string | null {
     jobType === 'pen.doc_delete' ||
     jobType === 'pen.doc_meta' ||
     jobType === 'pen.font_upsert' ||
-    jobType === 'pen.poll_vote'
+    jobType === 'pen.poll_vote' ||
+    jobType === 'pen.widget_action'
   ) {
     return '/api/pen/apply-inbound';
   }

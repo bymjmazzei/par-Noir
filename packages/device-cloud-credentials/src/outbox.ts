@@ -28,7 +28,8 @@ export type OutboxKind =
   | 'pen.doc_delete'
   | 'pen.doc_meta'
   | 'pen.font_upsert'
-  | 'pen.poll_vote';
+  | 'pen.poll_vote'
+  | 'pen.widget_action';
 
 export type OutboxStatus = 'pending' | 'enqueued' | 'materialized' | 'failed';
 
@@ -150,6 +151,10 @@ export function penFontUpsertFanout(routeKeys: string[]): OutboxFanoutTarget[] {
 
 export function penPollVoteFanout(routeKeys: string[]): OutboxFanoutTarget[] {
   return penKindFanout(routeKeys, 'pen.poll_vote');
+}
+
+export function penWidgetActionFanout(routeKeys: string[]): OutboxFanoutTarget[] {
+  return penKindFanout(routeKeys, 'pen.widget_action');
 }
 
 /** Sealed bag of outbox records stored on device (browser / web dashboard). */
