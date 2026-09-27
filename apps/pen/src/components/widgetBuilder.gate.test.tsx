@@ -5,7 +5,6 @@ import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { emptySection, placeWidgetLayer, setButtonTrigger } from '@par-noir/pen-protocol';
-import { PreviewAddMenu } from './PreviewAddMenu';
 import { WidgetEditorPanel } from './WidgetEditorPanel';
 
 const root = resolve(__dirname);
@@ -28,20 +27,17 @@ describe('widget preview builder', () => {
       />
     );
     expect(html).toContain('data-widget-editor="panel"');
-    expect(html).toContain('flex min-h-0 flex-1 flex-col');
+    expect(html).toContain('Widget layers');
     expect(html).toContain('Button');
     expect(html).toContain('Text');
+    expect(page).toMatch(/hideActionBind=\{isWidgetDoc\}/);
   });
 
-  it('puts Button in the preview add menu, outside the Layers dialog', () => {
-    const html = renderToStaticMarkup(<PreviewAddMenu onAdd={() => undefined} />);
-    expect(html).toContain('Add layer menu');
-    expect(html).toContain('Button');
-    expect(html).toContain('Text');
-    expect(html).toContain('HTML snippet');
+  it('keeps widget add and trigger controls off the preview toolbar', () => {
     const preview = readFileSync(resolve(root, 'EditablePagePreview.tsx'), 'utf8');
     const layers = readFileSync(resolve(root, 'LayersPanel.tsx'), 'utf8');
-    expect(preview).toMatch(/<PreviewAddMenu/);
+    expect(preview).not.toMatch(/PreviewAddMenu/);
+    expect(preview).toMatch(/hideActionBind/);
     expect(layers).not.toMatch(/overflow-hidden rounded-lg/);
   });
 

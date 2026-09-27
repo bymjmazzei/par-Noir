@@ -2136,6 +2136,7 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
                   manifest={bundle.manifest}
                   section={section}
                   activeLayerId={activeLayerId}
+                  hideActionBind={isWidgetDoc}
                   session={session}
                   onSelectLayer={(id) => {
                     setActiveLayerId(id || PAGE_LAYER_ID);

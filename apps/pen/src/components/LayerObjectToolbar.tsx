@@ -139,7 +139,8 @@ export function LayerObjectToolbar({
   contentWidthPx = 736,
   contentHeightPx = 976,
   onPresentationChange,
-  onSectionChange
+  onSectionChange,
+  hideActionBind
 }: {
   target: ObjectToolTarget;
   presentation: PenPagePresentation;
@@ -152,6 +153,7 @@ export function LayerObjectToolbar({
   contentHeightPx?: number;
   onPresentationChange?: (next: Partial<PenPagePresentation>) => void;
   onSectionChange: (next: PenSectionContent) => void;
+  hideActionBind?: boolean;
 }) {
   const [open, setOpen] = useState<OpenTool>(null);
   const [cloudOpen, setCloudOpen] = useState(false);
@@ -246,7 +248,7 @@ export function LayerObjectToolbar({
 
   return (
     <div className="relative flex min-w-0 items-center gap-0.5">
-      {isAction && layer && (
+      {isAction && layer && !hideActionBind && (
         <ActionBindStrip
           layer={layer}
           section={section}

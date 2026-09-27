@@ -57,20 +57,21 @@ export function WidgetEditorPanel({
 
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-auto bg-white" data-widget-editor="panel">
-      <div className="border-b border-stone-300 bg-stone-50 px-3 py-3">
-        <div className="text-[11px] font-semibold uppercase tracking-wider text-stone-500">Widget</div>
-        <div className="mt-3 flex flex-col items-stretch gap-1">
-          {ADD.map((item) => (
-            <button
-              key={item.element}
-              type="button"
-              className="rounded bg-white px-2 py-1.5 text-left text-sm text-stone-800 hover:bg-stone-100"
-              onClick={() => add(item.element)}
-            >
-              {item.label}
-            </button>
-          ))}
-        </div>
+      <div
+        role="toolbar"
+        aria-label="Widget layers"
+        className="flex shrink-0 flex-wrap items-center gap-1 border-b border-stone-300 bg-stone-50 px-2 py-1.5"
+      >
+        {ADD.map((item) => (
+          <button
+            key={item.element}
+            type="button"
+            className="rounded bg-white px-2 py-1 text-[12px] font-medium text-stone-800 hover:bg-stone-100"
+            onClick={() => add(item.element)}
+          >
+            {item.label}
+          </button>
+        ))}
       </div>
       {layer?.kind === 'interactive' && (
         <div className="flex flex-col gap-3 border-b border-stone-200 px-3 py-3 text-sm">

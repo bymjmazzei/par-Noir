@@ -27,7 +27,6 @@ import {
   PAGE_LAYER_ID,
   pageSheetDims,
   patchLayerStyle,
-  placeWidgetLayer,
   recomputeGroupBounds,
   resolvePagePaddingPx,
   resizeSeKeepAspect,
@@ -53,7 +52,6 @@ import {
   pageFrameStyle
 } from './LayerObjectToolbar';
 import { PageSheetColumn } from './PageSheetColumn';
-import { PreviewAddMenu } from './PreviewAddMenu';
 import { LayerMediaContent } from './LayerMediaContent';
 import { PenMediaPlayer } from '@par-noir/feed-tile';
 import { useResolvedMediaSrc } from '../hooks/useResolvedMediaSrc';
@@ -410,7 +408,8 @@ export function EditablePagePreview({
   session,
   onPollVote,
   onWidgetAction,
-  votedOptionByGroup
+  votedOptionByGroup,
+  hideActionBind
 }: {
   manifest: PenDocManifest;
   section: PenSectionContent;
@@ -420,6 +419,8 @@ export function EditablePagePreview({
   onPollVote?: (layer: PenPageLayer) => void;
   onWidgetAction?: (layer: PenPageLayer) => void;
   votedOptionByGroup?: Record<string, string>;
+  /** Widget trigger lives in the side pane. Do not repeat it on this toolbar. */
+  hideActionBind?: boolean;
   onPageLayoutChange?: (layout: PenPageLayout) => void;
   onFlowWorkspaceChange?: (next: {
     widthPx: number | null;
@@ -674,18 +675,9 @@ export function EditablePagePreview({
   const bodyStyle = bodyMarginStyle(presentation);
   const isFlow = (manifest.pageLayout || 'flow') === 'flow';
 
-  function addPreviewLayer(element: Parameters<typeof placeWidgetLayer>[2]) {
-    const active = layers.find((layer) => layer.id === activeLayerId);
-    const groupId = active?.kind === 'group' ? active.id : active?.parentGroupId || null;
-    const placed = placeWidgetLayer(prepared, groupId, element);
-    onSectionChange(placed.section);
-    selectLayer(placed.layerId);
-  }
-
   return (
     <div className="relative flex h-full flex-col bg-white">
       <div className="relative z-20 flex shrink-0 items-center gap-2 border-b border-neutral-200 bg-white px-2 py-1.5">
-        <PreviewAddMenu onAdd={addPreviewLayer} />
         <span className="shrink-0 text-[11px] font-bold uppercase tracking-wider text-neutral-400">
           Page
         </span>
@@ -844,6 +836,7 @@ export function EditablePagePreview({
             contentHeightPx={box.height}
             onPresentationChange={onPresentationChange}
             onSectionChange={onSectionChange}
+            hideActionBind={hideActionBind}
           />
           <button
             ref={layersBtnRef}
