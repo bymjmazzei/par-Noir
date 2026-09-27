@@ -26,6 +26,7 @@ import {
   migrateSectionLayerGeomToPx,
   normalizeSection,
   PAGE_LAYER_ID,
+  openFlowDragHeightPx,
   pageSheetDims,
   patchLayerStyle,
   recomputeGroupBounds,
@@ -449,6 +450,7 @@ export function EditablePagePreview({
   const [fontsReady, setFontsReady] = useState(true);
   const [contentOuterH, setContentOuterH] = useState(400);
   const [measuredSheetW, setMeasuredSheetW] = useState(640);
+  const [panelHeightPx, setPanelHeightPx] = useState(0);
 
   useEffect(() => {
     if (!flowDimsOpen) return;
@@ -540,7 +542,11 @@ export function EditablePagePreview({
     heightPx: manifest.flowWorkspaceHeightPx
   });
   const contentHInner = Math.max(0, contentOuterH - 2 * pad);
-  const box = contentBoxSize(sheet, pad, contentHInner, measuredSheetW);
+  const flowFillsPanel = flowOpen && flowHeight == null;
+  const dragContentH = flowFillsPanel
+    ? openFlowDragHeightPx(contentHInner, panelHeightPx, pad)
+    : contentHInner;
+  const box = contentBoxSize(sheet, pad, dragContentH, measuredSheetW);
 
   const activeObject = layers.find((l) => l.id === activeLayerId) || null;
   const pageActive = isPageLayerId(activeLayerId);
@@ -595,6 +601,16 @@ export function EditablePagePreview({
     ro.observe(el);
     return () => ro.disconnect();
   }, [flowOpen, flowWidth, manifest.pageLayout]);
+
+  useEffect(() => {
+    const el = scrollerRef.current;
+    if (!el) return;
+    const measure = () => setPanelHeightPx(el.clientHeight || 0);
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [flowOpen]);
 
   function onLayoutChange(nextItems: LayoutItem[]) {
     let next = updateLayerLayout(prepared, nextItems);

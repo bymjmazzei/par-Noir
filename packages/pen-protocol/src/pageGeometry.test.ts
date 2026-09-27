@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   clampLayerRect,
   contentBoxSize,
+  openFlowDragHeightPx,
   fitAspectInBox,
   fitMediaLayerIntoContainer,
   isFlowWorkspaceOpen,
@@ -56,6 +57,12 @@ describe('pageGeometry', () => {
     expect(px.w).toBe(Math.round(0.4 * (LETTER_WIDTH_PX - 80)));
     expect(clampLayerRect(px, letterBox.width, letterBox.height).w).toBe(px.w);
     expect(clampLayerRect(px, flowBox.width, flowBox.height).w).toBe(px.w);
+  });
+
+  it('open flow drag height fills the visible panel', () => {
+    expect(openFlowDragHeightPx(320, 1000, 40)).toBe(920);
+    expect(openFlowDragHeightPx(1200, 1000, 40)).toBe(1200);
+    expect(openFlowDragHeightPx(320, 0, 40)).toBe(320);
   });
 
   it('open flow contentBoxSize uses measured width', () => {

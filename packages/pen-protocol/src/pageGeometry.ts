@@ -120,6 +120,20 @@ export function contentBoxSize(
   return { width, height };
 }
 
+/**
+ * Open flow fills the preview panel. The drag box must use that panel, or
+ * objects stop at the short content height while the panel continues below.
+ * Content taller than the panel still wins so the sheet can scroll.
+ */
+export function openFlowDragHeightPx(
+  contentInnerPx: number,
+  panelClientHeightPx: number,
+  paddingPx: number
+): number {
+  const panelInner = Math.max(0, Math.round(panelClientHeightPx) - 2 * paddingPx);
+  return Math.max(0, contentInnerPx, panelInner);
+}
+
 export type LayerRect = { x: number; y: number; w: number; h: number };
 
 /**
