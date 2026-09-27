@@ -40,19 +40,6 @@ function hexColor(value: string | undefined, fallback: string): string {
   return value && /^#[0-9a-fA-F]{6}$/.test(value) ? value : fallback;
 }
 
-function showsDisplayedText(layer: PenPageLayer | null): boolean {
-  if (!layer) return false;
-  if (
-    layer.widgetElement === 'html' ||
-    layer.widgetElement === 'svg' ||
-    layer.widgetElement === 'time'
-  ) {
-    return false;
-  }
-  if (layer.kind === 'image' || layer.kind === 'video' || layer.kind === 'group') return false;
-  return layer.kind === 'interactive' || layer.kind === 'text';
-}
-
 function WidgetTextEditor({
   layer,
   section,
@@ -71,6 +58,8 @@ function WidgetTextEditor({
   pageLayout?: PenPageLayout;
 }) {
   const [editor, setEditor] = useState<Editor | null>(null);
+  const sectionRef = useRef(section);
+  sectionRef.current = section;
   if (typeof document === 'undefined') {
     return (
       <div data-widget-text-editor className="flex gap-1 border-b border-stone-200 px-2 py-1">
@@ -87,25 +76,26 @@ function WidgetTextEditor({
     );
   }
   return (
-    <div data-widget-text-editor className="flex min-h-64 flex-col border-b border-stone-200">
+    <div data-widget-text-editor className="border-b border-stone-200">
       <FormatRibbon
         editor={editor}
         accessToken={accessToken}
         pnIdentifier={pnIdentifier}
         excludeDocId={excludeDocId}
       />
-      <div className="min-h-48 flex-1">
-        <PageCanvas
-          section={{ ...section, doc: getTextLayerDoc(layer) }}
-          sectionTitle={layer.label || layer.name || 'Text'}
-          pageLayout={pageLayout || 'flow'}
-          pnIdentifier={pnIdentifier || ''}
-          onEditorReady={setEditor}
-          onChange={(next) => {
-            onSectionChange(setTextLayerDoc(section, layer.id, next.doc, { syncDoc: false }));
-          }}
-        />
-      </div>
+      <PageCanvas
+        compact
+        section={{ ...section, doc: getTextLayerDoc(layer) }}
+        sectionTitle={layer.label || layer.name || 'Text'}
+        pageLayout={pageLayout || 'flow'}
+        pnIdentifier={pnIdentifier || ''}
+        onEditorReady={setEditor}
+        onChange={(next) => {
+          onSectionChange(
+            setTextLayerDoc(sectionRef.current, layer.id, next.doc, { syncDoc: false })
+          );
+        }}
+      />
     </div>
   );
 }
@@ -167,93 +157,20 @@ export function WidgetEditorPanel({
           </button>
         ))}
       </div>
-      {showsDisplayedText(layer) && layer && (
-        <WidgetTextEditor
-          layer={layer}
-          section={section}
-          onSectionChange={onSectionChange}
-          accessToken={accessToken}
-          pnIdentifier={pnIdentifier}
-          excludeDocId={excludeDocId}
-          pageLayout={pageLayout}
-        />
-      )}
-      {layer && (
-        <div className="flex flex-col gap-3 border-b border-stone-200 px-3 py-3 text-sm">
-          <label className="flex items-center justify-between gap-2">
-            <span className="text-[11px] font-semibold uppercase tracking-wide text-stone-500">Fill</span>
-            <input
-              aria-label="Fill color"
-              type="color"
-              className="h-7 w-10 border border-stone-300"
-              value={hexColor(layer.backgroundColor, '#0f766e')}
-              onChange={(event) =>
-                onSectionChange(patchLayerStyle(section, layer.id, { backgroundColor: event.target.value }))
-              }
-            />
-          </label>
-          <label className="flex items-center justify-between gap-2">
-            <span className="text-[11px] font-semibold uppercase tracking-wide text-stone-500">Text</span>
-            <input
-              aria-label="Text color"
-              type="color"
-              className="h-7 w-10 border border-stone-300"
-              value={hexColor(layer.textColor, '#ffffff')}
-              onChange={(event) =>
-                onSectionChange(patchLayerStyle(section, layer.id, { textColor: event.target.value }))
-              }
-            />
-          </label>
-          <label className="flex flex-col gap-1">
-            <span className="text-[11px] font-semibold uppercase tracking-wide text-stone-500">
-              Opacity {layer.opacity ?? 100}
-            </span>
-            <input
-              aria-label="Opacity"
-              type="range"
-              min={0}
-              max={100}
-              value={layer.opacity ?? 100}
-              onChange={(event) =>
-                onSectionChange(
-                  patchLayerStyle(section, layer.id, { opacity: Number(event.target.value) })
-                )
-              }
-            />
-          </label>
-          <label className="flex items-center justify-between gap-2">
-            <span className="text-[11px] font-semibold uppercase tracking-wide text-stone-500">Stroke</span>
-            <input
-              aria-label="Stroke color"
-              type="color"
-              className="h-7 w-10 border border-stone-300"
-              value={hexColor(layer.strokeColor, '#000000')}
-              onChange={(event) =>
-                onSectionChange(
-                  patchLayerStyle(section, layer.id, {
-                    strokeColor: event.target.value,
-                    strokeWidth: layer.strokeWidth || 1
-                  })
-                )
-              }
-            />
-          </label>
-          <input
-            aria-label="Stroke width"
-            type="range"
-            min={0}
-            max={24}
-            value={layer.strokeWidth ?? 0}
-            onChange={(event) =>
-              onSectionChange(
-                patchLayerStyle(section, layer.id, { strokeWidth: Number(event.target.value) || undefined })
-              )
-            }
-          />
-        </div>
-      )}
       {layer?.kind === 'interactive' && (
         <div className="flex flex-col gap-3 border-b border-stone-200 px-3 py-3 text-sm">
+          <label className="flex flex-col gap-1">
+            <span className="text-[11px] font-semibold uppercase tracking-wide text-stone-500">Label</span>
+            <WidgetTextEditor
+              layer={layer}
+              section={section}
+              onSectionChange={onSectionChange}
+              accessToken={accessToken}
+              pnIdentifier={pnIdentifier}
+              excludeDocId={excludeDocId}
+              pageLayout={pageLayout}
+            />
+          </label>
           <span className="text-[11px] font-semibold uppercase tracking-wide text-stone-500">
             Button trigger
           </span>
@@ -364,6 +281,91 @@ export function WidgetEditorPanel({
           >
             Duplicate
           </button>
+        </div>
+      )}
+      {layer?.widgetElement === 'text' && (
+        <WidgetTextEditor
+          layer={layer}
+          section={section}
+          onSectionChange={onSectionChange}
+          accessToken={accessToken}
+          pnIdentifier={pnIdentifier}
+          excludeDocId={excludeDocId}
+          pageLayout={pageLayout}
+        />
+      )}
+      {layer && (
+        <div className="flex flex-col gap-3 border-b border-stone-200 px-3 py-3 text-sm">
+          <label className="flex items-center justify-between gap-2">
+            <span className="text-[11px] font-semibold uppercase tracking-wide text-stone-500">Fill</span>
+            <input
+              aria-label="Fill color"
+              type="color"
+              className="h-7 w-10 border border-stone-300"
+              value={hexColor(layer.backgroundColor, '#0f766e')}
+              onChange={(event) =>
+                onSectionChange(patchLayerStyle(section, layer.id, { backgroundColor: event.target.value }))
+              }
+            />
+          </label>
+          <label className="flex items-center justify-between gap-2">
+            <span className="text-[11px] font-semibold uppercase tracking-wide text-stone-500">Text</span>
+            <input
+              aria-label="Text color"
+              type="color"
+              className="h-7 w-10 border border-stone-300"
+              value={hexColor(layer.textColor, '#ffffff')}
+              onChange={(event) =>
+                onSectionChange(patchLayerStyle(section, layer.id, { textColor: event.target.value }))
+              }
+            />
+          </label>
+          <label className="flex flex-col gap-1">
+            <span className="text-[11px] font-semibold uppercase tracking-wide text-stone-500">
+              Opacity {layer.opacity ?? 100}
+            </span>
+            <input
+              aria-label="Opacity"
+              type="range"
+              min={0}
+              max={100}
+              value={layer.opacity ?? 100}
+              onChange={(event) =>
+                onSectionChange(
+                  patchLayerStyle(section, layer.id, { opacity: Number(event.target.value) })
+                )
+              }
+            />
+          </label>
+          <label className="flex items-center justify-between gap-2">
+            <span className="text-[11px] font-semibold uppercase tracking-wide text-stone-500">Stroke</span>
+            <input
+              aria-label="Stroke color"
+              type="color"
+              className="h-7 w-10 border border-stone-300"
+              value={hexColor(layer.strokeColor, '#000000')}
+              onChange={(event) =>
+                onSectionChange(
+                  patchLayerStyle(section, layer.id, {
+                    strokeColor: event.target.value,
+                    strokeWidth: layer.strokeWidth || 1
+                  })
+                )
+              }
+            />
+          </label>
+          <input
+            aria-label="Stroke width"
+            type="range"
+            min={0}
+            max={24}
+            value={layer.strokeWidth ?? 0}
+            onChange={(event) =>
+              onSectionChange(
+                patchLayerStyle(section, layer.id, { strokeWidth: Number(event.target.value) || undefined })
+              )
+            }
+          />
         </div>
       )}
       {layer?.widgetElement === 'time' && (

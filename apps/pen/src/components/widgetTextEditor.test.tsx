@@ -23,6 +23,12 @@ describe('widget text editor', () => {
     }
   });
 
+  it('keeps the button type field in the trigger form, above the trigger', () => {
+    const html = panel('button');
+    expect(html.indexOf('>Label<')).toBeGreaterThan(-1);
+    expect(html.indexOf('data-widget-text-editor')).toBeLessThan(html.indexOf('Button trigger'));
+  });
+
   it('leaves an HTML snippet as code', () => {
     const html = panel('html');
     expect(html).toContain('HTML snippet');

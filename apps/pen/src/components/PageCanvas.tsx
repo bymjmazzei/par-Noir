@@ -975,7 +975,8 @@ export function PageCanvas({
   pageLayout = 'flow',
   flowWorkspaceWidthPx,
   flowWorkspaceHeightPx,
-  pnIdentifier = ''
+  pnIdentifier = '',
+  compact = false
 }: {
   section: PenSectionContent;
   /** Writing tree label — Body section title or selected overlay object name. */
@@ -988,6 +989,8 @@ export function PageCanvas({
   flowWorkspaceHeightPx?: number | null;
   /** Unlocks live Pen embeds inside TipTap. */
   pnIdentifier?: string;
+  /** Side-pane face editor. Skips the page sheet so controls below stay reachable. */
+  compact?: boolean;
 }) {
   const editor = useEditor({
     extensions: [
@@ -1020,7 +1023,9 @@ export function PageCanvas({
     content: sectionToTipTapDoc(section),
     editorProps: {
       attributes: {
-        class: 'pen-word-prose outline-none min-h-[18rem]'
+        class: compact
+          ? 'pen-word-prose outline-none min-h-[2.5rem] px-2 py-1 text-sm'
+          : 'pen-word-prose outline-none min-h-[18rem]'
       }
     },
     onUpdate: ({ editor: ed }) => {
@@ -1046,6 +1051,14 @@ export function PageCanvas({
   const flowW = flowWorkspaceWidthPx;
   const flowH = flowWorkspaceHeightPx;
   const open = flowW == null;
+
+  if (compact) {
+    return (
+      <div className="bg-white px-3 py-2">
+        <EditorContent editor={editor} />
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-1 flex-col overflow-hidden bg-[#f3f3f3]">
