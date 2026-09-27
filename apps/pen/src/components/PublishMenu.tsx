@@ -1,10 +1,15 @@
 import { useEffect, useRef, useState } from 'react';
-import type { PenLicensingRoot } from '@par-noir/pen-protocol';
+import { defaultLicensingRoot, type PenLicensingRoot } from '@par-noir/pen-protocol';
 import { IconChevron, IconPublish } from './icons/PenIcons';
 import { LicensingSettingsPanel } from './LicensingSettingsPanel';
-import { sanitizeAggregatorTargets } from '../services/penPublishGates';
+import {
+  activeContentFeeds,
+  listOwnerHostedFeeds,
+  resolvePublishFeedIds,
+  type PublishFeed
+} from '../services/penFeedTargets';
 
-export type PenAggregatorTarget = 'browse' | 'pen-templates' | string;
+export type PenAggregatorTarget = string;
 
 /**
  * Publish live / share to aggregators / private template / project library paths.
@@ -14,8 +19,11 @@ export function PublishMenu({
   projectEnabled,
   correspondenceEnabled,
   canPublishPublicTemplate,
+  hasPublishedPost,
+  pnIdentifier,
   onPublishLive,
   onShareToAggregators,
+  onPublishTemplate,
   onSendCorrespondence,
   onTemplatePrivate,
   onLibraryTemplate,
@@ -31,8 +39,12 @@ export function PublishMenu({
   correspondenceEnabled?: boolean;
   /** Verified author — public pen-templates share + licensing panel. */
   canPublishPublicTemplate?: boolean;
+  /** Post already written to the owner cloud — required before template reuse. */
+  hasPublishedPost?: boolean;
+  pnIdentifier?: string;
   onPublishLive: () => void;
-  onShareToAggregators: (targets: PenAggregatorTarget[]) => void;
+  onShareToAggregators: (feedIds: string[]) => void;
+  onPublishTemplate?: (licensing: PenLicensingRoot) => void;
   onSendCorrespondence?: () => void;
   onTemplatePrivate: () => void;
   onLibraryTemplate: () => void;
@@ -46,12 +58,15 @@ export function PublishMenu({
 }) {
   const [open, setOpen] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
-  const [targets, setTargets] = useState<Record<string, boolean>>({
-    browse: true,
-    'pen-templates': false
-  });
+  const [templateOpen, setTemplateOpen] = useState(false);
+  const [feedMode, setFeedMode] = useState<'all' | 'selected'>('all');
+  const [checked, setChecked] = useState<Record<string, boolean>>({});
+  const [feeds, setFeeds] = useState<PublishFeed[]>([]);
+  const [templateLicense, setTemplateLicense] = useState<PenLicensingRoot>(() =>
+    defaultLicensingRoot(ownerPnHash, { membership: membership === true })
+  );
   const rootRef = useRef<HTMLDivElement>(null);
-  const templateOk = canPublishPublicTemplate === true;
+  const templateOk = canPublishPublicTemplate === true && hasPublishedPost === true;
   const showLicensing = membership === true;
 
   useEffect(() => {
@@ -67,25 +82,53 @@ export function PublishMenu({
   }, [open]);
 
   useEffect(() => {
-    if (templateOk) return;
-    setTargets((t) => (t['pen-templates'] ? { ...t, 'pen-templates': false } : t));
-  }, [templateOk]);
+    if (!shareOpen || !pnIdentifier) return;
+    let cancelled = false;
+    void listOwnerHostedFeeds(pnIdentifier).then((hosted) => {
+      if (!cancelled) setFeeds(activeContentFeeds(hosted));
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [shareOpen, pnIdentifier]);
 
-  function toggleTarget(id: string) {
-    if (id === 'pen-templates' && !templateOk) return;
-    setTargets((t) => ({ ...t, [id]: !t[id] }));
+  useEffect(() => {
+    if (!templateOpen) return;
+    setTemplateLicense(defaultLicensingRoot(ownerPnHash, { membership: membership === true }));
+  }, [templateOpen, ownerPnHash, membership]);
+
+  function toggleFeed(id: string) {
+    const active = feeds.length ? feeds : activeContentFeeds([]);
+    setChecked((current) => {
+      const base: Record<string, boolean> =
+        feedMode === 'all'
+          ? Object.fromEntries(active.map((feed) => [feed.id, true]))
+          : { ...current };
+      base[id] = !base[id];
+      return base;
+    });
+    setFeedMode('selected');
   }
 
   function submitShare() {
-    const selected = sanitizeAggregatorTargets(
-      Object.entries(targets)
+    const active = feeds.length ? feeds : activeContentFeeds([]);
+    const selected = resolvePublishFeedIds(
+      feedMode,
+      Object.entries(checked)
         .filter(([, on]) => on)
         .map(([id]) => id),
-      templateOk
+      active
     );
     if (!selected.length) return;
     onShareToAggregators(selected);
     setShareOpen(false);
+    setOpen(false);
+  }
+
+  function submitTemplate() {
+    if (!templateOk || !onPublishTemplate) return;
+    onPublishTemplate(templateLicense);
+    setTemplateOpen(false);
     setOpen(false);
   }
 
@@ -117,9 +160,12 @@ export function PublishMenu({
           </button>
           <button
             type="button"
-            title="Share to aggregators (browse, pen templates, …)"
+            title="Publish this post to your cloud and choose which feeds aggregate it"
             className="block w-full px-3 py-1.5 text-left text-[12px] text-stone-800 hover:bg-stone-50"
-            onClick={() => setShareOpen((v) => !v)}
+            onClick={() => {
+              setShareOpen((v) => !v);
+              setTemplateOpen(false);
+            }}
           >
             Connect to feed…
           </button>
@@ -137,44 +183,31 @@ export function PublishMenu({
                   />
                 </div>
               )}
-              <label className="flex items-center gap-2 text-[11px] text-stone-700">
-                <input
-                  type="checkbox"
-                  checked={!!targets.browse}
-                  onChange={() => toggleTarget('browse')}
-                />
-                Browse (your networks)
-              </label>
-              <label
-                className={`mt-1 flex items-center gap-2 text-[11px] ${
-                  templateOk ? 'text-stone-700' : 'text-stone-500'
-                }`}
-                title={
-                  templateOk
-                    ? undefined
-                    : 'Verification required to publish a public template'
-                }
+              <label className="block text-[11px] text-stone-600">Aggregate to</label>
+              <select
+                className="mt-1 w-full rounded border border-stone-300 bg-white px-2 py-1 text-[12px]"
+                aria-label="Where this post is aggregated"
+                value={feedMode}
+                onChange={(e) => setFeedMode(e.target.value === 'selected' ? 'selected' : 'all')}
               >
-                <input
-                  type="checkbox"
-                  checked={!!targets['pen-templates']}
-                  disabled={!templateOk}
-                  onChange={() => toggleTarget('pen-templates')}
-                />
-                Pen templates
-              </label>
-              {!templateOk && (
-                <p className="mt-1 text-[10px] text-stone-500">
-                  Verification required to publish a public template.
-                </p>
-              )}
-              <label className="mt-1 flex items-center gap-2 text-[11px] text-stone-500">
-                <input type="checkbox" disabled checked={false} readOnly />
-                Third party (soon)
-              </label>
+                <option value="all">Make public</option>
+                <option value="selected">Selected feeds</option>
+              </select>
+              <div className="mt-2 max-h-40 overflow-auto">
+                {(feeds.length ? feeds : activeContentFeeds([])).map((feed) => (
+                  <label key={feed.id} className="mt-1 flex items-center gap-2 text-[11px] text-stone-700">
+                    <input
+                      type="checkbox"
+                      checked={feedMode === 'all' ? true : !!checked[feed.id]}
+                      onChange={() => toggleFeed(feed.id)}
+                    />
+                    {feed.name}
+                  </label>
+                ))}
+              </div>
               <p className="mt-1 text-[10px] text-stone-500">
-                Templates never appear in user feeds — only the templates feed / Discover
-                Templates.
+                Make public sends this post to every active feed. Check individual feeds to publish
+                only those.
               </p>
               <button
                 type="button"
@@ -182,6 +215,49 @@ export function PublishMenu({
                 onClick={submitShare}
               >
                 Share
+              </button>
+            </div>
+          )}
+          {onPublishTemplate && (
+            <button
+              type="button"
+              title={
+                templateOk
+                  ? 'Publish this post’s cloud doc as a reusable template'
+                  : 'Publish the post first. Verification is required to publish a template.'
+              }
+              disabled={!templateOk}
+              className={`block w-full px-3 py-1.5 text-left text-[12px] ${
+                templateOk ? 'text-stone-800 hover:bg-stone-50' : 'text-stone-400'
+              }`}
+              onClick={() => {
+                if (!templateOk) return;
+                setTemplateOpen((v) => !v);
+                setShareOpen(false);
+              }}
+            >
+              Publish template…
+            </button>
+          )}
+          {templateOpen && templateOk && (
+            <div className="border-t border-stone-100 bg-stone-50 px-3 py-2">
+              <p className="mb-2 text-[10px] text-stone-500">
+                Reuse license for this template. It is separate from the post’s license.
+              </p>
+              <LicensingSettingsPanel
+                value={templateLicense}
+                ownerPnHash={ownerPnHash}
+                membership={membership === true}
+                connectReady={connectReady === true}
+                musicAsset={musicAsset}
+                onChange={setTemplateLicense}
+              />
+              <button
+                type="button"
+                className="mt-2 text-[11px] font-bold text-black hover:opacity-60"
+                onClick={submitTemplate}
+              >
+                Publish template
               </button>
             </div>
           )}

@@ -13,7 +13,6 @@ import { useHorizontalSwipe } from '../hooks/useHorizontalSwipe';
 import { EditMetadataModal, MetadataFormData } from './EditMetadataModal';
 import { Capacitor } from '@capacitor/core';
 import { pickImageFromNative } from '../hooks/useNativeFilePicker';
-import { peekPenPublishHandoff } from '../utils/penPublishHandoff';
 import { MiniTemplatePicker, type MiniPickerChoice } from './MiniTemplatePicker';
 import {
   buildMiniBodySections,
@@ -265,46 +264,10 @@ const FEATURED_GOOGLE_OPTIONS = PEN_GOOGLE_FONTS_FEATURED.map((f) => ({
   label: f
 }));
 
-function pagesFromHandoff(): MiniPage[] {
-  try {
-    const handoff = peekPenPublishHandoff();
-    if (!handoff?.pages?.length) return [{ ...DEFAULT_MINI_PAGE }];
-    const notePages = handoff.pages.flatMap((p) => {
-      const raw = p as unknown as {
-        kind?: string;
-        content?: string;
-        style?: Record<string, unknown>;
-      };
-      if (raw.kind === 'video') return [];
-      if (typeof raw.content !== 'string') return [];
-      return [{ content: raw.content || '', style: raw.style || {} }];
-    });
-    if (!notePages.length) return [{ ...DEFAULT_MINI_PAGE }];
-    return notePages.map(({ content, style }) => ({
-      content: content || '',
-      fontFamily: String(style.fontFamily || DEFAULT_MINI_PAGE.fontFamily),
-      fontSize: Number(style.fontSize) || DEFAULT_MINI_PAGE.fontSize,
-      textColor: String(style.textColor || DEFAULT_MINI_PAGE.textColor),
-      dropShadowColor: String(style.dropShadowColor || DEFAULT_MINI_PAGE.dropShadowColor),
-      dropShadowBlur: Number(style.dropShadowBlur ?? DEFAULT_MINI_PAGE.dropShadowBlur),
-      dropShadowOffsetX: Number(style.dropShadowOffsetX ?? DEFAULT_MINI_PAGE.dropShadowOffsetX),
-      dropShadowOffsetY: Number(style.dropShadowOffsetY ?? DEFAULT_MINI_PAGE.dropShadowOffsetY),
-      backgroundColor: String(style.backgroundColor || DEFAULT_MINI_PAGE.backgroundColor),
-      backgroundImage: style.backgroundImage ? String(style.backgroundImage) : null,
-      textAlign: (style.textAlign as MiniPage['textAlign']) || DEFAULT_MINI_PAGE.textAlign,
-      textStyle: (style.textStyle as MiniPage['textStyle']) || DEFAULT_MINI_PAGE.textStyle,
-      padding: Number(style.padding ?? DEFAULT_MINI_PAGE.padding),
-    }));
-  } catch {
-    return [{ ...DEFAULT_MINI_PAGE }];
-  }
-}
-
 export function TextPostEditor({ onSave }: TextPostEditorProps) {
   const { userState } = useUserState();
-  
-  // Multi-page state — hydrate from Pen full-app handoff when present
-  const [pages, setPages] = useState<MiniPage[]>(() => pagesFromHandoff());
+
+  const [pages, setPages] = useState<MiniPage[]>([{ ...DEFAULT_MINI_PAGE }]);
   const [currentPageIndex, setCurrentPageIndex] = useState(0);
   const [miniTemplateId, setMiniTemplateId] = useState('blank.social.note');
   const previewContainerRef = useRef<HTMLDivElement | null>(null);
@@ -912,7 +875,6 @@ export function TextPostEditor({ onSave }: TextPostEditorProps) {
       // Styled Pen Mini still publishes as Note even if compile fails
     }
 
-    const handoff = peekPenPublishHandoff();
     let penPublish: {
       headProof: unknown;
       penDocId: string;
@@ -921,49 +883,37 @@ export function TextPostEditor({ onSave }: TextPostEditorProps) {
       penIrRef?: { objectId: string };
     } | null = null;
 
-    if (handoff?.headProof && typeof handoff.docId === 'string' && handoff.docId) {
+    const authorPn = userState.pnIdentifier;
+    if (!authorPn || !hasSigningKeys()) {
+      alert(
+        'Unlock did not include signing keys. Unlock again so ML-DSA keys are in the messaging handoff.'
+      );
+      return;
+    }
+    try {
+      const signed = signPenMiniNoteGenesis({
+        authorPn,
+        templateId,
+        sections,
+      });
       penPublish = {
-        headProof: handoff.headProof,
-        penDocId: handoff.docId,
-        templateId: (typeof handoff.templateId === 'string' && handoff.templateId) || templateId,
-        penClassId: handoff.penClassId,
-        penIrRef: handoff.penIrRef?.objectId
-          ? { objectId: handoff.penIrRef.objectId }
-          : { objectId: handoff.docId },
+        headProof: signed.headProof,
+        penDocId: signed.docId,
+        templateId: signed.templateId,
+        penClassId: signed.penClassId,
+        penIrRef: signed.penIrRef,
       };
-    } else {
-      const authorPn = userState.pnIdentifier;
-      if (!authorPn || !hasSigningKeys()) {
+      templateId = signed.templateId;
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (/signing_keys/i.test(msg)) {
         alert(
           'Unlock did not include signing keys. Unlock again so ML-DSA keys are in the messaging handoff.'
         );
-        return;
+      } else {
+        alert(`Could not sign note: ${msg}`);
       }
-      try {
-        const signed = signPenMiniNoteGenesis({
-          authorPn,
-          templateId,
-          sections,
-        });
-        penPublish = {
-          headProof: signed.headProof,
-          penDocId: signed.docId,
-          templateId: signed.templateId,
-          penClassId: signed.penClassId,
-          penIrRef: signed.penIrRef,
-        };
-        templateId = signed.templateId;
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err);
-        if (/signing_keys/i.test(msg)) {
-          alert(
-            'Unlock did not include signing keys. Unlock again so ML-DSA keys are in the messaging handoff.'
-          );
-        } else {
-          alert(`Could not sign note: ${msg}`);
-        }
-        return;
-      }
+      return;
     }
     
     // Convert all pages to TextPostData format

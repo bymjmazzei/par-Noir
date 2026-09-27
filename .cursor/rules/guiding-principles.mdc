@@ -1,6 +1,6 @@
 ---
 description: Guiding principles — crypto without blockchain, user-owned, aggregators, infrastructure, layer model, no plain-text sensitive data, feature hierarchy. Full context in SHARED_CODE_RULES.md.
-alwaysApply: true
+alwaysApply: false
 ---
 
 # par Noir — Guiding Principles

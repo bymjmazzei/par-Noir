@@ -1,6 +1,6 @@
 ---
 description: How to build in this codebase — structure, boundaries, and what to check before writing.
-alwaysApply: true
+alwaysApply: false
 ---
 
 # How to build in par Noir

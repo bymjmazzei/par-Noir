@@ -1,0 +1,39 @@
+---
+description: Co-dev process — root cause before edits, chat wins, workflow tests, onboarding done-criteria
+alwaysApply: true
+---
+
+# How we work
+
+You prompt and decide product behavior. The agent writes code. Each of you QAs on your own identity.
+
+| Fixture | Who |
+|---|---|
+| `.local/cursor-test-pn/` | Agent only |
+| `.local/test-pn/` | You, on your machine |
+
+The agent never opens, unlocks, or uploads `.local/test-pn/`. If `.local/cursor-test-pn/` is missing, stop. Do not mint a replacement. Fixture details: `local-test-pn.mdc`. Hard bans: `auth-trust-boundary.mdc`.
+
+## Precedence
+
+When this chat and a rule or doc disagree, follow the chat. Do not implement a path the chat just rejected. Do not mark the requested behavior as follow-on or out of scope because a spec says so.
+
+## Root cause before the first edit
+
+Name the user-visible symptom, the path from that action to the external system (Drive, API, Redis, Postgres, or the device), and the function on that path that returns early, returns null, or swallows the error. The edit goes on that path. A UI change that hides the symptom while that boundary still fails is not the fix. If that path cannot be read, stop and say so. Do not guess a patch.
+
+## Architecture
+
+Once that path is identified: one implementation in `packages/` (apps stay thin). Delete the wrong dual, shim, or second resolver. Leave a path that is already correct alone. Do not rebuild a subsystem as a substitute for the trace. Do not leave the broken path beside the fix.
+
+## Workflow tests in the same change
+
+A new user-facing workflow in any app or package lands with a test file next to the code. The test calls the workflow and asserts the outcome. It uses that package's existing runner (Vitest or Jest) and that package's existing test script. If that package is missing from root `package.json` `"test"`, add one `test:<app>` entry to that root script in the same change. Dashboard and browse are already on it. Pen and Prism have test scripts and are not. Headed QA on `cursor-test-pn` still happens for a flow a person can see.
+
+## Done
+
+For a flow a person can see, reproduce the symptom as absent on `cursor-test-pn`. Crypto and auth stay on hermetic package tests. Report what was actually observed. Files written, tests passing, and todos checked are not done. Your confirmation on your own pn is what makes it onboarding-ready. If headed QA is blocked, say what was not verified.
+
+## Hard-ban ratchets
+
+`scripts/check-*.sh` is only for a new hard ban. Do not weaken, skip, or grow allowlists. A workflow test is a package test file, not a new check script.

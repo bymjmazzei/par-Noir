@@ -1,11 +1,11 @@
 ---
-description: Wrong architecture → delete and rebuild; minimal-diff does not authorize shims
-alwaysApply: true
+description: When a path's architecture is wrong, delete it and rebuild in packages/ after the failing path is identified
+alwaysApply: false
 ---
 
 # Rebuild, do not patch
 
-This repo is in development. Dual paths, compatibility shims, and stubs on live call sites are bugs — not temporary options.
+Identify the failing path before deleting anything. See `how-we-work.mdc`. Dual paths, compatibility shims, and stubs on live call sites are bugs.
 
 ## Default
 

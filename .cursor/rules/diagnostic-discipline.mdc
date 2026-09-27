@@ -1,11 +1,11 @@
 ---
-description: How to diagnose, plan, verify, and report. Falsification gates, behavioral done-criteria, one resolver per external credential, no silent dead ends, observed vs inferred.
-alwaysApply: true
+description: Drive tokens, ownerFetch, OAuth grants, and silent nulls. One resolver — resolveOwnerDriveToken.
+alwaysApply: false
 ---
 
 # par Noir — Diagnostic Discipline
 
-Apply these on every bug, every plan, and every status report. These are enforceable by observation, not by intent. "I believed I found the root cause" is not compliance.
+Credential cookbook for Drive tokens, `ownerFetch`, OAuth grants, and silent nulls. The process gate (root cause before the first edit, what counts as done) is `how-we-work.mdc`.
 
 ## Why these exist
 
@@ -15,7 +15,7 @@ Commit `e4306317` ("Align dashboard Drive calls with custody owner routes") norm
 
 - Every diagnostic states **up front** the observation that would prove the hypothesis **wrong**.
 - If that observation cannot be made, **stop and report**. Do not proceed to implementation on an unverified hypothesis.
-- A cancelled, skipped, or blocked verification step **voids the plan** and returns to diagnosis. Later phases must not be built on top of it.
+- A blocked headed check does not void the rest of the work. Say what was not verified. See `how-we-work.mdc`.
 - A check that has never failed is not a check. When adding a guard or test, prove it fails on a synthetic violation before trusting it.
 
 ## 2. Done means the symptom is reproduced as absent
@@ -52,6 +52,5 @@ Commit `e4306317` ("Align dashboard Drive calls with custody owner routes") norm
 
 ## 6. Label observed versus inferred
 
-- Distinguish **"I observed X"** from **"I concluded X"** in every status report.
-- Never report something as verified without naming the observation that produced it.
+- When you report something as verified, name the observation that produced it.
 - Report the outcome you saw, including when it contradicts the plan. Reporting unearned confidence is worse than reporting a failure.

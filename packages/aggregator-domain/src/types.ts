@@ -360,6 +360,8 @@ export interface PublicMetadata {
   /** Server discovery score (API); see docs/business/DISCOVERY_RANKING.md */
   publicRankScore?: number;
 
+  /** Raw Pen doc id in the owner cloud (`par-noir-pen/{docId}/`). Monetization links here. */
+  penDocId?: string;
   /** Pen taxonomy — set when shared to pen-templates aggregator. */
   penClassId?: string;
   penCategoryId?: string;

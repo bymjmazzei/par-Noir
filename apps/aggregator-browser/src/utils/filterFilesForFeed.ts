@@ -171,15 +171,23 @@ export function filterFilesForFeed(params: FilterFilesForFeedParams): IndexedFil
     return processed;
   };
 
+  const onThisRail = (file: IndexedFile): boolean => {
+    const ids = file.metadata.feedIds;
+    if (!ids || ids.length === 0) return true;
+    return ids.includes(feedId);
+  };
+
   if (feedId === 'public') {
     return processPublicFeed(
-      [...filteredMedia, ...filteredNotes, ...filteredCollections],
+      [...filteredMedia, ...filteredNotes, ...filteredCollections].filter(onThisRail),
       connectionsList
     );
   }
-  if (feedId === 'media') return processPublicFeed(filteredMedia, connectionsList);
-  if (feedId === 'notes') return processPublicFeed(filteredNotes, connectionsList);
-  if (feedId === 'collections') return processPublicFeed(filteredCollections, connectionsList);
+  if (feedId === 'media') return processPublicFeed(filteredMedia.filter(onThisRail), connectionsList);
+  if (feedId === 'notes') return processPublicFeed(filteredNotes.filter(onThisRail), connectionsList);
+  if (feedId === 'collections') {
+    return processPublicFeed(filteredCollections.filter(onThisRail), connectionsList);
+  }
   if (feedId === 'discovery') return [];
 
   if (feedId.startsWith('niche-')) {

@@ -2130,6 +2130,8 @@ export class AggregatorMetadataServiceDB {
       /** null clears expiry; omit to preserve */
       expiresAt?: string | null;
       persistOnDiscover?: boolean;
+      /** Pen post/template fields (feedIds, penDocId, licensing, penTemplateKind, …). */
+      provenance?: Record<string, unknown>;
     }
   ): Promise<PublicMetadata | null> {
     const db = getDatabasePool();
@@ -2248,6 +2250,7 @@ export class AggregatorMetadataServiceDB {
           : existingFeedPreviewHd
             ? { feedPreviewHd: existingFeedPreviewHd }
             : {}),
+        ...(updates.provenance || {}),
       };
 
       // Ensure keywords and tags are in sync

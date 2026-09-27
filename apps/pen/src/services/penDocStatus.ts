@@ -40,7 +40,7 @@ export function resolveDocLibraryStatus(pn: string, docId: string): string {
   }
 
   if (published) {
-    parts.push('Published to Browse');
+    parts.push('Published');
   } else if (!hasCommit) {
     parts.push('Unpublished draft');
   } else {
@@ -53,7 +53,7 @@ export function resolveDocLibraryStatus(pn: string, docId: string): string {
     return [parts[0], invites.length ? parts[1] : parts[parts.length - 1]].join(' · ');
   }
   if (invites.length > 0 && published) {
-    return `Shared with ${formatPeerList(invites)} · Published to Browse`;
+    return `Shared with ${formatPeerList(invites)} · Published`;
   }
   return parts[parts.length - 1]!;
 }

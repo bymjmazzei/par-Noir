@@ -1,6 +1,6 @@
 ---
 description: Hard bans need machine ratchets — prefer scripts/tests over more prose
-alwaysApply: true
+alwaysApply: false
 ---
 
 # Enforcement

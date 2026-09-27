@@ -215,8 +215,12 @@ export interface PenDocManifest {
   attestations?: import('./knowledge.js').AssetAttestation;
   /** Structured Knowledge body when classId is knowledge.claim. */
   knowledge?: import('./knowledge.js').KnowledgePayload;
-  /** Aggregator fileId after Connect to feed — engagement comments key. */
+  /** Aggregator fileId after the post is published — engagement comments key. */
   publishedFileId?: string;
+  /** Second public row: reusable template, after the post exists. */
+  templatePublishedFileId?: string;
+  /** Reuse license captured when the template was published. Separate from `licensing`. */
+  templateLicensing?: PenLicensingRoot;
   /**
    * Composed gallery thumb after Commit — `penmedia:{fileId}` (or transient `penlocal:`).
    * Not an aggregator CDN URL; collaborators hydrate via Drive → IndexedDB.

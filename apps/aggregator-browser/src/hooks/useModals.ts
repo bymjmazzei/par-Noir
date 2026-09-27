@@ -5,19 +5,12 @@
 import { useState } from 'react';
 import type { IndexedFile } from '../types/aggregator';
 import type { Feed } from '../types/aggregator';
-import { peekPenPublishHandoff } from '../utils/penPublishHandoff';
 import { takeCorrespondenceHandoff } from '../utils/penCorrespondenceHandoff';
 
 function shouldOpenUploadFromDeepLink(): boolean {
   try {
     if (typeof window === 'undefined') return false;
-    const view = new URLSearchParams(window.location.search).get('view');
-    if (view === 'upload') return true;
-    const handoff = peekPenPublishHandoff();
-    if (handoff?.pages?.length) return true;
-    if (handoff?.contentClass === 'media' && handoff.awaitingComposedBlobs) return true;
-    if (handoff?.contentClass === 'collection' && handoff.awaitingComposedBlobs) return true;
-    return false;
+    return new URLSearchParams(window.location.search).get('view') === 'upload';
   } catch {
     return false;
   }

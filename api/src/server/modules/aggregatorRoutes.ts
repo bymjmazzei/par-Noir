@@ -1665,7 +1665,8 @@ export function setupAggregatorRoutes(app: any, deps: AggregatorRouteDeps) {
               comments: 0,
               shares: 0,
               lastUpdated: new Date().toISOString()
-            }
+            },
+            ...((await import('./penIndexFields')).penIndexFields(req.body))
           };
 
           if (expiresAt !== undefined || ttlSeconds !== undefined || persistOnDiscover !== undefined) {
@@ -1852,7 +1853,8 @@ export function setupAggregatorRoutes(app: any, deps: AggregatorRouteDeps) {
               comments: 0,
               shares: 0,
               lastUpdated: new Date().toISOString()
-            }
+            },
+            ...((await import('./penIndexFields')).penIndexFields(req.body))
           };
           // Submit minimal metadata - ONLY for public files
           // Private files should NOT be in the database (they only exist in Google Drive + companion metadata)
@@ -2785,7 +2787,8 @@ export function setupAggregatorRoutes(app: any, deps: AggregatorRouteDeps) {
           : {}),
         ...(normalizedExpiry?.persistOnDiscover !== undefined
           ? { persistOnDiscover: normalizedExpiry.persistOnDiscover }
-          : {})
+          : {}),
+        provenance: (await import('./penIndexFields')).penIndexFields(req.body)
       });
 
       // Also update Google Drive index (source of truth) if file is public

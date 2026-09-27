@@ -1,11 +1,11 @@
 ---
-description: MVP in-scope surface — do not expand into deferred rails unless asked
-alwaysApply: true
+description: Deferred rails (Veriff, Stripe, store distribution) stay out unless this chat asks for them
+alwaysApply: false
 ---
 
 # MVP surface
 
-Default work targets a closed/beta MVP of the core stack. Do not pull in deferred layers unless the user explicitly asks.
+A request in the current chat is in scope. Default work targets a closed/beta MVP of the core stack. Do not pull in deferred layers unless the user explicitly asks.
 
 ## In scope
 

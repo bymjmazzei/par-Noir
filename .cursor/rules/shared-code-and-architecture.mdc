@@ -1,6 +1,6 @@
 ---
 description: Monorepo shared-code and architecture rules. Enforces one source of truth, packages for cross-app code, and app boundaries. Full details in SHARED_CODE_RULES.md.
-alwaysApply: true
+alwaysApply: false
 ---
 
 # par Noir — Shared Code and Architecture Rules

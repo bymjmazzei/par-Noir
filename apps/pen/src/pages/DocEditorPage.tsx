@@ -40,7 +40,8 @@ import {
   type PenDocManifest,
   type PenRole,
   type PenSuggestion,
-  type PenTipTapNode
+  type PenTipTapNode,
+  type PenLicensingRoot
 } from '@par-noir/pen-protocol';
 import type { PenSession } from '../services/penSession';
 import { FormatRibbon, PageCanvas } from '../components/PageCanvas';
@@ -52,7 +53,7 @@ import { ActionBindStrip } from '../components/ActionBindStrip';
 import { IconLayers } from '../components/icons/PenIcons';
 import { MediaEditorPanel } from '../components/MediaEditorPanel';
 import { LayerPartsMenu } from '../components/LayerPartsMenu';
-import { PublishMenu, type PenAggregatorTarget } from '../components/PublishMenu';
+import { PublishMenu } from '../components/PublishMenu';
 import { SaveMenu } from '../components/SaveMenu';
 import { ShareMenu } from '../components/ShareMenu';
 import {
@@ -74,7 +75,8 @@ import {
   isProjectDoc,
   promoteProjectToFinishedLibraryDoc,
   saveProjectAsLibraryTemplate,
-  writeSocialPublishHandoff,
+  publishPostToOwnerCloud,
+  publishTemplateToOwnerCloud,
   writeComposedVideoPublishHandoff,
   writeMixedPagesPublishHandoff
 } from '../services/penPublish';
@@ -120,7 +122,6 @@ import {
   type DocSnapshot
 } from '../services/penActivityLedger';
 import { encryptSectionJson, envelopeToWireB64, mintDocKey } from '../services/penDocCrypto';
-import { openBrowseWithPenHandoff } from '../services/penBrowseHandoff';
 import {
   bodyFromSections,
   openMessagingWithCorrespondence
@@ -996,20 +997,29 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
     }
   }
 
-  function publishSocial(targets: PenAggregatorTarget[] = ['browse']) {
+  function rememberPostFileId(b: NonNullable<typeof bundle>, fileId: string) {
+    const next = {
+      ...b,
+      manifest: { ...b.manifest, publishedFileId: fileId, updatedAt: new Date().toISOString() }
+    };
+    persist(next);
+  }
+
+  function publishSocial(feedIds: string[]) {
     void (async () => {
       try {
         saveDraft({ silent: true });
         const b = bundleRef.current || bundle!;
         const publishOpts = {
-          aggregatorTargets: targets,
           canPublishPublicTemplate: verifiedAuthor,
           connectReady
         };
+        setStatus('Publishing to your cloud…');
+        let fileId: string;
         if (shouldPublishAsSingleComposedVideo(b.sections)) {
           setStatus('Encoding composed video…');
           const prevSlug = activeSlugRef.current;
-          await writeComposedVideoPublishHandoff(b, {
+          const video = await writeComposedVideoPublishHandoff(b, {
             ...publishOpts,
             activateSection: (slug) => {
               setActiveSlug(slug);
@@ -1019,15 +1029,21 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
             }
           });
           setActiveSlug(prevSlug);
-          setStatus(
-            targets.includes('pen-templates')
-              ? 'Opened Browse — finish template video share there'
-              : 'Opened Browse — finish video publish there'
-          );
+          setStatus('Publishing to your cloud…');
+          fileId = (
+            await publishPostToOwnerCloud({
+              bundle: b,
+              feedIds,
+              pnIdentifier: session.pnIdentifier,
+              membership: verifiedAuthor,
+              connectReady,
+              video
+            })
+          ).fileId;
         } else if (shouldPublishAsMixedPages(b.sections)) {
           setStatus('Encoding video pages…');
           const prevSlug = activeSlugRef.current;
-          await writeMixedPagesPublishHandoff(b, {
+          const mixed = await writeMixedPagesPublishHandoff(b, {
             ...publishOpts,
             activateSection: (slug) => {
               setActiveSlug(slug);
@@ -1037,26 +1053,68 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
             }
           });
           setActiveSlug(prevSlug);
-          setStatus(
-            targets.includes('pen-templates')
-              ? 'Opened Browse — finish mixed template share there'
-              : 'Opened Browse — finish collection publish there'
-          );
+          setStatus('Publishing to your cloud…');
+          fileId = (
+            await publishPostToOwnerCloud({
+              bundle: b,
+              feedIds,
+              pnIdentifier: session.pnIdentifier,
+              membership: verifiedAuthor,
+              connectReady,
+              mixed
+            })
+          ).fileId;
         } else {
-          const payload = await writeSocialPublishHandoff(b, {
-            pnIdentifier: session.pnIdentifier,
-            ...publishOpts
-          });
-          openBrowseWithPenHandoff(payload);
-          setStatus(
-            targets.includes('pen-templates')
-              ? 'Opened Browse — finish template share there'
-              : 'Opened Browse — finish publish there'
-          );
+          fileId = (
+            await publishPostToOwnerCloud({
+              bundle: b,
+              feedIds,
+              pnIdentifier: session.pnIdentifier,
+              membership: verifiedAuthor,
+              connectReady
+            })
+          ).fileId;
         }
+        rememberPostFileId(bundleRef.current || b, fileId);
+        setStatus('Published to your cloud');
         window.setTimeout(() => setStatus(null), 4000);
       } catch (e) {
         setError(e instanceof Error ? e.message : 'feed_connect_failed');
+        setStatus(null);
+      }
+    })();
+  }
+
+  function publishTemplate(templateLicensing: PenLicensingRoot) {
+    void (async () => {
+      try {
+        const b = bundleRef.current || bundle!;
+        if (!b.manifest.publishedFileId) {
+          setError('Publish the post before publishing the template');
+          return;
+        }
+        setStatus('Publishing template to your cloud…');
+        const { fileId } = await publishTemplateToOwnerCloud({
+          bundle: b,
+          templateLicensing,
+          verified: verifiedAuthor,
+          pnIdentifier: session.pnIdentifier,
+          connectReady
+        });
+        const next = bundleRef.current || b;
+        persist({
+          ...next,
+          manifest: {
+            ...next.manifest,
+            templatePublishedFileId: fileId,
+            templateLicensing,
+            updatedAt: new Date().toISOString()
+          }
+        });
+        setStatus('Template published');
+        window.setTimeout(() => setStatus(null), 4000);
+      } catch (e) {
+        setError(e instanceof Error ? e.message : 'template_publish_failed');
         setStatus(null);
       }
     })();
@@ -1400,8 +1458,11 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
           projectEnabled={projectEnabled}
           correspondenceEnabled={correspondenceEnabled}
           canPublishPublicTemplate={verifiedAuthor}
+          hasPublishedPost={Boolean(bundle?.manifest.publishedFileId)}
+          pnIdentifier={session.pnIdentifier}
           onPublishLive={() => void publishLive()}
-          onShareToAggregators={(targets) => publishSocial(targets)}
+          onShareToAggregators={(feedIds) => publishSocial(feedIds)}
+          onPublishTemplate={(licensing) => publishTemplate(licensing)}
           onSendCorrespondence={sendCorrespondence}
           onTemplatePrivate={publishAsTemplate}
           onLibraryTemplate={publishAsLibraryTemplate}

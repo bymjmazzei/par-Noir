@@ -1,9 +1,16 @@
 ---
-description: Pen templates — template-first authored content; starter pack then community
-alwaysApply: true
+description: Pen vocabulary and package location. The current chat defines behavior.
+globs: apps/pen/**,packages/pen-protocol/**,packages/pen-curriculum/**,packages/feed-tile/**,apps/aggregator-browser/**/*[Pp]en*
+alwaysApply: false
 ---
 
 # Pen templates (authored content IR)
+
+**Precedence:** this file is vocabulary and package location. The current chat defines behavior.
+
+- Pen writes the owner's cloud under `par-noir-pen/`. Browse and Pen `/templates` read that cloud.
+- A widget inserted into a doc is a copied, editable layer group.
+- A template that ships to `/templates` is a real layered design built in the Pen editor.
 
 Pen is the universal **authored-content** language for par Noir (humans, collaborators, AI agents). Social/browser artifacts are **Notes** (and related compile targets), not a separate Thought kingdom. Full product plan: living Pen ADR / build plan when present.
 
@@ -14,10 +21,10 @@ When building any new pN surface for **authored or publishable content** (posts,
 1. **Assign a Pen class (form)** under a category (`classId` in `@par-noir/pen-protocol`), then **define and register the template**.
 2. **Then** build UI (Pen, Pen Mini, browse, L5) as a thin renderer/compiler of that template.
 3. Do **not** invent a parallel content model, storage layout, or one-off “special case” blob format beside Pen.
-4. **Format-first:** seeds encode the form’s job (see [`docs/architecture/PEN_FORM_FORMAT_SURVEY.md`](../../docs/architecture/PEN_FORM_FORMAT_SURVEY.md) and [`docs/architecture/PEN_TEMPLATE_SPEC_V0.md`](../../docs/architecture/PEN_TEMPLATE_SPEC_V0.md)). Stock media may illustrate a format; it must not *be* the format.
+4. **Shipped templates** are real layered designs built in the Pen editor (image, video, text). A plaintext seed is not a template on `/templates`. Format contracts: [`PEN_FORM_FORMAT_SURVEY.md`](../../docs/architecture/PEN_FORM_FORMAT_SURVEY.md) and [`PEN_TEMPLATE_SPEC_V0.md`](../../docs/architecture/PEN_TEMPLATE_SPEC_V0.md).
 5. **Dominance:** Note templates only when text is dominant; corner caption on media = Post (crop test).
 6. **Orientation:** Portrait / landscape / square are separate Social template ids.
-7. **Cloud primitives:** Kit `primitives.table` is a custody reference object. Templates embed by `docId`; interactive sticker layers bind; votes log into table rows (runtime follow-on). TipTap tables = static prose only. Overlay kinds: `embed`, `interactive`.
+7. **Cloud primitives:** Kit `primitives.table` is a custody reference object. Templates embed by `docId`. A widget inserted into a doc is a copied, editable layer group. TipTap tables = static prose only. Overlay kinds: `embed`, `interactive`.
 
 Hierarchy: **Category → Form → Template** (e.g. Social → Notes → Basic Note). Template `classId` is always a form, never a category.
 
@@ -30,7 +37,7 @@ A **public template** is both:
 1. **Full Pen IR** — sections, layers, schema, presentation (`visible` / `positionLocked` on layers). What “Use template” materializes.
 2. **A published feed post** — CDN / `IndexedFile` / engagement, when shared to aggregators.
 
-**Connect to feed** = choose aggregator targets (`browse`, `pen-templates`, third-party stubs). Pen-templates sets `penTemplateKind` (+ `penClassId` / `penIrRef`). Template-flagged items appear **only** on the browse pN templates feed and Discover **Templates** section — **never** user feeds, other feeds, or Discover relevance.
+**Connect to feed** writes the post from Pen to the owner’s cloud and chooses feeds (**Make public** = every active feed, or a subset). The post links to the raw doc for monetization and does not set `penTemplateKind`. A verified author may then publish that doc as a reusable template with its own license. Template-flagged items appear **only** on the browse pN templates feed and Discover **Templates** section — **never** user feeds, other feeds, or Discover relevance.
 
 | Surface | Contents |
 |---|---|
@@ -88,7 +95,7 @@ Layers: **eye** = visibility (omit from preview/compile); **lock** = position lo
 | Feed | Community form (`community.feed`); self-hosted stream **config** — not a Social atom |
 | Feed embed | Community form (`community.feed_embed`); framed configurable stream chrome |
 | Frame | Social form (`social.frame`); hosts embed layer + interactive stickers (no third-party webview runtime) |
-| Table primitive | Kit cloud reference grid (`primitives.table`); polls/templates embed; stickers bind |
+| Table primitive | Kit cloud reference grid (`primitives.table`). Widgets in a doc are copied editable layer groups |
 | Landing | Community arrival page (hero / value / CTA) |
 | Community home | Community hub (banner / nav / featured / announcements) |
 | Site | Community multipage feed of pages (aggregator/compiler like browse home)—not a widget site builder |

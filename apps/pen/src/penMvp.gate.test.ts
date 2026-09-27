@@ -43,7 +43,7 @@ describe('Pen MVP gates', () => {
   it('publish and bootstrap are distinct outbox kinds from feed handoff', () => {
     expect(PEN_PUBLISH_KIND).toBe('pen.publish');
     expect(PEN_DOC_BOOTSTRAP_KIND).toBe('pen.doc_bootstrap');
-    // Connect-to-feed is client handoff (pen_publish:) — not an apply-inbound kind.
+    // Connect-to-feed writes the owner cloud from Pen — not an apply-inbound kind.
     expect(PEN_PUBLISH_KIND).not.toContain('feed');
   });
 });

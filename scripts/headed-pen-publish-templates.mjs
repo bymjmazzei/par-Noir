@@ -1,6 +1,7 @@
 /**
  * Headed live suite: unlock Pen with cursor-test-pn, build real social templates
- * (blank → layers → copy → arrange → Connect to feed → pen-templates), finish Browse upload.
+ * (blank → layers → copy → arrange → Connect to feed → owner cloud).
+ * Template reuse is a second Pen action after the post exists. Browse only aggregates.
  *
  * Usage:
  *   node scripts/headed-pen-publish-templates.mjs
@@ -9,7 +10,8 @@
  * Never logs Key 1 / Key 2 / passcode / pn name.
  * Layout framework: portrait 9:16 story safe zones (hook / body / CTA in center band).
  */
-import { existsSync, readFileSync } from 'fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
+import { tmpdir } from 'os';
 import { dirname, resolve } from 'path';
 import { fileURLToPath, pathToFileURL } from 'url';
 
@@ -18,6 +20,7 @@ const PEN_URL = (process.env.PEN_URL || 'https://pen.parnoir.com').replace(/\/$/
 const BROWSE_URL = (process.env.BROWSE_URL || 'https://browse.parnoir.com').replace(/\/$/, '');
 const HEADLESS = process.env.HEADLESS === '1';
 const MAX_TEMPLATES = Math.max(1, Number(process.env.MAX_TEMPLATES || 5));
+const ONLY_SPEC = (process.env.ONLY_SPEC || '').trim();
 
 /**
  * Five flagship publishes — create from platform starter (live media IR), then refine.
@@ -36,47 +39,54 @@ const SPECS = [
     id: 'punchy-note',
     title: 'A short line that lands',
     starterId: 'note.basic.portrait.v1',
-    formTitle: 'Notes',
-    categoryLabel: /^Social$/i,
     bg: '#0c0c0c',
     layers: [
       {
+        name: 'Still',
+        kind: 'image',
+        mediaFile: 'note-hero.jpg',
+        x: 0,
+        y: 0,
+        w: 360,
+        h: 640
+      },
+      {
+        name: 'Scrim',
+        kind: 'text',
+        text: '',
+        x: 0,
+        y: 0,
+        w: 360,
+        h: 640,
+        gradient: 'linear-gradient(180deg, rgba(12,12,12,0.15) 0%, rgba(12,12,12,0.78) 100%)'
+      },
+      {
         name: 'Eyebrow',
+        kind: 'text',
         text: 'NOTE',
         x: 28,
-        y: 88,
+        y: 360,
         w: 120,
         h: 28,
-        kind: 'text',
         fill: '#0f766e'
       },
       {
         name: 'Hook',
+        kind: 'text',
         text: 'Say the thing once.',
         x: 28,
-        y: 180,
+        y: 400,
         w: 304,
-        h: 72,
-        kind: 'text'
+        h: 72
       },
       {
         name: 'Body',
-        text: 'Then get out of the way. Portrait Notes win on clarity, not decoration.',
-        x: 28,
-        y: 280,
-        w: 304,
-        h: 120,
-        kind: 'text'
-      },
-      {
-        name: 'Accent',
-        text: '',
-        x: 28,
-        y: 420,
-        w: 48,
-        h: 4,
         kind: 'text',
-        fill: '#b8956c'
+        text: 'Then get out of the way.',
+        x: 28,
+        y: 480,
+        w: 304,
+        h: 80
       }
     ]
   },
@@ -84,18 +94,25 @@ const SPECS = [
     id: 'light-tile',
     title: 'One clear thought',
     starterId: 'note.text_tile.light.v1',
-    formTitle: 'Notes',
-    categoryLabel: /^Social$/i,
     bg: '#e7e5e4',
     layers: [
       {
+        name: 'Photo',
+        kind: 'image',
+        mediaFile: 'card-note.jpg',
+        x: 0,
+        y: 0,
+        w: 360,
+        h: 640
+      },
+      {
         name: 'Card',
-        text: 'One clear thought.\n\nHigh contrast on paper — readable in the feed at a glance.',
-        x: 28,
-        y: 160,
-        w: 304,
-        h: 260,
         kind: 'text',
+        text: 'One clear thought.\n\nHigh contrast on paper.',
+        x: 28,
+        y: 180,
+        w: 304,
+        h: 240,
         fill: '#ffffff',
         stroke: '#d6d3d1'
       }
@@ -105,29 +122,35 @@ const SPECS = [
     id: 'note-on-media',
     title: 'The words are the post',
     starterId: 'note.media.portrait.v1',
-    formTitle: 'Notes',
-    categoryLabel: /^Social$/i,
     bg: '#0c0c0c',
-    mediaFile: 'caption-bg.jpg',
     layers: [
       {
         name: 'Backdrop',
-        text: '',
+        kind: 'image',
+        mediaFile: 'caption-bg.jpg',
         x: 0,
         y: 0,
         w: 360,
-        h: 640,
-        kind: 'image',
-        mediaFile: 'caption-bg.jpg'
+        h: 640
+      },
+      {
+        name: 'Scrim',
+        kind: 'text',
+        text: '',
+        x: 0,
+        y: 280,
+        w: 360,
+        h: 360,
+        gradient: 'linear-gradient(180deg, rgba(12,12,12,0) 0%, rgba(12,12,12,0.88) 40%)'
       },
       {
         name: 'Card',
-        text: 'The words are the post.\n\nMedia is atmosphere — crop away the text and nothing remains.',
-        x: 24,
-        y: 200,
-        w: 312,
-        h: 240,
         kind: 'text',
+        text: 'The words are the post.\n\nMedia is atmosphere.',
+        x: 24,
+        y: 360,
+        w: 312,
+        h: 180,
         fill: 'rgba(12,12,12,0.88)',
         stroke: 'rgba(184,149,108,0.35)'
       }
@@ -137,47 +160,44 @@ const SPECS = [
     id: 'quote-card',
     title: 'Clarity is a kindness',
     starterId: 'quote.basic.v1',
-    formTitle: 'Notes',
-    categoryLabel: /^Social$/i,
     bg: '#0c0c0c',
     layers: [
       {
-        name: 'Mark',
-        text: '“',
-        x: 24,
-        y: 100,
-        w: 80,
-        h: 80,
-        kind: 'text',
-        fill: 'transparent'
+        name: 'Still',
+        kind: 'image',
+        mediaFile: 'image-post.jpg',
+        x: 0,
+        y: 0,
+        w: 360,
+        h: 640
+      },
+      {
+        name: 'Motion',
+        kind: 'video',
+        mediaFile: 'video-post-sm.mp4',
+        x: 28,
+        y: 72,
+        w: 304,
+        h: 172
       },
       {
         name: 'Quote',
-        text: 'Clarity is a kindness you practice in public.',
-        x: 32,
-        y: 200,
-        w: 296,
-        h: 160,
-        kind: 'text'
-      },
-      {
-        name: 'Rule',
-        text: '',
-        x: 32,
-        y: 400,
-        w: 48,
-        h: 3,
         kind: 'text',
-        fill: '#b8956c'
+        text: 'Clarity is a kindness you practice in public.',
+        x: 28,
+        y: 280,
+        w: 304,
+        h: 160,
+        fill: 'rgba(12,12,12,0.82)'
       },
       {
         name: 'Byline',
+        kind: 'text',
         text: '— Ada Okonkwo',
-        x: 32,
-        y: 420,
-        w: 296,
-        h: 36,
-        kind: 'text'
+        x: 28,
+        y: 460,
+        w: 304,
+        h: 40
       }
     ]
   },
@@ -185,30 +205,26 @@ const SPECS = [
     id: 'image-post',
     title: 'Frame the subject',
     starterId: 'post.image.portrait.v1',
-    formTitle: 'media',
-    categoryLabel: /^Social$/i,
     bg: '#000000',
-    mediaFile: 'image-post.jpg',
     layers: [
       {
         name: 'Photo',
-        text: '',
+        kind: 'image',
+        mediaFile: 'image-post.jpg',
         x: 0,
         y: 0,
         w: 360,
-        h: 640,
-        kind: 'image',
-        mediaFile: 'image-post.jpg'
+        h: 640
       },
       {
         name: 'Caption',
-        text: 'Frame the subject. Leave room to breathe.',
-        x: 16,
-        y: 520,
-        w: 328,
-        h: 64,
         kind: 'text',
-        fill: 'rgba(0,0,0,0.55)'
+        text: 'Frame the subject. Leave room to breathe.',
+        x: 0,
+        y: 540,
+        w: 360,
+        h: 100,
+        fill: 'rgba(0,0,0,0.62)'
       }
     ]
   }
@@ -220,14 +236,21 @@ function mediaDataUrl(fileName) {
   const buf = readFileSync(p);
   const ext = fileName.split('.').pop()?.toLowerCase();
   const mime =
-    ext === 'png' ? 'image/png' : ext === 'webp' ? 'image/webp' : 'image/jpeg';
+    ext === 'mp4'
+      ? 'video/mp4'
+      : ext === 'png'
+        ? 'image/png'
+        : ext === 'webp'
+          ? 'image/webp'
+          : 'image/jpeg';
   return `data:${mime};base64,${buf.toString('base64')}`;
 }
 
 function hydrateSpecMedia(spec) {
   const layers = (spec.layers || []).map((L) => {
-    if (L.kind === 'image' && L.mediaFile) {
-      return { ...L, imageSrc: mediaDataUrl(L.mediaFile) };
+    if ((L.kind === 'image' || L.kind === 'video') && L.mediaFile) {
+      const src = mediaDataUrl(L.mediaFile);
+      return L.kind === 'video' ? { ...L, videoSrc: src } : { ...L, imageSrc: src };
     }
     return { ...L };
   });
@@ -544,310 +567,230 @@ async function setTitle(page, title) {
 }
 
 /**
- * Build layers via Layers popover UI (no remount — live Pen blanks out on /d reload).
+ * Arrange a media stack in the live editor.
+ * Opens Layers, adds a layer through the Add menu, then writes the stack
+ * through that popover's onSectionChange (same persist path as New layer).
+ * Autosave migrates data: URLs to penlocal: refs.
  */
 async function buildLayers(page, spec) {
-  // Set title in chrome if present
   await setTitle(page, spec.title);
 
-  const layersBtn = page
-    .locator('button[aria-label="Layers"], button[title="Layers"]')
-    .or(page.getByRole('button', { name: /Layers/i }))
-    .first();
-  if (!(await layersBtn.isVisible({ timeout: 10_000 }).catch(() => false))) {
-    // Fallback: inject into localStorage only (preview on next natural open)
-    const injected = await page.evaluate((payload) => {
-      try {
-        const raw = sessionStorage.getItem('pen_session');
-        const session = raw ? JSON.parse(raw) : null;
-        const pn = session?.pnIdentifier;
-        const docId = location.pathname.match(/\/d\/([^/]+)/)?.[1];
-        if (!pn || !docId) return { ok: false, reason: 'no_pn_or_doc' };
-        const key = `pen_docs_v1:${pn}:doc:${docId}`;
-        const bundle = JSON.parse(localStorage.getItem(key) || 'null');
-        if (!bundle?.sections?.[0]) return { ok: false, reason: 'no_local_doc' };
-        const section = bundle.sections[0];
-        section.layers = payload.layers.map((L, i) => {
-          const kind = L.kind === 'image' ? 'image' : 'text';
-          const base = {
-            id: `headed_${payload.id}_${i}`,
-            kind,
-            name: L.name,
-            zIndex: i + 1,
-            x: L.x,
-            y: L.y,
-            w: L.w,
-            h: L.h,
-            positionLocked: true
-          };
-          if (kind === 'image') {
-            return { ...base, imageSrc: L.imageSrc || '' };
-          }
-          const paras = String(L.text || '').split('\n');
-          return {
-            ...base,
-            backgroundColor: L.fill || undefined,
-            strokeColor: L.stroke || undefined,
-            strokeWidth: L.stroke ? 1 : undefined,
-            textDoc: {
-              type: 'doc',
-              content: paras.map((text) => ({
-                type: 'paragraph',
-                content: text ? [{ type: 'text', text }] : []
-              }))
-            }
-          };
-        });
-        section.pagePresentation = {
-          ...(section.pagePresentation || {}),
-          backgroundColor: payload.bg
-        };
-        // Body text for compile (skip empty image-only lines)
-        const bodyParas = payload.layers
-          .filter((L) => L.kind !== 'image' && String(L.text || '').trim())
-          .flatMap((L) =>
-            String(L.text)
-              .split('\n')
-              .map((text) => ({
-                type: 'paragraph',
-                content: text ? [{ type: 'text', text }] : []
-              }))
-          );
-        section.doc = {
-          type: 'doc',
-          content: bodyParas.length
-            ? bodyParas
-            : [{ type: 'paragraph', content: [{ type: 'text', text: payload.title }] }]
-        };
-        bundle.manifest.title = payload.title;
-        bundle.manifest.updatedAt = new Date().toISOString();
-        if (payload.bg) {
-          bundle.manifest.pagePresentation = {
-            ...(bundle.manifest.pagePresentation || {}),
-            backgroundColor: payload.bg
-          };
-        }
-        localStorage.setItem(key, JSON.stringify(bundle));
-        return { ok: true, layerCount: section.layers.length, via: 'storage_only' };
-      } catch (e) {
-        return { ok: false, reason: String(e?.message || e) };
-      }
-    }, spec);
-    return injected;
+  const layersBtn = page.getByRole('button', { name: 'Layers' }).first();
+  if (!(await layersBtn.isVisible({ timeout: 15_000 }).catch(() => false))) {
+    return { ok: false, reason: 'layers_button_missing' };
+  }
+  await layersBtn.click();
+  const dialog = page.locator('[role="dialog"][aria-label="Layers"]');
+  if (!(await dialog.isVisible({ timeout: 8_000 }).catch(() => false))) {
+    return { ok: false, reason: 'layers_dialog_missing' };
   }
 
-  await layersBtn.click();
-  await page.waitForTimeout(400);
-  let added = 0;
-  for (const L of spec.layers) {
-    const addText = page
-      .getByRole('button', { name: /Add text|Text/i })
-      .or(page.locator('button', { hasText: /^\+$/ }))
-      .first();
-    if (await addText.isVisible({ timeout: 2_000 }).catch(() => false)) {
-      await addText.click();
-      await page.waitForTimeout(350);
-      added += 1;
-    }
-    const editor = page.locator('.ProseMirror, [contenteditable="true"]').first();
-    if (await editor.isVisible({ timeout: 3_000 }).catch(() => false)) {
-      await editor.click();
-      await page.keyboard.type(L.text.replace(/\n/g, ' · '), { delay: 5 });
-      await page.waitForTimeout(200);
+  const addBtn = dialog.getByRole('button', { name: 'Add' }).first();
+  if (await addBtn.isVisible({ timeout: 3_000 }).catch(() => false)) {
+    await addBtn.click();
+    const newLayer = dialog.getByRole('menuitem', { name: 'New layer' });
+    if (await newLayer.isVisible({ timeout: 3_000 }).catch(() => false)) {
+      await newLayer.click();
+      await page.waitForTimeout(400);
     }
   }
-  // Also write storage so coords/title persist for publish compile
-  await page.evaluate((payload) => {
-    try {
-      const session = JSON.parse(sessionStorage.getItem('pen_session') || 'null');
-      const pn = session?.pnIdentifier;
-      const docId = location.pathname.match(/\/d\/([^/]+)/)?.[1];
-      if (!pn || !docId) return;
-      const key = `pen_docs_v1:${pn}:doc:${docId}`;
-      const bundle = JSON.parse(localStorage.getItem(key) || 'null');
-      if (!bundle?.sections?.[0]) return;
-      const section = bundle.sections[0];
-      if (Array.isArray(section.layers) && section.layers.length) {
-        payload.layers.forEach((L, i) => {
-          const layer = section.layers[i];
-          if (!layer) return;
-          layer.x = L.x;
-          layer.y = L.y;
-          layer.w = L.w;
-          layer.h = L.h;
-          layer.name = L.name;
-          const paras = String(L.text).split('\n');
-          layer.textDoc = {
-            type: 'doc',
-            content: paras.map((text) => ({
-              type: 'paragraph',
-              content: text ? [{ type: 'text', text }] : []
-            }))
-          };
-        });
-      } else {
-        // UI add failed — materialize layers for preview + coords
-        section.layers = payload.layers.map((L, i) => {
-          const paras = String(L.text).split('\n');
-          return {
-            id: `headed_${payload.id}_${i}`,
-            kind: 'text',
-            name: L.name,
-            zIndex: i + 1,
-            x: L.x,
-            y: L.y,
-            w: L.w,
-            h: L.h,
-            textDoc: {
-              type: 'doc',
-              content: paras.map((text) => ({
-                type: 'paragraph',
-                content: text ? [{ type: 'text', text }] : []
-              }))
-            }
-          };
-        });
+
+  const pushed = await page.evaluate((payload) => {
+    const dialogEl = document.querySelector('[role="dialog"][aria-label="Layers"]');
+    if (!dialogEl) return { ok: false, reason: 'no_dialog' };
+    const fiberKey = Object.keys(dialogEl).find((k) => k.startsWith('__reactFiber$'));
+    if (!fiberKey) return { ok: false, reason: 'no_react_fiber' };
+    let fiber = dialogEl[fiberKey];
+    let props = null;
+    for (let i = 0; fiber && i < 50; i += 1, fiber = fiber.return) {
+      const candidate = fiber.memoizedProps;
+      if (
+        candidate &&
+        typeof candidate.onSectionChange === 'function' &&
+        candidate.section &&
+        Array.isArray(candidate.section.layers)
+      ) {
+        props = candidate;
+        break;
       }
-      // Connect → compileDocumentToNote requires plain text on section.doc (required body).
-      // Overlay layers alone are not enough for Note compile.
-      const bodyParas = payload.layers.flatMap((L) =>
+    }
+    if (!props) return { ok: false, reason: 'no_onSectionChange' };
+
+    const tipTap = (text) => ({
+      type: 'doc',
+      content: String(text || '')
+        .split('\n')
+        .map((line) => ({
+          type: 'paragraph',
+          content: line ? [{ type: 'text', text: line }] : []
+        }))
+    });
+
+    const layers = payload.layers.map((L, i) => {
+      const base = {
+        id: `headed_${payload.id}_${i}`,
+        kind: L.kind === 'video' ? 'video' : L.kind === 'image' ? 'image' : 'text',
+        name: L.name,
+        zIndex: i + 1,
+        x: L.x,
+        y: L.y,
+        w: L.w,
+        h: L.h,
+        visible: true,
+        positionLocked: true
+      };
+      if (base.kind === 'image') return { ...base, imageSrc: L.imageSrc || '' };
+      if (base.kind === 'video') return { ...base, videoSrc: L.videoSrc || '' };
+      return {
+        ...base,
+        backgroundColor: L.fill || undefined,
+        backgroundGradient: L.gradient || undefined,
+        strokeColor: L.stroke || undefined,
+        strokeWidth: L.stroke ? 1 : undefined,
+        textDoc: tipTap(L.text || '')
+      };
+    });
+
+    const bodyParas = payload.layers
+      .filter((L) => L.kind === 'text' && String(L.text || '').trim())
+      .flatMap((L) =>
         String(L.text)
           .split('\n')
-          .map((text) => ({
+          .map((line) => ({
             type: 'paragraph',
-            content: text ? [{ type: 'text', text }] : []
+            content: line ? [{ type: 'text', text: line }] : []
           }))
       );
-      section.doc = {
+    const next = {
+      ...props.section,
+      layers,
+      doc: {
         type: 'doc',
         content: bodyParas.length
           ? bodyParas
           : [{ type: 'paragraph', content: [{ type: 'text', text: payload.title }] }]
-      };
-      section.pagePresentation = {
-        ...(section.pagePresentation || {}),
-        backgroundColor: payload.bg
-      };
-      bundle.manifest.title = payload.title;
-      bundle.manifest.updatedAt = new Date().toISOString();
-      localStorage.setItem(key, JSON.stringify(bundle));
-    } catch {
-      /* ignore */
-    }
+      }
+    };
+    props.onSectionChange(next);
+    const media = layers.filter((l) => l.kind === 'image' || l.kind === 'video').length;
+    return { ok: true, layerCount: layers.length, media };
   }, spec);
 
-  // Connect compile reads section.doc (TipTap body), not overlay layers alone.
-  // Select Page in Layers and put the story copy into the flow editor so React SoT has text.
-  const bodyText = spec.layers.map((L) => L.text).join('\n\n');
-  const pageRow = page
-    .locator('[role="dialog"][aria-label="Layers"] button, [role="dialog"][aria-label="Layers"] [role="option"]')
-    .filter({ hasText: /^(Page|Body|Canvas)/i })
-    .first();
-  if (await pageRow.isVisible({ timeout: 2_000 }).catch(() => false)) {
-    await pageRow.click();
-    await page.waitForTimeout(300);
-  } else {
-    // Toggle layers open if closed, click first row
-    await page.locator('button[aria-label="Layers"], button[title="Layers"]').first().click().catch(() => {});
-    await page.waitForTimeout(300);
-    await page
-      .locator('[role="dialog"][aria-label="Layers"]')
-      .locator('button, [role="option"], li')
-      .first()
-      .click()
-      .catch(() => {});
-    await page.waitForTimeout(300);
+  if (!pushed?.ok) return pushed;
+
+  // Idle autosave migrates inline media into penlocal: refs.
+  const mediaNeeded = (spec.layers || []).filter((L) => L.kind === 'image' || L.kind === 'video').length;
+  const migrated = await page
+    .waitForFunction(
+      (need) => {
+        try {
+          const session = JSON.parse(sessionStorage.getItem('pen_session') || 'null');
+          const pn = session?.pnIdentifier;
+          const docId = location.pathname.match(/\/d\/([^/]+)/)?.[1];
+          if (!pn || !docId) return null;
+          const bundle = JSON.parse(localStorage.getItem(`pen_docs_v1:${pn}:doc:${docId}`) || 'null');
+          const layers = bundle?.sections?.[0]?.layers || [];
+          const refs = layers.filter((l) =>
+            String(l.imageSrc || l.videoSrc || '').startsWith('penlocal:')
+          );
+          if (refs.length < need) return null;
+          return { refs: refs.length, kinds: layers.map((l) => l.kind).join(',') };
+        } catch {
+          return null;
+        }
+      },
+      mediaNeeded,
+      { timeout: 25_000, polling: 500 }
+    )
+    .then((h) => h.jsonValue())
+    .catch(() => null);
+
+  if (!migrated) {
+    return {
+      ok: false,
+      reason: `media_not_migrated need=${mediaNeeded}`,
+      layerCount: pushed.layerCount
+    };
   }
-  const flowEditor = page.locator('.ProseMirror').first();
-  if (await flowEditor.isVisible({ timeout: 3_000 }).catch(() => false)) {
-    await flowEditor.click({ force: true });
-    await page.keyboard.press('Meta+A').catch(() => {});
-    await page.keyboard.type(bodyText.slice(0, 500), { delay: 3 });
-    await page.waitForTimeout(500);
+  process.stdout.write(`  media migrated penlocal=${migrated.refs} kinds=${migrated.kinds}\n`);
+  return { ok: true, layerCount: pushed.layerCount, media: migrated.refs, via: 'editor' };
+}
+
+async function commitCurrentVersion(page) {
+  const more = page.getByRole('button', { name: 'More save options' }).first();
+  if (!(await more.isVisible({ timeout: 8_000 }).catch(() => false))) {
+    return { ok: false, reason: 'save_menu_missing' };
   }
-  // Always materialize designed layers into local SoT (coords + media + body).
-  const stored = await page.evaluate((payload) => {
+  await more.click();
+  const item = page.getByRole('button', { name: 'Commit to current version' }).first();
+  if (!(await item.isVisible({ timeout: 5_000 }).catch(() => false))) {
+    return { ok: false, reason: 'commit_item_missing' };
+  }
+  await item.click();
+  const hasVideo = await page.evaluate(() => {
     try {
       const session = JSON.parse(sessionStorage.getItem('pen_session') || 'null');
       const pn = session?.pnIdentifier;
       const docId = location.pathname.match(/\/d\/([^/]+)/)?.[1];
-      if (!pn || !docId) return { ok: false, reason: 'no_pn_or_doc' };
-      const key = `pen_docs_v1:${pn}:doc:${docId}`;
-      const bundle = JSON.parse(localStorage.getItem(key) || 'null');
-      if (!bundle?.sections?.[0]) return { ok: false, reason: 'no_local_doc' };
-      const section = bundle.sections[0];
-      section.layers = payload.layers.map((L, i) => {
-        const kind = L.kind === 'image' ? 'image' : 'text';
-        const base = {
-          id: `headed_${payload.id}_${i}`,
-          kind,
-          name: L.name,
-          zIndex: i + 1,
-          x: L.x,
-          y: L.y,
-          w: L.w,
-          h: L.h,
-          positionLocked: true
-        };
-        if (kind === 'image') {
-          return { ...base, imageSrc: L.imageSrc || '' };
-        }
-        const paras = String(L.text || '').split('\n');
-        return {
-          ...base,
-          backgroundColor: L.fill || undefined,
-          strokeColor: L.stroke || undefined,
-          strokeWidth: L.stroke ? 1 : undefined,
-          textDoc: {
-            type: 'doc',
-            content: paras.map((text) => ({
-              type: 'paragraph',
-              content: text ? [{ type: 'text', text }] : []
-            }))
-          }
-        };
-      });
-      const bodyParas = payload.layers
-        .filter((L) => L.kind !== 'image' && String(L.text || '').trim())
-        .flatMap((L) =>
-          String(L.text)
-            .split('\n')
-            .map((text) => ({
-              type: 'paragraph',
-              content: text ? [{ type: 'text', text }] : []
-            }))
-        );
-      section.doc = {
-        type: 'doc',
-        content: bodyParas.length
-          ? bodyParas
-          : [{ type: 'paragraph', content: [{ type: 'text', text: payload.title }] }]
-      };
-      section.pagePresentation = {
-        ...(section.pagePresentation || {}),
-        backgroundColor: payload.bg
-      };
-      bundle.manifest.title = payload.title;
-      bundle.manifest.updatedAt = new Date().toISOString();
-      if (payload.bg) {
-        bundle.manifest.pagePresentation = {
-          ...(bundle.manifest.pagePresentation || {}),
-          backgroundColor: payload.bg
-        };
-      }
-      localStorage.setItem(key, JSON.stringify(bundle));
-      return { ok: true, layerCount: section.layers.length };
-    } catch (e) {
-      return { ok: false, reason: String(e?.message || e) };
+      const bundle = JSON.parse(localStorage.getItem(`pen_docs_v1:${pn}:doc:${docId}`) || 'null');
+      const layers = bundle?.sections?.[0]?.layers || [];
+      return layers.some((l) => l.kind === 'video' && l.videoSrc);
+    } catch {
+      return false;
     }
-  }, spec);
+  });
+  const result = await page
+    .waitForFunction(
+      () => {
+        try {
+          const session = JSON.parse(sessionStorage.getItem('pen_session') || 'null');
+          const pn = session?.pnIdentifier;
+          const docId = location.pathname.match(/\/d\/([^/]+)/)?.[1];
+          if (!pn || !docId) return null;
+          const bundle = JSON.parse(
+            localStorage.getItem(`pen_docs_v1:${pn}:doc:${docId}`) || 'null'
+          );
+          const ref = bundle?.manifest?.galleryPreviewRef;
+          const status = (document.body?.innerText || '').slice(0, 800);
+          if (ref) {
+            return {
+              ok: true,
+              ref: String(ref).slice(0, 40),
+              kind: bundle.manifest.galleryPreviewKind || ''
+            };
+          }
+          if (/gallery preview skipped/i.test(status)) {
+            return { ok: false, reason: 'gallery_preview_skipped' };
+          }
+          return null;
+        } catch {
+          return null;
+        }
+      },
+      null,
+      { timeout: hasVideo ? 360_000 : 180_000, polling: 1000 }
+    )
+    .then((h) => h.jsonValue())
+    .catch(async () => {
+      const status = await page
+        .evaluate(() => (document.body?.innerText || '').replace(/\s+/g, ' ').slice(0, 180))
+        .catch(() => '');
+      return { ok: false, reason: `commit_timeout status=${status}` };
+    });
+  return result || { ok: false, reason: 'commit_timeout' };
+}
 
-  return {
-    ok: Boolean(stored.ok),
-    layerCount: stored.layerCount || added,
-    via: stored.ok ? 'storage' : 'ui',
-    reason: stored.reason
-  };
+async function verifyPublishedTitles(titles) {
+  const apiRes = await fetch(
+    'https://api.parnoir.com/api/aggregator/metadata-index?limit=200'
+  );
+  if (!apiRes.ok) return { ok: false, reason: `index_${apiRes.status}`, found: [] };
+  const data = await apiRes.json();
+  const files = Array.isArray(data.files) ? data.files : [];
+  const templates = files.filter((f) => f?.metadata?.penTemplateKind);
+  const blob = JSON.stringify(templates);
+  const found = titles.filter((t) => blob.includes(t));
+  return { ok: found.length === titles.length, found, scanned: templates.length };
 }
 
 async function dismissLayers(page) {
@@ -862,6 +805,51 @@ async function dismissLayers(page) {
       await page.waitForTimeout(250);
     }
   }
+}
+
+async function exportCommittedGallery(page, spec) {
+  const b64 = await page
+    .evaluate(async () => {
+      try {
+        const session = JSON.parse(sessionStorage.getItem('pen_session') || 'null');
+        const pn = session?.pnIdentifier;
+        const docId = location.pathname.match(/\/d\/([^/]+)/)?.[1];
+        if (!pn || !docId) return null;
+        const bundle = JSON.parse(localStorage.getItem(`pen_docs_v1:${pn}:doc:${docId}`) || 'null');
+        const ref = String(bundle?.manifest?.galleryPreviewRef || '');
+        const fileId = ref.startsWith('penmedia:') ? ref.slice('penmedia:'.length) : '';
+        if (!fileId || bundle?.manifest?.galleryPreviewKind === 'video') return null;
+        const db = await new Promise((resolve, reject) => {
+          const req = indexedDB.open('pen_media_v1', 1);
+          req.onsuccess = () => resolve(req.result);
+          req.onerror = () => reject(req.error);
+        });
+        const rec = await new Promise((resolve, reject) => {
+          const tx = db.transaction('blobs', 'readonly');
+          const q = tx.objectStore('blobs').index('driveFileId').get(fileId);
+          q.onsuccess = () => resolve(q.result || null);
+          q.onerror = () => reject(q.error);
+        });
+        const bytes = rec?.bytes;
+        if (!bytes) return null;
+        const u8 = new Uint8Array(bytes);
+        let s = '';
+        for (let i = 0; i < u8.length; i += 0x8000) {
+          s += String.fromCharCode(...u8.subarray(i, i + 0x8000));
+        }
+        return btoa(s);
+      } catch {
+        return null;
+      }
+    })
+    .catch(() => null);
+  if (!b64) return null;
+  const dir = resolve(tmpdir(), 'pen-gallery-publish');
+  mkdirSync(dir, { recursive: true });
+  const out = resolve(dir, `${spec.id}.jpg`);
+  writeFileSync(out, Buffer.from(b64, 'base64'));
+  process.stdout.write(`  gallery jpeg ${out} bytes=${Buffer.from(b64, 'base64').length}\n`);
+  return out;
 }
 
 async function connectAsPublicTemplate(page, context, spec) {
@@ -935,184 +923,69 @@ async function connectAsPublicTemplate(page, context, spec) {
   }
   await page.waitForTimeout(500);
 
-  const templateLabel = page.locator('label', { hasText: /Pen templates/i }).first();
-  await templateLabel.waitFor({ state: 'visible', timeout: 8_000 });
-  const templateState = await page.evaluate(() => {
-    const label = [...document.querySelectorAll('label')].find((l) =>
-      /Pen templates/i.test(l.textContent || '')
+  const makePublic = page.locator('select[aria-label="Where this post is aggregated"]');
+  await makePublic.waitFor({ state: 'visible', timeout: 8_000 }).catch(() => {});
+
+  // Share writes the post to the owner cloud. Make public is the default.
+  await page.waitForTimeout(200);
+
+  const galleryPath = await exportCommittedGallery(page, spec);
+
+  await page.evaluate((title) => {
+    const input = document.querySelector('input.font-bold');
+    if (!input) return;
+    const desc = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(input), 'value');
+    desc?.set?.call(input, title);
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+  }, spec.title);
+  await page.waitForTimeout(400);
+
+  const shareWaitMs = (spec.layers || []).some((l) => l.kind === 'video') ? 360_000 : 90_000;
+
+  const shared = await page.evaluate(() => {
+    const btn = [...document.querySelectorAll('button')].find(
+      (b) => (b.textContent || '').trim() === 'Share'
     );
-    const input = label?.querySelector('input[type="checkbox"]');
-    if (!input) return { ok: false, reason: 'no_checkbox' };
-    if (input.disabled) return { ok: false, reason: 'disabled', enabled: false };
-    if (!input.checked) {
-      input.click();
-    }
-    return { ok: true, enabled: true, checked: input.checked };
+    if (!btn) return false;
+    btn.click();
+    return true;
   });
-  if (!templateState.ok) {
-    return {
-      ok: false,
-      reason:
-        templateState.reason === 'disabled'
-          ? 'pen_templates_disabled_allowlist?'
-          : `pen_templates_${templateState.reason}`,
-      enabled: false
-    };
+  if (!shared) {
+    return { ok: false, reason: 'share_button_missing', enabled: true };
   }
-  // Confirm checked after React re-render
-  await page.waitForTimeout(200);
-  const confirmed = await templateLabel.locator('input[type="checkbox"]').isChecked().catch(() => false);
-  if (!confirmed) {
-    await templateLabel.click({ force: true });
-    await page.waitForTimeout(200);
-  }
-  if (!(await templateLabel.locator('input[type="checkbox"]').isChecked().catch(() => false))) {
-    return { ok: false, reason: 'pen_templates_check_failed', enabled: true };
-  }
+  process.stdout.write('  clicked Share\n');
 
-  // Prefer pen-templates (+ browse is fine; Browse upload UI handles targets)
-  await page.waitForTimeout(200);
-
-  const beforePages = new Set(context.pages().map((p) => p));
-  const popupPromise = context.waitForEvent('page', { timeout: 90_000 }).catch(() => null);
-
-  // Build handoff in-page from live local bundle + story copy, then open Browse.
-  // TipTap layer typing in headed Playwright often does not flush into React SoT
-  // before Share; craft the same payload Share would emit after compile.
-  const handoffOpened = await page.evaluate((story) => {
-    try {
-      const session = JSON.parse(sessionStorage.getItem('pen_session') || 'null');
-      const pn = session?.pnIdentifier;
-      const docId = location.pathname.match(/\/d\/([^/]+)/)?.[1];
-      if (!pn || !docId) return { ok: false, reason: 'no_pn_or_doc' };
-      const key = `pen_docs_v1:${pn}:doc:${docId}`;
-      const bundle = JSON.parse(localStorage.getItem(key) || 'null');
-      if (!bundle?.manifest) return { ok: false, reason: 'no_bundle' };
-
-      const content = story.layers.map((L) => String(L.text)).join('\n\n');
-      const paras = content.split('\n').map((line) => ({
-        type: 'paragraph',
-        content: line ? [{ type: 'text', text: line }] : []
-      }));
-      const tipTap = { type: 'doc', content: paras.length ? paras : [{ type: 'paragraph' }] };
-
-      // Persist body into local SoT for any remount / draft flush
-      if (bundle.sections?.[0]) {
-        bundle.sections[0].doc = tipTap;
-        if (!Array.isArray(bundle.sections[0].layers) || !bundle.sections[0].layers.length) {
-          bundle.sections[0].layers = story.layers.map((L, i) => ({
-            id: `headed_${story.id}_${i}`,
-            kind: 'text',
-            name: L.name,
-            zIndex: i + 1,
-            x: L.x,
-            y: L.y,
-            w: L.w,
-            h: L.h,
-            textDoc: {
-              type: 'doc',
-              content: String(L.text)
-                .split('\n')
-                .map((text) => ({
-                  type: 'paragraph',
-                  content: text ? [{ type: 'text', text }] : []
-                }))
-            }
-          }));
-        }
-        bundle.sections[0].pagePresentation = {
-          ...(bundle.sections[0].pagePresentation || {}),
-          backgroundColor: story.bg
-        };
-        bundle.manifest.title = story.title;
-        localStorage.setItem(key, JSON.stringify(bundle));
-      }
-
-      const head =
-        (bundle.chain?.links && bundle.chain.links[bundle.chain.links.length - 1]) ||
-        bundle.chain?.genesis ||
-        bundle.manifest.genesisProof ||
-        null;
-
-      const payload = {
-        contentClass: 'note',
-        title: story.title || bundle.manifest.title || 'Untitled',
-        pages: [
-          {
-            content,
-            style: bundle.sections?.[0]?.pagePresentation || {},
-            doc: tipTap
-          }
-        ],
-        templateId: bundle.manifest.templateId,
-        docId,
-        headProof: head,
-        aggregatorTargets: ['pen-templates'],
-        penClassId: bundle.manifest.classId,
-        penCategoryId: 'social',
-        penTemplateKind: 'template',
-        basedOnTemplateId: bundle.manifest.basedOnTemplateId || bundle.manifest.templateId,
-        penIrRef: { objectId: docId },
-        licensing: bundle.manifest.licensing
-      };
-
-      const hash = `#pen_publish_handoff_v1:${encodeURIComponent(JSON.stringify(payload))}`;
-      const url = `https://browse.parnoir.com/?view=upload${hash}`;
-      const w = window.open(url, '_blank');
-      if (!w) {
-        window.location.assign(url);
-        return { ok: true, via: 'assign' };
-      }
-      return { ok: true, via: 'open' };
-    } catch (e) {
-      return { ok: false, reason: String(e?.message || e) };
+  const started = Date.now();
+  let published = false;
+  let failReason = '';
+  while (Date.now() - started < shareWaitMs) {
+    const status = await page
+      .evaluate(() => (document.body?.innerText || '').slice(0, 400))
+      .catch(() => '');
+    if (/Published to your cloud/i.test(status)) {
+      published = true;
+      break;
     }
-  }, {
-    id: spec.id,
-    title: spec.title,
-    bg: spec.bg,
-    layers: spec.layers
-  });
-
-  if (!handoffOpened.ok) {
-    return { ok: false, reason: `handoff_open:${handoffOpened.reason}`, enabled: true };
-  }
-  process.stdout.write(`  handoff open: ${handoffOpened.via}\n`);
-
-  let browsePage = await popupPromise;
-  if (!browsePage) {
-    for (let i = 0; i < 45; i++) {
-      const status = await page
-        .evaluate(() => ({ url: location.href }))
-        .catch(() => ({ url: page.url() }));
-      if (/browse\.parnoir|browse-parnoir|\?view=upload/i.test(status.url)) {
-        browsePage = page;
-        break;
-      }
-      const fresh = context.pages().find((p) => !beforePages.has(p) || /browse/i.test(p.url()));
-      if (fresh && /browse/i.test(fresh.url())) {
-        browsePage = fresh;
-        break;
-      }
-      await page.waitForTimeout(1000);
+    if (/feed_connect_failed|compose_export_root_missing|gallery_video_not_ready|drive_upload_failed|metadata_index_/i.test(status)) {
+      failReason = status.slice(0, 180);
+      break;
     }
-  }
-
-  if (!browsePage) {
     const pages = context.pages();
-    browsePage =
-      pages.find((p) => /browse/i.test(p.url()) && /view=upload|pen_publish/i.test(p.url())) ||
-      pages.find((p) => /browse/i.test(p.url()) && p !== page) ||
-      null;
-    process.stdout.write(
-      `  after handoff: pages=${pages.map((p) => p.url().slice(0, 80)).join(' || ')}\n`
-    );
-    if (!browsePage) {
-      return { ok: false, reason: 'no_browse_tab', enabled: true };
+    if (pages.some((p) => p !== page && /browse/i.test(p.url()) && /view=upload|pen_publish/i.test(p.url()))) {
+      return { ok: false, reason: 'opened_browse', enabled: true, galleryPath };
     }
+    await page.waitForTimeout(1000);
+  }
+  if (!published) {
+    return { ok: false, reason: failReason || 'cloud_publish_timeout', enabled: true, galleryPath };
   }
 
-  return { ok: Boolean(browsePage), browsePage, enabled: true, reason: browsePage ? '' : 'no_browse_tab' };
+  return {
+    ok: true,
+    enabled: true,
+    galleryPath,
+    reason: ''
+  };
 }
 
 async function fillConsentAndUnlockDom(popupOrPage, { identityPath, PN_NAME, PASSCODE, expectClose = true }) {
@@ -1229,58 +1102,6 @@ async function unlockBrowseIfNeeded(browsePage, creds, context) {
   }
 }
 
-async function finishBrowseUpload(browsePage, creds, context) {
-  if (!browsePage) return { ok: false, reason: 'no_browse_tab' };
-  await browsePage.waitForLoadState('domcontentloaded', { timeout: 60_000 }).catch(() => {});
-  await browsePage.bringToFront().catch(() => {});
-  await browsePage.waitForTimeout(1500);
-
-  process.stdout.write(`  browse url: ${browsePage.url()}\n`);
-
-  const unlocked = await unlockBrowseIfNeeded(browsePage, creds, context);
-  process.stdout.write(
-    `  browse unlock: ${unlocked.skipped ? 'already/skip' : unlocked.ok ? 'ok' : 'fail'}\n`
-  );
-
-  // Handoff may reopen upload after unlock — wait for modal / composer
-  await browsePage.waitForTimeout(2000);
-
-  // Common upload / publish controls
-  const candidates = [
-    browsePage.getByRole('button', { name: /^Publish$/i }),
-    browsePage.getByRole('button', { name: /^Post$/i }),
-    browsePage.getByRole('button', { name: /Upload/i }),
-    browsePage.getByRole('button', { name: /^Share$/i }),
-    browsePage.getByRole('button', { name: /Submit/i }),
-    browsePage.locator('button').filter({ hasText: /^Publish$/i })
-  ];
-
-  for (const loc of candidates) {
-    if (await loc.first().isVisible({ timeout: 3_000 }).catch(() => false)) {
-      await loc.first().click();
-      await browsePage.waitForTimeout(8000);
-      const hint = await browsePage.evaluate(() =>
-        (document.body?.innerText || '').replace(/\s+/g, ' ').slice(0, 200)
-      );
-      process.stdout.write(`  after publish click: ${hint}\n`);
-      return { ok: true, hint };
-    }
-  }
-
-  // Dump labels for diagnosis
-  const labels = await browsePage.evaluate(() =>
-    [...document.querySelectorAll('button')]
-      .map((b) => (b.textContent || b.getAttribute('aria-label') || '').trim())
-      .filter(Boolean)
-      .slice(0, 30)
-  );
-  return {
-    ok: false,
-    reason: `upload_ui_not_found buttons=${labels.join('|')}`,
-    url: browsePage.url()
-  };
-}
-
 async function main() {
   console.log('headed-pen-publish-templates');
   console.log(`  PEN_URL=${PEN_URL}`);
@@ -1295,7 +1116,7 @@ async function main() {
   });
   const context = await browser.newContext({
     viewport: { width: 1400, height: 900 },
-    // Keep popups (Browse handoff uses window.open)
+    // Keep popups (unlock consent uses window.open)
     javaScriptEnabled: true
   });
   // Headed Chromium often blurs during Unlock; prefer-app then skips window.open.
@@ -1365,7 +1186,10 @@ async function main() {
     }
     await browseWarm.close().catch(() => {});
 
-    const specs = SPECS.slice(0, MAX_TEMPLATES).map(hydrateSpecMedia);
+    const specs = SPECS.slice(0, MAX_TEMPLATES)
+      .filter((s) => !ONLY_SPEC || s.id === ONLY_SPEC)
+      .map(hydrateSpecMedia);
+    const publishedTitles = [];
     for (const spec of specs) {
       console.log(`\n=== Template: ${spec.id} ===`);
       try {
@@ -1373,26 +1197,22 @@ async function main() {
         ok('created', /\/d\//.test(url), url.replace(PEN_URL, ''));
         await setTitle(page, spec.title);
         const built = await buildLayers(page, spec);
-        ok('layers built', Boolean(built.ok), built.reason || `n=${built.layerCount}`);
+        ok('layers built', Boolean(built.ok), built.reason || `n=${built.layerCount} media=${built.media || 0}`);
         if (!built.ok) {
           fails += 1;
           continue;
         }
 
-        // Autosave / draft
-        await page.waitForTimeout(2500);
-
-        // Commit when available (real flatten for published feed)
-        const commitBtn = page
-          .getByRole('button', { name: /^Commit$/i })
-          .or(page.locator('button[aria-label="Commit"], button[title="Commit"]'))
-          .first();
-        if (await commitBtn.isVisible({ timeout: 2_000 }).catch(() => false)) {
-          await commitBtn.click().catch(() => {});
-          await page.waitForTimeout(4000);
-          ok('commit clicked', true);
-        } else {
-          ok('commit clicked', true, 'skipped_no_button');
+        await page.waitForTimeout(1500);
+        const committed = await commitCurrentVersion(page);
+        ok(
+          'commit flatten',
+          Boolean(committed.ok),
+          committed.ok ? `${committed.kind || 'preview'} ${committed.ref || ''}` : committed.reason || ''
+        );
+        if (!committed.ok) {
+          fails += 1;
+          continue;
         }
 
         const share = await connectAsPublicTemplate(page, context, spec);
@@ -1401,20 +1221,24 @@ async function main() {
           fails += 1;
           continue;
         }
-        ok('pen-templates enabled', share.enabled === true);
-
-        const upload = await finishBrowseUpload(share.browsePage, creds, context);
-        ok('browse upload', upload.ok, upload.reason || upload.url || '');
-        if (!upload.ok) fails += 1;
-
-        if (share.browsePage && share.browsePage !== page && !share.browsePage.isClosed()) {
-          await share.browsePage.close().catch(() => {});
-        }
+        ok('published to owner cloud', share.ok === true, share.reason || '');
+        if (share.ok) publishedTitles.push(spec.title);
+        else fails += 1;
+        await page.waitForTimeout(4000);
       } catch (e) {
         fails += 1;
         console.log(`  FAIL  ${spec.id}: ${e instanceof Error ? e.message : e}`);
       }
     }
+
+    console.log('\n=== public pen-templates index ===');
+    const verified = await verifyPublishedTitles(publishedTitles);
+    ok(
+      'published titles on index',
+      verified.ok,
+      `found=${(verified.found || []).join(' | ') || 'none'} scanned=${verified.scanned ?? ''} ${verified.reason || ''}`
+    );
+    if (!verified.ok) fails += 1;
 
     console.log('\n=== /templates smoke ===');
     await page.goto(`${PEN_URL}/templates`, { waitUntil: 'domcontentloaded', timeout: 60_000 });
