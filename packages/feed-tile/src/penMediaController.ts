@@ -175,6 +175,11 @@ export class PenMediaController {
   }
 }
 
+/** The live controller for this key, if a viewer already started it. Does not create one. */
+export function peekPenMediaController(key: string): PenMediaController | null {
+  return registry.get(key) ?? null;
+}
+
 /** Ref-counted controller keyed for multi-viewer sync (e.g. layer id). */
 export function acquirePenMediaController(key: string, src: string): PenMediaController {
   const existing = registry.get(key);

@@ -4,6 +4,11 @@
 
 import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
 import {
+  acquirePenMediaController,
+  peekPenMediaController,
+  type PenMediaController
+} from '@par-noir/feed-tile';
+import {
   applyTransitionPreset,
   defaultLayerName,
   layerSampleTime,
@@ -90,6 +95,43 @@ function AudioLane({
   return <audio ref={audioRef} src={resolved} preload="metadata" />;
 }
 
+function placeVideo(master: HTMLVideoElement, at: number) {
+  const dur = master.duration;
+  if (!dur || !Number.isFinite(dur)) return;
+  const target = Math.min(dur, Math.max(0, at));
+  if (Math.abs((master.currentTime || 0) - target) <= 0.35) return;
+  try {
+    master.currentTime = target;
+  } catch {
+    /* metadata not ready */
+  }
+}
+
+/** Holds a resolved clip URL so Play can start the shared player in the click. */
+function RememberVideoSrc({
+  layerId,
+  src,
+  docId,
+  session,
+  srcs
+}: {
+  layerId: string;
+  src: string;
+  docId?: string;
+  session?: PenSession | null;
+  srcs: { current: Map<string, string> };
+}) {
+  const { resolved } = useResolvedMediaSrc(src, { docId, session });
+  useEffect(() => {
+    if (!resolved) return;
+    srcs.current.set(layerId, resolved);
+    return () => {
+      srcs.current.delete(layerId);
+    };
+  }, [resolved, layerId, srcs]);
+  return null;
+}
+
 export function SectionTimeline({
   section,
   activeLayerId,
@@ -117,7 +159,49 @@ export function SectionTimeline({
   const rows = trackRows(section);
   const [partnerId, setPartnerId] = useState<string | null>(null);
   const playheadRef = useRef(playheadSec);
+  const videoSrcs = useRef(new Map<string, string>());
+  const ownedVideos = useRef(new Map<string, PenMediaController>());
+  const playingRef = useRef(playing);
   if (!playing) playheadRef.current = playheadSec;
+
+  function videoController(layer: PenPageLayer, create: boolean): PenMediaController | null {
+    if (layer.kind !== 'video') return null;
+    const raw = layer.videoSrc || layer.backgroundVideo;
+    if (!raw) return null;
+    const key = `pen-layer:${layer.id}`;
+    const live = peekPenMediaController(key);
+    if (live) return live;
+    const src = videoSrcs.current.get(layer.id);
+    const held = ownedVideos.current.get(key);
+    if (held && src && held.src === src) return held;
+    if (!create || !src) return null;
+    const created = acquirePenMediaController(key, src);
+    ownedVideos.current.set(key, created);
+    return created;
+  }
+
+  function driveVideos(mode: 'play' | 'pause' | 'seek', at: number) {
+    for (const { layer } of rows) {
+      const ctrl = videoController(layer, mode === 'play');
+      if (!ctrl) continue;
+      if (mode === 'pause') {
+        ctrl.master.pause();
+        continue;
+      }
+      placeVideo(ctrl.master, Math.max(0, at - (layer.inSec || 0)));
+      if (mode === 'play') void ctrl.master.play().catch(() => undefined);
+    }
+  }
+
+  const driveRef = useRef(driveVideos);
+  driveRef.current = driveVideos;
+
+  useEffect(() => {
+    return () => {
+      for (const ctrl of ownedVideos.current.values()) ctrl.release();
+      ownedVideos.current.clear();
+    };
+  }, []);
 
   useEffect(() => {
     if (!playing) return;
@@ -139,10 +223,22 @@ export function SectionTimeline({
     return () => cancelAnimationFrame(frame);
   }, [playing, duration, onPlayhead, onPlaying]);
 
+  useEffect(() => {
+    const was = playingRef.current;
+    playingRef.current = playing;
+    if (playing) {
+      driveRef.current('play', playheadSec);
+      return;
+    }
+    if (was) driveRef.current('pause', playheadSec);
+  }, [playing, playheadSec]);
+
   function seekRatio(ratio: number, rowDur: number) {
     const next = Math.min(rowDur, Math.max(0, ratio * rowDur));
     onPlaying(false);
     onPlayhead(next);
+    driveVideos('seek', next);
+    driveVideos('pause', next);
   }
 
   function onBarDown(e: ReactPointerEvent<HTMLDivElement>, rowDur: number) {
@@ -188,8 +284,11 @@ export function SectionTimeline({
           aria-label={playing ? 'Pause' : 'Play'}
           className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-black text-white"
           onClick={() => {
-            if (!playing && playheadSec >= duration) onPlayhead(0);
-            onPlaying(!playing);
+            const next = !playing;
+            const at = next && playheadSec >= duration ? 0 : playheadSec;
+            if (at !== playheadSec) onPlayhead(at);
+            onPlaying(next);
+            driveVideos(next ? 'play' : 'pause', at);
           }}
         >
           {playing ? 'II' : '▶'}
@@ -296,6 +395,15 @@ export function SectionTimeline({
                 ))}
                 <div className="absolute bottom-0 top-0 w-px bg-white" style={{ left: `${head}%` }} />
               </div>
+              {(layer.kind === 'video' && (layer.videoSrc || layer.backgroundVideo)) ? (
+                <RememberVideoSrc
+                  layerId={layer.id}
+                  src={layer.videoSrc || layer.backgroundVideo || ''}
+                  docId={docId}
+                  session={session}
+                  srcs={videoSrcs}
+                />
+              ) : null}
               {(layer.audioTracks || []).map((track) => {
                 const offset = track.offsetSec || 0;
                 return (
