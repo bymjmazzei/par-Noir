@@ -169,6 +169,22 @@ export interface PenPageLayer {
   mediaMask?: PenMediaMask;
   /** Raster brush overlay (data URL) composited above the media. */
   paintOverlaySrc?: string;
+  /**
+   * Extra audio lanes on this media layer. Own files publish beside the post.
+   * A licensed lane references a public audio doc and is not re-uploaded.
+   */
+  audioTracks?: PenAudioTrack[];
+}
+
+/** One timeline lane. Own bytes (`src`) or a licensed public doc (`licensedDocId`). */
+export interface PenAudioTrack {
+  id: string;
+  src?: string;
+  licensedDocId?: string;
+  /** Seconds from the start of the shared playhead. */
+  offsetSec?: number;
+  /** 0–100. Default 100. */
+  gain?: number;
 }
 
 /** Image/video color grade — maps to CSS filter. Defaults: 100/100/100/0. */

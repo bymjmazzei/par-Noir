@@ -385,6 +385,11 @@ export interface PublicMetadata {
    */
   licensing?: PenLicensingSnapshot;
   musicPenDocId?: string;
+  /** Poster-owned audio files played with a still or beside a video. Not a licensed root. */
+  companionAudioFileIds?: string[];
+  /** Parallel to companionAudioFileIds. Seconds before each file starts. */
+  companionAudioOffsetsSec?: number[];
+  companionAudioGains?: number[];
   musicLicensing?: PenLicensingSnapshot;
 
   publicToken?: any;

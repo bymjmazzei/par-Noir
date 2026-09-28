@@ -63,6 +63,17 @@ async function migrateLayer(
     const migrated = await migrateField(docId, cur);
     next = { ...next, [field]: migrated };
   }
+  if (next.audioTracks?.length) {
+    const audioTracks = [];
+    for (const track of next.audioTracks) {
+      if (typeof track.src === 'string' && isInlineMediaSrc(track.src)) {
+        audioTracks.push({ ...track, src: await migrateField(docId, track.src) });
+      } else {
+        audioTracks.push(track);
+      }
+    }
+    next = { ...next, audioTracks };
+  }
   return next;
 }
 

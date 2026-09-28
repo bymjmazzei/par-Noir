@@ -15,6 +15,7 @@ export * from './layers.js';
 export * from './pageGeometry.js';
 export * from './pageView.js';
 export * from './composeVideo.js';
+export * from './audioTracks.js';
 export * from './mediaStyle.js';
 export * from './layerParts.js';
 export * from './agent.js';

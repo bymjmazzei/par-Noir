@@ -14,6 +14,9 @@ const PEN_INDEX_KEYS = [
   'penDocId',
   'licensing',
   'musicPenDocId',
+  'companionAudioFileIds',
+  'companionAudioOffsetsSec',
+  'companionAudioGains',
   'musicLicensing',
   'headProof',
   'templateId',
@@ -32,6 +35,16 @@ export function penIndexFields(body: unknown): Record<string, unknown> {
     out.feedIds = out.feedIds.filter((id) => typeof id === 'string' && id.length > 0);
   } else {
     delete out.feedIds;
+  }
+  if (Array.isArray(out.companionAudioFileIds)) {
+    out.companionAudioFileIds = out.companionAudioFileIds.filter(
+      (id) => typeof id === 'string' && id.length > 0
+    );
+  } else {
+    delete out.companionAudioFileIds;
+  }
+  for (const key of ['companionAudioOffsetsSec', 'companionAudioGains'] as const) {
+    if (!Array.isArray(out[key])) delete out[key];
   }
   if (out.penTemplateKind !== 'template' && out.penTemplateKind !== 'remix') {
     delete out.penTemplateKind;

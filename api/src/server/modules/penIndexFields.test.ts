@@ -17,6 +17,10 @@ describe('penIndexFields', () => {
     expect(overlays.actionOverlays).toEqual([
       { layerId: 'b', behavior: 'widget.toggle', spreadsheetId: 'sheet-user' }
     ]);
+    expect(
+      penIndexFields({ companionAudioFileIds: ['a', ''], musicPenDocId: 'music-doc' })
+        .companionAudioFileIds
+    ).toEqual(['a']);
   });
 
   it('drops a template kind that is not template or remix', () => {

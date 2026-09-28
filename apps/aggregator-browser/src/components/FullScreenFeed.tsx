@@ -8,6 +8,7 @@ import { IndexedFile } from '../types/aggregator';
 import { FeedEngagementSidebar } from './FeedEngagementSidebar';
 import { EngagementOverlay } from './EngagementOverlay';
 import { PlaybackControls } from './PlaybackControls';
+import { CompanionAudioMix, companionAudioFileIdsOf } from './CompanionAudioMix';
 import { ContentRatingBadge } from './ContentRatingBadge';
 import { File } from 'lucide-react';
 import { useVerticalSwipe } from '../hooks/useVerticalSwipe';
@@ -1440,6 +1441,9 @@ export function FullScreenFeed({
               zIndex: 0 // Ensure all tiles are on the same z-index level
             }}
           >
+            {visibleFileId === fileId && companionAudioFileIdsOf(file).length > 0 && (
+              <CompanionAudioMix metadata={file} />
+            )}
             {/* Notes now render as images (thumbnails) - no special rendering needed! */}
             
             {/* Full-screen video */}

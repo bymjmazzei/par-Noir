@@ -556,6 +556,7 @@ export function patchLayerStyle(
       | 'mediaCrop'
       | 'mediaMask'
       | 'paintOverlaySrc'
+      | 'audioTracks'
       | 'imageSrc'
       | 'videoSrc'
       | 'refDocId'
@@ -665,7 +666,8 @@ export function attachMediaToLayer(
     strokeColor: existing.strokeColor,
     strokeWidth: existing.strokeWidth,
     strokeStyle: existing.strokeStyle,
-    strokeAlign: existing.strokeAlign
+    strokeAlign: existing.strokeAlign,
+    audioTracks: existing.audioTracks
   };
   if (media.kind === 'image') {
     return upsertLayer(section, {

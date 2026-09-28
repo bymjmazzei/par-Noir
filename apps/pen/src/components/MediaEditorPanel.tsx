@@ -2,7 +2,7 @@
  * Left-pane media editor when an image/video object layer is selected.
  */
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type CSSProperties } from 'react';
 import {
   FULL_MEDIA_CROP,
   MEDIA_FILTER_PRESETS,
@@ -10,6 +10,7 @@ import {
   clampMediaCrop,
   mergeMediaFilter,
   patchLayerStyle,
+  type PenAudioTrack,
   type PenMediaCrop,
   type PenMediaFilter,
   type PenMediaMask,
@@ -18,12 +19,38 @@ import {
 } from '@par-noir/pen-protocol';
 import { CloudFeedMediaPicker } from './CloudFeedMediaPicker';
 import { LayerMediaContent } from './LayerMediaContent';
+import { MediaTimeline } from './MediaTimeline';
+import { ColorSwatchButton, ValueSliderButton } from './PanelValueControls';
 import { probeMediaAspect } from '../services/penAttach';
-import { resolvePenMediaSrc, ingestInlineMediaSrc } from '../services/penLocalMedia';
+import { resolvePenMediaSrc, ingestInlineMediaSrc, putLocalMedia } from '../services/penLocalMedia';
 import { useResolvedMediaSrc } from '../hooks/useResolvedMediaSrc';
 import type { PenSession } from '../services/penSession';
 
-type ToolTab = 'color' | 'filters' | 'crop' | 'mask' | 'brush';
+type ToolTab = 'color' | 'filters' | 'crop' | 'mask' | 'brush' | 'tracks';
+
+const TABS: Array<{ id: ToolTab; label: string; icon: string }> = [
+  { id: 'color', label: 'Color', icon: '◐' },
+  { id: 'filters', label: 'Filters', icon: '▣' },
+  { id: 'crop', label: 'Crop', icon: '⊞' },
+  { id: 'mask', label: 'Mask', icon: '◯' },
+  { id: 'brush', label: 'Brush', icon: '✎' },
+  { id: 'tracks', label: 'Tracks', icon: '≡' }
+];
+
+function frameStyle(layer: PenPageLayer): CSSProperties {
+  const w = Math.max(1, layer.w);
+  const h = Math.max(1, layer.h);
+  return {
+    aspectRatio: `${w} / ${h}`,
+    height: 'min(16rem, 100%)',
+    width: 'auto',
+    maxWidth: '100%'
+  };
+}
+
+function newTrackId(): string {
+  return `aud_${Math.random().toString(36).slice(2, 10)}`;
+}
 
 export function MediaEditorPanel({
   layer,
@@ -47,9 +74,12 @@ export function MediaEditorPanel({
   const [fileKind, setFileKind] = useState<'image' | 'video'>(
     layer.kind === 'video' ? 'video' : 'image'
   );
+  const [licensedDraft, setLicensedDraft] = useState('');
+  const audioPickRef = useRef<HTMLInputElement>(null);
   const filter = mergeMediaFilter(layer.mediaFilter);
   const crop = clampMediaCrop(layer.mediaCrop);
   const mask = (layer.mediaMask || 'none') as PenMediaMask;
+  const tracks = layer.audioTracks || [];
 
   function patch(p: Parameters<typeof patchLayerStyle>[2]) {
     onSectionChange(patchLayerStyle(section, layer.id, p));
@@ -57,6 +87,14 @@ export function MediaEditorPanel({
 
   function setFilter(next: PenMediaFilter) {
     patch({ mediaFilter: { ...filter, ...next } });
+  }
+
+  function setTracks(next: PenAudioTrack[]) {
+    patch({ audioTracks: next.length ? next : undefined });
+  }
+
+  function patchTrack(id: string, partial: Partial<PenAudioTrack>) {
+    setTracks(tracks.map((track) => (track.id === id ? { ...track, ...partial } : track)));
   }
 
   async function onReplace(src: string, meta?: { blobUrl?: string }) {
@@ -78,12 +116,31 @@ export function MediaEditorPanel({
     );
   }
 
+  async function addOwnAudio(file: File) {
+    let src = '';
+    if (docId) {
+      const put = await putLocalMedia({ docId, blob: file });
+      src = put.ref;
+    } else {
+      src = URL.createObjectURL(file);
+    }
+    setTracks([...tracks, { id: newTrackId(), src, gain: 100, offsetSec: 0 }]);
+  }
+
+  function addLicensed() {
+    const id = licensedDraft.trim();
+    if (!id) return;
+    setTracks([...tracks, { id: newTrackId(), licensedDocId: id, gain: 100, offsetSec: 0 }]);
+    setLicensedDraft('');
+  }
+
   const src = layer.kind === 'video' ? layer.videoSrc : layer.imageSrc;
   const { resolved: brushSrc } = useResolvedMediaSrc(src, { docId, session });
   const { resolved: brushOverlay } = useResolvedMediaSrc(layer.paintOverlaySrc, {
     docId,
     session
   });
+  const showTimeline = layer.kind === 'video' || tracks.length > 0;
 
   return (
     <div className="flex min-h-0 flex-1 flex-col bg-[#f3f3f3]">
@@ -91,25 +148,20 @@ export function MediaEditorPanel({
         <div className="text-[11px] font-semibold uppercase tracking-wider text-stone-500">
           Media · {layer.kind}
         </div>
-        <div className="mt-2 flex flex-wrap gap-1">
-          {(
-            [
-              ['color', 'Color'],
-              ['filters', 'Filters'],
-              ['crop', 'Crop'],
-              ['mask', 'Mask'],
-              ['brush', 'Brush']
-            ] as const
-          ).map(([id, label]) => (
+        <div className="mt-2 flex flex-wrap items-center gap-1">
+          {TABS.map((item) => (
             <button
-              key={id}
+              key={item.id}
               type="button"
-              className={`rounded px-2 py-0.5 text-[11px] font-medium ${
-                tab === id ? 'bg-black text-white' : 'bg-white text-stone-600 hover:bg-stone-200'
+              title={item.label}
+              aria-label={item.label}
+              aria-pressed={tab === item.id}
+              className={`inline-flex h-8 w-8 items-center justify-center rounded-md text-sm ${
+                tab === item.id ? 'bg-black text-white' : 'bg-white text-stone-600 hover:bg-stone-200'
               }`}
-              onClick={() => setTab(id)}
+              onClick={() => setTab(item.id)}
             >
-              {label}
+              {item.icon}
             </button>
           ))}
           <button
@@ -126,7 +178,11 @@ export function MediaEditorPanel({
       </div>
 
       <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-auto p-3">
-        <div className="relative mx-auto aspect-video w-full max-w-md overflow-hidden rounded border border-stone-300 bg-black">
+        <div
+          data-media-frame
+          className="relative mx-auto overflow-hidden rounded border border-stone-300 bg-black"
+          style={frameStyle(layer)}
+        >
           {src ? (
             <LayerMediaContent layer={layer} docId={docId} session={session} />
           ) : (
@@ -134,72 +190,62 @@ export function MediaEditorPanel({
           )}
         </div>
 
+        {showTimeline && (
+          <MediaTimeline
+            layer={layer}
+            docId={docId}
+            session={session}
+            onRemove={(id) => setTracks(tracks.filter((track) => track.id !== id))}
+          />
+        )}
+
         {tab === 'color' && (
-          <div className="space-y-3 text-[11px]">
+          <div className="flex flex-wrap gap-1">
             {(
               [
-                ['brightness', 'Brightness', 50, 150],
-                ['contrast', 'Contrast', 50, 150],
-                ['saturation', 'Saturation', 0, 200],
-                ['hueRotate', 'Hue', 0, 360]
+                ['brightness', 'Brightness', 50, 150, '%'],
+                ['contrast', 'Contrast', 50, 150, '%'],
+                ['saturation', 'Saturation', 0, 200, '%'],
+                ['hueRotate', 'Hue', 0, 360, '°']
               ] as const
-            ).map(([key, label, min, max]) => (
-              <label key={key} className="block">
-                <div className="mb-0.5 flex justify-between text-stone-500">
-                  <span>{label}</span>
-                  <span>
-                    {filter[key]}
-                    {key === 'hueRotate' ? '°' : '%'}
-                  </span>
-                </div>
-                <input
-                  type="range"
-                  min={min}
-                  max={max}
-                  value={filter[key]}
-                  onChange={(e) => setFilter({ [key]: Number(e.target.value) })}
-                  className="w-full"
-                />
-              </label>
+            ).map(([key, label, min, max, unit]) => (
+              <ValueSliderButton
+                key={key}
+                label={label}
+                min={min}
+                max={max}
+                value={filter[key]}
+                display={`${filter[key]}${unit}`}
+                onChange={(n) => setFilter({ [key]: n })}
+              />
             ))}
-            <label className="block">
-              <div className="mb-0.5 flex justify-between text-stone-500">
-                <span>Opacity</span>
-                <span>{layer.opacity ?? 100}%</span>
-              </div>
-              <input
-                type="range"
-                min={0}
-                max={100}
-                value={layer.opacity ?? 100}
-                onChange={(e) => patch({ opacity: Number(e.target.value) })}
-                className="w-full"
-              />
-            </label>
-            <label className="block">
-              <div className="mb-0.5 flex justify-between text-stone-500">
-                <span>Blur</span>
-                <span>{layer.blur ?? 0}px</span>
-              </div>
-              <input
-                type="range"
-                min={0}
-                max={40}
-                value={layer.blur ?? 0}
-                onChange={(e) => patch({ blur: Number(e.target.value) || undefined })}
-                className="w-full"
-              />
-            </label>
+            <ValueSliderButton
+              label="Opacity"
+              min={0}
+              max={100}
+              value={layer.opacity ?? 100}
+              display={`${layer.opacity ?? 100}%`}
+              onChange={(n) => patch({ opacity: n })}
+            />
+            <ValueSliderButton
+              label="Blur"
+              min={0}
+              max={40}
+              value={layer.blur ?? 0}
+              display={`${layer.blur ?? 0}px`}
+              onChange={(n) => patch({ blur: n || undefined })}
+            />
           </div>
         )}
 
         {tab === 'filters' && (
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-wrap gap-1">
             {Object.entries(MEDIA_FILTER_PRESETS).map(([id, preset]) => (
               <button
                 key={id}
                 type="button"
-                className="rounded border border-stone-300 bg-white px-3 py-1.5 text-[11px] font-medium capitalize text-stone-700 hover:bg-stone-100"
+                title={id}
+                className="rounded-md border border-stone-300 bg-white px-2 py-1 text-[11px] font-medium capitalize text-stone-700 hover:bg-stone-100"
                 onClick={() => patch({ mediaFilter: { ...preset } })}
               >
                 {id}
@@ -217,12 +263,13 @@ export function MediaEditorPanel({
         )}
 
         {tab === 'mask' && (
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-wrap gap-1">
             {(['none', 'circle', 'rounded'] as PenMediaMask[]).map((m) => (
               <button
                 key={m}
                 type="button"
-                className={`rounded px-3 py-1.5 text-[11px] font-medium capitalize ${
+                aria-pressed={mask === m}
+                className={`rounded-md px-3 py-1.5 text-[11px] font-medium capitalize ${
                   mask === m ? 'bg-black text-white' : 'border border-stone-300 bg-white text-stone-700'
                 }`}
                 onClick={() => patch({ mediaMask: m === 'none' ? undefined : m })}
@@ -237,6 +284,7 @@ export function MediaEditorPanel({
           <BrushEditor
             src={brushSrc}
             kind={layer.kind === 'video' ? 'video' : 'image'}
+            frame={frameStyle(layer)}
             overlaySrc={brushOverlay || undefined}
             onCommit={(dataUrl) => {
               if (!docId) {
@@ -249,6 +297,69 @@ export function MediaEditorPanel({
             }}
             onClear={() => patch({ paintOverlaySrc: undefined })}
           />
+        )}
+
+        {tab === 'tracks' && (
+          <div className="space-y-2 text-[11px]">
+            <div className="flex flex-wrap items-center gap-1">
+              <button
+                type="button"
+                className="rounded-md bg-black px-2 py-1 font-medium text-white"
+                onClick={() => audioPickRef.current?.click()}
+              >
+                Add audio
+              </button>
+              <input
+                ref={audioPickRef}
+                type="file"
+                accept="audio/*"
+                aria-label="Add audio file"
+                className="hidden"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  e.target.value = '';
+                  if (file) void addOwnAudio(file);
+                }}
+              />
+              <input
+                aria-label="Licensed audio doc"
+                className="min-w-0 flex-1 rounded border border-stone-300 px-2 py-1"
+                placeholder="Licensed doc id"
+                value={licensedDraft}
+                onChange={(e) => setLicensedDraft(e.target.value)}
+              />
+              <button
+                type="button"
+                className="rounded-md border border-stone-300 bg-white px-2 py-1 font-medium"
+                onClick={addLicensed}
+              >
+                Add licensed
+              </button>
+            </div>
+            {tracks.map((track) => (
+              <div key={track.id} className="flex flex-wrap items-center gap-1">
+                <span className="max-w-[8rem] truncate text-stone-500">
+                  {track.licensedDocId || 'Own audio'}
+                </span>
+                <ValueSliderButton
+                  label={`Gain ${track.id}`}
+                  min={0}
+                  max={100}
+                  value={track.gain ?? 100}
+                  display={`${track.gain ?? 100}%`}
+                  onChange={(n) => patchTrack(track.id, { gain: n })}
+                />
+                <ValueSliderButton
+                  label={`Offset ${track.id}`}
+                  min={0}
+                  max={120}
+                  value={track.offsetSec ?? 0}
+                  display={`${track.offsetSec ?? 0}s`}
+                  onChange={(n) => patchTrack(track.id, { offsetSec: n })}
+                />
+              </div>
+            ))}
+          </div>
         )}
       </div>
 
@@ -274,33 +385,27 @@ function CropEditor({
   onReset: () => void;
 }) {
   return (
-    <div className="space-y-3 text-[11px]">
-      <p className="text-stone-500">Drag insets to crop the media frame (0–100%).</p>
-      {(
-        [
-          ['x', 'Left', 0, 0.9],
-          ['y', 'Top', 0, 0.9],
-          ['w', 'Width', 0.1, 1],
-          ['h', 'Height', 0.1, 1]
-        ] as const
-      ).map(([key, label, min, max]) => (
-        <label key={key} className="block">
-          <div className="mb-0.5 flex justify-between text-stone-500">
-            <span>{label}</span>
-            <span>{Math.round(crop[key] * 100)}%</span>
-          </div>
-          <input
-            type="range"
-            min={min * 100}
-            max={max * 100}
+    <div className="space-y-2 text-[11px]">
+      <div className="flex flex-wrap gap-1">
+        {(
+          [
+            ['x', 'Left', 0, 90],
+            ['y', 'Top', 0, 90],
+            ['w', 'Width', 10, 100],
+            ['h', 'Height', 10, 100]
+          ] as const
+        ).map(([key, label, min, max]) => (
+          <ValueSliderButton
+            key={key}
+            label={label}
+            min={min}
+            max={max}
             value={Math.round(crop[key] * 100)}
-            onChange={(e) =>
-              onChange({ ...crop, [key]: Number(e.target.value) / 100 })
-            }
-            className="w-full"
+            display={`${Math.round(crop[key] * 100)}%`}
+            onChange={(n) => onChange({ ...crop, [key]: n / 100 })}
           />
-        </label>
-      ))}
+        ))}
+      </div>
       <button
         type="button"
         className="rounded border border-stone-300 bg-white px-2 py-1 text-[11px] font-medium text-stone-700"
@@ -315,12 +420,14 @@ function CropEditor({
 function BrushEditor({
   src,
   kind,
+  frame,
   overlaySrc,
   onCommit,
   onClear
 }: {
   src: string;
   kind: 'image' | 'video';
+  frame: CSSProperties;
   overlaySrc?: string;
   onCommit: (dataUrl: string) => void;
   onClear: () => void;
@@ -365,33 +472,22 @@ function BrushEditor({
     onCommit(canvas.toDataURL('image/png'));
   }
 
+  const ratio = typeof frame.aspectRatio === 'string' ? frame.aspectRatio : '16 / 9';
+  const [rw, rh] = ratio.split('/').map((n) => Number(n.trim()) || 1);
+
   return (
     <div className="space-y-2 text-[11px]">
-      <div className="flex flex-wrap items-center gap-2">
-        <label className="flex items-center gap-1 text-stone-500">
-          Size
-          <input
-            type="range"
-            min={2}
-            max={40}
-            value={brushSize}
-            onChange={(e) => setBrushSize(Number(e.target.value))}
-          />
-        </label>
-        <label className="flex items-center gap-1 text-stone-500">
-          Color
-          <input
-            type="color"
-            value={brushColor}
-            onChange={(e) => setBrushColor(e.target.value)}
-            className="h-7 w-10 cursor-pointer rounded border border-stone-300"
-          />
-        </label>
-        <button
-          type="button"
-          className="rounded bg-black px-2 py-1 text-white"
-          onClick={commit}
-        >
+      <div className="flex flex-wrap items-center gap-1">
+        <ValueSliderButton
+          label="Brush size"
+          min={2}
+          max={40}
+          value={brushSize}
+          display={`${brushSize}`}
+          onChange={setBrushSize}
+        />
+        <ColorSwatchButton label="Brush color" value={brushColor} onChange={setBrushColor} />
+        <button type="button" className="rounded bg-black px-2 py-1 text-white" onClick={commit}>
           Apply strokes
         </button>
         <button
@@ -402,7 +498,10 @@ function BrushEditor({
           Clear
         </button>
       </div>
-      <div className="relative aspect-video w-full overflow-hidden rounded border border-stone-300 bg-neutral-900">
+      <div
+        className="relative overflow-hidden rounded border border-stone-300 bg-neutral-900"
+        style={frame}
+      >
         {kind === 'video' ? (
           <video
             src={src}
@@ -422,8 +521,8 @@ function BrushEditor({
         )}
         <canvas
           ref={canvasRef}
-          width={640}
-          height={360}
+          width={Math.round(640 * (rw / Math.max(rw, rh)))}
+          height={Math.round(640 * (rh / Math.max(rw, rh)))}
           className="absolute inset-0 h-full w-full cursor-crosshair"
           onPointerDown={(e) => {
             drawing.current = true;
@@ -439,7 +538,6 @@ function BrushEditor({
           }}
         />
       </div>
-      <p className="text-stone-400">Paint on the canvas, then Apply strokes to save the overlay.</p>
     </div>
   );
 }

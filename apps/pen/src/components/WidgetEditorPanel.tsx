@@ -26,6 +26,7 @@ import {
   type PenWidgetElement
 } from '@par-noir/pen-protocol';
 import { FormatRibbon, PageCanvas } from './PageCanvas';
+import { ColorSwatchButton, ValueSliderButton } from './PanelValueControls';
 
 const ADD: Array<{ element: PenWidgetElement | 'image'; label: string }> = [
   { element: 'text', label: 'Text' },
@@ -295,75 +296,56 @@ export function WidgetEditorPanel({
         />
       )}
       {layer && (
-        <div className="flex flex-col gap-3 border-b border-stone-200 px-3 py-3 text-sm">
-          <label className="flex items-center justify-between gap-2">
-            <span className="text-[11px] font-semibold uppercase tracking-wide text-stone-500">Fill</span>
-            <input
-              aria-label="Fill color"
-              type="color"
-              className="h-7 w-10 border border-stone-300"
-              value={hexColor(layer.backgroundColor, '#0f766e')}
-              onChange={(event) =>
-                onSectionChange(patchLayerStyle(section, layer.id, { backgroundColor: event.target.value }))
-              }
-            />
-          </label>
-          <label className="flex items-center justify-between gap-2">
-            <span className="text-[11px] font-semibold uppercase tracking-wide text-stone-500">Text</span>
-            <input
-              aria-label="Text color"
-              type="color"
-              className="h-7 w-10 border border-stone-300"
-              value={hexColor(layer.textColor, '#ffffff')}
-              onChange={(event) =>
-                onSectionChange(patchLayerStyle(section, layer.id, { textColor: event.target.value }))
-              }
-            />
-          </label>
-          <label className="flex flex-col gap-1">
-            <span className="text-[11px] font-semibold uppercase tracking-wide text-stone-500">
-              Opacity {layer.opacity ?? 100}
-            </span>
-            <input
-              aria-label="Opacity"
-              type="range"
-              min={0}
-              max={100}
-              value={layer.opacity ?? 100}
-              onChange={(event) =>
-                onSectionChange(
-                  patchLayerStyle(section, layer.id, { opacity: Number(event.target.value) })
-                )
-              }
-            />
-          </label>
-          <label className="flex items-center justify-between gap-2">
-            <span className="text-[11px] font-semibold uppercase tracking-wide text-stone-500">Stroke</span>
-            <input
-              aria-label="Stroke color"
-              type="color"
-              className="h-7 w-10 border border-stone-300"
-              value={hexColor(layer.strokeColor, '#000000')}
-              onChange={(event) =>
-                onSectionChange(
-                  patchLayerStyle(section, layer.id, {
-                    strokeColor: event.target.value,
-                    strokeWidth: layer.strokeWidth || 1
-                  })
-                )
-              }
-            />
-          </label>
-          <input
-            aria-label="Stroke width"
-            type="range"
+        <div className="flex flex-wrap items-center gap-1 border-b border-stone-200 px-3 py-3">
+          <ColorSwatchButton
+            label="Fill color"
+            value={hexColor(layer.backgroundColor, '#0f766e')}
+            onChange={(value) =>
+              onSectionChange(patchLayerStyle(section, layer.id, { backgroundColor: value }))
+            }
+          />
+          <ColorSwatchButton
+            label="Text color"
+            value={hexColor(layer.textColor, '#ffffff')}
+            onChange={(value) =>
+              onSectionChange(patchLayerStyle(section, layer.id, { textColor: value }))
+            }
+          />
+          <ColorSwatchButton
+            label="Stroke color"
+            value={hexColor(layer.strokeColor, '#000000')}
+            onChange={(value) =>
+              onSectionChange(
+                patchLayerStyle(section, layer.id, {
+                  strokeColor: value,
+                  strokeWidth: layer.strokeWidth || 1
+                })
+              )
+            }
+          />
+          <ValueSliderButton
+            label="Stroke width"
             min={0}
             max={24}
             value={layer.strokeWidth ?? 0}
-            onChange={(event) =>
+            display={`${layer.strokeWidth ?? 0}`}
+            onChange={(value) =>
               onSectionChange(
-                patchLayerStyle(section, layer.id, { strokeWidth: Number(event.target.value) || undefined })
+                patchLayerStyle(section, layer.id, {
+                  strokeWidth: value || undefined,
+                  strokeColor: value ? layer.strokeColor || '#000000' : undefined
+                })
               )
+            }
+          />
+          <ValueSliderButton
+            label="Opacity"
+            min={0}
+            max={100}
+            value={layer.opacity ?? 100}
+            display={`${layer.opacity ?? 100}`}
+            onChange={(value) =>
+              onSectionChange(patchLayerStyle(section, layer.id, { opacity: value }))
             }
           />
         </div>

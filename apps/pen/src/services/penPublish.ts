@@ -20,6 +20,7 @@ import {
   sectionIsFeedPage,
   feedPagePlainText,
   partitionSectionsForPublish,
+  audioPublishPlan,
   mergePagePresentation,
   docToPlainText,
   collectActionOverlays,
@@ -53,6 +54,7 @@ import {
   PUBLIC_TEMPLATE_REQUIRES_VERIFICATION
 } from './penPublishGates';
 import { publishPublicCloudFile, renderNotePoster, type CloudRequest } from './penPublicPublish';
+import { resolvePenMediaSrc } from './penLocalMedia';
 
 export const PEN_PUBLISH_PREFIX = 'pen_publish:';
 /** Legacy browse handoff key — still written alongside for one release. */
@@ -198,9 +200,11 @@ export async function writeSocialPublishHandoff(
     penDocId: bundle.manifest.docId,
     penIrRef: { objectId: bundle.manifest.docId },
     licensing,
-    ...(bundle.manifest.audioSotDocId
-      ? { musicPenDocId: bundle.manifest.audioSotDocId }
-      : {})
+    ...(() => {
+      const licensed =
+        audioPublishPlan(bundle.sections).licensedDocId || bundle.manifest.audioSotDocId || '';
+      return licensed ? { musicPenDocId: licensed } : {};
+    })()
   };
   return payload;
 }
@@ -492,6 +496,8 @@ function provenanceFor(
   feedIds: string[]
 ): Record<string, unknown> {
   const form = getClass(bundle.manifest.classId);
+  const licensed =
+    audioPublishPlan(bundle.sections).licensedDocId || bundle.manifest.audioSotDocId || '';
   return {
     feedIds,
     penClassId: bundle.manifest.classId,
@@ -501,8 +507,61 @@ function provenanceFor(
     templateId: bundle.manifest.templateId,
     headProof: bundle.chain.links[bundle.chain.links.length - 1] || bundle.chain.genesis,
     licensing,
-    ...(bundle.manifest.audioSotDocId ? { musicPenDocId: bundle.manifest.audioSotDocId } : {})
+    ...(licensed ? { musicPenDocId: licensed } : {})
   };
+}
+
+async function readOwnAudioBytes(src: string, docId: string): Promise<Uint8Array | null> {
+  try {
+    const url = (await resolvePenMediaSrc(src, docId)) || src;
+    const res = await fetch(url);
+    if (!res.ok) return null;
+    return new Uint8Array(await res.arrayBuffer());
+  } catch {
+    return null;
+  }
+}
+
+/** Upload each poster-owned lane. Licensed lanes are not copied. */
+export async function uploadCompanionAudioFiles(params: {
+  bundle: LocalDocBundle;
+  request?: CloudRequest;
+  uploadCompanionAudio?: (bytes: Uint8Array, index: number, mime: string) => Promise<string>;
+}): Promise<{ fileIds: string[]; offsetsSec: number[]; gains: number[] }> {
+  const plan = audioPublishPlan(params.bundle.sections);
+  const fileIds: string[] = [];
+  const offsetsSec: number[] = [];
+  const gains: number[] = [];
+  const docId = params.bundle.manifest.docId;
+  const title = params.bundle.manifest.title || 'Untitled';
+  for (let i = 0; i < plan.own.length; i++) {
+    const lane = plan.own[i];
+    const bytes = await readOwnAudioBytes(lane.src, docId);
+    if (!bytes?.byteLength) continue;
+    const mime = 'audio/mpeg';
+    const fileId = params.uploadCompanionAudio
+      ? await params.uploadCompanionAudio(bytes, i, mime)
+      : (
+          await publishPublicCloudFile({
+            request: params.request,
+            bytes,
+            fileName: `pen-${docId}-audio-${i}.mp3`,
+            title: `${title} audio ${i + 1}`,
+            videoForSd: new Blob([bytes], { type: mime }),
+            videoContentType: mime,
+            metadata: {
+              fileType: 'audio',
+              contentClass: 'media',
+              isCompanionAudio: true,
+              penDocId: docId
+            }
+          })
+        ).fileId;
+    fileIds.push(fileId);
+    offsetsSec.push(lane.offsetSec);
+    gains.push(lane.gain);
+  }
+  return { fileIds, offsetsSec, gains };
 }
 
 /** Clickable overlay specs for a post. Includes the tracking spreadsheet when the group has one. */
@@ -522,6 +581,8 @@ export async function publishPostToOwnerCloud(params: {
   request?: CloudRequest;
   video?: ComposedVideoPublish;
   mixed?: MixedPagesPublish;
+  /** Test hook. Production uploads each own lane as its own audio file. */
+  uploadCompanionAudio?: (bytes: Uint8Array, index: number, mime: string) => Promise<string>;
 }): Promise<{ fileId: string }> {
   if (!params.feedIds.length) throw new Error('feed_required');
   const licensing = licensingForPublish(params.bundle.manifest.licensing, params.bundle.manifest.ownerPnHash, {
@@ -529,7 +590,17 @@ export async function publishPostToOwnerCloud(params: {
     connectReady: params.connectReady,
     musicAsset: params.bundle.manifest.classId === 'library.music'
   });
-  const base = provenanceFor(params.bundle, licensing, params.feedIds);
+  const companion = await uploadCompanionAudioFiles(params);
+  const base = {
+    ...provenanceFor(params.bundle, licensing, params.feedIds),
+    ...(companion.fileIds.length
+      ? {
+          companionAudioFileIds: companion.fileIds,
+          companionAudioOffsetsSec: companion.offsetsSec,
+          companionAudioGains: companion.gains
+        }
+      : {})
+  };
   const actionOverlays = actionOverlaysForPost(params.bundle.sections);
   const overlayMeta = actionOverlays.length ? { actionOverlays } : {};
 
