@@ -85,7 +85,6 @@ import { ActionLayerPhoneOverlay } from '../components/ActionLayerPhoneOverlay';
 import { ActionBindStrip } from '../components/ActionBindStrip';
 import { IconLayers } from '../components/icons/PenIcons';
 import { MediaEditorPanel } from '../components/MediaEditorPanel';
-import { SectionTimeline } from '../components/SectionTimeline';
 import { bindTimelineSample } from '../services/timelineSample';
 import { WidgetEditorPanel } from '../components/WidgetEditorPanel';
 import { LayerPartsMenu } from '../components/LayerPartsMenu';
@@ -2126,6 +2125,10 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
                 session={session}
                 docId={bundle.manifest.docId}
                 playheadSec={playheadSec}
+                playing={timelinePlaying}
+                onPlayhead={setPlayheadSec}
+                onPlaying={setTimelinePlaying}
+                onSelectLayer={(id) => setActiveLayerId(id)}
                 onSectionChange={(next) => {
                   persist({
                     ...bundle,
@@ -2611,28 +2614,6 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
                 </div>
               </div>
             ) : null}
-            {section && (
-              <SectionTimeline
-                section={section}
-                activeLayerId={activeLayerId}
-                playheadSec={playheadSec}
-                playing={timelinePlaying}
-                docId={bundle.manifest.docId}
-                session={session}
-                onPlayhead={setPlayheadSec}
-                onPlaying={setTimelinePlaying}
-                onSelectLayer={(id) => setActiveLayerId(id)}
-                onSectionChange={(next) => {
-                  persist({
-                    ...bundle,
-                    sections: bundle.sections.map((item) =>
-                      item.slug === next.slug ? next : item
-                    ),
-                    manifest: { ...bundle.manifest, updatedAt: new Date().toISOString() }
-                  });
-                }}
-              />
-            )}
             <PreviewPageBar
               pages={previewPages}
               activeSlug={activeSlug}

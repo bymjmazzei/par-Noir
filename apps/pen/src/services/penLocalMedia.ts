@@ -168,13 +168,7 @@ export async function getLocalMediaByDriveFileId(
 
 function cacheBlobUrl(cacheKey: string, blob: Blob): string {
   const prev = urlCache.get(cacheKey);
-  if (prev) {
-    try {
-      URL.revokeObjectURL(prev);
-    } catch {
-      /* ignore */
-    }
-  }
+  if (prev) return prev;
   const url = URL.createObjectURL(blob);
   urlCache.set(cacheKey, url);
   return url;
@@ -185,6 +179,8 @@ export async function resolveLocalMediaUrl(mediaId: string): Promise<string | nu
   if (cached) return cached;
   const hit = await getLocalMedia(mediaId);
   if (!hit) return null;
+  const again = urlCache.get(mediaId);
+  if (again) return again;
   return cacheBlobUrl(mediaId, new Blob([hit.bytes], { type: hit.mime }));
 }
 
@@ -209,6 +205,11 @@ export async function resolvePenMediaSrc(
     if (byFile) return byFile;
     const fromIdb = await getLocalMediaByDriveFileId(fileId);
     if (fromIdb) {
+      const again = urlCache.get(fromIdb.mediaId) || urlCache.get(`file:${fileId}`);
+      if (again) {
+        urlCache.set(`file:${fileId}`, again);
+        return again;
+      }
       const url = cacheBlobUrl(
         fromIdb.mediaId,
         new Blob([fromIdb.bytes], { type: fromIdb.mime })

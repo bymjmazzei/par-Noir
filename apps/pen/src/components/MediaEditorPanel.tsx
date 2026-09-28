@@ -21,6 +21,7 @@ import {
   type PenSectionContent
 } from '@par-noir/pen-protocol';
 import { CloudFeedMediaPicker } from './CloudFeedMediaPicker';
+import { SectionTimeline } from './SectionTimeline';
 import { LayerMediaContent } from './LayerMediaContent';
 import { ColorSwatchButton, ValueSliderButton } from './PanelValueControls';
 import { probeMediaAspect } from '../services/penAttach';
@@ -62,6 +63,10 @@ export function MediaEditorPanel({
   contentWidthPx = 736,
   contentHeightPx = 976,
   playheadSec = 0,
+  playing = false,
+  onPlayhead,
+  onPlaying,
+  onSelectLayer,
   onSectionChange
 }: {
   layer: PenPageLayer;
@@ -72,6 +77,10 @@ export function MediaEditorPanel({
   contentHeightPx?: number;
   /** When grade or crop already has keys, edits land on the key at this time. */
   playheadSec?: number;
+  playing?: boolean;
+  onPlayhead?: (time: number) => void;
+  onPlaying?: (playing: boolean) => void;
+  onSelectLayer?: (id: string) => void;
   onSectionChange: (next: PenSectionContent) => void;
 }) {
   const [tab, setTab] = useState<ToolTab>('color');
@@ -358,6 +367,19 @@ export function MediaEditorPanel({
           </div>
         )}
       </div>
+
+      <SectionTimeline
+        section={section}
+        activeLayerId={layer.id}
+        playheadSec={playheadSec}
+        playing={playing}
+        docId={docId}
+        session={session}
+        onPlayhead={onPlayhead || (() => undefined)}
+        onPlaying={onPlaying || (() => undefined)}
+        onSelectLayer={onSelectLayer || (() => undefined)}
+        onSectionChange={onSectionChange}
+      />
 
       <CloudFeedMediaPicker
         open={cloudOpen}

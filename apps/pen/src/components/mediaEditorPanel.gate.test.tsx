@@ -59,12 +59,18 @@ describe('media and widget panels', () => {
     expect(widget).toContain('>Trigger<');
   });
 
-  it('keeps the video frame in the media pane', () => {
+  it('puts the section timeline and audio lanes in the media pane', () => {
     const html = renderToStaticMarkup(
-      <MediaEditorPanel layer={video} section={section} onSectionChange={() => undefined} />
+      <MediaEditorPanel
+        layer={video}
+        section={{ ...section, layers: [video] }}
+        onSectionChange={() => undefined}
+      />
     );
     expect(html).toContain('data-media-frame');
-    expect(html).not.toContain('data-media-timeline');
+    expect(html).toContain('data-media-timeline');
+    expect(html).toContain('data-audio-lane="voice"');
+    expect(html).toContain('data-audio-lane="song"');
     expect(html).not.toContain('aspect-video');
   });
 });

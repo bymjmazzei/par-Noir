@@ -3,7 +3,6 @@
  */
 
 import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
-import { acquirePenMediaController, type PenMediaController } from '@par-noir/feed-tile';
 import {
   applyTransitionPreset,
   defaultLayerName,
@@ -89,48 +88,6 @@ function AudioLane({
   }, [resolved, gain, offsetSec, time, playing]);
   if (!resolved) return null;
   return <audio ref={audioRef} src={resolved} preload="metadata" />;
-}
-
-function VideoFollow({
-  layerId,
-  src,
-  docId,
-  session,
-  time,
-  playing,
-  inSec
-}: {
-  layerId: string;
-  src: string;
-  docId?: string;
-  session?: PenSession | null;
-  time: number;
-  playing: boolean;
-  inSec: number;
-}) {
-  const { resolved } = useResolvedMediaSrc(src, { docId, session });
-  const ctrlRef = useRef<PenMediaController | null>(null);
-  useEffect(() => {
-    if (!resolved) return;
-    const ctrl = acquirePenMediaController(`pen-layer:${layerId}`, resolved);
-    ctrlRef.current = ctrl;
-    return () => {
-      ctrl.release();
-      if (ctrlRef.current === ctrl) ctrlRef.current = null;
-    };
-  }, [layerId, resolved]);
-  useEffect(() => {
-    const ctrl = ctrlRef.current;
-    if (!ctrl) return;
-    const at = Math.max(0, time - inSec);
-    if (Math.abs((ctrl.master.currentTime || 0) - at) > 0.35) {
-      const dur = ctrl.master.duration;
-      if (dur && Number.isFinite(dur) && dur > 0) ctrl.seekRatio(Math.min(1, at / dur));
-    }
-    if (playing) void ctrl.master.play().catch(() => undefined);
-    else ctrl.master.pause();
-  }, [time, playing, inSec, resolved]);
-  return null;
 }
 
 export function SectionTimeline({
@@ -388,17 +345,6 @@ export function SectionTimeline({
                   </div>
                 );
               })}
-              {layer.kind === 'video' && layer.videoSrc ? (
-                <VideoFollow
-                  layerId={layer.id}
-                  src={layer.videoSrc}
-                  docId={docId}
-                  session={session}
-                  time={playheadSec}
-                  playing={playing}
-                  inSec={layer.inSec || 0}
-                />
-              ) : null}
             </div>
           );
         })}
