@@ -159,7 +159,7 @@ export function WidgetEditorPanel({
         ))}
       </div>
       {layer?.kind === 'interactive' && (
-        <div className="flex flex-col gap-3 border-b border-stone-200 px-3 py-3 text-sm">
+        <div className="border-b border-stone-200 px-3 py-2">
           <div className="flex flex-col gap-1">
             <span className="text-[11px] font-semibold uppercase tracking-wide text-stone-500">Label</span>
             <WidgetTextEditor
@@ -172,116 +172,6 @@ export function WidgetEditorPanel({
               pageLayout={pageLayout}
             />
           </div>
-          <span className="text-[11px] font-semibold uppercase tracking-wide text-stone-500">
-            Button trigger
-          </span>
-          <select
-            aria-label="Button trigger"
-            className="border border-stone-300 bg-white px-2 py-1"
-            value={layer.behavior || ''}
-            onChange={(event) => {
-              const value = event.target.value;
-              onSectionChange(
-                setButtonTrigger(section, layer.id, value ? (value as PenInteractiveBehavior) : null)
-              );
-            }}
-          >
-            <option value="">None</option>
-            {TRIGGERS.map((trigger) => (
-              <option key={trigger.id} value={trigger.id}>
-                {trigger.label}
-              </option>
-            ))}
-          </select>
-          {layer.behavior === 'poll.vote' && (
-            <label className="flex items-center gap-2 text-stone-700">
-              <input
-                type="checkbox"
-                aria-label="Correct answer"
-                checked={Boolean(layer.correct)}
-                onChange={(event) =>
-                  onSectionChange(setVoteCorrect(section, layer.id, event.target.checked))
-                }
-              />
-              Correct answer
-            </label>
-          )}
-          {layer.behavior === 'cta.open' && (
-            <label className="flex flex-col gap-1">
-              <span className="text-[11px] font-semibold uppercase tracking-wide text-stone-500">Link</span>
-              <input
-                aria-label="Link"
-                className="border border-stone-300 px-2 py-1"
-                value={layer.openUrl || ''}
-                placeholder="https://"
-                onChange={(event) => onSectionChange(setOpenUrl(section, layer.id, event.target.value))}
-              />
-            </label>
-          )}
-          {layer.behavior === 'widget.submit' && (
-            <label className="flex flex-col gap-1">
-              <span className="text-[11px] font-semibold uppercase tracking-wide text-stone-500">
-                Send to
-              </span>
-              <input
-                aria-label="Submit destination"
-                className="border border-stone-300 px-2 py-1"
-                value={layer.submitTo || ''}
-                placeholder="email or pn"
-                onChange={(event) => onSectionChange(setSubmitTo(section, layer.id, event.target.value))}
-              />
-            </label>
-          )}
-          {layer.behavior === 'widget.allocate' && (
-            <label className="flex flex-col gap-1">
-              <span className="text-[11px] font-semibold uppercase tracking-wide text-stone-500">
-                Allocate amount
-              </span>
-              <input
-                aria-label="Allocate amount"
-                type="number"
-                min={1}
-                className="border border-stone-300 px-2 py-1"
-                value={allocateTotal(section, layer.parentGroupId || null)}
-                onChange={(event) =>
-                  onSectionChange(
-                    setAllocateTotal(section, layer.parentGroupId || null, Number(event.target.value) || 100)
-                  )
-                }
-              />
-            </label>
-          )}
-          {layer.behavior === 'widget.reveal' && (
-            <label className="flex flex-col gap-1">
-              <span className="text-[11px] font-semibold uppercase tracking-wide text-stone-500">
-                Reveal target
-              </span>
-              <select
-                aria-label="Reveal target"
-                className="border border-stone-300 bg-white px-2 py-1"
-                value={layer.revealLayerId || ''}
-                onChange={(event) =>
-                  onSectionChange(setRevealTarget(section, layer.id, event.target.value || null))
-                }
-              >
-                <option value="">Choose a layer</option>
-                {pollLayers(section, layer.parentGroupId || null)
-                  .filter((item) => item.id !== layer.id)
-                  .map((item) => (
-                    <option key={item.id} value={item.id}>
-                      {item.label || item.name || item.id}
-                    </option>
-                  ))}
-              </select>
-            </label>
-          )}
-          <button
-            type="button"
-            className="self-start text-teal-800"
-            onClick={() => onSectionChange(duplicateButton(section, layer.id))}
-          >
-            Duplicate
-          </button>
         </div>
       )}
       {layer?.widgetElement === 'text' && (
@@ -296,58 +186,184 @@ export function WidgetEditorPanel({
         />
       )}
       {layer && (
-        <div className="flex flex-wrap items-center gap-1 border-b border-stone-200 px-3 py-3">
-          <ColorSwatchButton
-            label="Fill color"
-            value={hexColor(layer.backgroundColor, '#0f766e')}
-            onChange={(value) =>
-              onSectionChange(patchLayerStyle(section, layer.id, { backgroundColor: value }))
-            }
-          />
-          <ColorSwatchButton
-            label="Text color"
-            value={hexColor(layer.textColor, '#ffffff')}
-            onChange={(value) =>
-              onSectionChange(patchLayerStyle(section, layer.id, { textColor: value }))
-            }
-          />
-          <ColorSwatchButton
-            label="Stroke color"
-            value={hexColor(layer.strokeColor, '#000000')}
-            onChange={(value) =>
-              onSectionChange(
-                patchLayerStyle(section, layer.id, {
-                  strokeColor: value,
-                  strokeWidth: layer.strokeWidth || 1
-                })
-              )
-            }
-          />
-          <ValueSliderButton
-            label="Stroke width"
-            min={0}
-            max={24}
-            value={layer.strokeWidth ?? 0}
-            display={`${layer.strokeWidth ?? 0}`}
-            onChange={(value) =>
-              onSectionChange(
-                patchLayerStyle(section, layer.id, {
-                  strokeWidth: value || undefined,
-                  strokeColor: value ? layer.strokeColor || '#000000' : undefined
-                })
-              )
-            }
-          />
-          <ValueSliderButton
-            label="Opacity"
-            min={0}
-            max={100}
-            value={layer.opacity ?? 100}
-            display={`${layer.opacity ?? 100}`}
-            onChange={(value) =>
-              onSectionChange(patchLayerStyle(section, layer.id, { opacity: value }))
-            }
-          />
+        <div
+          className={`grid gap-4 border-b border-stone-200 px-3 py-3 ${
+            layer.kind === 'interactive' ? 'grid-cols-2' : 'grid-cols-1'
+          }`}
+        >
+          {layer.kind === 'interactive' && (
+            <div className="flex min-w-0 flex-col gap-2 text-sm">
+              <span className="text-[11px] font-semibold uppercase tracking-wide text-stone-500">
+                Trigger
+              </span>
+              <select
+                aria-label="Button trigger"
+                className="border border-stone-300 bg-white px-2 py-1"
+                value={layer.behavior || ''}
+                onChange={(event) => {
+                  const value = event.target.value;
+                  onSectionChange(
+                    setButtonTrigger(section, layer.id, value ? (value as PenInteractiveBehavior) : null)
+                  );
+                }}
+              >
+                <option value="">None</option>
+                {TRIGGERS.map((trigger) => (
+                  <option key={trigger.id} value={trigger.id}>
+                    {trigger.label}
+                  </option>
+                ))}
+              </select>
+              {layer.behavior === 'poll.vote' && (
+                <label className="flex items-center gap-2 text-stone-700">
+                  <input
+                    type="checkbox"
+                    aria-label="Correct answer"
+                    checked={Boolean(layer.correct)}
+                    onChange={(event) =>
+                      onSectionChange(setVoteCorrect(section, layer.id, event.target.checked))
+                    }
+                  />
+                  Correct answer
+                </label>
+              )}
+              {layer.behavior === 'cta.open' && (
+                <label className="flex flex-col gap-1">
+                  <span className="text-[11px] font-semibold uppercase tracking-wide text-stone-500">Link</span>
+                  <input
+                    aria-label="Link"
+                    className="border border-stone-300 px-2 py-1"
+                    value={layer.openUrl || ''}
+                    placeholder="https://"
+                    onChange={(event) => onSectionChange(setOpenUrl(section, layer.id, event.target.value))}
+                  />
+                </label>
+              )}
+              {layer.behavior === 'widget.submit' && (
+                <label className="flex flex-col gap-1">
+                  <span className="text-[11px] font-semibold uppercase tracking-wide text-stone-500">
+                    Send to
+                  </span>
+                  <input
+                    aria-label="Submit destination"
+                    className="border border-stone-300 px-2 py-1"
+                    value={layer.submitTo || ''}
+                    placeholder="email or pn"
+                    onChange={(event) => onSectionChange(setSubmitTo(section, layer.id, event.target.value))}
+                  />
+                </label>
+              )}
+              {layer.behavior === 'widget.allocate' && (
+                <label className="flex flex-col gap-1">
+                  <span className="text-[11px] font-semibold uppercase tracking-wide text-stone-500">
+                    Allocate amount
+                  </span>
+                  <input
+                    aria-label="Allocate amount"
+                    type="number"
+                    min={1}
+                    className="border border-stone-300 px-2 py-1"
+                    value={allocateTotal(section, layer.parentGroupId || null)}
+                    onChange={(event) =>
+                      onSectionChange(
+                        setAllocateTotal(section, layer.parentGroupId || null, Number(event.target.value) || 100)
+                      )
+                    }
+                  />
+                </label>
+              )}
+              {layer.behavior === 'widget.reveal' && (
+                <label className="flex flex-col gap-1">
+                  <span className="text-[11px] font-semibold uppercase tracking-wide text-stone-500">
+                    Reveal target
+                  </span>
+                  <select
+                    aria-label="Reveal target"
+                    className="border border-stone-300 bg-white px-2 py-1"
+                    value={layer.revealLayerId || ''}
+                    onChange={(event) =>
+                      onSectionChange(setRevealTarget(section, layer.id, event.target.value || null))
+                    }
+                  >
+                    <option value="">Choose a layer</option>
+                    {pollLayers(section, layer.parentGroupId || null)
+                      .filter((item) => item.id !== layer.id)
+                      .map((item) => (
+                        <option key={item.id} value={item.id}>
+                          {item.label || item.name || item.id}
+                        </option>
+                      ))}
+                  </select>
+                </label>
+              )}
+              <button
+                type="button"
+                className="self-start text-teal-800"
+                onClick={() => onSectionChange(duplicateButton(section, layer.id))}
+              >
+                Duplicate
+              </button>
+            </div>
+          )}
+          <div className="flex min-w-0 flex-col gap-1">
+            <span className="text-[11px] font-semibold uppercase tracking-wide text-stone-500">Object</span>
+            <ColorSwatchButton
+              row
+              label="Fill"
+              value={hexColor(layer.backgroundColor, '#0f766e')}
+              onChange={(value) =>
+                onSectionChange(patchLayerStyle(section, layer.id, { backgroundColor: value }))
+              }
+            />
+            <ColorSwatchButton
+              row
+              label="Text"
+              value={hexColor(layer.textColor, '#ffffff')}
+              onChange={(value) =>
+                onSectionChange(patchLayerStyle(section, layer.id, { textColor: value }))
+              }
+            />
+            <ColorSwatchButton
+              row
+              label="Stroke"
+              value={hexColor(layer.strokeColor, '#000000')}
+              onChange={(value) =>
+                onSectionChange(
+                  patchLayerStyle(section, layer.id, {
+                    strokeColor: value,
+                    strokeWidth: layer.strokeWidth || 1
+                  })
+                )
+              }
+            />
+            <ValueSliderButton
+              row
+              label="Width"
+              min={0}
+              max={24}
+              value={layer.strokeWidth ?? 0}
+              display={`${layer.strokeWidth ?? 0}px`}
+              onChange={(value) =>
+                onSectionChange(
+                  patchLayerStyle(section, layer.id, {
+                    strokeWidth: value || undefined,
+                    strokeColor: value ? layer.strokeColor || '#000000' : undefined
+                  })
+                )
+              }
+            />
+            <ValueSliderButton
+              row
+              label="Opacity"
+              min={0}
+              max={100}
+              value={layer.opacity ?? 100}
+              display={`${layer.opacity ?? 100}%`}
+              onChange={(value) =>
+                onSectionChange(patchLayerStyle(section, layer.id, { opacity: value }))
+              }
+            />
+          </div>
         </div>
       )}
       {layer?.widgetElement === 'time' && (

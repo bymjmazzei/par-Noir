@@ -53,7 +53,11 @@ describe('widget trigger panel', () => {
       <WidgetEditorPanel layer={vote} section={section} onSectionChange={() => undefined} />
     );
     expect(html).toContain('Correct answer');
-    expect(html).toContain('Fill color');
+    expect(html).toContain('>Fill<');
+    expect(html).toContain('#0f766e');
+    expect(html).toContain('>Opacity<');
+    expect(html).toContain('100%');
+    expect(html).not.toContain('type="range"');
   });
 
   it('shows the fields each trigger needs', () => {

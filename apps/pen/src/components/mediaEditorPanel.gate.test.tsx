@@ -54,7 +54,9 @@ describe('media and widget panels', () => {
       />
     );
     expect(widget).not.toContain('type="range"');
-    expect(widget).toContain('Fill color');
+    expect(widget).toContain('>Fill<');
+    expect(widget).toContain('#0f766e');
+    expect(widget).toContain('>Trigger<');
   });
 
   it('renders a timeline lane for each audio track on a video', () => {
