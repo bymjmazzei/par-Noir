@@ -98,43 +98,44 @@ export function PenMediaPlayer({
 
     const el = videoRef.current;
     let syncTimer: ReturnType<typeof setInterval> | null = null;
+    let masterStarted = !ctrl.master.paused;
     const align = () => {
       const m = ctrl.master;
-      if (!el || !m.duration) return;
-      if (Math.abs(el.currentTime - m.currentTime) > 0.35) {
+      if (!el) return;
+      if (masterStarted && m.duration && Math.abs((el.currentTime || 0) - m.currentTime) > 0.35) {
         try {
           el.currentTime = m.currentTime;
         } catch {
           /* ignore seek race */
         }
       }
-      if (m.paused && !el.paused) el.pause();
       if (!m.paused && el.paused) void el.play().catch(() => undefined);
+      else if (masterStarted && m.paused && !el.paused) el.pause();
+    };
+    const onMasterPlay = () => {
+      masterStarted = true;
+      align();
     };
 
     if (el) {
-      const stream = ctrl.mirrorStream();
-      if (stream) {
-        el.srcObject = stream;
-        el.muted = true;
-        void el.play().catch(() => undefined);
-      } else {
-        el.srcObject = null;
-        el.src = src;
-        el.muted = true;
-        el.loop = true;
-        align();
-        syncTimer = setInterval(align, 200);
-        ctrl.master.addEventListener('play', align);
-        ctrl.master.addEventListener('pause', align);
-        ctrl.master.addEventListener('seeked', align);
-      }
+      // The hidden master can feed a captureStream that stays empty, which is the
+      // white preview box and the black media frame. Paint the file here instead.
+      el.srcObject = null;
+      if (el.src !== src) el.src = src;
+      el.muted = true;
+      el.loop = true;
+      align();
+      syncTimer = setInterval(align, 200);
+      ctrl.master.addEventListener('play', onMasterPlay);
+      ctrl.master.addEventListener('pause', align);
+      ctrl.master.addEventListener('seeked', align);
+      void el.play().catch(() => undefined);
     }
 
     return () => {
       unsub();
       if (syncTimer) clearInterval(syncTimer);
-      ctrl.master.removeEventListener('play', align);
+      ctrl.master.removeEventListener('play', onMasterPlay);
       ctrl.master.removeEventListener('pause', align);
       ctrl.master.removeEventListener('seeked', align);
       if (el) {
@@ -234,6 +235,7 @@ export function PenMediaPlayer({
       <video
         ref={videoRef}
         data-pen-media-key={sessionKey}
+        src={src}
         poster={poster}
         className={`absolute inset-0 h-full w-full ${tapToToggle ? 'cursor-pointer' : ''}`}
         style={{
@@ -245,7 +247,7 @@ export function PenMediaPlayer({
         loop
         playsInline
         autoPlay
-        preload="metadata"
+        preload="auto"
         draggable={false}
         onPointerDown={onVideoPointerDown}
       />
