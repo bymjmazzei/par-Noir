@@ -28,6 +28,8 @@ export const DEFAULT_VIDEO_ASPECT = 16 / 9;
 export const DEFAULT_IMAGE_ASPECT = 1;
 
 export const PAGE_GUTTER_PX = 16;
+/** Gray frame around a preview page. Flow fills the pane, so it uses none. */
+export const PREVIEW_PAGE_GUTTER_PX = 28;
 
 export type PageSheetDims = {
   /** Fixed column width, or null when Flow fills the container. */
@@ -121,6 +123,32 @@ export function fittedPreviewPagePx(
   return {
     width: Math.max(1, Math.round(natW * scale)),
     height: Math.max(1, Math.round(natH * scale))
+  };
+}
+
+/** Where a content-box layer sits on a screen strip (page edge is the origin). */
+export function pageLayerToSheet(
+  layer: { x: number; y: number },
+  pageIndex: number,
+  pageWidthPx: number,
+  padPx: number
+): { x: number; y: number } {
+  return {
+    x: pageIndex * pageWidthPx + padPx + layer.x,
+    y: padPx + layer.y
+  };
+}
+
+/** Inverse of pageLayerToSheet. Stored x/y stay in that page's content box. */
+export function sheetLayerToPage(
+  point: { x: number; y: number },
+  pageIndex: number,
+  pageWidthPx: number,
+  padPx: number
+): { x: number; y: number } {
+  return {
+    x: point.x - pageIndex * pageWidthPx - padPx,
+    y: point.y - padPx
   };
 }
 

@@ -5,6 +5,8 @@ import {
   clampLayerRect,
   contentBoxSize,
   fittedPreviewPagePx,
+  pageLayerToSheet,
+  sheetLayerToPage,
   openFlowDragHeightPx,
   fitAspectInBox,
   fitMediaLayerIntoContainer,
@@ -76,6 +78,14 @@ describe('pageGeometry', () => {
     });
     const fixed = fittedPreviewPagePx('flow', 1000, 1000, { widthPx: 640, heightPx: 800 });
     expect(fixed.width / fixed.height).toBeCloseTo(640 / 800, 2);
+  });
+
+  it('screen layers use one strip and can sit in the page margin', () => {
+    expect(pageLayerToSheet({ x: 0, y: 0 }, 0, 200, 40)).toEqual({ x: 40, y: 40 });
+    expect(pageLayerToSheet({ x: 10, y: 4 }, 1, 200, 40)).toEqual({ x: 250, y: 44 });
+    expect(sheetLayerToPage({ x: 0, y: 0 }, 0, 200, 40)).toEqual({ x: -40, y: -40 });
+    const display = pageLayerToSheet({ x: -40, y: 12 }, 2, 200, 40);
+    expect(sheetLayerToPage(display, 2, 200, 40)).toEqual({ x: -40, y: 12 });
   });
 
   it('open flow drag height fills the visible panel', () => {

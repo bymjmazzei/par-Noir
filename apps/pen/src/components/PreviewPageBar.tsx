@@ -73,7 +73,7 @@ export function PreviewPageStrip({
                 <div
                   data-page-seam=""
                   aria-hidden
-                  className="pointer-events-none absolute bottom-0 right-0 top-0 z-20"
+                  className="pointer-events-none absolute bottom-0 right-0 top-0 z-30"
                   style={{
                     width: 2,
                     backgroundImage:

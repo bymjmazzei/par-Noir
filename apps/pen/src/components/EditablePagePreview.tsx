@@ -61,7 +61,7 @@ import { useResolvedMediaSrc } from '../hooks/useResolvedMediaSrc';
 import { ensureGoogleFontsLoaded } from '../services/penGoogleFonts';
 import type { PenSession } from '../services/penSession';
 
-function ResolvedPageBackground({
+export function ResolvedPageBackground({
   src,
   kind,
   docId,
@@ -421,7 +421,8 @@ export function EditablePagePreview({
   showToolbar = true,
   clearChrome = false,
   toolbarHost = null,
-  scrollWithParent = false
+  scrollWithParent = false,
+  showAbsoluteLayers = true
 }: {
   manifest: PenDocManifest;
   section: PenSectionContent;
@@ -443,6 +444,8 @@ export function EditablePagePreview({
   scrollWithParent?: boolean;
   /** Screen strip paints the background once; this canvas stays clear. */
   clearChrome?: boolean;
+  /** Screen draws every page's layers on one strip instead. */
+  showAbsoluteLayers?: boolean;
   onPageLayoutChange?: (layout: PenPageLayout) => void;
   onFlowWorkspaceChange?: (next: {
     widthPx: number | null;
@@ -1031,26 +1034,29 @@ export function EditablePagePreview({
               }}
             />
 
-            {/* Absolute overlays — same content box as Body padding inset */}
+            {/* Layers cover the whole page. Body text keeps the margin. */}
+            {showAbsoluteLayers && (
             <LayoutSurface
               className="pointer-events-none absolute z-[1]"
               style={
                 {
-                  top: pad,
-                  left: pad,
-                  width: box.width,
-                  height: box.height
+                  top: 0,
+                  left: 0,
+                  width: box.width + 2 * pad,
+                  height: box.height + 2 * pad
                 } as CSSProperties
               }
-              items={items}
-              bounds={{ width: box.width, height: box.height }}
+              items={items.map((item) => ({ ...item, x: item.x + pad, y: item.y + pad }))}
+              bounds={{ width: box.width + 2 * pad, height: box.height + 2 * pad }}
               selectedId={pageActive ? null : activeLayerId}
               snapToPageCenter={snapEnabled}
               getLinkedIds={getLinkedIds}
               resizeDisabledIds={groupIds}
               lockAspectRatioIds={mediaAspectLockIds}
               onSelect={(id) => selectLayer(id || PAGE_LAYER_ID)}
-              onChange={onLayoutChange}
+              onChange={(next) =>
+                onLayoutChange(next.map((item) => ({ ...item, x: item.x - pad, y: item.y - pad })))
+              }
               renderItem={(item) => {
                 const layer = layers.find((l) => l.id === item.id);
                 if (!layer || layer.bodyWrap) return null;
@@ -1211,6 +1217,7 @@ export function EditablePagePreview({
                 );
               }}
             />
+            )}
           </div>
         </PageSheetColumn>
       </div>

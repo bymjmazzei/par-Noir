@@ -28,7 +28,10 @@ import {
   appendDocPage,
   pageSwipeAxisForView,
   fittedPreviewPagePx,
+  PREVIEW_PAGE_GUTTER_PX,
+  resolvePagePaddingPx,
   resolvePageView,
+  screenStripWidthPx,
   verifyChain,
   ensureOwnerAssignment,
   collectFontFamiliesFromDoc,
@@ -65,6 +68,7 @@ import {
 import type { PenSession } from '../services/penSession';
 import { FormatRibbon, PageCanvas } from '../components/PageCanvas';
 import { EditablePagePreview } from '../components/EditablePagePreview';
+import { ScreenLayerStage } from '../components/ScreenLayerStage';
 import { PreviewPageBar, PreviewPageStrip } from '../components/PreviewPageBar';
 import { pageFrameStyle } from '../components/LayerObjectToolbar';
 import { SocialFeedPhonePreview } from '../components/SocialFeedPhonePreview';
@@ -1649,15 +1653,18 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
     defaultEditorPagePresentation(),
     bundle.manifest.pagePresentation
   );
+  const previewGutter = bundle.manifest.pageLayout === 'flow' ? 0 : PREVIEW_PAGE_GUTTER_PX;
+  const paneReady = previewPaneSize.width > 0 && previewPaneSize.height > 0;
   const previewPageBox = fittedPreviewPagePx(
     bundle.manifest.pageLayout,
-    previewPaneSize.width,
-    previewPaneSize.height,
+    paneReady ? Math.max(1, previewPaneSize.width - previewGutter * 2) : 0,
+    paneReady ? Math.max(1, previewPaneSize.height - previewGutter * 2) : 0,
     {
       widthPx: bundle.manifest.flowWorkspaceWidthPx,
       heightPx: bundle.manifest.flowWorkspaceHeightPx
     }
   );
+  const layerPad = resolvePagePaddingPx(pagePresentation.padding);
   const screenStripBackground = pageFrameStyle(pagePresentation);
   if (
     (!screenStripBackground.backgroundColor ||
@@ -2320,6 +2327,18 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
                       : 'overflow-x-auto overflow-y-hidden'
                   }`}
                 >
+                <div
+                  className={pageView === 'screen' ? 'relative shrink-0' : 'contents'}
+                  style={
+                    pageView === 'screen'
+                      ? {
+                          width: screenStripWidthPx(previewPages.length, previewPageBox.width),
+                          height: previewPageBox.height,
+                          margin: previewGutter
+                        }
+                      : undefined
+                  }
+                >
                 <PreviewPageStrip
                   pageView={pageView}
                   pageCount={previewPages.length}
@@ -2348,7 +2367,11 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
                       <div
                         key={page.slug}
                         className="shrink-0"
-                        style={{ width: previewPageBox.width, height: previewPageBox.height }}
+                        style={{
+                          width: previewPageBox.width,
+                          height: previewPageBox.height,
+                          margin: pageView === 'screen' ? 0 : previewGutter
+                        }}
                         onClick={() => {
                           if (!active) setActiveSlug(page.slug);
                         }}
@@ -2364,6 +2387,7 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
                             toolbarHost={active ? previewToolbarHost : null}
                             scrollWithParent
                             clearChrome={pageView === 'screen'}
+                            showAbsoluteLayers={pageView !== 'screen'}
                             buttonCaptionById={buttonCaptionById}
                             session={session}
                             onSelectLayer={(id) => {
@@ -2441,6 +2465,39 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
                     );
                   })}
                 </PreviewPageStrip>
+                {pageView === 'screen' && (
+                  <ScreenLayerStage
+                    sections={bundle.sections}
+                    pageWidth={previewPageBox.width}
+                    pageHeight={previewPageBox.height}
+                    pad={layerPad}
+                    presentation={pagePresentation}
+                    activeLayerId={activeLayerId}
+                    session={session}
+                    docId={bundle.manifest.docId}
+                    buttonCaptionById={buttonCaptionById}
+                    votedOptionByGroup={votedOptionByGroup}
+                    onSelectLayer={(id) => {
+                      if (id) {
+                        const owner = bundle.sections.find((section) =>
+                          section.layers?.some((layer) => layer.id === id)
+                        );
+                        if (owner) setActiveSlug(owner.slug);
+                      }
+                      setActiveLayerId(id || PAGE_LAYER_ID);
+                    }}
+                    onSectionsChange={(next) =>
+                      persist({
+                        ...bundle,
+                        sections: next,
+                        manifest: { ...bundle.manifest, updatedAt: new Date().toISOString() }
+                      })
+                    }
+                    onPollVote={(layer) => void voteOnPoll(layer)}
+                    onWidgetAction={(layer) => void runWidgetAction(layer)}
+                  />
+                )}
+                </div>
                 </div>
               </div>
             ) : null}
