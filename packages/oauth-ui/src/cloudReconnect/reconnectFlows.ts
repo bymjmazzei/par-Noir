@@ -120,8 +120,15 @@ export async function reconnectOAuthProvider(
     if (!popup) throw new Error('Popup blocked — allow popups for OAuth.');
     const code = await codePromise;
     // Email comes from Google userinfo on the device — the API does not see the code.
+    const configRes = await fetch(`${apiEndpoint.replace(/\/$/, '')}/api/public-config`);
+    const config = (await configRes.json().catch(() => ({}))) as { googleDriveClientSecret?: string };
+    const clientSecret = config.googleDriveClientSecret?.trim() || '';
+    if (!clientSecret) {
+      throw new Error('Google Drive OAuth is not configured (missing client secret).');
+    }
     const tokens = await exchangeGoogleOAuthCode({
       clientId: googleClientId,
+      clientSecret,
       code,
       redirectUri
     });

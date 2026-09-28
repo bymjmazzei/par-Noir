@@ -22,7 +22,8 @@ jest.mock('../utils/integrationCredentialManager', () => ({
 }));
 
 jest.mock('../config/googleDriveClientId', () => ({
-  getGoogleDriveClientId: async () => 'google-client'
+  getGoogleDriveClientId: async () => 'google-client',
+  getGoogleDriveClientSecret: async () => 'google-secret'
 }));
 
 const ownerFetch = jest.fn();
@@ -52,6 +53,7 @@ jest.mock('@par-noir/device-cloud-credentials', () => {
   async function refreshDriveAccessToken(opts: {
     refreshToken: string;
     clientId: string;
+    clientSecret: string;
     path: string;
   }) {
     const res = await fetch(GOOGLE_TOKEN_URL, {
@@ -60,7 +62,8 @@ jest.mock('@par-noir/device-cloud-credentials', () => {
       body: new URLSearchParams({
         grant_type: 'refresh_token',
         refresh_token: opts.refreshToken,
-        client_id: opts.clientId
+        client_id: opts.clientId,
+        client_secret: opts.clientSecret
       })
     });
     if (!res.ok) {
@@ -244,6 +247,8 @@ describe('GoogleDriveBackend check-then-mint', () => {
       GOOGLE_TOKEN_URL,
       expect.objectContaining({ method: 'POST' })
     );
+    const refreshCall = fetchMock.mock.calls.find(([u]) => String(u).includes(GOOGLE_TOKEN_URL));
+    expect(String(refreshCall?.[1]?.body)).toContain('client_secret=google-secret');
     expect(tok).toBe('minted-ga');
     expect(backend.getAccessToken()).toBe('minted-ga');
   });

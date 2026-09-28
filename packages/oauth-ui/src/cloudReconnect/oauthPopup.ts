@@ -107,6 +107,7 @@ export function waitForOAuthPopupCode(opts?: {
 
 export async function exchangeGoogleOAuthCode(opts: {
   clientId: string;
+  clientSecret: string;
   code: string;
   redirectUri: string;
   codeVerifier?: string | null;
@@ -120,6 +121,7 @@ export async function exchangeGoogleOAuthCode(opts: {
   const tokens = await exchangeProviderAuthorizationCode({
     tokenUrl: GOOGLE_TOKEN_URL,
     clientId: opts.clientId,
+    clientSecret: opts.clientSecret,
     code: opts.code,
     redirectUri: opts.redirectUri,
     codeVerifier: opts.codeVerifier ?? takePkceVerifier()

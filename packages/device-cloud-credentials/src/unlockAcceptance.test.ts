@@ -69,11 +69,23 @@ describe('unlocking with a vault whose token aged out', () => {
   let fetchMock: ReturnType<typeof vi.fn>;
 
   beforeEach(() => {
-    fetchMock = vi.fn(async () => ({
-      ok: true,
-      status: 200,
-      json: async () => ({ access_token: 'minted-ga', expires_in: 3600 })
-    }));
+    fetchMock = vi.fn(async (url: string) => {
+      if (String(url).includes('/api/public-config')) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            googleDriveClientId: 'browser-app',
+            googleDriveClientSecret: 'google-secret'
+          })
+        };
+      }
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({ access_token: 'minted-ga', expires_in: 3600 })
+      };
+    });
     vi.stubGlobal('fetch', fetchMock);
   });
 
@@ -95,13 +107,16 @@ describe('unlocking with a vault whose token aged out', () => {
     // The whole bug in one assertion: this used to be 'stale-ga'.
     expect(token).toBe('minted-ga');
 
-    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
-    expect(url).toBe('https://oauth2.googleapis.com/token');
-    const body = String(init.body);
+    const tokenCall = fetchMock.mock.calls.find(
+      (call) => String(call[0]) === 'https://oauth2.googleapis.com/token'
+    ) as [string, RequestInit] | undefined;
+    expect(tokenCall?.[0]).toBe('https://oauth2.googleapis.com/token');
+    const body = String(tokenCall?.[1].body);
     expect(body).toContain('grant_type=refresh_token');
     expect(body).toContain('refresh_token=rt-1');
     expect(body).toContain('client_id=browser-app');
-    expect(url).not.toContain(API);
+    expect(body).toContain('client_secret=google-secret');
+    expect(tokenCall?.[0]).not.toContain(API);
   });
 
   it('does not call out when the sealed token is still valid', async () => {
@@ -133,10 +148,22 @@ describe('unlocking with a vault whose token aged out', () => {
   });
 
   it('returns null rather than a dead token when the refresh is refused', async () => {
-    fetchMock.mockResolvedValue({
-      ok: false,
-      status: 401,
-      json: async () => ({ reason: 'rejected' })
+    fetchMock.mockImplementation(async (url: string) => {
+      if (String(url).includes('/api/public-config')) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            googleDriveClientId: 'browser-app',
+            googleDriveClientSecret: 'google-secret'
+          })
+        };
+      }
+      return {
+        ok: false,
+        status: 400,
+        json: async () => ({ error: 'invalid_client' })
+      };
     });
 
     const vault = loadVaultScript();

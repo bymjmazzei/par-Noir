@@ -89,12 +89,18 @@
     const refreshToken = ((_b = data.refresh_token) == null ? void 0 : _b.trim()) || void 0;
     return { accessToken, refreshToken, expiresIn };
   }
+  function applyClientSecret(body, clientSecret) {
+    const secret = clientSecret == null ? void 0 : clientSecret.trim();
+    if (secret)
+      body.set("client_secret", secret);
+  }
   async function refreshProviderAccessToken(opts) {
     const body = new URLSearchParams({
       refresh_token: opts.refreshToken,
       client_id: opts.clientId,
       grant_type: "refresh_token"
     });
+    applyClientSecret(body, opts.clientSecret);
     if (opts.scope)
       body.set("scope", opts.scope);
     return postToken(opts.tokenUrl, body);
@@ -162,8 +168,8 @@
     return null;
   }
   async function refreshDriveAccessToken(opts) {
-    var _a, _b;
-    if (!((_a = opts.clientId) == null ? void 0 : _a.trim()) || !((_b = opts.refreshToken) == null ? void 0 : _b.trim())) {
+    var _a, _b, _c;
+    if (!((_a = opts.clientId) == null ? void 0 : _a.trim()) || !((_b = opts.clientSecret) == null ? void 0 : _b.trim()) || !((_c = opts.refreshToken) == null ? void 0 : _c.trim())) {
       warnDeadEnd(opts.path, "no_credentials");
       return { token: null, reason: "no_credentials" };
     }
@@ -172,6 +178,7 @@
       minted = await refreshProviderAccessToken({
         tokenUrl: GOOGLE_TOKEN_URL,
         clientId: opts.clientId.trim(),
+        clientSecret: opts.clientSecret.trim(),
         refreshToken: opts.refreshToken.trim()
       });
     } catch (e) {
@@ -187,6 +194,65 @@
       reason: "ok",
       expiresAt: Date.now() + minted.expiresIn * 1e3
     };
+  }
+  async function resolveGoogleOAuthClient(opts) {
+    var _a, _b, _c, _d, _e;
+    let clientId = ((_a = opts.clientId) == null ? void 0 : _a.trim()) || "";
+    let clientSecret = ((_b = opts.clientSecret) == null ? void 0 : _b.trim()) || "";
+    if (clientId && clientSecret)
+      return { clientId, clientSecret };
+    const base = (_c = opts.apiEndpoint) == null ? void 0 : _c.replace(/\/$/, "");
+    if (!base)
+      return null;
+    try {
+      const res = await fetch(`${base}/api/public-config`);
+      if (!res.ok)
+        return null;
+      const data = await res.json();
+      if (!clientId)
+        clientId = ((_d = data.googleDriveClientId) == null ? void 0 : _d.trim()) || "";
+      if (!clientSecret)
+        clientSecret = ((_e = data.googleDriveClientSecret) == null ? void 0 : _e.trim()) || "";
+    } catch (e) {
+      return null;
+    }
+    if (!clientId || !clientSecret)
+      return null;
+    return { clientId, clientSecret };
+  }
+  async function resolveFreshDriveToken(opts) {
+    var _a, _b, _c;
+    const nowMs = (_a = opts.now) != null ? _a : Date.now();
+    const account = pickGoogleAccount(opts.envelope);
+    if (!account) {
+      warnDeadEnd(opts.path, "no_account");
+      return { token: null, reason: "no_account" };
+    }
+    const fresh = freshAccessTokenFromEnvelope(opts.envelope, nowMs);
+    if (fresh)
+      return { token: fresh, reason: "ok" };
+    const refreshToken = accountRefreshToken(account);
+    if (!refreshToken) {
+      const reason = accountExpiresAtMs(account) == null ? "expiry_unknown" : "expired";
+      warnDeadEnd(opts.path, reason);
+      return { token: null, reason };
+    }
+    const hasDirectClient = Boolean(((_b = opts.clientId) == null ? void 0 : _b.trim()) && ((_c = opts.clientSecret) == null ? void 0 : _c.trim()));
+    if (!opts.apiEndpoint && !hasDirectClient) {
+      warnDeadEnd(opts.path, "no_api_endpoint");
+      return { token: null, reason: "no_api_endpoint" };
+    }
+    const oauthClient = await resolveGoogleOAuthClient(opts);
+    if (!oauthClient) {
+      warnDeadEnd(opts.path, "no_credentials");
+      return { token: null, reason: "no_credentials" };
+    }
+    return refreshDriveAccessToken({
+      refreshToken,
+      clientId: oauthClient.clientId,
+      clientSecret: oauthClient.clientSecret,
+      path: opts.path
+    });
   }
 
   // ../device-cloud-credentials/dist/cloudVault.js
@@ -278,23 +344,6 @@
   var defaultStore = new WebSealedStore();
 
   // src/cloudVaultBrowser.ts
-  async function mintAccessToken(refreshToken, opts) {
-    var _a;
-    if (!((_a = opts.clientId) == null ? void 0 : _a.trim())) {
-      console.warn("[OAuth] Cannot mint Drive token: missing Google client id");
-      return null;
-    }
-    const minted = await refreshDriveAccessToken({
-      refreshToken,
-      clientId: opts.clientId.trim(),
-      path: "unlock"
-    });
-    if (!minted.token) {
-      console.warn("[OAuth] Drive token refresh rejected", { reason: minted.reason });
-      return null;
-    }
-    return minted.token;
-  }
   async function accessTokenFromSealedVault(envelope, options) {
     if (!envelope || !isSealedEnvelopeShape(envelope)) return null;
     let credentials;
@@ -308,15 +357,17 @@
       console.warn("[OAuth] Cloud vault unseal unavailable");
       return null;
     }
-    const fresh = freshAccessTokenFromEnvelope(credentials);
-    if (fresh) return fresh;
-    const account = pickGoogleAccount(credentials);
-    const refreshToken = account ? accountRefreshToken(account) : null;
-    if (!refreshToken) {
-      console.warn("[OAuth] Sealed vault has no refresh token; Drive token unavailable");
+    const resolved = await resolveFreshDriveToken({
+      envelope: credentials,
+      clientId: options.clientId,
+      apiEndpoint: options.apiEndpoint,
+      path: "unlock"
+    });
+    if (!resolved.token) {
+      console.warn("[OAuth] Drive token unavailable", { reason: resolved.reason });
       return null;
     }
-    return mintAccessToken(refreshToken, options);
+    return resolved.token;
   }
   var api = {
     accessTokenFromSealedVault,

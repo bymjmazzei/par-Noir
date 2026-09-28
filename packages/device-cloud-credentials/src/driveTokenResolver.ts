@@ -129,9 +129,11 @@ export function freshAccessTokenFromEnvelope(
 export async function refreshDriveAccessToken(opts: {
   refreshToken: string;
   clientId: string;
+  /** Google Web client secret. Google rejects the token post without it. */
+  clientSecret: string;
   path: string;
 }): Promise<ResolvedDriveToken> {
-  if (!opts.clientId?.trim() || !opts.refreshToken?.trim()) {
+  if (!opts.clientId?.trim() || !opts.clientSecret?.trim() || !opts.refreshToken?.trim()) {
     warnDeadEnd(opts.path, 'no_credentials');
     return { token: null, reason: 'no_credentials' };
   }
@@ -141,6 +143,7 @@ export async function refreshDriveAccessToken(opts: {
     minted = await refreshProviderAccessToken({
       tokenUrl: GOOGLE_TOKEN_URL,
       clientId: opts.clientId.trim(),
+      clientSecret: opts.clientSecret.trim(),
       refreshToken: opts.refreshToken.trim()
     });
   } catch {
@@ -160,22 +163,30 @@ export async function refreshDriveAccessToken(opts: {
   };
 }
 
-async function resolveGoogleClientId(opts: {
+async function resolveGoogleOAuthClient(opts: {
   clientId?: string | null;
+  clientSecret?: string | null;
   apiEndpoint?: string | null;
-}): Promise<string | null> {
-  const direct = opts.clientId?.trim();
-  if (direct) return direct;
+}): Promise<{ clientId: string; clientSecret: string } | null> {
+  let clientId = opts.clientId?.trim() || '';
+  let clientSecret = opts.clientSecret?.trim() || '';
+  if (clientId && clientSecret) return { clientId, clientSecret };
   const base = opts.apiEndpoint?.replace(/\/$/, '');
   if (!base) return null;
   try {
     const res = await fetch(`${base}/api/public-config`);
     if (!res.ok) return null;
-    const data = (await res.json()) as { googleDriveClientId?: string };
-    return data.googleDriveClientId?.trim() || null;
+    const data = (await res.json()) as {
+      googleDriveClientId?: string;
+      googleDriveClientSecret?: string;
+    };
+    if (!clientId) clientId = data.googleDriveClientId?.trim() || '';
+    if (!clientSecret) clientSecret = data.googleDriveClientSecret?.trim() || '';
   } catch {
     return null;
   }
+  if (!clientId || !clientSecret) return null;
+  return { clientId, clientSecret };
 }
 
 /**
@@ -184,8 +195,10 @@ async function resolveGoogleClientId(opts: {
  */
 export async function resolveFreshDriveToken(opts: {
   envelope: unknown;
-  /** Public Google OAuth client id. Loaded from /api/public-config when omitted. */
+  /** Google OAuth client id. Loaded from /api/public-config when omitted. */
   clientId?: string | null;
+  /** Google Web client secret. Loaded from /api/public-config when omitted. */
+  clientSecret?: string | null;
   apiEndpoint?: string | null;
   /** Short label for logs, e.g. 'consent' or 'grant-persist'. */
   path: string;
@@ -212,20 +225,22 @@ export async function resolveFreshDriveToken(opts: {
     return { token: null, reason };
   }
 
-  if (!opts.apiEndpoint && !opts.clientId) {
+  const hasDirectClient = Boolean(opts.clientId?.trim() && opts.clientSecret?.trim());
+  if (!opts.apiEndpoint && !hasDirectClient) {
     warnDeadEnd(opts.path, 'no_api_endpoint');
     return { token: null, reason: 'no_api_endpoint' };
   }
 
-  const clientId = await resolveGoogleClientId(opts);
-  if (!clientId) {
+  const oauthClient = await resolveGoogleOAuthClient(opts);
+  if (!oauthClient) {
     warnDeadEnd(opts.path, 'no_credentials');
     return { token: null, reason: 'no_credentials' };
   }
 
   return refreshDriveAccessToken({
     refreshToken,
-    clientId,
+    clientId: oauthClient.clientId,
+    clientSecret: oauthClient.clientSecret,
     path: opts.path
   });
 }

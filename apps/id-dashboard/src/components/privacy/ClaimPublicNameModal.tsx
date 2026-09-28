@@ -1,6 +1,6 @@
 import React, { useCallback, useState } from 'react';
 import { X, Globe, Youtube, CheckCircle, Loader2, Copy } from 'lucide-react';
-import { getGoogleDriveClientId } from '../../config/googleDriveClientId';
+import { getGoogleDriveClientId, getGoogleDriveClientSecret } from '../../config/googleDriveClientId';
 import {
   authorizeUrlWithPkce,
   exchangeProviderAuthorizationCode,
@@ -28,11 +28,13 @@ interface ClaimPublicNameModalProps {
 async function exchangeGoogleCode(
   code: string,
   redirectUri: string,
-  clientId: string
+  clientId: string,
+  clientSecret: string
 ): Promise<string> {
   const tokens = await exchangeProviderAuthorizationCode({
     tokenUrl: GOOGLE_TOKEN_URL,
     clientId,
+    clientSecret,
     code,
     redirectUri,
     codeVerifier: takePkceVerifier()
@@ -45,7 +47,8 @@ function openYoutubeOAuthPopup(): Promise<string> {
   return new Promise(async (resolve, reject) => {
     try {
       const clientId = import.meta.env.VITE_GOOGLE_DRIVE_CLIENT_ID || (await getGoogleDriveClientId());
-      if (!clientId) {
+      const clientSecret = await getGoogleDriveClientSecret();
+      if (!clientId || !clientSecret) {
         reject(new Error('Google client ID not configured'));
         return;
       }
@@ -87,7 +90,7 @@ function openYoutubeOAuthPopup(): Promise<string> {
           reject(new Error('No authorization code received'));
           return;
         }
-        exchangeGoogleCode(data.code, redirectUri, clientId).then(resolve).catch(reject);
+        exchangeGoogleCode(data.code, redirectUri, clientId, clientSecret).then(resolve).catch(reject);
       };
       window.addEventListener('message', onMessage);
     } catch (e) {

@@ -20,7 +20,7 @@ import {
 import type { FileAggregatorService } from '../../../services/aggregator/FileAggregatorService';
 import { API_ENDPOINT } from '../../../config/api';
 import { ownerFetch } from '../../../services/ownerApiService';
-import { getGoogleDriveClientId } from '../../../config/googleDriveClientId';
+import { getGoogleDriveClientId, getGoogleDriveClientSecret } from '../../../config/googleDriveClientId';
 import { persistDriveAccounts } from '../storageHelpers';
 import { AggregatedFile, ShareToken } from '../../../types/aggregator';
 import {
@@ -179,7 +179,8 @@ export function useGoogleDriveOAuthConnect({
   const exchangeCodeForTokens = async (
     code: string,
     redirectUri: string,
-    clientId: string
+    clientId: string,
+    clientSecret: string
   ): Promise<{
     accessToken: string;
     refreshToken: string;
@@ -190,6 +191,7 @@ export function useGoogleDriveOAuthConnect({
     const tokens = await exchangeProviderAuthorizationCode({
       tokenUrl: GOOGLE_TOKEN_URL,
       clientId,
+      clientSecret,
       code,
       redirectUri,
       codeVerifier: takePkceVerifier()
@@ -224,8 +226,9 @@ export function useGoogleDriveOAuthConnect({
       });
 
       const clientId = await getGoogleDriveClientId();
-      if (!clientId || clientId.trim() === '') {
-        setError('Google Drive OAuth not configured. Set VITE_GOOGLE_DRIVE_CLIENT_ID or configure GOOGLE_DRIVE_CLIENT_ID on the API.');
+      const clientSecret = await getGoogleDriveClientSecret();
+      if (!clientId || clientId.trim() === '' || !clientSecret.trim()) {
+        setError('Google Drive OAuth not configured. Set GOOGLE_DRIVE_CLIENT_ID and GOOGLE_DRIVE_CLIENT_SECRET on the API.');
         clearDriveSetupProgress();
         return;
       }
@@ -261,7 +264,7 @@ export function useGoogleDriveOAuthConnect({
       }
 
       const code = await codePromise;
-      const tokenData = await exchangeCodeForTokens(code, redirectUri, clientId);
+      const tokenData = await exchangeCodeForTokens(code, redirectUri, clientId, clientSecret);
 
       const token = tokenData.accessToken;
 

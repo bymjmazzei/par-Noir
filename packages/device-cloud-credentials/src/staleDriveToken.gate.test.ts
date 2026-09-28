@@ -135,7 +135,13 @@ describe('resolveFreshDriveToken never returns an unusable token', () => {
   beforeEach(() => {
     fetchMock = vi.fn(async (url: string) => {
       if (String(url).includes('/api/public-config')) {
-        return { ok: true, json: async () => ({ googleDriveClientId: 'google-client' }) };
+        return {
+          ok: true,
+          json: async () => ({
+            googleDriveClientId: 'google-client',
+            googleDriveClientSecret: 'google-secret'
+          })
+        };
       }
       return { ok: true, json: async () => ({ access_token: 'minted-ga', expires_in: 3600 }) };
     });
@@ -152,6 +158,7 @@ describe('resolveFreshDriveToken never returns an unusable token', () => {
         googleDriveAccounts: [{ accountId: 'a1', access_token: 'stale-ga', refresh_token: 'rt-1' }]
       },
       clientId: 'google-client',
+      clientSecret: 'google-secret',
       apiEndpoint: 'https://api.example.com',
       path: 'test'
     });
@@ -162,6 +169,7 @@ describe('resolveFreshDriveToken never returns an unusable token', () => {
     expect(body).toContain('grant_type=refresh_token');
     expect(body).toContain('refresh_token=rt-1');
     expect(body).toContain('client_id=google-client');
+    expect(body).toContain('client_secret=google-secret');
     expect(out.token).toBe('minted-ga');
     expect(out.expiresAt).toBeGreaterThan(Date.now());
   });
@@ -209,6 +217,7 @@ describe('resolveFreshDriveToken never returns an unusable token', () => {
         ]
       },
       clientId: 'google-client',
+      clientSecret: 'google-secret',
       apiEndpoint: 'https://api.example.com',
       path: 'test'
     });
@@ -233,6 +242,7 @@ describe('resolveFreshDriveToken never returns an unusable token', () => {
         ]
       },
       clientId: 'google-client',
+      clientSecret: 'google-secret',
       apiEndpoint: 'https://api.example.com',
       path: 'test'
     });
@@ -263,7 +273,13 @@ describe('session helpers refuse stale tokens', () => {
     clearAllSessionCloudCredentials();
     fetchMock = vi.fn(async (url: string) => {
       if (String(url).includes('/api/public-config')) {
-        return { ok: true, json: async () => ({ googleDriveClientId: 'google-client' }) };
+        return {
+          ok: true,
+          json: async () => ({
+            googleDriveClientId: 'google-client',
+            googleDriveClientSecret: 'google-secret'
+          })
+        };
       }
       return { ok: true, json: async () => ({ access_token: 'minted-ga', expires_in: 3600 }) };
     });
@@ -327,7 +343,18 @@ describe('session helpers refuse stale tokens', () => {
   });
 
   it('returns null rather than the stale token when the refresh fails', async () => {
-    fetchMock.mockResolvedValue({ ok: false, json: async () => ({ error: 'invalid_grant' }) });
+    fetchMock.mockImplementation(async (url: string) => {
+      if (String(url).includes('/api/public-config')) {
+        return {
+          ok: true,
+          json: async () => ({
+            googleDriveClientId: 'google-client',
+            googleDriveClientSecret: 'google-secret'
+          })
+        };
+      }
+      return { ok: false, json: async () => ({ error: 'invalid_grant' }) };
+    });
     setSessionCloudCredentials('pn-test', {
       googleDriveAccounts: [
         {
@@ -381,6 +408,10 @@ describe('session helpers refuse stale tokens', () => {
     const urls = fetchMock.mock.calls.map((call) => String(call[0]));
     expect(urls.filter((u) => u.includes('/api/public-config'))).toHaveLength(1);
     expect(urls.filter((u) => u.includes('https://oauth2.googleapis.com/token'))).toHaveLength(1);
+    const tokenCall = fetchMock.mock.calls.find((call) =>
+      String(call[0]).includes('https://oauth2.googleapis.com/token')
+    );
+    expect(String((tokenCall?.[1] as RequestInit).body)).toContain('client_secret=google-secret');
     expect([a, b, c]).toEqual(['minted-ga', 'minted-ga', 'minted-ga']);
   });
 });

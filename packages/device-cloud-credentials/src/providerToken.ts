@@ -1,7 +1,8 @@
 /**
  * Device-side OAuth code exchange and refresh.
  * The par Noir API never sees a provider refresh token or authorization code.
- * Public clients only: no client secret is sent.
+ * Google's Web client requires client_secret on this post to Google. Callers
+ * pass that secret; Dropbox and Microsoft stay without one.
  */
 
 export const GOOGLE_TOKEN_URL = 'https://oauth2.googleapis.com/token';
@@ -82,6 +83,11 @@ async function postToken(
   return { accessToken, refreshToken, expiresIn };
 }
 
+function applyClientSecret(body: URLSearchParams, clientSecret?: string | null): void {
+  const secret = clientSecret?.trim();
+  if (secret) body.set('client_secret', secret);
+}
+
 export async function exchangeProviderAuthorizationCode(opts: {
   tokenUrl: string;
   clientId: string;
@@ -89,6 +95,8 @@ export async function exchangeProviderAuthorizationCode(opts: {
   redirectUri: string;
   codeVerifier?: string | null;
   scope?: string;
+  /** Required by Google's Web client. Omitted for Dropbox and Microsoft. */
+  clientSecret?: string | null;
 }): Promise<ProviderTokenResult | null> {
   const body = new URLSearchParams({
     code: opts.code,
@@ -96,6 +104,7 @@ export async function exchangeProviderAuthorizationCode(opts: {
     redirect_uri: opts.redirectUri,
     grant_type: 'authorization_code'
   });
+  applyClientSecret(body, opts.clientSecret);
   if (opts.codeVerifier?.trim()) body.set('code_verifier', opts.codeVerifier.trim());
   if (opts.scope) body.set('scope', opts.scope);
   return postToken(opts.tokenUrl, body);
@@ -106,12 +115,15 @@ export async function refreshProviderAccessToken(opts: {
   clientId: string;
   refreshToken: string;
   scope?: string;
+  /** Required by Google's Web client. Omitted for Dropbox and Microsoft. */
+  clientSecret?: string | null;
 }): Promise<ProviderTokenResult | null> {
   const body = new URLSearchParams({
     refresh_token: opts.refreshToken,
     client_id: opts.clientId,
     grant_type: 'refresh_token'
   });
+  applyClientSecret(body, opts.clientSecret);
   if (opts.scope) body.set('scope', opts.scope);
   return postToken(opts.tokenUrl, body);
 }

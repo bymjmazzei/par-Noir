@@ -14,12 +14,10 @@
  */
 
 import {
-  accountRefreshToken,
   freshAccessTokenFromEnvelope,
   isAccessTokenFresh,
   isSealedEnvelopeShape,
-  pickGoogleAccount,
-  refreshDriveAccessToken,
+  resolveFreshDriveToken,
   unsealCloudVaultWithAnyFactor
 } from '@par-noir/device-cloud-credentials';
 import type { SealedEnvelope } from '@par-noir/device-cloud-credentials';
@@ -36,30 +34,6 @@ interface DriveTokenOptions extends UnsealFactors {
   /** Authorization code from /oauth/authorize/authenticate, proving unlock. */
   code?: string | null;
   clientId?: string | null;
-}
-
-/**
- * Ask Google for a live access token using the vault's refresh token.
- * The refresh token is not sent to the par Noir API.
- */
-async function mintAccessToken(
-  refreshToken: string,
-  opts: DriveTokenOptions
-): Promise<string | null> {
-  if (!opts.clientId?.trim()) {
-    console.warn('[OAuth] Cannot mint Drive token: missing Google client id');
-    return null;
-  }
-  const minted = await refreshDriveAccessToken({
-    refreshToken,
-    clientId: opts.clientId.trim(),
-    path: 'unlock'
-  });
-  if (!minted.token) {
-    console.warn('[OAuth] Drive token refresh rejected', { reason: minted.reason });
-    return null;
-  }
-  return minted.token;
 }
 
 /**
@@ -89,17 +63,17 @@ async function accessTokenFromSealedVault(
     return null;
   }
 
-  const fresh = freshAccessTokenFromEnvelope(credentials);
-  if (fresh) return fresh;
-
-  const account = pickGoogleAccount(credentials);
-  const refreshToken = account ? accountRefreshToken(account) : null;
-  if (!refreshToken) {
-    console.warn('[OAuth] Sealed vault has no refresh token; Drive token unavailable');
+  const resolved = await resolveFreshDriveToken({
+    envelope: credentials,
+    clientId: options.clientId,
+    apiEndpoint: options.apiEndpoint,
+    path: 'unlock'
+  });
+  if (!resolved.token) {
+    console.warn('[OAuth] Drive token unavailable', { reason: resolved.reason });
     return null;
   }
-
-  return mintAccessToken(refreshToken, options);
+  return resolved.token;
 }
 
 const api = {

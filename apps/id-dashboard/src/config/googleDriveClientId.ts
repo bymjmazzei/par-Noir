@@ -1,11 +1,17 @@
 import { API_ENDPOINT } from './api';
 
-const PUBLIC_CONFIG_CACHE_KEY = 'pn_public_config_v1';
+const PUBLIC_CONFIG_CACHE_KEY = 'pn_public_config_v2';
 const PUBLIC_CONFIG_TTL_MS = 60 * 60 * 1000;
 
 type PublicConfigCache = {
   googleDriveClientId: string;
+  googleDriveClientSecret: string;
   fetchedAt: number;
+};
+
+type PublicGoogleConfig = {
+  googleDriveClientId: string;
+  googleDriveClientSecret: string;
 };
 
 function readCachedPublicConfig(): PublicConfigCache | null {
@@ -23,11 +29,11 @@ function readCachedPublicConfig(): PublicConfigCache | null {
   }
 }
 
-function writeCachedPublicConfig(googleDriveClientId: string): void {
+function writeCachedPublicConfig(config: PublicGoogleConfig): void {
   try {
     sessionStorage.setItem(
       PUBLIC_CONFIG_CACHE_KEY,
-      JSON.stringify({ googleDriveClientId, fetchedAt: Date.now() } satisfies PublicConfigCache)
+      JSON.stringify({ ...config, fetchedAt: Date.now() } satisfies PublicConfigCache)
     );
   } catch {
     /* ignore quota errors */
@@ -55,24 +61,17 @@ async function retryPublicConfigFetch<T>(
   throw lastError!;
 }
 
-/**
- * Returns the Google Drive OAuth client ID for the dashboard.
- * Uses VITE_GOOGLE_DRIVE_CLIENT_ID at build time when set; otherwise
- * fetches from API /api/public-config so deploys don't depend on .env.
- */
-export async function getGoogleDriveClientId(): Promise<string> {
-  const fromEnv = import.meta.env.VITE_GOOGLE_DRIVE_CLIENT_ID;
-  if (fromEnv && typeof fromEnv === 'string' && fromEnv.trim() !== '') {
-    return fromEnv.trim();
-  }
-
+async function loadPublicGoogleConfig(): Promise<PublicGoogleConfig> {
   const cached = readCachedPublicConfig();
   if (cached?.googleDriveClientId) {
-    return cached.googleDriveClientId;
+    return {
+      googleDriveClientId: cached.googleDriveClientId,
+      googleDriveClientSecret: cached.googleDriveClientSecret || ''
+    };
   }
 
   try {
-    const clientId = await retryPublicConfigFetch(async () => {
+    const config = await retryPublicConfigFetch(async () => {
       const res = await fetch(`${API_ENDPOINT}/api/public-config`);
       if (res.status === 429) {
         const retryAfterHeader = res.headers.get('Retry-After');
@@ -83,16 +82,48 @@ export async function getGoogleDriveClientId(): Promise<string> {
           : 3000;
         throw err;
       }
-      if (!res.ok) return '';
-      const data = (await res.json()) as { googleDriveClientId?: string };
-      return (data.googleDriveClientId && String(data.googleDriveClientId).trim()) || '';
+      if (!res.ok) return { googleDriveClientId: '', googleDriveClientSecret: '' };
+      const data = (await res.json()) as {
+        googleDriveClientId?: string;
+        googleDriveClientSecret?: string;
+      };
+      return {
+        googleDriveClientId: (data.googleDriveClientId && String(data.googleDriveClientId).trim()) || '',
+        googleDriveClientSecret:
+          (data.googleDriveClientSecret && String(data.googleDriveClientSecret).trim()) || ''
+      };
     });
 
-    if (clientId) {
-      writeCachedPublicConfig(clientId);
+    if (config.googleDriveClientId && config.googleDriveClientSecret) {
+      writeCachedPublicConfig(config);
     }
-    return clientId;
+    return config;
   } catch {
-    return cached?.googleDriveClientId || '';
+    return {
+      googleDriveClientId: cached?.googleDriveClientId || '',
+      googleDriveClientSecret: cached?.googleDriveClientSecret || ''
+    };
   }
+}
+
+/**
+ * Returns the Google Drive OAuth client ID for the dashboard.
+ * Uses VITE_GOOGLE_DRIVE_CLIENT_ID at build time when set; otherwise
+ * fetches from API /api/public-config so deploys don't depend on .env.
+ */
+export async function getGoogleDriveClientId(): Promise<string> {
+  const fromEnv = import.meta.env.VITE_GOOGLE_DRIVE_CLIENT_ID;
+  if (fromEnv && typeof fromEnv === 'string' && fromEnv.trim() !== '') {
+    return fromEnv.trim();
+  }
+  return (await loadPublicGoogleConfig()).googleDriveClientId;
+}
+
+/** Google Web client secret. The Drive token post to Google includes it. */
+export async function getGoogleDriveClientSecret(): Promise<string> {
+  const fromEnv = import.meta.env.VITE_GOOGLE_DRIVE_CLIENT_SECRET;
+  if (typeof fromEnv === 'string' && fromEnv.trim() !== '') {
+    return fromEnv.trim();
+  }
+  return (await loadPublicGoogleConfig()).googleDriveClientSecret;
 }

@@ -15,7 +15,7 @@ import {
   refreshDriveAccessToken,
   type GoogleAccountRow
 } from '@par-noir/device-cloud-credentials';
-import { getGoogleDriveClientId } from '../../config/googleDriveClientId';
+import { getGoogleDriveClientId, getGoogleDriveClientSecret } from '../../config/googleDriveClientId';
 import { IntegrationCredentialManager } from '../../utils/integrationCredentialManager';
 import { getStoredToken } from '../parNoirOAuthInline';
 import {
@@ -296,12 +296,13 @@ export class GoogleDriveBackend extends AbstractStorageBackend {
     }
 
     const clientId = await getGoogleDriveClientId().catch(() => '');
-    if (!clientId) {
+    const clientSecret = await getGoogleDriveClientSecret().catch(() => '');
+    if (!clientId || !clientSecret) {
       this.clearDeadToken();
       return null;
     }
 
-    this.refreshPromise = this.mintAccessToken(refreshToken, clientId);
+    this.refreshPromise = this.mintAccessToken(refreshToken, clientId, clientSecret);
     try {
       return await this.refreshPromise;
     } finally {
@@ -309,10 +310,15 @@ export class GoogleDriveBackend extends AbstractStorageBackend {
     }
   }
 
-  private async mintAccessToken(refreshToken: string, clientId: string): Promise<string | null> {
+  private async mintAccessToken(
+    refreshToken: string,
+    clientId: string,
+    clientSecret: string
+  ): Promise<string | null> {
     const result = await refreshDriveAccessToken({
       refreshToken,
       clientId,
+      clientSecret,
       path: 'GoogleDriveBackend.ensureAccessToken'
     });
 
