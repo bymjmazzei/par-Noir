@@ -463,6 +463,7 @@ export function EditablePagePreview({
   const [fontsReady, setFontsReady] = useState(true);
   const [contentOuterH, setContentOuterH] = useState(400);
   const [measuredSheetW, setMeasuredSheetW] = useState(640);
+  const [measuredSheetH, setMeasuredSheetH] = useState(0);
   const [panelHeightPx, setPanelHeightPx] = useState(0);
 
   useEffect(() => {
@@ -559,7 +560,13 @@ export function EditablePagePreview({
   const dragContentH = flowFillsPanel
     ? openFlowDragHeightPx(contentHInner, panelHeightPx, pad)
     : contentHInner;
-  const box = contentBoxSize(sheet, pad, dragContentH, measuredSheetW);
+  const box = contentBoxSize(
+    sheet,
+    pad,
+    dragContentH,
+    measuredSheetW,
+    scrollWithParent && measuredSheetH > 0 ? measuredSheetH : undefined
+  );
 
   const activeObject = layers.find((l) => l.id === activeLayerId) || null;
   const pageActive = isPageLayerId(activeLayerId);
@@ -608,7 +615,10 @@ export function EditablePagePreview({
   useEffect(() => {
     const el = sheetMeasureRef.current;
     if (!el) return;
-    const measure = () => setMeasuredSheetW(el.clientWidth || 640);
+    const measure = () => {
+      setMeasuredSheetW(el.clientWidth || 640);
+      setMeasuredSheetH(el.clientHeight || 0);
+    };
     measure();
     const ro = new ResizeObserver(measure);
     ro.observe(el);
@@ -934,9 +944,7 @@ export function EditablePagePreview({
         ref={scrollerRef}
         className={
           scrollWithParent
-            ? `flex h-full min-h-0 flex-col overflow-hidden ${
-                clearChrome ? 'bg-transparent p-0' : 'box-border bg-neutral-100 p-3'
-              }`
+            ? 'flex h-full min-h-0 w-full flex-col overflow-hidden bg-transparent p-0'
             : `flex min-h-0 flex-1 overflow-auto ${clearChrome ? 'bg-transparent' : 'bg-neutral-100'} ${
                 flowOpen ? 'items-stretch p-0' : 'items-start justify-center p-6'
               }`
@@ -958,7 +966,7 @@ export function EditablePagePreview({
           }
           className={
             scrollWithParent
-              ? 'min-h-0 w-full flex-1 shadow-none'
+              ? 'h-full min-h-0 w-full shadow-none'
               : flowOpen
                 ? 'min-h-full shadow-none'
                 : undefined

@@ -53,7 +53,7 @@ describe('preview page toolbar', () => {
       </PreviewPageStrip>
     );
     expect(html).toContain('data-page-view="vertical"');
-    expect(html).toContain('contents');
+    expect(html).toContain('flex-col');
     expect(html).not.toContain('flex-row');
     expect(html).not.toContain('data-page-seam');
   });

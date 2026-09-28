@@ -27,8 +27,8 @@ import {
   attachNotary,
   appendDocPage,
   pageSwipeAxisForView,
+  fittedPreviewPagePx,
   resolvePageView,
-  SCREEN_PAGE_WIDTH_PX,
   verifyChain,
   ensureOwnerAssignment,
   collectFontFamiliesFromDoc,
@@ -192,6 +192,8 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
   const [activeSlug, setActiveSlug] = useState(initial?.manifest.toc[0] || 'body');
   const [showPreview, setShowPreview] = useState(true);
   const [previewToolbarHost, setPreviewToolbarHost] = useState<HTMLDivElement | null>(null);
+  const [previewPaneEl, setPreviewPaneEl] = useState<HTMLDivElement | null>(null);
+  const [previewPaneSize, setPreviewPaneSize] = useState({ width: 0, height: 0 });
   const [galleryComposeCapture, setGalleryComposeCapture] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
   const [showComments, setShowComments] = useState(false);
@@ -235,6 +237,19 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
   );
   const [connectReady, setConnectReady] = useState(false);
   const verifiedAuthor = canPublishPublicTemplate(session);
+
+  useEffect(() => {
+    if (!previewPaneEl) return;
+    const measure = () =>
+      setPreviewPaneSize({
+        width: previewPaneEl.clientWidth,
+        height: previewPaneEl.clientHeight
+      });
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(previewPaneEl);
+    return () => observer.disconnect();
+  }, [previewPaneEl]);
 
   useEffect(() => {
     let cancelled = false;
@@ -1634,6 +1649,15 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
     defaultEditorPagePresentation(),
     bundle.manifest.pagePresentation
   );
+  const previewPageBox = fittedPreviewPagePx(
+    bundle.manifest.pageLayout,
+    previewPaneSize.width,
+    previewPaneSize.height,
+    {
+      widthPx: bundle.manifest.flowWorkspaceWidthPx,
+      heightPx: bundle.manifest.flowWorkspaceHeightPx
+    }
+  );
   const screenStripBackground = pageFrameStyle(pagePresentation);
   if (
     (!screenStripBackground.backgroundColor ||
@@ -2289,16 +2313,18 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
                   className="relative z-30 shrink-0 overflow-visible bg-white"
                 />
                 <div
+                  ref={setPreviewPaneEl}
                   className={`min-h-0 min-w-0 flex-1 bg-neutral-100 ${
                     pageView === 'vertical'
-                      ? 'flex flex-col overflow-x-hidden overflow-y-auto'
+                      ? 'overflow-x-hidden overflow-y-auto'
                       : 'overflow-x-auto overflow-y-hidden'
                   }`}
                 >
                 <PreviewPageStrip
                   pageView={pageView}
                   pageCount={previewPages.length}
-                  pageWidthPx={SCREEN_PAGE_WIDTH_PX}
+                  pageWidthPx={previewPageBox.width}
+                  pageHeightPx={previewPageBox.height}
                   background={pageView === 'screen' ? screenStripBackground : undefined}
                 >
                   {previewPages.map((page) => {
@@ -2321,10 +2347,8 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
                     return (
                       <div
                         key={page.slug}
-                        className="h-full w-full shrink-0"
-                        style={
-                          pageView === 'horizontal' ? { width: SCREEN_PAGE_WIDTH_PX } : undefined
-                        }
+                        className="shrink-0"
+                        style={{ width: previewPageBox.width, height: previewPageBox.height }}
                         onClick={() => {
                           if (!active) setActiveSlug(page.slug);
                         }}

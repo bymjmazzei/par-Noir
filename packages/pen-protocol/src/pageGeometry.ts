@@ -87,6 +87,43 @@ export function pageSheetDims(
   return { pageWidthPx: w, pageHeightPx: h, fillWidth: false, paged: false };
 }
 
+/**
+ * Page box for the live preview. Letter and A4 keep their paper aspect in
+ * every view. The box is scaled to fit the panel, never stretched.
+ * Open flow uses the panel itself.
+ */
+export function fittedPreviewPagePx(
+  layout: PenPageLayout | undefined,
+  panelWidthPx: number,
+  panelHeightPx: number,
+  flow?: { widthPx?: number | null; heightPx?: number | null }
+): { width: number; height: number } {
+  const sheet = pageSheetDims(layout, flow);
+  const panelW = Math.max(0, Math.round(panelWidthPx) || 0);
+  const panelH = Math.max(0, Math.round(panelHeightPx) || 0);
+  if (sheet.fillWidth) {
+    const width = panelW > 0 ? panelW : DEFAULT_FLOW_WORKSPACE_WIDTH_PX;
+    if (sheet.pageHeightPx == null) {
+      return {
+        width,
+        height: panelH > 0 ? panelH : DEFAULT_FLOW_WORKSPACE_HEIGHT_PX
+      };
+    }
+    const boundH = panelH > 0 ? panelH : sheet.pageHeightPx;
+    const scale = Math.min(1, boundH / sheet.pageHeightPx);
+    return { width, height: Math.max(1, Math.round(sheet.pageHeightPx * scale)) };
+  }
+  const natW = sheet.pageWidthPx ?? DEFAULT_FLOW_WORKSPACE_WIDTH_PX;
+  const natH = sheet.pageHeightPx ?? DEFAULT_FLOW_WORKSPACE_HEIGHT_PX;
+  const boundW = panelW > 0 ? panelW : natW;
+  const boundH = panelH > 0 ? panelH : natH;
+  const scale = Math.min(boundW / natW, boundH / natH);
+  return {
+    width: Math.max(1, Math.round(natW * scale)),
+    height: Math.max(1, Math.round(natH * scale))
+  };
+}
+
 /** Content box inside Body padding (layer coordinate space). */
 export function contentBoxSize(
   sheet: PageSheetDims,
@@ -97,7 +134,9 @@ export function contentBoxSize(
    * also required for Letter/A4 when CSS `max-width:100%` shrinks the page
    * below the nominal print width — float insets must match the used box.
    */
-  measuredWidthPx?: number
+  measuredWidthPx?: number,
+  /** Used height of the sheet. Keeps letter/A4 aspect when the preview scales the page. */
+  measuredHeightPx?: number
 ): { width: number; height: number } {
   const nominalOuter = sheet.pageWidthPx;
   const measured =
@@ -116,7 +155,12 @@ export function contentBoxSize(
     : sheet.pageHeightPx
       ? Math.max(MIN_LAYER_SIZE_PX, sheet.pageHeightPx - 2 * paddingPx)
       : Math.max(240, contentHeightPx);
-  const height = Math.max(minH, contentHeightPx);
+  const measuredH =
+    measuredHeightPx != null && measuredHeightPx > 0 ? Math.round(measuredHeightPx) : undefined;
+  const height =
+    measuredH != null
+      ? Math.max(MIN_LAYER_SIZE_PX, measuredH - 2 * paddingPx)
+      : Math.max(minH, contentHeightPx);
   return { width, height };
 }
 

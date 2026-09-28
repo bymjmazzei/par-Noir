@@ -74,15 +74,15 @@ export function PageSheetColumn({
           : 'bg-white shadow-[0_1px_3px_rgba(0,0,0,0.12),0_0_0_1px_rgba(0,0,0,0.06)]'
       } ${dims.fillWidth ? 'w-full' : ''} ${className || ''}`}
       style={{
-        width: dims.fillWidth ? '100%' : dims.pageWidthPx ?? undefined,
-        maxWidth: '100%',
+        width: containInParent || dims.fillWidth ? '100%' : dims.pageWidthPx ?? undefined,
+        maxWidth: containInParent ? 'none' : '100%',
         minHeight: containInParent
-          ? 0
+          ? '100%'
           : dims.fillWidth && fitParent
             ? `max(100%, ${stackHeight}px)`
             : stackHeight,
         height: containInParent
-          ? 'auto'
+          ? '100%'
           : dims.fillWidth && !dims.pageHeightPx && fitParent
             ? '100%'
             : undefined,

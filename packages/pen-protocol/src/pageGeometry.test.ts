@@ -1,7 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import {
+  A4_HEIGHT_PX,
+  A4_WIDTH_PX,
   clampLayerRect,
   contentBoxSize,
+  fittedPreviewPagePx,
   openFlowDragHeightPx,
   fitAspectInBox,
   fitMediaLayerIntoContainer,
@@ -57,6 +60,22 @@ describe('pageGeometry', () => {
     expect(px.w).toBe(Math.round(0.4 * (LETTER_WIDTH_PX - 80)));
     expect(clampLayerRect(px, letterBox.width, letterBox.height).w).toBe(px.w);
     expect(clampLayerRect(px, flowBox.width, flowBox.height).w).toBe(px.w);
+  });
+
+  it('letter and A4 keep paper aspect when fitted to the panel', () => {
+    const letter = fittedPreviewPagePx('letter', 900, 1000);
+    const a4 = fittedPreviewPagePx('a4', 900, 1000);
+    expect(letter.height).toBeLessThanOrEqual(1000);
+    expect(letter.width).toBeLessThanOrEqual(900);
+    expect(letter.width / letter.height).toBeCloseTo(LETTER_WIDTH_PX / LETTER_HEIGHT_PX, 2);
+    expect(a4.width / a4.height).toBeCloseTo(A4_WIDTH_PX / A4_HEIGHT_PX, 2);
+    expect(a4.width).not.toBe(letter.width);
+    expect(fittedPreviewPagePx('flow', 800, 600, { widthPx: null })).toEqual({
+      width: 800,
+      height: 600
+    });
+    const fixed = fittedPreviewPagePx('flow', 1000, 1000, { widthPx: 640, heightPx: 800 });
+    expect(fixed.width / fixed.height).toBeCloseTo(640 / 800, 2);
   });
 
   it('open flow drag height fills the visible panel', () => {

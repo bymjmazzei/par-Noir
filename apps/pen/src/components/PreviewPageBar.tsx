@@ -22,12 +22,14 @@ export function PreviewPageStrip({
   pageView,
   pageCount,
   pageWidthPx = SCREEN_PAGE_WIDTH_PX,
+  pageHeightPx,
   background,
   children
 }: {
   pageView: PenPageView;
   pageCount: number;
   pageWidthPx?: number;
+  pageHeightPx?: number;
   /** Painted once across a screen strip. */
   background?: CSSProperties;
   children: ReactNode;
@@ -41,15 +43,16 @@ export function PreviewPageStrip({
       data-screen-background={screen ? 'strip' : undefined}
       className={
         pageView === 'vertical'
-          ? 'contents'
+          ? 'flex w-full flex-col items-center'
           : pageView === 'horizontal'
-            ? 'flex h-full max-h-full w-max flex-row items-stretch gap-3 overflow-hidden'
-            : 'flex h-full max-h-full w-max flex-row items-stretch overflow-hidden'
+            ? 'flex h-full w-max flex-row items-center gap-3'
+            : 'flex w-max flex-row items-stretch'
       }
       style={
         screen
           ? {
               width,
+              ...(pageHeightPx ? { height: pageHeightPx } : {}),
               ...(background || {})
             }
           : undefined
@@ -57,7 +60,14 @@ export function PreviewPageStrip({
     >
       {screen
         ? items.map((child, index) => (
-            <div key={index} className="relative h-full shrink-0" style={{ width: pageWidthPx }}>
+            <div
+              key={index}
+              className="relative shrink-0"
+              style={{
+                width: pageWidthPx,
+                ...(pageHeightPx ? { height: pageHeightPx } : {})
+              }}
+            >
               {child}
               {index < items.length - 1 ? (
                 <div
