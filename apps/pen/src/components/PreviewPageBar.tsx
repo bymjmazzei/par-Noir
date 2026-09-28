@@ -120,22 +120,35 @@ export function PreviewPageStrip({
   );
 }
 
+export function pageTileAxis(pageView: PenPageView): 'vertical' | 'horizontal' {
+  return pageView === 'vertical' ? 'vertical' : 'horizontal';
+}
+
 function PageHoverPreview({
   section,
-  presentation
+  presentation,
+  width = THUMB_W
 }: {
   section: PenSectionContent;
   presentation: PenPagePresentation;
+  width?: number;
 }) {
   const contentW = 640;
-  const scale = THUMB_W / contentW;
-  const layers = (section.layers || []).filter((layer) => layer.visible !== false && !layer.bodyWrap);
+  const scale = width / contentW;
+  const layers = (section.layers || []).filter(
+    (layer) => layer.visible !== false && !layer.bodyWrap && layer.kind !== 'guide'
+  );
   const maxY = layers.reduce((max, layer) => Math.max(max, layer.y + layer.h), 180);
-  const height = Math.min(360, Math.max(160, Math.round((maxY + 48) * scale)));
+  const height =
+    width < 200
+      ? Math.round(width * 1.29)
+      : Math.min(360, Math.max(160, Math.round((maxY + 48) * scale)));
   return (
     <div
-      className="pointer-events-none relative overflow-hidden border border-stone-300 shadow-lg"
-      style={{ width: THUMB_W, height, ...pageFrameStyle(presentation) }}
+      className={`pointer-events-none relative overflow-hidden border border-stone-300 ${
+        width < 200 ? '' : 'shadow-lg'
+      }`}
+      style={{ width, height, ...pageFrameStyle(presentation) }}
     >
       {layers.map((layer) => (
         <div
@@ -271,6 +284,7 @@ export function PreviewOrientationMenu({
 export function PreviewPageBar({
   pages,
   activeSlug,
+  pageView,
   presentation,
   onSelect,
   onAddPage,
@@ -280,6 +294,7 @@ export function PreviewPageBar({
 }: {
   pages: Array<{ slug: string; title: string; section?: PenSectionContent }>;
   activeSlug: string;
+  pageView: PenPageView;
   presentation: PenPagePresentation;
   onSelect: (slug: string) => void;
   onAddPage: () => void;
@@ -287,7 +302,6 @@ export function PreviewPageBar({
   onReorder: (fromIndex: number, toIndex: number) => void;
   onFlip: (direction: -1 | 1) => void;
 }) {
-  const [hoverSlug, setHoverSlug] = useState<string | null>(null);
   const [pagesOpen, setPagesOpen] = useState(false);
   const [deleteMode, setDeleteMode] = useState(false);
   const [dragIndex, setDragIndex] = useState<number | null>(null);
@@ -295,7 +309,6 @@ export function PreviewPageBar({
   const active = pages[activeIndex];
   const activeLabel = active?.title || `Page ${activeIndex + 1}`;
   const [pageDraft, setPageDraft] = useState(String(activeIndex + 1));
-  const hover = pages.find((page) => page.slug === hoverSlug);
   const canDelete = pages.length > 1;
 
   useEffect(() => {
@@ -337,7 +350,7 @@ export function PreviewPageBar({
           {activeLabel}
         </button>
         {pagesOpen && (
-          <div className="absolute bottom-full left-0 z-40 mb-1 w-56 rounded border border-stone-300 bg-white p-1 shadow-lg">
+          <div className="absolute bottom-full left-0 z-40 mb-1 max-w-[80vw] rounded border border-stone-300 bg-white p-1 shadow-lg">
             <div className="mb-1 flex items-center justify-end gap-1">
               <button
                 type="button"
@@ -359,6 +372,12 @@ export function PreviewPageBar({
                 +
               </button>
             </div>
+            <div
+              data-page-tiles={pageTileAxis(pageView)}
+              className={`flex gap-1 overflow-auto ${
+                pageTileAxis(pageView) === 'vertical' ? 'max-h-80 flex-col' : 'max-w-[70vw] flex-row'
+              }`}
+            >
             {pages.map((page, index) => {
               const title = page.title || `Page ${index + 1}`;
               const selected = page.slug === activeSlug;
@@ -369,44 +388,48 @@ export function PreviewPageBar({
                   onDragStart={() => setDragIndex(index)}
                   onDragOver={(event: DragEvent) => event.preventDefault()}
                   onDrop={() => dropOn(index)}
-                  className="relative"
-                  onMouseEnter={() => setHoverSlug(page.slug)}
-                  onMouseLeave={() => setHoverSlug((current) => (current === page.slug ? null : current))}
+                  className="relative shrink-0"
                 >
-                  <div className="flex items-center gap-1">
-                    {deleteMode && (
-                      <button
-                        type="button"
-                        aria-label={`Delete ${title}`}
-                        disabled={!canDelete}
-                        className="shrink-0 rounded px-1 text-[12px] text-stone-500 hover:text-red-700 disabled:cursor-not-allowed disabled:opacity-40"
-                        onClick={() => onDeletePage(page.slug)}
-                      >
-                        −
-                      </button>
-                    )}
+                  {deleteMode && (
                     <button
                       type="button"
-                      aria-pressed={selected}
-                      className={`min-w-0 flex-1 truncate rounded px-2 py-1 text-left text-[11px] ${
-                        selected ? 'bg-stone-100 font-semibold text-stone-900' : 'text-stone-700 hover:bg-stone-50'
-                      }`}
-                      onClick={() => {
-                        onSelect(page.slug);
-                        setPagesOpen(false);
-                      }}
+                      aria-label={`Delete ${title}`}
+                      disabled={!canDelete}
+                      className="absolute left-0 top-0 z-10 rounded bg-white/90 px-1 text-[12px] text-stone-600 hover:text-red-700 disabled:opacity-40"
+                      onClick={() => onDeletePage(page.slug)}
                     >
-                      {title}
+                      −
                     </button>
-                  </div>
-                  {hover?.slug === page.slug && page.section && (
-                    <div className="absolute left-full top-0 z-50 ml-2">
-                      <PageHoverPreview section={page.section} presentation={presentation} />
-                    </div>
                   )}
+                  <div
+                    role="button"
+                    tabIndex={0}
+                    aria-label={title}
+                    aria-pressed={selected}
+                    className={`block cursor-pointer overflow-hidden rounded ${
+                      selected ? 'ring-2 ring-stone-800' : 'ring-1 ring-stone-300'
+                    }`}
+                    onClick={() => {
+                      onSelect(page.slug);
+                      setPagesOpen(false);
+                    }}
+                    onKeyDown={(event) => {
+                      if (event.key !== 'Enter' && event.key !== ' ') return;
+                      event.preventDefault();
+                      onSelect(page.slug);
+                      setPagesOpen(false);
+                    }}
+                  >
+                    {page.section ? (
+                      <PageHoverPreview section={page.section} presentation={presentation} width={88} />
+                    ) : (
+                      <span className="block w-[88px] px-2 py-6 text-[11px]">{title}</span>
+                    )}
+                  </div>
                 </div>
               );
             })}
+            </div>
           </div>
         )}
       </div>

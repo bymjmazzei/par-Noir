@@ -2557,6 +2557,7 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
                     }
                     onPollVote={(layer) => void voteOnPoll(layer)}
                     onWidgetAction={(layer) => void runWidgetAction(layer)}
+                    snapToPageCenter={Boolean(bundle.manifest.snapToPageGuides)}
                   />
                 )}
                 </div>

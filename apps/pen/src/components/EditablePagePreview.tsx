@@ -12,6 +12,8 @@ import {
   clampLayerRect,
   collectFontFamiliesFromDoc,
   contentBoxSize,
+  createGuideLayer,
+  measureToPx,
   defaultEditorPagePresentation,
   DEFAULT_FLOW_WORKSPACE_HEIGHT_PX,
   DEFAULT_FLOW_WORKSPACE_WIDTH_PX,
@@ -29,6 +31,7 @@ import {
   PAGE_LAYER_ID,
   openFlowDragHeightPx,
   pageSheetDims,
+  pxToMeasure,
   patchLayerStyle,
   recomputeGroupBounds,
   resolvePagePaddingPx,
@@ -38,11 +41,13 @@ import {
   revealSibling,
   sanitizeWidgetMarkup,
   updateLayerLayout,
+  upsertLayer,
   voteFaceForLayer,
   wrapSideFromGeom,
   type PenDocManifest,
   type PenPageLayer,
   type PenPageLayout,
+  type PageMeasureUnit,
   type PenPageView,
   type PenPagePresentation,
   type PenSectionContent
@@ -56,6 +61,7 @@ import {
   pageFrameStyle
 } from './LayerObjectToolbar';
 import { PreviewOrientationMenu } from './PreviewPageBar';
+import { PageGuides } from './PageGuides';
 import { PageSheetColumn } from './PageSheetColumn';
 import { LayerMediaContent } from './LayerMediaContent';
 import { PenMediaPlayer } from '@par-noir/feed-tile';
@@ -470,8 +476,10 @@ export function EditablePagePreview({
   const scrollerRef = useRef<HTMLDivElement>(null);
   const sheetMeasureRef = useRef<HTMLDivElement>(null);
   const [layersOpen, setLayersOpen] = useState(false);
-  const [flowDimsOpen, setFlowDimsOpen] = useState(false);
-  const flowDimsRef = useRef<HTMLDivElement>(null);
+  const [pageSizeOpen, setPageSizeOpen] = useState(false);
+  const [guidesOpen, setGuidesOpen] = useState(false);
+  const [measureUnit, setMeasureUnit] = useState<PageMeasureUnit>('px');
+  const pageToolsRef = useRef<HTMLDivElement>(null);
   const [selectedIds, setSelectedIds] = useState<string[]>([PAGE_LAYER_ID]);
   const [fontsReady, setFontsReady] = useState(true);
   const [contentOuterH, setContentOuterH] = useState(400);
@@ -480,14 +488,15 @@ export function EditablePagePreview({
   const [panelHeightPx, setPanelHeightPx] = useState(0);
 
   useEffect(() => {
-    if (!flowDimsOpen) return;
+    if (!pageSizeOpen && !guidesOpen) return;
     function onDoc(e: MouseEvent) {
-      if (flowDimsRef.current?.contains(e.target as Node)) return;
-      setFlowDimsOpen(false);
+      if (pageToolsRef.current?.contains(e.target as Node)) return;
+      setPageSizeOpen(false);
+      setGuidesOpen(false);
     }
     document.addEventListener('mousedown', onDoc);
     return () => document.removeEventListener('mousedown', onDoc);
-  }, [flowDimsOpen]);
+  }, [pageSizeOpen, guidesOpen]);
 
   const pad = resolvePagePaddingPx(
     mergePagePresentation(defaultEditorPagePresentation(), manifest.pagePresentation).padding
@@ -525,7 +534,12 @@ export function EditablePagePreview({
     () => layers.filter((l) => l.visible !== false && !l.bodyWrap),
     [layers]
   );
-  const items = absoluteLayers.map(layerToItem);
+  const guideLayers = absoluteLayers.filter((layer) => layer.kind === 'guide');
+  const items = absoluteLayers.filter((layer) => layer.kind !== 'guide').map(layerToItem);
+  const snapGuides = {
+    x: guideLayers.filter((layer) => layer.guideAxis !== 'horizontal').map((layer) => layer.x + pad),
+    y: guideLayers.filter((layer) => layer.guideAxis === 'horizontal').map((layer) => layer.y + pad)
+  };
   const groupIds = useMemo(
     () => new Set(layers.filter((l) => l.kind === 'group').map((l) => l.id)),
     [layers]
@@ -730,6 +744,55 @@ export function EditablePagePreview({
     return layers.filter((l) => l.parentGroupId === id).map((l) => l.id);
   }
 
+  function addGuide(axis: 'vertical' | 'horizontal') {
+    const position = axis === 'vertical' ? box.width / 2 : box.height / 2;
+    onSectionChange(upsertLayer(prepared, createGuideLayer(axis, position)));
+    setGuidesOpen(false);
+  }
+
+  function choosePageSize(choice: 'flow' | 'letter' | 'a4' | 'custom') {
+    if (choice === 'letter' || choice === 'a4') {
+      onPageLayoutChange?.(choice);
+    } else {
+      onPageLayoutChange?.('flow');
+      onFlowWorkspaceChange?.(
+        choice === 'flow'
+          ? { widthPx: null, heightPx: null }
+          : {
+              widthPx: flowWidth ?? DEFAULT_FLOW_WORKSPACE_WIDTH_PX,
+              heightPx: flowHeight ?? DEFAULT_FLOW_WORKSPACE_HEIGHT_PX
+            }
+      );
+    }
+    selectLayer(PAGE_LAYER_ID);
+    if (choice !== 'custom') setPageSizeOpen(false);
+  }
+
+  function setCustomPx(axis: 'width' | 'height', raw: number) {
+    if (!onFlowWorkspaceChange || !Number.isFinite(raw)) return;
+    const px = measureToPx(raw, measureUnit);
+    if (axis === 'width') {
+      onFlowWorkspaceChange({
+        widthPx: Math.max(320, Math.min(1600, px)),
+        heightPx: flowHeight ?? DEFAULT_FLOW_WORKSPACE_HEIGHT_PX
+      });
+    } else {
+      onFlowWorkspaceChange({
+        widthPx: flowWidth ?? DEFAULT_FLOW_WORKSPACE_WIDTH_PX,
+        heightPx: Math.max(240, Math.min(4000, px))
+      });
+    }
+  }
+
+  const pageSizeChoice: 'flow' | 'letter' | 'a4' | 'custom' =
+    manifest.pageLayout === 'letter' || manifest.pageLayout === 'a4'
+      ? manifest.pageLayout
+      : flowOpen
+        ? 'flow'
+        : 'custom';
+  const customWidthPx = flowWidth ?? DEFAULT_FLOW_WORKSPACE_WIDTH_PX;
+  const customHeightPx = flowHeight ?? DEFAULT_FLOW_WORKSPACE_HEIGHT_PX;
+
   const frameStyle: CSSProperties = pageFrameStyle(presentation);
   if (
     scrollWithParent &&
@@ -741,24 +804,102 @@ export function EditablePagePreview({
   }
   const bodyHtml = docToHtml(prepared.doc);
   const bodyStyle = bodyMarginStyle(presentation);
-  const isFlow = (manifest.pageLayout || 'flow') === 'flow';
   const chrome = showToolbar ? (
     <>
-      <div className="relative z-20 flex shrink-0 items-center gap-2 border-b border-neutral-200 bg-white px-2 py-1.5">
+      <div
+        ref={pageToolsRef}
+        className="relative z-20 flex shrink-0 items-center gap-2 border-b border-neutral-200 bg-white px-2 py-1.5"
+      >
         {onPageLayoutChange && (
-          <select
-            className="h-6 shrink-0 border-0 bg-transparent text-[11px] font-bold text-black outline-none"
-            value={manifest.pageLayout || 'flow'}
-            title="Page layout"
-            onChange={(e) => {
-              onPageLayoutChange(e.target.value as PenPageLayout);
-              selectLayer(PAGE_LAYER_ID);
-            }}
-          >
-            <option value="flow">Flow</option>
-            <option value="letter">Letter</option>
-            <option value="a4">A4</option>
-          </select>
+          <div className="relative shrink-0">
+            <button
+              type="button"
+              aria-label="Page size"
+              aria-expanded={pageSizeOpen}
+              className="h-6 rounded px-1.5 text-[11px] font-bold text-black"
+              onClick={() => {
+                setPageSizeOpen((open) => !open);
+                setGuidesOpen(false);
+              }}
+            >
+              {pageSizeChoice === 'letter'
+                ? 'Letter'
+                : pageSizeChoice === 'a4'
+                  ? 'A4'
+                  : pageSizeChoice === 'custom'
+                    ? 'Custom'
+                    : 'Flow'}
+            </button>
+            {pageSizeOpen && (
+              <div className="absolute left-0 top-full z-50 mt-1 w-56 rounded-md border border-neutral-200 bg-white p-2 shadow-lg">
+                {(
+                  [
+                    ['flow', 'Flow'],
+                    ['letter', 'Letter'],
+                    ['a4', 'A4'],
+                    ['custom', 'Custom']
+                  ] as const
+                ).map(([value, label]) => (
+                  <button
+                    key={value}
+                    type="button"
+                    aria-pressed={pageSizeChoice === value}
+                    className={`block w-full rounded px-2 py-1 text-left text-[11px] font-bold ${
+                      pageSizeChoice === value
+                        ? 'bg-neutral-900 text-white'
+                        : 'text-neutral-700 hover:bg-neutral-100'
+                    }`}
+                    onClick={() => choosePageSize(value)}
+                  >
+                    {label}
+                  </button>
+                ))}
+                {pageSizeChoice === 'custom' && onFlowWorkspaceChange && (
+                  <div className="mt-2 border-t border-neutral-200 pt-2">
+                    <div className="mb-2 flex gap-1">
+                      {(['px', 'in', 'cm', 'mm'] as const).map((unit) => (
+                        <button
+                          key={unit}
+                          type="button"
+                          aria-pressed={measureUnit === unit}
+                          className={`flex-1 rounded px-1 py-0.5 text-[10px] font-bold uppercase ${
+                            measureUnit === unit
+                              ? 'bg-neutral-900 text-white'
+                              : 'bg-neutral-100 text-neutral-500'
+                          }`}
+                          onClick={() => setMeasureUnit(unit)}
+                        >
+                          {unit}
+                        </button>
+                      ))}
+                    </div>
+                    <label className="mb-1 flex items-center justify-between gap-2 text-[11px] text-neutral-500">
+                      Width
+                      <input
+                        type="number"
+                        aria-label="Custom width"
+                        step={measureUnit === 'px' ? 1 : measureUnit === 'mm' ? 0.1 : 0.01}
+                        className="h-7 w-20 rounded border border-neutral-200 px-1.5 text-[12px] font-bold text-black"
+                        value={pxToMeasure(customWidthPx, measureUnit)}
+                        onChange={(e) => setCustomPx('width', Number(e.target.value))}
+                      />
+                    </label>
+                    <label className="flex items-center justify-between gap-2 text-[11px] text-neutral-500">
+                      Height
+                      <input
+                        type="number"
+                        aria-label="Custom height"
+                        step={measureUnit === 'px' ? 1 : measureUnit === 'mm' ? 0.1 : 0.01}
+                        className="h-7 w-20 rounded border border-neutral-200 px-1.5 text-[12px] font-bold text-black"
+                        value={pxToMeasure(customHeightPx, measureUnit)}
+                        onChange={(e) => setCustomPx('height', Number(e.target.value))}
+                      />
+                    </label>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
         )}
         {pageView && onPageView && onToggleViewLock && (
           <PreviewOrientationMenu
@@ -768,121 +909,49 @@ export function EditablePagePreview({
             onToggleViewLock={onToggleViewLock}
           />
         )}
-        {isFlow && onFlowWorkspaceChange && (
-          <div className="relative shrink-0" ref={flowDimsRef}>
-            <button
-              type="button"
-              title="Workspace dimensions"
-              aria-label="Workspace dimensions"
-              aria-expanded={flowDimsOpen}
-              aria-pressed={!flowOpen || flowDimsOpen}
-              className={`flex h-6 w-6 items-center justify-center rounded ${
-                flowDimsOpen || !flowOpen
-                  ? 'bg-neutral-900 text-white'
-                  : 'text-neutral-400 hover:text-black'
-              }`}
-              onClick={() => setFlowDimsOpen((o) => !o)}
-            >
-              <IconTapeMeasure width={14} height={14} />
-            </button>
-            {flowDimsOpen && (
-              <div className="absolute left-0 top-full z-50 mt-1 w-52 rounded-md border border-neutral-200 bg-white p-3 shadow-lg">
-                <div className="mb-2 text-[10px] font-bold uppercase tracking-wide text-neutral-400">
-                  Flow size
-                </div>
-                <div className="mb-2 flex gap-1">
-                  <button
-                    type="button"
-                    title="Fill the panel — no fixed width"
-                    aria-pressed={flowOpen}
-                    className={`flex-1 rounded px-1.5 py-1 text-[10px] font-bold uppercase tracking-wide ${
-                      flowOpen
-                        ? 'bg-neutral-900 text-white'
-                        : 'bg-neutral-100 text-neutral-500 hover:text-black'
-                    }`}
-                    onClick={() =>
-                      onFlowWorkspaceChange({
-                        widthPx: null,
-                        heightPx: null
-                      })
-                    }
-                  >
-                    Open
-                  </button>
-                  <button
-                    type="button"
-                    title="Lock to typed width and height"
-                    aria-pressed={!flowOpen}
-                    className={`flex-1 rounded px-1.5 py-1 text-[10px] font-bold uppercase tracking-wide ${
-                      !flowOpen
-                        ? 'bg-neutral-900 text-white'
-                        : 'bg-neutral-100 text-neutral-500 hover:text-black'
-                    }`}
-                    onClick={() =>
-                      onFlowWorkspaceChange({
-                        widthPx: flowWidth ?? DEFAULT_FLOW_WORKSPACE_WIDTH_PX,
-                        heightPx: flowHeight ?? DEFAULT_FLOW_WORKSPACE_HEIGHT_PX
-                      })
-                    }
-                  >
-                    Fixed
-                  </button>
-                </div>
-                {!flowOpen && (
-                  <div className="flex flex-col gap-2">
-                    <label className="flex items-center justify-between gap-2 text-[11px] text-neutral-500">
-                      Width
-                      <input
-                        type="number"
-                        min={320}
-                        max={1600}
-                        step={16}
-                        className="h-7 w-20 rounded border border-neutral-200 px-1.5 text-[12px] font-bold text-black"
-                        value={flowWidth ?? DEFAULT_FLOW_WORKSPACE_WIDTH_PX}
-                        onChange={(e) => {
-                          const n = Math.round(Number(e.target.value));
-                          if (!Number.isFinite(n)) return;
-                          onFlowWorkspaceChange({
-                            widthPx: Math.max(320, Math.min(1600, n)),
-                            heightPx: flowHeight
-                          });
-                        }}
-                      />
-                    </label>
-                    <label className="flex items-center justify-between gap-2 text-[11px] text-neutral-500">
-                      Height
-                      <input
-                        type="number"
-                        min={240}
-                        max={4000}
-                        step={16}
-                        className="h-7 w-20 rounded border border-neutral-200 px-1.5 text-[12px] font-bold text-black"
-                        value={flowHeight ?? DEFAULT_FLOW_WORKSPACE_HEIGHT_PX}
-                        onChange={(e) => {
-                          const n = Math.round(Number(e.target.value));
-                          if (!Number.isFinite(n)) return;
-                          onFlowWorkspaceChange({
-                            widthPx: flowWidth ?? DEFAULT_FLOW_WORKSPACE_WIDTH_PX,
-                            heightPx: Math.max(240, Math.min(4000, n))
-                          });
-                        }}
-                      />
-                    </label>
-                  </div>
-                )}
-                {flowOpen && (
-                  <p className="text-[10px] leading-snug text-neutral-400">
-                    Workspace fills the panel. Choose Fixed to type width and height.
-                  </p>
-                )}
-              </div>
-            )}
-          </div>
-        )}
+        <div className="relative shrink-0">
+          <button
+            type="button"
+            title="Guidelines"
+            aria-label="Guidelines"
+            aria-expanded={guidesOpen}
+            className={`flex h-6 w-6 items-center justify-center rounded ${
+              guidesOpen ? 'bg-neutral-900 text-white' : 'text-neutral-400 hover:text-black'
+            }`}
+            onClick={() => {
+              setGuidesOpen((open) => !open);
+              setPageSizeOpen(false);
+            }}
+          >
+            <IconTapeMeasure width={14} height={14} />
+          </button>
+          {guidesOpen && (
+            <div className="absolute left-0 top-full z-50 mt-1 flex gap-1 rounded-md border border-neutral-200 bg-white p-1 shadow-lg">
+              <button
+                type="button"
+                aria-label="Add vertical guide"
+                title="Add vertical guide"
+                className="flex h-8 w-8 items-center justify-center rounded text-neutral-700 hover:bg-neutral-100"
+                onClick={() => addGuide('vertical')}
+              >
+                <span className="block h-5 w-px bg-neutral-800" />
+              </button>
+              <button
+                type="button"
+                aria-label="Add horizontal guide"
+                title="Add horizontal guide"
+                className="flex h-8 w-8 items-center justify-center rounded text-neutral-700 hover:bg-neutral-100"
+                onClick={() => addGuide('horizontal')}
+              >
+                <span className="block h-px w-5 bg-neutral-800" />
+              </button>
+            </div>
+          )}
+        </div>
         {onSnapChange && (
           <button
             type="button"
-            title={snapEnabled ? 'Snap to page center on' : 'Snap to page center off'}
+            title={snapEnabled ? 'Snap to center and guides on' : 'Snap to center and guides off'}
             aria-pressed={snapEnabled}
             className={`shrink-0 rounded px-1.5 text-[10px] font-bold uppercase tracking-wide ${
               snapEnabled ? 'bg-neutral-900 text-white' : 'text-neutral-400 hover:text-black'
@@ -1050,6 +1119,32 @@ export function EditablePagePreview({
             />
 
             {/* Layers cover the whole page. Body text keeps the margin. */}
+            {showAbsoluteLayers && guideLayers.length > 0 && (
+              <PageGuides
+                guides={guideLayers.map((layer) => ({
+                  id: layer.id,
+                  axis: layer.guideAxis === 'horizontal' ? 'horizontal' : 'vertical',
+                  position: (layer.guideAxis === 'horizontal' ? layer.y : layer.x) + pad
+                }))}
+                onMove={(id, position) => {
+                  const layer = guideLayers.find((item) => item.id === id);
+                  if (!layer) return;
+                  const stored = position - pad;
+                  onSectionChange(
+                    updateLayerLayout(prepared, [
+                      {
+                        id,
+                        x: layer.guideAxis === 'horizontal' ? layer.x : stored,
+                        y: layer.guideAxis === 'horizontal' ? stored : layer.y,
+                        w: layer.w,
+                        h: layer.h,
+                        zIndex: layer.zIndex
+                      }
+                    ])
+                  );
+                }}
+              />
+            )}
             {showAbsoluteLayers && (
             <LayoutSurface
               className="pointer-events-none absolute z-[1]"
@@ -1065,6 +1160,7 @@ export function EditablePagePreview({
               bounds={{ width: box.width + 2 * pad, height: box.height + 2 * pad }}
               selectedId={pageActive ? null : activeLayerId}
               snapToPageCenter={snapEnabled}
+              snapGuides={snapGuides}
               getLinkedIds={getLinkedIds}
               resizeDisabledIds={groupIds}
               lockAspectRatioIds={mediaAspectLockIds}

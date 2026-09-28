@@ -31,6 +31,7 @@ export function LayoutSurface({
   renderItem,
   disabled,
   snapToPageCenter,
+  snapGuides,
   getLinkedIds,
   resizeDisabledIds,
   lockAspectRatioIds,
@@ -45,6 +46,8 @@ export function LayoutSurface({
   renderItem: (item: LayoutItem, selected: boolean) => ReactNode;
   disabled?: boolean;
   snapToPageCenter?: boolean;
+  /** Guide lines in the same coordinate space as items. */
+  snapGuides?: { x: number[]; y: number[] };
   /** When moving `id`, also move these ids by the same delta. */
   getLinkedIds?: (id: string) => string[];
   /** Hide resize handle for these ids (e.g. group roots). */
@@ -171,7 +174,8 @@ export function LayoutSurface({
       const snapped = snapLayoutToPageCenter(next, {
         enabled: snapToPageCenter,
         contentW: b.width,
-        contentH: b.height
+        contentH: b.height,
+        guides: snapGuides
       });
       const appliedDx = snapped.x - drag.orig.x;
       const appliedDy = snapped.y - drag.orig.y;

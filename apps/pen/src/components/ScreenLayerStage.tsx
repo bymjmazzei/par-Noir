@@ -12,6 +12,7 @@ import {
   type PenSectionContent
 } from '@par-noir/pen-protocol';
 import { LayoutSurface, type LayoutItem } from '../layout';
+import { PageGuides } from './PageGuides';
 import { PreviewLayerFace } from './PreviewLayerFace';
 import type { PenSession } from '../services/penSession';
 
@@ -29,7 +30,8 @@ export function ScreenLayerStage({
   onSelectLayer,
   onSectionsChange,
   onPollVote,
-  onWidgetAction
+  onWidgetAction,
+  snapToPageCenter = false
 }: {
   sections: PenSectionContent[];
   pageWidth: number;
@@ -45,12 +47,25 @@ export function ScreenLayerStage({
   onSectionsChange: (next: PenSectionContent[]) => void;
   onPollVote?: (layer: PenPageLayer) => void;
   onWidgetAction?: (layer: PenPageLayer) => void;
+  snapToPageCenter?: boolean;
 }) {
   const owner = new Map<string, { index: number; slug: string }>();
   const items: LayoutItem[] = [];
+  const guides: Array<{ id: string; axis: 'vertical' | 'horizontal'; position: number; index: number }> = [];
   sections.forEach((section, index) => {
     for (const layer of section.layers || []) {
       if (layer.visible === false || layer.bodyWrap) continue;
+      if (layer.kind === 'guide') {
+        const at = pageLayerToSheet(layer, index, pageWidth, pad);
+        const axis = layer.guideAxis === 'horizontal' ? 'horizontal' : 'vertical';
+        guides.push({
+          id: layer.id,
+          axis,
+          position: axis === 'horizontal' ? at.y : at.x,
+          index
+        });
+        continue;
+      }
       owner.set(layer.id, { index, slug: section.slug });
       const at = pageLayerToSheet(layer, index, pageWidth, pad);
       items.push({
@@ -68,11 +83,42 @@ export function ScreenLayerStage({
   });
 
   return (
+    <>
+    <PageGuides
+      guides={guides}
+      onMove={(id, position) => {
+        const guide = guides.find((item) => item.id === id);
+        if (!guide) return;
+        const local = sheetLayerToPage({ x: position, y: position }, guide.index, pageWidth, pad);
+        onSectionsChange(
+          sections.map((section, index) => {
+            if (index !== guide.index) return section;
+            return {
+              ...section,
+              layers: (section.layers || []).map((layer) =>
+                layer.id === id
+                  ? {
+                      ...layer,
+                      x: guide.axis === 'horizontal' ? layer.x : local.x,
+                      y: guide.axis === 'horizontal' ? local.y : layer.y
+                    }
+                  : layer
+              )
+            };
+          })
+        );
+      }}
+    />
     <LayoutSurface
       className="pointer-events-none absolute inset-0 z-20"
       bounds={{ width: sections.length * pageWidth, height: pageHeight }}
       items={items}
       selectedId={activeLayerId}
+      snapToPageCenter={snapToPageCenter}
+      snapGuides={{
+        x: guides.filter((guide) => guide.axis === 'vertical').map((guide) => guide.position),
+        y: guides.filter((guide) => guide.axis === 'horizontal').map((guide) => guide.position)
+      }}
       onSelect={(id) => onSelectLayer(id)}
       getLinkedIds={(id) => {
         for (const section of sections) {
@@ -151,5 +197,6 @@ export function ScreenLayerStage({
         );
       }}
     />
+    </>
   );
 }

@@ -8,7 +8,13 @@ import {
   SCREEN_PAGE_WIDTH_PX,
   screenStripWidthPx
 } from '@par-noir/pen-protocol';
-import { OrientationChoices, PreviewOrientationMenu, PreviewPageBar, PreviewPageStrip } from './PreviewPageBar';
+import {
+  OrientationChoices,
+  pageTileAxis,
+  PreviewOrientationMenu,
+  PreviewPageBar,
+  PreviewPageStrip
+} from './PreviewPageBar';
 
 describe('preview page toolbar', () => {
   it('add page appends a section and selects it', () => {
@@ -66,6 +72,7 @@ describe('preview page toolbar', () => {
           { slug: 'page-2', title: 'Page 2', section: emptySection('page-2') }
         ]}
         activeSlug="body"
+        pageView="horizontal"
         presentation={defaultPagePresentation()}
         onSelect={() => undefined}
         onAddPage={() => undefined}
@@ -81,6 +88,9 @@ describe('preview page toolbar', () => {
     expect(html).toContain('Page 1');
     expect(html).not.toContain('Page 2');
     expect(html).not.toContain('data-page-view');
+    expect(pageTileAxis('vertical')).toBe('vertical');
+    expect(pageTileAxis('horizontal')).toBe('horizontal');
+    expect(pageTileAxis('screen')).toBe('horizontal');
   });
 
   it('orientation shows the active icon and keeps the choices closed', () => {

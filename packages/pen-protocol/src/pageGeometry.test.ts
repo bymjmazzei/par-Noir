@@ -5,6 +5,9 @@ import {
   clampLayerRect,
   contentBoxSize,
   fittedPreviewPagePx,
+  measureToPx,
+  pxToMeasure,
+  snapLayoutToContentCenter,
   pageLayerToSheet,
   sheetLayerToPage,
   openFlowDragHeightPx,
@@ -86,6 +89,20 @@ describe('pageGeometry', () => {
     expect(sheetLayerToPage({ x: 0, y: 0 }, 0, 200, 40)).toEqual({ x: -40, y: -40 });
     const display = pageLayerToSheet({ x: -40, y: 12 }, 2, 200, 40);
     expect(sheetLayerToPage(display, 2, 200, 40)).toEqual({ x: -40, y: 12 });
+  });
+
+  it('converts page measurements and snaps to guides', () => {
+    expect(measureToPx(1, 'in')).toBe(96);
+    expect(pxToMeasure(96, 'in')).toBe(1);
+    expect(measureToPx(2.54, 'cm')).toBe(96);
+    const snapped = snapLayoutToContentCenter(
+      { x: 48, y: 10, w: 40, h: 20 },
+      400,
+      300,
+      { guides: { x: [50], y: [] } }
+    );
+    expect(snapped.snappedX).toBe(true);
+    expect(snapped.x).toBe(50);
   });
 
   it('open flow drag height fills the visible panel', () => {

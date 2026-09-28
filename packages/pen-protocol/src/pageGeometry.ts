@@ -312,34 +312,66 @@ export function clampLayerRect(
   return { x, y, w, h };
 }
 
-/** Snap layer center to content-box midlines (px). */
+export type PageMeasureUnit = 'px' | 'in' | 'cm' | 'mm';
+
+const PX_PER_UNIT: Record<PageMeasureUnit, number> = {
+  px: 1,
+  in: CSS_PX_PER_IN,
+  cm: CSS_PX_PER_IN / 2.54,
+  mm: CSS_PX_PER_IN / 25.4
+};
+
+/** Display a stored CSS px length in the chosen unit. */
+export function pxToMeasure(px: number, unit: PageMeasureUnit): number {
+  const n = px / PX_PER_UNIT[unit];
+  if (unit === 'px') return Math.round(n);
+  if (unit === 'mm') return Math.round(n * 10) / 10;
+  return Math.round(n * 100) / 100;
+}
+
+/** Store a typed measurement as CSS px. */
+export function measureToPx(value: number, unit: PageMeasureUnit): number {
+  return Math.round(value * PX_PER_UNIT[unit]);
+}
+
+function snapToTargets(
+  origin: number,
+  size: number,
+  targets: number[],
+  threshold: number
+): { value: number; snapped: boolean } {
+  let best = threshold + 1;
+  let value = origin;
+  for (const edge of [0, size / 2, size]) {
+    for (const target of targets) {
+      const delta = Math.abs(origin + edge - target);
+      if (delta <= threshold && delta < best) {
+        best = delta;
+        value = target - edge;
+      }
+    }
+  }
+  return { value, snapped: best <= threshold };
+}
+
+/** Snap a layer to page midlines and any guide lines (px). */
 export function snapLayoutToContentCenter(
   item: LayerRect,
   contentW: number,
   contentH: number,
-  opts?: { thresholdPx?: number; enabled?: boolean }
+  opts?: {
+    thresholdPx?: number;
+    enabled?: boolean;
+    guides?: { x?: number[]; y?: number[] };
+  }
 ): { x: number; y: number; snappedX: boolean; snappedY: boolean } {
   if (opts?.enabled === false) {
     return { x: item.x, y: item.y, snappedX: false, snappedY: false };
   }
   const thr = opts?.thresholdPx ?? 12;
-  const midX = contentW / 2;
-  const midY = contentH / 2;
-  const cx = item.x + item.w / 2;
-  const cy = item.y + item.h / 2;
-  let x = item.x;
-  let y = item.y;
-  let snappedX = false;
-  let snappedY = false;
-  if (Math.abs(cx - midX) <= thr) {
-    x = midX - item.w / 2;
-    snappedX = true;
-  }
-  if (Math.abs(cy - midY) <= thr) {
-    y = midY - item.h / 2;
-    snappedY = true;
-  }
-  return { x, y, snappedX, snappedY };
+  const xSnap = snapToTargets(item.x, item.w, [contentW / 2, ...(opts?.guides?.x || [])], thr);
+  const ySnap = snapToTargets(item.y, item.h, [contentH / 2, ...(opts?.guides?.y || [])], thr);
+  return { x: xSnap.value, y: ySnap.value, snappedX: xSnap.snapped, snappedY: ySnap.snapped };
 }
 
 /**

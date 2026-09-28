@@ -43,7 +43,7 @@ export interface PenSectionContent {
   layerGeom?: 'px';
 }
 
-export type PenPageLayerKind = 'text' | 'image' | 'video' | 'group' | 'embed' | 'interactive';
+export type PenPageLayerKind = 'text' | 'image' | 'video' | 'group' | 'embed' | 'interactive' | 'guide';
 
 /**
  * Preset button trigger. The backend runs the named write.
@@ -69,6 +69,8 @@ export type PenStrokeAlign = 'inside' | 'outside' | 'center';
 export interface PenPageLayer {
   id: string;
   kind: PenPageLayerKind;
+  /** Guide layers are editor lines. They are not drawn in a published page. */
+  guideAxis?: 'vertical' | 'horizontal';
   x: number;
   y: number;
   w: number;

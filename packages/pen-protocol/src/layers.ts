@@ -329,16 +329,36 @@ export function snapLayoutToPageCenter(
     enabled?: boolean;
     contentW?: number;
     contentH?: number;
+    guides?: { x?: number[]; y?: number[] };
   }
 ): { x: number; y: number; snappedX: boolean; snappedY: boolean } {
   const contentW = opts?.contentW ?? 736;
   const contentH = opts?.contentH ?? 976;
   return snapLayoutToContentCenter(item, contentW, contentH, {
     enabled: opts?.enabled,
-    thresholdPx: opts?.thresholdPx ?? opts?.threshold ?? 12
+    thresholdPx: opts?.thresholdPx ?? opts?.threshold ?? 12,
+    guides: opts?.guides
   });
 }
 
+
+/** Editor-only line. Vertical guides store the x; horizontal guides store the y. */
+export function createGuideLayer(
+  axis: 'vertical' | 'horizontal',
+  positionPx: number
+): PenPageLayer {
+  return {
+    id: newLayerId(),
+    kind: 'guide',
+    guideAxis: axis,
+    x: axis === 'vertical' ? positionPx : 0,
+    y: axis === 'horizontal' ? positionPx : 0,
+    w: 0,
+    h: 0,
+    zIndex: 0,
+    name: axis === 'vertical' ? 'Vertical guide' : 'Horizontal guide'
+  };
+}
 
 export function createImageLayer(
   imageSrc: string,
