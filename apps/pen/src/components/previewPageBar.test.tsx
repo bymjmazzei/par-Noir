@@ -136,16 +136,20 @@ describe('preview page toolbar', () => {
   it('orientation shows the active icon and keeps the choices closed', () => {
     const html = renderToStaticMarkup(
       <PreviewOrientationMenu
+        pageOrientation="landscape"
         pageView="horizontal"
+        onPageOrientation={() => undefined}
         onPageView={() => undefined}
         onToggleViewLock={() => undefined}
       />
     );
+    expect(html).toContain('data-page-orientation="landscape"');
     expect(html).toContain('data-page-view="horizontal"');
-    expect(html).toContain('aria-label="Horizontal"');
+    expect(html).toContain('aria-label="Landscape"');
     expect(html).toContain('aria-expanded="false"');
     expect(html).not.toContain('Lock view');
-    expect(html).not.toContain('aria-label="Vertical"');
+    expect(html).not.toContain('aria-label="Portrait"');
+    expect(html).not.toContain('Scroll vertically');
   });
 
   it('flow vertical draws a page break between pages', () => {
@@ -162,22 +166,29 @@ describe('preview page toolbar', () => {
   it('a locked orientation popup disables the other views', () => {
     const html = renderToStaticMarkup(
       <OrientationChoices
+        pageOrientation="portrait"
         pageView="vertical"
         viewLocked
+        onPageOrientation={() => undefined}
         onPageView={() => undefined}
         onToggleViewLock={() => undefined}
       />
     );
     expect(html).toContain('Unlock view');
-    expect(html).toMatch(/aria-label="Horizontal"[^>]*disabled=""/);
+    expect(html).toContain('Orientation');
+    expect(html).toContain('Scroll');
+    expect(html).toMatch(/aria-label="Landscape"[^>]*disabled=""/);
+    expect(html).toMatch(/aria-label="Scroll horizontally"[^>]*disabled=""/);
     expect(html).toMatch(/aria-label="Screen"[^>]*disabled=""/);
   });
 
   it('a locked orientation menu stays closed until it is opened', () => {
     const html = renderToStaticMarkup(
       <PreviewOrientationMenu
+        pageOrientation="portrait"
         pageView="vertical"
         viewLocked
+        onPageOrientation={() => undefined}
         onPageView={() => undefined}
         onToggleViewLock={() => undefined}
       />

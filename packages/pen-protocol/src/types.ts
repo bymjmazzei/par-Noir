@@ -216,7 +216,6 @@ export type PenPageSizeId =
   | 'legal'
   | 'a4'
   | 'ratio-9-16'
-  | 'ratio-16-9'
   | 'ratio-1-1'
   | 'ratio-4-5'
   | 'ratio-3-2'
@@ -225,6 +224,9 @@ export type PenPageSizeId =
 
 /** How the live preview arranges document pages. */
 export type PenPageView = 'vertical' | 'horizontal' | 'screen';
+
+/** Page shape. Independent of how the preview scrolls. */
+export type PenPageOrientation = 'portrait' | 'landscape';
 
 export type PenDocLifecycle = 'draft' | 'published';
 
@@ -266,6 +268,8 @@ export interface PenDocManifest {
    * (social and other flow docs). Screen is one continuous strip.
    */
   pageView?: PenPageView;
+  /** Portrait or landscape. Omitted values follow the older page view. */
+  pageOrientation?: PenPageOrientation;
   /** When true, the preview stays on pageView until the author unlocks it. */
   pageViewLocked?: boolean;
   /**

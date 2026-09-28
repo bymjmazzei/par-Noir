@@ -27,6 +27,8 @@ import {
   attachNotary,
   adjacentPageSlug,
   appendDocPage,
+  matchPageSize,
+  orientPageSize,
   pageSwipeAxisForView,
   removeDocPage,
   reorderDocPages,
@@ -35,6 +37,7 @@ import {
   PREVIEW_PAGE_GUTTER_PX,
   previewPageUsesGutter,
   resolvePagePaddingPx,
+  resolvePageOrientation,
   resolvePageView,
   screenStripWidthPx,
   verifyChain,
@@ -1652,6 +1655,7 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
     required: s.required
   }));
   const pageView = resolvePageView(bundle.manifest.pageView, bundle.manifest.pageLayout);
+  const pageOrientation = resolvePageOrientation(bundle.manifest.pageOrientation, pageView);
   const previewPages = bundle.manifest.toc.map((slug, index) => {
     const fromTemplate = template?.sections.find((item) => item.slug === slug);
     return {
@@ -1714,6 +1718,31 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
         ...bundle.manifest,
         pageView: next,
         pageSwipeAxis: pageSwipeAxisForView(next),
+        updatedAt: new Date().toISOString()
+      }
+    });
+  };
+
+  const setPageOrientation = (next: typeof pageOrientation) => {
+    if (bundle.manifest.pageViewLocked) return;
+    const sized = orientPageSize(
+      matchPageSize(
+        bundle.manifest.pageLayout,
+        bundle.manifest.flowWorkspaceWidthPx,
+        bundle.manifest.flowWorkspaceHeightPx,
+        bundle.manifest.pageSize
+      ),
+      next
+    );
+    persist({
+      ...bundle,
+      manifest: {
+        ...bundle.manifest,
+        pageOrientation: next,
+        pageLayout: sized.layout,
+        pageSize: sized.id,
+        flowWorkspaceWidthPx: sized.widthPx,
+        flowWorkspaceHeightPx: sized.heightPx,
         updatedAt: new Date().toISOString()
       }
     });
@@ -2458,7 +2487,9 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
                             clearChrome={pageView === 'screen'}
                             showAbsoluteLayers={pageView !== 'screen'}
                             pageView={pageView}
+                            pageOrientation={pageOrientation}
                             viewLocked={bundle.manifest.pageViewLocked === true}
+                            onPageOrientation={setPageOrientation}
                             onPageView={setPreviewPageView}
                             onToggleViewLock={togglePageViewLock}
                             buttonCaptionById={buttonCaptionById}

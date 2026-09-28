@@ -1,8 +1,20 @@
 import { describe, expect, it } from 'vitest';
 import { emptySection } from './richDoc.js';
-import { adjacentPageSlug, appendDocPage, removeDocPage, reorderDocPages } from './pageView.js';
+import {
+  adjacentPageSlug,
+  appendDocPage,
+  removeDocPage,
+  reorderDocPages,
+  resolvePageOrientation
+} from './pageView.js';
 
 describe('pageView', () => {
+  it('keeps page shape separate from the older horizontal view', () => {
+    expect(resolvePageOrientation(undefined, 'horizontal')).toBe('landscape');
+    expect(resolvePageOrientation(undefined, 'vertical')).toBe('portrait');
+    expect(resolvePageOrientation('portrait', 'horizontal')).toBe('portrait');
+  });
+
   it('removes a page and selects the neighbor, and keeps the last page', () => {
     const added = appendDocPage([emptySection('body')], ['body']);
     const two = appendDocPage(added.sections, added.toc);

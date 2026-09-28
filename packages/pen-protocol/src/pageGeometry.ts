@@ -3,7 +3,13 @@
  * Layer x/y/w/h are absolute CSS px inside Body padding — independent of pageLayout.
  */
 
-import type { PenPageLayer, PenPageLayout, PenPageSizeId, PenSectionContent } from './types.js';
+import type {
+  PenPageLayer,
+  PenPageLayout,
+  PenPageOrientation,
+  PenPageSizeId,
+  PenSectionContent
+} from './types.js';
 
 /** CSS px at 96dpi. */
 export const CSS_PX_PER_IN = 96;
@@ -76,40 +82,114 @@ export type PageSizeChoice = {
   heightPx: number | null;
 };
 
-/** Named sizes. Paper uses print inches at 96dpi. Ratios use a 1080px short side. */
-export const PAGE_SIZE_PRESETS: PageSizeChoice[] = [
+type PageSizePreset = PageSizeChoice & { landscapeLabel?: string };
+
+/**
+ * Portrait dimensions. Horizontal orientation swaps them, so 9:16 becomes 16:9.
+ * Ratios use a 1080px short side. Paper uses print inches at 96dpi.
+ */
+export const PAGE_SIZE_PRESETS: PageSizePreset[] = [
   { id: 'flow', label: 'Flow', layout: 'flow', widthPx: null, heightPx: null },
-  { id: 'ratio-9-16', label: '9:16', layout: 'flow', widthPx: 1080, heightPx: 1920 },
-  { id: 'ratio-16-9', label: '16:9', layout: 'flow', widthPx: 1920, heightPx: 1080 },
+  { id: 'ratio-9-16', label: '9:16', landscapeLabel: '16:9', layout: 'flow', widthPx: 1080, heightPx: 1920 },
   { id: 'ratio-1-1', label: '1:1', layout: 'flow', widthPx: 1080, heightPx: 1080 },
-  { id: 'ratio-4-5', label: '4:5', layout: 'flow', widthPx: 1080, heightPx: 1350 },
-  { id: 'ratio-3-2', label: '3:2', layout: 'flow', widthPx: 1620, heightPx: 1080 },
-  { id: 'ratio-4-3', label: '4:3', layout: 'flow', widthPx: 1440, heightPx: 1080 },
-  { id: 'letter', label: 'Letter', layout: 'letter', widthPx: null, heightPx: null },
-  { id: 'legal', label: 'Legal', layout: 'flow', widthPx: Math.round(8.5 * CSS_PX_PER_IN), heightPx: Math.round(14 * CSS_PX_PER_IN) },
-  { id: 'a4', label: 'A4', layout: 'a4', widthPx: null, heightPx: null }
+  { id: 'ratio-4-5', label: '4:5', landscapeLabel: '5:4', layout: 'flow', widthPx: 1080, heightPx: 1350 },
+  { id: 'ratio-3-2', label: '2:3', landscapeLabel: '3:2', layout: 'flow', widthPx: 1080, heightPx: 1620 },
+  { id: 'ratio-4-3', label: '3:4', landscapeLabel: '4:3', layout: 'flow', widthPx: 1080, heightPx: 1440 },
+  { id: 'letter', label: 'Letter', layout: 'letter', widthPx: LETTER_WIDTH_PX, heightPx: LETTER_HEIGHT_PX },
+  {
+    id: 'legal',
+    label: 'Legal',
+    layout: 'flow',
+    widthPx: Math.round(8.5 * CSS_PX_PER_IN),
+    heightPx: Math.round(14 * CSS_PX_PER_IN)
+  },
+  { id: 'a4', label: 'A4', layout: 'a4', widthPx: A4_WIDTH_PX, heightPx: A4_HEIGHT_PX }
 ];
+
+export function pageIsLandscape(orientation?: PenPageOrientation | null): boolean {
+  return orientation === 'landscape';
+}
+
+function canonicalSizeId(sizeId?: string | null): PageSizeId | null {
+  if (sizeId === 'ratio-16-9') return 'ratio-9-16';
+  if (sizeId === 'custom') return 'custom';
+  if (PAGE_SIZE_PRESETS.some((item) => item.id === sizeId)) return sizeId as PageSizeId;
+  return null;
+}
+
+function presetById(id: PageSizeId): PageSizePreset | undefined {
+  return PAGE_SIZE_PRESETS.find((item) => item.id === id);
+}
+
+function dimsMatchPreset(preset: PageSizePreset, width: number, height: number): boolean {
+  if (preset.widthPx == null || preset.heightPx == null) return false;
+  return (
+    (preset.widthPx === width && preset.heightPx === height) ||
+    (preset.widthPx === height && preset.heightPx === width)
+  );
+}
+
+function labelForOrient(preset: PageSizePreset, landscape: boolean): string {
+  return landscape && preset.landscapeLabel ? preset.landscapeLabel : preset.label;
+}
+
+function choiceFromPreset(preset: PageSizePreset, width?: number | null, height?: number | null): PageSizeChoice {
+  const roundedW = Math.round(Number(width));
+  const roundedH = Math.round(Number(height));
+  const known = dimsMatchPreset(preset, roundedW, roundedH);
+  const widthPx = known ? roundedW : preset.widthPx;
+  const heightPx = known ? roundedH : preset.heightPx;
+  const landscape = widthPx != null && heightPx != null && widthPx > heightPx;
+  return {
+    id: preset.id,
+    label: labelForOrient(preset, landscape),
+    layout: preset.layout,
+    widthPx,
+    heightPx
+  };
+}
+
+/** Apply portrait or landscape on top of a ratio. Landscape swaps the axes. */
+export function orientPageSize(
+  choice: PageSizeChoice,
+  orientation?: PenPageOrientation | null
+): PageSizeChoice {
+  const landscape = pageIsLandscape(orientation);
+  if (choice.id === 'custom') {
+    if (choice.widthPx == null || choice.heightPx == null || choice.widthPx === choice.heightPx) return choice;
+    const isLandscape = choice.widthPx > choice.heightPx;
+    if (landscape === isLandscape) return choice;
+    return { ...choice, widthPx: choice.heightPx, heightPx: choice.widthPx };
+  }
+  const preset = presetById(choice.id);
+  if (!preset || preset.widthPx == null || preset.heightPx == null) return choice;
+  if (!landscape || preset.widthPx === preset.heightPx) return choiceFromPreset(preset, preset.widthPx, preset.heightPx);
+  return choiceFromPreset(preset, preset.heightPx, preset.widthPx);
+}
 
 export function matchPageSize(
   layout: PenPageLayout | undefined,
   widthPx?: number | null,
   heightPx?: number | null,
-  sizeId?: PageSizeId | null
+  sizeId?: string | null
 ): PageSizeChoice {
-  if (sizeId === 'custom') {
+  const id = canonicalSizeId(sizeId);
+  if (id === 'custom') {
     const width = clampPageSizePx(Number(widthPx) || DEFAULT_FLOW_WORKSPACE_WIDTH_PX);
     const height = clampPageSizePx(Number(heightPx) || DEFAULT_FLOW_WORKSPACE_HEIGHT_PX);
     return { id: 'custom', label: 'Custom', layout: 'flow', widthPx: width, heightPx: height };
   }
-  if (layout === 'letter') return PAGE_SIZE_PRESETS.find((item) => item.id === 'letter')!;
-  if (layout === 'a4') return PAGE_SIZE_PRESETS.find((item) => item.id === 'a4')!;
-  if (isFlowWorkspaceOpen(widthPx)) return PAGE_SIZE_PRESETS.find((item) => item.id === 'flow')!;
   const width = Math.round(Number(widthPx));
   const height = Math.round(Number(heightPx));
-  const preset = PAGE_SIZE_PRESETS.find(
-    (item) => item.layout === 'flow' && item.widthPx === width && item.heightPx === height
-  );
-  if (preset) return preset;
+  const named = id ? presetById(id) : undefined;
+  if (named && named.widthPx != null && dimsMatchPreset(named, width, height)) {
+    return choiceFromPreset(named, width, height);
+  }
+  if (layout === 'letter') return choiceFromPreset(presetById('letter')!, widthPx, heightPx);
+  if (layout === 'a4') return choiceFromPreset(presetById('a4')!, widthPx, heightPx);
+  if (isFlowWorkspaceOpen(widthPx)) return choiceFromPreset(presetById('flow')!);
+  const preset = PAGE_SIZE_PRESETS.find((item) => dimsMatchPreset(item, width, height));
+  if (preset) return choiceFromPreset(preset, width, height);
   return {
     id: 'custom',
     label: 'Custom',
@@ -126,11 +206,13 @@ export function selectPageSize(
     layout?: PenPageLayout | null;
     widthPx?: number | null;
     heightPx?: number | null;
-    sizeId?: PageSizeId | null;
-  }
+    sizeId?: string | null;
+  },
+  orientation?: PenPageOrientation | null
 ): PageSizeChoice {
   if (id !== 'custom') {
-    return PAGE_SIZE_PRESETS.find((item) => item.id === id) || PAGE_SIZE_PRESETS[0]!;
+    const preset = presetById(id) || PAGE_SIZE_PRESETS[0]!;
+    return orientPageSize(choiceFromPreset(preset), orientation);
   }
   const matched = matchPageSize(
     current?.layout || 'flow',
@@ -138,41 +220,33 @@ export function selectPageSize(
     current?.heightPx,
     current?.sizeId
   );
-  if (matched.id === 'custom') return matched;
-  if (matched.id === 'letter') {
-    return { id: 'custom', label: 'Custom', layout: 'flow', widthPx: LETTER_WIDTH_PX, heightPx: LETTER_HEIGHT_PX };
-  }
-  if (matched.id === 'a4') {
-    return { id: 'custom', label: 'Custom', layout: 'flow', widthPx: A4_WIDTH_PX, heightPx: A4_HEIGHT_PX };
-  }
-  if (matched.widthPx != null && matched.heightPx != null) {
-    return { id: 'custom', label: 'Custom', layout: 'flow', widthPx: matched.widthPx, heightPx: matched.heightPx };
-  }
-  return {
-    id: 'custom',
-    label: 'Custom',
-    layout: 'flow',
-    widthPx: DEFAULT_FLOW_WORKSPACE_WIDTH_PX,
-    heightPx: DEFAULT_FLOW_WORKSPACE_HEIGHT_PX
-  };
+  const base: PageSizeChoice =
+    matched.widthPx != null && matched.heightPx != null
+      ? { id: 'custom', label: 'Custom', layout: 'flow', widthPx: matched.widthPx, heightPx: matched.heightPx }
+      : {
+          id: 'custom',
+          label: 'Custom',
+          layout: 'flow',
+          widthPx: DEFAULT_FLOW_WORKSPACE_WIDTH_PX,
+          heightPx: DEFAULT_FLOW_WORKSPACE_HEIGHT_PX
+        };
+  return orientPageSize(base, orientation);
 }
 
 export function pageSheetDims(
   layout: PenPageLayout | undefined,
   flow?: { widthPx?: number | null; heightPx?: number | null }
 ): PageSheetDims {
-  if (layout === 'letter') {
+  if (layout === 'letter' || layout === 'a4') {
+    const preset = presetById(layout)!;
+    const width = Math.round(Number(flow?.widthPx));
+    const height = Math.round(Number(flow?.heightPx));
+    if (dimsMatchPreset(preset, width, height)) {
+      return { pageWidthPx: width, pageHeightPx: height, fillWidth: false, paged: true };
+    }
     return {
-      pageWidthPx: LETTER_WIDTH_PX,
-      pageHeightPx: LETTER_HEIGHT_PX,
-      fillWidth: false,
-      paged: true
-    };
-  }
-  if (layout === 'a4') {
-    return {
-      pageWidthPx: A4_WIDTH_PX,
-      pageHeightPx: A4_HEIGHT_PX,
+      pageWidthPx: preset.widthPx,
+      pageHeightPx: preset.heightPx,
       fillWidth: false,
       paged: true
     };

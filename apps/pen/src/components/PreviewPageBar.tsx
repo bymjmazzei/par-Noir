@@ -5,16 +5,11 @@ import {
   SCREEN_PAGE_WIDTH_PX,
   screenStripWidthPx,
   type PenPagePresentation,
+  type PenPageOrientation,
   type PenPageView,
   type PenSectionContent
 } from '@par-noir/pen-protocol';
 import { pageFrameStyle } from './LayerObjectToolbar';
-
-const VIEWS: Array<{ id: PenPageView; label: string }> = [
-  { id: 'vertical', label: 'Vertical' },
-  { id: 'horizontal', label: 'Horizontal' },
-  { id: 'screen', label: 'Screen' }
-];
 
 const THUMB_W = 280;
 
@@ -173,11 +168,27 @@ function PageHoverPreview({
   );
 }
 
-function ViewIcon({ view }: { view: PenPageView }) {
-  if (view === 'horizontal') {
+function OrientationIcon({ orientation }: { orientation: PenPageOrientation }) {
+  if (orientation === 'landscape') {
     return (
       <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden>
         <rect x="1.5" y="4.5" width="13" height="7" rx="1" fill="none" stroke="currentColor" strokeWidth="1.5" />
+      </svg>
+    );
+  }
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden>
+      <rect x="4.5" y="1.5" width="7" height="13" rx="1" fill="none" stroke="currentColor" strokeWidth="1.5" />
+    </svg>
+  );
+}
+
+function ScrollIcon({ view }: { view: PenPageView }) {
+  if (view === 'horizontal') {
+    return (
+      <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden>
+        <rect x="1.5" y="4.5" width="5" height="7" rx="0.5" fill="none" stroke="currentColor" strokeWidth="1.5" />
+        <rect x="9.5" y="4.5" width="5" height="7" rx="0.5" fill="none" stroke="currentColor" strokeWidth="1.5" />
       </svg>
     );
   }
@@ -191,91 +202,133 @@ function ViewIcon({ view }: { view: PenPageView }) {
   }
   return (
     <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden>
-      <rect x="4.5" y="1.5" width="7" height="13" rx="1" fill="none" stroke="currentColor" strokeWidth="1.5" />
+      <rect x="4.5" y="1.5" width="7" height="5" rx="0.5" fill="none" stroke="currentColor" strokeWidth="1.5" />
+      <rect x="4.5" y="9.5" width="7" height="5" rx="0.5" fill="none" stroke="currentColor" strokeWidth="1.5" />
     </svg>
   );
 }
 
+const ORIENTATIONS: Array<{ id: PenPageOrientation; label: string }> = [
+  { id: 'portrait', label: 'Portrait' },
+  { id: 'landscape', label: 'Landscape' }
+];
+
+const SCROLLS: Array<{ id: PenPageView; label: string }> = [
+  { id: 'vertical', label: 'Scroll vertically' },
+  { id: 'horizontal', label: 'Scroll horizontally' },
+  { id: 'screen', label: 'Screen' }
+];
+
 export function OrientationChoices({
+  pageOrientation,
   pageView,
   viewLocked = false,
+  onPageOrientation,
   onPageView,
   onToggleViewLock
 }: {
+  pageOrientation: PenPageOrientation;
   pageView: PenPageView;
   viewLocked?: boolean;
+  onPageOrientation: (orientation: PenPageOrientation) => void;
   onPageView: (view: PenPageView) => void;
   onToggleViewLock: () => void;
 }) {
   return (
-    <div className="flex items-center gap-1">
-      {VIEWS.map((view) => (
+    <div className="flex flex-col gap-1">
+      <div className="flex items-center gap-1" role="group" aria-label="Orientation">
+        {ORIENTATIONS.map((orientation) => (
+          <button
+            key={orientation.id}
+            type="button"
+            aria-label={orientation.label}
+            aria-pressed={pageOrientation === orientation.id}
+            disabled={viewLocked}
+            className={`flex h-7 w-7 items-center justify-center rounded disabled:cursor-not-allowed disabled:opacity-40 ${
+              pageOrientation === orientation.id ? 'bg-stone-800 text-white' : 'text-stone-700 hover:bg-stone-100'
+            }`}
+            onClick={() => {
+              if (viewLocked) return;
+              onPageOrientation(orientation.id);
+            }}
+          >
+            <OrientationIcon orientation={orientation.id} />
+          </button>
+        ))}
+      </div>
+      <div className="flex items-center gap-1" role="group" aria-label="Scroll">
+        {SCROLLS.map((view) => (
+          <button
+            key={view.id}
+            type="button"
+            aria-label={view.label}
+            aria-pressed={pageView === view.id}
+            disabled={viewLocked}
+            className={`flex h-7 w-7 items-center justify-center rounded disabled:cursor-not-allowed disabled:opacity-40 ${
+              pageView === view.id ? 'bg-stone-800 text-white' : 'text-stone-700 hover:bg-stone-100'
+            }`}
+            onClick={() => {
+              if (viewLocked) return;
+              onPageView(view.id);
+            }}
+          >
+            <ScrollIcon view={view.id} />
+          </button>
+        ))}
         <button
-          key={view.id}
           type="button"
-          aria-label={view.label}
-          aria-pressed={pageView === view.id}
-          disabled={viewLocked}
-          className={`flex h-7 w-7 items-center justify-center rounded disabled:cursor-not-allowed disabled:opacity-40 ${
-            pageView === view.id ? 'bg-stone-800 text-white' : 'text-stone-700 hover:bg-stone-100'
+          aria-label={viewLocked ? 'Unlock view' : 'Lock view'}
+          aria-pressed={viewLocked}
+          className={`rounded px-2 py-1 text-[11px] font-medium ${
+            viewLocked ? 'bg-stone-800 text-white' : 'bg-white text-stone-700 hover:bg-stone-100'
           }`}
-          onClick={() => {
-            if (viewLocked) return;
-            onPageView(view.id);
-          }}
+          onClick={onToggleViewLock}
         >
-          <ViewIcon view={view.id} />
+          {viewLocked ? 'Locked' : 'Lock'}
         </button>
-      ))}
-      <button
-        type="button"
-        aria-label={viewLocked ? 'Unlock view' : 'Lock view'}
-        aria-pressed={viewLocked}
-        className={`rounded px-2 py-1 text-[11px] font-medium ${
-          viewLocked ? 'bg-stone-800 text-white' : 'bg-white text-stone-700 hover:bg-stone-100'
-        }`}
-        onClick={onToggleViewLock}
-      >
-        {viewLocked ? 'Locked' : 'Lock'}
-      </button>
+      </div>
     </div>
   );
 }
 
 export function PreviewOrientationMenu({
+  pageOrientation,
   pageView,
   viewLocked = false,
+  onPageOrientation,
   onPageView,
   onToggleViewLock
 }: {
+  pageOrientation: PenPageOrientation;
   pageView: PenPageView;
   viewLocked?: boolean;
+  onPageOrientation: (orientation: PenPageOrientation) => void;
   onPageView: (view: PenPageView) => void;
   onToggleViewLock: () => void;
 }) {
   const [open, setOpen] = useState(false);
-  const label = VIEWS.find((view) => view.id === pageView)?.label || 'Vertical';
+  const label = pageOrientation === 'landscape' ? 'Landscape' : 'Portrait';
   return (
     <div className="relative shrink-0">
       <button
         type="button"
         aria-label={label}
         aria-expanded={open}
+        data-page-orientation={pageOrientation}
         data-page-view={pageView}
         className="flex h-6 w-6 items-center justify-center rounded text-neutral-700 hover:text-black"
         onClick={() => setOpen((current) => !current)}
       >
-        <ViewIcon view={pageView} />
+        <OrientationIcon orientation={pageOrientation} />
       </button>
       {open && (
         <div className="absolute left-0 top-full z-50 mt-1 rounded border border-stone-300 bg-white p-1 shadow-lg">
           <OrientationChoices
+            pageOrientation={pageOrientation}
             pageView={pageView}
             viewLocked={viewLocked}
-            onPageView={(view) => {
-              onPageView(view);
-              setOpen(false);
-            }}
+            onPageOrientation={onPageOrientation}
+            onPageView={onPageView}
             onToggleViewLock={onToggleViewLock}
           />
         </div>

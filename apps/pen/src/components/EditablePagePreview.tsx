@@ -15,6 +15,7 @@ import {
   contentBoxSize,
   createGuideLayer,
   matchPageSize,
+  orientPageSize,
   measureToPx,
   defaultEditorPagePresentation,
   DEFAULT_FLOW_WORKSPACE_HEIGHT_PX,
@@ -52,6 +53,7 @@ import {
   type PenDocManifest,
   type PenPageLayer,
   type PageMeasureUnit,
+  type PenPageOrientation,
   type PenPageView,
   type PenPagePresentation,
   type PenSectionContent
@@ -435,7 +437,9 @@ export function EditablePagePreview({
   scrollWithParent = false,
   showAbsoluteLayers = true,
   pageView,
+  pageOrientation = 'portrait',
   viewLocked = false,
+  onPageOrientation,
   onPageView,
   onToggleViewLock
 }: {
@@ -462,7 +466,9 @@ export function EditablePagePreview({
   /** Screen draws every page's layers on one strip instead. */
   showAbsoluteLayers?: boolean;
   pageView?: PenPageView;
+  pageOrientation?: PenPageOrientation;
   viewLocked?: boolean;
+  onPageOrientation?: (orientation: PenPageOrientation) => void;
   onPageView?: (view: PenPageView) => void;
   onToggleViewLock?: () => void;
   onPageSizeChange?: (next: PageSizeChoice) => void;
@@ -757,7 +763,9 @@ export function EditablePagePreview({
         widthPx: manifest.flowWorkspaceWidthPx,
         heightPx: manifest.flowWorkspaceHeightPx,
         sizeId: manifest.pageSize
-      })
+      },
+      pageOrientation
+    )
     );
     selectLayer(PAGE_LAYER_ID);
     if (id !== 'custom') setPageSizeOpen(false);
@@ -829,7 +837,7 @@ export function EditablePagePreview({
                     }`}
                     onClick={() => choosePageSize(preset.id)}
                   >
-                    {preset.label}
+                    {orientPageSize(preset, pageOrientation).label}
                   </button>
                 ))}
                 <button
@@ -891,10 +899,12 @@ export function EditablePagePreview({
             )}
           </div>
         )}
-        {pageView && onPageView && onToggleViewLock && (
+        {pageView && onPageOrientation && onPageView && onToggleViewLock && (
           <PreviewOrientationMenu
+            pageOrientation={pageOrientation}
             pageView={pageView}
             viewLocked={viewLocked}
+            onPageOrientation={onPageOrientation}
             onPageView={onPageView}
             onToggleViewLock={onToggleViewLock}
           />

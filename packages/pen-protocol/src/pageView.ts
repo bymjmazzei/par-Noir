@@ -3,7 +3,7 @@
  */
 
 import { emptySection } from './richDoc.js';
-import type { PenPageLayout, PenPageView, PenSectionContent } from './types.js';
+import type { PenPageLayout, PenPageOrientation, PenPageView, PenSectionContent } from './types.js';
 
 /** Width of one page in a screen strip, CSS px. */
 export const SCREEN_PAGE_WIDTH_PX = 320;
@@ -19,6 +19,15 @@ export function resolvePageView(
   pageLayout?: PenPageLayout | null
 ): PenPageView {
   return pageView || defaultPageView(pageLayout);
+}
+
+/** Older docs stored landscape as the horizontal page view. */
+export function resolvePageOrientation(
+  orientation: PenPageOrientation | undefined,
+  pageView?: PenPageView | null
+): PenPageOrientation {
+  if (orientation === 'portrait' || orientation === 'landscape') return orientation;
+  return pageView === 'horizontal' ? 'landscape' : 'portrait';
 }
 
 /** Published swipe. Screen is one strip, so it does not swipe. */

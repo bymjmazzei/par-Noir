@@ -6,6 +6,7 @@ import {
   contentBoxSize,
   fittedPreviewPagePx,
   matchPageSize,
+  orientPageSize,
   measureToPx,
   pxToMeasure,
   snapLayoutToContentCenter,
@@ -58,8 +59,16 @@ describe('pageGeometry', () => {
   it('names common page sizes and keeps 16:9 at 1920', () => {
     expect(matchPageSize('letter').label).toBe('Letter');
     expect(matchPageSize('flow', null, null).id).toBe('flow');
-    expect(matchPageSize('flow', 1920, 1080).id).toBe('ratio-16-9');
+    expect(matchPageSize('flow', 1920, 1080).id).toBe('ratio-9-16');
+    expect(matchPageSize('flow', 1920, 1080).label).toBe('16:9');
     expect(matchPageSize('flow', 1080, 1920).label).toBe('9:16');
+    expect(orientPageSize(selectPageSize('ratio-9-16'), 'landscape')).toMatchObject({
+      id: 'ratio-9-16',
+      label: '16:9',
+      widthPx: 1920,
+      heightPx: 1080
+    });
+    expect(selectPageSize('ratio-9-16', undefined, 'portrait').label).toBe('9:16');
     expect(matchPageSize('flow', 816, 1344).label).toBe('Legal');
     expect(matchPageSize('flow', 900, 700).id).toBe('custom');
     expect(pageSheetDims('flow', { widthPx: 1920, heightPx: 1080 })).toMatchObject({
@@ -70,7 +79,11 @@ describe('pageGeometry', () => {
     const custom = selectPageSize('custom', { layout: 'letter', widthPx: null, heightPx: null });
     expect(custom).toMatchObject({ layout: 'flow', widthPx: LETTER_WIDTH_PX, heightPx: LETTER_HEIGHT_PX });
     expect(selectPageSize('ratio-1-1')).toMatchObject({ layout: 'flow', widthPx: 1080, heightPx: 1080 });
-    expect(selectPageSize('a4')).toMatchObject({ layout: 'a4', widthPx: null, heightPx: null });
+    expect(selectPageSize('a4')).toMatchObject({
+      layout: 'a4',
+      widthPx: A4_WIDTH_PX,
+      heightPx: A4_HEIGHT_PX
+    });
     expect(matchPageSize('flow', 1920, 1080, 'custom').id).toBe('custom');
   });
 
