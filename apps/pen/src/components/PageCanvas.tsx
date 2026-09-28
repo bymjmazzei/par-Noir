@@ -1024,7 +1024,7 @@ export function PageCanvas({
     editorProps: {
       attributes: {
         class: compact
-          ? 'pen-word-prose outline-none min-h-[2.5rem] px-2 py-1 text-sm'
+          ? 'pen-word-prose outline-none px-2 py-1 text-sm'
           : 'pen-word-prose outline-none min-h-[18rem]'
       }
     },
@@ -1054,7 +1054,7 @@ export function PageCanvas({
 
   if (compact) {
     return (
-      <div className="bg-white px-3 py-2">
+      <div className="pen-compact-prose bg-white px-3 py-2">
         <EditorContent editor={editor} />
       </div>
     );

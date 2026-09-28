@@ -217,6 +217,16 @@ body {
   outline: none;
 }
 
+/* Widget button/text labels: one line tall, then grow with the words. */
+.pen-compact-prose .ProseMirror {
+  min-height: 1.75rem;
+  height: auto;
+}
+
+.pen-compact-prose .pen-word-prose p {
+  margin: 0;
+}
+
 .ProseMirror-focused {
   outline: none;
 }
