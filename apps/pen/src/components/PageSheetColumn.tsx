@@ -24,7 +24,9 @@ export function PageSheetColumn({
   /** Transparent flow surface: no page fill or sheet shadow. */
   bare = false,
   /** Open flow stretches to the pane. A stacked page uses its own height. */
-  fitParent = true
+  fitParent = true,
+  /** Fill the preview slot. Content does not grow the page past the panel. */
+  containInParent = false
 }: {
   pageLayout: PenPageLayout | undefined;
   flowWorkspaceWidthPx?: number | null;
@@ -39,6 +41,7 @@ export function PageSheetColumn({
   composeExportRoot?: boolean;
   bare?: boolean;
   fitParent?: boolean;
+  containInParent?: boolean;
 }) {
   const dims = pageSheetDims(pageLayout, {
     widthPx: flowWorkspaceWidthPx,
@@ -73,8 +76,17 @@ export function PageSheetColumn({
       style={{
         width: dims.fillWidth ? '100%' : dims.pageWidthPx ?? undefined,
         maxWidth: '100%',
-        minHeight: dims.fillWidth && fitParent ? `max(100%, ${stackHeight}px)` : stackHeight,
-        height: dims.fillWidth && !dims.pageHeightPx && fitParent ? '100%' : undefined,
+        minHeight: containInParent
+          ? 0
+          : dims.fillWidth && fitParent
+            ? `max(100%, ${stackHeight}px)`
+            : stackHeight,
+        height: containInParent
+          ? 'auto'
+          : dims.fillWidth && !dims.pageHeightPx && fitParent
+            ? '100%'
+            : undefined,
+        overflow: containInParent ? 'hidden' : undefined,
         ...style
       }}
       onClick={onClick}

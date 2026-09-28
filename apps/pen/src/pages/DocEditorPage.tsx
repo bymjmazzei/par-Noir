@@ -1634,6 +1634,14 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
     defaultEditorPagePresentation(),
     bundle.manifest.pagePresentation
   );
+  const screenStripBackground = pageFrameStyle(pagePresentation);
+  if (
+    (!screenStripBackground.backgroundColor ||
+      screenStripBackground.backgroundColor === 'transparent') &&
+    !screenStripBackground.backgroundImage
+  ) {
+    screenStripBackground.backgroundColor = '#ffffff';
+  }
 
   const addPreviewPage = () => {
     const added = appendDocPage(bundle.sections, bundle.manifest.toc);
@@ -2281,15 +2289,17 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
                   className="relative z-30 shrink-0 overflow-visible bg-white"
                 />
                 <div
-                  className={`min-h-0 min-w-0 flex-1 ${
-                    pageView === 'vertical' ? 'overflow-x-hidden overflow-y-auto' : 'overflow-auto'
+                  className={`min-h-0 min-w-0 flex-1 bg-neutral-100 ${
+                    pageView === 'vertical'
+                      ? 'flex flex-col overflow-x-hidden overflow-y-auto'
+                      : 'overflow-x-auto overflow-y-hidden'
                   }`}
                 >
                 <PreviewPageStrip
                   pageView={pageView}
                   pageCount={previewPages.length}
                   pageWidthPx={SCREEN_PAGE_WIDTH_PX}
-                  background={pageView === 'screen' ? pageFrameStyle(pagePresentation) : undefined}
+                  background={pageView === 'screen' ? screenStripBackground : undefined}
                 >
                   {previewPages.map((page) => {
                     const pageSection = page.section;
@@ -2311,7 +2321,7 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
                     return (
                       <div
                         key={page.slug}
-                        className="w-full shrink-0"
+                        className="h-full w-full shrink-0"
                         style={
                           pageView === 'horizontal' ? { width: SCREEN_PAGE_WIDTH_PX } : undefined
                         }
@@ -2319,7 +2329,7 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
                           if (!active) setActiveSlug(page.slug);
                         }}
                       >
-                        <div className={active ? undefined : 'pointer-events-none'}>
+                        <div className={active ? 'h-full' : 'pointer-events-none h-full'}>
                           <EditablePagePreview
                             manifest={pageManifest}
                             section={pageSection}

@@ -708,6 +708,14 @@ export function EditablePagePreview({
   }
 
   const frameStyle: CSSProperties = pageFrameStyle(presentation);
+  if (
+    scrollWithParent &&
+    !clearChrome &&
+    frameStyle.backgroundColor === 'transparent' &&
+    !frameStyle.backgroundImage
+  ) {
+    delete frameStyle.backgroundColor;
+  }
   const bodyHtml = docToHtml(prepared.doc);
   const bodyStyle = bodyMarginStyle(presentation);
   const isFlow = (manifest.pageLayout || 'flow') === 'flow';
@@ -911,7 +919,11 @@ export function EditablePagePreview({
   ) : null;
 
   return (
-    <div className={`relative flex flex-col ${scrollWithParent ? 'h-auto' : 'h-full'} ${clearChrome ? 'bg-transparent' : 'bg-white'}`}>
+    <div
+      className={`relative flex h-full min-h-0 flex-col ${
+        clearChrome || scrollWithParent ? 'bg-transparent' : 'bg-white'
+      }`}
+    >
       {chrome && toolbarHost
         ? createPortal(chrome, toolbarHost)
         : scrollWithParent
@@ -920,11 +932,15 @@ export function EditablePagePreview({
 
       <div
         ref={scrollerRef}
-        className={`flex ${
-          scrollWithParent ? 'overflow-visible' : 'flex-1 overflow-auto'
-        } ${clearChrome ? 'bg-transparent' : 'bg-neutral-100'} ${
-          flowOpen ? 'items-stretch p-0' : 'items-start justify-center p-6'
-        }`}
+        className={
+          scrollWithParent
+            ? `flex h-full min-h-0 flex-col overflow-hidden ${
+                clearChrome ? 'bg-transparent p-0' : 'box-border bg-neutral-100 p-3'
+              }`
+            : `flex min-h-0 flex-1 overflow-auto ${clearChrome ? 'bg-transparent' : 'bg-neutral-100'} ${
+                flowOpen ? 'items-stretch p-0' : 'items-start justify-center p-6'
+              }`
+        }
       >
         <PageSheetColumn
           sheetRef={sheetMeasureRef}
@@ -934,13 +950,21 @@ export function EditablePagePreview({
           contentOuterHeightPx={contentOuterH}
           style={frameStyle}
           bare={
+            !scrollWithParent &&
             presentation.backgroundColor === 'transparent' &&
             !presentation.backgroundGradient &&
             !presentation.backgroundImage &&
             !presentation.backgroundVideo
           }
-          className={flowOpen ? (scrollWithParent ? 'shadow-none' : 'min-h-full shadow-none') : undefined}
-          fitParent={!scrollWithParent}
+          className={
+            scrollWithParent
+              ? 'min-h-0 w-full flex-1 shadow-none'
+              : flowOpen
+                ? 'min-h-full shadow-none'
+                : undefined
+          }
+          fitParent
+          containInParent={scrollWithParent && !clearChrome}
           onClick={() => selectLayer(PAGE_LAYER_ID)}
           composeExportRoot
         >

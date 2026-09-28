@@ -41,10 +41,10 @@ export function PreviewPageStrip({
       data-screen-background={screen ? 'strip' : undefined}
       className={
         pageView === 'vertical'
-          ? 'flex w-full flex-col gap-4 p-4'
+          ? 'contents'
           : pageView === 'horizontal'
-            ? 'flex w-max flex-row items-start gap-3 p-3'
-            : 'flex w-max flex-row items-stretch'
+            ? 'flex h-full max-h-full w-max flex-row items-stretch gap-3 overflow-hidden'
+            : 'flex h-full max-h-full w-max flex-row items-stretch overflow-hidden'
       }
       style={
         screen
@@ -57,7 +57,7 @@ export function PreviewPageStrip({
     >
       {screen
         ? items.map((child, index) => (
-            <div key={index} className="relative shrink-0" style={{ width: pageWidthPx }}>
+            <div key={index} className="relative h-full shrink-0" style={{ width: pageWidthPx }}>
               {child}
               {index < items.length - 1 ? (
                 <div
