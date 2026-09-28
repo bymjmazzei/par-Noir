@@ -191,6 +191,7 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
   const [hydrating, setHydrating] = useState(!initial);
   const [activeSlug, setActiveSlug] = useState(initial?.manifest.toc[0] || 'body');
   const [showPreview, setShowPreview] = useState(true);
+  const [previewToolbarHost, setPreviewToolbarHost] = useState<HTMLDivElement | null>(null);
   const [galleryComposeCapture, setGalleryComposeCapture] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
   const [showComments, setShowComments] = useState(false);
@@ -2274,7 +2275,16 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
                 )}
               </div>
             ) : section ? (
-              <div className="min-h-0 min-w-0 flex-1 overflow-auto">
+              <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+                <div
+                  ref={setPreviewToolbarHost}
+                  className="relative z-30 shrink-0 overflow-visible bg-white"
+                />
+                <div
+                  className={`min-h-0 min-w-0 flex-1 ${
+                    pageView === 'vertical' ? 'overflow-x-hidden overflow-y-auto' : 'overflow-auto'
+                  }`}
+                >
                 <PreviewPageStrip
                   pageView={pageView}
                   pageCount={previewPages.length}
@@ -2301,21 +2311,15 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
                     return (
                       <div
                         key={page.slug}
-                        className={
-                          pageView === 'vertical'
-                            ? 'min-h-full shrink-0'
-                            : 'h-full shrink-0'
-                        }
+                        className="w-full shrink-0"
                         style={
-                          pageView === 'vertical'
-                            ? undefined
-                            : { width: SCREEN_PAGE_WIDTH_PX }
+                          pageView === 'horizontal' ? { width: SCREEN_PAGE_WIDTH_PX } : undefined
                         }
                         onClick={() => {
                           if (!active) setActiveSlug(page.slug);
                         }}
                       >
-                        <div className={active ? 'h-full' : 'pointer-events-none h-full'}>
+                        <div className={active ? undefined : 'pointer-events-none'}>
                           <EditablePagePreview
                             manifest={pageManifest}
                             section={pageSection}
@@ -2323,6 +2327,8 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
                             hideActionBind={isWidgetDoc}
                             hideObjectTools={isWidgetDoc}
                             showToolbar={active}
+                            toolbarHost={active ? previewToolbarHost : null}
+                            scrollWithParent
                             clearChrome={pageView === 'screen'}
                             buttonCaptionById={buttonCaptionById}
                             session={session}
@@ -2401,6 +2407,7 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
                     );
                   })}
                 </PreviewPageStrip>
+                </div>
               </div>
             ) : null}
             <PreviewPageBar

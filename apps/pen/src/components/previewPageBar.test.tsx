@@ -42,6 +42,20 @@ describe('preview page toolbar', () => {
     expect(html).toContain(`width:${3 * SCREEN_PAGE_WIDTH_PX}px`);
     expect(html).toContain('background-color:#112233');
     expect(html.match(/data-screen-background/g)?.length).toBe(1);
+    expect(html.match(/data-page-seam/g)?.length).toBe(2);
+  });
+
+  it('vertical stacks pages in a column', () => {
+    const html = renderToStaticMarkup(
+      <PreviewPageStrip pageView="vertical" pageCount={2}>
+        <div>one</div>
+        <div>two</div>
+      </PreviewPageStrip>
+    );
+    expect(html).toContain('data-page-view="vertical"');
+    expect(html).toContain('flex-col');
+    expect(html).not.toContain('flex-row');
+    expect(html).not.toContain('data-page-seam');
   });
 
   it('shows add page, a tile per page, and the three views', () => {

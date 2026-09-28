@@ -7,6 +7,7 @@ import {
   type PointerEvent as ReactPointerEvent,
   type ReactNode
 } from 'react';
+import { createPortal } from 'react-dom';
 import {
   clampLayerRect,
   collectFontFamiliesFromDoc,
@@ -418,7 +419,9 @@ export function EditablePagePreview({
   hideObjectTools,
   buttonCaptionById,
   showToolbar = true,
-  clearChrome = false
+  clearChrome = false,
+  toolbarHost = null,
+  scrollWithParent = false
 }: {
   manifest: PenDocManifest;
   section: PenSectionContent;
@@ -434,6 +437,10 @@ export function EditablePagePreview({
   buttonCaptionById?: Record<string, string>;
   /** Inactive pages in a multi-page strip hide the object toolbar. */
   showToolbar?: boolean;
+  /** When set, the toolbar is drawn here instead of on this page. */
+  toolbarHost?: HTMLElement | null;
+  /** The preview pane scrolls the pages. This page does not trap that scroll. */
+  scrollWithParent?: boolean;
   /** Screen strip paints the background once; this canvas stays clear. */
   clearChrome?: boolean;
   onPageLayoutChange?: (layout: PenPageLayout) => void;
@@ -704,10 +711,8 @@ export function EditablePagePreview({
   const bodyHtml = docToHtml(prepared.doc);
   const bodyStyle = bodyMarginStyle(presentation);
   const isFlow = (manifest.pageLayout || 'flow') === 'flow';
-
-  return (
-    <div className={`relative flex h-full flex-col ${clearChrome ? 'bg-transparent' : 'bg-white'}`}>
-      {showToolbar && (
+  const chrome = showToolbar ? (
+    <>
       <div className="relative z-20 flex shrink-0 items-center gap-2 border-b border-neutral-200 bg-white px-2 py-1.5">
         <span className="shrink-0 text-[11px] font-bold uppercase tracking-wider text-neutral-400">
           Page
@@ -887,8 +892,6 @@ export function EditablePagePreview({
           </button>
         </div>
       </div>
-      )}
-
       <LayersPopover
         open={layersOpen}
         onClose={() => setLayersOpen(false)}
@@ -904,10 +907,22 @@ export function EditablePagePreview({
         session={session}
         docId={manifest.docId}
       />
+    </>
+  ) : null;
+
+  return (
+    <div className={`relative flex flex-col ${scrollWithParent ? 'h-auto' : 'h-full'} ${clearChrome ? 'bg-transparent' : 'bg-white'}`}>
+      {chrome && toolbarHost
+        ? createPortal(chrome, toolbarHost)
+        : scrollWithParent
+          ? null
+          : chrome}
 
       <div
         ref={scrollerRef}
-        className={`flex flex-1 overflow-auto ${clearChrome ? 'bg-transparent' : 'bg-neutral-100'} ${
+        className={`flex ${
+          scrollWithParent ? 'overflow-visible' : 'flex-1 overflow-auto'
+        } ${clearChrome ? 'bg-transparent' : 'bg-neutral-100'} ${
           flowOpen ? 'items-stretch p-0' : 'items-start justify-center p-6'
         }`}
       >
@@ -924,7 +939,8 @@ export function EditablePagePreview({
             !presentation.backgroundImage &&
             !presentation.backgroundVideo
           }
-          className={flowOpen ? 'min-h-full shadow-none' : undefined}
+          className={flowOpen ? (scrollWithParent ? 'shadow-none' : 'min-h-full shadow-none') : undefined}
+          fitParent={!scrollWithParent}
           onClick={() => selectLayer(PAGE_LAYER_ID)}
           composeExportRoot
         >

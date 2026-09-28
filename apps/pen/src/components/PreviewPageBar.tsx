@@ -1,6 +1,6 @@
 /** Pagination toolbar for the live preview: add a page, tiles, hover preview, view. */
 
-import { useState, type CSSProperties, type ReactNode } from 'react';
+import { Children, useState, type CSSProperties, type ReactNode } from 'react';
 import {
   SCREEN_PAGE_WIDTH_PX,
   screenStripWidthPx,
@@ -34,14 +34,17 @@ export function PreviewPageStrip({
 }) {
   const screen = pageView === 'screen';
   const width = screen ? screenStripWidthPx(pageCount, pageWidthPx) : undefined;
+  const items = Children.toArray(children);
   return (
     <div
       data-page-view={pageView}
       data-screen-background={screen ? 'strip' : undefined}
       className={
         pageView === 'vertical'
-          ? 'flex min-h-full flex-col'
-          : `flex h-full flex-row ${pageView === 'horizontal' ? 'w-max gap-3 p-3' : 'w-max'}`
+          ? 'flex w-full flex-col gap-4 p-4'
+          : pageView === 'horizontal'
+            ? 'flex w-max flex-row items-start gap-3 p-3'
+            : 'flex w-max flex-row items-stretch'
       }
       style={
         screen
@@ -52,7 +55,28 @@ export function PreviewPageStrip({
           : undefined
       }
     >
-      {children}
+      {screen
+        ? items.map((child, index) => (
+            <div key={index} className="relative shrink-0" style={{ width: pageWidthPx }}>
+              {child}
+              {index < items.length - 1 ? (
+                <div
+                  data-page-seam=""
+                  aria-hidden
+                  className="pointer-events-none absolute bottom-0 right-0 top-0 z-20"
+                  style={{
+                    width: 2,
+                    backgroundImage:
+                      'repeating-linear-gradient(to bottom, rgba(255,255,255,0.95) 0 2px, transparent 2px 7px), repeating-linear-gradient(to bottom, rgba(0,0,0,0.72) 0 2px, transparent 2px 7px)',
+                    backgroundSize: '1px 7px, 1px 7px',
+                    backgroundPosition: '0 0, 1px 0',
+                    backgroundRepeat: 'repeat-y'
+                  }}
+                />
+              ) : null}
+            </div>
+          ))
+        : children}
     </div>
   );
 }

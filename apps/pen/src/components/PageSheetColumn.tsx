@@ -22,7 +22,9 @@ export function PageSheetColumn({
   /** When true, marks this sheet as the compose/encode export root. */
   composeExportRoot = false,
   /** Transparent flow surface: no page fill or sheet shadow. */
-  bare = false
+  bare = false,
+  /** Open flow stretches to the pane. A stacked page uses its own height. */
+  fitParent = true
 }: {
   pageLayout: PenPageLayout | undefined;
   flowWorkspaceWidthPx?: number | null;
@@ -36,6 +38,7 @@ export function PageSheetColumn({
   onClick?: () => void;
   composeExportRoot?: boolean;
   bare?: boolean;
+  fitParent?: boolean;
 }) {
   const dims = pageSheetDims(pageLayout, {
     widthPx: flowWorkspaceWidthPx,
@@ -70,8 +73,8 @@ export function PageSheetColumn({
       style={{
         width: dims.fillWidth ? '100%' : dims.pageWidthPx ?? undefined,
         maxWidth: '100%',
-        minHeight: dims.fillWidth ? `max(100%, ${stackHeight}px)` : stackHeight,
-        height: dims.fillWidth && !dims.pageHeightPx ? '100%' : undefined,
+        minHeight: dims.fillWidth && fitParent ? `max(100%, ${stackHeight}px)` : stackHeight,
+        height: dims.fillWidth && !dims.pageHeightPx && fitParent ? '100%' : undefined,
         ...style
       }}
       onClick={onClick}
