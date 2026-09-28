@@ -51,3 +51,29 @@ export function appendDocPage(
     slug
   };
 }
+
+/** Drop one page. The last remaining page stays. Selects the page that follows, or the one before. */
+export function removeDocPage(
+  sections: PenSectionContent[],
+  toc: string[],
+  slug: string
+): { sections: PenSectionContent[]; toc: string[]; slug: string } | null {
+  if (toc.length <= 1) return null;
+  const index = toc.indexOf(slug);
+  if (index < 0) return null;
+  const nextToc = toc.filter((item) => item !== slug);
+  const neighbor = nextToc[Math.min(index, nextToc.length - 1)];
+  return {
+    sections: sections.filter((section) => section.slug !== slug),
+    toc: nextToc,
+    slug: neighbor
+  };
+}
+
+/** Previous or next page in toc order. Stays put at either end. */
+export function adjacentPageSlug(toc: string[], activeSlug: string, direction: -1 | 1): string {
+  const index = Math.max(0, toc.indexOf(activeSlug));
+  const next = index + direction;
+  if (next < 0 || next >= toc.length) return toc[index] || activeSlug;
+  return toc[next];
+}

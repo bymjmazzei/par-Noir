@@ -70,14 +70,53 @@ describe('preview page toolbar', () => {
         presentation={defaultPagePresentation()}
         onSelect={() => undefined}
         onAddPage={() => undefined}
+        onDeletePage={() => undefined}
+        onFlip={() => undefined}
         onPageView={() => undefined}
+        onToggleViewLock={() => undefined}
       />
     );
     expect(html).toContain('Add page');
+    expect(html).toContain('Delete page');
+    expect(html).toContain('Previous page');
+    expect(html).toContain('Next page');
     expect(html).toContain('Page 1');
     expect(html).toContain('Page 2');
     expect(html).toContain('Vertical');
     expect(html).toContain('Horizontal');
     expect(html).toContain('Screen');
+    expect(html).toContain('Lock view');
+  });
+
+  it('flow vertical draws a page break between pages', () => {
+    const html = renderToStaticMarkup(
+      <PreviewPageStrip pageView="vertical" pageCount={2} pageBreak>
+        <div>one</div>
+        <div>two</div>
+      </PreviewPageStrip>
+    );
+    expect(html.match(/data-page-break/g)?.length).toBe(1);
+    expect(html).not.toContain('data-page-seam');
+  });
+
+  it('a locked view disables the other view buttons', () => {
+    const html = renderToStaticMarkup(
+      <PreviewPageBar
+        pages={[{ slug: 'body', title: 'Page 1', section: emptySection('body') }]}
+        activeSlug="body"
+        pageView="vertical"
+        viewLocked
+        presentation={defaultPagePresentation()}
+        onSelect={() => undefined}
+        onAddPage={() => undefined}
+        onDeletePage={() => undefined}
+        onFlip={() => undefined}
+        onPageView={() => undefined}
+        onToggleViewLock={() => undefined}
+      />
+    );
+    expect(html).toContain('Unlock view');
+    expect(html).toContain('disabled=""');
+    expect(html).toContain('Delete page');
   });
 });

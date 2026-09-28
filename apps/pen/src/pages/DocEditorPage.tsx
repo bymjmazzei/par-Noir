@@ -25,8 +25,10 @@ import {
   setTextLayerDoc,
   signPromoteLink,
   attachNotary,
+  adjacentPageSlug,
   appendDocPage,
   pageSwipeAxisForView,
+  removeDocPage,
   fittedPreviewPagePx,
   PREVIEW_PAGE_GUTTER_PX,
   resolvePagePaddingPx,
@@ -254,6 +256,12 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
     observer.observe(previewPaneEl);
     return () => observer.disconnect();
   }, [previewPaneEl]);
+
+  useEffect(() => {
+    if (!previewPaneEl) return;
+    const el = previewPaneEl.querySelector(`[data-preview-page="${CSS.escape(activeSlug)}"]`);
+    if (el instanceof HTMLElement) el.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+  }, [activeSlug, previewPaneEl, bundle?.manifest.pageView]);
 
   useEffect(() => {
     let cancelled = false;
@@ -1691,12 +1699,44 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
   };
 
   const setPreviewPageView = (next: typeof pageView) => {
+    if (bundle.manifest.pageViewLocked) return;
     persist({
       ...bundle,
       manifest: {
         ...bundle.manifest,
         pageView: next,
         pageSwipeAxis: pageSwipeAxisForView(next),
+        updatedAt: new Date().toISOString()
+      }
+    });
+  };
+
+  const deletePreviewPage = () => {
+    const removed = removeDocPage(bundle.sections, bundle.manifest.toc, activeSlug);
+    if (!removed) return;
+    persist({
+      ...bundle,
+      sections: removed.sections,
+      manifest: {
+        ...bundle.manifest,
+        toc: removed.toc,
+        updatedAt: new Date().toISOString()
+      }
+    });
+    setActiveSlug(removed.slug);
+    setActiveLayerId(PAGE_LAYER_ID);
+  };
+
+  const flipPreviewPage = (direction: -1 | 1) => {
+    setActiveSlug(adjacentPageSlug(bundle.manifest.toc, activeSlug, direction));
+  };
+
+  const togglePageViewLock = () => {
+    persist({
+      ...bundle,
+      manifest: {
+        ...bundle.manifest,
+        pageViewLocked: !bundle.manifest.pageViewLocked,
         updatedAt: new Date().toISOString()
       }
     });
@@ -2345,6 +2385,7 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
                   pageWidthPx={previewPageBox.width}
                   pageHeightPx={previewPageBox.height}
                   background={pageView === 'screen' ? screenStripBackground : undefined}
+                  pageBreak={bundle.manifest.pageLayout === 'flow' && pageView === 'vertical'}
                 >
                   {previewPages.map((page) => {
                     const pageSection = page.section;
@@ -2366,6 +2407,7 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
                     return (
                       <div
                         key={page.slug}
+                        data-preview-page={page.slug}
                         className="shrink-0"
                         style={{
                           width: previewPageBox.width,
@@ -2508,7 +2550,11 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
               presentation={pagePresentation}
               onSelect={setActiveSlug}
               onAddPage={addPreviewPage}
+              onDeletePage={deletePreviewPage}
+              onFlip={flipPreviewPage}
               onPageView={setPreviewPageView}
+              viewLocked={bundle.manifest.pageViewLocked === true}
+              onToggleViewLock={togglePageViewLock}
             />
           </div>
         )}

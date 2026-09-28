@@ -248,6 +248,8 @@ export interface PenDocManifest {
    * (social and other flow docs). Screen is one continuous strip.
    */
   pageView?: PenPageView;
+  /** When true, the preview stays on pageView until the author unlocks it. */
+  pageViewLocked?: boolean;
   /**
    * Multipage workspace swipe axis in editor / live preview.
    * `x` = horizontal between pages (collections default);

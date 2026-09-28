@@ -18,12 +18,46 @@ const VIEWS: Array<{ id: PenPageView; label: string }> = [
 
 const THUMB_W = 280;
 
+function PageCut({ axis }: { axis: 'x' | 'y' }) {
+  const vertical = axis === 'y';
+  return (
+    <div
+      data-page-seam={vertical ? undefined : ''}
+      data-page-break={vertical ? '' : undefined}
+      aria-hidden
+      className={`pointer-events-none absolute z-30 ${
+        vertical ? 'bottom-0 left-0 right-0' : 'bottom-0 right-0 top-0'
+      }`}
+      style={
+        vertical
+          ? {
+              height: 2,
+              backgroundImage:
+                'repeating-linear-gradient(to right, rgba(255,255,255,0.95) 0 2px, transparent 2px 7px), repeating-linear-gradient(to right, rgba(0,0,0,0.72) 0 2px, transparent 2px 7px)',
+              backgroundSize: '7px 1px, 7px 1px',
+              backgroundPosition: '0 0, 0 1px',
+              backgroundRepeat: 'repeat-x'
+            }
+          : {
+              width: 2,
+              backgroundImage:
+                'repeating-linear-gradient(to bottom, rgba(255,255,255,0.95) 0 2px, transparent 2px 7px), repeating-linear-gradient(to bottom, rgba(0,0,0,0.72) 0 2px, transparent 2px 7px)',
+              backgroundSize: '1px 7px, 1px 7px',
+              backgroundPosition: '0 0, 1px 0',
+              backgroundRepeat: 'repeat-y'
+            }
+      }
+    />
+  );
+}
+
 export function PreviewPageStrip({
   pageView,
   pageCount,
   pageWidthPx = SCREEN_PAGE_WIDTH_PX,
   pageHeightPx,
   background,
+  pageBreak = false,
   children
 }: {
   pageView: PenPageView;
@@ -32,6 +66,8 @@ export function PreviewPageStrip({
   pageHeightPx?: number;
   /** Painted once across a screen strip. */
   background?: CSSProperties;
+  /** Flow pages have no gutter, so vertical stacks draw a cut between them. */
+  pageBreak?: boolean;
   children: ReactNode;
 }) {
   const screen = pageView === 'screen';
@@ -69,24 +105,17 @@ export function PreviewPageStrip({
               }}
             >
               {child}
-              {index < items.length - 1 ? (
-                <div
-                  data-page-seam=""
-                  aria-hidden
-                  className="pointer-events-none absolute bottom-0 right-0 top-0 z-30"
-                  style={{
-                    width: 2,
-                    backgroundImage:
-                      'repeating-linear-gradient(to bottom, rgba(255,255,255,0.95) 0 2px, transparent 2px 7px), repeating-linear-gradient(to bottom, rgba(0,0,0,0.72) 0 2px, transparent 2px 7px)',
-                    backgroundSize: '1px 7px, 1px 7px',
-                    backgroundPosition: '0 0, 1px 0',
-                    backgroundRepeat: 'repeat-y'
-                  }}
-                />
-              ) : null}
+              {index < items.length - 1 ? <PageCut axis="x" /> : null}
             </div>
           ))
-        : children}
+        : pageBreak
+          ? items.map((child, index) => (
+              <div key={index} className="relative shrink-0">
+                {child}
+                {index < items.length - 1 ? <PageCut axis="y" /> : null}
+              </div>
+            ))
+          : children}
     </div>
   );
 }
@@ -135,7 +164,11 @@ export function PreviewPageBar({
   presentation,
   onSelect,
   onAddPage,
-  onPageView
+  onDeletePage,
+  onFlip,
+  onPageView,
+  viewLocked = false,
+  onToggleViewLock
 }: {
   pages: Array<{ slug: string; title: string; section?: PenSectionContent }>;
   activeSlug: string;
@@ -143,10 +176,16 @@ export function PreviewPageBar({
   presentation: PenPagePresentation;
   onSelect: (slug: string) => void;
   onAddPage: () => void;
+  onDeletePage: () => void;
+  onFlip: (direction: -1 | 1) => void;
   onPageView: (view: PenPageView) => void;
+  viewLocked?: boolean;
+  onToggleViewLock: () => void;
 }) {
   const [hoverSlug, setHoverSlug] = useState<string | null>(null);
   const hover = pages.find((page) => page.slug === hoverSlug);
+  const activeIndex = Math.max(0, pages.findIndex((page) => page.slug === activeSlug));
+  const canDelete = pages.length > 1;
 
   return (
     <div
@@ -161,6 +200,24 @@ export function PreviewPageBar({
         onClick={onAddPage}
       >
         Add page
+      </button>
+      <button
+        type="button"
+        aria-label="Delete page"
+        disabled={!canDelete}
+        className="shrink-0 rounded bg-white px-2 py-1 text-[12px] font-medium text-stone-800 hover:bg-stone-100 disabled:cursor-not-allowed disabled:text-stone-400"
+        onClick={onDeletePage}
+      >
+        Delete page
+      </button>
+      <button
+        type="button"
+        aria-label="Previous page"
+        disabled={activeIndex <= 0}
+        className="shrink-0 rounded bg-white px-2 py-1 text-[12px] font-medium text-stone-800 hover:bg-stone-100 disabled:cursor-not-allowed disabled:text-stone-400"
+        onClick={() => onFlip(-1)}
+      >
+        Prev
       </button>
       <div className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto">
         {pages.map((page, index) => {
@@ -194,6 +251,15 @@ export function PreviewPageBar({
           );
         })}
       </div>
+      <button
+        type="button"
+        aria-label="Next page"
+        disabled={activeIndex >= pages.length - 1}
+        className="shrink-0 rounded bg-white px-2 py-1 text-[12px] font-medium text-stone-800 hover:bg-stone-100 disabled:cursor-not-allowed disabled:text-stone-400"
+        onClick={() => onFlip(1)}
+      >
+        Next
+      </button>
       <div className="flex shrink-0 items-center gap-1">
         {VIEWS.map((view) => (
           <button
@@ -201,16 +267,30 @@ export function PreviewPageBar({
             type="button"
             aria-label={view.label}
             aria-pressed={pageView === view.id}
-            className={`rounded px-2 py-1 text-[11px] font-medium ${
+            disabled={viewLocked}
+            className={`rounded px-2 py-1 text-[11px] font-medium disabled:cursor-not-allowed disabled:opacity-40 ${
               pageView === view.id
                 ? 'bg-stone-800 text-white'
                 : 'bg-white text-stone-700 hover:bg-stone-100'
             }`}
-            onClick={() => onPageView(view.id)}
+            onClick={() => {
+              if (!viewLocked) onPageView(view.id);
+            }}
           >
             {view.label}
           </button>
         ))}
+        <button
+          type="button"
+          aria-label={viewLocked ? 'Unlock view' : 'Lock view'}
+          aria-pressed={viewLocked}
+          className={`rounded px-2 py-1 text-[11px] font-medium ${
+            viewLocked ? 'bg-stone-800 text-white' : 'bg-white text-stone-700 hover:bg-stone-100'
+          }`}
+          onClick={onToggleViewLock}
+        >
+          {viewLocked ? 'Locked' : 'Lock'}
+        </button>
       </div>
     </div>
   );
