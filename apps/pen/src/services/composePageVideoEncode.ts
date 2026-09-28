@@ -198,7 +198,16 @@ function canvasToJpegBlob(canvas: HTMLCanvasElement, quality = 0.85): Promise<Bl
  */
 export async function composePageToVideo(
   root: HTMLElement,
-  opts?: { maxDurationSec?: number; onProgress?: (pct: number) => void }
+  opts?: {
+    maxDurationSec?: number;
+    onProgress?: (pct: number) => void;
+    /**
+     * When a page has layer keys, record this clock instead of the raw video
+     * length. onSample lets the preview sample that time before the next frame.
+     */
+    clockDurationSec?: number;
+    onSample?: (timeSec: number) => void;
+  }
 ): Promise<ComposePageVideoResult> {
   if (typeof MediaRecorder === 'undefined') {
     throw new Error('mediarecorder_unavailable');
@@ -230,21 +239,43 @@ export async function composePageToVideo(
   }
 
   let durationSec = 0;
-  for (const slot of slots) {
-    const d = slot.el.duration;
-    if (Number.isFinite(d) && d > durationSec) durationSec = d;
-  }
-  if (!Number.isFinite(durationSec) || durationSec <= 0) {
-    durationSec = 5;
+  if (opts?.clockDurationSec && opts.clockDurationSec > 0) {
+    durationSec = opts.clockDurationSec;
+  } else {
+    for (const slot of slots) {
+      const d = slot.el.duration;
+      if (Number.isFinite(d) && d > durationSec) durationSec = d;
+    }
+    if (!Number.isFinite(durationSec) || durationSec <= 0) {
+      durationSec = 5;
+    }
   }
   durationSec = Math.min(durationSec, maxDurationSec);
 
-  const backdrop = await buildStaticBackdrop(root, w, h);
+  let backdrop = await buildStaticBackdrop(root, w, h);
+  let backdropTicket = 0;
+  let backdropTimer = 0;
+  if (opts?.onSample) {
+    const refreshBackdrop = () => {
+      const ticket = ++backdropTicket;
+      void buildStaticBackdrop(root, w, h)
+        .then((next) => {
+          if (ticket === backdropTicket) backdrop = next;
+        })
+        .catch(() => {
+          /* keep the last backdrop */
+        });
+    };
+    backdropTimer = window.setInterval(refreshBackdrop, 200);
+  }
   const canvas = document.createElement('canvas');
   canvas.width = w;
   canvas.height = h;
   const ctx = canvas.getContext('2d', { willReadFrequently: false });
-  if (!ctx) throw new Error('canvas_unavailable');
+  if (!ctx) {
+    if (backdropTimer) window.clearInterval(backdropTimer);
+    throw new Error('canvas_unavailable');
+  }
 
   // Poster at ~0.5s or first frame — only untainted draws
   const seekPoster = Math.min(0.5, durationSec * 0.1);
@@ -301,14 +332,17 @@ export async function composePageToVideo(
   let raf = 0;
   let framesDrawn = 0;
   const draw = () => {
+    const elapsed = (performance.now() - started) / 1000;
+    opts?.onSample?.(Math.min(durationSec, elapsed));
     ctx.drawImage(backdrop, 0, 0);
-    for (const slot of slots) {
+    const live = opts?.onSample ? collectUntaintedVideoSlots(root) : slots;
+    const drawSlots = live.length ? live : slots;
+    for (const slot of drawSlots) {
       if (slot.el.readyState >= 2) {
         ctx.drawImage(slot.el, slot.x * sx, slot.y * sy, slot.w * sx, slot.h * sy);
         framesDrawn += 1;
       }
     }
-    const elapsed = (performance.now() - started) / 1000;
     opts?.onProgress?.(Math.min(95, 5 + (elapsed / durationSec) * 90));
     raf = requestAnimationFrame(draw);
   };
@@ -316,6 +350,7 @@ export async function composePageToVideo(
 
   await new Promise<void>((resolve) => {
     const timer = window.setTimeout(() => resolve(), (durationSec + 0.35) * 1000);
+    if (opts?.clockDurationSec) return;
     const checkEnded = () => {
       if (slots.every((s) => s.el.ended || s.el.paused)) {
         window.clearTimeout(timer);
@@ -328,6 +363,7 @@ export async function composePageToVideo(
   });
 
   cancelAnimationFrame(raf);
+  if (backdropTimer) window.clearInterval(backdropTimer);
   for (const s of slots) {
     s.el.pause();
   }

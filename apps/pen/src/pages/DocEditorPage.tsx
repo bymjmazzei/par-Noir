@@ -85,6 +85,8 @@ import { ActionLayerPhoneOverlay } from '../components/ActionLayerPhoneOverlay';
 import { ActionBindStrip } from '../components/ActionBindStrip';
 import { IconLayers } from '../components/icons/PenIcons';
 import { MediaEditorPanel } from '../components/MediaEditorPanel';
+import { SectionTimeline } from '../components/SectionTimeline';
+import { bindTimelineSample } from '../services/timelineSample';
 import { WidgetEditorPanel } from '../components/WidgetEditorPanel';
 import { LayerPartsMenu } from '../components/LayerPartsMenu';
 import { PublishMenu } from '../components/PublishMenu';
@@ -238,6 +240,8 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
   const widgetSheetTimer = useRef<number | null>(null);
   const [editor, setEditor] = useState<Editor | null>(null);
   const [activeLayerId, setActiveLayerId] = useState<string | null>(PAGE_LAYER_ID);
+  const [playheadSec, setPlayheadSec] = useState(0);
+  const [timelinePlaying, setTimelinePlaying] = useState(false);
   const [socialLayersOpen, setSocialLayersOpen] = useState(false);
   const [socialSelectedIds, setSocialSelectedIds] = useState<string[]>([PAGE_LAYER_ID]);
   const socialLayersBtnRef = useRef<HTMLButtonElement>(null);
@@ -249,6 +253,11 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
   );
   const [connectReady, setConnectReady] = useState(false);
   const verifiedAuthor = canPublishPublicTemplate(session);
+
+  useEffect(() => {
+    bindTimelineSample(setPlayheadSec);
+    return () => bindTimelineSample(null);
+  }, []);
 
   useEffect(() => {
     if (!previewPaneEl) return;
@@ -1111,6 +1120,7 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
           docId,
           commitHash: headHashFromChain(nextChain),
           sections: bundle!.sections,
+          clockSection: section,
           pagePresentation: bundle!.manifest.pagePresentation
         });
         nextManifest = withGalleryPreview(nextManifest, preview);
@@ -2115,6 +2125,7 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
                 section={section}
                 session={session}
                 docId={bundle.manifest.docId}
+                playheadSec={playheadSec}
                 onSectionChange={(next) => {
                   persist({
                     ...bundle,
@@ -2542,6 +2553,7 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
                             onPollVote={(layer) => void voteOnPoll(layer)}
                             onWidgetAction={(layer) => void runWidgetAction(layer)}
                             votedOptionByGroup={votedOptionByGroup}
+                            playheadSec={playheadSec}
                             onSectionChange={(next) => {
                               if (sectionHasVoteButton(next)) {
                                 commitWidgetSection(next);
@@ -2592,12 +2604,35 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
                     onPollVote={(layer) => void voteOnPoll(layer)}
                     onWidgetAction={(layer) => void runWidgetAction(layer)}
                     snapToPageCenter={Boolean(bundle.manifest.snapToPageGuides)}
+                    playheadSec={playheadSec}
                   />
                 )}
                 </div>
                 </div>
               </div>
             ) : null}
+            {section && (
+              <SectionTimeline
+                section={section}
+                activeLayerId={activeLayerId}
+                playheadSec={playheadSec}
+                playing={timelinePlaying}
+                docId={bundle.manifest.docId}
+                session={session}
+                onPlayhead={setPlayheadSec}
+                onPlaying={setTimelinePlaying}
+                onSelectLayer={(id) => setActiveLayerId(id)}
+                onSectionChange={(next) => {
+                  persist({
+                    ...bundle,
+                    sections: bundle.sections.map((item) =>
+                      item.slug === next.slug ? next : item
+                    ),
+                    manifest: { ...bundle.manifest, updatedAt: new Date().toISOString() }
+                  });
+                }}
+              />
+            )}
             <PreviewPageBar
               pages={previewPages}
               activeSlug={activeSlug}
@@ -2624,6 +2659,7 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
               session={session}
               onSelectLayer={() => undefined}
               onSectionChange={() => undefined}
+              playheadSec={playheadSec}
             />
           </div>
         ) : null}

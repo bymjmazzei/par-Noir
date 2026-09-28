@@ -8,9 +8,12 @@
 import type { PenDocManifest, PenPagePresentation, PenSectionContent, PenTipTapNode } from '@par-noir/pen-protocol';
 import {
   normalizeSection,
+  resolveTimelineDuration,
+  sectionHasMotion,
   sectionHasVisibleVideoLayer,
   type PenPageLayer
 } from '@par-noir/pen-protocol';
+import { emitTimelineSample } from './timelineSample';
 import {
   composePageToVideo,
   collectUntaintedVideoSlots,
@@ -228,6 +231,8 @@ export async function buildAndStoreGalleryPreview(params: {
   docId: string;
   commitHash: string;
   sections: PenSectionContent[];
+  /** The page mounted in the compose root. Its clock drives a motion flatten. */
+  clockSection?: PenSectionContent | null;
   pagePresentation?: Pick<PenPagePresentation, 'backgroundVideo'> | null;
 }): Promise<GalleryPreviewResult> {
   const needsVideo = docRequiresGalleryVideoCompose(
@@ -243,7 +248,17 @@ export async function buildAndStoreGalleryPreview(params: {
 
   if (needsVideo) {
     root = await waitForUntaintedComposeVideos(root);
-    const encoded = await composePageToVideo(root);
+    const motion =
+      params.clockSection && sectionHasMotion(params.clockSection) ? params.clockSection : null;
+    const encoded = await composePageToVideo(
+      root,
+      motion
+        ? {
+            clockDurationSec: resolveTimelineDuration(motion),
+            onSample: emitTimelineSample
+          }
+        : undefined
+    );
     const video = await uploadOrLocal({
       blob: encoded.videoBlob,
       fileName: 'gallery-preview.penmedia',

@@ -4,9 +4,12 @@
  */
 
 import {
+  layerSampleTime,
   pageLayerToSheet,
   recomputeGroupBounds,
+  sampleSectionLayers,
   sheetLayerToPage,
+  writeLayerAtPlayhead,
   type PenPageLayer,
   type PenPagePresentation,
   type PenSectionContent
@@ -31,7 +34,8 @@ export function ScreenLayerStage({
   onSectionsChange,
   onPollVote,
   onWidgetAction,
-  snapToPageCenter = false
+  snapToPageCenter = false,
+  playheadSec = 0
 }: {
   sections: PenSectionContent[];
   pageWidth: number;
@@ -48,12 +52,16 @@ export function ScreenLayerStage({
   onPollVote?: (layer: PenPageLayer) => void;
   onWidgetAction?: (layer: PenPageLayer) => void;
   snapToPageCenter?: boolean;
+  /** Section clock. Sampled for display; drags write keys when the layer has them. */
+  playheadSec?: number;
 }) {
   const owner = new Map<string, { index: number; slug: string }>();
+  const sampledById = new Map<string, PenPageLayer>();
   const items: LayoutItem[] = [];
   const guides: Array<{ id: string; axis: 'vertical' | 'horizontal'; position: number; index: number }> = [];
   sections.forEach((section, index) => {
-    for (const layer of section.layers || []) {
+    for (const layer of sampleSectionLayers(section, playheadSec)) {
+      sampledById.set(layer.id, layer);
       if (layer.visible === false || layer.bodyWrap) continue;
       if (layer.kind === 'guide') {
         const at = pageLayerToSheet(layer, index, pageWidth, pad);
@@ -144,14 +152,20 @@ export function ScreenLayerStage({
           for (const layer of section.layers || []) {
             const hit = targetOf.get(layer.id);
             if (!hit) continue;
-            const moved = {
-              ...layer,
-              x: hit.layout.x,
-              y: hit.layout.y,
-              w: hit.layout.w,
-              h: hit.layout.h,
-              zIndex: hit.layout.zIndex
-            };
+            const sourceSection = sections.find((entry) =>
+              entry.layers?.some((item) => item.id === layer.id)
+            );
+            const moved = writeLayerAtPlayhead(
+              layer,
+              layerSampleTime(sourceSection || section, layer, playheadSec),
+              {
+                x: hit.layout.x,
+                y: hit.layout.y,
+                w: hit.layout.w,
+                h: hit.layout.h
+              }
+            );
+            moved.zIndex = hit.layout.zIndex;
             if (hit.layout.cornerRadius != null) moved.cornerRadius = hit.layout.cornerRadius;
             drafts[hit.index].layers = [...(drafts[hit.index].layers || []), moved];
           }
@@ -174,7 +188,7 @@ export function ScreenLayerStage({
       renderItem={(item) => {
         const hit = owner.get(item.id);
         const section = sections[hit?.index ?? 0];
-        const layer = section?.layers?.find((entry) => entry.id === item.id);
+        const layer = sampledById.get(item.id) || section?.layers?.find((entry) => entry.id === item.id);
         if (!section || !layer) return null;
         return (
           <PreviewLayerFace

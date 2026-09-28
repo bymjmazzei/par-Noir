@@ -20,6 +20,8 @@ import {
   sectionIsFeedPage,
   feedPagePlainText,
   partitionSectionsForPublish,
+  resolveTimelineDuration,
+  sectionHasMotion,
   audioPublishPlan,
   mergePagePresentation,
   docToPlainText,
@@ -34,6 +36,7 @@ import {
   type ResolvePenEmbed
 } from '@par-noir/pen-protocol';
 import { composePageToVideo } from './composePageVideoEncode';
+import { emitTimelineSample } from './timelineSample';
 import { findComposeExportRoot, waitForUntaintedComposeVideos } from './penGalleryPreview';
 import type { PenSession } from '../App';
 import { createDocFromTemplate } from './createDocFromTemplate';
@@ -258,7 +261,10 @@ export async function writeComposedVideoPublishHandoff(
   }
   const root = await waitForUntaintedComposeVideos(root0);
 
-  const encoded = await composePageToVideo(root, { onProgress: opts?.onProgress });
+  const encoded = await composePageToVideo(root, {
+    onProgress: opts?.onProgress,
+    ...composeClock(videoSections[0])
+  });
   const form = getClass(bundle.manifest.classId);
   const licensing = licensingForPublish(
     bundle.manifest.licensing,
@@ -286,6 +292,14 @@ export async function writeComposedVideoPublishHandoff(
     videoContentType: encoded.videoContentType,
     videoBlob: encoded.videoBlob,
     posterBlob: encoded.posterBlob
+  };
+}
+
+function composeClock(section: PenSectionContent | undefined) {
+  if (!section || !sectionHasMotion(section)) return {};
+  return {
+    clockDurationSec: resolveTimelineDuration(section),
+    onSample: emitTimelineSample
   };
 }
 
@@ -349,6 +363,7 @@ export async function writeMixedPagesPublishHandoff(
     if (!root0) throw new Error('compose_export_root_missing');
     const root = await waitForUntaintedComposeVideos(root0);
     const encoded = await composePageToVideo(root, {
+      ...composeClock(sec),
       onProgress: (p) => {
         const base = (i / videoSections.length) * 80;
         opts.onProgress?.(Math.round(base + (p / 100) * (80 / videoSections.length)));

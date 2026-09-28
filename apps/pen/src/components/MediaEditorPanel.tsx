@@ -9,7 +9,10 @@ import {
   attachMediaToLayer,
   clampMediaCrop,
   mergeMediaFilter,
+  layerSampleTime,
   patchLayerStyle,
+  upsertLayer,
+  writeLayerAtPlayhead,
   type PenAudioTrack,
   type PenMediaCrop,
   type PenMediaFilter,
@@ -19,7 +22,6 @@ import {
 } from '@par-noir/pen-protocol';
 import { CloudFeedMediaPicker } from './CloudFeedMediaPicker';
 import { LayerMediaContent } from './LayerMediaContent';
-import { MediaTimeline } from './MediaTimeline';
 import { ColorSwatchButton, ValueSliderButton } from './PanelValueControls';
 import { probeMediaAspect } from '../services/penAttach';
 import { resolvePenMediaSrc, ingestInlineMediaSrc, putLocalMedia } from '../services/penLocalMedia';
@@ -59,6 +61,7 @@ export function MediaEditorPanel({
   docId,
   contentWidthPx = 736,
   contentHeightPx = 976,
+  playheadSec = 0,
   onSectionChange
 }: {
   layer: PenPageLayer;
@@ -67,6 +70,8 @@ export function MediaEditorPanel({
   docId?: string;
   contentWidthPx?: number;
   contentHeightPx?: number;
+  /** When grade or crop already has keys, edits land on the key at this time. */
+  playheadSec?: number;
   onSectionChange: (next: PenSectionContent) => void;
 }) {
   const [tab, setTab] = useState<ToolTab>('color');
@@ -82,7 +87,9 @@ export function MediaEditorPanel({
   const tracks = layer.audioTracks || [];
 
   function patch(p: Parameters<typeof patchLayerStyle>[2]) {
-    onSectionChange(patchLayerStyle(section, layer.id, p));
+    const current = section.layers?.find((item) => item.id === layer.id) || layer;
+    const time = layerSampleTime(section, current, playheadSec);
+    onSectionChange(upsertLayer(section, writeLayerAtPlayhead(current, time, p)));
   }
 
   function setFilter(next: PenMediaFilter) {
@@ -140,8 +147,6 @@ export function MediaEditorPanel({
     docId,
     session
   });
-  const showTimeline = layer.kind === 'video' || tracks.length > 0;
-
   return (
     <div className="flex min-h-0 flex-1 flex-col bg-[#f3f3f3]">
       <div className="shrink-0 border-b border-stone-300 bg-stone-50 px-3 py-2">
@@ -189,15 +194,6 @@ export function MediaEditorPanel({
             <p className="flex h-full items-center justify-center text-sm text-stone-400">No media</p>
           )}
         </div>
-
-        {showTimeline && (
-          <MediaTimeline
-            layer={layer}
-            docId={docId}
-            session={session}
-            onRemove={(id) => setTracks(tracks.filter((track) => track.id !== id))}
-          />
-        )}
 
         {tab === 'color' && (
           <div className="flex flex-wrap gap-1">

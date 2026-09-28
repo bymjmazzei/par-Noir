@@ -28,6 +28,8 @@ import {
   isFlowWorkspaceOpen,
   isGooglePenFont,
   isPageLayerId,
+  applyLayoutAtPlayhead,
+  sampleSectionLayers,
   mergePagePresentation,
   migrateSectionLayerGeomToPx,
   normalizeSection,
@@ -441,7 +443,8 @@ export function EditablePagePreview({
   viewLocked = false,
   onPageOrientation,
   onPageView,
-  onToggleViewLock
+  onToggleViewLock,
+  playheadSec = 0
 }: {
   manifest: PenDocManifest;
   section: PenSectionContent;
@@ -471,6 +474,8 @@ export function EditablePagePreview({
   onPageOrientation?: (orientation: PenPageOrientation) => void;
   onPageView?: (view: PenPageView) => void;
   onToggleViewLock?: () => void;
+  /** Section clock. Layers with keys are sampled here for display only. */
+  playheadSec?: number;
   onPageSizeChange?: (next: PageSizeChoice) => void;
   onPresentationChange?: (next: Partial<PenPagePresentation>) => void;
   onSnapChange?: (enabled: boolean) => void;
@@ -530,7 +535,10 @@ export function EditablePagePreview({
     () => migrateSectionLayerGeomToPx(normalizeSection(section), pad),
     [section, pad]
   );
-  const layers = prepared.layers || [];
+  const layers = useMemo(
+    () => sampleSectionLayers(prepared, playheadSec),
+    [prepared, playheadSec]
+  );
   const wrapLayers = useMemo(
     () => layers.filter((l) => l.visible !== false && Boolean(l.bodyWrap)),
     [layers]
@@ -668,7 +676,7 @@ export function EditablePagePreview({
   }, [flowOpen]);
 
   function onLayoutChange(nextItems: LayoutItem[]) {
-    let next = updateLayerLayout(prepared, nextItems);
+    let next = applyLayoutAtPlayhead(prepared, nextItems, playheadSec);
     next = { ...next, layerGeom: 'px' };
     const groups = new Set(
       (next.layers || [])
@@ -687,16 +695,20 @@ export function EditablePagePreview({
   ) {
     const layer = prepared.layers?.find((l) => l.id === layerId);
     if (!layer) return;
-    let next = updateLayerLayout(prepared, [
-      {
-        id: layerId,
-        x: patch.x,
-        y: patch.y,
-        w: patch.w,
-        h: patch.h,
-        zIndex: layer.zIndex
-      }
-    ]);
+    let next = applyLayoutAtPlayhead(
+      prepared,
+      [
+        {
+          id: layerId,
+          x: patch.x,
+          y: patch.y,
+          w: patch.w,
+          h: patch.h,
+          zIndex: layer.zIndex
+        }
+      ],
+      playheadSec
+    );
     next = patchLayerStyle(next, layerId, { bodyWrap: patch.bodyWrap });
     next = { ...next, layerGeom: 'px' };
     onSectionChange(next);
@@ -731,16 +743,20 @@ export function EditablePagePreview({
       return;
     }
     onSectionChange(
-      updateLayerLayout(prepared, [
-        {
-          id: layer.id,
-          x: fitted.x,
-          y: fitted.y,
-          w: fitted.w,
-          h: fitted.h,
-          zIndex: layer.zIndex
-        }
-      ])
+      applyLayoutAtPlayhead(
+        prepared,
+        [
+          {
+            id: layer.id,
+            x: fitted.x,
+            y: fitted.y,
+            w: fitted.w,
+            h: fitted.h,
+            zIndex: layer.zIndex
+          }
+        ],
+        playheadSec
+      )
     );
   }
 

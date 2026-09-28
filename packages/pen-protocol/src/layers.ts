@@ -9,6 +9,7 @@ import {
   type LayerRect
 } from './pageGeometry.js';
 import { SEED_TABLE_DOC_PLACEHOLDER } from './seedRefs.js';
+import { offsetLayerMotion } from './layerMotion.js';
 import type { PenPageLayer, PenSectionContent, PenTipTapNode } from './types.js';
 
 /** Synthetic id for the page frame (flow/letter/a4) — layer 0 in the Layers list. */
@@ -189,11 +190,23 @@ export function copyWidgetLayersIntoSection(
     name: name.trim() || 'Widget'
   });
   if (widgetTemplateId) group.widgetTemplateId = widgetTemplateId;
+  const sourceGroup = sourceLayers.find((layer) => layer.kind === 'group');
+  if (sourceGroup?.durationSec && sourceGroup.durationSec > 0) {
+    group.durationSec = sourceGroup.durationSec;
+  }
+  if (sourceGroup?.motion) {
+    group.motion = offsetLayerMotion(
+      sourceGroup.motion,
+      group.x - sourceGroup.x,
+      group.y - sourceGroup.y
+    );
+  }
   let next = upsertLayer(host, group);
   src.forEach((layer, i) => {
     const { id: _dropId, parentGroupId: _dropParent, spreadsheetId: _dropSheet, ...rest } = layer;
     next = upsertLayer(next, {
       ...rest,
+      motion: offsetLayerMotion(layer.motion, dx, dy),
       id: newLayerId(),
       parentGroupId: group.id,
       positionLocked: false,

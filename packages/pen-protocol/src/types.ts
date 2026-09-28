@@ -41,6 +41,11 @@ export interface PenSectionContent {
    * Missing + legacy %-looking rects are migrated once on load.
    */
   layerGeom?: 'px';
+  /**
+   * Section playhead length in seconds.
+   * Omit to derive it from the longest video, the last key, or 5s.
+   */
+  timelineDurationSec?: number;
 }
 
 export type PenPageLayerKind = 'text' | 'image' | 'video' | 'group' | 'embed' | 'interactive' | 'guide';
@@ -174,6 +179,36 @@ export interface PenPageLayer {
    * A licensed lane references a public audio doc and is not re-uploaded.
    */
   audioTracks?: PenAudioTrack[];
+  /**
+   * Where this media layer sits on the section clock. The file is not rewritten.
+   * Seconds. Omit inSec to start at 0; omit outSec to run to the timeline end.
+   */
+  inSec?: number;
+  outSec?: number;
+  /** Widget group loop length. Child key times are local to this clock. */
+  durationSec?: number;
+  /** Sparse keyframes. Absent means the layer stays at its rest pose. */
+  motion?: PenLayerMotion;
+}
+
+export type PenKeyframeEase = 'linear' | 'easeInOut';
+
+/** One sample. Only the fields set on a key are animated. */
+export interface PenLayerKeyframe {
+  t: number;
+  ease?: PenKeyframeEase;
+  x?: number;
+  y?: number;
+  w?: number;
+  h?: number;
+  opacity?: number;
+  blur?: number;
+  mediaFilter?: PenMediaFilter;
+  mediaCrop?: PenMediaCrop;
+}
+
+export interface PenLayerMotion {
+  keys: PenLayerKeyframe[];
 }
 
 /** One timeline lane. Own bytes (`src`) or a licensed public doc (`licensedDocId`). */

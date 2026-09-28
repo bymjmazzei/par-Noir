@@ -59,13 +59,12 @@ describe('media and widget panels', () => {
     expect(widget).toContain('>Trigger<');
   });
 
-  it('renders a timeline lane for each audio track on a video', () => {
+  it('keeps the video frame in the media pane', () => {
     const html = renderToStaticMarkup(
       <MediaEditorPanel layer={video} section={section} onSectionChange={() => undefined} />
     );
-    expect(html).toContain('data-media-timeline');
-    expect(html).toContain('data-audio-lane="voice"');
-    expect(html).toContain('data-audio-lane="song"');
+    expect(html).toContain('data-media-frame');
+    expect(html).not.toContain('data-media-timeline');
     expect(html).not.toContain('aspect-video');
   });
 });
