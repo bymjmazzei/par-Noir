@@ -31,7 +31,9 @@ import {
   removeDocPage,
   reorderDocPages,
   fittedPreviewPagePx,
+  isFlowWorkspaceOpen,
   PREVIEW_PAGE_GUTTER_PX,
+  previewPageUsesGutter,
   resolvePagePaddingPx,
   resolvePageView,
   screenStripWidthPx,
@@ -1662,7 +1664,12 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
     defaultEditorPagePresentation(),
     bundle.manifest.pagePresentation
   );
-  const previewGutter = bundle.manifest.pageLayout === 'flow' ? 0 : PREVIEW_PAGE_GUTTER_PX;
+  const previewGutter = previewPageUsesGutter(
+    bundle.manifest.pageLayout,
+    bundle.manifest.flowWorkspaceWidthPx
+  )
+    ? PREVIEW_PAGE_GUTTER_PX
+    : 0;
   const paneReady = previewPaneSize.width > 0 && previewPaneSize.height > 0;
   const previewPageBox = fittedPreviewPagePx(
     bundle.manifest.pageLayout,
@@ -2401,7 +2408,11 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
                   pageWidthPx={previewPageBox.width}
                   pageHeightPx={previewPageBox.height}
                   background={pageView === 'screen' ? screenStripBackground : undefined}
-                  pageBreak={bundle.manifest.pageLayout === 'flow' && pageView === 'vertical'}
+                  pageBreak={
+                    bundle.manifest.pageLayout === 'flow' &&
+                    isFlowWorkspaceOpen(bundle.manifest.flowWorkspaceWidthPx) &&
+                    pageView === 'vertical'
+                  }
                 >
                   {previewPages.map((page) => {
                     const pageSection = page.section;
@@ -2456,24 +2467,16 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
                               setActiveSlug(page.slug);
                               setActiveLayerId(id || PAGE_LAYER_ID);
                             }}
-                            onPageLayoutChange={(layout) => {
+                            onPageSizeChange={(size) => {
                               persist({
                                 ...bundle,
                                 manifest: {
                                   ...bundle.manifest,
-                                  pageLayout: layout,
-                                  pageView: resolvePageView(bundle.manifest.pageView, layout),
-                                  updatedAt: new Date().toISOString()
-                                }
-                              });
-                            }}
-                            onFlowWorkspaceChange={({ widthPx, heightPx }) => {
-                              persist({
-                                ...bundle,
-                                manifest: {
-                                  ...bundle.manifest,
-                                  flowWorkspaceWidthPx: widthPx,
-                                  flowWorkspaceHeightPx: heightPx,
+                                  pageLayout: size.layout,
+                                  pageSize: size.id,
+                                  flowWorkspaceWidthPx: size.widthPx,
+                                  flowWorkspaceHeightPx: size.heightPx,
+                                  pageView: resolvePageView(bundle.manifest.pageView, size.layout),
                                   updatedAt: new Date().toISOString()
                                 }
                               });

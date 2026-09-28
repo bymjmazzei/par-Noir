@@ -127,11 +127,14 @@ export function pageTileAxis(pageView: PenPageView): 'vertical' | 'horizontal' {
 function PageHoverPreview({
   section,
   presentation,
-  width = THUMB_W
+  width = THUMB_W,
+  flush = false
 }: {
   section: PenSectionContent;
   presentation: PenPagePresentation;
   width?: number;
+  /** Screen tiles share one strip, so each page has no own border. */
+  flush?: boolean;
 }) {
   const contentW = 640;
   const scale = width / contentW;
@@ -145,8 +148,8 @@ function PageHoverPreview({
       : Math.min(360, Math.max(160, Math.round((maxY + 48) * scale)));
   return (
     <div
-      className={`pointer-events-none relative overflow-hidden border border-stone-300 ${
-        width < 200 ? '' : 'shadow-lg'
+      className={`pointer-events-none relative overflow-hidden ${
+        flush ? '' : `border border-stone-300 ${width < 200 ? '' : 'shadow-lg'}`
       }`}
       style={{ width, height, ...pageFrameStyle(presentation) }}
     >
@@ -281,6 +284,103 @@ export function PreviewOrientationMenu({
   );
 }
 
+export function PageFinderTiles({
+  pageView,
+  pages,
+  activeSlug,
+  presentation,
+  deleteMode = false,
+  canDelete = true,
+  onDeletePage,
+  onSelect,
+  onDragStart,
+  onDrop
+}: {
+  pageView: PenPageView;
+  pages: Array<{ slug: string; title: string; section?: PenSectionContent }>;
+  activeSlug: string;
+  presentation: PenPagePresentation;
+  deleteMode?: boolean;
+  canDelete?: boolean;
+  onDeletePage: (slug: string) => void;
+  onSelect: (slug: string) => void;
+  onDragStart: (index: number) => void;
+  onDrop: (index: number) => void;
+}) {
+  const screen = pageView === 'screen';
+  const axis = pageTileAxis(pageView);
+  return (
+    <div
+      data-page-tiles={screen ? 'screen' : axis}
+      className={`flex overflow-auto ${
+        screen
+          ? 'max-w-[70vw] flex-row gap-0'
+          : axis === 'vertical'
+            ? 'max-h-80 flex-col gap-1'
+            : 'max-w-[70vw] flex-row gap-1'
+      }`}
+    >
+      {pages.map((page, index) => {
+        const title = page.title || `Page ${index + 1}`;
+        const selected = page.slug === activeSlug;
+        return (
+          <div
+            key={page.slug}
+            draggable
+            onDragStart={() => onDragStart(index)}
+            onDragOver={(event: DragEvent) => event.preventDefault()}
+            onDrop={() => onDrop(index)}
+            className="relative shrink-0"
+          >
+            {deleteMode && (
+              <button
+                type="button"
+                aria-label={`Delete ${title}`}
+                disabled={!canDelete}
+                className="absolute left-0 top-0 z-10 rounded bg-white/90 px-1 text-[12px] text-stone-600 hover:text-red-700 disabled:opacity-40"
+                onClick={() => onDeletePage(page.slug)}
+              >
+                −
+              </button>
+            )}
+            <div
+              role="button"
+              tabIndex={0}
+              aria-label={title}
+              aria-pressed={selected}
+              className={`block cursor-pointer overflow-hidden ${
+                screen
+                  ? selected
+                    ? 'ring-2 ring-inset ring-stone-800'
+                    : ''
+                  : `rounded ${selected ? 'ring-2 ring-stone-800' : 'ring-1 ring-stone-300'}`
+              }`}
+              onClick={() => onSelect(page.slug)}
+              onKeyDown={(event) => {
+                if (event.key !== 'Enter' && event.key !== ' ') return;
+                event.preventDefault();
+                onSelect(page.slug);
+              }}
+            >
+              {page.section ? (
+                <PageHoverPreview
+                  section={page.section}
+                  presentation={presentation}
+                  width={88}
+                  flush={screen}
+                />
+              ) : (
+                <span className="block w-[88px] px-2 py-6 text-[11px]">{title}</span>
+              )}
+            </div>
+            {screen && index < pages.length - 1 ? <PageCut axis="x" /> : null}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 export function PreviewPageBar({
   pages,
   activeSlug,
@@ -372,64 +472,21 @@ export function PreviewPageBar({
                 +
               </button>
             </div>
-            <div
-              data-page-tiles={pageTileAxis(pageView)}
-              className={`flex gap-1 overflow-auto ${
-                pageTileAxis(pageView) === 'vertical' ? 'max-h-80 flex-col' : 'max-w-[70vw] flex-row'
-              }`}
-            >
-            {pages.map((page, index) => {
-              const title = page.title || `Page ${index + 1}`;
-              const selected = page.slug === activeSlug;
-              return (
-                <div
-                  key={page.slug}
-                  draggable
-                  onDragStart={() => setDragIndex(index)}
-                  onDragOver={(event: DragEvent) => event.preventDefault()}
-                  onDrop={() => dropOn(index)}
-                  className="relative shrink-0"
-                >
-                  {deleteMode && (
-                    <button
-                      type="button"
-                      aria-label={`Delete ${title}`}
-                      disabled={!canDelete}
-                      className="absolute left-0 top-0 z-10 rounded bg-white/90 px-1 text-[12px] text-stone-600 hover:text-red-700 disabled:opacity-40"
-                      onClick={() => onDeletePage(page.slug)}
-                    >
-                      −
-                    </button>
-                  )}
-                  <div
-                    role="button"
-                    tabIndex={0}
-                    aria-label={title}
-                    aria-pressed={selected}
-                    className={`block cursor-pointer overflow-hidden rounded ${
-                      selected ? 'ring-2 ring-stone-800' : 'ring-1 ring-stone-300'
-                    }`}
-                    onClick={() => {
-                      onSelect(page.slug);
-                      setPagesOpen(false);
-                    }}
-                    onKeyDown={(event) => {
-                      if (event.key !== 'Enter' && event.key !== ' ') return;
-                      event.preventDefault();
-                      onSelect(page.slug);
-                      setPagesOpen(false);
-                    }}
-                  >
-                    {page.section ? (
-                      <PageHoverPreview section={page.section} presentation={presentation} width={88} />
-                    ) : (
-                      <span className="block w-[88px] px-2 py-6 text-[11px]">{title}</span>
-                    )}
-                  </div>
-                </div>
-              );
-            })}
-            </div>
+            <PageFinderTiles
+              pageView={pageView}
+              pages={pages}
+              activeSlug={activeSlug}
+              presentation={presentation}
+              deleteMode={deleteMode}
+              canDelete={canDelete}
+              onDeletePage={onDeletePage}
+              onSelect={(slug) => {
+                onSelect(slug);
+                setPagesOpen(false);
+              }}
+              onDragStart={setDragIndex}
+              onDrop={dropOn}
+            />
           </div>
         )}
       </div>

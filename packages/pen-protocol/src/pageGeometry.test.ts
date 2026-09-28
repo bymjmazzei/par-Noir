@@ -5,6 +5,7 @@ import {
   clampLayerRect,
   contentBoxSize,
   fittedPreviewPagePx,
+  matchPageSize,
   measureToPx,
   pxToMeasure,
   snapLayoutToContentCenter,
@@ -20,6 +21,7 @@ import {
   MEDIA_ATTACH_MIN_SIDE_PX,
   migrateSectionLayerGeomToPx,
   pageSheetDims,
+  selectPageSize,
   resizeSeKeepAspect,
   sectionNeedsLegacyGeomMigrate,
   sizeMediaLayerForAttach,
@@ -51,6 +53,25 @@ describe('pageGeometry', () => {
     expect(isFlowWorkspaceOpen(null)).toBe(true);
     expect(isFlowWorkspaceOpen(undefined)).toBe(true);
     expect(isFlowWorkspaceOpen(640)).toBe(false);
+  });
+
+  it('names common page sizes and keeps 16:9 at 1920', () => {
+    expect(matchPageSize('letter').label).toBe('Letter');
+    expect(matchPageSize('flow', null, null).id).toBe('flow');
+    expect(matchPageSize('flow', 1920, 1080).id).toBe('ratio-16-9');
+    expect(matchPageSize('flow', 1080, 1920).label).toBe('9:16');
+    expect(matchPageSize('flow', 816, 1344).label).toBe('Legal');
+    expect(matchPageSize('flow', 900, 700).id).toBe('custom');
+    expect(pageSheetDims('flow', { widthPx: 1920, heightPx: 1080 })).toMatchObject({
+      pageWidthPx: 1920,
+      pageHeightPx: 1080,
+      fillWidth: false
+    });
+    const custom = selectPageSize('custom', { layout: 'letter', widthPx: null, heightPx: null });
+    expect(custom).toMatchObject({ layout: 'flow', widthPx: LETTER_WIDTH_PX, heightPx: LETTER_HEIGHT_PX });
+    expect(selectPageSize('ratio-1-1')).toMatchObject({ layout: 'flow', widthPx: 1080, heightPx: 1080 });
+    expect(selectPageSize('a4')).toMatchObject({ layout: 'a4', widthPx: null, heightPx: null });
+    expect(matchPageSize('flow', 1920, 1080, 'custom').id).toBe('custom');
   });
 
   it('legacy % migrate is stable across page layouts (same px)', () => {

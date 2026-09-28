@@ -209,6 +209,20 @@ export interface PenPagePresentation {
 
 export type PenPageLayout = 'flow' | 'letter' | 'a4';
 
+/** Named page size. `custom` keeps typed dimensions even when they match a preset. */
+export type PenPageSizeId =
+  | 'flow'
+  | 'letter'
+  | 'legal'
+  | 'a4'
+  | 'ratio-9-16'
+  | 'ratio-16-9'
+  | 'ratio-1-1'
+  | 'ratio-4-5'
+  | 'ratio-3-2'
+  | 'ratio-4-3'
+  | 'custom';
+
 /** How the live preview arranges document pages. */
 export type PenPageView = 'vertical' | 'horizontal' | 'screen';
 
@@ -240,6 +254,8 @@ export interface PenDocManifest {
    * (and fill the panel when width is also open).
    */
   flowWorkspaceHeightPx?: number | null;
+  /** Which page-size menu row is active. Omitted sizes are inferred from layout and dimensions. */
+  pageSize?: PenPageSizeId;
   /** Default Note card chrome when compiling to browse. */
   pagePresentation?: PenPagePresentation;
   /** Gallery / thumb aspect for Social orientations. */

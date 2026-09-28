@@ -3,7 +3,7 @@
  * Layer x/y/w/h are absolute CSS px inside Body padding — independent of pageLayout.
  */
 
-import type { PenPageLayer, PenPageLayout, PenSectionContent } from './types.js';
+import type { PenPageLayer, PenPageLayout, PenPageSizeId, PenSectionContent } from './types.js';
 
 /** CSS px at 96dpi. */
 export const CSS_PX_PER_IN = 96;
@@ -50,6 +50,113 @@ export function isFlowWorkspaceOpen(widthPx?: number | null): boolean {
   return widthPx == null;
 }
 
+/** Fixed pages, including custom and named ratios, keep the gray frame. Open Flow does not. */
+export function previewPageUsesGutter(
+  layout: PenPageLayout | undefined,
+  widthPx?: number | null
+): boolean {
+  return !((layout || 'flow') === 'flow' && isFlowWorkspaceOpen(widthPx));
+}
+
+export const MIN_PAGE_SIZE_PX = 64;
+export const MAX_PAGE_SIZE_PX = 4096;
+
+export function clampPageSizePx(px: number): number {
+  if (!Number.isFinite(px)) return DEFAULT_FLOW_WORKSPACE_WIDTH_PX;
+  return Math.max(MIN_PAGE_SIZE_PX, Math.min(MAX_PAGE_SIZE_PX, Math.round(px)));
+}
+
+export type PageSizeId = PenPageSizeId;
+
+export type PageSizeChoice = {
+  id: PageSizeId;
+  label: string;
+  layout: PenPageLayout;
+  widthPx: number | null;
+  heightPx: number | null;
+};
+
+/** Named sizes. Paper uses print inches at 96dpi. Ratios use a 1080px short side. */
+export const PAGE_SIZE_PRESETS: PageSizeChoice[] = [
+  { id: 'flow', label: 'Flow', layout: 'flow', widthPx: null, heightPx: null },
+  { id: 'ratio-9-16', label: '9:16', layout: 'flow', widthPx: 1080, heightPx: 1920 },
+  { id: 'ratio-16-9', label: '16:9', layout: 'flow', widthPx: 1920, heightPx: 1080 },
+  { id: 'ratio-1-1', label: '1:1', layout: 'flow', widthPx: 1080, heightPx: 1080 },
+  { id: 'ratio-4-5', label: '4:5', layout: 'flow', widthPx: 1080, heightPx: 1350 },
+  { id: 'ratio-3-2', label: '3:2', layout: 'flow', widthPx: 1620, heightPx: 1080 },
+  { id: 'ratio-4-3', label: '4:3', layout: 'flow', widthPx: 1440, heightPx: 1080 },
+  { id: 'letter', label: 'Letter', layout: 'letter', widthPx: null, heightPx: null },
+  { id: 'legal', label: 'Legal', layout: 'flow', widthPx: Math.round(8.5 * CSS_PX_PER_IN), heightPx: Math.round(14 * CSS_PX_PER_IN) },
+  { id: 'a4', label: 'A4', layout: 'a4', widthPx: null, heightPx: null }
+];
+
+export function matchPageSize(
+  layout: PenPageLayout | undefined,
+  widthPx?: number | null,
+  heightPx?: number | null,
+  sizeId?: PageSizeId | null
+): PageSizeChoice {
+  if (sizeId === 'custom') {
+    const width = clampPageSizePx(Number(widthPx) || DEFAULT_FLOW_WORKSPACE_WIDTH_PX);
+    const height = clampPageSizePx(Number(heightPx) || DEFAULT_FLOW_WORKSPACE_HEIGHT_PX);
+    return { id: 'custom', label: 'Custom', layout: 'flow', widthPx: width, heightPx: height };
+  }
+  if (layout === 'letter') return PAGE_SIZE_PRESETS.find((item) => item.id === 'letter')!;
+  if (layout === 'a4') return PAGE_SIZE_PRESETS.find((item) => item.id === 'a4')!;
+  if (isFlowWorkspaceOpen(widthPx)) return PAGE_SIZE_PRESETS.find((item) => item.id === 'flow')!;
+  const width = Math.round(Number(widthPx));
+  const height = Math.round(Number(heightPx));
+  const preset = PAGE_SIZE_PRESETS.find(
+    (item) => item.layout === 'flow' && item.widthPx === width && item.heightPx === height
+  );
+  if (preset) return preset;
+  return {
+    id: 'custom',
+    label: 'Custom',
+    layout: 'flow',
+    widthPx: clampPageSizePx(width),
+    heightPx: clampPageSizePx(Number.isFinite(height) ? height : DEFAULT_FLOW_WORKSPACE_HEIGHT_PX)
+  };
+}
+
+/** One size write: layout and dimensions change together. */
+export function selectPageSize(
+  id: PageSizeId,
+  current?: {
+    layout?: PenPageLayout | null;
+    widthPx?: number | null;
+    heightPx?: number | null;
+    sizeId?: PageSizeId | null;
+  }
+): PageSizeChoice {
+  if (id !== 'custom') {
+    return PAGE_SIZE_PRESETS.find((item) => item.id === id) || PAGE_SIZE_PRESETS[0]!;
+  }
+  const matched = matchPageSize(
+    current?.layout || 'flow',
+    current?.widthPx,
+    current?.heightPx,
+    current?.sizeId
+  );
+  if (matched.id === 'custom') return matched;
+  if (matched.id === 'letter') {
+    return { id: 'custom', label: 'Custom', layout: 'flow', widthPx: LETTER_WIDTH_PX, heightPx: LETTER_HEIGHT_PX };
+  }
+  if (matched.id === 'a4') {
+    return { id: 'custom', label: 'Custom', layout: 'flow', widthPx: A4_WIDTH_PX, heightPx: A4_HEIGHT_PX };
+  }
+  if (matched.widthPx != null && matched.heightPx != null) {
+    return { id: 'custom', label: 'Custom', layout: 'flow', widthPx: matched.widthPx, heightPx: matched.heightPx };
+  }
+  return {
+    id: 'custom',
+    label: 'Custom',
+    layout: 'flow',
+    widthPx: DEFAULT_FLOW_WORKSPACE_WIDTH_PX,
+    heightPx: DEFAULT_FLOW_WORKSPACE_HEIGHT_PX
+  };
+}
+
 export function pageSheetDims(
   layout: PenPageLayout | undefined,
   flow?: { widthPx?: number | null; heightPx?: number | null }
@@ -72,20 +179,11 @@ export function pageSheetDims(
   }
   const open = isFlowWorkspaceOpen(flow?.widthPx);
   if (open) {
-    const h =
-      flow?.heightPx == null
-        ? null
-        : Math.max(240, Math.min(4000, Math.round(Number(flow.heightPx))));
+    const h = flow?.heightPx == null ? null : clampPageSizePx(Number(flow.heightPx));
     return { pageWidthPx: null, pageHeightPx: h, fillWidth: true, paged: false };
   }
-  const w = Math.max(
-    320,
-    Math.min(1600, Math.round(Number(flow?.widthPx) || DEFAULT_FLOW_WORKSPACE_WIDTH_PX))
-  );
-  const h =
-    flow?.heightPx == null
-      ? null
-      : Math.max(240, Math.min(4000, Math.round(Number(flow.heightPx))));
+  const w = clampPageSizePx(Number(flow?.widthPx) || DEFAULT_FLOW_WORKSPACE_WIDTH_PX);
+  const h = flow?.heightPx == null ? null : clampPageSizePx(Number(flow.heightPx));
   return { pageWidthPx: w, pageHeightPx: h, fillWidth: false, paged: false };
 }
 

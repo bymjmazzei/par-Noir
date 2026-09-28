@@ -11,8 +11,10 @@ import { createPortal } from 'react-dom';
 import {
   clampLayerRect,
   collectFontFamiliesFromDoc,
+  clampPageSizePx,
   contentBoxSize,
   createGuideLayer,
+  matchPageSize,
   measureToPx,
   defaultEditorPagePresentation,
   DEFAULT_FLOW_WORKSPACE_HEIGHT_PX,
@@ -29,6 +31,7 @@ import {
   migrateSectionLayerGeomToPx,
   normalizeSection,
   PAGE_LAYER_ID,
+  PAGE_SIZE_PRESETS,
   openFlowDragHeightPx,
   pageSheetDims,
   pxToMeasure,
@@ -39,14 +42,15 @@ import {
   sectionNeedsLegacyGeomMigrate,
   formatCountdown,
   revealSibling,
+  selectPageSize,
   sanitizeWidgetMarkup,
   updateLayerLayout,
   upsertLayer,
   voteFaceForLayer,
   wrapSideFromGeom,
+  type PageSizeChoice,
   type PenDocManifest,
   type PenPageLayer,
-  type PenPageLayout,
   type PageMeasureUnit,
   type PenPageView,
   type PenPagePresentation,
@@ -415,8 +419,7 @@ export function EditablePagePreview({
   activeLayerId,
   onSelectLayer,
   onSectionChange,
-  onPageLayoutChange,
-  onFlowWorkspaceChange,
+  onPageSizeChange,
   onPresentationChange,
   onSnapChange,
   session,
@@ -462,11 +465,7 @@ export function EditablePagePreview({
   viewLocked?: boolean;
   onPageView?: (view: PenPageView) => void;
   onToggleViewLock?: () => void;
-  onPageLayoutChange?: (layout: PenPageLayout) => void;
-  onFlowWorkspaceChange?: (next: {
-    widthPx: number | null;
-    heightPx: number | null;
-  }) => void;
+  onPageSizeChange?: (next: PageSizeChoice) => void;
   onPresentationChange?: (next: Partial<PenPagePresentation>) => void;
   onSnapChange?: (enabled: boolean) => void;
   session?: PenSession | null;
@@ -750,48 +749,40 @@ export function EditablePagePreview({
     setGuidesOpen(false);
   }
 
-  function choosePageSize(choice: 'flow' | 'letter' | 'a4' | 'custom') {
-    if (choice === 'letter' || choice === 'a4') {
-      onPageLayoutChange?.(choice);
-    } else {
-      onPageLayoutChange?.('flow');
-      onFlowWorkspaceChange?.(
-        choice === 'flow'
-          ? { widthPx: null, heightPx: null }
-          : {
-              widthPx: flowWidth ?? DEFAULT_FLOW_WORKSPACE_WIDTH_PX,
-              heightPx: flowHeight ?? DEFAULT_FLOW_WORKSPACE_HEIGHT_PX
-            }
-      );
-    }
+  function choosePageSize(id: PageSizeChoice['id']) {
+    if (!onPageSizeChange) return;
+    onPageSizeChange(
+      selectPageSize(id, {
+        layout: manifest.pageLayout,
+        widthPx: manifest.flowWorkspaceWidthPx,
+        heightPx: manifest.flowWorkspaceHeightPx,
+        sizeId: manifest.pageSize
+      })
+    );
     selectLayer(PAGE_LAYER_ID);
-    if (choice !== 'custom') setPageSizeOpen(false);
+    if (id !== 'custom') setPageSizeOpen(false);
   }
 
   function setCustomPx(axis: 'width' | 'height', raw: number) {
-    if (!onFlowWorkspaceChange || !Number.isFinite(raw)) return;
-    const px = measureToPx(raw, measureUnit);
-    if (axis === 'width') {
-      onFlowWorkspaceChange({
-        widthPx: Math.max(320, Math.min(1600, px)),
-        heightPx: flowHeight ?? DEFAULT_FLOW_WORKSPACE_HEIGHT_PX
-      });
-    } else {
-      onFlowWorkspaceChange({
-        widthPx: flowWidth ?? DEFAULT_FLOW_WORKSPACE_WIDTH_PX,
-        heightPx: Math.max(240, Math.min(4000, px))
-      });
-    }
+    if (!onPageSizeChange || !Number.isFinite(raw)) return;
+    const px = clampPageSizePx(measureToPx(raw, measureUnit));
+    onPageSizeChange({
+      id: 'custom',
+      label: 'Custom',
+      layout: 'flow',
+      widthPx: axis === 'width' ? px : customWidthPx,
+      heightPx: axis === 'height' ? px : customHeightPx
+    });
   }
 
-  const pageSizeChoice: 'flow' | 'letter' | 'a4' | 'custom' =
-    manifest.pageLayout === 'letter' || manifest.pageLayout === 'a4'
-      ? manifest.pageLayout
-      : flowOpen
-        ? 'flow'
-        : 'custom';
-  const customWidthPx = flowWidth ?? DEFAULT_FLOW_WORKSPACE_WIDTH_PX;
-  const customHeightPx = flowHeight ?? DEFAULT_FLOW_WORKSPACE_HEIGHT_PX;
+  const pageSizeChoice = matchPageSize(
+    manifest.pageLayout,
+    manifest.flowWorkspaceWidthPx,
+    manifest.flowWorkspaceHeightPx,
+    manifest.pageSize
+  );
+  const customWidthPx = pageSizeChoice.widthPx ?? DEFAULT_FLOW_WORKSPACE_WIDTH_PX;
+  const customHeightPx = pageSizeChoice.heightPx ?? DEFAULT_FLOW_WORKSPACE_HEIGHT_PX;
 
   const frameStyle: CSSProperties = pageFrameStyle(presentation);
   if (
@@ -810,7 +801,7 @@ export function EditablePagePreview({
         ref={pageToolsRef}
         className="relative z-20 flex shrink-0 items-center gap-2 border-b border-neutral-200 bg-white px-2 py-1.5"
       >
-        {onPageLayoutChange && (
+        {onPageSizeChange && (
           <div className="relative shrink-0">
             <button
               type="button"
@@ -822,39 +813,38 @@ export function EditablePagePreview({
                 setGuidesOpen(false);
               }}
             >
-              {pageSizeChoice === 'letter'
-                ? 'Letter'
-                : pageSizeChoice === 'a4'
-                  ? 'A4'
-                  : pageSizeChoice === 'custom'
-                    ? 'Custom'
-                    : 'Flow'}
+              {pageSizeChoice.label}
             </button>
             {pageSizeOpen && (
-              <div className="absolute left-0 top-full z-50 mt-1 w-56 rounded-md border border-neutral-200 bg-white p-2 shadow-lg">
-                {(
-                  [
-                    ['flow', 'Flow'],
-                    ['letter', 'Letter'],
-                    ['a4', 'A4'],
-                    ['custom', 'Custom']
-                  ] as const
-                ).map(([value, label]) => (
+              <div className="absolute left-0 top-full z-50 mt-1 max-h-[min(24rem,70vh)] w-56 overflow-auto rounded-md border border-neutral-200 bg-white p-2 shadow-lg">
+                {PAGE_SIZE_PRESETS.map((preset) => (
                   <button
-                    key={value}
+                    key={preset.id}
                     type="button"
-                    aria-pressed={pageSizeChoice === value}
+                    aria-pressed={pageSizeChoice.id === preset.id}
                     className={`block w-full rounded px-2 py-1 text-left text-[11px] font-bold ${
-                      pageSizeChoice === value
+                      pageSizeChoice.id === preset.id
                         ? 'bg-neutral-900 text-white'
                         : 'text-neutral-700 hover:bg-neutral-100'
                     }`}
-                    onClick={() => choosePageSize(value)}
+                    onClick={() => choosePageSize(preset.id)}
                   >
-                    {label}
+                    {preset.label}
                   </button>
                 ))}
-                {pageSizeChoice === 'custom' && onFlowWorkspaceChange && (
+                <button
+                  type="button"
+                  aria-pressed={pageSizeChoice.id === 'custom'}
+                  className={`block w-full rounded px-2 py-1 text-left text-[11px] font-bold ${
+                    pageSizeChoice.id === 'custom'
+                      ? 'bg-neutral-900 text-white'
+                      : 'text-neutral-700 hover:bg-neutral-100'
+                  }`}
+                  onClick={() => choosePageSize('custom')}
+                >
+                  Custom
+                </button>
+                {pageSizeChoice.id === 'custom' && (
                   <div className="mt-2 border-t border-neutral-200 pt-2">
                     <div className="mb-2 flex gap-1">
                       {(['px', 'in', 'cm', 'mm'] as const).map((unit) => (

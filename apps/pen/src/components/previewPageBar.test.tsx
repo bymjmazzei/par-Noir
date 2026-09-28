@@ -11,6 +11,7 @@ import {
 import {
   OrientationChoices,
   pageTileAxis,
+  PageFinderTiles,
   PreviewOrientationMenu,
   PreviewPageBar,
   PreviewPageStrip
@@ -91,6 +92,45 @@ describe('preview page toolbar', () => {
     expect(pageTileAxis('vertical')).toBe('vertical');
     expect(pageTileAxis('horizontal')).toBe('horizontal');
     expect(pageTileAxis('screen')).toBe('horizontal');
+  });
+
+  it('screen page tiles sit flush with a dotted cut and no gap', () => {
+    const pages = [
+      { slug: 'body', title: 'Page 1', section: emptySection('body') },
+      { slug: 'page-2', title: 'Page 2', section: emptySection('page-2') },
+      { slug: 'page-3', title: 'Page 3', section: emptySection('page-3') }
+    ];
+    const screen = renderToStaticMarkup(
+      <PageFinderTiles
+        pageView="screen"
+        pages={pages}
+        activeSlug="body"
+        presentation={defaultPagePresentation()}
+        onDeletePage={() => undefined}
+        onSelect={() => undefined}
+        onDragStart={() => undefined}
+        onDrop={() => undefined}
+      />
+    );
+    expect(screen).toContain('data-page-tiles="screen"');
+    expect(screen).toContain('gap-0');
+    expect(screen).not.toContain('gap-1');
+    expect(screen.match(/data-page-seam/g)?.length).toBe(2);
+    const horizontal = renderToStaticMarkup(
+      <PageFinderTiles
+        pageView="horizontal"
+        pages={pages}
+        activeSlug="body"
+        presentation={defaultPagePresentation()}
+        onDeletePage={() => undefined}
+        onSelect={() => undefined}
+        onDragStart={() => undefined}
+        onDrop={() => undefined}
+      />
+    );
+    expect(horizontal).toContain('data-page-tiles="horizontal"');
+    expect(horizontal).toContain('gap-1');
+    expect(horizontal).not.toContain('data-page-seam');
   });
 
   it('orientation shows the active icon and keeps the choices closed', () => {
