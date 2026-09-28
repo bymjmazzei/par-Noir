@@ -1,6 +1,6 @@
-/** Pagination toolbar for the live preview: add a page, tiles, hover preview, view. */
+/** Pagination toolbar for the live preview: orientation, page field, page list. */
 
-import { Children, useState, type CSSProperties, type ReactNode } from 'react';
+import { Children, useEffect, useState, type CSSProperties, type DragEvent, type ReactNode } from 'react';
 import {
   SCREEN_PAGE_WIDTH_PX,
   screenStripWidthPx,
@@ -157,6 +157,29 @@ function PageHoverPreview({
   );
 }
 
+function ViewIcon({ view }: { view: PenPageView }) {
+  if (view === 'horizontal') {
+    return (
+      <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden>
+        <rect x="1.5" y="4.5" width="13" height="7" rx="1" fill="none" stroke="currentColor" strokeWidth="1.5" />
+      </svg>
+    );
+  }
+  if (view === 'screen') {
+    return (
+      <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden>
+        <rect x="1.5" y="2.5" width="5.5" height="11" rx="1" fill="none" stroke="currentColor" strokeWidth="1.5" />
+        <rect x="9" y="2.5" width="5.5" height="11" rx="1" fill="none" stroke="currentColor" strokeWidth="1.5" />
+      </svg>
+    );
+  }
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden>
+      <rect x="4.5" y="1.5" width="7" height="13" rx="1" fill="none" stroke="currentColor" strokeWidth="1.5" />
+    </svg>
+  );
+}
+
 export function PreviewPageBar({
   pages,
   activeSlug,
@@ -165,6 +188,7 @@ export function PreviewPageBar({
   onSelect,
   onAddPage,
   onDeletePage,
+  onReorder,
   onFlip,
   onPageView,
   viewLocked = false,
@@ -176,16 +200,46 @@ export function PreviewPageBar({
   presentation: PenPagePresentation;
   onSelect: (slug: string) => void;
   onAddPage: () => void;
-  onDeletePage: () => void;
+  onDeletePage: (slug: string) => void;
+  onReorder: (fromIndex: number, toIndex: number) => void;
   onFlip: (direction: -1 | 1) => void;
   onPageView: (view: PenPageView) => void;
   viewLocked?: boolean;
   onToggleViewLock: () => void;
 }) {
   const [hoverSlug, setHoverSlug] = useState<string | null>(null);
-  const hover = pages.find((page) => page.slug === hoverSlug);
+  const [orientationOpen, setOrientationOpen] = useState(false);
+  const [pagesOpen, setPagesOpen] = useState(false);
+  const [deleteMode, setDeleteMode] = useState(false);
+  const [dragIndex, setDragIndex] = useState<number | null>(null);
   const activeIndex = Math.max(0, pages.findIndex((page) => page.slug === activeSlug));
+  const active = pages[activeIndex];
+  const activeLabel = active?.title || `Page ${activeIndex + 1}`;
+  const [pageDraft, setPageDraft] = useState(String(activeIndex + 1));
+  const hover = pages.find((page) => page.slug === hoverSlug);
   const canDelete = pages.length > 1;
+
+  useEffect(() => {
+    setPageDraft(String(activeIndex + 1));
+  }, [activeIndex, pages.length]);
+
+  function commitPageNumber() {
+    const n = Math.round(Number(pageDraft));
+    if (!Number.isFinite(n) || pages.length === 0) {
+      setPageDraft(String(activeIndex + 1));
+      return;
+    }
+    const clamped = Math.min(pages.length, Math.max(1, n));
+    setPageDraft(String(clamped));
+    const next = pages[clamped - 1];
+    if (next && next.slug !== activeSlug) onSelect(next.slug);
+  }
+
+  function dropOn(index: number) {
+    if (dragIndex == null || dragIndex === index) return;
+    onReorder(dragIndex, index);
+    setDragIndex(null);
+  }
 
   return (
     <div
@@ -193,93 +247,20 @@ export function PreviewPageBar({
       aria-label="Pages"
       className="flex shrink-0 items-center gap-2 border-t border-stone-300 bg-stone-50 px-2 py-1.5"
     >
-      <button
-        type="button"
-        aria-label="Add page"
-        className="shrink-0 rounded bg-white px-2 py-1 text-[12px] font-medium text-stone-800 hover:bg-stone-100"
-        onClick={onAddPage}
-      >
-        Add page
-      </button>
-      <button
-        type="button"
-        aria-label="Delete page"
-        disabled={!canDelete}
-        className="shrink-0 rounded bg-white px-2 py-1 text-[12px] font-medium text-stone-800 hover:bg-stone-100 disabled:cursor-not-allowed disabled:text-stone-400"
-        onClick={onDeletePage}
-      >
-        Delete page
-      </button>
-      <button
-        type="button"
-        aria-label="Previous page"
-        disabled={activeIndex <= 0}
-        className="shrink-0 rounded bg-white px-2 py-1 text-[12px] font-medium text-stone-800 hover:bg-stone-100 disabled:cursor-not-allowed disabled:text-stone-400"
-        onClick={() => onFlip(-1)}
-      >
-        Prev
-      </button>
-      <div className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto">
-        {pages.map((page, index) => {
-          const active = page.slug === activeSlug;
-          return (
-            <div
-              key={page.slug}
-              className="relative shrink-0"
-              onMouseEnter={() => setHoverSlug(page.slug)}
-              onMouseLeave={() => setHoverSlug((current) => (current === page.slug ? null : current))}
-            >
-              <button
-                type="button"
-                aria-label={page.title}
-                aria-pressed={active}
-                className={`rounded border px-2 py-1 text-[11px] ${
-                  active
-                    ? 'border-stone-800 bg-white font-semibold text-stone-900'
-                    : 'border-stone-300 bg-white text-stone-600 hover:border-stone-500'
-                }`}
-                onClick={() => onSelect(page.slug)}
-              >
-                {page.title || `Page ${index + 1}`}
-              </button>
-              {hover?.slug === page.slug && page.section && (
-                <div className="absolute bottom-full left-0 z-40 mb-2">
-                  <PageHoverPreview section={page.section} presentation={presentation} />
-                </div>
-              )}
-            </div>
-          );
-        })}
-      </div>
-      <button
-        type="button"
-        aria-label="Next page"
-        disabled={activeIndex >= pages.length - 1}
-        className="shrink-0 rounded bg-white px-2 py-1 text-[12px] font-medium text-stone-800 hover:bg-stone-100 disabled:cursor-not-allowed disabled:text-stone-400"
-        onClick={() => onFlip(1)}
-      >
-        Next
-      </button>
-      <div className="flex shrink-0 items-center gap-1">
-        {VIEWS.map((view) => (
-          <button
-            key={view.id}
-            type="button"
-            aria-label={view.label}
-            aria-pressed={pageView === view.id}
-            disabled={viewLocked}
-            className={`rounded px-2 py-1 text-[11px] font-medium disabled:cursor-not-allowed disabled:opacity-40 ${
-              pageView === view.id
-                ? 'bg-stone-800 text-white'
-                : 'bg-white text-stone-700 hover:bg-stone-100'
-            }`}
-            onClick={() => {
-              if (!viewLocked) onPageView(view.id);
-            }}
-          >
-            {view.label}
-          </button>
-        ))}
+      <div className="relative flex shrink-0 items-center gap-1">
+        <button
+          type="button"
+          aria-label={VIEWS.find((view) => view.id === pageView)?.label || 'Vertical'}
+          aria-expanded={orientationOpen}
+          data-page-view={pageView}
+          className="flex h-7 w-7 items-center justify-center rounded bg-white text-stone-800 hover:bg-stone-100"
+          onClick={() => {
+            setPagesOpen(false);
+            setOrientationOpen((open) => !open);
+          }}
+        >
+          <ViewIcon view={pageView} />
+        </button>
         <button
           type="button"
           aria-label={viewLocked ? 'Unlock view' : 'Lock view'}
@@ -291,6 +272,153 @@ export function PreviewPageBar({
         >
           {viewLocked ? 'Locked' : 'Lock'}
         </button>
+        <div
+          hidden={!orientationOpen}
+          className="absolute bottom-full left-0 z-40 mb-1 flex gap-1 rounded border border-stone-300 bg-white p-1 shadow-lg"
+        >
+            {VIEWS.map((view) => (
+              <button
+                key={view.id}
+                type="button"
+                aria-label={view.label}
+                aria-pressed={pageView === view.id}
+                disabled={viewLocked}
+                className={`flex h-7 w-7 items-center justify-center rounded disabled:cursor-not-allowed disabled:opacity-40 ${
+                  pageView === view.id ? 'bg-stone-800 text-white' : 'text-stone-700 hover:bg-stone-100'
+                }`}
+                onClick={() => {
+                  if (viewLocked) return;
+                  onPageView(view.id);
+                  setOrientationOpen(false);
+                }}
+              >
+                <ViewIcon view={view.id} />
+              </button>
+            ))}
+        </div>
+      </div>
+      <div className="flex min-w-0 flex-1 items-center justify-center gap-1">
+        <button
+          type="button"
+          aria-label="Previous page"
+          disabled={activeIndex <= 0}
+          className="rounded bg-white px-2 py-1 text-[12px] font-medium text-stone-800 hover:bg-stone-100 disabled:cursor-not-allowed disabled:text-stone-400"
+          onClick={() => onFlip(-1)}
+        >
+          ‹
+        </button>
+        <label className="flex items-center gap-1 text-[12px] text-stone-700">
+          Page
+          <input
+            aria-label="Page number"
+            inputMode="numeric"
+            className="h-7 w-10 rounded border border-stone-300 bg-white text-center text-[12px] font-medium text-stone-900"
+            value={pageDraft}
+            onChange={(e) => setPageDraft(e.target.value)}
+            onBlur={commitPageNumber}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') e.currentTarget.blur();
+            }}
+          />
+          of {pages.length}
+        </label>
+        <button
+          type="button"
+          aria-label="Next page"
+          disabled={activeIndex >= pages.length - 1}
+          className="rounded bg-white px-2 py-1 text-[12px] font-medium text-stone-800 hover:bg-stone-100 disabled:cursor-not-allowed disabled:text-stone-400"
+          onClick={() => onFlip(1)}
+        >
+          ›
+        </button>
+      </div>
+      <div className="relative shrink-0">
+        <button
+          type="button"
+          aria-label="Pages"
+          aria-expanded={pagesOpen}
+          className="max-w-[10rem] truncate rounded border border-stone-300 bg-white px-2 py-1 text-[11px] font-semibold text-stone-900 hover:border-stone-500"
+          onClick={() => {
+            setOrientationOpen(false);
+            setPagesOpen((open) => !open);
+          }}
+        >
+          {activeLabel}
+        </button>
+        <div
+          hidden={!pagesOpen}
+          className="absolute bottom-full right-0 z-40 mb-1 w-56 rounded border border-stone-300 bg-white p-1 shadow-lg"
+        >
+            <div className="mb-1 flex items-center justify-end gap-1">
+              <button
+                type="button"
+                aria-label="Delete pages"
+                aria-pressed={deleteMode}
+                className={`rounded px-2 py-0.5 text-[12px] font-medium ${
+                  deleteMode ? 'bg-stone-800 text-white' : 'text-stone-700 hover:bg-stone-100'
+                }`}
+                onClick={() => setDeleteMode((on) => !on)}
+              >
+                −
+              </button>
+              <button
+                type="button"
+                aria-label="Add page"
+                className="rounded px-2 py-0.5 text-[12px] font-medium text-stone-700 hover:bg-stone-100"
+                onClick={onAddPage}
+              >
+                +
+              </button>
+            </div>
+            {pages.map((page, index) => {
+              const title = page.title || `Page ${index + 1}`;
+              const selected = page.slug === activeSlug;
+              return (
+                <div
+                  key={page.slug}
+                  draggable
+                  onDragStart={() => setDragIndex(index)}
+                  onDragOver={(event: DragEvent) => event.preventDefault()}
+                  onDrop={() => dropOn(index)}
+                  className="relative"
+                  onMouseEnter={() => setHoverSlug(page.slug)}
+                  onMouseLeave={() => setHoverSlug((current) => (current === page.slug ? null : current))}
+                >
+                  <div className="flex items-center gap-1">
+                    {deleteMode && (
+                      <button
+                        type="button"
+                        aria-label={`Delete ${title}`}
+                        disabled={!canDelete}
+                        className="shrink-0 rounded px-1 text-[12px] text-stone-500 hover:text-red-700 disabled:cursor-not-allowed disabled:opacity-40"
+                        onClick={() => onDeletePage(page.slug)}
+                      >
+                        −
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      aria-pressed={selected}
+                      className={`min-w-0 flex-1 truncate rounded px-2 py-1 text-left text-[11px] ${
+                        selected ? 'bg-stone-100 font-semibold text-stone-900' : 'text-stone-700 hover:bg-stone-50'
+                      }`}
+                      onClick={() => {
+                        onSelect(page.slug);
+                        setPagesOpen(false);
+                      }}
+                    >
+                      {title}
+                    </button>
+                  </div>
+                  {hover?.slug === page.slug && page.section && (
+                    <div className="absolute right-full top-0 z-50 mr-2">
+                      <PageHoverPreview section={page.section} presentation={presentation} />
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+        </div>
       </div>
     </div>
   );

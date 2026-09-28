@@ -58,7 +58,7 @@ describe('preview page toolbar', () => {
     expect(html).not.toContain('data-page-seam');
   });
 
-  it('shows add page, a tile per page, and the three views', () => {
+  it('shows the active orientation, a page field, and every page title', () => {
     const html = renderToStaticMarkup(
       <PreviewPageBar
         pages={[
@@ -71,19 +71,22 @@ describe('preview page toolbar', () => {
         onSelect={() => undefined}
         onAddPage={() => undefined}
         onDeletePage={() => undefined}
+        onReorder={() => undefined}
         onFlip={() => undefined}
         onPageView={() => undefined}
         onToggleViewLock={() => undefined}
       />
     );
-    expect(html).toContain('Add page');
-    expect(html).toContain('Delete page');
+    expect(html).toContain('data-page-view="horizontal"');
+    expect(html).toContain('aria-label="Horizontal"');
+    expect(html).toContain('of ');
+    expect(html).toContain('Page number');
     expect(html).toContain('Previous page');
     expect(html).toContain('Next page');
     expect(html).toContain('Page 1');
     expect(html).toContain('Page 2');
+    expect(html).toContain('Add page');
     expect(html).toContain('Vertical');
-    expect(html).toContain('Horizontal');
     expect(html).toContain('Screen');
     expect(html).toContain('Lock view');
   });
@@ -110,13 +113,14 @@ describe('preview page toolbar', () => {
         onSelect={() => undefined}
         onAddPage={() => undefined}
         onDeletePage={() => undefined}
+        onReorder={() => undefined}
         onFlip={() => undefined}
         onPageView={() => undefined}
         onToggleViewLock={() => undefined}
       />
     );
     expect(html).toContain('Unlock view');
-    expect(html).toContain('disabled=""');
-    expect(html).toContain('Delete page');
+    expect(html).toMatch(/aria-label="Horizontal"[^>]*disabled=""/);
+    expect(html).toMatch(/aria-label="Screen"[^>]*disabled=""/);
   });
 });

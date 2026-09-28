@@ -29,6 +29,7 @@ import {
   appendDocPage,
   pageSwipeAxisForView,
   removeDocPage,
+  reorderDocPages,
   fittedPreviewPagePx,
   PREVIEW_PAGE_GUTTER_PX,
   resolvePagePaddingPx,
@@ -1711,8 +1712,8 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
     });
   };
 
-  const deletePreviewPage = () => {
-    const removed = removeDocPage(bundle.sections, bundle.manifest.toc, activeSlug);
+  const deletePreviewPage = (slug: string) => {
+    const removed = removeDocPage(bundle.sections, bundle.manifest.toc, slug);
     if (!removed) return;
     persist({
       ...bundle,
@@ -1723,8 +1724,23 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
         updatedAt: new Date().toISOString()
       }
     });
-    setActiveSlug(removed.slug);
-    setActiveLayerId(PAGE_LAYER_ID);
+    if (slug === activeSlug || !removed.toc.includes(activeSlug)) {
+      setActiveSlug(removed.slug);
+      setActiveLayerId(PAGE_LAYER_ID);
+    }
+  };
+
+  const reorderPreviewPages = (fromIndex: number, toIndex: number) => {
+    const next = reorderDocPages(bundle.sections, bundle.manifest.toc, fromIndex, toIndex);
+    persist({
+      ...bundle,
+      sections: next.sections,
+      manifest: {
+        ...bundle.manifest,
+        toc: next.toc,
+        updatedAt: new Date().toISOString()
+      }
+    });
   };
 
   const flipPreviewPage = (direction: -1 | 1) => {
@@ -2551,6 +2567,7 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
               onSelect={setActiveSlug}
               onAddPage={addPreviewPage}
               onDeletePage={deletePreviewPage}
+              onReorder={reorderPreviewPages}
               onFlip={flipPreviewPage}
               onPageView={setPreviewPageView}
               viewLocked={bundle.manifest.pageViewLocked === true}

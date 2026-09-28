@@ -735,9 +735,6 @@ export function EditablePagePreview({
   const chrome = showToolbar ? (
     <>
       <div className="relative z-20 flex shrink-0 items-center gap-2 border-b border-neutral-200 bg-white px-2 py-1.5">
-        <span className="shrink-0 text-[11px] font-bold uppercase tracking-wider text-neutral-400">
-          Page
-        </span>
         {onPageLayoutChange && (
           <select
             className="h-6 shrink-0 border-0 bg-transparent text-[11px] font-bold text-black outline-none"

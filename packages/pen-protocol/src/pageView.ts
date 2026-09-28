@@ -70,6 +70,33 @@ export function removeDocPage(
   };
 }
 
+/** Move one page to another index. Sections follow toc order. */
+export function reorderDocPages(
+  sections: PenSectionContent[],
+  toc: string[],
+  fromIndex: number,
+  toIndex: number
+): { sections: PenSectionContent[]; toc: string[] } {
+  if (
+    fromIndex === toIndex ||
+    fromIndex < 0 ||
+    toIndex < 0 ||
+    fromIndex >= toc.length ||
+    toIndex >= toc.length
+  ) {
+    return { sections, toc };
+  }
+  const nextToc = [...toc];
+  const [slug] = nextToc.splice(fromIndex, 1);
+  nextToc.splice(toIndex, 0, slug);
+  const bySlug = new Map(sections.map((section) => [section.slug, section]));
+  const ordered = nextToc
+    .map((item) => bySlug.get(item))
+    .filter((section): section is PenSectionContent => Boolean(section));
+  const rest = sections.filter((section) => !nextToc.includes(section.slug));
+  return { sections: [...ordered, ...rest], toc: nextToc };
+}
+
 /** Previous or next page in toc order. Stays put at either end. */
 export function adjacentPageSlug(toc: string[], activeSlug: string, direction: -1 | 1): string {
   const index = Math.max(0, toc.indexOf(activeSlug));
