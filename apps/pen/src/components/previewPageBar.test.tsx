@@ -8,7 +8,7 @@ import {
   SCREEN_PAGE_WIDTH_PX,
   screenStripWidthPx
 } from '@par-noir/pen-protocol';
-import { PreviewPageBar, PreviewPageStrip } from './PreviewPageBar';
+import { OrientationChoices, PreviewOrientationMenu, PreviewPageBar, PreviewPageStrip } from './PreviewPageBar';
 
 describe('preview page toolbar', () => {
   it('add page appends a section and selects it', () => {
@@ -58,7 +58,7 @@ describe('preview page toolbar', () => {
     expect(html).not.toContain('data-page-seam');
   });
 
-  it('shows the active orientation, a page field, and every page title', () => {
+  it('shows a page field and the active page in the corner', () => {
     const html = renderToStaticMarkup(
       <PreviewPageBar
         pages={[
@@ -66,29 +66,36 @@ describe('preview page toolbar', () => {
           { slug: 'page-2', title: 'Page 2', section: emptySection('page-2') }
         ]}
         activeSlug="body"
-        pageView="horizontal"
         presentation={defaultPagePresentation()}
         onSelect={() => undefined}
         onAddPage={() => undefined}
         onDeletePage={() => undefined}
         onReorder={() => undefined}
         onFlip={() => undefined}
+      />
+    );
+    expect(html).toContain('of ');
+    expect(html).toContain('Page number');
+    expect(html).toContain('Previous page');
+    expect(html).toContain('Next page');
+    expect(html).toContain('Page 1');
+    expect(html).not.toContain('Page 2');
+    expect(html).not.toContain('data-page-view');
+  });
+
+  it('orientation shows the active icon and keeps the choices closed', () => {
+    const html = renderToStaticMarkup(
+      <PreviewOrientationMenu
+        pageView="horizontal"
         onPageView={() => undefined}
         onToggleViewLock={() => undefined}
       />
     );
     expect(html).toContain('data-page-view="horizontal"');
     expect(html).toContain('aria-label="Horizontal"');
-    expect(html).toContain('of ');
-    expect(html).toContain('Page number');
-    expect(html).toContain('Previous page');
-    expect(html).toContain('Next page');
-    expect(html).toContain('Page 1');
-    expect(html).toContain('Page 2');
-    expect(html).toContain('Add page');
-    expect(html).toContain('Vertical');
-    expect(html).toContain('Screen');
-    expect(html).toContain('Lock view');
+    expect(html).toContain('aria-expanded="false"');
+    expect(html).not.toContain('Lock view');
+    expect(html).not.toContain('aria-label="Vertical"');
   });
 
   it('flow vertical draws a page break between pages', () => {
@@ -102,19 +109,11 @@ describe('preview page toolbar', () => {
     expect(html).not.toContain('data-page-seam');
   });
 
-  it('a locked view disables the other view buttons', () => {
+  it('a locked orientation popup disables the other views', () => {
     const html = renderToStaticMarkup(
-      <PreviewPageBar
-        pages={[{ slug: 'body', title: 'Page 1', section: emptySection('body') }]}
-        activeSlug="body"
+      <OrientationChoices
         pageView="vertical"
         viewLocked
-        presentation={defaultPagePresentation()}
-        onSelect={() => undefined}
-        onAddPage={() => undefined}
-        onDeletePage={() => undefined}
-        onReorder={() => undefined}
-        onFlip={() => undefined}
         onPageView={() => undefined}
         onToggleViewLock={() => undefined}
       />
@@ -122,5 +121,19 @@ describe('preview page toolbar', () => {
     expect(html).toContain('Unlock view');
     expect(html).toMatch(/aria-label="Horizontal"[^>]*disabled=""/);
     expect(html).toMatch(/aria-label="Screen"[^>]*disabled=""/);
+  });
+
+  it('a locked orientation menu stays closed until it is opened', () => {
+    const html = renderToStaticMarkup(
+      <PreviewOrientationMenu
+        pageView="vertical"
+        viewLocked
+        onPageView={() => undefined}
+        onToggleViewLock={() => undefined}
+      />
+    );
+    expect(html).toContain('data-page-view="vertical"');
+    expect(html).toContain('aria-expanded="false"');
+    expect(html).not.toContain('Unlock view');
   });
 });

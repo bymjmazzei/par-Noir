@@ -180,35 +180,114 @@ function ViewIcon({ view }: { view: PenPageView }) {
   );
 }
 
+export function OrientationChoices({
+  pageView,
+  viewLocked = false,
+  onPageView,
+  onToggleViewLock
+}: {
+  pageView: PenPageView;
+  viewLocked?: boolean;
+  onPageView: (view: PenPageView) => void;
+  onToggleViewLock: () => void;
+}) {
+  return (
+    <div className="flex items-center gap-1">
+      {VIEWS.map((view) => (
+        <button
+          key={view.id}
+          type="button"
+          aria-label={view.label}
+          aria-pressed={pageView === view.id}
+          disabled={viewLocked}
+          className={`flex h-7 w-7 items-center justify-center rounded disabled:cursor-not-allowed disabled:opacity-40 ${
+            pageView === view.id ? 'bg-stone-800 text-white' : 'text-stone-700 hover:bg-stone-100'
+          }`}
+          onClick={() => {
+            if (viewLocked) return;
+            onPageView(view.id);
+          }}
+        >
+          <ViewIcon view={view.id} />
+        </button>
+      ))}
+      <button
+        type="button"
+        aria-label={viewLocked ? 'Unlock view' : 'Lock view'}
+        aria-pressed={viewLocked}
+        className={`rounded px-2 py-1 text-[11px] font-medium ${
+          viewLocked ? 'bg-stone-800 text-white' : 'bg-white text-stone-700 hover:bg-stone-100'
+        }`}
+        onClick={onToggleViewLock}
+      >
+        {viewLocked ? 'Locked' : 'Lock'}
+      </button>
+    </div>
+  );
+}
+
+export function PreviewOrientationMenu({
+  pageView,
+  viewLocked = false,
+  onPageView,
+  onToggleViewLock
+}: {
+  pageView: PenPageView;
+  viewLocked?: boolean;
+  onPageView: (view: PenPageView) => void;
+  onToggleViewLock: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const label = VIEWS.find((view) => view.id === pageView)?.label || 'Vertical';
+  return (
+    <div className="relative shrink-0">
+      <button
+        type="button"
+        aria-label={label}
+        aria-expanded={open}
+        data-page-view={pageView}
+        className="flex h-6 w-6 items-center justify-center rounded text-neutral-700 hover:text-black"
+        onClick={() => setOpen((current) => !current)}
+      >
+        <ViewIcon view={pageView} />
+      </button>
+      {open && (
+        <div className="absolute left-0 top-full z-50 mt-1 rounded border border-stone-300 bg-white p-1 shadow-lg">
+          <OrientationChoices
+            pageView={pageView}
+            viewLocked={viewLocked}
+            onPageView={(view) => {
+              onPageView(view);
+              setOpen(false);
+            }}
+            onToggleViewLock={onToggleViewLock}
+          />
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function PreviewPageBar({
   pages,
   activeSlug,
-  pageView,
   presentation,
   onSelect,
   onAddPage,
   onDeletePage,
   onReorder,
-  onFlip,
-  onPageView,
-  viewLocked = false,
-  onToggleViewLock
+  onFlip
 }: {
   pages: Array<{ slug: string; title: string; section?: PenSectionContent }>;
   activeSlug: string;
-  pageView: PenPageView;
   presentation: PenPagePresentation;
   onSelect: (slug: string) => void;
   onAddPage: () => void;
   onDeletePage: (slug: string) => void;
   onReorder: (fromIndex: number, toIndex: number) => void;
   onFlip: (direction: -1 | 1) => void;
-  onPageView: (view: PenPageView) => void;
-  viewLocked?: boolean;
-  onToggleViewLock: () => void;
 }) {
   const [hoverSlug, setHoverSlug] = useState<string | null>(null);
-  const [orientationOpen, setOrientationOpen] = useState(false);
   const [pagesOpen, setPagesOpen] = useState(false);
   const [deleteMode, setDeleteMode] = useState(false);
   const [dragIndex, setDragIndex] = useState<number | null>(null);
@@ -245,110 +324,20 @@ export function PreviewPageBar({
     <div
       role="toolbar"
       aria-label="Pages"
-      className="flex shrink-0 items-center gap-2 border-t border-stone-300 bg-stone-50 px-2 py-1.5"
+      className="grid shrink-0 grid-cols-[1fr_auto_1fr] items-center gap-2 border-t border-stone-300 bg-stone-50 px-2 py-1.5"
     >
-      <div className="relative flex shrink-0 items-center gap-1">
-        <button
-          type="button"
-          aria-label={VIEWS.find((view) => view.id === pageView)?.label || 'Vertical'}
-          aria-expanded={orientationOpen}
-          data-page-view={pageView}
-          className="flex h-7 w-7 items-center justify-center rounded bg-white text-stone-800 hover:bg-stone-100"
-          onClick={() => {
-            setPagesOpen(false);
-            setOrientationOpen((open) => !open);
-          }}
-        >
-          <ViewIcon view={pageView} />
-        </button>
-        <button
-          type="button"
-          aria-label={viewLocked ? 'Unlock view' : 'Lock view'}
-          aria-pressed={viewLocked}
-          className={`rounded px-2 py-1 text-[11px] font-medium ${
-            viewLocked ? 'bg-stone-800 text-white' : 'bg-white text-stone-700 hover:bg-stone-100'
-          }`}
-          onClick={onToggleViewLock}
-        >
-          {viewLocked ? 'Locked' : 'Lock'}
-        </button>
-        <div
-          hidden={!orientationOpen}
-          className="absolute bottom-full left-0 z-40 mb-1 flex gap-1 rounded border border-stone-300 bg-white p-1 shadow-lg"
-        >
-            {VIEWS.map((view) => (
-              <button
-                key={view.id}
-                type="button"
-                aria-label={view.label}
-                aria-pressed={pageView === view.id}
-                disabled={viewLocked}
-                className={`flex h-7 w-7 items-center justify-center rounded disabled:cursor-not-allowed disabled:opacity-40 ${
-                  pageView === view.id ? 'bg-stone-800 text-white' : 'text-stone-700 hover:bg-stone-100'
-                }`}
-                onClick={() => {
-                  if (viewLocked) return;
-                  onPageView(view.id);
-                  setOrientationOpen(false);
-                }}
-              >
-                <ViewIcon view={view.id} />
-              </button>
-            ))}
-        </div>
-      </div>
-      <div className="flex min-w-0 flex-1 items-center justify-center gap-1">
-        <button
-          type="button"
-          aria-label="Previous page"
-          disabled={activeIndex <= 0}
-          className="rounded bg-white px-2 py-1 text-[12px] font-medium text-stone-800 hover:bg-stone-100 disabled:cursor-not-allowed disabled:text-stone-400"
-          onClick={() => onFlip(-1)}
-        >
-          ‹
-        </button>
-        <label className="flex items-center gap-1 text-[12px] text-stone-700">
-          Page
-          <input
-            aria-label="Page number"
-            inputMode="numeric"
-            className="h-7 w-10 rounded border border-stone-300 bg-white text-center text-[12px] font-medium text-stone-900"
-            value={pageDraft}
-            onChange={(e) => setPageDraft(e.target.value)}
-            onBlur={commitPageNumber}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') e.currentTarget.blur();
-            }}
-          />
-          of {pages.length}
-        </label>
-        <button
-          type="button"
-          aria-label="Next page"
-          disabled={activeIndex >= pages.length - 1}
-          className="rounded bg-white px-2 py-1 text-[12px] font-medium text-stone-800 hover:bg-stone-100 disabled:cursor-not-allowed disabled:text-stone-400"
-          onClick={() => onFlip(1)}
-        >
-          ›
-        </button>
-      </div>
-      <div className="relative shrink-0">
+      <div className="relative justify-self-start">
         <button
           type="button"
           aria-label="Pages"
           aria-expanded={pagesOpen}
           className="max-w-[10rem] truncate rounded border border-stone-300 bg-white px-2 py-1 text-[11px] font-semibold text-stone-900 hover:border-stone-500"
-          onClick={() => {
-            setOrientationOpen(false);
-            setPagesOpen((open) => !open);
-          }}
+          onClick={() => setPagesOpen((open) => !open)}
         >
           {activeLabel}
         </button>
-        <div
-          hidden={!pagesOpen}
-          className="absolute bottom-full right-0 z-40 mb-1 w-56 rounded border border-stone-300 bg-white p-1 shadow-lg"
-        >
+        {pagesOpen && (
+          <div className="absolute bottom-full left-0 z-40 mb-1 w-56 rounded border border-stone-300 bg-white p-1 shadow-lg">
             <div className="mb-1 flex items-center justify-end gap-1">
               <button
                 type="button"
@@ -411,15 +400,52 @@ export function PreviewPageBar({
                     </button>
                   </div>
                   {hover?.slug === page.slug && page.section && (
-                    <div className="absolute right-full top-0 z-50 mr-2">
+                    <div className="absolute left-full top-0 z-50 ml-2">
                       <PageHoverPreview section={page.section} presentation={presentation} />
                     </div>
                   )}
                 </div>
               );
             })}
-        </div>
+          </div>
+        )}
       </div>
+      <div className="flex items-center justify-center gap-1">
+        <button
+          type="button"
+          aria-label="Previous page"
+          disabled={activeIndex <= 0}
+          className="rounded bg-white px-2 py-1 text-[12px] font-medium text-stone-800 hover:bg-stone-100 disabled:cursor-not-allowed disabled:text-stone-400"
+          onClick={() => onFlip(-1)}
+        >
+          ‹
+        </button>
+        <label className="flex items-center gap-1 text-[12px] text-stone-700">
+          Page
+          <input
+            aria-label="Page number"
+            inputMode="numeric"
+            className="h-7 w-10 rounded border border-stone-300 bg-white text-center text-[12px] font-medium text-stone-900"
+            value={pageDraft}
+            onChange={(e) => setPageDraft(e.target.value)}
+            onBlur={commitPageNumber}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') e.currentTarget.blur();
+            }}
+          />
+          of {pages.length}
+        </label>
+        <button
+          type="button"
+          aria-label="Next page"
+          disabled={activeIndex >= pages.length - 1}
+          className="rounded bg-white px-2 py-1 text-[12px] font-medium text-stone-800 hover:bg-stone-100 disabled:cursor-not-allowed disabled:text-stone-400"
+          onClick={() => onFlip(1)}
+        >
+          ›
+        </button>
+      </div>
+      <div />
     </div>
   );
 }

@@ -43,6 +43,7 @@ import {
   type PenDocManifest,
   type PenPageLayer,
   type PenPageLayout,
+  type PenPageView,
   type PenPagePresentation,
   type PenSectionContent
 } from '@par-noir/pen-protocol';
@@ -54,6 +55,7 @@ import {
   layerPreviewStyle,
   pageFrameStyle
 } from './LayerObjectToolbar';
+import { PreviewOrientationMenu } from './PreviewPageBar';
 import { PageSheetColumn } from './PageSheetColumn';
 import { LayerMediaContent } from './LayerMediaContent';
 import { PenMediaPlayer } from '@par-noir/feed-tile';
@@ -422,7 +424,11 @@ export function EditablePagePreview({
   clearChrome = false,
   toolbarHost = null,
   scrollWithParent = false,
-  showAbsoluteLayers = true
+  showAbsoluteLayers = true,
+  pageView,
+  viewLocked = false,
+  onPageView,
+  onToggleViewLock
 }: {
   manifest: PenDocManifest;
   section: PenSectionContent;
@@ -446,6 +452,10 @@ export function EditablePagePreview({
   clearChrome?: boolean;
   /** Screen draws every page's layers on one strip instead. */
   showAbsoluteLayers?: boolean;
+  pageView?: PenPageView;
+  viewLocked?: boolean;
+  onPageView?: (view: PenPageView) => void;
+  onToggleViewLock?: () => void;
   onPageLayoutChange?: (layout: PenPageLayout) => void;
   onFlowWorkspaceChange?: (next: {
     widthPx: number | null;
@@ -749,6 +759,14 @@ export function EditablePagePreview({
             <option value="letter">Letter</option>
             <option value="a4">A4</option>
           </select>
+        )}
+        {pageView && onPageView && onToggleViewLock && (
+          <PreviewOrientationMenu
+            pageView={pageView}
+            viewLocked={viewLocked}
+            onPageView={onPageView}
+            onToggleViewLock={onToggleViewLock}
+          />
         )}
         {isFlow && onFlowWorkspaceChange && (
           <div className="relative shrink-0" ref={flowDimsRef}>

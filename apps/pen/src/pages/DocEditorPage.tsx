@@ -2446,6 +2446,10 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
                             scrollWithParent
                             clearChrome={pageView === 'screen'}
                             showAbsoluteLayers={pageView !== 'screen'}
+                            pageView={pageView}
+                            viewLocked={bundle.manifest.pageViewLocked === true}
+                            onPageView={setPreviewPageView}
+                            onToggleViewLock={togglePageViewLock}
                             buttonCaptionById={buttonCaptionById}
                             session={session}
                             onSelectLayer={(id) => {
@@ -2569,9 +2573,6 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
               onDeletePage={deletePreviewPage}
               onReorder={reorderPreviewPages}
               onFlip={flipPreviewPage}
-              onPageView={setPreviewPageView}
-              viewLocked={bundle.manifest.pageViewLocked === true}
-              onToggleViewLock={togglePageViewLock}
             />
           </div>
         )}
