@@ -937,10 +937,9 @@ export function setupMessageRoutes(app: express.Application, deps: MessageRouteD
           const timestamp =
             (typeof req.body?.timestamp === 'string' && req.body.timestamp) ||
             new Date().toISOString();
-          const threadId = [fromPnIdentifier, toPnIdentifier].sort().join('_');
           const connectionId = connectionIdFromBody || `conn_pending_${messageId}`;
 
-          // Durable throughway payload: ciphertext + envelope ids only (no clear from/to graph).
+          // Durable throughway payload: ciphertext + connectionId. No clear from/to pair.
           const messagePayload = sanitizeMailboxPayload({
             messageId,
             encryptedContent,
@@ -955,23 +954,24 @@ export function setupMessageRoutes(app: express.Application, deps: MessageRouteD
                 ? mediaEnvelopesByPn
                 : undefined,
             connectionId,
-            threadId,
             channelClientId: normalizeChannelClientIdSync(
               typeof req.body?.channelClientId === 'string' ? req.body.channelClientId : undefined
             ),
             isConnectionRequest: !!isConnectionRequest,
             role: 'recipient'
-          });
+          }, { recipientPn: toPnIdentifier });
 
           await enqueueSocialMailboxJob({
             routeKey,
             jobType: 'message_append',
+            recipientPn: toPnIdentifier,
             payload: messagePayload
           });
           if (mediaFileId) {
             await enqueueSocialMailboxJob({
               routeKey,
               jobType: 'message_attachment',
+              recipientPn: toPnIdentifier,
               payload: sanitizeMailboxPayload({
                 messageId,
                 mediaFileId,
@@ -979,7 +979,7 @@ export function setupMessageRoutes(app: express.Application, deps: MessageRouteD
                 mediaBackend,
                 mediaEnvelopesByPn,
                 connectionId
-              })
+              }, { recipientPn: toPnIdentifier })
             });
           }
           // Notifications UI uses /api/notifications Sheets + push/new_message realtime —
@@ -1004,27 +1004,21 @@ export function setupMessageRoutes(app: express.Application, deps: MessageRouteD
               ? messagePayload.channelClientId
               : undefined;
           emitRealtime(fromPnIdentifier, 'new_message', {
-            threadId,
             messageId,
             throughway: true,
             encryptedContent,
             cryptoVersion: 2,
             connectionId,
             timestamp,
-            fromPnIdentifier,
-            toPnIdentifier,
             ...(realtimeChannel ? { channelClientId: realtimeChannel } : {})
           });
           emitRealtime(toPnIdentifier, 'new_message', {
-            threadId,
             messageId,
             throughway: true,
             encryptedContent,
             cryptoVersion: 2,
             connectionId,
             timestamp,
-            fromPnIdentifier,
-            toPnIdentifier,
             ...(realtimeChannel ? { channelClientId: realtimeChannel } : {})
           });
           emitRealtime(toPnIdentifier, 'mailbox_pending', {

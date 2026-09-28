@@ -55,10 +55,12 @@ describe('sync header builder cannot mint', () => {
     });
     vi.stubGlobal(
       'fetch',
-      vi.fn(async () => ({
-        ok: true,
-        json: async () => ({ access_token: 'minted-ga', expires_in: 3600 })
-      }))
+      vi.fn(async (url: string) => {
+        if (String(url).includes('/api/public-config')) {
+          return { ok: true, json: async () => ({ googleDriveClientId: 'google-client' }) };
+        }
+        return { ok: true, json: async () => ({ access_token: 'minted-ga', expires_in: 3600 }) };
+      })
     );
   });
 

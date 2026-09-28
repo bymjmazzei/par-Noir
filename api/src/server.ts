@@ -68,7 +68,6 @@ import { setupGroupRoutes } from './server/modules/groupRoutes';
 import { setupPenRoutes } from './server/modules/penRoutes';
 import { setupConnectionRoutes } from './server/modules/connectionRoutes';
 import { setupUserRoutes } from './server/modules/userRoutes';
-import { setupGoogleOAuthRoutes } from './server/modules/googleOAuthRoutes';
 import { setupDriveRoutes } from './server/modules/driveRoutes';
 import { setupPnOAuthRoutes } from './server/modules/pnOAuthRoutes';
 
@@ -799,8 +798,6 @@ class ProductionServer {
 
     registerCreatorSubscriberRoutes(this.app);
 
-    setupGoogleOAuthRoutes(this.app, { oauthTokenLimiter });
-
     setupDriveRoutes(this.app, {
       extractAccountId: (account) => this.extractAccountId(account),
     });
@@ -914,7 +911,13 @@ class ProductionServer {
   private emitRealtime(pnIdentifier: string, event: string, payload: Record<string, unknown>): void {
     try {
       const { pnRoomId } = require('./server/modules/realtimeEvents');
-      this.io.to(pnRoomId(pnIdentifier)).emit(event, payload);
+      const safe: Record<string, unknown> = { ...payload };
+      delete safe.fromPnIdentifier;
+      delete safe.toPnIdentifier;
+      if (typeof safe.threadId === 'string' && safe.threadId.includes('pn-')) {
+        delete safe.threadId;
+      }
+      this.io.to(pnRoomId(pnIdentifier)).emit(event, safe);
     } catch (err: unknown) {
       console.warn('[Realtime] emit failed:', (err as Error)?.message);
     }

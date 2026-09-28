@@ -52,24 +52,5 @@ export function registerCoreRoutes(app: Application, nodeEnv: string): void {
       microsoftClientId: process.env.MICROSOFT_CLIENT_ID || ''
     });
   });
-
-  if (nodeEnv === 'development') {
-    app.get('/api/debug/oauth-config', (_req, res) => {
-      const clientId = process.env.GOOGLE_DRIVE_CLIENT_ID;
-      const hasClientSecret = !!process.env.GOOGLE_DRIVE_CLIENT_SECRET;
-      const clientSecretLength = process.env.GOOGLE_DRIVE_CLIENT_SECRET?.length || 0;
-
-      res.json({
-        hasClientId: !!clientId,
-        clientId: clientId,
-        hasClientSecret: hasClientSecret,
-        clientSecretLength: clientSecretLength,
-        clientSecretFirstChars: process.env.GOOGLE_DRIVE_CLIENT_SECRET
-          ? process.env.GOOGLE_DRIVE_CLIENT_SECRET.substring(0, 4) + '...'
-          : 'MISSING',
-        environment: nodeEnv
-      });
-    });
-  }
 }
 

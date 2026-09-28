@@ -754,7 +754,6 @@ export async function sendMessage(
   const { rememberOutboundMessageId } = await import('./outboundMessageIds');
   rememberOutboundMessageId(messageId);
   const timestamp = new Date().toISOString();
-  const threadId = [fromPnIdentifier, toPnIdentifier].sort().join('_');
   const messagePayload = {
     messageId,
     fromPnIdentifier,
@@ -764,7 +763,6 @@ export async function sendMessage(
     timestamp,
     read: true,
     connectionId: connId,
-    threadId,
     channelClientId,
     ...(mediaFileId
       ? {

@@ -10,7 +10,6 @@ import { safeClientErrorMessage } from '../utils/safeError';
 import { hashIdentifier, isDevVerbose, safeLogger } from '../../utils/logger';
 import { getBearerTokenPayload } from '../middleware/authMiddleware';
 import { requireAdminApiKey } from './adminDeveloperRoutes';
-import { isFirstPartyClient } from './integratorStoragePaths';
 
 const NODE_ENV = process.env.NODE_ENV || 'development';
 
@@ -230,7 +229,7 @@ export function setupPnOAuthRoutes(app: express.Application, deps: PnOAuthRouteD
           });
         }
 
-        const issued = PNOAuthService.createUnlockChallenge({
+        const issued = await PNOAuthService.createUnlockChallenge({
           clientId: client_id,
           redirectUri: redirect_uri,
         });
@@ -517,85 +516,6 @@ export function setupPnOAuthRoutes(app: express.Application, deps: PnOAuthRouteD
         return res.status(500).json({
           error: 'server_error',
           error_description: 'Broker pending failed',
-        });
-      }
-    });
-
-    /**
-     * Mint a fresh Google access token for the unlock page.
-     *
-     * The page holds the owner's sealed vault but no pN access token yet, so it
-     * cannot use the Bearer-gated refresh route. The authorization code it just
-     * received stands in as proof of unlock; it is read without being consumed,
-     * because the real token exchange still has to run afterwards.
-     *
-     * Without this the page forwards whatever token the vault was sealed with,
-     * which Google kills about an hour after Drive was connected. That is what
-     * made every unlock re-prompt for consent.
-     */
-    app.post('/oauth/authorize/drive-token', async (req, res) => {
-      try {
-        const code = req.body?.code;
-        const clientId = req.body?.client_id;
-        const refreshToken = req.body?.refresh_token;
-
-        if (!code || !clientId || !refreshToken) {
-          return res.status(400).json({
-            error: 'invalid_request',
-            error_description: 'code, client_id and refresh_token are required'
-          });
-        }
-
-        const authCode = PNOAuthService.peekAuthorizationCode(String(code), String(clientId));
-        if (!authCode) {
-          safeLogger.warn('[OAuth] Drive token refused: no live authorization code', {
-            clientId: String(clientId)
-          });
-          return res.status(401).json({
-            error: 'invalid_grant',
-            error_description: 'Authorization code is unknown, expired, or for another client'
-          });
-        }
-
-        if (!isFirstPartyClient(String(clientId))) {
-          safeLogger.warn('[OAuth] Drive token refused: non-first-party client', {
-            pnIdHash: authCode.pnIdentifier ? hashIdentifier(authCode.pnIdentifier) : undefined
-          });
-          return res.status(403).json({
-            error: 'forbidden',
-            error_description: 'Drive token mint is limited to first-party unlock clients',
-            reason: 'first_party_required'
-          });
-        }
-
-        const { exchangeGoogleRefreshToken } = await import('./googleRefreshExchange');
-        const result = await exchangeGoogleRefreshToken(String(refreshToken));
-
-        if (!result.ok) {
-          safeLogger.warn('[OAuth] Drive token refresh failed for unlock page', {
-            clientId: String(clientId),
-            reason: result.reason,
-            pnIdHash: authCode.pnIdentifier ? hashIdentifier(authCode.pnIdentifier) : undefined
-          });
-          return res.status(result.status).json({
-            error: 'refresh_failed',
-            error_description: result.message,
-            reason: result.reason
-          });
-        }
-
-        return res.json({
-          access_token: result.accessToken,
-          expires_in: result.expiresIn
-        });
-      } catch (error: unknown) {
-        safeLogger.error('[OAuth] Drive token mint failed', {
-          message: error instanceof Error ? error.message : String(error)
-        });
-        return res.status(500).json({
-          error: 'server_error',
-          error_description:
-            safeClientErrorMessage(error, NODE_ENV === 'production') || 'Drive token mint failed'
         });
       }
     });

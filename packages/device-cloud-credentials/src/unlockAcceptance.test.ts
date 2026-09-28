@@ -96,14 +96,12 @@ describe('unlocking with a vault whose token aged out', () => {
     expect(token).toBe('minted-ga');
 
     const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
-    expect(url).toBe(`${API}/oauth/authorize/drive-token`);
-    // The unlock page has no pN access token yet, so the authorization code is
-    // what proves the caller just unlocked.
-    expect(JSON.parse(String(init.body))).toEqual({
-      code: 'auth-code-123',
-      client_id: 'browser-app',
-      refresh_token: 'rt-1'
-    });
+    expect(url).toBe('https://oauth2.googleapis.com/token');
+    const body = String(init.body);
+    expect(body).toContain('grant_type=refresh_token');
+    expect(body).toContain('refresh_token=rt-1');
+    expect(body).toContain('client_id=browser-app');
+    expect(url).not.toContain(API);
   });
 
   it('does not call out when the sealed token is still valid', async () => {

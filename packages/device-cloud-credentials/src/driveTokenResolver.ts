@@ -13,10 +13,8 @@
  *      and a reason; they must not fall back to the stale value.
  */
 
-/** Refresh this far before actual expiry so a request in flight cannot age out. */
+import { GOOGLE_TOKEN_URL, refreshProviderAccessToken } from './providerToken.js';
 export const DRIVE_TOKEN_SKEW_MS = 60_000;
-
-export const GOOGLE_REFRESH_PATH = '/api/auth/google-oauth/refresh';
 
 export type GoogleAccountRow = Record<string, unknown>;
 
@@ -125,61 +123,59 @@ export function freshAccessTokenFromEnvelope(
 }
 
 /**
- * Exchange a refresh token for a new access token through the par Noir API.
- * The server performs the exchange with the par Noir app's own client secret;
- * the user's refresh token stays on the device and is sent per call.
+ * Exchange a refresh token for a new access token directly with Google.
+ * The user's refresh token stays on the device. No par Noir request carries it.
  */
 export async function refreshDriveAccessToken(opts: {
   refreshToken: string;
-  authToken: string;
-  apiEndpoint: string;
+  clientId: string;
   path: string;
 }): Promise<ResolvedDriveToken> {
-  const base = opts.apiEndpoint.replace(/\/$/, '');
-  let res: Response;
+  if (!opts.clientId?.trim() || !opts.refreshToken?.trim()) {
+    warnDeadEnd(opts.path, 'no_credentials');
+    return { token: null, reason: 'no_credentials' };
+  }
+
+  let minted: Awaited<ReturnType<typeof refreshProviderAccessToken>>;
   try {
-    res = await fetch(`${base}${GOOGLE_REFRESH_PATH}`, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${opts.authToken}`,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({ refreshToken: opts.refreshToken })
+    minted = await refreshProviderAccessToken({
+      tokenUrl: GOOGLE_TOKEN_URL,
+      clientId: opts.clientId.trim(),
+      refreshToken: opts.refreshToken.trim()
     });
   } catch {
     warnDeadEnd(opts.path, 'refresh_failed');
     return { token: null, reason: 'refresh_failed' };
   }
 
-  if (!res.ok) {
+  if (!minted) {
     warnDeadEnd(opts.path, 'refresh_rejected');
     return { token: null, reason: 'refresh_rejected' };
   }
 
-  let data: { access_token?: unknown; accessToken?: unknown; expires_in?: unknown };
+  return {
+    token: minted.accessToken,
+    reason: 'ok',
+    expiresAt: Date.now() + minted.expiresIn * 1000
+  };
+}
+
+async function resolveGoogleClientId(opts: {
+  clientId?: string | null;
+  apiEndpoint?: string | null;
+}): Promise<string | null> {
+  const direct = opts.clientId?.trim();
+  if (direct) return direct;
+  const base = opts.apiEndpoint?.replace(/\/$/, '');
+  if (!base) return null;
   try {
-    data = (await res.json()) as typeof data;
+    const res = await fetch(`${base}/api/public-config`);
+    if (!res.ok) return null;
+    const data = (await res.json()) as { googleDriveClientId?: string };
+    return data.googleDriveClientId?.trim() || null;
   } catch {
-    warnDeadEnd(opts.path, 'refresh_failed');
-    return { token: null, reason: 'refresh_failed' };
+    return null;
   }
-
-  const minted =
-    (typeof data.access_token === 'string' && data.access_token.trim()) ||
-    (typeof data.accessToken === 'string' && data.accessToken.trim()) ||
-    '';
-  if (!minted) {
-    warnDeadEnd(opts.path, 'refresh_failed');
-    return { token: null, reason: 'refresh_failed' };
-  }
-
-  // Convert to absolute immediately: a relative lifetime is worthless once stored.
-  const expiresIn =
-    typeof data.expires_in === 'number' && Number.isFinite(data.expires_in) && data.expires_in > 0
-      ? data.expires_in
-      : 3600;
-
-  return { token: minted, reason: 'ok', expiresAt: Date.now() + expiresIn * 1000 };
 }
 
 /**
@@ -188,7 +184,8 @@ export async function refreshDriveAccessToken(opts: {
  */
 export async function resolveFreshDriveToken(opts: {
   envelope: unknown;
-  authToken?: string | null;
+  /** Public Google OAuth client id. Loaded from /api/public-config when omitted. */
+  clientId?: string | null;
   apiEndpoint?: string | null;
   /** Short label for logs, e.g. 'consent' or 'grant-persist'. */
   path: string;
@@ -215,15 +212,20 @@ export async function resolveFreshDriveToken(opts: {
     return { token: null, reason };
   }
 
-  if (!opts.apiEndpoint || !opts.authToken) {
+  if (!opts.apiEndpoint && !opts.clientId) {
     warnDeadEnd(opts.path, 'no_api_endpoint');
     return { token: null, reason: 'no_api_endpoint' };
   }
 
+  const clientId = await resolveGoogleClientId(opts);
+  if (!clientId) {
+    warnDeadEnd(opts.path, 'no_credentials');
+    return { token: null, reason: 'no_credentials' };
+  }
+
   return refreshDriveAccessToken({
     refreshToken,
-    authToken: opts.authToken,
-    apiEndpoint: opts.apiEndpoint,
+    clientId,
     path: opts.path
   });
 }

@@ -110,7 +110,6 @@ export {
 export type { CloudVaultHydrateResult } from './cloudVault.js';
 export {
   DRIVE_TOKEN_SKEW_MS,
-  GOOGLE_REFRESH_PATH,
   accountAccessToken,
   accountExpiresAtMs,
   accountRefreshToken,
@@ -121,11 +120,20 @@ export {
   refreshDriveAccessToken,
   resolveFreshDriveToken
 } from './driveTokenResolver.js';
-export type {
-  DriveTokenReason,
-  ResolvedDriveToken,
-  GoogleAccountRow
-} from './driveTokenResolver.js';
+export {
+  GOOGLE_TOKEN_URL,
+  GOOGLE_USERINFO_URL,
+  DROPBOX_TOKEN_URL,
+  MICROSOFT_TOKEN_URL,
+  createPkcePair,
+  rememberPkceVerifier,
+  takePkceVerifier,
+  authorizeUrlWithPkce,
+  exchangeProviderAuthorizationCode,
+  refreshProviderAccessToken,
+  fetchGoogleUserInfo
+} from './providerToken.js';
+export type { ProviderTokenResult } from './providerToken.js';
 export {
   PN_CLOUD_CREDENTIALS_READY_EVENT,
   getCloudAccessTokenFromSession,

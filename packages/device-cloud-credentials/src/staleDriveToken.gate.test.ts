@@ -133,10 +133,12 @@ describe('resolveFreshDriveToken never returns an unusable token', () => {
   let fetchMock: ReturnType<typeof vi.fn>;
 
   beforeEach(() => {
-    fetchMock = vi.fn(async () => ({
-      ok: true,
-      json: async () => ({ access_token: 'minted-ga', expires_in: 3600 })
-    }));
+    fetchMock = vi.fn(async (url: string) => {
+      if (String(url).includes('/api/public-config')) {
+        return { ok: true, json: async () => ({ googleDriveClientId: 'google-client' }) };
+      }
+      return { ok: true, json: async () => ({ access_token: 'minted-ga', expires_in: 3600 }) };
+    });
     vi.stubGlobal('fetch', fetchMock);
   });
 
@@ -149,12 +151,17 @@ describe('resolveFreshDriveToken never returns an unusable token', () => {
       envelope: {
         googleDriveAccounts: [{ accountId: 'a1', access_token: 'stale-ga', refresh_token: 'rt-1' }]
       },
-      authToken: 'oauth',
+      clientId: 'google-client',
       apiEndpoint: 'https://api.example.com',
       path: 'test'
     });
 
     expect(fetchMock).toHaveBeenCalledOnce();
+    expect(fetchMock.mock.calls[0][0]).toBe('https://oauth2.googleapis.com/token');
+    const body = String((fetchMock.mock.calls[0][1] as RequestInit).body);
+    expect(body).toContain('grant_type=refresh_token');
+    expect(body).toContain('refresh_token=rt-1');
+    expect(body).toContain('client_id=google-client');
     expect(out.token).toBe('minted-ga');
     expect(out.expiresAt).toBeGreaterThan(Date.now());
   });
@@ -162,7 +169,7 @@ describe('resolveFreshDriveToken never returns an unusable token', () => {
   it('reports expiry_unknown when it cannot refresh and never saw an expiry', async () => {
     const out = await resolveFreshDriveToken({
       envelope: { googleDriveAccounts: [{ accountId: 'a1', access_token: 'stale-ga' }] },
-      authToken: 'oauth',
+      clientId: 'google-client',
       apiEndpoint: 'https://api.example.com',
       path: 'test'
     });
@@ -178,7 +185,7 @@ describe('resolveFreshDriveToken never returns an unusable token', () => {
           { accountId: 'a1', access_token: 'stale-ga', expires_at: TWO_HOURS_AGO }
         ]
       },
-      authToken: 'oauth',
+      clientId: 'google-client',
       apiEndpoint: 'https://api.example.com',
       path: 'test'
     });
@@ -201,7 +208,7 @@ describe('resolveFreshDriveToken never returns an unusable token', () => {
           }
         ]
       },
-      authToken: 'oauth',
+      clientId: 'google-client',
       apiEndpoint: 'https://api.example.com',
       path: 'test'
     });
@@ -225,7 +232,7 @@ describe('resolveFreshDriveToken never returns an unusable token', () => {
           }
         ]
       },
-      authToken: 'oauth',
+      clientId: 'google-client',
       apiEndpoint: 'https://api.example.com',
       path: 'test'
     });
@@ -239,7 +246,7 @@ describe('resolveFreshDriveToken never returns an unusable token', () => {
       envelope: {
         googleDriveAccounts: [{ accountId: 'a1', access_token: 'good-ga', expires_at: AN_HOUR_OUT }]
       },
-      authToken: 'oauth',
+      clientId: 'google-client',
       apiEndpoint: 'https://api.example.com',
       path: 'test'
     });
@@ -254,10 +261,12 @@ describe('session helpers refuse stale tokens', () => {
 
   beforeEach(() => {
     clearAllSessionCloudCredentials();
-    fetchMock = vi.fn(async () => ({
-      ok: true,
-      json: async () => ({ access_token: 'minted-ga', expires_in: 3600 })
-    }));
+    fetchMock = vi.fn(async (url: string) => {
+      if (String(url).includes('/api/public-config')) {
+        return { ok: true, json: async () => ({ googleDriveClientId: 'google-client' }) };
+      }
+      return { ok: true, json: async () => ({ access_token: 'minted-ga', expires_in: 3600 }) };
+    });
     vi.stubGlobal('fetch', fetchMock);
   });
 
@@ -369,7 +378,9 @@ describe('session helpers refuse stale tokens', () => {
       })
     ]);
 
-    expect(fetchMock).toHaveBeenCalledOnce();
+    const urls = fetchMock.mock.calls.map((call) => String(call[0]));
+    expect(urls.filter((u) => u.includes('/api/public-config'))).toHaveLength(1);
+    expect(urls.filter((u) => u.includes('https://oauth2.googleapis.com/token'))).toHaveLength(1);
     expect([a, b, c]).toEqual(['minted-ga', 'minted-ga', 'minted-ga']);
   });
 });

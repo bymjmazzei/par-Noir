@@ -2,6 +2,13 @@ import {
   buildAccountId,
   type StorageCredentialsEnvelope
 } from '@par-noir/user-owned-storage';
+import {
+  authorizeUrlWithPkce,
+  DROPBOX_TOKEN_URL,
+  exchangeProviderAuthorizationCode,
+  MICROSOFT_TOKEN_URL,
+  takePkceVerifier
+} from '@par-noir/device-cloud-credentials';
 import { exchangeGoogleOAuthCode, waitForOAuthPopupCode } from './oauthPopup';
 import type { CloudProviderId } from './types';
 
@@ -99,20 +106,25 @@ export async function reconnectOAuthProvider(
     const redirectUri = `${window.location.origin}/oauth-callback.html`;
     const scope =
       'https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/userinfo.email';
-    const authUrl =
+    const authUrl = await authorizeUrlWithPkce(
       `https://accounts.google.com/o/oauth2/v2/auth?` +
       `client_id=${encodeURIComponent(googleClientId)}&` +
       `redirect_uri=${encodeURIComponent(redirectUri)}&` +
       `response_type=code&` +
       `scope=${encodeURIComponent(scope)}&` +
       `state=${encodeURIComponent('pn_popup')}&` +
-      `prompt=consent&access_type=offline`;
+      `prompt=consent&access_type=offline`
+    );
     const codePromise = waitForOAuthPopupCode();
     const popup = window.open(authUrl, 'pn-cloud-google-oauth', 'width=500,height=700');
     if (!popup) throw new Error('Popup blocked — allow popups for OAuth.');
     const code = await codePromise;
-    // Email comes from /api/auth/google-oauth/token (server userinfo probe) — no client googleapis.
-    const tokens = await exchangeGoogleOAuthCode({ apiEndpoint, code, redirectUri });
+    // Email comes from Google userinfo on the device — the API does not see the code.
+    const tokens = await exchangeGoogleOAuthCode({
+      clientId: googleClientId,
+      code,
+      redirectUri
+    });
     const email = tokens.email ?? null;
     const existing = await resolveExistingGoogleLayout(apiEndpoint, authToken, pnIdentifier);
     const slug =
@@ -183,32 +195,52 @@ export async function reconnectOAuthProvider(
     if (!config.microsoftClientId) throw new Error('Microsoft OAuth is not configured on this server.');
     authUrl = `https://login.microsoftonline.com/common/oauth2/v2.0/authorize?client_id=${encodeURIComponent(config.microsoftClientId)}&redirect_uri=${encodeURIComponent(redirectUri)}&response_type=code&scope=${encodeURIComponent('Files.ReadWrite.AppFolder offline_access')}&state=pn_popup`;
   }
+  authUrl = await authorizeUrlWithPkce(authUrl);
   const popup = window.open(authUrl, 'pn-cloud-oauth', 'width=500,height=700');
   if (!popup) throw new Error('Popup blocked — allow popups for OAuth.');
   const code = await waitForOAuthPopupCode();
-  const exchangePath =
-    provider === 'dropbox' ? '/api/storage/oauth/dropbox/exchange' : '/api/storage/oauth/onedrive/exchange';
-  const res = await ownerFetch(apiEndpoint, authToken, 'POST', exchangePath, {
+  const clientId = provider === 'dropbox' ? config.dropboxAppKey! : config.microsoftClientId!;
+  const tokens = await exchangeProviderAuthorizationCode({
+    tokenUrl: provider === 'dropbox' ? DROPBOX_TOKEN_URL : MICROSOFT_TOKEN_URL,
+    clientId,
     code,
     redirectUri,
-    pnIdentifier
+    codeVerifier: takePkceVerifier(),
+    scope: provider === 'onedrive' ? 'Files.ReadWrite.AppFolder offline_access' : undefined
   });
-  if (!res.ok) {
-    const err = (await res.json().catch(() => ({}))) as { message?: string };
-    throw new Error(err.message || 'Token exchange failed');
+  if (!tokens) throw new Error('Token exchange failed');
+  const accountId = buildAccountId(provider, pnIdentifier, 'reconnect');
+  const layout =
+    provider === 'dropbox'
+      ? {
+          socialCloudProvider: 'dropbox' as const,
+          socialCloudAccountId: accountId,
+          dropboxAccounts: [{ accountId }]
+        }
+      : {
+          socialCloudProvider: 'onedrive' as const,
+          socialCloudAccountId: accountId,
+          onedriveAccounts: [{ accountId }]
+        };
+  const putRes = await ownerFetch(
+    apiEndpoint,
+    authToken,
+    'PUT',
+    `/api/storage/credentials/${encodeURIComponent(pnIdentifier)}`,
+    { credentials: layout }
+  );
+  if (!putRes.ok) {
+    const err = (await putRes.json().catch(() => ({}))) as { message?: string };
+    throw new Error(err.message || 'Failed to save storage layout');
   }
-  const data = (await res.json()) as {
-    accessToken?: string;
-    access_token?: string;
-    refreshToken?: string;
-    refresh_token?: string;
-    accountId?: string;
-    email?: string;
-  };
-  const accessToken = data.accessToken || data.access_token;
-  const refreshToken = data.refreshToken || data.refresh_token;
-  if (!accessToken) throw new Error('OAuth exchange returned no access token');
-  const accountId = data.accountId || buildAccountId(provider, pnIdentifier, 'reconnect');
+  await fetch(`${apiEndpoint.replace(/\/$/, '')}/api/storage/credentials/${encodeURIComponent(pnIdentifier)}/portable-init`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${authToken}`,
+      'Content-Type': 'application/json',
+      'X-PN-Cloud-Access-Token': tokens.accessToken
+    }
+  });
   if (provider === 'dropbox') {
     return {
       socialCloudProvider: 'dropbox',
@@ -216,9 +248,8 @@ export async function reconnectOAuthProvider(
       dropboxAccounts: [
         {
           accountId,
-          accessToken,
-          refreshToken,
-          email: data.email
+          accessToken: tokens.accessToken,
+          refreshToken: tokens.refreshToken
         }
       ]
     };
@@ -229,9 +260,8 @@ export async function reconnectOAuthProvider(
     onedriveAccounts: [
       {
         accountId,
-        accessToken,
-        refreshToken,
-        email: data.email
+        accessToken: tokens.accessToken,
+        refreshToken: tokens.refreshToken
       }
     ]
   };

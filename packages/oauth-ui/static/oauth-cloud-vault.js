@@ -70,8 +70,44 @@
     }
   };
 
+  // ../device-cloud-credentials/dist/providerToken.js
+  var GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token";
+  async function postToken(tokenUrl, body) {
+    var _a, _b;
+    const res = await fetch(tokenUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body
+    });
+    if (!res.ok)
+      return null;
+    const data = await res.json();
+    const accessToken = ((_a = data.access_token) == null ? void 0 : _a.trim()) || "";
+    if (!accessToken)
+      return null;
+    const expiresIn = typeof data.expires_in === "number" && Number.isFinite(data.expires_in) && data.expires_in > 0 ? data.expires_in : 3600;
+    const refreshToken = ((_b = data.refresh_token) == null ? void 0 : _b.trim()) || void 0;
+    return { accessToken, refreshToken, expiresIn };
+  }
+  async function refreshProviderAccessToken(opts) {
+    const body = new URLSearchParams({
+      refresh_token: opts.refreshToken,
+      client_id: opts.clientId,
+      grant_type: "refresh_token"
+    });
+    if (opts.scope)
+      body.set("scope", opts.scope);
+    return postToken(opts.tokenUrl, body);
+  }
+
   // ../device-cloud-credentials/dist/driveTokenResolver.js
   var DRIVE_TOKEN_SKEW_MS = 6e4;
+  function warnDeadEnd(path, reason) {
+    try {
+      console.warn("[DriveToken] no usable Drive token", { path, reason });
+    } catch (e) {
+    }
+  }
   function googleAccountsFromEnvelope(env) {
     const envelope = env;
     if (!envelope)
@@ -124,6 +160,33 @@
         return accountAccessToken(acct);
     }
     return null;
+  }
+  async function refreshDriveAccessToken(opts) {
+    var _a, _b;
+    if (!((_a = opts.clientId) == null ? void 0 : _a.trim()) || !((_b = opts.refreshToken) == null ? void 0 : _b.trim())) {
+      warnDeadEnd(opts.path, "no_credentials");
+      return { token: null, reason: "no_credentials" };
+    }
+    let minted;
+    try {
+      minted = await refreshProviderAccessToken({
+        tokenUrl: GOOGLE_TOKEN_URL,
+        clientId: opts.clientId.trim(),
+        refreshToken: opts.refreshToken.trim()
+      });
+    } catch (e) {
+      warnDeadEnd(opts.path, "refresh_failed");
+      return { token: null, reason: "refresh_failed" };
+    }
+    if (!minted) {
+      warnDeadEnd(opts.path, "refresh_rejected");
+      return { token: null, reason: "refresh_rejected" };
+    }
+    return {
+      token: minted.accessToken,
+      reason: "ok",
+      expiresAt: Date.now() + minted.expiresIn * 1e3
+    };
   }
 
   // ../device-cloud-credentials/dist/cloudVault.js
@@ -216,37 +279,21 @@
 
   // src/cloudVaultBrowser.ts
   async function mintAccessToken(refreshToken, opts) {
-    if (!opts.apiEndpoint || !opts.code || !opts.clientId) {
-      console.warn("[OAuth] Cannot mint Drive token: missing api endpoint or authorization code");
+    var _a;
+    if (!((_a = opts.clientId) == null ? void 0 : _a.trim())) {
+      console.warn("[OAuth] Cannot mint Drive token: missing Google client id");
       return null;
     }
-    const base = String(opts.apiEndpoint).replace(/\/$/, "");
-    try {
-      const res = await fetch(`${base}/oauth/authorize/drive-token`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          code: opts.code,
-          client_id: opts.clientId,
-          refresh_token: refreshToken
-        })
-      });
-      if (!res.ok) {
-        let reason = String(res.status);
-        try {
-          const body2 = await res.json();
-          if (body2 == null ? void 0 : body2.reason) reason = body2.reason;
-        } catch (e) {
-        }
-        console.warn("[OAuth] Drive token refresh rejected", { reason });
-        return null;
-      }
-      const body = await res.json();
-      return typeof body.access_token === "string" && body.access_token.trim() ? body.access_token.trim() : null;
-    } catch (e) {
-      console.warn("[OAuth] Drive token refresh request failed");
+    const minted = await refreshDriveAccessToken({
+      refreshToken,
+      clientId: opts.clientId.trim(),
+      path: "unlock"
+    });
+    if (!minted.token) {
+      console.warn("[OAuth] Drive token refresh rejected", { reason: minted.reason });
       return null;
     }
+    return minted.token;
   }
   async function accessTokenFromSealedVault(envelope, options) {
     if (!envelope || !isSealedEnvelopeShape(envelope)) return null;

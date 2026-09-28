@@ -515,10 +515,11 @@ app.post('/api/engagement/:fileId/share', async (req: Request, res: Response) =>
         const ownerPnIdentifier = fileOwnerDid.startsWith('pn-') ? fileOwnerDid : `pn-${fileOwnerDid}`;
         if (ownerPnIdentifier !== pnIdentifier) {
           const { enqueueSocialJob } = await import('./socialRail');
+          const { mailboxRequestId } = await import('./socialMailboxService');
           await enqueueSocialJob({
             jobType: 'notification_row',
             peerPn: ownerPnIdentifier,
-            requestId: `share:${fileId}:${userPnIdentifier}`,
+            requestId: mailboxRequestId(['share', fileId, userPnIdentifier]),
             sealed: { peerPnIdentifier: userPnIdentifier },
             extra: { kind: 'repost', fileId }
           });

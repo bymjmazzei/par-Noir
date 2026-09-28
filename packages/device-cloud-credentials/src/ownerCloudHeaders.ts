@@ -172,7 +172,7 @@ function patchSessionAccessTokenAbsolute(
 const refreshInflight = new Map<string, Promise<string | null>>();
 
 /**
- * Ensure session holds a usable Google access token; refresh via par Noir API when needed.
+ * Ensure session holds a usable Google access token, refreshing with Google when needed.
  *
  * Returns null rather than a stale token when the refresh cannot be completed.
  * Callers must treat null as "Drive is not reachable right now" and surface that,
@@ -184,6 +184,7 @@ export async function ensureCloudAccessToken(opts: {
   authToken: string;
   pnIdentifier?: string | null;
   apiEndpoint?: string | null;
+  clientId?: string | null;
   path?: string;
 }): Promise<string | null> {
   const pn = opts.pnIdentifier;
@@ -198,7 +199,7 @@ export async function ensureCloudAccessToken(opts: {
   const attempt = (async () => {
     const resolved = await resolveFreshDriveToken({
       envelope: getSessionCloudCredentials(pn),
-      authToken: opts.authToken,
+      clientId: opts.clientId,
       apiEndpoint: opts.apiEndpoint,
       path: opts.path ?? 'session'
     });

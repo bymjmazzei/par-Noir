@@ -1,5 +1,5 @@
 /**
- * Legacy /api/auth rate limiting for google-oauth routes under this namespace.
+ * Legacy /api/auth rate limiting.
  * Challenge/verify session mint was removed — use pN OAuth (/oauth/token).
  */
 
@@ -16,9 +16,6 @@ export function registerAuthChallengeRoutes(app: Application, deps: AuthChalleng
   // OAuth token endpoint has its own more lenient limiter, so exclude it
   app.use('/api/auth', (req, res, next) => {
     if (req.method === 'OPTIONS') {
-      return next();
-    }
-    if (req.path === '/api/auth/google-oauth/token' && req.method === 'POST') {
       return next();
     }
     authLimiter(req, res, next);

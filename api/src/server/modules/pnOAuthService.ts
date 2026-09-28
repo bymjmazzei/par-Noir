@@ -15,9 +15,8 @@ import {
 import { getDatabasePool } from '../utils/database';
 import { isDidRevokedForNetwork, isPnRevokedForNetwork } from './identitySuccessionService';
 import { appendSecurityAuditEvent } from './auditService';
-import { securityFlags } from '../utils/securityFlags';
 import { hashIdentifier, safeLogger } from '../../utils/logger';
-import { peekAuthCodeRecord, putAuthCodeRecord, takeAuthCodeRecord } from './oauthAuthCodeStore';
+import { peekAuthCodeRecord, putAuthCodeRecord, putUnlockChallengeRecord, takeAuthCodeRecord, takeUnlockChallengeRecord } from './oauthAuthCodeStore';
 import { storeBrokerPendingRecord, takeBrokerPendingRecord } from './oauthBrokerPendingStore';
 
 export class OauthUnlockProofError extends Error {
@@ -30,14 +29,6 @@ export class OauthUnlockProofError extends Error {
     this.code = code;
     this.httpStatus = httpStatus;
   }
-}
-
-interface UnlockChallengeRecord {
-  challengeId: string;
-  challenge: string;
-  clientId: string;
-  redirectUri: string;
-  expiresAt: number;
 }
 
 export interface AuthorizationCode {
@@ -76,6 +67,58 @@ export interface TokenPayload {
   nbf?: number;
 }
 
+/**
+ * Production sessions are RS256. Boot fails closed without a private key or KMS.
+ * Dev and tests get an in-process keypair so HMAC is never a signing option.
+ */
+export function assertOauthSigningConfigured(
+  env: NodeJS.ProcessEnv = process.env
+): void {
+  const isProd = (env.NODE_ENV || 'development') === 'production';
+  const hasPem = Boolean(env.PN_OAUTH_PRIVATE_KEY_PEM?.trim());
+  const hasKms = Boolean(env.PN_OAUTH_KMS_KEY_VERSION?.trim());
+  if (isProd && !hasPem && !hasKms) {
+    throw new Error(
+      'PN_OAUTH_PRIVATE_KEY_PEM or PN_OAUTH_KMS_KEY_VERSION must be set in production'
+    );
+  }
+}
+
+function resolveOauthSigningKeys(): { privateKey: string; publicKey: string; kid: string } {
+  assertOauthSigningConfigured();
+  const configuredPrivate = process.env.PN_OAUTH_PRIVATE_KEY_PEM?.replace(/\\n/g, '\n').trim() || '';
+  const configuredPublic = process.env.PN_OAUTH_PUBLIC_KEY_PEM?.replace(/\\n/g, '\n').trim() || '';
+  const kms = process.env.PN_OAUTH_KMS_KEY_VERSION?.trim() || '';
+  const kid = process.env.PN_OAUTH_KEY_ID || (kms ? 'kms' : 'rs256');
+
+  if (configuredPrivate) {
+    const publicKey =
+      configuredPublic ||
+      crypto.createPublicKey(configuredPrivate).export({ type: 'spki', format: 'pem' }).toString();
+    return { privateKey: configuredPrivate, publicKey, kid };
+  }
+
+  if (kms) {
+    if (!configuredPublic) {
+      throw new Error('PN_OAUTH_PUBLIC_KEY_PEM must be set when signing with PN_OAUTH_KMS_KEY_VERSION');
+    }
+    return { privateKey: '', publicKey: configuredPublic, kid };
+  }
+
+  const generated = crypto.generateKeyPairSync('rsa', {
+    modulusLength: 2048,
+    publicKeyEncoding: { type: 'spki', format: 'pem' },
+    privateKeyEncoding: { type: 'pkcs8', format: 'pem' },
+  });
+  return {
+    privateKey: generated.privateKey,
+    publicKey: generated.publicKey,
+    kid: 'dev-ephemeral-rs256',
+  };
+}
+
+const oauthSigningKeys = resolveOauthSigningKeys();
+
 interface RefreshTokenRecord {
   refresh_token: string;
   did: string;
@@ -96,7 +139,6 @@ interface RefreshTokenRecord {
 const accessTokens = new Map<string, TokenPayload>();
 // Map of recently exchanged codes to their tokens (for idempotency - prevents duplicate exchange errors)
 const codeToTokenMap = new Map<string, { token: AccessToken; expiresAt: number }>();
-const unlockChallenges = new Map<string, UnlockChallengeRecord>();
 // Note: refreshTokens are now stored in PostgreSQL database for persistence
 
 // Cleanup expired codes/tokens every 5 minutes
@@ -117,12 +159,6 @@ setInterval(() => {
     }
   }
 
-  for (const [id, record] of unlockChallenges.entries()) {
-    if (record.expiresAt < now) {
-      unlockChallenges.delete(id);
-    }
-  }
-
   // Clean expired refresh tokens from database (async, don't wait)
   PNOAuthService.cleanupExpiredRefreshTokens().catch((err: unknown) => {
     safeLogger.error('[OAuth] Error in scheduled refresh token cleanup', {
@@ -138,43 +174,19 @@ export class PNOAuthService {
   private static readonly BROKER_PENDING_EXPIRY = 2 * 60 * 1000;
   private static readonly ACCESS_TOKEN_EXPIRY = 60 * 60 * 1000; // 1 hour
   private static readonly REFRESH_TOKEN_EXPIRY = 30 * 24 * 60 * 60 * 1000; // 30 days
-  private static readonly TOKEN_SECRET = (() => {
-    const configured = process.env.PN_OAUTH_SECRET?.trim();
-    if (configured) return configured;
-    if (process.env.NODE_ENV === 'production') {
-      throw new Error('PN_OAUTH_SECRET must be set in production');
-    }
-    return crypto.randomBytes(32).toString('hex');
-  })();
   private static readonly TOKEN_ISSUER = process.env.PN_OAUTH_ISSUER || 'par-noir-api';
   private static readonly TOKEN_AUDIENCE = process.env.PN_OAUTH_AUDIENCE || 'par-noir-clients';
-  private static readonly ACCESS_TOKEN_ALG = (process.env.PN_OAUTH_ACCESS_TOKEN_ALG || 'HS256').toUpperCase();
-  private static readonly JWT_KID = process.env.PN_OAUTH_KEY_ID || 'legacy-hs256';
-  private static readonly JWT_PRIVATE_KEY = process.env.PN_OAUTH_PRIVATE_KEY_PEM?.replace(/\\n/g, '\n');
-  private static readonly JWT_PUBLIC_KEY = process.env.PN_OAUTH_PUBLIC_KEY_PEM?.replace(/\\n/g, '\n');
-  private static readonly KMS_KEY_VERSION = process.env.PN_OAUTH_KMS_KEY_VERSION;
+  private static readonly KMS_KEY_VERSION = process.env.PN_OAUTH_KMS_KEY_VERSION?.trim() || '';
+  private static readonly JWT_KID = oauthSigningKeys.kid;
+  private static readonly JWT_PRIVATE_KEY = oauthSigningKeys.privateKey;
+  private static readonly JWT_PUBLIC_KEY = oauthSigningKeys.publicKey;
 
   private static hashRefreshToken(token: string): string {
     return crypto.createHash('sha256').update(token, 'utf8').digest('hex');
   }
 
-  private static getCurrentAlgorithm(): 'HS256' | 'RS256' {
-    if (this.KMS_KEY_VERSION || this.ACCESS_TOKEN_ALG === 'RS256' || securityFlags.enableAsymmetricTokens) {
-      return 'RS256';
-    }
-    return 'HS256';
-  }
-
   private static async signJwt(payload: Record<string, unknown>): Promise<string> {
-    const algorithm = this.getCurrentAlgorithm();
-    const header: JwtHeader = { alg: algorithm, typ: 'JWT', kid: this.JWT_KID };
-    if (algorithm === 'HS256') {
-      return jwt.sign(payload, this.TOKEN_SECRET, {
-        algorithm: 'HS256',
-        header,
-      });
-    }
-
+    const header: JwtHeader = { alg: 'RS256', typ: 'JWT', kid: this.JWT_KID };
     if (this.KMS_KEY_VERSION) {
       return this.signJwtWithKms(payload, header);
     }
@@ -227,21 +239,24 @@ export class PNOAuthService {
   /**
    * Issue a single-use unlock challenge bound to client_id + redirect_uri.
    */
-  static createUnlockChallenge(params: {
+  static async createUnlockChallenge(params: {
     clientId: string;
     redirectUri: string;
-  }): { challengeId: string; challenge: string; expiresAt: number } {
+  }): Promise<{ challengeId: string; challenge: string; expiresAt: number }> {
     const challengeId = crypto.randomBytes(16).toString('hex');
     const challenge = crypto.randomBytes(32).toString('hex');
     const expiresAt = Date.now() + this.CHALLENGE_EXPIRY;
     const normalizedRedirectUri = params.redirectUri.replace(/\/$/, '');
-    unlockChallenges.set(challengeId, {
-      challengeId,
-      challenge,
-      clientId: params.clientId,
-      redirectUri: normalizedRedirectUri,
-      expiresAt,
-    });
+    await putUnlockChallengeRecord(
+      {
+        challengeId,
+        challenge,
+        clientId: params.clientId,
+        redirectUri: normalizedRedirectUri,
+        expiresAt,
+      },
+      this.CHALLENGE_EXPIRY
+    );
     return { challengeId, challenge, expiresAt };
   }
 
@@ -260,8 +275,7 @@ export class PNOAuthService {
     signature: string;
   }): Promise<{ code: string; did: string; pnIdentifier: string; publicKey: string }> {
     const normalizedRedirectUri = params.redirectUri.replace(/\/$/, '');
-    const record = unlockChallenges.get(params.challengeId);
-    unlockChallenges.delete(params.challengeId);
+    const record = await takeUnlockChallengeRecord(params.challengeId);
 
     if (!record) {
       throw new OauthUnlockProofError(
@@ -809,7 +823,7 @@ export class PNOAuthService {
       if (tokenData.revoked_at) {
         return null;
       }
-      if (securityFlags.enforceRefreshRotation && tokenData.used_at) {
+      if (tokenData.used_at) {
         await db.query(
           `UPDATE oauth_refresh_tokens
            SET revoked_at = NOW(), reuse_detected_at = NOW(), revoked_reason = 'reuse_detected'
@@ -843,26 +857,23 @@ export class PNOAuthService {
         scope: tokenData.scope || []
       });
 
-      let responseRefreshToken = refreshToken;
-      if (securityFlags.enforceRefreshRotation) {
-        const nextRefreshToken = await this.generateRefreshToken({
-          did: tokenData.did,
-          publicKey: undefined,
-          pnIdentifier: tokenData.pn_identifier,
-          clientId: clientId,
-          scope: tokenData.scope || [],
-          familyId: tokenData.family_id || tokenHash,
-          parentTokenHash: tokenHash,
-        });
+      const nextRefreshToken = await this.generateRefreshToken({
+        did: tokenData.did,
+        publicKey: undefined,
+        pnIdentifier: tokenData.pn_identifier,
+        clientId: clientId,
+        scope: tokenData.scope || [],
+        familyId: tokenData.family_id || tokenHash,
+        parentTokenHash: tokenHash,
+      });
 
-        await db.query(
-          `UPDATE oauth_refresh_tokens
-           SET used_at = NOW(), replaced_by = $2
-           WHERE refresh_token = $1`,
-          [tokenHash, this.hashRefreshToken(nextRefreshToken)]
-        );
-        responseRefreshToken = nextRefreshToken;
-      }
+      await db.query(
+        `UPDATE oauth_refresh_tokens
+         SET used_at = NOW(), replaced_by = $2
+         WHERE refresh_token = $1`,
+        [tokenHash, this.hashRefreshToken(nextRefreshToken)]
+      );
+      const responseRefreshToken = nextRefreshToken;
 
       return {
         access_token: accessToken,
@@ -895,12 +906,9 @@ export class PNOAuthService {
 
     // Validate JWT token
     try {
-      const algorithm = this.getCurrentAlgorithm();
-      const verifyKey = algorithm === 'HS256'
-        ? this.TOKEN_SECRET
-        : (this.JWT_PUBLIC_KEY || this.JWT_PRIVATE_KEY || this.TOKEN_SECRET);
-      const decoded = jwt.verify(token, verifyKey, {
-        algorithms: algorithm === 'HS256' ? ['HS256'] : ['RS256'],
+      if (!this.JWT_PUBLIC_KEY) return null;
+      const decoded = jwt.verify(token, this.JWT_PUBLIC_KEY, {
+        algorithms: ['RS256'],
         issuer: this.TOKEN_ISSUER,
         audience: this.TOKEN_AUDIENCE,
       }) as JwtPayload & TokenPayload;

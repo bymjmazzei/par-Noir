@@ -31,236 +31,12 @@ export interface GoogleDriveFile {
 
 export class GoogleDriveProxyService {
   /**
-   * Get Google Drive access token for a user
-   * Supports multiple accounts - if accountId is provided, uses that specific account
-   * Handles token refresh if needed
+   * Server does not mint Google access tokens. Callers must pass the device-forwarded token.
    */
-  async getAccessToken(userPnIdentifier: string, accountId?: string, additionalCandidates?: string[]): Promise<string> {
-    const { isDeviceCloudCustodyEnabled } = await import('./socialMailboxService');
-    if (isDeviceCloudCustodyEnabled()) {
-      const pnForLog = userPnIdentifier?.startsWith('pn-')
-        ? userPnIdentifier
-        : additionalCandidates?.[0] || userPnIdentifier;
-      safeLogger.warn('[GoogleDriveProxy] Refusing DB token mint under device custody', {
-        reason: 'cloud_token_required',
-        pnIdHash: hashIdentifier(pnForLog),
-      });
-      throw new Error(
-        'Google Drive access token required. Forward X-PN-Cloud-Access-Token after unlocking with cloud credentials.'
-      );
-    }
-
-    // CRITICAL: Use ONLY the pn identifier (first candidate)
-    // Dashboard stores credentials under pn identifier only, so we should only try that
-    // The additionalCandidates array should only contain the pn identifier
-    const pnIdentifier = userPnIdentifier?.startsWith('pn-') ? userPnIdentifier : (additionalCandidates?.[0] || userPnIdentifier);
-    
-    if (!pnIdentifier || !pnIdentifier.startsWith('pn-')) {
-      safeLogger.error('[GoogleDriveProxy] Invalid pn identifier');
-      throw new Error('Google Drive not connected. Please connect in the dashboard.');
-    }
-
-    const { isPnRevokedForNetwork } = await import('./identitySuccessionService');
-    if (isPnRevokedForNetwork(pnIdentifier)) {
-      throw new Error('This pN identifier is retired on the par Noir network. Use your successor identity for Drive access.');
-    }
-    
-    // Try pn identifier first; also try additionalCandidates (e.g. legacy raw identity_id from DB)
-    const identifierCandidates = [pnIdentifier];
-    if (additionalCandidates?.length) {
-      for (const c of additionalCandidates) {
-        if (c && c !== pnIdentifier && !identifierCandidates.includes(c)) {
-          identifierCandidates.push(c);
-        }
-      }
-    }
-    
-    // Try to find credentials using only the pn identifier
-    const credentialsRecord = await storageCredentialsService.findCredentialsByIdentityCandidates(identifierCandidates);
-    
-    if (!credentialsRecord) {
-      safeLogger.warn('[GoogleDriveProxy] No credentials record found', {
-        subjectHash: hashIdentifier(userPnIdentifier),
-        candidates: identifierCandidates.length,
-      });
-      throw new Error('Google Drive not connected. Please connect in the dashboard.');
-    }
-    
-    const credentials = credentialsRecord.credentials;
-    
-    // Support both googleDriveAccounts array and single googleDrive object
-    let account: GoogleDriveToken | null = null;
-    
-    if (accountId && credentials.googleDriveAccounts) {
-      // Extract the actual account identifier if accountId includes "::"
-      const actualAccountId = accountId.includes('::') ? accountId.split('::')[1] : accountId;
-      
-      // Find specific account by accountId (backendId, keyPrefix, or full accountId string)
-      // AccountId might be in format "google_drive::email-hash" or just "backendId" or "keyPrefix"
-      account = credentials.googleDriveAccounts.find(
-        (acc: any) => 
-          acc.backendId === accountId || 
-          acc.keyPrefix === accountId ||
-          acc.backendId === actualAccountId ||
-          acc.keyPrefix === actualAccountId ||
-          `${acc.backendId}` === accountId ||
-          `${acc.keyPrefix}` === accountId ||
-          `${acc.backendId}` === actualAccountId ||
-          `${acc.keyPrefix}` === actualAccountId
-      ) || null;
-      
-      if (!account) {
-        console.error(`[GoogleDriveProxy] Requested account not found`);
-        if (accountId === 'default' && credentials.googleDriveAccounts.length > 0) {
-          account = credentials.googleDriveAccounts[0];
-        } else {
-          throw new Error(`Google Drive account not found for accountId: ${accountId}`);
-        }
-      }
-    } else if (credentials.googleDriveAccounts && credentials.googleDriveAccounts.length > 0) {
-      // Use first account if no accountId specified
-      account = credentials.googleDriveAccounts[0];
-    } else if (credentials.googleDrive) {
-      // Fallback to single googleDrive object
-      account = credentials.googleDrive;
-    } else {
-      account = credentials as GoogleDriveToken;
-    }
-
-    if (!account) {
-      throw new Error('Google Drive account not found');
-    }
-
-    const token: GoogleDriveToken = {
-      access_token: (account as any).access_token || (account as any).accessToken || account.access_token,
-      refresh_token: (account as any).refresh_token || (account as any).refreshToken || account.refresh_token,
-      expires_in: account.expires_in,
-      token_type: account.token_type,
-      expires_at: account.expires_at
-    };
-
-    if (!token.access_token) {
-      // Expected under device cloud custody when account shells have no OAuth secrets.
-      if (process.env.NODE_ENV !== 'production') {
-        console.debug('[GoogleDriveProxy] No access token in account object (custody or purged secrets)');
-      }
-      throw new Error('Google Drive access token not found');
-    }
-
-    // Check if token needs refresh
-    const now = Date.now();
-    const expiresAt = token.expires_at || (token.expires_in ? now + (token.expires_in * 1000) : now + 3600000);
-    
-    // Only refresh if token is expired or expires within 5 minutes
-    // Don't refresh unnecessarily - tokens are valid for 1 hour, so only refresh when needed
-    const isExpired = expiresAt < now;
-    const expiresSoon = expiresAt < now + 300000; // 5 minutes
-    const shouldRefresh = isExpired || expiresSoon;
-    
-    // Only refresh if token is expired or about to expire
-    if (token.refresh_token && shouldRefresh) {
-      try {
-        const refreshedToken = await this.refreshAccessToken(token.refresh_token);
-        
-        // Update stored credentials for the specific account
-        // CRITICAL: Preserve refresh_token - Google often doesn't return a new one, so keep the existing one
-        const preservedRefreshToken = refreshedToken.refresh_token || token.refresh_token || (account as any).refresh_token || (account as any).refreshToken;
-        
-        if (accountId && credentials.googleDriveAccounts) {
-          const accountIndex = credentials.googleDriveAccounts.findIndex(
-            (acc: any) => 
-              acc.backendId === accountId || 
-              acc.keyPrefix === accountId ||
-              `${acc.backendId}` === accountId ||
-              `${acc.keyPrefix}` === accountId ||
-              (accountId.includes('::') && (acc.backendId === accountId.split('::')[1] || acc.keyPrefix === accountId.split('::')[1]))
-          );
-          if (accountIndex >= 0) {
-            credentials.googleDriveAccounts[accountIndex] = {
-              ...credentials.googleDriveAccounts[accountIndex],
-              access_token: refreshedToken.access_token,
-              accessToken: refreshedToken.access_token,
-              expires_at: refreshedToken.expires_in 
-                ? Date.now() + (refreshedToken.expires_in * 1000)
-                : undefined,
-              expires_in: refreshedToken.expires_in,
-              refresh_token: preservedRefreshToken,
-              refreshToken: preservedRefreshToken
-            };
-          } else {
-            // Account not found in array - this shouldn't happen, but log and try to use first account
-            console.warn(`[GoogleDriveProxy] Requested account missing during refresh persistence`);
-            // Try to update first account as fallback
-            if (credentials.googleDriveAccounts.length > 0) {
-              credentials.googleDriveAccounts[0] = {
-                ...credentials.googleDriveAccounts[0],
-                access_token: refreshedToken.access_token,
-                accessToken: refreshedToken.access_token,
-                expires_at: refreshedToken.expires_in 
-                  ? Date.now() + (refreshedToken.expires_in * 1000)
-                  : undefined,
-                expires_in: refreshedToken.expires_in,
-                refresh_token: preservedRefreshToken,
-                refreshToken: preservedRefreshToken
-              };
-            }
-          }
-        } else if (credentials.googleDrive) {
-          credentials.googleDrive = {
-            ...credentials.googleDrive,
-            access_token: refreshedToken.access_token,
-            expires_at: refreshedToken.expires_in 
-              ? Date.now() + (refreshedToken.expires_in * 1000)
-              : undefined,
-            expires_in: refreshedToken.expires_in,
-            refresh_token: preservedRefreshToken
-          };
-        } else if (credentials.googleDriveAccounts && credentials.googleDriveAccounts.length > 0) {
-          // Fallback: if no accountId but we have accounts, update the first one
-          credentials.googleDriveAccounts[0] = {
-            ...credentials.googleDriveAccounts[0],
-            access_token: refreshedToken.access_token,
-            accessToken: refreshedToken.access_token,
-            expires_at: refreshedToken.expires_in 
-              ? Date.now() + (refreshedToken.expires_in * 1000)
-              : undefined,
-            expires_in: refreshedToken.expires_in,
-            refresh_token: preservedRefreshToken,
-            refreshToken: preservedRefreshToken
-          };
-        }
-        
-        // CRITICAL: Always save credentials after refresh to persist the refresh token
-        // CRITICAL: Use the pn identifier from the credentials record, not userPnIdentifier
-        await storageCredentialsService.upsertCredentials(credentialsRecord.identityId, credentials);
-        
-        return refreshedToken.access_token;
-      } catch (error: any) {
-        safeLogger.error('[GoogleDriveProxy] Failed to refresh Google Drive token', {
-          message: error.message || String(error),
-        });
-        
-        // If refresh fails and token is expired, throw error immediately
-        // Don't try to use expired token - user needs to reconnect
-        if (isExpired) {
-          throw new Error(`Google Drive authentication failed. Your Google Drive connection has expired. Please reconnect your Google Drive account in the dashboard. Error: ${error.message || 'Token refresh failed'}`);
-        }
-        
-        // If token is still valid but refresh failed, try using existing token
-        // This handles temporary network issues
-        console.warn(`[GoogleDriveProxy] Token refresh failed but token is still valid, using existing token`);
-      }
-    }
-
-    // Return the access token (either refreshed or original)
-    const finalToken = token.access_token;
-    
-    // If token is expired and we didn't refresh, throw error
-    if (isExpired && !shouldRefresh) {
-      throw new Error('Google Drive access token has expired. Please reconnect your Google Drive account in the dashboard.');
-    }
-    
-    return finalToken;
+  async getAccessToken(_userPnIdentifier: string, _accountId?: string, _additionalCandidates?: string[]): Promise<string> {
+    throw new Error(
+      'Google Drive access token required. Forward X-PN-Cloud-Access-Token after unlocking with cloud credentials.'
+    );
   }
 
   /**
@@ -335,106 +111,12 @@ export class GoogleDriveProxyService {
   }
 
   /**
-   * Force refresh access token (public method for 401 retries)
+   * Server does not refresh Google access tokens. The device refreshes with the provider.
    */
-  async forceRefreshAccessToken(userPnIdentifier: string, accountId?: string, additionalCandidates?: string[]): Promise<string> {
-    const { isDeviceCloudCustodyEnabled } = await import('./socialMailboxService');
-    if (isDeviceCloudCustodyEnabled()) {
-      const pnForLog = userPnIdentifier?.startsWith('pn-')
-        ? userPnIdentifier
-        : additionalCandidates?.[0] || userPnIdentifier;
-      safeLogger.warn('[GoogleDriveProxy] Refusing force refresh under device custody', {
-        reason: 'cloud_token_required',
-        pnIdHash: hashIdentifier(pnForLog),
-      });
-      throw new Error(
-        'Google Drive access token required. Forward X-PN-Cloud-Access-Token after unlocking with cloud credentials.'
-      );
-    }
-
-    const pnIdentifier = userPnIdentifier?.startsWith('pn-') ? userPnIdentifier : (additionalCandidates?.[0] || userPnIdentifier);
-    if (!pnIdentifier || !pnIdentifier.startsWith('pn-')) {
-      throw new Error('Invalid pn identifier');
-    }
-    
-    const identifierCandidates = [pnIdentifier];
-    const credentialsRecord = await storageCredentialsService.findCredentialsByIdentityCandidates(identifierCandidates);
-    
-    if (!credentialsRecord) {
-      throw new Error('Google Drive not connected');
-    }
-    
-    const credentials = credentialsRecord.credentials;
-    let account: GoogleDriveToken | null = null;
-    
-    if (accountId && credentials.googleDriveAccounts) {
-      const actualAccountId = accountId.includes('::') ? accountId.split('::')[1] : accountId;
-      account = credentials.googleDriveAccounts.find(
-        (acc: any) => 
-          acc.backendId === accountId || 
-          acc.keyPrefix === accountId ||
-          acc.backendId === actualAccountId ||
-          acc.keyPrefix === actualAccountId
-      ) || null;
-    } else if (credentials.googleDriveAccounts && credentials.googleDriveAccounts.length > 0) {
-      account = credentials.googleDriveAccounts[0];
-    } else if (credentials.googleDrive) {
-      account = credentials.googleDrive;
-    }
-    
-    if (!account) {
-      throw new Error('Google Drive account not found');
-    }
-    
-    const refreshToken = (account as any).refresh_token || (account as any).refreshToken;
-    if (!refreshToken) {
-      throw new Error('No refresh token available');
-    }
-    
-    const refreshedToken = await this.refreshAccessToken(refreshToken);
-    
-    // Update stored credentials
-    if (accountId && credentials.googleDriveAccounts) {
-      const accountIndex = credentials.googleDriveAccounts.findIndex(
-        (acc: any) => 
-          acc.backendId === accountId || 
-          acc.keyPrefix === accountId ||
-          `${acc.backendId}` === accountId ||
-          `${acc.keyPrefix}` === accountId
-      );
-      if (accountIndex >= 0) {
-        credentials.googleDriveAccounts[accountIndex] = {
-          ...credentials.googleDriveAccounts[accountIndex],
-          access_token: refreshedToken.access_token,
-          accessToken: refreshedToken.access_token,
-          expires_at: refreshedToken.expires_in ? Date.now() + (refreshedToken.expires_in * 1000) : undefined,
-          expires_in: refreshedToken.expires_in,
-          refresh_token: refreshToken, // Preserve original refresh token
-          refreshToken: refreshToken
-        };
-      }
-    } else if (credentials.googleDriveAccounts && credentials.googleDriveAccounts.length > 0) {
-      credentials.googleDriveAccounts[0] = {
-        ...credentials.googleDriveAccounts[0],
-        access_token: refreshedToken.access_token,
-        accessToken: refreshedToken.access_token,
-        expires_at: refreshedToken.expires_in ? Date.now() + (refreshedToken.expires_in * 1000) : undefined,
-        expires_in: refreshedToken.expires_in,
-        refresh_token: refreshToken,
-        refreshToken: refreshToken
-      };
-    } else if (credentials.googleDrive) {
-      credentials.googleDrive = {
-        ...credentials.googleDrive,
-        access_token: refreshedToken.access_token,
-        expires_at: refreshedToken.expires_in ? Date.now() + (refreshedToken.expires_in * 1000) : undefined,
-        expires_in: refreshedToken.expires_in,
-        refresh_token: refreshToken
-      };
-    }
-    
-    await storageCredentialsService.upsertCredentials(credentialsRecord.identityId, credentials);
-    return refreshedToken.access_token;
+  async forceRefreshAccessToken(_userPnIdentifier: string, _accountId?: string, _additionalCandidates?: string[]): Promise<string> {
+    throw new Error(
+      'Google Drive access token required. Forward X-PN-Cloud-Access-Token after unlocking with cloud credentials.'
+    );
   }
 
   /**
@@ -544,41 +226,6 @@ export class GoogleDriveProxyService {
   }
 
   /**
-   * Refresh Google Drive access token
-   */
-  private async refreshAccessToken(refreshToken: string): Promise<GoogleDriveToken> {
-    const clientId = process.env.GOOGLE_DRIVE_CLIENT_ID;
-    const clientSecret = process.env.GOOGLE_DRIVE_CLIENT_SECRET;
-
-    if (!clientSecret) {
-      throw new Error('Google Drive client secret not configured');
-    }
-    if (!clientId || typeof clientId !== 'string' || clientId.trim() === '') {
-      throw new Error('Google Drive client ID not configured');
-    }
-
-    const response = await fetch('https://oauth2.googleapis.com/token', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded',
-      },
-      body: new URLSearchParams({
-        refresh_token: refreshToken,
-        client_id: clientId,
-        client_secret: clientSecret,
-        grant_type: 'refresh_token',
-      }),
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(`Token refresh failed: ${errorText}`);
-    }
-
-    return response.json() as Promise<GoogleDriveToken>;
-  }
-
-  /**
    * List files from Google Drive.
    * Prefer accessTokenOverride (X-PN-Cloud-Access-Token) under device custody.
    * Pass pageToken for pagination; response includes nextPageToken when more pages exist.
@@ -616,75 +263,10 @@ export class GoogleDriveProxyService {
       },
     });
 
-    // If we get a 401, the token is invalid - force refresh and retry (server-held secrets only)
     if (response.status === 401) {
-      if (override) {
-        throw new Error(
-          'Google Drive authentication failed. Cloud access token expired — reconnect cloud storage in the dashboard.'
-        );
-      }
-      console.log(`[GoogleDriveProxy] Got 401 from Google Drive API, forcing token refresh and retrying...`);
-      
-      // Force refresh by getting credentials and updating expires_at to past
-      // CRITICAL: Use only pn identifier
-      const pnIdentifier = userPnIdentifier?.startsWith('pn-') ? userPnIdentifier : (additionalCandidates?.[0] || userPnIdentifier);
-      const identifierCandidates = pnIdentifier?.startsWith('pn-') ? [pnIdentifier] : [];
-      const credentialsRecord = await storageCredentialsService.findCredentialsByIdentityCandidates(identifierCandidates);
-      
-      let refreshAttempted = false;
-      let refreshSucceeded = false;
-      
-      if (credentialsRecord) {
-        const credentials = credentialsRecord.credentials;
-        let account: GoogleDriveToken | null = null;
-        
-        if (accountId && credentials.googleDriveAccounts) {
-          const actualAccountId = accountId.includes('::') ? accountId.split('::')[1] : accountId;
-          account = credentials.googleDriveAccounts.find(
-            (acc: any) => 
-              acc.backendId === accountId || 
-              acc.keyPrefix === accountId ||
-              acc.backendId === actualAccountId ||
-              acc.keyPrefix === actualAccountId
-          ) || null;
-        } else if (credentials.googleDriveAccounts && credentials.googleDriveAccounts.length > 0) {
-          account = credentials.googleDriveAccounts[0];
-        } else if (credentials.googleDrive) {
-          account = credentials.googleDrive;
-        }
-        
-        if (account && ((account as any).refresh_token || (account as any).refreshToken)) {
-          refreshAttempted = true;
-          try {
-            // Force refresh by setting expires_at to past
-            (account as any).expires_at = Date.now() - 1000;
-            await storageCredentialsService.upsertCredentials(credentialsRecord.identityId, credentials);
-            // Get fresh token (will trigger refresh)
-            accessToken = await this.getAccessToken(userPnIdentifier, accountId, additionalCandidates);
-            refreshSucceeded = true;
-            
-            // Retry the request with refreshed token
-            response = await fetch(`https://www.googleapis.com/drive/v3/files?${params}`, {
-              headers: {
-                'Authorization': `Bearer ${accessToken}`,
-              },
-            });
-          } catch (refreshError: any) {
-            console.error(`[GoogleDriveProxy] Token refresh failed:`, refreshError?.message || refreshError);
-            // If refresh fails, the refresh token is likely invalid - user needs to reconnect
-            throw new Error(`Google Drive authentication failed. Your Google Drive connection has expired. Please reconnect your Google Drive account in the dashboard. Error: ${refreshError?.message || 'Token refresh failed'}`);
-          }
-        } else {
-          console.warn(`[GoogleDriveProxy] No refresh token available for account ${accountId || 'default'}`);
-        }
-      } else {
-        console.warn(`[GoogleDriveProxy] No credentials record found for ${pnIdentifier}`);
-      }
-      
-      // If we tried to refresh but still get 401, the refresh token is invalid
-      if (refreshAttempted && refreshSucceeded && response.status === 401) {
-        throw new Error(`Google Drive authentication failed. Your Google Drive connection has expired. Please reconnect your Google Drive account in the dashboard.`);
-      }
+      throw new Error(
+        'Google Drive authentication failed. Cloud access token expired — reconnect cloud storage in the dashboard.'
+      );
     }
 
     if (!response.ok) {
@@ -720,31 +302,8 @@ export class GoogleDriveProxyService {
     accessTokenOverride?: string
   ): Promise<GoogleDriveFile> {
     const override = accessTokenOverride?.trim() || '';
-    // Prefer forwarded cloud token under device custody
-    let accessToken =
+    const accessToken =
       override || (await this.getAccessToken(userPnIdentifier, accountId, additionalCandidates));
-    
-    // Get account info for refresh token if needed for retry (server-held secrets only)
-    const credentialsRecord = override
-      ? null
-      : await storageCredentialsService.getCredentials(userPnIdentifier);
-    const credentials = credentialsRecord?.credentials;
-    let refreshToken: string | undefined;
-    if (accountId && credentials?.googleDriveAccounts) {
-      const account = credentials.googleDriveAccounts.find(
-        (acc: any) => 
-          acc.backendId === accountId || 
-          acc.keyPrefix === accountId ||
-          `${acc.backendId}` === accountId ||
-          `${acc.keyPrefix}` === accountId ||
-          (accountId.includes('::') && (acc.backendId === accountId.split('::')[1] || acc.keyPrefix === accountId.split('::')[1]))
-      );
-      refreshToken = account ? ((account as any).refresh_token || (account as any).refreshToken) : undefined;
-    } else if (credentials?.googleDriveAccounts?.[0]) {
-      refreshToken = (credentials.googleDriveAccounts[0] as any).refresh_token || (credentials.googleDriveAccounts[0] as any).refreshToken;
-    } else if (credentials?.googleDrive) {
-      refreshToken = (credentials.googleDrive as any).refresh_token || (credentials.googleDrive as any).refreshToken;
-    }
 
     const metadata = {
       name: fileName,
@@ -778,33 +337,6 @@ export class GoogleDriveProxyService {
       const errorText = await response.text();
       console.error(`[GoogleDriveProxy] Upload failed with status ${response.status}:`, errorText);
       
-      // If we get a 401, the token is invalid - try refreshing it
-      if (response.status === 401 && refreshToken) {
-        console.log(`[GoogleDriveProxy] Got 401, attempting token refresh and retry`);
-        try {
-          const refreshedToken = await this.refreshAccessToken(refreshToken);
-          // Retry upload with refreshed token
-          const retryResponse = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart', {
-            method: 'POST',
-            headers: {
-              'Authorization': `Bearer ${refreshedToken.access_token}`,
-              'Content-Type': `multipart/form-data; boundary=${boundary}`,
-              'Content-Length': body.length.toString(),
-            },
-            body: body,
-          });
-          
-          if (!retryResponse.ok) {
-            const retryErrorText = await retryResponse.text();
-            throw new Error(`Failed to upload file after token refresh: ${retryErrorText}`);
-          }
-          
-          return retryResponse.json() as Promise<GoogleDriveFile>;
-        } catch (refreshError: any) {
-          console.error(`[GoogleDriveProxy] Token refresh and retry failed:`, refreshError.message || refreshError);
-          throw new Error(`Failed to upload file: ${errorText}`);
-        }
-      }
       
       throw new Error(`Failed to upload file: ${errorText}`);
     }

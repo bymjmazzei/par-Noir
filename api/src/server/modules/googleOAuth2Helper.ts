@@ -1,13 +1,10 @@
 /**
- * Google OAuth2 Helper
- * Creates properly configured OAuth2 clients that automatically handle token refresh
+ * Google OAuth2 helper.
+ * Builds a Drive client from a device-forwarded access token. It does not refresh.
  */
 
 import { google } from 'googleapis';
 import type { OAuth2Client } from 'google-auth-library';
-
-// Import at function level to avoid circular dependency
-let googleDriveProxyService: any;
 
 export interface GoogleDriveToken {
   access_token: string;
@@ -26,57 +23,22 @@ export class GoogleOAuth2Helper {
    */
   static createClient(
     token: GoogleDriveToken,
-    userPnIdentifier: string,
-    accountId?: string
+    _userPnIdentifier: string,
+    _accountId?: string
   ): OAuth2Client {
-    const clientId = process.env.GOOGLE_DRIVE_CLIENT_ID;
-    const clientSecret = process.env.GOOGLE_DRIVE_CLIENT_SECRET;
-    
-    if (!clientId || !clientSecret) {
-      throw new Error('Google Drive OAuth2 credentials not configured. GOOGLE_DRIVE_CLIENT_ID and GOOGLE_DRIVE_CLIENT_SECRET must be set.');
-    }
-    
-    const oauth2Client = new google.auth.OAuth2(clientId, clientSecret);
-    
-    // Calculate expiry_date from expires_at (Google library expects timestamp in milliseconds)
-    const expiryDate = token.expires_at 
-      ? token.expires_at 
-      : token.expires_in 
+    const clientId = process.env.GOOGLE_DRIVE_CLIENT_ID || 'device-forwarded';
+    const oauth2Client = new google.auth.OAuth2(clientId);
+    const expiryDate = token.expires_at
+      ? token.expires_at
+      : token.expires_in
         ? Date.now() + (token.expires_in * 1000)
         : undefined;
-    
-    // Set credentials with ALL required fields for automatic refresh
+
+    // Access token only. The device refreshes with the provider; this client must not.
     oauth2Client.setCredentials({
       access_token: token.access_token,
-      refresh_token: token.refresh_token,
-      expiry_date: expiryDate, // Library expects timestamp in milliseconds
+      expiry_date: expiryDate,
     });
-    
-    // Listen for token refresh events and update stored credentials
-    oauth2Client.on('tokens', async (tokens) => {
-      if (tokens.access_token) {
-        try {
-          // Lazy import to avoid circular dependency
-          if (!googleDriveProxyService) {
-            const module = await import('./googleDriveProxy');
-            googleDriveProxyService = module.googleDriveProxyService;
-          }
-          
-          // Update stored credentials with new token
-          await googleDriveProxyService.updateStoredToken(
-            userPnIdentifier,
-            accountId,
-            tokens.access_token,
-            tokens.expiry_date ? new Date(tokens.expiry_date) : undefined
-          );
-          console.log(`[GoogleOAuth2Helper] Updated stored token after automatic refresh for ${userPnIdentifier}`);
-        } catch (error: any) {
-          console.error('[GoogleOAuth2Helper] Failed to update stored token after refresh:', error?.message || error);
-          // Don't throw - token refresh succeeded, just failed to persist
-        }
-      }
-    });
-    
     return oauth2Client;
   }
 }

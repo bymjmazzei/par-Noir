@@ -157,7 +157,6 @@ async function ensureFanout(opts: PromoteOutboxOptions, record: OutboxRecord): P
           ? {
               type: record.payload.type || 'new_message',
               messageId: record.payload.messageId,
-              threadId: record.payload.threadId,
               connectionId: record.payload.connectionId,
               groupId: record.payload.groupId,
               fileId: record.payload.fileId,

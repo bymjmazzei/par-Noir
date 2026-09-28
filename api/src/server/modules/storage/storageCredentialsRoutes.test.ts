@@ -397,7 +397,10 @@ describe('storage credentials routes', () => {
         pnFolderId: 'pn-folder',
       });
 
-      const res = await request(buildApp()).post(`/api/storage/initialize/${PN}`).expect(202);
+      const res = await request(buildApp())
+        .post(`/api/storage/initialize/${PN}`)
+        .set('X-PN-Cloud-Access-Token', 'fresh-token')
+        .expect(202);
 
       expect(res.body).toMatchObject({
         success: true,
@@ -417,7 +420,10 @@ describe('storage credentials routes', () => {
       mockRunFullDriveInit.mockRejectedValue(new Error('rateLimitExceeded'));
       mockIsRetryable.mockReturnValue(true);
 
-      const res = await request(buildApp()).post(`/api/storage/initialize/${PN}`).expect(202);
+      const res = await request(buildApp())
+        .post(`/api/storage/initialize/${PN}`)
+        .set('X-PN-Cloud-Access-Token', 'fresh-token')
+        .expect(202);
       expect(res.body.initInProgress).toBe(true);
       await new Promise((r) => setImmediate(r));
       expect(mockRunFullDriveInit).toHaveBeenCalled();

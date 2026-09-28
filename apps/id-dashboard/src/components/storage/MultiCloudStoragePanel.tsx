@@ -256,64 +256,31 @@ export function MultiCloudStoragePanel({
     setLoading(true);
     setError(null);
     try {
-      const configRes = await fetch(`${API_ENDPOINT}/api/public-config`);
-      const config = (await configRes.json()) as { dropboxAppKey?: string; microsoftClientId?: string };
-      const redirectUri = `${window.location.origin}/oauth-callback.html?pn_popup=1`;
-      let authUrl = '';
-      if (provider === 'dropbox') {
-        if (!config.dropboxAppKey) throw new Error('Dropbox is not configured on this server.');
-        authUrl = `https://www.dropbox.com/oauth2/authorize?client_id=${encodeURIComponent(config.dropboxAppKey)}&redirect_uri=${encodeURIComponent(`${window.location.origin}/oauth-callback.html`)}&response_type=code&token_access_type=offline&state=pn_popup`;
-      } else {
-        if (!config.microsoftClientId) throw new Error('Microsoft OAuth is not configured on this server.');
-        authUrl = `https://login.microsoftonline.com/common/oauth2/v2.0/authorize?client_id=${encodeURIComponent(config.microsoftClientId)}&redirect_uri=${encodeURIComponent(`${window.location.origin}/oauth-callback.html`)}&response_type=code&scope=${encodeURIComponent('Files.ReadWrite.AppFolder offline_access')}&state=pn_popup`;
-      }
-
-      const popup = window.open(authUrl, 'pn-storage-oauth', 'width=500,height=700');
-      if (!popup) throw new Error('Popup blocked — allow popups for OAuth.');
-
-      const code = await new Promise<string>((resolve, reject) => {
-        const timeout = window.setTimeout(() => {
-          window.removeEventListener('message', onMessage);
-          bc?.close();
-          reject(new Error('OAuth timeout'));
-        }, 300000);
-
-        const bc = typeof BroadcastChannel !== 'undefined' ? new BroadcastChannel('par-noir-oauth-v1') : null;
-        const finish = (payload: { code?: string; error?: string }) => {
-          window.clearTimeout(timeout);
-          window.removeEventListener('message', onMessage);
-          bc?.close();
-          if (payload.error) reject(new Error(payload.error));
-          else if (payload.code) resolve(payload.code);
-          else reject(new Error('No authorization code'));
-        };
-
-        const onMessage = (event: MessageEvent) => {
-          if (event.origin !== window.location.origin) return;
-          const payload = event.data as { type?: string; code?: string; error?: string };
-          if (payload?.type !== 'oauth_callback' && payload?.type !== 'GOOGLE_OAUTH_CODE') return;
-          finish(payload);
-        };
-        window.addEventListener('message', onMessage);
-
-        if (bc) {
-          bc.onmessage = (ev: MessageEvent) => {
-            const payload = ev.data as { type?: string; code?: string; error?: string };
-            if (payload?.type === 'oauth_callback') finish(payload);
-          };
+      const { reconnectOAuthProvider } = await import('@par-noir/oauth-ui');
+      const envelope = await reconnectOAuthProvider({
+        provider,
+        pnIdentifier,
+        authToken,
+        apiEndpoint: API_ENDPOINT
+      });
+      if (sessionId) {
+        const { SecureCredentialManager } = await import('@par-noir/identity-crypto');
+        const { persistCloudCredentials, resolveCloudPersistMode } = await import(
+          '@par-noir/device-cloud-credentials'
+        );
+        const creds = SecureCredentialManager.getCredentials(sessionId);
+        if (creds) {
+          await persistCloudCredentials({
+            identityId: pnIdentifier,
+            credentials: envelope,
+            session: {
+              sessionId,
+              pnName: creds.pnName,
+              passcode: creds.passcode
+            },
+            mode: resolveCloudPersistMode({ hasKeyedDevices: false })
+          });
         }
-      });
-
-      const exchangePath =
-        provider === 'dropbox' ? '/api/storage/oauth/dropbox/exchange' : '/api/storage/oauth/onedrive/exchange';
-      const res = await ownerFetch(authToken, 'POST', exchangePath, {
-        code,
-        redirectUri: `${window.location.origin}/oauth-callback.html`,
-        pnIdentifier
-      });
-      if (!res.ok) {
-        const err = (await res.json()) as { message?: string };
-        throw new Error(err.message || 'Token exchange failed');
       }
       setMessage(`${provider === 'dropbox' ? 'Dropbox' : 'OneDrive'} connected.`);
       await refreshAccounts({ force: true });

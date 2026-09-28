@@ -16,7 +16,6 @@ import {
   type PnDriveSheetKey,
 } from './pnDriveIndex';
 import { hashIdentifier, safeLogger } from '../../utils/logger';
-import { isDeviceCloudCustodyEnabled } from './socialMailboxService';
 
 export interface OwnerDriveContext {
   pnIdentifier: string;
@@ -53,7 +52,7 @@ export { DriveIndexError };
 
 /**
  * Load OAuth token + validate complete pnDriveIndex. Throws DriveIndexError if missing/incomplete.
- * Under custody: requires opts.accessToken (header-only). Opt-out may mint via proxy.
+ * Requires opts.accessToken. The server does not mint a token from stored secrets.
  */
 export async function requireOwnerDriveContext(
   pnIdentifier: string,
@@ -76,14 +75,9 @@ export async function requireOwnerDriveContext(
   }
 
   const resolvedAccountId = accountId ?? extractAccountId(account);
-  const forwarded = opts?.accessToken?.trim();
-  const custody = isDeviceCloudCustodyEnabled();
-  let accessToken: string;
-
-  if (forwarded) {
-    accessToken = forwarded;
-  } else if (custody) {
-    safeLogger.warn('[OwnerDriveContext] Cloud access token required under custody', {
+  const accessToken = opts?.accessToken?.trim() || '';
+  if (!accessToken) {
+    safeLogger.warn('[OwnerDriveContext] Cloud access token required', {
       reason: 'cloud_token_required',
       pnIdHash: hashIdentifier(normalized),
     });
@@ -91,35 +85,9 @@ export async function requireOwnerDriveContext(
       'Google Drive access token required. Reconnect cloud storage or forward X-PN-Cloud-Access-Token.',
       'CLOUD_TOKEN_REQUIRED'
     );
-  } else {
-    try {
-      const { googleDriveProxyService } = await import('./googleDriveProxy');
-      accessToken = await googleDriveProxyService.getAccessToken(
-        normalized,
-        resolvedAccountId,
-        [normalized]
-      );
-    } catch (err) {
-      safeLogger.warn('[OwnerDriveContext] Proxy token mint failed (custody off)', {
-        reason: 'proxy_get_access_token_failed',
-        pnIdHash: hashIdentifier(normalized),
-        message: err instanceof Error ? err.message : String(err),
-      });
-      throw new DriveIndexError(
-        'Google Drive access token required. Reconnect cloud storage or forward X-PN-Cloud-Access-Token.',
-        'CLOUD_TOKEN_REQUIRED'
-      );
-    }
   }
 
-  const token: GoogleDriveToken = custody
-    ? { access_token: accessToken }
-    : {
-        access_token: accessToken,
-        refresh_token: (account.refresh_token || account.refreshToken) as string | undefined,
-        expires_at: account.expires_at as number | undefined,
-        expires_in: account.expires_in as number | undefined,
-      };
+  const token: GoogleDriveToken = { access_token: accessToken };
 
   const foldersExist = await pnDriveFoldersExistOnDrive(
     accessToken,

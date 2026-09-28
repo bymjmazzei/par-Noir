@@ -193,9 +193,12 @@ async function resolveUsableTokenFromEnvelope(
     ownerToken = null;
   }
 
+  if (!ownerToken) {
+    return freshAccessTokenFromEnvelope(env);
+  }
+
   const resolved = await resolveFreshDriveToken({
     envelope: env,
-    authToken: ownerToken,
     apiEndpoint: API_ENDPOINT,
     path: 'dashboard',
   });

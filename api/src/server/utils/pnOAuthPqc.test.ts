@@ -36,7 +36,7 @@ describe('OAuth unlock proof gate', () => {
   const scope = ['openid', 'profile'];
 
   it('rejects forged authenticate without a valid unlock signature', async () => {
-    const issued = PNOAuthService.createUnlockChallenge({ clientId, redirectUri });
+    const issued = await PNOAuthService.createUnlockChallenge({ clientId, redirectUri });
     const forged = mlDsa65Keygen();
     const publicKey = bytesToBase64(forged.publicKey);
 
@@ -57,7 +57,7 @@ describe('OAuth unlock proof gate', () => {
   it('rejects authenticate that reuses a consumed challenge', async () => {
     const dsa = mlDsa65Keygen();
     const publicKey = bytesToBase64(dsa.publicKey);
-    const issued = PNOAuthService.createUnlockChallenge({ clientId, redirectUri });
+    const issued = await PNOAuthService.createUnlockChallenge({ clientId, redirectUri });
     const signature = signOauthUnlockProof(
       {
         challenge: issued.challenge,
@@ -101,7 +101,7 @@ describe('OAuth unlock proof gate', () => {
     const owner = mlDsa65Keygen();
     const attacker = mlDsa65Keygen();
     const publicKey = bytesToBase64(owner.publicKey);
-    const issued = PNOAuthService.createUnlockChallenge({ clientId, redirectUri });
+    const issued = await PNOAuthService.createUnlockChallenge({ clientId, redirectUri });
     const signature = signOauthUnlockProof(
       {
         challenge: issued.challenge,
@@ -131,7 +131,7 @@ describe('OAuth unlock proof gate', () => {
     const expectedDid = deriveDidFromPublicKey(publicKey);
     const expectedPn = deriveCanonicalPnIdentifier(publicKey);
 
-    const issued = PNOAuthService.createUnlockChallenge({ clientId, redirectUri });
+    const issued = await PNOAuthService.createUnlockChallenge({ clientId, redirectUri });
     const signature = signOauthUnlockProof(
       {
         challenge: issued.challenge,

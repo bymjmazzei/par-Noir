@@ -3,11 +3,13 @@
  */
 // API unit helpers for opaque social mailbox (no DB).
 import {
+  enqueueSocialMailboxJob,
   isDeviceCloudCustodyEnabled,
   isMailboxRouteKey,
   mailboxOwnerHash,
   sanitizeMailboxPayload,
 } from './socialMailboxService';
+import { getDatabasePool } from '../utils/database';
 
 jest.mock('../utils/database', () => ({
   getDatabasePool: jest.fn(),
@@ -96,5 +98,75 @@ describe('sanitizeMailboxPayload', () => {
     });
 
     expect(out).toEqual({ messageId: 'm1', ciphertext: 'opaque' });
+  });
+
+  it('drops nested identity keys, a pn threadId, a pn-keyed media map, and a pn requestId', async () => {
+    const routeKey = 'ab'.repeat(32);
+    const inserted: unknown[][] = [];
+    const query = jest.fn(async (sql: string, params?: unknown[]) => {
+      if (sql.includes('INSERT')) {
+        inserted.push(params || []);
+        const payload = JSON.parse(String(params?.[3]));
+        return {
+          rows: [
+            {
+              id: 'job-1',
+              route_key: routeKey,
+              job_type: 'message_append',
+              payload,
+              created_at: new Date().toISOString(),
+              expires_at: new Date().toISOString(),
+              acked_at: null,
+            },
+          ],
+        };
+      }
+      return { rows: [] };
+    });
+    (getDatabasePool as jest.Mock).mockReturnValue({ query });
+
+    await enqueueSocialMailboxJob({
+      routeKey,
+      jobType: 'message_append',
+      recipientPn: 'pn-bob',
+      payload: {
+        messageId: 'm1',
+        fromPnIdentifier: 'pn-alice',
+        toPnIdentifier: 'pn-bob',
+        nested: { ownerPn: 'pn-alice', ciphertext: 'inner' },
+        threadId: 'pn-alice_pn-bob',
+        mediaEnvelopesByPn: {
+          'pn-alice': 'sender-ct',
+          'pn-bob': 'recipient-ct',
+        },
+        requestId: 'gmsg:m1:pn-bob',
+        connectionId: 'conn-1',
+      },
+    });
+
+    const stored = String(inserted[0][3]);
+    expect(stored).not.toContain('pn-alice');
+    expect(stored).not.toContain('pn-bob');
+    expect(stored).not.toContain('pn-');
+    const payload = JSON.parse(stored) as Record<string, unknown>;
+    expect(payload).toMatchObject({
+      messageId: 'm1',
+      connectionId: 'conn-1',
+      mediaEnvelope: 'recipient-ct',
+    });
+    expect(payload.requestId).toBeUndefined();
+    expect(payload.threadId).toBeUndefined();
+    expect(payload.mediaEnvelopesByPn).toBeUndefined();
+    expect((payload.nested as Record<string, unknown>).ownerPn).toBeUndefined();
+  });
+
+  it('rejects a route key that is long but not 64 hex', async () => {
+    await expect(
+      enqueueSocialMailboxJob({
+        routeKey: 'x'.repeat(40),
+        jobType: 'message_append',
+        payload: { messageId: 'm1' },
+      })
+    ).rejects.toThrow(/routeKey required/);
   });
 });

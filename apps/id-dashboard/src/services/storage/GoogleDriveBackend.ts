@@ -15,6 +15,7 @@ import {
   refreshDriveAccessToken,
   type GoogleAccountRow
 } from '@par-noir/device-cloud-credentials';
+import { getGoogleDriveClientId } from '../../config/googleDriveClientId';
 import { IntegrationCredentialManager } from '../../utils/integrationCredentialManager';
 import { getStoredToken } from '../parNoirOAuthInline';
 import {
@@ -268,8 +269,7 @@ export class GoogleDriveBackend extends AbstractStorageBackend {
   }
 
   /**
-   * Return a usable Google access token, refreshing via the par Noir API when
-   * the current token is missing or near expiry.
+   * Return a usable Google access token, refreshing with Google when needed.
    */
   async ensureAccessToken(): Promise<string | null> {
     if (!this.connected) {
@@ -286,12 +286,6 @@ export class GoogleDriveBackend extends AbstractStorageBackend {
       return null;
     }
 
-    const ownerToken = this.resolveOwnerApiToken();
-    if (!this.apiEndpoint || !ownerToken) {
-      this.clearDeadToken();
-      return null;
-    }
-
     if (Date.now() < this.refreshBackoffUntilMs) {
       this.clearDeadToken();
       return null;
@@ -301,7 +295,13 @@ export class GoogleDriveBackend extends AbstractStorageBackend {
       return this.refreshPromise;
     }
 
-    this.refreshPromise = this.mintAccessToken(refreshToken, ownerToken);
+    const clientId = await getGoogleDriveClientId().catch(() => '');
+    if (!clientId) {
+      this.clearDeadToken();
+      return null;
+    }
+
+    this.refreshPromise = this.mintAccessToken(refreshToken, clientId);
     try {
       return await this.refreshPromise;
     } finally {
@@ -309,11 +309,10 @@ export class GoogleDriveBackend extends AbstractStorageBackend {
     }
   }
 
-  private async mintAccessToken(refreshToken: string, ownerToken: string): Promise<string | null> {
+  private async mintAccessToken(refreshToken: string, clientId: string): Promise<string | null> {
     const result = await refreshDriveAccessToken({
       refreshToken,
-      authToken: ownerToken,
-      apiEndpoint: this.apiEndpoint!,
+      clientId,
       path: 'GoogleDriveBackend.ensureAccessToken'
     });
 

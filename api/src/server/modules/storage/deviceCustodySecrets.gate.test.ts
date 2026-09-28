@@ -150,6 +150,21 @@ describe('device custody — no server-held cloud secrets', () => {
   });
 
   describe('resolveOwnerDriveToken under custody', () => {
+    it('throws CLOUD_TOKEN_REQUIRED with no header even when custody is opted out', async () => {
+      mockCustody.mockReturnValue(false);
+      await expect(
+        resolveOwnerDriveToken(reqWithCloudHeader(), 'pn-test', {
+          account: {
+            backendId: 'acct',
+            access_token: 'live-secret',
+            refresh_token: 'rt',
+            expires_at: Date.now() + 3_600_000,
+          },
+        })
+      ).rejects.toMatchObject({ code: 'CLOUD_TOKEN_REQUIRED' });
+      expect(mockGetAccessToken).not.toHaveBeenCalled();
+    });
+
     it('throws CLOUD_TOKEN_REQUIRED with no header even when account has live secrets', async () => {
       await expect(
         resolveOwnerDriveToken(reqWithCloudHeader(), 'pn-test', {

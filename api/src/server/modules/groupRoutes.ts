@@ -207,6 +207,7 @@ export function setupGroupRoutes(app: express.Application, deps: GroupRouteDeps)
 
         // Dual silo: each member creates their own conversation sheet on apply.
         const { enqueueSocialJob } = await import('./socialRail');
+        const { mailboxRequestId } = await import('./socialMailboxService');
         await Promise.all(
           members
             .filter((m) => m.memberPnIdentifier !== ownerPnIdentifier)
@@ -214,7 +215,7 @@ export function setupGroupRoutes(app: express.Application, deps: GroupRouteDeps)
               enqueueSocialJob({
                 jobType: 'group_inbox_update',
                 peerPn: m.memberPnIdentifier,
-                requestId: `create:${groupId}:${m.memberPnIdentifier}`,
+                requestId: mailboxRequestId(['create', groupId, m.memberPnIdentifier]),
                 sealed: {
                   ownerPnIdentifier,
                   members: members.map((m) => ({
@@ -365,10 +366,11 @@ export function setupGroupRoutes(app: express.Application, deps: GroupRouteDeps)
         }
 
         const { enqueueSocialJob } = await import('./socialRail');
+        const { mailboxRequestId } = await import('./socialMailboxService');
         const delivered = await enqueueSocialJob({
           jobType: 'group_inbox_update',
           peerPn: memberPnIdentifier,
-          requestId: `member:${groupId}:${memberPnIdentifier}`,
+          requestId: mailboxRequestId(['member', groupId, memberPnIdentifier]),
           sealed: { ownerPnIdentifier, members: sealedMembers },
           extra: {
             groupId,
@@ -388,7 +390,7 @@ export function setupGroupRoutes(app: express.Application, deps: GroupRouteDeps)
               enqueueSocialJob({
                 jobType: 'group_inbox_update',
                 peerPn: m.memberPnIdentifier,
-                requestId: `roster:${groupId}:${memberPnIdentifier}:${m.memberPnIdentifier}`,
+                requestId: mailboxRequestId(['roster', groupId, memberPnIdentifier, m.memberPnIdentifier]),
                 sealed: { ownerPnIdentifier, members: sealedMembers },
                 extra: {
                   groupId,
@@ -489,10 +491,11 @@ export function setupGroupRoutes(app: express.Application, deps: GroupRouteDeps)
         // member rewraps their own chat key. Both used to run against their
         // Drives from here.
         const { enqueueSocialJob } = await import('./socialRail');
+        const { mailboxRequestId } = await import('./socialMailboxService');
         await enqueueSocialJob({
           jobType: 'group_inbox_update',
           peerPn: memberPn,
-          requestId: `remove:${groupId}:${memberPn}`,
+          requestId: mailboxRequestId(['remove', groupId, memberPn]),
           extra: { groupId, removed: true }
         });
 
@@ -503,7 +506,7 @@ export function setupGroupRoutes(app: express.Application, deps: GroupRouteDeps)
               enqueueSocialJob({
                 jobType: 'group_inbox_update',
                 peerPn: rot.memberPnIdentifier,
-                requestId: `rotate:${groupId}:${rot.memberPnIdentifier}:${Date.now()}`,
+                requestId: mailboxRequestId(['rotate', groupId, rot.memberPnIdentifier, String(Date.now())]),
                 sealed: {
                   keyRotation: keyRotation.map((k) => ({
                     memberPnIdentifier: k.memberPnIdentifier,
@@ -627,7 +630,7 @@ export function setupGroupRoutes(app: express.Application, deps: GroupRouteDeps)
             const ok = await enqueueSocialJob({
               jobType: 'group_message_append',
               peerPn,
-              requestId: `gmsg:${messageId}:${peerPn}`,
+              requestId: messageId,
               sealed: {
                 fromPnIdentifier: senderPn,
                 encryptedContent,
@@ -662,9 +665,7 @@ export function setupGroupRoutes(app: express.Application, deps: GroupRouteDeps)
           throughway: true,
           encryptedContent,
           cryptoVersion: 2,
-          timestamp,
-          fromPnIdentifier: senderPn,
-          toPnIdentifier: groupId
+          timestamp
         });
         for (const peerPn of peers) {
           emitRealtime(peerPn, 'new_message', {
@@ -673,9 +674,7 @@ export function setupGroupRoutes(app: express.Application, deps: GroupRouteDeps)
             throughway: true,
             encryptedContent,
             cryptoVersion: 2,
-            timestamp,
-            fromPnIdentifier: senderPn,
-            toPnIdentifier: groupId
+            timestamp
           });
           emitRealtime(peerPn, 'mailbox_pending', { jobType: 'group_message_append', messageId });
         }

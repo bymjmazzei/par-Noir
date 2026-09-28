@@ -9,7 +9,6 @@
 import { storageCredentialsService } from './storageCredentialsService';
 import { DriveIndexError } from './pnDriveIndex';
 import { hashIdentifier, safeLogger } from '../../utils/logger';
-import { isDeviceCloudCustodyEnabled } from './socialMailboxService';
 
 export interface RecoveryDriveContext {
   pnIdentifier: string;
@@ -47,14 +46,7 @@ export async function getRecoveryDriveContext(
 
   const account = googleDriveAccounts[0];
   const accountId = extractAccountId(account);
-  const custody = isDeviceCloudCustodyEnabled();
-  const forwarded = String(opts?.accessToken || '').trim();
-
-  // Under custody: forwarded AT only. Opt-out may use live stored AT (no refresh mint here).
-  let access_token = forwarded;
-  if (!custody && !access_token) {
-    access_token = String(account.access_token || account.accessToken || '').trim();
-  }
+  const access_token = String(opts?.accessToken || '').trim();
 
   if (!access_token) {
     const { readPnDriveIndex, isPnDriveIndexComplete } = await import('./pnDriveIndex');
@@ -76,14 +68,7 @@ export async function getRecoveryDriveContext(
     );
   }
 
-  const token = custody
-    ? { access_token }
-    : {
-        access_token,
-        refresh_token: account.refresh_token || account.refreshToken,
-        expires_at: account.expires_at,
-        expires_in: account.expires_in,
-      };
+  const token = { access_token };
 
   const { readPnDriveIndex, isPnDriveIndexComplete } = await import('./pnDriveIndex');
   const index = readPnDriveIndex(userCredentials.credentials as Record<string, unknown>);

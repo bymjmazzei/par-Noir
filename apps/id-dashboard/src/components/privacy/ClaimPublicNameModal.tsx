@@ -1,7 +1,12 @@
 import React, { useCallback, useState } from 'react';
 import { X, Globe, Youtube, CheckCircle, Loader2, Copy } from 'lucide-react';
 import { getGoogleDriveClientId } from '../../config/googleDriveClientId';
-import { API_ENDPOINT } from '../../config/api';
+import {
+  authorizeUrlWithPkce,
+  exchangeProviderAuthorizationCode,
+  GOOGLE_TOKEN_URL,
+  takePkceVerifier
+} from '@par-noir/device-cloud-credentials';
 import {
   startDnsVerification,
   verifyDns,
@@ -22,25 +27,18 @@ interface ClaimPublicNameModalProps {
 
 async function exchangeGoogleCode(
   code: string,
-  redirectUri: string
+  redirectUri: string,
+  clientId: string
 ): Promise<string> {
-  const res = await fetch(`${API_ENDPOINT}/api/auth/google-oauth/token`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ code, redirectUri }),
+  const tokens = await exchangeProviderAuthorizationCode({
+    tokenUrl: GOOGLE_TOKEN_URL,
+    clientId,
+    code,
+    redirectUri,
+    codeVerifier: takePkceVerifier()
   });
-  if (!res.ok) {
-    const j = await res.json().catch(() => ({}));
-    throw new Error(
-      (j as { message?: string; error?: string }).message ||
-        (j as { error?: string }).error ||
-        'Google token exchange failed'
-    );
-  }
-  const data = (await res.json()) as { access_token?: string; accessToken?: string };
-  const token = data.access_token || data.accessToken;
-  if (!token) throw new Error('No access token from Google');
-  return token;
+  if (!tokens?.accessToken) throw new Error('No access token from Google');
+  return tokens.accessToken;
 }
 
 function openYoutubeOAuthPopup(): Promise<string> {
@@ -53,7 +51,7 @@ function openYoutubeOAuthPopup(): Promise<string> {
       }
       const redirectUri = `${window.location.origin}/oauth-callback.html`;
       const scope = 'https://www.googleapis.com/auth/youtube.readonly';
-      const authUrl =
+      const authUrl = await authorizeUrlWithPkce(
         `https://accounts.google.com/o/oauth2/v2/auth?` +
         `client_id=${encodeURIComponent(clientId)}` +
         `&redirect_uri=${encodeURIComponent(redirectUri)}` +
@@ -61,7 +59,8 @@ function openYoutubeOAuthPopup(): Promise<string> {
         `&scope=${encodeURIComponent(scope)}` +
         `&access_type=online` +
         `&prompt=consent` +
-        `&state=${encodeURIComponent('pn_youtube_public_name')}`;
+        `&state=${encodeURIComponent('pn_youtube_public_name')}`
+      );
 
       const popup = window.open(authUrl, 'pn_youtube_oauth', 'width=520,height=680');
       if (!popup) {
@@ -88,7 +87,7 @@ function openYoutubeOAuthPopup(): Promise<string> {
           reject(new Error('No authorization code received'));
           return;
         }
-        exchangeGoogleCode(data.code, redirectUri).then(resolve).catch(reject);
+        exchangeGoogleCode(data.code, redirectUri, clientId).then(resolve).catch(reject);
       };
       window.addEventListener('message', onMessage);
     } catch (e) {

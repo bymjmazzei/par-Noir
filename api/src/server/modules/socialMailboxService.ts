@@ -190,14 +190,56 @@ export async function ownsMailboxRoute(
 }
 
 export function sanitizeMailboxPayload(
-  payload: Record<string, unknown>
+  payload: Record<string, unknown>,
+  opts?: { recipientPn?: string }
 ): Record<string, unknown> {
   const out: Record<string, unknown> = {};
   for (const [k, v] of Object.entries(payload)) {
     if (STRIP_PAYLOAD_KEYS.has(k)) continue;
+    if (k === 'threadId' && typeof v === 'string' && v.includes('pn-')) continue;
+    if (k === 'requestId' && typeof v === 'string' && v.includes('pn-')) continue;
+    if (k === 'mediaEnvelopesByPn') {
+      const envelope = recipientMediaEnvelope(v, opts?.recipientPn);
+      if (envelope) out.mediaEnvelope = envelope;
+      continue;
+    }
+    if (Array.isArray(v)) {
+      out[k] = v.map((item) =>
+        item && typeof item === 'object' && !Array.isArray(item)
+          ? sanitizeMailboxPayload(item as Record<string, unknown>, opts)
+          : item
+      );
+      continue;
+    }
+    if (v && typeof v === 'object') {
+      out[k] = sanitizeMailboxPayload(v as Record<string, unknown>, opts);
+      continue;
+    }
     out[k] = v;
   }
   return out;
+}
+
+/** One recipient ciphertext. The pn-keyed map is never stored. */
+function recipientMediaEnvelope(value: unknown, recipientPn?: string): string | undefined {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined;
+  const entries = Object.entries(value as Record<string, unknown>);
+  if (recipientPn) {
+    const hit = entries.find(([key, env]) => key === recipientPn && typeof env === 'string');
+    if (hit && typeof hit[1] === 'string') return hit[1];
+  }
+  const strings = entries
+    .map(([, env]) => env)
+    .filter((env): env is string => typeof env === 'string');
+  return strings.length === 1 ? strings[0] : undefined;
+}
+
+/**
+ * Idempotency id that does not carry a clear pn. Callers that used to embed a
+ * pn identifier hash the parts instead.
+ */
+export function mailboxRequestId(parts: readonly string[]): string {
+  return createHash('sha256').update(parts.join('\0'), 'utf8').digest('hex');
 }
 
 /**
@@ -222,14 +264,16 @@ export async function enqueueSocialMailboxJob(params: {
   jobType: SocialMailboxJobType;
   payload: Record<string, unknown>;
   ttlDays?: number;
+  /** Used only to pick that recipient's media ciphertext. Never written. */
+  recipientPn?: string;
 }): Promise<SocialMailboxJob & { created: boolean }> {
   const routeKey = String(params.routeKey || '').trim();
-  if (!isMailboxRouteKey(routeKey) && routeKey.length < 32) {
+  if (!isMailboxRouteKey(routeKey)) {
     throw new Error('routeKey required (opaque mailbox route)');
   }
   const db = getDatabasePool();
   const ttl = params.ttlDays ?? DEFAULT_TTL_DAYS;
-  const payload = sanitizeMailboxPayload(params.payload);
+  const payload = sanitizeMailboxPayload(params.payload, { recipientPn: params.recipientPn });
   const mid = idempotencyMid(payload);
 
   const existing = await db.query(

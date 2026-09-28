@@ -1015,10 +1015,11 @@ export function setupConnectionRoutes(app: express.Application, deps: Connection
         // token. Their device applies it from the mailbox instead.
         if (targetTypeStr === 'user') {
           const { enqueueSocialJob } = await import('./socialRail');
+          const { mailboxRequestId } = await import('./socialMailboxService');
           await enqueueSocialJob({
             jobType: 'follower_add',
             peerPn: String(normalizedTargetId),
-            requestId: `follow:${pnIdentifier}:${normalizedTargetId}`,
+            requestId: mailboxRequestId(['follow', pnIdentifier, String(normalizedTargetId)]),
             sealed: { peerPnIdentifier: pnIdentifier },
             extra: { followedAt: new Date().toISOString() }
           });
@@ -1114,10 +1115,11 @@ export function setupConnectionRoutes(app: express.Application, deps: Connection
         // Same as follow: the target's own device removes its followers row.
         if (targetTypeStr === 'user') {
           const { enqueueSocialJob } = await import('./socialRail');
+          const { mailboxRequestId } = await import('./socialMailboxService');
           await enqueueSocialJob({
             jobType: 'follower_remove',
             peerPn: String(normalizedTargetId),
-            requestId: `unfollow:${pnIdentifier}:${normalizedTargetId}:${Date.now()}`,
+            requestId: mailboxRequestId(['unfollow', pnIdentifier, String(normalizedTargetId), String(Date.now())]),
             sealed: { peerPnIdentifier: pnIdentifier }
           });
         }

@@ -4,6 +4,7 @@
  * In production, missing ADMIN_API_KEY rejects admin routes.
  */
 
+import { createHash, timingSafeEqual } from 'crypto';
 import type { Application, Request, Response, NextFunction } from 'express';
 import { ApiKeyService } from './apiKeyService';
 import { safeClientErrorMessage } from '../utils/safeError';
@@ -92,20 +93,14 @@ function percentile(values: number[], p: number): number {
   return sorted[idx];
 }
 
+function adminKeyMatches(provided: string, expected: string): boolean {
+  const a = createHash('sha256').update(provided).digest();
+  const b = createHash('sha256').update(expected).digest();
+  return timingSafeEqual(a, b);
+}
+
 export function requireAdminApiKey(req: Request, res: Response, next: NextFunction): void {
   const expected = process.env.ADMIN_API_KEY?.trim();
-  const allowedPrincipals = (process.env.ADMIN_ALLOWED_PRINCIPALS || '')
-    .split(',')
-    .map((v) => v.trim())
-    .filter(Boolean);
-  const assertedPrincipal =
-    (req.headers['x-admin-principal'] as string) ||
-    (req.headers['x-goog-authenticated-user-email'] as string) ||
-    '';
-
-  if (securityFlags.enableAdminIdentityHeaders && assertedPrincipal && allowedPrincipals.includes(assertedPrincipal)) {
-    return next();
-  }
 
   if (!expected) {
     if (NODE_ENV === 'production' || securityFlags.disableLegacyAdminApiKey) {
@@ -133,14 +128,14 @@ export function requireAdminApiKey(req: Request, res: Response, next: NextFuncti
     provided = auth.slice(7).trim();
   }
 
-  if (provided !== expected) {
+  if (!adminKeyMatches(provided, expected)) {
     void appendSecurityAuditEvent({
       eventType: 'admin.auth.failed',
       severity: isProduction() ? 'high' : 'medium',
       actorHint: 'admin',
       metadata: {
-        principalHash: hashIdentifier(assertedPrincipal || 'missing'),
-        source: securityFlags.enableAdminIdentityHeaders ? 'identity_headers_or_legacy' : 'legacy_admin_key',
+        principalHash: hashIdentifier('missing'),
+        source: 'admin_key',
       },
     });
     res.status(401).json({

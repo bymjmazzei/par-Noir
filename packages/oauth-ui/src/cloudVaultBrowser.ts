@@ -19,6 +19,7 @@ import {
   isAccessTokenFresh,
   isSealedEnvelopeShape,
   pickGoogleAccount,
+  refreshDriveAccessToken,
   unsealCloudVaultWithAnyFactor
 } from '@par-noir/device-cloud-credentials';
 import type { SealedEnvelope } from '@par-noir/device-cloud-credentials';
@@ -38,49 +39,27 @@ interface DriveTokenOptions extends UnsealFactors {
 }
 
 /**
- * Ask the API to exchange the vault's refresh token for a live access token.
- * The unlock page has no pN access token yet, so the authorization code is the
- * proof of unlock.
+ * Ask Google for a live access token using the vault's refresh token.
+ * The refresh token is not sent to the par Noir API.
  */
 async function mintAccessToken(
   refreshToken: string,
   opts: DriveTokenOptions
 ): Promise<string | null> {
-  if (!opts.apiEndpoint || !opts.code || !opts.clientId) {
-    console.warn('[OAuth] Cannot mint Drive token: missing api endpoint or authorization code');
+  if (!opts.clientId?.trim()) {
+    console.warn('[OAuth] Cannot mint Drive token: missing Google client id');
     return null;
   }
-  const base = String(opts.apiEndpoint).replace(/\/$/, '');
-  try {
-    const res = await fetch(`${base}/oauth/authorize/drive-token`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        code: opts.code,
-        client_id: opts.clientId,
-        refresh_token: refreshToken
-      })
-    });
-    if (!res.ok) {
-      // Reason only. Never log the envelope, the factors, or either token.
-      let reason = String(res.status);
-      try {
-        const body = (await res.json()) as { reason?: string };
-        if (body?.reason) reason = body.reason;
-      } catch {
-        /* keep the status */
-      }
-      console.warn('[OAuth] Drive token refresh rejected', { reason });
-      return null;
-    }
-    const body = (await res.json()) as { access_token?: string };
-    return typeof body.access_token === 'string' && body.access_token.trim()
-      ? body.access_token.trim()
-      : null;
-  } catch {
-    console.warn('[OAuth] Drive token refresh request failed');
+  const minted = await refreshDriveAccessToken({
+    refreshToken,
+    clientId: opts.clientId.trim(),
+    path: 'unlock'
+  });
+  if (!minted.token) {
+    console.warn('[OAuth] Drive token refresh rejected', { reason: minted.reason });
     return null;
   }
+  return minted.token;
 }
 
 /**

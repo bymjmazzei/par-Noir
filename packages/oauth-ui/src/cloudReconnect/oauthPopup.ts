@@ -1,3 +1,10 @@
+import {
+  exchangeProviderAuthorizationCode,
+  fetchGoogleUserInfo,
+  GOOGLE_TOKEN_URL,
+  takePkceVerifier
+} from '@par-noir/device-cloud-credentials';
+
 /**
  * Wait for oauth-callback.html postMessage / BroadcastChannel / localStorage with an auth code.
  *
@@ -99,9 +106,10 @@ export function waitForOAuthPopupCode(opts?: {
 }
 
 export async function exchangeGoogleOAuthCode(opts: {
-  apiEndpoint: string;
+  clientId: string;
   code: string;
   redirectUri: string;
+  codeVerifier?: string | null;
 }): Promise<{
   accessToken: string;
   refreshToken?: string;
@@ -109,33 +117,22 @@ export async function exchangeGoogleOAuthCode(opts: {
   email?: string;
   name?: string;
 }> {
-  const response = await fetch(`${opts.apiEndpoint.replace(/\/$/, '')}/api/auth/google-oauth/token`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ code: opts.code, redirectUri: opts.redirectUri })
+  const tokens = await exchangeProviderAuthorizationCode({
+    tokenUrl: GOOGLE_TOKEN_URL,
+    clientId: opts.clientId,
+    code: opts.code,
+    redirectUri: opts.redirectUri,
+    codeVerifier: opts.codeVerifier ?? takePkceVerifier()
   });
-  if (!response.ok) {
-    if (response.status === 429) {
-      throw new Error(
-        'Too many requests (rate limited). Wait about a minute, then try Reconnect again — do not spam Authorize.'
-      );
-    }
-    const err = (await response.json().catch(() => ({}))) as { message?: string; error?: string };
-    throw new Error(err.message || err.error || 'Failed to exchange Google authorization code');
+  if (!tokens) {
+    throw new Error('Failed to exchange Google authorization code');
   }
-  const data = (await response.json()) as {
-    access_token?: string;
-    refresh_token?: string;
-    expires_in?: number;
-    email?: string;
-    name?: string;
-  };
-  if (!data.access_token) throw new Error('Google token response missing access_token');
+  const profile = await fetchGoogleUserInfo(tokens.accessToken);
   return {
-    accessToken: data.access_token,
-    refreshToken: data.refresh_token,
-    expiresIn: data.expires_in,
-    email: typeof data.email === 'string' && data.email.includes('@') ? data.email : undefined,
-    name: typeof data.name === 'string' && data.name.trim() ? data.name.trim() : undefined
+    accessToken: tokens.accessToken,
+    refreshToken: tokens.refreshToken,
+    expiresIn: tokens.expiresIn,
+    email: profile.email,
+    name: profile.name
   };
 }

@@ -10,6 +10,13 @@
 import React from 'react';
 import { SecureCredentialManager } from '@par-noir/identity-crypto';
 import { waitForOAuthPopupCode } from '@par-noir/oauth-ui';
+import {
+  authorizeUrlWithPkce,
+  exchangeProviderAuthorizationCode,
+  fetchGoogleUserInfo,
+  GOOGLE_TOKEN_URL,
+  takePkceVerifier
+} from '@par-noir/device-cloud-credentials';
 import type { FileAggregatorService } from '../../../services/aggregator/FileAggregatorService';
 import { API_ENDPOINT } from '../../../config/api';
 import { ownerFetch } from '../../../services/ownerApiService';
@@ -168,10 +175,11 @@ export function useGoogleDriveOAuthConnect({
     };
   }, [activeBackendId, removeDriveAccount]);
 
-  // Exchange authorization code via par Noir API (server probes userinfo for email).
+  // Exchange the authorization code with Google. The API never sees the code.
   const exchangeCodeForTokens = async (
     code: string,
-    redirectUri: string
+    redirectUri: string,
+    clientId: string
   ): Promise<{
     accessToken: string;
     refreshToken: string;
@@ -179,61 +187,24 @@ export function useGoogleDriveOAuthConnect({
     email?: string;
     name?: string;
   }> => {
-    const maxAttempts = 3;
-    const delays = [0, 1000, 2000];
-    let lastError: Error | null = null;
-
-    for (let attempt = 0; attempt < maxAttempts; attempt++) {
-      if (delays[attempt] > 0) {
-        await new Promise((r) => setTimeout(r, delays[attempt]));
-      }
-      try {
-        const response = await fetch(`${API_ENDPOINT}/api/auth/google-oauth/token`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({ code, redirectUri }),
-        });
-
-        if (!response.ok) {
-          let errorMessage = 'Failed to exchange authorization code';
-          try {
-            const error = await response.json();
-            errorMessage = error.message || error.error || JSON.stringify(error);
-            console.error('[Google OAuth] API Error:', error);
-          } catch (e) {
-            const errorText = await response.text().catch(() => 'Unknown error');
-            errorMessage = errorText || 'Failed to exchange authorization code';
-            console.error('[Google OAuth] API Error (text):', errorText);
-          }
-          throw new Error(errorMessage);
-        }
-
-        const data = await response.json();
-        return {
-          accessToken: data.access_token,
-          refreshToken: data.refresh_token,
-          expiresIn: data.expires_in || 3600,
-          email:
-            typeof data.email === 'string' && data.email.includes('@') ? data.email : undefined,
-          name:
-            typeof data.name === 'string' && data.name.trim() ? data.name.trim() : undefined,
-        };
-      } catch (e) {
-        lastError = e instanceof Error ? e : new Error(String(e));
-        const isNetwork = lastError?.message === 'Failed to fetch' || lastError?.name === 'TypeError';
-        if (isNetwork && attempt < maxAttempts - 1) {
-          console.warn(
-            `[Google OAuth] Token exchange attempt ${attempt + 1} failed (network), retrying...`,
-            lastError?.message
-          );
-        } else {
-          throw lastError;
-        }
-      }
+    const tokens = await exchangeProviderAuthorizationCode({
+      tokenUrl: GOOGLE_TOKEN_URL,
+      clientId,
+      code,
+      redirectUri,
+      codeVerifier: takePkceVerifier()
+    });
+    if (!tokens) {
+      throw new Error('Failed to exchange authorization code');
     }
-    throw lastError || new Error('Failed to exchange authorization code');
+    const profile = await fetchGoogleUserInfo(tokens.accessToken);
+    return {
+      accessToken: tokens.accessToken,
+      refreshToken: tokens.refreshToken || '',
+      expiresIn: tokens.expiresIn,
+      email: profile.email,
+      name: profile.name
+    };
   };
 
   const handleConnectGoogleDrive = async () => {
@@ -264,14 +235,16 @@ export function useGoogleDriveOAuthConnect({
 
       // Use authorization code flow to get refresh tokens.
       // state=pn_popup tells oauth-callback to deliver via postMessage/BC (never navigate opener).
-      const authUrl = `https://accounts.google.com/o/oauth2/v2/auth?` +
+      const authUrl = await authorizeUrlWithPkce(
+        `https://accounts.google.com/o/oauth2/v2/auth?` +
         `client_id=${encodeURIComponent(clientId)}&` +
         `redirect_uri=${encodeURIComponent(redirectUri)}&` +
         `response_type=code&` +
         `scope=${encodeURIComponent(scope)}&` +
         `state=${encodeURIComponent('pn_popup')}&` +
         `prompt=consent` +
-        `&access_type=offline`; // Required for refresh token
+        `&access_type=offline`
+      );
 
       // Register listeners BEFORE window.open so BroadcastChannel/localStorage handoff
       // cannot race ahead of the waiter (common when Google nulls window.opener).
@@ -288,7 +261,7 @@ export function useGoogleDriveOAuthConnect({
       }
 
       const code = await codePromise;
-      const tokenData = await exchangeCodeForTokens(code, redirectUri);
+      const tokenData = await exchangeCodeForTokens(code, redirectUri, clientId);
 
       const token = tokenData.accessToken;
 
