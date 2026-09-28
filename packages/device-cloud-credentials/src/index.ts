@@ -108,6 +108,7 @@ export {
   cloudAccessHeaders
 } from './cloudVault.js';
 export type { CloudVaultHydrateResult } from './cloudVault.js';
+export type { GoogleAccountRow } from './driveTokenResolver.js';
 export {
   DRIVE_TOKEN_SKEW_MS,
   accountAccessToken,
