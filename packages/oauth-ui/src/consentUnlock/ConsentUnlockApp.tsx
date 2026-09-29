@@ -55,6 +55,11 @@ export type ConsentUnlockAppProps = {
   apiEndpointDefault?: string;
   /** Capacitor: open redirect_uri outside the unlock WebView */
   openExternal?: (url: string) => void | Promise<void>;
+  /**
+   * Shell return (`flow=shell`). Browser assigns the dashboard URL.
+   * The Unlock app opens it in the system browser. Not Capacitor Browser.open.
+   */
+  openShellReturn?: (url: string) => void | Promise<void>;
   /** Optional branding asset base for logo / background (defaults to page origin) */
   assetBase?: string;
   /** Explicit logo URL (Electron: Vite-bundled asset — bypasses CDN CORP). */
@@ -167,6 +172,7 @@ export function ConsentUnlockApp(props: ConsentUnlockAppProps): React.ReactEleme
     <ConsentUnlockInner
       params={params}
       openExternal={props.openExternal}
+      openShellReturn={props.openShellReturn}
       deliverLocalBroker={props.deliverLocalBroker}
       onBrokerHandoffComplete={props.onBrokerHandoffComplete}
       assetBase={props.assetBase}
@@ -183,6 +189,7 @@ export function ConsentUnlockApp(props: ConsentUnlockAppProps): React.ReactEleme
 function ConsentUnlockInner(props: {
   params: ConsentUnlockParams;
   openExternal?: (url: string) => void | Promise<void>;
+  openShellReturn?: (url: string) => void | Promise<void>;
   deliverLocalBroker?: (payload: Record<string, unknown>) => void | Promise<void>;
   onBrokerHandoffComplete?: () => void;
   assetBase?: string;
@@ -196,6 +203,7 @@ function ConsentUnlockInner(props: {
   const {
     params,
     openExternal,
+    openShellReturn,
     deliverLocalBroker,
     onBrokerHandoffComplete,
     assetBase,
@@ -310,6 +318,19 @@ function ConsentUnlockInner(props: {
     }
   }, [params.apiEndpoint]);
 
+  const returnShellToCaller = useCallback(
+    async (target: string) => {
+      if (openShellReturn) {
+        await openShellReturn(target);
+        return;
+      }
+      if (typeof window !== 'undefined') {
+        window.location.assign(target);
+      }
+    },
+    [openShellReturn]
+  );
+
   const finishWithCode = useCallback(
     async (
       code: string,
@@ -344,15 +365,12 @@ function ConsentUnlockInner(props: {
           result: built,
         });
         const target = applyShellFragment(params.redirectUri, fragment);
-        if (openExternal) {
-          await openExternal(target);
-        } else if (typeof window !== 'undefined') {
-          window.location.href = target;
-        }
+        await returnShellToCaller(target);
         return;
       }
       const useBroker = shouldUseCrossProcessBrokerHandoff({
         popup: params.popup,
+        flow: params.flow,
         deliverLocalBroker,
         openExternal,
       });
@@ -377,7 +395,7 @@ function ConsentUnlockInner(props: {
         deliverLocalBroker,
       });
     },
-    [params, openExternal, deliverLocalBroker]
+    [params, openExternal, deliverLocalBroker, returnShellToCaller]
   );
 
   const resetFormAfterBrokerHandoff = useCallback(() => {
@@ -450,12 +468,24 @@ function ConsentUnlockInner(props: {
       setAuthCode(mint.code);
       setPnIdentifier(mint.pnIdentifier);
 
+      if (params.flow === 'shell') {
+        await finishWithCode(
+          mint.code,
+          mint.existingGrant?.dataPoints || [],
+          false,
+          unlocked
+        );
+        void notifyVault(unlocked, key1, key2);
+        return;
+      }
+
       // Cap / prefer-app (`popup=false`): hand off via API broker / openExternal.
       // Same-browser web popup (`popup=true`): fall through to redirect + postMessage
       // even when Unlock host always wires deliverLocalBroker props.
       if (
         shouldUseCrossProcessBrokerHandoff({
           popup: params.popup,
+          flow: params.flow,
           deliverLocalBroker,
           openExternal,
         })
@@ -568,8 +598,7 @@ function ConsentUnlockInner(props: {
             result: built,
           });
           const target = applyShellFragment(params.redirectUri, fragment);
-          if (openExternal) await openExternal(target);
-          else if (typeof window !== 'undefined') window.location.href = target;
+          await returnShellToCaller(target);
         } catch (err) {
           setError(err instanceof Error ? err.message : 'Create failed');
         } finally {
@@ -638,8 +667,9 @@ function ConsentUnlockInner(props: {
       usbDrivePasscode,
       usbPayloadText,
       nfcPayload,
-      params.apiEndpoint,
+      params,
       afterUnlock,
+      returnShellToCaller,
     ]
   );
 
@@ -986,6 +1016,7 @@ function ConsentUnlockInner(props: {
                 onClick={() => {
                   const useBroker = shouldUseCrossProcessBrokerHandoff({
                     popup: params.popup,
+                    flow: params.flow,
                     deliverLocalBroker,
                     openExternal,
                   });

@@ -13,13 +13,16 @@ export function isMessagingHandoffClient(clientId: string): boolean {
  * Web popup (`popup=true`) must still redirect to oauth-callback for the auth code
  * — return false so ConsentUnlock does not take the broker-only early path.
  * Supplemental broker POST for popup session keys is handled inside redirectWithAuthCode.
+ * `flow=shell` returns to redirect_uri#pn_shell= and never uses the broker.
  */
 export function shouldUseCrossProcessBrokerHandoff(args: {
   popup: boolean;
+  flow?: string;
   deliverLocalBroker?: unknown;
   openExternal?: unknown;
 }): boolean {
   if (args.popup) return false;
+  if (args.flow === 'shell') return false;
   return Boolean(args.deliverLocalBroker || args.openExternal);
 }
 

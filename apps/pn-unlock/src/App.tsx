@@ -177,6 +177,14 @@ export default function App(): React.ReactElement {
     window.location.href = url;
   };
 
+  const openShellReturn = async (url: string) => {
+    if (Capacitor.isNativePlatform()) {
+      await OpenExternalApp.open({ url });
+      return;
+    }
+    window.location.assign(url);
+  };
+
   const applyEntry = useCallback((entry: UnlockKeysPayload) => {
     const factors = factorsFromEntry(entry);
     if (!factors) {
@@ -354,6 +362,7 @@ export default function App(): React.ReactElement {
         deliverLocalBroker={deliverLocalBroker}
         onBrokerHandoffComplete={onBrokerHandoffComplete}
         openExternal={openExternal}
+        openShellReturn={openShellReturn}
         logoUrl={logoUrl}
         backgroundUrl={backgroundUrl}
         layout="broker"

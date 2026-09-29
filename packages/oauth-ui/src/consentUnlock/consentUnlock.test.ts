@@ -84,6 +84,17 @@ describe('shouldUseCrossProcessBrokerHandoff', () => {
     ).toBe(true);
   });
 
+  it('is false for shell even when popup is false and a broker function is wired', () => {
+    expect(
+      shouldUseCrossProcessBrokerHandoff({
+        popup: false,
+        flow: 'shell',
+        deliverLocalBroker: async () => {},
+        openExternal: async () => {},
+      })
+    ).toBe(false);
+  });
+
   it('is false when neither broker prop is set', () => {
     expect(shouldUseCrossProcessBrokerHandoff({ popup: false })).toBe(false);
   });

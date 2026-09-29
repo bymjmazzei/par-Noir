@@ -90,6 +90,14 @@ describe('hosted shell session', () => {
     );
   });
 
+  it('returns the dashboard to redirect_uri with a factor-free shell fragment', () => {
+    const fragment = encodeShellReturn(session);
+    const url = applyShellFragment('https://pn.parnoir.com/', fragment);
+    expect(url.startsWith('https://pn.parnoir.com/#pn_shell=')).toBe(true);
+    expect(url).not.toContain('passcode');
+    expect(parseShellReturn(url)?.code).toBe('auth-code');
+  });
+
   it('keeps the app only when the page hides, and opens the web page when a browser click stays visible', () => {
     expect(shellLaunchAfterAppProbe({ nativePlatform: false, documentHidden: false })).toBe('web');
     expect(shellLaunchAfterAppProbe({ nativePlatform: false, documentHidden: true })).toBe('app');
