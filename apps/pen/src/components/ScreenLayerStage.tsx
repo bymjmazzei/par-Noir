@@ -30,6 +30,8 @@ export function ScreenLayerStage({
   docId,
   buttonCaptionById,
   votedOptionByGroup,
+  inputValues,
+  onInputValue,
   onSelectLayer,
   onSectionsChange,
   onPollVote,
@@ -47,6 +49,8 @@ export function ScreenLayerStage({
   docId?: string;
   buttonCaptionById?: Record<string, string>;
   votedOptionByGroup?: Record<string, string>;
+  inputValues?: Record<string, string>;
+  onInputValue?: (layerId: string, value: string) => void;
   onSelectLayer: (id: string | null) => void;
   onSectionsChange: (next: PenSectionContent[]) => void;
   onPollVote?: (layer: PenPageLayer) => void;
@@ -200,6 +204,8 @@ export function ScreenLayerStage({
             docId={docId}
             buttonCaptionById={buttonCaptionById}
             votedOptionByGroup={votedOptionByGroup}
+            inputValues={inputValues}
+            onInputValue={onInputValue}
             selected={activeLayerId === layer.id}
             onSelect={() => onSelectLayer(layer.id)}
             onSectionChange={(next) =>

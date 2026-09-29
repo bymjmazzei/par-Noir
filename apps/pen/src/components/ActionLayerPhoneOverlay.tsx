@@ -14,10 +14,16 @@ import {
 } from '@par-noir/pen-protocol';
 import type { PenSession } from '../services/penSession';
 import { tableDocTitle } from '../services/tableDocs';
+import { WidgetTextInput } from './WidgetTextInput';
 
 function paintsOnPhone(layer: PenPageLayer): boolean {
   if (layer.visible === false || layer.kind === 'group') return false;
-  if (layer.kind === 'interactive' || layer.widgetElement === 'html' || layer.widgetElement === 'time') {
+  if (
+    layer.kind === 'interactive' ||
+    layer.widgetElement === 'html' ||
+    layer.widgetElement === 'time' ||
+    layer.widgetElement === 'input'
+  ) {
     return true;
   }
   if (layer.parentGroupId) {
@@ -35,7 +41,9 @@ export function ActionLayerPhoneOverlay({
   onPollVote,
   onWidgetAction,
   onSectionChange,
-  votedOptionByGroup
+  votedOptionByGroup,
+  inputValues,
+  onInputValue
 }: {
   sections: PenSectionContent[];
   galleryAspect?: PenDocManifest['galleryAspect'];
@@ -46,6 +54,8 @@ export function ActionLayerPhoneOverlay({
   onWidgetAction?: (layer: PenPageLayer) => void;
   onSectionChange?: (section: PenSectionContent) => void;
   votedOptionByGroup?: Record<string, string>;
+  inputValues?: Record<string, string>;
+  onInputValue?: (layerId: string, value: string) => void;
 }) {
   const box = canvasSizeForAspect(normalizeGalleryAspect(galleryAspect));
   const pn = session?.pnIdentifier || '';
@@ -57,6 +67,28 @@ export function ActionLayerPhoneOverlay({
   return (
     <div className="pointer-events-none absolute inset-0 z-20" aria-hidden={false}>
       {placed.map(({ section, layer }) => {
+        if (layer.widgetElement === 'input') {
+          return (
+            <div
+              key={layer.id}
+              className="pointer-events-auto absolute overflow-hidden"
+              style={{
+                left: `${(layer.x / box.w) * 100}%`,
+                top: `${(layer.y / box.h) * 100}%`,
+                width: `${(layer.w / box.w) * 100}%`,
+                height: `${(layer.h / box.h) * 100}%`,
+                zIndex: layer.zIndex
+              }}
+            >
+              <WidgetTextInput
+                layer={layer}
+                value={inputValues?.[layer.id] || ''}
+                onChange={(layerId, value) => onInputValue?.(layerId, value)}
+                onSelect={() => onSelectLayer(layer.id)}
+              />
+            </div>
+          );
+        }
         const label = overlayTitle(section, layer, pn, votedOptionByGroup);
         const text = layer.kind === 'text' && layer.widgetElement !== 'time';
         return (

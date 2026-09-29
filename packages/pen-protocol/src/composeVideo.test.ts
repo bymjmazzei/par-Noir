@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  downloadKindForSections,
   feedPagePlainText,
   partitionSectionsForPublish,
   sectionHasVisibleVideoLayer,
@@ -77,6 +78,39 @@ describe('composeVideo per-page', () => {
     const part = partitionSectionsForPublish([textPage, videoWithProse]);
     expect(part.noteSections.map((s) => s.slug)).toEqual(['intro']);
     expect(part.videoSections.map((s) => s.slug)).toEqual(['reel']);
+  });
+
+  it('download kind is video, image, or doc', () => {
+    const videoOnly: PenSectionContent = {
+      slug: 'body',
+      doc: emptyTipTapDoc(),
+      layers: [videoLayer()]
+    };
+    const still: PenSectionContent = {
+      slug: 'body',
+      doc: emptyTipTapDoc(),
+      layers: [
+        {
+          id: 'img',
+          kind: 'image',
+          x: 0,
+          y: 0,
+          w: 100,
+          h: 100,
+          zIndex: 1,
+          imageSrc: 'https://example.com/a.jpg'
+        }
+      ]
+    };
+    const writing: PenSectionContent = {
+      slug: 'body',
+      doc: proseDoc('A letter'),
+      layers: []
+    };
+    expect(downloadKindForSections([videoOnly])).toBe('video');
+    expect(downloadKindForSections([still])).toBe('image');
+    expect(downloadKindForSections([writing])).toBe('doc');
+    expect(downloadKindForSections([writing, { ...writing, slug: 'next' }])).toBe('doc');
   });
 
   it('two video pages without note pages → mixed (multi-video)', () => {

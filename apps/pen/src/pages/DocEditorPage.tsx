@@ -48,6 +48,11 @@ import {
   shouldPublishAsSingleComposedVideo,
   shouldPublishAsMixedPages,
   shouldPublishSocialAsCollection,
+  downloadKindForSections,
+  partitionSectionsForPublish,
+  resolveTimelineDuration,
+  sectionHasMotion,
+  sectionIsFeedPage,
   isGooglePenFont,
   remapSectionsForAspect,
   normalizeGalleryAspect,
@@ -55,7 +60,10 @@ import {
   allocateTotal,
   buildWidgetActionRow,
   cellsForAmounts,
+  cellsForInputs,
   cellsForRanks,
+  formCollectsToSheet,
+  inputColumnKeys,
   isSheetTrigger,
   nextAllocatePress,
   nextRankPress,
@@ -86,7 +94,18 @@ import { ActionLayerPhoneOverlay } from '../components/ActionLayerPhoneOverlay';
 import { ActionBindStrip } from '../components/ActionBindStrip';
 import { IconLayers } from '../components/icons/PenIcons';
 import { MediaEditorPanel } from '../components/MediaEditorPanel';
-import { bindTimelineSample } from '../services/timelineSample';
+import { bindTimelineSample, emitTimelineSample } from '../services/timelineSample';
+import { findComposeExportRoot } from '../services/penGalleryPreview';
+import { composePageToVideo } from '../services/composePageVideoEncode';
+import { setPlaybackMode } from '../services/playbackMode';
+import { rasterizeElementToPosterBlob } from '../services/rasterizePagePoster';
+import {
+  actionLayerIds,
+  downloadBasename,
+  hideActionLayers,
+  pngBlobsToPdf,
+  saveDownload
+} from '../services/penDownload';
 import { ensureEditProxy, layerOriginalForProxy } from '../services/editProxy';
 import { WidgetEditorPanel } from '../components/WidgetEditorPanel';
 import { LayerPartsMenu } from '../components/LayerPartsMenu';
@@ -210,6 +229,7 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
   const [previewPaneEl, setPreviewPaneEl] = useState<HTMLDivElement | null>(null);
   const [previewPaneSize, setPreviewPaneSize] = useState({ width: 0, height: 0 });
   const [galleryComposeCapture, setGalleryComposeCapture] = useState(false);
+  const [captureLayers, setCaptureLayers] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
   const [showComments, setShowComments] = useState(false);
   const [invitePn, setInvitePn] = useState('');
@@ -235,6 +255,9 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
   const [error, setError] = useState<string | null>(null);
   const [votedOptionByGroup, setVotedOptionByGroup] = useState<Record<string, string>>({});
   const [toggledKeys, setToggledKeys] = useState<Set<string>>(() => new Set());
+  const [inputValues, setInputValues] = useState<Record<string, string>>({});
+  const inputValuesRef = useRef(inputValues);
+  inputValuesRef.current = inputValues;
   const [stampAt, setStampAt] = useState<Record<string, string>>({});
   const [rankByGroup, setRankByGroup] = useState<Record<string, Record<string, number>>>({});
   const [amountByGroup, setAmountByGroup] = useState<Record<string, Record<string, number>>>({});
@@ -800,6 +823,10 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
     }, 500);
   }
 
+  function setInputValue(layerId: string, value: string) {
+    setInputValues((prev) => (prev[layerId] === value ? prev : { ...prev, [layerId]: value }));
+  }
+
   async function runWidgetAction(layer: PenPageLayer) {
     if (!bundle || !section || !layer.behavior) return;
     const groupId = layer.parentGroupId || null;
@@ -814,21 +841,54 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
       return;
     }
     if (layer.behavior === 'widget.submit') {
-      const fields = submitFields(section, groupId);
+      const values = inputValuesRef.current;
+      const fields = submitFields(section, groupId, values);
       const body = Object.entries(fields)
         .map(([key, value]) => `${key}: ${value}`)
         .join('\n');
       const to = (layer.submitTo || '').trim();
-      if (to.includes('@')) {
-        window.location.assign(
-          `mailto:${encodeURIComponent(to)}?subject=${encodeURIComponent(layer.label || 'Widget')}&body=${encodeURIComponent(body)}`
-        );
-      } else {
+      if (to) {
+        if (to.includes('@')) {
+          window.location.assign(
+            `mailto:${encodeURIComponent(to)}?subject=${encodeURIComponent(layer.label || 'Widget')}&body=${encodeURIComponent(body)}`
+          );
+        } else {
+          openMessagingWithCorrespondence({
+            title: layer.label || 'Widget',
+            body,
+            docId: bundle.manifest.docId
+          });
+        }
+        return;
+      }
+      if (!formCollectsToSheet(section, groupId)) {
         openMessagingWithCorrespondence({
           title: layer.label || 'Widget',
           body,
           docId: bundle.manifest.docId
         });
+        return;
+      }
+      const headers = inputColumnKeys(section, groupId);
+      const cells = cellsForInputs(section, groupId, values);
+      const built = buildWidgetActionRow({
+        trigger: 'widget.submit',
+        actorId: session.pnIdentifier,
+        actionId: crypto.randomUUID(),
+        headers,
+        cells,
+        fields
+      });
+      try {
+        const spreadsheetId = await ensureWidgetSpreadsheet(section, groupId);
+        await queueWidgetAction({
+          session,
+          docId: bundle.manifest.docId,
+          spreadsheetId,
+          row: built.row
+        });
+      } catch (e) {
+        setError(e instanceof Error ? e.message : 'widget_action_failed');
       }
       return;
     }
@@ -1376,6 +1436,108 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
       manifest: { ...b.manifest, publishedFileId: fileId, updatedAt: new Date().toISOString() }
     };
     persist(next);
+  }
+
+  function waitTwoFrames(): Promise<void> {
+    return new Promise((resolve) => {
+      requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+    });
+  }
+
+  function pageExportRoot(slug: string): HTMLElement | null {
+    const scoped = document.querySelector(
+      `[data-preview-page="${CSS.escape(slug)}"] [data-pen-compose-export-root]`
+    );
+    return scoped instanceof HTMLElement ? scoped : null;
+  }
+
+  async function rootForSlug(slug: string): Promise<HTMLElement> {
+    const live = pageExportRoot(slug);
+    if (live) return live;
+    flushSync(() => {
+      setActiveSlug(slug);
+      setGalleryComposeCapture(true);
+    });
+    await waitTwoFrames();
+    await new Promise((resolve) => setTimeout(resolve, 80));
+    const root = findComposeExportRoot();
+    if (!root) throw new Error('compose_export_root_missing');
+    return root;
+  }
+
+  async function withActionsHidden<T>(root: HTMLElement, run: () => Promise<T>): Promise<T> {
+    const current = bundleRef.current || bundle;
+    const restore = hideActionLayers(root, actionLayerIds(current?.sections || []));
+    try {
+      return await run();
+    } finally {
+      restore();
+    }
+  }
+
+  async function downloadFlattened() {
+    if (!bundle) return;
+    const kind = downloadKindForSections(bundle.sections);
+    const name = downloadBasename(bundle.manifest.title || 'pen');
+    const prev = activeSlugRef.current;
+    const view = resolvePageView(bundle.manifest.pageView, bundle.manifest.pageLayout);
+    setStatus(kind === 'video' ? 'Preparing video…' : 'Preparing download…');
+    try {
+      if (view === 'screen') {
+        flushSync(() => setCaptureLayers(true));
+        await waitTwoFrames();
+      }
+      if (kind === 'video') {
+        const { videoSections } = partitionSectionsForPublish(bundle.sections);
+        const slug = videoSections[0]?.slug || bundle.sections[0]?.slug;
+        if (!slug) throw new Error('compose_export_root_missing');
+        const root = await rootForSlug(slug);
+        setPlaybackMode('publish');
+        const section = bundle.sections.find((item) => item.slug === slug);
+        const encoded = await withActionsHidden(root, () =>
+          composePageToVideo(
+            root,
+            section && sectionHasMotion(section)
+              ? {
+                  clockDurationSec: resolveTimelineDuration(section),
+                  onSample: emitTimelineSample
+                }
+              : {}
+          )
+        );
+        const ext = encoded.videoContentType.includes('mp4') ? 'mp4' : 'webm';
+        saveDownload(encoded.videoBlob, `${name}.${ext}`);
+      } else if (kind === 'image') {
+        const slug =
+          bundle.sections.find((item) => sectionIsFeedPage(item))?.slug || bundle.sections[0]?.slug;
+        if (!slug) throw new Error('compose_export_root_missing');
+        const root = await rootForSlug(slug);
+        const blob = await withActionsHidden(root, () =>
+          rasterizeElementToPosterBlob(root, { mime: 'image/png' })
+        );
+        saveDownload(blob, `${name}.png`);
+      } else {
+        const pages = bundle.sections.filter((item) => sectionIsFeedPage(item));
+        const targets = pages.length ? pages : bundle.sections;
+        const blobs: Blob[] = [];
+        for (const page of targets) {
+          const root = await rootForSlug(page.slug);
+          blobs.push(
+            await withActionsHidden(root, () => rasterizeElementToPosterBlob(root, { mime: 'image/png' }))
+          );
+        }
+        saveDownload(await pngBlobsToPdf(blobs), `${name}.pdf`);
+      }
+      setStatus(null);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'download_failed');
+      setStatus(null);
+    } finally {
+      setPlaybackMode('edit');
+      setCaptureLayers(false);
+      setGalleryComposeCapture(false);
+      if (activeSlugRef.current !== prev) setActiveSlug(prev);
+    }
   }
 
   function publishSocial(feedIds: string[]) {
@@ -1996,6 +2158,7 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
           onTemplatePrivate={publishAsTemplate}
           onLibraryTemplate={publishAsLibraryTemplate}
           onFinishedWork={() => void publishFinishedWork()}
+          onDownload={() => void downloadFlattened()}
           licensing={
             bundle?.manifest.licensing ||
             defaultLicensingRoot(bundle?.manifest.ownerPnHash, {
@@ -2466,6 +2629,8 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
                           votedOptionByGroup={votedOptionByGroup}
                           onPollVote={(layer) => void voteOnPoll(layer)}
                           onWidgetAction={(layer) => void runWidgetAction(layer)}
+                          inputValues={inputValues}
+                          onInputValue={setInputValue}
                           onSectionChange={commitWidgetSection}
                           onSelectLayer={(id) => {
                             setActiveLayerId(id);
@@ -2573,7 +2738,7 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
                             toolbarHost={active ? previewToolbarHost : null}
                             scrollWithParent
                             clearChrome={pageView === 'screen'}
-                            showAbsoluteLayers={pageView !== 'screen'}
+                            showAbsoluteLayers={pageView !== 'screen' || captureLayers}
                             pageView={pageView}
                             pageOrientation={pageOrientation}
                             viewLocked={bundle.manifest.pageViewLocked === true}
@@ -2629,6 +2794,8 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
                             }}
                             onPollVote={(layer) => void voteOnPoll(layer)}
                             onWidgetAction={(layer) => void runWidgetAction(layer)}
+                            inputValues={inputValues}
+                            onInputValue={setInputValue}
                             votedOptionByGroup={votedOptionByGroup}
                             playheadSec={playheadSec}
                             onSectionChange={(next) => {
@@ -2662,6 +2829,8 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
                     docId={bundle.manifest.docId}
                     buttonCaptionById={buttonCaptionById}
                     votedOptionByGroup={votedOptionByGroup}
+                    inputValues={inputValues}
+                    onInputValue={setInputValue}
                     onSelectLayer={(id) => {
                       if (id) {
                         const owner = bundle.sections.find((section) =>

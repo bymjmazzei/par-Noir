@@ -5,7 +5,6 @@
  */
 
 import { PEN_WIDGET_ACTION_KIND } from './outbox.js';
-import { docToPlainText } from './richDoc.js';
 import { upsertLayer } from './layers.js';
 import {
   pollIsClosed,
@@ -31,6 +30,9 @@ const SHEET_TRIGGERS = ['widget.toggle', 'widget.stamp', 'widget.rank', 'widget.
 
 export type WidgetSheetTrigger = (typeof SHEET_TRIGGERS)[number];
 
+/** Sheet write that is not a press trigger. Submit records a form row. */
+export type WidgetWriteTrigger = WidgetSheetTrigger | 'widget.submit';
+
 export const WIDGET_TAB: Record<WidgetSheetTrigger, 'Toggle' | 'Stamp' | 'Rank' | 'Allocate'> = {
   'widget.toggle': 'Toggle',
   'widget.stamp': 'Stamp',
@@ -40,7 +42,7 @@ export const WIDGET_TAB: Record<WidgetSheetTrigger, 'Toggle' | 'Stamp' | 'Rank' 
 
 export type WidgetActionRow = {
   actionId: string;
-  trigger: WidgetSheetTrigger;
+  trigger: WidgetWriteTrigger;
   actorId: string;
   createdAt: string;
   fields?: Record<string, string>;
@@ -162,6 +164,20 @@ export function placeWidgetLayer(
       w: 200,
       h: 80,
       htmlSource: ''
+    };
+  } else if (element === 'input') {
+    layer = {
+      ...shared,
+      kind: 'text',
+      widgetElement: 'input',
+      name: 'Field',
+      label: '',
+      w: 200,
+      h: 36,
+      backgroundColor: '#ffffff',
+      textColor: '#141414',
+      strokeColor: '#d6d3d1',
+      strokeWidth: 1
     };
   } else {
     layer = {
@@ -457,14 +473,22 @@ export function cellsForAmounts(
 }
 
 export function applyWidgetSheetRows(input: {
-  trigger: WidgetSheetTrigger;
+  trigger: WidgetWriteTrigger;
   user: string;
   createdAt: string;
   present?: boolean;
   headers: string[];
   cells?: string[];
   existing: string[][];
-}): { tab: 'Toggle' | 'Stamp' | 'Rank' | 'Allocate'; headers: string[]; rows: string[][] } {
+}): { tab: 'Toggle' | 'Stamp' | 'Rank' | 'Allocate' | 'Submit'; headers: string[]; rows: string[][] } {
+  if (input.trigger === 'widget.submit') {
+    const headers = ['user', ...input.headers];
+    return {
+      tab: 'Submit',
+      headers,
+      rows: [...input.existing, [input.user, ...(input.cells || [])]]
+    };
+  }
   const tab = WIDGET_TAB[input.trigger];
   if (input.trigger === 'widget.toggle') {
     const headers = ['user', 'on'];
@@ -488,31 +512,66 @@ export function isSheetTrigger(behavior: string | undefined): behavior is Widget
   return SHEET_TRIGGERS.includes(behavior as WidgetSheetTrigger);
 }
 
-/** Vote, Toggle, Stamp, Rank, and Allocate need a tracking sheet. Open, Submit, and Reveal do not. */
+export function inputLayers(
+  section: PenSectionContent,
+  groupId?: string | null
+): PenPageLayer[] {
+  return pollLayers(section, groupId).filter((layer) => layer.widgetElement === 'input');
+}
+
+/**
+ * Inputs plus a Send button with no email or pN. That button appends a row.
+ * A destination sends the values and does not mint a sheet.
+ */
+export function formCollectsToSheet(
+  section: PenSectionContent,
+  groupId?: string | null
+): boolean {
+  if (!inputLayers(section, groupId).length) return false;
+  return pollLayers(section, groupId).some(
+    (layer) => layer.behavior === 'widget.submit' && !(layer.submitTo || '').trim()
+  );
+}
+
+/** Vote, Toggle, Stamp, Rank, Allocate, and a collecting form need a tracking sheet. */
 export function groupNeedsTrackingSheet(
   section: PenSectionContent,
   groupId?: string | null
 ): boolean {
+  if (formCollectsToSheet(section, groupId)) return true;
   return pollLayers(section, groupId).some(
     (layer) => layer.behavior === 'poll.vote' || isSheetTrigger(layer.behavior)
   );
 }
 
+export function inputColumnKeys(section: PenSectionContent, groupId: string | null): string[] {
+  return inputLayers(section, groupId).map((layer) => (layer.name || layer.id).trim() || layer.id);
+}
+
+export function cellsForInputs(
+  section: PenSectionContent,
+  groupId: string | null,
+  values: Record<string, string>
+): string[] {
+  return inputLayers(section, groupId).map((layer) => values[layer.id] ?? '');
+}
+
+/** Live input values keyed by field name. Static text on the page is not a field. */
 export function submitFields(
   section: PenSectionContent,
-  groupId: string | null
+  groupId: string | null,
+  values: Record<string, string> = {}
 ): Record<string, string> {
   const fields: Record<string, string> = {};
-  for (const layer of pollLayers(section, groupId)) {
-    if (layer.kind !== 'text' || layer.widgetElement === 'time') continue;
-    const key = layer.name || layer.id;
-    fields[key] = docToPlainText(layer.textDoc || { type: 'doc', content: [] }).trim();
+  for (const layer of inputLayers(section, groupId)) {
+    const key = (layer.name || layer.id).trim() || layer.id;
+    fields[key] = values[layer.id] ?? '';
   }
   return fields;
 }
 
 export function buildWidgetActionRow(input: {
-  trigger: WidgetSheetTrigger;
+  trigger: WidgetWriteTrigger;
   actorId: string;
   actionId: string;
   createdAt?: string;

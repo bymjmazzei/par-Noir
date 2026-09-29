@@ -28,6 +28,7 @@ export function PublishMenu({
   onTemplatePrivate,
   onLibraryTemplate,
   onFinishedWork,
+  onDownload,
   licensing,
   ownerPnHash,
   membership,
@@ -49,6 +50,7 @@ export function PublishMenu({
   onTemplatePrivate: () => void;
   onLibraryTemplate: () => void;
   onFinishedWork: () => void;
+  onDownload?: () => void;
   licensing?: PenLicensingRoot;
   ownerPnHash?: string | null;
   membership?: boolean;
@@ -275,6 +277,19 @@ export function PublishMenu({
             </button>
           )}
           <div className="my-1 border-t border-stone-100" />
+          {onDownload && (
+            <button
+              type="button"
+              title="Download a flattened image, video, or document. Buttons and fields stay in the browser."
+              className="block w-full px-3 py-1.5 text-left text-[12px] text-stone-800 hover:bg-stone-50"
+              onClick={() => {
+                onDownload();
+                setOpen(false);
+              }}
+            >
+              Download
+            </button>
+          )}
           <button
             type="button"
             className="block w-full px-3 py-1.5 text-left text-[12px] text-stone-800 hover:bg-stone-50"

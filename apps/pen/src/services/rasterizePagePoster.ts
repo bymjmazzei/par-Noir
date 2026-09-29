@@ -246,10 +246,11 @@ function measureEl(el: HTMLElement): { w: number; h: number } {
  */
 export async function rasterizeElementToPosterBlob(
   el: HTMLElement,
-  opts?: { maxEdge?: number; quality?: number; punchVideos?: boolean }
+  opts?: { maxEdge?: number; quality?: number; punchVideos?: boolean; mime?: 'image/jpeg' | 'image/png' }
 ): Promise<Blob> {
   const maxEdge = opts?.maxEdge ?? DEFAULT_MAX_EDGE;
   const quality = opts?.quality ?? JPEG_QUALITY;
+  const mime = opts?.mime ?? 'image/jpeg';
   const punchVideos = opts?.punchVideos !== false;
   const { w, h } = measureEl(el);
   const scale = Math.min(1, maxEdge / Math.max(w, h));
@@ -307,8 +308,8 @@ export async function rasterizeElementToPosterBlob(
     try {
       canvas.toBlob(
         (b) => (b ? resolve(b) : reject(new Error('rasterize_toBlob_failed'))),
-        'image/jpeg',
-        quality
+        mime,
+        mime === 'image/png' ? undefined : quality
       );
     } catch (e) {
       reject(e instanceof Error ? e : new Error('rasterize_canvas_tainted'));

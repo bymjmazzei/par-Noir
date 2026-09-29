@@ -281,6 +281,7 @@ export function LayoutSurface({
         return (
           <div
             key={item.id}
+            data-layer-id={item.id}
             role="button"
             tabIndex={0}
             className={`absolute box-border overflow-hidden pointer-events-auto ${

@@ -65,7 +65,7 @@ export type PenInteractiveBehavior =
   | 'widget.reveal';
 
 /** Optional role of a layer the user placed. It does not wrap the group. */
-export type PenWidgetElement = 'svg' | 'text' | 'button' | 'time' | 'html';
+export type PenWidgetElement = 'svg' | 'text' | 'button' | 'time' | 'html' | 'input';
 
 export type PenStrokeStyle = 'solid' | 'dashed' | 'dotted';
 export type PenStrokeAlign = 'inside' | 'outside' | 'center';

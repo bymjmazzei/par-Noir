@@ -135,6 +135,30 @@ export function shouldPublishSocialAsCollection(input: {
   return pages.some((page) => !known.has(page.slug));
 }
 
+export type PenDownloadKind = 'image' | 'video' | 'doc';
+
+/**
+ * One file for Publish → Download, after action layers are left out.
+ * A single video page is a video. One still page is an image.
+ * More than one page, or a page of writing, is a document.
+ */
+export function downloadKindForSections(
+  sections: PenSectionContent[] | null | undefined
+): PenDownloadKind {
+  const list = sections || [];
+  if (shouldPublishAsSingleComposedVideo(list)) return 'video';
+  const pages = list.filter(sectionIsFeedPage);
+  if (pages.length > 1 || list.length > 1) return 'doc';
+  const only = pages[0];
+  if (!only) return 'image';
+  const still = (only.layers || []).some(
+    (layer) =>
+      layer.visible !== false && layer.kind === 'image' && String(layer.imageSrc || '').trim()
+  );
+  if (!still && sectionHasNoteContent(only)) return 'doc';
+  return 'image';
+}
+
 /** True when the post mixes Note pages and video pages (or multiple videos). */
 export function shouldPublishAsMixedPages(
   sections: PenSectionContent[] | null | undefined

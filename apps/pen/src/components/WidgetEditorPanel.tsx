@@ -30,6 +30,7 @@ import { ColorSwatchButton, ValueSliderButton } from './PanelValueControls';
 
 const ADD: Array<{ element: PenWidgetElement | 'image'; label: string }> = [
   { element: 'text', label: 'Text' },
+  { element: 'input', label: 'Text input' },
   { element: 'image', label: 'Image' },
   { element: 'button', label: 'Button' },
   { element: 'time', label: 'Time' },
@@ -104,7 +105,7 @@ function WidgetTextEditor({
 const TRIGGERS: Array<{ id: PenInteractiveBehavior; label: string }> = [
   { id: 'poll.vote', label: 'Vote' },
   { id: 'cta.open', label: 'Open' },
-  { id: 'widget.submit', label: 'Submit' },
+  { id: 'widget.submit', label: 'Send' },
   { id: 'widget.toggle', label: 'Toggle' },
   { id: 'widget.stamp', label: 'Stamp' },
   { id: 'widget.rank', label: 'Rank' },
@@ -172,6 +173,36 @@ export function WidgetEditorPanel({
               pageLayout={pageLayout}
             />
           </div>
+        </div>
+      )}
+      {layer?.widgetElement === 'input' && (
+        <div className="flex flex-col gap-2 border-b border-stone-200 px-3 py-2">
+          <label className="flex flex-col gap-1">
+            <span className="text-[11px] font-semibold uppercase tracking-wide text-stone-500">
+              Field name
+            </span>
+            <input
+              aria-label="Field name"
+              className="border border-stone-300 px-2 py-1 text-sm"
+              value={layer.name || ''}
+              onChange={(event) =>
+                onSectionChange(patchLayerStyle(section, layer.id, { name: event.target.value }))
+              }
+            />
+          </label>
+          <label className="flex flex-col gap-1">
+            <span className="text-[11px] font-semibold uppercase tracking-wide text-stone-500">
+              Placeholder
+            </span>
+            <input
+              aria-label="Placeholder"
+              className="border border-stone-300 px-2 py-1 text-sm"
+              value={layer.label || ''}
+              onChange={(event) =>
+                onSectionChange(patchLayerStyle(section, layer.id, { label: event.target.value }))
+              }
+            />
+          </label>
         </div>
       )}
       {layer?.widgetElement === 'text' && (

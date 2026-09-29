@@ -63,6 +63,7 @@ import {
   type PenSectionContent
 } from '@par-noir/pen-protocol';
 import { LayoutSurface, type LayoutItem } from '../layout';
+import { WidgetTextInput } from './WidgetTextInput';
 import { LayersPopover, layerDisplayLabel, pageLayerLabel } from './LayersPanel';
 import { IconLayers, IconTapeMeasure } from './icons/PenIcons';
 import {
@@ -180,7 +181,9 @@ function BodyWrapObject({
   session,
   onNaturalAspect,
   onPollVote,
-  onWidgetAction
+  onWidgetAction,
+  inputValues,
+  onInputValue
 }: {
   layer: PenPageLayer;
   allLayers: PenPageLayer[];
@@ -192,6 +195,8 @@ function BodyWrapObject({
   onCommit: (geom: LiveGeom & { bodyWrap: 'left' | 'right' }) => void;
   onPollVote?: (layer: PenPageLayer) => void;
   onWidgetAction?: (layer: PenPageLayer) => void;
+  inputValues?: Record<string, string>;
+  onInputValue?: (layerId: string, value: string) => void;
   docId?: string;
   session?: PenSession | null;
   onNaturalAspect?: (aspect: number) => void;
@@ -352,6 +357,15 @@ function BodyWrapObject({
         selected={selected}
       />
     );
+  } else if (layer.widgetElement === 'input') {
+    inner = (
+      <WidgetTextInput
+        layer={layer}
+        value={inputValues?.[layer.id] || ''}
+        onChange={(layerId, value) => onInputValue?.(layerId, value)}
+        onSelect={onSelect}
+      />
+    );
   } else if (layer.kind === 'text') {
     const html = docToHtml(getTextLayerDoc(layer));
     inner = (
@@ -403,6 +417,7 @@ function BodyWrapObject({
     <>
       <div aria-hidden data-wrap-pusher={side} style={pusherStyle} />
       <div
+        data-layer-id={layer.id}
         data-wrap={side}
         role="button"
         tabIndex={0}
@@ -443,6 +458,8 @@ export function EditablePagePreview({
   session,
   onPollVote,
   onWidgetAction,
+  inputValues,
+  onInputValue,
   votedOptionByGroup,
   hideActionBind,
   hideObjectTools,
@@ -467,6 +484,8 @@ export function EditablePagePreview({
   onSectionChange: (next: PenSectionContent) => void;
   onPollVote?: (layer: PenPageLayer) => void;
   onWidgetAction?: (layer: PenPageLayer) => void;
+  inputValues?: Record<string, string>;
+  onInputValue?: (layerId: string, value: string) => void;
   votedOptionByGroup?: Record<string, string>;
   /** Widget trigger lives in the side pane. Do not repeat it on this toolbar. */
   hideActionBind?: boolean;
@@ -1136,6 +1155,8 @@ export function EditablePagePreview({
                 onSelect={() => selectLayer(layer.id)}
                 onPollVote={onPollVote}
                 onWidgetAction={onWidgetAction}
+                inputValues={inputValues}
+                onInputValue={onInputValue}
                 onCommit={(patch) => onWrapCommit(layer.id, patch)}
                 docId={manifest.docId}
                 session={session}
@@ -1250,6 +1271,16 @@ export function EditablePagePreview({
                       className="h-full w-full overflow-hidden"
                       style={shell}
                       dangerouslySetInnerHTML={{ __html: sanitizeWidgetMarkup(layer.svgSrc) }}
+                    />
+                  );
+                }
+                if (layer.widgetElement === 'input') {
+                  return (
+                    <WidgetTextInput
+                      layer={layer}
+                      value={inputValues?.[layer.id] || ''}
+                      onChange={(layerId, value) => onInputValue?.(layerId, value)}
+                      onSelect={() => selectLayer(layer.id)}
                     />
                   );
                 }

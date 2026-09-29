@@ -173,7 +173,11 @@ export function sectionHasVoteButton(
 export function structureFromLayers(section: PenSectionContent, groupId?: string | null): PollStructure {
   const scoped = pollLayers(section, groupId);
   const questionLayer = scoped.find(
-    (layer) => layer.kind === 'text' && layer.widgetElement !== 'time' && layer.name !== 'Results'
+    (layer) =>
+      layer.kind === 'text' &&
+      layer.widgetElement !== 'time' &&
+      layer.widgetElement !== 'input' &&
+      layer.name !== 'Results'
   );
   const question = questionLayer ? docToPlainText(getTextLayerDoc(questionLayer)).trim() : '';
   const options = scoped.filter(isAnswerButton).map((layer) => ({
@@ -244,7 +248,11 @@ export function syncPollLayers(
   let next = section;
   const scoped = () => pollLayers(next, groupId);
   const question = scoped().find(
-    (layer) => layer.kind === 'text' && layer.widgetElement !== 'time' && layer.name !== 'Results'
+    (layer) =>
+      layer.kind === 'text' &&
+      layer.widgetElement !== 'time' &&
+      layer.widgetElement !== 'input' &&
+      layer.name !== 'Results'
   );
   if (question) {
     next = setTextLayerDoc(next, question.id, plainDoc(structure.question), { syncDoc: false });

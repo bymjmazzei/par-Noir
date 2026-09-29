@@ -11,7 +11,12 @@ import {
   applyWidgetSheetRows,
   buildWidgetActionRow,
   cellsForAmounts,
+  cellsForInputs,
   cellsForRanks,
+  formCollectsToSheet,
+  groupNeedsTrackingSheet,
+  inputColumnKeys,
+  submitFields,
   cornerRadiusFromPull,
   duplicateButton,
   nextAllocatePress,
@@ -312,6 +317,61 @@ describe('widget placement and triggers', () => {
     expect(button?.textDoc).toEqual(doc);
     expect(button?.label).toBe('Yes');
     expect(next.doc).toEqual(emptySection('card').doc);
+  });
+
+  it('an input is an action layer and Send either records a row or sends the typed values', () => {
+    let section = emptySection('card');
+    const field = placeWidgetLayer(section, null, 'input');
+    section = field.section;
+    const label = placeWidgetLayer(section, null, 'text');
+    section = upsertLayer(label.section, {
+      ...label.section.layers!.find((layer) => layer.id === label.layerId)!,
+      name: 'Prompt',
+      textDoc: { type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Your name' }] }] }
+    });
+    const input = section.layers!.find((layer) => layer.id === field.layerId)!;
+    expect(input.widgetElement).toBe('input');
+    expect(input.textDoc).toBeUndefined();
+    const part = partitionLayersForCompose(section.layers);
+    expect(part.action.map((layer) => layer.id)).toContain(field.layerId);
+    expect(part.inert.map((layer) => layer.id)).not.toContain(field.layerId);
+
+    const send = placeWidgetLayer(section, null, 'button');
+    section = setButtonTrigger(send.section, send.layerId, 'widget.submit');
+    const values = { [field.layerId]: 'Ada' };
+    expect(formCollectsToSheet(section, null)).toBe(true);
+    expect(groupNeedsTrackingSheet(section, null)).toBe(true);
+    expect(submitFields(section, null, values)).toEqual({ Field: 'Ada' });
+    expect(submitFields(section, null, values)).not.toEqual({ Prompt: 'Your name' });
+    const headers = inputColumnKeys(section, null);
+    const first = applyWidgetSheetRows({
+      trigger: 'widget.submit',
+      user: 'pn_a',
+      createdAt: '2026-01-01T00:00:00.000Z',
+      headers,
+      cells: cellsForInputs(section, null, values),
+      existing: []
+    });
+    expect(first.tab).toBe('Submit');
+    expect(first.headers).toEqual(['user', 'Field']);
+    expect(first.rows).toEqual([['pn_a', 'Ada']]);
+    const second = applyWidgetSheetRows({
+      trigger: 'widget.submit',
+      user: 'pn_a',
+      createdAt: '2026-01-02T00:00:00.000Z',
+      headers,
+      cells: ['Grace'],
+      existing: first.rows
+    });
+    expect(second.rows).toEqual([
+      ['pn_a', 'Ada'],
+      ['pn_a', 'Grace']
+    ]);
+
+    section = setSubmitTo(section, send.layerId, 'a@b.co');
+    expect(formCollectsToSheet(section, null)).toBe(false);
+    expect(groupNeedsTrackingSheet(section, null)).toBe(false);
+    expect(submitFields(section, null, values)).toEqual({ Field: 'Ada' });
   });
 
   it('an empty widget copy is a group with no poll buttons', () => {

@@ -41,7 +41,7 @@ describe('widget trigger panel', () => {
     );
     expect(html).toContain('Button trigger');
     expect(html).toContain('Vote');
-    expect(html).toContain('Submit');
+    expect(html).toContain('Send');
     expect(html).toContain('Allocate');
     expect(html).not.toContain('Add another option');
     expect(html).not.toContain('ASK A QUESTION');

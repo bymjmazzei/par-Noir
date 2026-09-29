@@ -17,7 +17,7 @@ import {
   voteMatrixRow,
   upsertUserRow,
   type PollStructure,
-  type WidgetSheetTrigger
+  type WidgetWriteTrigger
 } from '@par-noir/pen-protocol';
 
 function sheetsClient(auth: OAuth2Client): sheets_v4.Sheets {
@@ -169,7 +169,7 @@ export async function appendPollVote(
 export async function writeWidgetActionTab(input: {
   auth: OAuth2Client;
   spreadsheetId: string;
-  trigger: WidgetSheetTrigger;
+  trigger: WidgetWriteTrigger;
   user: string;
   createdAt: string;
   present?: boolean;

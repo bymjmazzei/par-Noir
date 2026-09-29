@@ -203,7 +203,7 @@ export function LayersPopover({
     onSelectedIdsChange([layer.id]);
   }
 
-  function addPlaced(element: 'image' | 'button' | 'time' | 'html' | 'svg') {
+  function addPlaced(element: 'image' | 'button' | 'time' | 'html' | 'svg' | 'input') {
     const active = allLayers.find((layer) => layer.id === activeLayerId);
     const groupId = active?.kind === 'group' ? active.id : active?.parentGroupId || null;
     const placed = placeWidgetLayer(prepared, groupId, element);
@@ -418,6 +418,7 @@ export function LayersPopover({
               {(
                 [
                   ['image', 'Image'],
+                  ['input', 'Text input'],
                   ['button', 'Button'],
                   ['time', 'Time'],
                   ['html', 'HTML snippet'],

@@ -476,7 +476,7 @@ export function setupPenRoutes(
         const trigger = String(req.body?.trigger || '');
         const actionId = String(req.body?.actionId || '').trim();
         const spreadsheetId = String(req.body?.spreadsheetId || '').trim();
-        const allowed = ['widget.toggle', 'widget.stamp', 'widget.rank', 'widget.allocate'];
+        const allowed = ['widget.toggle', 'widget.stamp', 'widget.rank', 'widget.allocate', 'widget.submit'];
         if (!allowed.includes(trigger) || !actionId || !spreadsheetId) {
           return res.status(400).json({ error: 'widget_action_required' });
         }
@@ -485,7 +485,7 @@ export function setupPenRoutes(
         await writeWidgetActionTab({
           auth,
           spreadsheetId,
-          trigger: trigger as 'widget.toggle' | 'widget.stamp' | 'widget.rank' | 'widget.allocate',
+          trigger: trigger as 'widget.toggle' | 'widget.stamp' | 'widget.rank' | 'widget.allocate' | 'widget.submit',
           user: String(req.body?.actorId || pnIdentifier),
           createdAt: String(req.body?.createdAt || new Date().toISOString()),
           present: req.body?.present !== false,

@@ -14,6 +14,7 @@ import {
   type PenSectionContent
 } from '@par-noir/pen-protocol';
 import { layerDisplayLabel } from './LayersPanel';
+import { WidgetTextInput } from './WidgetTextInput';
 import { layerPreviewStyle } from './LayerObjectToolbar';
 import { LayerMediaContent } from './LayerMediaContent';
 import type { PenSession } from '../services/penSession';
@@ -28,6 +29,8 @@ export function PreviewLayerFace({
   docId,
   buttonCaptionById,
   votedOptionByGroup,
+  inputValues,
+  onInputValue,
   onSelect,
   onSectionChange,
   onPollVote,
@@ -43,6 +46,8 @@ export function PreviewLayerFace({
   docId?: string;
   buttonCaptionById?: Record<string, string>;
   votedOptionByGroup?: Record<string, string>;
+  inputValues?: Record<string, string>;
+  onInputValue?: (layerId: string, value: string) => void;
   onSelect: () => void;
   onSectionChange: (next: PenSectionContent) => void;
   onPollVote?: (layer: PenPageLayer) => void;
@@ -97,6 +102,16 @@ export function PreviewLayerFace({
         sandbox=""
         className="pointer-events-auto h-full w-full border-0 bg-white"
         srcDoc={layer.htmlSource || ''}
+      />
+    );
+  }
+  if (layer.widgetElement === 'input') {
+    return (
+      <WidgetTextInput
+        layer={layer}
+        value={inputValues?.[layer.id] || ''}
+        onChange={(layerId, value) => onInputValue?.(layerId, value)}
+        onSelect={onSelect}
       />
     );
   }
