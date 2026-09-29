@@ -1,4 +1,4 @@
-/** Media and widget side panes keep sliders inside icons. */
+/** Media inspector shows labeled sliders. Widget chips stay closed. */
 
 import { describe, expect, it } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
@@ -39,11 +39,13 @@ const video: PenPageLayer = {
 };
 
 describe('media and widget panels', () => {
-  it('hides sliders until a value icon is opened', () => {
+  it('shows labeled grade sliders and keeps widget chips closed', () => {
     const media = renderToStaticMarkup(
       <MediaEditorPanel layer={portrait} section={section} onSectionChange={() => undefined} />
     );
-    expect(media).not.toContain('type="range"');
+    expect(media).toContain('Grade');
+    expect(media).toContain('Brightness');
+    expect(media).toContain('type="range"');
     expect(media).not.toContain('aspect-video');
     expect(media).toContain('aspect-ratio:90 / 160');
     const widget = renderToStaticMarkup(

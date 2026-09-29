@@ -23,7 +23,7 @@ import {
 import { CloudFeedMediaPicker } from './CloudFeedMediaPicker';
 import { SectionTimeline } from './SectionTimeline';
 import { LayerMediaContent } from './LayerMediaContent';
-import { ColorSwatchButton, ValueSliderButton } from './PanelValueControls';
+import { ColorSwatchButton } from './PanelValueControls';
 import { probeMediaAspect } from '../services/penAttach';
 import { resolvePenMediaSrc, ingestInlineMediaSrc, putLocalMedia } from '../services/penLocalMedia';
 import { useResolvedMediaSrc } from '../hooks/useResolvedMediaSrc';
@@ -31,14 +31,74 @@ import type { PenSession } from '../services/penSession';
 
 type ToolTab = 'color' | 'filters' | 'crop' | 'mask' | 'brush' | 'tracks';
 
-const TABS: Array<{ id: ToolTab; label: string; icon: string }> = [
-  { id: 'color', label: 'Color', icon: '◐' },
-  { id: 'filters', label: 'Filters', icon: '▣' },
-  { id: 'crop', label: 'Crop', icon: '⊞' },
-  { id: 'mask', label: 'Mask', icon: '◯' },
-  { id: 'brush', label: 'Brush', icon: '✎' },
-  { id: 'tracks', label: 'Tracks', icon: '≡' }
+const TABS: Array<{ id: ToolTab; label: string }> = [
+  { id: 'color', label: 'Grade' },
+  { id: 'filters', label: 'Look' },
+  { id: 'crop', label: 'Crop' },
+  { id: 'mask', label: 'Mask' },
+  { id: 'brush', label: 'Draw' },
+  { id: 'tracks', label: 'Audio' }
 ];
+
+function InspectorSlider({
+  label,
+  value,
+  min,
+  max,
+  step = 1,
+  neutral,
+  display,
+  onChange
+}: {
+  label: string;
+  value: number;
+  min: number;
+  max: number;
+  step?: number;
+  neutral?: number;
+  display: string;
+  onChange: (next: number) => void;
+}) {
+  const drifted = neutral !== undefined && value !== neutral;
+  return (
+    <label className="grid grid-cols-[5.75rem_minmax(0,1fr)_3.25rem] items-center gap-2">
+      <span className="text-[13px] text-stone-600">{label}</span>
+      <input
+        aria-label={label}
+        type="range"
+        min={min}
+        max={max}
+        step={step}
+        value={value}
+        onChange={(e) => onChange(Number(e.target.value))}
+        className="h-1 w-full accent-stone-900"
+      />
+      <button
+        type="button"
+        className={`text-right text-[13px] tabular-nums ${
+          drifted ? 'text-stone-900 hover:underline' : 'text-stone-500'
+        }`}
+        disabled={!drifted}
+        onClick={() => {
+          if (neutral !== undefined) onChange(neutral);
+        }}
+      >
+        {display}
+      </button>
+    </label>
+  );
+}
+
+function looksMatch(current: PenMediaFilter, preset: PenMediaFilter): boolean {
+  const left = mergeMediaFilter(current);
+  const right = mergeMediaFilter(preset);
+  return (
+    left.brightness === right.brightness &&
+    left.contrast === right.contrast &&
+    left.saturation === right.saturation &&
+    left.hueRotate === right.hueRotate
+  );
+}
 
 function frameStyle(layer: PenPageLayer): CSSProperties {
   const w = Math.max(1, layer.w);
@@ -159,28 +219,23 @@ export function MediaEditorPanel({
   return (
     <div className="flex min-h-0 flex-1 flex-col bg-[#f3f3f3]">
       <div className="shrink-0 border-b border-stone-300 bg-stone-50 px-3 py-2">
-        <div className="text-[11px] font-semibold uppercase tracking-wider text-stone-500">
-          Media · {layer.kind}
-        </div>
-        <div className="mt-2 flex flex-wrap items-center gap-1">
+        <div className="flex flex-wrap items-center gap-1">
           {TABS.map((item) => (
             <button
               key={item.id}
               type="button"
-              title={item.label}
-              aria-label={item.label}
               aria-pressed={tab === item.id}
-              className={`inline-flex h-8 w-8 items-center justify-center rounded-md text-sm ${
-                tab === item.id ? 'bg-black text-white' : 'bg-white text-stone-600 hover:bg-stone-200'
+              className={`rounded-full px-2.5 py-1 text-[13px] ${
+                tab === item.id ? 'bg-stone-900 text-white' : 'text-stone-600 hover:bg-stone-200'
               }`}
               onClick={() => setTab(item.id)}
             >
-              {item.icon}
+              {item.label}
             </button>
           ))}
           <button
             type="button"
-            className="ml-auto rounded px-2 py-0.5 text-[11px] font-bold text-stone-800 hover:bg-stone-200"
+            className="ml-auto rounded-full px-2.5 py-1 text-[13px] text-stone-700 hover:bg-stone-200"
             onClick={() => {
               setFileKind(layer.kind === 'video' ? 'video' : 'image');
               setCloudOpen(true);
@@ -205,37 +260,40 @@ export function MediaEditorPanel({
         </div>
 
         {tab === 'color' && (
-          <div className="flex flex-wrap gap-1">
+          <div className="space-y-2">
             {(
               [
-                ['brightness', 'Brightness', 50, 150, '%'],
-                ['contrast', 'Contrast', 50, 150, '%'],
-                ['saturation', 'Saturation', 0, 200, '%'],
-                ['hueRotate', 'Hue', 0, 360, '°']
+                ['brightness', 'Brightness', 50, 150, 100, '%'],
+                ['contrast', 'Contrast', 50, 150, 100, '%'],
+                ['saturation', 'Saturation', 0, 200, 100, '%'],
+                ['hueRotate', 'Hue', 0, 360, 0, '°']
               ] as const
-            ).map(([key, label, min, max, unit]) => (
-              <ValueSliderButton
+            ).map(([key, label, min, max, neutral, unit]) => (
+              <InspectorSlider
                 key={key}
                 label={label}
                 min={min}
                 max={max}
+                neutral={neutral}
                 value={filter[key]}
                 display={`${filter[key]}${unit}`}
                 onChange={(n) => setFilter({ [key]: n })}
               />
             ))}
-            <ValueSliderButton
+            <InspectorSlider
               label="Opacity"
               min={0}
               max={100}
+              neutral={100}
               value={layer.opacity ?? 100}
               display={`${layer.opacity ?? 100}%`}
               onChange={(n) => patch({ opacity: n })}
             />
-            <ValueSliderButton
+            <InspectorSlider
               label="Blur"
               min={0}
               max={40}
+              neutral={0}
               value={layer.blur ?? 0}
               display={`${layer.blur ?? 0}px`}
               onChange={(n) => patch({ blur: n || undefined })}
@@ -244,18 +302,23 @@ export function MediaEditorPanel({
         )}
 
         {tab === 'filters' && (
-          <div className="flex flex-wrap gap-1">
-            {Object.entries(MEDIA_FILTER_PRESETS).map(([id, preset]) => (
-              <button
-                key={id}
-                type="button"
-                title={id}
-                className="rounded-md border border-stone-300 bg-white px-2 py-1 text-[11px] font-medium capitalize text-stone-700 hover:bg-stone-100"
-                onClick={() => patch({ mediaFilter: { ...preset } })}
-              >
-                {id}
-              </button>
-            ))}
+          <div className="flex flex-wrap gap-1.5">
+            {Object.entries(MEDIA_FILTER_PRESETS).map(([id, preset]) => {
+              const selected = looksMatch(filter, preset);
+              return (
+                <button
+                  key={id}
+                  type="button"
+                  aria-pressed={selected}
+                  className={`rounded-full px-3 py-1 text-[13px] capitalize ${
+                    selected ? 'bg-stone-900 text-white' : 'bg-white text-stone-700 hover:bg-stone-200'
+                  }`}
+                  onClick={() => patch({ mediaFilter: { ...preset } })}
+                >
+                  {id}
+                </button>
+              );
+            })}
           </div>
         )}
 
@@ -274,8 +337,8 @@ export function MediaEditorPanel({
                 key={m}
                 type="button"
                 aria-pressed={mask === m}
-                className={`rounded-md px-3 py-1.5 text-[11px] font-medium capitalize ${
-                  mask === m ? 'bg-black text-white' : 'border border-stone-300 bg-white text-stone-700'
+                className={`rounded-full px-3 py-1 text-[13px] capitalize ${
+                  mask === m ? 'bg-stone-900 text-white' : 'bg-white text-stone-700 hover:bg-stone-200'
                 }`}
                 onClick={() => patch({ mediaMask: m === 'none' ? undefined : m })}
               >
@@ -305,11 +368,11 @@ export function MediaEditorPanel({
         )}
 
         {tab === 'tracks' && (
-          <div className="space-y-2 text-[11px]">
-            <div className="flex flex-wrap items-center gap-1">
+          <div className="space-y-3">
+            <div className="flex flex-wrap items-center gap-1.5">
               <button
                 type="button"
-                className="rounded-md bg-black px-2 py-1 font-medium text-white"
+                className="rounded-full bg-stone-900 px-3 py-1 text-[13px] text-white"
                 onClick={() => audioPickRef.current?.click()}
               >
                 Add audio
@@ -328,36 +391,38 @@ export function MediaEditorPanel({
               />
               <input
                 aria-label="Licensed audio doc"
-                className="min-w-0 flex-1 rounded border border-stone-300 px-2 py-1"
+                className="min-w-0 flex-1 rounded-full border border-stone-300 bg-white px-3 py-1 text-[13px]"
                 placeholder="Licensed doc id"
                 value={licensedDraft}
                 onChange={(e) => setLicensedDraft(e.target.value)}
               />
               <button
                 type="button"
-                className="rounded-md border border-stone-300 bg-white px-2 py-1 font-medium"
+                className="rounded-full bg-white px-3 py-1 text-[13px] text-stone-700 hover:bg-stone-200"
                 onClick={addLicensed}
               >
                 Add licensed
               </button>
             </div>
             {tracks.map((track) => (
-              <div key={track.id} className="flex flex-wrap items-center gap-1">
-                <span className="max-w-[8rem] truncate text-stone-500">
-                  {track.licensedDocId || 'Own audio'}
-                </span>
-                <ValueSliderButton
-                  label={`Gain ${track.id}`}
+              <div key={track.id} className="space-y-2">
+                <div className="truncate text-[13px] text-stone-700">
+                  {track.licensedDocId || 'Audio'}
+                </div>
+                <InspectorSlider
+                  label="Gain"
                   min={0}
                   max={100}
+                  neutral={100}
                   value={track.gain ?? 100}
                   display={`${track.gain ?? 100}%`}
                   onChange={(n) => patchTrack(track.id, { gain: n })}
                 />
-                <ValueSliderButton
-                  label={`Offset ${track.id}`}
+                <InspectorSlider
+                  label="Offset"
                   min={0}
                   max={120}
+                  neutral={0}
                   value={track.offsetSec ?? 0}
                   display={`${track.offsetSec ?? 0}s`}
                   onChange={(n) => patchTrack(track.id, { offsetSec: n })}
@@ -403,30 +468,29 @@ function CropEditor({
   onReset: () => void;
 }) {
   return (
-    <div className="space-y-2 text-[11px]">
-      <div className="flex flex-wrap gap-1">
-        {(
-          [
-            ['x', 'Left', 0, 90],
-            ['y', 'Top', 0, 90],
-            ['w', 'Width', 10, 100],
-            ['h', 'Height', 10, 100]
-          ] as const
-        ).map(([key, label, min, max]) => (
-          <ValueSliderButton
-            key={key}
-            label={label}
-            min={min}
-            max={max}
-            value={Math.round(crop[key] * 100)}
-            display={`${Math.round(crop[key] * 100)}%`}
-            onChange={(n) => onChange({ ...crop, [key]: n / 100 })}
-          />
-        ))}
-      </div>
+    <div className="space-y-2">
+      {(
+        [
+          ['x', 'Left', 0, 90, 0],
+          ['y', 'Top', 0, 90, 0],
+          ['w', 'Width', 10, 100, 100],
+          ['h', 'Height', 10, 100, 100]
+        ] as const
+      ).map(([key, label, min, max, neutral]) => (
+        <InspectorSlider
+          key={key}
+          label={label}
+          min={min}
+          max={max}
+          neutral={neutral}
+          value={Math.round(crop[key] * 100)}
+          display={`${Math.round(crop[key] * 100)}%`}
+          onChange={(n) => onChange({ ...crop, [key]: n / 100 })}
+        />
+      ))}
       <button
         type="button"
-        className="rounded border border-stone-300 bg-white px-2 py-1 text-[11px] font-medium text-stone-700"
+        className="text-[13px] text-stone-600 hover:text-stone-900"
         onClick={onReset}
       >
         Reset crop
@@ -494,23 +558,28 @@ function BrushEditor({
   const [rw, rh] = ratio.split('/').map((n) => Number(n.trim()) || 1);
 
   return (
-    <div className="space-y-2 text-[11px]">
-      <div className="flex flex-wrap items-center gap-1">
-        <ValueSliderButton
-          label="Brush size"
-          min={2}
-          max={40}
-          value={brushSize}
-          display={`${brushSize}`}
-          onChange={setBrushSize}
-        />
+    <div className="space-y-2">
+      <InspectorSlider
+        label="Size"
+        min={2}
+        max={40}
+        neutral={8}
+        value={brushSize}
+        display={`${brushSize}`}
+        onChange={setBrushSize}
+      />
+      <div className="flex flex-wrap items-center gap-2">
         <ColorSwatchButton label="Brush color" value={brushColor} onChange={setBrushColor} />
-        <button type="button" className="rounded bg-black px-2 py-1 text-white" onClick={commit}>
+        <button
+          type="button"
+          className="rounded-full bg-stone-900 px-3 py-1 text-[13px] text-white"
+          onClick={commit}
+        >
           Apply strokes
         </button>
         <button
           type="button"
-          className="rounded border border-stone-300 bg-white px-2 py-1 text-stone-700"
+          className="rounded-full px-3 py-1 text-[13px] text-stone-700 hover:bg-stone-200"
           onClick={onClear}
         >
           Clear

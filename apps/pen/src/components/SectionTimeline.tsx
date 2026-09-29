@@ -271,12 +271,12 @@ export function SectionTimeline({
   }
 
   return (
-    <div data-media-timeline className="shrink-0 border-t border-stone-300 bg-white">
-      <div className="flex flex-wrap items-center gap-2 px-2 py-1.5 text-[11px] text-stone-600">
+    <div data-media-timeline className="shrink-0 border-t border-stone-200 bg-stone-50">
+      <div className="flex flex-wrap items-center gap-2 px-3 py-2">
         <button
           type="button"
           aria-label={playing ? 'Pause' : 'Play'}
-          className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-black text-white"
+          className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-stone-900 text-white"
           onClick={() => {
             const next = !playing;
             const at = next && playheadSec >= duration ? 0 : playheadSec;
@@ -285,31 +285,41 @@ export function SectionTimeline({
             driveVideos(next ? 'play' : 'pause', at);
           }}
         >
-          {playing ? 'II' : '▶'}
+          {playing ? (
+            <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden>
+              <rect x="1" y="1" width="3.5" height="10" rx="0.5" fill="currentColor" />
+              <rect x="7.5" y="1" width="3.5" height="10" rx="0.5" fill="currentColor" />
+            </svg>
+          ) : (
+            <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden>
+              <path d="M3 1.5v9l7.5-4.5L3 1.5z" fill="currentColor" />
+            </svg>
+          )}
         </button>
-        <span>
+        <span className="text-[13px] tabular-nums text-stone-700">
           {formatTime(playheadSec)} / {formatTime(duration)}
         </span>
         <button
           type="button"
           aria-label="Keyframe"
-          title="Keyframe"
-          className="inline-flex h-7 w-7 items-center justify-center rounded border border-stone-300 text-sm"
+          className="rounded-full px-2.5 py-1 text-[13px] text-stone-700 hover:bg-stone-200"
           onClick={toggleKey}
         >
-          ◆
+          Keyframe
         </button>
-        {(['cut', 'crossfade', 'slide'] as const).map((preset) => (
-          <button
-            key={preset}
-            type="button"
-            disabled={!activeLayerId || !partnerId}
-            className="rounded border border-stone-300 px-2 py-1 capitalize enabled:hover:bg-stone-100 disabled:opacity-40"
-            onClick={() => applyTransition(preset)}
-          >
-            {preset === 'crossfade' ? 'Fade' : preset}
-          </button>
-        ))}
+        <div className="ml-auto inline-flex overflow-hidden rounded-full bg-white">
+          {(['cut', 'crossfade', 'slide'] as const).map((preset) => (
+            <button
+              key={preset}
+              type="button"
+              disabled={!activeLayerId || !partnerId}
+              className="px-2.5 py-1 text-[13px] capitalize text-stone-700 enabled:hover:bg-stone-100 disabled:text-stone-300"
+              onClick={() => applyTransition(preset)}
+            >
+              {preset === 'crossfade' ? 'Fade' : preset}
+            </button>
+          ))}
+        </div>
       </div>
       <div className="max-h-40 space-y-1 overflow-auto px-2 pb-2">
         {rows.map(({ layer, depth }) => {
@@ -325,14 +335,14 @@ export function SectionTimeline({
               key={layer.id}
               data-track-row={layer.id}
               data-sampled-x={posed.x}
-              className="space-y-0.5"
+              className="space-y-1"
               style={{ paddingLeft: depth ? 12 : 0 }}
             >
-              <div className="flex items-center gap-2 text-[10px] text-stone-500">
+              <div className="flex items-center gap-2">
                 <button
                   type="button"
-                  className={`truncate font-semibold uppercase tracking-wide ${
-                    layer.id === activeLayerId ? 'text-black' : ''
+                  className={`w-24 truncate text-left text-[13px] ${
+                    layer.id === activeLayerId ? 'text-stone-900' : 'text-stone-500'
                   }`}
                   onClick={(e) => {
                     if (e.shiftKey) setPartnerId(layer.id);
@@ -340,14 +350,14 @@ export function SectionTimeline({
                   }}
                 >
                   {defaultLayerName(layer, section.layers || [])}
-                  {layer.id === partnerId ? ' · with' : ''}
+                  {layer.id === partnerId ? ' with' : ''}
                 </button>
                 {layer.kind === 'group' && (
-                  <label className="ml-auto flex items-center gap-1 normal-case">
+                  <label className="ml-auto flex items-center gap-1 text-[13px] text-stone-600">
                     Loop
                     <input
                       aria-label={`Loop ${layer.id}`}
-                      className="w-12 rounded border border-stone-300 px-1 py-0.5"
+                      className="w-14 rounded-md border border-stone-200 bg-white px-1.5 py-0.5 text-[13px] tabular-nums"
                       type="number"
                       min={0}
                       step={0.1}
@@ -358,7 +368,7 @@ export function SectionTimeline({
                 )}
               </div>
               <div
-                className="relative h-6 cursor-pointer rounded bg-stone-800"
+                className="relative h-7 cursor-pointer rounded-md bg-stone-200/80"
                 onPointerDown={(e) => {
                   const rect = e.currentTarget.getBoundingClientRect();
                   const ratio = (e.clientX - rect.left) / Math.max(1, rect.width);
@@ -372,7 +382,7 @@ export function SectionTimeline({
               >
                 {(layer.kind === 'image' || layer.kind === 'video') && (
                   <div
-                    className="absolute bottom-1 top-1 rounded bg-stone-500/80"
+                    className="absolute bottom-1 top-1 rounded-md bg-stone-500"
                     style={{
                       left: `${(inn / Math.max(rowDur, 0.01)) * 100}%`,
                       width: `${Math.max(4, ((out - inn) / Math.max(rowDur, 0.01)) * 100)}%`
@@ -383,11 +393,11 @@ export function SectionTimeline({
                   <span
                     key={`${layer.id}-${key.t}`}
                     data-keyframe={`${layer.id}:${key.t}`}
-                    className="absolute top-1/2 h-2 w-2 -translate-x-1/2 -translate-y-1/2 rotate-45 bg-amber-300"
+                    className="absolute top-1/2 h-2 w-2 -translate-x-1/2 -translate-y-1/2 rotate-45 bg-amber-500"
                     style={{ left: `${(key.t / Math.max(rowDur, 0.01)) * 100}%` }}
                   />
                 ))}
-                <div className="absolute bottom-0 top-0 w-px bg-white" style={{ left: `${head}%` }} />
+                <div className="absolute bottom-0 top-0 w-px bg-stone-900" style={{ left: `${head}%` }} />
               </div>
               {(layer.kind === 'video' && (layer.videoSrc || layer.backgroundVideo)) ? (
                 <RememberVideoSrc
@@ -402,13 +412,13 @@ export function SectionTimeline({
                 const offset = track.offsetSec || 0;
                 return (
                   <div key={track.id} data-audio-lane={track.id} className="space-y-0.5">
-                    <div className="flex items-center justify-between gap-2 text-[10px] text-stone-500">
-                      <span className="truncate font-semibold uppercase tracking-wide">
+                    <div className="flex items-center justify-between gap-2 text-[13px] text-stone-500">
+                      <span className="truncate">
                         {track.licensedDocId ? 'Licensed' : 'Audio'}
                       </span>
                       <button
                         type="button"
-                        className="text-stone-400 hover:text-black"
+                        className="text-stone-400 hover:text-stone-900"
                         aria-label={`Remove ${track.id}`}
                         onClick={() => {
                           const next = (layer.audioTracks || []).filter((item) => item.id !== track.id);
@@ -421,17 +431,17 @@ export function SectionTimeline({
                       </button>
                     </div>
                     <div
-                      className="relative h-6 cursor-pointer rounded bg-teal-900/80"
+                      className="relative h-7 cursor-pointer rounded-md bg-teal-100"
                       onPointerDown={(e) => onBarDown(e, rowDur)}
                     >
                       <div
-                        className="absolute bottom-1 top-1 rounded bg-teal-300/80"
+                        className="absolute bottom-1 top-1 rounded-md bg-teal-500/80"
                         style={{
                           left: `${(offset / Math.max(rowDur, 0.01)) * 100}%`,
                           width: `${Math.max(8, 100 - (offset / Math.max(rowDur, 0.01)) * 100)}%`
                         }}
                       />
-                      <div className="absolute bottom-0 top-0 w-px bg-white" style={{ left: `${head}%` }} />
+                      <div className="absolute bottom-0 top-0 w-px bg-stone-900" style={{ left: `${head}%` }} />
                     </div>
                     {track.src ? (
                       <AudioLane
