@@ -286,6 +286,7 @@ export async function ingestInlineMediaSrc(params: {
 export const MEDIA_SRC_FIELDS = [
   'imageSrc',
   'videoSrc',
+  'editProxySrc',
   'backgroundImage',
   'backgroundVideo',
   'paintOverlaySrc'

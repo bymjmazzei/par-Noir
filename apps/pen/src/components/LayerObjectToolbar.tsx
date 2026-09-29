@@ -169,11 +169,23 @@ export function LayerObjectToolbar({
 
   function patchLayer(patch: Parameters<typeof patchLayerStyle>[2]) {
     if (!layer) return;
-    onSectionChange(patchLayerStyle(section, layer.id, patch));
+    const replacesMedia =
+      'backgroundVideo' in patch ||
+      'backgroundImage' in patch ||
+      'videoSrc' in patch ||
+      'imageSrc' in patch;
+    onSectionChange(
+      patchLayerStyle(
+        section,
+        layer.id,
+        replacesMedia ? { editProxySrc: undefined, ...patch } : patch
+      )
+    );
   }
 
   function patchPage(partial: Partial<PenPagePresentation>) {
-    onPresentationChange?.(partial);
+    const replacesMedia = 'backgroundVideo' in partial || 'backgroundImage' in partial;
+    onPresentationChange?.(replacesMedia ? { editProxySrc: undefined, ...partial } : partial);
   }
 
   async function applyMediaSrc(src: string, meta?: { blobUrl?: string }) {

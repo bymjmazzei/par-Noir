@@ -35,6 +35,9 @@ function collectPenLocalRefs(
   if (pagePresentation?.backgroundVideo && isPenLocalMediaRef(pagePresentation.backgroundVideo)) {
     out.add(pagePresentation.backgroundVideo);
   }
+  if (pagePresentation?.editProxySrc && isPenLocalMediaRef(pagePresentation.editProxySrc)) {
+    out.add(pagePresentation.editProxySrc);
+  }
   return [...out];
 }
 
@@ -73,7 +76,8 @@ function rewritePresentation(
   return {
     ...pres,
     backgroundImage: rewriteRef(pres.backgroundImage, map),
-    backgroundVideo: rewriteRef(pres.backgroundVideo, map)
+    backgroundVideo: rewriteRef(pres.backgroundVideo, map),
+    editProxySrc: rewriteRef(pres.editProxySrc, map)
   };
 }
 

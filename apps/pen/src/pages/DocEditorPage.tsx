@@ -22,6 +22,7 @@ import {
   PAGE_LAYER_ID,
   promoteSectionToPast,
   publishCurrentToPast,
+  publishPlaybackSrc,
   setTextLayerDoc,
   signPromoteLink,
   attachNotary,
@@ -86,6 +87,7 @@ import { ActionBindStrip } from '../components/ActionBindStrip';
 import { IconLayers } from '../components/icons/PenIcons';
 import { MediaEditorPanel } from '../components/MediaEditorPanel';
 import { bindTimelineSample } from '../services/timelineSample';
+import { ensureEditProxy, layerOriginalForProxy } from '../services/editProxy';
 import { WidgetEditorPanel } from '../components/WidgetEditorPanel';
 import { LayerPartsMenu } from '../components/LayerPartsMenu';
 import { PublishMenu } from '../components/PublishMenu';
@@ -350,6 +352,78 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
     saveLocalDoc(session.pnIdentifier, nextBundle);
     setBundle(nextBundle);
   }, [docId, session.pnIdentifier]); // eslint-disable-line react-hooks/exhaustive-deps -- once per doc open
+
+  useEffect(() => {
+    const current = bundleRef.current;
+    if (!current) return;
+    const docId = current.manifest.docId;
+    type Bundle = NonNullable<typeof bundle>;
+    const jobs: Array<{ original: string; apply: (ref: string, b: Bundle) => Bundle }> = [];
+    for (const sec of current.sections) {
+      for (const layer of sec.layers || []) {
+        const original = layerOriginalForProxy(layer);
+        if (!original) continue;
+        jobs.push({
+          original,
+          apply: (ref, b) => {
+            let changed = false;
+            const sections = b.sections.map((s) => {
+              if (s.slug !== sec.slug) return s;
+              const layers = (s.layers || []).map((item) => {
+                if (item.id !== layer.id || item.editProxySrc) return item;
+                if (publishPlaybackSrc(item) !== original) return item;
+                changed = true;
+                return { ...item, editProxySrc: ref };
+              });
+              return changed ? { ...s, layers } : s;
+            });
+            return changed ? { ...b, sections } : b;
+          }
+        });
+      }
+    }
+    const pageVideo = current.manifest.pagePresentation?.backgroundVideo?.trim();
+    if (pageVideo && !current.manifest.pagePresentation?.editProxySrc) {
+      jobs.push({
+        original: pageVideo,
+        apply: (ref, b) => {
+          const pres = b.manifest.pagePresentation;
+          if (!pres?.backgroundVideo || pres.backgroundVideo.trim() !== pageVideo || pres.editProxySrc) {
+            return b;
+          }
+          return {
+            ...b,
+            manifest: {
+              ...b.manifest,
+              pagePresentation: { ...pres, editProxySrc: ref }
+            }
+          };
+        }
+      });
+    }
+    if (!jobs.length) return;
+    let cancelled = false;
+    void (async () => {
+      const updates: Array<(b: Bundle) => Bundle> = [];
+      for (const job of jobs) {
+        const ref = await ensureEditProxy({
+          docId,
+          originalRef: job.original,
+          session
+        });
+        if (ref) updates.push((b) => job.apply(ref, b));
+      }
+      if (cancelled || !updates.length) return;
+      const latest = bundleRef.current;
+      if (!latest) return;
+      let next = latest;
+      for (const update of updates) next = update(next);
+      if (next !== latest) persist(next);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [bundle, session]);
 
   const canvasSection = useMemo(() => {
     if (!section) return undefined;

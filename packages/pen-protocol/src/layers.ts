@@ -572,6 +572,7 @@ export function patchLayerStyle(
       | 'audioTracks'
       | 'imageSrc'
       | 'videoSrc'
+      | 'editProxySrc'
       | 'refDocId'
       | 'refSectionSlug'
       | 'behavior'

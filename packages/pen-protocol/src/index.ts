@@ -18,6 +18,7 @@ export * from './pageView.js';
 export * from './composeVideo.js';
 export * from './audioTracks.js';
 export * from './mediaStyle.js';
+export * from './editProxyRef.js';
 export * from './layerParts.js';
 export * from './agent.js';
 export * from './licensing.js';

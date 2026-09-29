@@ -144,7 +144,14 @@ export function PreviewLayerFace({
     return (
       <div className="relative h-full w-full overflow-hidden" style={shell}>
         <div className="absolute inset-0">
-          <ResolvedPageBackground src={layer.backgroundVideo} kind="video" docId={docId} session={session} />
+          <ResolvedPageBackground
+            src={layer.backgroundVideo}
+            editProxySrc={layer.editProxySrc}
+            videoSrc={layer.videoSrc}
+            kind="video"
+            docId={docId}
+            session={session}
+          />
         </div>
         <div
           className="pen-rich-html relative h-full w-full overflow-auto p-2 text-sm"

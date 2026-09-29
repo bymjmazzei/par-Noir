@@ -5,12 +5,15 @@
 
 import { useEffect, useRef, type CSSProperties, type ReactNode } from 'react';
 import {
+  editorPlaybackSrc,
   mediaCropClipCss,
   mediaFilterCss,
   mediaMaskClipCss,
+  publishPlaybackSrc,
   type PenPageLayer
 } from '@par-noir/pen-protocol';
 import { PenMediaPlayer } from '@par-noir/feed-tile';
+import { usePlaybackMode } from '../hooks/usePlaybackMode';
 import { useResolvedMediaSrc } from '../hooks/useResolvedMediaSrc';
 import { cachedMediaAspect, probeMediaAspect } from '../services/penMediaAspect';
 import type { PenSession } from '../services/penSession';
@@ -35,12 +38,18 @@ export function LayerMediaContent({
   onNaturalAspect?: (aspect: number) => void;
   selected?: boolean;
 }): ReactNode {
-  const src =
-    layer.kind === 'video'
-      ? layer.videoSrc || layer.backgroundVideo
-      : layer.kind === 'image'
-        ? layer.imageSrc || layer.backgroundImage
-        : layer.backgroundVideo || layer.backgroundImage;
+  const playback = usePlaybackMode();
+  const isVideo =
+    layer.kind === 'video' ||
+    Boolean(layer.videoSrc) ||
+    (Boolean(layer.backgroundVideo) && layer.kind !== 'image');
+  const src = isVideo
+    ? playback === 'publish'
+      ? publishPlaybackSrc(layer)
+      : editorPlaybackSrc(layer)
+    : layer.kind === 'image'
+      ? layer.imageSrc || layer.backgroundImage
+      : layer.backgroundImage;
   const { resolved } = useResolvedMediaSrc(src, { docId, session });
   const { resolved: overlayResolved } = useResolvedMediaSrc(layer.paintOverlaySrc, {
     docId,
@@ -52,11 +61,6 @@ export function LayerMediaContent({
   onNaturalAspectRef.current = onNaturalAspect;
   const layerRef = useRef(layer);
   layerRef.current = layer;
-
-  const isVideo =
-    layer.kind === 'video' ||
-    Boolean(layer.videoSrc) ||
-    (Boolean(layer.backgroundVideo) && layer.kind !== 'image');
 
   useEffect(() => {
     if (!resolved || !onNaturalAspectRef.current) return;
@@ -103,6 +107,7 @@ export function LayerMediaContent({
 
   return (
     <div
+      data-pen-playback={isVideo ? playback : undefined}
       className={`relative h-full w-full min-h-0 min-w-0 ${className || ''}`}
       style={outerStyle}
     >

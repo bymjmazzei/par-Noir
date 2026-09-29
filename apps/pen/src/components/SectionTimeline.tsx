@@ -11,7 +11,9 @@ import {
 import {
   applyTransitionPreset,
   defaultLayerName,
+  editorPlaybackSrc,
   layerSampleTime,
+  publishPlaybackSrc,
   resolveTimelineDuration,
   sampleLayerAt,
   toggleKeyframeAt,
@@ -22,6 +24,7 @@ import {
   type PenTransitionPreset
 } from '@par-noir/pen-protocol';
 import { useResolvedMediaSrc } from '../hooks/useResolvedMediaSrc';
+import { usePlaybackMode } from '../hooks/usePlaybackMode';
 import type { PenSession } from '../services/penSession';
 
 function formatTime(sec: number): string {
@@ -157,6 +160,7 @@ export function SectionTimeline({
 }) {
   const duration = resolveTimelineDuration(section);
   const rows = trackRows(section);
+  const playback = usePlaybackMode();
   const [partnerId, setPartnerId] = useState<string | null>(null);
   const playheadRef = useRef(playheadSec);
   const videoSrcs = useRef(new Map<string, string>());
@@ -329,6 +333,8 @@ export function SectionTimeline({
           const head = (local / Math.max(rowDur, 0.01)) * 100;
           const inn = layer.inSec ?? 0;
           const out = layer.outSec ?? rowDur;
+          const playbackSrc =
+            playback === 'publish' ? publishPlaybackSrc(layer) : editorPlaybackSrc(layer);
           const keys = layer.motion?.keys || [];
           return (
             <div
@@ -399,10 +405,10 @@ export function SectionTimeline({
                 ))}
                 <div className="absolute bottom-0 top-0 w-px bg-stone-900" style={{ left: `${head}%` }} />
               </div>
-              {(layer.kind === 'video' && (layer.videoSrc || layer.backgroundVideo)) ? (
+              {(layer.kind === 'video' && playbackSrc) ? (
                 <RememberVideoSrc
                   layerId={layer.id}
-                  src={layer.videoSrc || layer.backgroundVideo || ''}
+                  src={playbackSrc}
                   docId={docId}
                   session={session}
                   srcs={videoSrcs}

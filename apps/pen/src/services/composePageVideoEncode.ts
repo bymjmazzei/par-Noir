@@ -7,6 +7,7 @@
  */
 
 import { rasterizeElementToPosterBlob, rasterizeElementSafeStill } from './rasterizePagePoster';
+import { playbackMode } from './playbackMode';
 
 export const COMPOSE_VIDEO_MAX_DURATION_SEC = 60;
 export const COMPOSE_VIDEO_MAX_EDGE = 1080;
@@ -113,6 +114,10 @@ export function collectUntaintedVideoSlots(root: HTMLElement): VideoSlot[] {
     if (el.dataset.penMediaDrawable === '1') continue;
     const drawable = resolveUntaintedDrawableVideo(el);
     if (!drawable) continue;
+    if (playbackMode() === 'publish') {
+      const marked = el.closest('[data-pen-playback]');
+      if (!(marked instanceof HTMLElement) || marked.dataset.penPlayback !== 'publish') continue;
+    }
     const r = el.getBoundingClientRect();
     if (r.width < 2 || r.height < 2) continue;
     slots.push({

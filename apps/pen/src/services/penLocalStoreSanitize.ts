@@ -83,7 +83,7 @@ async function migratePresentation(
 ): Promise<PenPagePresentation | undefined> {
   if (!pres) return pres;
   let next = { ...pres };
-  for (const field of ['backgroundImage', 'backgroundVideo'] as const) {
+  for (const field of ['backgroundImage', 'backgroundVideo', 'editProxySrc'] as const) {
     const cur = next[field];
     if (typeof cur !== 'string' || !isInlineMediaSrc(cur)) continue;
     next = { ...next, [field]: await migrateField(docId, cur) };
@@ -144,7 +144,8 @@ export function stripInlineMediaFromBundle(bundle: LocalDocBundle): LocalDocBund
     ? {
         ...bundle.manifest.pagePresentation,
         backgroundImage: stripVal(bundle.manifest.pagePresentation.backgroundImage),
-        backgroundVideo: stripVal(bundle.manifest.pagePresentation.backgroundVideo)
+        backgroundVideo: stripVal(bundle.manifest.pagePresentation.backgroundVideo),
+        editProxySrc: stripVal(bundle.manifest.pagePresentation.editProxySrc)
       }
     : undefined;
   return {

@@ -22,6 +22,7 @@ import {
   DEFAULT_FLOW_WORKSPACE_WIDTH_PX,
   docToHtml,
   docToPlainText,
+  editorPlaybackSrc,
   fitAspectInBox,
   sizeMediaLayerForAttach,
   getTextLayerDoc,
@@ -35,6 +36,7 @@ import {
   normalizeSection,
   PAGE_LAYER_ID,
   PAGE_SIZE_PRESETS,
+  publishPlaybackSrc,
   openFlowDragHeightPx,
   pageSheetDims,
   pxToMeasure,
@@ -73,6 +75,7 @@ import { PageGuides } from './PageGuides';
 import { PageSheetColumn } from './PageSheetColumn';
 import { LayerMediaContent } from './LayerMediaContent';
 import { PenMediaPlayer } from '@par-noir/feed-tile';
+import { usePlaybackMode } from '../hooks/usePlaybackMode';
 import { useResolvedMediaSrc } from '../hooks/useResolvedMediaSrc';
 import { ensureGoogleFontsLoaded } from '../services/penGoogleFonts';
 import type { PenSession } from '../services/penSession';
@@ -81,18 +84,29 @@ export function ResolvedPageBackground({
   src,
   kind,
   docId,
-  session
+  session,
+  editProxySrc,
+  videoSrc
 }: {
   src: string;
   kind: 'image' | 'video';
   docId?: string;
   session?: PenSession | null;
+  editProxySrc?: string;
+  videoSrc?: string;
 }) {
-  const { resolved } = useResolvedMediaSrc(src, { docId, session });
-  if (!resolved) return null;
+  const playback = usePlaybackMode();
+  const playSrc =
+    kind === 'video'
+      ? playback === 'publish'
+        ? publishPlaybackSrc({ videoSrc, backgroundVideo: src })
+        : editorPlaybackSrc({ editProxySrc })
+      : src;
+  const { resolved } = useResolvedMediaSrc(playSrc, { docId, session });
+  if (!playSrc || !resolved) return null;
   if (kind === 'video') {
     return (
-      <div className="pointer-events-none absolute inset-0 z-0">
+      <div data-pen-playback={playback} className="pointer-events-none absolute inset-0 z-0">
         <PenMediaPlayer
           src={resolved}
           className="h-full w-full"
@@ -1082,6 +1096,7 @@ export function EditablePagePreview({
           {presentation.backgroundVideo && (
             <ResolvedPageBackground
               src={presentation.backgroundVideo}
+              editProxySrc={presentation.editProxySrc}
               kind="video"
               docId={manifest.docId}
               session={session}
@@ -1307,6 +1322,8 @@ export function EditablePagePreview({
                       <div className="absolute inset-0">
                         <ResolvedPageBackground
                           src={layer.backgroundVideo}
+                          editProxySrc={layer.editProxySrc}
+                          videoSrc={layer.videoSrc}
                           kind="video"
                           docId={manifest.docId}
                           session={session}

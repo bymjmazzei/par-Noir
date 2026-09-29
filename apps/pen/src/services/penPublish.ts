@@ -38,6 +38,7 @@ import {
 import { composePageToVideo } from './composePageVideoEncode';
 import { emitTimelineSample } from './timelineSample';
 import { findComposeExportRoot, waitForUntaintedComposeVideos } from './penGalleryPreview';
+import { setPlaybackMode } from './playbackMode';
 import type { PenSession } from '../App';
 import { createDocFromTemplate } from './createDocFromTemplate';
 import type { LocalDocBundle } from './penLocalStore';
@@ -248,23 +249,28 @@ export async function writeComposedVideoPublishHandoff(
   }
   const { videoSections } = partitionSectionsForPublish(bundle.sections);
   const videoSlug = videoSections[0]?.slug;
-  if (videoSlug && opts?.activateSection) {
-    await opts.activateSection(videoSlug);
-    await waitTwoFrames();
-    await new Promise((r) => setTimeout(r, 200));
+  setPlaybackMode('publish');
+  let encoded: Awaited<ReturnType<typeof composePageToVideo>>;
+  try {
+    if (videoSlug && opts?.activateSection) {
+      await opts.activateSection(videoSlug);
+      await waitTwoFrames();
+      await new Promise((r) => setTimeout(r, 200));
+    }
+    const root0 =
+      opts?.exportRoot ||
+      findComposeExportRoot();
+    if (!root0) {
+      throw new Error('compose_export_root_missing');
+    }
+    const root = await waitForUntaintedComposeVideos(root0);
+    encoded = await composePageToVideo(root, {
+      onProgress: opts?.onProgress,
+      ...composeClock(videoSections[0])
+    });
+  } finally {
+    setPlaybackMode('edit');
   }
-  const root0 =
-    opts?.exportRoot ||
-    findComposeExportRoot();
-  if (!root0) {
-    throw new Error('compose_export_root_missing');
-  }
-  const root = await waitForUntaintedComposeVideos(root0);
-
-  const encoded = await composePageToVideo(root, {
-    onProgress: opts?.onProgress,
-    ...composeClock(videoSections[0])
-  });
   const form = getClass(bundle.manifest.classId);
   const licensing = licensingForPublish(
     bundle.manifest.licensing,
@@ -352,29 +358,34 @@ export async function writeMixedPagesPublishHandoff(
     contentType: string;
   }> = [];
 
-  for (let i = 0; i < videoSections.length; i++) {
-    const sec = videoSections[i]!;
-    opts.onProgress?.(Math.round((i / Math.max(videoSections.length, 1)) * 80));
-    await opts.activateSection(sec.slug);
-    await waitTwoFrames();
-    // Allow video elements to attach
-    await new Promise((r) => setTimeout(r, 200));
-    const root0 = findComposeExportRoot();
-    if (!root0) throw new Error('compose_export_root_missing');
-    const root = await waitForUntaintedComposeVideos(root0);
-    const encoded = await composePageToVideo(root, {
-      ...composeClock(sec),
-      onProgress: (p) => {
-        const base = (i / videoSections.length) * 80;
-        opts.onProgress?.(Math.round(base + (p / 100) * (80 / videoSections.length)));
-      }
-    });
-    videos.push({
-      slug: sec.slug,
-      videoBlob: encoded.videoBlob,
-      posterBlob: encoded.posterBlob,
-      contentType: encoded.videoContentType
-    });
+  setPlaybackMode('publish');
+  try {
+    for (let i = 0; i < videoSections.length; i++) {
+      const sec = videoSections[i]!;
+      opts.onProgress?.(Math.round((i / Math.max(videoSections.length, 1)) * 80));
+      await opts.activateSection(sec.slug);
+      await waitTwoFrames();
+      // Allow video elements to attach
+      await new Promise((r) => setTimeout(r, 200));
+      const root0 = findComposeExportRoot();
+      if (!root0) throw new Error('compose_export_root_missing');
+      const root = await waitForUntaintedComposeVideos(root0);
+      const encoded = await composePageToVideo(root, {
+        ...composeClock(sec),
+        onProgress: (p) => {
+          const base = (i / videoSections.length) * 80;
+          opts.onProgress?.(Math.round(base + (p / 100) * (80 / videoSections.length)));
+        }
+      });
+      videos.push({
+        slug: sec.slug,
+        videoBlob: encoded.videoBlob,
+        posterBlob: encoded.posterBlob,
+        contentType: encoded.videoContentType
+      });
+    }
+  } finally {
+    setPlaybackMode('edit');
   }
 
   const videoIndexBySlug = new Map(videos.map((v, i) => [v.slug, i]));

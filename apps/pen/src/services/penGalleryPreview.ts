@@ -14,6 +14,7 @@ import {
   type PenPageLayer
 } from '@par-noir/pen-protocol';
 import { emitTimelineSample } from './timelineSample';
+import { setPlaybackMode } from './playbackMode';
 import {
   composePageToVideo,
   collectUntaintedVideoSlots,
@@ -247,18 +248,24 @@ export async function buildAndStoreGalleryPreview(params: {
   const docId = params.docId;
 
   if (needsVideo) {
-    root = await waitForUntaintedComposeVideos(root);
-    const motion =
-      params.clockSection && sectionHasMotion(params.clockSection) ? params.clockSection : null;
-    const encoded = await composePageToVideo(
-      root,
-      motion
-        ? {
-            clockDurationSec: resolveTimelineDuration(motion),
-            onSample: emitTimelineSample
-          }
-        : undefined
-    );
+    setPlaybackMode('publish');
+    let encoded: Awaited<ReturnType<typeof composePageToVideo>>;
+    try {
+      root = await waitForUntaintedComposeVideos(root);
+      const motion =
+        params.clockSection && sectionHasMotion(params.clockSection) ? params.clockSection : null;
+      encoded = await composePageToVideo(
+        root,
+        motion
+          ? {
+              clockDurationSec: resolveTimelineDuration(motion),
+              onSample: emitTimelineSample
+            }
+          : undefined
+      );
+    } finally {
+      setPlaybackMode('edit');
+    }
     const video = await uploadOrLocal({
       blob: encoded.videoBlob,
       fileName: 'gallery-preview.penmedia',

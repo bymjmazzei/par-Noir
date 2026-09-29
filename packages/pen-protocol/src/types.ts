@@ -92,6 +92,11 @@ export interface PenPageLayer {
   /** video layers */
   videoSrc?: string;
   /**
+   * Smaller file the editor decodes. The original stays on videoSrc / backgroundVideo.
+   * Omitted until the proxy exists — the editor does not fall back to the original.
+   */
+  editProxySrc?: string;
+  /**
    * embed layers — frame hosting a cloud primitive / Pen doc by ref.
    * Live by-ref in editor; publish may snapshot display (tallies live later).
    */
@@ -254,6 +259,8 @@ export interface PenPagePresentation {
   backgroundImage?: string;
   backgroundGradient?: string;
   backgroundVideo?: string;
+  /** Editor decode of backgroundVideo. Absent until that proxy exists. */
+  editProxySrc?: string;
   textAlign: 'left' | 'center' | 'right' | 'justify';
   padding: number;
 }

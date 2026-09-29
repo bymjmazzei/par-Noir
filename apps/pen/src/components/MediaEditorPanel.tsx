@@ -8,6 +8,7 @@ import {
   MEDIA_FILTER_PRESETS,
   attachMediaToLayer,
   clampMediaCrop,
+  editorPlaybackSrc,
   mergeMediaFilter,
   layerSampleTime,
   patchLayerStyle,
@@ -210,8 +211,9 @@ export function MediaEditorPanel({
     setLicensedDraft('');
   }
 
-  const src = layer.kind === 'video' ? layer.videoSrc : layer.imageSrc;
-  const { resolved: brushSrc } = useResolvedMediaSrc(src, { docId, session });
+  const attached = layer.kind === 'video' ? layer.videoSrc || layer.backgroundVideo : layer.imageSrc;
+  const playbackRef = layer.kind === 'video' ? editorPlaybackSrc(layer) : attached;
+  const { resolved: brushSrc } = useResolvedMediaSrc(playbackRef, { docId, session });
   const { resolved: brushOverlay } = useResolvedMediaSrc(layer.paintOverlaySrc, {
     docId,
     session
@@ -252,7 +254,7 @@ export function MediaEditorPanel({
           className="relative mx-auto overflow-hidden rounded border border-stone-300 bg-black"
           style={frameStyle(layer)}
         >
-          {src ? (
+          {attached ? (
             <LayerMediaContent layer={layer} docId={docId} session={session} />
           ) : (
             <p className="flex h-full items-center justify-center text-sm text-stone-400">No media</p>
