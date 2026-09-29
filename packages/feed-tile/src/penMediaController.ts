@@ -1,14 +1,12 @@
 /**
  * One decoded media track shared by multiple PenMediaPlayer viewers.
- * Master <video> owns playback + audio; viewers mirror via captureStream
- * (or a muted src-synced fallback).
+ * The master <video> is the only decoder. Viewers paint it; they do not load the file.
  */
 
 type Listener = () => void;
 
-type CaptureVideo = HTMLVideoElement & {
-  captureStream?: (frameRate?: number) => MediaStream;
-  mozCaptureStream?: (frameRate?: number) => MediaStream;
+type FrameVideo = HTMLVideoElement & {
+  requestVideoFrameCallback?: (cb: () => void) => number;
 };
 
 const registry = new Map<string, PenMediaController>();
@@ -17,19 +15,24 @@ export class PenMediaController {
   readonly key: string;
   readonly src: string;
   readonly master: HTMLVideoElement;
+  /** When false, show one frame and stay paused until play(). */
+  readonly autoPlay: boolean;
   private refCount = 0;
   private listeners = new Set<Listener>();
-  private stream: MediaStream | null = null;
   private removed = false;
+  private holdingFrame = false;
+  private playbackWanted = false;
 
   muted = true;
   paused = true;
   progress = 0;
 
-  constructor(key: string, src: string) {
+  constructor(key: string, src: string, autoPlay = true) {
     this.key = key;
     this.src = src;
-    const v = document.createElement('video') as CaptureVideo;
+    this.autoPlay = autoPlay;
+    this.playbackWanted = autoPlay;
+    const v = document.createElement('video');
     v.src = src;
     if (src.startsWith('http://') || src.startsWith('https://')) {
       v.crossOrigin = 'anonymous';
@@ -43,7 +46,7 @@ export class PenMediaController {
     v.setAttribute('webkit-playsinline', '');
     v.dataset.penMediaDrawable = '1';
     v.dataset.penMediaKey = key;
-    // Keep in DOM so the decoder/audio graph stay alive; not shown.
+    // Offscreen. CSS size stays tiny so this element is not a full-res layer.
     v.style.cssText =
       'position:fixed;left:0;top:0;width:1px;height:1px;opacity:0;pointer-events:none;z-index:-1';
     document.body.appendChild(v);
@@ -65,14 +68,11 @@ export class PenMediaController {
     v.addEventListener('timeupdate', onTime);
     v.addEventListener('play', onPlay);
     v.addEventListener('pause', onPause);
-    v.addEventListener('loadedmetadata', () => {
-      if (v.videoWidth > 0) v.width = v.videoWidth;
-      if (v.videoHeight > 0) v.height = v.videoHeight;
-    });
     v.addEventListener('loadeddata', () => {
-      void this.ensurePlaying();
+      if (this.autoPlay) void this.ensurePlaying();
+      else void this.holdFirstFrame();
     });
-    void this.ensurePlaying();
+    if (this.autoPlay) void this.ensurePlaying();
   }
 
   acquire(): PenMediaController {
@@ -109,32 +109,38 @@ export class PenMediaController {
     this.master.removeAttribute('src');
     this.master.load();
     this.master.remove();
-    if (this.stream) {
-      for (const track of this.stream.getTracks()) track.stop();
-      this.stream = null;
-    }
     this.listeners.clear();
   }
 
-  mirrorStream(): MediaStream | null {
-    if (this.stream) return this.stream;
-    const v = this.master as CaptureVideo;
+  /** Decode a single frame, then pause. Play after this is an explicit ensurePlaying. */
+  private async holdFirstFrame(): Promise<void> {
+    if (this.autoPlay || this.holdingFrame || this.removed) return;
+    this.holdingFrame = true;
+    const v = this.master as FrameVideo;
     try {
-      const raw = v.captureStream?.(30) ?? v.mozCaptureStream?.(30) ?? null;
-      if (!raw) {
-        this.stream = null;
-        return null;
-      }
-      // Video-only mirror — master keeps the single audio track.
-      const videoTracks = raw.getVideoTracks();
-      this.stream = videoTracks.length ? new MediaStream(videoTracks) : raw;
+      await v.play();
+      await new Promise<void>((resolve) => {
+        if (typeof v.requestVideoFrameCallback === 'function') {
+          v.requestVideoFrameCallback(() => resolve());
+        } else {
+          window.setTimeout(resolve, 48);
+        }
+      });
     } catch {
-      this.stream = null;
+      /* frame unavailable */
     }
-    return this.stream;
+    if (this.removed || this.playbackWanted) return;
+    try {
+      v.pause();
+    } catch {
+      /* ignore */
+    }
+    this.paused = true;
+    this.emit();
   }
 
   async ensurePlaying(): Promise<void> {
+    this.playbackWanted = true;
     const v = this.master;
     v.muted = this.muted;
     try {
@@ -147,12 +153,21 @@ export class PenMediaController {
     }
   }
 
+  pause(): void {
+    this.playbackWanted = false;
+    try {
+      this.master.pause();
+    } catch {
+      /* ignore */
+    }
+  }
+
   togglePlay(): void {
     const v = this.master;
     if (v.paused) {
       void this.ensurePlaying();
     } else {
-      v.pause();
+      this.pause();
     }
   }
 
@@ -181,7 +196,11 @@ export function peekPenMediaController(key: string): PenMediaController | null {
 }
 
 /** Ref-counted controller keyed for multi-viewer sync (e.g. layer id). */
-export function acquirePenMediaController(key: string, src: string): PenMediaController {
+export function acquirePenMediaController(
+  key: string,
+  src: string,
+  opts?: { autoPlay?: boolean }
+): PenMediaController {
   const existing = registry.get(key);
   if (existing && existing.src === src) {
     return existing.acquire();
@@ -191,7 +210,7 @@ export function acquirePenMediaController(key: string, src: string): PenMediaCon
   if (existing) {
     registry.delete(key);
   }
-  const next = new PenMediaController(key, src);
+  const next = new PenMediaController(key, src, opts?.autoPlay !== false);
   registry.set(key, next);
   return next.acquire();
 }

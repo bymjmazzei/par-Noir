@@ -161,7 +161,6 @@ export function SectionTimeline({
   const playheadRef = useRef(playheadSec);
   const videoSrcs = useRef(new Map<string, string>());
   const ownedVideos = useRef(new Map<string, PenMediaController>());
-  const playingRef = useRef(playing);
   if (!playing) playheadRef.current = playheadSec;
 
   function videoController(layer: PenPageLayer, create: boolean): PenMediaController | null {
@@ -175,21 +174,25 @@ export function SectionTimeline({
     const held = ownedVideos.current.get(key);
     if (held && src && held.src === src) return held;
     if (!create || !src) return null;
-    const created = acquirePenMediaController(key, src);
+    const created = acquirePenMediaController(key, src, { autoPlay: false });
     ownedVideos.current.set(key, created);
     return created;
   }
 
-  function driveVideos(mode: 'play' | 'pause' | 'seek', at: number) {
+  function driveVideos(mode: 'play' | 'pause' | 'seek' | 'tick', at: number) {
     for (const { layer } of rows) {
       const ctrl = videoController(layer, mode === 'play');
       if (!ctrl) continue;
       if (mode === 'pause') {
-        ctrl.master.pause();
+        ctrl.pause();
+        continue;
+      }
+      if (mode === 'tick') {
+        placeVideo(ctrl.master, Math.max(0, at - (layer.inSec || 0)));
         continue;
       }
       placeVideo(ctrl.master, Math.max(0, at - (layer.inSec || 0)));
-      if (mode === 'play') void ctrl.master.play().catch(() => undefined);
+      if (mode === 'play') void ctrl.ensurePlaying();
     }
   }
 
@@ -213,6 +216,7 @@ export function SectionTimeline({
       const next = Math.min(duration, playheadRef.current + dt);
       playheadRef.current = next;
       onPlayhead(next);
+      driveRef.current(next >= duration ? 'pause' : 'tick', next);
       if (next >= duration) {
         onPlaying(false);
         return;
@@ -222,16 +226,6 @@ export function SectionTimeline({
     frame = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(frame);
   }, [playing, duration, onPlayhead, onPlaying]);
-
-  useEffect(() => {
-    const was = playingRef.current;
-    playingRef.current = playing;
-    if (playing) {
-      driveRef.current('play', playheadSec);
-      return;
-    }
-    if (was) driveRef.current('pause', playheadSec);
-  }, [playing, playheadSec]);
 
   function seekRatio(ratio: number, rowDur: number) {
     const next = Math.min(rowDur, Math.max(0, ratio * rowDur));

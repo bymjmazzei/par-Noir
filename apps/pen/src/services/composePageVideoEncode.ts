@@ -83,9 +83,7 @@ export type VideoSlot = {
  * Prefer the blob-backed master video over a captureStream mirror viewer.
  * Returns null when no untainted drawable exists (caller must not draw).
  */
-export function resolveUntaintedDrawableVideo(
-  viewer: HTMLVideoElement
-): HTMLVideoElement | null {
+export function resolveUntaintedDrawableVideo(viewer: HTMLElement): HTMLVideoElement | null {
   const key = viewer.dataset.penMediaKey;
   if (key) {
     const master = document.querySelector(
@@ -96,17 +94,22 @@ export function resolveUntaintedDrawableVideo(
       if (isUntaintedMediaUrl(src)) return master;
     }
   }
-  const own = viewer.currentSrc || viewer.src || '';
-  if (isUntaintedMediaUrl(own) && !viewer.srcObject) return viewer;
+  if (viewer instanceof HTMLVideoElement) {
+    const own = viewer.currentSrc || viewer.src || '';
+    if (isUntaintedMediaUrl(own) && !viewer.srcObject) return viewer;
+  }
   return null;
 }
 
 /** Visible on-page video slots backed by blob:/data: masters only. */
 export function collectUntaintedVideoSlots(root: HTMLElement): VideoSlot[] {
   const rootRect = root.getBoundingClientRect();
-  const videos = Array.from(root.querySelectorAll('video')) as HTMLVideoElement[];
+  const videos = Array.from(root.querySelectorAll('video, [data-pen-media-key]'));
   const slots: VideoSlot[] = [];
+  const seen = new Set<HTMLElement>();
   for (const el of videos) {
+    if (!(el instanceof HTMLElement) || seen.has(el)) continue;
+    seen.add(el);
     if (el.dataset.penMediaDrawable === '1') continue;
     const drawable = resolveUntaintedDrawableVideo(el);
     if (!drawable) continue;
