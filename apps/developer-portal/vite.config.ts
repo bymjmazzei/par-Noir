@@ -1,11 +1,15 @@
 import path from 'path';
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
+import { nodePolyfills } from 'vite-plugin-node-polyfills';
 
 const pqcSrc = path.resolve(__dirname, '../../packages/pqc-crypto/src');
 
 export default defineConfig({
-  plugins: [react()],
+  plugins: [
+    react(),
+    nodePolyfills({ include: ['crypto'] }),
+  ],
   resolve: {
     alias: {
       '@par-noir/aggregator-domain': path.resolve(
@@ -18,11 +22,13 @@ export default defineConfig({
       '@par-noir/pqc-crypto/ml-dsa': path.resolve(pqcSrc, 'mlDsa.ts'),
       '@par-noir/pqc-crypto/constants': path.resolve(pqcSrc, 'constants.ts'),
       '@par-noir/pqc-crypto': path.resolve(pqcSrc, 'index.ts'),
+      '@par-noir/recovery-crypto': path.resolve(__dirname, '../../packages/recovery-crypto/src/index.ts'),
     },
   },
   build: {
     outDir: 'dist',
-    sourcemap: false
+    sourcemap: false,
+    commonjsOptions: { transformMixedEsModules: true },
   },
   server: {
     port: 5176

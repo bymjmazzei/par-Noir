@@ -1,9 +1,13 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
+import { nodePolyfills } from 'vite-plugin-node-polyfills';
 import path from 'path';
 
 export default defineConfig(({ mode }) => ({
-  plugins: [react()],
+  plugins: [
+    react(),
+    nodePolyfills({ include: ['crypto'] }),
+  ],
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),
@@ -18,6 +22,7 @@ export default defineConfig(({ mode }) => ({
       '@par-noir/pqc-crypto/ml-dsa': path.resolve(__dirname, '../../packages/pqc-crypto/src/mlDsa.ts'),
       '@par-noir/pqc-crypto/constants': path.resolve(__dirname, '../../packages/pqc-crypto/src/constants.ts'),
       '@par-noir/pqc-crypto': path.resolve(__dirname, '../../packages/pqc-crypto/src/index.ts'),
+      '@par-noir/recovery-crypto': path.resolve(__dirname, '../../packages/recovery-crypto/src/index.ts'),
     }
   },
   worker: {
@@ -28,7 +33,10 @@ export default defineConfig(({ mode }) => ({
     // Use `vite build --mode messaging` + `.env.messaging` — do not rely on shell env during config load
     outDir: mode === 'messaging' ? 'dist-messaging' : 'dist',
     sourcemap: false,
-    copyPublicDir: true // Ensure public folder is copied
+    copyPublicDir: true, // Ensure public folder is copied
+    commonjsOptions: {
+      transformMixedEsModules: true,
+    },
   },
   publicDir: 'public', // Explicitly set public directory
   esbuild: {
