@@ -5,7 +5,7 @@
  */
 
 import { waitForOwnerCloudAccess } from './ownerApiHeaders';
-import { ownerFetch, ownerGet } from './ownerApiFetch';
+import { ownerFetch } from './ownerApiFetch';
 import { getUserProfile } from './profileService';
 import { createKemSession, wrapAcceptorMessageRootKey } from './dmCryptoClient';
 import { getMessagingMlKemPublicKey, getDmIdentity, isDmIdentityReady } from './dmIdentitySession';
