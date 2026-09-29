@@ -8,7 +8,7 @@ import { X, Settings, Plus } from 'lucide-react';
 import { useUserState } from '../contexts/UserStateContext';
 import { FEED_CATEGORY_LIST } from '../constants/feedCategories';
 import { FeedCategory } from '../types/aggregator';
-import { ownerFetch } from '../services/ownerApiFetch';
+import { putDevicePreferences } from '../services/devicePreferences';
 
 interface ContentPreferencesPanelProps {
   onClose: () => void;
@@ -32,15 +32,10 @@ export function ContentPreferencesPanel({ onClose }: ContentPreferencesPanelProp
     }
 
     try {
-      const response = await ownerFetch(
-        'PUT',
-        `/api/users/${userState.pnIdentifier}/preferences`,
-        {
-          blockedCategories: userState.preferences.blockedCategories || [],
-          showNSFW: userState.preferences.showNSFW || false
-        },
-        { pnIdentifier: userState.pnIdentifier }
-      );
+      const response = await putDevicePreferences(userState.pnIdentifier, {
+        blockedCategories: userState.preferences.blockedCategories || [],
+        showNSFW: userState.preferences.showNSFW || false,
+      });
 
       if (response.ok) {
         console.log('Successfully saved preferences to Google Drive');

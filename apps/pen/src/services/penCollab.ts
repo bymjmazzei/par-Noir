@@ -45,7 +45,9 @@ import {
   sealSocialEnvelope
 } from '@par-noir/dm-crypto';
 import { API_ENDPOINT } from '../config/api';
+import { appendDeviceGroupRow, listDeviceGroups } from '@par-noir/device-cloud-credentials';
 import { ownerFetch, ownerGet } from './penOwnerFetch';
+import { penSessionDrive } from './penDriveLibrary';
 import type { PenSession } from './penSession';
 
 export function sealSessionFromPen(session: PenSession): SealSession | null {
@@ -68,6 +70,21 @@ export async function createPenGroup(params: {
     accessRole: 'readWrite' | 'readOnly';
   }>;
 }): Promise<void> {
+  const drive = await penSessionDrive(params.ownerPnIdentifier);
+  const sheetId = drive.index.sheetIds.groups;
+  if (!sheetId) throw new Error('cloud_on_device');
+  const createdAt = new Date().toISOString();
+  for (const member of params.members) {
+    await appendDeviceGroupRow(drive.accessToken, sheetId, {
+      groupId: params.groupId,
+      ownerPnIdentifier: params.ownerPnIdentifier,
+      title: params.title,
+      createdAt,
+      memberPnIdentifier: member.memberPnIdentifier,
+      accessRole: member.accessRole,
+      wrappedChatKey: member.wrappedChatKey,
+    });
+  }
   const res = await ownerFetch(
     'POST',
     '/api/groups',
@@ -75,7 +92,8 @@ export async function createPenGroup(params: {
       ownerPnIdentifier: params.ownerPnIdentifier,
       title: params.title,
       groupId: params.groupId,
-      members: params.members
+      members: params.members,
+      deviceCloudResult: { spreadsheetId: sheetId },
     },
     { pnIdentifier: params.ownerPnIdentifier }
   );
@@ -186,20 +204,17 @@ export async function fetchGroupRoster(params: {
   groupId: string;
   ownerPnIdentifier: string;
 }): Promise<Array<{ memberPnIdentifier: string; routeKey?: string }>> {
-  const q = new URLSearchParams({
-    ownerPnIdentifier: params.ownerPnIdentifier,
-    userPnIdentifier: params.ownerPnIdentifier
-  });
-  const res = await ownerGet(
-    `/api/groups/${encodeURIComponent(params.groupId)}/roster?${q}`,
-    { pnIdentifier: params.ownerPnIdentifier }
-  );
-  if (!res.ok) return [];
-  const data = await res.json().catch(() => ({}));
-  return (data.members || data.roster || []) as Array<{
-    memberPnIdentifier: string;
-    routeKey?: string;
-  }>;
+  try {
+    const drive = await penSessionDrive(params.ownerPnIdentifier);
+    const sheetId = drive.index.sheetIds.groups;
+    if (!sheetId) return [];
+    const rows = await listDeviceGroups(drive.accessToken, sheetId);
+    return rows
+      .filter((row) => row.groupId === params.groupId)
+      .map((row) => ({ memberPnIdentifier: row.memberPnIdentifier }));
+  } catch {
+    return [];
+  }
 }
 
 export async function applyPenPromoteInbound(params: {

@@ -11,6 +11,7 @@ import {
 } from '@par-noir/aggregator-domain';
 import { API_ENDPOINT } from '../config/api';
 import { resolveOwnerApiToken } from './ownerApiToken';
+import { getCloudAccessTokenFromSession, shareDeviceDriveFile } from '@par-noir/device-cloud-credentials';
 import { getOwnerApiPnIdentifier, ownerFetch } from './ownerApiService';
 import type { FileAggregatorService } from './aggregator/FileAggregatorService';
 
@@ -50,13 +51,18 @@ export async function publishPublicShareForDashboard(params: {
   }
 
   // ownerFetch attaches X-PN-Cloud-Access-Token for Drive ensure-public.
+  const pn = params.pnIdentifier || getOwnerApiPnIdentifier() || '';
+  const cloudToken = pn ? getCloudAccessTokenFromSession(pn) : null;
+  const publicUrl =
+    backend === 'google_drive' && cloudToken ? await shareDeviceDriveFile(cloudToken, objectId) : undefined;
+  const publicContentRef = publicUrl ? { backend, objectId, publicUrl } : undefined;
   const path = `/api/aggregator/public-content/${encodeURIComponent(objectId)}/ensure-public`;
   const res = await ownerFetch(
     ownerToken,
     'POST',
     path,
-    { backend },
-    { pnIdentifier: params.pnIdentifier || getOwnerApiPnIdentifier() || undefined }
+    { backend, ...(publicContentRef ? { publicContentRef } : {}) },
+    { pnIdentifier: pn || undefined }
   );
   if (!res.ok) {
     const text = await res.text().catch(() => res.statusText);
@@ -97,7 +103,7 @@ export async function revokePublishedPublicContent(params: {
     ownerToken,
     'POST',
     path,
-    { backend: params.backend || 'google_drive' },
+    { backend: params.backend || 'google_drive', revoked: true },
     { pnIdentifier: params.pnIdentifier || getOwnerApiPnIdentifier() || undefined }
   );
   if (!res.ok) {

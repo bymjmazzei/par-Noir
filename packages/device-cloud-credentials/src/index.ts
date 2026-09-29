@@ -176,5 +176,32 @@ export {
   ensureSessionDriveIndex,
 } from './deviceSocial.js';
 export type { DeviceConnection, DeviceInboxThread, DeviceMessage, DeviceGroupRow } from './deviceSocial.js';
+export {
+  listDeviceNotifications,
+  markDeviceNotificationsRead,
+  listDeviceFollowers,
+  listDeviceFollowing,
+  removeDeviceFollowing,
+  readDevicePreferences,
+  writeDevicePreferences,
+  listDeviceZkpPoints,
+  listDeviceMessageRequests,
+  markDeviceMessageRead,
+  deleteDeviceMessageRow,
+  listDeviceRecoveryRequests,
+  listDeviceCustodians,
+  findRecoveryWorkbookId,
+  ensureAttachmentsFolderId,
+  shareDeviceDriveFile,
+} from './deviceProduct.js';
+export type {
+  DeviceNotification,
+  DeviceFollower,
+  DeviceFollowing,
+  DeviceZkpPoint,
+  DeviceMessageRequest,
+  DeviceRecoveryRequest,
+  DeviceCustodian,
+} from './deviceProduct.js';
 export { deviceDropboxCall, deviceOneDriveCall } from './deviceProviderCall.js';
 export type { DeviceProviderInit } from './deviceProviderCall.js';

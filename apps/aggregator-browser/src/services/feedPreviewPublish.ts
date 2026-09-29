@@ -47,10 +47,24 @@ async function ensureOwnerCanonical(
     accountId,
     encrypt: false,
   });
+  const { getCloudAccessTokenFromSession, shareDeviceDriveFile } = await import(
+    '@par-noir/device-cloud-credentials'
+  );
+  const backend = uploaded.backend || 'google_drive';
+  const cloudToken = getCloudAccessTokenFromSession(pnIdentifier);
+  const publicUrl =
+    backend === 'google_drive' && cloudToken
+      ? await shareDeviceDriveFile(cloudToken, uploaded.id)
+      : '';
   const ensureRes = await ownerFetch(
     'POST',
     `/api/aggregator/public-content/${encodeURIComponent(uploaded.id)}/ensure-public`,
-    { backend: uploaded.backend || 'google_drive' },
+    {
+      backend,
+      ...(publicUrl
+        ? { publicContentRef: { backend, objectId: uploaded.id, publicUrl } }
+        : {}),
+    },
     { authToken: accessToken, pnIdentifier }
   );
   if (!ensureRes.ok) {

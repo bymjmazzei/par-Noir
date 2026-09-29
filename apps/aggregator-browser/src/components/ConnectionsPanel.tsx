@@ -21,7 +21,8 @@ import {
   reportConnectionAcceptError,
 } from '../services/messagingReconnect';
 import { requestHotDrain } from '../services/socialMailboxConsumer';
-import { ownerFetch, ownerGet } from '../services/ownerApiFetch';
+import { ownerFetch } from '../services/ownerApiFetch';
+import { sessionDriveFor } from '../services/sessionDrive';
 
 interface Follower {
   followerPnIdentifier: string;
@@ -83,21 +84,15 @@ export function ConnectionsPanel({ userPnIdentifier, onCreatorClick }: Connectio
         
         loadDisplayNames(Array.from(allUserPnIdentifiers));
       } else if (activeTab === 'followers') {
-        const response = await ownerGet(
-          `/api/connections/followers?userPnIdentifier=${userPnIdentifier}`
-        );
-        if (response.ok) {
-          const data = await response.json();
-          setFollowers(data.followers || []);
-        }
+        const { listDeviceFollowers } = await import('@par-noir/device-cloud-credentials');
+        const drive = await sessionDriveFor(userPnIdentifier);
+        const sheetId = drive.index.sheetIds.followers;
+        setFollowers(sheetId ? await listDeviceFollowers(drive.accessToken, sheetId) : []);
       } else if (activeTab === 'following') {
-        const response = await ownerGet(
-          `/api/connections/following?userPnIdentifier=${userPnIdentifier}`
-        );
-        if (response.ok) {
-          const data = await response.json();
-          setFollowing(data.following || []);
-        }
+        const { listDeviceFollowing } = await import('@par-noir/device-cloud-credentials');
+        const drive = await sessionDriveFor(userPnIdentifier);
+        const sheetId = drive.index.sheetIds.following;
+        setFollowing(sheetId ? await listDeviceFollowing(drive.accessToken, sheetId) : []);
       }
     } catch (err: any) {
       setError(err.message || 'Failed to load data');
@@ -254,10 +249,17 @@ export function ConnectionsPanel({ userPnIdentifier, onCreatorClick }: Connectio
 
   const handleUnfollow = async (targetType: 'user' | 'feed', targetPnIdentifier: string) => {
     try {
+      const { removeDeviceFollowing } = await import('@par-noir/device-cloud-credentials');
+      const drive = await sessionDriveFor(userPnIdentifier);
+      const sheetId = drive.index.sheetIds.following;
+      if (!sheetId) throw new Error('cloud_on_device');
+      await removeDeviceFollowing(drive.accessToken, sheetId, targetPnIdentifier);
       const response = await ownerFetch('POST', '/api/connections/unfollow', {
         userPnIdentifier,
+        peerPnIdentifier: targetPnIdentifier,
         targetType,
-        targetId: targetPnIdentifier // API still expects targetId in request body
+        targetId: targetPnIdentifier,
+        deviceCloudResult: { spreadsheetId: sheetId },
       });
 
       if (response.ok) {

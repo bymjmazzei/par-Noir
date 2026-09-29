@@ -129,10 +129,9 @@ async function fetchPredecessorCustodians(
   authToken: string,
   predecessorPn: string
 ): Promise<PredecessorCustodian[]> {
-  const res = await ownerGet(authToken, `/api/recovery/${encodeURIComponent(predecessorPn)}/custodians`);
-  if (!res.ok) return [];
-  const data = (await res.json()) as { custodians?: PredecessorCustodian[] };
-  return (data.custodians || []).filter(
+  const { fetchRecoveryCustodianSummary } = await import('./recoveryApiService');
+  const data = await fetchRecoveryCustodianSummary(predecessorPn, authToken);
+  return (data?.custodians || []).filter(
     (c) => c.custodianType !== 'vault' && c.status !== 'vault' && !c.custodianId?.startsWith('vault_share_')
   );
 }

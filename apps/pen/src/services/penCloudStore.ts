@@ -15,7 +15,7 @@ import {
   type PenPromoteLink,
   type PenSectionContent
 } from '@par-noir/pen-protocol';
-import { ownerFetch, ownerGet } from './penOwnerFetch';
+import { ownerFetch } from './penOwnerFetch';
 import type { LocalDocBundle, LocalDocSummary } from './penLocalStore';
 import {
   loadDocKey,
@@ -141,17 +141,19 @@ export async function publishDocCloud(params: {
 }
 
 export async function listLibraryCloud(userPnIdentifier: string): Promise<LocalDocSummary[]> {
-  const q = new URLSearchParams({ userPnIdentifier });
-  const res = await ownerGet(`/api/pen/library?${q}`, { pnIdentifier: userPnIdentifier });
-  if (res.status === 409) {
-    throw new Error('cloud_token_required');
-  }
-  if (!res.ok) {
-    const err = (await res.json().catch(() => ({}))) as { error?: string };
-    throw new Error(err.error || `library_list_failed_${res.status}`);
-  }
-  const data = (await res.json()) as { docs?: LocalDocSummary[] };
-  return Array.isArray(data.docs) ? data.docs : [];
+  const { penSessionDrive, readLibraryIndex } = await import('./penDriveLibrary');
+  const drive = await penSessionDrive(userPnIdentifier);
+  const rows = await readLibraryIndex(drive.accessToken, drive.index.pnFolderId);
+  return rows
+    .filter((row) => typeof row.docId === 'string' && row.docId)
+    .map((row) => ({
+      docId: String(row.docId),
+      title: String(row.title || 'Untitled'),
+      templateId: String(row.templateId || ''),
+      classId: typeof row.classId === 'string' ? row.classId : undefined,
+      updatedAt: String(row.updatedAt || ''),
+      folderId: (row.folderId as string | null | undefined) ?? null,
+    }));
 }
 
 /** Remove from library.index.json and trash the Drive doc folder. */
@@ -245,30 +247,26 @@ export async function fetchDocFromDrive(params: {
   userPnIdentifier: string;
   docId: string;
 }): Promise<CloudDocRaw> {
-  const res = await ownerGet(
-    `/api/pen/docs/${encodeURIComponent(params.docId)}?userPnIdentifier=${encodeURIComponent(params.userPnIdentifier)}`,
-    { pnIdentifier: params.userPnIdentifier }
-  );
-  if (!res.ok) {
+  const { penSessionDrive, readDocTree } = await import('./penDriveLibrary');
+  let drive: Awaited<ReturnType<typeof penSessionDrive>>;
+  try {
+    drive = await penSessionDrive(params.userPnIdentifier);
+  } catch {
     return { manifest: null, chain: null, currentSections: [], drafts: [] };
   }
-  const data = (await res.json()) as {
-    manifest?: PenDocManifest;
-    chain?: PenHistoryChain;
-    currentSections?: CloudSectionPayload[] | PenSectionContent[];
-    drafts?: Array<{
-      draft: PenDraftManifest;
-      sections: CloudSectionPayload[] | PenSectionContent[];
-    }>;
-  };
-  if (!data.manifest || !data.chain) {
+  const tree = await readDocTree({
+    accessToken: drive.accessToken,
+    pnFolderId: drive.index.pnFolderId,
+    docId: params.docId,
+  });
+  if (!tree?.manifest || !tree.chain) {
     return { manifest: null, chain: null, currentSections: [], drafts: [] };
   }
   return {
-    manifest: data.manifest,
-    chain: data.chain,
-    currentSections: data.currentSections || [],
-    drafts: data.drafts || []
+    manifest: tree.manifest as PenDocManifest,
+    chain: tree.chain as PenHistoryChain,
+    currentSections: tree.currentSections,
+    drafts: tree.drafts as CloudDocRaw['drafts'],
   };
 }
 

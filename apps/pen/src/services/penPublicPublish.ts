@@ -11,8 +11,10 @@ import {
   sealPublicShareFromBytes,
   type FeedPreviewObjectRef
 } from '@par-noir/aggregator-domain';
+import { getCloudAccessTokenFromSession, shareDeviceDriveFile } from '@par-noir/device-cloud-credentials';
 import { API_ENDPOINT } from '../config/api';
 import { ownerFetch } from './penOwnerFetch';
+import { loadPenSession } from './penSession';
 
 export type CloudRequest = (
   method: string,
@@ -89,10 +91,15 @@ async function uploadFeedVariant(params: {
     params.contentType,
     await blobToBase64(params.blob)
   );
+  const pn = loadPenSession()?.pnIdentifier;
+  const cloudToken = pn ? getCloudAccessTokenFromSession(pn) : null;
+  const publicUrl = cloudToken ? await shareDeviceDriveFile(cloudToken, ownerId) : '';
   const ensureRes = await params.request(
     'POST',
     `/api/aggregator/public-content/${encodeURIComponent(ownerId)}/ensure-public`,
-    { backend: 'google_drive' }
+    publicUrl
+      ? { backend: 'google_drive', publicContentRef: { backend: 'google_drive', objectId: ownerId, publicUrl } }
+      : { backend: 'google_drive' }
   );
   if (!ensureRes.ok) throw new Error(`ensure_public_canonical_failed_${ensureRes.status}`);
   const ensured = (await ensureRes.json()) as {
@@ -149,7 +156,10 @@ export async function publishPublicCloudFile(params: {
         'application/json',
         await blobToBase64(blob)
       );
-      return { objectId };
+      const pn = loadPenSession()?.pnIdentifier;
+      const cloudToken = pn ? getCloudAccessTokenFromSession(pn) : null;
+      const publicUrl = cloudToken ? await shareDeviceDriveFile(cloudToken, objectId) : undefined;
+      return { objectId, publicUrl };
     }
   });
   const fileId = materialized.envelopeObjectId;

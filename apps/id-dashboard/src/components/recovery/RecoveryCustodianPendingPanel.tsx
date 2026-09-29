@@ -41,12 +41,10 @@ export const RecoveryCustodianPendingPanel: React.FC<RecoveryCustodianPendingPan
       const all: Array<RemoteRecoveryRequest & { identityPublicKey: string }> = [];
       for (const cs of custodianships.filter((c) => c.canApprove && c.identityPublicKey)) {
         const pnId = cs.identityPublicKey!;
-        const res = await fetch(`${API_ENDPOINT}/api/recovery/${encodeURIComponent(pnId)}/requests`, {
-          headers: { Authorization: `Bearer ${authToken}` }
-        });
-        if (res.ok) {
-          const data = await res.json();
-          const pending = (data.requests || []).filter(
+        const { fetchRecoveryRequests } = await import('../../services/recoveryApiService');
+        const requests = await fetchRecoveryRequests(pnId, authToken);
+        if (requests.length) {
+          const pending = requests.filter(
             (r: RemoteRecoveryRequest) => r.status === 'pending' || r.status === 'ready'
           );
           for (const r of pending) {

@@ -3,7 +3,7 @@
  * Handles notifications for feed subscriptions, comments, likes, etc.
  */
 
-import { ownerFetch, ownerGet } from './ownerApiFetch';
+import { sessionDriveFor } from './sessionDrive';
 
 export interface Notification {
   notification_id: string;
@@ -59,112 +59,99 @@ export class NotificationService {
       type?: Notification['type'];
     }
   ): Promise<NotificationListResponse> {
-    const params = new URLSearchParams();
-    params.append('userPnIdentifier', userPnIdentifier);
-    if (options?.limit) params.append('limit', options.limit.toString());
-    if (options?.offset) params.append('offset', options.offset.toString());
-    if (options?.unreadOnly) params.append('unreadOnly', 'true');
-    if (options?.type) params.append('type', options.type);
-
-    const response = await ownerGet(`/api/notifications?${params.toString()}`, {
-      pnIdentifier: userPnIdentifier
-    });
-
-    if (!response.ok) {
-      const error = await response.json().catch(() => ({ error: 'Failed to get notifications' }));
-      throw new Error(error.error_description || error.error || 'Failed to get notifications');
-    }
-
-    return response.json();
+    const { listDeviceNotifications } = await import('@par-noir/device-cloud-credentials');
+    const drive = await sessionDriveFor(userPnIdentifier);
+    const sheetId = drive.index.sheetIds.notifications;
+    let notifications = sheetId
+      ? await listDeviceNotifications(drive.accessToken, sheetId)
+      : [];
+    if (options?.unreadOnly) notifications = notifications.filter((n) => !n.read);
+    if (options?.type) notifications = notifications.filter((n) => n.type === options.type);
+    const total = notifications.length;
+    const offset = options?.offset || 0;
+    const limit = options?.limit || notifications.length;
+    notifications = notifications.slice(offset, offset + limit);
+    return {
+      notifications: notifications as unknown as Notification[],
+      total,
+      limit,
+      offset,
+    };
   }
 
   /**
    * Get unread notification count
    */
   static async getUnreadCount(userPnIdentifier: string): Promise<number> {
-    const response = await ownerGet(
-      `/api/notifications/unread-count?userPnIdentifier=${encodeURIComponent(userPnIdentifier)}`,
-      { pnIdentifier: userPnIdentifier }
-    );
-
-    if (!response.ok) {
-      const error = await response.json().catch(() => ({ error: 'Failed to get unread count' }));
-      throw new Error(error.error_description || error.error || 'Failed to get unread count');
-    }
-
-    const data = await response.json();
-    return data.count || 0;
+    const listed = await NotificationService.getNotifications(userPnIdentifier, { unreadOnly: true });
+    return listed.total;
   }
 
   /**
    * Mark notification as read
    */
   static async markAsRead(notificationId: string, userPnIdentifier: string): Promise<void> {
-    const response = await ownerFetch(
-      'PUT',
-      `/api/notifications/${notificationId}/read`,
-      { userPnIdentifier },
-      { pnIdentifier: userPnIdentifier }
-    );
-
-    if (!response.ok) {
-      const error = await response.json().catch(() => ({ error: 'Failed to mark as read' }));
-      throw new Error(error.error_description || error.error || 'Failed to mark as read');
-    }
+    const { markDeviceNotificationsRead } = await import('@par-noir/device-cloud-credentials');
+    const drive = await sessionDriveFor(userPnIdentifier);
+    const sheetId = drive.index.sheetIds.notifications;
+    if (!sheetId) throw new Error('cloud_on_device');
+    await markDeviceNotificationsRead(drive.accessToken, sheetId, [notificationId]);
   }
 
   /**
    * Mark all notifications as read
    */
   static async markAllAsRead(userPnIdentifier: string): Promise<number> {
-    const response = await ownerFetch(
-      'PUT',
-      '/api/notifications/read-all',
-      { userPnIdentifier },
-      { pnIdentifier: userPnIdentifier }
-    );
-
-    if (!response.ok) {
-      const error = await response.json().catch(() => ({ error: 'Failed to mark all as read' }));
-      throw new Error(error.error_description || error.error || 'Failed to mark all as read');
-    }
-
-    const data = await response.json();
-    return data.markedRead || 0;
+    const { markDeviceNotificationsRead } = await import('@par-noir/device-cloud-credentials');
+    const drive = await sessionDriveFor(userPnIdentifier);
+    const sheetId = drive.index.sheetIds.notifications;
+    if (!sheetId) return 0;
+    return markDeviceNotificationsRead(drive.accessToken, sheetId, 'all');
   }
 
   /**
    * Delete notification
    */
   static async deleteNotification(notificationId: string, userPnIdentifier: string): Promise<void> {
-    const response = await ownerFetch(
-      'DELETE',
-      `/api/notifications/${notificationId}?userPnIdentifier=${encodeURIComponent(userPnIdentifier)}`,
-      undefined,
-      { pnIdentifier: userPnIdentifier }
+    const { readSheetValues, writeSheetValues } = await import('@par-noir/device-cloud-credentials');
+    const drive = await sessionDriveFor(userPnIdentifier);
+    const sheetId = drive.index.sheetIds.notifications;
+    if (!sheetId) return;
+    const rows = await readSheetValues(drive.accessToken, sheetId, 'Notifications!A2:H');
+    const next = rows.filter((row) => row[0] !== notificationId);
+    await writeSheetValues(
+      drive.accessToken,
+      sheetId,
+      'Notifications!A2:H',
+      next.length ? next : [['', '', '', '', '', '', '', '']]
     );
-
-    if (!response.ok) {
-      const error = await response.json().catch(() => ({ error: 'Failed to delete notification' }));
-      throw new Error(error.error_description || error.error || 'Failed to delete notification');
-    }
   }
 
   /**
    * Get notification preferences
    */
   static async getPreferences(userPnIdentifier: string): Promise<NotificationPreferences> {
-    const response = await ownerGet(
-      `/api/notifications/preferences?userPnIdentifier=${encodeURIComponent(userPnIdentifier)}`,
-      { pnIdentifier: userPnIdentifier }
-    );
-
-    if (!response.ok) {
-      const error = await response.json().catch(() => ({ error: 'Failed to get preferences' }));
-      throw new Error(error.error_description || error.error || 'Failed to get preferences');
+    const defaults: NotificationPreferences = {
+      user_did: userPnIdentifier,
+      feed_new_post: true,
+      feed_new_comment: true,
+      feed_new_like: true,
+      feed_new_subscriber: true,
+      comment_reply: true,
+      mention: true,
+    };
+    try {
+      const { readSheetValues } = await import('@par-noir/device-cloud-credentials');
+      const drive = await sessionDriveFor(userPnIdentifier);
+      const sheetId = drive.index.sheetIds.preferences;
+      if (!sheetId) return defaults;
+      const rows = await readSheetValues(drive.accessToken, sheetId, 'Current!A2:B');
+      const row = rows.find((r) => r[0] === 'notificationPreferences');
+      if (!row?.[1]) return defaults;
+      return { ...defaults, ...JSON.parse(row[1]) };
+    } catch {
+      return defaults;
     }
-
-    return response.json();
   }
 
   /**
@@ -174,21 +161,16 @@ export class NotificationService {
     userPnIdentifier: string,
     preferences: Partial<Omit<NotificationPreferences, 'user_did'>>
   ): Promise<NotificationPreferences> {
-    const response = await ownerFetch(
-      'PUT',
-      '/api/notifications/preferences',
-      {
-        userPnIdentifier,
-        ...preferences
-      },
-      { pnIdentifier: userPnIdentifier }
-    );
-
-    if (!response.ok) {
-      const error = await response.json().catch(() => ({ error: 'Failed to update preferences' }));
-      throw new Error(error.error_description || error.error || 'Failed to update preferences');
-    }
-
-    return response.json();
+    const current = await NotificationService.getPreferences(userPnIdentifier);
+    const next = { ...current, ...preferences, user_did: userPnIdentifier };
+    const { readSheetValues, writeSheetValues } = await import('@par-noir/device-cloud-credentials');
+    const drive = await sessionDriveFor(userPnIdentifier);
+    const sheetId = drive.index.sheetIds.preferences;
+    if (!sheetId) return next;
+    const rows = await readSheetValues(drive.accessToken, sheetId, 'Current!A2:B');
+    const without = rows.filter((r) => r[0] && r[0] !== 'notificationPreferences');
+    without.push(['notificationPreferences', JSON.stringify(next)]);
+    await writeSheetValues(drive.accessToken, sheetId, 'Current!A2:B', without);
+    return next;
   }
 }

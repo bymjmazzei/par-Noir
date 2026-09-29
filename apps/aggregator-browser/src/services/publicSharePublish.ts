@@ -9,6 +9,7 @@ import {
   type PublicShareGenerationResult,
 } from '@par-noir/aggregator-domain';
 import { API_ENDPOINT } from '../config/api';
+import { getCloudAccessTokenFromSession, shareDeviceDriveFile } from '@par-noir/device-cloud-credentials';
 import { ownerFetch } from './ownerApiFetch';
 import { uploadStorageFile } from './storageApiClient';
 import { PNOAuthService } from './pnOAuthService';
@@ -58,7 +59,12 @@ export async function publishPublicShare(params: {
         accountId: params.accountId,
         encrypt: false,
       });
-      return { objectId: id };
+      const cloudToken = getCloudAccessTokenFromSession(pnIdentifier);
+      const publicUrl =
+        backend === 'google_drive' && cloudToken
+          ? await shareDeviceDriveFile(cloudToken, id)
+          : undefined;
+      return { objectId: id, publicUrl };
     },
   });
 

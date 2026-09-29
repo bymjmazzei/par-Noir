@@ -4,7 +4,13 @@ import {
   encryptOwnerVaultShare,
   serializeOwnerVaultShare,
 } from '@par-noir/recovery-crypto';
+import {
+  findRecoveryWorkbookId,
+  listDeviceRecoveryRequests,
+  readSheetValues,
+} from '@par-noir/device-cloud-credentials';
 import { ownerFetch, ownerGet } from './ownerApiService';
+import { sessionDriveFor } from './sessionDrive';
 
 export interface RecoveryCustodianApiRow {
   custodianId: string;
@@ -97,14 +103,15 @@ export async function fetchRecoveryRequests(
   claimantName: string;
   createdAt: string;
 }>> {
-  const headers: Record<string, string> = {};
-  if (authToken) headers.Authorization = `Bearer ${authToken}`;
-  const res = await fetch(`${API_ENDPOINT}/api/recovery/${encodeURIComponent(userPnIdentifier)}/requests`, {
-    headers,
-  });
-  if (!res.ok) return [];
-  const data = await res.json();
-  return data.requests || [];
+  if (!authToken) return [];
+  try {
+    const drive = await sessionDriveFor(userPnIdentifier, authToken);
+    const workbook = await findRecoveryWorkbookId(drive.accessToken, drive.index.metadataFolderId);
+    if (!workbook) return [];
+    return listDeviceRecoveryRequests(drive.accessToken, workbook);
+  } catch {
+    return [];
+  }
 }
 
 export async function fetchRecoveryRequest(
@@ -120,15 +127,8 @@ export async function fetchRecoveryRequest(
   claimantName: string;
   createdAt: string;
 } | null> {
-  const headers: Record<string, string> = {};
-  if (authToken) headers.Authorization = `Bearer ${authToken}`;
-  const res = await fetch(
-    `${API_ENDPOINT}/api/recovery/${encodeURIComponent(userPnIdentifier)}/requests/${encodeURIComponent(requestId)}`,
-    { headers }
-  );
-  if (!res.ok) return null;
-  const data = await res.json();
-  return data.request || null;
+  const rows = await fetchRecoveryRequests(userPnIdentifier, authToken);
+  return rows.find((row) => row.requestId === requestId) || null;
 }
 
 export async function fetchVaultShares(
@@ -141,17 +141,20 @@ export async function fetchVaultShares(
   threshold: number;
   includesUnrevokableShare: boolean;
 }> {
-  const headers: Record<string, string> = {};
-  if (authToken) headers.Authorization = `Bearer ${authToken}`;
-  const res = await fetch(
-    `${API_ENDPOINT}/api/recovery/${encodeURIComponent(userPnIdentifier)}/requests/${encodeURIComponent(requestId)}/vault-shares`,
-    { headers }
-  );
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error((err as { error?: string }).error || 'Failed to fetch vault shares');
+  const request = await fetchRecoveryRequest(userPnIdentifier, authToken, requestId);
+  let vaultShares: Array<{ custodianId: string; shareIndex: number; encryptedShare: string }> = [];
+  try {
+    const parsed = request?.sharesJson ? JSON.parse(request.sharesJson) : [];
+    if (Array.isArray(parsed)) vaultShares = parsed;
+  } catch {
+    vaultShares = [];
   }
-  return res.json();
+  return {
+    vaultShares,
+    approvalCount: 0,
+    threshold: request?.threshold || 0,
+    includesUnrevokableShare: false,
+  };
 }
 
 export async function reconcileRecoveryVault(
@@ -195,10 +198,45 @@ export async function fetchRecoveryCustodianSummary(
   userPnIdentifier: string,
   authToken: string
 ): Promise<RecoveryCustodianSummary | null> {
-  const path = `/api/recovery/${encodeURIComponent(userPnIdentifier)}/custodians`;
-  const res = await ownerGet(authToken, path, { pnIdentifier: userPnIdentifier });
-  if (!res.ok) return null;
-  return res.json();
+  try {
+    const drive = await sessionDriveFor(userPnIdentifier, authToken);
+    const workbook = await findRecoveryWorkbookId(drive.accessToken, drive.index.metadataFolderId);
+    if (!workbook) {
+      return {
+        custodians: [],
+        pending: [],
+        counts: { accepted: 0, acceptedUnrevokable: 0, invited: 0 },
+      };
+    }
+    const rows = await readSheetValues(drive.accessToken, workbook, 'Custodians!A2:K');
+    const custodians: RecoveryCustodianApiRow[] = rows
+      .filter((row) => row[0])
+      .map((row) => ({
+        custodianId: row[0],
+        name: row[1] || '',
+        custodianType: row[2] || '',
+        shareIndex: Number(row[4] || 0),
+        custodianshipCredential: row[5] || '',
+        status: row[6] || 'invited',
+        createdAt: row[7] || '',
+        unrevokable: row[8] === 'true' || row[8] === 'TRUE',
+        custodianPublicKey: row[9] || undefined,
+        custodianPnIdentifier: row[10] || undefined,
+      }));
+    const accepted = custodians.filter((c) => c.status === 'accepted').length;
+    const acceptedUnrevokable = custodians.filter((c) => c.status === 'accepted' && c.unrevokable).length;
+    const invited = custodians.filter((c) => c.status === 'invited').length;
+    const pendingRows = await readSheetValues(drive.accessToken, workbook, 'PendingShares!A2:C');
+    return {
+      custodians,
+      pending: pendingRows
+        .filter((row) => row[0])
+        .map((row) => ({ shareIndex: Number(row[0] || 0), createdAt: row[2] || '' })),
+      counts: { accepted, acceptedUnrevokable, invited },
+    };
+  } catch {
+    return null;
+  }
 }
 
 export async function assignRecoveryCustodian(

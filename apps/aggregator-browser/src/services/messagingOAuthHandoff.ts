@@ -54,6 +54,18 @@ export function applyMessagingHandoffFromUnknown(raw: unknown): boolean {
   return applyMessagingOAuthHandoff(payload);
 }
 
+/**
+ * Unlock is ready when the popup payload (or the storage stash) already has
+ * messaging and signing keys. Apply that payload into memory before the session is saved.
+ */
+export function browseHandoffReady(pending?: { messagingHandoff?: unknown }): boolean {
+  if (pending?.messagingHandoff) {
+    applyMessagingHandoffFromUnknown(pending.messagingHandoff);
+  }
+  applyPendingMessagingOAuthHandoffFromStorage();
+  return isBrowseUnlockCryptoReady();
+}
+
 /** Apply every known messaging handoff source (callback payload + localStorage stash). */
 export function applyAllMessagingHandoffSources(messagingHandoff?: unknown): void {
   if (messagingHandoff) {

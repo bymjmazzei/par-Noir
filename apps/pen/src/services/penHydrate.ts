@@ -11,7 +11,8 @@ import {
   openSocialEnvelope,
   unwrapChatKeyForOwner
 } from '@par-noir/dm-crypto';
-import { ownerGet } from './penOwnerFetch';
+import { listDeviceGroups } from '@par-noir/device-cloud-credentials';
+import { penSessionDrive } from './penDriveLibrary';
 
 /** Try to recover docKey from group membership (owner wrap or sealed peer invite). */
 export async function ensureDocKeyFromGroup(params: {
@@ -24,22 +25,11 @@ export async function ensureDocKeyFromGroup(params: {
   if (!params.session.mlKemSecretKey) return null;
 
   try {
-    const q = new URLSearchParams({
-      userPnIdentifier: params.session.pnIdentifier
-    });
-    const res = await ownerGet(`/api/groups?${q}`, {
-      pnIdentifier: params.session.pnIdentifier
-    });
-    if (!res.ok) return null;
-    const data = (await res.json().catch(() => ({}))) as {
-      groups?: Array<{
-        groupId?: string;
-        wrappedChatKey?: string;
-        ownerPnIdentifier?: string;
-        memberPnIdentifier?: string;
-      }>;
-    };
-    const row = (data.groups || []).find((g) => g.groupId === params.groupId);
+    const drive = await penSessionDrive(params.session.pnIdentifier);
+    const sheetId = drive.index.sheetIds.groups;
+    if (!sheetId) return null;
+    const groups = await listDeviceGroups(drive.accessToken, sheetId);
+    const row = groups.find((g) => g.groupId === params.groupId);
     const wrapped = row?.wrappedChatKey || '';
     if (!wrapped) return null;
 

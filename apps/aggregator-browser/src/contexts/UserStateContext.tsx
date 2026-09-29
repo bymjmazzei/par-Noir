@@ -235,15 +235,12 @@ export function UserStateProvider({ children }: { children: ReactNode }) {
         }
         const pn = userState.pnIdentifier;
         if (!pn) return;
-        const response = await ownerGet(`/api/users/${pn}/preferences`, {
-          authToken: session.accessToken,
-          pnIdentifier: pn
-        });
+        const { loadDevicePreferenceDoc } = await import('../services/devicePreferences');
+        const preferences = await loadDevicePreferenceDoc(pn);
         if (cancelled) return;
 
-        if (response.ok) {
-          const data = await response.json();
-          if (data.preferences) {
+        if (preferences) {
+          const data = { preferences: preferences as Record<string, any> };
             setUserState(prev => {
               const localBlockedCategories = prev.preferences.blockedCategories || [];
               const apiBlockedCategories = data.preferences.blockedCategories;
@@ -276,9 +273,6 @@ export function UserStateProvider({ children }: { children: ReactNode }) {
                 preferences: updatedPreferences
               };
             });
-          }
-        } else if (response.status === 404 || response.status === 409) {
-          // No prefs file yet, or cloud token still settling — keep local state
         }
       } catch (error) {
         console.warn('Failed to load preferences from Google Drive:', error);
@@ -617,11 +611,8 @@ export function UserStateProvider({ children }: { children: ReactNode }) {
           return;
         }
 
-        const response = await ownerFetch(
-          'PUT',
-          `/api/users/${userState.pnIdentifier}/preferences`,
-          { hasAgeZKP, isOver18 }
-        );
+        const { putDevicePreferences } = await import('../services/devicePreferences');
+        const response = await putDevicePreferences(userState.pnIdentifier, { hasAgeZKP, isOver18 });
 
         if (response.ok) {
           console.log('✅ Saved age ZKP status to Google Drive:', { hasAgeZKP, isOver18 });
@@ -662,11 +653,8 @@ export function UserStateProvider({ children }: { children: ReactNode }) {
           return;
         }
 
-        const response = await ownerFetch(
-          'PUT',
-          `/api/users/${userState.pnIdentifier}/preferences`,
-          { showNSFW: show }
-        );
+        const { putDevicePreferences } = await import('../services/devicePreferences');
+        const response = await putDevicePreferences(userState.pnIdentifier, { showNSFW: show });
 
         if (response.ok) {
           console.log('✅ Saved showNSFW preference to Google Drive:', show);
@@ -1025,11 +1013,10 @@ export function UserStateProvider({ children }: { children: ReactNode }) {
           return;
         }
 
-        const response = await ownerFetch(
-          'PUT',
-          `/api/users/${userState.pnIdentifier}/preferences`,
-          { curatedFeedPreferences: preferences }
-        );
+        const { putDevicePreferences } = await import('../services/devicePreferences');
+        const response = await putDevicePreferences(userState.pnIdentifier, {
+          curatedFeedPreferences: preferences,
+        });
 
         if (response.ok) {
           console.log('Successfully saved curated feed preferences to Google Drive');
@@ -1064,11 +1051,10 @@ export function UserStateProvider({ children }: { children: ReactNode }) {
           return;
         }
 
-        const response = await ownerFetch(
-          'PUT',
-          `/api/users/${userState.pnIdentifier}/preferences`,
-          { mePageSortOrder: sortOrder }
-        );
+        const { putDevicePreferences } = await import('../services/devicePreferences');
+        const response = await putDevicePreferences(userState.pnIdentifier, {
+          mePageSortOrder: sortOrder,
+        });
 
         if (response.ok) {
           console.log('Successfully saved me page sort order to Google Drive');

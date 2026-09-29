@@ -59,6 +59,7 @@ import { ensureMailboxCapableDevice, invalidateDeviceRegistryCache } from '../se
 import type { Feed, MetadataFilters } from '../types/aggregator';
 import {  applyAllMessagingHandoffSources,
   applyMessagingOAuthHandoff,
+  browseHandoffReady,
   MESSAGING_HANDOFF_INCOMPLETE,
   messagingHandoffIncompleteMessage,
   restoreMessagingAfterOAuth,
@@ -289,20 +290,22 @@ export function useAuthAndSession({
           setPendingGrant(PN_CLIENT_ID, grantedDataPoints ?? []);
         }
 
-        if (!isBrowseUnlockCryptoReady()) {
+        if (!browseHandoffReady({ messagingHandoff: data.messagingHandoff })) {
           await waitForAndApplyMessagingHandoff(3_000);
           applyAllMessagingHandoffSources(data.messagingHandoff);
         }
 
         pushPnOAuthDebug('run_oauth_callback_messaging_gate', {
-          messagingReady: isBrowseUnlockCryptoReady(),
+          messagingReady: browseHandoffReady({ messagingHandoff: data.messagingHandoff }),
           kemReady: isDmIdentityReady(),
         });
 
-        if (!isBrowseUnlockCryptoReady()) {
-          setLocked();
-          clearDmIdentity();
-          PNOAuthService.clearSession();
+        if (!browseHandoffReady({ messagingHandoff: data.messagingHandoff })) {
+          if (!data.messagingHandoff) {
+            setLocked();
+            clearDmIdentity();
+            PNOAuthService.clearSession();
+          }
           showErrorToast(messagingHandoffIncompleteMessage());
           throw new Error(MESSAGING_HANDOFF_INCOMPLETE);
         }
@@ -790,7 +793,7 @@ export function useAuthAndSession({
           preferApp: true,
           completeViaParentNavigation: false,
           requireMessagingHandoff: true,
-          isMessagingReady: () => isBrowseUnlockCryptoReady(),
+          isMessagingReady: (pending) => browseHandoffReady(pending),
           messagingHandoffTimeoutMs: 15_000,
           allowedMessageOrigins: (() => {
             try {
@@ -951,7 +954,7 @@ export function useAuthAndSession({
           if (recovered) {
             pushPnOAuthDebug('popup_closed_recovered', {});
             const session = PNOAuthService.loadSession()!;
-            if (!isBrowseUnlockCryptoReady()) {
+            if (!browseHandoffReady()) {
               setLocked();
               clearDmIdentity();
               PNOAuthService.clearSession();

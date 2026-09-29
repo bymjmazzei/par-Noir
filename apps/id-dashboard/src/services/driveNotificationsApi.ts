@@ -1,4 +1,5 @@
-import { ownerFetch, ownerGet } from './ownerApiService';
+import { listDeviceNotifications, markDeviceNotificationsRead } from '@par-noir/device-cloud-credentials';
+import { sessionDriveFor } from './sessionDrive';
 
 export interface DriveNotification {
   notification_id: string;
@@ -16,24 +17,16 @@ export async function fetchDriveNotifications(
   authToken: string,
   options?: { limit?: number; unreadOnly?: boolean; type?: string }
 ): Promise<{ notifications: DriveNotification[]; total: number }> {
-  const params = new URLSearchParams();
-  params.set('userPnIdentifier', userPnIdentifier);
-  if (options?.limit) params.set('limit', String(options.limit));
-  if (options?.unreadOnly) params.set('unreadOnly', 'true');
-  if (options?.type) params.set('type', options.type);
-
-  const res = await ownerGet(authToken, `/api/notifications?${params.toString()}`, {
-    pnIdentifier: userPnIdentifier
-  });
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error(
-      (err as { error_description?: string; error?: string }).error_description ||
-        (err as { error?: string }).error ||
-        'Failed to fetch notifications'
-    );
-  }
-  return res.json();
+  const drive = await sessionDriveFor(userPnIdentifier, authToken);
+  const sheetId = drive.index.sheetIds.notifications;
+  let notifications: DriveNotification[] = sheetId
+    ? await listDeviceNotifications(drive.accessToken, sheetId)
+    : [];
+  if (options?.unreadOnly) notifications = notifications.filter((n) => !n.read);
+  if (options?.type) notifications = notifications.filter((n) => n.type === options.type);
+  const total = notifications.length;
+  if (options?.limit) notifications = notifications.slice(0, options.limit);
+  return { notifications, total };
 }
 
 export async function markDriveNotificationRead(
@@ -41,19 +34,8 @@ export async function markDriveNotificationRead(
   userPnIdentifier: string,
   authToken: string
 ): Promise<void> {
-  const res = await ownerFetch(
-    authToken,
-    'PUT',
-    `/api/notifications/${encodeURIComponent(notificationId)}/read`,
-    { userPnIdentifier },
-    { pnIdentifier: userPnIdentifier }
-  );
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error(
-      (err as { error_description?: string; error?: string }).error_description ||
-        (err as { error?: string }).error ||
-        'Failed to mark notification read'
-    );
-  }
+  const drive = await sessionDriveFor(userPnIdentifier, authToken);
+  const sheetId = drive.index.sheetIds.notifications;
+  if (!sheetId) throw new Error('cloud_on_device');
+  await markDeviceNotificationsRead(drive.accessToken, sheetId, [notificationId]);
 }

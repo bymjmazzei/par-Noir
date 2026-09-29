@@ -15,7 +15,6 @@ import {
 import { isDmIdentityReady, getDmIdentity } from './dmIdentitySession';
 import { encryptMessageRequest, decryptMessageRequest } from '@par-noir/dm-crypto';
 import { messageFetch } from './messageAuthFetch';
-import { setMessagingRateLimited } from './messagingRateLimitState';
 import {
   createOutboxRecord,
   messageSendFanout,
@@ -123,19 +122,6 @@ export class DriveRateLimitedError extends Error {
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-async function parseDriveRateLimitedResponse(response: Response): Promise<DriveRateLimitedError | null> {
-  if (response.status !== 503) return null;
-  try {
-    const body = await response.json();
-    if (body?.error === 'drive_rate_limited') {
-      return new DriveRateLimitedError(body.message);
-    }
-  } catch {
-    /* non-JSON */
-  }
-  return null;
 }
 
 /** Tell MessageList (and other listeners) to reload inbox after connection accept, etc. */
@@ -313,15 +299,17 @@ export interface MessageThread {
  */
 export async function getMessages(userPnIdentifier: string): Promise<Message[]> {
   try {
-    const path = `/api/messages/inbox?userPnIdentifier=${encodeURIComponent(userPnIdentifier)}`;
-    const response = await messageFetch(path, { method: 'GET' });
-
-    if (!response.ok) {
-      throw new Error('Failed to load messages');
+    const threads = await getMessageThreads(userPnIdentifier);
+    const out: Message[] = [];
+    for (const thread of threads) {
+      if (!thread.spreadsheetId) continue;
+      const { listDeviceMessages } = await import('@par-noir/device-cloud-credentials');
+      const { sessionDriveFor } = await import('./sessionDrive');
+      const drive = await sessionDriveFor(userPnIdentifier);
+      const rows = await listDeviceMessages(drive.accessToken, thread.spreadsheetId);
+      out.push(...(rows as Message[]));
     }
-
-    const result = await response.json();
-    return result.messages || [];
+    return out;
   } catch (error) {
     console.error('Failed to get messages:', error);
     return [];
@@ -522,23 +510,7 @@ export async function getConversationMessages(
   if (inflight) return inflight;
 
   const work = (async (): Promise<{ messages: Message[]; total: number }> => {
-    const hasCached = !!(
-      connectionId &&
-      spreadsheetId &&
-      connectionId.trim() !== '' &&
-      spreadsheetId.trim() !== ''
-    );
-
-    const body = {
-      userPnIdentifier,
-      participantPnIdentifier,
-      channelClientId,
-      ...(limit != null && { limit }),
-      ...(offset != null && { offset }),
-      ...(hasCached && { connectionId, spreadsheetId })
-    };
-
-    const sheet = spreadsheetId || body.spreadsheetId;
+    const sheet = spreadsheetId;
     if (typeof sheet === 'string' && sheet) {
       const { listDeviceMessages } = await import('@par-noir/device-cloud-credentials');
       const { sessionDriveFor } = await import('./sessionDrive');
@@ -546,46 +518,16 @@ export async function getConversationMessages(
       const messages = await listDeviceMessages(drive.accessToken, sheet);
       return { messages: messages as Message[], total: messages.length };
     }
-    const response = await messageFetch('/api/messages/conversation', {
-      method: 'POST',
-      bodyObject: body,
-    });
-
-    const rateLimited = await parseDriveRateLimitedResponse(response);
-    if (rateLimited) {
-      setMessagingRateLimited();
-      throw rateLimited;
-    }
-
-    if (!response.ok) {
-      throw new Error('Failed to load conversation messages');
-    }
-
-    const result = await response.json();
-    let raw = result.messages || [];
-
-    // Stale client spreadsheetId → empty sheet. Retry without cached ids (server re-resolves).
-    if (
-      raw.length === 0 &&
-      hasCached &&
-      (offset == null || offset === 0)
-    ) {
-      const retry = await messageFetch('/api/messages/conversation', {
-        method: 'POST',
-        bodyObject: {
-          userPnIdentifier,
-          participantPnIdentifier,
-          channelClientId,
-          ...(limit != null && { limit }),
-          ...(offset != null && { offset })
-        },
-      });
-      if (retry.ok) {
-        const retryJson = await retry.json().catch(() => null);
-        if (Array.isArray(retryJson?.messages)) {
-          raw = retryJson.messages;
-        }
-      }
+    const threads = await getMessageThreads(userPnIdentifier);
+    const match = threads.find(
+      (thread) => thread.participantPnIdentifier === participantPnIdentifier
+    );
+    let raw: Message[] = [];
+    if (match?.spreadsheetId) {
+      const { listDeviceMessages } = await import('@par-noir/device-cloud-credentials');
+      const { sessionDriveFor } = await import('./sessionDrive');
+      const drive = await sessionDriveFor(userPnIdentifier);
+      raw = (await listDeviceMessages(drive.accessToken, match.spreadsheetId)) as Message[];
     }
 
     const recovery = await resolveRecoveryForDecrypt(
@@ -653,7 +595,7 @@ export async function getConversationMessages(
       })
     );
 
-    return { messages, total: result.total || 0 };
+    return { messages, total: messages.length };
   })();
 
   conversationMessagesInflight.set(inflightKey, work);
@@ -878,23 +820,33 @@ export async function sendMessageRequest(
     const recipientKey = await fetchRecipientMlKemPublicKey(toPnIdentifier);
     const { encryptedContent, kemCiphertext } = await encryptMessageRequest(content, recipientKey);
 
-    const response = await messageFetch('/api/messages/requests', {
-      method: 'POST',
-      bodyObject: {
-        fromPnIdentifier,
-        toPnIdentifier,
-        encryptedContent,
-        kemCiphertext,
-        cryptoVersion: 2
-      },
-    });
-
-    if (!response.ok) {
-      throw new Error('Failed to send message request');
-    }
-
-    const result = await response.json();
-    return { ...result.request, content };
+    const { appendSheetValues } = await import('@par-noir/device-cloud-credentials');
+    const { sessionDriveFor } = await import('./sessionDrive');
+    const drive = await sessionDriveFor(fromPnIdentifier);
+    const sheetId = drive.index.sheetIds['message_requests'];
+    if (!sheetId) throw new Error('cloud_on_device');
+    const requestId = `req_${Date.now().toString(36)}`;
+    const timestamp = new Date().toISOString();
+    await appendSheetValues(drive.accessToken, sheetId, 'Requests!A:H', [[
+      requestId,
+      fromPnIdentifier,
+      toPnIdentifier,
+      encryptedContent,
+      'pending',
+      timestamp,
+      kemCiphertext,
+      '2',
+    ]]);
+    return {
+      requestId,
+      fromPnIdentifier,
+      toPnIdentifier,
+      content,
+      status: 'pending',
+      timestamp,
+      kemCiphertext,
+      cryptoVersion: 2,
+    };
   } catch (error) {
     console.error('Failed to send message request:', error);
     throw error;
@@ -906,17 +858,13 @@ export async function sendMessageRequest(
  */
 export async function getMessageRequests(userPnIdentifier: string): Promise<MessageRequest[]> {
   try {
-    const response = await messageFetch(
-      `/api/messages/requests?userPnIdentifier=${encodeURIComponent(userPnIdentifier)}`,
-      { method: 'GET' }
-    );
-
-    if (!response.ok) {
-      throw new Error('Failed to load message requests');
-    }
-
-    const result = await response.json();
-    const rows: MessageRequest[] = result.requests || [];
+    const { listDeviceMessageRequests } = await import('@par-noir/device-cloud-credentials');
+    const { sessionDriveFor } = await import('./sessionDrive');
+    const drive = await sessionDriveFor(userPnIdentifier);
+    const sheetId = drive.index.sheetIds['message_requests'];
+    const rows: MessageRequest[] = sheetId
+      ? ((await listDeviceMessageRequests(drive.accessToken, sheetId)) as MessageRequest[])
+      : [];
     if (!isDmIdentityReady()) {
       return rows.map((r) => ({ ...r, content: r.cryptoVersion === 2 ? '[Encrypted message request]' : r.content }));
     }
@@ -949,14 +897,19 @@ export async function respondToRequest(
   accept: boolean
 ): Promise<void> {
   try {
-    const response = await messageFetch(`/api/messages/requests/${requestId}/respond`, {
-      method: 'POST',
-      bodyObject: { userPnIdentifier, accept },
+    const { readSheetValues, writeSheetValues } = await import('@par-noir/device-cloud-credentials');
+    const { sessionDriveFor } = await import('./sessionDrive');
+    const drive = await sessionDriveFor(userPnIdentifier);
+    const sheetId = drive.index.sheetIds['message_requests'];
+    if (!sheetId) throw new Error('cloud_on_device');
+    const rows = await readSheetValues(drive.accessToken, sheetId, 'Requests!A2:H');
+    const next = rows.map((row) => {
+      if (row[0] !== requestId) return row;
+      const copy = [...row];
+      copy[4] = accept ? 'accepted' : 'declined';
+      return copy;
     });
-
-    if (!response.ok) {
-      throw new Error(`Failed to ${accept ? 'accept' : 'decline'} request`);
-    }
+    await writeSheetValues(drive.accessToken, sheetId, 'Requests!A2:H', next);
   } catch (error) {
     console.error('Failed to respond to request:', error);
     throw error;
@@ -976,17 +929,15 @@ export async function markAsRead(
     return;
   }
   try {
-    const response = await messageFetch(`/api/messages/${messageId}/read`, {
-      method: 'POST',
-      bodyObject: { userPnIdentifier, participantPnIdentifier, spreadsheetId },
-    });
-
-    if (response.status === 404) {
-      return;
-    }
-    if (!response.ok) {
-      throw new Error('Failed to mark message as read');
-    }
+    const { markDeviceMessageRead } = await import('@par-noir/device-cloud-credentials');
+    const { sessionDriveFor } = await import('./sessionDrive');
+    const drive = await sessionDriveFor(userPnIdentifier);
+    const sheet = spreadsheetId
+      || (await getMessageThreads(userPnIdentifier)).find(
+        (thread) => thread.participantPnIdentifier === participantPnIdentifier
+      )?.spreadsheetId;
+    if (!sheet) return;
+    await markDeviceMessageRead(drive.accessToken, sheet, messageId);
   } catch (error) {
     console.error('Failed to mark as read:', error);
     throw error;
@@ -998,13 +949,13 @@ export async function markAsRead(
  */
 export async function deleteMessage(messageId: string, userPnIdentifier: string): Promise<void> {
   try {
-    const response = await messageFetch(`/api/messages/${messageId}`, {
-      method: 'DELETE',
-      bodyObject: { userPnIdentifier },
-    });
-
-    if (!response.ok) {
-      throw new Error('Failed to delete message');
+    const { deleteDeviceMessageRow } = await import('@par-noir/device-cloud-credentials');
+    const { sessionDriveFor } = await import('./sessionDrive');
+    const drive = await sessionDriveFor(userPnIdentifier);
+    const threads = await getMessageThreads(userPnIdentifier);
+    for (const thread of threads) {
+      if (!thread.spreadsheetId) continue;
+      await deleteDeviceMessageRow(drive.accessToken, thread.spreadsheetId, messageId);
     }
   } catch (error) {
     console.error('Failed to delete message:', error);
@@ -1019,14 +970,18 @@ export async function deleteConversation(
   userPnIdentifier: string,
   participantPnIdentifier: string
 ): Promise<void> {
-  const response = await messageFetch(
-    `/api/messages/conversation/${participantPnIdentifier}?userPnIdentifier=${encodeURIComponent(userPnIdentifier)}`,
-    { method: 'DELETE' }
+  const { readSheetValues, writeSheetValues } = await import('@par-noir/device-cloud-credentials');
+  const { sessionDriveFor } = await import('./sessionDrive');
+  const drive = await sessionDriveFor(userPnIdentifier);
+  const inboxId = drive.index.inboxSheetId;
+  if (!inboxId) throw new Error('cloud_on_device');
+  const rows = await readSheetValues(drive.accessToken, inboxId, 'Inbox!A2:I');
+  const next = rows.filter((row) => row[0] !== participantPnIdentifier);
+  await writeSheetValues(
+    drive.accessToken,
+    inboxId,
+    'Inbox!A2:I',
+    next.length ? next : [['', '', '', '', '', '', '', '', '']]
   );
-
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ error: 'Failed to delete conversation' }));
-    throw new Error(error.error || 'Failed to delete conversation');
-  }
 }
 

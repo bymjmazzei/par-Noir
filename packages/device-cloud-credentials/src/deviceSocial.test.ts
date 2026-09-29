@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
-import { appendPublicIndexRow, listDeviceConnections, listDeviceInbox, upsertDeviceConnection } from './deviceSocial.js';
+import { appendPublicIndexRow, listDeviceConnections, listDeviceGroups, listDeviceInbox, upsertDeviceConnection } from './deviceSocial.js';
+import { listDeviceNotifications } from './deviceProduct.js';
 
 describe('device connection sheet', () => {
   it('writes an accept onto the connections sheet and does not call the API', async () => {
@@ -54,6 +55,45 @@ describe('device connection sheet', () => {
     const threads = await listDeviceInbox('google-token', 'sheet-inbox', fetchImpl as unknown as typeof fetch);
     expect(threads[0]?.spreadsheetId).toBe('sheet-thread');
     expect(fetchImpl).toHaveBeenCalledOnce();
+  });
+
+  it('reads the group list from the layout spreadsheet and never calls the API', async () => {
+    const fetchImpl = vi.fn(async (url: string, init?: RequestInit) => {
+      expect(String(url)).toContain('spreadsheets/sheet-groups/');
+      expect(String(url)).not.toContain('api.parnoir.com');
+      const headers = init?.headers as Record<string, string> | undefined;
+      expect(headers?.['X-PN-Cloud-Access-Token']).toBeUndefined();
+      return new Response(
+        JSON.stringify({
+          values: [['grp-1', 'pn-owner', 'Circle', '2026-01-01', 'pn-peer', 'readWrite', 'wrap', 'sheet-conv']],
+        }),
+        { status: 200 }
+      );
+    });
+    const groups = await listDeviceGroups('google-token', 'sheet-groups', fetchImpl as unknown as typeof fetch);
+    expect(groups[0]?.groupId).toBe('grp-1');
+  });
+
+  it('reads notifications from the layout spreadsheet and never calls the API', async () => {
+    const fetchImpl = vi.fn(async (url: string, init?: RequestInit) => {
+      expect(String(url)).toContain('spreadsheets/sheet-notes/');
+      expect(String(url)).not.toContain('api.parnoir.com');
+      const headers = init?.headers as Record<string, string> | undefined;
+      expect(headers?.['X-PN-Cloud-Access-Token']).toBeUndefined();
+      return new Response(
+        JSON.stringify({
+          values: [['n-1', 'pn-me', 'new_message', 'Hi', 'body', '{}', 'false', '2026-01-01']],
+        }),
+        { status: 200 }
+      );
+    });
+    const notes = await listDeviceNotifications(
+      'google-token',
+      'sheet-notes',
+      fetchImpl as unknown as typeof fetch
+    );
+    expect(notes[0]?.notification_id).toBe('n-1');
+    expect(notes[0]?.read).toBe(false);
   });
 
   it('appends a public index row only to the existing layout sheet', async () => {

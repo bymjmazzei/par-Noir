@@ -21,7 +21,6 @@ import {
   downloadStorageBlob,
   type StorageProviderId
 } from './storageApiClient';
-import { messageFetch } from './messageAuthFetch';
 
 export type DmThreadContext = {
   threadType: 'dm';
@@ -254,17 +253,18 @@ export async function prepareMessageAttachment(
     throw new Error('Unlock your pN to upload attachments');
   }
 
-  const folderRes = await messageFetch(
-    `/api/messages/attachments-folder${accountId ? `?accountId=${encodeURIComponent(accountId)}` : ''}`
-  );
-  if (!folderRes.ok) {
+  const { ensureAttachmentsFolderId } = await import('@par-noir/device-cloud-credentials');
+  const { sessionDriveFor } = await import('./sessionDrive');
+  const drive = await sessionDriveFor(pnIdentifier);
+  if (!drive.index.messagesFolderId) {
     throw new Error('Failed to resolve messaging attachments folder');
   }
-  const location = (await folderRes.json()) as {
-    folderId?: string;
-    backend?: StorageProviderId;
-    backendFileId?: string;
-    accountId?: string;
+  const folderId = await ensureAttachmentsFolderId(drive.accessToken, drive.index.messagesFolderId);
+  const location = {
+    folderId,
+    backend: 'google_drive' as StorageProviderId,
+    backendFileId: folderId,
+    accountId,
   };
   const backend = location.backend || 'google_drive';
   const attachmentsPrefix = location.backendFileId || location.folderId;

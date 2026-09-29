@@ -19,6 +19,7 @@ import {
 import { runUnlockPostPrefetch } from '../services/unlockSessionCoordinator';
 import { useToast } from '../hooks/useToast';
 import { API_ENDPOINT } from '../config/api';
+import { browseHandoffReady, messagingHandoffIncompleteMessage } from '../services/messagingOAuthHandoff';
 
 interface PNConnectProps {
   onConnect?: () => void;
@@ -39,12 +40,17 @@ export function PNConnect({ onConnect, compact = false }: PNConnectProps) {
 
     try {
       await runExclusiveOAuthCallback(result.code, async () => {
+        if (!browseHandoffReady(result)) {
+          showError(messagingHandoffIncompleteMessage());
+          return;
+        }
         const redirectUri = browseOAuthRedirectUri();
         const unlockResult = await completeOAuthUnlock({
           code: result.code!,
           redirectUri,
         });
         const { userInfo, session } = unlockResult;
+        browseHandoffReady(result);
 
         if (unlockResult.bootstrap.profileDisplayName) {
           updateDisplayName(unlockResult.bootstrap.profileDisplayName);
@@ -87,8 +93,10 @@ export function PNConnect({ onConnect, compact = false }: PNConnectProps) {
           }}
           forceRedirect={forceRedirect}
           completeViaParentNavigation={forceRedirect}
-          onPopupResult={handlePopupResult}
+            onPopupResult={handlePopupResult}
           onPopupFlowFailed={(msg) => showError(msg)}
+          requireMessagingHandoff
+          isMessagingReady={(pending) => browseHandoffReady(pending)}
           className="flex items-center space-x-2 px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors"
           showIcon={false}
         >
@@ -137,6 +145,8 @@ export function PNConnect({ onConnect, compact = false }: PNConnectProps) {
             completeViaParentNavigation={forceRedirect}
             onPopupResult={handlePopupResult}
             onPopupFlowFailed={(msg) => showError(msg)}
+            requireMessagingHandoff
+            isMessagingReady={(pending) => browseHandoffReady(pending)}
             className="px-6 py-3 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 transition-colors"
             showIcon={false}
           >

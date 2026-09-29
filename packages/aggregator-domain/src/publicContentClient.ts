@@ -63,7 +63,11 @@ export async function ensurePublicContentRef(
 ): Promise<PublicContentRef> {
   const { objectId, backend = 'google_drive', apiBase, headers, publicUrl, request } = params;
   const path = `/api/aggregator/public-content/${encodeURIComponent(objectId)}/ensure-public`;
-  const body = { backend, ...(publicUrl ? { publicUrl } : {}) };
+  const publicContentRef =
+    publicUrl && isPublicContentRef({ backend, objectId, publicUrl })
+      ? { backend, objectId, publicUrl }
+      : undefined;
+  const body = { backend, ...(publicContentRef ? { publicContentRef } : {}) };
   const res = await postPublicContent({ apiBase, path, body, headers, request });
   if (!res.ok) {
     const text = await res.text().catch(() => res.statusText);
@@ -85,7 +89,7 @@ export async function revokePublicContentRef(params: {
 }): Promise<void> {
   const { objectId, backend = 'google_drive', apiBase, headers, request } = params;
   const path = `/api/aggregator/public-content/${encodeURIComponent(objectId)}/revoke-public`;
-  const body = { backend };
+  const body = { backend, revoked: true };
   const res = await postPublicContent({ apiBase, path, body, headers, request });
   if (!res.ok) {
     const text = await res.text().catch(() => res.statusText);
