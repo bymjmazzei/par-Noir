@@ -220,8 +220,10 @@ async function readFrames(master: HTMLVideoElement): Promise<string[]> {
   const saved = master.currentTime || 0;
   const count = Math.min(8, Math.max(1, Math.round(dur)));
   const canvas = document.createElement('canvas');
-  canvas.width = 48;
-  canvas.height = 32;
+  const sourceWidth = master.videoWidth || 16;
+  const sourceHeight = master.videoHeight || 9;
+  canvas.height = 18;
+  canvas.width = Math.max(8, Math.round(18 * (sourceWidth / sourceHeight)));
   const ctx = canvas.getContext('2d');
   if (!ctx) return [];
   const frames: string[] = [];
@@ -323,9 +325,9 @@ function ClipDecor({
   return (
     <>
       {decor.frames.length ? (
-        <span data-clip-frames className="pointer-events-none absolute inset-0 flex">
+        <span data-clip-frames className="pointer-events-none absolute inset-0 flex items-center gap-px overflow-hidden">
           {decor.frames.map((frame, index) => (
-            <img key={index} src={frame} alt="" className="h-full min-w-0 flex-1 object-cover" draggable={false} />
+            <img key={index} src={frame} alt="" className="h-5 w-auto shrink-0 object-contain" draggable={false} />
           ))}
         </span>
       ) : null}
@@ -499,6 +501,22 @@ export function SectionTimeline({
   const playheadRef = useRef(playheadSec);
   const playingRef = useRef(playing);
   const rootRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!joinMenu) return;
+    function onDoc(event: MouseEvent) {
+      const target = event.target;
+      if (!(target instanceof Node) || !rootRef.current?.contains(target)) {
+        setJoinMenu(null);
+        return;
+      }
+      if (target instanceof Element && target.closest('[data-transition-join], [data-transition-menu]')) {
+        return;
+      }
+      setJoinMenu(null);
+    }
+    document.addEventListener('mousedown', onDoc);
+    return () => document.removeEventListener('mousedown', onDoc);
+  }, [joinMenu]);
   const videoSrcs = useRef(new Map<string, string>());
   const ownedVideos = useRef(new Map<string, PenMediaController>());
   playingRef.current = playing;
@@ -1053,8 +1071,11 @@ export function SectionTimeline({
                       data-transition-join=""
                       aria-label="Transition"
                       title="Transition"
-                      className="absolute top-1/2 z-10 h-4 w-4 -translate-x-1/2 -translate-y-1/2 rounded-sm border border-blue-600 bg-white"
-                      style={{ left: `${(point.atSec / Math.max(rowDur, 0.01)) * 100}%` }}
+                      className="absolute top-1/2 z-10 h-5 -translate-x-1/2 -translate-y-1/2 rounded-sm border border-blue-600 bg-white"
+                      style={{
+                        left: `${(point.atSec / Math.max(rowDur, 0.01)) * 100}%`,
+                        width: `${Math.max(2, (point.durationSec / Math.max(rowDur, 0.01)) * 100)}%`
+                      }}
                       onPointerDown={(event) => {
                         event.stopPropagation();
                         event.preventDefault();
@@ -1064,7 +1085,8 @@ export function SectionTimeline({
                   ))}
                 {joinMenu?.trackId === trackId ? (
                   <div
-                    className="absolute bottom-full z-30 mb-1 flex gap-1 rounded-md border border-stone-200 bg-white p-1 shadow-lg"
+                    data-transition-menu=""
+                    className="absolute bottom-full z-30 mb-1 flex -translate-x-1/2 gap-1 rounded-md border border-stone-200 bg-white p-1 shadow-lg"
                     style={{ left: `${(joinMenu.atSec / Math.max(rowDur, 0.01)) * 100}%` }}
                   >
                     {TRANSITION_PRESETS.map((preset) => (

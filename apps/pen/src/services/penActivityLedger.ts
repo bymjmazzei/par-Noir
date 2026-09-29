@@ -1,4 +1,4 @@
-/** Append-only activity ledger: undo never discards reachable history. */
+/** Append-only visit log. Undo walks backward. A later edit keeps the states already visited. */
 
 import type { PenSectionContent } from '@par-noir/pen-protocol';
 
@@ -21,52 +21,60 @@ function sameSnapshot(a: DocSnapshot, b: DocSnapshot): boolean {
 }
 
 /**
- * Linear past + future. On a new edit after undos, future entries are folded
- * into past (instead of discarded) so later undos can still reach them.
+ * The current snapshot is `log[index]`. Undo only moves the index back.
+ * An edit from the middle appends, and keeps the states between the old
+ * index and the tip, so later undos can walk back onto them.
  */
 export class ActivityLedger {
-  private past: DocSnapshot[] = [];
-  private future: DocSnapshot[] = [];
+  private log: DocSnapshot[] = [];
+  private index = 0;
 
   seed(snapshot: DocSnapshot): void {
-    this.past = [cloneSnapshot(snapshot)];
-    this.future = [];
+    this.log = [cloneSnapshot(snapshot)];
+    this.index = 0;
   }
 
-  /** Record an edit. Folds any pending future into past first (infinite undo). */
+  /** Record an edit. Does not drop states the user has already visited. */
   pushEdit(snapshot: DocSnapshot): void {
-    while (this.future.length) {
-      this.past.push(this.future.pop()!);
-    }
     const next = cloneSnapshot(snapshot);
-    const head = this.past[this.past.length - 1];
+    const head = this.log[this.index];
     if (head && sameSnapshot(head, next)) return;
-    this.past.push(next);
+    if (this.index < this.log.length - 1) {
+      const later = this.log.slice(this.index + 1);
+      const branch = this.log[this.index];
+      this.log = [
+        ...this.log,
+        ...later.slice().reverse().slice(1),
+        ...(branch ? [cloneSnapshot(branch)] : []),
+        next
+      ];
+    } else {
+      this.log.push(next);
+    }
+    this.index = this.log.length - 1;
   }
 
   canUndo(): boolean {
-    return this.past.length > 1;
+    return this.index > 0;
   }
 
   canRedo(): boolean {
-    return this.future.length > 0;
+    return this.index < this.log.length - 1;
   }
 
   undo(): DocSnapshot | null {
-    if (this.past.length < 2) return null;
-    const cur = this.past.pop()!;
-    this.future.push(cur);
-    return cloneSnapshot(this.past[this.past.length - 1]!);
+    if (this.index <= 0) return null;
+    this.index -= 1;
+    return cloneSnapshot(this.log[this.index]!);
   }
 
   redo(): DocSnapshot | null {
-    if (!this.future.length) return null;
-    const next = this.future.pop()!;
-    this.past.push(next);
-    return cloneSnapshot(next);
+    if (this.index >= this.log.length - 1) return null;
+    this.index += 1;
+    return cloneSnapshot(this.log[this.index]!);
   }
 
   depth(): number {
-    return this.past.length;
+    return this.log.length;
   }
 }

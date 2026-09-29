@@ -12,7 +12,8 @@ import type {
   PenMediaFilter,
   PenPageLayer,
   PenSectionContent,
-  PenTimelineClip
+  PenTimelineClip,
+  PenTransitionPreset
 } from './types.js';
 
 export const DEFAULT_TIMELINE_SEC = 5;
@@ -83,24 +84,6 @@ function ease01(u: number, ease: PenKeyframeEase | undefined): number {
 
 function lerp(a: number, b: number, u: number): number {
   return a + (b - a) * u;
-}
-
-function keyHasPayload(key: PenLayerKeyframe): boolean {
-  return (
-    key.x !== undefined ||
-    key.y !== undefined ||
-    key.w !== undefined ||
-    key.h !== undefined ||
-    key.opacity !== undefined ||
-    key.blur !== undefined ||
-    key.mediaScale !== undefined ||
-    key.mediaX !== undefined ||
-    key.mediaY !== undefined ||
-    key.mediaRotate !== undefined ||
-    key.mediaMaskSize !== undefined ||
-    key.mediaFilter !== undefined ||
-    key.mediaCrop !== undefined
-  );
 }
 
 function sampleNumeric(
@@ -280,6 +263,7 @@ export type TrackJoinPoint = {
   atSec: number;
   fromId: string;
   toId: string;
+  durationSec: number;
 };
 
 /** Where two clips on one track meet, including the middle of an overlap. */
@@ -305,7 +289,13 @@ export function trackJoinPoints(section: PenSectionContent): TrackJoinPoint[] {
       const toStart = to.inSec ?? 0;
       if (toStart > fromEnd + 0.05) continue;
       const atSec = toStart < fromEnd ? (toStart + fromEnd) / 2 : toStart;
-      points.push({ trackId, atSec, fromId: from.id, toId: to.id });
+      points.push({
+        trackId,
+        atSec,
+        fromId: from.id,
+        toId: to.id,
+        durationSec: to.transitionIn?.durationSec ?? 0.5
+      });
     }
   }
   return points;
@@ -349,19 +339,102 @@ export function splitLayerAt(
   return { ...section, layers: next };
 }
 
+function smoothstep(u: number): number {
+  const t = Math.min(1, Math.max(0, u));
+  return t * t * (3 - 2 * t);
+}
+
+/** Blend two sampled layers across a window centered on the join. Clocks stay put. */
+function blendTransition(
+  from: PenPageLayer,
+  to: PenPageLayer,
+  time: number
+): { from: PenPageLayer; to: PenPageLayer } {
+  const preset = to.transitionIn;
+  if (!preset) return { from, to };
+  const fromEnd = from.outSec ?? from.inSec ?? 0;
+  const toStart = to.inSec ?? 0;
+  if (toStart > fromEnd + 0.05) return { from, to };
+  const at = toStart < fromEnd ? (toStart + fromEnd) / 2 : toStart;
+  const dur = Math.max(CUT_GAP_SEC, preset.durationSec);
+  const start = at - dur / 2;
+  const end = at + dur / 2;
+  if (time < start - 0.001 || time > end + 0.001) return { from, to };
+  const u = dur <= 0 ? 1 : (time - start) / dur;
+  const e = smoothstep(u);
+  const nextFrom: PenPageLayer = { ...from, visible: true };
+  const nextTo: PenPageLayer = { ...to, visible: true };
+  const kind = preset.preset;
+  if (kind === 'cut') {
+    nextFrom.opacity = u < 0.5 ? (from.opacity ?? 100) : 0;
+    nextTo.opacity = u < 0.5 ? 0 : (to.opacity ?? 100);
+  } else if (kind === 'crossfade') {
+    nextFrom.opacity = (from.opacity ?? 100) * (1 - e);
+    nextTo.opacity = (to.opacity ?? 100) * e;
+  } else if (kind === 'dip') {
+    if (e < 0.5) {
+      nextFrom.opacity = (from.opacity ?? 100) * (1 - e / 0.5);
+      nextTo.opacity = 0;
+    } else {
+      nextFrom.opacity = 0;
+      nextTo.opacity = (to.opacity ?? 100) * ((e - 0.5) / 0.5);
+    }
+  } else if (kind === 'push') {
+    const height = from.h;
+    nextFrom.y = from.y - height * e;
+    nextTo.y = from.y + height * (1 - e);
+  } else if (kind === 'zoom') {
+    const fromScale = from.mediaScale ?? 100;
+    const toScale = to.mediaScale ?? 100;
+    nextFrom.mediaScale = fromScale + (140 - fromScale) * e;
+    nextTo.mediaScale = 60 + (toScale - 60) * e;
+  } else {
+    const width = from.w;
+    nextFrom.x = from.x - width * e;
+    nextTo.x = from.x + width * (1 - e);
+  }
+  return { from: nextFrom, to: nextTo };
+}
+
+function applyStoredTransitions(sampled: PenPageLayer[], time: number): PenPageLayer[] {
+  const byId = new Map(sampled.map((layer) => [layer.id, layer]));
+  const groups = new Map<string, PenPageLayer[]>();
+  for (const layer of sampled) {
+    if (layer.kind === 'guide' || layer.kind === 'group' || layer.parentGroupId) continue;
+    const id = layerTrackId(layer);
+    const list = groups.get(id) || [];
+    list.push(layer);
+    groups.set(id, list);
+  }
+  for (const group of groups.values()) {
+    if (group.length < 2) continue;
+    const ordered = [...group].sort((a, b) => (a.inSec ?? 0) - (b.inSec ?? 0));
+    for (let i = 0; i < ordered.length - 1; i += 1) {
+      const from = byId.get(ordered[i]!.id);
+      const to = byId.get(ordered[i + 1]!.id);
+      if (!from || !to?.transitionIn) continue;
+      const blended = blendTransition(from, to, time);
+      byId.set(from.id, blended.from);
+      byId.set(to.id, blended.to);
+    }
+  }
+  return sampled.map((layer) => byId.get(layer.id) || layer);
+}
+
 /** Sample every layer. Group bounds stay on the rest pose — this does not write back. */
 export function sampleSectionLayers(
   section: PenSectionContent,
   pageTime: number
 ): PenPageLayer[] {
-  return (section.layers || []).map((layer) => {
+  const sampled = (section.layers || []).map((layer) => {
     const local = layerSampleTime(section, layer, pageTime);
-    const sampled = sampleLayerAt(layer, local);
-    if (layer.visible === false || layer.kind === 'guide') return sampled;
+    const posed = sampleLayerAt(layer, local);
+    if (layer.visible === false || layer.kind === 'guide') return posed;
     const span = layerClockSpan(section, layer);
-    if (!layerOnClock(layer, local, span)) return { ...sampled, visible: false };
-    return sampled;
+    if (!layerOnClock(layer, local, span)) return { ...posed, visible: false };
+    return posed;
   });
+  return applyStoredTransitions(sampled, pageTime);
 }
 
 export function sectionHasMotion(section: PenSectionContent | null | undefined): boolean {
@@ -526,29 +599,6 @@ export function toggleKeyframeAt(layer: PenPageLayer, time: number): PenPageLaye
   }
   return mergeKey(layer, key);
 }
-
-function replacePropKeys(
-  layer: PenPageLayer,
-  prop: 'opacity' | 'x' | 'y' | 'mediaScale',
-  points: Array<{ t: number; value: number; ease?: PenKeyframeEase }>
-): PenPageLayer {
-  const kept = (layer.motion?.keys || [])
-    .map((key) => {
-      const next = { ...key };
-      delete next[prop];
-      return next;
-    })
-    .filter(keyHasPayload);
-  const added: PenLayerKeyframe[] = points.map((point) => ({
-    t: quantizeTime(point.t),
-    ease: point.ease,
-    [prop]: point.value
-  }));
-  const keys = [...kept, ...added].sort((a, b) => a.t - b.t);
-  return { ...layer, motion: keys.length ? { keys } : undefined };
-}
-
-export type PenTransitionPreset = 'cut' | 'crossfade' | 'slide' | 'push' | 'dip' | 'zoom';
 
 /** The row a layer draws on. A layer with no shared id is its own track. */
 export function layerTrackId(layer: PenPageLayer): string {
@@ -720,8 +770,8 @@ export function deleteClipAt(
 }
 
 /**
- * Write a transition between two layers on one track.
- * The clips overlap for the blend. Pixels are not composited.
+ * Store one blend on the incoming clip. Switching replaces that preset.
+ * User keyframes and the clip clocks stay as they are.
  */
 export function applyTransitionPreset(
   section: PenSectionContent,
@@ -734,81 +784,11 @@ export function applyTransitionPreset(
   const to = (section.layers || []).find((layer) => layer.id === toId);
   if (!from || !to || from.id === to.id) return section;
   const dur = Math.max(CUT_GAP_SEC, opts?.durationSec ?? 0.5);
-  const at = Math.max(0, opts?.atSec ?? from.outSec ?? to.inSec ?? 1);
-  const overlappedFrom: PenPageLayer = {
-    ...from,
-    outSec: Math.max(from.outSec ?? 0, at + dur),
-    clips: from.clips?.map((clip) =>
-      clip.outSec >= (from.outSec ?? clip.outSec) - 0.001 ? { ...clip, outSec: at + dur } : clip
-    )
-  };
-  const overlappedTo =
-    typeof to.inSec === 'number'
-      ? shiftLayerClock(to, Math.max(0, at - dur) - to.inSec)
-      : to;
-  let nextFrom = overlappedFrom;
-  let nextTo = overlappedTo;
-  if (preset === 'cut') {
-    const gap = CUT_GAP_SEC;
-    nextFrom = replacePropKeys(overlappedFrom, 'opacity', [
-      { t: 0, value: 100 },
-      { t: at, value: 100 },
-      { t: at + gap, value: 0 }
-    ]);
-    nextTo = replacePropKeys(overlappedTo, 'opacity', [
-      { t: 0, value: 0 },
-      { t: at, value: 0 },
-      { t: at + gap, value: 100 }
-    ]);
-  } else if (preset === 'crossfade' || preset === 'dip') {
-    nextFrom = replacePropKeys(overlappedFrom, 'opacity', [
-      { t: at, value: 100, ease: 'easeInOut' },
-      { t: at + (preset === 'dip' ? dur / 2 : dur), value: 0 }
-    ]);
-    nextTo = replacePropKeys(overlappedTo, 'opacity', [
-      { t: at, value: 0, ease: 'easeInOut' },
-      ...(preset === 'dip' ? [{ t: at + dur / 2, value: 0 }] : []),
-      { t: at + dur, value: 100 }
-    ]);
-  } else if (preset === 'push') {
-    const dest = from.y;
-    const height = from.h;
-    nextFrom = replacePropKeys(overlappedFrom, 'y', [
-      { t: at, value: dest, ease: 'easeInOut' },
-      { t: at + dur, value: dest - height }
-    ]);
-    nextTo = replacePropKeys(overlappedTo, 'y', [
-      { t: at, value: dest + height, ease: 'easeInOut' },
-      { t: at + dur, value: dest }
-    ]);
-  } else if (preset === 'zoom') {
-    nextFrom = replacePropKeys(overlappedFrom, 'mediaScale', [
-      { t: at, value: from.mediaScale ?? 100, ease: 'easeInOut' },
-      { t: at + dur, value: 140 }
-    ]);
-    nextTo = replacePropKeys(overlappedTo, 'mediaScale', [
-      { t: at, value: 60, ease: 'easeInOut' },
-      { t: at + dur, value: to.mediaScale ?? 100 }
-    ]);
-  } else {
-    const dest = from.x;
-    const width = from.w;
-    nextFrom = replacePropKeys(overlappedFrom, 'x', [
-      { t: at, value: dest, ease: 'easeInOut' },
-      { t: at + dur, value: dest - width }
-    ]);
-    nextTo = replacePropKeys(overlappedTo, 'x', [
-      { t: at, value: dest + width, ease: 'easeInOut' },
-      { t: at + dur, value: dest }
-    ]);
-  }
   return {
     ...section,
-    layers: (section.layers || []).map((layer) => {
-      if (layer.id === from.id) return nextFrom;
-      if (layer.id === to.id) return nextTo;
-      return layer;
-    })
+    layers: (section.layers || []).map((layer) =>
+      layer.id === to.id ? { ...layer, transitionIn: { preset, durationSec: dur } } : layer
+    )
   };
 }
 

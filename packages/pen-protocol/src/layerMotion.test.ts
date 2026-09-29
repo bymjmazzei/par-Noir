@@ -214,44 +214,85 @@ describe('timeline duration and layout writes', () => {
 
 describe('transition presets', () => {
   const doc = section([
-    layer({ id: 'a', x: 0, w: 80, opacity: 100 }),
-    layer({ id: 'b', x: 0, w: 80, opacity: 100 })
+    layer({
+      id: 'a',
+      x: 0,
+      y: 0,
+      w: 80,
+      h: 40,
+      opacity: 100,
+      inSec: 0,
+      outSec: 1,
+      timelineTrackId: 'row',
+      motion: { keys: [{ t: 0, x: 4 }] }
+    }),
+    layer({
+      id: 'b',
+      x: 0,
+      y: 0,
+      w: 80,
+      h: 40,
+      opacity: 100,
+      inSec: 1,
+      outSec: 2,
+      timelineTrackId: 'row'
+    })
   ]);
 
-  it('crossfade writes opacity keys on both layers', () => {
-    const next = applyTransitionPreset(doc, 'a', 'b', 'crossfade', { atSec: 1, durationSec: 0.5 });
+  it('stores a crossfade on the incoming clip and samples it across the join', () => {
+    const next = applyTransitionPreset(doc, 'a', 'b', 'crossfade', { durationSec: 0.5 });
     const a = next.layers?.find((item) => item.id === 'a');
     const b = next.layers?.find((item) => item.id === 'b');
-    expect(sampleLayerAt(a!, 1).opacity).toBe(100);
-    expect(sampleLayerAt(b!, 1).opacity).toBe(0);
-    expect(sampleLayerAt(a!, 1.5).opacity).toBe(0);
-    expect(sampleLayerAt(b!, 1.5).opacity).toBe(100);
+    expect(b?.transitionIn).toEqual({ preset: 'crossfade', durationSec: 0.5 });
+    expect(a?.motion?.keys).toEqual([{ t: 0, x: 4 }]);
+    expect(a?.outSec).toBe(1);
+    expect(b?.inSec).toBe(1);
+    expect(b?.motion).toBeUndefined();
+    const start = sampleSectionLayers(next, 0.75);
+    const end = sampleSectionLayers(next, 1.25);
+    expect(start.find((item) => item.id === 'a')?.opacity).toBeCloseTo(100);
+    expect(start.find((item) => item.id === 'b')?.opacity).toBeCloseTo(0);
+    expect(end.find((item) => item.id === 'a')?.opacity).toBeCloseTo(0);
+    expect(end.find((item) => item.id === 'b')?.opacity).toBeCloseTo(100);
   });
 
-  it('slide writes x keys that swap the two layers', () => {
-    const next = applyTransitionPreset(doc, 'a', 'b', 'slide', { atSec: 1, durationSec: 0.5 });
-    const a = next.layers?.find((item) => item.id === 'a');
-    const b = next.layers?.find((item) => item.id === 'b');
-    expect(sampleLayerAt(a!, 1).x).toBe(0);
-    expect(sampleLayerAt(a!, 1.5).x).toBe(-80);
-    expect(sampleLayerAt(b!, 1).x).toBe(80);
-    expect(sampleLayerAt(b!, 1.5).x).toBe(0);
+  it('slide moves the two layers across the join without writing keys', () => {
+    const next = applyTransitionPreset(doc, 'a', 'b', 'slide', { durationSec: 0.5 });
+    const start = sampleSectionLayers(next, 0.75);
+    const end = sampleSectionLayers(next, 1.25);
+    expect(start.find((item) => item.id === 'a')?.x).toBeCloseTo(4);
+    expect(end.find((item) => item.id === 'a')?.x).toBeCloseTo(-76);
+    expect(start.find((item) => item.id === 'b')?.x).toBeCloseTo(84);
+    expect(end.find((item) => item.id === 'b')?.x).toBeCloseTo(4);
+    expect(next.layers?.find((item) => item.id === 'a')?.motion?.keys).toEqual([{ t: 0, x: 4 }]);
   });
 
-  it('dip and zoom overlap the following clip and write their keys', () => {
+  it('switching the preset replaces the previous one and leaves user keys', () => {
+    const faded = applyTransitionPreset(doc, 'a', 'b', 'crossfade', { durationSec: 0.5 });
+    const slid = applyTransitionPreset(faded, 'a', 'b', 'slide', { durationSec: 0.5 });
+    const a = slid.layers?.find((item) => item.id === 'a');
+    const b = slid.layers?.find((item) => item.id === 'b');
+    expect(b?.transitionIn?.preset).toBe('slide');
+    expect(a?.motion?.keys).toEqual([{ t: 0, x: 4 }]);
+    expect(b?.motion).toBeUndefined();
+  });
+
+  it('dip and zoom sample across the join and keep the clocks', () => {
     const seq = section([
-      layer({ id: 'a', x: 0, y: 0, w: 80, h: 40, inSec: 0, outSec: 2 }),
-      layer({ id: 'b', x: 0, y: 0, w: 80, h: 40, inSec: 2, outSec: 4 })
+      layer({ id: 'a', x: 0, y: 0, w: 80, h: 40, inSec: 0, outSec: 2, timelineTrackId: 'row' }),
+      layer({ id: 'b', x: 0, y: 0, w: 80, h: 40, inSec: 2, outSec: 4, timelineTrackId: 'row' })
     ]);
-    const dipped = applyTransitionPreset(seq, 'a', 'b', 'dip', { atSec: 2, durationSec: 0.4 });
+    const dipped = applyTransitionPreset(seq, 'a', 'b', 'dip', { durationSec: 0.4 });
     const a = dipped.layers?.find((item) => item.id === 'a');
     const b = dipped.layers?.find((item) => item.id === 'b');
-    expect(a?.outSec).toBeGreaterThan(2);
-    expect(b?.inSec).toBeLessThan(2);
-    expect(sampleLayerAt(a!, 2.2).opacity).toBe(0);
-    const zoomed = applyTransitionPreset(seq, 'a', 'b', 'zoom', { atSec: 2, durationSec: 0.4 });
-    const za = zoomed.layers?.find((item) => item.id === 'a');
-    expect(sampleLayerAt(za!, 2.4).mediaScale).toBe(140);
+    expect(a?.outSec).toBe(2);
+    expect(b?.inSec).toBe(2);
+    const mid = sampleSectionLayers(dipped, 2);
+    expect(mid.find((item) => item.id === 'a')?.opacity).toBeCloseTo(0);
+    expect(mid.find((item) => item.id === 'b')?.opacity).toBeCloseTo(0);
+    const zoomed = applyTransitionPreset(seq, 'a', 'b', 'zoom', { durationSec: 0.4 });
+    const end = sampleSectionLayers(zoomed, 2.2);
+    expect(end.find((item) => item.id === 'a')?.mediaScale).toBeCloseTo(140);
   });
 });
 
@@ -294,7 +335,7 @@ describe('timeline tracks', () => {
     ]);
     const joined = joinLayerToTrack(doc, 'b', 'a');
     expect(trackJoinPoints(joined)).toEqual([
-      { trackId: 'a', atSec: 2, fromId: 'a', toId: 'b' }
+      { trackId: 'a', atSec: 2, fromId: 'a', toId: 'b', durationSec: 0.5 }
     ]);
   });
 

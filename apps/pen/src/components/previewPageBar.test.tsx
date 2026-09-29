@@ -200,6 +200,35 @@ describe('preview page toolbar', () => {
     expect(html).not.toContain('All pages');
   });
 
+  it('puts view all in the footer only for screen', () => {
+    const pages = [
+      { slug: 'body', title: 'Page 1', section: emptySection('body') },
+      { slug: 'page-2', title: 'Page 2', section: emptySection('page-2') }
+    ];
+    const shared = {
+      pages,
+      activeSlug: 'body',
+      presentation: defaultPagePresentation(),
+      onSelect: () => undefined,
+      onAddPage: () => undefined,
+      onDeletePage: () => undefined,
+      onReorder: () => undefined,
+      onFlip: () => undefined,
+      onToggleScreenPages: () => undefined
+    };
+    const horizontal = renderToStaticMarkup(<PreviewPageBar {...shared} pageView="horizontal" />);
+    const screen = renderToStaticMarkup(
+      <PreviewPageBar {...shared} pageView="screen" screenAllPages={false} />
+    );
+    const all = renderToStaticMarkup(
+      <PreviewPageBar {...shared} pageView="screen" screenAllPages />
+    );
+    expect(horizontal).not.toContain('View all');
+    expect(screen).toContain('View all');
+    expect(screen).not.toContain('All pages');
+    expect(all).toContain('Current page');
+  });
+
   it('a locked orientation menu stays closed until it is opened', () => {
     const html = renderToStaticMarkup(
       <PreviewOrientationMenu

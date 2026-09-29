@@ -1,6 +1,14 @@
 /** Pagination toolbar for the live preview: orientation, page field, page list. */
 
-import { Children, useEffect, useState, type CSSProperties, type DragEvent, type ReactNode } from 'react';
+import {
+  Children,
+  useEffect,
+  useRef,
+  useState,
+  type CSSProperties,
+  type DragEvent,
+  type ReactNode
+} from 'react';
 import {
   SCREEN_PAGE_WIDTH_PX,
   screenStripWidthPx,
@@ -76,8 +84,8 @@ export function PreviewPageStrip({
         pageView === 'vertical'
           ? 'flex w-full flex-col items-center'
           : pageView === 'horizontal'
-            ? 'flex h-full w-max flex-row items-center gap-3'
-            : 'flex w-max flex-row items-stretch'
+            ? 'flex h-full w-max flex-row items-center justify-center gap-3'
+            : 'flex w-max flex-row items-stretch justify-center'
       }
       style={
         screen
@@ -310,9 +318,19 @@ export function PreviewOrientationMenu({
   onToggleViewLock: () => void;
 }) {
   const [open, setOpen] = useState(false);
+  const rootRef = useRef<HTMLDivElement>(null);
   const label = pageOrientation === 'landscape' ? 'Landscape' : 'Portrait';
+  useEffect(() => {
+    if (!open) return;
+    function onDoc(event: MouseEvent) {
+      if (rootRef.current?.contains(event.target as Node)) return;
+      setOpen(false);
+    }
+    document.addEventListener('mousedown', onDoc);
+    return () => document.removeEventListener('mousedown', onDoc);
+  }, [open]);
   return (
-    <div className="relative shrink-0">
+    <div ref={rootRef} className="relative shrink-0">
       <button
         type="button"
         aria-label={label}
@@ -447,7 +465,9 @@ export function PreviewPageBar({
   onAddPage,
   onDeletePage,
   onReorder,
-  onFlip
+  onFlip,
+  screenAllPages = false,
+  onToggleScreenPages
 }: {
   pages: Array<{ slug: string; title: string; section?: PenSectionContent }>;
   activeSlug: string;
@@ -458,8 +478,11 @@ export function PreviewPageBar({
   onDeletePage: (slug: string) => void;
   onReorder: (fromIndex: number, toIndex: number) => void;
   onFlip: (direction: -1 | 1) => void;
+  screenAllPages?: boolean;
+  onToggleScreenPages?: () => void;
 }) {
   const [pagesOpen, setPagesOpen] = useState(false);
+  const pagesRef = useRef<HTMLDivElement>(null);
   const [deleteMode, setDeleteMode] = useState(false);
   const [dragIndex, setDragIndex] = useState<number | null>(null);
   const activeIndex = Math.max(0, pages.findIndex((page) => page.slug === activeSlug));
@@ -471,6 +494,16 @@ export function PreviewPageBar({
   useEffect(() => {
     setPageDraft(String(activeIndex + 1));
   }, [activeIndex, pages.length]);
+
+  useEffect(() => {
+    if (!pagesOpen) return;
+    function onDoc(event: MouseEvent) {
+      if (pagesRef.current?.contains(event.target as Node)) return;
+      setPagesOpen(false);
+    }
+    document.addEventListener('mousedown', onDoc);
+    return () => document.removeEventListener('mousedown', onDoc);
+  }, [pagesOpen]);
 
   function commitPageNumber() {
     const n = Math.round(Number(pageDraft));
@@ -496,7 +529,7 @@ export function PreviewPageBar({
       aria-label="Pages"
       className="grid shrink-0 grid-cols-[1fr_auto_1fr] items-center gap-2 border-t border-stone-300 bg-stone-50 px-2 py-1.5"
     >
-      <div className="relative justify-self-start">
+      <div ref={pagesRef} className="relative justify-self-start">
         <button
           type="button"
           aria-label="Pages"
@@ -582,7 +615,20 @@ export function PreviewPageBar({
           ›
         </button>
       </div>
-      <div />
+      <div className="justify-self-end">
+        {pageView === 'screen' && onToggleScreenPages ? (
+          <button
+            type="button"
+            aria-pressed={screenAllPages}
+            aria-label={screenAllPages ? 'Current page' : 'View all'}
+            title={screenAllPages ? 'Current page' : 'View all'}
+            className="rounded border border-stone-300 bg-white px-2 py-1 text-[11px] font-semibold text-stone-900"
+            onClick={onToggleScreenPages}
+          >
+            {screenAllPages ? 'Current page' : 'View all'}
+          </button>
+        ) : null}
+      </div>
     </div>
   );
 }

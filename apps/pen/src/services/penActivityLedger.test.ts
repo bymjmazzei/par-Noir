@@ -10,7 +10,7 @@ function snap(title: string, activeSlug = 'body'): DocSnapshot {
 }
 
 describe('ActivityLedger', () => {
-  it('folds redo into past on new edit so prior states stay reachable', () => {
+  it('walks backward and can return to a state left behind by a later edit', () => {
     const ledger = new ActivityLedger();
     ledger.seed(snap('A'));
     ledger.pushEdit(snap('B'));
@@ -21,8 +21,18 @@ describe('ActivityLedger', () => {
     expect(ledger.canUndo()).toBe(false);
 
     ledger.pushEdit(snap('D'));
+    expect(ledger.undo()?.title).toBe('A');
+    expect(ledger.undo()?.title).toBe('B');
     expect(ledger.undo()?.title).toBe('C');
+  });
+
+  it('a second undo keeps going back instead of restoring the step just left', () => {
+    const ledger = new ActivityLedger();
+    ledger.seed(snap('A'));
+    ledger.pushEdit(snap('B'));
+    ledger.pushEdit(snap('C'));
     expect(ledger.undo()?.title).toBe('B');
     expect(ledger.undo()?.title).toBe('A');
+    expect(ledger.redo()?.title).toBe('B');
   });
 });

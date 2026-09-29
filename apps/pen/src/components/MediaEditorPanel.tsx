@@ -120,7 +120,7 @@ function InspectorSlider({
   }
 
   return (
-    <div className="min-w-0">
+    <div className="min-w-0" data-setting-row={key}>
       <div className="flex items-center gap-1">
         <button
           type="button"
@@ -247,6 +247,19 @@ export function MediaEditorPanel({
 }) {
   const [tab, setTab] = useState<ToolTab>('color');
   const [activeSetting, setActiveSetting] = useState<string | null>(null);
+  useEffect(() => {
+    if (!activeSetting) return;
+    const openId = activeSetting;
+    function onDoc(event: MouseEvent) {
+      const target = event.target;
+      if (target instanceof Element && target.closest(`[data-setting-row="${openId.replace(/"/g, '')}"]`)) {
+        return;
+      }
+      setActiveSetting(null);
+    }
+    document.addEventListener('mousedown', onDoc);
+    return () => document.removeEventListener('mousedown', onDoc);
+  }, [activeSetting]);
   const [cloudOpen, setCloudOpen] = useState(false);
   const [fileKind, setFileKind] = useState<'image' | 'video'>(
     layer.kind === 'video' ? 'video' : 'image'
@@ -346,16 +359,6 @@ export function MediaEditorPanel({
               {item.label}
             </button>
           ))}
-          <button
-            type="button"
-            className="ml-auto px-0.5 py-1 text-[13px] text-stone-500"
-            onClick={() => {
-              setFileKind(layer.kind === 'video' ? 'video' : 'image');
-              setCloudOpen(true);
-            }}
-          >
-            Replace…
-          </button>
         </div>
       </div>
 
@@ -373,6 +376,18 @@ export function MediaEditorPanel({
           ) : (
             <p className="flex h-full items-center justify-center text-sm text-stone-400">No media</p>
           )}
+          <button
+            type="button"
+            title="Replace"
+            aria-label="Replace"
+            className="absolute right-1 top-1 z-20 rounded bg-white/90 px-1.5 py-0.5 text-[11px] text-stone-600"
+            onClick={() => {
+              setFileKind(layer.kind === 'video' ? 'video' : 'image');
+              setCloudOpen(true);
+            }}
+          >
+            Replace…
+          </button>
           {cropping && attached ? (
             <CropMarquee
               crop={crop}

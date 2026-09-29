@@ -70,6 +70,14 @@ export type PenWidgetElement = 'svg' | 'text' | 'button' | 'time' | 'html' | 'in
 export type PenStrokeStyle = 'solid' | 'dashed' | 'dotted';
 export type PenStrokeAlign = 'inside' | 'outside' | 'center';
 
+export type PenTransitionPreset = 'cut' | 'crossfade' | 'slide' | 'push' | 'dip' | 'zoom';
+
+/** One blend where this clip meets the previous clip on its track. */
+export interface PenClipTransition {
+  preset: PenTransitionPreset;
+  durationSec: number;
+}
+
 /** Layer on a section page — rects are CSS px in the Body content box. */
 export interface PenPageLayer {
   id: string;
@@ -225,6 +233,8 @@ export interface PenPageLayer {
   clips?: PenTimelineClip[];
   /** Layers that share this id sit on one timeline row and play in order. */
   timelineTrackId?: string;
+  /** Blend into this clip from the previous one on the same track. Not a keyframe. */
+  transitionIn?: PenClipTransition;
   /** Widget group loop length. Child key times are local to this clock. */
   durationSec?: number;
   /** Sparse keyframes. Absent means the layer stays at its rest pose. */

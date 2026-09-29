@@ -227,6 +227,7 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
   const [showPreview, setShowPreview] = useState(true);
   const [previewToolbarHost, setPreviewToolbarHost] = useState<HTMLDivElement | null>(null);
   const [previewPaneEl, setPreviewPaneEl] = useState<HTMLDivElement | null>(null);
+  const [screenAllPages, setScreenAllPages] = useState(false);
   const [previewPaneSize, setPreviewPaneSize] = useState({ width: 0, height: 0 });
   const [galleryComposeCapture, setGalleryComposeCapture] = useState(false);
   const [captureLayers, setCaptureLayers] = useState(false);
@@ -1929,6 +1930,21 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
       heightPx: bundle.manifest.flowWorkspaceHeightPx
     }
   );
+  const screenPageCount = Math.max(1, previewPages.length);
+  const screenFullWidth = screenStripWidthPx(screenPageCount, previewPageBox.width);
+  const screenFullHeight = previewPageBox.height;
+  const screenFit =
+    screenAllPages && paneReady && screenFullWidth > 0 && screenFullHeight > 0
+      ? Math.min(
+          1,
+          Math.max(1, previewPaneSize.width - previewGutter * 2) / screenFullWidth,
+          Math.max(1, previewPaneSize.height - previewGutter * 2) / screenFullHeight
+        )
+      : 1;
+  const screenPageIndex = Math.max(
+    0,
+    previewPages.findIndex((page) => page.slug === activeSlug)
+  );
   const layerPad = resolvePagePaddingPx(pagePresentation.padding);
   const screenStripBackground = pageFrameStyle(pagePresentation);
   if (
@@ -2678,16 +2694,37 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
                 >
                 <div
                   data-preview-center={pageLayout === 'flow' ? undefined : ''}
-                  className={pageLayout === 'flow' ? 'contents' : 'm-auto h-fit w-fit'}
+                  className={
+                    pageLayout === 'flow' ? 'contents' : 'h-max w-max justify-self-center self-center'
+                  }
                 >
                 <div
-                  className={pageView === 'screen' ? 'relative shrink-0' : 'contents'}
+                  className={pageView === 'screen' ? 'relative shrink-0 overflow-hidden' : 'contents'}
                   style={
                     pageView === 'screen'
                       ? {
-                          width: screenStripWidthPx(previewPages.length, previewPageBox.width),
-                          height: previewPageBox.height,
+                          width: screenAllPages
+                            ? screenFullWidth * screenFit
+                            : previewPageBox.width,
+                          height: screenAllPages
+                            ? screenFullHeight * screenFit
+                            : previewPageBox.height,
                           margin: previewGutter
+                        }
+                      : undefined
+                  }
+                >
+                <div
+                  className={pageView === 'screen' ? 'relative' : 'contents'}
+                  style={
+                    pageView === 'screen'
+                      ? {
+                          width: screenFullWidth,
+                          height: screenFullHeight,
+                          transform: screenAllPages
+                            ? `scale(${screenFit})`
+                            : `translateX(${-screenPageIndex * previewPageBox.width}px)`,
+                          transformOrigin: 'top left'
                         }
                       : undefined
                   }
@@ -2864,6 +2901,7 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
                 </div>
                 </div>
                 </div>
+                </div>
               </div>
             ) : null}
             <PreviewPageBar
@@ -2871,6 +2909,8 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
               activeSlug={activeSlug}
               pageView={pageView}
               presentation={pagePresentation}
+              screenAllPages={screenAllPages}
+              onToggleScreenPages={() => setScreenAllPages((on) => !on)}
               onSelect={setActiveSlug}
               onAddPage={addPreviewPage}
               onDeletePage={deletePreviewPage}
