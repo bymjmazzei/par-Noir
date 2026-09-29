@@ -413,7 +413,7 @@ export function MediaEditorPanel({
 
       <ActiveSettingContext.Provider value={{ id: activeSetting, setId: setActiveSetting }}>
       <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-auto px-3 py-3">
-        <div hidden={tab !== 'basic'} className="grid grid-cols-2 gap-x-3 gap-y-1">
+        <div className={tab === 'basic' ? 'grid grid-cols-2 gap-x-3 gap-y-1' : 'hidden'}>
           <InspectorSlider
             label="Scale"
             settingId="picture-scale"
@@ -451,7 +451,7 @@ export function MediaEditorPanel({
           />
         </div>
 
-        <div hidden={tab !== 'color'} className="grid grid-cols-2 gap-x-3 gap-y-1">
+        <div className={tab === 'color' ? 'grid grid-cols-2 gap-x-3 gap-y-1' : 'hidden'}>
           <div className="contents">
             {COLOR_ROWS.map(([key, label, min, max, neutral]) => (
               <InspectorSlider
@@ -515,7 +515,7 @@ export function MediaEditorPanel({
           </div>
         )}
 
-        <div hidden={tab !== 'mask'} className="grid grid-cols-2 gap-x-3 gap-y-1">
+        <div className={tab === 'mask' ? 'grid grid-cols-2 gap-x-3 gap-y-1' : 'hidden'}>
           <div className="col-span-2 flex flex-wrap gap-1">
             {(
               [
@@ -586,7 +586,7 @@ export function MediaEditorPanel({
           ) : null}
         </div>
 
-        <div hidden={tab !== 'speed'} className="grid grid-cols-2 gap-x-3 gap-y-1">
+        <div className={tab === 'speed' ? 'grid grid-cols-2 gap-x-3 gap-y-1' : 'hidden'}>
           <InspectorSlider
             label="Speed"
             min={0.5}
@@ -650,7 +650,7 @@ export function MediaEditorPanel({
           />
         )}
 
-        <div hidden={tab !== 'tracks'} className="space-y-3">
+        <div className={tab === 'tracks' ? 'space-y-3' : 'hidden'}>
           <div className="space-y-2">
             <div className="text-[13px] text-stone-700">Clip</div>
             <InspectorSlider

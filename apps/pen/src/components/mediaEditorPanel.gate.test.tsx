@@ -54,6 +54,7 @@ describe('media and widget panels', () => {
     expect(media).toContain('Vignette');
     expect(media).toContain('Mute');
     expect(media).toContain('aria-label="Reset Brightness"');
+    expect(media).not.toContain('hidden="" class="grid');
     expect(media.split('data-media-timeline')[0]).not.toContain('type="range"');
     expect(media).not.toContain('aspect-video');
     expect(media).toContain('aspect-ratio:90 / 160');
