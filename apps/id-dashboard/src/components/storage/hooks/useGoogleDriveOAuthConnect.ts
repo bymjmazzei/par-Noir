@@ -294,54 +294,15 @@ export function useGoogleDriveOAuthConnect({
 
       setActiveBackendId(identifiers.backendId);
 
-      // Shared device-cloud session (same path as browser reconnect / CloudReconnectHost).
-      // Do NOT fire PN_CLOUD_CREDENTIALS_READY yet — token exists but Drive layout/index
-      // is not built until persistStorageCredentialsToAPI finishes initialize. Early READY
-      // causes App to storm GET zkp-data-points (409) and third-party-permissions (404).
-      // Cross-app reuse requires a sealed vault PUT; treat publish failure as Connect incomplete.
+      // Shell unlock has no Key 1 / Key 2 in this tab. Finish Drive here.
+      // A keyed session still seals and publishes the vault for other apps.
       {
-        const {
-          persistCloudCredentials,
-          resolveCloudPersistMode
-        } = await import('@par-noir/device-cloud-credentials');
-        const { deriveCanonicalPnIdentifier } = await import('@par-noir/pqc-crypto/oauth-unlock-proof');
         const sessionId = authenticatedUser?.id || null;
         const sessionCreds = sessionId ? SecureCredentialManager.getCredentials(sessionId) : null;
-        if (!sessionCreds || !sessionId || !authenticatedUser?.publicKey) {
-          const { deriveCanonicalPnIdentifier } = await import('@par-noir/pqc-crypto/oauth-unlock-proof');
-          if (!authenticatedUser?.publicKey) {
-            throw new Error('Unlock the dashboard before connecting Google Drive.');
-          }
-          const pnIdentifier = deriveCanonicalPnIdentifier(authenticatedUser.publicKey);
-          const { launchSealVault } = await import('../../../services/sealVaultHandoff');
-          setDriveSetupProgress({
-            phase: 'starting',
-            stepLabel: 'Opening par Noir Unlock to save this Drive connection…',
-            percent: 0,
-          });
-          const handoff = await launchSealVault(pnIdentifier, {
-            socialCloudProvider: 'google_drive',
-            socialCloudAccountId: identifiers.backendId,
-            googleDriveAccounts: [
-              {
-                accountId: identifiers.backendId,
-                backendId: identifiers.backendId,
-                keyPrefix: identifiers.keyPrefix,
-                accessToken: token,
-                refreshToken: tokenData.refreshToken,
-                email: connectedEmail || undefined,
-                connectedAt: new Date().toISOString(),
-                expires_at: tokenExpiresAt,
-              },
-            ],
-          });
-          if (handoff === 'web' || document.hidden) return;
-          clearDriveSetupProgress();
-          setError(
-            'par Noir Unlock did not open. Reconnect Google Drive to continue on the web unlock page.'
-          );
-          return;
+        if (!authenticatedUser?.publicKey) {
+          throw new Error('Unlock the dashboard before connecting Google Drive.');
         }
+        const { deriveCanonicalPnIdentifier } = await import('@par-noir/pqc-crypto/oauth-unlock-proof');
         const pnIdentifier = deriveCanonicalPnIdentifier(authenticatedUser.publicKey);
         const accountId = identifiers.backendId;
         const cloudEnvelope = {
@@ -360,6 +321,35 @@ export function useGoogleDriveOAuthConnect({
             }
           ]
         };
+        if (!sessionCreds || !sessionId) {
+          const authTok = resolveOwnerApiToken(pnIdentifier);
+          if (!authTok) {
+            throw new Error(
+              'Drive connected locally, but no owner API session — unlock the dashboard, then reconnect Drive.'
+            );
+          }
+          setDriveSetupProgress({
+            phase: 'starting',
+            stepLabel: 'Setting up your storage',
+            percent: 0,
+          });
+          const { connectDriveInThisSession } = await import('../../../services/sessionDriveConnect');
+          await connectDriveInThisSession({
+            identityId: pnIdentifier,
+            authToken: authTok,
+            credentials: cloudEnvelope,
+          });
+          const { publishCloudDriveReady } = await import('@par-noir/device-cloud-credentials');
+          await publishCloudDriveReady({
+            authToken: authTok,
+            pnIdentifier,
+            apiEndpoint: API_ENDPOINT,
+          });
+        } else {
+        const {
+          persistCloudCredentials,
+          resolveCloudPersistMode
+        } = await import('@par-noir/device-cloud-credentials');
         const mode = isKeyedSession
           ? 'sealed'
           : resolveCloudPersistMode({ hasKeyedDevices });
@@ -407,6 +397,7 @@ export function useGoogleDriveOAuthConnect({
             vault.error ||
               'Cloud vault publish failed — other apps cannot reuse this Drive connection until reconnect succeeds.'
           );
+        }
         }
       }
 
