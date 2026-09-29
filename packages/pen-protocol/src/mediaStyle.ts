@@ -44,6 +44,52 @@ export function clampMediaCrop(crop: PenMediaCrop | null | undefined): PenMediaC
   return { x, y, w, h };
 }
 
+/** How much of each edge the crop window cuts away, in 0–1. */
+export function mediaCropEdges(crop: PenMediaCrop | null | undefined): {
+  left: number;
+  top: number;
+  right: number;
+  bottom: number;
+} {
+  const c = clampMediaCrop(crop);
+  return {
+    left: c.x,
+    top: c.y,
+    right: 1 - c.x - c.w,
+    bottom: 1 - c.y - c.h
+  };
+}
+
+/** Build a crop window from edge cuts. The edge being moved keeps the opposite edge. */
+export function mediaCropFromEdges(
+  edges: { left: number; top: number; right: number; bottom: number },
+  moved?: 'left' | 'right' | 'top' | 'bottom'
+): PenMediaCrop {
+  const min = 0.05;
+  const next = {
+    left: Math.max(0, edges.left),
+    top: Math.max(0, edges.top),
+    right: Math.max(0, edges.right),
+    bottom: Math.max(0, edges.bottom)
+  };
+  const fit = (
+    a: 'left' | 'top',
+    b: 'right' | 'bottom'
+  ) => {
+    if (next[a] + next[b] <= 1 - min) return;
+    if (moved === b) next[b] = Math.max(0, 1 - min - next[a]);
+    else next[a] = Math.max(0, 1 - min - next[b]);
+  };
+  fit('left', 'right');
+  fit('top', 'bottom');
+  return clampMediaCrop({
+    x: next.left,
+    y: next.top,
+    w: 1 - next.left - next.right,
+    h: 1 - next.top - next.bottom
+  });
+}
+
 export function mergeMediaFilter(
   partial?: PenMediaFilter | null
 ): Required<PenMediaFilter> {
@@ -91,7 +137,7 @@ export function mediaMaskClipCss(
   size?: number
 ): string | undefined {
   if (!mask || mask === 'none') return undefined;
-  const amount = Math.min(100, Math.max(0, size ?? 100));
+  const amount = Math.max(0, size ?? 100);
   if (mask === 'circle') return `circle(${amount / 2}% at 50% 50%)`;
   const inset = (100 - amount) / 2;
   if (mask === 'rect') return `inset(${inset}%)`;

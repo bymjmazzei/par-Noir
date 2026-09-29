@@ -47,7 +47,7 @@ describe('media and widget panels', () => {
     expect(media).toContain('Brightness');
     expect(media).toContain('Scale');
     expect(media).toContain('Rotate');
-    expect(media).toContain('Size');
+    expect(media).toContain('max="10"');
     expect(media).toContain('Temp');
     expect(media).toContain('Vignette');
     expect(media).toContain('Mute');

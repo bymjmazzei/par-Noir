@@ -172,7 +172,7 @@ export class PenMediaController {
   }
 
   setPlaybackRate(rate: number): void {
-    const next = Number.isFinite(rate) && rate > 0 ? Math.min(2, Math.max(0.5, rate)) : 1;
+    const next = Number.isFinite(rate) && rate > 0 ? Math.min(10, Math.max(0.5, rate)) : 1;
     if (this.master.playbackRate !== next) this.master.playbackRate = next;
   }
 

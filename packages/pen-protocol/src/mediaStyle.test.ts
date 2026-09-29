@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 import {
   clampMediaCrop,
   mediaCropClipCss,
+  mediaCropEdges,
+  mediaCropFromEdges,
   mediaFilterCss,
   mediaMaskClipCss,
   mediaTransformCss,
@@ -41,10 +43,18 @@ describe('mediaStyle', () => {
     expect(mediaMaskClipCss('rounded')).toContain('inset');
   });
 
+  it('a left crop keeps the right edge', () => {
+    const next = mediaCropFromEdges({ ...mediaCropEdges(undefined), left: 0.2 }, 'left');
+    expect(next.x).toBeCloseTo(0.2);
+    expect(next.w).toBeCloseTo(0.8);
+    expect(mediaCropEdges(next).right).toBeCloseTo(0);
+  });
+
   it('mask size changes the clip path', () => {
     expect(mediaMaskClipCss('circle', 50)).toBe('circle(25% at 50% 50%)');
     expect(mediaMaskClipCss('rounded', 80)).toBe('inset(10% round 12%)');
     expect(mediaMaskClipCss('rect', 60)).toBe('inset(20%)');
+    expect(mediaMaskClipCss('circle', 150)).toBe('circle(75% at 50% 50%)');
   });
 
   it('scale becomes a CSS transform', () => {

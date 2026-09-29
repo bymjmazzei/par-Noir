@@ -8,6 +8,8 @@ import {
   MEDIA_FILTER_PRESETS,
   attachMediaToLayer,
   clampMediaCrop,
+  mediaCropEdges,
+  mediaCropFromEdges,
   editorPlaybackSrc,
   mergeMediaFilter,
   publishPlaybackSrc,
@@ -65,6 +67,10 @@ const COLOR_ROWS: Array<[keyof PenMediaFilter, string, number, number, number]> 
   ['vignette', 'Vignette', 0, 100, 0]
 ];
 
+function activeText(on: boolean): string {
+  return on ? 'font-semibold text-stone-700' : 'font-normal text-stone-400';
+}
+
 function InspectorSlider({
   label,
   value,
@@ -85,9 +91,11 @@ function InspectorSlider({
   onChange: (next: number) => void;
 }) {
   const drifted = neutral !== undefined && value !== neutral;
+  const span = max - min || 1;
+  const pct = Math.min(100, Math.max(0, ((value - min) / span) * 100));
   return (
     <label className="grid grid-cols-[5.75rem_minmax(0,1fr)_3.25rem] items-center gap-2">
-      <span className="text-[13px] text-stone-600">{label}</span>
+      <span className="text-[13px] text-stone-500">{label}</span>
       <input
         aria-label={label}
         type="range"
@@ -96,12 +104,15 @@ function InspectorSlider({
         step={step}
         value={value}
         onChange={(e) => onChange(Number(e.target.value))}
-        className="h-1 w-full accent-stone-900"
+        className="h-1 w-full cursor-pointer appearance-none rounded-full [&::-moz-range-thumb]:h-3 [&::-moz-range-thumb]:w-1 [&::-moz-range-thumb]:rounded-none [&::-moz-range-thumb]:border-0 [&::-moz-range-thumb]:bg-stone-500 [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:w-1 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-none [&::-webkit-slider-thumb]:bg-stone-500"
+        style={{
+          background: `linear-gradient(to right, #a8a29e ${pct}%, #e7e5e4 ${pct}%)`
+        }}
       />
       <button
         type="button"
         className={`text-right text-[13px] tabular-nums ${
-          drifted ? 'text-stone-900 hover:underline' : 'text-stone-500'
+          drifted ? 'font-semibold text-stone-700' : 'text-stone-400'
         }`}
         disabled={!drifted}
         onClick={() => {
@@ -130,7 +141,7 @@ function frameStyle(layer: PenPageLayer): CSSProperties {
   const h = Math.max(1, layer.h);
   return {
     aspectRatio: `${w} / ${h}`,
-    height: 'min(16rem, 100%)',
+    height: '12rem',
     width: 'auto',
     maxWidth: '100%'
   };
@@ -274,17 +285,15 @@ export function MediaEditorPanel({
     session
   });
   return (
-    <div className="flex min-h-0 flex-1 flex-col bg-[#f3f3f3]">
-      <div className="shrink-0 border-b border-stone-300 bg-stone-50 px-3 py-2">
-        <div className="flex flex-wrap items-center gap-1">
+    <div className="flex min-h-0 flex-1 flex-col bg-stone-100">
+      <div className="shrink-0 px-3 py-2">
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
           {TABS.map((item) => (
             <button
               key={item.id}
               type="button"
               aria-pressed={tab === item.id}
-              className={`rounded-full px-2.5 py-1 text-[13px] ${
-                tab === item.id ? 'bg-stone-900 text-white' : 'text-stone-600 hover:bg-stone-200'
-              }`}
+              className={`px-0.5 py-1 text-[13px] ${activeText(tab === item.id)}`}
               onClick={() => setTab(item.id)}
             >
               {item.label}
@@ -292,7 +301,7 @@ export function MediaEditorPanel({
           ))}
           <button
             type="button"
-            className="ml-auto rounded-full px-2.5 py-1 text-[13px] text-stone-700 hover:bg-stone-200"
+            className="ml-auto px-0.5 py-1 text-[13px] text-stone-500"
             onClick={() => {
               setFileKind(layer.kind === 'video' ? 'video' : 'image');
               setCloudOpen(true);
@@ -303,19 +312,19 @@ export function MediaEditorPanel({
         </div>
       </div>
 
-      <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-auto p-3">
-        <div
-          data-media-frame
-          className="relative mx-auto overflow-hidden rounded border border-stone-300 bg-black"
-          style={frameStyle(layer)}
-        >
+      <div
+        data-media-frame
+        className="relative mx-auto shrink-0 overflow-hidden bg-stone-200"
+        style={frameStyle(layer)}
+      >
           {attached ? (
             <LayerMediaContent layer={layer} docId={docId} session={session} />
           ) : (
             <p className="flex h-full items-center justify-center text-sm text-stone-400">No media</p>
           )}
-        </div>
+      </div>
 
+      <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-auto px-3 py-3">
         <div hidden={tab !== 'basic'} className="space-y-2">
           <InspectorSlider
             label="Scale"
@@ -399,9 +408,7 @@ export function MediaEditorPanel({
                   key={id}
                   type="button"
                   aria-pressed={selected}
-                  className={`rounded-full px-3 py-1 text-[13px] capitalize ${
-                    selected ? 'bg-stone-900 text-white' : 'bg-white text-stone-700 hover:bg-stone-200'
-                  }`}
+                  className={`px-1 py-1 text-[13px] capitalize ${activeText(selected)}`}
                   onClick={() => patch({ mediaFilter: { ...preset } })}
                 >
                   {id}
@@ -426,9 +433,7 @@ export function MediaEditorPanel({
                 key={m}
                 type="button"
                 aria-pressed={mask === m}
-                className={`rounded-full px-3 py-1 text-[13px] capitalize ${
-                  mask === m ? 'bg-stone-900 text-white' : 'bg-white text-stone-700 hover:bg-stone-200'
-                }`}
+                className={`px-1 py-1 text-[13px] capitalize ${activeText(mask === m)}`}
                 onClick={() => patch({ mediaMask: m === 'none' ? undefined : m })}
               >
                 {m === 'rounded' ? 'Rounded' : m === 'rect' ? 'Rectangle' : m}
@@ -436,9 +441,9 @@ export function MediaEditorPanel({
             ))}
           </div>
           <InspectorSlider
-            label="Size"
-            min={0}
-            max={100}
+            label="Scale"
+            min={10}
+            max={300}
             neutral={100}
             value={layer.mediaMaskSize ?? 100}
             display={`${layer.mediaMaskSize ?? 100}%`}
@@ -450,20 +455,18 @@ export function MediaEditorPanel({
           <InspectorSlider
             label="Speed"
             min={0.5}
-            max={2}
+            max={10}
             step={0.1}
             neutral={1}
             value={layer.playbackRate ?? 1}
-            display={`${layer.playbackRate ?? 1}×`}
-            onChange={(n) => patch({ playbackRate: n })}
+            display={`${Math.round((layer.playbackRate ?? 1) * 10) / 10}×`}
+            onChange={(n) => patch({ playbackRate: Math.round(n * 10) / 10 })}
           />
           <div className="flex flex-wrap gap-1">
             <button
               type="button"
               aria-pressed={Boolean(layer.mediaMirror)}
-              className={`rounded-full px-3 py-1 text-[13px] ${
-                layer.mediaMirror ? 'bg-stone-900 text-white' : 'bg-white text-stone-700 hover:bg-stone-200'
-              }`}
+              className={`px-1 py-1 text-[13px] ${activeText(Boolean(layer.mediaMirror))}`}
               onClick={() => patch({ mediaMirror: !layer.mediaMirror })}
             >
               Mirror
@@ -471,9 +474,7 @@ export function MediaEditorPanel({
             <button
               type="button"
               aria-pressed={Boolean(layer.mediaReversed)}
-              className={`rounded-full px-3 py-1 text-[13px] ${
-                layer.mediaReversed ? 'bg-stone-900 text-white' : 'bg-white text-stone-700 hover:bg-stone-200'
-              }`}
+              className={`px-1 py-1 text-[13px] ${activeText(Boolean(layer.mediaReversed))}`}
               onClick={() => void onReverse()}
             >
               Reverse
@@ -518,11 +519,7 @@ export function MediaEditorPanel({
             <button
               type="button"
               aria-pressed={layer.mediaMuted !== false}
-              className={`rounded-full px-3 py-1 text-[13px] ${
-                layer.mediaMuted !== false
-                  ? 'bg-stone-900 text-white'
-                  : 'bg-white text-stone-700 hover:bg-stone-200'
-              }`}
+              className={`px-1 py-1 text-[13px] ${activeText(layer.mediaMuted !== false)}`}
               onClick={() => {
                 const muted = layer.mediaMuted === false;
                 hearClip(layer.mediaGain ?? 100, muted);
@@ -535,7 +532,7 @@ export function MediaEditorPanel({
             <div className="flex flex-wrap items-center gap-1.5">
               <button
                 type="button"
-                className="rounded-full bg-stone-900 px-3 py-1 text-[13px] text-white"
+                className="px-1 py-1 text-[13px] font-semibold text-stone-700"
                 onClick={() => audioPickRef.current?.click()}
               >
                 Add audio
@@ -554,14 +551,14 @@ export function MediaEditorPanel({
               />
               <input
                 aria-label="Licensed audio doc"
-                className="min-w-0 flex-1 rounded-full border border-stone-300 bg-white px-3 py-1 text-[13px]"
+                className="min-w-0 flex-1 border border-stone-200 bg-stone-50 px-2 py-1 text-[13px] text-stone-700"
                 placeholder="Licensed doc id"
                 value={licensedDraft}
                 onChange={(e) => setLicensedDraft(e.target.value)}
               />
               <button
                 type="button"
-                className="rounded-full bg-white px-3 py-1 text-[13px] text-stone-700 hover:bg-stone-200"
+                className="px-1 py-1 text-[13px] text-stone-500"
                 onClick={addLicensed}
               >
                 Add licensed
@@ -584,9 +581,7 @@ export function MediaEditorPanel({
                 <button
                   type="button"
                   aria-pressed={Boolean(track.muted)}
-                  className={`rounded-full px-3 py-1 text-[13px] ${
-                    track.muted ? 'bg-stone-900 text-white' : 'bg-white text-stone-700 hover:bg-stone-200'
-                  }`}
+                  className={`px-1 py-1 text-[13px] ${activeText(Boolean(track.muted))}`}
                   onClick={() => patchTrack(track.id, { muted: !track.muted })}
                 >
                   Mute
@@ -639,30 +634,33 @@ function CropEditor({
   onChange: (c: PenMediaCrop) => void;
   onReset: () => void;
 }) {
+  const edges = mediaCropEdges(crop);
   return (
     <div className="space-y-2">
       {(
         [
-          ['x', 'Left', 0, 90, 0],
-          ['y', 'Top', 0, 90, 0],
-          ['w', 'Width', 10, 100, 100],
-          ['h', 'Height', 10, 100, 100]
+          ['top', 'Top'],
+          ['bottom', 'Bottom'],
+          ['left', 'Left'],
+          ['right', 'Right']
         ] as const
-      ).map(([key, label, min, max, neutral]) => (
+      ).map(([edge, label]) => (
         <InspectorSlider
-          key={key}
+          key={edge}
           label={label}
-          min={min}
-          max={max}
-          neutral={neutral}
-          value={Math.round(crop[key] * 100)}
-          display={`${Math.round(crop[key] * 100)}%`}
-          onChange={(n) => onChange({ ...crop, [key]: n / 100 })}
+          min={0}
+          max={90}
+          neutral={0}
+          value={Math.round(edges[edge] * 100)}
+          display={`${Math.round(edges[edge] * 100)}%`}
+          onChange={(n) =>
+            onChange(mediaCropFromEdges({ ...edges, [edge]: n / 100 }, edge))
+          }
         />
       ))}
       <button
         type="button"
-        className="text-[13px] text-stone-600 hover:text-stone-900"
+        className="text-[13px] text-stone-500"
         onClick={onReset}
       >
         Reset crop
@@ -744,21 +742,21 @@ function BrushEditor({
         <ColorSwatchButton label="Brush color" value={brushColor} onChange={setBrushColor} />
         <button
           type="button"
-          className="rounded-full bg-stone-900 px-3 py-1 text-[13px] text-white"
+          className="px-1 py-1 text-[13px] font-semibold text-stone-700"
           onClick={commit}
         >
           Apply strokes
         </button>
         <button
           type="button"
-          className="rounded-full px-3 py-1 text-[13px] text-stone-700 hover:bg-stone-200"
+          className="px-1 py-1 text-[13px] text-stone-500"
           onClick={onClear}
         >
           Clear
         </button>
       </div>
       <div
-        className="relative overflow-hidden rounded border border-stone-300 bg-neutral-900"
+        className="relative overflow-hidden bg-stone-200"
         style={frame}
       >
         {kind === 'video' ? (
