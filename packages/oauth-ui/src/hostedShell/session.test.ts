@@ -6,6 +6,7 @@ import {
   buildShellLaunchUrl,
   buildShellWebUrl,
   chooseShellLaunchUrl,
+  shellClickOpensWeb,
   encodeShellReturn,
   parseShellReturn,
 } from './session';
@@ -87,5 +88,10 @@ describe('hosted shell session', () => {
     expect(chooseShellLaunchUrl({ ...args, appOpened: true }).startsWith('com.parnoir.unlock://')).toBe(
       true
     );
+  });
+
+  it('opens the web unlock page from a browser click even when the app is not installed', () => {
+    expect(shellClickOpensWeb(false)).toBe(true);
+    expect(shellClickOpensWeb(true)).toBe(false);
   });
 });

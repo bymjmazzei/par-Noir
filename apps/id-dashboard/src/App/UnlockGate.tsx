@@ -42,8 +42,14 @@ export function UnlockGate(props: UnlockGateProps) {
             </div>
           </div>
           <div className="max-w-md mx-auto relative z-20">
-            <div className="bg-modal-bg rounded-lg shadow p-6">
-              <p className="text-sm text-text-secondary mb-4">
+            <div
+              className="rounded-xl p-8"
+              style={{
+                background: 'rgba(26, 26, 26, 0.95)',
+                border: '1px solid #333333',
+              }}
+            >
+              <p className="mb-4 text-sm text-white">
                 Key 1 and Key 2 stay in par Noir Unlock. This page only receives a session.
               </p>
               <HostedShellLaunch

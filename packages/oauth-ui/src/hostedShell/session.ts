@@ -150,3 +150,8 @@ export function buildShellWebUrl(args: ShellLaunchArgs): string {
 export function chooseShellLaunchUrl(args: ShellLaunchArgs & { appOpened: boolean }): string {
   return args.appOpened ? buildShellLaunchUrl(args) : buildShellWebUrl(args);
 }
+
+/** A browser click opens the web unlock page. The installed native shell keeps the app handoff. */
+export function shellClickOpensWeb(nativePlatform: boolean): boolean {
+  return !nativePlatform;
+}

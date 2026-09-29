@@ -4,9 +4,18 @@ import {
   buildShellLaunchUrl,
   buildShellWebUrl,
   parseShellReturn,
+  shellClickOpensWeb,
   type HostedShellSession,
   type ShellOp,
 } from './session';
+
+function nativeUnlockShell(): boolean {
+  if (typeof window === 'undefined') return false;
+  const cap = (
+    window as Window & { Capacitor?: { isNativePlatform?: () => boolean } }
+  ).Capacitor;
+  return typeof cap?.isNativePlatform === 'function' && cap.isNativePlatform();
+}
 
 export type HostedShellLaunchProps = {
   op?: ShellOp;
@@ -61,22 +70,32 @@ export function HostedShellLaunch(props: HostedShellLaunchProps): React.ReactEle
       apiEndpoint: props.apiEndpoint,
       vaultPayload: props.vaultPayload,
     };
-    const appUrl = buildShellLaunchUrl(launch);
-    void (async () => {
-      const result = await tryPreferUnlockApp(appUrl);
-      if (result.opened) return;
-      window.location.href = buildShellWebUrl(launch);
-    })();
+    if (!shellClickOpensWeb(nativeUnlockShell())) {
+      void tryPreferUnlockApp(buildShellLaunchUrl(launch));
+      return;
+    }
+    window.location.assign(buildShellWebUrl(launch));
   };
 
   return (
     <div className={props.className}>
       {props.buttonOnly ? null : (
-        <p className="text-sm text-text-secondary mb-4">
+        <p className="mb-4 text-sm text-white">
           Key 1 and Key 2 stay in par Noir Unlock. This page only receives a session.
         </p>
       )}
-      <button type="button" className="btn-primary w-full" onClick={openUnlock}>
+      <button
+        type="button"
+        className="w-full text-sm font-medium"
+        style={{
+          backgroundColor: 'rgba(26, 26, 26, 0.95)',
+          border: '1px solid #d1d5db',
+          color: '#ffffff',
+          borderRadius: 8,
+          padding: '12px 16px',
+        }}
+        onClick={openUnlock}
+      >
         {props.label || 'Continue in par Noir Unlock'}
       </button>
       {error ? <p className="text-sm text-red-400 mt-2">{error}</p> : null}
