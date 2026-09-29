@@ -72,6 +72,10 @@
       }
 
       var BC_NAME = 'par-noir-oauth-v1';
+      if (window.location.hash.indexOf('pn_shell=') !== -1) {
+        window.location.replace('/' + window.location.hash);
+        return;
+      }
       var urlParams = new URLSearchParams(window.location.search);
       var issuer = urlParams.get('iss') || '';
       var isGoogleIssuer = issuer.indexOf('accounts.google.com') !== -1;
