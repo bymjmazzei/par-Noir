@@ -3,7 +3,7 @@
  * The fragment never carries Key 1 or Key 2.
  */
 
-import { UNLOCK_CUSTOM_SCHEME } from '../consentUnlock/constants';
+import { DEFAULT_UNLOCK_ORIGIN, UNLOCK_CUSTOM_SCHEME } from '../consentUnlock/constants';
 
 export const SHELL_OPS = ['session', 'export', 'recovery', 'sub_pn', 'dm', 'rotate', 'create', 'seal_vault'] as const;
 export type ShellOp = (typeof SHELL_OPS)[number];
@@ -129,4 +129,24 @@ export function buildShellLaunchUrl(args: {
   if (args.apiEndpoint) params.set('api_endpoint', args.apiEndpoint);
   if (args.vaultPayload) params.set('vault_payload', args.vaultPayload);
   return `${UNLOCK_CUSTOM_SCHEME}://oauth/consent?${params.toString()}`;
+}
+
+export type ShellLaunchArgs = {
+  returnTo: string;
+  op?: ShellOp;
+  clientId?: string;
+  apiEndpoint?: string;
+  vaultPayload?: string;
+};
+
+/** Same shell query on the web unlock page. Factors stay there, not on the hosted site. */
+export function buildShellWebUrl(args: ShellLaunchArgs): string {
+  const appUrl = buildShellLaunchUrl(args);
+  const query = appUrl.slice(appUrl.indexOf('?'));
+  return `${DEFAULT_UNLOCK_ORIGIN}/oauth/consent${query}`;
+}
+
+/** Installed app keeps the custom scheme. A missing app uses the web unlock page. */
+export function chooseShellLaunchUrl(args: ShellLaunchArgs & { appOpened: boolean }): string {
+  return args.appOpened ? buildShellLaunchUrl(args) : buildShellWebUrl(args);
 }

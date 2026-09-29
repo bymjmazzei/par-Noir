@@ -4,6 +4,8 @@ import {
   applyShellFragment,
   assertFactorFree,
   buildShellLaunchUrl,
+  buildShellWebUrl,
+  chooseShellLaunchUrl,
   encodeShellReturn,
   parseShellReturn,
 } from './session';
@@ -69,5 +71,21 @@ describe('hosted shell session', () => {
     expect(url).toContain('flow=shell');
     expect(url).toContain('op=dm');
     expect(url).not.toContain('passcode');
+  });
+
+  it('selects the web unlock page when the app did not open', () => {
+    const args = {
+      returnTo: 'https://pn.parnoir.com/',
+      op: 'session' as const,
+    };
+    const url = chooseShellLaunchUrl({ ...args, appOpened: false });
+    expect(url.startsWith('https://unlock.parnoir.com/oauth/consent?')).toBe(true);
+    expect(url).toContain('flow=shell');
+    expect(url).toContain('op=session');
+    expect(url).not.toContain('passcode');
+    expect(url).toBe(buildShellWebUrl(args));
+    expect(chooseShellLaunchUrl({ ...args, appOpened: true }).startsWith('com.parnoir.unlock://')).toBe(
+      true
+    );
   });
 });

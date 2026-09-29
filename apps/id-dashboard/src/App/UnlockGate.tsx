@@ -43,18 +43,22 @@ export function UnlockGate(props: UnlockGateProps) {
           </div>
           <div className="max-w-md mx-auto relative z-20">
             <div className="bg-modal-bg rounded-lg shadow p-6">
+              <p className="text-sm text-text-secondary mb-4">
+                Key 1 and Key 2 stay in par Noir Unlock. This page only receives a session.
+              </p>
               <HostedShellLaunch
+                buttonOnly
                 op="session"
                 label={loading ? 'Unlocking...' : 'Continue in par Noir Unlock'}
                 onSession={(session) => {
                   void handleShellSession(session);
                 }}
               />
-              <div className="mt-6 grid grid-cols-2 gap-2">
-                <HostedShellLaunch op="create" label="Create New pN" onSession={(session) => {
+              <div className="mt-4 grid grid-cols-2 gap-2">
+                <HostedShellLaunch buttonOnly op="create" label="Create New pN" onSession={(session) => {
                   void import('../services/shellResultFile').then(({ downloadShellIdentityFile }) => downloadShellIdentityFile(session));
                 }} />
-                <HostedShellLaunch op="recovery" label="Recover pN" onSession={(session) => {
+                <HostedShellLaunch buttonOnly op="recovery" label="Recover pN" onSession={(session) => {
                   void import('../services/shellResultFile').then(({ downloadShellIdentityFile }) => downloadShellIdentityFile(session, 'par-noir-recovered.json'));
                 }} />
               </div>

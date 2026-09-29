@@ -1,6 +1,8 @@
 import React, { useEffect, useState } from 'react';
+import { tryPreferUnlockApp } from '../unlockPreferApp';
 import {
   buildShellLaunchUrl,
+  buildShellWebUrl,
   parseShellReturn,
   type HostedShellSession,
   type ShellOp,
@@ -14,6 +16,8 @@ export type HostedShellLaunchProps = {
   label?: string;
   className?: string;
   vaultPayload?: string;
+  /** Button only. The caller prints the explanation once for several actions. */
+  buttonOnly?: boolean;
   onSession: (session: HostedShellSession) => void;
 };
 
@@ -50,21 +54,28 @@ export function HostedShellLaunch(props: HostedShellLaunchProps): React.ReactEle
 
   const openUnlock = () => {
     setError(null);
-    const url = buildShellLaunchUrl({
+    const launch = {
       returnTo,
       op: props.op || 'session',
       clientId: props.clientId,
       apiEndpoint: props.apiEndpoint,
       vaultPayload: props.vaultPayload,
-    });
-    window.location.href = url;
+    };
+    const appUrl = buildShellLaunchUrl(launch);
+    void (async () => {
+      const result = await tryPreferUnlockApp(appUrl);
+      if (result.opened) return;
+      window.location.href = buildShellWebUrl(launch);
+    })();
   };
 
   return (
     <div className={props.className}>
-      <p className="text-sm text-text-secondary mb-4">
-        Key 1 and Key 2 stay in par Noir Unlock. This page only receives a session.
-      </p>
+      {props.buttonOnly ? null : (
+        <p className="text-sm text-text-secondary mb-4">
+          Key 1 and Key 2 stay in par Noir Unlock. This page only receives a session.
+        </p>
+      )}
       <button type="button" className="btn-primary w-full" onClick={openUnlock}>
         {props.label || 'Continue in par Noir Unlock'}
       </button>
