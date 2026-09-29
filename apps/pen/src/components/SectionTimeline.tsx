@@ -64,6 +64,18 @@ function DiamondMark({ filled }: { filled: boolean }) {
   );
 }
 
+function playheadBetweenKeys(layer: PenPageLayer, time: number): boolean {
+  const sorted = [...(layer.motion?.keys || [])]
+    .filter((key) => Number.isFinite(key.t))
+    .sort((a, b) => a.t - b.t);
+  for (let i = 0; i < sorted.length - 1; i += 1) {
+    const start = sorted[i]!.t;
+    const end = sorted[i + 1]!.t;
+    if (time > start + KEYFRAME_EPSILON_SEC && time < end - KEYFRAME_EPSILON_SEC) return true;
+  }
+  return false;
+}
+
 function formatTime(sec: number): string {
   if (!Number.isFinite(sec) || sec < 0) return '0:00';
   const s = Math.floor(sec);
@@ -490,8 +502,11 @@ export function SectionTimeline({
   const playheadOnKey = (active?.motion?.keys || []).some(
     (key) => Math.abs(key.t - activeLocal) <= KEYFRAME_EPSILON_SEC
   );
+  const graphsReady = Boolean(active && playheadBetweenKeys(active, activeLocal));
   const leaving = active ? spanLeavingKey(active, activeLocal) : null;
   const [zoom, setZoom] = useState(1);
+  const [graphsOpen, setGraphsOpen] = useState(false);
+  const graphsRef = useRef<HTMLDivElement>(null);
   const [joinMenu, setJoinMenu] = useState<null | {
     trackId: string;
     atSec: number;
@@ -501,6 +516,18 @@ export function SectionTimeline({
   const playheadRef = useRef(playheadSec);
   const playingRef = useRef(playing);
   const rootRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!graphsReady) setGraphsOpen(false);
+  }, [graphsReady]);
+  useEffect(() => {
+    if (!graphsOpen) return;
+    function onDoc(event: MouseEvent) {
+      if (graphsRef.current?.contains(event.target as Node)) return;
+      setGraphsOpen(false);
+    }
+    document.addEventListener('mousedown', onDoc);
+    return () => document.removeEventListener('mousedown', onDoc);
+  }, [graphsOpen]);
   useEffect(() => {
     if (!joinMenu) return;
     function onDoc(event: MouseEvent) {
@@ -850,6 +877,59 @@ export function SectionTimeline({
         >
           <DiamondMark filled={playheadOnKey} />
         </button>
+        <div ref={graphsRef} className="relative">
+          <button
+            type="button"
+            aria-label="Graph"
+            title="Graph"
+            aria-expanded={graphsOpen}
+            disabled={!graphsReady}
+            className={`inline-flex h-8 w-8 items-center justify-center ${
+              graphsReady ? 'text-stone-700' : 'text-stone-300'
+            }`}
+            onClick={() => {
+              if (!graphsReady) return;
+              setGraphsOpen((open) => !open);
+            }}
+          >
+            <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden>
+              <path d="M2 14 C6 14 10 2 14 2" fill="none" stroke="currentColor" strokeWidth="1.5" />
+            </svg>
+          </button>
+          {graphsOpen && leaving ? (
+            <div
+              data-keyframe-graphs
+              className="absolute bottom-full left-0 z-30 mb-1 flex max-w-[16rem] gap-1 overflow-x-auto rounded-md border border-stone-200 bg-white p-1 shadow-lg"
+            >
+              {GRAPH_CURVES.map((curve) => {
+                const selected = (leaving.ease ?? 'linear') === curve.id;
+                return (
+                  <button
+                    key={curve.id}
+                    type="button"
+                    aria-pressed={selected}
+                    className={`flex w-14 shrink-0 flex-col items-center gap-0.5 px-1 py-1 text-[11px] ${
+                      selected ? 'font-semibold text-stone-700' : 'text-stone-400'
+                    }`}
+                    onClick={() => chooseEase(curve.id)}
+                  >
+                    <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden>
+                      <path
+                        d={curve.d}
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="1.5"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      />
+                    </svg>
+                    {curve.label}
+                  </button>
+                );
+              })}
+            </div>
+          ) : null}
+        </div>
         <div className="flex items-center gap-1 text-stone-500">
           <button
             type="button"
@@ -1008,7 +1088,7 @@ export function SectionTimeline({
                 </button>
                 <div
                   data-clip-lane
-                  className="relative h-16 min-w-0 flex-1 cursor-pointer rounded-md border border-blue-600 bg-white"
+                  className="relative h-8 min-w-0 flex-1 cursor-pointer rounded-md border border-blue-600 bg-white"
                   onPointerDown={beginScrub}
                 >
                 {clips.map(({ clip, owner }) => {
@@ -1143,36 +1223,6 @@ export function SectionTimeline({
                   />
                 </label>
               )}
-              {layer.id === activeLayerId && leaving ? (
-                <div className="flex gap-1 overflow-x-auto pb-1" data-keyframe-graphs>
-                  {GRAPH_CURVES.map((curve) => {
-                    const selected = (leaving.ease ?? 'linear') === curve.id;
-                    return (
-                      <button
-                        key={curve.id}
-                        type="button"
-                        aria-pressed={selected}
-                        className={`flex w-14 shrink-0 flex-col items-center gap-0.5 px-1 py-1 text-[11px] ${
-                          selected ? 'font-semibold text-stone-700' : 'text-stone-400'
-                        }`}
-                        onClick={() => chooseEase(curve.id)}
-                      >
-                        <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden>
-                          <path
-                            d={curve.d}
-                            fill="none"
-                            stroke="currentColor"
-                            strokeWidth="1.5"
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                          />
-                        </svg>
-                        {curve.label}
-                      </button>
-                    );
-                  })}
-                </div>
-              ) : null}
               {trackLayers.map((item) => {
                 const playbackSrc = playback === 'publish' ? publishPlaybackSrc(item) : editorPlaybackSrc(item);
                 if (item.kind !== 'video' || !playbackSrc) return null;
@@ -1207,7 +1257,7 @@ export function SectionTimeline({
                       <SpeakerIcon muted={Boolean(track.muted)} />
                     </button>
                     <div
-                      className="relative h-10 min-w-0 flex-1 cursor-pointer overflow-hidden rounded-md border border-blue-600 bg-white"
+                      className="relative h-5 min-w-0 flex-1 cursor-pointer overflow-hidden rounded-md border border-blue-600 bg-white"
                       onPointerDown={beginScrub}
                     >
                       <div

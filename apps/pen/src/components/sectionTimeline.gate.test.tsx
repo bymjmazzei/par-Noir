@@ -53,8 +53,25 @@ describe('section timeline', () => {
       />
     );
     expect(html).toContain('aria-label="Keyframe"');
+    expect(html).toContain('aria-label="Graph"');
+    expect(html).toMatch(/aria-label="Graph"[^>]*disabled=""/);
+    expect(html).not.toContain('data-keyframe-graphs');
     expect(html).toContain('data-keyframe="title:0"');
-    expect(html).toContain('Linear');
+    const between = renderToStaticMarkup(
+      <SectionTimeline
+        section={section}
+        activeLayerId="title"
+        playheadSec={0.5}
+        playing={false}
+        onPlayhead={() => undefined}
+        onPlaying={() => undefined}
+        onSelectLayer={() => undefined}
+        onSectionChange={() => undefined}
+      />
+    );
+    expect(between).toContain('aria-label="Graph"');
+    expect(between).not.toMatch(/aria-label="Graph"[^>]*disabled=""/);
+    expect(between).not.toContain('data-keyframe-graphs');
     expect(html).toContain('data-track-row="title"');
     expect(html).toContain('data-sampled-x="80"');
     expect(html).toContain('data-audio-lane="voice"');
