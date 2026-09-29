@@ -182,21 +182,22 @@ describe('preview page toolbar', () => {
     expect(html).toMatch(/aria-label="Screen"[^>]*disabled=""/);
   });
 
-  it('screen offers an all-pages view beside the orientation control', () => {
+  it('the orientation menu keeps portrait, landscape, and the three scroll views', () => {
     const html = renderToStaticMarkup(
-      <PreviewOrientationMenu
+      <OrientationChoices
         pageOrientation="portrait"
         pageView="screen"
-        screenOverview={false}
         onPageOrientation={() => undefined}
         onPageView={() => undefined}
         onToggleViewLock={() => undefined}
-        onToggleScreenOverview={() => undefined}
       />
     );
-    expect(html).toContain('aria-label="All pages"');
-    expect(html).toContain('title="All pages"');
-    expect(html).toContain('title="Portrait"');
+    expect(html).toContain('aria-label="Portrait"');
+    expect(html).toContain('aria-label="Landscape"');
+    expect(html).toContain('aria-label="Scroll vertically"');
+    expect(html).toContain('aria-label="Scroll horizontally"');
+    expect(html).toContain('aria-label="Screen"');
+    expect(html).not.toContain('All pages');
   });
 
   it('a locked orientation menu stays closed until it is opened', () => {

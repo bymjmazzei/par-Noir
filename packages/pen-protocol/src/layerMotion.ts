@@ -268,7 +268,47 @@ export function layerMediaTime(layer: PenPageLayer, playhead: number, rate = 1, 
   const clip = clipAtTime(layer, playhead, clock);
   const inn = clip?.inSec ?? layer.inSec ?? 0;
   const source = clip?.sourceInSec ?? layer.sourceInSec ?? 0;
-  return Math.max(0, (playhead - inn) * speed + source);
+  const forward = Math.max(0, (playhead - inn) * speed + source);
+  if (!layer.mediaReversed) return forward;
+  const out = clip?.outSec ?? layer.outSec ?? clock;
+  const sourceEnd = source + Math.max(0, out - inn) * speed;
+  return Math.max(0, sourceEnd - (forward - source));
+}
+
+export type TrackJoinPoint = {
+  trackId: string;
+  atSec: number;
+  fromId: string;
+  toId: string;
+};
+
+/** Where two clips on one track meet, including the middle of an overlap. */
+export function trackJoinPoints(section: PenSectionContent): TrackJoinPoint[] {
+  const layers = (section.layers || []).filter(
+    (layer) => layer.kind !== 'guide' && layer.kind !== 'group' && !layer.parentGroupId
+  );
+  const byTrack = new Map<string, PenPageLayer[]>();
+  for (const layer of layers) {
+    const id = layerTrackId(layer);
+    const list = byTrack.get(id) || [];
+    list.push(layer);
+    byTrack.set(id, list);
+  }
+  const points: TrackJoinPoint[] = [];
+  for (const [trackId, group] of byTrack) {
+    if (group.length < 2) continue;
+    const ordered = [...group].sort((a, b) => (a.inSec ?? 0) - (b.inSec ?? 0));
+    for (let i = 0; i < ordered.length - 1; i += 1) {
+      const from = ordered[i]!;
+      const to = ordered[i + 1]!;
+      const fromEnd = from.outSec ?? from.inSec ?? 0;
+      const toStart = to.inSec ?? 0;
+      if (toStart > fromEnd + 0.05) continue;
+      const atSec = toStart < fromEnd ? (toStart + fromEnd) / 2 : toStart;
+      points.push({ trackId, atSec, fromId: from.id, toId: to.id });
+    }
+  }
+  return points;
 }
 
 /**

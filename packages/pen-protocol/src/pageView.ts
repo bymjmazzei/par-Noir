@@ -36,24 +36,6 @@ export function pageSwipeAxisForView(view: PenPageView): 'x' | 'y' | undefined {
   return view === 'vertical' ? 'y' : 'x';
 }
 
-/**
- * Scale that fits every screen page in the pane.
- * A strip already smaller than the pane stays at 1.
- */
-export function screenOverviewScale(
-  pageCount: number,
-  pageWidthPx: number,
-  pageHeightPx: number,
-  paneWidthPx: number,
-  paneHeightPx: number
-): number {
-  const stripW = screenStripWidthPx(pageCount, pageWidthPx);
-  const paneW = Math.max(1, paneWidthPx);
-  const paneH = Math.max(1, paneHeightPx);
-  const pageH = Math.max(1, pageHeightPx);
-  return Math.min(1, paneW / stripW, paneH / pageH);
-}
-
 /** Screen strip is the pages in one row. A 3-page doc is three page-widths wide. */
 export function screenStripWidthPx(pageCount: number, pageWidthPx: number): number {
   const count = Math.max(1, Math.round(pageCount) || 1);

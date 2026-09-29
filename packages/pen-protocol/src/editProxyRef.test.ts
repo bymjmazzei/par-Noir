@@ -18,14 +18,14 @@ describe('edit proxy refs', () => {
     expect(publishPlaybackSrc({ backgroundVideo: 'penmedia:bg' })).toBe('penmedia:bg');
   });
 
-  it('plays the reversed proxy in the editor and the original on publish', () => {
+  it('keeps the edit proxy when the clip is reversed', () => {
     const layer = {
       videoSrc: 'penmedia:original',
       editProxySrc: 'penmedia:proxy',
       mediaReversed: true,
       reverseProxySrc: 'penmedia:reverse'
     };
-    expect(editorPlaybackSrc(layer)).toBe('penmedia:reverse');
+    expect(editorPlaybackSrc(layer)).toBe('penmedia:proxy');
     expect(publishPlaybackSrc(layer)).toBe('penmedia:original');
   });
 

@@ -21,7 +21,6 @@ import {
   editorPlaybackSrc,
   mediaFilterCss,
   mergeMediaFilter,
-  publishPlaybackSrc,
   layerSampleTime,
   patchLayerStyle,
   upsertLayer,
@@ -39,7 +38,6 @@ import { SectionTimeline } from './SectionTimeline';
 import { LayerMediaContent } from './LayerMediaContent';
 import { ColorSwatchButton } from './PanelValueControls';
 import { probeMediaAspect } from '../services/penAttach';
-import { buildReversedEditProxy, reverseProxyAllowed } from '../services/editProxy';
 import { resolvePenMediaSrc, ingestInlineMediaSrc, putLocalMedia } from '../services/penLocalMedia';
 import { useResolvedMediaSrc } from '../hooks/useResolvedMediaSrc';
 import type { PenSession } from '../services/penSession';
@@ -255,7 +253,6 @@ export function MediaEditorPanel({
   );
   const [licensedDraft, setLicensedDraft] = useState('');
   const audioPickRef = useRef<HTMLInputElement>(null);
-  const reversing = useRef(false);
   const cropBasis = useRef<PenPageLayer | null>(null);
   const filter = mergeMediaFilter(layer.mediaFilter);
   const crop = clampMediaCrop(layer.mediaCrop);
@@ -284,30 +281,8 @@ export function MediaEditorPanel({
     peekPenMediaController(`pen-layer:${layer.id}`)?.setClipAudio(gain / 100, !muted);
   }
 
-  async function onReverse() {
-    if (layer.mediaReversed) {
-      patch({ mediaReversed: false });
-      return;
-    }
-    if (layer.reverseProxySrc) {
-      patch({ mediaReversed: true });
-      return;
-    }
-    if (reversing.current || !docId) return;
-    const known = peekPenMediaController(`pen-layer:${layer.id}`)?.master.duration;
-    if (typeof known === 'number' && Number.isFinite(known) && !reverseProxyAllowed(known)) return;
-    const raw = editorPlaybackSrc({ ...layer, mediaReversed: false }) || publishPlaybackSrc(layer);
-    if (!raw) return;
-    reversing.current = true;
-    try {
-      const url = await resolvePenMediaSrc(raw, docId);
-      if (!url) return;
-      const ref = await buildReversedEditProxy({ docId, fileUrl: url });
-      if (!ref) return;
-      patch({ mediaReversed: true, reverseProxySrc: ref });
-    } finally {
-      reversing.current = false;
-    }
+  function onReverse() {
+    patch({ mediaReversed: !layer.mediaReversed });
   }
 
   async function onReplace(src: string, meta?: { blobUrl?: string }) {

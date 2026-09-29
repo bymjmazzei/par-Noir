@@ -9,6 +9,7 @@ import {
   type PenMediaController
 } from '@par-noir/feed-tile';
 import {
+  applyTransitionPreset,
   defaultLayerName,
   editorPlaybackSrc,
   KEYFRAME_EPSILON_SEC,
@@ -25,12 +26,14 @@ import {
   setKeyframeEase,
   spanLeavingKey,
   splitLayerAt,
+  trackJoinPoints,
   toggleKeyframeAt,
   upsertLayer,
   wrapTime,
   type PenKeyframeEase,
   type PenPageLayer,
-  type PenSectionContent
+  type PenSectionContent,
+  type PenTransitionPreset
 } from '@par-noir/pen-protocol';
 import { useResolvedMediaSrc } from '../hooks/useResolvedMediaSrc';
 import { usePlaybackMode } from '../hooks/usePlaybackMode';
@@ -155,6 +158,214 @@ function SpeakerIcon({ muted }: { muted: boolean }) {
   );
 }
 
+const TRANSITION_PRESETS: Array<{ id: PenTransitionPreset; label: string }> = [
+  { id: 'crossfade', label: 'Fade' },
+  { id: 'slide', label: 'Slide' },
+  { id: 'push', label: 'Push' },
+  { id: 'dip', label: 'Dip' },
+  { id: 'zoom', label: 'Zoom' }
+];
+
+const decorCache = new Map<string, { frames: string[]; wave: number[] }>();
+
+function seekVideo(master: HTMLVideoElement, at: number): Promise<void> {
+  return new Promise((resolve) => {
+    const limit = Number.isFinite(master.duration) ? master.duration : at;
+    const target = Math.min(Math.max(0, at), limit);
+    if (Math.abs((master.currentTime || 0) - target) < 0.05) {
+      resolve();
+      return;
+    }
+    const done = () => {
+      master.removeEventListener('seeked', done);
+      resolve();
+    };
+    master.addEventListener('seeked', done);
+    try {
+      master.currentTime = target;
+    } catch {
+      master.removeEventListener('seeked', done);
+      resolve();
+      return;
+    }
+    window.setTimeout(done, 400);
+  });
+}
+
+async function readWave(url: string): Promise<number[]> {
+  try {
+    const response = await fetch(url);
+    const bytes = await response.arrayBuffer();
+    const context = new AudioContext();
+    const audio = await context.decodeAudioData(bytes.slice(0));
+    await context.close();
+    const channel = audio.getChannelData(0);
+    const bars = 48;
+    const size = Math.max(1, Math.floor(channel.length / bars));
+    const wave: number[] = [];
+    for (let i = 0; i < bars; i += 1) {
+      let peak = 0;
+      for (let j = 0; j < size; j += 1) peak = Math.max(peak, Math.abs(channel[i * size + j] || 0));
+      wave.push(peak);
+    }
+    return wave;
+  } catch {
+    return [];
+  }
+}
+
+async function readFrames(master: HTMLVideoElement): Promise<string[]> {
+  const dur = master.duration;
+  if (!dur || !Number.isFinite(dur) || dur < 0.05) return [];
+  const saved = master.currentTime || 0;
+  const count = Math.min(8, Math.max(1, Math.round(dur)));
+  const canvas = document.createElement('canvas');
+  canvas.width = 48;
+  canvas.height = 32;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return [];
+  const frames: string[] = [];
+  try {
+    for (let i = 0; i < count; i += 1) {
+      await seekVideo(master, ((i + 0.5) / count) * Math.max(0.05, dur - 0.05));
+      ctx.drawImage(master, 0, 0, canvas.width, canvas.height);
+      frames.push(canvas.toDataURL('image/jpeg', 0.6));
+    }
+  } catch {
+    /* keep the frames already drawn */
+  }
+  await seekVideo(master, saved);
+  return frames;
+}
+
+function WaveLine({ values }: { values: number[] }) {
+  if (!values.length) return null;
+  const d = values
+    .map((value, index) => {
+      const x = (index / Math.max(1, values.length - 1)) * 100;
+      const y = 70 - value * 55;
+      return `${index === 0 ? 'M' : 'L'}${x.toFixed(2)} ${y.toFixed(2)}`;
+    })
+    .join(' ');
+  return (
+    <svg
+      data-clip-wave
+      viewBox="0 0 100 100"
+      preserveAspectRatio="none"
+      className="pointer-events-none absolute inset-x-0 bottom-0 h-1/2 w-full"
+      aria-hidden
+    >
+      <path d={d} fill="none" stroke="#2563eb" strokeWidth="1.5" vectorEffect="non-scaling-stroke" />
+    </svg>
+  );
+}
+
+function TransitionSketch({ preset }: { preset: PenTransitionPreset }) {
+  const slide = preset === 'slide' || preset === 'push';
+  return (
+    <span className="relative block h-8 w-10 overflow-hidden bg-white">
+      <span
+        className="absolute inset-y-1 left-1 w-4 bg-blue-700"
+        style={{
+          opacity: preset === 'dip' ? 0.2 : 0.55,
+          transform: slide ? 'translateX(-6px)' : undefined
+        }}
+      />
+      <span
+        className="absolute inset-y-1 right-1 w-4 bg-blue-300"
+        style={{ transform: preset === 'zoom' ? 'scale(0.7)' : slide ? 'translateX(6px)' : undefined }}
+      />
+    </span>
+  );
+}
+
+function ClipDecor({
+  src,
+  docId,
+  session,
+  playing,
+  onReady
+}: {
+  src?: string;
+  docId?: string;
+  session?: PenSession | null;
+  playing: boolean;
+  onReady: (resolved: string) => HTMLVideoElement | null;
+}) {
+  const { resolved } = useResolvedMediaSrc(src, { docId, session });
+  const readyRef = useRef(onReady);
+  readyRef.current = onReady;
+  const [decor, setDecor] = useState<{ frames: string[]; wave: number[] } | null>(null);
+  useEffect(() => {
+    if (!resolved || playing) return;
+    const cached = decorCache.get(resolved);
+    if (cached) {
+      setDecor(cached);
+      return;
+    }
+    let cancel = false;
+    const master = readyRef.current(resolved);
+    void (async () => {
+      const [wave, frames] = await Promise.all([
+        readWave(resolved),
+        master ? readFrames(master) : Promise.resolve([])
+      ]);
+      if (cancel) return;
+      const next = { frames, wave };
+      decorCache.set(resolved, next);
+      setDecor(next);
+    })();
+    return () => {
+      cancel = true;
+    };
+  }, [resolved, playing]);
+  if (!decor) return null;
+  return (
+    <>
+      {decor.frames.length ? (
+        <span data-clip-frames className="pointer-events-none absolute inset-0 flex">
+          {decor.frames.map((frame, index) => (
+            <img key={index} src={frame} alt="" className="h-full min-w-0 flex-1 object-cover" draggable={false} />
+          ))}
+        </span>
+      ) : null}
+      <WaveLine values={decor.wave} />
+    </>
+  );
+}
+
+function LaneWave({
+  src,
+  docId,
+  session
+}: {
+  src?: string;
+  docId?: string;
+  session?: PenSession | null;
+}) {
+  const { resolved } = useResolvedMediaSrc(src, { docId, session });
+  const [wave, setWave] = useState<number[]>([]);
+  useEffect(() => {
+    if (!resolved) return;
+    const cached = decorCache.get(resolved);
+    if (cached?.wave.length) {
+      setWave(cached.wave);
+      return;
+    }
+    let cancel = false;
+    void readWave(resolved).then((values) => {
+      if (cancel) return;
+      const prev = decorCache.get(resolved) || { frames: [], wave: [] };
+      decorCache.set(resolved, { ...prev, wave: values });
+      setWave(values);
+    });
+    return () => {
+      cancel = true;
+    };
+  }, [resolved]);
+  return <WaveLine values={wave} />;
+}
+
 function Magnify({ plus }: { plus: boolean }) {
   return (
     <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden>
@@ -206,11 +417,11 @@ function AudioLane({
   return <audio ref={audioRef} src={resolved} preload="metadata" />;
 }
 
-function placeVideo(master: HTMLVideoElement, at: number) {
+function placeVideo(master: HTMLVideoElement, at: number, force = false) {
   const dur = master.duration;
   if (!dur || !Number.isFinite(dur)) return;
   const target = Math.min(dur, Math.max(0, at));
-  if (Math.abs((master.currentTime || 0) - target) <= 0.35) return;
+  if (!force && Math.abs((master.currentTime || 0) - target) <= 0.35) return;
   try {
     master.currentTime = target;
   } catch {
@@ -279,6 +490,12 @@ export function SectionTimeline({
   );
   const leaving = active ? spanLeavingKey(active, activeLocal) : null;
   const [zoom, setZoom] = useState(1);
+  const [joinMenu, setJoinMenu] = useState<null | {
+    trackId: string;
+    atSec: number;
+    fromId: string;
+    toId: string;
+  }>(null);
   const playheadRef = useRef(playheadSec);
   const playingRef = useRef(playing);
   const rootRef = useRef<HTMLDivElement>(null);
@@ -314,6 +531,11 @@ export function SectionTimeline({
       const rate = layer.playbackRate && layer.playbackRate > 0 ? layer.playbackRate : 1;
       ctrl.setPlaybackRate(rate);
       const mediaAt = layerMediaTime(layer, at, rate, layerClockSpan(section, layer));
+      if (layer.mediaReversed) {
+        ctrl.pause();
+        placeVideo(ctrl.master, mediaAt, true);
+        continue;
+      }
       if (mode === 'tick') {
         placeVideo(ctrl.master, mediaAt);
         continue;
@@ -535,6 +757,23 @@ export function SectionTimeline({
     window.addEventListener('pointerup', up);
   }
 
+  function assignJoin(preset: PenTransitionPreset) {
+    if (!joinMenu) return;
+    onSectionChange(
+      applyTransitionPreset(section, joinMenu.fromId, joinMenu.toId, preset, {
+        atSec: joinMenu.atSec,
+        durationSec: 0.5
+      })
+    );
+    const start = Math.max(0, joinMenu.atSec - 0.05);
+    playheadRef.current = start;
+    playingRef.current = true;
+    onPlayhead(start);
+    onPlaying(true);
+    driveVideos('play', start);
+    setJoinMenu(null);
+  }
+
   function toggleMute(layer: PenPageLayer) {
     if (layer.kind === 'video') {
       const mediaMuted = layer.mediaMuted === false ? true : false;
@@ -728,19 +967,7 @@ export function SectionTimeline({
               className="space-y-1"
               style={{ paddingLeft: depth ? 12 : 0 }}
             >
-              <div className="flex items-center gap-2">
-                {trackLayers.map((item) => (
-                  <button
-                    key={item.id}
-                    type="button"
-                    className={`w-24 cursor-grab truncate text-left text-[13px] ${
-                      item.id === activeLayerId ? 'font-semibold text-stone-700' : 'text-stone-400'
-                    }`}
-                    onPointerDown={(e) => beginMove(e, item)}
-                  >
-                    {defaultLayerName(item, section.layers || [])}
-                  </button>
-                ))}
+              <div className="flex items-stretch gap-1">
                 <button
                   type="button"
                   aria-label={`Mute ${layer.id}`}
@@ -750,7 +977,7 @@ export function SectionTimeline({
                       : 'Mute'
                   }
                   aria-pressed={layer.kind === 'video' ? layer.mediaMuted !== false : layer.visible === false}
-                  className={`inline-flex h-6 w-6 items-center justify-center ${
+                  className={`inline-flex w-6 shrink-0 items-center justify-center self-center ${
                     (layer.kind === 'video' ? layer.mediaMuted !== false : layer.visible === false)
                       ? 'text-stone-700'
                       : 'text-stone-400'
@@ -761,50 +988,98 @@ export function SectionTimeline({
                     muted={layer.kind === 'video' ? layer.mediaMuted !== false : layer.visible === false}
                   />
                 </button>
-                {layer.kind === 'group' && (
-                  <label className="ml-auto flex items-center gap-1 text-[13px] text-stone-600">
-                    Loop
-                    <input
-                      aria-label={`Loop ${layer.id}`}
-                      className="w-14 rounded-md border border-stone-200 bg-white px-1.5 py-0.5 text-[13px] tabular-nums"
-                      type="number"
-                      min={0}
-                      step={0.1}
-                      value={layer.durationSec ?? ''}
-                      onChange={(e) => setGroupDuration(layer, Number(e.target.value))}
-                    />
-                  </label>
-                )}
-              </div>
-              <div
-                data-clip-lane
-                className="relative h-7 cursor-pointer rounded-md bg-stone-200/80"
-                onPointerDown={beginScrub}
-              >
-                {clips.map(({ clip, owner }) => (
+                <div
+                  data-clip-lane
+                  className="relative h-16 min-w-0 flex-1 cursor-pointer rounded-md border border-blue-600 bg-white"
+                  onPointerDown={beginScrub}
+                >
+                {clips.map(({ clip, owner }) => {
+                  const playbackSrc =
+                    owner.kind === 'video'
+                      ? playback === 'publish'
+                        ? publishPlaybackSrc(owner)
+                        : editorPlaybackSrc(owner)
+                      : undefined;
+                  const name = defaultLayerName(owner, section.layers || []);
+                  return (
                   <div
                     key={`${owner.id}-${clip.id}`}
-                    className="absolute bottom-1 top-1 bg-stone-400"
+                    className="absolute bottom-0 top-0 overflow-hidden border border-blue-600 bg-white"
                     style={{
                       left: `${(clip.inSec / Math.max(rowDur, 0.01)) * 100}%`,
                       width: `${Math.max(4, ((clip.outSec - clip.inSec) / Math.max(rowDur, 0.01)) * 100)}%`
                     }}
                     onPointerDown={(e) => beginMove(e, owner)}
                   >
+                    <ClipDecor
+                      src={playbackSrc}
+                      docId={docId}
+                      session={session}
+                      playing={playing}
+                      onReady={(resolved) => {
+                        videoSrcs.current.set(owner.id, resolved);
+                        return videoController(owner, true)?.master ?? null;
+                      }}
+                    />
+                    <span
+                      data-clip-title={name}
+                      className={`pointer-events-none absolute left-1 top-0.5 max-w-[90%] truncate text-[11px] ${
+                        owner.id === activeLayerId ? 'font-semibold text-stone-800' : 'text-stone-500'
+                      }`}
+                    >
+                      {name}
+                    </span>
                     <button
                       type="button"
                       aria-label={`Trim start ${clip.id}`}
-                      className="absolute bottom-0 left-0 top-0 w-1.5 cursor-ew-resize bg-stone-500"
+                      className="absolute bottom-0 left-0 top-0 w-1.5 cursor-ew-resize bg-blue-600"
                       onPointerDown={(e) => beginTrim(e, owner, 'in', clip.id)}
                     />
                     <button
                       type="button"
                       aria-label={`Trim end ${clip.id}`}
-                      className="absolute bottom-0 right-0 top-0 w-1.5 cursor-ew-resize bg-stone-500"
+                      className="absolute bottom-0 right-0 top-0 w-1.5 cursor-ew-resize bg-blue-600"
                       onPointerDown={(e) => beginTrim(e, owner, 'out', clip.id)}
                     />
                   </div>
-                ))}
+                  );
+                })}
+                {trackJoinPoints(section)
+                  .filter((point) => point.trackId === trackId)
+                  .map((point) => (
+                    <button
+                      key={`${point.fromId}-${point.toId}`}
+                      type="button"
+                      data-transition-join=""
+                      aria-label="Transition"
+                      title="Transition"
+                      className="absolute top-1/2 z-10 h-4 w-4 -translate-x-1/2 -translate-y-1/2 rounded-sm border border-blue-600 bg-white"
+                      style={{ left: `${(point.atSec / Math.max(rowDur, 0.01)) * 100}%` }}
+                      onPointerDown={(event) => {
+                        event.stopPropagation();
+                        event.preventDefault();
+                        setJoinMenu(point);
+                      }}
+                    />
+                  ))}
+                {joinMenu?.trackId === trackId ? (
+                  <div
+                    className="absolute bottom-full z-30 mb-1 flex gap-1 rounded-md border border-stone-200 bg-white p-1 shadow-lg"
+                    style={{ left: `${(joinMenu.atSec / Math.max(rowDur, 0.01)) * 100}%` }}
+                  >
+                    {TRANSITION_PRESETS.map((preset) => (
+                      <button
+                        key={preset.id}
+                        type="button"
+                        className="flex w-12 flex-col items-center gap-0.5 text-[10px] text-stone-600"
+                        onClick={() => assignJoin(preset.id)}
+                      >
+                        <TransitionSketch preset={preset.id} />
+                        {preset.label}
+                      </button>
+                    ))}
+                  </div>
+                ) : null}
                 {keys.map((key) => {
                   const selected = Math.abs(key.t - local) <= KEYFRAME_EPSILON_SEC;
                   return (
@@ -830,7 +1105,22 @@ export function SectionTimeline({
                     </button>
                   );
                 })}
+                </div>
               </div>
+              {layer.kind === 'group' && (
+                <label className="flex items-center gap-1 text-[13px] text-stone-600">
+                  Loop
+                  <input
+                    aria-label={`Loop ${layer.id}`}
+                    className="w-14 rounded-md border border-stone-200 bg-white px-1.5 py-0.5 text-[13px] tabular-nums"
+                    type="number"
+                    min={0}
+                    step={0.1}
+                    value={layer.durationSec ?? ''}
+                    onChange={(e) => setGroupDuration(layer, Number(e.target.value))}
+                  />
+                </label>
+              )}
               {layer.id === activeLayerId && leaving ? (
                 <div className="flex gap-1 overflow-x-auto pb-1" data-keyframe-graphs>
                   {GRAPH_CURVES.map((curve) => {
@@ -878,31 +1168,45 @@ export function SectionTimeline({
               {trackLayers.flatMap((owner) => (owner.audioTracks || []).map((track) => {
                 const offset = track.offsetSec || 0;
                 return (
-                  <div key={track.id} data-audio-lane={track.id} className="space-y-0.5">
-                    <div className="flex items-center justify-between gap-2 text-[13px] text-stone-500">
-                      <span className="truncate">
-                        {track.licensedDocId ? 'Licensed' : 'Audio'}
-                      </span>
-                      <button
-                        type="button"
-                        className={`inline-flex h-6 w-6 items-center justify-center ${track.muted ? 'text-stone-700' : 'text-stone-400'}`}
-                        aria-label={`Mute ${track.id}`}
-                        title={track.muted ? 'Unmute' : 'Mute'}
-                        aria-pressed={Boolean(track.muted)}
-                        onClick={() => {
-                          const next = (owner.audioTracks || []).map((lane) =>
-                            lane.id === track.id ? { ...lane, muted: !lane.muted } : lane
-                          );
-                          onSectionChange(upsertLayer(section, { ...owner, audioTracks: next }));
+                  <div key={track.id} data-audio-lane={track.id} className="flex items-stretch gap-1">
+                    <button
+                      type="button"
+                      className={`inline-flex w-6 shrink-0 items-center justify-center self-center ${track.muted ? 'text-stone-700' : 'text-stone-400'}`}
+                      aria-label={`Mute ${track.id}`}
+                      title={track.muted ? 'Unmute' : 'Mute'}
+                      aria-pressed={Boolean(track.muted)}
+                      onClick={() => {
+                        const next = (owner.audioTracks || []).map((lane) =>
+                          lane.id === track.id ? { ...lane, muted: !lane.muted } : lane
+                        );
+                        onSectionChange(upsertLayer(section, { ...owner, audioTracks: next }));
+                      }}
+                    >
+                      <SpeakerIcon muted={Boolean(track.muted)} />
+                    </button>
+                    <div
+                      className="relative h-10 min-w-0 flex-1 cursor-pointer overflow-hidden rounded-md border border-blue-600 bg-white"
+                      onPointerDown={beginScrub}
+                    >
+                      <div
+                        className="absolute bottom-0 top-0 bg-white"
+                        style={{
+                          left: `${(offset / Math.max(rowDur, 0.01)) * 100}%`,
+                          width: `${Math.max(8, 100 - (offset / Math.max(rowDur, 0.01)) * 100)}%`
                         }}
                       >
-                        <SpeakerIcon muted={Boolean(track.muted)} />
-                      </button>
+                        <LaneWave src={track.src} docId={docId} session={session} />
+                        <span className="pointer-events-none absolute left-1 top-0.5 truncate text-[11px] text-stone-500">
+                          {track.licensedDocId ? 'Licensed' : 'Audio'}
+                        </span>
+                      </div>
                       <button
                         type="button"
-                        className="text-stone-400"
+                        className="absolute right-1 top-0.5 text-[11px] text-stone-400"
                         aria-label={`Remove ${track.id}`}
-                        onClick={() => {
+                        title="Remove"
+                        onClick={(event) => {
+                          event.stopPropagation();
                           const next = (owner.audioTracks || []).filter((lane) => lane.id !== track.id);
                           onSectionChange(
                             upsertLayer(section, { ...owner, audioTracks: next.length ? next : undefined })
@@ -911,18 +1215,6 @@ export function SectionTimeline({
                       >
                         Remove
                       </button>
-                    </div>
-                    <div
-                      className="relative h-7 cursor-pointer bg-stone-200/80"
-                      onPointerDown={beginScrub}
-                    >
-                      <div
-                        className="absolute bottom-1 top-1 bg-stone-400"
-                        style={{
-                          left: `${(offset / Math.max(rowDur, 0.01)) * 100}%`,
-                          width: `${Math.max(8, 100 - (offset / Math.max(rowDur, 0.01)) * 100)}%`
-                        }}
-                      />
                     </div>
                     {track.src ? (
                       <AudioLane

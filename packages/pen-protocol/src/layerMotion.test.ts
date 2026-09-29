@@ -4,8 +4,9 @@ import {
   applyLayoutAtPlayhead,
   applyTransitionPreset,
   joinLayerToTrack,
-  reorderTimelineLayer,
   layerMediaTime,
+  reorderTimelineLayer,
+  trackJoinPoints,
   resolveTimelineDuration,
   sampleLayerAt,
   sampleSectionLayers,
@@ -284,6 +285,23 @@ describe('timeline tracks', () => {
     const c = lifted.layers?.find((item) => item.id === 'c');
     expect(b?.timelineTrackId).not.toBe('a');
     expect((b?.zIndex || 0) < (c?.zIndex || 0)).toBe(true);
+  });
+
+  it('marks the meeting point of two clips on one track', () => {
+    const doc = section([
+      layer({ id: 'a', kind: 'video', inSec: 0, outSec: 2 }),
+      layer({ id: 'b', kind: 'video', inSec: 0, outSec: 3 })
+    ]);
+    const joined = joinLayerToTrack(doc, 'b', 'a');
+    expect(trackJoinPoints(joined)).toEqual([
+      { trackId: 'a', atSec: 2, fromId: 'a', toId: 'b' }
+    ]);
+  });
+
+  it('walks a reversed clip from its end back to the source start', () => {
+    const clip = layer({ id: 'a', kind: 'video', inSec: 0, outSec: 4, mediaReversed: true });
+    expect(layerMediaTime(clip, 0, 1, 4)).toBeCloseTo(4);
+    expect(layerMediaTime(clip, 4, 1, 4)).toBeCloseTo(0);
   });
 });
 

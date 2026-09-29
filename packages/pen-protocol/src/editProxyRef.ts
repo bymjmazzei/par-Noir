@@ -6,10 +6,6 @@
 export function editorPlaybackSrc(
   source: { editProxySrc?: string; mediaReversed?: boolean; reverseProxySrc?: string } | null | undefined
 ): string | undefined {
-  if (source?.mediaReversed) {
-    const reversed = source.reverseProxySrc?.trim();
-    if (reversed) return reversed;
-  }
   const src = source?.editProxySrc?.trim();
   return src || undefined;
 }

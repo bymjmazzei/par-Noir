@@ -75,7 +75,59 @@ describe('section timeline', () => {
     expect(html).toContain('title="Split clip"');
     expect(html).toContain('title="Mute"');
     expect(html).toContain('title="Unmute"');
+    expect(html).toContain('data-clip-title="Title"');
+    expect(html).toContain('border-blue-600');
+    expect(html).toContain('bg-white');
     expect(sampleLayerAt(section.layers![0]!, 1).x).toBe(80);
     expect(section.layers![0]!.x).toBe(10);
+  });
+
+  it('puts a transition marker where two clips share a track', () => {
+    const joined: PenSectionContent = {
+      ...section,
+      layers: [
+        {
+          id: 'a',
+          kind: 'video',
+          x: 0,
+          y: 0,
+          w: 80,
+          h: 40,
+          zIndex: 1,
+          timelineTrackId: 'a',
+          inSec: 0,
+          outSec: 2,
+          name: 'One'
+        },
+        {
+          id: 'b',
+          kind: 'video',
+          x: 0,
+          y: 0,
+          w: 80,
+          h: 40,
+          zIndex: 2,
+          timelineTrackId: 'a',
+          inSec: 2,
+          outSec: 4,
+          name: 'Two'
+        }
+      ]
+    };
+    const html = renderToStaticMarkup(
+      <SectionTimeline
+        section={joined}
+        activeLayerId="a"
+        playheadSec={0}
+        playing={false}
+        onPlayhead={() => undefined}
+        onPlaying={() => undefined}
+        onSelectLayer={() => undefined}
+        onSectionChange={() => undefined}
+      />
+    );
+    expect(html).toContain('data-transition-join');
+    expect(html).toContain('data-clip-title="One"');
+    expect(html).toContain('aria-label="Mute a"');
   });
 });
