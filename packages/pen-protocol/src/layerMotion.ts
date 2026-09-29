@@ -448,20 +448,23 @@ export function resolveTimelineDuration(
   if (section.timelineDurationSec && section.timelineDurationSec > 0) {
     return section.timelineDurationSec;
   }
-  let max = 0;
+  let clip = 0;
+  let keyMax = 0;
   for (const layer of section.layers || []) {
     if (layer.kind === 'guide') continue;
     const hinted = videoDurationByLayerId?.[layer.id];
-    if (hinted && hinted > max) max = hinted;
-    if (layer.outSec && layer.outSec > max) max = layer.outSec;
-    if (layer.kind === 'group' && layer.durationSec && layer.durationSec > max) {
-      max = layer.durationSec;
+    if (hinted && hinted > clip) clip = hinted;
+    if (layer.outSec && layer.outSec > clip) clip = layer.outSec;
+    if (layer.kind === 'group' && layer.durationSec && layer.durationSec > clip) {
+      clip = layer.durationSec;
     }
     for (const key of layer.motion?.keys || []) {
-      if (key.t > max) max = key.t;
+      if (key.t > keyMax) keyMax = key.t;
     }
   }
-  return max > 0 ? max : DEFAULT_TIMELINE_SEC;
+  // A key inside the default clock must not become the end of the timeline.
+  const floor = clip > 0 ? clip : DEFAULT_TIMELINE_SEC;
+  return Math.max(floor, keyMax);
 }
 
 export function layerHasAnimatedProp(

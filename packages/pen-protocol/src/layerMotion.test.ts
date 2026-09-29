@@ -177,14 +177,18 @@ describe('sampleLayerAt', () => {
 });
 
 describe('timeline duration and layout writes', () => {
-  it('uses an explicit clock, then a video hint, then the last key, then 5s', () => {
+  it('keeps the default clock when the first key is inside it', () => {
     const keyed = section([
       layer({ id: 'mark', motion: { keys: [{ t: 3, x: 1 }] } })
     ]);
-    expect(resolveTimelineDuration(keyed)).toBe(3);
+    expect(resolveTimelineDuration(keyed)).toBe(5);
+    expect(
+      resolveTimelineDuration(section([layer({ id: 'mark', motion: { keys: [{ t: 8, x: 1 }] } })]))
+    ).toBe(8);
     expect(resolveTimelineDuration(keyed, { mark: 8 })).toBe(8);
     expect(resolveTimelineDuration({ ...keyed, timelineDurationSec: 12 })).toBe(12);
     expect(resolveTimelineDuration(section([layer({ id: 'still' })]))).toBe(5);
+    expect(resolveTimelineDuration(section([layer({ id: 'clip', kind: 'video', outSec: 2 })]))).toBe(2);
   });
 
   it('writes a drag onto the key at the playhead and leaves the rest pose', () => {

@@ -83,6 +83,14 @@ function formatTime(sec: number): string {
   return `${m}:${String(s % 60).padStart(2, '0')}`;
 }
 
+/** Mute column (w-6) plus the row gap, so the playhead shares the lane's time axis. */
+const TRACK_GUTTER = '1.75rem';
+
+function trackLeft(time: number, span: number): string {
+  const ratio = time / Math.max(span, 0.01);
+  return `calc(${TRACK_GUTTER} + (100% - ${TRACK_GUTTER}) * ${ratio})`;
+}
+
 function trackRows(section: PenSectionContent): Array<{ layer: PenPageLayer; depth: number }> {
   const layers = (section.layers || []).filter((layer) => layer.kind !== 'guide');
   const top = layers
@@ -661,9 +669,10 @@ export function SectionTimeline({
   }
 
   function seekClientX(clientX: number, scale: HTMLElement) {
-    const rect = scale.getBoundingClientRect();
+    const lane = scale.querySelector('[data-clip-lane]');
+    const rect = lane instanceof HTMLElement ? lane.getBoundingClientRect() : scale.getBoundingClientRect();
     const ratio = (clientX - rect.left) / Math.max(1, rect.width);
-    seekTo(ratio * duration);
+    seekTo(Math.min(1, Math.max(0, ratio)) * duration);
   }
 
   function beginScrub(event: ReactPointerEvent<HTMLElement>) {
@@ -1067,7 +1076,7 @@ export function SectionTimeline({
                 key={mark.t}
                 data-tick={mark.major ? 'major' : 'minor'}
                 className="absolute top-0"
-                style={{ left: `${(mark.t / Math.max(duration, 0.01)) * 100}%` }}
+                style={{ left: trackLeft(mark.t, duration) }}
               >
                 <span className={`block w-px ${mark.major ? 'h-2.5 bg-stone-500' : 'h-1.5 bg-stone-300'}`} />
                 {mark.major ? (
@@ -1357,7 +1366,7 @@ export function SectionTimeline({
             data-timeline-playhead
             title="Playhead"
             className="absolute bottom-0 top-0 z-20 w-3 -translate-x-1/2 cursor-ew-resize"
-            style={{ left: `${(playheadSec / Math.max(duration, 0.01)) * 100}%` }}
+            style={{ left: trackLeft(playheadSec, duration) }}
             onPointerDown={beginScrub}
           >
             <div className="pointer-events-none mx-auto h-full w-1 bg-stone-600" />

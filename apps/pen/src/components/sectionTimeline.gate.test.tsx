@@ -224,4 +224,40 @@ describe('section timeline', () => {
     expect(html).not.toContain('aria-label="Reverse"');
     expect(html).toContain('aria-label="Delete clip"');
   });
+
+  it('keeps a widget keyframe on the playhead instead of the last frame', () => {
+    const widget: PenSectionContent = {
+      ...emptySection('card'),
+      layers: [
+        {
+          id: 'solo',
+          kind: 'text',
+          x: 0,
+          y: 0,
+          w: 40,
+          h: 20,
+          zIndex: 1,
+          name: 'Solo',
+          motion: { keys: [{ t: 1, x: 4 }] }
+        }
+      ]
+    };
+    const html = renderToStaticMarkup(
+      <SectionTimeline
+        mode="widget"
+        section={widget}
+        activeLayerId="solo"
+        playheadSec={1}
+        playing={false}
+        onPlayhead={() => undefined}
+        onPlaying={() => undefined}
+        onSelectLayer={() => undefined}
+        onSectionChange={() => undefined}
+      />
+    );
+    expect(html).toContain('data-keyframe="solo:1"');
+    expect(html).toContain('left:20%');
+    expect(html).toContain('calc(1.75rem + (100% - 1.75rem) * 0.2)');
+    expect(html).not.toContain('left:100%');
+  });
 });
