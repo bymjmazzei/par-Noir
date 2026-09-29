@@ -6,7 +6,8 @@ import {
   resolveTimelineDuration,
   sampleLayerAt,
   sampleSectionLayers,
-  sectionHasMotion
+  sectionHasMotion,
+  setKeyframeEase
 } from './layerMotion.js';
 import { emptySection } from './richDoc.js';
 import type { PenPageLayer, PenSectionContent } from './types.js';
@@ -64,6 +65,61 @@ describe('sampleLayerAt', () => {
     });
     expect(sampleLayerAt(mark, 0.25).x).toBeCloseTo(15.625, 3);
     expect(sampleLayerAt(mark, 0.5).x).toBeCloseTo(50, 3);
+  });
+
+  it('holds the leaving key until the next key', () => {
+    const mark = layer({
+      id: 'mark',
+      motion: {
+        keys: [
+          { t: 0, x: 0, ease: 'hold' },
+          { t: 1, x: 100 }
+        ]
+      }
+    });
+    expect(sampleLayerAt(mark, 0.9).x).toBe(0);
+    expect(sampleLayerAt(mark, 1).x).toBe(100);
+  });
+
+  it('cubic-in is slower than linear at the midpoint', () => {
+    const curved = layer({
+      id: 'mark',
+      motion: {
+        keys: [
+          { t: 0, x: 0, ease: 'cubicIn' },
+          { t: 1, x: 100 }
+        ]
+      }
+    });
+    const linear = layer({
+      id: 'mark',
+      motion: {
+        keys: [
+          { t: 0, x: 0, ease: 'linear' },
+          { t: 1, x: 100 }
+        ]
+      }
+    });
+    expect(sampleLayerAt(curved, 0.5).x).toBeCloseTo(12.5, 3);
+    expect(sampleLayerAt(curved, 0.5).x).toBeLessThan(sampleLayerAt(linear, 0.5).x);
+  });
+
+  it('sets the ease on the key you leave', () => {
+    const mark = layer({
+      id: 'mark',
+      motion: {
+        keys: [
+          { t: 0, x: 0 },
+          { t: 1, x: 100 }
+        ]
+      }
+    });
+    const next = setKeyframeEase(mark, 0.4, 'cubicIn');
+    expect(next.motion?.keys[0]?.ease).toBe('cubicIn');
+    expect(next.motion?.keys[0]?.t).toBe(0);
+    expect(next.motion?.keys[1]?.x).toBe(100);
+    const lone = layer({ id: 'mark', motion: { keys: [{ t: 0, x: 0 }] } });
+    expect(setKeyframeEase(lone, 0.4, 'linear').motion?.keys[0]?.ease).toBeUndefined();
   });
 
   it('leaves unkeyed properties on the rest pose', () => {

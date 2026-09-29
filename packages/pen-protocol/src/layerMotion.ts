@@ -37,8 +37,27 @@ function quantizeTime(time: number): number {
 
 function ease01(u: number, ease: PenKeyframeEase | undefined): number {
   const t = Math.min(1, Math.max(0, u));
-  if (ease === 'easeInOut') return t * t * (3 - 2 * t);
-  return t;
+  const inv = 1 - t;
+  switch (ease) {
+    case 'hold':
+      return t >= 1 ? 1 : 0;
+    case 'easeIn':
+      return 1 - Math.cos((t * Math.PI) / 2);
+    case 'quadIn':
+      return t * t;
+    case 'cubicIn':
+      return t * t * t;
+    case 'easeOut':
+      return Math.sin((t * Math.PI) / 2);
+    case 'quadOut':
+      return 1 - inv * inv;
+    case 'cubicOut':
+      return 1 - inv * inv * inv;
+    case 'easeInOut':
+      return t * t * (3 - 2 * t);
+    default:
+      return t;
+  }
 }
 
 function lerp(a: number, b: number, u: number): number {
@@ -196,6 +215,32 @@ export function layerHasAnimatedProp(
   prop: keyof PenLayerKeyframe
 ): boolean {
   return (layer.motion?.keys || []).some((key) => key[prop] !== undefined);
+}
+
+/** Key you leave for the span that contains `time`, when another key follows it. */
+export function spanLeavingKey(layer: PenPageLayer, time: number): PenLayerKeyframe | null {
+  const sorted = [...(layer.motion?.keys || [])]
+    .filter((key) => Number.isFinite(key.t))
+    .sort((a, b) => a.t - b.t);
+  let chosen: PenLayerKeyframe | null = null;
+  for (let i = 0; i < sorted.length - 1; i++) {
+    if (sorted[i]!.t <= time + KEYFRAME_EPSILON_SEC) chosen = sorted[i]!;
+  }
+  return chosen;
+}
+
+/** Set the curve on the span that contains `time`. Does not add or move keys. */
+export function setKeyframeEase(
+  layer: PenPageLayer,
+  time: number,
+  ease: PenKeyframeEase
+): PenPageLayer {
+  const leaving = spanLeavingKey(layer, time);
+  if (!leaving) return layer;
+  const keys = (layer.motion?.keys || []).map((key) =>
+    Math.abs(key.t - leaving.t) <= KEYFRAME_EPSILON_SEC ? { ...key, ease } : key
+  );
+  return { ...layer, motion: keys.length ? { keys } : undefined };
 }
 
 function mergeKey(layer: PenPageLayer, key: PenLayerKeyframe): PenPageLayer {

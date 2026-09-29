@@ -196,7 +196,16 @@ export interface PenPageLayer {
   motion?: PenLayerMotion;
 }
 
-export type PenKeyframeEase = 'linear' | 'easeInOut';
+export type PenKeyframeEase =
+  | 'hold'
+  | 'linear'
+  | 'easeIn'
+  | 'quadIn'
+  | 'cubicIn'
+  | 'easeOut'
+  | 'quadOut'
+  | 'cubicOut'
+  | 'easeInOut';
 
 /** One sample. Only the fields set on a key are animated. */
 export interface PenLayerKeyframe {

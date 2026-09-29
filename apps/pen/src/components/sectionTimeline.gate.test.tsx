@@ -53,7 +53,8 @@ describe('section timeline', () => {
       />
     );
     expect(html).toContain('aria-label="Keyframe"');
-    expect(html).toContain('Keyframe');
+    expect(html).toContain('data-keyframe="title:0"');
+    expect(html).toContain('Linear');
     expect(html).toContain('data-track-row="title"');
     expect(html).toContain('data-sampled-x="80"');
     expect(html).toContain('data-audio-lane="voice"');
