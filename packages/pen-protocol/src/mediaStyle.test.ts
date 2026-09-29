@@ -1,9 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import {
   clampMediaCrop,
+  applyCropWindow,
   mediaCropClipCss,
   mediaCropEdges,
   mediaCropFromEdges,
+  mediaCropFrameStyle,
+  mediaMaskStyle,
   mediaFilterCss,
   mediaMaskClipCss,
   mediaTransformCss,
@@ -41,6 +44,27 @@ describe('mediaStyle', () => {
     expect(mediaMaskClipCss('none')).toBeUndefined();
     expect(mediaMaskClipCss('circle')).toContain('circle');
     expect(mediaMaskClipCss('rounded')).toContain('inset');
+  });
+
+  it('a crop window moves the frame and leaves the picture where it was', () => {
+    const next = applyCropWindow(
+      { x: 100, y: 100, w: 200, h: 400 },
+      { x: 0.25, y: 0, w: 0.5, h: 1 }
+    );
+    expect(next.x).toBeCloseTo(150);
+    expect(next.y).toBeCloseTo(100);
+    expect(next.w).toBeCloseTo(100);
+    expect(next.h).toBeCloseTo(400);
+    const frame = mediaCropFrameStyle(next.mediaCrop);
+    const pictureLeft = next.x + (parseFloat(frame!.left) / 100) * next.w;
+    expect(pictureLeft).toBeCloseTo(100);
+  });
+
+  it('split, filmstrip, and text masks use a mask image', () => {
+    expect(mediaMaskStyle('split', 100).maskImage).toContain('linear-gradient');
+    expect(mediaMaskStyle('filmstrip', 100).maskImage).toContain('repeating-linear-gradient');
+    expect(String(mediaMaskStyle('text', 120).maskImage)).toContain('text');
+    expect(Object.keys(MEDIA_FILTER_PRESETS).length).toBeGreaterThan(8);
   });
 
   it('a left crop keeps the right edge', () => {

@@ -237,19 +237,18 @@ describe('transition presets', () => {
 });
 
 describe('splitLayerAt', () => {
-  it('cuts one clip into two and the right clip continues the file', () => {
+  it('cuts one clip into two pieces on the same track', () => {
     const doc = section([
       layer({ id: 'clip', kind: 'video', videoSrc: 'penlocal:a', inSec: 0, outSec: 4 })
     ]);
     const next = splitLayerAt(doc, 'clip', 1.5);
-    const layers = next.layers || [];
-    expect(layers).toHaveLength(2);
-    expect(layers[0]!.id).toBe('clip');
-    expect(layers[0]!.outSec).toBe(1.5);
-    expect(layers[1]!.inSec).toBe(1.5);
-    expect(layers[1]!.outSec).toBe(4);
-    expect(layerMediaTime(layers[1]!, 1.5)).toBeCloseTo(1.5);
-    expect(layerMediaTime(layers[0]!, 1.5)).toBeCloseTo(1.5);
+    expect(next.layers).toHaveLength(1);
+    const clips = next.layers?.[0]?.clips || [];
+    expect(clips).toHaveLength(2);
+    expect(clips[0]?.outSec).toBe(1.5);
+    expect(clips[1]?.inSec).toBe(1.5);
+    expect(clips[1]?.outSec).toBe(4);
+    expect(layerMediaTime(next.layers![0]!, 1.5, 1, 4)).toBeCloseTo(1.5);
     expect(doc.layers).toHaveLength(1);
   });
 

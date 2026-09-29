@@ -44,6 +44,41 @@ export function clampMediaCrop(crop: PenMediaCrop | null | undefined): PenMediaC
   return { x, y, w, h };
 }
 
+/**
+ * Move the layer frame to the next crop window.
+ * Source pixels keep their workspace position: the frame changes, the picture does not.
+ */
+export function applyCropWindow(
+  layer: { x: number; y: number; w: number; h: number; mediaCrop?: PenMediaCrop | null },
+  nextCrop: PenMediaCrop
+): { x: number; y: number; w: number; h: number; mediaCrop: PenMediaCrop } {
+  const prev = clampMediaCrop(layer.mediaCrop);
+  const next = clampMediaCrop(nextCrop);
+  const pixelX = layer.w / prev.w;
+  const pixelY = layer.h / prev.h;
+  return {
+    x: layer.x + (next.x - prev.x) * pixelX,
+    y: layer.y + (next.y - prev.y) * pixelY,
+    w: Math.max(8, next.w * pixelX),
+    h: Math.max(8, next.h * pixelY),
+    mediaCrop: next
+  };
+}
+
+/** Place the full picture so the layer frame shows only the crop window. */
+export function mediaCropFrameStyle(
+  crop: PenMediaCrop | null | undefined
+): { left: string; top: string; width: string; height: string } | undefined {
+  const c = clampMediaCrop(crop);
+  if (c.x <= 0.0001 && c.y <= 0.0001 && c.w >= 0.999 && c.h >= 0.999) return undefined;
+  return {
+    left: `${(-c.x / c.w) * 100}%`,
+    top: `${(-c.y / c.h) * 100}%`,
+    width: `${100 / c.w}%`,
+    height: `${100 / c.h}%`
+  };
+}
+
 /** How much of each edge the crop window cuts away, in 0–1. */
 export function mediaCropEdges(crop: PenMediaCrop | null | undefined): {
   left: number;
@@ -132,11 +167,47 @@ export function tonalGradeActive(filter: PenMediaFilter | null | undefined): boo
   return TONAL_KEYS.some((key) => merged[key] !== 0);
 }
 
+/** Clip path for simple shapes, mask image for split, filmstrip, and text. */
+export function mediaMaskStyle(
+  mask: PenMediaMask | null | undefined,
+  size?: number
+): { clipPath?: string; maskImage?: string; WebkitMaskImage?: string; maskSize?: string; WebkitMaskSize?: string; maskRepeat?: string; WebkitMaskRepeat?: string; maskPosition?: string; WebkitMaskPosition?: string } {
+  if (!mask || mask === 'none') return {};
+  const amount = Math.max(0, size ?? 100);
+  if (mask === 'split') {
+    const pane = Math.min(46, Math.max(8, amount / 2));
+    const image = `linear-gradient(to right, #000 0 ${pane}%, transparent ${pane}% ${100 - pane}%, #000 ${100 - pane}% 100%)`;
+    return { maskImage: image, WebkitMaskImage: image, maskRepeat: 'no-repeat', WebkitMaskRepeat: 'no-repeat' };
+  }
+  if (mask === 'filmstrip') {
+    const bar = Math.max(8, Math.min(28, amount / 5));
+    const gap = Math.max(4, bar / 2);
+    const image = `repeating-linear-gradient(to bottom, #000 0 ${bar}%, transparent ${bar}% ${bar + gap}%)`;
+    return { maskImage: image, WebkitMaskImage: image };
+  }
+  if (mask === 'text') {
+    const svg = `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 240 80'><text x='120' y='62' text-anchor='middle' font-size='68' font-family='Georgia, serif' font-weight='700' fill='black'>Text</text></svg>`;
+    const image = `url("data:image/svg+xml,${encodeURIComponent(svg)}")`;
+    return {
+      maskImage: image,
+      WebkitMaskImage: image,
+      maskSize: `${amount}%`,
+      WebkitMaskSize: `${amount}%`,
+      maskRepeat: 'no-repeat',
+      WebkitMaskRepeat: 'no-repeat',
+      maskPosition: 'center',
+      WebkitMaskPosition: 'center'
+    };
+  }
+  const clipPath = mediaMaskClipCss(mask, size);
+  return clipPath ? { clipPath } : {};
+}
+
 export function mediaMaskClipCss(
   mask: PenMediaMask | null | undefined,
   size?: number
 ): string | undefined {
-  if (!mask || mask === 'none') return undefined;
+  if (!mask || mask === 'none' || mask === 'split' || mask === 'filmstrip' || mask === 'text') return undefined;
   const amount = Math.max(0, size ?? 100);
   if (mask === 'circle') return `circle(${amount / 2}% at 50% 50%)`;
   const inset = (100 - amount) / 2;
@@ -194,8 +265,17 @@ export function mediaCropIsActive(crop: PenMediaCrop | null | undefined): boolea
 
 export const MEDIA_FILTER_PRESETS: Record<string, PenMediaFilter> = {
   none: { brightness: 100, contrast: 100, saturation: 100, hueRotate: 0 },
-  fade: { brightness: 110, contrast: 85, saturation: 70, hueRotate: 0 },
-  contrast: { brightness: 105, contrast: 130, saturation: 100, hueRotate: 0 },
-  cool: { brightness: 100, contrast: 105, saturation: 90, hueRotate: 200 },
-  warm: { brightness: 105, contrast: 105, saturation: 115, hueRotate: 15 }
+  vivid: { brightness: 105, contrast: 115, saturation: 160 },
+  punch: { brightness: 102, contrast: 140, saturation: 130 },
+  fade: { brightness: 110, contrast: 85, saturation: 70, fade: 25 },
+  matte: { brightness: 112, contrast: 82, saturation: 75, fade: 15 },
+  warm: { brightness: 105, contrast: 105, saturation: 115, temp: 45 },
+  cool: { brightness: 100, contrast: 108, saturation: 90, temp: -40 },
+  sepia: { brightness: 105, contrast: 95, saturation: 40, temp: 70 },
+  noir: { brightness: 95, contrast: 140, saturation: 0 },
+  mono: { brightness: 100, contrast: 110, saturation: 0 },
+  bleach: { brightness: 125, contrast: 85, saturation: 35 },
+  film: { brightness: 102, contrast: 118, saturation: 85, temp: 18, fade: 12 },
+  vintage: { brightness: 108, contrast: 88, saturation: 65, temp: 35, fade: 20 },
+  chrome: { brightness: 108, contrast: 125, saturation: 70, temp: -20 }
 };

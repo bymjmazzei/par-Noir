@@ -213,6 +213,8 @@ export interface PenPageLayer {
   outSec?: number;
   /** File time that plays when the clock reaches inSec. Omit to start at the head of the file. */
   sourceInSec?: number;
+  /** Pieces on this track after a cut. Absent means one piece from inSec to outSec. */
+  clips?: PenTimelineClip[];
   /** Widget group loop length. Child key times are local to this clock. */
   durationSec?: number;
   /** Sparse keyframes. Absent means the layer stays at its rest pose. */
@@ -300,7 +302,16 @@ export interface PenMediaCrop {
   h: number;
 }
 
-export type PenMediaMask = 'none' | 'circle' | 'rounded' | 'rect';
+export type PenMediaMask = 'none' | 'circle' | 'rounded' | 'rect' | 'split' | 'filmstrip' | 'text';
+
+/** One piece of a layer on its track. A cut adds a piece; it does not add a track. */
+export interface PenTimelineClip {
+  id: string;
+  inSec: number;
+  outSec: number;
+  /** File time that plays when the clock reaches inSec. */
+  sourceInSec?: number;
+}
 
 /** Page chrome for Note compile / Pen Mini / PNG (mirrors browse TextPostStyle). */
 export interface PenPagePresentation {

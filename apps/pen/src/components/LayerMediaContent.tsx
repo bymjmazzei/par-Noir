@@ -6,9 +6,9 @@
 import { useEffect, useRef, type CSSProperties, type ReactNode } from 'react';
 import {
   editorPlaybackSrc,
-  mediaCropClipCss,
+  mediaCropFrameStyle,
   mediaFilterCss,
-  mediaMaskClipCss,
+  mediaMaskStyle,
   mediaTransformCss,
   mergeMediaFilter,
   publishPlaybackSrc,
@@ -143,8 +143,8 @@ export function LayerMediaContent({
 
   const grade = mergeMediaFilter(layer.mediaFilter);
   const filter = mediaFilterCss(layer);
-  const cropClip = mediaCropClipCss(layer.mediaCrop);
-  const maskClip = mediaMaskClipCss(layer.mediaMask, layer.mediaMaskSize);
+  const cropFrame = mediaCropFrameStyle(layer.mediaCrop);
+  const maskStyle = mediaMaskStyle(layer.mediaMask, layer.mediaMaskSize);
   const transform = mediaTransformCss(layer);
   const tonal: TonalGrade | null = tonalGradeActive(grade)
     ? {
@@ -159,13 +159,12 @@ export function LayerMediaContent({
     : null;
 
   const outerStyle: CSSProperties = {
-    clipPath: maskClip,
+    ...maskStyle,
     overflow: 'hidden',
     backgroundColor: 'transparent'
   };
   const innerStyle: CSSProperties = {
     ...(filter ? { filter } : {}),
-    ...(cropClip ? { clipPath: cropClip } : {}),
     width: '100%',
     height: '100%',
     objectFit: 'contain'
@@ -177,6 +176,7 @@ export function LayerMediaContent({
       className={`relative h-full w-full min-h-0 min-w-0 ${className || ''}`}
       style={outerStyle}
     >
+      <div className="absolute" style={cropFrame ?? { inset: 0 }}>
       <div className="absolute inset-0" style={transform ? { transform } : undefined}>
         {isVideo ? (
           <PenMediaPlayer
@@ -199,6 +199,15 @@ export function LayerMediaContent({
             draggable={false}
           />
         )}
+        {overlayResolved ? (
+          <img
+            src={overlayResolved}
+            alt=""
+            className="pointer-events-none absolute inset-0 h-full w-full object-contain"
+            draggable={false}
+          />
+        ) : null}
+      </div>
       </div>
       {grade.vignette > 0 ? (
         <div
@@ -216,15 +225,6 @@ export function LayerMediaContent({
             backgroundImage: PARTICLE_NOISE,
             backgroundSize: '80px 80px'
           }}
-        />
-      ) : null}
-      {overlayResolved ? (
-        <img
-          src={overlayResolved}
-          alt=""
-          className="pointer-events-none absolute inset-0 h-full w-full object-contain"
-          style={cropClip ? { clipPath: cropClip } : undefined}
-          draggable={false}
         />
       ) : null}
     </div>

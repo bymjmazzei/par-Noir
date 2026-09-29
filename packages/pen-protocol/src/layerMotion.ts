@@ -11,7 +11,8 @@ import type {
   PenMediaCrop,
   PenMediaFilter,
   PenPageLayer,
-  PenSectionContent
+  PenSectionContent,
+  PenTimelineClip
 } from './types.js';
 
 export const DEFAULT_TIMELINE_SEC = 5;
@@ -224,27 +225,53 @@ export function layerClockSpan(section: PenSectionContent, layer: PenPageLayer):
   return resolveTimelineDuration(section);
 }
 
-/** True while the playhead is inside the layer's in/out. The outgoing edge hands off at a cut. */
-export function layerOnClock(layer: PenPageLayer, time: number, span: number): boolean {
-  if (layer.kind === 'guide') return true;
-  const inn = layer.inSec ?? 0;
-  const out = layer.outSec ?? span;
-  if (time < inn || time > out) return false;
-  if (time >= out && out < span - 0.001) return false;
+/** Pieces on one track. A layer with no clips is a single piece. */
+export function layerClips(layer: PenPageLayer, span: number): PenTimelineClip[] {
+  if (layer.clips && layer.clips.length) return layer.clips;
+  return [
+    {
+      id: layer.id,
+      inSec: layer.inSec ?? 0,
+      outSec: layer.outSec ?? span,
+      sourceInSec: layer.sourceInSec
+    }
+  ];
+}
+
+function clipHolds(clip: PenTimelineClip, time: number, span: number): boolean {
+  if (time < clip.inSec || time > clip.outSec) return false;
+  if (time >= clip.outSec && clip.outSec < span - 0.001) return false;
   return true;
 }
 
-/** File time for a playhead. sourceInSec keeps a cut from restarting the file. */
-export function layerMediaTime(layer: PenPageLayer, playhead: number, rate = 1): number {
+/** The piece under the playhead, if the track is active there. */
+export function clipAtTime(
+  layer: PenPageLayer,
+  time: number,
+  span: number
+): PenTimelineClip | null {
+  return layerClips(layer, span).find((clip) => clipHolds(clip, time, span)) ?? null;
+}
+
+/** True while the playhead is inside one piece of the track. */
+export function layerOnClock(layer: PenPageLayer, time: number, span: number): boolean {
+  if (layer.kind === 'guide') return true;
+  return clipAtTime(layer, time, span) != null;
+}
+
+/** File time for a playhead. The piece's sourceInSec keeps a cut from restarting the file. */
+export function layerMediaTime(layer: PenPageLayer, playhead: number, rate = 1, span?: number): number {
   const speed = rate > 0 ? rate : 1;
-  const inn = layer.inSec ?? 0;
-  const source = layer.sourceInSec ?? 0;
+  const clock = span ?? Math.max(layer.outSec ?? 0, playhead, 0.01);
+  const clip = clipAtTime(layer, playhead, clock);
+  const inn = clip?.inSec ?? layer.inSec ?? 0;
+  const source = clip?.sourceInSec ?? layer.sourceInSec ?? 0;
   return Math.max(0, (playhead - inn) * speed + source);
 }
 
 /**
- * Split one layer at the playhead into two clips on the same timeline.
- * The right clip continues the file instead of starting over.
+ * Split the piece under the playhead into two pieces on the same track.
+ * The right piece continues the file instead of starting over.
  */
 export function splitLayerAt(
   section: PenSectionContent,
@@ -257,19 +284,26 @@ export function splitLayerAt(
   const layer = layers[index]!;
   if (layer.kind === 'guide' || layer.kind === 'group') return section;
   const span = layerClockSpan(section, layer);
-  const inn = layer.inSec ?? 0;
-  const out = layer.outSec ?? span;
-  if (!(time > inn + 0.05 && time < out - 0.05)) return section;
-  const right: PenPageLayer = {
-    ...layer,
-    id: `layer_${Math.random().toString(36).slice(2, 10)}`,
+  const clips = layerClips(layer, span);
+  const hit = clips.find((clip) => time > clip.inSec + 0.05 && time < clip.outSec - 0.05);
+  if (!hit) return section;
+  const right: PenTimelineClip = {
+    id: `clip_${Math.random().toString(36).slice(2, 10)}`,
     inSec: time,
-    outSec: layer.outSec ?? out,
-    sourceInSec: (layer.sourceInSec ?? 0) + (time - inn)
+    outSec: hit.outSec,
+    sourceInSec: (hit.sourceInSec ?? 0) + (time - hit.inSec)
   };
-  const left: PenPageLayer = { ...layer, outSec: time };
+  const nextClips = clips.flatMap((clip) =>
+    clip.id === hit.id ? [{ ...clip, outSec: time }, right] : [clip]
+  );
+  const nextLayer: PenPageLayer = {
+    ...layer,
+    clips: nextClips,
+    inSec: Math.min(...nextClips.map((clip) => clip.inSec)),
+    outSec: Math.max(...nextClips.map((clip) => clip.outSec))
+  };
   const next = layers.slice();
-  next.splice(index, 1, left, right);
+  next[index] = nextLayer;
   return { ...section, layers: next };
 }
 

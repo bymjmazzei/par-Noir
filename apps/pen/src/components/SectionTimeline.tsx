@@ -14,6 +14,7 @@ import {
   editorPlaybackSrc,
   KEYFRAME_EPSILON_SEC,
   layerClockSpan,
+  layerClips,
   layerMediaTime,
   layerSampleTime,
   publishPlaybackSrc,
@@ -83,12 +84,49 @@ function trackRows(section: PenSectionContent): Array<{ layer: PenPageLayer; dep
   return rows;
 }
 
-function rulerStep(span: number, zoom: number): number {
-  const visible = span / Math.max(zoom, 1);
-  if (visible > 60) return 10;
-  if (visible > 20) return 5;
-  if (visible > 8) return 1;
-  return 0.5;
+function formatMark(sec: number, minor: number): string {
+  if (minor >= 1) return formatTime(sec);
+  if (minor < 0.2) {
+    const frames = Math.round(sec * 30);
+    const whole = Math.floor(frames / 30);
+    const frame = frames % 30;
+    return `${whole}:${String(frame).padStart(2, '0')}`;
+  }
+  return `${Math.round(sec * 10) / 10}s`;
+}
+
+function timelineMarks(span: number, zoom: number): Array<{ t: number; major: boolean; label: string }> {
+  const frame = 1 / 30;
+  const pxPerSec = (Math.max(zoom, 1) * 480) / Math.max(span, 0.01);
+  const ladder = [frame, frame * 2, frame * 5, 0.5, 1, 2, 5, 10, 30];
+  let minor = 30;
+  for (const step of ladder) {
+    if (pxPerSec * step >= 8) {
+      minor = step;
+      break;
+    }
+  }
+  const majorEvery = minor < 0.2 ? 15 : minor < 1 ? Math.round(1 / minor) : 1;
+  const marks: Array<{ t: number; major: boolean; label: string }> = [];
+  const limit = Math.min(480, Math.ceil(span / minor) + 1);
+  for (let i = 0; i < limit; i += 1) {
+    const t = Math.round(i * minor * 1000) / 1000;
+    if (t > span + 0.001) break;
+    const major = i % majorEvery === 0;
+    marks.push({ t, major, label: major ? formatMark(t, minor) : '' });
+  }
+  return marks;
+}
+
+function Magnify({ plus }: { plus: boolean }) {
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden>
+      <circle cx="7" cy="7" r="4.25" fill="none" stroke="currentColor" strokeWidth="1.4" />
+      <path d="M10.2 10.2 13.5 13.5" stroke="currentColor" strokeWidth="1.4" />
+      <path d="M5 7h4" stroke="currentColor" strokeWidth="1.4" />
+      {plus ? <path d="M7 5v4" stroke="currentColor" strokeWidth="1.4" /> : null}
+    </svg>
+  );
 }
 
 function AudioLane({
@@ -233,7 +271,7 @@ export function SectionTimeline({
       }
       const rate = layer.playbackRate && layer.playbackRate > 0 ? layer.playbackRate : 1;
       ctrl.setPlaybackRate(rate);
-      const mediaAt = layerMediaTime(layer, at, rate);
+      const mediaAt = layerMediaTime(layer, at, rate, layerClockSpan(section, layer));
       if (mode === 'tick') {
         placeVideo(ctrl.master, mediaAt);
         continue;
@@ -310,11 +348,38 @@ export function SectionTimeline({
     onSectionChange(upsertLayer(section, { ...layer, durationSec }));
   }
 
-  function setTrim(layer: PenPageLayer, edge: 'in' | 'out', ratio: number) {
+  function setTrim(layer: PenPageLayer, edge: 'in' | 'out', ratio: number, clipId?: string) {
     const span = layerClockSpan(section, layer);
+    const minGap = 0.1;
+    const clips = layer.clips?.length ? layer.clips : null;
+    if (clips && clipId) {
+      const clip = clips.find((item) => item.id === clipId);
+      if (!clip) return;
+      const nextClips =
+        edge === 'in'
+          ? clips.map((item) => {
+              if (item.id !== clip.id) return item;
+              const at = Math.min(item.outSec - minGap, Math.max(0, ratio * span));
+              const source = Math.max(0, (item.sourceInSec ?? 0) + (at - item.inSec));
+              return { ...item, inSec: at, sourceInSec: source > 0 ? source : undefined };
+            })
+          : clips.map((item) => {
+              if (item.id !== clip.id) return item;
+              const at = Math.max(item.inSec + minGap, Math.min(span, Math.max(0, ratio * span)));
+              return { ...item, outSec: at };
+            });
+      onSectionChange(
+        upsertLayer(section, {
+          ...layer,
+          clips: nextClips,
+          inSec: Math.min(...nextClips.map((item) => item.inSec)),
+          outSec: Math.max(...nextClips.map((item) => item.outSec))
+        })
+      );
+      return;
+    }
     const inn = layer.inSec ?? 0;
     const out = layer.outSec ?? span;
-    const minGap = 0.1;
     if (edge === 'in') {
       const at = Math.min(out - minGap, Math.max(0, ratio * span));
       const source = Math.max(0, (layer.sourceInSec ?? 0) + (at - inn));
@@ -331,15 +396,20 @@ export function SectionTimeline({
     onSectionChange(upsertLayer(section, { ...layer, outSec: at }));
   }
 
-  function beginTrim(event: ReactPointerEvent<HTMLButtonElement>, layer: PenPageLayer, edge: 'in' | 'out') {
+  function beginTrim(
+    event: ReactPointerEvent<HTMLButtonElement>,
+    layer: PenPageLayer,
+    edge: 'in' | 'out',
+    clipId?: string
+  ) {
     event.stopPropagation();
     event.preventDefault();
-    const lane = event.currentTarget.parentElement;
+    const lane = event.currentTarget.closest('[data-clip-lane]');
     if (!lane) return;
     const move = (ev: PointerEvent) => {
       const rect = lane.getBoundingClientRect();
       const ratio = (ev.clientX - rect.left) / Math.max(1, rect.width);
-      setTrim(layer, edge, ratio);
+      setTrim(layer, edge, ratio, clipId);
     };
     const up = () => {
       window.removeEventListener('pointermove', move);
@@ -350,22 +420,19 @@ export function SectionTimeline({
   }
 
   const cutSpan = active ? layerClockSpan(section, active) : duration;
+  const cutClips = active ? layerClips(active, cutSpan) : [];
   const canCut = Boolean(
     active &&
       active.kind !== 'guide' &&
       active.kind !== 'group' &&
-      playheadSec > (active.inSec ?? 0) + 0.05 &&
-      playheadSec < (active.outSec ?? cutSpan) - 0.05
+      cutClips.some((clip) => playheadSec > clip.inSec + 0.05 && playheadSec < clip.outSec - 0.05)
   );
 
   function cutClip() {
     if (!activeLayerId || !canCut) return;
-    const before = new Set((section.layers || []).map((item) => item.id));
     const next = splitLayerAt(section, activeLayerId, playheadSec);
     if (next === section) return;
     onSectionChange(next);
-    const created = (next.layers || []).find((item) => !before.has(item.id));
-    if (created) onSelectLayer(created.id);
   }
 
   function toggleMute(layer: PenPageLayer) {
@@ -422,19 +489,38 @@ export function SectionTimeline({
         >
           <DiamondMark filled={playheadOnKey} />
         </button>
-        <label className="flex items-center gap-2 text-[13px] text-stone-500">
-          Zoom
+        <div className="flex items-center gap-1 text-stone-500">
+          <button
+            type="button"
+            aria-label="Zoom out"
+            className="inline-flex h-8 w-8 items-center justify-center"
+            onClick={() => setZoom((value) => Math.max(1, Math.round((value - 0.5) * 10) / 10))}
+          >
+            <Magnify plus={false} />
+          </button>
           <input
             aria-label="Zoom"
             type="range"
             min={1}
-            max={8}
+            max={Math.max(8, Math.ceil(duration / 2))}
             step={0.1}
             value={zoom}
             onChange={(e) => setZoom(Number(e.target.value))}
             className="h-1 w-20 cursor-pointer appearance-none bg-stone-300 [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:w-1 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:bg-stone-500"
           />
-        </label>
+          <button
+            type="button"
+            aria-label="Zoom in"
+            className="inline-flex h-8 w-8 items-center justify-center"
+            onClick={() =>
+              setZoom((value) =>
+                Math.min(Math.max(8, Math.ceil(duration / 2)), Math.round((value + 0.5) * 10) / 10)
+              )
+            }
+          >
+            <Magnify plus />
+          </button>
+        </div>
         <div className="ml-auto inline-flex items-center gap-2">
           <button
             type="button"
@@ -463,28 +549,29 @@ export function SectionTimeline({
           className="relative"
           style={{ width: `${zoom * 100}%`, minWidth: '100%' }}
         >
-          <div className="relative mb-1 h-5 text-[11px] text-stone-400">
-            {Array.from({ length: Math.floor(duration / rulerStep(duration, zoom)) + 1 }, (_, index) => {
-              const step = rulerStep(duration, zoom);
-              const t = index * step;
-              return (
-                <span
-                  key={t}
-                  className="absolute top-0 -translate-x-1/2"
-                  style={{ left: `${(t / Math.max(duration, 0.01)) * 100}%` }}
-                >
-                  {formatTime(t)}
-                </span>
-              );
-            })}
+          <div className="relative mb-1 h-6">
+            {timelineMarks(duration, zoom).map((mark) => (
+              <span
+                key={mark.t}
+                data-tick={mark.major ? 'major' : 'minor'}
+                className="absolute top-0"
+                style={{ left: `${(mark.t / Math.max(duration, 0.01)) * 100}%` }}
+              >
+                <span className={`block w-px ${mark.major ? 'h-2.5 bg-stone-500' : 'h-1.5 bg-stone-300'}`} />
+                {mark.major ? (
+                  <span className="absolute top-2.5 -translate-x-1/2 text-[10px] tabular-nums text-stone-400">
+                    {mark.label}
+                  </span>
+                ) : null}
+              </span>
+            ))}
           </div>
           <div className="space-y-1">
         {rows.map(({ layer, depth }) => {
           const rowDur = layerClockSpan(section, layer);
           const local = layer.kind === 'group' ? wrapTime(playheadSec, rowDur) : layerSampleTime(section, layer, playheadSec);
           const posed = sampleLayerAt(layer, local);
-          const inn = layer.inSec ?? 0;
-          const out = layer.outSec ?? rowDur;
+          const clips = layer.kind === 'group' ? [] : layerClips(layer, rowDur);
           const playbackSrc =
             playback === 'publish' ? publishPlaybackSrc(layer) : editorPlaybackSrc(layer);
           const keys = layer.motion?.keys || [];
@@ -539,31 +626,33 @@ export function SectionTimeline({
                 )}
               </div>
               <div
+                data-clip-lane
                 className="relative h-7 cursor-pointer rounded-md bg-stone-200/80"
                 onPointerDown={(e) => onBarDown(e, rowDur)}
               >
-                {layer.kind !== 'group' && (
+                {clips.map((clip) => (
                   <div
+                    key={clip.id}
                     className="absolute bottom-1 top-1 bg-stone-400"
                     style={{
-                      left: `${(inn / Math.max(rowDur, 0.01)) * 100}%`,
-                      width: `${Math.max(4, ((out - inn) / Math.max(rowDur, 0.01)) * 100)}%`
+                      left: `${(clip.inSec / Math.max(rowDur, 0.01)) * 100}%`,
+                      width: `${Math.max(4, ((clip.outSec - clip.inSec) / Math.max(rowDur, 0.01)) * 100)}%`
                     }}
                   >
                     <button
                       type="button"
-                      aria-label={`Trim start ${layer.id}`}
+                      aria-label={`Trim start ${clip.id}`}
                       className="absolute bottom-0 left-0 top-0 w-1.5 cursor-ew-resize bg-stone-500"
-                      onPointerDown={(e) => beginTrim(e, layer, 'in')}
+                      onPointerDown={(e) => beginTrim(e, layer, 'in', clip.id)}
                     />
                     <button
                       type="button"
-                      aria-label={`Trim end ${layer.id}`}
+                      aria-label={`Trim end ${clip.id}`}
                       className="absolute bottom-0 right-0 top-0 w-1.5 cursor-ew-resize bg-stone-500"
-                      onPointerDown={(e) => beginTrim(e, layer, 'out')}
+                      onPointerDown={(e) => beginTrim(e, layer, 'out', clip.id)}
                     />
                   </div>
-                )}
+                ))}
                 {keys.map((key) => {
                   const selected = Math.abs(key.t - local) <= KEYFRAME_EPSILON_SEC;
                   return (

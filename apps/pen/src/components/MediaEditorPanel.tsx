@@ -2,15 +2,15 @@
  * Left-pane media editor when an image/video object layer is selected.
  */
 
-import { useEffect, useRef, useState, type CSSProperties } from 'react';
+import { useEffect, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from 'react';
 import {
   FULL_MEDIA_CROP,
   MEDIA_FILTER_PRESETS,
+  applyCropWindow,
   attachMediaToLayer,
   clampMediaCrop,
-  mediaCropEdges,
-  mediaCropFromEdges,
   editorPlaybackSrc,
+  mediaFilterCss,
   mergeMediaFilter,
   publishPlaybackSrc,
   layerSampleTime,
@@ -129,16 +129,14 @@ function looksMatch(current: PenMediaFilter, preset: PenMediaFilter): boolean {
   const left = mergeMediaFilter(current);
   const right = mergeMediaFilter(preset);
   return (
-    left.brightness === right.brightness &&
-    left.contrast === right.contrast &&
-    left.saturation === right.saturation &&
-    left.hueRotate === right.hueRotate
-  );
+    ['brightness', 'contrast', 'saturation', 'hueRotate', 'temp', 'tint', 'fade', 'exposure'] as const
+  ).every((key) => left[key] === right[key]);
 }
 
-function frameStyle(layer: PenPageLayer): CSSProperties {
-  const w = Math.max(1, layer.w);
-  const h = Math.max(1, layer.h);
+function frameStyle(layer: PenPageLayer, fullPicture = false): CSSProperties {
+  const crop = clampMediaCrop(layer.mediaCrop);
+  const w = Math.max(1, fullPicture ? layer.w / crop.w : layer.w);
+  const h = Math.max(1, fullPicture ? layer.h / crop.h : layer.h);
   return {
     aspectRatio: `${w} / ${h}`,
     height: '12rem',
@@ -187,6 +185,7 @@ export function MediaEditorPanel({
   const [licensedDraft, setLicensedDraft] = useState('');
   const audioPickRef = useRef<HTMLInputElement>(null);
   const reversing = useRef(false);
+  const cropBasis = useRef<PenPageLayer | null>(null);
   const filter = mergeMediaFilter(layer.mediaFilter);
   const crop = clampMediaCrop(layer.mediaCrop);
   const mask = (layer.mediaMask || 'none') as PenMediaMask;
@@ -284,6 +283,8 @@ export function MediaEditorPanel({
     docId,
     session
   });
+  const lookStill = useLookStill(layer, brushSrc, tab === 'filters');
+  const cropping = tab === 'crop';
   return (
     <div className="flex min-h-0 flex-1 flex-col bg-stone-100">
       <div className="shrink-0 px-3 py-2">
@@ -315,13 +316,29 @@ export function MediaEditorPanel({
       <div
         data-media-frame
         className="relative mx-auto shrink-0 overflow-hidden bg-stone-200"
-        style={frameStyle(layer)}
+        style={frameStyle(layer, cropping)}
       >
           {attached ? (
-            <LayerMediaContent layer={layer} docId={docId} session={session} />
+            <LayerMediaContent
+              layer={cropping ? { ...layer, mediaCrop: undefined } : layer}
+              docId={docId}
+              session={session}
+            />
           ) : (
             <p className="flex h-full items-center justify-center text-sm text-stone-400">No media</p>
           )}
+          {cropping && attached ? (
+            <CropMarquee
+              crop={crop}
+              onBegin={() => {
+                cropBasis.current = layer;
+              }}
+              onChange={(next) => {
+                const basis = cropBasis.current ?? layer;
+                patch(applyCropWindow(basis, next));
+              }}
+            />
+          ) : null}
       </div>
 
       <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-auto px-3 py-3">
@@ -337,21 +354,19 @@ export function MediaEditorPanel({
           />
           <InspectorSlider
             label="Position X"
-            min={-100}
-            max={100}
-            neutral={0}
-            value={layer.mediaX ?? 0}
-            display={`${layer.mediaX ?? 0}%`}
-            onChange={(n) => patch({ mediaX: n })}
+            min={0}
+            max={Math.max(contentWidthPx, Math.ceil(layer.x))}
+            value={Math.round(layer.x)}
+            display={`${Math.round(layer.x)}`}
+            onChange={(n) => patch({ x: n })}
           />
           <InspectorSlider
             label="Position Y"
-            min={-100}
-            max={100}
-            neutral={0}
-            value={layer.mediaY ?? 0}
-            display={`${layer.mediaY ?? 0}%`}
-            onChange={(n) => patch({ mediaY: n })}
+            min={0}
+            max={Math.max(contentHeightPx, Math.ceil(layer.y))}
+            value={Math.round(layer.y)}
+            display={`${Math.round(layer.y)}`}
+            onChange={(n) => patch({ y: n })}
           />
           <InspectorSlider
             label="Rotate"
@@ -400,43 +415,43 @@ export function MediaEditorPanel({
         </div>
 
         {tab === 'filters' && (
-          <div className="flex flex-wrap gap-1.5">
-            {Object.entries(MEDIA_FILTER_PRESETS).map(([id, preset]) => {
-              const selected = looksMatch(filter, preset);
-              return (
-                <button
-                  key={id}
-                  type="button"
-                  aria-pressed={selected}
-                  className={`px-1 py-1 text-[13px] capitalize ${activeText(selected)}`}
-                  onClick={() => patch({ mediaFilter: { ...preset } })}
-                >
-                  {id}
-                </button>
-              );
-            })}
-          </div>
+          <LookTiles still={lookStill} current={filter} onPick={(preset) => patch({ mediaFilter: { ...preset } })} />
         )}
 
         {tab === 'crop' && (
-          <CropEditor
-            crop={crop}
-            onChange={(next) => patch({ mediaCrop: clampMediaCrop(next) })}
-            onReset={() => patch({ mediaCrop: { ...FULL_MEDIA_CROP } })}
-          />
+          <button
+            type="button"
+            className="text-[13px] text-stone-500"
+            onClick={() => {
+              cropBasis.current = null;
+              patch(applyCropWindow(layer, { ...FULL_MEDIA_CROP }));
+            }}
+          >
+            Reset crop
+          </button>
         )}
 
         <div hidden={tab !== 'mask'} className="space-y-2">
           <div className="flex flex-wrap gap-1">
-            {(['none', 'circle', 'rounded', 'rect'] as PenMediaMask[]).map((m) => (
+            {(
+              [
+                ['none', 'None'],
+                ['circle', 'Circle'],
+                ['rounded', 'Rounded'],
+                ['rect', 'Rectangle'],
+                ['split', 'Split'],
+                ['filmstrip', 'Filmstrip'],
+                ['text', 'Text']
+              ] as const
+            ).map(([m, label]) => (
               <button
                 key={m}
                 type="button"
                 aria-pressed={mask === m}
-                className={`px-1 py-1 text-[13px] capitalize ${activeText(mask === m)}`}
+                className={`px-1 py-1 text-[13px] ${activeText(mask === m)}`}
                 onClick={() => patch({ mediaMask: m === 'none' ? undefined : m })}
               >
-                {m === 'rounded' ? 'Rounded' : m === 'rect' ? 'Rectangle' : m}
+                {label}
               </button>
             ))}
           </div>
@@ -625,46 +640,187 @@ export function MediaEditorPanel({
   );
 }
 
-function CropEditor({
+function LookTiles({
+  still,
+  current,
+  onPick
+}: {
+  still?: string;
+  current: PenMediaFilter;
+  onPick: (preset: PenMediaFilter) => void;
+}) {
+  return (
+    <div className="grid grid-cols-4 gap-2">
+      {Object.entries(MEDIA_FILTER_PRESETS).map(([id, preset]) => {
+        const selected = looksMatch(current, preset);
+        const filter = mediaFilterCss({ mediaFilter: preset });
+        return (
+          <button key={id} type="button" aria-pressed={selected} className="space-y-1 text-left" onClick={() => onPick(preset)}>
+            <span className={`block overflow-hidden bg-stone-300 ${selected ? 'outline outline-2 outline-stone-600' : ''}`}>
+              {still ? (
+                <img src={still} alt="" className="aspect-[3/4] w-full object-cover" style={filter ? { filter } : undefined} draggable={false} />
+              ) : (
+                <span
+                  className="block aspect-[3/4] w-full"
+                  style={{
+                    backgroundImage: 'linear-gradient(160deg, #d6d3d1, #78716c)',
+                    filter
+                  }}
+                />
+              )}
+            </span>
+            <span className={`block text-[11px] capitalize ${activeText(selected)}`}>{id}</span>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+function useLookStill(layer: PenPageLayer, src: string | undefined, open: boolean): string | undefined {
+  const [still, setStill] = useState<string | undefined>();
+  useEffect(() => {
+    if (!open) return;
+    if (layer.kind !== 'video') {
+      setStill(src);
+      return;
+    }
+    const master = peekPenMediaController(`pen-layer:${layer.id}`)?.master;
+    if (!master || master.readyState < 2) {
+      setStill(undefined);
+      return;
+    }
+    const canvas = document.createElement('canvas');
+    canvas.width = 72;
+    canvas.height = 96;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    try {
+      ctx.drawImage(master, 0, 0, canvas.width, canvas.height);
+      setStill(canvas.toDataURL('image/jpeg', 0.72));
+    } catch {
+      setStill(undefined);
+    }
+  }, [open, layer.kind, layer.id, src]);
+  return still;
+}
+
+function CropMarquee({
   crop,
-  onChange,
-  onReset
+  onBegin,
+  onChange
 }: {
   crop: PenMediaCrop;
-  onChange: (c: PenMediaCrop) => void;
-  onReset: () => void;
+  onBegin: () => void;
+  onChange: (next: PenMediaCrop) => void;
 }) {
-  const edges = mediaCropEdges(crop);
+  const ref = useRef<HTMLDivElement>(null);
+  const box = clampMediaCrop(crop);
+
+  function local(event: { clientX: number; clientY: number }) {
+    const rect = ref.current?.getBoundingClientRect();
+    if (!rect) return { x: 0, y: 0 };
+    return {
+      x: Math.min(1, Math.max(0, (event.clientX - rect.left) / Math.max(1, rect.width))),
+      y: Math.min(1, Math.max(0, (event.clientY - rect.top) / Math.max(1, rect.height)))
+    };
+  }
+
+  function track(mode: string, origin: { x: number; y: number }, start: PenMediaCrop) {
+    const move = (event: PointerEvent) => {
+      const point = local(event);
+      if (mode === 'draw') {
+        onChange(
+          clampMediaCrop({
+            x: Math.min(origin.x, point.x),
+            y: Math.min(origin.y, point.y),
+            w: Math.abs(point.x - origin.x),
+            h: Math.abs(point.y - origin.y)
+          })
+        );
+        return;
+      }
+      if (mode === 'move') {
+        onChange(
+          clampMediaCrop({
+            ...start,
+            x: start.x + (point.x - origin.x),
+            y: start.y + (point.y - origin.y)
+          })
+        );
+        return;
+      }
+      const right = start.x + start.w;
+      const bottom = start.y + start.h;
+      let x = start.x;
+      let y = start.y;
+      let w = start.w;
+      let h = start.h;
+      if (mode.includes('w')) {
+        x = Math.min(point.x, right - 0.05);
+        w = right - x;
+      }
+      if (mode.includes('e')) w = Math.max(0.05, point.x - start.x);
+      if (mode.includes('n')) {
+        y = Math.min(point.y, bottom - 0.05);
+        h = bottom - y;
+      }
+      if (mode.includes('s')) h = Math.max(0.05, point.y - start.y);
+      onChange(clampMediaCrop({ x, y, w, h }));
+    };
+    const up = () => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+  }
+
   return (
-    <div className="space-y-2">
-      {(
-        [
-          ['top', 'Top'],
-          ['bottom', 'Bottom'],
-          ['left', 'Left'],
-          ['right', 'Right']
-        ] as const
-      ).map(([edge, label]) => (
-        <InspectorSlider
-          key={edge}
-          label={label}
-          min={0}
-          max={90}
-          neutral={0}
-          value={Math.round(edges[edge] * 100)}
-          display={`${Math.round(edges[edge] * 100)}%`}
-          onChange={(n) =>
-            onChange(mediaCropFromEdges({ ...edges, [edge]: n / 100 }, edge))
-          }
-        />
-      ))}
-      <button
-        type="button"
-        className="text-[13px] text-stone-500"
-        onClick={onReset}
+    <div
+      ref={ref}
+      className="absolute inset-0"
+      onPointerDown={(event) => {
+        if ((event.target as HTMLElement).dataset.cropHandle) return;
+        onBegin();
+        const point = local(event);
+        const full = box.w > 0.98 && box.h > 0.98 && box.x < 0.02 && box.y < 0.02;
+        const inside =
+          !full && point.x >= box.x && point.x <= box.x + box.w && point.y >= box.y && point.y <= box.y + box.h;
+        track(inside ? 'move' : 'draw', point, box);
+      }}
+    >
+      <div
+        className="absolute border border-stone-600"
+        style={{
+          left: `${box.x * 100}%`,
+          top: `${box.y * 100}%`,
+          width: `${box.w * 100}%`,
+          height: `${box.h * 100}%`,
+          boxShadow: '0 0 0 999px rgba(120,113,108,0.45)'
+        }}
       >
-        Reset crop
-      </button>
+        {(['nw', 'ne', 'sw', 'se'] as const).map((handle) => (
+          <button
+            key={handle}
+            type="button"
+            data-crop-handle={handle}
+            aria-label={`Crop ${handle}`}
+            className="absolute z-10 h-2.5 w-2.5 bg-stone-600"
+            style={{
+              left: handle.includes('e') ? '100%' : 0,
+              top: handle.includes('s') ? '100%' : 0,
+              transform: 'translate(-50%, -50%)'
+            }}
+            onPointerDown={(event: ReactPointerEvent<HTMLButtonElement>) => {
+              event.stopPropagation();
+              event.preventDefault();
+              onBegin();
+              track(handle, local(event), box);
+            }}
+          />
+        ))}
+      </div>
     </div>
   );
 }

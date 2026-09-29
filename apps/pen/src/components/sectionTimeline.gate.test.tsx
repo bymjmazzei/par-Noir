@@ -61,6 +61,9 @@ describe('section timeline', () => {
     expect(html).toContain('data-timeline-playhead');
     expect(html).toContain('data-timeline-scale');
     expect(html).toContain('aria-label="Zoom"');
+    expect(html).toContain('aria-label="Zoom in"');
+    expect(html).toContain('aria-label="Zoom out"');
+    expect(html).toContain('data-tick="major"');
     expect(html).toContain('aria-label="Mute title"');
     expect(html).toContain('aria-label="Mute voice"');
     expect(html).toContain('aria-label="Trim start clip"');

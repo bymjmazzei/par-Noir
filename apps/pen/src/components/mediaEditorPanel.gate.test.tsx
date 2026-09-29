@@ -47,6 +47,9 @@ describe('media and widget panels', () => {
     expect(media).toContain('Brightness');
     expect(media).toContain('Scale');
     expect(media).toContain('Rotate');
+    expect(media).toContain('Position X');
+    expect(media).toContain('Filmstrip');
+    expect(media).toContain('>Text<');
     expect(media).toContain('max="10"');
     expect(media).toContain('Temp');
     expect(media).toContain('Vignette');
