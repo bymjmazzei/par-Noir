@@ -40,6 +40,7 @@ import {
   resolvePagePaddingPx,
   resolvePageOrientation,
   resolvePageView,
+  screenOverviewScale,
   screenStripWidthPx,
   verifyChain,
   ensureOwnerAssignment,
@@ -266,6 +267,7 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
   const [activeLayerId, setActiveLayerId] = useState<string | null>(PAGE_LAYER_ID);
   const [playheadSec, setPlayheadSec] = useState(0);
   const [timelinePlaying, setTimelinePlaying] = useState(false);
+  const [screenOverview, setScreenOverview] = useState(false);
   const [socialLayersOpen, setSocialLayersOpen] = useState(false);
   const [socialSelectedIds, setSocialSelectedIds] = useState<string[]>([PAGE_LAYER_ID]);
   const socialLayersBtnRef = useRef<HTMLButtonElement>(null);
@@ -1929,6 +1931,16 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
       heightPx: bundle.manifest.flowWorkspaceHeightPx
     }
   );
+  const screenFit =
+    pageView === 'screen' && screenOverview
+      ? screenOverviewScale(
+          previewPages.length,
+          previewPageBox.width,
+          previewPageBox.height,
+          Math.max(1, previewPaneSize.width - previewGutter * 2),
+          Math.max(1, previewPaneSize.height - previewGutter * 2)
+        )
+      : 1;
   const layerPad = resolvePagePaddingPx(pagePresentation.padding);
   const screenStripBackground = pageFrameStyle(pagePresentation);
   if (
@@ -2667,19 +2679,45 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
                 <div
                   ref={setPreviewPaneEl}
                   className={`min-h-0 min-w-0 flex-1 bg-neutral-100 ${
-                    pageView === 'vertical'
-                      ? 'overflow-x-hidden overflow-y-auto'
-                      : 'overflow-x-auto overflow-y-hidden'
+                    pageLayout === 'flow'
+                      ? pageView === 'vertical'
+                        ? 'overflow-x-hidden overflow-y-auto'
+                        : 'overflow-x-auto overflow-y-hidden'
+                      : 'overflow-auto'
                   }`}
+                >
+                <div
+                  data-preview-center={pageLayout === 'flow' ? undefined : ''}
+                  className={
+                    pageLayout === 'flow'
+                      ? 'contents'
+                      : 'flex min-h-full min-w-full items-[safe_center] justify-[safe_center]'
+                  }
                 >
                 <div
                   className={pageView === 'screen' ? 'relative shrink-0' : 'contents'}
                   style={
                     pageView === 'screen'
                       ? {
+                          width: Math.round(
+                            screenStripWidthPx(previewPages.length, previewPageBox.width) * screenFit
+                          ),
+                          height: Math.round(previewPageBox.height * screenFit),
+                          margin: previewGutter
+                        }
+                      : undefined
+                  }
+                >
+                <div
+                  className={pageView === 'screen' ? 'relative' : 'contents'}
+                  data-screen-overview={pageView === 'screen' && screenOverview ? '' : undefined}
+                  style={
+                    pageView === 'screen' && screenOverview
+                      ? {
                           width: screenStripWidthPx(previewPages.length, previewPageBox.width),
                           height: previewPageBox.height,
-                          margin: previewGutter
+                          transform: `scale(${screenFit})`,
+                          transformOrigin: 'top left'
                         }
                       : undefined
                   }
@@ -2745,6 +2783,8 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
                             onPageOrientation={setPageOrientation}
                             onPageView={setPreviewPageView}
                             onToggleViewLock={togglePageViewLock}
+                            screenOverview={screenOverview}
+                            onToggleScreenOverview={() => setScreenOverview((on) => !on)}
                             buttonCaptionById={buttonCaptionById}
                             session={session}
                             onSelectLayer={(id) => {
@@ -2853,6 +2893,8 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
                     playheadSec={playheadSec}
                   />
                 )}
+                </div>
+                </div>
                 </div>
                 </div>
               </div>

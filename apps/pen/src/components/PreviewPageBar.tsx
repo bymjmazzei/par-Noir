@@ -183,6 +183,16 @@ function OrientationIcon({ orientation }: { orientation: PenPageOrientation }) {
   );
 }
 
+function AllPagesIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden>
+      <rect x="1.5" y="3.5" width="4" height="9" rx="0.5" fill="none" stroke="currentColor" strokeWidth="1.3" />
+      <rect x="6" y="3.5" width="4" height="9" rx="0.5" fill="none" stroke="currentColor" strokeWidth="1.3" />
+      <rect x="10.5" y="3.5" width="4" height="9" rx="0.5" fill="none" stroke="currentColor" strokeWidth="1.3" />
+    </svg>
+  );
+}
+
 function ScrollIcon({ view }: { view: PenPageView }) {
   if (view === 'horizontal') {
     return (
@@ -223,16 +233,20 @@ export function OrientationChoices({
   pageOrientation,
   pageView,
   viewLocked = false,
+  screenOverview = false,
   onPageOrientation,
   onPageView,
-  onToggleViewLock
+  onToggleViewLock,
+  onToggleScreenOverview
 }: {
   pageOrientation: PenPageOrientation;
   pageView: PenPageView;
   viewLocked?: boolean;
+  screenOverview?: boolean;
   onPageOrientation: (orientation: PenPageOrientation) => void;
   onPageView: (view: PenPageView) => void;
   onToggleViewLock: () => void;
+  onToggleScreenOverview?: () => void;
 }) {
   return (
     <div className="flex flex-col gap-1">
@@ -242,6 +256,7 @@ export function OrientationChoices({
             key={orientation.id}
             type="button"
             aria-label={orientation.label}
+            title={orientation.label}
             aria-pressed={pageOrientation === orientation.id}
             disabled={viewLocked}
             className={`flex h-7 w-7 items-center justify-center rounded disabled:cursor-not-allowed disabled:opacity-40 ${
@@ -262,6 +277,7 @@ export function OrientationChoices({
             key={view.id}
             type="button"
             aria-label={view.label}
+            title={view.label}
             aria-pressed={pageView === view.id}
             disabled={viewLocked}
             className={`flex h-7 w-7 items-center justify-center rounded disabled:cursor-not-allowed disabled:opacity-40 ${
@@ -275,9 +291,24 @@ export function OrientationChoices({
             <ScrollIcon view={view.id} />
           </button>
         ))}
+        {pageView === 'screen' && onToggleScreenOverview ? (
+          <button
+            type="button"
+            aria-label={screenOverview ? 'Screen size' : 'All pages'}
+            title={screenOverview ? 'Screen size' : 'All pages'}
+            aria-pressed={screenOverview}
+            className={`flex h-7 w-7 items-center justify-center rounded ${
+              screenOverview ? 'bg-stone-800 text-white' : 'text-stone-700 hover:bg-stone-100'
+            }`}
+            onClick={onToggleScreenOverview}
+          >
+            <AllPagesIcon />
+          </button>
+        ) : null}
         <button
           type="button"
           aria-label={viewLocked ? 'Unlock view' : 'Lock view'}
+          title={viewLocked ? 'Unlock view' : 'Lock view'}
           aria-pressed={viewLocked}
           className={`rounded px-2 py-1 text-[11px] font-medium ${
             viewLocked ? 'bg-stone-800 text-white' : 'bg-white text-stone-700 hover:bg-stone-100'
@@ -295,24 +326,29 @@ export function PreviewOrientationMenu({
   pageOrientation,
   pageView,
   viewLocked = false,
+  screenOverview = false,
   onPageOrientation,
   onPageView,
-  onToggleViewLock
+  onToggleViewLock,
+  onToggleScreenOverview
 }: {
   pageOrientation: PenPageOrientation;
   pageView: PenPageView;
   viewLocked?: boolean;
+  screenOverview?: boolean;
   onPageOrientation: (orientation: PenPageOrientation) => void;
   onPageView: (view: PenPageView) => void;
   onToggleViewLock: () => void;
+  onToggleScreenOverview?: () => void;
 }) {
   const [open, setOpen] = useState(false);
   const label = pageOrientation === 'landscape' ? 'Landscape' : 'Portrait';
   return (
-    <div className="relative shrink-0">
+    <div className="relative flex shrink-0 items-center">
       <button
         type="button"
         aria-label={label}
+        title={label}
         aria-expanded={open}
         data-page-orientation={pageOrientation}
         data-page-view={pageView}
@@ -321,15 +357,31 @@ export function PreviewOrientationMenu({
       >
         <OrientationIcon orientation={pageOrientation} />
       </button>
+      {pageView === 'screen' && onToggleScreenOverview ? (
+        <button
+          type="button"
+          aria-label={screenOverview ? 'Screen size' : 'All pages'}
+          title={screenOverview ? 'Screen size' : 'All pages'}
+          aria-pressed={screenOverview}
+          className={`flex h-6 w-6 items-center justify-center rounded ${
+            screenOverview ? 'bg-stone-800 text-white' : 'text-neutral-700 hover:text-black'
+          }`}
+          onClick={onToggleScreenOverview}
+        >
+          <AllPagesIcon />
+        </button>
+      ) : null}
       {open && (
         <div className="absolute left-0 top-full z-50 mt-1 rounded border border-stone-300 bg-white p-1 shadow-lg">
           <OrientationChoices
             pageOrientation={pageOrientation}
             pageView={pageView}
             viewLocked={viewLocked}
+            screenOverview={screenOverview}
             onPageOrientation={onPageOrientation}
             onPageView={onPageView}
             onToggleViewLock={onToggleViewLock}
+            onToggleScreenOverview={onToggleScreenOverview}
           />
         </div>
       )}

@@ -159,6 +159,7 @@ function InspectorSlider({
         <button
           type="button"
           aria-label={`Reset ${label}`}
+          title={`Reset ${label}`}
           className="inline-flex h-5 w-5 shrink-0 items-center justify-center text-stone-400"
           onClick={() => {
             if (neutral !== undefined) onChange(neutral);
@@ -780,7 +781,7 @@ export function MediaEditorPanel({
 }
 
 const LOOK_SWATCH = `data:image/svg+xml,${encodeURIComponent(
-  `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 90 120'><rect width='90' height='120' fill='#d6d3d1'/><rect y='70' width='90' height='50' fill='#78716c'/><circle cx='45' cy='48' r='18' fill='#e7e5e4'/><rect x='30' y='78' width='30' height='28' rx='8' fill='#a8a29e'/></svg>`
+  `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 80 80'><rect width='80' height='80' fill='#d6d3d1'/><rect y='48' width='80' height='32' fill='#78716c'/><circle cx='40' cy='32' r='14' fill='#e7e5e4'/><rect x='26' y='52' width='28' height='22' rx='8' fill='#a8a29e'/></svg>`
 )}`;
 
 function LookTiles({
@@ -791,22 +792,23 @@ function LookTiles({
   onPick: (preset: PenMediaFilter) => void;
 }) {
   return (
-    <div className="grid grid-cols-4 gap-2">
+    <div className="grid grid-cols-5 gap-1">
       {Object.entries(MEDIA_FILTER_PRESETS).map(([id, preset]) => {
         const selected = looksMatch(current, preset);
         const filter = mediaFilterCss({ mediaFilter: preset });
         return (
-          <button key={id} type="button" aria-pressed={selected} className="space-y-1 text-left" onClick={() => onPick(preset)}>
+          <button key={id} type="button" aria-pressed={selected} title={id} className="space-y-0.5 text-left" onClick={() => onPick(preset)}>
             <span className={`block overflow-hidden bg-stone-300 ${selected ? 'outline outline-2 outline-stone-600' : ''}`}>
               <img
                 src={LOOK_SWATCH}
                 alt=""
-                className="aspect-[3/4] w-full object-cover"
+                data-look-tile="square"
+                className="aspect-square w-full object-cover"
                 style={filter ? { filter } : undefined}
                 draggable={false}
               />
             </span>
-            <span className={`block text-[11px] capitalize ${activeText(selected)}`}>{id}</span>
+            <span className={`block truncate text-[10px] capitalize leading-tight ${activeText(selected)}`}>{id}</span>
           </button>
         );
       })}
@@ -923,6 +925,7 @@ function CropMarquee({
             type="button"
             data-crop-handle={handle}
             aria-label={`Crop ${handle}`}
+            title={`Crop ${handle}`}
             className="absolute z-10 h-2.5 w-2.5 bg-stone-600"
             style={{
               left: handle.includes('e') ? '100%' : 0,

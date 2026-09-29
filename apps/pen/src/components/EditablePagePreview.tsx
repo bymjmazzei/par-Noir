@@ -476,6 +476,8 @@ export function EditablePagePreview({
   onPageOrientation,
   onPageView,
   onToggleViewLock,
+  screenOverview = false,
+  onToggleScreenOverview,
   playheadSec = 0
 }: {
   manifest: PenDocManifest;
@@ -508,6 +510,9 @@ export function EditablePagePreview({
   onPageOrientation?: (orientation: PenPageOrientation) => void;
   onPageView?: (view: PenPageView) => void;
   onToggleViewLock?: () => void;
+  /** Screen strip scaled so every page is on screen at once. */
+  screenOverview?: boolean;
+  onToggleScreenOverview?: () => void;
   /** Section clock. Layers with keys are sampled here for display only. */
   playheadSec?: number;
   onPageSizeChange?: (next: PageSizeChoice) => void;
@@ -957,6 +962,8 @@ export function EditablePagePreview({
             onPageOrientation={onPageOrientation}
             onPageView={onPageView}
             onToggleViewLock={onToggleViewLock}
+            screenOverview={screenOverview}
+            onToggleScreenOverview={onToggleScreenOverview}
           />
         )}
         <div className="relative shrink-0">

@@ -560,6 +560,58 @@ export function joinLayerToTrack(
   };
 }
 
+/**
+ * Move a layer's row above another track, or to the end when `beforeTrackId` is null.
+ * A layer that shared a row becomes its own row. Joining stays on `joinLayerToTrack`.
+ */
+export function reorderTimelineLayer(
+  section: PenSectionContent,
+  layerId: string,
+  beforeTrackId: string | null
+): PenSectionContent {
+  const layers = section.layers || [];
+  const moving = layers.find((layer) => layer.id === layerId);
+  if (!moving || moving.kind === 'guide' || moving.parentGroupId) return section;
+  const track = layerTrackId(moving);
+  const peers = layers.filter(
+    (layer) => !layer.parentGroupId && layer.kind !== 'guide' && layerTrackId(layer) === track
+  );
+  const released = peers.length > 1 ? releaseLayerTrack(section, layerId) : section;
+  const nextLayers = released.layers || [];
+  const current = nextLayers.find((layer) => layer.id === layerId);
+  if (!current) return section;
+  const movingTrack = layerTrackId(current);
+  if (beforeTrackId === movingTrack) return released;
+  const tops = nextLayers
+    .filter((layer) => !layer.parentGroupId && layer.kind !== 'guide')
+    .sort((a, b) => a.zIndex - b.zIndex);
+  const order: string[] = [];
+  for (const layer of tops) {
+    const id = layerTrackId(layer);
+    if (!order.includes(id)) order.push(id);
+  }
+  const rest = order.filter((id) => id !== movingTrack);
+  const at = beforeTrackId ? rest.indexOf(beforeTrackId) : -1;
+  rest.splice(at >= 0 ? at : rest.length, 0, movingTrack);
+  const ranked = new Map(rest.map((id, index) => [id, index]));
+  return {
+    ...released,
+    layers: nextLayers.map((layer) => {
+      if (layer.parentGroupId || layer.kind === 'guide') return layer;
+      const index = ranked.get(layerTrackId(layer));
+      if (index == null) return layer;
+      const siblings = tops
+        .filter((item) => layerTrackId(item) === layerTrackId(layer))
+        .sort((a, b) => a.zIndex - b.zIndex);
+      const offset = Math.max(
+        0,
+        siblings.findIndex((item) => item.id === layer.id)
+      );
+      return { ...layer, zIndex: (index + 1) * 100 + offset };
+    })
+  };
+}
+
 /** Give a layer its own row again so it can play at the same time as the others. */
 export function releaseLayerTrack(section: PenSectionContent, layerId: string): PenSectionContent {
   const layers = section.layers || [];

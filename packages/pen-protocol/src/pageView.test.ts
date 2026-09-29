@@ -5,7 +5,8 @@ import {
   appendDocPage,
   removeDocPage,
   reorderDocPages,
-  resolvePageOrientation
+  resolvePageOrientation,
+  screenOverviewScale
 } from './pageView.js';
 
 describe('pageView', () => {
@@ -32,6 +33,11 @@ describe('pageView', () => {
     const moved = reorderDocPages(second.sections, second.toc, 1, 0);
     expect(moved.toc).toEqual(['page-2', 'body', 'page-3']);
     expect(moved.sections.map((section) => section.slug)).toEqual(['page-2', 'body', 'page-3']);
+  });
+
+  it('fits a wide screen strip into the pane and leaves a short strip alone', () => {
+    expect(screenOverviewScale(3, 200, 400, 300, 400)).toBeCloseTo(0.5);
+    expect(screenOverviewScale(1, 200, 300, 400, 500)).toBe(1);
   });
 
   it('flips to the next and previous page and stays at the ends', () => {

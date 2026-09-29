@@ -4,6 +4,7 @@ import {
   applyLayoutAtPlayhead,
   applyTransitionPreset,
   joinLayerToTrack,
+  reorderTimelineLayer,
   layerMediaTime,
   resolveTimelineDuration,
   sampleLayerAt,
@@ -266,6 +267,23 @@ describe('timeline tracks', () => {
     expect(b?.timelineTrackId).toBe('a');
     expect(b?.inSec).toBe(2);
     expect(b?.outSec).toBe(5);
+  });
+
+  it('reorders a row above another, and lifts a shared clip onto its own row', () => {
+    const doc = section([
+      layer({ id: 'a', zIndex: 1 }),
+      layer({ id: 'b', zIndex: 2 }),
+      layer({ id: 'c', zIndex: 3 })
+    ]);
+    const order = (next: PenSectionContent) =>
+      [...(next.layers || [])].sort((a, b) => a.zIndex - b.zIndex).map((item) => item.id);
+    expect(order(reorderTimelineLayer(doc, 'c', 'a'))).toEqual(['c', 'a', 'b']);
+    const shared = joinLayerToTrack(doc, 'b', 'a');
+    const lifted = reorderTimelineLayer(shared, 'b', 'c');
+    const b = lifted.layers?.find((item) => item.id === 'b');
+    const c = lifted.layers?.find((item) => item.id === 'c');
+    expect(b?.timelineTrackId).not.toBe('a');
+    expect((b?.zIndex || 0) < (c?.zIndex || 0)).toBe(true);
   });
 });
 
