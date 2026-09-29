@@ -177,6 +177,27 @@ export interface PenPageLayer {
   mediaCrop?: PenMediaCrop;
   /** Clip mask for image/video layers. */
   mediaMask?: PenMediaMask;
+  /** Mask size 0–100. Default 100. */
+  mediaMaskSize?: number;
+  /** Picture scale inside the frame. 100 is the frame. */
+  mediaScale?: number;
+  /** Picture offset inside the frame, percent. */
+  mediaX?: number;
+  mediaY?: number;
+  /** Picture rotation in degrees. */
+  mediaRotate?: number;
+  /** Flip the picture horizontally. */
+  mediaMirror?: boolean;
+  /** Playback speed. 1 is normal. Not a keyframe. */
+  playbackRate?: number;
+  /** Clip soundtrack level 0–100. The master stays muted until this is set. */
+  mediaGain?: number;
+  /** When false, the clip soundtrack is audible. Omit to keep the master muted. */
+  mediaMuted?: boolean;
+  /** Play the reversed proxy instead of the forward edit proxy. */
+  mediaReversed?: boolean;
+  /** Short-clip reverse file. Absent when the clip is longer than the reverse cap. */
+  reverseProxySrc?: string;
   /** Raster brush overlay (data URL) composited above the media. */
   paintOverlaySrc?: string;
   /**
@@ -217,6 +238,11 @@ export interface PenLayerKeyframe {
   h?: number;
   opacity?: number;
   blur?: number;
+  mediaScale?: number;
+  mediaX?: number;
+  mediaY?: number;
+  mediaRotate?: number;
+  mediaMaskSize?: number;
   mediaFilter?: PenMediaFilter;
   mediaCrop?: PenMediaCrop;
 }
@@ -234,14 +260,34 @@ export interface PenAudioTrack {
   offsetSec?: number;
   /** 0–100. Default 100. */
   gain?: number;
+  /** Silence this lane without removing it. */
+  muted?: boolean;
 }
 
-/** Image/video color grade — maps to CSS filter. Defaults: 100/100/100/0. */
+/** Image/video color grade. Tonal channels render in one shader pass. */
 export interface PenMediaFilter {
   brightness?: number;
   contrast?: number;
   saturation?: number;
+  /** Kept for look presets. The panel uses temp and tint. */
   hueRotate?: number;
+  /** -100 cool to 100 warm. */
+  temp?: number;
+  /** -100 green to 100 magenta. */
+  tint?: number;
+  /** -100 to 100. */
+  exposure?: number;
+  highlight?: number;
+  shadow?: number;
+  whites?: number;
+  blacks?: number;
+  brilliance?: number;
+  sharpen?: number;
+  clarity?: number;
+  /** Grain overlay strength 0–100. */
+  particles?: number;
+  fade?: number;
+  vignette?: number;
 }
 
 /** Crop rectangle as fractions of the source media (0–1). */
@@ -252,7 +298,7 @@ export interface PenMediaCrop {
   h: number;
 }
 
-export type PenMediaMask = 'none' | 'circle' | 'rounded';
+export type PenMediaMask = 'none' | 'circle' | 'rounded' | 'rect';
 
 /** Page chrome for Note compile / Pen Mini / PNG (mirrors browse TextPostStyle). */
 export interface PenPagePresentation {

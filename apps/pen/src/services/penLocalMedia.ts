@@ -287,6 +287,7 @@ export const MEDIA_SRC_FIELDS = [
   'imageSrc',
   'videoSrc',
   'editProxySrc',
+  'reverseProxySrc',
   'backgroundImage',
   'backgroundVideo',
   'paintOverlaySrc'

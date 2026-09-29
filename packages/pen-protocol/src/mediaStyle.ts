@@ -13,7 +13,20 @@ export const DEFAULT_MEDIA_FILTER: Required<PenMediaFilter> = {
   brightness: 100,
   contrast: 100,
   saturation: 100,
-  hueRotate: 0
+  hueRotate: 0,
+  temp: 0,
+  tint: 0,
+  exposure: 0,
+  highlight: 0,
+  shadow: 0,
+  whites: 0,
+  blacks: 0,
+  brilliance: 0,
+  sharpen: 0,
+  clarity: 0,
+  particles: 0,
+  fade: 0,
+  vignette: 0
 };
 
 export const FULL_MEDIA_CROP: PenMediaCrop = { x: 0, y: 0, w: 1, h: 1 };
@@ -34,12 +47,13 @@ export function clampMediaCrop(crop: PenMediaCrop | null | undefined): PenMediaC
 export function mergeMediaFilter(
   partial?: PenMediaFilter | null
 ): Required<PenMediaFilter> {
-  return {
-    brightness: partial?.brightness ?? DEFAULT_MEDIA_FILTER.brightness,
-    contrast: partial?.contrast ?? DEFAULT_MEDIA_FILTER.contrast,
-    saturation: partial?.saturation ?? DEFAULT_MEDIA_FILTER.saturation,
-    hueRotate: partial?.hueRotate ?? DEFAULT_MEDIA_FILTER.hueRotate
-  };
+  const next: Required<PenMediaFilter> = { ...DEFAULT_MEDIA_FILTER };
+  if (!partial) return next;
+  (Object.keys(DEFAULT_MEDIA_FILTER) as Array<keyof PenMediaFilter>).forEach((key) => {
+    const value = partial[key];
+    if (value !== undefined && Number.isFinite(value)) next[key] = value;
+  });
+  return next;
 }
 
 /** CSS `filter` for media grade + optional layer blur (px). */
@@ -49,21 +63,57 @@ export function mediaFilterCss(
   if (!layer) return undefined;
   const f = mergeMediaFilter(layer.mediaFilter);
   const parts: string[] = [];
-  if (f.brightness !== 100) parts.push(`brightness(${f.brightness}%)`);
+  const brightness = f.brightness * (1 + f.exposure / 200);
+  if (Math.abs(brightness - 100) > 0.05) parts.push(`brightness(${Math.round(brightness * 10) / 10}%)`);
   if (f.contrast !== 100) parts.push(`contrast(${f.contrast}%)`);
-  if (f.saturation !== 100) parts.push(`saturate(${f.saturation}%)`);
+  const saturation = f.saturation * (1 - f.fade / 200);
+  if (Math.abs(saturation - 100) > 0.05) parts.push(`saturate(${Math.round(saturation * 10) / 10}%)`);
   if (f.hueRotate !== 0) parts.push(`hue-rotate(${f.hueRotate}deg)`);
+  if (f.temp !== 0) {
+    parts.push(`sepia(${Math.min(1, Math.abs(f.temp) / 100)})`);
+    parts.push(`hue-rotate(${f.temp > 0 ? -10 : 190}deg)`);
+  }
+  if (f.tint !== 0) parts.push(`hue-rotate(${f.tint * 0.4}deg)`);
   if (layer.blur && layer.blur > 0) parts.push(`blur(${layer.blur}px)`);
   return parts.length ? parts.join(' ') : undefined;
 }
 
+const TONAL_KEYS = ['highlight', 'shadow', 'whites', 'blacks', 'brilliance', 'sharpen', 'clarity'] as const;
+
+/** True when the frame needs the single tonal shader pass. */
+export function tonalGradeActive(filter: PenMediaFilter | null | undefined): boolean {
+  const merged = mergeMediaFilter(filter);
+  return TONAL_KEYS.some((key) => merged[key] !== 0);
+}
+
 export function mediaMaskClipCss(
-  mask: PenMediaMask | null | undefined
+  mask: PenMediaMask | null | undefined,
+  size?: number
 ): string | undefined {
   if (!mask || mask === 'none') return undefined;
-  if (mask === 'circle') return 'circle(50% at 50% 50%)';
-  if (mask === 'rounded') return 'inset(0 round 12%)';
-  return undefined;
+  const amount = Math.min(100, Math.max(0, size ?? 100));
+  if (mask === 'circle') return `circle(${amount / 2}% at 50% 50%)`;
+  const inset = (100 - amount) / 2;
+  if (mask === 'rect') return `inset(${inset}%)`;
+  return `inset(${inset}% round 12%)`;
+}
+
+/** Scale, offset, rotation, and mirror for the picture inside the frame. */
+export function mediaTransformCss(layer: {
+  mediaScale?: number;
+  mediaX?: number;
+  mediaY?: number;
+  mediaRotate?: number;
+  mediaMirror?: boolean;
+} | null | undefined): string | undefined {
+  if (!layer) return undefined;
+  const scale = (layer.mediaScale ?? 100) / 100;
+  const x = layer.mediaX ?? 0;
+  const y = layer.mediaY ?? 0;
+  const rotate = layer.mediaRotate ?? 0;
+  const flip = layer.mediaMirror ? -1 : 1;
+  if (scale === 1 && x === 0 && y === 0 && rotate === 0 && flip === 1) return undefined;
+  return `translate(${x}%, ${y}%) rotate(${rotate}deg) scale(${scale * flip}, ${scale})`;
 }
 
 /**

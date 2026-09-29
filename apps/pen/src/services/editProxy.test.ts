@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { proxyRefForFrame, proxySize } from './editProxy';
+import { proxyRefForFrame, proxySize, reverseProxyAllowed } from './editProxy';
 
 describe('edit proxy size', () => {
   it('fits a 4K frame to a 720 long edge', () => {
@@ -15,5 +15,11 @@ describe('edit proxy size', () => {
     expect(proxyRefForFrame('penlocal:clip', 640, 360)).toBe('penlocal:clip');
     expect(proxyRefForFrame('penlocal:clip', 720, 1280)).toBeNull();
     expect(proxyRefForFrame('penlocal:clip', 3840, 2160)).toBeNull();
+  });
+
+  it('builds a reversed proxy only for clips of 15 seconds or less', () => {
+    expect(reverseProxyAllowed(15)).toBe(true);
+    expect(reverseProxyAllowed(15.01)).toBe(false);
+    expect(reverseProxyAllowed(0)).toBe(false);
   });
 });

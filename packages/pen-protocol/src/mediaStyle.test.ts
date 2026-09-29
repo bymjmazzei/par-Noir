@@ -4,6 +4,7 @@ import {
   mediaCropClipCss,
   mediaFilterCss,
   mediaMaskClipCss,
+  mediaTransformCss,
   MEDIA_FILTER_PRESETS,
   mergeMediaFilter
 } from './mediaStyle.js';
@@ -38,6 +39,20 @@ describe('mediaStyle', () => {
     expect(mediaMaskClipCss('none')).toBeUndefined();
     expect(mediaMaskClipCss('circle')).toContain('circle');
     expect(mediaMaskClipCss('rounded')).toContain('inset');
+  });
+
+  it('mask size changes the clip path', () => {
+    expect(mediaMaskClipCss('circle', 50)).toBe('circle(25% at 50% 50%)');
+    expect(mediaMaskClipCss('rounded', 80)).toBe('inset(10% round 12%)');
+    expect(mediaMaskClipCss('rect', 60)).toBe('inset(20%)');
+  });
+
+  it('scale becomes a CSS transform', () => {
+    expect(mediaTransformCss({ mediaScale: 100 })).toBeUndefined();
+    expect(mediaTransformCss({ mediaScale: 200 })).toBe(
+      'translate(0%, 0%) rotate(0deg) scale(2, 2)'
+    );
+    expect(mediaTransformCss({ mediaScale: 100, mediaMirror: true })).toContain('scale(-1, 1)');
   });
 
   it('mergeMediaFilter fills defaults', () => {

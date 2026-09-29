@@ -10,6 +10,7 @@ import {
   clampMediaCrop,
   editorPlaybackSrc,
   mergeMediaFilter,
+  publishPlaybackSrc,
   layerSampleTime,
   patchLayerStyle,
   upsertLayer,
@@ -21,24 +22,47 @@ import {
   type PenPageLayer,
   type PenSectionContent
 } from '@par-noir/pen-protocol';
+import { peekPenMediaController } from '@par-noir/feed-tile';
 import { CloudFeedMediaPicker } from './CloudFeedMediaPicker';
 import { SectionTimeline } from './SectionTimeline';
 import { LayerMediaContent } from './LayerMediaContent';
 import { ColorSwatchButton } from './PanelValueControls';
 import { probeMediaAspect } from '../services/penAttach';
+import { buildReversedEditProxy, reverseProxyAllowed } from '../services/editProxy';
 import { resolvePenMediaSrc, ingestInlineMediaSrc, putLocalMedia } from '../services/penLocalMedia';
 import { useResolvedMediaSrc } from '../hooks/useResolvedMediaSrc';
 import type { PenSession } from '../services/penSession';
 
-type ToolTab = 'color' | 'filters' | 'crop' | 'mask' | 'brush' | 'tracks';
+type ToolTab = 'basic' | 'color' | 'filters' | 'crop' | 'mask' | 'brush' | 'speed' | 'tracks';
 
 const TABS: Array<{ id: ToolTab; label: string }> = [
+  { id: 'basic', label: 'Basic' },
   { id: 'color', label: 'Grade' },
   { id: 'filters', label: 'Look' },
   { id: 'crop', label: 'Crop' },
   { id: 'mask', label: 'Mask' },
   { id: 'brush', label: 'Draw' },
+  { id: 'speed', label: 'Speed' },
   { id: 'tracks', label: 'Audio' }
+];
+
+const COLOR_ROWS: Array<[keyof PenMediaFilter, string, number, number, number]> = [
+  ['temp', 'Temp', -100, 100, 0],
+  ['tint', 'Tint', -100, 100, 0],
+  ['saturation', 'Saturation', 0, 200, 100],
+  ['exposure', 'Exposure', -100, 100, 0],
+  ['brightness', 'Brightness', 50, 150, 100],
+  ['contrast', 'Contrast', 50, 150, 100],
+  ['highlight', 'Highlight', -100, 100, 0],
+  ['shadow', 'Shadow', -100, 100, 0],
+  ['whites', 'Whites', -100, 100, 0],
+  ['blacks', 'Blacks', -100, 100, 0],
+  ['brilliance', 'Brilliance', -100, 100, 0],
+  ['sharpen', 'Sharpen', 0, 100, 0],
+  ['clarity', 'Clarity', -100, 100, 0],
+  ['particles', 'Particles', 0, 100, 0],
+  ['fade', 'Fade', 0, 100, 0],
+  ['vignette', 'Vignette', 0, 100, 0]
 ];
 
 function InspectorSlider({
@@ -151,6 +175,7 @@ export function MediaEditorPanel({
   );
   const [licensedDraft, setLicensedDraft] = useState('');
   const audioPickRef = useRef<HTMLInputElement>(null);
+  const reversing = useRef(false);
   const filter = mergeMediaFilter(layer.mediaFilter);
   const crop = clampMediaCrop(layer.mediaCrop);
   const mask = (layer.mediaMask || 'none') as PenMediaMask;
@@ -172,6 +197,36 @@ export function MediaEditorPanel({
 
   function patchTrack(id: string, partial: Partial<PenAudioTrack>) {
     setTracks(tracks.map((track) => (track.id === id ? { ...track, ...partial } : track)));
+  }
+
+  function hearClip(gain: number, muted: boolean) {
+    peekPenMediaController(`pen-layer:${layer.id}`)?.setClipAudio(gain / 100, !muted);
+  }
+
+  async function onReverse() {
+    if (layer.mediaReversed) {
+      patch({ mediaReversed: false });
+      return;
+    }
+    if (layer.reverseProxySrc) {
+      patch({ mediaReversed: true });
+      return;
+    }
+    if (reversing.current || !docId) return;
+    const known = peekPenMediaController(`pen-layer:${layer.id}`)?.master.duration;
+    if (typeof known === 'number' && Number.isFinite(known) && !reverseProxyAllowed(known)) return;
+    const raw = editorPlaybackSrc({ ...layer, mediaReversed: false }) || publishPlaybackSrc(layer);
+    if (!raw) return;
+    reversing.current = true;
+    try {
+      const url = await resolvePenMediaSrc(raw, docId);
+      if (!url) return;
+      const ref = await buildReversedEditProxy({ docId, fileUrl: url });
+      if (!ref) return;
+      patch({ mediaReversed: true, reverseProxySrc: ref });
+    } finally {
+      reversing.current = false;
+    }
   }
 
   async function onReplace(src: string, meta?: { blobUrl?: string }) {
@@ -261,24 +316,56 @@ export function MediaEditorPanel({
           )}
         </div>
 
-        {tab === 'color' && (
+        <div hidden={tab !== 'basic'} className="space-y-2">
+          <InspectorSlider
+            label="Scale"
+            min={10}
+            max={300}
+            neutral={100}
+            value={layer.mediaScale ?? 100}
+            display={`${layer.mediaScale ?? 100}%`}
+            onChange={(n) => patch({ mediaScale: n })}
+          />
+          <InspectorSlider
+            label="Position X"
+            min={-100}
+            max={100}
+            neutral={0}
+            value={layer.mediaX ?? 0}
+            display={`${layer.mediaX ?? 0}%`}
+            onChange={(n) => patch({ mediaX: n })}
+          />
+          <InspectorSlider
+            label="Position Y"
+            min={-100}
+            max={100}
+            neutral={0}
+            value={layer.mediaY ?? 0}
+            display={`${layer.mediaY ?? 0}%`}
+            onChange={(n) => patch({ mediaY: n })}
+          />
+          <InspectorSlider
+            label="Rotate"
+            min={-180}
+            max={180}
+            neutral={0}
+            value={layer.mediaRotate ?? 0}
+            display={`${layer.mediaRotate ?? 0}°`}
+            onChange={(n) => patch({ mediaRotate: n })}
+          />
+        </div>
+
+        <div hidden={tab !== 'color'} className="space-y-2">
           <div className="space-y-2">
-            {(
-              [
-                ['brightness', 'Brightness', 50, 150, 100, '%'],
-                ['contrast', 'Contrast', 50, 150, 100, '%'],
-                ['saturation', 'Saturation', 0, 200, 100, '%'],
-                ['hueRotate', 'Hue', 0, 360, 0, '°']
-              ] as const
-            ).map(([key, label, min, max, neutral, unit]) => (
+            {COLOR_ROWS.map(([key, label, min, max, neutral]) => (
               <InspectorSlider
                 key={key}
                 label={label}
                 min={min}
                 max={max}
                 neutral={neutral}
-                value={filter[key]}
-                display={`${filter[key]}${unit}`}
+                value={filter[key] ?? neutral}
+                display={`${filter[key] ?? neutral}`}
                 onChange={(n) => setFilter({ [key]: n })}
               />
             ))}
@@ -301,7 +388,7 @@ export function MediaEditorPanel({
               onChange={(n) => patch({ blur: n || undefined })}
             />
           </div>
-        )}
+        </div>
 
         {tab === 'filters' && (
           <div className="flex flex-wrap gap-1.5">
@@ -332,9 +419,9 @@ export function MediaEditorPanel({
           />
         )}
 
-        {tab === 'mask' && (
+        <div hidden={tab !== 'mask'} className="space-y-2">
           <div className="flex flex-wrap gap-1">
-            {(['none', 'circle', 'rounded'] as PenMediaMask[]).map((m) => (
+            {(['none', 'circle', 'rounded', 'rect'] as PenMediaMask[]).map((m) => (
               <button
                 key={m}
                 type="button"
@@ -344,11 +431,55 @@ export function MediaEditorPanel({
                 }`}
                 onClick={() => patch({ mediaMask: m === 'none' ? undefined : m })}
               >
-                {m === 'rounded' ? 'Rounded' : m}
+                {m === 'rounded' ? 'Rounded' : m === 'rect' ? 'Rectangle' : m}
               </button>
             ))}
           </div>
-        )}
+          <InspectorSlider
+            label="Size"
+            min={0}
+            max={100}
+            neutral={100}
+            value={layer.mediaMaskSize ?? 100}
+            display={`${layer.mediaMaskSize ?? 100}%`}
+            onChange={(n) => patch({ mediaMaskSize: n })}
+          />
+        </div>
+
+        <div hidden={tab !== 'speed'} className="space-y-2">
+          <InspectorSlider
+            label="Speed"
+            min={0.5}
+            max={2}
+            step={0.1}
+            neutral={1}
+            value={layer.playbackRate ?? 1}
+            display={`${layer.playbackRate ?? 1}×`}
+            onChange={(n) => patch({ playbackRate: n })}
+          />
+          <div className="flex flex-wrap gap-1">
+            <button
+              type="button"
+              aria-pressed={Boolean(layer.mediaMirror)}
+              className={`rounded-full px-3 py-1 text-[13px] ${
+                layer.mediaMirror ? 'bg-stone-900 text-white' : 'bg-white text-stone-700 hover:bg-stone-200'
+              }`}
+              onClick={() => patch({ mediaMirror: !layer.mediaMirror })}
+            >
+              Mirror
+            </button>
+            <button
+              type="button"
+              aria-pressed={Boolean(layer.mediaReversed)}
+              className={`rounded-full px-3 py-1 text-[13px] ${
+                layer.mediaReversed ? 'bg-stone-900 text-white' : 'bg-white text-stone-700 hover:bg-stone-200'
+              }`}
+              onClick={() => void onReverse()}
+            >
+              Reverse
+            </button>
+          </div>
+        </div>
 
         {tab === 'brush' && brushSrc && (
           <BrushEditor
@@ -369,8 +500,38 @@ export function MediaEditorPanel({
           />
         )}
 
-        {tab === 'tracks' && (
-          <div className="space-y-3">
+        <div hidden={tab !== 'tracks'} className="space-y-3">
+          <div className="space-y-2">
+            <div className="text-[13px] text-stone-700">Clip</div>
+            <InspectorSlider
+              label="Level"
+              min={0}
+              max={100}
+              neutral={100}
+              value={layer.mediaGain ?? 100}
+              display={`${layer.mediaGain ?? 100}%`}
+              onChange={(n) => {
+                hearClip(n, false);
+                patch({ mediaGain: n, mediaMuted: false });
+              }}
+            />
+            <button
+              type="button"
+              aria-pressed={layer.mediaMuted !== false}
+              className={`rounded-full px-3 py-1 text-[13px] ${
+                layer.mediaMuted !== false
+                  ? 'bg-stone-900 text-white'
+                  : 'bg-white text-stone-700 hover:bg-stone-200'
+              }`}
+              onClick={() => {
+                const muted = layer.mediaMuted === false;
+                hearClip(layer.mediaGain ?? 100, muted);
+                patch({ mediaMuted: muted });
+              }}
+            >
+              Mute
+            </button>
+          </div>
             <div className="flex flex-wrap items-center gap-1.5">
               <button
                 type="button"
@@ -412,14 +573,24 @@ export function MediaEditorPanel({
                   {track.licensedDocId || 'Audio'}
                 </div>
                 <InspectorSlider
-                  label="Gain"
+                  label="Level"
                   min={0}
                   max={100}
                   neutral={100}
                   value={track.gain ?? 100}
                   display={`${track.gain ?? 100}%`}
-                  onChange={(n) => patchTrack(track.id, { gain: n })}
+                  onChange={(n) => patchTrack(track.id, { gain: n, muted: false })}
                 />
+                <button
+                  type="button"
+                  aria-pressed={Boolean(track.muted)}
+                  className={`rounded-full px-3 py-1 text-[13px] ${
+                    track.muted ? 'bg-stone-900 text-white' : 'bg-white text-stone-700 hover:bg-stone-200'
+                  }`}
+                  onClick={() => patchTrack(track.id, { muted: !track.muted })}
+                >
+                  Mute
+                </button>
                 <InspectorSlider
                   label="Offset"
                   min={0}
@@ -431,8 +602,7 @@ export function MediaEditorPanel({
                 />
               </div>
             ))}
-          </div>
-        )}
+        </div>
       </div>
 
       <SectionTimeline

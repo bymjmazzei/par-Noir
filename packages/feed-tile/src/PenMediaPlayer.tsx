@@ -12,6 +12,7 @@ import {
   type CSSProperties,
   type PointerEvent as ReactPointerEvent
 } from 'react';
+import { paintGradedFrame, type TonalGrade } from './gradeFrame.js';
 import { acquirePenMediaController, type PenMediaController } from './penMediaController.js';
 
 const TAP_SLOP_PX = 8;
@@ -84,7 +85,9 @@ export function PenMediaPlayer({
    */
   tapToToggle = true,
   /** Feed and gallery autoplay. The editor holds one frame until Play. */
-  autoPlay = true
+  autoPlay = true,
+  /** Tonal sliders. Present only while they leave neutral, so the shader stays off otherwise. */
+  grade = null
 }: {
   src: string;
   className?: string;
@@ -94,9 +97,12 @@ export function PenMediaPlayer({
   syncKey?: string;
   tapToToggle?: boolean;
   autoPlay?: boolean;
+  grade?: TonalGrade | null;
 }) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const gradeCanvasRef = useRef<HTMLCanvasElement>(null);
+  const paintRef = useRef<() => void>(() => undefined);
   const barRef = useRef<HTMLDivElement>(null);
   const ctrlRef = useRef<PenMediaController | null>(null);
   const scrubbing = useRef(false);
@@ -114,6 +120,11 @@ export function PenMediaPlayer({
     (videoStyle?.objectFit as CSSProperties['objectFit'] | undefined) || 'contain';
   const objectFitRef = useRef(objectFit);
   objectFitRef.current = objectFit;
+  const gradeRef = useRef(grade);
+  gradeRef.current = grade;
+  const gradeKey = grade
+    ? `${grade.highlight},${grade.shadow},${grade.whites},${grade.blacks},${grade.brilliance},${grade.sharpen},${grade.clarity}`
+    : '';
 
   useEffect(() => {
     if (syncKey) {
@@ -139,10 +150,22 @@ export function PenMediaPlayer({
         const height = Math.max(1, Math.round((rect.height || canvas.clientHeight || 1) * dpr));
         if (canvas.width !== width) canvas.width = width;
         if (canvas.height !== height) canvas.height = height;
+        const tonal = gradeRef.current;
+        const gradeCanvas = gradeCanvasRef.current;
+        if (tonal && gradeCanvas) {
+          if (gradeCanvas.width !== width) gradeCanvas.width = width;
+          if (gradeCanvas.height !== height) gradeCanvas.height = height;
+          if (paintGradedFrame(gradeCanvas, video, width, height, objectFitRef.current, tonal)) {
+            const ctx = canvas.getContext('2d');
+            ctx?.clearRect(0, 0, width, height);
+            return;
+          }
+        }
         const ctx = canvas.getContext('2d');
         if (!ctx) return;
         drawFitted(ctx, video, width, height, objectFitRef.current);
       };
+      paintRef.current = paint;
       const follow = () => {
         if (stopped) return;
         paint();
@@ -194,6 +217,10 @@ export function PenMediaPlayer({
       el.removeEventListener('timeupdate', onTime);
     };
   }, [syncKey, src, autoPlay]);
+
+  useEffect(() => {
+    paintRef.current();
+  }, [gradeKey]);
 
   const togglePlay = useCallback(() => {
     const ctrl = ctrlRef.current;
@@ -304,13 +331,22 @@ export function PenMediaPlayer({
       }}
     >
       {synced ? (
-        <canvas
-          ref={canvasRef}
-          data-pen-media-key={syncKey}
-          className={`absolute inset-0 h-full w-full ${tapToToggle ? 'cursor-pointer' : ''}`}
-          style={{ ...paintStyle, pointerEvents: 'auto' }}
-          onPointerDown={onVideoPointerDown}
-        />
+        <>
+          <canvas
+            ref={canvasRef}
+            data-pen-media-key={syncKey}
+            className={`absolute inset-0 h-full w-full ${tapToToggle ? 'cursor-pointer' : ''}`}
+            style={{ ...paintStyle, pointerEvents: 'auto' }}
+            onPointerDown={onVideoPointerDown}
+          />
+          {grade ? (
+            <canvas
+              ref={gradeCanvasRef}
+              className="pointer-events-none absolute inset-0 h-full w-full"
+              style={paintStyle}
+            />
+          ) : null}
+        </>
       ) : (
         <video
           ref={videoRef}

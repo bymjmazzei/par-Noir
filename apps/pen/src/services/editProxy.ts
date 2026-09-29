@@ -258,3 +258,135 @@ export function ensureEditProxy(params: {
   inflight.set(key, job);
   return job;
 }
+
+/** Reverse is a one-time file. Longer clips do not start the pass. */
+export const REVERSE_MAX_SEC = 15;
+
+export function reverseProxyAllowed(durationSec: number): boolean {
+  return Number.isFinite(durationSec) && durationSec > 0 && durationSec <= REVERSE_MAX_SEC;
+}
+
+function mountProxyVideo(fileUrl: string): HTMLVideoElement {
+  const video = document.createElement('video');
+  video.muted = true;
+  video.defaultMuted = true;
+  video.playsInline = true;
+  video.preload = 'auto';
+  video.setAttribute('playsinline', '');
+  video.style.cssText =
+    'position:fixed;left:0;top:0;width:1px;height:1px;opacity:0;pointer-events:none;z-index:-1';
+  video.src = fileUrl;
+  document.body.appendChild(video);
+  return video;
+}
+
+function releaseProxyVideo(video: HTMLVideoElement) {
+  try {
+    video.pause();
+  } catch {
+    /* already gone */
+  }
+  video.removeAttribute('src');
+  video.load();
+  video.remove();
+}
+
+async function recordFramesBackward(frames: Blob[], width: number, height: number): Promise<Blob | null> {
+  const images: ImageBitmap[] = [];
+  try {
+    for (const frame of frames) images.push(await createImageBitmap(frame));
+    const canvas = document.createElement('canvas');
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext('2d');
+    if (!ctx || typeof canvas.captureStream !== 'function' || images.length < 2) return null;
+    const mimeType = pickRecorderMime();
+    const stream = canvas.captureStream(8);
+    const recorder = mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream);
+    const chunks: BlobPart[] = [];
+    recorder.ondataavailable = (event) => {
+      if (event.data.size) chunks.push(event.data);
+    };
+    const done = new Promise<Blob>((resolve, reject) => {
+      recorder.onstop = () =>
+        resolve(new Blob(chunks, { type: recorder.mimeType || mimeType || 'video/webm' }));
+      recorder.onerror = () => reject(new Error('reverse_record_failed'));
+    });
+    recorder.start(200);
+    for (let i = images.length - 1; i >= 0; i -= 1) {
+      ctx.drawImage(images[i]!, 0, 0, width, height);
+      await new Promise((resolve) => window.setTimeout(resolve, 125));
+    }
+    if (recorder.state !== 'inactive') recorder.stop();
+    const blob = await done;
+    stream.getTracks().forEach((track) => track.stop());
+    return blob.size ? blob : null;
+  } finally {
+    images.forEach((image) => image.close());
+  }
+}
+
+/** One forward pass of a clip at most 15 seconds, then a reversed file. */
+export async function encodeReversedProxyBlob(fileUrl: string): Promise<Blob | null> {
+  if (typeof document === 'undefined' || typeof MediaRecorder === 'undefined') return null;
+  const video = mountProxyVideo(fileUrl);
+  try {
+    await waitVideoMeta(video);
+    if (!reverseProxyAllowed(video.duration)) return null;
+    const sized = proxySize(video.videoWidth, video.videoHeight);
+    const width = Math.max(2, (sized.reuse ? video.videoWidth : sized.width) & ~1);
+    const height = Math.max(2, (sized.reuse ? video.videoHeight : sized.height) & ~1);
+    const canvas = document.createElement('canvas');
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return null;
+    const frames: Blob[] = [];
+    let grabbing = false;
+    let last = -1;
+    await video.play();
+    await new Promise<void>((resolve) => {
+      const timer = window.setTimeout(resolve, (video.duration + 0.75) * 1000);
+      video.onended = () => {
+        window.clearTimeout(timer);
+        resolve();
+      };
+      const draw = () => {
+        if (video.ended || video.paused) return;
+        if (!grabbing && video.currentTime - last >= 0.125) {
+          last = video.currentTime;
+          grabbing = true;
+          ctx.drawImage(video, 0, 0, width, height);
+          canvas.toBlob((blob) => {
+            if (blob) frames.push(blob);
+            grabbing = false;
+          }, 'image/jpeg', 0.72);
+        }
+        requestAnimationFrame(draw);
+      };
+      draw();
+    });
+    video.pause();
+    const waitStart = Date.now();
+    while (grabbing && Date.now() - waitStart < 2000) {
+      await new Promise((resolve) => window.setTimeout(resolve, 30));
+    }
+    if (frames.length < 2) return null;
+    return await recordFramesBackward(frames, width, height);
+  } catch {
+    return null;
+  } finally {
+    releaseProxyVideo(video);
+  }
+}
+
+/** Store the reversed proxy beside the edit proxy. Null leaves the control unchanged. */
+export async function buildReversedEditProxy(params: {
+  docId: string;
+  fileUrl: string;
+}): Promise<string | null> {
+  const blob = await encodeReversedProxyBlob(params.fileUrl);
+  if (!blob) return null;
+  const put = await putLocalMedia({ docId: params.docId, blob });
+  return put.ref;
+}

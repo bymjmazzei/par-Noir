@@ -171,6 +171,19 @@ export class PenMediaController {
     }
   }
 
+  setPlaybackRate(rate: number): void {
+    const next = Number.isFinite(rate) && rate > 0 ? Math.min(2, Math.max(0.5, rate)) : 1;
+    if (this.master.playbackRate !== next) this.master.playbackRate = next;
+  }
+
+  /** Unmute only when the caller is the level or mute gesture. */
+  setClipAudio(level: number, audible: boolean): void {
+    this.master.volume = Math.min(1, Math.max(0, level));
+    this.muted = !audible;
+    this.master.muted = !audible;
+    this.emit();
+  }
+
   toggleMute(): void {
     this.muted = !this.muted;
     this.master.muted = this.muted;

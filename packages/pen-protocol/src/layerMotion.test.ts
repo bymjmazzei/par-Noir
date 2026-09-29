@@ -40,6 +40,22 @@ describe('sampleLayerAt', () => {
     expect(mark.x).toBe(0);
   });
 
+  it('samples a keyed temp between two keys', () => {
+    const mark = layer({
+      id: 'grade',
+      kind: 'video',
+      mediaFilter: { temp: 0 },
+      motion: {
+        keys: [
+          { t: 0, mediaFilter: { temp: 0 } },
+          { t: 1, mediaFilter: { temp: 100 }, ease: 'linear' }
+        ]
+      }
+    });
+    expect(sampleLayerAt(mark, 0.5).mediaFilter?.temp).toBe(50);
+    expect(mark.mediaFilter?.temp).toBe(0);
+  });
+
   it('interpolates linearly between keys', () => {
     const mark = layer({
       id: 'mark',

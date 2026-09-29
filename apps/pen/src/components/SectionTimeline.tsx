@@ -94,6 +94,7 @@ function AudioLane({
   docId,
   session,
   gain,
+  muted = false,
   offsetSec,
   time,
   playing
@@ -102,6 +103,7 @@ function AudioLane({
   docId?: string;
   session?: PenSession | null;
   gain: number;
+  muted?: boolean;
   offsetSec: number;
   time: number;
   playing: boolean;
@@ -111,7 +113,7 @@ function AudioLane({
   useEffect(() => {
     const el = audioRef.current;
     if (!el || !resolved) return;
-    el.volume = Math.min(1, Math.max(0, gain / 100));
+    el.volume = muted ? 0 : Math.min(1, Math.max(0, gain / 100));
     const at = Math.max(0, time - offsetSec);
     if (Math.abs(el.currentTime - at) > 0.35) {
       try {
@@ -122,7 +124,7 @@ function AudioLane({
     }
     if (playing && time >= offsetSec) void el.play().catch(() => undefined);
     else el.pause();
-  }, [resolved, gain, offsetSec, time, playing]);
+  }, [resolved, gain, muted, offsetSec, time, playing]);
   if (!resolved) return null;
   return <audio ref={audioRef} src={resolved} preload="metadata" />;
 }
@@ -226,11 +228,14 @@ export function SectionTimeline({
         ctrl.pause();
         continue;
       }
+      const rate = layer.playbackRate && layer.playbackRate > 0 ? layer.playbackRate : 1;
+      ctrl.setPlaybackRate(rate);
+      const mediaAt = Math.max(0, at - (layer.inSec || 0)) * rate;
       if (mode === 'tick') {
-        placeVideo(ctrl.master, Math.max(0, at - (layer.inSec || 0)));
+        placeVideo(ctrl.master, mediaAt);
         continue;
       }
-      placeVideo(ctrl.master, Math.max(0, at - (layer.inSec || 0)));
+      placeVideo(ctrl.master, mediaAt);
       if (mode === 'play') void ctrl.ensurePlaying();
     }
   }
@@ -544,6 +549,7 @@ export function SectionTimeline({
                         docId={docId}
                         session={session}
                         gain={track.gain ?? 100}
+                        muted={Boolean(track.muted)}
                         offsetSec={offset}
                         time={playheadSec}
                         playing={playing}

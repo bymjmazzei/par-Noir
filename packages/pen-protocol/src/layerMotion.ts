@@ -3,6 +3,7 @@
  * Playback never writes sampled rects back onto the layer.
  */
 
+import { mergeMediaFilter } from './mediaStyle.js';
 import type {
   PenKeyframeEase,
   PenLayerKeyframe,
@@ -17,7 +18,19 @@ export const DEFAULT_TIMELINE_SEC = 5;
 export const KEYFRAME_EPSILON_SEC = 0.05;
 const CUT_GAP_SEC = 1 / 30;
 
-const SCALAR_PROPS = ['x', 'y', 'w', 'h', 'opacity', 'blur'] as const;
+const SCALAR_PROPS = [
+  'x',
+  'y',
+  'w',
+  'h',
+  'opacity',
+  'blur',
+  'mediaScale',
+  'mediaX',
+  'mediaY',
+  'mediaRotate',
+  'mediaMaskSize'
+] as const;
 
 const MOTION_FIELDS = new Set<string>([
   'x',
@@ -26,6 +39,11 @@ const MOTION_FIELDS = new Set<string>([
   'h',
   'opacity',
   'blur',
+  'mediaScale',
+  'mediaX',
+  'mediaY',
+  'mediaRotate',
+  'mediaMaskSize',
   'mediaFilter',
   'mediaCrop'
 ]);
@@ -72,6 +90,11 @@ function keyHasPayload(key: PenLayerKeyframe): boolean {
     key.h !== undefined ||
     key.opacity !== undefined ||
     key.blur !== undefined ||
+    key.mediaScale !== undefined ||
+    key.mediaX !== undefined ||
+    key.mediaY !== undefined ||
+    key.mediaRotate !== undefined ||
+    key.mediaMaskSize !== undefined ||
     key.mediaFilter !== undefined ||
     key.mediaCrop !== undefined
   );
@@ -104,7 +127,25 @@ function sampleFilter(
   time: number,
   base: PenMediaFilter | undefined
 ): PenMediaFilter | undefined {
-  const channels = ['brightness', 'contrast', 'saturation', 'hueRotate'] as const;
+  const channels = [
+    'brightness',
+    'contrast',
+    'saturation',
+    'hueRotate',
+    'temp',
+    'tint',
+    'exposure',
+    'highlight',
+    'shadow',
+    'whites',
+    'blacks',
+    'brilliance',
+    'sharpen',
+    'clarity',
+    'particles',
+    'fade',
+    'vignette'
+  ] as const;
   const any = keys.some((key) => key.mediaFilter);
   if (!any) return base;
   const next: PenMediaFilter = { ...(base || {}) };
@@ -334,11 +375,13 @@ export function toggleKeyframeAt(layer: PenPageLayer, time: number): PenPageLaye
       key[prop] = posed[prop];
     }
   }
-  if (
-    !animated.length &&
-    (layer.kind === 'image' || layer.kind === 'video')
-  ) {
-    if (posed.mediaFilter) key.mediaFilter = { ...posed.mediaFilter };
+  if (layer.kind === 'image' || layer.kind === 'video') {
+    key.mediaScale = posed.mediaScale ?? 100;
+    key.mediaX = posed.mediaX ?? 0;
+    key.mediaY = posed.mediaY ?? 0;
+    key.mediaRotate = posed.mediaRotate ?? 0;
+    key.mediaMaskSize = posed.mediaMaskSize ?? 100;
+    key.mediaFilter = { ...mergeMediaFilter(posed.mediaFilter) };
     if (posed.mediaCrop) key.mediaCrop = { ...posed.mediaCrop };
   }
   return mergeKey(layer, key);
