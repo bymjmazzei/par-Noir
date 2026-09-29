@@ -147,4 +147,81 @@ describe('section timeline', () => {
     expect(html).toContain('data-clip-title="One"');
     expect(html).toContain('aria-label="Mute a"');
   });
+
+  it('gives a widget group one track and a solo layer its own', () => {
+    const widget: PenSectionContent = {
+      ...emptySection('card'),
+      layers: [
+        {
+          id: 'box',
+          kind: 'group',
+          x: 0,
+          y: 0,
+          w: 100,
+          h: 80,
+          zIndex: 1,
+          name: 'Box',
+          durationSec: 4
+        },
+        {
+          id: 'yes',
+          kind: 'interactive',
+          parentGroupId: 'box',
+          x: 0,
+          y: 0,
+          w: 40,
+          h: 20,
+          zIndex: 1,
+          name: 'Yes',
+          motion: { keys: [{ t: 0, x: 0 }, { t: 1, x: 10 }] }
+        },
+        {
+          id: 'no',
+          kind: 'interactive',
+          parentGroupId: 'box',
+          x: 50,
+          y: 0,
+          w: 40,
+          h: 20,
+          zIndex: 2,
+          name: 'No'
+        },
+        {
+          id: 'solo',
+          kind: 'text',
+          x: 0,
+          y: 90,
+          w: 40,
+          h: 20,
+          zIndex: 2,
+          name: 'Solo'
+        }
+      ]
+    };
+    const html = renderToStaticMarkup(
+      <SectionTimeline
+        mode="widget"
+        section={widget}
+        activeLayerId="yes"
+        playheadSec={0.5}
+        playing={false}
+        onPlayhead={() => undefined}
+        onPlaying={() => undefined}
+        onSelectLayer={() => undefined}
+        onSectionChange={() => undefined}
+      />
+    );
+    expect(html.match(/data-track-row="/g)).toHaveLength(2);
+    expect(html).toContain('data-track-row="box"');
+    expect(html).toContain('data-track-row="solo"');
+    expect(html).not.toContain('data-track-row="yes"');
+    expect(html).not.toContain('data-track-row="no"');
+    expect(html).toContain('data-keyframe="yes:0"');
+    expect(html).toContain('aria-label="Keyframe"');
+    expect(html).toContain('aria-label="Graph"');
+    expect(html).not.toContain('aria-label="Split clip"');
+    expect(html).not.toContain('aria-label="Mirror"');
+    expect(html).not.toContain('aria-label="Reverse"');
+    expect(html).toContain('aria-label="Delete clip"');
+  });
 });

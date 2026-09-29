@@ -31,6 +31,8 @@ describe('widget preview builder', () => {
     expect(html).toContain('Widget layers');
     expect(html).toContain('Button');
     expect(html).toContain('Text');
+    expect(html).toContain('data-media-timeline');
+    expect(html).toContain('aria-label="Keyframe"');
     expect(page).toMatch(/hideActionBind=\{isWidgetDoc\}/);
     expect(page).toMatch(/hideObjectTools=\{isWidgetDoc\}/);
     const toolbar = readFileSync(resolve(root, 'LayerObjectToolbar.tsx'), 'utf8');

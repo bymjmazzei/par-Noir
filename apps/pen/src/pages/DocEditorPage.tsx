@@ -2400,6 +2400,14 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
               pnIdentifier={session.pnIdentifier}
               excludeDocId={bundle.manifest.docId}
               pageLayout={pageLayout}
+              playheadSec={playheadSec}
+              playing={timelinePlaying}
+              onPlayhead={setPlayheadSec}
+              onPlaying={setTimelinePlaying}
+              onSelectLayer={(id) => {
+                setActiveLayerId(id);
+                setSocialSelectedIds([id]);
+              }}
               onSectionChange={commitWidgetSection}
               onPlaced={(id) => {
                 setActiveLayerId(id);

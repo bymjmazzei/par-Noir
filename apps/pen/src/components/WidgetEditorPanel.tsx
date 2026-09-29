@@ -27,6 +27,7 @@ import {
 } from '@par-noir/pen-protocol';
 import { FormatRibbon, PageCanvas } from './PageCanvas';
 import { ColorSwatchButton, ValueSliderButton } from './PanelValueControls';
+import { SectionTimeline } from './SectionTimeline';
 
 const ADD: Array<{ element: PenWidgetElement | 'image'; label: string }> = [
   { element: 'text', label: 'Text' },
@@ -118,6 +119,11 @@ export function WidgetEditorPanel({
   section,
   onSectionChange,
   onPlaced,
+  playheadSec = 0,
+  playing = false,
+  onPlayhead,
+  onPlaying,
+  onSelectLayer,
   accessToken,
   pnIdentifier,
   excludeDocId,
@@ -127,6 +133,11 @@ export function WidgetEditorPanel({
   section: PenSectionContent;
   onSectionChange: (next: PenSectionContent) => void;
   onPlaced?: (layerId: string) => void;
+  playheadSec?: number;
+  playing?: boolean;
+  onPlayhead?: (time: number) => void;
+  onPlaying?: (playing: boolean) => void;
+  onSelectLayer?: (id: string) => void;
   accessToken?: string;
   pnIdentifier?: string;
   excludeDocId?: string;
@@ -142,7 +153,8 @@ export function WidgetEditorPanel({
   }
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col overflow-auto bg-white" data-widget-editor="panel">
+    <div className="flex min-h-0 flex-1 flex-col bg-white" data-widget-editor="panel">
+      <div className="min-h-0 flex-1 overflow-auto">
       <div
         role="toolbar"
         aria-label="Widget layers"
@@ -455,6 +467,18 @@ export function WidgetEditorPanel({
           />
         </div>
       )}
+      </div>
+      <SectionTimeline
+        mode="widget"
+        section={section}
+        activeLayerId={layer?.id ?? null}
+        playheadSec={playheadSec}
+        playing={playing}
+        onPlayhead={onPlayhead || (() => undefined)}
+        onPlaying={onPlaying || (() => undefined)}
+        onSelectLayer={onSelectLayer || (() => undefined)}
+        onSectionChange={onSectionChange}
+      />
     </div>
   );
 }
