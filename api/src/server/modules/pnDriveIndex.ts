@@ -56,6 +56,10 @@ export class DriveIndexError extends Error {
     public readonly code:
       | 'DRIVE_NOT_INITIALIZED'
       | 'CLOUD_TOKEN_REQUIRED'
+      // The API refuses a forwarded Drive token. The device holds it.
+      | 'CLOUD_TOKEN_REJECTED'
+      // Drive reads and writes stay on the device. The API does not proxy them.
+      | 'CLOUD_ON_DEVICE'
       // Google refused the forwarded token. Recoverable by the caller refreshing
       // and retrying, so it must never surface as a 500.
       | 'CLOUD_TOKEN_EXPIRED'

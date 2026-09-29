@@ -866,6 +866,7 @@ export class FeedService {
 
       const ownerPnIdentifier = creatorCredentials.identityId;
       const deviceFolderId = opts?.deviceFolderId?.trim();
+      const cloudAccessToken = opts?.cloudAccessToken;
 
       const registerOwnedFeedAsset = async (subPnIdentifier: string, rootPn: string) => {
         const existing = await db.query(
