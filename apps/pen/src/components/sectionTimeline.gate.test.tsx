@@ -67,7 +67,10 @@ describe('section timeline', () => {
     expect(html).toContain('aria-label="Mute title"');
     expect(html).toContain('aria-label="Mute voice"');
     expect(html).toContain('aria-label="Trim start clip"');
-    expect(html).toContain('>Cut<');
+    expect(html).toContain('aria-label="Split clip"');
+    expect(html).toContain('aria-label="Mirror"');
+    expect(html).toContain('aria-label="Reverse"');
+    expect(html).toContain('aria-label="Delete clip"');
     expect(sampleLayerAt(section.layers![0]!, 1).x).toBe(80);
     expect(section.layers![0]!.x).toBe(10);
   });

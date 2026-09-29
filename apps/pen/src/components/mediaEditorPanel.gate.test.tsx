@@ -50,11 +50,11 @@ describe('media and widget panels', () => {
     expect(media).toContain('Position X');
     expect(media).toContain('Filmstrip');
     expect(media).toContain('>Text<');
-    expect(media).toContain('max="10"');
     expect(media).toContain('Temp');
     expect(media).toContain('Vignette');
     expect(media).toContain('Mute');
-    expect(media).toContain('type="range"');
+    expect(media).toContain('aria-label="Reset Brightness"');
+    expect(media.split('data-media-timeline')[0]).not.toContain('type="range"');
     expect(media).not.toContain('aspect-video');
     expect(media).toContain('aspect-ratio:90 / 160');
     const widget = renderToStaticMarkup(

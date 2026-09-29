@@ -12,6 +12,8 @@ export interface LayoutItem {
   cornerRadius?: number;
   /** Button layers show the corner-radius dot. */
   roundable?: boolean;
+  /** Frame rotation on the page, degrees. */
+  rotate?: number;
 }
 
 export type LayoutBounds = { width: number; height: number };

@@ -81,6 +81,8 @@ export interface PenPageLayer {
   w: number;
   h: number;
   zIndex: number;
+  /** Frame rotation on the page, degrees. Unlike mediaRotate, the frame turns. */
+  rotate?: number;
   /** Optional display name; UI defaults to "Layer N" / "Group N" when unset. */
   name?: string;
   /** When set, this layer lives inside a group folder. */
@@ -177,14 +179,20 @@ export interface PenPageLayer {
   mediaCrop?: PenMediaCrop;
   /** Clip mask for image/video layers. */
   mediaMask?: PenMediaMask;
-  /** Mask size 0–100. Default 100. */
+  /** Mask size. Default 100. */
   mediaMaskSize?: number;
+  /** Split seam angle in degrees. */
+  mediaMaskAngle?: number;
+  /** Split seam softness, 0–100. */
+  mediaMaskFeather?: number;
+  /** Word used by the text mask. */
+  mediaMaskText?: string;
   /** Picture scale inside the frame. 100 is the frame. */
   mediaScale?: number;
   /** Picture offset inside the frame, percent. */
   mediaX?: number;
   mediaY?: number;
-  /** Picture rotation in degrees. */
+  /** Picture rotation in degrees. The frame uses `rotate` instead. */
   mediaRotate?: number;
   /** Flip the picture horizontally. */
   mediaMirror?: boolean;
@@ -215,6 +223,8 @@ export interface PenPageLayer {
   sourceInSec?: number;
   /** Pieces on this track after a cut. Absent means one piece from inSec to outSec. */
   clips?: PenTimelineClip[];
+  /** Layers that share this id sit on one timeline row and play in order. */
+  timelineTrackId?: string;
   /** Widget group loop length. Child key times are local to this clock. */
   durationSec?: number;
   /** Sparse keyframes. Absent means the layer stays at its rest pose. */
@@ -240,6 +250,8 @@ export interface PenLayerKeyframe {
   y?: number;
   w?: number;
   h?: number;
+  /** Frame rotation on the page, degrees. */
+  rotate?: number;
   opacity?: number;
   blur?: number;
   mediaScale?: number;

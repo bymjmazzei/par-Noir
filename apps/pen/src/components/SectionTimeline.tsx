@@ -9,7 +9,6 @@ import {
   type PenMediaController
 } from '@par-noir/feed-tile';
 import {
-  applyTransitionPreset,
   defaultLayerName,
   editorPlaybackSrc,
   KEYFRAME_EPSILON_SEC,
@@ -17,7 +16,10 @@ import {
   layerClips,
   layerMediaTime,
   layerSampleTime,
+  deleteClipAt,
+  joinLayerToTrack,
   publishPlaybackSrc,
+  releaseLayerTrack,
   resolveTimelineDuration,
   sampleLayerAt,
   setKeyframeEase,
@@ -28,8 +30,7 @@ import {
   wrapTime,
   type PenKeyframeEase,
   type PenPageLayer,
-  type PenSectionContent,
-  type PenTransitionPreset
+  type PenSectionContent
 } from '@par-noir/pen-protocol';
 import { useResolvedMediaSrc } from '../hooks/useResolvedMediaSrc';
 import { usePlaybackMode } from '../hooks/usePlaybackMode';
@@ -82,6 +83,24 @@ function trackRows(section: PenSectionContent): Array<{ layer: PenPageLayer; dep
     for (const kid of kids) rows.push({ layer: kid, depth: 1 });
   }
   return rows;
+}
+
+function groupTracks(rows: Array<{ layer: PenPageLayer; depth: number }>): Array<{
+  trackId: string;
+  depth: number;
+  layers: PenPageLayer[];
+}> {
+  const order: string[] = [];
+  const map = new Map<string, { depth: number; layers: PenPageLayer[] }>();
+  for (const row of rows) {
+    const trackId = row.layer.timelineTrackId || row.layer.id;
+    const hit = map.get(trackId);
+    if (!hit) {
+      order.push(trackId);
+      map.set(trackId, { depth: row.depth, layers: [row.layer] });
+    } else hit.layers.push(row.layer);
+  }
+  return order.map((trackId) => ({ trackId, depth: map.get(trackId)!.depth, layers: map.get(trackId)!.layers }));
 }
 
 function formatMark(sec: number, minor: number): string {
@@ -216,7 +235,8 @@ export function SectionTimeline({
   onPlayhead,
   onPlaying,
   onSelectLayer,
-  onSectionChange
+  onSectionChange,
+  onReverse
 }: {
   section: PenSectionContent;
   activeLayerId: string | null;
@@ -228,9 +248,11 @@ export function SectionTimeline({
   onPlaying: (playing: boolean) => void;
   onSelectLayer: (id: string) => void;
   onSectionChange: (next: PenSectionContent) => void;
+  onReverse?: () => void;
 }) {
   const duration = resolveTimelineDuration(section);
   const rows = trackRows(section);
+  const groups = groupTracks(rows);
   const playback = usePlaybackMode();
   const active = rows.find((row) => row.layer.id === activeLayerId)?.layer ?? null;
   const activeLocal = active ? layerSampleTime(section, active, playheadSec) : playheadSec;
@@ -238,7 +260,6 @@ export function SectionTimeline({
     (key) => Math.abs(key.t - activeLocal) <= KEYFRAME_EPSILON_SEC
   );
   const leaving = active ? spanLeavingKey(active, activeLocal) : null;
-  const [partnerId, setPartnerId] = useState<string | null>(null);
   const [zoom, setZoom] = useState(1);
   const playheadRef = useRef(playheadSec);
   const videoSrcs = useRef(new Map<string, string>());
@@ -338,11 +359,6 @@ export function SectionTimeline({
     onSectionChange(upsertLayer(section, setKeyframeEase(active, activeLocal, ease)));
   }
 
-  function applyTransition(preset: PenTransitionPreset) {
-    if (!activeLayerId || !partnerId) return;
-    onSectionChange(applyTransitionPreset(section, activeLayerId, partnerId, preset, { atSec: playheadSec }));
-  }
-
   function setGroupDuration(layer: PenPageLayer, value: number) {
     const durationSec = Number.isFinite(value) && value > 0 ? value : undefined;
     onSectionChange(upsertLayer(section, { ...layer, durationSec }));
@@ -435,6 +451,36 @@ export function SectionTimeline({
     onSectionChange(next);
   }
 
+  function deleteClip() {
+    if (!activeLayerId) return;
+    onSectionChange(deleteClipAt(section, activeLayerId, playheadSec));
+  }
+
+  function beginMove(event: ReactPointerEvent<HTMLDivElement>, layer: PenPageLayer) {
+    event.stopPropagation();
+    const startX = event.clientX;
+    const startY = event.clientY;
+    let moved = false;
+    const move = (ev: PointerEvent) => {
+      if (Math.hypot(ev.clientX - startX, ev.clientY - startY) > 6) moved = true;
+    };
+    const up = (ev: PointerEvent) => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+      if (!moved) return;
+      const hit = document.elementFromPoint(ev.clientX, ev.clientY)?.closest('[data-track-row]');
+      const trackId = hit?.getAttribute('data-track-row');
+      const own = layer.timelineTrackId || layer.id;
+      if (!trackId) {
+        onSectionChange(releaseLayerTrack(section, layer.id));
+        return;
+      }
+      if (trackId !== own) onSectionChange(joinLayerToTrack(section, layer.id, trackId));
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+  }
+
   function toggleMute(layer: PenPageLayer) {
     if (layer.kind === 'video') {
       const mediaMuted = layer.mediaMuted === false ? true : false;
@@ -521,26 +567,59 @@ export function SectionTimeline({
             <Magnify plus />
           </button>
         </div>
-        <div className="ml-auto inline-flex items-center gap-2">
+        <div className="ml-auto inline-flex items-center gap-1 text-stone-500">
           <button
             type="button"
+            aria-label="Split clip"
             disabled={!canCut}
-            className={`px-1 py-1 text-[13px] ${canCut ? 'font-semibold text-stone-700' : 'text-stone-300'}`}
+            className={`inline-flex h-8 w-8 items-center justify-center ${canCut ? 'text-stone-700' : 'text-stone-300'}`}
             onClick={cutClip}
           >
-            Cut
+            <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden>
+              <rect x="1" y="4" width="6" height="8" fill="none" stroke="currentColor" strokeWidth="1.3" />
+              <rect x="9" y="4" width="6" height="8" fill="none" stroke="currentColor" strokeWidth="1.3" />
+              <path d="M8 2v12" stroke="currentColor" strokeWidth="1.3" />
+            </svg>
           </button>
-          {(['crossfade', 'slide'] as const).map((preset) => (
-            <button
-              key={preset}
-              type="button"
-              disabled={!activeLayerId || !partnerId}
-              className="px-1 py-1 text-[13px] capitalize text-stone-500 disabled:text-stone-300"
-              onClick={() => applyTransition(preset)}
-            >
-              {preset === 'crossfade' ? 'Fade' : preset}
-            </button>
-          ))}
+          <button
+            type="button"
+            aria-label="Mirror"
+            aria-pressed={Boolean(active?.mediaMirror)}
+            className={`inline-flex h-8 w-8 items-center justify-center ${active?.mediaMirror ? 'text-stone-800' : ''}`}
+            onClick={() => {
+              if (!active) return;
+              onSectionChange(upsertLayer(section, { ...active, mediaMirror: !active.mediaMirror }));
+            }}
+          >
+            <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden>
+              <path d="M8 2v12" stroke="currentColor" strokeWidth="1.2" />
+              <path d="M7 4 2 8l5 4zM9 4l5 4-5 4z" fill="none" stroke="currentColor" strokeWidth="1.2" />
+            </svg>
+          </button>
+          <button
+            type="button"
+            aria-label="Reverse"
+            aria-pressed={Boolean(active?.mediaReversed)}
+            className={`inline-flex h-8 w-8 items-center justify-center ${active?.mediaReversed ? 'text-stone-800' : ''}`}
+            onClick={() => onReverse?.()}
+          >
+            <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden>
+              <path d="M3 8h8" stroke="currentColor" strokeWidth="1.3" />
+              <path d="M6 5 3 8l3 3" fill="none" stroke="currentColor" strokeWidth="1.3" />
+              <path d="M13 5v6" stroke="currentColor" strokeWidth="1.3" />
+            </svg>
+          </button>
+          <button
+            type="button"
+            aria-label="Delete clip"
+            disabled={!activeLayerId}
+            className={`inline-flex h-8 w-8 items-center justify-center ${activeLayerId ? 'text-stone-700' : 'text-stone-300'}`}
+            onClick={deleteClip}
+          >
+            <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden>
+              <path d="M3 4h10M6 4V3h4v1M5 4l.6 9h4.8L11 4" fill="none" stroke="currentColor" strokeWidth="1.3" />
+            </svg>
+          </button>
         </div>
       </div>
       <div className="max-h-64 overflow-auto px-2 pb-2">
@@ -567,36 +646,36 @@ export function SectionTimeline({
             ))}
           </div>
           <div className="space-y-1">
-        {rows.map(({ layer, depth }) => {
+        {groups.map(({ trackId, depth, layers: trackLayers }) => {
+          const layer = trackLayers.find((item) => item.id === activeLayerId) ?? trackLayers[0]!;
           const rowDur = layerClockSpan(section, layer);
           const local = layer.kind === 'group' ? wrapTime(playheadSec, rowDur) : layerSampleTime(section, layer, playheadSec);
           const posed = sampleLayerAt(layer, local);
-          const clips = layer.kind === 'group' ? [] : layerClips(layer, rowDur);
-          const playbackSrc =
-            playback === 'publish' ? publishPlaybackSrc(layer) : editorPlaybackSrc(layer);
-          const keys = layer.motion?.keys || [];
+          const clips = trackLayers.flatMap((item) =>
+            item.kind === 'group' ? [] : layerClips(item, rowDur).map((clip) => ({ clip, owner: item }))
+          );
+          const keys = trackLayers.flatMap((item) => item.motion?.keys || []);
           return (
             <div
-              key={layer.id}
-              data-track-row={layer.id}
+              key={trackId}
+              data-track-row={trackId}
               data-sampled-x={posed.x}
               className="space-y-1"
               style={{ paddingLeft: depth ? 12 : 0 }}
             >
               <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  className={`w-24 truncate text-left text-[13px] ${
-                    layer.id === activeLayerId ? 'font-semibold text-stone-700' : 'text-stone-400'
-                  }`}
-                  onClick={(e) => {
-                    if (e.shiftKey) setPartnerId(layer.id);
-                    else onSelectLayer(layer.id);
-                  }}
-                >
-                  {defaultLayerName(layer, section.layers || [])}
-                  {layer.id === partnerId ? ' with' : ''}
-                </button>
+                {trackLayers.map((item) => (
+                  <button
+                    key={item.id}
+                    type="button"
+                    className={`w-24 truncate text-left text-[13px] ${
+                      item.id === activeLayerId ? 'font-semibold text-stone-700' : 'text-stone-400'
+                    }`}
+                    onClick={() => onSelectLayer(item.id)}
+                  >
+                    {defaultLayerName(item, section.layers || [])}
+                  </button>
+                ))}
                 <button
                   type="button"
                   aria-label={`Mute ${layer.id}`}
@@ -630,26 +709,27 @@ export function SectionTimeline({
                 className="relative h-7 cursor-pointer rounded-md bg-stone-200/80"
                 onPointerDown={(e) => onBarDown(e, rowDur)}
               >
-                {clips.map((clip) => (
+                {clips.map(({ clip, owner }) => (
                   <div
-                    key={clip.id}
+                    key={`${owner.id}-${clip.id}`}
                     className="absolute bottom-1 top-1 bg-stone-400"
                     style={{
                       left: `${(clip.inSec / Math.max(rowDur, 0.01)) * 100}%`,
                       width: `${Math.max(4, ((clip.outSec - clip.inSec) / Math.max(rowDur, 0.01)) * 100)}%`
                     }}
+                    onPointerDown={(e) => beginMove(e, owner)}
                   >
                     <button
                       type="button"
                       aria-label={`Trim start ${clip.id}`}
                       className="absolute bottom-0 left-0 top-0 w-1.5 cursor-ew-resize bg-stone-500"
-                      onPointerDown={(e) => beginTrim(e, layer, 'in', clip.id)}
+                      onPointerDown={(e) => beginTrim(e, owner, 'in', clip.id)}
                     />
                     <button
                       type="button"
                       aria-label={`Trim end ${clip.id}`}
                       className="absolute bottom-0 right-0 top-0 w-1.5 cursor-ew-resize bg-stone-500"
-                      onPointerDown={(e) => beginTrim(e, layer, 'out', clip.id)}
+                      onPointerDown={(e) => beginTrim(e, owner, 'out', clip.id)}
                     />
                   </div>
                 ))}
@@ -709,16 +789,21 @@ export function SectionTimeline({
                   })}
                 </div>
               ) : null}
-              {(layer.kind === 'video' && playbackSrc) ? (
-                <RememberVideoSrc
-                  layerId={layer.id}
-                  src={playbackSrc}
-                  docId={docId}
-                  session={session}
-                  srcs={videoSrcs}
-                />
-              ) : null}
-              {(layer.audioTracks || []).map((track) => {
+              {trackLayers.map((item) => {
+                const playbackSrc = playback === 'publish' ? publishPlaybackSrc(item) : editorPlaybackSrc(item);
+                if (item.kind !== 'video' || !playbackSrc) return null;
+                return (
+                  <RememberVideoSrc
+                    key={item.id}
+                    layerId={item.id}
+                    src={playbackSrc}
+                    docId={docId}
+                    session={session}
+                    srcs={videoSrcs}
+                  />
+                );
+              })}
+              {trackLayers.flatMap((owner) => (owner.audioTracks || []).map((track) => {
                 const offset = track.offsetSec || 0;
                 return (
                   <div key={track.id} data-audio-lane={track.id} className="space-y-0.5">
@@ -732,10 +817,10 @@ export function SectionTimeline({
                         aria-label={`Mute ${track.id}`}
                         aria-pressed={Boolean(track.muted)}
                         onClick={() => {
-                          const next = (layer.audioTracks || []).map((item) =>
-                            item.id === track.id ? { ...item, muted: !item.muted } : item
+                          const next = (owner.audioTracks || []).map((lane) =>
+                            lane.id === track.id ? { ...lane, muted: !lane.muted } : lane
                           );
-                          onSectionChange(upsertLayer(section, { ...layer, audioTracks: next }));
+                          onSectionChange(upsertLayer(section, { ...owner, audioTracks: next }));
                         }}
                       >
                         Mute
@@ -745,9 +830,9 @@ export function SectionTimeline({
                         className="text-stone-400"
                         aria-label={`Remove ${track.id}`}
                         onClick={() => {
-                          const next = (layer.audioTracks || []).filter((item) => item.id !== track.id);
+                          const next = (owner.audioTracks || []).filter((lane) => lane.id !== track.id);
                           onSectionChange(
-                            upsertLayer(section, { ...layer, audioTracks: next.length ? next : undefined })
+                            upsertLayer(section, { ...owner, audioTracks: next.length ? next : undefined })
                           );
                         }}
                       >
@@ -780,7 +865,7 @@ export function SectionTimeline({
                     ) : null}
                   </div>
                 );
-              })}
+              }))}
             </div>
           );
         })}

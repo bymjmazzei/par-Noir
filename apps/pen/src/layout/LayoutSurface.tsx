@@ -293,7 +293,9 @@ export function LayoutSurface({
               width: item.w,
               height: item.h,
               zIndex: item.zIndex,
-              borderRadius: item.cornerRadius ? `${item.cornerRadius}px` : undefined
+              borderRadius: item.cornerRadius ? `${item.cornerRadius}px` : undefined,
+              transform: item.rotate ? `rotate(${item.rotate}deg)` : undefined,
+              transformOrigin: item.rotate ? 'center' : undefined
             }}
             onPointerDown={(e) => onPointerDownMove(e, item)}
             onClick={(e) => {

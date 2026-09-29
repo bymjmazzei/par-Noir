@@ -2,11 +2,20 @@
  * Left-pane media editor when an image/video object layer is selected.
  */
 
-import { useEffect, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from 'react';
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useRef,
+  useState,
+  type CSSProperties,
+  type PointerEvent as ReactPointerEvent
+} from 'react';
 import {
   FULL_MEDIA_CROP,
   MEDIA_FILTER_PRESETS,
   applyCropWindow,
+  applyTransitionPreset,
   attachMediaToLayer,
   clampMediaCrop,
   editorPlaybackSrc,
@@ -35,7 +44,7 @@ import { resolvePenMediaSrc, ingestInlineMediaSrc, putLocalMedia } from '../serv
 import { useResolvedMediaSrc } from '../hooks/useResolvedMediaSrc';
 import type { PenSession } from '../services/penSession';
 
-type ToolTab = 'basic' | 'color' | 'filters' | 'crop' | 'mask' | 'brush' | 'speed' | 'tracks';
+type ToolTab = 'basic' | 'color' | 'filters' | 'crop' | 'mask' | 'brush' | 'speed' | 'tracks' | 'transitions';
 
 const TABS: Array<{ id: ToolTab; label: string }> = [
   { id: 'basic', label: 'Basic' },
@@ -43,6 +52,7 @@ const TABS: Array<{ id: ToolTab; label: string }> = [
   { id: 'filters', label: 'Look' },
   { id: 'crop', label: 'Crop' },
   { id: 'mask', label: 'Mask' },
+  { id: 'transitions', label: 'Transitions' },
   { id: 'brush', label: 'Draw' },
   { id: 'speed', label: 'Speed' },
   { id: 'tracks', label: 'Audio' }
@@ -71,8 +81,14 @@ function activeText(on: boolean): string {
   return on ? 'font-semibold text-stone-700' : 'font-normal text-stone-400';
 }
 
+const ActiveSettingContext = createContext<{
+  id: string | null;
+  setId: (id: string) => void;
+}>({ id: null, setId: () => undefined });
+
 function InspectorSlider({
   label,
+  settingId,
   value,
   min,
   max,
@@ -82,6 +98,7 @@ function InspectorSlider({
   onChange
 }: {
   label: string;
+  settingId?: string;
   value: number;
   min: number;
   max: number;
@@ -90,38 +107,90 @@ function InspectorSlider({
   display: string;
   onChange: (next: number) => void;
 }) {
-  const drifted = neutral !== undefined && value !== neutral;
+  const { id: active, setId } = useContext(ActiveSettingContext);
+  const key = settingId ?? label;
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(String(value));
+  const open = active === key;
   const span = max - min || 1;
   const pct = Math.min(100, Math.max(0, ((value - min) / span) * 100));
+
+  function commit(raw: string) {
+    const next = Number(raw);
+    if (Number.isFinite(next)) onChange(Math.min(max, Math.max(min, next)));
+    setEditing(false);
+  }
+
   return (
-    <label className="grid grid-cols-[5.75rem_minmax(0,1fr)_3.25rem] items-center gap-2">
-      <span className="text-[13px] text-stone-500">{label}</span>
-      <input
-        aria-label={label}
-        type="range"
-        min={min}
-        max={max}
-        step={step}
-        value={value}
-        onChange={(e) => onChange(Number(e.target.value))}
-        className="h-1 w-full cursor-pointer appearance-none rounded-full [&::-moz-range-thumb]:h-3 [&::-moz-range-thumb]:w-1 [&::-moz-range-thumb]:rounded-none [&::-moz-range-thumb]:border-0 [&::-moz-range-thumb]:bg-stone-500 [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:w-1 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-none [&::-webkit-slider-thumb]:bg-stone-500"
-        style={{
-          background: `linear-gradient(to right, #a8a29e ${pct}%, #e7e5e4 ${pct}%)`
-        }}
-      />
-      <button
-        type="button"
-        className={`text-right text-[13px] tabular-nums ${
-          drifted ? 'font-semibold text-stone-700' : 'text-stone-400'
-        }`}
-        disabled={!drifted}
-        onClick={() => {
-          if (neutral !== undefined) onChange(neutral);
-        }}
-      >
-        {display}
-      </button>
-    </label>
+    <div className="min-w-0">
+      <div className="flex items-center gap-1">
+        <button
+          type="button"
+          className="min-w-0 flex-1 truncate text-left text-[13px] text-stone-500"
+          onClick={() => setId(key)}
+        >
+          {label}
+        </button>
+        {editing ? (
+          <input
+            aria-label={label}
+            className="w-12 bg-transparent text-right text-[13px] tabular-nums text-stone-700 outline-none"
+            value={draft}
+            autoFocus
+            onChange={(e) => setDraft(e.target.value)}
+            onBlur={() => commit(draft)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') commit(draft);
+            }}
+          />
+        ) : (
+          <button
+            type="button"
+            className="text-[13px] tabular-nums text-stone-700"
+            onClick={() => {
+              setId(key);
+              setDraft(String(value));
+              setEditing(true);
+            }}
+          >
+            {display}
+          </button>
+        )}
+        <button
+          type="button"
+          aria-label={`Reset ${label}`}
+          className="inline-flex h-5 w-5 shrink-0 items-center justify-center text-stone-400"
+          onClick={() => {
+            if (neutral !== undefined) onChange(neutral);
+          }}
+        >
+          <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden>
+            <path
+              d="M10 6a4 4 0 1 1-1.2-2.8"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.3"
+            />
+            <path d="M10 1.5V4H7.5" fill="none" stroke="currentColor" strokeWidth="1.3" />
+          </svg>
+        </button>
+      </div>
+      {open ? (
+        <input
+          aria-label={label}
+          type="range"
+          min={min}
+          max={max}
+          step={step}
+          value={value}
+          onChange={(e) => onChange(Number(e.target.value))}
+          className="mt-1 h-1 w-full cursor-pointer appearance-none rounded-full [&::-moz-range-thumb]:h-3 [&::-moz-range-thumb]:w-1 [&::-moz-range-thumb]:rounded-none [&::-moz-range-thumb]:border-0 [&::-moz-range-thumb]:bg-stone-500 [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:w-1 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-none [&::-webkit-slider-thumb]:bg-stone-500"
+          style={{
+            background: `linear-gradient(to right, #a8a29e ${pct}%, #e7e5e4 ${pct}%)`
+          }}
+        />
+      ) : null}
+    </div>
   );
 }
 
@@ -178,6 +247,7 @@ export function MediaEditorPanel({
   onSectionChange: (next: PenSectionContent) => void;
 }) {
   const [tab, setTab] = useState<ToolTab>('color');
+  const [activeSetting, setActiveSetting] = useState<string | null>(null);
   const [cloudOpen, setCloudOpen] = useState(false);
   const [fileKind, setFileKind] = useState<'image' | 'video'>(
     layer.kind === 'video' ? 'video' : 'image'
@@ -283,8 +353,8 @@ export function MediaEditorPanel({
     docId,
     session
   });
-  const lookStill = useLookStill(layer, brushSrc, tab === 'filters');
   const cropping = tab === 'crop';
+  const nextClip = followingClip(section, layer);
   return (
     <div className="flex min-h-0 flex-1 flex-col bg-stone-100">
       <div className="shrink-0 px-3 py-2">
@@ -341,10 +411,12 @@ export function MediaEditorPanel({
           ) : null}
       </div>
 
+      <ActiveSettingContext.Provider value={{ id: activeSetting, setId: setActiveSetting }}>
       <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-auto px-3 py-3">
-        <div hidden={tab !== 'basic'} className="space-y-2">
+        <div hidden={tab !== 'basic'} className="grid grid-cols-2 gap-x-3 gap-y-1">
           <InspectorSlider
             label="Scale"
+            settingId="picture-scale"
             min={10}
             max={300}
             neutral={100}
@@ -373,14 +445,14 @@ export function MediaEditorPanel({
             min={-180}
             max={180}
             neutral={0}
-            value={layer.mediaRotate ?? 0}
-            display={`${layer.mediaRotate ?? 0}°`}
-            onChange={(n) => patch({ mediaRotate: n })}
+            value={layer.rotate ?? layer.mediaRotate ?? 0}
+            display={`${layer.rotate ?? layer.mediaRotate ?? 0}°`}
+            onChange={(n) => patch({ rotate: n })}
           />
         </div>
 
-        <div hidden={tab !== 'color'} className="space-y-2">
-          <div className="space-y-2">
+        <div hidden={tab !== 'color'} className="grid grid-cols-2 gap-x-3 gap-y-1">
+          <div className="contents">
             {COLOR_ROWS.map(([key, label, min, max, neutral]) => (
               <InspectorSlider
                 key={key}
@@ -415,24 +487,36 @@ export function MediaEditorPanel({
         </div>
 
         {tab === 'filters' && (
-          <LookTiles still={lookStill} current={filter} onPick={(preset) => patch({ mediaFilter: { ...preset } })} />
+          <LookTiles current={filter} onPick={(preset) => patch({ mediaFilter: { ...preset } })} />
         )}
 
         {tab === 'crop' && (
-          <button
-            type="button"
-            className="text-[13px] text-stone-500"
-            onClick={() => {
-              cropBasis.current = null;
-              patch(applyCropWindow(layer, { ...FULL_MEDIA_CROP }));
-            }}
-          >
-            Reset crop
-          </button>
+          <div className="grid grid-cols-2 gap-x-3 gap-y-1">
+            <InspectorSlider
+              label="Scale"
+              settingId="crop-scale"
+              min={10}
+              max={300}
+              neutral={100}
+              value={layer.mediaScale ?? 100}
+              display={`${layer.mediaScale ?? 100}%`}
+              onChange={(n) => patch({ mediaScale: n })}
+            />
+            <button
+              type="button"
+              className="text-left text-[13px] text-stone-500"
+              onClick={() => {
+                cropBasis.current = null;
+                patch(applyCropWindow(layer, { ...FULL_MEDIA_CROP }));
+              }}
+            >
+              Reset crop
+            </button>
+          </div>
         )}
 
-        <div hidden={tab !== 'mask'} className="space-y-2">
-          <div className="flex flex-wrap gap-1">
+        <div hidden={tab !== 'mask'} className="grid grid-cols-2 gap-x-3 gap-y-1">
+          <div className="col-span-2 flex flex-wrap gap-1">
             {(
               [
                 ['none', 'None'],
@@ -457,6 +541,7 @@ export function MediaEditorPanel({
           </div>
           <InspectorSlider
             label="Scale"
+            settingId="mask-scale"
             min={10}
             max={300}
             neutral={100}
@@ -464,9 +549,44 @@ export function MediaEditorPanel({
             display={`${layer.mediaMaskSize ?? 100}%`}
             onChange={(n) => patch({ mediaMaskSize: n })}
           />
+          {mask === 'split' ? (
+            <>
+              <InspectorSlider
+                label="Rotate"
+                settingId="mask-rotate"
+                min={0}
+                max={360}
+                neutral={0}
+                value={layer.mediaMaskAngle ?? 0}
+                display={`${layer.mediaMaskAngle ?? 0}°`}
+                onChange={(n) => patch({ mediaMaskAngle: n })}
+              />
+              <InspectorSlider
+                label="Fade"
+                settingId="mask-fade"
+                min={0}
+                max={100}
+                neutral={0}
+                value={layer.mediaMaskFeather ?? 0}
+                display={`${layer.mediaMaskFeather ?? 0}`}
+                onChange={(n) => patch({ mediaMaskFeather: n })}
+              />
+            </>
+          ) : null}
+          {mask === 'text' ? (
+            <label className="col-span-2 flex items-center gap-2 text-[13px] text-stone-500">
+              Text
+              <input
+                aria-label="Mask text"
+                className="min-w-0 flex-1 bg-transparent text-stone-700 outline-none"
+                value={layer.mediaMaskText ?? 'Text'}
+                onChange={(e) => patch({ mediaMaskText: e.target.value })}
+              />
+            </label>
+          ) : null}
         </div>
 
-        <div hidden={tab !== 'speed'} className="space-y-2">
+        <div hidden={tab !== 'speed'} className="grid grid-cols-2 gap-x-3 gap-y-1">
           <InspectorSlider
             label="Speed"
             min={0.5}
@@ -477,25 +597,39 @@ export function MediaEditorPanel({
             display={`${Math.round((layer.playbackRate ?? 1) * 10) / 10}×`}
             onChange={(n) => patch({ playbackRate: Math.round(n * 10) / 10 })}
           />
-          <div className="flex flex-wrap gap-1">
-            <button
-              type="button"
-              aria-pressed={Boolean(layer.mediaMirror)}
-              className={`px-1 py-1 text-[13px] ${activeText(Boolean(layer.mediaMirror))}`}
-              onClick={() => patch({ mediaMirror: !layer.mediaMirror })}
-            >
-              Mirror
-            </button>
-            <button
-              type="button"
-              aria-pressed={Boolean(layer.mediaReversed)}
-              className={`px-1 py-1 text-[13px] ${activeText(Boolean(layer.mediaReversed))}`}
-              onClick={() => void onReverse()}
-            >
-              Reverse
-            </button>
-          </div>
         </div>
+
+        {tab === 'transitions' && (
+          <div className="flex flex-wrap gap-1">
+            {(
+              [
+                ['crossfade', 'Fade'],
+                ['slide', 'Slide'],
+                ['push', 'Push'],
+                ['dip', 'Dip'],
+                ['zoom', 'Zoom']
+              ] as const
+            ).map(([preset, label]) => (
+              <button
+                key={preset}
+                type="button"
+                disabled={!nextClip}
+                className="px-1 py-1 text-[13px] text-stone-500 disabled:text-stone-300"
+                onClick={() => {
+                  if (!nextClip) return;
+                  onSectionChange(
+                    applyTransitionPreset(section, layer.id, nextClip.id, preset, {
+                      atSec: nextClip.inSec ?? layer.outSec ?? playheadSec,
+                      durationSec: 0.5
+                    })
+                  );
+                }}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        )}
 
         {tab === 'brush' && brushSrc && (
           <BrushEditor
@@ -521,6 +655,7 @@ export function MediaEditorPanel({
             <div className="text-[13px] text-stone-700">Clip</div>
             <InspectorSlider
               label="Level"
+              settingId="clip-level"
               min={0}
               max={100}
               neutral={100}
@@ -586,6 +721,7 @@ export function MediaEditorPanel({
                 </div>
                 <InspectorSlider
                   label="Level"
+                  settingId={`level-${track.id}`}
                   min={0}
                   max={100}
                   neutral={100}
@@ -603,6 +739,7 @@ export function MediaEditorPanel({
                 </button>
                 <InspectorSlider
                   label="Offset"
+                  settingId={`offset-${track.id}`}
                   min={0}
                   max={120}
                   neutral={0}
@@ -614,6 +751,7 @@ export function MediaEditorPanel({
             ))}
         </div>
       </div>
+      </ActiveSettingContext.Provider>
 
       <SectionTimeline
         section={section}
@@ -626,6 +764,7 @@ export function MediaEditorPanel({
         onPlaying={onPlaying || (() => undefined)}
         onSelectLayer={onSelectLayer || (() => undefined)}
         onSectionChange={onSectionChange}
+        onReverse={() => void onReverse()}
       />
 
       <CloudFeedMediaPicker
@@ -640,12 +779,14 @@ export function MediaEditorPanel({
   );
 }
 
+const LOOK_SWATCH = `data:image/svg+xml,${encodeURIComponent(
+  `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 90 120'><rect width='90' height='120' fill='#d6d3d1'/><rect y='70' width='90' height='50' fill='#78716c'/><circle cx='45' cy='48' r='18' fill='#e7e5e4'/><rect x='30' y='78' width='30' height='28' rx='8' fill='#a8a29e'/></svg>`
+)}`;
+
 function LookTiles({
-  still,
   current,
   onPick
 }: {
-  still?: string;
   current: PenMediaFilter;
   onPick: (preset: PenMediaFilter) => void;
 }) {
@@ -657,17 +798,13 @@ function LookTiles({
         return (
           <button key={id} type="button" aria-pressed={selected} className="space-y-1 text-left" onClick={() => onPick(preset)}>
             <span className={`block overflow-hidden bg-stone-300 ${selected ? 'outline outline-2 outline-stone-600' : ''}`}>
-              {still ? (
-                <img src={still} alt="" className="aspect-[3/4] w-full object-cover" style={filter ? { filter } : undefined} draggable={false} />
-              ) : (
-                <span
-                  className="block aspect-[3/4] w-full"
-                  style={{
-                    backgroundImage: 'linear-gradient(160deg, #d6d3d1, #78716c)',
-                    filter
-                  }}
-                />
-              )}
+              <img
+                src={LOOK_SWATCH}
+                alt=""
+                className="aspect-[3/4] w-full object-cover"
+                style={filter ? { filter } : undefined}
+                draggable={false}
+              />
             </span>
             <span className={`block text-[11px] capitalize ${activeText(selected)}`}>{id}</span>
           </button>
@@ -677,32 +814,12 @@ function LookTiles({
   );
 }
 
-function useLookStill(layer: PenPageLayer, src: string | undefined, open: boolean): string | undefined {
-  const [still, setStill] = useState<string | undefined>();
-  useEffect(() => {
-    if (!open) return;
-    if (layer.kind !== 'video') {
-      setStill(src);
-      return;
-    }
-    const master = peekPenMediaController(`pen-layer:${layer.id}`)?.master;
-    if (!master || master.readyState < 2) {
-      setStill(undefined);
-      return;
-    }
-    const canvas = document.createElement('canvas');
-    canvas.width = 72;
-    canvas.height = 96;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-    try {
-      ctx.drawImage(master, 0, 0, canvas.width, canvas.height);
-      setStill(canvas.toDataURL('image/jpeg', 0.72));
-    } catch {
-      setStill(undefined);
-    }
-  }, [open, layer.kind, layer.id, src]);
-  return still;
+function followingClip(section: PenSectionContent, layer: PenPageLayer): PenPageLayer | undefined {
+  const track = layer.timelineTrackId || layer.id;
+  return (section.layers || [])
+    .filter((item) => item.id !== layer.id && (item.timelineTrackId || item.id) === track)
+    .filter((item) => (item.inSec ?? 0) >= (layer.inSec ?? 0) - 0.001)
+    .sort((a, b) => (a.inSec ?? 0) - (b.inSec ?? 0))[0];
 }
 
 function CropMarquee({

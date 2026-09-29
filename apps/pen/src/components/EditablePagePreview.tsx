@@ -131,6 +131,7 @@ function layerToItem(layer: PenPageLayer): LayoutItem {
     w: layer.w,
     h: layer.h,
     zIndex: layer.zIndex,
+    rotate: layer.rotate ?? layer.mediaRotate,
     positionLocked: layer.positionLocked,
     cornerRadius: layer.cornerRadius,
     roundable: layer.kind === 'interactive'

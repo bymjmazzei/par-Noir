@@ -144,7 +144,11 @@ export function LayerMediaContent({
   const grade = mergeMediaFilter(layer.mediaFilter);
   const filter = mediaFilterCss(layer);
   const cropFrame = mediaCropFrameStyle(layer.mediaCrop);
-  const maskStyle = mediaMaskStyle(layer.mediaMask, layer.mediaMaskSize);
+  const maskStyle = mediaMaskStyle(layer.mediaMask, layer.mediaMaskSize, {
+    angle: layer.mediaMaskAngle,
+    feather: layer.mediaMaskFeather,
+    text: layer.mediaMaskText
+  });
   const transform = mediaTransformCss(layer);
   const tonal: TonalGrade | null = tonalGradeActive(grade)
     ? {

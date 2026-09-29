@@ -3,6 +3,7 @@ import { copyWidgetLayersIntoSection } from './layers.js';
 import {
   applyLayoutAtPlayhead,
   applyTransitionPreset,
+  joinLayerToTrack,
   layerMediaTime,
   resolveTimelineDuration,
   sampleLayerAt,
@@ -233,6 +234,38 @@ describe('transition presets', () => {
     expect(sampleLayerAt(a!, 1.5).x).toBe(-80);
     expect(sampleLayerAt(b!, 1).x).toBe(80);
     expect(sampleLayerAt(b!, 1.5).x).toBe(0);
+  });
+
+  it('dip and zoom overlap the following clip and write their keys', () => {
+    const seq = section([
+      layer({ id: 'a', x: 0, y: 0, w: 80, h: 40, inSec: 0, outSec: 2 }),
+      layer({ id: 'b', x: 0, y: 0, w: 80, h: 40, inSec: 2, outSec: 4 })
+    ]);
+    const dipped = applyTransitionPreset(seq, 'a', 'b', 'dip', { atSec: 2, durationSec: 0.4 });
+    const a = dipped.layers?.find((item) => item.id === 'a');
+    const b = dipped.layers?.find((item) => item.id === 'b');
+    expect(a?.outSec).toBeGreaterThan(2);
+    expect(b?.inSec).toBeLessThan(2);
+    expect(sampleLayerAt(a!, 2.2).opacity).toBe(0);
+    const zoomed = applyTransitionPreset(seq, 'a', 'b', 'zoom', { atSec: 2, durationSec: 0.4 });
+    const za = zoomed.layers?.find((item) => item.id === 'a');
+    expect(sampleLayerAt(za!, 2.4).mediaScale).toBe(140);
+  });
+});
+
+describe('timeline tracks', () => {
+  it('joins a clip onto a track so it starts when the previous clip ends', () => {
+    const doc = section([
+      layer({ id: 'a', kind: 'video', inSec: 0, outSec: 2 }),
+      layer({ id: 'b', kind: 'video', inSec: 0, outSec: 3 })
+    ]);
+    const next = joinLayerToTrack(doc, 'b', 'a');
+    const a = next.layers?.find((item) => item.id === 'a');
+    const b = next.layers?.find((item) => item.id === 'b');
+    expect(a?.timelineTrackId).toBe('a');
+    expect(b?.timelineTrackId).toBe('a');
+    expect(b?.inSec).toBe(2);
+    expect(b?.outSec).toBe(5);
   });
 });
 

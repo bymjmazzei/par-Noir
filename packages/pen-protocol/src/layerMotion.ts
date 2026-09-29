@@ -30,6 +30,7 @@ const SCALAR_PROPS = [
   'mediaX',
   'mediaY',
   'mediaRotate',
+  'rotate',
   'mediaMaskSize'
 ] as const;
 
@@ -44,6 +45,7 @@ const MOTION_FIELDS = new Set<string>([
   'mediaX',
   'mediaY',
   'mediaRotate',
+  'rotate',
   'mediaMaskSize',
   'mediaFilter',
   'mediaCrop'
@@ -487,7 +489,7 @@ export function toggleKeyframeAt(layer: PenPageLayer, time: number): PenPageLaye
 
 function replacePropKeys(
   layer: PenPageLayer,
-  prop: 'opacity' | 'x',
+  prop: 'opacity' | 'x' | 'y' | 'mediaScale',
   points: Array<{ t: number; value: number; ease?: PenKeyframeEase }>
 ): PenPageLayer {
   const kept = (layer.motion?.keys || [])
@@ -506,11 +508,128 @@ function replacePropKeys(
   return { ...layer, motion: keys.length ? { keys } : undefined };
 }
 
-export type PenTransitionPreset = 'cut' | 'crossfade' | 'slide';
+export type PenTransitionPreset = 'cut' | 'crossfade' | 'slide' | 'push' | 'dip' | 'zoom';
+
+/** The row a layer draws on. A layer with no shared id is its own track. */
+export function layerTrackId(layer: PenPageLayer): string {
+  return layer.timelineTrackId || layer.id;
+}
+
+function shiftLayerClock(layer: PenPageLayer, delta: number): PenPageLayer {
+  if (!delta) return layer;
+  const clips = layer.clips?.map((clip) => ({
+    ...clip,
+    inSec: clip.inSec + delta,
+    outSec: clip.outSec + delta
+  }));
+  return {
+    ...layer,
+    clips,
+    inSec: (layer.inSec ?? 0) + delta,
+    outSec: layer.outSec !== undefined ? layer.outSec + delta : clips ? Math.max(...clips.map((clip) => clip.outSec)) : undefined
+  };
+}
+
+/** Place one layer after another on the same row. Clip 2 starts when clip 1 ends. */
+export function joinLayerToTrack(
+  section: PenSectionContent,
+  movingId: string,
+  trackId: string
+): PenSectionContent {
+  const layers = section.layers || [];
+  const moving = layers.find((layer) => layer.id === movingId);
+  const host = layers.find((layer) => layerTrackId(layer) === trackId);
+  if (!moving || !host || moving.id === host.id) return section;
+  if (moving.kind === 'guide' || host.kind === 'guide') return section;
+  const span = layerClockSpan(section, host);
+  const hostEnd = host.clips?.length
+    ? Math.max(...host.clips.map((clip) => clip.outSec))
+    : (host.outSec ?? span);
+  const movingStart = moving.clips?.length
+    ? Math.min(...moving.clips.map((clip) => clip.inSec))
+    : (moving.inSec ?? 0);
+  const placed = shiftLayerClock(moving, hostEnd - movingStart);
+  const shared = host.timelineTrackId || host.id;
+  return {
+    ...section,
+    layers: layers.map((layer) => {
+      if (layer.id === host.id) return { ...layer, timelineTrackId: shared };
+      if (layer.id === moving.id) return { ...placed, timelineTrackId: shared };
+      return layer;
+    })
+  };
+}
+
+/** Give a layer its own row again so it can play at the same time as the others. */
+export function releaseLayerTrack(section: PenSectionContent, layerId: string): PenSectionContent {
+  const layers = section.layers || [];
+  const layer = layers.find((item) => item.id === layerId);
+  if (!layer) return section;
+  const own = `track_${Math.random().toString(36).slice(2, 10)}`;
+  return {
+    ...section,
+    layers: layers.map((item) => (item.id === layerId ? { ...item, timelineTrackId: own } : item))
+  };
+}
 
 /**
- * Cut, crossfade, and slide write opacity or x keys on two layers.
- * They do not composite pixels.
+ * Remove the piece under the playhead.
+ * One piece left removes the layer. Later pieces on the track move back to meet.
+ */
+export function deleteClipAt(
+  section: PenSectionContent,
+  layerId: string,
+  time: number
+): PenSectionContent {
+  const layers = section.layers || [];
+  const layer = layers.find((item) => item.id === layerId);
+  if (!layer || layer.kind === 'guide' || layer.kind === 'group') return section;
+  const span = layerClockSpan(section, layer);
+  const clips = layerClips(layer, span);
+  const hit = clips.find((clip) => time >= clip.inSec && time < clip.outSec) ?? clips[0];
+  if (!hit) return section;
+  const gap = Math.max(0, hit.outSec - hit.inSec);
+  const shared = layerTrackId(layer);
+  if (clips.length <= 1 || (clips.length === 1 && clips[0]?.id === layer.id && !layer.clips?.length)) {
+    const removedEnd = hit.outSec;
+    const nextLayers = layers
+      .filter((item) => item.id !== layer.id)
+      .map((item) => {
+        if (layerTrackId(item) !== shared) return item;
+        const start = item.inSec ?? 0;
+        if (start + 0.001 < removedEnd) return item;
+        return shiftLayerClock(item, -gap);
+      });
+    return { ...section, layers: nextLayers };
+  }
+  const nextClips = clips
+    .filter((clip) => clip.id !== hit.id)
+    .map((clip) =>
+      clip.inSec + 0.001 >= hit.outSec
+        ? { ...clip, inSec: clip.inSec - gap, outSec: clip.outSec - gap }
+        : clip
+    );
+  const nextLayer: PenPageLayer = {
+    ...layer,
+    clips: nextClips,
+    inSec: Math.min(...nextClips.map((clip) => clip.inSec)),
+    outSec: Math.max(...nextClips.map((clip) => clip.outSec))
+  };
+  return {
+    ...section,
+    layers: layers.map((item) => {
+      if (item.id === layer.id) return nextLayer;
+      if (layerTrackId(item) !== shared) return item;
+      const start = item.inSec ?? 0;
+      if (start + 0.001 < hit.outSec) return item;
+      return shiftLayerClock(item, -gap);
+    })
+  };
+}
+
+/**
+ * Write a transition between two layers on one track.
+ * The clips overlap for the blend. Pixels are not composited.
  */
 export function applyTransitionPreset(
   section: PenSectionContent,
@@ -522,39 +641,71 @@ export function applyTransitionPreset(
   const from = (section.layers || []).find((layer) => layer.id === fromId);
   const to = (section.layers || []).find((layer) => layer.id === toId);
   if (!from || !to || from.id === to.id) return section;
-  const at = Math.max(0, opts?.atSec ?? 1);
   const dur = Math.max(CUT_GAP_SEC, opts?.durationSec ?? 0.5);
-  let nextFrom = from;
-  let nextTo = to;
+  const at = Math.max(0, opts?.atSec ?? from.outSec ?? to.inSec ?? 1);
+  const overlappedFrom: PenPageLayer = {
+    ...from,
+    outSec: Math.max(from.outSec ?? 0, at + dur),
+    clips: from.clips?.map((clip) =>
+      clip.outSec >= (from.outSec ?? clip.outSec) - 0.001 ? { ...clip, outSec: at + dur } : clip
+    )
+  };
+  const overlappedTo =
+    typeof to.inSec === 'number'
+      ? shiftLayerClock(to, Math.max(0, at - dur) - to.inSec)
+      : to;
+  let nextFrom = overlappedFrom;
+  let nextTo = overlappedTo;
   if (preset === 'cut') {
     const gap = CUT_GAP_SEC;
-    nextFrom = replacePropKeys(from, 'opacity', [
+    nextFrom = replacePropKeys(overlappedFrom, 'opacity', [
       { t: 0, value: 100 },
       { t: at, value: 100 },
       { t: at + gap, value: 0 }
     ]);
-    nextTo = replacePropKeys(to, 'opacity', [
+    nextTo = replacePropKeys(overlappedTo, 'opacity', [
       { t: 0, value: 0 },
       { t: at, value: 0 },
       { t: at + gap, value: 100 }
     ]);
-  } else if (preset === 'crossfade') {
-    nextFrom = replacePropKeys(from, 'opacity', [
+  } else if (preset === 'crossfade' || preset === 'dip') {
+    nextFrom = replacePropKeys(overlappedFrom, 'opacity', [
       { t: at, value: 100, ease: 'easeInOut' },
-      { t: at + dur, value: 0 }
+      { t: at + (preset === 'dip' ? dur / 2 : dur), value: 0 }
     ]);
-    nextTo = replacePropKeys(to, 'opacity', [
+    nextTo = replacePropKeys(overlappedTo, 'opacity', [
       { t: at, value: 0, ease: 'easeInOut' },
+      ...(preset === 'dip' ? [{ t: at + dur / 2, value: 0 }] : []),
       { t: at + dur, value: 100 }
+    ]);
+  } else if (preset === 'push') {
+    const dest = from.y;
+    const height = from.h;
+    nextFrom = replacePropKeys(overlappedFrom, 'y', [
+      { t: at, value: dest, ease: 'easeInOut' },
+      { t: at + dur, value: dest - height }
+    ]);
+    nextTo = replacePropKeys(overlappedTo, 'y', [
+      { t: at, value: dest + height, ease: 'easeInOut' },
+      { t: at + dur, value: dest }
+    ]);
+  } else if (preset === 'zoom') {
+    nextFrom = replacePropKeys(overlappedFrom, 'mediaScale', [
+      { t: at, value: from.mediaScale ?? 100, ease: 'easeInOut' },
+      { t: at + dur, value: 140 }
+    ]);
+    nextTo = replacePropKeys(overlappedTo, 'mediaScale', [
+      { t: at, value: 60, ease: 'easeInOut' },
+      { t: at + dur, value: to.mediaScale ?? 100 }
     ]);
   } else {
     const dest = from.x;
     const width = from.w;
-    nextFrom = replacePropKeys(from, 'x', [
+    nextFrom = replacePropKeys(overlappedFrom, 'x', [
       { t: at, value: dest, ease: 'easeInOut' },
       { t: at + dur, value: dest - width }
     ]);
-    nextTo = replacePropKeys(to, 'x', [
+    nextTo = replacePropKeys(overlappedTo, 'x', [
       { t: at, value: dest + width, ease: 'easeInOut' },
       { t: at + dur, value: dest }
     ]);

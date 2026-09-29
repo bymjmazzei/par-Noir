@@ -61,9 +61,11 @@ describe('mediaStyle', () => {
   });
 
   it('split, filmstrip, and text masks use a mask image', () => {
-    expect(mediaMaskStyle('split', 100).maskImage).toContain('linear-gradient');
-    expect(mediaMaskStyle('filmstrip', 100).maskImage).toContain('repeating-linear-gradient');
-    expect(String(mediaMaskStyle('text', 120).maskImage)).toContain('text');
+    expect(mediaMaskStyle('split', 100, { angle: 40, feather: 20 }).maskImage).toContain('rotate(40');
+    expect(mediaMaskStyle('split', 100, { angle: 40, feather: 20 }).maskImage).toContain('stop-opacity');
+    const film = String(mediaMaskStyle('filmstrip', 100).maskImage);
+    expect(film.split('rect').length - 1).toBeGreaterThan(1);
+    expect(String(mediaMaskStyle('text', 120, { text: 'Hello' }).maskImage)).toContain('Hello');
     expect(Object.keys(MEDIA_FILTER_PRESETS).length).toBeGreaterThan(8);
   });
 
@@ -84,7 +86,7 @@ describe('mediaStyle', () => {
   it('scale becomes a CSS transform', () => {
     expect(mediaTransformCss({ mediaScale: 100 })).toBeUndefined();
     expect(mediaTransformCss({ mediaScale: 200 })).toBe(
-      'translate(0%, 0%) rotate(0deg) scale(2, 2)'
+      'translate(0%, 0%) scale(2, 2)'
     );
     expect(mediaTransformCss({ mediaScale: 100, mediaMirror: true })).toContain('scale(-1, 1)');
   });

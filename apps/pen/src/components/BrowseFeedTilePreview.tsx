@@ -163,7 +163,9 @@ export function BrowseFeedTilePreview({
                 top: `${(layer.y / canvas.h) * 100}%`,
                 width: `${(layer.w / canvas.w) * 100}%`,
                 height: `${(layer.h / canvas.h) * 100}%`,
-                backgroundColor: layer.backgroundColor || 'rgba(15,118,110,0.85)'
+                backgroundColor: layer.backgroundColor || 'rgba(15,118,110,0.85)',
+                transform: layer.rotate || layer.mediaRotate ? `rotate(${layer.rotate ?? layer.mediaRotate}deg)` : undefined,
+                transformOrigin: 'center'
               }}
             >
               {layer.label || 'Button'}

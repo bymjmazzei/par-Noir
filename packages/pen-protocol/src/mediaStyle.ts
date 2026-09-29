@@ -167,40 +167,73 @@ export function tonalGradeActive(filter: PenMediaFilter | null | undefined): boo
   return TONAL_KEYS.some((key) => merged[key] !== 0);
 }
 
-/** Clip path for simple shapes, mask image for split, filmstrip, and text. */
+/** Clip path for simple shapes, SVG mask for split, filmstrip, and text. */
 export function mediaMaskStyle(
   mask: PenMediaMask | null | undefined,
-  size?: number
-): { clipPath?: string; maskImage?: string; WebkitMaskImage?: string; maskSize?: string; WebkitMaskSize?: string; maskRepeat?: string; WebkitMaskRepeat?: string; maskPosition?: string; WebkitMaskPosition?: string } {
+  size?: number,
+  options?: { angle?: number; feather?: number; text?: string }
+): {
+  clipPath?: string;
+  maskImage?: string;
+  WebkitMaskImage?: string;
+  maskSize?: string;
+  WebkitMaskSize?: string;
+  maskRepeat?: string;
+  WebkitMaskRepeat?: string;
+  maskPosition?: string;
+  WebkitMaskPosition?: string;
+  maskMode?: string;
+} {
   if (!mask || mask === 'none') return {};
   const amount = Math.max(0, size ?? 100);
-  if (mask === 'split') {
-    const pane = Math.min(46, Math.max(8, amount / 2));
-    const image = `linear-gradient(to right, #000 0 ${pane}%, transparent ${pane}% ${100 - pane}%, #000 ${100 - pane}% 100%)`;
-    return { maskImage: image, WebkitMaskImage: image, maskRepeat: 'no-repeat', WebkitMaskRepeat: 'no-repeat' };
-  }
-  if (mask === 'filmstrip') {
-    const bar = Math.max(8, Math.min(28, amount / 5));
-    const gap = Math.max(4, bar / 2);
-    const image = `repeating-linear-gradient(to bottom, #000 0 ${bar}%, transparent ${bar}% ${bar + gap}%)`;
-    return { maskImage: image, WebkitMaskImage: image };
-  }
-  if (mask === 'text') {
-    const svg = `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 240 80'><text x='120' y='62' text-anchor='middle' font-size='68' font-family='Georgia, serif' font-weight='700' fill='black'>Text</text></svg>`;
-    const image = `url("data:image/svg+xml,${encodeURIComponent(svg)}")`;
+  if (mask === 'split' || mask === 'filmstrip' || mask === 'text') {
+    const image = maskUri(maskSvg(mask, amount, options));
     return {
       maskImage: image,
       WebkitMaskImage: image,
-      maskSize: `${amount}%`,
-      WebkitMaskSize: `${amount}%`,
+      maskSize: '100% 100%',
+      WebkitMaskSize: '100% 100%',
       maskRepeat: 'no-repeat',
       WebkitMaskRepeat: 'no-repeat',
       maskPosition: 'center',
-      WebkitMaskPosition: 'center'
+      WebkitMaskPosition: 'center',
+      maskMode: 'alpha'
     };
   }
   const clipPath = mediaMaskClipCss(mask, size);
   return clipPath ? { clipPath } : {};
+}
+
+function maskUri(svg: string): string {
+  return `url("data:image/svg+xml,${encodeURIComponent(svg)}")`;
+}
+
+function maskSvg(
+  mask: 'split' | 'filmstrip' | 'text',
+  amount: number,
+  options?: { angle?: number; feather?: number; text?: string }
+): string {
+  if (mask === 'filmstrip') {
+    const bar = Math.max(6, Math.min(22, amount / 6));
+    const gap = Math.max(4, bar / 2);
+    const step = bar + gap;
+    const bars = Array.from({ length: 5 }, (_, index) => {
+      const y = index * step;
+      return `<rect x='0' y='${y}' width='100' height='${bar}' fill='white'/>`;
+    }).join('');
+    return `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'>${bars}</svg>`;
+  }
+  if (mask === 'text') {
+    const word = (options?.text || 'Text').replace(/[<>&'"]/g, '');
+    const font = Math.max(12, Math.min(72, amount * 0.6));
+    return `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 240 80'><text x='120' y='58' text-anchor='middle' font-size='${font}' font-family='Georgia, serif' font-weight='700' fill='white'>${word}</text></svg>`;
+  }
+  const pane = Math.min(46, Math.max(8, amount / 2));
+  const feather = Math.min(pane, Math.max(0, options?.feather ?? 0) / 2);
+  const angle = options?.angle ?? 0;
+  const softIn = Math.max(0, pane - feather);
+  const softOut = Math.min(100, 100 - pane + feather);
+  return `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><defs><linearGradient id='seam' gradientUnits='userSpaceOnUse' x1='0' y1='50' x2='100' y2='50' gradientTransform='rotate(${angle} 50 50)'><stop offset='0%' stop-color='white' stop-opacity='1'/><stop offset='${softIn}%' stop-color='white' stop-opacity='1'/><stop offset='${pane}%' stop-color='white' stop-opacity='0'/><stop offset='${100 - pane}%' stop-color='white' stop-opacity='0'/><stop offset='${softOut}%' stop-color='white' stop-opacity='1'/><stop offset='100%' stop-color='white' stop-opacity='1'/></linearGradient></defs><rect width='100' height='100' fill='url(#seam)'/></svg>`;
 }
 
 export function mediaMaskClipCss(
@@ -227,10 +260,9 @@ export function mediaTransformCss(layer: {
   const scale = (layer.mediaScale ?? 100) / 100;
   const x = layer.mediaX ?? 0;
   const y = layer.mediaY ?? 0;
-  const rotate = layer.mediaRotate ?? 0;
   const flip = layer.mediaMirror ? -1 : 1;
-  if (scale === 1 && x === 0 && y === 0 && rotate === 0 && flip === 1) return undefined;
-  return `translate(${x}%, ${y}%) rotate(${rotate}deg) scale(${scale * flip}, ${scale})`;
+  if (scale === 1 && x === 0 && y === 0 && flip === 1) return undefined;
+  return `translate(${x}%, ${y}%) scale(${scale * flip}, ${scale})`;
 }
 
 /**

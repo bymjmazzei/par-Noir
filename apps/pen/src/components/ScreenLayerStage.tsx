@@ -86,6 +86,7 @@ export function ScreenLayerStage({
         y: at.y,
         w: layer.w,
         h: layer.h,
+        rotate: layer.rotate ?? layer.mediaRotate,
         zIndex: layer.zIndex,
         positionLocked: layer.positionLocked,
         cornerRadius: layer.cornerRadius,
