@@ -98,15 +98,9 @@ export function setupNotificationRoutes(app: express.Application, deps: Notifica
         userAccessToken: ''
       };
     }
-    try {
-      const { resolveOwnerDriveToken } = await import('./ownerDriveToken');
-      const resolved = await resolveOwnerDriveToken(req, pnIdentifier, { accountId, account });
-      return { token: resolved.token, userAccessToken: resolved.token.access_token };
-    } catch (error) {
-      const { respondDriveTokenError } = await import('./ownerDriveToken');
-      if (respondDriveTokenError(res, error)) return null;
-      throw error;
-    }
+    const { respondCloudOnDevice } = await import('./deviceCloudResult');
+    respondCloudOnDevice(res);
+    return null;
   }
 
     app.get('/api/notifications', async (req, res) => {
@@ -152,76 +146,9 @@ export function setupNotificationRoutes(app: express.Application, deps: Notifica
 
         const account = googleDriveAccounts.length > 0 ? googleDriveAccounts[0] : null;
         const accountId = account ? extractAccountId(account) : undefined;
-        const resolved = await resolveOwnerToken(req, res, pnIdentifier, account, accountId);
-        if (!resolved) return;
-        const { token, userAccessToken } = resolved;
-        
-        let metadataFolderId = '';
-        if (account) {
-          const _g = await getMetadataFolder(token, pnIdentifier, accountId);
-          if (!_g) {
-            // Device custody: tokens may be absent; still return layout alerts
-            if (layoutAlerts.length === 0) return driveNotInitialized(res);
-          } else {
-            metadataFolderId = _g.metadataFolderId;
-          }
-        }
-
-        const MAX_NOTIFICATIONS_PAGE_SIZE = 500;
-        const limit = Math.min(parseInt(req.query.limit as string) || 50, MAX_NOTIFICATIONS_PAGE_SIZE);
-        const offset = parseInt(req.query.offset as string) || 0;
-        const unreadOnly = req.query.unreadOnly === 'true';
-        const type = req.query.type as string | undefined;
-
-        let sheetNotifications: Awaited<
-          ReturnType<typeof NotificationService.getUserNotifications>
-        >['notifications'] = [];
-        let sheetTotal = 0;
-        if (portable || metadataFolderId || !account) {
-          try {
-            const result = await NotificationService.getUserNotifications(
-              userAccessToken,
-              metadataFolderId,
-              pnIdentifier,
-              accountId,
-              {
-                limit: MAX_NOTIFICATIONS_PAGE_SIZE,
-                offset: 0,
-                unreadOnly,
-                type: type as any
-              }
-            );
-            sheetNotifications = result.notifications;
-            sheetTotal = result.total;
-          } catch {
-            sheetNotifications = [];
-            sheetTotal = 0;
-          }
-        }
-
-        let merged = [
-          ...layoutAlerts.map((a) => ({
-            ...a,
-            user_pn_identifier: a.user_pn_identifier || pnIdentifier,
-          })),
-          ...sheetNotifications,
-        ];
-        if (unreadOnly) merged = merged.filter((n) => !n.read);
-        if (type) merged = merged.filter((n) => n.type === type);
-        merged.sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at));
-        const total = Math.max(sheetTotal, 0) + layoutAlerts.filter((a) => {
-          if (unreadOnly && a.read) return false;
-          if (type && a.type !== type) return false;
-          return true;
-        }).length;
-        const page = merged.slice(offset, offset + limit);
-
-        return res.json({
-          notifications: page,
-          total,
-          limit,
-          offset
-        });
+        const { respondCloudOnDevice } = await import('./deviceCloudResult');
+        respondCloudOnDevice(res);
+        return;
       } catch (error: any) {
         console.error('Failed to get notifications:', error);
         return res.status(500).json({
@@ -264,20 +191,9 @@ export function setupNotificationRoutes(app: express.Application, deps: Notifica
 
         const account = googleDriveAccounts.length > 0 ? googleDriveAccounts[0] : null;
         const accountId = account ? extractAccountId(account) : undefined;
-        const resolved = await resolveOwnerToken(req, res, pnIdentifier, account, accountId);
-        if (!resolved) return;
-        const { token, userAccessToken } = resolved;
-        
-        let metadataFolderId = '';
-        if (account) {
-          const _g = await getMetadataFolder(token, pnIdentifier, accountId);
-          if (!_g) return driveNotInitialized(res);
-          metadataFolderId = _g.metadataFolderId;
-        }
-
-        const count = await NotificationService.getUnreadCount(userAccessToken, metadataFolderId, pnIdentifier, accountId);
-
-        return res.json({ count });
+        const { respondCloudOnDevice } = await import('./deviceCloudResult');
+        respondCloudOnDevice(res);
+        return;
       } catch (error: any) {
         console.error('Failed to get unread count:', error);
         return res.status(500).json({
@@ -329,44 +245,9 @@ export function setupNotificationRoutes(app: express.Application, deps: Notifica
 
         const account = googleDriveAccounts.length > 0 ? googleDriveAccounts[0] : null;
         const accountId = account ? extractAccountId(account) : undefined;
-        const resolved = await resolveOwnerToken(req, res, pnIdentifier, account, accountId);
-        if (!resolved) return;
-        const { token, userAccessToken } = resolved;
-        
-        let metadataFolderId = '';
-        if (account) {
-          const _g = await getMetadataFolder(token, pnIdentifier, accountId);
-          if (!_g) {
-            const layoutOk = await markLayoutDeviceUnlockAlertRead(pnIdentifier, notificationId);
-            if (layoutOk) return res.json({ success: true });
-            return driveNotInitialized(res);
-          }
-          metadataFolderId = _g.metadataFolderId;
-        }
-
-        let success = false;
-        try {
-          success = await NotificationService.markAsRead(
-            userAccessToken,
-            metadataFolderId,
-            pnIdentifier,
-            notificationId
-          );
-        } catch {
-          success = false;
-        }
-        if (!success) {
-          success = await markLayoutDeviceUnlockAlertRead(pnIdentifier, notificationId);
-        }
-
-        if (!success) {
-          return res.status(404).json({
-            error: 'not_found',
-            error_description: 'Notification not found'
-          });
-        }
-
-        return res.json({ success: true });
+        const { respondCloudOnDevice } = await import('./deviceCloudResult');
+        respondCloudOnDevice(res);
+        return;
       } catch (error: any) {
         console.error('Failed to mark notification as read:', error);
         return res.status(500).json({
@@ -414,20 +295,9 @@ export function setupNotificationRoutes(app: express.Application, deps: Notifica
 
         const account = googleDriveAccounts.length > 0 ? googleDriveAccounts[0] : null;
         const accountId = account ? extractAccountId(account) : undefined;
-        const resolved = await resolveOwnerToken(req, res, pnIdentifier, account, accountId);
-        if (!resolved) return;
-        const { token, userAccessToken } = resolved;
-        
-        let metadataFolderId = '';
-        if (account) {
-          const _g = await getMetadataFolder(token, pnIdentifier, accountId);
-          if (!_g) return driveNotInitialized(res);
-          metadataFolderId = _g.metadataFolderId;
-        }
-
-        const count = await NotificationService.markAllAsRead(userAccessToken, metadataFolderId, pnIdentifier);
-
-        return res.json({ success: true, markedRead: count });
+        const { respondCloudOnDevice } = await import('./deviceCloudResult');
+        respondCloudOnDevice(res);
+        return;
       } catch (error: any) {
         console.error('Failed to mark all notifications as read:', error);
         return res.status(500).json({
@@ -476,27 +346,9 @@ export function setupNotificationRoutes(app: express.Application, deps: Notifica
 
         const account = googleDriveAccounts.length > 0 ? googleDriveAccounts[0] : null;
         const accountId = account ? extractAccountId(account) : undefined;
-        const resolved = await resolveOwnerToken(req, res, pnIdentifier, account, accountId);
-        if (!resolved) return;
-        const { token, userAccessToken } = resolved;
-        
-        let metadataFolderId = '';
-        if (account) {
-          const _g = await getMetadataFolder(token, pnIdentifier, accountId);
-          if (!_g) return driveNotInitialized(res);
-          metadataFolderId = _g.metadataFolderId;
-        }
-
-        const success = await NotificationService.deleteNotification(userAccessToken, metadataFolderId, pnIdentifier, notificationId);
-
-        if (!success) {
-          return res.status(404).json({
-            error: 'not_found',
-            error_description: 'Notification not found'
-          });
-        }
-
-        return res.json({ success: true });
+        const { respondCloudOnDevice } = await import('./deviceCloudResult');
+        respondCloudOnDevice(res);
+        return;
       } catch (error: any) {
         console.error('Failed to delete notification:', error);
         return res.status(500).json({
@@ -563,20 +415,9 @@ export function setupNotificationRoutes(app: express.Application, deps: Notifica
 
         const account = googleDriveAccounts.length > 0 ? googleDriveAccounts[0] : null;
         const accountId = account ? extractAccountId(account) : undefined;
-        const resolved = await resolveOwnerToken(req, res, pnIdentifier, account, accountId);
-        if (!resolved) return;
-        const { token, userAccessToken } = resolved;
-        
-        let metadataFolderId = '';
-        if (account) {
-          const _g = await getMetadataFolder(token, pnIdentifier, accountId);
-          if (!_g) return driveNotInitialized(res);
-          metadataFolderId = _g.metadataFolderId;
-        }
-
-        const preferences = await NotificationService.getPreferences(userAccessToken, metadataFolderId, pnIdentifier);
-
-        return res.json(preferences);
+        const { respondCloudOnDevice } = await import('./deviceCloudResult');
+        respondCloudOnDevice(res);
+        return;
       } catch (error: any) {
         console.error('Failed to get notification preferences:', error);
         return res.status(500).json({
@@ -624,26 +465,9 @@ export function setupNotificationRoutes(app: express.Application, deps: Notifica
 
         const account = googleDriveAccounts.length > 0 ? googleDriveAccounts[0] : null;
         const accountId = account ? extractAccountId(account) : undefined;
-        const resolved = await resolveOwnerToken(req, res, pnIdentifier, account, accountId);
-        if (!resolved) return;
-        const { token, userAccessToken } = resolved;
-        
-        let metadataFolderId = '';
-        if (account) {
-          const _g = await getMetadataFolder(token, pnIdentifier, accountId);
-          if (!_g) return driveNotInitialized(res);
-          metadataFolderId = _g.metadataFolderId;
-        }
-
-        const { user_did, ...preferencesUpdate } = req.body;
-        const preferences = await NotificationService.updatePreferences(
-          userAccessToken,
-          metadataFolderId,
-          userCredentials.identityId,
-          preferencesUpdate
-        );
-
-        return res.json(preferences);
+        const { respondCloudOnDevice } = await import('./deviceCloudResult');
+        respondCloudOnDevice(res);
+        return;
       } catch (error: any) {
         console.error('Failed to update notification preferences:', error);
         return res.status(500).json({

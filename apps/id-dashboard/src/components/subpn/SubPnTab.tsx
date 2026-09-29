@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { Layers, RefreshCw, Plus, Download, Shield, UserPlus, Trash2 } from 'lucide-react';
 import { SectionInfo } from '../common/SectionInfo';
 import { IdentityCrypto, VolumeIdGenerator, type EncryptedIdentity } from '@par-noir/identity-crypto';
-import { PN_CLOUD_CREDENTIALS_READY_EVENT, secretKeyInputProps } from '@par-noir/oauth-ui';
+import { HostedShellLaunch, PN_CLOUD_CREDENTIALS_READY_EVENT } from '@par-noir/oauth-ui';
 import { sealSubExportPayload, unsealSubExportPayload } from '../../utils/subIdentitySeal';
 import {
   createOwnedAsset,
@@ -353,13 +353,13 @@ export const SubPnTab: React.FC<SubPnTabProps> = ({
     }
   };
 
-  const handleConfirmFullReauthAndRotate = async () => {
-    if (!authFile || !selected || !accessToken) {
-      setAuthError('Upload your root pN identity file.');
+  const handleConfirmFullReauthAndRotate = async (shellAuthorized = false) => {
+    if (!selected || !accessToken) {
+      setAuthError('Select a sub-pN first.');
       return;
     }
-    if (!authPnName.trim() || !authPasscode.trim()) {
-      setAuthError('Enter your Key 1 and Key 2.');
+    if (!shellAuthorized && (!authFile || !authPnName.trim() || !authPasscode.trim())) {
+      setAuthError('Unlock in par Noir Unlock to rotate this sub identity.');
       return;
     }
     if (!sessionId) {
@@ -370,14 +370,16 @@ export const SubPnTab: React.FC<SubPnTabProps> = ({
     setAuthLoading(true);
     setAuthError(null);
     try {
-      const encryptedIdentity = await parseIdentityFile(authFile);
-      const authSession = await IdentityCrypto.authenticateIdentity(
-        encryptedIdentity,
-        authPasscode.trim(),
-        authPnName.trim()
-      );
-      if (authSession.id !== sessionId) {
-        throw new Error('Re-authenticated identity does not match the currently unlocked root pN.');
+      if (!shellAuthorized) {
+        const encryptedIdentity = await parseIdentityFile(authFile!);
+        const authSession = await IdentityCrypto.authenticateIdentity(
+          encryptedIdentity,
+          authPasscode.trim(),
+          authPnName.trim()
+        );
+        if (authSession.id !== sessionId) {
+          throw new Error('Re-authenticated identity does not match the currently unlocked root pN.');
+        }
       }
 
       const subPnName = `sub-${randomSecret(16)}`;
@@ -431,13 +433,13 @@ export const SubPnTab: React.FC<SubPnTabProps> = ({
     }
   };
 
-  const handleConfirmFullReauthAndExport = async () => {
-    if (!authFile) {
-      setAuthError('Upload your root pN identity file.');
+  const handleConfirmFullReauthAndExport = async (shellAuthorized = false) => {
+    if (!shellAuthorized && !authFile) {
+      setAuthError('Unlock in par Noir Unlock to export this sub backup.');
       return;
     }
-    if (!authPnName.trim() || !authPasscode.trim()) {
-      setAuthError('Enter your Key 1 and Key 2.');
+    if (!shellAuthorized && (!authPnName.trim() || !authPasscode.trim())) {
+      setAuthError('Unlock in par Noir Unlock to export this sub backup.');
       return;
     }
     if (!sessionId) {
@@ -448,14 +450,16 @@ export const SubPnTab: React.FC<SubPnTabProps> = ({
     setAuthLoading(true);
     setAuthError(null);
     try {
-      const encryptedIdentity = await parseIdentityFile(authFile);
-      const authSession = await IdentityCrypto.authenticateIdentity(
-        encryptedIdentity,
-        authPasscode.trim(),
-        authPnName.trim()
-      );
-      if (authSession.id !== sessionId) {
-        throw new Error('Re-authenticated identity does not match the currently unlocked root pN.');
+      if (!shellAuthorized) {
+        const encryptedIdentity = await parseIdentityFile(authFile!);
+        const authSession = await IdentityCrypto.authenticateIdentity(
+          encryptedIdentity,
+          authPasscode.trim(),
+          authPnName.trim()
+        );
+        if (authSession.id !== sessionId) {
+          throw new Error('Re-authenticated identity does not match the currently unlocked root pN.');
+        }
       }
       closeExportAuthModal();
       await doDownloadExport();
@@ -920,25 +924,16 @@ export const SubPnTab: React.FC<SubPnTabProps> = ({
                 ? 'Re-authenticate to rotate this sub identity and download a new export backup.'
                 : 'Re-authenticate with your root identity file, pN name, and passcode to export this sub backup.'}
             </p>
-            <input
-              type="file"
-              accept=".did,.json,.pn,.id,.identity,application/json"
-              onChange={(e) => setAuthFile(e.target.files?.[0] || null)}
-              className="w-full text-sm"
-            />
-            <input
-              {...secretKeyInputProps('key1', 'unlock')}
-              placeholder="Root Key 1"
-              value={authPnName}
-              onChange={(e) => setAuthPnName(e.target.value)}
-              className="w-full rounded-md bg-secondary border border-border px-3 py-2 text-sm"
-            />
-            <input
-              {...secretKeyInputProps('key2', 'unlock')}
-              placeholder="Root Key 2"
-              value={authPasscode}
-              onChange={(e) => setAuthPasscode(e.target.value)}
-              className="w-full rounded-md bg-secondary border border-border px-3 py-2 text-sm"
+            <HostedShellLaunch
+              op="sub_pn"
+              onSession={(session) => {
+                if (session.result?.authorized !== '1') return;
+                if (session.did && sessionId && session.did !== sessionId) {
+                  setAuthError('Unlock did not match this pN.');
+                  return;
+                }
+                void (rotatePending ? handleConfirmFullReauthAndRotate(true) : handleConfirmFullReauthAndExport(true));
+              }}
             />
             {authError && <p className="text-xs text-red-400">{authError}</p>}
             <div className="flex gap-2 justify-end">

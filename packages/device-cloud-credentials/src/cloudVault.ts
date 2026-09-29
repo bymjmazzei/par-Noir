@@ -246,14 +246,23 @@ export async function publishCloudCredentialsVault(opts: {
 
 export function cloudAccessHeaders(
   authToken: string,
-  accessToken?: string | null
+  _accessToken?: string | null
 ): Record<string, string> {
-  const headers: Record<string, string> = {
+  // The Google (or other provider) access token stays on the device and is
+  // sent to that provider directly. It is never attached to par Noir API calls.
+  return {
     Authorization: `Bearer ${authToken}`,
     'Content-Type': 'application/json'
   };
-  if (accessToken && accessToken.trim()) {
-    headers[PN_CLOUD_ACCESS_TOKEN_HEADER] = accessToken.trim();
-  }
-  return headers;
+}
+
+/** Drop a provider access token before an API request leaves the device. */
+export function omitCloudAccessHeader(
+  headers?: Record<string, string> | null
+): Record<string, string> {
+  if (!headers) return {};
+  const out = { ...headers };
+  delete out[PN_CLOUD_ACCESS_TOKEN_HEADER];
+  delete out['x-pn-cloud-access-token'];
+  return out;
 }

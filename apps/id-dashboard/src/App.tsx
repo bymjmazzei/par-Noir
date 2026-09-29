@@ -1032,6 +1032,7 @@ function App() {
     handleIdentitySelect,
     handleDeleteIdentity,
     handleUnlockFromUsb,
+    handleShellSession,
     handleMainFormSubmit,
     handleSimpleUnlock,
     handleBiometricAuth,
@@ -1336,6 +1337,7 @@ function App() {
           authenticatedUser={authenticatedUser}
           showTransferReceiver={showTransferReceiver}
           pwaState={pwaState}
+          handleShellSession={handleShellSession}
           handleMainFormSubmit={handleMainFormSubmit}
           selectedStoredIdentity={selectedStoredIdentity}
           handleIdentitySelect={handleIdentitySelect}

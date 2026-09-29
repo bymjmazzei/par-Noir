@@ -77,6 +77,9 @@ export {
   normalizeCloudIdentityId,
   setSessionCloudCredentials,
   getSessionCloudCredentials,
+  setSessionDriveIndex,
+  getSessionDriveIndex,
+  sheetIdFromSession,
   clearSessionCloudCredentials,
   clearAllSessionCloudCredentials
 } from './sessionMemory.js';
@@ -105,7 +108,8 @@ export {
   googleTokenFromEnvelope,
   hydrateCloudCredentialsFromVault,
   publishCloudCredentialsVault,
-  cloudAccessHeaders
+  cloudAccessHeaders,
+  omitCloudAccessHeader
 } from './cloudVault.js';
 export type { CloudVaultHydrateResult } from './cloudVault.js';
 export type { GoogleAccountRow } from './driveTokenResolver.js';
@@ -151,3 +155,26 @@ export {
   ownerCloudHeadersAsync
 } from './ownerCloudHeaders.js';
 export { requireOnlineCloudForSend } from './requireOnlineCloudForSend.js';
+export { deviceDriveCall } from './deviceDriveCall.js';
+export type { DeviceDriveInit } from './deviceDriveCall.js';
+export { ensureDeviceDriveLayout } from './deviceDriveLayout.js';
+export type { DeviceDriveLayout } from './deviceDriveLayout.js';
+export { appendDeviceCloudRow } from './deviceCloudRow.js';
+export type { DeviceCloudRowResult } from './deviceCloudRow.js';
+export { readSheetValues, writeSheetValues, appendSheetValues } from './deviceSheet.js';
+export { layoutSheetId } from './layoutSheet.js';
+export {
+  listDeviceConnections,
+  upsertDeviceConnection,
+  listDeviceInbox,
+  upsertDeviceInboxThread,
+  listDeviceMessages,
+  appendDeviceMessage,
+  listDeviceGroups,
+  appendDeviceGroupRow,
+  appendPublicIndexRow,
+  ensureSessionDriveIndex,
+} from './deviceSocial.js';
+export type { DeviceConnection, DeviceInboxThread, DeviceMessage, DeviceGroupRow } from './deviceSocial.js';
+export { deviceDropboxCall, deviceOneDriveCall } from './deviceProviderCall.js';
+export type { DeviceProviderInit } from './deviceProviderCall.js';

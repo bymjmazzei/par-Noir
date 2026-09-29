@@ -102,7 +102,8 @@ describe('sync header builder cannot mint', () => {
       apiEndpoint: API
     });
 
-    expect(headers[PN_CLOUD_ACCESS_TOKEN_HEADER]).toBe('minted-ga');
+    expect(headers[PN_CLOUD_ACCESS_TOKEN_HEADER]).toBeUndefined();
+    expect(headers.Authorization).toBe('Bearer oauth');
   });
 
   it('produces no token when there is nothing to refresh with, so callers fail closed', async () => {
@@ -135,6 +136,6 @@ describe('sync header builder cannot mint', () => {
     });
 
     expect(sync[PN_CLOUD_ACCESS_TOKEN_HEADER]).toBeUndefined();
-    expect(asyncHeaders[PN_CLOUD_ACCESS_TOKEN_HEADER]).toBeTruthy();
+    expect(asyncHeaders[PN_CLOUD_ACCESS_TOKEN_HEADER]).toBeUndefined();
   });
 });

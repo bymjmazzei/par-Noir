@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Shield, CheckCircle, Smartphone, Lock, PartyPopper, User, Settings, XCircle } from 'lucide-react';
 import { KEY_MIN_LENGTH } from '../constants/credentialLabels';
+import { HostedShellLaunch } from '@par-noir/oauth-ui';
 
 interface OnboardingStep {
   id: string;
@@ -99,29 +100,9 @@ export const Onboarding: React.FC<OnboardingProps> = ({ isOpen, onComplete }) =>
       description: 'Create a strong Key 2 to protect your identity.',
       component: (
         <div className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium mb-2">Key 2</label>
-            <input
-              type="password"
-              value={formData.passcode}
-              onChange={(e) => setFormData({ ...formData, passcode: e.target.value })}
-              className="w-full p-3 border rounded-lg bg-bg-primary text-text-primary"
-              placeholder="Enter a strong Key 2"
-            />
-            <p className="text-xs text-text-secondary mt-1">
-              Minimum 8 characters, no spaces
-            </p>
-          </div>
-          <div>
-            <label className="block text-sm font-medium mb-2">Confirm Key 2</label>
-            <input
-              type="password"
-              value={formData.confirmPasscode}
-              onChange={(e) => setFormData({ ...formData, confirmPasscode: e.target.value })}
-              className="w-full p-3 border rounded-lg bg-bg-primary text-text-primary"
-              placeholder="Confirm Key 2"
-            />
-          </div>
+          <HostedShellLaunch op="create" onSession={(session) => {
+            void import('../services/shellResultFile').then(({ downloadShellIdentityFile }) => downloadShellIdentityFile(session));
+          }} />
           {formData.passcode && formData.confirmPasscode && (
             <div className={`p-3 rounded-lg ${
               formData.passcode === formData.confirmPasscode 

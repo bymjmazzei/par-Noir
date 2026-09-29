@@ -7,13 +7,7 @@
 
 import React, { useState } from 'react';
 import { Lock, X } from 'lucide-react';
-import { SECRET_KEY_FORM_ATTRS, secretKeyInputProps } from '@par-noir/oauth-ui';
-import {
-  KEY_1_LABEL,
-  KEY_2_LABEL,
-  KEY_1_PLACEHOLDER,
-  KEY_2_PLACEHOLDER,
-} from '../../constants/credentialLabels';
+import { HostedShellLaunch } from '@par-noir/oauth-ui';
 
 interface BiometricPasscodeModalProps {
   isOpen: boolean;
@@ -93,80 +87,8 @@ export const BiometricPasscodeModal: React.FC<BiometricPasscodeModalProps> = ({
           )}
         </p>
 
-        <form onSubmit={handleSubmit} className="space-y-4" {...SECRET_KEY_FORM_ATTRS}>
-          {/* SECURITY: Require BOTH pnName and passcode - both are secrets */}
-          <div>
-            <label htmlFor="pn-key-1" className="block text-sm font-medium text-text-primary mb-2">
-              {KEY_1_LABEL}
-            </label>
-            <div className="relative">
-              <input
-                {...secretKeyInputProps('key1', 'unlock')}
-                id="pn-key-1"
-                type={showPnName ? 'text' : 'password'}
-                value={pnName}
-                onChange={(e) => setPnName(e.target.value)}
-                className="w-full px-3 py-2 pr-10 border border-input-border bg-input-bg rounded-md focus:outline-none focus:ring-2 focus:ring-primary text-text-primary"
-                placeholder={KEY_1_PLACEHOLDER}
-                autoFocus
-                required
-                disabled={isSubmitting}
-              />
-              <button
-                type="button"
-                onClick={() => setShowPnName(!showPnName)}
-                className="absolute right-2 top-1/2 transform -translate-y-1/2 text-text-secondary hover:text-text-primary"
-                disabled={isSubmitting}
-              >
-                {showPnName ? (
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-                  </svg>
-                ) : (
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.878 9.878L3 3m6.878 6.878L21 21" />
-                  </svg>
-                )}
-              </button>
-            </div>
-          </div>
-
-          <div>
-            <label htmlFor="pn-key-2" className="block text-sm font-medium text-text-primary mb-2">
-              {KEY_2_LABEL}
-            </label>
-            <div className="relative">
-              <input
-                {...secretKeyInputProps('key2', 'unlock')}
-                id="pn-key-2"
-                type={showPasscode ? 'text' : 'password'}
-                value={passcode}
-                onChange={(e) => setPasscode(e.target.value)}
-                className="w-full px-3 py-2 pr-10 border border-input-border bg-input-bg rounded-md focus:outline-none focus:ring-2 focus:ring-primary text-text-primary"
-                placeholder={KEY_2_PLACEHOLDER}
-                required
-                disabled={isSubmitting}
-              />
-              <button
-                type="button"
-                onClick={() => setShowPasscode(!showPasscode)}
-                className="absolute right-2 top-1/2 transform -translate-y-1/2 text-text-secondary hover:text-text-primary"
-                disabled={isSubmitting}
-              >
-                {showPasscode ? (
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-                  </svg>
-                ) : (
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.878 9.878L3 3m6.878 6.878L21 21" />
-                  </svg>
-                )}
-              </button>
-            </div>
-          </div>
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <HostedShellLaunch op="session" onSession={() => undefined} />
 
           {error && (
             <div className="p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-md">

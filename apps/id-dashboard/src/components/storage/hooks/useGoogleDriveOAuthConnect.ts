@@ -308,9 +308,29 @@ export function useGoogleDriveOAuthConnect({
         const sessionId = authenticatedUser?.id || null;
         const sessionCreds = sessionId ? SecureCredentialManager.getCredentials(sessionId) : null;
         if (!sessionCreds || !sessionId || !authenticatedUser?.publicKey) {
-          throw new Error(
-            'Drive connected locally, but identity seal factors are missing — unlock again, then reconnect Drive to publish the cloud vault for browse/messaging.'
-          );
+          const { deriveCanonicalPnIdentifier } = await import('@par-noir/pqc-crypto/oauth-unlock-proof');
+          if (!authenticatedUser?.publicKey) {
+            throw new Error('Unlock the dashboard before connecting Google Drive.');
+          }
+          const pnIdentifier = deriveCanonicalPnIdentifier(authenticatedUser.publicKey);
+          const { launchSealVault } = await import('../../../services/sealVaultHandoff');
+          launchSealVault(pnIdentifier, {
+            socialCloudProvider: 'google_drive',
+            socialCloudAccountId: identifiers.backendId,
+            googleDriveAccounts: [
+              {
+                accountId: identifiers.backendId,
+                backendId: identifiers.backendId,
+                keyPrefix: identifiers.keyPrefix,
+                accessToken: token,
+                refreshToken: tokenData.refreshToken,
+                email: connectedEmail || undefined,
+                connectedAt: new Date().toISOString(),
+                expires_at: tokenExpiresAt,
+              },
+            ],
+          });
+          return;
         }
         const pnIdentifier = deriveCanonicalPnIdentifier(authenticatedUser.publicKey);
         const accountId = identifiers.backendId;

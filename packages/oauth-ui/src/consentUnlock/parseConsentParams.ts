@@ -10,6 +10,11 @@ export interface ConsentUnlockParams {
   identityHandoffRequired: boolean;
   /** API host for challenge/authenticate (not the unlock UI origin). */
   apiEndpoint: string;
+  /** `shell` — return a factor-free fragment to the hosted app. */
+  flow: string;
+  shellOp: 'session' | 'export' | 'recovery' | 'sub_pn' | 'dm' | 'rotate' | 'create' | 'seal_vault';
+  /** Base64url cloud envelope for op=seal_vault. */
+  vaultPayload: string;
 }
 
 function readParam(search: URLSearchParams, key: string): string {
@@ -41,6 +46,9 @@ export function parseConsentUnlockParams(
     popup: params.get('popup') === 'true',
     identityHandoffRequired: params.get('identity_handoff') === 'required',
     apiEndpoint,
+    flow: readParam(params, 'flow'),
+    shellOp: (readParam(params, 'op') || 'session') as ConsentUnlockParams['shellOp'],
+    vaultPayload: readParam(params, 'vault_payload'),
   };
 }
 

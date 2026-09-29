@@ -88,7 +88,7 @@ export function setupUserRoutes(app: express.Application, deps: UserRouteDeps) {
         if (!(await gateOwnerRoute(req, res, DEVICE_CAPABILITIES.profileWrite, normalizedPnIdentifier))) return;
 
         const { PreferencesService } = await import('./preferencesService');
-        const { resolveOwnerDriveToken, respondDriveTokenError } = await import('./ownerDriveToken');
+        const { respondDriveTokenError } = await import('./ownerDriveToken');
         const { storageCredentialsService } = await import('./storageCredentialsService');
 
         // Get user's credentials
@@ -113,10 +113,14 @@ export function setupUserRoutes(app: express.Application, deps: UserRouteDeps) {
           const accountId = account ? extractAccountId(account) : undefined;
           let userAccessToken = '';
           try {
-            const resolved = await resolveOwnerDriveToken(req, normalizedPnIdentifier, {
-              accountId,
-              account
-            });
+            const resolved = (await (async () => {
+                const { DriveIndexError } = await import('./pnDriveIndex');
+                throw new DriveIndexError(
+                  'Drive reads and writes run on the device. This API does not proxy the user cloud.',
+                  'CLOUD_TOKEN_REQUIRED'
+                );
+                return { token: { access_token: '' } };
+              })());
             userAccessToken = resolved.token.access_token;
           } catch (error) {
             if (respondDriveTokenError(res, error)) return;
@@ -327,11 +331,15 @@ export function setupUserRoutes(app: express.Application, deps: UserRouteDeps) {
           let userAccessToken = '';
           if (account) {
             try {
-              const { resolveOwnerDriveToken } = await import('./ownerDriveToken');
-              const resolved = await resolveOwnerDriveToken(req, normalizedPnIdentifier, {
-                account,
-                accountId
-              });
+              const { respondDriveTokenError } = await import('./ownerDriveToken');
+              const resolved = (await (async () => {
+                const { DriveIndexError } = await import('./pnDriveIndex');
+                throw new DriveIndexError(
+                  'Drive reads and writes run on the device. This API does not proxy the user cloud.',
+                  'CLOUD_TOKEN_REQUIRED'
+                );
+                return { token: { access_token: '' } };
+              })());
               userAccessToken = resolved.token.access_token;
             } catch {
               // Empty here means "could not check", not "nothing granted". Say so in
@@ -424,7 +432,7 @@ export function setupUserRoutes(app: express.Application, deps: UserRouteDeps) {
         }
 
         const { ThirdPartyPermissionsService } = await import('./thirdPartyPermissionsService');
-        const { resolveOwnerDriveToken, respondDriveTokenError } = await import('./ownerDriveToken');
+        const { respondDriveTokenError } = await import('./ownerDriveToken');
         const { storageCredentialsService } = await import('./storageCredentialsService');
 
         // Normalize pn identifier
@@ -458,10 +466,14 @@ export function setupUserRoutes(app: express.Application, deps: UserRouteDeps) {
           };
           let userAccessToken = '';
           try {
-            const resolved = await resolveOwnerDriveToken(req, normalizedPnIdentifier, {
-              accountId,
-              account
-            });
+            const resolved = (await (async () => {
+                const { DriveIndexError } = await import('./pnDriveIndex');
+                throw new DriveIndexError(
+                  'Drive reads and writes run on the device. This API does not proxy the user cloud.',
+                  'CLOUD_TOKEN_REQUIRED'
+                );
+                return { token: { access_token: '' } };
+              })());
             token = resolved.token;
             userAccessToken = resolved.token.access_token;
           } catch (error) {
@@ -661,7 +673,7 @@ export function setupUserRoutes(app: express.Application, deps: UserRouteDeps) {
         if (!(await gateOwnerRoute(req, res, DEVICE_CAPABILITIES.profileRead, normalizedPnIdentifier))) return;
 
         const { PreferencesService } = await import('./preferencesService');
-        const { resolveOwnerDriveToken, respondDriveTokenError } = await import('./ownerDriveToken');
+        const { respondDriveTokenError } = await import('./ownerDriveToken');
         const { storageCredentialsService } = await import('./storageCredentialsService');
 
         // Get user's credentials
@@ -686,10 +698,14 @@ export function setupUserRoutes(app: express.Application, deps: UserRouteDeps) {
           const accountId = account ? extractAccountId(account) : undefined;
           let userAccessToken = '';
           try {
-            const resolved = await resolveOwnerDriveToken(req, normalizedPnIdentifier, {
-              accountId,
-              account
-            });
+            const resolved = (await (async () => {
+                const { DriveIndexError } = await import('./pnDriveIndex');
+                throw new DriveIndexError(
+                  'Drive reads and writes run on the device. This API does not proxy the user cloud.',
+                  'CLOUD_TOKEN_REQUIRED'
+                );
+                return { token: { access_token: '' } };
+              })());
             userAccessToken = resolved.token.access_token;
           } catch (error) {
             if (respondDriveTokenError(res, error)) return;
@@ -793,7 +809,7 @@ export function setupUserRoutes(app: express.Application, deps: UserRouteDeps) {
         if (!(await gateOwnerRoute(req, res, DEVICE_CAPABILITIES.profileWrite, normalizedPnIdentifier))) return;
 
         const { PreferencesService } = await import('./preferencesService');
-        const { resolveOwnerDriveToken, respondDriveTokenError } = await import('./ownerDriveToken');
+        const { respondDriveTokenError } = await import('./ownerDriveToken');
         const { storageCredentialsService } = await import('./storageCredentialsService');
 
         // Get user's credentials
@@ -818,10 +834,14 @@ export function setupUserRoutes(app: express.Application, deps: UserRouteDeps) {
           const accountId = account ? extractAccountId(account) : undefined;
           let userAccessToken = '';
           try {
-            const resolved = await resolveOwnerDriveToken(req, normalizedPnIdentifier, {
-              accountId,
-              account
-            });
+            const resolved = (await (async () => {
+                const { DriveIndexError } = await import('./pnDriveIndex');
+                throw new DriveIndexError(
+                  'Drive reads and writes run on the device. This API does not proxy the user cloud.',
+                  'CLOUD_TOKEN_REQUIRED'
+                );
+                return { token: { access_token: '' } };
+              })());
             userAccessToken = resolved.token.access_token;
           } catch (error) {
             if (respondDriveTokenError(res, error)) return;
@@ -911,7 +931,7 @@ export function setupUserRoutes(app: express.Application, deps: UserRouteDeps) {
         if (!(await gateOwnerRoute(req, res, DEVICE_CAPABILITIES.profileRead, normalizedPnIdentifier))) return;
 
         const { PreferencesService } = await import('./preferencesService');
-        const { resolveOwnerDriveToken, respondDriveTokenError } = await import('./ownerDriveToken');
+        const { respondDriveTokenError } = await import('./ownerDriveToken');
         const { storageCredentialsService } = await import('./storageCredentialsService');
 
         // Get user's credentials
@@ -931,10 +951,14 @@ export function setupUserRoutes(app: express.Application, deps: UserRouteDeps) {
           const accountId = account ? extractAccountId(account) : undefined;
           let userAccessToken = '';
           try {
-            const resolved = await resolveOwnerDriveToken(req, normalizedPnIdentifier, {
-              accountId,
-              account
-            });
+            const resolved = (await (async () => {
+                const { DriveIndexError } = await import('./pnDriveIndex');
+                throw new DriveIndexError(
+                  'Drive reads and writes run on the device. This API does not proxy the user cloud.',
+                  'CLOUD_TOKEN_REQUIRED'
+                );
+                return { token: { access_token: '' } };
+              })());
             userAccessToken = resolved.token.access_token;
           } catch (error) {
             if (respondDriveTokenError(res, error)) return;
@@ -1016,7 +1040,7 @@ export function setupUserRoutes(app: express.Application, deps: UserRouteDeps) {
         if (!(await gateOwnerRoute(req, res, DEVICE_CAPABILITIES.profileWrite, normalizedPnIdentifier))) return;
 
         const { PreferencesService } = await import('./preferencesService');
-        const { resolveOwnerDriveToken, respondDriveTokenError } = await import('./ownerDriveToken');
+        const { respondDriveTokenError } = await import('./ownerDriveToken');
         const { storageCredentialsService } = await import('./storageCredentialsService');
 
         // Get user's credentials
@@ -1041,10 +1065,14 @@ export function setupUserRoutes(app: express.Application, deps: UserRouteDeps) {
           const accountId = account ? extractAccountId(account) : undefined;
           let userAccessToken = '';
           try {
-            const resolved = await resolveOwnerDriveToken(req, normalizedPnIdentifier, {
-              accountId,
-              account
-            });
+            const resolved = (await (async () => {
+                const { DriveIndexError } = await import('./pnDriveIndex');
+                throw new DriveIndexError(
+                  'Drive reads and writes run on the device. This API does not proxy the user cloud.',
+                  'CLOUD_TOKEN_REQUIRED'
+                );
+                return { token: { access_token: '' } };
+              })());
             userAccessToken = resolved.token.access_token;
           } catch (error) {
             if (respondDriveTokenError(res, error)) return;

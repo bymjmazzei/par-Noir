@@ -1,7 +1,7 @@
 /**
- * Google Drive Storage Backend — API-only.
- * All Drive I/O goes through par Noir /api/drive/* via ownerFetch/ownerGet.
- * Credential vault mint / refresh remains in @par-noir/device-cloud-credentials.
+ * Google Drive Storage Backend — device-direct.
+ * File bytes go to Google with the device-held access token.
+ * That token is not forwarded to the par Noir API.
  */
 import { AbstractStorageBackend } from './StorageBackend';
 import {
@@ -11,6 +11,7 @@ import {
   StorageBackendConfig
 } from '../../types/aggregator';
 import {
+  deviceDriveCall,
   isAccessTokenFresh,
   refreshDriveAccessToken,
   type GoogleAccountRow
@@ -18,12 +19,7 @@ import {
 import { getGoogleDriveClientId, getGoogleDriveClientSecret } from '../../config/googleDriveClientId';
 import { IntegrationCredentialManager } from '../../utils/integrationCredentialManager';
 import { getStoredToken } from '../parNoirOAuthInline';
-import {
-  ownerFetch,
-  ownerGet,
-  getOwnerApiPnIdentifier,
-  type OwnerFetchInit
-} from '../ownerApiService';
+import { getOwnerApiPnIdentifier } from '../ownerApiService';
 
 export interface DriveInventoryItem {
   fileId: string;
@@ -33,7 +29,6 @@ export interface DriveInventoryItem {
   isFolder: boolean;
 }
 
-const PN_CLOUD_ACCESS_TOKEN_HEADER = 'X-PN-Cloud-Access-Token';
 const FOLDER_MIME = 'application/vnd.google-apps.folder';
 
 type DriveApiFile = {
@@ -407,30 +402,19 @@ export class GoogleDriveBackend extends AbstractStorageBackend {
     return authToken;
   }
 
-  private async cloudExtraHeaders(): Promise<Record<string, string>> {
-    const accessToken = await this.ensureAccessToken();
-    if (!accessToken) {
-      throw new Error('Not connected to Google Drive or access token unavailable');
-    }
-    return { [PN_CLOUD_ACCESS_TOKEN_HEADER]: accessToken };
-  }
-
   private async driveFetch(
     method: string,
     path: string,
     body?: unknown,
-    pnIdentifier?: string,
+    _pnIdentifier?: string,
     retryCount = 0
   ): Promise<Response> {
-    const authToken = await this.requireOwnerAuth();
-    const pn = this.resolvePn(pnIdentifier);
-    const extraHeaders = await this.cloudExtraHeaders();
-    const init: OwnerFetchInit = { pnIdentifier: pn, extraHeaders };
+    const accessToken = await this.ensureAccessToken();
+    if (!accessToken) {
+      throw new Error('Not connected to Google Drive or access token unavailable');
+    }
 
-    const response =
-      method.toUpperCase() === 'GET'
-        ? await ownerGet(authToken, path, init)
-        : await ownerFetch(authToken, method, path, body, init);
+    const response = await deviceDriveCall(method, path, body, { accessToken });
 
     if (
       (response.status === 401 || response.status === 409) &&
@@ -439,7 +423,7 @@ export class GoogleDriveBackend extends AbstractStorageBackend {
       this.clearDeadToken();
       const refreshed = await this.ensureAccessToken();
       if (refreshed) {
-        return this.driveFetch(method, path, body, pnIdentifier, retryCount + 1);
+        return this.driveFetch(method, path, body, _pnIdentifier, retryCount + 1);
       }
       await this.handleAuthFailure();
       throw new Error('Google Drive authentication expired. Please reconnect.');

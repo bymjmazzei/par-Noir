@@ -4,6 +4,7 @@
  */
 
 import { getDatabasePool } from '../utils/database';
+import { cacheActorId } from '../utils/cacheActor';
 import { DriveIndexError } from './pnDriveIndex';
 
 // Types (duplicated from frontend to avoid circular dependencies)
@@ -388,7 +389,7 @@ export class FeedService {
         SELECT subscription_id FROM feed_subscriptions 
         WHERE feed_id = $1 AND user_did = $2
         LIMIT 1
-      `, [feedId, userPnIdentifier]);
+      `, [feedId, cacheActorId(userPnIdentifier)]);
       
       const isNewSubscription = existing.rows.length === 0;
       if (!feed) {
@@ -402,7 +403,7 @@ export class FeedService {
         INSERT INTO feed_subscriptions (feed_id, user_did)
         VALUES ($1, $2)
         ON CONFLICT (feed_id, user_did) DO NOTHING
-      `, [feedId, userPnIdentifier]);
+      `, [feedId, cacheActorId(userPnIdentifier)]);
 
       // Add to creator subscriber index (database)
       await db.query(`
@@ -410,7 +411,7 @@ export class FeedService {
         VALUES ($1, $2, $3)
         ON CONFLICT (creator_did, subscriber_did, feed_id) 
         DO UPDATE SET subscribed_at = NOW()
-      `, [creatorDid, userPnIdentifier, feedId]);
+      `, [cacheActorId(creatorDid), cacheActorId(userPnIdentifier), feedId]);
 
       const { CreatorSubscriberStorage } = await import('./creatorSubscriberStorage');
       await CreatorSubscriberStorage.storeSubscriberOnCreatorDrive(
@@ -456,13 +457,13 @@ export class FeedService {
       await db.query(`
         DELETE FROM feed_subscriptions 
         WHERE feed_id = $1 AND user_did = $2
-      `, [feedId, userPnIdentifier]);
+      `, [feedId, cacheActorId(userPnIdentifier)]);
 
       // Remove from creator subscriber index
       await db.query(`
         DELETE FROM creator_subscriber_index
         WHERE creator_did = $1 AND subscriber_did = $2 AND feed_id = $3
-      `, [creatorDid, userPnIdentifier, feedId]);
+      `, [cacheActorId(creatorDid), cacheActorId(userPnIdentifier), feedId]);
 
       const { CreatorSubscriberStorage } = await import('./creatorSubscriberStorage');
       await CreatorSubscriberStorage.removeSubscriberFromCreatorDrive(
@@ -509,7 +510,7 @@ export class FeedService {
       FROM creator_subscriber_index
       WHERE creator_did = $1
       ORDER BY subscribed_at DESC
-    `, [creatorDid]);
+    `, [cacheActorId(creatorDid)]);
 
     return result.rows.map(row => ({
       subscriberDid: row.subscriber_did,
@@ -529,7 +530,7 @@ export class FeedService {
       SELECT 1 FROM feed_subscriptions 
       WHERE feed_id = $1 AND user_did = $2
       LIMIT 1
-      `, [feedId, userPnIdentifier]);
+      `, [feedId, cacheActorId(userPnIdentifier)]);
 
     return result.rows.length > 0;
   }
@@ -545,7 +546,7 @@ export class FeedService {
       INNER JOIN feed_subscriptions fs ON f.feed_id = fs.feed_id
       WHERE fs.user_did = $1
       ORDER BY fs.subscribed_at DESC
-    `, [userPnIdentifier]);
+    `, [cacheActorId(userPnIdentifier)]);
 
     return result.rows.map(row => this.rowToFeed(row));
   }
@@ -791,7 +792,7 @@ export class FeedService {
       INNER JOIN feed_subscriptions fs ON f.feed_id = fs.feed_id
       WHERE fs.user_did = $1
         AND f.feed_category IS NOT NULL
-    `, [filters.userPnIdentifier]);
+    `, [cacheActorId(filters.userPnIdentifier)]);
 
     const userCategories = userCategoriesResult.rows.map(row => row.feed_category);
 
@@ -809,7 +810,7 @@ export class FeedService {
           AND fs2.user_did = $1
         )
     `;
-    const params: any[] = [filters.userPnIdentifier];
+    const params: any[] = [cacheActorId(filters.userPnIdentifier)];
     let paramCount = 1;
 
     // Prioritize feeds in categories user already subscribes to
@@ -844,7 +845,7 @@ export class FeedService {
       verificationId: string;
       verifiedZKPs: any;
     },
-    opts?: { cloudAccessToken?: string }
+    opts?: { cloudAccessToken?: string; deviceFolderId?: string }
   ): Promise<Feed> {
     const db = getDatabasePool();
     const crypto = await import('crypto');
@@ -864,10 +865,7 @@ export class FeedService {
       }
 
       const ownerPnIdentifier = creatorCredentials.identityId;
-      const cloudAccessToken = opts?.cloudAccessToken?.trim();
-      if (!cloudAccessToken) {
-        throw Object.assign(new Error('cloud_token_required'), { code: 'CLOUD_TOKEN_REQUIRED' });
-      }
+      const deviceFolderId = opts?.deviceFolderId?.trim();
 
       const registerOwnedFeedAsset = async (subPnIdentifier: string, rootPn: string) => {
         const existing = await db.query(
@@ -947,45 +945,13 @@ export class FeedService {
           // Creating the feed folder writes to the creator's Drive, which needs
           // their device-held token. Without one, fail rather than leave the feed
           // marked active with no folder behind it.
-          const accessToken = opts?.cloudAccessToken?.trim();
-          if (!accessToken) {
+          if (!deviceFolderId) {
             throw new DriveIndexError(
-              'Feed folder creation requires the creator\'s Drive token. Activate the feed from an unlocked session that forwards X-PN-Cloud-Access-Token.',
+              'Create the feed folder on the device and submit deviceFolderId.',
               'CLOUD_TOKEN_REQUIRED'
             );
           }
-          const feedFolderName = `par Noir - Feed: ${feed.feedName}`;
-          const feedFolderResponse = await fetch('https://www.googleapis.com/drive/v3/files', {
-            method: 'POST',
-            headers: {
-              Authorization: `Bearer ${accessToken}`,
-              'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-              name: feedFolderName,
-              mimeType: 'application/vnd.google-apps.folder'
-            })
-          });
-
-          if (feedFolderResponse.ok) {
-            const folderData = (await feedFolderResponse.json()) as { id: string };
-            storageFolderRef = folderData.id;
-            const subfolders = ['_metadata', 'top-post', 'posts'];
-            for (const subfolderName of subfolders) {
-              await fetch('https://www.googleapis.com/drive/v3/files', {
-                method: 'POST',
-                headers: {
-                  Authorization: `Bearer ${accessToken}`,
-                  'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                  name: subfolderName,
-                  mimeType: 'application/vnd.google-apps.folder',
-                  parents: [storageFolderRef]
-                })
-              });
-            }
-          }
+          storageFolderRef = deviceFolderId;
         }
 
         // Update feed with sub-pN, owner pN, status, and Google Drive folder ID

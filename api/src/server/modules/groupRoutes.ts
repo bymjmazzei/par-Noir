@@ -30,28 +30,9 @@ export function setupGroupRoutes(app: express.Application, deps: GroupRouteDeps)
         if (!userPnIdentifier) {
           return res.status(400).json({ error: 'userPnIdentifier is required' });
         }
-        const { GroupSheetsService } = await import('./groupSheetsService');
-        const { requireOwnerDriveContextFromReq, DriveIndexError } = await import('./ownerDriveToken');
-        const { PN_DRIVE_SHEET_KEYS } = await import('./pnDriveIndex');
-        const { isGoogleSheetsRateLimit } = await import('./googleSheetsRateLimit');
-
-        let ctx;
-        try {
-          ctx = await requireOwnerDriveContextFromReq(req, userPnIdentifier);
-        } catch (error: unknown) {
-          if (error instanceof DriveIndexError) {
-            return res.json({ groups: [] });
-          }
-          throw error;
-        }
-
-        const groups = await GroupSheetsService.listGroupsForUser(
-          ctx.token,
-          ctx.sheetId(PN_DRIVE_SHEET_KEYS.GROUPS),
-          ctx.pnIdentifier,
-          ctx.accountId
-        );
-        return res.json({ groups });
+        const { respondCloudOnDevice } = await import('./deviceCloudResult');
+        respondCloudOnDevice(res);
+        return;
       } catch (error: any) {
         console.error('Error listing groups:', error);
         const { isGoogleSheetsRateLimit } = await import('./googleSheetsRateLimit');
@@ -90,122 +71,13 @@ export function setupGroupRoutes(app: express.Application, deps: GroupRouteDeps)
           return res.status(400).json({ error: 'Maximum 15 group members' });
         }
 
-        const { GroupSheetsService } = await import('./groupSheetsService');
-        const { ConnectionsService } = await import('./connectionsService');
-        const { storageCredentialsService } = await import('./storageCredentialsService');
-        const { resolveOwnerDriveToken, respondDriveTokenError } = await import('./ownerDriveToken');
-
-        const ownerCreds = await storageCredentialsService.getCredentials(ownerPnIdentifier);
-        if (!ownerCreds?.credentials) {
-          return res.status(404).json({ error: 'Owner credentials not found' });
+        const { readDeviceCloudResult, respondCloudOnDevice } = await import('./deviceCloudResult');
+        const submitted = readDeviceCloudResult(req.body);
+        if (!submitted?.spreadsheetId) {
+          respondCloudOnDevice(res);
+          return;
         }
-        const accounts =
-          ownerCreds.credentials.googleDriveAccounts ||
-          (ownerCreds.credentials.googleDrive ? [ownerCreds.credentials.googleDrive] : []);
-        if (accounts.length === 0) {
-          return res.status(404).json({ error: 'Owner has no Google Drive connected' });
-        }
-        const account = accounts[0];
-        let accountId = account ? extractAccountId(account) : undefined;
-        let token;
-        try {
-          const resolved = await resolveOwnerDriveToken(req, ownerPnIdentifier, { account, accountId });
-          token = resolved.token;
-          accountId = resolved.accountId ?? accountId;
-        } catch (e) {
-          if (respondDriveTokenError(res, e)) return;
-          throw e;
-        }
-        const metadataFolder = await getMetadataFolder(token, ownerPnIdentifier, accountId);
-        if (!metadataFolder?.metadataFolderId) {
-          return res.status(404).json({ error: 'Owner metadata folder not found' });
-        }
-
-        for (const m of members) {
-          if (m.memberPnIdentifier === ownerPnIdentifier) continue;
-          const connected = await ConnectionsService.areConnected(
-            token.access_token,
-            metadataFolder.metadataFolderId,
-            ownerPnIdentifier,
-            m.memberPnIdentifier
-          );
-          if (!connected) {
-            return res.status(403).json({
-              error: `Not connected to ${m.memberPnIdentifier}`,
-              requiresConnection: true
-            });
-          }
-        }
-
         const createdAt = new Date().toISOString();
-        const sheetId = await GroupSheetsService.getOrCreateGroupsSheet(
-          token,
-          metadataFolder.metadataFolderId,
-          ownerPnIdentifier,
-          accountId
-        );
-        const memberInputs = members.map((m) => ({
-          memberPnIdentifier: m.memberPnIdentifier,
-          accessRole: (m.accessRole === 'readOnly' ? 'readOnly' : 'readWrite') as 'readWrite' | 'readOnly',
-          wrappedChatKey: m.wrappedChatKey
-        }));
-        await GroupSheetsService.appendGroupMembers(
-          token,
-          sheetId,
-          groupId,
-          ownerPnIdentifier,
-          title,
-          createdAt,
-          memberInputs,
-          ownerPnIdentifier,
-          accountId
-        );
-
-        const { MessageSheetsService } = await import('./messageSheetsService');
-        const messagesFolderId = await MessageSheetsService.getOrCreateMessagesFolder(
-          token,
-          metadataFolder.pnFolderId!,
-          ownerPnIdentifier,
-          accountId
-        );
-        const ownerConvId = await MessageSheetsService.getOrCreateGroupConversationSheet(
-          token,
-          messagesFolderId,
-          groupId,
-          ownerPnIdentifier,
-          accountId
-        );
-        await GroupSheetsService.updateConversationSpreadsheetId(
-          token,
-          sheetId,
-          groupId,
-          ownerPnIdentifier,
-          ownerConvId,
-          ownerPnIdentifier,
-          accountId
-        );
-
-        // Owner Inbox row — without this the group only exists in UI state until a
-        // peer-applied inbox update; leaving the thread makes the group disappear.
-        const ownerInboxSheetId = await MessageSheetsService.getOrCreateInboxSheet(
-          token,
-          messagesFolderId,
-          ownerPnIdentifier,
-          accountId
-        );
-        await MessageSheetsService.updateGroupInboxEntry(
-          token,
-          ownerInboxSheetId,
-          groupId,
-          ownerConvId,
-          ownerPnIdentifier,
-          createdAt,
-          ownerPnIdentifier,
-          accountId,
-          `Created group: ${title.trim()}`
-        );
-
-        // Dual silo: each member creates their own conversation sheet on apply.
         const { enqueueSocialJob } = await import('./socialRail');
         const { mailboxRequestId } = await import('./socialMailboxService');
         await Promise.all(
@@ -260,111 +132,22 @@ export function setupGroupRoutes(app: express.Application, deps: GroupRouteDeps)
           });
         }
 
-        const { GroupSheetsService } = await import('./groupSheetsService');
-        const { ConnectionsService } = await import('./connectionsService');
-        const { MessageSheetsService } = await import('./messageSheetsService');
-        const { storageCredentialsService } = await import('./storageCredentialsService');
-        const { resolveOwnerDriveToken, respondDriveTokenError } = await import('./ownerDriveToken');
-
-        const ownerCreds = await storageCredentialsService.getCredentials(ownerPnIdentifier);
-        if (!ownerCreds?.credentials) {
-          return res.status(404).json({ error: 'Owner credentials not found' });
+        const { readDeviceCloudResult, respondCloudOnDevice } = await import('./deviceCloudResult');
+        const submitted = readDeviceCloudResult(req.body);
+        if (!submitted?.spreadsheetId) {
+          respondCloudOnDevice(res);
+          return;
         }
-        const accounts =
-          ownerCreds.credentials.googleDriveAccounts ||
-          (ownerCreds.credentials.googleDrive ? [ownerCreds.credentials.googleDrive] : []);
-        if (accounts.length === 0) {
-          return res.status(404).json({ error: 'Owner has no Google Drive connected' });
-        }
-        const account = accounts[0];
-        let accountId = account ? extractAccountId(account) : undefined;
-        let token;
-        try {
-          const resolved = await resolveOwnerDriveToken(req, ownerPnIdentifier, { account, accountId });
-          token = resolved.token;
-          accountId = resolved.accountId ?? accountId;
-        } catch (e) {
-          if (respondDriveTokenError(res, e)) return;
-          throw e;
-        }
-        const metadataFolder = await getMetadataFolder(token, ownerPnIdentifier, accountId);
-        if (!metadataFolder?.metadataFolderId) {
-          return res.status(404).json({ error: 'Owner metadata folder not found' });
-        }
-
-        const connected = await ConnectionsService.areConnected(
-          token.access_token,
-          metadataFolder.metadataFolderId,
-          ownerPnIdentifier,
-          memberPnIdentifier
-        );
-        if (!connected) {
-          return res.status(403).json({ error: 'Owner must be connected to the new member', requiresConnection: true });
-        }
-
-        const sheetId = await GroupSheetsService.getOrCreateGroupsSheet(
-          token,
-          metadataFolder.metadataFolderId,
-          ownerPnIdentifier,
-          accountId
-        );
-        const ownerRows = await GroupSheetsService.listGroupsForUser(
-          token,
-          sheetId,
-          ownerPnIdentifier,
-          accountId
-        );
-        const groupMeta = ownerRows.find((r) => r.groupId === groupId);
-        if (!groupMeta) {
-          return res.status(404).json({ error: 'Group not found' });
-        }
-        const title = groupMeta.title;
-        const createdAt = groupMeta.createdAt;
+        const title = String((req.body as { title?: string })?.title || '');
+        const createdAt = new Date().toISOString();
         const role = accessRole === 'readOnly' ? 'readOnly' : 'readWrite';
-
-        await GroupSheetsService.appendSingleMember(
-          token,
-          sheetId,
-          groupId,
-          ownerPnIdentifier,
-          title,
-          createdAt,
-          { memberPnIdentifier, accessRole: role, wrappedChatKey },
-          ownerPnIdentifier,
-          accountId
-        );
-
-        const ownerConvSheetId = await GroupSheetsService.getCanonicalGroupConversationSpreadsheetId(
-          token,
-          sheetId,
-          groupId,
-          ownerPnIdentifier,
-          accountId
-        );
-        if (!ownerConvSheetId) {
-          return res.status(404).json({ error: 'Group conversation not found on owner Drive' });
-        }
-
-        const roster = await GroupSheetsService.getGroupMembers(
-          token,
-          sheetId,
-          groupId,
-          ownerPnIdentifier,
-          accountId
-        );
-        const sealedMembers = roster.map((m) => ({
-          memberPnIdentifier: m.memberPnIdentifier,
-          wrappedChatKey: m.wrappedChatKey,
-          accessRole: m.accessRole
-        }));
-        if (!sealedMembers.some((m) => m.memberPnIdentifier === memberPnIdentifier)) {
-          sealedMembers.push({
+        const sealedMembers = [
+          {
             memberPnIdentifier,
             wrappedChatKey,
             accessRole: role
-          });
-        }
-
+          }
+        ];
         const { enqueueSocialJob } = await import('./socialRail');
         const { mailboxRequestId } = await import('./socialMailboxService');
         const delivered = await enqueueSocialJob({
@@ -435,61 +218,12 @@ export function setupGroupRoutes(app: express.Application, deps: GroupRouteDeps)
           return res.status(400).json({ error: 'Owner cannot be removed from the group' });
         }
 
-        const { GroupSheetsService } = await import('./groupSheetsService');
-        const { storageCredentialsService } = await import('./storageCredentialsService');
-        const { resolveOwnerDriveToken, respondDriveTokenError } = await import('./ownerDriveToken');
-
-        const ownerCreds = await storageCredentialsService.getCredentials(ownerPnIdentifier);
-        if (!ownerCreds?.credentials) {
-          return res.status(404).json({ error: 'Owner credentials not found' });
+        const { readDeviceCloudResult, respondCloudOnDevice } = await import('./deviceCloudResult');
+        const submitted = readDeviceCloudResult(req.body);
+        if (!submitted?.spreadsheetId) {
+          respondCloudOnDevice(res);
+          return;
         }
-        const accounts =
-          ownerCreds.credentials.googleDriveAccounts ||
-          (ownerCreds.credentials.googleDrive ? [ownerCreds.credentials.googleDrive] : []);
-        if (accounts.length === 0) {
-          return res.status(404).json({ error: 'No Google Drive connected' });
-        }
-        const account = accounts[0];
-        let accountId = account ? extractAccountId(account) : undefined;
-        let token;
-        try {
-          const resolved = await resolveOwnerDriveToken(req, ownerPnIdentifier, { account, accountId });
-          token = resolved.token;
-          accountId = resolved.accountId ?? accountId;
-        } catch (e) {
-          if (respondDriveTokenError(res, e)) return;
-          throw e;
-        }
-        const metadataFolder = await getMetadataFolder(token, ownerPnIdentifier, accountId);
-        if (!metadataFolder?.metadataFolderId) {
-          return res.status(404).json({ error: 'Metadata folder not found' });
-        }
-        const sheetId = await GroupSheetsService.getOrCreateGroupsSheet(
-          token,
-          metadataFolder.metadataFolderId,
-          ownerPnIdentifier,
-          accountId
-        );
-        const okOwner = await GroupSheetsService.rotateGroupMemberKeys(
-          token,
-          sheetId,
-          groupId,
-          memberPn,
-          keyRotation.map((k) => ({
-            memberPnIdentifier: k.memberPnIdentifier,
-            wrappedChatKey: k.wrappedChatKey,
-            accessRole: (k.accessRole === 'readOnly' ? 'readOnly' : 'readWrite') as 'readWrite' | 'readOnly'
-          })),
-          ownerPnIdentifier,
-          accountId
-        );
-        if (!okOwner) {
-          return res.status(404).json({ error: 'Group member not found' });
-        }
-
-        // The removed member drops their own group row, and each remaining
-        // member rewraps their own chat key. Both used to run against their
-        // Drives from here.
         const { enqueueSocialJob } = await import('./socialRail');
         const { mailboxRequestId } = await import('./socialMailboxService');
         await enqueueSocialJob({
@@ -555,65 +289,20 @@ export function setupGroupRoutes(app: express.Application, deps: GroupRouteDeps)
           });
         }
 
-        const { GroupSheetsService } = await import('./groupSheetsService');
-        const { requireOwnerDriveContextFromReq, DriveIndexError } = await import('./ownerDriveToken');
-        const { PN_DRIVE_SHEET_KEYS } = await import('./pnDriveIndex');
         const { enqueueSocialJob } = await import('./socialRail');
-        const { isDeviceCloudCustodyEnabled } = await import('./socialMailboxService');
-
-        if (!isDeviceCloudCustodyEnabled()) {
-          return res.status(503).json({
-            error: 'device_cloud_custody_required',
-            message: 'Group messaging requires device cloud custody.'
-          });
+        const { readDeviceCloudResult, respondCloudOnDevice } = await import('./deviceCloudResult');
+        const submitted = readDeviceCloudResult(req.body);
+        if (!submitted?.spreadsheetId) {
+          respondCloudOnDevice(res);
+          return;
         }
-
-        let ctx;
-        try {
-          ctx = await requireOwnerDriveContextFromReq(req, senderPn);
-        } catch (error: unknown) {
-          if (error instanceof DriveIndexError) {
-            return res.status(404).json({ error: 'Drive not initialized' });
-          }
-          throw error;
-        }
-
-        const groups = await GroupSheetsService.listGroupsForUser(
-          ctx.token,
-          ctx.sheetId(PN_DRIVE_SHEET_KEYS.GROUPS),
-          ctx.pnIdentifier,
-          ctx.accountId
-        );
-        const myRow =
-          groups.find((g) => g.groupId === groupId && g.memberPnIdentifier === senderPn) ||
-          groups.find((g) => g.groupId === groupId);
-        if (!myRow) {
-          return res.status(403).json({ error: 'Not a member of this group' });
-        }
-        if (myRow.accessRole === 'readOnly') {
-          return res.status(403).json({ error: 'Read-only members cannot send' });
-        }
-
         const messageId =
           (typeof bodyMessageId === 'string' && bodyMessageId.trim()) ||
           `gmsg_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
         const timestamp =
           (typeof bodyTimestamp === 'string' && bodyTimestamp) || new Date().toISOString();
-
-        // Full roster (not listGroupsForUser) — members need other members for fanout.
-        const roster = await GroupSheetsService.listGroupRoster(
-          ctx.token,
-          ctx.sheetId(PN_DRIVE_SHEET_KEYS.GROUPS),
-          groupId,
-          ctx.pnIdentifier,
-          ctx.accountId
-        );
-        const memberPns = [
-          ...new Set(roster.map((r) => r.memberPnIdentifier).filter(Boolean))
-        ];
-
-        const peers = memberPns.filter((pn) => pn !== senderPn);
-        if (peers.length === 0 && Array.isArray(req.body?.recipientPnIdentifiers)) {
+        const peers: string[] = [];
+        if (Array.isArray(req.body?.recipientPnIdentifiers)) {
           for (const pn of req.body.recipientPnIdentifiers) {
             if (typeof pn === 'string' && pn && pn !== senderPn) peers.push(pn);
           }
@@ -715,36 +404,9 @@ export function setupGroupRoutes(app: express.Application, deps: GroupRouteDeps)
         if (!userPnIdentifier || !groupId) {
           return res.status(400).json({ error: 'userPnIdentifier and groupId are required' });
         }
-        const { GroupSheetsService } = await import('./groupSheetsService');
-        const { requireOwnerDriveContextFromReq, DriveIndexError } = await import('./ownerDriveToken');
-        const { PN_DRIVE_SHEET_KEYS } = await import('./pnDriveIndex');
-        let ctx;
-        try {
-          ctx = await requireOwnerDriveContextFromReq(req, userPnIdentifier);
-        } catch (error: unknown) {
-          if (error instanceof DriveIndexError) {
-            return res.json({ members: [] });
-          }
-          throw error;
-        }
-        const roster = await GroupSheetsService.listGroupRoster(
-          ctx.token,
-          ctx.sheetId(PN_DRIVE_SHEET_KEYS.GROUPS),
-          groupId,
-          ctx.pnIdentifier,
-          ctx.accountId
-        );
-        if (roster.length === 0) {
-          return res.status(403).json({ error: 'Not a member of this group' });
-        }
-        return res.json({
-          members: roster.map((r) => ({
-            memberPnIdentifier: r.memberPnIdentifier,
-            ownerPnIdentifier: r.ownerPnIdentifier,
-            accessRole: r.accessRole,
-            title: r.title
-          }))
-        });
+        const { respondCloudOnDevice } = await import('./deviceCloudResult');
+        respondCloudOnDevice(res);
+        return;
       } catch (error: any) {
         console.error('Error listing group roster:', error);
         return res.status(500).json({
@@ -765,77 +427,9 @@ export function setupGroupRoutes(app: express.Application, deps: GroupRouteDeps)
           return res.status(400).json({ error: 'userPnIdentifier and groupId are required' });
         }
 
-        const { GroupSheetsService } = await import('./groupSheetsService');
-        const { MessageSheetsService } = await import('./messageSheetsService');
-        const { requireOwnerDriveContextFromReq, DriveIndexError } = await import('./ownerDriveToken');
-        const { PN_DRIVE_SHEET_KEYS } = await import('./pnDriveIndex');
-
-        let ctx;
-        try {
-          ctx = await requireOwnerDriveContextFromReq(req, userPnIdentifier);
-        } catch (error: unknown) {
-          if (error instanceof DriveIndexError) {
-            return res.json({ messages: [], total: 0 });
-          }
-          throw error;
-        }
-
-        const groups = await GroupSheetsService.listGroupsForUser(
-          ctx.token,
-          ctx.sheetId(PN_DRIVE_SHEET_KEYS.GROUPS),
-          ctx.pnIdentifier,
-          ctx.accountId
-        );
-        const myRow = groups.find(
-          (g) => g.groupId === groupId && g.memberPnIdentifier === userPnIdentifier
-        ) || groups.find((g) => g.groupId === groupId);
-        if (!myRow) {
-          return res.status(403).json({ error: 'Not a member of this group' });
-        }
-
-        let convSheetId =
-          (typeof req.query.spreadsheetId === 'string' && req.query.spreadsheetId) ||
-          myRow.conversationSpreadsheetId;
-        if (!convSheetId) {
-          const messagesFolderId = await MessageSheetsService.getOrCreateMessagesFolder(
-            ctx.token,
-            ctx.index.pnFolderId,
-            ctx.pnIdentifier,
-            ctx.accountId
-          );
-          convSheetId = await MessageSheetsService.getOrCreateGroupConversationSheet(
-            ctx.token,
-            messagesFolderId,
-            groupId,
-            ctx.pnIdentifier,
-            ctx.accountId
-          );
-          await GroupSheetsService.updateConversationSpreadsheetId(
-            ctx.token,
-            ctx.sheetId(PN_DRIVE_SHEET_KEYS.GROUPS),
-            groupId,
-            userPnIdentifier,
-            convSheetId,
-            ctx.pnIdentifier,
-            ctx.accountId
-          );
-        }
-
-        const result = await MessageSheetsService.getMessages(
-          ctx.token,
-          convSheetId,
-          '',
-          '',
-          ctx.pnIdentifier,
-          ctx.accountId,
-          {
-            limit,
-            offset,
-            includeTotal: true,
-            relayOnly: true
-          }
-        );
-        return res.json({ messages: result.messages, total: result.total, spreadsheetId: convSheetId });
+        const { respondCloudOnDevice } = await import('./deviceCloudResult');
+        respondCloudOnDevice(res);
+        return;
       } catch (error: any) {
         console.error('Error loading group messages:', error);
         return res.status(500).json({
@@ -860,337 +454,14 @@ export function setupGroupRoutes(app: express.Application, deps: GroupRouteDeps)
           return res.status(400).json({ error: 'Unsupported jobType' });
         }
 
-        const { GroupSheetsService } = await import('./groupSheetsService');
-        const { MessageSheetsService } = await import('./messageSheetsService');
-        const { storageCredentialsService } = await import('./storageCredentialsService');
-        const { resolveOwnerDriveToken, respondDriveTokenError } = await import('./ownerDriveToken');
-
-        const pnIdentifier = String(userPnIdentifier);
-        const credentials = await storageCredentialsService.getCredentials(pnIdentifier);
-        if (!credentials?.credentials) {
-          return res.status(404).json({ error: 'User credentials not found' });
+        const { readDeviceCloudResult, respondCloudOnDevice } = await import('./deviceCloudResult');
+        const submitted = readDeviceCloudResult(req.body);
+        if (!submitted) {
+          respondCloudOnDevice(res);
+          return;
         }
-        const accounts =
-          credentials.credentials.googleDriveAccounts ||
-          (credentials.credentials.googleDrive ? [credentials.credentials.googleDrive] : []);
-        const account = accounts.length > 0 ? accounts[0] : null;
-        let accountId = account ? extractAccountId(account) : undefined;
-        let token;
-        try {
-          const resolved = await resolveOwnerDriveToken(req, pnIdentifier, { account, accountId });
-          token = resolved.token;
-          accountId = resolved.accountId ?? accountId;
-        } catch (e) {
-          if (respondDriveTokenError(res, e)) return;
-          throw e;
-        }
-        const metadataFolder = await getMetadataFolder(token, pnIdentifier, accountId);
-        if (!metadataFolder?.metadataFolderId) {
-          return res.status(404).json({ error: 'Metadata folder not found' });
-        }
-        const groupsSheetId = await GroupSheetsService.getOrCreateGroupsSheet(
-          token,
-          metadataFolder.metadataFolderId,
-          pnIdentifier,
-          accountId
-        );
+        return res.json({ success: true, jobType, groupId, ...submitted });
 
-        if (jobType === 'group_message_append') {
-          // Dual silo: every member appends into their own conversation sheet.
-          const ownRow = await GroupSheetsService.getMemberRow(
-            token,
-            groupsSheetId,
-            String(groupId),
-            pnIdentifier,
-            pnIdentifier,
-            accountId
-          );
-          if (!ownRow) {
-            return res.status(403).json({ error: 'Not a member of this group' });
-          }
-
-          let convSheetId = ownRow.conversationSpreadsheetId;
-          if (!convSheetId) {
-            const messagesFolderId = await MessageSheetsService.getOrCreateMessagesFolder(
-              token,
-              metadataFolder.pnFolderId!,
-              pnIdentifier,
-              accountId
-            );
-            convSheetId = await MessageSheetsService.getOrCreateGroupConversationSheet(
-              token,
-              messagesFolderId,
-              String(groupId),
-              pnIdentifier,
-              accountId
-            );
-            await GroupSheetsService.updateConversationSpreadsheetId(
-              token,
-              groupsSheetId,
-              String(groupId),
-              pnIdentifier,
-              convSheetId,
-              pnIdentifier,
-              accountId
-            );
-          }
-
-          const {
-            messageId,
-            timestamp,
-            encryptedContent,
-            fromPnIdentifier,
-            mediaFileId,
-            mediaBackend,
-            mediaMimeType,
-            role: messageRole
-          } = req.body;
-          if (typeof encryptedContent !== 'string' || !encryptedContent) {
-            return res.status(400).json({ error: 'encryptedContent is required' });
-          }
-          if (typeof messageId !== 'string' || !messageId.trim()) {
-            return res.status(400).json({ error: 'messageId is required' });
-          }
-
-          const role = String(messageRole || 'recipient');
-          const fromPn =
-            typeof fromPnIdentifier === 'string' && fromPnIdentifier
-              ? String(fromPnIdentifier)
-              : role === 'sender'
-                ? pnIdentifier
-                : '';
-          if (!fromPn) {
-            return res.status(400).json({
-              error: 'fromPnIdentifier is required for group_message_append'
-            });
-          }
-
-          const appliedAt = String(timestamp || new Date().toISOString());
-          await MessageSheetsService.appendMessage(
-            token,
-            convSheetId,
-            {
-              messageId: String(messageId).trim(),
-              fromPnIdentifier: fromPn,
-              toPnIdentifier: String(groupId),
-              content: '',
-              timestamp: appliedAt,
-              read: role === 'sender',
-              encryptedContent,
-              cryptoVersion: 2 as const,
-              ...(mediaFileId
-                ? {
-                    mediaFileId,
-                    mediaBackend,
-                    ...(mediaMimeType ? { mediaMimeType } : {})
-                  }
-                : {})
-            },
-            '',
-            '',
-            pnIdentifier,
-            accountId,
-            { absoluteFrom: true }
-          );
-
-          const messagesFolderId = await MessageSheetsService.getOrCreateMessagesFolder(
-            token,
-            metadataFolder.pnFolderId!,
-            pnIdentifier,
-            accountId
-          );
-          const inboxSheetId = await MessageSheetsService.getOrCreateInboxSheet(
-            token,
-            messagesFolderId,
-            pnIdentifier,
-            accountId
-          );
-          const ownerPn =
-            (typeof req.body?.ownerPnIdentifier === 'string' && req.body.ownerPnIdentifier) ||
-            ownRow.ownerPnIdentifier ||
-            pnIdentifier;
-          await MessageSheetsService.updateGroupInboxEntry(
-            token,
-            inboxSheetId,
-            String(groupId),
-            convSheetId,
-            String(ownerPn),
-            appliedAt,
-            pnIdentifier,
-            accountId,
-            role === 'sender' ? 'You: (encrypted)' : '(encrypted)'
-          );
-
-          const { invalidateGroupFileMtime } = await import('./messagingReadCache');
-          await invalidateGroupFileMtime(pnIdentifier, convSheetId);
-          return res.json({ success: true, spreadsheetId: convSheetId });
-        }
-
-        // group_inbox_update: the member maintains its own group row and inbox.
-        const { removed, keyRotation, ownerPnIdentifier, title, createdAt, accessRole, wrappedChatKey, preview } = req.body;
-
-        if (removed) {
-          await GroupSheetsService.removeGroupMember(
-            token,
-            groupsSheetId,
-            String(groupId),
-            pnIdentifier,
-            pnIdentifier,
-            accountId
-          );
-          try {
-            const { MessageSheetsService } = await import('./messageSheetsService');
-            const messagesFolderId = await MessageSheetsService.getOrCreateMessagesFolder(
-              token,
-              metadataFolder.pnFolderId!,
-              pnIdentifier,
-              accountId
-            );
-            const inboxSheetId = await MessageSheetsService.getOrCreateInboxSheet(
-              token,
-              messagesFolderId,
-              pnIdentifier,
-              accountId
-            );
-            await MessageSheetsService.removeGroupInboxEntry(
-              token,
-              inboxSheetId,
-              String(groupId),
-              pnIdentifier,
-              accountId
-            );
-            await MessageSheetsService.deleteGroupConversationSheet(
-              token,
-              messagesFolderId,
-              String(groupId),
-              pnIdentifier,
-              accountId
-            );
-          } catch (cleanupErr: unknown) {
-            console.warn(
-              '[group_inbox_update] removed cleanup failed:',
-              cleanupErr instanceof Error ? cleanupErr.message : cleanupErr
-            );
-          }
-          const { invalidateMessagingCachesForUsers } = await import('./messagingReadCache');
-          await invalidateMessagingCachesForUsers([pnIdentifier]).catch(() => undefined);
-          return res.json({ success: true });
-        }
-
-        if (Array.isArray(keyRotation)) {
-          await GroupSheetsService.rotateGroupMemberKeys(
-            token,
-            groupsSheetId,
-            String(groupId),
-            pnIdentifier,
-            keyRotation.map((k: any) => ({
-              memberPnIdentifier: String(k.memberPnIdentifier),
-              wrappedChatKey: String(k.wrappedChatKey),
-              accessRole: (k.accessRole === 'readOnly' ? 'readOnly' : 'readWrite') as 'readWrite' | 'readOnly'
-            })),
-            pnIdentifier,
-            accountId
-          );
-          return res.json({ success: true });
-        }
-
-        if (title && !ownerPnIdentifier) {
-          await GroupSheetsService.updateGroupTitle(
-            token,
-            groupsSheetId,
-            String(groupId),
-            String(title),
-            pnIdentifier,
-            accountId
-          );
-          return res.json({ success: true });
-        }
-
-        if (ownerPnIdentifier) {
-          const messagesFolderId = await MessageSheetsService.getOrCreateMessagesFolder(
-            token,
-            metadataFolder.pnFolderId!,
-            pnIdentifier,
-            accountId
-          );
-          const ownConvId = await MessageSheetsService.getOrCreateGroupConversationSheet(
-            token,
-            messagesFolderId,
-            String(groupId),
-            pnIdentifier,
-            accountId
-          );
-          const roster = Array.isArray(req.body?.members)
-            ? (req.body.members as Array<{
-                memberPnIdentifier?: string;
-                wrappedChatKey?: string;
-                accessRole?: string;
-              }>)
-            : [
-                {
-                  memberPnIdentifier: pnIdentifier,
-                  wrappedChatKey: String(wrappedChatKey || ''),
-                  accessRole: accessRole === 'readOnly' ? 'readOnly' : 'readWrite'
-                }
-              ];
-          const memberInputs = roster
-            .filter((m) => m.memberPnIdentifier)
-            .map((m) => ({
-              memberPnIdentifier: String(m.memberPnIdentifier),
-              wrappedChatKey: String(m.wrappedChatKey || ''),
-              accessRole: (m.accessRole === 'readOnly' ? 'readOnly' : 'readWrite') as
-                | 'readWrite'
-                | 'readOnly'
-            }));
-          if (!memberInputs.some((m) => m.memberPnIdentifier === pnIdentifier)) {
-            memberInputs.push({
-              memberPnIdentifier: pnIdentifier,
-              wrappedChatKey: String(wrappedChatKey || ''),
-              accessRole: (accessRole === 'readOnly' ? 'readOnly' : 'readWrite') as
-                | 'readWrite'
-                | 'readOnly'
-            });
-          }
-          await GroupSheetsService.appendGroupMembers(
-            token,
-            groupsSheetId,
-            String(groupId),
-            String(ownerPnIdentifier),
-            String(title || ''),
-            String(createdAt || new Date().toISOString()),
-            memberInputs,
-            pnIdentifier,
-            accountId
-          );
-          await GroupSheetsService.updateConversationSpreadsheetId(
-            token,
-            groupsSheetId,
-            String(groupId),
-            pnIdentifier,
-            ownConvId,
-            pnIdentifier,
-            accountId
-          );
-          const inboxSheetId = await MessageSheetsService.getOrCreateInboxSheet(
-            token,
-            messagesFolderId,
-            pnIdentifier,
-            accountId
-          );
-          await MessageSheetsService.updateGroupInboxEntry(
-            token,
-            inboxSheetId,
-            String(groupId),
-            ownConvId,
-            String(ownerPnIdentifier),
-            new Date().toISOString(),
-            pnIdentifier,
-            accountId,
-            String(preview || '')
-          );
-        }
-
-        return res.json({ success: true });
       } catch (error: any) {
         console.error('Error applying inbound group job:', error);
         return res.status(500).json({

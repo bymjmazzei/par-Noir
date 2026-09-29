@@ -1,10 +1,28 @@
 import { describe, expect, it, vi } from 'vitest';
 import { createApiSocialApplier } from './apiSocialApplier.js';
+import { setSessionDriveIndex } from './sessionMemory.js';
 import type { MailboxJob } from './types.js';
 
 describe('createApiSocialApplier message_append', () => {
   it('POSTs opaque message_append to /api/messages/apply-inbound', async () => {
-    const fetchMock = vi.fn(async () => new Response(JSON.stringify({ success: true }), { status: 200 }));
+    setSessionDriveIndex('pn-recipient', {
+      schemaVersion: 1,
+      pnFolderId: 'pn-folder',
+      metadataFolderId: 'meta',
+      integratorsRootId: 'int',
+      messagesFolderId: 'msg',
+      inboxSheetId: 'sheet-1',
+      sheetIds: { connections: 'sheet-connections' },
+      conversationSheets: {},
+    });
+    const fetchMock = vi.fn(async (url: string) => {
+      if (String(url).includes('sheets.googleapis.com')) {
+        expect(String(url)).toContain('sheet-1');
+        expect(String(url)).not.toContain('api.parnoir.com');
+        return new Response('{}', { status: 200 });
+      }
+      return new Response(JSON.stringify({ success: true }), { status: 200 });
+    });
     vi.stubGlobal('fetch', fetchMock);
 
     const apply = createApiSocialApplier({
@@ -29,11 +47,12 @@ describe('createApiSocialApplier message_append', () => {
     };
 
     await expect(apply(job)).resolves.toBe(true);
-    expect(fetchMock).toHaveBeenCalledTimes(1);
-    const call = fetchMock.mock.calls[0];
-    expect(call).toBeDefined();
-    const url = call![0] as string;
-    const init = call![1] as RequestInit;
+    const apiCall = fetchMock.mock.calls.find((call) =>
+      String(call[0]).includes('/api/messages/apply-inbound')
+    );
+    expect(apiCall).toBeDefined();
+    const url = apiCall![0] as string;
+    const init = apiCall![1] as RequestInit;
     expect(url).toBe('https://api.example.test/api/messages/apply-inbound');
     expect(init.method).toBe('POST');
     const body = JSON.parse(String(init.body));
@@ -41,7 +60,9 @@ describe('createApiSocialApplier message_append', () => {
     expect(body.connectionId).toBe('conn-1');
     expect(body.userPnIdentifier).toBe('pn-recipient');
     expect(body.fromPnIdentifier).toBeUndefined();
-    expect((init.headers as Record<string, string>)['X-PN-Cloud-Access-Token']).toBe('cloud-at');
+    expect(body.deviceCloudResult.spreadsheetId).toBe('sheet-1');
+    expect((init.headers as Record<string, string>)['X-PN-Cloud-Access-Token']).toBeUndefined();
+    expect(fetchMock.mock.calls.some((call) => String(call[0]).includes('sheets.googleapis.com'))).toBe(true);
 
     vi.unstubAllGlobals();
   });
@@ -77,7 +98,8 @@ describe('createApiSocialApplier message_append', () => {
       openEnvelope: async () => ({ optionId: 'yes', spreadsheetId: 'sheet-1', voteId: 'v1' })
     });
     await expect(opened(job)).resolves.toBe(true);
-    const body = JSON.parse(String((fetchMock.mock.calls[0]![1] as RequestInit).body));
+    const apiCall = fetchMock.mock.calls.find((call) => String(call[0]).includes('/api/pen/apply-inbound'));
+    const body = JSON.parse(String((apiCall![1] as RequestInit).body));
     expect(body.jobType).toBe('pen.poll_vote');
     expect(body.optionId).toBe('yes');
     expect(body.spreadsheetId).toBe('sheet-1');

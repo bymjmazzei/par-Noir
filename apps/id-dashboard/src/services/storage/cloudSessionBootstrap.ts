@@ -187,16 +187,18 @@ async function ensureDriveLayout(pnIdentifier: string, apiToken: string): Promis
   const cloudTok = await resolveLocalGoogleAccessTokenAsync(pnIdentifier);
   if (!cloudTok) return false;
 
+  const { ensureDeviceDriveLayout, setSessionDriveIndex } = await import('@par-noir/device-cloud-credentials');
+  const pnDriveIndex = await ensureDeviceDriveLayout(cloudTok);
+  setSessionDriveIndex(pnIdentifier, pnDriveIndex);
   const initRes = await fetch(
     `${API_ENDPOINT.replace(/\/$/, '')}/api/storage/initialize/${encodeURIComponent(pnIdentifier)}`,
     {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${apiToken}`,
-        'X-PN-Cloud-Access-Token': cloudTok,
         'Content-Type': 'application/json'
       },
-      body: '{}'
+      body: JSON.stringify({ pnDriveIndex })
     }
   );
   // 200 or already-initialized success; do not probe owner-index here (avoids red 409 in console).

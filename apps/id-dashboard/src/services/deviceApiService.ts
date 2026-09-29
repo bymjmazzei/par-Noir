@@ -39,8 +39,6 @@ export interface DeviceRegistrySummary {
   hasKeyedDevices: boolean;
 }
 
-const PN_CLOUD_ACCESS_TOKEN_HEADER = 'X-PN-Cloud-Access-Token';
-
 /**
  * Provably fresh Google token from an envelope, or null.
  *
@@ -271,9 +269,8 @@ function platformHeaders(): Record<string, string> {
   return { 'X-PN-Client-Platform': clientPlatformHeaderValue() };
 }
 
-async function cloudTokenHeadersAsync(pnIdentifier: string): Promise<Record<string, string>> {
-  const tok = await resolveLocalGoogleAccessTokenAsync(pnIdentifier);
-  return tok ? { [PN_CLOUD_ACCESS_TOKEN_HEADER]: tok } : {};
+async function cloudTokenHeadersAsync(_pnIdentifier: string): Promise<Record<string, string>> {
+  return {};
 }
 
 async function apiFetch(
@@ -493,18 +490,28 @@ export async function initiateDeviceRegistryResetRequest(params: {
   threshold?: number;
 }): Promise<{ requestId: string }> {
   const requestId = `device-reset-${Date.now()}`;
+  const { appendDeviceCloudRow, getCloudAccessTokenFromSession, layoutSheetId } = await import(
+    '@par-noir/device-cloud-credentials'
+  );
+  const cloudToken = getCloudAccessTokenFromSession(params.userPnIdentifier);
+  const spreadsheetId = layoutSheetId(params.userPnIdentifier, 'recovery_request');
+  const payload: Record<string, unknown> = {
+    userPnIdentifier: params.userPnIdentifier,
+    requestId,
+    publicKey: params.publicKey,
+    threshold: params.threshold ?? 2,
+    claimantName: 'device-registry-reset',
+    requestType: 'device_registry_reset',
+    status: 'pending',
+    ...(spreadsheetId ? { spreadsheetId } : {}),
+  };
+  if (cloudToken && spreadsheetId) {
+    payload.deviceCloudResult = await appendDeviceCloudRow(cloudToken, payload);
+  }
   const res = await fetch(`${API_ENDPOINT}/api/recovery/requests`, {
     method: 'POST',
     headers: authHeaders(params.authToken, await cloudTokenHeadersAsync(params.userPnIdentifier)),
-    body: JSON.stringify({
-      userPnIdentifier: params.userPnIdentifier,
-      requestId,
-      publicKey: params.publicKey,
-      threshold: params.threshold ?? 2,
-      claimantName: 'device-registry-reset',
-      requestType: 'device_registry_reset',
-      status: 'pending',
-    }),
+    body: JSON.stringify(payload),
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));

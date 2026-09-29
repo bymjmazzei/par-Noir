@@ -17,6 +17,10 @@ import type { StorageCredentialsEnvelope } from '@par-noir/user-owned-storage';
 import type { MailboxJob } from './types.js';
 import { SOCIAL_JOB_TYPES_APPLIED_VIA_API } from './siloMaterialize.js';
 import { mintDriveAuthExtras, type BuildAuthHeaders } from './mintDriveAuthHeaders.js';
+import { omitCloudAccessHeader } from './cloudVault.js';
+import { appendDeviceCloudRow } from './deviceCloudRow.js';
+import { appendDeviceMessage } from './deviceSocial.js';
+import { layoutSheetId } from './layoutSheet.js';
 
 export interface ApiSocialApplierOptions {
   apiBaseUrl: string;
@@ -106,13 +110,13 @@ export function createApiSocialApplier(opts: ApiSocialApplierOptions) {
     }
     delete payload.envelope;
 
-    const body = {
+    const body: Record<string, unknown> = {
       ...payload,
       userPnIdentifier: opts.identityId,
       jobType: job.jobType
     };
 
-    const extra = await mintDriveAuthExtras({
+    const extra = omitCloudAccessHeader(await mintDriveAuthExtras({
       authToken: opts.authToken,
       pnIdentifier: opts.identityId,
       apiEndpoint: opts.apiBaseUrl,
@@ -121,7 +125,29 @@ export function createApiSocialApplier(opts: ApiSocialApplierOptions) {
       method: 'POST',
       path,
       body
-    });
+    }));
+    const cloudToken = await opts.getCloudAccessToken?.();
+    const spreadsheetId =
+      (typeof body.spreadsheetId === 'string' && body.spreadsheetId) ||
+      layoutSheetId(opts.identityId, job.jobType) ||
+      '';
+    if (cloudToken && spreadsheetId) {
+      body.spreadsheetId = spreadsheetId;
+      if (job.jobType === 'message_append') {
+        await appendDeviceMessage(cloudToken, spreadsheetId, {
+          fromPnIdentifier: String(body.userPnIdentifier || ''),
+          content: '',
+          encryptedContent: typeof body.encryptedContent === 'string' ? body.encryptedContent : '',
+          timestamp: typeof body.timestamp === 'string' ? body.timestamp : new Date().toISOString(),
+          messageId: typeof body.messageId === 'string' ? body.messageId : '',
+          read: false,
+          cryptoVersion: 2,
+        });
+        body.deviceCloudResult = { spreadsheetId, provider: 'google' };
+      } else {
+        body.deviceCloudResult = await appendDeviceCloudRow(cloudToken, body);
+      }
+    }
 
     const res = await fetch(`${base}${path}`, {
       method: 'POST',

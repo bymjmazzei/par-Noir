@@ -54,7 +54,7 @@ describe('ownerCloudHeaders custody ready-check', () => {
     } as any);
     expect(hasCloudCredentialsReady('pn-test')).toBe(true);
     const headers = ownerCloudHeaders({ authToken: 'oauth', pnIdentifier: 'pn-test' });
-    expect(headers['X-PN-Cloud-Access-Token']).toBe('ga-1');
+    expect(headers['X-PN-Cloud-Access-Token']).toBeUndefined();
     expect(headers.Authorization).toBe('Bearer oauth');
   });
 

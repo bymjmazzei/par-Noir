@@ -21,26 +21,6 @@ export interface StorageCredentialsRouteDeps {
   extractAccountId: (account: any) => string | undefined;
 }
 
-/** Init-only: discover folders/sheets, verify layout, persist complete pnDriveIndex. */
-async function initializeGoogleDriveStorage(
-  token: { access_token: string; refresh_token?: string; expires_at?: number; expires_in?: number },
-  pnIdentifier: string,
-  accountId: string | undefined,
-  credentials: Record<string, unknown>,
-  identityId: string,
-  logPrefix: string
-): Promise<{ metadataFolderId: string; pnFolderId: string }> {
-  const { runFullDriveInitAndPersist } = await import('../driveInitSteps');
-  return runFullDriveInitAndPersist(
-    token,
-    pnIdentifier,
-    accountId,
-    credentials,
-    identityId,
-    logPrefix
-  );
-}
-
 export function setupStorageCredentialsRoutes(app: Application, deps: StorageCredentialsRouteDeps) {
   const { extractAccountId } = deps;
 
@@ -295,69 +275,44 @@ export function setupStorageCredentialsRoutes(app: Application, deps: StorageCre
         }
 
         const { storageCredentialsService } = await import('../storageCredentialsService');
-        const { resolveOwnerDriveToken, respondDriveTokenError } = await import('../ownerDriveToken');
 
         const credentials = await storageCredentialsService.getCredentials(pnIdentifier);
         if (!credentials?.credentials) {
           return res.status(404).json({ error: 'No storage credentials found for identity' });
         }
 
-        const googleDriveAccounts = credentials.credentials.googleDriveAccounts ||
-          (credentials.credentials.googleDrive ? [credentials.credentials.googleDrive] : []);
-
-        if (googleDriveAccounts.length === 0) {
-          return res.status(404).json({ error: 'No Google Drive accounts connected' });
+        const submittedIndex = req.body?.pnDriveIndex as {
+          pnFolderId?: string;
+          metadataFolderId?: string;
+          sheetIds?: Record<string, string>;
+        } | undefined;
+        if (submittedIndex?.pnFolderId && submittedIndex?.metadataFolderId && submittedIndex.sheetIds) {
+          const { persistPnDriveIndex } = await import('../pnDriveIndex');
+          await persistPnDriveIndex(
+            pnIdentifier,
+            credentials.credentials as Record<string, unknown>,
+            {
+              schemaVersion: 1,
+              pnFolderId: submittedIndex.pnFolderId,
+              metadataFolderId: submittedIndex.metadataFolderId,
+              integratorsRootId: String((submittedIndex as { integratorsRootId?: string }).integratorsRootId || ''),
+              messagesFolderId: String((submittedIndex as { messagesFolderId?: string }).messagesFolderId || ''),
+              inboxSheetId: String((submittedIndex as { inboxSheetId?: string }).inboxSheetId || ''),
+              sheetIds: submittedIndex.sheetIds,
+              conversationSheets: ((submittedIndex as { conversationSheets?: Record<string, string> }).conversationSheets) || {},
+            }
+          );
+          return res.json({
+            success: true,
+            pnFolderId: submittedIndex.pnFolderId,
+            metadataFolderId: submittedIndex.metadataFolderId,
+          });
         }
-
-        const account = googleDriveAccounts.length > 0 ? googleDriveAccounts[0] : null;
-        const accountId = account ? extractAccountId(account) : undefined;
-
-        let token: {
-          access_token: string;
-          refresh_token?: string;
-          expires_at?: number;
-          expires_in?: number;
-        };
-        try {
-          const resolved = await resolveOwnerDriveToken(req, pnIdentifier, { account, accountId });
-          token = resolved.token;
-        } catch (tokenErr: unknown) {
-          if (respondDriveTokenError(res, tokenErr)) return;
-          throw tokenErr;
-        }
-
-        console.log(`[StorageInitialize POST] Re-initializing folder structure for identityId: ${sanitizedIdentityId}`);
-
-        // Do not await Drive layout here — proxies (Railway) time out long sync POSTs
-        // with 502 and no CORS headers. Start work, return 202; client polls /status.
-        const { runDriveInitOnce } = await import('../driveInitCoordinator');
-        const { withGoogleRetry } = await import('../googleApiRetry');
-        const work = runDriveInitOnce(pnIdentifier, () =>
-          withGoogleRetry(
-            'driveInitFull',
-            () =>
-              initializeGoogleDriveStorage(
-                token,
-                pnIdentifier,
-                accountId,
-                credentials.credentials as Record<string, unknown>,
-                sanitizedIdentityId,
-                `[StorageInitialize POST]`
-              ),
-            3
-          )
-        );
-        void work.catch((initError: unknown) => {
-          const msg = initError instanceof Error ? initError.message : String(initError);
-          console.error(`[StorageInitialize POST] Background init failed:`, msg);
+        return res.status(409).json({
+          error: 'cloud_on_device',
+          error_description: 'Build the Drive layout on the device and submit pnDriveIndex.',
         });
 
-        return res.status(202).json({
-          success: true,
-          initInProgress: true,
-          identityId: pnIdentifier,
-          message: 'Google Drive folder structure initialization started',
-        });
       } catch (error: any) {
         console.error('Error in storage initialize endpoint:', error);
         return res.status(500).json({

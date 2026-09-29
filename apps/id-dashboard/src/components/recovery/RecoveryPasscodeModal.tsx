@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { SectionInfo } from '../common/SectionInfo';
-import { SECRET_KEY_FORM_ATTRS, secretKeyInputProps } from '@par-noir/oauth-ui';
+import { HostedShellLaunch } from '@par-noir/oauth-ui';
 import {
   KEY_1_LABEL,
   KEY_2_LABEL,
@@ -71,35 +71,10 @@ export function RecoveryPasscodeModal({
             <p>{KEYS_HELPER}</p>
           </SectionInfo>
         </div>
-        <form onSubmit={handleSubmit} className="space-y-4" {...SECRET_KEY_FORM_ATTRS}>
-          <label className="block text-sm">
-            New {KEY_1_LABEL}
-            <input
-              {...secretKeyInputProps('key1', 'create')}
-              className="mt-1 w-full px-3 py-2 bg-secondary border border-border rounded"
-              value={newPnName}
-              onChange={(e) => setNewPnName(e.target.value)}
-            />
-          </label>
-          <label className="block text-sm">
-            New {KEY_2_LABEL}
-            <input
-              {...secretKeyInputProps('key2', 'create')}
-              className="mt-1 w-full px-3 py-2 bg-secondary border border-border rounded"
-              value={newPasscode}
-              onChange={(e) => setNewPasscode(e.target.value)}
-            />
-          </label>
-          <label className="block text-sm">
-            Confirm {KEY_2_LABEL}
-            <input
-              {...secretKeyInputProps('key2', 'create')}
-              className="mt-1 w-full px-3 py-2 bg-secondary border border-border rounded"
-              value={confirmPasscode}
-              onChange={(e) => setConfirmPasscode(e.target.value)}
-              placeholder={KEY_2_CONFIRM_PLACEHOLDER}
-            />
-          </label>
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <HostedShellLaunch op="recovery" onSession={(session) => {
+            void import('../../services/shellResultFile').then(({ downloadShellIdentityFile }) => downloadShellIdentityFile(session, 'par-noir-recovered.json'));
+          }} />
           {error ? <p className="text-sm text-red-500">{error}</p> : null}
           <div className="flex gap-2">
             <button type="button" onClick={onClose} className="flex-1 px-4 py-2 border border-border rounded">

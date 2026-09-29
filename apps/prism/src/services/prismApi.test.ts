@@ -3,15 +3,14 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { PN_CLOUD_ACCESS_TOKEN_HEADER, ownerCloudHeadersAsync } = vi.hoisted(() => {
-  const PN_CLOUD_ACCESS_TOKEN_HEADER = 'X-PN-Cloud-Access-Token';
-  const ownerCloudHeadersAsync = vi.fn(async () => ({} as Record<string, string>));
-  return { PN_CLOUD_ACCESS_TOKEN_HEADER, ownerCloudHeadersAsync };
-});
-
 vi.mock('@par-noir/device-cloud-credentials', () => ({
-  PN_CLOUD_ACCESS_TOKEN_HEADER,
-  ownerCloudHeadersAsync: (...args: unknown[]) => ownerCloudHeadersAsync(...args),
+  omitCloudAccessHeader: (headers?: Record<string, string> | null) => {
+    if (!headers) return {};
+    const out = { ...headers };
+    delete out['X-PN-Cloud-Access-Token'];
+    delete out['x-pn-cloud-access-token'];
+    return out;
+  },
 }));
 
 vi.mock('../config/api', () => ({
@@ -37,8 +36,6 @@ describe('prismApi', () => {
   beforeEach(() => {
     setPrismPnIdentifier(null);
     fetchMock.mockReset();
-    ownerCloudHeadersAsync.mockReset();
-    ownerCloudHeadersAsync.mockResolvedValue({});
     vi.stubGlobal('fetch', fetchMock);
   });
 
@@ -147,34 +144,17 @@ describe('prismApi', () => {
   });
 
   describe('prismOwnerFetch', () => {
-    it('returns local 409 when pn set but no cloud AT', async () => {
+    it('sends the bearer and drops a provider access token', async () => {
       setPrismPnIdentifier('pn-owner');
-      ownerCloudHeadersAsync.mockResolvedValue({ Authorization: 'Bearer tok' });
-      const res = await prismOwnerFetch('/api/prism/preview?fileId=1', 'tok');
-      expect(res.status).toBe(409);
-      const body = await res.json();
-      expect(body.error).toBe('cloud_token_required');
-      expect(fetchMock).not.toHaveBeenCalled();
-    });
-
-    it('forwards fetch when cloud AT present', async () => {
-      ownerCloudHeadersAsync.mockResolvedValue({
-        Authorization: 'Bearer tok',
-        [PN_CLOUD_ACCESS_TOKEN_HEADER]: 'ga-token',
-      });
       fetchMock.mockResolvedValue(new Response('ok', { status: 200 }));
       const res = await prismOwnerFetch('/api/prism/preview?fileId=1', 'tok', {
         pnIdentifier: 'pn-owner',
+        headers: { 'X-PN-Cloud-Access-Token': 'ga-token' },
       });
       expect(res.status).toBe(200);
-      expect(fetchMock).toHaveBeenCalledWith(
-        'https://api.test.parnoir/api/prism/preview?fileId=1',
-        expect.objectContaining({
-          headers: expect.objectContaining({
-            [PN_CLOUD_ACCESS_TOKEN_HEADER]: 'ga-token',
-          }),
-        })
-      );
+      const init = fetchMock.mock.calls[0][1] as { headers: Record<string, string> };
+      expect(init.headers.Authorization).toBe('Bearer tok');
+      expect(init.headers['X-PN-Cloud-Access-Token']).toBeUndefined();
     });
   });
 });

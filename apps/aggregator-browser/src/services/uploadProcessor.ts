@@ -1078,6 +1078,19 @@ function browseExpiryFields(task: UploadTask): {
  * Helper: Create metadata entry
  */
 async function createMetadata(fileId: string, metadata: any, _accessToken: string): Promise<void> {
+  if (metadata?.isPublic === true) {
+    const session = PNOAuthService.loadSession();
+    const pnIdentifier = session?.pnIdentifier;
+    if (pnIdentifier) {
+      const { appendPublicIndexRow } = await import('@par-noir/device-cloud-credentials');
+      const { sessionDriveFor } = await import('./sessionDrive');
+      const drive = await sessionDriveFor(pnIdentifier);
+      const indexId = drive.index.sheetIds['public-file-index'];
+      if (indexId) {
+        await appendPublicIndexRow(drive.accessToken, indexId, { fileId, ...metadata });
+      }
+    }
+  }
   const response = await ownerFetch('PUT', `/api/aggregator/metadata-index/${fileId}`, metadata);
 
   if (!response.ok) {

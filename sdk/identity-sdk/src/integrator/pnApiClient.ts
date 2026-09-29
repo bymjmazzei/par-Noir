@@ -68,9 +68,8 @@ export function integratorAuthHeaders(
     Authorization: `Bearer ${accessToken}`,
     ...extra
   };
-  if (typeof ctx !== 'string' && ctx.cloudAccessToken) {
-    headers['X-PN-Cloud-Access-Token'] = ctx.cloudAccessToken;
-  }
+  delete headers['X-PN-Cloud-Access-Token'];
+  delete headers['x-pn-cloud-access-token'];
   return headers;
 }
 

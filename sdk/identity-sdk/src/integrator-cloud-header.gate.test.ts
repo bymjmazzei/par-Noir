@@ -5,7 +5,7 @@
 import { integratorAuthHeaders } from './integrator/pnApiClient';
 
 describe('integratorAuthHeaders gate', () => {
-  it('integratorAuthHeaders attaches X-PN-Cloud-Access-Token when cloudAccessToken provided', () => {
+  it('integratorAuthHeaders never attaches a Drive token, even if one is on the context', () => {
     const headers = integratorAuthHeaders({
       accessToken: 'oauth-bearer',
       cloudAccessToken: 'cloud-at-123',
@@ -13,8 +13,8 @@ describe('integratorAuthHeaders gate', () => {
 
     expect(headers).toMatchObject({
       Authorization: 'Bearer oauth-bearer',
-      'X-PN-Cloud-Access-Token': 'cloud-at-123',
     });
+    expect(headers).not.toHaveProperty('X-PN-Cloud-Access-Token');
   });
 
   it('integratorAuthHeaders omits cloud header for bare access token string', () => {

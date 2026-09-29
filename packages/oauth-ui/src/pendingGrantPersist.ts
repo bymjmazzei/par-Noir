@@ -13,10 +13,7 @@
  * (`consent_shown=1`). Consent-skip unlocks must not re-flush every time.
  */
 
-import {
-  ensureCloudAccessToken,
-  PN_CLOUD_ACCESS_TOKEN_HEADER
-} from '@par-noir/device-cloud-credentials';
+import { ensureCloudAccessToken } from '@par-noir/device-cloud-credentials';
 
 interface PendingGrant {
   clientId: string;
@@ -57,8 +54,7 @@ async function waitForDriveInit(
   const id = encodeURIComponent(pnIdentifier);
   const headers = {
     Authorization: `Bearer ${authToken}`,
-    'Content-Type': 'application/json',
-    [PN_CLOUD_ACCESS_TOKEN_HEADER]: accessToken
+    'Content-Type': 'application/json'
   };
 
   const initRes = await fetch(`${base}/api/storage/initialize/${id}`, {
@@ -75,8 +71,7 @@ async function waitForDriveInit(
   while (Date.now() < deadline) {
     const statusRes = await fetch(`${base}/api/storage/initialize/${id}/status`, {
       headers: {
-        Authorization: `Bearer ${authToken}`,
-        [PN_CLOUD_ACCESS_TOKEN_HEADER]: accessToken
+        Authorization: `Bearer ${authToken}`
       }
     });
     if (statusRes.ok) {
@@ -130,8 +125,7 @@ export async function flushPendingGrant(params: {
         method: 'POST',
         headers: {
           Authorization: `Bearer ${params.authToken}`,
-          'Content-Type': 'application/json',
-          [PN_CLOUD_ACCESS_TOKEN_HEADER]: accessToken
+          'Content-Type': 'application/json'
         },
         body: JSON.stringify({
           client_id: grant.clientId,

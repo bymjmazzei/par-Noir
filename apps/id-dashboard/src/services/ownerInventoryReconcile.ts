@@ -31,19 +31,12 @@ export async function reconcileOwnerInventory(params?: {
   }
 
   const pnId = pnIdentifier.startsWith('pn-') ? pnIdentifier : `pn-${pnIdentifier}`;
-  // Optional cloud token only helps Sheets scrub on other paths; liveness probe is OAuth-less.
-  const cloudTok = params?.googleAccessToken?.trim();
   const res = await ownerFetch(
     ownerToken,
     'POST',
     `/api/storage/owner-index/${encodeURIComponent(pnId)}/reconcile`,
     undefined,
-    {
-      pnIdentifier: pnId,
-      ...(cloudTok
-        ? { extraHeaders: { 'X-PN-Cloud-Access-Token': cloudTok } }
-        : {}),
-    }
+    { pnIdentifier: pnId }
   );
 
   if (!res.ok) {

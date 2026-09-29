@@ -65,20 +65,8 @@ export async function mintDriveAuthExtras(opts: {
     ? stripAuthorization({ ...(await opts.buildAuthHeaders(opts.method, opts.path, opts.body)) })
     : {};
 
-  const cloudTok = await resolveForwardedCloudToken({
-    authToken: opts.authToken,
-    pnIdentifier: opts.pnIdentifier,
-    apiEndpoint: opts.apiEndpoint,
-    getCloudAccessToken: opts.getCloudAccessToken
-  });
-
-  if (cloudTok) {
-    // Minted / resolved token wins over any stale value in extras.
-    extra[PN_CLOUD_ACCESS_TOKEN_HEADER] = cloudTok;
-  } else {
-    delete extra[PN_CLOUD_ACCESS_TOKEN_HEADER];
-    delete extra['x-pn-cloud-access-token'];
-  }
+  delete extra[PN_CLOUD_ACCESS_TOKEN_HEADER];
+  delete extra['x-pn-cloud-access-token'];
 
   return extra;
 }

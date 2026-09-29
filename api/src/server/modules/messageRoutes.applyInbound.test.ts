@@ -166,29 +166,25 @@ describe('POST /api/messages/apply-inbound', () => {
     expect(res.body.error).toBe('Unsupported jobType');
   });
 
-  it('appends ciphertext when peer is resolved from connectionId only', async () => {
-    const res = await withCloudToken(request(buildApp()).post('/api/messages/apply-inbound'))
-      .send(opaqueBody())
+  it('persists a client-submitted ciphertext without opening Drive', async () => {
+    const res = await request(buildApp())
+      .post('/api/messages/apply-inbound')
+      .send(opaqueBody({
+        deviceCloudResult: { spreadsheetId: 'sheet-from-device', provider: 'google' },
+      }))
       .expect(200);
     expect(res.body.success).toBe(true);
-    expect(res.body.spreadsheetId).toBe('conv-sheet');
-    expect(res.body.peerPnIdentifier).toBe(PEER);
-    expect(mockGetConnectionById).toHaveBeenCalled();
-    expect(mockAppendMessage).toHaveBeenCalledTimes(1);
-    const msgArg = mockAppendMessage.mock.calls[0][2];
-    expect(msgArg.messageId).toBe('msg_opaque_1');
-    expect(msgArg.encryptedContent).toBeTruthy();
-    expect(msgArg.fromPnIdentifier).toBe(PEER);
-    expect(msgArg.toPnIdentifier).toBe(USER);
-    expect(msgArg.fromPnIdentifier && msgArg.toPnIdentifier).toBeTruthy();
+    expect(res.body.spreadsheetId).toBe('sheet-from-device');
+    expect(res.body.encryptedContent).toBeTruthy();
+    expect(mockAppendMessage).not.toHaveBeenCalled();
   });
 
-  it('returns 404 when connectionId does not resolve a peer', async () => {
-    mockGetConnectionById.mockResolvedValue(null);
-    const res = await withCloudToken(request(buildApp()).post('/api/messages/apply-inbound'))
+  it('refuses to open Drive when the device has not submitted a result', async () => {
+    const res = await request(buildApp())
+      .post('/api/messages/apply-inbound')
       .send(opaqueBody())
-      .expect(404);
-    expect(res.body.error).toMatch(/Connection not found/i);
+      .expect(409);
+    expect(res.body.error).toBe('cloud_on_device');
     expect(mockAppendMessage).not.toHaveBeenCalled();
   });
 });

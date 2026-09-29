@@ -507,105 +507,6 @@ export function setupAggregatorRoutes(app: any, deps: AggregatorRouteDeps) {
       // Submit metadata to central index (owner from bearer only)
       await service.submitMetadata(validatedMetadata, ownerPnIdentifier);
 
-      // Also update Google Drive index (source of truth) if file is public
-      if (validatedMetadata.isPublic === true && ownerPnIdentifier) {
-        try {
-          const { IndexSheetsService } = await import('./indexSheetsService');
-          const { storageCredentialsService } = await import('./storageCredentialsService');
-          
-          // Get user's credentials
-          const credentialsRecord = await storageCredentialsService.getCredentials(ownerPnIdentifier);
-          if (credentialsRecord?.credentials) {
-            const googleDriveAccounts = credentialsRecord.credentials.googleDriveAccounts || 
-              (credentialsRecord.credentials.googleDrive ? [credentialsRecord.credentials.googleDrive] : []);
-            if (googleDriveAccounts.length > 0) {
-              const account = googleDriveAccounts.length > 0 ? googleDriveAccounts[0] : null;
-              const accountId = account ? deps.extractAccountId(account) : undefined;
-              const { resolveOwnerDriveToken, respondDriveTokenError } = await import('./ownerDriveToken');
-              let token;
-              try {
-                const resolved = await resolveOwnerDriveToken(req, ownerPnIdentifier, { account, accountId });
-                token = resolved.token;
-              } catch (error) {
-                if (respondDriveTokenError(res, error)) return;
-                throw error;
-              }
-              const out = await deps.getMetadataFolder(token, ownerPnIdentifier, accountId);
-              if (!out) {
-                return deps.driveNotInitialized(res);
-              }
-              const metadataFolder = out.metadataFolderId;
-              
-              // Get or create public-file-index.xlsx
-              const spreadsheetId = await IndexSheetsService.getIndexSheet(
-                token,
-                metadataFolder,
-                'public',
-                ownerPnIdentifier,
-                accountId
-              );
-            
-            // Convert metadata to IndexFileEntry format
-            const indexEntry: any = {
-              fileId: validatedMetadata.fileId,
-              googleDriveFileId: validatedMetadata.backendFileId || validatedMetadata.fileId,
-              fileName: validatedMetadata.name || validatedMetadata.title,
-              originalName: validatedMetadata.name || validatedMetadata.title,
-              mimeType: (validatedMetadata as any).mimeType,
-              visibility: 'public',
-              uploadedAt: validatedMetadata.uploadDate || new Date().toISOString(),
-              owner: validatedMetadata.creator ? {
-                did: validatedMetadata.creator['@id'] || validatedMetadata.creator.identifier?.value,
-                identifier: validatedMetadata.creator.identifier?.value || validatedMetadata.creator['@id']
-              } : (validatedMetadata.author ? {
-                did: validatedMetadata.author.did,
-                identifier: validatedMetadata.author.did
-              } : undefined),
-              tags: validatedMetadata.tags || validatedMetadata.keywords || [],
-              description: validatedMetadata.description,
-              publicToken: validatedMetadata.publicToken,
-              engagement: validatedMetadata.engagement,
-              contentClass: (validatedMetadata as any).contentClass,
-              isNoteThumbnail: (validatedMetadata as any).isNoteThumbnail,
-              mainFileId: (validatedMetadata as any).mainFileId,
-              thumbnailFileId: (validatedMetadata as any).thumbnailFileId,
-              collectionFileIds: (validatedMetadata as any).collection?.collectionFileIds
-            };
-            
-              // Check if file exists in index, update or add accordingly
-              try {
-                await IndexSheetsService.updateFile(
-                  token,
-                  spreadsheetId,
-                  validatedMetadata.fileId,
-                  indexEntry,
-                  ownerPnIdentifier,
-                  accountId
-                );
-                console.log(`✅ [${requestId}] Updated Google Drive public-file-index.xlsx for ${validatedMetadata.fileId}`);
-              } catch (updateError: any) {
-                // If update fails (file not found), try adding it
-                if (updateError.message?.includes('not found')) {
-                  await IndexSheetsService.addFile(
-                    token,
-                    spreadsheetId,
-                    indexEntry,
-                    ownerPnIdentifier,
-                    accountId
-                  );
-                console.log(`✅ [${requestId}] Added to Google Drive public-file-index.xlsx for ${validatedMetadata.fileId}`);
-                } else {
-                  throw updateError;
-                }
-              }
-            }
-          }
-        } catch (driveError: any) {
-          console.warn(`⚠️ [${requestId}] Failed to update Google Drive index (non-critical):`, driveError?.message || driveError);
-          // Don't fail the request - database cache is updated
-        }
-      }
-
       // #region agent log
       // #endregion
       console.log(`✅ [${requestId}] Successfully submitted metadata for: ${validatedMetadata.fileId}`);
@@ -860,16 +761,18 @@ export function setupAggregatorRoutes(app: any, deps: AggregatorRouteDeps) {
             if (googleDriveAccounts.length > 0) {
               const account = googleDriveAccounts.length > 0 ? googleDriveAccounts[0] : null;
               const accountIdForToken = deps.extractAccountId(account);
-              const { resolveOwnerDriveToken, respondDriveTokenError } = await import('./ownerDriveToken');
               let token;
               try {
-                const resolved = await resolveOwnerDriveToken(req, pnIdentifier, {
-                  account,
-                  accountId: accountIdForToken
-                });
+                const resolved = (await (async () => {
+                const { DriveIndexError } = await import('./pnDriveIndex');
+                throw new DriveIndexError(
+                  'Drive reads and writes run on the device. This API does not proxy the user cloud.',
+                  'CLOUD_TOKEN_REQUIRED'
+                );
+                return { token: { access_token: '' } };
+              })());
                 token = resolved.token;
               } catch (error) {
-                if (respondDriveTokenError(res, error)) return;
                 throw error;
               }
               const accessToken = token.access_token;
@@ -1220,17 +1123,19 @@ export function setupAggregatorRoutes(app: any, deps: AggregatorRouteDeps) {
         if (googleDriveAccounts.length > 0) {
           const account = googleDriveAccounts.length > 0 ? googleDriveAccounts[0] : null;
           const accountIdForToken = deps.extractAccountId(account);
-          const { resolveOwnerDriveToken, respondDriveTokenError } = await import('./ownerDriveToken');
           let token;
           try {
-            const resolved = await resolveOwnerDriveToken(req, userIdentifier, {
-              account,
-              accountId: accountIdForToken || accountId
-            });
+            const resolved = (await (async () => {
+                const { DriveIndexError } = await import('./pnDriveIndex');
+                throw new DriveIndexError(
+                  'Drive reads and writes run on the device. This API does not proxy the user cloud.',
+                  'CLOUD_TOKEN_REQUIRED'
+                );
+                return { token: { access_token: '' } };
+              })());
             token = resolved.token;
           } catch (error) {
-            if (respondDriveTokenError(res, error)) return;
-            throw error;
+                        throw error;
           }
           const accessToken = token.access_token;
           const backendFileId = dbMetadata.metadata.backendFileId || fileId;
@@ -1545,10 +1450,8 @@ export function setupAggregatorRoutes(app: any, deps: AggregatorRouteDeps) {
             tokenPayload.pnIdentifier,
             accountIdParam
           );
-        } catch (err) {
-          const { respondDriveTokenError } = await import('./ownerDriveToken');
-          if (respondDriveTokenError(res, err)) return;
-          throw err;
+        } catch {
+          storageCtx = null;
         }
       }
 
@@ -1577,30 +1480,14 @@ export function setupAggregatorRoutes(app: any, deps: AggregatorRouteDeps) {
         const accountId = accountIdParam;
         
         try {
-          let accessToken = storageCtx?.accessToken || '';
-          if (!accessToken) {
-            const { resolveOwnerDriveToken, respondDriveTokenError } = await import('./ownerDriveToken');
-            try {
-              const resolved = await resolveOwnerDriveToken(req, userIdentifier, { accountId });
-              accessToken = resolved.token.access_token;
-            } catch (error) {
-              if (respondDriveTokenError(res, error)) return;
-              throw error;
-            }
-          }
-          const driveResponse = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?fields=id,name,mimeType,size,createdTime,modifiedTime`, {
-            headers: {
-              'Authorization': `Bearer ${accessToken}`
-            }
-          });
-
-          if (!driveResponse.ok) {
-            const errorText = await driveResponse.text().catch(() => 'Unknown error');
-            console.error(`[MetadataIndex PUT] Failed to fetch file info from Google Drive for ${fileId}:`, driveResponse.status, errorText);
-            throw new Error(`Failed to fetch file info: ${driveResponse.status} ${errorText}`);
-          }
-
-          const driveFile = await driveResponse.json() as { name?: string; mimeType?: string; createdTime?: string; size?: string };
+          const driveFile = {
+            name: (typeof name === 'string' && name) || (typeof title === 'string' && title) || fileId,
+            mimeType: typeof (req.body as { mimeType?: string }).mimeType === 'string'
+              ? (req.body as { mimeType?: string }).mimeType
+              : undefined,
+            createdTime: new Date().toISOString(),
+            size: undefined as string | undefined
+          };
           cachedDriveFileInfo = driveFile;
           console.log(`[MetadataIndex PUT] Successfully fetched file info from Google Drive for ${fileId}:`, {
             name: driveFile.name,
@@ -2053,15 +1940,17 @@ export function setupAggregatorRoutes(app: any, deps: AggregatorRouteDeps) {
               if (storageCtx) {
                 token = getDriveTokenFromContext(storageCtx);
               } else {
-                const { resolveOwnerDriveToken, respondDriveTokenError } = await import('./ownerDriveToken');
                 try {
-                  const resolved = await resolveOwnerDriveToken(req, userPnId, {
-                    account,
-                    accountId: accountIdForToken
-                  });
+                  const resolved = (await (async () => {
+                const { DriveIndexError } = await import('./pnDriveIndex');
+                throw new DriveIndexError(
+                  'Drive reads and writes run on the device. This API does not proxy the user cloud.',
+                  'CLOUD_TOKEN_REQUIRED'
+                );
+                return { token: { access_token: '' } };
+              })());
                   token = resolved.token;
                 } catch (error) {
-                  if (respondDriveTokenError(res, error)) return;
                   throw error;
                 }
               }
@@ -2263,15 +2152,17 @@ export function setupAggregatorRoutes(app: any, deps: AggregatorRouteDeps) {
               if (storageCtx) {
                 token = getDriveTokenFromContext(storageCtx);
               } else {
-                const { resolveOwnerDriveToken, respondDriveTokenError } = await import('./ownerDriveToken');
                 try {
-                  const resolved = await resolveOwnerDriveToken(req, pnIdentifier, {
-                    account,
-                    accountId: actualAccountId
-                  });
+                  const resolved = (await (async () => {
+                const { DriveIndexError } = await import('./pnDriveIndex');
+                throw new DriveIndexError(
+                  'Drive reads and writes run on the device. This API does not proxy the user cloud.',
+                  'CLOUD_TOKEN_REQUIRED'
+                );
+                return { token: { access_token: '' } };
+              })());
                   token = resolved.token;
                 } catch (error) {
-                  if (respondDriveTokenError(res, error)) return;
                   throw error;
                 }
               }
@@ -2562,16 +2453,18 @@ export function setupAggregatorRoutes(app: any, deps: AggregatorRouteDeps) {
                     if (storageCtx) {
                       token = getDriveTokenFromContext(storageCtx);
                     } else {
-                      const { resolveOwnerDriveToken, respondDriveTokenError } = await import('./ownerDriveToken');
                       try {
-                        const resolved = await resolveOwnerDriveToken(req, pnIdentifier, {
-                          account,
-                          accountId: accountIdForToken
-                        });
+                        const resolved = (await (async () => {
+                const { DriveIndexError } = await import('./pnDriveIndex');
+                throw new DriveIndexError(
+                  'Drive reads and writes run on the device. This API does not proxy the user cloud.',
+                  'CLOUD_TOKEN_REQUIRED'
+                );
+                return { token: { access_token: '' } };
+              })());
                         token = resolved.token;
                       } catch (error) {
-                        if (respondDriveTokenError(res, error)) return;
-                        throw error;
+                                                throw error;
                       }
                     }
                     const accessToken = token.access_token;
@@ -2791,114 +2684,6 @@ export function setupAggregatorRoutes(app: any, deps: AggregatorRouteDeps) {
         provenance: (await import('./penIndexFields')).penIndexFields(req.body)
       });
 
-      // Also update Google Drive index (source of truth) if file is public
-      const updatedIsPublic = finalIsPublic !== undefined ? finalIsPublic : (isPublic !== undefined ? isPublic : updated?.isPublic);
-      if (updatedIsPublic === true && updated && !indexUpdatedThisRequest) {
-        try {
-          const { IndexSheetsService } = await import('./indexSheetsService');
-          const { storageCredentialsService } = await import('./storageCredentialsService');
-          
-          // Get user's credentials
-          const pnIdentifier = tokenPayload.pnIdentifier;
-          if (pnIdentifier) {
-            const credentialsRecord =
-              storageCtx?.credentialsRecord ??
-              (await storageCredentialsService.getCredentials(pnIdentifier));
-            if (credentialsRecord?.credentials) {
-              const googleDriveAccounts = credentialsRecord.credentials.googleDriveAccounts || 
-                (credentialsRecord.credentials.googleDrive ? [credentialsRecord.credentials.googleDrive] : []);
-              if (googleDriveAccounts.length > 0) {
-                const account = googleDriveAccounts.length > 0 ? googleDriveAccounts[0] : null;
-                const accountId = accountIdParam || deps.extractAccountId(account);
-                let token;
-                if (storageCtx) {
-                  token = getDriveTokenFromContext(storageCtx);
-                } else {
-                  const { resolveOwnerDriveToken, respondDriveTokenError } = await import('./ownerDriveToken');
-                  try {
-                    const resolved = await resolveOwnerDriveToken(req, pnIdentifier, { account, accountId });
-                    token = resolved.token;
-                  } catch (error) {
-                    if (respondDriveTokenError(res, error)) return;
-                    throw error;
-                  }
-                }
-                const out = await deps.getMetadataFolder(token, pnIdentifier, accountId);
-                if (!out) {
-                  return deps.driveNotInitialized(res);
-                }
-                const metadataFolder = out.metadataFolderId;
-                
-                // Get or create public-file-index.xlsx
-                const spreadsheetId = await IndexSheetsService.getIndexSheet(
-                  token,
-                  metadataFolder,
-                  'public',
-                  pnIdentifier,
-                  accountId
-                );
-              
-              // Convert metadata to IndexFileEntry format
-              const indexEntry: any = {
-                fileId: actualFileId,
-                googleDriveFileId: updated.backendFileId || actualFileId,
-                fileName: updated.name || updated.title,
-                originalName: updated.name || updated.title,
-                mimeType: (updated as any).mimeType,
-                visibility: 'public',
-                uploadedAt: updated.uploadDate || new Date().toISOString(),
-                owner: updated.creator ? {
-                  did: updated.creator['@id'] || updated.creator.identifier?.value,
-                  identifier: updated.creator.identifier?.value || updated.creator['@id']
-                } : undefined,
-                tags: updated.tags || updated.keywords || [],
-                description: updated.description,
-                publicToken: updated.publicToken,
-                engagement: updated.engagement,
-                contentClass: (updated as any).contentClass,
-                isNoteThumbnail: (updated as any).isNoteThumbnail,
-                mainFileId: (updated as any).mainFileId,
-                thumbnailFileId: (updated as any).thumbnailFileId,
-                collectionFileIds: (updated as any).collection?.collectionFileIds
-              };
-              
-                // Check if file exists in index, update or add accordingly
-                try {
-                  await IndexSheetsService.updateFile(
-                    token,
-                    spreadsheetId,
-                    actualFileId,
-                    indexEntry,
-                    pnIdentifier,
-                    accountId,
-                    'public'
-                  );
-                  console.log(`✅ [MetadataIndex PUT] Updated Google Drive public-file-index.xlsx for ${actualFileId}`);
-                } catch (updateError: any) {
-                  // If update fails (file not found), try adding it
-                  if (updateError.message?.includes('not found')) {
-                    await IndexSheetsService.addFile(
-                      token,
-                      spreadsheetId,
-                      indexEntry,
-                      pnIdentifier,
-                      accountId,
-                      'public'
-                    );
-                    console.log(`✅ [MetadataIndex PUT] Added to Google Drive public-file-index.xlsx for ${actualFileId}`);
-                  } else {
-                    throw updateError;
-                  }
-                }
-              }
-            }
-          }
-        } catch (driveError: any) {
-          console.warn(`⚠️ [MetadataIndex PUT] Failed to update Google Drive index (non-critical):`, driveError?.message || driveError);
-          // Don't fail the request - database cache is updated
-        }
-      }
-
       // Track if we successfully deleted the file (so we can return success even if file no longer exists)
       let fileWasDeleted = false;
 
@@ -2987,16 +2772,18 @@ export function setupAggregatorRoutes(app: any, deps: AggregatorRouteDeps) {
                   if (storageCtx) {
                     token = getDriveTokenFromContext(storageCtx);
                   } else {
-                    const { resolveOwnerDriveToken, respondDriveTokenError } = await import('./ownerDriveToken');
                     try {
-                      const resolved = await resolveOwnerDriveToken(req, pnIdentifier, {
-                        account,
-                        accountId: accountIdForToken
-                      });
+                      const resolved = (await (async () => {
+                const { DriveIndexError } = await import('./pnDriveIndex');
+                throw new DriveIndexError(
+                  'Drive reads and writes run on the device. This API does not proxy the user cloud.',
+                  'CLOUD_TOKEN_REQUIRED'
+                );
+                return { token: { access_token: '' } };
+              })());
                       token = resolved.token;
                     } catch (error) {
-                      if (respondDriveTokenError(res, error)) return;
-                      throw error;
+                                            throw error;
                     }
                   }
                   const accessToken = token.access_token;
@@ -3663,9 +3450,15 @@ export function setupAggregatorRoutes(app: any, deps: AggregatorRouteDeps) {
 
           // Get access token (owner custody — prefer forwarded cloud token)
           const accountId = req.query.accountId as string | undefined;
-          const { resolveOwnerDriveToken } = await import('./ownerDriveToken');
           const accessToken = (
-            await resolveOwnerDriveToken(req, userIdentifier, { accountId })
+            (await (async () => {
+                const { DriveIndexError } = await import('./pnDriveIndex');
+                throw new DriveIndexError(
+                  'Drive reads and writes run on the device. This API does not proxy the user cloud.',
+                  'CLOUD_TOKEN_REQUIRED'
+                );
+                return { token: { access_token: '' } };
+              })())
           ).token.access_token;
 
           // Find companion metadata file

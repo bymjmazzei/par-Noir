@@ -5,6 +5,7 @@
  */
 
 import { getDatabasePool } from '../utils/database';
+import { cacheActorId } from '../utils/cacheActor';
 import { BotDetectionService } from './botDetectionService';
 
 export interface EngagementRow {
@@ -158,7 +159,7 @@ export class EngagementService {
       FROM engagement
       WHERE user_did = $1
       AND created_at > NOW() - INTERVAL '1 hour'
-    `, [userPnIdentifier]);
+    `, [cacheActorId(userPnIdentifier)]);
     
     return parseInt(result.rows[0].count, 10);
   }
@@ -193,14 +194,14 @@ export class EngagementService {
         SELECT engagement_id FROM engagement 
         WHERE file_id = $1 AND user_did = $2 AND type = 'like'
         LIMIT 1
-      `, [fileId, userPnIdentifier]);
+      `, [fileId, cacheActorId(userPnIdentifier)]);
 
       if (existing.rows.length > 0) {
         // Unlike - remove the engagement
         await db.query(`
           DELETE FROM engagement 
           WHERE file_id = $1 AND user_did = $2 AND type = 'like'
-        `, [fileId, userPnIdentifier]);
+        `, [fileId, cacheActorId(userPnIdentifier)]);
       } else {
         const fundFlags = await this.computeFundMonetizableFlags(userPnIdentifier, fileId);
         await db.query(
@@ -216,7 +217,7 @@ export class EngagementService {
             actor_fund_monetizable = EXCLUDED.actor_fund_monetizable,
             content_owner_fund_monetizable = EXCLUDED.content_owner_fund_monetizable
         `,
-          [fileId, userPnIdentifier, isVerified, botScore, fundFlags.actor, fundFlags.owner]
+          [fileId, cacheActorId(userPnIdentifier), isVerified, botScore, fundFlags.actor, fundFlags.owner]
         );
       }
 
@@ -249,7 +250,7 @@ export class EngagementService {
       SELECT 1 FROM engagement 
       WHERE file_id = $1 AND user_did = $2 AND type = 'like'
       LIMIT 1
-        `, [fileId, userPnIdentifier]);
+        `, [fileId, cacheActorId(userPnIdentifier)]);
 
     return result.rows.length > 0;
   }
@@ -266,27 +267,27 @@ export class EngagementService {
         SELECT engagement_id FROM engagement 
         WHERE file_id = $1 AND user_did = $2 AND type = 'dislike'
         LIMIT 1
-      `, [fileId, userPnIdentifier]);
+      `, [fileId, cacheActorId(userPnIdentifier)]);
 
       if (existing.rows.length > 0) {
         // Remove dislike
         await db.query(`
           DELETE FROM engagement 
           WHERE file_id = $1 AND user_did = $2 AND type = 'dislike'
-        `, [fileId, userPnIdentifier]);
+        `, [fileId, cacheActorId(userPnIdentifier)]);
       } else {
         // Add dislike - remove like if exists (user can't like and dislike)
         await db.query(`
           DELETE FROM engagement 
           WHERE file_id = $1 AND user_did = $2 AND type = 'like'
-        `, [fileId, userPnIdentifier]);
+        `, [fileId, cacheActorId(userPnIdentifier)]);
         
         // Add dislike
         await db.query(`
           INSERT INTO engagement (file_id, user_did, type)
           VALUES ($1, $2, 'dislike')
           ON CONFLICT (file_id, user_did, type) DO NOTHING
-        `, [fileId, userPnIdentifier]);
+        `, [fileId, cacheActorId(userPnIdentifier)]);
       }
 
       // Get updated count
@@ -315,7 +316,7 @@ export class EngagementService {
       SELECT 1 FROM engagement 
       WHERE file_id = $1 AND user_did = $2 AND type = 'dislike'
       LIMIT 1
-        `, [fileId, userPnIdentifier]);
+        `, [fileId, cacheActorId(userPnIdentifier)]);
 
     return result.rows.length > 0;
   }
@@ -374,8 +375,8 @@ export class EngagementService {
       const commentData = {
         content,
         authorName: authorName || null,
-        fileOwnerDid: ownerDid || null,
-        commentorDid: userPnIdentifier,
+        fileOwnerDid: ownerDid ? cacheActorId(ownerDid) : null,
+        commentorDid: cacheActorId(userPnIdentifier),
         parentCommentId: parentCommentId || null,
         postReply: postReply || null,
         note: 'File owner owns content; commentor references it'
@@ -392,7 +393,7 @@ export class EngagementService {
         RETURNING *
       `, [
         fileId,
-        userPnIdentifier,
+        cacheActorId(userPnIdentifier),
         JSON.stringify(commentData),
         isVerified,
         botScore,
@@ -600,7 +601,7 @@ export class EngagementService {
         WHERE file_id = $1 AND user_did = $2 AND type = 'comment_like' 
         AND content::jsonb->>'commentId' = $3
         LIMIT 1
-      `, [fileId, userPnIdentifier, commentId]);
+      `, [fileId, cacheActorId(userPnIdentifier), commentId]);
 
       if (existing.rows.length > 0) {
         // Unlike - remove the like
@@ -608,13 +609,13 @@ export class EngagementService {
           DELETE FROM engagement 
           WHERE file_id = $1 AND user_did = $2 AND type = 'comment_like' 
           AND content::jsonb->>'commentId' = $3
-        `, [fileId, userPnIdentifier, commentId]);
+        `, [fileId, cacheActorId(userPnIdentifier), commentId]);
       } else {
         // Like - add the like with verification and bot score
         await db.query(`
           INSERT INTO engagement (file_id, user_did, type, content, is_verified, bot_score)
           VALUES ($1, $2, 'comment_like', $3, $4, $5)
-        `, [fileId, userPnIdentifier, JSON.stringify({ commentId }), isVerified, botScore]);
+        `, [fileId, cacheActorId(userPnIdentifier), JSON.stringify({ commentId }), isVerified, botScore]);
       }
 
       // Get updated likes list
@@ -673,7 +674,7 @@ export class EngagementService {
           actor_fund_monetizable = EXCLUDED.actor_fund_monetizable,
           content_owner_fund_monetizable = EXCLUDED.content_owner_fund_monetizable
       `,
-        [fileId, userPnIdentifier, isVerified, botScore, fundFlags.actor, fundFlags.owner]
+        [fileId, cacheActorId(userPnIdentifier), isVerified, botScore, fundFlags.actor, fundFlags.owner]
       );
 
       // Get share count
@@ -722,14 +723,14 @@ export class EngagementService {
         SELECT engagement_id FROM engagement 
         WHERE file_id = $1 AND user_did = $2 AND type = 'save'
         LIMIT 1
-      `, [fileId, userPnIdentifier]);
+      `, [fileId, cacheActorId(userPnIdentifier)]);
 
       if (existing.rows.length > 0) {
         // Unsave - remove the engagement
         await db.query(`
           DELETE FROM engagement 
           WHERE file_id = $1 AND user_did = $2 AND type = 'save'
-        `, [fileId, userPnIdentifier]);
+        `, [fileId, cacheActorId(userPnIdentifier)]);
       } else {
         const fundFlags = await this.computeFundMonetizableFlags(userPnIdentifier, fileId);
         await db.query(
@@ -745,7 +746,7 @@ export class EngagementService {
             actor_fund_monetizable = EXCLUDED.actor_fund_monetizable,
             content_owner_fund_monetizable = EXCLUDED.content_owner_fund_monetizable
         `,
-          [fileId, userPnIdentifier, isVerified, botScore, fundFlags.actor, fundFlags.owner]
+          [fileId, cacheActorId(userPnIdentifier), isVerified, botScore, fundFlags.actor, fundFlags.owner]
         );
       }
 
@@ -775,7 +776,7 @@ export class EngagementService {
       SELECT 1 FROM engagement 
       WHERE file_id = $1 AND user_did = $2 AND type = 'save'
       LIMIT 1
-        `, [fileId, userPnIdentifier]);
+        `, [fileId, cacheActorId(userPnIdentifier)]);
 
     return result.rows.length > 0;
   }
@@ -1013,7 +1014,7 @@ export class EngagementService {
       const result = await db.query(`
         SELECT file_id FROM engagement 
         WHERE file_id = ANY($1::text[]) AND user_did = $2 AND type = 'like'
-      `, [fileIds, userPnIdentifier]);
+      `, [fileIds, cacheActorId(userPnIdentifier)]);
 
       result.rows.forEach(row => {
         likedSet.add(row.file_id);
@@ -1109,14 +1110,14 @@ export class EngagementService {
             actor_fund_monetizable = EXCLUDED.actor_fund_monetizable,
             content_owner_fund_monetizable = EXCLUDED.content_owner_fund_monetizable
         `,
-          [fileId, userPnIdentifier, isVerified, botScore, fundFlags.actor, fundFlags.owner]
+          [fileId, cacheActorId(userPnIdentifier), isVerified, botScore, fundFlags.actor, fundFlags.owner]
         );
       } else {
         // Delete record to decrement count
         await db.query(`
           DELETE FROM engagement 
           WHERE file_id = $1 AND user_did = $2 AND type = 'like'
-        `, [fileId, userPnIdentifier]);
+        `, [fileId, cacheActorId(userPnIdentifier)]);
       }
     } catch (error) {
       console.error('Failed to update public like count:', error);
@@ -1137,13 +1138,13 @@ export class EngagementService {
           INSERT INTO engagement (file_id, user_did, type)
           VALUES ($1, $2, 'dislike')
           ON CONFLICT (file_id, user_did, type) DO NOTHING
-        `, [fileId, userPnIdentifier]);
+        `, [fileId, cacheActorId(userPnIdentifier)]);
       } else {
         // Delete record to decrement count
         await db.query(`
           DELETE FROM engagement 
           WHERE file_id = $1 AND user_did = $2 AND type = 'dislike'
-        `, [fileId, userPnIdentifier]);
+        `, [fileId, cacheActorId(userPnIdentifier)]);
       }
     } catch (error) {
       console.error('Failed to update public dislike count:', error);

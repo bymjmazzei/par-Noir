@@ -87,58 +87,16 @@ app.post('/api/engagement/:fileId/like', async (req: Request, res: Response) => 
   }
 });
 
-// GET /api/engagement/:fileId/like - Check if liked
+// GET /api/engagement/:fileId/like — Postgres row, same store the like POST writes.
 app.get('/api/engagement/:fileId/like', async (req: Request, res: Response) => {
   try {
-    const { EngagementDriveService } = await import('./engagementDriveService');
-    const { storageCredentialsService } = await import('./storageCredentialsService');
+    const { EngagementService } = await import('./engagementService');
     const { fileId } = req.params;
     const userPnIdentifier = req.query.userPnIdentifier;
-
     if (!userPnIdentifier || typeof userPnIdentifier !== 'string') {
       return res.status(400).json({ error: 'userPnIdentifier query parameter is required' });
     }
-
-    // Use pn identifier directly (already normalized)
-    const pnIdentifier = userPnIdentifier;
-
-    // Get user's credentials
-    const userCredentials = await storageCredentialsService.getCredentials(pnIdentifier);
-    if (!userCredentials?.credentials) {
-      return res.json({ liked: false });
-    }
-
-    const googleDriveAccounts = userCredentials.credentials.googleDriveAccounts || 
-      (userCredentials.credentials.googleDrive ? [userCredentials.credentials.googleDrive] : []);
-    
-    if (googleDriveAccounts.length === 0) {
-      return res.json({ liked: false });
-    }
-
-    const account = googleDriveAccounts.length > 0 ? googleDriveAccounts[0] : null;
-    const accountId = account ? extractAccountId(account) : undefined;
-
-    const { resolveOwnerDriveToken, respondDriveTokenError } = await import('./ownerDriveToken');
-    let token;
-    try {
-      const resolved = await resolveOwnerDriveToken(req, pnIdentifier, { account, accountId });
-      token = resolved.token;
-    } catch (error) {
-      if (respondDriveTokenError(res, error)) return;
-      throw error;
-    }
-    const userAccessToken = token.access_token;
-
-    let metadataFolderId = '';
-    if (account) {
-      const _g = await getMetadataFolder(token, pnIdentifier, accountId);
-      if (!_g) return driveNotInitialized(res);
-      metadataFolderId = _g.metadataFolderId;
-    }
-
-    // Read from user's Google Drive engagement.xlsx (Sheets)
-    const liked = await EngagementDriveService.isLiked(fileId, userAccessToken, metadataFolderId, pnIdentifier, accountId);
-
+    const liked = await EngagementService.isLiked(fileId, userPnIdentifier);
     return res.json({ liked });
   } catch (error: any) {
     console.error('Error checking like:', error);
@@ -458,60 +416,10 @@ app.post('/api/engagement/:fileId/share', async (req: Request, res: Response) =>
     const fileMetadataForOwner = await aggregator.getFileMetadata(fileId);
     const fileOwnerDid = fileMetadataForOwner?.pnIdentifier;
 
-    // Record activity and send notification
+    // Owner notification is a mailbox job. The sharer's sheet is written on the device.
     if (fileOwnerDid && fileOwnerDid !== userPnIdentifier) {
       try {
-        const { ActivityLedgerService } = await import('./activityLedgerService');
-        const { NotificationService } = await import('./notificationService');
-        const { storageCredentialsService } = await import('./storageCredentialsService');
-
-        // Get user's credentials and metadata folder
         const pnIdentifier = userPnIdentifier;
-        const userCredentials = await storageCredentialsService.getCredentials(pnIdentifier);
-        if (userCredentials?.credentials) {
-          const googleDriveAccounts = userCredentials.credentials.googleDriveAccounts || 
-            (userCredentials.credentials.googleDrive ? [userCredentials.credentials.googleDrive] : []);
-          
-          if (googleDriveAccounts.length > 0) {
-            const account = googleDriveAccounts.length > 0 ? googleDriveAccounts[0] : null;
-            const accountId = account ? extractAccountId(account) : undefined;
-
-            // Caller side-effect: resolve custody token; skip if unavailable (do not invent peer tokens).
-            let token;
-            try {
-              const { resolveOwnerDriveToken } = await import('./ownerDriveToken');
-              token = (await resolveOwnerDriveToken(req, pnIdentifier, { account, accountId })).token;
-            } catch {
-              console.warn('[Engagement] Skipping share activity: cloud access token unavailable');
-              token = null;
-            }
-            if (token) {
-            const userAccessToken = token.access_token;
-            const _gUser = await getMetadataFolder(token, pnIdentifier, accountId);
-            if (!_gUser) {
-              console.warn('[Engagement] Skipping activity: metadata folder not found');
-            } else {
-            const userMetadataFolderId = _gUser.metadataFolderId;
-
-            // Record activity for sharer
-            await ActivityLedgerService.recordActivity(
-              userAccessToken,
-              userMetadataFolderId,
-              pnIdentifier,
-              'share',
-              {
-                targetType: 'file',
-                targetPnIdentifier: fileId, // For files, this is the file ID, not a pn-identifier
-                metadata: { fileOwnerDid }
-              }
-            );
-            }
-            }
-          }
-        }
-
-        // The owner's activity row and repost notification used to be written
-        // into their Drive from here. Their device writes them from the rail.
         const ownerPnIdentifier = fileOwnerDid.startsWith('pn-') ? fileOwnerDid : `pn-${fileOwnerDid}`;
         if (ownerPnIdentifier !== pnIdentifier) {
           const { enqueueSocialJob } = await import('./socialRail');

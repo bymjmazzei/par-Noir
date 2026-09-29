@@ -25,6 +25,6 @@ describe('integratorAuthHeaders', () => {
       accessToken: 'tok-1',
       cloudAccessToken: 'cloud-1'
     }) as Record<string, string>;
-    expect(headers['X-PN-Cloud-Access-Token']).toBe('cloud-1');
+    expect(headers['X-PN-Cloud-Access-Token']).toBeUndefined();
   });
 });

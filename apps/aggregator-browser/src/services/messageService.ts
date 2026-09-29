@@ -455,21 +455,15 @@ export async function getMessageThreads(
   channelClientId?: string
 ): Promise<MessageThread[]> {
   const channel = defaultChannelListFilter(channelClientId);
-  const path = `/api/messages/conversations?userPnIdentifier=${encodeURIComponent(userPnIdentifier)}&channelClientId=${encodeURIComponent(channel)}`;
-  const response = await messageFetch(path, { method: 'GET' });
-
-  const rateLimited = await parseDriveRateLimitedResponse(response);
-  if (rateLimited) {
-    setMessagingRateLimited();
-    throw rateLimited;
-  }
-
-  if (!response.ok) {
-    throw new Error('Failed to load message threads');
-  }
-
-  const result = await response.json();
-  const conversations = result.conversations || result.threads || [];
+  const { listDeviceInbox } = await import('@par-noir/device-cloud-credentials');
+  const { sessionDriveFor } = await import('./sessionDrive');
+  const drive = await sessionDriveFor(userPnIdentifier);
+  const inbox = await listDeviceInbox(drive.accessToken, drive.index.inboxSheetId);
+  const conversations = inbox.filter((row) => {
+    if (channel === '*') return true;
+    if (row.threadType === 'group') return true;
+    return (row.channelClientId || 'platform') === channel || channel === 'platform' && !row.channelClientId;
+  });
 
   return conversations.map((conv: any) => {
     const channelId =
@@ -544,6 +538,14 @@ export async function getConversationMessages(
       ...(hasCached && { connectionId, spreadsheetId })
     };
 
+    const sheet = spreadsheetId || body.spreadsheetId;
+    if (typeof sheet === 'string' && sheet) {
+      const { listDeviceMessages } = await import('@par-noir/device-cloud-credentials');
+      const { sessionDriveFor } = await import('./sessionDrive');
+      const drive = await sessionDriveFor(userPnIdentifier);
+      const messages = await listDeviceMessages(drive.accessToken, sheet);
+      return { messages: messages as Message[], total: messages.length };
+    }
     const response = await messageFetch('/api/messages/conversation', {
       method: 'POST',
       bodyObject: body,
@@ -750,6 +752,9 @@ export async function sendMessage(
     peerPnIdentifier: toPnIdentifier,
     peerRouteKey
   });
+  const ownThread = (await getMessageThreads(fromPnIdentifier)).find(
+    (t) => t.participantPnIdentifier === toPnIdentifier
+  );
   const messageId = `msg_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`;
   const { rememberOutboundMessageId } = await import('./outboundMessageIds');
   rememberOutboundMessageId(messageId);
@@ -764,6 +769,7 @@ export async function sendMessage(
     read: true,
     connectionId: connId,
     channelClientId,
+    ...(ownThread?.spreadsheetId ? { spreadsheetId: ownThread.spreadsheetId } : {}),
     ...(mediaFileId
       ? {
           mediaFileId,

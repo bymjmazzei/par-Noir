@@ -257,9 +257,10 @@ export function ownerCloudHeaders(opts: {
   pnIdentifier?: string | null;
   extra?: Record<string, string>;
 }): Record<string, string> {
-  const cloudTok = getCloudAccessTokenFromSession(opts.pnIdentifier);
-  const headers = cloudAccessHeaders(opts.authToken, cloudTok);
+  const headers = cloudAccessHeaders(opts.authToken, null);
   if (opts.extra) Object.assign(headers, opts.extra);
+  delete headers['X-PN-Cloud-Access-Token'];
+  delete headers['x-pn-cloud-access-token'];
   return headers;
 }
 

@@ -68,9 +68,7 @@ export function useDriveLayoutInit({ setError }: UseDriveLayoutInitParams) {
       const maxAttempts = options?.maxAttempts ?? 3;
       const onProgress = options?.onProgress;
       const googleAccessToken = options?.googleAccessToken?.trim() || '';
-      const cloudInit = googleAccessToken
-        ? { extraHeaders: { 'X-PN-Cloud-Access-Token': googleAccessToken } }
-        : {};
+      const cloudInit = {};
 
       // Custody with a forwarded Google token can recover from a prior soft-skip this session.
       if (googleAccessToken) {
@@ -232,15 +230,21 @@ export function useDriveLayoutInit({ setError }: UseDriveLayoutInitParams) {
 
           let initRes: Response | null = null;
           let postNetworkFailed = false;
+          let layoutBody: unknown;
           try {
+            if (googleAccessToken) {
+              const { ensureDeviceDriveLayout, setSessionDriveIndex } = await import('@par-noir/device-cloud-credentials');
+              const pnDriveIndex = await ensureDeviceDriveLayout(googleAccessToken);
+              setSessionDriveIndex(normalized, pnDriveIndex);
+              layoutBody = { pnDriveIndex };
+            }
             initRes = await ownerFetch(
               accessToken,
               'POST',
               `/api/storage/initialize/${encodeURIComponent(normalized)}`,
-              undefined,
+              layoutBody,
               {
                 pnIdentifier: normalized,
-                ...cloudInit,
               }
             );
           } catch (err) {

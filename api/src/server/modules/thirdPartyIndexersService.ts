@@ -1,5 +1,6 @@
 import { PoolClient } from 'pg';
 import { getDatabasePool } from '../utils/database';
+import { cacheActorId } from '../utils/cacheActor';
 
 export type ThirdPartyStatus = 'active' | 'inactive' | 'revoked';
 
@@ -144,11 +145,11 @@ export class ThirdPartyIndexersService {
       `SELECT identity, third_party_id, granted_scopes, status, granted_at, updated_at
          FROM pn_third_party_access
         WHERE identity = $1`,
-      [identity]
+      [cacheActorId(identity)]
     );
 
     return result.rows.map((row) => ({
-      identity: row.identity,
+      identity,
       thirdPartyId: row.third_party_id,
       isEnabled: row.status !== 'revoked',
       grantedScopes: row.granted_scopes || [],
@@ -202,7 +203,7 @@ export class ThirdPartyIndexersService {
              status = EXCLUDED.status,
              updated_at = NOW()`,
           [
-            identity,
+            cacheActorId(identity),
             update.thirdPartyId,
             update.isEnabled ? update.grantedScopes || ['index_media'] : [],
             update.isEnabled ? 'active' : 'revoked',

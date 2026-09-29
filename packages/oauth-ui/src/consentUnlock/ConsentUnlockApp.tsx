@@ -4,7 +4,7 @@
  * Modes: File / USB / NFC (USB+NFC via API oauth-physical-unlock.js).
  */
 
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { secretKeyInputProps, SECRET_KEY_FORM_ATTRS } from '../secretKeyInputAttrs';
 import { isMessagingHandoffClient } from './constants';
 import {
@@ -27,6 +27,8 @@ import {
 } from './physicalUnlockLoader';
 import { shouldUseCrossProcessBrokerHandoff } from './constants';
 import { denyOAuthConsent, redirectWithAuthCode } from './redirectWithAuthCode';
+import { applyShellFragment, encodeShellReturn } from '../hostedShell/session';
+import { buildShellResult } from '../hostedShell/shellResult';
 import { consentUnlockCss, consentUnlockBrokerCssExtras, resolveConsentAssetBase } from './consentUnlockStyles';
 import { toUnlockVaultEnrollMaterial } from './vaultEnroll';
 
@@ -208,6 +210,7 @@ function ConsentUnlockInner(props: {
   const [unlockMode, setUnlockMode] = useState<UnlockMode>('file');
   const [pnName, setPnName] = useState('');
   const [passcode, setPasscode] = useState('');
+  const shellFactorRef = useRef({ pnName: '', passcode: '' });
   const [fileName, setFileName] = useState('');
   const [identityJson, setIdentityJson] = useState<unknown>(null);
   const [usbKeyName, setUsbKeyName] = useState('');
@@ -314,6 +317,40 @@ function ConsentUnlockInner(props: {
       consentShown: boolean,
       unlocked: UnlockedIdentityBundle
     ) => {
+      if (params.flow === 'shell') {
+        const factors = shellFactorRef.current;
+        const built = await buildShellResult({
+          op: params.shellOp || 'session',
+          pnName: factors.pnName,
+          passcode: factors.passcode,
+          vaultPayload: params.vaultPayload,
+          unlocked: {
+            publicKey: unlocked.publicKey,
+            decryptedIdentity: unlocked.decryptedIdentity as unknown as Record<string, unknown>,
+            encryptedIdentity: unlocked.encryptedIdentity as unknown as Record<string, unknown>,
+          },
+        });
+        const fragment = encodeShellReturn({
+          v: 1,
+          op: params.shellOp || 'session',
+          did: built?.did || String(unlocked.decryptedIdentity.id || ''),
+          publicKey: built?.publicKey || unlocked.publicKey,
+          accessToken: '',
+          code,
+          nickname:
+            typeof unlocked.decryptedIdentity.nickname === 'string'
+              ? unlocked.decryptedIdentity.nickname
+              : undefined,
+          result: built,
+        });
+        const target = applyShellFragment(params.redirectUri, fragment);
+        if (openExternal) {
+          await openExternal(target);
+        } else if (typeof window !== 'undefined') {
+          window.location.href = target;
+        }
+        return;
+      }
       const useBroker = shouldUseCrossProcessBrokerHandoff({
         popup: params.popup,
         deliverLocalBroker,
@@ -397,6 +434,7 @@ function ConsentUnlockInner(props: {
 
   const afterUnlock = useCallback(
     async (unlocked: UnlockedIdentityBundle, key1: string, key2: string) => {
+      shellFactorRef.current = { pnName: key1, passcode: key2 };
       setBundle(unlocked);
       const mint = await mintConsentAuthorizationCode({
         apiEndpoint: params.apiEndpoint,
@@ -513,6 +551,30 @@ function ConsentUnlockInner(props: {
       setError(null);
       if (!pnName || !passcode) {
         setError('Please enter Key 1 and Key 2');
+        return;
+      }
+      shellFactorRef.current = { pnName, passcode };
+
+      if (params.flow === 'shell' && params.shellOp === 'create') {
+        setBusy(true);
+        try {
+          const built = await buildShellResult({ op: 'create', pnName, passcode });
+          const fragment = encodeShellReturn({
+            v: 1,
+            op: 'create',
+            did: built?.did || '',
+            publicKey: built?.publicKey || '',
+            accessToken: '',
+            result: built,
+          });
+          const target = applyShellFragment(params.redirectUri, fragment);
+          if (openExternal) await openExternal(target);
+          else if (typeof window !== 'undefined') window.location.href = target;
+        } catch (err) {
+          setError(err instanceof Error ? err.message : 'Create failed');
+        } finally {
+          setBusy(false);
+        }
         return;
       }
 

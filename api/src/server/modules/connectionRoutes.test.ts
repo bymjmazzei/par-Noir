@@ -190,29 +190,31 @@ describe('POST /api/connections/request', () => {
     expect(res.body.error).toBe('Cannot connect to yourself');
   });
 
-  it('returns 404 when the requester has no Drive connected', async () => {
-    mockGetCredentials.mockResolvedValue({ identityId: REQUESTER, credentials: {} });
-
+  it('refuses to open Drive when the device has not submitted a result', async () => {
     const res = await request(buildApp().app)
       .post('/api/connections/request')
       .send(validRequestBody())
-      .expect(404);
-    expect(res.body.error).toBe('Requester has no Google Drive connected');
+      .expect(409);
+    expect(res.body.error).toBe('cloud_on_device');
+    expect(mockUpsertOwnRow).not.toHaveBeenCalled();
+    expect(mockEnqueueSocialJob).not.toHaveBeenCalled();
   });
 
   it('does not touch the recipient credentials at all', async () => {
     bothPartiesConnected();
 
-    await withCloudToken(request(buildApp().app).post('/api/connections/request'))
-      .send(validRequestBody())
+    await request(buildApp().app)
+      .post('/api/connections/request')
+      .send({
+        ...validRequestBody(),
+        deviceCloudResult: { spreadsheetId: 'sheet-1', provider: 'google' },
+      })
       .expect(200);
-    for (const call of mockGetCredentials.mock.calls) {
-      expect(call[0]).toBe(REQUESTER);
-    }
+    expect(mockGetCredentials).not.toHaveBeenCalled();
     expect(mockGetAccessToken).not.toHaveBeenCalled();
   });
 
-  it('reports drive-not-initialized when the requester layout is missing', async () => {
+  it('does not open Drive when the device already wrote the row', async () => {
     bothPartiesConnected();
     const { app, driveNotInitialized } = buildApp({
       getMetadataFolder: jest.fn(
@@ -220,18 +222,26 @@ describe('POST /api/connections/request', () => {
       ) as unknown as ConnectionRouteDeps['getMetadataFolder'],
     });
 
-    await withCloudToken(request(app).post('/api/connections/request'))
-      .send(validRequestBody())
-      .expect(409);
-    expect(driveNotInitialized).toHaveBeenCalled();
+    await request(app)
+      .post('/api/connections/request')
+      .send({
+        ...validRequestBody(),
+        deviceCloudResult: { spreadsheetId: 'sheet-1', provider: 'google' },
+      })
+      .expect(200);
+    expect(driveNotInitialized).not.toHaveBeenCalled();
     expect(mockUpsertOwnRow).not.toHaveBeenCalled();
   });
 
-  it('writes only the requester row and hands the recipient half to the mailbox', async () => {
+  it('hands the recipient half to the mailbox after the device write', async () => {
     bothPartiesConnected();
 
-    const res = await withCloudToken(request(buildApp().app).post('/api/connections/request'))
-      .send(validRequestBody())
+    const res = await request(buildApp().app)
+      .post('/api/connections/request')
+      .send({
+        ...validRequestBody(),
+        deviceCloudResult: { spreadsheetId: 'sheet-1', connectionId: 'conn-1', provider: 'google' },
+      })
       .expect(200);
 
     expect(res.body.success).toBe(true);
@@ -242,16 +252,7 @@ describe('POST /api/connections/request', () => {
       createdAt: expect.any(String),
     });
 
-    expect(mockUpsertOwnRow).toHaveBeenCalledTimes(1);
-    const [, metadataFolderId, ownerPn, row] = mockUpsertOwnRow.mock.calls[0];
-    expect(metadataFolderId).toBe(`${REQUESTER}-meta`);
-    expect(ownerPn).toBe(REQUESTER);
-    expect(row).toMatchObject({
-      connectionId: 'conn-1',
-      userPnIdentifier: RECIPIENT,
-      status: 'pending_sent',
-    });
-
+    expect(mockUpsertOwnRow).not.toHaveBeenCalled();
     expect(mockEnqueueSocialJob).toHaveBeenCalledTimes(1);
     expect(mockEnqueueSocialJob.mock.calls[0][0]).toMatchObject({
       jobType: 'connection_request',
@@ -263,9 +264,11 @@ describe('POST /api/connections/request', () => {
   it('forwards the client-sealed envelope and the context it was sealed under', async () => {
     bothPartiesConnected();
 
-    await withCloudToken(request(buildApp().app).post('/api/connections/request'))
+    await request(buildApp().app)
+      .post('/api/connections/request')
       .send({
         ...validRequestBody(),
+        deviceCloudResult: { spreadsheetId: 'sheet-1', provider: 'google' },
         recipientEnvelope: { kemCiphertext: 'kem', ciphertext: 'ct' },
         envelopeContext: 'connect:a:b',
       })
@@ -281,12 +284,15 @@ describe('POST /api/connections/request', () => {
     bothPartiesConnected();
     mockEnqueueSocialJob.mockResolvedValue(false);
 
-    const res = await withCloudToken(request(buildApp().app).post('/api/connections/request'))
-      .send(validRequestBody())
+    const res = await request(buildApp().app)
+      .post('/api/connections/request')
+      .send({
+        ...validRequestBody(),
+        deviceCloudResult: { spreadsheetId: 'sheet-1', provider: 'google' },
+      })
       .expect(409);
 
-    // Requester row still landed; HTTP status tells the client not to toast success.
-    expect(mockUpsertOwnRow).toHaveBeenCalledTimes(1);
+    expect(mockUpsertOwnRow).not.toHaveBeenCalled();
     expect(res.body).toMatchObject({
       success: false,
       delivered: false,
@@ -294,26 +300,20 @@ describe('POST /api/connections/request', () => {
     });
   });
 
-  it('still succeeds when the activity ledger and notification fail', async () => {
+  it('still delivers the mailbox job when the device already wrote the row', async () => {
     bothPartiesConnected();
     mockRecordActivity.mockRejectedValue(new Error('sheets unavailable'));
     mockNotify.mockRejectedValue(new Error('notification failed'));
 
-    const res = await withCloudToken(request(buildApp().app).post('/api/connections/request'))
-      .send(validRequestBody())
+    const res = await request(buildApp().app)
+      .post('/api/connections/request')
+      .send({
+        ...validRequestBody(),
+        deviceCloudResult: { spreadsheetId: 'sheet-1', provider: 'google' },
+      })
       .expect(200);
     expect(res.body.success).toBe(true);
-  });
-
-  it('fails with 500 when the requester row cannot be written', async () => {
-    bothPartiesConnected();
-    mockUpsertOwnRow.mockRejectedValue(new Error('sheets unavailable'));
-
-    const res = await withCloudToken(request(buildApp().app).post('/api/connections/request'))
-      .send(validRequestBody())
-      .expect(500);
-    expect(res.body.error).toBe('Failed to send connection request');
-    expect(mockEnqueueSocialJob).not.toHaveBeenCalled();
+    expect(mockUpsertOwnRow).not.toHaveBeenCalled();
   });
 
   it('refuses when the requester has only a stripped custody shell and no forwarded token', async () => {
@@ -369,7 +369,7 @@ describe('POST /api/connections/:connectionId/accept', () => {
     expect(res.body.error).toContain('ML-KEM-768');
   });
 
-  it('returns 404 when the accepting identity has no credentials', async () => {
+  it('refuses accept until the device submits the connections sheet receipt', async () => {
     mockGetCredentials.mockResolvedValue(null);
 
     const res = await request(buildApp().app)
@@ -380,8 +380,8 @@ describe('POST /api/connections/:connectionId/accept', () => {
         wrappedMessageRootKey: 'wk',
         kemAlgId: 'ML-KEM-768',
       })
-      .expect(404);
-    expect(res.body.error).toBe('User credentials not found');
+      .expect(409);
+    expect(res.body.error).toBe('cloud_on_device');
   });
 });
 
@@ -394,74 +394,35 @@ describe('POST /api/connections/apply-inbound connection_accept', () => {
     bothPartiesConnected();
   });
 
-  it('rejects when neither connectionId nor requestId is present', async () => {
-    const res = await withCloudToken(
-      request(buildApp().app).post('/api/connections/apply-inbound')
-    )
+  it('refuses to open Drive when the device has not submitted a result', async () => {
+    const res = await request(buildApp().app)
+      .post('/api/connections/apply-inbound')
       .send({
         userPnIdentifier: REQUESTER,
         jobType: 'connection_accept',
         peerPnIdentifier: RECIPIENT,
         kemCiphertext: 'ct',
       })
-      .expect(400);
-    expect(res.body.error).toBe('connectionId is required');
+      .expect(409);
+    expect(res.body.error).toBe('cloud_on_device');
     expect(mockUpdateOtherStatus).not.toHaveBeenCalled();
   });
 
-  it('accepts legacy jobs that only carry requestId (= connectionId)', async () => {
-    const res = await withCloudToken(
-      request(buildApp().app).post('/api/connections/apply-inbound')
-    )
+  it('persists a client-submitted connection result without opening Drive', async () => {
+    const res = await request(buildApp().app)
+      .post('/api/connections/apply-inbound')
       .send({
         userPnIdentifier: REQUESTER,
         jobType: 'connection_accept',
         peerPnIdentifier: RECIPIENT,
         requestId: 'conn-legacy-1',
-        kemCiphertext: 'ct',
-        wrappedMessageRootKey: 'wk',
-        channelClientId: 'platform',
+        deviceCloudResult: { spreadsheetId: 'sheet-from-device', provider: 'google' },
       })
       .expect(200);
 
     expect(res.body.success).toBe(true);
-    expect(mockUpdateOtherStatus).toHaveBeenCalledWith(
-      expect.any(String),
-      expect.any(String),
-      REQUESTER,
-      'conn-legacy-1',
-      'accepted',
-      RECIPIENT,
-      'ct',
-      expect.anything(),
-      undefined
-    );
-    expect(mockCreateConversation).toHaveBeenCalled();
-    expect(mockUpdateInbox).toHaveBeenCalled();
-  });
-
-  it('maps acceptorMailboxRouteKey onto peerMailboxRouteKey for the requester row', async () => {
-    await withCloudToken(request(buildApp().app).post('/api/connections/apply-inbound'))
-      .send({
-        userPnIdentifier: REQUESTER,
-        jobType: 'connection_accept',
-        peerPnIdentifier: RECIPIENT,
-        connectionId: 'conn-2',
-        kemCiphertext: 'ct',
-        acceptorMailboxRouteKey: 'route-b',
-      })
-      .expect(200);
-
-    expect(mockUpdateOtherStatus).toHaveBeenCalledWith(
-      expect.any(String),
-      expect.any(String),
-      REQUESTER,
-      'conn-2',
-      'accepted',
-      RECIPIENT,
-      'ct',
-      expect.anything(),
-      'route-b'
-    );
+    expect(res.body.spreadsheetId).toBe('sheet-from-device');
+    expect(mockUpdateOtherStatus).not.toHaveBeenCalled();
+    expect(mockCreateConversation).not.toHaveBeenCalled();
   });
 });

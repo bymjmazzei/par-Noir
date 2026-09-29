@@ -122,7 +122,9 @@ const oauthSigningKeys = resolveOauthSigningKeys();
 interface RefreshTokenRecord {
   refresh_token: string;
   did: string;
-  pn_identifier?: string;
+  /** Not stored. Present only on rows written before the cache-join cut. */
+  pn_identifier?: string | null;
+  public_key?: string | null;
   client_id: string;
   scope: string[];
   expires_at: Date;
@@ -753,25 +755,23 @@ export class PNOAuthService {
     
     // Use provided pN identifier (derived client-side)
     // SECURITY: Never derive from secrets - pnName and passcode are never accepted
-    const pnIdentifier = params.pnIdentifier;
-    
     const db = getDatabasePool();
     try {
       await db.query(
         `INSERT INTO oauth_refresh_tokens (refresh_token, did, pn_identifier, public_key, client_id, scope, expires_at, family_id, jti, previous_token_hash)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+         VALUES ($1, $2, NULL, $3, $4, $5, $6, $7, $8, $9)
          ON CONFLICT (refresh_token) 
          DO UPDATE SET 
            did = $2,
-           pn_identifier = $3,
-           public_key = $4,
-           client_id = $5,
-           scope = $6,
-           expires_at = $7,
-           family_id = $8,
-           jti = $9,
-           previous_token_hash = $10`,
-        [tokenHash, params.did, pnIdentifier, params.publicKey, params.clientId, params.scope, expiresAt, familyId, jti, params.parentTokenHash || null]
+           pn_identifier = NULL,
+           public_key = $3,
+           client_id = $4,
+           scope = $5,
+           expires_at = $6,
+           family_id = $7,
+           jti = $8,
+           previous_token_hash = $9`,
+        [tokenHash, params.did, params.publicKey, params.clientId, params.scope, expiresAt, familyId, jti, params.parentTokenHash || null]
       );
     } catch (error) {
       safeLogger.error('[OAuth] Failed to store refresh token in database', {
@@ -793,7 +793,7 @@ export class PNOAuthService {
     try {
       // Query refresh token from database
       const result = await db.query(
-        `SELECT refresh_token, did, pn_identifier, client_id, scope, expires_at, family_id, jti, used_at, replaced_by, revoked_at, reuse_detected_at
+        `SELECT refresh_token, did, public_key, client_id, scope, expires_at, family_id, jti, used_at, replaced_by, revoked_at, reuse_detected_at
          FROM oauth_refresh_tokens 
          WHERE refresh_token = $1`,
         [tokenHash]
@@ -805,6 +805,9 @@ export class PNOAuthService {
       }
 
       const tokenData = result.rows[0] as RefreshTokenRecord;
+      const subjectPn = tokenData.public_key
+        ? deriveCanonicalPnIdentifier(tokenData.public_key)
+        : undefined;
 
       // Check if token is expired
       const expiresAt = new Date(tokenData.expires_at);
@@ -833,7 +836,7 @@ export class PNOAuthService {
         await appendSecurityAuditEvent({
           eventType: 'oauth.refresh_token_reuse_detected',
           severity: 'high',
-          subjectPnIdentifier: tokenData.pn_identifier,
+          subjectPnIdentifier: subjectPn,
           metadata: {
             clientIdHash: hashIdentifier(clientId),
             familyId: tokenData.family_id,
@@ -842,7 +845,7 @@ export class PNOAuthService {
         return null;
       }
 
-      if (isPnRevokedForNetwork(tokenData.pn_identifier) || isDidRevokedForNetwork(tokenData.did)) {
+      if ((subjectPn && isPnRevokedForNetwork(subjectPn)) || isDidRevokedForNetwork(tokenData.did)) {
         await db.query('DELETE FROM oauth_refresh_tokens WHERE refresh_token = $1', [tokenHash]);
         return null;
       }
@@ -851,16 +854,16 @@ export class PNOAuthService {
       // Use stored pN identifier from refresh token if available
       const accessToken = await this.generateAccessToken({
         did: tokenData.did,
-        publicKey: undefined, // Refresh tokens don't store publicKey, but we store pn_identifier
-        pnIdentifier: tokenData.pn_identifier, // Use stored pN identifier from refresh token
+        publicKey: tokenData.public_key || undefined,
+        pnIdentifier: subjectPn,
         clientId: clientId,
         scope: tokenData.scope || []
       });
 
       const nextRefreshToken = await this.generateRefreshToken({
         did: tokenData.did,
-        publicKey: undefined,
-        pnIdentifier: tokenData.pn_identifier,
+        publicKey: tokenData.public_key || undefined,
+        pnIdentifier: subjectPn,
         clientId: clientId,
         scope: tokenData.scope || [],
         familyId: tokenData.family_id || tokenHash,

@@ -7,10 +7,7 @@
  * and use bearer-only headers.
  */
 
-import {
-  ownerCloudHeadersAsync,
-  PN_CLOUD_ACCESS_TOKEN_HEADER
-} from '@par-noir/device-cloud-credentials';
+import { omitCloudAccessHeader } from '@par-noir/device-cloud-credentials';
 import { API_ENDPOINT } from '../config/api';
 
 /** Last unlocked pN for prism API calls that omit pnIdentifier. */
@@ -30,44 +27,27 @@ function bearerHeaders(accessToken: string): Record<string, string> {
   return headers;
 }
 
-function cloudTokenRequiredResponse(): Response {
-  return new Response(
-    JSON.stringify({
-      error: 'cloud_token_required',
-      error_description:
-        'Google Drive access token required. Unlock with cloud credentials before Drive-backed calls.'
-    }),
-    { status: 409, headers: { 'Content-Type': 'application/json' } }
-  );
-}
-
 function toUrl(pathOrUrl: string): string {
   return /^https?:\/\//i.test(pathOrUrl) ? pathOrUrl : `${API_ENDPOINT}${pathOrUrl}`;
 }
 
 /**
- * Drive-backed Prism request. Mints a Google cloud access token (via the shared
- * package) and fails closed with a local 409 when a pn is known but no token
- * can be produced — same contract as aggregator ownerFetch.
+ * Prism request. Bearer only. Provider access tokens stay on the device.
  */
 export async function prismOwnerFetch(
   pathOrUrl: string,
   accessToken: string,
   init?: RequestInit & { pnIdentifier?: string | null }
 ): Promise<Response> {
-  const { pnIdentifier, headers: initHeaders, ...rest } = init ?? {};
-  const pn = pnIdentifier ?? prismPnIdentifier;
-  const headers = await ownerCloudHeadersAsync({
-    authToken: accessToken,
-    pnIdentifier: pn,
-    apiEndpoint: API_ENDPOINT
-  });
-  if (pn && !headers[PN_CLOUD_ACCESS_TOKEN_HEADER]) {
-    return cloudTokenRequiredResponse();
-  }
+  const { pnIdentifier: _pn, headers: initHeaders, ...rest } = init ?? {};
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  if (accessToken) headers.Authorization = `Bearer ${accessToken}`;
   return fetch(toUrl(pathOrUrl), {
     ...rest,
-    headers: { ...headers, ...(initHeaders as Record<string, string> | undefined) }
+    headers: {
+      ...headers,
+      ...omitCloudAccessHeader(initHeaders as Record<string, string> | undefined)
+    }
   });
 }
 
@@ -193,14 +173,21 @@ export async function fetchPreviewBlobUrl(
   thumbnail = true,
   pnIdentifier?: string | null
 ): Promise<string> {
-  const params = new URLSearchParams({
-    ownerPn,
-    fileId,
-    ...(thumbnail && { thumbnail: 'true' })
-  });
-  const res = await prismOwnerFetch(`/api/prism/preview?${params}`, accessToken, {
-    pnIdentifier
-  });
+  void ownerPn;
+  void thumbnail;
+  const { deviceDriveCall, getCloudAccessTokenFromSession } = await import(
+    '@par-noir/device-cloud-credentials'
+  );
+  const googleToken = getCloudAccessTokenFromSession(pnIdentifier);
+  if (!googleToken) {
+    throw new Error('cloud_on_device');
+  }
+  const res = await deviceDriveCall(
+    'GET',
+    `/api/drive/files/${encodeURIComponent(fileId)}?download=true`,
+    undefined,
+    { accessToken: googleToken }
+  );
   if (!res.ok) throw new Error('Failed to load preview');
   const blob = await res.blob();
   return URL.createObjectURL(blob);

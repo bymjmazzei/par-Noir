@@ -23,7 +23,7 @@ export interface RecoveryRequestRouteDeps {
 }
 
 export function setupRecoveryRequestRoutes(app: express.Application, deps: RecoveryRequestRouteDeps) {
-  const { extractAccountId, getMetadataFolder } = deps;
+  void deps;
 
   /**
    * Resolve the Drive context (token + _metadata folder) backing a user's recovery sheet.
@@ -31,50 +31,15 @@ export function setupRecoveryRequestRoutes(app: express.Application, deps: Recov
    * lookup in recoveryDriveContext.ts.
    */
   async function getRecoveryDriveContext(
-    req: express.Request,
-    userPnIdentifier: string
+    _req: express.Request,
+    _userPnIdentifier: string
   ): Promise<{
     pnIdentifier: string;
     token: { access_token: string; refresh_token?: string; expires_at?: number; expires_in?: number };
     accountId?: string;
     metadataFolderId: string;
   } | null> {
-    const { storageCredentialsService } = await import('./storageCredentialsService');
-    const { resolveOwnerDriveToken } = await import('./ownerDriveToken');
-    const pnIdentifier = userPnIdentifier.startsWith('pn-') ? userPnIdentifier : `pn-${userPnIdentifier}`;
-    const userCredentials = await storageCredentialsService.getCredentials(pnIdentifier);
-    if (!userCredentials?.credentials) {
-      return null;
-    }
-    const googleDriveAccounts =
-      userCredentials.credentials.googleDriveAccounts ||
-      (userCredentials.credentials.googleDrive ? [userCredentials.credentials.googleDrive] : []);
-    if (googleDriveAccounts.length === 0) {
-      return null;
-    }
-    const account = googleDriveAccounts.length > 0 ? googleDriveAccounts[0] : null;
-    const accountId = account ? extractAccountId(account) : undefined;
-    let token;
-    try {
-      token = (await resolveOwnerDriveToken(req, pnIdentifier, { account, accountId })).token;
-    } catch (error) {
-      // Do not swallow custody misses into "Drive not connected" 404.
-      const { DriveIndexError } = await import('./pnDriveIndex');
-      if (error instanceof DriveIndexError && error.code === 'CLOUD_TOKEN_REQUIRED') {
-        throw error;
-      }
-      return null;
-    }
-    const folders = await getMetadataFolder(token, pnIdentifier, accountId);
-    if (!folders) {
-      return null;
-    }
-    return {
-      pnIdentifier,
-      token,
-      accountId,
-      metadataFolderId: folders.metadataFolderId
-    };
+    return null;
   }
 
     // Recovery requests + custodian roster (Drive-backed)
@@ -95,34 +60,18 @@ export function setupRecoveryRequestRoutes(app: express.Application, deps: Recov
         if (!(await gateOwnerRoute(req, res, DEVICE_CAPABILITIES.recoveryInitiate, String(userPnIdentifier)))) {
           return;
         }
-        const { extractCloudAccessToken } = await import('./cloudAccessToken');
-        const { getRecoveryDriveContext: getCtx } = await import('./recoveryDriveContext');
-        const cloudTok = extractCloudAccessToken(req);
-        const ctx = await getCtx(String(userPnIdentifier), cloudTok ? { accessToken: cloudTok } : undefined);
-        if (!ctx) return res.status(404).json({ error: 'Drive not connected' });
-        const { RecoverySheetsService } = await import('./recoverySheetsService');
-        const spreadsheetId = await RecoverySheetsService.getOrCreateSpreadsheet(
-          ctx.token, ctx.metadataFolderId, ctx.pnIdentifier, ctx.accountId
-        );
-        const type =
-          requestType === 'device_registry_reset' ? 'device_registry_reset' : 'identity_recovery';
-        await RecoverySheetsService.upsertRecoveryRequest(
-          ctx.token,
-          spreadsheetId,
-          {
-            requestId,
-            publicKey,
-            status: status || 'pending',
-            threshold: threshold || 2,
-            sharesJson: '[]',
-            claimantName: claimantName || '',
-            createdAt: new Date().toISOString(),
-            requestType: type,
-          },
-          ctx.pnIdentifier,
-          ctx.accountId
-        );
-        return res.json({ success: true, spreadsheetId, requestType: type });
+        const { readDeviceCloudResult, respondCloudOnDevice } = await import('./deviceCloudResult');
+        const submitted = readDeviceCloudResult(req.body);
+        if (!submitted?.spreadsheetId) {
+          respondCloudOnDevice(res);
+          return;
+        }
+        return res.json({
+          success: true,
+          spreadsheetId: submitted.spreadsheetId,
+          requestType: requestType === 'device_registry_reset' ? 'device_registry_reset' : 'identity_recovery',
+          rows: submitted.rows,
+        });
       } catch (error: any) {
         const { respondDriveTokenError } = await import('./ownerDriveToken');
         if (respondDriveTokenError(res, error)) return;

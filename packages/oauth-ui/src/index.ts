@@ -252,3 +252,15 @@ export {
   wakePreferAppBrokerPoll,
 } from './preferAppBrokerWait';
 export type { PreferAppBrokerWait } from './preferAppBrokerWait';
+export { HostedShellLaunch } from './hostedShell/HostedShellLaunch';
+export type { HostedShellLaunchProps } from './hostedShell/HostedShellLaunch';
+export {
+  SHELL_OPS,
+  ShellFactorLeak,
+  assertFactorFree,
+  encodeShellReturn,
+  parseShellReturn,
+  applyShellFragment,
+  buildShellLaunchUrl,
+} from './hostedShell/session';
+export type { ShellOp, HostedShellSession } from './hostedShell/session';

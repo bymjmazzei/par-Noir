@@ -7,7 +7,7 @@ import type { Request, Response } from 'express';
 import { extractCloudAccessToken } from './cloudAccessToken';
 import type { GoogleDriveToken } from './googleOAuth2Helper';
 import { DriveIndexError } from './pnDriveIndex';
-import { requireOwnerDriveContext, type OwnerDriveContext } from './ownerDriveContext';
+import type { OwnerDriveContext } from './ownerDriveContext';
 import { hashIdentifier, safeLogger } from '../../utils/logger';
 
 export type ResolvedOwnerDriveToken = {
@@ -59,16 +59,18 @@ export async function resolveOwnerDriveToken(
 ): Promise<ResolvedOwnerDriveToken> {
   const account = opts?.account;
   const accountId = accountIdFrom(account, opts?.accountId);
-  const accessToken = (extractCloudAccessToken(req) || '').trim();
-  if (!accessToken) {
-    throwCloudTokenRequired(pnIdentifier, 'cloud_token_required');
+  void accountId;
+  void pnIdentifier;
+  if ((extractCloudAccessToken(req) || '').trim()) {
+    throw new DriveIndexError(
+      'Drive access tokens stay on the device. The API does not accept X-PN-Cloud-Access-Token.',
+      'CLOUD_TOKEN_REJECTED'
+    );
   }
-  return {
-    token: {
-      access_token: accessToken,
-    },
-    accountId,
-  };
+  throw new DriveIndexError(
+    'Drive reads and writes run on the device. This API does not proxy the user cloud.',
+    'CLOUD_ON_DEVICE'
+  );
 }
 
 /** requireOwnerDriveContext with cloud token extracted from the request. */
@@ -77,14 +79,23 @@ export async function requireOwnerDriveContextFromReq(
   pnIdentifier: string,
   accountId?: string
 ): Promise<OwnerDriveContext> {
-  return requireOwnerDriveContext(pnIdentifier, accountId, {
-    accessToken: extractCloudAccessToken(req),
-  });
+  await resolveOwnerDriveToken(req, pnIdentifier, { accountId });
+  throw new DriveIndexError(
+    'Drive reads and writes run on the device. This API does not proxy the user cloud.',
+    'CLOUD_ON_DEVICE'
+  );
 }
 
 /** Map DriveIndexError / CLOUD_TOKEN_REQUIRED to HTTP response. Returns true if handled. */
 export function respondDriveTokenError(res: Response, error: unknown): boolean {
   if (error instanceof DriveIndexError) {
+    if (error.code === 'CLOUD_TOKEN_REJECTED' || error.code === 'CLOUD_ON_DEVICE') {
+      res.status(409).json({
+        error: 'cloud_on_device',
+        error_description: error.message,
+      });
+      return true;
+    }
     if (error.code === 'CLOUD_TOKEN_REQUIRED') {
       res.status(409).json({
         error: 'cloud_token_required',

@@ -10,7 +10,8 @@ import {
   looksLikePlaintextCloudSecrets,
   CLOUD_VAULT_SEAL_SESSION_ID,
   CLOUD_VAULT_MLKEM_SESSION_ID,
-  cloudVaultSealSessionFromMlKem
+  cloudVaultSealSessionFromMlKem,
+  omitCloudAccessHeader
 } from './cloudVault.js';
 
 describe('cloud vault canonical seal', () => {
@@ -59,5 +60,16 @@ describe('cloud vault canonical seal', () => {
     expect(looksLikePlaintextCloudSecrets({ googleDriveAccounts: [{ accessToken: 'x' }] })).toBe(
       true
     );
+  });
+
+  it('drops a provider access token before an API request', () => {
+    const headers = omitCloudAccessHeader({
+      Authorization: 'Bearer session',
+      'X-PN-Cloud-Access-Token': 'google-token',
+      'x-pn-cloud-access-token': 'google-token'
+    });
+    expect(headers.Authorization).toBe('Bearer session');
+    expect(headers['X-PN-Cloud-Access-Token']).toBeUndefined();
+    expect(headers['x-pn-cloud-access-token']).toBeUndefined();
   });
 });

@@ -966,19 +966,17 @@ export function setupFeedRoutes(app: Application) {
    */
   app.post('/api/feeds/activate-after-verification', async (req: Request, res: Response) => {
     try {
-      const { checkoutId, verificationId, verifiedZKPs } = req.body;
+      const { checkoutId, verificationId, verifiedZKPs, deviceFolderId } = req.body;
 
       const tokenPayload = getBearerTokenPayload(req);
       if (!tokenPayload) {
         return res.status(401).json({ error: 'Invalid token' });
       }
 
-      const { extractCloudAccessToken } = await import('./cloudAccessToken');
-      const cloudAccessToken = extractCloudAccessToken(req);
-      if (!cloudAccessToken) {
+      if (!deviceFolderId || typeof deviceFolderId !== 'string') {
         return res.status(409).json({
-          error: 'cloud_token_required',
-          error_description: 'Reconnect storage on this device to register the feed sub-pN'
+          error: 'cloud_on_device',
+          error_description: 'Create the feed folder on the device and submit deviceFolderId'
         });
       }
 
@@ -1033,7 +1031,7 @@ export function setupFeedRoutes(app: Application) {
           verificationId: verificationId || 'already-verified',
           verifiedZKPs: verifiedZKPs || {}
         },
-        { cloudAccessToken }
+        { deviceFolderId }
       );
 
       return res.json(activatedFeed);

@@ -244,8 +244,7 @@ export async function reconnectOAuthProvider(
     method: 'POST',
     headers: {
       Authorization: `Bearer ${authToken}`,
-      'Content-Type': 'application/json',
-      'X-PN-Cloud-Access-Token': tokens.accessToken
+      'Content-Type': 'application/json'
     }
   });
   if (provider === 'dropbox') {

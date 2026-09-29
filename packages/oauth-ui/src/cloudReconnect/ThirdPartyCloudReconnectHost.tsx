@@ -1,9 +1,12 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   clearCloudCredentialsOnLock,
+  ensureSessionDriveIndex,
+  getCloudAccessTokenFromSession,
   getSessionCloudCredentials,
   publishCloudDriveReady,
-  setSessionCloudCredentials
+  setSessionCloudCredentials,
+  type DeviceDriveLayout,
 } from '@par-noir/device-cloud-credentials';
 import { envelopeHasUsableSecrets } from '@par-noir/user-owned-storage';
 import type { StorageCredentialsEnvelope } from '@par-noir/user-owned-storage';
@@ -155,6 +158,32 @@ export function ThirdPartyCloudReconnectHost({
     async (envelope: StorageCredentialsEnvelope) => {
       if (!pnIdentifier || !authToken) return;
       setSessionCloudCredentials(pnIdentifier, envelope);
+      const cloudToken = getCloudAccessTokenFromSession(pnIdentifier);
+      if (cloudToken) {
+        await ensureSessionDriveIndex({
+          identityId: pnIdentifier,
+          accessToken: cloudToken,
+          readStoredIndex: async () => {
+            const res = await fetch(
+              `${apiEndpoint}/api/storage/credentials/${encodeURIComponent(pnIdentifier)}`,
+              { headers: { Authorization: `Bearer ${authToken}` } }
+            );
+            if (!res.ok) return null;
+            const body = (await res.json()) as { credentials?: { pnDriveIndex?: DeviceDriveLayout } };
+            return body.credentials?.pnDriveIndex || null;
+          },
+          persistIndex: async (built) => {
+            await fetch(`${apiEndpoint}/api/storage/initialize/${encodeURIComponent(pnIdentifier)}`, {
+              method: 'POST',
+              headers: {
+                Authorization: `Bearer ${authToken}`,
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({ pnDriveIndex: built }),
+            });
+          },
+        });
+      }
       setVaultHydrated(true);
       await gateRef.current.refreshForced();
       const ok = await publishCloudDriveReady({

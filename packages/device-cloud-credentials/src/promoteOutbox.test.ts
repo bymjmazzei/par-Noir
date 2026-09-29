@@ -5,6 +5,7 @@
 
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 import { promoteOutboxRecord } from './promoteOutbox.js';
+import { setSessionDriveIndex } from './sessionMemory.js';
 import type { OutboxRecord } from './outbox.js';
 import type { SealSession } from './types.js';
 
@@ -35,7 +36,23 @@ describe('promoteOutboxRecord (Sheets SoT)', () => {
   });
 
   it('POSTs /api/messages/apply-inbound with role sender before marking materialized', async () => {
-    const fetchMock = vi.fn(async (url: string) => {
+    setSessionDriveIndex('pn-sender', {
+      schemaVersion: 1,
+      pnFolderId: 'pn-folder',
+      metadataFolderId: 'meta',
+      integratorsRootId: 'int',
+      messagesFolderId: 'msg',
+      inboxSheetId: 'sheet-from-device',
+      sheetIds: {},
+      conversationSheets: {},
+    });
+    const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
+      if (String(url).includes('sheets.googleapis.com')) {
+        expect(String(url)).not.toContain('api.parnoir.com');
+        expect(String(url)).toContain('sheet-from-device');
+        expect((init?.headers as Record<string, string>)?.Authorization).toBe('Bearer cloud-at');
+        return new Response(JSON.stringify({ updates: { updatedRows: 1 } }), { status: 200 });
+      }
       if (String(url).includes('/api/messages/apply-inbound')) {
         return new Response(JSON.stringify({ success: true }), { status: 200 });
       }
@@ -91,6 +108,9 @@ describe('promoteOutboxRecord (Sheets SoT)', () => {
     expect(body.jobType).toBe('message_append');
     expect(body.encryptedContent).toBe('ct');
     expect(body.userPnIdentifier).toBe('pn-sender');
+    expect(body.deviceCloudResult.spreadsheetId).toBe('sheet-from-device');
+    const applyHeaders = applyCalls[0]![1] as RequestInit;
+    expect((applyHeaders.headers as Record<string, string>)['X-PN-Cloud-Access-Token']).toBeUndefined();
     expect(upsertSpy).toHaveBeenCalled();
     const lastUpsert = upsertSpy.mock.calls.at(-1)?.[2] as OutboxRecord;
     expect(lastUpsert.status).toBe('materialized');

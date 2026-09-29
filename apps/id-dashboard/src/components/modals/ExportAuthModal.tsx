@@ -1,7 +1,6 @@
 import React from 'react';
 import { SectionInfo } from '../common/SectionInfo';
-import { secretKeyInputProps } from '@par-noir/oauth-ui';
-import { KEY_1_PLACEHOLDER, KEY_2_PLACEHOLDER } from '../../constants/credentialLabels';
+import { HostedShellLaunch } from '@par-noir/oauth-ui';
 
 interface ExportAuthModalProps {
   isOpen: boolean;
@@ -73,47 +72,9 @@ export function ExportAuthModal({
         </div>
         
         <div className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium mb-2">Key 1</label>
-            <div className="relative">
-              <input
-                {...secretKeyInputProps('key1', 'unlock')}
-                type={showExportPnName ? "text" : "password"}
-                value={exportAuthData.pnName}
-                onChange={(e) => setExportAuthData(prev => ({ ...prev, pnName: e.target.value }))}
-                className="w-full px-3 py-2 pr-10 border border-border rounded-md bg-input-bg text-text-primary"
-                placeholder={KEY_1_PLACEHOLDER}
-              />
-              <button
-                type="button"
-                onClick={() => setShowExportPnName(!showExportPnName)}
-                className="absolute right-2 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
-              >
-                {showExportPnName ? "👁️" : "👁️‍🗨️"}
-              </button>
-            </div>
-          </div>
-          
-          <div>
-            <label className="block text-sm font-medium mb-2">Key 2</label>
-            <div className="relative">
-              <input
-                {...secretKeyInputProps('key2', 'unlock')}
-                type={showExportPasscode ? "text" : "password"}
-                value={exportAuthData.passcode}
-                onChange={(e) => setExportAuthData(prev => ({ ...prev, passcode: e.target.value }))}
-                className="w-full px-3 py-2 pr-10 border border-border rounded-md bg-input-bg text-text-primary"
-                placeholder={KEY_2_PLACEHOLDER}
-              />
-              <button
-                type="button"
-                onClick={() => setShowExportPasscode(!showExportPasscode)}
-                className="absolute right-2 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
-              >
-                {showExportPasscode ? "👁️" : "👁️‍🗨️"}
-              </button>
-            </div>
-          </div>
+          <HostedShellLaunch op="export" onSession={(session) => {
+            void import('../../services/shellResultFile').then(({ downloadShellIdentityFile }) => downloadShellIdentityFile(session));
+          }} />
           
           <div className="flex space-x-3 pt-4">
             <button

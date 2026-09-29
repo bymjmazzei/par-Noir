@@ -10,11 +10,9 @@ import {
 } from '@par-noir/aggregator-domain';
 import { hashIdentifier, safeLogger } from '../../utils/logger';
 import {
-  ensureDrivePublicReadable,
   ensurePortablePublicReadable,
   fetchPublicBytesTimed,
   PublicBlobAccessError,
-  revokeDrivePublicReadable,
 } from './publicBlobAccess';
 
 const PURGE_COOLDOWN_MS = 60_000;
@@ -70,26 +68,13 @@ export function registerPublicContentRoutes(app: Application): void {
       const publicUrlHint = typeof req.body?.publicUrl === 'string' ? req.body.publicUrl : undefined;
 
       if (backend === 'google_drive') {
-        const { resolveOwnerDriveToken, respondDriveTokenError } = await import('./ownerDriveToken');
-        let accessToken: string;
-        try {
-          const resolved = await resolveOwnerDriveToken(req, tokenPayload.pnIdentifier);
-          accessToken =
-            resolved.token.access_token ||
-            (resolved.token as { accessToken?: string }).accessToken ||
-            '';
-          if (!accessToken) {
-            return res.status(409).json({
-              error: 'cloud_token_required',
-              error_description: 'Resolved Drive token missing access_token',
-            });
-          }
-        } catch (e) {
-          if (respondDriveTokenError(res, e)) return;
-          throw e;
+        const submitted = req.body?.publicContentRef;
+        if (!isPublicContentRef(submitted)) {
+          const { respondCloudOnDevice } = await import('./deviceCloudResult');
+          respondCloudOnDevice(res);
+          return;
         }
-        const ref = await ensureDrivePublicReadable(accessToken, objectId);
-        return res.json({ success: true, publicContentRef: ref });
+        return res.json({ success: true, publicContentRef: submitted });
       }
 
       const ref = await ensurePortablePublicReadable(backend, objectId, publicUrlHint);
@@ -119,25 +104,11 @@ export function registerPublicContentRoutes(app: Application): void {
       const backend = String(req.body?.backend || req.query.backend || 'google_drive');
 
       if (backend === 'google_drive') {
-        const { resolveOwnerDriveToken, respondDriveTokenError } = await import('./ownerDriveToken');
-        let accessToken: string;
-        try {
-          const resolved = await resolveOwnerDriveToken(req, tokenPayload.pnIdentifier);
-          accessToken =
-            resolved.token.access_token ||
-            (resolved.token as { accessToken?: string }).accessToken ||
-            '';
-          if (!accessToken) {
-            return res.status(409).json({
-              error: 'cloud_token_required',
-              error_description: 'Resolved Drive token missing access_token',
-            });
-          }
-        } catch (e) {
-          if (respondDriveTokenError(res, e)) return;
-          throw e;
+        const { readDeviceCloudResult, respondCloudOnDevice } = await import('./deviceCloudResult');
+        if (!readDeviceCloudResult(req.body)?.spreadsheetId && req.body?.revoked !== true) {
+          respondCloudOnDevice(res);
+          return;
         }
-        await revokeDrivePublicReadable(accessToken, objectId);
         await invalidateEnvelopeCache(objectId);
         return res.json({ success: true });
       }

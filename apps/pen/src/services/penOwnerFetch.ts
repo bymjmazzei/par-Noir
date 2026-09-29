@@ -1,12 +1,9 @@
 /**
- * Owner API fetch for Pen — mints X-PN-Cloud-Access-Token and fails closed.
+ * Owner API fetch for Pen. Bearer only. Provider tokens stay on the device.
  * Mirrors aggregator-browser ownerApiFetch (apps must not import each other).
  */
 
-import {
-  ownerCloudHeadersAsync,
-  PN_CLOUD_ACCESS_TOKEN_HEADER
-} from '@par-noir/device-cloud-credentials';
+import { omitCloudAccessHeader } from '@par-noir/device-cloud-credentials';
 import { API_ENDPOINT } from '../config/api';
 import { loadPenSession, savePenSession } from './penSession';
 
@@ -20,23 +17,6 @@ function toUrl(pathOrUrl: string): string {
   return /^https?:\/\//i.test(pathOrUrl) ? pathOrUrl : `${API_ENDPOINT}${pathOrUrl}`;
 }
 
-function cloudTokenRequiredResponse(): Response {
-  return new Response(
-    JSON.stringify({
-      error: 'cloud_token_required',
-      error_description:
-        'Google Drive access token required. Unlock with cloud credentials before Drive-backed calls.'
-    }),
-    { status: 409, headers: { 'Content-Type': 'application/json' } }
-  );
-}
-
-function hasForwardedCloudToken(extra?: Record<string, string>): boolean {
-  if (!extra) return false;
-  const v = extra[PN_CLOUD_ACCESS_TOKEN_HEADER] || extra['x-pn-cloud-access-token'];
-  return typeof v === 'string' && v.trim().length > 0;
-}
-
 function isJsonBody(body: unknown): boolean {
   if (body == null) return false;
   return !(
@@ -48,20 +28,6 @@ function isJsonBody(body: unknown): boolean {
   );
 }
 
-async function driveHeaders(
-  authToken: string,
-  pnIdentifier?: string
-): Promise<{ headers: Record<string, string>; missing: boolean }> {
-  const headers = await ownerCloudHeadersAsync({
-    authToken,
-    pnIdentifier,
-    apiEndpoint: API_ENDPOINT
-  });
-  if (!authToken) delete headers.Authorization;
-  const missing = Boolean(pnIdentifier) && !headers[PN_CLOUD_ACCESS_TOKEN_HEADER];
-  return { headers, missing };
-}
-
 async function request(opts: {
   method: string;
   pathOrUrl: string;
@@ -69,25 +35,43 @@ async function request(opts: {
   init?: OwnerFetchInit;
   drive: boolean;
 }): Promise<Response> {
-  const { extraHeaders, pnIdentifier, authToken, ...rest } = opts.init ?? {};
+  const { extraHeaders, pnIdentifier: _pn, authToken, ...rest } = opts.init ?? {};
   const session = loadPenSession();
-  const pn = pnIdentifier || session?.pnIdentifier || undefined;
   const token = authToken || session?.accessToken || '';
 
-  let headers: Record<string, string>;
-  if (opts.drive) {
-    const resolved = await driveHeaders(token, pn);
-    if (resolved.missing && !hasForwardedCloudToken(extraHeaders)) {
-      return cloudTokenRequiredResponse();
-    }
-    headers = { 'Content-Type': 'application/json', ...resolved.headers };
-  } else {
-    headers = { 'Content-Type': 'application/json' };
-    if (token) headers.Authorization = `Bearer ${token}`;
-  }
-  Object.assign(headers, extraHeaders);
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  if (token) headers.Authorization = `Bearer ${token}`;
+  Object.assign(headers, omitCloudAccessHeader(extraHeaders));
 
-  const jsonBody = isJsonBody(opts.body);
+  let body = opts.body;
+  const jsonBody = isJsonBody(body);
+  if (
+    jsonBody &&
+    opts.method !== 'GET' &&
+    opts.pathOrUrl.includes('apply-inbound') &&
+    body &&
+    typeof body === 'object' &&
+    !('deviceCloudResult' in (body as object))
+  ) {
+    const { appendDeviceCloudRow, getCloudAccessTokenFromSession, layoutSheetId } = await import(
+      '@par-noir/device-cloud-credentials'
+    );
+    const pn =
+      opts.init?.pnIdentifier ||
+      (body as { userPnIdentifier?: string }).userPnIdentifier ||
+      session?.pnIdentifier;
+    const cloudToken = pn ? getCloudAccessTokenFromSession(pn) : null;
+    const spreadsheetId = pn ? layoutSheetId(pn, 'pen_doc') : null;
+    if (cloudToken && spreadsheetId) {
+      body = {
+        ...(body as Record<string, unknown>),
+        deviceCloudResult: await appendDeviceCloudRow(cloudToken, {
+          ...(body as Record<string, unknown>),
+          spreadsheetId,
+        }),
+      };
+    }
+  }
   if (!jsonBody) delete headers['Content-Type'];
 
   return fetch(toUrl(opts.pathOrUrl), {
@@ -95,11 +79,11 @@ async function request(opts: {
     method: opts.method,
     headers,
     body:
-      opts.body == null
+      body == null
         ? undefined
         : jsonBody
-          ? JSON.stringify(opts.body)
-          : (opts.body as BodyInit)
+          ? JSON.stringify(body)
+          : (body as BodyInit)
   });
 }
 

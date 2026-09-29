@@ -15,6 +15,10 @@ import {
   lookupMailboxThroughway
 } from './flushWorker.js';
 import { mintDriveAuthExtras, type BuildAuthHeaders } from './mintDriveAuthHeaders.js';
+import { omitCloudAccessHeader } from './cloudVault.js';
+import { appendDeviceCloudRow } from './deviceCloudRow.js';
+import { appendDeviceMessage } from './deviceSocial.js';
+import { layoutSheetId } from './layoutSheet.js';
 
 export interface PromoteOutboxOptions {
   apiBaseUrl: string;
@@ -93,7 +97,7 @@ async function postOwnSheetApply(
     jobType: record.kind,
     role: 'sender'
   };
-  const extra = await mintDriveAuthExtras({
+  const extra = omitCloudAccessHeader(await mintDriveAuthExtras({
     authToken: opts.authToken,
     pnIdentifier: opts.identityId,
     apiEndpoint: opts.apiBaseUrl,
@@ -102,7 +106,29 @@ async function postOwnSheetApply(
     method: 'POST',
     path,
     body
-  });
+  }));
+  const cloudToken = await opts.getCloudAccessToken?.();
+  const spreadsheetId =
+    (typeof body.spreadsheetId === 'string' && body.spreadsheetId) ||
+    layoutSheetId(opts.identityId, record.kind) ||
+    '';
+  if (cloudToken && spreadsheetId) {
+    body.spreadsheetId = spreadsheetId;
+    if (record.kind === 'message_append') {
+      await appendDeviceMessage(cloudToken, spreadsheetId, {
+        fromPnIdentifier: opts.identityId,
+        content: '',
+        encryptedContent: typeof body.encryptedContent === 'string' ? body.encryptedContent : '',
+        timestamp: typeof body.timestamp === 'string' ? body.timestamp : new Date().toISOString(),
+        messageId: typeof body.messageId === 'string' ? body.messageId : record.outboxId,
+        read: true,
+        cryptoVersion: 2,
+      });
+      body.deviceCloudResult = { spreadsheetId, provider: 'google' };
+    } else {
+      body.deviceCloudResult = await appendDeviceCloudRow(cloudToken, body);
+    }
+  }
   const res = await fetch(`${base}${path}`, {
     method: 'POST',
     headers: {

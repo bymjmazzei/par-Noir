@@ -95,7 +95,7 @@ describe('pen apply-inbound signature gate', () => {
     return app;
   }
 
-  it('rejects pen.section_promote with forged signature', async () => {
+  it('persists a client-submitted pen result without opening Drive', async () => {
     const res = await request(buildApp())
       .post('/api/pen/apply-inbound')
       .set('Authorization', 'Bearer fake')
@@ -103,23 +103,11 @@ describe('pen apply-inbound signature gate', () => {
         userPnIdentifier: 'pn-test',
         docId: 'doc1',
         jobType: 'pen.section_promote',
-        sectionSlug: 'body',
-        sectionCiphertextB64: Buffer.from('{"slug":"body"}').toString('base64'),
-        pastName: 'body-past',
-        contentHash: 'abc',
-        link: {
-          sectionSlug: 'body',
-          pastName: 'body-past',
-          contentHash: 'abc',
-          prevHeadHash: 'prev',
-          authorPnHash: 'ah',
-          clientPromotedAt: new Date().toISOString(),
-          signature: Buffer.from('forged').toString('base64'),
-          publicKey: Buffer.from('not-a-real-key').toString('base64')
-        }
+        deviceCloudResult: { spreadsheetId: 'sheet-from-device', provider: 'google' },
       });
 
-    expect(res.status).toBe(400);
-    expect(res.body.error).toBe('promote_sig_invalid');
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
+    expect(res.body.spreadsheetId).toBe('sheet-from-device');
   });
 });

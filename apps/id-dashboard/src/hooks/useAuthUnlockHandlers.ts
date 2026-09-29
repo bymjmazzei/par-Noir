@@ -10,6 +10,8 @@ import {
   type AuthSession,
   type EncryptedIdentity
 } from '@par-noir/identity-crypto';
+import type { HostedShellSession } from '@par-noir/oauth-ui';
+import { exchangeCodeForToken, setStoredToken } from '../services/parNoirOAuthInline';
 import * as BiometricAdapter from '../utils/biometricAdapter';
 import { cloudSyncManager } from '../utils/cloudSync';
 import { IntegrationCredentialManager } from '../utils/integrationCredentialManager';
@@ -1296,7 +1298,65 @@ export function useAuthUnlockHandlers(params: UseAuthUnlockHandlersParams) {
     }
   };
 
+  const handleShellSession = async (session: HostedShellSession) => {
+    if (!session.code && !session.accessToken && session.op !== 'seal_vault') return;
+    setLoading(true);
+    setError(null);
+    try {
+      let accessToken = session.accessToken;
+      if (session.code) {
+        const redirectUri = `${window.location.origin}${window.location.pathname}${window.location.search}`;
+        accessToken = await exchangeCodeForToken(session.code, redirectUri);
+      }
+      if (!accessToken) {
+        throw new Error('Unlock did not return a session');
+      }
+      if (session.op === 'seal_vault' && session.result?.sealedVault) {
+        const { publishSealedVault } = await import('../services/sealVaultHandoff');
+        await publishSealedVault(session, accessToken);
+      }
+      const authenticatedAt = new Date().toISOString();
+      await storage.storeSession({
+        id: session.did,
+        nickname: session.nickname || 'pN',
+        accessToken,
+        expiresIn: 3600,
+        authenticatedAt,
+        publicKey: session.publicKey,
+      });
+      setStoredToken({
+        accessToken,
+        expiresAt: Date.now() + 60 * 60 * 1000,
+      });
+      setAuthenticatedUser({
+        id: session.did,
+        nickname: session.nickname || 'pN',
+        accessToken,
+        expiresIn: 3600,
+        authenticatedAt,
+        publicKey: session.publicKey,
+      });
+    } catch (error: any) {
+      logError('Shell unlock error:', error);
+      setError(error.message || 'Failed to open unlock session');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const shellSessionRef = React.useRef(handleShellSession);
+  shellSessionRef.current = handleShellSession;
+  React.useEffect(() => {
+    const onShell = (event: Event) => {
+      const session = (event as CustomEvent<HostedShellSession>).detail;
+      if (session) void shellSessionRef.current(session);
+    };
+    window.addEventListener('pn-hosted-shell-session', onShell);
+    return () => window.removeEventListener('pn-hosted-shell-session', onShell);
+  }, []);
+
   return {
+    handleShellSession,
     handleAuthSuccess,
     handleAuthError,
     handleLogout,

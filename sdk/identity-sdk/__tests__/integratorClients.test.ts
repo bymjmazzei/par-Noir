@@ -80,7 +80,7 @@ describe('IntegratorStorageClient', () => {
     await client.getStorageRoot({ accessToken: token, cloudAccessToken: 'cloud-tok' });
     const headers = fetchMock.mock.calls[0][1].headers;
     expect(headers.Authorization).toBe('Bearer test-token');
-    expect(headers['X-PN-Cloud-Access-Token']).toBe('cloud-tok');
+    expect(headers['X-PN-Cloud-Access-Token']).toBeUndefined();
   });
 });
 
@@ -231,7 +231,7 @@ describe('IntegratorPublishClient', () => {
     );
     const init = (global.fetch as jest.Mock).mock.calls[0][1];
     expect(init.method).toBe('POST');
-    expect(init.headers['X-PN-Cloud-Access-Token']).toBe('cloud');
+    expect(init.headers['X-PN-Cloud-Access-Token']).toBeUndefined();
     const body = JSON.parse(init.body);
     expect(body.metadata.fileId).toBe('f1');
     expect(body.pnIdentifier).toBe('pn-1');

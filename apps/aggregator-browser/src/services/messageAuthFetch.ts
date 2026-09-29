@@ -6,6 +6,7 @@ import { PNOAuthService } from './pnOAuthService';
 import { API_ENDPOINT } from '../config/api';
 import { buildLocalDeviceProofHeaders } from '@par-noir/device-client';
 import { ownerApiHeadersAsync } from './ownerApiHeaders';
+import { omitCloudAccessHeader } from '@par-noir/device-cloud-credentials';
 
 export async function messageAuthHeaders(
   method: string,
@@ -18,9 +19,9 @@ export async function messageAuthHeaders(
   }
   const session = PNOAuthService.loadSession();
   // Base: bearer + X-PN-Cloud-Access-Token from vault hydrate (+ refresh)
-  const headers: Record<string, string> = {
-    ...(await ownerApiHeadersAsync(accessToken, session?.pnIdentifier))
-  };
+  const headers: Record<string, string> = omitCloudAccessHeader(
+    await ownerApiHeadersAsync(accessToken, session?.pnIdentifier)
+  );
   if (!headers['Content-Type']) {
     headers['Content-Type'] = 'application/json';
   }
