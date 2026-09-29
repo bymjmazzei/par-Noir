@@ -13,12 +13,15 @@ import {
   defaultLayerName,
   editorPlaybackSrc,
   KEYFRAME_EPSILON_SEC,
+  layerClockSpan,
+  layerMediaTime,
   layerSampleTime,
   publishPlaybackSrc,
   resolveTimelineDuration,
   sampleLayerAt,
   setKeyframeEase,
   spanLeavingKey,
+  splitLayerAt,
   toggleKeyframeAt,
   upsertLayer,
   wrapTime,
@@ -80,13 +83,12 @@ function trackRows(section: PenSectionContent): Array<{ layer: PenPageLayer; dep
   return rows;
 }
 
-function rowDuration(section: PenSectionContent, layer: PenPageLayer, pageDuration: number): number {
-  if (layer.kind === 'group' && layer.durationSec && layer.durationSec > 0) return layer.durationSec;
-  if (layer.parentGroupId) {
-    const group = (section.layers || []).find((item) => item.id === layer.parentGroupId);
-    if (group?.durationSec && group.durationSec > 0) return group.durationSec;
-  }
-  return pageDuration;
+function rulerStep(span: number, zoom: number): number {
+  const visible = span / Math.max(zoom, 1);
+  if (visible > 60) return 10;
+  if (visible > 20) return 5;
+  if (visible > 8) return 1;
+  return 0.5;
 }
 
 function AudioLane({
@@ -199,6 +201,7 @@ export function SectionTimeline({
   );
   const leaving = active ? spanLeavingKey(active, activeLocal) : null;
   const [partnerId, setPartnerId] = useState<string | null>(null);
+  const [zoom, setZoom] = useState(1);
   const playheadRef = useRef(playheadSec);
   const videoSrcs = useRef(new Map<string, string>());
   const ownedVideos = useRef(new Map<string, PenMediaController>());
@@ -230,7 +233,7 @@ export function SectionTimeline({
       }
       const rate = layer.playbackRate && layer.playbackRate > 0 ? layer.playbackRate : 1;
       ctrl.setPlaybackRate(rate);
-      const mediaAt = Math.max(0, at - (layer.inSec || 0)) * rate;
+      const mediaAt = layerMediaTime(layer, at, rate);
       if (mode === 'tick') {
         placeVideo(ctrl.master, mediaAt);
         continue;
@@ -308,15 +311,76 @@ export function SectionTimeline({
   }
 
   function setTrim(layer: PenPageLayer, edge: 'in' | 'out', ratio: number) {
-    const span = rowDuration(section, layer, duration);
-    const at = Math.min(span, Math.max(0, ratio * span));
+    const span = layerClockSpan(section, layer);
+    const inn = layer.inSec ?? 0;
+    const out = layer.outSec ?? span;
+    const minGap = 0.1;
     if (edge === 'in') {
-      const out = layer.outSec ?? span;
-      onSectionChange(upsertLayer(section, { ...layer, inSec: Math.min(at, out) }));
+      const at = Math.min(out - minGap, Math.max(0, ratio * span));
+      const source = Math.max(0, (layer.sourceInSec ?? 0) + (at - inn));
+      onSectionChange(
+        upsertLayer(section, {
+          ...layer,
+          inSec: at,
+          sourceInSec: source > 0 ? source : undefined
+        })
+      );
       return;
     }
-    const inn = layer.inSec ?? 0;
-    onSectionChange(upsertLayer(section, { ...layer, outSec: Math.max(at, inn) }));
+    const at = Math.max(inn + minGap, Math.min(span, Math.max(0, ratio * span)));
+    onSectionChange(upsertLayer(section, { ...layer, outSec: at }));
+  }
+
+  function beginTrim(event: ReactPointerEvent<HTMLButtonElement>, layer: PenPageLayer, edge: 'in' | 'out') {
+    event.stopPropagation();
+    event.preventDefault();
+    const lane = event.currentTarget.parentElement;
+    if (!lane) return;
+    const move = (ev: PointerEvent) => {
+      const rect = lane.getBoundingClientRect();
+      const ratio = (ev.clientX - rect.left) / Math.max(1, rect.width);
+      setTrim(layer, edge, ratio);
+    };
+    const up = () => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+  }
+
+  const cutSpan = active ? layerClockSpan(section, active) : duration;
+  const canCut = Boolean(
+    active &&
+      active.kind !== 'guide' &&
+      active.kind !== 'group' &&
+      playheadSec > (active.inSec ?? 0) + 0.05 &&
+      playheadSec < (active.outSec ?? cutSpan) - 0.05
+  );
+
+  function cutClip() {
+    if (!activeLayerId || !canCut) return;
+    const before = new Set((section.layers || []).map((item) => item.id));
+    const next = splitLayerAt(section, activeLayerId, playheadSec);
+    if (next === section) return;
+    onSectionChange(next);
+    const created = (next.layers || []).find((item) => !before.has(item.id));
+    if (created) onSelectLayer(created.id);
+  }
+
+  function toggleMute(layer: PenPageLayer) {
+    if (layer.kind === 'video') {
+      const mediaMuted = layer.mediaMuted === false ? true : false;
+      peekPenMediaController(`pen-layer:${layer.id}`)?.setClipAudio(
+        (layer.mediaGain ?? 100) / 100,
+        mediaMuted === false
+      );
+      onSectionChange(upsertLayer(section, { ...layer, mediaMuted }));
+      return;
+    }
+    onSectionChange(
+      upsertLayer(section, { ...layer, visible: layer.visible === false ? true : false })
+    );
   }
 
   return (
@@ -358,13 +422,34 @@ export function SectionTimeline({
         >
           <DiamondMark filled={playheadOnKey} />
         </button>
+        <label className="flex items-center gap-2 text-[13px] text-stone-500">
+          Zoom
+          <input
+            aria-label="Zoom"
+            type="range"
+            min={1}
+            max={8}
+            step={0.1}
+            value={zoom}
+            onChange={(e) => setZoom(Number(e.target.value))}
+            className="h-1 w-20 cursor-pointer appearance-none bg-stone-300 [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:w-1 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:bg-stone-500"
+          />
+        </label>
         <div className="ml-auto inline-flex items-center gap-2">
-          {(['cut', 'crossfade', 'slide'] as const).map((preset) => (
+          <button
+            type="button"
+            disabled={!canCut}
+            className={`px-1 py-1 text-[13px] ${canCut ? 'font-semibold text-stone-700' : 'text-stone-300'}`}
+            onClick={cutClip}
+          >
+            Cut
+          </button>
+          {(['crossfade', 'slide'] as const).map((preset) => (
             <button
               key={preset}
               type="button"
               disabled={!activeLayerId || !partnerId}
-              className="px-2.5 py-1 text-[13px] capitalize text-stone-700 enabled:hover:bg-stone-100 disabled:text-stone-300"
+              className="px-1 py-1 text-[13px] capitalize text-stone-500 disabled:text-stone-300"
               onClick={() => applyTransition(preset)}
             >
               {preset === 'crossfade' ? 'Fade' : preset}
@@ -372,12 +457,32 @@ export function SectionTimeline({
           ))}
         </div>
       </div>
-      <div className="max-h-40 space-y-1 overflow-auto px-2 pb-2">
+      <div className="max-h-64 overflow-auto px-2 pb-2">
+        <div
+          data-timeline-scale
+          className="relative"
+          style={{ width: `${zoom * 100}%`, minWidth: '100%' }}
+        >
+          <div className="relative mb-1 h-5 text-[11px] text-stone-400">
+            {Array.from({ length: Math.floor(duration / rulerStep(duration, zoom)) + 1 }, (_, index) => {
+              const step = rulerStep(duration, zoom);
+              const t = index * step;
+              return (
+                <span
+                  key={t}
+                  className="absolute top-0 -translate-x-1/2"
+                  style={{ left: `${(t / Math.max(duration, 0.01)) * 100}%` }}
+                >
+                  {formatTime(t)}
+                </span>
+              );
+            })}
+          </div>
+          <div className="space-y-1">
         {rows.map(({ layer, depth }) => {
-          const rowDur = rowDuration(section, layer, duration);
+          const rowDur = layerClockSpan(section, layer);
           const local = layer.kind === 'group' ? wrapTime(playheadSec, rowDur) : layerSampleTime(section, layer, playheadSec);
           const posed = sampleLayerAt(layer, local);
-          const head = (local / Math.max(rowDur, 0.01)) * 100;
           const inn = layer.inSec ?? 0;
           const out = layer.outSec ?? rowDur;
           const playbackSrc =
@@ -405,6 +510,19 @@ export function SectionTimeline({
                   {defaultLayerName(layer, section.layers || [])}
                   {layer.id === partnerId ? ' with' : ''}
                 </button>
+                <button
+                  type="button"
+                  aria-label={`Mute ${layer.id}`}
+                  aria-pressed={layer.kind === 'video' ? layer.mediaMuted !== false : layer.visible === false}
+                  className={`text-[13px] ${
+                    (layer.kind === 'video' ? layer.mediaMuted !== false : layer.visible === false)
+                      ? 'font-semibold text-stone-700'
+                      : 'text-stone-400'
+                  }`}
+                  onClick={() => toggleMute(layer)}
+                >
+                  Mute
+                </button>
                 {layer.kind === 'group' && (
                   <label className="ml-auto flex items-center gap-1 text-[13px] text-stone-600">
                     Loop
@@ -422,25 +540,29 @@ export function SectionTimeline({
               </div>
               <div
                 className="relative h-7 cursor-pointer rounded-md bg-stone-200/80"
-                onPointerDown={(e) => {
-                  const rect = e.currentTarget.getBoundingClientRect();
-                  const ratio = (e.clientX - rect.left) / Math.max(1, rect.width);
-                  const edge = e.clientX - rect.left < 8 ? 'in' : rect.right - e.clientX < 8 ? 'out' : null;
-                  if (edge && (layer.kind === 'image' || layer.kind === 'video')) {
-                    setTrim(layer, edge, ratio);
-                    return;
-                  }
-                  onBarDown(e, rowDur);
-                }}
+                onPointerDown={(e) => onBarDown(e, rowDur)}
               >
-                {(layer.kind === 'image' || layer.kind === 'video') && (
+                {layer.kind !== 'group' && (
                   <div
-                    className="absolute bottom-1 top-1 rounded-md bg-stone-500"
+                    className="absolute bottom-1 top-1 bg-stone-400"
                     style={{
                       left: `${(inn / Math.max(rowDur, 0.01)) * 100}%`,
                       width: `${Math.max(4, ((out - inn) / Math.max(rowDur, 0.01)) * 100)}%`
                     }}
-                  />
+                  >
+                    <button
+                      type="button"
+                      aria-label={`Trim start ${layer.id}`}
+                      className="absolute bottom-0 left-0 top-0 w-1.5 cursor-ew-resize bg-stone-500"
+                      onPointerDown={(e) => beginTrim(e, layer, 'in')}
+                    />
+                    <button
+                      type="button"
+                      aria-label={`Trim end ${layer.id}`}
+                      className="absolute bottom-0 right-0 top-0 w-1.5 cursor-ew-resize bg-stone-500"
+                      onPointerDown={(e) => beginTrim(e, layer, 'out')}
+                    />
+                  </div>
                 )}
                 {keys.map((key) => {
                   const selected = Math.abs(key.t - local) <= KEYFRAME_EPSILON_SEC;
@@ -467,7 +589,6 @@ export function SectionTimeline({
                     </button>
                   );
                 })}
-                <div className="absolute bottom-0 top-0 w-px bg-stone-500" style={{ left: `${head}%` }} />
               </div>
               {layer.id === activeLayerId && leaving ? (
                 <div className="flex gap-1 overflow-x-auto pb-1" data-keyframe-graphs>
@@ -518,6 +639,20 @@ export function SectionTimeline({
                       </span>
                       <button
                         type="button"
+                        className={`text-[13px] ${track.muted ? 'font-semibold text-stone-700' : 'text-stone-400'}`}
+                        aria-label={`Mute ${track.id}`}
+                        aria-pressed={Boolean(track.muted)}
+                        onClick={() => {
+                          const next = (layer.audioTracks || []).map((item) =>
+                            item.id === track.id ? { ...item, muted: !item.muted } : item
+                          );
+                          onSectionChange(upsertLayer(section, { ...layer, audioTracks: next }));
+                        }}
+                      >
+                        Mute
+                      </button>
+                      <button
+                        type="button"
                         className="text-stone-400"
                         aria-label={`Remove ${track.id}`}
                         onClick={() => {
@@ -541,7 +676,6 @@ export function SectionTimeline({
                           width: `${Math.max(8, 100 - (offset / Math.max(rowDur, 0.01)) * 100)}%`
                         }}
                       />
-                      <div className="absolute bottom-0 top-0 w-px bg-stone-500" style={{ left: `${head}%` }} />
                     </div>
                     {track.src ? (
                       <AudioLane
@@ -561,6 +695,13 @@ export function SectionTimeline({
             </div>
           );
         })}
+          </div>
+          <div
+            data-timeline-playhead
+            className="pointer-events-none absolute bottom-0 top-0 z-20 w-1 -translate-x-1/2 bg-stone-600"
+            style={{ left: `${(playheadSec / Math.max(duration, 0.01)) * 100}%` }}
+          />
+        </div>
       </div>
     </div>
   );

@@ -206,11 +206,13 @@ export interface PenPageLayer {
    */
   audioTracks?: PenAudioTrack[];
   /**
-   * Where this media layer sits on the section clock. The file is not rewritten.
+   * Where this layer sits on the section clock. The file is not rewritten.
    * Seconds. Omit inSec to start at 0; omit outSec to run to the timeline end.
    */
   inSec?: number;
   outSec?: number;
+  /** File time that plays when the clock reaches inSec. Omit to start at the head of the file. */
+  sourceInSec?: number;
   /** Widget group loop length. Child key times are local to this clock. */
   durationSec?: number;
   /** Sparse keyframes. Absent means the layer stays at its rest pose. */

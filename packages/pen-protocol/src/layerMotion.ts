@@ -214,14 +214,78 @@ export function layerSampleTime(
   return wrapTime(pageTime, group.durationSec);
 }
 
+/** Clock length for one layer. Group children use the group's loop. */
+export function layerClockSpan(section: PenSectionContent, layer: PenPageLayer): number {
+  if (layer.kind === 'group' && layer.durationSec && layer.durationSec > 0) return layer.durationSec;
+  if (layer.parentGroupId) {
+    const group = (section.layers || []).find((item) => item.id === layer.parentGroupId);
+    if (group?.durationSec && group.durationSec > 0) return group.durationSec;
+  }
+  return resolveTimelineDuration(section);
+}
+
+/** True while the playhead is inside the layer's in/out. The outgoing edge hands off at a cut. */
+export function layerOnClock(layer: PenPageLayer, time: number, span: number): boolean {
+  if (layer.kind === 'guide') return true;
+  const inn = layer.inSec ?? 0;
+  const out = layer.outSec ?? span;
+  if (time < inn || time > out) return false;
+  if (time >= out && out < span - 0.001) return false;
+  return true;
+}
+
+/** File time for a playhead. sourceInSec keeps a cut from restarting the file. */
+export function layerMediaTime(layer: PenPageLayer, playhead: number, rate = 1): number {
+  const speed = rate > 0 ? rate : 1;
+  const inn = layer.inSec ?? 0;
+  const source = layer.sourceInSec ?? 0;
+  return Math.max(0, (playhead - inn) * speed + source);
+}
+
+/**
+ * Split one layer at the playhead into two clips on the same timeline.
+ * The right clip continues the file instead of starting over.
+ */
+export function splitLayerAt(
+  section: PenSectionContent,
+  layerId: string,
+  time: number
+): PenSectionContent {
+  const layers = section.layers || [];
+  const index = layers.findIndex((item) => item.id === layerId);
+  if (index < 0) return section;
+  const layer = layers[index]!;
+  if (layer.kind === 'guide' || layer.kind === 'group') return section;
+  const span = layerClockSpan(section, layer);
+  const inn = layer.inSec ?? 0;
+  const out = layer.outSec ?? span;
+  if (!(time > inn + 0.05 && time < out - 0.05)) return section;
+  const right: PenPageLayer = {
+    ...layer,
+    id: `layer_${Math.random().toString(36).slice(2, 10)}`,
+    inSec: time,
+    outSec: layer.outSec ?? out,
+    sourceInSec: (layer.sourceInSec ?? 0) + (time - inn)
+  };
+  const left: PenPageLayer = { ...layer, outSec: time };
+  const next = layers.slice();
+  next.splice(index, 1, left, right);
+  return { ...section, layers: next };
+}
+
 /** Sample every layer. Group bounds stay on the rest pose — this does not write back. */
 export function sampleSectionLayers(
   section: PenSectionContent,
   pageTime: number
 ): PenPageLayer[] {
-  return (section.layers || []).map((layer) =>
-    sampleLayerAt(layer, layerSampleTime(section, layer, pageTime))
-  );
+  return (section.layers || []).map((layer) => {
+    const local = layerSampleTime(section, layer, pageTime);
+    const sampled = sampleLayerAt(layer, local);
+    if (layer.visible === false || layer.kind === 'guide') return sampled;
+    const span = layerClockSpan(section, layer);
+    if (!layerOnClock(layer, local, span)) return { ...sampled, visible: false };
+    return sampled;
+  });
 }
 
 export function sectionHasMotion(section: PenSectionContent | null | undefined): boolean {

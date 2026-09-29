@@ -58,6 +58,13 @@ describe('section timeline', () => {
     expect(html).toContain('data-track-row="title"');
     expect(html).toContain('data-sampled-x="80"');
     expect(html).toContain('data-audio-lane="voice"');
+    expect(html).toContain('data-timeline-playhead');
+    expect(html).toContain('data-timeline-scale');
+    expect(html).toContain('aria-label="Zoom"');
+    expect(html).toContain('aria-label="Mute title"');
+    expect(html).toContain('aria-label="Mute voice"');
+    expect(html).toContain('aria-label="Trim start clip"');
+    expect(html).toContain('>Cut<');
     expect(sampleLayerAt(section.layers![0]!, 1).x).toBe(80);
     expect(section.layers![0]!.x).toBe(10);
   });
