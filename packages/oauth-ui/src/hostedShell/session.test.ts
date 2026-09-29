@@ -6,7 +6,7 @@ import {
   buildShellLaunchUrl,
   buildShellWebUrl,
   chooseShellLaunchUrl,
-  shellClickOpensWeb,
+  shellLaunchAfterAppProbe,
   encodeShellReturn,
   parseShellReturn,
 } from './session';
@@ -90,8 +90,9 @@ describe('hosted shell session', () => {
     );
   });
 
-  it('opens the web unlock page from a browser click even when the app is not installed', () => {
-    expect(shellClickOpensWeb(false)).toBe(true);
-    expect(shellClickOpensWeb(true)).toBe(false);
+  it('keeps the app only when the page hides, and opens the web page when a browser click stays visible', () => {
+    expect(shellLaunchAfterAppProbe({ nativePlatform: false, documentHidden: false })).toBe('web');
+    expect(shellLaunchAfterAppProbe({ nativePlatform: false, documentHidden: true })).toBe('app');
+    expect(shellLaunchAfterAppProbe({ nativePlatform: true, documentHidden: false })).toBe('app');
   });
 });

@@ -314,7 +314,12 @@ export function useGoogleDriveOAuthConnect({
           }
           const pnIdentifier = deriveCanonicalPnIdentifier(authenticatedUser.publicKey);
           const { launchSealVault } = await import('../../../services/sealVaultHandoff');
-          launchSealVault(pnIdentifier, {
+          setDriveSetupProgress({
+            phase: 'starting',
+            stepLabel: 'Opening par Noir Unlock to save this Drive connection…',
+            percent: 0,
+          });
+          const handoff = await launchSealVault(pnIdentifier, {
             socialCloudProvider: 'google_drive',
             socialCloudAccountId: identifiers.backendId,
             googleDriveAccounts: [
@@ -330,6 +335,11 @@ export function useGoogleDriveOAuthConnect({
               },
             ],
           });
+          if (handoff === 'web' || document.hidden) return;
+          clearDriveSetupProgress();
+          setError(
+            'par Noir Unlock did not open. Reconnect Google Drive to continue on the web unlock page.'
+          );
           return;
         }
         const pnIdentifier = deriveCanonicalPnIdentifier(authenticatedUser.publicKey);

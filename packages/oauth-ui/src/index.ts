@@ -262,5 +262,7 @@ export {
   parseShellReturn,
   applyShellFragment,
   buildShellLaunchUrl,
+  buildShellWebUrl,
+  shellLaunchAfterAppProbe,
 } from './hostedShell/session';
 export type { ShellOp, HostedShellSession } from './hostedShell/session';

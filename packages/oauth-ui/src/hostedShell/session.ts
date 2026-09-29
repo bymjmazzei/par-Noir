@@ -151,7 +151,14 @@ export function chooseShellLaunchUrl(args: ShellLaunchArgs & { appOpened: boolea
   return args.appOpened ? buildShellLaunchUrl(args) : buildShellWebUrl(args);
 }
 
-/** A browser click opens the web unlock page. The installed native shell keeps the app handoff. */
-export function shellClickOpensWeb(nativePlatform: boolean): boolean {
-  return !nativePlatform;
+/**
+ * After the custom-scheme probe: stay with the app only when this is the native
+ * shell or the page actually went to the background. A window blur is not enough.
+ */
+export function shellLaunchAfterAppProbe(args: {
+  nativePlatform: boolean;
+  documentHidden: boolean;
+}): 'app' | 'web' {
+  if (args.nativePlatform || args.documentHidden) return 'app';
+  return 'web';
 }
