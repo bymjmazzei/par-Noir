@@ -13,7 +13,7 @@ import { clearShellMlKem, rememberShellMlKem } from '../services/shellMlKem';
 
 const ownerGet = jest.fn();
 const ownerFetch = jest.fn();
-const publishCloudCredentialsVault = jest.fn(async () => ({ ok: true, status: 200 }));
+const publishCloudCredentialsVault = jest.fn(async (_payload?: unknown) => ({ ok: true, status: 200 }));
 const mockSessionCreds = new Map<string, { googleDriveAccounts?: Array<{ accessToken?: string }> }>();
 
 jest.mock('../config/api', () => ({ API_ENDPOINT: 'https://api.parnoir.com' }));
@@ -22,7 +22,7 @@ jest.mock('@par-noir/device-cloud-credentials', () => ({
   setSessionCloudCredentials: (id: string, creds: { googleDriveAccounts?: Array<{ accessToken?: string }> }) => {
     mockSessionCreds.set(id, creds);
   },
-  publishCloudCredentialsVault: (...args: unknown[]) => publishCloudCredentialsVault(...args),
+  publishCloudCredentialsVault: (payload: unknown) => publishCloudCredentialsVault(payload),
   getCloudAccessTokenFromSession: (id: string) =>
     mockSessionCreds.get(id)?.googleDriveAccounts?.[0]?.accessToken ?? null,
   clearAllSessionCloudCredentials: () => {
