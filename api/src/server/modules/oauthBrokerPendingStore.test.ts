@@ -8,6 +8,8 @@ jest.mock('../utils/cache', () => ({
 
 import {
   clearMemoryBrokerPendingForTests,
+  readBrokerLaunched,
+  storeBrokerLaunched,
   storeBrokerPendingRecord,
   takeBrokerPendingRecord,
 } from './oauthBrokerPendingStore';
@@ -37,6 +39,23 @@ describe('oauthBrokerPendingStore (memory)', () => {
     expect(first?.code).toBe('abc');
     const second = await takeBrokerPendingRecord('state12345', 'messaging-app');
     expect(second).toBeNull();
+  });
+
+  it('reads a launch claim before any authorization code, and taking completion leaves the claim', async () => {
+    expect(await readBrokerLaunched('state12345', 'browser-app')).toBe(false);
+    await storeBrokerLaunched('state12345', 'browser-app', 60_000);
+    expect(await readBrokerLaunched('state12345', 'browser-app')).toBe(true);
+    await storeBrokerPendingRecord(
+      'state12345',
+      {
+        clientId: 'browser-app',
+        expiresAt: Date.now() + 60_000,
+        payload: { type: 'oauth_callback', code: 'abc', state: 'state12345' },
+      },
+      60_000
+    );
+    expect((await takeBrokerPendingRecord('state12345', 'browser-app'))?.code).toBe('abc');
+    expect(await readBrokerLaunched('state12345', 'browser-app')).toBe(true);
   });
 });
 

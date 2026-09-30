@@ -412,6 +412,58 @@ export function setupPnOAuthRoutes(app: express.Application, deps: PnOAuthRouteD
      * Unlock POSTs the minted code + messaging handoff keyed by OAuth state;
      * browse polls GET broker-pending. Replaces 127.0.0.1 loopback (blocked by PNA).
      */
+    app.post('/oauth/authorize/broker-launched', authLimiter, async (req, res) => {
+      try {
+        const body = req.body || {};
+        const state = String(body.state || '').trim();
+        const clientId = String(body.client_id || '').trim();
+        if (!state || !clientId) {
+          return res.status(400).json({
+            error: 'invalid_request',
+            error_description: 'state and client_id are required',
+          });
+        }
+        const ok = await PNOAuthService.storeBrokerLaunched(state, clientId);
+        if (!ok) {
+          return res.status(400).json({
+            error: 'invalid_request',
+            error_description: 'state and client_id are required',
+          });
+        }
+        return res.json({ ok: true });
+      } catch (error: unknown) {
+        const msg = error instanceof Error ? error.message : String(error);
+        console.error('OAuth broker-launched error:', msg);
+        return res.status(500).json({
+          error: 'server_error',
+          error_description: 'Broker launched failed',
+        });
+      }
+    });
+
+    app.get('/oauth/authorize/broker-launched', async (req, res) => {
+      try {
+        const state = String(req.query.state || '').trim();
+        const clientId = String(req.query.client_id || '').trim();
+        if (!state || !clientId) {
+          return res.status(400).json({
+            error: 'invalid_request',
+            error_description: 'state and client_id are required',
+          });
+        }
+        const launched = await PNOAuthService.readBrokerLaunched(state, clientId);
+        if (!launched) return res.status(204).end();
+        return res.json({ launched: true });
+      } catch (error: unknown) {
+        const msg = error instanceof Error ? error.message : String(error);
+        console.error('OAuth broker-launched read error:', msg);
+        return res.status(500).json({
+          error: 'server_error',
+          error_description: 'Broker launched failed',
+        });
+      }
+    });
+
     app.post('/oauth/authorize/broker-complete', authLimiter, async (req, res) => {
       try {
         const body = req.body || {};
@@ -440,6 +492,17 @@ export function setupPnOAuthRoutes(app: express.Application, deps: PnOAuthRouteD
         }
         if (body.messagingHandoff && typeof body.messagingHandoff === 'object') {
           payload.messagingHandoff = body.messagingHandoff;
+        }
+        if (body.shellSession && typeof body.shellSession === 'object') {
+          const session = body.shellSession as Record<string, unknown>;
+          const banned = new Set(['passcode', 'pnname', 'pn_name', 'key1', 'key2']);
+          if (Object.keys(session).some((key) => banned.has(key.toLowerCase()))) {
+            return res.status(400).json({
+              error: 'invalid_request',
+              error_description: 'shell session must not include identity factors',
+            });
+          }
+          payload.shellSession = session;
         }
 
         if (err) {

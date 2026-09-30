@@ -19,6 +19,7 @@ export {
   unlockDialogDecision,
   isRunningInsideUnlockBroker,
 } from './unlockPreferApp';
+export { postBrokerLaunched, pollBrokerLaunchedOnce, brokerLaunchContextFromUrl } from './brokerLaunched';
 export {
   exchangePortalAuthorizationCode,
   refreshPortalAccessToken,
@@ -208,6 +209,7 @@ export {
   BROWSE_CUSTOM_SCHEME,
   OAUTH_BROKER_COMPLETE_PATH,
   OAUTH_BROKER_PENDING_PATH,
+  OAUTH_BROKER_LAUNCHED_PATH,
   callerCapAppResumeUrl,
   parseConsentUnlockParams,
   resolveUnlockOrigin,

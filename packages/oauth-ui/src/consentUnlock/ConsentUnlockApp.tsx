@@ -21,6 +21,11 @@ import {
 } from './mintConsentCode';
 import { parseConsentUnlockParams, type ConsentUnlockParams } from './parseConsentParams';
 
+function isDesktopUnlockApp(): boolean {
+  if (typeof window === 'undefined') return false;
+  return Boolean((window as Window & { __PN_UNLOCK_DESKTOP__?: boolean }).__PN_UNLOCK_DESKTOP__);
+}
+
 /** Deep link can land in location.search before React's search prop re-renders. */
 function consentParamsNow(fallback: ConsentUnlockParams): ConsentUnlockParams {
   if (typeof window === 'undefined') return fallback;
@@ -42,7 +47,7 @@ import {
 } from './physicalUnlockLoader';
 import { shouldUseCrossProcessBrokerHandoff } from './constants';
 import { denyOAuthConsent, redirectWithAuthCode } from './redirectWithAuthCode';
-import { applyShellFragment, encodeShellReturn } from '../hostedShell/session';
+import { applyShellFragment, assertFactorFree, encodeShellReturn } from '../hostedShell/session';
 import { buildShellResult } from '../hostedShell/shellResult';
 import { consentUnlockCss, consentUnlockBrokerCssExtras, resolveConsentAssetBase } from './consentUnlockStyles';
 import { toUnlockVaultEnrollMaterial } from './vaultEnroll';
@@ -367,8 +372,8 @@ function ConsentUnlockInner(props: {
             encryptedIdentity: unlocked.encryptedIdentity as unknown as Record<string, unknown>,
           },
         });
-        const fragment = encodeShellReturn({
-          v: 1,
+        const shellSession = {
+          v: 1 as const,
           op: active.shellOp || 'session',
           did: built?.did || String(unlocked.decryptedIdentity.id || ''),
           publicKey: built?.publicKey || unlocked.publicKey,
@@ -379,7 +384,20 @@ function ConsentUnlockInner(props: {
               ? unlocked.decryptedIdentity.nickname
               : undefined,
           result: built,
-        });
+        };
+        assertFactorFree(shellSession);
+        if (active.state && deliverLocalBroker && isDesktopUnlockApp()) {
+          await deliverLocalBroker({
+            type: 'oauth_callback',
+            state: active.state,
+            client_id: active.clientId,
+            code,
+            timestamp: Date.now(),
+            shellSession,
+          });
+          return;
+        }
+        const fragment = encodeShellReturn(shellSession);
         const target = applyShellFragment(active.redirectUri, fragment);
         await returnShellToCaller(target);
         return;
@@ -492,6 +510,10 @@ function ConsentUnlockInner(props: {
           false,
           unlocked
         );
+        if (active.state && deliverLocalBroker && isDesktopUnlockApp()) {
+          resetFormAfterBrokerHandoff();
+          onBrokerHandoffComplete?.();
+        }
         void notifyVault(unlocked, key1, key2);
         return;
       }

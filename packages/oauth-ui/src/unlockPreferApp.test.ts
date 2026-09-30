@@ -77,6 +77,38 @@ describe('unlockDialogDecision', () => {
         nativePlatform: false,
         documentHidden: false,
         sawBlur: true,
+        focusedAfterBlur: true,
+        noDialogTimedOut: false,
+        claimPollEnabled: true,
+        cancelGraceElapsed: false,
+      })
+    ).toBe('pending');
+    expect(
+      unlockDialogDecision({
+        nativePlatform: false,
+        documentHidden: false,
+        sawBlur: true,
+        focusedAfterBlur: true,
+        noDialogTimedOut: false,
+        claimPollEnabled: true,
+        cancelGraceElapsed: true,
+      })
+    ).toBe('web');
+    expect(
+      unlockDialogDecision({
+        nativePlatform: false,
+        documentHidden: false,
+        sawBlur: false,
+        focusedAfterBlur: false,
+        noDialogTimedOut: false,
+        appLaunched: true,
+      })
+    ).toBe('app');
+    expect(
+      unlockDialogDecision({
+        nativePlatform: false,
+        documentHidden: false,
+        sawBlur: true,
         focusedAfterBlur: false,
         noDialogTimedOut: false,
       })
@@ -122,6 +154,52 @@ describe('tryPreferUnlockApp', () => {
     const r = await p;
     expect(r.opened).toBe(true);
     expect(r.mode).toBe('app');
+  });
+
+  it('stays with the app when the launch claim arrives and the page never hides', async () => {
+    Object.defineProperty(document, 'hidden', { configurable: true, get: () => false });
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => ({
+        status: 200,
+        ok: true,
+        json: async () => ({ launched: true }),
+      }))
+    );
+    const p = tryPreferUnlockApp(
+      'com.parnoir.unlock://oauth/consent?state=state12345&client_id=browser-app&api_endpoint=https%3A%2F%2Fapi.parnoir.com',
+      { waitMs: 5000 }
+    );
+    const r = await p;
+    expect(r.opened).toBe(true);
+    expect(r.mode).toBe('app');
+  });
+
+  it('opens the web form only after focus returns and the launch claim is still missing', async () => {
+    Object.defineProperty(document, 'hidden', { configurable: true, get: () => false });
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => ({
+        status: 204,
+        ok: true,
+        json: async () => ({}),
+      }))
+    );
+    const p = tryPreferUnlockApp(
+      'com.parnoir.unlock://oauth/consent?state=state12345&client_id=browser-app&api_endpoint=https%3A%2F%2Fapi.parnoir.com',
+      { waitMs: 10000, cancelGraceMs: 1000 }
+    );
+    window.dispatchEvent(new Event('blur'));
+    window.dispatchEvent(new Event('focus'));
+    let settled = false;
+    void p.then(() => {
+      settled = true;
+    });
+    await vi.advanceTimersByTimeAsync(400);
+    expect(settled).toBe(false);
+    await vi.advanceTimersByTimeAsync(1000);
+    const r = await p;
+    expect(r.opened).toBe(false);
   });
 
   it('treats blur then focus with the page still visible as cancel', async () => {

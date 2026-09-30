@@ -6,6 +6,7 @@ import {
   SessionVaultIdentityPicker,
   searchFromUnlockUrl,
   postOAuthBrokerComplete,
+  postBrokerLaunched,
   type ConsentVaultEnrollMaterial,
   type ConsentVaultFactors,
   type SessionVaultPickerOption,
@@ -98,6 +99,17 @@ export default function App(): React.ReactElement {
         window.history.replaceState({}, '', `/oauth/consent${q}`);
       } catch {
         /* ignore */
+      }
+      try {
+        const params = new URLSearchParams(q.startsWith('?') ? q.slice(1) : q);
+        const state = params.get('state') || '';
+        const clientId = params.get('client_id') || '';
+        const apiBase = (params.get('api_endpoint') || API_DEFAULT).replace(/\/$/, '');
+        if (state.length >= 8 && clientId) {
+          void postBrokerLaunched(apiBase, { state, client_id: clientId }).catch(() => undefined);
+        }
+      } catch {
+        /* claim is best-effort; auth still runs */
       }
       // Prefer-app reuses a running Unlock window — re-offer Touch ID vault each OAuth.
       void offerVaultUnlockIfNeeded();

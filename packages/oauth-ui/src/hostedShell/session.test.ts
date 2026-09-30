@@ -81,6 +81,16 @@ describe('hosted shell session', () => {
     expect(url).not.toContain('passcode');
   });
 
+  it('puts a state on the shell launch so the original tab can see the app open', () => {
+    const url = buildShellLaunchUrl({
+      returnTo: 'https://pn.parnoir.com/',
+      state: 'state12345',
+      apiEndpoint: 'https://api.parnoir.com',
+    });
+    expect(url).toContain('state=state12345');
+    expect(url).toContain('api_endpoint=');
+  });
+
   it('selects the web unlock page when the app did not open', () => {
     const args = {
       returnTo: 'https://pn.parnoir.com/',

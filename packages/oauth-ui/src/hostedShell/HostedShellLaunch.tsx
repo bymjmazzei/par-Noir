@@ -1,15 +1,41 @@
 import React, { useEffect, useState } from 'react';
+import { pollUnlockDesktopBrokerOnce } from '../unlockDesktopBrokerPoll';
 import { tryPreferUnlockApp } from '../unlockPreferApp';
 import {
   buildShellLaunchUrl,
   buildShellWebUrl,
+  createShellState,
   parseShellReturn,
   SHELL_OWNER_STORAGE_KEY,
   SHELL_RETURN_STORAGE_KEY,
   shellHandoffDisposition,
+  shellSessionFromBrokerPayload,
   type HostedShellSession,
   type ShellOp,
 } from './session';
+
+const SHELL_BROKER_WAIT_MS = 120_000;
+const DEFAULT_SHELL_API = 'https://api.parnoir.com';
+
+async function waitForShellBroker(args: {
+  apiEndpoint: string;
+  clientId: string;
+  state: string;
+}): Promise<HostedShellSession | null> {
+  const deadline = Date.now() + SHELL_BROKER_WAIT_MS;
+  while (Date.now() < deadline) {
+    const data = await pollUnlockDesktopBrokerOnce(args.state, {
+      apiEndpoint: args.apiEndpoint,
+      clientId: args.clientId,
+    });
+    if (data) {
+      const session = shellSessionFromBrokerPayload(data as unknown as Record<string, unknown>);
+      if (session) return session;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 500));
+  }
+  return null;
+}
 
 export type HostedShellLaunchProps = {
   op?: ShellOp;
@@ -112,13 +138,30 @@ export function HostedShellLaunch(props: HostedShellLaunchProps): React.ReactEle
       returnTo,
       op: props.op || 'session',
       clientId: props.clientId,
-      apiEndpoint: props.apiEndpoint,
+      apiEndpoint: props.apiEndpoint || DEFAULT_SHELL_API,
+      state: createShellState(),
       vaultPayload: props.vaultPayload,
     };
     void (async () => {
       const choice = await tryPreferUnlockApp(buildShellLaunchUrl(launch));
-      if (choice.opened) return;
-      window.location.assign(buildShellWebUrl(launch));
+      if (!choice.opened) {
+        window.location.assign(buildShellWebUrl(launch));
+        return;
+      }
+      try {
+        const session = await waitForShellBroker({
+          apiEndpoint: launch.apiEndpoint,
+          clientId: launch.clientId || 'browser-app',
+          state: launch.state,
+        });
+        if (!session) {
+          setError('Unlock did not return to this tab');
+          return;
+        }
+        props.onSession(session);
+      } catch (e) {
+        setError(e instanceof Error ? e.message : 'Unlock did not return to this tab');
+      }
     })();
   };
 

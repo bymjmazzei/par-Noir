@@ -103,6 +103,33 @@ export function parseShellReturn(fragmentOrUrl: string): HostedShellSession | nu
   };
 }
 
+/** Broker completion for a shell unlock. Rejects identity factors. */
+export function shellSessionFromBrokerPayload(payload: Record<string, unknown>): HostedShellSession | null {
+  const raw = payload.shellSession;
+  if (!raw || typeof raw !== 'object') return null;
+  assertFactorFree(raw);
+  const row = raw as Record<string, unknown>;
+  if (row.v !== 1) return null;
+  if (typeof row.did !== 'string' || typeof row.publicKey !== 'string') return null;
+  if (typeof row.op !== 'string' || !isShellOp(row.op)) return null;
+  const code = typeof row.code === 'string' ? row.code : '';
+  const accessToken = typeof row.accessToken === 'string' ? row.accessToken : '';
+  if (!code && !accessToken && row.op !== 'seal_vault') return null;
+  return {
+    v: 1,
+    op: row.op,
+    did: row.did,
+    publicKey: row.publicKey,
+    accessToken,
+    code: code || undefined,
+    nickname: typeof row.nickname === 'string' ? row.nickname : undefined,
+    result:
+      row.result && typeof row.result === 'object'
+        ? (row.result as Record<string, string>)
+        : undefined,
+  };
+}
+
 /** The tab that clicked Unlock. A new tab from the app must not spend the code. */
 export const SHELL_OWNER_STORAGE_KEY = 'pn_shell_owner';
 /** Cross-tab handoff. The app's new tab writes this; the original tab reads it. */
@@ -123,11 +150,23 @@ export function applyShellFragment(redirectUri: string, fragment: string): strin
 }
 
 /** Custom-scheme launch. Factors are typed in the unlock binary, not the hosted page. */
+export function createShellState(): string {
+  const bytes = new Uint8Array(16);
+  if (typeof crypto !== 'undefined' && crypto.getRandomValues) {
+    crypto.getRandomValues(bytes);
+  } else {
+    for (let i = 0; i < bytes.length; i++) bytes[i] = Math.floor(Math.random() * 256);
+  }
+  return Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
+}
+
 export function buildShellLaunchUrl(args: {
   returnTo: string;
   op?: ShellOp;
   clientId?: string;
   apiEndpoint?: string;
+  /** OAuth state. Required so the original tab can see that the app opened. */
+  state?: string;
   /** Base64url JSON the unlock app seals. Never Key 1 or Key 2. */
   vaultPayload?: string;
 }): string {
@@ -139,6 +178,7 @@ export function buildShellLaunchUrl(args: {
     popup: 'false',
     scope: 'openid profile',
   });
+  if (args.state && args.state.length >= 8) params.set('state', args.state);
   if (args.apiEndpoint) params.set('api_endpoint', args.apiEndpoint);
   if (args.vaultPayload) params.set('vault_payload', args.vaultPayload);
   return `${UNLOCK_CUSTOM_SCHEME}://oauth/consent?${params.toString()}`;
@@ -149,6 +189,7 @@ export type ShellLaunchArgs = {
   op?: ShellOp;
   clientId?: string;
   apiEndpoint?: string;
+  state?: string;
   vaultPayload?: string;
 };
 

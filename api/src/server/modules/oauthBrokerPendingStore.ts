@@ -13,10 +13,16 @@ export type BrokerPendingRecord = {
 };
 
 const KEY_PREFIX = 'pn:oauth-broker:';
+const LAUNCH_PREFIX = 'pn:oauth-broker-launched:';
 const memoryPending = new Map<string, BrokerPendingRecord>();
+const memoryLaunched = new Map<string, BrokerPendingRecord>();
 
 function redisKey(state: string): string {
   return `${KEY_PREFIX}${state}`;
+}
+
+function launchKey(state: string): string {
+  return `${LAUNCH_PREFIX}${state}`;
 }
 
 export async function storeBrokerPendingRecord(
@@ -64,6 +70,46 @@ export async function takeBrokerPendingRecord(
   return pending.payload;
 }
 
+/** Unlock app received the deep link. Separate from the completion record. Does not require a code. */
+export async function storeBrokerLaunched(state: string, clientId: string, ttlMs: number): Promise<void> {
+  const record: BrokerPendingRecord = {
+    clientId,
+    payload: { launched: true },
+    expiresAt: Date.now() + ttlMs,
+  };
+  const redis = getCacheClient();
+  if (redis) {
+    const px = Math.max(1, Math.min(ttlMs, record.expiresAt - Date.now()));
+    await redis.set(launchKey(state), JSON.stringify(record), { PX: px });
+    return;
+  }
+  memoryLaunched.set(state, record);
+}
+
+/** Read the launch claim. Does not delete the completion record. */
+export async function readBrokerLaunched(state: string, clientId: string): Promise<boolean> {
+  const redis = getCacheClient() as RedisClientType | null;
+  if (redis) {
+    const raw = await redis.get(launchKey(state));
+    if (!raw) return false;
+    try {
+      const entry = JSON.parse(raw) as BrokerPendingRecord;
+      if (entry.expiresAt < Date.now()) return false;
+      return entry.clientId === clientId;
+    } catch {
+      return false;
+    }
+  }
+  const pending = memoryLaunched.get(state);
+  if (!pending) return false;
+  if (pending.expiresAt < Date.now()) {
+    memoryLaunched.delete(state);
+    return false;
+  }
+  return pending.clientId === clientId;
+}
+
 export function clearMemoryBrokerPendingForTests(): void {
   memoryPending.clear();
+  memoryLaunched.clear();
 }

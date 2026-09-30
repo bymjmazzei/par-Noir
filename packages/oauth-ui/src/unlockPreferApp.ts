@@ -2,6 +2,7 @@
  * Prefer installed Unlock app (custom scheme) before HTTPS web popup.
  */
 
+import { brokerLaunchContextFromUrl, pollBrokerLaunchedOnce } from './brokerLaunched';
 import { UNLOCK_CUSTOM_SCHEME } from './consentUnlock/constants';
 
 const DEFAULT_PREFER_APP_WAIT_MS = 1400;
@@ -80,9 +81,16 @@ export function unlockDialogDecision(args: {
   sawBlur: boolean;
   focusedAfterBlur: boolean;
   noDialogTimedOut: boolean;
+  /** Desktop browser: Open is a launch claim, not a blur. */
+  appLaunched?: boolean;
+  claimPollEnabled?: boolean;
+  cancelGraceElapsed?: boolean;
 }): 'app' | 'web' | 'pending' {
-  if (args.nativePlatform || args.documentHidden) return 'app';
-  if (args.sawBlur && args.focusedAfterBlur) return 'web';
+  if (args.nativePlatform || args.documentHidden || args.appLaunched) return 'app';
+  if (args.sawBlur && args.focusedAfterBlur) {
+    if (args.claimPollEnabled && !args.cancelGraceElapsed) return 'pending';
+    return 'web';
+  }
   if (args.noDialogTimedOut && !args.sawBlur) return 'web';
   return 'pending';
 }
@@ -107,23 +115,31 @@ function triggerCustomScheme(appUrl: string): void {
  * The page hiding means Open. Blur then focus, still visible, means Cancel.
  * No dialog within waitMs means the app is not installed.
  */
+const CANCEL_GRACE_MS = 1000;
+
 export async function tryPreferUnlockApp(
   appUrl: string,
-  options?: { waitMs?: number }
+  options?: { waitMs?: number; cancelGraceMs?: number }
 ): Promise<PreferUnlockAppResult> {
   if (typeof document === 'undefined' || typeof window === 'undefined') {
     return { opened: false, mode: 'fallback' };
   }
   const waitMs = options?.waitMs ?? DEFAULT_PREFER_APP_WAIT_MS;
+  const cancelGraceMs = options?.cancelGraceMs ?? CANCEL_GRACE_MS;
   const nativePlatform = isCapacitorNative();
+  const launchCtx = brokerLaunchContextFromUrl(appUrl);
 
   return new Promise((resolve) => {
     let sawBlur = false;
     let focusedAfterBlur = false;
     let noDialogTimedOut = false;
+    let appLaunched = false;
+    let cancelGraceElapsed = false;
     let settled = false;
     let noDialogTimer = 0;
     let capTimer = 0;
+    let pollTimer = 0;
+    let graceTimer = 0;
 
     const cleanup = () => {
       document.removeEventListener('visibilitychange', onVis);
@@ -131,6 +147,8 @@ export async function tryPreferUnlockApp(
       window.removeEventListener('focus', onFocus);
       window.clearTimeout(noDialogTimer);
       window.clearTimeout(capTimer);
+      window.clearTimeout(graceTimer);
+      window.clearInterval(pollTimer);
     };
 
     const finish = () => {
@@ -141,6 +159,9 @@ export async function tryPreferUnlockApp(
         sawBlur,
         focusedAfterBlur,
         noDialogTimedOut,
+        appLaunched,
+        claimPollEnabled: Boolean(launchCtx),
+        cancelGraceElapsed,
       });
       if (decision === 'pending') return;
       settled = true;
@@ -152,6 +173,14 @@ export async function tryPreferUnlockApp(
       );
     };
 
+    const pollLaunch = async () => {
+      if (!launchCtx || settled) return;
+      const launched = await pollBrokerLaunchedOnce(launchCtx);
+      if (!launched || settled) return;
+      appLaunched = true;
+      finish();
+    };
+
     const onVis = () => finish();
     const onBlur = () => {
       sawBlur = true;
@@ -161,7 +190,15 @@ export async function tryPreferUnlockApp(
     const onFocus = () => {
       if (!sawBlur) return;
       focusedAfterBlur = true;
-      finish();
+      if (!launchCtx) {
+        finish();
+        return;
+      }
+      if (graceTimer) return;
+      graceTimer = window.setTimeout(() => {
+        cancelGraceElapsed = true;
+        finish();
+      }, cancelGraceMs);
     };
 
     document.addEventListener('visibilitychange', onVis);
@@ -174,6 +211,13 @@ export async function tryPreferUnlockApp(
       cleanup();
       resolve({ opened: false, mode: 'fallback' });
       return;
+    }
+
+    if (launchCtx) {
+      void pollLaunch();
+      pollTimer = window.setInterval(() => {
+        void pollLaunch();
+      }, 250);
     }
 
     // Cap iOS often shows "Open in Unlock?" without hiding the caller WebView.

@@ -17,7 +17,12 @@ import { isDidRevokedForNetwork, isPnRevokedForNetwork } from './identitySuccess
 import { appendSecurityAuditEvent } from './auditService';
 import { hashIdentifier, safeLogger } from '../../utils/logger';
 import { peekAuthCodeRecord, putAuthCodeRecord, putUnlockChallengeRecord, takeAuthCodeRecord, takeUnlockChallengeRecord } from './oauthAuthCodeStore';
-import { storeBrokerPendingRecord, takeBrokerPendingRecord } from './oauthBrokerPendingStore';
+import {
+  readBrokerLaunched,
+  storeBrokerLaunched,
+  storeBrokerPendingRecord,
+  takeBrokerPendingRecord,
+} from './oauthBrokerPendingStore';
 
 export class OauthUnlockProofError extends Error {
   readonly code: string;
@@ -464,6 +469,22 @@ export class PNOAuthService {
       this.BROKER_PENDING_EXPIRY
     );
     return true;
+  }
+
+  /** Unlock app opened the deep link. No authorization code yet. */
+  static async storeBrokerLaunched(state: string, clientId: string): Promise<boolean> {
+    const key = String(state || '').trim();
+    const id = String(clientId || '').trim();
+    if (!key || key.length < 8 || !id) return false;
+    await storeBrokerLaunched(key, id, this.BROKER_PENDING_EXPIRY);
+    return true;
+  }
+
+  static async readBrokerLaunched(state: string, clientId: string): Promise<boolean> {
+    const key = String(state || '').trim();
+    const id = String(clientId || '').trim();
+    if (!key || !id) return false;
+    return readBrokerLaunched(key, id);
   }
 
   /** One-shot take for browse poll. */

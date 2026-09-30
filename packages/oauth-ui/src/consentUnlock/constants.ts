@@ -46,6 +46,8 @@ export const BROWSE_CUSTOM_SCHEME = 'com.parnoir.browser';
  */
 export const OAUTH_BROKER_COMPLETE_PATH = '/oauth/authorize/broker-complete';
 export const OAUTH_BROKER_PENDING_PATH = '/oauth/authorize/broker-pending';
+/** Unlock app claims the OAuth state as soon as the deep link arrives, before auth. */
+export const OAUTH_BROKER_LAUNCHED_PATH = '/oauth/authorize/broker-launched';
 
 /**
  * Cap custom-scheme resume URL for the OAuth caller after Unlock broker-complete.
