@@ -344,6 +344,9 @@ export function startPnOAuthPopup(options: StartPnOAuthPopupOptions): Promise<Pn
       'popup=yes,width=500,height=700,left=80,top=80'
     );
   };
+  // Closure writes are invisible to control-flow narrowing, which otherwise
+  // treats this as always null and rejects the uses below.
+  const currentPopup = (): Window | null => preopened;
   // No DOM (tests, or a caller that cannot see the OS dialog): open immediately.
   if (typeof document === 'undefined') {
     reserveWebPopup();
@@ -363,25 +366,26 @@ export function startPnOAuthPopup(options: StartPnOAuthPopupOptions): Promise<Pn
     } catch {
       usedApp = false;
     }
+    const popup = currentPopup();
     if (usedApp) {
       try {
-        preopened?.close();
+        popup?.close();
       } catch {
         /* popup may already be gone */
       }
       return startPnOAuthPopupAfterLaunch(options, true, null);
     }
-    if (!preopened) {
+    if (!popup) {
       pushPnOAuthDebug('popup_blocked', {});
       throw new Error('POPUP_BLOCKED');
     }
     try {
-      preopened.location.href = options.url;
-      preopened.focus();
+      popup.location.href = options.url;
+      popup.focus();
     } catch {
       /* the reserved window is still on about:blank */
     }
-    return startPnOAuthPopupAfterLaunch(options, false, preopened);
+    return startPnOAuthPopupAfterLaunch(options, false, popup);
   })();
 }
 
