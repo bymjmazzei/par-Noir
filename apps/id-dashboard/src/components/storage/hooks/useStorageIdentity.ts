@@ -10,6 +10,7 @@
  */
 import React from 'react';
 import { SecureCredentialManager } from '@par-noir/identity-crypto';
+import { storageAuthFromUnlockedUser } from '../../../services/storageUnlockAuth';
 import {
   isDesktopShell,
   type DesktopUnlockPayload,
@@ -213,22 +214,23 @@ export function useStorageIdentity({
         }
         
         const authToken = authenticatedUser?.authToken;
-        
-        if (pnName && publicKey && passcode) {
-          // SECURITY: Store secrets in SecureCredentialManager, not in resolvedAuth state
-          const sessionId = authenticatedUser?.id || (authenticatedUser as any)?.publicKey || null;
-          if (sessionId) {
-            SecureCredentialManager.setCredentials(sessionId, pnName, passcode);
+        const fromUnlock = storageAuthFromUnlockedUser({
+          id: authenticatedUser.id,
+          publicKey: publicKey || authenticatedUser.publicKey,
+          authToken,
+        });
+
+        if (fromUnlock) {
+          // Passcode credentials are optional. Shell unlock has a public key and no passcode.
+          const credentialSessionId = authenticatedUser?.id || (authenticatedUser as any)?.publicKey || null;
+          if (credentialSessionId && pnName && passcode) {
+            SecureCredentialManager.setCredentials(credentialSessionId, pnName, passcode);
           }
-          
+
           if (import.meta.env.DEV) {
-            console.log('✅ [FileStorageAggregator] Auth resolved from prop:', { hasPnName: !!pnName, hasPublicKey: !!publicKey });
+            console.log('✅ [FileStorageAggregator] Auth resolved from prop:', { hasPnName: !!pnName, hasPublicKey: !!fromUnlock.publicKey });
           }
-          // SECURITY: Only store public data in resolvedAuth (no secrets)
-          setResolvedAuth({
-            publicKey,
-            authToken: authToken || undefined,
-          });
+          setResolvedAuth(fromUnlock);
           setError(null);
           return;
         } else {
@@ -271,21 +273,21 @@ export function useStorageIdentity({
             // SecureCredentialManager might not be available
           }
           
-          if (pnName && publicKey && passcode) {
-            // SECURITY: Store secrets in SecureCredentialManager, not in resolvedAuth state
-            const sessionId = authenticatedUser?.id || (authenticatedUser as any)?.publicKey || session?.id || null;
-            if (sessionId) {
-              SecureCredentialManager.setCredentials(sessionId, pnName, passcode);
+          const fromStoredSession = storageAuthFromUnlockedUser({
+            id: session.id,
+            publicKey,
+            authToken: sessionAuthToken,
+          });
+          if (fromStoredSession) {
+            const credentialSessionId = authenticatedUser?.id || (authenticatedUser as any)?.publicKey || session?.id || null;
+            if (credentialSessionId && pnName && passcode) {
+              SecureCredentialManager.setCredentials(credentialSessionId, pnName, passcode);
             }
-            
+
             if (import.meta.env.DEV) {
               console.log('✅ [FileStorageAggregator] Auth resolved from storage');
             }
-            // SECURITY: Only store public data in resolvedAuth (no secrets)
-            setResolvedAuth({
-              publicKey,
-              authToken: sessionAuthToken || undefined,
-            });
+            setResolvedAuth(fromStoredSession);
             setError(null);
           } else {
             if (import.meta.env.DEV) {

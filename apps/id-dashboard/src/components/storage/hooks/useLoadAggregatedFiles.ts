@@ -18,6 +18,7 @@ import { SecureCredentialManager } from '@par-noir/identity-crypto';
 import type { FileAggregatorService } from '../../../services/aggregator/FileAggregatorService';
 import { GoogleDriveBackend } from '../../../services/storage/GoogleDriveBackend';
 import { AggregatedFile, PublicMetadata, ShareToken } from '../../../types/aggregator';
+import { publicKeyFromUnlockedUser } from '../../../services/storageUnlockAuth';
 import {
   type DriveSetupProgress,
   type DriveAccountState,
@@ -265,6 +266,10 @@ export function useLoadAggregatedFiles({
           }
         }
         
+        if (!publicKey) {
+          publicKey = resolvedAuth?.publicKey || publicKeyFromUnlockedUser(authenticatedUser);
+        }
+
         // Canonical pn must match OAuth JWT (public key only).
         if (publicKey) {
           currentPnIdentifier = await VolumeIdGenerator.generateCanonicalVolumeId(publicKey);

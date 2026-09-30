@@ -13,6 +13,7 @@ import { SecureCredentialManager } from '@par-noir/identity-crypto';
 import type { FileAggregatorService } from '../../../services/aggregator/FileAggregatorService';
 import type { EncryptionService } from '../../../services/aggregator/EncryptionService';
 import { AuthSession, EncryptedFilePackage, ShareToken } from '../../../types/aggregator';
+import { canEncryptUnlockedFiles, publicKeyFromUnlockedUser } from '../../../services/storageUnlockAuth';
 import { type DriveAccountState } from '../FileStorageAggregatorTypes';
 
 export interface UseDriveUploadParams {
@@ -118,18 +119,14 @@ export function useDriveUpload({
       }
     }
 
-    // Final check
-    if (!pnName || !publicKey) {
-      console.error('❌ [Upload] Could not resolve auth from any source');
-      setError('Please unlock your pN first to encrypt files');
-      return;
+    if (!publicKey) {
+      publicKey = resolvedAuth?.publicKey || publicKeyFromUnlockedUser(authenticatedUser);
     }
 
-    // Verify we have the stable pN identity (id + publicKey) required for encryption
-    // The id (DID) is stable and doesn't change between sessions
-    if (!authenticatedUser?.id || !publicKey) {
-      console.error('❌ [Upload] Missing stable identity (id or publicKey)');
-      setError('Please unlock your pN first. The pN identity is required to encrypt files.');
+    // Encryption uses the unlocked id and public key. A passcode is not required.
+    if (!canEncryptUnlockedFiles(authenticatedUser, publicKey)) {
+      console.error('❌ [Upload] Could not resolve auth from any source');
+      setError('Please unlock your pN first to encrypt files');
       return;
     }
 

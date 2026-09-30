@@ -13,6 +13,7 @@ import type { FileAggregatorService } from '../../../services/aggregator/FileAgg
 import type { EncryptionService } from '../../../services/aggregator/EncryptionService';
 import { ownerFetch } from '../../../services/ownerApiService';
 import { AggregatedFile, AuthSession, PublicMetadata, ShareToken } from '../../../types/aggregator';
+import { canEncryptUnlockedFiles, publicKeyFromUnlockedUser } from '../../../services/storageUnlockAuth';
 import { isImageFile } from '../FileStorageAggregatorHelpers';
 import {
   type DriveAccountState,
@@ -220,18 +221,14 @@ export function useDriveFileActions({
       }
     }
 
-    // Final check
-    if (!pnName || !publicKey) {
-      console.error('❌ [Download] Could not resolve auth from any source');
-      setError('Please unlock your pN first to decrypt files');
-      return;
+    if (!publicKey) {
+      publicKey = resolvedAuth?.publicKey || publicKeyFromUnlockedUser(authenticatedUser);
     }
 
-    // Verify we have the stable pN identity (id + publicKey) required for decryption
-    // The id (DID) is stable and doesn't change between sessions
-    if (!authenticatedUser?.id || !publicKey) {
-      console.error('❌ [Download] Missing stable identity (id or publicKey)');
-      setError('Please unlock your pN first. The pN identity is required to decrypt files.');
+    // Decryption uses the unlocked id and public key. A passcode is not required.
+    if (!canEncryptUnlockedFiles(authenticatedUser, publicKey)) {
+      console.error('❌ [Download] Could not resolve auth from any source');
+      setError('Please unlock your pN first to decrypt files');
       return;
     }
 
