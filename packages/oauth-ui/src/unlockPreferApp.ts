@@ -22,7 +22,7 @@ function envPreferAppEnabled(): boolean {
 }
 
 /** Capacitor WKWebView / native shell — do not import @capacitor/core from oauth-ui. */
-function isCapacitorNative(): boolean {
+export function isCapacitorNative(): boolean {
   if (typeof window === 'undefined') return false;
   try {
     const cap = (

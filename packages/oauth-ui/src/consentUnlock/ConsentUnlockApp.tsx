@@ -20,6 +20,21 @@ import {
   scopeNeedsConsentScreen,
 } from './mintConsentCode';
 import { parseConsentUnlockParams, type ConsentUnlockParams } from './parseConsentParams';
+
+/** Deep link can land in location.search before React's search prop re-renders. */
+function consentParamsNow(fallback: ConsentUnlockParams): ConsentUnlockParams {
+  if (typeof window === 'undefined') return fallback;
+  const live = window.location.search;
+  if (!live) return fallback;
+  try {
+    return parseConsentUnlockParams(live, {
+      apiEndpoint: fallback.apiEndpoint,
+      redirectUriFallbackOrigin: window.location.origin,
+    });
+  } catch {
+    return fallback;
+  }
+}
 import {
   loadParNoirOAuthPhysical,
   physicalResultToBundle,
@@ -338,13 +353,14 @@ function ConsentUnlockInner(props: {
       consentShown: boolean,
       unlocked: UnlockedIdentityBundle
     ) => {
-      if (params.flow === 'shell') {
+      const active = consentParamsNow(params);
+      if (active.flow === 'shell') {
         const factors = shellFactorRef.current;
         const built = await buildShellResult({
-          op: params.shellOp || 'session',
+          op: active.shellOp || 'session',
           pnName: factors.pnName,
           passcode: factors.passcode,
-          vaultPayload: params.vaultPayload,
+          vaultPayload: active.vaultPayload,
           unlocked: {
             publicKey: unlocked.publicKey,
             decryptedIdentity: unlocked.decryptedIdentity as unknown as Record<string, unknown>,
@@ -353,7 +369,7 @@ function ConsentUnlockInner(props: {
         });
         const fragment = encodeShellReturn({
           v: 1,
-          op: params.shellOp || 'session',
+          op: active.shellOp || 'session',
           did: built?.did || String(unlocked.decryptedIdentity.id || ''),
           publicKey: built?.publicKey || unlocked.publicKey,
           accessToken: '',
@@ -364,22 +380,22 @@ function ConsentUnlockInner(props: {
               : undefined,
           result: built,
         });
-        const target = applyShellFragment(params.redirectUri, fragment);
+        const target = applyShellFragment(active.redirectUri, fragment);
         await returnShellToCaller(target);
         return;
       }
       const useBroker = shouldUseCrossProcessBrokerHandoff({
-        popup: params.popup,
-        flow: params.flow,
+        popup: active.popup,
+        flow: active.flow,
         deliverLocalBroker,
         openExternal,
       });
       await redirectWithAuthCode({
         code,
-        redirectUri: params.redirectUri,
-        state: params.state,
-        popupFlow: params.popup,
-        clientId: params.clientId,
+        redirectUri: active.redirectUri,
+        state: active.state,
+        popupFlow: active.popup,
+        clientId: active.clientId,
         grantedDataPoints: granted,
         consentShown,
         // Always attach shell DSA publicKey — vault JSON / older seals may omit it
@@ -452,15 +468,16 @@ function ConsentUnlockInner(props: {
 
   const afterUnlock = useCallback(
     async (unlocked: UnlockedIdentityBundle, key1: string, key2: string) => {
+      const active = consentParamsNow(params);
       shellFactorRef.current = { pnName: key1, passcode: key2 };
       setBundle(unlocked);
       const mint = await mintConsentAuthorizationCode({
-        apiEndpoint: params.apiEndpoint,
-        clientId: params.clientId,
-        redirectUri: params.redirectUri,
-        scope: params.scope,
-        state: params.state,
-        nonce: params.nonce,
+        apiEndpoint: active.apiEndpoint,
+        clientId: active.clientId,
+        redirectUri: active.redirectUri,
+        scope: active.scope,
+        state: active.state,
+        nonce: active.nonce,
         publicKey: unlocked.publicKey,
         decryptedIdentity: unlocked.decryptedIdentity as DecryptedIdentityRecord,
       });
@@ -468,7 +485,7 @@ function ConsentUnlockInner(props: {
       setAuthCode(mint.code);
       setPnIdentifier(mint.pnIdentifier);
 
-      if (params.flow === 'shell') {
+      if (active.flow === 'shell') {
         await finishWithCode(
           mint.code,
           mint.existingGrant?.dataPoints || [],
@@ -484,8 +501,8 @@ function ConsentUnlockInner(props: {
       // even when Unlock host always wires deliverLocalBroker props.
       if (
         shouldUseCrossProcessBrokerHandoff({
-          popup: params.popup,
-          flow: params.flow,
+          popup: active.popup,
+          flow: active.flow,
           deliverLocalBroker,
           openExternal,
         })

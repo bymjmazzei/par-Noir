@@ -6,7 +6,7 @@ import {
   stashMessagingHandoffOnOrigin,
 } from './messagingOAuthHandoff';
 import { resolveUnlockOrigin } from './consentUnlock/parseConsentParams';
-import { launchUnlockBroker } from './unlockPreferApp';
+import { isCapacitorNative, launchUnlockBroker } from './unlockPreferApp';
 import {
   brokerPollContextFromConsentUrl,
   pollUnlockDesktopBrokerOnce,
@@ -331,6 +331,14 @@ function defaultPopupName(): string {
  * oauth_callback is received (postMessage, BroadcastChannel, or localStorage poll).
  */
 export function startPnOAuthPopup(options: StartPnOAuthPopupOptions): Promise<PnOAuthPopupResult> {
+  // window.open must run in the click turn. The app probe waits on blur/focus, and a
+  // later open is what the browser reports as "Popup blocked".
+  const popupName = options.popupName ?? defaultPopupName();
+  const popupFeatures = options.popupFeatures ?? DEFAULT_POPUP_FEATURES;
+  const preopened =
+    typeof window !== 'undefined' && !isCapacitorNative()
+      ? window.open(options.url, popupName, popupFeatures)
+      : null;
   return (async () => {
     let usedApp = false;
     try {
@@ -345,13 +353,26 @@ export function startPnOAuthPopup(options: StartPnOAuthPopupOptions): Promise<Pn
     } catch {
       usedApp = false;
     }
-    return startPnOAuthPopupAfterLaunch(options, usedApp);
+    if (usedApp) {
+      try {
+        preopened?.close();
+      } catch {
+        /* popup may already be gone */
+      }
+      return startPnOAuthPopupAfterLaunch(options, true, null);
+    }
+    if (!preopened) {
+      pushPnOAuthDebug('popup_blocked', {});
+      throw new Error('POPUP_BLOCKED');
+    }
+    return startPnOAuthPopupAfterLaunch(options, false, preopened);
   })();
 }
 
 function startPnOAuthPopupAfterLaunch(
   options: StartPnOAuthPopupOptions,
-  usedApp: boolean
+  usedApp: boolean,
+  existingPopup: Window | null
 ): Promise<PnOAuthPopupResult> {
   const {
     url,
@@ -423,7 +444,7 @@ function startPnOAuthPopupAfterLaunch(
       /* ignore */
     }
 
-    const popup = usedApp ? null : window.open(url, popupName, popupFeatures);
+    const popup = usedApp ? null : existingPopup ?? window.open(url, popupName, popupFeatures);
     if (!popup && !usedApp) {
       pushPnOAuthDebug('popup_blocked', {});
       reject(new Error('POPUP_BLOCKED'));
