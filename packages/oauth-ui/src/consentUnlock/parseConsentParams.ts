@@ -15,6 +15,8 @@ export interface ConsentUnlockParams {
   shellOp: 'session' | 'export' | 'recovery' | 'sub_pn' | 'dm' | 'rotate' | 'create' | 'seal_vault';
   /** Base64url cloud envelope for op=seal_vault. */
   vaultPayload: string;
+  /** Ephemeral ML-KEM public key from the calling tab. Secrets are sealed to it. */
+  handoffPk: string;
 }
 
 function readParam(search: URLSearchParams, key: string): string {
@@ -49,6 +51,7 @@ export function parseConsentUnlockParams(
     flow: readParam(params, 'flow'),
     shellOp: (readParam(params, 'op') || 'session') as ConsentUnlockParams['shellOp'],
     vaultPayload: readParam(params, 'vault_payload'),
+    handoffPk: readParam(params, 'handoff_pk'),
   };
 }
 

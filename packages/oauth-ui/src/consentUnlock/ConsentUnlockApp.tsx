@@ -48,6 +48,7 @@ import {
 import { shouldUseCrossProcessBrokerHandoff } from './constants';
 import { denyOAuthConsent, redirectWithAuthCode } from './redirectWithAuthCode';
 import { applyShellFragment, assertFactorFree, encodeShellReturn } from '../hostedShell/session';
+import { assertBrokerBodyHasNoPrivateKeys, sealHandoffPayload } from '../handoffSeal';
 import { buildShellResult } from '../hostedShell/shellResult';
 import { consentUnlockCss, consentUnlockBrokerCssExtras, resolveConsentAssetBase } from './consentUnlockStyles';
 import { toUnlockVaultEnrollMaterial } from './vaultEnroll';
@@ -387,14 +388,21 @@ function ConsentUnlockInner(props: {
         };
         assertFactorFree(shellSession);
         if (active.state && deliverLocalBroker && isDesktopUnlockApp()) {
-          await deliverLocalBroker({
+          if (!active.handoffPk) throw new Error('Unlock handoff requires handoff_pk');
+          const sealedHandoff = built
+            ? await sealHandoffPayload(active.handoffPk, { shellResult: built })
+            : undefined;
+          const brokerBody = {
             type: 'oauth_callback',
             state: active.state,
             client_id: active.clientId,
             code,
             timestamp: Date.now(),
-            shellSession,
-          });
+            shellSession: { ...shellSession, result: undefined },
+            sealedHandoff,
+          };
+          assertBrokerBodyHasNoPrivateKeys(brokerBody);
+          await deliverLocalBroker(brokerBody);
           return;
         }
         const fragment = encodeShellReturn(shellSession);
@@ -427,6 +435,7 @@ function ConsentUnlockInner(props: {
         // supplemental for web popup (session survives COOP / window.name wipe).
         openExternal: useBroker ? openExternal : undefined,
         deliverLocalBroker,
+        handoffPk: active.handoffPk,
       });
     },
     [params, openExternal, deliverLocalBroker, returnShellToCaller]

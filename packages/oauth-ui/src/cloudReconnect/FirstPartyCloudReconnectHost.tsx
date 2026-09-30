@@ -2,7 +2,11 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { publishCloudDriveReady } from '@par-noir/device-cloud-credentials';
 import type { StorageCredentialsEnvelope } from '@par-noir/user-owned-storage';
 import { CloudReconnectPanel, PN_CLOUD_CREDENTIALS_READY_EVENT } from './CloudReconnectPanel';
-import { CloudReconnectPrompt } from './CloudReconnectPrompt';
+import {
+  CloudReconnectPrompt,
+  DASHBOARD_CLOUD_CONNECT_MESSAGE,
+  DASHBOARD_CLOUD_CONNECT_TITLE,
+} from './CloudReconnectPrompt';
 import { isOAuthCloudProvider, reconnectOAuthProvider } from './reconnectFlows';
 import { useCloudReconnectGate } from './useCloudReconnectGate';
 import type { CloudReconnectGateConfig } from './types';
@@ -36,6 +40,11 @@ export interface FirstPartyCloudReconnectHostProps {
   afterSlot?: React.ReactNode;
   /** Hide prompt while this is true (e.g. pair modal open). */
   suppressPrompt?: boolean;
+  /**
+   * `here` starts Google sign-in (dashboard).
+   * `dashboard` only hydrates the sealed vault and tells the user to connect there.
+   */
+  cloudConnect?: 'here' | 'dashboard';
   logTag?: string;
 }
 
@@ -63,6 +72,7 @@ export function FirstPartyCloudReconnectHost({
   onPairDevice,
   afterSlot,
   suppressPrompt = false,
+  cloudConnect = 'here',
   logTag = 'FirstPartyCloudReconnectHost'
 }: FirstPartyCloudReconnectHostProps) {
   const [googleClientId, setGoogleClientId] = useState<string | null>(googleClientIdProp ?? null);
@@ -117,12 +127,16 @@ export function FirstPartyCloudReconnectHost({
   useEffect(() => {
     if (!listenOpenEvent) return;
     const open = () => {
+      if (cloudConnect === 'dashboard') {
+        setHydrateFailed(true);
+        return;
+      }
       gateRef.current.openPanel();
       void gateRef.current.refreshForced();
     };
     window.addEventListener('pn_open_cloud_reconnect', open);
     return () => window.removeEventListener('pn_open_cloud_reconnect', open);
-  }, [listenOpenEvent]);
+  }, [listenOpenEvent, cloudConnect]);
 
   // Dashboard migrate / Storage connect may publish secrets after the first gate check.
   useEffect(() => {
@@ -158,9 +172,9 @@ export function FirstPartyCloudReconnectHost({
     } catch {
       /* non-DOM */
     }
-    gateRef.current.openPanel();
+    if (cloudConnect !== 'dashboard') gateRef.current.openPanel();
     return false;
-  }, [authToken, pnIdentifier, apiEndpoint, flushGrant, onAfterMintSuccess, logTag]);
+  }, [authToken, pnIdentifier, apiEndpoint, flushGrant, onAfterMintSuccess, logTag, cloudConnect]);
 
   // Browse path: mint after vault hydrate.
   useEffect(() => {
@@ -230,6 +244,7 @@ export function FirstPartyCloudReconnectHost({
   );
 
   const handleReconnect = useCallback(() => {
+    if (cloudConnect === 'dashboard') return;
     const provider = gate.socialCloudProvider;
     if (isOAuthCloudProvider(provider) && authToken && pnIdentifier) {
       setOauthBusy(true);
@@ -257,7 +272,8 @@ export function FirstPartyCloudReconnectHost({
     pnIdentifier,
     apiEndpoint,
     googleClientId,
-    handleConnected
+    handleConnected,
+    cloudConnect
   ]);
 
   if (!enabled || !authToken || !pnIdentifier) return null;
@@ -273,6 +289,9 @@ export function FirstPartyCloudReconnectHost({
       <CloudReconnectPrompt
         open={promptOpen}
         socialCloudProvider={gate.socialCloudProvider}
+        title={cloudConnect === 'dashboard' ? DASHBOARD_CLOUD_CONNECT_TITLE : undefined}
+        message={cloudConnect === 'dashboard' ? DASHBOARD_CLOUD_CONNECT_MESSAGE : undefined}
+        allowReconnect={cloudConnect !== 'dashboard'}
         onReconnect={handleReconnect}
         onDismiss={() => {
           setHydrateFailed(false);
@@ -289,16 +308,18 @@ export function FirstPartyCloudReconnectHost({
           </p>
         ) : null}
       </CloudReconnectPrompt>
-      <CloudReconnectPanel
-        open={gate.panelOpen}
-        onClose={gate.closePanel}
-        pnIdentifier={pnIdentifier}
-        authToken={authToken}
-        apiEndpoint={apiEndpoint}
-        googleClientId={googleClientId}
-        preferredProvider={gate.socialCloudProvider}
-        onConnected={handleConnected}
-      />
+      {cloudConnect === 'here' ? (
+        <CloudReconnectPanel
+          open={gate.panelOpen}
+          onClose={gate.closePanel}
+          pnIdentifier={pnIdentifier}
+          authToken={authToken}
+          apiEndpoint={apiEndpoint}
+          googleClientId={googleClientId}
+          preferredProvider={gate.socialCloudProvider}
+          onConnected={handleConnected}
+        />
+      ) : null}
       {afterSlot}
     </>
   );

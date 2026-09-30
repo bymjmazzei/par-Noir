@@ -255,6 +255,16 @@ export {
   wakePreferAppBrokerPoll,
 } from './preferAppBrokerWait';
 export type { PreferAppBrokerWait } from './preferAppBrokerWait';
+export {
+  HANDOFF_PK_PARAM,
+  bindHandoffKem,
+  sealHandoffPayload,
+  openHandoffPayload,
+  openSealedBrokerPayload,
+  brokerBodyHasPrivateKey,
+  withHandoffPk,
+} from './handoffSeal';
+export type { SealedHandoff, HandoffKem } from './handoffSeal';
 export { HostedShellLaunch } from './hostedShell/HostedShellLaunch';
 export type { HostedShellLaunchProps } from './hostedShell/HostedShellLaunch';
 export {

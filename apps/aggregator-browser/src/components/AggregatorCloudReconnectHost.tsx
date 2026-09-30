@@ -302,6 +302,7 @@ export const AggregatorCloudReconnectHost: React.FC = () => {
           </div>
         </div>
       }
+      cloudConnect="dashboard"
       logTag="AggregatorCloudReconnectHost"
     />
   );

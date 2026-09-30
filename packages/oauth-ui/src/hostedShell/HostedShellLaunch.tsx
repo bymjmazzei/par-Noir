@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { pollUnlockDesktopBrokerOnce } from '../unlockDesktopBrokerPoll';
 import { tryPreferUnlockApp } from '../unlockPreferApp';
+import { bindHandoffKem } from '../handoffSeal';
 import {
   buildShellLaunchUrl,
   buildShellWebUrl,
@@ -134,13 +135,15 @@ export function HostedShellLaunch(props: HostedShellLaunchProps): React.ReactEle
     } catch {
       /* ignore */
     }
+    const state = createShellState();
     const launch = {
       returnTo,
       op: props.op || 'session',
       clientId: props.clientId,
       apiEndpoint: props.apiEndpoint || DEFAULT_SHELL_API,
-      state: createShellState(),
+      state,
       vaultPayload: props.vaultPayload,
+      handoffPk: bindHandoffKem(state).publicKey,
     };
     void (async () => {
       const choice = await tryPreferUnlockApp(buildShellLaunchUrl(launch));

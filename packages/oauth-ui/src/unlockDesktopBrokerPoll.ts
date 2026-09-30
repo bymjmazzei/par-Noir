@@ -5,6 +5,7 @@
 
 import { PN_OAUTH_MESSAGE_TYPE } from './pnOAuthPopup';
 import { OAUTH_BROKER_PENDING_PATH } from './consentUnlock/constants';
+import { openSealedBrokerPayload } from './handoffSeal';
 
 export type DesktopBrokerPendingResult = {
   type: typeof PN_OAUTH_MESSAGE_TYPE;
@@ -49,11 +50,20 @@ export async function pollUnlockDesktopBrokerOnce(
     });
     if (res.status === 204 || res.status === 404) return null;
     if (!res.ok) return null;
-    const data = (await res.json()) as DesktopBrokerPendingResult;
+    const data = (await res.json()) as DesktopBrokerPendingResult & Record<string, unknown>;
     if (!data || data.type !== PN_OAUTH_MESSAGE_TYPE) return null;
     if (expectedState && data.state && data.state !== expectedState) return null;
-    if (!data.code && !data.error) return null;
-    return data;
+    if (!data.code && !data.error && !data.sealedHandoff) return null;
+    try {
+      return (await openSealedBrokerPayload(expectedState, data)) as DesktopBrokerPendingResult;
+    } catch (e) {
+      return {
+        ...data,
+        type: PN_OAUTH_MESSAGE_TYPE,
+        error: 'handoff_open_failed',
+        error_description: e instanceof Error ? e.message : 'Unlock handoff did not open',
+      };
+    }
   } catch {
     return null;
   }

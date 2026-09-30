@@ -1,18 +1,16 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   clearCloudCredentialsOnLock,
-  ensureSessionDriveIndex,
-  getCloudAccessTokenFromSession,
   getSessionCloudCredentials,
   publishCloudDriveReady,
-  setSessionCloudCredentials,
-  type DeviceDriveLayout,
 } from '@par-noir/device-cloud-credentials';
 import { envelopeHasUsableSecrets } from '@par-noir/user-owned-storage';
 import type { StorageCredentialsEnvelope } from '@par-noir/user-owned-storage';
-import { CloudReconnectPanel } from './CloudReconnectPanel';
-import { CloudReconnectPrompt } from './CloudReconnectPrompt';
-import { isOAuthCloudProvider, reconnectOAuthProvider } from './reconnectFlows';
+import {
+  CloudReconnectPrompt,
+  DASHBOARD_CLOUD_CONNECT_MESSAGE,
+  DASHBOARD_CLOUD_CONNECT_TITLE,
+} from './CloudReconnectPrompt';
 import { useCloudReconnectGate } from './useCloudReconnectGate';
 import { ensureCloudCredentialsReady } from './cloudVaultHydrate';
 import { flushPendingGrant } from '../pendingGrantPersist';
@@ -37,39 +35,14 @@ export function ThirdPartyCloudReconnectHost({
   apiEndpoint,
   authToken,
   pnIdentifier,
-  googleClientId: googleClientIdProp,
   mlKemSecretKey,
   pnName,
   passcode
 }: ThirdPartyCloudReconnectHostProps) {
-  const [googleClientId, setGoogleClientId] = useState<string | null>(googleClientIdProp ?? null);
-  const [oauthBusy, setOauthBusy] = useState(false);
-  const [oauthError, setOauthError] = useState<string | null>(null);
   const [vaultHydrated, setVaultHydrated] = useState(false);
   const [hydrateFailed, setHydrateFailed] = useState(false);
   const mintCompletedKeyRef = useRef<string | null>(null);
   const mintInFlightRef = useRef(false);
-
-  useEffect(() => {
-    if (googleClientIdProp) {
-      setGoogleClientId(googleClientIdProp);
-      return;
-    }
-    let cancelled = false;
-    void (async () => {
-      try {
-        const res = await fetch(`${apiEndpoint.replace(/\/$/, '')}/api/public-config`);
-        if (!res.ok) return;
-        const data = (await res.json()) as { googleDriveClientId?: string };
-        if (!cancelled) setGoogleClientId(data.googleDriveClientId ?? null);
-      } catch {
-        /* ignore */
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [apiEndpoint, googleClientIdProp]);
 
   useEffect(() => {
     let cancelled = false;
@@ -155,7 +128,6 @@ export function ThirdPartyCloudReconnectHost({
           await flushPendingGrant({ authToken, pnIdentifier, apiEndpoint });
         } else {
           setHydrateFailed(true);
-          gateRef.current.openPanel();
         }
       } finally {
         mintInFlightRef.current = false;
@@ -166,130 +138,21 @@ export function ThirdPartyCloudReconnectHost({
     };
   }, [vaultHydrated, authToken, pnIdentifier, apiEndpoint]);
 
-  const handleConnected = useCallback(
-    async (envelope: StorageCredentialsEnvelope) => {
-      if (!pnIdentifier || !authToken) return;
-      setSessionCloudCredentials(pnIdentifier, envelope);
-      if (mlKemSecretKey) {
-        const { publishCloudCredentialsVault } = await import('@par-noir/device-cloud-credentials');
-        await publishCloudCredentialsVault({
-          apiEndpoint,
-          authToken,
-          pnIdentifier,
-          mlKemSecretKey,
-          pnName: pnName || undefined,
-          passcode: passcode || undefined,
-          credentials: envelope,
-        }).catch(() => ({ ok: false }));
-      }
-      const cloudToken = getCloudAccessTokenFromSession(pnIdentifier);
-      if (cloudToken) {
-        await ensureSessionDriveIndex({
-          identityId: pnIdentifier,
-          accessToken: cloudToken,
-          readStoredIndex: async () => {
-            const res = await fetch(
-              `${apiEndpoint}/api/storage/credentials/${encodeURIComponent(pnIdentifier)}`,
-              { headers: { Authorization: `Bearer ${authToken}` } }
-            );
-            if (!res.ok) return null;
-            const body = (await res.json()) as { credentials?: { pnDriveIndex?: DeviceDriveLayout } };
-            return body.credentials?.pnDriveIndex || null;
-          },
-          persistIndex: async (built) => {
-            await fetch(`${apiEndpoint}/api/storage/initialize/${encodeURIComponent(pnIdentifier)}`, {
-              method: 'POST',
-              headers: {
-                Authorization: `Bearer ${authToken}`,
-                'Content-Type': 'application/json',
-              },
-              body: JSON.stringify({ pnDriveIndex: built }),
-            });
-          },
-        });
-      }
-      setVaultHydrated(true);
-      await gateRef.current.refreshForced();
-      const ok = await publishCloudDriveReady({
-        authToken,
-        pnIdentifier,
-        apiEndpoint
-      });
-      if (ok) {
-        mintCompletedKeyRef.current = `${pnIdentifier}|${authToken.slice(0, 12)}`;
-        setHydrateFailed(false);
-        gateRef.current.markReady();
-        await flushPendingGrant({ authToken, pnIdentifier, apiEndpoint });
-      } else {
-        setHydrateFailed(true);
-        gateRef.current.openPanel();
-      }
-    },
-    [pnIdentifier, authToken, apiEndpoint, mlKemSecretKey, pnName, passcode]
-  );
-
-  const handleReconnect = useCallback(() => {
-    const provider = gate.socialCloudProvider;
-    if (isOAuthCloudProvider(provider) && authToken && pnIdentifier) {
-      setOauthBusy(true);
-      setOauthError(null);
-      const pending = reconnectOAuthProvider({
-        provider,
-        pnIdentifier,
-        authToken,
-        apiEndpoint,
-        googleClientId
-      });
-      void pending
-        .then((envelope) => handleConnected(envelope))
-        .catch((err) => {
-          setOauthError(err instanceof Error ? err.message : 'Reconnect failed');
-        })
-        .finally(() => setOauthBusy(false));
-      return;
-    }
-    gate.openPanel();
-  }, [
-    gate.socialCloudProvider,
-    gate.openPanel,
-    authToken,
-    pnIdentifier,
-    apiEndpoint,
-    googleClientId,
-    handleConnected
-  ]);
-
   if (!authToken || !pnIdentifier) return null;
 
   return (
-    <>
-      <CloudReconnectPrompt
-        open={hydrateFailed && !gate.panelOpen}
-        socialCloudProvider={gate.socialCloudProvider}
-        onReconnect={handleReconnect}
-        onDismiss={() => {
-          setHydrateFailed(false);
-          gate.dismissPrompt();
-        }}
-        busy={oauthBusy}
-      >
-        {oauthError ? (
-          <p style={{ margin: '12px 0 0', fontSize: 13, color: '#f87171' }} role="alert">
-            {oauthError}
-          </p>
-        ) : null}
-      </CloudReconnectPrompt>
-      <CloudReconnectPanel
-        open={gate.panelOpen}
-        onClose={gate.closePanel}
-        pnIdentifier={pnIdentifier}
-        authToken={authToken}
-        apiEndpoint={apiEndpoint}
-        googleClientId={googleClientId}
-        preferredProvider={gate.socialCloudProvider}
-        onConnected={handleConnected}
-      />
-    </>
+    <CloudReconnectPrompt
+      open={hydrateFailed}
+      socialCloudProvider={gate.socialCloudProvider}
+      title={DASHBOARD_CLOUD_CONNECT_TITLE}
+      message={DASHBOARD_CLOUD_CONNECT_MESSAGE}
+      allowReconnect={false}
+      onReconnect={() => undefined}
+      onDismiss={() => {
+        setHydrateFailed(false);
+        gate.dismissPrompt();
+      }}
+    />
   );
 }
 

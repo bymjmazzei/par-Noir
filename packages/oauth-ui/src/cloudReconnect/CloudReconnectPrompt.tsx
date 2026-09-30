@@ -13,6 +13,10 @@ export interface CloudReconnectPromptProps {
   /** @deprecated use showPairDevice */
   showKeyDevice?: boolean;
   title?: string;
+  /** Replaces the default reconnect copy. */
+  message?: string;
+  /** False when this app cannot start Google sign-in. */
+  allowReconnect?: boolean;
   /** True while OAuth popup / exchange is in progress from Reconnect */
   busy?: boolean;
   children?: ReactNode;
@@ -67,6 +71,11 @@ const secondaryBtn: CSSProperties = {
   fontWeight: 500
 };
 
+export const DASHBOARD_CLOUD_CONNECT_TITLE = 'Connect Google in the dashboard';
+
+export const DASHBOARD_CLOUD_CONNECT_MESSAGE =
+  'Google is connected in the dashboard. Open the dashboard, connect Google once, then unlock this app again.';
+
 function providerLabel(provider?: string | null): string {
   if (!provider) return 'cloud storage';
   return provider.replace(/_/g, ' ');
@@ -85,6 +94,8 @@ export function CloudReconnectPrompt({
   onKeyDevice,
   showKeyDevice = false,
   title = 'Reconnect cloud storage',
+  message,
+  allowReconnect = true,
   busy = false,
   children,
   className = ''
@@ -101,8 +112,8 @@ export function CloudReconnectPrompt({
           {title}
         </h2>
         <p style={{ margin: 0, fontSize: 14, lineHeight: 1.45, color: '#d4d4d4' }}>
-          {providerLabel(socialCloudProvider)} is linked to this pN but not signed in on this device.
-          Reconnect here to use messaging, uploads, and your private cloud on this unlock.
+          {message ??
+            `${providerLabel(socialCloudProvider)} is linked to this pN but not signed in on this device. Reconnect here to use messaging, uploads, and your private cloud on this unlock.`}
         </p>
         {showPair ? (
           <p style={{ margin: '10px 0 0', fontSize: 13, lineHeight: 1.45, color: '#a3a3a3' }}>
@@ -112,14 +123,16 @@ export function CloudReconnectPrompt({
         ) : null}
         {children}
         <div style={btnRow}>
-          <button
-            type="button"
-            style={{ ...primaryBtn, opacity: busy ? 0.7 : 1, cursor: busy ? 'wait' : 'pointer' }}
-            onClick={onReconnect}
-            disabled={busy}
-          >
-            {busy ? 'Opening sign-in…' : 'Reconnect'}
-          </button>
+          {allowReconnect ? (
+            <button
+              type="button"
+              style={{ ...primaryBtn, opacity: busy ? 0.7 : 1, cursor: busy ? 'wait' : 'pointer' }}
+              onClick={onReconnect}
+              disabled={busy}
+            >
+              {busy ? 'Opening sign-in…' : 'Reconnect'}
+            </button>
+          ) : null}
           {showPair && onPair ? (
             <button type="button" style={secondaryBtn} onClick={onPair} disabled={busy}>
               Pair this device for full access

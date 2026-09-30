@@ -7,6 +7,7 @@ import {
 } from './messagingOAuthHandoff';
 import { resolveUnlockOrigin } from './consentUnlock/parseConsentParams';
 import { isCapacitorNative, launchUnlockBroker } from './unlockPreferApp';
+import { withHandoffPk } from './handoffSeal';
 import {
   brokerPollContextFromConsentUrl,
   pollUnlockDesktopBrokerOnce,
@@ -335,6 +336,8 @@ export function startPnOAuthPopup(options: StartPnOAuthPopupOptions): Promise<Pn
   // focus, and that focus turn is what reserves the web window. A window opened
   // on the click stays up until auth finishes and looks like a second popup.
   const popupName = options.popupName ?? defaultPopupName();
+  const consentUrl = withHandoffPk(options.url);
+  const launchOptions = { ...options, url: consentUrl };
   let preopened: Window | null = null;
   const reserveWebPopup = () => {
     if (preopened || typeof window === 'undefined' || isCapacitorNative()) return;
@@ -355,7 +358,7 @@ export function startPnOAuthPopup(options: StartPnOAuthPopupOptions): Promise<Pn
     let usedApp = false;
     try {
       const launch = await launchUnlockBroker({
-        httpsUrl: options.url,
+        httpsUrl: consentUrl,
         preferApp: options.preferApp,
         reserveWebPopup,
       });
@@ -373,19 +376,19 @@ export function startPnOAuthPopup(options: StartPnOAuthPopupOptions): Promise<Pn
       } catch {
         /* popup may already be gone */
       }
-      return startPnOAuthPopupAfterLaunch(options, true, null);
+      return startPnOAuthPopupAfterLaunch(launchOptions, true, null);
     }
     if (!popup) {
       pushPnOAuthDebug('popup_blocked', {});
       throw new Error('POPUP_BLOCKED');
     }
     try {
-      popup.location.href = options.url;
+      popup.location.href = consentUrl;
       popup.focus();
     } catch {
       /* the reserved window is still on about:blank */
     }
-    return startPnOAuthPopupAfterLaunch(options, false, popup);
+    return startPnOAuthPopupAfterLaunch(launchOptions, false, popup);
   })();
 }
 

@@ -10,6 +10,7 @@ import { safeClientErrorMessage } from '../utils/safeError';
 import { hashIdentifier, isDevVerbose, safeLogger } from '../../utils/logger';
 import { getBearerTokenPayload } from '../middleware/authMiddleware';
 import { requireAdminApiKey } from './adminDeveloperRoutes';
+import { brokerPrivateKeyName } from './brokerPrivateKeys';
 
 const NODE_ENV = process.env.NODE_ENV || 'development';
 
@@ -467,6 +468,13 @@ export function setupPnOAuthRoutes(app: express.Application, deps: PnOAuthRouteD
     app.post('/oauth/authorize/broker-complete', authLimiter, async (req, res) => {
       try {
         const body = req.body || {};
+        const leaked = brokerPrivateKeyName(body);
+        if (leaked) {
+          return res.status(400).json({
+            error: 'invalid_request',
+            error_description: 'broker handoff must not include private keys',
+          });
+        }
         const state = String(body.state || '').trim();
         const clientId = String(body.client_id || '').trim();
         const code = body.code != null ? String(body.code) : '';
@@ -492,6 +500,9 @@ export function setupPnOAuthRoutes(app: express.Application, deps: PnOAuthRouteD
         }
         if (body.messagingHandoff && typeof body.messagingHandoff === 'object') {
           payload.messagingHandoff = body.messagingHandoff;
+        }
+        if (body.sealedHandoff && typeof body.sealedHandoff === 'object') {
+          payload.sealedHandoff = body.sealedHandoff;
         }
         if (body.shellSession && typeof body.shellSession === 'object') {
           const session = body.shellSession as Record<string, unknown>;

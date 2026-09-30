@@ -169,6 +169,8 @@ export function buildShellLaunchUrl(args: {
   state?: string;
   /** Base64url JSON the unlock app seals. Never Key 1 or Key 2. */
   vaultPayload?: string;
+  /** Ephemeral ML-KEM public key. The matching secret stays in the calling tab. */
+  handoffPk?: string;
 }): string {
   const params = new URLSearchParams({
     flow: 'shell',
@@ -181,6 +183,7 @@ export function buildShellLaunchUrl(args: {
   if (args.state && args.state.length >= 8) params.set('state', args.state);
   if (args.apiEndpoint) params.set('api_endpoint', args.apiEndpoint);
   if (args.vaultPayload) params.set('vault_payload', args.vaultPayload);
+  if (args.handoffPk) params.set('handoff_pk', args.handoffPk);
   return `${UNLOCK_CUSTOM_SCHEME}://oauth/consent?${params.toString()}`;
 }
 
@@ -191,6 +194,7 @@ export type ShellLaunchArgs = {
   apiEndpoint?: string;
   state?: string;
   vaultPayload?: string;
+  handoffPk?: string;
 };
 
 /** Same shell query on the web unlock page. Factors stay there, not on the hosted site. */

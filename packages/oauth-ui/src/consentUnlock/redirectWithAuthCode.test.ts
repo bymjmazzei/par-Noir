@@ -3,6 +3,7 @@
  */
 import { describe, expect, it, vi } from 'vitest';
 import { redirectWithAuthCode } from './redirectWithAuthCode';
+import { createHandoffKem, openHandoffPayload, brokerBodyHasPrivateKey } from '../handoffSeal';
 import {
   handoffProvidesMessagingSession,
   parseMessagingHandoffFromHash,
@@ -63,6 +64,7 @@ describe('redirectWithAuthCode cross-process', () => {
         },
       },
     });
+    const kem = createHandoffKem();
     try {
       await redirectWithAuthCode({
         code: 'auth-code',
@@ -70,6 +72,7 @@ describe('redirectWithAuthCode cross-process', () => {
         state: 'st',
         popupFlow: true,
         clientId: 'pen-app',
+        handoffPk: kem.publicKey,
         grantedDataPoints: [],
         consentShown: false,
         encryptedIdentity: {
@@ -90,9 +93,14 @@ describe('redirectWithAuthCode cross-process', () => {
         },
       });
       expect(brokerCalls).toHaveLength(1);
-      const handoff = (brokerCalls[0] as { messagingHandoff?: { session?: { mlDsaSecretKey?: string } } })
-        ?.messagingHandoff;
-      expect(handoff?.session?.mlDsaSecretKey).toBe('dsa-sk');
+      const posted = brokerCalls[0] as {
+        sealedHandoff?: { kemCiphertext: string; ciphertext: string };
+        messagingHandoff?: { session?: { mlDsaSecretKey?: string } };
+      };
+      expect(brokerBodyHasPrivateKey(posted)).toBeNull();
+      expect(posted.messagingHandoff?.session).toBeUndefined();
+      const opened = await openHandoffPayload(posted.sealedHandoff!, kem.secretKey);
+      expect(opened.messagingSession?.mlDsaSecretKey).toBe('dsa-sk');
       expect(hrefs.some((h) => h.includes('oauth-callback.html') && h.includes('code=auth-code'))).toBe(
         true
       );
@@ -117,6 +125,7 @@ describe('redirectWithAuthCode cross-process', () => {
         },
       },
     });
+    const kem = createHandoffKem();
     try {
       await redirectWithAuthCode({
         code: 'auth-code',
@@ -124,6 +133,7 @@ describe('redirectWithAuthCode cross-process', () => {
         state: 'st',
         popupFlow: false,
         clientId: 'browser-app',
+        handoffPk: kem.publicKey,
         grantedDataPoints: [],
         consentShown: false,
         encryptedIdentity: {
@@ -140,6 +150,10 @@ describe('redirectWithAuthCode cross-process', () => {
         },
       });
       expect(brokerCalls).toHaveLength(1);
+      expect(brokerBodyHasPrivateKey(brokerCalls[0])).toBeNull();
+      const posted = brokerCalls[0] as { sealedHandoff: { kemCiphertext: string; ciphertext: string } };
+      const opened = await openHandoffPayload(posted.sealedHandoff, kem.secretKey);
+      expect(opened.messagingSession?.mlKemSecretKey).toBe('kem-sk');
       expect(hrefs).toHaveLength(0);
     } finally {
       Object.defineProperty(window, 'location', { configurable: true, value: original });

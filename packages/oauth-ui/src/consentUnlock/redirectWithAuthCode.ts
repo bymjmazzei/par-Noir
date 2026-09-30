@@ -11,6 +11,7 @@ import {
   type MessagingOAuthHandoffPayload,
 } from '../messagingOAuthHandoff';
 import { PN_OAUTH_MESSAGE_TYPE } from '../pnOAuthPopup';
+import { assertBrokerBodyHasNoPrivateKeys, sealHandoffPayload } from '../handoffSeal';
 import { isMessagingHandoffClient, OAUTH_BROKER_COMPLETE_PATH } from './constants';
 
 export type RedirectWithAuthCodeArgs = {
@@ -32,6 +33,8 @@ export type RedirectWithAuthCodeArgs = {
   deliverLocalBroker?: (payload: Record<string, unknown>) => void | Promise<void>;
   /** API base for broker-complete when deliverLocalBroker is not provided. */
   apiEndpoint?: string;
+  /** Calling tab's ephemeral ML-KEM public key. Required when the broker carries secrets. */
+  handoffPk?: string;
 };
 
 function resolveOpener(): Window | null {
@@ -106,11 +109,13 @@ export async function redirectWithAuthCode(args: RedirectWithAuthCodeArgs): Prom
     decryptedIdentity,
     openExternal: openExternalArg,
     deliverLocalBroker: deliverLocalBrokerArg,
+    handoffPk,
   } = args;
   // Cap / prefer-app (!popup): broker (or openExternal) is the sole transport.
   // Web popup: still redirect to oauth-callback for the auth code. Chrome clears
   // window.name on cross-site navigations and COOP severs opener postMessage, so
-  // ML-KEM/ML-DSA session must also ride the API broker when Unlock wires it.
+  // the ML-KEM/ML-DSA session rides the API broker as ciphertext sealed to the
+  // calling tab. The broker body never contains those secret keys.
   const openExternal = popupFlow ? undefined : openExternalArg;
   const brokerOnly = !popupFlow && Boolean(deliverLocalBrokerArg);
 
@@ -208,9 +213,23 @@ export async function redirectWithAuthCode(args: RedirectWithAuthCodeArgs): Prom
   // opener message arrives; storeBrokerPending requires a still-live code.
   if (deliverLocalBrokerArg) {
     try {
-      await deliverLocalBrokerArg(callbackPayload);
-    } catch {
-      if (brokerOnly) throw new Error('Broker handoff failed');
+      const brokerPayload: Record<string, unknown> = { ...callbackPayload };
+      const session = messagingHandoff?.session;
+      if (session) {
+        if (!handoffPk) throw new Error('Unlock handoff requires handoff_pk');
+        const messagingSession: Record<string, string> = {
+          mlKemSecretKey: session.mlKemSecretKey,
+        };
+        if (session.mlKemPublicKey) messagingSession.mlKemPublicKey = session.mlKemPublicKey;
+        if (session.mlDsaSecretKey) messagingSession.mlDsaSecretKey = session.mlDsaSecretKey;
+        if (session.mlDsaPublicKey) messagingSession.mlDsaPublicKey = session.mlDsaPublicKey;
+        brokerPayload.sealedHandoff = await sealHandoffPayload(handoffPk, { messagingSession });
+        brokerPayload.messagingHandoff = { ...messagingHandoff, session: undefined };
+      }
+      assertBrokerBodyHasNoPrivateKeys(brokerPayload);
+      await deliverLocalBrokerArg(brokerPayload);
+    } catch (e) {
+      if (brokerOnly) throw e instanceof Error ? e : new Error('Broker handoff failed');
       // Popup supplemental: still redirect / postMessage so web unlock completes.
     }
     if (brokerOnly) return;
