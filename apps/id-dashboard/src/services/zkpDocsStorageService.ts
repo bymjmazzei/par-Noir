@@ -10,20 +10,36 @@ export async function ensureZkpDocsFolderId(
   pnIdentifier: string,
   authToken: string
 ): Promise<string> {
-  const res = await ownerFetch(
-    authToken,
-    'POST',
-    `/api/storage/${encodeURIComponent(pnIdentifier)}/zkp-docs/ensure`,
-    {},
-    { pnIdentifier }
+  const { deviceDriveCall } = await import('@par-noir/device-cloud-credentials');
+  const { sessionDriveFor } = await import('./sessionDrive');
+  const drive = await sessionDriveFor(pnIdentifier, authToken);
+  const parentId = drive.index.metadataFolderId;
+  const listed = await deviceDriveCall(
+    'GET',
+    `/api/drive/files?q=${encodeURIComponent(
+      `name='zkp-docs' and '${parentId}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`
+    )}&pageSize=5`,
+    undefined,
+    { accessToken: drive.accessToken }
   );
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error(`Failed to ensure zkp-docs folder: ${text}`);
+  if (listed.ok) {
+    const body = (await listed.json()) as { files?: Array<{ id?: string }> };
+    const existing = body.files?.find((file) => file.id)?.id;
+    if (existing) return existing;
   }
-  const data = (await res.json()) as { folderId?: string };
-  if (!data.folderId) throw new Error('zkp-docs folder id missing');
-  return data.folderId;
+  const created = await deviceDriveCall(
+    'POST',
+    '/api/drive/folders',
+    { folderName: 'zkp-docs', parentFolderId: parentId },
+    { accessToken: drive.accessToken }
+  );
+  if (!created.ok) {
+    throw new Error(`Failed to ensure zkp-docs folder: ${created.status}`);
+  }
+  const data = (await created.json()) as { folder?: { id?: string }; id?: string };
+  const folderId = data.folder?.id || data.id;
+  if (!folderId) throw new Error('zkp-docs folder id missing');
+  return folderId;
 }
 
 export async function uploadZkpDocEncrypted(opts: {
@@ -86,8 +102,8 @@ export async function uploadZkpDocEncrypted(opts: {
     const text = await uploadRes.text();
     throw new Error(`zkp-docs upload failed: ${text}`);
   }
-  const out = (await uploadRes.json()) as { id?: string; fileId?: string };
-  const id = out.id || out.fileId;
+  const out = (await uploadRes.json()) as { id?: string; fileId?: string; file?: { id?: string } };
+  const id = out.id || out.fileId || out.file?.id;
   if (!id) throw new Error('Upload returned no file id');
   return id;
 }

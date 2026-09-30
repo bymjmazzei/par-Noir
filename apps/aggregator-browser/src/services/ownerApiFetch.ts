@@ -6,7 +6,7 @@
 
 import { API_ENDPOINT } from '../config/api';
 import { PNOAuthService } from './pnOAuthService';
-import { omitCloudAccessHeader } from '@par-noir/device-cloud-credentials';
+import { fetchDeviceDriveForSession, omitCloudAccessHeader } from '@par-noir/device-cloud-credentials';
 
 export type OwnerFetchInit = Omit<RequestInit, 'method' | 'headers' | 'body'> & {
   /** Merged last, so a caller-resolved X-PN-Cloud-Access-Token wins. */
@@ -46,8 +46,17 @@ async function request(opts: {
   init?: OwnerFetchInit;
   drive: boolean;
 }): Promise<Response> {
-  const { extraHeaders, pnIdentifier: _pn, authToken, ...rest } = opts.init ?? {};
+  const { extraHeaders, pnIdentifier, authToken, ...rest } = opts.init ?? {};
   const session = PNOAuthService.loadSession();
+  if (opts.drive) {
+    const driveResponse = await fetchDeviceDriveForSession({
+      method: opts.method,
+      pathOrUrl: opts.pathOrUrl,
+      body: opts.body,
+      pnIdentifier: pnIdentifier || session?.pnIdentifier,
+    });
+    if (driveResponse) return driveResponse;
+  }
 
   const send = async (token: string): Promise<Response> => {
     const headers = bearerOnlyHeaders(token);

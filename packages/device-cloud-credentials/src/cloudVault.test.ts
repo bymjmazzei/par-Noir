@@ -1,6 +1,8 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi, afterEach } from 'vitest';
+import { getSessionCloudCredentials, clearAllSessionCloudCredentials } from './sessionMemory.js';
 import {
   canonicalCloudSealSession,
+  hydrateCloudCredentialsFromVault,
   sealCloudVault,
   sealCloudVaultWithMlKem,
   unsealCloudVault,
@@ -15,6 +17,11 @@ import {
 } from './cloudVault.js';
 
 describe('cloud vault canonical seal', () => {
+  afterEach(() => {
+    clearAllSessionCloudCredentials();
+    vi.unstubAllGlobals();
+  });
+
   it('uses fixed session id for identity seal', () => {
     const s = canonicalCloudSealSession('alice', 'secret');
     expect(s.sessionId).toBe(CLOUD_VAULT_SEAL_SESSION_ID);
@@ -60,6 +67,25 @@ describe('cloud vault canonical seal', () => {
     expect(looksLikePlaintextCloudSecrets({ googleDriveAccounts: [{ accessToken: 'x' }] })).toBe(
       true
     );
+  });
+
+  it('hydrates a sealed vault into session memory', async () => {
+    const creds = {
+      googleDriveAccounts: [{ accountId: 'a1', accessToken: 'at', refreshToken: 'rt' }],
+    };
+    const sealed = await sealCloudVaultWithMlKem(creds as never, 'kem-secret');
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({ envelope: sealed }), { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+    const result = await hydrateCloudCredentialsFromVault({
+      apiEndpoint: 'https://api.example.test',
+      authToken: 'oauth',
+      pnIdentifier: 'pn-hydrate',
+      mlKemSecretKey: 'kem-secret',
+    });
+    expect(result.status).toBe('ready');
+    expect(getSessionCloudCredentials('pn-hydrate')?.googleDriveAccounts?.[0]?.refreshToken).toBe('rt');
+    expect(String(fetchMock.mock.calls[0]?.[0])).toContain('/api/storage/cloud-vault/');
+    expect(String(fetchMock.mock.calls[0]?.[0])).not.toContain('googleapis.com');
   });
 
   it('drops a provider access token before an API request', () => {

@@ -99,8 +99,20 @@ export function ThirdPartyCloudReconnectHost({
 
   const loadLocalEnvelope = useCallback(async (): Promise<StorageCredentialsEnvelope | null> => {
     if (!pnIdentifier) return null;
+    const existing = getSessionCloudCredentials(pnIdentifier);
+    if (envelopeHasUsableSecrets(existing)) return existing;
+    if (!authToken || (!mlKemSecretKey && !(pnName && passcode))) return existing;
+    const status = await ensureCloudCredentialsReady({
+      apiEndpoint,
+      authToken,
+      pnIdentifier,
+      mlKemSecretKey,
+      pnName,
+      passcode,
+    });
+    if (status !== 'ready') return existing;
     return getSessionCloudCredentials(pnIdentifier);
-  }, [pnIdentifier]);
+  }, [apiEndpoint, authToken, pnIdentifier, mlKemSecretKey, pnName, passcode]);
 
   const gate = useCloudReconnectGate({
     enabled: !!(authToken && pnIdentifier),
@@ -158,6 +170,18 @@ export function ThirdPartyCloudReconnectHost({
     async (envelope: StorageCredentialsEnvelope) => {
       if (!pnIdentifier || !authToken) return;
       setSessionCloudCredentials(pnIdentifier, envelope);
+      if (mlKemSecretKey) {
+        const { publishCloudCredentialsVault } = await import('@par-noir/device-cloud-credentials');
+        await publishCloudCredentialsVault({
+          apiEndpoint,
+          authToken,
+          pnIdentifier,
+          mlKemSecretKey,
+          pnName: pnName || undefined,
+          passcode: passcode || undefined,
+          credentials: envelope,
+        }).catch(() => ({ ok: false }));
+      }
       const cloudToken = getCloudAccessTokenFromSession(pnIdentifier);
       if (cloudToken) {
         await ensureSessionDriveIndex({
@@ -201,7 +225,7 @@ export function ThirdPartyCloudReconnectHost({
         gateRef.current.openPanel();
       }
     },
-    [pnIdentifier, authToken, apiEndpoint]
+    [pnIdentifier, authToken, apiEndpoint, mlKemSecretKey, pnName, passcode]
   );
 
   const handleReconnect = useCallback(() => {

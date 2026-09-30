@@ -3,7 +3,7 @@
  * Mirrors aggregator-browser ownerApiFetch (apps must not import each other).
  */
 
-import { omitCloudAccessHeader } from '@par-noir/device-cloud-credentials';
+import { fetchDeviceDriveForSession, omitCloudAccessHeader } from '@par-noir/device-cloud-credentials';
 import { API_ENDPOINT } from '../config/api';
 import { loadPenSession, savePenSession } from './penSession';
 
@@ -35,9 +35,18 @@ async function request(opts: {
   init?: OwnerFetchInit;
   drive: boolean;
 }): Promise<Response> {
-  const { extraHeaders, pnIdentifier: _pn, authToken, ...rest } = opts.init ?? {};
+  const { extraHeaders, pnIdentifier, authToken, ...rest } = opts.init ?? {};
   const session = loadPenSession();
   const token = authToken || session?.accessToken || '';
+  if (opts.drive) {
+    const driveResponse = await fetchDeviceDriveForSession({
+      method: opts.method,
+      pathOrUrl: opts.pathOrUrl,
+      body: opts.body,
+      pnIdentifier: pnIdentifier || session?.pnIdentifier,
+    });
+    if (driveResponse) return driveResponse;
+  }
 
   const headers: Record<string, string> = { 'Content-Type': 'application/json' };
   if (token) headers.Authorization = `Bearer ${token}`;

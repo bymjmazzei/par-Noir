@@ -76,7 +76,7 @@ export function HorizontalThumbnailFeed({
       }
 
       // Build URL with accountId
-      let thumbnailUrl = `${API_ENDPOINT}/api/drive/files/${thumbnailId}?thumbnail=true`;
+      let thumbnailUrl = `${API_ENDPOINT}/api/drive/files/${thumbnailId}?download=true`;
       if (accountIdToUse && accountIdToUse.includes('::')) {
         thumbnailUrl += `&accountId=${encodeURIComponent(accountIdToUse)}`;
       }

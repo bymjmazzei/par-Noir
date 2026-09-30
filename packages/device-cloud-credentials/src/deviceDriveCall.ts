@@ -3,6 +3,8 @@
  * never to the par Noir API.
  */
 
+import { getCloudAccessTokenFromSession } from './ownerCloudHeaders.js';
+
 const DRIVE = 'https://www.googleapis.com/drive/v3';
 const UPLOAD = 'https://www.googleapis.com/upload/drive/v3/files';
 const FOLDER = 'application/vnd.google-apps.folder';
@@ -64,7 +66,10 @@ export async function deviceDriveCall(
       fields: 'nextPageToken,files(id,name,mimeType,size,modifiedTime,parents)',
       pageSize: url.searchParams.get('pageSize') || '100',
     });
-    const q = url.searchParams.get('q');
+    let q = url.searchParams.get('q');
+    if (!q && url.searchParams.get('scope') === 'sharedWithMe') {
+      q = 'sharedWithMe = true';
+    }
     if (q) params.set('q', q);
     const pageToken = url.searchParams.get('pageToken');
     if (pageToken) params.set('pageToken', pageToken);
@@ -80,7 +85,7 @@ export async function deviceDriveCall(
   const fileMatch = url.pathname.match(/^\/api\/drive\/files\/([^/]+)$/);
   if (fileMatch && verb === 'GET') {
     const id = decodeURIComponent(fileMatch[1]);
-    if (url.searchParams.get('download') === 'true') {
+    if (url.searchParams.get('download') === 'true' || url.searchParams.get('thumbnail') === 'true') {
       return google(fetchImpl, token, `${DRIVE}/files/${encodeURIComponent(id)}?alt=media`);
     }
     const res = await google(
@@ -200,4 +205,41 @@ export async function deviceDriveCall(
   }
 
   return jsonResponse(404, { error: 'device_drive_path_unsupported', path: url.pathname });
+}
+
+/** `/api/drive/...` on a relative path or an absolute API URL. Null for every other route. */
+export function extractApiDrivePath(pathOrUrl: string): string | null {
+  const raw = pathOrUrl.trim();
+  if (raw.startsWith('/api/drive/')) return raw;
+  try {
+    const u = new URL(raw);
+    if (u.pathname.startsWith('/api/drive/')) return `${u.pathname}${u.search}`;
+  } catch {
+    /* not a URL */
+  }
+  return null;
+}
+
+function cloudOnDeviceResponse(): Response {
+  return jsonResponse(409, {
+    error: 'cloud_on_device',
+    error_description: 'Drive reads and writes run on the device.',
+  });
+}
+
+/**
+ * Drive proxy paths go to Google with the session token.
+ * Returns null when the path is not Drive, so the caller can hit the API.
+ */
+export async function fetchDeviceDriveForSession(opts: {
+  method: string;
+  pathOrUrl: string;
+  body?: unknown;
+  pnIdentifier?: string | null;
+}): Promise<Response | null> {
+  const path = extractApiDrivePath(opts.pathOrUrl);
+  if (!path) return null;
+  const token = opts.pnIdentifier ? getCloudAccessTokenFromSession(opts.pnIdentifier) : null;
+  if (!token) return cloudOnDeviceResponse();
+  return deviceDriveCall(opts.method, path, opts.body, { accessToken: token });
 }

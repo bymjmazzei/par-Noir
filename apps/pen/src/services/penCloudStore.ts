@@ -26,6 +26,31 @@ import {
 import { ensureOwnerDocGroup } from './penCollab';
 import type { PenSession } from './penSession';
 
+function sectionEntries(
+  map: Record<string, string> | undefined
+): Array<{ slug: string; ciphertext: string }> {
+  return Object.entries(map || {}).map(([slug, ciphertext]) => ({
+    slug,
+    ciphertext: String(ciphertext),
+  }));
+}
+
+function draftFolderId(draft: { draftId?: string; id?: string } | undefined): string {
+  return String(draft?.draftId || draft?.id || 'draft');
+}
+
+async function writeThenAck(
+  userPnIdentifier: string,
+  body: Record<string, unknown>
+): Promise<Response> {
+  return ownerFetch(
+    'POST',
+    '/api/pen/apply-inbound',
+    { ...body, deviceCloudResult: { provider: 'google', docId: body.docId } },
+    { pnIdentifier: userPnIdentifier }
+  );
+}
+
 export async function bootstrapDocCloud(params: {
   userPnIdentifier: string;
   bundle: LocalDocBundle;
@@ -36,21 +61,38 @@ export async function bootstrapDocCloud(params: {
   const docId = params.bundle.manifest.docId;
   const docKey = mintDocKey(docId);
   const sectionCiphertextsB64 = await sectionsToWireCipherMap(params.bundle.sections, docKey);
-  const res = await ownerFetch(
-    'POST',
-    '/api/pen/apply-inbound',
-    {
-      userPnIdentifier: params.userPnIdentifier,
-      jobType: PEN_DOC_BOOTSTRAP_KIND,
-      docId,
-      groupId: params.bundle.manifest.groupId,
-      manifest: params.bundle.manifest,
+  const { penSessionDrive, upsertLibrarySummary, writePenDocFiles } = await import('./penDriveLibrary');
+  const drive = await penSessionDrive(params.userPnIdentifier);
+  const sections = sectionEntries(sectionCiphertextsB64);
+  await writePenDocFiles({
+    accessToken: drive.accessToken,
+    pnFolderId: drive.index.pnFolderId,
+    docId,
+    manifest: params.bundle.manifest,
+    chain: params.bundle.chain,
+    draft: {
+      id: draftFolderId(params.draft),
       draft: params.draft,
-      sectionCiphertextsB64,
-      chain: params.bundle.chain
+      sections,
     },
-    { pnIdentifier: params.userPnIdentifier }
-  );
+  });
+  await upsertLibrarySummary(drive.accessToken, drive.index.pnFolderId, {
+    docId,
+    title: params.bundle.manifest.title || 'Untitled',
+    templateId: params.bundle.manifest.templateId || '',
+    classId: params.bundle.manifest.classId,
+    updatedAt: params.bundle.manifest.updatedAt || new Date().toISOString(),
+  });
+  const res = await writeThenAck(params.userPnIdentifier, {
+    userPnIdentifier: params.userPnIdentifier,
+    jobType: PEN_DOC_BOOTSTRAP_KIND,
+    docId,
+    groupId: params.bundle.manifest.groupId,
+    manifest: params.bundle.manifest,
+    draft: params.draft,
+    sectionCiphertextsB64,
+    chain: params.bundle.chain,
+  });
   if (!res.ok) {
     const err = (await res.json().catch(() => ({}))) as { error?: string };
     throw new Error(err.error || `bootstrap_failed_${res.status}`);
@@ -80,20 +122,28 @@ export async function upsertDraftCloud(params: {
 }): Promise<void> {
   const docKey = mintDocKey(params.manifest.docId);
   const sectionCiphertextsB64 = await sectionsToWireCipherMap(params.sections, docKey);
-  const res = await ownerFetch(
-    'POST',
-    '/api/pen/apply-inbound',
-    {
-      userPnIdentifier: params.userPnIdentifier,
-      jobType: PEN_DRAFT_UPSERT_KIND,
-      docId: params.manifest.docId,
-      groupId: params.manifest.groupId,
-      manifest: params.manifest,
+  const { penSessionDrive, writePenDocFiles } = await import('./penDriveLibrary');
+  const drive = await penSessionDrive(params.userPnIdentifier);
+  await writePenDocFiles({
+    accessToken: drive.accessToken,
+    pnFolderId: drive.index.pnFolderId,
+    docId: params.manifest.docId,
+    manifest: params.manifest,
+    draft: {
+      id: draftFolderId(params.draft),
       draft: params.draft,
-      sectionCiphertextsB64
+      sections: sectionEntries(sectionCiphertextsB64),
     },
-    { pnIdentifier: params.userPnIdentifier }
-  );
+  });
+  const res = await writeThenAck(params.userPnIdentifier, {
+    userPnIdentifier: params.userPnIdentifier,
+    jobType: PEN_DRAFT_UPSERT_KIND,
+    docId: params.manifest.docId,
+    groupId: params.manifest.groupId,
+    manifest: params.manifest,
+    draft: params.draft,
+    sectionCiphertextsB64,
+  });
   if (!res.ok) {
     const err = (await res.json().catch(() => ({}))) as { error?: string };
     throw new Error(err.error || `draft_upsert_failed_${res.status}`);
@@ -112,27 +162,40 @@ export async function publishDocCloud(params: {
   const versionId = pastVersionId(at, { forceTime: true });
   const docKey = mintDocKey(params.manifest.docId);
   const sectionCiphertextsB64 = await sectionsToWireCipherMap(params.sections, docKey);
-  const res = await ownerFetch(
-    'POST',
-    '/api/pen/apply-inbound',
-    {
-      userPnIdentifier: params.userPnIdentifier,
-      jobType: PEN_PUBLISH_KIND,
-      docId: params.manifest.docId,
-      groupId: params.manifest.groupId,
-      versionId,
-      sectionCiphertextsB64,
-      toc: params.manifest.toc,
-      link: params.link,
-      sourceDraftId: params.sourceDraftId,
-      manifest: {
-        ...params.manifest,
-        lifecycle: 'published',
-        updatedAt: at.toISOString()
-      }
-    },
-    { pnIdentifier: params.userPnIdentifier }
-  );
+  const published = {
+    ...params.manifest,
+    lifecycle: 'published' as const,
+    updatedAt: at.toISOString(),
+  };
+  const { penSessionDrive, upsertLibrarySummary, writePenDocFiles } = await import('./penDriveLibrary');
+  const drive = await penSessionDrive(params.userPnIdentifier);
+  await writePenDocFiles({
+    accessToken: drive.accessToken,
+    pnFolderId: drive.index.pnFolderId,
+    docId: params.manifest.docId,
+    manifest: published,
+    chain: { versionId },
+    currentSections: sectionEntries(sectionCiphertextsB64),
+  });
+  await upsertLibrarySummary(drive.accessToken, drive.index.pnFolderId, {
+    docId: params.manifest.docId,
+    title: published.title || 'Untitled',
+    templateId: published.templateId || '',
+    classId: published.classId,
+    updatedAt: published.updatedAt,
+  });
+  const res = await writeThenAck(params.userPnIdentifier, {
+    userPnIdentifier: params.userPnIdentifier,
+    jobType: PEN_PUBLISH_KIND,
+    docId: params.manifest.docId,
+    groupId: params.manifest.groupId,
+    versionId,
+    sectionCiphertextsB64,
+    toc: params.manifest.toc,
+    link: params.link,
+    sourceDraftId: params.sourceDraftId,
+    manifest: published,
+  });
   if (!res.ok) {
     const err = (await res.json().catch(() => ({}))) as { error?: string };
     throw new Error(err.error || `publish_failed_${res.status}`);
@@ -161,16 +224,14 @@ export async function deleteDocCloud(params: {
   userPnIdentifier: string;
   docId: string;
 }): Promise<void> {
-  const res = await ownerFetch(
-    'POST',
-    '/api/pen/apply-inbound',
-    {
-      userPnIdentifier: params.userPnIdentifier,
-      jobType: PEN_DOC_DELETE_KIND,
-      docId: params.docId
-    },
-    { pnIdentifier: params.userPnIdentifier }
-  );
+  const { penSessionDrive, removePenDoc } = await import('./penDriveLibrary');
+  const drive = await penSessionDrive(params.userPnIdentifier);
+  await removePenDoc(drive.accessToken, drive.index.pnFolderId, params.docId);
+  const res = await writeThenAck(params.userPnIdentifier, {
+    userPnIdentifier: params.userPnIdentifier,
+    jobType: PEN_DOC_DELETE_KIND,
+    docId: params.docId,
+  });
   if (!res.ok) {
     const err = (await res.json().catch(() => ({}))) as { error?: string };
     throw new Error(err.error || `doc_delete_failed_${res.status}`);
@@ -203,9 +264,19 @@ export async function updateDocMetaCloud(params: {
   if (params.galleryPreviewCommitHash !== undefined) {
     body.galleryPreviewCommitHash = params.galleryPreviewCommitHash;
   }
-  const res = await ownerFetch('POST', '/api/pen/apply-inbound', body, {
-    pnIdentifier: params.userPnIdentifier
+  const { penSessionDrive, readLibraryIndex, writeLibraryIndex } = await import('./penDriveLibrary');
+  const drive = await penSessionDrive(params.userPnIdentifier);
+  const rows = await readLibraryIndex(drive.accessToken, drive.index.pnFolderId);
+  const next = rows.map((row) => {
+    if (String(row.docId || '') !== params.docId) return row;
+    return {
+      ...row,
+      ...(params.title !== undefined ? { title: params.title } : {}),
+      ...(params.folderId !== undefined ? { folderId: params.folderId } : {}),
+    };
   });
+  await writeLibraryIndex(drive.accessToken, drive.index.pnFolderId, next);
+  const res = await writeThenAck(params.userPnIdentifier, body);
   if (!res.ok) {
     const err = (await res.json().catch(() => ({}))) as { error?: string };
     throw new Error(err.error || `doc_meta_failed_${res.status}`);

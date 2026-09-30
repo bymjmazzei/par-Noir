@@ -71,6 +71,23 @@ export type PreferUnlockAppResult =
   | { opened: false; mode: 'fallback' };
 
 /**
+ * Open hides the caller page. Cancel is a blur (the dialog) then focus, with the
+ * page never hidden. A blur by itself is the dialog, not a choice.
+ */
+export function unlockDialogDecision(args: {
+  nativePlatform: boolean;
+  documentHidden: boolean;
+  sawBlur: boolean;
+  focusedAfterBlur: boolean;
+  noDialogTimedOut: boolean;
+}): 'app' | 'web' | 'pending' {
+  if (args.nativePlatform || args.documentHidden) return 'app';
+  if (args.sawBlur && args.focusedAfterBlur) return 'web';
+  if (args.noDialogTimedOut && !args.sawBlur) return 'web';
+  return 'pending';
+}
+
+/**
  * Fire custom-scheme navigation without an iframe.
  * Browse CSP is `frame-src 'self'`, so iframe loads of `com.parnoir.unlock://…`
  * are blocked (DevTools: Framing '' violates frame-src) and prefer-app never runs.
@@ -87,7 +104,8 @@ function triggerCustomScheme(appUrl: string): void {
 
 /**
  * Attempt to open the Unlock app via custom scheme.
- * If the page loses visibility within waitMs, assume the app took over.
+ * The page hiding means Open. Blur then focus, still visible, means Cancel.
+ * No dialog within waitMs means the app is not installed.
  */
 export async function tryPreferUnlockApp(
   appUrl: string,
@@ -97,45 +115,84 @@ export async function tryPreferUnlockApp(
     return { opened: false, mode: 'fallback' };
   }
   const waitMs = options?.waitMs ?? DEFAULT_PREFER_APP_WAIT_MS;
+  const nativePlatform = isCapacitorNative();
 
-  let sawHide = document.hidden;
-  const onVis = () => {
-    if (document.hidden) sawHide = true;
-  };
-  const onBlur = () => {
-    sawHide = true;
-  };
-  document.addEventListener('visibilitychange', onVis);
-  window.addEventListener('blur', onBlur);
+  return new Promise((resolve) => {
+    let sawBlur = false;
+    let focusedAfterBlur = false;
+    let noDialogTimedOut = false;
+    let settled = false;
+    let noDialogTimer = 0;
+    let capTimer = 0;
 
-  try {
-    triggerCustomScheme(appUrl);
-  } catch {
-    document.removeEventListener('visibilitychange', onVis);
-    window.removeEventListener('blur', onBlur);
-    return { opened: false, mode: 'fallback' };
-  }
+    const cleanup = () => {
+      document.removeEventListener('visibilitychange', onVis);
+      window.removeEventListener('blur', onBlur);
+      window.removeEventListener('focus', onFocus);
+      window.clearTimeout(noDialogTimer);
+      window.clearTimeout(capTimer);
+    };
 
-  // Cap iOS often shows "Open in Unlock?" without hiding the caller WebView, so
-  // visibility never flips — still treat as prefer-app so callers poll broker-pending
-  // instead of navigating the Cap shell to unlock.parnoir.com.
-  if (isCapacitorNative()) {
-    document.removeEventListener('visibilitychange', onVis);
-    window.removeEventListener('blur', onBlur);
-    return { opened: true, mode: 'app' };
-  }
+    const finish = () => {
+      if (settled) return;
+      const decision = unlockDialogDecision({
+        nativePlatform,
+        documentHidden: document.hidden,
+        sawBlur,
+        focusedAfterBlur,
+        noDialogTimedOut,
+      });
+      if (decision === 'pending') return;
+      settled = true;
+      cleanup();
+      resolve(
+        decision === 'app'
+          ? { opened: true, mode: 'app' }
+          : { opened: false, mode: 'fallback' }
+      );
+    };
 
-  await new Promise<void>((resolve) => {
-    window.setTimeout(resolve, waitMs);
+    const onVis = () => finish();
+    const onBlur = () => {
+      sawBlur = true;
+      window.clearTimeout(noDialogTimer);
+      finish();
+    };
+    const onFocus = () => {
+      if (!sawBlur) return;
+      focusedAfterBlur = true;
+      finish();
+    };
+
+    document.addEventListener('visibilitychange', onVis);
+    window.addEventListener('blur', onBlur);
+    window.addEventListener('focus', onFocus);
+
+    try {
+      triggerCustomScheme(appUrl);
+    } catch {
+      cleanup();
+      resolve({ opened: false, mode: 'fallback' });
+      return;
+    }
+
+    // Cap iOS often shows "Open in Unlock?" without hiding the caller WebView.
+    if (nativePlatform || document.hidden) {
+      finish();
+      return;
+    }
+
+    noDialogTimer = window.setTimeout(() => {
+      noDialogTimedOut = true;
+      finish();
+    }, waitMs);
+    // Dialog can stay up while the user decides. Do not treat that as Cancel.
+    capTimer = window.setTimeout(() => {
+      noDialogTimedOut = true;
+      sawBlur = false;
+      finish();
+    }, 120_000);
   });
-
-  document.removeEventListener('visibilitychange', onVis);
-  window.removeEventListener('blur', onBlur);
-
-  if (sawHide || document.hidden) {
-    return { opened: true, mode: 'app' };
-  }
-  return { opened: false, mode: 'fallback' };
 }
 
 export type LaunchUnlockBrokerOptions = {

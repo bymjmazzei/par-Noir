@@ -137,7 +137,7 @@ export function CollectionFeed({
         const thumbnailFileId = metadata.thumbnailFileId;
         if (thumbnailFileId) {
           // Load note thumbnail as image
-          let thumbnailUrl = `${API_ENDPOINT}/api/drive/files/${thumbnailFileId}?thumbnail=true`;
+          let thumbnailUrl = `${API_ENDPOINT}/api/drive/files/${thumbnailFileId}?download=true`;
           if (accountIdToUse) {
             thumbnailUrl += `&accountId=${encodeURIComponent(accountIdToUse)}`;
           }
@@ -222,10 +222,7 @@ export function CollectionFeed({
         }
       } else if (isImage) {
         // Load image
-        // For note-collection-thumbnails, they ARE the image files, so use download=true
-        // For regular images, thumbnail=true might generate a thumbnail, but for collection thumbnails we want the full file
-        const useDownload = isNoteCollectionThumbnail;
-        let imageUrl = `${API_ENDPOINT}/api/drive/files/${fileId}?${useDownload ? 'download' : 'thumbnail'}=true`;
+        let imageUrl = `${API_ENDPOINT}/api/drive/files/${fileId}?download=true`;
         if (accountIdToUse) {
           imageUrl += `&accountId=${encodeURIComponent(accountIdToUse)}`;
         }

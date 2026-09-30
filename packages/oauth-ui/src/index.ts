@@ -16,6 +16,7 @@ export {
   launchUnlockBroker,
   httpsConsentUrlToAppUrl,
   tryPreferUnlockApp,
+  unlockDialogDecision,
   isRunningInsideUnlockBroker,
 } from './unlockPreferApp';
 export {

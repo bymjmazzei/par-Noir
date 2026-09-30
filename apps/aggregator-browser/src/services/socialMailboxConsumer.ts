@@ -121,10 +121,17 @@ export async function drainSocialMailbox(): Promise<MailboxDrainResult> {
   // (dmIdentitySession). Do not promote on every drain — that gates inbox reads.
 
   // Package mints X-PN-Cloud-Access-Token via apiBaseUrl; no app buildAuthHeaders.
+  try {
+    const { sessionDriveFor } = await import('./sessionDrive');
+    await sessionDriveFor(identityId);
+  } catch {
+    /* apply still posts; sheet writes wait until a token is in session */
+  }
   const applySocialJob = createApiSocialApplier({
     apiBaseUrl: API_ENDPOINT,
     authToken,
     identityId,
+    getCloudAccessToken: () => getCloudAccessTokenFromSession(identityId) || undefined,
     ...(mlKemSecretKey
       ? {
           openEnvelope: async (envelope, contextId) =>

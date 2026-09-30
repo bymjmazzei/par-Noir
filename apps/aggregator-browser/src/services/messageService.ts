@@ -331,11 +331,13 @@ async function promoteOpts(userPnIdentifier: string) {
     throw new Error('Not authenticated');
   }
   requireOnlineCloudForSend(userPnIdentifier);
+  const { getCloudAccessTokenFromSession } = await import('@par-noir/device-cloud-credentials');
   return {
     apiBaseUrl: API_ENDPOINT,
     authToken: session.accessToken,
     identityId: userPnIdentifier,
-    session: sealSessionForOutbox(userPnIdentifier)
+    session: sealSessionForOutbox(userPnIdentifier),
+    getCloudAccessToken: () => getCloudAccessTokenFromSession(userPnIdentifier) || undefined,
   };
 }
 

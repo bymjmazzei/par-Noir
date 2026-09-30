@@ -67,6 +67,103 @@ describe('createApiSocialApplier message_append', () => {
     vi.unstubAllGlobals();
   });
 
+  it('writes a connection request onto the connections sheet and posts a receipt', async () => {
+    setSessionDriveIndex('pn-recipient', {
+      schemaVersion: 1,
+      pnFolderId: 'pn-folder',
+      metadataFolderId: 'meta',
+      integratorsRootId: 'int',
+      messagesFolderId: 'msg',
+      inboxSheetId: 'inbox-sheet',
+      sheetIds: { connections: 'sheet-connections' },
+      conversationSheets: {},
+    });
+    const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
+      const href = String(url);
+      if (href.includes('sheets.googleapis.com')) {
+        return new Response(JSON.stringify({ values: [] }), { status: 200 });
+      }
+      const body = JSON.parse(String(init?.body || '{}'));
+      expect(href).toContain('/api/connections/apply-inbound');
+      expect(body.deviceCloudResult.spreadsheetId).toBe('sheet-connections');
+      expect(body.deviceCloudResult.provider).toBe('google');
+      expect((init?.headers as Record<string, string>)['X-PN-Cloud-Access-Token']).toBeUndefined();
+      return new Response(JSON.stringify({ success: true }), { status: 200 });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const apply = createApiSocialApplier({
+      apiBaseUrl: 'https://api.example.test',
+      authToken: 'oauth-at',
+      identityId: 'pn-recipient',
+      getCloudAccessToken: async () => 'cloud-at',
+    });
+    const job: MailboxJob = {
+      id: 'job-conn',
+      routeKey: 'b'.repeat(64),
+      jobType: 'connection_request',
+      createdAt: new Date().toISOString(),
+      expiresAt: new Date(Date.now() + 86_400_000).toISOString(),
+      payload: {
+        connectionId: 'conn-9',
+        peerPnIdentifier: 'pn-sender',
+        peerMailboxRouteKey: 'c'.repeat(64),
+      },
+    };
+    await expect(apply(job)).resolves.toBe(true);
+    expect(fetchMock.mock.calls.some((call) => String(call[0]).includes('sheets.googleapis.com'))).toBe(true);
+    vi.unstubAllGlobals();
+  });
+
+  it('writes an accepted connection and an inbox thread before the receipt', async () => {
+    setSessionDriveIndex('pn-recipient', {
+      schemaVersion: 1,
+      pnFolderId: 'pn-folder',
+      metadataFolderId: 'meta',
+      integratorsRootId: 'int',
+      messagesFolderId: 'msg',
+      inboxSheetId: 'inbox-sheet',
+      sheetIds: { connections: 'sheet-connections' },
+      conversationSheets: {},
+    });
+    const sheetUrls: string[] = [];
+    const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
+      const href = String(url);
+      if (href.includes('sheets.googleapis.com')) {
+        sheetUrls.push(href);
+        return new Response(JSON.stringify({ values: [] }), { status: 200 });
+      }
+      const body = JSON.parse(String(init?.body || '{}'));
+      expect(body.jobType).toBe('connection_accept');
+      expect(body.deviceCloudResult.spreadsheetId).toBe('sheet-connections');
+      return new Response(JSON.stringify({ success: true }), { status: 200 });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const apply = createApiSocialApplier({
+      apiBaseUrl: 'https://api.example.test',
+      authToken: 'oauth-at',
+      identityId: 'pn-recipient',
+      getCloudAccessToken: async () => 'cloud-at',
+    });
+    const job: MailboxJob = {
+      id: 'job-accept',
+      routeKey: 'd'.repeat(64),
+      jobType: 'connection_accept',
+      createdAt: new Date().toISOString(),
+      expiresAt: new Date(Date.now() + 86_400_000).toISOString(),
+      payload: {
+        connectionId: 'conn-9',
+        peerPnIdentifier: 'pn-sender',
+        conversationSpreadsheetId: 'dm-sheet',
+        kemCiphertext: 'kem',
+        wrappedMessageRootKey: 'wrap',
+      },
+    };
+    await expect(apply(job)).resolves.toBe(true);
+    expect(sheetUrls.some((href) => href.includes('sheet-connections'))).toBe(true);
+    expect(sheetUrls.some((href) => href.includes('inbox-sheet'))).toBe(true);
+    vi.unstubAllGlobals();
+  });
+
   it('opens a sealed pen.poll_vote and leaves it when no opener is available', async () => {
     const fetchMock = vi.fn(async () => new Response(JSON.stringify({ ok: true }), { status: 200 }));
     vi.stubGlobal('fetch', fetchMock);

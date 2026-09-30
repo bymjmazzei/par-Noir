@@ -227,12 +227,49 @@ export async function acceptConnectionRequest(
     const existing = sheetId
       ? (await listDeviceConnections(drive.accessToken, sheetId)).find((row) => row.connectionId === connectionId)
       : undefined;
-    if (sheetId && existing) {
+    const peerPn = requesterPnIdentifier.startsWith('pn-')
+      ? requesterPnIdentifier
+      : `pn-${requesterPnIdentifier}`;
+    if (sheetId) {
       await upsertDeviceConnection(drive.accessToken, sheetId, {
-        ...existing,
+        connectionId,
+        userPnIdentifier: existing?.userPnIdentifier || peerPn,
         status: 'accepted',
+        createdAt: existing?.createdAt || new Date().toISOString(),
         acceptedAt: new Date().toISOString(),
+        peerMlKemPublicKey: kemPk,
         kemCiphertext,
+        peerMailboxRouteKey: existing?.peerMailboxRouteKey,
+      });
+    }
+    let conversationSpreadsheetId = '';
+    if (drive.index.messagesFolderId) {
+      const { deviceDriveCall } = await import('@par-noir/device-cloud-credentials');
+      const created = await deviceDriveCall(
+        'POST',
+        '/api/drive/native',
+        {
+          fileName: `dm-${connectionId}`,
+          mimeType: 'application/vnd.google-apps.spreadsheet',
+          parents: [drive.index.messagesFolderId],
+        },
+        { accessToken: drive.accessToken }
+      );
+      if (created.ok) {
+        const createdBody = (await created.json()) as { file?: { id?: string } };
+        conversationSpreadsheetId = createdBody.file?.id || '';
+      }
+    }
+    if (conversationSpreadsheetId && drive.index.inboxSheetId) {
+      const { upsertDeviceInboxThread } = await import('@par-noir/device-cloud-credentials');
+      await upsertDeviceInboxThread(drive.accessToken, drive.index.inboxSheetId, {
+        threadType: 'dm',
+        participantPnIdentifier: peerPn,
+        spreadsheetId: conversationSpreadsheetId,
+        connectionId,
+        lastMessageAt: new Date().toISOString(),
+        kemCiphertext,
+        wrappedMessageRootKey,
       });
     }
     const response = await ownerFetch(
@@ -245,11 +282,12 @@ export async function acceptConnectionRequest(
         kemAlgId: 'ML-KEM-768',
         acceptorMailboxRouteKey: mailboxRouteKey,
         channelClientId,
-        peerPnIdentifier: existing?.userPnIdentifier,
+        peerPnIdentifier: peerPn,
+        conversationSpreadsheetId,
         deviceCloudResult: {
           spreadsheetId: sheetId,
           provider: 'google',
-          peerPnIdentifier: existing?.userPnIdentifier,
+          peerPnIdentifier: peerPn,
         },
       },
       { pnIdentifier: userPnIdentifier }

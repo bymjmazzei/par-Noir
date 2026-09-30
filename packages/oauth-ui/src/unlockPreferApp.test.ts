@@ -3,7 +3,7 @@
  */
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 import { buildOAuthConsentAppUrl, buildOAuthConsentUrl } from './pnOAuthPopup';
-import { httpsConsentUrlToAppUrl, tryPreferUnlockApp } from './unlockPreferApp';
+import { httpsConsentUrlToAppUrl, tryPreferUnlockApp, unlockDialogDecision } from './unlockPreferApp';
 import { searchFromUnlockUrl } from './consentUnlock/searchFromUnlockUrl';
 import { DEFAULT_UNLOCK_ORIGIN, callerCapAppResumeUrl } from './consentUnlock/constants';
 
@@ -52,6 +52,47 @@ describe('searchFromUnlockUrl', () => {
   });
 });
 
+describe('unlockDialogDecision', () => {
+  it('keeps the app when the page hides and uses the web form when cancel returns focus', () => {
+    expect(
+      unlockDialogDecision({
+        nativePlatform: false,
+        documentHidden: true,
+        sawBlur: true,
+        focusedAfterBlur: false,
+        noDialogTimedOut: false,
+      })
+    ).toBe('app');
+    expect(
+      unlockDialogDecision({
+        nativePlatform: false,
+        documentHidden: false,
+        sawBlur: true,
+        focusedAfterBlur: true,
+        noDialogTimedOut: false,
+      })
+    ).toBe('web');
+    expect(
+      unlockDialogDecision({
+        nativePlatform: false,
+        documentHidden: false,
+        sawBlur: true,
+        focusedAfterBlur: false,
+        noDialogTimedOut: false,
+      })
+    ).toBe('pending');
+    expect(
+      unlockDialogDecision({
+        nativePlatform: false,
+        documentHidden: false,
+        sawBlur: false,
+        focusedAfterBlur: false,
+        noDialogTimedOut: true,
+      })
+    ).toBe('web');
+  });
+});
+
 describe('tryPreferUnlockApp', () => {
   beforeEach(() => {
     vi.useFakeTimers();
@@ -81,6 +122,16 @@ describe('tryPreferUnlockApp', () => {
     const r = await p;
     expect(r.opened).toBe(true);
     expect(r.mode).toBe('app');
+  });
+
+  it('treats blur then focus with the page still visible as cancel', async () => {
+    Object.defineProperty(document, 'hidden', { configurable: true, get: () => false });
+    const p = tryPreferUnlockApp('com.parnoir.unlock://oauth/consent?x=1', { waitMs: 5000 });
+    window.dispatchEvent(new Event('blur'));
+    window.dispatchEvent(new Event('focus'));
+    const r = await p;
+    expect(r.opened).toBe(false);
+    expect(r.mode).toBe('fallback');
   });
 
   it('assumes opened on Capacitor native even when page stays visible', async () => {

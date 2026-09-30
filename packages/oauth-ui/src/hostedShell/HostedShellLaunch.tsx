@@ -4,18 +4,9 @@ import {
   buildShellLaunchUrl,
   buildShellWebUrl,
   parseShellReturn,
-  shellLaunchAfterAppProbe,
   type HostedShellSession,
   type ShellOp,
 } from './session';
-
-function nativeUnlockShell(): boolean {
-  if (typeof window === 'undefined') return false;
-  const cap = (
-    window as Window & { Capacitor?: { isNativePlatform?: () => boolean } }
-  ).Capacitor;
-  return typeof cap?.isNativePlatform === 'function' && cap.isNativePlatform();
-}
 
 export type HostedShellLaunchProps = {
   op?: ShellOp;
@@ -71,12 +62,8 @@ export function HostedShellLaunch(props: HostedShellLaunchProps): React.ReactEle
       vaultPayload: props.vaultPayload,
     };
     void (async () => {
-      await tryPreferUnlockApp(buildShellLaunchUrl(launch));
-      const decision = shellLaunchAfterAppProbe({
-        nativePlatform: nativeUnlockShell(),
-        documentHidden: document.hidden,
-      });
-      if (decision === 'app') return;
+      const choice = await tryPreferUnlockApp(buildShellLaunchUrl(launch));
+      if (choice.opened) return;
       window.location.assign(buildShellWebUrl(launch));
     })();
   };

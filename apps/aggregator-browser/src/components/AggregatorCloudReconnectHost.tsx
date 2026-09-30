@@ -178,16 +178,30 @@ export const AggregatorCloudReconnectHost: React.FC = () => {
       });
       if (mlkem && envelopeHasUsableSecrets(mlkem, 'google_drive')) return mlkem;
     }
-    if (!identity.pnName || !identity.passcode) return null;
-    const identitySealed = await loadLocalCloudCredentials({
-      identityId: pnIdentifier,
-      session: {
-        sessionId: CLOUD_VAULT_SEAL_SESSION_ID,
-        pnName: identity.pnName,
-        passcode: identity.passcode
-      }
+    if (identity.pnName && identity.passcode) {
+      const identitySealed = await loadLocalCloudCredentials({
+        identityId: pnIdentifier,
+        session: {
+          sessionId: CLOUD_VAULT_SEAL_SESSION_ID,
+          pnName: identity.pnName,
+          passcode: identity.passcode
+        }
+      });
+      if (envelopeHasUsableSecrets(identitySealed, 'google_drive')) return identitySealed;
+    }
+    const authToken = PNOAuthService.loadSession()?.accessToken;
+    if (!authToken) return null;
+    const status = await ensureCloudCredentialsReady({
+      apiEndpoint: API_ENDPOINT,
+      authToken,
+      pnIdentifier,
+      mlKemSecretKey: identity.mlKemSecretKey || undefined,
+      pnName: identity.pnName || undefined,
+      passcode: identity.passcode || undefined,
     });
-    return envelopeHasUsableSecrets(identitySealed, 'google_drive') ? identitySealed : null;
+    if (status !== 'ready') return null;
+    const hydrated = getSessionCloudCredentials(pnIdentifier);
+    return envelopeHasUsableSecrets(hydrated, 'google_drive') ? hydrated : null;
   }, [pnIdentifier]);
 
   const preferCachedAccounts = useCallback(() => {

@@ -5,6 +5,7 @@ import {
   setSessionDriveIndex,
 } from '@par-noir/device-cloud-credentials';
 import { listLibraryCloud } from './penCloudStore';
+import { writePenDocFiles } from './penDriveLibrary';
 
 describe('pen library on the device', () => {
   afterEach(() => {
@@ -57,5 +58,63 @@ describe('pen library on the device', () => {
     const docs = await listLibraryCloud('pn-pen');
     expect(docs[0]?.docId).toBe('doc-1');
     expect(fetchImpl).toHaveBeenCalled();
+  });
+
+  it('writes doc.json and library.index.json to Google', async () => {
+    setSessionCloudCredentials('pn-pen', {
+      googleDriveAccounts: [
+        {
+          accountId: 'a1',
+          access_token: 'google-token',
+          expires_at: Date.now() + 3600_000,
+        },
+      ],
+    } as never);
+    setSessionDriveIndex('pn-pen', {
+      schemaVersion: 1,
+      pnFolderId: 'pn-folder',
+      metadataFolderId: 'meta',
+      integratorsRootId: 'int',
+      messagesFolderId: 'msg',
+      inboxSheetId: 'inbox',
+      sheetIds: {},
+      conversationSheets: {},
+    });
+    const names: string[] = [];
+    const fetchImpl = vi.fn(async (url: string, init?: RequestInit) => {
+      const href = String(url);
+      expect(href).not.toContain('api.parnoir.com');
+      const raw = init?.body;
+      const body =
+        raw instanceof Uint8Array
+          ? new TextDecoder().decode(raw)
+          : String(raw || '');
+      const nameMatch = body.match(/"name":"([^"]+)"/);
+      if (nameMatch) names.push(nameMatch[1]!);
+      if (href.includes('upload')) {
+        return new Response(JSON.stringify({ id: 'new-file' }), { status: 200 });
+      }
+      if (init?.method === 'POST') {
+        return new Response(JSON.stringify({ id: 'new-folder' }), { status: 200 });
+      }
+      return new Response(JSON.stringify({ files: [] }), { status: 200 });
+    });
+    vi.stubGlobal('fetch', fetchImpl);
+    await writePenDocFiles({
+      accessToken: 'google-token',
+      pnFolderId: 'pn-folder',
+      docId: 'doc-1',
+      manifest: { docId: 'doc-1', title: 'Note' },
+      chain: { v: 1 },
+      currentSections: [{ slug: 'intro', ciphertext: 'cipher' }],
+    });
+    const { upsertLibrarySummary } = await import('./penDriveLibrary');
+    await upsertLibrarySummary('google-token', 'pn-folder', {
+      docId: 'doc-1',
+      title: 'Note',
+    });
+    expect(names).toContain('doc.json');
+    expect(names).toContain('library.index.json');
+    expect(names).toContain('intro.pen');
   });
 });

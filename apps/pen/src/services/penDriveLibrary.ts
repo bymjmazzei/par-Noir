@@ -193,3 +193,158 @@ export async function readDocTree(params: {
   if (!manifest || !chain) return null;
   return { manifest, chain, currentSections, drafts };
 }
+
+function textToB64(text: string): string {
+  return btoa(unescape(encodeURIComponent(text)));
+}
+
+async function ensureChildFolder(
+  accessToken: string,
+  parentId: string,
+  name: string
+): Promise<string> {
+  const existing = await findChild(accessToken, parentId, name, FOLDER);
+  if (existing) return existing;
+  const res = await deviceDriveCall(
+    'POST',
+    '/api/drive/folders',
+    { folderName: name, parentFolderId: parentId },
+    { accessToken }
+  );
+  if (!res.ok) throw new Error(`folder_create_failed_${res.status}`);
+  const data = (await res.json()) as { folder?: { id?: string } };
+  if (!data.folder?.id) throw new Error('folder_create_no_id');
+  return data.folder.id;
+}
+
+async function writeNamedText(
+  accessToken: string,
+  parentId: string,
+  name: string,
+  text: string,
+  mimeType = 'application/json'
+): Promise<void> {
+  const fileData = textToB64(text);
+  const existing = await findChild(accessToken, parentId, name);
+  if (existing) {
+    const res = await deviceDriveCall(
+      'PUT',
+      `/api/drive/files/${encodeURIComponent(existing)}/content`,
+      { fileData, mimeType },
+      { accessToken }
+    );
+    if (!res.ok) throw new Error(`file_update_failed_${res.status}`);
+    return;
+  }
+  const res = await deviceDriveCall(
+    'POST',
+    '/api/drive/files',
+    { fileData, fileName: name, mimeType, parents: [parentId] },
+    { accessToken }
+  );
+  if (!res.ok) throw new Error(`file_create_failed_${res.status}`);
+}
+
+export async function ensurePenRoot(accessToken: string, pnFolderId: string): Promise<string> {
+  const existing = await penRootFolderId(accessToken, pnFolderId);
+  if (existing) return existing;
+  return ensureChildFolder(accessToken, pnFolderId, PEN_ROOT);
+}
+
+export async function writeLibraryIndex(
+  accessToken: string,
+  pnFolderId: string,
+  rows: Record<string, unknown>[]
+): Promise<void> {
+  const root = await ensurePenRoot(accessToken, pnFolderId);
+  await writeNamedText(accessToken, root, 'library.index.json', JSON.stringify(rows));
+}
+
+export async function upsertLibrarySummary(
+  accessToken: string,
+  pnFolderId: string,
+  summary: Record<string, unknown>
+): Promise<void> {
+  const rows = await readLibraryIndex(accessToken, pnFolderId);
+  const docId = String(summary.docId || '');
+  const next = rows.filter((row) => String(row.docId || '') !== docId);
+  next.unshift(summary);
+  await writeLibraryIndex(accessToken, pnFolderId, next);
+}
+
+export async function writePenDocFiles(params: {
+  accessToken: string;
+  pnFolderId: string;
+  docId: string;
+  manifest: unknown;
+  chain?: unknown;
+  currentSections?: Array<{ slug: string; ciphertext: string }>;
+  draft?: {
+    id: string;
+    draft: unknown;
+    sections?: Array<{ slug: string; ciphertext: string }>;
+  };
+}): Promise<void> {
+  const root = await ensurePenRoot(params.accessToken, params.pnFolderId);
+  const docName = docRootPath(params.docId).split('/').pop() || sanitizeSegment(params.docId);
+  const docFolder = await ensureChildFolder(params.accessToken, root, docName);
+  await writeNamedText(params.accessToken, docFolder, 'doc.json', JSON.stringify(params.manifest));
+  if (params.chain !== undefined) {
+    await writeNamedText(
+      params.accessToken,
+      docFolder,
+      'history.chain',
+      JSON.stringify(params.chain)
+    );
+  }
+  if (params.currentSections) {
+    const current = await ensureChildFolder(params.accessToken, docFolder, 'current');
+    for (const section of params.currentSections) {
+      await writeNamedText(
+        params.accessToken,
+        current,
+        `${sanitizeSegment(section.slug)}.pen`,
+        section.ciphertext,
+        'text/plain'
+      );
+    }
+  }
+  if (params.draft) {
+    const drafts = await ensureChildFolder(params.accessToken, docFolder, 'drafts');
+    const draftFolder = await ensureChildFolder(params.accessToken, drafts, params.draft.id);
+    await writeNamedText(
+      params.accessToken,
+      draftFolder,
+      'draft.json',
+      JSON.stringify(params.draft.draft)
+    );
+    for (const section of params.draft.sections || []) {
+      await writeNamedText(
+        params.accessToken,
+        draftFolder,
+        `${sanitizeSegment(section.slug)}.pen`,
+        section.ciphertext,
+        'text/plain'
+      );
+    }
+  }
+}
+
+export async function removePenDoc(
+  accessToken: string,
+  pnFolderId: string,
+  docId: string
+): Promise<void> {
+  const rows = (await readLibraryIndex(accessToken, pnFolderId)).filter(
+    (row) => String(row.docId || '') !== docId
+  );
+  await writeLibraryIndex(accessToken, pnFolderId, rows);
+  const root = await penRootFolderId(accessToken, pnFolderId);
+  if (!root) return;
+  const docName = docRootPath(docId).split('/').pop() || sanitizeSegment(docId);
+  const folder = await findChild(accessToken, root, docName, FOLDER);
+  if (!folder) return;
+  await deviceDriveCall('DELETE', `/api/drive/files/${encodeURIComponent(folder)}`, undefined, {
+    accessToken,
+  });
+}

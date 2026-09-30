@@ -13,7 +13,7 @@ import {
   type SessionVaultPickerOption,
 } from '@par-noir/oauth-ui';
 import type { UnlockKeysPayload } from '@par-noir/device-session-vault';
-import { searchFromUnlockUrl, subscribeUnlockDeepLinks } from './deepLinks';
+import { readUnlockLaunchSearch, searchFromUnlockUrl, subscribeUnlockDeepLinks } from './deepLinks';
 import { OpenExternalApp } from './openExternalApp';
 import {
   enrollUnlockSessionVault,
@@ -115,21 +115,23 @@ export default function App(): React.ReactElement {
     return true;
   }, []);
 
+  const applySearch = useCallback((raw: string | null) => {
+    if (raw == null) return;
+    const q = raw.startsWith('?') ? raw : `?${raw.replace(/^\?/, '')}`;
+    setSearch(q);
+    try {
+      window.history.replaceState({}, '', `/oauth/consent${q}`);
+    } catch {
+      /* ignore */
+    }
+  }, []);
+
   useEffect(() => {
     return subscribeUnlockDeepLinks((url) => {
-      const s = searchFromUnlockUrl(url);
-      if (s != null) {
-        const q = s.startsWith('?') ? s : `?${s.replace(/^\?/, '')}`;
-        setSearch(q);
-        try {
-          window.history.replaceState({}, '', `/oauth/consent${q}`);
-        } catch {
-          /* ignore */
-        }
-        void offerVaultUnlockIfNeeded();
-      }
+      applySearch(searchFromUnlockUrl(url));
+      void offerVaultUnlockIfNeeded();
     });
-  }, [offerVaultUnlockIfNeeded]);
+  }, [applySearch, offerVaultUnlockIfNeeded]);
 
   useEffect(() => {
     let cancelled = false;
@@ -138,13 +140,15 @@ export default function App(): React.ReactElement {
         setVaultChecked(true);
         return;
       }
+      applySearch(await readUnlockLaunchSearch());
+      if (cancelled) return;
       await offerVaultUnlockIfNeeded();
       if (!cancelled) setVaultChecked(true);
     })();
     return () => {
       cancelled = true;
     };
-  }, [offerVaultUnlockIfNeeded]);
+  }, [applySearch, offerVaultUnlockIfNeeded]);
 
   const deliverLocalBroker = async (payload: Record<string, unknown>) => {
     let apiBase = API_DEFAULT.replace(/\/$/, '');

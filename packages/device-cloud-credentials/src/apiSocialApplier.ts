@@ -19,8 +19,9 @@ import { SOCIAL_JOB_TYPES_APPLIED_VIA_API } from './siloMaterialize.js';
 import { mintDriveAuthExtras, type BuildAuthHeaders } from './mintDriveAuthHeaders.js';
 import { omitCloudAccessHeader } from './cloudVault.js';
 import { appendDeviceCloudRow } from './deviceCloudRow.js';
-import { appendDeviceMessage } from './deviceSocial.js';
+import { appendDeviceMessage, upsertDeviceConnection, upsertDeviceInboxThread } from './deviceSocial.js';
 import { layoutSheetId } from './layoutSheet.js';
+import { getSessionDriveIndex } from './sessionMemory.js';
 
 export interface ApiSocialApplierOptions {
   apiBaseUrl: string;
@@ -132,10 +133,54 @@ export function createApiSocialApplier(opts: ApiSocialApplierOptions) {
       layoutSheetId(opts.identityId, job.jobType) ||
       '';
     if (cloudToken && spreadsheetId) {
-      body.spreadsheetId = spreadsheetId;
-      if (job.jobType === 'message_append') {
-        await appendDeviceMessage(cloudToken, spreadsheetId, {
-          fromPnIdentifier: String(body.userPnIdentifier || ''),
+      const incomingSheet = typeof body.spreadsheetId === 'string' ? body.spreadsheetId : '';
+      if (job.jobType === 'connection_request' || job.jobType === 'connection_accept') {
+        body.spreadsheetId = spreadsheetId;
+        const peerRaw = String(
+          body.peerPnIdentifier || body.fromPnIdentifier || body.requesterPnIdentifier || ''
+        );
+        const peer = peerRaw.startsWith('pn-') ? peerRaw : peerRaw ? `pn-${peerRaw}` : '';
+        const connectionId = String(body.connectionId || body.requestId || '');
+        if (peer && connectionId) {
+          const accepted = job.jobType === 'connection_accept';
+          await upsertDeviceConnection(cloudToken, spreadsheetId, {
+            connectionId,
+            userPnIdentifier: peer,
+            status: accepted ? 'accepted' : 'pending_received',
+            createdAt: typeof body.createdAt === 'string' ? body.createdAt : new Date().toISOString(),
+            acceptedAt: accepted ? new Date().toISOString() : undefined,
+            peerMlKemPublicKey:
+              typeof body.peerMlKemPublicKey === 'string' ? body.peerMlKemPublicKey : undefined,
+            kemCiphertext: typeof body.kemCiphertext === 'string' ? body.kemCiphertext : undefined,
+            peerMailboxRouteKey:
+              typeof body.peerMailboxRouteKey === 'string'
+                ? body.peerMailboxRouteKey
+                : typeof body.acceptorMailboxRouteKey === 'string'
+                  ? body.acceptorMailboxRouteKey
+                  : undefined,
+          });
+          const inboxId = getSessionDriveIndex(opts.identityId)?.inboxSheetId;
+          const conversationId =
+            typeof body.conversationSpreadsheetId === 'string' ? body.conversationSpreadsheetId : '';
+          if (accepted && inboxId && conversationId) {
+            await upsertDeviceInboxThread(cloudToken, inboxId, {
+              threadType: 'dm',
+              participantPnIdentifier: peer,
+              spreadsheetId: conversationId,
+              connectionId,
+              lastMessageAt: new Date().toISOString(),
+              kemCiphertext: typeof body.kemCiphertext === 'string' ? body.kemCiphertext : undefined,
+              wrappedMessageRootKey:
+                typeof body.wrappedMessageRootKey === 'string' ? body.wrappedMessageRootKey : undefined,
+            });
+          }
+        }
+        body.deviceCloudResult = { spreadsheetId, provider: 'google' };
+      } else if (job.jobType === 'message_append') {
+        const messageSheet = incomingSheet || spreadsheetId;
+        body.spreadsheetId = messageSheet;
+        await appendDeviceMessage(cloudToken, messageSheet, {
+          fromPnIdentifier: String(body.fromPnIdentifier || body.userPnIdentifier || ''),
           content: '',
           encryptedContent: typeof body.encryptedContent === 'string' ? body.encryptedContent : '',
           timestamp: typeof body.timestamp === 'string' ? body.timestamp : new Date().toISOString(),
@@ -143,7 +188,7 @@ export function createApiSocialApplier(opts: ApiSocialApplierOptions) {
           read: false,
           cryptoVersion: 2,
         });
-        body.deviceCloudResult = { spreadsheetId, provider: 'google' };
+        body.deviceCloudResult = { spreadsheetId: messageSheet, provider: 'google' };
       } else {
         body.deviceCloudResult = await appendDeviceCloudRow(cloudToken, body);
       }

@@ -105,41 +105,47 @@ export default function App(): React.ReactElement {
     [offerVaultUnlockIfNeeded]
   );
 
-  useEffect(() => {
+  const openShellReturn = useCallback(async (url: string) => {
     const api = desktopApi();
-    if (!api) return;
-    let cancelled = false;
-    void (async () => {
-      try {
-        const pending = await api.getPendingDeepLink();
-        if (!cancelled && pending) applyUrl(pending);
-      } catch {
-        /* ignore */
-      }
-    })();
-    const unsub = api.onDeepLink(applyUrl);
-    return () => {
-      cancelled = true;
-      unsub();
-    };
-  }, [applyUrl]);
+    if (api) {
+      await api.openExternal(url);
+      return;
+    }
+    window.location.assign(url);
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
-    (async () => {
-      // Brief retry: preload may not expose pnUnlockDesktop on the first tick.
+    let unsub: () => void = () => undefined;
+    void (async () => {
       for (let i = 0; i < 8 && !cancelled; i++) {
         if (desktopApi()) break;
         await new Promise((r) => setTimeout(r, 50));
       }
       if (cancelled) return;
-      await offerVaultUnlockIfNeeded();
+      const api = desktopApi();
+      let appliedLaunch = false;
+      if (api) {
+        unsub = api.onDeepLink(applyUrl);
+        try {
+          const pending = await api.getPendingDeepLink();
+          if (!cancelled && pending) {
+            applyUrl(pending);
+            appliedLaunch = true;
+          }
+        } catch {
+          /* ignore */
+        }
+      }
+      if (cancelled) return;
+      if (!appliedLaunch) await offerVaultUnlockIfNeeded();
       if (!cancelled) setVaultChecked(true);
     })();
     return () => {
       cancelled = true;
+      unsub();
     };
-  }, [offerVaultUnlockIfNeeded]);
+  }, [applyUrl, offerVaultUnlockIfNeeded]);
 
   const deliverLocalBroker = async (payload: Record<string, unknown>) => {
     let apiBase = API_DEFAULT.replace(/\/$/, '');
@@ -336,6 +342,7 @@ export default function App(): React.ReactElement {
         search={search}
         apiEndpointDefault={API_DEFAULT.replace(/\/$/, '')}
         deliverLocalBroker={deliverLocalBroker}
+        openShellReturn={openShellReturn}
         onBrokerHandoffComplete={onBrokerHandoffComplete}
         logoUrl={logoUrl}
         backgroundUrl={backgroundUrl}

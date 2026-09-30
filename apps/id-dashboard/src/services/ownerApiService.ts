@@ -1,7 +1,7 @@
 import { API_ENDPOINT } from '../config/api';
 import { deviceProofHeaders } from './deviceProofContext';
 import { resolveOwnerApiToken } from './ownerApiToken';
-import { omitCloudAccessHeader } from '@par-noir/device-cloud-credentials';
+import { fetchDeviceDriveForSession, omitCloudAccessHeader } from '@par-noir/device-cloud-credentials';
 
 /** Last unlocked pN for owner API calls that omit pnIdentifier. */
 let ownerApiPnIdentifier: string | null = null;
@@ -37,7 +37,14 @@ export async function ownerFetch(
   body?: unknown,
   init?: OwnerFetchInit
 ): Promise<Response> {
-  const { extraHeaders, pnIdentifier: _pn, ...rest } = init ?? {};
+  const { extraHeaders, pnIdentifier, ...rest } = init ?? {};
+  const driveResponse = await fetchDeviceDriveForSession({
+    method,
+    pathOrUrl: path,
+    body,
+    pnIdentifier: pnIdentifier || ownerApiPnIdentifier,
+  });
+  if (driveResponse) return driveResponse;
   const proof = await deviceProofHeaders(method, path, body);
   return fetch(`${API_ENDPOINT}${path}`, {
     ...rest,
@@ -53,7 +60,13 @@ export async function ownerGet(
   path: string,
   init?: OwnerFetchInit
 ): Promise<Response> {
-  const { extraHeaders, pnIdentifier: _pn, ...rest } = init ?? {};
+  const { extraHeaders, pnIdentifier, ...rest } = init ?? {};
+  const driveResponse = await fetchDeviceDriveForSession({
+    method: 'GET',
+    pathOrUrl: path,
+    pnIdentifier: pnIdentifier || ownerApiPnIdentifier,
+  });
+  if (driveResponse) return driveResponse;
   const proof = await deviceProofHeaders('GET', path);
   return fetch(`${API_ENDPOINT}${path}`, {
     ...rest,

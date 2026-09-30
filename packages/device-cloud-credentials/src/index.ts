@@ -155,7 +155,7 @@ export {
   ownerCloudHeadersAsync
 } from './ownerCloudHeaders.js';
 export { requireOnlineCloudForSend } from './requireOnlineCloudForSend.js';
-export { deviceDriveCall } from './deviceDriveCall.js';
+export { deviceDriveCall, extractApiDrivePath, fetchDeviceDriveForSession } from './deviceDriveCall.js';
 export type { DeviceDriveInit } from './deviceDriveCall.js';
 export { ensureDeviceDriveLayout } from './deviceDriveLayout.js';
 export type { DeviceDriveLayout } from './deviceDriveLayout.js';

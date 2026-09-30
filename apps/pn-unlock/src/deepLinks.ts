@@ -9,8 +9,20 @@ import { searchFromUnlockUrl } from '@par-noir/oauth-ui';
 export type UnlockLaunchHandler = (url: string) => void;
 export { searchFromUnlockUrl };
 
+/** Cold-start custom scheme or universal link, as a consent search string. */
+export async function readUnlockLaunchSearch(): Promise<string | null> {
+  if (!Capacitor.isNativePlatform()) return null;
+  try {
+    const result = await CapApp.getLaunchUrl();
+    if (!result?.url) return null;
+    return searchFromUnlockUrl(result.url);
+  } catch {
+    return null;
+  }
+}
+
 /**
- * Subscribe to appUrlOpen + getLaunchUrl. Returns unsubscribe.
+ * Subscribe to later appUrlOpen events. Cold start is readUnlockLaunchSearch.
  */
 export function subscribeUnlockDeepLinks(onUrl: UnlockLaunchHandler): () => void {
   if (!Capacitor.isNativePlatform()) {
@@ -19,14 +31,8 @@ export function subscribeUnlockDeepLinks(onUrl: UnlockLaunchHandler): () => void
 
   let removed = false;
   const listenerPromise = CapApp.addListener('appUrlOpen', (event) => {
-    if (event?.url) onUrl(event.url);
+    if (!removed && event?.url) onUrl(event.url);
   });
-
-  void CapApp.getLaunchUrl()
-    .then((result) => {
-      if (!removed && result?.url) onUrl(result.url);
-    })
-    .catch(() => undefined);
 
   return () => {
     removed = true;
