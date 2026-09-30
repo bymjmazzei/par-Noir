@@ -1,21 +1,11 @@
 /**
  * Owner-index resolution for a single storage backend.
  *
- * One GET /api/storage/owner-index attempt. On 403/409 (or any other failure),
- * leave ownerIndex null and ownerIndexFromApi false so mergeDriveScanWithIndex
- * fills Storage via client Drive listFiles — never a second owner-index GET, and
- * never POST /storage/initialize (which 400s without server-held tokens under
- * device custody and loops setup UI).
- *
- * After a 403/409, the pn is memoized for this page session so later loadFiles /
- * metadata passes do not re-hit the same failing endpoint (browser always logs
- * 4xx in red when the request is made).
+ * The sheet is on the device. This never GETs /api/storage/owner-index.
+ * An empty or missing sheet leaves ownerIndex null so mergeDriveScanWithIndex
+ * fills Storage via client Drive listFiles.
  */
-import { ownerGet } from '../../../../services/ownerApiService';
-import {
-  isOwnerIndexUnavailable,
-  markOwnerIndexUnavailable,
-} from '../../../../services/storage/ownerIndexAvailability';
+import { readDeviceOwnerIndex } from '../../../../services/storage/deviceOwnerIndex';
 
 export interface FetchOwnerIndexParams {
   backendId: string;
@@ -26,7 +16,6 @@ export interface FetchOwnerIndexParams {
 export interface FetchOwnerIndexResult {
   ownerIndex: any;
   ownerIndexFromApi: boolean;
-  /** Reserved for callers; always false after the single API attempt. */
   skipBackend: boolean;
 }
 
@@ -35,67 +24,28 @@ export async function fetchOwnerIndex({
   currentPnIdentifier,
   resolveOwnerApiToken,
 }: FetchOwnerIndexParams): Promise<FetchOwnerIndexResult> {
-  let ownerIndex: any = null;
-  let ownerIndexFromApi = false;
-
-  const ownerApiToken = currentPnIdentifier
-    ? resolveOwnerApiToken(
-        currentPnIdentifier.startsWith('pn-')
-          ? currentPnIdentifier
-          : `pn-${currentPnIdentifier}`
-      )
-    : resolveOwnerApiToken();
-  if (!currentPnIdentifier || !ownerApiToken) {
-    return { ownerIndex, ownerIndexFromApi, skipBackend: false };
-  }
+  const empty = { ownerIndex: null, ownerIndexFromApi: false, skipBackend: false };
+  if (!currentPnIdentifier) return empty;
 
   const pnId = currentPnIdentifier.startsWith('pn-')
     ? currentPnIdentifier
     : `pn-${currentPnIdentifier}`;
-
-  if (isOwnerIndexUnavailable(pnId)) {
-    console.debug(
-      'ℹ️ [loadFiles] owner-index known unavailable this session; using Drive listFiles fallthrough'
-    );
-    return { ownerIndex, ownerIndexFromApi, skipBackend: false };
-  }
+  const ownerApiToken = resolveOwnerApiToken(pnId);
+  if (!ownerApiToken) return empty;
 
   try {
-    const idxRes = await ownerGet(
-      ownerApiToken,
-      `/api/storage/owner-index/${encodeURIComponent(pnId)}`,
-      { pnIdentifier: pnId }
+    const files = await readDeviceOwnerIndex(pnId, ownerApiToken);
+    const provider = backendId.includes('::') ? backendId.split('::')[0] : backendId;
+    const filtered = files.filter(
+      (entry) => (entry.backend || 'google_drive') === provider
     );
-    if (idxRes.status === 403) {
-      markOwnerIndexUnavailable(pnId);
-      console.debug('ℹ️ [loadFiles] owner-index forbidden; using Drive listFiles fallthrough');
-    } else if (idxRes.status === 409) {
-      markOwnerIndexUnavailable(pnId);
-      // Server Drive index incomplete (common under device cloud custody where
-      // OAuth secrets are not on the API). Do NOT POST /storage/initialize —
-      // that returns 400 without server-held tokens and loops the "setup" UI.
-      console.debug(
-        'ℹ️ [loadFiles] owner-index incomplete (409); using Drive listFiles fallthrough instead of server rebuild'
-      );
-    } else if (idxRes.status >= 500) {
-      markOwnerIndexUnavailable(pnId);
-      console.debug(
-        'ℹ️ [loadFiles] owner-index server error; using Drive listFiles fallthrough (no re-probe this session)'
-      );
-    } else if (idxRes.ok) {
-      const idxData = await idxRes.json();
-      const provider = backendId.includes('::') ? backendId.split('::')[0] : backendId;
-      const filteredFiles = (idxData.files || []).filter(
-        (entry: any) => (entry.backend || 'google_drive') === provider
-      );
-      ownerIndex = { ...idxData, files: filteredFiles };
-      ownerIndexFromApi = true;
-    } else {
-      markOwnerIndexUnavailable(pnId);
-    }
+    if (!filtered.length) return empty;
+    return {
+      ownerIndex: { files: filtered },
+      ownerIndexFromApi: true,
+      skipBackend: false,
+    };
   } catch {
-    /* non-blocking — caller falls through to Drive listFiles */
+    return empty;
   }
-
-  return { ownerIndex, ownerIndexFromApi, skipBackend: false };
 }

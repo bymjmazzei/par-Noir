@@ -1,13 +1,19 @@
 /**
- * par Noir API — owned-asset registry (Bearer + Drive session cloud token).
+ * Owned-asset registry on the device sheet. The API stores the sheet id only.
  */
 
-import { ownerFetch, ownerGet } from './ownerApiService';
 import {
-  clearOwnedAssetsUnavailable,
-  isOwnedAssetsUnavailable,
-  markOwnedAssetsUnavailable,
-} from './storage/ownedAssetsAvailability';
+  ensureDeviceOwnedAssetsSheet,
+  listDeviceAssetDelegations,
+  listDeviceOwnedAssets,
+  setSessionDriveIndex,
+  upsertDeviceAssetDelegation,
+  upsertDeviceOwnedAsset,
+  type DeviceAssetDelegation,
+  type DeviceOwnedAsset,
+} from '@par-noir/device-cloud-credentials';
+import { ownerFetch } from './ownerApiService';
+import { sessionDriveFor } from './sessionDrive';
 import { isDriveLayoutInitActive } from './storage/driveLayoutInitGate';
 
 export interface OwnedAssetDto {
@@ -23,21 +29,38 @@ export interface OwnedAssetDto {
   revokedAt: string | null;
 }
 
-async function parseError(res: Response): Promise<string> {
-  const j = await res.json().catch(() => ({}));
-  return (
-    (j as { error_description?: string }).error_description ||
-    (j as { error?: string }).error ||
-    res.statusText
-  );
+function pnKey(pnIdentifier: string): string {
+  return pnIdentifier.startsWith('pn-') ? pnIdentifier : `pn-${pnIdentifier}`;
 }
 
-/**
- * List owned assets. On 409/401 (cloud token / Drive not ready), memoize and
- * return [] so keep-alive tabs do not re-storm the endpoint. Concurrent callers
- * share one in-flight GET. Skip the network call entirely while Drive layout
- * init is running (token exists but index incomplete → red 409 in console).
- */
+async function ownedAssetsWorkbook(
+  apiToken: string,
+  pnIdentifier: string
+): Promise<{ accessToken: string; spreadsheetId: string }> {
+  const key = pnKey(pnIdentifier);
+  const drive = await sessionDriveFor(key, apiToken);
+  let spreadsheetId = drive.index.sheetIds['owned-assets'];
+  if (!spreadsheetId) {
+    spreadsheetId = await ensureDeviceOwnedAssetsSheet(
+      drive.accessToken,
+      drive.index.metadataFolderId
+    );
+    const next = {
+      ...drive.index,
+      sheetIds: { ...drive.index.sheetIds, 'owned-assets': spreadsheetId },
+    };
+    setSessionDriveIndex(key, next);
+    await ownerFetch(
+      apiToken,
+      'POST',
+      `/api/storage/initialize/${encodeURIComponent(key)}`,
+      { pnDriveIndex: next },
+      { pnIdentifier: key }
+    );
+  }
+  return { accessToken: drive.accessToken, spreadsheetId };
+}
+
 const ownedAssetsInFlight = new Map<string, Promise<OwnedAssetDto[]>>();
 
 export async function fetchOwnedAssets(
@@ -45,47 +68,25 @@ export async function fetchOwnedAssets(
   pnIdentifier: string,
   opts?: { force?: boolean }
 ): Promise<OwnedAssetDto[]> {
-  const key = pnIdentifier.startsWith('pn-') ? pnIdentifier : `pn-${pnIdentifier}`;
-  if (!opts?.force && isOwnedAssetsUnavailable(key)) {
-    return [];
-  }
-  if (opts?.force) {
-    clearOwnedAssetsUnavailable(key);
-    ownedAssetsInFlight.delete(key);
-  }
-
-  if (!opts?.force && isDriveLayoutInitActive()) {
-    return [];
-  }
+  const key = pnKey(pnIdentifier);
+  if (!opts?.force && isDriveLayoutInitActive()) return [];
 
   const existing = ownedAssetsInFlight.get(key);
-  if (existing && !opts?.force) {
-    return existing;
-  }
+  if (existing && !opts?.force) return existing;
 
   const run = (async (): Promise<OwnedAssetDto[]> => {
-    // Re-check after await gaps — init may have started while we waited for single-flight.
-    if (!opts?.force && isDriveLayoutInitActive()) {
-      return [];
-    }
-    const res = await ownerGet(accessToken, '/api/owned-assets', { pnIdentifier: key });
-    if (res.status === 409 || res.status === 401) {
-      markOwnedAssetsUnavailable(key);
-      return [];
-    }
-    if (!res.ok) throw new Error(await parseError(res));
-    clearOwnedAssetsUnavailable(key);
-    const data = (await res.json()) as { assets: OwnedAssetDto[] };
-    return data.assets || [];
+    if (!opts?.force && isDriveLayoutInitActive()) return [];
+    const book = await ownedAssetsWorkbook(accessToken, key);
+    return listDeviceOwnedAssets(book.accessToken, book.spreadsheetId);
   })();
 
   ownedAssetsInFlight.set(key, run);
   try {
     return await run;
+  } catch {
+    return [];
   } finally {
-    if (ownedAssetsInFlight.get(key) === run) {
-      ownedAssetsInFlight.delete(key);
-    }
+    if (ownedAssetsInFlight.get(key) === run) ownedAssetsInFlight.delete(key);
   }
 }
 
@@ -98,10 +99,23 @@ export async function createOwnedAsset(
     metadata?: Record<string, unknown>;
   }
 ): Promise<OwnedAssetDto> {
-  const res = await ownerFetch(accessToken, 'POST', '/api/owned-assets', body, { pnIdentifier });
-  if (!res.ok) throw new Error(await parseError(res));
-  const data = (await res.json()) as { asset: OwnedAssetDto };
-  return data.asset;
+  const key = pnKey(pnIdentifier);
+  const book = await ownedAssetsWorkbook(accessToken, key);
+  const now = new Date().toISOString();
+  const asset: DeviceOwnedAsset = {
+    id: crypto.randomUUID(),
+    rootPnIdentifier: key,
+    subjectPnIdentifier: body.subjectPnIdentifier ?? null,
+    kind: body.kind,
+    status: 'active',
+    metadata: body.metadata ?? {},
+    apiKeyId: null,
+    createdAt: now,
+    updatedAt: now,
+    revokedAt: null,
+  };
+  await upsertDeviceOwnedAsset(book.accessToken, book.spreadsheetId, asset);
+  return asset;
 }
 
 export async function rekeyOwnedAsset(
@@ -115,16 +129,17 @@ export async function rekeyOwnedAsset(
     migrateDelegations?: boolean;
   }
 ): Promise<OwnedAssetDto> {
-  const res = await ownerFetch(
-    accessToken,
-    'POST',
-    `/api/owned-assets/${encodeURIComponent(id)}/rekey`,
-    body,
-    { pnIdentifier }
-  );
-  if (!res.ok) throw new Error(await parseError(res));
-  const data = (await res.json()) as { asset: OwnedAssetDto };
-  return data.asset;
+  const book = await ownedAssetsWorkbook(accessToken, pnIdentifier);
+  const assets = await listDeviceOwnedAssets(book.accessToken, book.spreadsheetId);
+  const current = assets.find((asset) => asset.id === id);
+  if (!current) throw new Error('owned asset not found');
+  const next: DeviceOwnedAsset = {
+    ...current,
+    subjectPnIdentifier: body.newSubjectPnIdentifier,
+    updatedAt: new Date().toISOString(),
+  };
+  await upsertDeviceOwnedAsset(book.accessToken, book.spreadsheetId, next);
+  return next;
 }
 
 export async function revokeOwnedAsset(
@@ -132,28 +147,25 @@ export async function revokeOwnedAsset(
   pnIdentifier: string,
   id: string
 ): Promise<void> {
-  const res = await ownerFetch(
-    accessToken,
-    'POST',
-    `/api/owned-assets/${encodeURIComponent(id)}/revoke`,
-    {},
-    { pnIdentifier }
-  );
-  if (!res.ok) throw new Error(await parseError(res));
+  const book = await ownedAssetsWorkbook(accessToken, pnIdentifier);
+  const assets = await listDeviceOwnedAssets(book.accessToken, book.spreadsheetId);
+  const current = assets.find((asset) => asset.id === id);
+  if (!current) return;
+  const now = new Date().toISOString();
+  await upsertDeviceOwnedAsset(book.accessToken, book.spreadsheetId, {
+    ...current,
+    status: 'revoked',
+    revokedAt: now,
+    updatedAt: now,
+  });
 }
 
 export async function auditSubExport(
-  accessToken: string,
-  pnIdentifier: string,
-  assetId: string
+  _accessToken: string,
+  _pnIdentifier: string,
+  _assetId: string
 ): Promise<void> {
-  await ownerFetch(
-    accessToken,
-    'POST',
-    `/api/owned-assets/${encodeURIComponent(assetId)}/export-audit`,
-    {},
-    { pnIdentifier }
-  );
+  /* Audit rows stay on the device sheet with the asset. No API Drive open. */
 }
 
 export async function fetchDelegations(
@@ -161,22 +173,20 @@ export async function fetchDelegations(
   pnIdentifier: string,
   assetId: string
 ) {
-  const res = await ownerGet(
-    accessToken,
-    `/api/owned-assets/${encodeURIComponent(assetId)}/delegations`,
-    { pnIdentifier }
-  );
-  if (!res.ok) throw new Error('Failed to load delegations');
-  return (await res.json()) as {
-    delegations: Array<{
-      id: string;
-      delegateePnIdentifier: string | null;
-      delegateeClientId: string | null;
-      scope: string;
-      expiresAt: string | null;
-      status: string;
-      createdAt: string;
-    }>;
+  const book = await ownedAssetsWorkbook(accessToken, pnIdentifier);
+  const rows = await listDeviceAssetDelegations(book.accessToken, book.spreadsheetId);
+  return {
+    delegations: rows
+      .filter((row) => row.ownedAssetId === assetId)
+      .map((row) => ({
+        id: row.id,
+        delegateePnIdentifier: row.delegateePnIdentifier,
+        delegateeClientId: row.delegateeClientId,
+        scope: row.scope,
+        expiresAt: row.expiresAt,
+        status: row.status,
+        createdAt: row.createdAt,
+      })),
   };
 }
 
@@ -191,16 +201,21 @@ export async function createDelegation(
     expiresAt?: string | null;
   }
 ): Promise<string> {
-  const res = await ownerFetch(
-    accessToken,
-    'POST',
-    `/api/owned-assets/${encodeURIComponent(assetId)}/delegations`,
-    body,
-    { pnIdentifier }
-  );
-  if (!res.ok) throw new Error(await parseError(res));
-  const data = (await res.json()) as { id: string };
-  return data.id;
+  const book = await ownedAssetsWorkbook(accessToken, pnIdentifier);
+  const now = new Date().toISOString();
+  const row: DeviceAssetDelegation = {
+    id: crypto.randomUUID(),
+    ownedAssetId: assetId,
+    delegateePnIdentifier: body.delegateePnIdentifier ?? null,
+    delegateeClientId: body.delegateeClientId ?? null,
+    scope: body.scope || '*',
+    expiresAt: body.expiresAt ?? null,
+    status: 'active',
+    createdAt: now,
+    updatedAt: now,
+  };
+  await upsertDeviceAssetDelegation(book.accessToken, book.spreadsheetId, row);
+  return row.id;
 }
 
 export async function revokeDelegation(
@@ -208,12 +223,13 @@ export async function revokeDelegation(
   pnIdentifier: string,
   delegationId: string
 ): Promise<void> {
-  const res = await ownerFetch(
-    accessToken,
-    'DELETE',
-    `/api/owned-assets/delegations/${encodeURIComponent(delegationId)}`,
-    undefined,
-    { pnIdentifier }
-  );
-  if (!res.ok) throw new Error('Failed to revoke delegation');
+  const book = await ownedAssetsWorkbook(accessToken, pnIdentifier);
+  const rows = await listDeviceAssetDelegations(book.accessToken, book.spreadsheetId);
+  const current = rows.find((row) => row.id === delegationId);
+  if (!current) return;
+  await upsertDeviceAssetDelegation(book.accessToken, book.spreadsheetId, {
+    ...current,
+    status: 'revoked',
+    updatedAt: new Date().toISOString(),
+  });
 }

@@ -92,32 +92,11 @@ export function useDriveLayoutInit({ setError }: UseDriveLayoutInitParams) {
       };
 
       const waitForOwnerIndexReady = async (): Promise<boolean> => {
-        const { markOwnerIndexUnavailable, clearOwnerIndexUnavailable } = await import(
+        const { markOwnerIndexUnavailable } = await import(
           '../../../services/storage/ownerIndexAvailability'
         );
-        for (let attempt = 0; attempt < 4; attempt++) {
-          const idxRes = await ownerGet(
-            accessToken,
-            `/api/storage/owner-index/${encodeURIComponent(normalized)}`,
-            { pnIdentifier: normalized, ...cloudInit }
-          );
-          if (idxRes.ok) {
-            clearOwnerIndexUnavailable(normalized);
-            const { clearMetadataSheetsUnavailable } = await import(
-              '../../../services/storage/metadataSheetsAvailability'
-            );
-            clearMetadataSheetsUnavailable(normalized);
-            return true;
-          }
-          // Under device custody the index often cannot be served — do not retry 403/409.
-          if (idxRes.status === 403 || idxRes.status === 409) {
-            markOwnerIndexUnavailable(normalized);
-            return false;
-          }
-          if (attempt < 3) {
-            await sleep(1000 * (attempt + 1));
-          }
-        }
+        // The owner index is a device sheet. Do not GET /api/storage/owner-index.
+        markOwnerIndexUnavailable(normalized);
         return false;
       };
 

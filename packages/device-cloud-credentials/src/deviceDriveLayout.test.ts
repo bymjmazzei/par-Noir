@@ -9,10 +9,17 @@ describe('ensureDeviceDriveLayout', () => {
       expect(String(url)).not.toContain('X-PN-Cloud-Access-Token');
       n += 1;
       const id = `id-${n}`;
+      expect(String(url)).not.toContain('api.parnoir.com');
+      if (String(url).includes('sheets.googleapis.com/v4/spreadsheets') && !String(url).includes('/values/')) {
+        return new Response(JSON.stringify({ spreadsheetId: id }), { status: 200 });
+      }
+      if (String(url).includes('fields=parents')) {
+        return new Response(JSON.stringify({ parents: [] }), { status: 200 });
+      }
       if (String(url).includes('/upload/')) {
         return new Response(JSON.stringify({ id }), { status: 200 });
       }
-      return new Response(JSON.stringify({ id }), { status: 200 });
+      return new Response(JSON.stringify({ id, files: [] }), { status: 200 });
     });
 
     const layout = await ensureDeviceDriveLayout('google-token', fetchImpl as unknown as typeof fetch);

@@ -242,31 +242,11 @@ async function ensureDriveLayout(pnIdentifier: string, apiToken: string): Promis
 
 async function prefetchOwnerIndex(pnIdentifier: string, apiToken: string): Promise<void> {
   try {
-    const { isOwnerIndexUnavailable, markOwnerIndexUnavailable, clearOwnerIndexUnavailable } =
-      await import('./ownerIndexAvailability');
-    if (isOwnerIndexUnavailable(pnIdentifier)) return;
-
-    const res = await ownerGet(
-      apiToken,
-      `/api/storage/owner-index/${encodeURIComponent(pnIdentifier)}`,
-      { pnIdentifier }
-    );
-    if (res.ok) {
-      clearOwnerIndexUnavailable(pnIdentifier);
-      void import('./metadataSheetsAvailability')
-        .then(({ clearMetadataSheetsUnavailable }) => {
-          clearMetadataSheetsUnavailable(pnIdentifier);
-        })
-        .catch(() => undefined);
-      return;
-    }
-    if (res.status === 403 || res.status === 409) {
-      markOwnerIndexUnavailable(pnIdentifier);
-      // Layout ensure once without a second owner-index GET.
-      await ensureDriveLayout(pnIdentifier, apiToken);
-    }
+    const { readDeviceOwnerIndex } = await import('./deviceOwnerIndex');
+    await readDeviceOwnerIndex(pnIdentifier, apiToken);
+    return;
   } catch {
-    /* best-effort warm */
+    return;
   }
 }
 

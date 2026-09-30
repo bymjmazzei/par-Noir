@@ -2,7 +2,12 @@
  * Owned-asset registry + delegations (Bearer + Drive session cloud token).
  */
 
-import { ownerFetch, ownerGet } from './ownerApiService';
+import {
+  createDelegation,
+  createOwnedAsset,
+  fetchDelegations,
+  revokeDelegation,
+} from './ownedAssetsApi';
 
 export interface OwnedAsset {
   id: string;
@@ -25,15 +30,6 @@ export interface AssetDelegation {
   createdAt: string;
 }
 
-async function parseError(res: Response): Promise<string> {
-  const body = await res.json().catch(() => ({}));
-  return (
-    (body as { error_description?: string }).error_description ||
-    (body as { error?: string }).error ||
-    `Request failed (${res.status})`
-  );
-}
-
 export async function listOwnedAssets(
   accessToken: string,
   pnIdentifier: string,
@@ -49,17 +45,8 @@ export async function listAssetDelegations(
   pnIdentifier: string,
   ownedAssetId: string
 ): Promise<AssetDelegation[]> {
-  const res = await ownerGet(
-    accessToken,
-    `/api/owned-assets/${ownedAssetId}/delegations`,
-    { pnIdentifier }
-  );
-  if (!res.ok) throw new Error(await parseError(res));
-  const data = await res.json();
-  return ((data.delegations ?? []) as Omit<AssetDelegation, 'ownedAssetId'>[]).map((d) => ({
-    ...d,
-    ownedAssetId
-  }));
+  const data = await fetchDelegations(accessToken, pnIdentifier, ownedAssetId);
+  return data.delegations.map((d) => ({ ...d, ownedAssetId }));
 }
 
 export async function listAllDelegations(
@@ -82,20 +69,11 @@ export async function createAssetDelegation(
   ownedAssetId: string,
   params: { delegateePnIdentifier: string; scope: string; expiresAt?: string | null }
 ): Promise<string> {
-  const res = await ownerFetch(
-    accessToken,
-    'POST',
-    `/api/owned-assets/${ownedAssetId}/delegations`,
-    {
-      delegateePnIdentifier: params.delegateePnIdentifier,
-      scope: params.scope,
-      expiresAt: params.expiresAt ?? null
-    },
-    { pnIdentifier }
-  );
-  if (!res.ok) throw new Error(await parseError(res));
-  const data = await res.json();
-  return String(data.id);
+  return createDelegation(accessToken, pnIdentifier, ownedAssetId, {
+    delegateePnIdentifier: params.delegateePnIdentifier,
+    scope: params.scope,
+    expiresAt: params.expiresAt ?? null,
+  });
 }
 
 export async function revokeAssetDelegation(
@@ -103,14 +81,7 @@ export async function revokeAssetDelegation(
   pnIdentifier: string,
   delegationId: string
 ): Promise<void> {
-  const res = await ownerFetch(
-    accessToken,
-    'DELETE',
-    `/api/owned-assets/delegations/${delegationId}`,
-    undefined,
-    { pnIdentifier }
-  );
-  if (!res.ok) throw new Error(await parseError(res));
+  await revokeDelegation(accessToken, pnIdentifier, delegationId);
 }
 
 export async function ensureHumanOwnedAsset(
@@ -121,18 +92,9 @@ export async function ensureHumanOwnedAsset(
   const assets = await listOwnedAssets(accessToken, pnIdentifier);
   const human = assets.find((a) => a.kind === 'human' && a.status === 'active');
   if (human) return human;
-  const res = await ownerFetch(
-    accessToken,
-    'POST',
-    '/api/owned-assets',
-    {
-      kind: 'device',
-      subjectPnIdentifier: rootPn,
-      metadata: { label: 'Identity delegation root' }
-    },
-    { pnIdentifier }
-  );
-  if (!res.ok) throw new Error(await parseError(res));
-  const data = await res.json();
-  return data.asset as OwnedAsset;
+  return createOwnedAsset(accessToken, pnIdentifier, {
+    kind: 'device',
+    subjectPnIdentifier: rootPn,
+    metadata: { label: 'Identity delegation root' },
+  });
 }

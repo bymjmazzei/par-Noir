@@ -1,9 +1,9 @@
 /**
- * Activity Ledger Service (Frontend)
- * Handles fetching activity ledger data from the API
+ * Activity ledger from the device Google sheet.
  */
 
-import { ownerGet } from './ownerApiFetch';
+import { listDeviceActivities } from '@par-noir/device-cloud-credentials';
+import { sessionDriveFor } from './sessionDrive';
 
 export interface ActivityEntry {
   activity_id: string;
@@ -35,25 +35,30 @@ export class ActivityLedgerService {
       activityType?: string;
     }
   ): Promise<ActivityListResponse> {
-    const params = new URLSearchParams();
-    params.append('userPnIdentifier', userPnIdentifier);
-    if (options?.limit) params.append('limit', options.limit.toString());
-    if (options?.offset) params.append('offset', options.offset.toString());
-    if (options?.activityType) params.append('activityType', options.activityType);
-
-    const response = await ownerGet(`/api/activity-ledger?${params.toString()}`);
-
-    if (!response.ok) {
-      const error = await response.json().catch(() => ({ error: 'Failed to get activities' }));
-      throw new Error(error.error_description || error.error || 'Failed to get activities');
-    }
-
-    const data = await response.json();
+    const pn = userPnIdentifier.startsWith('pn-') ? userPnIdentifier : `pn-${userPnIdentifier}`;
+    const drive = await sessionDriveFor(pn);
+    const sheetId = drive.index.sheetIds.activity_ledger;
+    const rows = sheetId ? await listDeviceActivities(drive.accessToken, sheetId) : [];
+    const filtered = options?.activityType
+      ? rows.filter((row) => row.activity_type === options.activityType)
+      : rows;
+    const offset = options?.offset || 0;
+    const limit = options?.limit || 50;
+    const page = filtered.slice(offset, offset + limit);
     return {
-      activities: data.activities || [],
-      total: data.total || 0,
-      limit: options?.limit || 50,
-      offset: options?.offset || 0
+      activities: page.map((row) => ({
+        activity_id: row.activity_id,
+        user_did: row.user_pn_identifier,
+        activity_type: row.activity_type,
+        target_type: row.target_type,
+        target_id: row.target_pn_identifier,
+        actor_did: row.actor_pn_identifier,
+        metadata: row.metadata,
+        created_at: row.created_at,
+      })),
+      total: filtered.length,
+      limit,
+      offset,
     };
   }
 }

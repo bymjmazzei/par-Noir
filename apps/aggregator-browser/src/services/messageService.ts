@@ -511,25 +511,21 @@ export async function getConversationMessages(
   const inflight = conversationMessagesInflight.get(inflightKey);
   if (inflight) return inflight;
 
-  const work = (async (): Promise<{ messages: Message[]; total: number }> => {
-    const sheet = spreadsheetId;
-    if (typeof sheet === 'string' && sheet) {
-      const { listDeviceMessages } = await import('@par-noir/device-cloud-credentials');
-      const { sessionDriveFor } = await import('./sessionDrive');
-      const drive = await sessionDriveFor(userPnIdentifier);
-      const messages = await listDeviceMessages(drive.accessToken, sheet);
-      return { messages: messages as Message[], total: messages.length };
+    const work = (async (): Promise<{ messages: Message[]; total: number }> => {
+    let sheet = typeof spreadsheetId === 'string' ? spreadsheetId : '';
+    if (!sheet) {
+      const threads = await getMessageThreads(userPnIdentifier);
+      const match = threads.find(
+        (thread) => thread.participantPnIdentifier === participantPnIdentifier
+      );
+      sheet = match?.spreadsheetId || '';
     }
-    const threads = await getMessageThreads(userPnIdentifier);
-    const match = threads.find(
-      (thread) => thread.participantPnIdentifier === participantPnIdentifier
-    );
     let raw: Message[] = [];
-    if (match?.spreadsheetId) {
+    if (sheet) {
       const { listDeviceMessages } = await import('@par-noir/device-cloud-credentials');
       const { sessionDriveFor } = await import('./sessionDrive');
       const drive = await sessionDriveFor(userPnIdentifier);
-      raw = (await listDeviceMessages(drive.accessToken, match.spreadsheetId)) as Message[];
+      raw = (await listDeviceMessages(drive.accessToken, sheet)) as Message[];
     }
 
     const recovery = await resolveRecoveryForDecrypt(

@@ -15,6 +15,15 @@ jest.mock('../services/ownerApiService', () => ({
   ownerFetch: (...args: unknown[]) => ownerFetch(...args),
 }));
 
+jest.mock('@par-noir/device-cloud-credentials', () => ({
+  ensureDeviceDriveLayout: async () => ({
+    pnFolderId: 'pn-folder',
+    metadataFolderId: 'meta',
+    sheetIds: {},
+  }),
+  setSessionDriveIndex: () => undefined,
+}));
+
 import { useDriveLayoutInit } from '../components/storage/hooks/useDriveLayoutInit';
 import { clearOwnerIndexUnavailable } from '../services/storage/ownerIndexAvailability';
 
@@ -78,8 +87,7 @@ describe('useDriveLayoutInit postDriveInitializeWithRetry', () => {
     // First status poll is immediate; complete ends the loop — no 90s storm.
     expect(statusCalls.length).toBeGreaterThanOrEqual(1);
     expect(statusCalls.length).toBeLessThanOrEqual(3);
-    expect(ownerIndexCalls.length).toBeGreaterThanOrEqual(1);
-    expect(ownerIndexCalls.length).toBeLessThanOrEqual(4);
+    expect(ownerIndexCalls.length).toBe(0);
   });
 
   it('treats legacy sync 200 with folder ids as done without status polls', async () => {

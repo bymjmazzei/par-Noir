@@ -1,4 +1,4 @@
-import { apiFetch, ownerFetch, ownerGet } from './ownerApiFetch';
+import { apiFetch, ownerFetch } from './ownerApiFetch';
 
 /** Non-Drive step ack — Bearer session only. */
 export async function ackMigrationStep(
@@ -70,27 +70,36 @@ export async function rewrapGroupKeys(
 }
 
 export async function fetchConversationRowsForMigration(
-  authToken: string,
-  migrationId: string,
-  participantPn: string,
+  _authToken: string,
+  _migrationId: string,
+  _participantPn: string,
   ownerPnIdentifier: string,
   spreadsheetId?: string
 ): Promise<{
   rows: Array<{ rowIndex: number; fromPnIdentifier: string; encryptedContent: string }>;
   spreadsheetId: string;
 }> {
-  const qs = spreadsheetId ? `?spreadsheetId=${encodeURIComponent(spreadsheetId)}` : '';
-  const res = await ownerGet(
-    `/api/identity/migration/${encodeURIComponent(migrationId)}/conversations/${encodeURIComponent(participantPn)}/rows${qs}`,
-    { authToken, pnIdentifier: ownerPnIdentifier }
+  if (!spreadsheetId) return { rows: [], spreadsheetId: '' };
+  const { getCloudAccessTokenFromSession, readSheetValues } = await import(
+    '@par-noir/device-cloud-credentials'
   );
-  if (!res.ok) return { rows: [], spreadsheetId: spreadsheetId || '' };
-  return res.json();
+  const pn = ownerPnIdentifier.startsWith('pn-') ? ownerPnIdentifier : `pn-${ownerPnIdentifier}`;
+  const accessToken = getCloudAccessTokenFromSession(pn);
+  if (!accessToken) return { rows: [], spreadsheetId };
+  const values = await readSheetValues(accessToken, spreadsheetId, 'Messages!A2:J');
+  const rows = values
+    .map((row, index) => ({
+      rowIndex: index + 2,
+      fromPnIdentifier: row[0] || '',
+      encryptedContent: row[1] || '',
+    }))
+    .filter((row) => row.fromPnIdentifier || row.encryptedContent);
+  return { rows, spreadsheetId };
 }
 
 export async function postDmMessageRowUpdates(
-  authToken: string,
-  migrationId: string,
+  _authToken: string,
+  _migrationId: string,
   ownerPnIdentifier: string,
   body: {
     connectionId: string;
@@ -104,11 +113,20 @@ export async function postDmMessageRowUpdates(
     }>;
   }
 ): Promise<void> {
-  const res = await ownerFetch(
-    'POST',
-    `/api/identity/migration/${encodeURIComponent(migrationId)}/drive/messages/rows`,
-    body,
-    { authToken, pnIdentifier: ownerPnIdentifier }
+  if (!body.spreadsheetId) return;
+  const { getCloudAccessTokenFromSession, writeSheetValues } = await import(
+    '@par-noir/device-cloud-credentials'
   );
-  if (!res.ok) throw new Error('Failed to update conversation rows');
+  const pn = ownerPnIdentifier.startsWith('pn-') ? ownerPnIdentifier : `pn-${ownerPnIdentifier}`;
+  const accessToken = getCloudAccessTokenFromSession(pn);
+  if (!accessToken) throw new Error('cloud_on_device');
+  for (const update of body.rowUpdates) {
+    if (!update.rowIndex || update.encryptedContent == null) continue;
+    await writeSheetValues(
+      accessToken,
+      body.spreadsheetId,
+      `Messages!B${update.rowIndex}`,
+      [[update.encryptedContent]]
+    );
+  }
 }

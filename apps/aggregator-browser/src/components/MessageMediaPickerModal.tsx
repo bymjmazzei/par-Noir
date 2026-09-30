@@ -14,6 +14,7 @@ import { Capacitor } from '@capacitor/core';
 import { useDriveAccounts } from '../hooks/useDriveAccounts';
 import { useUserState } from '../contexts/UserStateContext';
 import { ownerGet } from '../services/ownerApiFetch';
+import { loadOwnPnMedia } from '../services/ownPnMedia';
 
 type TabId = MediaPickSource;
 
@@ -77,22 +78,7 @@ export function MessageMediaPickerModal({
     if (!token) {
       throw new Error('Unlock your pN to browse files');
     }
-    const pn = userPnIdentifier.startsWith('pn-') ? userPnIdentifier : `pn-${userPnIdentifier}`;
-    const res = await ownerGet(
-      `/api/storage/owner-index/${encodeURIComponent(pn)}?contentClass=media`,
-      { authToken: token, pnIdentifier: userPnIdentifier }
-    );
-    if (!res.ok) {
-      throw new Error('Failed to load your media library');
-    }
-    const data = await res.json();
-    const files = (data.files || []) as OwnerIndexEntry[];
-    setOwnFiles(
-      files.filter((f) => {
-        const id = f.googleDriveFileId || f.fileId;
-        return id && isMediaMimeType(f.mimeType);
-      })
-    );
+    setOwnFiles(await loadOwnPnMedia(userPnIdentifier));
   }, [userPnIdentifier]);
 
   const loadShared = useCallback(async () => {

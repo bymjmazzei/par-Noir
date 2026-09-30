@@ -1,4 +1,4 @@
-import { ownerFetch, ownerGet } from './ownerApiService';
+import { ownerFetch } from './ownerApiService';
 
 /** Non-Drive migration routes: Bearer + device proof only (no cloud AT required). */
 async function migrationMetaFetch(
@@ -56,14 +56,21 @@ export async function ackMigrationStep(
 
 export async function fetchZkpsFromDrive(
   authToken: string,
-  migrationId: string,
+  _migrationId: string,
   pnIdentifier: string
 ): Promise<Array<{ dataPointId: string; zkpProof: string; proofType?: string }>> {
-  const path = `/api/identity/migration/${encodeURIComponent(migrationId)}/zkp-data-points/from-drive`;
-  const res = await ownerGet(authToken, path, { pnIdentifier });
-  if (!res.ok) return [];
-  const data = (await res.json()) as { proofs?: Array<{ dataPointId: string; zkpProof: string; proofType?: string }> };
-  return data.proofs || [];
+  const { listDeviceZkpPoints } = await import('@par-noir/device-cloud-credentials');
+  const { sessionDriveFor } = await import('./sessionDrive');
+  const pn = pnIdentifier.startsWith('pn-') ? pnIdentifier : `pn-${pnIdentifier}`;
+  const drive = await sessionDriveFor(pn, authToken);
+  const sheetId = drive.index.sheetIds['zkp-data-points'];
+  if (!sheetId) return [];
+  const points = await listDeviceZkpPoints(drive.accessToken, sheetId);
+  return points.map((point) => ({
+    dataPointId: point.dataPointId,
+    zkpProof: point.zkpProof,
+    proofType: point.proofType,
+  }));
 }
 
 export async function batchReissueZkps(

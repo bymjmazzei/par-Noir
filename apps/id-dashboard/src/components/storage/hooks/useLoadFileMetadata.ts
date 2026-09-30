@@ -50,9 +50,8 @@ export function useLoadFileMetadata({
       console.log('📋 [Metadata] Loading file metadata...', { fileCount: filesToLoad.length });
       const { backend, backendId, keyPrefix } = resolveActiveBackendEntry();
       // SECURITY: Check credentials instead of resolvedAuth.pnName (secret)
-      const sessionId = authenticatedUser?.id || (authenticatedUser as any)?.publicKey || null;
-      const credentials = sessionId ? SecureCredentialManager.getCredentials(sessionId) : null;
-      if (backend && backend.isConnected() && credentials?.pnName) {
+      const publicKeyForLoad = resolvedAuth?.publicKey || authenticatedUser?.publicKey || null;
+      if (backend && backend.isConnected() && publicKeyForLoad) {
         try {
           const { GoogleDriveMetadataService } = await import('../../../services/storage/GoogleDriveMetadataService');
           const ownerApiToken = resolveOwnerApiToken();
@@ -61,7 +60,7 @@ export function useLoadFileMetadata({
             return;
           }
 
-          console.log('✅ [Metadata] Loading owner index via API...');
+          console.log('✅ [Metadata] Loading owner index from the device sheet...');
           let pnIdentifier: string | undefined;
             
             // Use VolumeIdGenerator for consistent pnIdentifier generation (same as desktop app)
@@ -73,7 +72,7 @@ export function useLoadFileMetadata({
               // SECURITY: Get pnName from credentials (secrets), publicKey from resolvedAuth or authenticatedUser (public)
               const publicKey = resolvedAuth?.publicKey || authenticatedUser?.publicKey;
               
-              if (credentials?.pnName && credentials?.passcode && publicKey) {
+              if (publicKey) {
                 pnIdentifier = await VolumeIdGenerator.generateCanonicalVolumeId(publicKey);
                 console.log(`✅ [Metadata] Generated pN identifier (VolumeIdGenerator): ${(pnIdentifier || '').substring(0, 8)}...`);
                 console.log(`📁 [Metadata] Expected folder: "par Noir - ${(pnIdentifier || '').substring(0, 8)}..."`);

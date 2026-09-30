@@ -159,6 +159,24 @@ export { deviceDriveCall, extractApiDrivePath, fetchDeviceDriveForSession } from
 export type { DeviceDriveInit } from './deviceDriveCall.js';
 export { ensureDeviceDriveLayout } from './deviceDriveLayout.js';
 export type { DeviceDriveLayout } from './deviceDriveLayout.js';
+export {
+  listDeviceOwnerFiles,
+  upsertDeviceOwnerFile,
+  listDeviceActivities,
+  listDeviceOwnedAssets,
+  upsertDeviceOwnedAsset,
+  listDeviceAssetDelegations,
+  upsertDeviceAssetDelegation,
+  ensureDeviceOwnedAssetsSheet,
+  replaceIdentityInDeviceSheet,
+  replaceIdentityInCell,
+} from './deviceIndexes.js';
+export type {
+  DeviceOwnerIndexFile,
+  DeviceActivity,
+  DeviceOwnedAsset,
+  DeviceAssetDelegation,
+} from './deviceIndexes.js';
 export { appendDeviceCloudRow } from './deviceCloudRow.js';
 export type { DeviceCloudRowResult } from './deviceCloudRow.js';
 export { readSheetValues, writeSheetValues, appendSheetValues } from './deviceSheet.js';

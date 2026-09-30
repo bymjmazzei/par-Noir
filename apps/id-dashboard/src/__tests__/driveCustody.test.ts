@@ -8,14 +8,19 @@
  * multi-minute setup UI:
  *   1. owner-index returning 403 (device policy) or 409 (incomplete server index)
  *   2. credential persist returning clientSideLayoutRequired
- * On 403/409, fetchOwnerIndex leaves ownerIndex null (one API attempt only) so
- * mergeDriveScanWithIndex can fill via Drive listFiles — never a second owner-index
- * GET and never POST /storage/initialize.
+ * fetchOwnerIndex reads the device owner-file-index sheet. It never GETs
+ * /api/storage/owner-index. An empty sheet leaves ownerIndex null so
+ * mergeDriveScanWithIndex fills via Drive listFiles.
  */
 import React from 'react';
 
 const ownerGet = jest.fn();
 const ownerFetch = jest.fn();
+const readDeviceOwnerIndex = jest.fn(async (_pn?: string, _token?: string) => [] as Array<Record<string, unknown>>);
+
+jest.mock('../services/storage/deviceOwnerIndex', () => ({
+  readDeviceOwnerIndex: (pn: string, token: string) => readDeviceOwnerIndex(pn, token),
+}));
 
 jest.mock('../services/ownerApiService', () => ({
   ownerGet: (...args: unknown[]) => ownerGet(...args),
@@ -47,112 +52,88 @@ beforeEach(() => {
   clearOwnerIndexUnavailable();
 });
 
-describe('fetchOwnerIndex owner-index fallthrough', () => {
-  it('leaves ownerIndex null on 409 without a second API call or server rebuild', async () => {
-    ownerGet.mockResolvedValue({ ok: false, status: 409, json: jest.fn() });
+describe('fetchOwnerIndex device sheet', () => {
+  it('leaves ownerIndex null when the device sheet is empty, without an owner-index GET', async () => {
+    readDeviceOwnerIndex.mockResolvedValue([]);
 
     const result = await fetchOwnerIndex(makeParams());
 
-    expect(ownerGet).toHaveBeenCalledTimes(1);
+    expect(ownerGet).not.toHaveBeenCalled();
+    expect(readDeviceOwnerIndex).toHaveBeenCalledWith(PN_ID, OWNER_API_TOKEN);
     expect(result.ownerIndex).toBeNull();
     expect(result.ownerIndexFromApi).toBe(false);
     expect(result.skipBackend).toBe(false);
-
-    // The regression: a 409 must never trigger POST /storage/initialize.
     expect(ownerFetch).not.toHaveBeenCalled();
-    const requestedPaths = ownerGet.mock.calls.map((call) => call[1]);
-    expect(requestedPaths.some((path: string) => path.includes('initialize'))).toBe(false);
   });
 
-  it('skips the network call after a prior 409 for the same identity this session', async () => {
-    ownerGet.mockResolvedValue({ ok: false, status: 409, json: jest.fn() });
+  it('reads the device sheet again on a later load', async () => {
+    readDeviceOwnerIndex.mockResolvedValue([]);
 
     await fetchOwnerIndex(makeParams());
     const second = await fetchOwnerIndex(makeParams());
 
-    expect(ownerGet).toHaveBeenCalledTimes(1);
+    expect(readDeviceOwnerIndex).toHaveBeenCalledTimes(2);
+    expect(ownerGet).not.toHaveBeenCalled();
     expect(second.ownerIndex).toBeNull();
     expect(second.ownerIndexFromApi).toBe(false);
   });
 
-  it('leaves ownerIndex null on 403 without a second API call', async () => {
-    ownerGet.mockResolvedValue({ ok: false, status: 403, json: jest.fn() });
+  it('returns device sheet rows and never GETs owner-index', async () => {
+    readDeviceOwnerIndex.mockResolvedValue([
+      { fileId: 'file-1', backend: 'google_drive', fileName: 'a.png' },
+    ]);
 
     const result = await fetchOwnerIndex(makeParams());
 
-    expect(ownerGet).toHaveBeenCalledTimes(1);
-    expect(result.ownerIndex).toBeNull();
-    expect(result.ownerIndexFromApi).toBe(false);
-    expect(result.skipBackend).toBe(false);
-    expect(ownerFetch).not.toHaveBeenCalled();
-  });
-
-  it('uses the server index when owner-index succeeds', async () => {
-    ownerGet.mockResolvedValue({
-      ok: true,
-      status: 200,
-      json: jest
-        .fn()
-        .mockResolvedValue({ files: [{ id: 'file-1', backend: 'google_drive' }], version: 3 }),
-    });
-
-    const result = await fetchOwnerIndex(makeParams());
-
+    expect(ownerGet).not.toHaveBeenCalled();
     expect(result.ownerIndexFromApi).toBe(true);
-    expect(result.ownerIndex.version).toBe(3);
-    expect(ownerGet).toHaveBeenCalledTimes(1);
+    expect(result.ownerIndex.files).toEqual([
+      { fileId: 'file-1', backend: 'google_drive', fileName: 'a.png' },
+    ]);
   });
 
-  it('filters the server index down to the backend provider', async () => {
-    ownerGet.mockResolvedValue({
-      ok: true,
-      status: 200,
-      json: jest.fn().mockResolvedValue({
-        files: [
-          { id: 'drive-file', backend: 'google_drive' },
-          { id: 'other-file', backend: 'dropbox' },
-          { id: 'legacy-file' },
-        ],
-      }),
-    });
+  it('filters the device index down to the backend provider', async () => {
+    readDeviceOwnerIndex.mockResolvedValue([
+      { id: 'drive-file', backend: 'google_drive' },
+      { id: 'other-file', backend: 'dropbox' },
+      { id: 'legacy-file' },
+    ]);
 
     const result = await fetchOwnerIndex(makeParams());
 
-    // Entries with no backend default to google_drive.
     expect(result.ownerIndex.files.map((file: { id: string }) => file.id)).toEqual([
       'drive-file',
       'legacy-file',
     ]);
   });
 
-  it('requests owner-index with a pn- prefixed identifier even when the caller omits it', async () => {
-    ownerGet.mockResolvedValue({ ok: false, status: 409, json: jest.fn() });
+  it('reads the device sheet with a pn- prefixed identifier even when the caller omits it', async () => {
+    readDeviceOwnerIndex.mockResolvedValue([]);
 
     await fetchOwnerIndex(makeParams({ currentPnIdentifier: 'abcdef123456' }));
 
-    expect(ownerGet).toHaveBeenCalledWith(
-      OWNER_API_TOKEN,
-      `/api/storage/owner-index/${encodeURIComponent('pn-abcdef123456')}`,
-      { pnIdentifier: 'pn-abcdef123456' }
-    );
+    expect(readDeviceOwnerIndex).toHaveBeenCalledWith('pn-abcdef123456', OWNER_API_TOKEN);
+    expect(ownerGet).not.toHaveBeenCalled();
   });
 
   it('does not call the owner API when no owner token is available', async () => {
     const result = await fetchOwnerIndex(makeParams({ resolveOwnerApiToken: () => null }));
 
     expect(ownerGet).not.toHaveBeenCalled();
+    expect(readDeviceOwnerIndex).not.toHaveBeenCalled();
     expect(result.ownerIndex).toBeNull();
     expect(result.ownerIndexFromApi).toBe(false);
   });
 
-  it('swallows owner-index transport errors and leaves ownerIndex null', async () => {
-    ownerGet.mockRejectedValue(new Error('network down'));
+  it('swallows device sheet errors and leaves ownerIndex null', async () => {
+    readDeviceOwnerIndex.mockRejectedValue(new Error('sheets down'));
 
     const result = await fetchOwnerIndex(makeParams());
 
     expect(result.ownerIndex).toBeNull();
     expect(result.ownerIndexFromApi).toBe(false);
     expect(result.skipBackend).toBe(false);
+    expect(ownerGet).not.toHaveBeenCalled();
   });
 });
 

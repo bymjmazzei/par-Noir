@@ -5,7 +5,7 @@
  */
 
 import { API_ENDPOINT } from '../../config/api';
-import { ownerFetch, ownerGet } from '../ownerApiService';
+import { ownerFetch } from '../ownerApiService';
 import { resolveOwnerApiToken } from '../ownerApiToken';
 
 /**
@@ -444,27 +444,14 @@ export class GoogleDriveMetadataService {
     pnIdentifier: string,
     ownerApiToken?: string | null
   ): Promise<PublicFileIndex | null> {
+    if (!ownerApiToken) return null;
     try {
-      const { isOwnerIndexUnavailable, markOwnerIndexUnavailable } = await import(
-        './ownerIndexAvailability'
-      );
-      if (isOwnerIndexUnavailable(pnIdentifier)) {
-        return null;
-      }
-      const path = `/api/storage/owner-index/${encodeURIComponent(pnIdentifier)}`;
-      const res = ownerApiToken
-        ? await ownerGet(ownerApiToken, path, { pnIdentifier })
-        : await fetch(`${API_ENDPOINT}${path}`);
-      if (res.status === 403 || res.status === 409) {
-        markOwnerIndexUnavailable(pnIdentifier);
-        return null;
-      }
-      if (!res.ok) return null;
-      const data = await res.json();
+      const { readDeviceOwnerIndex } = await import('./deviceOwnerIndex');
+      const files = await readDeviceOwnerIndex(pnIdentifier, ownerApiToken);
       return {
-        identifier: data.identifier ?? pnIdentifier,
-        files: data.files ?? [],
-        updatedAt: data.updatedAt ?? new Date().toISOString(),
+        identifier: pnIdentifier,
+        files: files as PublicFileIndex['files'],
+        updatedAt: new Date().toISOString(),
       };
     } catch {
       return null;
@@ -483,17 +470,8 @@ export class GoogleDriveMetadataService {
     if (!ownerToken) {
       throw new Error('par Noir API session not ready');
     }
-    const res = await ownerFetch(
-      ownerToken,
-      'POST',
-      `/api/storage/owner-index/${encodeURIComponent(pnIdentifier)}/entries`,
-      { entry: fileMetadata },
-      { pnIdentifier }
-    );
-    if (!res.ok) {
-      const err = await res.text();
-      throw new Error(`Failed to update owner index: ${res.status} ${err}`);
-    }
+    const { writeDeviceOwnerIndexEntry } = await import('./deviceOwnerIndex');
+    await writeDeviceOwnerIndexEntry(pnIdentifier, ownerToken, fileMetadata);
   }
 
   /**

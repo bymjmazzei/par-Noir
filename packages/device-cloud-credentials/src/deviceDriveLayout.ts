@@ -4,6 +4,7 @@
  */
 
 import { deviceDriveCall } from './deviceDriveCall.js';
+import { ensureDeviceOwnedAssetsSheet } from './deviceIndexes.js';
 
 const SHEET_KEYS = [
   'connections',
@@ -91,6 +92,7 @@ export async function ensureDeviceDriveLayout(
     sheetIds[key] = await createSheet(accessToken, key, metadataFolderId, fetchImpl);
   }
   const inboxSheetId = await createSheet(accessToken, 'inbox', messagesFolderId, fetchImpl);
+  sheetIds['owned-assets'] = await ensureDeviceOwnedAssetsSheet(accessToken, metadataFolderId, fetchImpl);
   return {
     schemaVersion: 1,
     pnFolderId,

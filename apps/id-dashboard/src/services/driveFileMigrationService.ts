@@ -60,10 +60,54 @@ async function patchDriveProgress(
   await migrationFetch(authToken, 'PATCH', path, body).catch(() => undefined);
 }
 
-async function migrateSheetsViaApi(authToken: string, migrationId: string): Promise<void> {
-  const path = `/api/identity/migration/${encodeURIComponent(migrationId)}/drive/sheets/migrate`;
-  const res = await migrationFetch(authToken, 'POST', path, {});
-  if (!res.ok) throw new Error('Failed to migrate metadata sheets');
+async function migrateSheetsViaApi(
+  authToken: string,
+  migrationId: string,
+  predecessor: IdentityKeyMaterial,
+  successor: IdentityKeyMaterial
+): Promise<void> {
+  const { deviceDriveCall, replaceIdentityInDeviceSheet } = await import(
+    '@par-noir/device-cloud-credentials'
+  );
+  const { sessionDriveFor } = await import('./sessionDrive');
+  const succ = successor.pnIdentifier.startsWith('pn-')
+    ? successor.pnIdentifier
+    : `pn-${successor.pnIdentifier}`;
+  const pred = predecessor.pnIdentifier.startsWith('pn-')
+    ? predecessor.pnIdentifier
+    : `pn-${predecessor.pnIdentifier}`;
+  const drive = await sessionDriveFor(succ, authToken);
+  const folders = [
+    { id: drive.index.metadataFolderId, messages: false },
+    { id: drive.index.messagesFolderId, messages: true },
+  ];
+  let sheetsUpdated = 0;
+  for (const folder of folders) {
+    if (!folder.id) continue;
+    const q = `'${folder.id}' in parents and mimeType='application/vnd.google-apps.spreadsheet' and trashed=false`;
+    const listed = await deviceDriveCall(
+      'GET',
+      `/api/drive/files?q=${encodeURIComponent(q)}&pageSize=200`,
+      undefined,
+      { accessToken: drive.accessToken }
+    );
+    if (!listed.ok) continue;
+    const body = (await listed.json()) as { files?: Array<{ id?: string; name?: string }> };
+    for (const file of body.files || []) {
+      if (!file.id || !file.name || file.name.endsWith('.metadata')) continue;
+      if (folder.messages && file.name !== 'Inbox' && !file.name.startsWith('conversation-')) continue;
+      sheetsUpdated += await replaceIdentityInDeviceSheet(
+        drive.accessToken,
+        file.id,
+        pred,
+        succ,
+        fetch,
+        predecessor.did,
+        successor.did
+      );
+    }
+  }
+  await patchDriveProgress(authToken, migrationId, { phase: 'sheets', sheetsUpdated });
 }
 
 export async function connectDriveBackendForMigration(did: string): Promise<GoogleDriveBackend | null> {
@@ -220,7 +264,7 @@ export async function runFullDriveMigration(params: DriveMigrationParams): Promi
   }
 
   onProgress('Migrating metadata sheets…', 72);
-  await migrateSheetsViaApi(authToken, migrationId);
+  await migrateSheetsViaApi(authToken, migrationId, predecessor, successor);
   report = recordMigrationOutcome(report, { path: '_metadata/sheets', outcome: 'patched' });
 
   onProgress('Publishing profile keys…', 74);
