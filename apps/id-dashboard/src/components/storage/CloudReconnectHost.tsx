@@ -75,7 +75,10 @@ export const CloudReconnectHost: React.FC<CloudReconnectHostProps> = ({
     setMigrateSettled(false);
     void (async () => {
       const { awaitMigrateFlushForIdentity } = await import('../../services/deviceCloudCredentials');
+      const { readShellMlKem } = await import('../../services/shellMlKem');
       let warmed: StorageCredentialsEnvelope | null = null;
+      const shellMlKem = readShellMlKem(pnIdentifier) || readShellMlKem(sessionId);
+      if (!shellMlKem) {
       for (let i = 0; i < 25 && !cancelled; i++) {
         await awaitMigrateFlushForIdentity(pnIdentifier);
         const creds = SecureCredentialManager.getCredentials(sessionId);
@@ -105,6 +108,7 @@ export const CloudReconnectHost: React.FC<CloudReconnectHostProps> = ({
         }
         await new Promise((r) => setTimeout(r, 200));
       }
+      }
       if (!cancelled) {
         try {
           await awaitMigrateFlushForIdentity(pnIdentifier);
@@ -126,14 +130,16 @@ export const CloudReconnectHost: React.FC<CloudReconnectHostProps> = ({
             mlKemSecretKey = null;
           }
         }
-        if (creds && !envelopeHasUsableSecrets(getSessionCloudCredentials(pnIdentifier))) {
+        if (!mlKemSecretKey && shellMlKem) mlKemSecretKey = shellMlKem;
+        const canUnseal = !!mlKemSecretKey || !!(creds?.pnName && creds?.passcode);
+        if (canUnseal && !envelopeHasUsableSecrets(getSessionCloudCredentials(pnIdentifier))) {
           const status = await ensureCloudCredentialsReady({
             apiEndpoint: API_ENDPOINT,
             authToken: apiToken,
             pnIdentifier,
             mlKemSecretKey,
-            pnName: creds.pnName,
-            passcode: creds.passcode
+            pnName: creds?.pnName,
+            passcode: creds?.passcode
           });
           if (status === 'ready') {
             warmed = getSessionCloudCredentials(pnIdentifier);

@@ -802,7 +802,7 @@ export function setupPnOAuthRoutes(app: express.Application, deps: PnOAuthRouteD
           accessToken: cloudAccessToken,
         });
         if (!zkpBundle) {
-          return res.status(409).json({ error: 'drive_not_initialized' });
+          return res.json({ success: true, dataPoints: [] });
         }
 
         const clientId = tokenPayload.clientId;

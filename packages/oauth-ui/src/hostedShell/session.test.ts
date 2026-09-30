@@ -9,6 +9,7 @@ import {
   shellLaunchAfterAppProbe,
   encodeShellReturn,
   parseShellReturn,
+  shellHandoffDisposition,
 } from './session';
 
 describe('hosted shell session', () => {
@@ -20,6 +21,12 @@ describe('hosted shell session', () => {
     accessToken: '',
     code: 'auth-code',
   };
+
+  it('sends an app-opened tab back to the tab that clicked Unlock', () => {
+    expect(shellHandoffDisposition({ fragment: '#pn_shell=abc', isOwnerTab: true })).toBe('apply');
+    expect(shellHandoffDisposition({ fragment: '#pn_shell=abc', isOwnerTab: false })).toBe('forward');
+    expect(shellHandoffDisposition({ fragment: '', isOwnerTab: true })).toBe('ignore');
+  });
 
   it('round-trips a factor-free handoff in the url fragment', () => {
     const fragment = encodeShellReturn(session);

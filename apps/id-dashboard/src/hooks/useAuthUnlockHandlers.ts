@@ -337,6 +337,12 @@ export function useAuthUnlockHandlers(params: UseAuthUnlockHandlersParams) {
 
       // SECURITY: Clear all credentials from memory
       SecureCredentialManager.clearAll();
+      try {
+        const { clearShellMlKem } = await import('../services/shellMlKem');
+        clearShellMlKem();
+      } catch {
+        /* ignore */
+      }
       
       // SECURITY: Clear all integration credentials
       try {
@@ -1314,6 +1320,17 @@ export function useAuthUnlockHandlers(params: UseAuthUnlockHandlersParams) {
       if (session.op === 'seal_vault' && session.result?.sealedVault) {
         const { publishSealedVault } = await import('../services/sealVaultHandoff');
         await publishSealedVault(session, accessToken);
+      }
+      const mlKemSecretKey = session.result?.mlKemSecretKey;
+      if (mlKemSecretKey && session.publicKey) {
+        const { rememberShellMlKem } = await import('../services/shellMlKem');
+        const { deriveCanonicalPnIdentifier } = await import(
+          '@par-noir/pqc-crypto/oauth-unlock-proof'
+        );
+        rememberShellMlKem(
+          [session.publicKey, session.did, deriveCanonicalPnIdentifier(session.publicKey)],
+          mlKemSecretKey
+        );
       }
       const authenticatedAt = new Date().toISOString();
       await storage.storeSession({

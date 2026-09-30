@@ -72,16 +72,25 @@ export async function buildShellResult(args: {
   }
 
   if (args.op === 'dm' && args.unlocked) {
-    const record = args.unlocked.decryptedIdentity;
-    const pqc = record.pqcSecrets as { mlKemSecretKey?: string; mlKemPublicKey?: string } | undefined;
-    const mlKemSecretKey =
-      pqc?.mlKemSecretKey || (typeof record.mlKemSecretKey === 'string' ? record.mlKemSecretKey : '');
-    if (!mlKemSecretKey) return undefined;
-    return {
-      mlKemSecretKey,
-      mlKemPublicKey: pqc?.mlKemPublicKey || '',
-    };
+    return mlKemResult(args.unlocked);
+  }
+
+  if (args.op === 'session') {
+    return mlKemResult(args.unlocked);
   }
 
   return undefined;
+}
+
+function mlKemResult(unlocked?: ShellUnlocked): Record<string, string> | undefined {
+  if (!unlocked) return undefined;
+  const record = unlocked.decryptedIdentity;
+  const pqc = record.pqcSecrets as { mlKemSecretKey?: string; mlKemPublicKey?: string } | undefined;
+  const mlKemSecretKey =
+    pqc?.mlKemSecretKey || (typeof record.mlKemSecretKey === 'string' ? record.mlKemSecretKey : '');
+  if (!mlKemSecretKey) return undefined;
+  return {
+    mlKemSecretKey,
+    mlKemPublicKey: pqc?.mlKemPublicKey || '',
+  };
 }

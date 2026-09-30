@@ -103,6 +103,19 @@ export function parseShellReturn(fragmentOrUrl: string): HostedShellSession | nu
   };
 }
 
+/** The tab that clicked Unlock. A new tab from the app must not spend the code. */
+export const SHELL_OWNER_STORAGE_KEY = 'pn_shell_owner';
+/** Cross-tab handoff. The app's new tab writes this; the original tab reads it. */
+export const SHELL_RETURN_STORAGE_KEY = 'pn_hosted_shell_v1';
+
+export function shellHandoffDisposition(args: {
+  fragment: string;
+  isOwnerTab: boolean;
+}): 'apply' | 'forward' | 'ignore' {
+  if (!args.fragment.includes('pn_shell=')) return 'ignore';
+  return args.isOwnerTab ? 'apply' : 'forward';
+}
+
 export function applyShellFragment(redirectUri: string, fragment: string): string {
   const url = new URL(redirectUri);
   url.hash = fragment.startsWith('#') ? fragment.slice(1) : fragment;

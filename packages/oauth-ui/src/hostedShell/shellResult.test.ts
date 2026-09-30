@@ -31,4 +31,26 @@ describe('buildShellResult export round-trip', () => {
     expect(parsed?.result?.identityFile).toContain('ciphertext');
     expect(parsed?.result?.passcode).toBeUndefined();
   });
+
+  it('returns the device messaging key on a session unlock so cloud credentials can be unsealed later', async () => {
+    const result = await buildShellResult({
+      op: 'session',
+      pnName: 'unused',
+      passcode: 'unused',
+      unlocked: {
+        publicKey: 'pk',
+        decryptedIdentity: { pqcSecrets: { mlKemSecretKey: 'sek', mlKemPublicKey: 'pubk' } },
+        encryptedIdentity: {},
+      },
+    });
+    const fragment = encodeShellReturn({
+      v: 1,
+      op: 'session',
+      did: 'did:pn:1',
+      publicKey: 'pk',
+      accessToken: '',
+      result,
+    });
+    expect(parseShellReturn(fragment)?.result?.mlKemSecretKey).toBe('sek');
+  });
 });

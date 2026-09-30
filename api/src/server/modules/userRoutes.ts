@@ -930,8 +930,6 @@ export function setupUserRoutes(app: express.Application, deps: UserRouteDeps) {
 
         if (!(await gateOwnerRoute(req, res, DEVICE_CAPABILITIES.profileRead, normalizedPnIdentifier))) return;
 
-        const { PreferencesService } = await import('./preferencesService');
-        const { respondDriveTokenError } = await import('./ownerDriveToken');
         const { storageCredentialsService } = await import('./storageCredentialsService');
 
         // Get user's credentials
@@ -946,73 +944,9 @@ export function setupUserRoutes(app: express.Application, deps: UserRouteDeps) {
         if (googleDriveAccounts.length === 0) {
           return res.json({ preferences: [] });
         }
-
-          const account = googleDriveAccounts.length > 0 ? googleDriveAccounts[0] : null;
-          const accountId = account ? extractAccountId(account) : undefined;
-          let userAccessToken = '';
-          try {
-            const resolved = (await (async () => {
-                const { DriveIndexError } = await import('./pnDriveIndex');
-                throw new DriveIndexError(
-                  'Drive reads and writes run on the device. This API does not proxy the user cloud.',
-                  'CLOUD_TOKEN_REQUIRED'
-                );
-                return { token: { access_token: '' } };
-              })());
-            userAccessToken = resolved.token.access_token;
-          } catch (error) {
-            if (respondDriveTokenError(res, error)) return;
-            throw error;
-          }
-
-        // Find _metadata folder
-        const pnFolderName = `par Noir - ${normalizedPnIdentifier}`;
-        const pnFolderSearchQuery = `name='${pnFolderName.replace(/'/g, "\\'")}' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
-        const pnFolderSearchUrl = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(pnFolderSearchQuery)}&fields=files(id)&pageSize=1`;
-        
-        const pnFolderResponse = await fetch(pnFolderSearchUrl, {
-          headers: { 'Authorization': `Bearer ${userAccessToken}` }
-        });
-
-        let pnFolderId: string | null = null;
-        if (pnFolderResponse.ok) {
-          const pnFolderData = await pnFolderResponse.json() as { files?: Array<{ id: string }> };
-          if (pnFolderData.files && pnFolderData.files.length > 0) {
-            pnFolderId = pnFolderData.files[0].id;
-          }
-        }
-
-        if (!pnFolderId) {
-          return res.json({ preferences: [] });
-        }
-
-        const metadataFolderName = '_metadata';
-        const metadataSearchQuery = `name='${metadataFolderName}' and '${pnFolderId}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`;
-        const metadataSearchUrl = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(metadataSearchQuery)}&fields=files(id)&pageSize=1`;
-        
-        let metadataFolderId: string | null = null;
-        const metadataFolderResponse = await fetch(metadataSearchUrl, {
-          headers: { 'Authorization': `Bearer ${userAccessToken}` }
-        });
-
-        if (metadataFolderResponse.ok) {
-          const metadataFolderData = await metadataFolderResponse.json() as { files?: Array<{ id: string }> };
-          if (metadataFolderData.files && metadataFolderData.files.length > 0) {
-            metadataFolderId = metadataFolderData.files[0].id;
-          }
-        }
-
-        if (!metadataFolderId) {
-          return res.json({ preferences: [] });
-        }
-
-        // Get tag preferences from Google Drive
-        const preferences = await PreferencesService.getTagPreferences(userAccessToken, metadataFolderId, normalizedPnIdentifier);
-
-        return res.json({ preferences });
+        // Tag sheets live on the device. This route does not proxy Drive.
+        return res.json({ preferences: [] });
       } catch (error: any) {
-        const { respondDriveTokenError } = await import('./ownerDriveToken');
-        if (respondDriveTokenError(res, error)) return;
         console.error('Error getting tag preferences:', error);
         return res.status(500).json({
           error: 'Failed to get tag preferences',
@@ -1020,6 +954,7 @@ export function setupUserRoutes(app: express.Application, deps: UserRouteDeps) {
         });
       }
     });
+
 
     // DELETE /api/users/:pnIdentifier/tag-preferences/:tagId - Remove a tag preference
     app.delete('/api/users/:pnIdentifier/tag-preferences/:tagId', async (req, res) => {

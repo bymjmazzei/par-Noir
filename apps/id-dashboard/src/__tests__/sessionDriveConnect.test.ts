@@ -9,15 +9,20 @@ import {
   getCloudAccessTokenFromSession,
 } from '@par-noir/device-cloud-credentials';
 import { connectDriveInThisSession } from '../services/sessionDriveConnect';
+import { clearShellMlKem, rememberShellMlKem } from '../services/shellMlKem';
 
 const ownerGet = jest.fn();
 const ownerFetch = jest.fn();
+const publishCloudCredentialsVault = jest.fn(async () => ({ ok: true, status: 200 }));
 const mockSessionCreds = new Map<string, { googleDriveAccounts?: Array<{ accessToken?: string }> }>();
+
+jest.mock('../config/api', () => ({ API_ENDPOINT: 'https://api.parnoir.com' }));
 
 jest.mock('@par-noir/device-cloud-credentials', () => ({
   setSessionCloudCredentials: (id: string, creds: { googleDriveAccounts?: Array<{ accessToken?: string }> }) => {
     mockSessionCreds.set(id, creds);
   },
+  publishCloudCredentialsVault: (...args: unknown[]) => publishCloudCredentialsVault(...args),
   getCloudAccessTokenFromSession: (id: string) =>
     mockSessionCreds.get(id)?.googleDriveAccounts?.[0]?.accessToken ?? null,
   clearAllSessionCloudCredentials: () => {
@@ -51,6 +56,8 @@ const storedIndex = {
 beforeEach(() => {
   ownerGet.mockReset();
   ownerFetch.mockReset();
+  publishCloudCredentialsVault.mockClear();
+  clearShellMlKem();
   clearAllSessionCloudCredentials();
   ownerGet.mockResolvedValue({
     ok: true,
@@ -81,4 +88,34 @@ test('finishes Drive connect in this tab when an index already exists', async ()
   expect(getCloudAccessTokenFromSession('pn-abc')).toBe('ya29-test');
   expect(ownerGet).toHaveBeenCalled();
   expect(ownerFetch).not.toHaveBeenCalled();
+  expect(publishCloudCredentialsVault).not.toHaveBeenCalled();
+});
+
+test('seals the Google token into the cloud vault when the shell unlock left a messaging key', async () => {
+  rememberShellMlKem(['pn-abc'], 'mlkem-secret');
+  await connectDriveInThisSession({
+    identityId: 'pn-abc',
+    authToken: 'owner-jwt',
+    credentials: {
+      socialCloudProvider: 'google_drive',
+      socialCloudAccountId: 'acct',
+      googleDriveAccounts: [
+        {
+          accountId: 'acct',
+          accessToken: 'ya29-test',
+          refreshToken: 'refresh',
+          expires_at: Date.now() + 3_600_000,
+        },
+      ],
+    },
+  });
+
+  expect(publishCloudCredentialsVault).toHaveBeenCalledWith(
+    expect.objectContaining({
+      apiEndpoint: 'https://api.parnoir.com',
+      authToken: 'owner-jwt',
+      pnIdentifier: 'pn-abc',
+      mlKemSecretKey: 'mlkem-secret',
+    })
+  );
 });

@@ -334,11 +334,17 @@ export function startPnOAuthPopup(options: StartPnOAuthPopupOptions): Promise<Pn
   // window.open must run in the click turn. The app probe waits on blur/focus, and a
   // later open is what the browser reports as "Popup blocked".
   const popupName = options.popupName ?? defaultPopupName();
-  const popupFeatures = options.popupFeatures ?? DEFAULT_POPUP_FEATURES;
+  // Reserve the browser gesture without showing the consent page. The OS dialog
+  // is the only prompt until Cancel is chosen.
   const preopened =
     typeof window !== 'undefined' && !isCapacitorNative()
-      ? window.open(options.url, popupName, popupFeatures)
+      ? window.open('about:blank', popupName, 'popup=yes,width=1,height=1,left=-2000,top=-2000')
       : null;
+  try {
+    window.focus();
+  } catch {
+    /* ignore */
+  }
   return (async () => {
     let usedApp = false;
     try {
@@ -364,6 +370,14 @@ export function startPnOAuthPopup(options: StartPnOAuthPopupOptions): Promise<Pn
     if (!preopened) {
       pushPnOAuthDebug('popup_blocked', {});
       throw new Error('POPUP_BLOCKED');
+    }
+    try {
+      preopened.resizeTo(500, 700);
+      preopened.moveTo(80, 80);
+      preopened.location.href = options.url;
+      preopened.focus();
+    } catch {
+      /* the reserved window is still on about:blank */
     }
     return startPnOAuthPopupAfterLaunch(options, false, preopened);
   })();

@@ -12,9 +12,13 @@ describe('startPnOAuthPopup', () => {
     const opened: string[] = [];
     const popup = {
       closed: false,
+      location: { href: '' },
       close() {
         this.closed = true;
       },
+      resizeTo() {},
+      moveTo() {},
+      focus() {},
     };
     vi.stubGlobal('window', {
       open: (url: string) => {
@@ -22,6 +26,7 @@ describe('startPnOAuthPopup', () => {
         return popup;
       },
       name: '',
+      focus() {},
       location: { origin: 'https://pen.parnoir.com', href: 'https://pen.parnoir.com/' },
       addEventListener() {},
       removeEventListener() {},
@@ -43,7 +48,10 @@ describe('startPnOAuthPopup', () => {
       expectedState: 'abc',
       timeoutMs: 20,
     });
-    expect(opened).toEqual(['https://unlock.parnoir.com/oauth/consent?state=abc&popup=true']);
+    expect(opened).toEqual(['about:blank']);
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(popup.location.href).toBe('https://unlock.parnoir.com/oauth/consent?state=abc&popup=true');
 
     const settled = expect(pending).rejects.toThrow('POPUP_TIMEOUT');
     await vi.advanceTimersByTimeAsync(50);
