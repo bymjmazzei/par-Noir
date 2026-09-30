@@ -331,19 +331,22 @@ function defaultPopupName(): string {
  * oauth_callback is received (postMessage, BroadcastChannel, or localStorage poll).
  */
 export function startPnOAuthPopup(options: StartPnOAuthPopupOptions): Promise<PnOAuthPopupResult> {
-  // window.open must run in the click turn. The app probe waits on blur/focus, and a
-  // later open is what the browser reports as "Popup blocked".
+  // Do not open a window on the click. Open is the Unlock app. Cancel returns
+  // focus, and that focus turn is what reserves the web window. A window opened
+  // on the click stays up until auth finishes and looks like a second popup.
   const popupName = options.popupName ?? defaultPopupName();
-  // Reserve the browser gesture without showing the consent page. The OS dialog
-  // is the only prompt until Cancel is chosen.
-  const preopened =
-    typeof window !== 'undefined' && !isCapacitorNative()
-      ? window.open('about:blank', popupName, 'popup=yes,width=1,height=1,left=-2000,top=-2000')
-      : null;
-  try {
-    window.focus();
-  } catch {
-    /* ignore */
+  let preopened: Window | null = null;
+  const reserveWebPopup = () => {
+    if (preopened || typeof window === 'undefined' || isCapacitorNative()) return;
+    preopened = window.open(
+      'about:blank',
+      popupName,
+      'popup=yes,width=500,height=700,left=80,top=80'
+    );
+  };
+  // No DOM (tests, or a caller that cannot see the OS dialog): open immediately.
+  if (typeof document === 'undefined') {
+    reserveWebPopup();
   }
   return (async () => {
     let usedApp = false;
@@ -351,6 +354,7 @@ export function startPnOAuthPopup(options: StartPnOAuthPopupOptions): Promise<Pn
       const launch = await launchUnlockBroker({
         httpsUrl: options.url,
         preferApp: options.preferApp,
+        reserveWebPopup,
       });
       usedApp = launch.usedApp;
       if (usedApp) {
@@ -372,8 +376,6 @@ export function startPnOAuthPopup(options: StartPnOAuthPopupOptions): Promise<Pn
       throw new Error('POPUP_BLOCKED');
     }
     try {
-      preopened.resizeTo(500, 700);
-      preopened.moveTo(80, 80);
       preopened.location.href = options.url;
       preopened.focus();
     } catch {

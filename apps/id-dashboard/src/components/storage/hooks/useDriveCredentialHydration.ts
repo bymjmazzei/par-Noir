@@ -108,10 +108,10 @@ export function useDriveCredentialHydration({
       try {
         const sessionId = authenticatedUser?.id ?? null;
         const sessionCreds = sessionId ? SecureCredentialManager.getCredentials(sessionId) : null;
+        const { accountAccessToken, getSessionCloudCredentials, loadLocalCloudCredentials } =
+          await import('@par-noir/device-cloud-credentials');
+        let accounts: Array<Record<string, any>> = [];
         if (sessionCreds && pnId) {
-          const { loadLocalCloudCredentials, accountAccessToken } = await import(
-            '@par-noir/device-cloud-credentials'
-          );
           const local = await loadLocalCloudCredentials({
             identityId: pnId,
             session: {
@@ -120,7 +120,32 @@ export function useDriveCredentialHydration({
               passcode: sessionCreds.passcode
             }
           });
-          const accounts = local?.googleDriveAccounts ?? [];
+          accounts = (local?.googleDriveAccounts ?? []) as Array<Record<string, any>>;
+        }
+        if (accounts.length === 0 && pnId) {
+          const { envelopeHasUsableSecrets } = await import('@par-noir/user-owned-storage');
+          let sessionEnv = getSessionCloudCredentials(pnId);
+          if (!envelopeHasUsableSecrets(sessionEnv) && apiToken) {
+            const { readShellMlKem } = await import('../../../services/shellMlKem');
+            const mlKemSecretKey =
+              readShellMlKem(pnId) ||
+              readShellMlKem(sessionId) ||
+              readShellMlKem(authenticatedUser?.publicKey);
+            if (mlKemSecretKey) {
+              const { ensureCloudCredentialsReady } = await import('@par-noir/oauth-ui');
+              const { API_ENDPOINT } = await import('../../../config/api');
+              await ensureCloudCredentialsReady({
+                apiEndpoint: API_ENDPOINT,
+                authToken: apiToken,
+                pnIdentifier: pnId,
+                mlKemSecretKey
+              });
+              sessionEnv = getSessionCloudCredentials(pnId);
+            }
+          }
+          accounts = (sessionEnv?.googleDriveAccounts ?? []) as Array<Record<string, any>>;
+        }
+        if (pnId) {
           for (const account of accounts) {
             // Seed value only: the refresh token and absolute expiry travel with
             // it, and the backend mints a replacement when this one has aged out.
@@ -211,7 +236,9 @@ export function useDriveCredentialHydration({
       hydrationInProgressRef.current = false;
     },
     [
+      apiToken,
       authenticatedUser?.id,
+      authenticatedUser?.publicKey,
       disconnectTimestampRef,
       disconnectBlockDurationMs,
       getPnIdentifier,

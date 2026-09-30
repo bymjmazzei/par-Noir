@@ -9,7 +9,7 @@ import { useUserState } from '../contexts/UserStateContext';
 
 import { API_ENDPOINT } from '../config/api';
 import { fetchBulkEngagementStats } from '../services/engagementBulkStatsClient';
-import { ownerGet } from '../services/ownerApiFetch';
+import { apiFetch, ownerGet } from '../services/ownerApiFetch';
 
 interface EngagementData {
   likes: Set<string>; // Set of file IDs that user has liked
@@ -178,10 +178,8 @@ export function useEngagement() {
 
   const toggleLike = useCallback(async (fileId: string) => {
     if (userState.isUnlocked && userState.pnIdentifier) {
-      const response = await fetch(`${API_ENDPOINT}/api/engagement/${fileId}/like`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userPnIdentifier: userState.pnIdentifier })
+      const response = await apiFetch('POST', `/api/engagement/${fileId}/like`, {
+        userPnIdentifier: userState.pnIdentifier
       });
 
       if (!response.ok) {
@@ -221,10 +219,8 @@ export function useEngagement() {
 
   const toggleDislike = useCallback(async (fileId: string) => {
     if (userState.isUnlocked && userState.pnIdentifier) {
-      const response = await fetch(`${API_ENDPOINT}/api/engagement/${fileId}/dislike`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userPnIdentifier: userState.pnIdentifier })
+      const response = await apiFetch('POST', `/api/engagement/${fileId}/dislike`, {
+        userPnIdentifier: userState.pnIdentifier
       });
 
       if (!response.ok) {
@@ -278,16 +274,12 @@ export function useEngagement() {
     postReply?: { fileId: string; thumbnail?: string; title?: string }
   ) => {
     if (userState.isUnlocked && userState.pnIdentifier) {
-      const response = await fetch(`${API_ENDPOINT}/api/engagement/${fileId}/comment`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          userPnIdentifier: userState.pnIdentifier,
-          content,
-          authorName,
-          parentCommentId,
-          postReply
-        })
+      const response = await apiFetch('POST', `/api/engagement/${fileId}/comment`, {
+        userPnIdentifier: userState.pnIdentifier,
+        content,
+        authorName,
+        parentCommentId,
+        postReply
       });
 
       if (!response.ok) {
@@ -411,11 +403,11 @@ export function useEngagement() {
     if (userState.isUnlocked && userState.pnIdentifier) {
       // Use backend API
       try {
-        const response = await fetch(`${API_ENDPOINT}/api/engagement/${fileId}/comment/${commentId}/like`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ userPnIdentifier: userState.pnIdentifier })
-        });
+        const response = await apiFetch(
+          'POST',
+          `/api/engagement/${fileId}/comment/${commentId}/like`,
+          { userPnIdentifier: userState.pnIdentifier }
+        );
 
         if (response.ok) {
           setEngagement(prev => {
@@ -490,10 +482,8 @@ export function useEngagement() {
     if (userState.isUnlocked && userState.pnIdentifier) {
       // Use backend API
       try {
-        const response = await fetch(`${API_ENDPOINT}/api/engagement/${fileId}/share`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ userPnIdentifier: userState.pnIdentifier })
+        const response = await apiFetch('POST', `/api/engagement/${fileId}/share`, {
+          userPnIdentifier: userState.pnIdentifier
         });
 
         if (response.ok) {

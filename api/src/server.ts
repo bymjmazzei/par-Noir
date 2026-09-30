@@ -266,6 +266,17 @@ const oauthTokenLimiter = rateLimit({
   ...rateLimitSkip,
 });
 
+// Unlock pages poll these until the desktop app claims the state. A 250ms poll
+// on the general 100/15min bucket 429s the rest of the IP, including Pen unlock.
+const brokerPollLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 2000,
+  message: 'Too many requests from this IP, please try again later.',
+  standardHeaders: true,
+  legacyHeaders: false,
+  ...rateLimitSkip,
+});
+
 class ProductionServer {
   private app: express.Application;
   private server: any;
@@ -636,6 +647,14 @@ class ProductionServer {
       // Public successor lookup on unlock (no auth)
       if (req.path === '/api/v1/identity/successor' && req.method === 'GET') {
         return next();
+      }
+      // Launch-claim and broker-pending polls. Off the general 100/15min bucket.
+      if (
+        req.method === 'GET' &&
+        (req.path === '/oauth/authorize/broker-launched' ||
+          req.path === '/oauth/authorize/broker-pending')
+      ) {
+        return brokerPollLimiter(req, res, next);
       }
       // Apply lenient limiter for read-only endpoints and bulk operations.
       // public-names GETs, userinfo, and storage/accounts must not share the

@@ -119,7 +119,12 @@ const CANCEL_GRACE_MS = 1000;
 
 export async function tryPreferUnlockApp(
   appUrl: string,
-  options?: { waitMs?: number; cancelGraceMs?: number }
+  options?: {
+    waitMs?: number;
+    cancelGraceMs?: number;
+    /** Called in the Cancel focus turn so a later open is not popup-blocked. */
+    reserveWebPopup?: () => void;
+  }
 ): Promise<PreferUnlockAppResult> {
   if (typeof document === 'undefined' || typeof window === 'undefined') {
     return { opened: false, mode: 'fallback' };
@@ -191,8 +196,18 @@ export async function tryPreferUnlockApp(
       if (!sawBlur) return;
       focusedAfterBlur = true;
       if (!launchCtx) {
+        try {
+          options?.reserveWebPopup?.();
+        } catch {
+          /* caller reports a blocked popup */
+        }
         finish();
         return;
+      }
+      try {
+        options?.reserveWebPopup?.();
+      } catch {
+        /* caller reports a blocked popup */
       }
       if (graceTimer) return;
       graceTimer = window.setTimeout(() => {
@@ -217,7 +232,7 @@ export async function tryPreferUnlockApp(
       void pollLaunch();
       pollTimer = window.setInterval(() => {
         void pollLaunch();
-      }, 250);
+      }, 1000);
     }
 
     // Cap iOS often shows "Open in Unlock?" without hiding the caller WebView.
@@ -228,12 +243,28 @@ export async function tryPreferUnlockApp(
 
     noDialogTimer = window.setTimeout(() => {
       noDialogTimedOut = true;
+      // App not installed: no dialog ever blurred the page. Reserve now.
+      // A blur means the OS dialog is still up — do not open the web window yet.
+      if (!sawBlur && !document.hidden && !appLaunched) {
+        try {
+          options?.reserveWebPopup?.();
+        } catch {
+          /* caller reports a blocked popup */
+        }
+      }
       finish();
     }, waitMs);
     // Dialog can stay up while the user decides. Do not treat that as Cancel.
     capTimer = window.setTimeout(() => {
       noDialogTimedOut = true;
       sawBlur = false;
+      if (!document.hidden && !appLaunched) {
+        try {
+          options?.reserveWebPopup?.();
+        } catch {
+          /* caller reports a blocked popup */
+        }
+      }
       finish();
     }, 120_000);
   });
@@ -243,6 +274,7 @@ export type LaunchUnlockBrokerOptions = {
   httpsUrl: string;
   preferApp?: boolean;
   waitMs?: number;
+  reserveWebPopup?: () => void;
 };
 
 /**
@@ -257,7 +289,10 @@ export async function launchUnlockBroker(
   if (!prefer) {
     return { useHttpsPopup: true, httpsUrl: options.httpsUrl, usedApp: false, appUrl };
   }
-  const result = await tryPreferUnlockApp(appUrl, { waitMs: options.waitMs });
+  const result = await tryPreferUnlockApp(appUrl, {
+    waitMs: options.waitMs,
+    reserveWebPopup: options.reserveWebPopup,
+  });
   if (result.opened) {
     return { useHttpsPopup: false, httpsUrl: options.httpsUrl, usedApp: true, appUrl };
   }

@@ -18,11 +18,14 @@ export async function connectDriveInThisSession(opts: {
   if (!mlKemSecretKey) return;
   const { publishCloudCredentialsVault } = await import('@par-noir/device-cloud-credentials');
   const { API_ENDPOINT } = await import('../config/api');
-  await publishCloudCredentialsVault({
+  const published = await publishCloudCredentialsVault({
     apiEndpoint: API_ENDPOINT,
     authToken: opts.authToken,
     pnIdentifier: opts.identityId,
     mlKemSecretKey,
     credentials: opts.credentials,
   });
+  if (!published.ok) {
+    throw new Error(published.error || 'Cloud vault publish failed');
+  }
 }

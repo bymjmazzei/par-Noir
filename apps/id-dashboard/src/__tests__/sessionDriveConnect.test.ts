@@ -119,3 +119,31 @@ test('seals the Google token into the cloud vault when the shell unlock left a m
     })
   );
 });
+
+test('a failed vault publish does not count as a saved Google connection', async () => {
+  publishCloudCredentialsVault.mockResolvedValueOnce({
+    ok: false,
+    status: 500,
+    error: 'cloud-vault PUT 500',
+  });
+  rememberShellMlKem(['pn-abc'], 'mlkem-secret');
+
+  await expect(
+    connectDriveInThisSession({
+      identityId: 'pn-abc',
+      authToken: 'owner-jwt',
+      credentials: {
+        socialCloudProvider: 'google_drive',
+        socialCloudAccountId: 'acct',
+        googleDriveAccounts: [
+          {
+            accountId: 'acct',
+            accessToken: 'ya29-test',
+            refreshToken: 'refresh',
+            expires_at: Date.now() + 3_600_000,
+          },
+        ],
+      },
+    })
+  ).rejects.toThrow('cloud-vault PUT 500');
+});

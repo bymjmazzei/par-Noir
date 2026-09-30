@@ -16,7 +16,9 @@ import {
   envelopeHasUsableSecrets,
   type StorageCredentialsEnvelope
 } from '@par-noir/user-owned-storage';
+import { ensureCloudCredentialsReady } from '@par-noir/oauth-ui';
 import { API_ENDPOINT } from '../../config/api';
+import { readShellMlKem } from '../shellMlKem';
 import { getFileAggregatorService } from '../aggregator/FileAggregatorService';
 import { GoogleDriveBackend } from './GoogleDriveBackend';
 import { ownerGet } from '../ownerApiService';
@@ -94,6 +96,39 @@ function accountToken(acct: {
   access_token?: string;
 }): string | null {
   return accountAccessToken(acct as Record<string, unknown>);
+}
+
+/**
+ * Shell unlock has no passcode in this tab. The Google token lives in the
+ * ML-KEM vault (or already in session memory). A passcode session still
+ * unseals the local store.
+ */
+async function envelopeForUnlock(opts: {
+  apiToken: string;
+  pnIdentifier: string;
+  sessionId: string;
+}): Promise<StorageCredentialsEnvelope | null> {
+  const creds = SecureCredentialManager.getCredentials(opts.sessionId);
+  if (creds?.pnName && creds?.passcode) {
+    return loadLocalCloudCredentials({
+      identityId: opts.pnIdentifier,
+      session: {
+        sessionId: opts.sessionId,
+        pnName: creds.pnName,
+        passcode: creds.passcode
+      }
+    });
+  }
+  const mlKemSecretKey = readShellMlKem(opts.pnIdentifier) || readShellMlKem(opts.sessionId);
+  if (mlKemSecretKey) {
+    await ensureCloudCredentialsReady({
+      apiEndpoint: API_ENDPOINT,
+      authToken: opts.apiToken,
+      pnIdentifier: opts.pnIdentifier,
+      mlKemSecretKey
+    });
+  }
+  return getSessionCloudCredentials(opts.pnIdentifier);
 }
 
 async function registerBackendsFromEnvelope(
@@ -263,21 +298,7 @@ export async function bootstrapCloudSession(opts: {
     lastStatus = 'loading';
     lastError = undefined;
     try {
-      const creds = SecureCredentialManager.getCredentials(sessionId);
-      if (!creds?.pnName || !creds?.passcode) {
-        lastStatus = 'needs_reconnect';
-        lastError = 'Session credentials missing';
-        return { status: 'needs_reconnect', error: lastError };
-      }
-
-      const envelope = await loadLocalCloudCredentials({
-        identityId: pnIdentifier,
-        session: {
-          sessionId,
-          pnName: creds.pnName,
-          passcode: creds.passcode
-        }
-      });
+      const envelope = await envelopeForUnlock({ apiToken, pnIdentifier, sessionId });
 
       const tok = await resolveLocalGoogleAccessTokenAsync(pnIdentifier);
       if (!tok && !(envelope?.googleDriveAccounts?.some((a) => accountToken(a)))) {
@@ -391,20 +412,10 @@ export async function ensureCloudSession(opts: {
       /* best-effort */
     }
 
-    const creds = SecureCredentialManager.getCredentials(sessionId);
-    if (!creds?.pnName || !creds?.passcode) {
-      lastStatus = 'needs_reconnect';
-      lastError = 'Session credentials missing';
-      return { status: 'needs_reconnect', error: lastError };
-    }
-
-    const envelope = await loadLocalCloudCredentials({
-      identityId: pnIdentifier,
-      session: {
-        sessionId,
-        pnName: creds.pnName,
-        passcode: creds.passcode
-      }
+    const envelope = await envelopeForUnlock({
+      apiToken: opts.apiToken,
+      pnIdentifier,
+      sessionId
     });
 
     const tok = await resolveLocalGoogleAccessTokenAsync(pnIdentifier);
