@@ -10,7 +10,9 @@ import {
 } from '../services/storage/cloudSessionBootstrap';
 
 const session = new Map<string, { googleDriveAccounts?: Array<{ accessToken?: string }> }>();
-const ensureCloudCredentialsReady = jest.fn(async () => 'ready' as const);
+const ensureCloudCredentialsReady = jest.fn(
+  async (_payload?: unknown): Promise<'ready' | 'missing' | 'unseal_failed' | 'error'> => 'ready'
+);
 
 jest.mock('@par-noir/identity-crypto', () => ({
   SecureCredentialManager: {
@@ -59,7 +61,7 @@ jest.mock('../services/shellMlKem', () => ({
 }));
 
 jest.mock('@par-noir/oauth-ui', () => ({
-  ensureCloudCredentialsReady: (...args: unknown[]) => ensureCloudCredentialsReady(...args),
+  ensureCloudCredentialsReady: (payload: unknown) => ensureCloudCredentialsReady(payload),
 }));
 
 beforeEach(() => {

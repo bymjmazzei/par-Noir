@@ -13,7 +13,12 @@ import { clearShellMlKem, rememberShellMlKem } from '../services/shellMlKem';
 
 const ownerGet = jest.fn();
 const ownerFetch = jest.fn();
-const publishCloudCredentialsVault = jest.fn(async (_payload?: unknown) => ({ ok: true, status: 200 }));
+const publishCloudCredentialsVault = jest.fn(
+  async (_payload?: unknown): Promise<{ ok: boolean; status: number; error?: string }> => ({
+    ok: true,
+    status: 200,
+  })
+);
 const mockSessionCreds = new Map<string, { googleDriveAccounts?: Array<{ accessToken?: string }> }>();
 
 jest.mock('../config/api', () => ({ API_ENDPOINT: 'https://api.parnoir.com' }));
