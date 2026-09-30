@@ -81,7 +81,7 @@ function App() {
   // Use custom hooks for state management - MUST be declared before any functions that use these variables
   const appState = useAppState();
   const identityState = useIdentityState();
-  const { apiToken, connectError, clearApiToken, ensureApiTokenAfterUnlock } = useApiToken();
+  const { apiToken, connectError, clearApiToken, ensureApiTokenAfterUnlock, adoptShellAccessToken } = useApiToken();
   const privacyState = usePrivacyState();
   const exportState = useExportState();
   const custodianState = useCustodianState();
@@ -1062,6 +1062,7 @@ function App() {
     apiToken,
     clearApiToken,
     ensureApiTokenAfterUnlock,
+    adoptShellAccessToken,
     getEncryptedIdentityForApiToken,
     setLoading,
     setError,

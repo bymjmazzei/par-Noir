@@ -14,6 +14,7 @@ import {
   setStoredToken,
   type InlineOAuthAcquireInput
 } from '../services/parNoirOAuthInline';
+import { shellUnlockStoredToken } from '../services/shellUnlockToken';
 
 export function useApiToken() {
   // Do not hydrate from sessionStorage here — token is pN-scoped and may belong to a different identity.
@@ -68,6 +69,13 @@ export function useApiToken() {
     return null;
   }, []);
 
+  const adoptShellAccessToken = useCallback(async (accessToken: string, publicKey: string): Promise<string> => {
+    const record = await shellUnlockStoredToken(accessToken, publicKey);
+    setStoredToken(record);
+    setApiToken(record.accessToken);
+    return record.accessToken;
+  }, []);
+
   const ensureApiTokenAfterUnlock = useCallback(
     async (input: InlineOAuthAcquireInput): Promise<string | null> => {
       // The OAuth access token embeds a pN identifier; the API rejects (403) any owner route
@@ -107,5 +115,13 @@ export function useApiToken() {
     []
   );
 
-  return { apiToken, connectApi, clearApiToken, isConnecting, connectError, ensureApiTokenAfterUnlock };
+  return {
+    apiToken,
+    connectApi,
+    clearApiToken,
+    isConnecting,
+    connectError,
+    ensureApiTokenAfterUnlock,
+    adoptShellAccessToken,
+  };
 }

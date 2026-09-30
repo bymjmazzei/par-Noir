@@ -58,6 +58,7 @@ export interface UseAuthUnlockHandlersParams {
   apiToken: string | null;
   clearApiToken: ApiTokenState['clearApiToken'];
   ensureApiTokenAfterUnlock: ApiTokenState['ensureApiTokenAfterUnlock'];
+  adoptShellAccessToken: ApiTokenState['adoptShellAccessToken'];
   getEncryptedIdentityForApiToken: (
     identityPublicKeyOrId: string | undefined
   ) => Promise<{ encryptedData: string; iv: string; salt: string } | null>;
@@ -116,6 +117,7 @@ export function useAuthUnlockHandlers(params: UseAuthUnlockHandlersParams) {
     apiToken,
     clearApiToken,
     ensureApiTokenAfterUnlock,
+    adoptShellAccessToken,
     getEncryptedIdentityForApiToken,
     setLoading,
     setError,
@@ -1341,10 +1343,14 @@ export function useAuthUnlockHandlers(params: UseAuthUnlockHandlersParams) {
         authenticatedAt,
         publicKey: session.publicKey,
       });
-      setStoredToken({
-        accessToken,
-        expiresAt: Date.now() + 60 * 60 * 1000,
-      });
+      if (session.publicKey) {
+        await adoptShellAccessToken(accessToken, session.publicKey);
+      } else {
+        setStoredToken({
+          accessToken,
+          expiresAt: Date.now() + 60 * 60 * 1000,
+        });
+      }
       setAuthenticatedUser({
         id: session.did,
         nickname: session.nickname || 'pN',
