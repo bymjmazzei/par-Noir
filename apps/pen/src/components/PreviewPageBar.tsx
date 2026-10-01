@@ -591,28 +591,42 @@ export function OrientationChoices({
 }) {
   return (
     <div className="flex flex-col gap-1">
-      <div className="flex items-center gap-1" role="group" aria-label="Orientation">
-        {ORIENTATIONS.map((orientation) => (
-          <button
-            key={orientation.id}
-            type="button"
-            aria-label={orientation.label}
-            title={orientation.label}
-            aria-pressed={pageOrientation === orientation.id}
-            disabled={viewLocked}
-            className={`flex h-7 w-7 items-center justify-center rounded disabled:cursor-not-allowed disabled:opacity-40 ${
-              pageOrientation === orientation.id ? 'bg-stone-800 text-white' : 'text-stone-700 hover:bg-stone-100'
-            }`}
-            onClick={() => {
-              if (viewLocked) return;
-              onPageOrientation(orientation.id);
-            }}
-          >
-            <OrientationIcon orientation={orientation.id} />
-          </button>
-        ))}
+      <div className="flex items-center gap-1">
+        <div className="flex items-center gap-1" role="group" aria-label="Orientation">
+          {ORIENTATIONS.map((orientation) => (
+            <button
+              key={orientation.id}
+              type="button"
+              aria-label={orientation.label}
+              title={orientation.label}
+              aria-pressed={pageOrientation === orientation.id}
+              disabled={viewLocked}
+              className={`flex h-7 w-7 items-center justify-center rounded disabled:cursor-not-allowed disabled:opacity-40 ${
+                pageOrientation === orientation.id ? 'bg-stone-800 text-white' : 'text-stone-700 hover:bg-stone-100'
+              }`}
+              onClick={() => {
+                if (viewLocked) return;
+                onPageOrientation(orientation.id);
+              }}
+            >
+              <OrientationIcon orientation={orientation.id} />
+            </button>
+          ))}
+        </div>
+        <button
+          type="button"
+          aria-label="Overlay engagement bar"
+          title="Overlay the social engagement bar"
+          aria-pressed={engagementGuide}
+          className={`ml-auto rounded px-2 py-1 text-[11px] font-medium ${
+            engagementGuide ? 'bg-stone-800 text-white' : 'bg-white text-stone-700 hover:bg-stone-100'
+          }`}
+          onClick={onToggleEngagementGuide}
+        >
+          Engagement
+        </button>
       </div>
-      <div className="flex items-end gap-1">
+      <div className="flex items-center gap-1">
         <div className="flex items-center gap-1" role="group" aria-label="Scroll">
           {SCROLLS.map((view) => (
             <button
@@ -634,32 +648,18 @@ export function OrientationChoices({
             </button>
           ))}
         </div>
-        <div className="flex flex-col gap-1">
-          <button
-            type="button"
-            aria-label="Overlay engagement bar"
-            title="Overlay the social engagement bar"
-            aria-pressed={engagementGuide}
-            className={`rounded px-2 py-1 text-[11px] font-medium ${
-              engagementGuide ? 'bg-stone-800 text-white' : 'bg-white text-stone-700 hover:bg-stone-100'
-            }`}
-            onClick={onToggleEngagementGuide}
-          >
-            Engagement
-          </button>
-          <button
-            type="button"
-            aria-label={viewLocked ? 'Unlock view' : 'Lock view'}
-            title={viewLocked ? 'Unlock view' : 'Lock view'}
-            aria-pressed={viewLocked}
-            className={`rounded px-2 py-1 text-[11px] font-medium ${
-              viewLocked ? 'bg-stone-800 text-white' : 'bg-white text-stone-700 hover:bg-stone-100'
-            }`}
-            onClick={onToggleViewLock}
-          >
-            {viewLocked ? 'Locked' : 'Lock'}
-          </button>
-        </div>
+        <button
+          type="button"
+          aria-label={viewLocked ? 'Unlock view' : 'Lock view'}
+          title={viewLocked ? 'Unlock view' : 'Lock view'}
+          aria-pressed={viewLocked}
+          className={`ml-auto rounded px-2 py-1 text-[11px] font-medium ${
+            viewLocked ? 'bg-stone-800 text-white' : 'bg-white text-stone-700 hover:bg-stone-100'
+          }`}
+          onClick={onToggleViewLock}
+        >
+          {viewLocked ? 'Locked' : 'Lock'}
+        </button>
       </div>
     </div>
   );

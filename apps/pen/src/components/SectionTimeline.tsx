@@ -1108,6 +1108,39 @@ export function SectionTimeline({
           </button>
         ) : null}
         {widget ? null : (
+          <>
+            <button
+              type="button"
+              aria-label="Mirror"
+              title="Mirror"
+              aria-pressed={Boolean(active?.mediaMirror)}
+              className={`inline-flex h-6 w-6 shrink-0 items-center justify-center ${active?.mediaMirror ? 'text-stone-800' : 'text-stone-500'}`}
+              onClick={() => {
+                if (!active) return;
+                onSectionChange(upsertLayer(section, { ...active, mediaMirror: !active.mediaMirror }));
+              }}
+            >
+              <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden>
+                <path d="M8 1.5v13" stroke="currentColor" strokeWidth="1.2" />
+                <path d="M6.6 4.2 2.2 8l4.4 3.8z" fill="currentColor" />
+                <path d="M9.4 4.2 13.8 8l-4.4 3.8z" fill="currentColor" />
+              </svg>
+            </button>
+            <button
+              type="button"
+              aria-label="Reverse"
+              title="Reverse"
+              aria-pressed={Boolean(active?.mediaReversed)}
+              className={`inline-flex h-6 w-6 shrink-0 items-center justify-center ${active?.mediaReversed ? 'text-stone-800' : 'text-stone-500'}`}
+              onClick={() => onReverse?.()}
+            >
+              <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden>
+                <path d="M12.5 2.5 3.5 8l9 5.5V2.5z" fill="currentColor" />
+              </svg>
+            </button>
+          </>
+        )}
+        {widget ? null : (
           <button
             type="button"
             aria-label="Split clip"
@@ -1187,39 +1220,6 @@ export function SectionTimeline({
             </div>
           ) : null}
         </div>
-        {widget ? null : (
-          <>
-            <button
-              type="button"
-              aria-label="Mirror"
-              title="Mirror"
-              aria-pressed={Boolean(active?.mediaMirror)}
-              className={`inline-flex h-6 w-6 shrink-0 items-center justify-center ${active?.mediaMirror ? 'text-stone-800' : 'text-stone-500'}`}
-              onClick={() => {
-                if (!active) return;
-                onSectionChange(upsertLayer(section, { ...active, mediaMirror: !active.mediaMirror }));
-              }}
-            >
-              <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden>
-                <path d="M8 1.5v13" stroke="currentColor" strokeWidth="1.2" />
-                <path d="M6.6 4.2 2.2 8l4.4 3.8z" fill="currentColor" />
-                <path d="M9.4 4.2 13.8 8l-4.4 3.8z" fill="currentColor" />
-              </svg>
-            </button>
-            <button
-              type="button"
-              aria-label="Reverse"
-              title="Reverse"
-              aria-pressed={Boolean(active?.mediaReversed)}
-              className={`inline-flex h-6 w-6 shrink-0 items-center justify-center ${active?.mediaReversed ? 'text-stone-800' : 'text-stone-500'}`}
-              onClick={() => onReverse?.()}
-            >
-              <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden>
-                <path d="M12.5 2.5 3.5 8l9 5.5V2.5z" fill="currentColor" />
-              </svg>
-            </button>
-          </>
-        )}
         </div>
         <div className="flex shrink-0 items-center justify-center gap-1">
         <button

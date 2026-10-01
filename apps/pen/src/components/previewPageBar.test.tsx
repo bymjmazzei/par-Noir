@@ -353,9 +353,12 @@ describe('preview page toolbar', () => {
       />
     );
     const engagement = html.indexOf('aria-label="Overlay engagement bar"');
+    const scroll = html.indexOf('aria-label="Scroll vertically"');
     const lock = html.indexOf('aria-label="Lock view"');
     expect(engagement).toBeGreaterThan(-1);
-    expect(engagement).toBeLessThan(lock);
+    expect(html.indexOf('aria-label="Landscape"')).toBeLessThan(engagement);
+    expect(engagement).toBeLessThan(scroll);
+    expect(scroll).toBeLessThan(lock);
     expect(html.slice(engagement, lock)).toContain('aria-pressed="true"');
     expect(html).toContain('Engagement');
   });

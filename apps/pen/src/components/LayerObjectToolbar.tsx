@@ -263,7 +263,7 @@ export function LayerObjectToolbar({
   const isAction = layer?.kind === 'embed' || layer?.kind === 'interactive';
 
   return (
-    <div className="relative flex min-w-0 items-center gap-0.5">
+    <div className="relative flex max-w-full flex-wrap items-center gap-0.5">
       {isAction && layer && !hideActionBind && (
         <ActionBindStrip
           layer={layer}

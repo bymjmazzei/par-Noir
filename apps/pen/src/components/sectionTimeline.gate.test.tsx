@@ -98,11 +98,11 @@ describe('section timeline', () => {
     expect(html).toContain('grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)]');
     expect(html).not.toContain('flex-wrap items-center gap-2');
     expect(html).toContain('aria-label="Split clip"');
+    expect(html.indexOf('aria-label="Mirror"')).toBeLessThan(html.indexOf('aria-label="Reverse"'));
+    expect(html.indexOf('aria-label="Reverse"')).toBeLessThan(html.indexOf('aria-label="Split clip"'));
     expect(html.indexOf('aria-label="Split clip"')).toBeLessThan(html.indexOf('aria-label="Keyframe"'));
     expect(html.indexOf('aria-label="Keyframe"')).toBeLessThan(html.indexOf('aria-label="Graph"'));
-    expect(html.indexOf('aria-label="Graph"')).toBeLessThan(html.indexOf('aria-label="Mirror"'));
-    expect(html.indexOf('aria-label="Mirror"')).toBeLessThan(html.indexOf('aria-label="Reverse"'));
-    expect(html.indexOf('aria-label="Reverse"')).toBeLessThan(html.indexOf('aria-label="Play"'));
+    expect(html.indexOf('aria-label="Graph"')).toBeLessThan(html.indexOf('aria-label="Play"'));
     expect(html.indexOf('aria-label="Play"')).toBeLessThan(html.indexOf('aria-label="Zoom"'));
     expect(html.indexOf('aria-label="Zoom"')).toBeLessThan(html.indexOf('aria-label="Delete clip"'));
     expect(html).toContain('aria-label="Mirror"');

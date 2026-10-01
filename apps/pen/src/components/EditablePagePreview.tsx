@@ -889,7 +889,7 @@ export function EditablePagePreview({
     <>
       <div
         ref={pageToolsRef}
-        className="relative z-20 flex shrink-0 items-center gap-2 border-b border-neutral-200 bg-white px-2 py-1.5"
+        className="relative z-20 flex shrink-0 flex-wrap items-center gap-2 border-b border-neutral-200 bg-white px-2 py-1.5"
       >
         {onPageSizeChange && (
           <div className="relative shrink-0">
@@ -1046,7 +1046,7 @@ export function EditablePagePreview({
           </button>
         )}
 
-        <div className="ml-auto flex min-w-0 items-center gap-1">
+        <div className="ml-auto flex max-w-full shrink-0 flex-wrap items-center gap-1">
           <LayerObjectToolbar
             target={
               pageActive || !activeObject
