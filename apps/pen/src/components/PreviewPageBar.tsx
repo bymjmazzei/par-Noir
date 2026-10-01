@@ -558,20 +558,36 @@ const SCROLLS: Array<{ id: PenPageView; label: string }> = [
   { id: 'screen', label: 'Screen' }
 ];
 
+/** Screen is one published frame, so the rail sits on the right edge of the strip. */
+export function engagementGuideOnPage(
+  enabled: boolean,
+  pageView: PenPageView,
+  index: number,
+  pageCount: number
+): boolean {
+  if (!enabled) return false;
+  if (pageView === 'screen') return pageCount > 0 && index === pageCount - 1;
+  return true;
+}
+
 export function OrientationChoices({
   pageOrientation,
   pageView,
   viewLocked = false,
+  engagementGuide = false,
   onPageOrientation,
   onPageView,
-  onToggleViewLock
+  onToggleViewLock,
+  onToggleEngagementGuide
 }: {
   pageOrientation: PenPageOrientation;
   pageView: PenPageView;
   viewLocked?: boolean;
+  engagementGuide?: boolean;
   onPageOrientation: (orientation: PenPageOrientation) => void;
   onPageView: (view: PenPageView) => void;
   onToggleViewLock: () => void;
+  onToggleEngagementGuide?: () => void;
 }) {
   return (
     <div className="flex flex-col gap-1">
@@ -596,38 +612,54 @@ export function OrientationChoices({
           </button>
         ))}
       </div>
-      <div className="flex items-center gap-1" role="group" aria-label="Scroll">
-        {SCROLLS.map((view) => (
+      <div className="flex items-end gap-1">
+        <div className="flex items-center gap-1" role="group" aria-label="Scroll">
+          {SCROLLS.map((view) => (
+            <button
+              key={view.id}
+              type="button"
+              aria-label={view.label}
+              title={view.label}
+              aria-pressed={pageView === view.id}
+              disabled={viewLocked}
+              className={`flex h-7 w-7 items-center justify-center rounded disabled:cursor-not-allowed disabled:opacity-40 ${
+                pageView === view.id ? 'bg-stone-800 text-white' : 'text-stone-700 hover:bg-stone-100'
+              }`}
+              onClick={() => {
+                if (viewLocked) return;
+                onPageView(view.id);
+              }}
+            >
+              <ScrollIcon view={view.id} />
+            </button>
+          ))}
+        </div>
+        <div className="flex flex-col gap-1">
           <button
-            key={view.id}
             type="button"
-            aria-label={view.label}
-            title={view.label}
-            aria-pressed={pageView === view.id}
-            disabled={viewLocked}
-            className={`flex h-7 w-7 items-center justify-center rounded disabled:cursor-not-allowed disabled:opacity-40 ${
-              pageView === view.id ? 'bg-stone-800 text-white' : 'text-stone-700 hover:bg-stone-100'
+            aria-label="Overlay engagement bar"
+            title="Overlay the social engagement bar"
+            aria-pressed={engagementGuide}
+            className={`rounded px-2 py-1 text-[11px] font-medium ${
+              engagementGuide ? 'bg-stone-800 text-white' : 'bg-white text-stone-700 hover:bg-stone-100'
             }`}
-            onClick={() => {
-              if (viewLocked) return;
-              onPageView(view.id);
-            }}
+            onClick={onToggleEngagementGuide}
           >
-            <ScrollIcon view={view.id} />
+            Engagement
           </button>
-        ))}
-        <button
-          type="button"
-          aria-label={viewLocked ? 'Unlock view' : 'Lock view'}
-          title={viewLocked ? 'Unlock view' : 'Lock view'}
-          aria-pressed={viewLocked}
-          className={`rounded px-2 py-1 text-[11px] font-medium ${
-            viewLocked ? 'bg-stone-800 text-white' : 'bg-white text-stone-700 hover:bg-stone-100'
-          }`}
-          onClick={onToggleViewLock}
-        >
-          {viewLocked ? 'Locked' : 'Lock'}
-        </button>
+          <button
+            type="button"
+            aria-label={viewLocked ? 'Unlock view' : 'Lock view'}
+            title={viewLocked ? 'Unlock view' : 'Lock view'}
+            aria-pressed={viewLocked}
+            className={`rounded px-2 py-1 text-[11px] font-medium ${
+              viewLocked ? 'bg-stone-800 text-white' : 'bg-white text-stone-700 hover:bg-stone-100'
+            }`}
+            onClick={onToggleViewLock}
+          >
+            {viewLocked ? 'Locked' : 'Lock'}
+          </button>
+        </div>
       </div>
     </div>
   );
@@ -637,16 +669,20 @@ export function PreviewOrientationMenu({
   pageOrientation,
   pageView,
   viewLocked = false,
+  engagementGuide = false,
   onPageOrientation,
   onPageView,
-  onToggleViewLock
+  onToggleViewLock,
+  onToggleEngagementGuide
 }: {
   pageOrientation: PenPageOrientation;
   pageView: PenPageView;
   viewLocked?: boolean;
+  engagementGuide?: boolean;
   onPageOrientation: (orientation: PenPageOrientation) => void;
   onPageView: (view: PenPageView) => void;
   onToggleViewLock: () => void;
+  onToggleEngagementGuide?: () => void;
 }) {
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
@@ -680,9 +716,11 @@ export function PreviewOrientationMenu({
             pageOrientation={pageOrientation}
             pageView={pageView}
             viewLocked={viewLocked}
+            engagementGuide={engagementGuide}
             onPageOrientation={onPageOrientation}
             onPageView={onPageView}
             onToggleViewLock={onToggleViewLock}
+            onToggleEngagementGuide={onToggleEngagementGuide}
           />
         </div>
       )}

@@ -1,5 +1,8 @@
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
+import { PublishedEngagementBar } from '@par-noir/feed-tile';
 import {
   appendDocPage,
   defaultPagePresentation,
@@ -10,6 +13,7 @@ import {
 } from '@par-noir/pen-protocol';
 import {
   OrientationChoices,
+  engagementGuideOnPage,
   pageTileAxis,
   PageFinderTiles,
   PreviewOrientationMenu,
@@ -335,6 +339,51 @@ describe('preview page toolbar', () => {
     expect(html.match(/data-page-break/g)?.length).toBe(1);
     expect(html).toContain('gap:12px');
     expect(html).not.toContain('data-page-seam');
+  });
+
+  it('puts the engagement overlay above lock', () => {
+    const html = renderToStaticMarkup(
+      <OrientationChoices
+        pageOrientation="portrait"
+        pageView="horizontal"
+        engagementGuide
+        onPageOrientation={() => undefined}
+        onPageView={() => undefined}
+        onToggleViewLock={() => undefined}
+      />
+    );
+    const engagement = html.indexOf('aria-label="Overlay engagement bar"');
+    const lock = html.indexOf('aria-label="Lock view"');
+    expect(engagement).toBeGreaterThan(-1);
+    expect(engagement).toBeLessThan(lock);
+    expect(html.slice(engagement, lock)).toContain('aria-pressed="true"');
+    expect(html).toContain('Engagement');
+  });
+
+  it('paints the engagement guide on each page, and on a screen strip only at the right edge', () => {
+    expect(engagementGuideOnPage(false, 'horizontal', 0, 3)).toBe(false);
+    expect(engagementGuideOnPage(true, 'horizontal', 0, 3)).toBe(true);
+    expect(engagementGuideOnPage(true, 'vertical', 1, 3)).toBe(true);
+    expect(engagementGuideOnPage(true, 'screen', 0, 3)).toBe(false);
+    expect(engagementGuideOnPage(true, 'screen', 2, 3)).toBe(true);
+  });
+
+  it('the engagement guide matches the published rail and stays off the compose root', () => {
+    const html = renderToStaticMarkup(<PublishedEngagementBar />);
+    expect(html).toContain('data-pen-engagement-guide');
+    expect(html).toContain('pointer-events-none');
+    expect(html).toContain('VIEWS');
+    expect(html).toContain('M0,90.56c2.45-9.18');
+    expect(html).toContain('right-2');
+    expect(html).not.toContain('<button');
+    const preview = readFileSync(resolve(__dirname, 'EditablePagePreview.tsx'), 'utf8');
+    const sheetEnd = preview.indexOf('</PageSheetColumn>');
+    const guide = preview.indexOf('<PublishedEngagementBar');
+    expect(sheetEnd).toBeGreaterThan(-1);
+    expect(guide).toBeGreaterThan(sheetEnd);
+    expect(preview.slice(preview.indexOf('composeExportRoot'), sheetEnd)).not.toContain(
+      'PublishedEngagementBar'
+    );
   });
 
   it('a locked orientation popup disables the other views', () => {

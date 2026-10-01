@@ -79,7 +79,7 @@ import { PreviewOrientationMenu } from './PreviewPageBar';
 import { PageGuides } from './PageGuides';
 import { PageSheetColumn } from './PageSheetColumn';
 import { LayerMediaContent } from './LayerMediaContent';
-import { PenMediaPlayer } from '@par-noir/feed-tile';
+import { PenMediaPlayer, PublishedEngagementBar } from '@par-noir/feed-tile';
 import { usePlaybackMode } from '../hooks/usePlaybackMode';
 import { useResolvedMediaSrc } from '../hooks/useResolvedMediaSrc';
 import { ensureGoogleFontsLoaded } from '../services/penGoogleFonts';
@@ -481,9 +481,12 @@ export function EditablePagePreview({
   pageView,
   pageOrientation = 'portrait',
   viewLocked = false,
+  engagementGuide = false,
+  paintEngagementGuide = false,
   onPageOrientation,
   onPageView,
   onToggleViewLock,
+  onToggleEngagementGuide,
   playheadSec = 0,
   onEnterGroup,
   guideSpan
@@ -515,9 +518,14 @@ export function EditablePagePreview({
   pageView?: PenPageView;
   pageOrientation?: PenPageOrientation;
   viewLocked?: boolean;
+  /** Orientation-menu toggle. Editor session only; not stored on the doc. */
+  engagementGuide?: boolean;
+  /** Paint the rail on this page. Screen paints it on the strip's right edge only. */
+  paintEngagementGuide?: boolean;
   onPageOrientation?: (orientation: PenPageOrientation) => void;
   onPageView?: (view: PenPageView) => void;
   onToggleViewLock?: () => void;
+  onToggleEngagementGuide?: () => void;
   /** Section clock. Layers with keys are sampled here for display only. */
   playheadSec?: number;
   onEnterGroup?: (id: string) => void;
@@ -978,9 +986,11 @@ export function EditablePagePreview({
             pageOrientation={pageOrientation}
             pageView={pageView}
             viewLocked={viewLocked}
+            engagementGuide={engagementGuide}
             onPageOrientation={onPageOrientation}
             onPageView={onPageView}
             onToggleViewLock={onToggleViewLock}
+            onToggleEngagementGuide={onToggleEngagementGuide}
           />
         )}
         <div className="relative shrink-0">
@@ -1106,10 +1116,10 @@ export function EditablePagePreview({
         ref={scrollerRef}
         className={
           scrollWithParent
-            ? `flex h-full min-h-0 w-full flex-col bg-transparent p-0 ${
+            ? `relative flex h-full min-h-0 w-full flex-col bg-transparent p-0 ${
                 artboard ? 'overflow-visible' : 'overflow-hidden'
               }`
-            : `flex min-h-0 flex-1 overflow-auto ${clearChrome ? 'bg-transparent' : 'bg-neutral-100'} ${
+            : `relative flex min-h-0 flex-1 overflow-auto ${clearChrome ? 'bg-transparent' : 'bg-neutral-100'} ${
                 flowOpen ? 'items-stretch p-0' : 'items-start justify-center p-6'
               }`
         }
@@ -1430,6 +1440,7 @@ export function EditablePagePreview({
             )}
           </div>
         </PageSheetColumn>
+        {paintEngagementGuide ? <PublishedEngagementBar /> : null}
       </div>
     </div>
   );

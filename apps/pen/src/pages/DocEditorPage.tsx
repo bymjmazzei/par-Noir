@@ -97,6 +97,7 @@ import {
   PreviewPageStrip,
   PreviewZoomControl,
   previewFitScale,
+  engagementGuideOnPage,
   previewStripLayout,
   previewWorkspaceLayout,
   workspaceGuideAlong,
@@ -251,6 +252,7 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
   const [editorSplitWide, setEditorSplitWide] = useState(true);
   const [screenAllPages, setScreenAllPages] = useState(false);
   const [previewZoom, setPreviewZoom] = useState(1);
+  const [engagementGuide, setEngagementGuide] = useState(false);
   const [previewScroll, setPreviewScroll] = useState({
     sig: '',
     recenterKey: '',
@@ -3191,9 +3193,17 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
                             pageView={pageView}
                             pageOrientation={pageOrientation}
                             viewLocked={bundle.manifest.pageViewLocked === true}
+                            engagementGuide={engagementGuide}
+                            paintEngagementGuide={engagementGuideOnPage(
+                              engagementGuide,
+                              pageView,
+                              index,
+                              previewPages.length
+                            )}
                             onPageOrientation={setPageOrientation}
                             onPageView={setPreviewPageView}
                             onToggleViewLock={togglePageViewLock}
+                            onToggleEngagementGuide={() => setEngagementGuide((on) => !on)}
                             buttonCaptionById={buttonCaptionById}
                             session={session}
                             onEnterGroup={(id) => {
