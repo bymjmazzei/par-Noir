@@ -2,7 +2,13 @@
  * Section clock. Each non-guide layer is a track. Keys live on the layer.
  */
 
-import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
+import {
+  useEffect,
+  useRef,
+  useState,
+  type CSSProperties,
+  type PointerEvent as ReactPointerEvent
+} from 'react';
 import {
   acquirePenMediaController,
   peekPenMediaController,
@@ -534,6 +540,21 @@ function RememberVideoSrc({
   return null;
 }
 
+/** One clip lane is h-8. space-y-1 is the gap between rows. */
+export const TIMELINE_LANE_PX = 32;
+export const TIMELINE_GAP_PX = 4;
+export const TIMELINE_VISIBLE_TRACKS = 3;
+
+/** Null while every track fits. Four or more keep a three-track window until the user drags. */
+export function timelineTracksMaxPx(trackCount: number): number | null {
+  const count = Math.max(0, Math.round(trackCount) || 0);
+  if (count <= TIMELINE_VISIBLE_TRACKS) return null;
+  return (
+    TIMELINE_VISIBLE_TRACKS * TIMELINE_LANE_PX +
+    (TIMELINE_VISIBLE_TRACKS - 1) * TIMELINE_GAP_PX
+  );
+}
+
 export function SectionTimeline({
   section,
   activeLayerId,
@@ -588,6 +609,26 @@ export function SectionTimeline({
   const playheadRef = useRef(playheadSec);
   const playingRef = useRef(playing);
   const rootRef = useRef<HTMLDivElement>(null);
+  const tracksRef = useRef<HTMLDivElement>(null);
+  const [dragTracksPx, setDragTracksPx] = useState<number | null>(null);
+  const [measuredCap, setMeasuredCap] = useState<number | null>(null);
+  useEffect(() => {
+    if (groups.length <= TIMELINE_VISIBLE_TRACKS) {
+      setMeasuredCap(null);
+      return;
+    }
+    const root = tracksRef.current;
+    if (!root) return;
+    const rows = [...root.querySelectorAll(':scope > [data-track-row]')].slice(
+      0,
+      TIMELINE_VISIBLE_TRACKS
+    );
+    if (rows.length < TIMELINE_VISIBLE_TRACKS) return;
+    const next = Math.ceil(
+      rows[rows.length - 1]!.getBoundingClientRect().bottom - rows[0]!.getBoundingClientRect().top
+    );
+    if (next > 0) setMeasuredCap((prev) => (prev === next ? prev : next));
+  }, [groups.length, section]);
   useEffect(() => {
     if (!graphsReady) setGraphsOpen(false);
   }, [graphsReady]);
@@ -918,6 +959,31 @@ export function SectionTimeline({
     setJoinMenu(null);
   }
 
+  function beginResize(event: ReactPointerEvent<HTMLDivElement>) {
+    event.preventDefault();
+    event.stopPropagation();
+    const startY = event.clientY;
+    const startH =
+      tracksRef.current?.getBoundingClientRect().height ??
+      timelineTracksMaxPx(groups.length) ??
+      TIMELINE_LANE_PX;
+    const panel = rootRef.current?.parentElement;
+    const panelH = panel?.getBoundingClientRect().height ?? startH + 160;
+    const timelineH = rootRef.current?.getBoundingClientRect().height ?? startH;
+    const chrome = Math.max(0, timelineH - startH);
+    const maxH = Math.max(TIMELINE_LANE_PX, panelH - chrome - 48);
+    const move = (ev: PointerEvent) => {
+      const next = startH + (startY - ev.clientY);
+      setDragTracksPx(Math.min(maxH, Math.max(TIMELINE_LANE_PX, next)));
+    };
+    const up = () => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+  }
+
   function toggleMute(layer: PenPageLayer) {
     if (layer.kind === 'video') {
       const mediaMuted = layer.mediaMuted === false ? true : false;
@@ -933,12 +999,29 @@ export function SectionTimeline({
     );
   }
 
+  const tracksMax = timelineTracksMaxPx(groups.length);
+  const tracksStyle: CSSProperties | undefined =
+    dragTracksPx != null
+      ? { height: dragTracksPx }
+      : tracksMax != null
+        ? { maxHeight: measuredCap ?? tracksMax }
+        : undefined;
+
   return (
     <div
       ref={rootRef}
       data-media-timeline
-      className="min-w-0 shrink-0 select-none border-t border-stone-200 bg-stone-50"
+      className="min-w-0 shrink-0 select-none bg-stone-50"
     >
+      <div
+        data-timeline-resize
+        role="separator"
+        aria-orientation="horizontal"
+        aria-label="Resize timeline"
+        title="Drag to resize the timeline"
+        className="relative z-30 h-px shrink-0 cursor-ns-resize border-t border-stone-300 before:absolute before:-top-1.5 before:left-0 before:right-0 before:h-3 before:content-['']"
+        onPointerDown={beginResize}
+      />
       <div data-timeline-toolbar className="flex flex-nowrap items-center gap-1 overflow-x-auto px-2 py-0.5">
         <button
           type="button"
@@ -1157,7 +1240,13 @@ export function SectionTimeline({
               </span>
             ))}
           </div>
-          <div data-timeline-tracks className="h-[6.5rem] shrink-0 space-y-1 overflow-x-hidden overflow-y-auto">
+          <div
+            ref={tracksRef}
+            data-timeline-tracks
+            data-timeline-track-cap={String(TIMELINE_VISIBLE_TRACKS)}
+            className="shrink-0 space-y-1 overflow-x-hidden overflow-y-auto"
+            style={tracksStyle}
+          >
         {groups.map(({ trackId, depth, layers: trackLayers }) => {
           const groupLayer = trackLayers.find((item) => item.kind === 'group');
           const layer = trackLayers.find((item) => item.id === activeLayerId) ?? trackLayers[0]!;

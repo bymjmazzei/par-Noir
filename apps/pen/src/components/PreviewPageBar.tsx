@@ -82,7 +82,7 @@ export function PreviewPageStrip({
       data-screen-background={screen ? 'strip' : undefined}
       className={
         pageView === 'vertical'
-          ? 'flex w-full flex-col items-center'
+          ? 'flex w-max max-w-full flex-col items-center'
           : pageView === 'horizontal'
             ? 'flex h-full w-max flex-row items-center justify-center gap-3'
             : 'flex w-max flex-row items-stretch justify-center'

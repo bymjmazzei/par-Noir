@@ -2713,12 +2713,12 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
                   ref={setPreviewPaneEl}
                   className={
                     pageLayout === 'flow'
-                      ? `min-h-0 min-w-0 flex-1 bg-neutral-100 ${
+                      ? `flex min-h-0 min-w-0 flex-1 bg-neutral-100 ${
                           pageView === 'vertical'
-                            ? 'overflow-x-hidden overflow-y-auto'
-                            : 'overflow-x-auto overflow-y-hidden'
+                            ? 'flex-col items-center overflow-x-hidden overflow-y-auto'
+                            : 'flex-row items-center justify-[safe_center] overflow-x-auto overflow-y-hidden'
                         }`
-                      : 'grid min-h-0 min-w-0 flex-1 overflow-auto bg-neutral-100'
+                      : 'grid min-h-0 min-w-0 flex-1 place-items-center overflow-auto bg-neutral-100'
                   }
                 >
                 <div

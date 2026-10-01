@@ -3,7 +3,7 @@
 import { describe, expect, it } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { emptySection, sampleLayerAt, type PenSectionContent } from '@par-noir/pen-protocol';
-import { SectionTimeline } from './SectionTimeline';
+import { SectionTimeline, timelineTracksMaxPx } from './SectionTimeline';
 
 const section: PenSectionContent = {
   ...emptySection('body'),
@@ -100,7 +100,13 @@ describe('section timeline', () => {
     expect(html).toContain('data-clip-title="Title"');
     expect(html).toContain('data-clip-preview="title"');
     expect(html).toContain('data-timeline-tracks');
-    expect(html).toContain('h-[6.5rem]');
+    expect(html).toContain('data-timeline-resize');
+    expect(html).toContain('aria-label="Resize timeline"');
+    expect(html).not.toContain('h-[6.5rem]');
+    expect(html).not.toContain('max-height');
+    expect(timelineTracksMaxPx(1)).toBeNull();
+    expect(timelineTracksMaxPx(3)).toBeNull();
+    expect(timelineTracksMaxPx(4)).toBe(104);
     expect(html).toContain('absolute left-3 top-0.5');
     expect(html).toContain('border-blue-600');
     expect(html).toContain('bg-white');
@@ -268,5 +274,37 @@ describe('section timeline', () => {
     expect(html).toContain('left:20%');
     expect(html).toContain('calc(1.75rem + (100% - 1.75rem) * 0.2)');
     expect(html).not.toContain('left:100%');
+  });
+
+  it('caps the track list at three rows once a fourth track exists', () => {
+    const many: PenSectionContent = {
+      ...emptySection('body'),
+      layers: [1, 2, 3, 4].map((n) => ({
+        id: `row-${n}`,
+        kind: 'text' as const,
+        x: 0,
+        y: 0,
+        w: 40,
+        h: 20,
+        zIndex: n,
+        name: `Row ${n}`
+      }))
+    };
+    const html = renderToStaticMarkup(
+      <SectionTimeline
+        section={many}
+        activeLayerId="row-1"
+        playheadSec={0}
+        playing={false}
+        onPlayhead={() => undefined}
+        onPlaying={() => undefined}
+        onSelectLayer={() => undefined}
+        onSectionChange={() => undefined}
+      />
+    );
+    expect(html).toContain('data-timeline-track-cap="3"');
+    expect(html).toContain('max-height:104px');
+    expect(html).toContain('data-track-row="row-4"');
+    expect(html).toContain('overflow-y-auto');
   });
 });

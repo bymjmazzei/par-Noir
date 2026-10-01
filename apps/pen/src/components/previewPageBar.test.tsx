@@ -61,6 +61,8 @@ describe('preview page toolbar', () => {
     );
     expect(html).toContain('data-page-view="vertical"');
     expect(html).toContain('flex-col');
+    expect(html).toContain('w-max');
+    expect(html).toContain('items-center');
     expect(html).not.toContain('flex-row');
     expect(html).not.toContain('data-page-seam');
   });

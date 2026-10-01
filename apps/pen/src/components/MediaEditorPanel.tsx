@@ -208,9 +208,10 @@ function frameStyle(layer: PenPageLayer, fullPicture = false): CSSProperties {
   const h = Math.max(1, fullPicture ? layer.h / crop.h : layer.h);
   return {
     aspectRatio: `${w} / ${h}`,
-    height: '12rem',
-    width: 'auto',
-    maxWidth: '100%'
+    width: `min(100cqw, calc(100cqh * ${w} / ${h}))`,
+    height: 'auto',
+    maxWidth: '100%',
+    maxHeight: '100%'
   };
 }
 
@@ -366,11 +367,11 @@ export function MediaEditorPanel({
         </div>
       </div>
 
-      <div className="flex min-h-0 flex-1 items-center justify-center overflow-hidden px-3">
+      <div className="flex min-h-0 min-w-0 flex-1 items-center justify-center overflow-hidden px-3 [container-type:size]">
       <div
         data-media-frame
         className="relative overflow-hidden bg-stone-200"
-        style={{ ...frameStyle(layer, cropping), height: '100%', maxHeight: '100%' }}
+        style={frameStyle(layer, cropping)}
       >
           {attached ? (
             <LayerMediaContent
@@ -411,7 +412,7 @@ export function MediaEditorPanel({
       <ActiveSettingContext.Provider value={{ id: activeSetting, setId: setActiveSetting }}>
       <div
         data-media-settings
-        className="max-h-[5.75rem] shrink-0 overflow-y-auto px-3"
+        className="max-h-[5.75rem] min-h-0 shrink overflow-y-auto px-3"
       >
         <div className={tab === 'basic' ? 'grid grid-cols-2 gap-x-3 gap-y-1' : 'hidden'}>
           <InspectorSlider
