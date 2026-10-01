@@ -5,6 +5,7 @@ import {
   clampLayerRect,
   loosenLayerRect,
   pageAllowsPasteboard,
+  pasteboardExtents,
   pasteboardGutterPx,
   contentBoxSize,
   fittedPreviewPagePx,
@@ -189,6 +190,18 @@ describe('pageGeometry', () => {
     expect(loose).toMatchObject({ x: -40, y: 900, w: 24, h: 100 });
     expect(pasteboardGutterPx([loose], 500, 400, 48)).toBe(600);
     expect(pasteboardGutterPx([{ x: 10, y: 10, w: 20, h: 20 }], 500, 400)).toBe(48);
+    expect(pasteboardExtents([loose], 500, 400)).toEqual({
+      left: 40,
+      right: 0,
+      top: 0,
+      bottom: 600
+    });
+    expect(pasteboardExtents([{ x: 10, y: 10, w: 20, h: 20 }], 500, 400)).toEqual({
+      left: 0,
+      right: 0,
+      top: 0,
+      bottom: 0
+    });
   });
 
   it('migrateSectionLayerGeomToPx converts once and stamps layerGeom', () => {

@@ -520,6 +520,29 @@ export function pasteboardGutterPx(
   return Math.max(min, Math.ceil(over));
 }
 
+export type PasteboardExtents = { left: number; right: number; top: number; bottom: number };
+
+/** How far rects hang past each edge of a page or strip. Inside rects add nothing. */
+export function pasteboardExtents(
+  rects: Array<Pick<LayerRect, 'x' | 'y' | 'w' | 'h'>>,
+  boundsW: number,
+  boundsH: number
+): PasteboardExtents {
+  let left = 0;
+  let right = 0;
+  let top = 0;
+  let bottom = 0;
+  for (const rect of rects) {
+    if (![rect.x, rect.y, rect.w, rect.h].every(Number.isFinite)) continue;
+    left = Math.max(left, -rect.x);
+    top = Math.max(top, -rect.y);
+    right = Math.max(right, rect.x + rect.w - boundsW);
+    bottom = Math.max(bottom, rect.y + rect.h - boundsH);
+  }
+  const ceil = (n: number) => Math.max(0, Math.ceil(n));
+  return { left: ceil(left), right: ceil(right), top: ceil(top), bottom: ceil(bottom) };
+}
+
 export type PageMeasureUnit = 'px' | 'in' | 'cm' | 'mm';
 
 const PX_PER_UNIT: Record<PageMeasureUnit, number> = {

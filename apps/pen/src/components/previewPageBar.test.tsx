@@ -13,12 +13,12 @@ import {
   pageTileAxis,
   PageFinderTiles,
   PreviewOrientationMenu,
-  centeredScroll,
   clampPreviewZoom,
   PreviewPageBar,
+  previewStripLayout,
   PreviewPageStrip,
-  PreviewZoomControl,
-  zoomFrameSize
+  previewWorkspaceLayout,
+  PreviewZoomControl
 } from './PreviewPageBar';
 
 describe('preview page toolbar', () => {
@@ -162,10 +162,71 @@ describe('preview page toolbar', () => {
     expect(clampPreviewZoom(0)).toBe(0.25);
     expect(clampPreviewZoom(9)).toBe(4);
     expect(clampPreviewZoom(1.234)).toBe(1.23);
-    expect(centeredScroll(800, 400)).toBe(200);
-    expect(centeredScroll(300, 400)).toBe(0);
-    expect(zoomFrameSize(500, 2, 400)).toBe(1000);
-    expect(zoomFrameSize(200, 1, 400)).toBe(400);
+    const fitted = previewWorkspaceLayout({
+      docW: 200,
+      docH: 400,
+      focusX: 100,
+      focusY: 200,
+      extents: { left: 0, right: 0, top: 0, bottom: 0 },
+      zoom: 1,
+      viewW: 800,
+      viewH: 600
+    });
+    expect(fitted.contentW).toBe(800);
+    expect(fitted.contentH).toBe(600);
+    expect(fitted.scrollLeft).toBe(0);
+    expect(fitted.scrollTop).toBe(0);
+    expect(fitted.padLeft + fitted.docW / 2).toBe(400);
+    const zoomed = previewWorkspaceLayout({
+      docW: 200,
+      docH: 400,
+      focusX: 100,
+      focusY: 200,
+      extents: { left: 0, right: 0, top: 0, bottom: 0 },
+      zoom: 2,
+      viewW: 800,
+      viewH: 600
+    });
+    expect(zoomed.docH).toBe(800);
+    expect(zoomed.scrollTop).toBe(100);
+    expect(zoomed.scrollTop + 300).toBe(zoomed.padTop + zoomed.overTop + zoomed.docH / 2);
+    const hung = previewWorkspaceLayout({
+      docW: 200,
+      docH: 400,
+      focusX: 100,
+      focusY: 200,
+      extents: { left: 500, right: 0, top: 0, bottom: 0 },
+      zoom: 1,
+      viewW: 800,
+      viewH: 600
+    });
+    expect(hung.scrollLeft + 400).toBe(hung.padLeft + hung.overLeft + hung.docW / 2);
+    expect(hung.scrollLeft + 400).not.toBe(hung.contentW / 2);
+    expect(hung.contentW).toBe(1000);
+    expect(hung.scrollLeft).toBe(200);
+    const inside = previewWorkspaceLayout({
+      docW: 200,
+      docH: 400,
+      focusX: 100,
+      focusY: 200,
+      extents: { left: 0, right: 40, top: 0, bottom: 0 },
+      zoom: 1,
+      viewW: 800,
+      viewH: 600
+    });
+    expect(inside.contentW).toBe(800);
+    expect(inside.scrollLeft).toBe(0);
+    const strip = previewStripLayout({
+      pageView: 'horizontal',
+      pageCount: 2,
+      pageW: 100,
+      pageH: 200,
+      activeIndex: 1,
+      screenAllPages: false,
+      screenFit: 1
+    });
+    expect(strip.docW).toBe(212);
+    expect(strip.focusX).toBe(162);
     const html = renderToStaticMarkup(<PreviewZoomControl zoom={1} onZoom={() => undefined} />);
     expect(html).toContain('aria-label="Workspace zoom"');
     expect(html).toContain('data-preview-zoom');

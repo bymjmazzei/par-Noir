@@ -21,6 +21,9 @@ import { pageFrameStyle } from './LayerObjectToolbar';
 
 const THUMB_W = 280;
 
+/** Space between pages in a horizontal strip. Matches the strip layout math. */
+export const PREVIEW_STRIP_GAP_PX = 12;
+
 function PageCut({ axis }: { axis: 'x' | 'y' }) {
   const vertical = axis === 'y';
   return (
@@ -84,7 +87,7 @@ export function PreviewPageStrip({
         pageView === 'vertical'
           ? 'flex w-max max-w-full flex-col items-center'
           : pageView === 'horizontal'
-            ? 'mx-auto flex h-full w-max shrink-0 flex-row items-center justify-center gap-3'
+            ? 'mx-auto flex w-max shrink-0 flex-row items-center justify-center'
             : 'flex w-max flex-row items-stretch justify-center'
       }
       style={
@@ -94,7 +97,9 @@ export function PreviewPageStrip({
               ...(pageHeightPx ? { height: pageHeightPx } : {}),
               ...(background || {})
             }
-          : undefined
+          : pageView === 'horizontal'
+            ? { gap: PREVIEW_STRIP_GAP_PX }
+            : undefined
       }
     >
       {screen
@@ -136,14 +141,182 @@ export function clampPreviewZoom(value: number): number {
   return Math.min(PREVIEW_ZOOM_MAX, Math.max(PREVIEW_ZOOM_MIN, stepped));
 }
 
-/** Scroll offset that puts the middle of the content in the middle of the view. */
-export function centeredScroll(scrollSize: number, viewSize: number): number {
-  return Math.max(0, (scrollSize - viewSize) / 2);
+export type PreviewStripLayout = {
+  docW: number;
+  docH: number;
+  /** Center of the page that stays in the middle of the view, in strip pixels. */
+  focusX: number;
+  focusY: number;
+  /** Scale from page pixels into this strip (screen view-all fit). */
+  extentScale: number;
+  origin: (index: number) => { x: number; y: number };
+};
+
+/** Unscaled strip box. The focused page is the active page, or the whole spread in view-all. */
+export function previewStripLayout(input: {
+  pageView: PenPageView;
+  pageCount: number;
+  pageW: number;
+  pageH: number;
+  activeIndex: number;
+  screenAllPages: boolean;
+  screenFit: number;
+}): PreviewStripLayout {
+  const pageW = Math.max(0, input.pageW);
+  const pageH = Math.max(0, input.pageH);
+  const many = Math.max(1, Math.round(input.pageCount) || 1);
+  const singleScreen = input.pageView === 'screen' && !input.screenAllPages;
+  const count = singleScreen ? 1 : many;
+  const index = singleScreen ? 0 : Math.min(count - 1, Math.max(0, Math.round(input.activeIndex) || 0));
+  if (input.pageView === 'vertical') {
+    return {
+      docW: pageW,
+      docH: pageH * count,
+      focusX: pageW / 2,
+      focusY: index * pageH + pageH / 2,
+      extentScale: 1,
+      origin: (i) => ({ x: 0, y: i * pageH })
+    };
+  }
+  if (input.pageView === 'horizontal') {
+    const step = pageW + PREVIEW_STRIP_GAP_PX;
+    return {
+      docW: pageW * count + PREVIEW_STRIP_GAP_PX * Math.max(0, count - 1),
+      docH: pageH,
+      focusX: index * step + pageW / 2,
+      focusY: pageH / 2,
+      extentScale: 1,
+      origin: (i) => ({ x: i * step, y: 0 })
+    };
+  }
+  const fit =
+    input.screenAllPages && Number.isFinite(input.screenFit) && input.screenFit > 0
+      ? input.screenFit
+      : 1;
+  if (!input.screenAllPages) {
+    return {
+      docW: pageW,
+      docH: pageH,
+      focusX: pageW / 2,
+      focusY: pageH / 2,
+      extentScale: 1,
+      origin: () => ({ x: 0, y: 0 })
+    };
+  }
+  const docW = pageW * many * fit;
+  const docH = pageH * fit;
+  return {
+    docW,
+    docH,
+    focusX: docW / 2,
+    focusY: docH / 2,
+    extentScale: fit,
+    origin: (i) => ({ x: i * pageW * fit, y: 0 })
+  };
 }
 
-/** Frame is at least the pane, and large enough for the scaled page. */
-export function zoomFrameSize(layoutPx: number, zoom: number, viewPx: number): number {
-  return Math.max(viewPx, Math.ceil(Math.max(0, layoutPx) * clampPreviewZoom(zoom)));
+export type PreviewWorkspace = {
+  zoom: number;
+  docW: number;
+  docH: number;
+  padLeft: number;
+  padRight: number;
+  padTop: number;
+  padBottom: number;
+  overLeft: number;
+  overRight: number;
+  overTop: number;
+  overBottom: number;
+  contentW: number;
+  contentH: number;
+  scrollLeft: number;
+  scrollTop: number;
+};
+
+type WorkspaceAxis = {
+  padBefore: number;
+  padAfter: number;
+  overBefore: number;
+  overAfter: number;
+  content: number;
+  scroll: number;
+};
+
+/** Pads center the focus in the view. Overhang grows only the side a layer occupies. */
+function workspaceAxis(
+  strip: number,
+  focusCenter: number,
+  overBefore: number,
+  overAfter: number,
+  view: number
+): WorkspaceAxis {
+  const size = Math.max(0, Math.round(strip));
+  const focus = Math.min(size, Math.max(0, focusCenter));
+  const before = Math.max(0, Math.ceil(overBefore));
+  const after = Math.max(0, Math.ceil(overAfter));
+  const viewPx = Math.max(0, Math.round(view));
+  let padBefore = Math.max(0, Math.round(viewPx / 2 - (before + focus)));
+  let padAfter = Math.max(0, Math.round(viewPx / 2 - (after + (size - focus))));
+  let content = padBefore + before + size + after + padAfter;
+  const slack = content - viewPx;
+  if (viewPx > 0 && slack > 0 && slack <= 1) {
+    if (padAfter >= slack) padAfter -= slack;
+    else if (padBefore >= slack) padBefore -= slack;
+    content = padBefore + before + size + after + padAfter;
+  }
+  const maxScroll = Math.max(0, content - viewPx);
+  const scroll = Math.min(maxScroll, Math.max(0, Math.round(padBefore + before + focus - viewPx / 2)));
+  return { padBefore, padAfter, overBefore: before, overAfter: after, content, scroll };
+}
+
+/**
+ * Scrollable workspace is the zoomed strip plus layers past its edges.
+ * Scroll rests on the document center, not the center of that workspace.
+ */
+export function previewWorkspaceLayout(input: {
+  docW: number;
+  docH: number;
+  focusX: number;
+  focusY: number;
+  extents: { left: number; right: number; top: number; bottom: number };
+  zoom: number;
+  viewW: number;
+  viewH: number;
+}): PreviewWorkspace {
+  const zoom = clampPreviewZoom(input.zoom);
+  const docW = Math.max(0, input.docW) * zoom;
+  const docH = Math.max(0, input.docH) * zoom;
+  const x = workspaceAxis(
+    docW,
+    input.focusX * zoom,
+    input.extents.left * zoom,
+    input.extents.right * zoom,
+    input.viewW
+  );
+  const y = workspaceAxis(
+    docH,
+    input.focusY * zoom,
+    input.extents.top * zoom,
+    input.extents.bottom * zoom,
+    input.viewH
+  );
+  return {
+    zoom,
+    docW: Math.round(docW),
+    docH: Math.round(docH),
+    padLeft: x.padBefore,
+    padRight: x.padAfter,
+    padTop: y.padBefore,
+    padBottom: y.padAfter,
+    overLeft: x.overBefore,
+    overRight: x.overAfter,
+    overTop: y.overBefore,
+    overBottom: y.overAfter,
+    contentW: x.content,
+    contentH: y.content,
+    scrollLeft: x.scroll,
+    scrollTop: y.scroll
+  };
 }
 
 export function PreviewZoomControl({

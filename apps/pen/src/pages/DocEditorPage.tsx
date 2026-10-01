@@ -36,8 +36,8 @@ import {
   reorderDocPages,
   fittedPreviewPagePx,
   isFlowWorkspaceOpen,
-  EDITOR_PASTEBOARD_PX,
   PREVIEW_PAGE_GUTTER_PX,
+  pasteboardExtents,
   pageAllowsPasteboard,
   previewPageUsesGutter,
   resolvePagePaddingPx,
@@ -53,7 +53,6 @@ import {
   shouldPublishSocialAsCollection,
   downloadKindForSections,
   partitionSectionsForPublish,
-  pasteboardGutterPx,
   resolveTimelineDuration,
   sectionHasMotion,
   sectionIsFeedPage,
@@ -93,11 +92,11 @@ import { FormatRibbon, PageCanvas } from '../components/PageCanvas';
 import { EditablePagePreview } from '../components/EditablePagePreview';
 import { ScreenLayerStage } from '../components/ScreenLayerStage';
 import {
-  centeredScroll,
   PreviewPageBar,
   PreviewPageStrip,
   PreviewZoomControl,
-  zoomFrameSize
+  previewStripLayout,
+  previewWorkspaceLayout
 } from '../components/PreviewPageBar';
 import { pageFrameStyle } from '../components/LayerObjectToolbar';
 import { SocialFeedPhonePreview } from '../components/SocialFeedPhonePreview';
@@ -243,8 +242,17 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
   const [previewPaneEl, setPreviewPaneEl] = useState<HTMLDivElement | null>(null);
   const [screenAllPages, setScreenAllPages] = useState(false);
   const [previewZoom, setPreviewZoom] = useState(1);
-  const [previewStageEl, setPreviewStageEl] = useState<HTMLDivElement | null>(null);
-  const [zoomFrame, setZoomFrame] = useState({ w: 0, h: 0 });
+  const [previewScroll, setPreviewScroll] = useState({
+    sig: '',
+    recenterKey: '',
+    scrollLeft: 0,
+    scrollTop: 0,
+    leadingX: 0,
+    leadingY: 0,
+    prevLeadingX: 0,
+    prevLeadingY: 0,
+    recenter: true
+  });
   const [previewPaneSize, setPreviewPaneSize] = useState({ width: 0, height: 0 });
   const [galleryComposeCapture, setGalleryComposeCapture] = useState(false);
   const [captureLayers, setCaptureLayers] = useState(false);
@@ -316,36 +324,19 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
   }, [previewPaneEl]);
 
   useEffect(() => {
-    if (!previewPaneEl) return;
-    const el = previewPaneEl.querySelector(`[data-preview-page="${CSS.escape(activeSlug)}"]`);
-    if (el instanceof HTMLElement) el.scrollIntoView({ block: 'nearest', inline: 'nearest' });
-  }, [activeSlug, previewPaneEl, bundle?.manifest.pageView]);
-
-  useEffect(() => {
     const pane = previewPaneEl;
-    const stage = previewStageEl;
-    if (!pane || !stage) return;
-    const apply = () => {
-      const w = zoomFrameSize(stage.offsetWidth, previewZoom, pane.clientWidth);
-      const h = zoomFrameSize(stage.offsetHeight, previewZoom, pane.clientHeight);
-      setZoomFrame((prev) => (prev.w === w && prev.h === h ? prev : { w, h }));
-    };
-    apply();
-    const observer = new ResizeObserver(apply);
-    observer.observe(pane);
-    observer.observe(stage);
-    return () => observer.disconnect();
-  }, [previewZoom, previewPaneEl, previewStageEl, screenAllPages, activeSlug]);
-
-  useEffect(() => {
-    const pane = previewPaneEl;
-    if (!pane || zoomFrame.w <= 0) return;
+    if (!pane || !previewScroll.sig) return;
     const frame = requestAnimationFrame(() => {
-      pane.scrollLeft = centeredScroll(pane.scrollWidth, pane.clientWidth);
-      pane.scrollTop = centeredScroll(pane.scrollHeight, pane.clientHeight);
+      if (previewScroll.recenter) {
+        pane.scrollLeft = previewScroll.scrollLeft;
+        pane.scrollTop = previewScroll.scrollTop;
+        return;
+      }
+      pane.scrollLeft += previewScroll.leadingX - previewScroll.prevLeadingX;
+      pane.scrollTop += previewScroll.leadingY - previewScroll.prevLeadingY;
     });
     return () => cancelAnimationFrame(frame);
-  }, [previewZoom, zoomFrame.w, zoomFrame.h, screenAllPages, previewPaneEl]);
+  }, [previewScroll, previewPaneEl]);
 
   useEffect(() => {
     let cancelled = false;
@@ -2008,7 +1999,7 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
     bundle.manifest.pageLayout,
     bundle.manifest.flowWorkspaceWidthPx
   );
-  const fitInset = artboard ? EDITOR_PASTEBOARD_PX : previewGutter;
+  const fitInset = previewGutter;
   const paneReady = previewPaneSize.width > 0 && previewPaneSize.height > 0;
   const previewPageBox = fittedPreviewPagePx(
     bundle.manifest.pageLayout,
@@ -2031,24 +2022,79 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
         )
       : 1;
   const layerPad = resolvePagePaddingPx(pagePresentation.padding);
-  const layerOverhang = artboard
-    ? pasteboardGutterPx(
-        bundle.sections.flatMap((item) =>
-          (item.layers || [])
-            .filter((layer) => layer.kind !== 'guide')
-            .map((layer) => ({
-              x: layer.x + layerPad,
-              y: layer.y + layerPad,
-              w: layer.w,
-              h: layer.h
-            }))
-        ),
-        previewPageBox.width,
-        previewPageBox.height,
-        0
-      )
-    : 0;
-  const framePad = artboard ? Math.max(EDITOR_PASTEBOARD_PX, layerOverhang) : previewGutter;
+  const activePageIndex = Math.max(
+    0,
+    previewPages.findIndex((page) => page.slug === activeSlug)
+  );
+  const previewStrip = previewStripLayout({
+    pageView,
+    pageCount: previewPages.length,
+    pageW: previewPageBox.width,
+    pageH: previewPageBox.height,
+    activeIndex: activePageIndex,
+    screenAllPages: pageView === 'screen' && screenAllPages,
+    screenFit
+  });
+  const extentPages =
+    pageView === 'screen' && !screenAllPages
+      ? previewPages.filter((page) => page.slug === activeSlug)
+      : previewPages;
+  const layerRects = artboard
+    ? extentPages.flatMap((page) => {
+        const index = previewPages.findIndex((item) => item.slug === page.slug);
+        const origin = previewStrip.origin(Math.max(0, index));
+        return (page.section?.layers || [])
+          .filter((layer) => layer.kind !== 'guide')
+          .map((layer) => ({
+            x: origin.x + (layer.x + layerPad) * previewStrip.extentScale,
+            y: origin.y + (layer.y + layerPad) * previewStrip.extentScale,
+            w: layer.w * previewStrip.extentScale,
+            h: layer.h * previewStrip.extentScale
+          }));
+      })
+    : [];
+  const previewWorkspace = previewWorkspaceLayout({
+    docW: previewStrip.docW,
+    docH: previewStrip.docH,
+    focusX: previewStrip.focusX,
+    focusY: previewStrip.focusY,
+    extents: pasteboardExtents(layerRects, previewStrip.docW, previewStrip.docH),
+    zoom: previewZoom,
+    viewW: previewPaneSize.width,
+    viewH: previewPaneSize.height
+  });
+  const previewRecenterKey = [
+    previewZoom,
+    activeSlug,
+    pageView,
+    screenAllPages,
+    previewStrip.docW,
+    previewStrip.docH,
+    previewPaneSize.width,
+    previewPaneSize.height
+  ].join('|');
+  const previewLeadingX = previewWorkspace.padLeft + previewWorkspace.overLeft;
+  const previewLeadingY = previewWorkspace.padTop + previewWorkspace.overTop;
+  const previewScrollSig = [
+    previewRecenterKey,
+    previewLeadingX,
+    previewLeadingY,
+    previewWorkspace.scrollLeft,
+    previewWorkspace.scrollTop
+  ].join('|');
+  if (paneReady && previewScroll.sig !== previewScrollSig) {
+    setPreviewScroll({
+      sig: previewScrollSig,
+      recenterKey: previewRecenterKey,
+      scrollLeft: previewWorkspace.scrollLeft,
+      scrollTop: previewWorkspace.scrollTop,
+      leadingX: previewLeadingX,
+      leadingY: previewLeadingY,
+      prevLeadingX: previewScroll.leadingX,
+      prevLeadingY: previewScroll.leadingY,
+      recenter: previewScroll.recenterKey !== previewRecenterKey
+    });
+  }
   const screenStripBackground = pageFrameStyle(pagePresentation);
   if (
     (!screenStripBackground.backgroundColor ||
@@ -2854,27 +2900,40 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
                 <div className="relative min-h-0 min-w-0 flex-1">
                 <div
                   ref={setPreviewPaneEl}
-                  className={
-                    pageLayout === 'flow'
-                      ? 'absolute inset-0 flex overflow-auto bg-neutral-100'
-                      : 'absolute inset-0 grid grid-cols-1 grid-rows-1 overflow-auto bg-neutral-100'
-                  }
-                >
-                <div
-                  data-preview-zoom-frame
-                  className="m-auto flex shrink-0 items-center justify-center"
+                  className="absolute inset-0 bg-neutral-100"
                   style={{
-                    width: zoomFrame.w > 0 ? zoomFrame.w : '100%',
-                    height: zoomFrame.h > 0 ? zoomFrame.h : '100%',
-                    minWidth: '100%',
-                    minHeight: '100%'
+                    overflowX:
+                      previewWorkspace.contentW > previewPaneSize.width + 1 ? 'auto' : 'hidden',
+                    overflowY:
+                      previewWorkspace.contentH > previewPaneSize.height + 1 ? 'auto' : 'hidden'
                   }}
                 >
                 <div
-                  ref={setPreviewStageEl}
+                  data-preview-zoom-frame
+                  className="shrink-0"
+                  style={{
+                    boxSizing: 'border-box',
+                    width: previewWorkspace.contentW,
+                    height: previewWorkspace.contentH,
+                    paddingLeft: previewWorkspace.padLeft + previewWorkspace.overLeft,
+                    paddingRight: previewWorkspace.padRight + previewWorkspace.overRight,
+                    paddingTop: previewWorkspace.padTop + previewWorkspace.overTop,
+                    paddingBottom: previewWorkspace.padBottom + previewWorkspace.overBottom
+                  }}
+                >
+                <div
                   data-preview-zoom-stage
                   className="shrink-0"
-                  style={{ transform: `scale(${previewZoom})`, transformOrigin: 'center center' }}
+                  style={{ width: previewWorkspace.docW, height: previewWorkspace.docH }}
+                >
+                <div
+                  className="shrink-0"
+                  style={{
+                    width: previewStrip.docW,
+                    height: previewStrip.docH,
+                    transform: `scale(${previewWorkspace.zoom})`,
+                    transformOrigin: 'top left'
+                  }}
                 >
                 <div
                   data-preview-center={pageLayout === 'flow' ? undefined : ''}
@@ -2883,17 +2942,16 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
                   }
                 >
                 <div
-                  className={pageView === 'screen' ? 'relative shrink-0 overflow-visible' : 'contents'}
+                  className={
+                    pageView === 'screen'
+                      ? `relative shrink-0 ${screenAllPages ? 'overflow-hidden' : 'overflow-visible'}`
+                      : 'contents'
+                  }
                   style={
                     pageView === 'screen'
                       ? {
-                          width:
-                            (screenAllPages ? screenFullWidth * screenFit : previewPageBox.width) +
-                            framePad * 2,
-                          height:
-                            (screenAllPages ? screenFullHeight * screenFit : previewPageBox.height) +
-                            framePad * 2,
-                          padding: framePad,
+                          width: screenAllPages ? screenFullWidth * screenFit : previewPageBox.width,
+                          height: screenAllPages ? screenFullHeight * screenFit : previewPageBox.height,
                           margin: 0
                         }
                       : undefined
@@ -2949,8 +3007,7 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
                         className="relative shrink-0 overflow-visible"
                         style={{
                           width: previewPageBox.width,
-                          height: previewPageBox.height,
-                          margin: pageView === 'screen' ? 0 : framePad
+                          height: previewPageBox.height
                         }}
                         onClick={() => {
                           if (!active) setActiveSlug(page.slug);
@@ -3089,6 +3146,7 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
                     freePlacement={artboard}
                   />
                 )}
+                </div>
                 </div>
                 </div>
                 </div>
