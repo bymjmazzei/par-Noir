@@ -167,7 +167,7 @@ export function tonalGradeActive(filter: PenMediaFilter | null | undefined): boo
   return TONAL_KEYS.some((key) => merged[key] !== 0);
 }
 
-/** Clip path for simple shapes, SVG mask for split, filmstrip, and text. */
+/** Clip path for simple shapes, a one-sided gradient for split, SVG mask for filmstrip and text. */
 export function mediaMaskStyle(
   mask: PenMediaMask | null | undefined,
   size?: number,
@@ -187,7 +187,8 @@ export function mediaMaskStyle(
   if (!mask || mask === 'none') return {};
   const amount = Math.max(0, size ?? 100);
   if (mask === 'split' || mask === 'filmstrip' || mask === 'text') {
-    const image = maskUri(maskSvg(mask, amount, options));
+    const image =
+      mask === 'split' ? splitMaskGradient(amount, options) : maskUri(maskSvg(mask, amount, options));
     return {
       maskImage: image,
       WebkitMaskImage: image,
@@ -208,8 +209,20 @@ function maskUri(svg: string): string {
   return `url("data:image/svg+xml,${encodeURIComponent(svg)}")`;
 }
 
+/** Visible on the near side of a thin cut; fade feathers that edge. Scale 100 centers the cut. */
+function splitMaskGradient(
+  amount: number,
+  options?: { angle?: number; feather?: number }
+): string {
+  const cut = Math.min(98, Math.max(2, amount / 2));
+  const angle = (options?.angle ?? 0) + 90;
+  const fade = Math.max(0, options?.feather ?? 0);
+  const soft = fade <= 0 ? '1px' : `${fade / 2}%`;
+  return `linear-gradient(${angle}deg, #fff 0%, #fff calc(${cut}% - ${soft}), transparent calc(${cut}% + ${soft}))`;
+}
+
 function maskSvg(
-  mask: 'split' | 'filmstrip' | 'text',
+  mask: 'filmstrip' | 'text',
   amount: number,
   options?: { angle?: number; feather?: number; text?: string }
 ): string {
@@ -223,17 +236,9 @@ function maskSvg(
     }).join('');
     return `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'>${bars}</svg>`;
   }
-  if (mask === 'text') {
-    const word = (options?.text || 'Text').replace(/[<>&'"]/g, '');
-    const font = Math.max(12, Math.min(72, amount * 0.6));
-    return `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 240 80'><text x='120' y='58' text-anchor='middle' font-size='${font}' font-family='Georgia, serif' font-weight='700' fill='white'>${word}</text></svg>`;
-  }
-  const pane = Math.min(46, Math.max(8, amount / 2));
-  const feather = Math.min(pane, Math.max(0, options?.feather ?? 0) / 2);
-  const angle = options?.angle ?? 0;
-  const softIn = Math.max(0, pane - feather);
-  const softOut = Math.min(100, 100 - pane + feather);
-  return `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><defs><linearGradient id='seam' gradientUnits='userSpaceOnUse' x1='0' y1='50' x2='100' y2='50' gradientTransform='rotate(${angle} 50 50)'><stop offset='0%' stop-color='white' stop-opacity='1'/><stop offset='${softIn}%' stop-color='white' stop-opacity='1'/><stop offset='${pane}%' stop-color='white' stop-opacity='0'/><stop offset='${100 - pane}%' stop-color='white' stop-opacity='0'/><stop offset='${softOut}%' stop-color='white' stop-opacity='1'/><stop offset='100%' stop-color='white' stop-opacity='1'/></linearGradient></defs><rect width='100' height='100' fill='url(#seam)'/></svg>`;
+  const word = (options?.text || 'Text').replace(/[<>&'"]/g, '');
+  const font = Math.max(12, Math.min(72, amount * 0.6));
+  return `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 240 80'><text x='120' y='58' text-anchor='middle' font-size='${font}' font-family='Georgia, serif' font-weight='700' fill='white'>${word}</text></svg>`;
 }
 
 export function mediaMaskClipCss(

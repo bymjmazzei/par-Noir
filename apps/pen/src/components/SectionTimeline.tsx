@@ -324,12 +324,14 @@ function TransitionSketch({ preset }: { preset: PenTransitionPreset }) {
 
 function ClipDecor({
   src,
+  still,
   docId,
   session,
   playing,
   onReady
 }: {
   src?: string;
+  still?: boolean;
   docId?: string;
   session?: PenSession | null;
   playing: boolean;
@@ -340,7 +342,7 @@ function ClipDecor({
   readyRef.current = onReady;
   const [decor, setDecor] = useState<{ frames: string[]; wave: number[] } | null>(null);
   useEffect(() => {
-    if (!resolved || playing) return;
+    if (!resolved || playing || still) return;
     const cached = decorCache.get(resolved);
     if (cached) {
       setDecor(cached);
@@ -361,14 +363,31 @@ function ClipDecor({
     return () => {
       cancel = true;
     };
-  }, [resolved, playing]);
+  }, [resolved, playing, still]);
+  if (still && resolved) {
+    return (
+      <img
+        data-clip-frames
+        src={resolved}
+        alt=""
+        className="pointer-events-none absolute inset-0 h-full w-full object-cover"
+        draggable={false}
+      />
+    );
+  }
   if (!decor) return null;
   return (
     <>
       {decor.frames.length ? (
-        <span data-clip-frames className="pointer-events-none absolute inset-0 flex items-center gap-px overflow-hidden">
+        <span data-clip-frames className="pointer-events-none absolute inset-0 flex overflow-hidden">
           {decor.frames.map((frame, index) => (
-            <img key={index} src={frame} alt="" className="h-5 w-auto shrink-0 object-contain" draggable={false} />
+            <img
+              key={index}
+              src={frame}
+              alt=""
+              className="h-full min-w-0 flex-1 object-cover"
+              draggable={false}
+            />
           ))}
         </span>
       ) : null}
@@ -902,6 +921,22 @@ export function SectionTimeline({
         <span className="text-[13px] tabular-nums text-stone-700">
           {formatTime(playheadSec)} / {formatTime(duration)}
         </span>
+        {widget ? null : (
+          <button
+            type="button"
+            aria-label="Split clip"
+            title="Split clip"
+            disabled={!canCut}
+            className={`inline-flex h-8 w-8 items-center justify-center ${canCut ? 'text-stone-700' : 'text-stone-300'}`}
+            onClick={cutClip}
+          >
+            <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden>
+              <rect x="1" y="4" width="6" height="8" fill="none" stroke="currentColor" strokeWidth="1.3" />
+              <rect x="9" y="4" width="6" height="8" fill="none" stroke="currentColor" strokeWidth="1.3" />
+              <path d="M8 2v12" stroke="currentColor" strokeWidth="1.3" />
+            </svg>
+          </button>
+        )}
         <button
           type="button"
           aria-label="Keyframe"
@@ -1001,68 +1036,56 @@ export function SectionTimeline({
             <Magnify plus />
           </button>
         </div>
-        {widget ? null : (
         <div className="ml-auto inline-flex items-center gap-1 text-stone-500">
+          {widget ? null : (
+            <>
+              <button
+                type="button"
+                aria-label="Mirror"
+                title="Mirror"
+                aria-pressed={Boolean(active?.mediaMirror)}
+                className={`inline-flex h-8 w-8 items-center justify-center ${active?.mediaMirror ? 'text-stone-800' : ''}`}
+                onClick={() => {
+                  if (!active) return;
+                  onSectionChange(upsertLayer(section, { ...active, mediaMirror: !active.mediaMirror }));
+                }}
+              >
+                <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden>
+                  <path d="M8 2v12" stroke="currentColor" strokeWidth="1.2" />
+                  <path d="M7 4 2 8l5 4zM9 4l5 4-5 4z" fill="none" stroke="currentColor" strokeWidth="1.2" />
+                </svg>
+              </button>
+              <button
+                type="button"
+                aria-label="Reverse"
+                title="Reverse"
+                aria-pressed={Boolean(active?.mediaReversed)}
+                className={`inline-flex h-8 w-8 items-center justify-center ${active?.mediaReversed ? 'text-stone-800' : ''}`}
+                onClick={() => onReverse?.()}
+              >
+                <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden>
+                  <path d="M3 8h8" stroke="currentColor" strokeWidth="1.3" />
+                  <path d="M6 5 3 8l3 3" fill="none" stroke="currentColor" strokeWidth="1.3" />
+                  <path d="M13 5v6" stroke="currentColor" strokeWidth="1.3" />
+                </svg>
+              </button>
+            </>
+          )}
           <button
             type="button"
-            aria-label="Split clip"
-            title="Split clip"
-            disabled={!canCut}
-            className={`inline-flex h-8 w-8 items-center justify-center ${canCut ? 'text-stone-700' : 'text-stone-300'}`}
-            onClick={cutClip}
+            aria-label="Delete clip"
+            title="Delete clip"
+            disabled={!activeLayerId}
+            className={`inline-flex h-8 w-8 items-center justify-center ${
+              activeLayerId ? 'text-stone-700' : 'text-stone-300'
+            }`}
+            onClick={deleteClip}
           >
             <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden>
-              <rect x="1" y="4" width="6" height="8" fill="none" stroke="currentColor" strokeWidth="1.3" />
-              <rect x="9" y="4" width="6" height="8" fill="none" stroke="currentColor" strokeWidth="1.3" />
-              <path d="M8 2v12" stroke="currentColor" strokeWidth="1.3" />
-            </svg>
-          </button>
-          <button
-            type="button"
-            aria-label="Mirror"
-            title="Mirror"
-            aria-pressed={Boolean(active?.mediaMirror)}
-            className={`inline-flex h-8 w-8 items-center justify-center ${active?.mediaMirror ? 'text-stone-800' : ''}`}
-            onClick={() => {
-              if (!active) return;
-              onSectionChange(upsertLayer(section, { ...active, mediaMirror: !active.mediaMirror }));
-            }}
-          >
-            <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden>
-              <path d="M8 2v12" stroke="currentColor" strokeWidth="1.2" />
-              <path d="M7 4 2 8l5 4zM9 4l5 4-5 4z" fill="none" stroke="currentColor" strokeWidth="1.2" />
-            </svg>
-          </button>
-          <button
-            type="button"
-            aria-label="Reverse"
-            title="Reverse"
-            aria-pressed={Boolean(active?.mediaReversed)}
-            className={`inline-flex h-8 w-8 items-center justify-center ${active?.mediaReversed ? 'text-stone-800' : ''}`}
-            onClick={() => onReverse?.()}
-          >
-            <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden>
-              <path d="M3 8h8" stroke="currentColor" strokeWidth="1.3" />
-              <path d="M6 5 3 8l3 3" fill="none" stroke="currentColor" strokeWidth="1.3" />
-              <path d="M13 5v6" stroke="currentColor" strokeWidth="1.3" />
+              <path d="M3 4h10M6 4V3h4v1M5 4l.6 9h4.8L11 4" fill="none" stroke="currentColor" strokeWidth="1.3" />
             </svg>
           </button>
         </div>
-        )}
-        <button
-          type="button"
-          aria-label="Delete clip"
-          title="Delete clip"
-          disabled={!activeLayerId}
-          className={`inline-flex h-8 w-8 items-center justify-center ${widget ? 'ml-auto' : ''} ${
-            activeLayerId ? 'text-stone-700' : 'text-stone-300'
-          }`}
-          onClick={deleteClip}
-        >
-          <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden>
-            <path d="M3 4h10M6 4V3h4v1M5 4l.6 9h4.8L11 4" fill="none" stroke="currentColor" strokeWidth="1.3" />
-          </svg>
-        </button>
       </div>
       <div className="max-h-64 overflow-auto px-2 pb-2">
         <div
@@ -1152,7 +1175,9 @@ export function SectionTimeline({
                       ? playback === 'publish'
                         ? publishPlaybackSrc(owner)
                         : editorPlaybackSrc(owner)
-                      : undefined;
+                      : owner.kind === 'image'
+                        ? owner.imageSrc
+                        : undefined;
                   const name = defaultLayerName(owner, section.layers || []);
                   return (
                   <div
@@ -1166,6 +1191,7 @@ export function SectionTimeline({
                   >
                     <ClipDecor
                       src={playbackSrc}
+                      still={owner.kind === 'image'}
                       docId={docId}
                       session={session}
                       playing={playing}
@@ -1176,7 +1202,7 @@ export function SectionTimeline({
                     />
                     <span
                       data-clip-title={name}
-                      className={`pointer-events-none absolute left-1 top-0.5 max-w-[90%] truncate text-[11px] ${
+                      className={`pointer-events-none absolute left-3 top-0.5 z-[1] max-w-[90%] truncate text-[11px] ${
                         owner.id === activeLayerId ? 'font-semibold text-stone-800' : 'text-stone-500'
                       }`}
                     >

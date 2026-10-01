@@ -38,6 +38,7 @@ import { SectionTimeline } from './SectionTimeline';
 import { LayerMediaContent } from './LayerMediaContent';
 import { ColorSwatchButton } from './PanelValueControls';
 import { probeMediaAspect } from '../services/penAttach';
+import lookSwatch from '../assets/look-apple.jpg';
 import { resolvePenMediaSrc, ingestInlineMediaSrc, putLocalMedia } from '../services/penLocalMedia';
 import { useResolvedMediaSrc } from '../hooks/useResolvedMediaSrc';
 import type { PenSession } from '../services/penSession';
@@ -770,10 +771,6 @@ export function MediaEditorPanel({
   );
 }
 
-const LOOK_SWATCH = `data:image/svg+xml,${encodeURIComponent(
-  `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 80 80'><rect width='80' height='80' fill='#d6d3d1'/><rect y='48' width='80' height='32' fill='#78716c'/><circle cx='40' cy='32' r='14' fill='#e7e5e4'/><rect x='26' y='52' width='28' height='22' rx='8' fill='#a8a29e'/></svg>`
-)}`;
-
 function LookTiles({
   current,
   onPick
@@ -790,7 +787,7 @@ function LookTiles({
           <button key={id} type="button" aria-pressed={selected} title={id} className="space-y-0.5 text-left" onClick={() => onPick(preset)}>
             <span className={`block overflow-hidden bg-stone-300 ${selected ? 'outline outline-2 outline-stone-600' : ''}`}>
               <img
-                src={LOOK_SWATCH}
+                src={lookSwatch}
                 alt=""
                 data-look-tile="square"
                 className="aspect-square w-full object-cover"

@@ -85,14 +85,17 @@ describe('section timeline', () => {
     expect(html).toContain('aria-label="Mute voice"');
     expect(html).toContain('aria-label="Trim start clip"');
     expect(html).toContain('aria-label="Split clip"');
+    expect(html.indexOf('aria-label="Split clip"')).toBeLessThan(html.indexOf('aria-label="Keyframe"'));
     expect(html).toContain('aria-label="Mirror"');
     expect(html).toContain('aria-label="Reverse"');
+    expect(html.indexOf('aria-label="Reverse"')).toBeLessThan(html.indexOf('aria-label="Delete clip"'));
     expect(html).toContain('aria-label="Delete clip"');
     expect(html).toContain('title="Playhead"');
     expect(html).toContain('title="Split clip"');
     expect(html).toContain('title="Mute"');
     expect(html).toContain('title="Unmute"');
     expect(html).toContain('data-clip-title="Title"');
+    expect(html).toContain('absolute left-3 top-0.5');
     expect(html).toContain('border-blue-600');
     expect(html).toContain('bg-white');
     expect(sampleLayerAt(section.layers![0]!, 1).x).toBe(80);

@@ -61,8 +61,18 @@ describe('mediaStyle', () => {
   });
 
   it('split, filmstrip, and text masks use a mask image', () => {
-    expect(mediaMaskStyle('split', 100, { angle: 40, feather: 20 }).maskImage).toContain('rotate(40');
-    expect(mediaMaskStyle('split', 100, { angle: 40, feather: 20 }).maskImage).toContain('stop-opacity');
+    const hard = String(mediaMaskStyle('split', 100, { angle: 0, feather: 0 }).maskImage);
+    expect(hard).toContain('linear-gradient(90deg');
+    expect(hard).toContain('calc(50% - 1px)');
+    expect(hard).toContain('transparent calc(50% + 1px)');
+    expect(hard.indexOf('#fff')).toBeLessThan(hard.indexOf('transparent'));
+    expect(hard.lastIndexOf('#fff')).toBeLessThan(hard.indexOf('transparent'));
+    const soft = String(mediaMaskStyle('split', 100, { angle: 40, feather: 20 }).maskImage);
+    expect(soft).toContain('linear-gradient(130deg');
+    expect(soft).toContain('calc(50% - 10%)');
+    expect(soft).toContain('transparent calc(50% + 10%)');
+    expect(String(mediaMaskStyle('split', 40).maskImage)).toContain('calc(20% - 1px)');
+    expect(String(mediaMaskStyle('split', 300).maskImage)).toContain('calc(98% - 1px)');
     const film = String(mediaMaskStyle('filmstrip', 100).maskImage);
     expect(film.split('rect').length - 1).toBeGreaterThan(1);
     expect(String(mediaMaskStyle('text', 120, { text: 'Hello' }).maskImage)).toContain('Hello');
