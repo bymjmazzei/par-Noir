@@ -40,8 +40,9 @@ for pkg in "${PACKAGES[@]}"; do
   fi
   (
     cd "$dir"
-    npm install --ignore-scripts --workspaces=false
-    npm install --ignore-scripts --workspaces=false --no-save "$TSC_PIN" "$TYPES_NODE_PIN"
+    # Railway sets NODE_ENV=production, which drops esbuild/tsc. The API build needs them.
+    npm install --ignore-scripts --workspaces=false --include=dev
+    npm install --ignore-scripts --workspaces=false --include=dev --no-save "$TSC_PIN" "$TYPES_NODE_PIN"
     export PATH="$dir/node_modules/.bin:$PATH"
     npm run build
   )
