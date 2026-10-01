@@ -122,7 +122,7 @@ function InspectorSlider({
 
   return (
     <div className="min-w-0" data-setting-row={key}>
-      <div className="flex items-center gap-1">
+      <div className="flex h-5 items-center gap-1">
         <button
           type="button"
           className="min-w-0 flex-1 truncate text-left text-[13px] text-stone-500"
@@ -409,7 +409,10 @@ export function MediaEditorPanel({
       </div>
 
       <ActiveSettingContext.Provider value={{ id: activeSetting, setId: setActiveSetting }}>
-      <div className="flex max-h-[40%] min-h-0 flex-col gap-2 overflow-auto px-3 py-2">
+      <div
+        data-media-settings
+        className="max-h-[5.75rem] shrink-0 overflow-y-auto px-3"
+      >
         <div className={tab === 'basic' ? 'grid grid-cols-2 gap-x-3 gap-y-1' : 'hidden'}>
           <InspectorSlider
             label="Scale"

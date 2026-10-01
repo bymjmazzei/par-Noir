@@ -43,6 +43,8 @@ describe('media and widget panels', () => {
     const media = renderToStaticMarkup(
       <MediaEditorPanel layer={portrait} section={section} onSectionChange={() => undefined} />
     );
+    expect(media).toContain('data-media-settings');
+    expect(media).toContain('max-h-[5.75rem]');
     expect(media).toContain('data-media-tabs');
     expect(media).toContain('flex h-7 flex-nowrap');
     expect(media).toContain('Grade');
