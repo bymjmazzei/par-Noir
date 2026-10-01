@@ -132,6 +132,17 @@ export function pageTileAxis(pageView: PenPageView): 'vertical' | 'horizontal' {
   return pageView === 'vertical' ? 'vertical' : 'horizontal';
 }
 
+/** Uniform scale that fits a fixed page into the pane. The page's own size does not change. */
+export function previewFitScale(
+  designW: number,
+  designH: number,
+  slotW: number,
+  slotH: number
+): number {
+  if (!(designW > 0) || !(designH > 0) || !(slotW > 0) || !(slotH > 0)) return 1;
+  return Math.min(slotW / designW, slotH / designH);
+}
+
 export const PREVIEW_ZOOM_MIN = 0.25;
 export const PREVIEW_ZOOM_MAX = 4;
 
@@ -295,10 +306,13 @@ export function previewWorkspaceLayout(input: {
   edgeY?: number;
   extents: { left: number; right: number; top: number; bottom: number };
   zoom: number;
+  /** Pane fit. Applied after the user zoom so a small pane does not reflow the page. */
+  fit?: number;
   viewW: number;
   viewH: number;
 }): PreviewWorkspace {
-  const zoom = clampPreviewZoom(input.zoom);
+  const fit = input.fit != null && input.fit > 0 ? input.fit : 1;
+  const zoom = clampPreviewZoom(input.zoom) * fit;
   const docW = Math.max(0, input.docW) * zoom;
   const docH = Math.max(0, input.docH) * zoom;
   const edgeX = (input.edgeX ?? Math.min(input.focusX, Math.max(0, input.docW - input.focusX))) * zoom;

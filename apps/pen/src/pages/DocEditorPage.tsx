@@ -34,7 +34,9 @@ import {
   pageSwipeAxisForView,
   removeDocPage,
   reorderDocPages,
-  fittedPreviewPagePx,
+  pageSheetDims,
+  DEFAULT_FLOW_WORKSPACE_WIDTH_PX,
+  DEFAULT_FLOW_WORKSPACE_HEIGHT_PX,
   isFlowWorkspaceOpen,
   PREVIEW_PAGE_GUTTER_PX,
   pasteboardExtents,
@@ -96,6 +98,7 @@ import {
   PreviewPageBar,
   PreviewPageStrip,
   PreviewZoomControl,
+  previewFitScale,
   previewStripLayout,
   previewWorkspaceLayout,
   workspaceGuideAlong,
@@ -2035,26 +2038,21 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
   );
   const fitInset = previewGutter;
   const paneReady = previewPaneSize.width > 0 && previewPaneSize.height > 0;
-  const previewPageBox = fittedPreviewPagePx(
-    bundle.manifest.pageLayout,
-    paneReady ? Math.max(1, previewPaneSize.width - fitInset * 2) : 0,
-    paneReady ? Math.max(1, previewPaneSize.height - fitInset * 2) : 0,
-    {
-      widthPx: bundle.manifest.flowWorkspaceWidthPx,
-      heightPx: bundle.manifest.flowWorkspaceHeightPx
-    }
-  );
+  const designSheet = pageSheetDims(bundle.manifest.pageLayout, {
+    widthPx: bundle.manifest.flowWorkspaceWidthPx,
+    heightPx: bundle.manifest.flowWorkspaceHeightPx
+  });
+  const designW = designSheet.pageWidthPx ?? DEFAULT_FLOW_WORKSPACE_WIDTH_PX;
+  const designH = designSheet.pageHeightPx ?? DEFAULT_FLOW_WORKSPACE_HEIGHT_PX;
+  const previewPageBox = { width: designW, height: designH };
+  const slotW = paneReady ? Math.max(1, previewPaneSize.width - fitInset * 2) : designW;
+  const slotH = paneReady ? Math.max(1, previewPaneSize.height - fitInset * 2) : designH;
   const screenPageCount = Math.max(1, previewPages.length);
   const screenFullWidth = screenStripWidthPx(screenPageCount, previewPageBox.width);
   const screenFullHeight = previewPageBox.height;
-  const screenFit =
-    screenAllPages && paneReady && screenFullWidth > 0 && screenFullHeight > 0
-      ? Math.min(
-          1,
-          Math.max(1, previewPaneSize.width - fitInset * 2) / screenFullWidth,
-          Math.max(1, previewPaneSize.height - fitInset * 2) / screenFullHeight
-        )
-      : 1;
+  const docFit = previewFitScale(designW, designH, slotW, slotH);
+  const screenFit = previewFitScale(screenFullWidth, screenFullHeight, slotW, slotH);
+  const previewFit = pageView === 'screen' && screenAllPages ? screenFit : docFit;
   const layerPad = resolvePagePaddingPx(pagePresentation.padding);
   const activePageIndex = Math.max(
     0,
@@ -2067,7 +2065,7 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
     pageH: previewPageBox.height,
     activeIndex: activePageIndex,
     screenAllPages: pageView === 'screen' && screenAllPages,
-    screenFit
+    screenFit: 1
   });
   const extentPages = previewPages;
   const layerRects = artboard
@@ -2093,6 +2091,7 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
     edgeY: previewStrip.edgeY,
     extents: pasteboardExtents(layerRects, previewStrip.docW, previewStrip.docH),
     zoom: previewZoom,
+    fit: previewFit,
     viewW: previewPaneSize.width,
     viewH: previewPaneSize.height
   });
@@ -3051,7 +3050,7 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
                 >
                 <div
                   data-preview-zoom-frame
-                  className="relative shrink-0"
+                  className="relative shrink-0 overflow-hidden"
                   style={{
                     boxSizing: 'border-box',
                     width: previewWorkspace.contentW,
@@ -3083,16 +3082,12 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
                   }
                 >
                 <div
-                  className={
-                    pageView === 'screen'
-                      ? `relative shrink-0 ${screenAllPages ? 'overflow-hidden' : 'overflow-visible'}`
-                      : 'contents'
-                  }
+                  className={pageView === 'screen' ? 'relative shrink-0 overflow-visible' : 'contents'}
                   style={
                     pageView === 'screen'
                       ? {
-                          width: screenAllPages ? screenFullWidth * screenFit : screenFullWidth,
-                          height: screenAllPages ? screenFullHeight * screenFit : screenFullHeight,
+                          width: screenFullWidth,
+                          height: screenFullHeight,
                           margin: 0
                         }
                       : undefined
@@ -3104,9 +3099,7 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
                     pageView === 'screen'
                       ? {
                           width: screenFullWidth,
-                          height: screenFullHeight,
-                          transform: screenAllPages ? `scale(${screenFit})` : undefined,
-                          transformOrigin: 'top left'
+                          height: screenFullHeight
                         }
                       : undefined
                   }
@@ -3298,11 +3291,10 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
                     guideSpan={guideSpanFor(
                       0,
                       0,
-                      screenAllPages ? screenFullWidth : previewPageBox.width,
-                      screenAllPages ? screenFullHeight : previewPageBox.height,
-                      screenAllPages ? screenFullWidth : previewStrip.docW,
-                      screenAllPages ? screenFullHeight : previewStrip.docH,
-                      screenAllPages ? screenFit : 1
+                      screenFullWidth,
+                      screenFullHeight,
+                      previewStrip.docW,
+                      previewStrip.docH
                     )}
                   />
                 )}

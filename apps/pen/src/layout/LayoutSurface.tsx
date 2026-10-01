@@ -176,8 +176,12 @@ export function LayoutSurface({
 
     if (!drag) return;
     const b = activeBounds();
-    const dx = e.clientX - drag.startX;
-    const dy = e.clientY - drag.startY;
+    const el = surfaceRef.current;
+    const layoutW = el?.offsetWidth || 0;
+    const visualW = el?.getBoundingClientRect().width || 0;
+    const scale = layoutW > 0 && visualW > 0 ? visualW / layoutW : 1;
+    const dx = (e.clientX - drag.startX) / scale;
+    const dy = (e.clientY - drag.startY) / scale;
     if (drag.mode === 'move') {
       const next = { x: drag.orig.x + dx, y: drag.orig.y + dy, w: drag.orig.w, h: drag.orig.h };
       const snapped = snapLayoutToPageCenter(next, {

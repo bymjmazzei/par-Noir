@@ -15,6 +15,7 @@ import {
   PreviewOrientationMenu,
   clampPreviewZoom,
   PreviewPageBar,
+  previewFitScale,
   previewStripLayout,
   PreviewPageStrip,
   previewWorkspaceLayout,
@@ -162,6 +163,21 @@ describe('preview page toolbar', () => {
   });
 
   it('workspace zoom stays centered on the page', () => {
+    expect(previewFitScale(1080, 1920, 540, 960)).toBe(0.5);
+    expect(previewFitScale(0, 1920, 540, 960)).toBe(1);
+    const scaled = previewWorkspaceLayout({
+      docW: 1000,
+      docH: 1000,
+      focusX: 500,
+      focusY: 500,
+      extents: { left: 0, right: 0, top: 0, bottom: 0 },
+      zoom: 1,
+      fit: 0.2,
+      viewW: 800,
+      viewH: 600
+    });
+    expect(scaled.zoom).toBeCloseTo(0.2);
+    expect(scaled.docW).toBe(200);
     expect(clampPreviewZoom(0)).toBe(0.25);
     expect(clampPreviewZoom(9)).toBe(4);
     expect(clampPreviewZoom(1.234)).toBe(1.23);
