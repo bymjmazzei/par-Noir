@@ -33,6 +33,10 @@
           "doc": {
             "type": "object",
             "description": "TipTap JSON doc"
+          },
+          "html": {
+            "type": "string",
+            "description": "Library HTML compiled into native layers and page fields"
           }
         }
       }

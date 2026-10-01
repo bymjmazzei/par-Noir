@@ -21,7 +21,8 @@ const PEN_INDEX_KEYS = [
   'headProof',
   'templateId',
   'contentClass',
-  'actionOverlays'
+  'actionOverlays',
+  'actionStageHtml'
 ] as const;
 
 export function penIndexFields(body: unknown): Record<string, unknown> {
@@ -45,6 +46,9 @@ export function penIndexFields(body: unknown): Record<string, unknown> {
   }
   for (const key of ['companionAudioOffsetsSec', 'companionAudioGains'] as const) {
     if (!Array.isArray(out[key])) delete out[key];
+  }
+  if (typeof out.actionStageHtml !== 'string' || !out.actionStageHtml.trim()) {
+    delete out.actionStageHtml;
   }
   if (out.penTemplateKind !== 'template' && out.penTemplateKind !== 'remix') {
     delete out.penTemplateKind;

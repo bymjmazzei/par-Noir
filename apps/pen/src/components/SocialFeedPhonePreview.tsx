@@ -12,7 +12,7 @@ import {
   type CSSProperties,
   type ReactNode
 } from 'react';
-import type { PenDocManifest, PenSectionContent } from '@par-noir/pen-protocol';
+import type { PenDocManifest, PenSectionContent, PenActionMessage } from '@par-noir/pen-protocol';
 import { SocialPhoneFrame } from './SocialPhoneFrame';
 import { PenPhoneBrowseChrome } from './PenPhoneBrowseChrome';
 import { TemplateEngagementRail } from './TemplateEngagementRail';
@@ -96,7 +96,8 @@ export function SocialFeedPhonePreview({
   phoneActiveFeedId = 'public',
   large,
   density = 'feed',
-  actionOverlay
+  actionOverlay,
+  onAction
 }: {
   manifest: PenDocManifest;
   sections: PenSectionContent[];
@@ -109,6 +110,7 @@ export function SocialFeedPhonePreview({
   density?: 'feed' | 'thumb';
   /** Editor-only layer chrome. Omitted for gallery thumbs and browse. */
   actionOverlay?: ReactNode;
+  onAction?: (message: PenActionMessage) => void;
 }) {
   const phoneAspectCss = resolvePhoneFrameAspect(manifest);
   const feedAspect = resolveFeedTileAspect(manifest);
@@ -128,6 +130,7 @@ export function SocialFeedPhonePreview({
       hideEngagementRail
       aspectRatio={feedAspect}
       showWidgets={!actionOverlay}
+      onAction={onAction}
     />
   );
   const showActions = Boolean(actionOverlay) && density !== 'thumb';

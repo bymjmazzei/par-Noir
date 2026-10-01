@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { PenSectionContent } from '@par-noir/pen-protocol';
-import { actionOverlaysForPost } from './penPublish';
+import { actionOverlaysForPost, actionStageHtmlForPost } from './penPublish';
 
 describe('actionOverlaysForPost', () => {
   it('links the tracking spreadsheet on the post overlay', () => {
@@ -35,5 +35,9 @@ describe('actionOverlaysForPost', () => {
       }
     ];
     expect(actionOverlaysForPost(sections)[0]?.spreadsheetId).toBe('sheet-user');
+    const html = actionStageHtmlForPost(sections);
+    expect(html).toContain('widget.toggle');
+    expect(html).toContain('On');
+    expect(html).not.toContain('sheet-user');
   });
 });

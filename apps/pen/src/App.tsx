@@ -21,6 +21,7 @@ import {
 } from '@par-noir/oauth-ui';
 import { API_ENDPOINT, PN_CLIENT_ID } from './config/api';
 import { DocEditorPage } from './pages/DocEditorPage';
+import { DocPreviewPage } from './pages/DocPreviewPage';
 import { DocListPage, type PenAddIntent } from './pages/DocListPage';
 import { listLocalDocs, type LocalDocSummary } from './services/penLocalStore';
 import {
@@ -639,11 +640,21 @@ function AuthenticatedApp({
               </PenNotebookPage>
             }
           />
+          <Route
+            path="/d/:docId/preview"
+            element={<DocPreviewRoute session={session} />}
+          />
           <Route path="/d/:docId" element={<DocEditorRoute session={session} />} />
         </Routes>
       </div>
     </div>
   );
+}
+
+function DocPreviewRoute({ session }: { session: PenSession }) {
+  const { docId } = useParams();
+  if (!docId) return null;
+  return <DocPreviewPage session={session} docId={docId} />;
 }
 
 function DocEditorRoute({ session }: { session: PenSession }) {

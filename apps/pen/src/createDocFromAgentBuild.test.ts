@@ -83,6 +83,27 @@ describe('createDocFromAgentBuild', () => {
     );
   });
 
+  it('opens a doc whose button is a native layer', async () => {
+    const bundle = await createDocFromAgentBuild({
+      session: { accessToken: 'test-token', pnIdentifier: 'pn-agent-test' },
+      build: {
+        templateId: 'widget.v1',
+        title: 'Poll card',
+        sections: [
+          {
+            slug: 'card',
+            html: '<pen-page page-size="ratio-9-16" orientation="portrait"><pen-button behavior="poll.vote">Yes</pen-button></pen-page>'
+          }
+        ]
+      }
+    });
+    const button = bundle.sections[0]?.layers?.find((layer) => layer.kind === 'interactive');
+    expect(button?.widgetElement).toBe('button');
+    expect(button?.behavior).toBe('poll.vote');
+    expect(bundle.manifest.pageOrientation).toBe('portrait');
+    expect(bundle.sections[0]?.layers?.some((layer) => layer.widgetElement === 'html')).toBe(false);
+  });
+
   it('rejects invalid agent builds', async () => {
     await expect(
       createDocFromAgentBuild({

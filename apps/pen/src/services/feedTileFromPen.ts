@@ -7,6 +7,7 @@ import {
   emptySection,
   mergePagePresentation,
   normalizeSection,
+  buildActionStageHtml,
   type PenDocManifest,
   type PenPageLayer,
   type PenSectionContent
@@ -51,6 +52,8 @@ export function sectionsToFeedPages(
       page.mediaSrc = pres.backgroundImage;
       page.mediaKind = 'image';
     }
+    const stage = buildActionStageHtml([s]);
+    if (stage) page.actionStageHtml = stage;
     return page;
   });
 }

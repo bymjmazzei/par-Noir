@@ -22,6 +22,8 @@ import {
   type PenTemplate
 } from './templates.js';
 import { emptySection, emptyTipTapDoc, isTipTapDoc, docToPlainText } from './richDoc.js';
+import { mergePagePresentation } from './presentation.js';
+import { agentHtmlHasLayers, compileAgentLibraryHtml, type CompiledAgentPage } from './agentLibrary.js';
 
 /** Placeholders supported in PenTemplate.agentStarter. */
 export const AGENT_PROMPT_USER_INPUT = '{{user_input}}';
@@ -34,6 +36,11 @@ export interface PenAgentSectionBuild {
   plainText?: string;
   /** Optional TipTap doc when the agent already has rich JSON. */
   doc?: PenTipTapNode;
+  /**
+   * Library HTML. Compiled into native layers and page fields.
+   * Named objects do not remain snippets.
+   */
+  html?: string;
 }
 
 /** One register row: keys must match template.registerColumns ids. */
@@ -128,6 +135,7 @@ export function plainTextToTipTapDoc(text: string): PenTipTapNode {
 }
 
 function sectionHasContent(section: PenAgentSectionBuild): boolean {
+  if (agentHtmlHasLayers(section.html)) return true;
   if (isTipTapDoc(section.doc) && docToPlainText(section.doc).trim()) return true;
   if (typeof section.plainText === 'string' && section.plainText.trim()) return true;
   return false;
@@ -289,29 +297,34 @@ function seedLayersForSlug(
 function buildSectionsFromAgent(
   template: PenTemplate,
   build: PenAgentBuild
-): PenSectionContent[] {
+): { sections: PenSectionContent[]; page: CompiledAgentPage } {
   const bySlug = new Map<string, PenAgentSectionBuild>();
   for (const s of build.sections || []) {
     if (s?.slug) bySlug.set(s.slug, s);
   }
 
-  return template.sections.map((sec) => {
+  const page: CompiledAgentPage = {};
+  const sections = template.sections.map((sec) => {
     if (sec.slug === 'rows' && template.registerColumns?.length && build.rows?.length) {
       return rowsToSection(build.rows);
     }
     const provided = bySlug.get(sec.slug);
-    const layers = seedLayersForSlug(template, sec.slug);
+    const seed = seedLayersForSlug(template, sec.slug);
+    const compiled = provided?.html ? compileAgentLibraryHtml(provided.html) : null;
+    if (compiled) Object.assign(page, compiled.page);
     if (!provided) {
       const empty = emptySection(sec.slug);
-      return layers?.length ? { ...empty, layers } : empty;
+      return seed?.length ? { ...empty, layers: seed } : empty;
     }
     const out: PenSectionContent = {
       slug: sec.slug,
       doc: resolveSectionDoc(provided)
     };
-    if (layers?.length) out.layers = layers;
+    if (compiled?.layers.length) out.layers = compiled.layers;
+    else if (seed?.length) out.layers = seed;
     return out;
   });
+  return { sections, page };
 }
 
 function randomId(prefix: string): string {
@@ -347,7 +360,7 @@ export function materializePenAgentBuild(
   const docId = opts.docId || randomId('pen');
   const draftId = opts.draftId || randomId('draft');
   const now = opts.now || new Date().toISOString();
-  const sections = buildSectionsFromAgent(template, build);
+  const { sections, page } = buildSectionsFromAgent(template, build);
   const toc = template.sections.map((s) => s.slug);
 
   const manifest: PenDocManifest = {
@@ -360,8 +373,14 @@ export function materializePenAgentBuild(
     toc,
     createdAt: now,
     updatedAt: now,
-    pageLayout: template.seedPageLayout || 'flow',
-    pagePresentation: template.seedPagePresentation,
+    pageLayout: page.pageLayout || template.seedPageLayout || 'flow',
+    pageSize: page.pageSize,
+    pageOrientation: page.pageOrientation,
+    galleryAspect: page.galleryAspect,
+    pageView: page.pageView,
+    pagePresentation: page.pagePresentation
+      ? mergePagePresentation(template.seedPagePresentation, page.pagePresentation)
+      : template.seedPagePresentation,
     lifecycle: opts.asCurrent ? 'published' : 'draft',
     activeDraftId: opts.asCurrent ? undefined : draftId
   };
@@ -434,7 +453,11 @@ export function penAgentBuildJsonSchema(): Record<string, unknown> {
           properties: {
             slug: { type: 'string' },
             plainText: { type: 'string' },
-            doc: { type: 'object', description: 'TipTap JSON doc' }
+            doc: { type: 'object', description: 'TipTap JSON doc' },
+            html: {
+              type: 'string',
+              description: 'Library HTML compiled into native layers and page fields'
+            }
           }
         }
       },

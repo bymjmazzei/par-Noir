@@ -4,6 +4,7 @@
  */
 import { useEffect, useState, type ReactNode } from 'react';
 import { FeedTileSurface, type FeedTileViewModel } from '@par-noir/feed-tile';
+import type { PenActionMessage } from '@par-noir/pen-protocol';
 import {
   canvasSizeForAspect,
   normalizeGalleryAspect,
@@ -89,7 +90,8 @@ export function BrowseFeedTilePreview({
   hideEngagementRail = false,
   engagementOverlay,
   aspectRatio,
-  showWidgets = true
+  showWidgets = true,
+  onAction
 }: {
   manifest: PenDocManifest;
   sections: PenSectionContent[];
@@ -103,6 +105,7 @@ export function BrowseFeedTilePreview({
   aspectRatio?: '9/16' | '16/9' | '1/1';
   /** Voter HTML for placed widgets. The editor overlay paints the author frame instead. */
   showWidgets?: boolean;
+  onAction?: (message: PenActionMessage) => void;
 }) {
   const base = bundleToFeedTileModel({
     title: manifest.title || 'Untitled',
@@ -149,7 +152,8 @@ export function BrowseFeedTilePreview({
         : '9/16');
 
   const canvas = canvasSizeForAspect(normalizeGalleryAspect(manifest.galleryAspect));
-  const widgetOverlay = showWidgets ? (
+  const stage = model.pages.some((page) => page.actionStageHtml);
+  const widgetOverlay = showWidgets && !stage ? (
     <div className="pointer-events-none absolute inset-0 z-10">
       {sections.flatMap((section) =>
         (section.layers || [])
@@ -184,6 +188,7 @@ export function BrowseFeedTilePreview({
       engagementOverlay={engagementOverlay}
       widgetOverlay={widgetOverlay}
       aspectRatio={resolvedAspect}
+      onAction={onAction}
     />
   );
 

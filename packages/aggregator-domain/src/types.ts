@@ -378,6 +378,8 @@ export interface PublicMetadata {
     rect: { x: number; y: number; w: number; h: number };
     label?: string;
   }>;
+  /** HTML overlay painted above the flattened media inside the feed iframe. */
+  actionStageHtml?: string;
   /**
    * Snapshot of Pen `manifest.licensing` at publish.
    * Structural mirror of `@par-noir/pen-protocol` PenLicensingRoot — do not import

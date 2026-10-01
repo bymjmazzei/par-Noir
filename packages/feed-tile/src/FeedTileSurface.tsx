@@ -1,4 +1,10 @@
 import type { CSSProperties, ReactNode } from 'react';
+import { useEffect, useMemo } from 'react';
+import {
+  buildActionStageDocument,
+  readPenActionMessage,
+  type PenActionMessage
+} from '@par-noir/pen-protocol';
 import { PenMediaPlayer } from './PenMediaPlayer.js';
 
 export type FeedTilePage = {
@@ -9,6 +15,8 @@ export type FeedTilePage = {
   mediaSrc?: string;
   /** When mediaSrc is a video URL. */
   mediaKind?: 'image' | 'video';
+  /** Action overlay HTML. When set, the page is one iframe: media behind this HTML. */
+  actionStageHtml?: string;
   backgroundColor?: string;
   textColor?: string;
 };
@@ -82,7 +90,54 @@ function plainFromHtml(html: string | undefined): string {
     .trim();
 }
 
-function PageSurface({ page, titleFallback }: { page: FeedTilePage; titleFallback: string }) {
+function PenActionStage({
+  mediaSrc,
+  mediaKind,
+  overlayHtml,
+  onAction
+}: {
+  mediaSrc?: string;
+  mediaKind?: 'image' | 'video';
+  overlayHtml: string;
+  onAction?: (message: PenActionMessage) => void;
+}) {
+  const srcDoc = useMemo(
+    () =>
+      buildActionStageDocument({
+        mediaSrc,
+        mediaKind,
+        overlayHtml
+      }),
+    [mediaSrc, mediaKind, overlayHtml]
+  );
+  useEffect(() => {
+    if (!onAction) return;
+    const onMessage = (event: MessageEvent) => {
+      const message = readPenActionMessage(event.data);
+      if (message) onAction(message);
+    };
+    window.addEventListener('message', onMessage);
+    return () => window.removeEventListener('message', onMessage);
+  }, [onAction]);
+  return (
+    <iframe
+      title="Pen action stage"
+      sandbox="allow-scripts"
+      className="absolute inset-0 h-full w-full border-0"
+      srcDoc={srcDoc}
+    />
+  );
+}
+
+function PageSurface({
+  page,
+  titleFallback,
+  onAction
+}: {
+  page: FeedTilePage;
+  titleFallback: string;
+  onAction?: (message: PenActionMessage) => void;
+}) {
   const surface: CSSProperties = {
     backgroundColor: page.backgroundColor || '#000000',
     color: page.textColor || '#FFFFFF'
@@ -96,7 +151,14 @@ function PageSurface({ page, titleFallback }: { page: FeedTilePage; titleFallbac
 
   return (
     <div className="relative h-full w-full overflow-hidden" style={surface}>
-      {page.mediaSrc ? (
+      {page.actionStageHtml ? (
+        <PenActionStage
+          mediaSrc={page.mediaSrc}
+          mediaKind={page.mediaKind}
+          overlayHtml={page.actionStageHtml}
+          onAction={onAction}
+        />
+      ) : page.mediaSrc ? (
         isVideo ? (
           <div className="absolute inset-0">
             <PenMediaPlayer src={page.mediaSrc} className="h-full w-full [&_video]:object-cover" />
@@ -111,7 +173,7 @@ function PageSurface({ page, titleFallback }: { page: FeedTilePage; titleFallbac
           </div>
         </div>
       )}
-      {page.mediaSrc ? (
+      {page.mediaSrc && !page.actionStageHtml ? (
         <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-black/20" />
       ) : null}
     </div>
@@ -126,7 +188,8 @@ export function FeedTileSurface({
   hideEngagementRail = false,
   engagementOverlay,
   widgetOverlay,
-  aspectRatio = '9/16'
+  aspectRatio = '9/16',
+  onAction
 }: {
   model: FeedTileViewModel;
   mode?: 'preview' | 'live';
@@ -142,6 +205,8 @@ export function FeedTileSurface({
   widgetOverlay?: ReactNode;
   /** Tile aspect: 9/16 portrait, 16/9 landscape, 1/1 square. */
   aspectRatio?: '9/16' | '16/9' | '1/1';
+  /** Press from the action-stage iframe. */
+  onAction?: (message: PenActionMessage) => void;
 }) {
   const pages =
     model.pages.length > 0
@@ -214,6 +279,7 @@ export function FeedTileSurface({
                   mediaSrc: sharedMedia ? undefined : page.mediaSrc
                 }}
                 titleFallback={model.title}
+                onAction={onAction}
               />
             </div>
           ))}
@@ -236,7 +302,7 @@ export function FeedTileSurface({
                   : 'pen-feed-carousel-page relative h-full w-full shrink-0 grow-0 basis-full'
               }
             >
-              <PageSurface page={page} titleFallback={model.title} />
+              <PageSurface page={page} titleFallback={model.title} onAction={onAction} />
             </div>
           ))}
         </div>
@@ -248,6 +314,7 @@ export function FeedTileSurface({
             mediaKind: pages[0]?.mediaKind
           }}
           titleFallback={model.title}
+          onAction={onAction}
         />
       )}
 

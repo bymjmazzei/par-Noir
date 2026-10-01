@@ -17,6 +17,10 @@ describe('penIndexFields', () => {
     expect(overlays.actionOverlays).toEqual([
       { layerId: 'b', behavior: 'widget.toggle', spreadsheetId: 'sheet-user' }
     ]);
+    expect(penIndexFields({ actionStageHtml: '<button>Yes</button>' }).actionStageHtml).toBe(
+      '<button>Yes</button>'
+    );
+    expect(penIndexFields({ actionStageHtml: '  ' }).actionStageHtml).toBeUndefined();
     expect(
       penIndexFields({ companionAudioFileIds: ['a', ''], musicPenDocId: 'music-doc' })
         .companionAudioFileIds

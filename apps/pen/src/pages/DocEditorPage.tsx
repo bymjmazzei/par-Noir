@@ -67,6 +67,8 @@ import {
   formCollectsToSheet,
   inputColumnKeys,
   isSheetTrigger,
+  buildActionStageHtml,
+  type PenActionMessage,
   nextAllocatePress,
   nextRankPress,
   rankColumnKeys,
@@ -140,6 +142,7 @@ import {
   writeMixedPagesPublishHandoff,
   writeTextCollectionHandoff
 } from '../services/penPublish';
+import { previewPath, socialFeedPublishAllowed } from '../services/penPreview';
 import { requestNotaryStamp, fetchMonetizationConnectReady } from '../services/penApi';
 import { castPollVote, createPollSheet, putPollStructure } from '../services/pollCloud';
 import { ensureBundleTrackingSheets } from '../services/widgetTracking';
@@ -760,6 +763,22 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
       /* already registered or offline */
     });
   }, [docId, session]);
+
+  function onStageAction(message: PenActionMessage) {
+    if (!bundle) return;
+    for (const sec of bundle.sections) {
+      const layer = (sec.layers || []).find((item) => item.id === message.layerId);
+      if (!layer) continue;
+      setActiveLayerId(layer.id);
+      setSocialSelectedIds([layer.id]);
+      if (message.behavior === 'poll.vote') {
+        void voteOnPoll({ ...layer, bindRowId: layer.bindRowId || message.bindRowId || layer.id });
+      } else if (message.behavior) {
+        void runWidgetAction(layer);
+      }
+      return;
+    }
+  }
 
   async function voteOnPoll(layer: PenPageLayer) {
     if (!bundle || !section || layer.behavior !== 'poll.vote' || !layer.bindRowId) return;
@@ -1382,7 +1401,7 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
     }
   }
 
-  async function inviteCollaborator() {
+  async function inviteCollaborator(roleOverride?: typeof inviteRole) {
     const pn = invitePn.trim();
     if (!pn || !bundle) return;
     if (
@@ -1426,26 +1445,27 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
       }
       sessionStorage.setItem(`pen_peer_kem:${pn}`, peerPk);
 
+      const granted = roleOverride || inviteRole;
       await invitePenCollaborator({
         session,
         docId,
         groupId,
         title: bundle.manifest.title,
         peerPnIdentifier: pn,
-        role: inviteRole,
+        role: granted,
         peerMlKemPublicKey: peerPk
       });
       const peerHash = hashPnIdentifier(pn);
       const roles = [
         ...(bundle.manifest.roles ||
           ensureOwnerAssignment([], hashPnIdentifier(session.pnIdentifier))),
-        { pnHash: peerHash, role: inviteRole }
+        { pnHash: peerHash, role: granted }
       ];
       persist({
         ...bundle,
         manifest: { ...bundle.manifest, roles, updatedAt: new Date().toISOString() }
       });
-      setStatus('Invited');
+      setStatus(roleOverride === 'viewer' ? `Preview sealed. ${previewPath(docId)}` : 'Invited');
       setInvitePn('');
     } catch (e) {
       setError(e instanceof Error ? e.message : 'invite_failed');
@@ -1564,6 +1584,11 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
   }
 
   function publishSocial(feedIds: string[]) {
+    const classId = bundleRef.current?.manifest.classId || bundle?.manifest.classId || '';
+    if (!socialFeedPublishAllowed(classId)) {
+      setError('social_feed_only');
+      return;
+    }
     void (async () => {
       try {
         saveDraft({ silent: true });
@@ -2203,6 +2228,12 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
           pnIdentifier={session.pnIdentifier}
           onPublishLive={() => void publishLive()}
           onShareToAggregators={(feedIds) => publishSocial(feedIds)}
+          feedEnabled={isSocialDoc}
+          previewPn={invitePn}
+          onPreviewPnChange={setInvitePn}
+          onSendPreview={() => {
+            void inviteCollaborator('viewer');
+          }}
           onPublishTemplate={(licensing) => publishTemplate(licensing)}
           onSendCorrespondence={sendCorrespondence}
           onTemplatePrivate={publishAsTemplate}
@@ -2724,7 +2755,9 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
                         return t ? templateAuthorLabel(t) : 'You';
                       })()}
                       phoneActiveFeedId="public"
+                      onAction={onStageAction}
                       actionOverlay={
+                        buildActionStageHtml(bundle.sections) ? undefined : (
                         <ActionLayerPhoneOverlay
                           sections={bundle.sections}
                           galleryAspect={bundle.manifest.galleryAspect}
@@ -2741,6 +2774,7 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
                             setSocialSelectedIds([id]);
                           }}
                         />
+                        )
                       }
                     />
                   </div>

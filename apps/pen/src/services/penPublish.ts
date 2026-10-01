@@ -26,6 +26,7 @@ import {
   mergePagePresentation,
   docToPlainText,
   collectActionOverlays,
+  buildActionStageHtml,
   stripPollSpreadsheet,
   stripPollSpreadsheetFromSection,
   inferPageTextStyle,
@@ -597,6 +598,11 @@ export function actionOverlaysForPost(
   return collectActionOverlays(sections);
 }
 
+/** Overlay HTML stored beside actionOverlays. Inert media is not in this string. */
+export function actionStageHtmlForPost(sections: LocalDocBundle['sections']): string {
+  return buildActionStageHtml(sections);
+}
+
 /** Publish the compiled post to the owner cloud. No template flag. */
 export async function publishPostToOwnerCloud(params: {
   bundle: LocalDocBundle;
@@ -628,7 +634,11 @@ export async function publishPostToOwnerCloud(params: {
       : {})
   };
   const actionOverlays = actionOverlaysForPost(params.bundle.sections);
-  const overlayMeta = actionOverlays.length ? { actionOverlays } : {};
+  const actionStageHtml = actionStageHtmlForPost(params.bundle.sections);
+  const overlayMeta = {
+    ...(actionOverlays.length ? { actionOverlays } : {}),
+    ...(actionStageHtml ? { actionStageHtml } : {})
+  };
 
   if (params.video) {
     const bytes = new Uint8Array(await params.video.videoBlob.arrayBuffer());

@@ -17,7 +17,8 @@ A user asks you to build something in Pen. You:
 ## Invariants
 
 - **Template-first.** Choose an existing `templateId`. Do not invent new templates, classes, or section slugs.
-- **Output contract.** `PenAgentBuild`: `{ templateId, title, sections?: [...], rows?: [...] }`. Prefer `sections[].plainText`. Register templates use `rows` matching `registerColumns`.
+- **Output contract.** `PenAgentBuild`: `{ templateId, title, sections?: [...], rows?: [...] }`. Prefer `sections[].plainText` for prose. A finished template uses `sections[].html` (library HTML). Register templates use `rows` matching `registerColumns`.
+- **Library HTML.** `pen-page` sets `page-size`, `orientation` (`portrait`|`landscape`), `gallery-aspect` (`9/16`|`16/9`|`1/1`), `page-layout`, `page-view`, and presentation (`font-family`, `font-size`, `text-color`, `text-align`, `padding`, `background`). Children compile into layers: `pen-text`, `pen-image`, `pen-video`, `pen-button`, `pen-input`, `pen-time`, `pen-svg`, `pen-embed`, `pen-group`, `pen-guide`. Attributes are the layer fields (`x`, `y`, `w`, `h`, `src`, `behavior`, `bind-row`, `open-url`, `submit-to`, `reveal`, crop, mask, grade, motion). A `pen-button` with `behavior` becomes an interactive layer, not a snippet. Markup that is not one of these elements stays one `pen-html` layer.
 - **No path invention.** Canonical tree is `par-noir-pen/{docId}/doc.json`, `drafts/{draftId}/`, `current/`, `past/`, `history.chain` — see `snapshots/path-grammar.json`.
 - **Consumer vs kit.** Kit forms (e.g. `records.register`) are for agents/integrators; do not treat them as consumer New… picks unless the user asked for a register/table.
 - **Publish ≠ connect to feed.** Materializing / publishing current updates the doc. Putting content on a public feed is a separate human/follow-on step.

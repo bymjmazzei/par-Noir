@@ -19,6 +19,9 @@ function fileToTileModel(file: IndexedFile, posterUrl?: string): FeedTileViewMod
       {
         title,
         mediaSrc: posterUrl,
+        mediaKind: posterUrl ? 'image' : undefined,
+        actionStageHtml:
+          typeof file.metadata.actionStageHtml === 'string' ? file.metadata.actionStageHtml : undefined,
         backgroundColor: '#000000',
         textColor: '#FFFFFF'
       }
