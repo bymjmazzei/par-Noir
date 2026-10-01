@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
 import { flushSync } from 'react-dom';
 import { Link, useNavigate } from 'react-router-dom';
 import type { Editor } from '@tiptap/react';
@@ -41,7 +41,7 @@ import {
   pageAllowsPasteboard,
   previewPageUsesGutter,
   resolvePagePaddingPx,
-  resolvePageOrientation,
+  orientationFromPageSize,
   resolvePageView,
   screenStripWidthPx,
   verifyChain,
@@ -96,8 +96,10 @@ import {
   PreviewPageStrip,
   PreviewZoomControl,
   previewStripLayout,
-  previewWorkspaceLayout
+  previewWorkspaceLayout,
+  workspaceGuideSpan
 } from '../components/PreviewPageBar';
+import { clampEditorPanePx } from '../components/editorSplit';
 import { pageFrameStyle } from '../components/LayerObjectToolbar';
 import { SocialFeedPhonePreview } from '../components/SocialFeedPhonePreview';
 import { LayersPopover } from '../components/LayersPanel';
@@ -240,6 +242,9 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
   const [showPreview, setShowPreview] = useState(true);
   const [previewToolbarHost, setPreviewToolbarHost] = useState<HTMLDivElement | null>(null);
   const [previewPaneEl, setPreviewPaneEl] = useState<HTMLDivElement | null>(null);
+  const [editorSplitEl, setEditorSplitEl] = useState<HTMLDivElement | null>(null);
+  const [editorPanePx, setEditorPanePx] = useState<number | null>(null);
+  const [editorSplitWide, setEditorSplitWide] = useState(true);
   const [screenAllPages, setScreenAllPages] = useState(false);
   const [previewZoom, setPreviewZoom] = useState(1);
   const [previewScroll, setPreviewScroll] = useState({
@@ -309,6 +314,28 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
     bindTimelineSample(setPlayheadSec);
     return () => bindTimelineSample(null);
   }, []);
+
+  useEffect(() => {
+    const media = window.matchMedia('(min-width: 640px)');
+    const apply = () => setEditorSplitWide(media.matches);
+    apply();
+    media.addEventListener('change', apply);
+    return () => media.removeEventListener('change', apply);
+  }, []);
+
+  useEffect(() => {
+    const row = editorSplitEl;
+    if (!row) return;
+    const apply = () => {
+      const width = row.clientWidth;
+      if (width <= 0) return;
+      setEditorPanePx((prev) => clampEditorPanePx(prev ?? width / 2, width));
+    };
+    apply();
+    const observer = new ResizeObserver(apply);
+    observer.observe(row);
+    return () => observer.disconnect();
+  }, [editorSplitEl]);
 
   useEffect(() => {
     if (!previewPaneEl) return;
@@ -1976,7 +2003,11 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
     required: s.required
   }));
   const pageView = resolvePageView(bundle.manifest.pageView, bundle.manifest.pageLayout);
-  const pageOrientation = resolvePageOrientation(bundle.manifest.pageOrientation, pageView);
+  const pageOrientation = orientationFromPageSize(
+    bundle.manifest.flowWorkspaceWidthPx,
+    bundle.manifest.flowWorkspaceHeightPx,
+    bundle.manifest.pageOrientation
+  );
   const previewPages = bundle.manifest.toc.map((slug, index) => {
     const fromTemplate = template?.sections.find((item) => item.slug === slug);
     return {
@@ -2073,6 +2104,33 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
     previewPaneSize.width,
     previewPaneSize.height
   ].join('|');
+  const guideSpanFor = (
+    originX: number,
+    originY: number,
+    pageW: number,
+    pageH: number,
+    docW: number,
+    docH: number,
+    spaceScale = 1
+  ) =>
+    workspaceGuideSpan({
+      padLeft: previewWorkspace.padLeft,
+      padRight: previewWorkspace.padRight,
+      padTop: previewWorkspace.padTop,
+      padBottom: previewWorkspace.padBottom,
+      overLeft: previewWorkspace.overLeft,
+      overRight: previewWorkspace.overRight,
+      overTop: previewWorkspace.overTop,
+      overBottom: previewWorkspace.overBottom,
+      zoom: previewWorkspace.zoom,
+      originX,
+      originY,
+      pageW,
+      pageH,
+      docW,
+      docH,
+      spaceScale
+    });
   const previewLeadingX = previewWorkspace.padLeft + previewWorkspace.overLeft;
   const previewLeadingY = previewWorkspace.padTop + previewWorkspace.overTop;
   const previewScrollSig = [
@@ -2191,6 +2249,23 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
 
   const flipPreviewPage = (direction: -1 | 1) => {
     setActiveSlug(adjacentPageSlug(bundle.manifest.toc, activeSlug, direction));
+  };
+
+  const onEditorSplitDown = (event: ReactPointerEvent<HTMLDivElement>) => {
+    const row = editorSplitEl;
+    if (!row) return;
+    event.preventDefault();
+    event.currentTarget.setPointerCapture(event.pointerId);
+    const move = (next: PointerEvent) => {
+      const rect = row.getBoundingClientRect();
+      setEditorPanePx(clampEditorPanePx(next.clientX - rect.left, rect.width));
+    };
+    const up = () => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
   };
 
   const togglePageViewLock = () => {
@@ -2355,11 +2430,20 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
         )}
       </div>
 
-      <div className="flex min-h-0 flex-1">
+      <div ref={setEditorSplitEl} className="flex min-h-0 flex-1">
         <div
-          className={`relative flex min-w-0 flex-col ${
-            (showPreview || sidePanel) && !showHistory ? 'w-1/2 border-r border-stone-400' : 'flex-1'
+          className={`relative flex min-w-0 flex-col overflow-hidden ${
+            (showPreview || sidePanel) && !showHistory && editorSplitWide
+              ? editorPanePx
+                ? 'shrink-0'
+                : 'w-1/2 shrink-0'
+              : 'flex-1'
           }`}
+          style={
+            (showPreview || sidePanel) && !showHistory && editorSplitWide && editorPanePx
+              ? { width: editorPanePx }
+              : undefined
+          }
         >
           {!showHistory && (
             <div className="flex shrink-0 flex-col border-b border-stone-300 bg-stone-50">
@@ -2638,8 +2722,18 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
           )}
         </div>
 
+        {(showPreview || sidePanel) && !showHistory && (
+          <div
+            role="separator"
+            aria-orientation="vertical"
+            aria-label="Resize panels"
+            className="hidden w-1.5 shrink-0 cursor-col-resize bg-stone-300 hover:bg-sky-500 sm:block"
+            onPointerDown={onEditorSplitDown}
+          />
+        )}
+
         {showComments && !showHistory && (
-          <div className="flex w-1/2 flex-col bg-white">
+          <div className="flex min-h-0 min-w-0 flex-1 flex-col bg-white">
             <div className="border-b border-stone-200 px-3 py-2 text-[11px] font-semibold uppercase tracking-wider text-stone-500">
               Comments · {activeSlug}
             </div>
@@ -2679,7 +2773,7 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
         )}
 
         {showPreview && !showHistory && !sidePanel && (
-          <div className="hidden min-h-0 min-w-0 w-1/2 flex-col sm:flex">
+          <div className="hidden min-h-0 min-w-0 flex-1 flex-col sm:flex">
             {isSocialDoc ? (
               <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">
                 <div className="pen-social-pres-strip">
@@ -2982,11 +3076,20 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
                     pageView === 'vertical'
                   }
                 >
-                  {previewPages.map((page) => {
+                  {previewPages.map((page, index) => {
                     if (pageView === 'screen' && !screenAllPages && page.slug !== activeSlug) return null;
                     const pageSection = page.section;
                     if (!pageSection) return null;
                     const active = page.slug === activeSlug;
+                    const pageOrigin = previewStrip.origin(index);
+                    const pageGuideSpan = guideSpanFor(
+                      pageOrigin.x,
+                      pageOrigin.y,
+                      previewPageBox.width,
+                      previewPageBox.height,
+                      previewStrip.docW,
+                      previewStrip.docH
+                    );
                     const pageManifest =
                       pageView === 'screen'
                         ? {
@@ -3004,7 +3107,7 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
                       <div
                         key={page.slug}
                         data-preview-page={page.slug}
-                        className="relative shrink-0 overflow-visible"
+                        className="relative shrink-0 grow-0 self-center overflow-visible"
                         style={{
                           width: previewPageBox.width,
                           height: previewPageBox.height
@@ -3090,6 +3193,7 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
                             onInputValue={setInputValue}
                             votedOptionByGroup={votedOptionByGroup}
                             playheadSec={playheadSec}
+                            guideSpan={pageGuideSpan}
                             onSectionChange={(next) => {
                               if (sectionHasVoteButton(next)) {
                                 commitWidgetSection(next);
@@ -3144,6 +3248,15 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
                     snapToPageCenter={Boolean(bundle.manifest.snapToPageGuides)}
                     playheadSec={playheadSec}
                     freePlacement={artboard}
+                    guideSpan={guideSpanFor(
+                      0,
+                      0,
+                      screenAllPages ? screenFullWidth : previewPageBox.width,
+                      screenAllPages ? screenFullHeight : previewPageBox.height,
+                      screenAllPages ? screenFullWidth : previewStrip.docW,
+                      screenAllPages ? screenFullHeight : previewStrip.docH,
+                      screenAllPages ? screenFit : 1
+                    )}
                   />
                 )}
                 </div>

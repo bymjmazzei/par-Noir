@@ -356,12 +356,11 @@ export function contentBoxSize(
     measuredWidthPx != null && measuredWidthPx > 0
       ? Math.round(measuredWidthPx)
       : undefined;
-  const outerW = Math.max(
-    320,
+  const capped =
     measured != null && nominalOuter != null
       ? Math.min(nominalOuter, measured)
-      : (nominalOuter ?? measured ?? DEFAULT_FLOW_WORKSPACE_WIDTH_PX)
-  );
+      : (nominalOuter ?? measured ?? DEFAULT_FLOW_WORKSPACE_WIDTH_PX);
+  const outerW = measured != null ? capped : Math.max(320, capped);
   const width = Math.max(MIN_LAYER_SIZE_PX, outerW - 2 * paddingPx);
   const minH = sheet.paged && sheet.pageHeightPx
     ? Math.max(MIN_LAYER_SIZE_PX, sheet.pageHeightPx - 2 * paddingPx)

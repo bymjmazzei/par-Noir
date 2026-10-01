@@ -5,6 +5,7 @@ import {
   appendDocPage,
   removeDocPage,
   reorderDocPages,
+  orientationFromPageSize,
   resolvePageOrientation
 } from './pageView.js';
 
@@ -13,6 +14,9 @@ describe('pageView', () => {
     expect(resolvePageOrientation(undefined, 'horizontal')).toBe('landscape');
     expect(resolvePageOrientation(undefined, 'vertical')).toBe('portrait');
     expect(resolvePageOrientation('portrait', 'horizontal')).toBe('portrait');
+    expect(orientationFromPageSize(1080, 1920, 'landscape')).toBe('portrait');
+    expect(orientationFromPageSize(1920, 1080)).toBe('landscape');
+    expect(orientationFromPageSize(null, null, 'landscape')).toBe('landscape');
   });
 
   it('removes a page and selects the neighbor, and keeps the last page', () => {

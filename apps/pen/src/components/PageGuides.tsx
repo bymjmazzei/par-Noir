@@ -2,11 +2,18 @@
 
 import type { PointerEvent as ReactPointerEvent } from 'react';
 
+export type GuideSpan = { left: number; right: number; top: number; bottom: number };
+
+const NO_SPAN: GuideSpan = { left: 0, right: 0, top: 0, bottom: 0 };
+
 export function PageGuides({
   guides,
+  span = NO_SPAN,
   onMove
 }: {
   guides: Array<{ id: string; axis: 'vertical' | 'horizontal'; position: number }>;
+  /** Extra pixels the line runs past the page, into the workspace. */
+  span?: GuideSpan;
   onMove: (id: string, position: number) => void;
 }) {
   function drag(event: ReactPointerEvent, id: string, axis: 'vertical' | 'horizontal') {
@@ -17,8 +24,9 @@ export function PageGuides({
     const move = (next: PointerEvent) => {
       const rect = surface.getBoundingClientRect();
       const raw = axis === 'vertical' ? next.clientX - rect.left : next.clientY - rect.top;
-      const limit = axis === 'vertical' ? rect.width : rect.height;
-      onMove(id, Math.max(0, Math.min(limit, raw)));
+      const min = axis === 'vertical' ? -span.left : -span.top;
+      const max = axis === 'vertical' ? rect.width + span.right : rect.height + span.bottom;
+      onMove(id, Math.max(min, Math.min(max, raw)));
     };
     const up = () => {
       window.removeEventListener('pointermove', move);
@@ -38,8 +46,20 @@ export function PageGuides({
           className="pointer-events-auto absolute"
           style={
             guide.axis === 'vertical'
-              ? { left: guide.position - 4, top: 0, width: 8, height: '100%', cursor: 'ew-resize' }
-              : { top: guide.position - 4, left: 0, height: 8, width: '100%', cursor: 'ns-resize' }
+              ? {
+                  left: guide.position - 4,
+                  top: -span.top,
+                  width: 8,
+                  height: `calc(100% + ${span.top + span.bottom}px)`,
+                  cursor: 'ew-resize'
+                }
+              : {
+                  top: guide.position - 4,
+                  left: -span.left,
+                  height: 8,
+                  width: `calc(100% + ${span.left + span.right}px)`,
+                  cursor: 'ns-resize'
+                }
           }
           onPointerDown={(event) => drag(event, guide.id, guide.axis)}
         >

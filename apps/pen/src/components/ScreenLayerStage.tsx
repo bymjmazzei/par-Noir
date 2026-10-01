@@ -39,7 +39,8 @@ export function ScreenLayerStage({
   onWidgetAction,
   snapToPageCenter = false,
   playheadSec = 0,
-  freePlacement = false
+  freePlacement = false,
+  guideSpan
 }: {
   sections: PenSectionContent[];
   pageWidth: number;
@@ -62,6 +63,8 @@ export function ScreenLayerStage({
   playheadSec?: number;
   /** Non-flow artboard. Layers may sit past the page; render still clips. */
   freePlacement?: boolean;
+  /** Workspace past this strip. Guide lines run through it. */
+  guideSpan?: { left: number; right: number; top: number; bottom: number };
 }) {
   const owner = new Map<string, { index: number; slug: string }>();
   const sampledById = new Map<string, PenPageLayer>();
@@ -103,6 +106,7 @@ export function ScreenLayerStage({
     <>
     <PageGuides
       guides={guides}
+      span={guideSpan}
       onMove={(id, position) => {
         const guide = guides.find((item) => item.id === id);
         if (!guide) return;
@@ -137,6 +141,7 @@ export function ScreenLayerStage({
       items={items}
       selectedId={activeLayerId}
       snapToPageCenter={snapToPageCenter}
+      guideSpan={guideSpan}
       snapGuides={{
         x: guides.filter((guide) => guide.axis === 'vertical').map((guide) => guide.position),
         y: guides.filter((guide) => guide.axis === 'horizontal').map((guide) => guide.position)

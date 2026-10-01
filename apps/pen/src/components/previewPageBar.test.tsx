@@ -18,7 +18,8 @@ import {
   previewStripLayout,
   PreviewPageStrip,
   previewWorkspaceLayout,
-  PreviewZoomControl
+  PreviewZoomControl,
+  workspaceGuideSpan
 } from './PreviewPageBar';
 
 describe('preview page toolbar', () => {
@@ -227,6 +228,27 @@ describe('preview page toolbar', () => {
     });
     expect(strip.docW).toBe(212);
     expect(strip.focusX).toBe(162);
+    const span = workspaceGuideSpan({
+      padLeft: 40,
+      padRight: 10,
+      padTop: 20,
+      padBottom: 0,
+      overLeft: 0,
+      overRight: 0,
+      overTop: 0,
+      overBottom: 0,
+      zoom: 2,
+      originX: 100,
+      originY: 0,
+      pageW: 200,
+      pageH: 400,
+      docW: 500,
+      docH: 400
+    });
+    expect(span.left).toBe(120);
+    expect(span.right).toBe(205);
+    expect(span.top).toBe(10);
+    expect(span.bottom).toBe(0);
     const html = renderToStaticMarkup(<PreviewZoomControl zoom={1} onZoom={() => undefined} />);
     expect(html).toContain('aria-label="Workspace zoom"');
     expect(html).toContain('data-preview-zoom');

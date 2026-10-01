@@ -484,7 +484,8 @@ export function EditablePagePreview({
   onPageView,
   onToggleViewLock,
   playheadSec = 0,
-  onEnterGroup
+  onEnterGroup,
+  guideSpan
 }: {
   manifest: PenDocManifest;
   section: PenSectionContent;
@@ -519,6 +520,8 @@ export function EditablePagePreview({
   /** Section clock. Layers with keys are sampled here for display only. */
   playheadSec?: number;
   onEnterGroup?: (id: string) => void;
+  /** Workspace past the page, in this page's pixels. Guide lines run through it. */
+  guideSpan?: { left: number; right: number; top: number; bottom: number };
   onPageSizeChange?: (next: PageSizeChoice) => void;
   onPresentationChange?: (next: Partial<PenPagePresentation>) => void;
   onSnapChange?: (enabled: boolean) => void;
@@ -694,7 +697,9 @@ export function EditablePagePreview({
     const el = bodyRef.current;
     if (!el) return;
     const measure = () => {
-      const h = Math.max(el.scrollHeight, el.clientHeight, sheet.pageHeightPx || 320);
+      const h = scrollWithParent
+        ? Math.max(el.clientHeight, 1)
+        : Math.max(el.scrollHeight, el.clientHeight, sheet.pageHeightPx || 320);
       setContentOuterH(h);
     };
     measure();
@@ -1130,7 +1135,7 @@ export function EditablePagePreview({
                 : undefined
           }
           fitParent
-          containInParent={scrollWithParent && !clearChrome}
+          containInParent={scrollWithParent}
           onClick={() => selectLayer(PAGE_LAYER_ID)}
           composeExportRoot
         >
@@ -1155,10 +1160,10 @@ export function EditablePagePreview({
           {/* Body — padded content box; wrap floats + prose */}
           <div
             ref={bodyRef}
-            className={`pen-rich-html relative z-0 ${fontsReady ? '' : 'opacity-90'}`}
+            className={`pen-rich-html relative z-0 ${scrollWithParent ? 'h-full overflow-hidden' : ''} ${fontsReady ? '' : 'opacity-90'}`}
             style={{
               ...bodyStyle,
-              minHeight: sheet.pageHeightPx || box.height + 2 * pad
+              minHeight: scrollWithParent ? undefined : sheet.pageHeightPx || box.height + 2 * pad
             }}
             onClick={(e) => {
               e.stopPropagation();
@@ -1200,6 +1205,7 @@ export function EditablePagePreview({
                   axis: layer.guideAxis === 'horizontal' ? 'horizontal' : 'vertical',
                   position: (layer.guideAxis === 'horizontal' ? layer.y : layer.x) + pad
                 }))}
+                span={guideSpan}
                 onMove={(id, position) => {
                   const layer = guideLayers.find((item) => item.id === id);
                   if (!layer) return;
@@ -1240,6 +1246,7 @@ export function EditablePagePreview({
               selectedId={pageActive ? null : activeLayerId}
               snapToPageCenter={snapEnabled}
               snapGuides={snapGuides}
+              guideSpan={guideSpan}
               getLinkedIds={getLinkedIds}
               resizeDisabledIds={groupIds}
               lockAspectRatioIds={mediaAspectLockIds}

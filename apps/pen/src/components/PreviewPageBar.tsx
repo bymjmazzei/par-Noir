@@ -319,6 +319,38 @@ export function previewWorkspaceLayout(input: {
   };
 }
 
+export type GuideSpan = { left: number; right: number; top: number; bottom: number };
+
+/** How far a guide on one page must run to cross the whole workspace. */
+export function workspaceGuideSpan(input: {
+  padLeft: number;
+  padRight: number;
+  padTop: number;
+  padBottom: number;
+  overLeft: number;
+  overRight: number;
+  overTop: number;
+  overBottom: number;
+  zoom: number;
+  originX: number;
+  originY: number;
+  pageW: number;
+  pageH: number;
+  docW: number;
+  docH: number;
+  spaceScale?: number;
+}): GuideSpan {
+  const zoom = input.zoom > 0 ? input.zoom : 1;
+  const space = input.spaceScale && input.spaceScale > 0 ? input.spaceScale : 1;
+  const unit = zoom * space;
+  return {
+    left: (input.padLeft + input.overLeft) / unit + input.originX,
+    top: (input.padTop + input.overTop) / unit + input.originY,
+    right: (input.padRight + input.overRight) / unit + Math.max(0, input.docW - input.originX - input.pageW),
+    bottom: (input.padBottom + input.overBottom) / unit + Math.max(0, input.docH - input.originY - input.pageH)
+  };
+}
+
 export function PreviewZoomControl({
   zoom,
   onZoom

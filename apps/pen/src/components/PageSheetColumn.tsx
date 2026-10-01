@@ -75,7 +75,7 @@ export function PageSheetColumn({
       } ${dims.fillWidth ? 'w-full' : ''} ${className || ''}`}
       style={{
         width: containInParent || dims.fillWidth ? '100%' : dims.pageWidthPx ?? undefined,
-        maxWidth: containInParent ? 'none' : '100%',
+        maxWidth: '100%',
         minHeight: containInParent
           ? '100%'
           : dims.fillWidth && fitParent
@@ -91,7 +91,7 @@ export function PageSheetColumn({
       }}
       onClick={onClick}
     >
-      {dims.paged && pageH
+      {dims.paged && pageH && !containInParent
         ? Array.from({ length: pages }, (_, i) => (
             <div
               key={i}
@@ -109,10 +109,13 @@ export function PageSheetColumn({
             />
           ))
         : null}
-      <div className="relative z-[1]" style={{ minHeight: stackHeight }}>
+      <div
+        className="relative z-[1]"
+        style={containInParent ? { height: '100%', minHeight: '100%' } : { minHeight: stackHeight }}
+      >
         {children}
       </div>
-      {dims.paged && pageH
+      {dims.paged && pageH && !containInParent
         ? Array.from({ length: pages - 1 }, (_, i) => (
             <div
               key={`break-${i}`}

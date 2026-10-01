@@ -30,6 +30,21 @@ export function resolvePageOrientation(
   return pageView === 'horizontal' ? 'landscape' : 'portrait';
 }
 
+/** Paper orientation follows the page box. Scroll direction does not flip it. */
+export function orientationFromPageSize(
+  widthPx?: number | null,
+  heightPx?: number | null,
+  stored?: PenPageOrientation | null
+): PenPageOrientation {
+  const width = Number(widthPx);
+  const height = Number(heightPx);
+  if (Number.isFinite(width) && Number.isFinite(height) && width > 0 && height > 0 && width !== height) {
+    return width > height ? 'landscape' : 'portrait';
+  }
+  if (stored === 'landscape' || stored === 'portrait') return stored;
+  return 'portrait';
+}
+
 /** Published swipe. Screen is one strip, so it does not swipe. */
 export function pageSwipeAxisForView(view: PenPageView): 'x' | 'y' | undefined {
   if (view === 'screen') return undefined;

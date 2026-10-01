@@ -37,7 +37,8 @@ export function LayoutSurface({
   lockAspectRatioIds,
   bounds,
   freePlacement = false,
-  frameStyle
+  frameStyle,
+  guideSpan
 }: {
   items: LayoutItem[];
   onChange: (next: LayoutItem[]) => void;
@@ -62,6 +63,8 @@ export function LayoutSurface({
   freePlacement?: boolean;
   /** Shadow, blur, and stroke paint on the layer frame, outside the clipped face. */
   frameStyle?: (item: LayoutItem) => CSSProperties;
+  /** Draw snap lines across the workspace, past the page. */
+  guideSpan?: { left: number; right: number; top: number; bottom: number };
 }) {
   const surfaceRef = useRef<HTMLDivElement>(null);
   const itemsRef = useRef(items);
@@ -275,13 +278,21 @@ export function LayoutSurface({
       {guides.v && (
         <div
           className="pointer-events-none absolute top-0 z-30 w-px -translate-x-1/2 bg-sky-400/80"
-          style={{ left: guideX, height: '100%' }}
+          style={{
+            left: guideX,
+            top: -(guideSpan?.top || 0),
+            height: `calc(100% + ${(guideSpan?.top || 0) + (guideSpan?.bottom || 0)}px)`
+          }}
         />
       )}
       {guides.h && (
         <div
           className="pointer-events-none absolute left-0 z-30 h-px -translate-y-1/2 bg-sky-400/80"
-          style={{ top: guideY, width: '100%' }}
+          style={{
+            top: guideY,
+            left: -(guideSpan?.left || 0),
+            width: `calc(100% + ${(guideSpan?.left || 0) + (guideSpan?.right || 0)}px)`
+          }}
         />
       )}
       {sortByZ(displayItems).map((item) => {

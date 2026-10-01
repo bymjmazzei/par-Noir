@@ -161,6 +161,8 @@ describe('pageGeometry', () => {
     expect(full.width).toBe(LETTER_WIDTH_PX - 80);
     const constrained = contentBoxSize(sheet, 40, 200, 600);
     expect(constrained.width).toBe(520);
+    const narrow = contentBoxSize(sheet, 40, 200, 200);
+    expect(narrow.width).toBe(120);
     // Measured wider than nominal must not inflate past print width.
     const wide = contentBoxSize(sheet, 40, 200, 1200);
     expect(wide.width).toBe(LETTER_WIDTH_PX - 80);
