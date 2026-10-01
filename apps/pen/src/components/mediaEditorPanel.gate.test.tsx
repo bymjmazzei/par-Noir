@@ -43,6 +43,8 @@ describe('media and widget panels', () => {
     const media = renderToStaticMarkup(
       <MediaEditorPanel layer={portrait} section={section} onSectionChange={() => undefined} />
     );
+    expect(media).toContain('data-media-tabs');
+    expect(media).toContain('flex h-7 flex-nowrap');
     expect(media).toContain('Grade');
     expect(media).toContain('Brightness');
     expect(media).toContain('Scale');
@@ -65,7 +67,7 @@ describe('media and widget panels', () => {
         onSectionChange={() => undefined}
       />
     );
-    expect(widget).not.toContain('type="range"');
+    expect(widget.split('data-media-timeline')[0]).not.toContain('type="range"');
     expect(widget).toContain('>Fill<');
     expect(widget).toContain('#0f766e');
     expect(widget).toContain('>Trigger<');

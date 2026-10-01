@@ -891,12 +891,12 @@ export function SectionTimeline({
 
   return (
     <div ref={rootRef} data-media-timeline className="shrink-0 border-t border-stone-200 bg-stone-50">
-      <div className="flex flex-wrap items-center gap-2 px-3 py-2">
+      <div data-timeline-toolbar className="flex flex-nowrap items-center gap-1 overflow-x-auto px-2 py-0.5">
         <button
           type="button"
           aria-label={playing ? 'Pause' : 'Play'}
           title={playing ? 'Pause' : 'Play'}
-          className="inline-flex h-8 w-8 items-center justify-center text-stone-600"
+          className="inline-flex h-6 w-6 shrink-0 items-center justify-center text-stone-600"
           onClick={() => {
             const next = !playing;
             const at = next && playheadSec >= duration - 0.05 ? 0 : playheadSec;
@@ -918,7 +918,7 @@ export function SectionTimeline({
             </svg>
           )}
         </button>
-        <span className="text-[13px] tabular-nums text-stone-700">
+        <span className="shrink-0 text-[13px] tabular-nums text-stone-700">
           {formatTime(playheadSec)} / {formatTime(duration)}
         </span>
         {widget ? null : (
@@ -927,7 +927,7 @@ export function SectionTimeline({
             aria-label="Split clip"
             title="Split clip"
             disabled={!canCut}
-            className={`inline-flex h-8 w-8 items-center justify-center ${canCut ? 'text-stone-700' : 'text-stone-300'}`}
+            className={`inline-flex h-6 w-6 shrink-0 items-center justify-center ${canCut ? 'text-stone-700' : 'text-stone-300'}`}
             onClick={cutClip}
           >
             <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden>
@@ -941,7 +941,7 @@ export function SectionTimeline({
           type="button"
           aria-label="Keyframe"
           title="Keyframe"
-          className={`inline-flex h-8 w-8 items-center justify-center ${
+          className={`inline-flex h-6 w-6 shrink-0 items-center justify-center ${
             playheadOnKey ? 'font-semibold text-stone-800' : 'text-stone-400'
           }`}
           onClick={toggleKey}
@@ -955,7 +955,7 @@ export function SectionTimeline({
             title="Graph"
             aria-expanded={graphsOpen}
             disabled={!graphsReady}
-            className={`inline-flex h-8 w-8 items-center justify-center ${
+            className={`inline-flex h-6 w-6 shrink-0 items-center justify-center ${
               graphsReady ? 'text-stone-700' : 'text-stone-300'
             }`}
             onClick={() => {
@@ -1006,7 +1006,7 @@ export function SectionTimeline({
             type="button"
             aria-label="Zoom out"
             title="Zoom out"
-            className="inline-flex h-8 w-8 items-center justify-center"
+            className="inline-flex h-6 w-6 shrink-0 items-center justify-center"
             onClick={() => setZoom((value) => Math.max(1, Math.round((value - 0.5) * 10) / 10))}
           >
             <Magnify plus={false} />
@@ -1020,13 +1020,13 @@ export function SectionTimeline({
             step={0.1}
             value={zoom}
             onChange={(e) => setZoom(Number(e.target.value))}
-            className="h-1 w-20 cursor-pointer appearance-none bg-stone-300 [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:w-1 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:bg-stone-500"
+            className="h-1 w-14 shrink-0 cursor-pointer appearance-none bg-stone-300 [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:w-1 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:bg-stone-500"
           />
           <button
             type="button"
             aria-label="Zoom in"
             title="Zoom in"
-            className="inline-flex h-8 w-8 items-center justify-center"
+            className="inline-flex h-6 w-6 shrink-0 items-center justify-center"
             onClick={() =>
               setZoom((value) =>
                 Math.min(Math.max(8, Math.ceil(duration / 2)), Math.round((value + 0.5) * 10) / 10)
@@ -1036,7 +1036,7 @@ export function SectionTimeline({
             <Magnify plus />
           </button>
         </div>
-        <div className="ml-auto inline-flex items-center gap-1 text-stone-500">
+        <div className="ml-auto inline-flex shrink-0 items-center gap-1 text-stone-500">
           {widget ? null : (
             <>
               <button
@@ -1044,7 +1044,7 @@ export function SectionTimeline({
                 aria-label="Mirror"
                 title="Mirror"
                 aria-pressed={Boolean(active?.mediaMirror)}
-                className={`inline-flex h-8 w-8 items-center justify-center ${active?.mediaMirror ? 'text-stone-800' : ''}`}
+                className={`inline-flex h-6 w-6 shrink-0 items-center justify-center ${active?.mediaMirror ? 'text-stone-800' : ''}`}
                 onClick={() => {
                   if (!active) return;
                   onSectionChange(upsertLayer(section, { ...active, mediaMirror: !active.mediaMirror }));
@@ -1060,7 +1060,7 @@ export function SectionTimeline({
                 aria-label="Reverse"
                 title="Reverse"
                 aria-pressed={Boolean(active?.mediaReversed)}
-                className={`inline-flex h-8 w-8 items-center justify-center ${active?.mediaReversed ? 'text-stone-800' : ''}`}
+                className={`inline-flex h-6 w-6 shrink-0 items-center justify-center ${active?.mediaReversed ? 'text-stone-800' : ''}`}
                 onClick={() => onReverse?.()}
               >
                 <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden>
@@ -1076,7 +1076,7 @@ export function SectionTimeline({
             aria-label="Delete clip"
             title="Delete clip"
             disabled={!activeLayerId}
-            className={`inline-flex h-8 w-8 items-center justify-center ${
+            className={`inline-flex h-6 w-6 shrink-0 items-center justify-center ${
               activeLayerId ? 'text-stone-700' : 'text-stone-300'
             }`}
             onClick={deleteClip}

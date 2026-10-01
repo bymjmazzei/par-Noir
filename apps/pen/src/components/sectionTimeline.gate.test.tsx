@@ -84,6 +84,9 @@ describe('section timeline', () => {
     expect(html).toContain('aria-label="Mute title"');
     expect(html).toContain('aria-label="Mute voice"');
     expect(html).toContain('aria-label="Trim start clip"');
+    expect(html).toContain('data-timeline-toolbar');
+    expect(html).toContain('flex-nowrap');
+    expect(html).not.toContain('flex-wrap items-center gap-2');
     expect(html).toContain('aria-label="Split clip"');
     expect(html.indexOf('aria-label="Split clip"')).toBeLessThan(html.indexOf('aria-label="Keyframe"'));
     expect(html).toContain('aria-label="Mirror"');

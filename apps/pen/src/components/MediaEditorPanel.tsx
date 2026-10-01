@@ -347,14 +347,17 @@ export function MediaEditorPanel({
   const nextClip = followingClip(section, layer);
   return (
     <div className="flex min-h-0 flex-1 flex-col bg-stone-100">
-      <div className="shrink-0 px-3 py-2">
-        <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+      <div className="shrink-0 px-3">
+        <div
+          data-media-tabs
+          className="flex h-7 flex-nowrap items-center gap-x-2 overflow-x-auto"
+        >
           {TABS.map((item) => (
             <button
               key={item.id}
               type="button"
               aria-pressed={tab === item.id}
-              className={`px-0.5 py-1 text-[13px] ${activeText(tab === item.id)}`}
+              className={`shrink-0 px-0.5 text-[12px] leading-none ${activeText(tab === item.id)}`}
               onClick={() => setTab(item.id)}
             >
               {item.label}
@@ -363,10 +366,11 @@ export function MediaEditorPanel({
         </div>
       </div>
 
+      <div className="flex min-h-[8rem] flex-1 items-center justify-center overflow-hidden px-3">
       <div
         data-media-frame
-        className="relative mx-auto shrink-0 overflow-hidden bg-stone-200"
-        style={frameStyle(layer, cropping)}
+        className="relative overflow-hidden bg-stone-200"
+        style={{ ...frameStyle(layer, cropping), height: '100%', maxHeight: '100%' }}
       >
           {attached ? (
             <LayerMediaContent
@@ -402,9 +406,10 @@ export function MediaEditorPanel({
             />
           ) : null}
       </div>
+      </div>
 
       <ActiveSettingContext.Provider value={{ id: activeSetting, setId: setActiveSetting }}>
-      <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-auto px-3 py-3">
+      <div className="flex max-h-[40%] min-h-0 flex-col gap-2 overflow-auto px-3 py-2">
         <div className={tab === 'basic' ? 'grid grid-cols-2 gap-x-3 gap-y-1' : 'hidden'}>
           <InspectorSlider
             label="Scale"
