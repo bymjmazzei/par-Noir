@@ -149,6 +149,9 @@ export type PreviewStripLayout = {
   focusY: number;
   /** Scale from page pixels into this strip (screen view-all fit). */
   extentScale: number;
+  /** Distance from each end of the strip to that end page's center. */
+  edgeX: number;
+  edgeY: number;
   origin: (index: number) => { x: number; y: number };
 };
 
@@ -174,6 +177,8 @@ export function previewStripLayout(input: {
       focusX: pageW / 2,
       focusY: index * step + pageH / 2,
       extentScale: 1,
+      edgeX: pageW / 2,
+      edgeY: pageH / 2,
       origin: (i) => ({ x: 0, y: i * step })
     };
   }
@@ -185,6 +190,8 @@ export function previewStripLayout(input: {
       focusX: index * step + pageW / 2,
       focusY: pageH / 2,
       extentScale: 1,
+      edgeX: pageW / 2,
+      edgeY: pageH / 2,
       origin: (i) => ({ x: i * step, y: 0 })
     };
   }
@@ -200,6 +207,8 @@ export function previewStripLayout(input: {
     focusX: input.screenAllPages ? docW / 2 : index * pageW * fit + (pageW * fit) / 2,
     focusY: docH / 2,
     extentScale: fit,
+    edgeX: (pageW * fit) / 2,
+    edgeY: (pageH * fit) / 2,
     origin: (i) => ({ x: i * pageW * fit, y: 0 })
   };
 }
@@ -243,21 +252,23 @@ type WorkspaceAxis = {
   scroll: number;
 };
 
-/** Pads center the focus in the view. Overhang grows only the side a layer occupies. */
+/** End pads match, so the last page has the same margin as the first. Overhang grows only the side a layer occupies. */
 function workspaceAxis(
   strip: number,
   focusCenter: number,
+  edge: number,
   overBefore: number,
   overAfter: number,
   view: number
 ): WorkspaceAxis {
   const size = Math.max(0, Math.round(strip));
   const focus = Math.min(size, Math.max(0, focusCenter));
+  const end = Math.min(size / 2, Math.max(0, edge));
   const before = Math.max(0, Math.ceil(overBefore));
   const after = Math.max(0, Math.ceil(overAfter));
   const viewPx = Math.max(0, Math.round(view));
-  let padBefore = Math.max(0, Math.round(viewPx / 2 - (before + focus)));
-  let padAfter = Math.max(0, Math.round(viewPx / 2 - (after + (size - focus))));
+  let padBefore = Math.max(0, Math.round(viewPx / 2 - (before + end)));
+  let padAfter = Math.max(0, Math.round(viewPx / 2 - (after + end)));
   let content = padBefore + before + size + after + padAfter;
   const slack = content - viewPx;
   if (viewPx > 0 && slack > 0 && slack <= 1) {
@@ -279,6 +290,9 @@ export function previewWorkspaceLayout(input: {
   docH: number;
   focusX: number;
   focusY: number;
+  /** Inset from each strip end to that end page's center. Defaults to the focus inset. */
+  edgeX?: number;
+  edgeY?: number;
   extents: { left: number; right: number; top: number; bottom: number };
   zoom: number;
   viewW: number;
@@ -287,9 +301,12 @@ export function previewWorkspaceLayout(input: {
   const zoom = clampPreviewZoom(input.zoom);
   const docW = Math.max(0, input.docW) * zoom;
   const docH = Math.max(0, input.docH) * zoom;
+  const edgeX = (input.edgeX ?? Math.min(input.focusX, Math.max(0, input.docW - input.focusX))) * zoom;
+  const edgeY = (input.edgeY ?? Math.min(input.focusY, Math.max(0, input.docH - input.focusY))) * zoom;
   const x = workspaceAxis(
     docW,
     input.focusX * zoom,
+    edgeX,
     input.extents.left * zoom,
     input.extents.right * zoom,
     input.viewW
@@ -297,6 +314,7 @@ export function previewWorkspaceLayout(input: {
   const y = workspaceAxis(
     docH,
     input.focusY * zoom,
+    edgeY,
     input.extents.top * zoom,
     input.extents.bottom * zoom,
     input.viewH

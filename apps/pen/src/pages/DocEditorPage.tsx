@@ -2089,6 +2089,8 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
     docH: previewStrip.docH,
     focusX: previewStrip.focusX,
     focusY: previewStrip.focusY,
+    edgeX: previewStrip.edgeX,
+    edgeY: previewStrip.edgeY,
     extents: pasteboardExtents(layerRects, previewStrip.docW, previewStrip.docH),
     zoom: previewZoom,
     viewW: previewPaneSize.width,

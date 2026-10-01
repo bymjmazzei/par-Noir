@@ -219,6 +219,22 @@ describe('preview page toolbar', () => {
     });
     expect(inside.contentW).toBe(800);
     expect(inside.scrollLeft).toBe(0);
+    const ends = previewWorkspaceLayout({
+      docW: 212,
+      docH: 412,
+      focusX: 50,
+      focusY: 100,
+      edgeX: 50,
+      edgeY: 100,
+      extents: { left: 0, right: 0, top: 0, bottom: 0 },
+      zoom: 1,
+      viewW: 800,
+      viewH: 600
+    });
+    expect(ends.padLeft).toBe(350);
+    expect(ends.padRight).toBe(350);
+    expect(ends.padTop).toBe(200);
+    expect(ends.padBottom).toBe(200);
     const strip = previewStripLayout({
       pageView: 'horizontal',
       pageCount: 2,
