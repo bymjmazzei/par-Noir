@@ -41,6 +41,7 @@ import {
   publishPlaybackSrc,
   openFlowDragHeightPx,
   pageSheetDims,
+  PAGE_MEASURE_UNITS,
   pxToMeasure,
   patchLayerStyle,
   recomputeGroupBounds,
@@ -534,7 +535,7 @@ export function EditablePagePreview({
   const [layersOpen, setLayersOpen] = useState(false);
   const [pageSizeOpen, setPageSizeOpen] = useState(false);
   const [guidesOpen, setGuidesOpen] = useState(false);
-  const [measureUnit, setMeasureUnit] = useState<PageMeasureUnit>('px');
+  const [measureUnit, setMeasureUnit] = useState<PageMeasureUnit>('in');
   const pageToolsRef = useRef<HTMLDivElement>(null);
   const [selectedIds, setSelectedIds] = useState<string[]>([PAGE_LAYER_ID]);
   const [fontsReady, setFontsReady] = useState(true);
@@ -639,7 +640,8 @@ export function EditablePagePreview({
       : Math.round(Number(manifest.flowWorkspaceHeightPx));
   const sheet = pageSheetDims(manifest.pageLayout, {
     widthPx: manifest.flowWorkspaceWidthPx,
-    heightPx: manifest.flowWorkspaceHeightPx
+    heightPx: manifest.flowWorkspaceHeightPx,
+    sizeId: manifest.pageSize
   });
   const contentHInner = Math.max(0, contentOuterH - 2 * pad);
   const flowFillsPanel = flowOpen && flowHeight == null;
@@ -927,7 +929,7 @@ export function EditablePagePreview({
                 {pageSizeChoice.id === 'custom' && (
                   <div className="mt-2 border-t border-neutral-200 pt-2">
                     <div className="mb-2 flex gap-1">
-                      {(['px', 'in', 'cm', 'mm'] as const).map((unit) => (
+                      {PAGE_MEASURE_UNITS.map((unit) => (
                         <button
                           key={unit}
                           type="button"
@@ -948,7 +950,7 @@ export function EditablePagePreview({
                       <input
                         type="number"
                         aria-label="Custom width"
-                        step={measureUnit === 'px' ? 1 : measureUnit === 'mm' ? 0.1 : 0.01}
+                        step={measureUnit === 'mm' ? 0.1 : 0.01}
                         className="h-7 w-20 rounded border border-neutral-200 px-1.5 text-[12px] font-bold text-black"
                         value={pxToMeasure(customWidthPx, measureUnit)}
                         onChange={(e) => setCustomPx('width', Number(e.target.value))}
@@ -959,7 +961,7 @@ export function EditablePagePreview({
                       <input
                         type="number"
                         aria-label="Custom height"
-                        step={measureUnit === 'px' ? 1 : measureUnit === 'mm' ? 0.1 : 0.01}
+                        step={measureUnit === 'mm' ? 0.1 : 0.01}
                         className="h-7 w-20 rounded border border-neutral-200 px-1.5 text-[12px] font-bold text-black"
                         value={pxToMeasure(customHeightPx, measureUnit)}
                         onChange={(e) => setCustomPx('height', Number(e.target.value))}
@@ -1118,6 +1120,7 @@ export function EditablePagePreview({
           pageLayout={manifest.pageLayout}
           flowWorkspaceWidthPx={manifest.flowWorkspaceWidthPx}
           flowWorkspaceHeightPx={manifest.flowWorkspaceHeightPx}
+          pageSize={manifest.pageSize}
           contentOuterHeightPx={contentOuterH}
           style={artboard ? { ...frameStyle, overflow: 'visible' } : frameStyle}
           bare={

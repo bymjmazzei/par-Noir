@@ -34,9 +34,7 @@ import {
   pageSwipeAxisForView,
   removeDocPage,
   reorderDocPages,
-  pageSheetDims,
-  DEFAULT_FLOW_WORKSPACE_WIDTH_PX,
-  DEFAULT_FLOW_WORKSPACE_HEIGHT_PX,
+  fittedPreviewPagePx,
   isFlowWorkspaceOpen,
   PREVIEW_PAGE_GUTTER_PX,
   pasteboardExtents,
@@ -265,6 +263,8 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
     recenter: true
   });
   const [previewPaneSize, setPreviewPaneSize] = useState({ width: 0, height: 0 });
+  /** Layout size of the page. Pane changes scale this box; they do not resize it. */
+  const previewLayoutRef = useRef<{ key: string; width: number; height: number } | null>(null);
   const [galleryComposeCapture, setGalleryComposeCapture] = useState(false);
   const [captureLayers, setCaptureLayers] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
@@ -2038,19 +2038,39 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
   );
   const fitInset = previewGutter;
   const paneReady = previewPaneSize.width > 0 && previewPaneSize.height > 0;
-  const designSheet = pageSheetDims(bundle.manifest.pageLayout, {
-    widthPx: bundle.manifest.flowWorkspaceWidthPx,
-    heightPx: bundle.manifest.flowWorkspaceHeightPx
-  });
-  const designW = designSheet.pageWidthPx ?? DEFAULT_FLOW_WORKSPACE_WIDTH_PX;
-  const designH = designSheet.pageHeightPx ?? DEFAULT_FLOW_WORKSPACE_HEIGHT_PX;
-  const previewPageBox = { width: designW, height: designH };
-  const slotW = paneReady ? Math.max(1, previewPaneSize.width - fitInset * 2) : designW;
-  const slotH = paneReady ? Math.max(1, previewPaneSize.height - fitInset * 2) : designH;
+  const slotW = paneReady ? Math.max(1, previewPaneSize.width - fitInset * 2) : 0;
+  const slotH = paneReady ? Math.max(1, previewPaneSize.height - fitInset * 2) : 0;
+  const fittedPage = paneReady
+    ? fittedPreviewPagePx(bundle.manifest.pageLayout, slotW, slotH, {
+        widthPx: bundle.manifest.flowWorkspaceWidthPx,
+        heightPx: bundle.manifest.flowWorkspaceHeightPx,
+        sizeId: bundle.manifest.pageSize
+      })
+    : null;
+  const pageSizeKey = [
+    bundle.manifest.pageLayout ?? '',
+    bundle.manifest.pageSize ?? '',
+    bundle.manifest.flowWorkspaceWidthPx ?? '',
+    bundle.manifest.flowWorkspaceHeightPx ?? ''
+  ].join('|');
+  if (
+    fittedPage &&
+    fittedPage.width > 0 &&
+    (previewLayoutRef.current == null || previewLayoutRef.current.key !== pageSizeKey)
+  ) {
+    previewLayoutRef.current = {
+      key: pageSizeKey,
+      width: fittedPage.width,
+      height: fittedPage.height
+    };
+  }
+  const heldPage = previewLayoutRef.current;
+  const previewPageBox = heldPage ?? fittedPage ?? { width: 1, height: 1 };
   const screenPageCount = Math.max(1, previewPages.length);
   const screenFullWidth = screenStripWidthPx(screenPageCount, previewPageBox.width);
   const screenFullHeight = previewPageBox.height;
-  const docFit = previewFitScale(designW, designH, slotW, slotH);
+  const docFit =
+    fittedPage && previewPageBox.width > 0 ? fittedPage.width / previewPageBox.width : 1;
   const screenFit = previewFitScale(screenFullWidth, screenFullHeight, slotW, slotH);
   const previewFit = pageView === 'screen' && screenAllPages ? screenFit : docFit;
   const layerPad = resolvePagePaddingPx(pagePresentation.padding);
@@ -2723,6 +2743,7 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
                 pageLayout={pageLayout}
                 flowWorkspaceWidthPx={bundle.manifest.flowWorkspaceWidthPx}
                 flowWorkspaceHeightPx={bundle.manifest.flowWorkspaceHeightPx}
+                pageSize={bundle.manifest.pageSize}
                 pnIdentifier={session.pnIdentifier}
                 onEditorReady={onEditorReady}
                 onChange={(next) => {

@@ -132,7 +132,7 @@ export function pageTileAxis(pageView: PenPageView): 'vertical' | 'horizontal' {
   return pageView === 'vertical' ? 'vertical' : 'horizontal';
 }
 
-/** Uniform scale that fits a fixed page into the pane. The page's own size does not change. */
+/** Uniform scale from a held page size into the pane. The page's layout size does not change. */
 export function previewFitScale(
   designW: number,
   designH: number,

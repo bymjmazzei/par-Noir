@@ -975,6 +975,7 @@ export function PageCanvas({
   pageLayout = 'flow',
   flowWorkspaceWidthPx,
   flowWorkspaceHeightPx,
+  pageSize,
   pnIdentifier = '',
   compact = false
 }: {
@@ -987,6 +988,7 @@ export function PageCanvas({
   pageLayout?: PenPageLayout;
   flowWorkspaceWidthPx?: number | null;
   flowWorkspaceHeightPx?: number | null;
+  pageSize?: string | null;
   /** Unlocks live Pen embeds inside TipTap. */
   pnIdentifier?: string;
   /** Side-pane face editor. Skips the page sheet so controls below stay reachable. */
@@ -1077,6 +1079,7 @@ export function PageCanvas({
           pageLayout={pageLayout}
           flowWorkspaceWidthPx={flowW}
           flowWorkspaceHeightPx={flowH}
+          pageSize={pageSize}
           contentOuterHeightPx={480}
           className={open ? 'min-h-full shadow-none' : 'min-h-full'}
         >

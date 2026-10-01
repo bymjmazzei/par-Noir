@@ -25,6 +25,7 @@ import {
   LETTER_WIDTH_PX,
   MEDIA_ATTACH_MIN_SIDE_PX,
   migrateSectionLayerGeomToPx,
+  PAGE_MEASURE_UNITS,
   pageSheetDims,
   selectPageSize,
   resizeSeKeepAspect,
@@ -69,20 +70,26 @@ describe('pageGeometry', () => {
     expect(orientPageSize(selectPageSize('ratio-9-16'), 'landscape')).toMatchObject({
       id: 'ratio-9-16',
       label: '16:9',
-      widthPx: 1920,
-      heightPx: 1080
+      widthPx: 640,
+      heightPx: 360
     });
     expect(selectPageSize('ratio-9-16', undefined, 'portrait').label).toBe('9:16');
+    expect(matchPageSize('flow', 1080, 1920)).toMatchObject({
+      id: 'ratio-9-16',
+      widthPx: 360,
+      heightPx: 640
+    });
     expect(matchPageSize('flow', 816, 1344).label).toBe('Legal');
     expect(matchPageSize('flow', 900, 700).id).toBe('custom');
     expect(pageSheetDims('flow', { widthPx: 1920, heightPx: 1080 })).toMatchObject({
-      pageWidthPx: 1920,
-      pageHeightPx: 1080,
+      pageWidthPx: 640,
+      pageHeightPx: 360,
       fillWidth: false
     });
+    expect(pageSheetDims('letter').pageWidthPx).toBe(LETTER_WIDTH_PX);
     const custom = selectPageSize('custom', { layout: 'letter', widthPx: null, heightPx: null });
     expect(custom).toMatchObject({ layout: 'flow', widthPx: LETTER_WIDTH_PX, heightPx: LETTER_HEIGHT_PX });
-    expect(selectPageSize('ratio-1-1')).toMatchObject({ layout: 'flow', widthPx: 1080, heightPx: 1080 });
+    expect(selectPageSize('ratio-1-1')).toMatchObject({ layout: 'flow', widthPx: 360, heightPx: 360 });
     expect(selectPageSize('a4')).toMatchObject({
       layout: 'a4',
       widthPx: A4_WIDTH_PX,
@@ -130,6 +137,7 @@ describe('pageGeometry', () => {
   });
 
   it('converts page measurements and snaps to guides', () => {
+    expect(PAGE_MEASURE_UNITS).toEqual(['in', 'cm', 'mm']);
     expect(measureToPx(1, 'in')).toBe(96);
     expect(pxToMeasure(96, 'in')).toBe(1);
     expect(measureToPx(2.54, 'cm')).toBe(96);

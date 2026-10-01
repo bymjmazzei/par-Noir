@@ -13,6 +13,7 @@ export function PageSheetColumn({
   pageLayout,
   flowWorkspaceWidthPx,
   flowWorkspaceHeightPx,
+  pageSize,
   contentOuterHeightPx,
   className,
   style,
@@ -31,6 +32,7 @@ export function PageSheetColumn({
   pageLayout: PenPageLayout | undefined;
   flowWorkspaceWidthPx?: number | null;
   flowWorkspaceHeightPx?: number | null;
+  pageSize?: string | null;
   /** Measured outer content height (including padding); drives page count. */
   contentOuterHeightPx: number;
   className?: string;
@@ -45,7 +47,8 @@ export function PageSheetColumn({
 }) {
   const dims = pageSheetDims(pageLayout, {
     widthPx: flowWorkspaceWidthPx,
-    heightPx: flowWorkspaceHeightPx
+    heightPx: flowWorkspaceHeightPx,
+    sizeId: pageSize
   });
   const pageH = dims.paged ? dims.pageHeightPx : null;
   const pages =

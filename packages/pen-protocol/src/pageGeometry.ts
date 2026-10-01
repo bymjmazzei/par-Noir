@@ -97,17 +97,22 @@ export type PageSizeChoice = {
 
 type PageSizePreset = PageSizeChoice & { landscapeLabel?: string };
 
+/** Phone CSS px. Ratio pages are authored at this size. */
+export const MOBILE_SHORT_PX = 360;
+/** Earlier ratio pages used a 1080px short side. */
+const LEGACY_RATIO_SHORT_PX = 1080;
+
 /**
  * Portrait dimensions. Horizontal orientation swaps them, so 9:16 becomes 16:9.
- * Ratios use a 1080px short side. Paper uses print inches at 96dpi.
+ * Ratios use a phone-width short side. Paper uses print inches at 96dpi.
  */
 export const PAGE_SIZE_PRESETS: PageSizePreset[] = [
   { id: 'flow', label: 'Flow', layout: 'flow', widthPx: null, heightPx: null },
-  { id: 'ratio-9-16', label: '9:16', landscapeLabel: '16:9', layout: 'flow', widthPx: 1080, heightPx: 1920 },
-  { id: 'ratio-1-1', label: '1:1', layout: 'flow', widthPx: 1080, heightPx: 1080 },
-  { id: 'ratio-4-5', label: '4:5', landscapeLabel: '5:4', layout: 'flow', widthPx: 1080, heightPx: 1350 },
-  { id: 'ratio-3-2', label: '2:3', landscapeLabel: '3:2', layout: 'flow', widthPx: 1080, heightPx: 1620 },
-  { id: 'ratio-4-3', label: '3:4', landscapeLabel: '4:3', layout: 'flow', widthPx: 1080, heightPx: 1440 },
+  { id: 'ratio-9-16', label: '9:16', landscapeLabel: '16:9', layout: 'flow', widthPx: MOBILE_SHORT_PX, heightPx: 640 },
+  { id: 'ratio-1-1', label: '1:1', layout: 'flow', widthPx: MOBILE_SHORT_PX, heightPx: MOBILE_SHORT_PX },
+  { id: 'ratio-4-5', label: '4:5', landscapeLabel: '5:4', layout: 'flow', widthPx: MOBILE_SHORT_PX, heightPx: 450 },
+  { id: 'ratio-3-2', label: '2:3', landscapeLabel: '3:2', layout: 'flow', widthPx: MOBILE_SHORT_PX, heightPx: 540 },
+  { id: 'ratio-4-3', label: '3:4', landscapeLabel: '4:3', layout: 'flow', widthPx: MOBILE_SHORT_PX, heightPx: 480 },
   { id: 'letter', label: 'Letter', layout: 'letter', widthPx: LETTER_WIDTH_PX, heightPx: LETTER_HEIGHT_PX },
   {
     id: 'legal',
@@ -134,12 +139,57 @@ function presetById(id: PageSizeId): PageSizePreset | undefined {
   return PAGE_SIZE_PRESETS.find((item) => item.id === id);
 }
 
+function dimsMatchPair(
+  pairW: number | null,
+  pairH: number | null,
+  width: number,
+  height: number
+): boolean {
+  if (pairW == null || pairH == null) return false;
+  return (pairW === width && pairH === height) || (pairW === height && pairH === width);
+}
+
 function dimsMatchPreset(preset: PageSizePreset, width: number, height: number): boolean {
-  if (preset.widthPx == null || preset.heightPx == null) return false;
-  return (
-    (preset.widthPx === width && preset.heightPx === height) ||
-    (preset.widthPx === height && preset.heightPx === width)
-  );
+  return dimsMatchPair(preset.widthPx, preset.heightPx, width, height);
+}
+
+function legacyRatioPair(preset: PageSizePreset): { widthPx: number; heightPx: number } | null {
+  if (!preset.id.startsWith('ratio-') || preset.widthPx == null || preset.heightPx == null) return null;
+  const scale = LEGACY_RATIO_SHORT_PX / MOBILE_SHORT_PX;
+  return {
+    widthPx: Math.round(preset.widthPx * scale),
+    heightPx: Math.round(preset.heightPx * scale)
+  };
+}
+
+function dimsMatchRatio(preset: PageSizePreset, width: number, height: number): boolean {
+  if (!preset.id.startsWith('ratio-')) return false;
+  if (dimsMatchPreset(preset, width, height)) return true;
+  const legacy = legacyRatioPair(preset);
+  return legacy != null && dimsMatchPair(legacy.widthPx, legacy.heightPx, width, height);
+}
+
+/** Current phone size for a ratio, oriented like the stored page. */
+function mobileRatioDims(
+  widthPx?: number | null,
+  heightPx?: number | null,
+  sizeId?: string | null
+): { widthPx: number; heightPx: number } | null {
+  if (sizeId === 'custom') return null;
+  const w = Math.round(Number(widthPx));
+  const h = Math.round(Number(heightPx));
+  const id = canonicalSizeId(sizeId);
+  const named = id && id.startsWith('ratio-') ? presetById(id) : undefined;
+  const matched =
+    named || PAGE_SIZE_PRESETS.find((item) => dimsMatchRatio(item, w, h));
+  if (!matched || matched.widthPx == null || matched.heightPx == null) return null;
+  if (matched.widthPx === matched.heightPx) {
+    return { widthPx: matched.widthPx, heightPx: matched.heightPx };
+  }
+  const landscape = Number.isFinite(w) && Number.isFinite(h) && w > h;
+  return landscape
+    ? { widthPx: matched.heightPx, heightPx: matched.widthPx }
+    : { widthPx: matched.widthPx, heightPx: matched.heightPx };
 }
 
 function labelForOrient(preset: PageSizePreset, landscape: boolean): string {
@@ -149,9 +199,12 @@ function labelForOrient(preset: PageSizePreset, landscape: boolean): string {
 function choiceFromPreset(preset: PageSizePreset, width?: number | null, height?: number | null): PageSizeChoice {
   const roundedW = Math.round(Number(width));
   const roundedH = Math.round(Number(height));
+  const mobile = preset.id.startsWith('ratio-')
+    ? mobileRatioDims(roundedW, roundedH, preset.id)
+    : null;
   const known = dimsMatchPreset(preset, roundedW, roundedH);
-  const widthPx = known ? roundedW : preset.widthPx;
-  const heightPx = known ? roundedH : preset.heightPx;
+  const widthPx = mobile ? mobile.widthPx : known ? roundedW : preset.widthPx;
+  const heightPx = mobile ? mobile.heightPx : known ? roundedH : preset.heightPx;
   const landscape = widthPx != null && heightPx != null && widthPx > heightPx;
   return {
     id: preset.id,
@@ -201,7 +254,9 @@ export function matchPageSize(
   if (layout === 'letter') return choiceFromPreset(presetById('letter')!, widthPx, heightPx);
   if (layout === 'a4') return choiceFromPreset(presetById('a4')!, widthPx, heightPx);
   if (isFlowWorkspaceOpen(widthPx)) return choiceFromPreset(presetById('flow')!);
-  const preset = PAGE_SIZE_PRESETS.find((item) => dimsMatchPreset(item, width, height));
+  const preset = PAGE_SIZE_PRESETS.find((item) =>
+    item.id.startsWith('ratio-') ? dimsMatchRatio(item, width, height) : dimsMatchPreset(item, width, height)
+  );
   if (preset) return choiceFromPreset(preset, width, height);
   return {
     id: 'custom',
@@ -248,7 +303,7 @@ export function selectPageSize(
 
 export function pageSheetDims(
   layout: PenPageLayout | undefined,
-  flow?: { widthPx?: number | null; heightPx?: number | null }
+  flow?: { widthPx?: number | null; heightPx?: number | null; sizeId?: string | null }
 ): PageSheetDims {
   if (layout === 'letter' || layout === 'a4') {
     const preset = presetById(layout)!;
@@ -262,6 +317,15 @@ export function pageSheetDims(
       pageHeightPx: preset.heightPx,
       fillWidth: false,
       paged: true
+    };
+  }
+  const mobile = mobileRatioDims(flow?.widthPx, flow?.heightPx, flow?.sizeId);
+  if (mobile) {
+    return {
+      pageWidthPx: mobile.widthPx,
+      pageHeightPx: mobile.heightPx,
+      fillWidth: false,
+      paged: false
     };
   }
   const open = isFlowWorkspaceOpen(flow?.widthPx);
@@ -542,10 +606,12 @@ export function pasteboardExtents(
   return { left: ceil(left), right: ceil(right), top: ceil(top), bottom: ceil(bottom) };
 }
 
-export type PageMeasureUnit = 'px' | 'in' | 'cm' | 'mm';
+/** Custom pages are a physical size. Pixels are not a measurement. */
+export const PAGE_MEASURE_UNITS = ['in', 'cm', 'mm'] as const;
+
+export type PageMeasureUnit = (typeof PAGE_MEASURE_UNITS)[number];
 
 const PX_PER_UNIT: Record<PageMeasureUnit, number> = {
-  px: 1,
   in: CSS_PX_PER_IN,
   cm: CSS_PX_PER_IN / 2.54,
   mm: CSS_PX_PER_IN / 25.4
@@ -554,7 +620,6 @@ const PX_PER_UNIT: Record<PageMeasureUnit, number> = {
 /** Display a stored CSS px length in the chosen unit. */
 export function pxToMeasure(px: number, unit: PageMeasureUnit): number {
   const n = px / PX_PER_UNIT[unit];
-  if (unit === 'px') return Math.round(n);
   if (unit === 'mm') return Math.round(n * 10) / 10;
   return Math.round(n * 100) / 100;
 }
