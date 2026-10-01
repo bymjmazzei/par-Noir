@@ -85,10 +85,10 @@ export function PreviewPageStrip({
       data-screen-background={screen ? 'strip' : undefined}
       className={
         pageView === 'vertical'
-          ? 'flex w-max max-w-full flex-col items-center'
+          ? 'flex w-max shrink-0 flex-col items-center'
           : pageView === 'horizontal'
             ? 'mx-auto flex w-max shrink-0 flex-row items-center justify-center'
-            : 'flex w-max flex-row items-stretch justify-center'
+            : 'flex w-max shrink-0 flex-row items-stretch justify-center'
       }
       style={
         screen
@@ -97,7 +97,7 @@ export function PreviewPageStrip({
               ...(pageHeightPx ? { height: pageHeightPx } : {}),
               ...(background || {})
             }
-          : pageView === 'horizontal'
+          : pageView === 'horizontal' || pageView === 'vertical'
             ? { gap: PREVIEW_STRIP_GAP_PX }
             : undefined
       }
@@ -164,18 +164,17 @@ export function previewStripLayout(input: {
 }): PreviewStripLayout {
   const pageW = Math.max(0, input.pageW);
   const pageH = Math.max(0, input.pageH);
-  const many = Math.max(1, Math.round(input.pageCount) || 1);
-  const singleScreen = input.pageView === 'screen' && !input.screenAllPages;
-  const count = singleScreen ? 1 : many;
-  const index = singleScreen ? 0 : Math.min(count - 1, Math.max(0, Math.round(input.activeIndex) || 0));
+  const count = Math.max(1, Math.round(input.pageCount) || 1);
+  const index = Math.min(count - 1, Math.max(0, Math.round(input.activeIndex) || 0));
   if (input.pageView === 'vertical') {
+    const step = pageH + PREVIEW_STRIP_GAP_PX;
     return {
       docW: pageW,
-      docH: pageH * count,
+      docH: pageH * count + PREVIEW_STRIP_GAP_PX * Math.max(0, count - 1),
       focusX: pageW / 2,
-      focusY: index * pageH + pageH / 2,
+      focusY: index * step + pageH / 2,
       extentScale: 1,
-      origin: (i) => ({ x: 0, y: i * pageH })
+      origin: (i) => ({ x: 0, y: i * step })
     };
   }
   if (input.pageView === 'horizontal') {
@@ -193,26 +192,28 @@ export function previewStripLayout(input: {
     input.screenAllPages && Number.isFinite(input.screenFit) && input.screenFit > 0
       ? input.screenFit
       : 1;
-  if (!input.screenAllPages) {
-    return {
-      docW: pageW,
-      docH: pageH,
-      focusX: pageW / 2,
-      focusY: pageH / 2,
-      extentScale: 1,
-      origin: () => ({ x: 0, y: 0 })
-    };
-  }
-  const docW = pageW * many * fit;
+  const docW = pageW * count * fit;
   const docH = pageH * fit;
   return {
     docW,
     docH,
-    focusX: docW / 2,
+    focusX: input.screenAllPages ? docW / 2 : index * pageW * fit + (pageW * fit) / 2,
     focusY: docH / 2,
     extentScale: fit,
     origin: (i) => ({ x: i * pageW * fit, y: 0 })
   };
+}
+
+/** A page-local guide position, in workspace-frame pixels. */
+export function workspaceGuideFrame(along: number, lead: number, zoom: number): number {
+  const z = zoom > 0 ? zoom : 1;
+  return lead + along * z;
+}
+
+/** Inverse of workspaceGuideFrame. */
+export function workspaceGuideAlong(frame: number, lead: number, zoom: number): number {
+  const z = zoom > 0 ? zoom : 1;
+  return (frame - lead) / z;
 }
 
 export type PreviewWorkspace = {

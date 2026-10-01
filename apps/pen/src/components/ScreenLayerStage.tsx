@@ -40,7 +40,8 @@ export function ScreenLayerStage({
   snapToPageCenter = false,
   playheadSec = 0,
   freePlacement = false,
-  guideSpan
+  guideSpan,
+  drawGuides = true
 }: {
   sections: PenSectionContent[];
   pageWidth: number;
@@ -65,6 +66,8 @@ export function ScreenLayerStage({
   freePlacement?: boolean;
   /** Workspace past this strip. Guide lines run through it. */
   guideSpan?: { left: number; right: number; top: number; bottom: number };
+  /** The preview draws guides on the workspace instead. */
+  drawGuides?: boolean;
 }) {
   const owner = new Map<string, { index: number; slug: string }>();
   const sampledById = new Map<string, PenPageLayer>();
@@ -104,6 +107,7 @@ export function ScreenLayerStage({
 
   return (
     <>
+    {drawGuides ? (
     <PageGuides
       guides={guides}
       span={guideSpan}
@@ -130,6 +134,7 @@ export function ScreenLayerStage({
         );
       }}
     />
+    ) : null}
     <LayoutSurface
       className="pointer-events-none absolute inset-0 z-20 overflow-visible"
       bounds={{ width: sections.length * pageWidth, height: pageHeight }}

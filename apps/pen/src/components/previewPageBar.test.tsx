@@ -19,6 +19,8 @@ import {
   PreviewPageStrip,
   previewWorkspaceLayout,
   PreviewZoomControl,
+  workspaceGuideAlong,
+  workspaceGuideFrame,
   workspaceGuideSpan
 } from './PreviewPageBar';
 
@@ -249,6 +251,30 @@ describe('preview page toolbar', () => {
     expect(span.right).toBe(205);
     expect(span.top).toBe(10);
     expect(span.bottom).toBe(0);
+    const stacked = previewStripLayout({
+      pageView: 'vertical',
+      pageCount: 2,
+      pageW: 100,
+      pageH: 200,
+      activeIndex: 0,
+      screenAllPages: false,
+      screenFit: 1
+    });
+    expect(stacked.docH).toBe(412);
+    expect(stacked.origin(1)).toEqual({ x: 0, y: 212 });
+    const screen = previewStripLayout({
+      pageView: 'screen',
+      pageCount: 3,
+      pageW: 100,
+      pageH: 200,
+      activeIndex: 1,
+      screenAllPages: false,
+      screenFit: 1
+    });
+    expect(screen.docW).toBe(300);
+    expect(screen.focusX).toBe(150);
+    expect(workspaceGuideFrame(140, 20, 2)).toBe(300);
+    expect(workspaceGuideAlong(300, 20, 2)).toBe(140);
     const html = renderToStaticMarkup(<PreviewZoomControl zoom={1} onZoom={() => undefined} />);
     expect(html).toContain('aria-label="Workspace zoom"');
     expect(html).toContain('data-preview-zoom');
@@ -264,6 +290,7 @@ describe('preview page toolbar', () => {
     expect(html).toContain('mx-auto');
     expect(html).toContain('w-max');
     expect(html).toContain('shrink-0');
+    expect(html).toContain('gap:12px');
   });
 
   it('flow vertical draws a page break between pages', () => {
@@ -274,6 +301,7 @@ describe('preview page toolbar', () => {
       </PreviewPageStrip>
     );
     expect(html.match(/data-page-break/g)?.length).toBe(1);
+    expect(html).toContain('gap:12px');
     expect(html).not.toContain('data-page-seam');
   });
 

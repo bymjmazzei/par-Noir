@@ -91,12 +91,15 @@ import type { PenSession } from '../services/penSession';
 import { FormatRibbon, PageCanvas } from '../components/PageCanvas';
 import { EditablePagePreview } from '../components/EditablePagePreview';
 import { ScreenLayerStage } from '../components/ScreenLayerStage';
+import { PageGuides } from '../components/PageGuides';
 import {
   PreviewPageBar,
   PreviewPageStrip,
   PreviewZoomControl,
   previewStripLayout,
   previewWorkspaceLayout,
+  workspaceGuideAlong,
+  workspaceGuideFrame,
   workspaceGuideSpan
 } from '../components/PreviewPageBar';
 import { clampEditorPanePx } from '../components/editorSplit';
@@ -2066,10 +2069,7 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
     screenAllPages: pageView === 'screen' && screenAllPages,
     screenFit
   });
-  const extentPages =
-    pageView === 'screen' && !screenAllPages
-      ? previewPages.filter((page) => page.slug === activeSlug)
-      : previewPages;
+  const extentPages = previewPages;
   const layerRects = artboard
     ? extentPages.flatMap((page) => {
         const index = previewPages.findIndex((item) => item.slug === page.slug);
@@ -2131,6 +2131,51 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
       docH,
       spaceScale
     });
+  const workspaceGuides = previewPages.flatMap((page, index) => {
+    const origin = previewStrip.origin(index);
+    return (page.section?.layers || [])
+      .filter((layer) => layer.kind === 'guide' && layer.visible !== false)
+      .map((layer) => {
+        const axis = layer.guideAxis === 'horizontal' ? 'horizontal' : 'vertical';
+        const local = (axis === 'horizontal' ? layer.y : layer.x) + layerPad;
+        const originAlong = axis === 'horizontal' ? origin.y : origin.x;
+        const along = originAlong + local * previewStrip.extentScale;
+        const lead =
+          axis === 'horizontal'
+            ? previewWorkspace.padTop + previewWorkspace.overTop
+            : previewWorkspace.padLeft + previewWorkspace.overLeft;
+        return {
+          id: layer.id,
+          axis,
+          position: workspaceGuideFrame(along, lead, previewWorkspace.zoom),
+          lead,
+          originAlong,
+          fit: previewStrip.extentScale || 1
+        };
+      });
+  });
+  const moveWorkspaceGuide = (id: string, framePosition: number) => {
+    const guide = workspaceGuides.find((item) => item.id === id);
+    if (!guide) return;
+    const along = workspaceGuideAlong(framePosition, guide.lead, previewWorkspace.zoom);
+    const local = (along - guide.originAlong) / guide.fit - layerPad;
+    persist({
+      ...bundle,
+      sections: bundle.sections.map((section) => ({
+        ...section,
+        layers: (section.layers || []).map((layer) =>
+          layer.id === id
+            ? {
+                ...layer,
+                x: guide.axis === 'horizontal' ? layer.x : local,
+                y: guide.axis === 'horizontal' ? local : layer.y
+              }
+            : layer
+        )
+      })),
+      manifest: { ...bundle.manifest, updatedAt: new Date().toISOString() }
+    });
+  };
   const previewLeadingX = previewWorkspace.padLeft + previewWorkspace.overLeft;
   const previewLeadingY = previewWorkspace.padTop + previewWorkspace.overTop;
   const previewScrollSig = [
@@ -3004,7 +3049,7 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
                 >
                 <div
                   data-preview-zoom-frame
-                  className="shrink-0"
+                  className="relative shrink-0"
                   style={{
                     boxSizing: 'border-box',
                     width: previewWorkspace.contentW,
@@ -3044,8 +3089,8 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
                   style={
                     pageView === 'screen'
                       ? {
-                          width: screenAllPages ? screenFullWidth * screenFit : previewPageBox.width,
-                          height: screenAllPages ? screenFullHeight * screenFit : previewPageBox.height,
+                          width: screenAllPages ? screenFullWidth * screenFit : screenFullWidth,
+                          height: screenAllPages ? screenFullHeight * screenFit : screenFullHeight,
                           margin: 0
                         }
                       : undefined
@@ -3056,8 +3101,8 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
                   style={
                     pageView === 'screen'
                       ? {
-                          width: screenAllPages ? screenFullWidth : previewPageBox.width,
-                          height: screenAllPages ? screenFullHeight : previewPageBox.height,
+                          width: screenFullWidth,
+                          height: screenFullHeight,
                           transform: screenAllPages ? `scale(${screenFit})` : undefined,
                           transformOrigin: 'top left'
                         }
@@ -3066,7 +3111,7 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
                 >
                 <PreviewPageStrip
                   pageView={pageView}
-                  pageCount={pageView === 'screen' && !screenAllPages ? 1 : previewPages.length}
+                  pageCount={previewPages.length}
                   pageWidthPx={previewPageBox.width}
                   pageHeightPx={previewPageBox.height}
                   background={pageView === 'screen' ? screenStripBackground : undefined}
@@ -3077,7 +3122,6 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
                   }
                 >
                   {previewPages.map((page, index) => {
-                    if (pageView === 'screen' && !screenAllPages && page.slug !== activeSlug) return null;
                     const pageSection = page.section;
                     if (!pageSection) return null;
                     const active = page.slug === activeSlug;
@@ -3248,6 +3292,7 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
                     snapToPageCenter={Boolean(bundle.manifest.snapToPageGuides)}
                     playheadSec={playheadSec}
                     freePlacement={artboard}
+                    drawGuides={false}
                     guideSpan={guideSpanFor(
                       0,
                       0,
@@ -3264,6 +3309,10 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
                 </div>
                 </div>
                 </div>
+                <PageGuides
+                  guides={workspaceGuides}
+                  onMove={moveWorkspaceGuide}
+                />
                 </div>
                 </div>
                 <PreviewZoomControl zoom={previewZoom} onZoom={setPreviewZoom} />

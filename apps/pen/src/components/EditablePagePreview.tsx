@@ -1198,7 +1198,7 @@ export function EditablePagePreview({
             />
 
             {/* Layers cover the whole page. Body text keeps the margin. */}
-            {showAbsoluteLayers && guideLayers.length > 0 && (
+            {showAbsoluteLayers && !scrollWithParent && guideLayers.length > 0 && (
               <PageGuides
                 guides={guideLayers.map((layer) => ({
                   id: layer.id,
