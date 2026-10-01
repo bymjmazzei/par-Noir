@@ -16,7 +16,6 @@ import {
   setSubmitTo,
   setTextLayerDoc,
   setVoteCorrect,
-  setWidgetClosesAt,
   setWidgetHtml,
   setWidgetSvgOnLayer,
   type PenInteractiveBehavior,
@@ -409,23 +408,69 @@ export function WidgetEditorPanel({
         </div>
       )}
       {layer?.widgetElement === 'time' && (
-        <label className="flex flex-col gap-2 border-b border-stone-200 px-3 py-3 text-sm">
-          <span className="text-[11px] font-semibold uppercase tracking-wide text-stone-500">
-            Hide results until
-          </span>
-          <input
-            aria-label="Hide results until"
-            type="datetime-local"
-            className="border border-stone-300 px-2 py-1"
-            value={layer.closesAt ? layer.closesAt.slice(0, 16) : ''}
-            onChange={(event) => {
-              const next = event.target.value;
-              onSectionChange(
-                setWidgetClosesAt(section, layer.id, next ? new Date(next).toISOString() : null)
-              );
-            }}
-          />
-        </label>
+        <div className="flex flex-col gap-2 border-b border-stone-200 px-3 py-3 text-sm">
+          <label className="flex flex-col gap-1">
+            <span className="text-[11px] font-semibold uppercase tracking-wide text-stone-500">
+              Time
+            </span>
+            <select
+              aria-label="Time mode"
+              className="border border-stone-300 bg-white px-2 py-1"
+              value={layer.timeFace ?? (layer.closesAt ? 'countdown' : 'blank')}
+              onChange={(event) =>
+                onSectionChange(
+                  patchLayerStyle(section, layer.id, {
+                    timeFace: event.target.value as NonNullable<PenPageLayer['timeFace']>
+                  })
+                )
+              }
+            >
+              <option value="clock">Clock</option>
+              <option value="countdown">Countdown</option>
+              <option value="blank">Blank</option>
+            </select>
+          </label>
+          {(layer.timeFace ?? (layer.closesAt ? 'countdown' : 'blank')) === 'clock' && (
+            <label className="flex flex-col gap-1">
+              <span className="text-[11px] font-semibold uppercase tracking-wide text-stone-500">
+                Clock
+              </span>
+              <input
+                aria-label="Clock time"
+                type="time"
+                className="border border-stone-300 px-2 py-1"
+                value={layer.clockTime || ''}
+                onChange={(event) =>
+                  onSectionChange(
+                    patchLayerStyle(section, layer.id, { timeFace: 'clock', clockTime: event.target.value })
+                  )
+                }
+              />
+            </label>
+          )}
+          {(layer.timeFace ?? (layer.closesAt ? 'countdown' : 'blank')) === 'countdown' && (
+            <label className="flex flex-col gap-1">
+              <span className="text-[11px] font-semibold uppercase tracking-wide text-stone-500">
+                Countdown
+              </span>
+              <input
+                aria-label="Countdown"
+                type="datetime-local"
+                className="border border-stone-300 px-2 py-1"
+                value={layer.closesAt ? layer.closesAt.slice(0, 16) : ''}
+                onChange={(event) => {
+                  const next = event.target.value;
+                  onSectionChange(
+                    patchLayerStyle(section, layer.id, {
+                      timeFace: 'countdown',
+                      closesAt: next ? new Date(next).toISOString() : null
+                    })
+                  );
+                }}
+              />
+            </label>
+          )}
+        </div>
       )}
       {layer?.widgetElement === 'html' && (
         <label className="flex flex-col gap-2 border-b border-stone-200 px-3 py-3 text-sm">

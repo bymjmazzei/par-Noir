@@ -33,7 +33,11 @@ describe('widget preview builder', () => {
     expect(html).toContain('Text');
     expect(html).toContain('data-media-timeline');
     expect(html).toContain('aria-label="Keyframe"');
-    expect(page).toMatch(/hideActionBind=\{isWidgetDoc\}/);
+    expect(page).toMatch(/layerOpensWidgetEditor/);
+    expect(page).toMatch(/isWidgetDoc \|\| widgetEditorLayer/);
+    expect(page).toMatch(/hideActionBind=\{isWidgetDoc \|\| Boolean\(widgetEditorLayer\)\}/);
+    const strip = readFileSync(resolve(root, 'ActionBindStrip.tsx'), 'utf8');
+    expect(strip).not.toMatch(/Time mode|Clock time|HTML snippet|Field name/);
     expect(page).toMatch(/hideObjectTools=\{isWidgetDoc\}/);
     const toolbar = readFileSync(resolve(root, 'LayerObjectToolbar.tsx'), 'utf8');
     expect(toolbar).toMatch(/title="Blend"/);

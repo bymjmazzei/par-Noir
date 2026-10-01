@@ -31,6 +31,7 @@ import {
   setRevealTarget,
   setSubmitTo,
   setVoteCorrect,
+  layerOpensWidgetEditor,
   setWidgetClosesAt,
   timeLayerCaption,
   voteFace
@@ -380,6 +381,14 @@ describe('widget placement and triggers', () => {
     const group = copied.section.layers?.find((layer) => layer.id === copied.groupId);
     expect(group?.widgetTemplateId).toBe('widget.v1');
     expect(structureFromLayers(copied.section, copied.groupId).options).toEqual([]);
+  });
+
+  it('opens the widget editor for a widget layer and leaves media and prose alone', () => {
+    expect(layerOpensWidgetEditor({ id: 't', kind: 'text', widgetElement: 'time', x: 0, y: 0, w: 1, h: 1, zIndex: 1 })).toBe(true);
+    expect(layerOpensWidgetEditor({ id: 'b', kind: 'interactive', x: 0, y: 0, w: 1, h: 1, zIndex: 1 })).toBe(true);
+    expect(layerOpensWidgetEditor({ id: 'g', kind: 'group', widgetTemplateId: 'widget.v1', x: 0, y: 0, w: 1, h: 1, zIndex: 1 })).toBe(true);
+    expect(layerOpensWidgetEditor({ id: 'img', kind: 'image', x: 0, y: 0, w: 1, h: 1, zIndex: 1 })).toBe(false);
+    expect(layerOpensWidgetEditor({ id: 'prose', kind: 'text', x: 0, y: 0, w: 1, h: 1, zIndex: 1 })).toBe(false);
   });
 
   it('shows a clock string, a countdown, or nothing', () => {

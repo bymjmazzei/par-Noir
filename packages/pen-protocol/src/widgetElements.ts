@@ -73,6 +73,15 @@ export function sanitizeWidgetMarkup(source: string): string {
     .replace(/\son\w+\s*=\s*'[^']*'/gi, '');
 }
 
+/** A placed widget element, button, or imported widget group. Media stays in the media editor. */
+export function layerOpensWidgetEditor(layer: PenPageLayer | null | undefined): boolean {
+  if (!layer || layer.kind === 'guide' || layer.kind === 'image' || layer.kind === 'video') return false;
+  if (layer.widgetElement) return true;
+  if (layer.kind === 'interactive') return true;
+  if (layer.kind === 'group' && layer.widgetTemplateId) return true;
+  return false;
+}
+
 export function timeLayerCaption(
   layer: Pick<PenPageLayer, 'timeFace' | 'clockTime' | 'closesAt'>,
   now = Date.now()

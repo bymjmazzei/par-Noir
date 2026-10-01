@@ -16,6 +16,7 @@ import {
   hashSectionContent,
   headHashFromChain,
   isPageLayerId,
+  layerOpensWidgetEditor,
   mergePagePresentation,
   normalizeSection,
   notaryHashForPromote,
@@ -351,21 +352,18 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
     return collapseLegacyPrimaryTextLayer(ensureDefaultTextLayer(normalizeSection(raw)));
   }, [bundle, activeSlug]);
 
-  const socialActionLayer = useMemo(() => {
+  const widgetEditorLayer = useMemo(() => {
     if (!section || isPageLayerId(activeLayerId)) return null;
-    const layer = section.layers?.find((l) => l.id === activeLayerId);
-    if (
-      !layer ||
-      (layer.kind !== 'embed' &&
-        layer.kind !== 'interactive' &&
-        layer.widgetElement !== 'time' &&
-        layer.widgetElement !== 'input' &&
-        layer.widgetElement !== 'html')
-    ) {
-      return null;
-    }
-    return layer;
+    const layer = section.layers?.find((item) => item.id === activeLayerId) || null;
+    return layer && layerOpensWidgetEditor(layer) ? layer : null;
   }, [section, activeLayerId]);
+
+  const socialActionLayer = useMemo(() => {
+    if (!section || isPageLayerId(activeLayerId) || widgetEditorLayer) return null;
+    const layer = section.layers?.find((l) => l.id === activeLayerId);
+    if (!layer || (layer.kind !== 'embed' && layer.kind !== 'interactive')) return null;
+    return layer;
+  }, [section, activeLayerId, widgetEditorLayer]);
 
   // One-shot: persist collapse of legacy layer_primary seed into local buffer.
   useEffect(() => {
@@ -2315,7 +2313,7 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
                   </button>
                 </div>
               </div>
-              {writingEnabled && !activeMediaLayer && !isWidgetDoc ? (
+              {writingEnabled && !activeMediaLayer && !isWidgetDoc && !widgetEditorLayer ? (
                 <FormatRibbon
                   editor={editor}
                   accessToken={session.accessToken}
@@ -2412,7 +2410,7 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
                 }}
               />
             </div>
-          ) : isWidgetDoc && section ? (
+          ) : section && (isWidgetDoc || widgetEditorLayer) ? (
             <WidgetEditorPanel
               key={widgetStripLayer?.id || 'widget'}
               layer={widgetStripLayer}
@@ -2806,7 +2804,7 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
                             manifest={pageManifest}
                             section={pageSection}
                             activeLayerId={active ? activeLayerId : PAGE_LAYER_ID}
-                            hideActionBind={isWidgetDoc}
+                            hideActionBind={isWidgetDoc || Boolean(widgetEditorLayer)}
                             hideObjectTools={isWidgetDoc}
                             showToolbar={active}
                             toolbarHost={active ? previewToolbarHost : null}

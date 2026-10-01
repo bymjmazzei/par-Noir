@@ -259,12 +259,7 @@ export function LayerObjectToolbar({
     setOpen(open === tool ? null : tool);
   }
 
-  const isAction =
-    layer?.kind === 'embed' ||
-    layer?.kind === 'interactive' ||
-    layer?.widgetElement === 'time' ||
-    layer?.widgetElement === 'input' ||
-    layer?.widgetElement === 'html';
+  const isAction = layer?.kind === 'embed' || layer?.kind === 'interactive';
 
   return (
     <div className="relative flex min-w-0 items-center gap-0.5">
