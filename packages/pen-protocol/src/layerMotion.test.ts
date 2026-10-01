@@ -12,6 +12,7 @@ import {
   sampleSectionLayers,
   sectionHasMotion,
   setKeyframeEase,
+  detachClipAsLayer,
   splitLayerAt
 } from './layerMotion.js';
 import { emptySection } from './richDoc.js';
@@ -369,6 +370,32 @@ describe('splitLayerAt', () => {
   it('leaves the clip unchanged when the playhead is outside it', () => {
     const doc = section([layer({ id: 'clip', kind: 'video', inSec: 1, outSec: 2 })]);
     expect(splitLayerAt(doc, 'clip', 0).layers).toHaveLength(1);
+  });
+
+  it('copies one split piece onto its own layer', () => {
+    const doc = section([
+      layer({
+        id: 'clip',
+        kind: 'video',
+        videoSrc: 'penlocal:a',
+        timelineTrackId: 'row-a',
+        clips: [
+          { id: 'left', inSec: 0, outSec: 1.5, sourceInSec: 0 },
+          { id: 'right', inSec: 1.5, outSec: 4, sourceInSec: 1.5 }
+        ]
+      })
+    ]);
+    const moved = detachClipAsLayer(doc, 'clip', 'right');
+    expect(moved).not.toBeNull();
+    expect(moved!.section.layers).toHaveLength(2);
+    const source = moved!.section.layers?.find((item) => item.id === 'clip');
+    const created = moved!.section.layers?.find((item) => item.id === moved!.layerId);
+    expect(source?.clips?.map((clip) => clip.id)).toEqual(['left']);
+    expect(created?.clips).toEqual([{ id: 'right', inSec: 1.5, outSec: 4, sourceInSec: 1.5 }]);
+    expect(created?.videoSrc).toBe('penlocal:a');
+    expect(created?.timelineTrackId).toBeTruthy();
+    expect(created?.timelineTrackId).not.toBe(source?.timelineTrackId);
+    expect(detachClipAsLayer(doc, 'clip', 'missing')).toBeNull();
   });
 });
 

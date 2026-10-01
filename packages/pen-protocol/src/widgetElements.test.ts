@@ -32,6 +32,7 @@ import {
   setSubmitTo,
   setVoteCorrect,
   setWidgetClosesAt,
+  timeLayerCaption,
   voteFace
 } from './widgetElements.js';
 import type { PenPageLayer } from './types.js';
@@ -379,5 +380,12 @@ describe('widget placement and triggers', () => {
     const group = copied.section.layers?.find((layer) => layer.id === copied.groupId);
     expect(group?.widgetTemplateId).toBe('widget.v1');
     expect(structureFromLayers(copied.section, copied.groupId).options).toEqual([]);
+  });
+
+  it('shows a clock string, a countdown, or nothing', () => {
+    expect(timeLayerCaption({ timeFace: 'clock', clockTime: '14:30' })).toBe('14:30');
+    expect(timeLayerCaption({ timeFace: 'blank', closesAt: '2099-01-01T00:00:00.000Z' })).toBe('');
+    expect(timeLayerCaption({ closesAt: null })).toBe('');
+    expect(timeLayerCaption({ closesAt: '2000-01-01T00:00:00.000Z' })).toBe('00:00:00');
   });
 });

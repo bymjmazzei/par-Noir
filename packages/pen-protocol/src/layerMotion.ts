@@ -339,6 +339,49 @@ export function splitLayerAt(
   return { ...section, layers: next };
 }
 
+/**
+ * Copy one piece of a multi-clip layer onto a new layer with its own row.
+ * The piece is removed from the source. A single clip stays put.
+ */
+export function detachClipAsLayer(
+  section: PenSectionContent,
+  layerId: string,
+  clipId: string
+): { section: PenSectionContent; layerId: string } | null {
+  const layers = section.layers || [];
+  const source = layers.find((item) => item.id === layerId);
+  if (!source?.clips || source.clips.length < 2) return null;
+  const clip = source.clips.find((item) => item.id === clipId);
+  if (!clip) return null;
+  const rest = source.clips.filter((item) => item.id !== clipId);
+  const id = `layer_${Math.random().toString(36).slice(2, 10)}`;
+  const trackId = `track_${Math.random().toString(36).slice(2, 10)}`;
+  const detached: PenPageLayer = {
+    ...source,
+    id,
+    clips: [{ ...clip }],
+    inSec: clip.inSec,
+    outSec: clip.outSec,
+    sourceInSec: clip.sourceInSec,
+    timelineTrackId: trackId,
+    zIndex: source.zIndex + 1
+  };
+  delete detached.parentGroupId;
+  const nextSource: PenPageLayer = {
+    ...source,
+    clips: rest,
+    inSec: Math.min(...rest.map((item) => item.inSec)),
+    outSec: Math.max(...rest.map((item) => item.outSec))
+  };
+  return {
+    layerId: id,
+    section: {
+      ...section,
+      layers: layers.flatMap((item) => (item.id === source.id ? [nextSource, detached] : [item]))
+    }
+  };
+}
+
 function smoothstep(u: number): number {
   const t = Math.min(1, Math.max(0, u));
   return t * t * (3 - 2 * t);

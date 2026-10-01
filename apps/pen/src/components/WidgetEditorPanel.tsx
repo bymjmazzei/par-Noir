@@ -35,8 +35,7 @@ const ADD: Array<{ element: PenWidgetElement | 'image'; label: string }> = [
   { element: 'image', label: 'Image' },
   { element: 'button', label: 'Button' },
   { element: 'time', label: 'Time' },
-  { element: 'html', label: 'HTML snippet' },
-  { element: 'svg', label: 'SVG' }
+  { element: 'html', label: 'HTML snippet' }
 ];
 
 function hexColor(value: string | undefined, fallback: string): string {

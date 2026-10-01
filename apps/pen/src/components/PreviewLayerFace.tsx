@@ -4,7 +4,7 @@ import type { CSSProperties } from 'react';
 import {
   docToHtml,
   docToPlainText,
-  formatCountdown,
+  timeLayerCaption,
   getTextLayerDoc,
   revealSibling,
   sanitizeWidgetMarkup,
@@ -118,7 +118,7 @@ export function PreviewLayerFace({
   if (layer.widgetElement === 'time') {
     return (
       <div className="flex h-full w-full items-center justify-center text-xs" style={shell}>
-        {layer.closesAt ? formatCountdown(layer.closesAt) : 'Time'}
+        {timeLayerCaption(layer)}
       </div>
     );
   }
@@ -147,10 +147,12 @@ export function PreviewLayerFace({
       >
         {runtime ? (
           runtime
+        ) : layer.label ? (
+          layer.label
         ) : rich ? (
           <span className="pen-rich-html" dangerouslySetInnerHTML={{ __html: rich }} />
         ) : (
-          layer.label || 'Button'
+          'Button'
         )}
       </button>
     );

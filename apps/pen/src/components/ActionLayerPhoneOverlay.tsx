@@ -3,7 +3,7 @@
 import {
   canvasSizeForAspect,
   docToPlainText,
-  formatCountdown,
+  timeLayerCaption,
   getTextLayerDoc,
   normalizeGalleryAspect,
   revealSibling,
@@ -132,7 +132,7 @@ function overlayTitle(
   votedOptionByGroup?: Record<string, string>
 ): string {
   if (layer.widgetElement === 'time') {
-    return layer.closesAt ? formatCountdown(layer.closesAt) : 'Time';
+    return timeLayerCaption(layer);
   }
   if (layer.kind === 'interactive' && layer.behavior === 'poll.vote') {
     const groupKey = layer.parentGroupId || 'doc';

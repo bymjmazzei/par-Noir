@@ -1,5 +1,5 @@
 /**
- * New widget: popup with My widgets, All widgets, and search.
+ * Import widget: popup with My widgets, All widgets, and search.
  * Choosing one copies its layers into the host section.
  */
 import { useEffect, useMemo, useState } from 'react';
@@ -104,7 +104,7 @@ export function ActionLayerMenu({
         onClick={(event) => event.stopPropagation()}
       >
         <div className="flex items-center justify-between border-b border-neutral-200 px-3 py-2">
-          <span className="font-semibold">New widget</span>
+          <span className="font-semibold">Import widget</span>
           <button type="button" className="text-neutral-500 hover:text-black" onClick={onCancel}>
             Close
           </button>

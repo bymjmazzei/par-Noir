@@ -18,6 +18,7 @@ import {
   layerMediaTime,
   layerSampleTime,
   deleteClipAt,
+  detachClipAsLayer,
   joinLayerToTrack,
   publishPlaybackSrc,
   reorderTimelineLayer,
@@ -263,8 +264,8 @@ async function readFrames(master: HTMLVideoElement): Promise<string[]> {
   const canvas = document.createElement('canvas');
   const sourceWidth = master.videoWidth || 16;
   const sourceHeight = master.videoHeight || 9;
-  canvas.height = 18;
-  canvas.width = Math.max(8, Math.round(18 * (sourceWidth / sourceHeight)));
+  canvas.height = 64;
+  canvas.width = Math.max(32, Math.round(64 * (sourceWidth / sourceHeight)));
   const ctx = canvas.getContext('2d');
   if (!ctx) return [];
   const frames: string[] = [];
@@ -272,7 +273,7 @@ async function readFrames(master: HTMLVideoElement): Promise<string[]> {
     for (let i = 0; i < count; i += 1) {
       await seekVideo(master, ((i + 0.5) / count) * Math.max(0.05, dur - 0.05));
       ctx.drawImage(master, 0, 0, canvas.width, canvas.height);
-      frames.push(canvas.toDataURL('image/jpeg', 0.6));
+      frames.push(canvas.toDataURL('image/jpeg', 0.82));
     }
   } catch {
     /* keep the frames already drawn */
@@ -695,6 +696,7 @@ export function SectionTimeline({
   }
 
   function beginScrub(event: ReactPointerEvent<HTMLElement>) {
+    event.preventDefault();
     event.stopPropagation();
     const scale = event.currentTarget.closest('[data-timeline-scale]');
     if (!(scale instanceof HTMLElement)) return;
@@ -817,7 +819,12 @@ export function SectionTimeline({
     onSectionChange(deleteClipAt(section, activeLayerId, playheadSec));
   }
 
-  function beginMove(event: ReactPointerEvent<HTMLElement>, layer: PenPageLayer) {
+  function beginMove(
+    event: ReactPointerEvent<HTMLElement>,
+    layer: PenPageLayer,
+    clipId?: string
+  ) {
+    event.preventDefault();
     event.stopPropagation();
     const startX = event.clientX;
     const startY = event.clientY;
@@ -838,18 +845,38 @@ export function SectionTimeline({
       const own = layer.timelineTrackId || layer.id;
       const rows = [...(root?.querySelectorAll('[data-track-row]') || [])];
       const ids = rows.map((row) => row.getAttribute('data-track-row') || '');
+      const y =
+        hit instanceof HTMLElement
+          ? (ev.clientY - hit.getBoundingClientRect().top) / Math.max(1, hit.getBoundingClientRect().height)
+          : null;
+      const offRow = y == null || y <= 0.28 || y >= 0.72;
+      const piece =
+        clipId && (layer.clips?.length || 0) > 1
+          ? detachClipAsLayer(section, layer.id, clipId)
+          : null;
+      if (piece && offRow) {
+        let next = piece.section;
+        if (!hit || !trackId || !(hit instanceof HTMLElement)) {
+          next = reorderTimelineLayer(next, piece.layerId, null);
+        } else {
+          const index = ids.indexOf(trackId);
+          const before = (y ?? 1) < 0.5 ? trackId : ids[index + 1] || null;
+          next = reorderTimelineLayer(next, piece.layerId, before);
+        }
+        onSectionChange(next);
+        onSelectLayer(piece.layerId);
+        return;
+      }
       if (!hit || !trackId || !(hit instanceof HTMLElement)) {
         onSectionChange(reorderTimelineLayer(section, layer.id, null));
         return;
       }
-      const rect = hit.getBoundingClientRect();
-      const y = (ev.clientY - rect.top) / Math.max(1, rect.height);
-      if (trackId !== own && y > 0.28 && y < 0.72) {
+      if (trackId !== own && y != null && y > 0.28 && y < 0.72) {
         onSectionChange(joinLayerToTrack(section, layer.id, trackId));
         return;
       }
       const index = ids.indexOf(trackId);
-      const before = y < 0.5 ? trackId : ids[index + 1] || null;
+      const before = (y ?? 0) < 0.5 ? trackId : ids[index + 1] || null;
       if (before === own) return;
       onSectionChange(reorderTimelineLayer(section, layer.id, before));
     };
@@ -890,7 +917,11 @@ export function SectionTimeline({
   }
 
   return (
-    <div ref={rootRef} data-media-timeline className="shrink-0 border-t border-stone-200 bg-stone-50">
+    <div
+      ref={rootRef}
+      data-media-timeline
+      className="min-w-0 shrink-0 select-none border-t border-stone-200 bg-stone-50"
+    >
       <div data-timeline-toolbar className="flex flex-nowrap items-center gap-1 overflow-x-auto px-2 py-0.5">
         <button
           type="button"
@@ -931,9 +962,9 @@ export function SectionTimeline({
             onClick={cutClip}
           >
             <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden>
-              <rect x="1" y="4" width="6" height="8" fill="none" stroke="currentColor" strokeWidth="1.3" />
-              <rect x="9" y="4" width="6" height="8" fill="none" stroke="currentColor" strokeWidth="1.3" />
-              <path d="M8 2v12" stroke="currentColor" strokeWidth="1.3" />
+              <circle cx="4.2" cy="4" r="1.6" fill="none" stroke="currentColor" strokeWidth="1.2" />
+              <circle cx="4.2" cy="12" r="1.6" fill="none" stroke="currentColor" strokeWidth="1.2" />
+              <path d="M5.4 5.2 13 12.2M5.4 10.8 13 3.8" stroke="currentColor" strokeWidth="1.2" />
             </svg>
           </button>
         )}
@@ -1051,8 +1082,9 @@ export function SectionTimeline({
                 }}
               >
                 <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden>
-                  <path d="M8 2v12" stroke="currentColor" strokeWidth="1.2" />
-                  <path d="M7 4 2 8l5 4zM9 4l5 4-5 4z" fill="none" stroke="currentColor" strokeWidth="1.2" />
+                  <path d="M8 1.5v13" stroke="currentColor" strokeWidth="1.2" />
+                  <path d="M6.6 4.2 2.2 8l4.4 3.8z" fill="currentColor" />
+                  <path d="M9.4 4.2 13.8 8l-4.4 3.8z" fill="currentColor" />
                 </svg>
               </button>
               <button
@@ -1064,9 +1096,7 @@ export function SectionTimeline({
                 onClick={() => onReverse?.()}
               >
                 <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden>
-                  <path d="M3 8h8" stroke="currentColor" strokeWidth="1.3" />
-                  <path d="M6 5 3 8l3 3" fill="none" stroke="currentColor" strokeWidth="1.3" />
-                  <path d="M13 5v6" stroke="currentColor" strokeWidth="1.3" />
+                  <path d="M12.5 2.5 3.5 8l9 5.5V2.5z" fill="currentColor" />
                 </svg>
               </button>
             </>
@@ -1087,11 +1117,11 @@ export function SectionTimeline({
           </button>
         </div>
       </div>
-      <div className="max-h-64 overflow-auto px-2 pb-2">
+      <div className="max-h-64 min-w-0 overflow-x-auto overflow-y-auto px-2 pb-2">
         <div
           data-timeline-scale
           className="relative"
-          style={{ width: `${zoom * 100}%`, minWidth: '100%' }}
+          style={{ width: `${Math.max(duration, 0.01) * 96 * zoom}px`, minWidth: '100%' }}
         >
           <div className="relative mb-1 h-6 cursor-ew-resize" onPointerDown={beginScrub}>
             {timelineMarks(duration, zoom).map((mark) => (
@@ -1187,7 +1217,9 @@ export function SectionTimeline({
                       left: `${(clip.inSec / Math.max(rowDur, 0.01)) * 100}%`,
                       width: `${Math.max(4, ((clip.outSec - clip.inSec) / Math.max(rowDur, 0.01)) * 100)}%`
                     }}
-                    onPointerDown={(e) => beginMove(e, owner)}
+                    onPointerDown={(e) =>
+                      beginMove(e, owner, (owner.clips?.length || 0) > 1 ? clip.id : undefined)
+                    }
                   >
                     <ClipDecor
                       src={playbackSrc}

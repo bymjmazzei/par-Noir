@@ -249,13 +249,15 @@ describe('pen feed UX chrome', () => {
     expect(src).not.toMatch(/engagementOverlay/);
   });
 
-  it('layers add menu is New layer, New group, and New widget', () => {
+  it('layers add menu is New layer, New group, and Import widget', () => {
     const panel = readFileSync(resolve(root, 'components/LayersPanel.tsx'), 'utf8');
     const menu = readFileSync(resolve(root, 'components/ActionLayerMenu.tsx'), 'utf8');
     const rail = readFileSync(resolve(root, 'services/classFeedRailItems.ts'), 'utf8');
     expect(panel).toMatch(/New layer/);
     expect(panel).toMatch(/New group/);
-    expect(panel).toMatch(/New widget/);
+    expect(panel).toMatch(/Import widget/);
+    expect(panel).not.toMatch(/New widget/);
+    expect(panel).not.toMatch(/>\s*SVG\s*</);
     expect(panel).toMatch(/aria-label="Add"/);
     expect(panel).not.toMatch(/aria-label="Create group"/);
     expect(panel).not.toMatch(/aria-label="Add action layer"/);

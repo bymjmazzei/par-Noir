@@ -45,7 +45,7 @@ import {
   resolvePagePaddingPx,
   resizeSeKeepAspect,
   sectionNeedsLegacyGeomMigrate,
-  formatCountdown,
+  timeLayerCaption,
   revealSibling,
   selectPageSize,
   sanitizeWidgetMarkup,
@@ -1301,7 +1301,7 @@ export function EditablePagePreview({
                       className="flex h-full w-full items-center justify-center text-xs"
                       style={shell}
                     >
-                      {layer.closesAt ? formatCountdown(layer.closesAt) : 'Time'}
+                      {timeLayerCaption(layer)}
                     </div>
                   );
                 }
@@ -1337,13 +1337,15 @@ export function EditablePagePreview({
                     >
                       {runtime ? (
                         runtime
+                      ) : layer.label ? (
+                        layer.label
                       ) : rich ? (
                         <span
                           className="pen-rich-html"
                           dangerouslySetInnerHTML={{ __html: rich }}
                         />
                       ) : (
-                        layer.label || 'Button'
+                        'Button'
                       )}
                     </button>
                   );

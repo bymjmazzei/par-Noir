@@ -22,7 +22,9 @@ export function CloudFeedMediaPicker({
   session,
   kind,
   docId,
-  onPickMediaSrc
+  onPickMediaSrc,
+  kindSwitch = false,
+  onKindChange
 }: {
   open: boolean;
   onClose: () => void;
@@ -31,6 +33,8 @@ export function CloudFeedMediaPicker({
   docId?: string;
   /** Tiny ref: penlocal:{id} or penmedia:{fileId} */
   onPickMediaSrc: (src: string, meta?: { blobUrl?: string }) => void;
+  kindSwitch?: boolean;
+  onKindChange?: (kind: 'image' | 'video') => void;
 }) {
   const [items, setItems] = useState<CloudImageItem[]>([]);
   const [busy, setBusy] = useState(false);
@@ -122,6 +126,26 @@ export function CloudFeedMediaPicker({
             Close
           </button>
         </div>
+        {kindSwitch && onKindChange && (
+          <div className="flex gap-2 border-b border-neutral-100 px-4 py-2">
+            <button
+              type="button"
+              aria-pressed={kind === 'image'}
+              className={`text-[12px] ${kind === 'image' ? 'font-bold text-black' : 'text-neutral-500'}`}
+              onClick={() => onKindChange('image')}
+            >
+              Image
+            </button>
+            <button
+              type="button"
+              aria-pressed={kind === 'video'}
+              className={`text-[12px] ${kind === 'video' ? 'font-bold text-black' : 'text-neutral-500'}`}
+              onClick={() => onKindChange('video')}
+            >
+              Video
+            </button>
+          </div>
+        )}
         <div className="border-b border-neutral-100 px-4 py-2">
           <button
             type="button"

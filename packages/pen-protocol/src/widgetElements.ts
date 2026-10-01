@@ -59,7 +59,7 @@ function elementId(): string {
   return `el_${Math.random().toString(36).slice(2, 10)}`;
 }
 
-function plainDoc(text: string): PenTipTapNode {
+export function plainDoc(text: string): PenTipTapNode {
   return {
     type: 'doc',
     content: [{ type: 'paragraph', content: text ? [{ type: 'text', text }] : [] }]
@@ -71,6 +71,17 @@ export function sanitizeWidgetMarkup(source: string): string {
     .replace(/<script[\s\S]*?>[\s\S]*?<\/script>/gi, '')
     .replace(/\son\w+\s*=\s*"[^"]*"/gi, '')
     .replace(/\son\w+\s*=\s*'[^']*'/gi, '');
+}
+
+export function timeLayerCaption(
+  layer: Pick<PenPageLayer, 'timeFace' | 'clockTime' | 'closesAt'>,
+  now = Date.now()
+): string {
+  const mode = layer.timeFace ?? (layer.closesAt ? 'countdown' : 'blank');
+  if (mode === 'blank') return '';
+  if (mode === 'clock') return layer.clockTime || '';
+  if (!layer.closesAt) return '';
+  return formatCountdown(layer.closesAt, now);
 }
 
 export function formatCountdown(closesAt: string, now = Date.now()): string {

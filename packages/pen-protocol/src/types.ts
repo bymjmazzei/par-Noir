@@ -144,6 +144,10 @@ export interface PenPageLayer {
   htmlSource?: string;
   /** Time element expiry. */
   closesAt?: string | null;
+  /** Clock, countdown, or an empty time face. */
+  timeFace?: 'clock' | 'countdown' | 'blank';
+  /** Clock face, stored as a time string such as 14:30. */
+  clockTime?: string;
   /** Last tally written onto the widget group after a vote. */
   widgetCounts?: { total: number; byOption: Record<string, number> };
   /** Owner spreadsheet for this poll group. Not copied onto a reusable template. */

@@ -13,6 +13,7 @@ import {
 } from 'react';
 import {
   alignLayers,
+  attachMediaToLayer,
   createGroupFromSelection,
   createTextLayer,
   placeWidgetLayer,
@@ -33,6 +34,7 @@ import {
 } from '@par-noir/pen-protocol';
 import type { PenSession } from '../services/penSession';
 import { ActionLayerMenu } from './ActionLayerMenu';
+import { CloudFeedMediaPicker } from './CloudFeedMediaPicker';
 import { IconEye, IconEyeOff, IconLock, IconTrash, IconUnlock } from './icons/PenIcons';
 
 export function layerDisplayLabel(layer: PenPageLayer, all: PenPageLayer[]): string {
@@ -118,6 +120,8 @@ export function LayersPopover({
   const [hoverId, setHoverId] = useState<string | null>(null);
   const [addOpen, setAddOpen] = useState(false);
   const [actionOpen, setActionOpen] = useState(false);
+  const [mediaOpen, setMediaOpen] = useState(false);
+  const [mediaKind, setMediaKind] = useState<'image' | 'video'>('image');
 
   const prepared = useMemo(() => normalizeSection(section), [section]);
   const allLayers = prepared.layers || [];
@@ -158,6 +162,7 @@ export function LayersPopover({
     if (!open) {
       setActionOpen(false);
       setAddOpen(false);
+      setMediaOpen(false);
     }
   }, [open]);
 
@@ -203,13 +208,28 @@ export function LayersPopover({
     onSelectedIdsChange([layer.id]);
   }
 
-  function addPlaced(element: 'image' | 'button' | 'time' | 'html' | 'svg' | 'input') {
+  function addPlaced(element: 'button' | 'time' | 'html' | 'input') {
     const active = allLayers.find((layer) => layer.id === activeLayerId);
     const groupId = active?.kind === 'group' ? active.id : active?.parentGroupId || null;
     const placed = placeWidgetLayer(prepared, groupId, element);
     commit(placed.section);
     onSelectLayer(placed.layerId);
     onSelectedIdsChange([placed.layerId]);
+  }
+
+  function attachPickedMedia(src: string) {
+    const active = allLayers.find((layer) => layer.id === activeLayerId);
+    const groupId = active?.kind === 'group' ? active.id : active?.parentGroupId || null;
+    const placed = placeWidgetLayer(prepared, groupId, 'image');
+    const attached = attachMediaToLayer(placed.section, placed.layerId, { kind: mediaKind, src });
+    const named =
+      mediaKind === 'video'
+        ? patchLayerStyle(attached, placed.layerId, { name: 'Video' })
+        : attached;
+    commit(named);
+    onSelectLayer(placed.layerId);
+    onSelectedIdsChange([placed.layerId]);
+    setMediaOpen(false);
   }
 
   function insertWidget(next: PenSectionContent, groupId: string) {
@@ -415,14 +435,24 @@ export function LayersPopover({
               >
                 New layer
               </button>
+              <button
+                type="button"
+                role="menuitem"
+                className="block w-full px-3 py-1.5 text-left text-[11px] hover:bg-neutral-50"
+                onClick={() => {
+                  setAddOpen(false);
+                  setMediaKind('image');
+                  setMediaOpen(true);
+                }}
+              >
+                Media
+              </button>
               {(
                 [
-                  ['image', 'Image'],
                   ['input', 'Text input'],
                   ['button', 'Button'],
                   ['time', 'Time'],
-                  ['html', 'HTML snippet'],
-                  ['svg', 'SVG']
+                  ['html', 'HTML snippet']
                 ] as const
               ).map(([element, label]) => (
                 <button
@@ -458,7 +488,7 @@ export function LayersPopover({
                   setActionOpen(true);
                 }}
               >
-                New widget
+                Import widget
               </button>
             </div>
           )}
@@ -473,6 +503,16 @@ export function LayersPopover({
           onCancel={() => setActionOpen(false)}
         />
       )}
+      <CloudFeedMediaPicker
+        open={mediaOpen}
+        onClose={() => setMediaOpen(false)}
+        session={session ?? null}
+        kind={mediaKind}
+        kindSwitch
+        onKindChange={setMediaKind}
+        docId={docId}
+        onPickMediaSrc={(src) => attachPickedMedia(src)}
+      />
 
       <ul
         className="max-h-56 min-h-0 overflow-auto py-1"

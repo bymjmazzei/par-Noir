@@ -354,7 +354,16 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
   const socialActionLayer = useMemo(() => {
     if (!section || isPageLayerId(activeLayerId)) return null;
     const layer = section.layers?.find((l) => l.id === activeLayerId);
-    if (!layer || (layer.kind !== 'embed' && layer.kind !== 'interactive')) return null;
+    if (
+      !layer ||
+      (layer.kind !== 'embed' &&
+        layer.kind !== 'interactive' &&
+        layer.widgetElement !== 'time' &&
+        layer.widgetElement !== 'input' &&
+        layer.widgetElement !== 'html')
+    ) {
+      return null;
+    }
     return layer;
   }, [section, activeLayerId]);
 
@@ -453,7 +462,12 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
     if (!section) return undefined;
     if (!isPageLayerId(activeLayerId)) {
       const layer = section.layers?.find((l) => l.id === activeLayerId);
-      if (layer?.kind === 'text') {
+      if (
+        layer?.kind === 'text' &&
+        layer.widgetElement !== 'time' &&
+        layer.widgetElement !== 'input' &&
+        layer.widgetElement !== 'html'
+      ) {
         return { ...section, doc: getTextLayerDoc(layer) };
       }
       // Non-text object: do not bind TipTap to Body under that object's name
@@ -467,6 +481,13 @@ export function DocEditorPage({ session, docId }: { session: PenSession; docId: 
     if (isPageLayerId(activeLayerId)) return true;
     const layer = section.layers?.find((l) => l.id === activeLayerId);
     if (!layer || layer.kind !== 'text') return false;
+    if (
+      layer.widgetElement === 'time' ||
+      layer.widgetElement === 'input' ||
+      layer.widgetElement === 'html'
+    ) {
+      return false;
+    }
     // Media fills on a text object use the media panel, not TipTap.
     if (layer.imageSrc || layer.videoSrc || layer.backgroundImage || layer.backgroundVideo) {
       return false;
